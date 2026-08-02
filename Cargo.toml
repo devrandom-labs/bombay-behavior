@@ -1,0 +1,40 @@
+# behaviorpass — the Behavior-algebra concision harness (bombay card #298).
+#
+# The pillar-pass sibling of fastpass/locationpass. Where fastpass golfs a
+# two-lane merge for THROUGHPUT, behaviorpass golfs bombay's capability
+# machinery for CONCISION (LOC), gated on trace-equality to a frozen
+# essence-fold reference (ADR-0028/0030). Findings return to bombay as CARDS,
+# never direct commits.
+[workspace]
+resolver = "3"
+members = [
+  "crates/behaviorpass",
+  "crates/behaviorpass-reference",
+  "crates/behaviorpass-testkit",
+  "crates/behaviorpass-perf",
+]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.96"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/devrandom-labs/behaviorpass"
+
+[workspace.dependencies]
+thiserror = "2.0"
+tokio = { version = "1.47", default-features = false }
+# bombay is pinned as a path dependency (sibling checkout): the SUT ports its
+# capability machinery in to be golfed; the reference/testkit reuse its verdict
+# vocabulary (Step/Never/Disposition/Deferred) so trace comparison is type-exact.
+bombay = { path = "../bombay/crates/core" }
+behaviorpass = { path = "crates/behaviorpass" }
+behaviorpass-reference = { path = "crates/behaviorpass-reference" }
+behaviorpass-testkit = { path = "crates/behaviorpass-testkit" }
+
+# Keep the research crates lint-honest without importing bombay's full god-tier
+# config — this is a spike, but the invariants are real. The concision loop's
+# checks.sh additionally runs bombay's restriction suite as the LOC regularizer
+# (a line bought with unreadability is reverted).
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
