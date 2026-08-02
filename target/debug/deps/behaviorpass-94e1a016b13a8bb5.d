@@ -1,11 +1,13 @@
-/Users/joel/Code/devrandom/behaviorpass/target/debug/deps/behaviorpass-94e1a016b13a8bb5.d: crates/behaviorpass/src/lib.rs crates/behaviorpass/src/behavior.rs crates/behaviorpass/src/deadlined.rs crates/behaviorpass/src/gated.rs crates/behaviorpass/src/supervising.rs crates/behaviorpass/src/watching.rs Cargo.toml
+/Users/joel/Code/devrandom/behaviorpass/target/debug/deps/behaviorpass-94e1a016b13a8bb5.d: crates/behaviorpass/src/lib.rs crates/behaviorpass/src/behavior.rs crates/behaviorpass/src/deadlined.rs crates/behaviorpass/src/gated.rs crates/behaviorpass/src/phased.rs crates/behaviorpass/src/stashing.rs crates/behaviorpass/src/supervising.rs crates/behaviorpass/src/watching.rs Cargo.toml
 
-/Users/joel/Code/devrandom/behaviorpass/target/debug/deps/libbehaviorpass-94e1a016b13a8bb5.rmeta: crates/behaviorpass/src/lib.rs crates/behaviorpass/src/behavior.rs crates/behaviorpass/src/deadlined.rs crates/behaviorpass/src/gated.rs crates/behaviorpass/src/supervising.rs crates/behaviorpass/src/watching.rs Cargo.toml
+/Users/joel/Code/devrandom/behaviorpass/target/debug/deps/libbehaviorpass-94e1a016b13a8bb5.rmeta: crates/behaviorpass/src/lib.rs crates/behaviorpass/src/behavior.rs crates/behaviorpass/src/deadlined.rs crates/behaviorpass/src/gated.rs crates/behaviorpass/src/phased.rs crates/behaviorpass/src/stashing.rs crates/behaviorpass/src/supervising.rs crates/behaviorpass/src/watching.rs Cargo.toml
 
 crates/behaviorpass/src/lib.rs:
 crates/behaviorpass/src/behavior.rs:
 crates/behaviorpass/src/deadlined.rs:
 crates/behaviorpass/src/gated.rs:
+crates/behaviorpass/src/phased.rs:
+crates/behaviorpass/src/stashing.rs:
 crates/behaviorpass/src/supervising.rs:
 crates/behaviorpass/src/watching.rs:
 Cargo.toml:
