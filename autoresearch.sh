@@ -45,4 +45,6 @@ loc=$(printf '%s\n' "$out" | grep -oE 'code_loc=[0-9]+' | head -n1 | cut -d= -f2
 
 echo "METRIC score=${score}"
 [ -n "${loc}" ] && echo "METRIC code_loc=${loc}"
+# Re-emit measure.sh's info/survivor lines so the loop sees the remaining gaps.
+printf '%s\n' "$out" | grep -E '^(info|surviving|MISSED|crates/)' || true
 exit 0
