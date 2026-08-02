@@ -11,7 +11,7 @@
 //! (no real timer), so a hung layer cannot stall the measure loop.
 
 use behaviorpass::{
-    Base, Behavior, Deadlined, Exit, Phased, StashRoute, Stashing, Supervising, Watching, Wire,
+    Base, Behavior, Deadlined, Exit, Phased, StashRoute, Stashing, Supervising, Watching, Envelope,
     otp_propagation,
 };
 use bombay::capability::{Deferred, Disposition, Never, Step};
@@ -31,13 +31,13 @@ fn recorder() -> Rec {
 #[tokio::test]
 async fn plain_folds_fifo_and_ignores_framework_events() {
     let mut b = recorder();
-    assert!(matches!(b.step(Wire::Deadline).await, Ok(Step::Continue)));
-    assert!(matches!(b.step(Wire::User(1)).await, Ok(Step::Continue)));
+    assert!(matches!(b.step(Envelope::Deadline).await, Ok(Step::Continue)));
+    assert!(matches!(b.step(Envelope::User(1)).await, Ok(Step::Continue)));
     assert!(matches!(
-        b.step(Wire::LinkDied { peer: 9, abnormal: true }).await,
+        b.step(Envelope::LinkDied { peer: 9, abnormal: true }).await,
         Ok(Step::Continue)
     ));
-    assert!(matches!(b.step(Wire::User(2)).await, Ok(Step::Continue)));
+    assert!(matches!(b.step(Envelope::User(2)).await, Ok(Step::Continue)));
     assert_eq!(b.state(), &vec![1, 2]);
 }
 
@@ -48,9 +48,9 @@ async fn deadlined_arms_fires_once_and_forwards() {
     let due = Instant::now() + Duration::from_secs(5);
     let mut d = Deadlined::new(recorder(), Some(due), |_| Ok(Step::Stop(Exit::Normal)));
     assert_eq!(d.next_deadline(), Some(due));
-    assert!(matches!(d.step(Wire::User(7)).await, Ok(Step::Continue)));
+    assert!(matches!(d.step(Envelope::User(7)).await, Ok(Step::Continue)));
     assert!(matches!(
-        d.step(Wire::Deadline).await,
+        d.step(Envelope::Deadline).await,
         Ok(Step::Stop(Exit::Normal))
     ));
     assert_eq!(d.next_deadline(), None, "fires once");
@@ -63,12 +63,12 @@ async fn deadlined_arms_fires_once_and_forwards() {
 async fn watching_propagates_abnormal_only() {
     let mut w = Watching::new(recorder(), otp_propagation);
     assert!(matches!(
-        w.step(Wire::LinkDied { peer: 3, abnormal: false }).await,
+        w.step(Envelope::LinkDied { peer: 3, abnormal: false }).await,
         Ok(Step::Continue)
     ));
-    assert!(matches!(w.step(Wire::User(1)).await, Ok(Step::Continue)));
+    assert!(matches!(w.step(Envelope::User(1)).await, Ok(Step::Continue)));
     assert!(matches!(
-        w.step(Wire::LinkDied { peer: 3, abnormal: true }).await,
+        w.step(Envelope::LinkDied { peer: 3, abnormal: true }).await,
         Ok(Step::Stop(Exit::LinkDied(3)))
     ));
     assert_eq!(w.inner().state(), &vec![1]);
@@ -84,7 +84,7 @@ async fn stashing_release_drains_atomically_under_the_snapshot_bound() {
         _ => StashRoute::Deliver,
     });
     for id in [1_u64, 2, 3, 0, 4] {
-        let _ = s.step(Wire::User(id)).await;
+        let _ = s.step(Envelope::User(id)).await;
     }
     assert_eq!(s.inner().state(), &vec![2, 0, 4]);
     assert_eq!(s.held(), 2);
@@ -123,7 +123,7 @@ fn phased_machine() -> Phased<Base<Vec<u64>, Msg, Ph, &'static str>> {
 async fn phased_releases_deferred_batch_fifo_on_goto() {
     let mut p = phased_machine();
     for m in [Msg::Work(1), Msg::Work(2), Msg::Promote, Msg::Work(3), Msg::Quit] {
-        let _ = p.step(Wire::User(m)).await;
+        let _ = p.step(Envelope::User(m)).await;
     }
     assert_eq!(p.inner().state(), &vec![1, 2, 3]);
     assert_eq!(p.phase(), Ph::Ready);
@@ -145,11 +145,11 @@ async fn supervising_restarts_within_budget_only() {
     });
     let mut sup = Supervising::new(inner, vec![kid()], |_| kid(), 1);
 
-    let _ = sup.step(Wire::ChildStopped { idx: 0, abnormal: true }).await;
+    let _ = sup.step(Envelope::ChildStopped { idx: 0, abnormal: true }).await;
     assert!(sup.children()[0].alive());
     assert_eq!(sup.restarts_left(), 0);
 
-    let _ = sup.step(Wire::ChildStopped { idx: 0, abnormal: true }).await;
+    let _ = sup.step(Envelope::ChildStopped { idx: 0, abnormal: true }).await;
     assert!(!sup.children()[0].alive(), "budget exhausted ⇒ dead");
 }
 
@@ -163,13 +163,13 @@ async fn composed_watching_over_deadlined_routes_each_source() {
     let mut w = Watching::new(deadlined, otp_propagation);
 
     assert_eq!(w.next_deadline(), Some(due), "the inner deadline surfaces through watch");
-    assert!(matches!(w.step(Wire::User(5)).await, Ok(Step::Continue)));
+    assert!(matches!(w.step(Envelope::User(5)).await, Ok(Step::Continue)));
     // The deadline fire reaches the Deadlined layer through the outer forward.
-    assert!(matches!(w.step(Wire::Deadline).await, Ok(Step::Continue)));
+    assert!(matches!(w.step(Envelope::Deadline).await, Ok(Step::Continue)));
     assert_eq!(w.next_deadline(), None, "the inner slot fired once");
     // An abnormal death still propagates at the outer layer.
     assert!(matches!(
-        w.step(Wire::LinkDied { peer: 8, abnormal: true }).await,
+        w.step(Envelope::LinkDied { peer: 8, abnormal: true }).await,
         Ok(Step::Stop(Exit::LinkDied(8)))
     ));
     assert_eq!(w.inner().inner().state(), &vec![5]);
