@@ -273,6 +273,7 @@ async fn fsm_framework_events_are_noops() {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Op {
     Work(u64),
+    Refresh,
     Promote,
     Quit,
 }
@@ -296,6 +297,7 @@ impl Model {
                 Ph::Loading => self.held.push_back(id),
                 Ph::Ready => self.seen.push(id),
             },
+            Op::Refresh => {} // Goto(current) is a no-op: no phase change, no replay
             Op::Promote => {
                 if self.phase == Ph::Loading {
                     self.phase = Ph::Ready;
@@ -318,6 +320,7 @@ fn sut(phase: Ph) -> Fsm<Vec<u64>, Op, Ph, &'static str> {
                 seen.push(*id);
                 Move::Stay
             }
+            (_, Op::Refresh) => Move::Goto(phase),
             (_, Op::Promote) => Move::Goto(Ph::Ready),
             (_, Op::Quit) => Move::Stop,
         })
@@ -331,6 +334,7 @@ fn op_strategy() -> impl proptest::strategy::Strategy<Value = Op> {
         proptest::prelude::Just(Op::Work(1)),
         proptest::prelude::Just(Op::Work(u64::MAX)),
         any::<u64>().prop_map(Op::Work),
+        proptest::prelude::Just(Op::Refresh),
         proptest::prelude::Just(Op::Promote),
         proptest::prelude::Just(Op::Quit),
     ]
