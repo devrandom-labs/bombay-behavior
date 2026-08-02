@@ -42,6 +42,7 @@ FROZEN=(
 	crates/behaviorpass-reference
 	crates/behaviorpass-testkit
 	crates/behaviorpass-perf
+	crates/behaviorpass/tests/oracle.rs
 )
 if [ -n "${base}" ]; then
 	if ! git diff --quiet "${base}" -- "${FROZEN[@]}"; then
