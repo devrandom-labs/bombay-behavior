@@ -15,14 +15,18 @@
 
 mod behavior; // the core: Behavior, Envelope, Become, run, lift, Base
 mod deadlined; // Deadlined
-mod phased; // Phased
-mod stashing; // Stashing
+mod stashing; // Stashing — the buffer primitive (STAYS in core)
 mod supervising; // Supervising
 mod watching; // Watching
 
+// `Fsm` is NOT a core capability — it's a thin helper (a state machine built
+// from core, using the Stash buffer). `Phased`/`Admit` left with it: phases are
+// the aggregate's (nexus's) concern, not core's.
+mod fsm;
+
 pub use behavior::{Base, Become, Behavior, Envelope, run};
 pub use deadlined::{DeadlineReaction, Deadlined};
-pub use phased::{Admit, Phased};
+pub use fsm::{Fsm, Move};
 pub use stashing::{StashRoute, Stashing};
 pub use supervising::{Child, Supervising};
 pub use watching::{LinkReaction, Watching, otp_propagation};

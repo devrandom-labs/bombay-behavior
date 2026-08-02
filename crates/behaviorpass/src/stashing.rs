@@ -105,7 +105,7 @@ where
 mod tests {
     use super::StashRoute;
     use crate::behavior::{Behavior, Envelope};
-    use crate::{Admit, Base, Exit, Phased, Stashing};
+    use crate::{Base, Exit, Fsm, Move, Stashing};
     use bombay::capability::{Never, Step};
 
     fn recorder() -> Base<Vec<u64>, u64, Never, &'static str> {
@@ -140,36 +140,34 @@ mod tests {
         Promote,
     }
 
-    /// `Phased` and `Stashing` are two plain behaviors now — no shared engine —
-    /// and they still STACK freely: `Stashing<Phased<Base>>`, each holding its
-    /// own buffer. bombay's `Phased ⊥ Stashing` exclusion law stays dissolved.
+    /// `Stashing` (the buffer primitive) composes over an `Fsm` (a state machine
+    /// built from core): `Stashing<Fsm>`, each with its own independent buffer.
     #[tokio::test]
-    async fn phased_and_stashing_compose_with_independent_buffers() {
-        let base = Base::new(Vec::<u64>::new(), |seen: &mut Vec<u64>, m: Msg| match m {
-            Msg::Work(id) => {
-                seen.push(id);
-                Ok::<Step<Ph, Exit>, &'static str>(Step::Continue)
-            }
-            Msg::Promote => Ok(Step::Goto(Ph::Ready)),
+    async fn stashing_composes_over_an_fsm_each_with_its_own_buffer() {
+        let fsm = Fsm::new(Vec::<u64>::new(), Ph::Loading, |phase, seen: &mut Vec<u64>, m: &Msg| {
+            Ok::<Move<Ph>, &'static str>(match (phase, m) {
+                (Ph::Loading, Msg::Work(_)) => Move::Defer,
+                (_, Msg::Work(id)) => {
+                    seen.push(*id);
+                    Move::Stay
+                }
+                (_, Msg::Promote) => Move::Goto(Ph::Ready),
+            })
         });
-        let phased = Phased::new(base, Ph::Loading, |ph, m| match (ph, m) {
-            (Ph::Loading, Msg::Work(_)) => Admit::Defer,
-            _ => Admit::Deliver,
-        });
-        let mut stack = Stashing::new(phased, |m: &Msg| match m {
+        let mut stack = Stashing::new(fsm, |m: &Msg| match m {
             Msg::Work(id) if *id >= 100 => StashRoute::Stash,
             _ => StashRoute::Deliver,
         });
 
-        let _ = stack.step(Envelope::User(Msg::Work(1))).await; // inner Phased defers
-        let _ = stack.step(Envelope::User(Msg::Work(100))).await; // outer Stashing holds
+        let _ = stack.step(Envelope::User(Msg::Work(1))).await; // Stashing delivers → Fsm defers
+        let _ = stack.step(Envelope::User(Msg::Work(100))).await; // Stashing holds
 
         assert_eq!(stack.held(), 1, "the OUTER stashing buffer holds the big id");
-        assert_eq!(stack.inner().held(), 1, "the INNER phased buffer independently holds");
+        assert_eq!(stack.inner().held(), 1, "the INNER fsm buffer independently holds");
 
-        let _ = stack.step(Envelope::User(Msg::Promote)).await; // inner transitions + replays
-        assert_eq!(stack.inner().inner().state(), &vec![1], "inner released on goto");
-        assert_eq!(stack.inner().held(), 0, "inner buffer drained");
+        let _ = stack.step(Envelope::User(Msg::Promote)).await; // Fsm transitions + replays
+        assert_eq!(stack.inner().state(), &vec![1], "fsm released on goto");
+        assert_eq!(stack.inner().held(), 0, "fsm buffer drained");
         assert_eq!(stack.held(), 1, "outer still holds Work(100) — independent");
     }
 }

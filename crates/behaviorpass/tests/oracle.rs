@@ -11,7 +11,7 @@
 //! (no real timer), so a hung layer cannot stall the measure loop.
 
 use behaviorpass::{
-    Admit, Base, Behavior, Deadlined, Envelope, Exit, Phased, StashRoute, Stashing, Supervising,
+    Base, Behavior, Deadlined, Envelope, Exit, Fsm, Move, StashRoute, Stashing, Supervising,
     Watching, otp_propagation,
 };
 use bombay::capability::{Never, Step};
@@ -102,30 +102,30 @@ enum Msg {
     Quit,
 }
 
-fn phased_machine() -> Phased<Base<Vec<u64>, Msg, Ph, &'static str>> {
-    let inner = Base::new(Vec::<u64>::new(), |seen: &mut Vec<u64>, msg: Msg| match msg {
-        Msg::Work(id) => {
-            seen.push(id);
-            Ok::<Step<Ph, Exit>, &'static str>(Step::Continue)
-        }
-        Msg::Promote => Ok(Step::Goto(Ph::Ready)),
-        Msg::Quit => Ok(Step::Stop(Exit::Normal)),
-    });
-    Phased::new(inner, Ph::Loading, |ph, msg| match (ph, msg) {
-        (Ph::Loading, Msg::Work(_)) => Admit::Defer,
-        _ => Admit::Deliver,
+fn fsm_machine() -> Fsm<Vec<u64>, Msg, Ph, &'static str> {
+    Fsm::new(Vec::<u64>::new(), Ph::Loading, |phase, seen: &mut Vec<u64>, msg: &Msg| {
+        Ok::<Move<Ph>, &'static str>(match (phase, msg) {
+            (Ph::Loading, Msg::Work(_)) => Move::Defer,
+            (_, Msg::Work(id)) => {
+                seen.push(*id);
+                Move::Stay
+            }
+            (_, Msg::Promote) => Move::Goto(Ph::Ready),
+            (_, Msg::Quit) => Move::Stop,
+        })
     })
 }
 
-/// Phased: work defers in Loading; the promotion releases the deferred batch
-/// FIFO within the goto step, ahead of the backlog.
+/// A state machine (built from core): work defers in Loading; the promotion
+/// transitions to Ready and replays the deferred batch FIFO, ahead of the
+/// backlog. (This is the old "phased" scenario, now the `Fsm` example.)
 #[tokio::test]
-async fn phased_releases_deferred_batch_fifo_on_goto() {
-    let mut p = phased_machine();
+async fn fsm_defers_then_replays_on_transition() {
+    let mut p = fsm_machine();
     for m in [Msg::Work(1), Msg::Work(2), Msg::Promote, Msg::Work(3), Msg::Quit] {
         let _ = p.step(Envelope::User(m)).await;
     }
-    assert_eq!(p.inner().state(), &vec![1, 2, 3]);
+    assert_eq!(p.state(), &vec![1, 2, 3]);
     assert_eq!(p.phase(), Ph::Ready);
 }
 
