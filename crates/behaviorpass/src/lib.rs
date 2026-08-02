@@ -15,13 +15,17 @@
 
 mod behavior; // the core: Behavior, Envelope, run, lift, Base
 mod deadlined; // Deadlined
-mod gated; // the gated buffer: Gated + Gate; Phased and Stashing are two policies
+mod gated; // the shared buffer ENGINE (not a behavior): Gated + Gate
+mod phased; // Phased
+mod stashing; // Stashing
 mod supervising; // Supervising
 mod watching; // Watching
 
 pub use behavior::{Base, Behavior, Envelope, run};
 pub use deadlined::{DeadlineReaction, Deadlined};
-pub use gated::{Admit, Gate, Gated, Phased, StashRoute, Stashing};
+pub use gated::{Admit, Gate, Gated};
+pub use phased::{PhaseGate, Phased};
+pub use stashing::{StashGate, StashRoute, Stashing};
 pub use supervising::{Child, Supervising};
 pub use watching::{LinkReaction, Watching, otp_propagation};
 
