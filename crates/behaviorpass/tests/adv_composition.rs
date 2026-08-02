@@ -91,6 +91,64 @@ async fn composition_deadline_min_surfaces_through_outer_layers() {
     assert_eq!(watching.next_deadline(), Some(t1), "a disarmed outer layer still absorbs the Deadline event");
 }
 
+/// Watching INSIDE Supervising: each layer owns its source — link-death is
+/// handled by the inner Watching (verdict rides out through Supervising::
+/// forward), child-stop by the outer Supervising, user sends pass through both.
+#[tokio::test]
+async fn composition_watching_inside_supervising_handles_both_sources() {
+    let sender: Base<(), u64, Never, &'static str, u64, Never> = Base::new((), |(): &mut (), m: u64| {
+        Ok::<Actions<Never, u64, Never>, &'static str>(Actions {
+            sends: vec![(MailAddr(9), m)],
+            creates: Vec::new(),
+            become_: Step::Continue,
+        })
+    });
+    let watching = Watching::new(sender, otp_propagation);
+    let mut sup = Supervising::new(watching, 1, |_| kid(), 2);
+
+    let actions = sup.step(Envelope::User(4)).await.expect("no error");
+    assert_eq!(actions.sends, vec![(MailAddr(9), 4)], "user sends pass through both layers");
+
+    let actions = sup.step(Envelope::LinkDied { peer: 42, abnormal: true }).await.expect("no error");
+    assert_eq!(
+        actions.become_,
+        Step::Stop(Exit::LinkDied(42)),
+        "the inner Watching's propagation verdict rides out through Supervising"
+    );
+    assert!(actions.sends.is_empty(), "a link reaction emits no sends");
+    assert!(actions.creates.is_empty(), "a link death is not a restart decision");
+
+    let actions = sup.step(Envelope::ChildStopped { idx: 0, abnormal: true }).await.expect("no error");
+    assert_eq!(actions.creates.len(), 1, "the outer Supervising restarts on child-stop");
+    assert_eq!(sup.restarts_left(), 1);
+}
+
+/// Deadlined ABOVE Watching: the deadline owns its event outside, the link
+/// reaction fires inside — the two sources coexist without interference.
+#[tokio::test]
+async fn composition_deadline_above_watching_both_sources() {
+    let due = Instant::now() + Duration::from_secs(5);
+    let base: Base<(), u64, Never, &'static str> = Base::new((), |(): &mut (), _: u64| {
+        Ok::<Actions<Never, Never, Never>, &'static str>(Actions::cont())
+    });
+    let watching = Watching::new(base, otp_propagation);
+    let mut d = Deadlined::new(watching, Some(due), |_| Ok(Step::Continue));
+
+    assert_eq!(d.next_deadline(), Some(due), "the deadline surfaces above Watching");
+
+    let actions = d.step(Envelope::LinkDied { peer: 7, abnormal: true }).await.expect("no error");
+    assert_eq!(
+        actions.become_,
+        Step::Stop(Exit::LinkDied(7)),
+        "the link reaction fires through the deadline layer"
+    );
+    assert_eq!(d.next_deadline(), Some(due), "a link event does not disturb the deadline");
+
+    let actions = d.step(Envelope::Deadline).await.expect("no error");
+    assert_eq!(actions.become_, Step::Continue);
+    assert_eq!(d.next_deadline(), None, "the deadline fired once");
+}
+
 /// An abnormal link-death routes through Stashing (which forwards it) to the
 /// Watching layer — the held buffer is untouched.
 #[tokio::test]

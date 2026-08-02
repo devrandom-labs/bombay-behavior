@@ -71,6 +71,32 @@ async fn driver_accumulates_creates_in_order() {
     assert_eq!(transcript.exit, Exit::Collected);
 }
 
+
+/// One transcript carries BOTH traces: sends and creates accumulate in their
+/// own emission orders side by side, and the Stop's exit ends the fold.
+#[tokio::test]
+async fn driver_combines_sends_and_creates_in_one_transcript() {
+    let both: Base<Vec<u64>, u64, Never, &'static str, u64, u32> =
+        Base::new(Vec::<u64>::new(), |seen: &mut Vec<u64>, id: u64| {
+            seen.push(id);
+            Ok::<Actions<Never, u64, u32>, &'static str>(Actions {
+                sends: vec![(MailAddr(id), id)],
+                creates: vec![id as u32],
+                become_: if id == 99 { Step::Stop(Exit::Normal) } else { Step::Continue },
+            })
+        });
+    let (_ctl, usr, rx) = channel::<Never, u64>(Config::new(8));
+    let handle = tokio::spawn(run(both, rx));
+
+    usr.send(4).await.expect("mailbox open");
+    usr.send(99).await.expect("mailbox open");
+
+    let transcript = handle.await.expect("driver joins").expect("no crash");
+    assert_eq!(transcript.sends, vec![(MailAddr(4), 4), (MailAddr(99), 99)]);
+    assert_eq!(transcript.creates, vec![4, 99]);
+    assert_eq!(transcript.exit, Exit::Normal);
+}
+
 /// Nothing folds after a Stop: the messages queued behind the stop id are
 /// never folded, never recorded.
 #[tokio::test]
