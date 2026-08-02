@@ -9,7 +9,7 @@ use bombay::capability::{Deferred, Disposition, Never, Step};
 use tokio::time::Instant;
 
 use crate::Exit;
-use crate::behavior::{Behavior, Handler, Wire};
+use crate::behavior::{Behavior, Handler, Wire, lift};
 
 /// The floor layer: a plain actor = state + a synchronous handler. Framework
 /// events (deadline / link-death / child-stop) are no-ops — a plain actor has
@@ -90,11 +90,7 @@ where
         match ev {
             Wire::Deadline => {
                 self.due = None; // fires once per armed value
-                match (self.on_deadline)(&mut self.inner)? {
-                    Step::Continue => Ok(Step::Continue),
-                    Step::Goto(never) => match never {},
-                    Step::Stop(exit) => Ok(Step::Stop(exit)),
-                }
+                Ok(lift((self.on_deadline)(&mut self.inner)?))
             }
             other => self.inner.step(other).await,
         }
@@ -164,11 +160,7 @@ where
     async fn step(&mut self, ev: Wire<B::Msg>) -> Result<Step<B::Ph, Exit>, B::Error> {
         match ev {
             Wire::LinkDied { peer, abnormal } => {
-                match (self.on_link_died)(&mut self.inner, peer, abnormal)? {
-                    Step::Continue => Ok(Step::Continue),
-                    Step::Goto(never) => match never {},
-                    Step::Stop(exit) => Ok(Step::Stop(exit)),
-                }
+                Ok(lift((self.on_link_died)(&mut self.inner, peer, abnormal)?))
             }
             other => self.inner.step(other).await,
         }
