@@ -1,56 +1,51 @@
 #!/usr/bin/env bash
-# METRIC for the behaviorpass concision loop: SCORE = K / code-only-LOC of the
-# SUT capability machinery (crates/behaviorpass/src/**). MAXIMIZE — fewer lines
-# ⇒ higher score. This is CONCISION golf, not throughput.
+# METRIC for the behaviorpass ADVERSARIAL loop: SCORE = mutants CAUGHT by the
+# test suite over crates/behaviorpass/src (cargo-mutants). MAXIMIZE — a MISSED
+# (surviving) mutant is an invariant no test pins. src is FROZEN (checks.sh);
+# the loop may ONLY add test files under crates/behaviorpass/tests/.
 #
-# Correctness (trace-equality to the frozen reference) and the 17 illegal-point
-# compile_fails are hard GATES in .auto/checks.sh, NOT measured here. A compile
-# break in the perf bin ⇒ no SCORE ⇒ parsed as 0 ⇒ auto-revert.
-#
-# Run UNSANDBOXED (cargo hangs under a sandboxed shell).
+# Run UNSANDBOXED. cargo / cargo-mutants may be absent from a bare loop shell —
+# fall back to the pinned nix-store binaries (matches rust-toolchain.toml).
 set -uo pipefail
 
-# cargo may be absent from a non-interactive loop shell; fall back to a pinned
-# nix-store rust (matches rust-toolchain.toml).
 if ! command -v cargo >/dev/null 2>&1; then
 	for d in /nix/store/*rust-*/bin; do
-		if [ -x "${d}/cargo" ]; then
-			PATH="${d}:${PATH}"
-			export PATH
-			break
-		fi
+		[ -x "${d}/cargo" ] && { PATH="${d}:${PATH}"; export PATH; break; }
 	done
 fi
-
-# The nix-store rust links via system clang, which cannot find libiconv outside
-# a nix shell; point it at the nix store copy.
+if ! command -v cargo-mutants >/dev/null 2>&1; then
+	for d in /nix/store/*cargo-mutants*/bin; do
+		[ -x "${d}/cargo-mutants" ] && { PATH="${d}:${PATH}"; export PATH; break; }
+	done
+fi
 for d in /nix/store/*libiconv-1.*/lib; do
-	if [ -d "${d}" ]; then
-		LIBRARY_PATH="${d}${LIBRARY_PATH:+:${LIBRARY_PATH}}"
-		export LIBRARY_PATH
-		break
-	fi
+	[ -d "${d}" ] && { LIBRARY_PATH="${d}${LIBRARY_PATH:+:${LIBRARY_PATH}}"; export LIBRARY_PATH; break; }
 done
-
 export RUSTFLAGS="${RUSTFLAGS:-} -C target-cpu=native"
 
-# Build the (frozen) metric bin, then exec it directly.
-if ! out_build=$(cargo build -q -p behaviorpass-perf --release 2>&1); then
-	echo "METRIC score=0 unit=inv_loc"
-	echo "info: perf bin failed to build — reverting"
-	printf '%s\n' "${out_build}" | tail -8
+# --in-place is REQUIRED: sibling path-deps (../bombay, ../fastpass) break under
+# cargo-mutants' default copy-to-tmp. --timeout bounds a timeout-removing mutant.
+LOG=$(mktemp)
+cargo mutants --in-place --package behaviorpass --timeout 60 >"${LOG}" 2>&1 || true
+
+summary=$(grep -E '[0-9]+ mutants tested' "${LOG}" | tail -1)
+caught=$(printf '%s' "${summary}" | grep -oE '[0-9]+ caught' | grep -oE '^[0-9]+')
+missed=$(printf '%s' "${summary}" | grep -oE '[0-9]+ missed' | grep -oE '^[0-9]+')
+
+if [ -z "${caught}" ]; then
+	# No summary ⇒ build broke OR the baseline suite failed (a test fails on the
+	# REAL code: a bad test, or a genuine FINDING). Either way the run is invalid.
+	echo "METRIC score=0 unit=mutants_caught"
+	echo "info: no mutants summary — build broke or baseline suite failed (test fails on real code). Reverting; surface if it looks like a finding."
+	grep -iE 'error|FAILED|baseline' "${LOG}" | tail -10
+	rm -f "${LOG}"
 	exit 0
 fi
 
-out=$(./target/release/behaviorpass-perf 2>&1)
-score=$(printf '%s\n' "${out}" | grep -oE 'SCORE=[0-9.]+' | head -1 | cut -d= -f2)
-loc=$(printf '%s\n' "${out}" | grep -oE 'CODE_LOC=[0-9]+' | head -1 | cut -d= -f2)
-
-if [ -z "${score}" ] || [ "${score}" = "0" ]; then
-	echo "METRIC score=0 unit=inv_loc"
-	echo "info: SUT has no scorable machinery yet (code_loc=${loc:-0}) — the trace-equality gate reverts an empty SUT"
-	exit 0
+echo "METRIC score=${caught} unit=mutants_caught"
+echo "info: ${summary#*: }"
+if [ "${missed:-0}" -gt 0 ]; then
+	echo "surviving mutants (the gaps to close):"
+	grep '^MISSED' "${LOG}" | sed 's/ in [0-9].*//' | head -20
 fi
-
-echo "METRIC score=${score} unit=inv_loc"
-echo "info: code_loc=${loc}"
+rm -f "${LOG}"
