@@ -20,8 +20,9 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
-use behaviorpass::{Actions, Base, Behavior, Deadlined, Envelope, Exit, MailAddr, StashRoute, Stashing};
+use behaviorpass::{Actions, Base, Behavior, Deadlined, Envelope, Exit, MailAddr, StashRoute, Stashing, run};
 use bombay::capability::{Never, Step};
+use fastpass::{Config, channel};
 
 use tokio::time::Instant;
 
@@ -31,7 +32,7 @@ use tokio::time::Instant;
 
 /// A message whose classification can change between stash and release: the
 /// route reads the CURRENT value, so a held message can become Deliver-class.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct M(Arc<AtomicU64>);
 
 fn value(m: &M) -> u64 {
@@ -170,6 +171,35 @@ async fn stashing_release_stop_on_current_message_skips_drain() {
         "a current-message Stop returns before any drain"
     );
     assert_eq!(s2.held(), 1, "the held batch is not drained past a current-message Stop");
+}
+
+/// The full driver path: a Release's drained batch folds AHEAD of the mailbox
+/// backlog (messages queued behind it), and everything lands in the Transcript
+/// in exact emission order. The stash is folded synchronously BEFORE the run
+/// (initialization), so the value flip is race-free; the Release and the
+/// backlog travel through the real mailbox.
+#[tokio::test]
+async fn stashing_release_replays_ahead_of_the_mailbox_backlog() {
+    let mut s = Stashing::new(sender_inner(), mutable_route);
+    let m0 = msg(0);
+    let _ = s.step(Envelope::User(m0.clone())).await.expect("no error"); // stash
+    assert_eq!(s.held(), 1);
+    m0.0.store(2, Ordering::Relaxed); // becomes Deliver-class before the release
+
+    let (_ctl, usr, rx) = channel::<Never, M>(Config::new(8));
+    let handle = tokio::spawn(run(s, rx));
+    usr.send(msg(1)).await.expect("mailbox open"); // Release: delivers 1, drains [2]
+    usr.send(msg(4)).await.expect("mailbox open"); // backlog behind the release
+
+    drop(usr);
+    drop(_ctl);
+    let transcript = handle.await.expect("driver joins").expect("no crash");
+    assert_eq!(
+        transcript.sends,
+        vec![(MailAddr(1), 1), (MailAddr(2), 2), (MailAddr(4), 4)],
+        "the drained batch folds ahead of the backlog, in emission order"
+    );
+    assert_eq!(transcript.exit, Exit::Collected);
 }
 
 /// Release with an empty held batch just delivers the current message.
