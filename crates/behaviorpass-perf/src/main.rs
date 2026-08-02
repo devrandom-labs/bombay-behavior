@@ -15,7 +15,7 @@
 //! the current design?".
 //!
 //! The per-site α term and the compile-time / binary-size instruments
-//! (#298's marginal-cost curve) are deferred to phase-1; SCORE = K / CODE_LOC
+//! (#298's marginal-cost curve) are deferred to phase-1; `SCORE = K / CODE_LOC`
 //! is the phase-0 objective.
 
 use std::fs;
@@ -52,20 +52,18 @@ fn main() {
 /// rustfmt FOLLOWS `mod` declarations, so one call on the crate root emits the
 /// whole module tree — counting per-file would multiply-count the modules.
 fn code_loc(root: &Path) -> usize {
-    match normalized(&root.join("lib.rs")) {
-        Some(text) => count_code_lines(&text),
-        // Fallback (rustfmt could not parse — the build gate reverts it anyway):
-        // raw per-file count.
-        None => {
-            let mut total = 0;
-            walk(root, &mut |path| {
-                if path.extension().is_some_and(|e| e == "rs") {
-                    total += count_code_lines(&fs::read_to_string(path).unwrap_or_default());
-                }
-            });
-            total
-        }
+    if let Some(text) = normalized(&root.join("lib.rs")) {
+        return count_code_lines(&text);
     }
+    // Fallback (rustfmt could not parse — the build gate reverts it anyway):
+    // raw per-file count.
+    let mut total = 0;
+    walk(root, &mut |path| {
+        if path.extension().is_some_and(|e| e == "rs") {
+            total += count_code_lines(&fs::read_to_string(path).unwrap_or_default());
+        }
+    });
+    total
 }
 
 /// The rustfmt-normalized text of `path` (`--emit stdout`, no file mutation).
