@@ -27,6 +27,9 @@ tokio = { version = "1.47", default-features = false }
 # capability machinery in to be golfed; the reference/testkit reuse its verdict
 # vocabulary (Step/Never/Disposition/Deferred) so trace comparison is type-exact.
 bombay = { path = "../bombay/crates/core" }
+# fastpass — the sibling pillar-pass mailbox (user + control lanes); the SUT
+# consumes it so behaviorpass golfs CAPABILITY LOC, not mailbox plumbing.
+fastpass = { path = "../fastpass/crates/fastpass" }
 behaviorpass = { path = "crates/behaviorpass" }
 behaviorpass-reference = { path = "crates/behaviorpass-reference" }
 behaviorpass-testkit = { path = "crates/behaviorpass-testkit" }
