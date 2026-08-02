@@ -5,12 +5,12 @@ use bombay::capability::{Never, Step};
 use tokio::time::Instant;
 
 use crate::Exit;
-use crate::behavior::{Behavior, Envelope, lift};
+use crate::behavior::{Become, Behavior, Envelope, lift};
 
 /// The reaction a link-death runs: the inner behavior plus the dead peer's id
 /// and abnormal flag, returning a verdict on the erased menu.
 pub type LinkReaction<B> =
-    fn(&mut B, u64, bool) -> Result<Step<Never, Exit>, <B as Behavior>::Error>;
+    fn(&mut B, u64, bool) -> Result<Become<Never>, <B as Behavior>::Error>;
 
 /// A `Behavior` that reacts to a linked peer's death over its inner behavior.
 pub struct Watching<B: Behavior> {
@@ -39,7 +39,7 @@ pub fn otp_propagation<B: Behavior>(
     _: &mut B,
     peer: u64,
     abnormal: bool,
-) -> Result<Step<Never, Exit>, B::Error> {
+) -> Result<Become<Never>, B::Error> {
     if abnormal {
         Ok(Step::Stop(Exit::LinkDied(peer)))
     } else {
@@ -55,7 +55,7 @@ where
     type Msg = B::Msg;
     type Ph = B::Ph;
     type Error = B::Error;
-    async fn step(&mut self, ev: Envelope<B::Msg>) -> Result<Step<B::Ph, Exit>, B::Error> {
+    async fn step(&mut self, ev: Envelope<B::Msg>) -> Result<Become<B::Ph>, B::Error> {
         match ev {
             Envelope::LinkDied { peer, abnormal } => {
                 Ok(lift((self.on_link_died)(&mut self.inner, peer, abnormal)?))
