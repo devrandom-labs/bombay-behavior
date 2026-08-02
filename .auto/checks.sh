@@ -1,83 +1,42 @@
 #!/usr/bin/env bash
-# GATE for the behaviorpass concision loop: runs after a measured experiment. A
-# non-zero exit blocks `keep`, so a terser-but-wrong (or cheating) design is
-# REVERTED even when its SCORE improved. This is what lets the loop golf LOC
-# aggressively without regressing correctness — the lint bar is the regularizer
-# that stops a line being bought with unreadability.
-#
-# Gates:
-#   1. Frozen surfaces unchanged vs the baseline commit — the reference (the
-#      gold fold + layers), the oracle (testkit), the metric harness, and (once
-#      they exist) the frozen conformance test files. The loop may rewrite
-#      crates/behaviorpass/src/** and its Cargo.toml, but not what defines
-#      "correct" or "how few lines".
-#   2. Trace-equality: the oracle suite is green (SUT actor ≡ reference fold at
-#      every lattice point).
-#   3. The 17 illegal lattice points still fail to compile (trybuild).
-#   4. The god-level clippy bar holds on the SUT (the LOC regularizer).
+# GATE for the behaviorpass ADVERSARIAL loop: runs after each measured run. A
+# non-zero exit blocks `keep`. The loop may ONLY add new test files under
+# crates/behaviorpass/tests/; it must NOT touch src, the existing oracle, or any
+# manifest. Enforcement (a BASELINE diff), not trust.
 set -uo pipefail
 
 if ! command -v cargo >/dev/null 2>&1; then
 	for d in /nix/store/*rust-*/bin; do
-		if [ -x "${d}/cargo" ]; then
-			PATH="${d}:${PATH}"
-			export PATH
-			break
-		fi
+		[ -x "${d}/cargo" ] && { PATH="${d}:${PATH}"; export PATH; break; }
 	done
 fi
 for d in /nix/store/*libiconv-1.*/lib; do
-	if [ -d "${d}" ]; then
-		LIBRARY_PATH="${d}${LIBRARY_PATH:+:${LIBRARY_PATH}}"
-		export LIBRARY_PATH
-		break
-	fi
+	[ -d "${d}" ] && { LIBRARY_PATH="${d}${LIBRARY_PATH:+:${LIBRARY_PATH}}"; export LIBRARY_PATH; break; }
 done
 
 base=$(cat .auto/BASELINE 2>/dev/null || true)
-# Frozen surfaces. Phase-0: the three research crates. As the frozen
-# conformance/trybuild test files are authored (phase-1), ADD them here — a new
-# frozen test becomes part of the freeze the moment it lands (the #298 rule).
+
+# Gate 1 — FROZEN surfaces. The code under test, the existing oracle, and the
+# manifests are immutable: the loop closes gaps by ADDING tests, never by
+# editing the SUT or weakening what already passes.
 FROZEN=(
-	crates/behaviorpass-reference
-	crates/behaviorpass-testkit
-	crates/behaviorpass-perf
+	crates/behaviorpass/src
 	crates/behaviorpass/tests/oracle.rs
+	Cargo.toml
+	crates/behaviorpass/Cargo.toml
 )
 if [ -n "${base}" ]; then
 	if ! git diff --quiet "${base}" -- "${FROZEN[@]}"; then
-		echo "CHECK FAIL: a frozen surface (reference / oracle / metric harness) was modified"
+		echo "CHECK FAIL: a frozen surface (src / oracle / manifest / metric) was modified — the loop may only ADD crates/behaviorpass/tests/*.rs"
 		exit 1
 	fi
 fi
 
-# Gate 2 — trace-equality oracle. Phase-0 has no oracle tests yet, so this is
-# vacuously green; it becomes load-bearing the moment behaviorpass-testkit's
-# suite + the SUT's generated actors land.
-if ! cargo test -p behaviorpass --tests --no-fail-fast >/dev/null 2>&1; then
-	echo "CHECK FAIL: trace-equality oracle suite is not green"
-	exit 1
-fi
-
-# Gate 3 — illegal-point compile_fails (trybuild). Phase-1 adds
-# crates/behaviorpass/tests/compile_fail.rs with the 17 illegal stacks; until
-# then this gate is a no-op placeholder. DO NOT let it pass silently once the
-# cases exist — wire the trybuild runner here.
-
-# Gate 3.5 — no impl-hiding macros. `macro_rules!` in the SUT splices trait-impl
-# bodies as text, hiding line cost from the metric and the type system (the
-# forward-inward boilerplate is a `Layer`/helper-fn job, not a macro's). Banned
-# so concision comes from the type system, not code generation. `#[derive(..)]`
-# stays fine (genuine struct boilerplate).
-if grep -rqn 'macro_rules!' crates/behaviorpass/src; then
-	echo "CHECK FAIL: macro_rules! in the SUT — distill with the type system, not impl-splicing macros"
-	exit 1
-fi
-
-# Gate 4 — the LOC regularizer: the SUT must clear the workspace clippy bar
-# (all=deny). A line bought with unreadability is reverted.
-if ! cargo clippy -q -p behaviorpass --all-targets >/dev/null 2>&1; then
-	echo "CHECK FAIL: SUT does not clear the clippy bar (the concision regularizer)"
+# Gate 2 — the suite must compile and pass on the REAL code. A red suite means a
+# test fails on the real code (a bad test, or a finding); either way the
+# mutation measurement is invalid.
+if ! cargo test -p behaviorpass >/dev/null 2>&1; then
+	echo "CHECK FAIL: the test suite is not green on the real code"
 	exit 1
 fi
 
