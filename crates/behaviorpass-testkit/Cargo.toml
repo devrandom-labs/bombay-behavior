@@ -1,0 +1,19 @@
+[package]
+name = "behaviorpass-testkit"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+# The FROZEN oracle: the mode-blind probe suite (bombay #266/phase_equivalence
+# pattern) that drives a generated SUT actor AND the reference fold from ONE
+# abstract script and asserts identical probe sequences + stop kinds, per axis,
+# at every lattice point. The concision loop must NOT edit this crate.
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+behaviorpass-reference = { workspace = true }
+
+[lints]
+workspace = true

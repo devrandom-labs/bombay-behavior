@@ -1,0 +1,26 @@
+[package]
+name = "behaviorpass"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "The golf target: bombay's capability machinery + the 24-point lattice generator (bombay card #298)."
+
+# This is the concision loop's TARGET crate. `src/**` is EDIT-freely: the loop
+# minimizes the code-only LOC of the capability machinery ported here while
+# staying trace-equal to behaviorpass-reference at every lattice point. The
+# PUBLIC API (the lattice generator + the per-point actor surface the testkit
+# drives) is pinned by the frozen testkit — grow the internals, not the seam.
+[dependencies]
+bombay = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }
+
+[dev-dependencies]
+behaviorpass-reference = { workspace = true }
+behaviorpass-testkit = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "time", "sync"] }
+proptest = "1.11"
+
+[lints]
+workspace = true
