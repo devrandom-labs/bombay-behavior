@@ -9,19 +9,21 @@
 //! [`Exit`] trace vocabulary comes from the frozen reference so a SUT trace
 //! compares type-exact with a model trace.
 //!
-//! Phase-1 build order (see `docs/phase-1-plan.md`): the async driver (here) →
-//! the five async layers → the lattice generator. The loop takes over once the
-//! frozen oracle is green at all 24 points.
+//! Everything here is ONE kind of thing — a [`Behavior`]. `Base` is the
+//! innermost; every capability is a `Behavior` that wraps a `Behavior`. One
+//! file per capability so the module name says exactly what it holds.
 
-mod behavior;
-mod gated;
-mod layers;
+mod behavior; // the core: Behavior, Envelope, run, lift, Base
+mod deadlined; // Deadlined
+mod gated; // the gated buffer: Gated + Gate; Phased and Stashing are two policies
+mod supervising; // Supervising
+mod watching; // Watching
 
-pub use behavior::{Behavior, Envelope, run};
-// `Phased` and `Stashing` are one capability now — two policies over `Gated`
-// (the #298 decomposition finding). See `gated`.
+pub use behavior::{Base, Behavior, Envelope, run};
+pub use deadlined::{DeadlineReaction, Deadlined};
 pub use gated::{Admit, Gate, Gated, Phased, StashRoute, Stashing};
-pub use layers::{Base, Child, Deadlined, Supervising, Watching, otp_propagation};
+pub use supervising::{Child, Supervising};
+pub use watching::{LinkReaction, Watching, otp_propagation};
 
 /// The shared trace-exit vocabulary, re-exported from the frozen reference.
 pub use behaviorpass_reference::Exit;

@@ -267,7 +267,7 @@ mod tests {
     use crate::Base;
     use crate::Exit;
     use crate::behavior::{Behavior, Envelope};
-    use bombay::capability::{Deferred, Disposition, Step};
+    use bombay::capability::{Deferred, Disposition, Never, Step};
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     enum Ph {
@@ -321,5 +321,75 @@ mod tests {
         assert_eq!(stack.inner().inner().state(), &vec![1], "inner released on goto");
         assert_eq!(stack.inner().held(), 0, "inner buffer drained");
         assert_eq!(stack.held(), 1, "outer buffer still holds Work(100) — independent");
+    }
+
+    fn recorder() -> Base<Vec<u64>, u64, Never, &'static str> {
+        Base::new(Vec::<u64>::new(), |seen: &mut Vec<u64>, id: u64| {
+            seen.push(id);
+            Ok::<Step<Never, Exit>, &'static str>(Step::Continue)
+        })
+    }
+
+    /// Stashing: a release delivers its trigger then drains the held batch;
+    /// re-stashed messages return to held (the snapshot bound — no livelock).
+    #[tokio::test]
+    async fn stashing_holds_and_re_stashes_under_the_snapshot_bound() {
+        let mut s = Stashing::new(recorder(), |&id| match id {
+            0 => StashRoute::Release,
+            n if n % 2 == 1 => StashRoute::Stash,
+            _ => StashRoute::Deliver,
+        });
+        for id in [1_u64, 2, 3, 0, 4] {
+            let _ = s.step(Envelope::User(id)).await;
+        }
+        assert_eq!(s.inner().state(), &vec![2, 0, 4]);
+        assert_eq!(s.held(), 2, "re-stashed messages land in held, not the batch");
+    }
+
+    enum FsmMsg {
+        Work(u64),
+        Promote,
+        Quit,
+    }
+
+    /// Phased: work defers in Loading; the promotion releases the deferred
+    /// batch FIFO within the goto step, ahead of the backlog.
+    #[tokio::test]
+    async fn phased_releases_the_deferred_batch_fifo_on_goto() {
+        let inner = Base::new(Vec::<u64>::new(), |seen: &mut Vec<u64>, msg: FsmMsg| match msg {
+            FsmMsg::Work(id) => {
+                seen.push(id);
+                Ok::<Step<Ph, Exit>, &'static str>(Step::Continue)
+            }
+            FsmMsg::Promote => Ok(Step::Goto(Ph::Ready)),
+            FsmMsg::Quit => Ok(Step::Stop(Exit::Normal)),
+        });
+        let mut p = Phased::new(inner, Ph::Loading, |ph, msg| match (ph, msg) {
+            (Ph::Loading, FsmMsg::Work(_)) => Disposition::Defer(Deferred),
+            _ => Disposition::Deliver,
+        });
+        for m in [
+            FsmMsg::Work(1),
+            FsmMsg::Work(2),
+            FsmMsg::Promote,
+            FsmMsg::Work(3),
+            FsmMsg::Quit,
+        ] {
+            let _ = p.step(Envelope::User(m)).await;
+        }
+        assert_eq!(p.inner().state(), &vec![1, 2, 3], "batch replays FIFO inside the goto");
+        assert_eq!(p.phase(), Ph::Ready);
+    }
+
+    /// D3: a failing handler never half-switches the phase.
+    #[tokio::test]
+    async fn phased_never_commits_a_failed_handlers_goto() {
+        let inner = Base::new((), |(): &mut (), msg: FsmMsg| match msg {
+            FsmMsg::Work(_) => Err("bang"),
+            _ => Ok::<Step<Ph, Exit>, &'static str>(Step::Goto(Ph::Ready)),
+        });
+        let mut p = Phased::new(inner, Ph::Loading, |_, _| Disposition::Deliver);
+        assert_eq!(p.step(Envelope::User(FsmMsg::Work(1))).await, Err("bang"));
+        assert_eq!(p.phase(), Ph::Loading, "an Err never half-switches the phase (D3)");
     }
 }
