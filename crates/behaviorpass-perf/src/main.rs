@@ -20,6 +20,7 @@
 
 use std::fs;
 use std::path::Path;
+use std::process::Command;
 
 /// Scale constant so a few-hundred-line machinery scores in a readable range.
 const K: f64 = 100_000.0;
@@ -42,17 +43,39 @@ fn main() {
     println!("SCORE={score:.6}");
 }
 
-/// Total code-only lines across every `.rs` file under `root`.
+/// Total code-only lines of the SUT, counted on the RUSTFMT-NORMALIZED source.
+/// Normalizing defeats density gaming: packing items onto one line, single-line
+/// `use` blocks, and dense match arms all re-expand to canonical form before
+/// counting, so the metric only improves when real logic is removed (the frozen
+/// rustfmt config is the law).
+///
+/// rustfmt FOLLOWS `mod` declarations, so one call on the crate root emits the
+/// whole module tree — counting per-file would multiply-count the modules.
 fn code_loc(root: &Path) -> usize {
-    let mut total = 0;
-    walk(root, &mut |path| {
-        if path.extension().is_some_and(|e| e == "rs") {
-            if let Ok(src) = fs::read_to_string(path) {
-                total += count_code_lines(&src);
-            }
+    match normalized(&root.join("lib.rs")) {
+        Some(text) => count_code_lines(&text),
+        // Fallback (rustfmt could not parse — the build gate reverts it anyway):
+        // raw per-file count.
+        None => {
+            let mut total = 0;
+            walk(root, &mut |path| {
+                if path.extension().is_some_and(|e| e == "rs") {
+                    total += count_code_lines(&fs::read_to_string(path).unwrap_or_default());
+                }
+            });
+            total
         }
-    });
-    total
+    }
+}
+
+/// The rustfmt-normalized text of `path` (`--emit stdout`, no file mutation).
+fn normalized(path: &Path) -> Option<String> {
+    let out = Command::new("rustfmt")
+        .args(["--edition", "2024", "--emit", "stdout"])
+        .arg(path)
+        .output()
+        .ok()?;
+    out.status.success().then(|| String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
 /// Non-blank, non-comment-only lines. A line whose first non-whitespace runs

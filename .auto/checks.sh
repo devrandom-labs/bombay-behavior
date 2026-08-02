@@ -64,6 +64,16 @@ fi
 # then this gate is a no-op placeholder. DO NOT let it pass silently once the
 # cases exist — wire the trybuild runner here.
 
+# Gate 3.5 — no impl-hiding macros. `macro_rules!` in the SUT splices trait-impl
+# bodies as text, hiding line cost from the metric and the type system (the
+# forward-inward boilerplate is a `Layer`/helper-fn job, not a macro's). Banned
+# so concision comes from the type system, not code generation. `#[derive(..)]`
+# stays fine (genuine struct boilerplate).
+if grep -rqn 'macro_rules!' crates/behaviorpass/src; then
+	echo "CHECK FAIL: macro_rules! in the SUT — distill with the type system, not impl-splicing macros"
+	exit 1
+fi
+
 # Gate 4 — the LOC regularizer: the SUT must clear the workspace clippy bar
 # (all=deny). A line bought with unreadability is reverted.
 if ! cargo clippy -q -p behaviorpass --all-targets >/dev/null 2>&1; then

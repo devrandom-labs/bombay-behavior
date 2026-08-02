@@ -69,6 +69,17 @@ pub trait Behavior {
     }
 }
 
+/// Re-type an erased reaction verdict into any phase menu: `Goto` cannot exist
+/// at `Never`, so only `Continue`/`Stop` ride out of a framework reaction. This
+/// is the phase-lift every source capability applies to its reaction's result.
+pub fn lift<Ph, E>(v: Step<Never, E>) -> Step<Ph, E> {
+    match v {
+        Step::Continue => Step::Continue,
+        Step::Goto(never) => match never {},
+        Step::Stop(e) => Step::Stop(e),
+    }
+}
+
 /// Drive a fully-erased behavior over its fastpass mailbox until it stops or
 /// the mailbox drains. The user lane becomes `Wire::User`; the control lane is
 /// routed by the Watching / Supervising layers (Task 2 continued). The deadline
