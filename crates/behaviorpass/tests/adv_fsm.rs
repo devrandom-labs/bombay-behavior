@@ -9,8 +9,9 @@
 
 use std::collections::VecDeque;
 
-use behaviorpass::{Behavior, Envelope, Exit, Fsm, Move};
-use bombay::capability::Step;
+use behaviorpass::{Behavior, Envelope, Exit, Fsm, Move, run};
+use bombay::capability::{Never, Step};
+use fastpass::{Config, channel};
 
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -237,6 +238,68 @@ async fn fsm_mid_replay_transition_folds_fresh_holds_back_in() {
     assert_eq!(fsm.phase(), Ph3::Done, "the mid-replay transition committed");
     assert_eq!(fsm.state(), &vec![1], "Work(1) folded in Ready; Work(9) moved to Done");
     assert_eq!(fsm.held(), 0, "the phase change folded the fresh holds back in");
+}
+
+/// The full driver path for a state machine: defer → real phase change →
+/// replay → stop, folded through the real mailbox; the Stop exit rides out.
+#[tokio::test]
+async fn fsm_driven_through_the_mailbox_defer_replay_stop() {
+    let fsm = Fsm::new(Vec::<u64>::new(), Ph::Loading, |phase, seen: &mut Vec<u64>, m: &Msg| {
+        Ok::<Move<Ph>, &'static str>(match (phase, m) {
+            (Ph::Loading, Msg::Work(_)) => Move::Defer,
+            (Ph::Ready, Msg::Work(id)) => {
+                seen.push(*id);
+                Move::Stay
+            }
+            (_, Msg::Promote) => Move::Goto(Ph::Ready),
+            (_, Msg::Quit) => Move::Stop,
+            _ => Move::Stay,
+        })
+    });
+    let (_ctl, usr, rx) = channel::<Never, Msg>(Config::new(8));
+    let handle = tokio::spawn(run(fsm, rx));
+
+    usr.send(Msg::Work(1)).await.expect("mailbox open");
+    usr.send(Msg::Work(2)).await.expect("mailbox open");
+    usr.send(Msg::Promote).await.expect("mailbox open"); // real phase change → replay
+    usr.send(Msg::Work(3)).await.expect("mailbox open");
+    usr.send(Msg::Quit).await.expect("mailbox open"); // Stop
+    // Closing the lanes guarantees the driver terminates even on a mutant that
+    // breaks the Stop path — a broken Stop then fails the exit assertion
+    // (Collected vs Normal) instead of hanging the mutant run.
+    drop(usr);
+    drop(_ctl);
+
+    let transcript = handle.await.expect("driver joins").expect("no crash");
+    assert_eq!(transcript.exit, Exit::Normal, "the Fsm's Stop verdict rides out of the driver");
+    assert!(transcript.sends.is_empty() && transcript.creates.is_empty(), "an Fsm sends and creates nothing");
+}
+
+/// A drained mailbox collects an Fsm that never stops.
+#[tokio::test]
+async fn fsm_driven_through_the_mailbox_collects_on_close() {
+    let fsm = Fsm::new(Vec::<u64>::new(), Ph::Loading, |phase, seen: &mut Vec<u64>, m: &Msg| {
+        Ok::<Move<Ph>, &'static str>(match (phase, m) {
+            (Ph::Loading, Msg::Work(_)) => Move::Defer,
+            (Ph::Ready, Msg::Work(id)) => {
+                seen.push(*id);
+                Move::Stay
+            }
+            (_, Msg::Promote) => Move::Goto(Ph::Ready),
+            _ => Move::Stay,
+        })
+    });
+    let (_ctl, usr, rx) = channel::<Never, Msg>(Config::new(8));
+    let handle = tokio::spawn(run(fsm, rx));
+
+    usr.send(Msg::Work(1)).await.expect("mailbox open");
+    usr.send(Msg::Work(2)).await.expect("mailbox open");
+    usr.send(Msg::Promote).await.expect("mailbox open");
+    drop(usr);
+    drop(_ctl);
+
+    let transcript = handle.await.expect("driver joins").expect("no crash");
+    assert_eq!(transcript.exit, Exit::Collected, "a fully-closed mailbox collects the Fsm");
 }
 
 /// Framework events are no-ops for a plain state machine.

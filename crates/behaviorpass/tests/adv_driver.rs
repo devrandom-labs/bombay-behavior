@@ -90,6 +90,8 @@ async fn driver_combines_sends_and_creates_in_one_transcript() {
 
     usr.send(4).await.expect("mailbox open");
     usr.send(99).await.expect("mailbox open");
+    drop(usr);
+    drop(_ctl);
 
     let transcript = handle.await.expect("driver joins").expect("no crash");
     assert_eq!(transcript.sends, vec![(MailAddr(4), 4), (MailAddr(99), 99)]);
@@ -108,6 +110,8 @@ async fn driver_nothing_folds_after_stop() {
     usr.send(99).await.expect("mailbox open"); // Stop(Normal)
     usr.send(5).await.expect("mailbox open"); // behind the stop — must never fold
     usr.send(6).await.expect("mailbox open");
+    drop(usr);
+    drop(_ctl);
 
     let transcript = handle.await.expect("driver joins").expect("no crash");
     assert_eq!(transcript.sends, vec![(MailAddr(1), 1), (MailAddr(99), 99)], "only the pre-Stop folds recorded");
@@ -123,6 +127,8 @@ async fn driver_err_short_circuits_with_exact_error() {
     usr.send(1).await.expect("mailbox open");
     usr.send(7).await.expect("mailbox open"); // boom
     usr.send(8).await.expect("mailbox open");
+    drop(usr);
+    drop(_ctl);
 
     let out = handle.await.expect("driver joins");
     assert_eq!(out.err().expect("expected a crash"), "boom", "the crash surfaces with its exact error");
