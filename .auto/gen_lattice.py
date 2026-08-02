@@ -49,6 +49,14 @@ def imports(s):
     return ", ".join(sorted(items))
 
 def file_for(s):
+    bn = (
+        "\nfn base() -> Base<u64, u64, Never, &'static str> {\n"
+        "    Base::new(0, |s: &mut u64, m: u64| {\n"
+        "        *s += m;\n"
+        "        Ok::<Step<Never, Exit>, &'static str>(if *s > 1000 { Step::Stop(Exit::Normal) } else { Step::Continue })\n"
+        "    })\n"
+        "}\n"
+    ) if ("Sup" in s or "Ph" not in s) else ""
     bp = ""
     if "Ph" in s:
         bp = (
@@ -67,13 +75,7 @@ use behaviorpass::{{{imports(s)}}};
 {disp}
 use fastpass::{{Config, channel}};
 
-fn base() -> Base<u64, u64, Never, &'static str> {{
-    Base::new(0, |s: &mut u64, m: u64| {{
-        *s += m;
-        Ok::<Step<Never, Exit>, &'static str>(if *s > 1000 {{ Step::Stop(Exit::Normal) }} else {{ Step::Continue }})
-    }})
-}}
-{bp}
+{bn}{bp}
 #[tokio::main(flavor = "current_thread")]
 async fn main() {{
     let (ctl, usr, rx) = channel::<Never, u64>(Config::new(8));

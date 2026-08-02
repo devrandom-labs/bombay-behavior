@@ -15,7 +15,7 @@ use crate::Exit;
 /// treats every non-`User` variant as a no-op. This flat alphabet (rather than
 /// nested per-layer sums) keeps the machinery uniform at fixed arity — the
 /// open source set is ADR-0030's deferred door.
-pub enum Wire<M> {
+pub enum Envelope<M> {
     /// A user-lane message.
     User(M),
     /// The single-shot deadline arm fired.
@@ -42,7 +42,7 @@ pub enum Wire<M> {
 pub type Handler<S, M, P, E> = fn(&mut S, M) -> Result<Step<P, Exit>, E>;
 
 /// The one async object: state in `&mut self`, one total `step` over the
-/// [`Wire`] alphabet, plus the `next_deadline` query the driver arms its timer
+/// [`Envelope`] alphabet, plus the `next_deadline` query the driver arms its timer
 /// from. `step` returns an explicit `impl Future + Send` (not `async fn`) so
 /// the `Send` bound is nameable at the driver's `spawn` boundary.
 pub trait Behavior {
@@ -57,12 +57,12 @@ pub trait Behavior {
     /// switch behavior, or stop.
     fn step(
         &mut self,
-        ev: Wire<Self::Msg>,
+        ev: Envelope<Self::Msg>,
     ) -> impl Future<Output = Result<Step<Self::Ph, Exit>, Self::Error>> + Send;
 
     /// The next instant this behavior needs waking, as a pure function of
     /// current state (`None` = no deadline). The deadline SOURCE is a query,
-    /// not an event (quinn `poll_timeout` shape); its FIRING is `Wire::Deadline`.
+    /// not an event (quinn `poll_timeout` shape); its FIRING is `Envelope::Deadline`.
     /// Default: no deadline (a plain actor arms nothing).
     fn next_deadline(&self) -> Option<Instant> {
         None
@@ -81,7 +81,7 @@ pub fn lift<Ph, E>(v: Step<Never, E>) -> Step<Ph, E> {
 }
 
 /// Drive a fully-erased behavior over its fastpass mailbox until it stops or
-/// the mailbox drains. The user lane becomes `Wire::User`; the control lane is
+/// the mailbox drains. The user lane becomes `Envelope::User`; the control lane is
 /// routed by the Watching / Supervising layers (Task 2 continued). The deadline
 /// and link arms join the `select!` with the layers that own those sources.
 ///
@@ -96,7 +96,7 @@ where
 {
     while let Some(recv) = mailbox.recv().await {
         let ev = match recv {
-            Received::User(m) => Wire::User(m),
+            Received::User(m) => Envelope::User(m),
             // The control lane becomes load-bearing with Watching / Supervising.
             Received::Control(_signal) => continue,
         };
@@ -111,7 +111,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::{Behavior, Wire, run};
+    use super::{Behavior, Envelope, run};
     use crate::Exit;
     use bombay::capability::{Never, Step};
     use fastpass::{Config, channel};
@@ -123,8 +123,8 @@ mod tests {
         type Msg = u32;
         type Ph = Never;
         type Error = &'static str;
-        async fn step(&mut self, ev: Wire<u32>) -> Result<Step<Never, Exit>, &'static str> {
-            if let Wire::User(n) = ev {
+        async fn step(&mut self, ev: Envelope<u32>) -> Result<Step<Never, Exit>, &'static str> {
+            if let Envelope::User(n) = ev {
                 self.0 += n;
             }
             if self.0 >= 10 {

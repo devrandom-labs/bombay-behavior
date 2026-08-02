@@ -3,12 +3,6 @@ use behaviorpass::{Base, Exit, Phased, Watching, otp_propagation, run};
 use bombay::capability::{Disposition, Never, Step};
 use fastpass::{Config, channel};
 
-fn base() -> Base<u64, u64, Never, &'static str> {
-    Base::new(0, |s: &mut u64, m: u64| {
-        *s += m;
-        Ok::<Step<Never, Exit>, &'static str>(if *s > 1000 { Step::Stop(Exit::Normal) } else { Step::Continue })
-    })
-}
 
 fn base_phase() -> Base<u64, u64, bool, &'static str> {
     Base::new(0, |s: &mut u64, m: u64| {

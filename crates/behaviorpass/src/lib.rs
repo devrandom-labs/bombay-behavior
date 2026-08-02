@@ -14,12 +14,14 @@
 //! frozen oracle is green at all 24 points.
 
 mod behavior;
+mod gated;
 mod layers;
 
-pub use behavior::{Behavior, Wire, run};
-pub use layers::{
-    Base, Child, Deadlined, Phased, StashRoute, Stashing, Supervising, Watching, otp_propagation,
-};
+pub use behavior::{Behavior, Envelope, run};
+// `Phased` and `Stashing` are one capability now — two policies over `Gated`
+// (the #298 decomposition finding). See `gated`.
+pub use gated::{Admit, Gate, Gated, Phased, StashRoute, Stashing};
+pub use layers::{Base, Child, Deadlined, Supervising, Watching, otp_propagation};
 
 /// The shared trace-exit vocabulary, re-exported from the frozen reference.
 pub use behaviorpass_reference::Exit;
