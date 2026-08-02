@@ -80,6 +80,46 @@ pub fn lift<Ph, E>(v: Step<Never, E>) -> Step<Ph, E> {
     }
 }
 
+/// The floor: a plain actor = state + a synchronous [`Handler`]. Framework
+/// events (deadline / link-death / child-stop) are no-ops — a plain actor owns
+/// no source. Every capability wraps a `Behavior`; `Base` is the innermost one.
+pub struct Base<S, M, P, E> {
+    state: S,
+    handle: Handler<S, M, P, E>,
+}
+
+impl<S, M, P, E> Base<S, M, P, E> {
+    /// Builds a floor over `state` with `handle`.
+    pub fn new(state: S, handle: Handler<S, M, P, E>) -> Self {
+        Self { state, handle }
+    }
+
+    /// The accumulated state (test observability).
+    pub fn state(&self) -> &S {
+        &self.state
+    }
+}
+
+impl<S, M, P, E> Behavior for Base<S, M, P, E>
+where
+    S: Send,
+    M: Send,
+    P: Send,
+    E: Send,
+{
+    type Msg = M;
+    type Ph = P;
+    type Error = E;
+    async fn step(&mut self, ev: Envelope<M>) -> Result<Step<P, Exit>, E> {
+        match ev {
+            Envelope::User(m) => (self.handle)(&mut self.state, m),
+            Envelope::Deadline | Envelope::LinkDied { .. } | Envelope::ChildStopped { .. } => {
+                Ok(Step::Continue)
+            }
+        }
+    }
+}
+
 /// Drive a fully-erased behavior over its fastpass mailbox until it stops or
 /// the mailbox drains. The user lane becomes `Envelope::User`; the control lane is
 /// routed by the Watching / Supervising layers (Task 2 continued). The deadline
@@ -111,10 +151,35 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::{Behavior, Envelope, run};
+    use super::{Base, Behavior, Envelope, run};
     use crate::Exit;
     use bombay::capability::{Never, Step};
     use fastpass::{Config, channel};
+
+    #[tokio::test]
+    async fn base_folds_user_messages_and_ignores_framework_events() {
+        let mut b = Base::new(Vec::<u64>::new(), |seen: &mut Vec<u64>, id: u64| {
+            if id == 0 {
+                return Ok(Step::Stop(Exit::Normal));
+            }
+            seen.push(id);
+            Ok::<Step<Never, Exit>, &'static str>(Step::Continue)
+        });
+
+        assert!(matches!(b.step(Envelope::Deadline).await, Ok(Step::Continue)));
+        assert!(matches!(b.step(Envelope::User(7)).await, Ok(Step::Continue)));
+        assert!(matches!(
+            b.step(Envelope::User(0)).await,
+            Ok(Step::Stop(Exit::Normal))
+        ));
+        assert_eq!(b.state(), &vec![7], "only the delivered user message folded");
+    }
+
+    #[tokio::test]
+    async fn base_has_no_deadline() {
+        let b = Base::new((), |(): &mut (), (): ()| Ok::<_, Never>(Step::<Never, Exit>::Continue));
+        assert!(b.next_deadline().is_none(), "a plain actor arms no deadline");
+    }
 
     /// Sums user messages; stops normally once the running total reaches 10.
     struct Counter(u32);
