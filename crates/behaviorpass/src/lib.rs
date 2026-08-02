@@ -14,8 +14,10 @@
 //! frozen oracle is green at all 24 points.
 
 mod behavior;
+mod layers;
 
-pub use behavior::{Behavior, run};
+pub use behavior::{Behavior, Wire, run};
+pub use layers::Base;
 
 /// The shared trace-exit vocabulary, re-exported from the frozen reference.
 pub use behaviorpass_reference::Exit;
