@@ -1,5 +1,5 @@
-//! Slope point — Supervising<Base>: +1 source-adding capability.
-use behaviorpass::{Base, Exit, Supervising, run};
+//! Slope point — caps: D St. Generated (bombay card #298).
+use behaviorpass::{Base, Deadlined, Exit, StashRoute, Stashing, run};
 use bombay::capability::{Never, Step};
 use fastpass::{Config, channel};
 
@@ -13,7 +13,7 @@ fn base() -> Base<u64, u64, Never, &'static str> {
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
     let (ctl, usr, rx) = channel::<Never, u64>(Config::new(8));
-    let stack = Supervising::new(base(), vec![base()], |_| base(), 3);
+    let stack = Deadlined::new(Stashing::new(base(), |_: &u64| StashRoute::Deliver), None, |_| Ok(Step::Continue));
     let handle = tokio::spawn(run(stack, rx));
     let _ = usr.send(1).await;
     drop((usr, ctl));
