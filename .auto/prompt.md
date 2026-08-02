@@ -1,66 +1,56 @@
-# behaviorpass — phase 1: build the harness, then golf the capability machinery
+# behaviorpass — loop 1: golf the capability machinery (concision, not speed)
 
 ## What this repo is
 
-The pillar-pass sibling of fastpass, for bombay card #298. It golfs bombay's
-**capability machinery** for CONCISION (code-only LOC), gated on trace-equality
-to a frozen essence-fold reference (ADR-0028/0030). Findings return to bombay
-as CARDS, never direct commits.
+The concision harness for bombay's capability layer (card #298). The SUT
+(`crates/behaviorpass/src/**`) is a fresh ASYNC realization of ADR-0030's
+Behavior algebra: one object (`Behavior`, a total `step` over the `Wire` event
+alphabet + a `next_deadline` query) and five layers
+(`Base`/`Deadlined`/`Watching`/`Stashing`/`Phased`/`Supervising`) over a
+fastpass mailbox. Findings return to bombay as CARDS, never direct commits.
 
-- **`behaviorpass-reference` (FROZEN)** — the gold model: the ~50-line
-  synchronous essence-fold (`run`) + one model layer per capability
-  (`Base`/`Deadlined`/`Watching`/`Stashing`/`Phased`/`Supervising`). This is
-  the executable spec; trace equality to it defines "correct".
-- **`behaviorpass-testkit` (FROZEN)** — the mode-blind oracle (#266 pattern):
-  one abstract script drives a generated SUT actor AND the reference fold;
-  probe sequences + stop kinds must match, per axis, at every lattice point.
-- **`behaviorpass-perf` (FROZEN)** — the metric: `SCORE = K / code-only-LOC`
-  of the SUT.
-- **`behaviorpass` (SUT, EDIT-freely)** — the golf target: the ported
-  capability machinery + the 24-point lattice generator.
+## Objective — MINIMIZE code-only LOC
 
-## Phase 1 objective (this run is NOT yet the golf loop)
+- Metric: `.auto/measure.sh` → `SCORE = K / code-only-LOC` of
+  `crates/behaviorpass/src/**`. Higher = fewer lines. **Baseline: 591 LOC.**
+- This is CONCISION golf, not throughput. Novel/terse realizations encouraged
+  (collapse the `match` arms, unify the forward-inward boilerplate across
+  layers, fold the `run_inner`/`drain` pair, etc.) — anything that survives the
+  gates.
 
-The scaffold ships the frozen reference + the .auto contract. Before the golf
-loop can run, the harness content must land (author it, keeping the frozen
-crates' PUBLIC shape stable — they are the oracle):
+## Hard gates (`.auto/checks.sh` reverts any experiment that breaks one)
 
-1. **Testkit oracle** (`behaviorpass-testkit`): the `Probe` vocabulary + the
-   per-axis suites + a `behavior_suite!($sut)` macro (mirror fastpass's
-   `property_suite!`), every awaited step under a timeout.
-2. **SUT lattice generator** (`crates/behaviorpass/src/**`): the ported
-   capability layers + a generator emitting one minimal actor per legal point
-   (15 stacks × Phased inner seats = **24 legal**), driving bombay's runtime.
-3. **Illegal points** (`crates/behaviorpass/tests/compile_fail.rs`): the **17**
-   illegal stacks as trybuild `compile_fail` cases (Supervising⇒Watching;
-   Phased ⊥ Stashing/Deadlined). Wire the runner into `.auto/checks.sh` gate 3.
-4. **Marginal-cost curve**: per-point code-only LOC / compile time / binary
-   size (the monomorphization slope #295 needs before the open source-set
-   select).
-
-## Then: the golf loop
-
-Once the oracle is green at all 24 points and the 17 illegal points fail to
-compile, MINIMIZE `SCORE = K / code-only-LOC` of `crates/behaviorpass/src`
-under the gates. Novelty encouraged; the only hard constraints are the gates.
+1. **Frozen surfaces unchanged** — `behaviorpass-reference` (the gold fold +
+   layers), `behaviorpass-testkit`, `behaviorpass-perf`, and
+   `crates/behaviorpass/tests/oracle.rs`. These define "correct" and "how few
+   lines". Rewrite `crates/behaviorpass/src/**` and its `Cargo.toml`; never
+   these.
+2. **Trace equality** — `tests/oracle.rs` (7 tests: all six layer axes + a
+   `Watching<Deadlined<Base>>` composition) stays green. If golf changes any
+   observable trace, this reverts you.
+3. **Clippy bar** — the workspace clippy config (`all` = deny) holds on the SUT
+   (the regularizer: a line cannot be bought with unreadability).
 
 ## Files
 
-- **EDIT freely:** `crates/behaviorpass/src/**`, `crates/behaviorpass/Cargo.toml`,
-  and CREATE `crates/behaviorpass/tests/**`.
-- **KEEP STABLE:** the public shape the testkit drives (the plug seam).
-- **FROZEN — never edit:** `crates/behaviorpass-reference/**`,
-  `crates/behaviorpass-testkit/**`, `crates/behaviorpass-perf/**`.
+- **EDIT freely:** `crates/behaviorpass/src/**`, `crates/behaviorpass/Cargo.toml`.
+- **KEEP STABLE:** the public layer API the oracle drives (`Base::new`,
+  `Deadlined::new`, `step`, `inner()`, `state()`, `phase()`, `children()`, …) —
+  the plug seam.
+- **FROZEN — never edit:** the three research crates + `tests/oracle.rs`.
 
-## Metric / gate
+## Known gate gap (do not exploit; being tightened)
 
-- Metric: `.auto/measure.sh` → `METRIC score=<n>` (higher = fewer lines).
-- Gate: `.auto/checks.sh` → must print `CHECK OK` (frozen + trace-equality +
-  compile_fail + clippy). It is vacuously green on the empty scaffold; making
-  it load-bearing (authoring the oracle + generator) IS phase 1.
+The oracle covers each layer + ONE composition, not the full 24-point lattice,
+and the composition laws (`Supervising ⇒ Watching`, `Phased ⊥
+Stashing/Deadlined`) are not yet trybuild-enforced. Do NOT golf by weakening a
+layer in a composition the oracle happens not to exercise, or by merging layers
+in ways that violate the laws — those land as regressions when the lattice +
+trybuild gates are added. Golf the LINE COST of the honest machinery.
 
 ## What's been tried
 
-Nothing yet — this is the initial scaffold. The frozen reference is authored
-and correct; the SUT is empty; the oracle + generator + trybuild cases are the
-first work.
+Nothing yet — this is the initial golf run over the 591-LOC hand-written
+realization. The five layers are async twins of the frozen reference; the
+`run_inner`/`deliver_and_drain`/`drain` trio in `Phased` and the
+forward-inward arms across layers are the obvious first targets.
