@@ -37,6 +37,9 @@ pub trait Behavior {
     /// The controlled-crash type.
     type Error;
     /// One fold step: typed become — continue, switch behavior, or stop.
+    ///
+    /// # Errors
+    /// Returns the behavior's `Error` when the step is a controlled crash.
     fn step(&mut self, ev: Self::Event) -> Result<Step<Self::Ph, Exit>, Self::Error>;
 }
 
@@ -63,13 +66,25 @@ pub fn run<B: Behavior<Ph = Never>>(
 
 // ----------------------------------------------------------------- Base --
 
+/// A message handler: folds one message into `&mut S`, returning a verdict on
+/// the phase menu `P` (fn pointer, not a closure, so the model stays nameable).
+pub type Handler<S, M, P, E> = fn(&mut S, M) -> Result<Step<P, Exit>, E>;
+
+/// A layer reaction over the whole inner behavior `B` with error `E` (the
+/// deadline/link reactions share this shape).
+pub type Reaction<B, E> = fn(&mut B) -> Result<Step<Never, Exit>, E>;
+
+/// A link-death reaction: the inner behavior plus the dead peer's id and
+/// abnormal flag.
+pub type LinkReaction<B, E> = fn(&mut B, u64, bool) -> Result<Step<Never, Exit>, E>;
+
 /// The floor layer: a plain actor = state + handler. `P` is the become menu
 /// the handler exposes upward (`Never` for a one-phase actor).
 pub struct Base<S, M, P, E> {
     /// The user state the fold accumulates into.
     pub state: S,
-    /// The handler — a fn pointer, not a closure, so the model stays nameable.
-    pub handle: fn(&mut S, M) -> Result<Step<P, Exit>, E>,
+    /// The handler folding each message into `&mut state`.
+    pub handle: Handler<S, M, P, E>,
 }
 
 impl<S, M, P, E> Behavior for Base<S, M, P, E> {
@@ -98,7 +113,7 @@ pub struct Deadlined<B: Behavior> {
     /// The wrapped behavior.
     pub inner: B,
     /// The expiry reaction — reads/writes the inner behavior.
-    pub on_deadline: fn(&mut B) -> Result<Step<Never, Exit>, B::Error>,
+    pub on_deadline: Reaction<B, B::Error>,
 }
 
 impl<B: Behavior> Behavior for Deadlined<B> {
@@ -139,7 +154,7 @@ pub struct Watching<B: Behavior> {
     /// The wrapped behavior.
     pub inner: B,
     /// The death reaction (the model image of `WatchPolicy`).
-    pub on_link_died: fn(&mut B, u64, bool) -> Result<Step<Never, Exit>, B::Error>,
+    pub on_link_died: LinkReaction<B, B::Error>,
 }
 
 /// The default policy's model image: propagate an abnormal linked death,
