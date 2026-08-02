@@ -17,7 +17,7 @@ mod behavior;
 mod layers;
 
 pub use behavior::{Behavior, Wire, run};
-pub use layers::Base;
+pub use layers::{Base, Deadlined};
 
 /// The shared trace-exit vocabulary, re-exported from the frozen reference.
 pub use behaviorpass_reference::Exit;
