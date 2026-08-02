@@ -3,8 +3,8 @@
 //! code-only LOC the concision loop minimizes while staying trace-equal to
 //! the frozen sync reference at every lattice point.
 //!
-//! bombay is depended on ONLY for the verdict vocabulary
-//! (`Step`/`Never`/`Disposition`/`Deferred`); the driver and channels are
+//! bombay is depended on ONLY for the shared verdict words (`Step`/`Never` —
+//! this crate's own grammar otherwise); the driver and channels are
 //! plain tokio (the ceremony a concision harness must not carry). The shared
 //! [`Exit`] trace vocabulary comes from the frozen reference so a SUT trace
 //! compares type-exact with a model trace.
@@ -22,7 +22,7 @@ mod watching; // Watching
 
 pub use behavior::{Base, Become, Behavior, Envelope, run};
 pub use deadlined::{DeadlineReaction, Deadlined};
-pub use phased::Phased;
+pub use phased::{Admit, Phased};
 pub use stashing::{StashRoute, Stashing};
 pub use supervising::{Child, Supervising};
 pub use watching::{LinkReaction, Watching, otp_propagation};

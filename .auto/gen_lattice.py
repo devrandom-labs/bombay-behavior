@@ -28,7 +28,7 @@ def name(s):
     return "p_" + "_".join(c.lower() for c in order)
 
 def build_expr(s):
-    inner = "Phased::new(base_phase(), false, |_, _| Disposition::Deliver)" if "Ph" in s else "base()"
+    inner = "Phased::new(base_phase(), false, |_, _| Admit::Deliver)" if "Ph" in s else "base()"
     if "St" in s:
         inner = f"Stashing::new({inner}, |_: &u64| StashRoute::Deliver)"
     if "D" in s:
@@ -45,7 +45,7 @@ def imports(s):
     if "W" in s: items |= {"Watching", "otp_propagation"}
     if "Sup" in s: items.add("Supervising")
     if "St" in s: items |= {"Stashing", "StashRoute"}
-    if "Ph" in s: items.add("Phased")
+    if "Ph" in s: items |= {"Phased", "Admit"}
     return ", ".join(sorted(items))
 
 def file_for(s):
@@ -67,8 +67,7 @@ def file_for(s):
             "    })\n"
             "}\n"
         )
-    disp = "use bombay::capability::{Disposition, Never, Step};" if "Ph" in s \
-        else "use bombay::capability::{Never, Step};"
+    disp = "use bombay::capability::{Never, Step};"
     caps = " ".join(sorted(s)) or "(none)"
     return f"""//! Slope point — caps: {caps}. Generated (bombay card #298).
 use behaviorpass::{{{imports(s)}}};

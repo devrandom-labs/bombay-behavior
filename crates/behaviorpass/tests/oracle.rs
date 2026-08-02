@@ -11,10 +11,10 @@
 //! (no real timer), so a hung layer cannot stall the measure loop.
 
 use behaviorpass::{
-    Base, Behavior, Deadlined, Exit, Phased, StashRoute, Stashing, Supervising, Watching, Envelope,
-    otp_propagation,
+    Admit, Base, Behavior, Deadlined, Envelope, Exit, Phased, StashRoute, Stashing, Supervising,
+    Watching, otp_propagation,
 };
-use bombay::capability::{Deferred, Disposition, Never, Step};
+use bombay::capability::{Never, Step};
 use core::time::Duration;
 use tokio::time::Instant;
 
@@ -112,8 +112,8 @@ fn phased_machine() -> Phased<Base<Vec<u64>, Msg, Ph, &'static str>> {
         Msg::Quit => Ok(Step::Stop(Exit::Normal)),
     });
     Phased::new(inner, Ph::Loading, |ph, msg| match (ph, msg) {
-        (Ph::Loading, Msg::Work(_)) => Disposition::Defer(Deferred),
-        _ => Disposition::Deliver,
+        (Ph::Loading, Msg::Work(_)) => Admit::Defer,
+        _ => Admit::Deliver,
     })
 }
 

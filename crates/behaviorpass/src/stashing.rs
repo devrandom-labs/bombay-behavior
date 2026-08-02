@@ -105,8 +105,8 @@ where
 mod tests {
     use super::StashRoute;
     use crate::behavior::{Behavior, Envelope};
-    use crate::{Base, Exit, Phased, Stashing};
-    use bombay::capability::{Deferred, Disposition, Never, Step};
+    use crate::{Admit, Base, Exit, Phased, Stashing};
+    use bombay::capability::{Never, Step};
 
     fn recorder() -> Base<Vec<u64>, u64, Never, &'static str> {
         Base::new(Vec::<u64>::new(), |seen: &mut Vec<u64>, id: u64| {
@@ -153,8 +153,8 @@ mod tests {
             Msg::Promote => Ok(Step::Goto(Ph::Ready)),
         });
         let phased = Phased::new(base, Ph::Loading, |ph, m| match (ph, m) {
-            (Ph::Loading, Msg::Work(_)) => Disposition::Defer(Deferred),
-            _ => Disposition::Deliver,
+            (Ph::Loading, Msg::Work(_)) => Admit::Defer,
+            _ => Admit::Deliver,
         });
         let mut stack = Stashing::new(phased, |m: &Msg| match m {
             Msg::Work(id) if *id >= 100 => StashRoute::Stash,
