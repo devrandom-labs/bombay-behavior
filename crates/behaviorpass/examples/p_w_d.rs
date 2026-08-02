@@ -3,7 +3,6 @@ use behaviorpass::{Base, Deadlined, Exit, Watching, otp_propagation, run};
 use bombay::capability::{Never, Step};
 use fastpass::{Config, channel};
 
-
 fn base() -> Base<u64, u64, Never, &'static str> {
     Base::new(0, |s: &mut u64, m: u64| {
         *s += m;
