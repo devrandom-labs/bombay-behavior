@@ -1,5 +1,5 @@
-//! Slope point — Watching<Deadlined<Base>>: depth-2 composition.
-use behaviorpass::{Base, Deadlined, Exit, Watching, otp_propagation, run};
+//! Slope point — caps: D. Generated (bombay card #298).
+use behaviorpass::{Base, Deadlined, Exit, run};
 use bombay::capability::{Never, Step};
 use fastpass::{Config, channel};
 
@@ -13,7 +13,7 @@ fn base() -> Base<u64, u64, Never, &'static str> {
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
     let (ctl, usr, rx) = channel::<Never, u64>(Config::new(8));
-    let stack = Watching::new(Deadlined::new(base(), None, |_| Ok(Step::Continue)), otp_propagation);
+    let stack = Deadlined::new(base(), None, |_| Ok(Step::Continue));
     let handle = tokio::spawn(run(stack, rx));
     let _ = usr.send(1).await;
     drop((usr, ctl));
