@@ -13,19 +13,17 @@
 //! innermost; every capability is a `Behavior` that wraps a `Behavior`. One
 //! file per capability so the module name says exactly what it holds.
 
-mod behavior; // the core: Behavior, Envelope, run, lift, Base
+mod behavior; // the core: Behavior, Envelope, Become, run, lift, Base
 mod deadlined; // Deadlined
-mod gated; // the shared buffer ENGINE (not a behavior): Gated + Gate
 mod phased; // Phased
 mod stashing; // Stashing
 mod supervising; // Supervising
 mod watching; // Watching
 
-pub use behavior::{Base, Behavior, Envelope, run};
+pub use behavior::{Base, Become, Behavior, Envelope, run};
 pub use deadlined::{DeadlineReaction, Deadlined};
-pub use gated::{Admit, Gate, Gated};
-pub use phased::{PhaseGate, Phased};
-pub use stashing::{StashGate, StashRoute, Stashing};
+pub use phased::Phased;
+pub use stashing::{StashRoute, Stashing};
 pub use supervising::{Child, Supervising};
 pub use watching::{LinkReaction, Watching, otp_propagation};
 

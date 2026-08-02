@@ -4,8 +4,7 @@
 use bombay::capability::{Never, Step};
 use tokio::time::Instant;
 
-use crate::Exit;
-use crate::behavior::{Behavior, Envelope};
+use crate::behavior::{Become, Behavior, Envelope};
 
 /// One supervised child: an inner behavior and its liveness.
 pub struct Child<C> {
@@ -73,7 +72,7 @@ where
     type Msg = B::Msg;
     type Ph = B::Ph;
     type Error = B::Error;
-    async fn step(&mut self, ev: Envelope<B::Msg>) -> Result<Step<B::Ph, Exit>, B::Error> {
+    async fn step(&mut self, ev: Envelope<B::Msg>) -> Result<Become<B::Ph>, B::Error> {
         match ev {
             Envelope::ChildStopped { idx, abnormal } => {
                 self.on_child_stopped(idx, abnormal);

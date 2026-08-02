@@ -36,10 +36,17 @@ pub enum Envelope<M> {
     },
 }
 
-/// A synchronous message handler: folds one message into `&mut S`, returning a
-/// verdict on the phase menu `P` (fn pointer, not a closure, so a generated
-/// actor stays nameable).
-pub type Handler<S, M, P, E> = fn(&mut S, M) -> Result<Step<P, Exit>, E>;
+/// A behavior's **become** (Agha 1986): the replacement behavior it designates
+/// as it processes a message. `Continue` = become(same), `Goto(p)` =
+/// become(other from the phase menu), `Stop(_)` = become(⊥). This is the one
+/// thing [`Behavior::step`] returns — not a "verdict", a `become`. (Alias of
+/// bombay's `Step` with our [`Exit`].)
+pub type Become<Ph = Never> = Step<Ph, Exit>;
+
+/// A synchronous message handler: folds one message into `&mut S`, returning
+/// its `become` on the phase menu `P` (fn pointer, not a closure, so a
+/// generated actor stays nameable).
+pub type Handler<S, M, P, E> = fn(&mut S, M) -> Result<Become<P>, E>;
 
 /// The one async object: state in `&mut self`, one total `step` over the
 /// [`Envelope`] alphabet, plus the `next_deadline` query the driver arms its timer
@@ -53,12 +60,12 @@ pub trait Behavior {
     /// The controlled-crash type.
     type Error;
 
-    /// One fold step over the framework alphabet: typed become — continue,
-    /// switch behavior, or stop.
+    /// Fold one event and return the actor's [`Become`] — its replacement
+    /// behavior (Agha): keep the same, switch to another phase, or stop.
     fn step(
         &mut self,
         ev: Envelope<Self::Msg>,
-    ) -> impl Future<Output = Result<Step<Self::Ph, Exit>, Self::Error>> + Send;
+    ) -> impl Future<Output = Result<Become<Self::Ph>, Self::Error>> + Send;
 
     /// The next instant this behavior needs waking, as a pure function of
     /// current state (`None` = no deadline). The deadline SOURCE is a query,
@@ -110,9 +117,10 @@ where
     type Msg = M;
     type Ph = P;
     type Error = E;
-    async fn step(&mut self, ev: Envelope<M>) -> Result<Step<P, Exit>, E> {
+    async fn step(&mut self, ev: Envelope<M>) -> Result<Become<P>, E> {
         match ev {
             Envelope::User(m) => (self.handle)(&mut self.state, m),
+            // A plain actor owns no framework source — become(same).
             Envelope::Deadline | Envelope::LinkDied { .. } | Envelope::ChildStopped { .. } => {
                 Ok(Step::Continue)
             }

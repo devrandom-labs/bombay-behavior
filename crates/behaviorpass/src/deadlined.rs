@@ -2,15 +2,14 @@
 //! a wake time via [`Behavior::next_deadline`], reacts when [`Envelope::Deadline`]
 //! fires, and forwards every other event to the inner behavior.
 
-use bombay::capability::{Never, Step};
+use bombay::capability::Never;
 use tokio::time::Instant;
 
-use crate::Exit;
-use crate::behavior::{Behavior, Envelope, lift};
+use crate::behavior::{Become, Behavior, Envelope, lift};
 
 /// The reaction a deadline fire runs: mutates the inner behavior, returns a
 /// verdict on the erased menu (`Never` — a deadline reaction cannot `Goto`).
-pub type DeadlineReaction<B> = fn(&mut B) -> Result<Step<Never, Exit>, <B as Behavior>::Error>;
+pub type DeadlineReaction<B> = fn(&mut B) -> Result<Become<Never>, <B as Behavior>::Error>;
 
 /// A `Behavior` that adds a single-shot deadline over its inner behavior.
 pub struct Deadlined<B: Behavior> {
@@ -39,7 +38,7 @@ where
     type Msg = B::Msg;
     type Ph = B::Ph;
     type Error = B::Error;
-    async fn step(&mut self, ev: Envelope<B::Msg>) -> Result<Step<B::Ph, Exit>, B::Error> {
+    async fn step(&mut self, ev: Envelope<B::Msg>) -> Result<Become<B::Ph>, B::Error> {
         match ev {
             Envelope::Deadline => {
                 self.due = None; // fires once per armed value
