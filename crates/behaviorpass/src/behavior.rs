@@ -1,60 +1,98 @@
-//! The async object and its driver — the ASYNC projection of ADR-0030's
-//! `Behavior` (the sync twin is `behaviorpass-reference`).
+//! The async object, its event alphabet, and the driver — the ASYNC
+//! projection of ADR-0030's `Behavior` (the sync twin is
+//! `behaviorpass-reference`).
 
 use core::future::Future;
 
 use bombay::capability::{Never, Step};
 use fastpass::{Consumer, Received};
+use tokio::time::Instant;
 
 use crate::Exit;
 
-/// The one async object: state in `&mut self`, one total `step` over the event
-/// alphabet. A source-adding layer extends `Event` as a sum; the step routes
-/// its own events and forwards the rest. `step` returns an explicit
-/// `impl Future + Send` (not `async fn`) so the `Send` bound is nameable at
-/// the driver's `spawn` boundary.
+/// The fixed framework event alphabet folded by every layer. A source-adding
+/// layer handles its own variant and forwards the rest inward; a plain actor
+/// treats every non-`User` variant as a no-op. This flat alphabet (rather than
+/// nested per-layer sums) keeps the machinery uniform at fixed arity — the
+/// open source set is ADR-0030's deferred door.
+pub enum Wire<M> {
+    /// A user-lane message.
+    User(M),
+    /// The single-shot deadline arm fired.
+    Deadline,
+    /// A watched/linked peer stopped.
+    LinkDied {
+        /// The dead peer's id.
+        peer: u64,
+        /// Whether the stop was abnormal (the propagation trigger).
+        abnormal: bool,
+    },
+    /// A supervised child fold ended.
+    ChildStopped {
+        /// Index into the child table.
+        idx: usize,
+        /// Whether the child's stop was abnormal (restart-eligible).
+        abnormal: bool,
+    },
+}
+
+/// A synchronous message handler: folds one message into `&mut S`, returning a
+/// verdict on the phase menu `P` (fn pointer, not a closure, so a generated
+/// actor stays nameable).
+pub type Handler<S, M, P, E> = fn(&mut S, M) -> Result<Step<P, Exit>, E>;
+
+/// The one async object: state in `&mut self`, one total `step` over the
+/// [`Wire`] alphabet, plus the `next_deadline` query the driver arms its timer
+/// from. `step` returns an explicit `impl Future + Send` (not `async fn`) so
+/// the `Send` bound is nameable at the driver's `spawn` boundary.
 pub trait Behavior {
-    /// The event alphabet this behavior folds over.
-    type Event;
+    /// The user-message type this behavior folds.
+    type Msg;
     /// The become-menu still exposed upward (`Never` once fully erased).
     type Ph;
     /// The controlled-crash type.
     type Error;
-    /// One fold step: typed become — continue, switch behavior, or stop.
+
+    /// One fold step over the framework alphabet: typed become — continue,
+    /// switch behavior, or stop.
     fn step(
         &mut self,
-        ev: Self::Event,
+        ev: Wire<Self::Msg>,
     ) -> impl Future<Output = Result<Step<Self::Ph, Exit>, Self::Error>> + Send;
+
+    /// The next instant this behavior needs waking, as a pure function of
+    /// current state (`None` = no deadline). The deadline SOURCE is a query,
+    /// not an event (quinn `poll_timeout` shape); its FIRING is `Wire::Deadline`.
+    /// Default: no deadline (a plain actor arms nothing).
+    fn next_deadline(&self) -> Option<Instant> {
+        None
+    }
 }
 
 /// Drive a fully-erased behavior over its fastpass mailbox until it stops or
-/// the mailbox drains. The user lane carries `Behavior::Event`; the control
-/// lane carries framework/control signals (`C`), routed by later layers —
-/// for a plain actor no control signal is ever sent.
+/// the mailbox drains. The user lane becomes `Wire::User`; the control lane is
+/// routed by the Watching / Supervising layers (Task 2 continued). The deadline
+/// and link arms join the `select!` with the layers that own those sources.
 ///
 /// `Stop(exit)` ends the fold immediately; `Goto` is unconstructible at
-/// `Ph = Never`; `Err` short-circuits unchanged; a drained mailbox is
-/// collection, not success.
+/// `Ph = Never`; `Err` short-circuits; a drained mailbox is collection.
 ///
 /// # Errors
 /// Returns the behavior's `Error` the first time a step is a controlled crash.
-pub async fn run<B, C>(
-    mut b: B,
-    mut mailbox: Consumer<C, B::Event>,
-) -> Result<Exit, B::Error>
+pub async fn run<B, C>(mut b: B, mut mailbox: Consumer<C, B::Msg>) -> Result<Exit, B::Error>
 where
     B: Behavior<Ph = Never>,
 {
     while let Some(recv) = mailbox.recv().await {
-        match recv {
-            Received::User(ev) => match b.step(ev).await? {
-                Step::Continue => {}
-                Step::Goto(never) => match never {},
-                Step::Stop(exit) => return Ok(exit),
-            },
-            // The control lane becomes load-bearing with the Watching /
-            // Supervising layers (Task 2); a plain actor sends none.
-            Received::Control(_signal) => {}
+        let ev = match recv {
+            Received::User(m) => Wire::User(m),
+            // The control lane becomes load-bearing with Watching / Supervising.
+            Received::Control(_signal) => continue,
+        };
+        match b.step(ev).await? {
+            Step::Continue => {}
+            Step::Goto(never) => match never {},
+            Step::Stop(exit) => return Ok(exit),
         }
     }
     Ok(Exit::Collected)
@@ -62,7 +100,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::{Behavior, run};
+    use super::{Behavior, Wire, run};
     use crate::Exit;
     use bombay::capability::{Never, Step};
     use fastpass::{Config, channel};
@@ -71,11 +109,13 @@ mod tests {
     struct Counter(u32);
 
     impl Behavior for Counter {
-        type Event = u32;
+        type Msg = u32;
         type Ph = Never;
         type Error = &'static str;
-        async fn step(&mut self, ev: u32) -> Result<Step<Never, Exit>, &'static str> {
-            self.0 += ev;
+        async fn step(&mut self, ev: Wire<u32>) -> Result<Step<Never, Exit>, &'static str> {
+            if let Wire::User(n) = ev {
+                self.0 += n;
+            }
             if self.0 >= 10 {
                 Ok(Step::Stop(Exit::Normal))
             } else {
