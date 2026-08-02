@@ -1,28 +1,39 @@
 //! `Phased` — a plain `Behavior` (Agha-pure): no gate trait, no engine. It keeps
 //! a buffer of deferred messages IN ITS OWN STATE. Deferring a message is just
-//! `become` a fuller version of itself (push to the buffer); releasing the
-//! batch is a replay.
+//! `become` a fuller version of itself (push to the buffer); a phase change
+//! releases the batch (a replay).
 //!
 //! **The one knob — replay ordering.** When a phase change releases the held
 //! batch, the messages are replayed *ahead of* the mailbox backlog, in this
-//! same step (`drain` below). That "ahead" ordering is the single real choice:
-//! Agha's `send`-to-self would put them *behind* the backlog instead. We pick
-//! ahead (bombay ADR-0022 / `gen_statem` postpone); the behind variant is a
-//! plain self-send at the driver.
+//! same step (`drain` below). Agha's `send`-to-self would put them *behind*
+//! instead. We pick ahead (bombay ADR-0022 / `gen_statem` postpone).
 
 use std::collections::VecDeque;
 
-use bombay::capability::{Deferred, Disposition, Never, Step};
+use bombay::capability::{Never, Step};
 use tokio::time::Instant;
 
 use crate::behavior::{Become, Behavior, Envelope};
+
+/// What a phased behavior does with a message in the current phase — its OWN
+/// admission vocabulary (no longer borrowed from bombay's `Disposition`; part
+/// of this crate's grammar).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Admit {
+    /// Hand it to the inner behavior now.
+    Deliver,
+    /// Hold it in the buffer — `become` a fuller self; re-gate on the next replay.
+    Defer,
+    /// Drop it by declaration.
+    Ignore,
+}
 
 /// A `Behavior` that gates messages by phase, holding the deferred ones in its
 /// own state and replaying them when the inner handler's `Goto` moves the phase.
 pub struct Phased<B: Behavior> {
     inner: B,
     phase: B::Ph,
-    gate: fn(B::Ph, &B::Msg) -> Disposition<Deferred>,
+    gate: fn(B::Ph, &B::Msg) -> Admit,
     held: VecDeque<B::Msg>,
 }
 
@@ -31,11 +42,7 @@ where
     B::Ph: Copy + PartialEq,
 {
     /// Builds a phased behavior in `initial` with a per-phase gate.
-    pub fn new(
-        inner: B,
-        initial: B::Ph,
-        gate: fn(B::Ph, &B::Msg) -> Disposition<Deferred>,
-    ) -> Self {
+    pub fn new(inner: B, initial: B::Ph, gate: fn(B::Ph, &B::Msg) -> Admit) -> Self {
         Self { inner, phase: initial, gate, held: VecDeque::new() }
     }
 
@@ -79,9 +86,9 @@ where
         let mut batch: VecDeque<B::Msg> = self.held.drain(..).collect();
         while let Some(m) = batch.pop_front() {
             match (self.gate)(self.phase, &m) {
-                Disposition::Ignore => {}
-                Disposition::Defer(Deferred) => self.held.push_back(m),
-                Disposition::Deliver => {
+                Admit::Ignore => {}
+                Admit::Defer => self.held.push_back(m),
+                Admit::Deliver => {
                     let (verdict, changed) = self.run_inner(Envelope::User(m)).await?;
                     if let Step::Stop(exit) = verdict {
                         self.held.extend(batch);
@@ -117,18 +124,17 @@ where
     type Error = B::Error;
     async fn step(&mut self, ev: Envelope<B::Msg>) -> Result<Become<Never>, B::Error> {
         let Envelope::User(m) = ev else {
-            // Framework events are not gated; a reaction that transitions still
-            // replays.
+            // Framework events are not gated; a reaction that transitions replays.
             return self.deliver(ev).await;
         };
         match (self.gate)(self.phase, &m) {
-            Disposition::Ignore => Ok(Step::Continue),
+            Admit::Ignore => Ok(Step::Continue),
             // Defer = `become` a fuller self: the message joins the buffer.
-            Disposition::Defer(Deferred) => {
+            Admit::Defer => {
                 self.held.push_back(m);
                 Ok(Step::Continue)
             }
-            Disposition::Deliver => self.deliver(Envelope::User(m)).await,
+            Admit::Deliver => self.deliver(Envelope::User(m)).await,
         }
     }
 
@@ -139,10 +145,10 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::Phased;
+    use super::{Admit, Phased};
     use crate::behavior::{Behavior, Envelope};
     use crate::{Base, Exit};
-    use bombay::capability::{Deferred, Disposition, Step};
+    use bombay::capability::Step;
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     enum Ph {
@@ -167,8 +173,8 @@ mod tests {
             Msg::Quit => Ok(Step::Stop(Exit::Normal)),
         });
         let mut p = Phased::new(inner, Ph::Loading, |ph, msg| match (ph, msg) {
-            (Ph::Loading, Msg::Work(_)) => Disposition::Defer(Deferred),
-            _ => Disposition::Deliver,
+            (Ph::Loading, Msg::Work(_)) => Admit::Defer,
+            _ => Admit::Deliver,
         });
         for m in [Msg::Work(1), Msg::Work(2), Msg::Promote, Msg::Work(3), Msg::Quit] {
             let _ = p.step(Envelope::User(m)).await;
@@ -183,7 +189,7 @@ mod tests {
             Msg::Work(_) => Err("bang"),
             _ => Ok::<Step<Ph, Exit>, &'static str>(Step::Goto(Ph::Ready)),
         });
-        let mut p = Phased::new(inner, Ph::Loading, |_, _| Disposition::Deliver);
+        let mut p = Phased::new(inner, Ph::Loading, |_, _| Admit::Deliver);
         assert_eq!(p.step(Envelope::User(Msg::Work(1))).await, Err("bang"));
         assert_eq!(p.phase(), Ph::Loading, "an Err never half-switches the phase (D3)");
     }
