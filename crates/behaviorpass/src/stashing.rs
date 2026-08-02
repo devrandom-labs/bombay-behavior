@@ -11,7 +11,7 @@ use std::collections::VecDeque;
 use bombay::capability::{Never, Step};
 use tokio::time::Instant;
 
-use crate::behavior::{Become, Behavior, Envelope};
+use crate::behavior::{Acted, Actions, Behavior, Envelope};
 
 /// What a stashing behavior does with a message.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -48,23 +48,32 @@ impl<B: Behavior<Ph = Never>> Stashing<B> {
         self.held.len()
     }
 
-    /// Replay the held batch AHEAD of the backlog: re-route each — re-stashed
-    /// messages return to `held` (snapshot bound, no livelock); a `Stop`
-    /// abandons the rest.
-    async fn drain(&mut self) -> Result<Become<Never>, B::Error> {
+    /// Replay the held batch AHEAD of the backlog, ACCUMULATING each delivered
+    /// inner step's sends and creates into `acc`: re-route each — re-stashed
+    /// messages return to `held` (snapshot bound, no livelock); a `Stop` sets
+    /// `acc.become_` and re-extends `held` with the remaining batch, abandoning
+    /// the rest.
+    async fn drain_into(
+        &mut self,
+        acc: &mut Actions<Never, B::Outbound, B::Offspring>,
+    ) -> Result<(), B::Error> {
         let mut batch: VecDeque<B::Msg> = self.held.drain(..).collect();
         while let Some(m) = batch.pop_front() {
             match (self.route)(&m) {
                 StashRoute::Stash => self.held.push_back(m),
                 StashRoute::Deliver | StashRoute::Release => {
-                    if let Step::Stop(exit) = self.inner.step(Envelope::User(m)).await? {
+                    let actions = self.inner.step(Envelope::User(m)).await?;
+                    acc.sends.extend(actions.sends);
+                    acc.creates.extend(actions.creates);
+                    if let Step::Stop(exit) = actions.become_ {
                         self.held.extend(batch);
-                        return Ok(Step::Stop(exit));
+                        acc.become_ = Step::Stop(exit);
+                        return Ok(());
                     }
                 }
             }
         }
-        Ok(Step::Continue)
+        Ok(())
     }
 }
 
@@ -72,11 +81,18 @@ impl<B> Behavior for Stashing<B>
 where
     B: Behavior<Ph = Never> + Send,
     B::Msg: Send,
+    B::Outbound: Send,
+    B::Offspring: Send,
 {
     type Msg = B::Msg;
     type Ph = Never;
     type Error = B::Error;
-    async fn step(&mut self, ev: Envelope<B::Msg>) -> Result<Become<Never>, B::Error> {
+    type Outbound = B::Outbound;
+    type Offspring = B::Offspring;
+    async fn step(
+        &mut self,
+        ev: Envelope<B::Msg>,
+    ) -> Acted<Never, B::Outbound, B::Offspring, B::Error> {
         let Envelope::User(m) = ev else {
             return self.inner.step(ev).await;
         };
@@ -84,14 +100,16 @@ where
             // Stash = `become` a fuller self: the message joins the buffer.
             StashRoute::Stash => {
                 self.held.push_back(m);
-                Ok(Step::Continue)
+                Ok(Actions::cont())
             }
             StashRoute::Deliver => self.inner.step(Envelope::User(m)).await,
             StashRoute::Release => {
-                if let Step::Stop(exit) = self.inner.step(Envelope::User(m)).await? {
-                    return Ok(Step::Stop(exit));
+                let mut acc = self.inner.step(Envelope::User(m)).await?;
+                if matches!(acc.become_, Step::Stop(_)) {
+                    return Ok(acc);
                 }
-                self.drain().await
+                self.drain_into(&mut acc).await?;
+                Ok(acc)
             }
         }
     }
@@ -104,14 +122,14 @@ where
 #[cfg(test)]
 mod tests {
     use super::StashRoute;
-    use crate::behavior::{Behavior, Envelope};
-    use crate::{Base, Exit, Fsm, Move, Stashing};
-    use bombay::capability::{Never, Step};
+    use crate::behavior::{Actions, Behavior, Envelope};
+    use crate::{Base, Fsm, Move, Stashing};
+    use bombay::capability::Never;
 
     fn recorder() -> Base<Vec<u64>, u64, Never, &'static str> {
         Base::new(Vec::<u64>::new(), |seen: &mut Vec<u64>, id: u64| {
             seen.push(id);
-            Ok::<Step<Never, Exit>, &'static str>(Step::Continue)
+            Ok::<Actions<Never, Never, Never>, &'static str>(Actions::cont())
         })
     }
 

@@ -34,12 +34,12 @@ def build_expr(s):
     if "W" in s:
         inner = f"Watching::new({inner}, otp_propagation)"
     if "Sup" in s:
-        inner = f"Supervising::new({inner}, vec![base()], |_| base(), 3)"
+        inner = f"Supervising::new({inner}, 1, |_| base(), 3)"
     return inner
 
 
 def imports(s):
-    items = {"Base", "Exit", "run"}
+    items = {"Actions", "Base", "Exit", "run"}
     if "D" in s:
         items.add("Deadlined")
     if "W" in s:
@@ -51,17 +51,23 @@ def imports(s):
     return ", ".join(sorted(items))
 
 
+def bombay_imports(s):
+    # `Step` is only referenced by a Deadlined reaction (`|_| Ok(Step::Continue)`);
+    # the base handler folds to `Actions`. Import it only when it's used.
+    return "Never, Step" if "D" in s else "Never"
+
+
 def file_for(s):
     caps = " ".join(sorted(s)) or "(none)"
     return f"""//! Slope point — caps: {caps}. Generated (bombay card #298).
 use behaviorpass::{{{imports(s)}}};
-use bombay::capability::{{Never, Step}};
+use bombay::capability::{{{bombay_imports(s)}}};
 use fastpass::{{Config, channel}};
 
 fn base() -> Base<u64, u64, Never, &'static str> {{
     Base::new(0, |s: &mut u64, m: u64| {{
         *s += m;
-        Ok::<Step<Never, Exit>, &'static str>(if *s > 1000 {{ Step::Stop(Exit::Normal) }} else {{ Step::Continue }})
+        Ok::<Actions<Never, Never, Never>, &'static str>(if *s > 1000 {{ Actions::stop(Exit::Normal) }} else {{ Actions::cont() }})
     }})
 }}
 

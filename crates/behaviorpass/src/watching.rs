@@ -5,7 +5,7 @@ use bombay::capability::{Never, Step};
 use tokio::time::Instant;
 
 use crate::Exit;
-use crate::behavior::{Become, Behavior, Envelope, lift};
+use crate::behavior::{Acted, Become, Behavior, Envelope, lift};
 
 /// The reaction a link-death runs: the inner behavior plus the dead peer's id
 /// and abnormal flag, returning a verdict on the erased menu.
@@ -55,7 +55,12 @@ where
     type Msg = B::Msg;
     type Ph = B::Ph;
     type Error = B::Error;
-    async fn step(&mut self, ev: Envelope<B::Msg>) -> Result<Become<B::Ph>, B::Error> {
+    type Outbound = B::Outbound;
+    type Offspring = B::Offspring;
+    async fn step(
+        &mut self,
+        ev: Envelope<B::Msg>,
+    ) -> Acted<B::Ph, B::Outbound, B::Offspring, B::Error> {
         match ev {
             Envelope::LinkDied { peer, abnormal } => {
                 Ok(lift((self.on_link_died)(&mut self.inner, peer, abnormal)?))
@@ -72,14 +77,14 @@ where
 #[cfg(test)]
 mod tests {
     use super::{Watching, otp_propagation};
-    use crate::behavior::{Behavior, Envelope};
+    use crate::behavior::{Actions, Behavior, Envelope};
     use crate::{Base, Exit};
     use bombay::capability::{Never, Step};
 
     fn recorder() -> Base<Vec<u64>, u64, Never, &'static str> {
         Base::new(Vec::<u64>::new(), |seen: &mut Vec<u64>, id: u64| {
             seen.push(id);
-            Ok::<Step<Never, Exit>, &'static str>(Step::Continue)
+            Ok::<Actions<Never, Never, Never>, &'static str>(Actions::cont())
         })
     }
 
@@ -88,18 +93,18 @@ mod tests {
         let mut w = Watching::new(recorder(), otp_propagation);
         assert!(
             matches!(
-                w.step(Envelope::LinkDied { peer: 42, abnormal: true }).await,
-                Ok(Step::Stop(Exit::LinkDied(42)))
+                w.step(Envelope::LinkDied { peer: 42, abnormal: true }).await.unwrap().become_,
+                Step::Stop(Exit::LinkDied(42))
             ),
             "an abnormal linked death propagates with the carried reason",
         );
 
         let mut w2 = Watching::new(recorder(), otp_propagation);
         assert!(matches!(
-            w2.step(Envelope::LinkDied { peer: 42, abnormal: false }).await,
-            Ok(Step::Continue)
+            w2.step(Envelope::LinkDied { peer: 42, abnormal: false }).await.unwrap().become_,
+            Step::Continue
         ));
-        assert!(matches!(w2.step(Envelope::User(2)).await, Ok(Step::Continue)));
+        assert!(matches!(w2.step(Envelope::User(2)).await.unwrap().become_, Step::Continue));
         assert_eq!(w2.inner().state(), &vec![2], "a normal death is absorbed; user forwards");
     }
 }

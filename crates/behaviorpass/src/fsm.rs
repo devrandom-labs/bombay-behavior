@@ -14,7 +14,7 @@ use std::collections::VecDeque;
 use bombay::capability::{Never, Step};
 
 use crate::Exit;
-use crate::behavior::{Behavior, Envelope};
+use crate::behavior::{Acted, Actions, Behavior, Envelope};
 
 /// One step of a state machine's transition function.
 pub enum Move<P> {
@@ -111,16 +111,18 @@ where
     type Msg = M;
     type Ph = Never;
     type Error = E;
-    async fn step(&mut self, ev: Envelope<M>) -> Result<Step<Never, Exit>, E> {
+    type Outbound = Never;
+    type Offspring = Never;
+    async fn step(&mut self, ev: Envelope<M>) -> Acted<Never, Never, Never, E> {
         let Envelope::User(m) = ev else {
             // A framework event is a no-op for a plain state machine.
-            return Ok(Step::Continue);
+            return Ok(Actions::cont());
         };
         let (verdict, changed) = self.advance(m)?;
         match verdict {
-            Step::Stop(exit) => Ok(Step::Stop(exit)),
-            _ if changed => self.drain(),
-            _ => Ok(Step::Continue),
+            Step::Stop(exit) => Ok(Actions::stop(exit)),
+            _ if changed => Ok(Actions::just(self.drain()?)),
+            _ => Ok(Actions::cont()),
         }
     }
 }
@@ -177,7 +179,11 @@ mod tests {
             Msg::Work(_) => Err("bang"),
             _ => Ok::<Move<Ph>, &'static str>(Move::Goto(Ph::Ready)),
         });
-        assert_eq!(fsm.step(Envelope::User(Msg::Work(1))).await, Err("bang"));
+        assert_eq!(
+            fsm.step(Envelope::User(Msg::Work(1))).await.err(),
+            Some("bang"),
+            "the failing transition surfaces its error",
+        );
         assert_eq!(fsm.phase(), Ph::Loading, "an Err never half-switches the phase (D3)");
     }
 }
