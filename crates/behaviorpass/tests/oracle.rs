@@ -11,8 +11,8 @@
 //! (no real timer), so a hung layer cannot stall the measure loop.
 
 use behaviorpass::{
-    Base, Behavior, Deadlined, Envelope, Exit, Fsm, Move, StashRoute, Stashing, Supervising,
-    Watching, otp_propagation,
+    Actions, Base, Behavior, Deadlined, Envelope, Exit, Fsm, Move, StashRoute, Stashing,
+    Supervising, Watching, otp_propagation,
 };
 use bombay::capability::{Never, Step};
 use core::time::Duration;
@@ -23,7 +23,7 @@ type Rec = Base<Vec<u64>, u64, Never, &'static str>;
 fn recorder() -> Rec {
     Base::new(Vec::<u64>::new(), |seen: &mut Vec<u64>, id: u64| {
         seen.push(id);
-        Ok::<Step<Never, Exit>, &'static str>(Step::Continue)
+        Ok::<Actions<Never, Never, Never>, &'static str>(Actions::cont())
     })
 }
 
@@ -31,13 +31,13 @@ fn recorder() -> Rec {
 #[tokio::test]
 async fn plain_folds_fifo_and_ignores_framework_events() {
     let mut b = recorder();
-    assert!(matches!(b.step(Envelope::Deadline).await, Ok(Step::Continue)));
-    assert!(matches!(b.step(Envelope::User(1)).await, Ok(Step::Continue)));
+    assert!(matches!(b.step(Envelope::Deadline).await.unwrap().become_, Step::Continue));
+    assert!(matches!(b.step(Envelope::User(1)).await.unwrap().become_, Step::Continue));
     assert!(matches!(
-        b.step(Envelope::LinkDied { peer: 9, abnormal: true }).await,
-        Ok(Step::Continue)
+        b.step(Envelope::LinkDied { peer: 9, abnormal: true }).await.unwrap().become_,
+        Step::Continue
     ));
-    assert!(matches!(b.step(Envelope::User(2)).await, Ok(Step::Continue)));
+    assert!(matches!(b.step(Envelope::User(2)).await.unwrap().become_, Step::Continue));
     assert_eq!(b.state(), &vec![1, 2]);
 }
 
@@ -48,10 +48,10 @@ async fn deadlined_arms_fires_once_and_forwards() {
     let due = Instant::now() + Duration::from_secs(5);
     let mut d = Deadlined::new(recorder(), Some(due), |_| Ok(Step::Stop(Exit::Normal)));
     assert_eq!(d.next_deadline(), Some(due));
-    assert!(matches!(d.step(Envelope::User(7)).await, Ok(Step::Continue)));
+    assert!(matches!(d.step(Envelope::User(7)).await.unwrap().become_, Step::Continue));
     assert!(matches!(
-        d.step(Envelope::Deadline).await,
-        Ok(Step::Stop(Exit::Normal))
+        d.step(Envelope::Deadline).await.unwrap().become_,
+        Step::Stop(Exit::Normal)
     ));
     assert_eq!(d.next_deadline(), None, "fires once");
     assert_eq!(d.inner().state(), &vec![7]);
@@ -63,13 +63,13 @@ async fn deadlined_arms_fires_once_and_forwards() {
 async fn watching_propagates_abnormal_only() {
     let mut w = Watching::new(recorder(), otp_propagation);
     assert!(matches!(
-        w.step(Envelope::LinkDied { peer: 3, abnormal: false }).await,
-        Ok(Step::Continue)
+        w.step(Envelope::LinkDied { peer: 3, abnormal: false }).await.unwrap().become_,
+        Step::Continue
     ));
-    assert!(matches!(w.step(Envelope::User(1)).await, Ok(Step::Continue)));
+    assert!(matches!(w.step(Envelope::User(1)).await.unwrap().become_, Step::Continue));
     assert!(matches!(
-        w.step(Envelope::LinkDied { peer: 3, abnormal: true }).await,
-        Ok(Step::Stop(Exit::LinkDied(3)))
+        w.step(Envelope::LinkDied { peer: 3, abnormal: true }).await.unwrap().become_,
+        Step::Stop(Exit::LinkDied(3))
     ));
     assert_eq!(w.inner().state(), &vec![1]);
 }
@@ -129,28 +129,45 @@ async fn fsm_defers_then_replays_on_transition() {
     assert_eq!(p.phase(), Ph::Ready);
 }
 
-/// Supervising: an abnormal child stop restarts within budget; exhaustion and
-/// normal stops leave the child dead.
+/// Supervising: an abnormal child stop within budget EMITS one create-spec (the
+/// driver spawns it) and re-marks the slot live; exhaustion and normal stops
+/// emit no create and leave the slot dead.
 #[tokio::test]
 async fn supervising_restarts_within_budget_only() {
     type Kid = Base<u32, u32, Never, &'static str>;
     fn kid() -> Kid {
         Base::new(0_u32, |c: &mut u32, n: u32| {
             *c += n;
-            Ok::<Step<Never, Exit>, &'static str>(Step::Continue)
+            Ok::<Actions<Never, Never, Never>, &'static str>(Actions::cont())
         })
     }
     let inner = Base::new((), |(): &mut (), _: u64| {
-        Ok::<Step<Never, Exit>, &'static str>(Step::Continue)
+        Ok::<Actions<Never, Never, Never>, &'static str>(Actions::cont())
     });
-    let mut sup = Supervising::new(inner, vec![kid()], |_| kid(), 1);
+    let mut sup = Supervising::new(inner, 1, |_| kid(), 1);
 
-    let _ = sup.step(Envelope::ChildStopped { idx: 0, abnormal: true }).await;
+    let actions = sup.step(Envelope::ChildStopped { idx: 0, abnormal: true }).await.unwrap();
+    assert_eq!(actions.creates.len(), 1, "the restart emits a create-spec");
     assert!(sup.children()[0].alive());
     assert_eq!(sup.restarts_left(), 0);
 
-    let _ = sup.step(Envelope::ChildStopped { idx: 0, abnormal: true }).await;
+    let actions = sup.step(Envelope::ChildStopped { idx: 0, abnormal: true }).await.unwrap();
+    assert_eq!(actions.creates.len(), 0, "budget exhausted ⇒ no create");
     assert!(!sup.children()[0].alive(), "budget exhausted ⇒ dead");
+
+    // A normal stop, on a fresh supervisor, emits no create and spends nothing.
+    let mut sup2 = Supervising::new(
+        Base::new((), |(): &mut (), _: u64| {
+            Ok::<Actions<Never, Never, Never>, &'static str>(Actions::cont())
+        }),
+        1,
+        |_| kid(),
+        5,
+    );
+    let actions = sup2.step(Envelope::ChildStopped { idx: 0, abnormal: false }).await.unwrap();
+    assert_eq!(actions.creates.len(), 0, "a normal stop emits no create");
+    assert!(!sup2.children()[0].alive(), "a normal stop is final");
+    assert_eq!(sup2.restarts_left(), 5, "no budget spent on a normal stop");
 }
 
 /// A LEGAL composition — `Watching<Deadlined<Base>>`: each layer routes its own
@@ -163,14 +180,14 @@ async fn composed_watching_over_deadlined_routes_each_source() {
     let mut w = Watching::new(deadlined, otp_propagation);
 
     assert_eq!(w.next_deadline(), Some(due), "the inner deadline surfaces through watch");
-    assert!(matches!(w.step(Envelope::User(5)).await, Ok(Step::Continue)));
+    assert!(matches!(w.step(Envelope::User(5)).await.unwrap().become_, Step::Continue));
     // The deadline fire reaches the Deadlined layer through the outer forward.
-    assert!(matches!(w.step(Envelope::Deadline).await, Ok(Step::Continue)));
+    assert!(matches!(w.step(Envelope::Deadline).await.unwrap().become_, Step::Continue));
     assert_eq!(w.next_deadline(), None, "the inner slot fired once");
     // An abnormal death still propagates at the outer layer.
     assert!(matches!(
-        w.step(Envelope::LinkDied { peer: 8, abnormal: true }).await,
-        Ok(Step::Stop(Exit::LinkDied(8)))
+        w.step(Envelope::LinkDied { peer: 8, abnormal: true }).await.unwrap().become_,
+        Step::Stop(Exit::LinkDied(8))
     ));
     assert_eq!(w.inner().inner().state(), &vec![5]);
 }

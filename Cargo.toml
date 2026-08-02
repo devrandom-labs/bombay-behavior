@@ -9,9 +9,6 @@
 resolver = "3"
 members = [
   "crates/behaviorpass",
-  "crates/behaviorpass-reference",
-  "crates/behaviorpass-testkit",
-  "crates/behaviorpass-perf",
 ]
 
 [workspace.package]
@@ -31,8 +28,6 @@ bombay = { path = "../bombay/crates/core" }
 # consumes it so behaviorpass golfs CAPABILITY LOC, not mailbox plumbing.
 fastpass = { path = "../fastpass/crates/fastpass" }
 behaviorpass = { path = "crates/behaviorpass" }
-behaviorpass-reference = { path = "crates/behaviorpass-reference" }
-behaviorpass-testkit = { path = "crates/behaviorpass-testkit" }
 
 # Keep the research crates lint-honest without importing bombay's full god-tier
 # config — this is a spike, but the invariants are real. The concision loop's

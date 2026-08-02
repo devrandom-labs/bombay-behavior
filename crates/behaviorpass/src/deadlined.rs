@@ -5,7 +5,7 @@
 use bombay::capability::Never;
 use tokio::time::Instant;
 
-use crate::behavior::{Become, Behavior, Envelope, lift};
+use crate::behavior::{Acted, Become, Behavior, Envelope, lift};
 
 /// The reaction a deadline fire runs: mutates the inner behavior, returns a
 /// verdict on the erased menu (`Never` — a deadline reaction cannot `Goto`).
@@ -38,7 +38,12 @@ where
     type Msg = B::Msg;
     type Ph = B::Ph;
     type Error = B::Error;
-    async fn step(&mut self, ev: Envelope<B::Msg>) -> Result<Become<B::Ph>, B::Error> {
+    type Outbound = B::Outbound;
+    type Offspring = B::Offspring;
+    async fn step(
+        &mut self,
+        ev: Envelope<B::Msg>,
+    ) -> Acted<B::Ph, B::Outbound, B::Offspring, B::Error> {
         match ev {
             Envelope::Deadline => {
                 self.due = None; // fires once per armed value
@@ -63,7 +68,7 @@ mod tests {
     use core::time::Duration;
 
     use super::Deadlined;
-    use crate::behavior::{Behavior, Envelope};
+    use crate::behavior::{Actions, Behavior, Envelope};
     use crate::{Base, Exit};
     use bombay::capability::{Never, Step};
     use tokio::time::Instant;
@@ -72,16 +77,16 @@ mod tests {
     async fn deadlined_routes_the_fire_forwards_the_rest_and_arms_once() {
         let inner = Base::new(Vec::<u64>::new(), |seen: &mut Vec<u64>, id: u64| {
             seen.push(id);
-            Ok::<Step<Never, Exit>, &'static str>(Step::Continue)
+            Ok::<Actions<Never, Never, Never>, &'static str>(Actions::cont())
         });
         let due = Instant::now() + Duration::from_secs(5);
         let mut d = Deadlined::new(inner, Some(due), |_inner| Ok(Step::Stop(Exit::Normal)));
 
         assert_eq!(d.next_deadline(), Some(due), "the declared slot arms the timer");
-        assert!(matches!(d.step(Envelope::User(7)).await, Ok(Step::Continue)));
+        assert!(matches!(d.step(Envelope::User(7)).await.unwrap().become_, Step::Continue));
         assert_eq!(d.inner().state(), &vec![7], "non-deadline events forward inward");
         assert!(
-            matches!(d.step(Envelope::Deadline).await, Ok(Step::Stop(Exit::Normal))),
+            matches!(d.step(Envelope::Deadline).await.unwrap().become_, Step::Stop(Exit::Normal)),
             "the reaction's verdict rides out",
         );
         assert_eq!(d.next_deadline(), None, "fires once — the slot clears after firing");

@@ -1,12 +1,12 @@
 //! Slope point — caps: D St. Generated (bombay card #298).
-use behaviorpass::{Base, Deadlined, Exit, StashRoute, Stashing, run};
+use behaviorpass::{Actions, Base, Deadlined, Exit, StashRoute, Stashing, run};
 use bombay::capability::{Never, Step};
 use fastpass::{Config, channel};
 
 fn base() -> Base<u64, u64, Never, &'static str> {
     Base::new(0, |s: &mut u64, m: u64| {
         *s += m;
-        Ok::<Step<Never, Exit>, &'static str>(if *s > 1000 { Step::Stop(Exit::Normal) } else { Step::Continue })
+        Ok::<Actions<Never, Never, Never>, &'static str>(if *s > 1000 { Actions::stop(Exit::Normal) } else { Actions::cont() })
     })
 }
 

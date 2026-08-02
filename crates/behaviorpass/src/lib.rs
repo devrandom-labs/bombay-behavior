@@ -24,12 +24,13 @@ mod watching; // Watching
 // the aggregate's (nexus's) concern, not core's.
 mod fsm;
 
-pub use behavior::{Base, Become, Behavior, Envelope, run};
+pub use behavior::{Actions, Base, Become, Behavior, Envelope, MailAddr, Transcript, run};
 pub use deadlined::{DeadlineReaction, Deadlined};
 pub use fsm::{Fsm, Move};
 pub use stashing::{StashRoute, Stashing};
 pub use supervising::{Child, Supervising};
 pub use watching::{LinkReaction, Watching, otp_propagation};
 
-/// The shared trace-exit vocabulary, re-exported from the frozen reference.
-pub use behaviorpass_reference::Exit;
+mod exit; // Exit — the trace-exit vocabulary (moved in-crate; reference crate retired)
+
+pub use exit::Exit;
