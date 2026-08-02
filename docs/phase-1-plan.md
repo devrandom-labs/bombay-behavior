@@ -17,13 +17,20 @@ pass.
    `crates/behaviorpass/src` gets an `async fn step` `Behavior` trait and five
    async layer wrappers — the async twins of `behaviorpass-reference`. No
    `CapSet`/`Provide`/`Shell`/derive. This is the golf target.
-2. **Runtime: reuse bombay's mailbox primitive, own the select driver.** The
-   SUT spawns a tokio task that owns a merged `select!` over
-   `bombay::mailbox` (the receiver) + a deadline arm + a link arm, folding the
-   composed `Behavior`. The driver (the guarded select arms #298 wants golfed)
-   lives IN the SUT — golfable. *Alternative rejected for phase-1:* adapting to
-   bombay's `actor::Actor` loop (that reintroduces the machinery we're trying
-   to out-concise).
+2. **Mailbox = fastpass; framework arms + driver = the SUT.** The mailbox
+   (user lane + control lane, control-ahead-of-backlog) is `fastpass`, the
+   sibling pillar-pass that already golfed exactly this — so behaviorpass's LOC
+   metric measures the CAPABILITY machinery, not mailbox plumbing, and the
+   Watching/Supervising points get bombay's ADR-0021 control-lane ordering for
+   free. The SUT owns the **framework-event plane** ("another thing" fastpass
+   does not have): the driver's merged `select!` over `fastpass::Consumer::recv`
+   + a `tokio::time` deadline arm + an mpsc link arm, folding the composed
+   `Behavior`. bombay is depended on ONLY for the verdict vocabulary
+   (`Step`/`Never`/`Disposition`/`Deferred`). *Rejected:* re-implementing a
+   mailbox (fastpass already did) or reusing `bombay::mailbox` (drags the
+   `Mailboxed`/`Msg`/`Signal` apparatus — the ceremony we must not carry). The
+   driver's guarded select arms + the framework plane are the machinery #298
+   golfs — they live IN the SUT.
 3. **Lattice generator = a declarative macro** `machine! { Stashing, Phased(...) }`
    emitting one minimal actor per point; illegal combinations don't expand
    (the laws are `where`-bounds on the layer constructors, so illegal stacks

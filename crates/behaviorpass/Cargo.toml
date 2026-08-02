@@ -13,13 +13,14 @@ description = "The golf target: bombay's capability machinery + the 24-point lat
 # drives) is pinned by the frozen testkit — grow the internals, not the seam.
 [dependencies]
 bombay = { workspace = true }
+fastpass = { workspace = true }                 # the mailbox (user + control lanes)
+behaviorpass-reference = { workspace = true }   # the shared trace vocabulary (Exit) only
 thiserror = { workspace = true }
-tokio = { workspace = true, features = ["sync"] }
+tokio = { workspace = true, features = ["sync", "time", "macros", "rt"] }
 
 [dev-dependencies]
-behaviorpass-reference = { workspace = true }
 behaviorpass-testkit = { workspace = true }
-tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "time", "sync"] }
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "time", "sync", "test-util"] }
 proptest = "1.11"
 
 [lints]
