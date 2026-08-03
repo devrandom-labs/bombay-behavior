@@ -20,7 +20,7 @@ use crate::behavior::{Acted, Actions, Behavior, Envelope};
 pub struct Supervising<B: Behavior, C: Behavior<Ph = Never>> {
     inner: B,
     liveness: Option<Box<[u64]>>,
-    n_children: usize,
+    n_children: u32,
     build: fn(usize) -> C,
     restarts_left: u32,
 }
@@ -29,7 +29,11 @@ impl<B: Behavior, C: Behavior<Ph = Never>> Supervising<B, C> {
     /// Builds a supervisor with `n_children` live slots and a restart budget.
     /// The supervisor no longer instantiates children — it only tracks liveness
     /// and emits create-specs. All slots start alive, so nothing is allocated.
+    /// A fleet beyond `u32::MAX` slots is a programming error (the old `Vec`
+    /// table could not hold one either) and panics here.
     pub fn new(inner: B, n_children: usize, build: fn(usize) -> C, restarts_left: u32) -> Self {
+        let n_children = u32::try_from(n_children)
+            .expect("a Supervising fleet of more than u32::MAX children is a programming error");
         Self { inner, liveness: None, n_children, build, restarts_left }
     }
 
@@ -37,7 +41,11 @@ impl<B: Behavior, C: Behavior<Ph = Never>> Supervising<B, C> {
     /// the old table did.
     #[must_use]
     pub fn is_alive(&self, idx: usize) -> bool {
-        assert!(idx < self.n_children, "child slot {idx} out of range ({})", self.n_children);
+        assert!(
+            idx < self.n_children as usize,
+            "child slot {idx} out of range ({})",
+            self.n_children
+        );
         match &self.liveness {
             None => true,
             Some(words) => (words[idx / 64] & (1 << (idx % 64))) != 0,
@@ -47,7 +55,7 @@ impl<B: Behavior, C: Behavior<Ph = Never>> Supervising<B, C> {
     /// The number of supervised slots.
     #[must_use]
     pub fn child_count(&self) -> usize {
-        self.n_children
+        self.n_children as usize
     }
 
     /// Remaining restart budget (test observability).
@@ -61,7 +69,7 @@ impl<B: Behavior, C: Behavior<Ph = Never>> Supervising<B, C> {
     /// case (normal stop, exhausted budget, out-of-range) marks it dead and
     /// yields no create.
     fn on_child_stopped(&mut self, idx: usize, abnormal: bool) -> Vec<C> {
-        if idx >= self.n_children {
+        if idx >= self.n_children as usize {
             return Vec::new();
         }
         if abnormal && self.restarts_left > 0 {
@@ -81,7 +89,7 @@ impl<B: Behavior, C: Behavior<Ph = Never>> Supervising<B, C> {
     /// Marks slot `idx` dead, materializing the all-alive table on first death.
     fn mark_dead(&mut self, idx: usize) {
         let words = self.liveness.get_or_insert_with(|| {
-            vec![u64::MAX; self.n_children.div_ceil(64)].into_boxed_slice()
+            vec![u64::MAX; (self.n_children.div_ceil(64)) as usize].into_boxed_slice()
         });
         words[idx / 64] &= !(1 << (idx % 64));
     }
