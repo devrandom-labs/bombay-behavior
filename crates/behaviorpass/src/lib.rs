@@ -28,7 +28,7 @@ pub use behavior::{Actions, Base, Become, Behavior, Envelope, MailAddr, Transcri
 pub use deadlined::{DeadlineReaction, Deadlined};
 pub use fsm::{Fsm, Move};
 pub use stashing::{StashRoute, Stashing};
-pub use supervising::{Child, Supervising};
+pub use supervising::Supervising;
 pub use watching::{LinkReaction, Watching, otp_propagation};
 
 mod exit; // Exit — the trace-exit vocabulary (moved in-crate; reference crate retired)
