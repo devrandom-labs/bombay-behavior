@@ -4,6 +4,9 @@
 //! Actual spawning — initial and restart — is the future driver's job; this
 //! crate makes only the restart DECISION and emits the create.
 
+use std::alloc::Layout;
+use std::ptr::NonNull;
+
 use bombay::capability::{Never, Step};
 use tokio::time::Instant;
 
@@ -14,12 +17,15 @@ use crate::behavior::{Acted, Actions, Behavior, Envelope};
 /// driver interprets, not an in-place rebuild.
 ///
 /// The liveness table is a LAZY bitset: the constructor state (every slot
-/// alive) is `liveness: None` — zero heap — and a `Box<[u64]>` (bit *k* set ⇒
-/// slot *k* alive) materializes only on the first death. Every op is O(1):
-/// one bounds check plus a single word read/write.
+/// alive) is `liveness: None` — zero heap — and a `Layout::array::<u64>`
+/// buffer (bit *k* set ⇒ slot *k* alive) materializes only on the first
+/// death. The buffer is a THIN pointer: its length, `div_ceil(n_children,
+/// 64)` words, is derivable from `n_children`, so the fat pointer's length
+/// word is elided. Every op is O(1): one bounds check plus a single word
+/// read/write.
 pub struct Supervising<B: Behavior, C: Behavior<Ph = Never>> {
     inner: B,
-    liveness: Option<Box<[u64]>>,
+    liveness: Option<NonNull<u64>>,
     n_children: u32,
     build: fn(usize) -> C,
     restarts_left: u32,
@@ -37,6 +43,30 @@ impl<B: Behavior, C: Behavior<Ph = Never>> Supervising<B, C> {
         Self { inner, liveness: None, n_children, build, restarts_left }
     }
 
+    /// The number of `u64` words the liveness table occupies.
+    fn word_count(&self) -> usize {
+        (self.n_children as usize).div_ceil(64)
+    }
+
+    /// The materialized table as a slice. Call only when `liveness` is `Some`.
+    fn table(&self) -> &[u64] {
+        // SAFETY: the pointer was stored by `mark_dead` from a live
+        // `Layout::array::<u64>(word_count())` allocation of all-ones words;
+        // it stays 8-aligned and valid for that many words until `Drop` frees
+        // it, which happens after every reference to it is dead.
+        let ptr = self.liveness.expect("table() before materialization").as_ptr();
+        unsafe { std::slice::from_raw_parts(ptr, self.word_count()) }
+    }
+
+    /// The materialized table as a mutable slice. Call only when `liveness`
+    /// is `Some`.
+    fn table_mut(&mut self) -> &mut [u64] {
+        // SAFETY: as `table`, and the exclusive `&mut self` borrow guarantees
+        // no other reference to the buffer is live.
+        let ptr = self.liveness.expect("table_mut() before materialization").as_ptr();
+        unsafe { std::slice::from_raw_parts_mut(ptr, self.word_count()) }
+    }
+
     /// Whether slot `idx` is still alive. Panics out of range, like indexing
     /// the old table did.
     #[must_use]
@@ -46,10 +76,10 @@ impl<B: Behavior, C: Behavior<Ph = Never>> Supervising<B, C> {
             "child slot {idx} out of range ({})",
             self.n_children
         );
-        match &self.liveness {
-            None => true,
-            Some(words) => (words[idx / 64] & (1 << (idx % 64))) != 0,
+        if self.liveness.is_none() {
+            return true;
         }
+        (self.table()[idx / 64] & (1 << (idx % 64))) != 0
     }
 
     /// The number of supervised slots.
@@ -76,8 +106,8 @@ impl<B: Behavior, C: Behavior<Ph = Never>> Supervising<B, C> {
             self.restarts_left -= 1;
             // Re-mark live: a no-op while the table is unmaterialized (all
             // alive), a bit set once the bitset exists.
-            if let Some(words) = &mut self.liveness {
-                words[idx / 64] |= 1 << (idx % 64);
+            if self.liveness.is_some() {
+                self.table_mut()[idx / 64] |= 1 << (idx % 64);
             }
             vec![(self.build)(idx)]
         } else {
@@ -88,10 +118,18 @@ impl<B: Behavior, C: Behavior<Ph = Never>> Supervising<B, C> {
 
     /// Marks slot `idx` dead, materializing the all-alive table on first death.
     fn mark_dead(&mut self, idx: usize) {
-        let words = self.liveness.get_or_insert_with(|| {
-            vec![u64::MAX; (self.n_children.div_ceil(64)) as usize].into_boxed_slice()
+        let words = self.word_count();
+        let ptr = self.liveness.get_or_insert_with(|| {
+            let raw = Box::into_raw(vec![u64::MAX; words].into_boxed_slice()); // *mut [u64]
+            // SAFETY: `Box::into_raw` returns a non-null pointer to a live
+            // `Layout::array::<u64>(words)` allocation; `Drop` frees it with
+            // the same layout.
+            NonNull::new(raw.cast::<u64>()).expect("Box::into_raw never returns null")
         });
-        words[idx / 64] &= !(1 << (idx % 64));
+        // SAFETY: `ptr` is the freshly materialized (or existing) table,
+        // valid for `words` 8-aligned u64s, exclusively borrowed here.
+        let table = unsafe { std::slice::from_raw_parts_mut(ptr.as_ptr(), words) };
+        table[idx / 64] &= !(1 << (idx % 64));
     }
 
     /// Remap a supervisor-inner reaction (which creates nothing —
@@ -102,6 +140,30 @@ impl<B: Behavior, C: Behavior<Ph = Never>> Supervising<B, C> {
         Actions { sends: inner.sends, creates: Vec::new(), become_: inner.become_ }
     }
 }
+
+impl<B: Behavior, C: Behavior<Ph = Never>> Drop for Supervising<B, C> {
+    fn drop(&mut self) {
+        if let Some(ptr) = self.liveness {
+            let words = self.word_count();
+            if words > 0 {
+                // SAFETY: `ptr` came from `Box::into_raw` on a
+                // `vec![u64::MAX; words]` boxed slice — an allocation of
+                // exactly `Layout::array::<u64>(words)` — and is freed here
+                // exactly once, after every reference to it is dead.
+                let layout = Layout::array::<u64>(words)
+                    .expect("words ≤ u32::MAX/64 ⇒ the layout cannot overflow");
+                unsafe { std::alloc::dealloc(ptr.as_ptr().cast(), layout) };
+            }
+        }
+    }
+}
+
+// SAFETY: `liveness` is a uniquely-owned heap buffer (the same ownership a
+// `Box<[u64]>` would carry) — moving the supervisor to another thread moves
+// the ownership with it, and `Drop` frees it on whichever thread drops it.
+// The remaining fields — `inner: B`, a `fn` pointer, two `u32`s — are `Send`
+// under the bounds below (`fn` pointers are `Send` unconditionally).
+unsafe impl<B: Behavior + Send, C: Behavior<Ph = Never> + Send> Send for Supervising<B, C> {}
 
 impl<B, C> Behavior for Supervising<B, C>
 where
