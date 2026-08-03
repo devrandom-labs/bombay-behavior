@@ -9,27 +9,18 @@ use tokio::time::Instant;
 
 use crate::behavior::{Acted, Actions, Behavior, Envelope};
 
-/// One supervised child slot: liveness only. The fold itself lives in the
-/// driver, not here — the supervisor tracks whether the slot is up and emits a
-/// create-spec when it decides to restart.
-pub struct Child {
-    alive: bool,
-}
-
-impl Child {
-    /// Whether the child is still alive.
-    #[must_use]
-    pub fn alive(&self) -> bool {
-        self.alive
-    }
-}
-
 /// A `Behavior` that supervises children: the OUTER fold deciding restarts.
 /// One-for-one, budget-bounded — model grade. A restart is a `create` the
 /// driver interprets, not an in-place rebuild.
+///
+/// The liveness table is a LAZY bitset: the constructor state (every slot
+/// alive) is `liveness: None` — zero heap — and a `Box<[u64]>` (bit *k* set ⇒
+/// slot *k* alive) materializes only on the first death. Every op is O(1):
+/// one bounds check plus a single word read/write.
 pub struct Supervising<B: Behavior, C: Behavior<Ph = Never>> {
     inner: B,
-    children: Vec<Child>,
+    liveness: Option<Box<[u64]>>,
+    n_children: usize,
     build: fn(usize) -> C,
     restarts_left: u32,
 }
@@ -37,18 +28,30 @@ pub struct Supervising<B: Behavior, C: Behavior<Ph = Never>> {
 impl<B: Behavior, C: Behavior<Ph = Never>> Supervising<B, C> {
     /// Builds a supervisor with `n_children` live slots and a restart budget.
     /// The supervisor no longer instantiates children — it only tracks liveness
-    /// and emits create-specs.
+    /// and emits create-specs. All slots start alive, so nothing is allocated.
     pub fn new(inner: B, n_children: usize, build: fn(usize) -> C, restarts_left: u32) -> Self {
-        let children = (0..n_children).map(|_| Child { alive: true }).collect();
-        Self { inner, children, build, restarts_left }
+        Self { inner, liveness: None, n_children, build, restarts_left }
     }
 
-    /// The child table (test observability).
-    pub fn children(&self) -> &[Child] {
-        &self.children
+    /// Whether slot `idx` is still alive. Panics out of range, like indexing
+    /// the old table did.
+    #[must_use]
+    pub fn is_alive(&self, idx: usize) -> bool {
+        assert!(idx < self.n_children, "child slot {idx} out of range ({})", self.n_children);
+        match &self.liveness {
+            None => true,
+            Some(words) => (words[idx / 64] & (1 << (idx % 64))) != 0,
+        }
+    }
+
+    /// The number of supervised slots.
+    #[must_use]
+    pub fn child_count(&self) -> usize {
+        self.n_children
     }
 
     /// Remaining restart budget (test observability).
+    #[must_use]
     pub fn restarts_left(&self) -> u32 {
         self.restarts_left
     }
@@ -58,17 +61,29 @@ impl<B: Behavior, C: Behavior<Ph = Never>> Supervising<B, C> {
     /// case (normal stop, exhausted budget, out-of-range) marks it dead and
     /// yields no create.
     fn on_child_stopped(&mut self, idx: usize, abnormal: bool) -> Vec<C> {
-        let Some(child) = self.children.get_mut(idx) else {
+        if idx >= self.n_children {
             return Vec::new();
-        };
+        }
         if abnormal && self.restarts_left > 0 {
             self.restarts_left -= 1;
-            child.alive = true;
+            // Re-mark live: a no-op while the table is unmaterialized (all
+            // alive), a bit set once the bitset exists.
+            if let Some(words) = &mut self.liveness {
+                words[idx / 64] |= 1 << (idx % 64);
+            }
             vec![(self.build)(idx)]
         } else {
-            child.alive = false;
+            self.mark_dead(idx);
             Vec::new()
         }
+    }
+
+    /// Marks slot `idx` dead, materializing the all-alive table on first death.
+    fn mark_dead(&mut self, idx: usize) {
+        let words = self.liveness.get_or_insert_with(|| {
+            vec![u64::MAX; self.n_children.div_ceil(64)].into_boxed_slice()
+        });
+        words[idx / 64] &= !(1 << (idx % 64));
     }
 
     /// Remap a supervisor-inner reaction (which creates nothing —
@@ -137,12 +152,12 @@ mod tests {
         let mut sup = supervisor(1);
         let actions = sup.step(Envelope::ChildStopped { idx: 0, abnormal: true }).await.unwrap();
         assert_eq!(actions.creates.len(), 1, "the restart emits one create-spec for the driver");
-        assert!(sup.children()[0].alive(), "the abnormal child's slot is marked live again");
+        assert!(sup.is_alive(0), "the abnormal child's slot is marked live again");
         assert_eq!(sup.restarts_left(), 0, "the restart spent one budget unit");
 
         let actions = sup.step(Envelope::ChildStopped { idx: 0, abnormal: true }).await.unwrap();
         assert_eq!(actions.creates.len(), 0, "no budget ⇒ no create emitted");
-        assert!(!sup.children()[0].alive(), "no budget ⇒ give up");
+        assert!(!sup.is_alive(0), "no budget ⇒ give up");
     }
 
     #[tokio::test]
@@ -150,7 +165,7 @@ mod tests {
         let mut sup = supervisor(5);
         let actions = sup.step(Envelope::ChildStopped { idx: 0, abnormal: false }).await.unwrap();
         assert_eq!(actions.creates.len(), 0, "a normal stop emits no create");
-        assert!(!sup.children()[0].alive(), "a normal stop is final under every policy");
+        assert!(!sup.is_alive(0), "a normal stop is final under every policy");
         assert_eq!(sup.restarts_left(), 5, "no budget spent on a normal stop");
     }
 }

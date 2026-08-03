@@ -93,7 +93,7 @@ async fn supervising_zero_budget_never_restarts() {
     let mut sup = supervisor(0);
     let actions = sup.step(Envelope::ChildStopped { idx: 0, abnormal: true }).await.expect("no error");
     assert!(actions.creates.is_empty(), "zero budget ⇒ zero creates");
-    assert!(!sup.children()[0].alive(), "zero budget ⇒ give up");
+    assert!(!sup.is_alive(0), "zero budget ⇒ give up");
     assert_eq!(sup.restarts_left(), 0);
 }
 
@@ -104,7 +104,7 @@ async fn supervising_budget_spends_exactly_one_per_restart() {
     for _ in 0..3 {
         let actions = sup.step(Envelope::ChildStopped { idx: 0, abnormal: true }).await.expect("no error");
         assert_eq!(actions.creates.len(), 1, "each abnormal stop within budget emits one create");
-        assert!(sup.children()[0].alive());
+        assert!(sup.is_alive(0));
     }
     assert_eq!(sup.restarts_left(), u32::MAX - 3, "exactly one unit spent per restart");
 }
@@ -119,7 +119,7 @@ async fn supervising_out_of_range_slot_is_benign() {
         assert!(actions.creates.is_empty(), "out-of-range slot {idx} emits nothing");
     }
     assert_eq!(sup.restarts_left(), 5, "out-of-range stops spend no budget");
-    assert!(sup.children()[0].alive(), "the in-range slot is untouched");
+    assert!(sup.is_alive(0), "the in-range slot is untouched");
 }
 
 /// Multiple children: slots are independent — one child's death does not
@@ -127,19 +127,19 @@ async fn supervising_out_of_range_slot_is_benign() {
 #[tokio::test]
 async fn supervising_multi_child_slots_are_independent() {
     let mut sup = Supervising::new(inner(), 3, |_| kid(), 5);
-    assert_eq!(sup.children().len(), 3, "n_children live slots at birth");
-    assert!(sup.children().iter().all(|c| c.alive()));
+    assert_eq!(sup.child_count(), 3, "n_children live slots at birth");
+    assert!((0..sup.child_count()).all(|i| sup.is_alive(i)));
 
     let actions = sup.step(Envelope::ChildStopped { idx: 1, abnormal: false }).await.expect("no error");
     assert!(actions.creates.is_empty(), "a normal stop emits nothing");
-    assert!(sup.children()[0].alive());
-    assert!(!sup.children()[1].alive(), "only the stopped slot dies");
-    assert!(sup.children()[2].alive());
+    assert!(sup.is_alive(0));
+    assert!(!sup.is_alive(1), "only the stopped slot dies");
+    assert!(sup.is_alive(2));
 
     let actions = sup.step(Envelope::ChildStopped { idx: 0, abnormal: true }).await.expect("no error");
     assert_eq!(actions.creates.len(), 1, "the abnormal slot restarts independently");
-    assert!(sup.children()[0].alive(), "restart re-marks its own slot live");
-    assert!(!sup.children()[1].alive(), "other slots unaffected");
+    assert!(sup.is_alive(0), "restart re-marks its own slot live");
+    assert!(!sup.is_alive(1), "other slots unaffected");
     assert_eq!(sup.restarts_left(), 4);
 }
 
@@ -150,7 +150,7 @@ async fn supervising_multi_child_slots_are_independent() {
 async fn supervising_lifecycle_start_restart_exhaust() {
     let mut sup = supervisor(2);
     // start: slot alive, budget 2
-    assert!(sup.children()[0].alive());
+    assert!(sup.is_alive(0));
     assert_eq!(sup.restarts_left(), 2);
     // abnormal → restart #1
     let a = sup.step(Envelope::ChildStopped { idx: 0, abnormal: true }).await.expect("no error");
@@ -163,7 +163,7 @@ async fn supervising_lifecycle_start_restart_exhaust() {
     // abnormal → exhausted: dead, no create
     let a = sup.step(Envelope::ChildStopped { idx: 0, abnormal: true }).await.expect("no error");
     assert!(a.creates.is_empty());
-    assert!(!sup.children()[0].alive());
+    assert!(!sup.is_alive(0));
     assert_eq!(sup.restarts_left(), 0, "an exhausted budget never goes negative");
 }
 
@@ -187,7 +187,7 @@ async fn supervising_forwards_user_actions_unchanged() {
     let actions = sup.step(Envelope::User(9)).await.expect("no error");
     assert_eq!(actions.become_, Step::Stop(Exit::Normal), "an inner Stop rides out unchanged");
     assert_eq!(actions.sends, vec![(MailAddr(7), 9)]);
-    assert!(sup.children()[0].alive() && sup.children()[1].alive(), "user traffic never touches children");
+    assert!(sup.is_alive(0) && sup.is_alive(1), "user traffic never touches children");
 }
 
 // ---------------------------------------------------------------------------
@@ -251,8 +251,8 @@ fn fold_supervising_and_check(rt: &tokio::runtime::Runtime, n_children: usize, b
             assert!(actions.sends.is_empty(), "op #{i}: supervision emits no sends");
             assert_eq!(actions.become_, Step::Continue, "op #{i}: supervision never becomes");
             assert_eq!(sup.restarts_left(), model.restarts_left, "op #{i}: budget accounting");
-            for (j, (slot, alive)) in sup.children().iter().zip(&model.alive).enumerate() {
-                assert_eq!(slot.alive(), *alive, "op #{i}: slot {j} liveness");
+            for (j, alive) in model.alive.iter().copied().enumerate() {
+                assert_eq!(sup.is_alive(j), alive, "op #{i}: slot {j} liveness");
             }
         }
     });

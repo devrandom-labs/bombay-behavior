@@ -148,12 +148,12 @@ async fn supervising_restarts_within_budget_only() {
 
     let actions = sup.step(Envelope::ChildStopped { idx: 0, abnormal: true }).await.unwrap();
     assert_eq!(actions.creates.len(), 1, "the restart emits a create-spec");
-    assert!(sup.children()[0].alive());
+    assert!(sup.is_alive(0));
     assert_eq!(sup.restarts_left(), 0);
 
     let actions = sup.step(Envelope::ChildStopped { idx: 0, abnormal: true }).await.unwrap();
     assert_eq!(actions.creates.len(), 0, "budget exhausted ⇒ no create");
-    assert!(!sup.children()[0].alive(), "budget exhausted ⇒ dead");
+    assert!(!sup.is_alive(0), "budget exhausted ⇒ dead");
 
     // A normal stop, on a fresh supervisor, emits no create and spends nothing.
     let mut sup2 = Supervising::new(
@@ -166,7 +166,7 @@ async fn supervising_restarts_within_budget_only() {
     );
     let actions = sup2.step(Envelope::ChildStopped { idx: 0, abnormal: false }).await.unwrap();
     assert_eq!(actions.creates.len(), 0, "a normal stop emits no create");
-    assert!(!sup2.children()[0].alive(), "a normal stop is final");
+    assert!(!sup2.is_alive(0), "a normal stop is final");
     assert_eq!(sup2.restarts_left(), 5, "no budget spent on a normal stop");
 }
 
