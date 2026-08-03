@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
-# GATE for the behaviorpass ADVERSARIAL loop: runs after each measured run. A
-# non-zero exit blocks `keep`. The loop may ONLY add new test files under
-# crates/behaviorpass/tests/; it must NOT touch src, the existing oracle, or any
-# manifest. Enforcement (a BASELINE diff), not trust.
+# GATE for the behaviorpass PERF loop: runs after each measured run. A non-zero
+# exit blocks `keep`. The loop optimizes the `Supervising` children mechanism
+# and MAY ONLY edit `crates/behaviorpass/src/supervising.rs` (+ `lib.rs`'s
+# supervising re-export) and the Supervising-specific tests it needs to keep
+# green. Everything else — the OTHER capability modules, the manifests, the
+# ruler (the perf example), and this harness — is FROZEN. Enforcement (a
+# BASELINE diff), not trust.
 set -uo pipefail
 
 if ! command -v cargo >/dev/null 2>&1; then
@@ -16,27 +19,38 @@ done
 
 base=$(cat .auto/BASELINE 2>/dev/null || true)
 
-# Gate 1 — FROZEN surfaces. The code under test, the existing oracle, and the
-# manifests are immutable: the loop closes gaps by ADDING tests, never by
-# editing the SUT or weakening what already passes.
+# Gate 1 — FROZEN surfaces. The loop may reshape Supervising's REPRESENTATION and
+# its bespoke getters, but never: another capability's source, the generic
+# Behavior grammar, a manifest, the measurement ruler, or the harness itself.
 FROZEN=(
-	crates/behaviorpass/src
-	crates/behaviorpass/tests/oracle.rs
+	crates/behaviorpass/src/behavior.rs
+	crates/behaviorpass/src/deadlined.rs
+	crates/behaviorpass/src/stashing.rs
+	crates/behaviorpass/src/watching.rs
+	crates/behaviorpass/src/fsm.rs
+	crates/behaviorpass/src/exit.rs
+	crates/behaviorpass/examples/perf_supervising.rs
 	Cargo.toml
 	crates/behaviorpass/Cargo.toml
+	.auto/measure.sh
+	.auto/checks.sh
+	.auto/prompt.md
+	.auto/hooks/before.sh
 )
 if [ -n "${base}" ]; then
 	if ! git diff --quiet "${base}" -- "${FROZEN[@]}"; then
-		echo "CHECK FAIL: a frozen surface (src / oracle / manifest / metric) was modified — the loop may only ADD crates/behaviorpass/tests/*.rs"
+		echo "CHECK FAIL: a frozen surface was modified — the loop may only touch src/supervising.rs (+ its tests). Other modules / manifests / the ruler / the harness are immutable."
 		exit 1
 	fi
 fi
 
-# Gate 2 — the suite must compile and pass on the REAL code. A red suite means a
-# test fails on the real code (a bad test, or a finding); either way the
-# mutation measurement is invalid.
-if ! cargo test -p behaviorpass >/dev/null 2>&1; then
-	echo "CHECK FAIL: the test suite is not green on the real code"
+# Gate 2 — the generic Behavior contract must hold. The whole suite (every
+# capability's existing tests, incl. Supervising's behavior assertions) must
+# compile and pass on the REAL code, and every target (examples/benches) must
+# still build. A representation change that alters what `step`/`next_deadline`
+# observably do breaks a test here.
+if ! cargo test -p behaviorpass --all-targets >/dev/null 2>&1; then
+	echo "CHECK FAIL: the suite is not green on the real code (behavior changed, or a test/example no longer compiles)"
 	exit 1
 fi
 

@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
-# Canonical benchmark entrypoint for the behaviorpass concision loop.
+# Canonical benchmark entrypoint for the behaviorpass PERF loop (the Supervising
+# children mechanism).
 #
-# Workload: the behaviorpass metric harness (.auto/measure.sh →
-# behaviorpass-perf), which reports the code-only LOC of the SUT capability
-# machinery and SCORE = K / LOC.
+# Workload: .auto/measure.sh builds + execs the frozen ruler
+# (crates/behaviorpass/examples/perf_supervising.rs), which measures the SPACE
+# footprint of Supervising's liveness table through the public API.
 #
-# Primary metric:   score      = K / code_loc   (MAXIMIZE — fewer lines)
-# Secondary metric: code_loc   (parsed from the perf bin)
+# Primary metric:   score = 1e6 / (1 + space_bytes)   (MAXIMIZE — smaller table)
+# Secondary (info): space_bytes / alloc_bytes / struct_size / step throughput
 #
-# Determinism: SCORE is a pure function of the source tree — no network, no
-# time-of-day dependence. A compile failure makes measure.sh emit
-# METRIC score=0, which passes through unchanged so the loop auto-reverts.
+# A compile/run failure makes measure.sh emit METRIC score=0, which passes
+# through unchanged so the loop auto-reverts.
 #
-# Correctness is NOT measured here; .auto/checks.sh is the hard gate
-# (trace-equality + compile_fail + clippy + frozen files).
+# Correctness is NOT measured here; .auto/checks.sh is the hard gate (frozen
+# surfaces + the whole suite green, which pins the generic Behavior contract).
 #
 # Run UNSANDBOXED (cargo hangs under a sandboxed shell).
 set -uo pipefail
