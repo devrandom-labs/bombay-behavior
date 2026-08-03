@@ -7,7 +7,7 @@
 # footprint of Supervising's liveness table through the public API.
 #
 # Primary metric:   score = 1e6 / (1 + space_bytes)   (MAXIMIZE — smaller table)
-# Secondary (info): space_bytes / alloc_bytes / struct_size / step throughput
+# Secondary:        space_bytes / alloc_bytes / struct_size / step throughput
 #
 # A compile/run failure makes measure.sh emit METRIC score=0, which passes
 # through unchanged so the loop auto-reverts.
@@ -41,10 +41,12 @@ if [ -z "${score}" ]; then
 	exit 1
 fi
 
-loc=$(printf '%s\n' "$out" | grep -oE 'code_loc=[0-9]+' | head -n1 | cut -d= -f2)
-
 echo "METRIC score=${score}"
-[ -n "${loc}" ] && echo "METRIC code_loc=${loc}"
-# Re-emit measure.sh's info/survivor lines so the loop sees the remaining gaps.
-printf '%s\n' "$out" | grep -E '^(info|surviving|MISSED|crates/)' || true
+# Secondary metrics as METRIC lines so the loop records where the bytes are.
+for key in space_bytes alloc_bytes struct_size step_throughput_per_s; do
+	val=$(printf '%s\n' "$out" | grep -oE "^info ${key}=[0-9.]+" | head -n1 | cut -d= -f2)
+	[ -n "${val}" ] && echo "METRIC ${key}=${val}"
+done
+# Re-emit measure.sh's info lines so the loop sees the full breakdown.
+printf '%s\n' "$out" | grep -E '^info' || true
 exit 0
