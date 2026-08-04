@@ -1,85 +1,145 @@
 //! Supervising invariant suite — the "adversarial" additions to
-//! `tests/oracle.rs`. Targets the Supervising survivor (supervising.rs:108
-//! `next_deadline` -> `None`) and pins the restart algebra: abnormal-within-
-//! budget emits exactly ONE create and re-marks the slot live; normal /
-//! exhausted / out-of-range produce zero creates and mark dead; budget
-//! accounting is exact; user traffic passes through unchanged.
+//! `tests/oracle.rs`, re-gated for card 1 (address-parameterized grammar,
+//! nonce-keyed children, outcome-carrying death legs, and the generalized
+//! strategy × policy × windowed-budget supervision space). Pins the restart
+//! ALGEBRA beyond the oracle's canonical laws: budget edges, exact windowed
+//! accounting via `restarts_in_window()`, candidate-set edges (already-dead
+//! slots are never candidates), the policy × outcome matrix, dynamic births,
+//! and the zero / count-only window extremes — plus a differential property
+//! model and a long-sequence fuzz. The survivor coverage (`next_deadline`
+//! forwarding and its orthogonality to supervision events) rides along under
+//! the new envelope shapes.
 //!
-//! Methods: handcrafted edges (budget 0 / 1 / MAX, out-of-range slots,
-//! multi-child) + sequences + lifecycle + a differential property model +
-//! long-sequence fuzz.
+//! NOT here (the oracle owns them): the unknown-nonce / stale-birth /
+//! inner-Restart programmer-bug panics. Unknown nonces are therefore
+//! EXCLUDED from the generated op space — a `ChildStopped` naming one
+//! panics now; the old "out-of-range slot is benign" law is dead, and with
+//! it `restarts_left()` (the budget is windowed; `restarts_in_window()` is
+//! the observable).
 
 use std::time::Duration;
 
-use behaviorpass::{Actions, Base, Behavior, Create, Deadlined, Envelope, Exit, MailAddr, Supervising};
+use behaviorpass::{
+    Actions, Base, Behavior, Crash, Create, Deadlined, Envelope, Exit, MailAddr, RestartPolicy,
+    Strategy, Supervising, Target,
+};
 use behaviorpass::{Never, Step};
 use proptest::prelude::*;
+// `behaviorpass::Strategy` (the enum) shadows the prelude's trait of the
+// same name; bring the trait's methods back into scope anonymously.
+use proptest::strategy::Strategy as _;
 use tokio::time::Instant;
 
-type Kid = Base<u32, u32, Never, &'static str>;
+type Kid = Base<MailAddr, u32, u32, Never, &'static str>;
+/// The inner's Offspring IS the child menu (the relaxed bound): it creates
+/// nothing at runtime, but the type agrees with the fleet.
+type SupInner = Base<MailAddr, (), u64, Never, &'static str, Never, Kid>;
 
 fn kid() -> Kid {
     Base::new(0_u32, |count: &mut u32, n: u32| {
         *count += n;
-        Ok::<Actions<Never, Never, Never>, &'static str>(Actions::cont())
+        Ok::<Actions<MailAddr, Never, Never, Never>, &'static str>(Actions::cont())
     })
 }
 
-fn inner() -> Base<(), u64, Never, &'static str> {
-    Base::new((), |(): &mut (), _: u64| Ok::<Actions<Never, Never, Never>, &'static str>(Actions::cont()))
+fn sup_inner() -> SupInner {
+    Base::new((), |(): &mut (), _: u64| {
+        Ok::<Actions<MailAddr, Never, Never, Kid>, &'static str>(Actions::cont())
+    })
 }
 
-fn supervisor(budget: u32) -> Supervising<Base<(), u64, Never, &'static str>, Kid> {
-    Supervising::new(inner(), 1, |_| kid(), budget)
+fn supervisor(
+    n: usize,
+    strategy: Strategy,
+    policy: RestartPolicy,
+    max_restarts: u32,
+    window: Duration,
+) -> Supervising<SupInner, Kid> {
+    Supervising::new(sup_inner(), |i| i as u64, n, |_| kid(), strategy, policy, max_restarts, window)
 }
 
-/// The one emission a within-budget abnormal stop must produce: exactly one
-/// create, tagged `Restart`, naming the dead slot — the restart-decision
-/// vocabulary (2026-08-04 design): a restart is never a bare birth, and the
-/// slot ties the decision to the surviving mailbox the driver will swap.
-fn assert_one_restart<Ph, Out>(actions: &Actions<Ph, Out, Kid>, expected: usize) {
-    let [Create::Restart { slot, .. }] = actions.creates.as_slice() else {
-        panic!("expected exactly one Restart, got {} creates", actions.creates.len());
-    };
-    assert_eq!(*slot, expected, "the restart names the stopped slot");
+fn stopped(nonce: u64, outcome: Result<Exit<MailAddr>, Crash>, at: Instant) -> Envelope<MailAddr, u64> {
+    Envelope::ChildStopped { nonce, outcome, at }
+}
+
+/// The restart nonces a step emitted, in emission order — the
+/// restart-decision vocabulary: a restart is never a bare birth, and the
+/// nonce ties the decision to the surviving mailbox the driver will swap.
+fn restart_nonces(actions: &Actions<MailAddr, Never, Never, Kid>) -> Vec<u64> {
+    actions
+        .creates
+        .iter()
+        .map(|c| match c {
+            Create::Restart { nonce, .. } => *nonce,
+            Create::Birth { .. } => panic!("supervision never emits a bare birth"),
+        })
+        .collect()
 }
 
 // ---------------------------------------------------------------------------
-// Survivor 3: Supervising::next_deadline forwarding
+// Survivor: Supervising::next_deadline forwarding
 // ---------------------------------------------------------------------------
 
-fn deadlined_inner(due: Option<Instant>) -> Deadlined<Base<(), u64, Never, &'static str>> {
-    Deadlined::new(inner(), due, |_| Ok(Step::Continue))
+fn deadlined_inner(due: Option<Instant>) -> Deadlined<SupInner> {
+    Deadlined::new(sup_inner(), due, |_| Ok(Step::Continue))
 }
 
-/// Supervising must forward the inner deadline — the `next_deadline -> None`
-/// mutant (supervising.rs:108) breaks this.
+/// Supervising must forward the inner deadline.
 #[tokio::test]
 async fn supervising_next_deadline_forwards_inner() {
     let due = Instant::now() + Duration::from_secs(5);
-    let sup = Supervising::new(deadlined_inner(Some(due)), 1, |_| kid(), 3);
+    let sup = Supervising::new(
+        deadlined_inner(Some(due)),
+        |i| i as u64,
+        1,
+        |_| kid(),
+        Strategy::OneForOne,
+        RestartPolicy::Transient,
+        3,
+        Duration::MAX,
+    );
     assert_eq!(sup.next_deadline(), Some(due), "Supervising must forward the inner deadline");
 }
 
 #[tokio::test]
 async fn supervising_next_deadline_none_when_inner_none() {
-    let sup = Supervising::new(deadlined_inner(None), 1, |_| kid(), 3);
+    let sup = Supervising::new(
+        deadlined_inner(None),
+        |i| i as u64,
+        1,
+        |_| kid(),
+        Strategy::OneForOne,
+        RestartPolicy::Transient,
+        3,
+        Duration::MAX,
+    );
     assert_eq!(sup.next_deadline(), None);
 }
 
 /// The min-fold law surfaces through Supervising: the earliest nested deadline
-/// arms the timer, and a ChildStopped event does not disturb it.
+/// arms the timer, and a `ChildStopped` event does not disturb it.
 #[tokio::test]
 async fn supervising_next_deadline_min_folds_and_survives_events() {
     let t1 = Instant::now() + Duration::from_secs(1);
     let t2 = Instant::now() + Duration::from_secs(5);
     let inner_d = Deadlined::new(deadlined_inner(Some(t1)), Some(t2), |_| Ok(Step::Continue));
-    let mut sup = Supervising::new(inner_d, 1, |_| kid(), 3);
+    let mut sup = Supervising::new(
+        inner_d,
+        |i| i as u64,
+        1,
+        |_| kid(),
+        Strategy::OneForOne,
+        RestartPolicy::Transient,
+        3,
+        Duration::MAX,
+    );
     assert_eq!(sup.next_deadline(), Some(t1));
 
-    // A supervision event is orthogonal to the deadline fold.
-    let actions = sup.step(Envelope::ChildStopped { idx: 0, abnormal: false }).await.expect("no error");
-    assert!(actions.creates.is_empty());
+    // A supervision event is orthogonal to the deadline fold: a normal stop
+    // emits nothing and leaves the armed deadline alone.
+    let actions = sup.step(stopped(0, Ok(Exit::Normal), Instant::now())).await.expect("no error");
+    assert!(actions.creates.is_empty(), "a normal stop emits nothing");
+    assert!(!sup.is_alive(0), "the stopped slot dies");
     assert_eq!(sup.next_deadline(), Some(t1), "a child event does not disturb the deadline");
 
     // The Deadline event forwards inward and fires the outer slot.
@@ -95,181 +155,415 @@ async fn supervising_next_deadline_min_folds_and_survives_events() {
 }
 
 // ---------------------------------------------------------------------------
-// Restart algebra: budget edges, slots, forwarding
+// Restart algebra: budget edges, candidate sets, policy matrix, forwarding
 // ---------------------------------------------------------------------------
 
-/// Budget 0: an abnormal stop is final — zero creates, slot dead, budget 0.
+/// Budget 0: a stop is final no matter the outcome or policy — zero creates,
+/// slot dead, zero units spent.
 #[tokio::test]
 async fn supervising_zero_budget_never_restarts() {
-    let mut sup = supervisor(0);
-    let actions = sup.step(Envelope::ChildStopped { idx: 0, abnormal: true }).await.expect("no error");
-    assert!(actions.creates.is_empty(), "zero budget ⇒ zero creates");
+    let t0 = Instant::now();
+    let mut sup = supervisor(1, Strategy::OneForOne, RestartPolicy::Transient, 0, Duration::MAX);
+    let actions = sup.step(stopped(0, Err(Crash::Panicked), t0)).await.expect("no error");
+    assert!(actions.creates.is_empty(), "zero budget ⇒ zero creates, even on a crash");
     assert!(!sup.is_alive(0), "zero budget ⇒ give up");
-    assert_eq!(sup.restarts_left(), 0);
+    assert_eq!(sup.restarts_in_window(), 0);
+
+    // Even Permanent cannot restart without budget.
+    let mut sup = supervisor(1, Strategy::OneForOne, RestartPolicy::Permanent, 0, Duration::MAX);
+    let actions = sup.step(stopped(0, Ok(Exit::Normal), t0)).await.expect("no error");
+    assert!(actions.creates.is_empty(), "permanent still needs budget");
+    assert!(!sup.is_alive(0));
+    assert_eq!(sup.restarts_in_window(), 0);
 }
 
-/// u32::MAX budget: restarts spend exactly one unit each, up to exhaustion.
+/// Exact budget accounting across a full lifecycle: every admitted restart
+/// spends exactly one unit; normal stops and budget-denied stops spend none.
 #[tokio::test]
-async fn supervising_budget_spends_exactly_one_per_restart() {
-    let mut sup = supervisor(u32::MAX);
-    for _ in 0..3 {
-        let actions = sup.step(Envelope::ChildStopped { idx: 0, abnormal: true }).await.expect("no error");
-        assert_one_restart(&actions, 0);
-        assert!(sup.is_alive(0));
+async fn supervising_budget_accounting_is_exact_across_lifecycle() {
+    let t0 = Instant::now();
+    let mut sup = supervisor(1, Strategy::OneForOne, RestartPolicy::Transient, u32::MAX, Duration::MAX);
+    for i in 0..3 {
+        let actions = sup.step(stopped(0, Err(Crash::Failed), t0)).await.expect("no error");
+        assert_eq!(restart_nonces(&actions), vec![0]);
+        assert!(sup.is_alive(0), "a restart re-marks its own slot live");
+        assert_eq!(sup.restarts_in_window(), i + 1, "each admitted restart spends exactly one unit");
     }
-    assert_eq!(sup.restarts_left(), u32::MAX - 3, "exactly one unit spent per restart");
+    let actions = sup.step(stopped(0, Ok(Exit::Normal), t0)).await.expect("no error");
+    assert!(actions.creates.is_empty());
+    assert_eq!(sup.restarts_in_window(), 3, "a normal stop spends nothing");
+
+    // Budget 1: the first restart spends the only unit; the second abnormal
+    // stop is denied and spends nothing.
+    let mut sup = supervisor(1, Strategy::OneForOne, RestartPolicy::Transient, 1, Duration::MAX);
+    let actions = sup.step(stopped(0, Err(Crash::Failed), t0)).await.expect("no error");
+    assert_eq!(restart_nonces(&actions), vec![0]);
+    assert_eq!(sup.restarts_in_window(), 1);
+    let actions = sup.step(stopped(0, Err(Crash::Failed), t0)).await.expect("no error");
+    assert!(actions.creates.is_empty(), "an exhausted budget never goes negative");
+    assert!(!sup.is_alive(0));
+    assert_eq!(sup.restarts_in_window(), 1, "a denied stop spends nothing");
 }
 
-/// Out-of-range slots are benign: no create, no panic, no budget spend, and
-/// the rest of the table is untouched.
-#[tokio::test]
-async fn supervising_out_of_range_slot_is_benign() {
-    let mut sup = supervisor(5);
-    for idx in [1usize, 999, usize::MAX] {
-        let actions = sup.step(Envelope::ChildStopped { idx, abnormal: true }).await.expect("no error");
-        assert!(actions.creates.is_empty(), "out-of-range slot {idx} emits nothing");
-    }
-    assert_eq!(sup.restarts_left(), 5, "out-of-range stops spend no budget");
-    assert!(sup.is_alive(0), "the in-range slot is untouched");
-}
-
-/// Multiple children: slots are independent — one child's death does not
-/// disturb the others.
+/// Multiple children under `OneForOne`: slots are independent — one child's
+/// death does not disturb the others.
 #[tokio::test]
 async fn supervising_multi_child_slots_are_independent() {
-    let mut sup = Supervising::new(inner(), 3, |_| kid(), 5);
+    let t0 = Instant::now();
+    let mut sup = supervisor(3, Strategy::OneForOne, RestartPolicy::Transient, 5, Duration::MAX);
     assert_eq!(sup.child_count(), 3, "n_children live slots at birth");
-    assert!((0..sup.child_count()).all(|i| sup.is_alive(i)));
+    assert!((0..3).all(|n| sup.is_alive(n)));
 
-    let actions = sup.step(Envelope::ChildStopped { idx: 1, abnormal: false }).await.expect("no error");
+    let actions = sup.step(stopped(1, Ok(Exit::Normal), t0)).await.expect("no error");
     assert!(actions.creates.is_empty(), "a normal stop emits nothing");
     assert!(sup.is_alive(0));
     assert!(!sup.is_alive(1), "only the stopped slot dies");
     assert!(sup.is_alive(2));
 
-    let actions = sup.step(Envelope::ChildStopped { idx: 0, abnormal: true }).await.expect("no error");
-    assert_one_restart(&actions, 0);
+    let actions = sup.step(stopped(0, Err(Crash::Failed), t0)).await.expect("no error");
+    assert_eq!(restart_nonces(&actions), vec![0]);
     assert!(sup.is_alive(0), "restart re-marks its own slot live");
     assert!(!sup.is_alive(1), "other slots unaffected");
-    assert_eq!(sup.restarts_left(), 4);
+    assert!(sup.is_alive(2));
+    assert_eq!(sup.restarts_in_window(), 1);
 }
 
-/// An abnormal stop with budget re-marks the slot ALIVE and emits exactly one
-/// create — the restart DECISION, one-for-one (already unit-covered; here with
-/// exact slot/budget state across a full lifecycle: start → restart → exhaust).
+/// `OneForAll` candidate-set edge: an ALREADY-DEAD slot is never a candidate.
+/// Kill 0 normally (it dies, no restart under Transient), then kill 1
+/// abnormally with budget to spare: the candidate set is the LIVE children
+/// {1, 2} — NOT 0 — emitted dead-first then in birth-sequence order.
 #[tokio::test]
-async fn supervising_lifecycle_start_restart_exhaust() {
-    let mut sup = supervisor(2);
-    // start: slot alive, budget 2
-    assert!(sup.is_alive(0));
-    assert_eq!(sup.restarts_left(), 2);
-    // abnormal → restart #1
-    let a = sup.step(Envelope::ChildStopped { idx: 0, abnormal: true }).await.expect("no error");
-    assert_one_restart(&a, 0);
-    assert_eq!(sup.restarts_left(), 1);
-    // abnormal → restart #2 (last unit)
-    let a = sup.step(Envelope::ChildStopped { idx: 0, abnormal: true }).await.expect("no error");
-    assert_one_restart(&a, 0);
-    assert_eq!(sup.restarts_left(), 0);
-    // abnormal → exhausted: dead, no create
-    let a = sup.step(Envelope::ChildStopped { idx: 0, abnormal: true }).await.expect("no error");
-    assert!(a.creates.is_empty());
+async fn supervising_one_for_all_skips_already_dead_slots() {
+    let t0 = Instant::now();
+    let mut sup = supervisor(3, Strategy::OneForAll, RestartPolicy::Transient, 10, Duration::MAX);
+    let actions = sup.step(stopped(0, Ok(Exit::Normal), t0)).await.expect("no error");
+    assert!(actions.creates.is_empty(), "transient never restarts a normal stop");
     assert!(!sup.is_alive(0));
-    assert_eq!(sup.restarts_left(), 0, "an exhausted budget never goes negative");
+
+    let actions = sup.step(stopped(1, Err(Crash::Panicked), t0)).await.expect("no error");
+    assert_eq!(restart_nonces(&actions), vec![1, 2], "live candidates only: dead child first, then seq order");
+    assert!(!sup.is_alive(0), "the already-dead slot is not re-marked");
+    assert!(sup.is_alive(1) && sup.is_alive(2), "the live candidates are re-marked live");
+    assert_eq!(sup.restarts_in_window(), 2, "one unit per restarted candidate — the dead slot costs nothing");
 }
 
-/// User traffic passes through Supervising unchanged: sends and become_ ride
-/// out, creates stay empty, children untouched.
+/// `RestForOne` candidate-set edge: candidates are the LIVE children born at
+/// seq >= the dead child's seq — an already-dead YOUNGER sibling is skipped.
+#[tokio::test]
+async fn supervising_rest_for_one_skips_dead_younger_sibling() {
+    let t0 = Instant::now();
+    let mut sup = supervisor(4, Strategy::RestForOne, RestartPolicy::Transient, 10, Duration::MAX);
+    // Kill the youngest (nonce 3, seq 3) normally: it dies and stays dead.
+    let actions = sup.step(stopped(3, Ok(Exit::Normal), t0)).await.expect("no error");
+    assert!(actions.creates.is_empty());
+    assert!(!sup.is_alive(3));
+
+    // Kill nonce 1 (seq 1) abnormally: live candidates with seq >= 1 are
+    // {1, 2} — the dead seq-3 sibling is skipped, the seq-0 elder untouched.
+    let actions = sup.step(stopped(1, Err(Crash::Failed), t0)).await.expect("no error");
+    assert_eq!(restart_nonces(&actions), vec![1, 2], "dead first, then seq order; the dead younger sibling is skipped");
+    assert!(sup.is_alive(0), "an older sibling is never a candidate");
+    assert!(sup.is_alive(1) && sup.is_alive(2));
+    assert!(!sup.is_alive(3), "the skipped sibling stays dead");
+    assert_eq!(sup.restarts_in_window(), 2);
+}
+
+/// The policy × outcome matrix, in one sweep: Permanent restarts EVERY
+/// outcome (normal and crash alike); Temporary restarts NONE; Transient
+/// restarts exactly the abnormal ones (`Err(Crash)` in either domain, or an
+/// `Ok` exit outside `{Normal, Collected}`).
+#[tokio::test]
+async fn supervising_policy_matrix_gates_every_outcome() {
+    let t0 = Instant::now();
+    let outcomes: [(Result<Exit<MailAddr>, Crash>, bool); 5] = [
+        (Ok(Exit::Normal), false),
+        (Ok(Exit::Collected), false),
+        (Ok(Exit::LinkDied(MailAddr(9))), true),
+        (Err(Crash::Failed), true),
+        (Err(Crash::Panicked), true),
+    ];
+    for policy in [RestartPolicy::Permanent, RestartPolicy::Transient, RestartPolicy::Temporary] {
+        for (outcome, abnormal) in outcomes {
+            let mut sup = supervisor(1, Strategy::OneForOne, policy, 5, Duration::MAX);
+            let actions = sup.step(stopped(0, outcome, t0)).await.expect("no error");
+            let expect_restart = match policy {
+                RestartPolicy::Permanent => true,
+                RestartPolicy::Transient => abnormal,
+                RestartPolicy::Temporary => false,
+            };
+            if expect_restart {
+                assert_eq!(restart_nonces(&actions), vec![0], "{policy:?} must restart {outcome:?}");
+                assert!(sup.is_alive(0), "{policy:?} re-marks the slot live after {outcome:?}");
+                assert_eq!(sup.restarts_in_window(), 1, "{policy:?} spends one unit on {outcome:?}");
+            } else {
+                assert!(actions.creates.is_empty(), "{policy:?} never restarts {outcome:?}");
+                assert!(!sup.is_alive(0), "{policy:?} lets the slot die after {outcome:?}");
+                assert_eq!(sup.restarts_in_window(), 0, "{policy:?} spends nothing on {outcome:?}");
+            }
+        }
+    }
+}
+
+/// User traffic passes through Supervising unchanged: sends (as
+/// `Target::Global`) and become_ ride out, creates stay empty, children
+/// untouched.
 #[tokio::test]
 async fn supervising_forwards_user_actions_unchanged() {
-    let sender: Base<(), u64, Never, &'static str, u64, Never> = Base::new((), |(): &mut (), m: u64| {
-        Ok::<Actions<Never, u64, Never>, &'static str>(Actions {
-            sends: vec![(MailAddr(7), m)],
-            creates: Vec::new(),
-            become_: if m == 9 { Step::Stop(Exit::Normal) } else { Step::Continue },
-        })
-    });
-    let mut sup = Supervising::new(sender, 2, |_| kid(), 3);
-    let actions = sup.step(Envelope::User(4)).await.expect("no error");
-    assert_eq!(actions.sends, vec![(MailAddr(7), 4)], "sends pass through unchanged");
+    let sender: Base<MailAddr, (), u64, Never, &'static str, u64, Kid> =
+        Base::new((), |(): &mut (), m: u64| {
+            Ok::<Actions<MailAddr, Never, u64, Kid>, &'static str>(Actions {
+                sends: vec![(Target::Global(MailAddr(7)), m)],
+                creates: Vec::new(),
+                become_: if m == 9 { Step::Stop(Exit::Normal) } else { Step::Continue },
+            })
+        });
+    let mut sup = Supervising::new(
+        sender,
+        |i| i as u64,
+        2,
+        |_| kid(),
+        Strategy::OneForOne,
+        RestartPolicy::Transient,
+        3,
+        Duration::MAX,
+    );
+    let actions = sup.step(Envelope::User { from: MailAddr(1), msg: 4 }).await.expect("no error");
+    assert_eq!(actions.sends, vec![(Target::Global(MailAddr(7)), 4)], "sends pass through unchanged");
     assert!(actions.creates.is_empty(), "Supervising creates nothing of its own");
     assert_eq!(actions.become_, Step::Continue);
 
-    let actions = sup.step(Envelope::User(9)).await.expect("no error");
+    let actions = sup.step(Envelope::User { from: MailAddr(1), msg: 9 }).await.expect("no error");
     assert_eq!(actions.become_, Step::Stop(Exit::Normal), "an inner Stop rides out unchanged");
-    assert_eq!(actions.sends, vec![(MailAddr(7), 9)]);
+    assert_eq!(actions.sends, vec![(Target::Global(MailAddr(7)), 9)]);
     assert!(sup.is_alive(0) && sup.is_alive(1), "user traffic never touches children");
 }
 
-// ---------------------------------------------------------------------------
-// Differential property model + fuzz
-// ---------------------------------------------------------------------------
+/// An inner-emitted Birth is recorded and forwarded AS-IS (the creator-minted
+/// nonce is never rewritten), the liveness table grows, and the dynamic child
+/// is then restartable through a `ChildStopped` naming its nonce.
+#[tokio::test]
+async fn supervising_dynamic_birth_is_recorded_and_restartable() {
+    let t0 = Instant::now();
+    let birthing: SupInner = Base::new((), |(): &mut (), m: u64| {
+        let creates = if m == 42 {
+            vec![Create::Birth { nonce: 7, child: kid() }]
+        } else {
+            Vec::new()
+        };
+        Ok(Actions { sends: Vec::new(), creates, become_: Step::Continue })
+    });
+    let mut sup = Supervising::new(
+        birthing,
+        |i| i as u64,
+        2,
+        |_| kid(),
+        Strategy::OneForOne,
+        RestartPolicy::Transient,
+        5,
+        Duration::MAX,
+    );
+    let actions = sup.step(Envelope::User { from: MailAddr(1), msg: 42 }).await.expect("no error");
+    let [Create::Birth { nonce, .. }] = actions.creates.as_slice() else {
+        panic!("a fresh dynamic birth is emitted as-is, never rewritten");
+    };
+    assert_eq!(*nonce, 7, "the birth keeps the creator-minted nonce");
+    assert_eq!(sup.child_count(), 3, "the dynamic birth joins the table");
+    assert!(sup.is_alive(7), "a dynamic child is born live");
 
-#[derive(Debug, Clone, Copy)]
-enum StopOp {
-    Stop { idx: usize, abnormal: bool },
+    // The dynamic child participates in the restart algebra by its nonce.
+    let actions = sup.step(stopped(7, Err(Crash::Failed), t0)).await.expect("no error");
+    assert_eq!(restart_nonces(&actions), vec![7], "the dynamic child restarts by its nonce");
+    assert!(sup.is_alive(7));
+    assert_eq!(sup.restarts_in_window(), 1);
 }
 
-/// The model: exact budget + liveness accounting, the oracle for the SUT.
+/// Window edge — `Duration::ZERO`: only same-instant restarts count; ANY
+/// later stamp evicts every prior restart.
+#[tokio::test]
+async fn supervising_zero_window_counts_only_same_instant() {
+    let t0 = Instant::now();
+    // Same-instant restarts still occupy the budget.
+    let mut sup = supervisor(1, Strategy::OneForOne, RestartPolicy::Transient, 1, Duration::ZERO);
+    let actions = sup.step(stopped(0, Err(Crash::Failed), t0)).await.expect("no error");
+    assert_eq!(restart_nonces(&actions), vec![0]);
+    let actions = sup.step(stopped(0, Err(Crash::Failed), t0)).await.expect("no error");
+    assert!(actions.creates.is_empty(), "the same-instant restart still occupies the budget");
+    assert!(!sup.is_alive(0));
+    assert_eq!(sup.restarts_in_window(), 1, "the denied stop spent nothing");
+
+    // One millisecond later, the zero window has evicted everything.
+    let mut sup = supervisor(1, Strategy::OneForOne, RestartPolicy::Transient, 1, Duration::ZERO);
+    let _ = sup.step(stopped(0, Err(Crash::Failed), t0)).await.expect("no error");
+    assert_eq!(sup.restarts_in_window(), 1);
+    let actions =
+        sup.step(stopped(0, Err(Crash::Failed), t0 + Duration::from_millis(1))).await.expect("no error");
+    assert_eq!(restart_nonces(&actions), vec![0], "a later stamp always evicts under a zero window");
+    assert_eq!(sup.restarts_in_window(), 1, "the evicted entry no longer counts");
+}
+
+/// Window edge — `Duration::MAX`: the count-only case. No eviction EVER, no
+/// matter how far apart the stamps; the budget exhausts permanently.
+#[tokio::test]
+async fn supervising_max_window_never_evicts() {
+    let t0 = Instant::now();
+    let mut sup = supervisor(1, Strategy::OneForOne, RestartPolicy::Transient, 2, Duration::MAX);
+    let actions = sup.step(stopped(0, Err(Crash::Failed), t0)).await.expect("no error");
+    assert_eq!(restart_nonces(&actions), vec![0]);
+    let actions =
+        sup.step(stopped(0, Err(Crash::Failed), t0 + Duration::from_hours(1))).await.expect("no error");
+    assert_eq!(restart_nonces(&actions), vec![0], "an hour later, nothing has evicted");
+    assert_eq!(sup.restarts_in_window(), 2);
+    let actions =
+        sup.step(stopped(0, Err(Crash::Failed), t0 + Duration::from_hours(2))).await.expect("no error");
+    assert!(actions.creates.is_empty(), "a count-only budget exhausts permanently");
+    assert!(!sup.is_alive(0));
+    assert_eq!(sup.restarts_in_window(), 2);
+}
+
+// ---------------------------------------------------------------------------
+// Differential property model + fuzz (OneForOne × Transient × windowed budget)
+// ---------------------------------------------------------------------------
+
+/// A generated stop outcome, spanning the classification space: Normal and
+/// Collected classify NORMAL; `LinkDied` and both Crash domains classify
+/// ABNORMAL.
+#[derive(Debug, Clone, Copy)]
+enum Outcome {
+    Normal,
+    Collected,
+    LinkDied,
+    Failed,
+    Panicked,
+}
+
+impl Outcome {
+    fn into_envelope(self) -> Result<Exit<MailAddr>, Crash> {
+        match self {
+            Self::Normal => Ok(Exit::Normal),
+            Self::Collected => Ok(Exit::Collected),
+            Self::LinkDied => Ok(Exit::LinkDied(MailAddr(9))),
+            Self::Failed => Err(Crash::Failed),
+            Self::Panicked => Err(Crash::Panicked),
+        }
+    }
+
+    fn is_abnormal(self) -> bool {
+        matches!(self, Self::LinkDied | Self::Failed | Self::Panicked)
+    }
+}
+
+/// One supervision event: a stop at a KNOWN nonce (unknown nonces are a
+/// programmer-bug panic — the oracle owns that law — so the op space never
+/// leaves the fleet), a weighted outcome, and a monotonically accumulating
+/// stamp delta in logical millis (bounded so `t0 + elapsed` never overflows).
+#[derive(Debug, Clone, Copy)]
+struct StopOp {
+    nonce: u64,
+    outcome: Outcome,
+    stamp_delta_ms: u64,
+}
+
+/// The model: exact liveness + windowed-budget accounting, the oracle for
+/// the SUT. Timestamps are logical millis since t0; `u64::MAX` is the
+/// count-only window (no eviction — the prune is skipped wholesale, exactly
+/// as the SUT skips it for `Duration::MAX`).
 struct SupModel {
     alive: Vec<bool>,
-    restarts_left: u32,
+    restarts: Vec<u64>,
+    max_restarts: u32,
+    window_ms: u64,
 }
 
 impl SupModel {
-    fn new(n_children: usize, budget: u32) -> Self {
-        Self { alive: vec![true; n_children], restarts_left: budget }
+    fn new(n_children: usize, max_restarts: u32, window_ms: u64) -> Self {
+        Self { alive: vec![true; n_children], restarts: Vec::new(), max_restarts, window_ms }
     }
 
     /// Fold one child stop; returns the creates the supervisor must emit.
-    fn fold(&mut self, idx: usize, abnormal: bool) -> usize {
-        let Some(slot) = self.alive.get_mut(idx) else {
+    /// Mirrors the SUT's order: the Transient policy gate FIRST (a normal
+    /// outcome marks dead without touching the window), then eviction
+    /// (`age <= window` keeps counting), then the all-or-nothing check
+    /// against the one-candidate set.
+    fn fold(&mut self, nonce: u64, abnormal: bool, now_ms: u64) -> usize {
+        let idx = usize::try_from(nonce).expect("fleet nonces fit usize");
+        if !abnormal {
+            self.alive[idx] = false;
             return 0;
-        };
-        if abnormal && self.restarts_left > 0 {
-            self.restarts_left -= 1;
-            *slot = true;
+        }
+        if self.window_ms != u64::MAX {
+            self.restarts.retain(|&ts| now_ms - ts <= self.window_ms);
+        }
+        if self.restarts.len() < self.max_restarts as usize {
+            self.restarts.push(now_ms);
+            self.alive[idx] = true;
             1
         } else {
-            *slot = false;
+            self.alive[idx] = false;
             0
         }
     }
 }
 
-fn child_stop_strategy(n_children: usize) -> impl proptest::strategy::Strategy<Value = StopOp> {
-    use proptest::prelude::*;
-    // in-range 0..n, exactly n (first out-of-range), and usize::MAX.
+fn outcome_strategy() -> impl proptest::strategy::Strategy<Value = Outcome> {
     prop_oneof![
-        0..n_children,
-        Just(n_children),
-        Just(n_children.saturating_add(999)),
-        Just(usize::MAX),
+        2 => Just(Outcome::Normal),
+        2 => Just(Outcome::Collected),
+        2 => Just(Outcome::LinkDied),
+        3 => Just(Outcome::Failed),
+        3 => Just(Outcome::Panicked),
     ]
-    .prop_flat_map(|idx| (Just(idx), any::<bool>()))
-    .prop_map(|(idx, abnormal)| StopOp::Stop { idx, abnormal })
 }
 
-fn fold_supervising_and_check(rt: &tokio::runtime::Runtime, n_children: usize, budget: u32, ops: &[StopOp]) {
-    let mut model = SupModel::new(n_children, budget);
-    let mut sup = Supervising::new(inner(), n_children, |_| kid(), budget);
+/// Budget edges first: 0 (never restarts), 1 (single unit), MAX (effectively
+/// unbounded), then anything.
+fn budget_strategy() -> impl proptest::strategy::Strategy<Value = u32> {
+    prop_oneof![Just(0_u32), Just(1_u32), Just(u32::MAX), any::<u32>()]
+}
+
+/// Window edges first, in logical millis: 0 (only the same instant counts),
+/// 10 (a small window — eviction exercised against 0..=50ms deltas), MAX
+/// (count-only), then any small window.
+fn window_strategy() -> impl proptest::strategy::Strategy<Value = u64> {
+    prop_oneof![Just(0_u64), Just(10_u64), Just(u64::MAX), 0..=100_u64]
+}
+
+/// Stop ops over the KNOWN nonces `0..fleet` only — a generated unknown
+/// nonce would panic by law, not by bug.
+fn child_stop_strategy(fleet: u64) -> impl proptest::strategy::Strategy<Value = StopOp> {
+    (0..fleet, outcome_strategy(), 0..=50_u64)
+        .prop_map(|(nonce, outcome, stamp_delta_ms)| StopOp { nonce, outcome, stamp_delta_ms })
+}
+
+fn fold_supervising_and_check(
+    rt: &tokio::runtime::Runtime,
+    n_children: usize,
+    budget: u32,
+    window_ms: u64,
+    ops: &[StopOp],
+) {
+    let window = if window_ms == u64::MAX { Duration::MAX } else { Duration::from_millis(window_ms) };
+    let t0 = Instant::now();
+    let mut model = SupModel::new(n_children, budget, window_ms);
+    let mut sup = supervisor(n_children, Strategy::OneForOne, RestartPolicy::Transient, budget, window);
     rt.block_on(async {
+        let mut now_ms = 0_u64;
         for (i, op) in ops.iter().copied().enumerate() {
-            let StopOp::Stop { idx, abnormal } = op;
-            let actions = sup.step(Envelope::ChildStopped { idx, abnormal }).await.expect("no error");
-            let expected = model.fold(idx, abnormal);
+            now_ms += op.stamp_delta_ms;
+            let at = t0 + Duration::from_millis(now_ms);
+            let actions = sup.step(stopped(op.nonce, op.outcome.into_envelope(), at)).await.expect("no error");
+            let expected = model.fold(op.nonce, op.outcome.is_abnormal(), now_ms);
             assert_eq!(actions.creates.len(), expected, "op #{i}: create count");
             assert!(
                 actions.creates
                     .iter()
-                    .all(|c| matches!(c, Create::Restart { slot, .. } if *slot == idx)),
-                "op #{i}: every emission is a restart naming the stopped slot"
+                    .all(|c| matches!(c, Create::Restart { nonce, .. } if *nonce == op.nonce)),
+                "op #{i}: every emission is a Restart naming the stopped nonce"
             );
             assert!(actions.sends.is_empty(), "op #{i}: supervision emits no sends");
             assert_eq!(actions.become_, Step::Continue, "op #{i}: supervision never becomes");
-            assert_eq!(sup.restarts_left(), model.restarts_left, "op #{i}: budget accounting");
+            assert_eq!(sup.restarts_in_window(), model.restarts.len(), "op #{i}: windowed budget accounting");
             for (j, alive) in model.alive.iter().copied().enumerate() {
-                assert_eq!(sup.is_alive(j), alive, "op #{i}: slot {j} liveness");
+                assert_eq!(sup.is_alive(j as u64), alive, "op #{i}: slot {j} liveness");
             }
         }
     });
@@ -278,33 +572,33 @@ fn fold_supervising_and_check(rt: &tokio::runtime::Runtime, n_children: usize, b
 proptest::proptest! {
     #![proptest_config(proptest::prelude::ProptestConfig { cases: 128, ..proptest::prelude::ProptestConfig::default() })]
 
-    /// Random child-stop scripts against budgets and table sizes incl. the
-    /// boundary budgets 0 / 1 / MAX and out-of-range slots: create count,
-    /// budget spend, and every slot's liveness match the independent model
-    /// after every event.
+    /// Random child-stop scripts over a fleet of 4 against the boundary
+    /// budgets 0 / 1 / MAX / any and the boundary windows ZERO / 10ms / MAX /
+    /// any: create count, emission shape, windowed accounting, and every
+    /// slot's liveness match the independent model after EVERY event.
     #[test]
     fn prop_supervising_matches_differential_model(
-        n_children in 0usize..=4,
-        budget in prop_oneof![Just(0u32), Just(1u32), Just(u32::MAX), any::<u32>()],
+        budget in budget_strategy(),
+        window_ms in window_strategy(),
         ops in proptest::collection::vec(child_stop_strategy(4), 0..=20),
     ) {
         let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
-        fold_supervising_and_check(&rt, n_children, budget, &ops);
+        fold_supervising_and_check(&rt, 4, budget, window_ms, &ops);
     }
 }
 
 proptest::proptest! {
     #![proptest_config(proptest::prelude::ProptestConfig { cases: 64, ..proptest::prelude::ProptestConfig::default() })]
 
-    /// Long interleavings: no panic, no negative budget, liveness stays
-    /// model-equal throughout.
+    /// Long interleavings over a fleet of 8: no panic, budget never negative,
+    /// liveness and windowed accounting stay model-equal throughout.
     #[test]
     fn prop_supervising_long_sequences_model_equal(
-        n_children in 1usize..=8,
-        budget in prop_oneof![Just(0u32), Just(1u32), Just(u32::MAX), any::<u32>()],
+        budget in budget_strategy(),
+        window_ms in window_strategy(),
         ops in proptest::collection::vec(child_stop_strategy(8), 0..=64),
     ) {
         let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
-        fold_supervising_and_check(&rt, n_children, budget, &ops);
+        fold_supervising_and_check(&rt, 8, budget, window_ms, &ops);
     }
 }

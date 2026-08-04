@@ -9,9 +9,10 @@
 
 use std::collections::VecDeque;
 
-use behaviorpass::{Behavior, Envelope, Exit, Fsm, Move, run};
+use behaviorpass::{Behavior, Crash, Envelope, Exit, Fsm, MailAddr, Move, run};
 use behaviorpass::{Never, Step};
 use fastpass::{Config, channel};
+use tokio::time::Instant;
 
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -28,7 +29,7 @@ enum Msg {
     Quit,
 }
 
-/// Move::Stop must surface as a `Stop` verdict from `step` — the delete-arm
+/// `Move::Stop` must surface as a `Stop` verdict from `step` — the delete-arm
 /// mutant (fsm.rs:123) makes it fall through to `cont()`.
 #[tokio::test]
 async fn fsm_stop_verdict_rides_out_of_step() {
@@ -38,7 +39,7 @@ async fn fsm_stop_verdict_rides_out_of_step() {
             _ => Move::Stay,
         })
     });
-    let actions = fsm.step(Envelope::User(Msg::Quit)).await.expect("no error");
+    let actions = fsm.step(Envelope::User { from: MailAddr(1), msg: Msg::Quit }).await.expect("no error");
     assert_eq!(
         actions.become_,
         Step::Stop(Exit::Normal),
@@ -56,11 +57,11 @@ async fn fsm_stop_keeps_the_held_buffer() {
             _ => Move::Stay,
         })
     });
-    let _ = fsm.step(Envelope::User(Msg::Work(1))).await;
-    let _ = fsm.step(Envelope::User(Msg::Work(2))).await;
+    let _ = fsm.step(Envelope::User { from: MailAddr(1), msg: Msg::Work(1) }).await;
+    let _ = fsm.step(Envelope::User { from: MailAddr(1), msg: Msg::Work(2) }).await;
     assert_eq!(fsm.held(), 2);
 
-    let actions = fsm.step(Envelope::User(Msg::Quit)).await.expect("no error");
+    let actions = fsm.step(Envelope::User { from: MailAddr(1), msg: Msg::Quit }).await.expect("no error");
     assert_eq!(actions.become_, Step::Stop(Exit::Normal));
     assert_eq!(fsm.held(), 2, "a step-level Stop never drains the held batch");
 }
@@ -87,11 +88,11 @@ async fn fsm_goto_to_the_same_phase_does_not_replay() {
         })
     });
 
-    let _ = fsm.step(Envelope::User(Msg::Work(1))).await; // first sight: defers
+    let _ = fsm.step(Envelope::User { from: MailAddr(1), msg: Msg::Work(1) }).await; // first sight: defers
     assert_eq!(fsm.state(), &vec![1]);
     assert_eq!(fsm.held(), 1);
 
-    let actions = fsm.step(Envelope::User(Msg::Refresh)).await.expect("no error");
+    let actions = fsm.step(Envelope::User { from: MailAddr(1), msg: Msg::Refresh }).await.expect("no error");
     assert_eq!(actions.become_, Step::Continue, "a same-phase Goto is a Continue no-op");
     assert_eq!(fsm.phase(), Ph::Ready);
     assert_eq!(fsm.state(), &vec![1], "same-phase Goto must NOT replay the held batch");
@@ -115,8 +116,8 @@ async fn fsm_stay_never_drains() {
         })
     });
 
-    let _ = fsm.step(Envelope::User(Msg::Work(1))).await; // defers: held=[1]
-    let actions = fsm.step(Envelope::User(Msg::Work(2))).await.expect("no error");
+    let _ = fsm.step(Envelope::User { from: MailAddr(1), msg: Msg::Work(1) }).await; // defers: held=[1]
+    let actions = fsm.step(Envelope::User { from: MailAddr(1), msg: Msg::Work(2) }).await.expect("no error");
     assert_eq!(actions.become_, Step::Continue);
     assert_eq!(fsm.state(), &vec![1, 2], "Stay folds Work(2) only");
     assert_eq!(fsm.held(), 1, "Stay never drains — Work(1) stays held");
@@ -137,14 +138,14 @@ async fn fsm_real_goto_replays_held_fifo_ahead_of_backlog() {
         })
     });
 
-    let _ = fsm.step(Envelope::User(Msg::Work(1))).await;
-    let _ = fsm.step(Envelope::User(Msg::Work(2))).await; // held=[1,2]
-    let actions = fsm.step(Envelope::User(Msg::Promote)).await.expect("no error");
+    let _ = fsm.step(Envelope::User { from: MailAddr(1), msg: Msg::Work(1) }).await;
+    let _ = fsm.step(Envelope::User { from: MailAddr(1), msg: Msg::Work(2) }).await; // held=[1,2]
+    let actions = fsm.step(Envelope::User { from: MailAddr(1), msg: Msg::Promote }).await.expect("no error");
     assert_eq!(actions.become_, Step::Continue, "a completed replay is Continue");
     assert_eq!(fsm.phase(), Ph::Ready);
     assert_eq!(fsm.state(), &vec![1, 2], "the deferred batch replays FIFO");
 
-    let _ = fsm.step(Envelope::User(Msg::Work(3))).await; // backlog after replay
+    let _ = fsm.step(Envelope::User { from: MailAddr(1), msg: Msg::Work(3) }).await; // backlog after replay
     assert_eq!(fsm.state(), &vec![1, 2, 3], "the backlog folds after the replay");
     assert_eq!(fsm.held(), 0);
 }
@@ -160,10 +161,10 @@ async fn fsm_drain_stop_abandons_the_rest_and_re_holds() {
             _ => Move::Stay,
         })
     });
-    let _ = fsm.step(Envelope::User(Msg::Work(1))).await;
-    let _ = fsm.step(Envelope::User(Msg::Work(2))).await; // held=[1,2]
+    let _ = fsm.step(Envelope::User { from: MailAddr(1), msg: Msg::Work(1) }).await;
+    let _ = fsm.step(Envelope::User { from: MailAddr(1), msg: Msg::Work(2) }).await; // held=[1,2]
 
-    let actions = fsm.step(Envelope::User(Msg::Promote)).await.expect("no error");
+    let actions = fsm.step(Envelope::User { from: MailAddr(1), msg: Msg::Promote }).await.expect("no error");
     assert_eq!(
         actions.become_,
         Step::Stop(Exit::Normal),
@@ -183,8 +184,8 @@ async fn fsm_drain_re_defer_is_snapshot_bounded() {
             _ => Move::Stay,
         })
     });
-    let _ = fsm.step(Envelope::User(Msg::Work(1))).await; // held=[1]
-    let actions = fsm.step(Envelope::User(Msg::Promote)).await.expect("no error");
+    let _ = fsm.step(Envelope::User { from: MailAddr(1), msg: Msg::Work(1) }).await; // held=[1]
+    let actions = fsm.step(Envelope::User { from: MailAddr(1), msg: Msg::Promote }).await.expect("no error");
     assert_eq!(actions.become_, Step::Continue, "a re-holding replay still terminates");
     assert_eq!(fsm.phase(), Ph::Ready);
     assert_eq!(fsm.state(), &Vec::<u64>::new(), "nothing folded — everything re-held");
@@ -202,9 +203,9 @@ async fn fsm_err_never_commits_and_never_holds() {
             _ => Ok(Move::Stay),
         }
     });
-    let _ = fsm.step(Envelope::User(Msg::Work(1))).await; // held=[1]
+    let _ = fsm.step(Envelope::User { from: MailAddr(1), msg: Msg::Work(1) }).await; // held=[1]
 
-    let err = fsm.step(Envelope::User(Msg::Promote)).await.err().expect("expected the failing transition");
+    let err = fsm.step(Envelope::User { from: MailAddr(1), msg: Msg::Promote }).await.err().expect("expected the failing transition");
     assert_eq!(err, "boom", "the failing transition surfaces its exact error");
     assert_eq!(fsm.phase(), Ph::Loading, "an Err never half-switches the phase (D3)");
     assert_eq!(fsm.held(), 1, "the errored message is not consumed or held");
@@ -231,9 +232,9 @@ async fn fsm_mid_replay_transition_folds_fresh_holds_back_in() {
             _ => Move::Stay,
         })
     });
-    let _ = fsm.step(Envelope::User(Msg::Work(1))).await; // held=[1]
-    let _ = fsm.step(Envelope::User(Msg::Work(9))).await; // held=[1,9]
-    let actions = fsm.step(Envelope::User(Msg::Promote)).await.expect("no error");
+    let _ = fsm.step(Envelope::User { from: MailAddr(1), msg: Msg::Work(1) }).await; // held=[1]
+    let _ = fsm.step(Envelope::User { from: MailAddr(1), msg: Msg::Work(9) }).await; // held=[1,9]
+    let actions = fsm.step(Envelope::User { from: MailAddr(1), msg: Msg::Promote }).await.expect("no error");
     assert_eq!(actions.become_, Step::Continue);
     assert_eq!(fsm.phase(), Ph3::Done, "the mid-replay transition committed");
     assert_eq!(fsm.state(), &vec![1], "Work(1) folded in Ready; Work(9) moved to Done");
@@ -256,8 +257,8 @@ async fn fsm_driven_through_the_mailbox_defer_replay_stop() {
             _ => Move::Stay,
         })
     });
-    let (_ctl, usr, rx) = channel::<Never, Msg>(Config::new(8));
-    let handle = tokio::spawn(run(fsm, rx));
+    let (ctl, usr, rx) = channel::<Never, Msg>(Config::new(8));
+    let handle = tokio::spawn(run(fsm, rx, MailAddr(0)));
 
     usr.send(Msg::Work(1)).await.expect("mailbox open");
     usr.send(Msg::Work(2)).await.expect("mailbox open");
@@ -268,7 +269,7 @@ async fn fsm_driven_through_the_mailbox_defer_replay_stop() {
     // breaks the Stop path — a broken Stop then fails the exit assertion
     // (Collected vs Normal) instead of hanging the mutant run.
     drop(usr);
-    drop(_ctl);
+    drop(ctl);
 
     let transcript = handle.await.expect("driver joins").expect("no crash");
     assert_eq!(transcript.exit, Exit::Normal, "the Fsm's Stop verdict rides out of the driver");
@@ -289,14 +290,14 @@ async fn fsm_driven_through_the_mailbox_collects_on_close() {
             _ => Move::Stay,
         })
     });
-    let (_ctl, usr, rx) = channel::<Never, Msg>(Config::new(8));
-    let handle = tokio::spawn(run(fsm, rx));
+    let (ctl, usr, rx) = channel::<Never, Msg>(Config::new(8));
+    let handle = tokio::spawn(run(fsm, rx, MailAddr(0)));
 
     usr.send(Msg::Work(1)).await.expect("mailbox open");
     usr.send(Msg::Work(2)).await.expect("mailbox open");
     usr.send(Msg::Promote).await.expect("mailbox open");
     drop(usr);
-    drop(_ctl);
+    drop(ctl);
 
     let transcript = handle.await.expect("driver joins").expect("no crash");
     assert_eq!(transcript.exit, Exit::Collected, "a fully-closed mailbox collects the Fsm");
@@ -311,11 +312,11 @@ async fn fsm_framework_events_are_noops() {
             _ => Move::Stay,
         })
     });
-    let _ = fsm.step(Envelope::User(Msg::Work(1))).await; // held=[1]
+    let _ = fsm.step(Envelope::User { from: MailAddr(1), msg: Msg::Work(1) }).await; // held=[1]
     for ev in [
         Envelope::Deadline,
-        Envelope::LinkDied { peer: 42, abnormal: true },
-        Envelope::ChildStopped { idx: 0, abnormal: false },
+        Envelope::LinkDied { peer: MailAddr(42), outcome: Err(Crash::Failed) },
+        Envelope::ChildStopped { nonce: 0, outcome: Ok(Exit::Normal), at: Instant::now() },
     ] {
         let actions = fsm.step(ev).await.expect("no error");
         assert_eq!(actions.become_, Step::Continue, "a framework event is a no-op");
@@ -375,7 +376,7 @@ impl Model {
     }
 }
 
-fn sut(phase: Ph) -> Fsm<Vec<u64>, Op, Ph, &'static str> {
+fn sut(phase: Ph) -> Fsm<MailAddr, Vec<u64>, Op, Ph, &'static str> {
     Fsm::new(Vec::new(), phase, |phase, seen: &mut Vec<u64>, m: &Op| {
         Ok::<Move<Ph>, &'static str>(match (phase, m) {
             (Ph::Loading, Op::Work(_)) => Move::Defer,
@@ -408,7 +409,7 @@ fn fold_script_and_check(rt: &tokio::runtime::Runtime, ops: &[Op]) {
     let mut fsm = sut(Ph::Loading);
     rt.block_on(async {
         for (i, op) in ops.iter().copied().enumerate() {
-            let actions = fsm.step(Envelope::User(op)).await.expect("no error");
+            let actions = fsm.step(Envelope::User { from: MailAddr(1), msg: op }).await.expect("no error");
             if model.fold(op) {
                 assert_eq!(
                     actions.become_,

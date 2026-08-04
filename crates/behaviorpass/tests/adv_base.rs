@@ -5,33 +5,35 @@
 //! through the handler and ride its effects out.
 //! Methods: handcrafted edges + a property sweep over the framework alphabet.
 
-use behaviorpass::{Actions, Base, Behavior, Create, Envelope, Exit, MailAddr};
+use behaviorpass::{Actions, Base, Behavior, Crash, Create, Envelope, Exit, MailAddr, Target};
 use behaviorpass::{Never, Step};
 use proptest::prelude::*;
+use tokio::time::Instant;
 
 /// A floor typed with BOTH menus: it *could* send and create on user messages,
 /// but framework events must emit nothing at all.
-fn menu_floor() -> Base<Vec<u64>, u64, Never, &'static str, u64, u32> {
+fn menu_floor() -> Base<MailAddr, Vec<u64>, u64, Never, &'static str, u64, u32> {
     Base::new(Vec::<u64>::new(), |seen: &mut Vec<u64>, id: u64| {
         seen.push(id);
-        Ok::<Actions<Never, u64, u32>, &'static str>(Actions {
-            sends: vec![(MailAddr(id), id)],
-            creates: vec![Create::Birth(id as u32)],
+        Ok::<Actions<MailAddr, Never, u64, u32>, &'static str>(Actions {
+            sends: vec![(Target::Global(MailAddr(id)), id)],
+            creates: vec![Create::Birth { nonce: id, child: u32::try_from(id).expect("test message ids fit u32") }],
             become_: Step::Continue,
         })
     })
 }
 
 /// Every framework event is a total no-op for the floor: no sends, no creates,
-/// become(same), state untouched — even with menus armed.
+/// become(same), state untouched — even with menus armed. The outcome alphabet
+/// covers BOTH crash domains and BOTH normal classifications.
 #[tokio::test]
 async fn base_framework_events_emit_nothing_even_with_menus() {
     for ev in [
         Envelope::Deadline,
-        Envelope::LinkDied { peer: 42, abnormal: true },
-        Envelope::LinkDied { peer: 0, abnormal: false },
-        Envelope::ChildStopped { idx: 0, abnormal: true },
-        Envelope::ChildStopped { idx: usize::MAX, abnormal: false },
+        Envelope::LinkDied { peer: MailAddr(42), outcome: Err(Crash::Failed) },
+        Envelope::LinkDied { peer: MailAddr(0), outcome: Ok(Exit::Normal) },
+        Envelope::ChildStopped { nonce: 0, outcome: Err(Crash::Panicked), at: Instant::now() },
+        Envelope::ChildStopped { nonce: u64::MAX, outcome: Ok(Exit::Collected), at: Instant::now() },
     ] {
         let mut b = menu_floor();
         let actions = b.step(ev).await.expect("no error");
@@ -46,9 +48,9 @@ async fn base_framework_events_emit_nothing_even_with_menus() {
 #[tokio::test]
 async fn base_user_messages_ride_the_full_triple_out() {
     let mut b = menu_floor();
-    let actions = b.step(Envelope::User(5)).await.expect("no error");
-    assert_eq!(actions.sends, vec![(MailAddr(5), 5)]);
-    assert_eq!(actions.creates, vec![Create::Birth(5)]);
+    let actions = b.step(Envelope::User { from: MailAddr(1), msg: 5 }).await.expect("no error");
+    assert_eq!(actions.sends, vec![(Target::Global(MailAddr(5)), 5)]);
+    assert_eq!(actions.creates, vec![Create::Birth { nonce: 5, child: 5 }]);
     assert_eq!(actions.become_, Step::Continue);
     assert_eq!(b.state(), &vec![5]);
 }
@@ -57,30 +59,40 @@ async fn base_user_messages_ride_the_full_triple_out() {
 #[tokio::test]
 async fn base_boundary_addresses_ride_through() {
     for addr in [0_u64, u64::MAX] {
-        let mut b: Base<(), u64, Never, &'static str, u64, Never> = Base::new((), |(): &mut (), m: u64| {
-            Ok::<Actions<Never, u64, Never>, &'static str>(Actions {
-                sends: vec![(MailAddr(m), m)],
-                creates: Vec::new(),
-                become_: Step::Stop(Exit::Normal),
-            })
-        });
-        let actions = b.step(Envelope::User(addr)).await.expect("no error");
-        assert_eq!(actions.sends, vec![(MailAddr(addr), addr)], "address {addr} survives the trace");
+        let mut b: Base<MailAddr, (), u64, Never, &'static str, u64, Never> =
+            Base::new((), |(): &mut (), m: u64| {
+                Ok::<Actions<MailAddr, Never, u64, Never>, &'static str>(Actions {
+                    sends: vec![(Target::Global(MailAddr(m)), m)],
+                    creates: Vec::new(),
+                    become_: Step::Stop(Exit::Normal),
+                })
+            });
+        let actions =
+            b.step(Envelope::User { from: MailAddr(1), msg: addr }).await.expect("no error");
+        assert_eq!(
+            actions.sends,
+            vec![(Target::Global(MailAddr(addr)), addr)],
+            "address {addr} survives the trace"
+        );
     }
 }
 
 /// A handler error surfaces with its exact value.
 #[tokio::test]
 async fn base_handler_error_propagates_exactly() {
-    let mut b: Base<(), u64, Never, &'static str> = Base::new((), |(): &mut (), id: u64| {
+    let mut b: Base<MailAddr, (), u64, Never, &'static str> = Base::new((), |(): &mut (), id: u64| {
         if id == 7 {
             Err("boom")
         } else {
-            Ok::<Actions<Never, Never, Never>, &'static str>(Actions::cont())
+            Ok::<Actions<MailAddr, Never, Never, Never>, &'static str>(Actions::cont())
         }
     });
-    assert_eq!(b.step(Envelope::User(1)).await.unwrap().become_, Step::Continue);
-    let err = b.step(Envelope::User(7)).await.err().expect("expected an error");
+    assert_eq!(
+        b.step(Envelope::User { from: MailAddr(1), msg: 1 }).await.unwrap().become_,
+        Step::Continue
+    );
+    let err =
+        b.step(Envelope::User { from: MailAddr(1), msg: 7 }).await.err().expect("expected an error");
     assert_eq!(err, "boom");
 }
 
@@ -88,23 +100,39 @@ async fn base_handler_error_propagates_exactly() {
 // Property sweep over the framework alphabet
 // ---------------------------------------------------------------------------
 
+/// The full outcome alphabet: both NORMAL classifications, an abnormal `Ok`
+/// exit, and BOTH crash domains.
+fn outcome_strategy() -> impl Strategy<Value = Result<Exit<MailAddr>, Crash>> {
+    prop_oneof![
+        Just(Ok(Exit::Normal)),
+        Just(Ok(Exit::Collected)),
+        Just(Ok(Exit::LinkDied(MailAddr(9)))),
+        Just(Err(Crash::Failed)),
+        Just(Err(Crash::Panicked)),
+    ]
+}
+
 proptest::proptest! {
     #![proptest_config(proptest::prelude::ProptestConfig { cases: 256, ..proptest::prelude::ProptestConfig::default() })]
 
-    /// For ANY framework event (random peers / indices / abnormality): the
-    /// floor emits nothing and never folds.
+    /// For ANY framework event (random peers / nonces / outcomes over the
+    /// full classification alphabet): the floor emits nothing and never folds.
     #[test]
-    fn prop_base_framework_events_are_noops(peer in any::<u64>(), idx in any::<usize>(), abnormal in any::<bool>()) {
+    fn prop_base_framework_events_are_noops(
+        peer in any::<u64>(),
+        nonce in any::<u64>(),
+        outcome in outcome_strategy(),
+    ) {
         let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
         rt.block_on(async {
             let mut b = menu_floor();
             for ev in [
                 Envelope::Deadline,
-                Envelope::LinkDied { peer, abnormal },
-                Envelope::ChildStopped { idx, abnormal },
+                Envelope::LinkDied { peer: MailAddr(peer), outcome },
+                Envelope::ChildStopped { nonce, outcome, at: Instant::now() },
             ] {
                 let actions = b.step(ev).await.unwrap();
-                assert_eq!(actions.become_, Step::Continue, "peer={peer} idx={idx} abnormal={abnormal}");
+                assert_eq!(actions.become_, Step::Continue, "peer={peer} nonce={nonce} outcome={outcome:?}");
                 assert!(actions.sends.is_empty());
                 assert!(actions.creates.is_empty());
                 assert_eq!(b.state(), &Vec::<u64>::new(), "state untouched by framework events");

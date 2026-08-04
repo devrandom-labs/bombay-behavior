@@ -14,7 +14,7 @@ use std::collections::VecDeque;
 use crate::verdict::{Never, Step};
 
 use crate::Exit;
-use crate::behavior::{Acted, Actions, Behavior, Envelope};
+use crate::behavior::{Acted, Actions, Address, Behavior, Envelope};
 
 /// One step of a state machine's transition function.
 pub enum Move<P> {
@@ -32,17 +32,18 @@ pub enum Move<P> {
 /// core: it IS a [`Behavior`] (erasing its phase to `Never` upward). The
 /// held buffer replays AHEAD of the backlog on a phase change (the `Stash`
 /// primitive's one knob).
-pub struct Fsm<S, M, P, E> {
+pub struct Fsm<A: Address, S, M, P, E> {
     state: S,
     phase: P,
     on: fn(P, &mut S, &M) -> Result<Move<P>, E>,
     held: VecDeque<M>,
+    _addr: core::marker::PhantomData<A>,
 }
 
-impl<S, M, P: Copy + PartialEq, E> Fsm<S, M, P, E> {
+impl<A: Address, S, M, P: Copy + PartialEq, E> Fsm<A, S, M, P, E> {
     /// Builds a state machine in `phase` with a transition function.
     pub fn new(state: S, phase: P, on: fn(P, &mut S, &M) -> Result<Move<P>, E>) -> Self {
-        Self { state, phase, on, held: VecDeque::new() }
+        Self { state, phase, on, held: VecDeque::new(), _addr: core::marker::PhantomData }
     }
 
     /// The accumulated state (test observability).
@@ -66,7 +67,7 @@ impl<S, M, P: Copy + PartialEq, E> Fsm<S, M, P, E> {
     /// phase changed (which asks for a replay). Non-recursive on purpose:
     /// `drain` drives the replay, so the two async fns never call each other in
     /// a cycle (which would need boxing).
-    fn advance(&mut self, m: M) -> Result<(Step<Never, Exit>, bool), E> {
+    fn advance(&mut self, m: M) -> Result<(Step<Never, Exit<A>>, bool), E> {
         Ok(match (self.on)(self.phase, &mut self.state, &m)? {
             Move::Stay => (Step::Continue, false),
             Move::Defer => {
@@ -85,7 +86,7 @@ impl<S, M, P: Copy + PartialEq, E> Fsm<S, M, P, E> {
     /// Replay the held batch in the (new) phase — re-run each: `Defer` re-holds
     /// (snapshot bound, no livelock), the rest fold; a mid-replay transition
     /// folds fresh holds back in; a `Stop` abandons the rest.
-    fn drain(&mut self) -> Result<Step<Never, Exit>, E> {
+    fn drain(&mut self) -> Result<Step<Never, Exit<A>>, E> {
         let mut batch: VecDeque<M> = self.held.drain(..).collect();
         while let Some(m) = batch.pop_front() {
             let (verdict, changed) = self.advance(m)?;
@@ -101,20 +102,23 @@ impl<S, M, P: Copy + PartialEq, E> Fsm<S, M, P, E> {
     }
 }
 
-impl<S, M, P, E> Behavior for Fsm<S, M, P, E>
+impl<A, S, M, P, E> Behavior for Fsm<A, S, M, P, E>
 where
+    A: Address + Send,
+    A::Nonce: Send,
     S: Send,
     M: Send,
     P: Copy + PartialEq + Send,
     E: Send,
 {
+    type Addr = A;
     type Msg = M;
     type Ph = Never;
     type Error = E;
     type Outbound = Never;
     type Offspring = Never;
-    async fn step(&mut self, ev: Envelope<M>) -> Acted<Never, Never, Never, E> {
-        let Envelope::User(m) = ev else {
+    async fn step(&mut self, ev: Envelope<A, M>) -> Acted<A, Never, Never, Never, E> {
+        let Envelope::User { msg: m, .. } = ev else {
             // A framework event is a no-op for a plain state machine.
             return Ok(Actions::cont());
         };
@@ -131,6 +135,7 @@ where
 mod tests {
     use super::{Fsm, Move};
     use crate::behavior::{Behavior, Envelope};
+    use crate::MailAddr;
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     enum Ph {
@@ -149,7 +154,7 @@ mod tests {
     /// `Ready` and replays the deferred batch FIFO, ahead of the backlog.
     #[tokio::test]
     async fn fsm_defers_then_replays_on_transition() {
-        let mut fsm = Fsm::new(
+        let mut fsm: Fsm<MailAddr, _, _, _, _> = Fsm::new(
             Vec::<u64>::new(),
             Ph::Loading,
             |phase, seen: &mut Vec<u64>, msg: &Msg| {
@@ -165,7 +170,7 @@ mod tests {
             },
         );
         for m in [Msg::Work(1), Msg::Work(2), Msg::Promote, Msg::Work(3), Msg::Quit] {
-            let _ = fsm.step(Envelope::User(m)).await;
+            let _ = fsm.step(Envelope::User { from: MailAddr(1), msg: m }).await;
         }
         assert_eq!(fsm.state(), &vec![1, 2, 3], "deferred batch replays FIFO ahead of the backlog");
         assert_eq!(fsm.phase(), Ph::Ready);
@@ -175,12 +180,12 @@ mod tests {
     /// D3: a transition function that errors never half-switches the phase.
     #[tokio::test]
     async fn fsm_never_commits_a_failed_transition() {
-        let mut fsm = Fsm::new((), Ph::Loading, |_phase, (): &mut (), msg: &Msg| match msg {
+        let mut fsm: Fsm<MailAddr, _, _, _, _> = Fsm::new((), Ph::Loading, |_phase, (): &mut (), msg: &Msg| match msg {
             Msg::Work(_) => Err("bang"),
             _ => Ok::<Move<Ph>, &'static str>(Move::Goto(Ph::Ready)),
         });
         assert_eq!(
-            fsm.step(Envelope::User(Msg::Work(1))).await.err(),
+            fsm.step(Envelope::User { from: MailAddr(1), msg: Msg::Work(1) }).await.err(),
             Some("bang"),
             "the failing transition surfaces its error",
         );

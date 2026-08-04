@@ -6,12 +6,14 @@
 
 use std::time::Duration;
 
-use behaviorpass::{Actions, Base, Behavior, Deadlined, Envelope, Exit};
+use behaviorpass::{Actions, Base, Become, Behavior, Crash, Deadlined, Envelope, Exit, MailAddr};
 use behaviorpass::{Never, Step};
 use tokio::time::Instant;
 
-fn floor() -> Base<(), u64, Never, &'static str> {
-    Base::new((), |(): &mut (), _: u64| Ok::<Actions<Never, Never, Never>, &'static str>(Actions::cont()))
+fn floor() -> Base<MailAddr, (), u64, Never, &'static str> {
+    Base::new((), |(): &mut (), _: u64| {
+        Ok::<Actions<MailAddr, Never, Never, Never>, &'static str>(Actions::cont())
+    })
 }
 
 fn at(secs: u64) -> Instant {
@@ -79,7 +81,7 @@ async fn deadlined_presence_lattice() {
 #[tokio::test]
 async fn deadlined_reaction_error_propagates_and_clears() {
     let t = at(5);
-    let mut d = Deadlined::new(floor(), Some(t), |_| Err::<Step<Never, Exit>, &'static str>("boom"));
+    let mut d = Deadlined::new(floor(), Some(t), |_| Err::<Become<MailAddr>, &'static str>("boom"));
     let err = d.step(Envelope::Deadline).await.err().expect("expected an error");
     assert_eq!(err, "boom", "the reaction's exact error surfaces");
     assert_eq!(d.next_deadline(), None, "the slot cleared even though the reaction failed");
@@ -98,14 +100,14 @@ async fn deadlined_reaction_stop_rides_out() {
 #[tokio::test]
 async fn deadlined_user_events_forward_and_keep_the_slot() {
     let t = at(5);
-    let recorder: Base<Vec<u64>, u64, Never, &'static str> =
+    let recorder: Base<MailAddr, Vec<u64>, u64, Never, &'static str> =
         Base::new(Vec::<u64>::new(), |seen: &mut Vec<u64>, id: u64| {
             seen.push(id);
-            Ok::<Actions<Never, Never, Never>, &'static str>(Actions::cont())
+            Ok::<Actions<MailAddr, Never, Never, Never>, &'static str>(Actions::cont())
         });
     let mut d = Deadlined::new(recorder, Some(t), |_| Ok(Step::Continue));
 
-    let actions = d.step(Envelope::User(7)).await.expect("no error");
+    let actions = d.step(Envelope::User { from: MailAddr(1), msg: 7 }).await.expect("no error");
     assert_eq!(actions.become_, Step::Continue);
     assert_eq!(d.inner().state(), &vec![7], "user events forward inward");
     assert_eq!(d.next_deadline(), Some(t), "a user event never clears the slot");
@@ -117,8 +119,8 @@ async fn deadlined_framework_events_forward() {
     let t = at(5);
     let mut d = Deadlined::new(floor(), Some(t), |_| Ok(Step::Continue));
     for ev in [
-        Envelope::LinkDied { peer: 42, abnormal: true },
-        Envelope::ChildStopped { idx: 0, abnormal: false },
+        Envelope::LinkDied { peer: MailAddr(42), outcome: Err(Crash::Failed) },
+        Envelope::ChildStopped { nonce: 0, outcome: Ok(Exit::Normal), at: Instant::now() },
     ] {
         let actions = d.step(ev).await.expect("no error");
         assert_eq!(actions.become_, Step::Continue);

@@ -15,10 +15,11 @@
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::hint::black_box;
 use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
-use behaviorpass::{Actions, Base, Behavior, Envelope, Supervising};
+use behaviorpass::{Actions, Base, Behavior, Crash, Envelope, MailAddr, RestartPolicy, Strategy, Supervising};
 use behaviorpass::Never;
+use tokio::time::Instant as TokioInstant;
 
 // A pass-through allocator that counts bytes handed out. The measured regions
 // below are single-threaded; `Relaxed` is sound because each read happens-after
@@ -39,20 +40,20 @@ unsafe impl GlobalAlloc for Counting {
 #[global_allocator]
 static A: Counting = Counting;
 
-type Inner = Base<(), u64, Never, &'static str>;
-type Kid = Base<u32, u32, Never, &'static str>;
+type Inner = Base<MailAddr, (), u64, Never, &'static str, Never, Kid>;
+type Kid = Base<MailAddr, u32, u32, Never, &'static str>;
 type Sup = Supervising<Inner, Kid>;
 
 fn inner() -> Inner {
     Base::new((), |(): &mut (), _: u64| {
-        Ok::<Actions<Never, Never, Never>, &'static str>(Actions::cont())
+        Ok::<Actions<MailAddr, Never, Never, Kid>, &'static str>(Actions::cont())
     })
 }
 
 fn kid() -> Kid {
     Base::new(0_u32, |c: &mut u32, n: u32| {
         *c += n;
-        Ok::<Actions<Never, Never, Never>, &'static str>(Actions::cont())
+        Ok::<Actions<MailAddr, Never, Never, Never>, &'static str>(Actions::cont())
     })
 }
 
@@ -61,7 +62,7 @@ fn kid() -> Kid {
 fn construct_bytes(n: usize) -> usize {
     let seed = inner();
     let before = BYTES.load(Relaxed);
-    let sup = Supervising::new(seed, n, |_| kid(), u32::MAX);
+    let sup = Supervising::new(seed, |i| i as u64, n, |_| kid(), Strategy::OneForOne, RestartPolicy::Transient, u32::MAX, Duration::MAX);
     let after = BYTES.load(Relaxed);
     black_box(&sup);
     after - before
@@ -75,13 +76,14 @@ fn main() {
 
     // Space is the target; guard the hot path so a space win can't gut the fold.
     let rt = tokio::runtime::Builder::new_current_thread().build().expect("rt");
-    let mut sup = Supervising::new(inner(), 64, |_| kid(), u32::MAX);
+    let mut sup = Supervising::new(inner(), |i| i as u64, 64, |_| kid(), Strategy::OneForOne, RestartPolicy::Transient, u32::MAX, Duration::MAX);
     let iters = 200_000_u64;
+    let at = TokioInstant::now();
     let t = Instant::now();
     rt.block_on(async {
         for i in 0..iters {
             let idx = (i % 64) as usize;
-            let a = sup.step(Envelope::ChildStopped { idx, abnormal: true }).await.expect("ok");
+            let a = sup.step(Envelope::ChildStopped { nonce: idx as u64, outcome: Err(Crash::Failed), at }).await.expect("ok");
             black_box(a);
         }
     });
