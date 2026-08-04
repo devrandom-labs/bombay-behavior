@@ -167,10 +167,24 @@ impl<A: Address, Ph, Out, New> Actions<A, Ph, Out, New> {
     }
 }
 
-/// The static fleet a behavior declares at construction: the child count and
-/// the builder the driver constructs each fleet child from (named for the
-/// `type_complexity` bar, like [`Acted`]).
-pub type Fleet<B> = (usize, fn(usize) -> <B as Behavior>::Offspring);
+/// The static fleet a behavior declares at construction (see
+/// [`Behavior::fleet`]). A struct (not a tuple) to stay under the
+/// `type_complexity` bar, like [`Acted`]; parameterized over the address
+/// and offspring types directly (not the behavior) so a wrapper's forward
+/// of `inner.fleet()` typechecks without reconstruction.
+#[derive(Debug, Clone, Copy)]
+pub struct Fleet<A: Address, New> {
+    /// The number of static children.
+    pub n: usize,
+    /// The static fleet's birth-nonce minter. The driver mints child
+    /// ADDRESSES from these same nonces (`Address::birth(self_addr,
+    /// nonces(i))`), so the driver's child table and the behavior's
+    /// liveness table agree by construction — slot = nonce.
+    pub nonces: fn(usize) -> A::Nonce,
+    /// The child constructor for a fleet index (also the restart builder —
+    /// a static child's table position IS its fleet index).
+    pub build: fn(usize) -> New,
+}
 
 /// The outcome of one fold: the full Agha [`Actions`] on the phase menu `Ph`
 /// with outbound menu `Out` and create-spec `New`, or a controlled crash `E`.
@@ -225,9 +239,10 @@ pub trait Behavior {
     /// The static child fleet this behavior declares at construction, as a
     /// pure function of state (`None` = no fleet — a plain actor). The
     /// driver's fleet birth happens at process START only; restarts do NOT
-    /// re-spawn (the child table survives the slot swap). The static fleet's
-    /// nonces are minted `0..n` by the creator (slot = nonce).
-    fn fleet(&self) -> Option<Fleet<Self>> {
+    /// re-spawn (the child table survives the slot swap). The fleet carries
+    /// its birth-nonce minter: the driver derives child addresses from the
+    /// same nonces the behavior's table records (slot = nonce).
+    fn fleet(&self) -> Option<Fleet<Self::Addr, Self::Offspring>> {
         None
     }
 }

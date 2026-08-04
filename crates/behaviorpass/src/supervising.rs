@@ -62,6 +62,7 @@ pub struct Supervising<B: Behavior, C: Behavior<Ph = Never, Addr = B::Addr>> {
     inner: B,
     slots: Vec<(<B::Addr as Address>::Nonce, SlotRec)>,
     n_static: usize,
+    nonces: fn(usize) -> <B::Addr as Address>::Nonce,
     next_seq: u64,
     build: fn(usize) -> C,
     strategy: Strategy,
@@ -108,6 +109,7 @@ impl<B: Behavior<Offspring = C>, C: Behavior<Ph = Never, Addr = B::Addr>> Superv
             inner,
             slots,
             n_static: n_children,
+            nonces,
             next_seq,
             build,
             strategy,
@@ -298,8 +300,8 @@ where
         self.inner.next_deadline()
     }
 
-    fn fleet(&self) -> Option<Fleet<Self>> {
-        Some((self.n_static, self.build))
+    fn fleet(&self) -> Option<Fleet<Self::Addr, Self::Offspring>> {
+        Some(Fleet { n: self.n_static, nonces: self.nonces, build: self.build })
     }
 }
 
@@ -376,10 +378,11 @@ mod tests {
     #[tokio::test]
     async fn fleet_reports_the_static_fleet() {
         let sup = supervisor(5);
-        let Some((n, build)) = sup.fleet() else {
+        let Some(fleet) = sup.fleet() else {
             panic!("Supervising declares its static fleet");
         };
-        assert_eq!(n, 1);
-        let _ = build(0);
+        assert_eq!(fleet.n, 1);
+        assert_eq!((fleet.nonces)(0), 0, "the minter surfaces for driver-side address derivation");
+        let _ = (fleet.build)(0);
     }
 }
