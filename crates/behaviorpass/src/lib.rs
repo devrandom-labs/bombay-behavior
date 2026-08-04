@@ -18,6 +18,7 @@ mod watching; // Watching
 // from core, using the Stash buffer). `Phased`/`Admit` left with it: phases are
 // the aggregate's (nexus's) concern, not core's.
 mod fsm;
+mod spec; // Spec — the intent builder over the capability stack
 
 pub use behavior::{
     Actions, Acted, Address, Base, Become, Behavior, Create, Envelope, Fleet, FnState, MailAddr,
@@ -25,8 +26,9 @@ pub use behavior::{
 };
 pub use deadlined::{DeadlineReaction, Deadlined};
 pub use fsm::{Fsm, Move};
+pub use spec::Spec;
 pub use stashing::{StashRoute, Stashing};
-pub use supervising::{RestartPolicy, Strategy, Supervising};
+pub use supervising::{RestartPolicy, Strategy, Supervising, restart_all, restart_one, restart_rest};
 pub use verdict::{Never, Step};
 pub use watching::{LinkReaction, Watching, stop_on_abnormal_death};
 

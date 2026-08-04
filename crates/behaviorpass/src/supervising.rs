@@ -36,10 +36,31 @@ pub enum Strategy {
 pub enum RestartPolicy {
     /// Restart on any stop, normal or abnormal.
     Permanent,
-    /// Restart only on abnormal outcome.
+    /// Restart only on abnormal outcome (today's behavior).
     Transient,
     /// Never restart; a stop only marks the slot dead.
     Temporary,
+}
+
+/// Strategy as a readable value (the Spec builder's intent vocabulary):
+/// restart only the dead child.
+#[must_use]
+pub const fn restart_one() -> Strategy {
+    Strategy::OneForOne
+}
+
+/// Strategy as a readable value: restart every live child when one
+/// triggers.
+#[must_use]
+pub const fn restart_all() -> Strategy {
+    Strategy::OneForAll
+}
+
+/// Strategy as a readable value: restart the dead child and every child
+/// born after it (birth-sequence order).
+#[must_use]
+pub const fn restart_rest() -> Strategy {
+    Strategy::RestForOne
 }
 
 /// One child-table entry: liveness plus the birth-sequence number
@@ -118,6 +139,31 @@ impl<B: Behavior<Offspring = C>, C: Behavior<Ph = Never, Addr = B::Addr>> Superv
             window,
             restarts: Vec::new(),
         }
+    }
+
+    /// Builder-style tuner: set the restart strategy (the `Spec`
+    /// builder's `on_child_death` intent).
+    #[must_use]
+    pub fn with_strategy(mut self, strategy: Strategy) -> Self {
+        self.strategy = strategy;
+        self
+    }
+
+    /// Builder-style tuner: set the per-child restart policy (the
+    /// `Spec` builder's `policy` intent).
+    #[must_use]
+    pub fn with_policy(mut self, policy: RestartPolicy) -> Self {
+        self.policy = policy;
+        self
+    }
+
+    /// Builder-style tuner: set the windowed restart budget (the `Spec`
+    /// builder's `budget` intent).
+    #[must_use]
+    pub fn with_budget(mut self, max_restarts: u32, window: Duration) -> Self {
+        self.max_restarts = max_restarts;
+        self.window = window;
+        self
     }
 
     /// The table position of `nonce`, if known (static or dynamically born —
