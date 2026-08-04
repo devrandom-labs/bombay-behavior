@@ -437,11 +437,12 @@ async fn supervising_panics_on_an_unknown_nonce() {
 #[tokio::test]
 async fn fleet_query_surfaces_through_wrappers() {
     let sup = supervisor(3, Strategy::OneForOne, RestartPolicy::Transient, 5, Duration::MAX);
-    let Some((n, build)) = Behavior::fleet(&sup) else {
+    let Some(fleet) = Behavior::fleet(&sup) else {
         panic!("Supervising declares its static fleet");
     };
-    assert_eq!(n, 3);
-    let _ = build(0);
+    assert_eq!(fleet.n, 3);
+    assert_eq!((fleet.nonces)(2), 2, "the driver mints static child addresses from these nonces");
+    let _ = (fleet.build)(0);
 
     let due = Instant::now() + Duration::from_secs(5);
     let wrapped = Watching::new(
@@ -455,10 +456,10 @@ async fn fleet_query_surfaces_through_wrappers() {
         ),
         stop_on_abnormal_death,
     );
-    let Some((n, _)) = Behavior::fleet(&wrapped) else {
+    let Some(fleet) = Behavior::fleet(&wrapped) else {
         panic!("wrappers forward the fleet query");
     };
-    assert_eq!(n, 2, "the static fleet surfaces through every wrapper");
+    assert_eq!(fleet.n, 2, "the static fleet surfaces through every wrapper");
 }
 
 /// A LEGAL composition — `Watching<Deadlined<Base>>`: each layer routes its own

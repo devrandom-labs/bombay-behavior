@@ -82,7 +82,7 @@ where
         self.inner.next_deadline()
     }
 
-    fn fleet(&self) -> Option<Fleet<Self>> {
+    fn fleet(&self) -> Option<Fleet<Self::Addr, Self::Offspring>> {
         self.inner.fleet()
     }
 }
