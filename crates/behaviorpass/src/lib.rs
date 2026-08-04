@@ -20,8 +20,8 @@ mod watching; // Watching
 mod fsm;
 
 pub use behavior::{
-    Actions, Address, Base, Become, Behavior, Create, Envelope, Fleet, FnState, MailAddr, State,
-    Target, Transcript, run,
+    Actions, Acted, Address, Base, Become, Behavior, Create, Envelope, Fleet, FnState, MailAddr,
+    State, Target, Transcript, run,
 };
 pub use deadlined::{DeadlineReaction, Deadlined};
 pub use fsm::{Fsm, Move};
@@ -33,3 +33,5 @@ pub use watching::{LinkReaction, Watching, stop_on_abnormal_death};
 mod exit; // Exit, Crash — the trace-exit vocabulary (moved in-crate; reference crate retired)
 
 pub use exit::{Crash, Exit};
+
+pub use behaviorpass_macros::workers;
