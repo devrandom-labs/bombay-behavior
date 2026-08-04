@@ -6,13 +6,13 @@
 //! Methods: handcrafted sequences/lifecycle + a differential property model +
 //! long-sequence fuzz through a real mailbox.
 
-use behaviorpass::{Actions, Base, Create, Exit, MailAddr, run};
+use behaviorpass::{Actions, Base, Create, Exit, MailAddr, Target, run};
 use behaviorpass::{Never, Step};
 use fastpass::{Config, channel};
 
 /// A behavior that records what it folds and sends one message per fold; stops
 /// on a designated id; crashes on another.
-fn driver_base() -> Base<Vec<u64>, u64, Never, &'static str, u64, Never> {
+fn driver_base() -> Base<MailAddr, Vec<u64>, u64, Never, &'static str, u64, Never> {
     Base::new(Vec::<u64>::new(), |seen: &mut Vec<u64>, id: u64| {
         seen.push(id);
         let become_ = if id == 99 {
@@ -22,8 +22,8 @@ fn driver_base() -> Base<Vec<u64>, u64, Never, &'static str, u64, Never> {
         } else {
             Step::Continue
         };
-        Ok::<Actions<Never, u64, Never>, &'static str>(Actions {
-            sends: vec![(MailAddr(id), id)],
+        Ok::<Actions<MailAddr, Never, u64, Never>, &'static str>(Actions {
+            sends: vec![(Target::Global(MailAddr(id)), id)],
             creates: Vec::new(),
             become_,
         })
@@ -33,41 +33,41 @@ fn driver_base() -> Base<Vec<u64>, u64, Never, &'static str, u64, Never> {
 /// Transcript.sends is the exact emission-order accumulation across folds.
 #[tokio::test]
 async fn driver_transcript_preserves_emission_order() {
-    let (_ctl, usr, rx) = channel::<Never, u64>(Config::new(8));
-    let handle = tokio::spawn(run(driver_base(), rx));
+    let (ctl, usr, rx) = channel::<Never, u64>(Config::new(8));
+    let handle = tokio::spawn(run(driver_base(), rx, MailAddr(0)));
 
     usr.send(1).await.expect("mailbox open");
     usr.send(2).await.expect("mailbox open");
     usr.send(3).await.expect("mailbox open");
     drop(usr);
-    drop(_ctl);
+    drop(ctl);
 
     let transcript = handle.await.expect("driver joins").expect("no crash");
-    assert_eq!(transcript.sends, vec![(MailAddr(1), 1), (MailAddr(2), 2), (MailAddr(3), 3)]);
+    assert_eq!(transcript.sends, vec![(Target::Global(MailAddr(1)), 1), (Target::Global(MailAddr(2)), 2), (Target::Global(MailAddr(3)), 3)]);
     assert_eq!(transcript.exit, Exit::Collected, "a fully-closed mailbox is collection");
 }
 
 /// Creates accumulate in order too (a create-emitting behavior).
 #[tokio::test]
 async fn driver_accumulates_creates_in_order() {
-    let creator: Base<Vec<u64>, u64, Never, &'static str, Never, u32> =
+    let creator: Base<MailAddr, Vec<u64>, u64, Never, &'static str, Never, u32> =
         Base::new(Vec::<u64>::new(), |seen: &mut Vec<u64>, id: u64| {
             seen.push(id);
-            Ok::<Actions<Never, Never, u32>, &'static str>(Actions {
+            Ok::<Actions<MailAddr, Never, Never, u32>, &'static str>(Actions {
                 sends: Vec::new(),
-                creates: vec![Create::Birth(id as u32)],
+                creates: vec![Create::Birth { nonce: id, child: u32::try_from(id).expect("test message ids fit u32") }],
                 become_: Step::Continue,
             })
         });
-    let (_ctl, usr, rx) = channel::<Never, u64>(Config::new(8));
-    let handle = tokio::spawn(run(creator, rx));
+    let (ctl, usr, rx) = channel::<Never, u64>(Config::new(8));
+    let handle = tokio::spawn(run(creator, rx, MailAddr(0)));
     usr.send(4).await.expect("mailbox open");
     usr.send(9).await.expect("mailbox open");
     drop(usr);
-    drop(_ctl);
+    drop(ctl);
 
     let transcript = handle.await.expect("driver joins").expect("no crash");
-    assert_eq!(transcript.creates, vec![Create::Birth(4), Create::Birth(9)]);
+    assert_eq!(transcript.creates, vec![Create::Birth { nonce: 4, child: 4 }, Create::Birth { nonce: 9, child: 9 }]);
     assert_eq!(transcript.exit, Exit::Collected);
 }
 
@@ -76,26 +76,26 @@ async fn driver_accumulates_creates_in_order() {
 /// own emission orders side by side, and the Stop's exit ends the fold.
 #[tokio::test]
 async fn driver_combines_sends_and_creates_in_one_transcript() {
-    let both: Base<Vec<u64>, u64, Never, &'static str, u64, u32> =
+    let both: Base<MailAddr, Vec<u64>, u64, Never, &'static str, u64, u32> =
         Base::new(Vec::<u64>::new(), |seen: &mut Vec<u64>, id: u64| {
             seen.push(id);
-            Ok::<Actions<Never, u64, u32>, &'static str>(Actions {
-                sends: vec![(MailAddr(id), id)],
-                creates: vec![Create::Birth(id as u32)],
+            Ok::<Actions<MailAddr, Never, u64, u32>, &'static str>(Actions {
+                sends: vec![(Target::Global(MailAddr(id)), id)],
+                creates: vec![Create::Birth { nonce: id, child: u32::try_from(id).expect("test message ids fit u32") }],
                 become_: if id == 99 { Step::Stop(Exit::Normal) } else { Step::Continue },
             })
         });
-    let (_ctl, usr, rx) = channel::<Never, u64>(Config::new(8));
-    let handle = tokio::spawn(run(both, rx));
+    let (ctl, usr, rx) = channel::<Never, u64>(Config::new(8));
+    let handle = tokio::spawn(run(both, rx, MailAddr(0)));
 
     usr.send(4).await.expect("mailbox open");
     usr.send(99).await.expect("mailbox open");
     drop(usr);
-    drop(_ctl);
+    drop(ctl);
 
     let transcript = handle.await.expect("driver joins").expect("no crash");
-    assert_eq!(transcript.sends, vec![(MailAddr(4), 4), (MailAddr(99), 99)]);
-    assert_eq!(transcript.creates, vec![Create::Birth(4), Create::Birth(99)]);
+    assert_eq!(transcript.sends, vec![(Target::Global(MailAddr(4)), 4), (Target::Global(MailAddr(99)), 99)]);
+    assert_eq!(transcript.creates, vec![Create::Birth { nonce: 4, child: 4 }, Create::Birth { nonce: 99, child: 99 }]);
     assert_eq!(transcript.exit, Exit::Normal);
 }
 
@@ -103,32 +103,32 @@ async fn driver_combines_sends_and_creates_in_one_transcript() {
 /// never folded, never recorded.
 #[tokio::test]
 async fn driver_nothing_folds_after_stop() {
-    let (_ctl, usr, rx) = channel::<Never, u64>(Config::new(8));
-    let handle = tokio::spawn(run(driver_base(), rx));
+    let (ctl, usr, rx) = channel::<Never, u64>(Config::new(8));
+    let handle = tokio::spawn(run(driver_base(), rx, MailAddr(0)));
 
     usr.send(1).await.expect("mailbox open");
     usr.send(99).await.expect("mailbox open"); // Stop(Normal)
     usr.send(5).await.expect("mailbox open"); // behind the stop — must never fold
     usr.send(6).await.expect("mailbox open");
     drop(usr);
-    drop(_ctl);
+    drop(ctl);
 
     let transcript = handle.await.expect("driver joins").expect("no crash");
-    assert_eq!(transcript.sends, vec![(MailAddr(1), 1), (MailAddr(99), 99)], "only the pre-Stop folds recorded");
+    assert_eq!(transcript.sends, vec![(Target::Global(MailAddr(1)), 1), (Target::Global(MailAddr(99)), 99)], "only the pre-Stop folds recorded");
     assert_eq!(transcript.exit, Exit::Normal, "the Stop's exit rides out");
 }
 
 /// An Err short-circuits with its exact value (and the driver task returns it).
 #[tokio::test]
 async fn driver_err_short_circuits_with_exact_error() {
-    let (_ctl, usr, rx) = channel::<Never, u64>(Config::new(8));
-    let handle = tokio::spawn(run(driver_base(), rx));
+    let (ctl, usr, rx) = channel::<Never, u64>(Config::new(8));
+    let handle = tokio::spawn(run(driver_base(), rx, MailAddr(0)));
 
     usr.send(1).await.expect("mailbox open");
     usr.send(7).await.expect("mailbox open"); // boom
     usr.send(8).await.expect("mailbox open");
     drop(usr);
-    drop(_ctl);
+    drop(ctl);
 
     let out = handle.await.expect("driver joins");
     assert_eq!(out.err().expect("expected a crash"), "boom", "the crash surfaces with its exact error");
@@ -138,13 +138,13 @@ async fn driver_err_short_circuits_with_exact_error() {
 /// with an empty transcript.
 #[tokio::test]
 async fn driver_collected_with_zero_messages() {
-    let (_ctl, usr, rx) = channel::<Never, u64>(Config::new(8));
-    let handle = tokio::spawn(run(driver_base(), rx));
+    let (ctl, usr, rx) = channel::<Never, u64>(Config::new(8));
+    let handle = tokio::spawn(run(driver_base(), rx, MailAddr(0)));
     drop(usr);
-    drop(_ctl);
+    drop(ctl);
 
     let transcript = handle.await.expect("driver joins").expect("no crash");
-    assert_eq!(transcript.sends, Vec::<(MailAddr, u64)>::new());
+    assert_eq!(transcript.sends, Vec::<(Target<MailAddr>, u64)>::new());
     assert_eq!(transcript.exit, Exit::Collected);
 }
 
@@ -172,7 +172,7 @@ fn op_strategy() -> impl proptest::strategy::Strategy<Value = Op> {
 }
 
 /// The independent model: the exact fold the driver must reproduce — sends in
-/// emission order, stop on the first StopOn, crash on the first Boom.
+/// emission order, stop on the first `StopOn`, crash on the first Boom.
 struct DriverModel {
     sends: Vec<(u64, u64)>,
     outcome: Outcome,
@@ -209,7 +209,7 @@ impl DriverModel {
 fn fold_driver_and_check(rt: &tokio::runtime::Runtime, ops: &[Op]) {
     rt.block_on(async {
         let mut model = DriverModel::new();
-        let (_ctl, usr, rx) = channel::<Never, Op>(Config::new(16));
+        let (ctl, usr, rx) = channel::<Never, Op>(Config::new(16));
         let handle = tokio::spawn(run(
             Base::new(Vec::<Op>::new(), |_seen: &mut Vec<Op>, op: Op| {
                 if let Op::Boom(_) = op {
@@ -220,13 +220,14 @@ fn fold_driver_and_check(rt: &tokio::runtime::Runtime, ops: &[Op]) {
                 } else {
                     Step::Continue
                 };
-                Ok::<Actions<Never, u64, Never>, &'static str>(Actions {
-                    sends: vec![(MailAddr(id_of(op)), id_of(op))],
+                Ok::<Actions<MailAddr, Never, u64, Never>, &'static str>(Actions {
+                    sends: vec![(Target::Global(MailAddr(id_of(op))), id_of(op))],
                     creates: Vec::new(),
                     become_,
                 })
             }),
             rx,
+            MailAddr(0),
         ));
 
         for op in ops {
@@ -237,18 +238,18 @@ fn fold_driver_and_check(rt: &tokio::runtime::Runtime, ops: &[Op]) {
             model.fold(*op);
         }
         drop(usr);
-        drop(_ctl);
+        drop(ctl);
 
         let out = handle.await.expect("driver joins");
         match model.outcome {
             Outcome::Collected => {
                 let transcript = out.expect("no crash");
-                assert_eq!(transcript.sends, model.sends.iter().map(|&(a, b)| (MailAddr(a), b)).collect::<Vec<_>>());
+                assert_eq!(transcript.sends, model.sends.iter().map(|&(a, b)| (Target::Global(MailAddr(a)), b)).collect::<Vec<_>>());
                 assert_eq!(transcript.exit, Exit::Collected);
             }
             Outcome::Stopped => {
                 let transcript = out.expect("no crash");
-                assert_eq!(transcript.sends, model.sends.iter().map(|&(a, b)| (MailAddr(a), b)).collect::<Vec<_>>());
+                assert_eq!(transcript.sends, model.sends.iter().map(|&(a, b)| (Target::Global(MailAddr(a)), b)).collect::<Vec<_>>());
                 assert_eq!(transcript.exit, Exit::Normal, "the Stop's exit rides out");
             }
             Outcome::Crashed => {

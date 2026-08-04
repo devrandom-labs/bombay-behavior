@@ -2,14 +2,14 @@
 //! a wake time via [`Behavior::next_deadline`], reacts when [`Envelope::Deadline`]
 //! fires, and forwards every other event to the inner behavior.
 
-use crate::verdict::Never;
 use tokio::time::Instant;
 
-use crate::behavior::{Acted, Become, Behavior, Envelope, lift};
+use crate::behavior::{Acted, Address, Become, Behavior, Envelope, Fleet, lift};
 
 /// The reaction a deadline fire runs: mutates the inner behavior, returns a
 /// verdict on the erased menu (`Never` — a deadline reaction cannot `Goto`).
-pub type DeadlineReaction<B> = fn(&mut B) -> Result<Become<Never>, <B as Behavior>::Error>;
+pub type DeadlineReaction<B> =
+    fn(&mut B) -> Result<Become<<B as Behavior>::Addr>, <B as Behavior>::Error>;
 
 /// A `Behavior` that adds a single-shot deadline over its inner behavior.
 pub struct Deadlined<B: Behavior> {
@@ -33,8 +33,11 @@ impl<B: Behavior> Deadlined<B> {
 impl<B> Behavior for Deadlined<B>
 where
     B: Behavior + Send,
+    B::Addr: Send,
+    <B::Addr as Address>::Nonce: Send,
     B::Msg: Send,
 {
+    type Addr = B::Addr;
     type Msg = B::Msg;
     type Ph = B::Ph;
     type Error = B::Error;
@@ -42,8 +45,8 @@ where
     type Offspring = B::Offspring;
     async fn step(
         &mut self,
-        ev: Envelope<B::Msg>,
-    ) -> Acted<B::Ph, B::Outbound, B::Offspring, B::Error> {
+        ev: Envelope<B::Addr, B::Msg>,
+    ) -> Acted<B::Addr, B::Ph, B::Outbound, B::Offspring, B::Error> {
         match ev {
             Envelope::Deadline => {
                 self.due = None; // fires once per armed value
@@ -61,6 +64,10 @@ where
             (a, b) => a.or(b),
         }
     }
+
+    fn fleet(&self) -> Option<Fleet<Self>> {
+        self.inner.fleet()
+    }
 }
 
 #[cfg(test)]
@@ -69,7 +76,7 @@ mod tests {
 
     use super::Deadlined;
     use crate::behavior::{Actions, Behavior, Envelope};
-    use crate::{Base, Exit};
+    use crate::{Base, Exit, MailAddr};
     use crate::verdict::{Never, Step};
     use tokio::time::Instant;
 
@@ -77,13 +84,16 @@ mod tests {
     async fn deadlined_routes_the_fire_forwards_the_rest_and_arms_once() {
         let inner = Base::new(Vec::<u64>::new(), |seen: &mut Vec<u64>, id: u64| {
             seen.push(id);
-            Ok::<Actions<Never, Never, Never>, &'static str>(Actions::cont())
+            Ok::<Actions<MailAddr, Never, Never, Never>, &'static str>(Actions::cont())
         });
         let due = Instant::now() + Duration::from_secs(5);
         let mut d = Deadlined::new(inner, Some(due), |_inner| Ok(Step::Stop(Exit::Normal)));
 
         assert_eq!(d.next_deadline(), Some(due), "the declared slot arms the timer");
-        assert!(matches!(d.step(Envelope::User(7)).await.unwrap().become_, Step::Continue));
+        assert!(matches!(
+            d.step(Envelope::User { from: MailAddr(1), msg: 7 }).await.unwrap().become_,
+            Step::Continue
+        ));
         assert_eq!(d.inner().state(), &vec![7], "non-deadline events forward inward");
         assert!(
             matches!(d.step(Envelope::Deadline).await.unwrap().become_, Step::Stop(Exit::Normal)),

@@ -11,7 +11,7 @@ use std::collections::VecDeque;
 use crate::verdict::{Never, Step};
 use tokio::time::Instant;
 
-use crate::behavior::{Acted, Actions, Behavior, Envelope};
+use crate::behavior::{Acted, Actions, Address, Behavior, Envelope, Fleet};
 
 /// What a stashing behavior does with a message.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -25,11 +25,13 @@ pub enum StashRoute {
 }
 
 /// A `Behavior` that routes messages, holding the stashed ones in its own state
-/// and replaying them on a release.
+/// and replaying them on a release. The buffer holds the WHOLE envelope leg —
+/// sender stamp included — so a replayed message arrives with its original
+/// `from`.
 pub struct Stashing<B: Behavior> {
     inner: B,
     route: fn(&B::Msg) -> StashRoute,
-    held: VecDeque<B::Msg>,
+    held: VecDeque<(B::Addr, B::Msg)>,
 }
 
 impl<B: Behavior<Ph = Never>> Stashing<B> {
@@ -55,14 +57,14 @@ impl<B: Behavior<Ph = Never>> Stashing<B> {
     /// the rest.
     async fn drain_into(
         &mut self,
-        acc: &mut Actions<Never, B::Outbound, B::Offspring>,
+        acc: &mut Actions<B::Addr, Never, B::Outbound, B::Offspring>,
     ) -> Result<(), B::Error> {
-        let mut batch: VecDeque<B::Msg> = self.held.drain(..).collect();
-        while let Some(m) = batch.pop_front() {
+        let mut batch: VecDeque<(B::Addr, B::Msg)> = self.held.drain(..).collect();
+        while let Some((from, m)) = batch.pop_front() {
             match (self.route)(&m) {
-                StashRoute::Stash => self.held.push_back(m),
+                StashRoute::Stash => self.held.push_back((from, m)),
                 StashRoute::Deliver | StashRoute::Release => {
-                    let actions = self.inner.step(Envelope::User(m)).await?;
+                    let actions = self.inner.step(Envelope::User { from, msg: m }).await?;
                     acc.sends.extend(actions.sends);
                     acc.creates.extend(actions.creates);
                     if let Step::Stop(exit) = actions.become_ {
@@ -80,10 +82,13 @@ impl<B: Behavior<Ph = Never>> Stashing<B> {
 impl<B> Behavior for Stashing<B>
 where
     B: Behavior<Ph = Never> + Send,
+    B::Addr: Send,
+    <B::Addr as Address>::Nonce: Send,
     B::Msg: Send,
     B::Outbound: Send,
     B::Offspring: Send,
 {
+    type Addr = B::Addr;
     type Msg = B::Msg;
     type Ph = Never;
     type Error = B::Error;
@@ -91,20 +96,20 @@ where
     type Offspring = B::Offspring;
     async fn step(
         &mut self,
-        ev: Envelope<B::Msg>,
-    ) -> Acted<Never, B::Outbound, B::Offspring, B::Error> {
-        let Envelope::User(m) = ev else {
+        ev: Envelope<B::Addr, B::Msg>,
+    ) -> Acted<B::Addr, Never, B::Outbound, B::Offspring, B::Error> {
+        let Envelope::User { from, msg: m } = ev else {
             return self.inner.step(ev).await;
         };
         match (self.route)(&m) {
             // Stash = `become` a fuller self: the message joins the buffer.
             StashRoute::Stash => {
-                self.held.push_back(m);
+                self.held.push_back((from, m));
                 Ok(Actions::cont())
             }
-            StashRoute::Deliver => self.inner.step(Envelope::User(m)).await,
+            StashRoute::Deliver => self.inner.step(Envelope::User { from, msg: m }).await,
             StashRoute::Release => {
-                let mut acc = self.inner.step(Envelope::User(m)).await?;
+                let mut acc = self.inner.step(Envelope::User { from, msg: m }).await?;
                 if matches!(acc.become_, Step::Stop(_)) {
                     return Ok(acc);
                 }
@@ -117,20 +122,28 @@ where
     fn next_deadline(&self) -> Option<Instant> {
         self.inner.next_deadline()
     }
+
+    fn fleet(&self) -> Option<Fleet<Self>> {
+        self.inner.fleet()
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::StashRoute;
     use crate::behavior::{Actions, Behavior, Envelope};
-    use crate::{Base, Fsm, Move, Stashing};
+    use crate::{Base, Fsm, MailAddr, Move, Stashing};
     use crate::verdict::Never;
 
-    fn recorder() -> Base<Vec<u64>, u64, Never, &'static str> {
+    fn recorder() -> Base<MailAddr, Vec<u64>, u64, Never, &'static str> {
         Base::new(Vec::<u64>::new(), |seen: &mut Vec<u64>, id: u64| {
             seen.push(id);
-            Ok::<Actions<Never, Never, Never>, &'static str>(Actions::cont())
+            Ok::<Actions<MailAddr, Never, Never, Never>, &'static str>(Actions::cont())
         })
+    }
+
+    fn user(msg: u64) -> Envelope<MailAddr, u64> {
+        Envelope::User { from: MailAddr(1), msg }
     }
 
     #[tokio::test]
@@ -141,7 +154,7 @@ mod tests {
             _ => StashRoute::Deliver,
         });
         for id in [1_u64, 2, 3, 0, 4] {
-            let _ = s.step(Envelope::User(id)).await;
+            let _ = s.step(user(id)).await;
         }
         assert_eq!(s.inner().state(), &vec![2, 0, 4]);
         assert_eq!(s.held(), 2, "re-stashed messages land in held, not the batch");
@@ -176,14 +189,14 @@ mod tests {
             Msg::Work(id) if *id >= 100 => StashRoute::Stash,
             _ => StashRoute::Deliver,
         });
-
-        let _ = stack.step(Envelope::User(Msg::Work(1))).await; // Stashing delivers → Fsm defers
-        let _ = stack.step(Envelope::User(Msg::Work(100))).await; // Stashing holds
+        let from = MailAddr(1);
+        let _ = stack.step(Envelope::User { from, msg: Msg::Work(1) }).await; // Stashing delivers → Fsm defers
+        let _ = stack.step(Envelope::User { from, msg: Msg::Work(100) }).await; // Stashing holds
 
         assert_eq!(stack.held(), 1, "the OUTER stashing buffer holds the big id");
         assert_eq!(stack.inner().held(), 1, "the INNER fsm buffer independently holds");
 
-        let _ = stack.step(Envelope::User(Msg::Promote)).await; // Fsm transitions + replays
+        let _ = stack.step(Envelope::User { from, msg: Msg::Promote }).await; // Fsm transitions + replays
         assert_eq!(stack.inner().state(), &vec![1], "fsm released on goto");
         assert_eq!(stack.inner().held(), 0, "fsm buffer drained");
         assert_eq!(stack.held(), 1, "outer still holds Work(100) — independent");

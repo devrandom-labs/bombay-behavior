@@ -1,12 +1,12 @@
 //! Slope point — caps: W. Generated (bombay card #298).
-use behaviorpass::{Actions, Base, Exit, Watching, stop_on_abnormal_death, run};
+use behaviorpass::{Actions, Base, Exit, MailAddr, Watching, stop_on_abnormal_death, run};
 use behaviorpass::{Never};
 use fastpass::{Config, channel};
 
-fn base() -> Base<u64, u64, Never, &'static str> {
+fn base() -> Base<MailAddr, u64, u64, Never, &'static str> {
     Base::new(0, |s: &mut u64, m: u64| {
         *s += m;
-        Ok::<Actions<Never, Never, Never>, &'static str>(if *s > 1000 { Actions::stop(Exit::Normal) } else { Actions::cont() })
+        Ok::<Actions<MailAddr, Never, Never, Never>, &'static str>(if *s > 1000 { Actions::stop(Exit::Normal) } else { Actions::cont() })
     })
 }
 
@@ -14,7 +14,7 @@ fn base() -> Base<u64, u64, Never, &'static str> {
 async fn main() {
     let (ctl, usr, rx) = channel::<Never, u64>(Config::new(8));
     let stack = Watching::new(base(), stop_on_abnormal_death);
-    let handle = tokio::spawn(run(stack, rx));
+    let handle = tokio::spawn(run(stack, rx, MailAddr(0)));
     let _ = usr.send(1).await;
     drop((usr, ctl));
     let _ = handle.await;

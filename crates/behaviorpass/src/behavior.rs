@@ -8,31 +8,57 @@ use crate::verdict::{Never, Step};
 use fastpass::{Consumer, Received};
 use tokio::time::Instant;
 
-use crate::Exit;
+use crate::{Crash, Exit};
+
+/// An abstract mail address (Agha): the fold names send recipients and
+/// derives child addresses as a PURE function — `birth` is AMST's
+/// `newadr()` discharged by derivation, not computation. The nonce TYPE is
+/// the address type's own business (how it mixes into the derivation is
+/// the impl's concern — no encoding trait).
+pub trait Address: Copy + Eq {
+    /// The creator-minted birth nonce namespace (`Copy + Eq` only — no
+    /// `Hash` bound leaks into the pure layer).
+    type Nonce: Copy + Eq;
+    /// The address of the child born of this address at `nonce`.
+    #[must_use]
+    fn birth(self, nonce: Self::Nonce) -> Self;
+}
 
 /// The fixed framework event alphabet folded by every layer. A source-adding
 /// layer handles its own variant and forwards the rest inward; a plain actor
 /// treats every non-`User` variant as a no-op. This flat alphabet (rather than
 /// nested per-layer sums) keeps the machinery uniform at fixed arity — the
 /// open source set is ADR-0030's deferred door.
-pub enum Envelope<M> {
-    /// A user-lane message.
-    User(M),
+pub enum Envelope<A: Address, M> {
+    /// A user-lane message with the driver-stamped sender address.
+    User {
+        /// The sender, stamped by the driver (ADR-0015: the sender is the
+        /// authority) — reply-to with zero behavior-side machinery.
+        from: A,
+        /// The user-lane payload.
+        msg: M,
+    },
     /// The single-shot deadline arm fired.
     Deadline,
-    /// A watched/linked peer stopped.
+    /// A watched/linked peer stopped, with how it ended.
     LinkDied {
-        /// The dead peer's id.
-        peer: u64,
-        /// Whether the stop was abnormal (the propagation trigger).
-        abnormal: bool,
+        /// The dead peer's address.
+        peer: A,
+        /// The death OUTCOME — classification is pure policy in the layer,
+        /// never a driver-pre-digested flag.
+        outcome: Result<Exit<A>, Crash>,
     },
-    /// A supervised child fold ended.
+    /// A supervised child fold ended, received at `at` (the budget-window
+    /// stamp), with how it ended.
     ChildStopped {
-        /// Index into the child table.
-        idx: usize,
-        /// Whether the child's stop was abnormal (restart-eligible).
-        abnormal: bool,
+        /// The child's birth nonce (slot = nonce — symmetric with
+        /// [`Target::Child`]).
+        nonce: A::Nonce,
+        /// The death OUTCOME (see `LinkDied`).
+        outcome: Result<Exit<A>, Crash>,
+        /// The driver-minted receipt stamp for windowed budgets — the fold
+        /// never reads a clock.
+        at: Instant,
     },
 }
 
@@ -40,29 +66,60 @@ pub enum Envelope<M> {
 /// as it processes a message. `Continue` = become(same), `Goto(p)` =
 /// become(other from the phase menu), `Stop(_)` = become(⊥). One leg of the
 /// Agha actions — the [`Actions`] carries it alongside the sends and creates.
-/// (Alias of bombay's `Step` with our [`Exit`].)
-pub type Become<Ph = Never> = Step<Ph, Exit>;
+pub type Become<A, Ph = Never> = Step<Ph, Exit<A>>;
 
 /// An abstract mail address (Agha): the fold names a send recipient by an
-/// opaque token; the driver owns the token -> real ref map.
+/// opaque token; the driver owns the token -> real ref map. Golf vocabulary:
+/// the nonce mixes into the address by a toy deterministic pure function
+/// (golf vocabulary, not crypto).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MailAddr(pub u64);
 
+impl Address for MailAddr {
+    type Nonce = u64;
+
+    fn birth(self, nonce: u64) -> Self {
+        MailAddr(self.0 ^ nonce.wrapping_mul(0x9E37_79B9_7F4A_7C15))
+    }
+}
+
+/// A send target: a global mail address, or one of the sender's own
+/// children by birth nonce (the driver resolves the nonce against its
+/// child table — symmetric with `Envelope::ChildStopped`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Target<A: Address> {
+    /// A global address (Agha mobility: addresses travel in messages).
+    Global(A),
+    /// A child of the sender, by the nonce its birth carried.
+    Child(A::Nonce),
+}
+
 /// One create-effect, self-describing (2026-08-04 design): a **birth** is a
-/// fresh actor at a fresh address (the driver mints and spawns); a
-/// **restart** is a supervisor's restart decision for a child slot —
-/// the address and mailbox SURVIVE, only the behavior is swapped (keep-address
-/// restart; address mobility makes re-pointing escaped handles impossible, so
-/// a restart is never a birth). The golf records the decision; the live driver
-/// interprets: `Birth` spawns, `Restart` rides the child's control lane.
+/// fresh actor at `Address::birth(self, nonce)` (creator-minted, framework
+/// freshness-validated: the driver spawns at the derived address); a
+/// **restart** is a supervisor's restart decision for the child born at
+/// `nonce` — the address and mailbox SURVIVE, only the behavior is swapped
+/// (keep-address restart; address mobility makes re-pointing escaped handles
+/// impossible, so a restart is never a birth). The golf records the decision;
+/// the live driver interprets: `Birth` spawns, `Restart` rides the child's
+/// control lane.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Create<New> {
-    /// A fresh actor: the driver spawns the spec at a new address.
-    Birth(New),
-    /// A restart decision for child `slot`: fresh behavior, surviving address.
+pub enum Create<A: Address, New> {
+    /// A fresh actor at `Address::birth(self, nonce)` (creator-minted,
+    /// framework freshness-validated): the driver spawns at the derived
+    /// address.
+    Birth {
+        /// The creator-minted birth nonce (the ONLY birth shape — the tree
+        /// is total: every parent is a supervisor namespace).
+        nonce: A::Nonce,
+        /// The child spec the driver spawns.
+        child: New,
+    },
+    /// A restart decision for the child born at `nonce`: the address and
+    /// mailbox SURVIVE, only the behavior is swapped (keep-address).
     Restart {
-        /// Index into the supervisor's child table.
-        slot: usize,
+        /// The birth nonce of the child to restart (slots ARE nonces).
+        nonce: A::Nonce,
         /// The replacement behavior for the slot's surviving mailbox.
         child: New,
     },
@@ -71,21 +128,23 @@ pub enum Create<New> {
 /// The Agha actions: everything a behavior emits from ONE event — the messages
 /// it SENT, the actors it CREATED, and the replacement behavior it BECAME. This
 /// is the full triple [`Behavior::step`] returns; send and create are
-/// first-class trace data, not swallowed side effects.
-pub struct Actions<Ph, Out, New> {
-    /// Messages sent this turn, each addressed by an opaque [`MailAddr`] token.
-    pub sends: Vec<(MailAddr, Out)>,
+/// first-class trace data, not swallowed side effects. `A` comes FIRST — it
+/// is the namespace the other three parameters live in.
+pub struct Actions<A: Address, Ph, Out, New> {
+    /// Messages sent this turn, each addressed to a [`Target`] — a global
+    /// address or an own child by birth nonce.
+    pub sends: Vec<(Target<A>, Out)>,
     /// Create-effects this turn (the driver interprets each): births and
     /// restarts, self-describing via [`Create`].
-    pub creates: Vec<Create<New>>,
+    pub creates: Vec<Create<A, New>>,
     /// The replacement behavior.
-    pub become_: Become<Ph>,
+    pub become_: Become<A, Ph>,
 }
 
-impl<Ph, Out, New> Actions<Ph, Out, New> {
+impl<A: Address, Ph, Out, New> Actions<A, Ph, Out, New> {
     /// Actions with no sends and no creates — just a `become`.
     #[must_use]
-    pub fn just(become_: Become<Ph>) -> Self {
+    pub fn just(become_: Become<A, Ph>) -> Self {
         Self { sends: Vec::new(), creates: Vec::new(), become_ }
     }
 
@@ -97,7 +156,7 @@ impl<Ph, Out, New> Actions<Ph, Out, New> {
 
     /// The pure `Stop(exit)` actions (no effects).
     #[must_use]
-    pub fn stop(exit: Exit) -> Self {
+    pub fn stop(exit: Exit<A>) -> Self {
         Self::just(Step::Stop(exit))
     }
 
@@ -108,23 +167,30 @@ impl<Ph, Out, New> Actions<Ph, Out, New> {
     }
 }
 
+/// The static fleet a behavior declares at construction: the child count and
+/// the builder the driver constructs each fleet child from (named for the
+/// `type_complexity` bar, like [`Acted`]).
+pub type Fleet<B> = (usize, fn(usize) -> <B as Behavior>::Offspring);
+
 /// The outcome of one fold: the full Agha [`Actions`] on the phase menu `Ph`
 /// with outbound menu `Out` and create-spec `New`, or a controlled crash `E`.
 /// Named so the [`Behavior::step`] future's `Output` stays legible (and under
 /// the `type_complexity` bar).
-pub type Acted<Ph, Out, New, E> = Result<Actions<Ph, Out, New>, E>;
+pub type Acted<A, Ph, Out, New, E> = Result<Actions<A, Ph, Out, New>, E>;
 
 /// A synchronous message handler: folds one message into `&mut S`, returning
 /// the full Agha [`Actions`] on the phase menu `P` with outbound menu `O` and
 /// create-spec `N` (fn pointer, not a closure, so a generated actor stays
 /// nameable).
-pub type Handler<S, M, P, E, O, N> = fn(&mut S, M) -> Acted<P, O, N, E>;
+pub type Handler<A, S, M, P, E, O, N> = fn(&mut S, M) -> Acted<A, P, O, N, E>;
 
 /// The one async object: state in `&mut self`, one total `step` over the
 /// [`Envelope`] alphabet, plus the `next_deadline` query the driver arms its timer
 /// from. `step` returns an explicit `impl Future + Send` (not `async fn`) so
 /// the `Send` bound is nameable at the driver's `spawn` boundary.
 pub trait Behavior {
+    /// The address type this behavior names recipients and children with.
+    type Addr: Address;
     /// The user-message type this behavior folds.
     type Msg;
     /// The become-menu still exposed upward (`Never` once fully erased).
@@ -139,10 +205,14 @@ pub trait Behavior {
     /// Fold one event and return the actor's [`Actions`] — the messages it sent,
     /// the actors it created, and its replacement behavior (Agha): keep the
     /// same, switch to another phase, or stop.
+    #[allow(
+        clippy::type_complexity,
+        reason = "the five seats are the Behavior assoc types themselves — further factoring hides the fold's own signature"
+    )]
     fn step(
         &mut self,
-        ev: Envelope<Self::Msg>,
-    ) -> impl Future<Output = Acted<Self::Ph, Self::Outbound, Self::Offspring, Self::Error>> + Send;
+        ev: Envelope<Self::Addr, Self::Msg>,
+    ) -> impl Future<Output = Acted<Self::Addr, Self::Ph, Self::Outbound, Self::Offspring, Self::Error>> + Send;
 
     /// The next instant this behavior needs waking, as a pure function of
     /// current state (`None` = no deadline). The deadline SOURCE is a query,
@@ -151,13 +221,22 @@ pub trait Behavior {
     fn next_deadline(&self) -> Option<Instant> {
         None
     }
+
+    /// The static child fleet this behavior declares at construction, as a
+    /// pure function of state (`None` = no fleet — a plain actor). The
+    /// driver's fleet birth happens at process START only; restarts do NOT
+    /// re-spawn (the child table survives the slot swap). The static fleet's
+    /// nonces are minted `0..n` by the creator (slot = nonce).
+    fn fleet(&self) -> Option<Fleet<Self>> {
+        None
+    }
 }
 
 /// Lift a become-only reaction verdict into a full [`Actions`] with empty effect
 /// lists: `Goto` cannot exist at `Never`, so only `Continue`/`Stop` ride out of
 /// a framework reaction, and a reaction sends and creates nothing. This is the
 /// phase-lift every source capability applies to its reaction's result.
-pub fn lift<Ph, Out, New>(v: Step<Never, Exit>) -> Actions<Ph, Out, New> {
+pub fn lift<A: Address, Ph, Out, New>(v: Step<Never, Exit<A>>) -> Actions<A, Ph, Out, New> {
     Actions::just(match v {
         Step::Continue => Step::Continue,
         Step::Goto(never) => match never {},
@@ -170,14 +249,14 @@ pub fn lift<Ph, Out, New>(v: Step<Never, Exit>) -> Actions<Ph, Out, New> {
 /// no source. The `Never` defaults on `O`/`N` mean a floor provably sends and
 /// creates nothing. Every capability wraps a `Behavior`; `Base` is the
 /// innermost one.
-pub struct Base<S, M, P, E, O = Never, N = Never> {
+pub struct Base<A: Address, S, M, P, E, O = Never, N = Never> {
     state: S,
-    handle: Handler<S, M, P, E, O, N>,
+    handle: Handler<A, S, M, P, E, O, N>,
 }
 
-impl<S, M, P, E, O, N> Base<S, M, P, E, O, N> {
+impl<A: Address, S, M, P, E, O, N> Base<A, S, M, P, E, O, N> {
     /// Builds a floor over `state` with `handle`.
-    pub fn new(state: S, handle: Handler<S, M, P, E, O, N>) -> Self {
+    pub fn new(state: S, handle: Handler<A, S, M, P, E, O, N>) -> Self {
         Self { state, handle }
     }
 
@@ -187,8 +266,10 @@ impl<S, M, P, E, O, N> Base<S, M, P, E, O, N> {
     }
 }
 
-impl<S, M, P, E, O, N> Behavior for Base<S, M, P, E, O, N>
+impl<A, S, M, P, E, O, N> Behavior for Base<A, S, M, P, E, O, N>
 where
+    A: Address + Send,
+    A::Nonce: Send,
     S: Send,
     M: Send,
     P: Send,
@@ -196,14 +277,15 @@ where
     O: Send,
     N: Send,
 {
+    type Addr = A;
     type Msg = M;
     type Ph = P;
     type Error = E;
     type Outbound = O;
     type Offspring = N;
-    async fn step(&mut self, ev: Envelope<M>) -> Acted<P, O, N, E> {
+    async fn step(&mut self, ev: Envelope<A, M>) -> Acted<A, P, O, N, E> {
         match ev {
-            Envelope::User(m) => (self.handle)(&mut self.state, m),
+            Envelope::User { msg, .. } => (self.handle)(&mut self.state, msg),
             // A plain actor owns no framework source — become(same), no effects.
             Envelope::Deadline | Envelope::LinkDied { .. } | Envelope::ChildStopped { .. } => {
                 Ok(Actions::cont())
@@ -216,20 +298,20 @@ where
 /// its whole life (the accumulated sends and creates) plus its final [`Exit`].
 /// The recording peer returns this instead of only the exit — send and create
 /// are observable trace, not swallowed effects.
-pub struct Transcript<Out, New> {
+pub struct Transcript<A: Address, Out, New> {
     /// Every message the behavior sent, in emission order.
-    pub sends: Vec<(MailAddr, Out)>,
+    pub sends: Vec<(Target<A>, Out)>,
     /// Every create-effect the behavior emitted, in emission order.
-    pub creates: Vec<Create<New>>,
+    pub creates: Vec<Create<A, New>>,
     /// The exit that ended the fold.
-    pub exit: Exit,
+    pub exit: Exit<A>,
 }
 
 /// Drive a fully-erased behavior over its fastpass mailbox until it stops or the
 /// mailbox drains, RECORDING the triple: each step's sends and creates are
 /// accumulated and returned in the [`Transcript`]. The user lane becomes
-/// `Envelope::User`; the control lane is routed by the Watching / Supervising
-/// layers (Task 2 continued).
+/// `Envelope::User` stamped with `from`; the control lane is routed by the
+/// Watching / Supervising layers (Task 2 continued).
 ///
 /// `Stop(exit)` ends the fold immediately; `Goto` is unconstructible at
 /// `Ph = Never`; `Err` short-circuits; a drained mailbox is collection.
@@ -239,7 +321,8 @@ pub struct Transcript<Out, New> {
 pub async fn run<B, C>(
     mut b: B,
     mut mailbox: Consumer<C, B::Msg>,
-) -> Result<Transcript<B::Outbound, B::Offspring>, B::Error>
+    from: B::Addr,
+) -> Result<Transcript<B::Addr, B::Outbound, B::Offspring>, B::Error>
 where
     B: Behavior<Ph = Never>,
 {
@@ -247,9 +330,11 @@ where
     let mut creates = Vec::new();
     while let Some(recv) = mailbox.recv().await {
         let ev = match recv {
-            Received::User(m) => Envelope::User(m),
-            // The control lane becomes load-bearing with Watching / Supervising.
-            Received::Control(_signal) => continue,
+            Received::User(m) => Envelope::User { from, msg: m },
+            // The control lane becomes load-bearing with Watching / Supervising;
+            // the user-lane-closed leg is drain-stop observability for the live
+            // driver (fork C) — the golf driver waits for full collection.
+            Received::Control(_) | Received::UserLaneClosed => continue,
         };
         let actions = b.step(ev).await?;
         sends.extend(actions.sends);
@@ -265,25 +350,30 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::{Actions, Base, Behavior, Envelope, MailAddr, Step, run};
+    use super::{Actions, Base, Behavior, Envelope, MailAddr, Step, Target, run};
     use crate::Exit;
     use crate::verdict::Never;
     use fastpass::{Config, channel};
 
+    type Rec = Base<MailAddr, Vec<u64>, u64, Never, &'static str>;
+
     #[tokio::test]
     async fn base_folds_user_messages_and_ignores_framework_events() {
-        let mut b = Base::new(Vec::<u64>::new(), |seen: &mut Vec<u64>, id: u64| {
+        let mut b: Rec = Base::new(Vec::<u64>::new(), |seen: &mut Vec<u64>, id: u64| {
             if id == 0 {
                 return Ok(Actions::stop(Exit::Normal));
             }
             seen.push(id);
-            Ok::<Actions<Never, Never, Never>, &'static str>(Actions::cont())
+            Ok::<Actions<MailAddr, Never, Never, Never>, &'static str>(Actions::cont())
         });
 
         assert!(matches!(b.step(Envelope::Deadline).await.unwrap().become_, Step::Continue));
-        assert!(matches!(b.step(Envelope::User(7)).await.unwrap().become_, Step::Continue));
         assert!(matches!(
-            b.step(Envelope::User(0)).await.unwrap().become_,
+            b.step(Envelope::User { from: MailAddr(1), msg: 7 }).await.unwrap().become_,
+            Step::Continue
+        ));
+        assert!(matches!(
+            b.step(Envelope::User { from: MailAddr(1), msg: 0 }).await.unwrap().become_,
             Step::Stop(Exit::Normal)
         ));
         assert_eq!(b.state(), &vec![7], "only the delivered user message folded");
@@ -291,7 +381,8 @@ mod tests {
 
     #[tokio::test]
     async fn base_has_no_deadline() {
-        let b = Base::new((), |(): &mut (), (): ()| Ok::<Actions<Never, Never, Never>, Never>(Actions::cont()));
+        let b: Base<MailAddr, (), (), Never, Never> =
+            Base::new((), |(): &mut (), (): ()| Ok::<Actions<MailAddr, Never, Never, Never>, Never>(Actions::cont()));
         assert!(b.next_deadline().is_none(), "a plain actor arms no deadline");
     }
 
@@ -299,6 +390,7 @@ mod tests {
     struct Counter(u32);
 
     impl Behavior for Counter {
+        type Addr = MailAddr;
         type Msg = u32;
         type Ph = Never;
         type Error = &'static str;
@@ -306,10 +398,10 @@ mod tests {
         type Offspring = Never;
         async fn step(
             &mut self,
-            ev: Envelope<u32>,
-        ) -> Result<Actions<Never, Never, Never>, &'static str> {
-            if let Envelope::User(n) = ev {
-                self.0 += n;
+            ev: Envelope<MailAddr, u32>,
+        ) -> Result<Actions<MailAddr, Never, Never, Never>, &'static str> {
+            if let Envelope::User { msg, .. } = ev {
+                self.0 += msg;
             }
             if self.0 >= 10 {
                 Ok(Actions::stop(Exit::Normal))
@@ -322,7 +414,7 @@ mod tests {
     #[tokio::test]
     async fn driver_folds_the_user_lane_until_a_stop_verdict() {
         let (_ctl, usr, rx) = channel::<Never, u32>(Config::new(8));
-        let handle = tokio::spawn(run(Counter(0), rx));
+        let handle = tokio::spawn(run(Counter(0), rx, MailAddr(0)));
 
         usr.send(3).await.expect("mailbox open");
         usr.send(4).await.expect("mailbox open");
@@ -335,7 +427,7 @@ mod tests {
     #[tokio::test]
     async fn driver_reports_collected_when_the_mailbox_drains() {
         let (ctl, usr, rx) = channel::<Never, u32>(Config::new(8));
-        let handle = tokio::spawn(run(Counter(0), rx));
+        let handle = tokio::spawn(run(Counter(0), rx, MailAddr(0)));
 
         usr.send(1).await.expect("mailbox open");
         // Collection = EVERY sender gone (both lanes): only then does `recv`
@@ -354,16 +446,20 @@ mod tests {
     #[tokio::test]
     async fn run_records_a_behaviors_sends_the_test_is_the_peer() {
         struct St;
-        let b: Base<St, u64, Never, &'static str, u64, Never> =
+        let b: Base<MailAddr, St, u64, Never, &'static str, u64, Never> =
             Base::new(St, |_: &mut St, _m: u64| {
-                Ok(Actions { sends: vec![(MailAddr(7), 99)], creates: vec![], become_: Step::Stop(Exit::Normal) })
+                Ok(Actions { sends: vec![(Target::Global(MailAddr(7)), 99)], creates: vec![], become_: Step::Stop(Exit::Normal) })
             });
         let (_ctl, usr, rx) = channel::<Never, u64>(Config::new(8));
-        let handle = tokio::spawn(run(b, rx));
+        let handle = tokio::spawn(run(b, rx, MailAddr(0)));
         usr.send(1).await.expect("mailbox open");
 
         let transcript = handle.await.expect("driver task joins").expect("no crash");
-        assert_eq!(transcript.sends, vec![(MailAddr(7), 99)], "the peer receives what the actor sent");
+        assert_eq!(
+            transcript.sends,
+            vec![(Target::Global(MailAddr(7)), 99)],
+            "the peer receives what the actor sent"
+        );
         assert_eq!(transcript.exit, Exit::Normal);
     }
 }

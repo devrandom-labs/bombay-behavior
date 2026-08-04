@@ -2,43 +2,59 @@
 //! `tests/oracle.rs`. Pins the composition laws: sends/creates/become pass
 //! through EVERY layer unchanged; the deadline min-fold surfaces through outer
 //! layers; framework events route to the layer that owns them even when
-//! wrapped (Stashing forwards Deadline and LinkDied; Supervising forwards
-//! everything but ChildStopped).
+//! wrapped (Stashing forwards Deadline and `LinkDied`; Supervising forwards
+//! everything but `ChildStopped`).
 
 use std::time::Duration;
 
 use behaviorpass::{
-    Actions, Base, Behavior, Deadlined, Envelope, Exit, MailAddr, StashRoute, Stashing,
-    Supervising, Watching, stop_on_abnormal_death,
+    Actions, Base, Behavior, Crash, Deadlined, Envelope, Exit, MailAddr, RestartPolicy, StashRoute,
+    Stashing, Strategy, Supervising, Target, Watching, stop_on_abnormal_death,
 };
 use behaviorpass::{Never, Step};
 use tokio::time::Instant;
 
-type Kid = Base<u32, u32, Never, &'static str>;
+type Kid = Base<MailAddr, u32, u32, Never, &'static str>;
 
 fn kid() -> Kid {
     Base::new(0_u32, |count: &mut u32, n: u32| {
         *count += n;
-        Ok::<Actions<Never, Never, Never>, &'static str>(Actions::cont())
+        Ok::<Actions<MailAddr, Never, Never, Never>, &'static str>(Actions::cont())
     })
+}
+
+fn user(msg: u64) -> Envelope<MailAddr, u64> {
+    Envelope::User { from: MailAddr(1), msg }
 }
 
 /// The full send/stop stack: Watching<Supervising<Stashing<Deadlined<Base>>>>
 /// — a user message's sends and a Stop verdict must ride out unchanged through
 /// every layer.
-type FullStack = Watching<Supervising<Stashing<Deadlined<Base<(), u64, Never, &'static str, u64, Never>>>, Kid>>;
+type FullStack = Watching<
+    Supervising<Stashing<Deadlined<Base<MailAddr, (), u64, Never, &'static str, u64, Kid>>>, Kid>,
+>;
 
 fn full_stack() -> FullStack {
-    let base: Base<(), u64, Never, &'static str, u64, Never> = Base::new((), |(): &mut (), m: u64| {
-        Ok::<Actions<Never, u64, Never>, &'static str>(Actions {
-            sends: vec![(MailAddr(9), m)],
-            creates: Vec::new(),
-            become_: if m == 0 { Step::Stop(Exit::Normal) } else { Step::Continue },
-        })
-    });
+    let base: Base<MailAddr, (), u64, Never, &'static str, u64, Kid> =
+        Base::new((), |(): &mut (), m: u64| {
+            Ok::<Actions<MailAddr, Never, u64, Kid>, &'static str>(Actions {
+                sends: vec![(Target::Global(MailAddr(9)), m)],
+                creates: Vec::new(),
+                become_: if m == 0 { Step::Stop(Exit::Normal) } else { Step::Continue },
+            })
+        });
     let deadlined = Deadlined::new(base, None, |_| Ok(Step::Continue));
     let stashing = Stashing::new(deadlined, |&_| StashRoute::Deliver);
-    let supervising = Supervising::new(stashing, 2, |_| kid(), 3);
+    let supervising = Supervising::new(
+        stashing,
+        |i| i as u64,
+        2,
+        |_| kid(),
+        Strategy::OneForOne,
+        RestartPolicy::Transient,
+        3,
+        Duration::MAX,
+    );
     Watching::new(supervising, stop_on_abnormal_death)
 }
 
@@ -47,8 +63,12 @@ fn full_stack() -> FullStack {
 #[tokio::test]
 async fn composition_sends_pass_through_every_layer() {
     let mut stack = full_stack();
-    let actions = stack.step(Envelope::User(4)).await.expect("no error");
-    assert_eq!(actions.sends, vec![(MailAddr(9), 4)], "the send survives all five layers");
+    let actions = stack.step(user(4)).await.expect("no error");
+    assert_eq!(
+        actions.sends,
+        vec![(Target::Global(MailAddr(9)), 4)],
+        "the send survives all five layers"
+    );
     assert!(actions.creates.is_empty(), "no layer invents creates");
     assert_eq!(actions.become_, Step::Continue);
 }
@@ -57,9 +77,9 @@ async fn composition_sends_pass_through_every_layer() {
 #[tokio::test]
 async fn composition_stop_verdict_rides_out_through_every_layer() {
     let mut stack = full_stack();
-    let actions = stack.step(Envelope::User(0)).await.expect("no error");
+    let actions = stack.step(user(0)).await.expect("no error");
     assert_eq!(actions.become_, Step::Stop(Exit::Normal), "the Stop survives all five layers");
-    assert_eq!(actions.sends, vec![(MailAddr(9), 0)]);
+    assert_eq!(actions.sends, vec![(Target::Global(MailAddr(9)), 0)]);
 }
 
 /// The deadline min-fold surfaces through the outer layers: Stashing and
@@ -69,8 +89,8 @@ async fn composition_stop_verdict_rides_out_through_every_layer() {
 async fn composition_deadline_min_surfaces_through_outer_layers() {
     let t1 = Instant::now() + Duration::from_secs(1);
     let t2 = Instant::now() + Duration::from_secs(5);
-    let base: Base<(), u64, Never, &'static str> = Base::new((), |(): &mut (), _: u64| {
-        Ok::<Actions<Never, Never, Never>, &'static str>(Actions::cont())
+    let base: Base<MailAddr, (), u64, Never, &'static str> = Base::new((), |(): &mut (), _: u64| {
+        Ok::<Actions<MailAddr, Never, Never, Never>, &'static str>(Actions::cont())
     });
     let inner_d = Deadlined::new(base, Some(t1), |_| Ok(Step::Continue));
     let outer_d = Deadlined::new(inner_d, Some(t2), |_| Ok(Step::Continue));
@@ -92,35 +112,51 @@ async fn composition_deadline_min_surfaces_through_outer_layers() {
 }
 
 /// Watching INSIDE Supervising: each layer owns its source — link-death is
-/// handled by the inner Watching (verdict rides out through Supervising::
+/// handled by the inner Watching (verdict rides out through `Supervising::`
 /// forward), child-stop by the outer Supervising, user sends pass through both.
 #[tokio::test]
 async fn composition_watching_inside_supervising_handles_both_sources() {
-    let sender: Base<(), u64, Never, &'static str, u64, Never> = Base::new((), |(): &mut (), m: u64| {
-        Ok::<Actions<Never, u64, Never>, &'static str>(Actions {
-            sends: vec![(MailAddr(9), m)],
-            creates: Vec::new(),
-            become_: Step::Continue,
-        })
-    });
+    let sender: Base<MailAddr, (), u64, Never, &'static str, u64, Kid> =
+        Base::new((), |(): &mut (), m: u64| {
+            Ok::<Actions<MailAddr, Never, u64, Kid>, &'static str>(Actions {
+                sends: vec![(Target::Global(MailAddr(9)), m)],
+                creates: Vec::new(),
+                become_: Step::Continue,
+            })
+        });
     let watching = Watching::new(sender, stop_on_abnormal_death);
-    let mut sup = Supervising::new(watching, 1, |_| kid(), 2);
+    let mut sup = Supervising::new(
+        watching,
+        |i| i as u64,
+        1,
+        |_| kid(),
+        Strategy::OneForOne,
+        RestartPolicy::Transient,
+        2,
+        Duration::MAX,
+    );
 
-    let actions = sup.step(Envelope::User(4)).await.expect("no error");
-    assert_eq!(actions.sends, vec![(MailAddr(9), 4)], "user sends pass through both layers");
+    let actions = sup.step(user(4)).await.expect("no error");
+    assert_eq!(actions.sends, vec![(Target::Global(MailAddr(9)), 4)], "user sends pass through both layers");
 
-    let actions = sup.step(Envelope::LinkDied { peer: 42, abnormal: true }).await.expect("no error");
+    let actions = sup
+        .step(Envelope::LinkDied { peer: MailAddr(42), outcome: Err(Crash::Failed) })
+        .await
+        .expect("no error");
     assert_eq!(
         actions.become_,
-        Step::Stop(Exit::LinkDied(42)),
+        Step::Stop(Exit::LinkDied(MailAddr(42))),
         "the inner Watching's propagation verdict rides out through Supervising"
     );
     assert!(actions.sends.is_empty(), "a link reaction emits no sends");
     assert!(actions.creates.is_empty(), "a link death is not a restart decision");
 
-    let actions = sup.step(Envelope::ChildStopped { idx: 0, abnormal: true }).await.expect("no error");
+    let actions = sup
+        .step(Envelope::ChildStopped { nonce: 0, outcome: Err(Crash::Failed), at: Instant::now() })
+        .await
+        .expect("no error");
     assert_eq!(actions.creates.len(), 1, "the outer Supervising restarts on child-stop");
-    assert_eq!(sup.restarts_left(), 1);
+    assert_eq!(sup.restarts_in_window(), 1, "one budget unit spent on the restart");
 }
 
 /// Deadlined ABOVE Watching: the deadline owns its event outside, the link
@@ -128,18 +164,21 @@ async fn composition_watching_inside_supervising_handles_both_sources() {
 #[tokio::test]
 async fn composition_deadline_above_watching_both_sources() {
     let due = Instant::now() + Duration::from_secs(5);
-    let base: Base<(), u64, Never, &'static str> = Base::new((), |(): &mut (), _: u64| {
-        Ok::<Actions<Never, Never, Never>, &'static str>(Actions::cont())
+    let base: Base<MailAddr, (), u64, Never, &'static str> = Base::new((), |(): &mut (), _: u64| {
+        Ok::<Actions<MailAddr, Never, Never, Never>, &'static str>(Actions::cont())
     });
     let watching = Watching::new(base, stop_on_abnormal_death);
     let mut d = Deadlined::new(watching, Some(due), |_| Ok(Step::Continue));
 
     assert_eq!(d.next_deadline(), Some(due), "the deadline surfaces above Watching");
 
-    let actions = d.step(Envelope::LinkDied { peer: 7, abnormal: true }).await.expect("no error");
+    let actions = d
+        .step(Envelope::LinkDied { peer: MailAddr(7), outcome: Err(Crash::Panicked) })
+        .await
+        .expect("no error");
     assert_eq!(
         actions.become_,
-        Step::Stop(Exit::LinkDied(7)),
+        Step::Stop(Exit::LinkDied(MailAddr(7))),
         "the link reaction fires through the deadline layer"
     );
     assert_eq!(d.next_deadline(), Some(due), "a link event does not disturb the deadline");
@@ -153,20 +192,24 @@ async fn composition_deadline_above_watching_both_sources() {
 /// Watching layer — the held buffer is untouched.
 #[tokio::test]
 async fn composition_link_died_propagates_through_stashing() {
-    let base: Base<Vec<u64>, u64, Never, &'static str> = Base::new(Vec::<u64>::new(), |seen: &mut Vec<u64>, id: u64| {
-        seen.push(id);
-        Ok::<Actions<Never, Never, Never>, &'static str>(Actions::cont())
-    });
+    let base: Base<MailAddr, Vec<u64>, u64, Never, &'static str> =
+        Base::new(Vec::<u64>::new(), |seen: &mut Vec<u64>, id: u64| {
+            seen.push(id);
+            Ok::<Actions<MailAddr, Never, Never, Never>, &'static str>(Actions::cont())
+        });
     let watching = Watching::new(base, stop_on_abnormal_death);
     let mut stashing = Stashing::new(watching, |&id| {
         if id % 2 == 1 { StashRoute::Stash } else { StashRoute::Deliver }
     });
-    let _ = stashing.step(Envelope::User(1)).await.expect("no error"); // held=[1]
+    let _ = stashing.step(user(1)).await.expect("no error"); // held=[1]
 
-    let actions = stashing.step(Envelope::LinkDied { peer: 42, abnormal: true }).await.expect("no error");
+    let actions = stashing
+        .step(Envelope::LinkDied { peer: MailAddr(42), outcome: Err(Crash::Failed) })
+        .await
+        .expect("no error");
     assert_eq!(
         actions.become_,
-        Step::Stop(Exit::LinkDied(42)),
+        Step::Stop(Exit::LinkDied(MailAddr(42))),
         "the link-death propagates through Stashing to the Watching layer"
     );
     assert_eq!(stashing.held(), 1, "the held buffer is untouched by a framework event");
@@ -176,13 +219,26 @@ async fn composition_link_died_propagates_through_stashing() {
 /// its restart create.
 #[tokio::test]
 async fn composition_child_stopped_decides_through_stashing() {
-    let base: Base<(), u64, Never, &'static str> = Base::new((), |(): &mut (), _: u64| {
-        Ok::<Actions<Never, Never, Never>, &'static str>(Actions::cont())
-    });
-    let supervising = Supervising::new(base, 1, |_| kid(), 3);
+    let base: Base<MailAddr, (), u64, Never, &'static str, Never, Kid> =
+        Base::new((), |(): &mut (), _: u64| {
+            Ok::<Actions<MailAddr, Never, Never, Kid>, &'static str>(Actions::cont())
+        });
+    let supervising = Supervising::new(
+        base,
+        |i| i as u64,
+        1,
+        |_| kid(),
+        Strategy::OneForOne,
+        RestartPolicy::Transient,
+        3,
+        Duration::MAX,
+    );
     let mut stashing = Stashing::new(supervising, |&_| StashRoute::Deliver);
 
-    let actions = stashing.step(Envelope::ChildStopped { idx: 0, abnormal: true }).await.expect("no error");
+    let actions = stashing
+        .step(Envelope::ChildStopped { nonce: 0, outcome: Err(Crash::Failed), at: Instant::now() })
+        .await
+        .expect("no error");
     assert_eq!(actions.creates.len(), 1, "the restart create rides out through Stashing");
     assert!(actions.sends.is_empty());
     assert_eq!(actions.become_, Step::Continue);

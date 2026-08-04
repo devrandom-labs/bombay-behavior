@@ -20,7 +20,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
-use behaviorpass::{Actions, Base, Behavior, Create, Deadlined, Envelope, Exit, MailAddr, StashRoute, Stashing, run};
+use behaviorpass::{Actions, Base, Behavior, Create, Deadlined, Envelope, Exit, MailAddr, StashRoute, Stashing, Target, run};
 use behaviorpass::{Never, Step};
 use fastpass::{Config, channel};
 
@@ -48,7 +48,7 @@ fn mutable_route(m: &M) -> StashRoute {
     }
 }
 
-fn sender_inner() -> Base<Vec<u64>, M, Never, &'static str, u64, Never> {
+fn sender_inner() -> Base<MailAddr, Vec<u64>, M, Never, &'static str, u64, Never> {
     Base::new(Vec::<u64>::new(), |seen: &mut Vec<u64>, m: M| {
         let id = value(&m);
         seen.push(id);
@@ -57,8 +57,8 @@ fn sender_inner() -> Base<Vec<u64>, M, Never, &'static str, u64, Never> {
         } else {
             Step::Continue
         };
-        Ok::<Actions<Never, u64, Never>, &'static str>(Actions {
-            sends: vec![(MailAddr(id), id)],
+        Ok::<Actions<MailAddr, Never, u64, Never>, &'static str>(Actions {
+            sends: vec![(Target::Global(MailAddr(id)), id)],
             creates: Vec::new(),
             become_,
         })
@@ -77,14 +77,14 @@ async fn stashing_release_accumulates_drained_sends_in_order() {
     let mut s = Stashing::new(sender_inner(), mutable_route);
 
     let m1 = msg(0);
-    let _ = s.step(Envelope::User(m1.clone())).await; // stash (value 0)
+    let _ = s.step(Envelope::User { from: MailAddr(1), msg: m1.clone() }).await; // stash (value 0)
     assert_eq!(s.held(), 1);
     m1.0.store(2, Ordering::Relaxed); // becomes Deliver-class before the release
 
-    let actions = s.step(Envelope::User(msg(1))).await.expect("no error");
+    let actions = s.step(Envelope::User { from: MailAddr(1), msg: msg(1) }).await.expect("no error");
     assert_eq!(
         actions.sends,
-        vec![(MailAddr(1), 1), (MailAddr(2), 2)],
+        vec![(Target::Global(MailAddr(1)), 1), (Target::Global(MailAddr(2)), 2)],
         "the release folds the current message THEN the drained batch, in order"
     );
     assert_eq!(actions.become_, Step::Continue);
@@ -95,24 +95,24 @@ async fn stashing_release_accumulates_drained_sends_in_order() {
 /// The same accumulation for CREATES.
 #[tokio::test]
 async fn stashing_release_accumulates_drained_creates_in_order() {
-    let inner: Base<Vec<u64>, M, Never, &'static str, Never, u32> =
+    let inner: Base<MailAddr, Vec<u64>, M, Never, &'static str, Never, u32> =
         Base::new(Vec::<u64>::new(), |seen: &mut Vec<u64>, m: M| {
             let id = value(&m);
             seen.push(id);
-            Ok::<Actions<Never, Never, u32>, &'static str>(Actions {
+            Ok::<Actions<MailAddr, Never, Never, u32>, &'static str>(Actions {
                 sends: Vec::new(),
-                creates: vec![Create::Birth(id as u32)],
+                creates: vec![Create::Birth { nonce: id, child: u32::try_from(id).expect("test message ids fit u32") }],
                 become_: Step::Continue,
             })
         });
     let mut s = Stashing::new(inner, mutable_route);
 
     let m1 = msg(0);
-    let _ = s.step(Envelope::User(m1.clone())).await; // stash
+    let _ = s.step(Envelope::User { from: MailAddr(1), msg: m1.clone() }).await; // stash
     m1.0.store(2, Ordering::Relaxed);
 
-    let actions = s.step(Envelope::User(msg(1))).await.expect("no error");
-    assert_eq!(actions.creates, vec![Create::Birth(1), Create::Birth(2)], "creates accumulate in fold order");
+    let actions = s.step(Envelope::User { from: MailAddr(1), msg: msg(1) }).await.expect("no error");
+    assert_eq!(actions.creates, vec![Create::Birth { nonce: 1, child: 1 }, Create::Birth { nonce: 2, child: 2 }], "creates accumulate in fold order");
     assert_eq!(s.held(), 0);
 }
 
@@ -124,12 +124,12 @@ async fn stashing_stop_mid_drain_abandons_the_rest_and_re_holds() {
 
     let m3 = msg(0); // will become the stop trigger
     let m1 = msg(0); // will become deliverable
-    let _ = s.step(Envelope::User(m3.clone())).await; // held=[m3]
-    let _ = s.step(Envelope::User(m1.clone())).await; // held=[m3,m1]
+    let _ = s.step(Envelope::User { from: MailAddr(1), msg: m3.clone() }).await; // held=[m3]
+    let _ = s.step(Envelope::User { from: MailAddr(1), msg: m1.clone() }).await; // held=[m3,m1]
     m3.0.store(3, Ordering::Relaxed); // inner stops on 3
     m1.0.store(2, Ordering::Relaxed); // inner delivers on 2
 
-    let actions = s.step(Envelope::User(msg(1))).await.expect("no error");
+    let actions = s.step(Envelope::User { from: MailAddr(1), msg: msg(1) }).await.expect("no error");
     assert_eq!(
         actions.become_,
         Step::Stop(Exit::Normal),
@@ -137,7 +137,7 @@ async fn stashing_stop_mid_drain_abandons_the_rest_and_re_holds() {
     );
     assert_eq!(
         actions.sends,
-        vec![(MailAddr(1), 1), (MailAddr(3), 3)],
+        vec![(Target::Global(MailAddr(1)), 1), (Target::Global(MailAddr(3)), 3)],
         "the current message and the stop message fold; the tail never does"
     );
     assert_eq!(s.inner().state(), &vec![1, 3], "the tail (value 2) was abandoned");
@@ -150,9 +150,9 @@ async fn stashing_stop_mid_drain_abandons_the_rest_and_re_holds() {
 async fn stashing_release_stop_on_current_message_skips_drain() {
     let mut s = Stashing::new(sender_inner(), mutable_route);
     let held = msg(0);
-    let _ = s.step(Envelope::User(held.clone())).await; // held=[held]
+    let _ = s.step(Envelope::User { from: MailAddr(1), msg: held.clone() }).await; // held=[held]
 
-    let actions = s.step(Envelope::User(msg(1))).await.expect("no error");
+    let actions = s.step(Envelope::User { from: MailAddr(1), msg: msg(1) }).await.expect("no error");
     // value 1 = Release, but the sender stops only on 3 — so no Stop here.
     assert_eq!(actions.become_, Step::Continue);
     assert_eq!(s.held(), 1, "held untouched when the release has nothing to drain");
@@ -163,8 +163,8 @@ async fn stashing_release_stop_on_current_message_skips_drain() {
         if value(m) == 3 { StashRoute::Release } else { StashRoute::Stash }
     });
     let held2 = msg(7);
-    let _ = s2.step(Envelope::User(held2.clone())).await; // held=[7]
-    let actions = s2.step(Envelope::User(msg(3))).await.expect("no error");
+    let _ = s2.step(Envelope::User { from: MailAddr(1), msg: held2.clone() }).await; // held=[7]
+    let actions = s2.step(Envelope::User { from: MailAddr(1), msg: msg(3) }).await.expect("no error");
     assert_eq!(
         actions.become_,
         Step::Stop(Exit::Normal),
@@ -182,21 +182,21 @@ async fn stashing_release_stop_on_current_message_skips_drain() {
 async fn stashing_release_replays_ahead_of_the_mailbox_backlog() {
     let mut s = Stashing::new(sender_inner(), mutable_route);
     let m0 = msg(0);
-    let _ = s.step(Envelope::User(m0.clone())).await.expect("no error"); // stash
+    let _ = s.step(Envelope::User { from: MailAddr(1), msg: m0.clone() }).await.expect("no error"); // stash
     assert_eq!(s.held(), 1);
     m0.0.store(2, Ordering::Relaxed); // becomes Deliver-class before the release
 
-    let (_ctl, usr, rx) = channel::<Never, M>(Config::new(8));
-    let handle = tokio::spawn(run(s, rx));
+    let (ctl, usr, rx) = channel::<Never, M>(Config::new(8));
+    let handle = tokio::spawn(run(s, rx, MailAddr(0)));
     usr.send(msg(1)).await.expect("mailbox open"); // Release: delivers 1, drains [2]
     usr.send(msg(4)).await.expect("mailbox open"); // backlog behind the release
 
     drop(usr);
-    drop(_ctl);
+    drop(ctl);
     let transcript = handle.await.expect("driver joins").expect("no crash");
     assert_eq!(
         transcript.sends,
-        vec![(MailAddr(1), 1), (MailAddr(2), 2), (MailAddr(4), 4)],
+        vec![(Target::Global(MailAddr(1)), 1), (Target::Global(MailAddr(2)), 2), (Target::Global(MailAddr(4)), 4)],
         "the drained batch folds ahead of the backlog, in emission order"
     );
     assert_eq!(transcript.exit, Exit::Collected);
@@ -206,8 +206,8 @@ async fn stashing_release_replays_ahead_of_the_mailbox_backlog() {
 #[tokio::test]
 async fn stashing_release_with_empty_held_delivers_current() {
     let mut s = Stashing::new(sender_inner(), mutable_route);
-    let actions = s.step(Envelope::User(msg(1))).await.expect("no error");
-    assert_eq!(actions.sends, vec![(MailAddr(1), 1)]);
+    let actions = s.step(Envelope::User { from: MailAddr(1), msg: msg(1) }).await.expect("no error");
+    assert_eq!(actions.sends, vec![(Target::Global(MailAddr(1)), 1)]);
     assert_eq!(s.inner().state(), &vec![1]);
     assert_eq!(s.held(), 0);
 }
@@ -216,17 +216,17 @@ async fn stashing_release_with_empty_held_delivers_current() {
 /// release terminates (no livelock) — each stashed message is re-routed ONCE.
 #[tokio::test]
 async fn stashing_release_re_stashes_under_snapshot_bound() {
-    let recorder: Base<Vec<u64>, u64, Never, &'static str> = Base::new(Vec::<u64>::new(), |seen: &mut Vec<u64>, id: u64| {
+    let recorder: Base<MailAddr, Vec<u64>, u64, Never, &'static str> = Base::new(Vec::<u64>::new(), |seen: &mut Vec<u64>, id: u64| {
         seen.push(id);
-        Ok::<Actions<Never, Never, Never>, &'static str>(Actions::cont())
+        Ok::<Actions<MailAddr, Never, Never, Never>, &'static str>(Actions::cont())
     });
     let mut s = Stashing::new(recorder, |&id| {
         if id == 0 { StashRoute::Release } else { StashRoute::Stash }
     });
     for id in [1_u64, 2, 3] {
-        let _ = s.step(Envelope::User(id)).await; // held=[1,2,3]
+        let _ = s.step(Envelope::User { from: MailAddr(1), msg: id }).await; // held=[1,2,3]
     }
-    let actions = s.step(Envelope::User(0)).await.expect("no error");
+    let actions = s.step(Envelope::User { from: MailAddr(1), msg: 0 }).await.expect("no error");
     assert_eq!(actions.become_, Step::Continue, "an all-restash release still terminates");
     assert_eq!(s.inner().state(), &vec![0], "only the current message folded");
     assert_eq!(s.held(), 3, "the whole batch re-enters held, once each");
@@ -236,9 +236,9 @@ async fn stashing_release_re_stashes_under_snapshot_bound() {
 // Survivor 2: Stashing::next_deadline forwarding
 // ---------------------------------------------------------------------------
 
-fn flake_inner(due: Option<Instant>) -> Deadlined<Base<(), u64, Never, &'static str>> {
-    let base: Base<(), u64, Never, &'static str> = Base::new((), |(): &mut (), _: u64| {
-        Ok::<Actions<Never, Never, Never>, &'static str>(Actions::cont())
+fn flake_inner(due: Option<Instant>) -> Deadlined<Base<MailAddr, (), u64, Never, &'static str>> {
+    let base: Base<MailAddr, (), u64, Never, &'static str> = Base::new((), |(): &mut (), _: u64| {
+        Ok::<Actions<MailAddr, Never, Never, Never>, &'static str>(Actions::cont())
     });
     Deadlined::new(base, due, |_inner| Ok(Step::Stop(Exit::Normal)))
 }
@@ -287,6 +287,10 @@ async fn stashing_next_deadline_min_folds_through_layers() {
 // Differential property model + fuzz
 // ---------------------------------------------------------------------------
 
+#[allow(
+    clippy::trivially_copy_pass_by_ref,
+    reason = "the Stashing route seat is fn(&B::Msg) — the reference is the interface"
+)]
 fn pure_route(id: &u64) -> StashRoute {
     match id {
         0 => StashRoute::Release,
@@ -295,10 +299,10 @@ fn pure_route(id: &u64) -> StashRoute {
     }
 }
 
-fn recorder() -> Base<Vec<u64>, u64, Never, &'static str> {
+fn recorder() -> Base<MailAddr, Vec<u64>, u64, Never, &'static str> {
     Base::new(Vec::<u64>::new(), |seen: &mut Vec<u64>, id: u64| {
         seen.push(id);
-        Ok::<Actions<Never, Never, Never>, &'static str>(Actions::cont())
+        Ok::<Actions<MailAddr, Never, Never, Never>, &'static str>(Actions::cont())
     })
 }
 
@@ -347,7 +351,7 @@ fn fold_stash_script_and_check(rt: &tokio::runtime::Runtime, ids: &[u64]) {
     let mut s = Stashing::new(recorder(), pure_route);
     rt.block_on(async {
         for (i, id) in ids.iter().copied().enumerate() {
-            let actions = s.step(Envelope::User(id)).await.expect("no error");
+            let actions = s.step(Envelope::User { from: MailAddr(1), msg: id }).await.expect("no error");
             assert_eq!(actions.become_, Step::Continue, "op #{i}");
             assert!(actions.sends.is_empty(), "op #{i}: the recorder sends nothing");
             model.fold(id);
@@ -393,7 +397,7 @@ proptest::proptest! {
         let mut held = 0usize;
         rt.block_on(async {
             for (i, id) in ids.iter().copied().enumerate() {
-                let actions = s.step(Envelope::User(id)).await.expect("no error");
+                let actions = s.step(Envelope::User { from: MailAddr(1), msg: id }).await.expect("no error");
                 assert_eq!(actions.become_, Step::Continue, "op #{i}: terminates");
                 if id != 0 {
                     held += 1; // stash
