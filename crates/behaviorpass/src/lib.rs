@@ -29,7 +29,7 @@ pub use deadlined::{DeadlineReaction, Deadlined};
 pub use fsm::{Fsm, Move};
 pub use stashing::{StashRoute, Stashing};
 pub use supervising::Supervising;
-pub use watching::{LinkReaction, Watching, otp_propagation};
+pub use watching::{LinkReaction, Watching, stop_on_abnormal_death};
 
 mod exit; // Exit — the trace-exit vocabulary (moved in-crate; reference crate retired)
 

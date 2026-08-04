@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use behaviorpass::{
     Actions, Base, Behavior, Deadlined, Envelope, Exit, MailAddr, StashRoute, Stashing,
-    Supervising, Watching, otp_propagation,
+    Supervising, Watching, stop_on_abnormal_death,
 };
 use bombay::capability::{Never, Step};
 use tokio::time::Instant;
@@ -39,7 +39,7 @@ fn full_stack() -> FullStack {
     let deadlined = Deadlined::new(base, None, |_| Ok(Step::Continue));
     let stashing = Stashing::new(deadlined, |&_| StashRoute::Deliver);
     let supervising = Supervising::new(stashing, 2, |_| kid(), 3);
-    Watching::new(supervising, otp_propagation)
+    Watching::new(supervising, stop_on_abnormal_death)
 }
 
 /// Sends pass through EVERY layer unchanged; creates stay empty (the floor's
@@ -75,7 +75,7 @@ async fn composition_deadline_min_surfaces_through_outer_layers() {
     let inner_d = Deadlined::new(base, Some(t1), |_| Ok(Step::Continue));
     let outer_d = Deadlined::new(inner_d, Some(t2), |_| Ok(Step::Continue));
     let stashing = Stashing::new(outer_d, |&_| StashRoute::Deliver);
-    let mut watching = Watching::new(stashing, otp_propagation);
+    let mut watching = Watching::new(stashing, stop_on_abnormal_death);
 
     assert_eq!(watching.next_deadline(), Some(t1), "the min of both slots surfaces through Stashing AND Watching");
 
@@ -103,7 +103,7 @@ async fn composition_watching_inside_supervising_handles_both_sources() {
             become_: Step::Continue,
         })
     });
-    let watching = Watching::new(sender, otp_propagation);
+    let watching = Watching::new(sender, stop_on_abnormal_death);
     let mut sup = Supervising::new(watching, 1, |_| kid(), 2);
 
     let actions = sup.step(Envelope::User(4)).await.expect("no error");
@@ -131,7 +131,7 @@ async fn composition_deadline_above_watching_both_sources() {
     let base: Base<(), u64, Never, &'static str> = Base::new((), |(): &mut (), _: u64| {
         Ok::<Actions<Never, Never, Never>, &'static str>(Actions::cont())
     });
-    let watching = Watching::new(base, otp_propagation);
+    let watching = Watching::new(base, stop_on_abnormal_death);
     let mut d = Deadlined::new(watching, Some(due), |_| Ok(Step::Continue));
 
     assert_eq!(d.next_deadline(), Some(due), "the deadline surfaces above Watching");
@@ -157,7 +157,7 @@ async fn composition_link_died_propagates_through_stashing() {
         seen.push(id);
         Ok::<Actions<Never, Never, Never>, &'static str>(Actions::cont())
     });
-    let watching = Watching::new(base, otp_propagation);
+    let watching = Watching::new(base, stop_on_abnormal_death);
     let mut stashing = Stashing::new(watching, |&id| {
         if id % 2 == 1 { StashRoute::Stash } else { StashRoute::Deliver }
     });

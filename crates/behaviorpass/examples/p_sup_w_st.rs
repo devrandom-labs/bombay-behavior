@@ -1,5 +1,5 @@
 //! Slope point — caps: St Sup W. Generated (bombay card #298).
-use behaviorpass::{Actions, Base, Exit, StashRoute, Stashing, Supervising, Watching, otp_propagation, run};
+use behaviorpass::{Actions, Base, Exit, StashRoute, Stashing, Supervising, Watching, stop_on_abnormal_death, run};
 use bombay::capability::{Never};
 use fastpass::{Config, channel};
 
@@ -13,7 +13,7 @@ fn base() -> Base<u64, u64, Never, &'static str> {
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
     let (ctl, usr, rx) = channel::<Never, u64>(Config::new(8));
-    let stack = Supervising::new(Watching::new(Stashing::new(base(), |_: &u64| StashRoute::Deliver), otp_propagation), 1, |_| base(), 3);
+    let stack = Supervising::new(Watching::new(Stashing::new(base(), |_: &u64| StashRoute::Deliver), stop_on_abnormal_death), 1, |_| base(), 3);
     let handle = tokio::spawn(run(stack, rx));
     let _ = usr.send(1).await;
     drop((usr, ctl));

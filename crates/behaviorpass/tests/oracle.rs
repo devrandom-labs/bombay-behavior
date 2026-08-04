@@ -12,7 +12,7 @@
 
 use behaviorpass::{
     Actions, Base, Behavior, Create, Deadlined, Envelope, Exit, Fsm, Move, StashRoute, Stashing,
-    Supervising, Watching, otp_propagation,
+    Supervising, Watching, stop_on_abnormal_death,
 };
 use bombay::capability::{Never, Step};
 use core::time::Duration;
@@ -61,7 +61,7 @@ async fn deadlined_arms_fires_once_and_forwards() {
 /// normal one is absorbed.
 #[tokio::test]
 async fn watching_propagates_abnormal_only() {
-    let mut w = Watching::new(recorder(), otp_propagation);
+    let mut w = Watching::new(recorder(), stop_on_abnormal_death);
     assert!(matches!(
         w.step(Envelope::LinkDied { peer: 3, abnormal: false }).await.unwrap().become_,
         Step::Continue
@@ -147,10 +147,10 @@ async fn supervising_restarts_within_budget_only() {
     let mut sup = Supervising::new(inner, 1, |_| kid(), 1);
 
     let actions = sup.step(Envelope::ChildStopped { idx: 0, abnormal: true }).await.unwrap();
-    let [Create::Reincarnate { slot, .. }] = actions.creates.as_slice() else {
-        panic!("the restart emits exactly one tagged reincarnation, never a bare birth");
+    let [Create::Restart { slot, .. }] = actions.creates.as_slice() else {
+        panic!("the restart emits exactly one tagged restart, never a bare birth");
     };
-    assert_eq!(*slot, 0, "the reincarnation names the stopped slot");
+    assert_eq!(*slot, 0, "the restart names the stopped slot");
     assert!(sup.is_alive(0));
     assert_eq!(sup.restarts_left(), 0);
 
@@ -180,7 +180,7 @@ async fn supervising_restarts_within_budget_only() {
 async fn composed_watching_over_deadlined_routes_each_source() {
     let due = Instant::now() + Duration::from_secs(3);
     let deadlined = Deadlined::new(recorder(), Some(due), |_| Ok(Step::Continue));
-    let mut w = Watching::new(deadlined, otp_propagation);
+    let mut w = Watching::new(deadlined, stop_on_abnormal_death);
 
     assert_eq!(w.next_deadline(), Some(due), "the inner deadline surfaces through watch");
     assert!(matches!(w.step(Envelope::User(5)).await.unwrap().become_, Step::Continue));
