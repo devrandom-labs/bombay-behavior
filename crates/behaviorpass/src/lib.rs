@@ -7,6 +7,10 @@
 //! exactly what it holds. Trace-equality to the frozen reference at every
 //! lattice point is the correctness gate (tests/oracle.rs).
 
+// The `workers!` macro emits `::behaviorpass::…` paths; this alias lets
+// those expansions resolve inside this crate too (macro hygiene).
+extern crate self as behaviorpass;
+
 mod behavior; // the core: Address, Behavior, State, Base, FnState, Envelope, Actions, run
 mod verdict; // Never, Step — owned verdict vocabulary (no upward deps)
 mod deadlined; // Deadlined
