@@ -19,17 +19,18 @@
 //! (no real timer), so a hung layer cannot stall the measure loop.
 
 use behaviorpass::{
-    Actions, Base, Behavior, Crash, Create, Deadlined, Envelope, Exit, Fsm, MailAddr, Move,
-    RestartPolicy, StashRoute, Stashing, Strategy, Supervising, Watching, stop_on_abnormal_death,
+    Actions, Base, Behavior, Crash, Create, Deadlined, Envelope, Exit, FnState, Fsm, MailAddr,
+    Move, RestartPolicy, StashRoute, Stashing, Strategy, Supervising, Watching,
+    stop_on_abnormal_death,
 };
 use behaviorpass::{Never, Step};
 use core::time::Duration;
 use tokio::time::Instant;
 
-type Rec = Base<MailAddr, Vec<u64>, u64, Never, &'static str>;
+type Rec = Base<FnState<Vec<u64>, MailAddr, u64, Never, Never, &'static str>, Never, Never, &'static str>;
 
 fn recorder() -> Rec {
-    Base::new(Vec::<u64>::new(), |seen: &mut Vec<u64>, id: u64| {
+    Base::from_fn(Vec::<u64>::new(), |seen: &mut Vec<u64>, _from: MailAddr, id: u64| {
         seen.push(id);
         Ok::<Actions<MailAddr, Never, Never, Never>, &'static str>(Actions::cont())
     })
@@ -53,7 +54,7 @@ async fn plain_folds_fifo_and_ignores_framework_events() {
         Step::Continue
     ));
     assert!(matches!(b.step(user(2)).await.unwrap().become_, Step::Continue));
-    assert_eq!(b.state(), &vec![1, 2]);
+    assert_eq!(b.state().state, vec![1, 2]);
     assert!(b.fleet().is_none(), "a plain actor declares no fleet");
 }
 
@@ -70,7 +71,7 @@ async fn deadlined_arms_fires_once_and_forwards() {
         Step::Stop(Exit::Normal)
     ));
     assert_eq!(d.next_deadline(), None, "fires once");
-    assert_eq!(d.inner().state(), &vec![7]);
+    assert_eq!(d.inner().state().state, vec![7]);
 }
 
 /// Watching: an abnormal linked death propagates with the carried reason; a
@@ -102,7 +103,7 @@ async fn watching_propagates_abnormal_only() {
             .become_,
         Step::Stop(Exit::LinkDied(MailAddr(3)))
     ));
-    assert_eq!(w.inner().state(), &vec![1]);
+    assert_eq!(w.inner().state().state, vec![1]);
 
     // A panic-domain crash and an abnormal Exit value both propagate.
     let mut w2 = Watching::new(recorder(), stop_on_abnormal_death);
@@ -135,7 +136,7 @@ async fn stashing_release_drains_atomically_under_the_snapshot_bound() {
     for id in [1_u64, 2, 3, 0, 4] {
         let _ = s.step(user(id)).await;
     }
-    assert_eq!(s.inner().state(), &vec![2, 0, 4]);
+    assert_eq!(s.inner().state().state, vec![2, 0, 4]);
     assert_eq!(s.held(), 2);
 }
 
@@ -182,20 +183,20 @@ async fn fsm_defers_then_replays_on_transition() {
 // Supervising — the generalized strategy space (card 1 laws)
 // ---------------------------------------------------------------------------
 
-type Kid = Base<MailAddr, u32, u32, Never, &'static str>;
+type Kid = Base<FnState<u32, MailAddr, u32, Never, Never, &'static str>, Never, Never, &'static str>;
 /// The inner's Offspring IS the child menu (the relaxed bound): it creates
 /// nothing at runtime, but the type agrees with the fleet.
-type SupInner = Base<MailAddr, (), u64, Never, &'static str, Never, Kid>;
+type SupInner = Base<FnState<(), MailAddr, u64, Never, Kid, &'static str>, Never, Kid, &'static str>;
 
 fn kid() -> Kid {
-    Base::new(0_u32, |c: &mut u32, n: u32| {
+    Base::from_fn(0_u32, |c: &mut u32, _from: MailAddr, n: u32| {
         *c += n;
         Ok::<Actions<MailAddr, Never, Never, Never>, &'static str>(Actions::cont())
     })
 }
 
 fn sup_inner() -> SupInner {
-    Base::new((), |(): &mut (), _: u64| {
+    Base::from_fn((), |(): &mut (), _from: MailAddr, _: u64| {
         Ok::<Actions<MailAddr, Never, Never, Kid>, &'static str>(Actions::cont())
     })
 }
@@ -335,7 +336,7 @@ async fn supervising_budget_is_all_or_nothing_per_event() {
 async fn supervising_rest_for_one_follows_birth_sequence_not_nonce_order() {
     let t0 = Instant::now();
     // A birthing inner: on user message 15 it emits a dynamic birth at nonce 15.
-    let birthing: SupInner = Base::new((), |(): &mut (), m: u64| {
+    let birthing: SupInner = Base::from_fn((), |(): &mut (), _from: MailAddr, m: u64| {
         let creates = if m == 15 {
             vec![Create::Birth { nonce: 15, child: kid() }]
         } else {
@@ -378,7 +379,7 @@ async fn supervising_rest_for_one_follows_birth_sequence_not_nonce_order() {
 #[tokio::test]
 #[should_panic(expected = "creator-minted nonces must be fresh")]
 async fn supervising_panics_on_a_stale_birth_nonce() {
-    let colliding: SupInner = Base::new((), |(): &mut (), _: u64| {
+    let colliding: SupInner = Base::from_fn((), |(): &mut (), _from: MailAddr, _: u64| {
         Ok(Actions {
             sends: Vec::new(),
             creates: vec![Create::Birth { nonce: 0, child: kid() }],
@@ -403,7 +404,7 @@ async fn supervising_panics_on_a_stale_birth_nonce() {
 #[tokio::test]
 #[should_panic(expected = "restart decisions belong to the Supervising layer")]
 async fn supervising_panics_on_an_inner_restart() {
-    let restarting: SupInner = Base::new((), |(): &mut (), _: u64| {
+    let restarting: SupInner = Base::from_fn((), |(): &mut (), _from: MailAddr, _: u64| {
         Ok(Actions {
             sends: Vec::new(),
             creates: vec![Create::Restart { nonce: 0, child: kid() }],
@@ -484,5 +485,5 @@ async fn composed_watching_over_deadlined_routes_each_source() {
             .become_,
         Step::Stop(Exit::LinkDied(MailAddr(8)))
     ));
-    assert_eq!(w.inner().inner().state(), &vec![5]);
+    assert_eq!(w.inner().inner().state().state, vec![5]);
 }

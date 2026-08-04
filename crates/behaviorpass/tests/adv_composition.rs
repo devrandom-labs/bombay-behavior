@@ -8,16 +8,16 @@
 use std::time::Duration;
 
 use behaviorpass::{
-    Actions, Base, Behavior, Crash, Deadlined, Envelope, Exit, MailAddr, RestartPolicy, StashRoute,
+    Actions, Base, Behavior, Crash, Deadlined, Envelope, Exit, FnState, MailAddr, RestartPolicy, StashRoute,
     Stashing, Strategy, Supervising, Target, Watching, stop_on_abnormal_death,
 };
 use behaviorpass::{Never, Step};
 use tokio::time::Instant;
 
-type Kid = Base<MailAddr, u32, u32, Never, &'static str>;
+type Kid = Base<FnState<u32, MailAddr, u32, Never, Never, &'static str>, Never, Never, &'static str>;
 
 fn kid() -> Kid {
-    Base::new(0_u32, |count: &mut u32, n: u32| {
+    Base::from_fn(0_u32, |count: &mut u32, _from: MailAddr, n: u32| {
         *count += n;
         Ok::<Actions<MailAddr, Never, Never, Never>, &'static str>(Actions::cont())
     })
@@ -31,12 +31,13 @@ fn user(msg: u64) -> Envelope<MailAddr, u64> {
 /// — a user message's sends and a Stop verdict must ride out unchanged through
 /// every layer.
 type FullStack = Watching<
-    Supervising<Stashing<Deadlined<Base<MailAddr, (), u64, Never, &'static str, u64, Kid>>>, Kid>,
+    Supervising<Stashing<Deadlined<Base<FnState<(), MailAddr, u64, u64, Kid, &'static str>, u64, Kid, &'static str>>>, Kid>,
 >;
 
 fn full_stack() -> FullStack {
-    let base: Base<MailAddr, (), u64, Never, &'static str, u64, Kid> =
-        Base::new((), |(): &mut (), m: u64| {
+    type SenderBase = Base<FnState<(), MailAddr, u64, u64, Kid, &'static str>, u64, Kid, &'static str>;
+    let base: SenderBase =
+        Base::from_fn((), |(): &mut (), _from: MailAddr, m: u64| {
             Ok::<Actions<MailAddr, Never, u64, Kid>, &'static str>(Actions {
                 sends: vec![(Target::Global(MailAddr(9)), m)],
                 creates: Vec::new(),
@@ -87,9 +88,10 @@ async fn composition_stop_verdict_rides_out_through_every_layer() {
 /// to the Deadlined layer through both wrappers.
 #[tokio::test]
 async fn composition_deadline_min_surfaces_through_outer_layers() {
+    type PlainBase = Base<FnState<(), MailAddr, u64, Never, Never, &'static str>, Never, Never, &'static str>;
     let t1 = Instant::now() + Duration::from_secs(1);
     let t2 = Instant::now() + Duration::from_secs(5);
-    let base: Base<MailAddr, (), u64, Never, &'static str> = Base::new((), |(): &mut (), _: u64| {
+    let base: PlainBase = Base::from_fn((), |(): &mut (), _from: MailAddr, _: u64| {
         Ok::<Actions<MailAddr, Never, Never, Never>, &'static str>(Actions::cont())
     });
     let inner_d = Deadlined::new(base, Some(t1), |_| Ok(Step::Continue));
@@ -116,8 +118,9 @@ async fn composition_deadline_min_surfaces_through_outer_layers() {
 /// forward), child-stop by the outer Supervising, user sends pass through both.
 #[tokio::test]
 async fn composition_watching_inside_supervising_handles_both_sources() {
-    let sender: Base<MailAddr, (), u64, Never, &'static str, u64, Kid> =
-        Base::new((), |(): &mut (), m: u64| {
+    type Sender = Base<FnState<(), MailAddr, u64, u64, Kid, &'static str>, u64, Kid, &'static str>;
+    let sender: Sender =
+        Base::from_fn((), |(): &mut (), _from: MailAddr, m: u64| {
             Ok::<Actions<MailAddr, Never, u64, Kid>, &'static str>(Actions {
                 sends: vec![(Target::Global(MailAddr(9)), m)],
                 creates: Vec::new(),
@@ -163,8 +166,9 @@ async fn composition_watching_inside_supervising_handles_both_sources() {
 /// reaction fires inside — the two sources coexist without interference.
 #[tokio::test]
 async fn composition_deadline_above_watching_both_sources() {
+    type PlainBase = Base<FnState<(), MailAddr, u64, Never, Never, &'static str>, Never, Never, &'static str>;
     let due = Instant::now() + Duration::from_secs(5);
-    let base: Base<MailAddr, (), u64, Never, &'static str> = Base::new((), |(): &mut (), _: u64| {
+    let base: PlainBase = Base::from_fn((), |(): &mut (), _from: MailAddr, _: u64| {
         Ok::<Actions<MailAddr, Never, Never, Never>, &'static str>(Actions::cont())
     });
     let watching = Watching::new(base, stop_on_abnormal_death);
@@ -192,8 +196,9 @@ async fn composition_deadline_above_watching_both_sources() {
 /// Watching layer — the held buffer is untouched.
 #[tokio::test]
 async fn composition_link_died_propagates_through_stashing() {
-    let base: Base<MailAddr, Vec<u64>, u64, Never, &'static str> =
-        Base::new(Vec::<u64>::new(), |seen: &mut Vec<u64>, id: u64| {
+    type VecBase = Base<FnState<Vec<u64>, MailAddr, u64, Never, Never, &'static str>, Never, Never, &'static str>;
+    let base: VecBase =
+        Base::from_fn(Vec::<u64>::new(), |seen: &mut Vec<u64>, _from: MailAddr, id: u64| {
             seen.push(id);
             Ok::<Actions<MailAddr, Never, Never, Never>, &'static str>(Actions::cont())
         });
@@ -219,8 +224,9 @@ async fn composition_link_died_propagates_through_stashing() {
 /// its restart create.
 #[tokio::test]
 async fn composition_child_stopped_decides_through_stashing() {
-    let base: Base<MailAddr, (), u64, Never, &'static str, Never, Kid> =
-        Base::new((), |(): &mut (), _: u64| {
+    type CreatorBase = Base<FnState<(), MailAddr, u64, Never, Kid, &'static str>, Never, Kid, &'static str>;
+    let base: CreatorBase =
+        Base::from_fn((), |(): &mut (), _from: MailAddr, _: u64| {
             Ok::<Actions<MailAddr, Never, Never, Kid>, &'static str>(Actions::cont())
         });
     let supervising = Supervising::new(

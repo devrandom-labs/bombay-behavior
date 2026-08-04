@@ -20,7 +20,7 @@
 use std::time::Duration;
 
 use behaviorpass::{
-    Actions, Base, Behavior, Crash, Create, Deadlined, Envelope, Exit, MailAddr, RestartPolicy,
+    Actions, Base, Behavior, Crash, Create, Deadlined, Envelope, Exit, FnState, MailAddr, RestartPolicy,
     Strategy, Supervising, Target,
 };
 use behaviorpass::{Never, Step};
@@ -30,20 +30,20 @@ use proptest::prelude::*;
 use proptest::strategy::Strategy as _;
 use tokio::time::Instant;
 
-type Kid = Base<MailAddr, u32, u32, Never, &'static str>;
+type Kid = Base<FnState<u32, MailAddr, u32, Never, Never, &'static str>, Never, Never, &'static str>;
 /// The inner's Offspring IS the child menu (the relaxed bound): it creates
 /// nothing at runtime, but the type agrees with the fleet.
-type SupInner = Base<MailAddr, (), u64, Never, &'static str, Never, Kid>;
+type SupInner = Base<FnState<(), MailAddr, u64, Never, Kid, &'static str>, Never, Kid, &'static str>;
 
 fn kid() -> Kid {
-    Base::new(0_u32, |count: &mut u32, n: u32| {
+    Base::from_fn(0_u32, |count: &mut u32, _from: MailAddr, n: u32| {
         *count += n;
         Ok::<Actions<MailAddr, Never, Never, Never>, &'static str>(Actions::cont())
     })
 }
 
 fn sup_inner() -> SupInner {
-    Base::new((), |(): &mut (), _: u64| {
+    Base::from_fn((), |(): &mut (), _from: MailAddr, _: u64| {
         Ok::<Actions<MailAddr, Never, Never, Kid>, &'static str>(Actions::cont())
     })
 }
@@ -309,8 +309,9 @@ async fn supervising_policy_matrix_gates_every_outcome() {
 /// untouched.
 #[tokio::test]
 async fn supervising_forwards_user_actions_unchanged() {
-    let sender: Base<MailAddr, (), u64, Never, &'static str, u64, Kid> =
-        Base::new((), |(): &mut (), m: u64| {
+    type Sender = Base<FnState<(), MailAddr, u64, u64, Kid, &'static str>, u64, Kid, &'static str>;
+    let sender: Sender =
+        Base::from_fn((), |(): &mut (), _from: MailAddr, m: u64| {
             Ok::<Actions<MailAddr, Never, u64, Kid>, &'static str>(Actions {
                 sends: vec![(Target::Global(MailAddr(7)), m)],
                 creates: Vec::new(),
@@ -344,7 +345,7 @@ async fn supervising_forwards_user_actions_unchanged() {
 #[tokio::test]
 async fn supervising_dynamic_birth_is_recorded_and_restartable() {
     let t0 = Instant::now();
-    let birthing: SupInner = Base::new((), |(): &mut (), m: u64| {
+    let birthing: SupInner = Base::from_fn((), |(): &mut (), _from: MailAddr, m: u64| {
         let creates = if m == 42 {
             vec![Create::Birth { nonce: 7, child: kid() }]
         } else {

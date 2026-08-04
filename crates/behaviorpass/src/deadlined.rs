@@ -82,7 +82,7 @@ mod tests {
 
     #[tokio::test]
     async fn deadlined_routes_the_fire_forwards_the_rest_and_arms_once() {
-        let inner = Base::new(Vec::<u64>::new(), |seen: &mut Vec<u64>, id: u64| {
+        let inner = Base::from_fn(Vec::<u64>::new(), |seen: &mut Vec<u64>, _from: MailAddr, id: u64| {
             seen.push(id);
             Ok::<Actions<MailAddr, Never, Never, Never>, &'static str>(Actions::cont())
         });
@@ -94,7 +94,7 @@ mod tests {
             d.step(Envelope::User { from: MailAddr(1), msg: 7 }).await.unwrap().become_,
             Step::Continue
         ));
-        assert_eq!(d.inner().state(), &vec![7], "non-deadline events forward inward");
+        assert_eq!(d.inner().state().state, vec![7], "non-deadline events forward inward");
         assert!(
             matches!(d.step(Envelope::Deadline).await.unwrap().become_, Step::Stop(Exit::Normal)),
             "the reaction's verdict rides out",

@@ -5,15 +5,17 @@
 //! through the handler and ride its effects out.
 //! Methods: handcrafted edges + a property sweep over the framework alphabet.
 
-use behaviorpass::{Actions, Base, Behavior, Crash, Create, Envelope, Exit, MailAddr, Target};
+use behaviorpass::{Actions, Base, FnState, Behavior, Crash, Create, Envelope, Exit, MailAddr, Target};
 use behaviorpass::{Never, Step};
 use proptest::prelude::*;
 use tokio::time::Instant;
 
 /// A floor typed with BOTH menus: it *could* send and create on user messages,
 /// but framework events must emit nothing at all.
-fn menu_floor() -> Base<MailAddr, Vec<u64>, u64, Never, &'static str, u64, u32> {
-    Base::new(Vec::<u64>::new(), |seen: &mut Vec<u64>, id: u64| {
+type MenuFloor = Base<FnState<Vec<u64>, MailAddr, u64, u64, u32, &'static str>, u64, u32, &'static str>;
+
+fn menu_floor() -> MenuFloor {
+    Base::from_fn(Vec::<u64>::new(), |seen: &mut Vec<u64>, _from: MailAddr, id: u64| {
         seen.push(id);
         Ok::<Actions<MailAddr, Never, u64, u32>, &'static str>(Actions {
             sends: vec![(Target::Global(MailAddr(id)), id)],
@@ -40,7 +42,7 @@ async fn base_framework_events_emit_nothing_even_with_menus() {
         assert_eq!(actions.become_, Step::Continue, "framework events become(same)");
         assert!(actions.sends.is_empty(), "a framework event never sends");
         assert!(actions.creates.is_empty(), "a framework event never creates");
-        assert_eq!(b.state(), &Vec::<u64>::new(), "a framework event never folds the state");
+        assert_eq!(b.state().state, Vec::<u64>::new(), "a framework event never folds the state");
     }
 }
 
@@ -52,15 +54,16 @@ async fn base_user_messages_ride_the_full_triple_out() {
     assert_eq!(actions.sends, vec![(Target::Global(MailAddr(5)), 5)]);
     assert_eq!(actions.creates, vec![Create::Birth { nonce: 5, child: 5 }]);
     assert_eq!(actions.become_, Step::Continue);
-    assert_eq!(b.state(), &vec![5]);
+    assert_eq!(b.state().state, vec![5]);
 }
 
 /// Boundary addresses ride through the send trace untouched.
 #[tokio::test]
 async fn base_boundary_addresses_ride_through() {
     for addr in [0_u64, u64::MAX] {
-        let mut b: Base<MailAddr, (), u64, Never, &'static str, u64, Never> =
-            Base::new((), |(): &mut (), m: u64| {
+        type SenderBase = Base<FnState<(), MailAddr, u64, u64, Never, &'static str>, u64, Never, &'static str>;
+        let mut b: SenderBase =
+            Base::from_fn((), |(): &mut (), _from: MailAddr, m: u64| {
                 Ok::<Actions<MailAddr, Never, u64, Never>, &'static str>(Actions {
                     sends: vec![(Target::Global(MailAddr(m)), m)],
                     creates: Vec::new(),
@@ -80,7 +83,8 @@ async fn base_boundary_addresses_ride_through() {
 /// A handler error surfaces with its exact value.
 #[tokio::test]
 async fn base_handler_error_propagates_exactly() {
-    let mut b: Base<MailAddr, (), u64, Never, &'static str> = Base::new((), |(): &mut (), id: u64| {
+    type PlainBase = Base<FnState<(), MailAddr, u64, Never, Never, &'static str>, Never, Never, &'static str>;
+    let mut b: PlainBase = Base::from_fn((), |(): &mut (), _from: MailAddr, id: u64| {
         if id == 7 {
             Err("boom")
         } else {
@@ -135,7 +139,7 @@ proptest::proptest! {
                 assert_eq!(actions.become_, Step::Continue, "peer={peer} nonce={nonce} outcome={outcome:?}");
                 assert!(actions.sends.is_empty());
                 assert!(actions.creates.is_empty());
-                assert_eq!(b.state(), &Vec::<u64>::new(), "state untouched by framework events");
+                assert_eq!(b.state().state, Vec::<u64>::new(), "state untouched by framework events");
             }
         });
     }

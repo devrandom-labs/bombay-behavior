@@ -10,17 +10,17 @@
 use std::time::Duration;
 
 use behaviorpass::{
-    Actions, Base, Become, Behavior, Crash, Deadlined, Envelope, Exit, MailAddr, Target, Watching,
+    Actions, Base, Become, Behavior, Crash, Deadlined, Envelope, Exit, FnState, MailAddr, Target, Watching,
     stop_on_abnormal_death,
 };
 use behaviorpass::{Never, Step};
 use proptest::prelude::*;
 use tokio::time::Instant;
 
-type Rec = Base<MailAddr, Vec<u64>, u64, Never, &'static str>;
+type Rec = Base<FnState<Vec<u64>, MailAddr, u64, Never, Never, &'static str>, Never, Never, &'static str>;
 
 fn recorder() -> Rec {
-    Base::new(Vec::<u64>::new(), |seen: &mut Vec<u64>, id: u64| {
+    Base::from_fn(Vec::<u64>::new(), |seen: &mut Vec<u64>, _from: MailAddr, id: u64| {
         seen.push(id);
         Ok::<Actions<MailAddr, Never, Never, Never>, &'static str>(Actions::cont())
     })
@@ -79,7 +79,7 @@ async fn watching_abnormal_exit_value_propagates() {
         );
         assert!(actions.sends.is_empty(), "a link reaction emits nothing");
         assert!(actions.creates.is_empty());
-        assert_eq!(w.inner().state(), &Vec::<u64>::new(), "a link event never reaches the inner fold");
+        assert_eq!(w.inner().state().state, Vec::<u64>::new(), "a link event never reaches the inner fold");
     }
 }
 
@@ -94,11 +94,11 @@ async fn watching_normal_death_is_absorbed_and_forwards() {
             .await
             .expect("no error");
         assert_eq!(actions.become_, Step::Continue, "{outcome:?} classifies normal and is absorbed");
-        assert_eq!(w.inner().state(), &Vec::<u64>::new(), "the link event never reaches the inner fold");
+        assert_eq!(w.inner().state().state, Vec::<u64>::new(), "the link event never reaches the inner fold");
 
         let actions = w.step(user(2)).await.expect("no error");
         assert_eq!(actions.become_, Step::Continue);
-        assert_eq!(w.inner().state(), &vec![2], "user traffic still folds after an absorbed death");
+        assert_eq!(w.inner().state().state, vec![2], "user traffic still folds after an absorbed death");
     }
 }
 
@@ -148,8 +148,9 @@ async fn watching_custom_reaction_error_propagates() {
 /// User actions pass through Watching unchanged.
 #[tokio::test]
 async fn watching_user_actions_forward_unchanged() {
-    let sender: Base<MailAddr, (), u64, Never, &'static str, u64, Never> =
-        Base::new((), |(): &mut (), m: u64| {
+    type Sender = Base<FnState<(), MailAddr, u64, u64, Never, &'static str>, u64, Never, &'static str>;
+    let sender: Sender =
+        Base::from_fn((), |(): &mut (), _from: MailAddr, m: u64| {
             Ok::<Actions<MailAddr, Never, u64, Never>, &'static str>(Actions {
                 sends: vec![(Target::Global(MailAddr(7)), m)],
                 creates: Vec::new(),
@@ -226,7 +227,7 @@ proptest::proptest! {
             };
             assert_eq!(actions.become_, expected, "peer={peer:?} outcome={outcome:?}");
             assert!(actions.sends.is_empty() && actions.creates.is_empty());
-            assert_eq!(w.inner().state(), &Vec::<u64>::new(), "a link event never folds the inner behavior");
+            assert_eq!(w.inner().state().state, Vec::<u64>::new(), "a link event never folds the inner behavior");
         });
     }
 }
@@ -286,11 +287,11 @@ proptest::proptest! {
                 }).await.unwrap();
                 if let Some(exit) = model.fold(ev) {
                     assert_eq!(actions.become_, Step::Stop(exit), "event #{i}: the abnormal outcome stops with its exact peer");
-                    assert_eq!(w.inner().state(), &model.seen, "event #{i}: nothing after the death folds");
+                    assert_eq!(w.inner().state().state, model.seen, "event #{i}: nothing after the death folds");
                     return;
                 }
                 assert_eq!(actions.become_, Step::Continue, "event #{i}");
-                assert_eq!(w.inner().state(), &model.seen, "event #{i}: fold order");
+                assert_eq!(w.inner().state().state, model.seen, "event #{i}: fold order");
             }
         });
     }

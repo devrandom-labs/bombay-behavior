@@ -17,7 +17,7 @@ use std::hint::black_box;
 use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
 use std::time::{Duration, Instant};
 
-use behaviorpass::{Actions, Base, Behavior, Crash, Envelope, MailAddr, RestartPolicy, Strategy, Supervising};
+use behaviorpass::{Actions, Base, FnState, Behavior, Crash, Envelope, MailAddr, RestartPolicy, Strategy, Supervising};
 use behaviorpass::Never;
 use tokio::time::Instant as TokioInstant;
 
@@ -40,18 +40,18 @@ unsafe impl GlobalAlloc for Counting {
 #[global_allocator]
 static A: Counting = Counting;
 
-type Inner = Base<MailAddr, (), u64, Never, &'static str, Never, Kid>;
-type Kid = Base<MailAddr, u32, u32, Never, &'static str>;
+type Inner = Base<FnState<(), MailAddr, u64, Never, Kid, &'static str>, Never, Kid, &'static str>;
+type Kid = Base<FnState<u32, MailAddr, u32, Never, Never, &'static str>, Never, Never, &'static str>;
 type Sup = Supervising<Inner, Kid>;
 
 fn inner() -> Inner {
-    Base::new((), |(): &mut (), _: u64| {
+    Base::from_fn((), |(): &mut (), _from: MailAddr, _: u64| {
         Ok::<Actions<MailAddr, Never, Never, Kid>, &'static str>(Actions::cont())
     })
 }
 
 fn kid() -> Kid {
-    Base::new(0_u32, |c: &mut u32, n: u32| {
+    Base::from_fn(0_u32, |c: &mut u32, _from: MailAddr, n: u32| {
         *c += n;
         Ok::<Actions<MailAddr, Never, Never, Never>, &'static str>(Actions::cont())
     })

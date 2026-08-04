@@ -20,7 +20,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
-use behaviorpass::{Actions, Base, Behavior, Create, Deadlined, Envelope, Exit, MailAddr, StashRoute, Stashing, Target, run};
+use behaviorpass::{Actions, Base, FnState, Behavior, Create, Deadlined, Envelope, Exit, MailAddr, StashRoute, Stashing, Target, run};
 use behaviorpass::{Never, Step};
 use fastpass::{Config, channel};
 
@@ -48,8 +48,10 @@ fn mutable_route(m: &M) -> StashRoute {
     }
 }
 
-fn sender_inner() -> Base<MailAddr, Vec<u64>, M, Never, &'static str, u64, Never> {
-    Base::new(Vec::<u64>::new(), |seen: &mut Vec<u64>, m: M| {
+type SenderInner = Base<FnState<Vec<u64>, MailAddr, M, u64, Never, &'static str>, u64, Never, &'static str>;
+
+fn sender_inner() -> SenderInner {
+    Base::from_fn(Vec::<u64>::new(), |seen: &mut Vec<u64>, _from: MailAddr, m: M| {
         let id = value(&m);
         seen.push(id);
         let become_ = if id == 3 {
@@ -88,15 +90,16 @@ async fn stashing_release_accumulates_drained_sends_in_order() {
         "the release folds the current message THEN the drained batch, in order"
     );
     assert_eq!(actions.become_, Step::Continue);
-    assert_eq!(s.inner().state(), &vec![1, 2], "drain effects accumulate in fold order");
+    assert_eq!(s.inner().state().state.as_slice(), &vec![1, 2], "drain effects accumulate in fold order");
     assert_eq!(s.held(), 0, "a delivered held message leaves the buffer");
 }
 
 /// The same accumulation for CREATES.
 #[tokio::test]
 async fn stashing_release_accumulates_drained_creates_in_order() {
-    let inner: Base<MailAddr, Vec<u64>, M, Never, &'static str, Never, u32> =
-        Base::new(Vec::<u64>::new(), |seen: &mut Vec<u64>, m: M| {
+    type Inner = Base<FnState<Vec<u64>, MailAddr, M, Never, u32, &'static str>, Never, u32, &'static str>;
+    let inner: Inner =
+        Base::from_fn(Vec::<u64>::new(), |seen: &mut Vec<u64>, _from: MailAddr, m: M| {
             let id = value(&m);
             seen.push(id);
             Ok::<Actions<MailAddr, Never, Never, u32>, &'static str>(Actions {
@@ -140,7 +143,7 @@ async fn stashing_stop_mid_drain_abandons_the_rest_and_re_holds() {
         vec![(Target::Global(MailAddr(1)), 1), (Target::Global(MailAddr(3)), 3)],
         "the current message and the stop message fold; the tail never does"
     );
-    assert_eq!(s.inner().state(), &vec![1, 3], "the tail (value 2) was abandoned");
+    assert_eq!(s.inner().state().state.as_slice(), &vec![1, 3], "the tail (value 2) was abandoned");
     assert_eq!(s.held(), 1, "the abandoned tail re-enters held");
 }
 
@@ -208,7 +211,7 @@ async fn stashing_release_with_empty_held_delivers_current() {
     let mut s = Stashing::new(sender_inner(), mutable_route);
     let actions = s.step(Envelope::User { from: MailAddr(1), msg: msg(1) }).await.expect("no error");
     assert_eq!(actions.sends, vec![(Target::Global(MailAddr(1)), 1)]);
-    assert_eq!(s.inner().state(), &vec![1]);
+    assert_eq!(s.inner().state().state.as_slice(), &vec![1]);
     assert_eq!(s.held(), 0);
 }
 
@@ -216,7 +219,8 @@ async fn stashing_release_with_empty_held_delivers_current() {
 /// release terminates (no livelock) — each stashed message is re-routed ONCE.
 #[tokio::test]
 async fn stashing_release_re_stashes_under_snapshot_bound() {
-    let recorder: Base<MailAddr, Vec<u64>, u64, Never, &'static str> = Base::new(Vec::<u64>::new(), |seen: &mut Vec<u64>, id: u64| {
+    type Rec = Base<FnState<Vec<u64>, MailAddr, u64, Never, Never, &'static str>, Never, Never, &'static str>;
+    let recorder: Rec = Base::from_fn(Vec::<u64>::new(), |seen: &mut Vec<u64>, _from: MailAddr, id: u64| {
         seen.push(id);
         Ok::<Actions<MailAddr, Never, Never, Never>, &'static str>(Actions::cont())
     });
@@ -228,7 +232,7 @@ async fn stashing_release_re_stashes_under_snapshot_bound() {
     }
     let actions = s.step(Envelope::User { from: MailAddr(1), msg: 0 }).await.expect("no error");
     assert_eq!(actions.become_, Step::Continue, "an all-restash release still terminates");
-    assert_eq!(s.inner().state(), &vec![0], "only the current message folded");
+    assert_eq!(s.inner().state().state.as_slice(), &vec![0], "only the current message folded");
     assert_eq!(s.held(), 3, "the whole batch re-enters held, once each");
 }
 
@@ -236,8 +240,11 @@ async fn stashing_release_re_stashes_under_snapshot_bound() {
 // Survivor 2: Stashing::next_deadline forwarding
 // ---------------------------------------------------------------------------
 
-fn flake_inner(due: Option<Instant>) -> Deadlined<Base<MailAddr, (), u64, Never, &'static str>> {
-    let base: Base<MailAddr, (), u64, Never, &'static str> = Base::new((), |(): &mut (), _: u64| {
+type FlakeBase = Base<FnState<(), MailAddr, u64, Never, Never, &'static str>, Never, Never, &'static str>;
+
+fn flake_inner(due: Option<Instant>) -> Deadlined<FlakeBase> {
+    type PlainBase = Base<FnState<(), MailAddr, u64, Never, Never, &'static str>, Never, Never, &'static str>;
+    let base: PlainBase = Base::from_fn((), |(): &mut (), _from: MailAddr, _: u64| {
         Ok::<Actions<MailAddr, Never, Never, Never>, &'static str>(Actions::cont())
     });
     Deadlined::new(base, due, |_inner| Ok(Step::Stop(Exit::Normal)))
@@ -299,8 +306,10 @@ fn pure_route(id: &u64) -> StashRoute {
     }
 }
 
-fn recorder() -> Base<MailAddr, Vec<u64>, u64, Never, &'static str> {
-    Base::new(Vec::<u64>::new(), |seen: &mut Vec<u64>, id: u64| {
+type Rec = Base<FnState<Vec<u64>, MailAddr, u64, Never, Never, &'static str>, Never, Never, &'static str>;
+
+fn recorder() -> Rec {
+    Base::from_fn(Vec::<u64>::new(), |seen: &mut Vec<u64>, _from: MailAddr, id: u64| {
         seen.push(id);
         Ok::<Actions<MailAddr, Never, Never, Never>, &'static str>(Actions::cont())
     })
@@ -355,7 +364,7 @@ fn fold_stash_script_and_check(rt: &tokio::runtime::Runtime, ids: &[u64]) {
             assert_eq!(actions.become_, Step::Continue, "op #{i}");
             assert!(actions.sends.is_empty(), "op #{i}: the recorder sends nothing");
             model.fold(id);
-            assert_eq!(s.inner().state(), &model.seen, "op #{i}: fold order equality");
+            assert_eq!(s.inner().state().state, model.seen, "op #{i}: fold order equality");
             assert_eq!(s.held(), model.held.len(), "op #{i}: held count equality");
         }
     });

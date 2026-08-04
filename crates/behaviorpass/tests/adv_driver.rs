@@ -6,14 +6,16 @@
 //! Methods: handcrafted sequences/lifecycle + a differential property model +
 //! long-sequence fuzz through a real mailbox.
 
-use behaviorpass::{Actions, Base, Create, Exit, MailAddr, Target, run};
+use behaviorpass::{Actions, Base, FnState, Create, Exit, MailAddr, Target, run};
 use behaviorpass::{Never, Step};
 use fastpass::{Config, channel};
 
 /// A behavior that records what it folds and sends one message per fold; stops
 /// on a designated id; crashes on another.
-fn driver_base() -> Base<MailAddr, Vec<u64>, u64, Never, &'static str, u64, Never> {
-    Base::new(Vec::<u64>::new(), |seen: &mut Vec<u64>, id: u64| {
+type DriverBase = Base<FnState<Vec<u64>, MailAddr, u64, u64, Never, &'static str>, u64, Never, &'static str>;
+
+fn driver_base() -> DriverBase {
+    Base::from_fn(Vec::<u64>::new(), |seen: &mut Vec<u64>, _from: MailAddr, id: u64| {
         seen.push(id);
         let become_ = if id == 99 {
             Step::Stop(Exit::Normal)
@@ -50,8 +52,9 @@ async fn driver_transcript_preserves_emission_order() {
 /// Creates accumulate in order too (a create-emitting behavior).
 #[tokio::test]
 async fn driver_accumulates_creates_in_order() {
-    let creator: Base<MailAddr, Vec<u64>, u64, Never, &'static str, Never, u32> =
-        Base::new(Vec::<u64>::new(), |seen: &mut Vec<u64>, id: u64| {
+    type Creator = Base<FnState<Vec<u64>, MailAddr, u64, Never, u32, &'static str>, Never, u32, &'static str>;
+    let creator: Creator =
+        Base::from_fn(Vec::<u64>::new(), |seen: &mut Vec<u64>, _from: MailAddr, id: u64| {
             seen.push(id);
             Ok::<Actions<MailAddr, Never, Never, u32>, &'static str>(Actions {
                 sends: Vec::new(),
@@ -76,8 +79,9 @@ async fn driver_accumulates_creates_in_order() {
 /// own emission orders side by side, and the Stop's exit ends the fold.
 #[tokio::test]
 async fn driver_combines_sends_and_creates_in_one_transcript() {
-    let both: Base<MailAddr, Vec<u64>, u64, Never, &'static str, u64, u32> =
-        Base::new(Vec::<u64>::new(), |seen: &mut Vec<u64>, id: u64| {
+    type Both = Base<FnState<Vec<u64>, MailAddr, u64, u64, u32, &'static str>, u64, u32, &'static str>;
+    let both: Both =
+        Base::from_fn(Vec::<u64>::new(), |seen: &mut Vec<u64>, _from: MailAddr, id: u64| {
             seen.push(id);
             Ok::<Actions<MailAddr, Never, u64, u32>, &'static str>(Actions {
                 sends: vec![(Target::Global(MailAddr(id)), id)],
@@ -211,7 +215,7 @@ fn fold_driver_and_check(rt: &tokio::runtime::Runtime, ops: &[Op]) {
         let mut model = DriverModel::new();
         let (ctl, usr, rx) = channel::<Never, Op>(Config::new(16));
         let handle = tokio::spawn(run(
-            Base::new(Vec::<Op>::new(), |_seen: &mut Vec<Op>, op: Op| {
+            Base::from_fn(Vec::<Op>::new(), |_seen: &mut Vec<Op>, _from: MailAddr, op: Op| {
                 if let Op::Boom(_) = op {
                     return Err("boom");
                 }

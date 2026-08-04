@@ -311,24 +311,24 @@ mod tests {
 
     use super::{RestartPolicy, Strategy, Supervising};
     use crate::behavior::{Actions, Behavior, Create, Envelope};
-    use crate::{Base, Crash, Exit, MailAddr};
+    use crate::{Base, Crash, Exit, FnState, MailAddr};
     use crate::verdict::Never;
     use tokio::time::Instant;
 
-    type Kid = Base<MailAddr, u32, u32, Never, &'static str>;
+    type Kid = Base<FnState<u32, MailAddr, u32, Never, Never, &'static str>, Never, Never, &'static str>;
     // The inner's Offspring is the child menu C (the relaxed bound): it
     // creates nothing at runtime, but the TYPE agrees with the fleet.
-    type Inner = Base<MailAddr, (), u64, Never, &'static str, Never, Kid>;
+    type Inner = Base<FnState<(), MailAddr, u64, Never, Kid, &'static str>, Never, Kid, &'static str>;
 
     fn kid() -> Kid {
-        Base::new(0_u32, |count: &mut u32, n: u32| {
+        Base::from_fn(0_u32, |count: &mut u32, _from: MailAddr, n: u32| {
             *count += n;
             Ok::<Actions<MailAddr, Never, Never, Never>, &'static str>(Actions::cont())
         })
     }
 
     fn inner() -> Inner {
-        Base::new((), |(): &mut (), _: u64| {
+        Base::from_fn((), |(): &mut (), _from: MailAddr, _: u64| {
             Ok::<Actions<MailAddr, Never, Never, Kid>, &'static str>(Actions::cont())
         })
     }

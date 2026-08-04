@@ -6,11 +6,10 @@ rust-version.workspace = true
 license.workspace = true
 description = "The golf target: bombay's capability machinery + the 24-point lattice generator (bombay card #298)."
 
-# This is the concision loop's TARGET crate. `src/**` is EDIT-freely: the loop
-# minimizes the code-only LOC of the capability machinery ported here while
-# staying trace-equal to behaviorpass-reference at every lattice point. The
-# PUBLIC API (the lattice generator + the per-point actor surface the testkit
-# drives) is pinned by the frozen testkit — grow the internals, not the seam.
+# The behavior algebra: the pure fold (Behavior/State/Actions/Envelope) and
+# the capability stack over it. The trace oracle (tests/oracle.rs) is the
+# correctness gate; the perf loop (.auto/) optimizes REPRESENTATIONS behind
+# this crate's stable public API.
 [dependencies]
 
 fastpass = { workspace = true }                 # the mailbox (user + control lanes)

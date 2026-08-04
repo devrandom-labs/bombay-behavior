@@ -1,10 +1,12 @@
 //! Slope point — caps: St. Generated (bombay card #298).
-use behaviorpass::{Actions, Base, Exit, MailAddr, StashRoute, Stashing, run};
+use behaviorpass::{Actions, Base, FnState, Exit, MailAddr, StashRoute, Stashing, run};
 use behaviorpass::{Never};
 use fastpass::{Config, channel};
 
-fn base() -> Base<MailAddr, u64, u64, Never, &'static str> {
-    Base::new(0, |s: &mut u64, m: u64| {
+type Floor = Base<FnState<u64, MailAddr, u64, Never, Never, &'static str>, Never, Never, &'static str>;
+
+fn base() -> Floor {
+    Base::from_fn(0, |s: &mut u64, _from: MailAddr, m: u64| {
         *s += m;
         Ok::<Actions<MailAddr, Never, Never, Never>, &'static str>(if *s > 1000 { Actions::stop(Exit::Normal) } else { Actions::cont() })
     })
