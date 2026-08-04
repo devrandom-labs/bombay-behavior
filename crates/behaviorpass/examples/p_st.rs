@@ -1,6 +1,6 @@
 //! Slope point — caps: St. Generated (bombay card #298).
 use behaviorpass::{Actions, Base, Exit, StashRoute, Stashing, run};
-use bombay::capability::{Never};
+use behaviorpass::{Never};
 use fastpass::{Config, channel};
 
 fn base() -> Base<u64, u64, Never, &'static str> {

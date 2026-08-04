@@ -18,7 +18,7 @@ use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
 use std::time::Instant;
 
 use behaviorpass::{Actions, Base, Behavior, Envelope, Supervising};
-use bombay::capability::Never;
+use behaviorpass::Never;
 
 // A pass-through allocator that counts bytes handed out. The measured regions
 // below are single-threaded; `Relaxed` is sound because each read happens-after

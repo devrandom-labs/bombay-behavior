@@ -4,7 +4,7 @@
 
 use core::future::Future;
 
-use bombay::capability::{Never, Step};
+use crate::verdict::{Never, Step};
 use fastpass::{Consumer, Received};
 use tokio::time::Instant;
 
@@ -267,7 +267,7 @@ where
 mod tests {
     use super::{Actions, Base, Behavior, Envelope, MailAddr, Step, run};
     use crate::Exit;
-    use bombay::capability::Never;
+    use crate::verdict::Never;
     use fastpass::{Config, channel};
 
     #[tokio::test]

@@ -8,7 +8,7 @@
 
 use std::collections::VecDeque;
 
-use bombay::capability::{Never, Step};
+use crate::verdict::{Never, Step};
 use tokio::time::Instant;
 
 use crate::behavior::{Acted, Actions, Behavior, Envelope};
@@ -124,7 +124,7 @@ mod tests {
     use super::StashRoute;
     use crate::behavior::{Actions, Behavior, Envelope};
     use crate::{Base, Fsm, Move, Stashing};
-    use bombay::capability::Never;
+    use crate::verdict::Never;
 
     fn recorder() -> Base<Vec<u64>, u64, Never, &'static str> {
         Base::new(Vec::<u64>::new(), |seen: &mut Vec<u64>, id: u64| {

@@ -12,7 +12,7 @@ description = "The golf target: bombay's capability machinery + the 24-point lat
 # PUBLIC API (the lattice generator + the per-point actor surface the testkit
 # drives) is pinned by the frozen testkit — grow the internals, not the seam.
 [dependencies]
-bombay = { workspace = true }
+
 fastpass = { workspace = true }                 # the mailbox (user + control lanes)
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["sync", "time", "macros", "rt"] }

@@ -8,7 +8,7 @@
 use std::time::Duration;
 
 use behaviorpass::{Actions, Base, Behavior, Deadlined, Envelope, Exit, MailAddr, Watching, stop_on_abnormal_death};
-use bombay::capability::{Never, Step};
+use behaviorpass::{Never, Step};
 use proptest::prelude::*;
 use tokio::time::Instant;
 

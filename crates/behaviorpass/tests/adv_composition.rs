@@ -11,7 +11,7 @@ use behaviorpass::{
     Actions, Base, Behavior, Deadlined, Envelope, Exit, MailAddr, StashRoute, Stashing,
     Supervising, Watching, stop_on_abnormal_death,
 };
-use bombay::capability::{Never, Step};
+use behaviorpass::{Never, Step};
 use tokio::time::Instant;
 
 type Kid = Base<u32, u32, Never, &'static str>;

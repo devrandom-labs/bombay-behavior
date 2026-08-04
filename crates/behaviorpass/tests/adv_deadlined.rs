@@ -7,7 +7,7 @@
 use std::time::Duration;
 
 use behaviorpass::{Actions, Base, Behavior, Deadlined, Envelope, Exit};
-use bombay::capability::{Never, Step};
+use behaviorpass::{Never, Step};
 use tokio::time::Instant;
 
 fn floor() -> Base<(), u64, Never, &'static str> {
