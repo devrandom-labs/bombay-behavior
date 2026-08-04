@@ -132,11 +132,13 @@ where
 mod tests {
     use super::StashRoute;
     use crate::behavior::{Actions, Behavior, Envelope};
-    use crate::{Base, Fsm, MailAddr, Move, Stashing};
+    use crate::{Base, FnState, Fsm, MailAddr, Move, Stashing};
     use crate::verdict::Never;
 
-    fn recorder() -> Base<MailAddr, Vec<u64>, u64, Never, &'static str> {
-        Base::new(Vec::<u64>::new(), |seen: &mut Vec<u64>, id: u64| {
+    type Rec = Base<FnState<Vec<u64>, MailAddr, u64, Never, Never, &'static str>, Never, Never, &'static str>;
+
+    fn recorder() -> Rec {
+        Base::from_fn(Vec::<u64>::new(), |seen: &mut Vec<u64>, _from: MailAddr, id: u64| {
             seen.push(id);
             Ok::<Actions<MailAddr, Never, Never, Never>, &'static str>(Actions::cont())
         })
@@ -156,7 +158,7 @@ mod tests {
         for id in [1_u64, 2, 3, 0, 4] {
             let _ = s.step(user(id)).await;
         }
-        assert_eq!(s.inner().state(), &vec![2, 0, 4]);
+        assert_eq!(s.inner().state().state, vec![2, 0, 4]);
         assert_eq!(s.held(), 2, "re-stashed messages land in held, not the batch");
     }
 

@@ -91,11 +91,13 @@ where
 mod tests {
     use super::{Watching, stop_on_abnormal_death};
     use crate::behavior::{Actions, Behavior, Envelope};
-    use crate::{Base, Crash, Exit, MailAddr};
+    use crate::{Base, Crash, Exit, FnState, MailAddr};
     use crate::verdict::{Never, Step};
 
-    fn recorder() -> Base<MailAddr, Vec<u64>, u64, Never, &'static str> {
-        Base::new(Vec::<u64>::new(), |seen: &mut Vec<u64>, id: u64| {
+    type Rec = Base<FnState<Vec<u64>, MailAddr, u64, Never, Never, &'static str>, Never, Never, &'static str>;
+
+    fn recorder() -> Rec {
+        Base::from_fn(Vec::<u64>::new(), |seen: &mut Vec<u64>, _from: MailAddr, id: u64| {
             seen.push(id);
             Ok::<Actions<MailAddr, Never, Never, Never>, &'static str>(Actions::cont())
         })
@@ -127,6 +129,6 @@ mod tests {
             w2.step(Envelope::User { from: MailAddr(1), msg: 2 }).await.unwrap().become_,
             Step::Continue
         ));
-        assert_eq!(w2.inner().state(), &vec![2], "a normal death is absorbed; user forwards");
+        assert_eq!(w2.inner().state().state, vec![2], "a normal death is absorbed; user forwards");
     }
 }

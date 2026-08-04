@@ -3,6 +3,7 @@
 //! `behaviorpass-reference`).
 
 use core::future::Future;
+use core::marker::PhantomData;
 
 use crate::verdict::{Never, Step};
 use fastpass::{Consumer, Received};
@@ -192,11 +193,27 @@ pub struct Fleet<A: Address, New> {
 /// the `type_complexity` bar).
 pub type Acted<A, Ph, Out, New, E> = Result<Actions<A, Ph, Out, New>, E>;
 
-/// A synchronous message handler: folds one message into `&mut S`, returning
-/// the full Agha [`Actions`] on the phase menu `P` with outbound menu `O` and
-/// create-spec `N` (fn pointer, not a closure, so a generated actor stays
-/// nameable).
-pub type Handler<A, S, M, P, E, O, N> = fn(&mut S, M) -> Acted<A, P, O, N, E>;
+/// The floor coalgebra: a state type with its transition, bound in one
+/// type. Every plain actor is one of these — the state IS the behavior's
+/// state, `handle` is the fold over user messages. The effect menus
+/// (`Out`/`Child`/`Err`) are generic with `Never` defaults so a pure actor
+/// declares exactly two types; a sender names its menu
+/// (`impl State<Msg> for Worker`), a creator its offspring.
+pub trait State<Out = Never, Child = Never, Err = Never> {
+    /// The mail-address namespace this behavior names recipients and
+    /// children with.
+    type Addr: Address;
+    /// The user-message menu it folds.
+    type Msg;
+    /// Fold one user message with its driver-stamped sender: the messages
+    /// sent, the actors created, the replacement verdict (Agha's triple),
+    /// or a controlled crash.
+    ///
+    /// # Errors
+    /// Returns the impl's declared controlled-crash type `Err` — the fold
+    /// never panics on data.
+    fn handle(&mut self, from: Self::Addr, msg: Self::Msg) -> Acted<Self::Addr, Never, Out, Child, Err>;
+}
 
 /// The one async object: state in `&mut self`, one total `step` over the
 /// [`Envelope`] alphabet, plus the `next_deadline` query the driver arms its timer
@@ -259,20 +276,23 @@ pub fn lift<A: Address, Ph, Out, New>(v: Step<Never, Exit<A>>) -> Actions<A, Ph,
     })
 }
 
-/// The floor: a plain actor = state + a synchronous [`Handler`]. Framework
-/// events (deadline / link-death / child-stop) are no-ops — a plain actor owns
-/// no source. The `Never` defaults on `O`/`N` mean a floor provably sends and
+/// The floor: a plain actor = one [`State`]. Framework events (deadline /
+/// link-death / child-stop) are no-ops — a plain actor owns no source. The
+/// `Never` defaults on the effect menus mean a floor provably sends and
 /// creates nothing. Every capability wraps a `Behavior`; `Base` is the
 /// innermost one.
-pub struct Base<A: Address, S, M, P, E, O = Never, N = Never> {
+pub struct Base<S: State<O, N, E>, O = Never, N = Never, E = Never> {
     state: S,
-    handle: Handler<A, S, M, P, E, O, N>,
+    /// The effect menus live on `State`'s generics, not in the state
+    /// value — the marker carries them for the struct (variance-safe, no
+    /// ownership).
+    fx: PhantomData<fn(O, N, E)>,
 }
 
-impl<A: Address, S, M, P, E, O, N> Base<A, S, M, P, E, O, N> {
-    /// Builds a floor over `state` with `handle`.
-    pub fn new(state: S, handle: Handler<A, S, M, P, E, O, N>) -> Self {
-        Self { state, handle }
+impl<S: State<O, N, E>, O, N, E> Base<S, O, N, E> {
+    /// Builds a floor over `state`.
+    pub fn new(state: S) -> Self {
+        Self { state, fx: PhantomData }
     }
 
     /// The accumulated state (test observability).
@@ -281,26 +301,58 @@ impl<A: Address, S, M, P, E, O, N> Base<A, S, M, P, E, O, N> {
     }
 }
 
-impl<A, S, M, P, E, O, N> Behavior for Base<A, S, M, P, E, O, N>
-where
-    A: Address + Send,
-    A::Nonce: Send,
-    S: Send,
-    M: Send,
-    P: Send,
-    E: Send,
-    O: Send,
-    N: Send,
-{
+/// A plain actor's transition as a fn pointer: state, sender, message →
+/// the Agha triple on the erased menu (or a controlled crash). Named for
+/// the `type_complexity` bar, like [`Acted`].
+pub type Transition<S, A, M, O, N, E> = fn(&mut S, A, M) -> Acted<A, Never, O, N, E>;
+
+/// A fn-pointer-backed [`State`], for tests and trivial actors: the state
+/// value and the transition, paired. The field's fn-pointer type carries
+/// the whole signature, so the type is always nameable (a generated actor
+/// stays nameable); non-capturing closures coerce at the call site. Real
+/// actors write a named [`State`] impl.
+pub struct FnState<S, A: Address, M, O = Never, N = Never, E = Never> {
+    /// The state value the transition folds over.
+    pub state: S,
+    /// The transition.
+    pub handle: Transition<S, A, M, O, N, E>,
+}
+
+impl<S, A: Address, M, O, N, E> State<O, N, E> for FnState<S, A, M, O, N, E> {
     type Addr = A;
     type Msg = M;
-    type Ph = P;
+    fn handle(&mut self, from: A, msg: M) -> Acted<A, Never, O, N, E> {
+        (self.handle)(&mut self.state, from, msg)
+    }
+}
+
+impl<S, A: Address, M, O, N, E> Base<FnState<S, A, M, O, N, E>, O, N, E> {
+    /// Builds a floor from a state value and a transition (fn pointer, or a
+    /// non-capturing closure, which coerces).
+    pub fn from_fn(state: S, handle: Transition<S, A, M, O, N, E>) -> Self {
+        Self { state: FnState { state, handle }, fx: PhantomData }
+    }
+}
+
+impl<S, O, N, E> Behavior for Base<S, O, N, E>
+where
+    S: State<O, N, E> + Send,
+    S::Addr: Send,
+    <S::Addr as Address>::Nonce: Send,
+    S::Msg: Send,
+    O: Send,
+    N: Send,
+    E: Send,
+{
+    type Addr = S::Addr;
+    type Msg = S::Msg;
+    type Ph = Never;
     type Error = E;
     type Outbound = O;
     type Offspring = N;
-    async fn step(&mut self, ev: Envelope<A, M>) -> Acted<A, P, O, N, E> {
+    async fn step(&mut self, ev: Envelope<S::Addr, S::Msg>) -> Acted<S::Addr, Never, O, N, E> {
         match ev {
-            Envelope::User { msg, .. } => (self.handle)(&mut self.state, msg),
+            Envelope::User { from, msg } => self.state.handle(from, msg),
             // A plain actor owns no framework source — become(same), no effects.
             Envelope::Deadline | Envelope::LinkDied { .. } | Envelope::ChildStopped { .. } => {
                 Ok(Actions::cont())
@@ -365,16 +417,16 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::{Actions, Base, Behavior, Envelope, MailAddr, Step, Target, run};
+    use super::{Actions, Base, Behavior, Envelope, FnState, MailAddr, Step, Target, run};
     use crate::Exit;
     use crate::verdict::Never;
     use fastpass::{Config, channel};
 
-    type Rec = Base<MailAddr, Vec<u64>, u64, Never, &'static str>;
+    type Rec = Base<FnState<Vec<u64>, MailAddr, u64, Never, Never, &'static str>, Never, Never, &'static str>;
 
     #[tokio::test]
     async fn base_folds_user_messages_and_ignores_framework_events() {
-        let mut b: Rec = Base::new(Vec::<u64>::new(), |seen: &mut Vec<u64>, id: u64| {
+        let mut b: Rec = Base::from_fn(Vec::<u64>::new(), |seen: &mut Vec<u64>, _from: MailAddr, id: u64| {
             if id == 0 {
                 return Ok(Actions::stop(Exit::Normal));
             }
@@ -391,13 +443,14 @@ mod tests {
             b.step(Envelope::User { from: MailAddr(1), msg: 0 }).await.unwrap().become_,
             Step::Stop(Exit::Normal)
         ));
-        assert_eq!(b.state(), &vec![7], "only the delivered user message folded");
+        assert_eq!(b.state().state, vec![7], "only the delivered user message folded");
     }
 
     #[tokio::test]
     async fn base_has_no_deadline() {
-        let b: Base<MailAddr, (), (), Never, Never> =
-            Base::new((), |(): &mut (), (): ()| Ok::<Actions<MailAddr, Never, Never, Never>, Never>(Actions::cont()));
+        type Plain = Base<FnState<(), MailAddr, (), Never, Never, Never>, Never, Never, Never>;
+        let b: Plain =
+            Base::from_fn((), |(): &mut (), _from: MailAddr, (): ()| Ok::<Actions<MailAddr, Never, Never, Never>, Never>(Actions::cont()));
         assert!(b.next_deadline().is_none(), "a plain actor arms no deadline");
     }
 
@@ -461,8 +514,9 @@ mod tests {
     #[tokio::test]
     async fn run_records_a_behaviors_sends_the_test_is_the_peer() {
         struct St;
-        let b: Base<MailAddr, St, u64, Never, &'static str, u64, Never> =
-            Base::new(St, |_: &mut St, _m: u64| {
+        type Sender = Base<FnState<St, MailAddr, u64, u64, Never, &'static str>, u64, Never, &'static str>;
+        let b: Sender =
+            Base::from_fn(St, |_: &mut St, _from: MailAddr, _m: u64| {
                 Ok(Actions { sends: vec![(Target::Global(MailAddr(7)), 99)], creates: vec![], become_: Step::Stop(Exit::Normal) })
             });
         let (_ctl, usr, rx) = channel::<Never, u64>(Config::new(8));

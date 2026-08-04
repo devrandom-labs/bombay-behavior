@@ -1,10 +1,12 @@
-# behaviorpass — the Behavior-algebra concision harness (bombay card #298).
-#
-# The pillar-pass sibling of fastpass/locationpass. Where fastpass golfs a
-# two-lane merge for THROUGHPUT, behaviorpass golfs bombay's capability
-# machinery for CONCISION (LOC), gated on trace-equality to a frozen
-# essence-fold reference (ADR-0028/0030). Findings return to bombay as CARDS,
-# never direct commits.
+# behaviorpass — the behavior algebra: the pure fold at the heart of the
+# pass family. A Behavior folds an Envelope into Actions (sends, creates,
+# become — all DATA, no I/O); every capability is a Behavior wrapping a
+# Behavior; the floor is a State coalgebra. Correctness gate: trace-equality
+# to the frozen reference at every lattice point (tests/oracle.rs). Perf
+# ruler: the space/throughput fitness of the Supervising children mechanism
+# (.auto/, examples/perf_supervising.rs) — representation optimization
+# BEHIND a stable API, never a deformation of it. Findings return to bombay
+# as CARDS, never direct commits.
 [workspace]
 resolver = "3"
 members = [
@@ -20,15 +22,15 @@ repository = "https://github.com/devrandom-labs/behaviorpass"
 [workspace.dependencies]
 thiserror = "2.0"
 tokio = { version = "1.47", default-features = false }
-# fastpass — the sibling pillar-pass mailbox (user + control lanes); the SUT
-# consumes it so behaviorpass golfs CAPABILITY LOC, not mailbox plumbing.
+# fastpass — the sibling pillar-pass mailbox (user + control lanes); the
+# algebra's drivers consume it, so the crates measure CAPABILITY machinery,
+# not mailbox plumbing.
 fastpass = { path = "../fastpass/crates/fastpass" }
 behaviorpass = { path = "crates/behaviorpass" }
 
 # Keep the research crates lint-honest without importing bombay's full god-tier
-# config — this is a spike, but the invariants are real. The concision loop's
-# checks.sh additionally runs bombay's restriction suite as the LOC regularizer
-# (a line bought with unreadability is reverted).
+# config — this is a spike, but the invariants are real. The lints table is the
+# law: clean APIs are enforced by lints, never by line counts.
 [workspace.lints.clippy]
 all = { level = "deny", priority = -1 }
 pedantic = { level = "warn", priority = -1 }

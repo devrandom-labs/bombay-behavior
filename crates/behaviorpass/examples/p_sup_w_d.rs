@@ -1,13 +1,15 @@
 //! Slope point — caps: D Sup W. Generated (bombay card #298).
 use std::time::Duration;
-use behaviorpass::{Actions, Base, Deadlined, Exit, MailAddr, RestartPolicy, Strategy, Supervising, Watching, stop_on_abnormal_death, run};
+use behaviorpass::{Actions, Base, FnState, Deadlined, Exit, MailAddr, RestartPolicy, Strategy, Supervising, Watching, stop_on_abnormal_death, run};
 use behaviorpass::{Never, Step};
 use fastpass::{Config, channel};
 
-type Kid = Base<MailAddr, u64, u64, Never, &'static str>;
+type Kid = Base<FnState<u64, MailAddr, u64, Never, Never, &'static str>, Never, Never, &'static str>;
 
-fn base<N>() -> Base<MailAddr, u64, u64, Never, &'static str, Never, N> {
-    Base::new(0, |s: &mut u64, m: u64| {
+type Floor<N> = Base<FnState<u64, MailAddr, u64, Never, N, &'static str>, Never, N, &'static str>;
+
+fn base<N>() -> Floor<N> {
+    Base::from_fn(0, |s: &mut u64, _from: MailAddr, m: u64| {
         *s += m;
         Ok::<Actions<MailAddr, Never, Never, N>, &'static str>(if *s > 1000 { Actions::stop(Exit::Normal) } else { Actions::cont() })
     })

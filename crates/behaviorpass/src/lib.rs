@@ -1,19 +1,13 @@
-//! The golf target (bombay card #298): a fresh ASYNC realization of the
-//! ADR-0030 Behavior algebra, spawnable on plain tokio primitives, whose
-//! code-only LOC the concision loop minimizes while staying trace-equal to
-//! the frozen sync reference at every lattice point.
-//!
-//! bombay is depended on ONLY for the shared verdict words (`Step`/`Never` —
-//! this crate's own grammar otherwise); the driver and channels are
-//! plain tokio (the ceremony a concision harness must not carry). The shared
-//! [`Exit`] trace vocabulary comes from the frozen reference so a SUT trace
-//! compares type-exact with a model trace.
-//!
-//! Everything here is ONE kind of thing — a [`Behavior`]. `Base` is the
-//! innermost; every capability is a `Behavior` that wraps a `Behavior`. One
-//! file per capability so the module name says exactly what it holds.
+//! The behavior algebra: the pure fold at the heart of the pass family.
+//! A [`Behavior`] folds an [`Envelope`] into [`Actions`] — sends, creates,
+//! and the replacement verdict, all DATA, no I/O — and every capability is
+//! a `Behavior` that wraps a `Behavior`. The floor is a [`State`]: a state
+//! type with its transition, bound in one type (the coalgebra); `Base`
+//! lifts it into the fold. One file per capability so the module name says
+//! exactly what it holds. Trace-equality to the frozen reference at every
+//! lattice point is the correctness gate (tests/oracle.rs).
 
-mod behavior; // the core: Address, Behavior, Envelope, Become, Target, run, lift, Base
+mod behavior; // the core: Address, Behavior, State, Base, FnState, Envelope, Actions, run
 mod verdict; // Never, Step — owned verdict vocabulary (no upward deps)
 mod deadlined; // Deadlined
 mod stashing; // Stashing — the buffer primitive (STAYS in core)
@@ -26,7 +20,8 @@ mod watching; // Watching
 mod fsm;
 
 pub use behavior::{
-    Actions, Address, Base, Become, Behavior, Create, Envelope, MailAddr, Target, Transcript, run,
+    Actions, Address, Base, Become, Behavior, Create, Envelope, Fleet, FnState, MailAddr, State,
+    Target, Transcript, run,
 };
 pub use deadlined::{DeadlineReaction, Deadlined};
 pub use fsm::{Fsm, Move};

@@ -6,12 +6,14 @@
 
 use std::time::Duration;
 
-use behaviorpass::{Actions, Base, Become, Behavior, Crash, Deadlined, Envelope, Exit, MailAddr};
+use behaviorpass::{Actions, Base, FnState, Become, Behavior, Crash, Deadlined, Envelope, Exit, MailAddr};
 use behaviorpass::{Never, Step};
 use tokio::time::Instant;
 
-fn floor() -> Base<MailAddr, (), u64, Never, &'static str> {
-    Base::new((), |(): &mut (), _: u64| {
+type Floor = Base<FnState<(), MailAddr, u64, Never, Never, &'static str>, Never, Never, &'static str>;
+
+fn floor() -> Floor {
+    Base::from_fn((), |(): &mut (), _from: MailAddr, _: u64| {
         Ok::<Actions<MailAddr, Never, Never, Never>, &'static str>(Actions::cont())
     })
 }
@@ -99,9 +101,10 @@ async fn deadlined_reaction_stop_rides_out() {
 /// deadline slot.
 #[tokio::test]
 async fn deadlined_user_events_forward_and_keep_the_slot() {
+    type Rec = Base<FnState<Vec<u64>, MailAddr, u64, Never, Never, &'static str>, Never, Never, &'static str>;
     let t = at(5);
-    let recorder: Base<MailAddr, Vec<u64>, u64, Never, &'static str> =
-        Base::new(Vec::<u64>::new(), |seen: &mut Vec<u64>, id: u64| {
+    let recorder: Rec =
+        Base::from_fn(Vec::<u64>::new(), |seen: &mut Vec<u64>, _from: MailAddr, id: u64| {
             seen.push(id);
             Ok::<Actions<MailAddr, Never, Never, Never>, &'static str>(Actions::cont())
         });
@@ -109,7 +112,7 @@ async fn deadlined_user_events_forward_and_keep_the_slot() {
 
     let actions = d.step(Envelope::User { from: MailAddr(1), msg: 7 }).await.expect("no error");
     assert_eq!(actions.become_, Step::Continue);
-    assert_eq!(d.inner().state(), &vec![7], "user events forward inward");
+    assert_eq!(d.inner().state().state, vec![7], "user events forward inward");
     assert_eq!(d.next_deadline(), Some(t), "a user event never clears the slot");
 }
 
