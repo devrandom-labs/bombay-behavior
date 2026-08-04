@@ -7,7 +7,7 @@
 
 use std::time::Duration;
 
-use behaviorpass::{Actions, Base, Behavior, Deadlined, Envelope, Exit, MailAddr, Watching, otp_propagation};
+use behaviorpass::{Actions, Base, Behavior, Deadlined, Envelope, Exit, MailAddr, Watching, stop_on_abnormal_death};
 use bombay::capability::{Never, Step};
 use proptest::prelude::*;
 use tokio::time::Instant;
@@ -24,7 +24,7 @@ fn recorder() -> Base<Vec<u64>, u64, Never, &'static str> {
 #[tokio::test]
 async fn watching_abnormal_death_propagates_exact_peer() {
     for peer in [42_u64, 0, u64::MAX] {
-        let mut w = Watching::new(recorder(), otp_propagation);
+        let mut w = Watching::new(recorder(), stop_on_abnormal_death);
         let actions = w.step(Envelope::LinkDied { peer, abnormal: true }).await.expect("no error");
         assert_eq!(
             actions.become_,
@@ -39,7 +39,7 @@ async fn watching_abnormal_death_propagates_exact_peer() {
 /// A normal death is absorbed: Continue, inner untouched.
 #[tokio::test]
 async fn watching_normal_death_is_absorbed_and_forwards() {
-    let mut w = Watching::new(recorder(), otp_propagation);
+    let mut w = Watching::new(recorder(), stop_on_abnormal_death);
     let actions = w.step(Envelope::LinkDied { peer: 42, abnormal: false }).await.expect("no error");
     assert_eq!(actions.become_, Step::Continue, "a normal death is absorbed");
     assert_eq!(w.inner().state(), &Vec::<u64>::new(), "the link event never reaches the inner fold");
@@ -85,7 +85,7 @@ async fn watching_user_actions_forward_unchanged() {
             become_: if m == 9 { Step::Stop(Exit::Normal) } else { Step::Continue },
         })
     });
-    let mut w = Watching::new(sender, otp_propagation);
+    let mut w = Watching::new(sender, stop_on_abnormal_death);
     let actions = w.step(Envelope::User(4)).await.expect("no error");
     assert_eq!(actions.sends, vec![(MailAddr(7), 4)], "sends pass through unchanged");
     assert_eq!(actions.become_, Step::Continue);
@@ -99,7 +99,7 @@ async fn watching_user_actions_forward_unchanged() {
 async fn watching_forwards_deadline_and_arms_inner() {
     let due = Instant::now() + Duration::from_secs(5);
     let inner_d = Deadlined::new(recorder(), Some(due), |_inner| Ok(Step::Stop(Exit::Normal)));
-    let mut w = Watching::new(inner_d, otp_propagation);
+    let mut w = Watching::new(inner_d, stop_on_abnormal_death);
     assert_eq!(w.next_deadline(), Some(due), "Watching forwards the inner deadline");
 
     let actions = w.step(Envelope::Deadline).await.expect("no error");
@@ -123,10 +123,10 @@ proptest::proptest! {
     /// Stop(LinkDied(peer)) with the exact peer; normal ⇒ Continue; and the
     /// inner fold is never touched by a link event.
     #[test]
-    fn prop_watching_otp_propagation_policy(peer in peer_strategy(), abnormal in any::<bool>()) {
+    fn prop_watching_stop_on_abnormal_death_policy(peer in peer_strategy(), abnormal in any::<bool>()) {
         let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
         rt.block_on(async {
-            let mut w = Watching::new(recorder(), otp_propagation);
+            let mut w = Watching::new(recorder(), stop_on_abnormal_death);
             let actions = w.step(Envelope::LinkDied { peer, abnormal }).await.unwrap();
             let expected = if abnormal {
                 Step::Stop(Exit::LinkDied(peer))
@@ -187,7 +187,7 @@ proptest::proptest! {
         let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
         rt.block_on(async {
             let mut model = WatchModel::new();
-            let mut w = Watching::new(recorder(), otp_propagation);
+            let mut w = Watching::new(recorder(), stop_on_abnormal_death);
             for (i, ev) in evs.into_iter().enumerate() {
                 let actions = w.step(match ev {
                     Ev::User(id) => Envelope::User(id),

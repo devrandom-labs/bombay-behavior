@@ -63,7 +63,7 @@ $$\text{actor} = \text{process}(\text{behavior}) \qquad
    processes. In the live split, `creates` become **births only** and restart
    is a distinct effect. **Resolved (2026-08-04): the enum.** `Actions.creates`
    is `Vec<Create<New>>` with `Create::Birth(New)` /
-   `Create::Reincarnate { slot, child }` — one leg, self-describing entries,
+   `Create::Restart { slot, child }` — one leg, self-describing entries,
    payload generic so the golf's stand-ins and child behaviors both fit.
    `Base`, `Deadlined`, `Watching`, `Stashing`, `Fsm` are untouched. (Audit
    that forced this: only `Supervising` ever creates —

@@ -30,12 +30,13 @@ impl<B: Behavior> Watching<B> {
     }
 }
 
-/// The default policy: propagate an abnormal linked death, absorb everything
-/// else (`OtpPropagation`).
+/// The default link-death policy: a peer's ABNORMAL death stops this actor
+/// with [`Exit::LinkDied`] carrying the dead peer (the death propagates down
+/// the link — OTP's link semantics); a normal death is absorbed.
 ///
 /// # Errors
 /// Never — the propagation decision is pure; the signature matches the seat.
-pub fn otp_propagation<B: Behavior>(
+pub fn stop_on_abnormal_death<B: Behavior>(
     _: &mut B,
     peer: u64,
     abnormal: bool,
@@ -76,7 +77,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::{Watching, otp_propagation};
+    use super::{Watching, stop_on_abnormal_death};
     use crate::behavior::{Actions, Behavior, Envelope};
     use crate::{Base, Exit};
     use bombay::capability::{Never, Step};
@@ -90,7 +91,7 @@ mod tests {
 
     #[tokio::test]
     async fn watching_propagates_abnormal_death_and_absorbs_normal() {
-        let mut w = Watching::new(recorder(), otp_propagation);
+        let mut w = Watching::new(recorder(), stop_on_abnormal_death);
         assert!(
             matches!(
                 w.step(Envelope::LinkDied { peer: 42, abnormal: true }).await.unwrap().become_,
@@ -99,7 +100,7 @@ mod tests {
             "an abnormal linked death propagates with the carried reason",
         );
 
-        let mut w2 = Watching::new(recorder(), otp_propagation);
+        let mut w2 = Watching::new(recorder(), stop_on_abnormal_death);
         assert!(matches!(
             w2.step(Envelope::LinkDied { peer: 42, abnormal: false }).await.unwrap().become_,
             Step::Continue

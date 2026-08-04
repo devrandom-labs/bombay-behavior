@@ -50,17 +50,17 @@ pub struct MailAddr(pub u64);
 
 /// One create-effect, self-describing (2026-08-04 design): a **birth** is a
 /// fresh actor at a fresh address (the driver mints and spawns); a
-/// **reincarnation** is a supervisor's restart decision for a child slot —
+/// **restart** is a supervisor's restart decision for a child slot —
 /// the address and mailbox SURVIVE, only the behavior is swapped (keep-address
 /// restart; address mobility makes re-pointing escaped handles impossible, so
 /// a restart is never a birth). The golf records the decision; the live driver
-/// interprets: `Birth` spawns, `Reincarnate` rides the child's control lane.
+/// interprets: `Birth` spawns, `Restart` rides the child's control lane.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Create<New> {
     /// A fresh actor: the driver spawns the spec at a new address.
     Birth(New),
     /// A restart decision for child `slot`: fresh behavior, surviving address.
-    Reincarnate {
+    Restart {
         /// Index into the supervisor's child table.
         slot: usize,
         /// The replacement behavior for the slot's surviving mailbox.
@@ -76,7 +76,7 @@ pub struct Actions<Ph, Out, New> {
     /// Messages sent this turn, each addressed by an opaque [`MailAddr`] token.
     pub sends: Vec<(MailAddr, Out)>,
     /// Create-effects this turn (the driver interprets each): births and
-    /// reincarnations, self-describing via [`Create`].
+    /// restarts, self-describing via [`Create`].
     pub creates: Vec<Create<New>>,
     /// The replacement behavior.
     pub become_: Become<Ph>,
