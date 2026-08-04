@@ -11,6 +11,7 @@ description = "The golf target: bombay's capability machinery + the 24-point lat
 # correctness gate; the perf loop (.auto/) optimizes REPRESENTATIONS behind
 # this crate's stable public API.
 [dependencies]
+behaviorpass-macros = { version = "0.1.0", path = "../behaviorpass-macros" }
 
 fastpass = { workspace = true }                 # the mailbox (user + control lanes)
 thiserror = { workspace = true }

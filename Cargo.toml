@@ -10,7 +10,7 @@
 [workspace]
 resolver = "3"
 members = [
-  "crates/behaviorpass",
+  "crates/behaviorpass", "crates/behaviorpass-macros",
 ]
 
 [workspace.package]

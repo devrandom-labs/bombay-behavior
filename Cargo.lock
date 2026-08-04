@@ -21,10 +21,20 @@ checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 name = "behaviorpass"
 version = "0.1.0"
 dependencies = [
+ "behaviorpass-macros",
  "fastpass",
  "proptest",
  "thiserror",
  "tokio",
+]
+
+[[package]]
+name = "behaviorpass-macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.3",
 ]
 
 [[package]]
