@@ -91,21 +91,25 @@ impl<B: Behavior> Spec<B> {
         Spec(Stashing::new(self.0, route))
     }
 
-    /// Intent: a child fleet of `n`, built — and rebuilt on every
-    /// restart — by `build` (the constructor IS the restart builder, so
-    /// it takes the fleet index, not a captured value). Slots are the
-    /// identity nonces (slot = nonce = index); use
+    /// Intent: a child fleet `(n, build)` — built, and rebuilt on every
+    /// restart, by `build` (the constructor IS the restart builder, so
+    /// it takes the fleet index, not a captured value). The tuple is
+    /// exactly what [`workers!`] yields, so mixed fleets inline:
+    /// `.children(workers![(4, worker_a), (2, worker_b)])`. Slots are
+    /// the identity nonces (slot = nonce = index); use
     /// [`Spec::children_with_nonces`] for an explicit minter. The inner
     /// behavior's offspring menu must be the child type (the layer's
     /// bookkeeping law — declare `Child` in its [`State`] impl).
+    ///
+    /// [`workers!`]: crate::workers
     #[must_use]
-    pub fn children<C>(self, n: usize, build: fn(usize) -> C) -> Spec<Supervising<B, C>>
+    pub fn children<C>(self, fleet: (usize, fn(usize) -> C)) -> Spec<Supervising<B, C>>
     where
         B: Behavior<Offspring = C>,
         C: Behavior<Ph = Never, Addr = B::Addr>,
         <B::Addr as Address>::Nonce: From<u64>,
     {
-        self.children_with_nonces(identity_nonce, n, build)
+        self.children_with_nonces(identity_nonce, fleet.0, fleet.1)
     }
 
     /// [`Spec::children`] with an explicit fleet nonce minter.
@@ -236,6 +240,42 @@ mod tests {
         crate::Base::new(Counter { n: i as u64 })
     }
 
+    struct Beta;
+
+    impl State for Beta {
+        type Addr = MailAddr;
+        type Msg = u64;
+        fn handle(&mut self, _from: MailAddr, _m: u64) -> Acted<MailAddr, Never, Never, Never, Never> {
+            Ok(Actions::cont())
+        }
+    }
+
+    fn beta(_i: usize) -> crate::Base<Beta> {
+        crate::Base::new(Beta)
+    }
+
+    #[tokio::test]
+    async fn spec_children_inlines_the_workers_macro() {
+        let inner = crate::Base::from_fn((), |(): &mut (), _from: MailAddr, _: u64| {
+            Ok::<Actions<MailAddr, Never, Never, _>, Never>(Actions::cont())
+        });
+        let mut spec = Spec::from_behavior(inner)
+            .children(crate::workers![(1, crate::Base<Counter>, counter), (1, crate::Base<Beta>, beta)])
+            .budget(2, Duration::MAX);
+
+        let fleet = Behavior::fleet(&spec).expect("a supervisor declares its fleet");
+        assert_eq!(fleet.n, 2, "the macro's mixed fleet is the supervisor's fleet");
+
+        let actions = spec
+            .step(Envelope::ChildStopped { nonce: 1, outcome: Err(Crash::Failed), at: Instant::now() })
+            .await
+            .expect("no crash");
+        let [Create::Restart { nonce, .. }] = actions.creates.as_slice() else {
+            panic!("an abnormal stop within budget emits exactly one restart");
+        };
+        assert_eq!(*nonce, 1, "the restart names the dead crew member's nonce");
+    }
+
     #[tokio::test]
     async fn spec_floor_folds_and_delegates_behavior() {
         let mut spec = Spec::new(Counter { n: 0 });
@@ -260,7 +300,7 @@ mod tests {
     #[tokio::test]
     async fn spec_children_fleet_with_tuning_and_restart() {
         let mut spec = Spec::new(Router)
-            .children(2, counter)
+            .children((2, counter))
             .on_child_death(restart_all())
             .policy(RestartPolicy::Transient)
             .budget(5, Duration::from_secs(30));
