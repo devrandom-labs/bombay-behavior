@@ -2,7 +2,7 @@
 //! a wake time via [`Behavior::next_deadline`], reacts when [`Envelope::Deadline`]
 //! fires, and forwards every other event to the inner behavior.
 
-use bombay::capability::Never;
+use crate::verdict::Never;
 use tokio::time::Instant;
 
 use crate::behavior::{Acted, Become, Behavior, Envelope, lift};
@@ -70,7 +70,7 @@ mod tests {
     use super::Deadlined;
     use crate::behavior::{Actions, Behavior, Envelope};
     use crate::{Base, Exit};
-    use bombay::capability::{Never, Step};
+    use crate::verdict::{Never, Step};
     use tokio::time::Instant;
 
     #[tokio::test]

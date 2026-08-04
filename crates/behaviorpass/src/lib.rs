@@ -14,6 +14,7 @@
 //! file per capability so the module name says exactly what it holds.
 
 mod behavior; // the core: Behavior, Envelope, Become, run, lift, Base
+mod verdict; // Never, Step — owned verdict vocabulary (no upward deps)
 mod deadlined; // Deadlined
 mod stashing; // Stashing — the buffer primitive (STAYS in core)
 mod supervising; // Supervising
@@ -29,6 +30,7 @@ pub use deadlined::{DeadlineReaction, Deadlined};
 pub use fsm::{Fsm, Move};
 pub use stashing::{StashRoute, Stashing};
 pub use supervising::Supervising;
+pub use verdict::{Never, Step};
 pub use watching::{LinkReaction, Watching, stop_on_abnormal_death};
 
 mod exit; // Exit — the trace-exit vocabulary (moved in-crate; reference crate retired)

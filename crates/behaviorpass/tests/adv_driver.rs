@@ -7,7 +7,7 @@
 //! long-sequence fuzz through a real mailbox.
 
 use behaviorpass::{Actions, Base, Create, Exit, MailAddr, run};
-use bombay::capability::{Never, Step};
+use behaviorpass::{Never, Step};
 use fastpass::{Config, channel};
 
 /// A behavior that records what it folds and sends one message per fold; stops

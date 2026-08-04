@@ -1,7 +1,7 @@
 //! `Watching` — a `Behavior` that reacts to a watched peer's death. It handles
 //! [`Envelope::LinkDied`] with a policy and forwards every other event inward.
 
-use bombay::capability::{Never, Step};
+use crate::verdict::{Never, Step};
 use tokio::time::Instant;
 
 use crate::Exit;
@@ -80,7 +80,7 @@ mod tests {
     use super::{Watching, stop_on_abnormal_death};
     use crate::behavior::{Actions, Behavior, Envelope};
     use crate::{Base, Exit};
-    use bombay::capability::{Never, Step};
+    use crate::verdict::{Never, Step};
 
     fn recorder() -> Base<Vec<u64>, u64, Never, &'static str> {
         Base::new(Vec::<u64>::new(), |seen: &mut Vec<u64>, id: u64| {

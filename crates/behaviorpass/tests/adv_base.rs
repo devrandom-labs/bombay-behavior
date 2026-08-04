@@ -6,7 +6,7 @@
 //! Methods: handcrafted edges + a property sweep over the framework alphabet.
 
 use behaviorpass::{Actions, Base, Behavior, Create, Envelope, Exit, MailAddr};
-use bombay::capability::{Never, Step};
+use behaviorpass::{Never, Step};
 use proptest::prelude::*;
 
 /// A floor typed with BOTH menus: it *could* send and create on user messages,

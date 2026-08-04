@@ -12,7 +12,7 @@
 use std::time::Duration;
 
 use behaviorpass::{Actions, Base, Behavior, Create, Deadlined, Envelope, Exit, MailAddr, Supervising};
-use bombay::capability::{Never, Step};
+use behaviorpass::{Never, Step};
 use proptest::prelude::*;
 use tokio::time::Instant;
 

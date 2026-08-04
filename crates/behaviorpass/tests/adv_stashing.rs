@@ -21,7 +21,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use behaviorpass::{Actions, Base, Behavior, Create, Deadlined, Envelope, Exit, MailAddr, StashRoute, Stashing, run};
-use bombay::capability::{Never, Step};
+use behaviorpass::{Never, Step};
 use fastpass::{Config, channel};
 
 use tokio::time::Instant;

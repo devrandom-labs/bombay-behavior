@@ -4,7 +4,7 @@
 //! verbatim. A refactor of the action algebra must keep these.
 
 use behaviorpass::{Actions, Exit, MailAddr};
-use bombay::capability::{Never, Step};
+use behaviorpass::{Never, Step};
 
 #[test]
 fn actions_just_carries_the_exact_become_with_no_effects() {

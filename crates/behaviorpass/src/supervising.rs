@@ -10,7 +10,7 @@
 use std::alloc::Layout;
 use std::ptr::NonNull;
 
-use bombay::capability::{Never, Step};
+use crate::verdict::{Never, Step};
 use tokio::time::Instant;
 
 use crate::behavior::{Acted, Actions, Behavior, Create, Envelope};
@@ -202,7 +202,7 @@ mod tests {
     use super::Supervising;
     use crate::behavior::{Actions, Behavior, Create, Envelope};
     use crate::Base;
-    use bombay::capability::Never;
+    use crate::verdict::Never;
 
     type Kid = Base<u32, u32, Never, &'static str>;
 

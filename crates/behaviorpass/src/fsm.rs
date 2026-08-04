@@ -11,7 +11,7 @@
 
 use std::collections::VecDeque;
 
-use bombay::capability::{Never, Step};
+use crate::verdict::{Never, Step};
 
 use crate::Exit;
 use crate::behavior::{Acted, Actions, Behavior, Envelope};

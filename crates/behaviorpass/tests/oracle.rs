@@ -14,7 +14,7 @@ use behaviorpass::{
     Actions, Base, Behavior, Create, Deadlined, Envelope, Exit, Fsm, Move, StashRoute, Stashing,
     Supervising, Watching, stop_on_abnormal_death,
 };
-use bombay::capability::{Never, Step};
+use behaviorpass::{Never, Step};
 use core::time::Duration;
 use tokio::time::Instant;
 

@@ -10,7 +10,7 @@
 use std::collections::VecDeque;
 
 use behaviorpass::{Behavior, Envelope, Exit, Fsm, Move, run};
-use bombay::capability::{Never, Step};
+use behaviorpass::{Never, Step};
 use fastpass::{Config, channel};
 
 
