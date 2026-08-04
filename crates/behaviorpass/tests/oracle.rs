@@ -11,7 +11,7 @@
 //! (no real timer), so a hung layer cannot stall the measure loop.
 
 use behaviorpass::{
-    Actions, Base, Behavior, Deadlined, Envelope, Exit, Fsm, Move, StashRoute, Stashing,
+    Actions, Base, Behavior, Create, Deadlined, Envelope, Exit, Fsm, Move, StashRoute, Stashing,
     Supervising, Watching, otp_propagation,
 };
 use bombay::capability::{Never, Step};
@@ -147,7 +147,10 @@ async fn supervising_restarts_within_budget_only() {
     let mut sup = Supervising::new(inner, 1, |_| kid(), 1);
 
     let actions = sup.step(Envelope::ChildStopped { idx: 0, abnormal: true }).await.unwrap();
-    assert_eq!(actions.creates.len(), 1, "the restart emits a create-spec");
+    let [Create::Reincarnate { slot, .. }] = actions.creates.as_slice() else {
+        panic!("the restart emits exactly one tagged reincarnation, never a bare birth");
+    };
+    assert_eq!(*slot, 0, "the reincarnation names the stopped slot");
     assert!(sup.is_alive(0));
     assert_eq!(sup.restarts_left(), 0);
 

@@ -48,6 +48,26 @@ pub type Become<Ph = Never> = Step<Ph, Exit>;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MailAddr(pub u64);
 
+/// One create-effect, self-describing (2026-08-04 design): a **birth** is a
+/// fresh actor at a fresh address (the driver mints and spawns); a
+/// **reincarnation** is a supervisor's restart decision for a child slot —
+/// the address and mailbox SURVIVE, only the behavior is swapped (keep-address
+/// restart; address mobility makes re-pointing escaped handles impossible, so
+/// a restart is never a birth). The golf records the decision; the live driver
+/// interprets: `Birth` spawns, `Reincarnate` rides the child's control lane.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Create<New> {
+    /// A fresh actor: the driver spawns the spec at a new address.
+    Birth(New),
+    /// A restart decision for child `slot`: fresh behavior, surviving address.
+    Reincarnate {
+        /// Index into the supervisor's child table.
+        slot: usize,
+        /// The replacement behavior for the slot's surviving mailbox.
+        child: New,
+    },
+}
+
 /// The Agha actions: everything a behavior emits from ONE event — the messages
 /// it SENT, the actors it CREATED, and the replacement behavior it BECAME. This
 /// is the full triple [`Behavior::step`] returns; send and create are
@@ -55,8 +75,9 @@ pub struct MailAddr(pub u64);
 pub struct Actions<Ph, Out, New> {
     /// Messages sent this turn, each addressed by an opaque [`MailAddr`] token.
     pub sends: Vec<(MailAddr, Out)>,
-    /// Actors created this turn (the driver interprets each spec).
-    pub creates: Vec<New>,
+    /// Create-effects this turn (the driver interprets each): births and
+    /// reincarnations, self-describing via [`Create`].
+    pub creates: Vec<Create<New>>,
     /// The replacement behavior.
     pub become_: Become<Ph>,
 }
@@ -198,8 +219,8 @@ where
 pub struct Transcript<Out, New> {
     /// Every message the behavior sent, in emission order.
     pub sends: Vec<(MailAddr, Out)>,
-    /// Every actor the behavior created, in emission order.
-    pub creates: Vec<New>,
+    /// Every create-effect the behavior emitted, in emission order.
+    pub creates: Vec<Create<New>>,
     /// The exit that ended the fold.
     pub exit: Exit,
 }

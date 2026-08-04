@@ -11,7 +11,7 @@
 
 use std::time::Duration;
 
-use behaviorpass::{Actions, Base, Behavior, Deadlined, Envelope, Exit, MailAddr, Supervising};
+use behaviorpass::{Actions, Base, Behavior, Create, Deadlined, Envelope, Exit, MailAddr, Supervising};
 use bombay::capability::{Never, Step};
 use proptest::prelude::*;
 use tokio::time::Instant;
@@ -31,6 +31,17 @@ fn inner() -> Base<(), u64, Never, &'static str> {
 
 fn supervisor(budget: u32) -> Supervising<Base<(), u64, Never, &'static str>, Kid> {
     Supervising::new(inner(), 1, |_| kid(), budget)
+}
+
+/// The one emission a within-budget abnormal stop must produce: exactly one
+/// create, tagged `Reincarnate`, naming the dead slot — the restart-decision
+/// vocabulary (2026-08-04 design): a restart is never a bare birth, and the
+/// slot ties the decision to the surviving mailbox the driver will swap.
+fn assert_one_reincarnate<Ph, Out>(actions: &Actions<Ph, Out, Kid>, expected: usize) {
+    let [Create::Reincarnate { slot, .. }] = actions.creates.as_slice() else {
+        panic!("expected exactly one Reincarnate, got {} creates", actions.creates.len());
+    };
+    assert_eq!(*slot, expected, "the reincarnation names the stopped slot");
 }
 
 // ---------------------------------------------------------------------------
@@ -103,7 +114,7 @@ async fn supervising_budget_spends_exactly_one_per_restart() {
     let mut sup = supervisor(u32::MAX);
     for _ in 0..3 {
         let actions = sup.step(Envelope::ChildStopped { idx: 0, abnormal: true }).await.expect("no error");
-        assert_eq!(actions.creates.len(), 1, "each abnormal stop within budget emits one create");
+        assert_one_reincarnate(&actions, 0);
         assert!(sup.is_alive(0));
     }
     assert_eq!(sup.restarts_left(), u32::MAX - 3, "exactly one unit spent per restart");
@@ -137,7 +148,7 @@ async fn supervising_multi_child_slots_are_independent() {
     assert!(sup.is_alive(2));
 
     let actions = sup.step(Envelope::ChildStopped { idx: 0, abnormal: true }).await.expect("no error");
-    assert_eq!(actions.creates.len(), 1, "the abnormal slot restarts independently");
+    assert_one_reincarnate(&actions, 0);
     assert!(sup.is_alive(0), "restart re-marks its own slot live");
     assert!(!sup.is_alive(1), "other slots unaffected");
     assert_eq!(sup.restarts_left(), 4);
@@ -154,11 +165,11 @@ async fn supervising_lifecycle_start_restart_exhaust() {
     assert_eq!(sup.restarts_left(), 2);
     // abnormal → restart #1
     let a = sup.step(Envelope::ChildStopped { idx: 0, abnormal: true }).await.expect("no error");
-    assert_eq!(a.creates.len(), 1);
+    assert_one_reincarnate(&a, 0);
     assert_eq!(sup.restarts_left(), 1);
     // abnormal → restart #2 (last unit)
     let a = sup.step(Envelope::ChildStopped { idx: 0, abnormal: true }).await.expect("no error");
-    assert_eq!(a.creates.len(), 1);
+    assert_one_reincarnate(&a, 0);
     assert_eq!(sup.restarts_left(), 0);
     // abnormal → exhausted: dead, no create
     let a = sup.step(Envelope::ChildStopped { idx: 0, abnormal: true }).await.expect("no error");
@@ -248,6 +259,12 @@ fn fold_supervising_and_check(rt: &tokio::runtime::Runtime, n_children: usize, b
             let actions = sup.step(Envelope::ChildStopped { idx, abnormal }).await.expect("no error");
             let expected = model.fold(idx, abnormal);
             assert_eq!(actions.creates.len(), expected, "op #{i}: create count");
+            assert!(
+                actions.creates
+                    .iter()
+                    .all(|c| matches!(c, Create::Reincarnate { slot, .. } if *slot == idx)),
+                "op #{i}: every emission is a reincarnation naming the stopped slot"
+            );
             assert!(actions.sends.is_empty(), "op #{i}: supervision emits no sends");
             assert_eq!(actions.become_, Step::Continue, "op #{i}: supervision never becomes");
             assert_eq!(sup.restarts_left(), model.restarts_left, "op #{i}: budget accounting");

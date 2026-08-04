@@ -24,7 +24,7 @@ mod watching; // Watching
 // the aggregate's (nexus's) concern, not core's.
 mod fsm;
 
-pub use behavior::{Actions, Base, Become, Behavior, Envelope, MailAddr, Transcript, run};
+pub use behavior::{Actions, Base, Become, Behavior, Create, Envelope, MailAddr, Transcript, run};
 pub use deadlined::{DeadlineReaction, Deadlined};
 pub use fsm::{Fsm, Move};
 pub use stashing::{StashRoute, Stashing};

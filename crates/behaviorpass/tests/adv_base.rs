@@ -5,7 +5,7 @@
 //! through the handler and ride its effects out.
 //! Methods: handcrafted edges + a property sweep over the framework alphabet.
 
-use behaviorpass::{Actions, Base, Behavior, Envelope, Exit, MailAddr};
+use behaviorpass::{Actions, Base, Behavior, Create, Envelope, Exit, MailAddr};
 use bombay::capability::{Never, Step};
 use proptest::prelude::*;
 
@@ -16,7 +16,7 @@ fn menu_floor() -> Base<Vec<u64>, u64, Never, &'static str, u64, u32> {
         seen.push(id);
         Ok::<Actions<Never, u64, u32>, &'static str>(Actions {
             sends: vec![(MailAddr(id), id)],
-            creates: vec![id as u32],
+            creates: vec![Create::Birth(id as u32)],
             become_: Step::Continue,
         })
     })
@@ -48,7 +48,7 @@ async fn base_user_messages_ride_the_full_triple_out() {
     let mut b = menu_floor();
     let actions = b.step(Envelope::User(5)).await.expect("no error");
     assert_eq!(actions.sends, vec![(MailAddr(5), 5)]);
-    assert_eq!(actions.creates, vec![5]);
+    assert_eq!(actions.creates, vec![Create::Birth(5)]);
     assert_eq!(actions.become_, Step::Continue);
     assert_eq!(b.state(), &vec![5]);
 }
