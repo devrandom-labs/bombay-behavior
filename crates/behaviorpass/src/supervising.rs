@@ -1,8 +1,11 @@
 //! `Supervising` — a `Behavior` that decides child restarts. It reacts to
-//! [`Envelope::ChildStopped`] and, within budget, EMITS a create-spec (an
-//! `Offspring` the driver spawns) rather than rebuilding a child fold in place.
-//! Actual spawning — initial and restart — is the future driver's job; this
-//! crate makes only the restart DECISION and emits the create.
+//! [`Envelope::ChildStopped`] and, within budget, EMITS a tagged
+//! [`Create::Reincarnate`] (slot + replacement behavior) rather than
+//! rebuilding a child fold in place. Actual spawning — initial and restart —
+//! is the future driver's job; this crate makes only the restart DECISION.
+//! The keep-address semantics (2026-08-04 design): a reincarnation reuses the
+//! child's surviving mailbox — the driver swaps the behavior slot, it never
+//! re-addresses, so handles that escaped in messages stay valid.
 
 use std::alloc::Layout;
 use std::ptr::NonNull;
@@ -10,7 +13,7 @@ use std::ptr::NonNull;
 use bombay::capability::{Never, Step};
 use tokio::time::Instant;
 
-use crate::behavior::{Acted, Actions, Behavior, Envelope};
+use crate::behavior::{Acted, Actions, Behavior, Create, Envelope};
 
 /// A `Behavior` that supervises children: the OUTER fold deciding restarts.
 /// One-for-one, budget-bounded — model grade. A restart is a `create` the
@@ -95,10 +98,10 @@ impl<B: Behavior, C: Behavior<Ph = Never>> Supervising<B, C> {
     }
 
     /// The restart decision for slot `idx`: an abnormal stop within budget spends
-    /// one unit, re-marks the slot live, and yields ONE create-spec; every other
+    /// one unit, re-marks the slot live, and yields ONE reincarnation; every other
     /// case (normal stop, exhausted budget, out-of-range) marks it dead and
     /// yields no create.
-    fn on_child_stopped(&mut self, idx: usize, abnormal: bool) -> Vec<C> {
+    fn on_child_stopped(&mut self, idx: usize, abnormal: bool) -> Vec<Create<C>> {
         if idx >= self.n_children as usize {
             return Vec::new();
         }
@@ -109,7 +112,7 @@ impl<B: Behavior, C: Behavior<Ph = Never>> Supervising<B, C> {
             if self.liveness.is_some() {
                 self.table_mut()[idx / 64] |= 1 << (idx % 64);
             }
-            vec![(self.build)(idx)]
+            vec![Create::Reincarnate { slot: idx, child: (self.build)(idx) }]
         } else {
             self.mark_dead(idx);
             Vec::new()
@@ -197,7 +200,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::Supervising;
-    use crate::behavior::{Actions, Behavior, Envelope};
+    use crate::behavior::{Actions, Behavior, Create, Envelope};
     use crate::Base;
     use bombay::capability::Never;
 
@@ -221,7 +224,10 @@ mod tests {
     async fn supervising_restarts_an_abnormal_child_within_budget() {
         let mut sup = supervisor(1);
         let actions = sup.step(Envelope::ChildStopped { idx: 0, abnormal: true }).await.unwrap();
-        assert_eq!(actions.creates.len(), 1, "the restart emits one create-spec for the driver");
+        let [Create::Reincarnate { slot, .. }] = actions.creates.as_slice() else {
+            panic!("the restart emits exactly one tagged reincarnation for the driver");
+        };
+        assert_eq!(*slot, 0, "the reincarnation names the dead slot");
         assert!(sup.is_alive(0), "the abnormal child's slot is marked live again");
         assert_eq!(sup.restarts_left(), 0, "the restart spent one budget unit");
 

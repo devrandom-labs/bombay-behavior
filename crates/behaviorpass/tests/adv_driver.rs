@@ -6,7 +6,7 @@
 //! Methods: handcrafted sequences/lifecycle + a differential property model +
 //! long-sequence fuzz through a real mailbox.
 
-use behaviorpass::{Actions, Base, Exit, MailAddr, run};
+use behaviorpass::{Actions, Base, Create, Exit, MailAddr, run};
 use bombay::capability::{Never, Step};
 use fastpass::{Config, channel};
 
@@ -55,7 +55,7 @@ async fn driver_accumulates_creates_in_order() {
             seen.push(id);
             Ok::<Actions<Never, Never, u32>, &'static str>(Actions {
                 sends: Vec::new(),
-                creates: vec![id as u32],
+                creates: vec![Create::Birth(id as u32)],
                 become_: Step::Continue,
             })
         });
@@ -67,7 +67,7 @@ async fn driver_accumulates_creates_in_order() {
     drop(_ctl);
 
     let transcript = handle.await.expect("driver joins").expect("no crash");
-    assert_eq!(transcript.creates, vec![4, 9]);
+    assert_eq!(transcript.creates, vec![Create::Birth(4), Create::Birth(9)]);
     assert_eq!(transcript.exit, Exit::Collected);
 }
 
@@ -81,7 +81,7 @@ async fn driver_combines_sends_and_creates_in_one_transcript() {
             seen.push(id);
             Ok::<Actions<Never, u64, u32>, &'static str>(Actions {
                 sends: vec![(MailAddr(id), id)],
-                creates: vec![id as u32],
+                creates: vec![Create::Birth(id as u32)],
                 become_: if id == 99 { Step::Stop(Exit::Normal) } else { Step::Continue },
             })
         });
@@ -95,7 +95,7 @@ async fn driver_combines_sends_and_creates_in_one_transcript() {
 
     let transcript = handle.await.expect("driver joins").expect("no crash");
     assert_eq!(transcript.sends, vec![(MailAddr(4), 4), (MailAddr(99), 99)]);
-    assert_eq!(transcript.creates, vec![4, 99]);
+    assert_eq!(transcript.creates, vec![Create::Birth(4), Create::Birth(99)]);
     assert_eq!(transcript.exit, Exit::Normal);
 }
 

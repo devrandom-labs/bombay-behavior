@@ -61,14 +61,15 @@ $$\text{actor} = \text{process}(\text{behavior}) \qquad
 4. **behaviorpass algebra refinement (the only touch-point).** Today
    `Supervising` emits restarts AS creates because the golf has no live
    processes. In the live split, `creates` become **births only** and restart
-   is a distinct effect — either a fourth `Actions` leg
-   (`restarts: Vec<(SlotIdx, C)>`) or a create enum
-   (`Birth { consumer, child } | Reincarnate { slot, child }`). Shape is a
-   golf-ergonomics call, decided at implementation. `Base`, `Deadlined`,
-   `Watching`, `Stashing`, `Fsm` are untouched. (Audit that forced this: only
-   `Supervising` ever creates — `B: Behavior<Offspring = Never>` fences user
-   handlers out of creation; only `Base`'s user handler sends; framework
-   reactions are become-only via `lift`.)
+   is a distinct effect. **Resolved (2026-08-04): the enum.** `Actions.creates`
+   is `Vec<Create<New>>` with `Create::Birth(New)` /
+   `Create::Reincarnate { slot, child }` — one leg, self-describing entries,
+   payload generic so the golf's stand-ins and child behaviors both fit.
+   `Base`, `Deadlined`, `Watching`, `Stashing`, `Fsm` are untouched. (Audit
+   that forced this: only `Supervising` ever creates —
+   `B: Behavior<Offspring = Never>` fences user handlers out of creation; only
+   `Base`'s user handler sends; framework reactions are become-only via
+   `lift`.)
 
 5. **identitypass: NO crate.** Local identity is two functions
    (`Id::root(seed)`, `Id::birth(self, nonce)`) — a module in actorpass, not a

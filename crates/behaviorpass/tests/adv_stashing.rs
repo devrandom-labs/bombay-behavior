@@ -20,7 +20,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
-use behaviorpass::{Actions, Base, Behavior, Deadlined, Envelope, Exit, MailAddr, StashRoute, Stashing, run};
+use behaviorpass::{Actions, Base, Behavior, Create, Deadlined, Envelope, Exit, MailAddr, StashRoute, Stashing, run};
 use bombay::capability::{Never, Step};
 use fastpass::{Config, channel};
 
@@ -101,7 +101,7 @@ async fn stashing_release_accumulates_drained_creates_in_order() {
             seen.push(id);
             Ok::<Actions<Never, Never, u32>, &'static str>(Actions {
                 sends: Vec::new(),
-                creates: vec![id as u32],
+                creates: vec![Create::Birth(id as u32)],
                 become_: Step::Continue,
             })
         });
@@ -112,7 +112,7 @@ async fn stashing_release_accumulates_drained_creates_in_order() {
     m1.0.store(2, Ordering::Relaxed);
 
     let actions = s.step(Envelope::User(msg(1))).await.expect("no error");
-    assert_eq!(actions.creates, vec![1, 2], "creates accumulate in fold order");
+    assert_eq!(actions.creates, vec![Create::Birth(1), Create::Birth(2)], "creates accumulate in fold order");
     assert_eq!(s.held(), 0);
 }
 
