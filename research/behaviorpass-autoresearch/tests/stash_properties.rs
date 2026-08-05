@@ -5,8 +5,8 @@
 //! across any number of release events.
 
 use behaviorpass::{
-    Acted, Actions, Behavior, Delivery, MailAddr, Never, Recipient, Spec, StashRoute, State, Step,
-    User, UserEvent,
+    Acted, Actions, Behavior, Delivery, Exit, MailAddr, Never, Recipient, Spec, StashRoute, State,
+    Step, User, UserEvent,
 };
 use behaviorpass_autoresearch::Mailbox;
 use proptest::collection::vec;
@@ -181,4 +181,69 @@ fn stash_exhaustive_sequences_match_the_filter_model() {
         length += 1;
     }
     assert_eq!(checked, 1 + 3 + 9 + 27 + 81);
+}
+
+/// A stopping inner state: records, emits, and stops (Normal) on 9.
+#[derive(Default)]
+struct StopRecorder {
+    seen: Vec<(MailAddr, u8)>,
+}
+
+impl State<u8, Never, Never> for StopRecorder {
+    type Addr = MailAddr;
+    type Msg = u8;
+
+    fn handle(
+        &mut self,
+        from: MailAddr,
+        message: u8,
+    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, u8>>, Never, Never> {
+        self.seen.push((from, message));
+        Ok(Actions {
+            sends: vec![Delivery::new(Recipient::global(from), message)],
+            creates: Vec::new(),
+            become_: if message == 9 {
+                Step::Stop(Exit::Normal)
+            } else {
+                Step::Continue
+            },
+        })
+    }
+}
+
+/// The stash filter interacting with a stopping inner: delivered == the
+/// route-admitted prefix up to and including the first stopping message,
+/// held == the stash-routed count within that prefix, and the fold stops.
+#[test]
+fn stash_filter_with_a_stopping_inner_matches_the_prefix_model() {
+    let runtime = Builder::new_current_thread().enable_all().build().unwrap();
+    let mut behavior = Spec::new(StopRecorder::default()).stash(route);
+    let mut stopped = false;
+    for (index, message) in (0_u8..40).enumerate() {
+        if stopped {
+            break;
+        }
+        let from = MailAddr(u64::try_from(index).unwrap());
+        let actions = runtime
+            .block_on(behavior.step(UserEvent::user(from, message)))
+            .unwrap();
+        if matches!(actions.become_, Step::Stop(Exit::Normal)) {
+            stopped = true;
+        }
+    }
+    assert!(stopped);
+
+    // Prefix model: delivered == route-admitted messages in order up to and
+    // including 9; held == stash-routed count in the prefix.
+    let mut expected = Vec::new();
+    let mut expected_held = 0_usize;
+    for message in 0_u8..=9 {
+        if route(&message) == StashRoute::Stash {
+            expected_held += 1;
+        } else {
+            expected.push((MailAddr(u64::from(message)), message));
+        }
+    }
+    assert_eq!(behavior.behavior().inner().state().seen, expected);
+    assert_eq!(behavior.behavior().held(), expected_held);
 }

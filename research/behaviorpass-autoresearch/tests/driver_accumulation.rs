@@ -337,3 +337,54 @@ async fn fn_state_adapter_drives_like_a_base() {
     assert_eq!(echoes, [3, 9]);
     assert_eq!(behavior.state().state, [3, 9]);
 }
+
+/// A stash release whose trigger stops the inner fold: the driver stops,
+/// the stash buffer keeps the held messages, and nothing is lost.
+#[tokio::test]
+async fn driver_stash_stop_preserves_held_and_stops() {
+    use behaviorpass::{StashRoute, Stashing};
+
+    struct StopOnZero {
+        seen: Vec<(MailAddr, u64)>,
+    }
+    impl State<u64, Never, Never> for StopOnZero {
+        type Addr = MailAddr;
+        type Msg = u64;
+
+        fn handle(
+            &mut self,
+            from: MailAddr,
+            message: u64,
+        ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, u64>>, Never, Never> {
+            self.seen.push((from, message));
+            Ok(Actions {
+                sends: Vec::new(),
+                creates: Vec::new(),
+                become_: if message == 0 {
+                    Step::Stop(Exit::Normal)
+                } else {
+                    Step::Continue
+                },
+            })
+        }
+    }
+
+    let mut behavior = Stashing::new(
+        Base::new(StopOnZero { seen: Vec::new() }),
+        |m: &u64| {
+            if *m == 0 {
+                StashRoute::Release
+            } else {
+                StashRoute::Stash
+            }
+        },
+    );
+    let mut mailbox = Mailbox::new([User::user(MailAddr(1), 5), User::user(MailAddr(9), 0)]);
+    let trace = drive(&mut behavior, &mut mailbox).await.unwrap();
+
+    assert_eq!(trace.transitions, 3);
+    assert_eq!(trace.pending, 0);
+    assert_eq!(trace.exit, Some(Exit::Normal));
+    assert_eq!(behavior.held(), 1); // the stashed message survives the stop
+    assert_eq!(behavior.inner().state().seen, [(MailAddr(9), 0)]);
+}

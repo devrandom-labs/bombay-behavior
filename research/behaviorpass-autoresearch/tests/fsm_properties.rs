@@ -196,3 +196,37 @@ async fn fsm_stop_mid_drain_preserves_remaining_batch() {
     assert_eq!(machine.state().as_slice(), &[3]);
     assert_eq!(machine.held(), 1);
 }
+
+/// `Goto` to the CURRENT phase is a no-op verdict: no drain runs, held
+/// messages stay deferred until a real phase change.
+#[tokio::test]
+async fn fsm_self_goto_does_not_drain() {
+    #[derive(Clone, Copy, PartialEq)]
+    enum Phase {
+        A,
+        B,
+    }
+    let mut machine = Fsm::new(Vec::new(), Phase::A, |phase, seen: &mut Vec<u64>, id: &u64| {
+        Ok::<Move<Phase>, Never>(match (phase, id % 4) {
+            (Phase::A, 1) => Move::Defer,
+            (Phase::A, 2) => Move::Goto(Phase::B),
+            (Phase::A, _) => Move::Goto(Phase::A), // self-goto for 0 and 3
+            (Phase::B, _) => {
+                seen.push(*id);
+                Move::Stay
+            }
+        })
+    });
+    machine.step(User::user(MailAddr(0), 1)).await.unwrap(); // defer
+    assert_eq!(machine.held(), 1);
+
+    // Self-goto: no phase change, no drain, the deferred message stays.
+    machine.step(User::user(MailAddr(0), 3)).await.unwrap();
+    assert_eq!(machine.held(), 1);
+    assert!(machine.state().is_empty());
+
+    // A real phase change drains and replays it.
+    machine.step(User::user(MailAddr(0), 2)).await.unwrap();
+    assert_eq!(machine.state().as_slice(), &[1]);
+    assert_eq!(machine.held(), 0);
+}
