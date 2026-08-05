@@ -54,4 +54,11 @@ test = false
 doc = false
 bench = false
 
+[[bin]]
+name = "error_sequences"
+path = "fuzz_targets/error_sequences.rs"
+test = false
+doc = false
+bench = false
+
 [workspace]
