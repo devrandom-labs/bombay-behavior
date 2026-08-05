@@ -449,3 +449,35 @@ async fn nested_at_identical_schedules_collapse_onto_the_outer_layer() {
     let second = outer.step(event).await.unwrap();
     assert_eq!(second.become_, Step::Stop(Exit::Normal)); // inner fired on redelivery
 }
+
+/// `Spec::children` defaults are Transient policy with a budget of one
+/// restart per 5-second window: a second abnormal death inside the window
+/// is denied, even under a strategy that would otherwise restart. The
+/// builder's explicit `when`/`within` calls are required for unbounded
+/// restart semantics.
+#[tokio::test]
+async fn spec_children_defaults_to_transient_with_budget_one() {
+    let at = Instant::now();
+    let mut supervisor = Spec::new(Parent).children((1, child));
+    supervisor.init().await.unwrap();
+
+    let first = supervisor
+        .step(stopped(0, Err(Crash::Failed), at))
+        .await
+        .unwrap();
+    assert_eq!(first.sends.own.own.len(), 1);
+
+    let second = supervisor
+        .step(stopped(0, Err(Crash::Failed), at + Duration::from_secs(1)))
+        .await
+        .unwrap();
+    assert!(second.sends.own.own.is_empty());
+    assert!(!supervisor.behavior().is_alive(0));
+
+    // A normal exit is never restarted under the default Transient policy.
+    let normal = supervisor
+        .step(stopped(0, Ok(Exit::Normal), at))
+        .await
+        .unwrap();
+    assert!(normal.sends.own.own.is_empty());
+}

@@ -47,4 +47,11 @@ test = false
 doc = false
 bench = false
 
+[[bin]]
+name = "stack_sequences"
+path = "fuzz_targets/stack_sequences.rs"
+test = false
+doc = false
+bench = false
+
 [workspace]
