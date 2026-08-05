@@ -61,4 +61,11 @@ test = false
 doc = false
 bench = false
 
+[[bin]]
+name = "two_buffer_sequences"
+path = "fuzz_targets/two_buffer_sequences.rs"
+test = false
+doc = false
+bench = false
+
 [workspace]
