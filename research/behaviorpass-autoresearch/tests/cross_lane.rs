@@ -152,3 +152,81 @@ async fn supervision_preserves_inner_at_routing() {
     assert_eq!(fired.become_, Step::Stop(Exit::Normal));
     assert!(fired.sends.own.own.is_empty());
 }
+
+/// The full stack: supervision over at over watch over stash. All four
+/// layers' init sends survive in their exact product-lane nesting, and all
+/// four event lanes (user, peer, time, child) route to their own layer
+/// without cross-lane leakage.
+#[tokio::test]
+async fn full_stack_all_four_layers_keep_their_own_lanes() {
+    use behaviorpass::{AtEvent, PeerStopped, TimeReached, WatchEvent, stop_on_abnormal_death};
+
+    let due = Instant::now() + Duration::from_secs(1);
+    let peer = MailAddr(44);
+    let mut behavior = Spec::new(EchoingParent { seen: Vec::new() })
+        .stash(route)
+        .watch(peer, stop_on_abnormal_death)
+        .at(Some(due), |_| Ok(Step::Continue))
+        .children((2, child));
+    let initial = behavior.init().await.unwrap();
+    assert_eq!(initial.creates.len(), 2);
+    assert_eq!(initial.sends.own.inner.len(), 2); // observe-child x2
+    assert_eq!(initial.sends.own.own.len(), 0); // proxy commands
+    assert_eq!(initial.sends.inner.own[0].message.at, due); // schedule
+    assert_eq!(initial.sends.inner.inner.own[0].message.peer, peer); // observe-peer
+    assert!(initial.sends.inner.inner.inner.is_empty()); // echo lane
+
+    // User lane: Deliver routes through every layer to the parent echo.
+    let actions = behavior
+        .step(SupervisionEvent::Inner(AtEvent::Inner(WatchEvent::Inner(
+            UserEvent::user(MailAddr(9), 1),
+        ))))
+        .await
+        .unwrap();
+    assert_eq!(actions.sends.inner.inner.inner[0].message, 1);
+    assert!(actions.sends.own.own.is_empty());
+
+    // Time lane: fires the inner At.
+    let fired = behavior
+        .step(SupervisionEvent::Inner(AtEvent::Reached(TimeReached {
+            id: AtId(0),
+            at: due,
+        })))
+        .await
+        .unwrap();
+    assert_eq!(fired.become_, Step::Continue);
+
+    // Peer lane: matching peer death stops the fold.
+    let died = behavior
+        .step(SupervisionEvent::Inner(AtEvent::Inner(WatchEvent::PeerStopped(
+            PeerStopped {
+                peer,
+                outcome: Err(Crash::Failed),
+            },
+        ))))
+        .await
+        .unwrap();
+    assert!(matches!(
+        died.become_,
+        Step::Stop(Exit::LinkDied(p)) if p == peer
+    ));
+
+    // Child lane on a fresh stack: replacement send only.
+    let mut fresh = Spec::new(EchoingParent { seen: Vec::new() })
+        .stash(route)
+        .watch(peer, stop_on_abnormal_death)
+        .at(Some(due), |_| Ok(Step::Continue))
+        .children((2, child));
+    fresh.init().await.unwrap();
+    let replacement = fresh
+        .step(SupervisionEvent::ChildStopped(ChildStopped {
+            nonce: 0,
+            outcome: Err(Crash::Failed),
+            at: Instant::now(),
+        }))
+        .await
+        .unwrap();
+    assert_eq!(replacement.sends.own.own.len(), 1);
+    assert_eq!(replacement.sends.own.own[0].to.route(), Route::Child(0));
+    assert!(replacement.sends.inner.inner.inner.is_empty());
+}
