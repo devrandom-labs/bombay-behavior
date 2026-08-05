@@ -6,9 +6,9 @@ Scope: `research/behaviorpass-autoresearch/**` only. No production code touched.
 
 ## Summary
 
-The public behaviorpass algebra survived every attack lane. 52 tests across
+The public behaviorpass algebra survived every attack lane. 56 tests across
 deterministic/exhaustive, model-based property, fuzz, and performance
-workloads plus five coverage-guided fuzz targets (7.6M+ executions); **no
+workloads plus six coverage-guided fuzz targets (6.2M+ executions); **no
 invariant violation was found** — but the campaign produced one
 scaffold-test correction and a set of deterministic semantic observations
 (below) that pin the algebra's actual behavior.
@@ -18,18 +18,18 @@ scaffold-test correction and a set of deterministic semantic observations
 | File | Count | Lane |
 |---|---|---|
 | `tests/core.rs` | 10 | deterministic (1 scaffold test corrected, see Finding 1) |
-| `tests/boundaries.rs` | 12 | deterministic boundary/edge (new) |
+| `tests/boundaries.rs` | 13 | deterministic boundary/edge (incl. Spec defaults) |
 | `tests/compositions.rs` | 8 | deep wrapper permutations + routing |
-| `tests/cross_lane.rs` | 4 | supervised-stack lane isolation (user/child/time lanes) + full 4-layer stack |
+| `tests/cross_lane.rs` | 5 | supervised-stack lane isolation + full-stack randomized property |
 | `tests/properties.rs` | 4 | model-based properties (scaffold) |
-| `tests/fsm_properties.rs` | 3 | FSM no-drop/no-dup property + exhaustive + Stop mid-drain |
-| `tests/supervision_model.rs` | 4 | model-based properties + budget recovery + window boundedness |
+| `tests/fsm_properties.rs` | 4 | FSM no-drop/no-dup (2- and 3-phase) + exhaustive + Stop mid-drain |
+| `tests/supervision_model.rs` | 4 | model properties (incl. births × window × budget) + boundedness |
 | `tests/exhaustive.rs` | 1 | exhaustive small-state enumeration |
 | `tests/stash_properties.rs` | 3 | filter-model property + exhaustive + driver |
-| `tests/workers_fleet.rs` | 3 | `workers!` sum/variant dispatch + supervised fleet |
+| `tests/workers_fleet.rs` | 4 | `workers!` sum/variant dispatch + 3-kind boundaries + supervised fleet |
 | `src/model.rs` | — | shared independent supervision reference model |
 | `benches/protocol_matrix.rs` | — | supervise/fsm/stash/nested workloads |
-| `fuzz/fuzz_targets/` | 5 | protocol, supervision, fsm, birth, stash sequences |
+| `fuzz/fuzz_targets/` | 6 | protocol, supervision, fsm, birth, stash, stack sequences |
 
 ## Explored combinations
 
@@ -39,27 +39,30 @@ scaffold-test correction and a set of deterministic semantic observations
   death redelivery, duplicate configured nonces, empty fleets, unknown
   nonces, window-edge inclusivity, budget recovery after stamp aging,
   future-stamp survival.
-- **Exhaustive**: every sequence of ≤`tests/cross_lane.rs` | 4 | supervised-stack lane isolation (incl. full 4-layer stack)child-stopped events over a 2-slot
-  fleet (alphabet 16 → 4,369 sequences) ×`tests/cross_lane.rs` | 4 | supervised-stack lane isolation (incl. full 4-layer stack)strategies ×`tests/cross_lane.rs` | 4 | supervised-stack lane isolation (incl. full 4-layer stack)policies × 3
+- **Exhaustive**: every sequence of ≤ 3 child-stopped events over a 2-slot
+  fleet (alphabet 16 → 4,369 sequences) × 3 strategies × 3 policies × 3
   budgets × 2 windows = **236k model-vs-impl comparisons**; every stash
   sequence of ≤ 4 messages over Release/Deliver/Stash classes (121
   sequences) vs the filter model; every FSM sequence of ≤ 4 messages over
   four residue classes (341 sequences) under the no-drop/no-dup invariant.
 - **Properties**: 256-case supervision model, 256-case mixed birth+death
-  model, 256-case stash filter model, 512-case FSM no-drop/no-dup
-  reconciliation, 512-case scaffold properties.
+  model **with a finite window** (births × window × budget — the only
+  coverage of that cross product), 256-case stash filter model, 512-case
+  FSM no-drop/no-dup (2-phase) + 256-case 3-phase, 256-case full-stack
+  random lane-routing, 512-case scaffold properties.
 - **Composition**: all 6 orderings of {at, watch, at} init-protocol nesting;
   stash adds no init sends; environment lanes (Reached/PeerStopped) bypass a
   stash buffer while user messages are intercepted; supervision over stash,
   supervision over at, and the full four-layer stack (supervision ∘ at ∘
   watch ∘ stash) — user/child/time lanes never leak into each other
-  (observable via the parent's echo lane and product-lane sends);
-  watch-of-watch peer routing; watch reaction re-invocation after Stop;
-  nested At schedule collisions; FSM mid-drain reordering and mid-drain
-  Stop.
+  (observable via the parent's echo lane and product-lane sends); the
+  randomized full-stack property interleaves all four lanes; watch-of-watch
+  peer routing; watch reaction re-invocation after Stop; nested At schedule
+  collisions; FSM mid-drain reordering and mid-drain Stop.
 - **Fuzz × model**: supervision budget/window reference model, supervision
   birth+death slot-table model, FSM and stash black-box no-drop/no-dup
-  reconciliation — all asserted per byte inside the targets.
+  reconciliation, and a capstone four-layer-stack target with per-lane
+  models — all asserted per byte inside the targets.
 
 ## Discovered counterexamples / semantic observations
 
@@ -108,6 +111,21 @@ tests, several are surprising enough to matter to algebra consumers:
 11. **Watch does not latch**: re-stepping after `Stop` re-invokes the
     reaction on each matching death; the fold continues to process user
     messages after stopping.
+12. **`Spec::children` defaults to Transient policy with a budget of one
+    restart per 5-second window.** A second abnormal death inside the
+    window is denied even under a restart strategy that would otherwise
+    replace; `when(RestartPolicy::Permanent)` / `within(u32::MAX, …)` must
+    be configured explicitly for unbounded restarts. (Pinned by a
+    deterministic test; the full-stack property initially failed on this.)
+13. **`workers![(0, Kind, build)]` is a hard compile error.** The macro
+    emits a `start..end` range arm and Rust rejects empty range patterns
+    (`0..0`) with E0579; zero-count kinds are rejected by the compiler with
+    an obscure message rather than a clear macro diagnostic. Three-kind
+    fleets route each slot to exactly its declared variant.
+14. **Full-stack randomized property + capstone fuzz target**: random
+    interleavings of user/peer/time/child events through
+    supervision ∘ at ∘ watch ∘ stash keep every effect in its own product
+    lane (624k fuzz executions, no leakage).
 
 ## Performance observations (`benches/protocol_matrix.rs`, M1 Pro, release)
 
@@ -141,9 +159,10 @@ tests, several are surprising enough to matter to algebra consumers:
 | `fsm_sequences` | 467,410 | 91 s | ~5k | 62 → 123 |
 | `birth_sequences` | 258,961 | 91 s | ~2.8k | 123 → 174 |
 | `stash_sequences` | 301,250 | 91 s | ~3.3k | 174 → 228 |
+| `stack_sequences` | 623,552 | 91 s | ~6.8k | 228 → 357 |
 
-**~5.6M executions total; no crash, no counterexample in any target.**
-Corpus (228 files, 912K) committed under `fuzz/corpus/`.
+**~6.2M executions total; no crash, no counterexample in any target.**
+Corpus (357 files, 1.4M) committed under `fuzz/corpus/`.
 
 ## Exact command results
 
@@ -151,11 +170,12 @@ Corpus (228 files, 912K) committed under `fuzz/corpus/`.
   `METRIC score=50895765` (best kept 51.5 M t/s; score is a throughput
   ruler, variance is machine noise).
 - `.auto/checks.sh` → `CHECK OK` (production/docs/`.auto` untouched;
-  `cargo test --all-targets` 52 passed; clippy `-D warnings` clean; no
+  `cargo test --all-targets` 56 passed; clippy `-D warnings` clean; no
   fastpass in the research surface).
 - `.auto/measure.sh` → `METRIC score=...` plus 7 secondary metrics.
 - `cargo test --manifest-path research/behaviorpass-autoresearch/Cargo.toml --all-targets`
-  → 52 passed, 0 failed, 0 ignored.
-- `cargo fuzz build` (all five targets, fuzz workspace) → clean.
-- Git: 11 focused commits (`c7f5bd58`, `00007460`, `1ea6a6d3`, `3eb839da`,
-  `fe060589`, `0179edf0`, `c953880e`, `4675ed90`, `b290539a`, + report).
+  → 56 passed, 0 failed, 0 ignored.
+- `cargo fuzz build` (all six targets, fuzz workspace) → clean.
+- Git: 13 focused commits (`c7f5bd58`, `00007460`, `1ea6a6d3`, `3eb839da`,
+  `fe060589`, `0179edf0`, `c953880e`, `4675ed90`, `b290539a`, `59df757a`,
+  + report iterations).
