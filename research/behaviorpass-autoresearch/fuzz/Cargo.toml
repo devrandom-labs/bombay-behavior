@@ -26,4 +26,11 @@ test = false
 doc = false
 bench = false
 
+[[bin]]
+name = "fsm_sequences"
+path = "fuzz_targets/fsm_sequences.rs"
+test = false
+doc = false
+bench = false
+
 [workspace]
