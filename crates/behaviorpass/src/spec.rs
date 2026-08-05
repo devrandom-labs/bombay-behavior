@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use tokio::time::Instant;
 
-use crate::behavior::{Address, Behavior};
+use crate::behavior::{Address, Behavior, BirthMode, Births};
 use crate::deadlined::{At, AtReaction};
 use crate::stashing::{StashRoute, Stashing};
 use crate::supervising::{RestartPolicy, Strategy, Supervising};
@@ -23,7 +23,7 @@ fn identity_nonce<N: From<u64>>(index: usize) -> N {
 
 pub struct Spec<B>(B);
 
-impl<S: State<O, N, E>, O, N, E> Spec<Base<S, O, N, E>> {
+impl<S: State<O, Br, E>, O, Br: BirthMode, E> Spec<Base<S, O, Br, E>> {
     #[must_use]
     pub fn new(state: S) -> Self {
         Self(Base::new(state))
@@ -83,7 +83,7 @@ impl<B: Behavior> Spec<B> {
     #[must_use]
     pub fn children<C>(self, fleet: (usize, fn(usize) -> C)) -> Spec<Supervising<B, C>>
     where
-        B: Behavior<Offspring = C>,
+        B: Behavior<Birth = Births<C>>,
         C: Behavior<Ph = Never, Addr = B::Addr>,
         <B::Addr as Address>::Nonce: From<u64>,
     {
@@ -98,7 +98,7 @@ impl<B: Behavior> Spec<B> {
         build: fn(usize) -> C,
     ) -> Spec<Supervising<B, C>>
     where
-        B: Behavior<Offspring = C>,
+        B: Behavior<Birth = Births<C>>,
         C: Behavior<Ph = Never, Addr = B::Addr>,
     {
         Spec(Supervising::new(
@@ -116,7 +116,7 @@ impl<B: Behavior> Spec<B> {
 
 impl<B, C> Spec<Supervising<B, C>>
 where
-    B: Behavior<Offspring = C>,
+    B: Behavior<Birth = Births<C>>,
     C: Behavior<Ph = Never, Addr = B::Addr>,
 {
     #[must_use]
@@ -135,16 +135,17 @@ where
     }
 }
 
-impl<B, A, Ph, Sends, New> Behavior for Spec<B>
+impl<B, A, Ph, Sends, Br> Behavior for Spec<B>
 where
     A: Address + Send,
     Sends: SendAlgebra,
+    Br: BirthMode,
     B: Behavior<
             Addr = A,
             Ph = Ph,
             Sends = Sends,
-            Offspring = New,
-            Effect = Actions<A, Ph, Sends, New>,
+            Birth = Br,
+            Effect = Actions<A, Ph, Sends, Br>,
             Done = Exit<A>,
         > + Send,
     A::Nonce: Send,
@@ -157,7 +158,7 @@ where
     type Sends = Sends;
     type Ph = Ph;
     type Error = B::Error;
-    type Offspring = New;
+    type Birth = Br;
     type Effect = B::Effect;
     type Done = B::Done;
 

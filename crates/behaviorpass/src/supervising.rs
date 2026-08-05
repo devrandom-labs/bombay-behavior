@@ -6,8 +6,8 @@ use std::time::Duration;
 use tokio::time::Instant;
 
 use crate::behavior::{
-    Actions, Address, Behavior, Create, Delivery, Recipient, SendAlgebra, SendProduct, User,
-    UserEvent,
+    Actions, Address, Behavior, Births, Create, Delivery, Recipient, SendAlgebra, SendProduct,
+    User, UserEvent,
 };
 use crate::deadlined::{TimeEvent, TimeReached};
 use crate::verdict::{Never, Step};
@@ -114,7 +114,7 @@ pub type SupervisorActions<B, C> = Actions<
     <B as Behavior>::Addr,
     <B as Behavior>::Ph,
     SupervisorSends<<B as Behavior>::Addr, <B as Behavior>::Sends, C>,
-    Proxy<C>,
+    Births<Proxy<C>>,
 >;
 
 /// The stable actor. Every replacement is an ordinary fresh birth beneath it.
@@ -147,8 +147,8 @@ where
     type Sends = Vec<Delivery<C::Addr, C::Msg>>;
     type Ph = Never;
     type Error = Never;
-    type Offspring = C;
-    type Effect = Actions<C::Addr, Never, Self::Sends, C>;
+    type Birth = Births<C>;
+    type Effect = Actions<C::Addr, Never, Self::Sends, Births<C>>;
     type Done = Exit<C::Addr>;
 
     async fn init(&mut self) -> Result<Self::Effect, Never> {
@@ -211,7 +211,7 @@ pub struct Supervising<B: Behavior, C: Behavior<Ph = Never, Addr = B::Addr>> {
 
 impl<B, C> Supervising<B, C>
 where
-    B: Behavior<Offspring = C>,
+    B: Behavior<Birth = Births<C>>,
     C: Behavior<Ph = Never, Addr = B::Addr>,
 {
     #[allow(clippy::too_many_arguments, reason = "hidden by Spec")]
@@ -361,7 +361,10 @@ where
             .collect()
     }
 
-    fn wrap(&mut self, actions: Actions<B::Addr, B::Ph, B::Sends, C>) -> SupervisorActions<B, C> {
+    fn wrap(
+        &mut self,
+        actions: Actions<B::Addr, B::Ph, B::Sends, Births<C>>,
+    ) -> SupervisorActions<B, C> {
         let born: Vec<_> = actions.creates.iter().map(|create| create.nonce).collect();
         for create in &actions.creates {
             assert!(
@@ -412,8 +415,8 @@ where
             Addr = A,
             Ph = Ph,
             Sends = Sends,
-            Offspring = C,
-            Effect = Actions<A, Ph, Sends, C>,
+            Birth = Births<C>,
+            Effect = Actions<A, Ph, Sends, Births<C>>,
             Done = Exit<A>,
         > + Send,
     B::Event: ChildEvent<B::Addr> + Send,
@@ -427,8 +430,8 @@ where
     type Sends = SupervisorSends<A, Sends, C>;
     type Ph = Ph;
     type Error = B::Error;
-    type Offspring = Proxy<C>;
-    type Effect = Actions<A, Ph, Self::Sends, Proxy<C>>;
+    type Birth = Births<Proxy<C>>;
+    type Effect = Actions<A, Ph, Self::Sends, Births<Proxy<C>>>;
     type Done = Exit<A>;
 
     async fn init(&mut self) -> Result<Self::Effect, B::Error> {

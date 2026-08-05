@@ -20,8 +20,9 @@ mod fsm;
 mod spec;
 
 pub use behavior::{
-    Acted, Actions, Address, Base, Become, Behavior, Create, Delivery, FnState, MailAddr,
-    Recipient, Route, SendAlgebra, SendProduct, State, Transcript, User, UserEvent, run,
+    Acted, Actions, Address, Base, Become, Behavior, BirthMode, Births, Create, Delivery, FnState,
+    MailAddr, NoBirths, Recipient, Route, SendAlgebra, SendProduct, State, Transcript, User,
+    UserEvent, run,
 };
 pub use deadlined::{At, AtEvent, AtId, AtReaction, ScheduleAt, TimeEvent, TimeReached};
 pub use fsm::{Fsm, Move};
