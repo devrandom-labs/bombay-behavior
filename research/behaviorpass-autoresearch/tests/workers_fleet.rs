@@ -59,6 +59,47 @@ fn worker_b(_index: usize) -> Base<WorkerB, u8> {
     Base::new(WorkerB)
 }
 
+/// The supervising parent is generic over its offspring; instantiating it
+/// with the concrete `Crew` type happens implicitly at each `build` call
+/// site (the macro's `Crew` is block-scoped).
+struct GenericParent<C>(PhantomData<C>);
+
+impl<C> State<Never, C, Never> for GenericParent<C>
+where
+    C: Behavior<Ph = Never, Addr = MailAddr>,
+{
+    type Addr = MailAddr;
+    type Msg = u64;
+
+    fn handle(
+        &mut self,
+        _from: MailAddr,
+        _message: u64,
+    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, C, Never> {
+        Ok(Actions::cont())
+    }
+}
+
+fn supervise_with<C>(
+    count: usize,
+    build: fn(usize) -> C,
+    strategy: Strategy,
+) -> Supervising<Base<GenericParent<C>, Never, C>, C>
+where
+    C: Behavior<Ph = Never, Addr = MailAddr> + Send,
+{
+    Supervising::new(
+        Base::new(GenericParent(PhantomData)),
+        |index| u64::try_from(index).unwrap(),
+        count,
+        build,
+        strategy,
+        RestartPolicy::Permanent,
+        u32::MAX,
+        Duration::MAX,
+    )
+}
+
 /// The sum total and per-index variant dispatch are exact: slots 0..2 are
 /// `WorkerA` (tag 1), slot 2 is `WorkerB` (tag 2).
 #[tokio::test]
@@ -88,48 +129,8 @@ async fn workers_build_out_of_range_index_panics() {
 /// `WorkerA` slot 0 — and each replacement keeps its declared variant.
 #[tokio::test]
 async fn supervised_mixed_fleet_routes_replacements_by_birth_sequence() {
-    // The macro's `Crew` type is block-scoped, so the supervising parent is
-    // generic over its offspring; instantiating it with the concrete `Crew`
-    // type happens implicitly at the `build` call site.
-    struct GenericParent<C>(PhantomData<C>);
-
-    impl<C> State<Never, C, Never> for GenericParent<C>
-    where
-        C: Behavior<Ph = Never, Addr = MailAddr>,
-    {
-        type Addr = MailAddr;
-        type Msg = u64;
-
-        fn handle(
-            &mut self,
-            _from: MailAddr,
-            _message: u64,
-        ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, C, Never> {
-            Ok(Actions::cont())
-        }
-    }
-
-    fn supervise_with<C>(
-        count: usize,
-        build: fn(usize) -> C,
-    ) -> Supervising<Base<GenericParent<C>, Never, C>, C>
-    where
-        C: Behavior<Ph = Never, Addr = MailAddr> + Send,
-    {
-        Supervising::new(
-            Base::new(GenericParent(PhantomData)),
-            |index| u64::try_from(index).unwrap(),
-            count,
-            build,
-            Strategy::RestForOne,
-            RestartPolicy::Permanent,
-            u32::MAX,
-            Duration::MAX,
-        )
-    }
-
     let (count, build) = workers![(2, Base<WorkerA, u8>, worker_a), (1, Base<WorkerB, u8>, worker_b)];
-    let mut supervisor = supervise_with(count, build);
+    let mut supervisor = supervise_with(count, build, Strategy::RestForOne);
     let initial = supervisor.init().await.unwrap();
     assert_eq!(initial.creates.len(), 3);
     assert_eq!(initial.sends.own.inner.len(), 3);
@@ -197,4 +198,29 @@ async fn workers_three_kinds_boundaries_route_exactly() {
         let actions = worker.step(User::user(MailAddr(0), 7)).await.unwrap();
         assert_eq!(actions.sends[0].message, tag);
     }
+}
+
+/// A `workers!` fleet under `OneForAll`: one death replaces every alive slot,
+/// each routed to its own declared variant's nonce.
+#[tokio::test]
+async fn workers_one_for_all_replaces_every_slot() {
+    let (count, build) = workers![(2, Base<WorkerA, u8>, worker_a), (1, Base<WorkerB, u8>, worker_b)];
+    let mut supervisor = supervise_with(count, build, Strategy::OneForAll);
+    supervisor.init().await.unwrap();
+    let actions = supervisor
+        .step(SupervisionEvent::ChildStopped(ChildStopped {
+            nonce: 0,
+            outcome: Err(Crash::Failed),
+            at: Instant::now(),
+        }))
+        .await
+        .unwrap();
+    let routes: Vec<Route<MailAddr>> = actions.sends.own.own.iter().map(|d| d.to.route()).collect();
+    assert_eq!(routes.len(), 3);
+    for nonce in 0..3 {
+        assert!(routes.contains(&Route::Child(nonce)));
+    }
+    assert!(supervisor.is_alive(0));
+    assert!(supervisor.is_alive(1));
+    assert!(supervisor.is_alive(2));
 }
