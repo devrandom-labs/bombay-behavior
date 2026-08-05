@@ -189,6 +189,7 @@ proptest! {
         count in 1_usize..4,
         strategy_tag in 0_u8..3,
         maximum in 0_u32..4,
+        window_nanos in 0_u64..120,
         events in vec((0_u8..4, 0_u8..8, 0_u64..100), 0..40),
     ) {
         let strategy = match strategy_tag {
@@ -196,16 +197,16 @@ proptest! {
             1 => Strategy::OneForAll,
             _ => Strategy::RestForOne,
         };
-        // Window MAX (no pruning) keeps the model focused on birth-order
-        // and candidate-set semantics; the static-fleet property covers
-        // window pruning exhaustively elsewhere.
+        // Finite window: births interleave with deaths under budget AND
+        // window pruning — the cross product the static-fleet property and
+        // the MAX-window mixed property each cover only partially.
         let mut model = Model::new(count);
         let mut behavior = supervisor(
             Base::new(BirthingParent { births: Vec::new() }),
             strategy,
             RestartPolicy::Permanent,
             maximum,
-            Duration::MAX,
+            Duration::from_nanos(window_nanos),
             count,
         );
         let base = Instant::now();
@@ -235,8 +236,15 @@ proptest! {
                 let known = model.slot_count();
                 let nonce = u64::from(arg) % u64::try_from(known).unwrap();
                 let outcome = Outcome::from_tag(tag);
-                let expected =
-                    model.apply(nonce, outcome, at, strategy, RestartPolicy::Permanent, maximum, None);
+                let expected = model.apply(
+                    nonce,
+                    outcome,
+                    at,
+                    strategy,
+                    RestartPolicy::Permanent,
+                    maximum,
+                    Some(window_nanos),
+                );
                 let actions = runtime
                     .block_on(behavior.step(SupervisionEvent::ChildStopped(ChildStopped {
                         nonce,
