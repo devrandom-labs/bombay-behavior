@@ -3,7 +3,7 @@
 use std::collections::VecDeque;
 
 use crate::Exit;
-use crate::behavior::{Actions, Address, Behavior, SendAlgebra, User, UserEvent};
+use crate::behavior::{Actions, Address, Behavior, BirthMode, SendAlgebra, User, UserEvent};
 use crate::verdict::{Never, Step};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -40,22 +40,23 @@ impl<B: Behavior<Ph = Never>> Stashing<B> {
     }
 }
 
-impl<B, A, Sends, New> Stashing<B>
+impl<B, A, Sends, Br> Stashing<B>
 where
     A: Address,
     Sends: SendAlgebra,
+    Br: BirthMode,
     B: Behavior<
             Addr = A,
             Ph = Never,
             Sends = Sends,
-            Offspring = New,
-            Effect = Actions<A, Never, Sends, New>,
+            Birth = Br,
+            Effect = Actions<A, Never, Sends, Br>,
             Done = Exit<A>,
         >,
 {
     async fn drain_into(
         &mut self,
-        acc: &mut Actions<B::Addr, Never, B::Sends, B::Offspring>,
+        acc: &mut Actions<B::Addr, Never, B::Sends, B::Birth>,
     ) -> Result<(), B::Error> {
         let mut batch: VecDeque<_> = self.held.drain(..).collect();
         while let Some(user) = batch.pop_front() {
@@ -80,22 +81,23 @@ where
     }
 }
 
-impl<B, A, Sends, New> Behavior for Stashing<B>
+impl<B, A, Sends, Br> Behavior for Stashing<B>
 where
     A: Address + Send,
     Sends: SendAlgebra + Send,
+    Br: BirthMode,
     B: Behavior<
             Addr = A,
             Ph = Never,
             Sends = Sends,
-            Offspring = New,
-            Effect = Actions<A, Never, Sends, New>,
+            Birth = Br,
+            Effect = Actions<A, Never, Sends, Br>,
             Done = Exit<A>,
         > + Send,
     A::Nonce: Send,
     B::Msg: Send,
     B::Event: Send,
-    New: Send,
+    Br::Child: Send,
 {
     type Addr = A;
     type Msg = B::Msg;
@@ -103,8 +105,8 @@ where
     type Sends = Sends;
     type Ph = Never;
     type Error = B::Error;
-    type Offspring = New;
-    type Effect = Actions<A, Never, Sends, New>;
+    type Birth = Br;
+    type Effect = Actions<A, Never, Sends, Br>;
     type Done = Exit<A>;
 
     async fn init(&mut self) -> Result<Self::Effect, B::Error> {

@@ -3,7 +3,7 @@
 use std::collections::VecDeque;
 
 use crate::Exit;
-use crate::behavior::{Actions, Address, Behavior, Delivery, User};
+use crate::behavior::{Actions, Address, Behavior, Delivery, NoBirths, User};
 use crate::verdict::{Never, Step};
 
 pub enum Move<P> {
@@ -95,8 +95,8 @@ where
     type Sends = Vec<Delivery<A, Never>>;
     type Ph = Never;
     type Error = E;
-    type Offspring = Never;
-    type Effect = Actions<A, Never, Self::Sends, Never>;
+    type Birth = NoBirths;
+    type Effect = Actions<A, Never, Self::Sends, NoBirths>;
     type Done = Exit<A>;
 
     async fn init(&mut self) -> Result<Self::Effect, E> {

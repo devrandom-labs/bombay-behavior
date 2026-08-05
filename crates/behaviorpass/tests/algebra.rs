@@ -1,10 +1,10 @@
 use std::time::Duration;
 
 use behaviorpass::{
-    Acted, Actions, At, AtEvent, AtId, Base, Behavior, ChildStopped, Crash, Create, Delivery, Exit,
-    MailAddr, Move, Never, PeerStopped, Proxy, ProxyCommand, Recipient, RestartPolicy, Route, Spec,
-    StashRoute, State, Step, Strategy, Supervising, SupervisionEvent, TimeReached, User, UserEvent,
-    WatchEvent, Watching, run, stop_on_abnormal_death, workers,
+    Acted, Actions, At, AtEvent, AtId, Base, Behavior, Births, ChildStopped, Crash, Create,
+    Delivery, Exit, MailAddr, Move, Never, NoBirths, PeerStopped, Proxy, ProxyCommand, Recipient,
+    RestartPolicy, Route, Spec, StashRoute, State, Step, Strategy, Supervising, SupervisionEvent,
+    TimeReached, User, UserEvent, WatchEvent, Watching, run, stop_on_abnormal_death, workers,
 };
 use fastpass::{Config, channel};
 use proptest::prelude::*;
@@ -12,6 +12,14 @@ use tokio::runtime::Builder;
 use tokio::time::Instant;
 
 struct Quiet;
+
+fn requires_no_births<B: Behavior<Birth = NoBirths>>(_behavior: &B) {}
+
+fn requires_births<B, C>(_behavior: &B)
+where
+    B: Behavior<Birth = Births<C>>,
+{
+}
 
 impl State for Quiet {
     type Addr = MailAddr;
@@ -21,14 +29,14 @@ impl State for Quiet {
         &mut self,
         _from: MailAddr,
         _message: u64,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, Never, Never> {
+    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, NoBirths, Never> {
         Ok(Actions::cont())
     }
 }
 
 #[test]
 fn actions_are_exactly_the_agha_triple() {
-    let mut actions: Actions<MailAddr, Never, Vec<Delivery<MailAddr, u64>>, Never> =
+    let mut actions: Actions<MailAddr, Never, Vec<Delivery<MailAddr, u64>>, NoBirths> =
         Actions::cont();
     actions
         .sends
@@ -140,7 +148,7 @@ async fn stashing_is_local_state_and_replay() {
             &mut self,
             _from: MailAddr,
             message: u64,
-        ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, Never, Never> {
+        ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, NoBirths, Never> {
             self.0.push(message);
             Ok(Actions::cont())
         }
@@ -196,7 +204,7 @@ type Child = Base<Quiet>;
 
 struct Parent;
 
-impl State<Never, Child, Never> for Parent {
+impl State<Never, Births<Child>, Never> for Parent {
     type Addr = MailAddr;
     type Msg = u64;
 
@@ -204,7 +212,7 @@ impl State<Never, Child, Never> for Parent {
         &mut self,
         _from: MailAddr,
         _message: u64,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, Child, Never> {
+    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, Births<Child>, Never> {
         Ok(Actions::cont())
     }
 }
@@ -213,11 +221,26 @@ fn child(_index: usize) -> Child {
     Base::new(Quiet)
 }
 
+#[test]
+fn birth_modes_are_disjoint_and_wrappers_forward_them() {
+    requires_no_births(&Spec::new(Quiet));
+
+    let creator = Spec::new(Parent)
+        .at(None, |_| Ok(Step::Continue))
+        .watch(MailAddr(4), stop_on_abnormal_death)
+        .stash(|_| StashRoute::Deliver);
+    requires_births::<_, Child>(&creator);
+
+    let supervisor = Spec::new(Parent).children((1, child));
+    requires_births::<_, Proxy<Child>>(&supervisor);
+    requires_births::<_, Child>(&Proxy::new(child(0)));
+}
+
 fn supervisor(
     strategy: Strategy,
     policy: RestartPolicy,
     budget: u32,
-) -> Supervising<Base<Parent, Never, Child, Never>, Child> {
+) -> Supervising<Base<Parent, Never, Births<Child>, Never>, Child> {
     Supervising::new(
         Base::new(Parent),
         |index| u64::try_from(index).unwrap(),
@@ -281,7 +304,7 @@ async fn proxy_replacement_creates_a_fresh_incarnation() {
 
 struct BirthingParent(bool);
 
-impl State<Never, Child, Never> for BirthingParent {
+impl State<Never, Births<Child>, Never> for BirthingParent {
     type Addr = MailAddr;
     type Msg = u64;
 
@@ -289,7 +312,7 @@ impl State<Never, Child, Never> for BirthingParent {
         &mut self,
         _from: MailAddr,
         nonce: u64,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, Child, Never> {
+    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, Births<Child>, Never> {
         if self.0 {
             return Ok(Actions::cont());
         }
@@ -422,7 +445,7 @@ async fn workers_macro_hides_a_heterogeneous_child_sum() {
             &mut self,
             _from: MailAddr,
             _message: u64,
-        ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, Never, Never> {
+        ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, NoBirths, Never> {
             Ok(Actions::cont())
         }
     }

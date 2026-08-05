@@ -1,8 +1,8 @@
 //! Pure peer-observation composition over an ordinary monitor actor protocol.
 
 use crate::behavior::{
-    Actions, Address, Become, Behavior, Delivery, Recipient, SendAlgebra, SendProduct, User,
-    UserEvent,
+    Actions, Address, Become, Behavior, BirthMode, Delivery, Recipient, SendAlgebra, SendProduct,
+    User, UserEvent,
 };
 use crate::deadlined::{TimeEvent, TimeReached};
 use crate::supervising::{ChildEvent, ChildStopped};
@@ -75,7 +75,7 @@ pub type WatchSends<B> = SendProduct<
 >;
 
 pub type WatchActions<B> =
-    Actions<<B as Behavior>::Addr, <B as Behavior>::Ph, WatchSends<B>, <B as Behavior>::Offspring>;
+    Actions<<B as Behavior>::Addr, <B as Behavior>::Ph, WatchSends<B>, <B as Behavior>::Birth>;
 
 pub struct Watching<B: Behavior> {
     inner: B,
@@ -99,16 +99,17 @@ impl<B: Behavior> Watching<B> {
     }
 }
 
-impl<B, A, Ph, Sends, New> Behavior for Watching<B>
+impl<B, A, Ph, Sends, Br> Behavior for Watching<B>
 where
     A: Address + Send,
     Sends: SendAlgebra,
+    Br: BirthMode,
     B: Behavior<
             Addr = A,
             Ph = Ph,
             Sends = Sends,
-            Offspring = New,
-            Effect = Actions<A, Ph, Sends, New>,
+            Birth = Br,
+            Effect = Actions<A, Ph, Sends, Br>,
             Done = Exit<A>,
         > + Send,
     B::Event: PeerEvent<B::Addr> + Send,
@@ -120,8 +121,8 @@ where
     type Sends = SendProduct<Sends, Vec<Delivery<A, ObservePeer<A>>>>;
     type Ph = Ph;
     type Error = B::Error;
-    type Offspring = New;
-    type Effect = Actions<A, Ph, Self::Sends, New>;
+    type Birth = Br;
+    type Effect = Actions<A, Ph, Self::Sends, Br>;
     type Done = Exit<A>;
 
     async fn init(&mut self) -> Result<Self::Effect, B::Error> {
@@ -169,7 +170,7 @@ where
 
 impl<B: Behavior> Watching<B> {
     fn wrap(
-        actions: Actions<B::Addr, B::Ph, B::Sends, B::Offspring>,
+        actions: Actions<B::Addr, B::Ph, B::Sends, B::Birth>,
         own: Vec<Delivery<B::Addr, ObservePeer<B::Addr>>>,
     ) -> WatchActions<B> {
         Actions {

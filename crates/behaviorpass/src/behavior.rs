@@ -158,16 +158,37 @@ pub struct Create<A: Address, New> {
     pub child: New,
 }
 
+/// A type-level description of the creation leg of the actor algebra.
+pub trait BirthMode {
+    type Child;
+}
+
+/// This behavior cannot emit child births.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct NoBirths;
+
+impl BirthMode for NoBirths {
+    type Child = Never;
+}
+
+/// This behavior may emit births of `C`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Births<C>(PhantomData<fn() -> C>);
+
+impl<C> BirthMode for Births<C> {
+    type Child = C;
+}
+
 pub type Become<A, Ph = Never> = Step<Ph, Exit<A>>;
 
 /// Exactly Agha's effect triple.
-pub struct Actions<A: Address, Ph, Sends, New> {
+pub struct Actions<A: Address, Ph, Sends, Birth: BirthMode> {
     pub sends: Sends,
-    pub creates: Vec<Create<A, New>>,
+    pub creates: Vec<Create<A, Birth::Child>>,
     pub become_: Become<A, Ph>,
 }
 
-impl<A: Address, Ph, Sends: SendAlgebra, New> Actions<A, Ph, Sends, New> {
+impl<A: Address, Ph, Sends: SendAlgebra, Birth: BirthMode> Actions<A, Ph, Sends, Birth> {
     #[must_use]
     pub fn just(become_: Become<A, Ph>) -> Self {
         Self {
@@ -193,7 +214,7 @@ impl<A: Address, Ph, Sends: SendAlgebra, New> Actions<A, Ph, Sends, New> {
     }
 }
 
-pub type Acted<A, Ph, Sends, New, E> = Result<Actions<A, Ph, Sends, New>, E>;
+pub type Acted<A, Ph, Sends, Birth, E> = Result<Actions<A, Ph, Sends, Birth>, E>;
 
 /// The user-message event at the Agha floor.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -215,9 +236,12 @@ pub trait UserEvent: Sized {
     fn into_user(self) -> Result<User<Self::Addr, Self::Message>, Self>;
 }
 
-pub type StateActed<A, Out, Child, Err> = Acted<A, Never, Vec<Delivery<A, Out>>, Child, Err>;
+pub type StateActed<A, Out, Birth, Err> = Acted<A, Never, Vec<Delivery<A, Out>>, Birth, Err>;
 
-pub trait State<Out = Never, Child = Never, Err = Never> {
+pub trait State<Out = Never, Birth = NoBirths, Err = Never>
+where
+    Birth: BirthMode,
+{
     type Addr: Address;
     type Msg;
 
@@ -233,7 +257,7 @@ pub trait State<Out = Never, Child = Never, Err = Never> {
         &mut self,
         from: Self::Addr,
         message: Self::Msg,
-    ) -> StateActed<Self::Addr, Out, Child, Err>;
+    ) -> StateActed<Self::Addr, Out, Birth, Err>;
 }
 
 /// A composed pure behavior. `Event` is the complete accepted protocol;
@@ -245,7 +269,7 @@ pub trait Behavior {
     type Sends: SendAlgebra;
     type Ph;
     type Error;
-    type Offspring;
+    type Birth: BirthMode;
     type Effect;
     type Done;
 
@@ -257,12 +281,12 @@ pub trait Behavior {
     ) -> impl Future<Output = Result<Self::Effect, Self::Error>> + Send;
 }
 
-pub struct Base<S: State<O, N, E>, O = Never, N = Never, E = Never> {
+pub struct Base<S: State<O, Br, E>, O = Never, Br: BirthMode = NoBirths, E = Never> {
     state: S,
-    marker: PhantomData<fn(O, N, E)>,
+    marker: PhantomData<fn(O, Br, E)>,
 }
 
-impl<S: State<O, N, E>, O, N, E> Base<S, O, N, E> {
+impl<S: State<O, Br, E>, O, Br: BirthMode, E> Base<S, O, Br, E> {
     #[must_use]
     pub fn new(state: S) -> Self {
         Self {
@@ -277,26 +301,26 @@ impl<S: State<O, N, E>, O, N, E> Base<S, O, N, E> {
     }
 }
 
-pub type Transition<S, A, M, O, N, E> =
-    fn(&mut S, A, M) -> Acted<A, Never, Vec<Delivery<A, O>>, N, E>;
+pub type Transition<S, A, M, O, Br, E> =
+    fn(&mut S, A, M) -> Acted<A, Never, Vec<Delivery<A, O>>, Br, E>;
 
-pub struct FnState<S, A: Address, M, O = Never, N = Never, E = Never> {
+pub struct FnState<S, A: Address, M, O = Never, Br: BirthMode = NoBirths, E = Never> {
     pub state: S,
-    pub handle: Transition<S, A, M, O, N, E>,
+    pub handle: Transition<S, A, M, O, Br, E>,
 }
 
-impl<S, A: Address, M, O, N, E> State<O, N, E> for FnState<S, A, M, O, N, E> {
+impl<S, A: Address, M, O, Br: BirthMode, E> State<O, Br, E> for FnState<S, A, M, O, Br, E> {
     type Addr = A;
     type Msg = M;
 
-    fn handle(&mut self, from: A, message: M) -> Acted<A, Never, Vec<Delivery<A, O>>, N, E> {
+    fn handle(&mut self, from: A, message: M) -> Acted<A, Never, Vec<Delivery<A, O>>, Br, E> {
         (self.handle)(&mut self.state, from, message)
     }
 }
 
-impl<S, A: Address, M, O, N, E> Base<FnState<S, A, M, O, N, E>, O, N, E> {
+impl<S, A: Address, M, O, Br: BirthMode, E> Base<FnState<S, A, M, O, Br, E>, O, Br, E> {
     #[must_use]
-    pub fn from_fn(state: S, handle: Transition<S, A, M, O, N, E>) -> Self {
+    pub fn from_fn(state: S, handle: Transition<S, A, M, O, Br, E>) -> Self {
         Self::new(FnState { state, handle })
     }
 }
@@ -332,12 +356,13 @@ impl<A: Address, M> ChildEvent<A> for User<A, M> {
     }
 }
 
-impl<S, O, N, E> Behavior for Base<S, O, N, E>
+impl<S, O, Br, E> Behavior for Base<S, O, Br, E>
 where
-    S: State<O, N, E> + Send,
+    S: State<O, Br, E> + Send,
     S::Addr: Send,
     S::Msg: Send,
-    N: Send,
+    Br: BirthMode,
+    Br::Child: Send,
     E: Send,
 {
     type Addr = S::Addr;
@@ -346,8 +371,8 @@ where
     type Sends = Vec<Delivery<S::Addr, O>>;
     type Ph = Never;
     type Error = E;
-    type Offspring = N;
-    type Effect = Actions<S::Addr, Never, Self::Sends, N>;
+    type Birth = Br;
+    type Effect = Actions<S::Addr, Never, Self::Sends, Br>;
     type Done = Exit<S::Addr>;
 
     async fn init(&mut self) -> Result<Self::Effect, E> {
@@ -369,20 +394,21 @@ pub struct Transcript<A: Address, Sends, New> {
 ///
 /// # Errors
 /// Returns the first controlled behavior failure.
-pub async fn run<B, C, A, Sends, New>(
+pub async fn run<B, C, A, Sends, Br>(
     mut behavior: B,
     mut mailbox: Consumer<C, B::Msg>,
     from: A,
-) -> Result<Transcript<A, Sends, New>, B::Error>
+) -> Result<Transcript<A, Sends, Br::Child>, B::Error>
 where
     A: Address,
     Sends: SendAlgebra,
+    Br: BirthMode,
     B: Behavior<
             Addr = A,
             Ph = Never,
             Sends = Sends,
-            Offspring = New,
-            Effect = Actions<A, Never, Sends, New>,
+            Birth = Br,
+            Effect = Actions<A, Never, Sends, Br>,
             Done = Exit<A>,
         >,
 {

@@ -3,8 +3,13 @@
 Behaviorpass has one primitive effect algebra, the Agha triple:
 
 ```text
-Actions<Send, Create, Become> = Send* × Create* × Become
+Actions<A, Ph, Sends, Birth> = Sends × Create<A, Birth::Child>* × Become
 ```
+
+`Birth` is purely type-level: `NoBirths` selects the uninhabited `Never` child
+type, while `Births<C>` selects `C`. This separates whether creation exists
+from the concrete child type without adding an effect, runtime query, handle,
+or interpreter operation.
 
 Timers, monitors, links, supervision, identity, and mailboxes are not extra
 fields on `Actions`. A capability is an actor protocol: requests are ordinary
@@ -29,6 +34,12 @@ At<B>
 Watching<B>
   Event  = B::Event + PeerStopped
   Sends  = B::Sends × Vec<Delivery<ObservePeer>>
+
+Base<S> / Fsm       Birth = NoBirths
+At<B> / Watching<B> / Stashing<B>
+                    Birth = B::Birth
+Supervising<B, C>   Birth = Births<Proxy<C>>
+Proxy<C>            Birth = Births<C>
 ```
 
 `Spec` is only a typestate/DX layer over these concrete types. It does not

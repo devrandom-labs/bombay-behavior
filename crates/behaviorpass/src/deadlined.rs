@@ -4,8 +4,8 @@
 use tokio::time::Instant;
 
 use crate::behavior::{
-    Actions, Address, Become, Behavior, Delivery, Recipient, SendAlgebra, SendProduct, User,
-    UserEvent,
+    Actions, Address, Become, Behavior, BirthMode, Delivery, Recipient, SendAlgebra, SendProduct,
+    User, UserEvent,
 };
 use crate::supervising::{ChildEvent, ChildStopped};
 use crate::watching::{PeerEvent, PeerStopped};
@@ -77,7 +77,7 @@ pub type AtSends<B> =
     SendProduct<<B as Behavior>::Sends, Vec<Delivery<<B as Behavior>::Addr, ScheduleAt>>>;
 
 pub type AtActions<B> =
-    Actions<<B as Behavior>::Addr, <B as Behavior>::Ph, AtSends<B>, <B as Behavior>::Offspring>;
+    Actions<<B as Behavior>::Addr, <B as Behavior>::Ph, AtSends<B>, <B as Behavior>::Birth>;
 
 pub struct At<B: Behavior> {
     inner: B,
@@ -101,16 +101,17 @@ impl<B: Behavior> At<B> {
     }
 }
 
-impl<B, A, Ph, Sends, New> Behavior for At<B>
+impl<B, A, Ph, Sends, Br> Behavior for At<B>
 where
     A: Address + Send,
     Sends: SendAlgebra,
+    Br: BirthMode,
     B: Behavior<
             Addr = A,
             Ph = Ph,
             Sends = Sends,
-            Offspring = New,
-            Effect = Actions<A, Ph, Sends, New>,
+            Birth = Br,
+            Effect = Actions<A, Ph, Sends, Br>,
             Done = Exit<A>,
         > + Send,
     B::Event: TimeEvent + Send,
@@ -122,8 +123,8 @@ where
     type Sends = SendProduct<Sends, Vec<Delivery<A, ScheduleAt>>>;
     type Ph = Ph;
     type Error = B::Error;
-    type Offspring = New;
-    type Effect = Actions<A, Ph, Self::Sends, New>;
+    type Birth = Br;
+    type Effect = Actions<A, Ph, Self::Sends, Br>;
     type Done = Exit<A>;
 
     async fn init(&mut self) -> Result<Self::Effect, B::Error> {
@@ -171,7 +172,7 @@ where
 
 impl<B: Behavior> At<B> {
     fn wrap(
-        actions: Actions<B::Addr, B::Ph, B::Sends, B::Offspring>,
+        actions: Actions<B::Addr, B::Ph, B::Sends, B::Birth>,
         own: Vec<Delivery<B::Addr, ScheduleAt>>,
     ) -> AtActions<B> {
         Actions {

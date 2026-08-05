@@ -7,7 +7,7 @@
 //! total count. `Crew` is a TYPE — every worker stays its own actor.
 //!
 //! v1 scope: every worker kind shares the SAME protocol (`Event`, `Sends`,
-//! `Done`, `Error`, and `Offspring` — taken from the first kind). Mixed
+//! `Done`, `Error`, and `Birth` — taken from the first kind). Mixed
 //! protocols need the hand-written sum (the `CrewMsg` widening is a
 //! deliberate, documented step — not this macro's job yet).
 
@@ -118,7 +118,7 @@ pub fn workers(input: TokenStream) -> TokenStream {
                 type Sends = <#first_ty as ::behaviorpass::Behavior>::Sends;
                 type Ph = ::behaviorpass::Never;
                 type Error = <#first_ty as ::behaviorpass::Behavior>::Error;
-                type Offspring = <#first_ty as ::behaviorpass::Behavior>::Offspring;
+                type Birth = <#first_ty as ::behaviorpass::Behavior>::Birth;
                 type Effect = <#first_ty as ::behaviorpass::Behavior>::Effect;
                 type Done = <#first_ty as ::behaviorpass::Behavior>::Done;
 
