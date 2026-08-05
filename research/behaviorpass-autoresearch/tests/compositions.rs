@@ -6,9 +6,9 @@
 use std::time::Duration;
 
 use behaviorpass::{
-    Acted, Actions, AtEvent, AtId, Behavior, Crash, Delivery, Exit, MailAddr, Never,
-    PeerStopped, Recipient, Spec, StashRoute, State, Step, TimeReached, User, UserEvent,
-    WatchEvent, stop_on_abnormal_death,
+    Acted, Actions, AtEvent, AtId, Base, Behavior, ChildStopped, Crash, Delivery, Exit, MailAddr,
+    Never, PeerStopped, Recipient, Route, Spec, StashRoute, State, Step, SupervisionEvent,
+    TimeReached, User, UserEvent, WatchEvent, stop_on_abnormal_death,
 };
 use tokio::time::Instant;
 
@@ -33,6 +33,12 @@ impl State<u8, Never, Never> for Recorder {
             become_: Step::Continue,
         })
     }
+}
+
+type Child = Base<Recorder, u8>;
+
+fn child(_index: usize) -> Child {
+    Base::new(Recorder::default())
 }
 
 const PEER: MailAddr = MailAddr(44);
@@ -228,4 +234,116 @@ async fn watch_of_watch_routes_each_peer_to_its_own_layer() {
         inner.become_,
         Step::Stop(Exit::LinkDied(p)) if p == inner_peer
     ));
+}
+
+/// An `At` constructed with `None` schedules nothing and is inert to every
+/// Reached event: the reaction never fires.
+#[tokio::test]
+async fn unscheduled_at_is_inert_to_reached_events() {
+    let mut behavior = Spec::new(Recorder::default()).at(None, |_| {
+        Ok(Step::Stop(Exit::Normal))
+    });
+    let initial = behavior.init().await.unwrap();
+    assert!(initial.sends.own.is_empty());
+
+    for (id, at) in [
+        (AtId(0), Instant::now()),
+        (AtId(1), Instant::now() + Duration::from_secs(9)),
+    ] {
+        let actions = behavior
+            .step(AtEvent::Reached(TimeReached { id, at }))
+            .await
+            .unwrap();
+        assert_eq!(actions.become_, Step::Continue);
+    }
+}
+
+/// `stop_on_abnormal_death` classifies outcomes: Normal and Collected keep
+/// the fold alive; `LinkDied` and crashes stop it carrying the peer address.
+#[tokio::test]
+async fn abnormal_death_reaction_outcome_classes() {
+    let mut behavior = Spec::new(Recorder::default()).watch(PEER, stop_on_abnormal_death);
+    behavior.init().await.unwrap();
+
+    let outcome = |outcome| WatchEvent::PeerStopped(PeerStopped {
+        peer: PEER,
+        outcome,
+    });
+    let normal = behavior.step(outcome(Ok(Exit::Normal))).await.unwrap();
+    assert_eq!(normal.become_, Step::Continue);
+    let collected = behavior.step(outcome(Ok(Exit::Collected))).await.unwrap();
+    assert_eq!(collected.become_, Step::Continue);
+    let linked = behavior
+        .step(outcome(Ok(Exit::LinkDied(MailAddr(3)))))
+        .await
+        .unwrap();
+    assert!(matches!(
+        linked.become_,
+        Step::Stop(Exit::LinkDied(p)) if p == PEER
+    ));
+    let failed = behavior.step(outcome(Err(Crash::Failed))).await.unwrap();
+    assert!(matches!(
+        failed.become_,
+        Step::Stop(Exit::LinkDied(p)) if p == PEER
+    ));
+}
+
+/// Supervision over a watched parent: the fleet's observe sends and the
+/// watch's observe send live in their own product lanes, both event lanes
+/// (peer death, child death) route to their own layer, and a peer death can
+/// stop the whole supervised fold.
+#[tokio::test]
+async fn supervision_preserves_inner_watch_routing() {
+    struct Parent;
+    impl State<Never, Child, Never> for Parent {
+        type Addr = MailAddr;
+        type Msg = u64;
+
+        fn handle(
+            &mut self,
+            _from: MailAddr,
+            _message: u64,
+        ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, Child, Never> {
+            Ok(Actions::cont())
+        }
+    }
+
+    let mut behavior = Spec::new(Parent)
+        .watch(PEER, stop_on_abnormal_death)
+        .children((2, child));
+    let initial = behavior.init().await.unwrap();
+    assert_eq!(initial.creates.len(), 2);
+    assert_eq!(initial.sends.own.inner.len(), 2); // observe-child x2
+    assert_eq!(initial.sends.own.inner[0].to.route(), Route::Service);
+    assert_eq!(initial.sends.inner.own.len(), 1); // observe-peer
+    assert_eq!(initial.sends.inner.own[0].message.peer, PEER);
+
+    // Peer lane: the watch reaction stops the supervised fold.
+    let died = behavior
+        .step(SupervisionEvent::Inner(WatchEvent::PeerStopped(PeerStopped {
+            peer: PEER,
+            outcome: Err(Crash::Failed),
+        })))
+        .await
+        .unwrap();
+    assert!(matches!(
+        died.become_,
+        Step::Stop(Exit::LinkDied(p)) if p == PEER
+    ));
+
+    // Child lane: a death still yields a replacement send on a fresh stack.
+    let mut replacement = Spec::new(Parent)
+        .watch(PEER, stop_on_abnormal_death)
+        .children((2, child));
+    replacement.init().await.unwrap();
+    let actions = replacement
+        .step(SupervisionEvent::ChildStopped(ChildStopped {
+            nonce: 0,
+            outcome: Err(Crash::Failed),
+            at: Instant::now(),
+        }))
+        .await
+        .unwrap();
+    assert_eq!(actions.sends.own.own.len(), 1);
+    assert_eq!(actions.sends.own.own[0].to.route(), Route::Child(0));
 }
