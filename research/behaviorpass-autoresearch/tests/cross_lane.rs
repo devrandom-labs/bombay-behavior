@@ -4,9 +4,12 @@
 //! Stash held, Release delivered), child deaths produce replacement sends
 //! only, and neither produces the other's effects.
 
+use std::time::Duration;
+
 use behaviorpass::{
-    Acted, Actions, Base, Behavior, ChildStopped, Crash, Delivery, MailAddr, Never, Recipient,
-    Route, Spec, StashRoute, State, Step, SupervisionEvent, UserEvent,
+    Acted, Actions, AtEvent, AtId, Base, Behavior, ChildStopped, Crash, Delivery, Exit, MailAddr,
+    Never, Recipient, Route, Spec, StashRoute, State, Step, SupervisionEvent, TimeReached,
+    UserEvent,
 };
 use tokio::time::Instant;
 
@@ -121,4 +124,31 @@ async fn child_death_never_leaks_into_the_user_lane() {
     assert_eq!(actions.sends.own.own[0].to.route(), Route::Child(0));
     assert!(actions.sends.inner.is_empty());
     assert!(actions.sends.own.inner.is_empty());
+}
+
+/// The time lane through a supervised stack: the schedule send survives in
+/// its own product lane beside the observe-child sends, and a Reached event
+/// fires the inner At (stopping the whole supervised fold) without touching
+/// the user or child lanes.
+#[tokio::test]
+async fn supervision_preserves_inner_at_routing() {
+    let due = Instant::now() + Duration::from_secs(1);
+    let mut behavior = Spec::new(EchoingParent { seen: Vec::new() })
+        .at(Some(due), |_| Ok(Step::Stop(Exit::Normal)))
+        .children((1, child));
+    let initial = behavior.init().await.unwrap();
+    assert_eq!(initial.sends.inner.own[0].message.at, due);
+    assert_eq!(initial.sends.own.inner.len(), 1);
+    assert!(initial.sends.inner.inner.is_empty());
+    assert_eq!(initial.creates.len(), 1);
+
+    let fired = behavior
+        .step(SupervisionEvent::Inner(AtEvent::Reached(TimeReached {
+            id: AtId(0),
+            at: due,
+        })))
+        .await
+        .unwrap();
+    assert_eq!(fired.become_, Step::Stop(Exit::Normal));
+    assert!(fired.sends.own.own.is_empty());
 }
