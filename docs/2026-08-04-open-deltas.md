@@ -44,13 +44,13 @@
 
 - **Mixed-protocol `workers!`** — v1 is shared-protocol. The `CrewMsg`
   sum + mismatch arm generation is the real test of the macro approach.
-- **Policy trait-ification** — reactions (`LinkReaction`, deadline
+- **Policy trait-ification** — reactions (`LinkReaction`, time
   reactions) are still fn pointers; the `State`-move for policies
   (traits + closure blanket impls) is recorded, unimplemented.
 - **`hold(n)`** — the locked intent for Stashing needs capacity
   semantics; the layer today is route-only (`StashRoute`). Deferred.
-- **`on_deadline`** — intent name exists, but the deadline SOURCE is
-  behavior logic (`next_deadline`); needs a clean builder shape first.
+- **Relative and periodic time intentions** — `.at(...)` is the absolute
+  one-shot intent. Relative, idle, and periodic compositions remain open.
 - **`Effect` sugar** (`none()`, `reply()`, …) — floated to spare
   handlers spelling out `Actions { sends, creates, become_ }`. UNRULED.
 - **`Fsm`'s transition fn** — the same loose (state, fn) pair shape as
@@ -66,8 +66,6 @@
 - **Block-local `Crew`** — macro-generated fleet sums are unnameable
   outside their block; user-facing errors will show hygiene names.
   Accepted UX cost, unproven in practice.
-- **Framing residue** — `examples/p*.rs` are still "slope points" of
-  the old golf lattice; the crate is the behavior algebra now. Cosmetic.
 
 ## 5. Bombay-coverage deltas with behaviorpass-side work
 
@@ -78,6 +76,5 @@
   senders; solved as the fastpass **`UserAnchor`** ask (sends while the
   consumer lives, doesn't count toward `closed()`), card 2.5, NOT the
   earlier weak-sender framing.
-- **Backoff + jitter** — derivable purely later (`Create::Restart`
-  gains `after: Duration` from the window's timestamp history;
-  deterministic jitter via `H(nonce, restart_count)`). Door, not debt.
+- **Backoff + jitter** — derivable in the proxy replacement protocol from
+  restart history; deterministic jitter can use `H(nonce, restart_count)`.

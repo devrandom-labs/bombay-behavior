@@ -1,90 +1,206 @@
-//! `Supervising` — a `Behavior` that decides the FULL strategy space of child
-//! restarts as PURE decisions (the driver executes): one-for-one /
-//! one-for-all / rest-for-one × permanent / transient / temporary, under a
-//! windowed restart budget. It reacts to [`Envelope::ChildStopped`] and,
-//! within budget, EMITS tagged [`Create::Restart`]s (nonce + replacement
-//! behavior) rather than rebuilding a child fold in place. Actual spawning —
-//! initial and restart — is the future driver's job; this crate makes only
-//! the restart DECISION. The keep-address semantics (2026-08-04 design): a
-//! restart reuses the child's surviving mailbox — the driver swaps the
-//! behavior slot, it never re-addresses, so handles that escaped in messages
-//! stay valid.
+//! Pure supervision. Stable child identity is a proxy actor; replacement is a
+//! message to that proxy, which creates a fresh worker incarnation.
 
 use std::time::Duration;
 
-use crate::verdict::{Never, Step};
 use tokio::time::Instant;
 
-use crate::behavior::{Acted, Actions, Address, Behavior, Create, Envelope, Fleet};
+use crate::behavior::{
+    Actions, Address, Behavior, Create, Delivery, Recipient, SendAlgebra, SendProduct, User,
+    UserEvent,
+};
+use crate::deadlined::{TimeEvent, TimeReached};
+use crate::verdict::{Never, Step};
+use crate::watching::{PeerEvent, PeerStopped};
 use crate::{Crash, Exit};
 
-/// Which children a triggered restart event restarts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Strategy {
-    /// Restart only the dead child.
     OneForOne,
-    /// Restart every live child when one triggers.
     OneForAll,
-    /// Restart the dead child and every child born AFTER it (birth
-    /// SEQUENCE order, not nonce order).
     RestForOne,
 }
 
-/// When a child's stop is restart-eligible (the dead child's OWN policy gates
-/// strategy evaluation).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RestartPolicy {
-    /// Restart on any stop, normal or abnormal.
     Permanent,
-    /// Restart only on abnormal outcome (today's behavior).
     Transient,
-    /// Never restart; a stop only marks the slot dead.
     Temporary,
 }
 
-/// Strategy as a readable value (the Spec builder's intent vocabulary):
-/// restart only the dead child.
 #[must_use]
 pub const fn restart_one() -> Strategy {
     Strategy::OneForOne
 }
 
-/// Strategy as a readable value: restart every live child when one
-/// triggers.
 #[must_use]
 pub const fn restart_all() -> Strategy {
     Strategy::OneForAll
 }
 
-/// Strategy as a readable value: restart the dead child and every child
-/// born after it (birth-sequence order).
 #[must_use]
 pub const fn restart_rest() -> Strategy {
     Strategy::RestForOne
 }
 
-/// One child-table entry: liveness plus the birth-sequence number
-/// (`rest-for-one` compares ORDER OF BIRTH, immune to arbitrary nonce
-/// values).
-struct SlotRec {
-    alive: bool,
-    seq: u64,
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChildStopped<A: Address> {
+    pub nonce: A::Nonce,
+    pub outcome: Result<Exit<A>, Crash>,
+    pub at: Instant,
 }
 
-/// A `Behavior` that supervises children: the OUTER fold deciding restarts.
-/// A restart is a `create` the driver interprets, not an in-place rebuild.
-///
-/// The child table is one uniform `Vec<(A::Nonce, SlotRec)>` — nonce-keyed
-/// assoc scans (fleets are small; nonces are arbitrary creator-minted values,
-/// so no dense indexing exists). Static slots are inserted at construction
-/// (sequence `0..n`); dynamic births (the inner's `Create::Birth`) append at
-/// the next sequence, so the table's physical order IS birth order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ObserveChild<A: Address> {
+    pub nonce: A::Nonce,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub enum SupervisionEvent<E, A: Address> {
+    Inner(E),
+    ChildStopped(ChildStopped<A>),
+}
+
+pub trait ChildEvent<A: Address>: Sized {
+    fn child_stopped(event: ChildStopped<A>) -> Option<Self>;
+}
+
+impl<E, A: Address> ChildEvent<A> for SupervisionEvent<E, A> {
+    fn child_stopped(event: ChildStopped<A>) -> Option<Self> {
+        Some(Self::ChildStopped(event))
+    }
+}
+
+impl<E: UserEvent, A: Address> UserEvent for SupervisionEvent<E, A> {
+    type Addr = E::Addr;
+    type Message = E::Message;
+
+    fn user(from: Self::Addr, message: Self::Message) -> Self {
+        Self::Inner(E::user(from, message))
+    }
+
+    fn into_user(self) -> Result<User<Self::Addr, Self::Message>, Self> {
+        match self {
+            Self::Inner(event) => event.into_user().map_err(Self::Inner),
+            stopped @ Self::ChildStopped(_) => Err(stopped),
+        }
+    }
+}
+
+impl<E: TimeEvent, A: Address> TimeEvent for SupervisionEvent<E, A> {
+    fn time_reached(event: TimeReached) -> Option<Self> {
+        E::time_reached(event).map(Self::Inner)
+    }
+}
+
+impl<E: PeerEvent<A>, A: Address> PeerEvent<A> for SupervisionEvent<E, A> {
+    fn peer_stopped(event: PeerStopped<A>) -> Option<Self> {
+        E::peer_stopped(event).map(Self::Inner)
+    }
+}
+
+#[derive(Debug)]
+pub enum ProxyCommand<C: Behavior> {
+    Forward(C::Msg),
+    Replace(C),
+}
+
+pub type SupervisorSends<A, Sends, C> = SendProduct<
+    Sends,
+    SendProduct<Vec<Delivery<A, ObserveChild<A>>>, Vec<Delivery<A, ProxyCommand<C>>>>,
+>;
+
+pub type SupervisorActions<B, C> = Actions<
+    <B as Behavior>::Addr,
+    <B as Behavior>::Ph,
+    SupervisorSends<<B as Behavior>::Addr, <B as Behavior>::Sends, C>,
+    Proxy<C>,
+>;
+
+/// The stable actor. Every replacement is an ordinary fresh birth beneath it.
+pub struct Proxy<C: Behavior<Ph = Never>> {
+    worker: Option<C>,
+    generation: u64,
+}
+
+impl<C: Behavior<Ph = Never>> Proxy<C> {
+    #[must_use]
+    pub fn new(worker: C) -> Self {
+        Self {
+            worker: Some(worker),
+            generation: 0,
+        }
+    }
+}
+
+impl<C> Behavior for Proxy<C>
+where
+    C: Behavior<Ph = Never> + Send,
+    C::Addr: Send,
+    <C::Addr as Address>::Nonce: From<u64> + Send,
+    C::Msg: Send,
+    C: Send,
+{
+    type Addr = C::Addr;
+    type Msg = ProxyCommand<C>;
+    type Event = User<C::Addr, ProxyCommand<C>>;
+    type Sends = Vec<Delivery<C::Addr, C::Msg>>;
+    type Ph = Never;
+    type Error = Never;
+    type Offspring = C;
+    type Effect = Actions<C::Addr, Never, Self::Sends, C>;
+    type Done = Exit<C::Addr>;
+
+    async fn init(&mut self) -> Result<Self::Effect, Never> {
+        let child = self.worker.take().expect("a proxy initializes once");
+        Ok(Actions {
+            sends: Vec::new(),
+            creates: vec![Create {
+                nonce: <C::Addr as Address>::Nonce::from(self.generation),
+                child,
+            }],
+            become_: Step::Continue,
+        })
+    }
+
+    async fn step(&mut self, event: Self::Event) -> Result<Self::Effect, Never> {
+        match event.message {
+            ProxyCommand::Forward(message) => Ok(Actions {
+                sends: vec![Delivery::new(
+                    Recipient::child(<C::Addr as Address>::Nonce::from(self.generation)),
+                    message,
+                )],
+                creates: Vec::new(),
+                become_: Step::Continue,
+            }),
+            ProxyCommand::Replace(child) => {
+                self.generation = self
+                    .generation
+                    .checked_add(1)
+                    .expect("proxy generation exhausted");
+                Ok(Actions {
+                    sends: Vec::new(),
+                    creates: vec![Create {
+                        nonce: <C::Addr as Address>::Nonce::from(self.generation),
+                        child,
+                    }],
+                    become_: Step::Continue,
+                })
+            }
+        }
+    }
+}
+
+struct Slot {
+    alive: bool,
+    sequence: u64,
+}
+
 pub struct Supervising<B: Behavior, C: Behavior<Ph = Never, Addr = B::Addr>> {
     inner: B,
-    slots: Vec<(<B::Addr as Address>::Nonce, SlotRec)>,
-    n_static: usize,
-    nonces: fn(usize) -> <B::Addr as Address>::Nonce,
-    next_seq: u64,
+    slots: Vec<(<B::Addr as Address>::Nonce, Slot)>,
+    configured_count: usize,
+    next_sequence: u64,
     build: fn(usize) -> C,
     strategy: Strategy,
     policy: RestartPolicy,
@@ -93,45 +209,43 @@ pub struct Supervising<B: Behavior, C: Behavior<Ph = Never, Addr = B::Addr>> {
     restarts: Vec<Instant>,
 }
 
-impl<B: Behavior<Offspring = C>, C: Behavior<Ph = Never, Addr = B::Addr>> Supervising<B, C> {
-    /// Builds a supervisor: `nonces` mints the static fleet's birth nonces
-    /// (the driver mints child ADDRESSES from the same indices, so driver
-    /// table and behavior table agree by construction — slot = nonce);
-    /// `build` constructs the replacement behavior for a restart (indexed by
-    /// table position: the fleet index for a static child). The budget is
-    /// windowed: at most `max_restarts` restarts inside any `window` span
-    /// (`Duration::MAX` = the count-only case).
+impl<B, C> Supervising<B, C>
+where
+    B: Behavior<Offspring = C>,
+    C: Behavior<Ph = Never, Addr = B::Addr>,
+{
+    #[allow(clippy::too_many_arguments, reason = "hidden by Spec")]
+    /// Construct the concrete supervisor behavior hidden by `Spec`.
     ///
     /// # Panics
-    /// Never in practice — the `u64` conversions of fleet indices cannot fail
-    /// on any supported target.
-    #[allow(
-        clippy::too_many_arguments,
-        reason = "the constructor IS the supervision spec (fleet, strategy, policy, budget) — grouping it into a builder would hide the card-1 vocabulary"
-    )]
+    /// Panics only if a fleet index cannot be represented by `u64`.
+    #[must_use]
     pub fn new(
         inner: B,
         nonces: fn(usize) -> <B::Addr as Address>::Nonce,
-        n_children: usize,
+        count: usize,
         build: fn(usize) -> C,
         strategy: Strategy,
         policy: RestartPolicy,
         max_restarts: u32,
         window: Duration,
     ) -> Self {
-        let slots = (0..n_children)
-            .map(|i| {
-                let seq = u64::try_from(i).expect("a fleet index always fits u64");
-                (nonces(i), SlotRec { alive: true, seq })
+        let slots = (0..count)
+            .map(|index| {
+                (
+                    nonces(index),
+                    Slot {
+                        alive: true,
+                        sequence: u64::try_from(index).expect("fleet index fits u64"),
+                    },
+                )
             })
             .collect();
-        let next_seq = u64::try_from(n_children).expect("a fleet size always fits u64");
         Self {
             inner,
             slots,
-            n_static: n_children,
-            nonces,
-            next_seq,
+            configured_count: count,
+            next_sequence: u64::try_from(count).expect("fleet size fits u64"),
             build,
             strategy,
             policy,
@@ -141,294 +255,220 @@ impl<B: Behavior<Offspring = C>, C: Behavior<Ph = Never, Addr = B::Addr>> Superv
         }
     }
 
-    /// Builder-style tuner: set the restart strategy (the `Spec`
-    /// builder's `on_child_death` intent).
     #[must_use]
     pub fn with_strategy(mut self, strategy: Strategy) -> Self {
         self.strategy = strategy;
         self
     }
 
-    /// Builder-style tuner: set the per-child restart policy (the
-    /// `Spec` builder's `policy` intent).
     #[must_use]
     pub fn with_policy(mut self, policy: RestartPolicy) -> Self {
         self.policy = policy;
         self
     }
 
-    /// Builder-style tuner: set the windowed restart budget (the `Spec`
-    /// builder's `budget` intent).
     #[must_use]
-    pub fn with_budget(mut self, max_restarts: u32, window: Duration) -> Self {
-        self.max_restarts = max_restarts;
+    pub fn with_budget(mut self, max: u32, window: Duration) -> Self {
+        self.max_restarts = max;
         self.window = window;
         self
     }
 
-    /// The table position of `nonce`, if known (static or dynamically born —
-    /// alive or dead, a known nonce is taken forever).
     fn position(&self, nonce: <B::Addr as Address>::Nonce) -> Option<usize> {
-        self.slots.iter().position(|(n, _)| *n == nonce)
+        self.slots.iter().position(|(known, _)| *known == nonce)
     }
 
-    /// Whether the child born at `nonce` is still alive.
+    #[must_use]
+    /// Report whether a known supervised proxy is alive.
     ///
     /// # Panics
-    /// On an unknown nonce (driver/behavior desync), like indexing out of
-    /// range did.
-    #[must_use]
+    /// Panics when `nonce` is not part of this supervisor topology.
     pub fn is_alive(&self, nonce: <B::Addr as Address>::Nonce) -> bool {
-        let Some(pos) = self.position(nonce) else {
-            panic!("is_alive names an unknown nonce — driver/behavior desync");
-        };
-        self.slots[pos].1.alive
+        self.slots[self.position(nonce).expect("unknown supervised nonce")]
+            .1
+            .alive
     }
 
-    /// The number of supervised slots (static fleet plus dynamic births).
     #[must_use]
     pub fn child_count(&self) -> usize {
         self.slots.len()
     }
 
-    /// Restart timestamps inside the current window, as pruned at the last
-    /// evaluation (test observability).
     #[must_use]
     pub fn restarts_in_window(&self) -> usize {
         self.restarts.len()
     }
 
-    /// The outcome classification (the bool's replacement): the NORMAL subset
-    /// is `{Exit::Normal, Exit::Collected}`; ABNORMAL ≡ `Err(Crash)` or
-    /// `Ok(_)` outside that subset. Pure policy, matched in the layer.
-    fn is_normal(outcome: &Result<Exit<B::Addr>, Crash>) -> bool {
-        matches!(outcome, Ok(Exit::Normal | Exit::Collected))
-    }
-
-    /// The restart decision for the child born at `nonce`: the dead child's
-    /// own policy gates evaluation (`Temporary` never; `Transient` only on an
-    /// abnormal outcome; `Permanent` always), the strategy picks the
-    /// candidate set, and the windowed budget admits the whole set or
-    /// nothing. Admitted: one `Create::Restart` per candidate — the dead
-    /// child FIRST, the rest in birth-sequence order — one `at` pushed per
-    /// restart, and the dead child re-marked live. Denied: the dead child is
-    /// marked dead and nothing is emitted. An unknown nonce is a
-    /// driver/behavior desync — a programmer bug — and panics.
-    fn on_child_stopped(
+    fn replacements(
         &mut self,
-        nonce: <B::Addr as Address>::Nonce,
-        outcome: &Result<Exit<B::Addr>, Crash>,
-        at: Instant,
-    ) -> Vec<Create<B::Addr, C>> {
-        let Some(dead) = self.position(nonce) else {
-            panic!("ChildStopped names an unknown nonce — driver/behavior desync");
-        };
-        let evaluate = match self.policy {
+        event: &ChildStopped<B::Addr>,
+    ) -> Vec<Delivery<B::Addr, ProxyCommand<C>>> {
+        let dead = self
+            .position(event.nonce)
+            .expect("unknown supervised nonce");
+        let eligible = match self.policy {
             RestartPolicy::Permanent => true,
-            RestartPolicy::Transient => !Self::is_normal(outcome),
+            RestartPolicy::Transient => {
+                !matches!(&event.outcome, Ok(Exit::Normal | Exit::Collected))
+            }
             RestartPolicy::Temporary => false,
         };
-        if !evaluate {
+        if !eligible {
             self.slots[dead].1.alive = false;
             return Vec::new();
         }
-        // Window eviction: entries older than the window stop counting. The
-        // count-only case (`Duration::MAX`) can never evict — `age <= MAX`
-        // holds for every `Duration` — so the scan is skipped wholesale (and
-        // the in-window count is always ≤ `max_restarts`, keeping the scan
-        // bounded whenever it does run).
-        let window = self.window;
-        if window != Duration::MAX {
-            self.restarts.retain(|&ts| at.checked_duration_since(ts).is_none_or(|age| age <= window));
+        if self.window != Duration::MAX {
+            self.restarts.retain(|stamp| {
+                event
+                    .at
+                    .checked_duration_since(*stamp)
+                    .is_none_or(|age| age <= self.window)
+            });
         }
-        // The candidate set by strategy — the dead child is still marked live
-        // here, so every strategy's set contains it.
-        let dead_seq = self.slots[dead].1.seq;
+        let sequence = self.slots[dead].1.sequence;
         let candidates: Vec<usize> = match self.strategy {
             Strategy::OneForOne => vec![dead],
-            Strategy::OneForAll => {
-                (0..self.slots.len()).filter(|&i| self.slots[i].1.alive).collect()
-            }
-            Strategy::RestForOne => {
-                (0..self.slots.len())
-                    .filter(|&i| self.slots[i].1.alive && self.slots[i].1.seq >= dead_seq)
-                    .collect()
-            }
+            Strategy::OneForAll => self
+                .slots
+                .iter()
+                .enumerate()
+                .filter_map(|(index, (_, slot))| slot.alive.then_some(index))
+                .collect(),
+            Strategy::RestForOne => self
+                .slots
+                .iter()
+                .enumerate()
+                .filter_map(|(index, (_, slot))| {
+                    (slot.alive && slot.sequence >= sequence).then_some(index)
+                })
+                .collect(),
         };
-        // All-or-nothing per event: the whole set fits the windowed budget or
-        // nothing restarts.
         if self.restarts.len() + candidates.len() > self.max_restarts as usize {
             self.slots[dead].1.alive = false;
             return Vec::new();
         }
-        let mut creates = Vec::with_capacity(candidates.len());
-        // The dead child first, then the rest in table order (= birth-sequence
-        // order — slots are only ever appended at the next sequence).
-        creates.push(self.restart_for(dead));
-        for &i in candidates.iter().filter(|&&i| i != dead) {
-            creates.push(self.restart_for(i));
-        }
-        self.restarts.resize(self.restarts.len() + candidates.len(), at);
-        creates
+        self.restarts
+            .resize(self.restarts.len() + candidates.len(), event.at);
+        candidates
+            .into_iter()
+            .map(|index| {
+                self.slots[index].1.alive = true;
+                Delivery::new(
+                    Recipient::child(self.slots[index].0),
+                    ProxyCommand::Replace((self.build)(index)),
+                )
+            })
+            .collect()
     }
 
-    /// The restart emission for the slot at position `i`: a fresh behavior
-    /// from `build` (indexed by table position — the fleet index for a static
-    /// child), re-marked live, naming the slot's nonce.
-    fn restart_for(&mut self, i: usize) -> Create<B::Addr, C> {
-        self.slots[i].1.alive = true;
-        Create::Restart { nonce: self.slots[i].0, child: (self.build)(i) }
-    }
-
-    /// Remap the supervisor-inner reaction onto the supervisor's create-menu:
-    /// sends and `become_` pass through unchanged; every inner `Create::Birth`
-    /// is freshness-validated against the liveness table (every known nonce —
-    /// static or dynamic, alive or dead — is taken; a collision is a
-    /// programmer bug and panics), recorded at the next birth sequence, and
-    /// emitted as-is. An inner-emitted `Create::Restart` is a programmer bug
-    /// (restart decisions belong to this layer) and panics.
-    fn forward(
-        &mut self,
-        inner: Actions<B::Addr, B::Ph, B::Outbound, C>,
-    ) -> Actions<B::Addr, B::Ph, B::Outbound, C> {
-        for create in &inner.creates {
-            match create {
-                Create::Birth { nonce, .. } => {
-                    assert!(
-                        self.position(*nonce).is_none(),
-                        "a birth nonce collides with a known slot — creator-minted nonces must be fresh"
-                    );
-                    let seq = self.next_seq;
-                    self.next_seq =
-                        self.next_seq.checked_add(1).expect("birth sequence space exhausted");
-                    self.slots.push((*nonce, SlotRec { alive: true, seq }));
-                }
-                Create::Restart { .. } => {
-                    panic!("an inner behavior never emits Create::Restart — restart decisions belong to the Supervising layer");
-                }
-            }
+    fn wrap(&mut self, actions: Actions<B::Addr, B::Ph, B::Sends, C>) -> SupervisorActions<B, C> {
+        let born: Vec<_> = actions.creates.iter().map(|create| create.nonce).collect();
+        for create in &actions.creates {
+            assert!(
+                self.position(create.nonce).is_none(),
+                "a child birth nonce must be fresh"
+            );
+            self.slots.push((
+                create.nonce,
+                Slot {
+                    alive: true,
+                    sequence: self.next_sequence,
+                },
+            ));
+            self.next_sequence = self
+                .next_sequence
+                .checked_add(1)
+                .expect("birth sequence exhausted");
         }
-        inner
+        Actions {
+            sends: SendProduct {
+                inner: actions.sends,
+                own: SendProduct {
+                    inner: born
+                        .into_iter()
+                        .map(|nonce| Delivery::new(Recipient::service(), ObserveChild { nonce }))
+                        .collect(),
+                    own: Vec::new(),
+                },
+            },
+            creates: actions
+                .creates
+                .into_iter()
+                .map(|create| Create {
+                    nonce: create.nonce,
+                    child: Proxy::new(create.child),
+                })
+                .collect(),
+            become_: actions.become_,
+        }
     }
 }
 
-impl<B, C> Behavior for Supervising<B, C>
+impl<B, C, A, Ph, Sends> Behavior for Supervising<B, C>
 where
-    B: Behavior<Offspring = C> + Send,
-    B::Addr: Send,
-    <B::Addr as Address>::Nonce: Send,
+    A: Address + Send,
+    Sends: SendAlgebra,
+    B: Behavior<
+            Addr = A,
+            Ph = Ph,
+            Sends = Sends,
+            Offspring = C,
+            Effect = Actions<A, Ph, Sends, C>,
+            Done = Exit<A>,
+        > + Send,
+    B::Event: ChildEvent<B::Addr> + Send,
+    A::Nonce: From<u64> + Send,
     B::Msg: Send,
     C: Behavior<Ph = Never, Addr = B::Addr> + Send,
 {
-    type Addr = B::Addr;
+    type Addr = A;
     type Msg = B::Msg;
-    type Ph = B::Ph;
+    type Event = SupervisionEvent<B::Event, B::Addr>;
+    type Sends = SupervisorSends<A, Sends, C>;
+    type Ph = Ph;
     type Error = B::Error;
-    type Outbound = B::Outbound;
-    type Offspring = C;
-    async fn step(
-        &mut self,
-        ev: Envelope<B::Addr, B::Msg>,
-    ) -> Acted<B::Addr, B::Ph, B::Outbound, C, B::Error> {
-        match ev {
-            Envelope::ChildStopped { nonce, outcome, at } => {
-                let creates = self.on_child_stopped(nonce, &outcome, at);
-                Ok(Actions { sends: Vec::new(), creates, become_: Step::Continue })
-            }
-            other => {
-                let acted = self.inner.step(other).await?;
-                Ok(self.forward(acted))
+    type Offspring = Proxy<C>;
+    type Effect = Actions<A, Ph, Self::Sends, Proxy<C>>;
+    type Done = Exit<A>;
+
+    async fn init(&mut self) -> Result<Self::Effect, B::Error> {
+        let actions = self.inner.init().await?;
+        let mut actions = self.wrap(actions);
+        actions
+            .creates
+            .extend(self.slots[..self.configured_count].iter().enumerate().map(
+                |(index, (nonce, _))| Create {
+                    nonce: *nonce,
+                    child: Proxy::new((self.build)(index)),
+                },
+            ));
+        actions.sends.own.inner.extend(
+            self.slots[..self.configured_count]
+                .iter()
+                .map(|(nonce, _)| {
+                    Delivery::new(Recipient::service(), ObserveChild { nonce: *nonce })
+                }),
+        );
+        Ok(actions)
+    }
+
+    async fn step(&mut self, event: Self::Event) -> Result<Self::Effect, B::Error> {
+        match event {
+            SupervisionEvent::ChildStopped(event) => Ok(Actions {
+                sends: SendProduct {
+                    inner: B::Sends::empty(),
+                    own: SendProduct {
+                        inner: Vec::new(),
+                        own: self.replacements(&event),
+                    },
+                },
+                creates: Vec::new(),
+                become_: Step::Continue,
+            }),
+            SupervisionEvent::Inner(event) => {
+                let actions = self.inner.step(event).await?;
+                Ok(self.wrap(actions))
             }
         }
-    }
-
-    fn next_deadline(&self) -> Option<Instant> {
-        self.inner.next_deadline()
-    }
-
-    fn fleet(&self) -> Option<Fleet<Self::Addr, Self::Offspring>> {
-        Some(Fleet { n: self.n_static, nonces: self.nonces, build: self.build })
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::time::Duration;
-
-    use super::{RestartPolicy, Strategy, Supervising};
-    use crate::behavior::{Actions, Behavior, Create, Envelope};
-    use crate::{Base, Crash, Exit, FnState, MailAddr};
-    use crate::verdict::Never;
-    use tokio::time::Instant;
-
-    type Kid = Base<FnState<u32, MailAddr, u32, Never, Never, &'static str>, Never, Never, &'static str>;
-    // The inner's Offspring is the child menu C (the relaxed bound): it
-    // creates nothing at runtime, but the TYPE agrees with the fleet.
-    type Inner = Base<FnState<(), MailAddr, u64, Never, Kid, &'static str>, Never, Kid, &'static str>;
-
-    fn kid() -> Kid {
-        Base::from_fn(0_u32, |count: &mut u32, _from: MailAddr, n: u32| {
-            *count += n;
-            Ok::<Actions<MailAddr, Never, Never, Never>, &'static str>(Actions::cont())
-        })
-    }
-
-    fn inner() -> Inner {
-        Base::from_fn((), |(): &mut (), _from: MailAddr, _: u64| {
-            Ok::<Actions<MailAddr, Never, Never, Kid>, &'static str>(Actions::cont())
-        })
-    }
-
-    fn supervisor(budget: u32) -> Supervising<Inner, Kid> {
-        Supervising::new(
-            inner(),
-            |i| i as u64,
-            1,
-            |_| kid(),
-            Strategy::OneForOne,
-            RestartPolicy::Transient,
-            budget,
-            Duration::MAX,
-        )
-    }
-
-    fn stopped(nonce: u64, outcome: Result<Exit<MailAddr>, Crash>) -> Envelope<MailAddr, u64> {
-        Envelope::ChildStopped { nonce, outcome, at: Instant::now() }
-    }
-
-    #[tokio::test]
-    async fn supervising_restarts_an_abnormal_child_within_budget() {
-        let mut sup = supervisor(1);
-        let actions = sup.step(stopped(0, Err(Crash::Failed))).await.unwrap();
-        let [Create::Restart { nonce, .. }] = actions.creates.as_slice() else {
-            panic!("the restart emits exactly one tagged restart for the driver");
-        };
-        assert_eq!(*nonce, 0, "the restart names the dead slot's nonce");
-        assert!(sup.is_alive(0), "the abnormal child's slot is marked live again");
-        assert_eq!(sup.restarts_in_window(), 1, "the restart spent one budget unit");
-
-        let actions = sup.step(stopped(0, Err(Crash::Panicked))).await.unwrap();
-        assert_eq!(actions.creates.len(), 0, "no budget ⇒ no create emitted");
-        assert!(!sup.is_alive(0), "no budget ⇒ give up");
-    }
-
-    #[tokio::test]
-    async fn supervising_never_restarts_a_normal_child_stop() {
-        let mut sup = supervisor(5);
-        let actions = sup.step(stopped(0, Ok(Exit::Normal))).await.unwrap();
-        assert_eq!(actions.creates.len(), 0, "a normal stop emits no create");
-        assert!(!sup.is_alive(0), "a normal stop is final under transient");
-        assert_eq!(sup.restarts_in_window(), 0, "no budget spent on a normal stop");
-    }
-
-    #[tokio::test]
-    async fn fleet_reports_the_static_fleet() {
-        let sup = supervisor(5);
-        let Some(fleet) = sup.fleet() else {
-            panic!("Supervising declares its static fleet");
-        };
-        assert_eq!(fleet.n, 1);
-        assert_eq!((fleet.nonces)(0), 0, "the minter surfaces for driver-side address derivation");
-        let _ = (fleet.build)(0);
     }
 }

@@ -1,12 +1,6 @@
-# behaviorpass — the behavior algebra: the pure fold at the heart of the
-# pass family. A Behavior folds an Envelope into Actions (sends, creates,
-# become — all DATA, no I/O); every capability is a Behavior wrapping a
-# Behavior; the floor is a State coalgebra. Correctness gate: trace-equality
-# to the frozen reference at every lattice point (tests/oracle.rs). Perf
-# ruler: the space/throughput fitness of the Supervising children mechanism
-# (.auto/, examples/perf_supervising.rs) — representation optimization
-# BEHIND a stable API, never a deformation of it. Findings return to bombay
-# as CARDS, never direct commits.
+# behaviorpass — a pure fold from an associated event protocol to typed sends,
+# fresh creates, and become. Capabilities are derived behavior compositions;
+# the floor remains a State coalgebra.
 [workspace]
 resolver = "3"
 members = [

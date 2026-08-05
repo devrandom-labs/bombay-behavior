@@ -6,10 +6,9 @@ rust-version.workspace = true
 license.workspace = true
 description = "The golf target: bombay's capability machinery + the 24-point lattice generator (bombay card #298)."
 
-# The behavior algebra: the pure fold (Behavior/State/Actions/Envelope) and
-# the capability stack over it. The trace oracle (tests/oracle.rs) is the
-# correctness gate; the perf loop (.auto/) optimizes REPRESENTATIONS behind
-# this crate's stable public API.
+# The behavior algebra: receive an associated event protocol and produce only
+# typed sends, fresh creates, and become. Capability wrappers derive larger
+# protocols without runtime queries or erased messages.
 [dependencies]
 behaviorpass-macros = { version = "0.1.0", path = "../behaviorpass-macros" }
 

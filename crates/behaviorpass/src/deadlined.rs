@@ -1,104 +1,186 @@
-//! `Deadlined` — a `Behavior` that owns the single-shot deadline. It provides
-//! a wake time via [`Behavior::next_deadline`], reacts when [`Envelope::Deadline`]
-//! fires, and forwards every other event to the inner behavior.
+//! Pure one-shot time composition. Scheduling is an ordinary send to the
+//! interpreter-provided clock actor.
 
 use tokio::time::Instant;
 
-use crate::behavior::{Acted, Address, Become, Behavior, Envelope, Fleet, lift};
+use crate::behavior::{
+    Actions, Address, Become, Behavior, Delivery, Recipient, SendAlgebra, SendProduct, User,
+    UserEvent,
+};
+use crate::supervising::{ChildEvent, ChildStopped};
+use crate::watching::{PeerEvent, PeerStopped};
+use crate::{Exit, Step};
 
-/// The reaction a deadline fire runs: mutates the inner behavior, returns a
-/// verdict on the erased menu (`Never` — a deadline reaction cannot `Goto`).
-pub type DeadlineReaction<B> =
-    fn(&mut B) -> Result<Become<<B as Behavior>::Addr>, <B as Behavior>::Error>;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AtId(pub u64);
 
-/// A `Behavior` that adds a single-shot deadline over its inner behavior.
-pub struct Deadlined<B: Behavior> {
-    inner: B,
-    due: Option<Instant>,
-    on_deadline: DeadlineReaction<B>,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ScheduleAt {
+    pub id: AtId,
+    pub at: Instant,
 }
 
-impl<B: Behavior> Deadlined<B> {
-    /// Builds the layer with an initial deadline slot and its reaction.
-    pub fn new(inner: B, due: Option<Instant>, on_deadline: DeadlineReaction<B>) -> Self {
-        Self { inner, due, on_deadline }
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TimeReached {
+    pub id: AtId,
+    pub at: Instant,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AtEvent<E> {
+    Inner(E),
+    Reached(TimeReached),
+}
+
+pub trait TimeEvent: Sized {
+    fn time_reached(event: TimeReached) -> Option<Self>;
+}
+
+impl<E> TimeEvent for AtEvent<E> {
+    fn time_reached(event: TimeReached) -> Option<Self> {
+        Some(Self::Reached(event))
+    }
+}
+
+impl<E: UserEvent> UserEvent for AtEvent<E> {
+    type Addr = E::Addr;
+    type Message = E::Message;
+
+    fn user(from: Self::Addr, message: Self::Message) -> Self {
+        Self::Inner(E::user(from, message))
     }
 
-    /// The wrapped behavior (test observability).
+    fn into_user(self) -> Result<User<Self::Addr, Self::Message>, Self> {
+        match self {
+            Self::Inner(event) => event.into_user().map_err(Self::Inner),
+            reached @ Self::Reached(_) => Err(reached),
+        }
+    }
+}
+
+impl<E: PeerEvent<A>, A: Address> PeerEvent<A> for AtEvent<E> {
+    fn peer_stopped(event: PeerStopped<A>) -> Option<Self> {
+        E::peer_stopped(event).map(Self::Inner)
+    }
+}
+
+impl<E: ChildEvent<A>, A: Address> ChildEvent<A> for AtEvent<E> {
+    fn child_stopped(event: ChildStopped<A>) -> Option<Self> {
+        E::child_stopped(event).map(Self::Inner)
+    }
+}
+
+pub type AtReaction<B> =
+    fn(&mut B) -> Result<Become<<B as Behavior>::Addr>, <B as Behavior>::Error>;
+
+pub type AtSends<B> =
+    SendProduct<<B as Behavior>::Sends, Vec<Delivery<<B as Behavior>::Addr, ScheduleAt>>>;
+
+pub type AtActions<B> =
+    Actions<<B as Behavior>::Addr, <B as Behavior>::Ph, AtSends<B>, <B as Behavior>::Offspring>;
+
+pub struct At<B: Behavior> {
+    inner: B,
+    scheduled: Option<(AtId, Instant)>,
+    on_reached: AtReaction<B>,
+}
+
+impl<B: Behavior> At<B> {
+    #[must_use]
+    pub fn new(inner: B, at: Option<Instant>, on_reached: AtReaction<B>) -> Self {
+        Self {
+            inner,
+            scheduled: at.map(|at| (AtId(0), at)),
+            on_reached,
+        }
+    }
+
+    #[must_use]
     pub fn inner(&self) -> &B {
         &self.inner
     }
 }
 
-impl<B> Behavior for Deadlined<B>
+impl<B, A, Ph, Sends, New> Behavior for At<B>
 where
-    B: Behavior + Send,
-    B::Addr: Send,
-    <B::Addr as Address>::Nonce: Send,
+    A: Address + Send,
+    Sends: SendAlgebra,
+    B: Behavior<
+            Addr = A,
+            Ph = Ph,
+            Sends = Sends,
+            Offspring = New,
+            Effect = Actions<A, Ph, Sends, New>,
+            Done = Exit<A>,
+        > + Send,
+    B::Event: TimeEvent + Send,
     B::Msg: Send,
 {
-    type Addr = B::Addr;
+    type Addr = A;
     type Msg = B::Msg;
-    type Ph = B::Ph;
+    type Event = AtEvent<B::Event>;
+    type Sends = SendProduct<Sends, Vec<Delivery<A, ScheduleAt>>>;
+    type Ph = Ph;
     type Error = B::Error;
-    type Outbound = B::Outbound;
-    type Offspring = B::Offspring;
-    async fn step(
-        &mut self,
-        ev: Envelope<B::Addr, B::Msg>,
-    ) -> Acted<B::Addr, B::Ph, B::Outbound, B::Offspring, B::Error> {
-        match ev {
-            Envelope::Deadline => {
-                self.due = None; // fires once per armed value
-                Ok(lift((self.on_deadline)(&mut self.inner)?))
+    type Offspring = New;
+    type Effect = Actions<A, Ph, Self::Sends, New>;
+    type Done = Exit<A>;
+
+    async fn init(&mut self) -> Result<Self::Effect, B::Error> {
+        let actions = self.inner.init().await?;
+        let own = self.scheduled.map_or_else(Vec::new, |(id, at)| {
+            vec![Delivery::new(Recipient::service(), ScheduleAt { id, at })]
+        });
+        Ok(Self::wrap(actions, own))
+    }
+
+    async fn step(&mut self, event: Self::Event) -> Result<Self::Effect, B::Error> {
+        match event {
+            AtEvent::Reached(event) if self.scheduled == Some((event.id, event.at)) => {
+                self.scheduled = None;
+                let become_ = match (self.on_reached)(&mut self.inner)? {
+                    Step::Continue => Step::Continue,
+                    Step::Goto(never) => match never {},
+                    Step::Stop(exit) => Step::Stop(exit),
+                };
+                Ok(Actions {
+                    sends: SendProduct {
+                        inner: B::Sends::empty(),
+                        own: Vec::new(),
+                    },
+                    creates: Vec::new(),
+                    become_,
+                })
             }
-            other => self.inner.step(other).await,
+            AtEvent::Reached(event) => match B::Event::time_reached(event) {
+                Some(inner) => self
+                    .inner
+                    .step(inner)
+                    .await
+                    .map(|actions| Self::wrap(actions, Vec::new())),
+                None => Ok(Actions::cont()),
+            },
+            AtEvent::Inner(event) => self
+                .inner
+                .step(event)
+                .await
+                .map(|actions| Self::wrap(actions, Vec::new())),
         }
-    }
-
-    fn next_deadline(&self) -> Option<Instant> {
-        // The min-fold law (ADR-0030): the earliest of this slot and any inner
-        // deadline arms the one timer.
-        match (self.due, self.inner.next_deadline()) {
-            (Some(a), Some(b)) => Some(a.min(b)),
-            (a, b) => a.or(b),
-        }
-    }
-
-    fn fleet(&self) -> Option<Fleet<Self::Addr, Self::Offspring>> {
-        self.inner.fleet()
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use core::time::Duration;
-
-    use super::Deadlined;
-    use crate::behavior::{Actions, Behavior, Envelope};
-    use crate::{Base, Exit, MailAddr};
-    use crate::verdict::{Never, Step};
-    use tokio::time::Instant;
-
-    #[tokio::test]
-    async fn deadlined_routes_the_fire_forwards_the_rest_and_arms_once() {
-        let inner = Base::from_fn(Vec::<u64>::new(), |seen: &mut Vec<u64>, _from: MailAddr, id: u64| {
-            seen.push(id);
-            Ok::<Actions<MailAddr, Never, Never, Never>, &'static str>(Actions::cont())
-        });
-        let due = Instant::now() + Duration::from_secs(5);
-        let mut d = Deadlined::new(inner, Some(due), |_inner| Ok(Step::Stop(Exit::Normal)));
-
-        assert_eq!(d.next_deadline(), Some(due), "the declared slot arms the timer");
-        assert!(matches!(
-            d.step(Envelope::User { from: MailAddr(1), msg: 7 }).await.unwrap().become_,
-            Step::Continue
-        ));
-        assert_eq!(d.inner().state().state, vec![7], "non-deadline events forward inward");
-        assert!(
-            matches!(d.step(Envelope::Deadline).await.unwrap().become_, Step::Stop(Exit::Normal)),
-            "the reaction's verdict rides out",
-        );
-        assert_eq!(d.next_deadline(), None, "fires once — the slot clears after firing");
+impl<B: Behavior> At<B> {
+    fn wrap(
+        actions: Actions<B::Addr, B::Ph, B::Sends, B::Offspring>,
+        own: Vec<Delivery<B::Addr, ScheduleAt>>,
+    ) -> AtActions<B> {
+        Actions {
+            sends: SendProduct {
+                inner: actions.sends,
+                own,
+            },
+            creates: actions.creates,
+            become_: actions.become_,
+        }
     }
 }
