@@ -4,6 +4,8 @@ use std::collections::VecDeque;
 
 use behaviorpass::{Actions, Address, Behavior, Create, Exit, SendAlgebra, Step};
 
+pub mod model;
+
 pub struct Mailbox<E> {
     events: VecDeque<E>,
 }
