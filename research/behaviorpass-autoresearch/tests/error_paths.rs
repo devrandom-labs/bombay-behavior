@@ -13,6 +13,7 @@ use behaviorpass::{
     PeerStopped, RestartPolicy, Spec, State, Step, Strategy, Supervising, SupervisionEvent,
     TimeReached, User, UserEvent, WatchEvent, restart_all, restart_one, restart_rest,
 };
+use behaviorpass_autoresearch::{Mailbox, drive};
 use tokio::time::Instant;
 
 /// A controlled failure type: unit-like, `Send`, no display machinery.
@@ -204,4 +205,48 @@ fn restart_helpers_expose_the_documented_strategies() {
     assert_eq!(restart_one(), Strategy::OneForOne);
     assert_eq!(restart_all(), Strategy::OneForAll);
     assert_eq!(restart_rest(), Strategy::RestForOne);
+}
+
+/// A `Stashing` Deliver-arm error propagates and leaves the held buffer
+/// untouched (the errored message was the fresh one, not a replayed one).
+#[tokio::test]
+async fn stash_deliver_arm_error_keeps_held_intact() {
+    use behaviorpass::{Spec, StashRoute};
+
+    let mut behavior = Spec::new(FailingParent { fail: true }).stash(|message| match *message {
+        0 => StashRoute::Release,
+        1 => StashRoute::Stash,
+        _ => StashRoute::Deliver,
+    });
+    behavior.step(UserEvent::user(MailAddr(1), 1)).await.unwrap();
+    assert_eq!(behavior.behavior().held(), 1);
+
+    // Message 2 routes Deliver; the parent fails on the first handled
+    // message. The held message survives.
+    let result = behavior.step(UserEvent::user(MailAddr(2), 2)).await;
+    assert!(matches!(result, Err(Boom)));
+    assert_eq!(behavior.behavior().held(), 1);
+}
+
+/// The driver propagates the first controlled failure and leaves the
+/// unconsumed mailbox tail intact.
+#[tokio::test]
+async fn driver_propagates_errors_and_preserves_the_tail() {
+    let mut supervisor = Supervising::new(
+        Base::new(FailingParent { fail: true }),
+        |index| u64::try_from(index).unwrap(),
+        1,
+        child,
+        Strategy::OneForOne,
+        RestartPolicy::Permanent,
+        u32::MAX,
+        Duration::MAX,
+    );
+    let mut mailbox = Mailbox::new([
+        SupervisionEvent::Inner(UserEvent::user(MailAddr(9), 3)), // fails (first)
+        SupervisionEvent::Inner(UserEvent::user(MailAddr(9), 5)), // never reached
+    ]);
+    let result = drive(&mut supervisor, &mut mailbox).await;
+    assert!(matches!(result, Err(Boom)));
+    assert_eq!(mailbox.pending(), 1);
 }
