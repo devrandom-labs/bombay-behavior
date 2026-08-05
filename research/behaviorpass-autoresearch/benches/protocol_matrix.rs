@@ -36,8 +36,8 @@ fn main() {
     let score = base_rate.min(proxy_rate);
 
     println!("METRIC score={score:.0}");
-    println!("info base_transitions_per_s={base_rate:.0}");
-    println!("info proxy_transitions_per_s={proxy_rate:.0}");
+    println!("METRIC base_transitions_per_s={base_rate:.0}");
+    println!("METRIC proxy_transitions_per_s={proxy_rate:.0}");
 }
 
 async fn measure_base() -> f64 {
