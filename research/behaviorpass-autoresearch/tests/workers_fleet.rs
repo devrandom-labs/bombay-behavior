@@ -159,3 +159,42 @@ async fn supervised_mixed_fleet_routes_replacements_by_birth_sequence() {
     assert_eq!(narrow.sends.own.own.len(), 1);
     assert_eq!(narrow.sends.own.own[0].to.route(), Route::Child(2));
 }
+
+/// Three kinds: each kind's slots route to its own variant, exactly at the
+/// kind boundaries.
+#[tokio::test]
+async fn workers_three_kinds_boundaries_route_exactly() {
+    struct WorkerC;
+    impl State<u8, Never, Never> for WorkerC {
+        type Addr = MailAddr;
+        type Msg = u8;
+
+        fn handle(
+            &mut self,
+            from: MailAddr,
+            _message: u8,
+        ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, u8>>, Never, Never> {
+            Ok(Actions {
+                sends: vec![Delivery::new(Recipient::global(from), 3)],
+                creates: Vec::new(),
+                become_: Step::Continue,
+            })
+        }
+    }
+    fn worker_c(_index: usize) -> Base<WorkerC, u8> {
+        Base::new(WorkerC)
+    }
+
+    let (count, build) = workers![
+        (1, Base<WorkerA, u8>, worker_a),
+        (1, Base<WorkerB, u8>, worker_b),
+        (1, Base<WorkerC, u8>, worker_c)
+    ];
+    assert_eq!(count, 3);
+    let expected = [1, 2, 3];
+    for (index, tag) in expected.into_iter().enumerate() {
+        let mut worker = build(index);
+        let actions = worker.step(User::user(MailAddr(0), 7)).await.unwrap();
+        assert_eq!(actions.sends[0].message, tag);
+    }
+}

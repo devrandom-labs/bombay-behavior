@@ -81,6 +81,43 @@ proptest! {
             assert_no_drop_no_dup(machine.state(), machine.held(), consumed, index + 1);
         }
     }
+
+    /// A three-phase machine with a third goto class exercises the
+    /// mid-drain merge under longer phase chains.
+    #[test]
+    fn fsm_three_phase_never_drops_or_duplicates(ids in vec(any::<u8>(), 0..256)) {
+        #[derive(Clone, Copy, PartialEq)]
+        enum Phase3 {
+            A,
+            B,
+            C,
+        }
+        let mut machine = Fsm::new(Vec::new(), Phase3::A, |phase, seen: &mut Vec<u64>, id: &u64| {
+            Ok::<Move<Phase3>, Never>(match (phase, id % 5) {
+                (Phase3::A, 0) => Move::Goto(Phase3::B),
+                (Phase3::B, 2) => Move::Goto(Phase3::C),
+                (Phase3::C, 3) => Move::Goto(Phase3::A),
+                (_, 1) => Move::Defer,
+                (_, _) => {
+                    seen.push(*id);
+                    Move::Stay
+                }
+            })
+        });
+        let runtime = Builder::new_current_thread().enable_all().build().unwrap();
+        let mut consumed = 0_usize;
+        for (index, _) in ids.iter().enumerate() {
+            let id = u64::try_from(index).unwrap();
+            let goto_class = match machine.phase() {
+                Phase3::A => 0,
+                Phase3::B => 2,
+                Phase3::C => 3,
+            };
+            consumed += usize::from(id % 5 == goto_class);
+            runtime.block_on(machine.step(User::user(MailAddr(0), id))).unwrap();
+            assert_no_drop_no_dup(machine.state(), machine.held(), consumed, index + 1);
+        }
+    }
 }
 
 /// Exhaustive small enumeration: every sequence of up to four messages over
