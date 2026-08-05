@@ -1,0 +1,22 @@
+[package]
+name = "behaviorpass-autoresearch-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+behaviorpass = { path = "../../../crates/behaviorpass" }
+libfuzzer-sys = "0.4"
+tokio = { version = "1.47", features = ["rt", "time"] }
+
+[[bin]]
+name = "protocol_sequences"
+path = "fuzz_targets/protocol_sequences.rs"
+test = false
+doc = false
+bench = false
+
+[workspace]

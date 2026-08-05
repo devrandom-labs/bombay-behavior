@@ -1,0 +1,20 @@
+[package]
+name = "behaviorpass-autoresearch"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+behaviorpass = { path = "../../crates/behaviorpass" }
+proptest = "1.11"
+tokio = { version = "1.47", features = ["macros", "rt", "time", "test-util"] }
+
+[[bench]]
+name = "protocol_matrix"
+harness = false
+
+[lints.clippy]
+all = "deny"
+pedantic = "warn"
