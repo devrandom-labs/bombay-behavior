@@ -6,9 +6,9 @@ Scope: `research/behaviorpass-autoresearch/**` only. No production code touched.
 
 ## Summary
 
-The public behaviorpass algebra survived every attack lane. 72 tests across
+The public behaviorpass algebra survived every attack lane. 76 tests across
 deterministic/exhaustive, model-based property, fuzz, and performance
-workloads plus seven coverage-guided fuzz targets (6.7M+ executions); **no
+workloads plus eight coverage-guided fuzz targets (7.0M+ executions); **no
 invariant violation was found** — but the campaign produced one
 scaffold-test correction and a set of deterministic semantic observations
 (below) that pin the algebra's actual behavior.
@@ -29,9 +29,10 @@ scaffold-test correction and a set of deterministic semantic observations
 | `tests/driver_accumulation.rs` | 5 | driver SendProduct accumulation + monoid law + full-stack drive |
 | `tests/workers_fleet.rs` | 5 | `workers!` dispatch + 3-kind boundaries + RestForOne/OneForAll fleets |
 | `tests/error_paths.rs` | 9 | controlled-error surface (FSM drain, reactions, driver) |
+| `tests/two_buffer.rs` | 1 | two replay buffers (stash ∘ fsm) reconciliation property |
 | `src/model.rs` | — | shared independent supervision reference model |
 | `benches/protocol_matrix.rs` | — | supervise/fsm/stash/nested workloads |
-| `fuzz/fuzz_targets/` | 7 | protocol, supervision, fsm, birth, stash, stack, error sequences |
+| `fuzz/fuzz_targets/` | 8 | protocol, supervision, fsm, birth, stash, stack, error, two-buffer sequences |
 
 ## Explored combinations
 
@@ -61,6 +62,11 @@ scaffold-test correction and a set of deterministic semantic observations
   randomized full-stack property interleaves all four lanes; watch-of-watch
   peer routing; watch reaction re-invocation after Stop; nested At schedule
   collisions; FSM mid-drain reordering and mid-drain Stop.
+- **Two-buffer composition**: stash ∘ fsm under an At wrapper — the
+  reconciliation spans both replay buffers and the time lane stays inert
+  (property + fuzz target); the stash filter with a stopping inner matches
+  the delivered-prefix model; FSM self-`Goto` does not drain; the driver
+  preserves the stash buffer across a release-stop.
 - **Error paths**: every composition's controlled-error surface probed — FSM
   mid-drain error drops the unprocessed batch while `Move::Stop` preserves
   it (partial effects kept), supervision inner errors leave slots
@@ -158,6 +164,12 @@ tests, several are surprising enough to matter to algebra consumers:
     slot table untouched, the stash Deliver-arm error keeps held intact,
     and the driver returns the first failure with the mailbox tail
     unconsumed.
+17. **Two replay buffers (stash ∘ fsm) reconcile losslessly**: the
+    black-box accounting `recorded + fsm_held + stash_held +
+    goto_consumed == stepped` holds across random and coverage-guided
+    interleavings (256-case property + 247k fuzz executions) — no message
+    is dropped or duplicated across the two buffer layers, and the At time
+    lane above them never disturbs the accounting.
 
 ## Performance observations (`benches/protocol_matrix.rs`, M1 Pro, release)
 
@@ -193,9 +205,10 @@ tests, several are surprising enough to matter to algebra consumers:
 | `stash_sequences` | 301,250 | 91 s | ~3.3k | 174 → 228 |
 | `stack_sequences` | 623,552 | 91 s | ~6.8k | 228 → 357 |
 | `error_sequences` | 476,071 | 91 s | ~5.2k | 357 → 399 |
+| `two_buffer_sequences` | 246,541 | 91 s | ~2.7k | 399 → 478 |
 
-**~6.7M executions total; no crash, no counterexample in any target.**
-Corpus (399 files, 1.6M) committed under `fuzz/corpus/`.
+**~7.0M executions total; no crash, no counterexample in any target.**
+Corpus (478 files, 1.9M) committed under `fuzz/corpus/`.
 
 ## Exact command results
 
@@ -203,12 +216,12 @@ Corpus (399 files, 1.6M) committed under `fuzz/corpus/`.
   `METRIC score=50895765` (best kept 51.5 M t/s; score is a throughput
   ruler, variance is machine noise).
 - `.auto/checks.sh` → `CHECK OK` (production/docs/`.auto` untouched;
-  `cargo test --all-targets` 72 passed; clippy `-D warnings` clean; no
+  `cargo test --all-targets` 76 passed; clippy `-D warnings` clean; no
   fastpass in the research surface).
 - `.auto/measure.sh` → `METRIC score=...` plus 7 secondary metrics.
 - `cargo test --manifest-path research/behaviorpass-autoresearch/Cargo.toml --all-targets`
-  → 72 passed, 0 failed, 0 ignored.
+  → 76 passed, 0 failed, 0 ignored.
 - `cargo fuzz build` (all six targets, fuzz workspace) → clean.
-- Git: 16 focused commits (`c7f5bd58`, `00007460`, `1ea6a6d3`, `3eb839da`,
+- Git: 18 focused commits (`c7f5bd58`, `00007460`, `1ea6a6d3`, `3eb839da`,
   `fe060589`, `0179edf0`, `c953880e`, `4675ed90`, `b290539a`, `59df757a`,
   + report iterations).
