@@ -6,7 +6,7 @@ Scope: `research/behaviorpass-autoresearch/**` only. No production code touched.
 
 ## Summary
 
-The public behaviorpass algebra survived every attack lane. 76 tests across
+The public behaviorpass algebra survived every attack lane. 82 tests across
 deterministic/exhaustive, model-based property, fuzz, and performance
 workloads plus eight coverage-guided fuzz targets (7.0M+ executions); **no
 invariant violation was found** — but the campaign produced one
@@ -30,6 +30,7 @@ scaffold-test correction and a set of deterministic semantic observations
 | `tests/workers_fleet.rs` | 5 | `workers!` dispatch + 3-kind boundaries + RestForOne/OneForAll fleets |
 | `tests/error_paths.rs` | 9 | controlled-error surface (FSM drain, reactions, driver) |
 | `tests/two_buffer.rs` | 1 | two replay buffers (stash ∘ fsm) reconciliation property |
+| `tests/init_contract.rs` | 6 | double-init + step-before-init contract |
 | `src/model.rs` | — | shared independent supervision reference model |
 | `benches/protocol_matrix.rs` | — | supervise/fsm/stash/nested workloads |
 | `fuzz/fuzz_targets/` | 8 | protocol, supervision, fsm, birth, stash, stack, error, two-buffer sequences |
@@ -62,6 +63,9 @@ scaffold-test correction and a set of deterministic semantic observations
   randomized full-stack property interleaves all four lanes; watch-of-watch
   peer routing; watch reaction re-invocation after Stop; nested At schedule
   collisions; FSM mid-drain reordering and mid-drain Stop.
+- **Init contract**: double-initialization (At/Watch/Supervising re-emit
+  init effects; Proxy panics) and step-before-init (effects routed to
+  unborn generations) — direct-misuse boundaries pinned deterministically.
 - **Two-buffer composition**: stash ∘ fsm under an At wrapper — the
   reconciliation spans both replay buffers and the time lane stays inert
   (property + fuzz target); the stash filter with a stopping inner matches
@@ -170,6 +174,19 @@ tests, several are surprising enough to matter to algebra consumers:
     interleavings (256-case property + 247k fuzz executions) — no message
     is dropped or duplicated across the two buffer layers, and the At time
     lane above them never disturbs the accounting.
+18. **Wrapper `init` is not idempotent.** `Proxy::init` panics on a second
+    call ("a proxy initializes once"), but `At`, `Watching`, and
+    `Supervising` silently re-emit their init effects: duplicate schedule /
+    observe-peer sends, and a `Supervising` re-creates the entire
+    configured fleet at the same nonces with duplicate observe sends (the
+    slot table is untouched because the constructor pre-fills it).
+19. **Step-before-init routes to unborn generations.** `Proxy::step(Forward)`
+    targets `Child(0)` before the initial birth exists (the create arrives
+    only at a later `init`); `Supervising::step(ChildStopped)` emits a
+    replacement for a proxy that was never born — no panic, because the
+    slot table is constructor-prefilled. Both are unreachable through the
+    driver (which inits first) but are direct-misuse boundaries with an
+    asymmetric guard story.
 
 ## Performance observations (`benches/protocol_matrix.rs`, M1 Pro, release)
 
@@ -216,12 +233,12 @@ Corpus (478 files, 1.9M) committed under `fuzz/corpus/`.
   `METRIC score=50895765` (best kept 51.5 M t/s; score is a throughput
   ruler, variance is machine noise).
 - `.auto/checks.sh` → `CHECK OK` (production/docs/`.auto` untouched;
-  `cargo test --all-targets` 76 passed; clippy `-D warnings` clean; no
+  `cargo test --all-targets` 82 passed; clippy `-D warnings` clean; no
   fastpass in the research surface).
 - `.auto/measure.sh` → `METRIC score=...` plus 7 secondary metrics.
 - `cargo test --manifest-path research/behaviorpass-autoresearch/Cargo.toml --all-targets`
-  → 76 passed, 0 failed, 0 ignored.
+  → 82 passed, 0 failed, 0 ignored.
 - `cargo fuzz build` (all six targets, fuzz workspace) → clean.
-- Git: 18 focused commits (`c7f5bd58`, `00007460`, `1ea6a6d3`, `3eb839da`,
+- Git: 20 focused commits (`c7f5bd58`, `00007460`, `1ea6a6d3`, `3eb839da`,
   `fe060589`, `0179edf0`, `c953880e`, `4675ed90`, `b290539a`, `59df757a`,
   + report iterations).
