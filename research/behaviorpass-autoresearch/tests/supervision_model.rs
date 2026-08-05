@@ -332,3 +332,37 @@ async fn budget_recovers_after_stamps_age_out_of_the_window() {
     assert_eq!(recovered.sends.own.own.len(), 1);
     assert!(behavior.is_alive(0));
 }
+
+/// With a finite window, the restart-stamp vector stays bounded by the
+/// window's time density: 1000 deaths at 1ns spacing under a 50ns window
+/// never hold more than 51 stamps (memory bounded by window, not by total
+/// emitted events).
+#[tokio::test]
+async fn restart_stamps_stay_bounded_by_the_window() {
+    let base = Instant::now();
+    let mut behavior = supervisor(
+        Base::new(Parent),
+        Strategy::OneForOne,
+        RestartPolicy::Permanent,
+        u32::MAX,
+        Duration::from_nanos(50),
+        1,
+    );
+    behavior.init().await.unwrap();
+
+    let mut peak = 0_usize;
+    for offset in 0..1000 {
+        behavior
+            .step(SupervisionEvent::ChildStopped(ChildStopped {
+                nonce: 0,
+                outcome: Err(Crash::Failed),
+                at: base + Duration::from_nanos(offset),
+            }))
+            .await
+            .unwrap();
+        peak = peak.max(behavior.restarts_in_window());
+    }
+    // At 1ns spacing, at most 51 distinct stamps fit inside a 50ns window.
+    assert!(peak <= 51, "peak restart stamps {peak} exceed the window bound");
+    assert!(peak >= 51, "window never filled: peak {peak}");
+}
