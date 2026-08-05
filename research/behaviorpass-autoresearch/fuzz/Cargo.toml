@@ -19,4 +19,11 @@ test = false
 doc = false
 bench = false
 
+[[bin]]
+name = "supervision_sequences"
+path = "fuzz_targets/supervision_sequences.rs"
+test = false
+doc = false
+bench = false
+
 [workspace]
