@@ -1,42 +1,26 @@
 # behaviorpass
 
-The **behavior algebra**: the pure fold at the heart of the pass family —
-the pillar-pass sibling of `fastpass` (the mailbox) and `actorpass` (the
-runtime).
+`behaviorpass` is a pure actor algebra:
 
-A `Behavior` folds an `Envelope` into `Actions` — the messages sent, the
-actors created, the replacement verdict, all **data**, no I/O, no entropy,
-no clocks. Every capability (`Deadlined`, `Watching`, `Supervising`,
-`Stashing`) is a `Behavior` that wraps a `Behavior`; the floor is a
-[`State`] coalgebra (a state type with its transition, bound in one type)
-lifted by `Base`. Judged on three criteria only: the fold stays pure, the
-shape stays algebraic, and the ergonomics stay good.
-
-> Findings return to bombay as **cards**, never direct commits.
-
-## Layout
-
-| Path | Role |
-|---|---|
-| `crates/behaviorpass/src/behavior.rs` | The core: `Address`, `Behavior`, `State`, `Base`, `FnState`, `Envelope`, `Actions`, the `run` test driver |
-| `src/{deadlined,watching,supervising,stashing}.rs` | The capability wrappers (one file per capability) |
-| `src/fsm.rs` | `Fsm` — a thin helper built from core (not a capability) |
-| `tests/oracle.rs` | **The correctness gate**: trace-equality to the frozen reference at every lattice point |
-| `tests/adv_*.rs` | Adversarial/differential suites per capability |
-| `examples/p*.rs` | The 24-point lattice fixtures |
-| `examples/perf_supervising.rs` | The perf ruler: space + hot-path throughput of the `Supervising` children mechanism |
-| `.auto/` | The perf loop harness (frozen-surface diff gate + conformance gate + score) |
-
-## The perf loop
-
-Representation optimization **behind a stable API** — the loop reshapes
-`Supervising`'s internals (never the `Behavior` contract) against the
-frozen ruler:
-
-```bash
-cd ~/Code/devrandom/behaviorpass
-bash .auto/measure.sh   # METRIC score=<n> (space fitness) + info breakdown
-bash .auto/checks.sh    # CHECK OK = frozen surfaces + full suite green
+```text
+receive(event) -> sends* x creates* x become
 ```
 
-Dual-licensed MIT OR Apache-2.0.
+`Behavior` supplies associated `Event`, `Effect`, `Done`, and `Error`
+protocols. Sends remain statically typed. Independent protocols compose as
+`SendProduct` values; there is no `dyn`, `Any`, boxed message, global envelope,
+timer query, fleet query, or runtime side channel.
+
+Timing and observation are ordinary actor protocols. `At` sends `ScheduleAt`
+to a clock service and receives `TimeReached`; `Watching` sends `ObservePeer`
+to a monitor service and receives `PeerStopped`. The interpreter selects the
+service from the statically known message batch type.
+
+Supervision is derived with stable proxy actors. A replacement is a message to
+the proxy, and the proxy creates a fresh worker incarnation. `Create` therefore
+means only fresh birth.
+
+`Spec` is a DX-only typestate composer. Calls such as `.at(...)`, `.watch(...)`,
+`.stash(...)`, `.children(...)`, `.restart(...)`, `.when(...)`, and
+`.within(...)` directly build concrete behavior wrappers while hiding their
+nested protocol types.

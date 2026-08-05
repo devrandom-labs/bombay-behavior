@@ -6,8 +6,8 @@
 //! delegated `Behavior` impl, a per-variant range `crew_build`, and the
 //! total count. `Crew` is a TYPE — every worker stays its own actor.
 //!
-//! v1 scope: every worker kind shares the SAME protocol (`Msg`, `Addr`,
-//! `Error`, `Outbound`, `Offspring` — taken from the first kind). Mixed
+//! v1 scope: every worker kind shares the SAME protocol (`Event`, `Sends`,
+//! `Done`, `Error`, and `Offspring` — taken from the first kind). Mixed
 //! protocols need the hand-written sum (the `CrewMsg` widening is a
 //! deliberate, documented step — not this macro's job yet).
 
@@ -29,8 +29,15 @@ impl Parse for Spec {
         let content;
         syn::parenthesized!(content in input);
         let count: Expr = content.parse()?;
-        let Expr::Lit(syn::ExprLit { lit: syn::Lit::Int(count), .. }) = count else {
-            return Err(Error::new_spanned(count, "worker count must be a usize literal (ranges are computed at expansion)"));
+        let Expr::Lit(syn::ExprLit {
+            lit: syn::Lit::Int(count),
+            ..
+        }) = count
+        else {
+            return Err(Error::new_spanned(
+                count,
+                "worker count must be a usize literal (ranges are computed at expansion)",
+            ));
         };
         content.parse::<Token![,]>()?;
         let ty: Type = content.parse()?;
@@ -57,13 +64,20 @@ pub fn workers(input: TokenStream) -> TokenStream {
     let Specs(specs) = parse_macro_input!(input as Specs);
     let specs: Vec<Spec> = specs.into_iter().collect();
     if specs.is_empty() {
-        return Error::new(proc_macro2::Span::call_site(), "workers! needs at least one (count, Type, build_fn) spec")
-            .to_compile_error()
-            .into();
+        return Error::new(
+            proc_macro2::Span::call_site(),
+            "workers! needs at least one (count, Type, build_fn) spec",
+        )
+        .to_compile_error()
+        .into();
     }
 
     let first_ty = &specs[0].ty;
-    let variants: Vec<_> = specs.iter().enumerate().map(|(i, _)| format_ident!("V{i}")).collect();
+    let variants: Vec<_> = specs
+        .iter()
+        .enumerate()
+        .map(|(i, _)| format_ident!("V{i}"))
+        .collect();
     let variant_defs = specs.iter().zip(&variants).map(|(s, v)| {
         let ty = &s.ty;
         quote! { #v(#ty) }
@@ -83,9 +97,12 @@ pub fn workers(input: TokenStream) -> TokenStream {
     }
     let total = start;
 
-    let step_arms = variants.iter().map(|v| quote! { Crew::#v(b) => b.step(ev).await });
-    let deadline_arms = variants.iter().map(|v| quote! { Crew::#v(b) => b.next_deadline() });
-    let fleet_arms = variants.iter().map(|v| quote! { Crew::#v(b) => b.fleet() });
+    let step_arms = variants
+        .iter()
+        .map(|v| quote! { Crew::#v(b) => b.step(ev).await });
+    let init_arms = variants
+        .iter()
+        .map(|v| quote! { Crew::#v(b) => b.init().await });
 
     let out = quote! {
         {
@@ -97,31 +114,29 @@ pub fn workers(input: TokenStream) -> TokenStream {
             impl ::behaviorpass::Behavior for Crew {
                 type Addr = <#first_ty as ::behaviorpass::Behavior>::Addr;
                 type Msg = <#first_ty as ::behaviorpass::Behavior>::Msg;
+                type Event = <#first_ty as ::behaviorpass::Behavior>::Event;
+                type Sends = <#first_ty as ::behaviorpass::Behavior>::Sends;
                 type Ph = ::behaviorpass::Never;
                 type Error = <#first_ty as ::behaviorpass::Behavior>::Error;
-                type Outbound = <#first_ty as ::behaviorpass::Behavior>::Outbound;
                 type Offspring = <#first_ty as ::behaviorpass::Behavior>::Offspring;
+                type Effect = <#first_ty as ::behaviorpass::Behavior>::Effect;
+                type Done = <#first_ty as ::behaviorpass::Behavior>::Done;
+
+                async fn init(&mut self) -> ::core::result::Result<Self::Effect, Self::Error> {
+                    match self {
+                        #(#init_arms),*
+                    }
+                }
 
                 async fn step(
                     &mut self,
-                    ev: ::behaviorpass::Envelope<Self::Addr, Self::Msg>,
-                ) -> ::behaviorpass::Acted<Self::Addr, Self::Ph, Self::Outbound, Self::Offspring, Self::Error> {
+                    ev: Self::Event,
+                ) -> ::core::result::Result<Self::Effect, Self::Error> {
                     match self {
                         #(#step_arms),*
                     }
                 }
 
-                fn next_deadline(&self) -> ::core::option::Option<::tokio::time::Instant> {
-                    match self {
-                        #(#deadline_arms),*
-                    }
-                }
-
-                fn fleet(&self) -> ::core::option::Option<::behaviorpass::Fleet<Self::Addr, Self::Offspring>> {
-                    match self {
-                        #(#fleet_arms),*
-                    }
-                }
             }
 
             fn crew_build(i: usize) -> Crew {

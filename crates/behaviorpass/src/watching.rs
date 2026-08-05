@@ -1,134 +1,199 @@
-//! `Watching` — a `Behavior` that reacts to a watched peer's death. It handles
-//! [`Envelope::LinkDied`] with a policy and forwards every other event inward.
+//! Pure peer-observation composition over an ordinary monitor actor protocol.
 
-use crate::verdict::Step;
-use tokio::time::Instant;
+use crate::behavior::{
+    Actions, Address, Become, Behavior, Delivery, Recipient, SendAlgebra, SendProduct, User,
+    UserEvent,
+};
+use crate::deadlined::{TimeEvent, TimeReached};
+use crate::supervising::{ChildEvent, ChildStopped};
+use crate::{Crash, Exit, Step};
 
-use crate::behavior::{Acted, Address, Become, Behavior, Envelope, Fleet, lift};
-use crate::{Crash, Exit};
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ObservePeer<A> {
+    pub peer: A,
+}
 
-/// The reaction a link-death runs: the inner behavior plus the dead peer's
-/// address and the death OUTCOME (classification is the reaction's pure
-/// policy — never a driver-pre-digested flag), returning a verdict on the
-/// erased menu.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PeerStopped<A: Address> {
+    pub peer: A,
+    pub outcome: Result<Exit<A>, Crash>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WatchEvent<E, A: Address> {
+    Inner(E),
+    PeerStopped(PeerStopped<A>),
+}
+
+pub trait PeerEvent<A: Address>: Sized {
+    fn peer_stopped(event: PeerStopped<A>) -> Option<Self>;
+}
+
+impl<E, A: Address> PeerEvent<A> for WatchEvent<E, A> {
+    fn peer_stopped(event: PeerStopped<A>) -> Option<Self> {
+        Some(Self::PeerStopped(event))
+    }
+}
+
+impl<E: UserEvent, A: Address> UserEvent for WatchEvent<E, A> {
+    type Addr = E::Addr;
+    type Message = E::Message;
+
+    fn user(from: Self::Addr, message: Self::Message) -> Self {
+        Self::Inner(E::user(from, message))
+    }
+
+    fn into_user(self) -> Result<User<Self::Addr, Self::Message>, Self> {
+        match self {
+            Self::Inner(event) => event.into_user().map_err(Self::Inner),
+            stopped @ Self::PeerStopped(_) => Err(stopped),
+        }
+    }
+}
+
+impl<E: TimeEvent, A: Address> TimeEvent for WatchEvent<E, A> {
+    fn time_reached(event: TimeReached) -> Option<Self> {
+        E::time_reached(event).map(Self::Inner)
+    }
+}
+
+impl<E: ChildEvent<A>, A: Address> ChildEvent<A> for WatchEvent<E, A> {
+    fn child_stopped(event: ChildStopped<A>) -> Option<Self> {
+        E::child_stopped(event).map(Self::Inner)
+    }
+}
+
 pub type LinkReaction<B> = fn(
     &mut B,
     <B as Behavior>::Addr,
-    Result<Exit<<B as Behavior>::Addr>, Crash>,
+    &Result<Exit<<B as Behavior>::Addr>, Crash>,
 ) -> Result<Become<<B as Behavior>::Addr>, <B as Behavior>::Error>;
 
-/// A `Behavior` that reacts to a linked peer's death over its inner behavior.
+pub type WatchSends<B> = SendProduct<
+    <B as Behavior>::Sends,
+    Vec<Delivery<<B as Behavior>::Addr, ObservePeer<<B as Behavior>::Addr>>>,
+>;
+
+pub type WatchActions<B> =
+    Actions<<B as Behavior>::Addr, <B as Behavior>::Ph, WatchSends<B>, <B as Behavior>::Offspring>;
+
 pub struct Watching<B: Behavior> {
     inner: B,
-    on_link_died: LinkReaction<B>,
+    peer: B::Addr,
+    on_stopped: LinkReaction<B>,
 }
 
 impl<B: Behavior> Watching<B> {
-    /// Builds the layer over `inner` with a death policy.
-    pub fn new(inner: B, on_link_died: LinkReaction<B>) -> Self {
-        Self { inner, on_link_died }
+    #[must_use]
+    pub fn new(inner: B, peer: B::Addr, on_stopped: LinkReaction<B>) -> Self {
+        Self {
+            inner,
+            peer,
+            on_stopped,
+        }
     }
 
-    /// The wrapped behavior (test observability).
+    #[must_use]
     pub fn inner(&self) -> &B {
         &self.inner
     }
 }
 
-/// The default link-death policy: a peer's ABNORMAL death stops this actor
-/// with [`Exit::LinkDied`] carrying the dead peer (the death propagates down
-/// the link — OTP's link semantics); a normal death (the `{Normal,
-/// Collected}` subset) is absorbed.
+impl<B, A, Ph, Sends, New> Behavior for Watching<B>
+where
+    A: Address + Send,
+    Sends: SendAlgebra,
+    B: Behavior<
+            Addr = A,
+            Ph = Ph,
+            Sends = Sends,
+            Offspring = New,
+            Effect = Actions<A, Ph, Sends, New>,
+            Done = Exit<A>,
+        > + Send,
+    B::Event: PeerEvent<B::Addr> + Send,
+    B::Msg: Send,
+{
+    type Addr = A;
+    type Msg = B::Msg;
+    type Event = WatchEvent<B::Event, B::Addr>;
+    type Sends = SendProduct<Sends, Vec<Delivery<A, ObservePeer<A>>>>;
+    type Ph = Ph;
+    type Error = B::Error;
+    type Offspring = New;
+    type Effect = Actions<A, Ph, Self::Sends, New>;
+    type Done = Exit<A>;
+
+    async fn init(&mut self) -> Result<Self::Effect, B::Error> {
+        let actions = self.inner.init().await?;
+        Ok(Self::wrap(
+            actions,
+            vec![Delivery::new(
+                Recipient::service(),
+                ObservePeer { peer: self.peer },
+            )],
+        ))
+    }
+
+    async fn step(&mut self, event: Self::Event) -> Result<Self::Effect, B::Error> {
+        match event {
+            WatchEvent::PeerStopped(event) if event.peer == self.peer => {
+                let become_ = match (self.on_stopped)(&mut self.inner, event.peer, &event.outcome)?
+                {
+                    Step::Continue => Step::Continue,
+                    Step::Goto(never) => match never {},
+                    Step::Stop(exit) => Step::Stop(exit),
+                };
+                Ok(Actions {
+                    sends: Self::Sends::empty(),
+                    creates: Vec::new(),
+                    become_,
+                })
+            }
+            WatchEvent::PeerStopped(event) => match B::Event::peer_stopped(event) {
+                Some(inner) => self
+                    .inner
+                    .step(inner)
+                    .await
+                    .map(|actions| Self::wrap(actions, Vec::new())),
+                None => Ok(Actions::cont()),
+            },
+            WatchEvent::Inner(event) => self
+                .inner
+                .step(event)
+                .await
+                .map(|actions| Self::wrap(actions, Vec::new())),
+        }
+    }
+}
+
+impl<B: Behavior> Watching<B> {
+    fn wrap(
+        actions: Actions<B::Addr, B::Ph, B::Sends, B::Offspring>,
+        own: Vec<Delivery<B::Addr, ObservePeer<B::Addr>>>,
+    ) -> WatchActions<B> {
+        Actions {
+            sends: SendProduct {
+                inner: actions.sends,
+                own,
+            },
+            creates: actions.creates,
+            become_: actions.become_,
+        }
+    }
+}
+
+/// Stop when the monitor reports an abnormal outcome.
 ///
 /// # Errors
-/// Never — the propagation decision is pure; the signature matches the seat.
+/// This supplied policy never creates a controlled error.
 pub fn stop_on_abnormal_death<B: Behavior>(
-    _: &mut B,
+    _behavior: &mut B,
     peer: B::Addr,
-    outcome: Result<Exit<B::Addr>, Crash>,
+    outcome: &Result<Exit<B::Addr>, Crash>,
 ) -> Result<Become<B::Addr>, B::Error> {
     Ok(match outcome {
         Ok(Exit::Normal | Exit::Collected) => Step::Continue,
-        Ok(Exit::LinkDied(_)) | Err(_) => Step::Stop(Exit::LinkDied(peer)),
+        _ => Step::Stop(Exit::LinkDied(peer)),
     })
-}
-
-impl<B> Behavior for Watching<B>
-where
-    B: Behavior + Send,
-    B::Addr: Send,
-    <B::Addr as Address>::Nonce: Send,
-    B::Msg: Send,
-{
-    type Addr = B::Addr;
-    type Msg = B::Msg;
-    type Ph = B::Ph;
-    type Error = B::Error;
-    type Outbound = B::Outbound;
-    type Offspring = B::Offspring;
-    async fn step(
-        &mut self,
-        ev: Envelope<B::Addr, B::Msg>,
-    ) -> Acted<B::Addr, B::Ph, B::Outbound, B::Offspring, B::Error> {
-        match ev {
-            Envelope::LinkDied { peer, outcome } => {
-                Ok(lift((self.on_link_died)(&mut self.inner, peer, outcome)?))
-            }
-            other => self.inner.step(other).await,
-        }
-    }
-
-    fn next_deadline(&self) -> Option<Instant> {
-        self.inner.next_deadline()
-    }
-
-    fn fleet(&self) -> Option<Fleet<Self::Addr, Self::Offspring>> {
-        self.inner.fleet()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{Watching, stop_on_abnormal_death};
-    use crate::behavior::{Actions, Behavior, Envelope};
-    use crate::{Base, Crash, Exit, FnState, MailAddr};
-    use crate::verdict::{Never, Step};
-
-    type Rec = Base<FnState<Vec<u64>, MailAddr, u64, Never, Never, &'static str>, Never, Never, &'static str>;
-
-    fn recorder() -> Rec {
-        Base::from_fn(Vec::<u64>::new(), |seen: &mut Vec<u64>, _from: MailAddr, id: u64| {
-            seen.push(id);
-            Ok::<Actions<MailAddr, Never, Never, Never>, &'static str>(Actions::cont())
-        })
-    }
-
-    #[tokio::test]
-    async fn watching_propagates_abnormal_death_and_absorbs_normal() {
-        let mut w = Watching::new(recorder(), stop_on_abnormal_death);
-        assert!(
-            matches!(
-                w.step(Envelope::LinkDied { peer: MailAddr(42), outcome: Err(Crash::Failed) })
-                    .await
-                    .unwrap()
-                    .become_,
-                Step::Stop(Exit::LinkDied(MailAddr(42)))
-            ),
-            "an abnormal linked death propagates with the carried reason",
-        );
-
-        let mut w2 = Watching::new(recorder(), stop_on_abnormal_death);
-        assert!(matches!(
-            w2.step(Envelope::LinkDied { peer: MailAddr(42), outcome: Ok(Exit::Normal) })
-                .await
-                .unwrap()
-                .become_,
-            Step::Continue
-        ));
-        assert!(matches!(
-            w2.step(Envelope::User { from: MailAddr(1), msg: 2 }).await.unwrap().become_,
-            Step::Continue
-        ));
-        assert_eq!(w2.inner().state().state, vec![2], "a normal death is absorbed; user forwards");
-    }
 }

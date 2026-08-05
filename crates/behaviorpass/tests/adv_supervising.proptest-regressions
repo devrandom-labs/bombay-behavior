@@ -1,8 +1,0 @@
-# Seeds for failure cases proptest has generated in the past. It is
-# automatically read and these particular cases re-run before any
-# novel cases are generated.
-#
-# It is recommended to check this file in to source control so that
-# everyone who runs the test benefits from these saved cases.
-cc c780fd6796d99467a927009577fc0e55ccf6b0909c75f6e145b9171a0417efbb # shrinks to n_children = 1, budget = 1, ops = [Stop { idx: 0, abnormal: true }]
-cc 9ec8f25019d96c90475395d6b5ad14ba3dea42883cda1fbb237246d6f6c0383d # shrinks to n_children = 1, budget = 1, ops = [Stop { idx: 0, abnormal: true }]
