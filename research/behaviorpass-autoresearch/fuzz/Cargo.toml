@@ -40,4 +40,11 @@ test = false
 doc = false
 bench = false
 
+[[bin]]
+name = "stash_sequences"
+path = "fuzz_targets/stash_sequences.rs"
+test = false
+doc = false
+bench = false
+
 [workspace]
