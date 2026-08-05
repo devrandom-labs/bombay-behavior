@@ -57,7 +57,10 @@
             toolchain
             pkgs.cargo-edit
             pkgs.cargo-expand
+            pkgs.cargo-fuzz
+            pkgs.cargo-llvm-cov
             pkgs.cargo-nextest
+            pkgs.hyperfine
           ];
         };
 
