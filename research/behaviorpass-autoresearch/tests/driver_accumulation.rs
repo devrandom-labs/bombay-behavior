@@ -296,3 +296,44 @@ async fn driver_full_stack_mixed_lanes_stop_on_peer_death() {
     // Observe-child sends emitted once at init.
     assert_eq!(trace.sends.own.inner.len(), 2);
 }
+
+/// `Base::from_fn` (the functional state adapter) folds exactly like a
+/// hand-written `State`: same effect algebra, same driver accumulation.
+#[tokio::test]
+#[allow(clippy::type_complexity, reason = "the FnState adapter's full generic surface")]
+async fn fn_state_adapter_drives_like_a_base() {
+    use behaviorpass::Base;
+
+    #[allow(clippy::unnecessary_wraps, reason = "the Transition signature requires Acted")]
+    fn handle(
+        seen: &mut Vec<u64>,
+        _from: MailAddr,
+        message: u64,
+    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, u64>>, Never, Never> {
+        seen.push(message);
+        Ok(Actions {
+            sends: vec![Delivery::new(Recipient::global(MailAddr(0)), message)],
+            creates: Vec::new(),
+            become_: if message == 9 {
+                Step::Stop(Exit::Normal)
+            } else {
+                Step::Continue
+            },
+        })
+    }
+    let mut behavior: Base<behaviorpass::FnState<Vec<u64>, MailAddr, u64, u64, Never, Never>, u64, Never, Never> =
+        Base::from_fn(Vec::new(), handle);
+    let mut mailbox = Mailbox::new([
+        User::user(MailAddr(1), 3),
+        User::user(MailAddr(2), 9),
+        User::user(MailAddr(3), 5),
+    ]);
+    let trace = drive(&mut behavior, &mut mailbox).await.unwrap();
+
+    assert_eq!(trace.transitions, 3);
+    assert_eq!(trace.pending, 1);
+    assert_eq!(trace.exit, Some(Exit::Normal));
+    let echoes: Vec<u64> = trace.sends.iter().map(|d| d.message).collect();
+    assert_eq!(echoes, [3, 9]);
+    assert_eq!(behavior.state().state, [3, 9]);
+}

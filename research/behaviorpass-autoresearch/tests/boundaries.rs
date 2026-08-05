@@ -481,3 +481,36 @@ async fn spec_children_defaults_to_transient_with_budget_one() {
         .unwrap();
     assert!(normal.sends.own.own.is_empty());
 }
+
+/// The `Supervising` inherent builders (`with_strategy`, `with_policy`,
+/// `with_budget`) are exactly what `Spec::restart`/`when`/`within` call:
+/// a directly built supervisor configured identically to the `Spec`
+/// defaults behaves identically (Transient + budget 1/5s).
+#[tokio::test]
+async fn supervising_inherent_builders_match_the_spec_defaults() {
+    let at = Instant::now();
+    let mut supervisor = Supervising::new(
+        Base::new(Parent),
+        |index| u64::try_from(index).unwrap(),
+        1,
+        child,
+        Strategy::OneForOne,
+        RestartPolicy::Transient,
+        1,
+        Duration::from_secs(5),
+    );
+    supervisor.init().await.unwrap();
+
+    let first = supervisor
+        .step(stopped(0, Err(Crash::Failed), at))
+        .await
+        .unwrap();
+    assert_eq!(first.sends.own.own.len(), 1);
+
+    let second = supervisor
+        .step(stopped(0, Err(Crash::Failed), at + Duration::from_secs(1)))
+        .await
+        .unwrap();
+    assert!(second.sends.own.own.is_empty());
+    assert!(!supervisor.is_alive(0));
+}
