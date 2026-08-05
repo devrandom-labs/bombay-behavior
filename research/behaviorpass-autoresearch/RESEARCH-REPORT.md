@@ -6,7 +6,7 @@ Scope: `research/behaviorpass-autoresearch/**` only. No production code touched.
 
 ## Summary
 
-The public behaviorpass algebra survived every attack lane. 56 tests across
+The public behaviorpass algebra survived every attack lane. 63 tests across
 deterministic/exhaustive, model-based property, fuzz, and performance
 workloads plus six coverage-guided fuzz targets (6.2M+ executions); **no
 invariant violation was found** — but the campaign produced one
@@ -18,7 +18,7 @@ scaffold-test correction and a set of deterministic semantic observations
 | File | Count | Lane |
 |---|---|---|
 | `tests/core.rs` | 10 | deterministic (1 scaffold test corrected, see Finding 1) |
-| `tests/boundaries.rs` | 13 | deterministic boundary/edge (incl. Spec defaults) |
+| `tests/boundaries.rs` | 14 | deterministic boundary/edge (incl. Spec defaults, inherent builders) |
 | `tests/compositions.rs` | 8 | deep wrapper permutations + routing |
 | `tests/cross_lane.rs` | 5 | supervised-stack lane isolation + full-stack randomized property |
 | `tests/properties.rs` | 4 | model-based properties (scaffold) |
@@ -26,7 +26,8 @@ scaffold-test correction and a set of deterministic semantic observations
 | `tests/supervision_model.rs` | 4 | model properties (incl. births × window × budget) + boundedness |
 | `tests/exhaustive.rs` | 1 | exhaustive small-state enumeration |
 | `tests/stash_properties.rs` | 3 | filter-model property + exhaustive + driver |
-| `tests/workers_fleet.rs` | 4 | `workers!` sum/variant dispatch + 3-kind boundaries + supervised fleet |
+| `tests/driver_accumulation.rs` | 5 | driver SendProduct accumulation + monoid law + full-stack drive |
+| `tests/workers_fleet.rs` | 5 | `workers!` dispatch + 3-kind boundaries + RestForOne/OneForAll fleets |
 | `src/model.rs` | — | shared independent supervision reference model |
 | `benches/protocol_matrix.rs` | — | supervise/fsm/stash/nested workloads |
 | `fuzz/fuzz_targets/` | 6 | protocol, supervision, fsm, birth, stash, stack sequences |
@@ -59,6 +60,12 @@ scaffold-test correction and a set of deterministic semantic observations
   randomized full-stack property interleaves all four lanes; watch-of-watch
   peer routing; watch reaction re-invocation after Stop; nested At schedule
   collisions; FSM mid-drain reordering and mid-drain Stop.
+- **Driver-level**: lossless `SendProduct` accumulation across a driven
+  supervised trace (echo, replacement, observe lanes each keep their own
+  order), the `SendAlgebra` monoid law (identity + associativity at `Vec`
+  and `SendProduct` levels), `FnState`/`Base::from_fn` folding, and the
+  full four-layer stack driven through the mailbox with a peer-death
+  `Stop` leaving the tail unconsumed.
 - **Fuzz × model**: supervision budget/window reference model, supervision
   birth+death slot-table model, FSM and stash black-box no-drop/no-dup
   reconciliation, and a capstone four-layer-stack target with per-lane
@@ -170,12 +177,12 @@ Corpus (357 files, 1.4M) committed under `fuzz/corpus/`.
   `METRIC score=50895765` (best kept 51.5 M t/s; score is a throughput
   ruler, variance is machine noise).
 - `.auto/checks.sh` → `CHECK OK` (production/docs/`.auto` untouched;
-  `cargo test --all-targets` 56 passed; clippy `-D warnings` clean; no
+  `cargo test --all-targets` 63 passed; clippy `-D warnings` clean; no
   fastpass in the research surface).
 - `.auto/measure.sh` → `METRIC score=...` plus 7 secondary metrics.
 - `cargo test --manifest-path research/behaviorpass-autoresearch/Cargo.toml --all-targets`
-  → 56 passed, 0 failed, 0 ignored.
+  → 63 passed, 0 failed, 0 ignored.
 - `cargo fuzz build` (all six targets, fuzz workspace) → clean.
-- Git: 13 focused commits (`c7f5bd58`, `00007460`, `1ea6a6d3`, `3eb839da`,
+- Git: 14 focused commits (`c7f5bd58`, `00007460`, `1ea6a6d3`, `3eb839da`,
   `fe060589`, `0179edf0`, `c953880e`, `4675ed90`, `b290539a`, `59df757a`,
   + report iterations).
