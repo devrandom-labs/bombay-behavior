@@ -33,4 +33,11 @@ test = false
 doc = false
 bench = false
 
+[[bin]]
+name = "birth_sequences"
+path = "fuzz_targets/birth_sequences.rs"
+test = false
+doc = false
+bench = false
+
 [workspace]
