@@ -6,9 +6,9 @@ Scope: `research/behaviorpass-autoresearch/**` only. No production code touched.
 
 ## Summary
 
-The public behaviorpass algebra survived every attack lane. 63 tests across
+The public behaviorpass algebra survived every attack lane. 72 tests across
 deterministic/exhaustive, model-based property, fuzz, and performance
-workloads plus six coverage-guided fuzz targets (6.2M+ executions); **no
+workloads plus seven coverage-guided fuzz targets (6.7M+ executions); **no
 invariant violation was found** — but the campaign produced one
 scaffold-test correction and a set of deterministic semantic observations
 (below) that pin the algebra's actual behavior.
@@ -28,9 +28,10 @@ scaffold-test correction and a set of deterministic semantic observations
 | `tests/stash_properties.rs` | 3 | filter-model property + exhaustive + driver |
 | `tests/driver_accumulation.rs` | 5 | driver SendProduct accumulation + monoid law + full-stack drive |
 | `tests/workers_fleet.rs` | 5 | `workers!` dispatch + 3-kind boundaries + RestForOne/OneForAll fleets |
+| `tests/error_paths.rs` | 9 | controlled-error surface (FSM drain, reactions, driver) |
 | `src/model.rs` | — | shared independent supervision reference model |
 | `benches/protocol_matrix.rs` | — | supervise/fsm/stash/nested workloads |
-| `fuzz/fuzz_targets/` | 6 | protocol, supervision, fsm, birth, stash, stack sequences |
+| `fuzz/fuzz_targets/` | 7 | protocol, supervision, fsm, birth, stash, stack, error sequences |
 
 ## Explored combinations
 
@@ -60,6 +61,13 @@ scaffold-test correction and a set of deterministic semantic observations
   randomized full-stack property interleaves all four lanes; watch-of-watch
   peer routing; watch reaction re-invocation after Stop; nested At schedule
   collisions; FSM mid-drain reordering and mid-drain Stop.
+- **Error paths**: every composition's controlled-error surface probed — FSM
+  mid-drain error drops the unprocessed batch while `Move::Stop` preserves
+  it (partial effects kept), supervision inner errors leave slots
+  untouched, failing `At`/watch reactions propagate and consume their
+  one-shot triggers, the driver returns the first failure with the tail
+  unconsumed. The supervise bench asserts its replacement invariant per
+  measured step (performance × correctness).
 - **Driver-level**: lossless `SendProduct` accumulation across a driven
   supervised trace (echo, replacement, observe lanes each keep their own
   order), the `SendAlgebra` monoid law (identity + associativity at `Vec`
@@ -133,6 +141,23 @@ tests, several are surprising enough to matter to algebra consumers:
     interleavings of user/peer/time/child events through
     supervision ∘ at ∘ watch ∘ stash keep every effect in its own product
     lane (624k fuzz executions, no leakage).
+15. **A controlled error mid-`Fsm::drain` drops the unprocessed held
+    batch**, while `Move::Stop` mid-drain preserves it (`held.extend(batch)`
+    runs only on the Stop path; the `?` on the error path discards the
+    local batch). The fold's state keeps the effects of messages processed
+    before the error; a resuming consumer finds the buffer emptied.
+    `Stashing::drain_into` has the same code shape, but its inner-step arm
+    is unreachable under a pure route (finding 1), so only the FSM can hit
+    it. Pinned by three deterministic tests (batch drop, partial effects,
+    direct-step safety) and an error-path fuzz target (476k executions of
+    the buffer invariants: an errored step never grows `held`, an ok step
+    grows it by at most one, no duplicate delivery, no panic).
+16. **Controlled errors propagate cleanly through every composition**: a
+    failing `At` reaction consumes the one-shot timer (cannot re-fire), a
+    failing watch reaction propagates, supervision inner errors leave the
+    slot table untouched, the stash Deliver-arm error keeps held intact,
+    and the driver returns the first failure with the mailbox tail
+    unconsumed.
 
 ## Performance observations (`benches/protocol_matrix.rs`, M1 Pro, release)
 
@@ -167,9 +192,10 @@ tests, several are surprising enough to matter to algebra consumers:
 | `birth_sequences` | 258,961 | 91 s | ~2.8k | 123 → 174 |
 | `stash_sequences` | 301,250 | 91 s | ~3.3k | 174 → 228 |
 | `stack_sequences` | 623,552 | 91 s | ~6.8k | 228 → 357 |
+| `error_sequences` | 476,071 | 91 s | ~5.2k | 357 → 399 |
 
-**~6.2M executions total; no crash, no counterexample in any target.**
-Corpus (357 files, 1.4M) committed under `fuzz/corpus/`.
+**~6.7M executions total; no crash, no counterexample in any target.**
+Corpus (399 files, 1.6M) committed under `fuzz/corpus/`.
 
 ## Exact command results
 
@@ -177,12 +203,12 @@ Corpus (357 files, 1.4M) committed under `fuzz/corpus/`.
   `METRIC score=50895765` (best kept 51.5 M t/s; score is a throughput
   ruler, variance is machine noise).
 - `.auto/checks.sh` → `CHECK OK` (production/docs/`.auto` untouched;
-  `cargo test --all-targets` 63 passed; clippy `-D warnings` clean; no
+  `cargo test --all-targets` 72 passed; clippy `-D warnings` clean; no
   fastpass in the research surface).
 - `.auto/measure.sh` → `METRIC score=...` plus 7 secondary metrics.
 - `cargo test --manifest-path research/behaviorpass-autoresearch/Cargo.toml --all-targets`
-  → 63 passed, 0 failed, 0 ignored.
+  → 72 passed, 0 failed, 0 ignored.
 - `cargo fuzz build` (all six targets, fuzz workspace) → clean.
-- Git: 14 focused commits (`c7f5bd58`, `00007460`, `1ea6a6d3`, `3eb839da`,
+- Git: 16 focused commits (`c7f5bd58`, `00007460`, `1ea6a6d3`, `3eb839da`,
   `fe060589`, `0179edf0`, `c953880e`, `4675ed90`, `b290539a`, `59df757a`,
   + report iterations).

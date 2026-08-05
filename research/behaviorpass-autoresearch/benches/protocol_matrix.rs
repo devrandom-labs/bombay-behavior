@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use behaviorpass::{
     Acted, Actions, AtEvent, Base, Behavior, ChildStopped, Crash, Delivery, Fsm, MailAddr, Move,
-    Never, Proxy, ProxyCommand, RestartPolicy, Spec, StashRoute, State, Step, Strategy,
+    Never, Proxy, ProxyCommand, RestartPolicy, Route, Spec, StashRoute, State, Step, Strategy,
     Supervising, SupervisionEvent, User, UserEvent, WatchEvent, stop_on_abnormal_death,
 };
 use tokio::runtime::Builder;
@@ -126,16 +126,20 @@ async fn measure_supervise(fleet: usize) -> f64 {
     let started = Instant::now();
     for index in 0..SHORT_ITERATIONS {
         let nonce = u64::try_from(index % fleet).unwrap();
-        black_box(
-            behavior
-                .step(SupervisionEvent::ChildStopped(ChildStopped {
-                    nonce,
-                    outcome: Err(Crash::Failed),
-                    at,
-                }))
-                .await
-                .unwrap(),
-        );
+        let actions = behavior
+            .step(SupervisionEvent::ChildStopped(ChildStopped {
+                nonce,
+                outcome: Err(Crash::Failed),
+                at,
+            }))
+            .await
+            .unwrap();
+        // Asserting stress workload: every death yields exactly one
+        // replacement routed to the dead slot (OneForOne, Permanent,
+        // unbounded budget) — correctness checked while measuring.
+        assert_eq!(actions.sends.own.own.len(), 1);
+        assert_eq!(actions.sends.own.own[0].to.route(), Route::Child(nonce));
+        black_box(actions);
     }
     println!("info supervise_{fleet}_restarts_after={}", behavior.restarts_in_window());
     rate(SHORT_ITERATIONS, started.elapsed())
