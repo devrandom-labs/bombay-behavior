@@ -6,7 +6,7 @@ Scope: `research/behaviorpass-autoresearch/**` only. No production code touched.
 
 ## Summary
 
-The public behaviorpass algebra survived every attack lane. 50 tests across
+The public behaviorpass algebra survived every attack lane. 52 tests across
 deterministic/exhaustive, model-based property, fuzz, and performance
 workloads plus five coverage-guided fuzz targets (7.6M+ executions); **no
 invariant violation was found** — but the campaign produced one
@@ -20,10 +20,10 @@ scaffold-test correction and a set of deterministic semantic observations
 | `tests/core.rs` | 10 | deterministic (1 scaffold test corrected, see Finding 1) |
 | `tests/boundaries.rs` | 12 | deterministic boundary/edge (new) |
 | `tests/compositions.rs` | 8 | deep wrapper permutations + routing |
-| `tests/cross_lane.rs` | 3 | supervised-stack lane isolation (user/child/time lanes) |
+| `tests/cross_lane.rs` | 4 | supervised-stack lane isolation (user/child/time lanes) + full 4-layer stack |
 | `tests/properties.rs` | 4 | model-based properties (scaffold) |
 | `tests/fsm_properties.rs` | 3 | FSM no-drop/no-dup property + exhaustive + Stop mid-drain |
-| `tests/supervision_model.rs` | 3 | model-based properties + deterministic budget recovery |
+| `tests/supervision_model.rs` | 4 | model-based properties + budget recovery + window boundedness |
 | `tests/exhaustive.rs` | 1 | exhaustive small-state enumeration |
 | `tests/stash_properties.rs` | 3 | filter-model property + exhaustive + driver |
 | `tests/workers_fleet.rs` | 3 | `workers!` sum/variant dispatch + supervised fleet |
@@ -39,8 +39,8 @@ scaffold-test correction and a set of deterministic semantic observations
   death redelivery, duplicate configured nonces, empty fleets, unknown
   nonces, window-edge inclusivity, budget recovery after stamp aging,
   future-stamp survival.
-- **Exhaustive**: every sequence of ≤ 3 child-stopped events over a 2-slot
-  fleet (alphabet 16 → 4,369 sequences) × 3 strategies × 3 policies × 3
+- **Exhaustive**: every sequence of ≤`tests/cross_lane.rs` | 4 | supervised-stack lane isolation (incl. full 4-layer stack)child-stopped events over a 2-slot
+  fleet (alphabet 16 → 4,369 sequences) ×`tests/cross_lane.rs` | 4 | supervised-stack lane isolation (incl. full 4-layer stack)strategies ×`tests/cross_lane.rs` | 4 | supervised-stack lane isolation (incl. full 4-layer stack)policies × 3
   budgets × 2 windows = **236k model-vs-impl comparisons**; every stash
   sequence of ≤ 4 messages over Release/Deliver/Stash classes (121
   sequences) vs the filter model; every FSM sequence of ≤ 4 messages over
@@ -50,9 +50,10 @@ scaffold-test correction and a set of deterministic semantic observations
   reconciliation, 512-case scaffold properties.
 - **Composition**: all 6 orderings of {at, watch, at} init-protocol nesting;
   stash adds no init sends; environment lanes (Reached/PeerStopped) bypass a
-  stash buffer while user messages are intercepted; supervision over stash
-  and supervision over at — user/child/time lanes never leak into each
-  other (observable via the parent's echo lane and product-lane sends);
+  stash buffer while user messages are intercepted; supervision over stash,
+  supervision over at, and the full four-layer stack (supervision ∘ at ∘
+  watch ∘ stash) — user/child/time lanes never leak into each other
+  (observable via the parent's echo lane and product-lane sends);
   watch-of-watch peer routing; watch reaction re-invocation after Stop;
   nested At schedule collisions; FSM mid-drain reordering and mid-drain
   Stop.
@@ -150,11 +151,11 @@ Corpus (228 files, 912K) committed under `fuzz/corpus/`.
   `METRIC score=50895765` (best kept 51.5 M t/s; score is a throughput
   ruler, variance is machine noise).
 - `.auto/checks.sh` → `CHECK OK` (production/docs/`.auto` untouched;
-  `cargo test --all-targets` 50 passed; clippy `-D warnings` clean; no
+  `cargo test --all-targets` 52 passed; clippy `-D warnings` clean; no
   fastpass in the research surface).
 - `.auto/measure.sh` → `METRIC score=...` plus 7 secondary metrics.
 - `cargo test --manifest-path research/behaviorpass-autoresearch/Cargo.toml --all-targets`
-  → 50 passed, 0 failed, 0 ignored.
+  → 52 passed, 0 failed, 0 ignored.
 - `cargo fuzz build` (all five targets, fuzz workspace) → clean.
-- Git: 10 focused commits (`c7f5bd58`, `00007460`, `1ea6a6d3`, `3eb839da`,
+- Git: 11 focused commits (`c7f5bd58`, `00007460`, `1ea6a6d3`, `3eb839da`,
   `fe060589`, `0179edf0`, `c953880e`, `4675ed90`, `b290539a`, + report).
