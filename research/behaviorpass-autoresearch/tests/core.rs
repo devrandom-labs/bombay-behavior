@@ -129,22 +129,40 @@ async fn unrelated_peer_event_passes_to_the_inner_watcher() {
     assert_eq!(actions.become_, Step::Stop(Exit::LinkDied(inner_peer)));
 }
 
+// A `Release` first delivers its own trigger message, then drains the held
+// queue by RE-ROUTING each held message through the route fn. The route fn is
+// a pure function of the message, so a message stashed on arrival re-routes to
+// `Stash` again during the drain and stays held: release replays nothing under
+// a pure route (the frozen crate test `stashing_is_local_state_and_replay`
+// pins this). The invariants that DO hold: held messages are never lost or
+// duplicated, their FIFO order and origins survive any number of releases, and
+// `Deliver`-routed messages pass straight through with their origin intact.
 #[tokio::test]
-async fn stash_preserves_origins_order_and_multiplicity() {
+async fn stash_holds_in_fifo_order_without_loss_or_duplication_across_releases() {
     let mut behavior = Spec::new(Recorder::default()).stash(|message| match message {
         0 => StashRoute::Release,
         1..=9 => StashRoute::Stash,
         _ => StashRoute::Deliver,
     });
-    for (from, message) in [(MailAddr(1), 3), (MailAddr(2), 3), (MailAddr(9), 0)] {
+    for (from, message) in [
+        (MailAddr(1), 3), // Stash
+        (MailAddr(2), 3), // Stash
+        (MailAddr(3), 42), // Deliver — passes straight through
+        (MailAddr(9), 0), // Release — trigger delivered, held pair re-routed
+    ] {
         behavior.step(UserEvent::user(from, message)).await.unwrap();
     }
 
     assert_eq!(
         behavior.behavior().inner().state().seen,
-        [(MailAddr(9), 0), (MailAddr(1), 3), (MailAddr(2), 3)]
+        [(MailAddr(3), 42), (MailAddr(9), 0)]
     );
-    assert_eq!(behavior.behavior().held(), 0);
+    assert_eq!(behavior.behavior().held(), 2);
+
+    // A second release neither replays nor drops the held pair.
+    behavior.step(UserEvent::user(MailAddr(9), 0)).await.unwrap();
+    assert_eq!(behavior.behavior().inner().state().seen.len(), 3);
+    assert_eq!(behavior.behavior().held(), 2);
 }
 
 #[tokio::test]

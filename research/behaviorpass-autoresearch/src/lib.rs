@@ -34,6 +34,12 @@ pub struct Trace<A: Address, Sends, New> {
     pub pending: usize,
 }
 
+/// Drive `init` then every queued event through `behavior` until it stops or
+/// the mailbox drains. Returns the accumulated effect triple plus driver
+/// bookkeeping (transition count and unconsumed tail).
+///
+/// # Errors
+/// Returns the behavior's first controlled failure (`B::Error`).
 pub async fn drive<B, A, Sends, New>(
     behavior: &mut B,
     mailbox: &mut Mailbox<B::Event>,
