@@ -7,7 +7,7 @@
 use std::time::Duration;
 
 use behaviorpass::{
-    Acted, Actions, Base, Behavior, ChildStopped, Create, Delivery, MailAddr, Never,
+    Acted, Actions, Base, Behavior, ChildStopped, Crash, Create, Delivery, MailAddr, Never,
     RestartPolicy, Route, State, Step, Strategy, Supervising, SupervisionEvent, UserEvent,
 };
 use behaviorpass_autoresearch::model::{Model, Outcome};
@@ -269,4 +269,66 @@ proptest! {
             prop_assert_eq!(behavior.restarts_in_window(), model.restarts());
         }
     }
+}
+/// Deterministic window-rolling: the budget is per window, so an aged-out
+/// restart frees budget for a later one.
+#[tokio::test]
+async fn budget_recovers_after_stamps_age_out_of_the_window() {
+    let base = Instant::now();
+    let mut behavior = supervisor(
+        Base::new(Parent),
+        Strategy::OneForOne,
+        RestartPolicy::Permanent,
+        3,
+        Duration::from_nanos(100),
+        1,
+    );
+    behavior.init().await.unwrap();
+
+    for offset in 0..3 {
+        behavior
+            .step(SupervisionEvent::ChildStopped(ChildStopped {
+                nonce: 0,
+                outcome: Err(Crash::Failed),
+                at: base + Duration::from_nanos(offset),
+            }))
+            .await
+            .unwrap();
+    }
+    assert_eq!(behavior.restarts_in_window(), 3);
+
+    // At 3ns: 3 stamps + 1 candidate = 4 > 3, denied.
+    let denied = behavior
+        .step(SupervisionEvent::ChildStopped(ChildStopped {
+            nonce: 0,
+            outcome: Err(Crash::Failed),
+            at: base + Duration::from_nanos(3),
+        }))
+        .await
+        .unwrap();
+    assert!(denied.sends.own.own.is_empty());
+    assert!(!behavior.is_alive(0));
+
+    // At 100ns: all three stamps still inside the inclusive window; denied.
+    let edge = behavior
+        .step(SupervisionEvent::ChildStopped(ChildStopped {
+            nonce: 0,
+            outcome: Err(Crash::Failed),
+            at: base + Duration::from_nanos(100),
+        }))
+        .await
+        .unwrap();
+    assert!(edge.sends.own.own.is_empty());
+
+    // At 101ns: the stamp at 0ns aged out (age 101 > 100); budget recovers.
+    let recovered = behavior
+        .step(SupervisionEvent::ChildStopped(ChildStopped {
+            nonce: 0,
+            outcome: Err(Crash::Failed),
+            at: base + Duration::from_nanos(101),
+        }))
+        .await
+        .unwrap();
+    assert_eq!(recovered.sends.own.own.len(), 1);
+    assert!(behavior.is_alive(0));
 }
