@@ -250,3 +250,34 @@ async fn driver_propagates_errors_and_preserves_the_tail() {
     assert!(matches!(result, Err(Boom)));
     assert_eq!(mailbox.pending(), 1);
 }
+
+/// Messages processed before the mid-drain error keep their effects: the
+/// fold's state retains partial drain progress, the erroring message and
+/// the unprocessed batch are gone from the buffer.
+#[tokio::test]
+async fn fsm_error_mid_drain_keeps_prior_drain_effects() {
+    #[derive(Clone, Copy, PartialEq)]
+    enum Phase {
+        P0,
+        P1,
+    }
+    let mut machine = Fsm::new(Vec::new(), Phase::P0, |phase, seen: &mut Vec<u64>, id: &u64| {
+        match (phase, id % 4) {
+            (Phase::P0, 0) => Ok(Move::Goto(Phase::P1)),
+            (Phase::P0, _) => Ok(Move::Defer),
+            (Phase::P1, 1) => Err(Boom),
+            (Phase::P1, _) => {
+                seen.push(*id);
+                Ok(Move::Stay)
+            }
+        }
+    });
+    // Held order [2, 3, 1]: the drain records 2 and 3, then id 1 errors.
+    machine.step(User::user(MailAddr(0), 2)).await.unwrap();
+    machine.step(User::user(MailAddr(0), 3)).await.unwrap();
+    machine.step(User::user(MailAddr(0), 1)).await.unwrap();
+    let result = machine.step(User::user(MailAddr(0), 0)).await;
+    assert!(matches!(result, Err(Boom)));
+    assert_eq!(machine.state().as_slice(), &[2, 3]);
+    assert_eq!(machine.held(), 0);
+}
