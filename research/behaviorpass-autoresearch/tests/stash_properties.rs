@@ -115,3 +115,70 @@ async fn stash_filter_holds_through_the_driver() {
     assert_eq!(trace.pending, 0);
     assert_eq!(trace.transitions, 5);
 }
+
+/// Exhaustive small enumeration: every sequence of up to four messages over
+/// the three route classes (0=Release, 1=Deliver, 2=Stash), with occurrence
+/// ids unique by construction (`id = index * 3 + residue`), checked against
+/// the filter model.
+#[test]
+#[allow(
+    clippy::items_after_statements,
+    clippy::trivially_copy_pass_by_ref,
+    reason = "standalone test after proptest! block; stash routes through fn(&Msg)"
+)]
+fn stash_exhaustive_sequences_match_the_filter_model() {
+    fn residue_route(message: &u8) -> StashRoute {
+        match message % 3 {
+            0 => StashRoute::Release,
+            1 => StashRoute::Deliver,
+            _ => StashRoute::Stash,
+        }
+    }
+
+    let runtime = Builder::new_current_thread().enable_all().build().unwrap();
+    const ALPHABET: usize = 3;
+    const MAX_LENGTH: usize = 4;
+
+    let mut checked = 0_usize;
+    let mut length = 0_usize;
+    while length <= MAX_LENGTH {
+        let total = ALPHABET.pow(u32::try_from(length).unwrap());
+        for code in 0..total {
+            let mut behavior = Spec::new(Recorder::default()).stash(residue_route);
+            let mut residues = Vec::with_capacity(length);
+            let mut rest = code;
+            for _ in 0..length {
+                residues.push(rest % ALPHABET);
+                rest /= ALPHABET;
+            }
+            for (index, residue) in residues.iter().enumerate() {
+                let message = u8::try_from(index * ALPHABET + *residue).unwrap();
+                runtime
+                    .block_on(behavior.step(UserEvent::user(MailAddr(1), message)))
+                    .unwrap();
+            }
+            // Expected: route-admitted messages (Release/Deliver) in arrival
+            // order with origins; held == Stash-routed count.
+            let mut expected = Vec::new();
+            for (index, residue) in residues.iter().enumerate() {
+                if *residue != 2 {
+                    let message = u8::try_from(index * ALPHABET + residue).unwrap();
+                    expected.push((MailAddr(1), message));
+                }
+            }
+            assert_eq!(
+                behavior.behavior().inner().state().seen,
+                expected,
+                "sequence {residues:?}"
+            );
+            assert_eq!(
+                behavior.behavior().held(),
+                residues.iter().filter(|r| **r == 2).count(),
+                "held mismatch for sequence {residues:?}"
+            );
+            checked += 1;
+        }
+        length += 1;
+    }
+    assert_eq!(checked, 1 + 3 + 9 + 27 + 81);
+}
