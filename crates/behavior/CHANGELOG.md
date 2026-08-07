@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.1](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.5.0...bombay-behavior-v0.5.1) - 2026-08-07
+
+### Other
+
+- Add typed graceful shutdown behavior ([#13](https://github.com/devrandom-labs/bombay-behavior/pull/13))
+
 ## [0.5.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.4.0...bombay-behavior-v0.5.0) - 2026-08-07
 
 ### Other
