@@ -62,7 +62,7 @@ async fn all_wrapper_permutations_preserve_init_protocol_nesting() {
         .at(Some(second), |_| Ok(Step::Continue));
     let i1 = c1.init().await.unwrap();
     assert_eq!(i1.sends.own[0].at, second);
-    assert_eq!(i1.sends.inner.own[0].message.peer, PEER);
+    assert_eq!(i1.sends.inner.own[0].peer, PEER);
     assert_eq!(i1.sends.inner.inner.own[0].at, first);
 
     // Chain .at(T1).at(T2).watch(p): Watch owns the outer product.
@@ -70,7 +70,7 @@ async fn all_wrapper_permutations_preserve_init_protocol_nesting() {
         .at(Some(second), |_| Ok(Step::Continue))
         .watch(PEER, stop_on_abnormal_death);
     let i2 = c2.init().await.unwrap();
-    assert_eq!(i2.sends.own[0].message.peer, PEER);
+    assert_eq!(i2.sends.own[0].peer, PEER);
     assert_eq!(i2.sends.inner.own[0].at, second);
     assert_eq!(i2.sends.inner.inner.own[0].at, first);
 
@@ -82,14 +82,14 @@ async fn all_wrapper_permutations_preserve_init_protocol_nesting() {
     let i3 = c3.init().await.unwrap();
     assert_eq!(i3.sends.own[0].at, second);
     assert_eq!(i3.sends.inner.own[0].at, first);
-    assert_eq!(i3.sends.inner.inner.own[0].message.peer, PEER);
+    assert_eq!(i3.sends.inner.inner.own[0].peer, PEER);
 
     // Chain .at(T2).at(T1).watch(p).
     let mut c4 = at(Spec::new(Recorder::default()), second)
         .at(Some(first), |_| Ok(Step::Continue))
         .watch(PEER, stop_on_abnormal_death);
     let i4 = c4.init().await.unwrap();
-    assert_eq!(i4.sends.own[0].message.peer, PEER);
+    assert_eq!(i4.sends.own[0].peer, PEER);
     assert_eq!(i4.sends.inner.own[0].at, first);
     assert_eq!(i4.sends.inner.inner.own[0].at, second);
 
@@ -99,7 +99,7 @@ async fn all_wrapper_permutations_preserve_init_protocol_nesting() {
         .at(Some(first), |_| Ok(Step::Continue));
     let i5 = c5.init().await.unwrap();
     assert_eq!(i5.sends.own[0].at, first);
-    assert_eq!(i5.sends.inner.own[0].message.peer, PEER);
+    assert_eq!(i5.sends.inner.own[0].peer, PEER);
     assert_eq!(i5.sends.inner.inner.own[0].at, second);
 
     // Chain .watch(p).at(T2).at(T1).
@@ -110,7 +110,7 @@ async fn all_wrapper_permutations_preserve_init_protocol_nesting() {
     let i6 = c6.init().await.unwrap();
     assert_eq!(i6.sends.own[0].at, first);
     assert_eq!(i6.sends.inner.own[0].at, second);
-    assert_eq!(i6.sends.inner.inner.own[0].message.peer, PEER);
+    assert_eq!(i6.sends.inner.inner.own[0].peer, PEER);
 }
 
 /// A stash layer contributes no initialization sends and shifts nothing:
@@ -124,7 +124,7 @@ async fn stash_layer_contributes_no_init_sends() {
         .at(Some(due), |_| Ok(Step::Continue));
     let initial = behavior.init().await.unwrap();
     assert_eq!(initial.sends.own[0].at, due);
-    assert_eq!(initial.sends.inner.own[0].message.peer, PEER);
+    assert_eq!(initial.sends.inner.own[0].peer, PEER);
     assert!(initial.sends.inner.inner.is_empty());
 }
 
@@ -336,9 +336,9 @@ async fn supervision_preserves_inner_watch_routing() {
     let initial = behavior.init().await.unwrap();
     assert_eq!(initial.creates.len(), 2);
     assert_eq!(initial.sends.own.inner.len(), 2); // observe-child x2
-    assert_eq!(initial.sends.own.inner[0].to.route(), Route::Service);
+    assert_eq!(initial.sends.own.inner[0].nonce, 0);
     assert_eq!(initial.sends.inner.own.len(), 1); // observe-peer
-    assert_eq!(initial.sends.inner.own[0].message.peer, PEER);
+    assert_eq!(initial.sends.inner.own[0].peer, PEER);
 
     // Peer lane: the watch reaction stops the supervised fold.
     let died = behavior

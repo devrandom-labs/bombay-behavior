@@ -1,8 +1,8 @@
 //! Pure peer-observation composition over an ordinary monitor actor protocol.
 
 use crate::behavior::{
-    Actions, Address, Become, Behavior, BirthMode, Delivery, Recipient, SendAlgebra, SendProduct,
-    User, UserEvent,
+    Actions, Address, Become, Behavior, BirthMode, SendAlgebra, SendProduct, ServiceSends, User,
+    UserEvent,
 };
 use crate::deadlined::{TimeEvent, TimeReached};
 use crate::supervising::{ChildEvent, ChildStopped};
@@ -69,10 +69,8 @@ pub type LinkReaction<B> = fn(
     &Result<Exit<<B as Behavior>::Addr>, Crash>,
 ) -> Result<Become<<B as Behavior>::Addr>, <B as Behavior>::Error>;
 
-pub type WatchSends<B> = SendProduct<
-    <B as Behavior>::Sends,
-    Vec<Delivery<<B as Behavior>::Addr, ObservePeer<<B as Behavior>::Addr>>>,
->;
+pub type WatchSends<B> =
+    SendProduct<<B as Behavior>::Sends, ServiceSends<ObservePeer<<B as Behavior>::Addr>>>;
 
 pub type WatchActions<B> =
     Actions<<B as Behavior>::Addr, <B as Behavior>::Ph, WatchSends<B>, <B as Behavior>::Birth>;
@@ -118,7 +116,7 @@ where
     type Addr = A;
     type Msg = B::Msg;
     type Event = WatchEvent<B::Event, B::Addr>;
-    type Sends = SendProduct<Sends, Vec<Delivery<A, ObservePeer<A>>>>;
+    type Sends = SendProduct<Sends, ServiceSends<ObservePeer<A>>>;
     type Ph = Ph;
     type Error = B::Error;
     type Birth = Br;
@@ -129,10 +127,7 @@ where
         let actions = self.inner.init().await?;
         Ok(Self::wrap(
             actions,
-            vec![Delivery::new(
-                Recipient::service(),
-                ObservePeer { peer: self.peer },
-            )],
+            ServiceSends::one(ObservePeer { peer: self.peer }),
         ))
     }
 
@@ -156,14 +151,14 @@ where
                     .inner
                     .step(inner)
                     .await
-                    .map(|actions| Self::wrap(actions, Vec::new())),
+                    .map(|actions| Self::wrap(actions, ServiceSends::empty())),
                 None => Ok(Actions::cont()),
             },
             WatchEvent::Inner(event) => self
                 .inner
                 .step(event)
                 .await
-                .map(|actions| Self::wrap(actions, Vec::new())),
+                .map(|actions| Self::wrap(actions, ServiceSends::empty())),
         }
     }
 }
@@ -171,7 +166,7 @@ where
 impl<B: Behavior> Watching<B> {
     fn wrap(
         actions: Actions<B::Addr, B::Ph, B::Sends, B::Birth>,
-        own: Vec<Delivery<B::Addr, ObservePeer<B::Addr>>>,
+        own: ServiceSends<ObservePeer<B::Addr>>,
     ) -> WatchActions<B> {
         Actions {
             sends: SendProduct {

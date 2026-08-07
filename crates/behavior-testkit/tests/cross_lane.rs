@@ -186,7 +186,7 @@ async fn full_stack_all_four_layers_keep_their_own_lanes() {
     assert_eq!(initial.sends.own.inner.len(), 2); // observe-child x2
     assert_eq!(initial.sends.own.own.len(), 0); // proxy commands
     assert_eq!(initial.sends.inner.own[0].at, due); // schedule
-    assert_eq!(initial.sends.inner.inner.own[0].message.peer, peer); // observe-peer
+    assert_eq!(initial.sends.inner.inner.own[0].peer, peer); // observe-peer
     assert!(initial.sends.inner.inner.inner.is_empty()); // echo lane
 
     // User lane: Deliver routes through every layer to the parent echo.

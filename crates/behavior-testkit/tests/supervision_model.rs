@@ -232,7 +232,7 @@ proptest! {
                 prop_assert_eq!(actions.creates[0].nonce, nonce);
                 // The born child is observed exactly once.
                 prop_assert_eq!(actions.sends.own.inner.len(), 1);
-                prop_assert_eq!(actions.sends.own.inner[0].message.nonce, nonce);
+                prop_assert_eq!(actions.sends.own.inner[0].nonce, nonce);
             } else {
                 // Child-stopped for an existing slot.
                 let known = model.slot_count();

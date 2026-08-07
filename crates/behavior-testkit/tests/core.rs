@@ -105,13 +105,13 @@ async fn wrapper_orderings_preserve_both_initial_protocols() {
         .watch(peer, stop_on_abnormal_death);
     let first = at_then_watch.init().await.unwrap();
     assert_eq!(first.sends.inner.own[0].at, due);
-    assert_eq!(first.sends.own[0].message.peer, peer);
+    assert_eq!(first.sends.own[0].peer, peer);
 
     let mut watch_then_at = Spec::new(Recorder::default())
         .watch(peer, stop_on_abnormal_death)
         .at(Some(due), |_| Ok(Step::Continue));
     let second = watch_then_at.init().await.unwrap();
-    assert_eq!(second.sends.inner.own[0].message.peer, peer);
+    assert_eq!(second.sends.inner.own[0].peer, peer);
     assert_eq!(second.sends.own[0].at, due);
 }
 

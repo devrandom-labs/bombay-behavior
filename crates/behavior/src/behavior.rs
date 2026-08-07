@@ -30,13 +30,11 @@ impl Address for MailAddr {
     }
 }
 
-/// An address expression. Services are actors supplied by the interpreter;
-/// their concrete addresses never enter the behavior or `Spec` API.
+/// An address expression for ordinary actor delivery.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Route<A: Address> {
     Global(A),
     Child(A::Nonce),
-    Service,
 }
 
 /// A recipient statically coupled to the message it accepts.
@@ -62,11 +60,6 @@ impl<A: Address, M> Recipient<A, M> {
     #[must_use]
     pub fn child(nonce: A::Nonce) -> Self {
         Self::from_route(Route::Child(nonce))
-    }
-
-    #[must_use]
-    pub(crate) fn service() -> Self {
-        Self::from_route(Route::Service)
     }
 
     #[must_use]
@@ -150,6 +143,84 @@ impl<L: SendAlgebra, R: SendAlgebra> SendAlgebra for SendProduct<L, R> {
     }
 }
 
+/// Requests interpreted by the runtime local to the emitting actor.
+///
+/// Unlike [`Delivery`], a service request has no actor address. Its recipient
+/// is definitionally the interpreter of the actor whose transition emitted
+/// it. This distinct algebra lets interpreters route ordinary deliveries and
+/// local services with disjoint static implementations.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ServiceSends<M> {
+    requests: Vec<M>,
+}
+
+impl<M> ServiceSends<M> {
+    #[must_use]
+    pub fn new(requests: Vec<M>) -> Self {
+        Self { requests }
+    }
+
+    #[must_use]
+    pub fn one(request: M) -> Self {
+        Self::new(vec![request])
+    }
+
+    #[must_use]
+    pub fn as_slice(&self) -> &[M] {
+        &self.requests
+    }
+
+    pub fn iter(&self) -> core::slice::Iter<'_, M> {
+        self.requests.iter()
+    }
+
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.requests.len()
+    }
+
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.requests.is_empty()
+    }
+
+    pub fn extend(&mut self, requests: impl IntoIterator<Item = M>) {
+        self.requests.extend(requests);
+    }
+
+    #[must_use]
+    pub fn into_requests(self) -> Vec<M> {
+        self.requests
+    }
+}
+
+impl<M> core::ops::Index<usize> for ServiceSends<M> {
+    type Output = M;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.requests[index]
+    }
+}
+
+impl<M> IntoIterator for ServiceSends<M> {
+    type Item = M;
+    type IntoIter = std::vec::IntoIter<M>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.requests.into_iter()
+    }
+}
+
+impl<M> SendAlgebra for ServiceSends<M> {
+    fn empty() -> Self {
+        Self::new(Vec::new())
+    }
+
+    fn append(&mut self, mut other: Self) {
+        self.requests.append(&mut other.requests);
+    }
+}
+
 /// Fresh actor creation. Replacement at an existing address is deliberately
 /// absent; stable restart is derived with a proxy actor.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -184,11 +255,12 @@ pub type Become<A, Ph = Never> = Step<Ph, Exit<A>>;
 /// Exactly Agha's effect triple, with a Bombay interpretation-order policy.
 ///
 /// An interpreter installs every fresh actor in `creates` before interpreting
-/// any delivery in `sends` from this value. This makes recipients created by a
-/// transition available to that transition's sends, including service
-/// protocols that observe a fresh child. Creation order is vector order, and
-/// each concrete send lane retains its own order; this contract does not
-/// impose an order between independent lanes of a [`SendProduct`].
+/// any ordinary delivery or [`ServiceSends`] request in `sends` from this
+/// value. This makes actors created by a transition available to that
+/// transition's deliveries and local observation requests. Creation order is
+/// vector order, and each concrete send lane retains its own order; this
+/// contract does not impose an order between independent lanes of a
+/// [`SendProduct`].
 ///
 /// The ordering rule belongs to the interpreter boundary. Constructing an
 /// `Actions` value remains pure and performs none of its effects.

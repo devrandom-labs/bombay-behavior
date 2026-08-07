@@ -20,8 +20,8 @@ mod spec;
 
 pub use algebra::{
     Acted, Actions, Address, Base, Become, Behavior, BirthMode, Births, Create, Delivery, FnState,
-    MailAddr, NoBirths, Recipient, Route, SendAlgebra, SendProduct, State, Transcript, User,
-    UserEvent, run,
+    MailAddr, NoBirths, Recipient, Route, SendAlgebra, SendProduct, ServiceSends, State,
+    Transcript, User, UserEvent, run,
 };
 pub use deadlined::{
     At, AtEvent, AtGeneration, AtId, AtReaction, ScheduleAt, TimeEvent, TimeReached,

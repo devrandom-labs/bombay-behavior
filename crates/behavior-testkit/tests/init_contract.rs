@@ -86,7 +86,7 @@ async fn watch_double_init_duplicates_the_observe_send() {
 
     assert_eq!(first.sends.own.len(), 1);
     assert_eq!(second.sends.own.len(), 1);
-    assert_eq!(first.sends.own[0].message, second.sends.own[0].message);
+    assert_eq!(first.sends.own[0], second.sends.own[0]);
 }
 
 /// A second `Supervising::init` re-emits the whole configured fleet: two
