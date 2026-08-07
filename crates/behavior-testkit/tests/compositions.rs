@@ -7,8 +7,9 @@ use std::time::Duration;
 
 use behavior::{
     Acted, Actions, AtEvent, AtGeneration, AtId, Base, Behavior, Crash, Delivery, Exit, MailAddr,
-    Never, PeerStopped, Recipient, Route, Spec, StashRoute, State, Step, SupervisionEvent,
-    TimeReached, User, UserEvent, WatchEvent, WorkerStopped, stop_on_abnormal_death,
+    Never, PeerStopped, Recipient, RestartDenial, Route, Spec, StashRoute, State, Step,
+    SupervisionEvent, SupervisionFailureReason, TimeReached, User, UserEvent, WatchEvent,
+    WorkerStopped, stop_on_abnormal_death, stop_on_supervision_failure,
 };
 use tokio::time::Instant;
 
@@ -370,4 +371,56 @@ async fn supervision_preserves_inner_watch_routing() {
         .unwrap();
     assert_eq!(actions.sends.own.own.len(), 1);
     assert_eq!(actions.sends.own.own[0].to.route(), Route::Child(0));
+}
+
+/// A supervision failure reaction composes above an inner watch without
+/// emitting into either layer's send lane. Its stop verdict remains an
+/// ordinary become result visible through the complete stack.
+#[tokio::test]
+async fn supervision_failure_reaction_preserves_composed_send_lanes() {
+    struct Parent;
+    impl State<Never, behavior::Births<Child>, Never> for Parent {
+        type Addr = MailAddr;
+        type Msg = u64;
+
+        fn handle(
+            &mut self,
+            _from: MailAddr,
+            _message: u64,
+        ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, behavior::Births<Child>, Never>
+        {
+            Ok(Actions::cont())
+        }
+    }
+
+    let mut behavior = Spec::new(Parent)
+        .watch(PEER, stop_on_abnormal_death)
+        .children((1, child))
+        .within(0, Duration::MAX)
+        .on_supervision_failure(stop_on_supervision_failure);
+    behavior.init().await.unwrap();
+
+    let actions = behavior
+        .step(SupervisionEvent::WorkerStopped(WorkerStopped {
+            proxy: 0,
+            outcome: Err(Crash::Failed),
+            at: Instant::now(),
+        }))
+        .await
+        .unwrap();
+
+    assert!(actions.sends.inner.inner.is_empty());
+    assert!(actions.sends.inner.own.is_empty());
+    assert!(actions.sends.own.inner.is_empty());
+    assert!(actions.sends.own.own.is_empty());
+    assert_eq!(
+        actions.become_,
+        Step::Stop(Exit::SupervisionFailed(
+            SupervisionFailureReason::RestartDenied(RestartDenial::BudgetExceeded {
+                restarts_in_window: 0,
+                replacements_requested: 1,
+                maximum_restarts: 0,
+            })
+        ))
+    );
 }

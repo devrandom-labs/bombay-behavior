@@ -36,8 +36,9 @@ pub use spec::Spec;
 pub use stashing::{StashRoute, Stashing};
 pub use supervising::{
     ChildEvent, ChildStopped, ObserveChild, Proxy, ProxyCommand, ReportWorkerStopped,
-    RestartPolicy, Strategy, Supervising, SupervisionEvent, WorkerEvent, WorkerStopped,
-    restart_all, restart_one, restart_rest,
+    RestartPolicy, Strategy, Supervising, SupervisionEvent, SupervisionFailure,
+    SupervisionFailureReaction, WorkerEvent, WorkerStopped, restart_all, restart_one, restart_rest,
+    retire_on_supervision_failure, stop_on_supervision_failure,
 };
 pub use verdict::{Never, Step};
 pub use watching::{
@@ -46,6 +47,6 @@ pub use watching::{
 
 mod exit;
 
-pub use exit::{Crash, Exit};
+pub use exit::{Crash, Exit, RestartDenial, SupervisionFailureReason};
 
 pub use behavior_macros::workers;

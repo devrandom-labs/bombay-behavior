@@ -7,8 +7,9 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, Base, Behavior, Crash, Create, Delivery, MailAddr, Never, RestartPolicy, Route,
-    State, Step, Strategy, Supervising, SupervisionEvent, UserEvent, WorkerStopped,
+    Acted, Actions, Base, Behavior, Crash, Create, Delivery, Exit, MailAddr, Never, RestartDenial,
+    RestartPolicy, Route, State, Step, Strategy, Supervising, SupervisionEvent,
+    SupervisionFailureReason, UserEvent, WorkerStopped, stop_on_supervision_failure,
 };
 use behavior_testkit::model::{Model, Outcome};
 use proptest::collection::vec;
@@ -141,7 +142,8 @@ proptest! {
         let window_duration = window.map_or(Duration::MAX, Duration::from_nanos);
 
         let mut model = Model::new(count);
-        let mut behavior = supervisor(Base::new(Parent), strategy, policy, maximum, window_duration, count);
+        let mut behavior = supervisor(Base::new(Parent), strategy, policy, maximum, window_duration, count)
+            .with_failure_reaction(stop_on_supervision_failure);
         let base = Instant::now();
         let runtime = Builder::new_current_thread().enable_all().build().unwrap();
         runtime.block_on(behavior.init()).unwrap();
@@ -170,6 +172,20 @@ proptest! {
                 .collect();
             prop_assert_eq!(sends, expected);
             prop_assert!(actions.creates.is_empty());
+            if model.last_restart_denied() {
+                prop_assert_eq!(
+                    actions.become_,
+                    Step::Stop(Exit::SupervisionFailed(
+                        SupervisionFailureReason::RestartDenied(RestartDenial::BudgetExceeded {
+                            restarts_in_window: model.restarts(),
+                            replacements_requested: model.last_replacements_requested(),
+                            maximum_restarts: maximum,
+                        })
+                    ))
+                );
+            } else {
+                prop_assert_eq!(actions.become_, Step::Continue);
+            }
 
             for nonce in 0..count {
                 prop_assert_eq!(

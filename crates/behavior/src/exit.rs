@@ -16,6 +16,38 @@ pub enum Exit<A: Address> {
     Collected,
     /// A watch layer propagated a linked peer's death, carrying its address.
     LinkDied(A),
+    /// A supervision layer stopped because it could no longer preserve its
+    /// child topology.
+    SupervisionFailed(SupervisionFailureReason),
+}
+
+/// Why a supervisor could no longer preserve its child topology.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SupervisionFailureReason {
+    /// A restart policy admitted the worker termination, but a later restart
+    /// constraint denied the requested replacement set.
+    RestartDenied(RestartDenial),
+    /// The stable proxy itself stopped and therefore cannot accept a fresh
+    /// worker incarnation at its existing address.
+    StableChildStopped,
+}
+
+/// Why an otherwise eligible replacement set was denied.
+///
+/// The vocabulary is deliberately exhaustive. Additional restart gates must
+/// expose their concrete denial here (or in a future statically composed sum)
+/// rather than hiding it behind an open or erased reason type.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RestartDenial {
+    /// The replacement set would exceed the configured restart budget.
+    BudgetExceeded {
+        /// Replacement attempts currently retained in the restart window.
+        restarts_in_window: usize,
+        /// Number of workers the selected strategy would replace.
+        replacements_requested: usize,
+        /// Configured maximum replacements in one window.
+        maximum_restarts: u32,
+    },
 }
 
 /// Why actor execution terminated abnormally.

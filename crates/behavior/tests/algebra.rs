@@ -1,12 +1,13 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, At, AtEvent, AtGeneration, AtId, Base, Behavior, Births, ChildStopped, Crash,
-    Create, Delivery, Exit, MailAddr, Move, Never, NoBirths, ObserveChild, PeerStopped, Proxy,
-    ProxyCommand, Recipient, RestartPolicy, Route, ServiceSends, ShutdownEvent, ShutdownRequested,
-    Spec, StashRoute, State, Step, Strategy, Supervising, SupervisionEvent, TimeReached, User,
-    UserEvent, WatchEvent, Watching, WorkerEvent, WorkerStopped, run, stop_on_abnormal_death,
-    workers,
+    Acted, Actions, At, AtEvent, AtGeneration, AtId, Base, Become, Behavior, Births, ChildStopped,
+    Crash, Create, Delivery, Exit, MailAddr, Move, Never, NoBirths, ObserveChild, PeerStopped,
+    Proxy, ProxyCommand, Recipient, RestartDenial, RestartPolicy, Route, ServiceSends,
+    ShutdownEvent, ShutdownRequested, Spec, StashRoute, State, Step, Strategy, Supervising,
+    SupervisionEvent, SupervisionFailure, SupervisionFailureReason, TimeReached, User, UserEvent,
+    WatchEvent, Watching, WorkerEvent, WorkerStopped, run, stop_on_abnormal_death,
+    stop_on_supervision_failure, workers,
 };
 use communication::{Config, channel};
 use proptest::prelude::*;
@@ -361,6 +362,23 @@ fn supervisor(
     )
 }
 
+fn verify_budget_failure_and_stop(
+    _parent: &mut Base<Parent, Never, Births<Child>, Never>,
+    failure: &SupervisionFailure<MailAddr>,
+) -> Result<Become<MailAddr>, Never> {
+    assert_eq!(failure.child, 1);
+    assert_eq!(failure.outcome, Err(Crash::Panicked));
+    assert_eq!(
+        failure.reason,
+        SupervisionFailureReason::RestartDenied(RestartDenial::BudgetExceeded {
+            restarts_in_window: 0,
+            replacements_requested: 3,
+            maximum_restarts: 2,
+        })
+    );
+    Ok(Step::Stop(failure.into_exit()))
+}
+
 #[tokio::test]
 async fn supervisor_creates_proxies_and_replacement_is_a_send() {
     let mut supervisor = Spec::new(Parent)
@@ -492,6 +510,100 @@ async fn stopped_proxy_is_retired_without_sending_to_its_dead_address() {
     assert!(stopped.creates.is_empty());
     assert!(stopped.sends.own.own.is_empty());
     assert!(!supervisor.is_alive(1));
+    assert_eq!(stopped.become_, Step::Continue);
+}
+
+#[tokio::test]
+async fn configured_supervision_failure_reaction_stops_on_budget_denial() {
+    let mut supervisor = Spec::new(Parent)
+        .children((3, child))
+        .restart(Strategy::OneForAll)
+        .when(RestartPolicy::Permanent)
+        .within(2, Duration::MAX)
+        .on_supervision_failure(verify_budget_failure_and_stop);
+
+    let actions = supervisor
+        .step(SupervisionEvent::WorkerStopped(WorkerStopped {
+            proxy: 1,
+            outcome: Err(Crash::Panicked),
+            at: Instant::now(),
+        }))
+        .await
+        .unwrap();
+
+    assert!(actions.sends.own.own.is_empty());
+    assert!(actions.creates.is_empty());
+    assert_eq!(
+        actions.become_,
+        Step::Stop(Exit::SupervisionFailed(
+            SupervisionFailureReason::RestartDenied(RestartDenial::BudgetExceeded {
+                restarts_in_window: 0,
+                replacements_requested: 3,
+                maximum_restarts: 2,
+            })
+        ))
+    );
+    assert!(!supervisor.behavior().is_alive(1));
+}
+
+#[tokio::test]
+async fn configured_supervision_failure_reaction_stops_when_stable_proxy_stops() {
+    let mut supervisor = Spec::new(Parent)
+        .children((1, child))
+        .on_supervision_failure(stop_on_supervision_failure);
+    let actions = supervisor
+        .step(SupervisionEvent::ChildStopped(ChildStopped {
+            nonce: 0,
+            outcome: Ok(Exit::Normal),
+            at: Instant::now(),
+        }))
+        .await
+        .unwrap();
+
+    assert_eq!(
+        actions.become_,
+        Step::Stop(Exit::SupervisionFailed(
+            SupervisionFailureReason::StableChildStopped
+        ))
+    );
+    assert!(!supervisor.behavior().is_alive(0));
+}
+
+#[tokio::test]
+async fn restart_policy_ineligibility_is_not_a_supervision_failure() {
+    let mut supervisor = Spec::new(Parent)
+        .children((1, child))
+        .when(RestartPolicy::Temporary)
+        .on_supervision_failure(stop_on_supervision_failure);
+    let actions = supervisor
+        .step(SupervisionEvent::WorkerStopped(WorkerStopped {
+            proxy: 0,
+            outcome: Err(Crash::Failed),
+            at: Instant::now(),
+        }))
+        .await
+        .unwrap();
+
+    assert_eq!(actions.become_, Step::Continue);
+    assert!(!supervisor.behavior().is_alive(0));
+}
+
+#[tokio::test]
+async fn supervision_failure_exit_is_an_abnormal_transient_worker_outcome() {
+    let mut supervisor = supervisor(Strategy::OneForOne, RestartPolicy::Transient, 1);
+    let actions = supervisor
+        .step(SupervisionEvent::WorkerStopped(WorkerStopped {
+            proxy: 0,
+            outcome: Ok(Exit::SupervisionFailed(
+                SupervisionFailureReason::StableChildStopped,
+            )),
+            at: Instant::now(),
+        }))
+        .await
+        .unwrap();
+
+    assert_eq!(actions.sends.own.own.len(), 1);
+    assert_eq!(actions.sends.own.own[0].to.route(), Route::Child(0));
 }
 
 struct BirthingParent(bool);
