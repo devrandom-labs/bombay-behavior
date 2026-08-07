@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, At, Base, Behavior, ChildStopped, Crash, Delivery, Exit, MailAddr, Never,
+    Acted, Actions, At, AtId, Base, Behavior, ChildStopped, Crash, Delivery, Exit, MailAddr, Never,
     Proxy, ProxyCommand, Recipient, RestartPolicy, Route, State, Step, Strategy, Supervising,
     SupervisionEvent, User, UserEvent,
 };
@@ -110,14 +110,14 @@ proptest! {
         let runtime = Builder::new_current_thread().enable_all().build().unwrap();
         let origin = Instant::now();
         let first = origin + Duration::from_nanos(offsets[0]);
-        let mut one = At::new(Base::new(Echo), Some(first), |_| Ok(Step::Continue));
+        let mut one = At::new(Base::new(Echo), AtId(0), Some(first), |_| Ok(Step::Continue));
         let initial = runtime.block_on(one.init()).unwrap();
         prop_assert_eq!(initial.sends.own.len(), 1);
         prop_assert_eq!(initial.sends.own[0].at, first);
 
         for offset in &offsets {
             let due = origin + Duration::from_nanos(*offset);
-            let mut composed = At::new(Base::new(Echo), Some(due), |_| Ok(Step::Continue));
+            let mut composed = At::new(Base::new(Echo), AtId(0), Some(due), |_| Ok(Step::Continue));
             let actions = runtime.block_on(composed.init()).unwrap();
             prop_assert_eq!(actions.sends.own[0].at, due);
         }

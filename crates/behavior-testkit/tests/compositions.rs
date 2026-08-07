@@ -6,9 +6,9 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, AtEvent, AtId, Base, Behavior, ChildStopped, Crash, Delivery, Exit, MailAddr,
-    Never, PeerStopped, Recipient, Route, Spec, StashRoute, State, Step, SupervisionEvent,
-    TimeReached, User, UserEvent, WatchEvent, stop_on_abnormal_death,
+    Acted, Actions, AtEvent, AtGeneration, AtId, Base, Behavior, ChildStopped, Crash, Delivery,
+    Exit, MailAddr, Never, PeerStopped, Recipient, Route, Spec, StashRoute, State, Step,
+    SupervisionEvent, TimeReached, User, UserEvent, WatchEvent, stop_on_abnormal_death,
 };
 use tokio::time::Instant;
 
@@ -142,6 +142,7 @@ async fn environment_lanes_bypass_stash_while_user_lane_is_intercepted() {
     // Time lane: fires through the stash layer, nothing stashed.
     let reached = AtEvent::Reached(TimeReached {
         id: AtId(0),
+        generation: AtGeneration(0),
         at: due,
     });
     let fired = behavior.step(reached).await.unwrap();
@@ -258,7 +259,11 @@ async fn unscheduled_at_is_inert_to_reached_events() {
         (AtId(1), Instant::now() + Duration::from_secs(9)),
     ] {
         let actions = behavior
-            .step(AtEvent::Reached(TimeReached { id, at }))
+            .step(AtEvent::Reached(TimeReached {
+                id,
+                generation: AtGeneration(0),
+                at,
+            }))
             .await
             .unwrap();
         assert_eq!(actions.become_, Step::Continue);
