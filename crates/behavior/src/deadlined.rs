@@ -7,6 +7,7 @@ use crate::behavior::{
     Actions, Address, Become, Behavior, BirthMode, SendAlgebra, SendProduct, ServiceSends, User,
     UserEvent,
 };
+use crate::shutdown::{ShutdownEvent, ShutdownRequested};
 use crate::supervising::{ChildEvent, ChildStopped, WorkerEvent, WorkerStopped};
 use crate::watching::{PeerEvent, PeerStopped};
 use crate::{Exit, Step};
@@ -78,6 +79,12 @@ impl<E: ChildEvent<A>, A: Address> ChildEvent<A> for AtEvent<E> {
 impl<E: WorkerEvent<A>, A: Address> WorkerEvent<A> for AtEvent<E> {
     fn worker_stopped(event: WorkerStopped<A>) -> Option<Self> {
         E::worker_stopped(event).map(Self::Inner)
+    }
+}
+
+impl<E: ShutdownEvent> ShutdownEvent for AtEvent<E> {
+    fn shutdown_requested(event: ShutdownRequested) -> Option<Self> {
+        E::shutdown_requested(event).map(Self::Inner)
     }
 }
 

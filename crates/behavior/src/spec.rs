@@ -7,6 +7,7 @@ use tokio::time::Instant;
 
 use crate::behavior::{Address, Behavior, BirthMode, Births};
 use crate::deadlined::{At, AtId, AtReaction};
+use crate::shutdown::{FinalizeOnShutdown, ShutdownReaction, StopOnShutdown};
 use crate::stashing::{StashRoute, Stashing};
 use crate::supervising::{RestartPolicy, Strategy, Supervising};
 use crate::verdict::Never;
@@ -67,6 +68,28 @@ impl<B: Behavior> Spec<B> {
     #[must_use]
     pub fn behavior(&self) -> &B {
         &self.behavior
+    }
+
+    /// Stop normally when a typed shutdown request is folded.
+    #[must_use]
+    pub fn stop_on_shutdown(self) -> Spec<StopOnShutdown<B>> {
+        Spec {
+            behavior: StopOnShutdown::new(self.behavior),
+            next_timer: self.next_timer,
+        }
+    }
+
+    /// Apply one final pure fold, retain its sends and creations, and stop
+    /// normally regardless of the fold's become verdict.
+    #[must_use]
+    pub fn finalize_on_shutdown(
+        self,
+        finalize: ShutdownReaction<B>,
+    ) -> Spec<FinalizeOnShutdown<B>> {
+        Spec {
+            behavior: FinalizeOnShutdown::new(self.behavior, finalize),
+            next_timer: self.next_timer,
+        }
     }
 
     /// Observe a peer and apply a pure reaction when it stops.

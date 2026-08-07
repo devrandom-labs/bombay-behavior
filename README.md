@@ -75,6 +75,11 @@ nix flake check
 Criterion benchmarks remain available explicitly with `cargo bench`; they are
 not executed as nextest test binaries.
 
+## Design notes
+
+Architectural pressure that does not yet justify a semantic refactor is tracked
+in [Potential Architecture Changes](docs/potential-architecture-changes.md).
+
 ## License
 
 Licensed under either of Apache License, Version 2.0 or the MIT license, at your

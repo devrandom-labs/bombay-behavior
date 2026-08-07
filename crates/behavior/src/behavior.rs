@@ -7,6 +7,7 @@ use communication::{Consumer, Received};
 
 use crate::Exit;
 use crate::deadlined::{TimeEvent, TimeReached};
+use crate::shutdown::{ShutdownEvent, ShutdownRequested};
 use crate::supervising::{ChildEvent, ChildStopped, WorkerEvent, WorkerStopped};
 use crate::verdict::{Never, Step};
 use crate::watching::{PeerEvent, PeerStopped};
@@ -440,6 +441,12 @@ impl<A: Address, M> ChildEvent<A> for User<A, M> {
 
 impl<A: Address, M> WorkerEvent<A> for User<A, M> {
     fn worker_stopped(_: WorkerStopped<A>) -> Option<Self> {
+        None
+    }
+}
+
+impl<A: Address, M> ShutdownEvent for User<A, M> {
+    fn shutdown_requested(_: ShutdownRequested) -> Option<Self> {
         None
     }
 }
