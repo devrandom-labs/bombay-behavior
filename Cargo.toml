@@ -1,30 +1,33 @@
-# behaviorpass — a pure fold from an associated event protocol to typed sends,
-# fresh creates, and become. Capabilities are derived behavior compositions;
-# the floor remains a State coalgebra.
 [workspace]
-resolver = "3"
+resolver = "2"
 members = [
-  "crates/behaviorpass", "crates/behaviorpass-macros",
+    "crates/behavior",
+    "crates/behavior-macros",
+    "crates/behavior-testkit",
 ]
 
 [workspace.package]
+version = "0.1.0"
 edition = "2024"
-rust-version = "1.96"
+rust-version = "1.95.0"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/devrandom-labs/behaviorpass"
+authors = ["Joel DSouza <joel@devrandom.co>"]
+repository = "https://github.com/devrandom-labs/bombay-behavior"
+homepage = "https://devrandom-labs.github.io/bombay-behavior/"
 
 [workspace.dependencies]
+behavior = { package = "bombay-behavior", path = "crates/behavior" }
+behavior-macros = { package = "bombay-behavior-macros", path = "crates/behavior-macros" }
+behavior-testkit = { package = "bombay-behavior-testkit", path = "crates/behavior-testkit" }
+communication = { package = "bombay-communication", version = "0.1.0" }
+criterion = "0.8"
+proptest = "1.11"
 thiserror = "2.0"
 tokio = { version = "1.47", default-features = false }
-# fastpass — the sibling pillar-pass mailbox (user + control lanes); the
-# algebra's drivers consume it, so the crates measure CAPABILITY machinery,
-# not mailbox plumbing.
-fastpass = { path = "../fastpass/crates/fastpass" }
-behaviorpass = { path = "crates/behaviorpass" }
 
-# Keep the research crates lint-honest without importing bombay's full god-tier
-# config — this is a spike, but the invariants are real. The lints table is the
-# law: clean APIs are enforced by lints, never by line counts.
 [workspace.lints.clippy]
 all = { level = "deny", priority = -1 }
 pedantic = { level = "warn", priority = -1 }
+
+[workspace.metadata.crane]
+name = "bombay-behavior"

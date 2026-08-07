@@ -1,33 +1,81 @@
-# behaviorpass
+# Bombay Behavior
 
-`behaviorpass` is a pure actor algebra:
+Bombay Behavior is a small, composable actor behavior algebra for Rust. A
+behavior receives its statically associated event protocol and returns an
+`Actions` value containing typed sends, fresh child creations, and its next
+state. Timing, peer watching, supervision, stashing, and finite-state behavior
+are ordinary composable protocols rather than runtime queries or erased
+messages.
 
-```text
-receive(event) -> sends* x creates* x become
+Its core guarantees are:
+
+- message and event protocols remain statically typed;
+- independent send protocols compose without `dyn`, `Any`, or a global envelope;
+- `NoBirths` makes creation uninhabited, while `Births<C>` permits only fresh,
+  typed `Create` values;
+- supervision replaces workers through stable proxy actors, preserving the
+  meaning of fresh creation;
+- initialization effects are interpreted before mailbox events;
+- timers, observation, stashing, and state transitions compose without hidden
+  runtime side channels.
+
+## Installation
+
+```toml
+[dependencies]
+bombay-behavior = "0.1"
 ```
 
-`Behavior` supplies associated `Event`, `Effect`, `Done`, and `Error`
-protocols. Sends remain statically typed. Independent protocols compose as
-`SendProduct` values; there is no `dyn`, `Any`, boxed message, global envelope,
-timer query, fleet query, or runtime side channel.
+The package is named `bombay-behavior`; Rust code imports its library as
+`behavior`:
 
-The creation leg has a pure type-level mode. `NoBirths` means its `creates`
-vector contains the uninhabited `Never`; `Births<C>` means it contains typed
-`Create<Addr, C>` values. Ordinary states default to `NoBirths`, while any
-Agha-style creator may explicitly select `Births<C>`. The marker has no runtime
-methods or machinery.
+```rust
+use behavior::{Acted, Actions, Base, Delivery, MailAddr, Never, NoBirths, State};
 
-Timing and observation are ordinary actor protocols. `At` sends `ScheduleAt`
-to a clock service and receives `TimeReached`; `Watching` sends `ObservePeer`
-to a monitor service and receives `PeerStopped`. The interpreter selects the
-service from the statically known message batch type.
+struct Counter(u64);
 
-Supervision is derived with stable proxy actors. A replacement is a message to
-the proxy, and the proxy creates a fresh worker incarnation. `Create` therefore
-means only fresh birth. `Supervising<B, C>` declares `Births<Proxy<C>>`, and
-`Proxy<C>` declares `Births<C>`.
+impl State for Counter {
+    type Addr = MailAddr;
+    type Msg = u64;
 
-`Spec` is a DX-only typestate composer. Calls such as `.at(...)`, `.watch(...)`,
-`.stash(...)`, `.children(...)`, `.restart(...)`, `.when(...)`, and
-`.within(...)` directly build concrete behavior wrappers while hiding their
-nested protocol types.
+    fn handle(
+        &mut self,
+        _from: MailAddr,
+        message: u64,
+    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, NoBirths, Never> {
+        self.0 += message;
+        Ok(Actions::cont())
+    }
+}
+
+let behavior = Base::new(Counter(0));
+```
+
+## Development and testing
+
+Enter the pinned development environment with:
+
+```sh
+nix develop
+```
+
+Run the retained workspace tests directly:
+
+```sh
+cargo nextest run --workspace
+```
+
+Run every repository gate, including build, tests, documentation, Rust and TOML
+formatting, dependency audit, and dependency policy checks:
+
+```sh
+nix flake check
+```
+
+Criterion benchmarks remain available explicitly with `cargo bench`; they are
+not executed as nextest test binaries.
+
+## License
+
+Licensed under either of Apache License, Version 2.0 or the MIT license, at your
+option. See `LICENSE-APACHE` and `LICENSE-MIT`.

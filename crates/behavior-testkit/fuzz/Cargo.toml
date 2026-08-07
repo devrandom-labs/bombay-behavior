@@ -1,0 +1,71 @@
+[package]
+name = "bombay-behavior-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+behavior = { package = "bombay-behavior", path = "../../../crates/behavior" }
+libfuzzer-sys = "0.4"
+tokio = { version = "1.47", features = ["rt", "time"] }
+
+[[bin]]
+name = "protocol_sequences"
+path = "fuzz_targets/protocol_sequences.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "supervision_sequences"
+path = "fuzz_targets/supervision_sequences.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fsm_sequences"
+path = "fuzz_targets/fsm_sequences.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "birth_sequences"
+path = "fuzz_targets/birth_sequences.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "stash_sequences"
+path = "fuzz_targets/stash_sequences.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "stack_sequences"
+path = "fuzz_targets/stack_sequences.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "error_sequences"
+path = "fuzz_targets/error_sequences.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "two_buffer_sequences"
+path = "fuzz_targets/two_buffer_sequences.rs"
+test = false
+doc = false
+bench = false
+
+[workspace]

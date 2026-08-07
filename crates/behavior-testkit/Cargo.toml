@@ -1,0 +1,29 @@
+[package]
+name = "bombay-behavior-testkit"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Verification models and test utilities for Bombay Behavior"
+publish = false
+
+[lib]
+name = "behavior_testkit"
+
+[dependencies]
+behavior.workspace = true
+proptest.workspace = true
+tokio = { workspace = true, features = ["macros", "rt", "time", "test-util"] }
+
+[dev-dependencies]
+criterion.workspace = true
+
+[[bench]]
+name = "protocol_matrix"
+harness = false
+
+[lints]
+workspace = true
