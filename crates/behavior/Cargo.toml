@@ -1,0 +1,28 @@
+[package]
+name = "bombay-behavior"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Composable, statically typed actor behavior algebra"
+keywords = ["actor", "async", "behavior", "concurrency"]
+categories = ["asynchronous", "concurrency"]
+
+[lib]
+name = "behavior"
+
+[dependencies]
+behavior-macros.workspace = true
+communication.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["sync", "time", "macros", "rt"] }
+
+[dev-dependencies]
+proptest.workspace = true
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "time", "sync", "test-util"] }
+
+[lints]
+workspace = true

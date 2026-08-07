@@ -1,0 +1,30 @@
+[licenses]
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "BSD-3-Clause",
+    "BSD-2-Clause", # required by arrayref (transitive via blake3, examples/signed-events)
+    "ISC",
+    "Unicode-3.0",  # For Unicode data
+    "MPL-2.0", # Mozilla Public License
+    "Zlib",
+    "BSL-1.0",
+    "BlueOak-1.0.0", # Blue Oak Model License — permissive, required by crc32c
+    "0BSD", # BSD Zero Clause — public-domain-equivalent, no attribution clause;
+            # required by varint-rs >= 2.2.1 (transitive via lsm-tree/fjall),
+            # which relicensed from Apache-2.0 in a patch release.
+]
+private = { ignore = true }
+
+[[licenses.clarify]]
+name = "ring"
+expression = "MIT AND ISC AND OpenSSL"
+license-files = [
+    { path = "LICENSE", hash = 0xbd0eed23 }
+]
+
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

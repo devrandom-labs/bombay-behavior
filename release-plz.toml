@@ -1,0 +1,8 @@
+[workspace]
+git_release_enable = true
+git_tag_enable = true
+
+[[package]]
+name = "bombay-behavior-testkit"
+publish = false
+release = false
