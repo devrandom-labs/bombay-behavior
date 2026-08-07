@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.4.0...bombay-behavior-v0.5.0) - 2026-08-07
+
+### Other
+
+- Preserve proxy identity across worker restarts ([#12](https://github.com/devrandom-labs/bombay-behavior/pull/12))
+- release v0.3.1 ([#9](https://github.com/devrandom-labs/bombay-behavior/pull/9))
+
 ## [0.4.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.3.0...bombay-behavior-v0.4.0) - 2026-08-07
 
 ### Added
