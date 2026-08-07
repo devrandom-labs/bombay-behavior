@@ -1,5 +1,13 @@
 //! Pure supervision. Stable child identity is a proxy actor; replacement is a
 //! message to that proxy, which creates a fresh worker incarnation.
+//!
+//! Supervision is a Bombay-derived construction, not a privileged actor-model
+//! effect. Its transition law is the same pure fold as every other behavior:
+//! one typed termination observation updates the supervisor's explicit state
+//! and returns only sends, fresh creations, and become. Restart eligibility,
+//! candidate selection, budget admission, and the reaction to an unsatisfied
+//! topology are behavior policy. The interpreter only delivers observations
+//! and interprets the resulting [`Actions`].
 
 use std::time::Duration;
 
@@ -13,7 +21,7 @@ use crate::deadlined::{TimeEvent, TimeReached};
 use crate::shutdown::{ShutdownEvent, ShutdownRequested};
 use crate::verdict::{Never, Step};
 use crate::watching::{PeerEvent, PeerStopped};
-use crate::{Crash, Exit};
+use crate::{Become, Crash, Exit, RestartDenial, SupervisionFailureReason};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Strategy {
@@ -71,6 +79,74 @@ pub struct WorkerStopped<A: Address> {
     pub proxy: A::Nonce,
     pub outcome: Result<Exit<A>, Crash>,
     pub at: Instant,
+}
+
+/// A typed failure of the supervisor's child-topology contract.
+///
+/// The original terminal outcome is owned here so a pure reaction can inspect
+/// it without consulting interpreter state. The compact `reason` is also the
+/// value propagated in [`Exit::SupervisionFailed`] when the supplied reaction
+/// chooses to stop.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SupervisionFailure<A: Address> {
+    /// Stable slot whose termination made the topology unsatisfiable.
+    pub child: A::Nonce,
+    /// Original terminal outcome, preserved without cloning or erasure.
+    pub outcome: Result<Exit<A>, Crash>,
+    /// Exhaustive policy reason for the failure.
+    pub reason: SupervisionFailureReason,
+}
+
+impl<A: Address> SupervisionFailure<A> {
+    /// Reduce the local failure observation to the terminal value propagated
+    /// through ordinary child observation.
+    #[must_use]
+    pub const fn into_exit(self) -> Exit<A> {
+        Exit::SupervisionFailed(self.reason)
+    }
+}
+
+/// Pure policy applied when a supervisor cannot preserve its child topology.
+///
+/// A function pointer keeps the policy concrete, non-capturing, allocation
+/// free, and statically dispatched. It may update the wrapped behavior as part
+/// of the same serialized fold and chooses only its next behavior; it cannot
+/// interpret effects or consult runtime state.
+pub type SupervisionFailureReaction<B> =
+    fn(
+        &mut B,
+        &SupervisionFailure<<B as Behavior>::Addr>,
+    ) -> Result<Become<<B as Behavior>::Addr>, <B as Behavior>::Error>;
+
+/// Retire the failed slot and keep the supervisor alive.
+///
+/// This is Bombay's compatibility policy and the default for a newly built
+/// supervisor. It never produces a controlled behavior error.
+///
+/// # Errors
+///
+/// This supplied policy never returns a controlled behavior error.
+pub fn retire_on_supervision_failure<B: Behavior>(
+    _behavior: &mut B,
+    _failure: &SupervisionFailure<B::Addr>,
+) -> Result<Become<B::Addr>, B::Error> {
+    Ok(Step::Continue)
+}
+
+/// Stop the supervisor with a typed failure outcome.
+///
+/// A parent observing this ordinary actor exit may apply its own supervision
+/// policy. This derives escalation through the existing actor algebra rather
+/// than adding an interpreter-only effect.
+///
+/// # Errors
+///
+/// This supplied policy never returns a controlled behavior error.
+pub fn stop_on_supervision_failure<B: Behavior>(
+    _behavior: &mut B,
+    failure: &SupervisionFailure<B::Addr>,
+) -> Result<Become<B::Addr>, B::Error> {
+    Ok(Step::Stop(failure.into_exit()))
 }
 
 /// Construction of the worker-report lane through a composed event type.
@@ -331,6 +407,12 @@ struct Slot {
     sequence: u64,
 }
 
+enum ReplacementDecision<A: Address, C: Behavior<Addr = A>> {
+    Retire,
+    Replace(Vec<Delivery<A, ProxyCommand<C>>>),
+    Failed(SupervisionFailure<A>),
+}
+
 pub struct Supervising<B: Behavior, C: Behavior<Ph = Never, Addr = B::Addr>> {
     inner: B,
     slots: Vec<(<B::Addr as Address>::Nonce, Slot)>,
@@ -342,6 +424,7 @@ pub struct Supervising<B: Behavior, C: Behavior<Ph = Never, Addr = B::Addr>> {
     max_restarts: u32,
     window: Duration,
     restarts: Vec<Instant>,
+    on_failure: SupervisionFailureReaction<B>,
 }
 
 impl<B, C> Supervising<B, C>
@@ -387,6 +470,7 @@ where
             max_restarts,
             window,
             restarts: Vec::new(),
+            on_failure: retire_on_supervision_failure::<B>,
         }
     }
 
@@ -406,6 +490,13 @@ where
     pub fn with_budget(mut self, max: u32, window: Duration) -> Self {
         self.max_restarts = max;
         self.window = window;
+        self
+    }
+
+    #[must_use]
+    /// Replace the pure reaction used for typed supervision failures.
+    pub fn with_failure_reaction(mut self, reaction: SupervisionFailureReaction<B>) -> Self {
+        self.on_failure = reaction;
         self
     }
 
@@ -434,10 +525,10 @@ where
         self.restarts.len()
     }
 
-    fn replacements(
+    fn replacement_decision(
         &mut self,
         event: &WorkerStopped<B::Addr>,
-    ) -> Vec<Delivery<B::Addr, ProxyCommand<C>>> {
+    ) -> ReplacementDecision<B::Addr, C> {
         let dead = self
             .position(event.proxy)
             .expect("unknown supervised nonce");
@@ -450,7 +541,7 @@ where
         };
         if !eligible {
             self.slots[dead].1.alive = false;
-            return Vec::new();
+            return ReplacementDecision::Retire;
         }
         if self.window != Duration::MAX {
             self.restarts.retain(|stamp| {
@@ -480,20 +571,41 @@ where
         };
         if self.restarts.len() + candidates.len() > self.max_restarts as usize {
             self.slots[dead].1.alive = false;
-            return Vec::new();
+            return ReplacementDecision::Failed(SupervisionFailure {
+                child: event.proxy,
+                outcome: event.outcome,
+                reason: SupervisionFailureReason::RestartDenied(RestartDenial::BudgetExceeded {
+                    restarts_in_window: self.restarts.len(),
+                    replacements_requested: candidates.len(),
+                    maximum_restarts: self.max_restarts,
+                }),
+            });
         }
         self.restarts
             .resize(self.restarts.len() + candidates.len(), event.at);
-        candidates
-            .into_iter()
-            .map(|index| {
-                self.slots[index].1.alive = true;
-                Delivery::new(
-                    Recipient::child(self.slots[index].0),
-                    ProxyCommand::Replace((self.build)(index)),
-                )
-            })
-            .collect()
+        ReplacementDecision::Replace(
+            candidates
+                .into_iter()
+                .map(|index| {
+                    self.slots[index].1.alive = true;
+                    Delivery::new(
+                        Recipient::child(self.slots[index].0),
+                        ProxyCommand::Replace((self.build)(index)),
+                    )
+                })
+                .collect(),
+        )
+    }
+
+    fn react_to_failure(
+        &mut self,
+        failure: &SupervisionFailure<B::Addr>,
+    ) -> Result<Become<B::Addr, B::Ph>, B::Error> {
+        Ok(match (self.on_failure)(&mut self.inner, failure)? {
+            Step::Continue => Step::Continue,
+            Step::Goto(never) => match never {},
+            Step::Stop(exit) => Step::Stop(exit),
+        })
     }
 
     fn wrap(
@@ -591,23 +703,37 @@ where
 
     async fn step(&mut self, event: Self::Event) -> Result<Self::Effect, B::Error> {
         match event {
-            SupervisionEvent::WorkerStopped(event) => Ok(Actions {
-                sends: SendProduct {
-                    inner: B::Sends::empty(),
-                    own: SendProduct {
-                        inner: ServiceSends::empty(),
-                        own: self.replacements(&event),
-                    },
-                },
-                creates: Vec::new(),
-                become_: Step::Continue,
-            }),
+            SupervisionEvent::WorkerStopped(event) => {
+                let decision = self.replacement_decision(&event);
+                match decision {
+                    ReplacementDecision::Retire => Ok(Actions::cont()),
+                    ReplacementDecision::Replace(replacements) => Ok(Actions {
+                        sends: SendProduct {
+                            inner: B::Sends::empty(),
+                            own: SendProduct {
+                                inner: ServiceSends::empty(),
+                                own: replacements,
+                            },
+                        },
+                        creates: Vec::new(),
+                        become_: Step::Continue,
+                    }),
+                    ReplacementDecision::Failed(failure) => {
+                        Ok(Actions::just(self.react_to_failure(&failure)?))
+                    }
+                }
+            }
             SupervisionEvent::ChildStopped(event) => {
                 let dead = self
                     .position(event.nonce)
                     .expect("unknown supervised nonce");
                 self.slots[dead].1.alive = false;
-                Ok(Actions::cont())
+                let failure = SupervisionFailure {
+                    child: event.nonce,
+                    outcome: event.outcome,
+                    reason: SupervisionFailureReason::StableChildStopped,
+                };
+                Ok(Actions::just(self.react_to_failure(&failure)?))
             }
             SupervisionEvent::Inner(event) => {
                 let actions = self.inner.step(event).await?;

@@ -9,7 +9,7 @@ use crate::behavior::{Address, Behavior, BirthMode, Births};
 use crate::deadlined::{At, AtId, AtReaction};
 use crate::shutdown::{FinalizeOnShutdown, ShutdownReaction, StopOnShutdown};
 use crate::stashing::{StashRoute, Stashing};
-use crate::supervising::{RestartPolicy, Strategy, Supervising};
+use crate::supervising::{RestartPolicy, Strategy, Supervising, SupervisionFailureReaction};
 use crate::verdict::Never;
 use crate::watching::{LinkReaction, Watching};
 use crate::{Actions, Base, Exit, Fsm, Move, SendAlgebra, State};
@@ -194,6 +194,16 @@ where
     pub fn within(self, maximum: u32, window: Duration) -> Self {
         Self {
             behavior: self.behavior.with_budget(maximum, window),
+            next_timer: self.next_timer,
+        }
+    }
+
+    /// Apply a pure reaction when supervision can no longer preserve its
+    /// child topology.
+    #[must_use]
+    pub fn on_supervision_failure(self, reaction: SupervisionFailureReaction<B>) -> Self {
+        Self {
+            behavior: self.behavior.with_failure_reaction(reaction),
             next_timer: self.next_timer,
         }
     }

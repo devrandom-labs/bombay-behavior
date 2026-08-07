@@ -15,6 +15,9 @@ Its core guarantees are:
   typed `Create` values;
 - supervision replaces workers through stable proxy actors, preserving the
   meaning of fresh creation;
+- restart denial and stable-proxy loss remain typed behavior inputs to a pure,
+  configurable reaction; stopping propagates through ordinary observation
+  rather than a hidden runtime escalation effect;
 - initialization effects are interpreted before mailbox events;
 - timers, observation, stashing, and state transitions compose without hidden
   runtime side channels.

@@ -9,8 +9,9 @@
 //! agree on every byte.
 
 use behavior::{
-    Acted, Actions, Base, Behavior, WorkerStopped, Crash, Delivery, MailAddr, Never, RestartPolicy,
-    State, Strategy, Supervising, SupervisionEvent,
+    Acted, Actions, Base, Behavior, Crash, Delivery, Exit, MailAddr, Never, RestartDenial,
+    RestartPolicy, State, Step, Strategy, Supervising, SupervisionEvent, SupervisionFailureReason,
+    WorkerStopped, stop_on_supervision_failure,
 };
 use libfuzzer_sys::fuzz_target;
 use tokio::runtime::Builder;
@@ -66,7 +67,8 @@ fuzz_target!(|bytes: &[u8]| {
             RestartPolicy::Permanent,
             BUDGET,
             std::time::Duration::from_nanos(WINDOW_NANOS),
-        );
+        )
+        .with_failure_reaction(stop_on_supervision_failure);
         behavior.init().await.unwrap();
         let base = Instant::now();
 
@@ -106,6 +108,22 @@ fuzz_target!(|bytes: &[u8]| {
                 usize::from(expected_restart),
                 "replacement count mismatch at byte {index}"
             );
+            if expected_restart {
+                assert_eq!(actions.become_, Step::Continue);
+            } else {
+                assert_eq!(
+                    actions.become_,
+                    Step::Stop(Exit::SupervisionFailed(
+                        SupervisionFailureReason::RestartDenied(
+                            RestartDenial::BudgetExceeded {
+                                restarts_in_window: restarts.len(),
+                                replacements_requested: 1,
+                                maximum_restarts: BUDGET,
+                            }
+                        )
+                    ))
+                );
+            }
             for slot in 0..FLEET {
                 assert_eq!(
                     behavior.is_alive(u64::try_from(slot).unwrap()),

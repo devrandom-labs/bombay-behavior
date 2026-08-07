@@ -66,6 +66,8 @@ pub struct Model {
     slots: Vec<Slot>,
     restarts: Vec<u64>,
     next_sequence: u64,
+    last_restart_denied: bool,
+    last_replacements_requested: usize,
 }
 
 impl Model {
@@ -85,6 +87,8 @@ impl Model {
                 .collect(),
             restarts: Vec::new(),
             next_sequence: u64::try_from(count).unwrap(),
+            last_restart_denied: false,
+            last_replacements_requested: 0,
         }
     }
 
@@ -124,6 +128,16 @@ impl Model {
         self.restarts.len()
     }
 
+    #[must_use]
+    pub const fn last_restart_denied(&self) -> bool {
+        self.last_restart_denied
+    }
+
+    #[must_use]
+    pub const fn last_replacements_requested(&self) -> usize {
+        self.last_replacements_requested
+    }
+
     /// Returns the nonces of the replacement sends the contract demands.
     ///
     /// # Panics
@@ -142,6 +156,8 @@ impl Model {
         maximum: u32,
         window: Option<u64>,
     ) -> Vec<u64> {
+        self.last_restart_denied = false;
+        self.last_replacements_requested = 0;
         // First slot with this nonce — identity nonces make this unique.
         let dead = self
             .slots
@@ -179,8 +195,10 @@ impl Model {
                 })
                 .collect(),
         };
+        self.last_replacements_requested = candidates.len();
         if self.restarts.len() + candidates.len() > maximum as usize {
             self.slots[dead].alive = false;
+            self.last_restart_denied = true;
             return Vec::new();
         }
         self.restarts
