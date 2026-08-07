@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.1.0...bombay-behavior-v0.2.0) - 2026-08-07
+
+### Fixed
+
+- distinguish nested timer generations ([#3](https://github.com/devrandom-labs/bombay-behavior/pull/3))
+
+### Other
+
+- release v0.1.0 ([#1](https://github.com/devrandom-labs/bombay-behavior/pull/1))
+
 ## [0.1.0](https://github.com/devrandom-labs/bombay-behavior/releases/tag/bombay-behavior-v0.1.0) - 2026-08-07
 
 ### Other
