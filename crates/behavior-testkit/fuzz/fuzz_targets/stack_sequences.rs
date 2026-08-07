@@ -9,7 +9,7 @@
 //! product lane and never leak across.
 
 use behavior::{
-    Acted, Actions, AtEvent, AtId, Base, Behavior, ChildStopped, Crash, Delivery, Exit, MailAddr,
+    Acted, Actions, AtEvent, AtGeneration, AtId, Base, Behavior, ChildStopped, Crash, Delivery, Exit, MailAddr,
     Never, PeerStopped, Recipient, RestartPolicy, Route, Spec, StashRoute, State, Step, Strategy,
     SupervisionEvent, TimeReached, UserEvent, WatchEvent, stop_on_abnormal_death,
 };
@@ -139,6 +139,7 @@ fuzz_target!(|bytes: &[u8]| {
                     let actions = behavior
                         .step(SupervisionEvent::Inner(AtEvent::Reached(TimeReached {
                             id: AtId(0),
+                            generation: AtGeneration(0),
                             at: due,
                         })))
                         .await

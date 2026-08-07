@@ -6,7 +6,7 @@ use std::time::Duration;
 use tokio::time::Instant;
 
 use crate::behavior::{Address, Behavior, BirthMode, Births};
-use crate::deadlined::{At, AtReaction};
+use crate::deadlined::{At, AtId, AtReaction};
 use crate::stashing::{StashRoute, Stashing};
 use crate::supervising::{RestartPolicy, Strategy, Supervising};
 use crate::verdict::Never;
@@ -21,12 +21,18 @@ fn identity_nonce<N: From<u64>>(index: usize) -> N {
     N::from(u64::try_from(index).expect("fleet index fits u64"))
 }
 
-pub struct Spec<B>(B);
+pub struct Spec<B> {
+    behavior: B,
+    next_timer: u64,
+}
 
 impl<S: State<O, Br, E>, O, Br: BirthMode, E> Spec<Base<S, O, Br, E>> {
     #[must_use]
     pub fn new(state: S) -> Self {
-        Self(Base::new(state))
+        Self {
+            behavior: Base::new(state),
+            next_timer: 0,
+        }
     }
 }
 
@@ -37,36 +43,56 @@ where
 {
     #[must_use]
     pub fn machine(state: S, phase: P, on: fn(P, &mut S, &M) -> Result<Move<P>, E>) -> Self {
-        Self(Fsm::new(state, phase, on))
+        Self {
+            behavior: Fsm::new(state, phase, on),
+            next_timer: 0,
+        }
     }
 }
 
 impl<B: Behavior> Spec<B> {
     #[must_use]
     pub fn from_behavior(behavior: B) -> Self {
-        Self(behavior)
+        Self {
+            behavior,
+            next_timer: 0,
+        }
     }
 
     #[must_use]
     pub fn build(self) -> B {
-        self.0
+        self.behavior
     }
 
     #[must_use]
     pub fn behavior(&self) -> &B {
-        &self.0
+        &self.behavior
     }
 
     /// Observe a peer and apply a pure reaction when it stops.
     #[must_use]
     pub fn watch(self, peer: B::Addr, on_stopped: LinkReaction<B>) -> Spec<Watching<B>> {
-        Spec(Watching::new(self.0, peer, on_stopped))
+        Spec {
+            behavior: Watching::new(self.behavior, peer, on_stopped),
+            next_timer: self.next_timer,
+        }
     }
 
     /// Apply a pure reaction when the given absolute time is reached.
+    ///
+    /// # Panics
+    ///
+    /// Panics if one specification composes more than `u64::MAX` timer
+    /// capabilities.
     #[must_use]
     pub fn at(self, when: Option<Instant>, on_reached: AtReaction<B>) -> Spec<At<B>> {
-        Spec(At::new(self.0, when, on_reached))
+        Spec {
+            behavior: At::new(self.behavior, AtId(self.next_timer), when, on_reached),
+            next_timer: self
+                .next_timer
+                .checked_add(1)
+                .expect("timer identity exhausted"),
+        }
     }
 
     /// Hold messages selected by `route` and replay them on `Release`.
@@ -75,7 +101,10 @@ impl<B: Behavior> Spec<B> {
     where
         B: Behavior<Ph = Never>,
     {
-        Spec(Stashing::new(self.0, route))
+        Spec {
+            behavior: Stashing::new(self.behavior, route),
+            next_timer: self.next_timer,
+        }
     }
 
     /// Create a supervised child topology. Concrete proxy and monitor types
@@ -101,16 +130,19 @@ impl<B: Behavior> Spec<B> {
         B: Behavior<Birth = Births<C>>,
         C: Behavior<Ph = Never, Addr = B::Addr>,
     {
-        Spec(Supervising::new(
-            self.0,
-            nonces,
-            count,
-            build,
-            DEFAULT_STRATEGY,
-            DEFAULT_POLICY,
-            DEFAULT_BUDGET.0,
-            DEFAULT_BUDGET.1,
-        ))
+        Spec {
+            behavior: Supervising::new(
+                self.behavior,
+                nonces,
+                count,
+                build,
+                DEFAULT_STRATEGY,
+                DEFAULT_POLICY,
+                DEFAULT_BUDGET.0,
+                DEFAULT_BUDGET.1,
+            ),
+            next_timer: self.next_timer,
+        }
     }
 }
 
@@ -121,17 +153,26 @@ where
 {
     #[must_use]
     pub fn restart(self, strategy: Strategy) -> Self {
-        Self(self.0.with_strategy(strategy))
+        Self {
+            behavior: self.behavior.with_strategy(strategy),
+            next_timer: self.next_timer,
+        }
     }
 
     #[must_use]
     pub fn when(self, policy: RestartPolicy) -> Self {
-        Self(self.0.with_policy(policy))
+        Self {
+            behavior: self.behavior.with_policy(policy),
+            next_timer: self.next_timer,
+        }
     }
 
     #[must_use]
     pub fn within(self, maximum: u32, window: Duration) -> Self {
-        Self(self.0.with_budget(maximum, window))
+        Self {
+            behavior: self.behavior.with_budget(maximum, window),
+            next_timer: self.next_timer,
+        }
     }
 }
 
@@ -163,10 +204,10 @@ where
     type Done = B::Done;
 
     async fn init(&mut self) -> Result<Self::Effect, B::Error> {
-        self.0.init().await
+        self.behavior.init().await
     }
 
     async fn step(&mut self, event: B::Event) -> Result<Self::Effect, B::Error> {
-        self.0.step(event).await
+        self.behavior.step(event).await
     }
 }

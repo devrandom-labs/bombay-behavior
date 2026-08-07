@@ -13,15 +13,20 @@ use crate::{Exit, Step};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct AtId(pub u64);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct AtGeneration(pub u64);
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ScheduleAt {
     pub id: AtId,
+    pub generation: AtGeneration,
     pub at: Instant,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TimeReached {
     pub id: AtId,
+    pub generation: AtGeneration,
     pub at: Instant,
 }
 
@@ -79,16 +84,18 @@ pub type AtActions<B> =
 
 pub struct At<B: Behavior> {
     inner: B,
-    scheduled: Option<(AtId, Instant)>,
+    id: AtId,
+    scheduled: Option<(AtGeneration, Instant)>,
     on_reached: AtReaction<B>,
 }
 
 impl<B: Behavior> At<B> {
     #[must_use]
-    pub fn new(inner: B, at: Option<Instant>, on_reached: AtReaction<B>) -> Self {
+    pub fn new(inner: B, id: AtId, at: Option<Instant>, on_reached: AtReaction<B>) -> Self {
         Self {
             inner,
-            scheduled: at.map(|at| (AtId(0), at)),
+            id,
+            scheduled: at.map(|at| (AtGeneration(0), at)),
             on_reached,
         }
     }
@@ -127,15 +134,21 @@ where
 
     async fn init(&mut self) -> Result<Self::Effect, B::Error> {
         let actions = self.inner.init().await?;
-        let own = self
-            .scheduled
-            .map_or_else(Vec::new, |(id, at)| vec![ScheduleAt { id, at }]);
+        let own = self.scheduled.map_or_else(Vec::new, |(generation, at)| {
+            vec![ScheduleAt {
+                id: self.id,
+                generation,
+                at,
+            }]
+        });
         Ok(Self::wrap(actions, own))
     }
 
     async fn step(&mut self, event: Self::Event) -> Result<Self::Effect, B::Error> {
         match event {
-            AtEvent::Reached(event) if self.scheduled == Some((event.id, event.at)) => {
+            AtEvent::Reached(event)
+                if event.id == self.id && self.scheduled == Some((event.generation, event.at)) =>
+            {
                 self.scheduled = None;
                 let become_ = match (self.on_reached)(&mut self.inner)? {
                     Step::Continue => Step::Continue,

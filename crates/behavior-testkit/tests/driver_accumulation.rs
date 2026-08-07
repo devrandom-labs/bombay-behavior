@@ -242,7 +242,7 @@ async fn empty_fleet_dynamic_birth_then_death_restarts() {
 #[tokio::test]
 async fn driver_full_stack_mixed_lanes_stop_on_peer_death() {
     use behavior::{
-        AtEvent, AtId, PeerStopped, Spec, StashRoute, TimeReached, WatchEvent,
+        AtEvent, AtGeneration, AtId, PeerStopped, Spec, StashRoute, TimeReached, WatchEvent,
         stop_on_abnormal_death,
     };
 
@@ -273,6 +273,7 @@ async fn driver_full_stack_mixed_lanes_stop_on_peer_death() {
         )))),
         SupervisionEvent::Inner(AtEvent::Reached(TimeReached {
             id: AtId(0),
+            generation: AtGeneration(0),
             at: due,
         })),
         SupervisionEvent::Inner(AtEvent::Inner(WatchEvent::PeerStopped(PeerStopped {

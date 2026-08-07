@@ -9,9 +9,10 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, AtEvent, AtId, Base, Behavior, Crash, Delivery, Fsm, MailAddr, Move, Never,
-    PeerStopped, RestartPolicy, Spec, State, Step, Strategy, Supervising, SupervisionEvent,
-    TimeReached, User, UserEvent, WatchEvent, restart_all, restart_one, restart_rest,
+    Acted, Actions, AtEvent, AtGeneration, AtId, Base, Behavior, Crash, Delivery, Fsm, MailAddr,
+    Move, Never, PeerStopped, RestartPolicy, Spec, State, Step, Strategy, Supervising,
+    SupervisionEvent, TimeReached, User, UserEvent, WatchEvent, restart_all, restart_one,
+    restart_rest,
 };
 use behavior_testkit::{Mailbox, drive};
 use tokio::time::Instant;
@@ -169,6 +170,7 @@ async fn at_reaction_error_consumes_the_timer() {
     let first = behavior
         .step(AtEvent::Reached(TimeReached {
             id: AtId(0),
+            generation: AtGeneration(0),
             at: due,
         }))
         .await;
@@ -178,6 +180,7 @@ async fn at_reaction_error_consumes_the_timer() {
     let second = behavior
         .step(AtEvent::Reached(TimeReached {
             id: AtId(0),
+            generation: AtGeneration(0),
             at: due,
         }))
         .await
