@@ -7,8 +7,8 @@ use std::marker::PhantomData;
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, Base, Behavior, ChildStopped, Crash, Delivery, MailAddr, Never, Recipient,
-    RestartPolicy, Route, State, Step, Strategy, Supervising, SupervisionEvent, User, UserEvent,
+    Acted, Actions, Base, Behavior, Crash, Delivery, MailAddr, Never, Recipient, RestartPolicy,
+    Route, State, Step, Strategy, Supervising, SupervisionEvent, User, UserEvent, WorkerStopped,
     workers,
 };
 use tokio::time::Instant;
@@ -140,8 +140,8 @@ async fn supervised_mixed_fleet_routes_replacements_by_birth_sequence() {
 
     let at = Instant::now();
     let wide = supervisor
-        .step(SupervisionEvent::ChildStopped(ChildStopped {
-            nonce: 1,
+        .step(SupervisionEvent::WorkerStopped(WorkerStopped {
+            proxy: 1,
             outcome: Err(Crash::Failed),
             at,
         }))
@@ -153,8 +153,8 @@ async fn supervised_mixed_fleet_routes_replacements_by_birth_sequence() {
     assert!(routes.contains(&Route::Child(2)));
 
     let narrow = supervisor
-        .step(SupervisionEvent::ChildStopped(ChildStopped {
-            nonce: 2,
+        .step(SupervisionEvent::WorkerStopped(WorkerStopped {
+            proxy: 2,
             outcome: Err(Crash::Failed),
             at,
         }))
@@ -213,8 +213,8 @@ async fn workers_one_for_all_replaces_every_slot() {
     let mut supervisor = supervise_with(count, build, Strategy::OneForAll);
     supervisor.init().await.unwrap();
     let actions = supervisor
-        .step(SupervisionEvent::ChildStopped(ChildStopped {
-            nonce: 0,
+        .step(SupervisionEvent::WorkerStopped(WorkerStopped {
+            proxy: 0,
             outcome: Err(Crash::Failed),
             at: Instant::now(),
         }))

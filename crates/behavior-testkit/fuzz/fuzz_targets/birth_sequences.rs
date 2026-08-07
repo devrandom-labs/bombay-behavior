@@ -9,7 +9,7 @@
 //! state must agree.
 
 use behavior::{
-    Acted, Actions, Base, Behavior, ChildStopped, Crash, Create, Delivery, MailAddr, Never,
+    Acted, Actions, Base, Behavior, WorkerStopped, Crash, Create, Delivery, MailAddr, Never,
     RestartPolicy, State, Step, Strategy, Supervising, SupervisionEvent, UserEvent,
 };
 use libfuzzer_sys::fuzz_target;
@@ -122,8 +122,8 @@ fuzz_target!(|bytes: &[u8]| {
                     }
                 };
                 let actions = behavior
-                    .step(SupervisionEvent::ChildStopped(ChildStopped {
-                        nonce: dead.nonce,
+                    .step(SupervisionEvent::WorkerStopped(WorkerStopped {
+                        proxy: dead.nonce,
                         outcome: Err(Crash::Failed),
                         at: base + std::time::Duration::from_nanos(u64::try_from(index).unwrap()),
                     }))

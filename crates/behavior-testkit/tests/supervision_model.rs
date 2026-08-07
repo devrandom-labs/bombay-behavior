@@ -7,8 +7,8 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, Base, Behavior, ChildStopped, Crash, Create, Delivery, MailAddr, Never,
-    RestartPolicy, Route, State, Step, Strategy, Supervising, SupervisionEvent, UserEvent,
+    Acted, Actions, Base, Behavior, Crash, Create, Delivery, MailAddr, Never, RestartPolicy, Route,
+    State, Step, Strategy, Supervising, SupervisionEvent, UserEvent, WorkerStopped,
 };
 use behavior_testkit::model::{Model, Outcome};
 use proptest::collection::vec;
@@ -151,8 +151,8 @@ proptest! {
             let outcome = Outcome::from_tag(outcome_tag);
             let expected = model.apply(dead, outcome, at, strategy, policy, maximum, window);
             let actions = runtime
-                .block_on(behavior.step(SupervisionEvent::ChildStopped(ChildStopped {
-                    nonce: dead,
+                .block_on(behavior.step(SupervisionEvent::WorkerStopped(WorkerStopped {
+                    proxy: dead,
                     outcome: outcome.into_result(),
                     at: base + Duration::from_nanos(at),
                 })))
@@ -248,8 +248,8 @@ proptest! {
                     Some(window_nanos),
                 );
                 let actions = runtime
-                    .block_on(behavior.step(SupervisionEvent::ChildStopped(ChildStopped {
-                        nonce,
+                    .block_on(behavior.step(SupervisionEvent::WorkerStopped(WorkerStopped {
+                        proxy: nonce,
                         outcome: outcome.into_result(),
                         at: base + Duration::from_nanos(at),
                     })))
@@ -297,8 +297,8 @@ async fn budget_recovers_after_stamps_age_out_of_the_window() {
 
     for offset in 0..3 {
         behavior
-            .step(SupervisionEvent::ChildStopped(ChildStopped {
-                nonce: 0,
+            .step(SupervisionEvent::WorkerStopped(WorkerStopped {
+                proxy: 0,
                 outcome: Err(Crash::Failed),
                 at: base + Duration::from_nanos(offset),
             }))
@@ -309,8 +309,8 @@ async fn budget_recovers_after_stamps_age_out_of_the_window() {
 
     // At 3ns: 3 stamps + 1 candidate = 4 > 3, denied.
     let denied = behavior
-        .step(SupervisionEvent::ChildStopped(ChildStopped {
-            nonce: 0,
+        .step(SupervisionEvent::WorkerStopped(WorkerStopped {
+            proxy: 0,
             outcome: Err(Crash::Failed),
             at: base + Duration::from_nanos(3),
         }))
@@ -321,8 +321,8 @@ async fn budget_recovers_after_stamps_age_out_of_the_window() {
 
     // At 100ns: all three stamps still inside the inclusive window; denied.
     let edge = behavior
-        .step(SupervisionEvent::ChildStopped(ChildStopped {
-            nonce: 0,
+        .step(SupervisionEvent::WorkerStopped(WorkerStopped {
+            proxy: 0,
             outcome: Err(Crash::Failed),
             at: base + Duration::from_nanos(100),
         }))
@@ -332,8 +332,8 @@ async fn budget_recovers_after_stamps_age_out_of_the_window() {
 
     // At 101ns: the stamp at 0ns aged out (age 101 > 100); budget recovers.
     let recovered = behavior
-        .step(SupervisionEvent::ChildStopped(ChildStopped {
-            nonce: 0,
+        .step(SupervisionEvent::WorkerStopped(WorkerStopped {
+            proxy: 0,
             outcome: Err(Crash::Failed),
             at: base + Duration::from_nanos(101),
         }))
@@ -363,8 +363,8 @@ async fn restart_stamps_stay_bounded_by_the_window() {
     let mut peak = 0_usize;
     for offset in 0..1000 {
         behavior
-            .step(SupervisionEvent::ChildStopped(ChildStopped {
-                nonce: 0,
+            .step(SupervisionEvent::WorkerStopped(WorkerStopped {
+                proxy: 0,
                 outcome: Err(Crash::Failed),
                 at: base + Duration::from_nanos(offset),
             }))

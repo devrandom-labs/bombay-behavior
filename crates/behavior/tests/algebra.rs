@@ -5,7 +5,7 @@ use behavior::{
     Create, Delivery, Exit, MailAddr, Move, Never, NoBirths, ObserveChild, PeerStopped, Proxy,
     ProxyCommand, Recipient, RestartPolicy, Route, ServiceSends, Spec, StashRoute, State, Step,
     Strategy, Supervising, SupervisionEvent, TimeReached, User, UserEvent, WatchEvent, Watching,
-    run, stop_on_abnormal_death, workers,
+    WorkerEvent, WorkerStopped, run, stop_on_abnormal_death, workers,
 };
 use communication::{Config, channel};
 use proptest::prelude::*;
@@ -32,6 +32,13 @@ fn ordinary_and_service_send_algebras_have_disjoint_static_dispatch() {
 fn requires_births<B, C>(_behavior: &B)
 where
     B: Behavior<Birth = Births<C>>,
+{
+}
+
+fn requires_worker_events<B>(_behavior: &B)
+where
+    B: Behavior,
+    B::Event: WorkerEvent<B::Addr>,
 {
 }
 
@@ -253,6 +260,8 @@ fn birth_modes_are_disjoint_and_wrappers_forward_them() {
 
     let supervisor = Spec::new(Parent).children((1, child));
     requires_births::<_, Proxy<Child>>(&supervisor);
+    requires_worker_events(&supervisor);
+    requires_worker_events(&supervisor.at(None, |_| Ok(Step::Continue)));
     requires_births::<_, Child>(&Proxy::new(child(0)));
 }
 
@@ -286,8 +295,8 @@ async fn supervisor_creates_proxies_and_replacement_is_a_send() {
     assert_eq!(initial.sends.own.inner[0].nonce, 0);
     assert_eq!(initial.sends.own.inner[1].nonce, 1);
 
-    let event = SupervisionEvent::ChildStopped(ChildStopped {
-        nonce: 0,
+    let event = SupervisionEvent::WorkerStopped(WorkerStopped {
+        proxy: 0,
         outcome: Err(Crash::Failed),
         at: Instant::now(),
     });
@@ -303,17 +312,107 @@ async fn proxy_replacement_creates_a_fresh_incarnation() {
     let first = proxy.init().await.unwrap();
     assert_eq!(first.creates[0].nonce, 0);
     let second = proxy
-        .step(User::user(MailAddr(0), ProxyCommand::Replace(child(0))))
+        .step(SupervisionEvent::Inner(User::user(
+            MailAddr(0),
+            ProxyCommand::Replace(child(0)),
+        )))
+        .await
+        .unwrap();
+    assert!(second.creates.is_empty());
+
+    let second = proxy
+        .step(SupervisionEvent::ChildStopped(ChildStopped {
+            nonce: 0,
+            outcome: Err(Crash::Failed),
+            at: Instant::now(),
+        }))
         .await
         .unwrap();
     assert_eq!(second.creates[0].nonce, 1);
+    assert_eq!(second.sends.own.inner[0].nonce, 1);
+    assert_eq!(second.sends.own.own[0].outcome, Err(Crash::Failed));
 
     let forwarded = proxy
-        .step(User::user(MailAddr(0), ProxyCommand::Forward(7)))
+        .step(SupervisionEvent::Inner(User::user(
+            MailAddr(0),
+            ProxyCommand::Forward(7),
+        )))
         .await
         .unwrap();
-    assert_eq!(forwarded.sends[0].to.route(), Route::Child(1));
-    assert_eq!(forwarded.sends[0].message, 7);
+    assert_eq!(forwarded.sends.inner[0].to.route(), Route::Child(1));
+    assert_eq!(forwarded.sends.inner[0].message, 7);
+}
+
+#[tokio::test]
+async fn stable_proxy_reports_worker_stop_and_creates_fresh_replacement() {
+    let at = Instant::now();
+    let mut supervisor = Spec::new(Parent)
+        .children((1, child))
+        .restart(Strategy::OneForOne)
+        .when(RestartPolicy::Transient)
+        .within(1, Duration::MAX);
+
+    let mut initial = supervisor.init().await.unwrap();
+    assert_eq!(initial.creates[0].nonce, 0);
+    assert_eq!(initial.sends.own.inner[0].nonce, 0);
+    let mut proxy = initial.creates.remove(0).child;
+
+    let worker_birth = proxy.init().await.unwrap();
+    assert_eq!(worker_birth.creates[0].nonce, 0);
+    assert_eq!(worker_birth.sends.own.inner[0].nonce, 0);
+
+    let worker_stop = proxy
+        .step(SupervisionEvent::ChildStopped(ChildStopped {
+            nonce: 0,
+            outcome: Err(Crash::Panicked),
+            at,
+        }))
+        .await
+        .unwrap();
+    assert!(worker_stop.creates.is_empty());
+    assert!(matches!(worker_stop.become_, Step::Continue));
+    assert_eq!(worker_stop.sends.own.own[0].outcome, Err(Crash::Panicked));
+
+    let restart = supervisor
+        .step(SupervisionEvent::WorkerStopped(WorkerStopped {
+            proxy: 0,
+            outcome: worker_stop.sends.own.own[0].outcome,
+            at: worker_stop.sends.own.own[0].at,
+        }))
+        .await
+        .unwrap();
+    assert!(restart.creates.is_empty());
+    assert_eq!(restart.sends.own.own.len(), 1);
+    assert_eq!(restart.sends.own.own[0].to.route(), Route::Child(0));
+
+    let command = restart.sends.own.own.into_iter().next().unwrap();
+    let replacement = proxy
+        .step(SupervisionEvent::Inner(User::user(
+            MailAddr(0),
+            command.message,
+        )))
+        .await
+        .unwrap();
+    assert_eq!(replacement.creates[0].nonce, 1);
+    assert_eq!(replacement.sends.own.inner[0].nonce, 1);
+    assert!(matches!(replacement.become_, Step::Continue));
+}
+
+#[tokio::test]
+async fn stopped_proxy_is_retired_without_sending_to_its_dead_address() {
+    let mut supervisor = supervisor(Strategy::OneForAll, RestartPolicy::Permanent, 3);
+    let stopped = supervisor
+        .step(SupervisionEvent::ChildStopped(ChildStopped {
+            nonce: 1,
+            outcome: Err(Crash::Panicked),
+            at: Instant::now(),
+        }))
+        .await
+        .unwrap();
+
+    assert!(stopped.creates.is_empty());
+    assert!(stopped.sends.own.own.is_empty());
+    assert!(!supervisor.is_alive(1));
 }
 
 struct BirthingParent(bool);
@@ -360,8 +459,8 @@ async fn supervisor_preserves_and_observes_dynamic_births_once() {
     assert_eq!(born.sends.own.inner[0].nonce, 9);
     assert_eq!(supervisor.behavior().child_count(), 1);
 
-    let stopped = SupervisionEvent::ChildStopped(ChildStopped {
-        nonce: 9,
+    let stopped = SupervisionEvent::WorkerStopped(WorkerStopped {
+        proxy: 9,
         outcome: Err(Crash::Failed),
         at: Instant::now(),
     });
@@ -374,8 +473,8 @@ async fn supervisor_preserves_and_observes_dynamic_births_once() {
 async fn supervision_strategy_policy_and_budget_are_pure_send_decisions() {
     let at = Instant::now();
     let stopped = |nonce| {
-        SupervisionEvent::ChildStopped(ChildStopped {
-            nonce,
+        SupervisionEvent::WorkerStopped(WorkerStopped {
+            proxy: nonce,
             outcome: Err(Crash::Failed),
             at,
         })
@@ -505,8 +604,8 @@ proptest! {
             Strategy::RestForOne => 3 - dead,
         };
         let mut behavior = supervisor(strategy, RestartPolicy::Transient, 3);
-        let event = SupervisionEvent::ChildStopped(ChildStopped {
-            nonce: u64::try_from(dead).unwrap(),
+        let event = SupervisionEvent::WorkerStopped(WorkerStopped {
+            proxy: u64::try_from(dead).unwrap(),
             outcome: Err(Crash::Failed),
             at: Instant::now(),
         });
