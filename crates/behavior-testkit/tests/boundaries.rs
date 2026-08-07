@@ -267,12 +267,16 @@ async fn transient_policy_restarts_only_abnormal_outcomes() {
     assert_eq!(link.sends.own.own.len(), 1);
     assert!(supervisor.is_alive(1));
 
-    let failed = supervisor
-        .step(stopped(2, Err(Crash::Failed), at))
-        .await
-        .unwrap();
-    assert_eq!(failed.sends.own.own.len(), 1);
-    assert!(supervisor.is_alive(2));
+    for crash in [
+        Crash::Failed,
+        Crash::EnvironmentFailed,
+        Crash::Panicked,
+        Crash::Cancelled,
+    ] {
+        let crashed = supervisor.step(stopped(2, Err(crash), at)).await.unwrap();
+        assert_eq!(crashed.sends.own.own.len(), 1);
+        assert!(supervisor.is_alive(2));
+    }
 }
 
 /// `OneForAll` candidate set excludes slots previously denied; the dead slot

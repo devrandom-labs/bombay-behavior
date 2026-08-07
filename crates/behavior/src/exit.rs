@@ -18,17 +18,26 @@ pub enum Exit<A: Address> {
     LinkDied(A),
 }
 
-/// How the fold crashed. The reason VALUE stays with the driver in both
-/// cases (heterogeneous error types and panic payloads are runtime
-/// plumbing — typed reasons are the homogeneous-fleet door, deferred);
-/// the fold receives the DOMAIN. Both variants classify as abnormal; the
-/// distinction is preserved for future policy (e.g. poison-message
-/// handling) and for trace truth — the death site knows which one
-/// happened, and the report must not collapse it.
+/// Why actor execution terminated abnormally.
+///
+/// The reason value stays with the interpreter: heterogeneous behavior and
+/// environment errors, panic payloads, and executor cancellation details are
+/// runtime plumbing. Observation carries only the statically known terminal
+/// domain. Every variant is abnormal; the distinction is preserved for
+/// supervision policy and truthful traces.
+///
+/// This classification is Bombay policy layered over the actor algebra. It
+/// does not add an effect to a behavior transition: interpreters mint a
+/// `Crash` only when execution terminates without an [`Exit`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Crash {
-    /// `step` returned `Err` — the behavior's declared controlled crash.
+    /// `Behavior::init` or `Behavior::step` returned its declared error.
     Failed,
-    /// The fold panicked — an undeclared programmer bug.
+    /// The interpreter could not execute an emitted effect and terminated the
+    /// actor.
+    EnvironmentFailed,
+    /// Actor execution unwound through a panic.
     Panicked,
+    /// The executor cancelled actor execution before normal completion.
+    Cancelled,
 }
