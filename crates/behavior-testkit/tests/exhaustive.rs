@@ -55,11 +55,14 @@ fn child(_index: usize) -> Child {
 const FLEET: usize = 2;
 const NONCES: [u64; 2] = [0, 1];
 const AT_VALUES: [u64; 2] = [0, 2];
-const OUTCOMES: [Outcome; 4] = [
+const OUTCOMES: [Outcome; 7] = [
     Outcome::Normal,
     Outcome::Collected,
     Outcome::LinkDied,
     Outcome::Failed,
+    Outcome::EnvironmentFailed,
+    Outcome::Panicked,
+    Outcome::Cancelled,
 ];
 const MAX_LENGTH: usize = 3;
 
@@ -166,7 +169,7 @@ fn exhaustive_supervision_sequences_match_the_reference_model() {
             }
         }
     }
-    // 3 strategies x 3 policies x 3 budgets x 2 windows x (16^0 + 16 + 16^2
-    // + 16^3) sequences.
-    assert_eq!(checked, 3 * 3 * 3 * 2 * (1 + 16 + 16 * 16 + 16 * 16 * 16));
+    // 3 strategies x 3 policies x 3 budgets x 2 windows x (28^0 + 28 + 28^2
+    // + 28^3) sequences.
+    assert_eq!(checked, 3 * 3 * 3 * 2 * (1 + 28 + 28 * 28 + 28 * 28 * 28));
 }

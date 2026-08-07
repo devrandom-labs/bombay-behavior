@@ -13,13 +13,16 @@ pub enum Outcome {
     Collected,
     LinkDied,
     Failed,
+    EnvironmentFailed,
+    Panicked,
+    Cancelled,
 }
 
 impl Outcome {
     /// Maps the outcome tag to its trace-level result.
     ///
     /// # Errors
-    /// Returns `Crash::Failed` for the `Failed` outcome.
+    /// Returns the corresponding crash domain for an abnormal runtime outcome.
     #[must_use = "maps the outcome to its trace result"]
     pub fn into_result(self) -> Result<Exit<MailAddr>, Crash> {
         match self {
@@ -27,6 +30,9 @@ impl Outcome {
             Self::Collected => Ok(Exit::Collected),
             Self::LinkDied => Ok(Exit::LinkDied(MailAddr(9))),
             Self::Failed => Err(Crash::Failed),
+            Self::EnvironmentFailed => Err(Crash::EnvironmentFailed),
+            Self::Panicked => Err(Crash::Panicked),
+            Self::Cancelled => Err(Crash::Cancelled),
         }
     }
 
@@ -36,7 +42,10 @@ impl Outcome {
             0 => Self::Normal,
             1 => Self::Collected,
             2 => Self::LinkDied,
-            _ => Self::Failed,
+            3 => Self::Failed,
+            4 => Self::EnvironmentFailed,
+            5 => Self::Panicked,
+            _ => Self::Cancelled,
         }
     }
 
