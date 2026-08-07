@@ -7,7 +7,7 @@ use tokio::time::Instant;
 
 use crate::behavior::{
     Actions, Address, Behavior, Births, Create, Delivery, Recipient, SendAlgebra, SendProduct,
-    User, UserEvent,
+    ServiceSends, User, UserEvent,
 };
 use crate::deadlined::{TimeEvent, TimeReached};
 use crate::verdict::{Never, Step};
@@ -107,7 +107,7 @@ pub enum ProxyCommand<C: Behavior> {
 
 pub type SupervisorSends<A, Sends, C> = SendProduct<
     Sends,
-    SendProduct<Vec<Delivery<A, ObserveChild<A>>>, Vec<Delivery<A, ProxyCommand<C>>>>,
+    SendProduct<ServiceSends<ObserveChild<A>>, Vec<Delivery<A, ProxyCommand<C>>>>,
 >;
 
 pub type SupervisorActions<B, C> = Actions<
@@ -387,10 +387,11 @@ where
             sends: SendProduct {
                 inner: actions.sends,
                 own: SendProduct {
-                    inner: born
-                        .into_iter()
-                        .map(|nonce| Delivery::new(Recipient::service(), ObserveChild { nonce }))
-                        .collect(),
+                    inner: ServiceSends::new(
+                        born.into_iter()
+                            .map(|nonce| ObserveChild { nonce })
+                            .collect(),
+                    ),
                     own: Vec::new(),
                 },
             },
@@ -448,9 +449,7 @@ where
         actions.sends.own.inner.extend(
             self.slots[..self.configured_count]
                 .iter()
-                .map(|(nonce, _)| {
-                    Delivery::new(Recipient::service(), ObserveChild { nonce: *nonce })
-                }),
+                .map(|(nonce, _)| ObserveChild { nonce: *nonce }),
         );
         Ok(actions)
     }
@@ -461,7 +460,7 @@ where
                 sends: SendProduct {
                     inner: B::Sends::empty(),
                     own: SendProduct {
-                        inner: Vec::new(),
+                        inner: ServiceSends::empty(),
                         own: self.replacements(&event),
                     },
                 },

@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- separate interpreter-local service requests from ordinary address-routed
+  deliveries with the `ServiceSends` algebra
+
 ## [0.3.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.2.1...bombay-behavior-v0.3.0) - 2026-08-07
 
 ### Added

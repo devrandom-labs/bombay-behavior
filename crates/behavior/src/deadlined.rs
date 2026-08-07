@@ -1,10 +1,11 @@
-//! Pure one-shot time composition. Scheduling is an ordinary send to the
-//! interpreter-provided clock actor.
+//! Pure one-shot time composition. Scheduling is a request to the emitting
+//! actor's local clock service.
 
 use tokio::time::Instant;
 
 use crate::behavior::{
-    Actions, Address, Become, Behavior, BirthMode, SendAlgebra, SendProduct, User, UserEvent,
+    Actions, Address, Become, Behavior, BirthMode, SendAlgebra, SendProduct, ServiceSends, User,
+    UserEvent,
 };
 use crate::supervising::{ChildEvent, ChildStopped};
 use crate::watching::{PeerEvent, PeerStopped};
@@ -77,7 +78,7 @@ impl<E: ChildEvent<A>, A: Address> ChildEvent<A> for AtEvent<E> {
 pub type AtReaction<B> =
     fn(&mut B) -> Result<Become<<B as Behavior>::Addr>, <B as Behavior>::Error>;
 
-pub type AtSends<B> = SendProduct<<B as Behavior>::Sends, Vec<ScheduleAt>>;
+pub type AtSends<B> = SendProduct<<B as Behavior>::Sends, ServiceSends<ScheduleAt>>;
 
 pub type AtActions<B> =
     Actions<<B as Behavior>::Addr, <B as Behavior>::Ph, AtSends<B>, <B as Behavior>::Birth>;
@@ -125,7 +126,7 @@ where
     type Addr = A;
     type Msg = B::Msg;
     type Event = AtEvent<B::Event>;
-    type Sends = SendProduct<Sends, Vec<ScheduleAt>>;
+    type Sends = SendProduct<Sends, ServiceSends<ScheduleAt>>;
     type Ph = Ph;
     type Error = B::Error;
     type Birth = Br;
@@ -134,13 +135,15 @@ where
 
     async fn init(&mut self) -> Result<Self::Effect, B::Error> {
         let actions = self.inner.init().await?;
-        let own = self.scheduled.map_or_else(Vec::new, |(generation, at)| {
-            vec![ScheduleAt {
-                id: self.id,
-                generation,
-                at,
-            }]
-        });
+        let own = self
+            .scheduled
+            .map_or_else(ServiceSends::empty, |(generation, at)| {
+                ServiceSends::one(ScheduleAt {
+                    id: self.id,
+                    generation,
+                    at,
+                })
+            });
         Ok(Self::wrap(actions, own))
     }
 
@@ -158,7 +161,7 @@ where
                 Ok(Actions {
                     sends: SendProduct {
                         inner: B::Sends::empty(),
-                        own: Vec::new(),
+                        own: ServiceSends::empty(),
                     },
                     creates: Vec::new(),
                     become_,
@@ -169,14 +172,14 @@ where
                     .inner
                     .step(inner)
                     .await
-                    .map(|actions| Self::wrap(actions, Vec::new())),
+                    .map(|actions| Self::wrap(actions, ServiceSends::empty())),
                 None => Ok(Actions::cont()),
             },
             AtEvent::Inner(event) => self
                 .inner
                 .step(event)
                 .await
-                .map(|actions| Self::wrap(actions, Vec::new())),
+                .map(|actions| Self::wrap(actions, ServiceSends::empty())),
         }
     }
 }
@@ -184,7 +187,7 @@ where
 impl<B: Behavior> At<B> {
     fn wrap(
         actions: Actions<B::Addr, B::Ph, B::Sends, B::Birth>,
-        own: Vec<ScheduleAt>,
+        own: ServiceSends<ScheduleAt>,
     ) -> AtActions<B> {
         Actions {
             sends: SendProduct {
