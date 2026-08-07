@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.3.0...bombay-behavior-v0.4.0) - 2026-08-07
+
+### Added
+
+- separate local service sends ([#10](https://github.com/devrandom-labs/bombay-behavior/pull/10))
+
+### Other
+
+- *(bombay-behavior)* release v0.3.0 ([#8](https://github.com/devrandom-labs/bombay-behavior/pull/8))
+
 ### Changed
 
 - separate interpreter-local service requests from ordinary address-routed
