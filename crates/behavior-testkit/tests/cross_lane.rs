@@ -7,9 +7,9 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, AtEvent, AtGeneration, AtId, Base, Behavior, ChildStopped, Crash, Delivery,
-    Exit, MailAddr, Never, Recipient, RestartPolicy, Route, Spec, StashRoute, State, Step,
-    Strategy, SupervisionEvent, TimeReached, UserEvent,
+    Acted, Actions, AtEvent, AtGeneration, AtId, Base, Behavior, Crash, Delivery, Exit, MailAddr,
+    Never, Recipient, RestartPolicy, Route, Spec, StashRoute, State, Step, Strategy,
+    SupervisionEvent, TimeReached, UserEvent, WorkerStopped,
 };
 use proptest::collection::vec;
 use proptest::prelude::*;
@@ -125,8 +125,8 @@ async fn child_death_never_leaks_into_the_user_lane() {
     // Buffer one user message first, then kill a child.
     user(&mut behavior, 2).await;
     let actions = behavior
-        .step(SupervisionEvent::ChildStopped(ChildStopped {
-            nonce: 0,
+        .step(SupervisionEvent::WorkerStopped(WorkerStopped {
+            proxy: 0,
             outcome: Err(Crash::Failed),
             at: Instant::now(),
         }))
@@ -233,8 +233,8 @@ async fn full_stack_all_four_layers_keep_their_own_lanes() {
         .children((2, child));
     fresh.init().await.unwrap();
     let replacement = fresh
-        .step(SupervisionEvent::ChildStopped(ChildStopped {
-            nonce: 0,
+        .step(SupervisionEvent::WorkerStopped(WorkerStopped {
+            proxy: 0,
             outcome: Err(Crash::Failed),
             at: Instant::now(),
         }))
@@ -316,8 +316,8 @@ proptest! {
                 _ => {
                     // Child lane: replacement send to the dead slot.
                     runtime
-                        .block_on(behavior.step(SupervisionEvent::ChildStopped(ChildStopped {
-                            nonce: u64::from(arg % 2),
+                        .block_on(behavior.step(SupervisionEvent::WorkerStopped(WorkerStopped {
+                            proxy: u64::from(arg % 2),
                             outcome: Err(Crash::Failed),
                             at: base + Duration::from_nanos(at),
                         })))

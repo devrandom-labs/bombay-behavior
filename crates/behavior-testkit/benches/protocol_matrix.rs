@@ -2,9 +2,9 @@ use std::hint::black_box;
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, AtEvent, Base, Behavior, ChildStopped, Crash, Delivery, Fsm, MailAddr, Move,
-    Never, Proxy, ProxyCommand, RestartPolicy, Route, Spec, StashRoute, State, Step, Strategy,
-    Supervising, SupervisionEvent, User, UserEvent, WatchEvent, stop_on_abnormal_death,
+    Acted, Actions, AtEvent, Base, Behavior, Crash, Delivery, Fsm, MailAddr, Move, Never, Proxy,
+    ProxyCommand, RestartPolicy, Route, Spec, StashRoute, State, Step, Strategy, Supervising,
+    SupervisionEvent, User, UserEvent, WatchEvent, WorkerStopped, stop_on_abnormal_death,
 };
 use tokio::runtime::Builder;
 use tokio::time::Instant;
@@ -99,7 +99,10 @@ async fn measure_proxy() -> f64 {
         };
         black_box(
             proxy
-                .step(User::user(MailAddr(0), black_box(command)))
+                .step(SupervisionEvent::Inner(User::user(
+                    MailAddr(0),
+                    black_box(command),
+                )))
                 .await
                 .unwrap(),
         );
@@ -128,8 +131,8 @@ async fn measure_supervise(fleet: usize) -> f64 {
     for index in 0..SHORT_ITERATIONS {
         let nonce = u64::try_from(index % fleet).unwrap();
         let actions = behavior
-            .step(SupervisionEvent::ChildStopped(ChildStopped {
-                nonce,
+            .step(SupervisionEvent::WorkerStopped(WorkerStopped {
+                proxy: nonce,
                 outcome: Err(Crash::Failed),
                 at,
             }))

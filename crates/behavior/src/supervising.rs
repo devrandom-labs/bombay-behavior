@@ -55,10 +55,33 @@ pub struct ObserveChild<A: Address> {
     pub nonce: A::Nonce,
 }
 
+/// A proxy's request for its interpreter to report a worker termination to
+/// the proxy's parent. The interpreter supplies the emitting proxy's child
+/// nonce when constructing [`WorkerStopped`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReportWorkerStopped<A: Address> {
+    pub outcome: Result<Exit<A>, Crash>,
+    pub at: Instant,
+}
+
+/// A worker termination reported by a still-live supervised proxy.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkerStopped<A: Address> {
+    pub proxy: A::Nonce,
+    pub outcome: Result<Exit<A>, Crash>,
+    pub at: Instant,
+}
+
+/// Construction of the worker-report lane through a composed event type.
+pub trait WorkerEvent<A: Address>: Sized {
+    fn worker_stopped(event: WorkerStopped<A>) -> Option<Self>;
+}
+
 #[derive(Clone, PartialEq, Eq)]
 pub enum SupervisionEvent<E, A: Address> {
     Inner(E),
     ChildStopped(ChildStopped<A>),
+    WorkerStopped(WorkerStopped<A>),
 }
 
 pub trait ChildEvent<A: Address>: Sized {
@@ -68,6 +91,12 @@ pub trait ChildEvent<A: Address>: Sized {
 impl<E, A: Address> ChildEvent<A> for SupervisionEvent<E, A> {
     fn child_stopped(event: ChildStopped<A>) -> Option<Self> {
         Some(Self::ChildStopped(event))
+    }
+}
+
+impl<E, A: Address> WorkerEvent<A> for SupervisionEvent<E, A> {
+    fn worker_stopped(event: WorkerStopped<A>) -> Option<Self> {
+        Some(Self::WorkerStopped(event))
     }
 }
 
@@ -82,7 +111,7 @@ impl<E: UserEvent, A: Address> UserEvent for SupervisionEvent<E, A> {
     fn into_user(self) -> Result<User<Self::Addr, Self::Message>, Self> {
         match self {
             Self::Inner(event) => event.into_user().map_err(Self::Inner),
-            stopped @ Self::ChildStopped(_) => Err(stopped),
+            stopped @ (Self::ChildStopped(_) | Self::WorkerStopped(_)) => Err(stopped),
         }
     }
 }
@@ -99,9 +128,16 @@ impl<E: PeerEvent<A>, A: Address> PeerEvent<A> for SupervisionEvent<E, A> {
     }
 }
 
+/// Commands accepted by a stable proxy.
+///
+/// A replacement requested while the current worker is alive is held until
+/// that worker's observed termination. Creation therefore never overlaps two
+/// worker incarnations beneath the same proxy.
 #[derive(Debug)]
 pub enum ProxyCommand<C: Behavior> {
+    /// Forward an application message to the current worker, if one is alive.
     Forward(C::Msg),
+    /// Supply the worker behavior for the next fresh incarnation.
     Replace(C),
 }
 
@@ -118,9 +154,16 @@ pub type SupervisorActions<B, C> = Actions<
 >;
 
 /// The stable actor. Every replacement is an ordinary fresh birth beneath it.
+///
+/// Each emitted worker birth is paired with an [`ObserveChild`] request. A
+/// matching [`ChildStopped`] leaves the proxy alive and emits a
+/// [`ReportWorkerStopped`] carrying the outcome unchanged. Stale child-stop
+/// observations are inert.
 pub struct Proxy<C: Behavior<Ph = Never>> {
     worker: Option<C>,
     generation: u64,
+    worker_alive: bool,
+    pending: Option<C>,
 }
 
 impl<C: Behavior<Ph = Never>> Proxy<C> {
@@ -129,6 +172,8 @@ impl<C: Behavior<Ph = Never>> Proxy<C> {
         Self {
             worker: Some(worker),
             generation: 0,
+            worker_alive: false,
+            pending: None,
         }
     }
 }
@@ -143,8 +188,14 @@ where
 {
     type Addr = C::Addr;
     type Msg = ProxyCommand<C>;
-    type Event = User<C::Addr, ProxyCommand<C>>;
-    type Sends = Vec<Delivery<C::Addr, C::Msg>>;
+    type Event = SupervisionEvent<User<C::Addr, ProxyCommand<C>>, C::Addr>;
+    type Sends = SendProduct<
+        Vec<Delivery<C::Addr, C::Msg>>,
+        SendProduct<
+            ServiceSends<ObserveChild<C::Addr>>,
+            ServiceSends<ReportWorkerStopped<C::Addr>>,
+        >,
+    >;
     type Ph = Never;
     type Error = Never;
     type Birth = Births<C>;
@@ -153,8 +204,17 @@ where
 
     async fn init(&mut self) -> Result<Self::Effect, Never> {
         let child = self.worker.take().expect("a proxy initializes once");
+        self.worker_alive = true;
         Ok(Actions {
-            sends: Vec::new(),
+            sends: SendProduct {
+                inner: Vec::new(),
+                own: SendProduct {
+                    inner: ServiceSends::one(ObserveChild {
+                        nonce: <C::Addr as Address>::Nonce::from(self.generation),
+                    }),
+                    own: ServiceSends::empty(),
+                },
+            },
             creates: vec![Create {
                 nonce: <C::Addr as Address>::Nonce::from(self.generation),
                 child,
@@ -164,26 +224,94 @@ where
     }
 
     async fn step(&mut self, event: Self::Event) -> Result<Self::Effect, Never> {
+        let SupervisionEvent::Inner(event) = event else {
+            return match event {
+                SupervisionEvent::ChildStopped(event)
+                    if event.nonce == <C::Addr as Address>::Nonce::from(self.generation) =>
+                {
+                    self.worker_alive = false;
+                    let report = ReportWorkerStopped {
+                        outcome: event.outcome,
+                        at: event.at,
+                    };
+                    let creates = self.pending.take().map_or_else(Vec::new, |child| {
+                        self.generation = self
+                            .generation
+                            .checked_add(1)
+                            .expect("proxy generation exhausted");
+                        self.worker_alive = true;
+                        vec![Create {
+                            nonce: <C::Addr as Address>::Nonce::from(self.generation),
+                            child,
+                        }]
+                    });
+                    let observes = creates
+                        .iter()
+                        .map(|create| ObserveChild {
+                            nonce: create.nonce,
+                        })
+                        .collect();
+                    Ok(Actions {
+                        sends: SendProduct {
+                            inner: Vec::new(),
+                            own: SendProduct {
+                                inner: ServiceSends::new(observes),
+                                own: ServiceSends::one(report),
+                            },
+                        },
+                        creates,
+                        become_: Step::Continue,
+                    })
+                }
+                SupervisionEvent::ChildStopped(_) | SupervisionEvent::WorkerStopped(_) => {
+                    Ok(Actions::cont())
+                }
+                SupervisionEvent::Inner(_) => unreachable!(),
+            };
+        };
         match event.message {
             ProxyCommand::Forward(message) => Ok(Actions {
-                sends: vec![Delivery::new(
-                    Recipient::child(<C::Addr as Address>::Nonce::from(self.generation)),
-                    message,
-                )],
+                sends: SendProduct {
+                    inner: self
+                        .worker_alive
+                        .then(|| {
+                            Delivery::new(
+                                Recipient::child(<C::Addr as Address>::Nonce::from(
+                                    self.generation,
+                                )),
+                                message,
+                            )
+                        })
+                        .into_iter()
+                        .collect(),
+                    own: SendProduct {
+                        inner: ServiceSends::empty(),
+                        own: ServiceSends::empty(),
+                    },
+                },
                 creates: Vec::new(),
                 become_: Step::Continue,
             }),
             ProxyCommand::Replace(child) => {
+                if self.worker_alive {
+                    self.pending = Some(child);
+                    return Ok(Actions::cont());
+                }
                 self.generation = self
                     .generation
                     .checked_add(1)
                     .expect("proxy generation exhausted");
+                self.worker_alive = true;
+                let nonce = <C::Addr as Address>::Nonce::from(self.generation);
                 Ok(Actions {
-                    sends: Vec::new(),
-                    creates: vec![Create {
-                        nonce: <C::Addr as Address>::Nonce::from(self.generation),
-                        child,
-                    }],
+                    sends: SendProduct {
+                        inner: Vec::new(),
+                        own: SendProduct {
+                            inner: ServiceSends::one(ObserveChild { nonce }),
+                            own: ServiceSends::empty(),
+                        },
+                    },
+                    creates: vec![Create { nonce, child }],
                     become_: Step::Continue,
                 })
             }
@@ -301,10 +429,10 @@ where
 
     fn replacements(
         &mut self,
-        event: &ChildStopped<B::Addr>,
+        event: &WorkerStopped<B::Addr>,
     ) -> Vec<Delivery<B::Addr, ProxyCommand<C>>> {
         let dead = self
-            .position(event.nonce)
+            .position(event.proxy)
             .expect("unknown supervised nonce");
         let eligible = match self.policy {
             RestartPolicy::Permanent => true,
@@ -456,7 +584,7 @@ where
 
     async fn step(&mut self, event: Self::Event) -> Result<Self::Effect, B::Error> {
         match event {
-            SupervisionEvent::ChildStopped(event) => Ok(Actions {
+            SupervisionEvent::WorkerStopped(event) => Ok(Actions {
                 sends: SendProduct {
                     inner: B::Sends::empty(),
                     own: SendProduct {
@@ -467,6 +595,13 @@ where
                 creates: Vec::new(),
                 become_: Step::Continue,
             }),
+            SupervisionEvent::ChildStopped(event) => {
+                let dead = self
+                    .position(event.nonce)
+                    .expect("unknown supervised nonce");
+                self.slots[dead].1.alive = false;
+                Ok(Actions::cont())
+            }
             SupervisionEvent::Inner(event) => {
                 let actions = self.inner.step(event).await?;
                 Ok(self.wrap(actions))

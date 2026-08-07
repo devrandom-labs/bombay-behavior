@@ -1,8 +1,8 @@
 #![no_main]
 
 use behavior::{
-    Acted, Actions, Base, Behavior, Delivery, MailAddr, Never, Proxy, ProxyCommand, Route, State,
-    User, UserEvent,
+    Acted, Actions, Base, Behavior, ChildStopped, Delivery, Exit, MailAddr, Never, Proxy,
+    ProxyCommand, Route, State, SupervisionEvent, User, UserEvent,
 };
 use libfuzzer_sys::fuzz_target;
 use tokio::runtime::Builder;
@@ -38,23 +38,35 @@ fuzz_target!(|bytes: &[u8]| {
         for (index, byte) in bytes.iter().copied().enumerate() {
             if byte & 1 == 0 {
                 let actions = proxy
-                    .step(User::user(MailAddr(0), ProxyCommand::Forward(byte)))
+                    .step(SupervisionEvent::Inner(User::user(
+                        MailAddr(0),
+                        ProxyCommand::Forward(byte),
+                    )))
                     .await
                     .unwrap();
                 assert!(actions.creates.is_empty());
-                assert_eq!(actions.sends.len(), 1);
-                assert_eq!(actions.sends[0].to.route(), Route::Child(generation));
-                assert_eq!(actions.sends[0].message, byte);
+                assert_eq!(actions.sends.inner.len(), 1);
+                assert_eq!(actions.sends.inner[0].to.route(), Route::Child(generation));
+                assert_eq!(actions.sends.inner[0].message, byte);
             } else {
                 generation = generation.checked_add(1).unwrap();
                 let actions = proxy
-                    .step(User::user(
+                    .step(SupervisionEvent::Inner(User::user(
                         MailAddr(0),
                         ProxyCommand::Replace(worker(index)),
-                    ))
+                    )))
                     .await
                     .unwrap();
-                assert!(actions.sends.is_empty());
+                assert!(actions.sends.inner.is_empty());
+                assert!(actions.creates.is_empty());
+                let actions = proxy
+                    .step(SupervisionEvent::ChildStopped(ChildStopped {
+                        nonce: generation - 1,
+                        outcome: Ok(Exit::Normal),
+                        at: tokio::time::Instant::now(),
+                    }))
+                    .await
+                    .unwrap();
                 assert_eq!(actions.creates.len(), 1);
                 assert_eq!(actions.creates[0].nonce, generation);
             }
