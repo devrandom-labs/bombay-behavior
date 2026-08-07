@@ -7,9 +7,9 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, AtEvent, AtId, Base, Behavior, ChildStopped, Crash, Delivery, Exit, MailAddr,
-    Never, Recipient, RestartPolicy, Route, Spec, StashRoute, State, Step, Strategy,
-    SupervisionEvent, TimeReached, UserEvent,
+    Acted, Actions, AtEvent, AtGeneration, AtId, Base, Behavior, ChildStopped, Crash, Delivery,
+    Exit, MailAddr, Never, Recipient, RestartPolicy, Route, Spec, StashRoute, State, Step,
+    Strategy, SupervisionEvent, TimeReached, UserEvent,
 };
 use proptest::collection::vec;
 use proptest::prelude::*;
@@ -157,6 +157,7 @@ async fn supervision_preserves_inner_at_routing() {
     let fired = behavior
         .step(SupervisionEvent::Inner(AtEvent::Reached(TimeReached {
             id: AtId(0),
+            generation: AtGeneration(0),
             at: due,
         })))
         .await
@@ -202,6 +203,7 @@ async fn full_stack_all_four_layers_keep_their_own_lanes() {
     let fired = behavior
         .step(SupervisionEvent::Inner(AtEvent::Reached(TimeReached {
             id: AtId(0),
+            generation: AtGeneration(0),
             at: due,
         })))
         .await
@@ -258,7 +260,7 @@ proptest! {
     fn full_stack_random_lane_routing_never_leaks(
         events in vec((0_u8..4, 0_u8..8, 0_u64..100), 0..80),
     ) {
-        use behavior::{AtEvent, AtId, PeerStopped, TimeReached, WatchEvent, stop_on_abnormal_death};
+        use behavior::{AtEvent, AtGeneration, AtId, PeerStopped, TimeReached, WatchEvent, stop_on_abnormal_death};
 
         let due = Instant::now() + Duration::from_secs(1);
         let peer = MailAddr(44);
@@ -307,7 +309,7 @@ proptest! {
                     // duplicates are inert.
                     runtime
                         .block_on(behavior.step(SupervisionEvent::Inner(AtEvent::Reached(
-                            TimeReached { id: AtId(0), at: due },
+                            TimeReached { id: AtId(0), generation: AtGeneration(0), at: due },
                         ))))
                         .unwrap()
                 }

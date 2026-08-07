@@ -6,9 +6,9 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, At, AtEvent, AtId, Base, Behavior, ChildStopped, Crash, Create, Delivery, Exit,
-    Fsm, MailAddr, Move, Never, Proxy, Recipient, RestartPolicy, Route, Spec, StashRoute, State,
-    Step, Strategy, Supervising, SupervisionEvent, TimeReached, User, UserEvent,
+    Acted, Actions, At, AtEvent, AtGeneration, AtId, Base, Behavior, ChildStopped, Crash, Create,
+    Delivery, Exit, Fsm, MailAddr, Move, Never, Proxy, Recipient, RestartPolicy, Route, Spec,
+    StashRoute, State, Step, Strategy, Supervising, SupervisionEvent, TimeReached, User, UserEvent,
 };
 use tokio::time::Instant;
 
@@ -492,28 +492,24 @@ async fn fsm_mid_drain_deferral_reorders_relative_to_fifo() {
     assert_eq!(machine.held(), 0);
 }
 
-/// Two At layers scheduled with the SAME (id, at) collapse onto one event:
-/// the outermost layer claims the first delivery, so the inner schedule
-/// fires only on a second (duplicate) delivery. Deterministic, but the two
-/// schedules are not independently observable.
+/// Two At layers at the same instant retain distinct identities, so an event
+/// reaches exactly the layer that scheduled it.
 #[tokio::test]
-async fn nested_at_identical_schedules_collapse_onto_the_outer_layer() {
+async fn nested_at_identical_schedules_are_distinguished_by_identity() {
     let due = Instant::now() + Duration::from_secs(1);
-    let inner = At::new(Base::new(Recorder::default()), Some(due), |_| {
+    let inner = At::new(Base::new(Recorder::default()), AtId(0), Some(due), |_| {
         Ok(Step::Stop(Exit::Normal))
     });
-    let mut outer = At::new(inner, Some(due), |_| Ok(Step::Continue));
+    let mut outer = At::new(inner, AtId(1), Some(due), |_| Ok(Step::Continue));
     outer.init().await.unwrap();
 
     let event = AtEvent::Reached(TimeReached {
         id: AtId(0),
+        generation: AtGeneration(0),
         at: due,
     });
-    let first = outer.step(event.clone()).await.unwrap();
-    assert_eq!(first.become_, Step::Continue); // outer fired (Continue)
-
-    let second = outer.step(event).await.unwrap();
-    assert_eq!(second.become_, Step::Stop(Exit::Normal)); // inner fired on redelivery
+    let first = outer.step(event).await.unwrap();
+    assert_eq!(first.become_, Step::Stop(Exit::Normal));
 }
 
 /// `Spec::children` defaults are Transient policy with a budget of one

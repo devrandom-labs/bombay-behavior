@@ -1,10 +1,11 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, At, AtEvent, AtId, Base, Behavior, Births, ChildStopped, Crash, Create,
-    Delivery, Exit, MailAddr, Move, Never, NoBirths, PeerStopped, Proxy, ProxyCommand, Recipient,
-    RestartPolicy, Route, Spec, StashRoute, State, Step, Strategy, Supervising, SupervisionEvent,
-    TimeReached, User, UserEvent, WatchEvent, Watching, run, stop_on_abnormal_death, workers,
+    Acted, Actions, At, AtEvent, AtGeneration, AtId, Base, Behavior, Births, ChildStopped, Crash,
+    Create, Delivery, Exit, MailAddr, Move, Never, NoBirths, PeerStopped, Proxy, ProxyCommand,
+    Recipient, RestartPolicy, Route, Spec, StashRoute, State, Step, Strategy, Supervising,
+    SupervisionEvent, TimeReached, User, UserEvent, WatchEvent, Watching, run,
+    stop_on_abnormal_death, workers,
 };
 use communication::{Config, channel};
 use proptest::prelude::*;
@@ -61,6 +62,7 @@ async fn at_is_a_typed_clock_actor_protocol() {
     let fired = behavior
         .step(AtEvent::Reached(TimeReached {
             id: AtId(0),
+            generation: AtGeneration(0),
             at: now,
         }))
         .await
@@ -86,15 +88,20 @@ async fn driver_interprets_initial_effect_before_receiving() {
 async fn nested_at_composition_routes_stale_and_matching_events() {
     let early = Instant::now() + Duration::from_secs(1);
     let late = early + Duration::from_secs(1);
-    let inner = At::new(Base::new(Quiet), Some(early), |_| Ok(Step::Continue));
-    let mut outer = At::new(inner, Some(late), |_| Ok(Step::Continue));
+    let inner = At::new(Base::new(Quiet), AtId(0), Some(early), |_| {
+        Ok(Step::Continue)
+    });
+    let mut outer = At::new(inner, AtId(1), Some(late), |_| Ok(Step::Continue));
 
     let initial = outer.init().await.unwrap();
+    assert_eq!(initial.sends.inner.own[0].id, AtId(0));
+    assert_eq!(initial.sends.own[0].id, AtId(1));
     assert_eq!(initial.sends.inner.own[0].at, early);
     assert_eq!(initial.sends.own[0].at, late);
 
     let early_event = AtEvent::Reached(TimeReached {
         id: AtId(0),
+        generation: AtGeneration(0),
         at: early,
     });
     let actions = outer.step(early_event).await.unwrap();
@@ -116,6 +123,7 @@ async fn spec_hides_composed_protocols_without_losing_their_effects() {
 
     let time = WatchEvent::Inner(AtEvent::Reached(TimeReached {
         id: AtId(0),
+        generation: AtGeneration(0),
         at: due,
     }));
     let actions = behavior.step(time).await.unwrap();
@@ -404,12 +412,13 @@ async fn supervision_strategy_policy_and_budget_are_pure_send_decisions() {
 #[tokio::test]
 async fn stale_time_events_do_not_fire_or_reschedule() {
     let due = Instant::now() + Duration::from_secs(2);
-    let mut behavior = At::new(Base::new(Quiet), Some(due), |_| {
+    let mut behavior = At::new(Base::new(Quiet), AtId(0), Some(due), |_| {
         Ok(Step::Stop(Exit::Normal))
     });
     behavior.init().await.unwrap();
     let stale = AtEvent::Reached(TimeReached {
         id: AtId(0),
+        generation: AtGeneration(0),
         at: due - Duration::from_secs(1),
     });
     let ignored = behavior.step(stale).await.unwrap();
@@ -418,6 +427,7 @@ async fn stale_time_events_do_not_fire_or_reschedule() {
     let fired = behavior
         .step(AtEvent::Reached(TimeReached {
             id: AtId(0),
+            generation: AtGeneration(0),
             at: due,
         }))
         .await
@@ -427,6 +437,7 @@ async fn stale_time_events_do_not_fire_or_reschedule() {
     let duplicate = behavior
         .step(AtEvent::Reached(TimeReached {
             id: AtId(0),
+            generation: AtGeneration(0),
             at: due,
         }))
         .await
@@ -466,8 +477,8 @@ proptest! {
         let origin = Instant::now();
         let first = origin + Duration::from_nanos(first);
         let second = origin + Duration::from_nanos(second);
-        let inner = At::new(Base::new(Quiet), Some(first), |_| Ok(Step::Continue));
-        let mut outer = At::new(inner, Some(second), |_| Ok(Step::Continue));
+        let inner = At::new(Base::new(Quiet), AtId(0), Some(first), |_| Ok(Step::Continue));
+        let mut outer = At::new(inner, AtId(1), Some(second), |_| Ok(Step::Continue));
         let runtime = Builder::new_current_thread().enable_all().build().unwrap();
         let actions = runtime.block_on(outer.init()).unwrap();
         prop_assert_eq!(actions.sends.inner.own[0].at, first);

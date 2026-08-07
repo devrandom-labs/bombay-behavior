@@ -23,7 +23,9 @@ pub use algebra::{
     MailAddr, NoBirths, Recipient, Route, SendAlgebra, SendProduct, State, Transcript, User,
     UserEvent, run,
 };
-pub use deadlined::{At, AtEvent, AtId, AtReaction, ScheduleAt, TimeEvent, TimeReached};
+pub use deadlined::{
+    At, AtEvent, AtGeneration, AtId, AtReaction, ScheduleAt, TimeEvent, TimeReached,
+};
 pub use fsm::{Fsm, Move};
 pub use spec::Spec;
 pub use stashing::{StashRoute, Stashing};

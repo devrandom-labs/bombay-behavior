@@ -1,10 +1,10 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, AtEvent, AtId, Base, Behavior, ChildStopped, Crash, Create, Delivery, Exit,
-    MailAddr, Move, Never, PeerStopped, Proxy, ProxyCommand, Recipient, RestartPolicy, Route, Spec,
-    StashRoute, State, Step, Strategy, SupervisionEvent, TimeReached, User, UserEvent, WatchEvent,
-    stop_on_abnormal_death,
+    Acted, Actions, AtEvent, AtGeneration, AtId, Base, Behavior, ChildStopped, Crash, Create,
+    Delivery, Exit, MailAddr, Move, Never, PeerStopped, Proxy, ProxyCommand, Recipient,
+    RestartPolicy, Route, Spec, StashRoute, State, Step, Strategy, SupervisionEvent, TimeReached,
+    User, UserEvent, WatchEvent, stop_on_abnormal_death,
 };
 use behavior_testkit::{Mailbox, drive};
 use tokio::time::Instant;
@@ -75,14 +75,17 @@ async fn stale_and_duplicate_time_observations_are_inert() {
     let mut mailbox = Mailbox::new([
         AtEvent::Reached(TimeReached {
             id: AtId(0),
+            generation: AtGeneration(0),
             at: stale,
         }),
         AtEvent::Reached(TimeReached {
             id: AtId(0),
+            generation: AtGeneration(0),
             at: due,
         }),
         AtEvent::Reached(TimeReached {
             id: AtId(0),
+            generation: AtGeneration(0),
             at: due,
         }),
     ]);

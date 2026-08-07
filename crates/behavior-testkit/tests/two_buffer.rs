@@ -8,8 +8,8 @@
 use std::time::Duration;
 
 use behavior::{
-    AtEvent, AtId, Behavior, Fsm, MailAddr, Move, Never, Spec, StashRoute, Step, TimeReached,
-    UserEvent,
+    AtEvent, AtGeneration, AtId, Behavior, Fsm, MailAddr, Move, Never, Spec, StashRoute, Step,
+    TimeReached, UserEvent,
 };
 use proptest::collection::vec;
 use proptest::prelude::*;
@@ -88,6 +88,7 @@ proptest! {
                 let actions = runtime
                     .block_on(behavior.step(AtEvent::Reached(TimeReached {
                         id: AtId(0),
+                        generation: AtGeneration(0),
                         at: due,
                     })))
                     .unwrap();
