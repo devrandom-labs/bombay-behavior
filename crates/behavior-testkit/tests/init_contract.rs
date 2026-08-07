@@ -11,9 +11,9 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, Base, Behavior, ChildStopped, Crash, Delivery, MailAddr, Never, Proxy,
-    ProxyCommand, Recipient, Route, Spec, StashRoute, State, Step, SupervisionEvent, User,
-    UserEvent, stop_on_abnormal_death,
+    Acted, Actions, Base, Behavior, Crash, Delivery, MailAddr, Never, Proxy, ProxyCommand,
+    Recipient, Route, Spec, StashRoute, State, Step, SupervisionEvent, User, UserEvent,
+    WorkerStopped, stop_on_abnormal_death,
 };
 use tokio::time::Instant;
 
@@ -110,8 +110,8 @@ async fn supervising_double_init_duplicates_the_configured_fleet() {
 
     // A death still addresses the tracked slot.
     let actions = behavior
-        .step(SupervisionEvent::ChildStopped(ChildStopped {
-            nonce: 0,
+        .step(SupervisionEvent::WorkerStopped(WorkerStopped {
+            proxy: 0,
             outcome: Err(Crash::Failed),
             at: Instant::now(),
         }))
@@ -144,20 +144,23 @@ async fn full_stack_double_init_duplicates_every_init_effect() {
     assert_eq!(behavior.behavior().child_count(), 2);
 }
 
-/// `Proxy::step(Forward)` before `init` routes to generation 0 before its
-/// birth exists: the initial create arrives only later at `init`.
+/// `Proxy::step(Forward)` before `init` is inert because no worker birth has
+/// been emitted yet.
 #[tokio::test]
-async fn proxy_step_before_init_routes_to_a_not_yet_born_generation() {
+async fn proxy_step_before_init_is_inert_until_worker_birth() {
     let mut proxy = Proxy::new(child(0));
     let actions = proxy
-        .step(User::user(MailAddr(0), ProxyCommand::Forward(5)))
+        .step(SupervisionEvent::Inner(User::user(
+            MailAddr(0),
+            ProxyCommand::Forward(5),
+        )))
         .await
         .unwrap();
-    assert_eq!(actions.sends[0].to.route(), Route::Child(0));
+    assert!(actions.sends.inner.is_empty());
     assert!(actions.creates.is_empty()); // no birth has been emitted
 
     let initial = proxy.init().await.unwrap();
-    assert_eq!(initial.creates[0].nonce, 0); // the birth postdates the forward
+    assert_eq!(initial.creates[0].nonce, 0);
 }
 
 /// `Supervising::step` before `init` does NOT panic — the slot table is
@@ -168,8 +171,8 @@ async fn proxy_step_before_init_routes_to_a_not_yet_born_generation() {
 async fn supervisor_step_before_init_routes_to_unborn_proxies() {
     let mut behavior = Spec::new(Parent).children((2, child));
     let actions = behavior
-        .step(SupervisionEvent::ChildStopped(ChildStopped {
-            nonce: 0,
+        .step(SupervisionEvent::WorkerStopped(WorkerStopped {
+            proxy: 0,
             outcome: Err(Crash::Failed),
             at: Instant::now(),
         }))

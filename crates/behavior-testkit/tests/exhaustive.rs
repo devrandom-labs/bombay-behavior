@@ -7,8 +7,8 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, Base, Behavior, ChildStopped, Delivery, MailAddr, Never, RestartPolicy, Route,
-    State, Strategy, Supervising, SupervisionEvent,
+    Acted, Actions, Base, Behavior, Delivery, MailAddr, Never, RestartPolicy, Route, State,
+    Strategy, Supervising, SupervisionEvent, WorkerStopped,
 };
 use behavior_testkit::model::{Model, Outcome};
 use tokio::runtime::Builder;
@@ -125,9 +125,9 @@ fn exhaustive_supervision_sequences_match_the_reference_model() {
                                 let expected = model
                                     .apply(nonce, outcome, at, strategy, policy, maximum, window);
                                 let actions = runtime
-                                    .block_on(behavior.step(SupervisionEvent::ChildStopped(
-                                        ChildStopped {
-                                            nonce,
+                                    .block_on(behavior.step(SupervisionEvent::WorkerStopped(
+                                        WorkerStopped {
+                                            proxy: nonce,
                                             outcome: outcome.into_result(),
                                             at: base + Duration::from_nanos(at),
                                         },

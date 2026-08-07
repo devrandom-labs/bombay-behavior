@@ -7,7 +7,7 @@ use crate::behavior::{
     Actions, Address, Become, Behavior, BirthMode, SendAlgebra, SendProduct, ServiceSends, User,
     UserEvent,
 };
-use crate::supervising::{ChildEvent, ChildStopped};
+use crate::supervising::{ChildEvent, ChildStopped, WorkerEvent, WorkerStopped};
 use crate::watching::{PeerEvent, PeerStopped};
 use crate::{Exit, Step};
 
@@ -72,6 +72,12 @@ impl<E: PeerEvent<A>, A: Address> PeerEvent<A> for AtEvent<E> {
 impl<E: ChildEvent<A>, A: Address> ChildEvent<A> for AtEvent<E> {
     fn child_stopped(event: ChildStopped<A>) -> Option<Self> {
         E::child_stopped(event).map(Self::Inner)
+    }
+}
+
+impl<E: WorkerEvent<A>, A: Address> WorkerEvent<A> for AtEvent<E> {
+    fn worker_stopped(event: WorkerStopped<A>) -> Option<Self> {
+        E::worker_stopped(event).map(Self::Inner)
     }
 }
 

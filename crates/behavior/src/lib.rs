@@ -30,8 +30,9 @@ pub use fsm::{Fsm, Move};
 pub use spec::Spec;
 pub use stashing::{StashRoute, Stashing};
 pub use supervising::{
-    ChildEvent, ChildStopped, ObserveChild, Proxy, ProxyCommand, RestartPolicy, Strategy,
-    Supervising, SupervisionEvent, restart_all, restart_one, restart_rest,
+    ChildEvent, ChildStopped, ObserveChild, Proxy, ProxyCommand, ReportWorkerStopped,
+    RestartPolicy, Strategy, Supervising, SupervisionEvent, WorkerEvent, WorkerStopped,
+    restart_all, restart_one, restart_rest,
 };
 pub use verdict::{Never, Step};
 pub use watching::{

@@ -6,9 +6,9 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, At, AtEvent, AtGeneration, AtId, Base, Behavior, ChildStopped, Crash, Create,
-    Delivery, Exit, Fsm, MailAddr, Move, Never, Proxy, Recipient, RestartPolicy, Route, Spec,
-    StashRoute, State, Step, Strategy, Supervising, SupervisionEvent, TimeReached, User, UserEvent,
+    Acted, Actions, At, AtEvent, AtGeneration, AtId, Base, Behavior, Crash, Create, Delivery, Exit,
+    Fsm, MailAddr, Move, Never, Proxy, Recipient, RestartPolicy, Route, Spec, StashRoute, State,
+    Step, Strategy, Supervising, SupervisionEvent, TimeReached, User, UserEvent, WorkerStopped,
 };
 use tokio::time::Instant;
 
@@ -137,7 +137,11 @@ fn supervisor(
 type SupervisorEvent = SupervisionEvent<User<MailAddr, u64>, MailAddr>;
 
 fn stopped(nonce: u64, outcome: Result<Exit<MailAddr>, Crash>, at: Instant) -> SupervisorEvent {
-    SupervisionEvent::ChildStopped(ChildStopped { nonce, outcome, at })
+    SupervisionEvent::WorkerStopped(WorkerStopped {
+        proxy: nonce,
+        outcome,
+        at,
+    })
 }
 
 #[tokio::test]

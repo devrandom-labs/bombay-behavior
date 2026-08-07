@@ -5,7 +5,7 @@ use crate::behavior::{
     UserEvent,
 };
 use crate::deadlined::{TimeEvent, TimeReached};
-use crate::supervising::{ChildEvent, ChildStopped};
+use crate::supervising::{ChildEvent, ChildStopped, WorkerEvent, WorkerStopped};
 use crate::{Crash, Exit, Step};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -60,6 +60,12 @@ impl<E: TimeEvent, A: Address> TimeEvent for WatchEvent<E, A> {
 impl<E: ChildEvent<A>, A: Address> ChildEvent<A> for WatchEvent<E, A> {
     fn child_stopped(event: ChildStopped<A>) -> Option<Self> {
         E::child_stopped(event).map(Self::Inner)
+    }
+}
+
+impl<E: WorkerEvent<A>, A: Address> WorkerEvent<A> for WatchEvent<E, A> {
+    fn worker_stopped(event: WorkerStopped<A>) -> Option<Self> {
+        E::worker_stopped(event).map(Self::Inner)
     }
 }
 

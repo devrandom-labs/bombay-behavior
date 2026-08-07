@@ -8,9 +8,9 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, Base, Behavior, ChildStopped, Crash, Create, Delivery, Exit, MailAddr, Never,
-    Recipient, RestartPolicy, Route, SendAlgebra, SendProduct, State, Step, Strategy, Supervising,
-    SupervisionEvent, User, UserEvent,
+    Acted, Actions, Base, Behavior, Crash, Create, Delivery, Exit, MailAddr, Never, Recipient,
+    RestartPolicy, Route, SendAlgebra, SendProduct, State, Step, Strategy, Supervising,
+    SupervisionEvent, User, UserEvent, WorkerStopped,
 };
 use behavior_testkit::{Mailbox, drive};
 use proptest::collection::vec;
@@ -112,14 +112,14 @@ async fn driver_accumulates_supervising_send_products_losslessly() {
     );
     let mut mailbox = Mailbox::new([
         SupervisionEvent::Inner(User::user(MailAddr(9), 3)),
-        SupervisionEvent::ChildStopped(ChildStopped {
-            nonce: 0,
+        SupervisionEvent::WorkerStopped(WorkerStopped {
+            proxy: 0,
             outcome: Err(Crash::Failed),
             at,
         }),
         SupervisionEvent::Inner(User::user(MailAddr(9), 5)),
-        SupervisionEvent::ChildStopped(ChildStopped {
-            nonce: 1,
+        SupervisionEvent::WorkerStopped(WorkerStopped {
+            proxy: 1,
             outcome: Err(Crash::Failed),
             at,
         }),
@@ -223,8 +223,8 @@ async fn empty_fleet_dynamic_birth_then_death_restarts() {
     assert!(supervisor.is_alive(9));
 
     let actions = supervisor
-        .step(SupervisionEvent::ChildStopped(ChildStopped {
-            nonce: 9,
+        .step(SupervisionEvent::WorkerStopped(WorkerStopped {
+            proxy: 9,
             outcome: Err(Crash::Failed),
             at,
         }))

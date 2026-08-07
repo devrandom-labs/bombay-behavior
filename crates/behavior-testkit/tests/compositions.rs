@@ -6,9 +6,9 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, AtEvent, AtGeneration, AtId, Base, Behavior, ChildStopped, Crash, Delivery,
-    Exit, MailAddr, Never, PeerStopped, Recipient, Route, Spec, StashRoute, State, Step,
-    SupervisionEvent, TimeReached, User, UserEvent, WatchEvent, stop_on_abnormal_death,
+    Acted, Actions, AtEvent, AtGeneration, AtId, Base, Behavior, Crash, Delivery, Exit, MailAddr,
+    Never, PeerStopped, Recipient, Route, Spec, StashRoute, State, Step, SupervisionEvent,
+    TimeReached, User, UserEvent, WatchEvent, WorkerStopped, stop_on_abnormal_death,
 };
 use tokio::time::Instant;
 
@@ -361,8 +361,8 @@ async fn supervision_preserves_inner_watch_routing() {
         .children((2, child));
     replacement.init().await.unwrap();
     let actions = replacement
-        .step(SupervisionEvent::ChildStopped(ChildStopped {
-            nonce: 0,
+        .step(SupervisionEvent::WorkerStopped(WorkerStopped {
+            proxy: 0,
             outcome: Err(Crash::Failed),
             at: Instant::now(),
         }))

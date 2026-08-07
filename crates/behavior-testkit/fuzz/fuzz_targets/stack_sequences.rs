@@ -9,7 +9,7 @@
 //! product lane and never leak across.
 
 use behavior::{
-    Acted, Actions, AtEvent, AtGeneration, AtId, Base, Behavior, Births, ChildStopped, Crash,
+    Acted, Actions, AtEvent, AtGeneration, AtId, Base, Behavior, Births, WorkerStopped, Crash,
     Delivery, Exit, MailAddr, Never, PeerStopped, Recipient, RestartPolicy, Route, Spec, StashRoute,
     State, Step, Strategy, SupervisionEvent, TimeReached, UserEvent, WatchEvent,
     stop_on_abnormal_death,
@@ -156,8 +156,8 @@ fuzz_target!(|bytes: &[u8]| {
                     // Child lane: exactly one replacement to the dead slot.
                     let nonce = u64::from(byte % 2);
                     let actions = behavior
-                        .step(SupervisionEvent::ChildStopped(ChildStopped {
-                            nonce,
+                        .step(SupervisionEvent::WorkerStopped(WorkerStopped {
+                            proxy: nonce,
                             outcome: Err(Crash::Failed),
                             at: base + std::time::Duration::from_nanos(u64::try_from(index).unwrap()),
                         }))

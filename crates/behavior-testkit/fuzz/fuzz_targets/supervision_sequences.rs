@@ -9,7 +9,7 @@
 //! agree on every byte.
 
 use behavior::{
-    Acted, Actions, Base, Behavior, ChildStopped, Crash, Delivery, MailAddr, Never, RestartPolicy,
+    Acted, Actions, Base, Behavior, WorkerStopped, Crash, Delivery, MailAddr, Never, RestartPolicy,
     State, Strategy, Supervising, SupervisionEvent,
 };
 use libfuzzer_sys::fuzz_target;
@@ -93,8 +93,8 @@ fuzz_target!(|bytes: &[u8]| {
             };
 
             let actions = behavior
-                .step(SupervisionEvent::ChildStopped(ChildStopped {
-                    nonce: u64::try_from(nonce).unwrap(),
+                .step(SupervisionEvent::WorkerStopped(WorkerStopped {
+                    proxy: u64::try_from(nonce).unwrap(),
                     outcome: Err(Crash::Failed),
                     at: base + std::time::Duration::from_nanos(at),
                 }))

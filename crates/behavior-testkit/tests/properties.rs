@@ -3,7 +3,7 @@ use std::time::Duration;
 use behavior::{
     Acted, Actions, At, AtId, Base, Behavior, ChildStopped, Crash, Delivery, Exit, MailAddr, Never,
     Proxy, ProxyCommand, Recipient, RestartPolicy, Route, State, Step, Strategy, Supervising,
-    SupervisionEvent, User, UserEvent,
+    SupervisionEvent, User, UserEvent, WorkerStopped,
 };
 use behavior_testkit::{Mailbox, drive};
 use proptest::collection::vec;
@@ -136,22 +136,30 @@ proptest! {
         for (index, replace) in commands.into_iter().enumerate() {
             if replace {
                 generation += 1;
-                let actions = runtime.block_on(proxy.step(User::user(
+                let actions = runtime.block_on(proxy.step(SupervisionEvent::Inner(User::user(
                     MailAddr(0),
                     ProxyCommand::Replace(child(index)),
+                )))).unwrap();
+                prop_assert!(actions.creates.is_empty());
+                let actions = runtime.block_on(proxy.step(SupervisionEvent::ChildStopped(
+                    ChildStopped {
+                        nonce: generation - 1,
+                        outcome: Ok(Exit::Normal),
+                        at: Instant::now(),
+                    },
                 ))).unwrap();
                 prop_assert_eq!(actions.creates.len(), 1);
                 prop_assert_eq!(actions.creates[0].nonce, generation);
-                prop_assert!(actions.sends.is_empty());
+                prop_assert!(actions.sends.inner.is_empty());
             } else {
                 let message = u8::try_from(index % 255).unwrap();
-                let actions = runtime.block_on(proxy.step(User::user(
+                let actions = runtime.block_on(proxy.step(SupervisionEvent::Inner(User::user(
                     MailAddr(0),
                     ProxyCommand::Forward(message),
-                ))).unwrap();
+                )))).unwrap();
                 prop_assert!(actions.creates.is_empty());
-                prop_assert_eq!(actions.sends[0].to.route(), Route::Child(generation));
-                prop_assert_eq!(actions.sends[0].message, message);
+                prop_assert_eq!(actions.sends.inner[0].to.route(), Route::Child(generation));
+                prop_assert_eq!(actions.sends.inner[0].message, message);
             }
         }
     }
@@ -175,8 +183,8 @@ proptest! {
         };
         let runtime = Builder::new_current_thread().enable_all().build().unwrap();
         let mut behavior = supervisor(strategy, count);
-        let event = SupervisionEvent::ChildStopped(ChildStopped {
-            nonce: u64::try_from(dead).unwrap(),
+        let event = SupervisionEvent::WorkerStopped(WorkerStopped {
+            proxy: u64::try_from(dead).unwrap(),
             outcome: Err(Crash::Failed),
             at: Instant::now(),
         });
