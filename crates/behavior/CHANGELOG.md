@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.5.1...bombay-behavior-v0.6.0) - 2026-08-07
+
+### Other
+
+- Add typed supervision failure reactions ([#16](https://github.com/devrandom-labs/bombay-behavior/pull/16))
+
 ### Added
 
 - add exhaustive supervision-failure reasons and a pure configurable reaction
