@@ -2,10 +2,10 @@ use std::time::Duration;
 
 use behavior::{
     Acted, Actions, At, AtEvent, AtGeneration, AtId, Base, Behavior, Births, ChildStopped, Crash,
-    Create, Delivery, Exit, MailAddr, Move, Never, NoBirths, PeerStopped, Proxy, ProxyCommand,
-    Recipient, RestartPolicy, Route, Spec, StashRoute, State, Step, Strategy, Supervising,
-    SupervisionEvent, TimeReached, User, UserEvent, WatchEvent, Watching, run,
-    stop_on_abnormal_death, workers,
+    Create, Delivery, Exit, MailAddr, Move, Never, NoBirths, ObserveChild, PeerStopped, Proxy,
+    ProxyCommand, Recipient, RestartPolicy, Route, ServiceSends, Spec, StashRoute, State, Step,
+    Strategy, Supervising, SupervisionEvent, TimeReached, User, UserEvent, WatchEvent, Watching,
+    run, stop_on_abnormal_death, workers,
 };
 use communication::{Config, channel};
 use proptest::prelude::*;
@@ -15,6 +15,19 @@ use tokio::time::Instant;
 struct Quiet;
 
 fn requires_no_births<B: Behavior<Birth = NoBirths>>(_behavior: &B) {}
+
+#[test]
+fn ordinary_and_service_send_algebras_have_disjoint_static_dispatch() {
+    trait RouteSends<A: behavior::Address> {}
+
+    impl<A: behavior::Address, M> RouteSends<A> for Vec<Delivery<A, M>> {}
+    impl<A: behavior::Address> RouteSends<A> for ServiceSends<ObserveChild<A>> {}
+
+    fn requires_route_sends<A: behavior::Address, S: RouteSends<A>>() {}
+
+    requires_route_sends::<MailAddr, Vec<Delivery<MailAddr, ObserveChild<MailAddr>>>>();
+    requires_route_sends::<MailAddr, ServiceSends<ObserveChild<MailAddr>>>();
+}
 
 fn requires_births<B, C>(_behavior: &B)
 where
@@ -119,7 +132,7 @@ async fn spec_hides_composed_protocols_without_losing_their_effects() {
 
     let initial = behavior.init().await.unwrap();
     assert_eq!(initial.sends.inner.own[0].at, due);
-    assert_eq!(initial.sends.own[0].message.peer, peer);
+    assert_eq!(initial.sends.own[0].peer, peer);
 
     let time = WatchEvent::Inner(AtEvent::Reached(TimeReached {
         id: AtId(0),
@@ -135,7 +148,7 @@ async fn watching_registers_and_reacts_through_messages() {
     let peer = MailAddr(7);
     let mut behavior = Watching::new(Base::new(Quiet), peer, stop_on_abnormal_death);
     let initial = behavior.init().await.unwrap();
-    assert_eq!(initial.sends.own[0].message.peer, peer);
+    assert_eq!(initial.sends.own[0].peer, peer);
 
     let stopped = WatchEvent::PeerStopped(PeerStopped {
         peer,
@@ -270,14 +283,8 @@ async fn supervisor_creates_proxies_and_replacement_is_a_send() {
     let initial = supervisor.init().await.unwrap();
     assert_eq!(initial.creates.len(), 2);
     assert_eq!(initial.sends.own.inner.len(), 2);
-    assert!(
-        initial
-            .sends
-            .own
-            .inner
-            .iter()
-            .all(|send| send.to.route() == Route::Service)
-    );
+    assert_eq!(initial.sends.own.inner[0].nonce, 0);
+    assert_eq!(initial.sends.own.inner[1].nonce, 1);
 
     let event = SupervisionEvent::ChildStopped(ChildStopped {
         nonce: 0,
@@ -350,7 +357,7 @@ async fn supervisor_preserves_and_observes_dynamic_births_once() {
     assert_eq!(born.creates.len(), 1);
     assert_eq!(born.creates[0].nonce, 9);
     assert_eq!(born.sends.own.inner.len(), 1);
-    assert_eq!(born.sends.own.inner[0].message.nonce, 9);
+    assert_eq!(born.sends.own.inner[0].nonce, 9);
     assert_eq!(supervisor.behavior().child_count(), 1);
 
     let stopped = SupervisionEvent::ChildStopped(ChildStopped {

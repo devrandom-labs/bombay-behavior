@@ -107,9 +107,9 @@ fuzz_target!(|bytes: &[u8]| {
                 assert_eq!(
                     actions.sends.own.inner.len(),
                     1,
-                    "observe send at byte {index}"
+                    "observe request at byte {index}"
                 );
-                assert_eq!(actions.sends.own.inner[0].message.nonce, nonce);
+                assert_eq!(actions.sends.own.inner[0].nonce, nonce);
             } else {
                 // Death of the slot selected by the byte.
                 let dead = slots[usize::from(byte) % slots.len()];

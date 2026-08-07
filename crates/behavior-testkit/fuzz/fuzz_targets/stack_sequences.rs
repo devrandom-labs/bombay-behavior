@@ -9,9 +9,10 @@
 //! product lane and never leak across.
 
 use behavior::{
-    Acted, Actions, AtEvent, AtGeneration, AtId, Base, Behavior, ChildStopped, Crash, Delivery, Exit, MailAddr,
-    Never, PeerStopped, Recipient, RestartPolicy, Route, Spec, StashRoute, State, Step, Strategy,
-    SupervisionEvent, TimeReached, UserEvent, WatchEvent, stop_on_abnormal_death,
+    Acted, Actions, AtEvent, AtGeneration, AtId, Base, Behavior, Births, ChildStopped, Crash,
+    Delivery, Exit, MailAddr, Never, PeerStopped, Recipient, RestartPolicy, Route, Spec, StashRoute,
+    State, Step, Strategy, SupervisionEvent, TimeReached, UserEvent, WatchEvent,
+    stop_on_abnormal_death,
 };
 use libfuzzer_sys::fuzz_target;
 use tokio::runtime::Builder;
@@ -70,7 +71,11 @@ fn route(message: &u64) -> StashRoute {
 
 type Stack = behavior::Spec<
     behavior::Supervising<
-        behavior::At<behavior::Watching<behavior::Stashing<Base<EchoingParent, u64, Base<Echo, u8>, Never>>>>,
+        behavior::At<
+            behavior::Watching<
+                behavior::Stashing<Base<EchoingParent, u64, Births<Base<Echo, u8>>, Never>>,
+            >,
+        >,
         Base<Echo, u8>,
     >,
 >;
