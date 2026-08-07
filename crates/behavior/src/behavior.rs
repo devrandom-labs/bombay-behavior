@@ -181,7 +181,17 @@ impl<C> BirthMode for Births<C> {
 
 pub type Become<A, Ph = Never> = Step<Ph, Exit<A>>;
 
-/// Exactly Agha's effect triple.
+/// Exactly Agha's effect triple, with a Bombay interpretation-order policy.
+///
+/// An interpreter installs every fresh actor in `creates` before interpreting
+/// any delivery in `sends` from this value. This makes recipients created by a
+/// transition available to that transition's sends, including service
+/// protocols that observe a fresh child. Creation order is vector order, and
+/// each concrete send lane retains its own order; this contract does not
+/// impose an order between independent lanes of a [`SendProduct`].
+///
+/// The ordering rule belongs to the interpreter boundary. Constructing an
+/// `Actions` value remains pure and performs none of its effects.
 pub struct Actions<A: Address, Ph, Sends, Birth: BirthMode> {
     pub sends: Sends,
     pub creates: Vec<Create<A, Birth::Child>>,

@@ -295,11 +295,18 @@ async fn abnormal_death_reaction_outcome_classes() {
         linked.become_,
         Step::Stop(Exit::LinkDied(p)) if p == PEER
     ));
-    let failed = behavior.step(outcome(Err(Crash::Failed))).await.unwrap();
-    assert!(matches!(
-        failed.become_,
-        Step::Stop(Exit::LinkDied(p)) if p == PEER
-    ));
+    for crash in [
+        Crash::Failed,
+        Crash::EnvironmentFailed,
+        Crash::Panicked,
+        Crash::Cancelled,
+    ] {
+        let crashed = behavior.step(outcome(Err(crash))).await.unwrap();
+        assert!(matches!(
+            crashed.become_,
+            Step::Stop(Exit::LinkDied(p)) if p == PEER
+        ));
+    }
 }
 
 /// Supervision over a watched parent: the fleet's observe sends and the
