@@ -10,6 +10,7 @@ use crate::behavior::{
     ServiceSends, User, UserEvent,
 };
 use crate::deadlined::{TimeEvent, TimeReached};
+use crate::shutdown::{ShutdownEvent, ShutdownRequested};
 use crate::verdict::{Never, Step};
 use crate::watching::{PeerEvent, PeerStopped};
 use crate::{Crash, Exit};
@@ -125,6 +126,12 @@ impl<E: TimeEvent, A: Address> TimeEvent for SupervisionEvent<E, A> {
 impl<E: PeerEvent<A>, A: Address> PeerEvent<A> for SupervisionEvent<E, A> {
     fn peer_stopped(event: PeerStopped<A>) -> Option<Self> {
         E::peer_stopped(event).map(Self::Inner)
+    }
+}
+
+impl<E: ShutdownEvent, A: Address> ShutdownEvent for SupervisionEvent<E, A> {
+    fn shutdown_requested(event: ShutdownRequested) -> Option<Self> {
+        E::shutdown_requested(event).map(Self::Inner)
     }
 }
 

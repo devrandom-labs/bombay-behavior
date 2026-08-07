@@ -5,6 +5,7 @@ use crate::behavior::{
     UserEvent,
 };
 use crate::deadlined::{TimeEvent, TimeReached};
+use crate::shutdown::{ShutdownEvent, ShutdownRequested};
 use crate::supervising::{ChildEvent, ChildStopped, WorkerEvent, WorkerStopped};
 use crate::{Crash, Exit, Step};
 
@@ -66,6 +67,12 @@ impl<E: ChildEvent<A>, A: Address> ChildEvent<A> for WatchEvent<E, A> {
 impl<E: WorkerEvent<A>, A: Address> WorkerEvent<A> for WatchEvent<E, A> {
     fn worker_stopped(event: WorkerStopped<A>) -> Option<Self> {
         E::worker_stopped(event).map(Self::Inner)
+    }
+}
+
+impl<E: ShutdownEvent, A: Address> ShutdownEvent for WatchEvent<E, A> {
+    fn shutdown_requested(event: ShutdownRequested) -> Option<Self> {
+        E::shutdown_requested(event).map(Self::Inner)
     }
 }
 

@@ -3,9 +3,10 @@ use std::time::Duration;
 use behavior::{
     Acted, Actions, At, AtEvent, AtGeneration, AtId, Base, Behavior, Births, ChildStopped, Crash,
     Create, Delivery, Exit, MailAddr, Move, Never, NoBirths, ObserveChild, PeerStopped, Proxy,
-    ProxyCommand, Recipient, RestartPolicy, Route, ServiceSends, Spec, StashRoute, State, Step,
-    Strategy, Supervising, SupervisionEvent, TimeReached, User, UserEvent, WatchEvent, Watching,
-    WorkerEvent, WorkerStopped, run, stop_on_abnormal_death, workers,
+    ProxyCommand, Recipient, RestartPolicy, Route, ServiceSends, ShutdownEvent, ShutdownRequested,
+    Spec, StashRoute, State, Step, Strategy, Supervising, SupervisionEvent, TimeReached, User,
+    UserEvent, WatchEvent, Watching, WorkerEvent, WorkerStopped, run, stop_on_abnormal_death,
+    workers,
 };
 use communication::{Config, channel};
 use proptest::prelude::*;
@@ -55,6 +56,35 @@ impl State for Quiet {
     }
 }
 
+struct ShutdownParent;
+
+impl State<u64, Births<Base<Quiet>>> for ShutdownParent {
+    type Addr = MailAddr;
+    type Msg = u64;
+
+    fn handle(
+        &mut self,
+        _from: MailAddr,
+        _message: u64,
+    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, u64>>, Births<Base<Quiet>>, Never> {
+        Ok(Actions::cont())
+    }
+}
+
+fn finalize_parent(
+    _behavior: &mut Base<ShutdownParent, u64, Births<Base<Quiet>>>,
+    _request: ShutdownRequested,
+) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, u64>>, Births<Base<Quiet>>, Never> {
+    Ok(Actions {
+        sends: vec![Delivery::new(Recipient::global(MailAddr(9)), 42)],
+        creates: vec![Create {
+            nonce: 7,
+            child: Base::new(Quiet),
+        }],
+        become_: Step::Continue,
+    })
+}
+
 #[test]
 fn actions_are_exactly_the_agha_triple() {
     let mut actions: Actions<MailAddr, Never, Vec<Delivery<MailAddr, u64>>, NoBirths> =
@@ -67,6 +97,55 @@ fn actions_are_exactly_the_agha_triple() {
     assert_eq!(actions.sends[0].message, 42);
     assert!(actions.creates.is_empty());
     assert!(matches!(actions.become_, Step::Continue));
+}
+
+#[tokio::test]
+async fn typed_shutdown_stops_normally_without_running_the_inner_fold() {
+    let mut behavior = Spec::new(Quiet).stop_on_shutdown();
+    let event = <_ as ShutdownEvent>::shutdown_requested(ShutdownRequested).unwrap();
+    let actions = behavior.step(event).await.unwrap();
+
+    assert!(actions.sends.is_empty());
+    assert!(actions.creates.is_empty());
+    assert!(matches!(actions.become_, Step::Stop(Exit::Normal)));
+}
+
+#[tokio::test]
+async fn final_shutdown_fold_preserves_effects_and_forces_normal_stop() {
+    let mut behavior = Spec::new(ShutdownParent).finalize_on_shutdown(finalize_parent);
+    let event = <_ as ShutdownEvent>::shutdown_requested(ShutdownRequested).unwrap();
+    let actions = behavior.step(event).await.unwrap();
+
+    assert_eq!(actions.sends.len(), 1);
+    assert_eq!(actions.sends[0].message, 42);
+    assert_eq!(actions.creates.len(), 1);
+    assert_eq!(actions.creates[0].nonce, 7);
+    assert!(matches!(actions.become_, Step::Stop(Exit::Normal)));
+}
+
+#[tokio::test]
+async fn outer_combinators_preserve_the_shutdown_lane() {
+    let mut behavior = Spec::new(Quiet)
+        .stop_on_shutdown()
+        .at(None, |_| Ok(Step::Continue))
+        .watch(MailAddr(8), stop_on_abnormal_death);
+    let event = <_ as ShutdownEvent>::shutdown_requested(ShutdownRequested).unwrap();
+    let actions = behavior.step(event).await.unwrap();
+
+    assert!(matches!(actions.become_, Step::Stop(Exit::Normal)));
+}
+
+#[tokio::test]
+async fn shutdown_composition_preserves_inner_initialization_effects() {
+    let due = Instant::now() + Duration::from_secs(1);
+    let mut behavior = Spec::new(Quiet)
+        .at(Some(due), |_| Ok(Step::Continue))
+        .stop_on_shutdown();
+    let initial = behavior.init().await.unwrap();
+
+    assert_eq!(initial.sends.own.len(), 1);
+    assert_eq!(initial.sends.own[0].at, due);
+    assert!(matches!(initial.become_, Step::Continue));
 }
 
 #[tokio::test]

@@ -16,6 +16,7 @@ mod watching;
 
 // `Fsm` is a thin state-machine helper built from the core stashing primitive.
 mod fsm;
+mod shutdown;
 mod spec;
 
 pub use algebra::{
@@ -27,6 +28,10 @@ pub use deadlined::{
     At, AtEvent, AtGeneration, AtId, AtReaction, ScheduleAt, TimeEvent, TimeReached,
 };
 pub use fsm::{Fsm, Move};
+pub use shutdown::{
+    FinalizeOnShutdown, ShutdownEvent, ShutdownProtocol, ShutdownReaction, ShutdownRequested,
+    StopOnShutdown,
+};
 pub use spec::Spec;
 pub use stashing::{StashRoute, Stashing};
 pub use supervising::{
