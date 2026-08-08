@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "campaign": "session-protocol-derivation",
+  "prepared_at_commit": null,
+  "outcome": null,
+  "obligations": [
+    {"id":"CASE-01","status":"pending","question":"Define one concrete three-or-more-phase Bombay actor protocol and justify its relevance.","decision":"","evidence":[],"validation":[]},
+    {"id":"TRACE-01","status":"pending","question":"Specify valid traces, phase-local messages, transitions, termination, initialization, and errors.","decision":"","evidence":[],"validation":[]},
+    {"id":"STATIC-01","status":"pending","question":"List the exact invalid programs that must fail to compile and why runtime rejection is insufficient.","decision":"","evidence":[],"validation":[]},
+    {"id":"RESEARCH-01","status":"pending","question":"Separate actor-model laws, session-type results, Bombay derivations, policies, and application choices using primary sources.","decision":"","evidence":[],"validation":[]},
+    {"id":"FSM-01","status":"pending","question":"Test the concrete case against current Fsm and state precisely what it can and cannot guarantee.","decision":"","evidence":[],"validation":[]},
+    {"id":"DERIVE-01","status":"pending","question":"Attempt a public-API derivation using Behavior, associated types, sums, products, typestate, and uninhabited types.","decision":"","evidence":[],"validation":[]},
+    {"id":"APP-01","status":"pending","question":"Attempt an application-local concrete behavior before proposing reusable core API.","decision":"","evidence":[],"validation":[]},
+    {"id":"OBSTRUCTION-01","status":"pending","question":"Record exact compiler/type/composition obstruction for every failed derivation.","decision":"","evidence":[],"validation":[]},
+    {"id":"COMPILE-01","status":"pending","question":"Provide positive and compile-fail probes for every claimed static guarantee.","decision":"","evidence":[],"validation":[]},
+    {"id":"COMPOSE-01","status":"pending","question":"Check Actions preservation and relevant wrapper orders, initialization, errors, termination, and births.","decision":"","evidence":[],"validation":[]},
+    {"id":"SURFACE-01","status":"pending","question":"If a core construction is proposed, prove its public surface is minimal, static, and law-backed.","decision":"","evidence":[],"validation":[]},
+    {"id":"COUNTER-01","status":"pending","question":"Actively try to falsify the preferred outcome with a competing derivation and adversarial examples.","decision":"","evidence":[],"validation":[]},
+    {"id":"DECISION-01","status":"pending","question":"Choose exactly one allowed outcome and explain why the other outcomes were rejected.","decision":"","evidence":[],"validation":[]},
+    {"id":"DOC-01","status":"pending","question":"Write the final report with sources, derivations, experiments, limitations, and remaining risks.","decision":"","evidence":[],"validation":[]},
+    {"id":"VERIFY-01","status":"pending","question":"Run focused checks, workspace nextest, and nix flake check on the final tree.","decision":"","evidence":[],"validation":[]}
+  ]
+}
