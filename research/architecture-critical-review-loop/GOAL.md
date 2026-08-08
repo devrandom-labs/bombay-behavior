@@ -179,3 +179,34 @@ Run `research/architecture-critical-review-loop/check.sh`. It prints
 `SCORE: N` and remains nonzero until every fixed obligation is valid, the final
 research report accounts for every ID, all ratchets hold, and the repository's
 full verification gates pass. Never claim `LOOP_DONE` while it fails.
+
+## Reopened review obligations (2026-08-08)
+
+The first closure report did not survive independent review. Preserve that run
+as history, but do not repeat its conclusion until all of these are resolved:
+
+- Reclassify `protocol-session`: the current `Fsm` has `Move::Goto(P)` and a
+  single message type in every phase. A closed enum alone does not make invalid
+  transitions, out-of-phase messages, or session duality unrepresentable.
+- Reclassify `security-capability`: typed recipients preserve protocol
+  compatibility, but public/copyable `MailAddr`, `Recipient::global`,
+  `Recipient::child`, and `Address::birth` do not prove address authenticity,
+  secrecy, possession authority, or unforgeability.
+- Narrow `location-transparency`: the fold has no location-resolution service,
+  but `Address` exposes `birth`, concrete addresses may expose representation,
+  and `Debug` may reveal routes. Do not claim equality is the only observable
+  operation or that the algebra prevents forging.
+- Recompute all disposition totals from the matrix. The prior report's
+  29/14/8/2 totals disagree with the actual 26/10/11/6 matrix and with the
+  contradictory `SURVEY-BASIS` prose.
+- Give every resolved capability explicit `claim_classification` and
+  `limitations` fields. The checker must validate their vocabulary and
+  presence; string length is not semantic evidence.
+- Describe `check.sh` truthfully as a structural/ratchet/repository gate. It
+  cannot establish that a citation entails a claim or that a test validates a
+  derivation; those remain review obligations.
+
+The next final report must include the checker-derived disposition line exactly
+as printed, explain every changed disposition, and state whether any surveyed
+capability remains only partially represented. A qualified result is valid;
+unsupported total closure is not.

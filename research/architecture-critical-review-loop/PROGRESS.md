@@ -1,5 +1,19 @@
 # Loop progress
 
+## 2026-08-08 — independent review reopened the campaign
+
+- The prior 53/53 closure is historical, not current.
+- Reopen `location-transparency`, `security-capability`, and
+  `protocol-session`; their claimed static guarantees exceed the public types.
+- Reopen research labels, taxonomy/basis/gaps, documentation, and verification.
+- The prior disposition totals were incorrect: the committed matrix is
+  existing=26, derived=10, interpreter=11, application=6.
+- The checker now requires explicit classifications and limitations on every
+  capability and requires its computed disposition totals in the report.
+- Pinned verification currently passes 123/123 workspace tests; the prior
+  154-test report total double-counted 31 tests and must be corrected.
+- A rerun may conclude partial coverage; it must not optimize for total closure.
+
 ## 2026-08-08 — campaign complete
 
 - Survey: 5 repeatable queries; 16 primary sources included; reactor/event-loop

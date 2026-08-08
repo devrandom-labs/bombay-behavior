@@ -15,6 +15,7 @@ import json
 import re
 import subprocess
 import sys
+from collections import Counter
 from pathlib import Path
 
 evidence_path, matrix_path, baseline_path, target_path = map(Path, sys.argv[1:])
@@ -49,6 +50,7 @@ required_capabilities = {
     "scheduling","resource-ownership","lifecycle-publication",
 }
 allowed_dispositions = {"existing", "derived", "new-primitive", "interpreter", "application", "rejected"}
+allowed_classifications = {"actor-model-law", "bombay-derived", "bombay-policy", "interpreter-boundary", "application-policy"}
 errors = []
 
 def load(path):
@@ -103,21 +105,25 @@ if declared_required != required_capabilities:
     errors.append("required_categories must exactly match the checker-owned taxonomy")
 
 resolved_capabilities = 0
+disposition_counts = Counter()
 for item in capabilities:
     if not isinstance(item, dict): continue
     item_id = item.get("id")
     if item.get("status") not in {"pending", "resolved"}:
         errors.append(f"capability {item_id}: invalid status")
         continue
-    if item.get("status") != "resolved": continue
     disposition = item.get("disposition")
     if disposition not in allowed_dispositions:
         errors.append(f"capability {item_id}: invalid disposition")
         continue
+    disposition_counts[disposition] += 1
+    if item.get("status") != "resolved": continue
     sources = item.get("sources")
     laws = item.get("laws")
     validation = item.get("validation")
     composition = item.get("composition")
+    classifications = item.get("claim_classification")
+    limitations = item.get("limitations")
     valid = True
     if not isinstance(sources, list) or not sources or any(not isinstance(v, str) or len(v.strip()) < 16 for v in sources):
         errors.append(f"capability {item_id}: needs primary-source evidence"); valid = False
@@ -127,7 +133,15 @@ for item in capabilities:
         errors.append(f"capability {item_id}: needs applicable laws/boundary laws"); valid = False
     if not isinstance(validation, list) or not validation or any(not isinstance(v, str) or len(v.strip()) < 12 for v in validation):
         errors.append(f"capability {item_id}: needs validation"); valid = False
+    if not isinstance(classifications, list) or not classifications or any(v not in allowed_classifications for v in classifications):
+        errors.append(f"capability {item_id}: needs explicit claim_classification values"); valid = False
+    if not isinstance(limitations, list) or not limitations or any(not isinstance(v, str) or len(v.strip()) < 20 for v in limitations):
+        errors.append(f"capability {item_id}: needs explicit limitations"); valid = False
     if valid: resolved_capabilities += 1
+
+count_order = ("existing", "derived", "interpreter", "application", "new-primitive", "rejected")
+count_summary = ", ".join(f"{name}={disposition_counts[name]}" for name in count_order)
+print("capability dispositions: " + count_summary)
 
 source_paths = sorted(Path("crates/behavior/src").glob("*.rs"))
 source_by_path = {str(path): path.read_text() for path in source_paths}
@@ -240,6 +254,10 @@ if "## Actor behavior algebra evidence" not in target_text:
 if resolved_obligations == len(expected_obligations):
     if missing := sorted(item_id for item_id in expected_obligations if item_id not in target_text):
         errors.append("research report omits obligation IDs: " + ", ".join(missing))
+if resolved_capabilities == len(capabilities):
+    report_count_line = "Disposition totals: " + count_summary + "."
+    if report_count_line not in target_text:
+        errors.append("research report lacks the checker-derived disposition totals: " + report_count_line)
 
 score = resolved_obligations * 10 + resolved_capabilities * 5
 print(f"SCORE: {score}")

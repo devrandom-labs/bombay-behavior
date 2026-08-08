@@ -883,7 +883,7 @@
     },
     {
       "id": "location-transparency",
-      "status": "resolved",
+      "status": "pending",
       "disposition": "derived",
       "summary": "Addressing/location transparency semantics.",
       "sources": [
@@ -943,7 +943,7 @@
     },
     {
       "id": "security-capability",
-      "status": "resolved",
+      "status": "pending",
       "disposition": "derived",
       "summary": "Authority/capability-safe actor interaction.",
       "sources": [
@@ -963,7 +963,7 @@
     },
     {
       "id": "protocol-session",
-      "status": "resolved",
+      "status": "pending",
       "disposition": "derived",
       "summary": "Session/protocol-state behavior typing.",
       "sources": [

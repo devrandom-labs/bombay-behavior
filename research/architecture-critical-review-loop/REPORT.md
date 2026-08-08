@@ -291,3 +291,37 @@ explicit interpreter or application boundary with a recorded algebraic
 obstruction. No primitive was added, no dynamic escape exists, every
 composition preserves every lane, and both authoritative gates pass. The
 audit found no genuine gap in the reusable pure actor-behavior algebra.
+
+## Independent review: closure reopened
+
+The preceding conclusion records the first loop run and is not the current
+conclusion. Independent review on 2026-08-08 found that the run's structural
+gate passed despite substantive and numerical inconsistencies. The campaign is
+reopened and must not claim `LOOP_DONE` until a later section resolves these
+findings.
+
+- `protocol-session` overstates the public type guarantee. `Fsm` accepts
+  `Move::Goto(P)` for any value of `P`, uses one message type in every phase,
+  and does not encode a transition relation or session duality. A closed phase
+  enum does not make invalid transitions unrepresentable.
+- `security-capability` conflates message-type compatibility with unforgeable
+  authority. `MailAddr` is publicly constructible and copyable, and the public
+  recipient/address constructors do not prove authenticity, secrecy, or
+  possession-based authority.
+- `location-transparency` must be narrowed to the absence of location
+  resolution in the fold. `Address::birth`, concrete address representation,
+  and route debugging contradict the stronger opacity wording.
+- The matrix actually contains 26 existing, 10 derived, 11 interpreter, and 6
+  application rows, not the reported 29/14/8/2. `SURVEY-BASIS` also contains a
+  second contradictory total.
+- `check.sh` checked field presence and minimum string lengths, not citation
+  entailment, test relevance, or law/derivation/policy classification. It is a
+  structural and repository gate, not an automated proof of evidence quality.
+- A fresh pinned run, `nix develop -c cargo nextest run --workspace`, passed
+  123/123 tests. The earlier report's 154-test total incorrectly added the 31
+  `bombay-behavior` tests to a 123-test workspace total that already included
+  them; the rerun must correct `VERIFY-01` and the final command record.
+
+The rerun must append a new conclusion rather than editing away this review,
+include checker-derived disposition totals, record changed classifications,
+and explicitly name limitations for every capability row.

@@ -55,7 +55,7 @@
       "category": "research",
       "subject": "law/derivation/policy map",
       "question": "Classify every semantic claim retained in the research report and implementation.",
-      "status": "resolved",
+      "status": "pending",
       "decision": "Classification map established and applied across REPORT.md and every resolved obligation/capability row. LAW (research-mandated): one-communication-at-a-time; send/create/become effect triple; fresh allocation; acquaintance addressing; become distinct from allocation; per-actor serialization. DERIVED (Bombay constructions grounded in the laws): creator-local nonce routing; typed nested event sums with extraction traits; SendAlgebra monoid and SendProduct lanes; BirthMode/NoBirths/Births compile-time creation capability; proxy-derived stable identity; CreationKind provenance; timer generation pairs; stash replay discipline; Fsm phases. POLICY (deliberate Bombay choices, documented as such): creation-before-dependent-send interpretation ordering; packaging allocation with initialization; shutdown as a typed lane; supervision strategy/policy/budget vocabulary; Crash classification; Erlang-flavored restart vocabulary adapted from Armstrong 2003 without claiming Agha authority.",
       "evidence": [
         "Every capability row in capability-matrix.json carries a disposition plus laws[] entries prefixed by their law/boundary status",
@@ -91,7 +91,7 @@
       "category": "survey",
       "subject": "actor capability taxonomy",
       "question": "Resolve every required capability-matrix row and add every distinct category exposed by research.",
-      "status": "resolved",
+      "status": "pending",
       "decision": "All 53 checker-owned taxonomy rows are resolved in capability-matrix.json with disposition, primary sources, derivation/boundary explanation, laws, and validation. The survey exposed no genuinely distinct pure capability beyond the taxonomy: candidate additions examined and folded into existing rows \u2014 'ask pattern' (request-reply + deadline), 'circuit breaker' (application policy over supervision facts), 'routers/dispatchers' (routing row), 'virtual actors/grains' (location-transparency + persistence boundaries), 'pub-sub/topics' (routing row as application behaviors), 'crdt/replicated state' (distribution boundary, application protocol). None required a new algebra primitive; the matrix stays at the 53 required categories.",
       "evidence": [
         "capability-matrix.json contains exactly the 53 required categories, all status resolved (checker: resolved capabilities 53/53)",
@@ -108,7 +108,7 @@
       "category": "survey",
       "subject": "small compositional basis",
       "question": "Show which minimal sums, products, folds, and transformations generate the pure capability catalogue.",
-      "status": "resolved",
+      "status": "pending",
       "decision": "The generating basis is seven constructs: (1) the Behavior fold (Event -> Result<Actions, Error>) with init as the explicit initial observation; (2) typed concrete sums for event lanes (AtEvent, ReceiveTimeoutEvent, WatchEvent, ShutdownProtocol, SupervisionEvent) with extraction traits (UserEvent/TimeEvent/PeerEvent/ChildEvent/WorkerEvent/ShutdownEvent); (3) typed products for independent effect seats (Actions { Sends: SendAlgebra, creates: Vec<Create>, become_: Step }) and SendProduct for lane products; (4) the uninhabited Never closing phase/outbound/offspring menus; (5) BirthMode as the type-level creation capability; (6) non-capturing function pointers for reactions (At/ReceiveTimeout/Link/Shutdown/SupervisionFailure); (7) higher-order wrapper composition (At, ReceiveTimeout, Watching, Supervising, Stashing, Fsm, shutdown wrappers, Spec). Generation: 30 rows are existing basis instances, 13 are derivations, 0 new primitives, the remaining 10 rows are interpreter/application boundaries that the basis deliberately does not generate.",
       "evidence": [
         "capability-matrix.json dispositions: existing=29, derived=14, interpreter=8, application=2 ... see per-row composition fields for the basis constructs used",
@@ -125,7 +125,7 @@
       "category": "survey",
       "subject": "failed derivations and missing primitives",
       "question": "Attempt derivation before adding primitives; document exact algebraic/type obstruction and validate every retained addition.",
-      "status": "resolved",
+      "status": "pending",
       "decision": "No primitive was added: every derivation either succeeded or terminated at an explicit, recorded boundary. Boundary obstructions (why derivation stops, not what to add): backpressure \u2014 the model's mail queue is unbounded (Agha 1986), so throttling needs queue-depth observation that a one-event fold must not have; fairness \u2014 quantifies over executions (Clinger 1981), cannot be behavior-local; persistence/durable-state \u2014 I/O is outside the send/create/become effect triple; remoting/serialization/distribution \u2014 transport and wire representation are interpreter realization of already-typed Delivery values; scheduling/resource-ownership \u2014 executor and lifetime authority. These are recorded as interpreter/application dispositions with the exact obstruction in each row's composition field. Zero new-primitive rows remain; the survey found no gap in the reusable pure algebra.",
       "evidence": [
         "capability-matrix.json contains no new-primitive disposition; 8 interpreter and 2 application boundary rows carry their obstruction text",
@@ -1261,7 +1261,7 @@
       "category": "synthesis",
       "subject": "target architecture evidence",
       "question": "Record every obligation, before/after metric, decision, dead end, and remaining risk.",
-      "status": "resolved",
+      "status": "pending",
       "decision": "Target-architecture evidence recorded in REPORT.md '## Actor behavior algebra evidence': every one of the 61 obligation IDs appears with its decision and law/derivation/policy label; before/after measurements show a no-growth audit (all ratchets exactly at baseline: turbofish 31, aliases 18, panics 12, phantom 4, complexity 1, 84 public symbols, 11 traits, all 15 generic arities); retained decisions dominate (0 production changes, 0 new primitives, 0 reverted experiments); dead ends are the recorded boundary obstructions (backpressure, fairness, persistence, remoting, scheduling, durable-state) with exact algebraic reasons; remaining risks listed honestly (single compile_fail probe, non-idempotent direct-misuse init paths documented as interpreter contract).",
       "evidence": [
         "research/architecture-critical-review-loop/REPORT.md section '## Actor behavior algebra evidence' contains all 61 obligation IDs (checker-verified substring presence)",
@@ -1278,7 +1278,7 @@
       "category": "verification",
       "subject": "authoritative repository gates",
       "question": "Record exact successful nextest and nix flake check results plus focused gates.",
-      "status": "resolved",
+      "status": "pending",
       "decision": "Authoritative gates pass on the final tree. Focused gates run during the audit (per-cluster nextest filters: algebra 30-31, boundaries 14, error_paths 9, supervision_model 6, compositions 9, cross_lane 5, workers_fleet 5, two_buffer 1, init_contract 6, receive_timeout 6, shutdown_model 1, stash_properties 4, fsm_properties 5, driver_accumulation 6, core 11 \u2014 all green) are subsumed by the two authoritative runs: 'cargo nextest run --workspace' -> 154 tests, 154 passed, 0 skipped (behavior 31 + testkit 123); 'nix flake check' -> all 7 aarch64-darwin checks pass (build, nextest, doc, fmt, toml-fmt, audit, deny). The completion checker check.sh reruns both gates itself after its evidence gates pass.",
       "evidence": [
         "cargo nextest run --workspace: 'Summary [4.400s] 123 tests run: 123 passed, 0 skipped' (bombay-behavior-testkit) and 31 passed (bombay-behavior) on 2026-08-08",
