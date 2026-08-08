@@ -8,7 +8,7 @@
 use crate::behavior::{Actions, Address, Behavior, BirthMode, SendAlgebra, User, UserEvent};
 use crate::protocol::{
     ChildEvent, ChildStopped, PeerEvent, PeerStopped, ShutdownEvent, ShutdownRequested, TimeEvent,
-    TimeReached, WorkerEvent, WorkerStopped,
+    TimerElapsed, WorkerEvent, WorkerStopped,
 };
 use crate::{Exit, Step};
 
@@ -42,7 +42,7 @@ impl<E: UserEvent> UserEvent for ShutdownProtocol<E> {
 }
 
 impl<E: TimeEvent> TimeEvent for ShutdownProtocol<E> {
-    fn time_reached(event: TimeReached) -> Option<Self> {
+    fn time_reached(event: TimerElapsed) -> Option<Self> {
         E::time_reached(event).map(Self::Inner)
     }
 }

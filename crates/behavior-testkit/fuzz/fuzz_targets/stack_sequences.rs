@@ -9,9 +9,9 @@
 //! product lane and never leak across.
 
 use behavior::{
-    Acted, Actions, AtEvent, AtGeneration, AtId, Base, Behavior, Births, WorkerStopped, Crash,
+    Acted, Actions, AtEvent, TimerGeneration, TimerId, Base, Behavior, Births, WorkerStopped, Crash,
     Delivery, Exit, MailAddr, Never, PeerStopped, Recipient, RestartPolicy, Route, Spec, StashRoute,
-    State, Step, Strategy, SupervisionEvent, TimeReached, UserEvent, WatchEvent,
+    State, Step, Strategy, SupervisionEvent, TimerElapsed, UserEvent, WatchEvent,
     stop_on_abnormal_death,
 };
 use libfuzzer_sys::fuzz_target;
@@ -142,11 +142,9 @@ fuzz_target!(|bytes: &[u8]| {
                 2 => {
                     // Time lane: matching Reached fires once, then inert.
                     let actions = behavior
-                        .step(SupervisionEvent::Inner(AtEvent::Reached(TimeReached {
-                            id: AtId(0),
-                            generation: AtGeneration(0),
-                            at: due,
-                        })))
+                        .step(SupervisionEvent::Inner(AtEvent::Reached(TimerElapsed {
+                            id: TimerId(0),
+                            generation: TimerGeneration(0),})))
                         .await
                         .unwrap();
                     assert_eq!(actions.become_, Step::Continue, "time verdict at byte {index}");

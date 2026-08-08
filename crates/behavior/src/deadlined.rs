@@ -9,18 +9,18 @@ use crate::behavior::{
     UserEvent,
 };
 use crate::protocol::{
-    AtGeneration, AtId, ChildEvent, ChildStopped, PeerEvent, PeerStopped, ScheduleAt,
-    ShutdownEvent, ShutdownRequested, TimeEvent, TimeReached, WorkerEvent, WorkerStopped,
+    ChildEvent, ChildStopped, PeerEvent, PeerStopped, ScheduleAt, ShutdownEvent, ShutdownRequested,
+    TimeEvent, TimerElapsed, TimerGeneration, TimerId, WorkerEvent, WorkerStopped,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AtEvent<E> {
     Inner(E),
-    Reached(TimeReached),
+    Reached(TimerElapsed),
 }
 
 impl<E> TimeEvent for AtEvent<E> {
-    fn time_reached(event: TimeReached) -> Option<Self> {
+    fn time_reached(event: TimerElapsed) -> Option<Self> {
         Some(Self::Reached(event))
     }
 }
@@ -75,18 +75,18 @@ pub type AtActions<B> =
 
 pub struct At<B: Behavior> {
     inner: B,
-    id: AtId,
-    scheduled: Option<(AtGeneration, Instant)>,
+    id: TimerId,
+    scheduled: Option<(TimerGeneration, Instant)>,
     on_reached: AtReaction<B>,
 }
 
 impl<B: Behavior> At<B> {
     #[must_use]
-    pub fn new(inner: B, id: AtId, at: Option<Instant>, on_reached: AtReaction<B>) -> Self {
+    pub fn new(inner: B, id: TimerId, at: Option<Instant>, on_reached: AtReaction<B>) -> Self {
         Self {
             inner,
             id,
-            scheduled: at.map(|at| (AtGeneration(0), at)),
+            scheduled: at.map(|at| (TimerGeneration(0), at)),
             on_reached,
         }
     }
@@ -116,22 +116,28 @@ where
 
     async fn init(&mut self) -> Result<AtActions<B>, B::Error> {
         let actions = self.inner.init().await?;
-        let own = self
-            .scheduled
-            .map_or_else(ServiceSends::empty, |(generation, at)| {
-                ServiceSends::one(ScheduleAt {
-                    id: self.id,
-                    generation,
-                    at,
+        let own = if matches!(actions.become_, Step::Stop(_)) {
+            self.scheduled = None;
+            ServiceSends::empty()
+        } else {
+            self.scheduled
+                .map_or_else(ServiceSends::empty, |(generation, at)| {
+                    ServiceSends::one(ScheduleAt {
+                        id: self.id,
+                        generation,
+                        at,
+                    })
                 })
-            });
+        };
         Ok(Self::wrap(actions, own))
     }
 
     async fn step(&mut self, event: Self::Event) -> Result<AtActions<B>, B::Error> {
         match event {
             AtEvent::Reached(event)
-                if event.id == self.id && self.scheduled == Some((event.generation, event.at)) =>
+                if event.id == self.id
+                    && self.scheduled.map(|(generation, _)| generation)
+                        == Some(event.generation) =>
             {
                 self.scheduled = None;
                 let become_ = match (self.on_reached)(&mut self.inner)? {
@@ -149,18 +155,22 @@ where
                 })
             }
             AtEvent::Reached(event) => match B::Event::time_reached(event) {
-                Some(inner) => self
-                    .inner
-                    .step(inner)
-                    .await
-                    .map(|actions| Self::wrap(actions, ServiceSends::empty())),
+                Some(inner) => {
+                    let actions = self.inner.step(inner).await?;
+                    if matches!(actions.become_, Step::Stop(_)) {
+                        self.scheduled = None;
+                    }
+                    Ok(Self::wrap(actions, ServiceSends::empty()))
+                }
                 None => Ok(Actions::cont()),
             },
-            AtEvent::Inner(event) => self
-                .inner
-                .step(event)
-                .await
-                .map(|actions| Self::wrap(actions, ServiceSends::empty())),
+            AtEvent::Inner(event) => {
+                let actions = self.inner.step(event).await?;
+                if matches!(actions.become_, Step::Stop(_)) {
+                    self.scheduled = None;
+                }
+                Ok(Self::wrap(actions, ServiceSends::empty()))
+            }
         }
     }
 }

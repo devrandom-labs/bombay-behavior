@@ -8,8 +8,8 @@
 use std::time::Duration;
 
 use behavior::{
-    AtEvent, AtGeneration, AtId, Behavior, Fsm, MailAddr, Move, Never, Spec, StashRoute, Step,
-    TimeReached, UserEvent,
+    AtEvent, Behavior, Fsm, MailAddr, Move, Never, Spec, StashRoute, Step, TimerElapsed,
+    TimerGeneration, TimerId, UserEvent,
 };
 use proptest::collection::vec;
 use proptest::prelude::*;
@@ -86,11 +86,9 @@ proptest! {
             // then inert) between user messages.
             if fire_index < fires.len() && fires[fire_index] % 2 == 0 {
                 let actions = runtime
-                    .block_on(behavior.step(AtEvent::Reached(TimeReached {
-                        id: AtId(0),
-                        generation: AtGeneration(0),
-                        at: due,
-                    })))
+                    .block_on(behavior.step(AtEvent::Reached(TimerElapsed {
+                        id: TimerId(0),
+                        generation: TimerGeneration(0),})))
                     .unwrap();
                 prop_assert_eq!(actions.become_, Step::Continue, "time lane verdict");
                 fire_index += 1;

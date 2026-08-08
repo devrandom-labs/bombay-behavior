@@ -1,9 +1,9 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, AtEvent, AtGeneration, AtId, Base, Behavior, ChildStopped, Crash, Create,
-    Delivery, Exit, MailAddr, Move, Never, PeerStopped, Proxy, ProxyCommand, Recipient,
-    RestartPolicy, Route, Spec, StashRoute, State, Step, Strategy, SupervisionEvent, TimeReached,
+    Acted, Actions, AtEvent, Base, Behavior, ChildStopped, Crash, Create, Delivery, Exit, MailAddr,
+    Move, Never, PeerStopped, Proxy, ProxyCommand, Recipient, RestartPolicy, Route, Spec,
+    StashRoute, State, Step, Strategy, SupervisionEvent, TimerElapsed, TimerGeneration, TimerId,
     User, UserEvent, WatchEvent, WorkerStopped, stop_on_abnormal_death,
 };
 use behavior_testkit::{Mailbox, drive};
@@ -69,24 +69,20 @@ async fn empty_mailbox_still_observes_initialization_exactly_once() {
 #[tokio::test]
 async fn stale_and_duplicate_time_observations_are_inert() {
     let due = Instant::now() + Duration::from_secs(2);
-    let stale = due - Duration::from_nanos(1);
     let mut behavior =
         Spec::new(Recorder::default()).at(Some(due), |_| Ok(Step::Stop(Exit::Normal)));
     let mut mailbox = Mailbox::new([
-        AtEvent::Reached(TimeReached {
-            id: AtId(0),
-            generation: AtGeneration(0),
-            at: stale,
+        AtEvent::Reached(TimerElapsed {
+            id: TimerId(0),
+            generation: TimerGeneration(1),
         }),
-        AtEvent::Reached(TimeReached {
-            id: AtId(0),
-            generation: AtGeneration(0),
-            at: due,
+        AtEvent::Reached(TimerElapsed {
+            id: TimerId(0),
+            generation: TimerGeneration(0),
         }),
-        AtEvent::Reached(TimeReached {
-            id: AtId(0),
-            generation: AtGeneration(0),
-            at: due,
+        AtEvent::Reached(TimerElapsed {
+            id: TimerId(0),
+            generation: TimerGeneration(0),
         }),
     ]);
     let trace = drive(&mut behavior, &mut mailbox).await.unwrap();
