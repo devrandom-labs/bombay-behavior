@@ -9,9 +9,9 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, AtEvent, AtGeneration, AtId, Base, Behavior, Crash, Delivery, Fsm, MailAddr,
-    Move, Never, PeerStopped, RestartPolicy, Spec, State, Step, Strategy, Supervising,
-    SupervisionEvent, TimeReached, User, UserEvent, WatchEvent, restart_all, restart_one,
+    Acted, Actions, AtEvent, Base, Behavior, Crash, Delivery, Fsm, MailAddr, Move, Never,
+    PeerStopped, RestartPolicy, Spec, State, Step, Strategy, Supervising, SupervisionEvent,
+    TimerElapsed, TimerGeneration, TimerId, User, UserEvent, WatchEvent, restart_all, restart_one,
     restart_rest,
 };
 use behavior_testkit::{Mailbox, drive};
@@ -168,20 +168,18 @@ async fn at_reaction_error_consumes_the_timer() {
     behavior.init().await.unwrap();
 
     let first = behavior
-        .step(AtEvent::Reached(TimeReached {
-            id: AtId(0),
-            generation: AtGeneration(0),
-            at: due,
+        .step(AtEvent::Reached(TimerElapsed {
+            id: TimerId(0),
+            generation: TimerGeneration(0),
         }))
         .await;
     assert!(matches!(first, Err(Boom)));
 
     // The duplicate delivery cannot re-fire the consumed timer.
     let second = behavior
-        .step(AtEvent::Reached(TimeReached {
-            id: AtId(0),
-            generation: AtGeneration(0),
-            at: due,
+        .step(AtEvent::Reached(TimerElapsed {
+            id: TimerId(0),
+            generation: TimerGeneration(0),
         }))
         .await
         .unwrap();

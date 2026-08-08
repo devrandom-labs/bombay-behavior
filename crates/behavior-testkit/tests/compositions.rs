@@ -6,9 +6,9 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, AtEvent, AtGeneration, AtId, Base, Behavior, Crash, Delivery, Exit, MailAddr,
-    Never, PeerStopped, Recipient, RestartDenial, Route, Spec, StashRoute, State, Step,
-    SupervisionEvent, SupervisionFailureReason, TimeReached, User, UserEvent, WatchEvent,
+    Acted, Actions, AtEvent, Base, Behavior, Crash, Delivery, Exit, MailAddr, Never, PeerStopped,
+    Recipient, RestartDenial, Route, Spec, StashRoute, State, Step, SupervisionEvent,
+    SupervisionFailureReason, TimerElapsed, TimerGeneration, TimerId, User, UserEvent, WatchEvent,
     WorkerStopped, stop_on_abnormal_death, stop_on_supervision_failure,
 };
 use tokio::time::Instant;
@@ -141,10 +141,9 @@ async fn environment_lanes_bypass_stash_while_user_lane_is_intercepted() {
     behavior.init().await.unwrap();
 
     // Time lane: fires through the stash layer, nothing stashed.
-    let reached = AtEvent::Reached(TimeReached {
-        id: AtId(0),
-        generation: AtGeneration(0),
-        at: due,
+    let reached = AtEvent::Reached(TimerElapsed {
+        id: TimerId(0),
+        generation: TimerGeneration(0),
     });
     let fired = behavior.step(reached).await.unwrap();
     assert!(matches!(fired.become_, Step::Continue));
@@ -255,15 +254,11 @@ async fn unscheduled_at_is_inert_to_reached_events() {
     let initial = behavior.init().await.unwrap();
     assert!(initial.sends.own.is_empty());
 
-    for (id, at) in [
-        (AtId(0), Instant::now()),
-        (AtId(1), Instant::now() + Duration::from_secs(9)),
-    ] {
+    for id in [TimerId(0), TimerId(1)] {
         let actions = behavior
-            .step(AtEvent::Reached(TimeReached {
+            .step(AtEvent::Reached(TimerElapsed {
                 id,
-                generation: AtGeneration(0),
-                at,
+                generation: TimerGeneration(0),
             }))
             .await
             .unwrap();

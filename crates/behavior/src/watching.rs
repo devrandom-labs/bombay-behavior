@@ -6,7 +6,7 @@ use crate::behavior::{
 };
 use crate::protocol::{
     ChildEvent, ChildStopped, ObservePeer, PeerEvent, PeerStopped, ShutdownEvent,
-    ShutdownRequested, TimeEvent, TimeReached, WorkerEvent, WorkerStopped,
+    ShutdownRequested, TimeEvent, TimerElapsed, WorkerEvent, WorkerStopped,
 };
 use crate::{Crash, Exit, Step};
 
@@ -39,7 +39,7 @@ impl<E: UserEvent, A: Address> UserEvent for WatchEvent<E, A> {
 }
 
 impl<E: TimeEvent, A: Address> TimeEvent for WatchEvent<E, A> {
-    fn time_reached(event: TimeReached) -> Option<Self> {
+    fn time_reached(event: TimerElapsed) -> Option<Self> {
         E::time_reached(event).map(Self::Inner)
     }
 }

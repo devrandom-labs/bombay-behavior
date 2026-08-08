@@ -19,7 +19,7 @@ use crate::behavior::{
 };
 use crate::protocol::{
     ChildEvent, ChildStopped, ObserveChild, PeerEvent, PeerStopped, ReportWorkerStopped,
-    ShutdownEvent, ShutdownRequested, TimeEvent, TimeReached, WorkerEvent, WorkerStopped,
+    ShutdownEvent, ShutdownRequested, TimeEvent, TimerElapsed, WorkerEvent, WorkerStopped,
 };
 use crate::verdict::{Never, Step};
 use crate::{Become, Crash, Exit, RestartDenial, SupervisionFailureReason};
@@ -157,7 +157,7 @@ impl<E: UserEvent, A: Address> UserEvent for SupervisionEvent<E, A> {
 }
 
 impl<E: TimeEvent, A: Address> TimeEvent for SupervisionEvent<E, A> {
-    fn time_reached(event: TimeReached) -> Option<Self> {
+    fn time_reached(event: TimerElapsed) -> Option<Self> {
         E::time_reached(event).map(Self::Inner)
     }
 }

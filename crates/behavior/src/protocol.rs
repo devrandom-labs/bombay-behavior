@@ -4,33 +4,46 @@
 //! these lanes. Keeping their values and construction capabilities here avoids
 //! dependencies between otherwise independent transformations.
 
+use std::time::Duration;
+
 use tokio::time::Instant;
 
 use crate::behavior::Address;
 use crate::{Crash, Exit};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct AtId(pub u64);
+pub struct TimerId(pub u64);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct AtGeneration(pub u64);
+pub struct TimerGeneration(pub u64);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ScheduleAt {
-    pub id: AtId,
-    pub generation: AtGeneration,
+    pub id: TimerId,
+    pub generation: TimerGeneration,
     pub at: Instant,
+}
+
+/// Request scheduling relative to the interpreter's clock.
+///
+/// Constructing this value does not observe a clock. The interpreter resolves
+/// `after` only when it interprets the successful transition that emitted the
+/// request.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ScheduleAfter {
+    pub id: TimerId,
+    pub generation: TimerGeneration,
+    pub after: Duration,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct TimeReached {
-    pub id: AtId,
-    pub generation: AtGeneration,
-    pub at: Instant,
+pub struct TimerElapsed {
+    pub id: TimerId,
+    pub generation: TimerGeneration,
 }
 
 pub trait TimeEvent: Sized {
-    fn time_reached(event: TimeReached) -> Option<Self>;
+    fn time_reached(event: TimerElapsed) -> Option<Self>;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

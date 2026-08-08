@@ -7,9 +7,9 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, AtEvent, AtGeneration, AtId, Base, Behavior, Crash, Delivery, Exit, MailAddr,
-    Never, Recipient, RestartPolicy, Route, Spec, StashRoute, State, Step, Strategy,
-    SupervisionEvent, TimeReached, UserEvent, WorkerStopped,
+    Acted, Actions, AtEvent, Base, Behavior, Crash, Delivery, Exit, MailAddr, Never, Recipient,
+    RestartPolicy, Route, Spec, StashRoute, State, Step, Strategy, SupervisionEvent, TimerElapsed,
+    TimerGeneration, TimerId, UserEvent, WorkerStopped,
 };
 use proptest::collection::vec;
 use proptest::prelude::*;
@@ -155,10 +155,9 @@ async fn supervision_preserves_inner_at_routing() {
     assert_eq!(initial.creates.len(), 1);
 
     let fired = behavior
-        .step(SupervisionEvent::Inner(AtEvent::Reached(TimeReached {
-            id: AtId(0),
-            generation: AtGeneration(0),
-            at: due,
+        .step(SupervisionEvent::Inner(AtEvent::Reached(TimerElapsed {
+            id: TimerId(0),
+            generation: TimerGeneration(0),
         })))
         .await
         .unwrap();
@@ -172,7 +171,7 @@ async fn supervision_preserves_inner_at_routing() {
 /// without cross-lane leakage.
 #[tokio::test]
 async fn full_stack_all_four_layers_keep_their_own_lanes() {
-    use behavior::{AtEvent, PeerStopped, TimeReached, WatchEvent, stop_on_abnormal_death};
+    use behavior::{AtEvent, PeerStopped, TimerElapsed, WatchEvent, stop_on_abnormal_death};
 
     let due = Instant::now() + Duration::from_secs(1);
     let peer = MailAddr(44);
@@ -201,10 +200,9 @@ async fn full_stack_all_four_layers_keep_their_own_lanes() {
 
     // Time lane: fires the inner At.
     let fired = behavior
-        .step(SupervisionEvent::Inner(AtEvent::Reached(TimeReached {
-            id: AtId(0),
-            generation: AtGeneration(0),
-            at: due,
+        .step(SupervisionEvent::Inner(AtEvent::Reached(TimerElapsed {
+            id: TimerId(0),
+            generation: TimerGeneration(0),
         })))
         .await
         .unwrap();
@@ -260,7 +258,7 @@ proptest! {
     fn full_stack_random_lane_routing_never_leaks(
         events in vec((0_u8..4, 0_u8..8, 0_u64..100), 0..80),
     ) {
-        use behavior::{AtEvent, AtGeneration, AtId, PeerStopped, TimeReached, WatchEvent, stop_on_abnormal_death};
+        use behavior::{AtEvent, TimerGeneration, TimerId, PeerStopped, TimerElapsed, WatchEvent, stop_on_abnormal_death};
 
         let due = Instant::now() + Duration::from_secs(1);
         let peer = MailAddr(44);
@@ -309,7 +307,7 @@ proptest! {
                     // duplicates are inert.
                     runtime
                         .block_on(behavior.step(SupervisionEvent::Inner(AtEvent::Reached(
-                            TimeReached { id: AtId(0), generation: AtGeneration(0), at: due },
+                            TimerElapsed { id: TimerId(0), generation: TimerGeneration(0) },
                         ))))
                         .unwrap()
                 }

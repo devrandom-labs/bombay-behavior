@@ -7,7 +7,8 @@ use tokio::time::Instant;
 
 use crate::behavior::{Address, Behavior, BirthMode, Births};
 use crate::deadlined::{At, AtReaction};
-use crate::protocol::AtId;
+use crate::protocol::TimerId;
+use crate::receive_timeout::{ReceiveTimeout, ReceiveTimeoutReaction};
 use crate::shutdown::{FinalizeOnShutdown, ShutdownReaction, StopOnShutdown};
 use crate::stashing::{StashRoute, Stashing};
 use crate::supervising::{RestartPolicy, Strategy, Supervising, SupervisionFailureReaction};
@@ -111,7 +112,39 @@ impl<B: Behavior> Spec<B> {
     #[must_use]
     pub fn at(self, when: Option<Instant>, on_reached: AtReaction<B>) -> Spec<At<B>> {
         Spec {
-            behavior: At::new(self.behavior, AtId(self.next_timer), when, on_reached),
+            behavior: At::new(self.behavior, TimerId(self.next_timer), when, on_reached),
+            next_timer: self
+                .next_timer
+                .checked_add(1)
+                .expect("timer identity exhausted"),
+        }
+    }
+
+    /// Notify the behavior once after an idle period containing no successful
+    /// user communication.
+    ///
+    /// Initialization and each successful continuing user fold emit a relative
+    /// schedule. Service events never reset inactivity. A matching delivery is
+    /// consumed before `on_elapsed` runs, and a continuing reaction remains
+    /// unarmed until another successful continuing user communication.
+    ///
+    /// # Panics
+    ///
+    /// Panics if one specification composes more than `u64::MAX` timer
+    /// capabilities.
+    #[must_use]
+    pub fn receive_timeout(
+        self,
+        after: Duration,
+        on_elapsed: ReceiveTimeoutReaction<B>,
+    ) -> Spec<ReceiveTimeout<B>> {
+        Spec {
+            behavior: ReceiveTimeout::new(
+                self.behavior,
+                TimerId(self.next_timer),
+                after,
+                on_elapsed,
+            ),
             next_timer: self
                 .next_timer
                 .checked_add(1)

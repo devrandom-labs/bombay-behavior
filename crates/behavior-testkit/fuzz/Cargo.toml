@@ -68,4 +68,11 @@ test = false
 doc = false
 bench = false
 
+[[bin]]
+name = "receive_timeout_sequences"
+path = "fuzz_targets/receive_timeout_sequences.rs"
+test = false
+doc = false
+bench = false
+
 [workspace]

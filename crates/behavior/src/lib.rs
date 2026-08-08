@@ -17,6 +17,7 @@ mod watching;
 // `Fsm` is a thin state-machine helper built from the core stashing primitive.
 mod fsm;
 mod protocol;
+mod receive_timeout;
 mod shutdown;
 mod spec;
 
@@ -25,12 +26,16 @@ pub use algebra::{
     CreationKind, Delivery, FnState, MailAddr, NoBirths, Recipient, Route, SendAlgebra,
     SendProduct, ServiceSends, State, Transcript, User, UserEvent, run,
 };
-pub use deadlined::{At, AtEvent, AtReaction};
+pub use deadlined::{At, AtActions, AtEvent, AtReaction, AtSends};
 pub use fsm::{Fsm, Move};
 pub use protocol::{
-    AtGeneration, AtId, ChildEvent, ChildStopped, ObserveChild, ObservePeer, PeerEvent,
-    PeerStopped, ReportWorkerStopped, ScheduleAt, ShutdownEvent, ShutdownRequested, TimeEvent,
-    TimeReached, WorkerEvent, WorkerStopped,
+    ChildEvent, ChildStopped, ObserveChild, ObservePeer, PeerEvent, PeerStopped,
+    ReportWorkerStopped, ScheduleAfter, ScheduleAt, ShutdownEvent, ShutdownRequested, TimeEvent,
+    TimerElapsed, TimerGeneration, TimerId, WorkerEvent, WorkerStopped,
+};
+pub use receive_timeout::{
+    ReceiveTimeout, ReceiveTimeoutActions, ReceiveTimeoutError, ReceiveTimeoutEvent,
+    ReceiveTimeoutReaction, ReceiveTimeoutSends,
 };
 pub use shutdown::{FinalizeOnShutdown, ShutdownProtocol, ShutdownReaction, StopOnShutdown};
 pub use spec::Spec;

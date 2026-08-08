@@ -6,9 +6,10 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, At, AtEvent, AtGeneration, AtId, Base, Behavior, Crash, Create, Delivery, Exit,
-    Fsm, MailAddr, Move, Never, Proxy, Recipient, RestartPolicy, Route, Spec, StashRoute, State,
-    Step, Strategy, Supervising, SupervisionEvent, TimeReached, User, UserEvent, WorkerStopped,
+    Acted, Actions, At, AtEvent, Base, Behavior, Crash, Create, Delivery, Exit, Fsm, MailAddr,
+    Move, Never, Proxy, Recipient, RestartPolicy, Route, Spec, StashRoute, State, Step, Strategy,
+    Supervising, SupervisionEvent, TimerElapsed, TimerGeneration, TimerId, User, UserEvent,
+    WorkerStopped,
 };
 use tokio::time::Instant;
 
@@ -502,16 +503,18 @@ async fn fsm_mid_drain_deferral_reorders_relative_to_fifo() {
 #[tokio::test]
 async fn nested_at_identical_schedules_are_distinguished_by_identity() {
     let due = Instant::now() + Duration::from_secs(1);
-    let inner = At::new(Base::new(Recorder::default()), AtId(0), Some(due), |_| {
-        Ok(Step::Stop(Exit::Normal))
-    });
-    let mut outer = At::new(inner, AtId(1), Some(due), |_| Ok(Step::Continue));
+    let inner = At::new(
+        Base::new(Recorder::default()),
+        TimerId(0),
+        Some(due),
+        |_| Ok(Step::Stop(Exit::Normal)),
+    );
+    let mut outer = At::new(inner, TimerId(1), Some(due), |_| Ok(Step::Continue));
     outer.init().await.unwrap();
 
-    let event = AtEvent::Reached(TimeReached {
-        id: AtId(0),
-        generation: AtGeneration(0),
-        at: due,
+    let event = AtEvent::Reached(TimerElapsed {
+        id: TimerId(0),
+        generation: TimerGeneration(0),
     });
     let first = outer.step(event).await.unwrap();
     assert_eq!(first.become_, Step::Stop(Exit::Normal));

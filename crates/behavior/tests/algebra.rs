@@ -1,13 +1,13 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, At, AtEvent, AtGeneration, AtId, Base, Become, Behavior, Births, ChildStopped,
-    Crash, Create, CreationKind, Delivery, Exit, MailAddr, Move, Never, NoBirths, ObserveChild,
-    PeerStopped, Proxy, ProxyCommand, Recipient, RestartDenial, RestartPolicy, Route, ServiceSends,
+    Acted, Actions, At, AtEvent, Base, Become, Behavior, Births, ChildStopped, Crash, Create,
+    CreationKind, Delivery, Exit, MailAddr, Move, Never, NoBirths, ObserveChild, PeerStopped,
+    Proxy, ProxyCommand, Recipient, RestartDenial, RestartPolicy, Route, ServiceSends,
     ShutdownEvent, ShutdownRequested, Spec, StashRoute, State, Step, Strategy, Supervising,
-    SupervisionEvent, SupervisionFailure, SupervisionFailureReason, TimeReached, User, UserEvent,
-    WatchEvent, Watching, WorkerEvent, WorkerStopped, run, stop_on_abnormal_death,
-    stop_on_supervision_failure, workers,
+    SupervisionEvent, SupervisionFailure, SupervisionFailureReason, TimerElapsed, TimerGeneration,
+    TimerId, User, UserEvent, WatchEvent, Watching, WorkerEvent, WorkerStopped, run,
+    stop_on_abnormal_death, stop_on_supervision_failure, workers,
 };
 use communication::{Config, channel};
 use proptest::prelude::*;
@@ -162,10 +162,9 @@ async fn at_is_a_typed_clock_actor_protocol() {
     assert_eq!(initial.sends.own[0].at, now);
 
     let fired = behavior
-        .step(AtEvent::Reached(TimeReached {
-            id: AtId(0),
-            generation: AtGeneration(0),
-            at: now,
+        .step(AtEvent::Reached(TimerElapsed {
+            id: TimerId(0),
+            generation: TimerGeneration(0),
         }))
         .await
         .unwrap();
@@ -190,21 +189,20 @@ async fn driver_interprets_initial_effect_before_receiving() {
 async fn nested_at_composition_routes_stale_and_matching_events() {
     let early = Instant::now() + Duration::from_secs(1);
     let late = early + Duration::from_secs(1);
-    let inner = At::new(Base::new(Quiet), AtId(0), Some(early), |_| {
+    let inner = At::new(Base::new(Quiet), TimerId(0), Some(early), |_| {
         Ok(Step::Continue)
     });
-    let mut outer = At::new(inner, AtId(1), Some(late), |_| Ok(Step::Continue));
+    let mut outer = At::new(inner, TimerId(1), Some(late), |_| Ok(Step::Continue));
 
     let initial = outer.init().await.unwrap();
-    assert_eq!(initial.sends.inner.own[0].id, AtId(0));
-    assert_eq!(initial.sends.own[0].id, AtId(1));
+    assert_eq!(initial.sends.inner.own[0].id, TimerId(0));
+    assert_eq!(initial.sends.own[0].id, TimerId(1));
     assert_eq!(initial.sends.inner.own[0].at, early);
     assert_eq!(initial.sends.own[0].at, late);
 
-    let early_event = AtEvent::Reached(TimeReached {
-        id: AtId(0),
-        generation: AtGeneration(0),
-        at: early,
+    let early_event = AtEvent::Reached(TimerElapsed {
+        id: TimerId(0),
+        generation: TimerGeneration(0),
     });
     let actions = outer.step(early_event).await.unwrap();
     assert!(actions.sends.inner.own.is_empty());
@@ -223,10 +221,9 @@ async fn spec_hides_composed_protocols_without_losing_their_effects() {
     assert_eq!(initial.sends.inner.own[0].at, due);
     assert_eq!(initial.sends.own[0].peer, peer);
 
-    let time = WatchEvent::Inner(AtEvent::Reached(TimeReached {
-        id: AtId(0),
-        generation: AtGeneration(0),
-        at: due,
+    let time = WatchEvent::Inner(AtEvent::Reached(TimerElapsed {
+        id: TimerId(0),
+        generation: TimerGeneration(0),
     }));
     let actions = behavior.step(time).await.unwrap();
     assert!(matches!(actions.become_, Step::Continue));
@@ -794,33 +791,30 @@ async fn supervision_strategy_policy_and_budget_are_pure_send_decisions() {
 #[tokio::test]
 async fn stale_time_events_do_not_fire_or_reschedule() {
     let due = Instant::now() + Duration::from_secs(2);
-    let mut behavior = At::new(Base::new(Quiet), AtId(0), Some(due), |_| {
+    let mut behavior = At::new(Base::new(Quiet), TimerId(0), Some(due), |_| {
         Ok(Step::Stop(Exit::Normal))
     });
     behavior.init().await.unwrap();
-    let stale = AtEvent::Reached(TimeReached {
-        id: AtId(0),
-        generation: AtGeneration(0),
-        at: due - Duration::from_secs(1),
+    let stale = AtEvent::Reached(TimerElapsed {
+        id: TimerId(0),
+        generation: TimerGeneration(1),
     });
     let ignored = behavior.step(stale).await.unwrap();
     assert!(matches!(ignored.become_, Step::Continue));
 
     let fired = behavior
-        .step(AtEvent::Reached(TimeReached {
-            id: AtId(0),
-            generation: AtGeneration(0),
-            at: due,
+        .step(AtEvent::Reached(TimerElapsed {
+            id: TimerId(0),
+            generation: TimerGeneration(0),
         }))
         .await
         .unwrap();
     assert!(matches!(fired.become_, Step::Stop(Exit::Normal)));
 
     let duplicate = behavior
-        .step(AtEvent::Reached(TimeReached {
-            id: AtId(0),
-            generation: AtGeneration(0),
-            at: due,
+        .step(AtEvent::Reached(TimerElapsed {
+            id: TimerId(0),
+            generation: TimerGeneration(0),
         }))
         .await
         .unwrap();
@@ -859,8 +853,8 @@ proptest! {
         let origin = Instant::now();
         let first = origin + Duration::from_nanos(first);
         let second = origin + Duration::from_nanos(second);
-        let inner = At::new(Base::new(Quiet), AtId(0), Some(first), |_| Ok(Step::Continue));
-        let mut outer = At::new(inner, AtId(1), Some(second), |_| Ok(Step::Continue));
+        let inner = At::new(Base::new(Quiet), TimerId(0), Some(first), |_| Ok(Step::Continue));
+        let mut outer = At::new(inner, TimerId(1), Some(second), |_| Ok(Step::Continue));
         let runtime = Builder::new_current_thread().enable_all().build().unwrap();
         let actions = runtime.block_on(outer.init()).unwrap();
         prop_assert_eq!(actions.sends.inner.own[0].at, first);

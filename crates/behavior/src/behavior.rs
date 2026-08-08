@@ -8,7 +8,7 @@ use communication::{Consumer, Received};
 use crate::Exit;
 use crate::protocol::{
     ChildEvent, ChildStopped, PeerEvent, PeerStopped, ShutdownEvent, ShutdownRequested, TimeEvent,
-    TimeReached, WorkerEvent, WorkerStopped,
+    TimerElapsed, WorkerEvent, WorkerStopped,
 };
 use crate::verdict::{Never, Step};
 
@@ -488,7 +488,7 @@ impl<A: Address, M> UserEvent for User<A, M> {
 }
 
 impl<A: Address, M> TimeEvent for User<A, M> {
-    fn time_reached(_: TimeReached) -> Option<Self> {
+    fn time_reached(_: TimerElapsed) -> Option<Self> {
         None
     }
 }
