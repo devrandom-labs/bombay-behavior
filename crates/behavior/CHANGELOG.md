@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.7.0...bombay-behavior-v0.8.0) - 2026-08-08
+
+### Other
+
+- Add pure receive-timeout behavior ([#20](https://github.com/devrandom-labs/bombay-behavior/pull/20))
+
 ## [0.7.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.6.0...bombay-behavior-v0.7.0) - 2026-08-08
 
 ### Other
