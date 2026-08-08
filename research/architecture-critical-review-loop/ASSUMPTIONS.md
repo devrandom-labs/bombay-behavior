@@ -22,3 +22,14 @@
 - The Fsm mid-drain error asymmetry (dropped unprocessed batch vs Stop
   preserving it) is test-pinned existing behavior, retained per the audit
   charter rather than redesigned without a research mandate.
+- Re-review judgment: security-capability and location-transparency are
+  interpreter-boundary rows, not derivations, because the public types
+  (Copy MailAddr, public Recipient constructors, public Address::birth)
+  establish only protocol compatibility, never authenticity, secrecy, or
+  unforgeability. Protocol-session stays derived as a finite-state
+  combinator; Honda-style session typing is recorded as only partially
+  represented, with no primitive proposed because no derivation failure
+  proved an algebraic gap.
+- The checker is treated as a structural/ratchet/repository gate: it
+  validates presence, vocabulary, counts, and repository health, but not
+  citation entailment or test relevance; those remain human review duties.

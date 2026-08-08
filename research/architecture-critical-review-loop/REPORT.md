@@ -325,3 +325,116 @@ findings.
 The rerun must append a new conclusion rather than editing away this review,
 include checker-derived disposition totals, record changed classifications,
 and explicitly name limitations for every capability row.
+
+## Reopened review resolution and superseding conclusion (2026-08-08 rerun)
+
+This section supersedes the conclusion of the first run above. The first
+run's evidence section is preserved as history; where its numbers or claims
+conflict with this section, this section is authoritative.
+
+### Checker-derived disposition totals
+
+Disposition totals: existing=26, derived=8, interpreter=13, application=6, new-primitive=0, rejected=0.
+
+These figures are computed by `check.sh` from the committed
+`capability-matrix.json` and are required verbatim by the checker. They
+replace the first report's incorrect 29/14/8/2 and the contradictory
+`SURVEY-BASIS` prose, both of which were written from aspiration rather than
+counted from the matrix.
+
+### Every changed disposition and classification
+
+- `security-capability`: derived -> interpreter. The algebra provides only
+  the type-compatibility fragment of the acquaintance model: `Recipient<A, M>`
+  couples sends to protocol compatibility and `BirthMode::Child = Never`
+  makes creation authority unrepresentable. But `MailAddr(pub u64)` is public
+  and Copy, `Recipient::global`/`Recipient::child` accept any address or
+  nonce value, and `Address::birth` is a public deterministic function
+  (behavior.rs:14-31, 55-64), so possession of a value proves no address
+  authenticity, secrecy, possession authority, or unforgeability. Those
+  properties belong to runtime minting and confinement — the interpreter
+  boundary.
+- `location-transparency`: derived -> interpreter. The claim is narrowed to
+  an absence property: no fold can observe physical location and the algebra
+  contains no location-resolution service. `Address::birth` is exposed,
+  concrete addresses expose their representation (`MailAddr(pub u64)`),
+  `Recipient::route()` is public, and `Debug` reveals routes, so equality is
+  not the only observable operation and the algebra neither provides nor
+  prevents forging. Transparency as a service (uniform naming across
+  placement and migration, SALSA-style) is interpreter realization.
+- `protocol-session`: disposition unchanged (derived), claim narrowed. `Fsm`
+  is derived from receive+become only; `Move::Goto(P)` accepts any phase
+  value and one message type serves every phase, so invalid transitions and
+  out-of-phase messages are representable and no transition relation or
+  session duality (Honda CONCUR'93, ESOP'98) is encoded. What exists is a
+  finite-state behavior combinator, not session typing.
+
+Every one of the 53 capability rows now carries an explicit
+`claim_classification` list (vocabulary: actor-model-law, bombay-derived,
+bombay-policy, interpreter-boundary, application-policy) and an explicit
+`limitations` list naming what the row does not establish.
+
+### Capabilities that remain only partially represented
+
+Yes — three surveyed capabilities are only partially represented, and this
+is a qualified result rather than total closure:
+
+1. `protocol-session`: finite-state sequencing exists; Honda-style session
+   typing (duality, per-phase alphabets, unrepresentable invalid
+   transitions) does not. A phase-indexed typestate encoding might close
+   more of the gap, but no such derivation was completed, and no failed
+   concrete derivation proved an algebraic obstruction — so no primitive
+   was proposed or added.
+2. `security-capability`: static protocol compatibility exists; address
+   authenticity, secrecy, possession authority, and unforgeability are
+   unrealized and would require interpreter-side minting/confinement design.
+3. `location-transparency`: location-neutral transitions exist; a naming or
+   migration service does not, by design (interpreter scope).
+
+All other 50 rows are either fully represented in the pure algebra
+(existing/derived, 34 rows) or explicit boundaries with recorded algebraic
+obstructions (interpreter/application, 16 rows).
+
+### What check.sh is and is not
+
+`check.sh` is a structural, ratchet, and repository gate. It verifies:
+evidence-field presence and minimum string lengths; classification and
+limitation vocabulary membership; disposition-count consistency between the
+matrix and this report; the frozen ratchets (public symbols, traits, generic
+arities, phantoms, complexity allows, production panic sites, test
+turbofish/aliases); zero-tolerance absence of `dyn`/`Any`/`TypeId`/`unsafe`;
+immutability of protected paths; and that `cargo nextest run --workspace`
+and `nix flake check` pass. It cannot establish that a citation entails a
+claim, that a test validates a derivation, or that a classification is
+correct — those remain human review obligations, and this rerun was the
+exercise of that obligation.
+
+### Corrected verification record
+
+- `cargo nextest run --workspace` prints one workspace summary: **123 tests
+  run: 123 passed, 0 skipped**. `cargo nextest list --workspace` attributes
+  31 tests to `bombay-behavior` (30 lib + 1 `receive_timeout` integration
+  test) and 92 to `bombay-behavior-testkit`. The first report's "154
+  (behavior 31 + testkit 123)" double-counted: 123 was already the workspace
+  total, not a testkit subtotal. `VERIFY-01` is corrected accordingly.
+- `nix flake check`: all 7 aarch64-darwin checks pass (build, nextest, doc,
+  fmt, toml-fmt, audit, deny).
+- `cargo test --doc -p bombay-behavior`: 1 passed (compile_fail
+  erased-effect-seat probe).
+- All ratchets remain exactly at baseline; zero production changes; zero
+  new primitives.
+
+### Superseding conclusion
+
+The pure behavior algebra covers the surveyed capability catalogue with
+documented honesty: 34 rows are basis instances or derivations, 19 rows are
+explicit interpreter/application boundaries with recorded obstructions, and
+3 of those rows remain only partially represented as named above. No
+primitive was added, because no concrete typed derivation failed in a way
+that demonstrated an algebraic gap — the shortfalls are overclaims of
+guarantee strength, now corrected, not missing constructs. The first run's
+unqualified "complete against the surveyed capability catalogue" conclusion
+is withdrawn; this qualified result stands in its place. RESEARCH-LABELS,
+SURVEY-TAXONOMY, SURVEY-BASIS, SURVEY-GAPS, DOC-01, and VERIFY-01 are
+re-resolved on this basis; every other obligation stands as recorded in the
+historical section.

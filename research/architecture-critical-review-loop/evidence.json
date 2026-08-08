@@ -55,16 +55,16 @@
       "category": "research",
       "subject": "law/derivation/policy map",
       "question": "Classify every semantic claim retained in the research report and implementation.",
-      "status": "pending",
-      "decision": "Classification map established and applied across REPORT.md and every resolved obligation/capability row. LAW (research-mandated): one-communication-at-a-time; send/create/become effect triple; fresh allocation; acquaintance addressing; become distinct from allocation; per-actor serialization. DERIVED (Bombay constructions grounded in the laws): creator-local nonce routing; typed nested event sums with extraction traits; SendAlgebra monoid and SendProduct lanes; BirthMode/NoBirths/Births compile-time creation capability; proxy-derived stable identity; CreationKind provenance; timer generation pairs; stash replay discipline; Fsm phases. POLICY (deliberate Bombay choices, documented as such): creation-before-dependent-send interpretation ordering; packaging allocation with initialization; shutdown as a typed lane; supervision strategy/policy/budget vocabulary; Crash classification; Erlang-flavored restart vocabulary adapted from Armstrong 2003 without claiming Agha authority.",
+      "status": "resolved",
+      "decision": "Classification map re-established after independent review and now enforced structurally. LAW (research-mandated): one-communication-at-a-time; send/create/become effect triple; fresh allocation; acquaintance addressing; become distinct from allocation; per-actor serialization. DERIVED (Bombay constructions grounded in the laws): creator-local nonce routing; typed event sums with extraction traits; SendAlgebra monoid/SendProduct; BirthMode compile-time capability; proxy-derived stable identity; CreationKind provenance; timer generations; stash replay; Fsm phases. POLICY (deliberate Bombay choices): creation-before-dependent-send ordering; shutdown lane; supervision vocabulary; Crash classification. INTERPRETER-BOUNDARY and APPLICATION-POLICY labels now separate boundary rows from fold claims. Three rows were reclassified downward on re-review: security-capability and location-transparency moved from derived to interpreter dispositions, and protocol-session's claim was narrowed from session typing to finite-state sequencing.",
       "evidence": [
-        "Every capability row in capability-matrix.json carries a disposition plus laws[] entries prefixed by their law/boundary status",
-        "Every resolved obligation decision in evidence.json names its law/derivation/policy classification explicitly",
-        "REPORT.md 'Actor behavior algebra evidence' section contains the full label table per obligation family"
+        "Every one of the 53 capability rows in capability-matrix.json carries an explicit claim_classification list drawn from the checker-owned vocabulary {actor-model-law, bombay-derived, bombay-policy, interpreter-boundary, application-policy}",
+        "Every resolved capability row carries an explicit limitations list naming what the row does not establish (e.g. security-capability: authenticity/secrecy/unforgeability unrealized)",
+        "REPORT.md 'Reopened review resolution' section records every changed classification and disposition with reasons"
       ],
       "validation": [
-        "check.sh passes only when all 61 obligations and 53 capability rows carry these classifications (SCORE gate)",
-        "Labels audited against the citation pool in RESEARCH-AGHA evidence; no claim cites framework folklore"
+        "check.sh rejects any resolved capability whose claim_classification values fall outside the allowed vocabulary or whose limitations are missing (structural presence/vocabulary check only)",
+        "Honest scope: the checker validates label presence and vocabulary, not whether a citation entails a claim; entailment remains a human review obligation"
       ]
     },
     {
@@ -91,16 +91,16 @@
       "category": "survey",
       "subject": "actor capability taxonomy",
       "question": "Resolve every required capability-matrix row and add every distinct category exposed by research.",
-      "status": "pending",
-      "decision": "All 53 checker-owned taxonomy rows are resolved in capability-matrix.json with disposition, primary sources, derivation/boundary explanation, laws, and validation. The survey exposed no genuinely distinct pure capability beyond the taxonomy: candidate additions examined and folded into existing rows \u2014 'ask pattern' (request-reply + deadline), 'circuit breaker' (application policy over supervision facts), 'routers/dispatchers' (routing row), 'virtual actors/grains' (location-transparency + persistence boundaries), 'pub-sub/topics' (routing row as application behaviors), 'crdt/replicated state' (distribution boundary, application protocol). None required a new algebra primitive; the matrix stays at the 53 required categories.",
+      "status": "resolved",
+      "decision": "All 53 checker-owned taxonomy rows are resolved in capability-matrix.json with disposition, primary sources, derivation/boundary explanation, laws, validation, explicit claim_classification, and explicit limitations. The survey exposed no genuinely distinct pure capability beyond the taxonomy: candidate additions examined and folded into existing rows - 'ask pattern' (request-reply + deadline), 'circuit breaker' (application policy over supervision facts), 'routers/dispatchers' (routing row), 'virtual actors/grains' (location-transparency + persistence boundaries), 'pub-sub/topics' (routing row as application behaviors), 'crdt/replicated state' (durable-state/event-sourcing boundaries). Actual checker-derived dispositions: existing=26, derived=8, interpreter=13, application=6, new-primitive=0, rejected=0. Three rows are only partially represented and say so in their limitations: protocol-session (no duality, no transition exclusion), security-capability (no unforgeability), location-transparency (no naming/migration service).",
       "evidence": [
         "capability-matrix.json contains exactly the 53 required categories, all status resolved (checker: resolved capabilities 53/53)",
-        "Candidate categories and their fold-into decisions recorded in this entry's decision field",
+        "Checker-printed disposition totals: existing=26, derived=8, interpreter=13, application=6, new-primitive=0, rejected=0",
         "required_categories in capability-matrix.json remains byte-identical to the checker-owned taxonomy"
       ],
       "validation": [
         "research/architecture-critical-review-loop/check.sh reports resolved capabilities: 53/53 (53 required)",
-        "Every row validated with at least one focused test-file reference or command"
+        "Every row validated with at least one focused test-file reference, source line, or command"
       ]
     },
     {
@@ -108,10 +108,10 @@
       "category": "survey",
       "subject": "small compositional basis",
       "question": "Show which minimal sums, products, folds, and transformations generate the pure capability catalogue.",
-      "status": "pending",
-      "decision": "The generating basis is seven constructs: (1) the Behavior fold (Event -> Result<Actions, Error>) with init as the explicit initial observation; (2) typed concrete sums for event lanes (AtEvent, ReceiveTimeoutEvent, WatchEvent, ShutdownProtocol, SupervisionEvent) with extraction traits (UserEvent/TimeEvent/PeerEvent/ChildEvent/WorkerEvent/ShutdownEvent); (3) typed products for independent effect seats (Actions { Sends: SendAlgebra, creates: Vec<Create>, become_: Step }) and SendProduct for lane products; (4) the uninhabited Never closing phase/outbound/offspring menus; (5) BirthMode as the type-level creation capability; (6) non-capturing function pointers for reactions (At/ReceiveTimeout/Link/Shutdown/SupervisionFailure); (7) higher-order wrapper composition (At, ReceiveTimeout, Watching, Supervising, Stashing, Fsm, shutdown wrappers, Spec). Generation: 30 rows are existing basis instances, 13 are derivations, 0 new primitives, the remaining 10 rows are interpreter/application boundaries that the basis deliberately does not generate.",
+      "status": "resolved",
+      "decision": "The generating basis is seven constructs: (1) the Behavior fold (Event -> Result<Actions, Error>) with init as the explicit initial observation; (2) typed concrete sums for event lanes (AtEvent, ReceiveTimeoutEvent, WatchEvent, ShutdownProtocol, SupervisionEvent) with extraction traits (UserEvent/TimeEvent/PeerEvent/ChildEvent/WorkerEvent/ShutdownEvent); (3) typed products for independent effect seats (Actions { Sends: SendAlgebra, creates: Vec<Create>, become_: Step }) and SendProduct for lane products; (4) the uninhabited Never closing phase/outbound/offspring menus; (5) BirthMode as the type-level creation capability; (6) non-capturing function pointers for pure reactions; (7) higher-order wrappers (At, ReceiveTimeout, Watching, Supervising, Proxy, Stashing, Fsm, shutdown/finalization) as behavior transformations. Corrected totals after re-review: existing=26 rows are direct basis instances, derived=8 rows are compositions, interpreter=13 and application=6 rows are explicit boundaries the basis deliberately does not generate; new-primitive=0, rejected=0. The earlier 29/14/8/2 figures in the first report were wrong and are superseded.",
       "evidence": [
-        "capability-matrix.json dispositions: existing=29, derived=14, interpreter=8, application=2 ... see per-row composition fields for the basis constructs used",
+        "capability-matrix.json checker-derived dispositions: existing=26, derived=8, interpreter=13, application=6, new-primitive=0, rejected=0 (supersedes the first report's incorrect 29/14/8/2)",
         "crates/behavior/src/lib.rs export list shows exactly these basis constructs and no others",
         "crates/behavior/src/verdict.rs documents Never's two structural jobs (closed phase menu, empty outbound/offspring proof)"
       ],
@@ -125,16 +125,16 @@
       "category": "survey",
       "subject": "failed derivations and missing primitives",
       "question": "Attempt derivation before adding primitives; document exact algebraic/type obstruction and validate every retained addition.",
-      "status": "pending",
-      "decision": "No primitive was added: every derivation either succeeded or terminated at an explicit, recorded boundary. Boundary obstructions (why derivation stops, not what to add): backpressure \u2014 the model's mail queue is unbounded (Agha 1986), so throttling needs queue-depth observation that a one-event fold must not have; fairness \u2014 quantifies over executions (Clinger 1981), cannot be behavior-local; persistence/durable-state \u2014 I/O is outside the send/create/become effect triple; remoting/serialization/distribution \u2014 transport and wire representation are interpreter realization of already-typed Delivery values; scheduling/resource-ownership \u2014 executor and lifetime authority. These are recorded as interpreter/application dispositions with the exact obstruction in each row's composition field. Zero new-primitive rows remain; the survey found no gap in the reusable pure algebra.",
+      "status": "resolved",
+      "decision": "No primitive was added: every derivation either succeeded or terminated at an explicit, recorded boundary. Boundary obstructions (why derivation stops, not what to add): backpressure - the model's mail queue is unbounded (Agha 1986), so throttling needs queue-depth observation that a one-event fold must not have; fairness - quantifies over executions (Clinger 1981), cannot be behavior-local; persistence/durable-state - I/O is outside the send/create/become effect triple; remoting/serialization/distribution - transport and wire representation are interpreter realization; scheduling/resource-ownership - cross-actor execution is not observable from one fold. Re-review moved two rows from derived to interpreter (security-capability, location-transparency) because their static fragment is smaller than first claimed, and narrowed protocol-session to finite-state sequencing. Partially represented rows are recorded in their limitations rather than closed by force; no concrete derivation failure demanded a new primitive, so none was proposed.",
       "evidence": [
-        "capability-matrix.json contains no new-primitive disposition; 8 interpreter and 2 application boundary rows carry their obstruction text",
+        "capability-matrix.json contains no new-primitive disposition; 13 interpreter and 6 application boundary rows carry their obstruction text",
         "git diff of crates/behavior/src during this campaign: no new public symbols (check.sh inventory SURFACE-PUBLIC=84/84, SURFACE-TRAITS=11/11)",
-        "Generic arities unchanged (check.sh: Behavior=0, State=3, Actions=4, ... all at baseline)"
+        "Generic arities unchanged (check.sh: Behavior=0, State=3, Actions=4, all 15 measured declarations at baseline)"
       ],
       "validation": [
         "check.sh ratchets confirm no production surface grew: turbofish 31/31, aliases 18/18, panics 12/12, arities at baseline",
-        "cargo nextest run --workspace green after the survey with no algebra changes required"
+        "cargo nextest run --workspace green after the re-review with no algebra changes required (123 tests run: 123 passed, 0 skipped)"
       ]
     },
     {
@@ -941,90 +941,26 @@
       "status": "resolved",
       "decision": "Retain all 84 public symbols as-is; inventory matches the frozen baseline exactly (84/84, zero added, zero removed). Classification of ownership/role by module: (1) core fold and effect algebra in crates/behavior/src/behavior.rs (26 symbols) \u2014 Address/MailAddr/Route/Recipient/Delivery are the typed addressing and send vocabulary (actor-model law: Agha 1986 location-independent delivery); SendProduct/SendAlgebra/ServiceSends are the send-accumulation monoid plus the interpreter-local service lane (Bombay-derived construction); CreationKind/Create/BirthMode/NoBirths/Births are the staged-creation capability seat (derivation: creation as an explicit Actions leg, acceptance/freshness interpreter-owned); Actions/Acted/Become are the typed transition product and verdict alias (Bombay realization of the become law); User/UserEvent are the Agha-floor user lane; State/StateActed/BehaviorActed/Behavior are the pure fold traits and their only admitted result shapes; Base/Transition/FnState are concrete state adapters; Transcript is the driver result. (2) verdict.rs (2): Never is the uninhabited absence proof, Step the become verdict. (3) exit.rs (4): Exit/Crash/RestartDenial/SupervisionFailureReason are the terminal-outcome vocabulary (Bombay policy over the algebra). (4) protocol.rs (17): neutral interpreter-originated lane vocabulary \u2014 timer (TimerId/TimerGeneration/ScheduleAt/ScheduleAfter/TimerElapsed/TimeEvent), peer observation (ObservePeer/PeerStopped/PeerEvent), child observation (ChildStopped/ObserveChild/ChildEvent), worker reporting (ReportWorkerStopped/WorkerStopped/WorkerEvent), shutdown (ShutdownRequested/ShutdownEvent). (5) wrapper families: deadlined At/AtEvent/AtActions/AtSends/AtReaction (5), receive_timeout ReceiveTimeout/Event/Error/Actions/Sends/Reaction (6), watching Watching/WatchEvent/WatchActions/WatchSends/LinkReaction (5), stashing Stashing/StashRoute (2), fsm Fsm/Move (2), shutdown StopOnShutdown/FinalizeOnShutdown/ShutdownProtocol/ShutdownReaction (4), spec Spec (1), supervising Supervising/Proxy/ProxyCommand/SupervisionEvent/SupervisionFailure/SupervisionFailureReaction/SupervisorSends/SupervisorActions/Strategy/RestartPolicy (10). Every symbol either owns one algebraic role (vocabulary, capability seat, concrete transformation, or adapter) or is the public name of a documented law; no symbol is redundant because each event sum/alias pair names a distinct composed protocol seat that substitution cannot express without re-deriving the wrapper. No removal justified; no addition present.",
       "coverage": [
-        "Acted",
-        "Actions",
-        "Address",
-        "At",
-        "AtActions",
-        "AtEvent",
-        "AtReaction",
-        "AtSends",
-        "Base",
-        "Become",
-        "Behavior",
-        "BehaviorActed",
-        "BirthMode",
-        "Births",
-        "ChildEvent",
-        "ChildStopped",
-        "Crash",
-        "Create",
-        "CreationKind",
-        "Delivery",
-        "Exit",
-        "FinalizeOnShutdown",
-        "FnState",
-        "Fsm",
-        "LinkReaction",
-        "MailAddr",
-        "Move",
-        "Never",
-        "NoBirths",
-        "ObserveChild",
-        "ObservePeer",
-        "PeerEvent",
-        "PeerStopped",
-        "Proxy",
-        "ProxyCommand",
-        "ReceiveTimeout",
-        "ReceiveTimeoutActions",
-        "ReceiveTimeoutError",
-        "ReceiveTimeoutEvent",
-        "ReceiveTimeoutReaction",
-        "ReceiveTimeoutSends",
-        "Recipient",
-        "ReportWorkerStopped",
-        "RestartDenial",
-        "RestartPolicy",
-        "Route",
-        "ScheduleAfter",
-        "ScheduleAt",
-        "SendAlgebra",
-        "SendProduct",
-        "ServiceSends",
-        "ShutdownEvent",
-        "ShutdownProtocol",
-        "ShutdownReaction",
-        "ShutdownRequested",
-        "Spec",
-        "StashRoute",
-        "Stashing",
-        "State",
-        "StateActed",
-        "Step",
-        "StopOnShutdown",
-        "Strategy",
-        "Supervising",
-        "SupervisionEvent",
-        "SupervisionFailure",
-        "SupervisionFailureReaction",
-        "SupervisionFailureReason",
-        "SupervisorActions",
-        "SupervisorSends",
-        "TimeEvent",
-        "TimerElapsed",
-        "TimerGeneration",
-        "TimerId",
-        "Transcript",
-        "Transition",
-        "User",
-        "UserEvent",
-        "WatchActions",
-        "WatchEvent",
-        "WatchSends",
-        "Watching",
-        "WorkerEvent",
-        "WorkerStopped"
+        "Acted", "Actions", "Address", "At", "AtActions", "AtEvent",
+        "AtReaction", "AtSends", "Base", "Become", "Behavior",
+        "BehaviorActed", "BirthMode", "Births", "ChildEvent", "ChildStopped",
+        "Crash", "Create", "CreationKind", "Delivery", "Exit",
+        "FinalizeOnShutdown", "FnState", "Fsm", "LinkReaction", "MailAddr",
+        "Move", "Never", "NoBirths", "ObserveChild", "ObservePeer",
+        "PeerEvent", "PeerStopped", "Proxy", "ProxyCommand", "ReceiveTimeout",
+        "ReceiveTimeoutActions", "ReceiveTimeoutError", "ReceiveTimeoutEvent",
+        "ReceiveTimeoutReaction", "ReceiveTimeoutSends", "Recipient",
+        "ReportWorkerStopped", "RestartDenial", "RestartPolicy", "Route",
+        "ScheduleAfter", "ScheduleAt", "SendAlgebra", "SendProduct",
+        "ServiceSends", "ShutdownEvent", "ShutdownProtocol",
+        "ShutdownReaction", "ShutdownRequested", "Spec", "StashRoute",
+        "Stashing", "State", "StateActed", "Step", "StopOnShutdown",
+        "Strategy", "Supervising", "SupervisionEvent", "SupervisionFailure",
+        "SupervisionFailureReaction", "SupervisionFailureReason",
+        "SupervisorActions", "SupervisorSends", "TimeEvent", "TimerElapsed",
+        "TimerGeneration", "TimerId", "Transcript", "Transition", "User",
+        "UserEvent", "WatchActions", "WatchEvent", "WatchSends", "Watching",
+        "WorkerEvent", "WorkerStopped"
       ],
       "evidence": [
         "grep -hoE '^pub (struct|enum|trait|type) [A-Za-z_0-9]+' crates/behavior/src/*.rs | sort -u yielded exactly the 84 baseline names; per-file counts behavior.rs:26 deadlined.rs:5 exit.rs:4 fsm.rs:2 protocol.rs:17 receive_timeout.rs:6 shutdown.rs:4 spec.rs:1 stashing.rs:2 supervising.rs:10 verdict.rs:2 watching.rs:5",
@@ -1060,16 +996,8 @@
         "cargo nextest run -p bombay-behavior-testkit -> 123 passed, exercising every lane trait through composed stacks (cross_lane full_stack_random_lane_routing_never_leaks)"
       ],
       "coverage": [
-        "Address",
-        "Behavior",
-        "BirthMode",
-        "ChildEvent",
-        "PeerEvent",
-        "SendAlgebra",
-        "ShutdownEvent",
-        "State",
-        "TimeEvent",
-        "UserEvent",
+        "Address", "Behavior", "BirthMode", "ChildEvent", "PeerEvent",
+        "SendAlgebra", "ShutdownEvent", "State", "TimeEvent", "UserEvent",
         "WorkerEvent"
       ]
     },
@@ -1261,16 +1189,16 @@
       "category": "synthesis",
       "subject": "target architecture evidence",
       "question": "Record every obligation, before/after metric, decision, dead end, and remaining risk.",
-      "status": "pending",
-      "decision": "Target-architecture evidence recorded in REPORT.md '## Actor behavior algebra evidence': every one of the 61 obligation IDs appears with its decision and law/derivation/policy label; before/after measurements show a no-growth audit (all ratchets exactly at baseline: turbofish 31, aliases 18, panics 12, phantom 4, complexity 1, 84 public symbols, 11 traits, all 15 generic arities); retained decisions dominate (0 production changes, 0 new primitives, 0 reverted experiments); dead ends are the recorded boundary obstructions (backpressure, fairness, persistence, remoting, scheduling, durable-state) with exact algebraic reasons; remaining risks listed honestly (single compile_fail probe, non-idempotent direct-misuse init paths documented as interpreter contract).",
+      "status": "resolved",
+      "decision": "Documentation re-issued after independent review. REPORT.md preserves the first run's '## Actor behavior algebra evidence' section as history and appends a superseding 'Reopened review resolution' section that: includes the checker-derived disposition line exactly as printed (existing=26, derived=8, interpreter=13, application=6, new-primitive=0, rejected=0); explains every changed disposition (security-capability and location-transparency derived->interpreter; protocol-session claim narrowed, disposition unchanged); corrects the verification record (cargo nextest run --workspace reports 123 tests total across both binaries - bombay-behavior 31, bombay-behavior-testkit 92 - not 154); describes check.sh truthfully as a structural/ratchet/repository gate; and states which capabilities remain only partially represented. All 61 obligation IDs remain present in the report.",
       "evidence": [
-        "research/architecture-critical-review-loop/REPORT.md section '## Actor behavior algebra evidence' contains all 61 obligation IDs (checker-verified substring presence)",
-        "capability-matrix.json: 53/53 rows resolved, 0 new-primitive dispositions, derivations recorded per row",
+        "research/architecture-critical-review-loop/REPORT.md contains both the historical evidence section and the superseding resolution section with all 61 obligation IDs (checker-verified substring presence)",
+        "The report's disposition line is byte-identical to the checker-printed 'Disposition totals: existing=26, derived=8, interpreter=13, application=6, new-primitive=0, rejected=0.'",
         "evidence.json: 61/61 obligations resolved with decisions, evidence, and validation"
       ],
       "validation": [
-        "research/architecture-critical-review-loop/check.sh prints 'resolved obligations: 61/61' once REPORT.md is present",
-        "check.sh verifies every obligation ID string appears in REPORT.md when all obligations are resolved"
+        "research/architecture-critical-review-loop/check.sh prints 'resolved obligations: 61/61' and verifies every obligation ID appears in REPORT.md",
+        "check.sh verifies the exact checker-derived disposition totals line is present in REPORT.md"
       ]
     },
     {
@@ -1278,16 +1206,16 @@
       "category": "verification",
       "subject": "authoritative repository gates",
       "question": "Record exact successful nextest and nix flake check results plus focused gates.",
-      "status": "pending",
-      "decision": "Authoritative gates pass on the final tree. Focused gates run during the audit (per-cluster nextest filters: algebra 30-31, boundaries 14, error_paths 9, supervision_model 6, compositions 9, cross_lane 5, workers_fleet 5, two_buffer 1, init_contract 6, receive_timeout 6, shutdown_model 1, stash_properties 4, fsm_properties 5, driver_accumulation 6, core 11 \u2014 all green) are subsumed by the two authoritative runs: 'cargo nextest run --workspace' -> 154 tests, 154 passed, 0 skipped (behavior 31 + testkit 123); 'nix flake check' -> all 7 aarch64-darwin checks pass (build, nextest, doc, fmt, toml-fmt, audit, deny). The completion checker check.sh reruns both gates itself after its evidence gates pass.",
+      "status": "resolved",
+      "decision": "Authoritative gates pass on the final tree, with the first report's numbers corrected: 'cargo nextest run --workspace' prints a single workspace summary - 123 tests run: 123 passed, 0 skipped - comprising bombay-behavior 31 (30 lib tests plus 1 receive_timeout integration test) and bombay-behavior-testkit 92. The first report's '154 (behavior 31 + testkit 123)' double-counted: 123 was already the workspace total, not the testkit subtotal. 'nix flake check' passes all 7 aarch64-darwin checks (build, nextest, doc, fmt, toml-fmt, audit, deny). Focused per-cluster nextest filters from the audit (algebra, boundaries, error_paths, supervision_model, compositions, cross_lane, workers_fleet, two_buffer, init_contract, receive_timeout, shutdown_model, stash_properties, fsm_properties, driver_accumulation, core) remain green and are subsumed by the two authoritative runs.",
       "evidence": [
-        "cargo nextest run --workspace: 'Summary [4.400s] 123 tests run: 123 passed, 0 skipped' (bombay-behavior-testkit) and 31 passed (bombay-behavior) on 2026-08-08",
-        "nix flake check: 'checks.aarch64-darwin.bombay-behavior-{audit,fmt,deny,doc,toml-fmt,nextest} and bombay-behavior' all marked passed on 2026-08-08",
+        "cargo nextest run --workspace on 2026-08-08: 'Summary 123 tests run: 123 passed, 0 skipped'; cargo nextest list --workspace attributes 31 tests to bombay-behavior and 92 to bombay-behavior-testkit",
+        "nix flake check on 2026-08-08: checks.aarch64-darwin.bombay-behavior-{audit,fmt,deny,doc,toml-fmt,nextest} and bombay-behavior all pass",
         "cargo test --doc -p bombay-behavior: 1 passed (compile_fail erased-effect-seat probe)"
       ],
       "validation": [
         "research/architecture-critical-review-loop/check.sh exits 0 only after both 'cargo nextest run --workspace' and 'nix flake check' succeed on the committed tree",
-        "Focused per-cluster commands recorded in each cluster obligation's validation fields and reproduced during the audit"
+        "Honest scope: these gates prove the tree builds, tests pass, and ratchets hold; they do not prove citation entailment or derivation-test relevance, which remain review obligations"
       ]
     }
   ]

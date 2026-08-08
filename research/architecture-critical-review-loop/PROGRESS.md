@@ -32,3 +32,25 @@
 - Report: REPORT.md '## Actor behavior algebra evidence' indexes every
   obligation with measurements, retained/reverted decisions, exact commands,
   remaining risks, and conclusion.
+
+## 2026-08-08 — reopened review resolved (rerun complete)
+
+- All 53 capability rows now carry explicit `claim_classification`
+  (checker-owned vocabulary) and `limitations` fields; the three reopened
+  rows rewritten honestly.
+- Dispositions changed: `security-capability` and `location-transparency`
+  derived -> interpreter; `protocol-session` claim narrowed to finite-state
+  sequencing, disposition unchanged. Checker-derived totals: existing=26,
+  derived=8, interpreter=13, application=6, new-primitive=0, rejected=0.
+- Verification record corrected: workspace nextest is 123/123 total
+  (bombay-behavior 31 + bombay-behavior-testkit 92); the first report's 154
+  double-counted.
+- Six obligations re-resolved: RESEARCH-LABELS, SURVEY-TAXONOMY,
+  SURVEY-BASIS, SURVEY-GAPS, DOC-01, VERIFY-01.
+- REPORT.md appends a superseding conclusion: partial representation of
+  protocol-session, security-capability, and location-transparency stated
+  explicitly; check.sh described as a structural/ratchet/repository gate,
+  not a proof of entailment.
+- Gates: check.sh exits 0, SCORE 875, nextest 123/123, nix flake check 7/7.
+- Result is qualified, not total closure; no primitive added because no
+  concrete derivation failure proved an algebraic gap.
