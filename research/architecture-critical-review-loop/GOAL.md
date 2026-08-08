@@ -1,5 +1,28 @@
 # Goal: derive and verify the pure actor-behavior algebra
 
+> **Campaign boundary:** This is the system-wide architecture audit. It may
+> identify `protocol-session` as a partial capability, but concrete
+> phase-indexed protocol derivations belong to the separate session campaign.
+> See `research/README.md` for ownership and reading order.
+
+The governing method for the primitive basis is
+`research/architecture-critical-review-loop/PRIMITIVE-DERIVATION.md`. The loop
+must distinguish soundness, expressiveness over the surveyed capability
+taxonomy, and minimality of the basis. None may be inferred from the other two.
+
+The mandatory literature method is
+`research/architecture-critical-review-loop/ACTOR-RESEARCH-SURVEY.md`. It
+requires complete disposition of the OSL and DBLP Gul Agha publication records,
+foundational/formal actor citation chasing, and special emphasis on Agha's
+post-2000 actor algebra and formal-methods work. Production framework surveys
+such as Akka or Erlang are out of scope; they do not answer the primitive-basis
+question.
+
+Use the local seed corpus in
+`research/architecture-critical-review-loop/RESEARCH-SOURCES.md` before any web
+lookup. Web sources must be processed sequentially with progress checkpointed
+between sources; do not issue parallel or batched searches.
+
 ## Objective
 
 Perform an independent, skeptical derivation and verification pass over Bombay
@@ -32,6 +55,12 @@ framework is not by itself a reason to add a type. A primitive is admissible
 only after concrete typed derivations fail and the report records the minimal
 algebraic obstruction. Actorpass remains an interpreter of emitted values and
 must not push runtime mechanics into the pure fold.
+
+Treat the result as a small behavior calculus rather than a feature inventory:
+state the semantic nucleus, formation rules, operational meaning, composition
+laws, derived forms, and boundary judgments. Challenge every existing public
+structure for eliminability. A construct may remain as a useful named API while
+being classified as derived rather than primitive.
 
 Behaviorpass is designed for actor systems in general. Actorpass is one
 interpreter and consumer; its current needs are useful validation, not the
@@ -129,29 +158,35 @@ signatures and into test helpers.
 
 ## Milestones
 
-1. Conduct a broad web/primary-source survey and resolve the complete capability
+1. Write the candidate-basis worksheet required by `PRIMITIVE-DERIVATION.md`;
+   separate the actor-law nucleus from Bombay-derived forms and policy.
+2. Establish soundness obligations for the nucleus and each composition
+   operator, including complete `Actions` preservation and initialization.
+3. Perform an eliminability/independence experiment for every candidate
+   primitive. Demote any construct derivable from the remainder of the basis.
+4. Conduct a broad web/primary-source survey and resolve the complete capability
    matrix. Expand it whenever a genuinely distinct actor capability is found.
-2. Verify Hewitt, Agha, Agha's later functional and algebraic actor work, formal
+5. Verify Hewitt, Agha, Agha's later functional and algebraic actor work, formal
    lambda-calculus actor foundations, and further premium primary sources
    discovered by the survey; label every semantic claim
    law/derivation/policy.
-3. Trace the pure fold, initialization, complete `Actions`, and interpreter
+6. Trace the pure fold, initialization, complete `Actions`, and interpreter
    boundary without assuming implementation names prove semantics.
-4. Audit every wrapper independently and in supported mixed orders; prove no
+7. Audit every wrapper independently and in supported mixed orders; prove no
    lane is dropped, duplicated, reordered, relabeled, or reinterpreted.
-5. Audit staged creation and lifecycle provenance from behavior designation to
+8. Audit staged creation and lifecycle provenance from behavior designation to
    successful interpreter installation, explicitly separating nonce from
    identity/freshness.
-6. Derive every pure surveyed capability from the existing basis. For each
+9. Derive every pure surveyed capability from the retained minimal basis. For each
    derivation record its algebraic signature, required sums/products, identity
    and preservation laws, initialization/error/termination behavior, and at
    least one concrete composition test. If derivation fails, record the exact
    obstruction before proposing a minimal primitive.
-7. Challenge every retained structure and rejected direction using concrete
+10. Challenge every retained structure and rejected direction using concrete
    counterfactual experiments where useful.
-8. Audit the complete public/type surface, diagnostics, panic contracts, and
+11. Audit the complete public/type surface, diagnostics, panic contracts, and
    application ergonomics.
-9. Add `## Actor behavior algebra evidence` to `REPORT.md` with
+12. Add `## Actor behavior algebra evidence` to `REPORT.md` with
    all obligation IDs, before/after measurements, retained/reverted decisions,
    exact commands, remaining risks, and an honest conclusion.
 
@@ -188,6 +223,9 @@ as history, but do not repeat its conclusion until all of these are resolved:
 - Reclassify `protocol-session`: the current `Fsm` has `Move::Goto(P)` and a
   single message type in every phase. A closed enum alone does not make invalid
   transitions, out-of-phase messages, or session duality unrepresentable.
+  This architecture obligation ends with an honest capability classification;
+  concrete protocol cases and encoding attempts are owned by
+  `research/session-protocol-derivation-loop/`.
 - Reclassify `security-capability`: typed recipients preserve protocol
   compatibility, but public/copyable `MailAddr`, `Recipient::global`,
   `Recipient::child`, and `Address::birth` do not prove address authenticity,

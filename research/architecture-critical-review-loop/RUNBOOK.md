@@ -1,5 +1,10 @@
 # Behavior architecture loop runbook
 
+This runbook drives only the broad architecture audit. Do not insert concrete
+session-protocol derivation attempts into this loop. If the audit needs that
+evidence, consume the focused session campaign's report and record only the
+resulting architecture classification here. See `research/README.md`.
+
 ## Start
 
 ```sh

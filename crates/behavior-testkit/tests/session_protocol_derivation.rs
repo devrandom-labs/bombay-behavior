@@ -42,9 +42,7 @@
 // dead-code warnings are expected and suppressed.
 #![allow(dead_code)]
 
-use behavior::{
-    Behavior, Exit, Fsm, MailAddr, Move, Never, SendAlgebra, Step, User, UserEvent,
-};
+use behavior::{Behavior, Exit, Fsm, MailAddr, Move, Never, SendAlgebra, Step, User, UserEvent};
 
 // ---------------------------------------------------------------------------
 // Phase and message vocabulary (used by all derivation attempts)
@@ -90,9 +88,7 @@ fn worker_fsm() -> Fsm<MailAddr, Vec<Work>, WorkerMsg, Phase, Never> {
         |phase, in_flight, msg| -> Result<Move<Phase>, Never> {
             match (phase, msg) {
                 // ---------- Starting phase ----------
-                (Phase::Starting, WorkerMsg::Configure(_config)) => {
-                    Ok(Move::Goto(Phase::Running))
-                }
+                (Phase::Starting, WorkerMsg::Configure(_config)) => Ok(Move::Goto(Phase::Running)),
                 (Phase::Starting, _) => Ok(Move::Defer),
 
                 // ---------- Running phase ----------
@@ -100,9 +96,7 @@ fn worker_fsm() -> Fsm<MailAddr, Vec<Work>, WorkerMsg, Phase, Never> {
                     in_flight.push(work.clone());
                     Ok(Move::Stay)
                 }
-                (Phase::Running, WorkerMsg::DrainStatus) => {
-                    Ok(Move::Goto(Phase::Draining))
-                }
+                (Phase::Running, WorkerMsg::DrainStatus) => Ok(Move::Goto(Phase::Draining)),
                 (Phase::Running, WorkerMsg::Configure(_)) => Ok(Move::Defer),
 
                 // ---------- Draining phase ----------

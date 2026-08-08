@@ -22,7 +22,9 @@ evidence_path, matrix_path, baseline_path, target_path = map(Path, sys.argv[1:])
 
 expected_obligations = {
     "RESEARCH-AGHA","RESEARCH-CREATION","RESEARCH-LABELS","SURVEY-SEARCH",
+    "RESEARCH-BIBLIOGRAPHY","RESEARCH-FORMALISMS",
     "SURVEY-TAXONOMY","SURVEY-BASIS","SURVEY-GAPS","SURVEY-ACTORPASS",
+    "CALCULUS-NUCLEUS","CALCULUS-SOUNDNESS","CALCULUS-MINIMALITY","CALCULUS-CLOSURE",
     "CORE-BEHAVIOR","CORE-ACTIONS","CORE-INITIALIZATION","CORE-ERRORS","CORE-SENDS",
     "MODULE-CORE","MODULE-PROTOCOL","MODULE-TRANSFORMS",
     "COMPOSE-AT","COMPOSE-RECEIVE-TIMEOUT","COMPOSE-WATCHING","COMPOSE-SUPERVISING",
@@ -251,6 +253,19 @@ elif subprocess.run(["git","diff","--quiet",baseline_commit,"--",*protected], ch
 target_text = target_path.read_text() if target_path.exists() else ""
 if "## Actor behavior algebra evidence" not in target_text:
     errors.append("research report lacks final actor behavior algebra evidence section")
+for heading in (
+    "## Comprehensive actor research method",
+    "## Agha bibliography and disposition",
+    "## Foundational semantics comparison",
+    "## Post-2000 actor algebra and formalism comparison",
+    "## Research-to-primitive claim map",
+    "## Candidate primitive basis",
+    "## Primitive soundness",
+    "## Primitive eliminability",
+    "## Capability derivation trees",
+):
+    if heading not in target_text:
+        errors.append("research report lacks required calculus section: " + heading)
 if resolved_obligations == len(expected_obligations):
     if missing := sorted(item_id for item_id in expected_obligations if item_id not in target_text):
         errors.append("research report omits obligation IDs: " + ", ".join(missing))
