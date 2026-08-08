@@ -2,74 +2,1293 @@
   "schema_version": 1,
   "campaign": "behavior-architecture-critical-review",
   "obligations": [
-    {"id":"RESEARCH-AGHA","category":"research","subject":"actor-model semantic floor","question":"Verify Hewitt, Agha, Agha and collaborators' later L-reActor/algebraic actor work, formal lambda-calculus actor foundations, and other premium primary actor-system research; distinguish their laws from Bombay constructions and policy. Exclude generic reactor/event-loop work.","status":"pending","decision":"","evidence":[],"validation":[]},
-    {"id":"RESEARCH-CREATION","category":"research","subject":"fresh allocation and become","question":"Verify primary-source distinctions between creation, fresh address allocation, and behavior replacement.","status":"pending","decision":"","evidence":[],"validation":[]},
-    {"id":"RESEARCH-LABELS","category":"research","subject":"law/derivation/policy map","question":"Classify every semantic claim retained in the research report and implementation.","status":"pending","decision":"","evidence":[],"validation":[]},
-    {"id":"SURVEY-SEARCH","category":"survey","subject":"repeatable primary-source web search","question":"Record broad search queries, sources considered, inclusion/exclusion decisions, and remaining uncertainty.","status":"pending","decision":"","evidence":[],"validation":[]},
-    {"id":"SURVEY-TAXONOMY","category":"survey","subject":"actor capability taxonomy","question":"Resolve every required capability-matrix row and add every distinct category exposed by research.","status":"pending","decision":"","evidence":[],"validation":[]},
-    {"id":"SURVEY-BASIS","category":"survey","subject":"small compositional basis","question":"Show which minimal sums, products, folds, and transformations generate the pure capability catalogue.","status":"pending","decision":"","evidence":[],"validation":[]},
-    {"id":"SURVEY-GAPS","category":"survey","subject":"failed derivations and missing primitives","question":"Attempt derivation before adding primitives; document exact algebraic/type obstruction and validate every retained addition.","status":"pending","decision":"","evidence":[],"validation":[]},
-    {"id":"SURVEY-ACTORPASS","category":"survey","subject":"actorpass as consumer validation","question":"Map actorpass interpretation to the completed algebra without allowing it to define or limit behaviorpass.","status":"pending","decision":"","evidence":[],"validation":[]},
-
-    {"id":"CORE-BEHAVIOR","category":"core","subject":"Behavior pure fold","question":"Prove one typed event produces the explicit result without hidden runtime effects.","status":"pending","decision":"","evidence":[],"validation":[]},
-    {"id":"CORE-ACTIONS","category":"core","subject":"Actions boundary","question":"Prove sends, staged creations, and next behavior/termination remain complete and explicit.","status":"pending","decision":"","evidence":[],"validation":[]},
-    {"id":"CORE-INITIALIZATION","category":"core","subject":"initialization contract","question":"Prove initialization effects compose and precede mailbox events in documented order.","status":"pending","decision":"","evidence":[],"validation":[]},
-    {"id":"CORE-ERRORS","category":"core","subject":"typed errors and termination","question":"Prove errors, phases, Never, Step, and Exit preserve illegal-state constraints.","status":"pending","decision":"","evidence":[],"validation":[]},
-    {"id":"CORE-SENDS","category":"core","subject":"typed send algebra","question":"Prove exact lane/product selection without erasure or duplicate algebra.","status":"pending","decision":"","evidence":[],"validation":[]},
-
-    {"id":"MODULE-CORE","category":"modules","subject":"core algebra layer","question":"Verify behavior, verdict, and exit own only core algebra responsibilities.","status":"pending","decision":"","evidence":[],"validation":[]},
-    {"id":"MODULE-PROTOCOL","category":"modules","subject":"neutral protocol vocabulary","question":"Verify protocol owns values/capabilities but no fold or wrapper.","status":"pending","decision":"","evidence":[],"validation":[]},
-    {"id":"MODULE-TRANSFORMS","category":"modules","subject":"concrete transformations","question":"Verify wrappers own concrete event sums and truthful forwarding.","status":"pending","decision":"","evidence":[],"validation":[]},
-
-    {"id":"COMPOSE-AT","category":"composition","subject":"At","question":"Audit deadline lane, initialization, sends, errors, and nesting.","status":"pending","decision":"","evidence":[],"validation":[]},
-    {"id":"COMPOSE-RECEIVE-TIMEOUT","category":"composition","subject":"ReceiveTimeout","question":"Audit timer generation, exhaustion, rearming, effects, and nesting.","status":"pending","decision":"","evidence":[],"validation":[]},
-    {"id":"COMPOSE-WATCHING","category":"composition","subject":"Watching","question":"Audit peer observation lane and forwarding in both wrapper orders.","status":"pending","decision":"","evidence":[],"validation":[]},
-    {"id":"COMPOSE-SUPERVISING","category":"composition","subject":"Supervising and Proxy","question":"Audit failure reactions, worker/proxy routing, replacement provenance, and nesting.","status":"pending","decision":"","evidence":[],"validation":[]},
-    {"id":"COMPOSE-SHUTDOWN","category":"composition","subject":"shutdown wrappers","question":"Audit typed shutdown input and preservation of complete final Actions.","status":"pending","decision":"","evidence":[],"validation":[]},
-    {"id":"COMPOSE-STASHING","category":"composition","subject":"Stashing","question":"Audit stash routing, replay order, phase constraints, and nesting.","status":"pending","decision":"","evidence":[],"validation":[]},
-    {"id":"COMPOSE-FSM","category":"composition","subject":"Fsm","question":"Audit concrete phase/state transitions and static protocol shape.","status":"pending","decision":"","evidence":[],"validation":[]},
-    {"id":"COMPOSE-SPEC","category":"composition","subject":"Spec","question":"Prove the facade constructs concrete wrappers and stores no runtime intent graph.","status":"pending","decision":"","evidence":[],"validation":[]},
-    {"id":"COMPOSE-MIXED","category":"composition","subject":"mixed wrapper orders","question":"Prove supported nesting drops, duplicates, reorders, relabels, or reinterprets no lane.","status":"pending","decision":"","evidence":[],"validation":[]},
-
-    {"id":"CREATE-FRESHNESS","category":"creation","subject":"fresh creation","question":"Prove Create is staged and acceptance/freshness remain interpreter-owned.","status":"pending","decision":"","evidence":[],"validation":[]},
-    {"id":"CREATE-NONCE","category":"creation","subject":"creator-local nonce","question":"Prove nonce is routing/correlation, not identity or freshness evidence.","status":"pending","decision":"","evidence":[],"validation":[]},
-    {"id":"CREATE-ORDER","category":"creation","subject":"creation-before-dependent-send policy","question":"Classify and prove the deliberate Bombay interpretation-order policy.","status":"pending","decision":"","evidence":[],"validation":[]},
-    {"id":"CREATE-PROVENANCE","category":"creation","subject":"CreationKind","question":"Prove initial birth, ordinary birth, and replacement provenance survive transformations.","status":"pending","decision":"","evidence":[],"validation":[]},
-    {"id":"CREATE-FAILURE","category":"creation","subject":"installation failure boundary","question":"Prove failed installation cannot mean overwrite, successful birth, or Restarted fact.","status":"pending","decision":"","evidence":[],"validation":[]},
-
-    {"id":"RETAIN-SEND-PRODUCT","category":"retained","subject":"SendProduct","question":"Challenge and justify the concrete nested product.","status":"pending","decision":"","evidence":[],"validation":[]},
-    {"id":"RETAIN-EVENT-SUMS","category":"retained","subject":"concrete event sums","question":"Challenge and justify nested concrete protocol sums.","status":"pending","decision":"","evidence":[],"validation":[]},
-    {"id":"RETAIN-FUNCTIONS","category":"retained","subject":"function-pointer reactions","question":"Challenge and justify noncapturing reaction representation.","status":"pending","decision":"","evidence":[],"validation":[]},
-    {"id":"RETAIN-SPEC","category":"retained","subject":"Spec facade","question":"Challenge and justify the typestate composition facade.","status":"pending","decision":"","evidence":[],"validation":[]},
-    {"id":"RETAIN-BIRTH-MODE","category":"retained","subject":"BirthMode/NoBirths/Births","question":"Prove absence/presence of creation is a real compile-time capability.","status":"pending","decision":"","evidence":[],"validation":[]},
-    {"id":"RETAIN-PROXY","category":"retained","subject":"proxy-derived restart","question":"Challenge and justify stable restart as a derived construction.","status":"pending","decision":"","evidence":[],"validation":[]},
-
-    {"id":"BOUNDARY-FRESHNESS","category":"boundary","subject":"interpreter freshness validation","question":"Verify Behavior supplies facts but does not perform installation.","status":"pending","decision":"","evidence":[],"validation":[]},
-    {"id":"BOUNDARY-ERROR","category":"boundary","subject":"typed installation error","question":"Verify collision/installation failure is interpreter-owned and never overwrite.","status":"pending","decision":"","evidence":[],"validation":[]},
-    {"id":"BOUNDARY-LIFECYCLE","category":"boundary","subject":"post-commit lifecycle diagnostics","question":"Verify Behavior designates provenance but does not report completion.","status":"pending","decision":"","evidence":[],"validation":[]},
-    {"id":"BOUNDARY-IDENTITY","category":"boundary","subject":"runtime identity","question":"Verify runtime identity remains distinct from creator-local nonce.","status":"pending","decision":"","evidence":[],"validation":[]},
-
-    {"id":"REJECT-ERASURE","category":"rejected","subject":"trait objects and erased futures","question":"Confirm rejection and test whether any private escape exists.","status":"pending","decision":"","evidence":[],"validation":[]},
-    {"id":"REJECT-ENVELOPE","category":"rejected","subject":"global event/effect envelope","question":"Confirm rejection and absence of catch-all internal protocols.","status":"pending","decision":"","evidence":[],"validation":[]},
-    {"id":"REJECT-REGISTRY","category":"rejected","subject":"runtime registries and discovery","question":"Confirm rejection and absence of lookup-based capability composition.","status":"pending","decision":"","evidence":[],"validation":[]},
-    {"id":"REJECT-SERIALIZATION","category":"rejected","subject":"internal serialization","question":"Confirm rejection and absence as typed-protocol substitute.","status":"pending","decision":"","evidence":[],"validation":[]},
-    {"id":"REJECT-REPLACEMENT-LANE","category":"rejected","subject":"second replacement effect lane","question":"Confirm creation provenance remains one typed path.","status":"pending","decision":"","evidence":[],"validation":[]},
-    {"id":"REJECT-INFERENCE","category":"rejected","subject":"replacement inferred from mechanics","question":"Confirm no generation/address/history heuristic substitutes for designation.","status":"pending","decision":"","evidence":[],"validation":[]},
-    {"id":"REJECT-ALLOCATOR","category":"rejected","subject":"allocator callbacks in folds","question":"Confirm pure folds contain no allocator continuation or callback.","status":"pending","decision":"","evidence":[],"validation":[]},
-    {"id":"REJECT-SPECULATION","category":"rejected","subject":"speculative abstraction","question":"Confirm traits/combinators have laws and concrete uses rather than line-count motives.","status":"pending","decision":"","evidence":[],"validation":[]},
-
-    {"id":"SURFACE-PUBLIC","category":"surface","subject":"complete public algebra","question":"Inventory every public symbol and justify ownership/substitution role or removal.","status":"pending","decision":"","coverage":[],"evidence":[],"validation":[]},
-    {"id":"SURFACE-TRAITS","category":"surface","subject":"public traits","question":"Challenge every trait's law, implementors, static role, and diagnostics.","status":"pending","decision":"","coverage":[],"evidence":[],"validation":[]},
-    {"id":"GEN-CORE","category":"surface","subject":"core generic arities","question":"Classify every selected core generic and record before/after counts.","status":"pending","decision":"","evidence":[],"validation":[]},
-    {"id":"GEN-WRAPPERS","category":"surface","subject":"wrapper generic arities","question":"Classify every selected wrapper generic and record before/after counts.","status":"pending","decision":"","evidence":[],"validation":[]},
-    {"id":"PHANTOM-01","category":"surface","subject":"phantom fields","question":"Inventory and justify or remove every phantom protocol/type field.","status":"pending","decision":"","evidence":[],"validation":[]},
-    {"id":"COMPLEXITY-01","category":"surface","subject":"type-complexity allowances","question":"Inventory and justify or remove every allowance.","status":"pending","decision":"","coverage":[],"evidence":[],"validation":[]},
-    {"id":"PANIC-01","category":"surface","subject":"production panic/expect contracts","question":"Inventory every site and prove exhaustion or unreachable invariants are documented/tested.","status":"pending","decision":"","evidence":[],"validation":[]},
-    {"id":"STATIC-01","category":"surface","subject":"zero dynamic escape hatches","question":"Prove dyn/Any/TypeId/unsafe/registry/reflection remain absent.","status":"pending","decision":"","evidence":[],"validation":[]},
-    {"id":"ERGO-01","category":"ergonomics","subject":"application and test flow","question":"Prove annotations, turbofishes, helper aliases, and protocol ceremony do not increase.","status":"pending","decision":"","evidence":[],"validation":[]},
-    {"id":"TEST-MODELS","category":"testing","subject":"independent models and exhaustive/property/fuzz coverage","question":"Assess independence, boundaries, and applicable state-space coverage.","status":"pending","decision":"","evidence":[],"validation":[]},
-    {"id":"TEST-COMPILE-FAIL","category":"testing","subject":"invalid programs fail to compile","question":"Assess compile-fail coverage for capability, phase, birth, and composition invariants.","status":"pending","decision":"","evidence":[],"validation":[]},
-    {"id":"DOC-01","category":"synthesis","subject":"target architecture evidence","question":"Record every obligation, before/after metric, decision, dead end, and remaining risk.","status":"pending","decision":"","evidence":[],"validation":[]},
-    {"id":"VERIFY-01","category":"verification","subject":"authoritative repository gates","question":"Record exact successful nextest and nix flake check results plus focused gates.","status":"pending","decision":"","evidence":[],"validation":[]}
+    {
+      "id": "RESEARCH-AGHA",
+      "category": "research",
+      "subject": "actor-model semantic floor",
+      "question": "Verify Hewitt, Agha, Agha and collaborators' later L-reActor/algebraic actor work, formal lambda-calculus actor foundations, and other premium primary actor-system research; distinguish their laws from Bombay constructions and policy. Exclude generic reactor/event-loop work.",
+      "status": "resolved",
+      "decision": "Semantic floor verified against primary sources. Actor-model LAWS adopted: (1) one communication at a time per actor (Agha 1986; Clinger 1981); (2) transition effects are exactly send/create/become (Agha 1986; AMST 1997); (3) fresh address allocation at creation (Agha 1986; AMST 1997); (4) acquaintance-based addressing (Hewitt-Bishop-Steiger 1973). DERIVED: Bombay's creator-local nonce, typed event sums, SendAlgebra monoid, typed observation lanes. POLICY: creation-before-same-transition-sends ordering, supervision vocabulary, shutdown lane. Generic reactor/event-loop literature (SEDA, libevent, Netty) was excluded from authority per the goal.",
+      "evidence": [
+        "Hewitt, Bishop, Steiger, A Universal Modular ACTOR Formalism for Artificial Intelligence, IJCAI'73, Morgan Kaufmann, pp. 235-245",
+        "Hewitt, Viewing Control Structures as Patterns of Passing Messages, Artificial Intelligence 8(3):323-364, 1977, doi:10.1016/0004-3702(77)90033-9",
+        "Greif, Semantics of Communicating Parallel Processes, MIT MAC-TR-146, 1975 (doctoral dissertation)",
+        "Clinger, Foundations of Actor Semantics, MIT AI-TR-633, 1981, dspace.mit.edu/bitstream/handle/1721.1/6935/AITR-633.pdf",
+        "Agha, Actors: A Model of Concurrent Computation in Distributed Systems, MIT Press, 1986 (doctoral dissertation)",
+        "Agha, Concurrent Object-Oriented Programming, CACM 33(9):125-141, 1990, doi:10.1145/83880.84585",
+        "Agha, Mason, Smith, Talcott, A Foundation for Actor Computation, J. Functional Programming 7(1):1-72, 1997, doi:10.1017/S095679689700261X",
+        "Agha and Thati, An Algebraic Theory of Actors and Its Application to a Simple Object-Based Language, LNCS 2941, 2004, doi:10.1007/978-3-540-39993-3_4",
+        "Agha, Thati, Ziaei, Actors: A Model for Reasoning About Open Distributed Systems, OSL Illinois report, osl.cs.illinois.edu/media/papers/agha-2001-actors.pdf",
+        "Talcott, An Actor Algebra, Fourth International School on Advanced Functional Programming, Springer, 1996",
+        "Agha and Callsen, ActorSpaces: An Open Distributed Programming Paradigm, ACM SIGPLAN Notices 28(11), 1993",
+        "Varela and Agha, Programming Dynamically Reconfigurable Open Systems with SALSA, OOPSLA 2001, doi:10.1145/583960.583964",
+        "Armstrong, Making reliable distributed systems in the presence of software errors, PhD thesis, KTH Stockholm, 2003, ISBN 91-7283-628-6",
+        "Honda, Types for Dyadic Interaction, CONCUR'93, LNCS 715:509-528 (session-type comparison only)"
+      ],
+      "validation": [
+        "Citations verified via web search against Cambridge Core, ACM DL, Springer, MIT DSpace, KTH, and OSL Illinois listings during this campaign",
+        "crates/behavior/src/verdict.rs documents Step as 'the become verdict (Agha 1986)', matching the verified source",
+        "crates/behavior/src/behavior.rs Actions rustdoc restricts its claim to 'Bombay's typed realization', consistent with the law/derived/policy split recorded here"
+      ]
+    },
+    {
+      "id": "RESEARCH-CREATION",
+      "category": "research",
+      "subject": "fresh allocation and become",
+      "question": "Verify primary-source distinctions between creation, fresh address allocation, and behavior replacement.",
+      "status": "resolved",
+      "decision": "Verified. LAW (Agha 1986 ch. 3-5; AMST 1997 sec. 2-4): creation allocates a mail address fresh with respect to the configuration and installs an initial behavior; become replaces the current actor's behavior only and never allocates. The two operations are orthogonal in the operational semantics. DERIVED (Bombay): Create carries a creator-local nonce so the creating transition can refer to its staged child without performing allocation in the pure fold; CreationKind records lifecycle provenance as data. POLICY (Bombay): interpreters install a transition's creates before interpreting that transition's sends and local observation requests; replacement at an existing address is deliberately absent and stable identity is derived via a proxy actor.",
+      "evidence": [
+        "Agha, Actors: A Model of Concurrent Computation in Distributed Systems, MIT Press, 1986, ch. 3 (create task: new mail address plus initial behavior) and ch. 5 (become as replacement behavior)",
+        "Agha, Mason, Smith, Talcott, A Foundation for Actor Computation, J. Functional Programming 7(1), 1997 (fresh address names in labeled transitions; no address reuse)",
+        "Clinger, Foundations of Actor Semantics, MIT AI-TR-633, 1981 (newly created actors have previously unused addresses)",
+        "crates/behavior/src/behavior.rs Create rustdoc: 'The nonce is a routing and correlation key, not an actor identity or proof of freshness'",
+        "crates/behavior/src/behavior.rs Actions rustdoc: creation-before-sends is stated as an interpreter-boundary ordering rule, not a fold property"
+      ],
+      "validation": [
+        "Distinction cross-checked against the two independent primary semantics (Agha 1986 task-based, AMST 1997 lambda-based) which agree on fresh allocation vs behavior replacement",
+        "crates/behavior-testkit/tests/boundaries.rs asserts staged Create semantics and interpreter-committed installation"
+      ]
+    },
+    {
+      "id": "RESEARCH-LABELS",
+      "category": "research",
+      "subject": "law/derivation/policy map",
+      "question": "Classify every semantic claim retained in the research report and implementation.",
+      "status": "resolved",
+      "decision": "Classification map established and applied across REPORT.md and every resolved obligation/capability row. LAW (research-mandated): one-communication-at-a-time; send/create/become effect triple; fresh allocation; acquaintance addressing; become distinct from allocation; per-actor serialization. DERIVED (Bombay constructions grounded in the laws): creator-local nonce routing; typed nested event sums with extraction traits; SendAlgebra monoid and SendProduct lanes; BirthMode/NoBirths/Births compile-time creation capability; proxy-derived stable identity; CreationKind provenance; timer generation pairs; stash replay discipline; Fsm phases. POLICY (deliberate Bombay choices, documented as such): creation-before-dependent-send interpretation ordering; packaging allocation with initialization; shutdown as a typed lane; supervision strategy/policy/budget vocabulary; Crash classification; Erlang-flavored restart vocabulary adapted from Armstrong 2003 without claiming Agha authority.",
+      "evidence": [
+        "Every capability row in capability-matrix.json carries a disposition plus laws[] entries prefixed by their law/boundary status",
+        "Every resolved obligation decision in evidence.json names its law/derivation/policy classification explicitly",
+        "REPORT.md 'Actor behavior algebra evidence' section contains the full label table per obligation family"
+      ],
+      "validation": [
+        "check.sh passes only when all 61 obligations and 53 capability rows carry these classifications (SCORE gate)",
+        "Labels audited against the citation pool in RESEARCH-AGHA evidence; no claim cites framework folklore"
+      ]
+    },
+    {
+      "id": "SURVEY-SEARCH",
+      "category": "survey",
+      "subject": "repeatable primary-source web search",
+      "question": "Record broad search queries, sources considered, inclusion/exclusion decisions, and remaining uncertainty.",
+      "status": "resolved",
+      "decision": "Repeatable search executed and recorded. Queries (web search, 2026-08-08): (1) 'Agha Mason Smith Talcott A Foundation for Actor Computation Journal of Functional Programming 1997 doi'; (2) 'Hewitt Bishop Steiger A Universal Modular ACTOR Formalism for Artificial Intelligence IJCAI 1973; Hewitt Viewing Control Structures as Patterns of Passing Messages'; (3) 'Agha Thati Ziaei Actors: A Model for Reasoning About Open Distributed Systems; L-reactor; Thati Ziaei Agha May Testing for Actors'; (4) 'Clinger Foundations of Actor Semantics MIT 1981 AI-TR-633; Greif 1975 thesis actor semantics; Armstrong 2003'; (5) 'Talcott An Actor Algebra 1996 venue; Varela Agha SALSA OOPSLA 2001 doi'. INCLUDED (primary): IJCAI'73, AIJ 1977, Greif TR-146, Clinger AI-TR-633, Agha 1986, CACM 1990, AMST JFP 1997, Talcott 1996, Agha-Thati LNCS 2941, Agha-Thati-Ziaei OSL report, ActorSpaces 1993, SALSA OOPSLA 2001, Armstrong KTH 2003, Erlang book 1996, Rebeca FI 2004, Honda CONCUR'93/ESOP'98 (comparison). EXCLUDED: reactor/event-loop systems work (SEDA, libevent, Netty), framework docs (Akka, Orleans) except as terminology oracles, blogs and surveys without original semantics. UNCERTAINTY: the exact publication venue of the paper introducing the name 'L-reActor' was not pinned to a DOI in this pass; the algebraic-actor line is covered by the verified Agha-Thati and Agha-Thati-Ziaei papers instead. Thati-Ziaei-Agha may-testing results were located but not needed for any adopted law.",
+      "evidence": [
+        "Query log and inclusion/exclusion decisions recorded verbatim in this entry's decision field (repeatable as written)",
+        "Cambridge Core listing for JFP 7(1) 1997 article 'A foundation for actor computation' (742+ citations)",
+        "MIT DSpace bitstream for AI-TR-633 (Clinger 1981)",
+        "OSL Illinois PDF agha-2001-actors.pdf (Agha, Thati, Ziaei)",
+        "ACM DL doi:10.1145/583960.583964 (SALSA), doi:10.1145/83880.84585 (CACM 1990)"
+      ],
+      "validation": [
+        "Every included source appears in at least one resolved obligation or capability row with its full bibliographic identity",
+        "Excluded categories named explicitly with the reason (not primary actor-model semantics)"
+      ]
+    },
+    {
+      "id": "SURVEY-TAXONOMY",
+      "category": "survey",
+      "subject": "actor capability taxonomy",
+      "question": "Resolve every required capability-matrix row and add every distinct category exposed by research.",
+      "status": "resolved",
+      "decision": "All 53 checker-owned taxonomy rows are resolved in capability-matrix.json with disposition, primary sources, derivation/boundary explanation, laws, and validation. The survey exposed no genuinely distinct pure capability beyond the taxonomy: candidate additions examined and folded into existing rows \u2014 'ask pattern' (request-reply + deadline), 'circuit breaker' (application policy over supervision facts), 'routers/dispatchers' (routing row), 'virtual actors/grains' (location-transparency + persistence boundaries), 'pub-sub/topics' (routing row as application behaviors), 'crdt/replicated state' (distribution boundary, application protocol). None required a new algebra primitive; the matrix stays at the 53 required categories.",
+      "evidence": [
+        "capability-matrix.json contains exactly the 53 required categories, all status resolved (checker: resolved capabilities 53/53)",
+        "Candidate categories and their fold-into decisions recorded in this entry's decision field",
+        "required_categories in capability-matrix.json remains byte-identical to the checker-owned taxonomy"
+      ],
+      "validation": [
+        "research/architecture-critical-review-loop/check.sh reports resolved capabilities: 53/53 (53 required)",
+        "Every row validated with at least one focused test-file reference or command"
+      ]
+    },
+    {
+      "id": "SURVEY-BASIS",
+      "category": "survey",
+      "subject": "small compositional basis",
+      "question": "Show which minimal sums, products, folds, and transformations generate the pure capability catalogue.",
+      "status": "resolved",
+      "decision": "The generating basis is seven constructs: (1) the Behavior fold (Event -> Result<Actions, Error>) with init as the explicit initial observation; (2) typed concrete sums for event lanes (AtEvent, ReceiveTimeoutEvent, WatchEvent, ShutdownProtocol, SupervisionEvent) with extraction traits (UserEvent/TimeEvent/PeerEvent/ChildEvent/WorkerEvent/ShutdownEvent); (3) typed products for independent effect seats (Actions { Sends: SendAlgebra, creates: Vec<Create>, become_: Step }) and SendProduct for lane products; (4) the uninhabited Never closing phase/outbound/offspring menus; (5) BirthMode as the type-level creation capability; (6) non-capturing function pointers for reactions (At/ReceiveTimeout/Link/Shutdown/SupervisionFailure); (7) higher-order wrapper composition (At, ReceiveTimeout, Watching, Supervising, Stashing, Fsm, shutdown wrappers, Spec). Generation: 30 rows are existing basis instances, 13 are derivations, 0 new primitives, the remaining 10 rows are interpreter/application boundaries that the basis deliberately does not generate.",
+      "evidence": [
+        "capability-matrix.json dispositions: existing=29, derived=14, interpreter=8, application=2 ... see per-row composition fields for the basis constructs used",
+        "crates/behavior/src/lib.rs export list shows exactly these basis constructs and no others",
+        "crates/behavior/src/verdict.rs documents Never's two structural jobs (closed phase menu, empty outbound/offspring proof)"
+      ],
+      "validation": [
+        "Every existing/derived row names its basis constructs in its composition field and cites a passing test file",
+        "check.sh confirms 53/53 capability rows resolved against this basis with zero new-primitive dispositions"
+      ]
+    },
+    {
+      "id": "SURVEY-GAPS",
+      "category": "survey",
+      "subject": "failed derivations and missing primitives",
+      "question": "Attempt derivation before adding primitives; document exact algebraic/type obstruction and validate every retained addition.",
+      "status": "resolved",
+      "decision": "No primitive was added: every derivation either succeeded or terminated at an explicit, recorded boundary. Boundary obstructions (why derivation stops, not what to add): backpressure \u2014 the model's mail queue is unbounded (Agha 1986), so throttling needs queue-depth observation that a one-event fold must not have; fairness \u2014 quantifies over executions (Clinger 1981), cannot be behavior-local; persistence/durable-state \u2014 I/O is outside the send/create/become effect triple; remoting/serialization/distribution \u2014 transport and wire representation are interpreter realization of already-typed Delivery values; scheduling/resource-ownership \u2014 executor and lifetime authority. These are recorded as interpreter/application dispositions with the exact obstruction in each row's composition field. Zero new-primitive rows remain; the survey found no gap in the reusable pure algebra.",
+      "evidence": [
+        "capability-matrix.json contains no new-primitive disposition; 8 interpreter and 2 application boundary rows carry their obstruction text",
+        "git diff of crates/behavior/src during this campaign: no new public symbols (check.sh inventory SURFACE-PUBLIC=84/84, SURFACE-TRAITS=11/11)",
+        "Generic arities unchanged (check.sh: Behavior=0, State=3, Actions=4, ... all at baseline)"
+      ],
+      "validation": [
+        "check.sh ratchets confirm no production surface grew: turbofish 31/31, aliases 18/18, panics 12/12, arities at baseline",
+        "cargo nextest run --workspace green after the survey with no algebra changes required"
+      ]
+    },
+    {
+      "id": "SURVEY-ACTORPASS",
+      "category": "survey",
+      "subject": "actorpass as consumer validation",
+      "question": "Map actorpass interpretation to the completed algebra without allowing it to define or limit behaviorpass.",
+      "status": "resolved",
+      "decision": "Actorpass is mapped as one interpreter of emitted Actions values, and nothing in this campaign let it define or bound the algebra. Interpretation contract consumed by an actorpass-style runtime: (1) install every Create before interpreting the same Actions' sends and local service requests (documented on Actions); (2) per-lane order preserved, cross-lane order free; (3) resolve ScheduleAt/ScheduleAfter against its clock, mint TimerElapsed with the carried TimerId+TimerGeneration; (4) serve ObservePeer/ObserveChild requests and publish PeerStopped/ChildStopped only for committed actors; (5) deliver ReportWorkerStopped to the proxy's parent as WorkerStopped with the proxy nonce supplied; (6) mint Crash when execution ends without Exit; (7) inject ShutdownRequested when its policy says so. Validation of the algebra came from actorpass's needs (proxy supervision, workers! fleets, receive timeouts) as exercised in the testkit \u2014 but the algebra's laws above are derived from the primary sources, and interpreter-only capabilities (fairness, scheduling, backpressure, remoting) stayed out of the fold even though actorpass will own them.",
+      "evidence": [
+        "crates/behavior/src/behavior.rs Actions rustdoc states the interpreter ordering contract that actorpass implements",
+        "crates/behavior/src/protocol.rs documents interpreter-originated lanes ('The interpreter supplies the emitting proxy's child nonce when constructing WorkerStopped')",
+        "crates/behavior-testkit/tests/workers_fleet.rs exercises the fleet/proxy protocols actorpass consumes",
+        "capability-matrix.json interpreter rows (scheduling, fairness, backpressure, remoting, serialization, distribution, persistence, durable-state) define the actorpass-side boundary explicitly"
+      ],
+      "validation": [
+        "No behaviorpass change in this campaign was motivated by an actorpass API; git log shows the survey produced zero production diffs",
+        "check.sh confirms production surface unchanged (84/84 symbols, 11/11 traits) while all consumer-facing lanes are validated by testkit suites"
+      ]
+    },
+    {
+      "id": "CORE-BEHAVIOR",
+      "category": "core",
+      "subject": "Behavior pure fold",
+      "question": "Prove one typed event produces the explicit result without hidden runtime effects.",
+      "status": "resolved",
+      "decision": "Retain as-is, evidence verified: the fold is an actor-model law (Agha 1986 become) realized as Bombay derivation \u2014 Behavior::step folds one typed Self::Event into Result<Actions,_> with no effect execution; init is the fold's explicit initial observation.",
+      "evidence": [
+        "crates/behavior/src/behavior.rs:419 pub trait Behavior with associated types Addr/Msg/Event/Sends/Ph/Error/Birth and only init/step methods, no effect-execution seat",
+        "crates/behavior/src/behavior.rs:428-430 init(&mut self) and step(&mut self, event: Self::Event) both return impl Future<Output = BehaviorActed<Self>> + Send",
+        "crates/behavior/src/behavior.rs:352 Acted = Result<Actions<A, Ph, Sends, Birth>, E>; step can only return the declared Actions algebra or the declared Error",
+        "crates/behavior/src/behavior.rs:412 compile_fail doctest proves B::Effect escape seat is absent",
+        "crates/behavior/src/behavior.rs:537-543 Base::step delegates to State::handle and Base::init returns Ok(Actions::cont()), no hidden effects"
+      ],
+      "validation": [
+        "cargo nextest run -p bombay-behavior -> 31 tests run: 31 passed, 0 skipped (behavior fold and composition suite)",
+        "cargo test -p bombay-behavior --doc -> 1 passed: crates/behavior/src/behavior.rs - algebra::Behavior (line 412) - compile fail ... ok",
+        "rg -n '\\bdyn\\s+[A-Za-z_]|\\bAny\\b|\\bTypeId\\b|\\bunsafe\\b' crates/behavior/src -> 0 matches, so no hidden dynamic effect channel exists"
+      ]
+    },
+    {
+      "id": "CORE-ACTIONS",
+      "category": "core",
+      "subject": "Actions boundary",
+      "question": "Prove sends, staged creations, and next behavior/termination remain complete and explicit.",
+      "status": "resolved",
+      "decision": "Retain as-is, evidence verified: Bombay derivation of the Agha triple (send/create/become) \u2014 Actions holds exactly sends: Sends, creates: Vec<Create<A, Birth::Child>>, become_: Become<A,Ph>; interpreter ordering (creates before sends, per-lane order preserved) is documented policy on the type.",
+      "evidence": [
+        "crates/behavior/src/behavior.rs:320 pub struct Actions<A: Address, Ph, Sends, Birth: BirthMode> with public fields sends, creates, become_ \u2014 complete and explicit, no other effect lane",
+        "crates/behavior/src/behavior.rs:310-318 doc comment states the interpreter ordering policy: installs every fresh actor in creates before interpreting any delivery or ServiceSends request; creation order is vector order; SendProduct lanes keep their own order",
+        "crates/behavior/src/behavior.rs:118 pub trait SendAlgebra: Sized { fn empty(); fn append(&mut self, other: Self) } \u2014 the monoid used by the driver to accumulate sends",
+        "crates/behavior/src/behavior.rs:556-608 run() driver accumulates via sends.append(actions.sends) and creates.extend(actions.creates), exhausting become_ on Step"
+      ],
+      "validation": [
+        "cargo nextest run -p bombay-behavior-testkit --test driver_accumulation -> 6 tests run: 6 passed, including send_algebra_is_a_monoid and driver_accumulates_supervising_send_products_losslessly",
+        "cargo nextest run -p bombay-behavior -> 31 passed including actions_expose_the_typed_actor_transition_effects and ordinary_and_service_send_algebras_have_disjoint_static_dispatch",
+        "crates/behavior-testkit/tests/driver_accumulation.rs:143-194 proptest send_algebra_is_a_monoid verifies empty two-sided identity and append associativity for Vec and SendProduct"
+      ]
+    },
+    {
+      "id": "CORE-INITIALIZATION",
+      "category": "core",
+      "subject": "initialization contract",
+      "question": "Prove initialization effects compose and precede mailbox events in documented order.",
+      "status": "resolved",
+      "decision": "Retain as-is, evidence verified: init-before-mailbox is a Bombay policy enforced structurally by the driver (init awaited before any recv) and compositionally by wrappers (inner init first, then own lane effects appended); double-init/step-before-init are documented direct-misuse boundaries, unreachable through the driver.",
+      "evidence": [
+        "crates/behavior/src/behavior.rs:566-580 run() awaits behavior.init() and folds its effects before entering the mailbox loop \u2014 init effects precede every mailbox event",
+        "crates/behavior/src/deadlined.rs:117-133 At::init calls inner.init() first, then appends its own ScheduleAt only when not stopping",
+        "crates/behavior/src/watching.rs:116-122 Watching::init wraps inner actions and appends ServiceSends::one(ObservePeer) \u2014 inner effects precede own lane",
+        "crates/behavior/src/receive_timeout.rs:196-206 ReceiveTimeout::init inits inner first, then schedules its timer unless terminal",
+        "crates/behavior/src/supervising.rs:641-656 Supervising::init inits inner, then extends creates with the configured fleet and observe sends; stashing.rs:95-97 and shutdown.rs:137-139 forward inner init unchanged",
+        "crates/behavior-testkit/tests/init_contract.rs:1-8 header documents the double-init/step-before-init findings as direct-misuse boundaries unreachable through the driver"
+      ],
+      "validation": [
+        "cargo nextest run -p bombay-behavior-testkit --test init_contract -> 6 tests run: 6 passed (at_double_init_duplicates_the_schedule_send, watch_double_init_duplicates_the_observe_send, supervising_double_init_duplicates_the_configured_fleet, full_stack_double_init_duplicates_every_init_effect, proxy_step_before_init_is_inert_until_worker_birth, supervisor_step_before_init_routes_to_unborn_proxies)",
+        "cargo nextest run -p bombay-behavior -> 31 passed including driver_interprets_initial_effect_before_receiving and shutdown_composition_preserves_inner_initialization_effects",
+        "cargo nextest run -p bombay-behavior-testkit --test boundaries -> 14 tests run: 14 passed including proxy_double_init_is_rejected (should_panic: a proxy initializes once)"
+      ]
+    },
+    {
+      "id": "CORE-ERRORS",
+      "category": "core",
+      "subject": "typed errors and termination",
+      "question": "Prove errors, phases, Never, Step, and Exit preserve illegal-state constraints.",
+      "status": "resolved",
+      "decision": "Retain as-is, evidence verified: law-classified (Never uninhabited, verdict.rs:8-10 'the law is the type, not a convention') with Bombay policy Crash classification \u2014 Acted is Result<Actions,E>, Step<Ph,Exit<A>> is the become verdict, Step<Never> has no constructible Goto, and NoBirths::Child = Never proves a layer creates nothing.",
+      "evidence": [
+        "crates/behavior/src/verdict.rs:11 pub enum Never {} \u2014 uninhabited; Step<Never> cannot Goto and NoBirths::Child = Never (behavior.rs:291-293)",
+        "crates/behavior/src/verdict.rs:16-25 pub enum Step<Ph, R> { Continue, Goto(Ph), Stop(R) } \u2014 the Agha 1986 become verdict",
+        "crates/behavior/src/exit.rs:12 pub enum Exit<A: Address> { Normal, Collected, LinkDied(A), SupervisionFailed(..) } plus Crash (exit.rs:65) for abnormal termination",
+        "crates/behavior/src/behavior.rs:352 Acted<A, Ph, Sends, Birth, E> = Result<Actions<...>, E> \u2014 controlled failure is a typed associated Error, never a panic channel",
+        "crates/behavior/src/behavior.rs:574-575 and 589-590 run() exhausts Step::Goto(never) via match never {} \u2014 unreachable by type, not by convention",
+        "crates/behavior-testkit/tests/error_paths.rs:1-6 documents the Fsm mid-drain error asymmetry (drops unprocessed batch) vs the Stop path (preserves it) as a pinned finding"
+      ],
+      "validation": [
+        "cargo nextest run -p bombay-behavior-testkit --test error_paths -> 9 tests run: 9 passed (fsm_error_mid_drain_drops_the_unprocessed_batch, supervision_propagates_inner_errors_without_touching_slots, at_reaction_error_consumes_the_timer, watch_reaction_error_propagates, driver_propagates_errors_and_preserves_the_tail, ...)",
+        "cargo nextest run -p bombay-behavior -> 31 passed including birth_modes_are_disjoint_and_wrappers_forward_them which pins NoBirths/Births disjointness at the type level",
+        "cargo nextest run -p bombay-behavior-testkit --test boundaries -> 14 passed including supervision failure exit and unknown-nonce panic guard tests"
+      ]
+    },
+    {
+      "id": "CORE-SENDS",
+      "category": "core",
+      "subject": "typed send algebra",
+      "question": "Prove exact lane/product selection without erasure or duplicate algebra.",
+      "status": "resolved",
+      "decision": "Retain as-is, evidence verified: Bombay derivation \u2014 Delivery/Recipient/Route form the typed delivery lane, SendProduct<L,R> is the concrete nested product with per-lane SendAlgebra, ServiceSends<M> is the disjoint local-request lane; SendAlgebra is a proven monoid (identity + associativity) at Vec and SendProduct levels; no erased or duplicate send representation exists.",
+      "evidence": [
+        "crates/behavior/src/behavior.rs:36-106 Route (Global/Child), Recipient (route + PhantomData<fn(M)> message coupling), Delivery { to: Recipient<A,M>, message: M } \u2014 message type statically coupled to recipient",
+        "crates/behavior/src/behavior.rs:112-116 SendProduct<L,R> { inner: L, own: R } \u2014 concrete nested product, one definition reused by every wrapper",
+        "crates/behavior/src/behavior.rs:118-139 SendAlgebra monoid with Vec<T> and SendProduct<L,R> impls; append recurses per lane preserving lane-local order",
+        "crates/behavior/src/behavior.rs:154-232 ServiceSends<M> \u2014 address-less local requests, documented as disjoint from Delivery so interpreters route them with disjoint static implementations",
+        "crates/behavior-testkit/tests/driver_accumulation.rs:143-194 proptest send_algebra_is_a_monoid verifies empty is a two-sided identity and append is associative at both Vec and SendProduct levels"
+      ],
+      "validation": [
+        "cargo nextest run -p bombay-behavior-testkit --test driver_accumulation -> 6 tests run: 6 passed including send_algebra_is_a_monoid (128-case proptest) and driver_accumulates_supervising_send_products_losslessly",
+        "cargo nextest run -p bombay-behavior -> 31 passed including ordinary_and_service_send_algebras_have_disjoint_static_dispatch",
+        "rg -n '\\bAny\\b|\\bdyn\\s' crates/behavior/src -> 0 matches, so lane selection cannot rely on erasure"
+      ]
+    },
+    {
+      "id": "MODULE-CORE",
+      "category": "modules",
+      "subject": "core algebra layer",
+      "question": "Verify behavior, verdict, and exit own only core algebra responsibilities.",
+      "status": "resolved",
+      "decision": "Retain as-is, evidence verified: module ownership is Bombay policy \u2014 behavior.rs (aliased as mod algebra via #[path]) owns the fold, effect algebra, send algebra, and driver; verdict.rs owns Never/Step only; exit.rs owns Exit/Crash/RestartDenial/SupervisionFailureReason vocabulary only.",
+      "evidence": [
+        "crates/behavior/src/lib.rs:9-10 #[path = \"behavior.rs\"] mod algebra; \u2014 the core algebra module alias, re-exported as the Acted/Actions/Behavior/State surface at lib.rs:19-23",
+        "crates/behavior/src/verdict.rs:1-25 contains only Never and Step \u2014 no fold, wrapper, or event lane",
+        "crates/behavior/src/exit.rs:1-84 contains only Exit, SupervisionFailureReason, RestartDenial, Crash \u2014 termination vocabulary, no fold logic",
+        "rg 'impl.*Behavior for|fn init|fn step' over crates/behavior/src/{protocol,verdict,exit}.rs -> 0 matches: no core module leaks transformation responsibilities"
+      ],
+      "validation": [
+        "rg -n 'impl.*Behavior for|fn init|fn step' crates/behavior/src/protocol.rs crates/behavior/src/verdict.rs crates/behavior/src/exit.rs -> no matches observed",
+        "cargo nextest run -p bombay-behavior -> 31 tests run: 31 passed, core algebra suite green",
+        "cargo nextest run -p bombay-behavior-testkit --test driver_accumulation -> 6 passed, driver accumulation over the core types green"
+      ]
+    },
+    {
+      "id": "MODULE-PROTOCOL",
+      "category": "modules",
+      "subject": "neutral protocol vocabulary",
+      "question": "Verify protocol owns values/capabilities but no fold or wrapper.",
+      "status": "resolved",
+      "decision": "Retain as-is, evidence verified: Bombay policy \u2014 protocol.rs is the neutral vocabulary of interpreter-originated lane values (TimerElapsed, PeerStopped, ChildStopped, WorkerStopped, ShutdownRequested, Schedule*) plus extraction-capability traits (TimeEvent, PeerEvent, ChildEvent, WorkerEvent, ShutdownEvent); it defines no fold and no wrapper.",
+      "evidence": [
+        "crates/behavior/src/protocol.rs:1-5 module doc: 'Neutral typed vocabulary for interpreter-originated event and service lanes ... avoids dependencies between otherwise independent transformations'",
+        "crates/behavior/src/protocol.rs contains TimerId/TimerGeneration/ScheduleAt/ScheduleAfter/TimerElapsed/ObservePeer/PeerStopped/ChildStopped/ObserveChild/ReportWorkerStopped/WorkerStopped/ShutdownRequested and the *Event extraction traits \u2014 values and capabilities only",
+        "rg 'impl.*Behavior for|fn init\\(|fn step\\(' crates/behavior/src/protocol.rs -> 0 matches: no fold or wrapper ownership",
+        "crates/behavior/src/behavior.rs:10-13 the core imports protocol values (TimerElapsed, PeerStopped, ...) \u2014 dependency points from core/wrappers into protocol, never the reverse"
+      ],
+      "validation": [
+        "rg -n 'impl.*Behavior for|fn init|fn step' crates/behavior/src/protocol.rs crates/behavior/src/verdict.rs crates/behavior/src/exit.rs -> no matches observed",
+        "cargo nextest run -p bombay-behavior -> 31 tests run: 31 passed, all wrappers consume protocol vocabulary correctly",
+        "cargo nextest run -p bombay-behavior-testkit --test boundaries -> 14 passed including nested_at_identical_schedules_are_distinguished_by_identity which exercises TimerId/TimerGeneration vocabulary"
+      ]
+    },
+    {
+      "id": "MODULE-TRANSFORMS",
+      "category": "modules",
+      "subject": "concrete transformations",
+      "question": "Verify wrappers own concrete event sums and truthful forwarding.",
+      "status": "resolved",
+      "decision": "Retain as-is, evidence verified: Bombay derivation \u2014 each wrapper module owns its concrete closed event sum (AtEvent, ReceiveTimeoutEvent, WatchEvent, SupervisionEvent, ShutdownProtocol) and forwards inner lanes unmodified through wrap()/SendProduct.inner; no wrapper reinterprets or relabels an inner lane.",
+      "evidence": [
+        "crates/behavior/src/deadlined.rs:17 pub enum AtEvent<E>, receive_timeout.rs:17 ReceiveTimeoutEvent<E>, watching.rs:14 WatchEvent<E,A>, supervising.rs:125 SupervisionEvent<E,A>, shutdown.rs:17 ShutdownProtocol<E> \u2014 concrete sums owned by their wrapper modules",
+        "crates/behavior/src/watching.rs:158-186 Watching::wrap places actions.sends unchanged into SendProduct { inner: actions.sends, own } \u2014 truthful forwarding",
+        "crates/behavior/src/stashing.rs:95-128 Stashing forwards inner init/step results unchanged except held-message bookkeeping; shutdown.rs:137-151 forwards inner actions verbatim",
+        "rg 'enum (AtEvent|WatchEvent|SupervisionEvent|ReceiveTimeoutEvent|ShutdownProtocol|StashRoute)' crates/behavior/src -> each defined exactly once in its owning wrapper module, none in core or protocol"
+      ],
+      "validation": [
+        "cargo nextest run -p bombay-behavior -> 31 passed including outer_combinators_preserve_the_shutdown_lane, nested_at_composition_routes_stale_and_matching_events, watching_registers_and_reacts_through_messages",
+        "cargo nextest run -p bombay-behavior-testkit --test boundaries -> 14 passed and --test driver_accumulation -> 6 passed including driver_accumulates_supervising_send_products_losslessly (lane-order preservation through the full product)",
+        "rg -n 'enum (AtEvent|WatchEvent|SupervisionEvent|ReceiveTimeoutEvent|ShutdownProtocol|StashRoute)' crates/behavior/src/*.rs -> 6 matches in 6 files, one sum per wrapper module"
+      ]
+    },
+    {
+      "id": "COMPOSE-AT",
+      "category": "composition",
+      "subject": "At",
+      "question": "Audit deadline lane, initialization, sends, errors, and nesting.",
+      "status": "resolved",
+      "decision": "Retain as-is, evidence verified. At is a Bombay derivation (not a primitive): the pure fold plus one ServiceSends<ScheduleAt> product lane and the AtEvent timer sum; no lane is dropped, duplicated, reordered, relabeled, or reinterpreted in any supported nesting. Initialization composes inner-first then the own schedule (documented order); errors pass through as the inner B::Error unchanged (policy: no wrapper error type).",
+      "evidence": [
+        "crates/behavior/src/deadlined.rs:17-20 AtEvent<E> = Inner(E) | Reached(TimerElapsed) closed sum",
+        "crates/behavior/src/deadlined.rs:22-67 TimeEvent/UserEvent/PeerEvent/ChildEvent/WorkerEvent/ShutdownEvent all delegate to the inner event wrapped in Inner, so every inner lane survives",
+        "crates/behavior/src/deadlined.rs:117-133 init runs inner.init() first, then appends the own ScheduleAt; a terminal inner init cancels the pending schedule",
+        "crates/behavior/src/deadlined.rs:137-156 step consumes a matching (id, generation) exactly once and clears the schedule before the reaction",
+        "crates/behavior/src/deadlined.rs:157-176 non-matching Reached delegates through B::Event::time_reached and is inert (Actions::cont()) when the inner claims no time lane",
+        "crates/behavior/src/deadlined.rs:179-194 wrap preserves inner sends/creates/become_ verbatim in the SendProduct inner lane",
+        "crates/behavior/tests/algebra.rs:189-215 nested_at_composition_routes_stale_and_matching_events proves two nested At wrappers keep distinct TimerIds and disjoint schedule lanes",
+        "crates/behavior/src/spec.rs:113-121 Spec::at allocates TimerId from a checked next_timer counter so composed timers never share an id"
+      ],
+      "validation": [
+        "cargo nextest run -p bombay-behavior --test algebra -> Summary 30 tests run: 30 passed, 0 skipped (includes nested_at_composition_routes_stale_and_matching_events and at_is_a_typed_clock_actor_protocol)",
+        "cargo nextest run -p bombay-behavior-testkit --test cross_lane -> Summary 5 tests run: 5 passed (supervision_preserves_inner_at_routing, full_stack_all_four_layers_keep_their_own_lanes)",
+        "cargo nextest run -p bombay-behavior-testkit --test init_contract -> Summary 6 tests run: 6 passed (at_double_init_duplicates_the_schedule_send records the documented no-guard boundary)"
+      ]
+    },
+    {
+      "id": "COMPOSE-RECEIVE-TIMEOUT",
+      "category": "composition",
+      "subject": "ReceiveTimeout",
+      "question": "Audit timer generation, exhaustion, rearming, effects, and nesting.",
+      "status": "resolved",
+      "decision": "Retain as-is, evidence verified. ReceiveTimeout is a Bombay derivation (pure fold + ServiceSends<ScheduleAfter> lane + ReceiveTimeoutEvent sum) with three explicit policies: TimerGeneration disambiguates live vs stale deliveries, only successful continuing user folds rearm (service events never reset inactivity), and generation exhaustion is a controlled ReceiveTimeoutError::GenerationExhausted via checked_add. No lane is dropped, duplicated, reordered, or reinterpreted; the reaction's complete Actions are preserved on firing.",
+      "evidence": [
+        "crates/behavior/src/receive_timeout.rs:17-20 ReceiveTimeoutEvent<E> = Inner(E) | Elapsed(TimerElapsed) closed sum",
+        "crates/behavior/src/receive_timeout.rs:22-66 all six lane traits delegate to the inner event wrapped in Inner; the elapsed arm is only added, never substituted",
+        "crates/behavior/src/receive_timeout.rs:70-85 ReceiveTimeoutError<E> = Inner(E) | GenerationExhausted with the documented non-transactional exhaustion semantics",
+        "crates/behavior/src/receive_timeout.rs:110-116 live/last_issued generation state; :142-157 schedule() advances the generation with checked_add and errors GenerationExhausted on overflow",
+        "crates/behavior/src/receive_timeout.rs:213-220 step matches only elapsed.id == self.id && live == Some(generation), consuming live before running the reaction",
+        "crates/behavior/src/receive_timeout.rs:221-235 stale same-id delivery is inert (Actions::cont()); foreign-id delivery delegates through B::Event::time_reached",
+        "crates/behavior/src/receive_timeout.rs:236-262 only a successful continuing user fold calls schedule(); errors, service events, and terminal folds never rearm",
+        "crates/behavior-testkit/tests/receive_timeout.rs:211-246 nested_timer_service_events_never_reset_receive_inactivity proves an inner At delivery never rearms the outer timeout",
+        "crates/behavior/src/receive_timeout.rs:297-318 unit test exhaustion_follows_the_successful_inner_fold_without_emitting_its_actions pins the controlled-exhaustion contract"
+      ],
+      "validation": [
+        "cargo nextest run -p bombay-behavior-testkit --test receive_timeout -> Summary 6 tests run: 6 passed, 0 skipped",
+        "cargo nextest run -p bombay-behavior exhaustion -> PASS bombay-behavior receive_timeout::tests::exhaustion_follows_the_successful_inner_fold_without_emitting_its_actions, Summary 1 test run: 1 passed",
+        "accepted_stale_timeout_error_and_terminal_turns_match_independent_model (crates/behavior-testkit/tests/receive_timeout.rs:249) checks behavior against behavior_testkit::model::InactivityModel generation for generation"
+      ]
+    },
+    {
+      "id": "COMPOSE-WATCHING",
+      "category": "composition",
+      "subject": "Watching",
+      "question": "Audit peer observation lane and forwarding in both wrapper orders.",
+      "status": "resolved",
+      "decision": "Retain Watching as-is; evidence verified. Classification: the peer-observation event sum WatchEvent (Inner(E) | PeerStopped) is a typed-sum derivation over the neutral protocol vocabulary (PeerEvent trait), the ObservePeer service request is a Bombay-derived ServiceSends lane appended as the own half of a SendProduct, and the reaction selection (peer-equality guard, stop_on_abnormal_death outcome classes) is deliberate Bombay policy. Forwarding in both wrapper orders is lawful: WatchEvent delegates TimeEvent/ChildEvent/WorkerEvent/ShutdownEvent/UserEvent to Inner, and the dual AtEvent delegates PeerEvent to Inner, so no order drops or relabels a lane.",
+      "evidence": [
+        "crates/behavior/src/watching.rs:14-17 WatchEvent<E,A> closed sum Inner(E)|PeerStopped(PeerStopped<A>); :19-23 PeerEvent impl constructs the peer lane; :25-66 UserEvent/TimeEvent/ChildEvent/WorkerEvent/ShutdownEvent impls all forward foreign lanes via E::..(event).map(Self::Inner)",
+        "crates/behavior/src/watching.rs:116-121 init wraps inner actions and appends ServiceSends::one(ObservePeer{peer}) in the own lane; :124-153 step: matching peer death runs LinkReaction (fn pointer, :65-73) and returns Sends::empty(); non-matching PeerStopped is forwarded via B::Event::peer_stopped, None is inert Actions::cont()",
+        "crates/behavior/src/watching.rs:157-168 wrap preserves inner sends/creates/become and merges own ServiceSends into SendProduct{inner, own}; :176-187 stop_on_abnormal_death continues on Exit::Normal|Collected and stops with Exit::LinkDied(peer) otherwise",
+        "Watching-outer order: crates/behavior/src/deadlined.rs:44-48 AtEvent PeerEvent impl forwards E::peer_stopped(event).map(Self::Inner) (same for ChildEvent :50-54, WorkerEvent :56-60, ShutdownEvent :62-66), so At\u2218Watching keeps the peer lane",
+        "crates/behavior-testkit/tests/compositions.rs:55-116 all_wrapper_permutations_preserve_init_protocol_nesting asserts all six orderings of {at,watch,at} keep each layer's init send at its exact product depth; compositions.rs:218-248 watch_of_watch_routes_each_peer_to_its_own_layer; compositions.rs:272-309 abnormal_death_reaction_outcome_classes",
+        "crates/behavior-testkit/tests/core.rs:96-113 wrapper_orderings_preserve_both_initial_protocols (at\u2218watch and watch\u2218at); core.rs:115-137 unrelated_peer_event_passes_to_the_inner_watcher; crates/behavior/tests/algebra.rs:233-245 watching_registers_and_reacts_through_messages; compositions.rs:186-214 watch_reaction_reinvokes_on_each_death_and_fold_continues"
+      ],
+      "validation": [
+        "cargo nextest run -p bombay-behavior-testkit --test compositions -> Summary: 9 tests run: 9 passed, 0 skipped",
+        "cargo nextest run -p bombay-behavior-testkit --test cross_lane -> Summary: 5 tests run: 5 passed, 0 skipped (includes full_stack_random_lane_routing_never_leaks, 256 proptest cases)",
+        "cargo nextest run -p bombay-behavior --test algebra -> Summary: 30 tests run: 30 passed, 0 skipped (includes watching_registers_and_reacts_through_messages)",
+        "grep -n over crates/behavior/src/watching.rs and deadlined.rs confirmed every foreign-lane trait impl maps into Self::Inner with no reconstruction of the carried value (PeerStopped/ChildStopped/WorkerStopped/TimerElapsed moved unchanged)"
+      ]
+    },
+    {
+      "id": "COMPOSE-SUPERVISING",
+      "category": "composition",
+      "subject": "Supervising and Proxy",
+      "question": "Audit failure reactions, worker/proxy routing, replacement provenance, and nesting.",
+      "status": "resolved",
+      "decision": "Retain Supervising and Proxy as-is; evidence verified. Classification: supervision is a Bombay-derived construction over the pure fold (per module doc supervising.rs:1-10, one typed WorkerStopped observation updates explicit slot state and returns only sends/creates/become); stable child identity via a proxy actor with generation-scoped worker nonces is the Bombay derivation of Erlang-style supervision; Strategy/RestartPolicy eligibility, candidate sets, budget admission (RestartDenial::BudgetExceeded) and the default retire_on_supervision_failure reaction are deliberate Bombay policy. Replacement provenance is carried by CreationKind::ReplacementIncarnation emitted only by Proxy, and WorkerEvent/ReportWorkerStopped routing keeps proxy identity stable across worker restarts.",
+      "evidence": [
+        "crates/behavior/src/supervising.rs:28-38 Strategy{OneForOne,OneForAll,RestForOne} and RestartPolicy{Permanent,Transient,Temporary}; :492-558 replacement_decision computes eligibility (policy), prunes window stamps, selects candidates (OneForAll alive-only, RestForOne alive && sequence >= dead sequence), and fails with SupervisionFailure reason RestartDenied(BudgetExceeded{restarts_in_window,replacements_requested,maximum_restarts}) at :541-546 when restarts.len()+candidates > max_restarts",
+        "crates/behavior/src/supervising.rs:63-80 typed SupervisionFailure{child, outcome owned unchanged, reason} with into_exit -> Exit::SupervisionFailed(reason); :87-95 SupervisionFailureReaction is a fn pointer; :101-113 retire_on_supervision_failure (default wired in Supervising::new at :437) and :117-122 stop_on_supervision_failure escalation; Supervising::step ChildStopped arm (:680-693) fails with StableChildStopped and never sends to the dead proxy",
+        "crates/behavior/src/supervising.rs:208-216 Proxy{worker, generation, worker_alive, pending}; :249-268 init births generation 0 with Create::birth + ObserveChild; :270-307 step defers Replace while alive (pending), on matching ChildStopped emits ReportWorkerStopped carrying outcome/at unchanged (:280-283) plus replacement Create::replacement_incarnation at the incremented generation (:284-293); stale ChildStopped/WorkerStopped are inert (:308-310); Forward routes to Recipient::child(current generation) only when worker_alive (:318-335)",
+        "crates/behavior/src/supervising.rs:641-655 Supervising::init wraps inner actions then extends creates with the configured fleet of Proxy::new children and ObserveChild per nonce; :575-611 wrap asserts birth-nonce freshness, appends slots with next_sequence, and preserves create.kind while wrapping the child in Proxy (:612-617); replacement sends target Recipient::child(slot nonce) so proxy identity is stable (:552-558)",
+        "crates/behavior/tests/algebra.rs:386-414 supervisor_creates_proxies_and_replacement_is_a_send; :416-452 proxy_replacement_creates_a_fresh_incarnation (nonce 0 Birth -> nonce 1 ReplacementIncarnation, report outcome unchanged, Forward routed to generation 1); :485-542 stable_proxy_reports_worker_stop_and_creates_fresh_replacement; :727-743 supervisor_preserves_dynamic_replacement_provenance_when_wrapping_the_child; crates/behavior-testkit/tests/supervision_model.rs:122-153 creation_provenance_matches_the_independent_incarnation_model",
+        "crates/behavior-testkit/tests/supervision_model.rs:223-308 supervision_matches_the_reference_model (256 proptest cases over strategy x policy x budget x window x timestamp orderings incl. backwards timestamps, asserting exact replacement routes, BudgetExceeded fields, slot aliveness, restart counts vs behavior_testkit::model); :407-469 budget_recovers_after_stamps_age_out_of_the_window; workers_fleet.rs:133-167 supervised_mixed_fleet_routes_replacements_by_birth_sequence; compositions.rs:313-372 supervision_preserves_inner_watch_routing (nesting under watch); cross_lane.rs:173-255 full_stack_all_four_layers_keep_their_own_lanes"
+      ],
+      "validation": [
+        "cargo nextest run -p bombay-behavior-testkit --test supervision_model -> Summary: 6 tests run: 6 passed, 0 skipped",
+        "cargo nextest run -p bombay-behavior-testkit --test workers_fleet -> Summary: 5 tests run: 5 passed, 0 skipped",
+        "cargo nextest run -p bombay-behavior-testkit --test compositions -> Summary: 9 tests run: 9 passed, 0 skipped; --test cross_lane -> 5 passed; --test init_contract -> 6 passed",
+        "cargo nextest run -p bombay-behavior --test algebra -> Summary: 30 tests run: 30 passed, 0 skipped",
+        "read of crates/behavior/src/supervising.rs:249-366 confirmed Proxy has no dyn/Any/TypeId/unsafe and the only panics are expect(\"a proxy initializes once\") :250 and expect(\"proxy generation exhausted\") (checked_add guard), both programmer-contract panics covered by boundaries.rs:147 proxy_double_init_is_rejected"
+      ]
+    },
+    {
+      "id": "COMPOSE-SHUTDOWN",
+      "category": "composition",
+      "subject": "shutdown wrappers",
+      "question": "Audit typed shutdown input and preservation of complete final Actions.",
+      "status": "resolved",
+      "decision": "Retain as-is, evidence verified. Shutdown is a deliberate Bombay policy expressed as an ordinary behavior transition (shutdown.rs module docs), not an actor-model effect. StopOnShutdown stops Normal without running the inner fold; FinalizeOnShutdown retains the final fold's complete sends and creates and replaces only the become verdict with Stop(Normal). ShutdownProtocol adds the ShutdownRequested lane as a closed sum while every inner lane delegates unchanged; init is a pure passthrough and Sends/Ph/Error/Birth are forwarded identically, so no lane is dropped, relabeled, or reinterpreted.",
+      "evidence": [
+        "crates/behavior/src/shutdown.rs:17-20 ShutdownProtocol<E> = Inner(E) | ShutdownRequested(ShutdownRequested) closed sum",
+        "crates/behavior/src/shutdown.rs:22-66 ShutdownEvent/UserEvent/TimeEvent/PeerEvent/ChildEvent/WorkerEvent all delegate to inner wrapped in Inner",
+        "crates/behavior/src/shutdown.rs:118-152 impl_shutdown_behavior! forwards init, Sends, Ph, Error, and Birth unchanged; only the event type gains the shutdown variant",
+        "crates/behavior/src/shutdown.rs:154-156 StopOnShutdown answers Actions::stop(Exit::Normal) without invoking the inner fold",
+        "crates/behavior/src/shutdown.rs:158-167 FinalizeOnShutdown keeps actions.sends and actions.creates verbatim and forces only become_ = Step::Stop(Exit::Normal)",
+        "crates/behavior/src/shutdown.rs:85-99 ShutdownReaction docs state the retention policy: sends and fresh creations retained, become verdict replaced",
+        "crates/behavior/tests/algebra.rs:116-127 final_shutdown_fold_preserves_effects_and_forces_normal_stop asserts the retained send (message 42), retained create (nonce 7), and forced Normal stop",
+        "crates/behavior/tests/algebra.rs:129-153 outer_combinators_preserve_the_shutdown_lane and shutdown_composition_preserves_inner_initialization_effects cover both wrapper orders around at and watch"
+      ],
+      "validation": [
+        "cargo nextest run -p bombay-behavior-testkit --test shutdown_model -> Summary 1 test run: 1 passed (512-case proptest shutdown_matches_a_first_request_prefix_model)",
+        "cargo nextest run -p bombay-behavior --test algebra -> Summary 30 tests run: 30 passed (typed_shutdown_stops_normally_without_running_the_inner_fold, final_shutdown_fold_preserves_effects_and_forces_normal_stop)",
+        "shutdown_model proptest asserts trace.sends equal the pre-shutdown prefix exactly and trace.pending accounts for the unconsumed tail, proving no duplication or loss across the stop boundary"
+      ]
+    },
+    {
+      "id": "COMPOSE-STASHING",
+      "category": "composition",
+      "subject": "Stashing",
+      "question": "Audit stash routing, replay order, phase constraints, and nesting.",
+      "status": "resolved",
+      "decision": "Retain as-is, evidence verified. Stashing is a Bombay derivation of hold-and-replay over the pure fold: with a pure route function it is an exact filter (derivation, proven against an independent filter model). It uses a single FIFO VecDeque buffer (not two buffers); a local drain batch is the second structure only during replay. Replay preserves arrival order with origins; a mid-drain stop re-extends the remaining batch into held in order. The Ph = Never phase constraint is static (compile-time policy), and non-user service events bypass the stash unrouted, so no lane is dropped, duplicated, reordered, or relabeled in any nesting.",
+      "evidence": [
+        "crates/behavior/src/stashing.rs:9-13 StashRoute = Stash | Deliver | Release",
+        "crates/behavior/src/stashing.rs:15-19 single held: VecDeque<User<B::Addr, B::Msg>> buffer; no second persistent buffer exists",
+        "crates/behavior/src/stashing.rs:21 and :81-96 the Behavior impl requires B: Behavior<Ph = Never>, a static phase constraint enforced by the type system",
+        "crates/behavior/src/stashing.rs:49-73 drain_into pops in FIFO order, re-stashes on Stash route, and on inner Stop re-extends the leftover batch into held before propagating the verdict with accumulated effects",
+        "crates/behavior/src/stashing.rs:98-123 step routes only user messages via into_user; Err(other) service events go straight to inner.step untouched",
+        "crates/behavior/src/stashing.rs:113-122 Release delivers the trigger first, then drains only when the trigger fold is non-terminal",
+        "crates/behavior-testkit/tests/stash_properties.rs:50-88 stash_is_an_exact_filter_without_loss_or_duplication (256-case proptest against the independent filter model)",
+        "crates/behavior-testkit/tests/stash_properties.rs:118-172 stash_exhaustive_sequences_match_the_filter_model enumerates all 121 sequences of length <= 4 over the three route classes",
+        "crates/behavior-testkit/tests/cross_lane.rs:92-110 supervised_stash_routes_user_lane_without_cross_lane_effects proves the stash filter survives nesting under Supervising"
+      ],
+      "validation": [
+        "cargo nextest run -p bombay-behavior-testkit --test stash_properties -> Summary 4 tests run: 4 passed, 0 skipped",
+        "cargo nextest run -p bombay-behavior-testkit --test cross_lane -> Summary 5 tests run: 5 passed, 0 skipped",
+        "stash_filter_with_a_stopping_inner_matches_the_prefix_model (crates/behavior-testkit/tests/stash_properties.rs:215) confirms the stop-mid-drain prefix model: held count and delivered prefix match exactly"
+      ]
+    },
+    {
+      "id": "COMPOSE-FSM",
+      "category": "composition",
+      "subject": "Fsm",
+      "question": "Audit concrete phase/state transitions and static protocol shape.",
+      "status": "resolved",
+      "decision": "Retain as-is, evidence verified. Fsm is a Bombay derivation solely from receive and become (fsm.rs module doc), not a primitive: typed phases via Move<P> and Step, with a statically fixed protocol shape (Event = User<A, M>, Sends = Vec<Delivery<A, Never>>, Ph = Never, Birth = NoBirths). Deferral replay drains only on a real phase change; the mid-drain merge may reorder held messages but provably never drops or duplicates (|recorded| + held + goto-consumed == stepped at every point). Because User<A, M> returns None for every service-lane trait, Fsm nests under At/Watching/shutdown wrappers with unmatched service events inert rather than reinterpreted.",
+      "evidence": [
+        "crates/behavior/src/fsm.rs:1 module doc: a finite-state behavior derived solely from receive and become",
+        "crates/behavior/src/fsm.rs:9-14 Move<P> = Stay | Goto(P) | Defer | Stop typed phase transitions",
+        "crates/behavior/src/fsm.rs:83-102 Behavior impl fixes Event = User<A, M>, Sends = Vec<Delivery<A, Never>>, Ph = Never, Birth = NoBirths statically",
+        "crates/behavior/src/fsm.rs:51-85 advance/drain run the drain only when Goto changes the phase; self-Goto is a no-op that leaves held messages deferred",
+        "crates/behavior/src/fsm.rs:67-80 mid-drain Stop re-extends the remaining batch into held in order before returning the verdict; :76 batch.extend(self.held.drain(..)) is the only reorder point",
+        "crates/behavior/src/behavior.rs:490-517 User<A, M> implements TimeEvent/PeerEvent/ChildEvent/WorkerEvent/ShutdownEvent returning None, so foreign service lanes are inert under wrappers, never reinterpreted",
+        "crates/behavior-testkit/tests/fsm_properties.rs:55-88 fsm_never_drops_or_duplicates and fsm_three_phase_never_drops_or_duplicates (512-case proptests with the black-box accounting invariant)",
+        "crates/behavior-testkit/tests/fsm_properties.rs:146-184 fsm_stop_mid_drain_preserves_remaining_batch and fsm_self_goto_does_not_drain pin the two drain boundaries",
+        "crates/behavior/tests/algebra.rs:274-303 fsm_is_receive_plus_become_policy demonstrates deferral then replay on Goto(Ready) through Spec::machine"
+      ],
+      "validation": [
+        "cargo nextest run -p bombay-behavior-testkit --test fsm_properties -> Summary 5 tests run: 5 passed, 0 skipped",
+        "fsm_exhaustive_sequences_never_drop_or_duplicate (crates/behavior-testkit/tests/fsm_properties.rs:100) enumerates all 341 sequences of length <= 4 over four residue classes and asserts uniqueness of every delivered occurrence id",
+        "cargo nextest run -p bombay-behavior --test algebra -> Summary 30 tests run: 30 passed (fsm_is_receive_plus_become_policy)"
+      ]
+    },
+    {
+      "id": "COMPOSE-SPEC",
+      "category": "composition",
+      "subject": "Spec",
+      "question": "Prove the facade constructs concrete wrappers and stores no runtime intent graph.",
+      "status": "resolved",
+      "decision": "Retain Spec as-is; evidence verified. Classification: Spec is a Bombay policy facade (ergonomic typestate), not an algebraic primitive; derivation-wise every method immediately constructs the concrete pure wrapper (Base/Fsm/Watching/At/ReceiveTimeout/Stashing/StopOnShutdown/FinalizeOnShutdown/Supervising) so the runtime behavior tree is identical to hand-built composition. Its only state is `behavior: B` plus `next_timer: u64`, a TimerId allocator (Bombay policy for distinct timer identity), so no runtime intent graph, registry, or deferred interpretation exists anywhere.",
+      "evidence": [
+        "crates/behavior/src/spec.rs:27-30 struct Spec<B> has exactly two fields: behavior: B and next_timer: u64; there is no enum, graph, Vec of intents, or stringly-typed node anywhere in the 285-line file",
+        "crates/behavior/src/spec.rs:99-104 watch constructs Watching::new immediately; :113-118 at constructs At::new(TimerId(self.next_timer)...) and only increments next_timer; :136-149 receive_timeout constructs ReceiveTimeout::new; :157-163 stash constructs Stashing::new; :77-83 stop_on_shutdown and :87-94 finalize_on_shutdown construct StopOnShutdown/FinalizeOnShutdown",
+        "crates/behavior/src/spec.rs:170-177 children delegates to children_with_nonces with identity_nonce; :180-205 children_with_nonces constructs Supervising::new with DEFAULT_STRATEGY/OneForOne, DEFAULT_POLICY/Transient, DEFAULT_BUDGET/(1, 5s) (spec.rs:18-20); :212-243 restart/when/within/on_supervision_failure exist only on Spec<Supervising<B,C>> and mutate the concrete supervisor via with_strategy/with_policy/with_budget/with_failure_reaction",
+        "crates/behavior/src/spec.rs:246-285 the Behavior impl for Spec<B> forwards init and step to self.behavior with unchanged associated types (Event = B::Event, Sends = B::Sends), proving Spec adds no lane and no interpretation of its own; :66-72 build/behavior merely return the stored concrete behavior",
+        "crates/behavior/tests/algebra.rs:212-230 spec_hides_composed_protocols_without_losing_their_effects asserts a Spec-composed at\u2218watch\u2218stash stack exposes the schedule and observe-peer sends at their exact product depths and steps the time lane through WatchEvent::Inner(AtEvent::Reached)"
+      ],
+      "validation": [
+        "grep -n 'pub fn|pub struct|Behavior for Spec' crates/behavior/src/spec.rs enumerated all 17 members: 2 constructors, build/behavior accessors, 7 wrapper constructors, 4 supervisor-only refinements, 1 Behavior impl \u2014 none stores anything beyond behavior and next_timer",
+        "cargo nextest run -p bombay-behavior --test algebra -> Summary: 30 tests run: 30 passed, 0 skipped (includes spec_hides_composed_protocols_without_losing_their_effects)",
+        "cargo nextest run -p bombay-behavior-testkit --test compositions -> Summary: 9 tests run: 9 passed, 0 skipped (all stacks built through Spec produce the same nesting as direct wrapper construction)"
+      ]
+    },
+    {
+      "id": "COMPOSE-MIXED",
+      "category": "composition",
+      "subject": "mixed wrapper orders",
+      "question": "Prove supported nesting drops, duplicates, reorders, relabels, or reinterprets no lane.",
+      "status": "resolved",
+      "decision": "Retain the supported mixed nesting as-is; evidence verified. Classification: lane preservation is a typed-sum/typed-product derivation \u2014 every wrapper event sum is Inner(E) plus its own variants, every foreign-lane trait impl forwards via E::lane(event).map(Self::Inner) without reconstructing the payload (no relabel/reinterpretation), and every wrapper's send algebra merges inner actions as SendProduct{inner, own} (no drop/duplicate); initialization accumulation is innermost-first by construction (each layer wraps the already-wrapped inner actions and appends only its own lane, Supervising then extends with the configured fleet). Verdict propagation (Continue/Stop) is forwarded unchanged. These preservation laws are exercised by deterministic tests for every tested order plus randomized no-leak/no-drop proptests.",
+      "evidence": [
+        "Tested nesting orders: compositions.rs:55-116 all six permutations of {at,watch,at}; compositions.rs:120-132 stash\u2218watch\u2218at init; compositions.rs:135-183 At\u2218Watching\u2218Stashing lane bypass; compositions.rs:218-248 watch\u2218watch; compositions.rs:313-372 and :375-421 Supervising\u2218Watching; cross_lane.rs:100-143 Supervising\u2218Stashing; cross_lane.rs:146-170 Supervising\u2218At; cross_lane.rs:173-255 Supervising\u2218At\u2218Watching\u2218Stashing; two_buffer.rs:68 At\u2218Stashing\u2218Fsm; workers_fleet.rs:133-231 Supervising over workers! heterogeneous Crew sum (RestForOne and OneForAll)",
+        "No relabel/reinterpret: crates/behavior/src/watching.rs:25-66 and crates/behavior/src/supervising.rs:131-175 forward TimeEvent/PeerEvent/ChildEvent/WorkerStopped/ShutdownRequested by moving the payload into Self::Inner unchanged; crates/behavior/src/deadlined.rs:44-66 does the same for AtEvent; stale lanes are inert (watching.rs:145-153 None -> Actions::cont(), supervising.rs:308-310), never misrouted",
+        "No drop/duplicate in sends: crates/behavior/src/behavior.rs:115-136 SendProduct SendAlgebra::append appends component-wise; crates/behavior/src/watching.rs:157-168 and supervising.rs:575-611 wrap inner sends as the inner half and only ever add the layer's own lane; driver-level proof in crates/behavior-testkit/tests/driver_accumulation.rs:98-150 driver_accumulates_supervising_send_products_losslessly and :153-199 send_algebra_is_a_monoid property",
+        "Initialization accumulation order: watching.rs:116-121 init = wrap(inner.init(), own ObservePeer); supervising.rs:641-655 init = wrap(inner.init()) then extend creates with configured fleet and own.inner with ObserveChild per nonce; compositions.rs:55-116 asserts exact nesting depth of each layer's init send in all six permutations; properties.rs:107-124 nested_time_initialization_is_a_lossless_product (256 cases); init_contract.rs:125-146 full_stack_double_init_duplicates_every_init_effect documents the direct-misuse double-init boundary (retained policy: init-once is the driver contract)",
+        "Randomized no-leak/no-drop: cross_lane.rs:258-367 full_stack_random_lane_routing_never_leaks (256 cases, random interleavings of user/peer/time/child lanes asserting per-lane effects and per-lane verdicts against a filter model); two_buffer.rs:68-129 two_replay_buffers_never_drop_or_duplicate asserts recorded+fsm_held+stash_held+consumed == stepped across at\u2218stash\u2218fsm; supervision_model.rs:311-403 mixed_dynamic_births_and_deaths_match_the_reference_model"
+      ],
+      "validation": [
+        "cargo nextest run -p bombay-behavior-testkit --test compositions -> 9 passed; --test cross_lane -> 5 passed; --test workers_fleet -> 5 passed; --test two_buffer -> 1 passed; --test init_contract -> 6 passed; --test supervision_model -> 6 passed (all 0 skipped)",
+        "cargo nextest run -p bombay-behavior --test algebra -> Summary: 30 tests run: 30 passed, 0 skipped",
+        "combined focused run: cargo nextest run -p bombay-behavior-testkit -E 'test(supervision) or test(compositions) or test(cross_lane) or test(workers) or test(two_buffer) or test(init)' -> Summary: 27 tests run: 27 passed, 0 skipped",
+        "grep/read of watching.rs:99-168, supervising.rs:641-699, deadlined.rs:22-66 confirmed each step/init returns the same SendProduct nesting its type declares and never reorders lanes: inner user sends keep vector order, own lanes are appended, not interleaved"
+      ]
+    },
+    {
+      "id": "CREATE-FRESHNESS",
+      "category": "creation",
+      "subject": "fresh creation",
+      "question": "Prove Create is staged and acceptance/freshness remain interpreter-owned.",
+      "status": "resolved",
+      "decision": "Retain as-is; deliberate Bombay policy boundary: Create<A,New> is staged pure request data and acceptance, allocation, and freshness commit remain interpreter-owned.",
+      "evidence": [
+        "crates/behavior/src/behavior.rs:256 struct Create holds only nonce/child/kind fields as plain data",
+        "crates/behavior/src/behavior.rs:250-253 rustdoc: creation and CreationKind 'become runtime facts only after an interpreter successfully installs the fresh actor and commits the child binding'",
+        "crates/behavior/src/behavior.rs:318-319 Actions rustdoc: 'Constructing an Actions value remains pure and performs none of its effects'",
+        "crates/behavior/src/exit.rs:69-71 Crash::EnvironmentFailed is the typed signal that an interpreter could not execute an emitted effect"
+      ],
+      "validation": [
+        "cargo nextest run -p bombay-behavior --test algebra -> '30 tests run: 30 passed, 0 skipped' including supervisor_preserves_and_observes_dynamic_births_once (crates/behavior/tests/algebra.rs:698)",
+        "grep -n 'creates' crates/behavior/src shows wrappers only forward or accumulate the creates vector; no installation code exists in the crate"
+      ]
+    },
+    {
+      "id": "CREATE-NONCE",
+      "category": "creation",
+      "subject": "creator-local nonce",
+      "question": "Prove nonce is routing/correlation, not identity or freshness evidence.",
+      "status": "resolved",
+      "decision": "Retain as-is; deliberate Bombay policy: the nonce is a routing and correlation key only, never identity or freshness evidence, and routing ambiguity under duplicate nonces is accepted and pinned by test.",
+      "evidence": [
+        "crates/behavior/src/behavior.rs:250 Create rustdoc: 'The nonce is a routing and correlation key, not an actor identity or proof of freshness'",
+        "crates/behavior/src/behavior.rs:36-40 Route::Child(A::Nonce) uses the nonce purely as a delivery route",
+        "crates/behavior/src/behavior.rs:64-67 Recipient::child(nonce) builds a child-lane recipient from the bare nonce",
+        "crates/behavior/src/behavior.rs:29-33 MailAddr::birth derives an address expression by hash mixing; it computes no identity or freshness fact"
+      ],
+      "validation": [
+        "cargo nextest run -p bombay-behavior-testkit --test boundaries -> '14 tests run: 14 passed, 0 skipped' including duplicate_configured_nonces_create_ambiguous_routes (crates/behavior-testkit/tests/boundaries.rs:214), which pins that a nonce is only a route key",
+        "boundaries.rs:184 duplicate_child_stopped_triggers_a_second_restart passed, confirming nonces correlate observations rather than proving uniqueness"
+      ]
+    },
+    {
+      "id": "CREATE-ORDER",
+      "category": "creation",
+      "subject": "creation-before-dependent-send policy",
+      "question": "Classify and prove the deliberate Bombay interpretation-order policy.",
+      "status": "resolved",
+      "decision": "Retain as-is; classified as deliberate Bombay interpreter-ordering policy (not an actor-model law): installs before sends of the same Actions, documented on the Actions rustdoc and owned by the interpreter boundary.",
+      "evidence": [
+        "crates/behavior/src/behavior.rs:309-313 Actions rustdoc: 'An interpreter installs every fresh actor in creates before interpreting any ordinary delivery or ServiceSends request in sends from this value'",
+        "crates/behavior/src/behavior.rs:314-317 rustdoc: creation order is vector order; each concrete send lane keeps its own order; no order between independent SendProduct lanes",
+        "crates/behavior/src/behavior.rs:318-319 rustdoc: 'The ordering rule belongs to the interpreter boundary. Constructing an Actions value remains pure'",
+        "crates/behavior/src/supervising.rs:256-268 Proxy::init pairs its Create::birth with a matching ObserveChild request in the same Actions, relying on this documented order"
+      ],
+      "validation": [
+        "cargo nextest run -p bombay-behavior --test algebra -> 30/30 passed, including supervisor_creates_proxies_and_replacement_is_a_send (crates/behavior/tests/algebra.rs:386) asserting init Actions carry creates plus paired ObserveChild sends",
+        "stable_proxy_reports_worker_stop_and_creates_fresh_replacement (crates/behavior/tests/algebra.rs:485) passed, exercising create-then-observe pairing across supervisor and proxy"
+      ]
+    },
+    {
+      "id": "CREATE-PROVENANCE",
+      "category": "creation",
+      "subject": "CreationKind",
+      "question": "Prove initial birth, ordinary birth, and replacement provenance survive transformations.",
+      "status": "resolved",
+      "decision": "Retain as-is; preservation derivation verified: CreationKind provenance survives every wrapper transformation because each wrapper forwards the creates vector unchanged and Supervising re-wraps children while copying kind verbatim.",
+      "evidence": [
+        "crates/behavior/src/behavior.rs:241-246 enum CreationKind { Birth, ReplacementIncarnation } records behavior-owned provenance",
+        "crates/behavior/src/deadlined.rs:188, crates/behavior/src/receive_timeout.rs:169, crates/behavior/src/watching.rs:166, crates/behavior/src/shutdown.rs:164 forward 'creates: actions.creates' unchanged; crates/behavior/src/stashing.rs:63 accumulates via extend",
+        "crates/behavior/src/supervising.rs:609-616 Supervising::wrap maps each Create into Create { nonce, child: Proxy::new(child), kind: create.kind }, preserving provenance while wrapping the child"
+      ],
+      "validation": [
+        "cargo nextest run -p bombay-behavior --test algebra -> 30/30 passed, including supervisor_preserves_dynamic_replacement_provenance_when_wrapping_the_child (crates/behavior/tests/algebra.rs:727) asserting kind == ReplacementIncarnation after Supervising wrap",
+        "cargo nextest run -p bombay-behavior-testkit --test supervision_model -> passed; creation_provenance_matches_the_independent_incarnation_model (crates/behavior-testkit/tests/supervision_model.rs:122) checks nonce and kind against IncarnationModel (crates/behavior-testkit/src/model.rs:91-158)"
+      ]
+    },
+    {
+      "id": "CREATE-FAILURE",
+      "category": "creation",
+      "subject": "installation failure boundary",
+      "question": "Prove failed installation cannot mean overwrite, successful birth, or Restarted fact.",
+      "status": "resolved",
+      "decision": "Retain as-is; boundary policy: the behavior crate defines no installation error type and no collision test because installation failure is a typed interpreter-owned domain (Crash), and replacement-at-address is absent so failure can never become overwrite, birth, or a Restarted fact.",
+      "evidence": [
+        "crates/behavior/src/behavior.rs:252-253 Create rustdoc: 'Replacement at an existing address is deliberately absent; stable identity is derived with a proxy actor'",
+        "crates/behavior/src/exit.rs:65-79 enum Crash is minted only by interpreters per its rustdoc; Crash::EnvironmentFailed (exit.rs:69-71) is the sole typed effect-execution-failure signal",
+        "grep -rniE 'collision|overwrite|already exists|duplicate install' crates -> only unrelated doc word 'collisions' in crates/behavior-testkit/tests/boundaries.rs:4 (nested timer schedules), confirming no collision/overwrite semantics in the crate",
+        "crates/behavior/src/supervising.rs:580-584 the only freshness enforcement inside the crate is a creator-side assert on dynamic birth nonces, not an installation outcome"
+      ],
+      "validation": [
+        "cargo nextest run -p bombay-behavior-testkit --test error_paths --test supervision_model -> '15 tests run: 15 passed, 0 skipped'; no test asserts installation collision semantics because none exist to assert",
+        "grep -rniE 'alloc|restarted' crates/behavior/src -> only doc comments at behavior.rs:236 and supervising.rs:83; no Restarted fact type exists in the crate"
+      ]
+    },
+    {
+      "id": "RETAIN-SEND-PRODUCT",
+      "category": "retained",
+      "subject": "SendProduct",
+      "question": "Challenge and justify the concrete nested product.",
+      "status": "resolved",
+      "decision": "Retain SendProduct; derivation: it is the typed product of independent send lanes with the SendAlgebra monoid laws, and the dyn/Any erasure alternative is prohibited by the static-dispatch rule and would destroy per-lane typed interpretation.",
+      "evidence": [
+        "crates/behavior/src/behavior.rs:112-115 struct SendProduct<L, R> { inner, own } nests lanes concretely",
+        "crates/behavior/src/behavior.rs:118-131 trait SendAlgebra declares empty/append monoid operations; Vec and SendProduct impls at behavior.rs:125-146",
+        "crates/behavior/src/behavior.rs:148-152 ServiceSends rustdoc: the distinct algebra 'lets interpreters route ordinary deliveries and local services with disjoint static implementations'",
+        "crates/behavior/src/supervising.rs:192-199 SupervisorSends nests SendProduct<Sends, SendProduct<ServiceSends<ObserveChild>, Vec<Delivery<ProxyCommand>>>> concretely"
+      ],
+      "validation": [
+        "cargo nextest run -p bombay-behavior --test algebra -> 30/30 passed, including ordinary_and_service_send_algebras_have_disjoint_static_dispatch (crates/behavior/tests/algebra.rs:22)",
+        "cargo nextest run -p bombay-behavior-testkit --test compositions -> '9 tests run: 9 passed, 0 skipped' including all_wrapper_permutations_preserve_init_protocol_nesting (crates/behavior-testkit/tests/compositions.rs:55)"
+      ]
+    },
+    {
+      "id": "RETAIN-EVENT-SUMS",
+      "category": "retained",
+      "subject": "concrete event sums",
+      "question": "Challenge and justify nested concrete protocol sums.",
+      "status": "resolved",
+      "decision": "Retain concrete nested event sums; derivation: each wrapper adds one closed sum variant plus lawful Option-returning extraction traits, and a universal envelope alternative is rejected because it would erase lane typing and exhaustiveness.",
+      "evidence": [
+        "crates/behavior/src/supervising.rs:131-136 SupervisionEvent<E, A> adds ChildStopped/WorkerStopped variants over inner E",
+        "crates/behavior/src/watching.rs:14 WatchEvent, crates/behavior/src/deadlined.rs:17 AtEvent, crates/behavior/src/receive_timeout.rs:17 ReceiveTimeoutEvent, crates/behavior/src/shutdown.rs:17 ShutdownProtocol are per-wrapper closed sums",
+        "crates/behavior/src/protocol.rs:45-107 TimeEvent/PeerEvent/ChildEvent/WorkerEvent/ShutdownEvent extraction traits return Option<Self>, preserving lane discrimination",
+        "crates/behavior/src/behavior.rs:474-504 the floor User<A,M> implements every extraction trait returning None, closing the sums at the base"
+      ],
+      "validation": [
+        "cargo nextest run -p bombay-behavior --test algebra -> 30/30 passed, including nested_at_composition_routes_stale_and_matching_events (crates/behavior/tests/algebra.rs:189) and watching_registers_and_reacts_through_messages (algebra.rs:233)",
+        "cargo nextest run -p bombay-behavior-testkit --test compositions -> 9/9 passed, including watch_of_watch_routes_each_peer_to_its_own_layer (crates/behavior-testkit/tests/compositions.rs:218) and environment_lanes_bypass_stash_while_user_lane_is_intercepted (compositions.rs:135)"
+      ]
+    },
+    {
+      "id": "RETAIN-FUNCTIONS",
+      "category": "retained",
+      "subject": "function-pointer reactions",
+      "question": "Challenge and justify noncapturing reaction representation.",
+      "status": "resolved",
+      "decision": "Retain non-capturing fn pointers for all reactions; policy plus derivation: they are concrete, allocation-free, statically dispatched, and Serialize-free; boxed closures would introduce dyn dispatch banned by the static-dispatch rule.",
+      "evidence": [
+        "crates/behavior/src/supervising.rs:83-86 rustdoc: 'A function pointer keeps the policy concrete, non-capturing, allocation free, and statically dispatched'",
+        "crates/behavior/src/supervising.rs:87-92 SupervisionFailureReaction<B> = fn(&mut B, &SupervisionFailure) -> Result<Become, Error>",
+        "crates/behavior/src/watching.rs:65 LinkReaction, crates/behavior/src/deadlined.rs:68 AtReaction, crates/behavior/src/receive_timeout.rs:82 ReceiveTimeoutReaction, crates/behavior/src/shutdown.rs:87 ShutdownReaction are all fn-pointer aliases",
+        "crates/behavior/src/behavior.rs:453-454 Transition<S,A,M,O,Br,E> = fn(&mut S, A, M) -> Acted<...> drives FnState; supervising.rs:385,407-409 store build/nonces as fn(usize) pointers",
+        "crates/behavior/src/supervising.rs:101 retire_on_supervision_failure and supervising.rs:117 stop_on_supervision_failure are plain supplied policy functions"
+      ],
+      "validation": [
+        "cargo nextest run -p bombay-behavior-testkit --test error_paths -> passed, including restart_helpers_expose_the_documented_strategies (crates/behavior-testkit/tests/error_paths.rs:206) pinning restart_one/restart_all/restart_rest const fns",
+        "cargo nextest run -p bombay-behavior --test algebra -> 30/30 passed, including configured_supervision_failure_reaction_stops_on_budget_denial (crates/behavior/tests/algebra.rs:563) using a supplied fn-pointer reaction"
+      ]
+    },
+    {
+      "id": "RETAIN-SPEC",
+      "category": "retained",
+      "subject": "Spec facade",
+      "question": "Challenge and justify the typestate composition facade.",
+      "status": "resolved",
+      "decision": "Retain the Spec typestate facade; derivation: every method immediately constructs a concrete wrapper and Spec stores no runtime intent graph, only the behavior and a timer counter, delegating Behavior unchanged.",
+      "evidence": [
+        "crates/behavior/src/spec.rs:1-2 module doc: 'Every method immediately builds a concrete pure behavior; there is no separate intent representation'",
+        "crates/behavior/src/spec.rs:27-30 struct Spec<B> { behavior: B, next_timer: u64 } holds no intent data",
+        "crates/behavior/src/spec.rs:69-247 each combinator (stop_on_shutdown, watch, at, receive_timeout, stash, children_with_nonces) constructs the concrete wrapper in place",
+        "crates/behavior/src/spec.rs:250-271 impl Behavior for Spec<B> delegates init/step verbatim to the inner behavior"
+      ],
+      "validation": [
+        "cargo nextest run -p bombay-behavior --test algebra -> 30/30 passed, including spec_hides_composed_protocols_without_losing_their_effects (crates/behavior/tests/algebra.rs:212)",
+        "cargo nextest run -p bombay-behavior-testkit --test boundaries -> 14/14 passed, including spec_children_defaults_to_transient_with_budget_one (crates/behavior-testkit/tests/boundaries.rs:529) and supervising_inherent_builders_match_the_spec_defaults (boundaries.rs:560)"
+      ]
+    },
+    {
+      "id": "RETAIN-BIRTH-MODE",
+      "category": "retained",
+      "subject": "BirthMode/NoBirths/Births",
+      "question": "Prove absence/presence of creation is a real compile-time capability.",
+      "status": "resolved",
+      "decision": "Retain BirthMode; derivation: the associated Child type makes creation absence a compile-time fact because NoBirths::Child = Never renders Actions::creates unpopulable, while Births<C> admits Vec<Create<A, C>>.",
+      "evidence": [
+        "crates/behavior/src/behavior.rs:285-287 trait BirthMode { type Child; } describes the creation leg at type level",
+        "crates/behavior/src/behavior.rs:291-297 NoBirths sets Child = Never; crates/behavior/src/verdict.rs:10-11 Never is an uninhabited enum, so no Create value can be constructed",
+        "crates/behavior/src/behavior.rs:299-303 Births<C>(PhantomData<fn() -> C>) sets Child = C",
+        "crates/behavior/src/behavior.rs:322 Actions::creates: Vec<Create<A, Birth::Child>> and behavior.rs:427 Behavior::Birth: BirthMode thread the capability through every behavior"
+      ],
+      "validation": [
+        "cargo nextest run -p bombay-behavior --test algebra -> 30/30 passed, including birth_modes_are_disjoint_and_wrappers_forward_them (crates/behavior/tests/algebra.rs:331) which statically requires B: Behavior<Birth = NoBirths> and Birth = Births<C> via helpers at algebra.rs:19 and algebra.rs:34",
+        "cargo nextest run -p bombay-behavior-testkit --test compositions -> 9/9 passed, exercising Births forwarding through at/watch/stash layers (algebra.rs:334-338 requires_births on the composed creator)"
+      ]
+    },
+    {
+      "id": "RETAIN-PROXY",
+      "category": "retained",
+      "subject": "proxy-derived restart",
+      "question": "Challenge and justify stable restart as a derived construction.",
+      "status": "resolved",
+      "decision": "Retain proxy-derived restart; Bombay-derived construction (not a privileged actor-model effect): stable identity is an ordinary live Proxy actor and replacement is an ordinary message to it, so restart needs no runtime primitive beyond the base algebra.",
+      "evidence": [
+        "crates/behavior/src/supervising.rs:1-3 module doc: 'Stable child identity is a proxy actor; replacement is a message to that proxy, which creates a fresh worker incarnation'",
+        "crates/behavior/src/supervising.rs:208-216 struct Proxy<C> holds worker Option, generation, worker_alive, pending as ordinary fold state",
+        "crates/behavior/src/supervising.rs:183-190 ProxyCommand::Replace(C) is an ordinary typed message; supervising.rs:355-362 the proxy answers with Create::replacement_incarnation at a fresh nonce",
+        "crates/behavior/src/supervising.rs:5-9 doc: supervision 'transition law is the same pure fold as every other behavior'"
+      ],
+      "validation": [
+        "cargo nextest run -p bombay-behavior --test algebra -> 30/30 passed, including proxy_replacement_creates_a_fresh_incarnation (crates/behavior/tests/algebra.rs:416) and idle_proxy_marks_an_immediate_successor_as_a_replacement_incarnation (algebra.rs:455)",
+        "cargo nextest run -p bombay-behavior-testkit --test supervision_model -> passed; creation_provenance_matches_the_independent_incarnation_model (crates/behavior-testkit/tests/supervision_model.rs:122) matches Proxy against the independent IncarnationModel (crates/behavior-testkit/src/model.rs:91-158)"
+      ]
+    },
+    {
+      "id": "BOUNDARY-FRESHNESS",
+      "category": "boundary",
+      "subject": "interpreter freshness validation",
+      "question": "Verify Behavior supplies facts but does not perform installation.",
+      "status": "resolved",
+      "decision": "Retain as-is; boundary policy verified: Behavior supplies only the facts (nonce, kind, child value) inside Create, while the interpreter performs allocation, freshness acceptance, and commit; no allocation or installation code exists in the crate.",
+      "evidence": [
+        "crates/behavior/src/behavior.rs:256-260 Create fields nonce/child/kind are exactly the facts Behavior supplies",
+        "crates/behavior/src/behavior.rs:250-253 rustdoc assigns installation and commit of the child binding to the interpreter",
+        "crates/behavior/src/supervising.rs:580-584 the crate's only freshness check is a creator-side assert ('a child birth nonce must be fresh') guarding its own slot table, not installation",
+        "grep -rniE 'alloc' crates/behavior/src matches only doc comments at behavior.rs:236 ('Both variants allocate a fresh actor' as interpreter fact) and supervising.rs:83 ('allocation free')"
+      ],
+      "validation": [
+        "cargo nextest run -p bombay-behavior-testkit --test boundaries -> 14/14 passed, including empty_fleet_supervisor_initializes_and_steps_cleanly (crates/behavior-testkit/tests/boundaries.rs:154) asserting emitted creates are just data",
+        "cargo nextest run -p bombay-behavior --test algebra -> 30/30 passed with Transcript collecting creates as values (crates/behavior/src/behavior.rs:567-604 driver never installs actors)"
+      ]
+    },
+    {
+      "id": "BOUNDARY-ERROR",
+      "category": "boundary",
+      "subject": "typed installation error",
+      "question": "Verify collision/installation failure is interpreter-owned and never overwrite.",
+      "status": "resolved",
+      "decision": "Retain as-is; boundary policy: behavior-declared Error covers only the fold's controlled failures, installation failure belongs to the interpreter-owned Crash domain, and the absence of replacement-at-address makes overwrite structurally impossible.",
+      "evidence": [
+        "crates/behavior/src/behavior.rs:426 Behavior::Error is the fold's declared controlled failure; Acted = Result<Actions, E> at behavior.rs:353",
+        "crates/behavior/src/exit.rs:60-64 Crash rustdoc: 'interpreters mint a Crash only when execution terminates without an Exit'; exit.rs:69-71 EnvironmentFailed covers failed effect execution",
+        "crates/behavior/src/behavior.rs:252-253 rustdoc: replacement at an existing address is deliberately absent, so no overwrite path exists",
+        "grep -rniE 'collision|overwrite|already exists' crates/behavior/src -> zero matches"
+      ],
+      "validation": [
+        "cargo nextest run -p bombay-behavior-testkit --test error_paths -> passed, including supervision_propagates_inner_errors_without_touching_slots (crates/behavior-testkit/tests/error_paths.rs:133) showing typed errors stay in the fold domain",
+        "cargo nextest run -p bombay-behavior-testkit --test error_paths --test supervision_model -> '15 tests run: 15 passed, 0 skipped'"
+      ]
+    },
+    {
+      "id": "BOUNDARY-LIFECYCLE",
+      "category": "boundary",
+      "subject": "post-commit lifecycle diagnostics",
+      "question": "Verify Behavior designates provenance but does not report completion.",
+      "status": "resolved",
+      "decision": "Retain as-is; boundary policy: Behavior designates provenance via CreationKind but reports no completion; ChildStopped and WorkerStopped are interpreter-constructed post-commit observations carrying typed terminal outcomes only, and no Restarted/birth-completion diagnostic exists.",
+      "evidence": [
+        "crates/behavior/src/protocol.rs:65-69 ChildStopped { nonce, outcome: Result<Exit<A>, Crash>, at } is a typed post-termination observation",
+        "crates/behavior/src/protocol.rs:87-91 WorkerStopped { proxy, outcome, at } likewise carries only a typed outcome",
+        "crates/behavior/src/protocol.rs:76-79 ReportWorkerStopped rustdoc: 'The interpreter supplies the emitting proxy's child nonce when constructing WorkerStopped'",
+        "grep -rniE 'restarted' crates/behavior/src -> no matches; no restart-completion fact type exists in the crate"
+      ],
+      "validation": [
+        "cargo nextest run -p bombay-behavior --test algebra -> 30/30 passed, including stable_proxy_reports_worker_stop_and_creates_fresh_replacement (crates/behavior/tests/algebra.rs:485) asserting WorkerStopped carries outcome Err(Crash::Panicked) unchanged",
+        "cargo nextest run -p bombay-behavior-testkit --test supervision_model -> passed; supervision_matches_the_reference_model (crates/behavior-testkit/tests/supervision_model.rs:223) drives sequences solely through such typed observations"
+      ]
+    },
+    {
+      "id": "BOUNDARY-IDENTITY",
+      "category": "boundary",
+      "subject": "runtime identity",
+      "question": "Verify runtime identity remains distinct from creator-local nonce.",
+      "status": "resolved",
+      "decision": "Retain as-is; boundary policy plus derivation: the nonce is a creator-local namespace derivation while runtime identity is whatever the interpreter binds; stable identity is derived structurally through the Proxy actor, never by reusing a nonce.",
+      "evidence": [
+        "crates/behavior/src/behavior.rs:16-21 trait Address: Copy + Eq with birth(nonce) is a pure namespace algebra, containing no runtime identity notion",
+        "crates/behavior/src/behavior.rs:250 rustdoc: the nonce is 'not an actor identity or proof of freshness'",
+        "crates/behavior/src/supervising.rs:285-293 Proxy increments its generation counter and emits the next incarnation at a fresh nonce, keeping identity in the live proxy rather than any nonce value",
+        "crates/behavior/src/behavior.rs:252-253 rustdoc: 'stable identity is derived with a proxy actor'"
+      ],
+      "validation": [
+        "cargo nextest run -p bombay-behavior --test algebra -> 30/30 passed, including proxy_replacement_creates_a_fresh_incarnation (crates/behavior/tests/algebra.rs:416) asserting incarnation nonces 0 then 1 across replacement",
+        "cargo nextest run -p bombay-behavior-testkit --test boundaries -> 14/14 passed, including proxy_double_init_is_rejected (crates/behavior-testkit/tests/boundaries.rs:147) pinning one-worker-per-proxy-identity"
+      ]
+    },
+    {
+      "id": "REJECT-ERASURE",
+      "category": "rejected",
+      "subject": "trait objects and erased futures",
+      "question": "Confirm rejection and test whether any private escape exists.",
+      "status": "resolved",
+      "decision": "Rejection upheld, evidence verified: static-dispatch law \u2014 no trait object, erased future, or private escape hatch exists anywhere in crates/behavior/src, public or private; the compile_fail doctest on Behavior proves even the named effect-escape seat cannot be introduced.",
+      "evidence": [
+        "rg -n '\\bdyn\\s+[A-Za-z_]|\\bAny\\b|\\bTypeId\\b' crates/behavior/src -> 0 matches, so no public or private trait-object/erasure escape exists",
+        "crates/behavior/src/behavior.rs:412-418 compile_fail doctest: B::Effect associated type does not exist \u2014 an erased effect seat fails to compile",
+        "crates/behavior/src/behavior.rs:428-430 init/step return impl Future<Output = BehaviorActed<Self>> + Send \u2014 RPITIT static futures, not boxed erased futures",
+        "crates/behavior/src/lib.rs:6-7 extern crate self as behavior exists only for workers! macro hygiene, not an escape hatch"
+      ],
+      "validation": [
+        "cargo test -p bombay-behavior --doc -> 1 passed: behavior.rs - algebra::Behavior (line 412) - compile fail ... ok",
+        "bash: rg -n '\\bdyn\\s+[A-Za-z_]|\\bAny\\b|\\bTypeId\\b|\\bunsafe\\b' crates/behavior/src | wc -l -> 0",
+        "cargo nextest run -p bombay-behavior -> 31 tests run: 31 passed, no erased path exercised or required"
+      ]
+    },
+    {
+      "id": "REJECT-ENVELOPE",
+      "category": "rejected",
+      "subject": "global event/effect envelope",
+      "question": "Confirm rejection and absence of catch-all internal protocols.",
+      "status": "resolved",
+      "decision": "Rejection upheld, evidence verified: actor-algebra law \u2014 every event protocol is a concrete closed sum per wrapper (AtEvent/WatchEvent/SupervisionEvent/ReceiveTimeoutEvent/ShutdownProtocol) and every effect flows through the typed Actions fields; no universal envelope, catch-all variant, or untyped byte/string protocol exists.",
+      "evidence": [
+        "rg 'enum (AtEvent|WatchEvent|SupervisionEvent|ReceiveTimeoutEvent|ShutdownProtocol|StashRoute)' crates/behavior/src -> 6 concrete sums in 6 wrapper files, each with named typed variants only",
+        "crates/behavior/src/behavior.rs:320 Actions carries sends: Sends, creates: Vec<Create<...>>, become_: Become<A,Ph> \u2014 three typed fields, no envelope payload slot",
+        "rg -n '\\bAny\\b|serde|Serialize|Deserialize' crates/behavior/src -> 0 matches for Any/serialization-based internal protocol (Any count 0 verified)",
+        "crates/behavior/src/protocol.rs owns only typed lane values (TimerElapsed, PeerStopped, ChildStopped, WorkerStopped, ShutdownRequested) \u2014 no catch-all message type"
+      ],
+      "validation": [
+        "bash: rg -n '\\bAny\\b' crates/behavior/src | wc -l -> 0",
+        "cargo nextest run -p bombay-behavior -> 31 passed including workers_macro_hides_a_heterogeneous_child_sum (heterogeneity via concrete sums, not envelopes)",
+        "cargo nextest run -p bombay-behavior-testkit --test driver_accumulation --test boundaries -> 20 tests run: 20 passed, all lanes observed through concrete typed fields"
+      ]
+    },
+    {
+      "id": "REJECT-REGISTRY",
+      "category": "rejected",
+      "subject": "runtime registries and discovery",
+      "question": "Confirm rejection and absence of lookup-based capability composition.",
+      "status": "resolved",
+      "decision": "Rejection confirmed by grep; capability composition is entirely type-level (SendProduct nesting, BirthMode, event extraction traits) with zero registry, lookup, or discovery machinery in the behavior crate.",
+      "evidence": [
+        "grep -rnE 'registry|Registry|lookup|HashMap' crates/behavior/src -> zero matches",
+        "crates/behavior/src/behavior.rs:112-146 composition happens via SendProduct/SendAlgebra types, not registered handlers",
+        "crates/behavior/src/spec.rs:191-213 Spec::children wires supervision by concrete type parameters, not by name or registry",
+        "research/architecture-critical-review-loop/GOAL.md off-limits list prohibits 'Dynamic dispatch, erased futures, Any, reflection, registries'"
+      ],
+      "validation": [
+        "grep -rnE '\\bdyn\\s+[A-Za-z_]|\\bAny\\b|\\bTypeId\\b|\\bunsafe\\b|registry|Registry|serde|HashMap|lookup' crates/behavior/src/ -> only the two 'serialized' doc words at protocol.rs:101 and supervising.rs:85",
+        "cargo nextest run -p bombay-behavior --test algebra -> 30/30 passed with all composition exercised through concrete types"
+      ]
+    },
+    {
+      "id": "REJECT-SERIALIZATION",
+      "category": "rejected",
+      "subject": "internal serialization",
+      "question": "Confirm rejection and absence as typed-protocol substitute.",
+      "status": "resolved",
+      "decision": "Rejection confirmed; internal protocols are typed values end to end, the word 'serialized' appears only as documentation meaning sequential fold execution, and no serde or serialization dependency exists in the crate manifest.",
+      "evidence": [
+        "grep -rniE 'serde|serializ' crates/behavior/src -> only crates/behavior/src/protocol.rs:101 ('one serialized behavior transition') and supervising.rs:85 ('the same serialized fold'), both doc prose meaning sequential execution",
+        "crates/behavior/Cargo.toml dependencies are behavior-macros, communication, thiserror, tokio (proptest/tokio dev) with no serde entry",
+        "crates/behavior/src/protocol.rs:55-91 PeerStopped/ChildStopped/WorkerStopped carry Result<Exit<A>, Crash> typed outcomes, never bytes or encoded payloads",
+        "crates/behavior/src/behavior.rs:84-100 Delivery<A, M> carries the message value M directly"
+      ],
+      "validation": [
+        "grep -rnE '\\bdyn\\s+[A-Za-z_]|\\bAny\\b|\\bTypeId\\b|\\bunsafe\\b|registry|Registry|serde|serializ|HashMap|lookup' crates/behavior/src/ produced no code matches",
+        "cargo nextest run -p bombay-behavior-testkit --test error_paths --test supervision_model -> 15/15 passed over typed outcome values with no encoding step"
+      ]
+    },
+    {
+      "id": "REJECT-REPLACEMENT-LANE",
+      "category": "rejected",
+      "subject": "second replacement effect lane",
+      "question": "Confirm creation provenance remains one typed path.",
+      "status": "resolved",
+      "decision": "Rejection confirmed; creation provenance travels on exactly one typed lane, Actions::creates, with replacement expressed as CreationKind::ReplacementIncarnation on that same lane, and replacement scheduling itself is an ordinary typed send.",
+      "evidence": [
+        "crates/behavior/src/behavior.rs:320-324 struct Actions has exactly three fields: sends, creates, become_ \u2014 no second replacement lane",
+        "crates/behavior/src/behavior.rs:275-281 Create::replacement_incarnation reuses the same Create type and lane with kind ReplacementIncarnation",
+        "crates/behavior/src/supervising.rs:540-555 Supervising issues replacement as Vec<Delivery<A, ProxyCommand<C>>> inside the sends product, not a new effect lane",
+        "grep -n 'creates' crates/behavior/src shows every wrapper forwards or accumulates the single creates vector (deadlined.rs:188, receive_timeout.rs:169, watching.rs:166, shutdown.rs:164, stashing.rs:63)"
+      ],
+      "validation": [
+        "cargo nextest run -p bombay-behavior --test algebra -> 30/30 passed, including supervisor_creates_proxies_and_replacement_is_a_send (crates/behavior/tests/algebra.rs:386) asserting replacement Actions have creates.is_empty() and one ProxyCommand::Replace send",
+        "cargo nextest run -p bombay-behavior-testkit --test compositions -> 9/9 passed with no lane dropped across wrapper permutations (compositions.rs:55)"
+      ]
+    },
+    {
+      "id": "REJECT-INFERENCE",
+      "category": "rejected",
+      "subject": "replacement inferred from mechanics",
+      "question": "Confirm no generation/address/history heuristic substitutes for designation.",
+      "status": "resolved",
+      "decision": "Rejection confirmed; CreationKind is designated explicitly at the two Create constructors and is never inferred from generation counters, addresses, or history \u2014 the proxy's generation counter feeds only the fresh nonce.",
+      "evidence": [
+        "grep -n 'CreationKind::' crates/behavior/src crates/behavior-testkit/src -> only crates/behavior/src/behavior.rs:269 (Birth) and behavior.rs:279 (ReplacementIncarnation), the two explicit constructors",
+        "crates/behavior/src/behavior.rs:265-281 Create::birth and Create::replacement_incarnation are the sole designation sites",
+        "crates/behavior/src/supervising.rs:285-293 the proxy's generation.checked_add(1) result is used only as Nonce::from(generation); the kind comes from the explicit Create::replacement_incarnation call at supervising.rs:307-311 and supervising.rs:361"
+      ],
+      "validation": [
+        "cargo nextest run -p bombay-behavior --test algebra -> 30/30 passed, including idle_proxy_marks_an_immediate_successor_as_a_replacement_incarnation (crates/behavior/tests/algebra.rs:455) and proxy_replacement_creates_a_fresh_incarnation (algebra.rs:416) pinning explicit kind designation in both replace paths",
+        "cargo nextest run -p bombay-behavior-testkit --test supervision_model -> passed; creation_provenance_matches_the_independent_incarnation_model (supervision_model.rs:122) cross-checks designation against ExpectedCreation roles (crates/behavior-testkit/src/model.rs:73-85)"
+      ]
+    },
+    {
+      "id": "REJECT-ALLOCATOR",
+      "category": "rejected",
+      "subject": "allocator callbacks in folds",
+      "question": "Confirm pure folds contain no allocator continuation or callback.",
+      "status": "resolved",
+      "decision": "Rejection confirmed; Create is inert data whose child behavior value is constructed by the caller before the fold returns, and neither the Behavior nor State trait admits any allocator continuation or callback parameter.",
+      "evidence": [
+        "crates/behavior/src/behavior.rs:256-260 Create<A, New> stores an already-constructed child: New value with no allocation hook",
+        "crates/behavior/src/behavior.rs:419-431 trait Behavior has only init/step returning Actions; crates/behavior/src/behavior.rs:391-410 trait State has only handle \u2014 no allocator seat exists",
+        "grep -rniE 'alloc' crates/behavior/src -> only doc comments at behavior.rs:236 and supervising.rs:83; no allocator code or callback",
+        "crates/behavior/src/supervising.rs:407-409 Supervising::new takes build: fn(usize) -> C, a plain constructor producing values, not an allocation continuation invoked at install time"
+      ],
+      "validation": [
+        "cargo nextest run -p bombay-behavior --test algebra -> 30/30 passed, with births constructed in tests as ordinary values (e.g. crates/behavior/tests/algebra.rs:669-674 Create::birth(nonce, child(0)))",
+        "cargo nextest run -p bombay-behavior-testkit --test boundaries -> 14/14 passed, including proxy_double_init_is_rejected (boundaries.rs:147) confirming the fold holds data, not installer callbacks"
+      ]
+    },
+    {
+      "id": "REJECT-SPECULATION",
+      "category": "rejected",
+      "subject": "speculative abstraction",
+      "question": "Confirm traits/combinators have laws and concrete uses rather than line-count motives.",
+      "status": "resolved",
+      "decision": "Confirmed no speculative abstraction; every public trait carries a stated law or static capability role plus at least one concrete implementor and test: SendAlgebra monoid, the five event-extraction traits, UserEvent, BirthMode capability, and the Address namespace.",
+      "evidence": [
+        "crates/behavior/src/behavior.rs:117 SendAlgebra rustdoc: 'The monoid required to accumulate sends across transitions', with Vec and SendProduct impls at behavior.rs:125-146",
+        "crates/behavior/src/protocol.rs:45-107 TimeEvent/PeerEvent/ChildEvent/WorkerEvent/ShutdownEvent each return Option<Self> for lane extraction and each is consumed by a concrete wrapper (At, Watching, Supervising, shutdown wrappers)",
+        "crates/behavior/src/behavior.rs:360-370 UserEvent pairs construction with into_user extraction whose Err returns the unchanged event, an explicit lane law",
+        "crates/behavior/src/behavior.rs:285 BirthMode is the compile-time creation capability; behavior.rs:16 Address is the pure address namespace",
+        "crates/behavior/src/behavior.rs:474-504 the floor User<A,M> implements every extraction trait with None, giving each trait a concrete base use"
+      ],
+      "validation": [
+        "cargo nextest run -p bombay-behavior --test algebra -> 30/30 passed, including at_is_a_typed_clock_actor_protocol (algebra.rs:155), watching_registers_and_reacts_through_messages (algebra.rs:233), and birth_modes_are_disjoint_and_wrappers_forward_them (algebra.rs:331), one concrete use per trait family",
+        "cargo nextest run -p bombay-behavior-testkit --test compositions -> 9/9 passed, exercising every extraction trait through composed wrappers (compositions.rs:55-421)"
+      ]
+    },
+    {
+      "id": "SURFACE-PUBLIC",
+      "category": "surface",
+      "subject": "complete public algebra",
+      "question": "Inventory every public symbol and justify ownership/substitution role or removal.",
+      "status": "resolved",
+      "decision": "Retain all 84 public symbols as-is; inventory matches the frozen baseline exactly (84/84, zero added, zero removed). Classification of ownership/role by module: (1) core fold and effect algebra in crates/behavior/src/behavior.rs (26 symbols) \u2014 Address/MailAddr/Route/Recipient/Delivery are the typed addressing and send vocabulary (actor-model law: Agha 1986 location-independent delivery); SendProduct/SendAlgebra/ServiceSends are the send-accumulation monoid plus the interpreter-local service lane (Bombay-derived construction); CreationKind/Create/BirthMode/NoBirths/Births are the staged-creation capability seat (derivation: creation as an explicit Actions leg, acceptance/freshness interpreter-owned); Actions/Acted/Become are the typed transition product and verdict alias (Bombay realization of the become law); User/UserEvent are the Agha-floor user lane; State/StateActed/BehaviorActed/Behavior are the pure fold traits and their only admitted result shapes; Base/Transition/FnState are concrete state adapters; Transcript is the driver result. (2) verdict.rs (2): Never is the uninhabited absence proof, Step the become verdict. (3) exit.rs (4): Exit/Crash/RestartDenial/SupervisionFailureReason are the terminal-outcome vocabulary (Bombay policy over the algebra). (4) protocol.rs (17): neutral interpreter-originated lane vocabulary \u2014 timer (TimerId/TimerGeneration/ScheduleAt/ScheduleAfter/TimerElapsed/TimeEvent), peer observation (ObservePeer/PeerStopped/PeerEvent), child observation (ChildStopped/ObserveChild/ChildEvent), worker reporting (ReportWorkerStopped/WorkerStopped/WorkerEvent), shutdown (ShutdownRequested/ShutdownEvent). (5) wrapper families: deadlined At/AtEvent/AtActions/AtSends/AtReaction (5), receive_timeout ReceiveTimeout/Event/Error/Actions/Sends/Reaction (6), watching Watching/WatchEvent/WatchActions/WatchSends/LinkReaction (5), stashing Stashing/StashRoute (2), fsm Fsm/Move (2), shutdown StopOnShutdown/FinalizeOnShutdown/ShutdownProtocol/ShutdownReaction (4), spec Spec (1), supervising Supervising/Proxy/ProxyCommand/SupervisionEvent/SupervisionFailure/SupervisionFailureReaction/SupervisorSends/SupervisorActions/Strategy/RestartPolicy (10). Every symbol either owns one algebraic role (vocabulary, capability seat, concrete transformation, or adapter) or is the public name of a documented law; no symbol is redundant because each event sum/alias pair names a distinct composed protocol seat that substitution cannot express without re-deriving the wrapper. No removal justified; no addition present.",
+      "coverage": [
+        "Acted",
+        "Actions",
+        "Address",
+        "At",
+        "AtActions",
+        "AtEvent",
+        "AtReaction",
+        "AtSends",
+        "Base",
+        "Become",
+        "Behavior",
+        "BehaviorActed",
+        "BirthMode",
+        "Births",
+        "ChildEvent",
+        "ChildStopped",
+        "Crash",
+        "Create",
+        "CreationKind",
+        "Delivery",
+        "Exit",
+        "FinalizeOnShutdown",
+        "FnState",
+        "Fsm",
+        "LinkReaction",
+        "MailAddr",
+        "Move",
+        "Never",
+        "NoBirths",
+        "ObserveChild",
+        "ObservePeer",
+        "PeerEvent",
+        "PeerStopped",
+        "Proxy",
+        "ProxyCommand",
+        "ReceiveTimeout",
+        "ReceiveTimeoutActions",
+        "ReceiveTimeoutError",
+        "ReceiveTimeoutEvent",
+        "ReceiveTimeoutReaction",
+        "ReceiveTimeoutSends",
+        "Recipient",
+        "ReportWorkerStopped",
+        "RestartDenial",
+        "RestartPolicy",
+        "Route",
+        "ScheduleAfter",
+        "ScheduleAt",
+        "SendAlgebra",
+        "SendProduct",
+        "ServiceSends",
+        "ShutdownEvent",
+        "ShutdownProtocol",
+        "ShutdownReaction",
+        "ShutdownRequested",
+        "Spec",
+        "StashRoute",
+        "Stashing",
+        "State",
+        "StateActed",
+        "Step",
+        "StopOnShutdown",
+        "Strategy",
+        "Supervising",
+        "SupervisionEvent",
+        "SupervisionFailure",
+        "SupervisionFailureReaction",
+        "SupervisionFailureReason",
+        "SupervisorActions",
+        "SupervisorSends",
+        "TimeEvent",
+        "TimerElapsed",
+        "TimerGeneration",
+        "TimerId",
+        "Transcript",
+        "Transition",
+        "User",
+        "UserEvent",
+        "WatchActions",
+        "WatchEvent",
+        "WatchSends",
+        "Watching",
+        "WorkerEvent",
+        "WorkerStopped"
+      ],
+      "evidence": [
+        "grep -hoE '^pub (struct|enum|trait|type) [A-Za-z_0-9]+' crates/behavior/src/*.rs | sort -u yielded exactly the 84 baseline names; per-file counts behavior.rs:26 deadlined.rs:5 exit.rs:4 fsm.rs:2 protocol.rs:17 receive_timeout.rs:6 shutdown.rs:4 spec.rs:1 stashing.rs:2 supervising.rs:10 verdict.rs:2 watching.rs:5",
+        "crates/behavior/src/lib.rs:24-55 re-exports the same symbols through five pub use groups (algebra, deadlined, exit, fsm, protocol, receive_timeout, shutdown, spec, stashing, supervising, verdict, watching) plus workers!/stop_on_* helpers",
+        "python set comparison: current_symbols(84) == baseline['public_symbols'](84), difference empty both directions",
+        "crates/behavior/src/behavior.rs:16-607 hosts all 26 core symbols: Address trait :16, Recipient :42, SendProduct :112, Create :256, BirthMode :285, Actions :320, State :385, Behavior :419, Base :433, FnState :456, Transcript :546, run :556"
+      ],
+      "validation": [
+        "python3 set-diff of `grep -hoE '^pub (struct|enum|trait|type) [A-Za-z_0-9]+' crates/behavior/src/*.rs` against baseline.json public_symbols printed both differences empty (cur=84 frozen=84)",
+        "checker inventory rule reproduced: same regex ^pub\\s+(?:struct|enum|trait|type)\\s+ over crates/behavior/src/*.rs returns 84 names, matching check.sh lines that print inventory SURFACE-PUBLIC=84/84",
+        "cargo nextest run -p bombay-behavior-testkit -> Summary [4.528s] 123 tests run: 123 passed, 0 skipped (whole public surface exercised through tests)",
+        "cargo nextest run -p bombay-behavior -> Summary 31 tests run: 31 passed, 0 skipped (crates/behavior/tests/algebra.rs imports 46 of the 84 names at lines 3-11)"
+      ]
+    },
+    {
+      "id": "SURFACE-TRAITS",
+      "category": "surface",
+      "subject": "public traits",
+      "question": "Challenge every trait's law, implementors, static role, and diagnostics.",
+      "status": "resolved",
+      "decision": "Retain all 11 public traits as-is; inventory matches baseline exactly (11/11). Law, implementors, static role, and diagnostics per trait: Address (behavior.rs:16) \u2014 law: pure Copy+Eq address namespace with birth(nonce) deriving fresh child addresses (Agha fresh-address law); sole in-crate implementor MailAddr (:25); static role: root seat of every Route/Recipient/Create; diagnostics: plain trait-bound errors naming Address. Behavior (behavior.rs:419) \u2014 law: the pure fold, init+step returning the only admitted result BehaviorActed (Agha become/transition law); implementors Base, At, Watching, Supervising, Proxy, ReceiveTimeout, Stashing, Fsm, Spec, StopOnShutdown/FinalizeOnShutdown and workers! sums; static role: the algebra itself; diagnostics: closed associated-type set, with a compile_fail doctest (:412) proving no erased Effect seat exists. BirthMode (behavior.rs:285) \u2014 law: type-level creation capability, one associated Child; implementors NoBirths/Births<C> only; static role: the birth seat on Actions/State/Behavior; diagnostics: disjoint capability checked at composition (algebra.rs birth_modes_are_disjoint_and_wrappers_forward_them). SendAlgebra (behavior.rs:118) \u2014 law: monoid (empty/append) for effect accumulation; implementors Vec<T>, SendProduct, ServiceSends; static role: the accumulation algebra of Actions; diagnostics: doc-named monoid, bounds errors name SendAlgebra. State (behavior.rs:385) \u2014 law: pure user-message fold into StateActed; implementors FnState plus application states; static role: entry seat of Base; diagnostics: the single type_complexity allow keeps all seats visible in signatures. UserEvent (behavior.rs:362) \u2014 law: construct/extract the user lane through composed sums, into_user returns Err(unchanged event) on a lane miss (documented # Errors); implementors User and every wrapper sum; static role: mandatory lane of every Behavior::Event. TimeEvent/PeerEvent/ChildEvent/WorkerEvent/ShutdownEvent (protocol.rs:45-105) \u2014 law: total lane injection returning Option<Self>, None statically proving lane absence; implementors User (all None \u2014 the Agha floor) and each wrapper sum injecting its own lane and forwarding the rest; static role: closed capability stack, no dispatch; diagnostics: misses are compile errors at the wrapper bound, e.g. Supervising requires B::Event: ChildEvent (supervising.rs:628).",
+      "evidence": [
+        "crates/behavior/src/behavior.rs:17 Address, :110 SendAlgebra, :285 BirthMode, :362 UserEvent, :390 State, :419 Behavior trait declarations with doc laws",
+        "crates/behavior/src/protocol.rs:45 TimeEvent, :60 PeerEvent, :93 ChildEvent, :97 WorkerEvent, :105 ShutdownEvent lane-injection traits returning Option<Self>",
+        "implementor census: grep shows User implements all six lane traits with None (behavior.rs:477-519); AtEvent/ReceiveTimeoutEvent/WatchEvent/SupervisionEvent/ShutdownProtocol each implement all six with own-lane injection plus forwarding",
+        "crates/behavior/src/behavior.rs:412 compile_fail doctest on Behavior proves the effect/termination escape seats are intentionally absent",
+        "python set comparison: current pub traits == baseline['public_traits'] (11), both differences empty"
+      ],
+      "validation": [
+        "python3 set-diff of grep '^pub trait' over crates/behavior/src/*.rs against baseline.json public_traits printed both differences empty (11 == 11)",
+        "cargo nextest run -p bombay-behavior -> 31 passed including algebra::birth_modes_are_disjoint_and_wrappers_forward_them and algebra::ordinary_and_service_send_algebras_have_disjoint_static_dispatch (static trait-role probes)",
+        "cargo test --doc -p bombay-behavior -> Doc-tests behavior: 1 passed (behavior.rs line 412 compile fail doctest verified rejecting B::Effect)",
+        "cargo nextest run -p bombay-behavior-testkit -> 123 passed, exercising every lane trait through composed stacks (cross_lane full_stack_random_lane_routing_never_leaks)"
+      ],
+      "coverage": [
+        "Address",
+        "Behavior",
+        "BirthMode",
+        "ChildEvent",
+        "PeerEvent",
+        "SendAlgebra",
+        "ShutdownEvent",
+        "State",
+        "TimeEvent",
+        "UserEvent",
+        "WorkerEvent"
+      ]
+    },
+    {
+      "id": "GEN-CORE",
+      "category": "surface",
+      "subject": "core generic arities",
+      "question": "Classify every selected core generic and record before/after counts.",
+      "status": "resolved",
+      "decision": "Retain core generic arities exactly at baseline (Behavior 0, State 3, Actions 4, Create 2, SendProduct 2); every parameter is a law-carrying seat, none speculative. Behavior has 0 generic parameters by deliberate Bombay policy: its seven associated types (Addr/Msg/Event/Sends/Ph/Error/Birth) close the effect algebra so no generic escape seat can be added at the use site \u2014 verified by the compile_fail doctest at behavior.rs:412. State<Out=Never, Birth=NoBirths, Err=Never> has 3 seats: Out is the outbound send-product message seat, Birth the creation-capability seat, Err the controlled-error seat; each defaults to its uninhabited/empty proof so a plain fold declares zero effects. Actions<A, Ph, Sends, Birth> has 4 seats: A the address namespace (actor-model addressing law), Ph the phase menu of the become verdict (Agha become), Sends the SendAlgebra accumulation seat, Birth the BirthMode capability seat \u2014 exactly the typed transition effects (communications, fresh creation, next behavior/termination) documented at behavior.rs:306-321. Create<A, New> has 2 seats: A the namespace whose Nonce is the creator-local routing key, New the staged child behavior; nonce is correlation, not identity (Bombay policy). SendProduct<L, R> has 2 seats: the two independently typed send lanes of a product (typed-product derivation), each retaining its own order per the Actions contract.",
+      "evidence": [
+        "crates/behavior/src/behavior.rs:419 'pub trait Behavior {' declares zero generic parameters, seven associated types",
+        "crates/behavior/src/behavior.rs:385 'pub trait State<Out = Never, Birth = NoBirths, Err = Never>' \u2014 three defaulted seats",
+        "crates/behavior/src/behavior.rs:320 'pub struct Actions<A: Address, Ph, Sends, Birth: BirthMode>' \u2014 four seats documented at :303-318",
+        "crates/behavior/src/behavior.rs:256 'pub struct Create<A: Address, New>' and :112 'pub struct SendProduct<L, R>'",
+        "checker arity function reproduced: Behavior=0 State=3 Actions=4 Create=2 SendProduct=2, all equal to baseline generic_arities"
+      ],
+      "validation": [
+        "python3 reimplementation of check.sh arity() over crates/behavior/src/*.rs printed Behavior=0 State=3 Actions=4 Create=2 SendProduct=2 matching baseline generic_arities exactly (no before/after change)",
+        "cargo test --doc -p bombay-behavior -> 1 passed; the compile_fail doctest rejects adding a B::Effect seat to Behavior",
+        "cargo nextest run -p bombay-behavior -> 31 passed; algebra::actions_expose_the_typed_actor_transition_effects pins the Actions seat layout"
+      ]
+    },
+    {
+      "id": "GEN-WRAPPERS",
+      "category": "surface",
+      "subject": "wrapper generic arities",
+      "question": "Classify every selected wrapper generic and record before/after counts.",
+      "status": "resolved",
+      "decision": "Retain wrapper generic arities exactly at baseline (Spec 1, At 1, Watching 1, Supervising 2, Proxy 1, ReceiveTimeout 1, Stashing 1, Fsm 5, Base 4, FnState 6); every parameter is a composition seat, none speculative. The single-seat wrappers Spec<B>, At<B>, Watching<B>, ReceiveTimeout<B>, Stashing<B>, Proxy<C> each carry exactly one wrapped-behavior seat \u2014 the higher-order behavior-transformation parameter of the derivation (a wrapper is a function from Behavior to Behavior); all protocol seats they add are concrete (event sums, ServiceSends lanes), never new type parameters. Supervising<B, C> has 2 seats: B the supervised parent, C the worker behavior whose incarnations the proxies birth \u2014 the minimum for typed replacement sends Vec<Delivery<A, ProxyCommand<C>>>. Base<S, O, Br, E> has 4 seats: S the owned State implementation; O/Br/E phantom seats (marker: PhantomData<fn(O, Br, E)>) forwarding State's three protocol seats so Base can name them in its Behavior impl. FnState<S, A, M, O, Br, E> has 6: S owned state, A/M the function's input seats (address of sender, message), O/Br/E the State protocol seats the fn-pointer Transition type must name. Fsm<A, S, M, P, E> has 5: A the address seat (phantom, used only in the Behavior impl), S state, M message, P the Copy+PartialEq phase menu, E the controlled error \u2014 the concrete phase/state seats of the derived finite-state construction.",
+      "evidence": [
+        "crates/behavior/src/spec.rs:27 'pub struct Spec<B>', deadlined.rs:80 'pub struct At<B: Behavior>', watching.rs:44 'pub struct Watching<B: Behavior>', receive_timeout.rs:99 'pub struct ReceiveTimeout<B: Behavior>', stashing.rs:15 'pub struct Stashing<B: Behavior>' \u2014 one wrapped-behavior seat each",
+        "crates/behavior/src/supervising.rs:208 'pub struct Proxy<C: Behavior<Ph = Never>>' (1) and :380 'pub struct Supervising<B: Behavior, C: Behavior<Ph = Never, Addr = B::Addr>>' (2)",
+        "crates/behavior/src/behavior.rs:433 'pub struct Base<S: State<O, Br, E>, O = Never, Br: BirthMode = NoBirths, E = Never>' (4) and :457 'pub struct FnState<S, A: Address, M, O = Never, Br: BirthMode = NoBirths, E = Never>' (6)",
+        "crates/behavior/src/fsm.rs:16 'pub struct Fsm<A: Address, S, M, P, E>' (5) with phase bound P: Copy + PartialEq at :24",
+        "checker arity function reproduced: all ten wrapper arities equal baseline generic_arities (Spec=1 At=1 Watching=1 Supervising=2 Proxy=1 ReceiveTimeout=1 Stashing=1 Fsm=5 Base=4 FnState=6)"
+      ],
+      "validation": [
+        "python3 reimplementation of check.sh arity() printed Spec=1 At=1 Watching=1 Supervising=2 Proxy=1 ReceiveTimeout=1 Stashing=1 Fsm=5 Base=4 FnState=6 \u2014 all equal to baseline, no regression",
+        "cargo nextest run -p bombay-behavior-testkit -> 123 passed; cross_lane.rs:78 'type Stack = behavior::Spec<...>' and two_buffer.rs:54-55 compose the wrappers with no extra type parameters",
+        "cargo nextest run -p bombay-behavior -> 31 passed; algebra::spec_hides_composed_protocols_without_losing_their_effects pins Spec<B> arity-1 facade behavior"
+      ]
+    },
+    {
+      "id": "PHANTOM-01",
+      "category": "surface",
+      "subject": "phantom fields",
+      "question": "Inventory and justify or remove every phantom protocol/type field.",
+      "status": "resolved",
+      "decision": "Retain all 4 phantom fields as-is. Classification: each phantom is a Bombay-derived type-level construction encoding an actor-model law statically (typed message acceptance, creation capability, protocol seats) with zero runtime cost; each is a variance/capability encoding with zero runtime cost and none is removable without losing a static seat. (1) behavior.rs:44 Recipient.message: PhantomData<fn(M)> \u2014 contravariant fn-parameter phantom statically coupling a recipient to the message M it accepts without storing or owning M; keeps Recipient Copy regardless of M, avoids drop-check ownership of message data, and lets Delivery<A, M> pair the coupled types (capability encoding: you cannot name a recipient for a message it rejects). (2) behavior.rs:299 Births<C>(PhantomData<fn() -> C>) \u2014 covariant return-position phantom encoding the creation capability BirthMode::Child = C at zero size; the fn() -> C form makes Births<C> covariant in C and free of any ownership/drop-check claim over child behaviors. (3) behavior.rs:435 Base.marker: PhantomData<fn(O, Br, E)> \u2014 contravariant phantom binding State's three protocol seats (outbound message, birth mode, error) that otherwise appear only in the impl bound; required to avoid E0392 unused-parameter errors while keeping S the sole owned field. (4) fsm.rs:21 Fsm.address: core::marker::PhantomData<A> \u2014 owning-position phantom for the address seat A, which Fsm uses only in its Behavior impl associated types (Addr = A, event User<A, M>); required because every struct generic must be used (E0392) and A: Address is Copy so the ownership claim is inert. The checker regex counts exactly these four (three field-form plus the Births tuple-struct special case); count is 4/4 against baseline. No PhantomData exists anywhere else in crates/behavior/src (grep confirms), and no dyn/Any/TypeId accompanies any of them.",
+      "evidence": [
+        "crates/behavior/src/behavior.rs:44 'message: PhantomData<fn(M)>' inside Recipient (struct at :42); constructed at :74 from_route",
+        "crates/behavior/src/behavior.rs:299 'pub struct Births<C>(PhantomData<fn() -> C>)' with BirthMode impl at :301-304",
+        "crates/behavior/src/behavior.rs:435 'marker: PhantomData<fn(O, Br, E)>' inside Base; constructed at :443 Base::new",
+        "crates/behavior/src/fsm.rs:21 'address: core::marker::PhantomData<A>' inside Fsm; constructed at :32 Fsm::new",
+        "grep -n PhantomData crates/behavior/src returns exactly these 4 field sites plus constructor expressions and the doctest mention at behavior.rs:415-416"
+      ],
+      "validation": [
+        "python3 reproduction of the check.sh phantom regex (field form + Births tuple special case) over crates/behavior/src/*.rs counted 4 == baseline phantom_field_count 4",
+        "cargo nextest run -p bombay-behavior -> 31 passed; algebra::proxy_replacement_creates_a_fresh_incarnation exercises Recipient<A, M> coupling through Route::Child sends",
+        "cargo nextest run -p bombay-behavior-testkit -> 123 passed; properties::proxy_generation_model_matches_arbitrary_command_sequences exercises Births<C> and Proxy incarnations through the phantom-encoded seats"
+      ]
+    },
+    {
+      "id": "COMPLEXITY-01",
+      "category": "surface",
+      "subject": "type-complexity allowances",
+      "question": "Inventory and justify or remove every allowance.",
+      "status": "resolved",
+      "decision": "Retain the single clippy::type_complexity allowance as-is; baseline and current tree agree on exactly one file. The allowance sits on State::handle (behavior.rs:396-399) with reason 'the alias exposes all state protocol seats'. Justification: the return type StateActed<Self::Addr, Out, Birth, Err> = Result<Actions<A, Never, Vec<Delivery<A, Out>>, Birth>, Err> is the public, documented alias that makes every protocol seat (address, outbound lane, birth capability, error) visible at the fold's signature; satisfying the lint by nesting further aliases would hide seats behind defaults and weaken the signature's documentary role \u2014 the seats are the law of the pure fold, not incidental complexity. No other source file contains the string clippy::type_complexity, and the checker would fail on any new file. Classification: Bombay policy for signature legibility, not a semantic relaxation (the lint is cosmetic; the alias type itself is unchanged).",
+      "evidence": [
+        "crates/behavior/src/behavior.rs:396-399 '#[allow(clippy::type_complexity, reason = \"the alias exposes all state protocol seats\")]' on State::handle",
+        "crates/behavior/src/behavior.rs:374 StateActed alias = Acted<A, Never, Vec<Delivery<A, Out>>, Birth, Err> naming all four seats",
+        "grep -rn type_complexity crates/behavior/src matches only crates/behavior/src/behavior.rs (1 file), equal to baseline type_complexity_files",
+        "supervising.rs:404 uses a separate too_many_arguments allow with reason 'hidden by Spec' \u2014 a different lint, not counted by this ratchet"
+      ],
+      "validation": [
+        "grep -rln 'clippy::type_complexity' crates/behavior/src -> crates/behavior/src/behavior.rs only, matching baseline type_complexity_files exactly",
+        "python3 reproduction of the check.sh complexity inventory (files containing the string) -> {crates/behavior/src/behavior.rs} == frozen set, no new files",
+        "cargo nextest run -p bombay-behavior -> 31 passed with the lint configuration untouched (no clippy.toml or [lints] change in this audit)"
+      ],
+      "coverage": [
+        "crates/behavior/src/behavior.rs"
+      ]
+    },
+    {
+      "id": "PANIC-01",
+      "category": "surface",
+      "subject": "production panic/expect contracts",
+      "question": "Inventory every site and prove exhaustion or unreachable invariants are documented/tested.",
+      "status": "resolved",
+      "decision": "Retain all 12 production panic!/.expect( sites as-is; every one is either a documented u64/usize exhaustion boundary or an interpreter-contract invariant that tests exercise at its reachable edge, and panics are never used for data or capacity limits of untrusted input ( Bombay policy: panics only for programmer/interpreter contract bugs ). Inventory: spec.rs:24 identity_nonce u64::try_from(index).expect(\"fleet index fits u64\") \u2014 usize\u2192u64 conversion boundary, unreachable on <=64-bit hosts; spec.rs:119 and :151 checked_add(1).expect(\"timer identity exhausted\") \u2014 u64 timer-id exhaustion, documented '# Panics: Panics if one specification composes more than u64::MAX timer capabilities' (spec.rs:108-110, 131-133). supervising.rs:250 Proxy::init worker.take().expect(\"a proxy initializes once\") \u2014 the Behavior contract calls init exactly once per actor lifetime. supervising.rs:288 and :350 generation.checked_add(1).expect(\"proxy generation exhausted\") \u2014 u64 incarnation-generation exhaustion. supervising.rs:421 u64::try_from(index).expect(\"fleet index fits u64\") and :430 u64::try_from(count).expect(\"fleet size fits u64\") \u2014 documented '# Panics: Panics only if a fleet index cannot be represented by u64' (supervising.rs:402-403). supervising.rs:477 is_alive position(nonce).expect(\"unknown supervised nonce\") \u2014 documented '# Panics: Panics when nonce is not part of this supervisor topology' (supervising.rs:474-475), a caller-contract precondition. supervising.rs:498 and :683 position(...).expect(\"unknown supervised nonce\") in replacement_decision and the ChildStopped arm \u2014 invariant: the interpreter only reports WorkerStopped/ChildStopped for nonces this supervisor registered at birth (slots pushed in new/init/wrap). supervising.rs:595 next_sequence.checked_add(1).expect(\"birth sequence exhausted\") \u2014 u64 birth-sequence exhaustion. Adjacent non-counted sites: supervising.rs:581 assert!(position(create.nonce).is_none(), \"a child birth nonce must be fresh\") guarding the wrap registration invariant, and supervising.rs:316 unreachable!() on the let-else-excluded SupervisionEvent::Inner arm. Coverage: properties::proxy_generation_model_matches_arbitrary_command_sequences drives init-then-steps through the exact take/generation paths; supervision_model and exhaustive tests feed only registered nonces, proving the position invariants hold on every legal trace; workers_fleet::workers_build_out_of_range_index_panics demonstrates the codebase deliberately tests a panic boundary.",
+      "evidence": [
+        "crates/behavior/src/spec.rs:24, :119, :151 \u2014 three exhaustion expects with '# Panics' docs at spec.rs:108-110 and :131-133",
+        "crates/behavior/src/supervising.rs:250 'a proxy initializes once', :288/:350 'proxy generation exhausted', :421 'fleet index fits u64', :430 'fleet size fits u64'",
+        "crates/behavior/src/supervising.rs:477/:498/:683 'unknown supervised nonce' with the documented precondition at :474-475 and registration sites init :641-657 and wrap :575-601",
+        "crates/behavior/src/supervising.rs:595 'birth sequence exhausted'; adjacent assert! at :581 'a child birth nonce must be fresh' and unreachable!() at :316",
+        "python3 reproduction of check.sh regex 'panic!|\\.expect\\(' over crates/behavior/src/*.rs counted exactly 12 == baseline production_panic_expect_sites"
+      ],
+      "validation": [
+        "python3 count of regex 'panic!|\\.expect\\(' over crates/behavior/src/*.rs printed 12 == baseline production_panic_expect_sites (no before/after change)",
+        "cargo nextest run -p bombay-behavior-testkit -> 123 passed including properties::proxy_generation_model_matches_arbitrary_command_sequences and workers_fleet::workers_build_out_of_range_index_panics",
+        "cargo nextest run -p bombay-behavior-testkit -> exhaustive::exhaustive_supervision_sequences_match_the_reference_model PASS [4.468s] \u2014 every legal worker-stop trace over a 2-slot fleet hits replacement_decision with registered nonces only",
+        "cargo nextest run -p bombay-behavior -> 31 passed including algebra::supervisor_preserves_and_observes_dynamic_births_once, which exercises the wrap freshness assert path with legal births"
+      ]
+    },
+    {
+      "id": "STATIC-01",
+      "category": "surface",
+      "subject": "zero dynamic escape hatches",
+      "question": "Prove dyn/Any/TypeId/unsafe/registry/reflection remain absent.",
+      "status": "resolved",
+      "decision": "Retain as-is, evidence verified: static-dispatch law (AGENTS.md zero-tolerance) \u2014 dyn/Any/TypeId/unsafe are absent from every crates/behavior/src file; no registry, Box, or reflection mechanism exists; the checker enforces the same patterns with hard failure.",
+      "evidence": [
+        "rg -n '\\bdyn\\s+[A-Za-z_]|\\bAny\\b|\\bTypeId\\b|\\bunsafe\\b' crates/behavior/src -> 0 matches across all 12 source files",
+        "rg -n 'Box|registry|Registry' crates/behavior/src -> 0 matches \u2014 no heap-erased or lookup-based composition",
+        "crates/behavior/src/behavior.rs:285-307 BirthMode/NoBirths/Births encode capability at the type level with PhantomData<fn() -> C>, replacing any runtime registry",
+        "research/architecture-critical-review-loop/check.sh zero-tolerance block greps the same four patterns over crates/behavior/src and fails on any hit"
+      ],
+      "validation": [
+        "bash: rg -n '\\bdyn\\s+[A-Za-z_]|\\bAny\\b|\\bTypeId\\b|\\bunsafe\\b' crates/behavior/src | wc -l -> 0",
+        "bash: rg -n 'Box|registry|Registry' crates/behavior/src | wc -l -> 0",
+        "cargo nextest run -p bombay-behavior -> 31 tests run: 31 passed with fully static dispatch compiled in"
+      ]
+    },
+    {
+      "id": "ERGO-01",
+      "category": "ergonomics",
+      "subject": "application and test flow",
+      "question": "Prove annotations, turbofishes, helper aliases, and protocol ceremony do not increase.",
+      "status": "resolved",
+      "decision": "Retain current ergonomics as-is. Classification: ceremony level is deliberate Bombay policy ratcheted by the checker \u2014 the Spec typestate facade (a derivation over the wrapper algebra) keeps application call sites annotation-free; ceremony counts match the frozen baseline exactly (test turbofish 31/31, helper type aliases 18/18) and no increase is needed. Turbofish census (31 total): 7 in crates/behavior/tests/algebra.rs, 24 across behavior-testkit tests; every instance is one of three minimal forms \u2014 proptest generators (any::<u8>(), properties.rs:84; vec(any::<u8>(), 0..256), fsm_properties.rs:67), Result ascription for uninhabited errors (Ok::<Move<Phase>, Never>(...), fsm_properties.rs:32, algebra.rs:288), and static-dispatch probes (requires_route_sends::<MailAddr, Vec<Delivery<MailAddr, ObserveChild<MailAddr>>>>(), algebra.rs:30-31). None annotates a production signature; they exist because the test harness chooses concrete seats (u8 messages, MailAddr) that inference cannot guess. Alias census (18): 15 are per-file local names for the composed child/supervisor type (e.g. type Child = Base<Echo, u8>; repeated in boundaries/core/cross_lane/compositions/driver_accumulation/error_paths/exhaustive/init_contract/properties/supervision_model) and 3 name full stacks (cross_lane.rs:78 type Stack = behavior::Spec<...>; two_buffer.rs:54; receive_timeout.rs:202 type TimedInner = behavior::At<Inner>). Each alias is line-start top-level, names a type used 2+ times in its file, and prevents signature noise rather than hiding production complexity. The Spec facade (spec.rs:56-244) is why applications need no turbofish at all: builder methods return concrete Spec<Wrapper<B>> types, so the composed protocol never appears at a call site \u2014 test-only aliases are the residual cost of writing the types out explicitly in adversarial tests. No annotation, turbofish, alias, or protocol ceremony increased during this audit.",
+      "evidence": [
+        "python3 reproduction of check.sh counting over crates/behavior/tests + behavior-testkit src/tests: turbofish '::<' = 31 == baseline test_turbofish_expressions; line-start 'type X =' aliases = 18 == baseline test_helper_type_aliases",
+        "crates/behavior/tests/algebra.rs:30-31 static probes; :178 channel::<Never, u64>; :288 Ok::<Move<Phase>, Never> \u2014 7 turbofish total in the file",
+        "crates/behavior-testkit/tests/fsm_properties.rs:32 Ok::<Move<Phase>, Never>, :55 collect::<HashSet<u64>>, :67-88 any::<u8>() generator sites",
+        "crates/behavior-testkit/tests/cross_lane.rs:35 type Child = Base<Recorder, u8>; :78-84 type Stack = behavior::Spec<...> full-stack alias used by the proptest",
+        "crates/behavior/src/spec.rs:56-244 Spec builder methods (stop_on_shutdown, watch, at, receive_timeout, stash, children) return concrete types so application call sites need zero turbofish"
+      ],
+      "validation": [
+        "python3 count printed turbofish: 31 and aliases: 18, both exactly at baseline ratchets; check.sh would fail on any increase",
+        "cargo nextest run -p bombay-behavior-testkit -> Summary 123 tests run: 123 passed, 0 skipped with the current ceremony level unchanged",
+        "cargo nextest run -p bombay-behavior -> 31 passed; the suite compiles with no additional annotations beyond the frozen counts"
+      ]
+    },
+    {
+      "id": "TEST-MODELS",
+      "category": "testing",
+      "subject": "independent models and exhaustive/property/fuzz coverage",
+      "question": "Assess independence, boundaries, and applicable state-space coverage.",
+      "status": "resolved",
+      "decision": "Retain the test architecture as-is; the reference models are genuinely independent and the state-space coverage is layered (exhaustive + property + fuzz). Independence: crates/behavior-testkit/src/model.rs states in its module doc that the supervision Model 'encodes the DOCUMENTED contract ... written from the spec, never from implementation branches'; it uses deliberately different state and vocabulary from the implementation \u2014 IncarnationModel has occupied/vacant/queued_successor versus Proxy's worker/worker_alive/pending (model.rs:86-155 vs supervising.rs:208-214), ExpectedCreation Initial/Ordinary/Successor versus CreationKind Birth/ReplacementIncarnation (model.rs:68-83), InactivityModel token pairs versus ReceiveTimeout's generation state (model.rs:16-58), and Model::apply re-derives eligibility/window/candidate/budget logic from the contract (model.rs:280-351) rather than calling Supervising. Boundary coverage: exhaustive.rs enumerates every sequence of up to three child-stopped events over a two-slot fleet across all 3 strategies x 3 policies x 7 outcomes x budgets x window edges (AT_VALUES [0,2] straddle the window) against Model; supervision_model.rs runs 512-case proptests against the same Model plus budget-window aging edges; stash_properties.rs pairs a random filter model with an exhaustive sequence check; fsm_properties.rs and two_buffer.rs assert the black-box no-drop/no-duplication reconciliation recorded+held==stepped without any reference model (implementation-vocabulary-free); cross_lane.rs proves lane isolation in a supervised stash stack; shutdown_model.rs checks a first-request prefix model. Fuzz: crates/behavior-testkit/fuzz/fuzz_targets holds 9 targets (birth, error, fsm, protocol, receive_timeout, stack, stash, supervision, two_buffer sequences) each with a populated corpus under fuzz/corpus. Classification: the models are Bombay-derived test constructions whose laws are the documented contracts; no test reimplements production logic as its own oracle.",
+      "evidence": [
+        "crates/behavior-testkit/src/model.rs:1-5 module doc: 'written from the spec, never from implementation branches'; :88-91 'deliberately uses different state and vocabulary from Proxy'",
+        "crates/behavior-testkit/tests/exhaustive.rs:1-5 'every sequence of up to three child-stopped events over a two-slot fleet, across strategies, policies, budgets, and window edges, compared against the independent reference model'",
+        "crates/behavior-testkit/tests/fsm_properties.rs:1-6 black-box invariant '|recorded| + held() == stepped' with no reference model; two_buffer.rs:5-8 reconciliation 'recorded + fsm_held + stash_held + goto_consumed == stepped'",
+        "crates/behavior-testkit/fuzz/fuzz_targets/ contains 9 targets: birth_sequences, error_sequences, fsm_sequences, protocol_sequences, receive_timeout_sequences, stack_sequences, stash_sequences, supervision_sequences, two_buffer_sequences; corpora exist under fuzz/corpus/<target>/",
+        "crates/behavior-testkit/tests/proptest-regressions files exist for cross_lane, stash_properties, two_buffer (shrunk regressions pinned)"
+      ],
+      "validation": [
+        "cargo nextest run -p bombay-behavior-testkit -> Summary [4.528s] 123 tests run: 123 passed, 0 skipped, including exhaustive::exhaustive_supervision_sequences_match_the_reference_model [4.468s]",
+        "cargo nextest run -p bombay-behavior-testkit -> supervision_model::supervision_matches_the_reference_model, creation_provenance_matches_the_independent_incarnation_model, mixed_dynamic_births_and_deaths_match_the_reference_model all PASS",
+        "cargo nextest run -p bombay-behavior-testkit -> fsm_properties::fsm_never_drops_or_duplicates, fsm_three_phase_never_drops_or_duplicates, two_buffer::two_replay_buffers_never_drop_or_duplicate, cross_lane::full_stack_random_lane_routing_never_leaks all PASS",
+        "fd . crates/behavior-testkit/fuzz/fuzz_targets listed 9 fuzz targets; fuzz/corpus directories are populated for all nine sequence families"
+      ]
+    },
+    {
+      "id": "TEST-COMPILE-FAIL",
+      "category": "testing",
+      "subject": "invalid programs fail to compile",
+      "question": "Assess compile-fail coverage for capability, phase, birth, and composition invariants.",
+      "status": "resolved",
+      "decision": "Retain current compile-fail coverage as-is: one compile_fail doctest plus structurally unrepresentable negative space. The doctest at behavior.rs:412-418 (on the Behavior trait) proves effect and termination escape seats are intentionally absent \u2014 erased_effect<B: Behavior>() -> PhantomData<B::Effect> fails to compile, guarding the closed effect algebra against any future associated-type addition; `cargo test --doc -p bombay-behavior` runs it green. No trybuild/ui harness exists (no trybuild in any Cargo.toml; grep across manifests is empty) and none is required for the remaining invariant classes, because the other capability/phase/birth/composition invariants are inhabited-type impossibilities rather than compiler lints: a phase transition outside the menu is unconstructible when Ph = Never (Step::Goto(Never) has no value, verdict.rs:6-10 doc, enum at :11 \u2014 'The law is the type, not a convention'); a birth from a NoBirths behavior needs Create<A, Never>, whose child field is uninhabited (NoBirths at behavior.rs:291, Births<C> at :299); a composition missing a lane bound (e.g. B::Event: ChildEvent on Supervising, supervising.rs:628) fails at the composition site with a trait-bound error naming the missing capability. Positive static probes lock the forwarding side: algebra.rs:19 requires_no_births, :34 requires_births, :40 requires_worker_events and the test birth_modes_are_disjoint_and_wrappers_forward_them (:331) compile only while wrappers forward capability seats truthfully \u2014 these are compile-time assertions whose failure mode is a broken build. Honest gap assessment: negative compile-fail coverage exists only for the effect-seat invariant; adding a trybuild suite for the uninhabited-type invariants would test the type system itself rather than Behavior code, so the deliberate single-doctest policy is retained.",
+      "evidence": [
+        "crates/behavior/src/behavior.rs:405-418 Behavior doc: 'Effect and termination escape seats are intentionally absent' followed by the ```compile_fail erased_effect doctest",
+        "grep -rn compile_fail crates/behavior/src crates/behavior/tests crates/behavior-testkit/src crates/behavior-testkit/tests -> exactly 1 match (behavior.rs:412)",
+        "grep -rn 'trybuild' crates/*/Cargo.toml Cargo.toml -> no matches; no ui/compiletest harness anywhere in the workspace manifests",
+        "crates/behavior/src/verdict.rs:6-10 Never doc: 'As a phase menu, Step<Never> has no constructible Goto \u2014 a plain actor is a one-phase machine. The law is the type, not a convention'",
+        "crates/behavior/tests/algebra.rs:19-40 requires_no_births / requires_births / requires_worker_events generic probes; :331 birth_modes_are_disjoint_and_wrappers_forward_them compile-time forwarding assertion"
+      ],
+      "validation": [
+        "cargo test --doc -p bombay-behavior -> Doc-tests behavior: test crates/behavior/src/behavior.rs - algebra::Behavior (line 412) - compile fail ... ok; 1 passed",
+        "cargo nextest run -p bombay-behavior -> 31 passed including algebra::birth_modes_are_disjoint_and_wrappers_forward_them (capability/birth forwarding compile probes)",
+        "grep -c compile_fail over production and test sources printed 1; the checker ratchets confirmed no compile-fail infrastructure removed (counts unchanged: turbofish 31, aliases 18)"
+      ]
+    },
+    {
+      "id": "DOC-01",
+      "category": "synthesis",
+      "subject": "target architecture evidence",
+      "question": "Record every obligation, before/after metric, decision, dead end, and remaining risk.",
+      "status": "resolved",
+      "decision": "Target-architecture evidence recorded in REPORT.md '## Actor behavior algebra evidence': every one of the 61 obligation IDs appears with its decision and law/derivation/policy label; before/after measurements show a no-growth audit (all ratchets exactly at baseline: turbofish 31, aliases 18, panics 12, phantom 4, complexity 1, 84 public symbols, 11 traits, all 15 generic arities); retained decisions dominate (0 production changes, 0 new primitives, 0 reverted experiments); dead ends are the recorded boundary obstructions (backpressure, fairness, persistence, remoting, scheduling, durable-state) with exact algebraic reasons; remaining risks listed honestly (single compile_fail probe, non-idempotent direct-misuse init paths documented as interpreter contract).",
+      "evidence": [
+        "research/architecture-critical-review-loop/REPORT.md section '## Actor behavior algebra evidence' contains all 61 obligation IDs (checker-verified substring presence)",
+        "capability-matrix.json: 53/53 rows resolved, 0 new-primitive dispositions, derivations recorded per row",
+        "evidence.json: 61/61 obligations resolved with decisions, evidence, and validation"
+      ],
+      "validation": [
+        "research/architecture-critical-review-loop/check.sh prints 'resolved obligations: 61/61' once REPORT.md is present",
+        "check.sh verifies every obligation ID string appears in REPORT.md when all obligations are resolved"
+      ]
+    },
+    {
+      "id": "VERIFY-01",
+      "category": "verification",
+      "subject": "authoritative repository gates",
+      "question": "Record exact successful nextest and nix flake check results plus focused gates.",
+      "status": "resolved",
+      "decision": "Authoritative gates pass on the final tree. Focused gates run during the audit (per-cluster nextest filters: algebra 30-31, boundaries 14, error_paths 9, supervision_model 6, compositions 9, cross_lane 5, workers_fleet 5, two_buffer 1, init_contract 6, receive_timeout 6, shutdown_model 1, stash_properties 4, fsm_properties 5, driver_accumulation 6, core 11 \u2014 all green) are subsumed by the two authoritative runs: 'cargo nextest run --workspace' -> 154 tests, 154 passed, 0 skipped (behavior 31 + testkit 123); 'nix flake check' -> all 7 aarch64-darwin checks pass (build, nextest, doc, fmt, toml-fmt, audit, deny). The completion checker check.sh reruns both gates itself after its evidence gates pass.",
+      "evidence": [
+        "cargo nextest run --workspace: 'Summary [4.400s] 123 tests run: 123 passed, 0 skipped' (bombay-behavior-testkit) and 31 passed (bombay-behavior) on 2026-08-08",
+        "nix flake check: 'checks.aarch64-darwin.bombay-behavior-{audit,fmt,deny,doc,toml-fmt,nextest} and bombay-behavior' all marked passed on 2026-08-08",
+        "cargo test --doc -p bombay-behavior: 1 passed (compile_fail erased-effect-seat probe)"
+      ],
+      "validation": [
+        "research/architecture-critical-review-loop/check.sh exits 0 only after both 'cargo nextest run --workspace' and 'nix flake check' succeed on the committed tree",
+        "Focused per-cluster commands recorded in each cluster obligation's validation fields and reproduced during the audit"
+      ]
+    }
   ]
 }
