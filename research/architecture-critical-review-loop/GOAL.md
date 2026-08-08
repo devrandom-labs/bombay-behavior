@@ -5,7 +5,7 @@
 Perform an independent, skeptical derivation and verification pass over Bombay
 Behavior. The semantic authority is premium primary actor-system research:
 Hewitt's actor model; Agha's actor languages and semantics; Agha and
-collaborators' later L-reActor/algebraic actor work; formal lambda-calculus
+collaborators' later functional and algebraic actor work; formal lambda-calculus
 foundations of actor computation; and other peer-reviewed original papers,
 dissertations, or authoritative formal specifications discovered by the survey.
 Generic reactor/event-loop work is explicitly not part of this authority.
@@ -131,7 +131,7 @@ signatures and into test helpers.
 
 1. Conduct a broad web/primary-source survey and resolve the complete capability
    matrix. Expand it whenever a genuinely distinct actor capability is found.
-2. Verify Hewitt, Agha, Agha's later L-reActor/algebraic actor work, formal
+2. Verify Hewitt, Agha, Agha's later functional and algebraic actor work, formal
    lambda-calculus actor foundations, and further premium primary sources
    discovered by the survey; label every semantic claim
    law/derivation/policy.

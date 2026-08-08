@@ -8,10 +8,10 @@
   for supervision/linking/restart vocabulary, labeled DERIVED/POLICY — never
   as actor-model law. The law layer comes only from Hewitt/Greif/Clinger/
   Agha and collaborators.
-- The 'L-reActor' name could not be pinned to a DOI in this pass; the
-  algebraic-actor line is covered by Agha-Thati (LNCS 2941) and
-  Agha-Thati-Ziaei (OSL report). No adopted claim depends on the missing
-  citation.
+- An invented scaffold label was an authoring error caused by misreading
+  “Agha's later work”; it is not a research term or missing citation. The
+  intended authority is Agha and collaborators' later functional and algebraic
+  actor work, including AMST 1997 and Agha-Thati 2004.
 - Compile-fail coverage is scoped to one compile_fail doctest (erased effect
   seat) plus positive compile-time probes, because the phase/birth/capability
   negatives are uninhabited-type impossibilities rather than runtime

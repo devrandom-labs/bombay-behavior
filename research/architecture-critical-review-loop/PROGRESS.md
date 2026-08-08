@@ -17,8 +17,8 @@
 ## 2026-08-08 — campaign complete
 
 - Survey: 5 repeatable queries; 16 primary sources included; reactor/event-loop
-  and framework-doc literature excluded; one uncertainty recorded (L-reActor
-  venue).
+  and framework-doc literature excluded. An invented scaffold label was
+  corrected to “Agha's later functional and algebraic actor work.”
 - Capability matrix: 53/53 rows resolved (29 existing, 14 derived,
   8 interpreter, 2 application, 0 new-primitive) from a seven-construct basis.
 - Obligations: 61/61 resolved across five parallel cluster audits (core,

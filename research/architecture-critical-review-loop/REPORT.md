@@ -7,7 +7,7 @@ design proposal and does not inherit authority from retired architecture notes.
 The loop must keep full primary-source citations (preferably DOI or stable
 publisher/repository links), law/derivation/policy labels, failed derivations,
 validation evidence, and the final obligation index here. Its research floor is
-Hewitt, Agha, Agha and collaborators' later L-reActor/algebraic actor work, and
+Hewitt, Agha, Agha and collaborators' later functional and algebraic actor work, and
 formal lambda-calculus foundations of actors—not generic reactor/event-loop
 literature.
 
@@ -71,8 +71,9 @@ Research/survey (labels LAW/DERIVED/POLICY per entry):
   AMST 1997; nonce/ordering/provenance classified derived/policy.
 - RESEARCH-LABELS — every retained claim carries a law/derivation/policy
   label; no claim cites framework folklore.
-- SURVEY-SEARCH — five repeatable queries, inclusion/exclusion lists, and the
-  one uncertainty (exact 'L-reActor' venue) recorded.
+- SURVEY-SEARCH — five repeatable queries and inclusion/exclusion lists were
+  recorded. An invented scaffold label was later removed; it was not the name
+  of an Agha work and creates no research uncertainty.
 - SURVEY-TAXONOMY — 53/53 required rows resolved; candidate additions
   (ask, circuit breaker, virtual actors, pub-sub, CRDTs) fold into existing
   rows; no new category required.
@@ -275,9 +276,10 @@ over executions; I/O is outside the effect triple) — recorded, not fixed.
   init sends; step-before-init routes to unborn proxy generations). This is
   unreachable through the driver, which inits first; the init-once contract
   is documented and panic-guarded where cheap (Proxy::init).
-- The 'L-reActor' name was not pinned to a DOI in this pass; the algebraic
-  actor line is covered by the verified Agha-Thati and Agha-Thati-Ziaei
-  papers, so no adopted law depends on the missing citation.
+- The scaffold invented a publication label by misreading “Agha's later
+  work.” No such source is asserted. The intended authority is Agha and
+  collaborators' verified later functional and algebraic actor work, including
+  AMST 1997 and Agha-Thati 2004.
 - Interpreter obligations (freshness acceptance, collision errors, Restarted
   diagnostics) are specified and testkit-validated but enforced in actorpass,
   outside this repository's gates.
