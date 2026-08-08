@@ -1,8 +1,8 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, Base, Behavior, Births, Create, Delivery, Exit, MailAddr, Never, NoBirths,
-    ReceiveTimeoutError, ReceiveTimeoutEvent, Recipient, Spec, State, Step, TimerElapsed,
+    Acted, Actions, At, AtEvent, Base, Behavior, Births, Create, Delivery, Exit, MailAddr, Never,
+    NoBirths, ReceiveTimeoutError, ReceiveTimeoutEvent, Recipient, Spec, State, Step, TimerElapsed,
     TimerGeneration, TimerId, User, UserEvent,
 };
 use behavior_testkit::model::InactivityModel;
@@ -183,6 +183,16 @@ async fn errors_and_terminal_user_folds_do_not_rearm() {
     assert!(stopped.sends.own.is_empty());
     assert_eq!(stopped.sends.inner[0].message, 0);
     assert_eq!(stopped.creates[0].nonce, 0);
+
+    let formerly_live = terminal
+        .step(ReceiveTimeoutEvent::Elapsed(TimerElapsed {
+            id: TimerId(0),
+            generation: TimerGeneration(0),
+        }))
+        .await
+        .unwrap();
+    assert!(formerly_live.sends.inner.is_empty());
+    assert!(formerly_live.sends.own.is_empty());
 }
 
 fn inner_at(_inner: &mut Inner) -> Result<behavior::Become<MailAddr>, Failed> {
@@ -309,4 +319,56 @@ async fn accepted_stale_timeout_error_and_terminal_turns_match_independent_model
     assert_eq!(terminal.become_, Step::Stop(Exit::Normal));
     assert!(terminal.sends.own.is_empty());
     assert_eq!(model.no_activity(), Some(2));
+}
+
+struct StopsAtInitialization;
+
+impl Behavior for StopsAtInitialization {
+    type Addr = MailAddr;
+    type Msg = ();
+    type Event = User<MailAddr, ()>;
+    type Sends = Vec<Delivery<MailAddr, Never>>;
+    type Ph = Never;
+    type Error = Never;
+    type Birth = NoBirths;
+
+    async fn init(&mut self) -> Acted<MailAddr, Never, Self::Sends, NoBirths, Never> {
+        Ok(Actions::stop(Exit::Normal))
+    }
+
+    async fn step(
+        &mut self,
+        _event: Self::Event,
+    ) -> Acted<MailAddr, Never, Self::Sends, NoBirths, Never> {
+        Ok(Actions::cont())
+    }
+}
+
+fn stopped_at_reaction(
+    _inner: &mut StopsAtInitialization,
+) -> Result<behavior::Become<MailAddr>, Never> {
+    Ok(Step::Continue)
+}
+
+#[tokio::test]
+async fn terminal_initialization_consumes_absolute_timer_state() {
+    let due = tokio::time::Instant::now() + Duration::from_secs(1);
+    let mut behavior = At::new(
+        StopsAtInitialization,
+        TimerId(0),
+        Some(due),
+        stopped_at_reaction,
+    );
+    let initial = behavior.init().await.unwrap();
+    assert_eq!(initial.become_, Step::Stop(Exit::Normal));
+    assert!(initial.sends.own.is_empty());
+
+    let after_stop = behavior
+        .step(AtEvent::Reached(TimerElapsed {
+            id: TimerId(0),
+            generation: TimerGeneration(0),
+        }))
+        .await
+        .unwrap();
+    assert_eq!(after_stop.become_, Step::Continue);
 }

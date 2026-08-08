@@ -71,6 +71,11 @@ pub enum ReceiveTimeoutError<E> {
     /// The inner fold or timeout reaction failed.
     Inner(E),
     /// Advancing the timer generation would make a stale delivery live again.
+    ///
+    /// This is detected after the successful continuing inner user fold: the
+    /// inner state mutation has occurred, but its returned sends and creations
+    /// are not emitted because the composed transition fails. Bombay behavior
+    /// folds are not transactional and wrappers cannot roll back inner state.
     GenerationExhausted,
 }
 
@@ -195,6 +200,7 @@ where
             .await
             .map_err(ReceiveTimeoutError::Inner)?;
         let own = if Self::terminal(&actions) {
+            self.live = None;
             ServiceSends::empty()
         } else {
             self.schedule()?
@@ -222,6 +228,9 @@ where
                     .step(inner)
                     .await
                     .map_err(ReceiveTimeoutError::Inner)?;
+                if Self::terminal(&actions) {
+                    self.live = None;
+                }
                 Ok(Self::wrap(actions, ServiceSends::empty()))
             }
             ReceiveTimeoutEvent::Inner(event) => match event.into_user() {
@@ -233,6 +242,7 @@ where
                         .await
                         .map_err(ReceiveTimeoutError::Inner)?;
                     let own = if Self::terminal(&actions) {
+                        self.live = None;
                         ServiceSends::empty()
                     } else {
                         self.schedule()?
@@ -245,9 +255,65 @@ where
                         .step(service)
                         .await
                         .map_err(ReceiveTimeoutError::Inner)?;
+                    if Self::terminal(&actions) {
+                        self.live = None;
+                    }
                     Ok(Self::wrap(actions, ServiceSends::empty()))
                 }
             },
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{Acted, Base, Delivery, MailAddr, Never, NoBirths, State, User};
+
+    struct Count(u8);
+
+    impl State for Count {
+        type Addr = MailAddr;
+        type Msg = ();
+
+        fn handle(
+            &mut self,
+            _from: MailAddr,
+            (): (),
+        ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, NoBirths, Never> {
+            self.0 += 1;
+            Ok(Actions::cont())
+        }
+    }
+
+    type Inner = Base<Count>;
+
+    fn elapsed(
+        _inner: &mut Inner,
+    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, NoBirths, Never> {
+        Ok(Actions::cont())
+    }
+
+    #[tokio::test]
+    async fn exhaustion_follows_the_successful_inner_fold_without_emitting_its_actions() {
+        let mut timeout = ReceiveTimeout::new(
+            Base::new(Count(0)),
+            TimerId(0),
+            Duration::from_secs(1),
+            elapsed,
+        );
+        timeout.init().await.unwrap();
+        timeout.last_issued = Some(TimerGeneration(u64::MAX));
+
+        let result = timeout
+            .step(ReceiveTimeoutEvent::Inner(User::user(MailAddr(1), ())))
+            .await;
+
+        assert!(matches!(
+            result,
+            Err(ReceiveTimeoutError::GenerationExhausted)
+        ));
+        assert_eq!(timeout.inner().state().0, 1);
+        assert_eq!(timeout.live, Some(TimerGeneration(0)));
     }
 }

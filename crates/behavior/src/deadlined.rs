@@ -117,6 +117,7 @@ where
     async fn init(&mut self) -> Result<AtActions<B>, B::Error> {
         let actions = self.inner.init().await?;
         let own = if matches!(actions.become_, Step::Stop(_)) {
+            self.scheduled = None;
             ServiceSends::empty()
         } else {
             self.scheduled
@@ -154,18 +155,22 @@ where
                 })
             }
             AtEvent::Reached(event) => match B::Event::time_reached(event) {
-                Some(inner) => self
-                    .inner
-                    .step(inner)
-                    .await
-                    .map(|actions| Self::wrap(actions, ServiceSends::empty())),
+                Some(inner) => {
+                    let actions = self.inner.step(inner).await?;
+                    if matches!(actions.become_, Step::Stop(_)) {
+                        self.scheduled = None;
+                    }
+                    Ok(Self::wrap(actions, ServiceSends::empty()))
+                }
                 None => Ok(Actions::cont()),
             },
-            AtEvent::Inner(event) => self
-                .inner
-                .step(event)
-                .await
-                .map(|actions| Self::wrap(actions, ServiceSends::empty())),
+            AtEvent::Inner(event) => {
+                let actions = self.inner.step(event).await?;
+                if matches!(actions.become_, Step::Stop(_)) {
+                    self.scheduled = None;
+                }
+                Ok(Self::wrap(actions, ServiceSends::empty()))
+            }
         }
     }
 }
