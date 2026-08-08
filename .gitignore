@@ -9,3 +9,5 @@ target
 .worktrees/
 mutants.out/
 mutants.out.old/
+.pi-loop-log.jsonl
+.pi-loop-log.jsonl.1

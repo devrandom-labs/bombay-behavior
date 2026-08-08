@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "captured_at_commit": "2d40944",
+  "test_turbofish_expressions": 31,
+  "test_helper_type_aliases": 18,
+  "production_panic_expect_sites": 12,
+  "generic_arities": {
+    "Behavior": 0, "State": 3, "Actions": 4, "Create": 2,
+    "SendProduct": 2, "Spec": 1, "At": 1, "Watching": 1,
+    "Supervising": 2, "Proxy": 1, "ReceiveTimeout": 1,
+    "Stashing": 1, "Fsm": 5, "Base": 4, "FnState": 6
+  },
+  "public_symbols": [
+    "Acted","Actions","Address","At","AtActions","AtEvent","AtReaction","AtSends","Base","Become","Behavior","BehaviorActed","BirthMode","Births","ChildEvent","ChildStopped","Crash","Create","CreationKind","Delivery","Exit","FinalizeOnShutdown","FnState","Fsm","LinkReaction","MailAddr","Move","Never","NoBirths","ObserveChild","ObservePeer","PeerEvent","PeerStopped","Proxy","ProxyCommand","ReceiveTimeout","ReceiveTimeoutActions","ReceiveTimeoutError","ReceiveTimeoutEvent","ReceiveTimeoutReaction","ReceiveTimeoutSends","Recipient","ReportWorkerStopped","RestartDenial","RestartPolicy","Route","ScheduleAfter","ScheduleAt","SendAlgebra","SendProduct","ServiceSends","ShutdownEvent","ShutdownProtocol","ShutdownReaction","ShutdownRequested","Spec","StashRoute","Stashing","State","StateActed","Step","StopOnShutdown","Strategy","Supervising","SupervisionEvent","SupervisionFailure","SupervisionFailureReaction","SupervisionFailureReason","SupervisorActions","SupervisorSends","TimeEvent","TimerElapsed","TimerGeneration","TimerId","Transcript","Transition","User","UserEvent","WatchActions","WatchEvent","WatchSends","Watching","WorkerEvent","WorkerStopped"
+  ],
+  "public_traits": ["Address","Behavior","BirthMode","ChildEvent","PeerEvent","SendAlgebra","ShutdownEvent","State","TimeEvent","UserEvent","WorkerEvent"],
+  "phantom_field_count": 4,
+  "type_complexity_files": ["crates/behavior/src/behavior.rs"],
+  "protected_paths": [
+    ".github","AGENTS.md","Cargo.toml","Cargo.lock","flake.nix","flake.lock",
+    "crates/behavior/Cargo.toml","crates/behavior-macros/Cargo.toml",
+    "crates/behavior-testkit/Cargo.toml","crates/behavior/CHANGELOG.md",
+    "crates/behavior-macros/CHANGELOG.md"
+  ]
+}
