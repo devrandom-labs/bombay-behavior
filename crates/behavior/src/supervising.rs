@@ -17,10 +17,11 @@ use crate::behavior::{
     Actions, Address, Behavior, Births, Create, Delivery, Recipient, SendAlgebra, SendProduct,
     ServiceSends, User, UserEvent,
 };
-use crate::deadlined::{TimeEvent, TimeReached};
-use crate::shutdown::{ShutdownEvent, ShutdownRequested};
+use crate::protocol::{
+    ChildEvent, ChildStopped, ObserveChild, PeerEvent, PeerStopped, ReportWorkerStopped,
+    ShutdownEvent, ShutdownRequested, TimeEvent, TimeReached, WorkerEvent, WorkerStopped,
+};
 use crate::verdict::{Never, Step};
-use crate::watching::{PeerEvent, PeerStopped};
 use crate::{Become, Crash, Exit, RestartDenial, SupervisionFailureReason};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -50,35 +51,6 @@ pub const fn restart_all() -> Strategy {
 #[must_use]
 pub const fn restart_rest() -> Strategy {
     Strategy::RestForOne
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ChildStopped<A: Address> {
-    pub nonce: A::Nonce,
-    pub outcome: Result<Exit<A>, Crash>,
-    pub at: Instant,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ObserveChild<A: Address> {
-    pub nonce: A::Nonce,
-}
-
-/// A proxy's request for its interpreter to report a worker termination to
-/// the proxy's parent. The interpreter supplies the emitting proxy's child
-/// nonce when constructing [`WorkerStopped`].
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ReportWorkerStopped<A: Address> {
-    pub outcome: Result<Exit<A>, Crash>,
-    pub at: Instant,
-}
-
-/// A worker termination reported by a still-live supervised proxy.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct WorkerStopped<A: Address> {
-    pub proxy: A::Nonce,
-    pub outcome: Result<Exit<A>, Crash>,
-    pub at: Instant,
 }
 
 /// A typed failure of the supervisor's child-topology contract.
@@ -149,20 +121,11 @@ pub fn stop_on_supervision_failure<B: Behavior>(
     Ok(Step::Stop(failure.into_exit()))
 }
 
-/// Construction of the worker-report lane through a composed event type.
-pub trait WorkerEvent<A: Address>: Sized {
-    fn worker_stopped(event: WorkerStopped<A>) -> Option<Self>;
-}
-
 #[derive(Clone, PartialEq, Eq)]
 pub enum SupervisionEvent<E, A: Address> {
     Inner(E),
     ChildStopped(ChildStopped<A>),
     WorkerStopped(WorkerStopped<A>),
-}
-
-pub trait ChildEvent<A: Address>: Sized {
-    fn child_stopped(event: ChildStopped<A>) -> Option<Self>;
 }
 
 impl<E, A: Address> ChildEvent<A> for SupervisionEvent<E, A> {
@@ -282,10 +245,8 @@ where
     type Ph = Never;
     type Error = Never;
     type Birth = Births<C>;
-    type Effect = Actions<C::Addr, Never, Self::Sends, Births<C>>;
-    type Done = Exit<C::Addr>;
 
-    async fn init(&mut self) -> Result<Self::Effect, Never> {
+    async fn init(&mut self) -> Result<Actions<C::Addr, Never, Self::Sends, Births<C>>, Never> {
         let child = self.worker.take().expect("a proxy initializes once");
         self.worker_alive = true;
         Ok(Actions {
@@ -298,15 +259,18 @@ where
                     own: ServiceSends::empty(),
                 },
             },
-            creates: vec![Create {
-                nonce: <C::Addr as Address>::Nonce::from(self.generation),
+            creates: vec![Create::birth(
+                <C::Addr as Address>::Nonce::from(self.generation),
                 child,
-            }],
+            )],
             become_: Step::Continue,
         })
     }
 
-    async fn step(&mut self, event: Self::Event) -> Result<Self::Effect, Never> {
+    async fn step(
+        &mut self,
+        event: Self::Event,
+    ) -> Result<Actions<C::Addr, Never, Self::Sends, Births<C>>, Never> {
         let SupervisionEvent::Inner(event) = event else {
             return match event {
                 SupervisionEvent::ChildStopped(event)
@@ -323,10 +287,10 @@ where
                             .checked_add(1)
                             .expect("proxy generation exhausted");
                         self.worker_alive = true;
-                        vec![Create {
-                            nonce: <C::Addr as Address>::Nonce::from(self.generation),
+                        vec![Create::replacement_incarnation(
+                            <C::Addr as Address>::Nonce::from(self.generation),
                             child,
-                        }]
+                        )]
                     });
                     let observes = creates
                         .iter()
@@ -394,7 +358,7 @@ where
                             own: ServiceSends::empty(),
                         },
                     },
-                    creates: vec![Create { nonce, child }],
+                    creates: vec![Create::replacement_incarnation(nonce, child)],
                     become_: Step::Continue,
                 })
             }
@@ -648,6 +612,7 @@ where
                 .map(|create| Create {
                     nonce: create.nonce,
                     child: Proxy::new(create.child),
+                    kind: create.kind,
                 })
                 .collect(),
             become_: actions.become_,
@@ -659,14 +624,7 @@ impl<B, C, A, Ph, Sends> Behavior for Supervising<B, C>
 where
     A: Address + Send,
     Sends: SendAlgebra,
-    B: Behavior<
-            Addr = A,
-            Ph = Ph,
-            Sends = Sends,
-            Birth = Births<C>,
-            Effect = Actions<A, Ph, Sends, Births<C>>,
-            Done = Exit<A>,
-        > + Send,
+    B: Behavior<Addr = A, Ph = Ph, Sends = Sends, Birth = Births<C>> + Send,
     B::Event: ChildEvent<B::Addr> + Send,
     A::Nonce: From<u64> + Send,
     B::Msg: Send,
@@ -679,20 +637,16 @@ where
     type Ph = Ph;
     type Error = B::Error;
     type Birth = Births<Proxy<C>>;
-    type Effect = Actions<A, Ph, Self::Sends, Births<Proxy<C>>>;
-    type Done = Exit<A>;
 
-    async fn init(&mut self) -> Result<Self::Effect, B::Error> {
+    async fn init(&mut self) -> Result<SupervisorActions<B, C>, B::Error> {
         let actions = self.inner.init().await?;
         let mut actions = self.wrap(actions);
-        actions
-            .creates
-            .extend(self.slots[..self.configured_count].iter().enumerate().map(
-                |(index, (nonce, _))| Create {
-                    nonce: *nonce,
-                    child: Proxy::new((self.build)(index)),
-                },
-            ));
+        actions.creates.extend(
+            self.slots[..self.configured_count]
+                .iter()
+                .enumerate()
+                .map(|(index, (nonce, _))| Create::birth(*nonce, Proxy::new((self.build)(index)))),
+        );
         actions.sends.own.inner.extend(
             self.slots[..self.configured_count]
                 .iter()
@@ -701,7 +655,7 @@ where
         Ok(actions)
     }
 
-    async fn step(&mut self, event: Self::Event) -> Result<Self::Effect, B::Error> {
+    async fn step(&mut self, event: Self::Event) -> Result<SupervisorActions<B, C>, B::Error> {
         match event {
             SupervisionEvent::WorkerStopped(event) => {
                 let decision = self.replacement_decision(&event);

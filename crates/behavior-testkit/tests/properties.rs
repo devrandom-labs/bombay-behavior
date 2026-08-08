@@ -1,9 +1,9 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, At, AtId, Base, Behavior, ChildStopped, Crash, Delivery, Exit, MailAddr, Never,
-    Proxy, ProxyCommand, Recipient, RestartPolicy, Route, State, Step, Strategy, Supervising,
-    SupervisionEvent, User, UserEvent, WorkerStopped,
+    Acted, Actions, At, AtId, Base, Behavior, ChildStopped, Crash, CreationKind, Delivery, Exit,
+    MailAddr, Never, Proxy, ProxyCommand, Recipient, RestartPolicy, Route, State, Step, Strategy,
+    Supervising, SupervisionEvent, User, UserEvent, WorkerStopped,
 };
 use behavior_testkit::{Mailbox, drive};
 use proptest::collection::vec;
@@ -131,6 +131,7 @@ proptest! {
         let mut proxy = Proxy::new(child(0));
         let initial = runtime.block_on(proxy.init()).unwrap();
         prop_assert_eq!(initial.creates[0].nonce, 0);
+        prop_assert_eq!(initial.creates[0].kind, CreationKind::Birth);
         let mut generation = 0_u64;
 
         for (index, replace) in commands.into_iter().enumerate() {
@@ -150,6 +151,10 @@ proptest! {
                 ))).unwrap();
                 prop_assert_eq!(actions.creates.len(), 1);
                 prop_assert_eq!(actions.creates[0].nonce, generation);
+                prop_assert_eq!(
+                    actions.creates[0].kind,
+                    CreationKind::ReplacementIncarnation
+                );
                 prop_assert!(actions.sends.inner.is_empty());
             } else {
                 let message = u8::try_from(index % 255).unwrap();

@@ -9,8 +9,8 @@
 //! state must agree.
 
 use behavior::{
-    Acted, Actions, Base, Behavior, WorkerStopped, Crash, Create, Delivery, MailAddr, Never,
-    RestartPolicy, State, Step, Strategy, Supervising, SupervisionEvent, UserEvent,
+    Acted, Actions, Base, Behavior, Crash, Create, CreationKind, Delivery, MailAddr, Never,
+    RestartPolicy, State, Step, Strategy, Supervising, SupervisionEvent, UserEvent, WorkerStopped,
 };
 use libfuzzer_sys::fuzz_target;
 use tokio::runtime::Builder;
@@ -51,10 +51,7 @@ impl State<Never, behavior::Births<Base<Worker, u8>>, Never> for BirthingParent 
     ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, behavior::Births<Base<Worker, u8>>, Never> {
         Ok(Actions {
             sends: Vec::new(),
-            creates: vec![Create {
-                nonce,
-                child: worker(0),
-            }],
+            creates: vec![Create::birth(nonce, worker(0))],
             become_: Step::Continue,
         })
     }
@@ -104,6 +101,7 @@ fuzz_target!(|bytes: &[u8]| {
                     .unwrap();
                 assert_eq!(actions.creates.len(), 1, "birth create at byte {index}");
                 assert_eq!(actions.creates[0].nonce, nonce);
+                assert_eq!(actions.creates[0].kind, CreationKind::Birth);
                 assert_eq!(
                     actions.sends.own.inner.len(),
                     1,

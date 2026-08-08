@@ -4,30 +4,16 @@ use crate::behavior::{
     Actions, Address, Become, Behavior, BirthMode, SendAlgebra, SendProduct, ServiceSends, User,
     UserEvent,
 };
-use crate::deadlined::{TimeEvent, TimeReached};
-use crate::shutdown::{ShutdownEvent, ShutdownRequested};
-use crate::supervising::{ChildEvent, ChildStopped, WorkerEvent, WorkerStopped};
+use crate::protocol::{
+    ChildEvent, ChildStopped, ObservePeer, PeerEvent, PeerStopped, ShutdownEvent,
+    ShutdownRequested, TimeEvent, TimeReached, WorkerEvent, WorkerStopped,
+};
 use crate::{Crash, Exit, Step};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ObservePeer<A> {
-    pub peer: A,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PeerStopped<A: Address> {
-    pub peer: A,
-    pub outcome: Result<Exit<A>, Crash>,
-}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WatchEvent<E, A: Address> {
     Inner(E),
     PeerStopped(PeerStopped<A>),
-}
-
-pub trait PeerEvent<A: Address>: Sized {
-    fn peer_stopped(event: PeerStopped<A>) -> Option<Self>;
 }
 
 impl<E, A: Address> PeerEvent<A> for WatchEvent<E, A> {
@@ -115,14 +101,7 @@ where
     A: Address + Send,
     Sends: SendAlgebra,
     Br: BirthMode,
-    B: Behavior<
-            Addr = A,
-            Ph = Ph,
-            Sends = Sends,
-            Birth = Br,
-            Effect = Actions<A, Ph, Sends, Br>,
-            Done = Exit<A>,
-        > + Send,
+    B: Behavior<Addr = A, Ph = Ph, Sends = Sends, Birth = Br> + Send,
     B::Event: PeerEvent<B::Addr> + Send,
     B::Msg: Send,
 {
@@ -133,10 +112,8 @@ where
     type Ph = Ph;
     type Error = B::Error;
     type Birth = Br;
-    type Effect = Actions<A, Ph, Self::Sends, Br>;
-    type Done = Exit<A>;
 
-    async fn init(&mut self) -> Result<Self::Effect, B::Error> {
+    async fn init(&mut self) -> Result<WatchActions<B>, B::Error> {
         let actions = self.inner.init().await?;
         Ok(Self::wrap(
             actions,
@@ -144,7 +121,7 @@ where
         ))
     }
 
-    async fn step(&mut self, event: Self::Event) -> Result<Self::Effect, B::Error> {
+    async fn step(&mut self, event: Self::Event) -> Result<WatchActions<B>, B::Error> {
         match event {
             WatchEvent::PeerStopped(event) if event.peer == self.peer => {
                 let become_ = match (self.on_stopped)(&mut self.inner, event.peer, &event.outcome)?

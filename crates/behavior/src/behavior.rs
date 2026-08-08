@@ -6,11 +6,11 @@ use core::marker::PhantomData;
 use communication::{Consumer, Received};
 
 use crate::Exit;
-use crate::deadlined::{TimeEvent, TimeReached};
-use crate::shutdown::{ShutdownEvent, ShutdownRequested};
-use crate::supervising::{ChildEvent, ChildStopped, WorkerEvent, WorkerStopped};
+use crate::protocol::{
+    ChildEvent, ChildStopped, PeerEvent, PeerStopped, ShutdownEvent, ShutdownRequested, TimeEvent,
+    TimeReached, WorkerEvent, WorkerStopped,
+};
 use crate::verdict::{Never, Step};
-use crate::watching::{PeerEvent, PeerStopped};
 
 /// A pure actor-address namespace.
 pub trait Address: Copy + Eq {
@@ -212,6 +212,15 @@ impl<M> IntoIterator for ServiceSends<M> {
     }
 }
 
+impl<'a, M> IntoIterator for &'a ServiceSends<M> {
+    type Item = &'a M;
+    type IntoIter = core::slice::Iter<'a, M>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.requests.iter()
+    }
+}
+
 impl<M> SendAlgebra for ServiceSends<M> {
     fn empty() -> Self {
         Self::new(Vec::new())
@@ -222,12 +231,54 @@ impl<M> SendAlgebra for ServiceSends<M> {
     }
 }
 
-/// Fresh actor creation. Replacement at an existing address is deliberately
-/// absent; stable restart is derived with a proxy actor.
+/// Behavior-owned provenance for a staged fresh actor creation request.
+///
+/// Both variants allocate a fresh actor. This classification records whether
+/// Behavior considers that actor an ordinary birth or the next incarnation of
+/// a stable, derived identity; it never authorizes replacement at an existing
+/// core actor address.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CreationKind {
+    /// An initial or ordinary later birth.
+    Birth,
+    /// A fresh successor incarnation requested by a replacement protocol.
+    ReplacementIncarnation,
+}
+
+/// A staged request to establish a fresh child at a creator-local nonce.
+///
+/// The nonce is a routing and correlation key, not an actor identity or proof
+/// of freshness. Creation and its [`CreationKind`] become runtime facts only
+/// after an interpreter successfully installs the fresh actor and commits the
+/// child binding. Replacement at an existing address is deliberately absent;
+/// stable identity is derived with a proxy actor.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Create<A: Address, New> {
     pub nonce: A::Nonce,
     pub child: New,
+    pub kind: CreationKind,
+}
+
+impl<A: Address, New> Create<A, New> {
+    /// Request an initial or ordinary later child birth.
+    #[must_use]
+    pub const fn birth(nonce: A::Nonce, child: New) -> Self {
+        Self {
+            nonce,
+            child,
+            kind: CreationKind::Birth,
+        }
+    }
+
+    /// Request a fresh successor incarnation of a stable, derived identity.
+    #[must_use]
+    pub const fn replacement_incarnation(nonce: A::Nonce, child: New) -> Self {
+        Self {
+            nonce,
+            child,
+            kind: CreationKind::ReplacementIncarnation,
+        }
+    }
 }
 
 /// A type-level description of the creation leg of the actor algebra.
@@ -253,7 +304,8 @@ impl<C> BirthMode for Births<C> {
 
 pub type Become<A, Ph = Never> = Step<Ph, Exit<A>>;
 
-/// Exactly Agha's effect triple, with a Bombay interpretation-order policy.
+/// Bombay's typed realization of the actor transition effects: communications,
+/// fresh actor creation, and next behavior or termination.
 ///
 /// An interpreter installs every fresh actor in `creates` before interpreting
 /// any ordinary delivery or [`ServiceSends`] request in `sends` from this
@@ -321,6 +373,15 @@ pub trait UserEvent: Sized {
 
 pub type StateActed<A, Out, Birth, Err> = Acted<A, Never, Vec<Delivery<A, Out>>, Birth, Err>;
 
+/// The only successful effect shape admitted by a [`Behavior`] implementation.
+pub type BehaviorActed<B> = Acted<
+    <B as Behavior>::Addr,
+    <B as Behavior>::Ph,
+    <B as Behavior>::Sends,
+    <B as Behavior>::Birth,
+    <B as Behavior>::Error,
+>;
+
 pub trait State<Out = Never, Birth = NoBirths, Err = Never>
 where
     Birth: BirthMode,
@@ -328,7 +389,7 @@ where
     type Addr: Address;
     type Msg;
 
-    /// Fold a user message into the Agha triple.
+    /// Fold a user message into Bombay's typed actor transition effects.
     ///
     /// # Errors
     /// Returns the state's declared controlled failure.
@@ -344,7 +405,17 @@ where
 }
 
 /// A composed pure behavior. `Event` is the complete accepted protocol;
-/// successful transitions always return the same Agha effect algebra.
+/// every successful transition returns the declared [`Actions`] algebra.
+///
+/// Effect and termination escape seats are intentionally absent:
+///
+/// ```compile_fail
+/// use behavior::Behavior;
+///
+/// fn erased_effect<B: Behavior>() -> core::marker::PhantomData<B::Effect> {
+///     core::marker::PhantomData
+/// }
+/// ```
 pub trait Behavior {
     type Addr: Address;
     type Msg;
@@ -353,15 +424,10 @@ pub trait Behavior {
     type Ph;
     type Error;
     type Birth: BirthMode;
-    type Effect;
-    type Done;
 
-    fn init(&mut self) -> impl Future<Output = Result<Self::Effect, Self::Error>> + Send;
+    fn init(&mut self) -> impl Future<Output = BehaviorActed<Self>> + Send;
 
-    fn step(
-        &mut self,
-        event: Self::Event,
-    ) -> impl Future<Output = Result<Self::Effect, Self::Error>> + Send;
+    fn step(&mut self, event: Self::Event) -> impl Future<Output = BehaviorActed<Self>> + Send;
 }
 
 pub struct Base<S: State<O, Br, E>, O = Never, Br: BirthMode = NoBirths, E = Never> {
@@ -467,14 +533,12 @@ where
     type Ph = Never;
     type Error = E;
     type Birth = Br;
-    type Effect = Actions<S::Addr, Never, Self::Sends, Br>;
-    type Done = Exit<S::Addr>;
 
-    async fn init(&mut self) -> Result<Self::Effect, E> {
+    async fn init(&mut self) -> StateActed<S::Addr, O, Br, E> {
         Ok(Actions::cont())
     }
 
-    async fn step(&mut self, event: Self::Event) -> Result<Self::Effect, E> {
+    async fn step(&mut self, event: Self::Event) -> StateActed<S::Addr, O, Br, E> {
         self.state.handle(event.from, event.message)
     }
 }
@@ -498,14 +562,7 @@ where
     A: Address,
     Sends: SendAlgebra,
     Br: BirthMode,
-    B: Behavior<
-            Addr = A,
-            Ph = Never,
-            Sends = Sends,
-            Birth = Br,
-            Effect = Actions<A, Never, Sends, Br>,
-            Done = Exit<A>,
-        >,
+    B: Behavior<Addr = A, Ph = Never, Sends = Sends, Birth = Br>,
 {
     let mut sends = Sends::empty();
     let mut creates = Vec::new();

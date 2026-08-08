@@ -3,43 +3,20 @@
 
 use tokio::time::Instant;
 
+use crate::Step;
 use crate::behavior::{
     Actions, Address, Become, Behavior, BirthMode, SendAlgebra, SendProduct, ServiceSends, User,
     UserEvent,
 };
-use crate::shutdown::{ShutdownEvent, ShutdownRequested};
-use crate::supervising::{ChildEvent, ChildStopped, WorkerEvent, WorkerStopped};
-use crate::watching::{PeerEvent, PeerStopped};
-use crate::{Exit, Step};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct AtId(pub u64);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct AtGeneration(pub u64);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ScheduleAt {
-    pub id: AtId,
-    pub generation: AtGeneration,
-    pub at: Instant,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct TimeReached {
-    pub id: AtId,
-    pub generation: AtGeneration,
-    pub at: Instant,
-}
+use crate::protocol::{
+    AtGeneration, AtId, ChildEvent, ChildStopped, PeerEvent, PeerStopped, ScheduleAt,
+    ShutdownEvent, ShutdownRequested, TimeEvent, TimeReached, WorkerEvent, WorkerStopped,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AtEvent<E> {
     Inner(E),
     Reached(TimeReached),
-}
-
-pub trait TimeEvent: Sized {
-    fn time_reached(event: TimeReached) -> Option<Self>;
 }
 
 impl<E> TimeEvent for AtEvent<E> {
@@ -125,14 +102,7 @@ where
     A: Address + Send,
     Sends: SendAlgebra,
     Br: BirthMode,
-    B: Behavior<
-            Addr = A,
-            Ph = Ph,
-            Sends = Sends,
-            Birth = Br,
-            Effect = Actions<A, Ph, Sends, Br>,
-            Done = Exit<A>,
-        > + Send,
+    B: Behavior<Addr = A, Ph = Ph, Sends = Sends, Birth = Br> + Send,
     B::Event: TimeEvent + Send,
     B::Msg: Send,
 {
@@ -143,10 +113,8 @@ where
     type Ph = Ph;
     type Error = B::Error;
     type Birth = Br;
-    type Effect = Actions<A, Ph, Self::Sends, Br>;
-    type Done = Exit<A>;
 
-    async fn init(&mut self) -> Result<Self::Effect, B::Error> {
+    async fn init(&mut self) -> Result<AtActions<B>, B::Error> {
         let actions = self.inner.init().await?;
         let own = self
             .scheduled
@@ -160,7 +128,7 @@ where
         Ok(Self::wrap(actions, own))
     }
 
-    async fn step(&mut self, event: Self::Event) -> Result<Self::Effect, B::Error> {
+    async fn step(&mut self, event: Self::Event) -> Result<AtActions<B>, B::Error> {
         match event {
             AtEvent::Reached(event)
                 if event.id == self.id && self.scheduled == Some((event.generation, event.at)) =>

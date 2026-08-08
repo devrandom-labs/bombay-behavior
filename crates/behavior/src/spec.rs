@@ -6,13 +6,14 @@ use std::time::Duration;
 use tokio::time::Instant;
 
 use crate::behavior::{Address, Behavior, BirthMode, Births};
-use crate::deadlined::{At, AtId, AtReaction};
+use crate::deadlined::{At, AtReaction};
+use crate::protocol::AtId;
 use crate::shutdown::{FinalizeOnShutdown, ShutdownReaction, StopOnShutdown};
 use crate::stashing::{StashRoute, Stashing};
 use crate::supervising::{RestartPolicy, Strategy, Supervising, SupervisionFailureReaction};
 use crate::verdict::Never;
 use crate::watching::{LinkReaction, Watching};
-use crate::{Actions, Base, Exit, Fsm, Move, SendAlgebra, State};
+use crate::{Actions, Base, Fsm, Move, SendAlgebra, State};
 
 const DEFAULT_STRATEGY: Strategy = Strategy::OneForOne;
 const DEFAULT_POLICY: RestartPolicy = RestartPolicy::Transient;
@@ -214,14 +215,7 @@ where
     A: Address + Send,
     Sends: SendAlgebra,
     Br: BirthMode,
-    B: Behavior<
-            Addr = A,
-            Ph = Ph,
-            Sends = Sends,
-            Birth = Br,
-            Effect = Actions<A, Ph, Sends, Br>,
-            Done = Exit<A>,
-        > + Send,
+    B: Behavior<Addr = A, Ph = Ph, Sends = Sends, Birth = Br> + Send,
     A::Nonce: Send,
     B::Msg: Send,
     B::Event: Send,
@@ -233,14 +227,12 @@ where
     type Ph = Ph;
     type Error = B::Error;
     type Birth = Br;
-    type Effect = B::Effect;
-    type Done = B::Done;
 
-    async fn init(&mut self) -> Result<Self::Effect, B::Error> {
+    async fn init(&mut self) -> Result<Actions<A, Ph, Sends, Br>, B::Error> {
         self.behavior.init().await
     }
 
-    async fn step(&mut self, event: B::Event) -> Result<Self::Effect, B::Error> {
+    async fn step(&mut self, event: B::Event) -> Result<Actions<A, Ph, Sends, Br>, B::Error> {
         self.behavior.step(event).await
     }
 }

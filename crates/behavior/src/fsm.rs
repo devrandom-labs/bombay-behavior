@@ -96,14 +96,15 @@ where
     type Ph = Never;
     type Error = E;
     type Birth = NoBirths;
-    type Effect = Actions<A, Never, Self::Sends, NoBirths>;
-    type Done = Exit<A>;
 
-    async fn init(&mut self) -> Result<Self::Effect, E> {
+    async fn init(&mut self) -> Result<Actions<A, Never, Self::Sends, NoBirths>, E> {
         Ok(Actions::cont())
     }
 
-    async fn step(&mut self, event: Self::Event) -> Result<Self::Effect, E> {
+    async fn step(
+        &mut self,
+        event: Self::Event,
+    ) -> Result<Actions<A, Never, Self::Sends, NoBirths>, E> {
         let (verdict, changed) = self.advance(event.message)?;
         match verdict {
             Step::Stop(exit) => Ok(Actions::stop(exit)),

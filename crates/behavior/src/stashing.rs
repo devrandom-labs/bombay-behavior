@@ -2,7 +2,6 @@
 
 use std::collections::VecDeque;
 
-use crate::Exit;
 use crate::behavior::{Actions, Address, Behavior, BirthMode, SendAlgebra, User, UserEvent};
 use crate::verdict::{Never, Step};
 
@@ -45,14 +44,7 @@ where
     A: Address,
     Sends: SendAlgebra,
     Br: BirthMode,
-    B: Behavior<
-            Addr = A,
-            Ph = Never,
-            Sends = Sends,
-            Birth = Br,
-            Effect = Actions<A, Never, Sends, Br>,
-            Done = Exit<A>,
-        >,
+    B: Behavior<Addr = A, Ph = Never, Sends = Sends, Birth = Br>,
 {
     async fn drain_into(
         &mut self,
@@ -86,14 +78,7 @@ where
     A: Address + Send,
     Sends: SendAlgebra + Send,
     Br: BirthMode,
-    B: Behavior<
-            Addr = A,
-            Ph = Never,
-            Sends = Sends,
-            Birth = Br,
-            Effect = Actions<A, Never, Sends, Br>,
-            Done = Exit<A>,
-        > + Send,
+    B: Behavior<Addr = A, Ph = Never, Sends = Sends, Birth = Br> + Send,
     A::Nonce: Send,
     B::Msg: Send,
     B::Event: Send,
@@ -106,14 +91,12 @@ where
     type Ph = Never;
     type Error = B::Error;
     type Birth = Br;
-    type Effect = Actions<A, Never, Sends, Br>;
-    type Done = Exit<A>;
 
-    async fn init(&mut self) -> Result<Self::Effect, B::Error> {
+    async fn init(&mut self) -> Result<Actions<A, Never, Sends, Br>, B::Error> {
         self.inner.init().await
     }
 
-    async fn step(&mut self, event: B::Event) -> Result<Self::Effect, B::Error> {
+    async fn step(&mut self, event: B::Event) -> Result<Actions<A, Never, Sends, Br>, B::Error> {
         let user = match event.into_user() {
             Ok(user) => user,
             Err(other) => return self.inner.step(other).await,

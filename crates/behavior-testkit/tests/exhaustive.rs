@@ -140,7 +140,9 @@ fn exhaustive_supervision_sequences_match_the_reference_model() {
                                     .iter()
                                     .map(|delivery| match delivery.to.route() {
                                         Route::Child(nonce) => nonce,
-                                        other => panic!("unexpected route {other:?}"),
+                                        other @ Route::Global(_) => {
+                                            panic!("unexpected route {other:?}")
+                                        }
                                     })
                                     .collect();
                                 assert_eq!(

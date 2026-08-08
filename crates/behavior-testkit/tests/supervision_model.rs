@@ -7,11 +7,14 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, Base, Behavior, Crash, Create, Delivery, Exit, MailAddr, Never, RestartDenial,
-    RestartPolicy, Route, State, Step, Strategy, Supervising, SupervisionEvent,
-    SupervisionFailureReason, UserEvent, WorkerStopped, stop_on_supervision_failure,
+    Acted, Actions, Base, Behavior, ChildStopped, Crash, Create, CreationKind, Delivery, Exit,
+    MailAddr, Never, Proxy, ProxyCommand, RestartDenial, RestartPolicy, Route, State, Step,
+    Strategy, Supervising, SupervisionEvent, SupervisionFailureReason, User, UserEvent,
+    WorkerStopped, stop_on_supervision_failure,
 };
-use behavior_testkit::model::{Model, Outcome};
+use behavior_testkit::model::{
+    ExpectedCreation, ExpectedIncarnation, IncarnationModel, Model, Outcome,
+};
 use proptest::collection::vec;
 use proptest::prelude::*;
 use tokio::runtime::Builder;
@@ -71,10 +74,7 @@ impl State<Never, behavior::Births<Child>, Never> for BirthingParent {
         self.births.push(nonce);
         Ok(Actions {
             sends: Vec::new(),
-            creates: vec![Create {
-                nonce,
-                child: child(0),
-            }],
+            creates: vec![Create::birth(nonce, child(0))],
             become_: Step::Continue,
         })
     }
@@ -105,6 +105,111 @@ where
         maximum,
         window,
     )
+}
+
+fn assert_expected_creation(expected: ExpectedIncarnation, actual: &Create<MailAddr, Child>) {
+    assert_eq!(actual.nonce, expected.nonce);
+    assert_eq!(
+        actual.kind,
+        match expected.role {
+            ExpectedCreation::Initial | ExpectedCreation::Ordinary => CreationKind::Birth,
+            ExpectedCreation::Successor => CreationKind::ReplacementIncarnation,
+        }
+    );
+}
+
+#[tokio::test]
+async fn creation_provenance_matches_the_independent_incarnation_model() {
+    let mut model = IncarnationModel::new();
+    let mut proxy = Proxy::new(child(0));
+
+    let expected_initial = model.initialize();
+    let initial = proxy.init().await.unwrap();
+    assert_expected_creation(expected_initial, &initial.creates[0]);
+
+    let expected_ordinary = IncarnationModel::ordinary(9);
+    let ordinary = Create::birth(9, child(0));
+    assert_expected_creation(expected_ordinary, &ordinary);
+
+    assert_eq!(model.request_successor(), None);
+    let requested = proxy
+        .step(SupervisionEvent::Inner(User::user(
+            MailAddr(0),
+            ProxyCommand::Replace(child(0)),
+        )))
+        .await
+        .unwrap();
+    assert!(requested.creates.is_empty());
+
+    let expected_deferred = model.stopped(0).unwrap();
+    let deferred = proxy
+        .step(SupervisionEvent::ChildStopped(ChildStopped {
+            nonce: 0,
+            outcome: Err(Crash::Failed),
+            at: Instant::now(),
+        }))
+        .await
+        .unwrap();
+    assert_expected_creation(expected_deferred, &deferred.creates[0]);
+}
+
+#[tokio::test]
+async fn immediate_and_denied_replacements_match_the_independent_models() {
+    let mut incarnation = IncarnationModel::new();
+    let _initial = incarnation.initialize();
+    assert_eq!(incarnation.stopped(0), None);
+
+    let mut proxy = Proxy::new(child(0));
+    proxy.init().await.unwrap();
+    proxy
+        .step(SupervisionEvent::ChildStopped(ChildStopped {
+            nonce: 0,
+            outcome: Err(Crash::Failed),
+            at: Instant::now(),
+        }))
+        .await
+        .unwrap();
+    let expected_immediate = incarnation.request_successor().unwrap();
+    let immediate = proxy
+        .step(SupervisionEvent::Inner(User::user(
+            MailAddr(0),
+            ProxyCommand::Replace(child(0)),
+        )))
+        .await
+        .unwrap();
+    assert_expected_creation(expected_immediate, &immediate.creates[0]);
+
+    let mut policy = Model::new(1);
+    let denied = policy.apply(
+        0,
+        Outcome::Failed,
+        0,
+        Strategy::OneForOne,
+        RestartPolicy::Permanent,
+        0,
+        None,
+    );
+    assert!(denied.is_empty());
+
+    let mut behavior = supervisor(
+        Base::new(Parent),
+        Strategy::OneForOne,
+        RestartPolicy::Permanent,
+        0,
+        Duration::MAX,
+        1,
+    );
+    behavior.init().await.unwrap();
+    let denied = behavior
+        .step(SupervisionEvent::WorkerStopped(WorkerStopped {
+            proxy: 0,
+            outcome: Err(Crash::Failed),
+            at: Instant::now(),
+        }))
+        .await
+        .unwrap();
+    assert!(denied.creates.is_empty());
+    assert!(denied.sends.own.own.is_empty());
 }
 
 proptest! {
@@ -167,7 +272,7 @@ proptest! {
                 .iter()
                 .map(|delivery| match delivery.to.route() {
                     Route::Child(nonce) => nonce,
-                    other => panic!("unexpected route {other:?}"),
+                    other @ Route::Global(_) => panic!("unexpected route {other:?}"),
                 })
                 .collect();
             prop_assert_eq!(sends, expected);
@@ -277,7 +382,7 @@ proptest! {
                     .iter()
                     .map(|delivery| match delivery.to.route() {
                         Route::Child(nonce) => nonce,
-                        other => panic!("unexpected route {other:?}"),
+                        other @ Route::Global(_) => panic!("unexpected route {other:?}"),
                     })
                     .collect();
                 prop_assert_eq!(sends, expected);

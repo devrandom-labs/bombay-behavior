@@ -2,7 +2,7 @@
 
 use std::collections::VecDeque;
 
-use behavior::{Actions, Address, Behavior, BirthMode, Create, Exit, SendAlgebra, Step};
+use behavior::{Address, Behavior, BirthMode, Create, Exit, SendAlgebra, Step};
 
 pub mod model;
 
@@ -50,14 +50,7 @@ where
     A: Address,
     Sends: SendAlgebra,
     Br: BirthMode,
-    B: Behavior<
-            Addr = A,
-            Ph = behavior::Never,
-            Sends = Sends,
-            Birth = Br,
-            Effect = Actions<A, behavior::Never, Sends, Br>,
-            Done = Exit<A>,
-        >,
+    B: Behavior<Addr = A, Ph = behavior::Never, Sends = Sends, Birth = Br>,
 {
     let mut sends = Sends::empty();
     let mut creates = Vec::new();

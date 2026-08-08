@@ -16,34 +16,32 @@ mod watching;
 
 // `Fsm` is a thin state-machine helper built from the core stashing primitive.
 mod fsm;
+mod protocol;
 mod shutdown;
 mod spec;
 
 pub use algebra::{
-    Acted, Actions, Address, Base, Become, Behavior, BirthMode, Births, Create, Delivery, FnState,
-    MailAddr, NoBirths, Recipient, Route, SendAlgebra, SendProduct, ServiceSends, State,
-    Transcript, User, UserEvent, run,
+    Acted, Actions, Address, Base, Become, Behavior, BehaviorActed, BirthMode, Births, Create,
+    CreationKind, Delivery, FnState, MailAddr, NoBirths, Recipient, Route, SendAlgebra,
+    SendProduct, ServiceSends, State, Transcript, User, UserEvent, run,
 };
-pub use deadlined::{
-    At, AtEvent, AtGeneration, AtId, AtReaction, ScheduleAt, TimeEvent, TimeReached,
-};
+pub use deadlined::{At, AtEvent, AtReaction};
 pub use fsm::{Fsm, Move};
-pub use shutdown::{
-    FinalizeOnShutdown, ShutdownEvent, ShutdownProtocol, ShutdownReaction, ShutdownRequested,
-    StopOnShutdown,
+pub use protocol::{
+    AtGeneration, AtId, ChildEvent, ChildStopped, ObserveChild, ObservePeer, PeerEvent,
+    PeerStopped, ReportWorkerStopped, ScheduleAt, ShutdownEvent, ShutdownRequested, TimeEvent,
+    TimeReached, WorkerEvent, WorkerStopped,
 };
+pub use shutdown::{FinalizeOnShutdown, ShutdownProtocol, ShutdownReaction, StopOnShutdown};
 pub use spec::Spec;
 pub use stashing::{StashRoute, Stashing};
 pub use supervising::{
-    ChildEvent, ChildStopped, ObserveChild, Proxy, ProxyCommand, ReportWorkerStopped,
-    RestartPolicy, Strategy, Supervising, SupervisionEvent, SupervisionFailure,
-    SupervisionFailureReaction, WorkerEvent, WorkerStopped, restart_all, restart_one, restart_rest,
+    Proxy, ProxyCommand, RestartPolicy, Strategy, Supervising, SupervisionEvent,
+    SupervisionFailure, SupervisionFailureReaction, restart_all, restart_one, restart_rest,
     retire_on_supervision_failure, stop_on_supervision_failure,
 };
 pub use verdict::{Never, Step};
-pub use watching::{
-    LinkReaction, ObservePeer, PeerEvent, PeerStopped, WatchEvent, Watching, stop_on_abnormal_death,
-};
+pub use watching::{LinkReaction, WatchEvent, Watching, stop_on_abnormal_death};
 
 mod exit;
 

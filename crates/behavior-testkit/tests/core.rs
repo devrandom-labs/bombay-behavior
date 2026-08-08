@@ -226,10 +226,7 @@ impl State<Never, behavior::Births<Child>, Never> for Parent {
             Vec::new()
         } else {
             self.0 = true;
-            vec![Create {
-                nonce,
-                child: child(0),
-            }]
+            vec![Create::birth(nonce, child(0))]
         };
         Ok(Actions {
             sends: Vec::new(),
