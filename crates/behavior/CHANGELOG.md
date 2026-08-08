@@ -15,8 +15,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- add explicit `CreationKind` provenance so interpreters can distinguish an
+  ordinary fresh birth from a fresh replacement incarnation after installation
 - add exhaustive supervision-failure reasons and a pure configurable reaction
   that can retire a failed slot or stop for ordinary parent observation
+
+### Changed
+
+- make `Behavior` return its declared `Actions` algebra directly, removing the
+  unconstrained `Effect` and `Done` associated-type escape seats
+- centralize interpreter-originated event and service vocabulary in a neutral
+  protocol layer while retaining concrete wrapper event sums
 
 ## [0.5.1](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.5.0...bombay-behavior-v0.5.1) - 2026-08-07
 

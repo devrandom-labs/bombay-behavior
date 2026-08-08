@@ -13,6 +13,9 @@ Its core guarantees are:
 - independent send protocols compose without `dyn`, `Any`, or a global envelope;
 - `NoBirths` makes creation uninhabited, while `Births<C>` permits only fresh,
   typed `Create` values;
+- each `Create` carries Behavior-owned provenance distinguishing an ordinary
+  birth from a replacement incarnation, while successful installation remains
+  an interpreter responsibility;
 - supervision replaces workers through stable proxy actors, preserving the
   meaning of fresh creation;
 - restart denial and stable-proxy loss remain typed behavior inputs to a pure,

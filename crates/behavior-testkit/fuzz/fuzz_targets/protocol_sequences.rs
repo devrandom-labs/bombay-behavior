@@ -1,8 +1,8 @@
 #![no_main]
 
 use behavior::{
-    Acted, Actions, Base, Behavior, ChildStopped, Delivery, Exit, MailAddr, Never, Proxy,
-    ProxyCommand, Route, State, SupervisionEvent, User, UserEvent,
+    Acted, Actions, Base, Behavior, ChildStopped, CreationKind, Delivery, Exit, MailAddr, Never,
+    Proxy, ProxyCommand, Route, State, SupervisionEvent, User, UserEvent,
 };
 use libfuzzer_sys::fuzz_target;
 use tokio::runtime::Builder;
@@ -33,6 +33,7 @@ fuzz_target!(|bytes: &[u8]| {
         let initial = proxy.init().await.unwrap();
         assert_eq!(initial.creates.len(), 1);
         assert_eq!(initial.creates[0].nonce, 0);
+        assert_eq!(initial.creates[0].kind, CreationKind::Birth);
         let mut generation = 0_u64;
 
         for (index, byte) in bytes.iter().copied().enumerate() {
@@ -69,6 +70,10 @@ fuzz_target!(|bytes: &[u8]| {
                     .unwrap();
                 assert_eq!(actions.creates.len(), 1);
                 assert_eq!(actions.creates[0].nonce, generation);
+                assert_eq!(
+                    actions.creates[0].kind,
+                    CreationKind::ReplacementIncarnation
+                );
             }
         }
     });

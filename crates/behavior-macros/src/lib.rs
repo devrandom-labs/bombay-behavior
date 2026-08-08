@@ -7,7 +7,7 @@
 //! total count. `Crew` is a TYPE — every worker stays its own actor.
 //!
 //! v1 scope: every worker kind shares the SAME protocol (`Event`, `Sends`,
-//! `Done`, `Error`, and `Birth` — taken from the first kind). Mixed
+//! `Error`, and `Birth` — taken from the first kind). Mixed
 //! protocols need the hand-written sum (the `CrewMsg` widening is a
 //! deliberate, documented step — not this macro's job yet).
 
@@ -119,10 +119,11 @@ pub fn workers(input: TokenStream) -> TokenStream {
                 type Ph = ::behavior::Never;
                 type Error = <#first_ty as ::behavior::Behavior>::Error;
                 type Birth = <#first_ty as ::behavior::Behavior>::Birth;
-                type Effect = <#first_ty as ::behavior::Behavior>::Effect;
-                type Done = <#first_ty as ::behavior::Behavior>::Done;
 
-                async fn init(&mut self) -> ::core::result::Result<Self::Effect, Self::Error> {
+                async fn init(&mut self) -> ::core::result::Result<
+                    ::behavior::Actions<Self::Addr, Self::Ph, Self::Sends, Self::Birth>,
+                    Self::Error,
+                > {
                     match self {
                         #(#init_arms),*
                     }
@@ -131,7 +132,10 @@ pub fn workers(input: TokenStream) -> TokenStream {
                 async fn step(
                     &mut self,
                     ev: Self::Event,
-                ) -> ::core::result::Result<Self::Effect, Self::Error> {
+                ) -> ::core::result::Result<
+                    ::behavior::Actions<Self::Addr, Self::Ph, Self::Sends, Self::Birth>,
+                    Self::Error,
+                > {
                     match self {
                         #(#step_arms),*
                     }

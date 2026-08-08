@@ -2,8 +2,8 @@ use std::time::Duration;
 
 use behavior::{
     Acted, Actions, At, AtEvent, AtGeneration, AtId, Base, Become, Behavior, Births, ChildStopped,
-    Crash, Create, Delivery, Exit, MailAddr, Move, Never, NoBirths, ObserveChild, PeerStopped,
-    Proxy, ProxyCommand, Recipient, RestartDenial, RestartPolicy, Route, ServiceSends,
+    Crash, Create, CreationKind, Delivery, Exit, MailAddr, Move, Never, NoBirths, ObserveChild,
+    PeerStopped, Proxy, ProxyCommand, Recipient, RestartDenial, RestartPolicy, Route, ServiceSends,
     ShutdownEvent, ShutdownRequested, Spec, StashRoute, State, Step, Strategy, Supervising,
     SupervisionEvent, SupervisionFailure, SupervisionFailureReason, TimeReached, User, UserEvent,
     WatchEvent, Watching, WorkerEvent, WorkerStopped, run, stop_on_abnormal_death,
@@ -72,22 +72,24 @@ impl State<u64, Births<Base<Quiet>>> for ShutdownParent {
     }
 }
 
+#[allow(
+    clippy::type_complexity,
+    clippy::unnecessary_wraps,
+    reason = "the shutdown reaction must expose the complete typed Actions and error seats"
+)]
 fn finalize_parent(
     _behavior: &mut Base<ShutdownParent, u64, Births<Base<Quiet>>>,
     _request: ShutdownRequested,
 ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, u64>>, Births<Base<Quiet>>, Never> {
     Ok(Actions {
         sends: vec![Delivery::new(Recipient::global(MailAddr(9)), 42)],
-        creates: vec![Create {
-            nonce: 7,
-            child: Base::new(Quiet),
-        }],
+        creates: vec![Create::birth(7, Base::new(Quiet))],
         become_: Step::Continue,
     })
 }
 
 #[test]
-fn actions_are_exactly_the_agha_triple() {
+fn actions_expose_the_typed_actor_transition_effects() {
     let mut actions: Actions<MailAddr, Never, Vec<Delivery<MailAddr, u64>>, NoBirths> =
         Actions::cont();
     actions
@@ -362,6 +364,10 @@ fn supervisor(
     )
 }
 
+#[allow(
+    clippy::unnecessary_wraps,
+    reason = "the supervision reaction shares its wrapped behavior's controlled-error seat"
+)]
 fn verify_budget_failure_and_stop(
     _parent: &mut Base<Parent, Never, Births<Child>, Never>,
     failure: &SupervisionFailure<MailAddr>,
@@ -388,6 +394,12 @@ async fn supervisor_creates_proxies_and_replacement_is_a_send() {
         .within(2, Duration::MAX);
     let initial = supervisor.init().await.unwrap();
     assert_eq!(initial.creates.len(), 2);
+    assert!(
+        initial
+            .creates
+            .iter()
+            .all(|create| create.kind == CreationKind::Birth)
+    );
     assert_eq!(initial.sends.own.inner.len(), 2);
     assert_eq!(initial.sends.own.inner[0].nonce, 0);
     assert_eq!(initial.sends.own.inner[1].nonce, 1);
@@ -408,6 +420,7 @@ async fn proxy_replacement_creates_a_fresh_incarnation() {
     let mut proxy = Proxy::new(child(0));
     let first = proxy.init().await.unwrap();
     assert_eq!(first.creates[0].nonce, 0);
+    assert_eq!(first.creates[0].kind, CreationKind::Birth);
     let second = proxy
         .step(SupervisionEvent::Inner(User::user(
             MailAddr(0),
@@ -426,6 +439,7 @@ async fn proxy_replacement_creates_a_fresh_incarnation() {
         .await
         .unwrap();
     assert_eq!(second.creates[0].nonce, 1);
+    assert_eq!(second.creates[0].kind, CreationKind::ReplacementIncarnation);
     assert_eq!(second.sends.own.inner[0].nonce, 1);
     assert_eq!(second.sends.own.own[0].outcome, Err(Crash::Failed));
 
@@ -438,6 +452,36 @@ async fn proxy_replacement_creates_a_fresh_incarnation() {
         .unwrap();
     assert_eq!(forwarded.sends.inner[0].to.route(), Route::Child(1));
     assert_eq!(forwarded.sends.inner[0].message, 7);
+}
+
+#[tokio::test]
+async fn idle_proxy_marks_an_immediate_successor_as_a_replacement_incarnation() {
+    let mut proxy = Proxy::new(child(0));
+    let initial = proxy.init().await.unwrap();
+    assert_eq!(initial.creates[0].kind, CreationKind::Birth);
+
+    let stopped = proxy
+        .step(SupervisionEvent::ChildStopped(ChildStopped {
+            nonce: 0,
+            outcome: Err(Crash::Failed),
+            at: Instant::now(),
+        }))
+        .await
+        .unwrap();
+    assert!(stopped.creates.is_empty());
+
+    let replacement = proxy
+        .step(SupervisionEvent::Inner(User::user(
+            MailAddr(0),
+            ProxyCommand::Replace(child(0)),
+        )))
+        .await
+        .unwrap();
+    assert_eq!(replacement.creates[0].nonce, 1);
+    assert_eq!(
+        replacement.creates[0].kind,
+        CreationKind::ReplacementIncarnation
+    );
 }
 
 #[tokio::test]
@@ -456,6 +500,7 @@ async fn stable_proxy_reports_worker_stop_and_creates_fresh_replacement() {
 
     let worker_birth = proxy.init().await.unwrap();
     assert_eq!(worker_birth.creates[0].nonce, 0);
+    assert_eq!(worker_birth.creates[0].kind, CreationKind::Birth);
     assert_eq!(worker_birth.sends.own.inner[0].nonce, 0);
 
     let worker_stop = proxy
@@ -491,6 +536,10 @@ async fn stable_proxy_reports_worker_stop_and_creates_fresh_replacement() {
         .await
         .unwrap();
     assert_eq!(replacement.creates[0].nonce, 1);
+    assert_eq!(
+        replacement.creates[0].kind,
+        CreationKind::ReplacementIncarnation
+    );
     assert_eq!(replacement.sends.own.inner[0].nonce, 1);
     assert!(matches!(replacement.become_, Step::Continue));
 }
@@ -623,10 +672,26 @@ impl State<Never, Births<Child>, Never> for BirthingParent {
         self.0 = true;
         Ok(Actions {
             sends: Vec::new(),
-            creates: vec![Create {
-                nonce,
-                child: child(0),
-            }],
+            creates: vec![Create::birth(nonce, child(0))],
+            become_: Step::Continue,
+        })
+    }
+}
+
+struct ReplacingParent;
+
+impl State<Never, Births<Child>, Never> for ReplacingParent {
+    type Addr = MailAddr;
+    type Msg = u64;
+
+    fn handle(
+        &mut self,
+        _from: MailAddr,
+        nonce: u64,
+    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, Births<Child>, Never> {
+        Ok(Actions {
+            sends: Vec::new(),
+            creates: vec![Create::replacement_incarnation(nonce, child(0))],
             become_: Step::Continue,
         })
     }
@@ -646,6 +711,7 @@ async fn supervisor_preserves_and_observes_dynamic_births_once() {
         .unwrap();
     assert_eq!(born.creates.len(), 1);
     assert_eq!(born.creates[0].nonce, 9);
+    assert_eq!(born.creates[0].kind, CreationKind::Birth);
     assert_eq!(born.sends.own.inner.len(), 1);
     assert_eq!(born.sends.own.inner[0].nonce, 9);
     assert_eq!(supervisor.behavior().child_count(), 1);
@@ -658,6 +724,25 @@ async fn supervisor_preserves_and_observes_dynamic_births_once() {
     let replacement = supervisor.step(stopped).await.unwrap();
     assert_eq!(replacement.sends.own.own.len(), 1);
     assert_eq!(replacement.sends.own.own[0].to.route(), Route::Child(9));
+}
+
+#[tokio::test]
+async fn supervisor_preserves_dynamic_replacement_provenance_when_wrapping_the_child() {
+    let mut supervisor = Spec::new(ReplacingParent)
+        .children((0, child))
+        .within(1, Duration::MAX);
+    supervisor.init().await.unwrap();
+
+    let replacement = supervisor
+        .step(UserEvent::user(MailAddr(0), 9))
+        .await
+        .unwrap();
+    assert_eq!(replacement.creates.len(), 1);
+    assert_eq!(replacement.creates[0].nonce, 9);
+    assert_eq!(
+        replacement.creates[0].kind,
+        CreationKind::ReplacementIncarnation
+    );
 }
 
 #[tokio::test]

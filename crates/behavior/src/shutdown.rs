@@ -6,19 +6,11 @@
 //! concerns.
 
 use crate::behavior::{Actions, Address, Behavior, BirthMode, SendAlgebra, User, UserEvent};
-use crate::deadlined::{TimeEvent, TimeReached};
-use crate::supervising::{ChildEvent, ChildStopped, WorkerEvent, WorkerStopped};
-use crate::watching::{PeerEvent, PeerStopped};
+use crate::protocol::{
+    ChildEvent, ChildStopped, PeerEvent, PeerStopped, ShutdownEvent, ShutdownRequested, TimeEvent,
+    TimeReached, WorkerEvent, WorkerStopped,
+};
 use crate::{Exit, Step};
-
-/// A request to finish through one serialized behavior transition.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
-pub struct ShutdownRequested;
-
-/// Construction of the shutdown lane through a composed event type.
-pub trait ShutdownEvent: Sized {
-    fn shutdown_requested(event: ShutdownRequested) -> Option<Self>;
-}
 
 /// The complete protocol of a behavior that supports graceful shutdown.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -130,14 +122,7 @@ macro_rules! impl_shutdown_behavior {
             A: Address + Send,
             Sends: SendAlgebra,
             Br: BirthMode,
-            B: Behavior<
-                    Addr = A,
-                    Ph = Ph,
-                    Sends = Sends,
-                    Birth = Br,
-                    Effect = Actions<A, Ph, Sends, Br>,
-                    Done = Exit<A>,
-                > + Send,
+            B: Behavior<Addr = A, Ph = Ph, Sends = Sends, Birth = Br> + Send,
             B::Event: Send,
             B::Msg: Send,
         {
@@ -148,14 +133,15 @@ macro_rules! impl_shutdown_behavior {
             type Ph = Ph;
             type Error = B::Error;
             type Birth = Br;
-            type Effect = Actions<A, Ph, Sends, Br>;
-            type Done = Exit<A>;
 
-            async fn init(&mut self) -> Result<Self::Effect, B::Error> {
+            async fn init(&mut self) -> Result<Actions<A, Ph, Sends, Br>, B::Error> {
                 self.inner.init().await
             }
 
-            async fn step(&mut self, event: Self::Event) -> Result<Self::Effect, B::Error> {
+            async fn step(
+                &mut self,
+                event: Self::Event,
+            ) -> Result<Actions<A, Ph, Sends, Br>, B::Error> {
                 match event {
                     ShutdownProtocol::Inner(event) => self.inner.step(event).await,
                     ShutdownProtocol::ShutdownRequested(request) => $shutdown(self, request),

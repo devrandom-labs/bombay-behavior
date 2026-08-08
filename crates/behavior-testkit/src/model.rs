@@ -7,6 +7,100 @@
 
 use behavior::{Crash, Exit, MailAddr, RestartPolicy, Strategy};
 
+/// Independent vocabulary for the semantic role expected on a creation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExpectedCreation {
+    Initial,
+    Ordinary,
+    Successor,
+}
+
+/// An expected creation emitted by the independent incarnation model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExpectedIncarnation {
+    pub nonce: u64,
+    pub role: ExpectedCreation,
+}
+
+/// Independent model of a stable slot and its non-overlapping incarnations.
+///
+/// This model deliberately uses different state and vocabulary from `Proxy`:
+/// a slot is either occupied or vacant, with at most one queued successor.
+pub struct IncarnationModel {
+    occupied: Option<u64>,
+    queued_successor: bool,
+    next_nonce: u64,
+}
+
+impl IncarnationModel {
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
+            occupied: None,
+            queued_successor: false,
+            next_nonce: 0,
+        }
+    }
+
+    /// Establish the slot's first incarnation.
+    #[must_use]
+    pub fn initialize(&mut self) -> ExpectedIncarnation {
+        self.occupied = Some(0);
+        self.next_nonce = 1;
+        ExpectedIncarnation {
+            nonce: 0,
+            role: ExpectedCreation::Initial,
+        }
+    }
+
+    /// Model an unrelated dynamic birth outside the stable slot.
+    #[must_use]
+    pub const fn ordinary(nonce: u64) -> ExpectedIncarnation {
+        ExpectedIncarnation {
+            nonce,
+            role: ExpectedCreation::Ordinary,
+        }
+    }
+
+    /// Admit a successor request, creating immediately only when vacant.
+    pub fn request_successor(&mut self) -> Option<ExpectedIncarnation> {
+        if self.occupied.is_some() {
+            self.queued_successor = true;
+            None
+        } else {
+            Some(self.install_successor())
+        }
+    }
+
+    /// Vacate the matching incarnation and install a queued successor.
+    pub fn stopped(&mut self, nonce: u64) -> Option<ExpectedIncarnation> {
+        if self.occupied != Some(nonce) {
+            return None;
+        }
+        self.occupied = None;
+        self.queued_successor.then(|| {
+            self.queued_successor = false;
+            self.install_successor()
+        })
+    }
+
+    fn install_successor(&mut self) -> ExpectedIncarnation {
+        let nonce = self.next_nonce;
+        self.next_nonce = self.next_nonce.checked_add(1).unwrap();
+        self.occupied = Some(nonce);
+        ExpectedIncarnation {
+            nonce,
+            role: ExpectedCreation::Successor,
+        }
+    }
+}
+
+impl Default for IncarnationModel {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Outcome {
     Normal,
