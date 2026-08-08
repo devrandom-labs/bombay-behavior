@@ -1158,9 +1158,9 @@
         "Gul Agha, Concurrent Object-Oriented Programming, CACM 33(9):125-141, 1990, doi:10.1145/83880.84585 (mail addresses abstract over location)",
         "Varela and Agha, Programming Dynamically Reconfigurable Open Systems with SALSA, OOPSLA 2001, doi:10.1145/583960.583964 (naming vs addressing in open systems)"
       ],
-      "composition": "Narrowed after independent review: the fold contains no location-resolution service and no Event variant can observe physical location, so transition semantics are location-neutral. That is an absence property, not a transparency service: Route::Global(A)/Route::Child are explicit data, the Address trait exposes birth, MailAddr(pub u64) exposes its representation, and Debug on Route/Recipient reveals routes, so equality is not the only observable operation. Uniform naming, migration, and location-independent delivery (SALSA-style) are interpreter or application services.",
+      "composition": "Narrowed after independent review: the core provides no built-in location-resolution or node-introspection operation. A behavior is location-neutral only when its typed inputs and implementation exclude location observations and ambient effects. That is a conditional absence property, not a transparency service: Route::Global(A)/Route::Child are explicit data, the Address trait exposes birth, MailAddr(pub u64) exposes its representation, and Debug on Route/Recipient reveals routes, so equality is not the only observable operation. Uniform naming, migration, and location-independent delivery (SALSA-style) are interpreter or application services.",
       "laws": [
-        "Actor-model law (Agha 1990): transition semantics do not depend on physical location; no fold can observe its node",
+        "Actor-model law (Agha 1990): actor transition semantics abstract from physical placement; Bombay does not claim its Rust trait prevents user-defined events or ambient effects from exposing location",
         "Bombay-derived: Route and Address are plain Copy+Eq data with public constructors; the algebra hides no representation",
         "Interpreter-boundary: location transparency as a service (uniform naming across placement and migration) is realized by the interpreter's mail system, not by the fold"
       ],
@@ -1175,7 +1175,7 @@
         "Address::birth is public and MailAddr exposes pub u64, so address representation and child derivation are observable and computable by any holder",
         "Debug on Route and Recipient reveals routes, and route() is a public accessor; equality is not the only behavior-visible operation",
         "The algebra neither provides nor prevents forging: unforgeability, if wanted, is an interpreter minting policy",
-        "Transparency is only partially represented: the fold is location-neutral, but no naming or migration service exists in this crate's scope"
+        "Transparency is only partially represented: the core has no built-in location operation, but user-defined events and implementations can expose location, and no naming or migration service exists in this crate's scope"
       ]
     },
     {

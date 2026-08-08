@@ -355,8 +355,9 @@ counted from the matrix.
   properties belong to runtime minting and confinement — the interpreter
   boundary.
 - `location-transparency`: derived -> interpreter. The claim is narrowed to
-  an absence property: no fold can observe physical location and the algebra
-  contains no location-resolution service. `Address::birth` is exposed,
+  a conditional absence property: the core contains no built-in location-
+  resolution or node-introspection operation, but user-defined events and
+  behavior implementations can expose location. `Address::birth` is exposed,
   concrete addresses expose their representation (`MailAddr(pub u64)`),
   `Recipient::route()` is public, and `Debug` reveals routes, so equality is
   not the only observable operation and the algebra neither provides nor
@@ -392,8 +393,8 @@ is a qualified result rather than total closure:
    migration service does not, by design (interpreter scope).
 
 All other 50 rows are either fully represented in the pure algebra
-(existing/derived, 34 rows) or explicit boundaries with recorded algebraic
-obstructions (interpreter/application, 16 rows).
+(existing/derived, 33 rows) or explicit boundaries with recorded algebraic
+obstructions (interpreter/application, 17 rows).
 
 ### What check.sh is and is not
 
