@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-macros-v0.6.0...bombay-behavior-macros-v0.7.0) - 2026-08-08
+
+### Other
+
+- Distill creation provenance and behavior algebra ([#18](https://github.com/devrandom-labs/bombay-behavior/pull/18))
+
 ## [0.2.1](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-macros-v0.2.0...bombay-behavior-macros-v0.2.1) - 2026-08-07
 
 ### Other
