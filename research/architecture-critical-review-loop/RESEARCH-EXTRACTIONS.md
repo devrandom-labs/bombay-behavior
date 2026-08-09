@@ -538,3 +538,53 @@ capability extraction template from RESEARCH-SOURCES.md.
 - Candidate-basis impact: none; confirms failure-detection row disposition.
 - Limitations: abstract-level.
 - Evidence location: capability-matrix.json row failure-detection.
+
+## 19. Clinger — Foundations of Actor Semantics (MIT AI-TR-633, 1981)
+
+- Bibliography: William D. Clinger. PhD dissertation, MIT AI Lab, AI-TR-633,
+  May 1981.
+- Stable URL: <https://dspace.mit.edu/bitstream/handle/1721.1/6935/AITR-633.pdf?sequence=2&isAllowed=y>
+- Source tier: 1.
+- Read status: partial — the PDF is a pure image scan without a text layer;
+  front matter (TOC, introduction, fairness chapter opening) and the key
+  sections were OCRed on 2026-08-09 (poppler+tesseract via nix): §II.1 The
+  Actor Model, §III fairness/unbounded nondeterminism, §IV.2 Actor
+  Behaviors, §V.1-2 Actor Acquaintances/Creation, Chapter VI Conclusion.
+- Inclusion: semantic.
+- Primitive syntax/operations: event = message arrival at an actor ("all
+  events in the model are arrival events, and there is no such thing as a
+  sending event"); message passing resembles mail service — messages may
+  always be sent but are subject to variable delays. **Actor behavior
+  domain: the reflexive equation F ≅ [M → (F × P(A × M))]** — a behavior is
+  a function from one message to a next behavior and a set of
+  (address, message) deliveries; the direct denotational analogue of
+  Bombay's `(behavior, one communication) → (next behavior, sends)` fold.
+  Actor = script + vector of acquaintances; the acquaintance vector is
+  alterable only by the actor itself and may change over time. Actor
+  creation evaluates a behavior abstraction, gathering identifier bindings
+  into the new actor's acquaintance vector.
+- Operational assumptions: fairness as finite-but-unbounded delay;
+  **fairness implies unbounded nondeterminism** (formalized folk wisdom,
+  CSP counterexample analysis); power domains over incomplete domains
+  handle fairness denotationally.
+- Laws/theorems: ordering laws (global time is necessary; strong/weak
+  realizability axioms; a strong independence result); locality laws —
+  actor acquaintances (§V.1), actor creation (§V.2), "locality laws add
+  power" (§V.3), semantics with actor creation (§V.4); primitive
+  serializers as the semantic actors.
+- Capability claims: iterative vs recursive programs distinguished by
+  whether new actors are created; whether a complex actor system can be
+  regarded as a single actor left open (later closed by AMST 1997
+  configuration composition and Talcott's component algebras).
+- Bombay classification: LAW (arrival-event model, mail-service asynchrony,
+  behavior-as-function domain equation, acquaintance locality, fairness as
+  execution property); the domain-theoretic machinery itself does not
+  transfer — Bombay realizes the same transition law as a typed pure fold.
+- Candidate-basis impact: the F ≅ [M → (F × P(A × M))] equation is the
+  earliest precise mathematical statement of the nucleus Bombay realizes;
+  confirms the fold shape (one message in; next behavior plus finite send
+  set out) is the 1981 denotational core.
+- Limitations: OCR of selected sections only; no equivalence notion was
+  defined (per AMST 1997 §1.3.1 and the Conclusion's own open questions).
+- Evidence location: evidence.json RESEARCH-AGHA; REPORT.md foundational
+  comparison table (Clinger row upgraded from access-limited).

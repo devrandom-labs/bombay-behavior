@@ -482,9 +482,12 @@ Method per ACTOR-RESEARCH-SURVEY.md, executed 2026-08-09 in this rerun:
    derivation evidence (labeled DERIVED/POLICY, never LAW), consistent with
    the prior run's recorded judgment.
 5. **Access limitations (explicit).** Paywalled and inaccessible items:
-   Clinger 1981 AI-TR-633 (MIT DSpace rate-limited HTTP 429/202 across three
-   attempts; dispositioned through AMST 1997 §1.3.1's in-paper discussion and
-   Talcott's TACS 1997 generalization of Clinger's model); Agha 1986 MIT
+   Clinger 1981 AI-TR-633 was initially blocked (MIT DSpace HTTP 429/202 on
+   three attempts) and later fetched successfully; it is a pure image scan
+   without a text layer, so it was read partially by OCR (tesseract via
+   nix) of the actor-model, fairness, actor-behaviors, locality-laws, and
+   conclusion sections — recorded as a partial read, not a complete one.
+   Remaining limitations: Agha 1986 MIT
    Press book (CrossRef-verified monograph doi:10.7551/mitpress/1086.001.0001;
    content verified through the fully read 2001 chapter and AMST 1997);
    Agha-Thati LNCS 2635 2004 (paywalled; subsumed by Thati's 2003
@@ -576,7 +579,7 @@ exact relationship to Bombay's candidate basis.
 | Greif 1975 MAC-TR-154 (access-limited; via AMST §1.3.1 + POPL'75 record) | event diagrams: local events + causal relations | behavioral event structure | — | causal event view = interpreter trace concept; no fold-level transfer |
 | Baker-Hewitt IFIP 1977 (record-level) | ordering axioms for events | axiomatic | arrival-order laws later proved consistent by Clinger | ordering guarantees = interpreter policy; Bombay imposes no cross-lane order (law-consistent) |
 | Hewitt AIJ 1977 (record-level, DOI verified) | control structures as message-passing patterns; continuations | informal operational | — | evidence that control/state patterns are derived over sends — supports derived-form doctrine |
-| Clinger 1981 AI-TR-633 (access-limited after 3 attempts; via AMST §1.3.1 and Talcott TACS 1997) | event diagrams; powerdomain semantics | denotational | fairness makes the domain incomplete; powerdomain handles unbounded nondeterminism; no equivalence notion | fairness = execution quantifier, not per-fold property; Bombay's fairness row = interpreter |
+| Clinger 1981 AI-TR-633 (partial OCR read of the scanned thesis: actor model, fairness, actor behaviors, locality laws, conclusion) | arrival events only (no sending events); mail-service asynchrony; behavior domain F ≅ [M → (F × P(A × M))]; script + acquaintance vector | denotational (power domains over incomplete domains) | fairness implies unbounded nondeterminism; powerdomain handles fairness; no equivalence notion (open in its conclusion) | the domain equation is the 1981 denotational statement of Bombay's fold shape; fairness = execution quantifier (interpreter row); locality laws = acquaintance LAW |
 | Agha MIT Press 1986 (CrossRef-verified; content via 2001 chapter + AMST) | send/create/become on tasks; configurations; receptionists | operational (task-based) | one communication at a time; fresh addresses | the semantic nucleus; directly realized by the typed fold |
 | Agha-Hewitt FSTTCS 1985 / MIT Press chapter 1987 (records) | early model statements | operational | — | historical; subsumed by the 1986 book |
 | Agha CACM 33(9) 1990 (record + prior verification) | actor-language encapsulation, behavior change | language design | — | separates model law from language design; COOP features = derived |
