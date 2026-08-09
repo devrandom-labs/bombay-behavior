@@ -766,3 +766,60 @@ capability extraction template from RESEARCH-SOURCES.md.
   (control-structure examples) not OCRed in detail.
 - Evidence location: REPORT.md foundational comparison table (Baker-Hewitt
   row upgraded from record-level).
+
+## 24. Mason, Talcott — A Semantically Sound Actor Translation (1997, the [MT] reference)
+
+- Bibliography: Ian A. Mason, Carolyn L. Talcott. "A Semantically Sound
+  Actor Translation." ICALP 1997; the archived manuscript is the extended
+  version (97u2k.ps, January 1997), later published as "Actor Languages:
+  Their Syntax, Semantics, Translation, and Equivalence" (1999).
+- Stable URL: Wayback Machine copy of the authors' Stanford archive
+  <http://web.archive.org/web/2010id_/http://www-formal.stanford.edu/MT/97icalp.ps.gz>
+- Source tier: 1.
+- Read status: complete text (PostScript → PDF → text via ghostscript +
+  poppler through nix, 2026-08-09); introduction, language definitions,
+  constraint syntax, and main theorem read directly.
+- Inclusion: semantic.
+- Primitive syntax/operations: two languages — user language uL (objects
+  with methods and **synchronization constraints**: `disable mid(ṽ) when
+  ue` guards controlling when a method may be invoked) and kernel language
+  kL (CBV λ + actor primitives: create, send, become-ready); acquaintances
+  = "addresses of actors it was given upon creation, it received in a
+  message, or that it created" — the crisp three-source acquaintance law.
+- Operational assumptions: fairness required; receptionist interfaces on
+  components; a component may add an internal actor to its receptionists by
+  sending its address out (dynamic interface, as in the 2001 paper).
+- Laws/theorems: **Theorem (u2k): Isem(uP) = Isem(u2k(uP))↾uM** — the
+  translation from the constraint-bearing user language to the primitive
+  kernel preserves interaction semantics exactly. Proof methodology:
+  Abstract Actor Structures as a big-step analogue hiding small-step
+  detail. This is the primary proof behind the 2001 claim that local
+  synchronization constraints are translatable into primitive actors.
+- Capability claims: selective receive / enabled-set constraints are
+  derived over the primitive kernel — the strongest primary evidence for
+  Bombay's Stashing/selective-receive rows being derived, not primitive.
+- Bombay classification: acquaintance law = LAW; synchronization
+  constraints = DERIVED (theorem-level evidence); Bombay's Stashing plays
+  the u2k role as a typed, inspectable realization.
+- Candidate-basis impact: none; closes the evidential chain for the
+  selective-receive derivation.
+- Limitations: interaction semantics is trace/interaction-level, not a
+  full testing-equivalence transfer; Bombay's realization is typed while
+  uL/kL are untyped.
+- Evidence location: REPORT.md foundational + post-2000 tables;
+  selective-receive and stashing matrix rows.
+
+## 25. Talcott — Composable Semantic Models for Actor Theories (TACS 1997) — full text upgrade
+
+- Read status upgrade: the full text was recovered from the Wayback copy of
+  the author's archive (97tacs.ps.gz) and read 2026-08-09. Confirms the
+  abstract-level disposition: three semantic models (open event diagrams,
+  interaction diagrams, interaction paths); algebra on each domain with
+  parallel composition, hiding of internal actors, renaming; the semantics
+  is a component-algebra homomorphism. The AFP 1996 "An Actor Algebra"
+  lecture notes do not appear in Talcott's own publication list; the line's
+  content is this paper plus the HOSC 2000 journal version — the survey's
+  "An Actor Algebra" label is recorded as resolved to these works.
+- Bombay classification: configuration/component-level composition algebra
+  = LAW-level composition results; Bombay realizes composition as typed
+  behavior combinators (derived) rather than configuration operations.
