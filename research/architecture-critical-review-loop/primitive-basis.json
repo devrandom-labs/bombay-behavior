@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
   "campaign": "behavior-architecture-critical-review",
-  "rule": "Existing public API status is not evidence that a construct is primitive. Layers are distinct: the actor-semantic nucleus is justified by primary actor semantics; the host calculus is assumed from Rust/type theory; Bombay encodings are representation choices and derived combinators. A ratchet or API-convenience argument is never a semantic obstruction.",
+  "rule": "Layers are distinct: the actor-semantic nucleus (transition-form + effect-primitives) is justified by primary actor semantics; the host calculus is assumed from Rust/type theory; Bombay encodings are representation choices classified as required-encoding, preferred-encoding, derived-combinator, or policy. Semantic status is primitive/derived/extension/not-applicable. Public API status is retain/reclassify/redesign/remove/not-public.",
   "actor_semantic_nucleus": [
     {
       "operation": "process one communication",
@@ -53,7 +53,7 @@
       ]
     }
   ],
-  "nucleus_note": "Termination is NOT an actor-model primitive: Agha's actors persist (FMOODS 2002 persistence discipline). Bombay's Step::Stop is a typed extension \u2014 model-level inertness is become-to-sink; the explicit stop verdict exists to signal reclamation to the interpreter. It is classified bombay-derived extension, not law.",
+  "nucleus_note": "N-fold is the TRANSITION-FORM: (behavior, communication) -> effects + next behavior. It is not a fourth effect alongside send/create/become. N-send, N-create, N-become are EFFECT-PRIMITIVES: the three primitive effect forms available in the transition result. Termination is NOT an actor-model primitive: Agha's actors persist (FMOODS 2002 persistence discipline). Bombay's Step::Stop is a typed extension \u2014 model-level inertness is become-to-sink; the explicit stop verdict exists to signal reclamation to the interpreter. It is classified bombay-derived extension, not law.",
   "rust_encoding_basis": [
     "N-fold",
     "N-send",
@@ -74,8 +74,6 @@
       "id": "N-fold",
       "name": "One-communication fold",
       "layer": "actor-nucleus",
-      "semantic_primitive": true,
-      "representation_primitive": true,
       "rust_type": "trait Behavior { fn init; fn step } + trait State::handle (crates/behavior/src/behavior.rs:389-431)",
       "formation_rule": "A behavior is a total deterministic fold from exactly one typed Event to Result<Actions, Error>; init runs before mailbox events.",
       "input_types": [
@@ -127,18 +125,16 @@
         "rationale": "The fold IS the actor transition law.",
         "mechanical_probe": "not applicable (semantic nucleus)"
       },
-      "status": "retained",
       "semantic_status": "primitive",
-      "representation_status": "primitive",
-      "public_api_status": "retained",
-      "limitations": []
+      "representation_status": "required-encoding",
+      "public_api_status": "retain",
+      "limitations": [],
+      "role": "transition-form"
     },
     {
       "id": "N-send",
       "name": "Send communications",
       "layer": "actor-nucleus",
-      "semantic_primitive": true,
-      "representation_primitive": true,
       "rust_type": "Recipient<A,M> + Delivery<A,M> values in the sends seat (behavior.rs:42-110)",
       "formation_rule": "A transition may emit finitely many typed communications to known recipients.",
       "input_types": [
@@ -190,18 +186,16 @@
         "rationale": "Sending communications is one of the three transition effects.",
         "mechanical_probe": "not applicable (law-level)"
       },
-      "status": "retained",
       "semantic_status": "primitive",
-      "representation_status": "primitive",
-      "public_api_status": "retained",
-      "limitations": []
+      "representation_status": "required-encoding",
+      "public_api_status": "retain",
+      "limitations": [],
+      "role": "effect-primitive"
     },
     {
       "id": "N-create",
       "name": "Fresh actor creation",
       "layer": "actor-nucleus",
-      "semantic_primitive": true,
-      "representation_primitive": true,
       "rust_type": "Create<A, New> staged data in the creates seat (behavior.rs:256-287)",
       "formation_rule": "A transition may stage fresh creation requests; freshness and installation are interpreter-committed.",
       "input_types": [
@@ -252,18 +246,16 @@
         "rationale": "Fresh creation is one of the three transition effects.",
         "mechanical_probe": "not applicable (law-level)"
       },
-      "status": "retained",
       "semantic_status": "primitive",
-      "representation_status": "primitive",
-      "public_api_status": "retained",
-      "limitations": []
+      "representation_status": "required-encoding",
+      "public_api_status": "retain",
+      "limitations": [],
+      "role": "effect-primitive"
     },
     {
       "id": "N-become",
       "name": "Designate next behavior",
       "layer": "actor-nucleus",
-      "semantic_primitive": true,
-      "representation_primitive": true,
       "rust_type": "become_ seat: Step<Ph, Exit<A>> verdict (behavior.rs:305-316; verdict.rs)",
       "formation_rule": "A transition designates the behavior for the next communication (or, as a Bombay extension, stops).",
       "input_types": [
@@ -313,18 +305,16 @@
         "rationale": "Designating the next behavior is one of the three transition effects.",
         "mechanical_probe": "not applicable (law-level)"
       },
-      "status": "retained",
       "semantic_status": "primitive",
-      "representation_status": "primitive",
-      "public_api_status": "retained",
-      "limitations": []
+      "representation_status": "required-encoding",
+      "public_api_status": "retain",
+      "limitations": [],
+      "role": "effect-primitive"
     },
     {
       "id": "B-stop",
       "name": "Explicit termination verdict",
       "layer": "bombay-derived",
-      "semantic_primitive": false,
-      "representation_primitive": true,
       "rust_type": "Step::Stop(Exit<A>) (verdict.rs)",
       "formation_rule": "A transition may return the stop verdict, signaling end of life to the interpreter.",
       "input_types": [
@@ -377,10 +367,9 @@
         "rationale": "Termination is semantically derivable (sink); the explicit verdict is a retained representation, classified Bombay extension/policy \u2014 not a model primitive.",
         "mechanical_probe": "semantic derivation via AMST sink; retained as representation by policy"
       },
-      "status": "retained",
-      "semantic_status": "derived",
-      "representation_status": "primitive",
-      "public_api_status": "retained",
+      "semantic_status": "extension",
+      "representation_status": "required-encoding",
+      "public_api_status": "retain",
       "limitations": [
         "Explicit termination is a Bombay policy extension; Agha's actors persist",
         "A sink behavior cannot signal reclamation to the interpreter",
@@ -391,8 +380,6 @@
       "id": "B-actions",
       "name": "Actions typed effect product",
       "layer": "bombay-derived",
-      "semantic_primitive": false,
-      "representation_primitive": true,
       "rust_type": "struct Actions<A, Ph, Sends, Birth> { sends, creates, become_ } (behavior.rs:320-325)",
       "formation_rule": "The transition's effects are packaged as a product of statically disjoint seats.",
       "input_types": [
@@ -447,10 +434,9 @@
         "rationale": "As a REPRESENTATION, the disjoint-seat product is the minimal encoding preserving per-lane typing; the underlying triple is the law.",
         "mechanical_probe": "EXECUTED 2026-08-09: research/architecture-critical-review-loop/probes/products/ builds and runs, demonstrating the merged-lane hole"
       },
-      "status": "retained",
       "semantic_status": "derived",
-      "representation_status": "primitive",
-      "public_api_status": "retained",
+      "representation_status": "required-encoding",
+      "public_api_status": "retain",
       "limitations": [
         "Typed realization of the actor effect triple; not a semantic primitive",
         "Disjoint-seat encoding is a static-safety design choice, not a model requirement",
@@ -461,8 +447,6 @@
       "id": "H-never",
       "name": "Empty type seats",
       "layer": "host-calculus",
-      "semantic_primitive": false,
-      "representation_primitive": true,
       "rust_type": "Never (uninhabited enum) in Ph/Error/Out/Child seats",
       "formation_rule": "Empty seats are typed with the host language's uninhabited type.",
       "input_types": [],
@@ -508,10 +492,9 @@
         "rationale": "Host type-theory machinery (the empty type), retained as a representation primitive; not an actor primitive.",
         "mechanical_probe": "EXECUTED 2026-08-09: research/architecture-critical-review-loop/probes/never/ compiles, demonstrating the inhabited-seat hole"
       },
-      "status": "retained",
-      "semantic_status": "derived",
-      "representation_status": "primitive",
-      "public_api_status": "retained",
+      "semantic_status": "not-applicable",
+      "representation_status": "not-applicable",
+      "public_api_status": "retain",
       "limitations": [
         "Host type-theory machinery; not an actor primitive",
         "Requires the host language to have an uninhabited type",
@@ -522,8 +505,6 @@
       "id": "H-sums",
       "name": "Host sum types",
       "layer": "host-calculus",
-      "semantic_primitive": false,
-      "representation_primitive": true,
       "rust_type": "closed event enums (one variant per lane)",
       "formation_rule": "A composed protocol is a closed sum of lane variants.",
       "input_types": [
@@ -573,10 +554,9 @@
         "rationale": "Host sum constructor assumed from Rust; erasure alternative is law-banned and compile-verified.",
         "mechanical_probe": "compiler-verified via the existing compile_fail doctest"
       },
-      "status": "retained",
-      "semantic_status": "derived",
-      "representation_status": "primitive",
-      "public_api_status": "retained",
+      "semantic_status": "not-applicable",
+      "representation_status": "not-applicable",
+      "public_api_status": "retain",
       "limitations": [
         "Host type constructor; not an actor primitive",
         "Closed-sum encoding of protocols requires all lanes known at composition time",
@@ -587,8 +567,6 @@
       "id": "H-products",
       "name": "Host product types with monoid packaging",
       "layer": "host-calculus",
-      "semantic_primitive": false,
-      "representation_primitive": true,
       "rust_type": "SendProduct<L,R> + SendAlgebra { empty; append } (behavior.rs:112-133)",
       "formation_rule": "Independent send lanes form a product; each lane is a monoid under append.",
       "input_types": [
@@ -639,10 +617,9 @@
         "rationale": "Host product + monoid assumed; the disjoint-lane discipline is Bombay's minimal lawful packaging.",
         "mechanical_probe": "EXECUTED 2026-08-09: research/architecture-critical-review-loop/probes/products/ builds and runs, demonstrating the merged-lane hole"
       },
-      "status": "retained",
-      "semantic_status": "derived",
-      "representation_status": "primitive",
-      "public_api_status": "retained",
+      "semantic_status": "not-applicable",
+      "representation_status": "not-applicable",
+      "public_api_status": "retain",
       "limitations": [
         "Host type constructor with Bombay lane discipline; not an actor primitive",
         "Merged-lane hole demonstrates the static-safety benefit of disjoint lanes",
@@ -653,8 +630,6 @@
       "id": "B-extraction",
       "name": "Lane extraction traits",
       "layer": "bombay-derived",
-      "semantic_primitive": false,
-      "representation_primitive": true,
       "rust_type": "trait UserEvent { user; into_user } (behavior.rs:361-375); TimeEvent/PeerEvent (protocol.rs:45-64)",
       "formation_rule": "Each lane provides total injection and extraction (returning the unchanged event on mismatch).",
       "input_types": [
@@ -706,10 +681,9 @@
         "rationale": "Representation-level necessity for composable typed lanes in Rust; not an actor primitive.",
         "mechanical_probe": "type-level argument; erasure alternative compiler-verified impossible"
       },
-      "status": "retained",
       "semantic_status": "derived",
-      "representation_status": "primitive",
-      "public_api_status": "retained",
+      "representation_status": "required-encoding",
+      "public_api_status": "retain",
       "limitations": [
         "Representation-level necessity due to Rust's lack of structural row types",
         "Extraction traits are a discipline, not a semantic primitive",
@@ -720,8 +694,6 @@
       "id": "B-birthmode",
       "name": "BirthMode creation-capability encoding",
       "layer": "bombay-derived",
-      "semantic_primitive": false,
-      "representation_primitive": true,
       "rust_type": "trait BirthMode { type Child; } with NoBirths/Births<C> (behavior.rs:290-303)",
       "formation_rule": "A type-level function computes a behavior's creation authority; wrappers compute the composite.",
       "input_types": [
@@ -773,10 +745,9 @@
         "rationale": "Derivable from the host empty type + associated types; retained as Bombay's canonical encoding of creation capability (FMOODS 2002 enforces actor properties by a type system; BirthMode is the static analogue).",
         "mechanical_probe": "EXECUTED 2026-08-09: research/architecture-critical-review-loop/probes/birthmode/ demonstrates the unnameable child type and forced reintroduction"
       },
-      "status": "retained",
       "semantic_status": "derived",
-      "representation_status": "derived",
-      "public_api_status": "retained",
+      "representation_status": "preferred-encoding",
+      "public_api_status": "retain",
       "limitations": [
         "Derived from host associated types and the uninhabited type",
         "Marker-only encoding cannot name the composite child type",
@@ -787,8 +758,6 @@
       "id": "B-fnreact",
       "name": "Function-pointer reactions",
       "layer": "bombay-policy",
-      "semantic_primitive": false,
-      "representation_primitive": false,
       "rust_type": "type Transition<...> = fn(&mut S, A, M) -> Acted<...> (behavior.rs:452-456); reaction fn pointers (supervising.rs:87-91)",
       "formation_rule": "Behavior fragments are stored as non-capturing fn pointers.",
       "input_types": [
@@ -854,10 +823,9 @@
         "rationale": "DEMOTED: semantically derivable via generic reaction objects; fn pointers are the preferred compact representation (Bombay policy).",
         "mechanical_probe": "EXECUTED 2026-08-09: research/architecture-critical-review-loop/probes/fnreact/ \u2014 generic encoding compiles; derivability confirmed"
       },
-      "status": "demoted",
       "semantic_status": "derived",
-      "representation_status": "derived",
-      "public_api_status": "demoted",
+      "representation_status": "policy",
+      "public_api_status": "reclassify",
       "limitations": [
         "Demoted semantic primitive; generic trait encoding compiles",
         "Retention (via fn pointers) is a Bombay policy for API compactness",
@@ -868,8 +836,6 @@
       "id": "B-wrappers",
       "name": "Higher-order wrapper combinators",
       "layer": "bombay-derived",
-      "semantic_primitive": false,
-      "representation_primitive": true,
       "rust_type": "At, ReceiveTimeout, Watching, Supervising/Proxy, Shutdown, Stashing, Fsm, Spec",
       "formation_rule": "A wrapper is a higher-order behavior transformation W: Behavior -> Behavior; formation: W(inner, config) builds a concrete Behavior whose Event is the widened sum and whose step routes W's lane, delegates the rest, and accumulates effects.",
       "input_types": [
@@ -943,10 +909,9 @@
         "rationale": "DEMOTED as a category: wrappers are derived higher-order combinators over the fold with stated, tested composition invariants. Each concrete wrapper is a derived form.",
         "mechanical_probe": "EXECUTED 2026-08-09: research/architecture-critical-review-loop/probes/wrappers/ \u2014 a minimal wrapper derived from scratch compiles and drives"
       },
-      "status": "demoted",
       "semantic_status": "derived",
-      "representation_status": "derived",
-      "public_api_status": "demoted",
+      "representation_status": "derived-combinator",
+      "public_api_status": "retain",
       "limitations": [
         "Demoted as a primitive category; wrappers are derived higher-order combinators",
         "Each concrete wrapper is a lawful composition of fold + sums + products",

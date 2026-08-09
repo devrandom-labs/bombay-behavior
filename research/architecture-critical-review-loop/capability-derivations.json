@@ -154,6 +154,9 @@
         "freshness": "child nonce scoped to creator namespace",
         "static_limitations": [
           "no global topology query in the fold"
+        ],
+        "derived_combinator_refs": [
+          "B-wrappers"
         ]
       },
       "boundary_argument": null
@@ -263,6 +266,9 @@
         "freshness": "init may stage creations",
         "static_limitations": [
           "double-init is a documented contract violation (panic-guarded in Proxy)"
+        ],
+        "derived_combinator_refs": [
+          "B-wrappers"
         ]
       },
       "boundary_argument": null
@@ -308,6 +314,9 @@
         "freshness": "n/a",
         "static_limitations": [
           "clock minting is interpreter work"
+        ],
+        "derived_combinator_refs": [
+          "B-wrappers"
         ]
       },
       "boundary_argument": null
@@ -331,6 +340,9 @@
         "freshness": "n/a",
         "static_limitations": [
           "wall-clock semantics interpreter-owned"
+        ],
+        "derived_combinator_refs": [
+          "B-wrappers"
         ]
       },
       "boundary_argument": null
@@ -376,6 +388,9 @@
         "freshness": "n/a",
         "static_limitations": [
           "unbounded stash growth is application-visible"
+        ],
+        "derived_combinator_refs": [
+          "B-wrappers"
         ]
       },
       "boundary_argument": null
@@ -399,6 +414,9 @@
         "freshness": "n/a",
         "static_limitations": [
           "Ph=Never static constraint on stashable behaviors"
+        ],
+        "derived_combinator_refs": [
+          "B-wrappers"
         ]
       },
       "boundary_argument": null
@@ -422,6 +440,9 @@
         "freshness": "n/a",
         "static_limitations": [
           "Move::Goto(P) accepts any phase value; invalid transitions representable (recorded)"
+        ],
+        "derived_combinator_refs": [
+          "B-wrappers"
         ]
       },
       "boundary_argument": null
@@ -445,6 +466,9 @@
         "freshness": "n/a",
         "static_limitations": [
           "shutdown ingress is interpreter-triggered"
+        ],
+        "derived_combinator_refs": [
+          "B-wrappers"
         ]
       },
       "boundary_argument": null
@@ -468,6 +492,9 @@
         "freshness": "n/a",
         "static_limitations": [
           "one finalization only"
+        ],
+        "derived_combinator_refs": [
+          "B-wrappers"
         ]
       },
       "boundary_argument": null
@@ -491,6 +518,9 @@
         "freshness": "observation targets are acquaintances",
         "static_limitations": [
           "death detection itself is interpreter-provided"
+        ],
+        "derived_combinator_refs": [
+          "B-wrappers"
         ]
       },
       "boundary_argument": null
@@ -514,6 +544,9 @@
         "freshness": "child births fresh via proxy",
         "static_limitations": [
           "observation granularity is per-child nonce"
+        ],
+        "derived_combinator_refs": [
+          "B-wrappers"
         ]
       },
       "boundary_argument": null
@@ -537,6 +570,9 @@
         "freshness": "n/a",
         "static_limitations": [
           "report schema is application-defined"
+        ],
+        "derived_combinator_refs": [
+          "B-wrappers"
         ]
       },
       "boundary_argument": null
@@ -560,6 +596,10 @@
         "freshness": "n/a",
         "static_limitations": [
           "reaction vocabulary is Bombay policy (Erlang-flavored)"
+        ],
+        "derived_combinator_refs": [
+          "B-fnreact",
+          "B-wrappers"
         ]
       },
       "boundary_argument": null
@@ -583,6 +623,10 @@
         "freshness": "replacement incarnation designated, not performed",
         "static_limitations": [
           "strategy vocabulary is policy"
+        ],
+        "derived_combinator_refs": [
+          "B-fnreact",
+          "B-wrappers"
         ]
       },
       "boundary_argument": null
@@ -606,6 +650,10 @@
         "freshness": "restart = fresh creation with provenance",
         "static_limitations": [
           "no automatic restart without explicit designation"
+        ],
+        "derived_combinator_refs": [
+          "B-fnreact",
+          "B-wrappers"
         ]
       },
       "boundary_argument": null
@@ -629,6 +677,9 @@
         "freshness": "each restart is a fresh creation",
         "static_limitations": [
           "budget arithmetic saturating at documented boundary"
+        ],
+        "derived_combinator_refs": [
+          "B-wrappers"
         ]
       },
       "boundary_argument": null
@@ -652,6 +703,9 @@
         "freshness": "initial birth vs replacement incarnation distinguished as data",
         "static_limitations": [
           "runtime Restarted reporting is interpreter-only"
+        ],
+        "derived_combinator_refs": [
+          "B-wrappers"
         ]
       },
       "boundary_argument": null
@@ -696,6 +750,9 @@
         "freshness": "reply target passed as acquaintance",
         "static_limitations": [
           "no static guarantee a reply arrives (progress needs a Types-for-Progress-style layer)"
+        ],
+        "derived_combinator_refs": [
+          "B-wrappers"
         ]
       },
       "boundary_argument": null
@@ -740,6 +797,9 @@
         "freshness": "n/a",
         "static_limitations": [
           "no transition relation; no per-phase alphabets; no duality (channel duality per ESOP 1998 is a different discipline; Charalambides 2018 shows the actor-native cost)"
+        ],
+        "derived_combinator_refs": [
+          "B-wrappers"
         ]
       },
       "boundary_argument": null
@@ -763,6 +823,9 @@
         "freshness": "n/a",
         "static_limitations": [
           "detection + publication are interpreter services"
+        ],
+        "derived_combinator_refs": [
+          "B-wrappers"
         ]
       },
       "boundary_argument": null

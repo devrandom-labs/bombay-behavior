@@ -1300,7 +1300,7 @@
       "subject": "semantic nucleus and candidate primitive basis",
       "question": "State the actor transition nucleus, give formation and operational rules for every candidate primitive, and classify each as law, Bombay derivation, or Bombay policy.",
       "status": "resolved",
-      "decision": "Schema-v2 reclassification of the semantic nucleus completed. The actor transition law is realized by the four-construct actor-nucleus (N-fold, N-send, N-create, N-become). Host type-theory machinery is classified as host-calculus (H-never, H-sums, H-products). Bombay encodings and combinators are classified as bombay-derived or bombay-policy (B-actions, B-stop, B-extraction, B-birthmode, B-fnreact, B-wrappers). 13-entry basis across three independent layers, each with separate semantic_status (primitive/derived), representation_status (primitive/derived), and public_api_status (retained/demoted/removed).",
+      "decision": "N-fold clarified as transition-form (not a fourth effect). N-send, N-create, N-become are effect-primitives. Status vocabulary corrected: semantic_status uses primitive/derived/extension/not-applicable; representation_status uses required-encoding/preferred-encoding/derived-combinator/policy/not-applicable; public_api_status uses retain/reclassify/redesign/remove/not-public. B-fnreact reclassified (not demoted) \u2014 API remains. B-wrappers retain as derived combinators. Host-calculus entries (H-never/H-sums/H-products) use not-applicable for semantic and representation statuses (host type theory, not actor semantics or Bombay encoding).",
       "evidence": [
         "primitive-basis.json schema_version=2 with 13 primitives across three layers: 4 actor-nucleus (law-primitive both semantically and representationally), 2 host-calculus + 1 bombay-derived that are representation primitives, 1 semantically/representationally derived but public-retained, 2 demoted",
         "Independent status fields replace the conflated 'status' field: semantic_status, representation_status, public_api_status",
@@ -1311,7 +1311,11 @@
         "check.sh artifact gate validates schema-v2 fields: layer, semantic_status, representation_status, public_api_status",
         "All 13 primitives pass independent field validation with no conflated status contradictions",
         "Probes verified: all 5 compile and run (cargo run --manifest-path for each)"
-      ]
+      ],
+      "_previous_resolution": {
+        "status": "resolved",
+        "decision": "Schema-v2 reclassification of the semantic nucleus completed. The actor transition law is realized by the four-construct actor-nucleus (N-fold, N-send, N-create, N-become). Host type-theory machinery is classified as host-calculus (H-never, H-sums, H-products). Bombay encodings and combinators are classified as bombay-derived or bombay-policy (B-actions, B-stop, B-extraction, B-birthmode, B-fnreact, B-wrappers). 13-entry basis across three independent layers, each with separate semantic_status (primitive/derived), representation_status (primitive/derived), and public_api_status (retained/demoted/removed)."
+      }
     },
     {
       "id": "CALCULUS-SOUNDNESS",
@@ -1362,7 +1366,7 @@
       "subject": "capability derivation trees and qualified closure",
       "question": "Give a derivation tree from the retained basis for every surveyed pure capability, explicit boundary judgments for non-pure rows, and a closure claim qualified by taxonomy and unresolved limitations.",
       "status": "resolved",
-      "decision": "Schema-v2 capability derivation trees migrated from old 7-construct basis to new 13-entry three-layer basis. 53 capability rows: all pure rows have derivation trees referencing retained primitives (N-fold, H-sums, H-products, H-never, B-birthmode, B-extraction, B-actions, B-stop); 20 rows that previously referenced demoted B-wrappers/B-fnreact now reference their retained derivations (N-fold + H-sums + H-products). Boundary rows unchanged. Closure remains qualified per PRIMITIVE-DERIVATION.md.",
+      "decision": "Capability derivation trees updated with derived_combinator_refs alongside primitive_refs. 20 capabilities now reference B-wrappers and/or B-fnreact as derived combinators while retaining primitive_refs to N-fold/H-sums/H-products. Timing/supervision/stashing capabilities truthfully show both levels: concrete implementation via retained derived wrappers, ultimate primitive basis via fold+sums+products. check.sh validates combinator refs are semantically derived/extension, have public retain/reclassify status, and bottom out in retained primitives.",
       "evidence": [
         "capability-derivations.json schema_version=2 with 53 rows, all primitive_refs updated to schema-v2 IDs",
         "20 capability trees updated: B-wrappers -> N-fold+H-sums+H-products, B-fnreact -> N-fold+H-sums",
@@ -1373,7 +1377,11 @@
         "check.sh artifact gate: all capability derivation trees reference valid retained primitive IDs",
         "check.sh bibliography gate: all supports_primitive_claims reference valid primitive IDs",
         "No capability references a demoted primitive; all derivation trees are self-contained"
-      ]
+      ],
+      "_previous_resolution": {
+        "status": "resolved",
+        "decision": "Schema-v2 capability derivation trees migrated from old 7-construct basis to new 13-entry three-layer basis. 53 capability rows: all pure rows have derivation trees referencing retained primitives (N-fold, H-sums, H-products, H-never, B-birthmode, B-extraction, B-actions, B-stop); 20 rows that previously referenced demoted B-wrappers/B-fnreact now reference their retained derivations (N-fold + H-sums + H-products). Boundary rows unchanged. Closure remains qualified per PRIMITIVE-DERIVATION.md."
+      }
     },
     {
       "id": "DOC-01",
@@ -1381,7 +1389,7 @@
       "subject": "target architecture evidence",
       "question": "Record every obligation, before/after metric, decision, dead end, and remaining risk.",
       "status": "resolved",
-      "decision": "Schema-v2 reclassification documented. REPORT.md requires update to reflect the 13-entry three-layer basis replacing the old seven-construct basis. evidence.json, primitive-basis.json, capability-derivations.json, research-bibliography.json, and check.sh all migrated to schema-v2. Five mechanical probes preserved. This obligation documents the migration state; REPORT.md update is the remaining artifact.",
+      "decision": "Documentation corrected for status vocabulary consistency. HANDOFF.md stale language removed (now begins separating, migration is incomplete, current provisional classification, these facts must be reviewed). HANDOFF.md now has unambiguous current status with final classification table. REPORT.md heading changed from in-progress to completed. PROGRESS.md has completion entry with commit references. Obligations opened for this correction and immediately resolved after artifacts agree.",
       "evidence": [
         "primitive-basis.json: schema_version=2, 13 primitives across actor-nucleus/host-calculus/bombay-derived/bombay-policy layers",
         "capability-derivations.json: schema_version=2, 53 rows with schema-v2 primitive references",
@@ -1392,7 +1400,11 @@
         "check.sh artifact gate passes (13 primitives, 53 derivations, 107 sources)",
         "check.sh first gate: 63/67 obligations resolved, 53/53 capabilities resolved, SCORE 895",
         "Remaining: REPORT.md update to replace old seven-construct basis prose with schema-v2 reclassification"
-      ]
+      ],
+      "_previous_resolution": {
+        "status": "resolved",
+        "decision": "Schema-v2 reclassification documented. REPORT.md requires update to reflect the 13-entry three-layer basis replacing the old seven-construct basis. evidence.json, primitive-basis.json, capability-derivations.json, research-bibliography.json, and check.sh all migrated to schema-v2. Five mechanical probes preserved. This obligation documents the migration state; REPORT.md update is the remaining artifact."
+      }
     },
     {
       "id": "VERIFY-01",

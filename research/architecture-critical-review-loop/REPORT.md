@@ -667,7 +667,7 @@ BOMBAY-POLICY = deliberate documented choice; INTERPRETER = boundary work.
 Every retained semantic claim in the report and code carries one of these
 labels; no claim rests on framework folklore.
 
-## Schema-v2 reclassification (2026-08-09, in progress)
+## Schema-v2 reclassification (2026-08-09, completed)
 
 The original seven-construct candidate basis (below, preserved as history)
 conflated three distinct layers: actor-semantic primitives, host

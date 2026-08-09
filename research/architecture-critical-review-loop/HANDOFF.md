@@ -71,52 +71,42 @@ The direction is correct. Migration to independent fields is complete:
 These facts must be reviewed and migrated, not discarded.
 
 
-## Schema-v2 direction
+## Schema-v2 reclassification (completed)
 
-`primitive-basis.json` now begins separating:
+Migration to three independent status dimensions is complete:
 
-1. actor-semantic nucleus;
-2. host calculus/type machinery; and
-3. Bombay typed encodings, extensions, combinators, and policy.
+- `semantic_status`: primitive | derived | extension | not-applicable
+- `representation_status`: required-encoding | preferred-encoding | derived-combinator | policy | not-applicable
+- `public_api_status`: retain | reclassify | redesign | remove | not-public
 
-The direction is correct but the migration is incomplete. In particular, one
-status currently carries too many meanings. Replace it with independent fields:
+A construct may be semantically derived while remaining a required or
+preferred public encoding. "Derived" does not mean "remove," and public
+retention does not mean semantic primitiveness.
 
-- `layer`
-- `semantic_status`
-- `representation_status`
-- `public_api_status`
-- `semantic_primitive`
-- `representation_primitive`
-- `derivable_from`
-- classified `retention_constraints`
-- `evidence`
-- `limitations`
+### N-fold clarification
 
-A construct may be semantically derived while remaining a required or preferred
-public encoding. “Derived” does not mean “remove,” and public retention does not
-mean semantic primitiveness.
+N-fold is the **transition-form**: `(behavior, communication) -> effects +
+next behavior`. It is NOT a fourth effect. N-send, N-create, N-become are
+**effect-primitives** — the three primitive effect forms in the transition
+result.
 
-## Current provisional classification
+## Final classification
 
-- `N-fold`, `N-send`, `N-create`, `N-become`: actor-nucleus candidates. Clarify
-  whether the fold is the transition form containing the three effects rather
-  than a fourth independent actor effect.
-- `H-never`, `H-sums`, `H-products`: host type-calculus machinery, never actor
-  primitives.
-- `B-actions`: Bombay's typed realization of the transition effects plus Bombay
-  extensions; not automatically an actor primitive.
-- `B-stop`: actor-level derived sink plus Bombay interpreter-visible lifecycle
-  extension. Public retention and semantic derivability must be represented
-  separately.
-- `B-extraction`: Bombay's Rust discipline over host sums; representation-level
-  necessity remains to be tested honestly.
-- `B-birthmode`: semantically derived, likely retained as Bombay's canonical
-  static creation-capability encoding.
-- `B-fnreact`: demoted. Generic reaction objects compile, so function pointers
-  are representation policy, not semantic primitives.
-- `B-wrappers`: demoted as primitives. They are valuable derived higher-order
-  combinators with tested composition laws.
+- `N-fold`: transition-form, semantic primitive, required-encoding, retain
+- `N-send`, `N-create`, `N-become`: effect-primitives, semantic primitive,
+  required-encoding, retain
+- `B-stop`: Bombay extension (not actor-law), required-encoding, retain
+- `B-actions`: derived, required-encoding, retain
+- `H-never`, `H-sums`, `H-products`: host-calculus, not-applicable
+  (semantic + representation), retain (they ARE public Rust items)
+- `B-extraction`: derived, required-encoding, retain
+- `B-birthmode`: derived, preferred-encoding, retain
+- `B-fnreact`: derived, policy, reclassify (fn pointers remain the
+  selected Bombay representation; public status changed from
+  primitive→policy but API remains)
+- `B-wrappers`: derived, derived-combinator, retain (valuable derived
+  combinators, not semantic primitives)
+
 
 ## Known inconsistencies — STATUS 2026-08-09
 

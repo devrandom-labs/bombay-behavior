@@ -320,7 +320,7 @@ prims = basis.get("primitives", [])
 prim_ids = [p.get("id") for p in prims if isinstance(p, dict)]
 if len(prim_ids) != len(set(prim_ids)):
     errors.append("duplicate primitive IDs")
-retained = {p["id"] for p in prims if isinstance(p, dict) and p.get("public_api_status") == "retained"}
+retained = {p["id"] for p in prims if isinstance(p, dict) and p.get("public_api_status") in {"retain", "reclassify"}}
 representation_primitives = {p["id"] for p in prims if isinstance(p, dict) and p.get("representation_status") == "primitive"}
 all_prim = set(prim_ids)
 
@@ -340,21 +340,27 @@ for p in prims:
     sem = p.get("semantic_status")
     rep = p.get("representation_status")
     pub = p.get("public_api_status")
-    if sem not in {"primitive", "derived"}:
+    if sem not in {"primitive", "derived", "extension", "not-applicable"}:
         errors.append(f"primitive {pid}: invalid semantic_status '{sem}'")
-    if rep not in {"primitive", "derived"}:
+    if rep not in {"required-encoding", "preferred-encoding", "derived-combinator", "policy", "not-applicable"}:
         errors.append(f"primitive {pid}: invalid representation_status '{rep}'")
-    if pub not in {"retained", "demoted", "removed"}:
+    if pub not in {"retain", "reclassify", "redesign", "remove", "not-public"}:
         errors.append(f"primitive {pid}: invalid public_api_status '{pub}'")
-    # Actor-nucleus layer MUST have semantic_status = primitive
-    if p.get("layer") == "actor-nucleus" and sem != "primitive":
-        errors.append(f"primitive {pid}: actor-nucleus layer requires semantic_status=primitive")
-    # Host-calculus and bombay layers MUST have semantic_status = derived
-    if p.get("layer") in {"host-calculus", "bombay-derived", "bombay-policy"} and sem != "derived":
-        errors.append(f"primitive {pid}: {p['layer']} layer requires semantic_status=derived")
-    # public_api_status=demoted requires semantic_status=derived
-    if pub == "demoted" and sem != "derived":
-        errors.append(f"primitive {pid}: demoted public_api requires semantic_status=derived; got {sem}")
+    # Actor-nucleus: role validation + semantic must be primitive
+    if p.get("layer") == "actor-nucleus":
+        role = p.get("role", "")
+        if p["id"] == "N-fold" and role != "transition-form":
+            errors.append(f"primitive {pid}: N-fold must have role=transition-form")
+        if p["id"] in {"N-send", "N-create", "N-become"} and role != "effect-primitive":
+            errors.append(f"primitive {pid}: must have role=effect-primitive")
+        if sem != "primitive":
+            errors.append(f"primitive {pid}: actor-nucleus layer requires semantic_status=primitive")
+    # Host-calculus: semantic must be not-applicable
+    if p.get("layer") == "host-calculus" and sem != "not-applicable":
+        errors.append(f"primitive {pid}: host-calculus layer requires semantic_status=not-applicable")
+    # Bombay-derived/policy: semantic must be derived or extension
+    if p.get("layer") in {"bombay-derived", "bombay-policy"} and sem not in {"derived", "extension"}:
+        errors.append(f"primitive {pid}: {p['layer']} layer requires semantic_status=derived or extension")
 
     if not isinstance(p.get("laws"), list) or not p["laws"]:
         errors.append(f"primitive {pid}: needs algebraic laws")
@@ -377,6 +383,15 @@ for p in prims:
     verdict = elim.get("verdict")
     if verdict not in {"primitive", "derived"}:
         errors.append(f"primitive {pid}: invalid eliminability verdict")
+
+    # (representation-derivation check handled above at line 386)
+
+    # Derived-combinator/preferred-encoding/policy: must reference retained primitives
+    if rep in {"derived-combinator", "preferred-encoding", "policy"}:
+        rep_refs = set(elim.get("derived_from", []))
+        if not rep_refs or not rep_refs <= retained:
+            errors.append(f"primitive {pid}: {rep} must reference retained primitives in derivable_from")
+
     if verdict == "derived":
         refs = set(elim.get("derived_from", []))
         if not refs or not refs <= retained:
@@ -426,6 +441,24 @@ for c in caps:
             errors.append(f"capability {cid}: unknown primitive reference: " + ", ".join(unknown))
         elif not refs <= retained:
             errors.append(f"capability {cid}: references a demoted (non-retained) primitive")
+        # Validate derived_combinator_refs
+        combo_refs = set(d.get("derived_combinator_refs", []))
+        for cr in combo_refs:
+            if cr not in all_prim:
+                errors.append(f"capability {cid}: unknown combinator ref '{cr}'")
+            else:
+                cp = next((pp for pp in prims if pp.get("id") == cr), None)
+                if cp:
+                    cs = cp.get("semantic_status", "")
+                    if cs not in {"derived", "extension"}:
+                        errors.append(f"capability {cid}: combinator ref '{cr}' semantic_status={cs}, expected derived/extension")
+                    cp_pub = cp.get("public_api_status", "")
+                    if cp_pub not in {"retain", "reclassify"}:
+                        errors.append(f"capability {cid}: combinator ref '{cr}' public_api_status={cp_pub}, expected retain/reclassify")
+                    c_elim = cp.get("eliminability", {})
+                    c_derived = set(c_elim.get("derived_from", []))
+                    if c_derived and not c_derived <= retained:
+                        errors.append(f"capability {cid}: combinator ref '{cr}' derivation does not bottom out in retained primitives")
         for field in ("event_sums", "effect_products", "initialization", "composition_order", "errors", "termination", "freshness"):
             if not isinstance(d.get(field), str) or not d[field].strip():
                 errors.append(f"capability {cid}: derivation needs {field}")
