@@ -1,13 +1,15 @@
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use behavior::{
     Acted, Actions, At, AtEvent, Base, Become, Behavior, Births, ChildStopped, Crash, Create,
-    CreationKind, Delivery, Exit, MailAddr, Move, Never, NoBirths, ObserveChild, PeerStopped,
+    CreationKind, Delivery, Exit, Fsm, MailAddr, Move, Never, NoBirths, ObserveChild, PeerStopped,
     Proxy, ProxyCommand, Recipient, RestartDenial, RestartPolicy, Route, ServiceSends,
     ShutdownEvent, ShutdownRequested, Spec, StashRoute, State, Step, Strategy, Supervising,
-    SupervisionEvent, SupervisionFailure, SupervisionFailureReason, TimerElapsed, TimerGeneration,
-    TimerId, User, UserEvent, WatchEvent, Watching, WorkerEvent, WorkerStopped, run,
-    stop_on_abnormal_death, stop_on_supervision_failure, workers,
+    SupervisionEvent, SupervisionFailure, SupervisionFailureReason, TimeEvent, TimerElapsed,
+    TimerGeneration, TimerId, User, UserEvent, WatchEvent, Watching, WorkerEvent, WorkerStopped,
+    run, stop_on_abnormal_death, stop_on_supervision_failure, workers,
 };
 use communication::{Config, channel};
 use proptest::prelude::*;
@@ -325,6 +327,264 @@ impl State<Never, Births<Child>, Never> for Parent {
 
 fn child(_index: usize) -> Child {
     Base::new(Quiet)
+}
+
+#[derive(Clone)]
+struct StashMessage {
+    id: u64,
+    release: Arc<AtomicBool>,
+}
+
+fn mutation_stash_route(message: &StashMessage) -> StashRoute {
+    if message.id == 2 {
+        message.release.store(true, Ordering::SeqCst);
+        StashRoute::Release
+    } else if message.release.load(Ordering::SeqCst) {
+        StashRoute::Deliver
+    } else {
+        StashRoute::Stash
+    }
+}
+
+struct StashRecording(Vec<u64>);
+
+impl State for StashRecording {
+    type Addr = MailAddr;
+    type Msg = StashMessage;
+
+    fn handle(
+        &mut self,
+        _from: MailAddr,
+        message: StashMessage,
+    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, NoBirths, Never> {
+        self.0.push(message.id);
+        Ok(Actions::cont())
+    }
+}
+
+#[tokio::test]
+async fn stash_release_delivers_the_trigger_then_drains_the_held_fifo() {
+    let release = Arc::new(AtomicBool::new(false));
+    let mut behavior = Spec::new(StashRecording(Vec::new())).stash(mutation_stash_route);
+    behavior
+        .step(User::user(
+            MailAddr(0),
+            StashMessage {
+                id: 1,
+                release: Arc::clone(&release),
+            },
+        ))
+        .await
+        .unwrap();
+    behavior
+        .step(User::user(MailAddr(0), StashMessage { id: 2, release }))
+        .await
+        .unwrap();
+    assert_eq!(behavior.behavior().inner().state().0, [2, 1]);
+    assert_eq!(behavior.behavior().held(), 0);
+}
+
+fn continue_on_death(
+    _behavior: &mut Watching<Base<Quiet>>,
+    _peer: MailAddr,
+    _outcome: &Result<Exit<MailAddr>, Crash>,
+) -> Result<Become<MailAddr>, Never> {
+    Ok(Step::Continue)
+}
+
+#[tokio::test]
+async fn an_outer_watcher_forwards_a_different_peer_to_the_inner_watcher() {
+    let mut behavior = Watching::new(
+        Watching::new(Base::new(Quiet), MailAddr(1), stop_on_abnormal_death),
+        MailAddr(2),
+        continue_on_death,
+    );
+    let actions = behavior
+        .step(WatchEvent::PeerStopped(PeerStopped {
+            peer: MailAddr(1),
+            outcome: Err(Crash::Failed),
+        }))
+        .await
+        .unwrap();
+    assert!(matches!(
+        actions.become_,
+        Step::Stop(Exit::LinkDied(MailAddr(1)))
+    ));
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum MutationPhase {
+    Initial,
+}
+
+#[derive(Clone, Copy)]
+enum MutationMessage {
+    Deferred,
+    Stay,
+    Stop,
+}
+
+#[tokio::test]
+async fn fsm_preserves_direct_stop_and_does_not_drain_on_stay() {
+    let mut machine = Fsm::new(
+        0_u8,
+        MutationPhase::Initial,
+        |_, visits, message| -> Result<Move<MutationPhase>, Never> {
+            match message {
+                MutationMessage::Deferred => {
+                    *visits += 1;
+                    Ok(Move::Defer)
+                }
+                MutationMessage::Stay => Ok(Move::Stay),
+                MutationMessage::Stop => Ok(Move::Stop),
+            }
+        },
+    );
+    machine
+        .step(User::user(MailAddr(0), MutationMessage::Deferred))
+        .await
+        .unwrap();
+    machine
+        .step(User::user(MailAddr(0), MutationMessage::Stay))
+        .await
+        .unwrap();
+    assert_eq!(*machine.state(), 1);
+    assert_eq!(machine.held(), 1);
+    let stopped = machine
+        .step(User::user(MailAddr(0), MutationMessage::Stop))
+        .await
+        .unwrap();
+    assert!(matches!(stopped.become_, Step::Stop(Exit::Normal)));
+}
+
+#[tokio::test]
+async fn receive_timeout_reacts_only_to_its_own_live_timer_id() {
+    let mut behavior = Spec::new(Quiet)
+        .at(Some(Instant::now()), |_| {
+            Ok(Step::Stop(Exit::LinkDied(MailAddr(7))))
+        })
+        .receive_timeout(Duration::from_secs(1), |_| Ok(Actions::stop(Exit::Normal)));
+    behavior.init().await.unwrap();
+    let wrong = behavior
+        .step(behavior::ReceiveTimeoutEvent::Elapsed(TimerElapsed {
+            id: TimerId(0),
+            generation: TimerGeneration(0),
+        }))
+        .await
+        .unwrap();
+    assert!(matches!(
+        wrong.become_,
+        Step::Stop(Exit::LinkDied(MailAddr(7)))
+    ));
+    let mut matching_behavior = Spec::new(Quiet)
+        .at(Some(Instant::now()), |_| {
+            Ok(Step::Stop(Exit::LinkDied(MailAddr(7))))
+        })
+        .receive_timeout(Duration::from_secs(1), |_| Ok(Actions::stop(Exit::Normal)));
+    let matching_generation = matching_behavior.init().await.unwrap().sends.own[0].generation;
+    let matching = matching_behavior
+        .step(behavior::ReceiveTimeoutEvent::Elapsed(TimerElapsed {
+            id: TimerId(1),
+            generation: matching_generation,
+        }))
+        .await
+        .unwrap();
+    assert!(matches!(matching.become_, Step::Stop(Exit::Normal)));
+}
+
+#[derive(Clone)]
+enum TimerAwareEvent {
+    User(User<MailAddr, u64>),
+    Time(TimerElapsed),
+}
+
+impl UserEvent for TimerAwareEvent {
+    type Addr = MailAddr;
+    type Message = u64;
+
+    fn user(from: MailAddr, message: u64) -> Self {
+        Self::User(User { from, message })
+    }
+
+    fn into_user(self) -> Result<User<MailAddr, u64>, Self> {
+        match self {
+            Self::User(user) => Ok(user),
+            event @ Self::Time(_) => Err(event),
+        }
+    }
+}
+
+impl TimeEvent for TimerAwareEvent {
+    fn time_reached(event: TimerElapsed) -> Option<Self> {
+        Some(Self::Time(event))
+    }
+}
+
+struct TimerAware;
+
+impl Behavior for TimerAware {
+    type Addr = MailAddr;
+    type Msg = u64;
+    type Event = TimerAwareEvent;
+    type Sends = Vec<Delivery<MailAddr, Never>>;
+    type Ph = Never;
+    type Error = Never;
+    type Birth = NoBirths;
+
+    async fn init(&mut self) -> Result<Actions<MailAddr, Never, Self::Sends, NoBirths>, Never> {
+        Ok(Actions::cont())
+    }
+
+    async fn step(
+        &mut self,
+        event: Self::Event,
+    ) -> Result<Actions<MailAddr, Never, Self::Sends, NoBirths>, Never> {
+        match event {
+            TimerAwareEvent::Time(elapsed) => {
+                let _ = elapsed;
+                Ok(Actions::stop(Exit::LinkDied(MailAddr(8))))
+            }
+            TimerAwareEvent::User(_) => Ok(Actions::cont()),
+        }
+    }
+}
+
+#[tokio::test]
+async fn a_stale_local_receive_timeout_is_consumed_not_forwarded() {
+    let mut behavior = Spec::from_behavior(TimerAware)
+        .receive_timeout(Duration::from_secs(1), |_| Ok(Actions::stop(Exit::Normal)));
+    behavior.init().await.unwrap();
+    let stale = behavior
+        .step(behavior::ReceiveTimeoutEvent::Elapsed(TimerElapsed {
+            id: TimerId(0),
+            generation: TimerGeneration(99),
+        }))
+        .await
+        .unwrap();
+    assert!(matches!(stale.become_, Step::Continue));
+}
+
+#[tokio::test]
+async fn a_proxy_ignores_a_stale_child_stop_nonce() {
+    let mut proxy = Proxy::new(child(0));
+    proxy.init().await.unwrap();
+    let stale = proxy
+        .step(SupervisionEvent::ChildStopped(ChildStopped {
+            nonce: 99,
+            outcome: Err(Crash::Failed),
+            at: Instant::now(),
+        }))
+        .await
+        .unwrap();
+    assert!(stale.sends.own.own.is_empty());
+    let forwarded = proxy
+        .step(SupervisionEvent::Inner(User::user(
+            MailAddr(0),
+            ProxyCommand::Forward(7),
+        )))
+        .await
+        .unwrap();
+    assert_eq!(forwarded.sends.inner[0].to.route(), Route::Child(0));
 }
 
 #[test]

@@ -4,6 +4,7 @@ members = [
     "crates/behavior",
     "crates/behavior-macros",
     "crates/behavior-testkit",
+    "crates/mutants-gate",
 ]
 
 [workspace.package]
@@ -22,6 +23,8 @@ behavior-testkit = { package = "bombay-behavior-testkit", path = "crates/behavio
 communication = { package = "bombay-communication", version = "0.1.0" }
 criterion = "0.8"
 proptest = "1.11"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 thiserror = "2.0"
 tokio = { version = "1.47", default-features = false }
 

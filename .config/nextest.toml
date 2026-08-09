@@ -1,0 +1,6 @@
+[profile.mutants]
+inherits = "default"
+# A mutant may suppress the transition an oracle awaits. Terminate that
+# individual test as a failure; the outer cargo-mutants timeout remains the
+# harness-wide deadlock gate.
+slow-timeout = { period = "5s", terminate-after = 2 }

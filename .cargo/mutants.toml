@@ -1,0 +1,6 @@
+# Only mutations proven unable to represent an observable behavior law belong
+# here. Keep this list empty until such an equivalent mutant is demonstrated.
+exclude_re = [
+    # EQUIVALENT: Vec's Default value is exactly Vec::new().
+    'replace <impl SendAlgebra for Vec<T>>::empty -> Self with Default::default\(\)',
+]

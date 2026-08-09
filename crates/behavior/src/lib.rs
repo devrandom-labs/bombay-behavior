@@ -1,16 +1,18 @@
-//! Pure actor algebra. A [`Behavior`] folds its associated event protocol into
-//! exactly [`Actions`]: sends, creates, and become. Timing, observation,
-//! supervision, stashing, and finite-state behavior are derived compositions.
+//! Pure, typed actor-behavior primitives. A [`Behavior`] folds its associated
+//! event protocol into exactly [`Actions`]: sends, fresh creations, and its
+//! next behavior or termination. Higher capabilities are composed from these
+//! explicit transition parts.
 
 // The `workers!` macro emits `::behavior::…` paths; this alias lets
 // those expansions resolve inside this crate too (macro hygiene).
 extern crate self as behavior;
 
-#[path = "behavior.rs"]
-mod algebra;
+mod actor;
 mod deadlined;
+mod fold;
 mod stashing;
-mod supervising;
+mod supervision;
+mod transition;
 mod verdict;
 mod watching;
 
@@ -21,12 +23,12 @@ mod receive_timeout;
 mod shutdown;
 mod spec;
 
-pub use algebra::{
-    Acted, Actions, Address, Base, Become, Behavior, BehaviorActed, BirthMode, Births, Create,
-    CreationKind, Delivery, FnState, MailAddr, NoBirths, Recipient, Route, SendAlgebra,
-    SendProduct, ServiceSends, State, Transcript, User, UserEvent, run,
+pub use actor::{
+    Address, BirthMode, Births, Create, CreationKind, Delivery, MailAddr, NoBirths, Recipient,
+    Route,
 };
 pub use deadlined::{At, AtActions, AtEvent, AtReaction, AtSends};
+pub use fold::{Base, Behavior, BehaviorActed, FnState, State, Transcript, User, UserEvent, run};
 pub use fsm::{Fsm, Move};
 pub use protocol::{
     ChildEvent, ChildStopped, ObserveChild, ObservePeer, PeerEvent, PeerStopped,
@@ -40,11 +42,12 @@ pub use receive_timeout::{
 pub use shutdown::{FinalizeOnShutdown, ShutdownProtocol, ShutdownReaction, StopOnShutdown};
 pub use spec::Spec;
 pub use stashing::{StashRoute, Stashing};
-pub use supervising::{
+pub use supervision::{
     Proxy, ProxyCommand, RestartPolicy, Strategy, Supervising, SupervisionEvent,
     SupervisionFailure, SupervisionFailureReaction, restart_all, restart_one, restart_rest,
     retire_on_supervision_failure, stop_on_supervision_failure,
 };
+pub use transition::{Acted, Actions, Become, SendAlgebra, SendProduct, ServiceSends};
 pub use verdict::{Never, Step};
 pub use watching::{LinkReaction, WatchEvent, Watching, stop_on_abnormal_death};
 
