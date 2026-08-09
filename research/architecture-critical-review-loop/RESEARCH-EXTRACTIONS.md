@@ -459,21 +459,36 @@ capability extraction template from RESEARCH-SOURCES.md.
   pp. 3–35, 2025/2026. doi:10.1007/978-3-032-05291-9_1. PLT Redex models:
   <https://gitlab.soft.vub.ac.be/jdekoste/actormodelhistorypltredex>
 - Source tier: 1 (formal paper with mechanized operational semantics).
-- Read status: abstract + reference list (full text paywalled; access
-  limitation).
+- Read status: the paper's full text is paywalled (access limitation), but
+  its complete mechanized content — the PLT Redex models for all four
+  families — was read from the authors' public repository
+  (gitlab.soft.vub.ac.be/jdekoste/actormodelhistorypltredex), classic.rkt
+  inspected in full on 2026-08-09.
 - Inclusion: semantic (taxonomy and unifying principle).
+- Mechanized Classic Actors semantics (classic.rkt): configuration k = list
+  of actors (ιa μ e o) = address, mailbox, current expression, object
+  (class + fields); expressions exactly `spawn`, `send`, `become`, `let`;
+  BECOME replaces the actor's object at the same address (no allocation);
+  SEND appends to the target mailbox (asynchronous); SPAWN creates with a
+  `fresh` address returned to the creator; RECEIVE runs one method body to
+  completion before the next (isolated turn); mailbox `match` scans for the
+  first message with a matching method — selective receive realized as
+  mailbox filtering at the interpreter level.
 - Claims: four actor families — Classic Actors, Active Objects, Processes,
-  Communicating Event Loops; the **Isolated Turn Principle** is identified as
-  the key unifying principle of all actor models; each family's core subset
-  gets a formal operational semantics.
+  Communicating Event Loops; the **Isolated Turn Principle** is identified
+  as the key unifying principle of all actor models; each family's core
+  subset gets a formal operational semantics.
 - Bombay classification: Bombay is a Classic Actors realization; the
   Isolated Turn Principle corresponds to the one-communication-at-a-time
-  LAW already adopted from Agha 1986/AMST 1997; the taxonomy confirms no
-  additional behavioral primitive is needed to place Bombay in the classic
-  family.
-- Candidate-basis impact: none; independent 2025 confirmation of the
-  nucleus.
-- Limitations: abstract-level; Redex models not executed here.
+  LAW; the mechanized basis (spawn/send/become only) independently confirms
+  Bombay's nucleus; their mailbox-scan selective receive vs Bombay's
+  explicit Stashing are two realizations of the same derived capability
+  (Bombay's keeps it pure and inspectable in the fold).
+- Candidate-basis impact: none; independent 2025 mechanized confirmation
+  that spawn/send/become suffice for the classic family.
+- Limitations: paper prose not read (paywalled); Active Objects/Processes/
+  Event Loops family models exist in the same repo but were not needed for
+  the Bombay placement and were not inspected.
 - Evidence location: RESEARCH-FORMALISMS comparison table.
 
 ## 16. Charalambides, Dinges, Agha — Parameterized Concurrent Multi-Party Session Types (FOCLASA 2012 / SCP 2016)
