@@ -87,3 +87,36 @@
 - Conclusion remains qualified: protocol-session, security-capability, and
   location-transparency stay partially represented; no primitive added
   because no concrete derivation failure demonstrated an algebraic gap.
+
+## 2026-08-09 — access limitations narrowed (second pass)
+
+- Clinger 1981: fetched from DSpace after rate-limit lifted; pure image scan
+  read partially via OCR (poppler + tesseract through nix). Extracted the
+  behavior domain equation F ≅ [M → (F × P(A × M))] — the 1981 denotational
+  statement of Bombay's fold shape — plus fairness/unbounded nondeterminism
+  and the acquaintance/creation locality laws. (7a429ef)
+- Rebeca FI 2004: full text via CiteSeerX link on rebeca-lang.org; rebecs,
+  atomic message servers, known rebecs, weak-simulation compositional
+  verification. (14d7474)
+- System-A session types: full arXiv text (1208.4632); global types →
+  projection → conformance; no delegation. (278f252)
+- De Koster-De Meuter 2025: paper paywalled, but the complete PLT Redex
+  models were read from the authors' public GitLab — Classic Actors =
+  exactly spawn/send/become, fresh spawn, same-address become, mailbox-scan
+  selective receive. Independent mechanized confirmation of the nucleus.
+  (976a402)
+- Greif 1975: located on DSpace (handle 1721.1/57710), read via OCR text
+  layer — per-process total orders, system partial order, arrival events,
+  no global clock. (611a503)
+- Hewitt 1977: read via the AI Memo 410 author-version scan (Papers We Love
+  mirror) — action-on-message + finite asymmetric acquaintances;
+  request-and-reply as pattern. (aecf723)
+- Baker-Hewitt 1977: read via MIT Working Paper 134 draft on DSpace —
+  receipt-only events, Law of Discreteness, finite immediate successors,
+  single predecessor, unique initial event. (352719b)
+- Attempted and recorded as genuinely inaccessible: Agha 1986 book
+  (archive.org borrow-only, 401/403 on text and search-inside);
+  Charalambides 2018 thesis (IDEALS 403/404, Wayback SPA shell); Talcott
+  AFP 1996 notes (blackforest.stanford.edu dead, Wayback 429). All three
+  remain covered by fully-read subsuming sources.
+- Gates after every batch: check.sh EXIT=0, SCORE 935, 67/67, 53/53.
