@@ -262,16 +262,16 @@
             "obstruction_kind": "type"
           },
           {
-            "approach": "Marker trait bounds (trait WithBirths)",
-            "code_summary": "separate traits per capability level with bounds on wrapper impls",
-            "obstruction": "Marker bounds cannot compute the join of component authorities through wrapper composition; computing it requires an associated type per composite, which is exactly BirthMode",
+            "approach": "Marker trait bounds (MarkerNoBirths / MarkerMayBirth) for creation authority",
+            "code_summary": "probes/birthmode/main.rs (preserved in-repo): marker-only encoding cannot write the composite's creates-seat child type (unnameable without an associated type); adding the associated type to fix it reintroduces BirthMode exactly (compiles, 2026-08-09)",
+            "obstruction": "The composite's authority is a FUNCTION of its components' authority; a marker gives a binary answer but cannot produce the child type C for Vec<Create<A, C>>; the minimal working fix (trait BirthCapability { type Child; }) is P-birthmode reintroduced \u2014 a reduction, not an elimination",
             "obstruction_kind": "type"
           }
         ],
         "verdict": "primitive",
         "derived_from": [],
         "rationale": "Creation authority is a reusable algebraic capability (FMOODS 2002 enforces actor properties by a type system; BirthMode is Bombay's static analogue).",
-        "mechanical_probe": "type-level argument; join-computation probe scheduled (attempt marker-trait encoding in a probe crate and record the coherence failure)"
+        "mechanical_probe": "EXECUTED 2026-08-09: probes/birthmode/ demonstrates the unnameable child type and the forced reintroduction of the associated type; verdict confirmed: retained as primitive"
       },
       "status": "retained"
     },
