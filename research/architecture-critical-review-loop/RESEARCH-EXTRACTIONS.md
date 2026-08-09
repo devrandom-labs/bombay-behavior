@@ -867,3 +867,39 @@ capability extraction template from RESEARCH-SOURCES.md.
   re-verified line by line.
 - Evidence location: capability-matrix.json protocol-session row;
   REPORT.md post-2000 comparison table.
+
+## 27. Honda, Vasconcelos, Kubo — Language Primitives and Type Discipline for Structured Communication-Based Programming (ESOP 1998)
+
+- Bibliography: Kohei Honda, Vasco T. Vasconcelos, Makoto Kubo. ESOP 1998,
+  LNCS 1381:122–138. doi:10.1007/BFb0053567.
+- Stable URL: author-hosted PDF
+  <https://www.di.fc.ul.pt/~vv/papers/honda.vasconcelos.kubo_language-primitives.pdf>
+- Source tier: 1.
+- Read status: complete (text layer extracted 2026-08-09).
+- Inclusion: semantic — adversarial comparison for protocol-session.
+- Primitive syntax/operations: a session is a chain of dyadic interactions
+  on a **fresh private channel** per session; three communication
+  primitives — value passing, label branching, delegation (passing the
+  session channel to distribute a session across processes); recursion;
+  translatable into summation-less asynchronous π-calculus.
+- Operational assumptions: channels are distinct from ordinary names;
+  dyadic (two-party) structure; session initiation generates a fresh
+  channel.
+- Laws/theorems: ML-style type discipline guaranteeing compatibility
+  (duality) of interaction patterns between the two parties of well-typed
+  programs; method invocation and rendez-vous subsumed as specific session
+  patterns.
+- Capability claims: structured communication as typed sessions.
+- Bombay classification: **the duality guarantee is defined over fresh
+  private channels, not persistent public actor addresses** — the exact
+  structural reason session typing does not transfer as an actor-model law
+  (Charalambides 2018 makes the same point from the actor side: actors
+  have no channels, so sessions must be re-founded on actor pairs with
+  interleaving). Adversarial verdict unchanged: protocol-session is a
+  typing layer; Bombay's Fsm covers finite-state sequencing; no basis gap.
+- Candidate-basis impact: none (channel-based discipline).
+- Limitations: dyadic only; Honda CONCUR 1993 (the precursor with the
+  original duality definition) remains record-level — paywalled, no open
+  copy found.
+- Evidence location: REPORT.md post-2000 table adversarial row;
+  capability-matrix.json protocol-session row.
