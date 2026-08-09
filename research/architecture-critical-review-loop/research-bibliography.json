@@ -777,13 +777,17 @@
       "index_membership": [
         "dblp"
       ],
-      "read_status": "abstract-only",
+      "read_status": "complete",
       "inclusion": "included-capability",
       "exclusion_reason": null,
-      "semantic_claims": [],
+      "semantic_claims": [
+        "FAM extends Varela's dialect of the AMST actor language with available/failed actor states; failed actors cannot perform available-actor actions",
+        "predicate fairness: a predicate enabled infinitely often is eventually satisfied",
+        "Theorem 1: under the CND conditions, all fair paths reach consensus in Synod; machine-checked in Athena",
+        "failure is modeled by modifying the configuration-level semantics, not the per-actor transition"
+      ],
       "limitations": [
-        "record-level note: failure-aware actor model (FAM); sufficient conditions for Synod progress; Athena machine-checked",
-        "abstract-level; failure modeled at configuration level"
+        "failure detection/awareness stays configuration-level; supports the interpreter classification of the failure-detection row"
       ],
       "supports_primitive_claims": []
     },

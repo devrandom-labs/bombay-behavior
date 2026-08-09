@@ -559,11 +559,17 @@ capability extraction template from RESEARCH-SOURCES.md.
   arXiv:2103.14576; journal extension ISSE 2023,
   doi:10.1007/s11334-022-00463-5.
 - Source tier: 1.
-- Read status: abstract (arXiv, inspected 2026-08-09).
+- Read status: complete — the arXiv full text was read 2026-08-09 (FAM
+  definition on Varela's AMST dialect, available/failed states, predicate
+  fairness, Theorem 1, Athena mechanization).
 - Inclusion: capability (formal failure modeling).
-- Claims: failure-aware actor model (FAM) extends the actor model with agent
-  failure reasoning; sufficient conditions for eventual consensus in Synod;
-  machine-checked in Athena.
+- Claims: FAM extends Varela's dialect of the AMST language with
+  available/failed actor states (failed actors cannot perform
+  available-actor actions); predicate fairness (infinitely-often-enabled
+  predicates are eventually satisfied); Theorem 1 — under the CND
+  conditions every fair path reaches consensus in Synod; machine-checked in
+  Athena. Failure is modeled by modifying the configuration-level
+  transition semantics, not the per-actor behavior function.
 - Bombay classification: failure detection/failure awareness is modeled at
   the system/configuration level = INTERPRETER boundary; no behavior-fold
   primitive.
