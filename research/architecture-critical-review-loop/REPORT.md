@@ -499,8 +499,9 @@ Method per ACTOR-RESEARCH-SURVEY.md, executed 2026-08-09 in this rerun:
    Hewitt 1977 AIJ (record-level, doi:10.1016/0004-3702(77)90033-9 verified
    by the prior campaign); Honda CONCUR 1993 / Honda-Vasconcelos-Kubo ESOP
    1998 / Honda-Yoshida-Carbone POPL 2008+JACM 2016 (record-level;
-   adversarial comparison only); Rebeca FI 2004 (HTTP 403; record-level plus
-   the OSL coauthored timed-Rebeca papers SPIN 2016/STTT 2018); De
+   adversarial comparison only); Rebeca FI 2004 was initially blocked (IOS
+   Press HTTP 403) and later read in full from the CiteSeerX copy linked by
+   the Rebeca project; De
    Koster-De Meuter 2025 and Charalambides-Palmskog-Agha 2019 (abstract +
    reference lists; full texts paywalled).
 6. **Stopping rule evaluation.** (a) OSL and DBLP Agha records completely
@@ -614,7 +615,7 @@ RESEARCH-EXTRACTIONS.md; this is the comparison.
 | Plyukhin-Agha AGERE 2018; CONCUR 2020/LMCS 2022; PACMPL 2025 CRGC (abstracts/records) | DRL deferred reference listing; actor GC under failures | safety/liveness of decentralized termination detection; concurrent and fault-recovering actor GC | lifecycle detection and GC = INTERPRETER; termination stays out of the fold |
 | De Koster-De Meuter LNCS 16120 2025 (abstract + refs; non-Agha formal) | four actor families with operational semantics (PLT Redex mechanized) | **Isolated Turn Principle** as the unifying principle of all actor models | independent 2025 confirmation: Bombay is Classic Actors; isolated turn = the one-communication-at-a-time LAW |
 | Honda CONCUR 1993; Honda-Vasconcelos-Kubo ESOP 1998; Honda-Yoshida-Carbone POPL 2008/JACM 2016 (records; adversarial probe) | session types: duality, channel sequencing | static protocol fidelity for channel-based calculi | session duality is NOT an actor-model law; dynamic acquaintance vs static channels mismatch; the session campaign's result stands: finite-state sequencing derived, Honda-style typing only partially represented, no demonstrated basis gap |
-| Rebeca FI 2004 (record) + OSL timed-Rebeca SPIN 2016/STTT 2018 | reactive classes; message servers; bounded model checking | compositional verification; timed extensions | model-checking-friendly actor subset; timing = INTERPRETER (clocks); confirms deadline/receive-timeout stay pure-data + interpreter-minted |
+| Rebeca FI 2004 (full text read) + OSL timed-Rebeca SPIN 2016/STTT 2018 | reactive classes; rebecs with unbounded FIFO inboxes; atomic message-server execution; known rebecs (static acquaintances); closed models, components as open sub-models | compositional verification preserving temporal-logic specs; soundness via weak simulation; timed extensions | macro-step = LAW confirmation; known rebecs = static acquaintance typing; verification tooling = testkit/interpreter concern; closed-world assumption is non-transferable to open receptionist composition; timing = INTERPRETER (clocks); deadline/receive-timeout stay pure-data + interpreter-minted |
 
 Post-2000 result: the formal research line refines equivalence, typing,
 verification, and lifecycle *around* the nucleus; no line adds a transition

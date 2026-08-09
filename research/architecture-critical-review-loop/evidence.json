@@ -114,7 +114,7 @@
         "Query and processing log in REPORT.md '## Comprehensive actor research method' with dates, order, and the exact additional queries",
         "AGHA-BIBLIOGRAPHY.md records every considered OSL/DBLP entry's disposition including exclusion groups E1-E4 with specific reasons",
         "RESEARCH-EXTRACTIONS.md contains one extraction block per processed primary source, following the RESEARCH-SOURCES.md template (bibliography, tier, read status, syntax, assumptions, laws, claims, classification, basis impact, limitations)",
-        "Access limitations enumerated in the method section: Agha 1986 book, Agha-Thati LNCS 2004, Talcott AFP 1996, Greif 1975, Baker-Hewitt 1977, Hewitt 1977, Honda line, Rebeca FI 2004, De Koster-De Meuter 2025, Charalambides-Palmskog-Agha 2019; Clinger 1981 was rate-limited then fetched and read partially by OCR (image scan, no text layer)"
+        "Access limitations enumerated in the method section: Agha 1986 book, Agha-Thati LNCS 2004, Talcott AFP 1996, Greif 1975, Baker-Hewitt 1977, Hewitt 1977, Honda line, De Koster-De Meuter 2025, Charalambides-Palmskog-Agha 2019; Clinger 1981 was rate-limited then fetched and read partially by OCR (image scan, no text layer)"
       ],
       "validation": [
         "Stopping rule checked point by point in the method section: OSL+DBLP completely dispositioned; two consecutive citation passes reached no new primitive or semantic family; every post-2000 line in the survey protocol has an authoritative source and map; newly discovered formalisms dispositioned; primitive claims link to primary sources",

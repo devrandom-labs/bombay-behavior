@@ -588,3 +588,44 @@ capability extraction template from RESEARCH-SOURCES.md.
   defined (per AMST 1997 §1.3.1 and the Conclusion's own open questions).
 - Evidence location: evidence.json RESEARCH-AGHA; REPORT.md foundational
   comparison table (Clinger row upgraded from access-limited).
+
+## 20. Sirjani, Movaghar, Shali, de Boer — Modeling and Verification of Reactive Systems using Rebeca (FI 2004)
+
+- Bibliography: Marjan Sirjani, Ali Movaghar, Amin Shali, Frank S. de Boer.
+  Fundamenta Informaticae 63(4):385–410, 2004.
+- Stable URL: CiteSeerX PDF via the Rebeca project publications page
+  <https://rebeca-lang.org/publications.html>
+  (citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.107.2074).
+- Source tier: 1.
+- Read status: complete text layer extracted 2026-08-09 (pdftotext via nix);
+  model definition (§3), syntax, and verification approach read.
+- Inclusion: semantic (formal actor language for verification).
+- Primitive syntax/operations: rebecs (reactive objects) instantiated from
+  reactive classes; unbounded FIFO inbox; each message names a unique
+  message server invoked atomically on service (run-to-completion, no
+  interleaving, no suspending receive); known rebecs = statically declared
+  acquaintances; caller implicitly passes `self`; creation by class
+  instantiation; `initial` message server starts each rebec; models are
+  closed systems; components = user-decomposed open sub-models.
+- Operational assumptions: coarse-grained atomic method execution chosen to
+  match asynchronous communication and to reduce model-checking state
+  space; typed variables; rebec identifiers passable but not assignable.
+- Laws/theorems: compositional verification — component abstractions
+  preserve a set of temporal-logic behavioral specifications; soundness
+  proved via a weak simulation relation between constructs.
+- Capability claims: verification-oriented actor subset; dynamic topology
+  limited to creation; no mobility/location features.
+- Bombay classification: macro-step (isolated-turn) execution = LAW
+  confirmation; known rebecs = static acquaintance declaration
+  (Bombay: typed Recipient topology); model checking/abstraction =
+  verification tooling around the fold (testkit/interpreter concern), not
+  new primitives; closed-world assumption contrasts with Bombay's open
+  receptionist model — recorded as a non-transferable assumption for
+  equivalence results.
+- Candidate-basis impact: none; an independently designed typed actor
+  language whose per-message atomic fold matches the nucleus.
+- Limitations: closed models; compositional-verification results depend on
+  the user-defined decomposition; no fairness theorem in the extracted
+  sections.
+- Evidence location: REPORT.md post-2000 comparison table (Rebeca row
+  upgraded from record-level).
