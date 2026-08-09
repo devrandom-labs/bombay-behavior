@@ -802,12 +802,18 @@
         "osl",
         "dblp"
       ],
-      "read_status": "abstract-only",
+      "read_status": "complete",
       "inclusion": "included-semantic",
       "exclusion_reason": null,
-      "semantic_claims": [],
+      "semantic_claims": [
+        "terminated = guaranteed to remain idle (not processing a message and cannot receive one in future)",
+        "DRL: deferred reference listing with per-actor knowledge sets of facts (Created/Released/CreatedUsing/Active/Unreleased/Sent/Received) and asynchronous local snapshots",
+        "safety (Corollary 6.11): non-terminated actors are never garbage collected",
+        "liveness (Theorem 6.12): terminated actors are eventually detected if every terminated actor eventually sends a snapshot",
+        "handles distributed cycles of terminated actors"
+      ],
       "limitations": [
-        "abstract-level this far; full arXiv PDF queued as the next read"
+        "detection is a decentralized runtime algorithm over configurations; not fold-level"
       ],
       "supports_primitive_claims": []
     },

@@ -320,8 +320,9 @@ capability extraction template from RESEARCH-SOURCES.md.
   doi:10.46298/lmcs-18(1:39)2022; arXiv:2104.05128.
 - Stable URL/DOI: <https://arxiv.org/abs/2104.05128>
 - Source tier: 1.
-- Read status: abstract + records (CONCUR/LMCS/CoRR); the abstract states
-  the theorems relevant to this campaign's queue question.
+- Read status: complete — the arXiv full text was read 2026-08-09
+  (definitions, DRL facts/knowledge sets, safety Corollary 6.11, liveness
+  Theorem 6.12, terminated-cycle handling).
 - Inclusion: semantic (lifecycle), classified interpreter for Bombay.
 - Primitive syntax/operations: DRL (deferred reference listing) — asynchronous
   local snapshots plus message passing; no causal delivery or nonlocal
@@ -329,8 +330,10 @@ capability extraction template from RESEARCH-SOURCES.md.
 - Operational assumptions: actor termination/quiescence = not processing a
   message and cannot receive one in future; reachability from roots is
   inadequate for actors (an unreachable actor may message a reachable one).
-- Laws/theorems: safety (all identified garbage have terminated) and liveness
-  (terminated actors eventually identified, under stated assumptions).
+- Laws/theorems: safety (Corollary 6.11: non-terminated actors are never
+  collected) and liveness (Theorem 6.12: terminated actors are eventually
+  detected, assuming every terminated actor eventually sends a snapshot);
+  distributed cycles of terminated actors are handled.
 - Capability claims: termination detection is a decentralized runtime
   algorithm over configurations — interpreter boundary, not a behavior
   primitive.
