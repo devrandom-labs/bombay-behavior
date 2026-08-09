@@ -158,15 +158,15 @@
         "attempts": [
           {
             "approach": "Collapse all send lanes into one Vec<Delivery>",
-            "code_summary": "single-lane Actions; service/timer/observation sends share one vector",
-            "obstruction": "Out-of-lane sends become representable: a behavior can emit a service request where only user deliveries belong, violating make-illegal-states-unrepresentable; per-lane static typing is lost",
+            "code_summary": "probes/products/main.rs (preserved in-repo): merged Vec<Merged> seat compiles and runs; a service request is pushable where only user deliveries belong; under the real SendProduct basis the same statement fails to type-check",
+            "obstruction": "Merged seat compiles and admits out-of-lane sends (service request in a user-delivery position), demonstrated by a running probe; per-lane static typing is lost",
             "obstruction_kind": "semantic"
           }
         ],
         "verdict": "primitive",
         "derived_from": [],
         "rationale": "Products with a monoid are the minimal lawful composition of independent finite effect sets; the merged-lane counterexample is a static-safety obstruction.",
-        "mechanical_probe": "argument-level semantic counterexample; a compile probe is not applicable because the failure is representability, not a type error"
+        "mechanical_probe": "EXECUTED 2026-08-09: probes/products/ builds and runs, demonstrating the merged-lane hole"
       },
       "status": "retained"
     },
