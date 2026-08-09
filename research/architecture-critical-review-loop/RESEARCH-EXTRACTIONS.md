@@ -483,12 +483,20 @@ capability extraction template from RESEARCH-SOURCES.md.
   "Parameterized, Concurrent Session Types for Asynchronous Multi-Actor
   Interactions," SCP 115-116:100–126, 2016, doi:10.1016/j.scico.2015.10.006.
 - Source tier: 1.
-- Read status: abstract + records (arXiv abstract inspected 2026-08-09).
+- Read status: FOCLASA 2012 version complete (arXiv:1208.4632 full text
+  extracted 2026-08-09); the SCP 2016 journal extension remains paywalled
+  (access limitation), dispositioned via the FOCLASA text plus abstract.
 - Inclusion: semantic (typed actor protocols).
 - Claims: System-A, a typing language for parameterized, asynchronous,
-  multi-actor protocols; statically verifies protocols (e.g. sliding window)
-  inexpressible in prior session-type systems; asynchrony and parallelism
-  are first-class.
+  multi-actor protocols; programmer supplies a global type; a projection
+  algorithm generates endpoint (local) types; implementations are checked
+  for conformance against the projected types. Supports arbitrary shuffles
+  (asynchrony), parallelism, and parameterization (indexed participant
+  families); statically verifies protocols such as sliding window that are
+  inexpressible in prior session-type systems. Explicitly omits session
+  delegation; realizability results stated with restrictions. Global
+  types -> projection -> local conformance is exactly the session-typing
+  discipline: a static guarantee layer over actor addressing.
 - Bombay classification: session-style protocol verification is a TYPING
   DISCIPLINE layered over actor addressing — a derived/static-guarantee
   layer, not a behavior primitive. Direct support for the protocol-session
