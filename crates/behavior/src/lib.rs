@@ -1,16 +1,24 @@
-//! Pure actor algebra. A [`Behavior`] folds its associated event protocol into
-//! exactly [`Actions`]: sends, creates, and become. Timing, observation,
-//! supervision, stashing, and finite-state behavior are derived compositions.
+//! Pure, typed actor-behavior primitives. A [`Behavior`] folds its associated
+//! event protocol into exactly [`Actions`]: sends, fresh creations, and its
+//! next behavior or termination. Higher capabilities are composed from these
+//! explicit transition parts.
 
 // The `workers!` macro emits `::behavior::…` paths; this alias lets
 // those expansions resolve inside this crate too (macro hygiene).
 extern crate self as behavior;
 
-#[path = "behavior.rs"]
-mod algebra;
+mod addressing;
+mod creation;
 mod deadlined;
+mod driver;
+mod fold;
+mod sending;
 mod stashing;
 mod supervising;
+mod supervision_policy;
+mod supervision_protocol;
+mod transition;
+mod user_event;
 mod verdict;
 mod watching;
 
@@ -21,12 +29,11 @@ mod receive_timeout;
 mod shutdown;
 mod spec;
 
-pub use algebra::{
-    Acted, Actions, Address, Base, Become, Behavior, BehaviorActed, BirthMode, Births, Create,
-    CreationKind, Delivery, FnState, MailAddr, NoBirths, Recipient, Route, SendAlgebra,
-    SendProduct, ServiceSends, State, Transcript, User, UserEvent, run,
-};
+pub use addressing::{Address, Delivery, MailAddr, Recipient, Route};
+pub use creation::{BirthMode, Births, Create, CreationKind, NoBirths};
 pub use deadlined::{At, AtActions, AtEvent, AtReaction, AtSends};
+pub use driver::{Transcript, run};
+pub use fold::{Base, Behavior, BehaviorActed, FnState, State};
 pub use fsm::{Fsm, Move};
 pub use protocol::{
     ChildEvent, ChildStopped, ObserveChild, ObservePeer, PeerEvent, PeerStopped,
@@ -37,14 +44,18 @@ pub use receive_timeout::{
     ReceiveTimeout, ReceiveTimeoutActions, ReceiveTimeoutError, ReceiveTimeoutEvent,
     ReceiveTimeoutReaction, ReceiveTimeoutSends,
 };
+pub use sending::{SendAlgebra, SendProduct, ServiceSends};
 pub use shutdown::{FinalizeOnShutdown, ShutdownProtocol, ShutdownReaction, StopOnShutdown};
 pub use spec::Spec;
 pub use stashing::{StashRoute, Stashing};
-pub use supervising::{
-    Proxy, ProxyCommand, RestartPolicy, Strategy, Supervising, SupervisionEvent,
-    SupervisionFailure, SupervisionFailureReaction, restart_all, restart_one, restart_rest,
-    retire_on_supervision_failure, stop_on_supervision_failure,
+pub use supervising::{Proxy, Supervising};
+pub use supervision_policy::{
+    RestartPolicy, Strategy, SupervisionFailure, SupervisionFailureReaction, restart_all,
+    restart_one, restart_rest, retire_on_supervision_failure, stop_on_supervision_failure,
 };
+pub use supervision_protocol::{ProxyCommand, SupervisionEvent};
+pub use transition::{Acted, Actions, Become};
+pub use user_event::{User, UserEvent};
 pub use verdict::{Never, Step};
 pub use watching::{LinkReaction, WatchEvent, Watching, stop_on_abnormal_death};
 
