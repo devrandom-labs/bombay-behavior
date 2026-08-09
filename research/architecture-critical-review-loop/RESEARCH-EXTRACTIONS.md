@@ -689,3 +689,39 @@ capability extraction template from RESEARCH-SOURCES.md.
   remains authoritative for the transition law.
 - Evidence location: REPORT.md foundational comparison table (Greif row
   upgraded from access-limited).
+
+## 22. Hewitt — Viewing Control Structures as Patterns of Passing Messages (AI Memo 410, 1976 / AIJ 1977)
+
+- Bibliography: Carl Hewitt. MIT AI Memo 410, December 1976; journal
+  version *Artificial Intelligence* 8(3):323–364, 1977,
+  doi:10.1016/0004-3702(77)90033-9.
+- Stable URL: Papers We Love mirror of the AI Memo scan
+  <https://raw.githubusercontent.com/papers-we-love/papers-we-love/refs/heads/main/distributed_systems/viewing-control-structures-as-patterns-of-passing-messages.pdf>
+- Source tier: 1 (author-version manuscript of the journal paper).
+- Read status: partial — pure image scan; OCRed 2026-08-09 (poppler +
+  tesseract via nix): abstract, table of contents, §III The Actor Model.
+- Inclusion: semantic.
+- Primitive syntax/operations: an actor's BEHAVIOR is defined by the
+  relationships among the events it causes; an actor realizes behavior via
+  the ACTION it takes when sent a message plus its ACQUAINTANCES — "the
+  finite collection of actors that it directly KNOWS ABOUT"; KNOWS ABOUT is
+  asymmetric; mutual acquaintances defined; event diagrams; messengers and
+  envelopes; request-and-reply as a message pattern.
+- Operational assumptions: behavior as event-causation relationships;
+  finiteness of immediate acquaintances.
+- Laws/theorems: control structures (iteration, recursion) characterized as
+  patterns of passing messages — the derived-forms doctrine at the origin
+  of the model; generators; progressive refinement.
+- Capability claims: request-and-reply is presented as a *pattern*, not a
+  primitive — direct primary support for the request-reply row's derived
+  classification (with Thati MS ch. 5 and Karmani-Agha 2011 §IV-A).
+- Bombay classification: LAW (acquaintance finiteness and asymmetry;
+  message-triggered action); DERIVED (control structures as patterns —
+  Bombay's combinators are the typed realization).
+- Candidate-basis impact: none; origin-level confirmation that sequential
+  control is derivable over message passing.
+- Limitations: OCR of selected sections of the memo version; the journal
+  version (Elsevier) remains paywalled — content identical by the
+  bibliographic record.
+- Evidence location: REPORT.md foundational comparison table (Hewitt 1977
+  row upgraded from record-level).

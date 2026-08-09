@@ -501,7 +501,9 @@ Method per ACTOR-RESEARCH-SURVEY.md, executed 2026-08-09 in this rerun:
    Algebra" (not directly accessible; subsumed by TACS 1997/HOSC 2000);
    Baker-Hewitt IFIP 1977 (record-level via Talcott's reference list);
    Hewitt 1977 AIJ (record-level, doi:10.1016/0004-3702(77)90033-9 verified
-   by the prior campaign); Honda CONCUR 1993 / Honda-Vasconcelos-Kubo ESOP
+   by the prior campaign; the author-version AI Memo 410 scan was later
+   read by OCR, so the 1977 content is covered by the author manuscript);
+   Honda CONCUR 1993 / Honda-Vasconcelos-Kubo ESOP
    1998 / Honda-Yoshida-Carbone POPL 2008+JACM 2016 (record-level;
    adversarial comparison only); Rebeca FI 2004 was initially blocked (IOS
    Press HTTP 403) and later read in full from the CiteSeerX copy linked by
@@ -583,7 +585,7 @@ exact relationship to Bombay's candidate basis.
 | Hewitt-Bishop-Steiger IJCAI 1973 (full text read) | message send to acquaintances; ANONYMOUS fresh names; receive via pattern match; continuations as actors | informal; per-actor scheduler/intention/banker hierarchies | actor induction over intentions | acquaintance addressing and freshness = LAW; scheduler/banker = interpreter structure |
 | Greif 1975 MAC-TR-154 (read via the scan's OCR text layer: abstract, model, actor sections) | per-process total event orders; system = partial order containing their union; arrival events only | specification language over event orderings | no global clock — global-time specifications rejected as unrealizable | event-order view = LAW foundation; cross-actor order is observational (interpreter); supports keeping clocks out of the fold |
 | Baker-Hewitt IFIP 1977 (record-level) | ordering axioms for events | axiomatic | arrival-order laws later proved consistent by Clinger | ordering guarantees = interpreter policy; Bombay imposes no cross-lane order (law-consistent) |
-| Hewitt AIJ 1977 (record-level, DOI verified) | control structures as message-passing patterns; continuations | informal operational | — | evidence that control/state patterns are derived over sends — supports derived-form doctrine |
+| Hewitt AI Memo 410 1976 / AIJ 1977 (OCR read of the memo version: abstract, TOC, actor-model section) | actor = action-on-message + finite acquaintances; KNOWS ABOUT asymmetric; event diagrams; messengers/envelopes | informal operational; behavior as relationships among caused events | — | request-and-reply and control structures are patterns, not primitives — origin-level support for derived-form doctrine |
 | Clinger 1981 AI-TR-633 (partial OCR read of the scanned thesis: actor model, fairness, actor behaviors, locality laws, conclusion) | arrival events only (no sending events); mail-service asynchrony; behavior domain F ≅ [M → (F × P(A × M))]; script + acquaintance vector | denotational (power domains over incomplete domains) | fairness implies unbounded nondeterminism; powerdomain handles fairness; no equivalence notion (open in its conclusion) | the domain equation is the 1981 denotational statement of Bombay's fold shape; fairness = execution quantifier (interpreter row); locality laws = acquaintance LAW |
 | Agha MIT Press 1986 (CrossRef-verified; content via 2001 chapter + AMST) | send/create/become on tasks; configurations; receptionists | operational (task-based) | one communication at a time; fresh addresses | the semantic nucleus; directly realized by the typed fold |
 | Agha-Hewitt FSTTCS 1985 / MIT Press chapter 1987 (records) | early model statements | operational | — | historical; subsumed by the 1986 book |
