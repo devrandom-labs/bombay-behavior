@@ -54,3 +54,36 @@
 - Gates: check.sh exits 0, SCORE 875, nextest 123/123, nix flake check 7/7.
 - Result is qualified, not total closure; no primitive added because no
   concrete derivation failure proved an algebraic gap.
+
+## 2026-08-09 — research campaign completed (RESEARCH-* + CALCULUS-* resolved)
+
+- Sequential survey executed per ACTOR-RESEARCH-SURVEY.md: OSL catalogue (419
+  entries) and DBLP XML export (244 records) completely dispositioned into
+  AGHA-BIBLIOGRAPHY.md; 18 primary sources processed one at a time with
+  per-source checkpoints in RESEARCH-EXTRACTIONS.md; access limitations
+  recorded explicitly (Clinger 1981, Agha 1986 book, LNCS 2004 chapter,
+  Talcott AFP 1996, Greif 1975, Baker-Hewitt 1977, Hewitt 1977, Honda line,
+  Rebeca FI 2004, two paywalled 2019/2025 chapters).
+- New finds beyond the prior run: Charalambides-Palmskog-Agha 2019 (types for
+  progress), Paul et al 2021/2023 (failure-aware actor model), Plyukhin-Agha-
+  Montesi 2025 (CRGC), De Koster-De Meuter 2025 (Isolated Turn taxonomy),
+  DBLP-only 1986 items. None adds a transition primitive; two primary results
+  actively confirm derived-over-primitive (2001 sync-constraint translation;
+  SAL 2003/2004).
+- REPORT.md gained the nine required sections: research method, Agha
+  bibliography disposition, foundational comparison, post-2000 comparison,
+  claim map, candidate primitive basis (seven constructs), primitive
+  soundness (8 obligations), primitive eliminability (7 experiments),
+  capability derivation trees (53 rows) with the qualified closure claim.
+- evidence.json: RESEARCH-AGHA, SURVEY-SEARCH, RESEARCH-BIBLIOGRAPHY,
+  RESEARCH-FORMALISMS, CALCULUS-NUCLEUS, CALCULUS-SOUNDNESS,
+  CALCULUS-MINIMALITY, CALCULUS-CLOSURE resolved with decisions, evidence,
+  validation.
+- Production changes: none. One formatting fix in
+  crates/behavior-testkit/tests/session_protocol_derivation_loop.rs
+  (stray blank line; rustfmt) — required for nix flake check.
+- Gates: check.sh EXIT=0, SCORE 935 (was 855), obligations 67/67,
+  capabilities 53/53, nextest 123/123, nix flake check 7/7.
+- Conclusion remains qualified: protocol-session, security-capability, and
+  location-transparency stay partially represented; no primitive added
+  because no concrete derivation failure demonstrated an algebraic gap.

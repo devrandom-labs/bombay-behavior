@@ -45,7 +45,6 @@
 // All types in this file are illustrative for the derivation campaign.
 #![allow(dead_code)]
 
-
 use behavior::{Behavior, Exit, Fsm, MailAddr, Move, Never, Recipient, Step, User, UserEvent};
 
 // ============================================================================

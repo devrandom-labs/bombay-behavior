@@ -359,19 +359,21 @@ discovery and must not appear as semantic evidence.
 
 ## Completion handoff
 
-The architecture report must link back to this file and eventually contain or
-link to:
+The architecture report links back to this file and now contains or links:
 
-- the fully dispositioned Agha bibliography;
-- foundational-semantics comparison;
-- post-2000 algebra/formalism comparison;
-- claim-to-primary-source map;
-- inaccessible/excluded source log;
-- candidate primitive worksheet;
-- soundness evidence;
-- eliminability results; and
-- capability derivation trees.
+- the fully dispositioned Agha bibliography (AGHA-BIBLIOGRAPHY.md);
+- foundational-semantics comparison (REPORT.md);
+- post-2000 algebra/formalism comparison (REPORT.md);
+- claim-to-primary-source map (REPORT.md '## Research-to-primitive claim
+  map');
+- inaccessible/excluded source log (REPORT.md method section +
+  AGHA-BIBLIOGRAPHY.md exclusion groups E1–E4);
+- candidate primitive worksheet (REPORT.md '## Candidate primitive basis');
+- soundness evidence (REPORT.md '## Primitive soundness');
+- eliminability results (REPORT.md '## Primitive eliminability'); and
+- capability derivation trees (REPORT.md '## Capability derivation trees').
 
-Until those artifacts exist, `RESEARCH-AGHA`, `RESEARCH-BIBLIOGRAPHY`,
-`RESEARCH-FORMALISMS`, `SURVEY-SEARCH`, and all `CALCULUS-*` obligations remain
-pending.
+Per-source extraction blocks live in RESEARCH-EXTRACTIONS.md. The 2026-08-09
+rerun completed the sequential survey: OSL catalogue (419 entries) and DBLP
+XML export (244 records) fully dispositioned; primary PDFs read in the logged
+order; access limitations recorded explicitly.

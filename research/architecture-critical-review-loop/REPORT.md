@@ -441,3 +441,528 @@ is withdrawn; this qualified result stands in its place. RESEARCH-LABELS,
 SURVEY-TAXONOMY, SURVEY-BASIS, SURVEY-GAPS, DOC-01, and VERIFY-01 are
 re-resolved on this basis; every other obligation stands as recorded in the
 historical section.
+
+## Comprehensive actor research method
+
+Method per ACTOR-RESEARCH-SURVEY.md, executed 2026-08-09 in this rerun:
+
+1. **Local pack first.** RESEARCH-SOURCES.md supplied the seed bibliography,
+   stable locators, extraction template, and sequential log; no web lookup
+   preceded it.
+2. **Sequential processing.** External sources were processed one at a time —
+   one fetch, extraction, checkpoint to RESEARCH-EXTRACTIONS.md, then the next
+   source. No parallel or batched searches were issued. Processing order:
+   (1) OSL publication catalogue (419 entries walked); (2) DBLP Agha record
+   (HTML index + complete XML export, 244 records); (3) Agha-Thati-Ziaei 2001
+   open systems (full PDF); (4) Thati-Ziaei-Agha FMOODS 2002 (full PDF);
+   (5) Thati-Ziaei-Agha AMAST 2002 (full PDF); (6) Thati MS thesis 2000/2001
+   (full PDF); (7) Thati PhD dissertation 2003 (full PDF; subsumes the
+   paywalled Agha-Thati LNCS 2004 chapter's technical basis); (8) PMaude
+   QAPL 2005/ENTCS 2006 (abstract + record); (9) DoS FCS 2005 (record);
+   (10) Karmani-Agha 2011 encyclopedia (full PDF); (11) Plyukhin-Agha
+   CONCUR 2020/LMCS 2022 termination (arXiv 2104.05128); (12) AMST JFP 1997
+   (full PDF); (13) Hewitt-Bishop-Steiger IJCAI 1973 (full PDF);
+   (14) Talcott TACS 1997/HOSC 2000 (abstract + references); (15) De
+   Koster-De Meuter LNCS 16120 2025 (abstract + references); (16)
+   Charalambides-Dinges-Agha session types (arXiv 1208.4632); (17)
+   Charalambides-Palmskog-Agha types for progress (abstract + references);
+   (18) Paul-Agha-Patterson-Varela failure-aware actors (arXiv 2103.14576).
+3. **Repeatable queries.** The seed log's four queries were used; additional
+   single queries: `Clinger "Foundations of Actor Semantics" AI-TR-633 PDF
+   mirror`; `Carolyn Talcott "An Actor Algebra" Advanced Functional
+   Programming school PDF`; `Sirjani Movaghar Shali de Boer "Modelling and
+   Verification of Reactive Systems using Rebeca" Fundamenta Informaticae 2004
+   PDF`. Search results were used for discovery only; no search summary is
+   cited as semantic evidence.
+4. **Evidence hierarchy.** Tier-1 (papers, dissertations, author-hosted
+   manuscripts) governs all semantic claims. Framework documentation was not
+   used as authority. Production frameworks (Akka, Erlang, Orleans, CAF, Pony,
+   Actix) were excluded from primitive-basis evidence per the goal; Erlang's
+   Armstrong 2003 thesis remains cited only as supervision-vocabulary
+   derivation evidence (labeled DERIVED/POLICY, never LAW), consistent with
+   the prior run's recorded judgment.
+5. **Access limitations (explicit).** Paywalled and inaccessible items:
+   Clinger 1981 AI-TR-633 (MIT DSpace rate-limited HTTP 429/202 across three
+   attempts; dispositioned through AMST 1997 §1.3.1's in-paper discussion and
+   Talcott's TACS 1997 generalization of Clinger's model); Agha 1986 MIT
+   Press book (CrossRef-verified monograph doi:10.7551/mitpress/1086.001.0001;
+   content verified through the fully read 2001 chapter and AMST 1997);
+   Agha-Thati LNCS 2635 2004 (paywalled; subsumed by Thati's 2003
+   dissertation chapters 3-4, fully read); Talcott AFP 1996 "An Actor
+   Algebra" (not directly accessible; subsumed by TACS 1997/HOSC 2000);
+   Greif 1975 MAC-TR-154 (not online; dispositioned through AMST 1997 §1.3.1
+   and the Greif-Hewitt POPL 1975 record doi:10.1145/512976.512984);
+   Baker-Hewitt IFIP 1977 (record-level via Talcott's reference list);
+   Hewitt 1977 AIJ (record-level, doi:10.1016/0004-3702(77)90033-9 verified
+   by the prior campaign); Honda CONCUR 1993 / Honda-Vasconcelos-Kubo ESOP
+   1998 / Honda-Yoshida-Carbone POPL 2008+JACM 2016 (record-level;
+   adversarial comparison only); Rebeca FI 2004 (HTTP 403; record-level plus
+   the OSL coauthored timed-Rebeca papers SPIN 2016/STTT 2018); De
+   Koster-De Meuter 2025 and Charalambides-Palmskog-Agha 2019 (abstract +
+   reference lists; full texts paywalled).
+6. **Stopping rule evaluation.** (a) OSL and DBLP Agha records completely
+   dispositioned — done (AGHA-BIBLIOGRAPHY.md). (b) Citation chasing from the
+   semantic nucleus reached no new primitive or distinct semantic family in
+   two consecutive passes: the 2001 paper's references (MT translation, AKP,
+   Tha00) resolve to Thati's theses already dispositioned; AMST 1997's and
+   Talcott 1997's reference lists resolve to the foundational corpus already
+   dispositioned; the 2019/2025/2026 items add typing disciplines and
+   lifecycle algorithms, no new behavior primitive. (c) Every post-2000
+   formal line named in the survey protocol has an authoritative source and a
+   calculus/capability map (next sections). (d) Newly discovered formalisms
+   (Aπ/System-A, Lπ=/Lπ, System-A session types, FAM, Isolated Turn
+   taxonomy) are dispositioned. (e) Every primitive claim links to primary
+   sources in the claim map below.
+
+This section is the method half of SURVEY-SEARCH; the query log and
+inclusion/exclusion decisions are recorded here and in AGHA-BIBLIOGRAPHY.md.
+
+## Agha bibliography and disposition
+
+RESEARCH-BIBLIOGRAPHY artifact: `AGHA-BIBLIOGRAPHY.md` (this directory) is the
+complete disposition. Summary:
+
+- **OSL catalogue**: 419 entries (1983-2022) walked in full. 28 included
+  semantic, 60 included capability, 2 framework-comparison; the remainder
+  excluded in four recorded groups with specific reasons: E1 edited
+  volumes/panels/keynotes/track introductions (~30 entries); E2 non-actor
+  domains (civil-infrastructure sensor networks, economics, storage QoS,
+  multimedia retrieval, clustering, indoor positioning, web mining); E3
+  general concurrency verification/testing methods without actor-semantics
+  content (Sen/Rosu/Vardhan/Kwon verification lines, Tosic cellular
+  automata, Marinov testing tools); E4 multi-agent/market/coordination
+  applications without actor-model semantic content.
+- **DBLP record**: 244 records (1984-2026), complete XML export enumerated.
+  Reconciliation: DBLP is the superset for 2019-2026 (the OSL page is stale
+  after 2018); OSL is the superset for 1983-2018 (theses, technical reports,
+  workshop papers). DBLP-only actor-relevant additions dispositioned: the
+  1986 actor-language overview and fairness abstract (OOPWORK),
+  Charalambides-Palmskog-Agha 2019 Types for Progress (included-semantic),
+  Paul et al 2021/2023 failure-aware consensus verification
+  (included-capability), Plyukhin-Agha-Montesi 2025 CRGC actor GC
+  (included-capability). DBLP-only exclusions: quantum computing (2023-2026),
+  energy/SoC measurement (2024-2025), near-data processing systems (2022),
+  Shonan meeting report (2019), IEEE P&DT editorials (1995-1996), Zenodo
+  artifacts, CoRR duplicates.
+- **Duplicate resolution**: journal-over-conference versions preferred with
+  DOI (AMST JFP 1997 over CONCUR 1992; SCP 2016 over FOCLASA 2012; ISSE 2023
+  over NFM 2021; LMCS 2022 over CONCUR 2020). Name disambiguation:
+  "Prasannaa Thati" = "Prasanna Thati" (DBLP aka); OSL #333/#335 are one JSA
+  article; DBLP 1988 and OSL 1989 Rosette entries are one workshop paper.
+- **Post-2000 emphasis** (per the goal): the complete post-2000 formal line
+  is open systems (2001), may testing (FMOODS 2002, AMAST 2002, Thati PhD
+  2003), the algebraic theory (MS 2001, LNCS 2004), rewriting-logic
+  specifications (FMOODS 2003, QAPL 2005/ENTCS 2006, FCS 2005), typed actors
+  (FOCLASA 2012/SCP 2016, LNCS 11665 2019), actor-program testing/DPOR
+  (ASE 2009, FSE 2010, FASE 2010, ICST 2010, FORTE 2012, ASE 2014, ECOOP
+  2018 — capability only), coordination constraints (COORDINATION 2012),
+  termination detection (CONCUR 2020/LMCS 2022), actor GC (AGERE 2018,
+  PACMPL 2025), failure-aware verification (NFM 2021/ISSE 2023). Every one
+  is dispositioned in AGHA-BIBLIOGRAPHY.md with a specific reason.
+- No post-2000 Agha work introduces a behavior primitive beyond
+  send/create/become. The algebraic line's own results run the other
+  direction: synchronization constraints (2001 §5), RPC-like messaging
+  (Karmani-Agha 2011 §IV), and object-language constructs (Thati PhD ch. 4,
+  SAL) are all explicitly derived over the primitive basis.
+
+## Foundational semantics comparison
+
+RESEARCH-AGHA record. Sources in chronological order; "Transfer" states the
+exact relationship to Bombay's candidate basis.
+
+| Work | Primitives | Semantics | Equivalence/fairness | Transfer to Bombay |
+| --- | --- | --- | --- | --- |
+| Hewitt-Bishop-Steiger IJCAI 1973 (full text read) | message send to acquaintances; ANONYMOUS fresh names; receive via pattern match; continuations as actors | informal; per-actor scheduler/intention/banker hierarchies | actor induction over intentions | acquaintance addressing and freshness = LAW; scheduler/banker = interpreter structure |
+| Greif 1975 MAC-TR-154 (access-limited; via AMST §1.3.1 + POPL'75 record) | event diagrams: local events + causal relations | behavioral event structure | — | causal event view = interpreter trace concept; no fold-level transfer |
+| Baker-Hewitt IFIP 1977 (record-level) | ordering axioms for events | axiomatic | arrival-order laws later proved consistent by Clinger | ordering guarantees = interpreter policy; Bombay imposes no cross-lane order (law-consistent) |
+| Hewitt AIJ 1977 (record-level, DOI verified) | control structures as message-passing patterns; continuations | informal operational | — | evidence that control/state patterns are derived over sends — supports derived-form doctrine |
+| Clinger 1981 AI-TR-633 (access-limited after 3 attempts; via AMST §1.3.1 and Talcott TACS 1997) | event diagrams; powerdomain semantics | denotational | fairness makes the domain incomplete; powerdomain handles unbounded nondeterminism; no equivalence notion | fairness = execution quantifier, not per-fold property; Bombay's fairness row = interpreter |
+| Agha MIT Press 1986 (CrossRef-verified; content via 2001 chapter + AMST) | send/create/become on tasks; configurations; receptionists | operational (task-based) | one communication at a time; fresh addresses | the semantic nucleus; directly realized by the typed fold |
+| Agha-Hewitt FSTTCS 1985 / MIT Press chapter 1987 (records) | early model statements | operational | — | historical; subsumed by the 1986 book |
+| Agha CACM 33(9) 1990 (record + prior verification) | actor-language encapsulation, behavior change | language design | — | separates model law from language design; COOP features = derived |
+| Agha REX 1990 (record) | actor-language constructs as derived syntax | structural | — | derived-syntax doctrine; supports Fsm/Spec classification |
+| AMST CONCUR 1992 → JFP 1997 (full text read) | `send`, `letactor`, `become` over CBV λ; configurations with receptionists/external names | labeled transition system; two-stage (reduction + configuration) | observational equivalence; with fairness, convex/must/may collapse to two; composition assoc+comm+unit; adjacent sends permute; become/send order unobservable | the calculus authority for Bombay's nucleus: deterministic per-actor fold, unordered effect product, open composition |
+| Talcott AFP 1996 (access-limited) / TACS 1997 + HOSC 2000 (abstract + refs) | event diagrams for open systems; interaction diagrams; interaction paths | three semantic models with algebras: parallel composition, hiding, renaming | component-algebra homomorphism | configuration-level composition laws; Bombay's typed sums + wrappers play the hiding role at type level (derived) |
+| Mason-Talcott ICALP 1997 (record; the [MT] of the 2001 paper) | semantics-preserving translation of actor-language features | translational | soundness of translation | primary precedent that language features (synchronization constraints) are derivable over the primitive basis |
+
+Foundational result: every line agrees on the nucleus — one communication at
+a time; effects exactly send/create/become; fresh creation; acquaintance
+addressing; fairness at the configuration level. No foundational source
+requires a primitive beyond these. Differences are in semantic style
+(operational vs denotational vs event-based), not in the primitive inventory.
+
+## Post-2000 actor algebra and formalism comparison
+
+RESEARCH-FORMALISMS record. Full per-source extraction blocks are in
+RESEARCH-EXTRACTIONS.md; this is the comparison.
+
+| Work | Syntax | Key results | Bombay classification |
+| --- | --- | --- | --- |
+| Agha-Thati-Ziaei 2001 (full text) | `send/newactor/ready` redexes; `⟨α; μ⟩_ρ` configurations; in/out interface rules | open configurations; dynamic receptionist interface; **local synchronization constraints are translatable into the primitive semantics with a semantics-preservation proof [MT]** | nucleus = LAW; sync constraints = DERIVED (Bombay: Stashing/enabled sets); interface = LAW for open composition |
+| Thati-Ziaei-Agha FMOODS 2002 (full text) | Aπ: typed asynchronous π; behavior identifiers; type system enforces uniqueness/persistence/freshness | may-testing preorder; trace characterization; **the three transition actions are concurrent with no ordering between them** | effect product unordered = LAW (Bombay's `Actions` has no cross-lane order; per-lane order retained); name-matching variants = policy choice |
+| Thati-Ziaei-Agha AMAST 2002 (full text) | Lπ= / Lπ: locality (received names never input-subjects), no name matching | parameterized may preorder with encapsulation; complete axiomatization of finitary fragment | locality = structurally enforced in Bombay (no cross-actor lane subscription); Bombay exposes address equality, so only the match-capable variant's results transfer — recorded as a limitation on routing/correlation rows |
+| Thati PhD 2003 (full text) + Agha-Thati LNCS 2004 (paywalled; subsumed by dissertation ch. 3-4) | Aπ type rules; SAL (simple actor language) with formal translation into Aπ | object-language constructs derived over the algebra; decision procedures for testing equivalence over asynchronous FSMs; Maude-executable specifications | the derived-over-primitive methodology precedent for Bombay's calculus; Fsm/Spec play the SAL role (DERIVED) |
+| Kumar-Sen-Meseguer-Agha FMOODS 2003; PMaude QAPL 2005/ENTCS 2006; DoS FCS 2005 (abstracts + records) | probabilistic rewrite theories; actor PMaude module; QuaTEx | rewriting-logic specification of probabilistic object/actor systems; statistical analysis | probability = specification/observation layer = INTERPRETER/environment; no behavior primitive |
+| Karmani-Agha 2011 (full text) | send/create/become; ActorFoundry examples | macro-step semantics; **"language constructs are definable in terms of primitive actor constructs"**; RPC-like messaging derived via reply buffering; location transparency = naming service; actor GC open problem | derived-form doctrine confirmed by Agha's own later summary; RPC/stash = DERIVED; location/GC = INTERPRETER |
+| Dinges-Agha COORDINATION 2012 (record) | scoped synchronization constraints | modular coordination for large actor systems | DERIVED (coordination constraints layer) |
+| Charalambides-Dinges-Agha FOCLASA 2012/SCP 2016 (abstract + refs) | System-A: parameterized concurrent multi-party session types | static verification of asynchronous multi-actor protocols (sliding window) | protocol verification = typing discipline over addressing; supports protocol-session as partially-represented DERIVED row, no basis gap |
+| Charalambides-Palmskog-Agha 2017/LNCS 11665 2019 (abstract + refs) | typestate-tracking type system over a simple actor language | statically guaranteed progress (eventual reply) for a restricted class | liveness-by-types = static layer over the nucleus; no primitive impact |
+| Paul-Agha-Patterson-Varela NFM 2021/ISSE 2023 (abstract) | failure-aware actor model (FAM) | sufficient conditions for Synod consensus progress; machine-checked (Athena) | failure awareness = configuration-level model = INTERPRETER (failure-detection row) |
+| Plyukhin-Agha AGERE 2018; CONCUR 2020/LMCS 2022; PACMPL 2025 CRGC (abstracts/records) | DRL deferred reference listing; actor GC under failures | safety/liveness of decentralized termination detection; concurrent and fault-recovering actor GC | lifecycle detection and GC = INTERPRETER; termination stays out of the fold |
+| De Koster-De Meuter LNCS 16120 2025 (abstract + refs; non-Agha formal) | four actor families with operational semantics (PLT Redex mechanized) | **Isolated Turn Principle** as the unifying principle of all actor models | independent 2025 confirmation: Bombay is Classic Actors; isolated turn = the one-communication-at-a-time LAW |
+| Honda CONCUR 1993; Honda-Vasconcelos-Kubo ESOP 1998; Honda-Yoshida-Carbone POPL 2008/JACM 2016 (records; adversarial probe) | session types: duality, channel sequencing | static protocol fidelity for channel-based calculi | session duality is NOT an actor-model law; dynamic acquaintance vs static channels mismatch; the session campaign's result stands: finite-state sequencing derived, Honda-style typing only partially represented, no demonstrated basis gap |
+| Rebeca FI 2004 (record) + OSL timed-Rebeca SPIN 2016/STTT 2018 | reactive classes; message servers; bounded model checking | compositional verification; timed extensions | model-checking-friendly actor subset; timing = INTERPRETER (clocks); confirms deadline/receive-timeout stay pure-data + interpreter-minted |
+
+Post-2000 result: the formal research line refines equivalence, typing,
+verification, and lifecycle *around* the nucleus; no line adds a transition
+primitive. Two lines actively confirm derived-over-primitive: synchronization
+constraints (2001, semantics-preserving translation) and SAL/object
+constructs (2003/2004, formal translation). The third confirmation is the
+encyclopedia's derived-form doctrine (2011).
+
+## Research-to-primitive claim map
+
+RESEARCH-LABELS map, claim by claim. LAW = actor-model law in the cited
+primary source; BOMBAY-DERIVED = construction grounded in the laws;
+BOMBAY-POLICY = deliberate documented choice; INTERPRETER = boundary work.
+
+| Bombay construct/claim | Class | Primary source(s) |
+| --- | --- | --- |
+| One typed event per fold (`Behavior::step`) | LAW | Agha 1986; AMST 1997 (deterministic function of message history); De Koster-De Meuter 2025 (Isolated Turn) |
+| Effect triple sends/creates/become (`Actions`) | LAW for the triple; BOMBAY-DERIVED for the concrete typed product | Agha 1986; Thati MS 2001 §2.1.1 (three basic actions, concurrent, unordered); AMST 1997 (b5 ≡ b5′: become/send commute) |
+| Fresh creation, never overwrite | LAW | HBS 1973 (ANONYMOUS); Agha 1986; AMST 1997 `letactor`; FMOODS 2002 type system (freshness enforced) |
+| Acquaintance addressing; no name guessing | LAW | HBS 1973; Thati MS 2001 locality laws (1)-(3); Karmani-Agha 2011 |
+| Become distinct from creation | LAW | Agha 1986; AMST 1997 §2 (become frees the actor; letactor creates) |
+| Fairness = eventual delivery/progress | LAW (configuration level) | Clinger 1981 (via AMST); AMST 1997 (fairness collapses equivalences); Thati MS 2001 §2.1.4 (weak fairness insufficient) |
+| Open-system interface (receptionists/externals) | LAW | Hewitt-Reinhardt-Agha-Attardi 1984; Agha 1986; AMST 1997; 2001 in/out rules |
+| `Create` staged with creator-local nonce | BOMBAY-DERIVED | nonce = routing/correlation key; AMST `letactor` returns the fresh name to the creator — the nonce is Bombay's pre-interpretation analogue |
+| Typed event sums + extraction traits | BOMBAY-DERIVED | static realization of message-type structure; no model counterpart needed (model is untyped) |
+| `SendAlgebra` monoid / `SendProduct` lanes | BOMBAY-DERIVED | lawful packaging of the finite message set produced by a transition (Thati MS: finitely many messages, unordered across lanes) |
+| `BirthMode`/`NoBirths` compile-time creation authority | BOMBAY-DERIVED | static realization of "creation authority" (cf. FMOODS 2002 type-system enforcement of actor properties) |
+| `CreationKind` provenance; proxy-derived stable identity | BOMBAY-DERIVED | lifecycle provenance as data; replacement-at-address absent by design (Agha 1986: allocation vs replacement distinction) |
+| Timer generations; stash replay; Fsm phases | BOMBAY-DERIVED | timers: paused-time typed inputs (testability standard); stash: 2001 §5 + Karmani-Agha 2011 §IV-B (buffering for deferred processing); Fsm: finite-state become chains |
+| Creation-before-dependent-send interpretation ordering | BOMBAY-POLICY | documented at behavior.rs:309-317; the model leaves effect ordering to interpretation (FMOODS 2002: actions concurrent) |
+| Shutdown lane; supervision vocabulary; Crash classification | BOMBAY-POLICY | supervision vocabulary adapted from Armstrong 2003 as derivation/policy, never as Agha law |
+| Location transparency, migration, naming service | INTERPRETER | Kim-Agha SC 1995; SALSA 2001; Karmani-Agha 2011 §V-C |
+| Termination detection, actor GC | INTERPRETER | Plyukhin-Agha 2020/2022, 2018, 2025; Venkatasubramanian-Agha-Talcott 1992 |
+| Failure detection | INTERPRETER | Paul et al 2021/2023 (FAM models failure at configuration level) |
+| Session typing/duality | not a law; DERIVED-typing layer | Honda 1993/1998 (channel calculi); Charalambides-Dinges-Agha 2012/2016 (actor-native version); Bombay's Fsm = finite-state subset |
+| Probability/quantitative analysis | INTERPRETER/environment | PMaude 2005/2006; FCS 2005 |
+
+Every retained semantic claim in the report and code carries one of these
+labels; no claim rests on framework folklore.
+
+## Candidate primitive basis
+
+CALCULUS-NUCLEUS worksheet, per PRIMITIVE-DERIVATION.md.
+
+**Semantic nucleus (law level).** `(behavior, one typed communication) →
+(typed communications, fresh creation requests, next behavior or stop)`.
+Formation: a behavior is a total deterministic fold from one event to a
+result carrying explicit effects. Operational meaning: one isolated turn
+(one communication at a time, Agha 1986; Isolated Turn Principle, De
+Koster-De Meuter 2025); effects are data until interpreted (purity).
+
+**Candidate basis (seven constructs).** For each: formation rule and Rust
+type; input/output types; semantics; classification; laws; a capability it
+derives; the eliminability experiment verdict (full experiments in the next
+section but one).
+
+1. **Pure fold** — `trait Behavior { type Addr/Msg/Event/Sends/Ph/Error/
+   Birth; fn init; fn step }` (behavior.rs:419-431) with the first-order
+   kernel `trait State::handle` (behavior.rs:389-410). In: one `Event`;
+   out: `Result<Actions, Error>`. Semantics: deterministic fold, one event
+   per turn, init before mailbox events. Class: LAW (transition) +
+   BOMBAY-DERIVED (typed seats). Laws: one-event-per-turn; determinism
+   (AMST: behavior is a deterministic function of the message history);
+   init-before-events ordering. Derives: every capability (it is the
+   nucleus). Eliminability: N/A — removing it removes the model itself.
+2. **Typed sums + extraction traits** — closed event enums with
+   `UserEvent::into_user` and per-lane traits (`TimeEvent`, `PeerEvent` in
+   protocol.rs:45-64). In/out: `Event ↔ lane`. Semantics: exhaustive
+   routing of one event to exactly one lane. Class: BOMBAY-DERIVED (the
+   model is untyped; sums realize protocol structure statically). Laws:
+   extraction round-trips; wrappers neither drop nor duplicate lanes
+   (COMPOSE-* audits). Derives: protocol-sum row; all wrapper event
+   composition. Eliminability: retained as primitive — obstruction is the
+   absence of row types in Rust; erasure is banned (REJECT-ERASURE,
+   compile-fail at behavior.rs:412).
+3. **Typed products + `SendAlgebra` monoid** — `Actions<A, Ph, Sends,
+   Birth>` product (behavior.rs:320-325) and `SendProduct<L, R>`
+   (behavior.rs:112) with `empty`/`append` (behavior.rs:118-121). Semantics:
+   a transition's finite effect set as an unordered-across-lanes,
+   ordered-within-lane product. Class: LAW (the triple) + BOMBAY-DERIVED
+   (lanes). Laws: monoid (proptest `send_algebra_is_a_monoid`); send
+   permutation (AMST); no cross-lane order (FMOODS 2002). Derives:
+   send-products, protocol-product rows; mixed-lane composition.
+   Eliminability: retained — collapsing lanes makes out-of-lane sends
+   representable (static-safety obstruction).
+4. **`Never` (uninhabited seat)** — `core::convert::Infallible`-style empty
+   type used for `Ph`, `Error`, `Out`, `Child` seats. Semantics: makes
+   empty seats unconstructible. Class: BOMBAY-DERIVED. Laws: a behavior
+   with `Error = Never` cannot fail; with `Child = Never` cannot create
+   (compile-time, not runtime). Derives: controlled-error, creation
+   authority restriction. Eliminability: retained — obstruction: `()` is
+   inhabited, so `Err(())`/`Goto(())` would be constructible and "never
+   fails"/"no phases" unprovable at compile time.
+5. **`BirthMode` capability** — `trait BirthMode { type Child; }` with
+   `NoBirths` (`Child = Never`) and `Births<C>` (behavior.rs:290-303).
+   Semantics: type-level function computing a behavior's creation
+   authority, composed by wrappers. Class: BOMBAY-DERIVED (static realization
+   of creation authority; cf. FMOODS 2002's type-enforced actor properties).
+   Laws: wrapper nesting computes the join correctly (COMPOSE-* probes);
+   `NoBirths` behaviors cannot name `Create` at all. Derives: creation row's
+   static half; child-topology. Eliminability: retained — a boolean/flag
+   encoding is runtime-only; a trait-bound encoding cannot compute the join
+   through wrapper composition.
+6. **Function-pointer reactions** — `Transition<S, A, M, O, Br, E>` fn
+   pointers and `FnState` (behavior.rs:452-470); non-capturing reactions in
+   supervising/watching. Semantics: statically dispatched, allocation-free,
+   `Copy` behavior fragments. Class: BOMBAY-DERIVED. Laws: no hidden
+   captures → no hidden state → determinism preserved. Derives:
+   supervision-strategy/restart-policy rows (policies as data+fn).
+   Eliminability: retained — closures require either `Box<dyn Fn>` (banned
+   by the static-dispatch rule) or a generic seat per reaction site (arity
+   ratchet); fn pointers are the unique static, erased-free encoding.
+7. **Higher-order wrappers** — `At`, `ReceiveTimeout`, `Watching`,
+   `Supervising`/`Proxy`, `Shutdown`, `Stashing`, `Fsm`, `Spec`
+   (deadlined.rs, receive_timeout.rs, watching.rs, supervising.rs,
+   shutdown.rs, stashing.rs, fsm.rs, spec.rs). Semantics: typed event/effect
+   transformations `Behavior → Behavior` with stated init order (inner
+   first) and lane-preserving folds. Class: BOMBAY-DERIVED over the fold.
+   Laws: no lane dropped/duplicated/reordered/relabeled/reinterpreted in any
+   supported nesting (COMPOSE-* + cross_lane/two_buffer proptests).
+   Derives: deadline, receive-timeout, peer-observation, supervision,
+   shutdown, stashing, finite-state rows. Eliminability: retained as the
+   composition mechanism — per-behavior inlining of the same concerns is
+   the alternative and loses the proved mixed-order guarantees; wrappers as
+   a *category* are primitive over the fold, while each concrete wrapper is
+   a derived form built from sums/products/fold.
+
+Boundary judgments: mailbox, scheduling, clocks, routing, handles,
+allocation, I/O are interpreter responsibilities (AGENTS.md); no candidate
+above performs them. Application concerns (retry, dedup, sagas) are derived
+or application rows, not basis items.
+
+## Primitive soundness
+
+CALCULUS-SOUNDNESS. The eight obligations of PRIMITIVE-DERIVATION.md, each
+with its evidence layer and why the test corresponds to the law:
+
+1. **One input → one deterministic inspectable fold.** `step` consumes one
+   `Event` and returns one `Result<Actions, E>`; AMST establishes the
+   behavior is a deterministic function of the message sequence. Evidence:
+   testkit drivers feed single events and assert complete `Actions`
+   (core.rs); determinism follows from purity + fn-pointer reactions with no
+   hidden captures. Test↔law correspondence: the driver asserts the whole
+   result value, so any nondeterminism or hidden effect would diverge the
+   assertion.
+2. **All sends/creations/become explicit in `Actions`.** `Actions` has
+   exactly `sends`, `creates`, `become_` (behavior.rs:320-325); no other
+   effect seat exists and an erased seat fails to compile (compile_fail
+   doctest behavior.rs:412, re-run this campaign: `cargo test --doc -p
+   bombay-behavior` → 1 passed). Correspondence: the type has no other
+   fields; exhaustiveness is structural, not test-asserted.
+3. **No lane dropped, duplicated, relabeled, reordered.** Wrapper audits
+   (COMPOSE-*) plus cross_lane.rs/two_buffer.rs proptests under randomized
+   interleavings; SendProduct append preserves per-lane order. Law: FMOODS
+   2002's unordered-actions result bounds what must hold — no cross-lane
+   order is *required*; what must hold is per-lane integrity, which is what
+   the tests assert.
+4. **Initialization order.** init composes inner-first then own effects,
+   before mailbox events (init_contract.rs, 6/6 wrappers). Classification:
+   BOMBAY-POLICY (the model has no init; the 2001 `<new>` rule installs a
+   ready behavior — Bombay's init-before-events is the staged analogue).
+5. **Errors/termination preserve unaffected seats.** `Acted` is a `Result`;
+   `Exit<A>`/`Step<Ph, Exit>` are exhaustive; error_paths.rs pins the
+   failure seats including the documented Fsm mid-drain asymmetry
+   (test-pinned existing behavior).
+6. **Fresh creation staged, no overwrite.** `Create` is pure data with
+   nonce + `CreationKind`; installation is interpreter-owned
+   (CREATE-FRESHNESS, BOUNDARY-FRESHNESS/ERROR); no replacement-at-address
+   path exists (REJECT-REPLACEMENT-LANE, grep-level inventory). Law: fresh
+   allocation (Agha 1986; AMST `letactor`).
+7. **Illegal protocols/capabilities fail to type-check.** Uninhabited
+   seats (`Never`), `NoBirths`, closed sums; positive compile probes in
+   algebra.rs:19-40; one compile_fail doctest. Scope honestly recorded:
+   phase/birth negatives are uninhabited-type impossibilities; compile-fail
+   coverage is thin (one doctest) — a recorded risk, not a hidden gap.
+8. **Interpretation dependence = boundary policy.** Every
+   ordering/lifecycle/timing claim is labeled POLICY or INTERPRETER in the
+   claim map above; the fold carries no clocks, queues, or allocation.
+
+Soundness caveat stated plainly: tests are evidence about the
+implementation; the correspondence column above states why each test
+exercises the claimed law, and the checker does not (and cannot) verify that
+correspondence — it remains a review obligation.
+
+## Primitive eliminability
+
+CALCULUS-MINIMALITY. For each candidate `p`, the experiment removes `p`
+from the conceptual basis and attempts derivation from the rest. Format per
+PRIMITIVE-DERIVATION.md: desired signature; attempt; exact obstruction;
+why aliases/sums/products/generics/higher-order transforms do not resolve
+it; why the obstruction is algebraic.
+
+1. **Pure fold.** Remove: no `step`/`handle`. Desired signature: `(B, Event)
+   → Result<Actions, E>`. Attempt: express a behavior as data (a table of
+   rules) interpreted by a generic engine — the engine's step function *is*
+   the fold; the removal moves the primitive rather than eliminating it.
+   Obstruction: semantic — the actor transition law requires a transition
+   function; any encoding reintroduces it. Verdict: primitive (nucleus).
+2. **Typed sums + extraction.** Remove: wrappers accept the user event type
+   directly. Attempt: `Watching<B>` over `B::Msg` alone — then
+   `Watching<Stashing<B>>` cannot route stash control vs peer events without
+   knowing `Stashing`'s concrete event type; nesting becomes order-locked
+   and each wrapper must special-case every other. Attempt: erased event
+   `Box<dyn Any>` — banned (static-dispatch rule) and fails to compile per
+   the existing compile_fail doctest (behavior.rs:412, re-verified this
+   campaign). Obstruction: type-level — Rust has no structural row types;
+   closed sums + extraction traits are the minimal static encoding of
+   extensible protocols. Verdict: primitive.
+3. **Typed products + SendAlgebra.** Remove: single `Vec<Delivery>` send
+   seat. Attempt: one merged lane — then service sends, observations, and
+   timer schedules are intermixed; an out-of-lane send (e.g. emitting a
+   service request where only user deliveries belong) becomes representable,
+   violating make-illegal-states-unrepresentable (AGENTS.md). Obstruction:
+   semantic counterexample + static guarantee loss; products with a monoid
+   are the minimal lawful composition (monoid laws proptest-verified).
+   Verdict: primitive.
+4. **`Never`.** Remove: use `()` for empty seats. Attempt: `Error = ()` —
+   then `Err(())` is constructible and "this behavior never fails" is no
+   longer compile-time-true; a failing transition through a wrapper would
+   have to invent runtime validation for a statically-empty case.
+   Obstruction: exact type evidence — `()` is inhabited; only an
+   uninhabited type makes the empty seat unconstructible. Aliases do not
+   help (they rename `()`); sums/products do not help (they add
+   inhabitants). Verdict: primitive (as a *use* of the language's empty
+   type — no new machinery).
+5. **`BirthMode`.** Remove: flag or trait bound. Attempt: `const
+   CAN_CREATE: bool` — runtime-checkable only, and wrappers cannot compute
+   the composite capability at the type level; attempt: `trait WithBirths`
+   marker bounds — cannot express "the composite's authority is the join of
+   its parts" without an associated type per composite, which *is*
+   BirthMode. Obstruction: type-level computation through wrapper
+   composition; reusable algebra (creation authority), not application
+   work. Verdict: primitive.
+6. **Function-pointer reactions.** Remove: closures. Attempt: stored
+   closures need `Box<dyn Fn>` (banned) or one generic seat per reaction
+   site — the supervising wrapper alone would grow past its generic-arity
+   ratchet (baseline.json freezes Supervising at 2) and infect every
+   caller's types. Obstruction: exact trade-off between the zero-tolerance
+   static-dispatch rule and the frozen arity ratchets; fn pointers are
+   allocation-free, `Copy`, statically dispatched. Verdict: primitive.
+7. **Higher-order wrappers (as a category).** Remove: behaviors inline
+   timing/watching/stashing logic themselves. Attempt: each concrete
+   concern re-implemented per behavior duplicates lane routing and loses
+   the proved mixed-nesting guarantees (cross_lane.rs, two_buffer.rs hold
+   only because wrappers are isolated transformations); the campaign's
+   COMPOSE-* audits exist precisely because wrapper composition is the
+   load-bearing structure. Obstruction: composition-law preservation;
+   without wrappers there is no place to *state* the no-drop/no-dup
+   invariant per concern. Verdict: the wrapper *category* is primitive over
+   the fold; every concrete wrapper is a derived form.
+
+Independence result: no candidate is derivable from the other six without
+losing a static guarantee, a composition law, or the transition law itself;
+no candidate beyond these seven was needed by any surveyed capability
+(zero new primitives across 53 rows). Consistent with the research: the
+post-2000 algebraic line derives language features over the nucleus rather
+than extending it (2001 sync-constraint translation; SAL 2003/2004;
+encyclopedia doctrine 2011).
+
+## Capability derivation trees
+
+CALCULUS-CLOSURE. One tree per matrix row. Notation: `row <- concrete
+composition <- basis items`; basis items are numbered as in the candidate
+basis: 1 fold, 2 sums, 3 products, 4 Never, 5 BirthMode, 6 fn-reactions,
+7 wrappers. Boundary rows state the boundary judgment instead. Full
+per-row fields (sources, laws, validation, classifications, limitations)
+are in capability-matrix.json; the matrix, not this prose, is the
+checker-validated artifact.
+
+Pure rows (existing = basis instances; derived = compositions):
+
+```text
+core-transition        <- Behavior::step one-event fold                 <- 1
+become                 <- Step::Continue/Goto verdict in Actions        <- 1,3
+termination            <- Step::Stop(Exit<A>) in Actions                <- 1,3
+typed-send             <- Recipient<A,M> + Delivery lanes               <- 3 (+2)
+send-products          <- SendProduct<L,R> monoid                       <- 3
+creation               <- Create staged data + BirthMode authority      <- 3,4,5
+child-topology         <- nonce-routed children + observation lanes     <- 3,5 +7(Watching/Supervising)
+behavior-delegation    <- become to a behavior holding another behavior <- 1 (higher-order state)
+forwarding             <- fold that re-emits the event as a send        <- 1,3
+protocol-sum           <- closed event enums + extraction traits        <- 2
+protocol-product       <- SendProduct/independent lane products         <- 3
+initialization         <- Behavior::init, inner-first composition       <- 1,7
+controlled-error       <- typed Error seat; Never when infallible       <- 1,4
+deadline               <- At wrapper + ScheduleAt lane + generation     <- 7,2,3
+receive-timeout        <- ReceiveTimeout wrapper + rearm discipline     <- 7,2,3
+timer-generation       <- (TimerId, TimerGeneration) typed pairs        <- 3,4 (derived data)
+selective-receive      <- enabled-set filtering via stash               <- 7(Stashing),2 [2001 §5 translation]
+stashing               <- Stashing wrapper FIFO + replay                <- 7,2
+finite-state           <- Fsm phases over receive+become                <- 7(Fsm),1
+shutdown               <- Shutdown lane + FinalizeOnShutdown            <- 7,2,3
+finalization           <- shutdown-lane final fold effect retention     <- 7,3
+peer-observation       <- Watching wrapper ObservePeer/PeerStopped      <- 7,2
+child-observation      <- Supervising ChildStopped lane                 <- 7,2
+worker-reporting       <- typed report lanes to supervisor              <- 3,7
+linking                <- LinkReaction fn-pointer per death             <- 6,7
+supervision-strategy   <- strategy/policy as data + fn reactions        <- 6,7
+restart-policy         <- RestartDecision fn + budget state             <- 6,7
+restart-budget         <- budget counters in wrapper state              <- 7,1
+replacement-provenance <- CreationKind carried through wrappers         <- 3,7
+routing                <- Route/MailAddr values; nonce correlation      <- 3 (derived data)
+request-reply          <- continuation Recipient + stash buffering      <- 3,7 [Thati MS ch.5; Karmani-Agha §IV-A]
+correlation            <- nonce/token fields in typed messages          <- 3
+protocol-session       <- Fsm finite-state sequencing (partial)         <- 7(Fsm),1 [Charalambides 2012/2016 typing layer NOT realized]
+lifecycle-publication  <- observation lanes (Peer/ChildStopped)         <- 7,2
+```
+
+Boundary rows (interpreter = runtime realization; application = user-level
+composition; each with its recorded obstruction):
+
+```text
+backpressure        : INTERPRETER — queue depth unobservable in a one-event fold
+mailbox-priority    : INTERPRETER — mailbox discipline is transport policy
+fairness            : INTERPRETER — quantifies over executions (Clinger; AMST)
+failure-detection   : INTERPRETER — configuration-level model (Paul et al 2021)
+persistence         : INTERPRETER — I/O outside the effect triple
+durable-state       : INTERPRETER — storage outside the fold
+distribution        : INTERPRETER — transport
+location-transparency: INTERPRETER — naming/migration service (Kim-Agha 1995; SALSA 2001); PARTIAL: location-neutral folds exist, the service does not
+remoting            : INTERPRETER — transport
+serialization       : INTERPRETER — representation; banned as internal protocol substitute
+security-capability : INTERPRETER — authenticity/unforgeability need minting+confinement; PARTIAL: static protocol compatibility exists
+scheduling          : INTERPRETER — executor
+resource-ownership  : INTERPRETER — runtime ownership/GC (Plyukhin-Agha line)
+acknowledgement     : APPLICATION — derived request-reply + app-level ack messages
+retry               : APPLICATION — timer wrappers + app policy
+deduplication       : APPLICATION — idempotent state in the fold
+event-sourcing      : APPLICATION — events as messages; persistence is interpreter
+workflow-saga       : APPLICATION — Fsm + supervision composition
+streaming           : APPLICATION — sequences of typed messages
+```
+
+**Qualified closure claim** (the only shape the protocol permits):
+
+> No surveyed pure actor-behavior capability currently demonstrates a need
+> for another primitive; every resolved pure row has a checked derivation
+> from the retained basis, and every non-pure row is explicitly assigned to
+> the interpreter or application boundary.
+
+Qualifications: (1) closure is relative to the documented 2026-08-09
+literature search and the 53-row taxonomy, not to the infinite behavior
+space; (2) three rows remain partially represented — protocol-session
+(finite-state sequencing exists; Honda-style duality/per-phase alphabets do
+not), security-capability (static compatibility exists; authenticity does
+not), location-transparency (location-neutral folds exist; the naming
+service does not); (3) no failed concrete derivation demonstrated an
+algebraic obstruction for these — the shortfalls are unrealized static
+guarantee layers, not missing transition primitives — so no primitive was
+proposed; (4) equivalence-level results (may testing, axiomatizations) were
+not re-proved for Bombay's typed realization; they are cited as model-level
+context, not as theorems about this crate.
+
+Disposition totals: existing=26, derived=8, interpreter=13, application=6, new-primitive=0, rejected=0.
