@@ -903,3 +903,30 @@ capability extraction template from RESEARCH-SOURCES.md.
   copy found.
 - Evidence location: REPORT.md post-2000 table adversarial row;
   capability-matrix.json protocol-session row.
+
+## 28. Kumar, Sen, Meseguer, Agha — A Rewriting Based Model for Probabilistic Distributed Object Systems (FMOODS 2003)
+
+- Bibliography: Nirman Kumar, Koushik Sen, José Meseguer, Gul Agha. FMOODS
+  2003, LNCS 2884:32–46. doi:10.1007/978-3-540-39958-2_3.
+- Stable URL: author-hosted PDF
+  <https://osl.cs.illinois.edu/media/papers/kumar-2003-fmoods-a_rewriting_based_model_for_probabilistic_distributed_object_systems.pdf>
+- Source tier: 1.
+- Read status: complete (text layer extracted 2026-08-09).
+- Inclusion: semantic (rewriting-logic actor specifications).
+- Claims (from the full text): nondeterministic transitions over
+  configurations abstract scheduling, network delays, failures, and
+  randomization; probabilistic rewrite theories capture these more
+  precisely and enable statistical analysis; probabilistic actor systems
+  are modeled naturally as object-based rewriting; **actor failures and
+  message drops are encodable in the rewrite theory**; execution is
+  interleaving.
+- Bombay classification: probability, failure, and message-drop modeling
+  are specification-level features of the configuration semantics =
+  INTERPRETER/environment observations; the behavior fold stays
+  nondeterminism-free and total per event. Confirms the PMaude line's
+  classification with the fully-read precursor.
+- Candidate-basis impact: none.
+- Limitations: short conference paper; the expressive fragment and PMaude
+  implementation details remain abstract-level (ENTCS paywall).
+- Evidence location: REPORT.md post-2000 comparison table (rewriting-logic
+  row).
