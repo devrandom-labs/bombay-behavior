@@ -1,0 +1,887 @@
+{
+  "schema_version": 1,
+  "campaign": "behavior-architecture-critical-review",
+  "rule": "Pure rows carry derivation trees referencing retained primitive IDs; interpreter/application rows carry explicit boundary arguments, never fake derivations.",
+  "capabilities": [
+    {
+      "id": "core-transition",
+      "kind": "pure",
+      "derivation": {
+        "tree": "core-transition <- Behavior::step one-event fold <- [P-fold]",
+        "primitive_refs": [
+          "P-fold"
+        ],
+        "event_sums": "single Event type (user lane at minimum)",
+        "effect_products": "Actions product returned as data",
+        "initialization": "init before mailbox events",
+        "composition_order": "n/a (base construct)",
+        "errors": "typed Error seat; Never when infallible",
+        "termination": "Step::Stop(Exit) in Actions",
+        "freshness": "n/a",
+        "static_limitations": [
+          "purity is discipline-checked, not type-enforced"
+        ]
+      },
+      "boundary_argument": null
+    },
+    {
+      "id": "become",
+      "kind": "pure",
+      "derivation": {
+        "tree": "become <- Step::Continue/Goto verdict inside Actions.become_ <- [P-fold, P-products]",
+        "primitive_refs": [
+          "P-fold",
+          "P-products"
+        ],
+        "event_sums": "any",
+        "effect_products": "become_ seat of Actions",
+        "initialization": "init may become into an initial working behavior",
+        "composition_order": "verdict read after lanes",
+        "errors": "n/a",
+        "termination": "Step::Stop terminates; Continue persists",
+        "freshness": "become never allocates (Agha 1986)",
+        "static_limitations": [
+          "no runtime check that become targets differ from current"
+        ]
+      },
+      "boundary_argument": null
+    },
+    {
+      "id": "termination",
+      "kind": "pure",
+      "derivation": {
+        "tree": "termination <- Step::Stop(Exit<A>) <- [P-fold, P-products]",
+        "primitive_refs": [
+          "P-fold",
+          "P-products"
+        ],
+        "event_sums": "any",
+        "effect_products": "become_ seat carries Stop",
+        "initialization": "n/a",
+        "composition_order": "terminal verdict overrides continuation",
+        "errors": "Exit<A> exhaustive",
+        "termination": "Stop is final; no further folds",
+        "freshness": "n/a",
+        "static_limitations": [
+          "no facility to retract Stop"
+        ]
+      },
+      "boundary_argument": null
+    },
+    {
+      "id": "typed-send",
+      "kind": "pure",
+      "derivation": {
+        "tree": "typed-send <- Recipient<A,M> values in Delivery lanes <- [P-products, P-sums]",
+        "primitive_refs": [
+          "P-products",
+          "P-sums"
+        ],
+        "event_sums": "message type M tied to Recipient",
+        "effect_products": "sends seat (Vec<Delivery> or SendProduct)",
+        "initialization": "init sends allowed",
+        "composition_order": "per-lane order preserved; no cross-lane order (FMOODS 2002)",
+        "errors": "n/a",
+        "termination": "n/a",
+        "freshness": "recipients are acquaintance values (Thati MS locality)",
+        "static_limitations": [
+          "recipient validity is an interpreter acceptance matter"
+        ]
+      },
+      "boundary_argument": null
+    },
+    {
+      "id": "send-products",
+      "kind": "pure",
+      "derivation": {
+        "tree": "send-products <- SendProduct<L,R> monoid nesting <- [P-products]",
+        "primitive_refs": [
+          "P-products"
+        ],
+        "event_sums": "n/a (effect side)",
+        "effect_products": "SendProduct lanes with empty/append",
+        "initialization": "each wrapper appends its own lane",
+        "composition_order": "monoid append; lane order retained",
+        "errors": "n/a",
+        "termination": "n/a",
+        "freshness": "n/a",
+        "static_limitations": [
+          "arity of nesting grows with lanes (ratcheted)"
+        ]
+      },
+      "boundary_argument": null
+    },
+    {
+      "id": "creation",
+      "kind": "pure",
+      "derivation": {
+        "tree": "creation <- Create staged data + BirthMode authority <- [P-products, P-never, P-birthmode]",
+        "primitive_refs": [
+          "P-products",
+          "P-never",
+          "P-birthmode"
+        ],
+        "event_sums": "n/a (effect side)",
+        "effect_products": "creates seat: Vec<Create<A, Child>>",
+        "initialization": "init may stage creations",
+        "composition_order": "creation vector order; installed before dependent sends (Bombay policy)",
+        "errors": "installation failure is interpreter-owned (Crash::EnvironmentFailed)",
+        "termination": "replacement incarnation designated via CreationKind",
+        "freshness": "fresh allocation; nonce is routing key not identity (AMST letactor analogue)",
+        "static_limitations": [
+          "freshness acceptance is interpreter-enforced"
+        ]
+      },
+      "boundary_argument": null
+    },
+    {
+      "id": "child-topology",
+      "kind": "pure",
+      "derivation": {
+        "tree": "child-topology <- nonce-routed children + ChildStopped observation <- [P-products, P-birthmode, P-wrappers]",
+        "primitive_refs": [
+          "P-products",
+          "P-birthmode",
+          "P-wrappers"
+        ],
+        "event_sums": "ChildStopped lane in event sum",
+        "effect_products": "creates + observation sends",
+        "initialization": "inner-first",
+        "composition_order": "wrapper order documented",
+        "errors": "n/a",
+        "termination": "child death surfaces as ChildStopped event",
+        "freshness": "child nonce scoped to creator namespace",
+        "static_limitations": [
+          "no global topology query in the fold"
+        ]
+      },
+      "boundary_argument": null
+    },
+    {
+      "id": "behavior-delegation",
+      "kind": "pure",
+      "derivation": {
+        "tree": "behavior-delegation <- become to a behavior value holding another behavior <- [P-fold]",
+        "primitive_refs": [
+          "P-fold"
+        ],
+        "event_sums": "any",
+        "effect_products": "become_ seat",
+        "initialization": "n/a",
+        "composition_order": "n/a",
+        "errors": "n/a",
+        "termination": "delegated behavior continues",
+        "freshness": "n/a",
+        "static_limitations": [
+          "delegation chains are ordinary values; no special typing"
+        ]
+      },
+      "boundary_argument": null
+    },
+    {
+      "id": "forwarding",
+      "kind": "pure",
+      "derivation": {
+        "tree": "forwarding <- fold re-emits event payload as a send to another Recipient <- [P-fold, P-products]",
+        "primitive_refs": [
+          "P-fold",
+          "P-products"
+        ],
+        "event_sums": "user lane",
+        "effect_products": "sends seat",
+        "initialization": "n/a",
+        "composition_order": "n/a",
+        "errors": "n/a",
+        "termination": "n/a",
+        "freshness": "target must be an acquaintance",
+        "static_limitations": [
+          "no loop-freedom guarantee statically"
+        ]
+      },
+      "boundary_argument": null
+    },
+    {
+      "id": "protocol-sum",
+      "kind": "pure",
+      "derivation": {
+        "tree": "protocol-sum <- closed event enums + extraction traits <- [P-sums]",
+        "primitive_refs": [
+          "P-sums"
+        ],
+        "event_sums": "closed sum of lane variants",
+        "effect_products": "n/a",
+        "initialization": "n/a",
+        "composition_order": "canonical extraction order per nesting",
+        "errors": "n/a",
+        "termination": "n/a",
+        "freshness": "n/a",
+        "static_limitations": [
+          "no open/extensional sums (banned envelope)"
+        ]
+      },
+      "boundary_argument": null
+    },
+    {
+      "id": "protocol-product",
+      "kind": "pure",
+      "derivation": {
+        "tree": "protocol-product <- independent lane products via SendProduct + event pairs <- [P-products, P-sums]",
+        "primitive_refs": [
+          "P-products",
+          "P-sums"
+        ],
+        "event_sums": "paired sums",
+        "effect_products": "paired products",
+        "initialization": "inner-first",
+        "composition_order": "component order retained",
+        "errors": "per-seat errors",
+        "termination": "per-seat termination",
+        "freshness": "per-seat freshness",
+        "static_limitations": [
+          "product width is fixed at composition time"
+        ]
+      },
+      "boundary_argument": null
+    },
+    {
+      "id": "initialization",
+      "kind": "pure",
+      "derivation": {
+        "tree": "initialization <- Behavior::init with inner-first wrapper composition <- [P-fold, P-wrappers]",
+        "primitive_refs": [
+          "P-fold",
+          "P-wrappers"
+        ],
+        "event_sums": "init effects use the same lanes",
+        "effect_products": "init Actions product",
+        "initialization": "init precedes mailbox events",
+        "composition_order": "inner init first, then wrapper's own effects",
+        "errors": "init may fail with typed Error",
+        "termination": "init may decide Stop",
+        "freshness": "init may stage creations",
+        "static_limitations": [
+          "double-init is a documented contract violation (panic-guarded in Proxy)"
+        ]
+      },
+      "boundary_argument": null
+    },
+    {
+      "id": "controlled-error",
+      "kind": "pure",
+      "derivation": {
+        "tree": "controlled-error <- typed Error seat; Never when infallible <- [P-fold, P-never]",
+        "primitive_refs": [
+          "P-fold",
+          "P-never"
+        ],
+        "event_sums": "n/a",
+        "effect_products": "Result<Actions, Error>",
+        "initialization": "init errors possible",
+        "composition_order": "error aborts the transition's interpretation (interpreter)",
+        "errors": "Error is a declared type, not a panic",
+        "termination": "error is not termination",
+        "freshness": "n/a",
+        "static_limitations": [
+          "error recovery policy is supervision's vocabulary"
+        ]
+      },
+      "boundary_argument": null
+    },
+    {
+      "id": "deadline",
+      "kind": "pure",
+      "derivation": {
+        "tree": "deadline <- At wrapper + ScheduleAt lane + (TimerId, TimerGeneration) <- [P-wrappers, P-sums, P-products]",
+        "primitive_refs": [
+          "P-wrappers",
+          "P-sums",
+          "P-products"
+        ],
+        "event_sums": "TimerElapsed lane added to event sum",
+        "effect_products": "ScheduleAt in sends product",
+        "initialization": "init inner-first then ScheduleAt",
+        "composition_order": "one-shot; generation consumed once",
+        "errors": "GenerationExhausted typed",
+        "termination": "stop drops pending timer (documented)",
+        "freshness": "n/a",
+        "static_limitations": [
+          "clock minting is interpreter work"
+        ]
+      },
+      "boundary_argument": null
+    },
+    {
+      "id": "receive-timeout",
+      "kind": "pure",
+      "derivation": {
+        "tree": "receive-timeout <- ReceiveTimeout wrapper; rearm only on successful continuing folds <- [P-wrappers, P-sums, P-products]",
+        "primitive_refs": [
+          "P-wrappers",
+          "P-sums",
+          "P-products"
+        ],
+        "event_sums": "timeout lane in event sum",
+        "effect_products": "ScheduleAfter in sends product",
+        "initialization": "init schedules first timeout",
+        "composition_order": "rearm discipline pinned by tests",
+        "errors": "GenerationExhausted typed",
+        "termination": "stop cancels",
+        "freshness": "n/a",
+        "static_limitations": [
+          "wall-clock semantics interpreter-owned"
+        ]
+      },
+      "boundary_argument": null
+    },
+    {
+      "id": "timer-generation",
+      "kind": "pure",
+      "derivation": {
+        "tree": "timer-generation <- (TimerId, TimerGeneration) typed pairs <- [P-products, P-never]",
+        "primitive_refs": [
+          "P-products",
+          "P-never"
+        ],
+        "event_sums": "timer lanes",
+        "effect_products": "schedule products",
+        "initialization": "n/a",
+        "composition_order": "stale generations dropped",
+        "errors": "exhaustion typed",
+        "termination": "n/a",
+        "freshness": "n/a",
+        "static_limitations": [
+          "u64 exhaustion boundary documented (panic contract)"
+        ]
+      },
+      "boundary_argument": null
+    },
+    {
+      "id": "selective-receive",
+      "kind": "pure",
+      "derivation": {
+        "tree": "selective-receive <- enabled-set filtering via Stashing <- [P-wrappers, P-sums] (MT 1997 theorem: constraints derived)",
+        "primitive_refs": [
+          "P-wrappers",
+          "P-sums"
+        ],
+        "event_sums": "filter over the event sum",
+        "effect_products": "stash buffer held in wrapper state",
+        "initialization": "n/a",
+        "composition_order": "replay on state change in FIFO order",
+        "errors": "n/a",
+        "termination": "n/a",
+        "freshness": "n/a",
+        "static_limitations": [
+          "unbounded stash growth is application-visible"
+        ]
+      },
+      "boundary_argument": null
+    },
+    {
+      "id": "stashing",
+      "kind": "pure",
+      "derivation": {
+        "tree": "stashing <- Stashing wrapper: single FIFO buffer + replay <- [P-wrappers, P-sums]",
+        "primitive_refs": [
+          "P-wrappers",
+          "P-sums"
+        ],
+        "event_sums": "stash control lane",
+        "effect_products": "held events re-presented to inner",
+        "initialization": "n/a",
+        "composition_order": "exact-filter proven (256-case proptest + 121 exhaustive)",
+        "errors": "n/a",
+        "termination": "stop preserves held events (test-pinned)",
+        "freshness": "n/a",
+        "static_limitations": [
+          "Ph=Never static constraint on stashable behaviors"
+        ]
+      },
+      "boundary_argument": null
+    },
+    {
+      "id": "finite-state",
+      "kind": "pure",
+      "derivation": {
+        "tree": "finite-state <- Fsm phases over receive+become <- [P-wrappers, P-fold]",
+        "primitive_refs": [
+          "P-wrappers",
+          "P-fold"
+        ],
+        "event_sums": "Move sum (To/Go) per phase",
+        "effect_products": "phase transition verdicts",
+        "initialization": "initial phase designated",
+        "composition_order": "drain on real phase change; no-drop/no-dup black-box proven",
+        "errors": "mid-drain error asymmetry documented + pinned",
+        "termination": "Stop in any phase",
+        "freshness": "n/a",
+        "static_limitations": [
+          "Move::Goto(P) accepts any phase value; invalid transitions representable (recorded)"
+        ]
+      },
+      "boundary_argument": null
+    },
+    {
+      "id": "shutdown",
+      "kind": "pure",
+      "derivation": {
+        "tree": "shutdown <- Shutdown typed lane + FinalizeOnShutdown <- [P-wrappers, P-sums, P-products]",
+        "primitive_refs": [
+          "P-wrappers",
+          "P-sums",
+          "P-products"
+        ],
+        "event_sums": "shutdown lane in event sum",
+        "effect_products": "final fold's sends+creates retained; verdict overridden",
+        "initialization": "n/a",
+        "composition_order": "finalization overrides only the verdict",
+        "errors": "n/a",
+        "termination": "shutdown leads to Stop",
+        "freshness": "n/a",
+        "static_limitations": [
+          "shutdown ingress is interpreter-triggered"
+        ]
+      },
+      "boundary_argument": null
+    },
+    {
+      "id": "finalization",
+      "kind": "pure",
+      "derivation": {
+        "tree": "finalization <- shutdown-lane final fold effect retention <- [P-wrappers, P-products]",
+        "primitive_refs": [
+          "P-wrappers",
+          "P-products"
+        ],
+        "event_sums": "shutdown lane",
+        "effect_products": "retained final Actions",
+        "initialization": "n/a",
+        "composition_order": "complete sends+creates preserved",
+        "errors": "n/a",
+        "termination": "final by construction",
+        "freshness": "n/a",
+        "static_limitations": [
+          "one finalization only"
+        ]
+      },
+      "boundary_argument": null
+    },
+    {
+      "id": "peer-observation",
+      "kind": "pure",
+      "derivation": {
+        "tree": "peer-observation <- Watching wrapper: ObservePeer/PeerStopped lanes <- [P-wrappers, P-sums]",
+        "primitive_refs": [
+          "P-wrappers",
+          "P-sums"
+        ],
+        "event_sums": "peer lanes in event sum",
+        "effect_products": "observation requests in sends product",
+        "initialization": "init inner-first",
+        "composition_order": "both wrapper orders preserve all lanes (watching.rs:25-66)",
+        "errors": "n/a",
+        "termination": "peer death surfaces as PeerStopped",
+        "freshness": "observation targets are acquaintances",
+        "static_limitations": [
+          "death detection itself is interpreter-provided"
+        ]
+      },
+      "boundary_argument": null
+    },
+    {
+      "id": "child-observation",
+      "kind": "pure",
+      "derivation": {
+        "tree": "child-observation <- Supervising ChildStopped lane <- [P-wrappers, P-sums]",
+        "primitive_refs": [
+          "P-wrappers",
+          "P-sums"
+        ],
+        "event_sums": "child lanes in event sum",
+        "effect_products": "child observation in products",
+        "initialization": "init installs proxy first",
+        "composition_order": "documented",
+        "errors": "n/a",
+        "termination": "ChildStopped typed",
+        "freshness": "child births fresh via proxy",
+        "static_limitations": [
+          "observation granularity is per-child nonce"
+        ]
+      },
+      "boundary_argument": null
+    },
+    {
+      "id": "worker-reporting",
+      "kind": "pure",
+      "derivation": {
+        "tree": "worker-reporting <- typed report lanes toward supervisor <- [P-products, P-wrappers]",
+        "primitive_refs": [
+          "P-products",
+          "P-wrappers"
+        ],
+        "event_sums": "report lane in sums",
+        "effect_products": "report sends in products",
+        "initialization": "n/a",
+        "composition_order": "lane order retained",
+        "errors": "n/a",
+        "termination": "worker Stop reported via child observation",
+        "freshness": "n/a",
+        "static_limitations": [
+          "report schema is application-defined"
+        ]
+      },
+      "boundary_argument": null
+    },
+    {
+      "id": "linking",
+      "kind": "pure",
+      "derivation": {
+        "tree": "linking <- LinkReaction fn-pointer per peer death <- [P-fnreact, P-wrappers]",
+        "primitive_refs": [
+          "P-fnreact",
+          "P-wrappers"
+        ],
+        "event_sums": "peer death lane",
+        "effect_products": "reaction verdicts",
+        "initialization": "n/a",
+        "composition_order": "reaction per death in observation order",
+        "errors": "reaction may raise typed error",
+        "termination": "reaction may Stop",
+        "freshness": "n/a",
+        "static_limitations": [
+          "reaction vocabulary is Bombay policy (Erlang-flavored)"
+        ]
+      },
+      "boundary_argument": null
+    },
+    {
+      "id": "supervision-strategy",
+      "kind": "pure",
+      "derivation": {
+        "tree": "supervision-strategy <- strategy/policy as data + fn reactions (supervising.rs:492-558 pure decision) <- [P-fnreact, P-wrappers]",
+        "primitive_refs": [
+          "P-fnreact",
+          "P-wrappers"
+        ],
+        "event_sums": "failure lanes",
+        "effect_products": "restart directives as data",
+        "initialization": "init installs proxy",
+        "composition_order": "decision pure; order pinned",
+        "errors": "Crash classification typed",
+        "termination": "exhausted budget Stops",
+        "freshness": "replacement incarnation designated, not performed",
+        "static_limitations": [
+          "strategy vocabulary is policy"
+        ]
+      },
+      "boundary_argument": null
+    },
+    {
+      "id": "restart-policy",
+      "kind": "pure",
+      "derivation": {
+        "tree": "restart-policy <- RestartDecision fn + policy data <- [P-fnreact, P-wrappers]",
+        "primitive_refs": [
+          "P-fnreact",
+          "P-wrappers"
+        ],
+        "event_sums": "failure lanes",
+        "effect_products": "restart directive products",
+        "initialization": "n/a",
+        "composition_order": "pinned",
+        "errors": "typed",
+        "termination": "budget exhaustion terminates",
+        "freshness": "restart = fresh creation with provenance",
+        "static_limitations": [
+          "no automatic restart without explicit designation"
+        ]
+      },
+      "boundary_argument": null
+    },
+    {
+      "id": "restart-budget",
+      "kind": "pure",
+      "derivation": {
+        "tree": "restart-budget <- budget counters in wrapper state <- [P-wrappers, P-fold]",
+        "primitive_refs": [
+          "P-wrappers",
+          "P-fold"
+        ],
+        "event_sums": "failure lanes",
+        "effect_products": "n/a",
+        "initialization": "n/a",
+        "composition_order": "budget decremented per restart in decision order",
+        "errors": "n/a",
+        "termination": "exhaustion Stops the supervisor",
+        "freshness": "each restart is a fresh creation",
+        "static_limitations": [
+          "budget arithmetic saturating at documented boundary"
+        ]
+      },
+      "boundary_argument": null
+    },
+    {
+      "id": "replacement-provenance",
+      "kind": "pure",
+      "derivation": {
+        "tree": "replacement-provenance <- CreationKind carried verbatim through wrappers <- [P-products, P-wrappers]",
+        "primitive_refs": [
+          "P-products",
+          "P-wrappers"
+        ],
+        "event_sums": "n/a",
+        "effect_products": "CreationKind in creates seat",
+        "initialization": "init creations carry kind",
+        "composition_order": "provenance survives every wrapper (supervising.rs:609-616)",
+        "errors": "n/a",
+        "termination": "n/a",
+        "freshness": "initial birth vs replacement incarnation distinguished as data",
+        "static_limitations": [
+          "runtime Restarted reporting is interpreter-only"
+        ]
+      },
+      "boundary_argument": null
+    },
+    {
+      "id": "routing",
+      "kind": "pure",
+      "derivation": {
+        "tree": "routing <- Route/MailAddr values; nonce correlation <- [P-products]",
+        "primitive_refs": [
+          "P-products"
+        ],
+        "event_sums": "n/a",
+        "effect_products": "routes in sends",
+        "initialization": "n/a",
+        "composition_order": "lane order",
+        "errors": "n/a",
+        "termination": "n/a",
+        "freshness": "nonces are creator-local routing keys",
+        "static_limitations": [
+          "address equality exposed; name-matching variant (AMAST 2002) transfer limitation"
+        ]
+      },
+      "boundary_argument": null
+    },
+    {
+      "id": "request-reply",
+      "kind": "pure",
+      "derivation": {
+        "tree": "request-reply <- continuation Recipient + stash buffering (Thati MS ch.5; Karmani-Agha 2011 IV-A) <- [P-products, P-wrappers]",
+        "primitive_refs": [
+          "P-products",
+          "P-wrappers"
+        ],
+        "event_sums": "reply lane in sums",
+        "effect_products": "request sends + buffered non-replies",
+        "initialization": "n/a",
+        "composition_order": "buffering preserves order",
+        "errors": "n/a",
+        "termination": "n/a",
+        "freshness": "reply target passed as acquaintance",
+        "static_limitations": [
+          "no static guarantee a reply arrives (progress needs a Types-for-Progress-style layer)"
+        ]
+      },
+      "boundary_argument": null
+    },
+    {
+      "id": "correlation",
+      "kind": "pure",
+      "derivation": {
+        "tree": "correlation <- nonce/token fields inside typed messages <- [P-products]",
+        "primitive_refs": [
+          "P-products"
+        ],
+        "event_sums": "token fields in message types",
+        "effect_products": "n/a",
+        "initialization": "n/a",
+        "composition_order": "n/a",
+        "errors": "n/a",
+        "termination": "n/a",
+        "freshness": "tokens are ordinary values",
+        "static_limitations": [
+          "no uniqueness enforcement in the fold"
+        ]
+      },
+      "boundary_argument": null
+    },
+    {
+      "id": "protocol-session",
+      "kind": "pure",
+      "derivation": {
+        "tree": "protocol-session <- Fsm finite-state sequencing (PARTIAL) <- [P-wrappers, P-fold]",
+        "primitive_refs": [
+          "P-wrappers",
+          "P-fold"
+        ],
+        "event_sums": "Move sums per phase",
+        "effect_products": "phase verdicts",
+        "initialization": "initial phase",
+        "composition_order": "drain semantics pinned",
+        "errors": "typed errors",
+        "termination": "Stop per phase",
+        "freshness": "n/a",
+        "static_limitations": [
+          "no transition relation; no per-phase alphabets; no duality (channel duality per ESOP 1998 is a different discipline; Charalambides 2018 shows the actor-native cost)"
+        ]
+      },
+      "boundary_argument": null
+    },
+    {
+      "id": "lifecycle-publication",
+      "kind": "pure",
+      "derivation": {
+        "tree": "lifecycle-publication <- observation lanes (PeerStopped/ChildStopped) <- [P-wrappers, P-sums]",
+        "primitive_refs": [
+          "P-wrappers",
+          "P-sums"
+        ],
+        "event_sums": "lifecycle lanes in sums",
+        "effect_products": "observation products",
+        "initialization": "init inner-first",
+        "composition_order": "pinned per wrapper",
+        "errors": "n/a",
+        "termination": "death events typed",
+        "freshness": "n/a",
+        "static_limitations": [
+          "detection + publication are interpreter services"
+        ]
+      },
+      "boundary_argument": null
+    },
+    {
+      "id": "acknowledgement",
+      "kind": "boundary",
+      "disposition": "application",
+      "derivation": null,
+      "boundary_argument": "Derived from request-reply plus application-level ack messages; no algebraic content beyond P-products lanes."
+    },
+    {
+      "id": "retry",
+      "kind": "boundary",
+      "disposition": "application",
+      "derivation": null,
+      "boundary_argument": "Timer wrappers (deadline/receive-timeout) plus application retry policy; no new lane needed."
+    },
+    {
+      "id": "deduplication",
+      "kind": "boundary",
+      "disposition": "application",
+      "derivation": null,
+      "boundary_argument": "Idempotent state inside the fold over typed messages; correlation tokens are application data."
+    },
+    {
+      "id": "event-sourcing",
+      "kind": "boundary",
+      "disposition": "application",
+      "derivation": null,
+      "boundary_argument": "Events as typed messages; persistence of the log is an interpreter/storage concern (I/O outside the effect triple)."
+    },
+    {
+      "id": "workflow-saga",
+      "kind": "boundary",
+      "disposition": "application",
+      "derivation": null,
+      "boundary_argument": "Fsm phases plus supervision composition; saga compensation is application logic over become."
+    },
+    {
+      "id": "streaming",
+      "kind": "boundary",
+      "disposition": "application",
+      "derivation": null,
+      "boundary_argument": "Sequences of typed messages over ordinary lanes; backpressure boundary recorded separately."
+    },
+    {
+      "id": "backpressure",
+      "kind": "boundary",
+      "disposition": "interpreter",
+      "derivation": null,
+      "boundary_argument": "Queue depth is unobservable in a one-event fold; requires mailbox introspection, which the calculus deliberately lacks."
+    },
+    {
+      "id": "mailbox-priority",
+      "kind": "boundary",
+      "disposition": "interpreter",
+      "derivation": null,
+      "boundary_argument": "Mailbox discipline is transport policy; the fold sees one event at a time and cannot express queue order."
+    },
+    {
+      "id": "fairness",
+      "kind": "boundary",
+      "disposition": "interpreter",
+      "derivation": null,
+      "boundary_argument": "Fairness quantifies over executions (Clinger 1981; AMST 1997); not a per-fold property."
+    },
+    {
+      "id": "failure-detection",
+      "kind": "boundary",
+      "disposition": "interpreter",
+      "derivation": null,
+      "boundary_argument": "Failure awareness is a configuration-level model (Paul-Agha FAM 2021/2023); the fold cannot observe another actor's liveness."
+    },
+    {
+      "id": "persistence",
+      "kind": "boundary",
+      "disposition": "interpreter",
+      "derivation": null,
+      "boundary_argument": "I/O is outside the send/create/become effect triple."
+    },
+    {
+      "id": "durable-state",
+      "kind": "boundary",
+      "disposition": "interpreter",
+      "derivation": null,
+      "boundary_argument": "Storage is outside the fold; would require an effect seat the calculus deliberately lacks."
+    },
+    {
+      "id": "distribution",
+      "kind": "boundary",
+      "disposition": "interpreter",
+      "derivation": null,
+      "boundary_argument": "Transport is interpreter realization; the fold is location-neutral."
+    },
+    {
+      "id": "location-transparency",
+      "kind": "boundary",
+      "disposition": "interpreter",
+      "derivation": null,
+      "boundary_argument": "Naming/migration service (Kim-Agha SC 1995; SALSA 2001). PARTIAL: location-neutral folds exist; the service does not; Address::birth and route() expose representation."
+    },
+    {
+      "id": "remoting",
+      "kind": "boundary",
+      "disposition": "interpreter",
+      "derivation": null,
+      "boundary_argument": "Transport boundary; no fold content."
+    },
+    {
+      "id": "serialization",
+      "kind": "boundary",
+      "disposition": "interpreter",
+      "derivation": null,
+      "boundary_argument": "Representation concern; banned as an internal protocol substitute (static rule)."
+    },
+    {
+      "id": "security-capability",
+      "kind": "boundary",
+      "disposition": "interpreter",
+      "derivation": null,
+      "boundary_argument": "Authenticity/secrecy/unforgeability need runtime minting and confinement. PARTIAL: static protocol compatibility exists (Recipient typing; BirthMode authority); MailAddr is public/Copy so possession proves nothing."
+    },
+    {
+      "id": "scheduling",
+      "kind": "boundary",
+      "disposition": "interpreter",
+      "derivation": null,
+      "boundary_argument": "Executor concern; the fold cannot observe scheduling choices."
+    },
+    {
+      "id": "resource-ownership",
+      "kind": "boundary",
+      "disposition": "interpreter",
+      "derivation": null,
+      "boundary_argument": "Runtime ownership/GC (Plyukhin-Agha 2018/2020/2022/2025 line); lifecycle detection is decentralized runtime work."
+    }
+  ]
+}

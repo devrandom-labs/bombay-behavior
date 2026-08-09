@@ -291,6 +291,162 @@ set -e
 
 if [ "$check_status" -ne 0 ]; then exit "$check_status"; fi
 
+basis=research/architecture-critical-review-loop/primitive-basis.json
+bibliography=research/architecture-critical-review-loop/research-bibliography.json
+derivations=research/architecture-critical-review-loop/capability-derivations.json
+
+set +e
+python3 - "$basis" "$bibliography" "$derivations" "$matrix" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+basis_path, biblio_path, deriv_path, matrix_path = map(Path, sys.argv[1:])
+errors = []
+
+def load(path):
+    try:
+        return json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        errors.append(f"invalid {path}: {exc}")
+        return {}
+
+basis = load(basis_path)
+biblio = load(biblio_path)
+derivations = load(deriv_path)
+matrix = load(matrix_path)
+
+prims = basis.get("primitives", [])
+prim_ids = [p.get("id") for p in prims if isinstance(p, dict)]
+if len(prim_ids) != len(set(prim_ids)):
+    errors.append("duplicate primitive IDs")
+retained = {p["id"] for p in prims if isinstance(p, dict) and p.get("status") == "retained"}
+all_prim = set(prim_ids)
+
+for p in prims:
+    if not isinstance(p, dict):
+        continue
+    pid = p.get("id", "?")
+    for field in ("rust_type", "formation_rule", "operational_semantics"):
+        if not isinstance(p.get(field), str) or len(p[field].strip()) < 20:
+            errors.append(f"primitive {pid}: missing {field}")
+    if p.get("classification") not in {"actor-model-law", "bombay-derived", "bombay-policy"}:
+        errors.append(f"primitive {pid}: invalid classification")
+    if not isinstance(p.get("laws"), list) or not p["laws"]:
+        errors.append(f"primitive {pid}: needs algebraic laws")
+    snd = p.get("soundness", {})
+    for field in ("obligations_covered", "evidence", "validation"):
+        if not isinstance(snd.get(field), list) or not snd[field]:
+            errors.append(f"primitive {pid}: soundness needs {field}")
+    elim = p.get("eliminability", {})
+    if not isinstance(elim.get("attempted_signature"), str) or len(elim["attempted_signature"].strip()) < 10:
+        errors.append(f"primitive {pid}: eliminability needs the exact attempted type signature")
+    attempts = elim.get("attempts")
+    if not isinstance(attempts, list) or not attempts:
+        errors.append(f"primitive {pid}: needs at least one eliminability attempt")
+    else:
+        for a in attempts:
+            if a.get("obstruction_kind") not in {"type", "compiler", "semantic", "law"}:
+                errors.append(f"primitive {pid}: attempt with invalid obstruction_kind")
+            if not isinstance(a.get("obstruction"), str) or len(a["obstruction"].strip()) < 12:
+                errors.append(f"primitive {pid}: attempt needs exact obstruction evidence")
+    verdict = elim.get("verdict")
+    if verdict not in {"primitive", "derived"}:
+        errors.append(f"primitive {pid}: invalid eliminability verdict")
+    elif verdict == "derived":
+        refs = set(elim.get("derived_from", []))
+        if not refs or not refs <= retained:
+            errors.append(f"primitive {pid}: derived form needs derivation from retained primitives")
+    if p.get("status") == "retained" and verdict == "derived":
+        errors.append(f"primitive {pid}: retained but demoted by its own experiment")
+
+caps = derivations.get("capabilities", [])
+cap_ids = [c.get("id") for c in caps if isinstance(c, dict)]
+matrix_ids = {c.get("id") for c in matrix.get("capabilities", []) if isinstance(c, dict)}
+if set(cap_ids) != matrix_ids:
+    errors.append("derivation rows must exactly cover the capability matrix")
+for c in caps:
+    if not isinstance(c, dict):
+        continue
+    cid = c.get("id", "?")
+    if c.get("kind") == "pure":
+        d = c.get("derivation")
+        if not isinstance(d, dict):
+            errors.append(f"capability {cid}: pure row needs a derivation tree")
+            continue
+        refs = set(d.get("primitive_refs", []))
+        if not refs:
+            errors.append(f"capability {cid}: derivation tree must reference primitives")
+        elif unknown := sorted(refs - all_prim):
+            errors.append(f"capability {cid}: unknown primitive reference: " + ", ".join(unknown))
+        elif not refs <= retained:
+            errors.append(f"capability {cid}: references a demoted (non-retained) primitive")
+        for field in ("event_sums", "effect_products", "initialization", "composition_order", "errors", "termination", "freshness"):
+            if not isinstance(d.get(field), str) or not d[field].strip():
+                errors.append(f"capability {cid}: derivation needs {field}")
+        if not isinstance(d.get("static_limitations"), list) or not d["static_limitations"]:
+            errors.append(f"capability {cid}: needs explicit static limitations")
+    elif c.get("kind") == "boundary":
+        arg = c.get("boundary_argument")
+        if not isinstance(arg, str) or len(arg.strip()) < 20:
+            errors.append(f"capability {cid}: boundary row needs an explicit boundary argument")
+    else:
+        errors.append(f"capability {cid}: invalid kind")
+
+sources = biblio.get("sources", [])
+src_ids = [x.get("id") for x in sources if isinstance(x, dict)]
+if len(src_ids) != len(set(src_ids)):
+    errors.append("duplicate bibliography source IDs")
+src_by_id = {x["id"]: x for x in sources if isinstance(x, dict)}
+required_core = {
+    "hewitt-bishop-steiger-1973", "greif-1975", "baker-hewitt-1977", "hewitt-1977",
+    "clinger-1981", "agha-1986", "agha-cacm-1990", "agha-rex-1990", "amst-1997",
+    "talcott-1997", "mason-talcott-1997", "agha-thati-ziaei-2001",
+    "thati-ziaei-agha-fmoods-2002", "thati-ziaei-agha-amast-2002", "thati-ms-2001",
+    "thati-phd-2003", "agha-thati-2004", "kumar-sen-meseguer-agha-2003",
+    "agha-meseguer-sen-2006", "agha-dos-2005", "karmani-agha-2011",
+    "charalambides-dinges-agha-2012", "charalambides-palmskog-agha-2019",
+    "paul-agha-2021", "plyukhin-agha-2020", "plyukhin-agha-2018",
+    "plyukhin-agha-montesi-2025", "agha-kim-1999", "varela-agha-2001",
+    "agha-callsen-1993", "kim-agha-1995", "de-koster-de-meuter-2025",
+    "rebeca-2004", "honda-1993", "honda-vasconcelos-kubo-1998",
+    "honda-yoshida-carbone-2016",
+}
+if missing := sorted(required_core - set(src_ids)):
+    errors.append("bibliography lacks required actor-relevant records: " + ", ".join(missing))
+for x in sources:
+    if not isinstance(x, dict):
+        continue
+    sid = x.get("id", "?")
+    for field in ("authors", "title", "venue", "year"):
+        if not x.get(field):
+            errors.append(f"source {sid}: missing {field}")
+    if x.get("read_status") not in {"unread", "abstract-only", "partial", "complete"}:
+        errors.append(f"source {sid}: invalid read_status")
+    if x.get("inclusion") not in {"included-semantic", "included-capability", "included-framework-comparison", "excluded"}:
+        errors.append(f"source {sid}: invalid inclusion")
+    claims = x.get("semantic_claims", [])
+    supports = x.get("supports_primitive_claims", [])
+    if x.get("read_status") in {"unread", "abstract-only"} and claims:
+        errors.append(f"source {sid}: semantic claims rest on an unread or abstract-only source")
+    if supports and x.get("read_status") not in {"partial", "complete"}:
+        errors.append(f"source {sid}: supports primitive claims while only {x.get('read_status')}")
+    if unknown := sorted(set(supports) - all_prim):
+        errors.append(f"source {sid}: unknown primitive reference: " + ", ".join(unknown))
+    if x.get("inclusion") == "excluded" and not x.get("exclusion_reason"):
+        errors.append(f"source {sid}: excluded without a specific reason")
+
+if errors:
+    for error in errors:
+        print("CHECK: " + error)
+    raise SystemExit(2)
+print(f"artifact gate: {len(prims)} primitives, {len(caps)} derivations, {len(sources)} bibliography sources validated")
+PY
+artifact_status=$?
+set -e
+
+if [ "$artifact_status" -ne 0 ]; then exit "$artifact_status"; fi
+
 cargo nextest run --workspace
 nix flake check
 echo "CHECK: behavior architecture closure and authoritative repository gates pass"
