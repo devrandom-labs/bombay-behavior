@@ -120,3 +120,34 @@
   AFP 1996 notes (blackforest.stanford.edu dead, Wayback 429). All three
   remain covered by fully-read subsuming sources.
 - Gates after every batch: check.sh EXIT=0, SCORE 935, 67/67, 53/53.
+
+## 2026-08-09 — machine-readable artifacts + mechanical eliminability probes
+
+- New artifacts per the redirected objective: primitive-basis.json (7
+  candidates with formation rules, semantics, classifications, laws,
+  soundness records, eliminability attempts with exact obstruction kinds),
+  research-bibliography.json (107 dispositioned sources: 18 complete,
+  7 partial, 78 abstract-only with zero claims, 4 unread with zero claims;
+  excluded groups E1-E5), capability-derivations.json (53 rows: 34 pure
+  with derivation trees referencing primitive IDs, 19 boundary with
+  explicit boundary arguments). (54da5f4)
+- check.sh gained the artifact gate: rejects retained primitives without
+  soundness+eliminability records, derived forms without derivations from
+  retained primitives, pure capabilities without derivation trees, unknown
+  primitive references, semantic claims resting on unread/abstract-only
+  sources, missing core Agha records, and incomplete matrix coverage.
+- Mechanical elimination probes executed and preserved in probes/:
+  P-fnreact (generic-seat compiles but breaks the arity ratchet; closed
+  enum forecloses user policies; dyn banned — retained), P-never (unit-seat
+  substitution compiles and admits Err(())/Goto(()) — retained), P-birthmode
+  (marker traits cannot name the composite child type; the fix reintroduces
+  the associated type — retained). (8094e31, 99a4e5a, 87b3d53)
+- Full reads added: Plyukhin-Agha termination (safety Cor. 6.11, liveness
+  Thm 6.12), Paul-Agha FAM (available/failed states, predicate fairness,
+  Athena-checked Theorem 1), Kumar-Sen-Meseguer-Agha FMOODS 2003. (480e8fe,
+  205aac6, 07a5c72)
+- Attempted and unreachable: CRGC 2025 (ACM/Montesi 403, Zenodo artifact is
+  a 3.4 GB VM), AGERE 2018 GC (record only), receptionists 1984 (no open
+  copy). All remain abstract-only with zero claims, gate-compliant.
+- Gates: check.sh EXIT=0, SCORE 935, artifact gate validates 7 primitives /
+  53 derivations / 107 sources.
