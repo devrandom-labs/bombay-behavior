@@ -529,13 +529,19 @@ capability extraction template from RESEARCH-SOURCES.md.
   version 2017. Full development: Charalambides, *Actor Programming with
   Static Guarantees*, PhD thesis, UIUC 2018, hdl:2142/101036.
 - Source tier: 1.
-- Read status: abstract + references (full text paywalled; access
-  limitation).
+- Read status: complete — the open-access manuscript was fetched from the
+  IDEALS open collection (items/110846) and read 2026-08-09.
 - Inclusion: semantic (liveness typing for actors).
-- Claims: typestate-tracking type system over a simple actor language
-  statically guarantees dynamically generated reply requirements are
-  eventually satisfied, for a restricted class of programs — liveness via
-  types over the standard model.
+- Claims (from the full text): progress is defined as a persistent
+  configuration property — every execution trace ends in a state where all
+  dynamically generated messaging requirements are satisfied; typestates
+  tag actor names with the multiset of message types the actor must
+  eventually receive; the type system enforces that each requirement is
+  either fulfilled in the current scope or explicitly delegated to another
+  actor (recursive reasoning over delegates); stated limitation: typing
+  does not terminate for cyclic messaging patterns (a memoization extension
+  is outlined); safety properties are deliberately out of scope (separate
+  type system).
 - Bombay classification: a static-guarantee layer over the nucleus
   (bombay-derived analogue: Bombay's typed lanes); no primitive impact.
 - Candidate-basis impact: none.
