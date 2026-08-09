@@ -8,8 +8,12 @@
       "name": "Pure typed fold",
       "rust_type": "trait Behavior { type Addr/Msg/Event/Sends/Ph/Error/Birth; fn init; fn step } (crates/behavior/src/behavior.rs:419-431); first-order kernel trait State::handle (behavior.rs:389-410)",
       "formation_rule": "A behavior is a total deterministic fold from exactly one typed Event to Result<Actions, Error>; init runs before mailbox events.",
-      "input_types": ["Self::Event (one communication)"],
-      "output_types": ["Result<Actions<Addr, Ph, Sends, Birth>, Error>"],
+      "input_types": [
+        "Self::Event (one communication)"
+      ],
+      "output_types": [
+        "Result<Actions<Addr, Ph, Sends, Birth>, Error>"
+      ],
       "operational_semantics": "One isolated turn: consume one event, produce the complete effect product as data; no effect is performed by construction. Determinism: the behavior is a function of the message history.",
       "classification": "actor-model-law",
       "laws": [
@@ -18,17 +22,30 @@
         "Behavior domain equation F ~= [M -> (F x P(A x M))] (Clinger 1981 sec.IV.2, OCR-read)"
       ],
       "soundness": {
-        "obligations_covered": ["one event one fold", "complete Actions", "determinism"],
-        "evidence": ["crates/behavior-testkit/tests/core.rs drives single events and asserts complete Actions values"],
-        "validation": ["cargo nextest run --workspace (123/123) includes core.rs"]
+        "obligations_covered": [
+          "one event one fold",
+          "complete Actions",
+          "determinism"
+        ],
+        "evidence": [
+          "crates/behavior-testkit/tests/core.rs drives single events and asserts complete Actions values"
+        ],
+        "validation": [
+          "cargo nextest run --workspace (123/123) includes core.rs"
+        ]
       },
-      "derived_capabilities": ["core-transition", "become", "termination", "all others indirectly"],
+      "derived_capabilities": [
+        "core-transition",
+        "become",
+        "termination",
+        "all others indirectly"
+      ],
       "eliminability": {
         "attempted_signature": "(B, Event) -> Result<Actions, E> expressed without a transition function",
         "attempts": [
           {
             "approach": "Express behaviors as pure data (rule tables) interpreted by a generic engine",
-            "code_summary": "conceptual: enum Rule; fn interpret(rules, event) — the engine's interpret function is the fold",
+            "code_summary": "conceptual: enum Rule; fn interpret(rules, event) \u2014 the engine's interpret function is the fold",
             "obstruction": "The transition function reappears as the engine's interpreter; removal moves the primitive rather than eliminating it",
             "obstruction_kind": "semantic"
           }
@@ -45,8 +62,12 @@
       "name": "Typed event sums with extraction traits",
       "rust_type": "Closed event enums + trait UserEvent { fn user; fn into_user } (behavior.rs:361-375); lane traits TimeEvent/PeerEvent (protocol.rs:45-64)",
       "formation_rule": "A composed protocol is a closed sum; each variant belongs to exactly one lane; extraction is total and lossless (into_* returns the unchanged event on mismatch).",
-      "input_types": ["composed Event"],
-      "output_types": ["lane value or unchanged Event"],
+      "input_types": [
+        "composed Event"
+      ],
+      "output_types": [
+        "lane value or unchanged Event"
+      ],
       "operational_semantics": "Each wrapper pattern-matches its own lane, forwards the rest; nesting composes sums left-nested with canonical extraction order.",
       "classification": "bombay-derived",
       "laws": [
@@ -54,17 +75,28 @@
         "Lane preservation: no event dropped, duplicated, relabeled, or reordered through any supported wrapper nesting"
       ],
       "soundness": {
-        "obligations_covered": ["no lane loss", "exhaustive matching"],
-        "evidence": ["cross_lane.rs and two_buffer.rs proptests under randomized interleavings", "COMPOSE-* wrapper audits"],
-        "validation": ["cargo nextest run --workspace includes cross_lane/two_buffer"]
+        "obligations_covered": [
+          "no lane loss",
+          "exhaustive matching"
+        ],
+        "evidence": [
+          "cross_lane.rs and two_buffer.rs proptests under randomized interleavings",
+          "COMPOSE-* wrapper audits"
+        ],
+        "validation": [
+          "cargo nextest run --workspace includes cross_lane/two_buffer"
+        ]
       },
-      "derived_capabilities": ["protocol-sum", "all wrapper event lanes (deadline, receive-timeout, peer-observation, shutdown)"],
+      "derived_capabilities": [
+        "protocol-sum",
+        "all wrapper event lanes (deadline, receive-timeout, peer-observation, shutdown)"
+      ],
       "eliminability": {
         "attempted_signature": "Watching<B: Behavior<Msg = M>> taking the user message type directly, nested with Stashing<B>",
         "attempts": [
           {
             "approach": "Wrappers accept the inner event type directly instead of composing sums",
-            "code_summary": "struct Watching<B> { inner: B } with step(e: B::Event) — nesting Watching<Stashing<B>> forces Watching to know Stashing's concrete event type",
+            "code_summary": "struct Watching<B> { inner: B } with step(e: B::Event) \u2014 nesting Watching<Stashing<B>> forces Watching to know Stashing's concrete event type",
             "obstruction": "Wrapper nesting becomes order-locked and each wrapper must special-case every other wrapper's events; extensible composition impossible without sums",
             "obstruction_kind": "type"
           },
@@ -87,8 +119,12 @@
       "name": "Typed effect products with SendAlgebra monoid",
       "rust_type": "struct Actions<A, Ph, Sends, Birth> { sends, creates, become_ } (behavior.rs:320-325); struct SendProduct<L, R> (behavior.rs:112); trait SendAlgebra { empty; append } (behavior.rs:118-121)",
       "formation_rule": "A transition's effects form a product of independent seats; send seats form a monoid under append with empty unit; per-lane order retained, no cross-lane order.",
-      "input_types": ["lane values"],
-      "output_types": ["Actions product"],
+      "input_types": [
+        "lane values"
+      ],
+      "output_types": [
+        "Actions product"
+      ],
       "operational_semantics": "Effects are pure data until interpreted; lanes stay statically disjoint through wrapper composition.",
       "classification": "actor-model-law",
       "laws": [
@@ -97,13 +133,28 @@
         "SendAlgebra monoid laws (proptest send_algebra_is_a_monoid)"
       ],
       "soundness": {
-        "obligations_covered": ["complete Actions", "no lane drop/dup/reorder", "error seat preservation"],
-        "evidence": ["driver_accumulation.rs (monoid proptest, lossless accumulation through supervising)", "error_paths.rs"],
-        "validation": ["cargo nextest run --workspace includes driver_accumulation and error_paths"]
+        "obligations_covered": [
+          "complete Actions",
+          "no lane drop/dup/reorder",
+          "error seat preservation"
+        ],
+        "evidence": [
+          "driver_accumulation.rs (monoid proptest, lossless accumulation through supervising)",
+          "error_paths.rs"
+        ],
+        "validation": [
+          "cargo nextest run --workspace includes driver_accumulation and error_paths"
+        ]
       },
-      "derived_capabilities": ["typed-send", "send-products", "protocol-product", "creation", "controlled-error"],
+      "derived_capabilities": [
+        "typed-send",
+        "send-products",
+        "protocol-product",
+        "creation",
+        "controlled-error"
+      ],
       "eliminability": {
-        "attempted_signature": "Actions<A, Ph, Vec<Delivery<A, M>>, Birth> — a single merged send seat replacing SendProduct lanes",
+        "attempted_signature": "Actions<A, Ph, Vec<Delivery<A, M>>, Birth> \u2014 a single merged send seat replacing SendProduct lanes",
         "attempts": [
           {
             "approach": "Collapse all send lanes into one Vec<Delivery>",
@@ -125,18 +176,34 @@
       "rust_type": "Never (uninhabited enum) used for Ph/Error/Out/Child seats (exit.rs; behavior.rs NoBirths Child = Never)",
       "formation_rule": "An empty seat is typed with the uninhabited type, making inhabitants unconstructible.",
       "input_types": [],
-      "output_types": ["no values"],
-      "operational_semantics": "A behavior with Error = Never cannot fail; with Child = Never cannot create; with Ph = Never has no phases — all at compile time.",
+      "output_types": [
+        "no values"
+      ],
+      "operational_semantics": "A behavior with Error = Never cannot fail; with Child = Never cannot create; with Ph = Never has no phases \u2014 all at compile time.",
       "classification": "bombay-derived",
-      "laws": ["Uninhabited seats make illegal results unrepresentable (AGENTS.md static rule)"],
+      "laws": [
+        "Uninhabited seats make illegal results unrepresentable (AGENTS.md static rule)"
+      ],
       "soundness": {
-        "obligations_covered": ["illegal states unrepresentable", "compile-time capability absence"],
-        "evidence": ["algebra.rs:19-40 positive compile probes", "NoBirths behaviors cannot name Create"],
-        "validation": ["cargo nextest run --workspace includes algebra probes"]
+        "obligations_covered": [
+          "illegal states unrepresentable",
+          "compile-time capability absence"
+        ],
+        "evidence": [
+          "algebra.rs:19-40 positive compile probes",
+          "NoBirths behaviors cannot name Create"
+        ],
+        "validation": [
+          "cargo nextest run --workspace includes algebra probes"
+        ]
       },
-      "derived_capabilities": ["controlled-error (infallible behaviors)", "creation authority absence", "timer-generation (no-phase seats)"],
+      "derived_capabilities": [
+        "controlled-error (infallible behaviors)",
+        "creation authority absence",
+        "timer-generation (no-phase seats)"
+      ],
       "eliminability": {
-        "attempted_signature": "Acted<A, (), Sends, Birth, ()> — unit type in the error/phase seats",
+        "attempted_signature": "Acted<A, (), Sends, Birth, ()> \u2014 unit type in the error/phase seats",
         "attempts": [
           {
             "approach": "Use () for empty seats",
@@ -148,7 +215,7 @@
         "verdict": "primitive",
         "derived_from": [],
         "rationale": "Only an uninhabited type makes the empty seat unconstructible; aliases rename () and products/sums add inhabitants.",
-        "mechanical_probe": "type-level argument; the constructibility of Err(()) is directly checkable — scheduled as a mechanical probe (probe crate, expected clean compile demonstrating the hole)"
+        "mechanical_probe": "type-level argument; the constructibility of Err(()) is directly checkable \u2014 scheduled as a mechanical probe (probe crate, expected clean compile demonstrating the hole)"
       },
       "status": "retained"
     },
@@ -157,17 +224,34 @@
       "name": "BirthMode creation-capability type function",
       "rust_type": "trait BirthMode { type Child; } with NoBirths (Child = Never) and Births<C> (behavior.rs:290-303)",
       "formation_rule": "Each behavior carries a type-level function computing its creation authority; wrappers compute the composite authority.",
-      "input_types": ["component BirthMode seats"],
-      "output_types": ["composite Child type"],
+      "input_types": [
+        "component BirthMode seats"
+      ],
+      "output_types": [
+        "composite Child type"
+      ],
       "operational_semantics": "NoBirths behaviors cannot construct Create values at all; Births<C> behaviors emit Vec<Create<A, C>>.",
       "classification": "bombay-derived",
-      "laws": ["Creation authority composes through wrapper nesting (join of component authorities)"],
+      "laws": [
+        "Creation authority composes through wrapper nesting (join of component authorities)"
+      ],
       "soundness": {
-        "obligations_covered": ["creation capability static", "wrapper composition of authority"],
-        "evidence": ["algebra.rs:331 probes both modes", "COMPOSE-SUPERVISING authority propagation"],
-        "validation": ["cargo nextest run --workspace includes algebra probes"]
+        "obligations_covered": [
+          "creation capability static",
+          "wrapper composition of authority"
+        ],
+        "evidence": [
+          "algebra.rs:331 probes both modes",
+          "COMPOSE-SUPERVISING authority propagation"
+        ],
+        "validation": [
+          "cargo nextest run --workspace includes algebra probes"
+        ]
       },
-      "derived_capabilities": ["creation", "child-topology"],
+      "derived_capabilities": [
+        "creation",
+        "child-topology"
+      ],
       "eliminability": {
         "attempted_signature": "struct Actions<A, Ph, Sends, const CAN_CREATE: bool> or trait-bound marker WithBirths",
         "attempts": [
@@ -196,17 +280,36 @@
       "name": "Non-capturing function-pointer reactions",
       "rust_type": "type Transition<S, A, M, O, Br, E> = fn(&mut S, A, M) -> Acted<...> (behavior.rs:452-456); struct FnState (behavior.rs:456-470); reaction fn pointers in supervising.rs/watching.rs",
       "formation_rule": "Behavior fragments are stored as non-capturing fn pointers: Copy, statically dispatched, allocation-free.",
-      "input_types": ["&mut S, A, M"],
-      "output_types": ["Acted<A, Never, Vec<Delivery<A, O>>, Br, E>"],
+      "input_types": [
+        "&mut S, A, M"
+      ],
+      "output_types": [
+        "Acted<A, Never, Vec<Delivery<A, O>>, Br, E>"
+      ],
       "operational_semantics": "A reaction maps state + address + message to a transition result; no captured environment, hence no hidden state.",
       "classification": "bombay-derived",
-      "laws": ["No captures => no hidden state => determinism preserved"],
+      "laws": [
+        "No captures => no hidden state => determinism preserved"
+      ],
       "soundness": {
-        "obligations_covered": ["determinism", "static dispatch"],
-        "evidence": ["supervising.rs:83-86 reaction sites", "fn_state_adapter_drives_like_a_base test"],
-        "validation": ["cargo nextest run --workspace includes the adapter equivalence test"]
+        "obligations_covered": [
+          "determinism",
+          "static dispatch"
+        ],
+        "evidence": [
+          "supervising.rs:83-86 reaction sites",
+          "fn_state_adapter_drives_like_a_base test"
+        ],
+        "validation": [
+          "cargo nextest run --workspace includes the adapter equivalence test"
+        ]
       },
-      "derived_capabilities": ["supervision-strategy", "restart-policy", "linking", "worker-reporting"],
+      "derived_capabilities": [
+        "supervision-strategy",
+        "restart-policy",
+        "linking",
+        "worker-reporting"
+      ],
       "eliminability": {
         "attempted_signature": "Replace fn pointers with (a) boxed closures Box<dyn Fn...>, (b) generic closure seats, (c) small State/Behavior implementations as reaction objects",
         "attempts": [
@@ -218,21 +321,27 @@
           },
           {
             "approach": "Generic closure seats",
-            "code_summary": "Supervising<B, S, F: FnMut...> — one generic seat per reaction site",
+            "code_summary": "Supervising<B, S, F: FnMut...> \u2014 one generic seat per reaction site",
             "obstruction": "Arity growth beyond the frozen baseline (Supervising pinned at 2); every caller's types infected",
             "obstruction_kind": "type"
           },
           {
-            "approach": "Reaction objects: small State implementations instead of fn pointers",
-            "code_summary": "probe scheduled: implement a supervising reaction as a tiny Behavior/State impl and compare API weight and type surface",
-            "obstruction": "pending mechanical probe",
+            "approach": "Reaction objects: a FailureReaction<B> trait with small impls replacing fn pointers (generic seat per reaction site)",
+            "code_summary": "probes/fnreact/main.rs: trait FailureReaction<B> { fn react(&mut self, &mut B, &SupervisionFailure<B::Addr>) -> Result<Become<B::Addr>, B::Error> }; struct SupervisingWithGenericReaction<B, R: FailureReaction<B>> \u2014 compiles clean (cargo build, 2026-08-09)",
+            "obstruction": "Compiles, but every reaction site gains a public generic seat: Supervising arity 2 -> 3, violating the frozen generic-arity ratchet (baseline.json) and infecting every caller's types; trait impls may also carry fields, weakening the structural no-capture guarantee of fn pointers to a convention",
             "obstruction_kind": "type"
+          },
+          {
+            "approach": "Closed enum of built-in reactions (BuiltinReaction { Retire, Stop })",
+            "code_summary": "probes/fnreact/main.rs: enum BuiltinReaction + apply() dispatcher \u2014 compiles clean",
+            "obstruction": "User-defined supervision policies become unrepresentable: adding a policy requires editing the library enum \u2014 no user seat exists; this is an expressiveness counterexample (escalation policies are application-level and unbounded)",
+            "obstruction_kind": "semantic"
           }
         ],
         "verdict": "primitive",
         "derived_from": [],
-        "rationale": "Provisional: fn pointers are the current minimal static encoding; the reaction-object alternative is not yet mechanically excluded — if the probe shows reaction objects derive the same capabilities with no static loss, P-fnreact demotes to derived.",
-        "mechanical_probe": "SCHEDULED — first elimination experiment (probe crate with path dependency; record exact type signatures and any compiler errors)"
+        "rationale": "fn pointers are the unique encoding satisfying user-extensible reactions AND static dispatch AND frozen generic arities; the generic-seat derivation exists but fails the arity ratchet, the enum derivation fails expressiveness, and dyn fails the static-dispatch law.",
+        "mechanical_probe": "EXECUTED 2026-08-09: probes/fnreact/ (preserved in-repo); generic-seat alternative compiles but adds one public generic parameter per reaction site (ratchet violation); closed-enum alternative forecloses user policies; boxed closures banned by the static-dispatch law. Verdict confirmed: retained as primitive."
       },
       "status": "retained"
     },
@@ -241,8 +350,12 @@
       "name": "Higher-order behavior wrappers (as a category)",
       "rust_type": "At, ReceiveTimeout, Watching, Supervising/Proxy, Shutdown, Stashing, Fsm, Spec (deadlined.rs, receive_timeout.rs, watching.rs, supervising.rs, shutdown.rs, stashing.rs, fsm.rs, spec.rs)",
       "formation_rule": "A wrapper is a typed event/effect transformation Behavior -> Behavior with inner-first init and lane-preserving step.",
-      "input_types": ["inner Behavior + wrapper-specific configuration"],
-      "output_types": ["composed Behavior with widened Event sum and computed effect/capability seats"],
+      "input_types": [
+        "inner Behavior + wrapper-specific configuration"
+      ],
+      "output_types": [
+        "composed Behavior with widened Event sum and computed effect/capability seats"
+      ],
       "operational_semantics": "Each wrapper folds one event, routes its own lane, delegates the rest, and accumulates effects without dropping, duplicating, reordering, relabeling, or reinterpreting lanes.",
       "classification": "bombay-derived",
       "laws": [
@@ -250,11 +363,36 @@
         "Initialization order: inner first, then own effects (init_contract.rs 6/6)"
       ],
       "soundness": {
-        "obligations_covered": ["lane preservation", "init ordering", "error/termination seat preservation"],
-        "evidence": ["cross_lane.rs", "two_buffer.rs", "init_contract.rs", "error_paths.rs"],
-        "validation": ["cargo nextest run --workspace includes all cited suites"]
+        "obligations_covered": [
+          "lane preservation",
+          "init ordering",
+          "error/termination seat preservation"
+        ],
+        "evidence": [
+          "cross_lane.rs",
+          "two_buffer.rs",
+          "init_contract.rs",
+          "error_paths.rs"
+        ],
+        "validation": [
+          "cargo nextest run --workspace includes all cited suites"
+        ]
       },
-      "derived_capabilities": ["deadline", "receive-timeout", "stashing", "selective-receive", "finite-state", "shutdown", "finalization", "peer-observation", "child-observation", "supervision-strategy", "restart-policy", "restart-budget", "lifecycle-publication"],
+      "derived_capabilities": [
+        "deadline",
+        "receive-timeout",
+        "stashing",
+        "selective-receive",
+        "finite-state",
+        "shutdown",
+        "finalization",
+        "peer-observation",
+        "child-observation",
+        "supervision-strategy",
+        "restart-policy",
+        "restart-budget",
+        "lifecycle-publication"
+      ],
       "eliminability": {
         "attempted_signature": "Each concern inlined into user behaviors: fn step handles timer/watch/stash logic directly",
         "attempts": [

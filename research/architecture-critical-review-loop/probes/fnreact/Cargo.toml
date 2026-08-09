@@ -1,0 +1,10 @@
+[package]
+name = "probe-fnreact"
+version = "0.0.0"
+edition = "2021"
+
+[dependencies]
+behavior = { package = "bombay-behavior", path = "../../../crates/behavior" }
+
+[lints.clippy]
+all = "allow"
