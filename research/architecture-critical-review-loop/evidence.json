@@ -1416,9 +1416,9 @@
       "subject": "authoritative repository gates",
       "question": "Record exact successful nextest and nix flake check results plus focused gates.",
       "status": "resolved",
-      "decision": "Authoritative gates pass on the final tree (88a6706). cargo nextest run --workspace: 138 tests run, 138 passed, 0 skipped (bombay-behavior 31 + bombay-behavior-testkit 107, including 15 session-protocol-derivation-loop tests). nix flake check: all 7 aarch64-darwin checks pass (build, nextest, doc, fmt, toml-fmt, audit, deny). Architecture checker: SCORE 935, 67/67 obligations, 53/53 capabilities, artifact gate validates 13 entries, 53 derivations, 107 sources. Historical note: the first campaign run reported 123 tests (31 behavior + 92 testkit); the increase to 138 reflects the session-protocol-derivation-loop tests added in a separate campaign.",
+      "decision": "Authoritative gates pass on the final verified schema-v2 tree. cargo nextest run --workspace: 138 tests run, 138 passed, 0 skipped (bombay-behavior 31 + bombay-behavior-testkit 107, including 15 session-protocol-derivation-loop tests). nix flake check: all 7 aarch64-darwin checks pass (build, nextest, doc, fmt, toml-fmt, audit, deny). Architecture checker: SCORE 935, 67/67 obligations, 53/53 capabilities, artifact gate validates 13 entries, 53 derivations, 107 sources. Historical note: the first campaign run reported 123 tests (31 behavior + 92 testkit); the increase to 138 reflects the session-protocol-derivation-loop tests added in a separate campaign.",
       "evidence": [
-        "cargo nextest run --workspace on 2026-08-09 at 88a6706: 138 passed, 0 skipped",
+        "cargo nextest run --workspace on the final verified schema-v2 tree: 138 passed, 0 skipped",
         "nix flake check on 2026-08-09: all 7 aarch64-darwin checks pass",
         "check.sh: SCORE 935, artifact gate validates 13 entries, 53 derivations, 107 sources",
         "cargo test --doc -p bombay-behavior: 1 passed (compile_fail erased-effect-seat probe)"

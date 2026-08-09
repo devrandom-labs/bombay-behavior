@@ -3,7 +3,7 @@
 ## Status
 
 **LOOP_DONE.** First continuation batch complete. All six known
-resolved. Schema-v2 migration finished: independent status fields on all
+inconsistencies resolved. Schema-v2 migration finished: independent status fields on all
 13 primitives, check.sh artifact gate migrated, capability derivations and
 bibliography migrated to new IDs, REPORT.md updated with three-layer
 reclassification, four reopened obligations resolved, all five probes
