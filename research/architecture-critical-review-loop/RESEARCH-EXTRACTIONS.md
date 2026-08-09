@@ -725,3 +725,44 @@ capability extraction template from RESEARCH-SOURCES.md.
   bibliographic record.
 - Evidence location: REPORT.md foundational comparison table (Hewitt 1977
   row upgraded from record-level).
+
+## 23. Baker, Hewitt — Laws for Communicating Parallel Processes (MIT Working Paper 134, 1976 / IFIP 1977)
+
+- Bibliography: Carl Hewitt, Henry Baker. MIT AI Lab Working Paper 134,
+  November 1976 (draft); IFIP Congress 1977 proceedings, pp. 987–992.
+- Stable URL: MIT DSpace bitstream
+  <https://dspace.mit.edu/server/api/core/bitstreams/7cd0958c-80f9-4829-bda5-d6c01abd1e11/content>
+- Source tier: 1.
+- Read status: substantial — text layer extracted 2026-08-09; abstract,
+  actor concept, and the activation-ordering laws read directly.
+- Inclusion: semantic.
+- Primitive syntax/operations: actors are the only objects; interaction
+  only by sending a messenger (itself an actor) to a target; the only event
+  kind is receipt of a messenger by a target; on receipt a target may send
+  messengers to actors it knows; knowledge comes from inheritance (birth)
+  or acquisition via received messengers; immediate acquaintances
+  acquaintances(A) change over time; extended acquaintances defined
+  transitively; script determines behavior.
+- Operational assumptions: receipt-only events; per-receipt finite
+  behavior.
+- Laws/theorems (quoted from the text): the activation ordering ++> is a
+  partial order (causality); **Law of Discreteness** — between any two
+  causally related events only finitely many events intervene ("eliminates
+  Zeno machines"); **finite immediate successors** (finite branching per
+  event); **at most one immediate predecessor** per event; a **unique
+  initial event** convention.
+- Capability claims: laws are independent of the number of physical
+  processors; primitive actors defined via the activation ordering.
+- Bombay classification: LAW-level ordering foundation — causal activation
+  order, finite branching per transition (Bombay: finite sends/creates per
+  fold), single-predecessor per arrival (one sender event activates one
+  arrival), discreteness (no Zeno executions). The laws govern
+  configuration-level histories = interpreter/observation level; the fold
+  itself enforces finite branching structurally (finite `Vec` effects).
+- Candidate-basis impact: none; supplies the history-level laws that the
+  1981/1997 semantics later formalize denotationally/operationally.
+- Limitations: draft working paper read in place of the IFIP proceedings
+  version (identical content per the bibliographic record); later sections
+  (control-structure examples) not OCRed in detail.
+- Evidence location: REPORT.md foundational comparison table (Baker-Hewitt
+  row upgraded from record-level).
