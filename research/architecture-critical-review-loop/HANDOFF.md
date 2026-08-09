@@ -1,8 +1,8 @@
-# Partial calculus reclassification handoff
+# Calculus reclassification handoff — first continuation batch complete
 
 ## Status
 
-**First continuation batch COMPLETE.** All six known inconsistencies
+**LOOP_DONE.** First continuation batch complete. All six known
 resolved. Schema-v2 migration finished: independent status fields on all
 13 primitives, check.sh artifact gate migrated, capability derivations and
 bibliography migrated to new IDs, REPORT.md updated with three-layer
