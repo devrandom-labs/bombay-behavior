@@ -487,14 +487,18 @@ Method per ACTOR-RESEARCH-SURVEY.md, executed 2026-08-09 in this rerun:
    without a text layer, so it was read partially by OCR (tesseract via
    nix) of the actor-model, fairness, actor-behaviors, locality-laws, and
    conclusion sections — recorded as a partial read, not a complete one.
+   Greif 1975 MAC-TR-154 was located on MIT DSpace (handle 1721.1/57710)
+   and read via its OCR text layer (abstract, process/event model, actor
+   sections). The Charalambides 2018 PhD thesis was attempted through
+   IDEALS (item page HTTP 403, legacy bitstream 404, REST API 404) and the
+   Wayback Machine (SPA shell snapshot only) — it remains inaccessible and
+   is subsumed by the fully read FOCLASA 2012 text.
    Remaining limitations: Agha 1986 MIT
    Press book (CrossRef-verified monograph doi:10.7551/mitpress/1086.001.0001;
    content verified through the fully read 2001 chapter and AMST 1997);
    Agha-Thati LNCS 2635 2004 (paywalled; subsumed by Thati's 2003
    dissertation chapters 3-4, fully read); Talcott AFP 1996 "An Actor
    Algebra" (not directly accessible; subsumed by TACS 1997/HOSC 2000);
-   Greif 1975 MAC-TR-154 (not online; dispositioned through AMST 1997 §1.3.1
-   and the Greif-Hewitt POPL 1975 record doi:10.1145/512976.512984);
    Baker-Hewitt IFIP 1977 (record-level via Talcott's reference list);
    Hewitt 1977 AIJ (record-level, doi:10.1016/0004-3702(77)90033-9 verified
    by the prior campaign); Honda CONCUR 1993 / Honda-Vasconcelos-Kubo ESOP
@@ -577,7 +581,7 @@ exact relationship to Bombay's candidate basis.
 | Work | Primitives | Semantics | Equivalence/fairness | Transfer to Bombay |
 | --- | --- | --- | --- | --- |
 | Hewitt-Bishop-Steiger IJCAI 1973 (full text read) | message send to acquaintances; ANONYMOUS fresh names; receive via pattern match; continuations as actors | informal; per-actor scheduler/intention/banker hierarchies | actor induction over intentions | acquaintance addressing and freshness = LAW; scheduler/banker = interpreter structure |
-| Greif 1975 MAC-TR-154 (access-limited; via AMST §1.3.1 + POPL'75 record) | event diagrams: local events + causal relations | behavioral event structure | — | causal event view = interpreter trace concept; no fold-level transfer |
+| Greif 1975 MAC-TR-154 (read via the scan's OCR text layer: abstract, model, actor sections) | per-process total event orders; system = partial order containing their union; arrival events only | specification language over event orderings | no global clock — global-time specifications rejected as unrealizable | event-order view = LAW foundation; cross-actor order is observational (interpreter); supports keeping clocks out of the fold |
 | Baker-Hewitt IFIP 1977 (record-level) | ordering axioms for events | axiomatic | arrival-order laws later proved consistent by Clinger | ordering guarantees = interpreter policy; Bombay imposes no cross-lane order (law-consistent) |
 | Hewitt AIJ 1977 (record-level, DOI verified) | control structures as message-passing patterns; continuations | informal operational | — | evidence that control/state patterns are derived over sends — supports derived-form doctrine |
 | Clinger 1981 AI-TR-633 (partial OCR read of the scanned thesis: actor model, fairness, actor behaviors, locality laws, conclusion) | arrival events only (no sending events); mail-service asynchrony; behavior domain F ≅ [M → (F × P(A × M))]; script + acquaintance vector | denotational (power domains over incomplete domains) | fairness implies unbounded nondeterminism; powerdomain handles fairness; no equivalence notion (open in its conclusion) | the domain equation is the 1981 denotational statement of Bombay's fold shape; fairness = execution quantifier (interpreter row); locality laws = acquaintance LAW |

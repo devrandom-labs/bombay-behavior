@@ -637,3 +637,40 @@ capability extraction template from RESEARCH-SOURCES.md.
   sections.
 - Evidence location: REPORT.md post-2000 comparison table (Rebeca row
   upgraded from record-level).
+
+## 21. Greif — Semantics of Communicating Parallel Processes (MIT MAC-TR-154, 1975)
+
+- Bibliography: Irene Greif. PhD dissertation, MIT Project MAC, MAC-TR-154,
+  September 1975 (also DTIC ADA016302).
+- Stable URL: MIT DSpace handle <https://dspace.mit.edu/handle/1721.1/57710>
+  (bitstream downloaded 2026-08-09).
+- Source tier: 1.
+- Read status: substantial — the scan carries an OCR text layer (305 KB
+  extracted); abstract, model introduction, and actor-model sections read.
+- Inclusion: semantic.
+- Primitive syntax/operations: a process is a totally ordered set of events;
+  events represent the receiving of a message by an actor (arrival events);
+  system behavior = a partial order properly containing the union of the
+  processes' total orders; synchronization primitives and side-effect
+  primitives both induce the system ordering.
+- Operational assumptions: **no global clock** — specifications in terms of
+  an external global time ordering are rejected as possibly unrealizable;
+  only orderings derivable within the system count.
+- Laws/theorems: synchronization properties = guarantees that events can be
+  so partially ordered; a specification language whose program meanings are
+  behavior specifications of the compiled system.
+- Capability claims: applies equally to busy-waiting (shared cells) and
+  non-busy-waiting (semaphores, structured primitives) synchronization.
+- Bombay classification: LAW-level foundation for the event-ordering view
+  (per-actor total order of arrivals + causal partial order across actors);
+  the cross-actor ordering is observational/interpreter-level, consistent
+  with Bombay imposing no cross-lane send order; the no-global-clock
+  result supports keeping clocks out of the pure fold (timers are typed
+  inputs).
+- Candidate-basis impact: none; the earliest formal statement of the
+  event-order semantics that Clinger 1981 and AMST 1997 build on.
+- Limitations: OCR quality is imperfect (scan artifacts); the 1975 actor
+  model predates the become/create crisp formulation of Agha 1986, which
+  remains authoritative for the transition law.
+- Evidence location: REPORT.md foundational comparison table (Greif row
+  upgraded from access-limited).
