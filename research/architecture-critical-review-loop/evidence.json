@@ -1302,10 +1302,10 @@
       "status": "resolved",
       "decision": "N-fold clarified as transition-form (not a fourth effect). N-send, N-create, N-become are effect-primitives. Status vocabulary corrected: semantic_status uses primitive/derived/extension/not-applicable; representation_status uses required-encoding/preferred-encoding/derived-combinator/policy/not-applicable; public_api_status uses retain/reclassify/redesign/remove/not-public. B-fnreact reclassified (not demoted) \u2014 API remains. B-wrappers retain as derived combinators. Host-calculus entries (H-never/H-sums/H-products) use not-applicable for semantic and representation statuses (host type theory, not actor semantics or Bombay encoding).",
       "evidence": [
-        "primitive-basis.json schema_version=2 with 13 primitives across three layers: 4 actor-nucleus (law-primitive both semantically and representationally), 2 host-calculus + 1 bombay-derived that are representation primitives, 1 semantically/representationally derived but public-retained, 2 demoted",
-        "Independent status fields replace the conflated 'status' field: semantic_status, representation_status, public_api_status",
-        "Five mechanical probes preserved and verified: birthmode, fnreact, never (existing), products and wrappers (reconstructed 2026-08-09)",
-        "Formation rules verified against crates/behavior/src/behavior.rs for all 13 primitives"
+        "primitive-basis.json schema_version=2: 13 primitives across actor-nucleus (4: N-fold transition-form, N-send/N-create/N-become effect-primitives), host-calculus (3: H-never/H-sums/H-products, not-applicable), bombay-derived (4: B-stop extension, B-actions/B-extraction required-encoding, B-birthmode preferred-encoding, B-wrappers derived-combinator), bombay-policy (1: B-fnreact policy, reclassify)",
+        "Independent fields: semantic_status (primitive/derived/extension/not-applicable), representation_status (required-encoding/preferred-encoding/derived-combinator/policy/not-applicable), public_api_status (retain/reclassify/redesign/remove/not-public), role (transition-form/effect-primitive)",
+        "Five mechanical probes: birthmode, fnreact, never, products, wrappers (all compile and run)",
+        "Formation rules verified against crates/behavior/src/behavior.rs"
       ],
       "validation": [
         "check.sh artifact gate validates schema-v2 fields: layer, semantic_status, representation_status, public_api_status",
@@ -1314,7 +1314,8 @@
       ],
       "_previous_resolution": {
         "status": "resolved",
-        "decision": "Schema-v2 reclassification of the semantic nucleus completed. The actor transition law is realized by the four-construct actor-nucleus (N-fold, N-send, N-create, N-become). Host type-theory machinery is classified as host-calculus (H-never, H-sums, H-products). Bombay encodings and combinators are classified as bombay-derived or bombay-policy (B-actions, B-stop, B-extraction, B-birthmode, B-fnreact, B-wrappers). 13-entry basis across three independent layers, each with separate semantic_status (primitive/derived), representation_status (primitive/derived), and public_api_status (retained/demoted/removed)."
+        "decision": "Schema-v2 reclassification of the semantic nucleus completed. The actor transition law is realized by the four-construct actor-nucleus (N-fold, N-send, N-create, N-become). Host type-theory machinery is classified as host-calculus (H-never, H-sums, H-products). Bombay encodings and combinators are classified as bombay-derived or bombay-policy (B-actions, B-stop, B-extraction, B-birthmode, B-fnreact, B-wrappers). 13-entry basis across three independent layers, each with separate semantic_status (primitive/derived), representation_status (primitive/derived), and public_api_status (retained/demoted/removed).",
+        "_note": "HISTORICAL \u2014 superseded by current decision"
       }
     },
     {
@@ -1331,7 +1332,7 @@
         "Composition order evidence: watching.rs:25-66 both wrapper orders; supervising.rs:492-558 pure decision; shutdown.rs FinalizeOnShutdown retention"
       ],
       "validation": [
-        "cargo nextest run --workspace green (123/123) covering the cited suites",
+        "cargo nextest run --workspace green (138/138) covering the cited suites",
         "The soundness caveat is stated in the report: tests are implementation evidence; the correspondence column states why each test exercises the claimed law; the checker does not verify entailment",
         "No soundness obligation required a production change; every ratchet remains at baseline"
       ]
@@ -1342,7 +1343,7 @@
       "subject": "primitive eliminability and independence",
       "question": "For every candidate primitive, attempt a concrete derivation from the remaining basis and retain it as primitive only when exact type or semantic evidence proves a reusable obstruction.",
       "status": "resolved",
-      "decision": "Schema-v2 eliminability re-evaluated with independent semantic/representation dimensions. Four nucleus constructs (N-fold, N-send, N-create, N-become) remain semantically primitive by actor-model law. Six constructs (B-stop, B-actions, H-never, H-sums, H-products, B-extraction) are semantically derived but representation primitives: they are required for a sound, statically typed Rust encoding even though the actor model does not mandate them. B-birthmode is both semantically and representationally derived (from H-never + host associated types) but retained as canonical encoding. B-fnreact and B-wrappers are semantically and representationally derived, public_api demoted.",
+      "decision": "Schema-v2 eliminability re-evaluated with independent semantic/representation dimensions. N-fold: transition-form, semantic primitive, required-encoding, retain. N-send/N-create/N-become: effect-primitives, semantic primitive, required-encoding, retain. B-stop: Bombay extension, required-encoding, retain. B-actions: semantically derived, required-encoding, retain. H-never/H-sums/H-products: host-calculus assumptions; semantic and representation status not-applicable; public Rust items retained. B-extraction: semantically derived, required-encoding, retain. B-birthmode: semantically derived, preferred-encoding, retain (from H-never + host associated types). B-fnreact: semantically derived, representation policy, public API reclassified but retained. B-wrappers: semantically derived, representation derived-combinator, public retain (valuable derived combinators).",
       "evidence": [
         "B-stop: semantic derivation via AMST sink succeeds; retained as representation for interpreter-visible termination",
         "B-actions: underlying triple is law; disjoint-seat product is the minimal typed encoding demonstrated by products probe",
@@ -1380,7 +1381,8 @@
       ],
       "_previous_resolution": {
         "status": "resolved",
-        "decision": "Schema-v2 capability derivation trees migrated from old 7-construct basis to new 13-entry three-layer basis. 53 capability rows: all pure rows have derivation trees referencing retained primitives (N-fold, H-sums, H-products, H-never, B-birthmode, B-extraction, B-actions, B-stop); 20 rows that previously referenced demoted B-wrappers/B-fnreact now reference their retained derivations (N-fold + H-sums + H-products). Boundary rows unchanged. Closure remains qualified per PRIMITIVE-DERIVATION.md."
+        "decision": "Schema-v2 capability derivation trees migrated from old 7-construct basis to new 13-entry three-layer basis. 53 capability rows: all pure rows have derivation trees referencing retained primitives (N-fold, H-sums, H-products, H-never, B-birthmode, B-extraction, B-actions, B-stop); 20 rows that previously referenced demoted B-wrappers/B-fnreact now reference their retained derivations (N-fold + H-sums + H-products). Boundary rows unchanged. Closure remains qualified per PRIMITIVE-DERIVATION.md.",
+        "_note": "HISTORICAL \u2014 superseded by current decision"
       }
     },
     {
@@ -1397,13 +1399,15 @@
         "evidence.json: 4 reopened obligations updated to reflect schema-v2 reclassification"
       ],
       "validation": [
-        "check.sh artifact gate passes (13 primitives, 53 derivations, 107 sources)",
-        "check.sh first gate: 63/67 obligations resolved, 53/53 capabilities resolved, SCORE 895",
-        "Remaining: REPORT.md update to replace old seven-construct basis prose with schema-v2 reclassification"
+        "check.sh artifact gate passes (13 entries, 53 derivations, 107 sources)",
+        "check.sh first gate: 67/67 obligations resolved, 53/53 capabilities resolved, SCORE 935",
+        "REPORT.md schema-v2 section completed; HANDOFF.md final classification table in place; PROGRESS.md records full commit sequence",
+        "cargo nextest run --workspace: 138 passed, 0 skipped; nix flake check: 7/7 pass"
       ],
       "_previous_resolution": {
         "status": "resolved",
-        "decision": "Schema-v2 reclassification documented. REPORT.md requires update to reflect the 13-entry three-layer basis replacing the old seven-construct basis. evidence.json, primitive-basis.json, capability-derivations.json, research-bibliography.json, and check.sh all migrated to schema-v2. Five mechanical probes preserved. This obligation documents the migration state; REPORT.md update is the remaining artifact."
+        "decision": "Schema-v2 reclassification documented. REPORT.md requires update to reflect the 13-entry three-layer basis replacing the old seven-construct basis. evidence.json, primitive-basis.json, capability-derivations.json, research-bibliography.json, and check.sh all migrated to schema-v2. Five mechanical probes preserved. This obligation documents the migration state; REPORT.md update is the remaining artifact.",
+        "_note": "HISTORICAL \u2014 superseded by current decision"
       }
     },
     {
@@ -1412,14 +1416,15 @@
       "subject": "authoritative repository gates",
       "question": "Record exact successful nextest and nix flake check results plus focused gates.",
       "status": "resolved",
-      "decision": "Authoritative gates pass on the final tree, with the first report's numbers corrected: 'cargo nextest run --workspace' prints a single workspace summary - 123 tests run: 123 passed, 0 skipped - comprising bombay-behavior 31 (30 lib tests plus 1 receive_timeout integration test) and bombay-behavior-testkit 92. The first report's '154 (behavior 31 + testkit 123)' double-counted: 123 was already the workspace total, not the testkit subtotal. 'nix flake check' passes all 7 aarch64-darwin checks (build, nextest, doc, fmt, toml-fmt, audit, deny). Focused per-cluster nextest filters from the audit (algebra, boundaries, error_paths, supervision_model, compositions, cross_lane, workers_fleet, two_buffer, init_contract, receive_timeout, shutdown_model, stash_properties, fsm_properties, driver_accumulation, core) remain green and are subsumed by the two authoritative runs.",
+      "decision": "Authoritative gates pass on the final tree (88a6706). cargo nextest run --workspace: 138 tests run, 138 passed, 0 skipped (bombay-behavior 31 + bombay-behavior-testkit 107, including 15 session-protocol-derivation-loop tests). nix flake check: all 7 aarch64-darwin checks pass (build, nextest, doc, fmt, toml-fmt, audit, deny). Architecture checker: SCORE 935, 67/67 obligations, 53/53 capabilities, artifact gate validates 13 entries, 53 derivations, 107 sources. Historical note: the first campaign run reported 123 tests (31 behavior + 92 testkit); the increase to 138 reflects the session-protocol-derivation-loop tests added in a separate campaign.",
       "evidence": [
-        "cargo nextest run --workspace on 2026-08-08: 'Summary 123 tests run: 123 passed, 0 skipped'; cargo nextest list --workspace attributes 31 tests to bombay-behavior and 92 to bombay-behavior-testkit",
-        "nix flake check on 2026-08-08: checks.aarch64-darwin.bombay-behavior-{audit,fmt,deny,doc,toml-fmt,nextest} and bombay-behavior all pass",
+        "cargo nextest run --workspace on 2026-08-09 at 88a6706: 138 passed, 0 skipped",
+        "nix flake check on 2026-08-09: all 7 aarch64-darwin checks pass",
+        "check.sh: SCORE 935, artifact gate validates 13 entries, 53 derivations, 107 sources",
         "cargo test --doc -p bombay-behavior: 1 passed (compile_fail erased-effect-seat probe)"
       ],
       "validation": [
-        "research/architecture-critical-review-loop/check.sh exits 0 only after both 'cargo nextest run --workspace' and 'nix flake check' succeed on the committed tree",
+        "research/architecture-critical-review-loop/check.sh exits 0 only after both cargo nextest and nix flake check succeed",
         "Honest scope: these gates prove the tree builds, tests pass, and ratchets hold; they do not prove citation entailment or derivation-test relevance, which remain review obligations"
       ]
     }

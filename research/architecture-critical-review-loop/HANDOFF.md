@@ -16,11 +16,12 @@ cargo nextest 138/138, nix flake check 7/7.
 The questions in "Completion questions" below have been answered by the
 schema-v2 reclassification in REPORT.md and primitive-basis.json.
 
-## Resume rule
+## Resume / archival rule
 
-Continue from the current committed tree. Do not restart the literature survey,
-regenerate the artifacts, restore the old seven-item basis, or resolve reopened
-obligations merely because the old checker once passed.
+Do not resume unless a concrete new defect or derivation counterexample is
+found. Preserve the completed corpus. Reopen specific obligations rather
+than restarting the survey. The schema-v2 reclassification, capability
+derivations, five probes, and all gates are final.
 
 Read, in order:
 

@@ -16,8 +16,12 @@
      CALCULUS-CLOSURE, DOC-01) resolved with schema-v2 decisions.
 - Gates: check.sh EXIT=0 SCORE=935, 67/67 obligations, 53/53 capabilities,
   cargo nextest 138/138, nix flake check 7/7.
-- Two commits: 9e84727 (recovery/schema checkpoint), 9c772d5 (HANDOFF.md finalize),
-  8938d69 (LOOP_DONE marker).
+- Five commits:
+  9e84727 — recovery/schema checkpoint
+  9c772d5 — handoff finalization
+  8938d69 — initial LOOP_DONE marker
+  e1c22b2 — progress completion marker
+  88a6706 — final status-vocabulary and derivation-truthfulness correction
 - Zero production changes. All ratchets at baseline.
 ## 2026-08-08 — independent review reopened the campaign
 
