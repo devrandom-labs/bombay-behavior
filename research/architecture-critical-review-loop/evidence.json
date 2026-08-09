@@ -1299,7 +1299,7 @@
       "category": "calculus",
       "subject": "semantic nucleus and candidate primitive basis",
       "question": "State the actor transition nucleus, give formation and operational rules for every candidate primitive, and classify each as law, Bombay derivation, or Bombay policy.",
-      "status": "resolved",
+      "status": "pending",
       "decision": "Semantic nucleus stated at the law level: (behavior, one typed communication) -> (typed communications, fresh creation requests, next behavior or stop); one isolated turn per event; effects are data until interpreted. Candidate basis fixed as seven constructs: (1) pure fold (Behavior/State, behavior.rs:389-431); (2) typed sums + extraction traits (UserEvent/TimeEvent/PeerEvent, protocol.rs:45-64); (3) typed products + SendAlgebra monoid (Actions behavior.rs:320-325, SendProduct behavior.rs:112, monoid behavior.rs:118-121); (4) Never uninhabited seats; (5) BirthMode creation capability (behavior.rs:290-303); (6) function-pointer reactions (Transition/FnState behavior.rs:452-470); (7) higher-order wrappers as a category (At, ReceiveTimeout, Watching, Supervising/Proxy, Shutdown, Stashing, Fsm, Spec). Each carries formation rule, I/O types, fold semantics, LAW/BOMBAY-DERIVED/BOMBAY-POLICY classification, applicable laws, a derived capability, and an eliminability verdict in REPORT.md '## Candidate primitive basis'.",
       "evidence": [
         "REPORT.md '## Candidate primitive basis' worksheet with all PRIMITIVE-DERIVATION.md columns for the seven candidates",
@@ -1336,7 +1336,7 @@
       "category": "calculus",
       "subject": "primitive eliminability and independence",
       "question": "For every candidate primitive, attempt a concrete derivation from the remaining basis and retain it as primitive only when exact type or semantic evidence proves a reusable obstruction.",
-      "status": "resolved",
+      "status": "pending",
       "decision": "Independence experiment performed for all seven candidates (REPORT.md '## Primitive eliminability'). Results: (1) fold \u2014 irreducible (any data encoding reintroduces a transition function; semantic obstruction). (2) sums+extraction \u2014 irreducible (no row types in Rust; direct-event attempt order-locks wrapper nesting; erasure banned and compile-fail-verified). (3) products+SendAlgebra \u2014 irreducible (single-lane attempt makes out-of-lane sends representable; static-safety obstruction; monoid laws proptest-verified). (4) Never \u2014 irreducible (() is inhabited; Err(())/Goto(()) constructible; exact type evidence). (5) BirthMode \u2014 irreducible (flag is runtime-only; trait bounds cannot compute the capability join through wrapper composition). (6) fn-pointer reactions \u2014 irreducible (closures force Box<dyn Fn> or arity-ratchet violations; baseline freezes Supervising at 2). (7) wrapper category \u2014 irreducible as composition mechanism (per-behavior inlining loses the proved mixed-order guarantees); each concrete wrapper is derived. No candidate derivable from the other six; no surveyed capability required an eighth. Consistent with the research line deriving language features over the nucleus (2001 translation, SAL 2003/2004, encyclopedia doctrine 2011).",
       "evidence": [
         "REPORT.md '## Primitive eliminability' records per-candidate desired signature, concrete attempt, exact obstruction (type/compiler/semantic), and why aliases/sums/products/generics/higher-order transforms do not resolve it",
@@ -1355,7 +1355,7 @@
       "category": "calculus",
       "subject": "capability derivation trees and qualified closure",
       "question": "Give a derivation tree from the retained basis for every surveyed pure capability, explicit boundary judgments for non-pure rows, and a closure claim qualified by taxonomy and unresolved limitations.",
-      "status": "resolved",
+      "status": "pending",
       "decision": "Derivation trees delivered for all 53 capability rows in REPORT.md '## Capability derivation trees': each pure row has a tree from concrete sums/products/wrappers to the seven-construct basis; each non-pure row carries an explicit boundary judgment with its recorded algebraic obstruction (backpressure: queue depth unobservable in a one-event fold; fairness: quantifies over executions; persistence/durable-state/remoting/serialization: outside the effect triple; failure-detection: configuration-level model; location-transparency/security-capability: service/minting boundaries). Closure claim is qualified exactly as PRIMITIVE-DERIVATION.md requires: relative to the documented 2026-08-09 literature search and the 53-row taxonomy; three rows remain partially represented (protocol-session, security-capability, location-transparency) with no demonstrated algebraic obstruction and therefore no proposed primitive; equivalence-level results (may testing, axiomatizations) are cited as model-level context, not re-proved for the typed realization.",
       "evidence": [
         "REPORT.md '## Capability derivation trees' lists one tree per matrix row (33 pure rows with basis item references; 20 boundary rows with obstructions) plus the qualified closure claim",
@@ -1374,7 +1374,7 @@
       "category": "synthesis",
       "subject": "target architecture evidence",
       "question": "Record every obligation, before/after metric, decision, dead end, and remaining risk.",
-      "status": "resolved",
+      "status": "pending",
       "decision": "Documentation re-issued after independent review. REPORT.md preserves the first run's '## Actor behavior algebra evidence' section as history and appends a superseding 'Reopened review resolution' section that: includes the checker-derived disposition line exactly as printed (existing=26, derived=8, interpreter=13, application=6, new-primitive=0, rejected=0); explains every changed disposition (security-capability and location-transparency derived->interpreter; protocol-session claim narrowed, disposition unchanged); corrects the verification record (cargo nextest run --workspace reports 123 tests total across both binaries - bombay-behavior 31, bombay-behavior-testkit 92 - not 154); describes check.sh truthfully as a structural/ratchet/repository gate; and states which capabilities remain only partially represented. All 61 obligation IDs remain present in the report.",
       "evidence": [
         "research/architecture-critical-review-loop/REPORT.md contains both the historical evidence section and the superseding resolution section with all 61 obligation IDs (checker-verified substring presence)",

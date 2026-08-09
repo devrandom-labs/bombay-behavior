@@ -1,5 +1,27 @@
 # Loop progress
 
+## 2026-08-09 — schema-v2 reclassification paused for model handoff
+
+- Status is intentionally PARTIAL; see `HANDOFF.md` before resuming.
+- Independent review rejected the old seven-item basis as category-confused:
+  actor-semantic primitives, host type machinery, and Bombay/Rust encodings
+  were mixed together.
+- `primitive-basis.json` now contains a provisional three-layer, 13-entry
+  reclassification. Function-pointer reactions and wrappers are demoted as
+  semantic primitives; actor send/create/become and the transition form are
+  separated from host sums/products/empty type and Bombay encodings.
+- `CALCULUS-NUCLEUS`, `CALCULUS-MINIMALITY`, `CALCULUS-CLOSURE`, and `DOC-01`
+  are reopened and pending. The earlier 67/67 result is historical, not current
+  completion evidence.
+- Last committed experiment: product-lane probe result at `fc6b086`.
+- Known incomplete work: truthful preservation or downgrade of products and
+  wrappers probe claims; independent semantic/representation/public statuses;
+  schema-v2 checker migration; capability ID migration; report/evidence
+  rewrite; production-representation adequacy evaluation.
+- No production code changes are authorized by this partial classification.
+- The handoff is committed so another model can continue without repeating the
+  completed literature survey.
+
 ## 2026-08-08 — independent review reopened the campaign
 
 - The prior 53/53 closure is historical, not current.
