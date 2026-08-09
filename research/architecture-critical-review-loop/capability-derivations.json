@@ -1,7 +1,7 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "campaign": "behavior-architecture-critical-review",
-  "rule": "Pure rows carry derivation trees referencing retained primitive IDs; interpreter/application rows carry explicit boundary arguments, never fake derivations.",
+  "rule": "Pure rows carry derivation trees referencing retained primitive IDs; interpreter/application rows carry explicit boundary arguments, never fake derivations. Primitive IDs use schema-v2 naming: N-* (nucleus), H-* (host calculus), B-* (Bombay).",
   "capabilities": [
     {
       "id": "core-transition",
@@ -9,7 +9,7 @@
       "derivation": {
         "tree": "core-transition <- Behavior::step one-event fold <- [P-fold]",
         "primitive_refs": [
-          "P-fold"
+          "N-fold"
         ],
         "event_sums": "single Event type (user lane at minimum)",
         "effect_products": "Actions product returned as data",
@@ -30,8 +30,8 @@
       "derivation": {
         "tree": "become <- Step::Continue/Goto verdict inside Actions.become_ <- [P-fold, P-products]",
         "primitive_refs": [
-          "P-fold",
-          "P-products"
+          "N-fold",
+          "H-products"
         ],
         "event_sums": "any",
         "effect_products": "become_ seat of Actions",
@@ -52,8 +52,8 @@
       "derivation": {
         "tree": "termination <- Step::Stop(Exit<A>) <- [P-fold, P-products]",
         "primitive_refs": [
-          "P-fold",
-          "P-products"
+          "N-fold",
+          "H-products"
         ],
         "event_sums": "any",
         "effect_products": "become_ seat carries Stop",
@@ -74,8 +74,8 @@
       "derivation": {
         "tree": "typed-send <- Recipient<A,M> values in Delivery lanes <- [P-products, P-sums]",
         "primitive_refs": [
-          "P-products",
-          "P-sums"
+          "H-products",
+          "H-sums"
         ],
         "event_sums": "message type M tied to Recipient",
         "effect_products": "sends seat (Vec<Delivery> or SendProduct)",
@@ -96,7 +96,7 @@
       "derivation": {
         "tree": "send-products <- SendProduct<L,R> monoid nesting <- [P-products]",
         "primitive_refs": [
-          "P-products"
+          "H-products"
         ],
         "event_sums": "n/a (effect side)",
         "effect_products": "SendProduct lanes with empty/append",
@@ -117,9 +117,9 @@
       "derivation": {
         "tree": "creation <- Create staged data + BirthMode authority <- [P-products, P-never, P-birthmode]",
         "primitive_refs": [
-          "P-products",
-          "P-never",
-          "P-birthmode"
+          "H-products",
+          "H-never",
+          "B-birthmode"
         ],
         "event_sums": "n/a (effect side)",
         "effect_products": "creates seat: Vec<Create<A, Child>>",
@@ -140,9 +140,10 @@
       "derivation": {
         "tree": "child-topology <- nonce-routed children + ChildStopped observation <- [P-products, P-birthmode, P-wrappers]",
         "primitive_refs": [
-          "P-products",
-          "P-birthmode",
-          "P-wrappers"
+          "B-birthmode",
+          "H-products",
+          "H-sums",
+          "N-fold"
         ],
         "event_sums": "ChildStopped lane in event sum",
         "effect_products": "creates + observation sends",
@@ -163,7 +164,7 @@
       "derivation": {
         "tree": "behavior-delegation <- become to a behavior value holding another behavior <- [P-fold]",
         "primitive_refs": [
-          "P-fold"
+          "N-fold"
         ],
         "event_sums": "any",
         "effect_products": "become_ seat",
@@ -184,8 +185,8 @@
       "derivation": {
         "tree": "forwarding <- fold re-emits event payload as a send to another Recipient <- [P-fold, P-products]",
         "primitive_refs": [
-          "P-fold",
-          "P-products"
+          "N-fold",
+          "H-products"
         ],
         "event_sums": "user lane",
         "effect_products": "sends seat",
@@ -206,7 +207,7 @@
       "derivation": {
         "tree": "protocol-sum <- closed event enums + extraction traits <- [P-sums]",
         "primitive_refs": [
-          "P-sums"
+          "H-sums"
         ],
         "event_sums": "closed sum of lane variants",
         "effect_products": "n/a",
@@ -227,8 +228,8 @@
       "derivation": {
         "tree": "protocol-product <- independent lane products via SendProduct + event pairs <- [P-products, P-sums]",
         "primitive_refs": [
-          "P-products",
-          "P-sums"
+          "H-products",
+          "H-sums"
         ],
         "event_sums": "paired sums",
         "effect_products": "paired products",
@@ -249,8 +250,9 @@
       "derivation": {
         "tree": "initialization <- Behavior::init with inner-first wrapper composition <- [P-fold, P-wrappers]",
         "primitive_refs": [
-          "P-fold",
-          "P-wrappers"
+          "H-products",
+          "H-sums",
+          "N-fold"
         ],
         "event_sums": "init effects use the same lanes",
         "effect_products": "init Actions product",
@@ -271,8 +273,8 @@
       "derivation": {
         "tree": "controlled-error <- typed Error seat; Never when infallible <- [P-fold, P-never]",
         "primitive_refs": [
-          "P-fold",
-          "P-never"
+          "N-fold",
+          "H-never"
         ],
         "event_sums": "n/a",
         "effect_products": "Result<Actions, Error>",
@@ -293,9 +295,9 @@
       "derivation": {
         "tree": "deadline <- At wrapper + ScheduleAt lane + (TimerId, TimerGeneration) <- [P-wrappers, P-sums, P-products]",
         "primitive_refs": [
-          "P-wrappers",
-          "P-sums",
-          "P-products"
+          "H-products",
+          "H-sums",
+          "N-fold"
         ],
         "event_sums": "TimerElapsed lane added to event sum",
         "effect_products": "ScheduleAt in sends product",
@@ -316,9 +318,9 @@
       "derivation": {
         "tree": "receive-timeout <- ReceiveTimeout wrapper; rearm only on successful continuing folds <- [P-wrappers, P-sums, P-products]",
         "primitive_refs": [
-          "P-wrappers",
-          "P-sums",
-          "P-products"
+          "H-products",
+          "H-sums",
+          "N-fold"
         ],
         "event_sums": "timeout lane in event sum",
         "effect_products": "ScheduleAfter in sends product",
@@ -339,8 +341,8 @@
       "derivation": {
         "tree": "timer-generation <- (TimerId, TimerGeneration) typed pairs <- [P-products, P-never]",
         "primitive_refs": [
-          "P-products",
-          "P-never"
+          "H-products",
+          "H-never"
         ],
         "event_sums": "timer lanes",
         "effect_products": "schedule products",
@@ -361,8 +363,9 @@
       "derivation": {
         "tree": "selective-receive <- enabled-set filtering via Stashing <- [P-wrappers, P-sums] (MT 1997 theorem: constraints derived)",
         "primitive_refs": [
-          "P-wrappers",
-          "P-sums"
+          "H-products",
+          "H-sums",
+          "N-fold"
         ],
         "event_sums": "filter over the event sum",
         "effect_products": "stash buffer held in wrapper state",
@@ -383,8 +386,9 @@
       "derivation": {
         "tree": "stashing <- Stashing wrapper: single FIFO buffer + replay <- [P-wrappers, P-sums]",
         "primitive_refs": [
-          "P-wrappers",
-          "P-sums"
+          "H-products",
+          "H-sums",
+          "N-fold"
         ],
         "event_sums": "stash control lane",
         "effect_products": "held events re-presented to inner",
@@ -405,8 +409,9 @@
       "derivation": {
         "tree": "finite-state <- Fsm phases over receive+become <- [P-wrappers, P-fold]",
         "primitive_refs": [
-          "P-wrappers",
-          "P-fold"
+          "H-products",
+          "H-sums",
+          "N-fold"
         ],
         "event_sums": "Move sum (To/Go) per phase",
         "effect_products": "phase transition verdicts",
@@ -427,9 +432,9 @@
       "derivation": {
         "tree": "shutdown <- Shutdown typed lane + FinalizeOnShutdown <- [P-wrappers, P-sums, P-products]",
         "primitive_refs": [
-          "P-wrappers",
-          "P-sums",
-          "P-products"
+          "H-products",
+          "H-sums",
+          "N-fold"
         ],
         "event_sums": "shutdown lane in event sum",
         "effect_products": "final fold's sends+creates retained; verdict overridden",
@@ -450,8 +455,9 @@
       "derivation": {
         "tree": "finalization <- shutdown-lane final fold effect retention <- [P-wrappers, P-products]",
         "primitive_refs": [
-          "P-wrappers",
-          "P-products"
+          "H-products",
+          "H-sums",
+          "N-fold"
         ],
         "event_sums": "shutdown lane",
         "effect_products": "retained final Actions",
@@ -472,8 +478,9 @@
       "derivation": {
         "tree": "peer-observation <- Watching wrapper: ObservePeer/PeerStopped lanes <- [P-wrappers, P-sums]",
         "primitive_refs": [
-          "P-wrappers",
-          "P-sums"
+          "H-products",
+          "H-sums",
+          "N-fold"
         ],
         "event_sums": "peer lanes in event sum",
         "effect_products": "observation requests in sends product",
@@ -494,8 +501,9 @@
       "derivation": {
         "tree": "child-observation <- Supervising ChildStopped lane <- [P-wrappers, P-sums]",
         "primitive_refs": [
-          "P-wrappers",
-          "P-sums"
+          "H-products",
+          "H-sums",
+          "N-fold"
         ],
         "event_sums": "child lanes in event sum",
         "effect_products": "child observation in products",
@@ -516,8 +524,9 @@
       "derivation": {
         "tree": "worker-reporting <- typed report lanes toward supervisor <- [P-products, P-wrappers]",
         "primitive_refs": [
-          "P-products",
-          "P-wrappers"
+          "H-products",
+          "H-sums",
+          "N-fold"
         ],
         "event_sums": "report lane in sums",
         "effect_products": "report sends in products",
@@ -538,8 +547,9 @@
       "derivation": {
         "tree": "linking <- LinkReaction fn-pointer per peer death <- [P-fnreact, P-wrappers]",
         "primitive_refs": [
-          "P-fnreact",
-          "P-wrappers"
+          "H-products",
+          "H-sums",
+          "N-fold"
         ],
         "event_sums": "peer death lane",
         "effect_products": "reaction verdicts",
@@ -560,8 +570,9 @@
       "derivation": {
         "tree": "supervision-strategy <- strategy/policy as data + fn reactions (supervising.rs:492-558 pure decision) <- [P-fnreact, P-wrappers]",
         "primitive_refs": [
-          "P-fnreact",
-          "P-wrappers"
+          "H-products",
+          "H-sums",
+          "N-fold"
         ],
         "event_sums": "failure lanes",
         "effect_products": "restart directives as data",
@@ -582,8 +593,9 @@
       "derivation": {
         "tree": "restart-policy <- RestartDecision fn + policy data <- [P-fnreact, P-wrappers]",
         "primitive_refs": [
-          "P-fnreact",
-          "P-wrappers"
+          "H-products",
+          "H-sums",
+          "N-fold"
         ],
         "event_sums": "failure lanes",
         "effect_products": "restart directive products",
@@ -604,8 +616,9 @@
       "derivation": {
         "tree": "restart-budget <- budget counters in wrapper state <- [P-wrappers, P-fold]",
         "primitive_refs": [
-          "P-wrappers",
-          "P-fold"
+          "H-products",
+          "H-sums",
+          "N-fold"
         ],
         "event_sums": "failure lanes",
         "effect_products": "n/a",
@@ -626,8 +639,9 @@
       "derivation": {
         "tree": "replacement-provenance <- CreationKind carried verbatim through wrappers <- [P-products, P-wrappers]",
         "primitive_refs": [
-          "P-products",
-          "P-wrappers"
+          "H-products",
+          "H-sums",
+          "N-fold"
         ],
         "event_sums": "n/a",
         "effect_products": "CreationKind in creates seat",
@@ -648,7 +662,7 @@
       "derivation": {
         "tree": "routing <- Route/MailAddr values; nonce correlation <- [P-products]",
         "primitive_refs": [
-          "P-products"
+          "H-products"
         ],
         "event_sums": "n/a",
         "effect_products": "routes in sends",
@@ -669,8 +683,9 @@
       "derivation": {
         "tree": "request-reply <- continuation Recipient + stash buffering (Thati MS ch.5; Karmani-Agha 2011 IV-A) <- [P-products, P-wrappers]",
         "primitive_refs": [
-          "P-products",
-          "P-wrappers"
+          "H-products",
+          "H-sums",
+          "N-fold"
         ],
         "event_sums": "reply lane in sums",
         "effect_products": "request sends + buffered non-replies",
@@ -691,7 +706,7 @@
       "derivation": {
         "tree": "correlation <- nonce/token fields inside typed messages <- [P-products]",
         "primitive_refs": [
-          "P-products"
+          "H-products"
         ],
         "event_sums": "token fields in message types",
         "effect_products": "n/a",
@@ -712,8 +727,9 @@
       "derivation": {
         "tree": "protocol-session <- Fsm finite-state sequencing (PARTIAL) <- [P-wrappers, P-fold]",
         "primitive_refs": [
-          "P-wrappers",
-          "P-fold"
+          "H-products",
+          "H-sums",
+          "N-fold"
         ],
         "event_sums": "Move sums per phase",
         "effect_products": "phase verdicts",
@@ -734,8 +750,9 @@
       "derivation": {
         "tree": "lifecycle-publication <- observation lanes (PeerStopped/ChildStopped) <- [P-wrappers, P-sums]",
         "primitive_refs": [
-          "P-wrappers",
-          "P-sums"
+          "H-products",
+          "H-sums",
+          "N-fold"
         ],
         "event_sums": "lifecycle lanes in sums",
         "effect_products": "observation products",

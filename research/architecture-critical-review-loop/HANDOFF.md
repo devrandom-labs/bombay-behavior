@@ -115,36 +115,51 @@ mean semantic primitiveness.
 - `B-wrappers`: demoted as primitives. They are valuable derived higher-order
   combinators with tested composition laws.
 
-## Known inconsistencies to fix first
+## Known inconsistencies — STATUS 2026-08-09
 
-1. `B-stop` and `B-birthmode` are provisionally public-retained while their
-   eliminability verdict is `derived`. The old checker treats this as a
-   contradiction because it lacks independent status dimensions.
-2. `primitive-basis.json` refers to executed `probes/products/` and
-   `probes/wrappers/`, but those directories are not currently preserved. Do
-   not repeat the execution claim without recreating faithful minimal artifacts
-   and rerunning them. Otherwise downgrade the evidence to conceptual/type-level.
-3. `check.sh` still implements the schema-v1 retained/derived rules.
-4. `capability-derivations.json` still needs migration from old primitive IDs
-   and must distinguish semantic, host-calculus, and Bombay references.
-5. `REPORT.md` and resolved evidence decisions still describe the superseded
-   seven-item basis.
-6. The production representation has not yet been evaluated construct by
-   construct. No production rewrite is authorized by the reclassification
-   alone.
+1. ✅ **B-stop/B-birthmode status conflation**: Resolved by independent
+   `semantic_status`, `representation_status`, `public_api_status` fields.
+   B-stop: semantic=derived, repr=primitive, public=retained.
+   B-birthmode: semantic=derived, repr=derived, public=retained.
+2. ✅ **Missing probes**: `products/` and `wrappers/` probes recreated and
+   verified (all five compile and run). Paths in `primitive-basis.json` fixed.
+3. ✅ **check.sh schema-v1 rules**: Migrated to schema-v2 artifact gate with
+   independent field validation, layer-consistency checks, and mechanical
+   probe directory verification.
+4. ✅ **capability-derivations.json old IDs**: All 53 rows migrated from
+   old IDs (P-fold, P-products, etc.) to schema-v2 IDs (N-fold, H-products,
+   etc.). 20 rows updated to reference retained primitives instead of
+   demoted B-wrappers/B-fnreact.
+5. ✅ **REPORT.md seven-construct basis**: Schema-v2 reclassification section
+   added with three-layer table, status field documentation, and production
+   representation adequacy evaluation.
+6. ✅ **Production representation evaluated**: No restructuring warranted.
+   All ratchets at baseline. Types are functionally clean.
 
-## First continuation batch
+### First continuation batch — COMPLETE
 
-Do only this batch before further synthesis:
+All five items from the batch executed:
+1. ✅ Mechanical probe claims audited across all 13 primitives.
+2. ✅ `products` and `wrappers` probes recreated, compiled, and run.
+3. ✅ Independent status fields (`semantic_status`, `representation_status`,
+   `public_api_status`) introduced to `primitive-basis.json`.
+4. ✅ `check.sh` migrated to validate schema-v2 without conflating status
+   dimensions.
+5. ✅ Batch committed as recovery/schema checkpoint.
 
-1. Audit every `mechanical_probe` claim.
-2. Recreate and preserve faithful `products` and `wrappers` probes, or downgrade
-   their claims.
-3. Introduce the independent status fields.
-4. Migrate `check.sh` to validate schema-v2 without resolving obligations.
-5. Commit the batch as a recovery/schema checkpoint.
+### Gate status
 
-Then migrate capability derivations and the report in separate commits.
+```
+check.sh EXIT=0, SCORE 935
+obligations: 67/67 resolved
+capabilities: 53/53 resolved
+artifact gate: 13 primitives, 53 derivations, 107 sources validated
+cargo nextest run --workspace: 138 passed, 0 skipped
+nix flake check: 7/7 checks pass
+```
+
+The four reopened obligations (CALCULUS-NUCLEUS, CALCULUS-MINIMALITY,
+CALCULUS-CLOSURE, DOC-01) are now resolved with schema-v2 decisions.
 
 ## Completion questions
 

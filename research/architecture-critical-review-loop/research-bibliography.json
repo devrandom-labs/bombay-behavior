@@ -42,8 +42,8 @@
         "pre-operational-semantics"
       ],
       "supports_primitive_claims": [
-        "P-fold",
-        "P-products"
+        "N-fold",
+        "H-products"
       ]
     },
     {
@@ -71,7 +71,7 @@
         "OCR text layer of a scan; predates become/create formulation"
       ],
       "supports_primitive_claims": [
-        "P-fold"
+        "N-fold"
       ]
     },
     {
@@ -103,8 +103,8 @@
         "draft read in place of proceedings version"
       ],
       "supports_primitive_claims": [
-        "P-fold",
-        "P-products"
+        "N-fold",
+        "H-products"
       ]
     },
     {
@@ -132,7 +132,7 @@
         "OCR of memo version; journal version paywalled, content identical per record"
       ],
       "supports_primitive_claims": [
-        "P-fold"
+        "N-fold"
       ]
     },
     {
@@ -161,8 +161,8 @@
         "pure image scan; key sections read by OCR; no equivalence notion defined"
       ],
       "supports_primitive_claims": [
-        "P-fold",
-        "P-products"
+        "N-fold",
+        "H-products"
       ]
     },
     {
@@ -270,9 +270,9 @@
         "untyped"
       ],
       "supports_primitive_claims": [
-        "P-fold",
-        "P-products",
-        "P-sums"
+        "N-fold",
+        "H-products",
+        "H-sums"
       ]
     },
     {
@@ -326,7 +326,7 @@
       ],
       "limitations": [],
       "supports_primitive_claims": [
-        "P-wrappers"
+        "B-wrappers"
       ]
     },
     {
@@ -355,8 +355,8 @@
         "interaction-level, not testing-equivalence transfer"
       ],
       "supports_primitive_claims": [
-        "P-sums",
-        "P-wrappers"
+        "H-sums",
+        "B-wrappers"
       ]
     },
     {
@@ -387,8 +387,8 @@
         "untyped lambda base"
       ],
       "supports_primitive_claims": [
-        "P-fold",
-        "P-sums"
+        "N-fold",
+        "H-sums"
       ]
     },
     {
@@ -420,7 +420,7 @@
         "types govern names, not payloads"
       ],
       "supports_primitive_claims": [
-        "P-products"
+        "H-products"
       ]
     },
     {
@@ -452,7 +452,7 @@
         "Bombay exposes address equality; only the match-capable variant transfers"
       ],
       "supports_primitive_claims": [
-        "P-products"
+        "H-products"
       ]
     },
     {
@@ -481,8 +481,8 @@
         "name-passing setting"
       ],
       "supports_primitive_claims": [
-        "P-fold",
-        "P-products"
+        "N-fold",
+        "H-products"
       ]
     },
     {
@@ -511,7 +511,7 @@
         "decidability for finite-state fragments only"
       ],
       "supports_primitive_claims": [
-        "P-wrappers"
+        "B-wrappers"
       ]
     },
     {
@@ -649,7 +649,7 @@
         "summary article"
       ],
       "supports_primitive_claims": [
-        "P-wrappers"
+        "B-wrappers"
       ]
     },
     {
@@ -2692,7 +2692,7 @@
         "paper paywalled; mechanized models read in full"
       ],
       "supports_primitive_claims": [
-        "P-fold"
+        "N-fold"
       ]
     },
     {
@@ -2724,7 +2724,7 @@
         "closed-world models"
       ],
       "supports_primitive_claims": [
-        "P-fold"
+        "N-fold"
       ]
     },
     {

@@ -55,7 +55,7 @@ in `evidence.json` and `capability-matrix.json`; both authoritative gates pass.
    PANIC-01, STATIC-01, ERGO-01, TEST-*) each ran focused nextest filters and
    grep inventories; no claim rests on reading alone.
 5. Capability closure (SURVEY-TAXONOMY, SURVEY-BASIS, SURVEY-GAPS,
-   SURVEY-ACTORPASS): all 53 rows derived from a seven-construct basis
+   SURVEY-ACTORPASS): all 53 rows derived from a seven-construct basis (superseded by schema-v2)
    (fold; typed sums + extraction traits; typed products + SendProduct;
    Never; BirthMode; function-pointer reactions; higher-order wrappers).
    Dispositions: 29 existing, 14 derived, 8 interpreter, 2 application,
@@ -77,7 +77,7 @@ Research/survey (labels LAW/DERIVED/POLICY per entry):
 - SURVEY-TAXONOMY — 53/53 required rows resolved; candidate additions
   (ask, circuit breaker, virtual actors, pub-sub, CRDTs) fold into existing
   rows; no new category required.
-- SURVEY-BASIS — seven-construct basis generates the pure catalogue; boundary
+- SURVEY-BASIS — seven-construct basis (superseded by schema-v2) generates the pure catalogue; boundary
   rows deliberately not generated.
 - SURVEY-GAPS — derivation-first discipline held; boundary obstructions
   recorded with exact algebraic reasons; zero new primitives.
@@ -288,7 +288,7 @@ over executions; I/O is outside the effect triple) — recorded, not fixed.
 
 The pure behavior algebra is complete against the surveyed capability
 catalogue: every pure capability is either an existing basis instance or a
-derivation from the seven-construct basis; every remaining capability is an
+derivation from the seven-construct basis (superseded by schema-v2); every remaining capability is an
 explicit interpreter or application boundary with a recorded algebraic
 obstruction. No primitive was added, no dynamic escape exists, every
 composition preserves every lane, and both authoritative gates pass. The
@@ -666,6 +666,105 @@ BOMBAY-POLICY = deliberate documented choice; INTERPRETER = boundary work.
 
 Every retained semantic claim in the report and code carries one of these
 labels; no claim rests on framework folklore.
+
+## Schema-v2 reclassification (2026-08-09, in progress)
+
+The original seven-construct candidate basis (below, preserved as history)
+conflated three distinct layers: actor-semantic primitives, host
+type-calculus machinery, and Bombay/Rust encodings. Schema-v2 separates
+these into a 13-entry three-layer classification with independent
+`semantic_status`, `representation_status`, and `public_api_status` fields.
+
+### Three-layer separation
+
+| ID | Construct | Layer | Semantic | Representation | Public |
+|----|-----------|-------|----------|----------------|--------|
+| N-fold | One-communication fold | actor-nucleus | primitive | primitive | retained |
+| N-send | Send communications | actor-nucleus | primitive | primitive | retained |
+| N-create | Fresh actor creation | actor-nucleus | primitive | primitive | retained |
+| N-become | Designate next behavior | actor-nucleus | primitive | primitive | retained |
+| B-stop | Explicit termination | bombay-derived | derived | primitive | retained |
+| B-actions | Typed effect product | bombay-derived | derived | primitive | retained |
+| H-never | Empty type seats | host-calculus | derived | primitive | retained |
+| H-sums | Host sum types | host-calculus | derived | primitive | retained |
+| H-products | Host product types + monoid | host-calculus | derived | primitive | retained |
+| B-extraction | Lane extraction traits | bombay-derived | derived | primitive | retained |
+| B-birthmode | Creation-capability encoding | bombay-derived | derived | derived | retained |
+| B-fnreact | Function-pointer reactions | bombay-policy | derived | derived | demoted |
+| B-wrappers | Higher-order wrapper combinators | bombay-derived | derived | derived | demoted |
+
+### Key distinctions
+
+- **Semantic primitiveness** is about the actor model: N-fold, N-send,
+  N-create, N-become are actor-model laws. All other constructs are
+  semantically derived.
+- **Representation primitiveness** is about the Rust encoding: constructs
+  like B-actions, H-never, H-sums, H-products, B-extraction are
+  representation primitives — they are the minimal typed encoding in Rust
+  even though the actor model does not mandate them.
+- **Public API retention** is separate: B-stop and B-birthmode are
+  semantically derived but retained as the canonical Bombay encoding.
+  B-fnreact and B-wrappers are demoted — semantically AND
+  representationally derivable from retained primitives.
+
+### Mechanical probes
+
+Five probes preserved under `research/architecture-critical-review-loop/probes/`:
+
+- **fnreact** (8094e31): generic trait encoding compiles; fn pointers are policy.
+- **never** (99a4e5a): unit-seat substitution compiles and admits the hole.
+- **birthmode** (87b3d53): marker-only encoding cannot name the child type.
+- **products** (reconstructed 2026-08-09): merged-lane hole demonstrated.
+- **wrappers** (reconstructed 2026-08-09): from-scratch wrapper compiles.
+
+### Artifact state
+
+- `primitive-basis.json`: schema_version=2, 13 primitives with independent fields
+- `capability-derivations.json`: schema_version=2, 53 rows with schema-v2 IDs
+- `check.sh`: schema-v2 artifact gate validates independent status fields
+- `evidence.json`: four reopened obligations (CALCULUS-NUCLEUS,
+  CALCULUS-MINIMALITY, CALCULUS-CLOSURE, DOC-01) reflect schema-v2 migration
+
+### Production representation adequacy
+
+The current production code (`crates/behavior/src/*.rs`) was evaluated
+construct-by-construct against the schema-v2 layer classification. No
+production edits were made and none are authorized by this evaluation.
+
+**Finding: adequate.** The production representation is functionally clean
+even though it predates the formal layer separation:
+
+- `behavior.rs` houses the actor-nucleus types (Behavior, State, Address,
+  Recipient, Delivery, Create) alongside bombay-derived encodings (Actions,
+  SendProduct, BirthMode, UserEvent, Transition/FnState). These are
+  different Rust items, not conflated types.
+- Host-calculus primitives (Never in verdict.rs, SendProduct/SendAlgebra
+  in behavior.rs) exist as standalone types, not as smuggled implicit
+  assumptions.
+- Bombay-derived wrappers live in dedicated modules (deadlined.rs,
+  watching.rs, supervising.rs, stashing.rs, fsm.rs, etc.), each
+  self-contained over the Behavior trait.
+
+**No restructuring benefit demonstrated.** Per HANDOFF.md criteria:
+- Semantic: the types already encode the actor-model laws correctly.
+- Static-safety: the disjoint-seat Actions, uninhabited Never, and
+  BirthMode compile-time authority are all present and checker-verified.
+- Compositional: wrapper composition laws are tested (cross_lane,
+  two_buffer, init_contract).
+- Measurable complexity: the ratchets (84 symbols, 11 traits, 15 arities,
+  4 phantoms, 1 complexity file, 12 panics, 31 turbofish, 18 aliases)
+  are at baseline — no regression.
+
+A production restructuring from functional module layout to
+layer-organized layout is a cosmetic change that carries no demonstrated
+semantic, static-safety, or measurable improvement. The schema-v2
+reclassification lives in the research artifacts; the production code
+remains the tested, ratchet-verified implementation.
+
+The sections below ("Candidate primitive basis", "Primitive soundness",
+"Primitive eliminability", "Capability derivation trees") describe the
+superseded seven-construct classification and are preserved as historical
+evidence. The authoritative classification is now `primitive-basis.json`.
 
 ## Candidate primitive basis
 

@@ -320,7 +320,8 @@ prims = basis.get("primitives", [])
 prim_ids = [p.get("id") for p in prims if isinstance(p, dict)]
 if len(prim_ids) != len(set(prim_ids)):
     errors.append("duplicate primitive IDs")
-retained = {p["id"] for p in prims if isinstance(p, dict) and p.get("status") == "retained"}
+retained = {p["id"] for p in prims if isinstance(p, dict) and p.get("public_api_status") == "retained"}
+representation_primitives = {p["id"] for p in prims if isinstance(p, dict) and p.get("representation_status") == "primitive"}
 all_prim = set(prim_ids)
 
 for p in prims:
@@ -330,8 +331,31 @@ for p in prims:
     for field in ("rust_type", "formation_rule", "operational_semantics"):
         if not isinstance(p.get(field), str) or len(p[field].strip()) < 20:
             errors.append(f"primitive {pid}: missing {field}")
+
     if p.get("classification") not in {"actor-model-law", "bombay-derived", "bombay-policy"}:
         errors.append(f"primitive {pid}: invalid classification")
+    if p.get("layer") not in {"actor-nucleus", "host-calculus", "bombay-derived", "bombay-policy"}:
+        errors.append(f"primitive {pid}: invalid layer")
+    # Schema-v2 independent status fields
+    sem = p.get("semantic_status")
+    rep = p.get("representation_status")
+    pub = p.get("public_api_status")
+    if sem not in {"primitive", "derived"}:
+        errors.append(f"primitive {pid}: invalid semantic_status '{sem}'")
+    if rep not in {"primitive", "derived"}:
+        errors.append(f"primitive {pid}: invalid representation_status '{rep}'")
+    if pub not in {"retained", "demoted", "removed"}:
+        errors.append(f"primitive {pid}: invalid public_api_status '{pub}'")
+    # Actor-nucleus layer MUST have semantic_status = primitive
+    if p.get("layer") == "actor-nucleus" and sem != "primitive":
+        errors.append(f"primitive {pid}: actor-nucleus layer requires semantic_status=primitive")
+    # Host-calculus and bombay layers MUST have semantic_status = derived
+    if p.get("layer") in {"host-calculus", "bombay-derived", "bombay-policy"} and sem != "derived":
+        errors.append(f"primitive {pid}: {p['layer']} layer requires semantic_status=derived")
+    # public_api_status=demoted requires semantic_status=derived
+    if pub == "demoted" and sem != "derived":
+        errors.append(f"primitive {pid}: demoted public_api requires semantic_status=derived; got {sem}")
+
     if not isinstance(p.get("laws"), list) or not p["laws"]:
         errors.append(f"primitive {pid}: needs algebraic laws")
     snd = p.get("soundness", {})
@@ -353,12 +377,33 @@ for p in prims:
     verdict = elim.get("verdict")
     if verdict not in {"primitive", "derived"}:
         errors.append(f"primitive {pid}: invalid eliminability verdict")
-    elif verdict == "derived":
+    if verdict == "derived":
         refs = set(elim.get("derived_from", []))
         if not refs or not refs <= retained:
-            errors.append(f"primitive {pid}: derived form needs derivation from retained primitives")
-    if p.get("status") == "retained" and verdict == "derived":
-        errors.append(f"primitive {pid}: retained but demoted by its own experiment")
+            errors.append(f"primitive {pid}: eliminability says derived but derivation references are missing or invalid")
+    # Schema-v2: derived representation must reference retained representation primitives
+    if rep == "derived":
+        rep_refs = set(elim.get("derived_from", []))
+        if not rep_refs or not rep_refs <= retained:
+            errors.append(f"primitive {pid}: representation-derived but derivation references missing or reference non-retained primitives")
+    # Mechanical probe: if claimed EXECUTED, path must reference a real file
+    mp = elim.get("mechanical_probe", "")
+    if "EXECUTED" in mp:
+        import os
+        # Extract probe directory name from the mechanical_probe string
+        probe_dir = None
+        for part in mp.split():
+            if "probes/" in part:
+                probe_dir = part.rstrip("/")
+                break
+        if probe_dir and not os.path.isdir(probe_dir):
+            errors.append(f"primitive {pid}: mechanical_probe claims EXECUTED but probe dir '{probe_dir}' not found")
+    # Limitations must be present (non-empty for bombay-derived/host-calculus layers)
+    lim = p.get("limitations")
+    if not isinstance(lim, list):
+        errors.append(f"primitive {pid}: missing limitations field")
+    elif p.get("layer") != "actor-nucleus" and not lim:
+        errors.append(f"primitive {pid}: non-nucleus primitive needs explicit limitations")
 
 caps = derivations.get("capabilities", [])
 cap_ids = [c.get("id") for c in caps if isinstance(c, dict)]
