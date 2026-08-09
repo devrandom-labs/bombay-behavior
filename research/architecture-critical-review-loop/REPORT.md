@@ -492,7 +492,11 @@ Method per ACTOR-RESEARCH-SURVEY.md, executed 2026-08-09 in this rerun:
    sections). The Charalambides 2018 PhD thesis was attempted through
    IDEALS (item page HTTP 403, legacy bitstream 404, REST API 404) and the
    Wayback Machine (SPA shell snapshot only) — it remains inaccessible and
-   is subsumed by the fully read FOCLASA 2012 text.
+   was subsequently fetched from the IDEALS open collection on retry and
+   read (abstract + contributions): its own conclusion — that actor-session
+   typing requires deviations from standard actor programming models while
+   typestate capability/obligation tokens fit actor calculi — directly
+   supports the protocol-session partial classification.
    Remaining limitations: Agha 1986 MIT
    Press book (CrossRef-verified monograph doi:10.7551/mitpress/1086.001.0001;
    content verified through the fully read 2001 chapter and AMST 1997);

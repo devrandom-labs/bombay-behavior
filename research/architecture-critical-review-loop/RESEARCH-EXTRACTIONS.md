@@ -829,3 +829,41 @@ capability extraction template from RESEARCH-SOURCES.md.
 - Bombay classification: configuration/component-level composition algebra
   = LAW-level composition results; Bombay realizes composition as typed
   behavior combinators (derived) rather than configuration operations.
+
+## 26. Charalambides — Actor Programming with Static Guarantees (PhD 2018)
+
+- Bibliography: Minas Charalambides. PhD dissertation, UIUC, 2018 (advisor
+  Agha). hdl:2142/101036, IDEALS items/107118.
+- Stable URL: IDEALS open collection bitstream
+  <https://www.ideals.illinois.edu/items/107118/bitstreams/349334/data.pdf>
+- Source tier: 1.
+- Read status: complete text layer extracted 2026-08-09; abstract and
+  contribution summary read directly. (IDEALS item access worked on retry
+  with browser headers after earlier 403/404 attempts.)
+- Inclusion: semantic (typed actor calculi).
+- Claims (from the abstract): two typing methodologies for actors —
+  (1) **process types via typestates**: two token kinds per actor handle —
+  capability tokens (what the handle MAY be used for: message types
+  sendable) and obligation tokens (what it MUST be used for: messaging
+  obligations discharged by end of lifetime); (2) **session types adapted
+  to actors**: since actors have no channels, participants are actor pairs
+  in multiple concurrently interleaving protocols; novel parameterized
+  constructs verify patterns like sliding window — **but the system
+  "requires deviations from industry-standard programming models — a
+  problem that is true for all session type systems in the literature"**;
+  the author's own conclusion: the typestate system, while not enforcing
+  protocol fidelity, is more suitable for the actor calculi adopted by
+  established frameworks.
+- Bombay classification: direct primary support for the protocol-session
+  row's partial classification — the session-typing shortfall is a typing-
+  discipline mismatch (channels/duality vs dynamic addresses), not a
+  missing behavior primitive; typestate capability/obligation tokens are a
+  static layer consistent with Bombay's typed Recipient capabilities
+  (capability tokens) — obligations (MUST-send) are not realized in Bombay,
+  recorded as a limitation of the current typing surface, not a basis gap.
+- Candidate-basis impact: none — both systems are type disciplines over the
+  standard transition model.
+- Limitations: abstract + contributions read; chapter-level proofs not
+  re-verified line by line.
+- Evidence location: capability-matrix.json protocol-session row;
+  REPORT.md post-2000 comparison table.
