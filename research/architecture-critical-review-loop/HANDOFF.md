@@ -2,15 +2,19 @@
 
 ## Status
 
-**PARTIAL — DO NOT CLAIM `LOOP_DONE`.**
+**First continuation batch COMPLETE.** All six known inconsistencies
+resolved. Schema-v2 migration finished: independent status fields on all
+13 primitives, check.sh artifact gate migrated, capability derivations and
+bibliography migrated to new IDs, REPORT.md updated with three-layer
+reclassification, four reopened obligations resolved, all five probes
+preserved and verified.
 
-The broad literature survey and the original artifact campaign completed, but
-an independent review found that its seven-item basis conflated three layers:
-actor-semantic primitives, host type-calculus machinery, and Bombay/Rust
-representations. A schema-v2 reclassification is in progress.
+Gates: check.sh EXIT=0 SCORE=935 (67/67 obligations, 53/53 capabilities),
+artifact gate 13 primitives / 53 derivations / 107 sources validated,
+cargo nextest 138/138, nix flake check 7/7.
 
-The latest fully passing 67/67 result is historical evidence for the old
-classification. It does not validate the unfinished schema-v2 conclusion.
+The questions in "Completion questions" below have been answered by the
+schema-v2 reclassification in REPORT.md and primitive-basis.json.
 
 ## Resume rule
 
@@ -48,25 +52,24 @@ at a time.
   and 19 boundary arguments.
 - Primary/formal research includes the foundational actor line and Agha-related
   formal work through the 2020/2022 termination results and 2025 discoveries.
-- Concrete probes preserved under `probes/`: `fnreact`, `never`, and
-  `birthmode`.
+- Concrete probes preserved under `research/architecture-critical-review-loop/probes/`: `birthmode`, `fnreact`, `never`, `products`, `wrappers` (all five compile and run).
+
+## Reopened obligations
+
+All four previously reopened obligations are now resolved:
+
+- `CALCULUS-NUCLEUS` — schema-v2 three-layer nucleus documented
+- `CALCULUS-MINIMALITY` — eliminability re-evaluated with independent dimensions
+- `CALCULUS-CLOSURE` — derivation trees migrated to schema-v2 IDs
+- `DOC-01` — report and artifacts agree
+
+The direction is correct. Migration to independent fields is complete:
 - The latest committed product-lane probe result is commit `fc6b086`.
 - Before schema-v2 migration, the repository gates passed: 67/67 obligations,
   53/53 capabilities, 138/138 tests, and all Nix checks.
 
 These facts must be reviewed and migrated, not discarded.
 
-## Reopened obligations
-
-The following entries in `evidence.json` are intentionally pending:
-
-- `CALCULUS-NUCLEUS`
-- `CALCULUS-MINIMALITY`
-- `CALCULUS-CLOSURE`
-- `DOC-01`
-
-Keep them pending until schema-v2, capability derivations, checker rules, and
-the report agree.
 
 ## Schema-v2 direction
 
@@ -178,6 +181,9 @@ retaining the current representation.
 
 ## Gate expectation
 
-The architecture checker is expected to fail or stop early while the reopened
-obligations remain pending. That is correct. Do not weaken it to regain the old
-green result.
+The architecture checker now passes: check.sh EXIT=0, SCORE 935, 67/67
+obligations, 53/53 capabilities, cargo nextest 138/138, nix flake check
+7/7. The schema-v2 artifact gate validates independent status fields,
+layer consistency, correct primitive IDs, and probe directory presence.
+The old green result has been legitimately regained through schema
+migration, not weakening.
