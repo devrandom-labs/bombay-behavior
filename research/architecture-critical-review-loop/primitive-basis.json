@@ -207,15 +207,15 @@
         "attempts": [
           {
             "approach": "Use () for empty seats",
-            "code_summary": "type alias replacing Never with () in error and phase seats",
-            "obstruction": "() is inhabited: Err(()) and Goto(()) become constructible, so 'never fails' / 'no phases' are no longer compile-time-true; wrappers would need runtime validation for a statically empty case",
+            "code_summary": "probes/never/main.rs (preserved in-repo): Acted<MailAddr, (), Vec<Delivery<MailAddr, ()>>, NoBirths, ()> = Err(()) and Step::Goto(()) both compile clean (cargo build, 2026-08-09)",
+            "obstruction": "The unit-seat substitution compiles and Err(())/Goto(()) are constructible \u2014 'never fails' and 'no phases' become unprovable at compile time; only an uninhabited type makes the empty seat unconstructible",
             "obstruction_kind": "type"
           }
         ],
         "verdict": "primitive",
         "derived_from": [],
         "rationale": "Only an uninhabited type makes the empty seat unconstructible; aliases rename () and products/sums add inhabitants.",
-        "mechanical_probe": "type-level argument; the constructibility of Err(()) is directly checkable \u2014 scheduled as a mechanical probe (probe crate, expected clean compile demonstrating the hole)"
+        "mechanical_probe": "EXECUTED 2026-08-09: probes/never/ compiles, demonstrating the inhabited-seat hole directly; verdict confirmed: retained as primitive (as a use of the language's empty type)"
       },
       "status": "retained"
     },
