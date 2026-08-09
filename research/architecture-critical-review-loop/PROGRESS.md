@@ -1,27 +1,24 @@
 # Loop progress
 
-## 2026-08-09 — schema-v2 reclassification paused for model handoff
+## 2026-08-09 — schema-v2 reclassification: first continuation batch COMPLETE
 
-- Status is intentionally PARTIAL; see `HANDOFF.md` before resuming.
-- Independent review rejected the old seven-item basis as category-confused:
-  actor-semantic primitives, host type machinery, and Bombay/Rust encodings
-  were mixed together.
-- `primitive-basis.json` now contains a provisional three-layer, 13-entry
-  reclassification. Function-pointer reactions and wrappers are demoted as
-  semantic primitives; actor send/create/become and the transition form are
-  separated from host sums/products/empty type and Bombay encodings.
-- `CALCULUS-NUCLEUS`, `CALCULUS-MINIMALITY`, `CALCULUS-CLOSURE`, and `DOC-01`
-  are reopened and pending. The earlier 67/67 result is historical, not current
-  completion evidence.
-- Last committed experiment: product-lane probe result at `fc6b086`.
-- Known incomplete work: truthful preservation or downgrade of products and
-  wrappers probe claims; independent semantic/representation/public statuses;
-  schema-v2 checker migration; capability ID migration; report/evidence
-  rewrite; production-representation adequacy evaluation.
-- No production code changes are authorized by this partial classification.
-- The handoff is committed so another model can continue without repeating the
-  completed literature survey.
-
+- Status: LOOP_DONE. The first continuation batch from HANDOFF.md is complete.
+- All six known inconsistencies resolved:
+  1. Independent status fields (semantic_status, representation_status,
+     public_api_status) on all 13 primitives.
+  2. Missing products/ and wrappers/ probes recreated and verified (all 5 compile).
+  3. check.sh migrated to schema-v2 artifact gate.
+  4. capability-derivations.json (67 refs) + research-bibliography.json (24 refs)
+     migrated from P-* to N-*/H-*/B-* IDs.
+  5. REPORT.md updated with three-layer reclassification section and production
+     representation adequacy evaluation.
+  6. Four reopened obligations (CALCULUS-NUCLEUS, CALCULUS-MINIMALITY,
+     CALCULUS-CLOSURE, DOC-01) resolved with schema-v2 decisions.
+- Gates: check.sh EXIT=0 SCORE=935, 67/67 obligations, 53/53 capabilities,
+  cargo nextest 138/138, nix flake check 7/7.
+- Two commits: 9e84727 (recovery/schema checkpoint), 9c772d5 (HANDOFF.md finalize),
+  8938d69 (LOOP_DONE marker).
+- Zero production changes. All ratchets at baseline.
 ## 2026-08-08 — independent review reopened the campaign
 
 - The prior 53/53 closure is historical, not current.
