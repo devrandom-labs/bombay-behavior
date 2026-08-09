@@ -1,6 +1,6 @@
 //! The user-message lane and its composition contracts.
 
-use crate::addressing::Address;
+use crate::actor::Address;
 use crate::protocol::{
     ChildEvent, ChildStopped, PeerEvent, PeerStopped, ShutdownEvent, ShutdownRequested, TimeEvent,
     TimerElapsed, WorkerEvent, WorkerStopped,

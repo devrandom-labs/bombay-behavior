@@ -3,11 +3,9 @@
 use core::future::Future;
 use core::marker::PhantomData;
 
-use crate::addressing::{Address, Delivery};
-use crate::creation::{BirthMode, NoBirths};
-use crate::sending::SendAlgebra;
-use crate::transition::{Acted, Actions};
-use crate::user_event::{User, UserEvent};
+use super::user_event::{User, UserEvent};
+use crate::actor::{Address, BirthMode, Delivery, NoBirths};
+use crate::transition::{Acted, Actions, SendAlgebra};
 use crate::verdict::Never;
 
 pub type StateActed<A, Out, Birth, Err> = Acted<A, Never, Vec<Delivery<A, Out>>, Birth, Err>;

@@ -2,7 +2,7 @@
 
 use core::marker::PhantomData;
 
-use crate::addressing::Address;
+use super::addressing::Address;
 use crate::verdict::Never;
 
 /// Behavior-owned provenance for a staged fresh actor creation request.

@@ -1,9 +1,8 @@
 //! The explicit result of one actor behavior transition.
 
+use super::sending::SendAlgebra;
 use crate::Exit;
-use crate::addressing::Address;
-use crate::creation::{BirthMode, Create};
-use crate::sending::SendAlgebra;
+use crate::actor::{Address, BirthMode, Create};
 use crate::verdict::{Never, Step};
 
 pub type Become<A, Ph = Never> = Step<Ph, Exit<A>>;

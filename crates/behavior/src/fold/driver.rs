@@ -2,12 +2,11 @@
 
 use communication::{Consumer, Received};
 
+use super::behavior::Behavior;
+use super::user_event::UserEvent;
 use crate::Exit;
-use crate::addressing::Address;
-use crate::creation::{BirthMode, Create};
-use crate::fold::Behavior;
-use crate::sending::SendAlgebra;
-use crate::user_event::UserEvent;
+use crate::actor::{Address, BirthMode, Create};
+use crate::transition::SendAlgebra;
 use crate::verdict::{Never, Step};
 
 pub struct Transcript<A: Address, Sends, New> {
