@@ -12,6 +12,7 @@ mod deadlined;
 mod fold;
 mod stashing;
 mod supervision;
+mod timing;
 mod transition;
 mod verdict;
 mod watching;
@@ -31,9 +32,11 @@ pub use deadlined::{At, AtActions, AtEvent, AtReaction, AtSends};
 pub use fold::{Base, Behavior, BehaviorActed, FnState, State, Transcript, User, UserEvent, run};
 pub use fsm::{Fsm, Move};
 pub use protocol::{
-    ChildEvent, ChildStopped, ObserveChild, ObservePeer, PeerEvent, PeerStopped,
+    ChildEvent, ChildStopped, CreationEvent, CreationRejection, CreationResolved, ObserveChild,
+    ObserveCreation, ObservePeer, PeerEvent, PeerStopped, ReportWorkerCreationResolved,
     ReportWorkerStopped, ScheduleAfter, ScheduleAt, ShutdownEvent, ShutdownRequested, TimeEvent,
-    TimerElapsed, TimerGeneration, TimerId, WorkerEvent, WorkerStopped,
+    TimerElapsed, TimerGeneration, TimerId, WorkerCreationEvent, WorkerCreationResolved,
+    WorkerEvent, WorkerStopped,
 };
 pub use receive_timeout::{
     ReceiveTimeout, ReceiveTimeoutActions, ReceiveTimeoutError, ReceiveTimeoutEvent,
@@ -43,9 +46,11 @@ pub use shutdown::{FinalizeOnShutdown, ShutdownProtocol, ShutdownReaction, StopO
 pub use spec::Spec;
 pub use stashing::{StashRoute, Stashing};
 pub use supervision::{
-    Proxy, ProxyCommand, RestartPolicy, Strategy, Supervising, SupervisionEvent,
-    SupervisionFailure, SupervisionFailureReaction, restart_all, restart_one, restart_rest,
-    retire_on_supervision_failure, stop_on_supervision_failure,
+    Incarnation, IncarnationCreation, IncarnationEffects, IncarnationError, IncarnationInput,
+    IncarnationPhase, IncarnationReport, IncarnationState, Proxy, ProxyActions, ProxyCommand,
+    ProxySends, RestartPolicy, Strategy, Supervising, SupervisionEvent, SupervisionFailure,
+    SupervisionFailureReaction, SupervisorActions, SupervisorSends, restart_all, restart_one,
+    restart_rest, retire_on_supervision_failure, stop_on_supervision_failure,
 };
 pub use transition::{Acted, Actions, Become, SendAlgebra, SendProduct, ServiceSends};
 pub use verdict::{Never, Step};

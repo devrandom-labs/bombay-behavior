@@ -4,12 +4,12 @@ use std::time::Duration;
 
 use behavior::{
     Acted, Actions, At, AtEvent, Base, Become, Behavior, Births, ChildStopped, Crash, Create,
-    CreationKind, Delivery, Exit, Fsm, MailAddr, Move, Never, NoBirths, ObserveChild, PeerStopped,
-    Proxy, ProxyCommand, Recipient, RestartDenial, RestartPolicy, Route, ServiceSends,
-    ShutdownEvent, ShutdownRequested, Spec, StashRoute, State, Step, Strategy, Supervising,
-    SupervisionEvent, SupervisionFailure, SupervisionFailureReason, TimeEvent, TimerElapsed,
-    TimerGeneration, TimerId, User, UserEvent, WatchEvent, Watching, WorkerEvent, WorkerStopped,
-    run, stop_on_abnormal_death, stop_on_supervision_failure, workers,
+    CreationKind, CreationRejection, CreationResolved, Delivery, Exit, Fsm, MailAddr, Move, Never,
+    NoBirths, ObserveChild, PeerStopped, Proxy, ProxyCommand, Recipient, RestartDenial,
+    RestartPolicy, Route, ServiceSends, ShutdownEvent, ShutdownRequested, Spec, StashRoute, State,
+    Step, Strategy, Supervising, SupervisionEvent, SupervisionFailure, SupervisionFailureReason,
+    TimeEvent, TimerElapsed, TimerGeneration, TimerId, User, UserEvent, WatchEvent, Watching,
+    WorkerEvent, WorkerStopped, run, stop_on_abnormal_death, stop_on_supervision_failure, workers,
 };
 use communication::{Config, channel};
 use proptest::prelude::*;
@@ -568,6 +568,14 @@ async fn a_stale_local_receive_timeout_is_consumed_not_forwarded() {
 async fn a_proxy_ignores_a_stale_child_stop_nonce() {
     let mut proxy = Proxy::new(child(0));
     proxy.init().await.unwrap();
+    proxy
+        .step(SupervisionEvent::CreationResolved(CreationResolved {
+            nonce: 0,
+            kind: CreationKind::Birth,
+            result: Ok(()),
+        }))
+        .await
+        .unwrap();
     let stale = proxy
         .step(SupervisionEvent::ChildStopped(ChildStopped {
             nonce: 99,
@@ -576,7 +584,7 @@ async fn a_proxy_ignores_a_stale_child_stop_nonce() {
         }))
         .await
         .unwrap();
-    assert!(stale.sends.own.own.is_empty());
+    assert!(stale.sends.stopped_reports.is_empty());
     let forwarded = proxy
         .step(SupervisionEvent::Inner(User::user(
             MailAddr(0),
@@ -584,7 +592,7 @@ async fn a_proxy_ignores_a_stale_child_stop_nonce() {
         )))
         .await
         .unwrap();
-    assert_eq!(forwarded.sends.inner[0].to.route(), Route::Child(0));
+    assert_eq!(forwarded.sends.deliveries[0].to.route(), Route::Child(0));
 }
 
 #[test]
@@ -657,19 +665,23 @@ async fn supervisor_creates_proxies_and_replacement_is_a_send() {
             .iter()
             .all(|create| create.kind == CreationKind::Birth)
     );
-    assert_eq!(initial.sends.own.inner.len(), 2);
-    assert_eq!(initial.sends.own.inner[0].nonce, 0);
-    assert_eq!(initial.sends.own.inner[1].nonce, 1);
+    assert_eq!(initial.sends.child_observations.len(), 2);
+    assert_eq!(initial.sends.child_observations[0].nonce, 0);
+    assert_eq!(initial.sends.child_observations[1].nonce, 1);
 
     let event = SupervisionEvent::WorkerStopped(WorkerStopped {
         proxy: 0,
+        worker: 0,
         outcome: Err(Crash::Failed),
         at: Instant::now(),
     });
     let actions = supervisor.step(event).await.unwrap();
     assert!(actions.creates.is_empty());
-    assert_eq!(actions.sends.own.own.len(), 1);
-    assert_eq!(actions.sends.own.own[0].to.route(), Route::Child(0));
+    assert_eq!(actions.sends.replacement_commands.len(), 1);
+    assert_eq!(
+        actions.sends.replacement_commands[0].to.route(),
+        Route::Child(0)
+    );
 }
 
 #[tokio::test]
@@ -678,6 +690,14 @@ async fn proxy_replacement_creates_a_fresh_incarnation() {
     let first = proxy.init().await.unwrap();
     assert_eq!(first.creates[0].nonce, 0);
     assert_eq!(first.creates[0].kind, CreationKind::Birth);
+    proxy
+        .step(SupervisionEvent::CreationResolved(CreationResolved {
+            nonce: 0,
+            kind: CreationKind::Birth,
+            result: Ok(()),
+        }))
+        .await
+        .unwrap();
     let second = proxy
         .step(SupervisionEvent::Inner(User::user(
             MailAddr(0),
@@ -696,9 +716,20 @@ async fn proxy_replacement_creates_a_fresh_incarnation() {
         .await
         .unwrap();
     assert_eq!(second.creates[0].nonce, 1);
-    assert_eq!(second.creates[0].kind, CreationKind::ReplacementIncarnation);
-    assert_eq!(second.sends.own.inner[0].nonce, 1);
-    assert_eq!(second.sends.own.own[0].outcome, Err(Crash::Failed));
+    assert_eq!(
+        second.creates[0].kind,
+        CreationKind::ReplacementIncarnation { replaces: 0 }
+    );
+    assert_eq!(second.sends.child_observations[0].nonce, 1);
+    assert_eq!(second.sends.stopped_reports[0].outcome, Err(Crash::Failed));
+    proxy
+        .step(SupervisionEvent::CreationResolved(CreationResolved {
+            nonce: 1,
+            kind: CreationKind::ReplacementIncarnation { replaces: 0 },
+            result: Ok(()),
+        }))
+        .await
+        .unwrap();
 
     let forwarded = proxy
         .step(SupervisionEvent::Inner(User::user(
@@ -707,8 +738,118 @@ async fn proxy_replacement_creates_a_fresh_incarnation() {
         )))
         .await
         .unwrap();
-    assert_eq!(forwarded.sends.inner[0].to.route(), Route::Child(1));
-    assert_eq!(forwarded.sends.inner[0].message, 7);
+    assert_eq!(forwarded.sends.deliveries[0].to.route(), Route::Child(1));
+    assert_eq!(forwarded.sends.deliveries[0].message, 7);
+}
+
+#[tokio::test]
+async fn proxy_routes_only_after_matching_installation_and_rejection_stays_vacant() {
+    let mut proxy = Proxy::new(child(0));
+    proxy.init().await.unwrap();
+
+    let pending = proxy
+        .step(SupervisionEvent::Inner(User::user(
+            MailAddr(0),
+            ProxyCommand::Forward(1),
+        )))
+        .await
+        .unwrap();
+    assert!(pending.sends.deliveries.is_empty());
+
+    let stale = proxy
+        .step(SupervisionEvent::CreationResolved(CreationResolved {
+            nonce: 1,
+            kind: CreationKind::Birth,
+            result: Ok(()),
+        }))
+        .await
+        .unwrap();
+    assert!(stale.sends.creation_reports.is_empty());
+
+    let rejected = proxy
+        .step(SupervisionEvent::CreationResolved(CreationResolved {
+            nonce: 0,
+            kind: CreationKind::Birth,
+            result: Err(CreationRejection::InitializationFailed),
+        }))
+        .await
+        .unwrap();
+    assert_eq!(
+        rejected.sends.creation_reports[0].result,
+        Err(CreationRejection::InitializationFailed)
+    );
+
+    let vacant = proxy
+        .step(SupervisionEvent::Inner(User::user(
+            MailAddr(0),
+            ProxyCommand::Forward(2),
+        )))
+        .await
+        .unwrap();
+    assert!(vacant.sends.deliveries.is_empty());
+}
+
+#[tokio::test]
+async fn proxy_serializes_attempts_and_rejection_preserves_last_installed_incarnation() {
+    let mut proxy = Proxy::new(child(0));
+    proxy.init().await.unwrap();
+    proxy
+        .step(SupervisionEvent::CreationResolved(CreationResolved {
+            nonce: 0,
+            kind: CreationKind::Birth,
+            result: Ok(()),
+        }))
+        .await
+        .unwrap();
+    proxy
+        .step(SupervisionEvent::Inner(User::user(
+            MailAddr(0),
+            ProxyCommand::Replace(child(1)),
+        )))
+        .await
+        .unwrap();
+    let first_attempt = proxy
+        .step(SupervisionEvent::ChildStopped(ChildStopped {
+            nonce: 0,
+            outcome: Err(Crash::Failed),
+            at: Instant::now(),
+        }))
+        .await
+        .unwrap();
+    assert_eq!(
+        first_attempt.creates[0].kind,
+        CreationKind::ReplacementIncarnation { replaces: 0 }
+    );
+
+    let overlapping = proxy
+        .step(SupervisionEvent::Inner(User::user(
+            MailAddr(0),
+            ProxyCommand::Replace(child(2)),
+        )))
+        .await
+        .unwrap();
+    assert!(overlapping.creates.is_empty());
+
+    proxy
+        .step(SupervisionEvent::CreationResolved(CreationResolved {
+            nonce: 1,
+            kind: CreationKind::ReplacementIncarnation { replaces: 0 },
+            result: Err(CreationRejection::EnvironmentFailed),
+        }))
+        .await
+        .unwrap();
+    let retry = proxy
+        .step(SupervisionEvent::Inner(User::user(
+            MailAddr(0),
+            ProxyCommand::Replace(child(3)),
+        )))
+        .await
+        .unwrap();
+    assert_eq!(retry.creates[0].nonce, 2);
+    assert_eq!(
+        retry.creates[0].kind,
+        CreationKind::ReplacementIncarnation { replaces: 0 }
+    );
 }
 
 #[tokio::test]
@@ -716,6 +857,14 @@ async fn idle_proxy_marks_an_immediate_successor_as_a_replacement_incarnation() 
     let mut proxy = Proxy::new(child(0));
     let initial = proxy.init().await.unwrap();
     assert_eq!(initial.creates[0].kind, CreationKind::Birth);
+    proxy
+        .step(SupervisionEvent::CreationResolved(CreationResolved {
+            nonce: 0,
+            kind: CreationKind::Birth,
+            result: Ok(()),
+        }))
+        .await
+        .unwrap();
 
     let stopped = proxy
         .step(SupervisionEvent::ChildStopped(ChildStopped {
@@ -737,7 +886,7 @@ async fn idle_proxy_marks_an_immediate_successor_as_a_replacement_incarnation() 
     assert_eq!(replacement.creates[0].nonce, 1);
     assert_eq!(
         replacement.creates[0].kind,
-        CreationKind::ReplacementIncarnation
+        CreationKind::ReplacementIncarnation { replaces: 0 }
     );
 }
 
@@ -752,13 +901,21 @@ async fn stable_proxy_reports_worker_stop_and_creates_fresh_replacement() {
 
     let mut initial = supervisor.init().await.unwrap();
     assert_eq!(initial.creates[0].nonce, 0);
-    assert_eq!(initial.sends.own.inner[0].nonce, 0);
+    assert_eq!(initial.sends.child_observations[0].nonce, 0);
     let mut proxy = initial.creates.remove(0).child;
 
     let worker_birth = proxy.init().await.unwrap();
     assert_eq!(worker_birth.creates[0].nonce, 0);
     assert_eq!(worker_birth.creates[0].kind, CreationKind::Birth);
-    assert_eq!(worker_birth.sends.own.inner[0].nonce, 0);
+    assert_eq!(worker_birth.sends.child_observations[0].nonce, 0);
+    proxy
+        .step(SupervisionEvent::CreationResolved(CreationResolved {
+            nonce: 0,
+            kind: CreationKind::Birth,
+            result: Ok(()),
+        }))
+        .await
+        .unwrap();
 
     let worker_stop = proxy
         .step(SupervisionEvent::ChildStopped(ChildStopped {
@@ -770,21 +927,33 @@ async fn stable_proxy_reports_worker_stop_and_creates_fresh_replacement() {
         .unwrap();
     assert!(worker_stop.creates.is_empty());
     assert!(matches!(worker_stop.become_, Step::Continue));
-    assert_eq!(worker_stop.sends.own.own[0].outcome, Err(Crash::Panicked));
+    assert_eq!(
+        worker_stop.sends.stopped_reports[0].outcome,
+        Err(Crash::Panicked)
+    );
 
     let restart = supervisor
         .step(SupervisionEvent::WorkerStopped(WorkerStopped {
             proxy: 0,
-            outcome: worker_stop.sends.own.own[0].outcome,
-            at: worker_stop.sends.own.own[0].at,
+            worker: 0,
+            outcome: worker_stop.sends.stopped_reports[0].outcome,
+            at: worker_stop.sends.stopped_reports[0].at,
         }))
         .await
         .unwrap();
     assert!(restart.creates.is_empty());
-    assert_eq!(restart.sends.own.own.len(), 1);
-    assert_eq!(restart.sends.own.own[0].to.route(), Route::Child(0));
+    assert_eq!(restart.sends.replacement_commands.len(), 1);
+    assert_eq!(
+        restart.sends.replacement_commands[0].to.route(),
+        Route::Child(0)
+    );
 
-    let command = restart.sends.own.own.into_iter().next().unwrap();
+    let command = restart
+        .sends
+        .replacement_commands
+        .into_iter()
+        .next()
+        .unwrap();
     let replacement = proxy
         .step(SupervisionEvent::Inner(User::user(
             MailAddr(0),
@@ -795,9 +964,9 @@ async fn stable_proxy_reports_worker_stop_and_creates_fresh_replacement() {
     assert_eq!(replacement.creates[0].nonce, 1);
     assert_eq!(
         replacement.creates[0].kind,
-        CreationKind::ReplacementIncarnation
+        CreationKind::ReplacementIncarnation { replaces: 0 }
     );
-    assert_eq!(replacement.sends.own.inner[0].nonce, 1);
+    assert_eq!(replacement.sends.child_observations[0].nonce, 1);
     assert!(matches!(replacement.become_, Step::Continue));
 }
 
@@ -814,7 +983,7 @@ async fn stopped_proxy_is_retired_without_sending_to_its_dead_address() {
         .unwrap();
 
     assert!(stopped.creates.is_empty());
-    assert!(stopped.sends.own.own.is_empty());
+    assert!(stopped.sends.replacement_commands.is_empty());
     assert!(!supervisor.is_alive(1));
     assert_eq!(stopped.become_, Step::Continue);
 }
@@ -831,13 +1000,14 @@ async fn configured_supervision_failure_reaction_stops_on_budget_denial() {
     let actions = supervisor
         .step(SupervisionEvent::WorkerStopped(WorkerStopped {
             proxy: 1,
+            worker: 1,
             outcome: Err(Crash::Panicked),
             at: Instant::now(),
         }))
         .await
         .unwrap();
 
-    assert!(actions.sends.own.own.is_empty());
+    assert!(actions.sends.replacement_commands.is_empty());
     assert!(actions.creates.is_empty());
     assert_eq!(
         actions.become_,
@@ -884,6 +1054,7 @@ async fn restart_policy_ineligibility_is_not_a_supervision_failure() {
     let actions = supervisor
         .step(SupervisionEvent::WorkerStopped(WorkerStopped {
             proxy: 0,
+            worker: 0,
             outcome: Err(Crash::Failed),
             at: Instant::now(),
         }))
@@ -900,6 +1071,7 @@ async fn supervision_failure_exit_is_an_abnormal_transient_worker_outcome() {
     let actions = supervisor
         .step(SupervisionEvent::WorkerStopped(WorkerStopped {
             proxy: 0,
+            worker: 0,
             outcome: Ok(Exit::SupervisionFailed(
                 SupervisionFailureReason::StableChildStopped,
             )),
@@ -908,8 +1080,11 @@ async fn supervision_failure_exit_is_an_abnormal_transient_worker_outcome() {
         .await
         .unwrap();
 
-    assert_eq!(actions.sends.own.own.len(), 1);
-    assert_eq!(actions.sends.own.own[0].to.route(), Route::Child(0));
+    assert_eq!(actions.sends.replacement_commands.len(), 1);
+    assert_eq!(
+        actions.sends.replacement_commands[0].to.route(),
+        Route::Child(0)
+    );
 }
 
 struct BirthingParent(bool);
@@ -948,7 +1123,7 @@ impl State<Never, Births<Child>, Never> for ReplacingParent {
     ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, Births<Child>, Never> {
         Ok(Actions {
             sends: Vec::new(),
-            creates: vec![Create::replacement_incarnation(nonce, child(0))],
+            creates: vec![Create::replacement_incarnation(nonce, nonce - 1, child(0))],
             become_: Step::Continue,
         })
     }
@@ -969,18 +1144,22 @@ async fn supervisor_preserves_and_observes_dynamic_births_once() {
     assert_eq!(born.creates.len(), 1);
     assert_eq!(born.creates[0].nonce, 9);
     assert_eq!(born.creates[0].kind, CreationKind::Birth);
-    assert_eq!(born.sends.own.inner.len(), 1);
-    assert_eq!(born.sends.own.inner[0].nonce, 9);
+    assert_eq!(born.sends.child_observations.len(), 1);
+    assert_eq!(born.sends.child_observations[0].nonce, 9);
     assert_eq!(supervisor.behavior().child_count(), 1);
 
     let stopped = SupervisionEvent::WorkerStopped(WorkerStopped {
         proxy: 9,
+        worker: 9,
         outcome: Err(Crash::Failed),
         at: Instant::now(),
     });
     let replacement = supervisor.step(stopped).await.unwrap();
-    assert_eq!(replacement.sends.own.own.len(), 1);
-    assert_eq!(replacement.sends.own.own[0].to.route(), Route::Child(9));
+    assert_eq!(replacement.sends.replacement_commands.len(), 1);
+    assert_eq!(
+        replacement.sends.replacement_commands[0].to.route(),
+        Route::Child(9)
+    );
 }
 
 #[tokio::test]
@@ -998,7 +1177,7 @@ async fn supervisor_preserves_dynamic_replacement_provenance_when_wrapping_the_c
     assert_eq!(replacement.creates[0].nonce, 9);
     assert_eq!(
         replacement.creates[0].kind,
-        CreationKind::ReplacementIncarnation
+        CreationKind::ReplacementIncarnation { replaces: 8 }
     );
 }
 
@@ -1008,19 +1187,44 @@ async fn supervision_strategy_policy_and_budget_are_pure_send_decisions() {
     let stopped = |nonce| {
         SupervisionEvent::WorkerStopped(WorkerStopped {
             proxy: nonce,
+            worker: nonce,
             outcome: Err(Crash::Failed),
             at,
         })
     };
 
     let mut one = supervisor(Strategy::OneForOne, RestartPolicy::Transient, 3);
-    assert_eq!(one.step(stopped(1)).await.unwrap().sends.own.own.len(), 1);
+    assert_eq!(
+        one.step(stopped(1))
+            .await
+            .unwrap()
+            .sends
+            .replacement_commands
+            .len(),
+        1
+    );
 
     let mut all = supervisor(Strategy::OneForAll, RestartPolicy::Transient, 3);
-    assert_eq!(all.step(stopped(1)).await.unwrap().sends.own.own.len(), 3);
+    assert_eq!(
+        all.step(stopped(1))
+            .await
+            .unwrap()
+            .sends
+            .replacement_commands
+            .len(),
+        3
+    );
 
     let mut rest = supervisor(Strategy::RestForOne, RestartPolicy::Transient, 3);
-    assert_eq!(rest.step(stopped(1)).await.unwrap().sends.own.own.len(), 2);
+    assert_eq!(
+        rest.step(stopped(1))
+            .await
+            .unwrap()
+            .sends
+            .replacement_commands
+            .len(),
+        2
+    );
 
     let mut temporary = supervisor(Strategy::OneForOne, RestartPolicy::Temporary, 3);
     assert!(
@@ -1029,8 +1233,7 @@ async fn supervision_strategy_policy_and_budget_are_pure_send_decisions() {
             .await
             .unwrap()
             .sends
-            .own
-            .own
+            .replacement_commands
             .is_empty()
     );
     assert!(!temporary.is_alive(1));
@@ -1042,8 +1245,7 @@ async fn supervision_strategy_policy_and_budget_are_pure_send_decisions() {
             .await
             .unwrap()
             .sends
-            .own
-            .own
+            .replacement_commands
             .is_empty()
     );
 }
@@ -1136,12 +1338,13 @@ proptest! {
         let mut behavior = supervisor(strategy, RestartPolicy::Transient, 3);
         let event = SupervisionEvent::WorkerStopped(WorkerStopped {
             proxy: u64::try_from(dead).unwrap(),
+            worker: u64::try_from(dead).unwrap(),
             outcome: Err(Crash::Failed),
             at: Instant::now(),
         });
         let runtime = Builder::new_current_thread().enable_all().build().unwrap();
         let actions = runtime.block_on(behavior.step(event)).unwrap();
-        prop_assert_eq!(actions.sends.own.own.len(), expected);
+        prop_assert_eq!(actions.sends.replacement_commands.len(), expected);
         prop_assert!(actions.creates.is_empty());
     }
 }

@@ -97,14 +97,15 @@ fuzz_target!(|bytes: &[u8]| {
             let actions = behavior
                 .step(SupervisionEvent::WorkerStopped(WorkerStopped {
                     proxy: u64::try_from(nonce).unwrap(),
-                    outcome: Err(Crash::Failed),
+                    worker: u64::try_from(nonce).unwrap(),
+            outcome: Err(Crash::Failed),
                     at: base + std::time::Duration::from_nanos(at),
                 }))
                 .await
                 .unwrap();
 
             assert_eq!(
-                actions.sends.own.own.len(),
+                actions.sends.replacement_commands.len(),
                 usize::from(expected_restart),
                 "replacement count mismatch at byte {index}"
             );

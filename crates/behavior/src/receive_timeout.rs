@@ -8,10 +8,11 @@ use crate::behavior::{
     Actions, Address, Behavior, BirthMode, SendAlgebra, SendProduct, ServiceSends, UserEvent,
 };
 use crate::protocol::{
-    ChildEvent, ChildStopped, PeerEvent, PeerStopped, ScheduleAfter, ShutdownEvent,
-    ShutdownRequested, TimeEvent, TimerElapsed, TimerGeneration, TimerId, WorkerEvent,
-    WorkerStopped,
+    ChildEvent, ChildStopped, CreationEvent, CreationResolved, PeerEvent, PeerStopped,
+    ScheduleAfter, ShutdownEvent, ShutdownRequested, TimeEvent, TimerElapsed, TimerId,
+    WorkerCreationEvent, WorkerCreationResolved, WorkerEvent, WorkerStopped,
 };
+use crate::timing::TimerLease;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ReceiveTimeoutEvent<E> {
@@ -56,6 +57,18 @@ impl<E: ChildEvent<A>, A: Address> ChildEvent<A> for ReceiveTimeoutEvent<E> {
 impl<E: WorkerEvent<A>, A: Address> WorkerEvent<A> for ReceiveTimeoutEvent<E> {
     fn worker_stopped(event: WorkerStopped<A>) -> Option<Self> {
         E::worker_stopped(event).map(Self::Inner)
+    }
+}
+
+impl<E: CreationEvent<A>, A: Address> CreationEvent<A> for ReceiveTimeoutEvent<E> {
+    fn creation_resolved(event: CreationResolved<A>) -> Option<Self> {
+        E::creation_resolved(event).map(Self::Inner)
+    }
+}
+
+impl<E: WorkerCreationEvent<A>, A: Address> WorkerCreationEvent<A> for ReceiveTimeoutEvent<E> {
+    fn worker_creation_resolved(event: WorkerCreationResolved<A>) -> Option<Self> {
+        E::worker_creation_resolved(event).map(Self::Inner)
     }
 }
 
@@ -111,8 +124,7 @@ pub struct ReceiveTimeout<B: Behavior> {
     inner: B,
     id: TimerId,
     after: Duration,
-    live: Option<TimerGeneration>,
-    last_issued: Option<TimerGeneration>,
+    timer: TimerLease,
     on_elapsed: ReceiveTimeoutReaction<B>,
 }
 
@@ -128,8 +140,7 @@ impl<B: Behavior> ReceiveTimeout<B> {
             inner,
             id,
             after,
-            live: None,
-            last_issued: None,
+            timer: TimerLease::new(),
             on_elapsed,
         }
     }
@@ -140,35 +151,24 @@ impl<B: Behavior> ReceiveTimeout<B> {
     }
 
     fn schedule(&mut self) -> Result<ServiceSends<ScheduleAfter>, ReceiveTimeoutError<B::Error>> {
-        let generation = match self.last_issued {
-            None => TimerGeneration(0),
-            Some(TimerGeneration(generation)) => TimerGeneration(
-                generation
-                    .checked_add(1)
-                    .ok_or(ReceiveTimeoutError::GenerationExhausted)?,
-            ),
-        };
-        self.last_issued = Some(generation);
-        self.live = Some(generation);
-        Ok(ServiceSends::one(ScheduleAfter {
-            id: self.id,
-            generation,
-            after: self.after,
-        }))
+        let generation = self
+            .timer
+            .arm()
+            .map_err(|_| ReceiveTimeoutError::GenerationExhausted)?;
+        Ok(ServiceSends::one(ScheduleAfter::new(
+            self.id, generation, self.after,
+        )))
     }
 
     fn wrap(
         actions: Actions<B::Addr, B::Ph, B::Sends, B::Birth>,
         own: ServiceSends<ScheduleAfter>,
     ) -> ReceiveTimeoutActions<B> {
-        Actions {
-            sends: SendProduct {
-                inner: actions.sends,
-                own,
-            },
-            creates: actions.creates,
-            become_: actions.become_,
-        }
+        Actions::new(
+            SendProduct::new(actions.sends, own),
+            actions.creates,
+            actions.become_,
+        )
     }
 
     fn terminal(actions: &Actions<B::Addr, B::Ph, B::Sends, B::Birth>) -> bool {
@@ -200,7 +200,7 @@ where
             .await
             .map_err(ReceiveTimeoutError::Inner)?;
         let own = if Self::terminal(&actions) {
-            self.live = None;
+            self.timer.disarm();
             ServiceSends::empty()
         } else {
             self.schedule()?
@@ -211,9 +211,8 @@ where
     async fn step(&mut self, event: Self::Event) -> Result<ReceiveTimeoutActions<B>, Self::Error> {
         match event {
             ReceiveTimeoutEvent::Elapsed(elapsed)
-                if elapsed.id == self.id && self.live == Some(elapsed.generation) =>
+                if elapsed.id == self.id && self.timer.accept(elapsed.generation) =>
             {
-                self.live = None;
                 let actions =
                     (self.on_elapsed)(&mut self.inner).map_err(ReceiveTimeoutError::Inner)?;
                 Ok(Self::wrap(actions, ServiceSends::empty()))
@@ -229,7 +228,7 @@ where
                     .await
                     .map_err(ReceiveTimeoutError::Inner)?;
                 if Self::terminal(&actions) {
-                    self.live = None;
+                    self.timer.disarm();
                 }
                 Ok(Self::wrap(actions, ServiceSends::empty()))
             }
@@ -242,7 +241,7 @@ where
                         .await
                         .map_err(ReceiveTimeoutError::Inner)?;
                     let own = if Self::terminal(&actions) {
-                        self.live = None;
+                        self.timer.disarm();
                         ServiceSends::empty()
                     } else {
                         self.schedule()?
@@ -256,7 +255,7 @@ where
                         .await
                         .map_err(ReceiveTimeoutError::Inner)?;
                     if Self::terminal(&actions) {
-                        self.live = None;
+                        self.timer.disarm();
                     }
                     Ok(Self::wrap(actions, ServiceSends::empty()))
                 }
@@ -268,7 +267,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Acted, Base, Delivery, MailAddr, Never, NoBirths, State, User};
+    use crate::{Acted, Base, Delivery, MailAddr, Never, NoBirths, State, TimerGeneration, User};
 
     struct Count(u8);
 
@@ -303,7 +302,7 @@ mod tests {
             elapsed,
         );
         timeout.init().await.unwrap();
-        timeout.last_issued = Some(TimerGeneration(u64::MAX));
+        timeout.timer = TimerLease::idle(TimerGeneration(u64::MAX));
 
         let result = timeout
             .step(ReceiveTimeoutEvent::Inner(User::user(MailAddr(1), ())))
@@ -314,6 +313,6 @@ mod tests {
             Err(ReceiveTimeoutError::GenerationExhausted)
         ));
         assert_eq!(timeout.inner().state().0, 1);
-        assert_eq!(timeout.live, Some(TimerGeneration(0)));
+        assert_eq!(timeout.timer.live(), None);
     }
 }

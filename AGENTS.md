@@ -121,6 +121,68 @@ Do not weaken bounds, add a default generic, widen visibility, or add a
 convenience constructor merely to make invalid programs compile. Compiler
 friction is often evidence that an invariant has not yet been modeled.
 
+## Rust design discipline
+
+Model the semantic domain before writing transition code. Rust's algebraic
+data types are the default design language for this repository, not an
+implementation detail to add after behavior has been encoded procedurally.
+
+- Use `Option<T>` only when the domain is exactly “one `T` or absence.” Do not
+  combine several `Option` values to encode mutually exclusive phases or
+  correlated capabilities.
+- Use `Result<T, E>` when an operation has a successful value or a typed,
+  actionable failure. Do not represent rejection with a boolean, sentinel,
+  empty collection, panic, log entry, or unrelated terminal outcome.
+- Use an exhaustive `enum` (a sum type) when a value can be in one of several
+  semantic states. Each variant must own exactly the data and capabilities
+  valid in that state.
+- Use a named `struct` (a product type) when several fields coexist. Give
+  public effect lanes and protocol products semantic field names; do not expose
+  positional `.inner`/`.own` chains whose meaning depends on nesting depth.
+- Do not coordinate lifecycle with booleans such as `alive`, `pending`,
+  `started`, or `restarting` when their combinations describe a state machine.
+  Replace the combination with one exhaustive state enum so contradictory
+  states are unrepresentable.
+- Keep distinct facts distinct. In particular, a requested operation, an
+  in-progress attempt, a committed success, a typed rejection, and a later
+  retry are different states and must not share one flag or inferred counter.
+- Never infer semantic provenance from sequence arithmetic, address reuse,
+  timing, or adjacency when the provenance can be carried explicitly in a
+  typed value.
+
+Prefer functional transition structure: consume one current semantic state and
+one typed event, compute the next semantic state plus explicit `Actions`, and
+commit that pair once. Isolate transition functions by event or state where it
+keeps each function total, short, and independently testable. Avoid partially
+mutating several fields across a branch, using a temporary invalid state, or
+relying on later code to restore an invariant. Mutation is permitted as an
+implementation technique, but the code must still visibly implement a pure
+state-transition law.
+
+Follow established Rust ownership and type-design idioms. Prefer exhaustive
+matching, ownership transfer, newtypes, associated types, and concrete generic
+composition over flags, cloning to escape ownership, interior mutability,
+index-based meaning, or runtime validation. A design that compiles is not
+therefore idiomatic or accepted; its types must make the semantic law apparent
+to a Rust reader.
+
+Every new state, result, protocol, or effect product must pass a composability
+review before implementation:
+
+1. State the complete sum of phases and outcomes, including rejection, stale
+   input, overlap, retry, and terminal cases.
+2. Show which data belongs to each variant and which transitions are legal.
+3. Check the type through every existing wrapper order and interpreter path.
+4. Use named concrete products when multiple effect lanes travel together.
+5. Prove that composition cannot drop, duplicate, reorder, reinterpret, or
+   consume an inner lane unintentionally.
+6. Reject the design if adding another wrapper would require callers to know a
+   positional nesting path or synchronize correlated flags.
+
+Do not begin with a compatibility patch and refactor toward the model later.
+For semantic work, establish the truthful sum and product types first, then
+implement the fold and update callers explicitly.
+
 ## Change method
 
 For every semantic change:
@@ -135,6 +197,14 @@ For every semantic change:
    duplicate, reorder, or reinterpret an event or effect lane.
 6. Avoid broad compatibility shims. If a sound design requires an API break,
    make the break explicit and update all callers and tests.
+7. Before editing, inspect every interpreter that must realize the new
+   contract. Do not publish an algebra whose success, rejection, ordering, or
+   initialization semantics cannot be implemented end to end by the current
+   runtime boundary.
+8. Stop the implementation when the emerging code requires coordinated flags,
+   nested positional effect access, inferred provenance, or short-circuiting
+   that skips required effects. Return to the state and protocol design rather
+   than repairing those smells incrementally.
 
 Do not add speculative abstractions. Add a trait or combinator only when its
 laws are clear, its composition is type-safe, and at least one concrete use

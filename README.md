@@ -14,8 +14,10 @@ Its core guarantees are:
 - `NoBirths` makes creation uninhabited, while `Births<C>` permits only fresh,
   typed `Create` values;
 - each `Create` carries Behavior-owned provenance distinguishing an ordinary
-  birth from a replacement incarnation, while successful installation remains
-  an interpreter responsibility;
+  birth from a replacement of one exact incarnation, while a typed creation
+  result reports whether the interpreter actually committed it;
+- supervised proxies keep a replacement pending and unroutable until its
+  matching installation result succeeds; rejection never becomes a restart;
 - supervision replaces workers through stable proxy actors, preserving the
   meaning of fresh creation;
 - restart denial and stable-proxy loss remain typed behavior inputs to a pure,
@@ -82,6 +84,11 @@ Criterion benchmarks remain available explicitly with `cargo bench`; they are
 not executed as nextest test binaries.
 
 ## Design notes
+
+The extracted lifecycle domains and their ownership are documented in
+[Domain Boundaries](docs/domain-boundaries.md). Replacement realization and its
+research/policy classification are documented in
+[Replacement Realization](docs/replacement-realization.md).
 
 Architectural pressure that does not yet justify a semantic refactor is tracked
 in [Potential Architecture Changes](docs/potential-architecture-changes.md).

@@ -7,10 +7,10 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, Base, Behavior, ChildStopped, Crash, Create, CreationKind, Delivery, Exit,
-    MailAddr, Never, Proxy, ProxyCommand, RestartDenial, RestartPolicy, Route, State, Step,
-    Strategy, Supervising, SupervisionEvent, SupervisionFailureReason, User, UserEvent,
-    WorkerStopped, stop_on_supervision_failure,
+    Acted, Actions, Base, Behavior, ChildStopped, Crash, Create, CreationKind, CreationResolved,
+    Delivery, Exit, MailAddr, Never, Proxy, ProxyCommand, RestartDenial, RestartPolicy, Route,
+    State, Step, Strategy, Supervising, SupervisionEvent, SupervisionFailureReason, User,
+    UserEvent, WorkerStopped, stop_on_supervision_failure,
 };
 use behavior_testkit::model::{
     ExpectedCreation, ExpectedIncarnation, IncarnationModel, Model, Outcome,
@@ -113,7 +113,9 @@ fn assert_expected_creation(expected: ExpectedIncarnation, actual: &Create<MailA
         actual.kind,
         match expected.role {
             ExpectedCreation::Initial | ExpectedCreation::Ordinary => CreationKind::Birth,
-            ExpectedCreation::Successor => CreationKind::ReplacementIncarnation,
+            ExpectedCreation::Successor => CreationKind::ReplacementIncarnation {
+                replaces: expected.nonce - 1,
+            },
         }
     );
 }
@@ -126,6 +128,14 @@ async fn creation_provenance_matches_the_independent_incarnation_model() {
     let expected_initial = model.initialize();
     let initial = proxy.init().await.unwrap();
     assert_expected_creation(expected_initial, &initial.creates[0]);
+    proxy
+        .step(SupervisionEvent::CreationResolved(CreationResolved {
+            nonce: 0,
+            kind: CreationKind::Birth,
+            result: Ok(()),
+        }))
+        .await
+        .unwrap();
 
     let expected_ordinary = IncarnationModel::ordinary(9);
     let ordinary = Create::birth(9, child(0));
@@ -161,6 +171,14 @@ async fn immediate_and_denied_replacements_match_the_independent_models() {
 
     let mut proxy = Proxy::new(child(0));
     proxy.init().await.unwrap();
+    proxy
+        .step(SupervisionEvent::CreationResolved(CreationResolved {
+            nonce: 0,
+            kind: CreationKind::Birth,
+            result: Ok(()),
+        }))
+        .await
+        .unwrap();
     proxy
         .step(SupervisionEvent::ChildStopped(ChildStopped {
             nonce: 0,
@@ -203,13 +221,14 @@ async fn immediate_and_denied_replacements_match_the_independent_models() {
     let denied = behavior
         .step(SupervisionEvent::WorkerStopped(WorkerStopped {
             proxy: 0,
+            worker: 0,
             outcome: Err(Crash::Failed),
             at: Instant::now(),
         }))
         .await
         .unwrap();
     assert!(denied.creates.is_empty());
-    assert!(denied.sends.own.own.is_empty());
+    assert!(denied.sends.replacement_commands.is_empty());
 }
 
 proptest! {
@@ -260,15 +279,14 @@ proptest! {
             let actions = runtime
                 .block_on(behavior.step(SupervisionEvent::WorkerStopped(WorkerStopped {
                     proxy: dead,
-                    outcome: outcome.into_result(),
+                    worker: dead,
+            outcome: outcome.into_result(),
                     at: base + Duration::from_nanos(at),
                 })))
                 .unwrap();
 
             let sends: Vec<u64> = actions
-                .sends
-                .own
-                .own
+                .sends.replacement_commands
                 .iter()
                 .map(|delivery| match delivery.to.route() {
                     Route::Child(nonce) => nonce,
@@ -352,8 +370,8 @@ proptest! {
                 prop_assert_eq!(actions.creates.len(), 1);
                 prop_assert_eq!(actions.creates[0].nonce, nonce);
                 // The born child is observed exactly once.
-                prop_assert_eq!(actions.sends.own.inner.len(), 1);
-                prop_assert_eq!(actions.sends.own.inner[0].nonce, nonce);
+                prop_assert_eq!(actions.sends.child_observations.len(), 1);
+                prop_assert_eq!(actions.sends.child_observations[0].nonce, nonce);
             } else {
                 // Child-stopped for an existing slot.
                 let known = model.slot_count();
@@ -371,14 +389,13 @@ proptest! {
                 let actions = runtime
                     .block_on(behavior.step(SupervisionEvent::WorkerStopped(WorkerStopped {
                         proxy: nonce,
-                        outcome: outcome.into_result(),
+                        worker: nonce,
+            outcome: outcome.into_result(),
                         at: base + Duration::from_nanos(at),
                     })))
                     .unwrap();
                 let sends: Vec<u64> = actions
-                    .sends
-                    .own
-                    .own
+                    .sends.replacement_commands
                     .iter()
                     .map(|delivery| match delivery.to.route() {
                         Route::Child(nonce) => nonce,
@@ -420,6 +437,7 @@ async fn budget_recovers_after_stamps_age_out_of_the_window() {
         behavior
             .step(SupervisionEvent::WorkerStopped(WorkerStopped {
                 proxy: 0,
+                worker: 0,
                 outcome: Err(Crash::Failed),
                 at: base + Duration::from_nanos(offset),
             }))
@@ -432,35 +450,38 @@ async fn budget_recovers_after_stamps_age_out_of_the_window() {
     let denied = behavior
         .step(SupervisionEvent::WorkerStopped(WorkerStopped {
             proxy: 0,
+            worker: 0,
             outcome: Err(Crash::Failed),
             at: base + Duration::from_nanos(3),
         }))
         .await
         .unwrap();
-    assert!(denied.sends.own.own.is_empty());
+    assert!(denied.sends.replacement_commands.is_empty());
     assert!(!behavior.is_alive(0));
 
     // At 100ns: all three stamps still inside the inclusive window; denied.
     let edge = behavior
         .step(SupervisionEvent::WorkerStopped(WorkerStopped {
             proxy: 0,
+            worker: 0,
             outcome: Err(Crash::Failed),
             at: base + Duration::from_nanos(100),
         }))
         .await
         .unwrap();
-    assert!(edge.sends.own.own.is_empty());
+    assert!(edge.sends.replacement_commands.is_empty());
 
     // At 101ns: the stamp at 0ns aged out (age 101 > 100); budget recovers.
     let recovered = behavior
         .step(SupervisionEvent::WorkerStopped(WorkerStopped {
             proxy: 0,
+            worker: 0,
             outcome: Err(Crash::Failed),
             at: base + Duration::from_nanos(101),
         }))
         .await
         .unwrap();
-    assert_eq!(recovered.sends.own.own.len(), 1);
+    assert_eq!(recovered.sends.replacement_commands.len(), 1);
     assert!(behavior.is_alive(0));
 }
 
@@ -486,6 +507,7 @@ async fn restart_stamps_stay_bounded_by_the_window() {
         behavior
             .step(SupervisionEvent::WorkerStopped(WorkerStopped {
                 proxy: 0,
+                worker: 0,
                 outcome: Err(Crash::Failed),
                 at: base + Duration::from_nanos(offset),
             }))

@@ -331,10 +331,10 @@ async fn supervision_preserves_inner_watch_routing() {
         .children((2, child));
     let initial = behavior.init().await.unwrap();
     assert_eq!(initial.creates.len(), 2);
-    assert_eq!(initial.sends.own.inner.len(), 2); // observe-child x2
-    assert_eq!(initial.sends.own.inner[0].nonce, 0);
-    assert_eq!(initial.sends.inner.own.len(), 1); // observe-peer
-    assert_eq!(initial.sends.inner.own[0].peer, PEER);
+    assert_eq!(initial.sends.child_observations.len(), 2); // observe-child x2
+    assert_eq!(initial.sends.child_observations[0].nonce, 0);
+    assert_eq!(initial.sends.behavior.own.len(), 1); // observe-peer
+    assert_eq!(initial.sends.behavior.own[0].peer, PEER);
 
     // Peer lane: the watch reaction stops the supervised fold.
     let died = behavior
@@ -359,13 +359,17 @@ async fn supervision_preserves_inner_watch_routing() {
     let actions = replacement
         .step(SupervisionEvent::WorkerStopped(WorkerStopped {
             proxy: 0,
+            worker: 0,
             outcome: Err(Crash::Failed),
             at: Instant::now(),
         }))
         .await
         .unwrap();
-    assert_eq!(actions.sends.own.own.len(), 1);
-    assert_eq!(actions.sends.own.own[0].to.route(), Route::Child(0));
+    assert_eq!(actions.sends.replacement_commands.len(), 1);
+    assert_eq!(
+        actions.sends.replacement_commands[0].to.route(),
+        Route::Child(0)
+    );
 }
 
 /// A supervision failure reaction composes above an inner watch without
@@ -398,16 +402,17 @@ async fn supervision_failure_reaction_preserves_composed_send_lanes() {
     let actions = behavior
         .step(SupervisionEvent::WorkerStopped(WorkerStopped {
             proxy: 0,
+            worker: 0,
             outcome: Err(Crash::Failed),
             at: Instant::now(),
         }))
         .await
         .unwrap();
 
-    assert!(actions.sends.inner.inner.is_empty());
-    assert!(actions.sends.inner.own.is_empty());
-    assert!(actions.sends.own.inner.is_empty());
-    assert!(actions.sends.own.own.is_empty());
+    assert!(actions.sends.behavior.inner.is_empty());
+    assert!(actions.sends.behavior.own.is_empty());
+    assert!(actions.sends.child_observations.is_empty());
+    assert!(actions.sends.replacement_commands.is_empty());
     assert_eq!(
         actions.become_,
         Step::Stop(Exit::SupervisionFailed(

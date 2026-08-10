@@ -103,11 +103,11 @@ fuzz_target!(|bytes: &[u8]| {
                 assert_eq!(actions.creates[0].nonce, nonce);
                 assert_eq!(actions.creates[0].kind, CreationKind::Birth);
                 assert_eq!(
-                    actions.sends.own.inner.len(),
+                    actions.sends.child_observations.len(),
                     1,
                     "observe request at byte {index}"
                 );
-                assert_eq!(actions.sends.own.inner[0].nonce, nonce);
+                assert_eq!(actions.sends.child_observations[0].nonce, nonce);
             } else {
                 // Death of the slot selected by the byte.
                 let dead = slots[usize::from(byte) % slots.len()];
@@ -122,13 +122,14 @@ fuzz_target!(|bytes: &[u8]| {
                 let actions = behavior
                     .step(SupervisionEvent::WorkerStopped(WorkerStopped {
                         proxy: dead.nonce,
-                        outcome: Err(Crash::Failed),
+                        worker: dead.nonce,
+            outcome: Err(Crash::Failed),
                         at: base + std::time::Duration::from_nanos(u64::try_from(index).unwrap()),
                     }))
                     .await
                     .unwrap();
                 assert_eq!(
-                    actions.sends.own.own.len(),
+                    actions.sends.replacement_commands.len(),
                     usize::from(expected_restart),
                     "replacement count at byte {index}"
                 );

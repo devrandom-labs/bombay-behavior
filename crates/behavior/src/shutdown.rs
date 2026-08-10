@@ -7,8 +7,9 @@
 
 use crate::behavior::{Actions, Address, Behavior, BirthMode, SendAlgebra, User, UserEvent};
 use crate::protocol::{
-    ChildEvent, ChildStopped, PeerEvent, PeerStopped, ShutdownEvent, ShutdownRequested, TimeEvent,
-    TimerElapsed, WorkerEvent, WorkerStopped,
+    ChildEvent, ChildStopped, CreationEvent, CreationResolved, PeerEvent, PeerStopped,
+    ShutdownEvent, ShutdownRequested, TimeEvent, TimerElapsed, WorkerCreationEvent,
+    WorkerCreationResolved, WorkerEvent, WorkerStopped,
 };
 use crate::{Exit, Step};
 
@@ -62,6 +63,18 @@ impl<E: ChildEvent<A>, A: Address> ChildEvent<A> for ShutdownProtocol<E> {
 impl<E: WorkerEvent<A>, A: Address> WorkerEvent<A> for ShutdownProtocol<E> {
     fn worker_stopped(event: WorkerStopped<A>) -> Option<Self> {
         E::worker_stopped(event).map(Self::Inner)
+    }
+}
+
+impl<E: CreationEvent<A>, A: Address> CreationEvent<A> for ShutdownProtocol<E> {
+    fn creation_resolved(event: CreationResolved<A>) -> Option<Self> {
+        E::creation_resolved(event).map(Self::Inner)
+    }
+}
+
+impl<E: WorkerCreationEvent<A>, A: Address> WorkerCreationEvent<A> for ShutdownProtocol<E> {
+    fn worker_creation_resolved(event: WorkerCreationResolved<A>) -> Option<Self> {
+        E::worker_creation_resolved(event).map(Self::Inner)
     }
 }
 
@@ -159,10 +172,10 @@ impl_shutdown_behavior!(
     FinalizeOnShutdown,
     |this: &mut FinalizeOnShutdown<B>, request| {
         let actions = (this.finalize)(&mut this.inner, request)?;
-        Ok(Actions {
-            sends: actions.sends,
-            creates: actions.creates,
-            become_: Step::Stop(Exit::Normal),
-        })
+        Ok(Actions::new(
+            actions.sends,
+            actions.creates,
+            Step::Stop(Exit::Normal),
+        ))
     }
 );

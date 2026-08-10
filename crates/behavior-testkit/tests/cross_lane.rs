@@ -90,7 +90,7 @@ async fn user(behavior: &mut Stack, message: u64) -> Vec<u64> {
         )))
         .await
         .unwrap();
-    actions.sends.inner.iter().map(|d| d.message).collect()
+    actions.sends.behavior.iter().map(|d| d.message).collect()
 }
 
 /// The user lane is filtered by the stash exactly as in the unfettered
@@ -127,15 +127,19 @@ async fn child_death_never_leaks_into_the_user_lane() {
     let actions = behavior
         .step(SupervisionEvent::WorkerStopped(WorkerStopped {
             proxy: 0,
+            worker: 0,
             outcome: Err(Crash::Failed),
             at: Instant::now(),
         }))
         .await
         .unwrap();
-    assert_eq!(actions.sends.own.own.len(), 1);
-    assert_eq!(actions.sends.own.own[0].to.route(), Route::Child(0));
-    assert!(actions.sends.inner.is_empty());
-    assert!(actions.sends.own.inner.is_empty());
+    assert_eq!(actions.sends.replacement_commands.len(), 1);
+    assert_eq!(
+        actions.sends.replacement_commands[0].to.route(),
+        Route::Child(0)
+    );
+    assert!(actions.sends.behavior.is_empty());
+    assert!(actions.sends.child_observations.is_empty());
 }
 
 /// The time lane through a supervised stack: the schedule send survives in
@@ -149,9 +153,9 @@ async fn supervision_preserves_inner_at_routing() {
         .at(Some(due), |_| Ok(Step::Stop(Exit::Normal)))
         .children((1, child));
     let initial = behavior.init().await.unwrap();
-    assert_eq!(initial.sends.inner.own[0].at, due);
-    assert_eq!(initial.sends.own.inner.len(), 1);
-    assert!(initial.sends.inner.inner.is_empty());
+    assert_eq!(initial.sends.behavior.own[0].at, due);
+    assert_eq!(initial.sends.child_observations.len(), 1);
+    assert!(initial.sends.behavior.inner.is_empty());
     assert_eq!(initial.creates.len(), 1);
 
     let fired = behavior
@@ -162,7 +166,7 @@ async fn supervision_preserves_inner_at_routing() {
         .await
         .unwrap();
     assert_eq!(fired.become_, Step::Stop(Exit::Normal));
-    assert!(fired.sends.own.own.is_empty());
+    assert!(fired.sends.replacement_commands.is_empty());
 }
 
 /// The full stack: supervision over at over watch over stash. All four
@@ -182,11 +186,11 @@ async fn full_stack_all_four_layers_keep_their_own_lanes() {
         .children((2, child));
     let initial = behavior.init().await.unwrap();
     assert_eq!(initial.creates.len(), 2);
-    assert_eq!(initial.sends.own.inner.len(), 2); // observe-child x2
-    assert_eq!(initial.sends.own.own.len(), 0); // proxy commands
-    assert_eq!(initial.sends.inner.own[0].at, due); // schedule
-    assert_eq!(initial.sends.inner.inner.own[0].peer, peer); // observe-peer
-    assert!(initial.sends.inner.inner.inner.is_empty()); // echo lane
+    assert_eq!(initial.sends.child_observations.len(), 2); // observe-child x2
+    assert_eq!(initial.sends.replacement_commands.len(), 0); // proxy commands
+    assert_eq!(initial.sends.behavior.own[0].at, due); // schedule
+    assert_eq!(initial.sends.behavior.inner.own[0].peer, peer); // observe-peer
+    assert!(initial.sends.behavior.inner.inner.is_empty()); // echo lane
 
     // User lane: Deliver routes through every layer to the parent echo.
     let actions = behavior
@@ -195,8 +199,8 @@ async fn full_stack_all_four_layers_keep_their_own_lanes() {
         ))))
         .await
         .unwrap();
-    assert_eq!(actions.sends.inner.inner.inner[0].message, 1);
-    assert!(actions.sends.own.own.is_empty());
+    assert_eq!(actions.sends.behavior.inner.inner[0].message, 1);
+    assert!(actions.sends.replacement_commands.is_empty());
 
     // Time lane: fires the inner At.
     let fired = behavior
@@ -233,14 +237,18 @@ async fn full_stack_all_four_layers_keep_their_own_lanes() {
     let replacement = fresh
         .step(SupervisionEvent::WorkerStopped(WorkerStopped {
             proxy: 0,
+            worker: 0,
             outcome: Err(Crash::Failed),
             at: Instant::now(),
         }))
         .await
         .unwrap();
-    assert_eq!(replacement.sends.own.own.len(), 1);
-    assert_eq!(replacement.sends.own.own[0].to.route(), Route::Child(0));
-    assert!(replacement.sends.inner.inner.inner.is_empty());
+    assert_eq!(replacement.sends.replacement_commands.len(), 1);
+    assert_eq!(
+        replacement.sends.replacement_commands[0].to.route(),
+        Route::Child(0)
+    );
+    assert!(replacement.sends.behavior.inner.inner.is_empty());
 }
 
 proptest! {
@@ -316,7 +324,8 @@ proptest! {
                     runtime
                         .block_on(behavior.step(SupervisionEvent::WorkerStopped(WorkerStopped {
                             proxy: u64::from(arg % 2),
-                            outcome: Err(Crash::Failed),
+                            worker: u64::from(arg % 2),
+            outcome: Err(Crash::Failed),
                             at: base + Duration::from_nanos(at),
                         })))
                         .unwrap()
@@ -325,8 +334,7 @@ proptest! {
 
             // Echo lane (user deliveries): exactly the filter model's output.
             let echo_step: Vec<u64> = actions
-                .sends
-                .inner
+                .sends.behavior
                 .inner
                 .inner
                 .iter()
@@ -342,14 +350,14 @@ proptest! {
             // Cross-lane: user/time/peer steps never emit supervision sends;
             // child steps emit exactly one replacement and no echoes.
             if tag == 3 {
-                prop_assert_eq!(actions.sends.own.own.len(), 1);
+                prop_assert_eq!(actions.sends.replacement_commands.len(), 1);
                 prop_assert_eq!(
-                    actions.sends.own.own[0].to.route(),
+                    actions.sends.replacement_commands[0].to.route(),
                     Route::Child(u64::from(arg % 2))
                 );
                 prop_assert!(echo_step.is_empty());
             } else {
-                prop_assert!(actions.sends.own.own.is_empty());
+                prop_assert!(actions.sends.replacement_commands.is_empty());
             }
 
             // Verdict: only a watched-peer death stops the fold.

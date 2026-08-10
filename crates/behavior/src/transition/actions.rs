@@ -10,11 +10,15 @@ pub type Become<A, Ph = Never> = Step<Ph, Exit<A>>;
 /// Bombay's typed realization of the actor transition effects: communications,
 /// fresh actor creation, and next behavior or termination.
 ///
-/// An interpreter installs every fresh actor in `creates` before interpreting
-/// any ordinary delivery or [`crate::ServiceSends`] request in `sends` from this
-/// value. Creation order is vector order, and each concrete send lane retains
-/// its own order; this contract does not impose an order between independent
-/// lanes of a [`crate::SendProduct`]. Constructing a value remains pure.
+/// An interpreter resolves every fresh creation in `creates` before
+/// interpreting any ordinary delivery or [`crate::ServiceSends`] request in
+/// `sends` from this value. A successful resolution installs and binds the
+/// child; a rejected resolution binds nothing. This ordering lets a same-action
+/// [`crate::ObserveCreation`] request return the committed result rather than
+/// the behavior's intent. Creation order is vector order, and each concrete
+/// send lane retains its own order; this contract does not impose an order
+/// between independent lanes of a [`crate::SendProduct`]. Constructing a value
+/// remains pure.
 pub struct Actions<A: Address, Ph, Sends, Birth: BirthMode> {
     pub sends: Sends,
     pub creates: Vec<Create<A, Birth::Child>>,
@@ -22,6 +26,19 @@ pub struct Actions<A: Address, Ph, Sends, Birth: BirthMode> {
 }
 
 impl<A: Address, Ph, Sends: SendAlgebra, Birth: BirthMode> Actions<A, Ph, Sends, Birth> {
+    #[must_use]
+    pub const fn new(
+        sends: Sends,
+        creates: Vec<Create<A, Birth::Child>>,
+        become_: Become<A, Ph>,
+    ) -> Self {
+        Self {
+            sends,
+            creates,
+            become_,
+        }
+    }
+
     #[must_use]
     pub fn just(become_: Become<A, Ph>) -> Self {
         Self {
@@ -42,6 +59,20 @@ impl<A: Address, Ph, Sends: SendAlgebra, Birth: BirthMode> Actions<A, Ph, Sends,
     #[must_use]
     pub fn goto(phase: Ph) -> Self {
         Self::just(Step::Goto(phase))
+    }
+}
+
+impl<A: Address, Ph, Sends, Birth: BirthMode>
+    From<(Sends, Vec<Create<A, Birth::Child>>, Become<A, Ph>)> for Actions<A, Ph, Sends, Birth>
+{
+    fn from(
+        (sends, creates, become_): (Sends, Vec<Create<A, Birth::Child>>, Become<A, Ph>),
+    ) -> Self {
+        Self {
+            sends,
+            creates,
+            become_,
+        }
     }
 }
 

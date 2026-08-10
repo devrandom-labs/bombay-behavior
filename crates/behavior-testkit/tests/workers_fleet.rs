@@ -136,18 +136,24 @@ async fn supervised_mixed_fleet_routes_replacements_by_birth_sequence() {
     let mut supervisor = supervise_with(count, build, Strategy::RestForOne);
     let initial = supervisor.init().await.unwrap();
     assert_eq!(initial.creates.len(), 3);
-    assert_eq!(initial.sends.own.inner.len(), 3);
+    assert_eq!(initial.sends.child_observations.len(), 3);
 
     let at = Instant::now();
     let wide = supervisor
         .step(SupervisionEvent::WorkerStopped(WorkerStopped {
             proxy: 1,
+            worker: 1,
             outcome: Err(Crash::Failed),
             at,
         }))
         .await
         .unwrap();
-    let routes: Vec<Route<MailAddr>> = wide.sends.own.own.iter().map(|d| d.to.route()).collect();
+    let routes: Vec<Route<MailAddr>> = wide
+        .sends
+        .replacement_commands
+        .iter()
+        .map(|d| d.to.route())
+        .collect();
     assert_eq!(routes.len(), 2);
     assert!(routes.contains(&Route::Child(1)));
     assert!(routes.contains(&Route::Child(2)));
@@ -155,13 +161,17 @@ async fn supervised_mixed_fleet_routes_replacements_by_birth_sequence() {
     let narrow = supervisor
         .step(SupervisionEvent::WorkerStopped(WorkerStopped {
             proxy: 2,
+            worker: 2,
             outcome: Err(Crash::Failed),
             at,
         }))
         .await
         .unwrap();
-    assert_eq!(narrow.sends.own.own.len(), 1);
-    assert_eq!(narrow.sends.own.own[0].to.route(), Route::Child(2));
+    assert_eq!(narrow.sends.replacement_commands.len(), 1);
+    assert_eq!(
+        narrow.sends.replacement_commands[0].to.route(),
+        Route::Child(2)
+    );
 }
 
 /// Three kinds: each kind's slots route to its own variant, exactly at the
@@ -215,12 +225,18 @@ async fn workers_one_for_all_replaces_every_slot() {
     let actions = supervisor
         .step(SupervisionEvent::WorkerStopped(WorkerStopped {
             proxy: 0,
+            worker: 0,
             outcome: Err(Crash::Failed),
             at: Instant::now(),
         }))
         .await
         .unwrap();
-    let routes: Vec<Route<MailAddr>> = actions.sends.own.own.iter().map(|d| d.to.route()).collect();
+    let routes: Vec<Route<MailAddr>> = actions
+        .sends
+        .replacement_commands
+        .iter()
+        .map(|d| d.to.route())
+        .collect();
     assert_eq!(routes.len(), 3);
     for nonce in 0..3 {
         assert!(routes.contains(&Route::Child(nonce)));

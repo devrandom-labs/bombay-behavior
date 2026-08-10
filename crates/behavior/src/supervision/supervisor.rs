@@ -2,26 +2,61 @@
 
 use std::time::Duration;
 
-use tokio::time::Instant;
-
+use super::fleet::Fleet;
 use super::policy::{
     RestartPolicy, Strategy, SupervisionFailure, SupervisionFailureReaction,
     retire_on_supervision_failure,
 };
 use super::protocol::{ProxyCommand, SupervisionEvent};
 use super::proxy::Proxy;
+use super::restart_budget::RestartBudget;
 use crate::behavior::{
-    Actions, Address, Behavior, Births, Create, Delivery, Recipient, SendAlgebra, SendProduct,
-    ServiceSends,
+    Actions, Address, Behavior, Births, Create, Delivery, Recipient, SendAlgebra, ServiceSends,
 };
-use crate::protocol::{ChildEvent, ObserveChild, WorkerStopped};
+use crate::protocol::{
+    ChildEvent, CreationEvent, ObserveChild, WorkerCreationEvent, WorkerStopped,
+};
 use crate::verdict::{Never, Step};
-use crate::{Become, Exit, RestartDenial, SupervisionFailureReason};
+use crate::{Become, Exit, SupervisionFailureReason};
 
-pub type SupervisorSends<A, Sends, C> = SendProduct<
-    Sends,
-    SendProduct<ServiceSends<ObserveChild<A>>, Vec<Delivery<A, ProxyCommand<C>>>>,
->;
+/// Named effect lanes emitted by a supervised behavior.
+pub struct SupervisorSends<A: Address, Sends, C: Behavior<Addr = A>> {
+    pub behavior: Sends,
+    pub child_observations: ServiceSends<ObserveChild<A>>,
+    pub replacement_commands: Vec<Delivery<A, ProxyCommand<C>>>,
+}
+
+impl<A: Address, Sends, C: Behavior<Addr = A>> SupervisorSends<A, Sends, C> {
+    #[must_use]
+    pub fn new(
+        behavior: Sends,
+        child_observations: ServiceSends<ObserveChild<A>>,
+        replacement_commands: Vec<Delivery<A, ProxyCommand<C>>>,
+    ) -> Self {
+        Self {
+            behavior,
+            child_observations,
+            replacement_commands,
+        }
+    }
+}
+
+impl<A, Sends, C> SendAlgebra for SupervisorSends<A, Sends, C>
+where
+    A: Address,
+    Sends: SendAlgebra,
+    C: Behavior<Addr = A>,
+{
+    fn empty() -> Self {
+        Self::new(Sends::empty(), ServiceSends::empty(), Vec::new())
+    }
+
+    fn append(&mut self, other: Self) {
+        self.behavior.append(other.behavior);
+        self.child_observations.append(other.child_observations);
+        self.replacement_commands.extend(other.replacement_commands);
+    }
+}
 
 pub type SupervisorActions<B, C> = Actions<
     <B as Behavior>::Addr,
@@ -29,11 +64,6 @@ pub type SupervisorActions<B, C> = Actions<
     SupervisorSends<<B as Behavior>::Addr, <B as Behavior>::Sends, C>,
     Births<Proxy<C>>,
 >;
-
-struct Slot {
-    alive: bool,
-    sequence: u64,
-}
 
 enum ReplacementDecision<A: Address, C: Behavior<Addr = A>> {
     Retire,
@@ -43,15 +73,11 @@ enum ReplacementDecision<A: Address, C: Behavior<Addr = A>> {
 
 pub struct Supervising<B: Behavior, C: Behavior<Ph = Never, Addr = B::Addr>> {
     inner: B,
-    slots: Vec<(<B::Addr as Address>::Nonce, Slot)>,
-    configured_count: usize,
-    next_sequence: u64,
+    fleet: Fleet<<B::Addr as Address>::Nonce>,
     build: fn(usize) -> C,
     strategy: Strategy,
     policy: RestartPolicy,
-    max_restarts: u32,
-    window: Duration,
-    restarts: Vec<Instant>,
+    budget: RestartBudget,
     on_failure: SupervisionFailureReaction<B>,
 }
 
@@ -64,7 +90,9 @@ where
     /// Construct the concrete supervisor behavior hidden by `Spec`.
     ///
     /// # Panics
-    /// Panics only if a fleet index cannot be represented by `u64`.
+    /// Panics when configured child nonces are not unique. Such a topology
+    /// would violate creator-local child routing and creation freshness before
+    /// the behavior could return an initialization result.
     #[must_use]
     pub fn new(
         inner: B,
@@ -76,28 +104,15 @@ where
         max_restarts: u32,
         window: Duration,
     ) -> Self {
-        let slots = (0..count)
-            .map(|index| {
-                (
-                    nonces(index),
-                    Slot {
-                        alive: true,
-                        sequence: u64::try_from(index).expect("fleet index fits u64"),
-                    },
-                )
-            })
-            .collect();
+        let fleet = Fleet::configured((0..count).map(nonces))
+            .unwrap_or_else(|_| panic!("configured child nonces must be fresh"));
         Self {
             inner,
-            slots,
-            configured_count: count,
-            next_sequence: u64::try_from(count).expect("fleet size fits u64"),
+            fleet,
             build,
             strategy,
             policy,
-            max_restarts,
-            window,
-            restarts: Vec::new(),
+            budget: RestartBudget::new(max_restarts, window),
             on_failure: retire_on_supervision_failure::<B>,
         }
     }
@@ -116,8 +131,7 @@ where
 
     #[must_use]
     pub fn with_budget(mut self, max: u32, window: Duration) -> Self {
-        self.max_restarts = max;
-        self.window = window;
+        self.budget = RestartBudget::new(max, window);
         self
     }
 
@@ -128,38 +142,31 @@ where
         self
     }
 
-    fn position(&self, nonce: <B::Addr as Address>::Nonce) -> Option<usize> {
-        self.slots.iter().position(|(known, _)| *known == nonce)
-    }
-
     #[must_use]
     /// Report whether a known supervised proxy is alive.
     ///
     /// # Panics
     /// Panics when `nonce` is not part of this supervisor topology.
     pub fn is_alive(&self, nonce: <B::Addr as Address>::Nonce) -> bool {
-        self.slots[self.position(nonce).expect("unknown supervised nonce")]
-            .1
-            .alive
+        self.fleet
+            .is_available(nonce)
+            .unwrap_or_else(|_| panic!("unknown supervised nonce"))
     }
 
     #[must_use]
     pub fn child_count(&self) -> usize {
-        self.slots.len()
+        self.fleet.len()
     }
 
     #[must_use]
     pub fn restarts_in_window(&self) -> usize {
-        self.restarts.len()
+        self.budget.admitted()
     }
 
     fn replacement_decision(
         &mut self,
         event: &WorkerStopped<B::Addr>,
     ) -> ReplacementDecision<B::Addr, C> {
-        let dead = self
-            .position(event.proxy)
-            .expect("unknown supervised nonce");
         let eligible = match self.policy {
             RestartPolicy::Permanent => true,
             RestartPolicy::Transient => {
@@ -168,57 +175,37 @@ where
             RestartPolicy::Temporary => false,
         };
         if !eligible {
-            self.slots[dead].1.alive = false;
+            self.fleet
+                .retire(event.proxy)
+                .unwrap_or_else(|_| panic!("unknown supervised nonce"));
             return ReplacementDecision::Retire;
         }
-        if self.window != Duration::MAX {
-            self.restarts.retain(|stamp| {
-                event
-                    .at
-                    .checked_duration_since(*stamp)
-                    .is_none_or(|age| age <= self.window)
-            });
+        let candidates = self
+            .fleet
+            .replacements(event.proxy, self.strategy)
+            .unwrap_or_else(|_| panic!("unknown supervised nonce"));
+        if let Err(reason) = self.budget.admit(event.at, candidates.len()) {
+            self.fleet
+                .retire(event.proxy)
+                .unwrap_or_else(|_| panic!("unknown supervised nonce"));
+            return ReplacementDecision::Failed(SupervisionFailure::new(
+                event.proxy,
+                event.outcome,
+                SupervisionFailureReason::RestartDenied(reason),
+            ));
         }
-        let sequence = self.slots[dead].1.sequence;
-        let candidates: Vec<usize> = match self.strategy {
-            Strategy::OneForOne => vec![dead],
-            Strategy::OneForAll => self
-                .slots
-                .iter()
-                .enumerate()
-                .filter_map(|(index, (_, slot))| slot.alive.then_some(index))
-                .collect(),
-            Strategy::RestForOne => self
-                .slots
-                .iter()
-                .enumerate()
-                .filter_map(|(index, (_, slot))| {
-                    (slot.alive && slot.sequence >= sequence).then_some(index)
-                })
-                .collect(),
-        };
-        if self.restarts.len() + candidates.len() > self.max_restarts as usize {
-            self.slots[dead].1.alive = false;
-            return ReplacementDecision::Failed(SupervisionFailure {
-                child: event.proxy,
-                outcome: event.outcome,
-                reason: SupervisionFailureReason::RestartDenied(RestartDenial::BudgetExceeded {
-                    restarts_in_window: self.restarts.len(),
-                    replacements_requested: candidates.len(),
-                    maximum_restarts: self.max_restarts,
-                }),
-            });
+        for candidate in &candidates {
+            self.fleet
+                .replacement_requested(candidate.nonce)
+                .unwrap_or_else(|_| unreachable!("candidate belongs to fleet"));
         }
-        self.restarts
-            .resize(self.restarts.len() + candidates.len(), event.at);
         ReplacementDecision::Replace(
             candidates
                 .into_iter()
-                .map(|index| {
-                    self.slots[index].1.alive = true;
+                .map(|candidate| {
                     Delivery::new(
-                        Recipient::child(self.slots[index].0),
-                        ProxyCommand::Replace((self.build)(index)),
+                        Recipient::child(candidate.nonce),
+                        ProxyCommand::Replace((self.build)(candidate.index)),
                     )
                 })
                 .collect(),
@@ -242,45 +229,23 @@ where
     ) -> SupervisorActions<B, C> {
         let born: Vec<_> = actions.creates.iter().map(|create| create.nonce).collect();
         for create in &actions.creates {
-            assert!(
-                self.position(create.nonce).is_none(),
-                "a child birth nonce must be fresh"
-            );
-            self.slots.push((
-                create.nonce,
-                Slot {
-                    alive: true,
-                    sequence: self.next_sequence,
-                },
-            ));
-            self.next_sequence = self
-                .next_sequence
-                .checked_add(1)
-                .expect("birth sequence exhausted");
+            self.fleet
+                .register(create.nonce)
+                .unwrap_or_else(|_| panic!("a child birth nonce must be fresh"));
         }
-        Actions {
-            sends: SendProduct {
-                inner: actions.sends,
-                own: SendProduct {
-                    inner: ServiceSends::new(
-                        born.into_iter()
-                            .map(|nonce| ObserveChild { nonce })
-                            .collect(),
-                    ),
-                    own: Vec::new(),
-                },
-            },
-            creates: actions
+        Actions::new(
+            SupervisorSends::new(
+                actions.sends,
+                ServiceSends::new(born.into_iter().map(ObserveChild::new).collect()),
+                Vec::new(),
+            ),
+            actions
                 .creates
                 .into_iter()
-                .map(|create| Create {
-                    nonce: create.nonce,
-                    child: Proxy::new(create.child),
-                    kind: create.kind,
-                })
+                .map(|create| Create::new(create.nonce, Proxy::new(create.child), create.kind))
                 .collect(),
-            become_: actions.become_,
-        }
+            actions.become_,
+        )
     }
 }
 
@@ -289,7 +254,7 @@ where
     A: Address + Send,
     Sends: SendAlgebra,
     B: Behavior<Addr = A, Ph = Ph, Sends = Sends, Birth = Births<C>> + Send,
-    B::Event: ChildEvent<B::Addr> + Send,
+    B::Event: ChildEvent<B::Addr> + CreationEvent<B::Addr> + WorkerCreationEvent<B::Addr> + Send,
     A::Nonce: From<u64> + Send,
     B::Msg: Send,
     C: Behavior<Ph = Never, Addr = B::Addr> + Send,
@@ -306,16 +271,15 @@ where
         let actions = self.inner.init().await?;
         let mut actions = self.wrap(actions);
         actions.creates.extend(
-            self.slots[..self.configured_count]
-                .iter()
+            self.fleet
+                .configured_nonces()
                 .enumerate()
-                .map(|(index, (nonce, _))| Create::birth(*nonce, Proxy::new((self.build)(index)))),
+                .map(|(index, nonce)| Create::birth(nonce, Proxy::new((self.build)(index)))),
         );
-        actions.sends.own.inner.extend(
-            self.slots[..self.configured_count]
-                .iter()
-                .map(|(nonce, _)| ObserveChild { nonce: *nonce }),
-        );
+        actions
+            .sends
+            .child_observations
+            .extend(self.fleet.configured_nonces().map(ObserveChild::new));
         Ok(actions)
     }
 
@@ -325,33 +289,51 @@ where
                 let decision = self.replacement_decision(&event);
                 match decision {
                     ReplacementDecision::Retire => Ok(Actions::cont()),
-                    ReplacementDecision::Replace(replacements) => Ok(Actions {
-                        sends: SendProduct {
-                            inner: B::Sends::empty(),
-                            own: SendProduct {
-                                inner: ServiceSends::empty(),
-                                own: replacements,
-                            },
-                        },
-                        creates: Vec::new(),
-                        become_: Step::Continue,
-                    }),
+                    ReplacementDecision::Replace(replacements) => Ok(Actions::new(
+                        SupervisorSends::new(
+                            B::Sends::empty(),
+                            ServiceSends::empty(),
+                            replacements,
+                        ),
+                        Vec::new(),
+                        Step::Continue,
+                    )),
                     ReplacementDecision::Failed(failure) => {
                         Ok(Actions::just(self.react_to_failure(&failure)?))
                     }
                 }
             }
             SupervisionEvent::ChildStopped(event) => {
-                let dead = self
-                    .position(event.nonce)
-                    .expect("unknown supervised nonce");
-                self.slots[dead].1.alive = false;
-                let failure = SupervisionFailure {
-                    child: event.nonce,
-                    outcome: event.outcome,
-                    reason: SupervisionFailureReason::StableChildStopped,
-                };
+                self.fleet
+                    .retire(event.nonce)
+                    .unwrap_or_else(|_| panic!("unknown supervised nonce"));
+                let failure = SupervisionFailure::new(
+                    event.nonce,
+                    event.outcome,
+                    SupervisionFailureReason::StableChildStopped,
+                );
                 Ok(Actions::just(self.react_to_failure(&failure)?))
+            }
+            SupervisionEvent::CreationResolved(event) => {
+                self.fleet
+                    .resolve_creation(event.nonce, event.result.is_ok());
+                if let Some(event) = B::Event::creation_resolved(event) {
+                    let actions = self.inner.step(event).await?;
+                    Ok(self.wrap(actions))
+                } else {
+                    Ok(Actions::cont())
+                }
+            }
+            SupervisionEvent::WorkerCreationResolved(event) => {
+                // Worker realization does not change the stable proxy's
+                // liveness. The typed result remains distinct from a proxy
+                // terminal observation.
+                if let Some(event) = B::Event::worker_creation_resolved(event) {
+                    let actions = self.inner.step(event).await?;
+                    Ok(self.wrap(actions))
+                } else {
+                    Ok(Actions::cont())
+                }
             }
             SupervisionEvent::Inner(event) => {
                 let actions = self.inner.step(event).await?;

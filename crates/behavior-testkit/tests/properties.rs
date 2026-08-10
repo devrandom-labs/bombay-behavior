@@ -1,9 +1,9 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, At, Base, Behavior, ChildStopped, Crash, CreationKind, Delivery, Exit,
-    MailAddr, Never, Proxy, ProxyCommand, Recipient, RestartPolicy, Route, State, Step, Strategy,
-    Supervising, SupervisionEvent, TimerId, User, UserEvent, WorkerStopped,
+    Acted, Actions, At, Base, Behavior, ChildStopped, Crash, CreationKind, CreationResolved,
+    Delivery, Exit, MailAddr, Never, Proxy, ProxyCommand, Recipient, RestartPolicy, Route, State,
+    Step, Strategy, Supervising, SupervisionEvent, TimerId, User, UserEvent, WorkerStopped,
 };
 use behavior_testkit::{Mailbox, drive};
 use proptest::collection::vec;
@@ -132,6 +132,11 @@ proptest! {
         let initial = runtime.block_on(proxy.init()).unwrap();
         prop_assert_eq!(initial.creates[0].nonce, 0);
         prop_assert_eq!(initial.creates[0].kind, CreationKind::Birth);
+        runtime.block_on(proxy.step(SupervisionEvent::CreationResolved(CreationResolved {
+            nonce: 0,
+            kind: CreationKind::Birth,
+            result: Ok(()),
+        }))).unwrap();
         let mut generation = 0_u64;
 
         for (index, replace) in commands.into_iter().enumerate() {
@@ -153,9 +158,18 @@ proptest! {
                 prop_assert_eq!(actions.creates[0].nonce, generation);
                 prop_assert_eq!(
                     actions.creates[0].kind,
-                    CreationKind::ReplacementIncarnation
+                    CreationKind::ReplacementIncarnation {
+                        replaces: generation - 1,
+                    }
                 );
-                prop_assert!(actions.sends.inner.is_empty());
+                prop_assert!(actions.sends.deliveries.is_empty());
+                runtime.block_on(proxy.step(SupervisionEvent::CreationResolved(CreationResolved {
+                    nonce: generation,
+                    kind: CreationKind::ReplacementIncarnation {
+                        replaces: generation - 1,
+                    },
+                    result: Ok(()),
+                }))).unwrap();
             } else {
                 let message = u8::try_from(index % 255).unwrap();
                 let actions = runtime.block_on(proxy.step(SupervisionEvent::Inner(User::user(
@@ -163,8 +177,8 @@ proptest! {
                     ProxyCommand::Forward(message),
                 )))).unwrap();
                 prop_assert!(actions.creates.is_empty());
-                prop_assert_eq!(actions.sends.inner[0].to.route(), Route::Child(generation));
-                prop_assert_eq!(actions.sends.inner[0].message, message);
+                prop_assert_eq!(actions.sends.deliveries[0].to.route(), Route::Child(generation));
+                prop_assert_eq!(actions.sends.deliveries[0].message, message);
             }
         }
     }
@@ -190,14 +204,15 @@ proptest! {
         let mut behavior = supervisor(strategy, count);
         let event = SupervisionEvent::WorkerStopped(WorkerStopped {
             proxy: u64::try_from(dead).unwrap(),
+            worker: u64::try_from(dead).unwrap(),
             outcome: Err(Crash::Failed),
             at: Instant::now(),
         });
         let actions = runtime.block_on(behavior.step(event)).unwrap();
 
-        prop_assert_eq!(actions.sends.own.own.len(), expected);
+        prop_assert_eq!(actions.sends.replacement_commands.len(), expected);
         prop_assert!(actions.creates.is_empty());
-        for delivery in actions.sends.own.own {
+        for delivery in actions.sends.replacement_commands {
             prop_assert!(matches!(delivery.to.route(), Route::Child(_)));
         }
     }

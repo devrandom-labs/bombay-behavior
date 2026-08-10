@@ -133,6 +133,7 @@ async fn measure_supervise(fleet: usize) -> f64 {
         let actions = behavior
             .step(SupervisionEvent::WorkerStopped(WorkerStopped {
                 proxy: nonce,
+                worker: nonce,
                 outcome: Err(Crash::Failed),
                 at,
             }))
@@ -141,8 +142,11 @@ async fn measure_supervise(fleet: usize) -> f64 {
         // Asserting stress workload: every death yields exactly one
         // replacement routed to the dead slot (OneForOne, Permanent,
         // unbounded budget) — correctness checked while measuring.
-        assert_eq!(actions.sends.own.own.len(), 1);
-        assert_eq!(actions.sends.own.own[0].to.route(), Route::Child(nonce));
+        assert_eq!(actions.sends.replacement_commands.len(), 1);
+        assert_eq!(
+            actions.sends.replacement_commands[0].to.route(),
+            Route::Child(nonce)
+        );
         black_box(actions);
     }
     println!(

@@ -5,8 +5,9 @@ use crate::behavior::{
     UserEvent,
 };
 use crate::protocol::{
-    ChildEvent, ChildStopped, ObservePeer, PeerEvent, PeerStopped, ShutdownEvent,
-    ShutdownRequested, TimeEvent, TimerElapsed, WorkerEvent, WorkerStopped,
+    ChildEvent, ChildStopped, CreationEvent, CreationResolved, ObservePeer, PeerEvent, PeerStopped,
+    ShutdownEvent, ShutdownRequested, TimeEvent, TimerElapsed, WorkerCreationEvent,
+    WorkerCreationResolved, WorkerEvent, WorkerStopped,
 };
 use crate::{Crash, Exit, Step};
 
@@ -53,6 +54,18 @@ impl<E: ChildEvent<A>, A: Address> ChildEvent<A> for WatchEvent<E, A> {
 impl<E: WorkerEvent<A>, A: Address> WorkerEvent<A> for WatchEvent<E, A> {
     fn worker_stopped(event: WorkerStopped<A>) -> Option<Self> {
         E::worker_stopped(event).map(Self::Inner)
+    }
+}
+
+impl<E: CreationEvent<A>, A: Address> CreationEvent<A> for WatchEvent<E, A> {
+    fn creation_resolved(event: CreationResolved<A>) -> Option<Self> {
+        E::creation_resolved(event).map(Self::Inner)
+    }
+}
+
+impl<E: WorkerCreationEvent<A>, A: Address> WorkerCreationEvent<A> for WatchEvent<E, A> {
+    fn worker_creation_resolved(event: WorkerCreationResolved<A>) -> Option<Self> {
+        E::worker_creation_resolved(event).map(Self::Inner)
     }
 }
 
@@ -115,10 +128,7 @@ where
 
     async fn init(&mut self) -> Result<WatchActions<B>, B::Error> {
         let actions = self.inner.init().await?;
-        Ok(Self::wrap(
-            actions,
-            ServiceSends::one(ObservePeer { peer: self.peer }),
-        ))
+        Ok(Self::wrap(actions, ServiceSends::one(self.peer.into())))
     }
 
     async fn step(&mut self, event: Self::Event) -> Result<WatchActions<B>, B::Error> {
@@ -130,11 +140,7 @@ where
                     Step::Goto(never) => match never {},
                     Step::Stop(exit) => Step::Stop(exit),
                 };
-                Ok(Actions {
-                    sends: Self::Sends::empty(),
-                    creates: Vec::new(),
-                    become_,
-                })
+                Ok(Actions::new(Self::Sends::empty(), Vec::new(), become_))
             }
             WatchEvent::PeerStopped(event) => match B::Event::peer_stopped(event) {
                 Some(inner) => self
@@ -158,14 +164,11 @@ impl<B: Behavior> Watching<B> {
         actions: Actions<B::Addr, B::Ph, B::Sends, B::Birth>,
         own: ServiceSends<ObservePeer<B::Addr>>,
     ) -> WatchActions<B> {
-        Actions {
-            sends: SendProduct {
-                inner: actions.sends,
-                own,
-            },
-            creates: actions.creates,
-            become_: actions.become_,
-        }
+        Actions::new(
+            SendProduct::new(actions.sends, own),
+            actions.creates,
+            actions.become_,
+        )
     }
 }
 

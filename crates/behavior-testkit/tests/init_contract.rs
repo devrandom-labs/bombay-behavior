@@ -103,8 +103,8 @@ async fn supervising_double_init_duplicates_the_configured_fleet() {
     assert_eq!(first.creates.len(), 2);
     assert_eq!(second.creates.len(), 2);
     assert_eq!(first.creates[0].nonce, second.creates[0].nonce); // same birth routes
-    assert_eq!(first.sends.own.inner.len(), 2);
-    assert_eq!(second.sends.own.inner.len(), 2);
+    assert_eq!(first.sends.child_observations.len(), 2);
+    assert_eq!(second.sends.child_observations.len(), 2);
     // The slot table is constructor-prefilled, not extended by init.
     assert_eq!(behavior.behavior().child_count(), 2);
 
@@ -112,12 +112,13 @@ async fn supervising_double_init_duplicates_the_configured_fleet() {
     let actions = behavior
         .step(SupervisionEvent::WorkerStopped(WorkerStopped {
             proxy: 0,
+            worker: 0,
             outcome: Err(Crash::Failed),
             at: Instant::now(),
         }))
         .await
         .unwrap();
-    assert_eq!(actions.sends.own.own.len(), 1);
+    assert_eq!(actions.sends.replacement_commands.len(), 1);
 }
 
 /// Full-stack double init duplicates every init send and the fleet.
@@ -135,12 +136,12 @@ async fn full_stack_double_init_duplicates_every_init_effect() {
 
     assert_eq!(first.creates.len(), 2);
     assert_eq!(second.creates.len(), 2);
-    assert_eq!(first.sends.own.inner.len(), 2);
-    assert_eq!(second.sends.own.inner.len(), 2);
-    assert_eq!(first.sends.inner.own.len(), 1); // schedule
-    assert_eq!(second.sends.inner.own.len(), 1);
-    assert_eq!(first.sends.inner.inner.own.len(), 1); // observe-peer
-    assert_eq!(second.sends.inner.inner.own.len(), 1);
+    assert_eq!(first.sends.child_observations.len(), 2);
+    assert_eq!(second.sends.child_observations.len(), 2);
+    assert_eq!(first.sends.behavior.own.len(), 1); // schedule
+    assert_eq!(second.sends.behavior.own.len(), 1);
+    assert_eq!(first.sends.behavior.inner.own.len(), 1); // observe-peer
+    assert_eq!(second.sends.behavior.inner.own.len(), 1);
     assert_eq!(behavior.behavior().child_count(), 2);
 }
 
@@ -156,7 +157,7 @@ async fn proxy_step_before_init_is_inert_until_worker_birth() {
         )))
         .await
         .unwrap();
-    assert!(actions.sends.inner.is_empty());
+    assert!(actions.sends.deliveries.is_empty());
     assert!(actions.creates.is_empty()); // no birth has been emitted
 
     let initial = proxy.init().await.unwrap();
@@ -173,13 +174,17 @@ async fn supervisor_step_before_init_routes_to_unborn_proxies() {
     let actions = behavior
         .step(SupervisionEvent::WorkerStopped(WorkerStopped {
             proxy: 0,
+            worker: 0,
             outcome: Err(Crash::Failed),
             at: Instant::now(),
         }))
         .await
         .unwrap();
-    assert_eq!(actions.sends.own.own.len(), 1);
-    assert_eq!(actions.sends.own.own[0].to.route(), Route::Child(0));
+    assert_eq!(actions.sends.replacement_commands.len(), 1);
+    assert_eq!(
+        actions.sends.replacement_commands[0].to.route(),
+        Route::Child(0)
+    );
     assert!(actions.creates.is_empty()); // no proxy has ever been born
     assert!(behavior.behavior().is_alive(0)); // slot bookkeeping pre-exists
 }

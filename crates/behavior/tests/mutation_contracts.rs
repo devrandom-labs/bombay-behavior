@@ -1,8 +1,9 @@
 use behavior::{
-    Address, AtEvent, ChildEvent, ChildStopped, Exit, MailAddr, PeerEvent, PeerStopped,
-    ReceiveTimeoutEvent, Recipient, ServiceSends, ShutdownEvent, ShutdownProtocol,
-    ShutdownRequested, SupervisionEvent, TimeEvent, TimerElapsed, TimerGeneration, TimerId,
-    WatchEvent, WorkerEvent, WorkerStopped,
+    Address, AtEvent, ChildEvent, ChildStopped, CreationEvent, CreationKind, CreationResolved,
+    Exit, MailAddr, PeerEvent, PeerStopped, ReceiveTimeoutEvent, Recipient, ServiceSends,
+    ShutdownEvent, ShutdownProtocol, ShutdownRequested, SupervisionEvent, TimeEvent, TimerElapsed,
+    TimerGeneration, TimerId, WatchEvent, WorkerCreationEvent, WorkerCreationResolved, WorkerEvent,
+    WorkerStopped,
 };
 use tokio::time::Instant;
 
@@ -12,6 +13,8 @@ enum Lane {
     Peer(PeerStopped<MailAddr>),
     Child(ChildStopped<MailAddr>),
     Worker(WorkerStopped<MailAddr>),
+    Creation(CreationResolved<MailAddr>),
+    WorkerCreation(WorkerCreationResolved<MailAddr>),
     Shutdown,
 }
 
@@ -33,6 +36,16 @@ impl ChildEvent<MailAddr> for Lane {
 impl WorkerEvent<MailAddr> for Lane {
     fn worker_stopped(event: WorkerStopped<MailAddr>) -> Option<Self> {
         Some(Self::Worker(event))
+    }
+}
+impl CreationEvent<MailAddr> for Lane {
+    fn creation_resolved(event: CreationResolved<MailAddr>) -> Option<Self> {
+        Some(Self::Creation(event))
+    }
+}
+impl WorkerCreationEvent<MailAddr> for Lane {
+    fn worker_creation_resolved(event: WorkerCreationResolved<MailAddr>) -> Option<Self> {
+        Some(Self::WorkerCreation(event))
     }
 }
 impl ShutdownEvent for Lane {
@@ -63,8 +76,24 @@ fn child() -> ChildStopped<MailAddr> {
 fn worker() -> WorkerStopped<MailAddr> {
     WorkerStopped {
         proxy: 13,
+        worker: 13,
         outcome: Ok(Exit::Normal),
         at: Instant::now(),
+    }
+}
+fn creation() -> CreationResolved<MailAddr> {
+    CreationResolved {
+        nonce: 17,
+        kind: CreationKind::ReplacementIncarnation { replaces: 16 },
+        result: Ok(()),
+    }
+}
+fn worker_creation() -> WorkerCreationResolved<MailAddr> {
+    WorkerCreationResolved {
+        proxy: 13,
+        worker: 17,
+        kind: CreationKind::ReplacementIncarnation { replaces: 16 },
+        result: Ok(()),
     }
 }
 
@@ -82,6 +111,14 @@ fn composed_protocols_forward_every_supported_environment_lane() {
         AtEvent::<Lane>::worker_stopped(worker()),
         Some(AtEvent::Inner(Lane::Worker(_)))
     ));
+    assert!(matches!(
+        AtEvent::<Lane>::creation_resolved(creation()),
+        Some(AtEvent::Inner(Lane::Creation(_)))
+    ));
+    assert!(matches!(
+        AtEvent::<Lane>::worker_creation_resolved(worker_creation()),
+        Some(AtEvent::Inner(Lane::WorkerCreation(_)))
+    ));
 
     assert!(matches!(
         WatchEvent::<Lane, MailAddr>::time_reached(elapsed()),
@@ -94,6 +131,10 @@ fn composed_protocols_forward_every_supported_environment_lane() {
     assert!(matches!(
         WatchEvent::<Lane, MailAddr>::worker_stopped(worker()),
         Some(WatchEvent::Inner(Lane::Worker(_)))
+    ));
+    assert!(matches!(
+        WatchEvent::<Lane, MailAddr>::creation_resolved(creation()),
+        Some(WatchEvent::Inner(Lane::Creation(_)))
     ));
 
     assert!(matches!(
@@ -111,6 +152,10 @@ fn composed_protocols_forward_every_supported_environment_lane() {
     assert!(matches!(
         ReceiveTimeoutEvent::<Lane>::worker_stopped(worker()),
         Some(ReceiveTimeoutEvent::Inner(Lane::Worker(_)))
+    ));
+    assert!(matches!(
+        ReceiveTimeoutEvent::<Lane>::creation_resolved(creation()),
+        Some(ReceiveTimeoutEvent::Inner(Lane::Creation(_)))
     ));
     assert!(matches!(
         ReceiveTimeoutEvent::<Lane>::shutdown_requested(ShutdownRequested),
@@ -133,6 +178,10 @@ fn composed_protocols_forward_every_supported_environment_lane() {
         ShutdownProtocol::<Lane>::worker_stopped(worker()),
         Some(ShutdownProtocol::Inner(Lane::Worker(_)))
     ));
+    assert!(matches!(
+        ShutdownProtocol::<Lane>::creation_resolved(creation()),
+        Some(ShutdownProtocol::Inner(Lane::Creation(_)))
+    ));
 
     assert!(matches!(
         SupervisionEvent::<Lane, MailAddr>::child_stopped(child()),
@@ -141,6 +190,14 @@ fn composed_protocols_forward_every_supported_environment_lane() {
     assert!(matches!(
         SupervisionEvent::<Lane, MailAddr>::worker_stopped(worker()),
         Some(SupervisionEvent::WorkerStopped(_))
+    ));
+    assert!(matches!(
+        SupervisionEvent::<Lane, MailAddr>::creation_resolved(creation()),
+        Some(SupervisionEvent::CreationResolved(_))
+    ));
+    assert!(matches!(
+        SupervisionEvent::<Lane, MailAddr>::worker_creation_resolved(worker_creation()),
+        Some(SupervisionEvent::WorkerCreationResolved(_))
     ));
     assert!(matches!(
         SupervisionEvent::<Lane, MailAddr>::time_reached(elapsed()),

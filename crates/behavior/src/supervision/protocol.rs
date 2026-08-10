@@ -1,8 +1,9 @@
 //! Typed event and command protocols used by supervision behaviors.
 
 use crate::protocol::{
-    ChildEvent, ChildStopped, PeerEvent, PeerStopped, ShutdownEvent, ShutdownRequested, TimeEvent,
-    TimerElapsed, WorkerEvent, WorkerStopped,
+    ChildEvent, ChildStopped, CreationEvent, CreationResolved, PeerEvent, PeerStopped,
+    ShutdownEvent, ShutdownRequested, TimeEvent, TimerElapsed, WorkerCreationEvent,
+    WorkerCreationResolved, WorkerEvent, WorkerStopped,
 };
 use crate::{Address, Behavior, User, UserEvent};
 
@@ -11,6 +12,20 @@ pub enum SupervisionEvent<E, A: Address> {
     Inner(E),
     ChildStopped(ChildStopped<A>),
     WorkerStopped(WorkerStopped<A>),
+    CreationResolved(CreationResolved<A>),
+    WorkerCreationResolved(WorkerCreationResolved<A>),
+}
+
+impl<E, A: Address> CreationEvent<A> for SupervisionEvent<E, A> {
+    fn creation_resolved(event: CreationResolved<A>) -> Option<Self> {
+        Some(Self::CreationResolved(event))
+    }
+}
+
+impl<E, A: Address> WorkerCreationEvent<A> for SupervisionEvent<E, A> {
+    fn worker_creation_resolved(event: WorkerCreationResolved<A>) -> Option<Self> {
+        Some(Self::WorkerCreationResolved(event))
+    }
 }
 
 impl<E, A: Address> ChildEvent<A> for SupervisionEvent<E, A> {
@@ -36,7 +51,10 @@ impl<E: UserEvent, A: Address> UserEvent for SupervisionEvent<E, A> {
     fn into_user(self) -> Result<User<Self::Addr, Self::Message>, Self> {
         match self {
             Self::Inner(event) => event.into_user().map_err(Self::Inner),
-            stopped @ (Self::ChildStopped(_) | Self::WorkerStopped(_)) => Err(stopped),
+            service @ (Self::ChildStopped(_)
+            | Self::WorkerStopped(_)
+            | Self::CreationResolved(_)
+            | Self::WorkerCreationResolved(_)) => Err(service),
         }
     }
 }

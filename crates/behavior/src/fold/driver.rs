@@ -15,6 +15,17 @@ pub struct Transcript<A: Address, Sends, New> {
     pub exit: Exit<A>,
 }
 
+impl<A: Address, Sends, New> Transcript<A, Sends, New> {
+    #[must_use]
+    pub const fn new(sends: Sends, creates: Vec<Create<A, New>>, exit: Exit<A>) -> Self {
+        Self {
+            sends,
+            creates,
+            exit,
+        }
+    }
+}
+
 /// Drive user-lane messages through a complete behavior protocol.
 ///
 /// # Errors
@@ -39,11 +50,7 @@ where
         Step::Continue => {}
         Step::Goto(never) => match never {},
         Step::Stop(exit) => {
-            return Ok(Transcript {
-                sends,
-                creates,
-                exit,
-            });
+            return Ok(Transcript::new(sends, creates, exit));
         }
     }
     while let Some(received) = mailbox.recv().await {
@@ -57,17 +64,9 @@ where
             Step::Continue => {}
             Step::Goto(never) => match never {},
             Step::Stop(exit) => {
-                return Ok(Transcript {
-                    sends,
-                    creates,
-                    exit,
-                });
+                return Ok(Transcript::new(sends, creates, exit));
             }
         }
     }
-    Ok(Transcript {
-        sends,
-        creates,
-        exit: Exit::Collected,
-    })
+    Ok(Transcript::new(sends, creates, Exit::Collected))
 }

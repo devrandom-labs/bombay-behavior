@@ -41,6 +41,19 @@ pub struct SupervisionFailure<A: Address> {
 
 impl<A: Address> SupervisionFailure<A> {
     #[must_use]
+    pub const fn new(
+        child: A::Nonce,
+        outcome: Result<Exit<A>, Crash>,
+        reason: SupervisionFailureReason,
+    ) -> Self {
+        Self {
+            child,
+            outcome,
+            reason,
+        }
+    }
+
+    #[must_use]
     pub const fn into_exit(self) -> Exit<A> {
         Exit::SupervisionFailed(self.reason)
     }

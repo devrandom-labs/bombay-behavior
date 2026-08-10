@@ -137,6 +137,7 @@ type SupervisorEvent = SupervisionEvent<User<MailAddr, u64>, MailAddr>;
 fn stopped(nonce: u64, outcome: Result<Exit<MailAddr>, Crash>, at: Instant) -> SupervisorEvent {
     SupervisionEvent::WorkerStopped(WorkerStopped {
         proxy: nonce,
+        worker: nonce,
         outcome,
         at,
     })
@@ -155,14 +156,14 @@ async fn empty_fleet_supervisor_initializes_and_steps_cleanly() {
     let mut supervisor = Spec::new(Parent).children((0, child));
     let initial = supervisor.init().await.unwrap();
     assert!(initial.creates.is_empty());
-    assert!(initial.sends.own.inner.is_empty());
+    assert!(initial.sends.child_observations.is_empty());
 
     let actions = supervisor
         .step(UserEvent::user(MailAddr(0), 3))
         .await
         .unwrap();
     assert!(actions.creates.is_empty());
-    assert!(actions.sends.own.inner.is_empty());
+    assert!(actions.sends.child_observations.is_empty());
     assert_eq!(supervisor.behavior().child_count(), 0);
 }
 
@@ -196,23 +197,23 @@ async fn duplicate_child_stopped_triggers_a_second_restart() {
         .step(stopped(0, Err(Crash::Failed), at))
         .await
         .unwrap();
-    assert_eq!(first.sends.own.own.len(), 1);
+    assert_eq!(first.sends.replacement_commands.len(), 1);
     assert_eq!(supervisor.restarts_in_window(), 1);
 
     let duplicate = supervisor
         .step(stopped(0, Err(Crash::Failed), at))
         .await
         .unwrap();
-    assert_eq!(duplicate.sends.own.own.len(), 1);
+    assert_eq!(duplicate.sends.replacement_commands.len(), 1);
     assert_eq!(supervisor.restarts_in_window(), 2);
 }
 
-/// `children_with_nonces` accepts duplicate configured nonces: two slots
-/// share one route and a death notice addresses only the first. The fresh-
-/// nonce guard exists only for dynamic births.
-#[tokio::test]
-async fn duplicate_configured_nonces_create_ambiguous_routes() {
-    let mut supervisor = Supervising::new(
+/// Configured nonces obey the same creator-local uniqueness law as dynamic
+/// births; an ambiguous topology is rejected before it can emit creations.
+#[test]
+#[should_panic(expected = "configured child nonces must be fresh")]
+fn duplicate_configured_nonces_are_rejected() {
+    let _supervisor = Supervising::new(
         Base::new(Parent),
         |_| 7,
         2,
@@ -222,19 +223,6 @@ async fn duplicate_configured_nonces_create_ambiguous_routes() {
         u32::MAX,
         Duration::MAX,
     );
-    let initial = supervisor.init().await.unwrap();
-    assert_eq!(initial.creates.len(), 2);
-    assert_eq!(initial.creates[0].nonce, 7);
-    assert_eq!(initial.creates[1].nonce, 7);
-    assert_eq!(initial.sends.own.inner.len(), 2);
-
-    let actions = supervisor
-        .step(stopped(7, Err(Crash::Failed), Instant::now()))
-        .await
-        .unwrap();
-    assert_eq!(actions.sends.own.own.len(), 1);
-    assert_eq!(actions.sends.own.own[0].to.route(), Route::Child(7));
-    assert_eq!(supervisor.child_count(), 2);
 }
 
 #[tokio::test]
@@ -253,20 +241,20 @@ async fn transient_policy_restarts_only_abnormal_outcomes() {
         .step(stopped(0, Ok(Exit::Normal), at))
         .await
         .unwrap();
-    assert!(normal.sends.own.own.is_empty());
+    assert!(normal.sends.replacement_commands.is_empty());
     assert!(!supervisor.is_alive(0));
 
     let collected = supervisor
         .step(stopped(0, Ok(Exit::Collected), at))
         .await
         .unwrap();
-    assert!(collected.sends.own.own.is_empty());
+    assert!(collected.sends.replacement_commands.is_empty());
 
     let link = supervisor
         .step(stopped(1, Ok(Exit::LinkDied(MailAddr(9))), at))
         .await
         .unwrap();
-    assert_eq!(link.sends.own.own.len(), 1);
+    assert_eq!(link.sends.replacement_commands.len(), 1);
     assert!(supervisor.is_alive(1));
 
     for crash in [
@@ -276,7 +264,7 @@ async fn transient_policy_restarts_only_abnormal_outcomes() {
         Crash::Cancelled,
     ] {
         let crashed = supervisor.step(stopped(2, Err(crash), at)).await.unwrap();
-        assert_eq!(crashed.sends.own.own.len(), 1);
+        assert_eq!(crashed.sends.replacement_commands.len(), 1);
         assert!(supervisor.is_alive(2));
     }
 }
@@ -301,14 +289,14 @@ async fn one_for_all_skips_dead_slots_and_respects_budget() {
         .step(stopped(0, Err(Crash::Failed), at))
         .await
         .unwrap();
-    assert_eq!(first.sends.own.own.len(), 3);
+    assert_eq!(first.sends.replacement_commands.len(), 3);
 
     // Second death: 3 alive candidates + 3 prior stamps = 6 > budget 5.
     let denied = supervisor
         .step(stopped(1, Err(Crash::Failed), at))
         .await
         .unwrap();
-    assert!(denied.sends.own.own.is_empty());
+    assert!(denied.sends.replacement_commands.is_empty());
     assert!(!supervisor.is_alive(1));
 
     // Third death: candidates are now only {0, 2} — the dead slot 1 is
@@ -319,8 +307,13 @@ async fn one_for_all_skips_dead_slots_and_respects_budget() {
         .step(stopped(2, Err(Crash::Failed), at))
         .await
         .unwrap();
-    assert_eq!(third.sends.own.own.len(), 2);
-    let routes: Vec<_> = third.sends.own.own.iter().map(|d| d.to.route()).collect();
+    assert_eq!(third.sends.replacement_commands.len(), 2);
+    let routes: Vec<_> = third
+        .sends
+        .replacement_commands
+        .iter()
+        .map(|d| d.to.route())
+        .collect();
     assert!(routes.contains(&Route::Child(0)));
     assert!(routes.contains(&Route::Child(2)));
     assert!(!routes.contains(&Route::Child(1)));
@@ -356,8 +349,13 @@ async fn rest_for_one_uses_birth_sequence_not_index() {
         .step(stopped(0, Err(Crash::Failed), at))
         .await
         .unwrap();
-    assert_eq!(wide.sends.own.own.len(), 4);
-    let routes: Vec<_> = wide.sends.own.own.iter().map(|d| d.to.route()).collect();
+    assert_eq!(wide.sends.replacement_commands.len(), 4);
+    let routes: Vec<_> = wide
+        .sends
+        .replacement_commands
+        .iter()
+        .map(|d| d.to.route())
+        .collect();
     for nonce in 0..3 {
         assert!(routes.contains(&Route::Child(nonce)));
     }
@@ -370,8 +368,11 @@ async fn rest_for_one_uses_birth_sequence_not_index() {
         .step(stopped(9, Err(Crash::Failed), at))
         .await
         .unwrap();
-    assert_eq!(narrow.sends.own.own.len(), 1);
-    assert_eq!(narrow.sends.own.own[0].to.route(), Route::Child(9));
+    assert_eq!(narrow.sends.replacement_commands.len(), 1);
+    assert_eq!(
+        narrow.sends.replacement_commands[0].to.route(),
+        Route::Child(9)
+    );
 }
 
 /// Window pruning is lazy (evaluated at each death) and inclusive at the
@@ -535,13 +536,13 @@ async fn spec_children_defaults_to_transient_with_budget_one() {
         .step(stopped(0, Err(Crash::Failed), at))
         .await
         .unwrap();
-    assert_eq!(first.sends.own.own.len(), 1);
+    assert_eq!(first.sends.replacement_commands.len(), 1);
 
     let second = supervisor
         .step(stopped(0, Err(Crash::Failed), at + Duration::from_secs(1)))
         .await
         .unwrap();
-    assert!(second.sends.own.own.is_empty());
+    assert!(second.sends.replacement_commands.is_empty());
     assert!(!supervisor.behavior().is_alive(0));
 
     // A normal exit is never restarted under the default Transient policy.
@@ -549,7 +550,7 @@ async fn spec_children_defaults_to_transient_with_budget_one() {
         .step(stopped(0, Ok(Exit::Normal), at))
         .await
         .unwrap();
-    assert!(normal.sends.own.own.is_empty());
+    assert!(normal.sends.replacement_commands.is_empty());
 }
 
 /// The `Supervising` inherent builders (`with_strategy`, `with_policy`,
@@ -575,12 +576,12 @@ async fn supervising_inherent_builders_match_the_spec_defaults() {
         .step(stopped(0, Err(Crash::Failed), at))
         .await
         .unwrap();
-    assert_eq!(first.sends.own.own.len(), 1);
+    assert_eq!(first.sends.replacement_commands.len(), 1);
 
     let second = supervisor
         .step(stopped(0, Err(Crash::Failed), at + Duration::from_secs(1)))
         .await
         .unwrap();
-    assert!(second.sends.own.own.is_empty());
+    assert!(second.sends.replacement_commands.is_empty());
     assert!(!supervisor.is_alive(0));
 }

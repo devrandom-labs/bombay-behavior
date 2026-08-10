@@ -7,6 +7,19 @@ pub struct SendProduct<L, R> {
     pub own: R,
 }
 
+impl<L, R> SendProduct<L, R> {
+    #[must_use]
+    pub const fn new(inner: L, own: R) -> Self {
+        Self { inner, own }
+    }
+}
+
+impl<L, R> From<(L, R)> for SendProduct<L, R> {
+    fn from((inner, own): (L, R)) -> Self {
+        Self::new(inner, own)
+    }
+}
+
 /// The operation required to accumulate sends across transitions.
 pub trait SendAlgebra: Sized {
     fn empty() -> Self;
@@ -25,10 +38,7 @@ impl<T> SendAlgebra for Vec<T> {
 
 impl<L: SendAlgebra, R: SendAlgebra> SendAlgebra for SendProduct<L, R> {
     fn empty() -> Self {
-        Self {
-            inner: L::empty(),
-            own: R::empty(),
-        }
+        Self::new(L::empty(), R::empty())
     }
 
     fn append(&mut self, other: Self) {

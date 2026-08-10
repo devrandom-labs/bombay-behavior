@@ -109,7 +109,7 @@ fuzz_target!(|bytes: &[u8]| {
                         .unwrap();
                     let echo_step: Vec<u64> = actions
                         .sends
-                        .inner
+                        .behavior
                         .inner
                         .inner
                         .iter()
@@ -117,7 +117,10 @@ fuzz_target!(|bytes: &[u8]| {
                         .collect();
                     let expected = if arg % 3 != 2 { vec![arg] } else { vec![] };
                     assert_eq!(echo_step, expected, "echo lane mismatch at byte {index}");
-                    assert!(actions.sends.own.own.is_empty(), "user leaked to child lane");
+                    assert!(
+                        actions.sends.replacement_commands.is_empty(),
+                        "user leaked to child lane"
+                    );
                     assert_eq!(actions.become_, Step::Continue);
                     actions
                 }
@@ -136,7 +139,7 @@ fuzz_target!(|bytes: &[u8]| {
                         matches!(actions.become_, Step::Stop(Exit::LinkDied(p)) if p == peer),
                         "peer death verdict at byte {index}"
                     );
-                    assert!(actions.sends.own.own.is_empty());
+                    assert!(actions.sends.replacement_commands.is_empty());
                     actions
                 }
                 2 => {
@@ -156,19 +159,24 @@ fuzz_target!(|bytes: &[u8]| {
                     let actions = behavior
                         .step(SupervisionEvent::WorkerStopped(WorkerStopped {
                             proxy: nonce,
-                            outcome: Err(Crash::Failed),
+                            worker: nonce,
+            outcome: Err(Crash::Failed),
                             at: base + std::time::Duration::from_nanos(u64::try_from(index).unwrap()),
                         }))
                         .await
                         .unwrap();
-                    assert_eq!(actions.sends.own.own.len(), 1, "replacement at byte {index}");
                     assert_eq!(
-                        actions.sends.own.own[0].to.route(),
+                        actions.sends.replacement_commands.len(),
+                        1,
+                        "replacement at byte {index}"
+                    );
+                    assert_eq!(
+                        actions.sends.replacement_commands[0].to.route(),
                         Route::Child(nonce),
                         "replacement route at byte {index}"
                     );
                     assert!(
-                        actions.sends.inner.inner.inner.is_empty(),
+                        actions.sends.behavior.inner.inner.is_empty(),
                         "child event leaked into the echo lane at byte {index}"
                     );
                     assert_eq!(actions.become_, Step::Continue);

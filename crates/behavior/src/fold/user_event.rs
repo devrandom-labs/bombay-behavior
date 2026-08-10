@@ -2,8 +2,9 @@
 
 use crate::actor::Address;
 use crate::protocol::{
-    ChildEvent, ChildStopped, PeerEvent, PeerStopped, ShutdownEvent, ShutdownRequested, TimeEvent,
-    TimerElapsed, WorkerEvent, WorkerStopped,
+    ChildEvent, ChildStopped, CreationEvent, CreationResolved, PeerEvent, PeerStopped,
+    ShutdownEvent, ShutdownRequested, TimeEvent, TimerElapsed, WorkerCreationEvent,
+    WorkerCreationResolved, WorkerEvent, WorkerStopped,
 };
 
 /// The user-message event at the Agha floor.
@@ -11,6 +12,19 @@ use crate::protocol::{
 pub struct User<A, M> {
     pub from: A,
     pub message: M,
+}
+
+impl<A, M> User<A, M> {
+    #[must_use]
+    pub const fn new(from: A, message: M) -> Self {
+        Self { from, message }
+    }
+}
+
+impl<A, M> From<(A, M)> for User<A, M> {
+    fn from((from, message): (A, M)) -> Self {
+        Self::new(from, message)
+    }
 }
 
 /// Construction/extraction of the user lane through a composed event type.
@@ -30,7 +44,7 @@ impl<A: Address, M> UserEvent for User<A, M> {
     type Message = M;
 
     fn user(from: A, message: M) -> Self {
-        Self { from, message }
+        Self::new(from, message)
     }
     fn into_user(self) -> Result<Self, Self> {
         Ok(self)
@@ -54,6 +68,16 @@ impl<A: Address, M> ChildEvent<A> for User<A, M> {
 }
 impl<A: Address, M> WorkerEvent<A> for User<A, M> {
     fn worker_stopped(_: WorkerStopped<A>) -> Option<Self> {
+        None
+    }
+}
+impl<A: Address, M> CreationEvent<A> for User<A, M> {
+    fn creation_resolved(_: CreationResolved<A>) -> Option<Self> {
+        None
+    }
+}
+impl<A: Address, M> WorkerCreationEvent<A> for User<A, M> {
+    fn worker_creation_resolved(_: WorkerCreationResolved<A>) -> Option<Self> {
         None
     }
 }

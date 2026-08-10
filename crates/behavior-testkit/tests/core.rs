@@ -1,10 +1,11 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, AtEvent, Base, Behavior, ChildStopped, Crash, Create, Delivery, Exit, MailAddr,
-    Move, Never, PeerStopped, Proxy, ProxyCommand, Recipient, RestartPolicy, Route, Spec,
-    StashRoute, State, Step, Strategy, SupervisionEvent, TimerElapsed, TimerGeneration, TimerId,
-    User, UserEvent, WatchEvent, WorkerStopped, stop_on_abnormal_death,
+    Acted, Actions, AtEvent, Base, Behavior, ChildStopped, Crash, Create, CreationKind,
+    CreationResolved, Delivery, Exit, MailAddr, Move, Never, PeerStopped, Proxy, ProxyCommand,
+    Recipient, RestartPolicy, Route, Spec, StashRoute, State, Step, Strategy, SupervisionEvent,
+    TimerElapsed, TimerGeneration, TimerId, User, UserEvent, WatchEvent, WorkerStopped,
+    stop_on_abnormal_death,
 };
 use behavior_testkit::{Mailbox, drive};
 use tokio::time::Instant;
@@ -240,6 +241,14 @@ fn child(_index: usize) -> Child {
 async fn proxy_forwards_only_to_the_current_fresh_generation() {
     let mut proxy = Proxy::new(child(0));
     assert_eq!(proxy.init().await.unwrap().creates[0].nonce, 0);
+    proxy
+        .step(SupervisionEvent::CreationResolved(CreationResolved {
+            nonce: 0,
+            kind: CreationKind::Birth,
+            result: Ok(()),
+        }))
+        .await
+        .unwrap();
 
     let before = proxy
         .step(SupervisionEvent::Inner(User::user(
@@ -248,7 +257,7 @@ async fn proxy_forwards_only_to_the_current_fresh_generation() {
         )))
         .await
         .unwrap();
-    assert_eq!(before.sends.inner[0].to.route(), Route::Child(0));
+    assert_eq!(before.sends.deliveries[0].to.route(), Route::Child(0));
 
     let replacement = proxy
         .step(SupervisionEvent::Inner(User::user(
@@ -268,6 +277,14 @@ async fn proxy_forwards_only_to_the_current_fresh_generation() {
         .await
         .unwrap();
     assert_eq!(replacement.creates[0].nonce, 1);
+    proxy
+        .step(SupervisionEvent::CreationResolved(CreationResolved {
+            nonce: 1,
+            kind: CreationKind::ReplacementIncarnation { replaces: 0 },
+            result: Ok(()),
+        }))
+        .await
+        .unwrap();
 
     let after = proxy
         .step(SupervisionEvent::Inner(User::user(
@@ -276,7 +293,7 @@ async fn proxy_forwards_only_to_the_current_fresh_generation() {
         )))
         .await
         .unwrap();
-    assert_eq!(after.sends.inner[0].to.route(), Route::Child(1));
+    assert_eq!(after.sends.deliveries[0].to.route(), Route::Child(1));
 }
 
 #[tokio::test]
@@ -291,13 +308,24 @@ async fn restart_window_boundary_is_inclusive() {
 
     let first = SupervisionEvent::WorkerStopped(WorkerStopped {
         proxy: 0,
+        worker: 0,
         outcome: Ok(Exit::Normal),
         at: start,
     });
-    assert_eq!(supervisor.step(first).await.unwrap().sends.own.own.len(), 1);
+    assert_eq!(
+        supervisor
+            .step(first)
+            .await
+            .unwrap()
+            .sends
+            .replacement_commands
+            .len(),
+        1
+    );
 
     let edge = SupervisionEvent::WorkerStopped(WorkerStopped {
         proxy: 0,
+        worker: 0,
         outcome: Err(Crash::Failed),
         at: start + Duration::from_secs(5),
     });
@@ -307,8 +335,7 @@ async fn restart_window_boundary_is_inclusive() {
             .await
             .unwrap()
             .sends
-            .own
-            .own
+            .replacement_commands
             .is_empty()
     );
 }

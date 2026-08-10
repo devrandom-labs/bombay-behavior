@@ -128,6 +128,7 @@ fn exhaustive_supervision_sequences_match_the_reference_model() {
                                     .block_on(behavior.step(SupervisionEvent::WorkerStopped(
                                         WorkerStopped {
                                             proxy: nonce,
+                                            worker: nonce,
                                             outcome: outcome.into_result(),
                                             at: base + Duration::from_nanos(at),
                                         },
@@ -135,8 +136,7 @@ fn exhaustive_supervision_sequences_match_the_reference_model() {
                                     .unwrap();
                                 let sends: Vec<u64> = actions
                                     .sends
-                                    .own
-                                    .own
+                                    .replacement_commands
                                     .iter()
                                     .map(|delivery| match delivery.to.route() {
                                         Route::Child(nonce) => nonce,

@@ -111,12 +111,14 @@ async fn driver_accumulates_supervising_send_products_losslessly() {
         SupervisionEvent::Inner(User::user(MailAddr(9), 3)),
         SupervisionEvent::WorkerStopped(WorkerStopped {
             proxy: 0,
+            worker: 0,
             outcome: Err(Crash::Failed),
             at,
         }),
         SupervisionEvent::Inner(User::user(MailAddr(9), 5)),
         SupervisionEvent::WorkerStopped(WorkerStopped {
             proxy: 1,
+            worker: 1,
             outcome: Err(Crash::Failed),
             at,
         }),
@@ -128,14 +130,18 @@ async fn driver_accumulates_supervising_send_products_losslessly() {
     assert_eq!(trace.exit, None);
 
     // Inner lane: user echoes, in order, exactly the delivered messages.
-    let echoes: Vec<u64> = trace.sends.inner.iter().map(|d| d.message).collect();
+    let echoes: Vec<u64> = trace.sends.behavior.iter().map(|d| d.message).collect();
     assert_eq!(echoes, [3, 5]);
     // Supervisor's own replacement lane: one per death, in order.
-    let replacements: Vec<Route<MailAddr>> =
-        trace.sends.own.own.iter().map(|d| d.to.route()).collect();
+    let replacements: Vec<Route<MailAddr>> = trace
+        .sends
+        .replacement_commands
+        .iter()
+        .map(|d| d.to.route())
+        .collect();
     assert_eq!(replacements, [Route::Child(0), Route::Child(1)]);
     // Observe-child sends: emitted once at init, never again.
-    assert_eq!(trace.sends.own.inner.len(), 2);
+    assert_eq!(trace.sends.child_observations.len(), 2);
     // Creates: exactly the two init proxies; the driver never re-creates.
     assert_eq!(trace.creates.len(), 2);
 }
@@ -222,13 +228,17 @@ async fn empty_fleet_dynamic_birth_then_death_restarts() {
     let actions = supervisor
         .step(SupervisionEvent::WorkerStopped(WorkerStopped {
             proxy: 9,
+            worker: 9,
             outcome: Err(Crash::Failed),
             at,
         }))
         .await
         .unwrap();
-    assert_eq!(actions.sends.own.own.len(), 1);
-    assert_eq!(actions.sends.own.own[0].to.route(), Route::Child(9));
+    assert_eq!(actions.sends.replacement_commands.len(), 1);
+    assert_eq!(
+        actions.sends.replacement_commands[0].to.route(),
+        Route::Child(9)
+    );
     assert!(supervisor.is_alive(9));
 }
 
@@ -293,7 +303,7 @@ async fn driver_full_stack_mixed_lanes_stop_on_peer_death() {
     // never reached the parent.
     let echoes: Vec<u64> = trace
         .sends
-        .inner
+        .behavior
         .inner
         .inner
         .iter()
@@ -301,11 +311,11 @@ async fn driver_full_stack_mixed_lanes_stop_on_peer_death() {
         .collect();
     assert_eq!(echoes, [1]);
     // Schedule send emitted once at init.
-    assert_eq!(trace.sends.inner.own.len(), 1);
+    assert_eq!(trace.sends.behavior.own.len(), 1);
     // Observe-peer emitted once at init.
-    assert_eq!(trace.sends.inner.inner.own.len(), 1);
+    assert_eq!(trace.sends.behavior.inner.own.len(), 1);
     // Observe-child sends emitted once at init.
-    assert_eq!(trace.sends.own.inner.len(), 2);
+    assert_eq!(trace.sends.child_observations.len(), 2);
 }
 
 /// `Base::from_fn` (the functional state adapter) folds exactly like a
