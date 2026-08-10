@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.8.2...bombay-behavior-v0.9.0) - 2026-08-10
+
+### Other
+
+- Refactor behavior core into pure typed folds ([#25](https://github.com/devrandom-labs/bombay-behavior/pull/25))
+
 ### Added
 
 - add typed creation-result observation so a behavior can distinguish a staged
