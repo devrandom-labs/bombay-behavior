@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.1](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.9.0...bombay-behavior-v0.9.1) - 2026-08-10
+
+### Other
+
+- Add typed peer observation cancellation ([#27](https://github.com/devrandom-labs/bombay-behavior/pull/27))
+
 ### Added
 
 - add the pure `UnwatchPeer` cancellation request and define authoritative
