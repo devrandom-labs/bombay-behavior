@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- add the pure `UnwatchPeer` cancellation request and define authoritative
+  already-stopped resolution through the existing `ObservePeer` / `PeerStopped`
+  protocol
+
+### Changed
+
+- define rejected same-action child observations as inert while preserving the
+  matching typed creation rejection
+
 ## [0.9.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.8.2...bombay-behavior-v0.9.0) - 2026-08-10
 
 ### Other

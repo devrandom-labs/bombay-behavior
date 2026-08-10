@@ -96,6 +96,9 @@ The extracted lifecycle domains and their ownership are documented in
 [Domain Boundaries](docs/domain-boundaries.md). Replacement realization and its
 research/policy classification are documented in
 [Replacement Realization](docs/replacement-realization.md).
+Peer observation resolution, authoritative already-stopped results, and
+cancellation are documented in
+[Peer Observation](docs/peer-observation.md).
 
 The functional core and its reduction laws are documented in
 [Functional Core](docs/functional-core.md).

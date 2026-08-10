@@ -122,6 +122,14 @@ pub type WatchActions<B> = Actions<
     <B as Behavior>::Birth,
 >;
 
+/// A pure peer-observation transformation.
+///
+/// Initialization emits exactly one [`ObservePeer`] request after preserving
+/// the inner initialization effects. A matching [`PeerStopped`] result invokes
+/// the configured reaction whether the interpreter produced it immediately
+/// from authoritative retained termination or after observing a live
+/// incarnation. The transformation retains no runtime observation handle or
+/// lifecycle flag; exact-incarnation selection belongs to the interpreter.
 pub struct Watch<B: Behavior> {
     inner: B,
     peer: B::Addr,

@@ -42,8 +42,8 @@ pub use protocol::{
     ChildEvent, ChildStopped, CreationEvent, CreationRejection, CreationResolved, ObserveChild,
     ObserveCreation, ObservePeer, PeerEvent, PeerStopped, ReportWorkerCreationResolved,
     ReportWorkerStopped, ScheduleAfter, ScheduleAt, ShutdownEvent, ShutdownRequested, TimeEvent,
-    TimerElapsed, TimerGeneration, TimerId, WorkerCreationEvent, WorkerCreationResolved,
-    WorkerEvent, WorkerStopped,
+    TimerElapsed, TimerGeneration, TimerId, UnwatchPeer, WorkerCreationEvent,
+    WorkerCreationResolved, WorkerEvent, WorkerStopped,
 };
 pub use shutdown::{FinalizeOnShutdown, ShutdownProtocol, ShutdownReaction, StopOnShutdown};
 pub use stash::{Stash, StashRoute};
