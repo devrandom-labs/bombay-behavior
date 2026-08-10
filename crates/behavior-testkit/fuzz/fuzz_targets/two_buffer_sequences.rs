@@ -8,7 +8,7 @@
 //! `recorded + fsm_held + stash_held + goto_consumed == stepped`, with the
 //! goto class taken from the phase BEFORE the step (a Goto flips the phase).
 
-use behavior::{Behavior, Fsm, MailAddr, Move, Never, Spec, StashRoute, User, UserEvent};
+use behavior::{Behavior, Machine, MailAddr, Move, Never, Compose, StashRoute, User, UserEvent};
 use libfuzzer_sys::fuzz_target;
 use tokio::runtime::Builder;
 
@@ -18,13 +18,13 @@ enum Phase {
     B,
 }
 
-type Stack = behavior::Spec<behavior::Stashing<Fsm<MailAddr, Vec<u64>, u64, Phase, Never>>>;
+type Stack = behavior::Compose<behavior::Stash<Machine<MailAddr, Vec<u64>, u64, Phase, Never>>>;
 
 fuzz_target!(|bytes: &[u8]| {
     let runtime = Builder::new_current_thread().enable_time().build().unwrap();
-    runtime.block_on(async {
-        let mut behavior: Stack = Spec::machine(
-            Vec::new(),
+    async {
+        let mut behavior: Stack = Compose::machine(
+            Vec::new(,
             Phase::A,
             |phase, seen: &mut Vec<u64>, id: &u64| {
                 Ok::<Move<Phase>, Never>(match (phase, id % 4) {
@@ -49,7 +49,7 @@ fuzz_target!(|bytes: &[u8]| {
         for (index, _) in bytes.iter().enumerate() {
             let id = u64::try_from(index).unwrap();
             let phase_before = behavior.behavior().inner().phase();
-            behavior.step(User::user(MailAddr(0), id)).await.unwrap();
+            behavior.transition(User::user(MailAddr(0), id)).unwrap();
             stepped += 1;
             if id % 3 != 2 {
                 let goto_class = match phase_before {

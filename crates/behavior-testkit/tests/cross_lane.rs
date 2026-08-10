@@ -7,8 +7,8 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, AtEvent, Base, Behavior, Crash, Delivery, Exit, MailAddr, Never, Recipient,
-    RestartPolicy, Route, Spec, StashRoute, State, Step, Strategy, SupervisionEvent, TimerElapsed,
+    Acted, Actions, Behavior, Compose, Crash, Delivery, Exit, Handler, MailAddr, Never, Pure,
+    Recipient, RestartPolicy, Route, StashRoute, Step, Strategy, SupervisionEvent, TimerElapsed,
     TimerGeneration, TimerId, UserEvent, WorkerStopped,
 };
 use proptest::collection::vec;
@@ -19,11 +19,11 @@ use tokio::time::Instant;
 #[derive(Default)]
 struct Recorder;
 
-impl State<u8, behavior::NoBirths, Never> for Recorder {
+impl Handler<u8, behavior::NoBirths, Never> for Recorder {
     type Addr = MailAddr;
     type Msg = u8;
 
-    fn handle(
+    fn receive(
         &mut self,
         _from: MailAddr,
         _message: u8,
@@ -32,10 +32,10 @@ impl State<u8, behavior::NoBirths, Never> for Recorder {
     }
 }
 
-type Child = Base<Recorder, u8>;
+type Child = Pure<Recorder, u8>;
 
 fn child(_index: usize) -> Child {
-    Base::new(Recorder)
+    Pure::new(Recorder)
 }
 
 /// A parent that echoes every user message on its own send lane (Out = u64)
@@ -45,11 +45,11 @@ struct EchoingParent {
     seen: Vec<u64>,
 }
 
-impl State<u64, behavior::Births<Child>, Never> for EchoingParent {
+impl Handler<u64, behavior::Births<Child>, Never> for EchoingParent {
     type Addr = MailAddr;
     type Msg = u64;
 
-    fn handle(
+    fn receive(
         &mut self,
         _from: MailAddr,
         message: u64,
@@ -75,22 +75,21 @@ fn route(message: &u64) -> StashRoute {
     }
 }
 
-type Stack = behavior::Spec<
-    behavior::Supervising<
-        behavior::Stashing<Base<EchoingParent, u64, behavior::Births<Child>, Never>>,
+type Stack = behavior::Compose<
+    behavior::Supervisor<
+        behavior::Stash<Pure<EchoingParent, u64, behavior::Births<Child>, Never>>,
         Child,
     >,
 >;
 
 async fn user(behavior: &mut Stack, message: u64) -> Vec<u64> {
     let actions = behavior
-        .step(SupervisionEvent::Inner(UserEvent::user(
+        .transition(SupervisionEvent::Inner(UserEvent::user(
             MailAddr(9),
             message,
         )))
-        .await
         .unwrap();
-    actions.sends.inner.iter().map(|d| d.message).collect()
+    actions.sends.behavior.iter().map(|d| d.message).collect()
 }
 
 /// The user lane is filtered by the stash exactly as in the unfettered
@@ -98,10 +97,10 @@ async fn user(behavior: &mut Stack, message: u64) -> Vec<u64> {
 /// no user step ever emits a supervision send.
 #[tokio::test]
 async fn supervised_stash_routes_user_lane_without_cross_lane_effects() {
-    let mut behavior = Spec::new(EchoingParent { seen: Vec::new() })
+    let mut behavior = Compose::new(EchoingParent { seen: Vec::new() })
         .stash(route)
         .children((2, child));
-    behavior.init().await.unwrap();
+    behavior.init().unwrap();
 
     // Stash-routed messages produce no echo; Deliver and Release triggers
     // pass through in order (the parent echoes what it processed).
@@ -117,52 +116,54 @@ async fn supervised_stash_routes_user_lane_without_cross_lane_effects() {
 /// and the stash buffer stay untouched.
 #[tokio::test]
 async fn child_death_never_leaks_into_the_user_lane() {
-    let mut behavior = Spec::new(EchoingParent { seen: Vec::new() })
+    let mut behavior = Compose::new(EchoingParent { seen: Vec::new() })
         .stash(route)
         .children((2, child));
-    behavior.init().await.unwrap();
+    behavior.init().unwrap();
 
     // Buffer one user message first, then kill a child.
     user(&mut behavior, 2).await;
     let actions = behavior
-        .step(SupervisionEvent::WorkerStopped(WorkerStopped {
+        .transition(SupervisionEvent::WorkerStopped(WorkerStopped {
             proxy: 0,
+            worker: 0,
             outcome: Err(Crash::Failed),
             at: Instant::now(),
         }))
-        .await
         .unwrap();
-    assert_eq!(actions.sends.own.own.len(), 1);
-    assert_eq!(actions.sends.own.own[0].to.route(), Route::Child(0));
-    assert!(actions.sends.inner.is_empty());
-    assert!(actions.sends.own.inner.is_empty());
+    assert_eq!(actions.sends.replacement_commands.len(), 1);
+    assert_eq!(
+        actions.sends.replacement_commands[0].to.route(),
+        Route::Child(0)
+    );
+    assert!(actions.sends.behavior.is_empty());
+    assert!(actions.sends.child_observations.is_empty());
 }
 
 /// The time lane through a supervised stack: the schedule send survives in
 /// its own product lane beside the observe-child sends, and a Reached event
-/// fires the inner At (stopping the whole supervised fold) without touching
+/// fires the inner Deadline (stopping the whole supervised fold) without touching
 /// the user or child lanes.
 #[tokio::test]
 async fn supervision_preserves_inner_at_routing() {
     let due = Instant::now() + Duration::from_secs(1);
-    let mut behavior = Spec::new(EchoingParent { seen: Vec::new() })
-        .at(Some(due), |_| Ok(Step::Stop(Exit::Normal)))
+    let mut behavior = Compose::new(EchoingParent { seen: Vec::new() })
+        .deadline(Some(due), |_| Ok(Step::Stop(Exit::Normal)))
         .children((1, child));
-    let initial = behavior.init().await.unwrap();
-    assert_eq!(initial.sends.inner.own[0].at, due);
-    assert_eq!(initial.sends.own.inner.len(), 1);
-    assert!(initial.sends.inner.inner.is_empty());
+    let initial = behavior.init().unwrap();
+    assert_eq!(initial.sends.behavior.schedules[0].at, due);
+    assert_eq!(initial.sends.child_observations.len(), 1);
+    assert!(initial.sends.behavior.behavior.is_empty());
     assert_eq!(initial.creates.len(), 1);
 
     let fired = behavior
-        .step(SupervisionEvent::Inner(AtEvent::Reached(TimerElapsed {
+        .on(TimerElapsed {
             id: TimerId(0),
             generation: TimerGeneration(0),
-        })))
-        .await
+        })
         .unwrap();
     assert_eq!(fired.become_, Step::Stop(Exit::Normal));
-    assert!(fired.sends.own.own.is_empty());
+    assert!(fired.sends.replacement_commands.is_empty());
 }
 
 /// The full stack: supervision over at over watch over stash. All four
@@ -171,52 +172,51 @@ async fn supervision_preserves_inner_at_routing() {
 /// without cross-lane leakage.
 #[tokio::test]
 async fn full_stack_all_four_layers_keep_their_own_lanes() {
-    use behavior::{AtEvent, PeerStopped, TimerElapsed, WatchEvent, stop_on_abnormal_death};
+    use behavior::{DeadlineEvent, PeerStopped, TimerElapsed, WatchEvent, stop_on_abnormal_death};
 
     let due = Instant::now() + Duration::from_secs(1);
     let peer = MailAddr(44);
-    let mut behavior = Spec::new(EchoingParent { seen: Vec::new() })
+    let mut behavior = Compose::new(EchoingParent { seen: Vec::new() })
         .stash(route)
         .watch(peer, stop_on_abnormal_death)
-        .at(Some(due), |_| Ok(Step::Continue))
+        .deadline(Some(due), |_| Ok(Step::Continue))
         .children((2, child));
-    let initial = behavior.init().await.unwrap();
+    let initial = behavior.init().unwrap();
     assert_eq!(initial.creates.len(), 2);
-    assert_eq!(initial.sends.own.inner.len(), 2); // observe-child x2
-    assert_eq!(initial.sends.own.own.len(), 0); // proxy commands
-    assert_eq!(initial.sends.inner.own[0].at, due); // schedule
-    assert_eq!(initial.sends.inner.inner.own[0].peer, peer); // observe-peer
-    assert!(initial.sends.inner.inner.inner.is_empty()); // echo lane
+    assert_eq!(initial.sends.child_observations.len(), 2); // observe-child x2
+    assert_eq!(initial.sends.replacement_commands.len(), 0); // proxy commands
+    assert_eq!(initial.sends.behavior.schedules[0].at, due); // schedule
+    assert_eq!(initial.sends.behavior.behavior.observations[0].peer, peer); // observe-peer
+    assert!(initial.sends.behavior.behavior.behavior.is_empty()); // echo lane
 
     // User lane: Deliver routes through every layer to the parent echo.
     let actions = behavior
-        .step(SupervisionEvent::Inner(AtEvent::Inner(WatchEvent::Inner(
-            UserEvent::user(MailAddr(9), 1),
-        ))))
-        .await
+        .transition(SupervisionEvent::Inner(DeadlineEvent::Inner(
+            WatchEvent::Inner(UserEvent::user(MailAddr(9), 1)),
+        )))
         .unwrap();
-    assert_eq!(actions.sends.inner.inner.inner[0].message, 1);
-    assert!(actions.sends.own.own.is_empty());
+    assert_eq!(actions.sends.behavior.behavior.behavior[0].message, 1);
+    assert!(actions.sends.replacement_commands.is_empty());
 
-    // Time lane: fires the inner At.
+    // Time lane: fires the inner Deadline.
     let fired = behavior
-        .step(SupervisionEvent::Inner(AtEvent::Reached(TimerElapsed {
-            id: TimerId(0),
-            generation: TimerGeneration(0),
-        })))
-        .await
+        .transition(SupervisionEvent::Inner(DeadlineEvent::Elapsed(
+            TimerElapsed {
+                id: TimerId(0),
+                generation: TimerGeneration(0),
+            },
+        )))
         .unwrap();
     assert_eq!(fired.become_, Step::Continue);
 
     // Peer lane: matching peer death stops the fold.
     let died = behavior
-        .step(SupervisionEvent::Inner(AtEvent::Inner(
+        .transition(SupervisionEvent::Inner(DeadlineEvent::Inner(
             WatchEvent::PeerStopped(PeerStopped {
                 peer,
                 outcome: Err(Crash::Failed),
             }),
         )))
-        .await
         .unwrap();
     assert!(matches!(
         died.become_,
@@ -224,23 +224,26 @@ async fn full_stack_all_four_layers_keep_their_own_lanes() {
     ));
 
     // Child lane on a fresh stack: replacement send only.
-    let mut fresh = Spec::new(EchoingParent { seen: Vec::new() })
+    let mut fresh = Compose::new(EchoingParent { seen: Vec::new() })
         .stash(route)
         .watch(peer, stop_on_abnormal_death)
-        .at(Some(due), |_| Ok(Step::Continue))
+        .deadline(Some(due), |_| Ok(Step::Continue))
         .children((2, child));
-    fresh.init().await.unwrap();
+    fresh.init().unwrap();
     let replacement = fresh
-        .step(SupervisionEvent::WorkerStopped(WorkerStopped {
+        .transition(SupervisionEvent::WorkerStopped(WorkerStopped {
             proxy: 0,
+            worker: 0,
             outcome: Err(Crash::Failed),
             at: Instant::now(),
         }))
-        .await
         .unwrap();
-    assert_eq!(replacement.sends.own.own.len(), 1);
-    assert_eq!(replacement.sends.own.own[0].to.route(), Route::Child(0));
-    assert!(replacement.sends.inner.inner.inner.is_empty());
+    assert_eq!(replacement.sends.replacement_commands.len(), 1);
+    assert_eq!(
+        replacement.sends.replacement_commands[0].to.route(),
+        Route::Child(0)
+    );
+    assert!(replacement.sends.behavior.behavior.behavior.is_empty());
 }
 
 proptest! {
@@ -258,20 +261,20 @@ proptest! {
     fn full_stack_random_lane_routing_never_leaks(
         events in vec((0_u8..4, 0_u8..8, 0_u64..100), 0..80),
     ) {
-        use behavior::{AtEvent, TimerGeneration, TimerId, PeerStopped, TimerElapsed, WatchEvent, stop_on_abnormal_death};
+        use behavior::{DeadlineEvent, TimerGeneration, TimerId, PeerStopped, TimerElapsed, WatchEvent, stop_on_abnormal_death};
 
         let due = Instant::now() + Duration::from_secs(1);
         let peer = MailAddr(44);
-        let mut behavior = Spec::new(EchoingParent { seen: Vec::new() })
+        let mut behavior = Compose::new(EchoingParent { seen: Vec::new() })
             .stash(route)
             .watch(peer, stop_on_abnormal_death)
-            .at(Some(due), |_| Ok(Step::Continue))
+            .deadline(Some(due), |_| Ok(Step::Continue))
             .children((2, child))
             .restart(Strategy::OneForOne)
             .when(RestartPolicy::Permanent)
             .within(u32::MAX, Duration::MAX);
         let runtime = Builder::new_current_thread().enable_all().build().unwrap();
-        runtime.block_on(behavior.init()).unwrap();
+        behavior.init().unwrap();
         let base = Instant::now();
 
         let mut model_echo: Vec<u64> = Vec::new();
@@ -282,9 +285,9 @@ proptest! {
                 0 => {
                     // User lane: routed by the stash filter.
                     let actions = runtime
-                        .block_on(behavior.step(SupervisionEvent::Inner(AtEvent::Inner(
+                        .block_on(async { behavior.transition(SupervisionEvent::Inner(DeadlineEvent::Inner(
                             WatchEvent::Inner(UserEvent::user(MailAddr(9), u64::from(arg))),
-                        ))))
+                        ))) })
                         .unwrap();
                     if u64::from(arg) % 3 != 2 {
                         model_echo.push(u64::from(arg));
@@ -294,41 +297,41 @@ proptest! {
                 1 => {
                     // Peer lane: watched peer's abnormal death stops the fold.
                     runtime
-                        .block_on(behavior.step(SupervisionEvent::Inner(AtEvent::Inner(
+                        .block_on(async { behavior.transition(SupervisionEvent::Inner(DeadlineEvent::Inner(
                             WatchEvent::PeerStopped(PeerStopped {
                                 peer,
                                 outcome: Err(Crash::Failed),
                             }),
-                        ))))
+                        ))) })
                         .unwrap()
                 }
                 2 => {
                     // Time lane: matching Reached fires (Continue) once, then
                     // duplicates are inert.
                     runtime
-                        .block_on(behavior.step(SupervisionEvent::Inner(AtEvent::Reached(
+                        .block_on(async { behavior.transition(SupervisionEvent::Inner(DeadlineEvent::Elapsed(
                             TimerElapsed { id: TimerId(0), generation: TimerGeneration(0) },
-                        ))))
+                        ))) })
                         .unwrap()
                 }
                 _ => {
                     // Child lane: replacement send to the dead slot.
                     runtime
-                        .block_on(behavior.step(SupervisionEvent::WorkerStopped(WorkerStopped {
+                        .block_on(async { behavior.transition(SupervisionEvent::WorkerStopped(WorkerStopped {
                             proxy: u64::from(arg % 2),
-                            outcome: Err(Crash::Failed),
+                            worker: u64::from(arg % 2),
+            outcome: Err(Crash::Failed),
                             at: base + Duration::from_nanos(at),
-                        })))
+                        })) })
                         .unwrap()
                 }
             };
 
             // Echo lane (user deliveries): exactly the filter model's output.
             let echo_step: Vec<u64> = actions
-                .sends
-                .inner
-                .inner
-                .inner
+                .sends.behavior
+                .behavior
+                .behavior
                 .iter()
                 .map(|d| d.message)
                 .collect();
@@ -342,14 +345,14 @@ proptest! {
             // Cross-lane: user/time/peer steps never emit supervision sends;
             // child steps emit exactly one replacement and no echoes.
             if tag == 3 {
-                prop_assert_eq!(actions.sends.own.own.len(), 1);
+                prop_assert_eq!(actions.sends.replacement_commands.len(), 1);
                 prop_assert_eq!(
-                    actions.sends.own.own[0].to.route(),
+                    actions.sends.replacement_commands[0].to.route(),
                     Route::Child(u64::from(arg % 2))
                 );
                 prop_assert!(echo_step.is_empty());
             } else {
-                prop_assert!(actions.sends.own.own.is_empty());
+                prop_assert!(actions.sends.replacement_commands.is_empty());
             }
 
             // Verdict: only a watched-peer death stops the fold.

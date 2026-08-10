@@ -1,6 +1,6 @@
 use behavior::{
-    Acted, Actions, Delivery, Exit, MailAddr, Never, NoBirths, Recipient, ShutdownProtocol,
-    ShutdownRequested, Spec, State, User,
+    Acted, Actions, Compose, Delivery, Exit, Handler, MailAddr, Never, NoBirths, Recipient,
+    ShutdownProtocol, ShutdownRequested, User,
 };
 use behavior_testkit::{Mailbox, drive};
 use proptest::collection::vec;
@@ -9,11 +9,11 @@ use tokio::runtime::Builder;
 
 struct Echo;
 
-impl State<u8> for Echo {
+impl Handler<u8> for Echo {
     type Addr = MailAddr;
     type Msg = u8;
 
-    fn handle(
+    fn receive(
         &mut self,
         from: MailAddr,
         message: u8,
@@ -37,7 +37,7 @@ proptest! {
     fn shutdown_matches_a_first_request_prefix_model(
         inputs in vec((any::<bool>(), any::<u8>()), 0..256)
     ) {
-        let runtime = Builder::new_current_thread().enable_all().build().unwrap();
+        let _runtime = Builder::new_current_thread().enable_all().build().unwrap();
         let events = inputs.iter().enumerate().map(|(index, (shutdown, message))| {
             if *shutdown {
                 ShutdownProtocol::ShutdownRequested(ShutdownRequested)
@@ -49,8 +49,8 @@ proptest! {
             }
         });
         let mut mailbox = Mailbox::new(events);
-        let mut behavior = Spec::new(Echo).stop_on_shutdown();
-        let trace = runtime.block_on(drive(&mut behavior, &mut mailbox)).unwrap();
+        let mut behavior = Compose::new(Echo).stop_on_shutdown();
+        let trace = drive(&mut behavior, &mut mailbox).unwrap();
         let stop = inputs.iter().position(|(shutdown, _)| *shutdown);
         let consumed = stop.map_or(inputs.len(), |index| index + 1);
         let expected_messages: Vec<_> = inputs

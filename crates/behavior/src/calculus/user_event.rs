@@ -1,0 +1,103 @@
+//! The user-message lane and its composition contracts.
+
+use crate::actor::Address;
+use crate::protocol::{
+    ChildEvent, ChildStopped, CreationEvent, CreationResolved, PeerEvent, PeerStopped,
+    ShutdownEvent, ShutdownRequested, TimeEvent, TimerElapsed, WorkerCreationEvent,
+    WorkerCreationResolved, WorkerEvent, WorkerStopped,
+};
+
+/// The user-message event at the Agha floor.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct User<A, M> {
+    pub from: A,
+    pub message: M,
+}
+
+/// A statically proven injection of one semantic input into a concrete event sum.
+///
+/// Implementations must select exactly one constructor and preserve `input`
+/// unchanged. Absence of an implementation means that the protocol does not
+/// accept that input.
+pub trait EventInput<Input>: Sized {
+    fn inject(input: Input) -> Self;
+}
+
+impl<A, M> EventInput<User<A, M>> for User<A, M> {
+    fn inject(input: User<A, M>) -> Self {
+        input
+    }
+}
+
+impl<A, M> User<A, M> {
+    #[must_use]
+    pub const fn new(from: A, message: M) -> Self {
+        Self { from, message }
+    }
+}
+
+impl<A, M> From<(A, M)> for User<A, M> {
+    fn from((from, message): (A, M)) -> Self {
+        Self::new(from, message)
+    }
+}
+
+/// Construction/extraction of the user lane through a composed event type.
+pub trait UserEvent: Sized {
+    type Addr: Address;
+    type Message;
+
+    fn user(from: Self::Addr, message: Self::Message) -> Self;
+
+    /// # Errors
+    /// Returns the unchanged event when it belongs to another composed lane.
+    fn into_user(self) -> Result<User<Self::Addr, Self::Message>, Self>;
+}
+
+impl<A: Address, M> UserEvent for User<A, M> {
+    type Addr = A;
+    type Message = M;
+
+    fn user(from: A, message: M) -> Self {
+        Self::new(from, message)
+    }
+    fn into_user(self) -> Result<Self, Self> {
+        Ok(self)
+    }
+}
+
+impl<A: Address, M> TimeEvent for User<A, M> {
+    fn time_reached(_: TimerElapsed) -> Option<Self> {
+        None
+    }
+}
+impl<A: Address, M> PeerEvent for User<A, M> {
+    fn peer_stopped(_: PeerStopped<A>) -> Option<Self> {
+        None
+    }
+}
+impl<A: Address, M> ChildEvent for User<A, M> {
+    fn child_stopped(_: ChildStopped<A>) -> Option<Self> {
+        None
+    }
+}
+impl<A: Address, M> WorkerEvent for User<A, M> {
+    fn worker_stopped(_: WorkerStopped<A>) -> Option<Self> {
+        None
+    }
+}
+impl<A: Address, M> CreationEvent for User<A, M> {
+    fn creation_resolved(_: CreationResolved<A::Nonce>) -> Option<Self> {
+        None
+    }
+}
+impl<A: Address, M> WorkerCreationEvent for User<A, M> {
+    fn worker_creation_resolved(_: WorkerCreationResolved<A::Nonce>) -> Option<Self> {
+        None
+    }
+}
+impl<A: Address, M> ShutdownEvent for User<A, M> {
+    fn shutdown_requested(_: ShutdownRequested) -> Option<Self> {
+        None
+    }
+}

@@ -1,5 +1,22 @@
 //! Typed send products and their accumulation contract.
 
+use core::marker::PhantomData;
+
+/// The lane owned by the current named send product.
+pub enum Own {}
+
+/// A lane reached through the product's composed behavior sends.
+pub struct Inner<Path>(PhantomData<fn(Path)>);
+
+/// Static evidence that a send product contains one request lane.
+///
+/// Implementations append the input exactly once to that lane and leave every
+/// other lane unchanged. `Path` distinguishes repeated request types without
+/// erasing their position or choosing a lane at runtime.
+pub trait SendInput<Input, Path> {
+    fn emit(&mut self, input: Input);
+}
+
 /// A product of independently typed send protocols.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SendProduct<L, R> {
@@ -7,10 +24,53 @@ pub struct SendProduct<L, R> {
     pub own: R,
 }
 
+impl<L, R> SendProduct<L, R> {
+    #[must_use]
+    pub const fn new(inner: L, own: R) -> Self {
+        Self { inner, own }
+    }
+
+    #[must_use]
+    pub fn split(self) -> (L, R) {
+        (self.inner, self.own)
+    }
+}
+
+impl<L, R> From<(L, R)> for SendProduct<L, R> {
+    fn from((inner, own): (L, R)) -> Self {
+        Self::new(inner, own)
+    }
+}
+
 /// The operation required to accumulate sends across transitions.
 pub trait SendAlgebra: Sized {
     fn empty() -> Self;
     fn append(&mut self, other: Self);
+
+    #[must_use]
+    fn combine(mut self, other: Self) -> Self {
+        self.append(other);
+        self
+    }
+
+    /// Append one request to its statically selected semantic lane.
+    fn send<Input, Path>(&mut self, input: Input)
+    where
+        Self: SendInput<Input, Path>,
+    {
+        <Self as SendInput<Input, Path>>::emit(self, input);
+    }
+
+    /// Build a send product containing one request in its selected lane.
+    #[must_use]
+    fn sending<Input, Path>(input: Input) -> Self
+    where
+        Self: SendInput<Input, Path>,
+    {
+        let mut sends = Self::empty();
+        sends.send(input);
+        sends
+    }
 }
 
 impl<T> SendAlgebra for Vec<T> {
@@ -23,17 +83,21 @@ impl<T> SendAlgebra for Vec<T> {
     }
 }
 
+impl<T> SendInput<T, Own> for Vec<T> {
+    fn emit(&mut self, input: T) {
+        self.push(input);
+    }
+}
+
 impl<L: SendAlgebra, R: SendAlgebra> SendAlgebra for SendProduct<L, R> {
     fn empty() -> Self {
-        Self {
-            inner: L::empty(),
-            own: R::empty(),
-        }
+        Self::new(L::empty(), R::empty())
     }
 
     fn append(&mut self, other: Self) {
-        self.inner.append(other.inner);
-        self.own.append(other.own);
+        let (inner, own) = other.split();
+        self.inner.append(inner);
+        self.own.append(own);
     }
 }
 
@@ -110,5 +174,27 @@ impl<M> SendAlgebra for ServiceSends<M> {
     }
     fn append(&mut self, mut other: Self) {
         self.requests.append(&mut other.requests);
+    }
+}
+
+impl<M> SendInput<M, Own> for ServiceSends<M> {
+    fn emit(&mut self, input: M) {
+        self.requests.push(input);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn send_algebra_obeys_identity_and_associativity() {
+        let values = vec![1, 2];
+        assert_eq!(Vec::new().combine(values.clone()), values);
+        assert_eq!(values.clone().combine(Vec::new()), values);
+
+        let left = vec![1].combine(vec![2]).combine(vec![3]);
+        let right = vec![1].combine(vec![2].combine(vec![3]));
+        assert_eq!(left, right);
     }
 }

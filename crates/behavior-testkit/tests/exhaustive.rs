@@ -7,8 +7,8 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, Base, Behavior, Delivery, MailAddr, Never, RestartPolicy, Route, State,
-    Strategy, Supervising, SupervisionEvent, WorkerStopped,
+    Acted, Actions, Behavior, Delivery, Handler, MailAddr, Never, Pure, RestartPolicy, Route,
+    Strategy, SupervisionEvent, Supervisor, WorkerStopped,
 };
 use behavior_testkit::model::{Model, Outcome};
 use tokio::runtime::Builder;
@@ -17,11 +17,11 @@ use tokio::time::Instant;
 #[derive(Default)]
 struct Echo;
 
-impl State<u8, behavior::NoBirths, Never> for Echo {
+impl Handler<u8, behavior::NoBirths, Never> for Echo {
     type Addr = MailAddr;
     type Msg = u8;
 
-    fn handle(
+    fn receive(
         &mut self,
         _from: MailAddr,
         _message: u8,
@@ -30,15 +30,15 @@ impl State<u8, behavior::NoBirths, Never> for Echo {
     }
 }
 
-type Child = Base<Echo, u8>;
+type Child = Pure<Echo, u8>;
 
 struct Parent;
 
-impl State<Never, behavior::Births<Child>, Never> for Parent {
+impl Handler<Never, behavior::Births<Child>, Never> for Parent {
     type Addr = MailAddr;
     type Msg = u64;
 
-    fn handle(
+    fn receive(
         &mut self,
         _from: MailAddr,
         _message: u64,
@@ -49,7 +49,7 @@ impl State<Never, behavior::Births<Child>, Never> for Parent {
 }
 
 fn child(_index: usize) -> Child {
-    Base::new(Echo)
+    Pure::new(Echo)
 }
 
 const FLEET: usize = 2;
@@ -109,8 +109,8 @@ fn exhaustive_supervision_sequences_match_the_reference_model() {
                             }
 
                             let mut model = Model::new(FLEET);
-                            let mut behavior = Supervising::new(
-                                Base::new(Parent),
+                            let mut behavior = Supervisor::new(
+                                Pure::new(Parent),
                                 |index| u64::try_from(index).unwrap(),
                                 FLEET,
                                 child,
@@ -119,24 +119,26 @@ fn exhaustive_supervision_sequences_match_the_reference_model() {
                                 maximum,
                                 window_duration,
                             );
-                            runtime.block_on(behavior.init()).unwrap();
+                            behavior.init().unwrap();
 
                             for (nonce, outcome, at) in events {
                                 let expected = model
                                     .apply(nonce, outcome, at, strategy, policy, maximum, window);
                                 let actions = runtime
-                                    .block_on(behavior.step(SupervisionEvent::WorkerStopped(
-                                        WorkerStopped {
-                                            proxy: nonce,
-                                            outcome: outcome.into_result(),
-                                            at: base + Duration::from_nanos(at),
-                                        },
-                                    )))
+                                    .block_on(async {
+                                        behavior.transition(SupervisionEvent::WorkerStopped(
+                                            WorkerStopped {
+                                                proxy: nonce,
+                                                worker: nonce,
+                                                outcome: outcome.into_result(),
+                                                at: base + Duration::from_nanos(at),
+                                            },
+                                        ))
+                                    })
                                     .unwrap();
                                 let sends: Vec<u64> = actions
                                     .sends
-                                    .own
-                                    .own
+                                    .replacement_commands
                                     .iter()
                                     .map(|delivery| match delivery.to.route() {
                                         Route::Child(nonce) => nonce,

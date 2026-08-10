@@ -4,7 +4,7 @@ use std::collections::VecDeque;
 
 use crate::Exit;
 use crate::behavior::{Actions, Address, Behavior, Delivery, NoBirths, User};
-use crate::verdict::{Never, Step};
+use crate::next::{Never, Step};
 
 pub enum Move<P> {
     Stay,
@@ -13,7 +13,7 @@ pub enum Move<P> {
     Stop,
 }
 
-pub struct Fsm<A: Address, S, M, P, E> {
+pub struct Machine<A: Address, S, M, P, E> {
     state: S,
     phase: P,
     on: fn(P, &mut S, &M) -> Result<Move<P>, E>,
@@ -21,7 +21,7 @@ pub struct Fsm<A: Address, S, M, P, E> {
     address: core::marker::PhantomData<A>,
 }
 
-impl<A: Address, S, M, P: Copy + PartialEq, E> Fsm<A, S, M, P, E> {
+impl<A: Address, S, M, P: Copy + PartialEq, E> Machine<A, S, M, P, E> {
     #[must_use]
     pub fn new(state: S, phase: P, on: fn(P, &mut S, &M) -> Result<Move<P>, E>) -> Self {
         Self {
@@ -80,14 +80,10 @@ impl<A: Address, S, M, P: Copy + PartialEq, E> Fsm<A, S, M, P, E> {
     }
 }
 
-impl<A, S, M, P, E> Behavior for Fsm<A, S, M, P, E>
+impl<A, S, M, P, E> Behavior for Machine<A, S, M, P, E>
 where
-    A: Address + Send,
-    A::Nonce: Send,
-    S: Send,
-    M: Send,
-    P: Copy + PartialEq + Send,
-    E: Send,
+    A: Address,
+    P: Copy + PartialEq,
 {
     type Addr = A;
     type Msg = M;
@@ -97,11 +93,11 @@ where
     type Error = E;
     type Birth = NoBirths;
 
-    async fn init(&mut self) -> Result<Actions<A, Never, Self::Sends, NoBirths>, E> {
+    fn init(&mut self) -> Result<Actions<A, Never, Self::Sends, NoBirths>, E> {
         Ok(Actions::cont())
     }
 
-    async fn step(
+    fn transition(
         &mut self,
         event: Self::Event,
     ) -> Result<Actions<A, Never, Self::Sends, NoBirths>, E> {

@@ -8,7 +8,7 @@
 
 use std::collections::HashSet;
 
-use behavior::{Behavior, Fsm, MailAddr, Move, Never, Step, User, UserEvent};
+use behavior::{Behavior, Machine, MailAddr, Move, Never, Step, User, UserEvent};
 use proptest::collection::vec;
 use proptest::prelude::*;
 use tokio::runtime::Builder;
@@ -24,8 +24,8 @@ enum Phase {
 ///
 /// - A: `id % 4 == 0` -> Goto(B); `id % 4 == 1` -> Defer; else record.
 /// - B: `id % 4 == 2` -> Goto(A); `id % 4 == 1` -> Defer; else record.
-fn machine() -> Fsm<MailAddr, Vec<u64>, u64, Phase, Never> {
-    Fsm::new(
+fn machine() -> Machine<MailAddr, Vec<u64>, u64, Phase, Never> {
+    Machine::new(
         Vec::new(),
         Phase::A,
         |phase, seen: &mut Vec<u64>, id: &u64| {
@@ -65,7 +65,7 @@ proptest! {
 
     #[test]
     fn fsm_never_drops_or_duplicates(ids in vec(any::<u8>(), 0..256)) {
-        let runtime = Builder::new_current_thread().enable_all().build().unwrap();
+        let _runtime = Builder::new_current_thread().enable_all().build().unwrap();
         let mut machine = machine();
         let mut consumed = 0_usize;
         for (index, _) in ids.iter().enumerate() {
@@ -77,7 +77,7 @@ proptest! {
                 Phase::B => 2,
             };
             consumed += usize::from(id % 4 == goto_class);
-            runtime.block_on(machine.step(User::user(MailAddr(0), id))).unwrap();
+            machine.transition(User::user(MailAddr(0), id)).unwrap();
             assert_no_drop_no_dup(machine.state(), machine.held(), consumed, index + 1);
         }
     }
@@ -92,7 +92,7 @@ proptest! {
             B,
             C,
         }
-        let mut machine = Fsm::new(Vec::new(), Phase3::A, |phase, seen: &mut Vec<u64>, id: &u64| {
+        let mut machine = Machine::new(Vec::new(), Phase3::A, |phase, seen: &mut Vec<u64>, id: &u64| {
             Ok::<Move<Phase3>, Never>(match (phase, id % 5) {
                 (Phase3::A, 0) => Move::Goto(Phase3::B),
                 (Phase3::B, 2) => Move::Goto(Phase3::C),
@@ -104,7 +104,7 @@ proptest! {
                 }
             })
         });
-        let runtime = Builder::new_current_thread().enable_all().build().unwrap();
+        let _runtime = Builder::new_current_thread().enable_all().build().unwrap();
         let mut consumed = 0_usize;
         for (index, _) in ids.iter().enumerate() {
             let id = u64::try_from(index).unwrap();
@@ -114,7 +114,7 @@ proptest! {
                 Phase3::C => 3,
             };
             consumed += usize::from(id % 5 == goto_class);
-            runtime.block_on(machine.step(User::user(MailAddr(0), id))).unwrap();
+            machine.transition(User::user(MailAddr(0), id)).unwrap();
             assert_no_drop_no_dup(machine.state(), machine.held(), consumed, index + 1);
         }
     }
@@ -154,7 +154,7 @@ fn fsm_exhaustive_sequences_never_drop_or_duplicate() {
                 };
                 consumed += usize::from(id % 4 == goto_class);
                 runtime
-                    .block_on(machine.step(User::user(MailAddr(0), id)))
+                    .block_on(async { machine.transition(User::user(MailAddr(0), id)) })
                     .unwrap();
                 assert_no_drop_no_dup(machine.state(), machine.held(), consumed, index + 1);
             }
@@ -174,7 +174,7 @@ async fn fsm_stop_mid_drain_preserves_remaining_batch() {
         P0,
         P1,
     }
-    let mut machine = Fsm::new(
+    let mut machine = Machine::new(
         Vec::new(),
         Phase::P0,
         |phase, seen: &mut Vec<u64>, id: &u64| {
@@ -191,15 +191,15 @@ async fn fsm_stop_mid_drain_preserves_remaining_batch() {
     );
     // Defer ids 1 and 2 in P0; id 0 opens P1 and drains: id 1 re-defers in
     // P1, id 2 stops the drain — id 1 must remain held.
-    machine.step(User::user(MailAddr(0), 1)).await.unwrap();
-    machine.step(User::user(MailAddr(0), 2)).await.unwrap();
-    let opened = machine.step(User::user(MailAddr(0), 0)).await.unwrap();
+    machine.transition(User::user(MailAddr(0), 1)).unwrap();
+    machine.transition(User::user(MailAddr(0), 2)).unwrap();
+    let opened = machine.transition(User::user(MailAddr(0), 0)).unwrap();
     assert!(matches!(opened.become_, Step::Stop(behavior::Exit::Normal)));
     assert!(machine.state().is_empty());
     assert_eq!(machine.held(), 1);
 
     // The fold is still live: id 3 records in P1.
-    machine.step(User::user(MailAddr(0), 3)).await.unwrap();
+    machine.transition(User::user(MailAddr(0), 3)).unwrap();
     assert_eq!(machine.state().as_slice(), &[3]);
     assert_eq!(machine.held(), 1);
 }
@@ -213,7 +213,7 @@ async fn fsm_self_goto_does_not_drain() {
         A,
         B,
     }
-    let mut machine = Fsm::new(
+    let mut machine = Machine::new(
         Vec::new(),
         Phase::A,
         |phase, seen: &mut Vec<u64>, id: &u64| {
@@ -228,16 +228,16 @@ async fn fsm_self_goto_does_not_drain() {
             })
         },
     );
-    machine.step(User::user(MailAddr(0), 1)).await.unwrap(); // defer
+    machine.transition(User::user(MailAddr(0), 1)).unwrap(); // defer
     assert_eq!(machine.held(), 1);
 
     // Self-goto: no phase change, no drain, the deferred message stays.
-    machine.step(User::user(MailAddr(0), 3)).await.unwrap();
+    machine.transition(User::user(MailAddr(0), 3)).unwrap();
     assert_eq!(machine.held(), 1);
     assert!(machine.state().is_empty());
 
     // A real phase change drains and replays it.
-    machine.step(User::user(MailAddr(0), 2)).await.unwrap();
+    machine.transition(User::user(MailAddr(0), 2)).unwrap();
     assert_eq!(machine.state().as_slice(), &[1]);
     assert_eq!(machine.held(), 0);
 }

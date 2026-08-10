@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- add typed creation-result observation so a behavior can distinguish a staged
+  creation request from successful installation or explicit rejection
+- add explicit incarnation, supervised-fleet, restart-admission, and timer
+  lifecycle domains with independently testable transitions
+- add canonical constructors and lossless conversions for protocol events,
+  lifecycle reports, routes, actions, and named effect products
+
+### Changed
+
+- replacement creation provenance now names the exact prior incarnation, and
+  supervised proxies remain unroutable until installation is committed
+- supervision effect lanes are named by meaning instead of exposed through
+  positional `SendProduct` nesting
+
 ## [0.8.2](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.8.1...bombay-behavior-v0.8.2) - 2026-08-09
 
 ### Other

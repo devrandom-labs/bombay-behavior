@@ -9,8 +9,8 @@
 //! state must agree.
 
 use behavior::{
-    Acted, Actions, Base, Behavior, Crash, Create, CreationKind, Delivery, MailAddr, Never,
-    RestartPolicy, State, Step, Strategy, Supervising, SupervisionEvent, UserEvent, WorkerStopped,
+    Acted, Actions, Pure, Behavior, Crash, Create, CreationKind, Delivery, MailAddr, Never,
+    RestartPolicy, Handler, Step, Strategy, Supervisor, SupervisionEvent, UserEvent, WorkerStopped,
 };
 use libfuzzer_sys::fuzz_target;
 use tokio::runtime::Builder;
@@ -21,11 +21,11 @@ const BUDGET: u32 = 2;
 
 struct Worker;
 
-impl State<u8> for Worker {
+impl Handler<u8> for Worker {
     type Addr = MailAddr;
     type Msg = u8;
 
-    fn handle(
+    fn receive(
         &mut self,
         _from: MailAddr,
         _message: u8,
@@ -34,21 +34,21 @@ impl State<u8> for Worker {
     }
 }
 
-fn worker(_index: usize) -> Base<Worker, u8> {
-    Base::new(Worker)
+fn worker(_index: usize) -> Pure<Worker, u8> {
+    Pure::new(Worker)
 }
 
 struct BirthingParent;
 
-impl State<Never, behavior::Births<Base<Worker, u8>>, Never> for BirthingParent {
+impl Handler<Never, behavior::Births<Pure<Worker, u8>>, Never> for BirthingParent {
     type Addr = MailAddr;
     type Msg = u64;
 
-    fn handle(
+    fn receive(
         &mut self,
         _from: MailAddr,
         nonce: u64,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, behavior::Births<Base<Worker, u8>>, Never> {
+    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, behavior::Births<Pure<Worker, u8>>, Never> {
         Ok(Actions {
             sends: Vec::new(),
             creates: vec![Create::birth(nonce, worker(0))],
@@ -65,9 +65,9 @@ struct Slot {
 
 fuzz_target!(|bytes: &[u8]| {
     let runtime = Builder::new_current_thread().enable_time().build().unwrap();
-    runtime.block_on(async {
-        let mut behavior = Supervising::new(
-            Base::new(BirthingParent),
+    async {
+        let mut behavior = Supervisor::new(
+            Pure::new(BirthingParent,
             |index| u64::try_from(index).unwrap(),
             FLEET,
             worker,
@@ -76,7 +76,7 @@ fuzz_target!(|bytes: &[u8]| {
             BUDGET,
             std::time::Duration::MAX,
         );
-        behavior.init().await.unwrap();
+        behavior.init().unwrap();
         let base = Instant::now();
 
         // Independent model: slot table in birth order, restart stamps.
@@ -96,18 +96,17 @@ fuzz_target!(|bytes: &[u8]| {
                 births += 1;
                 slots.push(Slot { nonce, alive: true });
                 let actions = behavior
-                    .step(SupervisionEvent::Inner(UserEvent::user(MailAddr(0), nonce)))
-                    .await
+                    .transition(SupervisionEvent::Inner(UserEvent::user(MailAddr(0), nonce)))
                     .unwrap();
                 assert_eq!(actions.creates.len(), 1, "birth create at byte {index}");
                 assert_eq!(actions.creates[0].nonce, nonce);
                 assert_eq!(actions.creates[0].kind, CreationKind::Birth);
                 assert_eq!(
-                    actions.sends.own.inner.len(),
+                    actions.sends.child_observations.len(),
                     1,
                     "observe request at byte {index}"
                 );
-                assert_eq!(actions.sends.own.inner[0].nonce, nonce);
+                assert_eq!(actions.sends.child_observations[0].nonce, nonce);
             } else {
                 // Death of the slot selected by the byte.
                 let dead = slots[usize::from(byte) % slots.len()];
@@ -120,15 +119,15 @@ fuzz_target!(|bytes: &[u8]| {
                     }
                 };
                 let actions = behavior
-                    .step(SupervisionEvent::WorkerStopped(WorkerStopped {
+                    .transition(SupervisionEvent::WorkerStopped(WorkerStopped {
                         proxy: dead.nonce,
-                        outcome: Err(Crash::Failed),
+                        worker: dead.nonce,
+            outcome: Err(Crash::Failed),
                         at: base + std::time::Duration::from_nanos(u64::try_from(index).unwrap()),
                     }))
-                    .await
                     .unwrap();
                 assert_eq!(
-                    actions.sends.own.own.len(),
+                    actions.sends.replacement_commands.len(),
                     usize::from(expected_restart),
                     "replacement count at byte {index}"
                 );

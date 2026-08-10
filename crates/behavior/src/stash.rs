@@ -3,7 +3,7 @@
 use std::collections::VecDeque;
 
 use crate::behavior::{Actions, Address, Behavior, BirthMode, SendAlgebra, User, UserEvent};
-use crate::verdict::{Never, Step};
+use crate::next::{Never, Step};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StashRoute {
@@ -12,13 +12,13 @@ pub enum StashRoute {
     Release,
 }
 
-pub struct Stashing<B: Behavior> {
+pub struct Stash<B: Behavior> {
     inner: B,
     route: fn(&B::Msg) -> StashRoute,
     held: VecDeque<User<B::Addr, B::Msg>>,
 }
 
-impl<B: Behavior<Ph = Never>> Stashing<B> {
+impl<B: Behavior<Ph = Never>> Stash<B> {
     #[must_use]
     pub fn new(inner: B, route: fn(&B::Msg) -> StashRoute) -> Self {
         Self {
@@ -39,14 +39,14 @@ impl<B: Behavior<Ph = Never>> Stashing<B> {
     }
 }
 
-impl<B, A, Sends, Br> Stashing<B>
+impl<B, A, Sends, Br> Stash<B>
 where
     A: Address,
     Sends: SendAlgebra,
     Br: BirthMode,
     B: Behavior<Addr = A, Ph = Never, Sends = Sends, Birth = Br>,
 {
-    async fn drain_into(
+    fn drain_into(
         &mut self,
         acc: &mut Actions<B::Addr, Never, B::Sends, B::Birth>,
     ) -> Result<(), B::Error> {
@@ -57,8 +57,7 @@ where
                 StashRoute::Deliver | StashRoute::Release => {
                     let actions = self
                         .inner
-                        .step(B::Event::user(user.from, user.message))
-                        .await?;
+                        .transition(B::Event::user(user.from, user.message))?;
                     acc.sends.append(actions.sends);
                     acc.creates.extend(actions.creates);
                     if let Step::Stop(exit) = actions.become_ {
@@ -73,16 +72,12 @@ where
     }
 }
 
-impl<B, A, Sends, Br> Behavior for Stashing<B>
+impl<B, A, Sends, Br> Behavior for Stash<B>
 where
-    A: Address + Send,
-    Sends: SendAlgebra + Send,
+    A: Address,
+    Sends: SendAlgebra,
     Br: BirthMode,
-    B: Behavior<Addr = A, Ph = Never, Sends = Sends, Birth = Br> + Send,
-    A::Nonce: Send,
-    B::Msg: Send,
-    B::Event: Send,
-    Br::Child: Send,
+    B: Behavior<Addr = A, Ph = Never, Sends = Sends, Birth = Br>,
 {
     type Addr = A;
     type Msg = B::Msg;
@@ -92,32 +87,29 @@ where
     type Error = B::Error;
     type Birth = Br;
 
-    async fn init(&mut self) -> Result<Actions<A, Never, Sends, Br>, B::Error> {
-        self.inner.init().await
+    fn init(&mut self) -> Result<Actions<A, Never, Sends, Br>, B::Error> {
+        self.inner.init()
     }
 
-    async fn step(&mut self, event: B::Event) -> Result<Actions<A, Never, Sends, Br>, B::Error> {
+    fn transition(&mut self, event: B::Event) -> Result<Actions<A, Never, Sends, Br>, B::Error> {
         let user = match event.into_user() {
             Ok(user) => user,
-            Err(other) => return self.inner.step(other).await,
+            Err(other) => return self.inner.transition(other),
         };
         match (self.route)(&user.message) {
             StashRoute::Stash => {
                 self.held.push_back(user);
                 Ok(Actions::cont())
             }
-            StashRoute::Deliver => {
-                self.inner
-                    .step(B::Event::user(user.from, user.message))
-                    .await
-            }
+            StashRoute::Deliver => self
+                .inner
+                .transition(B::Event::user(user.from, user.message)),
             StashRoute::Release => {
                 let mut actions = self
                     .inner
-                    .step(B::Event::user(user.from, user.message))
-                    .await?;
+                    .transition(B::Event::user(user.from, user.message))?;
                 if !matches!(actions.become_, Step::Stop(_)) {
-                    self.drain_into(&mut actions).await?;
+                    self.drain_into(&mut actions)?;
                 }
                 Ok(actions)
             }

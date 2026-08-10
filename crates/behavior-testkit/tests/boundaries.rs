@@ -6,10 +6,10 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, At, AtEvent, Base, Behavior, Crash, Create, Delivery, Exit, Fsm, MailAddr,
-    Move, Never, Proxy, Recipient, RestartPolicy, Route, Spec, StashRoute, State, Step, Strategy,
-    Supervising, SupervisionEvent, TimerElapsed, TimerGeneration, TimerId, User, UserEvent,
-    WorkerStopped,
+    Acted, Actions, Behavior, Compose, Crash, Create, Deadline, DeadlineEvent, Delivery, Exit,
+    Handler, Machine, MailAddr, Move, Never, Proxy, Pure, Recipient, RestartPolicy, Route,
+    StashRoute, Step, Strategy, SupervisionEvent, Supervisor, TimerElapsed, TimerGeneration,
+    TimerId, User, UserEvent, WorkerStopped,
 };
 use tokio::time::Instant;
 
@@ -18,11 +18,11 @@ struct Recorder {
     seen: Vec<(MailAddr, u8)>,
 }
 
-impl State<u8, behavior::NoBirths, Never> for Recorder {
+impl Handler<u8, behavior::NoBirths, Never> for Recorder {
     type Addr = MailAddr;
     type Msg = u8;
 
-    fn handle(
+    fn receive(
         &mut self,
         from: MailAddr,
         message: u8,
@@ -42,11 +42,11 @@ struct StopOnZero {
     seen: Vec<(MailAddr, u8)>,
 }
 
-impl State<u8, behavior::NoBirths, Never> for StopOnZero {
+impl Handler<u8, behavior::NoBirths, Never> for StopOnZero {
     type Addr = MailAddr;
     type Msg = u8;
 
-    fn handle(
+    fn receive(
         &mut self,
         from: MailAddr,
         message: u8,
@@ -64,15 +64,15 @@ impl State<u8, behavior::NoBirths, Never> for StopOnZero {
     }
 }
 
-type Child = Base<Recorder, u8>;
+type Child = Pure<Recorder, u8>;
 
 struct Parent;
 
-impl State<Never, behavior::Births<Child>, Never> for Parent {
+impl Handler<Never, behavior::Births<Child>, Never> for Parent {
     type Addr = MailAddr;
     type Msg = u64;
 
-    fn handle(
+    fn receive(
         &mut self,
         _from: MailAddr,
         _message: u64,
@@ -87,11 +87,11 @@ struct BirthingParent {
     born: bool,
 }
 
-impl State<Never, behavior::Births<Child>, Never> for BirthingParent {
+impl Handler<Never, behavior::Births<Child>, Never> for BirthingParent {
     type Addr = MailAddr;
     type Msg = u64;
 
-    fn handle(
+    fn receive(
         &mut self,
         _from: MailAddr,
         nonce: u64,
@@ -110,7 +110,7 @@ impl State<Never, behavior::Births<Child>, Never> for BirthingParent {
 }
 
 fn child(_index: usize) -> Child {
-    Base::new(Recorder::default())
+    Pure::new(Recorder::default())
 }
 
 fn supervisor(
@@ -119,9 +119,9 @@ fn supervisor(
     maximum: u32,
     window: Duration,
     count: usize,
-) -> Supervising<Base<Parent, Never, behavior::Births<Child>>, Child> {
-    Supervising::new(
-        Base::new(Parent),
+) -> Supervisor<Pure<Parent, Never, behavior::Births<Child>>, Child> {
+    Supervisor::new(
+        Pure::new(Parent),
         |index| u64::try_from(index).unwrap(),
         count,
         child,
@@ -132,11 +132,12 @@ fn supervisor(
     )
 }
 
-type SupervisorEvent = SupervisionEvent<User<MailAddr, u64>, MailAddr>;
+type SupervisorEvent = SupervisionEvent<User<MailAddr, u64>>;
 
 fn stopped(nonce: u64, outcome: Result<Exit<MailAddr>, Crash>, at: Instant) -> SupervisorEvent {
     SupervisionEvent::WorkerStopped(WorkerStopped {
         proxy: nonce,
+        worker: nonce,
         outcome,
         at,
     })
@@ -146,34 +147,32 @@ fn stopped(nonce: u64, outcome: Result<Exit<MailAddr>, Crash>, at: Instant) -> S
 #[should_panic(expected = "a proxy initializes once")]
 async fn proxy_double_init_is_rejected() {
     let mut proxy = Proxy::new(child(0));
-    proxy.init().await.unwrap();
-    proxy.init().await.unwrap();
+    proxy.init().unwrap();
+    proxy.init().unwrap();
 }
 
 #[tokio::test]
 async fn empty_fleet_supervisor_initializes_and_steps_cleanly() {
-    let mut supervisor = Spec::new(Parent).children((0, child));
-    let initial = supervisor.init().await.unwrap();
+    let mut supervisor = Compose::new(Parent).children((0, child));
+    let initial = supervisor.init().unwrap();
     assert!(initial.creates.is_empty());
-    assert!(initial.sends.own.inner.is_empty());
+    assert!(initial.sends.child_observations.is_empty());
 
     let actions = supervisor
-        .step(UserEvent::user(MailAddr(0), 3))
-        .await
+        .transition(UserEvent::user(MailAddr(0), 3))
         .unwrap();
     assert!(actions.creates.is_empty());
-    assert!(actions.sends.own.inner.is_empty());
+    assert!(actions.sends.child_observations.is_empty());
     assert_eq!(supervisor.behavior().child_count(), 0);
 }
 
 #[tokio::test]
 #[should_panic(expected = "unknown supervised nonce")]
 async fn child_stopped_for_unknown_nonce_panics() {
-    let mut supervisor = Spec::new(Parent).children((1, child));
-    supervisor.init().await.unwrap();
+    let mut supervisor = Compose::new(Parent).children((1, child));
+    supervisor.init().unwrap();
     supervisor
-        .step(stopped(42, Err(Crash::Failed), Instant::now()))
-        .await
+        .transition(stopped(42, Err(Crash::Failed), Instant::now()))
         .unwrap();
 }
 
@@ -190,30 +189,28 @@ async fn duplicate_child_stopped_triggers_a_second_restart() {
         Duration::MAX,
         1,
     );
-    supervisor.init().await.unwrap();
+    supervisor.init().unwrap();
 
     let first = supervisor
-        .step(stopped(0, Err(Crash::Failed), at))
-        .await
+        .transition(stopped(0, Err(Crash::Failed), at))
         .unwrap();
-    assert_eq!(first.sends.own.own.len(), 1);
+    assert_eq!(first.sends.replacement_commands.len(), 1);
     assert_eq!(supervisor.restarts_in_window(), 1);
 
     let duplicate = supervisor
-        .step(stopped(0, Err(Crash::Failed), at))
-        .await
+        .transition(stopped(0, Err(Crash::Failed), at))
         .unwrap();
-    assert_eq!(duplicate.sends.own.own.len(), 1);
+    assert_eq!(duplicate.sends.replacement_commands.len(), 1);
     assert_eq!(supervisor.restarts_in_window(), 2);
 }
 
-/// `children_with_nonces` accepts duplicate configured nonces: two slots
-/// share one route and a death notice addresses only the first. The fresh-
-/// nonce guard exists only for dynamic births.
-#[tokio::test]
-async fn duplicate_configured_nonces_create_ambiguous_routes() {
-    let mut supervisor = Supervising::new(
-        Base::new(Parent),
+/// Configured nonces obey the same creator-local uniqueness law as dynamic
+/// births; an ambiguous topology is rejected before it can emit creations.
+#[test]
+#[should_panic(expected = "configured child nonces must be fresh")]
+fn duplicate_configured_nonces_are_rejected() {
+    let _supervisor = Supervisor::new(
+        Pure::new(Parent),
         |_| 7,
         2,
         child,
@@ -222,19 +219,6 @@ async fn duplicate_configured_nonces_create_ambiguous_routes() {
         u32::MAX,
         Duration::MAX,
     );
-    let initial = supervisor.init().await.unwrap();
-    assert_eq!(initial.creates.len(), 2);
-    assert_eq!(initial.creates[0].nonce, 7);
-    assert_eq!(initial.creates[1].nonce, 7);
-    assert_eq!(initial.sends.own.inner.len(), 2);
-
-    let actions = supervisor
-        .step(stopped(7, Err(Crash::Failed), Instant::now()))
-        .await
-        .unwrap();
-    assert_eq!(actions.sends.own.own.len(), 1);
-    assert_eq!(actions.sends.own.own[0].to.route(), Route::Child(7));
-    assert_eq!(supervisor.child_count(), 2);
 }
 
 #[tokio::test]
@@ -247,26 +231,23 @@ async fn transient_policy_restarts_only_abnormal_outcomes() {
         Duration::MAX,
         3,
     );
-    supervisor.init().await.unwrap();
+    supervisor.init().unwrap();
 
     let normal = supervisor
-        .step(stopped(0, Ok(Exit::Normal), at))
-        .await
+        .transition(stopped(0, Ok(Exit::Normal), at))
         .unwrap();
-    assert!(normal.sends.own.own.is_empty());
+    assert!(normal.sends.replacement_commands.is_empty());
     assert!(!supervisor.is_alive(0));
 
     let collected = supervisor
-        .step(stopped(0, Ok(Exit::Collected), at))
-        .await
+        .transition(stopped(0, Ok(Exit::Collected), at))
         .unwrap();
-    assert!(collected.sends.own.own.is_empty());
+    assert!(collected.sends.replacement_commands.is_empty());
 
     let link = supervisor
-        .step(stopped(1, Ok(Exit::LinkDied(MailAddr(9))), at))
-        .await
+        .transition(stopped(1, Ok(Exit::LinkDied(MailAddr(9))), at))
         .unwrap();
-    assert_eq!(link.sends.own.own.len(), 1);
+    assert_eq!(link.sends.replacement_commands.len(), 1);
     assert!(supervisor.is_alive(1));
 
     for crash in [
@@ -275,8 +256,8 @@ async fn transient_policy_restarts_only_abnormal_outcomes() {
         Crash::Panicked,
         Crash::Cancelled,
     ] {
-        let crashed = supervisor.step(stopped(2, Err(crash), at)).await.unwrap();
-        assert_eq!(crashed.sends.own.own.len(), 1);
+        let crashed = supervisor.transition(stopped(2, Err(crash), at)).unwrap();
+        assert_eq!(crashed.sends.replacement_commands.len(), 1);
         assert!(supervisor.is_alive(2));
     }
 }
@@ -295,20 +276,18 @@ async fn one_for_all_skips_dead_slots_and_respects_budget() {
         Duration::MAX,
         3,
     );
-    supervisor.init().await.unwrap();
+    supervisor.init().unwrap();
 
     let first = supervisor
-        .step(stopped(0, Err(Crash::Failed), at))
-        .await
+        .transition(stopped(0, Err(Crash::Failed), at))
         .unwrap();
-    assert_eq!(first.sends.own.own.len(), 3);
+    assert_eq!(first.sends.replacement_commands.len(), 3);
 
     // Second death: 3 alive candidates + 3 prior stamps = 6 > budget 5.
     let denied = supervisor
-        .step(stopped(1, Err(Crash::Failed), at))
-        .await
+        .transition(stopped(1, Err(Crash::Failed), at))
         .unwrap();
-    assert!(denied.sends.own.own.is_empty());
+    assert!(denied.sends.replacement_commands.is_empty());
     assert!(!supervisor.is_alive(1));
 
     // Third death: candidates are now only {0, 2} — the dead slot 1 is
@@ -316,11 +295,15 @@ async fn one_for_all_skips_dead_slots_and_respects_budget() {
     // dead slot 1 is not resurrected. (Had slot 1 been included, 3 + 3 = 6
     // > 5 would have denied everything.)
     let third = supervisor
-        .step(stopped(2, Err(Crash::Failed), at))
-        .await
+        .transition(stopped(2, Err(Crash::Failed), at))
         .unwrap();
-    assert_eq!(third.sends.own.own.len(), 2);
-    let routes: Vec<_> = third.sends.own.own.iter().map(|d| d.to.route()).collect();
+    assert_eq!(third.sends.replacement_commands.len(), 2);
+    let routes: Vec<_> = third
+        .sends
+        .replacement_commands
+        .iter()
+        .map(|d| d.to.route())
+        .collect();
     assert!(routes.contains(&Route::Child(0)));
     assert!(routes.contains(&Route::Child(2)));
     assert!(!routes.contains(&Route::Child(1)));
@@ -334,8 +317,8 @@ async fn one_for_all_skips_dead_slots_and_respects_budget() {
 #[tokio::test]
 async fn rest_for_one_uses_birth_sequence_not_index() {
     let at = Instant::now();
-    let mut supervisor = Supervising::new(
-        Base::new(BirthingParent { born: false }),
+    let mut supervisor = Supervisor::new(
+        Pure::new(BirthingParent { born: false }),
         |index| u64::try_from(index).unwrap(),
         3,
         child,
@@ -344,20 +327,23 @@ async fn rest_for_one_uses_birth_sequence_not_index() {
         u32::MAX,
         Duration::MAX,
     );
-    supervisor.init().await.unwrap();
+    supervisor.init().unwrap();
     supervisor
-        .step(UserEvent::user(MailAddr(0), 9))
-        .await
+        .transition(UserEvent::user(MailAddr(0), 9))
         .unwrap();
     assert_eq!(supervisor.child_count(), 4);
 
     // Death of configured slot 0 (sequence 0): every alive slot restarts.
     let wide = supervisor
-        .step(stopped(0, Err(Crash::Failed), at))
-        .await
+        .transition(stopped(0, Err(Crash::Failed), at))
         .unwrap();
-    assert_eq!(wide.sends.own.own.len(), 4);
-    let routes: Vec<_> = wide.sends.own.own.iter().map(|d| d.to.route()).collect();
+    assert_eq!(wide.sends.replacement_commands.len(), 4);
+    let routes: Vec<_> = wide
+        .sends
+        .replacement_commands
+        .iter()
+        .map(|d| d.to.route())
+        .collect();
     for nonce in 0..3 {
         assert!(routes.contains(&Route::Child(nonce)));
     }
@@ -367,11 +353,13 @@ async fn rest_for_one_uses_birth_sequence_not_index() {
     // the configured slots (sequences 0..3) are untouched even though they
     // sit at lower indexes.
     let narrow = supervisor
-        .step(stopped(9, Err(Crash::Failed), at))
-        .await
+        .transition(stopped(9, Err(Crash::Failed), at))
         .unwrap();
-    assert_eq!(narrow.sends.own.own.len(), 1);
-    assert_eq!(narrow.sends.own.own[0].to.route(), Route::Child(9));
+    assert_eq!(narrow.sends.replacement_commands.len(), 1);
+    assert_eq!(
+        narrow.sends.replacement_commands[0].to.route(),
+        Route::Child(9)
+    );
 }
 
 /// Window pruning is lazy (evaluated at each death) and inclusive at the
@@ -387,34 +375,31 @@ async fn restart_window_prunes_aged_stamps_but_keeps_future_ones() {
         window,
         1,
     );
-    supervisor.init().await.unwrap();
+    supervisor.init().unwrap();
 
     supervisor
-        .step(stopped(0, Err(Crash::Failed), start))
-        .await
+        .transition(stopped(0, Err(Crash::Failed), start))
         .unwrap();
     assert_eq!(supervisor.restarts_in_window(), 1);
 
     // 100ns later: the earlier stamp aged out before the budget check.
     supervisor
-        .step(stopped(
+        .transition(stopped(
             0,
             Err(Crash::Failed),
             start + Duration::from_nanos(100),
         ))
-        .await
         .unwrap();
     assert_eq!(supervisor.restarts_in_window(), 1);
 
     // A death stamped BEFORE the previous one keeps the future stamp (age
     // computation underflows to "keep") and adds a new one.
     supervisor
-        .step(stopped(
+        .transition(stopped(
             0,
             Err(Crash::Failed),
             start + Duration::from_nanos(60),
         ))
-        .await
         .unwrap();
     assert_eq!(supervisor.restarts_in_window(), 2);
 }
@@ -423,19 +408,17 @@ async fn restart_window_prunes_aged_stamps_but_keeps_future_ones() {
 /// stops the fold, the drain is skipped, and held messages survive the stop.
 #[tokio::test]
 async fn stash_stop_skips_drain_and_preserves_held_messages() {
-    let mut behavior = Spec::new(StopOnZero::default()).stash(|message| match message {
+    let mut behavior = Compose::new(StopOnZero::default()).stash(|message| match message {
         0 => StashRoute::Release,
         _ => StashRoute::Stash,
     });
     behavior
-        .step(UserEvent::user(MailAddr(1), 5))
-        .await
+        .transition(UserEvent::user(MailAddr(1), 5))
         .unwrap();
     assert_eq!(behavior.behavior().held(), 1);
 
     let actions = behavior
-        .step(UserEvent::user(MailAddr(9), 0))
-        .await
+        .transition(UserEvent::user(MailAddr(9), 0))
         .unwrap();
     assert_eq!(actions.become_, Step::Stop(Exit::Normal));
     assert_eq!(behavior.behavior().inner().state().seen, [(MailAddr(9), 0)]);
@@ -461,7 +444,7 @@ async fn fsm_mid_drain_deferral_reorders_relative_to_fifo() {
         C,
         Open,
     }
-    let mut machine = Fsm::new(
+    let mut machine = Machine::new(
         Vec::new(),
         Phase::P0,
         |phase, seen: &mut Vec<char>, message| {
@@ -483,13 +466,11 @@ async fn fsm_mid_drain_deferral_reorders_relative_to_fifo() {
     );
     for message in [Message::A, Message::B, Message::C] {
         machine
-            .step(User::user(MailAddr(0), message))
-            .await
+            .transition(User::user(MailAddr(0), message))
             .unwrap();
     }
     machine
-        .step(User::user(MailAddr(0), Message::Open))
-        .await
+        .transition(User::user(MailAddr(0), Message::Open))
         .unwrap();
 
     // Original FIFO was A, B, C; B was the phase-changer (consumed in P1),
@@ -498,29 +479,29 @@ async fn fsm_mid_drain_deferral_reorders_relative_to_fifo() {
     assert_eq!(machine.held(), 0);
 }
 
-/// Two At layers at the same instant retain distinct identities, so an event
+/// Two Deadline layers at the same instant retain distinct identities, so an event
 /// reaches exactly the layer that scheduled it.
 #[tokio::test]
 async fn nested_at_identical_schedules_are_distinguished_by_identity() {
     let due = Instant::now() + Duration::from_secs(1);
-    let inner = At::new(
-        Base::new(Recorder::default()),
+    let inner = Deadline::new(
+        Pure::new(Recorder::default()),
         TimerId(0),
         Some(due),
         |_| Ok(Step::Stop(Exit::Normal)),
     );
-    let mut outer = At::new(inner, TimerId(1), Some(due), |_| Ok(Step::Continue));
-    outer.init().await.unwrap();
+    let mut outer = Deadline::new(inner, TimerId(1), Some(due), |_| Ok(Step::Continue));
+    outer.init().unwrap();
 
-    let event = AtEvent::Reached(TimerElapsed {
+    let event = DeadlineEvent::Elapsed(TimerElapsed {
         id: TimerId(0),
         generation: TimerGeneration(0),
     });
-    let first = outer.step(event).await.unwrap();
+    let first = outer.transition(event).unwrap();
     assert_eq!(first.become_, Step::Stop(Exit::Normal));
 }
 
-/// `Spec::children` defaults are Transient policy with a budget of one
+/// `Compose::children` defaults are Transient policy with a budget of one
 /// restart per 5-second window: a second abnormal death inside the window
 /// is denied, even under a strategy that would otherwise restart. The
 /// builder's explicit `when`/`within` calls are required for unbounded
@@ -528,39 +509,36 @@ async fn nested_at_identical_schedules_are_distinguished_by_identity() {
 #[tokio::test]
 async fn spec_children_defaults_to_transient_with_budget_one() {
     let at = Instant::now();
-    let mut supervisor = Spec::new(Parent).children((1, child));
-    supervisor.init().await.unwrap();
+    let mut supervisor = Compose::new(Parent).children((1, child));
+    supervisor.init().unwrap();
 
     let first = supervisor
-        .step(stopped(0, Err(Crash::Failed), at))
-        .await
+        .transition(stopped(0, Err(Crash::Failed), at))
         .unwrap();
-    assert_eq!(first.sends.own.own.len(), 1);
+    assert_eq!(first.sends.replacement_commands.len(), 1);
 
     let second = supervisor
-        .step(stopped(0, Err(Crash::Failed), at + Duration::from_secs(1)))
-        .await
+        .transition(stopped(0, Err(Crash::Failed), at + Duration::from_secs(1)))
         .unwrap();
-    assert!(second.sends.own.own.is_empty());
+    assert!(second.sends.replacement_commands.is_empty());
     assert!(!supervisor.behavior().is_alive(0));
 
     // A normal exit is never restarted under the default Transient policy.
     let normal = supervisor
-        .step(stopped(0, Ok(Exit::Normal), at))
-        .await
+        .transition(stopped(0, Ok(Exit::Normal), at))
         .unwrap();
-    assert!(normal.sends.own.own.is_empty());
+    assert!(normal.sends.replacement_commands.is_empty());
 }
 
-/// The `Supervising` inherent builders (`with_strategy`, `with_policy`,
-/// `with_budget`) are exactly what `Spec::restart`/`when`/`within` call:
-/// a directly built supervisor configured identically to the `Spec`
+/// The `Supervisor` inherent builders (`with_strategy`, `with_policy`,
+/// `with_budget`) are exactly what `Compose::restart`/`when`/`within` call:
+/// a directly built supervisor configured identically to the `Compose`
 /// defaults behaves identically (Transient + budget 1/5s).
 #[tokio::test]
 async fn supervising_inherent_builders_match_the_spec_defaults() {
     let at = Instant::now();
-    let mut supervisor = Supervising::new(
-        Base::new(Parent),
+    let mut supervisor = Supervisor::new(
+        Pure::new(Parent),
         |index| u64::try_from(index).unwrap(),
         1,
         child,
@@ -569,18 +547,16 @@ async fn supervising_inherent_builders_match_the_spec_defaults() {
         1,
         Duration::from_secs(5),
     );
-    supervisor.init().await.unwrap();
+    supervisor.init().unwrap();
 
     let first = supervisor
-        .step(stopped(0, Err(Crash::Failed), at))
-        .await
+        .transition(stopped(0, Err(Crash::Failed), at))
         .unwrap();
-    assert_eq!(first.sends.own.own.len(), 1);
+    assert_eq!(first.sends.replacement_commands.len(), 1);
 
     let second = supervisor
-        .step(stopped(0, Err(Crash::Failed), at + Duration::from_secs(1)))
-        .await
+        .transition(stopped(0, Err(Crash::Failed), at + Duration::from_secs(1)))
         .unwrap();
-    assert!(second.sends.own.own.is_empty());
+    assert!(second.sends.replacement_commands.is_empty());
     assert!(!supervisor.is_alive(0));
 }

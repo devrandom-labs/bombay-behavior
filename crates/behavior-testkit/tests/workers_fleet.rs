@@ -7,19 +7,19 @@ use std::marker::PhantomData;
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, Base, Behavior, Crash, Delivery, MailAddr, Never, Recipient, RestartPolicy,
-    Route, State, Step, Strategy, Supervising, SupervisionEvent, User, UserEvent, WorkerStopped,
-    workers,
+    Acted, Actions, Behavior, Crash, Delivery, Handler, MailAddr, Never, Pure, Recipient,
+    RestartPolicy, Route, Step, Strategy, SupervisionEvent, Supervisor, User, UserEvent,
+    WorkerStopped, workers,
 };
 use tokio::time::Instant;
 
 struct WorkerA;
 
-impl State<u8, behavior::NoBirths, Never> for WorkerA {
+impl Handler<u8, behavior::NoBirths, Never> for WorkerA {
     type Addr = MailAddr;
     type Msg = u8;
 
-    fn handle(
+    fn receive(
         &mut self,
         from: MailAddr,
         _message: u8,
@@ -34,11 +34,11 @@ impl State<u8, behavior::NoBirths, Never> for WorkerA {
 
 struct WorkerB;
 
-impl State<u8, behavior::NoBirths, Never> for WorkerB {
+impl Handler<u8, behavior::NoBirths, Never> for WorkerB {
     type Addr = MailAddr;
     type Msg = u8;
 
-    fn handle(
+    fn receive(
         &mut self,
         from: MailAddr,
         _message: u8,
@@ -51,12 +51,12 @@ impl State<u8, behavior::NoBirths, Never> for WorkerB {
     }
 }
 
-fn worker_a(_index: usize) -> Base<WorkerA, u8> {
-    Base::new(WorkerA)
+fn worker_a(_index: usize) -> Pure<WorkerA, u8> {
+    Pure::new(WorkerA)
 }
 
-fn worker_b(_index: usize) -> Base<WorkerB, u8> {
-    Base::new(WorkerB)
+fn worker_b(_index: usize) -> Pure<WorkerB, u8> {
+    Pure::new(WorkerB)
 }
 
 /// The supervising parent is generic over its offspring; instantiating it
@@ -64,14 +64,14 @@ fn worker_b(_index: usize) -> Base<WorkerB, u8> {
 /// site (the macro's `Crew` is block-scoped).
 struct GenericParent<C>(PhantomData<C>);
 
-impl<C> State<Never, behavior::Births<C>, Never> for GenericParent<C>
+impl<C> Handler<Never, behavior::Births<C>, Never> for GenericParent<C>
 where
     C: Behavior<Ph = Never, Addr = MailAddr>,
 {
     type Addr = MailAddr;
     type Msg = u64;
 
-    fn handle(
+    fn receive(
         &mut self,
         _from: MailAddr,
         _message: u64,
@@ -84,12 +84,12 @@ fn supervise_with<C>(
     count: usize,
     build: fn(usize) -> C,
     strategy: Strategy,
-) -> Supervising<Base<GenericParent<C>, Never, behavior::Births<C>>, C>
+) -> Supervisor<Pure<GenericParent<C>, Never, behavior::Births<C>>, C>
 where
     C: Behavior<Ph = Never, Addr = MailAddr> + Send,
 {
-    Supervising::new(
-        Base::new(GenericParent(PhantomData)),
+    Supervisor::new(
+        Pure::new(GenericParent(PhantomData)),
         |index| u64::try_from(index).unwrap(),
         count,
         build,
@@ -105,12 +105,12 @@ where
 #[tokio::test]
 async fn workers_sum_preserves_the_concrete_variant_per_index() {
     let (count, build) =
-        workers![(2, Base<WorkerA, u8>, worker_a), (1, Base<WorkerB, u8>, worker_b)];
+        workers![(2, Pure<WorkerA, u8>, worker_a), (1, Pure<WorkerB, u8>, worker_b)];
     assert_eq!(count, 3);
 
     for index in 0..3 {
         let mut worker = build(index);
-        let actions = worker.step(User::user(MailAddr(0), 7)).await.unwrap();
+        let actions = worker.transition(User::user(MailAddr(0), 7)).unwrap();
         let expected = if index < 2 { 1 } else { 2 };
         assert_eq!(actions.sends[0].message, expected);
     }
@@ -120,7 +120,7 @@ async fn workers_sum_preserves_the_concrete_variant_per_index() {
 #[should_panic(expected = "workers!: fleet index out of range")]
 async fn workers_build_out_of_range_index_panics() {
     let (count, build) =
-        workers![(2, Base<WorkerA, u8>, worker_a), (1, Base<WorkerB, u8>, worker_b)];
+        workers![(2, Pure<WorkerA, u8>, worker_a), (1, Pure<WorkerB, u8>, worker_b)];
     assert_eq!(count, 3);
     let _ = build(3);
 }
@@ -132,36 +132,44 @@ async fn workers_build_out_of_range_index_panics() {
 #[tokio::test]
 async fn supervised_mixed_fleet_routes_replacements_by_birth_sequence() {
     let (count, build) =
-        workers![(2, Base<WorkerA, u8>, worker_a), (1, Base<WorkerB, u8>, worker_b)];
+        workers![(2, Pure<WorkerA, u8>, worker_a), (1, Pure<WorkerB, u8>, worker_b)];
     let mut supervisor = supervise_with(count, build, Strategy::RestForOne);
-    let initial = supervisor.init().await.unwrap();
+    let initial = supervisor.init().unwrap();
     assert_eq!(initial.creates.len(), 3);
-    assert_eq!(initial.sends.own.inner.len(), 3);
+    assert_eq!(initial.sends.child_observations.len(), 3);
 
     let at = Instant::now();
     let wide = supervisor
-        .step(SupervisionEvent::WorkerStopped(WorkerStopped {
+        .transition(SupervisionEvent::WorkerStopped(WorkerStopped {
             proxy: 1,
+            worker: 1,
             outcome: Err(Crash::Failed),
             at,
         }))
-        .await
         .unwrap();
-    let routes: Vec<Route<MailAddr>> = wide.sends.own.own.iter().map(|d| d.to.route()).collect();
+    let routes: Vec<Route<MailAddr>> = wide
+        .sends
+        .replacement_commands
+        .iter()
+        .map(|d| d.to.route())
+        .collect();
     assert_eq!(routes.len(), 2);
     assert!(routes.contains(&Route::Child(1)));
     assert!(routes.contains(&Route::Child(2)));
 
     let narrow = supervisor
-        .step(SupervisionEvent::WorkerStopped(WorkerStopped {
+        .transition(SupervisionEvent::WorkerStopped(WorkerStopped {
             proxy: 2,
+            worker: 2,
             outcome: Err(Crash::Failed),
             at,
         }))
-        .await
         .unwrap();
-    assert_eq!(narrow.sends.own.own.len(), 1);
-    assert_eq!(narrow.sends.own.own[0].to.route(), Route::Child(2));
+    assert_eq!(narrow.sends.replacement_commands.len(), 1);
+    assert_eq!(
+        narrow.sends.replacement_commands[0].to.route(),
+        Route::Child(2)
+    );
 }
 
 /// Three kinds: each kind's slots route to its own variant, exactly at the
@@ -169,11 +177,11 @@ async fn supervised_mixed_fleet_routes_replacements_by_birth_sequence() {
 #[tokio::test]
 async fn workers_three_kinds_boundaries_route_exactly() {
     struct WorkerC;
-    impl State<u8, behavior::NoBirths, Never> for WorkerC {
+    impl Handler<u8, behavior::NoBirths, Never> for WorkerC {
         type Addr = MailAddr;
         type Msg = u8;
 
-        fn handle(
+        fn receive(
             &mut self,
             from: MailAddr,
             _message: u8,
@@ -186,20 +194,20 @@ async fn workers_three_kinds_boundaries_route_exactly() {
             })
         }
     }
-    fn worker_c(_index: usize) -> Base<WorkerC, u8> {
-        Base::new(WorkerC)
+    fn worker_c(_index: usize) -> Pure<WorkerC, u8> {
+        Pure::new(WorkerC)
     }
 
     let (count, build) = workers![
-        (1, Base<WorkerA, u8>, worker_a),
-        (1, Base<WorkerB, u8>, worker_b),
-        (1, Base<WorkerC, u8>, worker_c)
+        (1, Pure<WorkerA, u8>, worker_a),
+        (1, Pure<WorkerB, u8>, worker_b),
+        (1, Pure<WorkerC, u8>, worker_c)
     ];
     assert_eq!(count, 3);
     let expected = [1, 2, 3];
     for (index, tag) in expected.into_iter().enumerate() {
         let mut worker = build(index);
-        let actions = worker.step(User::user(MailAddr(0), 7)).await.unwrap();
+        let actions = worker.transition(User::user(MailAddr(0), 7)).unwrap();
         assert_eq!(actions.sends[0].message, tag);
     }
 }
@@ -209,18 +217,23 @@ async fn workers_three_kinds_boundaries_route_exactly() {
 #[tokio::test]
 async fn workers_one_for_all_replaces_every_slot() {
     let (count, build) =
-        workers![(2, Base<WorkerA, u8>, worker_a), (1, Base<WorkerB, u8>, worker_b)];
+        workers![(2, Pure<WorkerA, u8>, worker_a), (1, Pure<WorkerB, u8>, worker_b)];
     let mut supervisor = supervise_with(count, build, Strategy::OneForAll);
-    supervisor.init().await.unwrap();
+    supervisor.init().unwrap();
     let actions = supervisor
-        .step(SupervisionEvent::WorkerStopped(WorkerStopped {
+        .transition(SupervisionEvent::WorkerStopped(WorkerStopped {
             proxy: 0,
+            worker: 0,
             outcome: Err(Crash::Failed),
             at: Instant::now(),
         }))
-        .await
         .unwrap();
-    let routes: Vec<Route<MailAddr>> = actions.sends.own.own.iter().map(|d| d.to.route()).collect();
+    let routes: Vec<Route<MailAddr>> = actions
+        .sends
+        .replacement_commands
+        .iter()
+        .map(|d| d.to.route())
+        .collect();
     assert_eq!(routes.len(), 3);
     for nonce in 0..3 {
         assert!(routes.contains(&Route::Child(nonce)));

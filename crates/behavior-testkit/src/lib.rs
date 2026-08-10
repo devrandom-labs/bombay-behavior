@@ -2,7 +2,8 @@
 
 use std::collections::VecDeque;
 
-use behavior::{Address, Behavior, BirthMode, Create, Exit, SendAlgebra, Step};
+use behavior::{ActionReducer, Address, Behavior, BirthMode, Create, Exit, SendAlgebra};
+use core::ops::ControlFlow;
 
 pub mod model;
 
@@ -42,7 +43,7 @@ pub struct Trace<A: Address, Sends, New> {
 ///
 /// # Errors
 /// Returns the behavior's first controlled failure (`B::Error`).
-pub async fn drive<B, A, Sends, Br>(
+pub fn drive<B, A, Sends, Br>(
     behavior: &mut B,
     mailbox: &mut Mailbox<B::Event>,
 ) -> Result<Trace<A, Sends, Br::Child>, B::Error>
@@ -52,38 +53,29 @@ where
     Br: BirthMode,
     B: Behavior<Addr = A, Ph = behavior::Never, Sends = Sends, Birth = Br>,
 {
-    let mut sends = Sends::empty();
-    let mut creates = Vec::new();
-    let mut transitions = 1;
-    let initial = behavior.init().await?;
-    sends.append(initial.sends);
-    creates.extend(initial.creates);
-    let mut exit = stopped(initial.become_);
+    let mut fold = ActionReducer::new();
+    let mut exit = match fold.push(behavior.init()?) {
+        ControlFlow::Continue(()) => None,
+        ControlFlow::Break(exit) => Some(exit),
+    };
 
     while exit.is_none() {
         let Some(event) = mailbox.receive() else {
             break;
         };
-        let actions = behavior.step(event).await?;
-        transitions += 1;
-        sends.append(actions.sends);
-        creates.extend(actions.creates);
-        exit = stopped(actions.become_);
+        exit = match fold.push(behavior.transition(event)?) {
+            ControlFlow::Continue(()) => None,
+            ControlFlow::Break(exit) => Some(exit),
+        };
     }
+
+    let folded = fold.finish(exit);
 
     Ok(Trace {
-        sends,
-        creates,
-        exit,
-        transitions,
+        sends: folded.effects.sends,
+        creates: folded.effects.creates,
+        exit: folded.exit,
+        transitions: folded.transitions,
         pending: mailbox.pending(),
     })
-}
-
-fn stopped<A: Address>(step: Step<behavior::Never, Exit<A>>) -> Option<Exit<A>> {
-    match step {
-        Step::Continue => None,
-        Step::Goto(never) => match never {},
-        Step::Stop(exit) => Some(exit),
-    }
 }

@@ -13,6 +13,18 @@ pub trait Address: Copy + Eq {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct MailAddr(pub u64);
 
+impl From<u64> for MailAddr {
+    fn from(value: u64) -> Self {
+        Self(value)
+    }
+}
+
+impl From<MailAddr> for u64 {
+    fn from(value: MailAddr) -> Self {
+        value.0
+    }
+}
+
 impl Address for MailAddr {
     type Nonce = u64;
 
@@ -26,6 +38,24 @@ impl Address for MailAddr {
 pub enum Route<A: Address> {
     Global(A),
     Child(A::Nonce),
+}
+
+impl<A: Address> Route<A> {
+    #[must_use]
+    pub const fn global(address: A) -> Self {
+        Self::Global(address)
+    }
+
+    #[must_use]
+    pub const fn child(nonce: A::Nonce) -> Self {
+        Self::Child(nonce)
+    }
+}
+
+impl<A: Address> From<A> for Route<A> {
+    fn from(address: A) -> Self {
+        Self::global(address)
+    }
 }
 
 /// A recipient statically coupled to the message it accepts.
@@ -45,12 +75,12 @@ impl<A: Address, M> Clone for Recipient<A, M> {
 impl<A: Address, M> Recipient<A, M> {
     #[must_use]
     pub fn global(address: A) -> Self {
-        Self::from_route(Route::Global(address))
+        Self::from(Route::global(address))
     }
 
     #[must_use]
     pub fn child(nonce: A::Nonce) -> Self {
-        Self::from_route(Route::Child(nonce))
+        Self::from(Route::child(nonce))
     }
 
     #[must_use]
@@ -63,6 +93,12 @@ impl<A: Address, M> Recipient<A, M> {
             route,
             message: PhantomData,
         }
+    }
+}
+
+impl<A: Address, M> From<Route<A>> for Recipient<A, M> {
+    fn from(route: Route<A>) -> Self {
+        Self::from_route(route)
     }
 }
 

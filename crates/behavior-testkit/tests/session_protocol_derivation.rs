@@ -1,5 +1,5 @@
 //! Session protocol derivation campaign: determine whether Bombay Behavior
-//! needs phase-indexed protocol typing beyond the existing `Fsm`.
+//! needs phase-indexed protocol typing beyond the existing `Machine`.
 //!
 //! Concrete case: **Supervised Worker Lifecycle** (3 phases, direction-sensitive).
 //!
@@ -42,7 +42,9 @@
 // dead-code warnings are expected and suppressed.
 #![allow(dead_code)]
 
-use behavior::{Behavior, Exit, Fsm, MailAddr, Move, Never, SendAlgebra, Step, User, UserEvent};
+use behavior::{
+    Behavior, Exit, Machine, MailAddr, Move, Never, SendAlgebra, Step, User, UserEvent,
+};
 
 // ---------------------------------------------------------------------------
 // Phase and message vocabulary (used by all derivation attempts)
@@ -78,11 +80,11 @@ enum WorkerMsg {
 }
 
 // ---------------------------------------------------------------------------
-// Attempt 1: Existing Fsm (FSM-01)
+// Attempt 1: Existing Machine (FSM-01)
 // ---------------------------------------------------------------------------
 
-fn worker_fsm() -> Fsm<MailAddr, Vec<Work>, WorkerMsg, Phase, Never> {
-    Fsm::new(
+fn worker_fsm() -> Machine<MailAddr, Vec<Work>, WorkerMsg, Phase, Never> {
+    Machine::new(
         Vec::new(),
         Phase::Starting,
         |phase, in_flight, msg| -> Result<Move<Phase>, Never> {
@@ -125,7 +127,7 @@ mod fsm_baseline {
     #[tokio::test]
     async fn fsm_accepts_valid_phase_transitions() {
         let mut fsm = worker_fsm();
-        let _ = fsm.init().await.unwrap();
+        let _ = fsm.init().unwrap();
         assert_eq!(fsm.phase(), Phase::Starting);
 
         let event = User {
@@ -135,14 +137,14 @@ mod fsm_baseline {
                 supervisor: MailAddr(1),
             }),
         };
-        let _ = fsm.step(event).await.unwrap();
+        let _ = fsm.transition(event).unwrap();
         assert_eq!(fsm.phase(), Phase::Running);
     }
 
     #[tokio::test]
     async fn fsm_defers_work_in_starting_phase() {
         let mut fsm = worker_fsm();
-        let _ = fsm.init().await.unwrap();
+        let _ = fsm.init().unwrap();
 
         let work_event = User {
             from: MailAddr(2),
@@ -151,7 +153,7 @@ mod fsm_baseline {
                 reply_to: MailAddr(2),
             }),
         };
-        let actions = fsm.step(work_event).await.unwrap();
+        let actions = fsm.transition(work_event).unwrap();
         assert_eq!(fsm.held(), 1);
         assert!(matches!(actions.become_, Step::Continue));
         assert_eq!(fsm.phase(), Phase::Starting);
@@ -160,7 +162,7 @@ mod fsm_baseline {
     #[tokio::test]
     async fn fsm_replays_deferred_after_phase_change() {
         let mut fsm = worker_fsm();
-        let _ = fsm.init().await.unwrap();
+        let _ = fsm.init().unwrap();
 
         let work_event = User {
             from: MailAddr(2),
@@ -169,7 +171,7 @@ mod fsm_baseline {
                 reply_to: MailAddr(2),
             }),
         };
-        let _ = fsm.step(work_event).await.unwrap();
+        let _ = fsm.transition(work_event).unwrap();
         assert_eq!(fsm.held(), 1);
 
         let cfg_event = User {
@@ -179,7 +181,7 @@ mod fsm_baseline {
                 supervisor: MailAddr(1),
             }),
         };
-        let _ = fsm.step(cfg_event).await.unwrap();
+        let _ = fsm.transition(cfg_event).unwrap();
         assert_eq!(fsm.phase(), Phase::Running);
         assert_eq!(fsm.held(), 0);
         assert_eq!(fsm.state().len(), 1);
@@ -275,7 +277,7 @@ enum AppMsg {
 }
 
 impl WorkerApp {
-    fn step(&mut self, msg: AppMsg) -> Result<Step<Never, Exit<MailAddr>>, Never> {
+    fn transition(&mut self, msg: AppMsg) -> Result<Step<Never, Exit<MailAddr>>, Never> {
         match msg {
             AppMsg::Configure(config) => {
                 if let WorkerApp::Starting(state) = self {
@@ -359,7 +361,7 @@ trait PhaseBehavior {
 //    dynamically. Static duality requires both endpoints to be known at
 //    compile time.
 //
-// 5. Wrapper composition: Wrappers (Supervising, Watching, etc.) expect
+// 5. Wrapper composition: Wrappers (Supervisor, Watch, etc.) expect
 //    Behavior with a single Event type. A phase-varying event type would
 //    break every wrapper's composition contract.
 
@@ -412,8 +414,8 @@ mod composition_checks {
     /// A phase-varying Event type would break every wrapper.
     #[tokio::test]
     async fn fsm_composes_with_watching() {
-        // Fsm<A,S,M,P,E> implements Behavior<Event = User<A,M>>
-        // Watching<Fsm<...>> wraps it — this compiles because Event is single.
+        // Machine<A,S,M,P,E> implements Behavior<Event = User<A,M>>
+        // Watch<Machine<...>> wraps it — this compiles because Event is single.
         let _fsm = worker_fsm();
     }
 }

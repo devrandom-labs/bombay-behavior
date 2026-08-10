@@ -8,9 +8,9 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, Base, Behavior, Crash, Create, Delivery, Exit, MailAddr, Never, Recipient,
-    RestartPolicy, Route, SendAlgebra, SendProduct, State, Step, Strategy, Supervising,
-    SupervisionEvent, User, UserEvent, WorkerStopped,
+    Acted, Actions, Behavior, Crash, Create, Delivery, Exit, Handler, MailAddr, Never, Pure,
+    Recipient, RestartPolicy, Route, SendAlgebra, SendProduct, Step, Strategy, SupervisionEvent,
+    User, UserEvent, WorkerStopped,
 };
 use behavior_testkit::{Mailbox, drive};
 use proptest::collection::vec;
@@ -20,11 +20,11 @@ use tokio::time::Instant;
 #[derive(Default)]
 struct Echo;
 
-impl State<u8, behavior::NoBirths, Never> for Echo {
+impl Handler<u8, behavior::NoBirths, Never> for Echo {
     type Addr = MailAddr;
     type Msg = u8;
 
-    fn handle(
+    fn receive(
         &mut self,
         _from: MailAddr,
         _message: u8,
@@ -33,10 +33,10 @@ impl State<u8, behavior::NoBirths, Never> for Echo {
     }
 }
 
-type Child = Base<Echo, u8>;
+type Child = Pure<Echo, u8>;
 
 fn child(_index: usize) -> Child {
-    Base::new(Echo)
+    Pure::new(Echo)
 }
 
 /// Parent that echoes every user message on its own send lane and can birth
@@ -45,11 +45,11 @@ struct EchoingParent {
     seen: Vec<u64>,
 }
 
-impl State<u64, behavior::Births<Child>, Never> for EchoingParent {
+impl Handler<u64, behavior::Births<Child>, Never> for EchoingParent {
     type Addr = MailAddr;
     type Msg = u64;
 
-    fn handle(
+    fn receive(
         &mut self,
         _from: MailAddr,
         message: u64,
@@ -67,11 +67,11 @@ struct BirthingParent {
     born: bool,
 }
 
-impl State<Never, behavior::Births<Child>, Never> for BirthingParent {
+impl Handler<Never, behavior::Births<Child>, Never> for BirthingParent {
     type Addr = MailAddr;
     type Msg = u64;
 
-    fn handle(
+    fn receive(
         &mut self,
         _from: MailAddr,
         nonce: u64,
@@ -89,7 +89,8 @@ impl State<Never, behavior::Births<Child>, Never> for BirthingParent {
     }
 }
 
-type Supervisor = Supervising<Base<EchoingParent, u64, behavior::Births<Child>, Never>, Child>;
+type TestSupervisor =
+    behavior::Supervisor<Pure<EchoingParent, u64, behavior::Births<Child>, Never>, Child>;
 
 /// A driven supervised trace: user echoes accumulate in the inner lane,
 /// replacement sends in the supervisor's own lane, observe-child sends stay
@@ -97,8 +98,8 @@ type Supervisor = Supervising<Base<EchoingParent, u64, behavior::Births<Child>, 
 #[tokio::test]
 async fn driver_accumulates_supervising_send_products_losslessly() {
     let at = Instant::now();
-    let mut supervisor: Supervisor = Supervising::new(
-        Base::new(EchoingParent { seen: Vec::new() }),
+    let mut supervisor: TestSupervisor = behavior::Supervisor::new(
+        Pure::new(EchoingParent { seen: Vec::new() }),
         |index| u64::try_from(index).unwrap(),
         2,
         child,
@@ -111,31 +112,37 @@ async fn driver_accumulates_supervising_send_products_losslessly() {
         SupervisionEvent::Inner(User::user(MailAddr(9), 3)),
         SupervisionEvent::WorkerStopped(WorkerStopped {
             proxy: 0,
+            worker: 0,
             outcome: Err(Crash::Failed),
             at,
         }),
         SupervisionEvent::Inner(User::user(MailAddr(9), 5)),
         SupervisionEvent::WorkerStopped(WorkerStopped {
             proxy: 1,
+            worker: 1,
             outcome: Err(Crash::Failed),
             at,
         }),
     ]);
-    let trace = drive(&mut supervisor, &mut mailbox).await.unwrap();
+    let trace = drive(&mut supervisor, &mut mailbox).unwrap();
 
     assert_eq!(trace.transitions, 5);
     assert_eq!(trace.pending, 0);
     assert_eq!(trace.exit, None);
 
     // Inner lane: user echoes, in order, exactly the delivered messages.
-    let echoes: Vec<u64> = trace.sends.inner.iter().map(|d| d.message).collect();
+    let echoes: Vec<u64> = trace.sends.behavior.iter().map(|d| d.message).collect();
     assert_eq!(echoes, [3, 5]);
     // Supervisor's own replacement lane: one per death, in order.
-    let replacements: Vec<Route<MailAddr>> =
-        trace.sends.own.own.iter().map(|d| d.to.route()).collect();
+    let replacements: Vec<Route<MailAddr>> = trace
+        .sends
+        .replacement_commands
+        .iter()
+        .map(|d| d.to.route())
+        .collect();
     assert_eq!(replacements, [Route::Child(0), Route::Child(1)]);
     // Observe-child sends: emitted once at init, never again.
-    assert_eq!(trace.sends.own.inner.len(), 2);
+    assert_eq!(trace.sends.child_observations.len(), 2);
     // Creates: exactly the two init proxies; the driver never re-creates.
     assert_eq!(trace.creates.len(), 2);
 }
@@ -201,8 +208,8 @@ proptest! {
 #[tokio::test]
 async fn empty_fleet_dynamic_birth_then_death_restarts() {
     let at = Instant::now();
-    let mut supervisor = Supervising::new(
-        Base::new(BirthingParent { born: false }),
+    let mut supervisor = behavior::Supervisor::new(
+        Pure::new(BirthingParent { born: false }),
         |index| u64::try_from(index).unwrap(),
         0,
         child,
@@ -211,24 +218,26 @@ async fn empty_fleet_dynamic_birth_then_death_restarts() {
         u32::MAX,
         Duration::MAX,
     );
-    supervisor.init().await.unwrap();
+    supervisor.init().unwrap();
     supervisor
-        .step(UserEvent::user(MailAddr(0), 9))
-        .await
+        .transition(UserEvent::user(MailAddr(0), 9))
         .unwrap();
     assert_eq!(supervisor.child_count(), 1);
     assert!(supervisor.is_alive(9));
 
     let actions = supervisor
-        .step(SupervisionEvent::WorkerStopped(WorkerStopped {
+        .transition(SupervisionEvent::WorkerStopped(WorkerStopped {
             proxy: 9,
+            worker: 9,
             outcome: Err(Crash::Failed),
             at,
         }))
-        .await
         .unwrap();
-    assert_eq!(actions.sends.own.own.len(), 1);
-    assert_eq!(actions.sends.own.own[0].to.route(), Route::Child(9));
+    assert_eq!(actions.sends.replacement_commands.len(), 1);
+    assert_eq!(
+        actions.sends.replacement_commands[0].to.route(),
+        Route::Child(9)
+    );
     assert!(supervisor.is_alive(9));
 }
 
@@ -239,13 +248,13 @@ async fn empty_fleet_dynamic_birth_then_death_restarts() {
 #[tokio::test]
 async fn driver_full_stack_mixed_lanes_stop_on_peer_death() {
     use behavior::{
-        AtEvent, PeerStopped, Spec, StashRoute, TimerElapsed, TimerGeneration, TimerId, WatchEvent,
-        stop_on_abnormal_death,
+        Compose, DeadlineEvent, PeerStopped, StashRoute, TimerElapsed, TimerGeneration, TimerId,
+        WatchEvent, stop_on_abnormal_death,
     };
 
     let due = Instant::now() + Duration::from_secs(1);
     let peer = MailAddr(44);
-    let mut behavior = Spec::new(EchoingParent { seen: Vec::new() })
+    let mut behavior = Compose::new(EchoingParent { seen: Vec::new() })
         .stash(|m| {
             if m % 3 == 2 {
                 StashRoute::Stash
@@ -254,34 +263,34 @@ async fn driver_full_stack_mixed_lanes_stop_on_peer_death() {
             }
         })
         .watch(peer, stop_on_abnormal_death)
-        .at(Some(due), |_| Ok(Step::Continue))
+        .deadline(Some(due), |_| Ok(Step::Continue))
         .children((2, child))
         .restart(Strategy::OneForOne)
         .when(RestartPolicy::Permanent)
         .within(u32::MAX, Duration::MAX);
     let mut mailbox = Mailbox::new([
-        SupervisionEvent::Inner(AtEvent::Inner(WatchEvent::Inner(User::user(
+        SupervisionEvent::Inner(DeadlineEvent::Inner(WatchEvent::Inner(User::user(
             MailAddr(9),
             1,
         )))),
-        SupervisionEvent::Inner(AtEvent::Inner(WatchEvent::Inner(User::user(
+        SupervisionEvent::Inner(DeadlineEvent::Inner(WatchEvent::Inner(User::user(
             MailAddr(9),
             5,
         )))),
-        SupervisionEvent::Inner(AtEvent::Reached(TimerElapsed {
+        SupervisionEvent::Inner(DeadlineEvent::Elapsed(TimerElapsed {
             id: TimerId(0),
             generation: TimerGeneration(0),
         })),
-        SupervisionEvent::Inner(AtEvent::Inner(WatchEvent::PeerStopped(PeerStopped {
+        SupervisionEvent::Inner(DeadlineEvent::Inner(WatchEvent::PeerStopped(PeerStopped {
             peer,
             outcome: Err(Crash::Failed),
         }))),
-        SupervisionEvent::Inner(AtEvent::Inner(WatchEvent::Inner(User::user(
+        SupervisionEvent::Inner(DeadlineEvent::Inner(WatchEvent::Inner(User::user(
             MailAddr(9),
             7,
         )))),
     ]);
-    let trace = drive(&mut behavior, &mut mailbox).await.unwrap();
+    let trace = drive(&mut behavior, &mut mailbox).unwrap();
 
     // Stopped at the peer death: init + 4 processed events, tail left.
     assert_eq!(trace.transitions, 5);
@@ -293,36 +302,36 @@ async fn driver_full_stack_mixed_lanes_stop_on_peer_death() {
     // never reached the parent.
     let echoes: Vec<u64> = trace
         .sends
-        .inner
-        .inner
-        .inner
+        .behavior
+        .behavior
+        .behavior
         .iter()
         .map(|d| d.message)
         .collect();
     assert_eq!(echoes, [1]);
     // Schedule send emitted once at init.
-    assert_eq!(trace.sends.inner.own.len(), 1);
+    assert_eq!(trace.sends.behavior.schedules.len(), 1);
     // Observe-peer emitted once at init.
-    assert_eq!(trace.sends.inner.inner.own.len(), 1);
+    assert_eq!(trace.sends.behavior.behavior.observations.len(), 1);
     // Observe-child sends emitted once at init.
-    assert_eq!(trace.sends.own.inner.len(), 2);
+    assert_eq!(trace.sends.child_observations.len(), 2);
 }
 
-/// `Base::from_fn` (the functional state adapter) folds exactly like a
-/// hand-written `State`: same effect algebra, same driver accumulation.
+/// `Pure::from_fn` (the functional state adapter) folds exactly like a
+/// hand-written `Handler`: same effect algebra, same driver accumulation.
 #[tokio::test]
 #[allow(
     clippy::type_complexity,
-    reason = "the FnState adapter's full generic surface"
+    reason = "the FoldFn adapter's full generic surface"
 )]
 async fn fn_state_adapter_drives_like_a_base() {
-    use behavior::Base;
+    use behavior::Pure;
 
     #[allow(
         clippy::unnecessary_wraps,
         reason = "the Transition signature requires Acted"
     )]
-    fn handle(
+    fn receive(
         seen: &mut Vec<u64>,
         _from: MailAddr,
         message: u64,
@@ -338,18 +347,18 @@ async fn fn_state_adapter_drives_like_a_base() {
             },
         })
     }
-    let mut behavior: Base<
-        behavior::FnState<Vec<u64>, MailAddr, u64, u64, behavior::NoBirths, Never>,
+    let mut behavior: Pure<
+        behavior::FoldFn<Vec<u64>, MailAddr, u64, u64, behavior::NoBirths, Never>,
         u64,
         behavior::NoBirths,
         Never,
-    > = Base::from_fn(Vec::new(), handle);
+    > = Pure::from_fn(Vec::new(), receive);
     let mut mailbox = Mailbox::new([
         User::user(MailAddr(1), 3),
         User::user(MailAddr(2), 9),
         User::user(MailAddr(3), 5),
     ]);
-    let trace = drive(&mut behavior, &mut mailbox).await.unwrap();
+    let trace = drive(&mut behavior, &mut mailbox).unwrap();
 
     assert_eq!(trace.transitions, 3);
     assert_eq!(trace.pending, 1);
@@ -363,16 +372,16 @@ async fn fn_state_adapter_drives_like_a_base() {
 /// the stash buffer keeps the held messages, and nothing is lost.
 #[tokio::test]
 async fn driver_stash_stop_preserves_held_and_stops() {
-    use behavior::{StashRoute, Stashing};
+    use behavior::{Stash, StashRoute};
 
     struct StopOnZero {
         seen: Vec<(MailAddr, u64)>,
     }
-    impl State<u64, behavior::NoBirths, Never> for StopOnZero {
+    impl Handler<u64, behavior::NoBirths, Never> for StopOnZero {
         type Addr = MailAddr;
         type Msg = u64;
 
-        fn handle(
+        fn receive(
             &mut self,
             from: MailAddr,
             message: u64,
@@ -391,7 +400,7 @@ async fn driver_stash_stop_preserves_held_and_stops() {
         }
     }
 
-    let mut behavior = Stashing::new(Base::new(StopOnZero { seen: Vec::new() }), |m: &u64| {
+    let mut behavior = Stash::new(Pure::new(StopOnZero { seen: Vec::new() }), |m: &u64| {
         if *m == 0 {
             StashRoute::Release
         } else {
@@ -399,7 +408,7 @@ async fn driver_stash_stop_preserves_held_and_stops() {
         }
     });
     let mut mailbox = Mailbox::new([User::user(MailAddr(1), 5), User::user(MailAddr(9), 0)]);
-    let trace = drive(&mut behavior, &mut mailbox).await.unwrap();
+    let trace = drive(&mut behavior, &mut mailbox).unwrap();
 
     assert_eq!(trace.transitions, 3);
     assert_eq!(trace.pending, 0);

@@ -6,10 +6,8 @@
 //! concerns.
 
 use crate::behavior::{Actions, Address, Behavior, BirthMode, SendAlgebra, User, UserEvent};
-use crate::protocol::{
-    ChildEvent, ChildStopped, PeerEvent, PeerStopped, ShutdownEvent, ShutdownRequested, TimeEvent,
-    TimerElapsed, WorkerEvent, WorkerStopped,
-};
+use crate::protocol::forward::forward_event_lane;
+use crate::protocol::{ShutdownEvent, ShutdownRequested};
 use crate::{Exit, Step};
 
 /// The complete protocol of a behavior that supports graceful shutdown.
@@ -19,9 +17,15 @@ pub enum ShutdownProtocol<E> {
     ShutdownRequested(ShutdownRequested),
 }
 
-impl<E> ShutdownEvent for ShutdownProtocol<E> {
+impl<E: UserEvent> ShutdownEvent for ShutdownProtocol<E> {
     fn shutdown_requested(event: ShutdownRequested) -> Option<Self> {
         Some(Self::ShutdownRequested(event))
+    }
+}
+
+impl<E: UserEvent> crate::EventInput<ShutdownRequested> for ShutdownProtocol<E> {
+    fn inject(event: ShutdownRequested) -> Self {
+        Self::ShutdownRequested(event)
     }
 }
 
@@ -41,29 +45,42 @@ impl<E: UserEvent> UserEvent for ShutdownProtocol<E> {
     }
 }
 
-impl<E: TimeEvent> TimeEvent for ShutdownProtocol<E> {
-    fn time_reached(event: TimerElapsed) -> Option<Self> {
-        E::time_reached(event).map(Self::Inner)
-    }
-}
-
-impl<E: PeerEvent<A>, A: Address> PeerEvent<A> for ShutdownProtocol<E> {
-    fn peer_stopped(event: PeerStopped<A>) -> Option<Self> {
-        E::peer_stopped(event).map(Self::Inner)
-    }
-}
-
-impl<E: ChildEvent<A>, A: Address> ChildEvent<A> for ShutdownProtocol<E> {
-    fn child_stopped(event: ChildStopped<A>) -> Option<Self> {
-        E::child_stopped(event).map(Self::Inner)
-    }
-}
-
-impl<E: WorkerEvent<A>, A: Address> WorkerEvent<A> for ShutdownProtocol<E> {
-    fn worker_stopped(event: WorkerStopped<A>) -> Option<Self> {
-        E::worker_stopped(event).map(Self::Inner)
-    }
-}
+forward_event_lane!(
+    ShutdownProtocol,
+    TimeEvent,
+    time_reached,
+    crate::TimerElapsed
+);
+forward_event_lane!(
+    ShutdownProtocol,
+    PeerEvent,
+    peer_stopped,
+    crate::PeerStopped<E::Addr>
+);
+forward_event_lane!(
+    ShutdownProtocol,
+    ChildEvent,
+    child_stopped,
+    crate::ChildStopped<E::Addr>
+);
+forward_event_lane!(
+    ShutdownProtocol,
+    WorkerEvent,
+    worker_stopped,
+    crate::WorkerStopped<E::Addr>
+);
+forward_event_lane!(
+    ShutdownProtocol,
+    CreationEvent,
+    creation_resolved,
+    crate::CreationResolved<<E::Addr as crate::Address>::Nonce>
+);
+forward_event_lane!(
+    ShutdownProtocol,
+    WorkerCreationEvent,
+    worker_creation_resolved,
+    crate::WorkerCreationResolved<<E::Addr as crate::Address>::Nonce>
+);
 
 /// Stop normally when the shutdown lane is received.
 pub struct StopOnShutdown<B> {
@@ -119,12 +136,10 @@ macro_rules! impl_shutdown_behavior {
     ($wrapper:ident, $shutdown:expr) => {
         impl<B, A, Ph, Sends, Br> Behavior for $wrapper<B>
         where
-            A: Address + Send,
+            A: Address,
             Sends: SendAlgebra,
             Br: BirthMode,
-            B: Behavior<Addr = A, Ph = Ph, Sends = Sends, Birth = Br> + Send,
-            B::Event: Send,
-            B::Msg: Send,
+            B: Behavior<Addr = A, Ph = Ph, Sends = Sends, Birth = Br>,
         {
             type Addr = A;
             type Msg = B::Msg;
@@ -134,16 +149,16 @@ macro_rules! impl_shutdown_behavior {
             type Error = B::Error;
             type Birth = Br;
 
-            async fn init(&mut self) -> Result<Actions<A, Ph, Sends, Br>, B::Error> {
-                self.inner.init().await
+            fn init(&mut self) -> Result<Actions<A, Ph, Sends, Br>, B::Error> {
+                self.inner.init()
             }
 
-            async fn step(
+            fn transition(
                 &mut self,
                 event: Self::Event,
             ) -> Result<Actions<A, Ph, Sends, Br>, B::Error> {
                 match event {
-                    ShutdownProtocol::Inner(event) => self.inner.step(event).await,
+                    ShutdownProtocol::Inner(event) => self.inner.transition(event),
                     ShutdownProtocol::ShutdownRequested(request) => $shutdown(self, request),
                 }
             }
@@ -159,10 +174,6 @@ impl_shutdown_behavior!(
     FinalizeOnShutdown,
     |this: &mut FinalizeOnShutdown<B>, request| {
         let actions = (this.finalize)(&mut this.inner, request)?;
-        Ok(Actions {
-            sends: actions.sends,
-            creates: actions.creates,
-            become_: Step::Stop(Exit::Normal),
-        })
+        Ok(actions.map_become(|_| Step::Stop(Exit::Normal)))
     }
 );

@@ -8,48 +8,57 @@
 extern crate self as behavior;
 
 mod actor;
-mod deadlined;
-mod fold;
-mod stashing;
+mod calculus;
+mod effects;
+mod next;
+mod stash;
 mod supervision;
-mod transition;
-mod verdict;
-mod watching;
+mod timing;
+mod watch;
 
-// `Fsm` is a thin state-machine helper built from the core stashing primitive.
-mod fsm;
+// `Machine` is a thin state-machine helper built from the core stashing primitive.
+mod compose;
+mod machine;
+mod mailbox;
 mod protocol;
-mod receive_timeout;
 mod shutdown;
-mod spec;
 
 pub use actor::{
     Address, BirthMode, Births, Create, CreationKind, Delivery, MailAddr, NoBirths, Recipient,
     Route,
 };
-pub use deadlined::{At, AtActions, AtEvent, AtReaction, AtSends};
-pub use fold::{Base, Behavior, BehaviorActed, FnState, State, Transcript, User, UserEvent, run};
-pub use fsm::{Fsm, Move};
-pub use protocol::{
-    ChildEvent, ChildStopped, ObserveChild, ObservePeer, PeerEvent, PeerStopped,
-    ReportWorkerStopped, ScheduleAfter, ScheduleAt, ShutdownEvent, ShutdownRequested, TimeEvent,
-    TimerElapsed, TimerGeneration, TimerId, WorkerEvent, WorkerStopped,
+pub use calculus::{
+    ActionReducer, Behavior, BehaviorActed, Effects, EventInput, FoldFn, Folded, Handler, Pure,
+    User, UserEvent, fold_events,
 };
-pub use receive_timeout::{
-    ReceiveTimeout, ReceiveTimeoutActions, ReceiveTimeoutError, ReceiveTimeoutEvent,
-    ReceiveTimeoutReaction, ReceiveTimeoutSends,
+pub use compose::Compose;
+pub use effects::{
+    Acted, Actions, Become, Inner, Own, SendAlgebra, SendInput, SendProduct, ServiceSends,
+};
+pub use machine::{Machine, Move};
+pub use mailbox::{Transcript, run};
+pub use next::{Never, Step};
+pub use protocol::{
+    ChildEvent, ChildStopped, CreationEvent, CreationRejection, CreationResolved, ObserveChild,
+    ObserveCreation, ObservePeer, PeerEvent, PeerStopped, ReportWorkerCreationResolved,
+    ReportWorkerStopped, ScheduleAfter, ScheduleAt, ShutdownEvent, ShutdownRequested, TimeEvent,
+    TimerElapsed, TimerGeneration, TimerId, WorkerCreationEvent, WorkerCreationResolved,
+    WorkerEvent, WorkerStopped,
 };
 pub use shutdown::{FinalizeOnShutdown, ShutdownProtocol, ShutdownReaction, StopOnShutdown};
-pub use spec::Spec;
-pub use stashing::{StashRoute, Stashing};
+pub use stash::{Stash, StashRoute};
 pub use supervision::{
-    Proxy, ProxyCommand, RestartPolicy, Strategy, Supervising, SupervisionEvent,
-    SupervisionFailure, SupervisionFailureReaction, restart_all, restart_one, restart_rest,
+    IncarnationPhase, Proxy, ProxyActions, ProxyCommand, ProxyEvent, ProxySends, RestartPolicy,
+    Strategy, SupervisionEvent, SupervisionFailure, SupervisionFailureReaction, Supervisor,
+    SupervisorActions, SupervisorSends, restart_all, restart_one, restart_rest,
     retire_on_supervision_failure, stop_on_supervision_failure,
 };
-pub use transition::{Acted, Actions, Become, SendAlgebra, SendProduct, ServiceSends};
-pub use verdict::{Never, Step};
-pub use watching::{LinkReaction, WatchEvent, Watching, stop_on_abnormal_death};
+pub use timing::{
+    Deadline, DeadlineActions, DeadlineEvent, DeadlineReaction, DeadlineSends, ReceiveTimeout,
+    ReceiveTimeoutActions, ReceiveTimeoutError, ReceiveTimeoutEvent, ReceiveTimeoutReaction,
+    ReceiveTimeoutSends, TimedEvent,
+};
+pub use watch::{LinkReaction, Watch, WatchEvent, WatchSends, stop_on_abnormal_death};
 
 mod exit;
 
