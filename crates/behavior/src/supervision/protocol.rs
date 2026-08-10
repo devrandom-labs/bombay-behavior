@@ -20,9 +20,23 @@ impl<E: UserEvent> CreationEvent for ProxyEvent<E> {
     }
 }
 
+impl<E: UserEvent> crate::EventInput<CreationResolved<<E::Addr as Address>::Nonce>>
+    for ProxyEvent<E>
+{
+    fn inject(event: CreationResolved<<E::Addr as Address>::Nonce>) -> Self {
+        Self::CreationResolved(event)
+    }
+}
+
 impl<E: UserEvent> ChildEvent for ProxyEvent<E> {
     fn child_stopped(event: ChildStopped<E::Addr>) -> Option<Self> {
         Some(Self::ChildStopped(event))
+    }
+}
+
+impl<E: UserEvent> crate::EventInput<ChildStopped<E::Addr>> for ProxyEvent<E> {
+    fn inject(event: ChildStopped<E::Addr>) -> Self {
+        Self::ChildStopped(event)
     }
 }
 
@@ -83,11 +97,27 @@ impl<E: UserEvent> CreationEvent for SupervisionEvent<E> {
     }
 }
 
+impl<E: UserEvent> crate::EventInput<CreationResolved<<E::Addr as Address>::Nonce>>
+    for SupervisionEvent<E>
+{
+    fn inject(event: CreationResolved<<E::Addr as Address>::Nonce>) -> Self {
+        Self::CreationResolved(event)
+    }
+}
+
 impl<E: UserEvent> WorkerCreationEvent for SupervisionEvent<E> {
     fn worker_creation_resolved(
         event: WorkerCreationResolved<<E::Addr as Address>::Nonce>,
     ) -> Option<Self> {
         Some(Self::WorkerCreationResolved(event))
+    }
+}
+
+impl<E: UserEvent> crate::EventInput<WorkerCreationResolved<<E::Addr as Address>::Nonce>>
+    for SupervisionEvent<E>
+{
+    fn inject(event: WorkerCreationResolved<<E::Addr as Address>::Nonce>) -> Self {
+        Self::WorkerCreationResolved(event)
     }
 }
 
@@ -97,9 +127,21 @@ impl<E: UserEvent> ChildEvent for SupervisionEvent<E> {
     }
 }
 
+impl<E: UserEvent> crate::EventInput<ChildStopped<E::Addr>> for SupervisionEvent<E> {
+    fn inject(event: ChildStopped<E::Addr>) -> Self {
+        Self::ChildStopped(event)
+    }
+}
+
 impl<E: UserEvent> WorkerEvent for SupervisionEvent<E> {
     fn worker_stopped(event: WorkerStopped<E::Addr>) -> Option<Self> {
         Some(Self::WorkerStopped(event))
+    }
+}
+
+impl<E: UserEvent> crate::EventInput<WorkerStopped<E::Addr>> for SupervisionEvent<E> {
+    fn inject(event: WorkerStopped<E::Addr>) -> Self {
+        Self::WorkerStopped(event)
     }
 }
 

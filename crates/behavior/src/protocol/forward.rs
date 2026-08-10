@@ -8,6 +8,15 @@ macro_rules! forward_event_lane {
                 E::$method(event).map(Self::Inner)
             }
         }
+
+        impl<E> $crate::EventInput<$event> for $wrapper<E>
+        where
+            E: $crate::$trait + $crate::EventInput<$event>,
+        {
+            fn inject(event: $event) -> Self {
+                Self::Inner(E::inject(event))
+            }
+        }
     };
 }
 

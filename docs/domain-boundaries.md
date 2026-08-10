@@ -54,7 +54,7 @@ ordered environmental observations.
 - an absolute one-shot schedule is `Unscheduled` or `Scheduled`.
 
 This makes contradictory combinations of `live` and `last_issued`
-unrepresentable. `ReceiveTimeout` and `At` remain protocol adapters that decide
+unrepresentable. `ReceiveTimeout` and `Deadline` remain protocol adapters that decide
 which typed environmental events belong to their timer.
 
 ## Named effect products
@@ -67,7 +67,7 @@ consumers do not navigate a supervision protocol by positional `.inner` or
 
 ## Intentionally retained structures
 
-`Stashing` already owns one explicit route sum and one FIFO buffer in a single
+`Stash` already owns one explicit route sum and one FIFO buffer in a single
 cohesive module. Splitting the queue from the async replay adapter would not
 introduce an additional invariant or pure transition boundary.
 

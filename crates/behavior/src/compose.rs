@@ -6,15 +6,15 @@ use std::time::Duration;
 use tokio::time::Instant;
 
 use crate::behavior::{Address, Behavior, BirthMode, Births};
+use crate::next::Never;
 use crate::protocol::TimerId;
 use crate::shutdown::{FinalizeOnShutdown, ShutdownReaction, StopOnShutdown};
-use crate::stashing::{StashRoute, Stashing};
-use crate::supervision::{RestartPolicy, Strategy, Supervising, SupervisionFailureReaction};
-use crate::time::{At, AtReaction};
-use crate::time::{ReceiveTimeout, ReceiveTimeoutReaction};
-use crate::verdict::Never;
-use crate::watching::{LinkReaction, Watching};
-use crate::{Actions, Base, Fsm, Move, SendAlgebra, State};
+use crate::stash::{Stash, StashRoute};
+use crate::supervision::{RestartPolicy, Strategy, SupervisionFailureReaction, Supervisor};
+use crate::timing::{Deadline, DeadlineReaction};
+use crate::timing::{ReceiveTimeout, ReceiveTimeoutReaction};
+use crate::watch::{LinkReaction, Watch};
+use crate::{Actions, Handler, Machine, Move, Pure, SendAlgebra};
 
 const DEFAULT_STRATEGY: Strategy = Strategy::OneForOne;
 const DEFAULT_POLICY: RestartPolicy = RestartPolicy::Transient;
@@ -24,22 +24,22 @@ fn identity_nonce<N: From<u64>>(index: usize) -> N {
     N::from(u64::try_from(index).expect("fleet index fits u64"))
 }
 
-pub struct Spec<B> {
+pub struct Compose<B> {
     behavior: B,
     next_timer: u64,
 }
 
-impl<S: State<O, Br, E>, O, Br: BirthMode, E> Spec<Base<S, O, Br, E>> {
+impl<S: Handler<O, Br, E>, O, Br: BirthMode, E> Compose<Pure<S, O, Br, E>> {
     #[must_use]
     pub fn new(state: S) -> Self {
         Self {
-            behavior: Base::new(state),
+            behavior: Pure::new(state),
             next_timer: 0,
         }
     }
 }
 
-impl<A, S, M, P, E> Spec<Fsm<A, S, M, P, E>>
+impl<A, S, M, P, E> Compose<Machine<A, S, M, P, E>>
 where
     A: Address,
     P: Copy + PartialEq,
@@ -47,23 +47,23 @@ where
     #[must_use]
     pub fn machine(state: S, phase: P, on: fn(P, &mut S, &M) -> Result<Move<P>, E>) -> Self {
         Self {
-            behavior: Fsm::new(state, phase, on),
+            behavior: Machine::new(state, phase, on),
             next_timer: 0,
         }
     }
 }
 
-impl<B: Behavior> Spec<B> {
-    fn map_behavior<Mapped>(self, map: impl FnOnce(B) -> Mapped) -> Spec<Mapped> {
-        Spec {
+impl<B: Behavior> Compose<B> {
+    fn map_behavior<Mapped>(self, map: impl FnOnce(B) -> Mapped) -> Compose<Mapped> {
+        Compose {
             behavior: map(self.behavior),
             next_timer: self.next_timer,
         }
     }
 
-    fn map_timer<Mapped>(self, map: impl FnOnce(B, TimerId) -> Mapped) -> Spec<Mapped> {
+    fn map_timer<Mapped>(self, map: impl FnOnce(B, TimerId) -> Mapped) -> Compose<Mapped> {
         let timer = TimerId(self.next_timer);
-        Spec {
+        Compose {
             behavior: map(self.behavior, timer),
             next_timer: self
                 .next_timer
@@ -92,7 +92,7 @@ impl<B: Behavior> Spec<B> {
 
     /// Stop normally when a typed shutdown request is folded.
     #[must_use]
-    pub fn stop_on_shutdown(self) -> Spec<StopOnShutdown<B>> {
+    pub fn stop_on_shutdown(self) -> Compose<StopOnShutdown<B>> {
         self.map_behavior(StopOnShutdown::new)
     }
 
@@ -102,14 +102,14 @@ impl<B: Behavior> Spec<B> {
     pub fn finalize_on_shutdown(
         self,
         finalize: ShutdownReaction<B>,
-    ) -> Spec<FinalizeOnShutdown<B>> {
+    ) -> Compose<FinalizeOnShutdown<B>> {
         self.map_behavior(|behavior| FinalizeOnShutdown::new(behavior, finalize))
     }
 
     /// Observe a peer and apply a pure reaction when it stops.
     #[must_use]
-    pub fn watch(self, peer: B::Addr, on_stopped: LinkReaction<B>) -> Spec<Watching<B>> {
-        self.map_behavior(|behavior| Watching::new(behavior, peer, on_stopped))
+    pub fn watch(self, peer: B::Addr, on_stopped: LinkReaction<B>) -> Compose<Watch<B>> {
+        self.map_behavior(|behavior| Watch::new(behavior, peer, on_stopped))
     }
 
     /// Apply a pure reaction when the given absolute time is reached.
@@ -119,8 +119,12 @@ impl<B: Behavior> Spec<B> {
     /// Panics if one specification composes more than `u64::MAX` timer
     /// capabilities.
     #[must_use]
-    pub fn at(self, when: Option<Instant>, on_reached: AtReaction<B>) -> Spec<At<B>> {
-        self.map_timer(|behavior, timer| At::new(behavior, timer, when, on_reached))
+    pub fn deadline(
+        self,
+        when: Option<Instant>,
+        on_reached: DeadlineReaction<B>,
+    ) -> Compose<Deadline<B>> {
+        self.map_timer(|behavior, timer| Deadline::new(behavior, timer, when, on_reached))
     }
 
     /// Notify the behavior once after an idle period containing no successful
@@ -140,23 +144,23 @@ impl<B: Behavior> Spec<B> {
         self,
         after: Duration,
         on_elapsed: ReceiveTimeoutReaction<B>,
-    ) -> Spec<ReceiveTimeout<B>> {
+    ) -> Compose<ReceiveTimeout<B>> {
         self.map_timer(|behavior, timer| ReceiveTimeout::new(behavior, timer, after, on_elapsed))
     }
 
     /// Hold messages selected by `route` and replay them on `Release`.
     #[must_use]
-    pub fn stash(self, route: fn(&B::Msg) -> StashRoute) -> Spec<Stashing<B>>
+    pub fn stash(self, route: fn(&B::Msg) -> StashRoute) -> Compose<Stash<B>>
     where
         B: Behavior<Ph = Never>,
     {
-        self.map_behavior(|behavior| Stashing::new(behavior, route))
+        self.map_behavior(|behavior| Stash::new(behavior, route))
     }
 
     /// Create a supervised child topology. Concrete proxy and monitor types
     /// remain hidden in the returned typestate.
     #[must_use]
-    pub fn children<C>(self, fleet: (usize, fn(usize) -> C)) -> Spec<Supervising<B, C>>
+    pub fn children<C>(self, fleet: (usize, fn(usize) -> C)) -> Compose<Supervisor<B, C>>
     where
         B: Behavior<Birth = Births<C>>,
         C: Behavior<Ph = Never, Addr = B::Addr>,
@@ -171,13 +175,13 @@ impl<B: Behavior> Spec<B> {
         nonces: fn(usize) -> <B::Addr as Address>::Nonce,
         count: usize,
         build: fn(usize) -> C,
-    ) -> Spec<Supervising<B, C>>
+    ) -> Compose<Supervisor<B, C>>
     where
         B: Behavior<Birth = Births<C>>,
         C: Behavior<Ph = Never, Addr = B::Addr>,
     {
         self.map_behavior(|behavior| {
-            Supervising::new(
+            Supervisor::new(
                 behavior,
                 nonces,
                 count,
@@ -191,7 +195,7 @@ impl<B: Behavior> Spec<B> {
     }
 }
 
-impl<B, C> Spec<Supervising<B, C>>
+impl<B, C> Compose<Supervisor<B, C>>
 where
     B: Behavior<Birth = Births<C>>,
     C: Behavior<Ph = Never, Addr = B::Addr>,
@@ -231,15 +235,12 @@ where
     }
 }
 
-impl<B, A, Ph, Sends, Br> Behavior for Spec<B>
+impl<B, A, Ph, Sends, Br> Behavior for Compose<B>
 where
-    A: Address + Send,
+    A: Address,
     Sends: SendAlgebra,
     Br: BirthMode,
-    B: Behavior<Addr = A, Ph = Ph, Sends = Sends, Birth = Br> + Send,
-    A::Nonce: Send,
-    B::Msg: Send,
-    B::Event: Send,
+    B: Behavior<Addr = A, Ph = Ph, Sends = Sends, Birth = Br>,
 {
     type Addr = A;
     type Msg = B::Msg;
@@ -249,11 +250,11 @@ where
     type Error = B::Error;
     type Birth = Br;
 
-    async fn init(&mut self) -> Result<Actions<A, Ph, Sends, Br>, B::Error> {
-        self.behavior.init().await
+    fn init(&mut self) -> Result<Actions<A, Ph, Sends, Br>, B::Error> {
+        self.behavior.init()
     }
 
-    async fn step(&mut self, event: B::Event) -> Result<Actions<A, Ph, Sends, Br>, B::Error> {
-        self.behavior.step(event).await
+    fn transition(&mut self, event: B::Event) -> Result<Actions<A, Ph, Sends, Br>, B::Error> {
+        self.behavior.transition(event)
     }
 }

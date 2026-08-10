@@ -23,6 +23,12 @@ impl<E: UserEvent> ShutdownEvent for ShutdownProtocol<E> {
     }
 }
 
+impl<E: UserEvent> crate::EventInput<ShutdownRequested> for ShutdownProtocol<E> {
+    fn inject(event: ShutdownRequested) -> Self {
+        Self::ShutdownRequested(event)
+    }
+}
+
 impl<E: UserEvent> UserEvent for ShutdownProtocol<E> {
     type Addr = E::Addr;
     type Message = E::Message;
@@ -130,12 +136,10 @@ macro_rules! impl_shutdown_behavior {
     ($wrapper:ident, $shutdown:expr) => {
         impl<B, A, Ph, Sends, Br> Behavior for $wrapper<B>
         where
-            A: Address + Send,
+            A: Address,
             Sends: SendAlgebra,
             Br: BirthMode,
-            B: Behavior<Addr = A, Ph = Ph, Sends = Sends, Birth = Br> + Send,
-            B::Event: Send,
-            B::Msg: Send,
+            B: Behavior<Addr = A, Ph = Ph, Sends = Sends, Birth = Br>,
         {
             type Addr = A;
             type Msg = B::Msg;
@@ -145,16 +149,16 @@ macro_rules! impl_shutdown_behavior {
             type Error = B::Error;
             type Birth = Br;
 
-            async fn init(&mut self) -> Result<Actions<A, Ph, Sends, Br>, B::Error> {
-                self.inner.init().await
+            fn init(&mut self) -> Result<Actions<A, Ph, Sends, Br>, B::Error> {
+                self.inner.init()
             }
 
-            async fn step(
+            fn transition(
                 &mut self,
                 event: Self::Event,
             ) -> Result<Actions<A, Ph, Sends, Br>, B::Error> {
                 match event {
-                    ShutdownProtocol::Inner(event) => self.inner.step(event).await,
+                    ShutdownProtocol::Inner(event) => self.inner.transition(event),
                     ShutdownProtocol::ShutdownRequested(request) => $shutdown(self, request),
                 }
             }

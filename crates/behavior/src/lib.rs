@@ -8,26 +8,34 @@
 extern crate self as behavior;
 
 mod actor;
-mod fold;
-mod stashing;
+mod calculus;
+mod effects;
+mod next;
+mod stash;
 mod supervision;
-mod time;
-mod transition;
-mod verdict;
-mod watching;
+mod timing;
+mod watch;
 
-// `Fsm` is a thin state-machine helper built from the core stashing primitive.
-mod fsm;
+// `Machine` is a thin state-machine helper built from the core stashing primitive.
+mod compose;
+mod machine;
+mod mailbox;
 mod protocol;
 mod shutdown;
-mod spec;
 
 pub use actor::{
     Address, BirthMode, Births, Create, CreationKind, Delivery, MailAddr, NoBirths, Recipient,
     Route,
 };
-pub use fold::{Base, Behavior, BehaviorActed, FnState, State, Transcript, User, UserEvent, run};
-pub use fsm::{Fsm, Move};
+pub use calculus::{
+    ActionReducer, Behavior, BehaviorActed, Effects, EventInput, FoldFn, Folded, Handler, Pure,
+    User, UserEvent, fold_events,
+};
+pub use compose::Compose;
+pub use effects::{Acted, Actions, Become, SendAlgebra, SendProduct, ServiceSends};
+pub use machine::{Machine, Move};
+pub use mailbox::{Transcript, run};
+pub use next::{Never, Step};
 pub use protocol::{
     ChildEvent, ChildStopped, CreationEvent, CreationRejection, CreationResolved, ObserveChild,
     ObserveCreation, ObservePeer, PeerEvent, PeerStopped, ReportWorkerCreationResolved,
@@ -36,22 +44,19 @@ pub use protocol::{
     WorkerEvent, WorkerStopped,
 };
 pub use shutdown::{FinalizeOnShutdown, ShutdownProtocol, ShutdownReaction, StopOnShutdown};
-pub use spec::Spec;
-pub use stashing::{StashRoute, Stashing};
+pub use stash::{Stash, StashRoute};
 pub use supervision::{
     IncarnationPhase, Proxy, ProxyActions, ProxyCommand, ProxyEvent, ProxySends, RestartPolicy,
-    Strategy, Supervising, SupervisionEvent, SupervisionFailure, SupervisionFailureReaction,
+    Strategy, SupervisionEvent, SupervisionFailure, SupervisionFailureReaction, Supervisor,
     SupervisorActions, SupervisorSends, restart_all, restart_one, restart_rest,
     retire_on_supervision_failure, stop_on_supervision_failure,
 };
-pub use time::{
-    At, AtActions, AtEvent, AtReaction, AtSends, ReceiveTimeout, ReceiveTimeoutActions,
-    ReceiveTimeoutError, ReceiveTimeoutEvent, ReceiveTimeoutReaction, ReceiveTimeoutSends,
-    TimedEvent,
+pub use timing::{
+    Deadline, DeadlineActions, DeadlineEvent, DeadlineReaction, DeadlineSends, ReceiveTimeout,
+    ReceiveTimeoutActions, ReceiveTimeoutError, ReceiveTimeoutEvent, ReceiveTimeoutReaction,
+    ReceiveTimeoutSends, TimedEvent,
 };
-pub use transition::{Acted, Actions, Become, SendAlgebra, SendProduct, ServiceSends};
-pub use verdict::{Never, Step};
-pub use watching::{LinkReaction, WatchEvent, Watching, stop_on_abnormal_death};
+pub use watch::{LinkReaction, Watch, WatchEvent, WatchSends, stop_on_abnormal_death};
 
 mod exit;
 

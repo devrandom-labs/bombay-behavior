@@ -1,7 +1,7 @@
 //! `behavior-macros` — proc-macros for the behavior algebra.
 //!
 //! `workers!` compiles a mixed fleet declaration into the erasure-free sum
-//! a `Supervising` fleet requires (design: actorpass docs, surface talk #2):
+//! a `Supervisor` fleet requires (design: actorpass docs, surface talk #2):
 //! `(count, Type, build_fn)` per worker kind → a `Crew` enum with a
 //! delegated `Behavior` impl, a per-variant range `crew_build`, and the
 //! total count. `Crew` is a TYPE — every worker stays its own actor.
@@ -18,13 +18,13 @@ use syn::punctuated::Punctuated;
 use syn::{Error, Expr, LitInt, Result, Token, Type, parse_macro_input};
 
 /// One `(count, Type, build_fn)` worker-kind spec.
-struct Spec {
+struct Compose {
     count: LitInt,
     ty: Type,
     build: Expr,
 }
 
-impl Parse for Spec {
+impl Parse for Compose {
     fn parse(input: ParseStream) -> Result<Self> {
         let content;
         syn::parenthesized!(content in input);
@@ -43,11 +43,11 @@ impl Parse for Spec {
         let ty: Type = content.parse()?;
         content.parse::<Token![,]>()?;
         let build: Expr = content.parse()?;
-        Ok(Spec { count, ty, build })
+        Ok(Compose { count, ty, build })
     }
 }
 
-struct Specs(Punctuated<Spec, Token![,]>);
+struct Specs(Punctuated<Compose, Token![,]>);
 
 impl Parse for Specs {
     fn parse(input: ParseStream) -> Result<Self> {
@@ -57,12 +57,12 @@ impl Parse for Specs {
 
 /// `workers![(4, WorkerA, build_a), (2, WorkerB, build_b)]` → a block
 /// declaring the `Crew` sum and yielding `(total, crew_build)` for
-/// `Supervising`'s fleet. Slots are contiguous per variant (slot = nonce;
+/// `Supervisor`'s fleet. Slots are contiguous per variant (slot = nonce;
 /// rest-for-one's birth order is the declaration order).
 #[proc_macro]
 pub fn workers(input: TokenStream) -> TokenStream {
     let Specs(specs) = parse_macro_input!(input as Specs);
-    let specs: Vec<Spec> = specs.into_iter().collect();
+    let specs: Vec<Compose> = specs.into_iter().collect();
     if specs.is_empty() {
         return Error::new(
             proc_macro2::Span::call_site(),
@@ -99,10 +99,8 @@ pub fn workers(input: TokenStream) -> TokenStream {
 
     let step_arms = variants
         .iter()
-        .map(|v| quote! { Crew::#v(b) => b.step(ev).await });
-    let init_arms = variants
-        .iter()
-        .map(|v| quote! { Crew::#v(b) => b.init().await });
+        .map(|v| quote! { Crew::#v(b) => b.transition(ev) });
+    let init_arms = variants.iter().map(|v| quote! { Crew::#v(b) => b.init() });
 
     let out = quote! {
         {
@@ -120,7 +118,7 @@ pub fn workers(input: TokenStream) -> TokenStream {
                 type Error = <#first_ty as ::behavior::Behavior>::Error;
                 type Birth = <#first_ty as ::behavior::Behavior>::Birth;
 
-                async fn init(&mut self) -> ::core::result::Result<
+                fn init(&mut self) -> ::core::result::Result<
                     ::behavior::Actions<Self::Addr, Self::Ph, Self::Sends, Self::Birth>,
                     Self::Error,
                 > {
@@ -129,7 +127,7 @@ pub fn workers(input: TokenStream) -> TokenStream {
                     }
                 }
 
-                async fn step(
+                fn transition(
                     &mut self,
                     ev: Self::Event,
                 ) -> ::core::result::Result<

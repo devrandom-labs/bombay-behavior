@@ -14,6 +14,21 @@ pub struct User<A, M> {
     pub message: M,
 }
 
+/// A statically proven injection of one semantic input into a concrete event sum.
+///
+/// Implementations must select exactly one constructor and preserve `input`
+/// unchanged. Absence of an implementation means that the protocol does not
+/// accept that input.
+pub trait EventInput<Input>: Sized {
+    fn inject(input: Input) -> Self;
+}
+
+impl<A, M> EventInput<User<A, M>> for User<A, M> {
+    fn inject(input: User<A, M>) -> Self {
+        input
+    }
+}
+
 impl<A, M> User<A, M> {
     #[must_use]
     pub const fn new(from: A, message: M) -> Self {

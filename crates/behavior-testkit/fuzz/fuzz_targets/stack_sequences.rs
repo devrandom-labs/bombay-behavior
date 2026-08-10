@@ -4,14 +4,14 @@
 //! under coverage-guided byte sequences. Each byte selects one of four
 //! lanes (user / peer / time / child); per-lane reference models — the
 //! stash filter for the echo lane, the watch verdict for peer deaths, the
-//! one-shot At for time events, OneForOne/Permanent/unbounded supervision
+//! one-shot Deadline for time events, OneForOne/Permanent/unbounded supervision
 //! for child deaths — are asserted per byte: effects land in exactly their
 //! product lane and never leak across.
 
 use behavior::{
-    Acted, Actions, AtEvent, TimerGeneration, TimerId, Base, Behavior, Births, WorkerStopped, Crash,
-    Delivery, Exit, MailAddr, Never, PeerStopped, Recipient, RestartPolicy, Route, Spec, StashRoute,
-    State, Step, Strategy, SupervisionEvent, TimerElapsed, UserEvent, WatchEvent,
+    Acted, Actions, DeadlineEvent, TimerGeneration, TimerId, Pure, Behavior, Births, WorkerStopped, Crash,
+    Delivery, Exit, MailAddr, Never, PeerStopped, Recipient, RestartPolicy, Route, Compose, StashRoute,
+    Handler, Step, Strategy, SupervisionEvent, TimerElapsed, UserEvent, WatchEvent,
     stop_on_abnormal_death,
 };
 use libfuzzer_sys::fuzz_target;
@@ -23,15 +23,15 @@ struct EchoingParent {
     seen: Vec<u64>,
 }
 
-impl State<u64, behavior::Births<Base<Echo, u8>>, Never> for EchoingParent {
+impl Handler<u64, behavior::Births<Pure<Echo, u8>>, Never> for EchoingParent {
     type Addr = MailAddr;
     type Msg = u64;
 
-    fn handle(
+    fn receive(
         &mut self,
         _from: MailAddr,
         message: u64,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, u64>>, behavior::Births<Base<Echo, u8>>, Never> {
+    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, u64>>, behavior::Births<Pure<Echo, u8>>, Never> {
         self.seen.push(message);
         Ok(Actions {
             sends: vec![Delivery::new(Recipient::global(MailAddr(0)), message)],
@@ -44,11 +44,11 @@ impl State<u64, behavior::Births<Base<Echo, u8>>, Never> for EchoingParent {
 #[derive(Default)]
 struct Echo;
 
-impl State<u8> for Echo {
+impl Handler<u8> for Echo {
     type Addr = MailAddr;
     type Msg = u8;
 
-    fn handle(
+    fn receive(
         &mut self,
         _from: MailAddr,
         _message: u8,
@@ -57,8 +57,8 @@ impl State<u8> for Echo {
     }
 }
 
-fn child(_index: usize) -> Base<Echo, u8> {
-    Base::new(Echo)
+fn child(_index: usize) -> Pure<Echo, u8> {
+    Pure::new(Echo)
 }
 
 fn route(message: &u64) -> StashRoute {
@@ -69,31 +69,31 @@ fn route(message: &u64) -> StashRoute {
     }
 }
 
-type Stack = behavior::Spec<
-    behavior::Supervising<
-        behavior::At<
-            behavior::Watching<
-                behavior::Stashing<Base<EchoingParent, u64, Births<Base<Echo, u8>>, Never>>,
+type Stack = behavior::Compose<
+    behavior::Supervisor<
+        behavior::Deadline<
+            behavior::Watch<
+                behavior::Stash<Pure<EchoingParent, u64, Births<Pure<Echo, u8>>, Never>>,
             >,
         >,
-        Base<Echo, u8>,
+        Pure<Echo, u8>,
     >,
 >;
 
 fuzz_target!(|bytes: &[u8]| {
     let runtime = Builder::new_current_thread().enable_time().build().unwrap();
-    runtime.block_on(async {
-        let due = Instant::now() + std::time::Duration::from_secs(1);
+    async {
+        let due = Instant::now() + std::time::Duration::from_secs(1;
         let peer = MailAddr(44);
-        let mut behavior: Stack = Spec::new(EchoingParent::default())
+        let mut behavior: Stack = Compose::new(EchoingParent::default())
             .stash(route)
             .watch(peer, stop_on_abnormal_death)
-            .at(Some(due), |_| Ok(Step::Continue))
+            .deadline(Some(due), |_| Ok(Step::Continue))
             .children((2, child))
             .restart(Strategy::OneForOne)
             .when(RestartPolicy::Permanent)
             .within(u32::MAX, std::time::Duration::MAX);
-        behavior.init().await.unwrap();
+        behavior.init().unwrap();
         let base = Instant::now();
 
         for (index, byte) in bytes.iter().copied().enumerate() {
@@ -102,10 +102,9 @@ fuzz_target!(|bytes: &[u8]| {
                     // User lane: stash filter — echo iff not Stash-routed.
                     let arg = u64::try_from(index).unwrap();
                     let actions = behavior
-                        .step(SupervisionEvent::Inner(AtEvent::Inner(WatchEvent::Inner(
+                        .transition(SupervisionEvent::Inner(DeadlineEvent::Inner(WatchEvent::Inner(
                             UserEvent::user(MailAddr(9), arg),
                         ))))
-                        .await
                         .unwrap();
                     let echo_step: Vec<u64> = actions
                         .sends
@@ -127,13 +126,12 @@ fuzz_target!(|bytes: &[u8]| {
                 1 => {
                     // Peer lane: watched abnormal death stops the fold.
                     let actions = behavior
-                        .step(SupervisionEvent::Inner(AtEvent::Inner(WatchEvent::PeerStopped(
+                        .transition(SupervisionEvent::Inner(DeadlineEvent::Inner(WatchEvent::PeerStopped(
                             PeerStopped {
                                 peer,
                                 outcome: Err(Crash::Failed),
                             },
                         ))))
-                        .await
                         .unwrap();
                     assert!(
                         matches!(actions.become_, Step::Stop(Exit::LinkDied(p)) if p == peer),
@@ -145,10 +143,9 @@ fuzz_target!(|bytes: &[u8]| {
                 2 => {
                     // Time lane: matching Reached fires once, then inert.
                     let actions = behavior
-                        .step(SupervisionEvent::Inner(AtEvent::Elapsed(TimerElapsed {
+                        .transition(SupervisionEvent::Inner(DeadlineEvent::Elapsed(TimerElapsed {
                             id: TimerId(0),
                             generation: TimerGeneration(0),})))
-                        .await
                         .unwrap();
                     assert_eq!(actions.become_, Step::Continue, "time verdict at byte {index}");
                     actions
@@ -157,13 +154,12 @@ fuzz_target!(|bytes: &[u8]| {
                     // Child lane: exactly one replacement to the dead slot.
                     let nonce = u64::from(byte % 2);
                     let actions = behavior
-                        .step(SupervisionEvent::WorkerStopped(WorkerStopped {
+                        .transition(SupervisionEvent::WorkerStopped(WorkerStopped {
                             proxy: nonce,
                             worker: nonce,
             outcome: Err(Crash::Failed),
                             at: base + std::time::Duration::from_nanos(u64::try_from(index).unwrap()),
                         }))
-                        .await
                         .unwrap();
                     assert_eq!(
                         actions.sends.replacement_commands.len(),

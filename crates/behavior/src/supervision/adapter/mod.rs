@@ -4,4 +4,4 @@ mod proxy;
 mod supervisor;
 
 pub use proxy::{Proxy, ProxyActions, ProxySends};
-pub use supervisor::{Supervising, SupervisorActions, SupervisorSends};
+pub use supervisor::{Supervisor, SupervisorActions, SupervisorSends};

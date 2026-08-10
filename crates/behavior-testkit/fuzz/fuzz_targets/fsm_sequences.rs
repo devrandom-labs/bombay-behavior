@@ -7,7 +7,7 @@
 //! (recorded + held + fresh-goto-consumed == stepped), and no occurrence is
 //! ever recorded twice.
 
-use behavior::{Behavior, Fsm, MailAddr, Move, Never, User, UserEvent};
+use behavior::{Behavior, Machine, MailAddr, Move, Never, User, UserEvent};
 use libfuzzer_sys::fuzz_target;
 use tokio::runtime::Builder;
 
@@ -19,8 +19,8 @@ enum Phase {
 
 fuzz_target!(|bytes: &[u8]| {
     let runtime = Builder::new_current_thread().enable_time().build().unwrap();
-    runtime.block_on(async {
-        let mut machine = Fsm::new(Vec::new(), Phase::A, |phase, seen: &mut Vec<u64>, id: &u64| {
+    async {
+        let mut machine = Machine::new(Vec::new(, Phase::A, |phase, seen: &mut Vec<u64>, id: &u64| {
             Ok::<Move<Phase>, Never>(match (phase, id % 4) {
                 (Phase::A, 0) => Move::Goto(Phase::B),
                 (Phase::B, 2) => Move::Goto(Phase::A),
@@ -41,7 +41,7 @@ fuzz_target!(|bytes: &[u8]| {
                 Phase::B => 2,
             };
             consumed += usize::from(id % 4 == goto_class);
-            machine.step(User::user(MailAddr(0), id)).await.unwrap();
+            machine.transition(User::user(MailAddr(0), id)).unwrap();
             assert_eq!(
                 machine.state().len() + machine.held() + consumed,
                 index + 1,

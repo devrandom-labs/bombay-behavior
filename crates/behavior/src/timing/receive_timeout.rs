@@ -7,7 +7,7 @@ use super::domain::TimerLease;
 use super::event::TimedEvent;
 use crate::Step;
 use crate::behavior::{
-    Actions, Address, Behavior, BirthMode, SendAlgebra, SendProduct, ServiceSends, UserEvent,
+    Actions, Address, Behavior, BirthMode, SendAlgebra, ServiceSends, UserEvent,
 };
 use crate::protocol::{ScheduleAfter, TimeEvent, TimerId};
 
@@ -39,12 +39,30 @@ pub type ReceiveTimeoutReaction<B> = fn(
     <B as Behavior>::Error,
 >;
 
-pub type ReceiveTimeoutSends<B> = SendProduct<<B as Behavior>::Sends, ServiceSends<ScheduleAfter>>;
+/// Named effect lanes added by [`ReceiveTimeout`].
+pub struct ReceiveTimeoutSends<Sends> {
+    pub behavior: Sends,
+    pub schedules: ServiceSends<ScheduleAfter>,
+}
+
+impl<Sends: SendAlgebra> SendAlgebra for ReceiveTimeoutSends<Sends> {
+    fn empty() -> Self {
+        Self {
+            behavior: Sends::empty(),
+            schedules: ServiceSends::empty(),
+        }
+    }
+
+    fn append(&mut self, other: Self) {
+        self.behavior.append(other.behavior);
+        self.schedules.append(other.schedules);
+    }
+}
 
 pub type ReceiveTimeoutActions<B> = Actions<
     <B as Behavior>::Addr,
     <B as Behavior>::Ph,
-    ReceiveTimeoutSends<B>,
+    ReceiveTimeoutSends<<B as Behavior>::Sends>,
     <B as Behavior>::Birth,
 >;
 
@@ -99,7 +117,10 @@ impl<B: Behavior> ReceiveTimeout<B> {
         actions: Actions<B::Addr, B::Ph, B::Sends, B::Birth>,
         own: ServiceSends<ScheduleAfter>,
     ) -> ReceiveTimeoutActions<B> {
-        actions.map_sends(|inner| SendProduct::new(inner, own))
+        actions.map_sends(|behavior| ReceiveTimeoutSends {
+            behavior,
+            schedules: own,
+        })
     }
 
     fn terminal(actions: &Actions<B::Addr, B::Ph, B::Sends, B::Birth>) -> bool {
@@ -109,27 +130,22 @@ impl<B: Behavior> ReceiveTimeout<B> {
 
 impl<B, A, Ph, Sends, Br> Behavior for ReceiveTimeout<B>
 where
-    A: Address + Send,
+    A: Address,
     Sends: SendAlgebra,
     Br: BirthMode,
-    B: Behavior<Addr = A, Ph = Ph, Sends = Sends, Birth = Br> + Send,
-    B::Event: TimeEvent + Send,
-    B::Msg: Send,
+    B: Behavior<Addr = A, Ph = Ph, Sends = Sends, Birth = Br>,
+    B::Event: TimeEvent,
 {
     type Addr = A;
     type Msg = B::Msg;
     type Event = ReceiveTimeoutEvent<B::Event>;
-    type Sends = ReceiveTimeoutSends<B>;
+    type Sends = ReceiveTimeoutSends<Sends>;
     type Ph = Ph;
     type Error = ReceiveTimeoutError<B::Error>;
     type Birth = Br;
 
-    async fn init(&mut self) -> Result<ReceiveTimeoutActions<B>, Self::Error> {
-        let actions = self
-            .inner
-            .init()
-            .await
-            .map_err(ReceiveTimeoutError::Inner)?;
+    fn init(&mut self) -> Result<ReceiveTimeoutActions<B>, Self::Error> {
+        let actions = self.inner.init().map_err(ReceiveTimeoutError::Inner)?;
         let own = if Self::terminal(&actions) {
             self.timer.disarm();
             ServiceSends::empty()
@@ -139,7 +155,7 @@ where
         Ok(Self::wrap(actions, own))
     }
 
-    async fn step(&mut self, event: Self::Event) -> Result<ReceiveTimeoutActions<B>, Self::Error> {
+    fn transition(&mut self, event: Self::Event) -> Result<ReceiveTimeoutActions<B>, Self::Error> {
         match event {
             ReceiveTimeoutEvent::Elapsed(elapsed)
                 if elapsed.id == self.id && self.timer.accept(elapsed.generation) =>
@@ -155,8 +171,7 @@ where
                 };
                 let actions = self
                     .inner
-                    .step(inner)
-                    .await
+                    .transition(inner)
                     .map_err(ReceiveTimeoutError::Inner)?;
                 if Self::terminal(&actions) {
                     self.timer.disarm();
@@ -168,8 +183,7 @@ where
                     let event = B::Event::user(user.from, user.message);
                     let actions = self
                         .inner
-                        .step(event)
-                        .await
+                        .transition(event)
                         .map_err(ReceiveTimeoutError::Inner)?;
                     let own = if Self::terminal(&actions) {
                         self.timer.disarm();
@@ -182,8 +196,7 @@ where
                 Err(service) => {
                     let actions = self
                         .inner
-                        .step(service)
-                        .await
+                        .transition(service)
                         .map_err(ReceiveTimeoutError::Inner)?;
                     if Self::terminal(&actions) {
                         self.timer.disarm();
@@ -198,15 +211,15 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Acted, Base, Delivery, MailAddr, Never, NoBirths, State, TimerGeneration, User};
+    use crate::{Acted, Delivery, Handler, MailAddr, Never, NoBirths, Pure, TimerGeneration, User};
 
     struct Count(u8);
 
-    impl State for Count {
+    impl Handler for Count {
         type Addr = MailAddr;
         type Msg = ();
 
-        fn handle(
+        fn receive(
             &mut self,
             _from: MailAddr,
             (): (),
@@ -216,7 +229,7 @@ mod tests {
         }
     }
 
-    type Inner = Base<Count>;
+    type Inner = Pure<Count>;
 
     fn elapsed(
         _inner: &mut Inner,
@@ -227,17 +240,15 @@ mod tests {
     #[tokio::test]
     async fn exhaustion_follows_the_successful_inner_fold_without_emitting_its_actions() {
         let mut timeout = ReceiveTimeout::new(
-            Base::new(Count(0)),
+            Pure::new(Count(0)),
             TimerId(0),
             Duration::from_secs(1),
             elapsed,
         );
-        timeout.init().await.unwrap();
+        timeout.init().unwrap();
         timeout.timer = TimerLease::idle(TimerGeneration(u64::MAX));
 
-        let result = timeout
-            .step(ReceiveTimeoutEvent::Inner(User::user(MailAddr(1), ())))
-            .await;
+        let result = timeout.transition(ReceiveTimeoutEvent::Inner(User::user(MailAddr(1), ())));
 
         assert!(matches!(
             result,

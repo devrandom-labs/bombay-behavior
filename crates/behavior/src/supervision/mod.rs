@@ -4,7 +4,7 @@ mod policy;
 mod protocol;
 
 pub use adapter::{
-    Proxy, ProxyActions, ProxySends, Supervising, SupervisorActions, SupervisorSends,
+    Proxy, ProxyActions, ProxySends, Supervisor, SupervisorActions, SupervisorSends,
 };
 pub use domain::IncarnationPhase;
 pub use policy::{

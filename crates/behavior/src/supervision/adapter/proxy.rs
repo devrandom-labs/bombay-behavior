@@ -6,10 +6,10 @@ use crate::behavior::{
     Actions, Address, Behavior, Births, Create, Delivery, Recipient, SendAlgebra, ServiceSends,
     User,
 };
+use crate::next::{Never, Step};
 use crate::protocol::{
     ObserveChild, ObserveCreation, ReportWorkerCreationResolved, ReportWorkerStopped,
 };
-use crate::verdict::{Never, Step};
 
 /// The concrete, statically dispatched effect lanes emitted by a [`Proxy`].
 pub struct ProxySends<A: Address, M> {
@@ -50,7 +50,7 @@ impl<A: Address, M> SendAlgebra for ProxySends<A, M> {
 
 /// A stable actor that serializes fresh worker-incarnation installation.
 ///
-/// A worker is routable only in `Running`. At most one creation can be
+/// A worker is routable only in `Running`. Deadline most one creation can be
 /// `Installing`; stale or provenance-mismatched results are inert. Rejection
 /// leaves `last_installed` unchanged, so a later attempt still names the last
 /// incarnation that actually existed.
@@ -116,10 +116,8 @@ where
 
 impl<C> Behavior for Proxy<C>
 where
-    C: Behavior<Ph = Never> + Send,
-    C::Addr: Send,
-    <C::Addr as Address>::Nonce: From<u64> + Send,
-    C::Msg: Send,
+    C: Behavior<Ph = Never>,
+    <C::Addr as Address>::Nonce: From<u64>,
 {
     type Addr = C::Addr;
     type Msg = ProxyCommand<C>;
@@ -129,7 +127,7 @@ where
     type Error = Never;
     type Birth = Births<C>;
 
-    async fn init(&mut self) -> Result<Actions<C::Addr, Never, Self::Sends, Births<C>>, Never> {
+    fn init(&mut self) -> Result<Actions<C::Addr, Never, Self::Sends, Births<C>>, Never> {
         let effects = self
             .incarnation
             .initialize()
@@ -137,7 +135,7 @@ where
         Ok(Self::actions(effects, None))
     }
 
-    async fn step(
+    fn transition(
         &mut self,
         event: Self::Event,
     ) -> Result<Actions<C::Addr, Never, Self::Sends, Births<C>>, Never> {

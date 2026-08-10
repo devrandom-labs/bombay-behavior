@@ -9,8 +9,8 @@
 //! agree on every byte.
 
 use behavior::{
-    Acted, Actions, Base, Behavior, Crash, Delivery, Exit, MailAddr, Never, RestartDenial,
-    RestartPolicy, State, Step, Strategy, Supervising, SupervisionEvent, SupervisionFailureReason,
+    Acted, Actions, Pure, Behavior, Crash, Delivery, Exit, MailAddr, Never, RestartDenial,
+    RestartPolicy, Handler, Step, Strategy, Supervisor, SupervisionEvent, SupervisionFailureReason,
     WorkerStopped, stop_on_supervision_failure,
 };
 use libfuzzer_sys::fuzz_target;
@@ -23,11 +23,11 @@ const WINDOW_NANOS: u64 = 100;
 
 struct Worker;
 
-impl State<u8> for Worker {
+impl Handler<u8> for Worker {
     type Addr = MailAddr;
     type Msg = u8;
 
-    fn handle(
+    fn receive(
         &mut self,
         _from: MailAddr,
         _message: u8,
@@ -36,30 +36,30 @@ impl State<u8> for Worker {
     }
 }
 
-fn worker(_index: usize) -> Base<Worker, u8> {
-    Base::new(Worker)
+fn worker(_index: usize) -> Pure<Worker, u8> {
+    Pure::new(Worker)
 }
 
 struct Parent;
 
-impl State<Never, behavior::Births<Base<Worker, u8>>, Never> for Parent {
+impl Handler<Never, behavior::Births<Pure<Worker, u8>>, Never> for Parent {
     type Addr = MailAddr;
     type Msg = u64;
 
-    fn handle(
+    fn receive(
         &mut self,
         _from: MailAddr,
         _message: u64,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, behavior::Births<Base<Worker, u8>>, Never> {
+    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, behavior::Births<Pure<Worker, u8>>, Never> {
         Ok(Actions::cont())
     }
 }
 
 fuzz_target!(|bytes: &[u8]| {
     let runtime = Builder::new_current_thread().enable_time().build().unwrap();
-    runtime.block_on(async {
-        let mut behavior = Supervising::new(
-            Base::new(Parent),
+    async {
+        let mut behavior = Supervisor::new(
+            Pure::new(Parent,
             |index| u64::try_from(index).unwrap(),
             FLEET,
             worker,
@@ -69,7 +69,7 @@ fuzz_target!(|bytes: &[u8]| {
             std::time::Duration::from_nanos(WINDOW_NANOS),
         )
         .with_failure_reaction(stop_on_supervision_failure);
-        behavior.init().await.unwrap();
+        behavior.init().unwrap();
         let base = Instant::now();
 
         // Independent budget/window model over the same event stream.
@@ -95,13 +95,12 @@ fuzz_target!(|bytes: &[u8]| {
             };
 
             let actions = behavior
-                .step(SupervisionEvent::WorkerStopped(WorkerStopped {
+                .transition(SupervisionEvent::WorkerStopped(WorkerStopped {
                     proxy: u64::try_from(nonce).unwrap(),
                     worker: u64::try_from(nonce).unwrap(),
             outcome: Err(Crash::Failed),
                     at: base + std::time::Duration::from_nanos(at),
                 }))
-                .await
                 .unwrap();
 
             assert_eq!(

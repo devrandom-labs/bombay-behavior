@@ -3,7 +3,9 @@
 Bombay Behavior is a small, composable actor behavior algebra for Rust. A
 behavior receives its statically associated event protocol and returns an
 `Actions` value containing typed sends, fresh child creations, and its next
-state. Timing, peer watching, supervision, stashing, and finite-state behavior
+behavior or termination. `Behavior::transition` is synchronous: evaluation is
+a pure fold, while waiting for a mailbox belongs only to the interpreter.
+Timing, peer watching, supervision, stashing, and finite-state behavior
 are ordinary composable protocols rather than runtime queries or erased
 messages.
 
@@ -38,15 +40,15 @@ The package is named `bombay-behavior`; Rust code imports its library as
 `behavior`:
 
 ```rust
-use behavior::{Acted, Actions, Base, Delivery, MailAddr, Never, NoBirths, State};
+use behavior::{Acted, Actions, Delivery, Handler, MailAddr, Never, NoBirths, Pure};
 
 struct Counter(u64);
 
-impl State for Counter {
+impl Handler for Counter {
     type Addr = MailAddr;
     type Msg = u64;
 
-    fn handle(
+    fn receive(
         &mut self,
         _from: MailAddr,
         message: u64,
@@ -56,8 +58,13 @@ impl State for Counter {
     }
 }
 
-let behavior = Base::new(Counter(0));
+let behavior = Pure::new(Counter(0));
 ```
+
+For function-first code, `Pure::from_fn` accepts a capturing `FnMut`. Complete
+event streams can be evaluated with `fold_events`; it uses the same
+`ActionReducer` as the mailbox interpreter and stops at the first controlled
+failure or termination verdict.
 
 ## Development and testing
 
@@ -90,8 +97,8 @@ The extracted lifecycle domains and their ownership are documented in
 research/policy classification are documented in
 [Replacement Realization](docs/replacement-realization.md).
 
-Architectural pressure that does not yet justify a semantic refactor is tracked
-in [Potential Architecture Changes](docs/potential-architecture-changes.md).
+The functional core and its reduction laws are documented in
+[Functional Core](docs/functional-core.md).
 
 ## License
 

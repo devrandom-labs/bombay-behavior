@@ -1,4 +1,4 @@
-//! Two replay buffers in one stack: stash ∘ fsm under an At wrapper. Every
+//! Two replay buffers in one stack: stash ∘ fsm under an Deadline wrapper. Every
 //! user message is routed by the stash (Stash class held in the stash
 //! buffer, Deliver/Release reaching the FSM, which may defer into its own
 //! buffer or record), so the black-box no-drop/no-duplication
@@ -8,8 +8,8 @@
 use std::time::Duration;
 
 use behavior::{
-    AtEvent, Behavior, Fsm, MailAddr, Move, Never, Spec, StashRoute, Step, TimerElapsed,
-    TimerGeneration, TimerId, UserEvent,
+    Behavior, Compose, DeadlineEvent, Machine, MailAddr, Move, Never, StashRoute, Step,
+    TimerElapsed, TimerGeneration, TimerId, UserEvent,
 };
 use proptest::collection::vec;
 use proptest::prelude::*;
@@ -25,7 +25,7 @@ enum Phase {
 #[allow(
     clippy::trivially_copy_pass_by_ref,
     clippy::unnecessary_wraps,
-    reason = "the Fsm `on` signature is fn(P, &mut S, &M) returning Result<_, Never>"
+    reason = "the Machine `on` signature is fn(P, &mut S, &M) returning Result<_, Never>"
 )]
 fn on(phase: Phase, seen: &mut Vec<u64>, id: &u64) -> Result<Move<Phase>, Never> {
     Ok(match (phase, id % 4) {
@@ -51,8 +51,9 @@ fn route(message: &u64) -> StashRoute {
     }
 }
 
-type Stack =
-    behavior::Spec<behavior::At<behavior::Stashing<Fsm<MailAddr, Vec<u64>, u64, Phase, Never>>>>;
+type Stack = behavior::Compose<
+    behavior::Deadline<behavior::Stash<Machine<MailAddr, Vec<u64>, u64, Phase, Never>>>,
+>;
 
 proptest! {
     #![proptest_config(ProptestConfig {
@@ -70,11 +71,11 @@ proptest! {
         fires in vec(any::<u8>(), 0..32),
     ) {
         let due = Instant::now() + Duration::from_secs(1);
-        let mut behavior: Stack = Spec::machine(Vec::new(), Phase::A, on)
+        let mut behavior: Stack = Compose::machine(Vec::new(), Phase::A, on)
             .stash(route)
-            .at(Some(due), |_| Ok(Step::Continue));
+            .deadline(Some(due), |_| Ok(Step::Continue));
         let runtime = Builder::new_current_thread().enable_all().build().unwrap();
-        runtime.block_on(behavior.init()).unwrap();
+        behavior.init().unwrap();
 
         let mut consumed = 0_usize;
         let mut stepped = 0_usize;
@@ -86,9 +87,9 @@ proptest! {
             // then inert) between user messages.
             if fire_index < fires.len() && fires[fire_index] % 2 == 0 {
                 let actions = runtime
-                    .block_on(behavior.step(AtEvent::Elapsed(TimerElapsed {
+                    .block_on(async { behavior.transition(DeadlineEvent::Elapsed(TimerElapsed {
                         id: TimerId(0),
-                        generation: TimerGeneration(0),})))
+                        generation: TimerGeneration(0),})) })
                     .unwrap();
                 prop_assert_eq!(actions.become_, Step::Continue, "time lane verdict");
                 fire_index += 1;
@@ -98,7 +99,7 @@ proptest! {
             // in the phase BEFORE the step (a Goto flips the phase).
             let phase_before = behavior.behavior().inner().inner().phase();
             let _ = runtime
-                .block_on(behavior.step(AtEvent::Inner(UserEvent::user(MailAddr(0), id))))
+                .block_on(async { behavior.transition(DeadlineEvent::Inner(UserEvent::user(MailAddr(0), id))) })
                 .unwrap();
             stepped += 1;
             // Only Deliver/Release-routed messages reach the FSM, and only

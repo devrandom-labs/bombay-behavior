@@ -1,8 +1,8 @@
 use behavior::{
-    Address, AtEvent, ChildEvent, ChildStopped, CreationEvent, CreationKind, CreationResolved,
-    Exit, MailAddr, Never, PeerEvent, PeerStopped, ReceiveTimeoutEvent, Recipient, ServiceSends,
-    ShutdownEvent, ShutdownProtocol, ShutdownRequested, SupervisionEvent, TimeEvent, TimerElapsed,
-    TimerGeneration, TimerId, User, UserEvent, WatchEvent, WorkerCreationEvent,
+    Address, ChildEvent, ChildStopped, CreationEvent, CreationKind, CreationResolved,
+    DeadlineEvent, Exit, MailAddr, Never, PeerEvent, PeerStopped, ReceiveTimeoutEvent, Recipient,
+    ServiceSends, ShutdownEvent, ShutdownProtocol, ShutdownRequested, SupervisionEvent, TimeEvent,
+    TimerElapsed, TimerGeneration, TimerId, User, UserEvent, WatchEvent, WorkerCreationEvent,
     WorkerCreationResolved, WorkerEvent, WorkerStopped,
 };
 use tokio::time::Instant;
@@ -112,24 +112,24 @@ fn worker_creation() -> WorkerCreationResolved<u64> {
 #[test]
 fn composed_protocols_forward_every_supported_environment_lane() {
     assert!(matches!(
-        AtEvent::<Lane>::peer_stopped(peer()),
-        Some(AtEvent::Inner(Lane::Peer(_)))
+        DeadlineEvent::<Lane>::peer_stopped(peer()),
+        Some(DeadlineEvent::Inner(Lane::Peer(_)))
     ));
     assert!(matches!(
-        AtEvent::<Lane>::child_stopped(child()),
-        Some(AtEvent::Inner(Lane::Child(_)))
+        DeadlineEvent::<Lane>::child_stopped(child()),
+        Some(DeadlineEvent::Inner(Lane::Child(_)))
     ));
     assert!(matches!(
-        AtEvent::<Lane>::worker_stopped(worker()),
-        Some(AtEvent::Inner(Lane::Worker(_)))
+        DeadlineEvent::<Lane>::worker_stopped(worker()),
+        Some(DeadlineEvent::Inner(Lane::Worker(_)))
     ));
     assert!(matches!(
-        AtEvent::<Lane>::creation_resolved(creation()),
-        Some(AtEvent::Inner(Lane::Creation(_)))
+        DeadlineEvent::<Lane>::creation_resolved(creation()),
+        Some(DeadlineEvent::Inner(Lane::Creation(_)))
     ));
     assert!(matches!(
-        AtEvent::<Lane>::worker_creation_resolved(worker_creation()),
-        Some(AtEvent::Inner(Lane::WorkerCreation(_)))
+        DeadlineEvent::<Lane>::worker_creation_resolved(worker_creation()),
+        Some(DeadlineEvent::Inner(Lane::WorkerCreation(_)))
     ));
 
     assert!(matches!(

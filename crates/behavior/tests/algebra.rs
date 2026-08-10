@@ -3,13 +3,14 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, At, AtEvent, Base, Become, Behavior, Births, ChildStopped, Crash, Create,
-    CreationKind, CreationRejection, CreationResolved, Delivery, Exit, Fsm, MailAddr, Move, Never,
-    NoBirths, ObserveChild, PeerStopped, Proxy, ProxyCommand, ProxyEvent, Recipient, RestartDenial,
-    RestartPolicy, Route, ServiceSends, ShutdownEvent, ShutdownRequested, Spec, StashRoute, State,
-    Step, Strategy, Supervising, SupervisionEvent, SupervisionFailure, SupervisionFailureReason,
-    TimeEvent, TimerElapsed, TimerGeneration, TimerId, User, UserEvent, WatchEvent, Watching,
-    WorkerEvent, WorkerStopped, run, stop_on_abnormal_death, stop_on_supervision_failure, workers,
+    Acted, Actions, Become, Behavior, Births, ChildStopped, Compose, Crash, Create, CreationKind,
+    CreationRejection, CreationResolved, Deadline, DeadlineEvent, Delivery, Exit, Handler, Machine,
+    MailAddr, Move, Never, NoBirths, ObserveChild, PeerStopped, Proxy, ProxyCommand, ProxyEvent,
+    Pure, Recipient, RestartDenial, RestartPolicy, Route, ServiceSends, ShutdownEvent,
+    ShutdownRequested, StashRoute, Step, Strategy, SupervisionEvent, SupervisionFailure,
+    SupervisionFailureReason, Supervisor, TimeEvent, TimerElapsed, TimerGeneration, TimerId, User,
+    UserEvent, Watch, WatchEvent, WorkerEvent, WorkerStopped, run, stop_on_abnormal_death,
+    stop_on_supervision_failure, workers,
 };
 use communication::{Config, channel};
 use proptest::prelude::*;
@@ -46,11 +47,11 @@ where
 {
 }
 
-impl State for Quiet {
+impl Handler for Quiet {
     type Addr = MailAddr;
     type Msg = u64;
 
-    fn handle(
+    fn receive(
         &mut self,
         _from: MailAddr,
         _message: u64,
@@ -61,15 +62,15 @@ impl State for Quiet {
 
 struct ShutdownParent;
 
-impl State<u64, Births<Base<Quiet>>> for ShutdownParent {
+impl Handler<u64, Births<Pure<Quiet>>> for ShutdownParent {
     type Addr = MailAddr;
     type Msg = u64;
 
-    fn handle(
+    fn receive(
         &mut self,
         _from: MailAddr,
         _message: u64,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, u64>>, Births<Base<Quiet>>, Never> {
+    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, u64>>, Births<Pure<Quiet>>, Never> {
         Ok(Actions::cont())
     }
 }
@@ -80,12 +81,12 @@ impl State<u64, Births<Base<Quiet>>> for ShutdownParent {
     reason = "the shutdown reaction must expose the complete typed Actions and error seats"
 )]
 fn finalize_parent(
-    _behavior: &mut Base<ShutdownParent, u64, Births<Base<Quiet>>>,
+    _behavior: &mut Pure<ShutdownParent, u64, Births<Pure<Quiet>>>,
     _request: ShutdownRequested,
-) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, u64>>, Births<Base<Quiet>>, Never> {
+) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, u64>>, Births<Pure<Quiet>>, Never> {
     Ok(Actions {
         sends: vec![Delivery::new(Recipient::global(MailAddr(9)), 42)],
-        creates: vec![Create::birth(7, Base::new(Quiet))],
+        creates: vec![Create::birth(7, Pure::new(Quiet))],
         become_: Step::Continue,
     })
 }
@@ -106,9 +107,9 @@ fn actions_expose_the_typed_actor_transition_effects() {
 
 #[tokio::test]
 async fn typed_shutdown_stops_normally_without_running_the_inner_fold() {
-    let mut behavior = Spec::new(Quiet).stop_on_shutdown();
+    let mut behavior = Compose::new(Quiet).stop_on_shutdown();
     let event = <_ as ShutdownEvent>::shutdown_requested(ShutdownRequested).unwrap();
-    let actions = behavior.step(event).await.unwrap();
+    let actions = behavior.transition(event).unwrap();
 
     assert!(actions.sends.is_empty());
     assert!(actions.creates.is_empty());
@@ -117,9 +118,9 @@ async fn typed_shutdown_stops_normally_without_running_the_inner_fold() {
 
 #[tokio::test]
 async fn final_shutdown_fold_preserves_effects_and_forces_normal_stop() {
-    let mut behavior = Spec::new(ShutdownParent).finalize_on_shutdown(finalize_parent);
+    let mut behavior = Compose::new(ShutdownParent).finalize_on_shutdown(finalize_parent);
     let event = <_ as ShutdownEvent>::shutdown_requested(ShutdownRequested).unwrap();
-    let actions = behavior.step(event).await.unwrap();
+    let actions = behavior.transition(event).unwrap();
 
     assert_eq!(actions.sends.len(), 1);
     assert_eq!(actions.sends[0].message, 42);
@@ -130,12 +131,12 @@ async fn final_shutdown_fold_preserves_effects_and_forces_normal_stop() {
 
 #[tokio::test]
 async fn outer_combinators_preserve_the_shutdown_lane() {
-    let mut behavior = Spec::new(Quiet)
+    let mut behavior = Compose::new(Quiet)
         .stop_on_shutdown()
-        .at(None, |_| Ok(Step::Continue))
+        .deadline(None, |_| Ok(Step::Continue))
         .watch(MailAddr(8), stop_on_abnormal_death);
     let event = <_ as ShutdownEvent>::shutdown_requested(ShutdownRequested).unwrap();
-    let actions = behavior.step(event).await.unwrap();
+    let actions = behavior.transition(event).unwrap();
 
     assert!(matches!(actions.become_, Step::Stop(Exit::Normal)));
 }
@@ -143,47 +144,46 @@ async fn outer_combinators_preserve_the_shutdown_lane() {
 #[tokio::test]
 async fn shutdown_composition_preserves_inner_initialization_effects() {
     let due = Instant::now() + Duration::from_secs(1);
-    let mut behavior = Spec::new(Quiet)
-        .at(Some(due), |_| Ok(Step::Continue))
+    let mut behavior = Compose::new(Quiet)
+        .deadline(Some(due), |_| Ok(Step::Continue))
         .stop_on_shutdown();
-    let initial = behavior.init().await.unwrap();
+    let initial = behavior.init().unwrap();
 
-    assert_eq!(initial.sends.own.len(), 1);
-    assert_eq!(initial.sends.own[0].at, due);
+    assert_eq!(initial.sends.schedules.len(), 1);
+    assert_eq!(initial.sends.schedules[0].at, due);
     assert!(matches!(initial.become_, Step::Continue));
 }
 
 #[tokio::test]
 async fn at_is_a_typed_clock_actor_protocol() {
     let now = Instant::now();
-    let mut behavior = Spec::new(Quiet).at(Some(now), |_| Ok(Step::Continue));
+    let mut behavior = Compose::new(Quiet).deadline(Some(now), |_| Ok(Step::Continue));
 
-    let initial = behavior.init().await.unwrap();
-    assert!(initial.sends.inner.is_empty());
-    assert_eq!(initial.sends.own.len(), 1);
-    assert_eq!(initial.sends.own[0].at, now);
+    let initial = behavior.init().unwrap();
+    assert!(initial.sends.behavior.is_empty());
+    assert_eq!(initial.sends.schedules.len(), 1);
+    assert_eq!(initial.sends.schedules[0].at, now);
 
     let fired = behavior
-        .step(AtEvent::Elapsed(TimerElapsed {
+        .on(TimerElapsed {
             id: TimerId(0),
             generation: TimerGeneration(0),
-        }))
-        .await
+        })
         .unwrap();
-    assert!(fired.sends.own.is_empty());
+    assert!(fired.sends.schedules.is_empty());
 }
 
 #[tokio::test]
 async fn driver_interprets_initial_effect_before_receiving() {
     let due = Instant::now() + Duration::from_secs(1);
-    let behavior = Spec::new(Quiet).at(Some(due), |_| Ok(Step::Continue));
+    let behavior = Compose::new(Quiet).deadline(Some(due), |_| Ok(Step::Continue));
     let (control, user, mailbox) = channel::<Never, u64>(Config::new(1));
     drop(user);
     drop(control);
 
     let transcript = run(behavior, mailbox, MailAddr(0)).await.unwrap();
-    assert_eq!(transcript.sends.own.len(), 1);
-    assert_eq!(transcript.sends.own[0].at, due);
+    assert_eq!(transcript.sends.schedules.len(), 1);
+    assert_eq!(transcript.sends.schedules[0].at, due);
     assert_eq!(transcript.exit, Exit::Collected);
 }
 
@@ -191,68 +191,68 @@ async fn driver_interprets_initial_effect_before_receiving() {
 async fn nested_at_composition_routes_stale_and_matching_events() {
     let early = Instant::now() + Duration::from_secs(1);
     let late = early + Duration::from_secs(1);
-    let inner = At::new(Base::new(Quiet), TimerId(0), Some(early), |_| {
+    let inner = Deadline::new(Pure::new(Quiet), TimerId(0), Some(early), |_| {
         Ok(Step::Continue)
     });
-    let mut outer = At::new(inner, TimerId(1), Some(late), |_| Ok(Step::Continue));
+    let mut outer = Deadline::new(inner, TimerId(1), Some(late), |_| Ok(Step::Continue));
 
-    let initial = outer.init().await.unwrap();
-    assert_eq!(initial.sends.inner.own[0].id, TimerId(0));
-    assert_eq!(initial.sends.own[0].id, TimerId(1));
-    assert_eq!(initial.sends.inner.own[0].at, early);
-    assert_eq!(initial.sends.own[0].at, late);
+    let initial = outer.init().unwrap();
+    assert_eq!(initial.sends.behavior.schedules[0].id, TimerId(0));
+    assert_eq!(initial.sends.schedules[0].id, TimerId(1));
+    assert_eq!(initial.sends.behavior.schedules[0].at, early);
+    assert_eq!(initial.sends.schedules[0].at, late);
 
-    let early_event = AtEvent::Elapsed(TimerElapsed {
+    let early_event = DeadlineEvent::Elapsed(TimerElapsed {
         id: TimerId(0),
         generation: TimerGeneration(0),
     });
-    let actions = outer.step(early_event).await.unwrap();
-    assert!(actions.sends.inner.own.is_empty());
+    let actions = outer.transition(early_event).unwrap();
+    assert!(actions.sends.behavior.schedules.is_empty());
 }
 
 #[tokio::test]
 async fn spec_hides_composed_protocols_without_losing_their_effects() {
     let due = Instant::now() + Duration::from_secs(1);
     let peer = MailAddr(8);
-    let mut behavior = Spec::new(Quiet)
-        .at(Some(due), |_| Ok(Step::Continue))
+    let mut behavior = Compose::new(Quiet)
+        .deadline(Some(due), |_| Ok(Step::Continue))
         .watch(peer, stop_on_abnormal_death)
         .stash(|_| StashRoute::Deliver);
 
-    let initial = behavior.init().await.unwrap();
-    assert_eq!(initial.sends.inner.own[0].at, due);
-    assert_eq!(initial.sends.own[0].peer, peer);
+    let initial = behavior.init().unwrap();
+    assert_eq!(initial.sends.behavior.schedules[0].at, due);
+    assert_eq!(initial.sends.observations[0].peer, peer);
 
-    let time = WatchEvent::Inner(AtEvent::Elapsed(TimerElapsed {
+    let time = WatchEvent::Inner(DeadlineEvent::Elapsed(TimerElapsed {
         id: TimerId(0),
         generation: TimerGeneration(0),
     }));
-    let actions = behavior.step(time).await.unwrap();
+    let actions = behavior.transition(time).unwrap();
     assert!(matches!(actions.become_, Step::Continue));
 }
 
 #[tokio::test]
 async fn watching_registers_and_reacts_through_messages() {
     let peer = MailAddr(7);
-    let mut behavior = Watching::new(Base::new(Quiet), peer, stop_on_abnormal_death);
-    let initial = behavior.init().await.unwrap();
-    assert_eq!(initial.sends.own[0].peer, peer);
+    let mut behavior = Watch::new(Pure::new(Quiet), peer, stop_on_abnormal_death);
+    let initial = behavior.init().unwrap();
+    assert_eq!(initial.sends.observations[0].peer, peer);
 
     let stopped = WatchEvent::PeerStopped(PeerStopped {
         peer,
         outcome: Err(Crash::Failed),
     });
-    let actions = behavior.step(stopped).await.unwrap();
+    let actions = behavior.transition(stopped).unwrap();
     assert!(matches!(actions.become_, Step::Stop(Exit::LinkDied(p)) if p == peer));
 }
 
 #[tokio::test]
 async fn stashing_is_local_state_and_replay() {
     struct Seen(Vec<u64>);
-    impl State for Seen {
+    impl Handler for Seen {
         type Addr = MailAddr;
         type Msg = u64;
-        fn handle(
+        fn receive(
             &mut self,
             _from: MailAddr,
             message: u64,
@@ -261,13 +261,13 @@ async fn stashing_is_local_state_and_replay() {
             Ok(Actions::cont())
         }
     }
-    let mut behavior = Spec::new(Seen(Vec::new())).stash(|message| match message {
+    let mut behavior = Compose::new(Seen(Vec::new())).stash(|message| match message {
         0 => StashRoute::Release,
         1 => StashRoute::Stash,
         _ => StashRoute::Deliver,
     });
-    behavior.step(User::user(MailAddr(1), 1)).await.unwrap();
-    behavior.step(User::user(MailAddr(1), 0)).await.unwrap();
+    behavior.transition(User::user(MailAddr(1), 1)).unwrap();
+    behavior.transition(User::user(MailAddr(1), 0)).unwrap();
     assert_eq!(behavior.behavior().inner().state().0, vec![0]);
     assert_eq!(behavior.behavior().held(), 1);
 }
@@ -283,7 +283,7 @@ async fn fsm_is_receive_plus_become_policy() {
         Work(u64),
         Ready,
     }
-    let mut machine = Spec::machine(
+    let mut machine = Compose::machine(
         Vec::new(),
         Phase::Loading,
         |phase, seen: &mut Vec<u64>, message| {
@@ -298,25 +298,23 @@ async fn fsm_is_receive_plus_become_policy() {
         },
     );
     machine
-        .step(User::user(MailAddr(0), Message::Work(3)))
-        .await
+        .transition(User::user(MailAddr(0), Message::Work(3)))
         .unwrap();
     machine
-        .step(User::user(MailAddr(0), Message::Ready))
-        .await
+        .transition(User::user(MailAddr(0), Message::Ready))
         .unwrap();
     assert_eq!(machine.behavior().state(), &[3]);
 }
 
-type Child = Base<Quiet>;
+type Child = Pure<Quiet>;
 
 struct Parent;
 
-impl State<Never, Births<Child>, Never> for Parent {
+impl Handler<Never, Births<Child>, Never> for Parent {
     type Addr = MailAddr;
     type Msg = u64;
 
-    fn handle(
+    fn receive(
         &mut self,
         _from: MailAddr,
         _message: u64,
@@ -326,7 +324,7 @@ impl State<Never, Births<Child>, Never> for Parent {
 }
 
 fn child(_index: usize) -> Child {
-    Base::new(Quiet)
+    Pure::new(Quiet)
 }
 
 #[derive(Clone)]
@@ -348,11 +346,11 @@ fn mutation_stash_route(message: &StashMessage) -> StashRoute {
 
 struct StashRecording(Vec<u64>);
 
-impl State for StashRecording {
+impl Handler for StashRecording {
     type Addr = MailAddr;
     type Msg = StashMessage;
 
-    fn handle(
+    fn receive(
         &mut self,
         _from: MailAddr,
         message: StashMessage,
@@ -365,27 +363,25 @@ impl State for StashRecording {
 #[tokio::test]
 async fn stash_release_delivers_the_trigger_then_drains_the_held_fifo() {
     let release = Arc::new(AtomicBool::new(false));
-    let mut behavior = Spec::new(StashRecording(Vec::new())).stash(mutation_stash_route);
+    let mut behavior = Compose::new(StashRecording(Vec::new())).stash(mutation_stash_route);
     behavior
-        .step(User::user(
+        .transition(User::user(
             MailAddr(0),
             StashMessage {
                 id: 1,
                 release: Arc::clone(&release),
             },
         ))
-        .await
         .unwrap();
     behavior
-        .step(User::user(MailAddr(0), StashMessage { id: 2, release }))
-        .await
+        .transition(User::user(MailAddr(0), StashMessage { id: 2, release }))
         .unwrap();
     assert_eq!(behavior.behavior().inner().state().0, [2, 1]);
     assert_eq!(behavior.behavior().held(), 0);
 }
 
 fn continue_on_death(
-    _behavior: &mut Watching<Base<Quiet>>,
+    _behavior: &mut Watch<Pure<Quiet>>,
     _peer: MailAddr,
     _outcome: &Result<Exit<MailAddr>, Crash>,
 ) -> Result<Become<MailAddr>, Never> {
@@ -394,17 +390,16 @@ fn continue_on_death(
 
 #[tokio::test]
 async fn an_outer_watcher_forwards_a_different_peer_to_the_inner_watcher() {
-    let mut behavior = Watching::new(
-        Watching::new(Base::new(Quiet), MailAddr(1), stop_on_abnormal_death),
+    let mut behavior = Watch::new(
+        Watch::new(Pure::new(Quiet), MailAddr(1), stop_on_abnormal_death),
         MailAddr(2),
         continue_on_death,
     );
     let actions = behavior
-        .step(WatchEvent::PeerStopped(PeerStopped {
+        .transition(WatchEvent::PeerStopped(PeerStopped {
             peer: MailAddr(1),
             outcome: Err(Crash::Failed),
         }))
-        .await
         .unwrap();
     assert!(matches!(
         actions.become_,
@@ -426,7 +421,7 @@ enum MutationMessage {
 
 #[tokio::test]
 async fn fsm_preserves_direct_stop_and_does_not_drain_on_stay() {
-    let mut machine = Fsm::new(
+    let mut machine = Machine::new(
         0_u8,
         MutationPhase::Initial,
         |_, visits, message| -> Result<Move<MutationPhase>, Never> {
@@ -441,53 +436,48 @@ async fn fsm_preserves_direct_stop_and_does_not_drain_on_stay() {
         },
     );
     machine
-        .step(User::user(MailAddr(0), MutationMessage::Deferred))
-        .await
+        .transition(User::user(MailAddr(0), MutationMessage::Deferred))
         .unwrap();
     machine
-        .step(User::user(MailAddr(0), MutationMessage::Stay))
-        .await
+        .transition(User::user(MailAddr(0), MutationMessage::Stay))
         .unwrap();
     assert_eq!(*machine.state(), 1);
     assert_eq!(machine.held(), 1);
     let stopped = machine
-        .step(User::user(MailAddr(0), MutationMessage::Stop))
-        .await
+        .transition(User::user(MailAddr(0), MutationMessage::Stop))
         .unwrap();
     assert!(matches!(stopped.become_, Step::Stop(Exit::Normal)));
 }
 
 #[tokio::test]
 async fn receive_timeout_reacts_only_to_its_own_live_timer_id() {
-    let mut behavior = Spec::new(Quiet)
-        .at(Some(Instant::now()), |_| {
+    let mut behavior = Compose::new(Quiet)
+        .deadline(Some(Instant::now()), |_| {
             Ok(Step::Stop(Exit::LinkDied(MailAddr(7))))
         })
         .receive_timeout(Duration::from_secs(1), |_| Ok(Actions::stop(Exit::Normal)));
-    behavior.init().await.unwrap();
+    behavior.init().unwrap();
     let wrong = behavior
-        .step(behavior::ReceiveTimeoutEvent::Elapsed(TimerElapsed {
+        .transition(behavior::ReceiveTimeoutEvent::Elapsed(TimerElapsed {
             id: TimerId(0),
             generation: TimerGeneration(0),
         }))
-        .await
         .unwrap();
     assert!(matches!(
         wrong.become_,
         Step::Stop(Exit::LinkDied(MailAddr(7)))
     ));
-    let mut matching_behavior = Spec::new(Quiet)
-        .at(Some(Instant::now()), |_| {
+    let mut matching_behavior = Compose::new(Quiet)
+        .deadline(Some(Instant::now()), |_| {
             Ok(Step::Stop(Exit::LinkDied(MailAddr(7))))
         })
         .receive_timeout(Duration::from_secs(1), |_| Ok(Actions::stop(Exit::Normal)));
-    let matching_generation = matching_behavior.init().await.unwrap().sends.own[0].generation;
+    let matching_generation = matching_behavior.init().unwrap().sends.schedules[0].generation;
     let matching = matching_behavior
-        .step(behavior::ReceiveTimeoutEvent::Elapsed(TimerElapsed {
+        .transition(behavior::ReceiveTimeoutEvent::Elapsed(TimerElapsed {
             id: TimerId(1),
             generation: matching_generation,
         }))
-        .await
         .unwrap();
     assert!(matches!(matching.become_, Step::Stop(Exit::Normal)));
 }
@@ -531,11 +521,11 @@ impl Behavior for TimerAware {
     type Error = Never;
     type Birth = NoBirths;
 
-    async fn init(&mut self) -> Result<Actions<MailAddr, Never, Self::Sends, NoBirths>, Never> {
+    fn init(&mut self) -> Result<Actions<MailAddr, Never, Self::Sends, NoBirths>, Never> {
         Ok(Actions::cont())
     }
 
-    async fn step(
+    fn transition(
         &mut self,
         event: Self::Event,
     ) -> Result<Actions<MailAddr, Never, Self::Sends, NoBirths>, Never> {
@@ -551,15 +541,14 @@ impl Behavior for TimerAware {
 
 #[tokio::test]
 async fn a_stale_local_receive_timeout_is_consumed_not_forwarded() {
-    let mut behavior = Spec::from_behavior(TimerAware)
+    let mut behavior = Compose::from_behavior(TimerAware)
         .receive_timeout(Duration::from_secs(1), |_| Ok(Actions::stop(Exit::Normal)));
-    behavior.init().await.unwrap();
+    behavior.init().unwrap();
     let stale = behavior
-        .step(behavior::ReceiveTimeoutEvent::Elapsed(TimerElapsed {
+        .transition(behavior::ReceiveTimeoutEvent::Elapsed(TimerElapsed {
             id: TimerId(0),
             generation: TimerGeneration(99),
         }))
-        .await
         .unwrap();
     assert!(matches!(stale.become_, Step::Continue));
 }
@@ -567,48 +556,39 @@ async fn a_stale_local_receive_timeout_is_consumed_not_forwarded() {
 #[tokio::test]
 async fn a_proxy_ignores_a_stale_child_stop_nonce() {
     let mut proxy = Proxy::new(child(0));
-    proxy.init().await.unwrap();
-    proxy
-        .step(ProxyEvent::CreationResolved(CreationResolved {
-            nonce: 0,
-            kind: CreationKind::Birth,
-            result: Ok(()),
-        }))
-        .await
-        .unwrap();
+    proxy.init().unwrap();
+    proxy.on(CreationResolved::birth(0)).unwrap();
     let stale = proxy
-        .step(ProxyEvent::ChildStopped(ChildStopped {
+        .transition(ProxyEvent::ChildStopped(ChildStopped {
             nonce: 99,
             outcome: Err(Crash::Failed),
             at: Instant::now(),
         }))
-        .await
         .unwrap();
     assert!(stale.sends.stopped_reports.is_empty());
     let forwarded = proxy
-        .step(ProxyEvent::Inner(User::user(
+        .transition(ProxyEvent::Inner(User::user(
             MailAddr(0),
             ProxyCommand::Forward(7),
         )))
-        .await
         .unwrap();
     assert_eq!(forwarded.sends.deliveries[0].to.route(), Route::Child(0));
 }
 
 #[test]
 fn birth_modes_are_disjoint_and_wrappers_forward_them() {
-    requires_no_births(&Spec::new(Quiet));
+    requires_no_births(&Compose::new(Quiet));
 
-    let creator = Spec::new(Parent)
-        .at(None, |_| Ok(Step::Continue))
+    let creator = Compose::new(Parent)
+        .deadline(None, |_| Ok(Step::Continue))
         .watch(MailAddr(4), stop_on_abnormal_death)
         .stash(|_| StashRoute::Deliver);
     requires_births::<_, Child>(&creator);
 
-    let supervisor = Spec::new(Parent).children((1, child));
+    let supervisor = Compose::new(Parent).children((1, child));
     requires_births::<_, Proxy<Child>>(&supervisor);
     requires_worker_events(&supervisor);
-    requires_worker_events(&supervisor.at(None, |_| Ok(Step::Continue)));
+    requires_worker_events(&supervisor.deadline(None, |_| Ok(Step::Continue)));
     requires_births::<_, Child>(&Proxy::new(child(0)));
 }
 
@@ -616,9 +596,9 @@ fn supervisor(
     strategy: Strategy,
     policy: RestartPolicy,
     budget: u32,
-) -> Supervising<Base<Parent, Never, Births<Child>, Never>, Child> {
-    Supervising::new(
-        Base::new(Parent),
+) -> Supervisor<Pure<Parent, Never, Births<Child>, Never>, Child> {
+    Supervisor::new(
+        Pure::new(Parent),
         |index| u64::try_from(index).unwrap(),
         3,
         child,
@@ -634,7 +614,7 @@ fn supervisor(
     reason = "the supervision reaction shares its wrapped behavior's controlled-error seat"
 )]
 fn verify_budget_failure_and_stop(
-    _parent: &mut Base<Parent, Never, Births<Child>, Never>,
+    _parent: &mut Pure<Parent, Never, Births<Child>, Never>,
     failure: &SupervisionFailure<MailAddr>,
 ) -> Result<Become<MailAddr>, Never> {
     assert_eq!(failure.child, 1);
@@ -652,12 +632,12 @@ fn verify_budget_failure_and_stop(
 
 #[tokio::test]
 async fn supervisor_creates_proxies_and_replacement_is_a_send() {
-    let mut supervisor = Spec::new(Parent)
+    let mut supervisor = Compose::new(Parent)
         .children((2, child))
         .restart(Strategy::OneForOne)
         .when(RestartPolicy::Transient)
         .within(2, Duration::MAX);
-    let initial = supervisor.init().await.unwrap();
+    let initial = supervisor.init().unwrap();
     assert_eq!(initial.creates.len(), 2);
     assert!(
         initial
@@ -675,7 +655,7 @@ async fn supervisor_creates_proxies_and_replacement_is_a_send() {
         outcome: Err(Crash::Failed),
         at: Instant::now(),
     });
-    let actions = supervisor.step(event).await.unwrap();
+    let actions = supervisor.transition(event).unwrap();
     assert!(actions.creates.is_empty());
     assert_eq!(actions.sends.replacement_commands.len(), 1);
     assert_eq!(
@@ -687,33 +667,24 @@ async fn supervisor_creates_proxies_and_replacement_is_a_send() {
 #[tokio::test]
 async fn proxy_replacement_creates_a_fresh_incarnation() {
     let mut proxy = Proxy::new(child(0));
-    let first = proxy.init().await.unwrap();
+    let first = proxy.init().unwrap();
     assert_eq!(first.creates[0].nonce, 0);
     assert_eq!(first.creates[0].kind, CreationKind::Birth);
-    proxy
-        .step(ProxyEvent::CreationResolved(CreationResolved {
-            nonce: 0,
-            kind: CreationKind::Birth,
-            result: Ok(()),
-        }))
-        .await
-        .unwrap();
+    proxy.on(CreationResolved::birth(0)).unwrap();
     let second = proxy
-        .step(ProxyEvent::Inner(User::user(
+        .transition(ProxyEvent::Inner(User::user(
             MailAddr(0),
             ProxyCommand::Replace(child(0)),
         )))
-        .await
         .unwrap();
     assert!(second.creates.is_empty());
 
     let second = proxy
-        .step(ProxyEvent::ChildStopped(ChildStopped {
+        .transition(ProxyEvent::ChildStopped(ChildStopped {
             nonce: 0,
             outcome: Err(Crash::Failed),
             at: Instant::now(),
         }))
-        .await
         .unwrap();
     assert_eq!(second.creates[0].nonce, 1);
     assert_eq!(
@@ -723,20 +694,14 @@ async fn proxy_replacement_creates_a_fresh_incarnation() {
     assert_eq!(second.sends.child_observations[0].nonce, 1);
     assert_eq!(second.sends.stopped_reports[0].outcome, Err(Crash::Failed));
     proxy
-        .step(ProxyEvent::CreationResolved(CreationResolved {
-            nonce: 1,
-            kind: CreationKind::ReplacementIncarnation { replaces: 0 },
-            result: Ok(()),
-        }))
-        .await
+        .on(CreationResolved::replacement_incarnation(1, 0))
         .unwrap();
 
     let forwarded = proxy
-        .step(ProxyEvent::Inner(User::user(
+        .transition(ProxyEvent::Inner(User::user(
             MailAddr(0),
             ProxyCommand::Forward(7),
         )))
-        .await
         .unwrap();
     assert_eq!(forwarded.sends.deliveries[0].to.route(), Route::Child(1));
     assert_eq!(forwarded.sends.deliveries[0].message, 7);
@@ -745,34 +710,25 @@ async fn proxy_replacement_creates_a_fresh_incarnation() {
 #[tokio::test]
 async fn proxy_routes_only_after_matching_installation_and_rejection_stays_vacant() {
     let mut proxy = Proxy::new(child(0));
-    proxy.init().await.unwrap();
+    proxy.init().unwrap();
 
     let pending = proxy
-        .step(ProxyEvent::Inner(User::user(
+        .transition(ProxyEvent::Inner(User::user(
             MailAddr(0),
             ProxyCommand::Forward(1),
         )))
-        .await
         .unwrap();
     assert!(pending.sends.deliveries.is_empty());
 
-    let stale = proxy
-        .step(ProxyEvent::CreationResolved(CreationResolved {
-            nonce: 1,
-            kind: CreationKind::Birth,
-            result: Ok(()),
-        }))
-        .await
-        .unwrap();
+    let stale = proxy.on(CreationResolved::birth(1)).unwrap();
     assert!(stale.sends.creation_reports.is_empty());
 
     let rejected = proxy
-        .step(ProxyEvent::CreationResolved(CreationResolved {
-            nonce: 0,
-            kind: CreationKind::Birth,
-            result: Err(CreationRejection::InitializationFailed),
-        }))
-        .await
+        .on(CreationResolved::rejected(
+            0,
+            CreationKind::Birth,
+            CreationRejection::InitializationFailed,
+        ))
         .unwrap();
     assert_eq!(
         rejected.sends.creation_reports[0].result,
@@ -780,11 +736,10 @@ async fn proxy_routes_only_after_matching_installation_and_rejection_stays_vacan
     );
 
     let vacant = proxy
-        .step(ProxyEvent::Inner(User::user(
+        .transition(ProxyEvent::Inner(User::user(
             MailAddr(0),
             ProxyCommand::Forward(2),
         )))
-        .await
         .unwrap();
     assert!(vacant.sends.deliveries.is_empty());
 }
@@ -792,29 +747,20 @@ async fn proxy_routes_only_after_matching_installation_and_rejection_stays_vacan
 #[tokio::test]
 async fn proxy_serializes_attempts_and_rejection_preserves_last_installed_incarnation() {
     let mut proxy = Proxy::new(child(0));
-    proxy.init().await.unwrap();
+    proxy.init().unwrap();
+    proxy.on(CreationResolved::birth(0)).unwrap();
     proxy
-        .step(ProxyEvent::CreationResolved(CreationResolved {
-            nonce: 0,
-            kind: CreationKind::Birth,
-            result: Ok(()),
-        }))
-        .await
-        .unwrap();
-    proxy
-        .step(ProxyEvent::Inner(User::user(
+        .transition(ProxyEvent::Inner(User::user(
             MailAddr(0),
             ProxyCommand::Replace(child(1)),
         )))
-        .await
         .unwrap();
     let first_attempt = proxy
-        .step(ProxyEvent::ChildStopped(ChildStopped {
+        .transition(ProxyEvent::ChildStopped(ChildStopped {
             nonce: 0,
             outcome: Err(Crash::Failed),
             at: Instant::now(),
         }))
-        .await
         .unwrap();
     assert_eq!(
         first_attempt.creates[0].kind,
@@ -822,28 +768,25 @@ async fn proxy_serializes_attempts_and_rejection_preserves_last_installed_incarn
     );
 
     let overlapping = proxy
-        .step(ProxyEvent::Inner(User::user(
+        .transition(ProxyEvent::Inner(User::user(
             MailAddr(0),
             ProxyCommand::Replace(child(2)),
         )))
-        .await
         .unwrap();
     assert!(overlapping.creates.is_empty());
 
     proxy
-        .step(ProxyEvent::CreationResolved(CreationResolved {
-            nonce: 1,
-            kind: CreationKind::ReplacementIncarnation { replaces: 0 },
-            result: Err(CreationRejection::EnvironmentFailed),
-        }))
-        .await
+        .on(CreationResolved::rejected(
+            1,
+            CreationKind::ReplacementIncarnation { replaces: 0 },
+            CreationRejection::EnvironmentFailed,
+        ))
         .unwrap();
     let retry = proxy
-        .step(ProxyEvent::Inner(User::user(
+        .transition(ProxyEvent::Inner(User::user(
             MailAddr(0),
             ProxyCommand::Replace(child(3)),
         )))
-        .await
         .unwrap();
     assert_eq!(retry.creates[0].nonce, 2);
     assert_eq!(
@@ -855,33 +798,24 @@ async fn proxy_serializes_attempts_and_rejection_preserves_last_installed_incarn
 #[tokio::test]
 async fn idle_proxy_marks_an_immediate_successor_as_a_replacement_incarnation() {
     let mut proxy = Proxy::new(child(0));
-    let initial = proxy.init().await.unwrap();
+    let initial = proxy.init().unwrap();
     assert_eq!(initial.creates[0].kind, CreationKind::Birth);
-    proxy
-        .step(ProxyEvent::CreationResolved(CreationResolved {
-            nonce: 0,
-            kind: CreationKind::Birth,
-            result: Ok(()),
-        }))
-        .await
-        .unwrap();
+    proxy.on(CreationResolved::birth(0)).unwrap();
 
     let stopped = proxy
-        .step(ProxyEvent::ChildStopped(ChildStopped {
+        .transition(ProxyEvent::ChildStopped(ChildStopped {
             nonce: 0,
             outcome: Err(Crash::Failed),
             at: Instant::now(),
         }))
-        .await
         .unwrap();
     assert!(stopped.creates.is_empty());
 
     let replacement = proxy
-        .step(ProxyEvent::Inner(User::user(
+        .transition(ProxyEvent::Inner(User::user(
             MailAddr(0),
             ProxyCommand::Replace(child(0)),
         )))
-        .await
         .unwrap();
     assert_eq!(replacement.creates[0].nonce, 1);
     assert_eq!(
@@ -893,37 +827,29 @@ async fn idle_proxy_marks_an_immediate_successor_as_a_replacement_incarnation() 
 #[tokio::test]
 async fn stable_proxy_reports_worker_stop_and_creates_fresh_replacement() {
     let at = Instant::now();
-    let mut supervisor = Spec::new(Parent)
+    let mut supervisor = Compose::new(Parent)
         .children((1, child))
         .restart(Strategy::OneForOne)
         .when(RestartPolicy::Transient)
         .within(1, Duration::MAX);
 
-    let mut initial = supervisor.init().await.unwrap();
+    let mut initial = supervisor.init().unwrap();
     assert_eq!(initial.creates[0].nonce, 0);
     assert_eq!(initial.sends.child_observations[0].nonce, 0);
     let mut proxy = initial.creates.remove(0).child;
 
-    let worker_birth = proxy.init().await.unwrap();
+    let worker_birth = proxy.init().unwrap();
     assert_eq!(worker_birth.creates[0].nonce, 0);
     assert_eq!(worker_birth.creates[0].kind, CreationKind::Birth);
     assert_eq!(worker_birth.sends.child_observations[0].nonce, 0);
-    proxy
-        .step(ProxyEvent::CreationResolved(CreationResolved {
-            nonce: 0,
-            kind: CreationKind::Birth,
-            result: Ok(()),
-        }))
-        .await
-        .unwrap();
+    proxy.on(CreationResolved::birth(0)).unwrap();
 
     let worker_stop = proxy
-        .step(ProxyEvent::ChildStopped(ChildStopped {
+        .transition(ProxyEvent::ChildStopped(ChildStopped {
             nonce: 0,
             outcome: Err(Crash::Panicked),
             at,
         }))
-        .await
         .unwrap();
     assert!(worker_stop.creates.is_empty());
     assert!(matches!(worker_stop.become_, Step::Continue));
@@ -933,13 +859,12 @@ async fn stable_proxy_reports_worker_stop_and_creates_fresh_replacement() {
     );
 
     let restart = supervisor
-        .step(SupervisionEvent::WorkerStopped(WorkerStopped {
+        .transition(SupervisionEvent::WorkerStopped(WorkerStopped {
             proxy: 0,
             worker: 0,
             outcome: worker_stop.sends.stopped_reports[0].outcome,
             at: worker_stop.sends.stopped_reports[0].at,
         }))
-        .await
         .unwrap();
     assert!(restart.creates.is_empty());
     assert_eq!(restart.sends.replacement_commands.len(), 1);
@@ -955,8 +880,7 @@ async fn stable_proxy_reports_worker_stop_and_creates_fresh_replacement() {
         .next()
         .unwrap();
     let replacement = proxy
-        .step(ProxyEvent::Inner(User::user(MailAddr(0), command.message)))
-        .await
+        .transition(ProxyEvent::Inner(User::user(MailAddr(0), command.message)))
         .unwrap();
     assert_eq!(replacement.creates[0].nonce, 1);
     assert_eq!(
@@ -971,12 +895,11 @@ async fn stable_proxy_reports_worker_stop_and_creates_fresh_replacement() {
 async fn stopped_proxy_is_retired_without_sending_to_its_dead_address() {
     let mut supervisor = supervisor(Strategy::OneForAll, RestartPolicy::Permanent, 3);
     let stopped = supervisor
-        .step(SupervisionEvent::ChildStopped(ChildStopped {
+        .transition(SupervisionEvent::ChildStopped(ChildStopped {
             nonce: 1,
             outcome: Err(Crash::Panicked),
             at: Instant::now(),
         }))
-        .await
         .unwrap();
 
     assert!(stopped.creates.is_empty());
@@ -987,7 +910,7 @@ async fn stopped_proxy_is_retired_without_sending_to_its_dead_address() {
 
 #[tokio::test]
 async fn configured_supervision_failure_reaction_stops_on_budget_denial() {
-    let mut supervisor = Spec::new(Parent)
+    let mut supervisor = Compose::new(Parent)
         .children((3, child))
         .restart(Strategy::OneForAll)
         .when(RestartPolicy::Permanent)
@@ -995,13 +918,12 @@ async fn configured_supervision_failure_reaction_stops_on_budget_denial() {
         .on_supervision_failure(verify_budget_failure_and_stop);
 
     let actions = supervisor
-        .step(SupervisionEvent::WorkerStopped(WorkerStopped {
+        .transition(SupervisionEvent::WorkerStopped(WorkerStopped {
             proxy: 1,
             worker: 1,
             outcome: Err(Crash::Panicked),
             at: Instant::now(),
         }))
-        .await
         .unwrap();
 
     assert!(actions.sends.replacement_commands.is_empty());
@@ -1021,16 +943,15 @@ async fn configured_supervision_failure_reaction_stops_on_budget_denial() {
 
 #[tokio::test]
 async fn configured_supervision_failure_reaction_stops_when_stable_proxy_stops() {
-    let mut supervisor = Spec::new(Parent)
+    let mut supervisor = Compose::new(Parent)
         .children((1, child))
         .on_supervision_failure(stop_on_supervision_failure);
     let actions = supervisor
-        .step(SupervisionEvent::ChildStopped(ChildStopped {
+        .transition(SupervisionEvent::ChildStopped(ChildStopped {
             nonce: 0,
             outcome: Ok(Exit::Normal),
             at: Instant::now(),
         }))
-        .await
         .unwrap();
 
     assert_eq!(
@@ -1044,18 +965,17 @@ async fn configured_supervision_failure_reaction_stops_when_stable_proxy_stops()
 
 #[tokio::test]
 async fn restart_policy_ineligibility_is_not_a_supervision_failure() {
-    let mut supervisor = Spec::new(Parent)
+    let mut supervisor = Compose::new(Parent)
         .children((1, child))
         .when(RestartPolicy::Temporary)
         .on_supervision_failure(stop_on_supervision_failure);
     let actions = supervisor
-        .step(SupervisionEvent::WorkerStopped(WorkerStopped {
+        .transition(SupervisionEvent::WorkerStopped(WorkerStopped {
             proxy: 0,
             worker: 0,
             outcome: Err(Crash::Failed),
             at: Instant::now(),
         }))
-        .await
         .unwrap();
 
     assert_eq!(actions.become_, Step::Continue);
@@ -1066,7 +986,7 @@ async fn restart_policy_ineligibility_is_not_a_supervision_failure() {
 async fn supervision_failure_exit_is_an_abnormal_transient_worker_outcome() {
     let mut supervisor = supervisor(Strategy::OneForOne, RestartPolicy::Transient, 1);
     let actions = supervisor
-        .step(SupervisionEvent::WorkerStopped(WorkerStopped {
+        .transition(SupervisionEvent::WorkerStopped(WorkerStopped {
             proxy: 0,
             worker: 0,
             outcome: Ok(Exit::SupervisionFailed(
@@ -1074,7 +994,6 @@ async fn supervision_failure_exit_is_an_abnormal_transient_worker_outcome() {
             )),
             at: Instant::now(),
         }))
-        .await
         .unwrap();
 
     assert_eq!(actions.sends.replacement_commands.len(), 1);
@@ -1086,11 +1005,11 @@ async fn supervision_failure_exit_is_an_abnormal_transient_worker_outcome() {
 
 struct BirthingParent(bool);
 
-impl State<Never, Births<Child>, Never> for BirthingParent {
+impl Handler<Never, Births<Child>, Never> for BirthingParent {
     type Addr = MailAddr;
     type Msg = u64;
 
-    fn handle(
+    fn receive(
         &mut self,
         _from: MailAddr,
         nonce: u64,
@@ -1109,11 +1028,11 @@ impl State<Never, Births<Child>, Never> for BirthingParent {
 
 struct ReplacingParent;
 
-impl State<Never, Births<Child>, Never> for ReplacingParent {
+impl Handler<Never, Births<Child>, Never> for ReplacingParent {
     type Addr = MailAddr;
     type Msg = u64;
 
-    fn handle(
+    fn receive(
         &mut self,
         _from: MailAddr,
         nonce: u64,
@@ -1128,15 +1047,14 @@ impl State<Never, Births<Child>, Never> for ReplacingParent {
 
 #[tokio::test]
 async fn supervisor_preserves_and_observes_dynamic_births_once() {
-    let mut supervisor = Spec::new(BirthingParent(false))
+    let mut supervisor = Compose::new(BirthingParent(false))
         .children((0, child))
         .within(1, Duration::MAX);
-    let initial = supervisor.init().await.unwrap();
+    let initial = supervisor.init().unwrap();
     assert!(initial.creates.is_empty());
 
     let born = supervisor
-        .step(UserEvent::user(MailAddr(0), 9))
-        .await
+        .transition(UserEvent::user(MailAddr(0), 9))
         .unwrap();
     assert_eq!(born.creates.len(), 1);
     assert_eq!(born.creates[0].nonce, 9);
@@ -1151,7 +1069,7 @@ async fn supervisor_preserves_and_observes_dynamic_births_once() {
         outcome: Err(Crash::Failed),
         at: Instant::now(),
     });
-    let replacement = supervisor.step(stopped).await.unwrap();
+    let replacement = supervisor.transition(stopped).unwrap();
     assert_eq!(replacement.sends.replacement_commands.len(), 1);
     assert_eq!(
         replacement.sends.replacement_commands[0].to.route(),
@@ -1161,14 +1079,13 @@ async fn supervisor_preserves_and_observes_dynamic_births_once() {
 
 #[tokio::test]
 async fn supervisor_preserves_dynamic_replacement_provenance_when_wrapping_the_child() {
-    let mut supervisor = Spec::new(ReplacingParent)
+    let mut supervisor = Compose::new(ReplacingParent)
         .children((0, child))
         .within(1, Duration::MAX);
-    supervisor.init().await.unwrap();
+    supervisor.init().unwrap();
 
     let replacement = supervisor
-        .step(UserEvent::user(MailAddr(0), 9))
-        .await
+        .transition(UserEvent::user(MailAddr(0), 9))
         .unwrap();
     assert_eq!(replacement.creates.len(), 1);
     assert_eq!(replacement.creates[0].nonce, 9);
@@ -1192,8 +1109,7 @@ async fn supervision_strategy_policy_and_budget_are_pure_send_decisions() {
 
     let mut one = supervisor(Strategy::OneForOne, RestartPolicy::Transient, 3);
     assert_eq!(
-        one.step(stopped(1))
-            .await
+        one.transition(stopped(1))
             .unwrap()
             .sends
             .replacement_commands
@@ -1203,8 +1119,7 @@ async fn supervision_strategy_policy_and_budget_are_pure_send_decisions() {
 
     let mut all = supervisor(Strategy::OneForAll, RestartPolicy::Transient, 3);
     assert_eq!(
-        all.step(stopped(1))
-            .await
+        all.transition(stopped(1))
             .unwrap()
             .sends
             .replacement_commands
@@ -1214,8 +1129,7 @@ async fn supervision_strategy_policy_and_budget_are_pure_send_decisions() {
 
     let mut rest = supervisor(Strategy::RestForOne, RestartPolicy::Transient, 3);
     assert_eq!(
-        rest.step(stopped(1))
-            .await
+        rest.transition(stopped(1))
             .unwrap()
             .sends
             .replacement_commands
@@ -1226,8 +1140,7 @@ async fn supervision_strategy_policy_and_budget_are_pure_send_decisions() {
     let mut temporary = supervisor(Strategy::OneForOne, RestartPolicy::Temporary, 3);
     assert!(
         temporary
-            .step(stopped(1))
-            .await
+            .transition(stopped(1))
             .unwrap()
             .sends
             .replacement_commands
@@ -1238,8 +1151,7 @@ async fn supervision_strategy_policy_and_budget_are_pure_send_decisions() {
     let mut denied = supervisor(Strategy::OneForOne, RestartPolicy::Permanent, 0);
     assert!(
         denied
-            .step(stopped(1))
-            .await
+            .transition(stopped(1))
             .unwrap()
             .sends
             .replacement_commands
@@ -1250,32 +1162,30 @@ async fn supervision_strategy_policy_and_budget_are_pure_send_decisions() {
 #[tokio::test]
 async fn stale_time_events_do_not_fire_or_reschedule() {
     let due = Instant::now() + Duration::from_secs(2);
-    let mut behavior = At::new(Base::new(Quiet), TimerId(0), Some(due), |_| {
+    let mut behavior = Deadline::new(Pure::new(Quiet), TimerId(0), Some(due), |_| {
         Ok(Step::Stop(Exit::Normal))
     });
-    behavior.init().await.unwrap();
-    let stale = AtEvent::Elapsed(TimerElapsed {
+    behavior.init().unwrap();
+    let stale = DeadlineEvent::Elapsed(TimerElapsed {
         id: TimerId(0),
         generation: TimerGeneration(1),
     });
-    let ignored = behavior.step(stale).await.unwrap();
+    let ignored = behavior.transition(stale).unwrap();
     assert!(matches!(ignored.become_, Step::Continue));
 
     let fired = behavior
-        .step(AtEvent::Elapsed(TimerElapsed {
+        .transition(DeadlineEvent::Elapsed(TimerElapsed {
             id: TimerId(0),
             generation: TimerGeneration(0),
         }))
-        .await
         .unwrap();
     assert!(matches!(fired.become_, Step::Stop(Exit::Normal)));
 
     let duplicate = behavior
-        .step(AtEvent::Elapsed(TimerElapsed {
+        .transition(DeadlineEvent::Elapsed(TimerElapsed {
             id: TimerId(0),
             generation: TimerGeneration(0),
         }))
-        .await
         .unwrap();
     assert!(matches!(duplicate.become_, Step::Continue));
 }
@@ -1283,10 +1193,10 @@ async fn stale_time_events_do_not_fire_or_reschedule() {
 #[tokio::test]
 async fn workers_macro_hides_a_heterogeneous_child_sum() {
     struct Other;
-    impl State for Other {
+    impl Handler for Other {
         type Addr = MailAddr;
         type Msg = u64;
-        fn handle(
+        fn receive(
             &mut self,
             _from: MailAddr,
             _message: u64,
@@ -1294,14 +1204,14 @@ async fn workers_macro_hides_a_heterogeneous_child_sum() {
             Ok(Actions::cont())
         }
     }
-    fn other(_index: usize) -> Base<Other> {
-        Base::new(Other)
+    fn other(_index: usize) -> Pure<Other> {
+        Pure::new(Other)
     }
 
-    let (count, build) = workers![(2, Child, child), (1, Base<Other>, other)];
+    let (count, build) = workers![(2, Child, child), (1, Pure<Other>, other)];
     assert_eq!(count, 3);
     let mut worker = build(2);
-    worker.step(User::user(MailAddr(0), 7)).await.unwrap();
+    worker.transition(User::user(MailAddr(0), 7)).unwrap();
 }
 
 proptest! {
@@ -1312,12 +1222,12 @@ proptest! {
         let origin = Instant::now();
         let first = origin + Duration::from_nanos(first);
         let second = origin + Duration::from_nanos(second);
-        let inner = At::new(Base::new(Quiet), TimerId(0), Some(first), |_| Ok(Step::Continue));
-        let mut outer = At::new(inner, TimerId(1), Some(second), |_| Ok(Step::Continue));
-        let runtime = Builder::new_current_thread().enable_all().build().unwrap();
-        let actions = runtime.block_on(outer.init()).unwrap();
-        prop_assert_eq!(actions.sends.inner.own[0].at, first);
-        prop_assert_eq!(actions.sends.own[0].at, second);
+        let inner = Deadline::new(Pure::new(Quiet), TimerId(0), Some(first), |_| Ok(Step::Continue));
+        let mut outer = Deadline::new(inner, TimerId(1), Some(second), |_| Ok(Step::Continue));
+        let _runtime = Builder::new_current_thread().enable_all().build().unwrap();
+        let actions = outer.init().unwrap();
+        prop_assert_eq!(actions.sends.behavior.schedules[0].at, first);
+        prop_assert_eq!(actions.sends.schedules[0].at, second);
     }
 
     #[test]
@@ -1339,8 +1249,8 @@ proptest! {
             outcome: Err(Crash::Failed),
             at: Instant::now(),
         });
-        let runtime = Builder::new_current_thread().enable_all().build().unwrap();
-        let actions = runtime.block_on(behavior.step(event)).unwrap();
+        let _runtime = Builder::new_current_thread().enable_all().build().unwrap();
+        let actions = behavior.transition(event).unwrap();
         prop_assert_eq!(actions.sends.replacement_commands.len(), expected);
         prop_assert!(actions.creates.is_empty());
     }

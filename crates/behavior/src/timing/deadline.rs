@@ -6,30 +6,55 @@ use tokio::time::Instant;
 use super::domain::OneShotSchedule;
 use super::event::TimedEvent;
 use crate::Step;
-use crate::behavior::{
-    Actions, Address, Become, Behavior, BirthMode, SendAlgebra, SendProduct, ServiceSends,
-};
+use crate::behavior::{Actions, Address, Become, Behavior, BirthMode, SendAlgebra, ServiceSends};
 use crate::protocol::{ScheduleAt, TimeEvent, TimerId};
 
-pub type AtEvent<E> = TimedEvent<E>;
+pub type DeadlineEvent<E> = TimedEvent<E>;
 
-pub type AtReaction<B> =
+pub type DeadlineReaction<B> =
     fn(&mut B) -> Result<Become<<B as Behavior>::Addr>, <B as Behavior>::Error>;
 
-pub type AtSends<B> = SendProduct<<B as Behavior>::Sends, ServiceSends<ScheduleAt>>;
-
-pub type AtActions<B> =
-    Actions<<B as Behavior>::Addr, <B as Behavior>::Ph, AtSends<B>, <B as Behavior>::Birth>;
-
-pub struct At<B: Behavior> {
-    inner: B,
-    schedule: OneShotSchedule,
-    on_reached: AtReaction<B>,
+/// Named effect lanes added by [`Deadline`].
+pub struct DeadlineSends<Sends> {
+    pub behavior: Sends,
+    pub schedules: ServiceSends<ScheduleAt>,
 }
 
-impl<B: Behavior> At<B> {
+impl<Sends: SendAlgebra> SendAlgebra for DeadlineSends<Sends> {
+    fn empty() -> Self {
+        Self {
+            behavior: Sends::empty(),
+            schedules: ServiceSends::empty(),
+        }
+    }
+
+    fn append(&mut self, other: Self) {
+        self.behavior.append(other.behavior);
+        self.schedules.append(other.schedules);
+    }
+}
+
+pub type DeadlineActions<B> = Actions<
+    <B as Behavior>::Addr,
+    <B as Behavior>::Ph,
+    DeadlineSends<<B as Behavior>::Sends>,
+    <B as Behavior>::Birth,
+>;
+
+pub struct Deadline<B: Behavior> {
+    inner: B,
+    schedule: OneShotSchedule,
+    on_reached: DeadlineReaction<B>,
+}
+
+impl<B: Behavior> Deadline<B> {
     #[must_use]
-    pub fn new(inner: B, id: TimerId, at: Option<Instant>, on_reached: AtReaction<B>) -> Self {
+    pub fn new(
+        inner: B,
+        id: TimerId,
+        at: Option<Instant>,
+        on_reached: DeadlineReaction<B>,
+    ) -> Self {
         Self {
             inner,
             schedule: OneShotSchedule::new(id, at),
@@ -43,25 +68,24 @@ impl<B: Behavior> At<B> {
     }
 }
 
-impl<B, A, Ph, Sends, Br> Behavior for At<B>
+impl<B, A, Ph, Sends, Br> Behavior for Deadline<B>
 where
-    A: Address + Send,
+    A: Address,
     Sends: SendAlgebra,
     Br: BirthMode,
-    B: Behavior<Addr = A, Ph = Ph, Sends = Sends, Birth = Br> + Send,
-    B::Event: TimeEvent + Send,
-    B::Msg: Send,
+    B: Behavior<Addr = A, Ph = Ph, Sends = Sends, Birth = Br>,
+    B::Event: TimeEvent,
 {
     type Addr = A;
     type Msg = B::Msg;
-    type Event = AtEvent<B::Event>;
-    type Sends = SendProduct<Sends, ServiceSends<ScheduleAt>>;
+    type Event = DeadlineEvent<B::Event>;
+    type Sends = DeadlineSends<Sends>;
     type Ph = Ph;
     type Error = B::Error;
     type Birth = Br;
 
-    async fn init(&mut self) -> Result<AtActions<B>, B::Error> {
-        let actions = self.inner.init().await?;
+    fn init(&mut self) -> Result<DeadlineActions<B>, B::Error> {
+        let actions = self.inner.init()?;
         let own = if matches!(actions.become_, Step::Stop(_)) {
             self.schedule.cancel();
             ServiceSends::empty()
@@ -75,9 +99,9 @@ where
         Ok(Self::wrap(actions, own))
     }
 
-    async fn step(&mut self, event: Self::Event) -> Result<AtActions<B>, B::Error> {
+    fn transition(&mut self, event: Self::Event) -> Result<DeadlineActions<B>, B::Error> {
         match event {
-            AtEvent::Elapsed(event) if self.schedule.accept(event.id, event.generation) => {
+            DeadlineEvent::Elapsed(event) if self.schedule.accept(event.id, event.generation) => {
                 let become_ = match (self.on_reached)(&mut self.inner)? {
                     Step::Continue => Step::Continue,
                     Step::Goto(never) => match never {},
@@ -85,9 +109,9 @@ where
                 };
                 Ok(Actions::just(become_))
             }
-            AtEvent::Elapsed(event) => match B::Event::time_reached(event) {
+            DeadlineEvent::Elapsed(event) => match B::Event::time_reached(event) {
                 Some(inner) => {
-                    let actions = self.inner.step(inner).await?;
+                    let actions = self.inner.transition(inner)?;
                     if matches!(actions.become_, Step::Stop(_)) {
                         self.schedule.cancel();
                     }
@@ -95,8 +119,8 @@ where
                 }
                 None => Ok(Actions::cont()),
             },
-            AtEvent::Inner(event) => {
-                let actions = self.inner.step(event).await?;
+            DeadlineEvent::Inner(event) => {
+                let actions = self.inner.transition(event)?;
                 if matches!(actions.become_, Step::Stop(_)) {
                     self.schedule.cancel();
                 }
@@ -106,11 +130,14 @@ where
     }
 }
 
-impl<B: Behavior> At<B> {
+impl<B: Behavior> Deadline<B> {
     fn wrap(
         actions: Actions<B::Addr, B::Ph, B::Sends, B::Birth>,
         own: ServiceSends<ScheduleAt>,
-    ) -> AtActions<B> {
-        actions.map_sends(|inner| SendProduct::new(inner, own))
+    ) -> DeadlineActions<B> {
+        actions.map_sends(|behavior| DeadlineSends {
+            behavior,
+            schedules: own,
+        })
     }
 }

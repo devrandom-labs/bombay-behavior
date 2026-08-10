@@ -1,7 +1,7 @@
 //! Independent session protocol validation campaign (Resource Pool, 2026-08-08).
 //!
 //! Determine whether Bombay Behavior needs phase-indexed protocol typing
-//! beyond the existing `Fsm`. This file validates the earlier Supervised
+//! beyond the existing `Machine`. This file validates the earlier Supervised
 //! Worker result with a distinct protocol; it is not part of the broad
 //! architecture audit. It records every derivation attempt, its compiler
 //! evidence, and exact obstructions.
@@ -45,7 +45,7 @@
 // All types in this file are illustrative for the derivation campaign.
 #![allow(dead_code)]
 
-use behavior::{Behavior, Exit, Fsm, MailAddr, Move, Never, Recipient, Step, User, UserEvent};
+use behavior::{Behavior, Exit, Machine, MailAddr, Move, Never, Recipient, Step, User, UserEvent};
 
 // ============================================================================
 // Phase and message vocabulary
@@ -125,11 +125,11 @@ impl PoolState {
 }
 
 // ============================================================================
-// Attempt 1: Existing Fsm (FSM-01)
+// Attempt 1: Existing Machine (FSM-01)
 // ============================================================================
 
-fn pool_fsm() -> Fsm<MailAddr, PoolState, PoolMsg, Phase, Never> {
-    Fsm::new(PoolState::new(), Phase::Initializing, pool_transition)
+fn pool_fsm() -> Machine<MailAddr, PoolState, PoolMsg, Phase, Never> {
+    Machine::new(PoolState::new(), Phase::Initializing, pool_transition)
 }
 
 fn pool_transition(
@@ -181,7 +181,7 @@ mod fsm_baseline {
             spec: "echo".into(),
         });
         let event = User::user(MailAddr(0), cfg_msg);
-        let result = fsm.step(event).await;
+        let result = fsm.transition(event);
         assert!(result.is_ok());
         assert_eq!(fsm.phase(), Phase::Serving);
     }
@@ -193,7 +193,7 @@ mod fsm_baseline {
             reply_to: Recipient::global(MailAddr(1)),
         });
         let event = User::user(MailAddr(0), req_msg);
-        let result = fsm.step(event).await;
+        let result = fsm.transition(event);
         assert!(result.is_ok());
         // Message is deferred (held for replay after phase change).
         assert_eq!(fsm.held(), 1);
@@ -207,7 +207,7 @@ mod fsm_baseline {
         let req_msg = PoolMsg::Acquire(Acquire {
             reply_to: Recipient::global(MailAddr(2)),
         });
-        let _ = fsm.step(User::user(MailAddr(0), req_msg)).await;
+        let _ = fsm.transition(User::user(MailAddr(0), req_msg));
         assert_eq!(fsm.held(), 1);
 
         // Transition to Serving
@@ -215,7 +215,7 @@ mod fsm_baseline {
             size: 4,
             spec: "echo".into(),
         });
-        let _ = fsm.step(User::user(MailAddr(0), cfg_msg)).await;
+        let _ = fsm.transition(User::user(MailAddr(0), cfg_msg));
         assert_eq!(fsm.phase(), Phase::Serving);
 
         // Deferred Acquire was replayed (drain-on-change drains hold queue)
@@ -373,7 +373,7 @@ trait PhaseProtocol {
     type Sends;
     type Error;
 
-    fn step(
+    fn transition(
         &mut self,
         event: Self::Event,
     ) -> Result<(Step<Self::Phase, Exit<MailAddr>>, Self::Sends), Self::Error>;
@@ -451,12 +451,12 @@ mod compile_fail_probes {
 #[cfg(test)]
 mod composition_checks {
     use super::*;
-    use behavior::{Watching, stop_on_abnormal_death};
+    use behavior::{Watch, stop_on_abnormal_death};
 
-    /// Verify FSM composes with Watching.
+    /// Verify FSM composes with Watch.
     #[tokio::test]
     async fn fsm_composes_with_watching() {
         let fsm = pool_fsm();
-        let _watching = Watching::new(fsm, MailAddr(1), stop_on_abnormal_death);
+        let _watching = Watch::new(fsm, MailAddr(1), stop_on_abnormal_death);
     }
 }

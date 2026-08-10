@@ -1,13 +1,15 @@
 //! A minimal mailbox driver for complete user-lane behaviors.
 
 use communication::{Consumer, Received};
+use core::ops::ControlFlow;
 
-use super::behavior::Behavior;
-use super::user_event::UserEvent;
 use crate::Exit;
 use crate::actor::{Address, BirthMode, Create};
-use crate::transition::SendAlgebra;
-use crate::verdict::{Never, Step};
+use crate::calculus::ActionReducer;
+use crate::calculus::Behavior;
+use crate::calculus::UserEvent;
+use crate::effects::SendAlgebra;
+use crate::next::Never;
 
 pub struct Transcript<A: Address, Sends, New> {
     pub sends: Sends,
@@ -41,32 +43,26 @@ where
     Br: BirthMode,
     B: Behavior<Addr = A, Ph = Never, Sends = Sends, Birth = Br>,
 {
-    let mut sends = Sends::empty();
-    let mut creates = Vec::new();
-    let initial = behavior.init().await?;
-    sends = sends.combine(initial.sends);
-    creates.extend(initial.creates);
-    match initial.become_ {
-        Step::Continue => {}
-        Step::Goto(never) => match never {},
-        Step::Stop(exit) => {
-            return Ok(Transcript::new(sends, creates, exit));
-        }
+    let mut fold = ActionReducer::new();
+    if let ControlFlow::Break(exit) = fold.push(behavior.init()?) {
+        let effects = fold.finish(Some(exit)).effects;
+        return Ok(Transcript::new(effects.sends, effects.creates, exit));
     }
     while let Some(received) = mailbox.recv().await {
         let Received::User(message) = received else {
             continue;
         };
-        let actions = behavior.step(B::Event::user(from, message)).await?;
-        sends = sends.combine(actions.sends);
-        creates.extend(actions.creates);
-        match actions.become_ {
-            Step::Continue => {}
-            Step::Goto(never) => match never {},
-            Step::Stop(exit) => {
-                return Ok(Transcript::new(sends, creates, exit));
-            }
+        if let ControlFlow::Break(exit) =
+            fold.push(behavior.transition(B::Event::user(from, message))?)
+        {
+            let effects = fold.finish(Some(exit)).effects;
+            return Ok(Transcript::new(effects.sends, effects.creates, exit));
         }
     }
-    Ok(Transcript::new(sends, creates, Exit::Collected))
+    let effects = fold.finish(None).effects;
+    Ok(Transcript::new(
+        effects.sends,
+        effects.creates,
+        Exit::Collected,
+    ))
 }

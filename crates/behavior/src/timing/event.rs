@@ -16,6 +16,12 @@ impl<E: UserEvent> TimeEvent for TimedEvent<E> {
     }
 }
 
+impl<E: UserEvent> crate::EventInput<TimerElapsed> for TimedEvent<E> {
+    fn inject(event: TimerElapsed) -> Self {
+        Self::Elapsed(event)
+    }
+}
+
 impl<E: UserEvent> UserEvent for TimedEvent<E> {
     type Addr = E::Addr;
     type Message = E::Message;

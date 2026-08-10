@@ -11,7 +11,7 @@ use std::time::Duration;
 use tokio::time::Instant;
 
 use crate::behavior::Address;
-use crate::fold::UserEvent;
+use crate::calculus::UserEvent;
 use crate::{Crash, CreationKind, Exit};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -289,6 +289,18 @@ impl<N> CreationResolved<N> {
     #[must_use]
     pub const fn installed(nonce: N, kind: CreationKind<N>) -> Self {
         Self::new(nonce, kind, Ok(()))
+    }
+
+    /// A successfully committed ordinary birth.
+    #[must_use]
+    pub const fn birth(nonce: N) -> Self {
+        Self::installed(nonce, CreationKind::Birth)
+    }
+
+    /// A successfully committed replacement incarnation.
+    #[must_use]
+    pub const fn replacement_incarnation(nonce: N, replaces: N) -> Self {
+        Self::installed(nonce, CreationKind::ReplacementIncarnation { replaces })
     }
 
     #[must_use]

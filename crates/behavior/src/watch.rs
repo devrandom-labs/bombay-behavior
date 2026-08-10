@@ -1,8 +1,7 @@
 //! Pure peer-observation composition over an ordinary monitor actor protocol.
 
 use crate::behavior::{
-    Actions, Address, Become, Behavior, BirthMode, SendAlgebra, SendProduct, ServiceSends, User,
-    UserEvent,
+    Actions, Address, Become, Behavior, BirthMode, SendAlgebra, ServiceSends, User, UserEvent,
 };
 use crate::protocol::forward::forward_event_lane;
 use crate::protocol::{ObservePeer, PeerEvent, PeerStopped};
@@ -17,6 +16,12 @@ pub enum WatchEvent<E: UserEvent> {
 impl<E: UserEvent> PeerEvent for WatchEvent<E> {
     fn peer_stopped(event: PeerStopped<E::Addr>) -> Option<Self> {
         Some(Self::PeerStopped(event))
+    }
+}
+
+impl<E: UserEvent> crate::EventInput<PeerStopped<E::Addr>> for WatchEvent<E> {
+    fn inject(event: PeerStopped<E::Addr>) -> Self {
+        Self::PeerStopped(event)
     }
 }
 
@@ -74,19 +79,40 @@ pub type LinkReaction<B> = fn(
     &Result<Exit<<B as Behavior>::Addr>, Crash>,
 ) -> Result<Become<<B as Behavior>::Addr>, <B as Behavior>::Error>;
 
-pub type WatchSends<B> =
-    SendProduct<<B as Behavior>::Sends, ServiceSends<ObservePeer<<B as Behavior>::Addr>>>;
+/// Named effect lanes added by [`Watch`].
+pub struct WatchSends<A: Address, Sends> {
+    pub behavior: Sends,
+    pub observations: ServiceSends<ObservePeer<A>>,
+}
 
-pub type WatchActions<B> =
-    Actions<<B as Behavior>::Addr, <B as Behavior>::Ph, WatchSends<B>, <B as Behavior>::Birth>;
+impl<A: Address, Sends: SendAlgebra> SendAlgebra for WatchSends<A, Sends> {
+    fn empty() -> Self {
+        Self {
+            behavior: Sends::empty(),
+            observations: ServiceSends::empty(),
+        }
+    }
 
-pub struct Watching<B: Behavior> {
+    fn append(&mut self, other: Self) {
+        self.behavior.append(other.behavior);
+        self.observations.append(other.observations);
+    }
+}
+
+pub type WatchActions<B> = Actions<
+    <B as Behavior>::Addr,
+    <B as Behavior>::Ph,
+    WatchSends<<B as Behavior>::Addr, <B as Behavior>::Sends>,
+    <B as Behavior>::Birth,
+>;
+
+pub struct Watch<B: Behavior> {
     inner: B,
     peer: B::Addr,
     on_stopped: LinkReaction<B>,
 }
 
-impl<B: Behavior> Watching<B> {
+impl<B: Behavior> Watch<B> {
     #[must_use]
     pub fn new(inner: B, peer: B::Addr, on_stopped: LinkReaction<B>) -> Self {
         Self {
@@ -102,29 +128,28 @@ impl<B: Behavior> Watching<B> {
     }
 }
 
-impl<B, A, Ph, Sends, Br> Behavior for Watching<B>
+impl<B, A, Ph, Sends, Br> Behavior for Watch<B>
 where
-    A: Address + Send,
+    A: Address,
     Sends: SendAlgebra,
     Br: BirthMode,
-    B: Behavior<Addr = A, Ph = Ph, Sends = Sends, Birth = Br> + Send,
-    B::Event: PeerEvent + Send,
-    B::Msg: Send,
+    B: Behavior<Addr = A, Ph = Ph, Sends = Sends, Birth = Br>,
+    B::Event: PeerEvent,
 {
     type Addr = A;
     type Msg = B::Msg;
     type Event = WatchEvent<B::Event>;
-    type Sends = SendProduct<Sends, ServiceSends<ObservePeer<A>>>;
+    type Sends = WatchSends<A, Sends>;
     type Ph = Ph;
     type Error = B::Error;
     type Birth = Br;
 
-    async fn init(&mut self) -> Result<WatchActions<B>, B::Error> {
-        let actions = self.inner.init().await?;
+    fn init(&mut self) -> Result<WatchActions<B>, B::Error> {
+        let actions = self.inner.init()?;
         Ok(Self::wrap(actions, ServiceSends::one(self.peer.into())))
     }
 
-    async fn step(&mut self, event: Self::Event) -> Result<WatchActions<B>, B::Error> {
+    fn transition(&mut self, event: Self::Event) -> Result<WatchActions<B>, B::Error> {
         match event {
             WatchEvent::PeerStopped(event) if event.peer == self.peer => {
                 let become_ = match (self.on_stopped)(&mut self.inner, event.peer, &event.outcome)?
@@ -138,26 +163,27 @@ where
             WatchEvent::PeerStopped(event) => match B::Event::peer_stopped(event) {
                 Some(inner) => self
                     .inner
-                    .step(inner)
-                    .await
+                    .transition(inner)
                     .map(|actions| Self::wrap(actions, ServiceSends::empty())),
                 None => Ok(Actions::cont()),
             },
             WatchEvent::Inner(event) => self
                 .inner
-                .step(event)
-                .await
+                .transition(event)
                 .map(|actions| Self::wrap(actions, ServiceSends::empty())),
         }
     }
 }
 
-impl<B: Behavior> Watching<B> {
+impl<B: Behavior> Watch<B> {
     fn wrap(
         actions: Actions<B::Addr, B::Ph, B::Sends, B::Birth>,
         own: ServiceSends<ObservePeer<B::Addr>>,
     ) -> WatchActions<B> {
-        actions.map_sends(|inner| SendProduct::new(inner, own))
+        actions.map_sends(|behavior| WatchSends {
+            behavior,
+            observations: own,
+        })
     }
 }
 

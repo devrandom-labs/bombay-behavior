@@ -12,10 +12,10 @@ use super::proxy::Proxy;
 use crate::behavior::{
     Actions, Address, Behavior, Births, Create, Delivery, Recipient, SendAlgebra, ServiceSends,
 };
+use crate::next::{Never, Step};
 use crate::protocol::{
     ChildEvent, CreationEvent, ObserveChild, WorkerCreationEvent, WorkerStopped,
 };
-use crate::verdict::{Never, Step};
 use crate::{Become, Exit, SupervisionFailureReason};
 
 /// Named effect lanes emitted by a supervised behavior.
@@ -59,7 +59,7 @@ enum ReplacementDecision<A: Address, C: Behavior<Addr = A>> {
     Failed(SupervisionFailure<A>),
 }
 
-pub struct Supervising<B: Behavior, C: Behavior<Ph = Never, Addr = B::Addr>> {
+pub struct Supervisor<B: Behavior, C: Behavior<Ph = Never, Addr = B::Addr>> {
     inner: B,
     fleet: Fleet<<B::Addr as Address>::Nonce>,
     build: fn(usize) -> C,
@@ -69,13 +69,13 @@ pub struct Supervising<B: Behavior, C: Behavior<Ph = Never, Addr = B::Addr>> {
     on_failure: SupervisionFailureReaction<B>,
 }
 
-impl<B, C> Supervising<B, C>
+impl<B, C> Supervisor<B, C>
 where
     B: Behavior<Birth = Births<C>>,
     C: Behavior<Ph = Never, Addr = B::Addr>,
 {
-    #[allow(clippy::too_many_arguments, reason = "hidden by Spec")]
-    /// Construct the concrete supervisor behavior hidden by `Spec`.
+    #[allow(clippy::too_many_arguments, reason = "hidden by Compose")]
+    /// Construct the concrete supervisor behavior hidden by `Compose`.
     ///
     /// # Panics
     /// Panics when configured child nonces are not unique. Such a topology
@@ -239,15 +239,14 @@ where
     }
 }
 
-impl<B, C, A, Ph, Sends> Behavior for Supervising<B, C>
+impl<B, C, A, Ph, Sends> Behavior for Supervisor<B, C>
 where
-    A: Address + Send,
+    A: Address,
     Sends: SendAlgebra,
-    B: Behavior<Addr = A, Ph = Ph, Sends = Sends, Birth = Births<C>> + Send,
-    B::Event: ChildEvent + CreationEvent + WorkerCreationEvent + Send,
-    A::Nonce: From<u64> + Send,
-    B::Msg: Send,
-    C: Behavior<Ph = Never, Addr = B::Addr> + Send,
+    B: Behavior<Addr = A, Ph = Ph, Sends = Sends, Birth = Births<C>>,
+    B::Event: ChildEvent + CreationEvent + WorkerCreationEvent,
+    A::Nonce: From<u64>,
+    C: Behavior<Ph = Never, Addr = B::Addr>,
 {
     type Addr = A;
     type Msg = B::Msg;
@@ -257,8 +256,8 @@ where
     type Error = B::Error;
     type Birth = Births<Proxy<C>>;
 
-    async fn init(&mut self) -> Result<SupervisorActions<B, C>, B::Error> {
-        let actions = self.inner.init().await?;
+    fn init(&mut self) -> Result<SupervisorActions<B, C>, B::Error> {
+        let actions = self.inner.init()?;
         let mut actions = self.wrap(actions);
         actions.creates.extend(
             self.fleet
@@ -273,7 +272,7 @@ where
         Ok(actions)
     }
 
-    async fn step(&mut self, event: Self::Event) -> Result<SupervisorActions<B, C>, B::Error> {
+    fn transition(&mut self, event: Self::Event) -> Result<SupervisorActions<B, C>, B::Error> {
         match event {
             SupervisionEvent::WorkerStopped(event) => {
                 let decision = self.replacement_decision(&event);
@@ -307,7 +306,7 @@ where
             SupervisionEvent::CreationResolved(event) => {
                 self.fleet.resolve_creation(event.nonce, event.result);
                 if let Some(event) = B::Event::creation_resolved(event) {
-                    let actions = self.inner.step(event).await?;
+                    let actions = self.inner.transition(event)?;
                     Ok(self.wrap(actions))
                 } else {
                     Ok(Actions::cont())
@@ -318,14 +317,14 @@ where
                 // liveness. The typed result remains distinct from a proxy
                 // terminal observation.
                 if let Some(event) = B::Event::worker_creation_resolved(event) {
-                    let actions = self.inner.step(event).await?;
+                    let actions = self.inner.transition(event)?;
                     Ok(self.wrap(actions))
                 } else {
                     Ok(Actions::cont())
                 }
             }
             SupervisionEvent::Inner(event) => {
-                let actions = self.inner.step(event).await?;
+                let actions = self.inner.transition(event)?;
                 Ok(self.wrap(actions))
             }
         }

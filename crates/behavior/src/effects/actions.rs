@@ -3,7 +3,7 @@
 use super::sending::SendAlgebra;
 use crate::Exit;
 use crate::actor::{Address, BirthMode, Create};
-use crate::verdict::{Never, Step};
+use crate::next::{Never, Step};
 
 pub type Become<A, Ph = Never> = Step<Ph, Exit<A>>;
 

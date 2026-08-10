@@ -5,8 +5,8 @@
 //! across any number of release events.
 
 use behavior::{
-    Acted, Actions, Behavior, Delivery, Exit, MailAddr, Never, Recipient, Spec, StashRoute, State,
-    Step, User, UserEvent,
+    Acted, Actions, Behavior, Compose, Delivery, Exit, Handler, MailAddr, Never, Recipient,
+    StashRoute, Step, User, UserEvent,
 };
 use behavior_testkit::Mailbox;
 use proptest::collection::vec;
@@ -18,11 +18,11 @@ struct Recorder {
     seen: Vec<(MailAddr, u8)>,
 }
 
-impl State<u8, behavior::NoBirths, Never> for Recorder {
+impl Handler<u8, behavior::NoBirths, Never> for Recorder {
     type Addr = MailAddr;
     type Msg = u8;
 
-    fn handle(
+    fn receive(
         &mut self,
         from: MailAddr,
         message: u8,
@@ -60,14 +60,14 @@ proptest! {
         messages in vec((any::<u64>(), any::<u8>()), 0..256),
         releases in vec(any::<u8>(), 0..32),
     ) {
-        let runtime = Builder::new_current_thread().enable_all().build().unwrap();
-        let mut behavior = Spec::new(Recorder::default()).stash(route);
+        let _runtime = Builder::new_current_thread().enable_all().build().unwrap();
+        let mut behavior = Compose::new(Recorder::default()).stash(route);
 
         for (from, message) in &messages {
-            runtime.block_on(behavior.step(UserEvent::user(MailAddr(*from), *message))).unwrap();
+            behavior.transition(UserEvent::user(MailAddr(*from), *message)).unwrap();
         }
         for _ in &releases {
-            runtime.block_on(behavior.step(UserEvent::user(MailAddr(99), 7))).unwrap();
+            behavior.transition(UserEvent::user(MailAddr(99), 7)).unwrap();
         }
 
         // Independent filter model: delivered == route-admitted messages in
@@ -107,10 +107,8 @@ async fn stash_filter_holds_through_the_driver() {
         User::user(MailAddr(4), 4), // Stash
     ];
     let mut mailbox = Mailbox::new(events);
-    let mut behavior = Spec::new(Recorder::default()).stash(route);
-    let trace = behavior_testkit::drive(&mut behavior, &mut mailbox)
-        .await
-        .unwrap();
+    let mut behavior = Compose::new(Recorder::default()).stash(route);
+    let trace = behavior_testkit::drive(&mut behavior, &mut mailbox).unwrap();
 
     assert_eq!(
         behavior.behavior().inner().state().seen,
@@ -149,7 +147,7 @@ fn stash_exhaustive_sequences_match_the_filter_model() {
     while length <= MAX_LENGTH {
         let total = ALPHABET.pow(u32::try_from(length).unwrap());
         for code in 0..total {
-            let mut behavior = Spec::new(Recorder::default()).stash(residue_route);
+            let mut behavior = Compose::new(Recorder::default()).stash(residue_route);
             let mut residues = Vec::with_capacity(length);
             let mut rest = code;
             for _ in 0..length {
@@ -159,7 +157,7 @@ fn stash_exhaustive_sequences_match_the_filter_model() {
             for (index, residue) in residues.iter().enumerate() {
                 let message = u8::try_from(index * ALPHABET + *residue).unwrap();
                 runtime
-                    .block_on(behavior.step(UserEvent::user(MailAddr(1), message)))
+                    .block_on(async { behavior.transition(UserEvent::user(MailAddr(1), message)) })
                     .unwrap();
             }
             // Expected: route-admitted messages (Release/Deliver) in arrival
@@ -194,11 +192,11 @@ struct StopRecorder {
     seen: Vec<(MailAddr, u8)>,
 }
 
-impl State<u8, behavior::NoBirths, Never> for StopRecorder {
+impl Handler<u8, behavior::NoBirths, Never> for StopRecorder {
     type Addr = MailAddr;
     type Msg = u8;
 
-    fn handle(
+    fn receive(
         &mut self,
         from: MailAddr,
         message: u8,
@@ -222,7 +220,7 @@ impl State<u8, behavior::NoBirths, Never> for StopRecorder {
 #[test]
 fn stash_filter_with_a_stopping_inner_matches_the_prefix_model() {
     let runtime = Builder::new_current_thread().enable_all().build().unwrap();
-    let mut behavior = Spec::new(StopRecorder::default()).stash(route);
+    let mut behavior = Compose::new(StopRecorder::default()).stash(route);
     let mut stopped = false;
     for (index, message) in (0_u8..40).enumerate() {
         if stopped {
@@ -230,7 +228,7 @@ fn stash_filter_with_a_stopping_inner_matches_the_prefix_model() {
         }
         let from = MailAddr(u64::try_from(index).unwrap());
         let actions = runtime
-            .block_on(behavior.step(UserEvent::user(from, message)))
+            .block_on(async { behavior.transition(UserEvent::user(from, message)) })
             .unwrap();
         if matches!(actions.become_, Step::Stop(Exit::Normal)) {
             stopped = true;
