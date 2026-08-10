@@ -10,6 +10,7 @@ use crate::next::{Never, Step};
 use crate::protocol::{
     ObserveChild, ObserveCreation, ReportWorkerCreationResolved, ReportWorkerStopped,
 };
+use crate::{Own, SendInput};
 
 /// The concrete, statically dispatched effect lanes emitted by a [`Proxy`].
 pub struct ProxySends<A: Address, M> {
@@ -45,6 +46,36 @@ impl<A: Address, M> SendAlgebra for ProxySends<A, M> {
             .append(other.creation_observations);
         self.stopped_reports.append(other.stopped_reports);
         self.creation_reports.append(other.creation_reports);
+    }
+}
+
+impl<A: Address, M> SendInput<Delivery<A, M>, Own> for ProxySends<A, M> {
+    fn emit(&mut self, input: Delivery<A, M>) {
+        self.deliveries.push(input);
+    }
+}
+
+impl<A: Address, M> SendInput<ObserveChild<A::Nonce>, Own> for ProxySends<A, M> {
+    fn emit(&mut self, input: ObserveChild<A::Nonce>) {
+        self.child_observations.send(input);
+    }
+}
+
+impl<A: Address, M> SendInput<ObserveCreation<A::Nonce>, Own> for ProxySends<A, M> {
+    fn emit(&mut self, input: ObserveCreation<A::Nonce>) {
+        self.creation_observations.send(input);
+    }
+}
+
+impl<A: Address, M> SendInput<ReportWorkerStopped<A>, Own> for ProxySends<A, M> {
+    fn emit(&mut self, input: ReportWorkerStopped<A>) {
+        self.stopped_reports.send(input);
+    }
+}
+
+impl<A: Address, M> SendInput<ReportWorkerCreationResolved<A::Nonce>, Own> for ProxySends<A, M> {
+    fn emit(&mut self, input: ReportWorkerCreationResolved<A::Nonce>) {
+        self.creation_reports.send(input);
     }
 }
 

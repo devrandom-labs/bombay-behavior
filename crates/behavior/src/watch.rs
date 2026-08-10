@@ -6,6 +6,7 @@ use crate::behavior::{
 use crate::protocol::forward::forward_event_lane;
 use crate::protocol::{ObservePeer, PeerEvent, PeerStopped};
 use crate::{Crash, Exit, Step};
+use crate::{Inner, Own, SendInput};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WatchEvent<E: UserEvent> {
@@ -96,6 +97,21 @@ impl<A: Address, Sends: SendAlgebra> SendAlgebra for WatchSends<A, Sends> {
     fn append(&mut self, other: Self) {
         self.behavior.append(other.behavior);
         self.observations.append(other.observations);
+    }
+}
+
+impl<A: Address, Sends> SendInput<ObservePeer<A>, Own> for WatchSends<A, Sends> {
+    fn emit(&mut self, input: ObservePeer<A>) {
+        self.observations.send(input);
+    }
+}
+
+impl<A: Address, Sends, Input, Path> SendInput<Input, Inner<Path>> for WatchSends<A, Sends>
+where
+    Sends: SendInput<Input, Path>,
+{
+    fn emit(&mut self, input: Input) {
+        <Sends as SendInput<Input, Path>>::emit(&mut self.behavior, input);
     }
 }
 

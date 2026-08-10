@@ -1,5 +1,22 @@
 //! Typed send products and their accumulation contract.
 
+use core::marker::PhantomData;
+
+/// The lane owned by the current named send product.
+pub enum Own {}
+
+/// A lane reached through the product's composed behavior sends.
+pub struct Inner<Path>(PhantomData<fn(Path)>);
+
+/// Static evidence that a send product contains one request lane.
+///
+/// Implementations append the input exactly once to that lane and leave every
+/// other lane unchanged. `Path` distinguishes repeated request types without
+/// erasing their position or choosing a lane at runtime.
+pub trait SendInput<Input, Path> {
+    fn emit(&mut self, input: Input);
+}
+
 /// A product of independently typed send protocols.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SendProduct<L, R> {
@@ -35,6 +52,25 @@ pub trait SendAlgebra: Sized {
         self.append(other);
         self
     }
+
+    /// Append one request to its statically selected semantic lane.
+    fn send<Input, Path>(&mut self, input: Input)
+    where
+        Self: SendInput<Input, Path>,
+    {
+        <Self as SendInput<Input, Path>>::emit(self, input);
+    }
+
+    /// Build a send product containing one request in its selected lane.
+    #[must_use]
+    fn sending<Input, Path>(input: Input) -> Self
+    where
+        Self: SendInput<Input, Path>,
+    {
+        let mut sends = Self::empty();
+        sends.send(input);
+        sends
+    }
 }
 
 impl<T> SendAlgebra for Vec<T> {
@@ -44,6 +80,12 @@ impl<T> SendAlgebra for Vec<T> {
 
     fn append(&mut self, mut other: Self) {
         Vec::append(self, &mut other);
+    }
+}
+
+impl<T> SendInput<T, Own> for Vec<T> {
+    fn emit(&mut self, input: T) {
+        self.push(input);
     }
 }
 
@@ -132,6 +174,12 @@ impl<M> SendAlgebra for ServiceSends<M> {
     }
     fn append(&mut self, mut other: Self) {
         self.requests.append(&mut other.requests);
+    }
+}
+
+impl<M> SendInput<M, Own> for ServiceSends<M> {
+    fn emit(&mut self, input: M) {
+        self.requests.push(input);
     }
 }
 

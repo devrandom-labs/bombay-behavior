@@ -17,6 +17,7 @@ use crate::protocol::{
     ChildEvent, CreationEvent, ObserveChild, WorkerCreationEvent, WorkerStopped,
 };
 use crate::{Become, Exit, SupervisionFailureReason};
+use crate::{Inner, Own, SendInput};
 
 /// Named effect lanes emitted by a supervised behavior.
 pub struct SupervisorSends<A: Address, Sends, C: Behavior<Addr = A>> {
@@ -43,6 +44,37 @@ where
         self.behavior.append(other.behavior);
         self.child_observations.append(other.child_observations);
         self.replacement_commands.extend(other.replacement_commands);
+    }
+}
+
+impl<A, Sends, C> SendInput<ObserveChild<A::Nonce>, Own> for SupervisorSends<A, Sends, C>
+where
+    A: Address,
+    C: Behavior<Addr = A>,
+{
+    fn emit(&mut self, input: ObserveChild<A::Nonce>) {
+        self.child_observations.send(input);
+    }
+}
+
+impl<A, Sends, C> SendInput<Delivery<A, ProxyCommand<C>>, Own> for SupervisorSends<A, Sends, C>
+where
+    A: Address,
+    C: Behavior<Addr = A>,
+{
+    fn emit(&mut self, input: Delivery<A, ProxyCommand<C>>) {
+        self.replacement_commands.push(input);
+    }
+}
+
+impl<A, Sends, C, Input, Path> SendInput<Input, Inner<Path>> for SupervisorSends<A, Sends, C>
+where
+    A: Address,
+    C: Behavior<Addr = A>,
+    Sends: SendInput<Input, Path>,
+{
+    fn emit(&mut self, input: Input) {
+        <Sends as SendInput<Input, Path>>::emit(&mut self.behavior, input);
     }
 }
 

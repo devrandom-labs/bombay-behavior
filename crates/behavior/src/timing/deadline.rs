@@ -8,6 +8,7 @@ use super::event::TimedEvent;
 use crate::Step;
 use crate::behavior::{Actions, Address, Become, Behavior, BirthMode, SendAlgebra, ServiceSends};
 use crate::protocol::{ScheduleAt, TimeEvent, TimerId};
+use crate::{Inner, Own, SendInput};
 
 pub type DeadlineEvent<E> = TimedEvent<E>;
 
@@ -31,6 +32,21 @@ impl<Sends: SendAlgebra> SendAlgebra for DeadlineSends<Sends> {
     fn append(&mut self, other: Self) {
         self.behavior.append(other.behavior);
         self.schedules.append(other.schedules);
+    }
+}
+
+impl<Sends> SendInput<ScheduleAt, Own> for DeadlineSends<Sends> {
+    fn emit(&mut self, input: ScheduleAt) {
+        self.schedules.send(input);
+    }
+}
+
+impl<Sends, Input, Path> SendInput<Input, Inner<Path>> for DeadlineSends<Sends>
+where
+    Sends: SendInput<Input, Path>,
+{
+    fn emit(&mut self, input: Input) {
+        <Sends as SendInput<Input, Path>>::emit(&mut self.behavior, input);
     }
 }
 

@@ -1,10 +1,11 @@
 use behavior::{
     Address, ChildEvent, ChildStopped, CreationEvent, CreationKind, CreationResolved,
-    DeadlineEvent, Exit, MailAddr, Never, ObserveChild, PeerEvent, PeerStopped, ProxyEvent,
-    ProxySends, ReceiveTimeoutEvent, ReceiveTimeoutSends, Recipient, ScheduleAfter, SendAlgebra,
-    ServiceSends, ShutdownEvent, ShutdownProtocol, ShutdownRequested, SupervisionEvent, TimeEvent,
-    TimerElapsed, TimerGeneration, TimerId, User, UserEvent, WatchEvent, WorkerCreationEvent,
-    WorkerCreationResolved, WorkerEvent, WorkerStopped,
+    DeadlineEvent, DeadlineSends, Exit, MailAddr, Never, ObserveChild, PeerEvent, PeerStopped,
+    ProxyEvent, ProxySends, ReceiveTimeoutEvent, ReceiveTimeoutSends, Recipient, ScheduleAfter,
+    ScheduleAt, SendAlgebra, ServiceSends, ShutdownEvent, ShutdownProtocol, ShutdownRequested,
+    SupervisionEvent, TimeEvent, TimerElapsed, TimerGeneration, TimerId, User, UserEvent,
+    WatchEvent, WatchSends, WorkerCreationEvent, WorkerCreationResolved, WorkerEvent,
+    WorkerStopped,
 };
 use std::time::Duration;
 use tokio::time::Instant;
@@ -258,26 +259,27 @@ fn addressing_operations_preserve_their_exact_routes() {
 #[test]
 fn named_wrapper_products_append_their_owned_lanes() {
     let mut timeout = ReceiveTimeoutSends::<Vec<u8>>::empty();
-    timeout.append(ReceiveTimeoutSends {
-        behavior: vec![3],
-        schedules: ServiceSends::one(ScheduleAfter::new(
-            TimerId(4),
-            TimerGeneration(5),
-            Duration::from_secs(6),
-        )),
-    });
-    assert_eq!(timeout.behavior, [3]);
+    timeout.append(ReceiveTimeoutSends::sending(ScheduleAfter::new(
+        TimerId(4),
+        TimerGeneration(5),
+        Duration::from_secs(6),
+    )));
     assert_eq!(timeout.schedules.len(), 1);
 
     let mut proxy = ProxySends::<MailAddr, u8>::empty();
-    proxy.append(ProxySends {
-        deliveries: Vec::new(),
-        child_observations: ServiceSends::one(ObserveChild::new(7)),
-        creation_observations: ServiceSends::empty(),
-        stopped_reports: ServiceSends::empty(),
-        creation_reports: ServiceSends::empty(),
-    });
+    proxy.append(ProxySends::sending(ObserveChild::new(7)));
     assert_eq!(proxy.child_observations[0].nonce, 7);
+}
+
+#[test]
+fn typed_send_accumulation_finds_a_composed_inner_lane() {
+    let at = Instant::now();
+    let mut sends = WatchSends::<MailAddr, DeadlineSends<Vec<u8>>>::empty();
+    sends.send(ScheduleAt::new(TimerId(8), TimerGeneration(9), at));
+
+    assert!(sends.observations.is_empty());
+    assert!(sends.behavior.behavior.is_empty());
+    assert_eq!(sends.behavior.schedules[0].at, at);
 }
 
 #[test]

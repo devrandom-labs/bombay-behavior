@@ -10,6 +10,7 @@ use crate::behavior::{
     Actions, Address, Behavior, BirthMode, SendAlgebra, ServiceSends, UserEvent,
 };
 use crate::protocol::{ScheduleAfter, TimeEvent, TimerId};
+use crate::{Inner, Own, SendInput};
 
 pub type ReceiveTimeoutEvent<E> = TimedEvent<E>;
 
@@ -56,6 +57,21 @@ impl<Sends: SendAlgebra> SendAlgebra for ReceiveTimeoutSends<Sends> {
     fn append(&mut self, other: Self) {
         self.behavior.append(other.behavior);
         self.schedules.append(other.schedules);
+    }
+}
+
+impl<Sends> SendInput<ScheduleAfter, Own> for ReceiveTimeoutSends<Sends> {
+    fn emit(&mut self, input: ScheduleAfter) {
+        self.schedules.send(input);
+    }
+}
+
+impl<Sends, Input, Path> SendInput<Input, Inner<Path>> for ReceiveTimeoutSends<Sends>
+where
+    Sends: SendInput<Input, Path>,
+{
+    fn emit(&mut self, input: Input) {
+        <Sends as SendInput<Input, Path>>::emit(&mut self.behavior, input);
     }
 }
 

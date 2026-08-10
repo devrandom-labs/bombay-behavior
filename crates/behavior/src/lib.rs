@@ -32,7 +32,9 @@ pub use calculus::{
     User, UserEvent, fold_events,
 };
 pub use compose::Compose;
-pub use effects::{Acted, Actions, Become, SendAlgebra, SendProduct, ServiceSends};
+pub use effects::{
+    Acted, Actions, Become, Inner, Own, SendAlgebra, SendInput, SendProduct, ServiceSends,
+};
 pub use machine::{Machine, Move};
 pub use mailbox::{Transcript, run};
 pub use next::{Never, Step};

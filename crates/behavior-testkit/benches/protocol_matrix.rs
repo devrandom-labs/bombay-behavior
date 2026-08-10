@@ -2,12 +2,10 @@ use std::hint::black_box;
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, Behavior, Compose, Crash, DeadlineEvent, Delivery, Handler, Machine, MailAddr,
-    Move, Never, Proxy, ProxyCommand, ProxyEvent, Pure, RestartPolicy, Route, StashRoute, Step,
-    Strategy, SupervisionEvent, Supervisor, User, UserEvent, WatchEvent, WorkerStopped,
-    stop_on_abnormal_death,
+    Acted, Actions, Behavior, Compose, Crash, Delivery, Handler, Machine, MailAddr, Move, Never,
+    Proxy, ProxyCommand, Pure, RestartPolicy, Route, StashRoute, Step, Strategy, Supervisor,
+    WorkerStopped, stop_on_abnormal_death,
 };
-use tokio::runtime::Builder;
 use tokio::time::Instant;
 
 const ITERATIONS: usize = 250_000;
@@ -52,7 +50,6 @@ impl Handler<Never, behavior::Births<Pure<Sink>>, Never> for FleetParent {
 }
 
 fn main() {
-    let runtime = Builder::new_current_thread().enable_all().build().unwrap();
     let base_rate = measure_base();
     let proxy_rate = measure_proxy();
     let score = base_rate.min(proxy_rate);
@@ -73,21 +70,17 @@ fn main() {
     println!("METRIC nested_tps={nested_rate:.0}");
 }
 
-async fn measure_base() -> f64 {
+fn measure_base() -> f64 {
     let mut behavior = Pure::new(Sink(0));
     let started = Instant::now();
     for index in 0..ITERATIONS {
         let message = u64::try_from(index).unwrap();
-        black_box(
-            behavior
-                .transition(User::user(MailAddr(0), black_box(message)))
-                .unwrap(),
-        );
+        black_box(behavior.receive(MailAddr(0), black_box(message)).unwrap());
     }
     rate(ITERATIONS, started.elapsed())
 }
 
-async fn measure_proxy() -> f64 {
+fn measure_proxy() -> f64 {
     let mut proxy = Proxy::new(child(0));
     proxy.init().unwrap();
     let started = Instant::now();
@@ -97,14 +90,7 @@ async fn measure_proxy() -> f64 {
         } else {
             ProxyCommand::Forward(u64::try_from(index).unwrap())
         };
-        black_box(
-            proxy
-                .transition(ProxyEvent::Inner(User::user(
-                    MailAddr(0),
-                    black_box(command),
-                )))
-                .unwrap(),
-        );
+        black_box(proxy.receive(MailAddr(0), black_box(command)).unwrap());
     }
     rate(ITERATIONS, started.elapsed())
 }
@@ -113,7 +99,7 @@ async fn measure_proxy() -> f64 {
 /// OneForOne/Permanent with an unbounded budget: every event scans the
 /// slot list (linear in fleet size) and appends one restart stamp
 /// (linear memory growth in emitted events).
-async fn measure_supervise(fleet: usize) -> f64 {
+fn measure_supervise(fleet: usize) -> f64 {
     let mut behavior = Supervisor::new(
         Pure::new(FleetParent),
         |index| u64::try_from(index).unwrap(),
@@ -130,12 +116,12 @@ async fn measure_supervise(fleet: usize) -> f64 {
     for index in 0..SHORT_ITERATIONS {
         let nonce = u64::try_from(index % fleet).unwrap();
         let actions = behavior
-            .transition(SupervisionEvent::WorkerStopped(WorkerStopped {
+            .on(WorkerStopped {
                 proxy: nonce,
                 worker: nonce,
                 outcome: Err(Crash::Failed),
                 at,
-            }))
+            })
             .unwrap();
         // Asserting stress workload: every death yields exactly one
         // replacement routed to the dead slot (OneForOne, Permanent,
@@ -156,7 +142,7 @@ async fn measure_supervise(fleet: usize) -> f64 {
 
 /// FSM with alternating phase changes: every other event drains (empty) held
 /// queue. Probes deferral machinery overhead on the hot path.
-async fn measure_fsm() -> f64 {
+fn measure_fsm() -> f64 {
     #[derive(Clone, Copy, PartialEq)]
     enum Phase {
         A,
@@ -172,7 +158,7 @@ async fn measure_fsm() -> f64 {
     for index in 0..SHORT_ITERATIONS {
         black_box(
             machine
-                .transition(User::user(MailAddr(0), u64::try_from(index).unwrap()))
+                .receive(MailAddr(0), u64::try_from(index).unwrap())
                 .unwrap(),
         );
     }
@@ -181,13 +167,13 @@ async fn measure_fsm() -> f64 {
 
 /// Stash passthrough (every message routes Deliver): buffer machinery on
 /// the hot path without holding.
-async fn measure_stash() -> f64 {
+fn measure_stash() -> f64 {
     let mut behavior = Compose::new(Sink(0)).stash(|_| StashRoute::Deliver);
     let started = Instant::now();
     for index in 0..SHORT_ITERATIONS {
         black_box(
             behavior
-                .transition(UserEvent::user(MailAddr(0), u64::try_from(index).unwrap()))
+                .receive(MailAddr(0), u64::try_from(index).unwrap())
                 .unwrap(),
         );
     }
@@ -197,7 +183,7 @@ async fn measure_stash() -> f64 {
 /// Three-layer wrapper (Deadline over Watch over Stash) folding user messages:
 /// probes event-routing and send-product wrap cost of the deepest common
 /// stack.
-async fn measure_nested() -> f64 {
+fn measure_nested() -> f64 {
     let due = Instant::now() + Duration::from_mins(1);
     let mut behavior = Compose::new(Sink(0))
         .stash(|_| StashRoute::Deliver)
@@ -206,11 +192,11 @@ async fn measure_nested() -> f64 {
     behavior.init().unwrap();
     let started = Instant::now();
     for index in 0..SHORT_ITERATIONS {
-        let event = DeadlineEvent::Inner(WatchEvent::Inner(User::user(
-            MailAddr(0),
-            u64::try_from(index).unwrap(),
-        )));
-        black_box(behavior.transition(event).unwrap());
+        black_box(
+            behavior
+                .receive(MailAddr(0), u64::try_from(index).unwrap())
+                .unwrap(),
+        );
     }
     rate(SHORT_ITERATIONS, started.elapsed())
 }
