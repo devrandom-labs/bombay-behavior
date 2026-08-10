@@ -116,4 +116,17 @@ mod tests {
         assert!(lease.accept(generation));
         assert!(!lease.accept(generation));
     }
+
+    #[test]
+    fn cancelling_a_schedule_removes_its_request_and_prevents_acceptance() {
+        let now = Instant::now();
+        let mut schedule = OneShotSchedule::new(TimerId(4), Some(now));
+        assert_eq!(
+            schedule.request(),
+            Some((TimerId(4), TimerGeneration(0), now))
+        );
+        schedule.cancel();
+        assert_eq!(schedule.request(), None);
+        assert!(!schedule.accept(TimerId(4), TimerGeneration(0)));
+    }
 }

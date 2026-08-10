@@ -1,10 +1,12 @@
 use behavior::{
     Address, ChildEvent, ChildStopped, CreationEvent, CreationKind, CreationResolved,
-    DeadlineEvent, Exit, MailAddr, Never, PeerEvent, PeerStopped, ReceiveTimeoutEvent, Recipient,
+    DeadlineEvent, Exit, MailAddr, Never, ObserveChild, PeerEvent, PeerStopped, ProxyEvent,
+    ProxySends, ReceiveTimeoutEvent, ReceiveTimeoutSends, Recipient, ScheduleAfter, SendAlgebra,
     ServiceSends, ShutdownEvent, ShutdownProtocol, ShutdownRequested, SupervisionEvent, TimeEvent,
     TimerElapsed, TimerGeneration, TimerId, User, UserEvent, WatchEvent, WorkerCreationEvent,
     WorkerCreationResolved, WorkerEvent, WorkerStopped,
 };
+use std::time::Duration;
 use tokio::time::Instant;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -111,6 +113,15 @@ fn worker_creation() -> WorkerCreationResolved<u64> {
 
 #[test]
 fn composed_protocols_forward_every_supported_environment_lane() {
+    assert!(matches!(
+        ProxyEvent::<Lane>::creation_resolved(creation()),
+        Some(ProxyEvent::CreationResolved(_))
+    ));
+    assert!(matches!(
+        ProxyEvent::<Lane>::child_stopped(child()),
+        Some(ProxyEvent::ChildStopped(_))
+    ));
+
     assert!(matches!(
         DeadlineEvent::<Lane>::peer_stopped(peer()),
         Some(DeadlineEvent::Inner(Lane::Peer(_)))
@@ -228,6 +239,7 @@ fn composed_protocols_forward_every_supported_environment_lane() {
 #[test]
 fn addressing_operations_preserve_their_exact_routes() {
     let parent = MailAddr(0xF0);
+    assert_eq!(u64::from(parent), 0xF0);
     assert_eq!(
         parent.birth(2),
         MailAddr(0xF0 ^ 2_u64.wrapping_mul(0x9E37_79B9_7F4A_7C15))
@@ -241,6 +253,31 @@ fn addressing_operations_preserve_their_exact_routes() {
     assert_ne!(one, other);
     assert_ne!(one, child);
     assert_eq!(format!("{one:?}"), "Global(MailAddr(1))");
+}
+
+#[test]
+fn named_wrapper_products_append_their_owned_lanes() {
+    let mut timeout = ReceiveTimeoutSends::<Vec<u8>>::empty();
+    timeout.append(ReceiveTimeoutSends {
+        behavior: vec![3],
+        schedules: ServiceSends::one(ScheduleAfter::new(
+            TimerId(4),
+            TimerGeneration(5),
+            Duration::from_secs(6),
+        )),
+    });
+    assert_eq!(timeout.behavior, [3]);
+    assert_eq!(timeout.schedules.len(), 1);
+
+    let mut proxy = ProxySends::<MailAddr, u8>::empty();
+    proxy.append(ProxySends {
+        deliveries: Vec::new(),
+        child_observations: ServiceSends::one(ObserveChild::new(7)),
+        creation_observations: ServiceSends::empty(),
+        stopped_reports: ServiceSends::empty(),
+        creation_reports: ServiceSends::empty(),
+    });
+    assert_eq!(proxy.child_observations[0].nonce, 7);
 }
 
 #[test]

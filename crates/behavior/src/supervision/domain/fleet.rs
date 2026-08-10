@@ -179,4 +179,18 @@ mod tests {
         assert_eq!(replacements.len(), 1);
         assert_eq!(replacements[0].nonce, 7);
     }
+
+    #[test]
+    fn creation_resolution_commits_success_and_retires_rejection() {
+        let mut fleet = Fleet::configured([7, 9]).unwrap();
+        fleet.retire(7).unwrap();
+        fleet.resolve_creation(7, Ok(()));
+        assert_eq!(fleet.is_available(7), Ok(true));
+
+        fleet.resolve_creation(9, Err(CreationRejection::EnvironmentFailed));
+        assert_eq!(fleet.is_available(9), Ok(false));
+
+        fleet.resolve_creation(99, Err(CreationRejection::EnvironmentFailed));
+        assert_eq!(fleet.len(), 2);
+    }
 }
