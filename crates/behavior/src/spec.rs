@@ -6,12 +6,12 @@ use std::time::Duration;
 use tokio::time::Instant;
 
 use crate::behavior::{Address, Behavior, BirthMode, Births};
-use crate::deadlined::{At, AtReaction};
 use crate::protocol::TimerId;
-use crate::receive_timeout::{ReceiveTimeout, ReceiveTimeoutReaction};
 use crate::shutdown::{FinalizeOnShutdown, ShutdownReaction, StopOnShutdown};
 use crate::stashing::{StashRoute, Stashing};
 use crate::supervision::{RestartPolicy, Strategy, Supervising, SupervisionFailureReaction};
+use crate::time::{At, AtReaction};
+use crate::time::{ReceiveTimeout, ReceiveTimeoutReaction};
 use crate::verdict::Never;
 use crate::watching::{LinkReaction, Watching};
 use crate::{Actions, Base, Fsm, Move, SendAlgebra, State};

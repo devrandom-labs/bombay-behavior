@@ -12,18 +12,18 @@ use crate::protocol::{
 use crate::{Crash, Exit, Step};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum WatchEvent<E, A: Address> {
+pub enum WatchEvent<E: UserEvent> {
     Inner(E),
-    PeerStopped(PeerStopped<A>),
+    PeerStopped(PeerStopped<E::Addr>),
 }
 
-impl<E, A: Address> PeerEvent<A> for WatchEvent<E, A> {
-    fn peer_stopped(event: PeerStopped<A>) -> Option<Self> {
+impl<E: UserEvent> PeerEvent for WatchEvent<E> {
+    fn peer_stopped(event: PeerStopped<E::Addr>) -> Option<Self> {
         Some(Self::PeerStopped(event))
     }
 }
 
-impl<E: UserEvent, A: Address> UserEvent for WatchEvent<E, A> {
+impl<E: UserEvent> UserEvent for WatchEvent<E> {
     type Addr = E::Addr;
     type Message = E::Message;
 
@@ -39,37 +39,39 @@ impl<E: UserEvent, A: Address> UserEvent for WatchEvent<E, A> {
     }
 }
 
-impl<E: TimeEvent, A: Address> TimeEvent for WatchEvent<E, A> {
+impl<E: TimeEvent> TimeEvent for WatchEvent<E> {
     fn time_reached(event: TimerElapsed) -> Option<Self> {
         E::time_reached(event).map(Self::Inner)
     }
 }
 
-impl<E: ChildEvent<A>, A: Address> ChildEvent<A> for WatchEvent<E, A> {
-    fn child_stopped(event: ChildStopped<A>) -> Option<Self> {
+impl<E: ChildEvent> ChildEvent for WatchEvent<E> {
+    fn child_stopped(event: ChildStopped<E::Addr>) -> Option<Self> {
         E::child_stopped(event).map(Self::Inner)
     }
 }
 
-impl<E: WorkerEvent<A>, A: Address> WorkerEvent<A> for WatchEvent<E, A> {
-    fn worker_stopped(event: WorkerStopped<A>) -> Option<Self> {
+impl<E: WorkerEvent> WorkerEvent for WatchEvent<E> {
+    fn worker_stopped(event: WorkerStopped<E::Addr>) -> Option<Self> {
         E::worker_stopped(event).map(Self::Inner)
     }
 }
 
-impl<E: CreationEvent<A>, A: Address> CreationEvent<A> for WatchEvent<E, A> {
-    fn creation_resolved(event: CreationResolved<A>) -> Option<Self> {
+impl<E: CreationEvent> CreationEvent for WatchEvent<E> {
+    fn creation_resolved(event: CreationResolved<<E::Addr as Address>::Nonce>) -> Option<Self> {
         E::creation_resolved(event).map(Self::Inner)
     }
 }
 
-impl<E: WorkerCreationEvent<A>, A: Address> WorkerCreationEvent<A> for WatchEvent<E, A> {
-    fn worker_creation_resolved(event: WorkerCreationResolved<A>) -> Option<Self> {
+impl<E: WorkerCreationEvent> WorkerCreationEvent for WatchEvent<E> {
+    fn worker_creation_resolved(
+        event: WorkerCreationResolved<<E::Addr as Address>::Nonce>,
+    ) -> Option<Self> {
         E::worker_creation_resolved(event).map(Self::Inner)
     }
 }
 
-impl<E: ShutdownEvent, A: Address> ShutdownEvent for WatchEvent<E, A> {
+impl<E: ShutdownEvent> ShutdownEvent for WatchEvent<E> {
     fn shutdown_requested(event: ShutdownRequested) -> Option<Self> {
         E::shutdown_requested(event).map(Self::Inner)
     }
@@ -115,12 +117,12 @@ where
     Sends: SendAlgebra,
     Br: BirthMode,
     B: Behavior<Addr = A, Ph = Ph, Sends = Sends, Birth = Br> + Send,
-    B::Event: PeerEvent<B::Addr> + Send,
+    B::Event: PeerEvent + Send,
     B::Msg: Send,
 {
     type Addr = A;
     type Msg = B::Msg;
-    type Event = WatchEvent<B::Event, B::Addr>;
+    type Event = WatchEvent<B::Event>;
     type Sends = SendProduct<Sends, ServiceSends<ObservePeer<A>>>;
     type Ph = Ph;
     type Error = B::Error;

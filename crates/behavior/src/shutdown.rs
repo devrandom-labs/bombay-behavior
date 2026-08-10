@@ -20,7 +20,7 @@ pub enum ShutdownProtocol<E> {
     ShutdownRequested(ShutdownRequested),
 }
 
-impl<E> ShutdownEvent for ShutdownProtocol<E> {
+impl<E: UserEvent> ShutdownEvent for ShutdownProtocol<E> {
     fn shutdown_requested(event: ShutdownRequested) -> Option<Self> {
         Some(Self::ShutdownRequested(event))
     }
@@ -48,32 +48,34 @@ impl<E: TimeEvent> TimeEvent for ShutdownProtocol<E> {
     }
 }
 
-impl<E: PeerEvent<A>, A: Address> PeerEvent<A> for ShutdownProtocol<E> {
-    fn peer_stopped(event: PeerStopped<A>) -> Option<Self> {
+impl<E: PeerEvent> PeerEvent for ShutdownProtocol<E> {
+    fn peer_stopped(event: PeerStopped<E::Addr>) -> Option<Self> {
         E::peer_stopped(event).map(Self::Inner)
     }
 }
 
-impl<E: ChildEvent<A>, A: Address> ChildEvent<A> for ShutdownProtocol<E> {
-    fn child_stopped(event: ChildStopped<A>) -> Option<Self> {
+impl<E: ChildEvent> ChildEvent for ShutdownProtocol<E> {
+    fn child_stopped(event: ChildStopped<E::Addr>) -> Option<Self> {
         E::child_stopped(event).map(Self::Inner)
     }
 }
 
-impl<E: WorkerEvent<A>, A: Address> WorkerEvent<A> for ShutdownProtocol<E> {
-    fn worker_stopped(event: WorkerStopped<A>) -> Option<Self> {
+impl<E: WorkerEvent> WorkerEvent for ShutdownProtocol<E> {
+    fn worker_stopped(event: WorkerStopped<E::Addr>) -> Option<Self> {
         E::worker_stopped(event).map(Self::Inner)
     }
 }
 
-impl<E: CreationEvent<A>, A: Address> CreationEvent<A> for ShutdownProtocol<E> {
-    fn creation_resolved(event: CreationResolved<A>) -> Option<Self> {
+impl<E: CreationEvent> CreationEvent for ShutdownProtocol<E> {
+    fn creation_resolved(event: CreationResolved<<E::Addr as Address>::Nonce>) -> Option<Self> {
         E::creation_resolved(event).map(Self::Inner)
     }
 }
 
-impl<E: WorkerCreationEvent<A>, A: Address> WorkerCreationEvent<A> for ShutdownProtocol<E> {
-    fn worker_creation_resolved(event: WorkerCreationResolved<A>) -> Option<Self> {
+impl<E: WorkerCreationEvent> WorkerCreationEvent for ShutdownProtocol<E> {
+    fn worker_creation_resolved(
+        event: WorkerCreationResolved<<E::Addr as Address>::Nonce>,
+    ) -> Option<Self> {
         E::worker_creation_resolved(event).map(Self::Inner)
     }
 }

@@ -8,39 +8,41 @@ use crate::protocol::{
 use crate::{Address, Behavior, User, UserEvent};
 
 #[derive(Clone, PartialEq, Eq)]
-pub enum SupervisionEvent<E, A: Address> {
+pub enum SupervisionEvent<E: UserEvent> {
     Inner(E),
-    ChildStopped(ChildStopped<A>),
-    WorkerStopped(WorkerStopped<A>),
-    CreationResolved(CreationResolved<A>),
-    WorkerCreationResolved(WorkerCreationResolved<A>),
+    ChildStopped(ChildStopped<E::Addr>),
+    WorkerStopped(WorkerStopped<E::Addr>),
+    CreationResolved(CreationResolved<<E::Addr as Address>::Nonce>),
+    WorkerCreationResolved(WorkerCreationResolved<<E::Addr as Address>::Nonce>),
 }
 
-impl<E, A: Address> CreationEvent<A> for SupervisionEvent<E, A> {
-    fn creation_resolved(event: CreationResolved<A>) -> Option<Self> {
+impl<E: UserEvent> CreationEvent for SupervisionEvent<E> {
+    fn creation_resolved(event: CreationResolved<<E::Addr as Address>::Nonce>) -> Option<Self> {
         Some(Self::CreationResolved(event))
     }
 }
 
-impl<E, A: Address> WorkerCreationEvent<A> for SupervisionEvent<E, A> {
-    fn worker_creation_resolved(event: WorkerCreationResolved<A>) -> Option<Self> {
+impl<E: UserEvent> WorkerCreationEvent for SupervisionEvent<E> {
+    fn worker_creation_resolved(
+        event: WorkerCreationResolved<<E::Addr as Address>::Nonce>,
+    ) -> Option<Self> {
         Some(Self::WorkerCreationResolved(event))
     }
 }
 
-impl<E, A: Address> ChildEvent<A> for SupervisionEvent<E, A> {
-    fn child_stopped(event: ChildStopped<A>) -> Option<Self> {
+impl<E: UserEvent> ChildEvent for SupervisionEvent<E> {
+    fn child_stopped(event: ChildStopped<E::Addr>) -> Option<Self> {
         Some(Self::ChildStopped(event))
     }
 }
 
-impl<E, A: Address> WorkerEvent<A> for SupervisionEvent<E, A> {
-    fn worker_stopped(event: WorkerStopped<A>) -> Option<Self> {
+impl<E: UserEvent> WorkerEvent for SupervisionEvent<E> {
+    fn worker_stopped(event: WorkerStopped<E::Addr>) -> Option<Self> {
         Some(Self::WorkerStopped(event))
     }
 }
 
-impl<E: UserEvent, A: Address> UserEvent for SupervisionEvent<E, A> {
+impl<E: UserEvent> UserEvent for SupervisionEvent<E> {
     type Addr = E::Addr;
     type Message = E::Message;
 
@@ -59,19 +61,19 @@ impl<E: UserEvent, A: Address> UserEvent for SupervisionEvent<E, A> {
     }
 }
 
-impl<E: TimeEvent, A: Address> TimeEvent for SupervisionEvent<E, A> {
+impl<E: TimeEvent> TimeEvent for SupervisionEvent<E> {
     fn time_reached(event: TimerElapsed) -> Option<Self> {
         E::time_reached(event).map(Self::Inner)
     }
 }
 
-impl<E: PeerEvent<A>, A: Address> PeerEvent<A> for SupervisionEvent<E, A> {
-    fn peer_stopped(event: PeerStopped<A>) -> Option<Self> {
+impl<E: PeerEvent> PeerEvent for SupervisionEvent<E> {
+    fn peer_stopped(event: PeerStopped<E::Addr>) -> Option<Self> {
         E::peer_stopped(event).map(Self::Inner)
     }
 }
 
-impl<E: ShutdownEvent, A: Address> ShutdownEvent for SupervisionEvent<E, A> {
+impl<E: ShutdownEvent> ShutdownEvent for SupervisionEvent<E> {
     fn shutdown_requested(event: ShutdownRequested) -> Option<Self> {
         E::shutdown_requested(event).map(Self::Inner)
     }

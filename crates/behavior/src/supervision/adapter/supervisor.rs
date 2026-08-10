@@ -2,14 +2,13 @@
 
 use std::time::Duration;
 
-use super::fleet::Fleet;
-use super::policy::{
+use super::super::domain::{Fleet, RestartBudget};
+use super::super::policy::{
     RestartPolicy, Strategy, SupervisionFailure, SupervisionFailureReaction,
     retire_on_supervision_failure,
 };
-use super::protocol::{ProxyCommand, SupervisionEvent};
+use super::super::protocol::{ProxyCommand, SupervisionEvent};
 use super::proxy::Proxy;
-use super::restart_budget::RestartBudget;
 use crate::behavior::{
     Actions, Address, Behavior, Births, Create, Delivery, Recipient, SendAlgebra, ServiceSends,
 };
@@ -22,23 +21,8 @@ use crate::{Become, Exit, SupervisionFailureReason};
 /// Named effect lanes emitted by a supervised behavior.
 pub struct SupervisorSends<A: Address, Sends, C: Behavior<Addr = A>> {
     pub behavior: Sends,
-    pub child_observations: ServiceSends<ObserveChild<A>>,
+    pub child_observations: ServiceSends<ObserveChild<A::Nonce>>,
     pub replacement_commands: Vec<Delivery<A, ProxyCommand<C>>>,
-}
-
-impl<A: Address, Sends, C: Behavior<Addr = A>> SupervisorSends<A, Sends, C> {
-    #[must_use]
-    pub fn new(
-        behavior: Sends,
-        child_observations: ServiceSends<ObserveChild<A>>,
-        replacement_commands: Vec<Delivery<A, ProxyCommand<C>>>,
-    ) -> Self {
-        Self {
-            behavior,
-            child_observations,
-            replacement_commands,
-        }
-    }
 }
 
 impl<A, Sends, C> SendAlgebra for SupervisorSends<A, Sends, C>
@@ -48,7 +32,11 @@ where
     C: Behavior<Addr = A>,
 {
     fn empty() -> Self {
-        Self::new(Sends::empty(), ServiceSends::empty(), Vec::new())
+        Self {
+            behavior: Sends::empty(),
+            child_observations: ServiceSends::empty(),
+            replacement_commands: Vec::new(),
+        }
     }
 
     fn append(&mut self, other: Self) {
@@ -234,11 +222,13 @@ where
                 .unwrap_or_else(|_| panic!("a child birth nonce must be fresh"));
         }
         Actions::new(
-            SupervisorSends::new(
-                actions.sends,
-                ServiceSends::new(born.into_iter().map(ObserveChild::new).collect()),
-                Vec::new(),
-            ),
+            SupervisorSends {
+                behavior: actions.sends,
+                child_observations: ServiceSends::new(
+                    born.into_iter().map(ObserveChild::new).collect(),
+                ),
+                replacement_commands: Vec::new(),
+            },
             actions
                 .creates
                 .into_iter()
@@ -254,14 +244,14 @@ where
     A: Address + Send,
     Sends: SendAlgebra,
     B: Behavior<Addr = A, Ph = Ph, Sends = Sends, Birth = Births<C>> + Send,
-    B::Event: ChildEvent<B::Addr> + CreationEvent<B::Addr> + WorkerCreationEvent<B::Addr> + Send,
+    B::Event: ChildEvent + CreationEvent + WorkerCreationEvent + Send,
     A::Nonce: From<u64> + Send,
     B::Msg: Send,
     C: Behavior<Ph = Never, Addr = B::Addr> + Send,
 {
     type Addr = A;
     type Msg = B::Msg;
-    type Event = SupervisionEvent<B::Event, B::Addr>;
+    type Event = SupervisionEvent<B::Event>;
     type Sends = SupervisorSends<A, Sends, C>;
     type Ph = Ph;
     type Error = B::Error;
@@ -290,11 +280,11 @@ where
                 match decision {
                     ReplacementDecision::Retire => Ok(Actions::cont()),
                     ReplacementDecision::Replace(replacements) => Ok(Actions::new(
-                        SupervisorSends::new(
-                            B::Sends::empty(),
-                            ServiceSends::empty(),
-                            replacements,
-                        ),
+                        SupervisorSends {
+                            behavior: B::Sends::empty(),
+                            child_observations: ServiceSends::empty(),
+                            replacement_commands: replacements,
+                        },
                         Vec::new(),
                         Step::Continue,
                     )),

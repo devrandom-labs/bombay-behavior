@@ -1,6 +1,6 @@
 //! Supervised stable-child topology and lifecycle.
 
-use super::Strategy;
+use super::super::Strategy;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SlotState {

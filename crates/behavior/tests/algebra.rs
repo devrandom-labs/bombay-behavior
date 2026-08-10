@@ -25,12 +25,12 @@ fn ordinary_and_service_send_algebras_have_disjoint_static_dispatch() {
     trait RouteSends<A: behavior::Address> {}
 
     impl<A: behavior::Address, M> RouteSends<A> for Vec<Delivery<A, M>> {}
-    impl<A: behavior::Address> RouteSends<A> for ServiceSends<ObserveChild<A>> {}
+    impl<A: behavior::Address> RouteSends<A> for ServiceSends<ObserveChild<A::Nonce>> {}
 
     fn requires_route_sends<A: behavior::Address, S: RouteSends<A>>() {}
 
-    requires_route_sends::<MailAddr, Vec<Delivery<MailAddr, ObserveChild<MailAddr>>>>();
-    requires_route_sends::<MailAddr, ServiceSends<ObserveChild<MailAddr>>>();
+    requires_route_sends::<MailAddr, Vec<Delivery<MailAddr, ObserveChild<u64>>>>();
+    requires_route_sends::<MailAddr, ServiceSends<ObserveChild<u64>>>();
 }
 
 fn requires_births<B, C>(_behavior: &B)
@@ -42,7 +42,7 @@ where
 fn requires_worker_events<B>(_behavior: &B)
 where
     B: Behavior,
-    B::Event: WorkerEvent<B::Addr>,
+    B::Event: WorkerEvent,
 {
 }
 

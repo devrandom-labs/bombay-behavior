@@ -8,11 +8,10 @@
 extern crate self as behavior;
 
 mod actor;
-mod deadlined;
 mod fold;
 mod stashing;
 mod supervision;
-mod timing;
+mod time;
 mod transition;
 mod verdict;
 mod watching;
@@ -20,7 +19,6 @@ mod watching;
 // `Fsm` is a thin state-machine helper built from the core stashing primitive.
 mod fsm;
 mod protocol;
-mod receive_timeout;
 mod shutdown;
 mod spec;
 
@@ -28,7 +26,6 @@ pub use actor::{
     Address, BirthMode, Births, Create, CreationKind, Delivery, MailAddr, NoBirths, Recipient,
     Route,
 };
-pub use deadlined::{At, AtActions, AtEvent, AtReaction, AtSends};
 pub use fold::{Base, Behavior, BehaviorActed, FnState, State, Transcript, User, UserEvent, run};
 pub use fsm::{Fsm, Move};
 pub use protocol::{
@@ -37,10 +34,6 @@ pub use protocol::{
     ReportWorkerStopped, ScheduleAfter, ScheduleAt, ShutdownEvent, ShutdownRequested, TimeEvent,
     TimerElapsed, TimerGeneration, TimerId, WorkerCreationEvent, WorkerCreationResolved,
     WorkerEvent, WorkerStopped,
-};
-pub use receive_timeout::{
-    ReceiveTimeout, ReceiveTimeoutActions, ReceiveTimeoutError, ReceiveTimeoutEvent,
-    ReceiveTimeoutReaction, ReceiveTimeoutSends,
 };
 pub use shutdown::{FinalizeOnShutdown, ShutdownProtocol, ShutdownReaction, StopOnShutdown};
 pub use spec::Spec;
@@ -51,6 +44,10 @@ pub use supervision::{
     ProxySends, RestartPolicy, Strategy, Supervising, SupervisionEvent, SupervisionFailure,
     SupervisionFailureReaction, SupervisorActions, SupervisorSends, restart_all, restart_one,
     restart_rest, retire_on_supervision_failure, stop_on_supervision_failure,
+};
+pub use time::{
+    At, AtActions, AtEvent, AtReaction, AtSends, ReceiveTimeout, ReceiveTimeoutActions,
+    ReceiveTimeoutError, ReceiveTimeoutEvent, ReceiveTimeoutReaction, ReceiveTimeoutSends,
 };
 pub use transition::{Acted, Actions, Become, SendAlgebra, SendProduct, ServiceSends};
 pub use verdict::{Never, Step};

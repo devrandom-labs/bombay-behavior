@@ -9,6 +9,7 @@ use std::time::Duration;
 use tokio::time::Instant;
 
 use crate::behavior::Address;
+use crate::fold::UserEvent;
 use crate::{Crash, CreationKind, Exit};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -109,7 +110,7 @@ impl From<(TimerId, TimerGeneration)> for TimerElapsed {
     }
 }
 
-pub trait TimeEvent: Sized {
+pub trait TimeEvent: UserEvent {
     fn time_reached(event: TimerElapsed) -> Option<Self>;
 }
 
@@ -144,8 +145,8 @@ impl<A: Address> PeerStopped<A> {
     }
 }
 
-pub trait PeerEvent<A: Address>: Sized {
-    fn peer_stopped(event: PeerStopped<A>) -> Option<Self>;
+pub trait PeerEvent: UserEvent {
+    fn peer_stopped(event: PeerStopped<Self::Addr>) -> Option<Self>;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -163,13 +164,13 @@ impl<A: Address> ChildStopped<A> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ObserveChild<A: Address> {
-    pub nonce: A::Nonce,
+pub struct ObserveChild<N> {
+    pub nonce: N,
 }
 
-impl<A: Address> ObserveChild<A> {
+impl<N> ObserveChild<N> {
     #[must_use]
-    pub const fn new(nonce: A::Nonce) -> Self {
+    pub const fn new(nonce: N) -> Self {
         Self { nonce }
     }
 }
@@ -233,12 +234,12 @@ impl<A: Address> From<(A::Nonce, ReportWorkerStopped<A>)> for WorkerStopped<A> {
     }
 }
 
-pub trait ChildEvent<A: Address>: Sized {
-    fn child_stopped(event: ChildStopped<A>) -> Option<Self>;
+pub trait ChildEvent: UserEvent {
+    fn child_stopped(event: ChildStopped<Self::Addr>) -> Option<Self>;
 }
 
-pub trait WorkerEvent<A: Address>: Sized {
-    fn worker_stopped(event: WorkerStopped<A>) -> Option<Self>;
+pub trait WorkerEvent: UserEvent {
+    fn worker_stopped(event: WorkerStopped<Self::Addr>) -> Option<Self>;
 }
 
 /// Why a staged fresh creation was not committed by an interpreter.
@@ -263,17 +264,17 @@ pub enum CreationRejection {
 /// provenance supplied by Behavior; an interpreter must never infer it from
 /// address reuse or creation order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct CreationResolved<A: Address> {
-    pub nonce: A::Nonce,
-    pub kind: CreationKind<A::Nonce>,
+pub struct CreationResolved<N> {
+    pub nonce: N,
+    pub kind: CreationKind<N>,
     pub result: Result<(), CreationRejection>,
 }
 
-impl<A: Address> CreationResolved<A> {
+impl<N> CreationResolved<N> {
     #[must_use]
     pub const fn new(
-        nonce: A::Nonce,
-        kind: CreationKind<A::Nonce>,
+        nonce: N,
+        kind: CreationKind<N>,
         result: Result<(), CreationRejection>,
     ) -> Self {
         Self {
@@ -284,16 +285,12 @@ impl<A: Address> CreationResolved<A> {
     }
 
     #[must_use]
-    pub const fn installed(nonce: A::Nonce, kind: CreationKind<A::Nonce>) -> Self {
+    pub const fn installed(nonce: N, kind: CreationKind<N>) -> Self {
         Self::new(nonce, kind, Ok(()))
     }
 
     #[must_use]
-    pub const fn rejected(
-        nonce: A::Nonce,
-        kind: CreationKind<A::Nonce>,
-        rejection: CreationRejection,
-    ) -> Self {
+    pub const fn rejected(nonce: N, kind: CreationKind<N>, rejection: CreationRejection) -> Self {
         Self::new(nonce, kind, Err(rejection))
     }
 }
@@ -301,35 +298,35 @@ impl<A: Address> CreationResolved<A> {
 /// Ask the local interpreter to return the committed result of the same-action
 /// creation at `nonce` through the behavior's [`CreationEvent`] lane.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ObserveCreation<A: Address> {
-    pub nonce: A::Nonce,
+pub struct ObserveCreation<N> {
+    pub nonce: N,
 }
 
-impl<A: Address> ObserveCreation<A> {
+impl<N> ObserveCreation<N> {
     #[must_use]
-    pub const fn new(nonce: A::Nonce) -> Self {
+    pub const fn new(nonce: N) -> Self {
         Self { nonce }
     }
 }
 
-pub trait CreationEvent<A: Address>: Sized {
-    fn creation_resolved(event: CreationResolved<A>) -> Option<Self>;
+pub trait CreationEvent: UserEvent {
+    fn creation_resolved(event: CreationResolved<<Self::Addr as Address>::Nonce>) -> Option<Self>;
 }
 
 /// Ask a proxy's interpreter to report a worker creation result to its parent.
 /// The interpreter supplies the emitting proxy's nonce.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ReportWorkerCreationResolved<A: Address> {
-    pub worker: A::Nonce,
-    pub kind: CreationKind<A::Nonce>,
+pub struct ReportWorkerCreationResolved<N> {
+    pub worker: N,
+    pub kind: CreationKind<N>,
     pub result: Result<(), CreationRejection>,
 }
 
-impl<A: Address> ReportWorkerCreationResolved<A> {
+impl<N> ReportWorkerCreationResolved<N> {
     #[must_use]
     pub const fn new(
-        worker: A::Nonce,
-        kind: CreationKind<A::Nonce>,
+        worker: N,
+        kind: CreationKind<N>,
         result: Result<(), CreationRejection>,
     ) -> Self {
         Self {
@@ -340,27 +337,27 @@ impl<A: Address> ReportWorkerCreationResolved<A> {
     }
 }
 
-impl<A: Address> From<CreationResolved<A>> for ReportWorkerCreationResolved<A> {
-    fn from(resolved: CreationResolved<A>) -> Self {
+impl<N> From<CreationResolved<N>> for ReportWorkerCreationResolved<N> {
+    fn from(resolved: CreationResolved<N>) -> Self {
         Self::new(resolved.nonce, resolved.kind, resolved.result)
     }
 }
 
 /// A worker creation result reported by a still-live supervised proxy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct WorkerCreationResolved<A: Address> {
-    pub proxy: A::Nonce,
-    pub worker: A::Nonce,
-    pub kind: CreationKind<A::Nonce>,
+pub struct WorkerCreationResolved<N> {
+    pub proxy: N,
+    pub worker: N,
+    pub kind: CreationKind<N>,
     pub result: Result<(), CreationRejection>,
 }
 
-impl<A: Address> WorkerCreationResolved<A> {
+impl<N> WorkerCreationResolved<N> {
     #[must_use]
     pub const fn new(
-        proxy: A::Nonce,
-        worker: A::Nonce,
-        kind: CreationKind<A::Nonce>,
+        proxy: N,
+        worker: N,
+        kind: CreationKind<N>,
         result: Result<(), CreationRejection>,
     ) -> Self {
         Self {
@@ -372,21 +369,23 @@ impl<A: Address> WorkerCreationResolved<A> {
     }
 }
 
-impl<A: Address> From<(A::Nonce, ReportWorkerCreationResolved<A>)> for WorkerCreationResolved<A> {
-    fn from((proxy, resolved): (A::Nonce, ReportWorkerCreationResolved<A>)) -> Self {
+impl<N> From<(N, ReportWorkerCreationResolved<N>)> for WorkerCreationResolved<N> {
+    fn from((proxy, resolved): (N, ReportWorkerCreationResolved<N>)) -> Self {
         Self::new(proxy, resolved.worker, resolved.kind, resolved.result)
     }
 }
 
-pub trait WorkerCreationEvent<A: Address>: Sized {
-    fn worker_creation_resolved(event: WorkerCreationResolved<A>) -> Option<Self>;
+pub trait WorkerCreationEvent: UserEvent {
+    fn worker_creation_resolved(
+        event: WorkerCreationResolved<<Self::Addr as Address>::Nonce>,
+    ) -> Option<Self>;
 }
 
 /// A request to finish through one serialized behavior transition.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub struct ShutdownRequested;
 
-pub trait ShutdownEvent: Sized {
+pub trait ShutdownEvent: UserEvent {
     fn shutdown_requested(event: ShutdownRequested) -> Option<Self>;
 }
 
@@ -406,7 +405,7 @@ mod tests {
         assert_eq!(worker.outcome, Err(Crash::Failed));
         assert_eq!(worker.at, at);
 
-        let creation = CreationResolved::<MailAddr>::rejected(
+        let creation = CreationResolved::<u64>::rejected(
             4,
             CreationKind::replacement_of(3),
             CreationRejection::EnvironmentFailed,

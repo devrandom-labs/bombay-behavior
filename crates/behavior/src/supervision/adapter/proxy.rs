@@ -1,7 +1,9 @@
 //! Stable proxy lifecycle and fresh worker incarnation replacement.
 
-use super::incarnation::{Incarnation, IncarnationEffects, IncarnationInput, IncarnationReport};
-use super::protocol::{ProxyCommand, SupervisionEvent};
+use super::super::domain::{
+    Incarnation, IncarnationEffects, IncarnationInput, IncarnationPhase, IncarnationReport,
+};
+use super::super::protocol::{ProxyCommand, SupervisionEvent};
 use crate::behavior::{
     Actions, Address, Behavior, Births, Create, Delivery, Recipient, SendAlgebra, ServiceSends,
     User,
@@ -14,29 +16,10 @@ use crate::verdict::{Never, Step};
 /// The concrete, statically dispatched effect lanes emitted by a [`Proxy`].
 pub struct ProxySends<A: Address, M> {
     pub deliveries: Vec<Delivery<A, M>>,
-    pub child_observations: ServiceSends<ObserveChild<A>>,
-    pub creation_observations: ServiceSends<ObserveCreation<A>>,
+    pub child_observations: ServiceSends<ObserveChild<A::Nonce>>,
+    pub creation_observations: ServiceSends<ObserveCreation<A::Nonce>>,
     pub stopped_reports: ServiceSends<ReportWorkerStopped<A>>,
-    pub creation_reports: ServiceSends<ReportWorkerCreationResolved<A>>,
-}
-
-impl<A: Address, M> ProxySends<A, M> {
-    #[must_use]
-    pub fn new(
-        deliveries: Vec<Delivery<A, M>>,
-        child_observations: ServiceSends<ObserveChild<A>>,
-        creation_observations: ServiceSends<ObserveCreation<A>>,
-        stopped_reports: ServiceSends<ReportWorkerStopped<A>>,
-        creation_reports: ServiceSends<ReportWorkerCreationResolved<A>>,
-    ) -> Self {
-        Self {
-            deliveries,
-            child_observations,
-            creation_observations,
-            stopped_reports,
-            creation_reports,
-        }
-    }
+    pub creation_reports: ServiceSends<ReportWorkerCreationResolved<A::Nonce>>,
 }
 
 pub type ProxyActions<C> = Actions<
@@ -48,13 +31,13 @@ pub type ProxyActions<C> = Actions<
 
 impl<A: Address, M> SendAlgebra for ProxySends<A, M> {
     fn empty() -> Self {
-        Self::new(
-            Vec::new(),
-            ServiceSends::empty(),
-            ServiceSends::empty(),
-            ServiceSends::empty(),
-            ServiceSends::empty(),
-        )
+        Self {
+            deliveries: Vec::new(),
+            child_observations: ServiceSends::empty(),
+            creation_observations: ServiceSends::empty(),
+            stopped_reports: ServiceSends::empty(),
+            creation_reports: ServiceSends::empty(),
+        }
     }
 
     fn append(&mut self, mut other: Self) {
@@ -86,7 +69,7 @@ impl<C: Behavior<Ph = Never>> Proxy<C> {
     }
 
     #[must_use]
-    pub const fn phase(&self) -> super::IncarnationPhase<<C::Addr as Address>::Nonce> {
+    pub const fn phase(&self) -> IncarnationPhase<<C::Addr as Address>::Nonce> {
         self.incarnation.phase()
     }
 }
@@ -156,7 +139,7 @@ where
 {
     type Addr = C::Addr;
     type Msg = ProxyCommand<C>;
-    type Event = SupervisionEvent<User<C::Addr, ProxyCommand<C>>, C::Addr>;
+    type Event = SupervisionEvent<User<C::Addr, ProxyCommand<C>>>;
     type Sends = ProxySends<C::Addr, C::Msg>;
     type Ph = Never;
     type Error = Never;

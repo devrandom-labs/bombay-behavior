@@ -132,7 +132,7 @@ fn supervisor(
     )
 }
 
-type SupervisorEvent = SupervisionEvent<User<MailAddr, u64>, MailAddr>;
+type SupervisorEvent = SupervisionEvent<User<MailAddr, u64>>;
 
 fn stopped(nonce: u64, outcome: Result<Exit<MailAddr>, Crash>, at: Instant) -> SupervisorEvent {
     SupervisionEvent::WorkerStopped(WorkerStopped {

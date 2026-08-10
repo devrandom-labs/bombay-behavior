@@ -56,28 +56,28 @@ impl<A: Address, M> TimeEvent for User<A, M> {
         None
     }
 }
-impl<A: Address, M> PeerEvent<A> for User<A, M> {
+impl<A: Address, M> PeerEvent for User<A, M> {
     fn peer_stopped(_: PeerStopped<A>) -> Option<Self> {
         None
     }
 }
-impl<A: Address, M> ChildEvent<A> for User<A, M> {
+impl<A: Address, M> ChildEvent for User<A, M> {
     fn child_stopped(_: ChildStopped<A>) -> Option<Self> {
         None
     }
 }
-impl<A: Address, M> WorkerEvent<A> for User<A, M> {
+impl<A: Address, M> WorkerEvent for User<A, M> {
     fn worker_stopped(_: WorkerStopped<A>) -> Option<Self> {
         None
     }
 }
-impl<A: Address, M> CreationEvent<A> for User<A, M> {
-    fn creation_resolved(_: CreationResolved<A>) -> Option<Self> {
+impl<A: Address, M> CreationEvent for User<A, M> {
+    fn creation_resolved(_: CreationResolved<A::Nonce>) -> Option<Self> {
         None
     }
 }
-impl<A: Address, M> WorkerCreationEvent<A> for User<A, M> {
-    fn worker_creation_resolved(_: WorkerCreationResolved<A>) -> Option<Self> {
+impl<A: Address, M> WorkerCreationEvent for User<A, M> {
+    fn worker_creation_resolved(_: WorkerCreationResolved<A::Nonce>) -> Option<Self> {
         None
     }
 }
