@@ -3,7 +3,7 @@
 use crate::{CreationKind, CreationRejection};
 
 /// The complete lifecycle state of the worker behind one stable proxy.
-pub enum IncarnationState<N, C> {
+enum IncarnationState<N, C> {
     Dormant {
         initial: C,
     },
@@ -30,59 +30,14 @@ pub enum IncarnationPhase<N> {
     Vacant { last_installed: Option<N> },
 }
 
-/// Inputs understood by the incarnation lifecycle domain.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum IncarnationInput<N, C, M> {
-    CreationResolved {
-        attempt: N,
-        kind: CreationKind<N>,
-        result: Result<(), CreationRejection>,
-    },
-    ChildStopped {
-        incarnation: N,
-    },
-    Forward(M),
-    Replace(C),
-}
-
-impl<N, C, M> IncarnationInput<N, C, M> {
-    #[must_use]
-    pub const fn creation_resolved(
-        attempt: N,
-        kind: CreationKind<N>,
-        result: Result<(), CreationRejection>,
-    ) -> Self {
-        Self::CreationResolved {
-            attempt,
-            kind,
-            result,
-        }
-    }
-
-    #[must_use]
-    pub const fn child_stopped(incarnation: N) -> Self {
-        Self::ChildStopped { incarnation }
-    }
-
-    #[must_use]
-    pub const fn forward(message: M) -> Self {
-        Self::Forward(message)
-    }
-
-    #[must_use]
-    pub const fn replace(child: C) -> Self {
-        Self::Replace(child)
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum IncarnationError {
+pub(crate) enum IncarnationError {
     AlreadyInitialized,
 }
 
 /// A fresh child creation selected by the lifecycle transition.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct IncarnationCreation<N, C> {
+pub(crate) struct IncarnationCreation<N, C> {
     pub attempt: N,
     pub kind: CreationKind<N>,
     pub child: C,
@@ -101,7 +56,7 @@ impl<N, C> IncarnationCreation<N, C> {
 
 /// A lifecycle fact to report to the stable proxy's parent.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum IncarnationReport<N> {
+pub(crate) enum IncarnationReport<N> {
     CreationResolved {
         incarnation: N,
         kind: CreationKind<N>,
@@ -134,13 +89,13 @@ impl<N> IncarnationReport<N> {
 
 /// Independent effects selected by one lifecycle transition.
 ///
-/// `creation` and `reports` are independent because accepting an exact stop
+/// `creation` and `report` are independent because accepting an exact stop
 /// can both report that stop and begin an already-queued replacement.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct IncarnationEffects<N, C, M> {
+pub(crate) struct IncarnationEffects<N, C, M> {
     pub creation: Option<IncarnationCreation<N, C>>,
     pub delivery: Option<(N, M)>,
-    pub reports: Vec<IncarnationReport<N>>,
+    pub report: Option<IncarnationReport<N>>,
 }
 
 impl<N, C, M> IncarnationEffects<N, C, M> {
@@ -148,12 +103,12 @@ impl<N, C, M> IncarnationEffects<N, C, M> {
     pub fn new(
         creation: Option<IncarnationCreation<N, C>>,
         delivery: Option<(N, M)>,
-        reports: Vec<IncarnationReport<N>>,
+        report: Option<IncarnationReport<N>>,
     ) -> Self {
         Self {
             creation,
             delivery,
-            reports,
+            report,
         }
     }
 
@@ -162,13 +117,13 @@ impl<N, C, M> IncarnationEffects<N, C, M> {
         Self {
             creation: None,
             delivery: None,
-            reports: Vec::new(),
+            report: None,
         }
     }
 }
 
 /// The typed state machine for one proxy's sequence of fresh incarnations.
-pub struct Incarnation<N, C> {
+pub(crate) struct Incarnation<N, C> {
     state: IncarnationState<N, C>,
     next_attempt: u64,
 }
@@ -217,7 +172,9 @@ impl<N: Copy + From<u64> + PartialEq, C> Incarnation<N, C> {
     /// # Errors
     /// Returns [`IncarnationError::AlreadyInitialized`] after leaving
     /// `Dormant`.
-    pub fn initialize<M>(&mut self) -> Result<IncarnationEffects<N, C, M>, IncarnationError> {
+    pub(crate) fn initialize<M>(
+        &mut self,
+    ) -> Result<IncarnationEffects<N, C, M>, IncarnationError> {
         let IncarnationState::Dormant { .. } = self.state else {
             return Err(IncarnationError::AlreadyInitialized);
         };
@@ -232,26 +189,6 @@ impl<N: Copy + From<u64> + PartialEq, C> Incarnation<N, C> {
         Ok(self.begin(initial, CreationKind::Birth))
     }
 
-    /// Apply one input and return every selected effect explicitly.
-    ///
-    /// The fold is deterministic and performs no runtime work. Inputs that do
-    /// not belong to the current exact incarnation are deliberately inert.
-    pub fn transition<M>(
-        &mut self,
-        input: IncarnationInput<N, C, M>,
-    ) -> IncarnationEffects<N, C, M> {
-        match input {
-            IncarnationInput::CreationResolved {
-                attempt,
-                kind,
-                result,
-            } => self.creation_resolved(attempt, kind, result),
-            IncarnationInput::ChildStopped { incarnation } => self.child_stopped(incarnation),
-            IncarnationInput::Forward(message) => self.forward(message),
-            IncarnationInput::Replace(child) => self.replace(child),
-        }
-    }
-
     fn begin<M>(&mut self, child: C, kind: CreationKind<N>) -> IncarnationEffects<N, C, M> {
         let attempt = N::from(self.next_attempt);
         self.next_attempt = self
@@ -262,11 +199,11 @@ impl<N: Copy + From<u64> + PartialEq, C> Incarnation<N, C> {
         IncarnationEffects::new(
             Some(IncarnationCreation::new(attempt, kind, child)),
             None,
-            Vec::new(),
+            None,
         )
     }
 
-    fn creation_resolved<M>(
+    pub(crate) fn creation_resolved<M>(
         &mut self,
         attempt: N,
         kind: CreationKind<N>,
@@ -297,11 +234,11 @@ impl<N: Copy + From<u64> + PartialEq, C> Incarnation<N, C> {
         IncarnationEffects::new(
             None,
             None,
-            vec![IncarnationReport::creation_resolved(attempt, kind, result)],
+            Some(IncarnationReport::creation_resolved(attempt, kind, result)),
         )
     }
 
-    fn child_stopped<M>(&mut self, stopped: N) -> IncarnationEffects<N, C, M> {
+    pub(crate) fn child_stopped<M>(&mut self, stopped: N) -> IncarnationEffects<N, C, M> {
         let IncarnationState::Running { incarnation, .. } = self.state else {
             return IncarnationEffects::none();
         };
@@ -329,23 +266,21 @@ impl<N: Copy + From<u64> + PartialEq, C> Incarnation<N, C> {
             ),
             None => IncarnationEffects::none(),
         };
-        effects
-            .reports
-            .push(IncarnationReport::stopped(incarnation));
+        effects.report = Some(IncarnationReport::stopped(incarnation));
         effects
     }
 
-    fn forward<M>(&self, message: M) -> IncarnationEffects<N, C, M> {
+    pub(crate) fn forward<M>(&self, message: M) -> IncarnationEffects<N, C, M> {
         let delivery = match self.state {
             IncarnationState::Running { incarnation, .. } => Some((incarnation, message)),
             IncarnationState::Dormant { .. }
             | IncarnationState::Installing { .. }
             | IncarnationState::Vacant { .. } => None,
         };
-        IncarnationEffects::new(None, delivery, Vec::new())
+        IncarnationEffects::new(None, delivery, None)
     }
 
-    fn replace<M>(&mut self, child: C) -> IncarnationEffects<N, C, M> {
+    pub(crate) fn replace<M>(&mut self, child: C) -> IncarnationEffects<N, C, M> {
         match &mut self.state {
             IncarnationState::Running {
                 queued_replacement: queued_replacement @ None,
@@ -378,18 +313,14 @@ mod tests {
     fn rejected_attempt_preserves_successful_provenance() {
         let mut machine = Incarnation::<u64, &'static str>::new("first");
         machine.initialize::<()>().unwrap();
-        machine.transition::<()>(IncarnationInput::CreationResolved {
-            attempt: 0,
-            kind: CreationKind::Birth,
-            result: Ok(()),
-        });
-        machine.transition::<()>(IncarnationInput::Replace("second"));
-        machine.transition::<()>(IncarnationInput::ChildStopped { incarnation: 0 });
-        machine.transition::<()>(IncarnationInput::CreationResolved {
-            attempt: 1,
-            kind: CreationKind::ReplacementIncarnation { replaces: 0 },
-            result: Err(CreationRejection::EnvironmentFailed),
-        });
+        machine.creation_resolved::<()>(0, CreationKind::Birth, Ok(()));
+        machine.replace::<()>("second");
+        machine.child_stopped::<()>(0);
+        machine.creation_resolved::<()>(
+            1,
+            CreationKind::ReplacementIncarnation { replaces: 0 },
+            Err(CreationRejection::EnvironmentFailed),
+        );
 
         assert_eq!(
             machine.phase(),
@@ -397,7 +328,7 @@ mod tests {
                 last_installed: Some(0)
             }
         );
-        let effects = machine.transition::<()>(IncarnationInput::Replace("third"));
+        let effects = machine.replace::<()>("third");
         let creation = effects.creation.expect("replacement begins");
         assert_eq!(creation.attempt, 2);
         assert_eq!(
@@ -410,14 +341,10 @@ mod tests {
     fn stale_inputs_are_inert() {
         let mut machine = Incarnation::<u64, ()>::new(());
         machine.initialize::<()>().unwrap();
-        let effects = machine.transition::<()>(IncarnationInput::CreationResolved {
-            attempt: 9,
-            kind: CreationKind::Birth,
-            result: Ok(()),
-        });
+        let effects = machine.creation_resolved::<()>(9, CreationKind::Birth, Ok(()));
         assert!(effects.creation.is_none());
         assert!(effects.delivery.is_none());
-        assert!(effects.reports.is_empty());
+        assert!(effects.report.is_none());
         assert_eq!(
             machine.phase(),
             IncarnationPhase::Installing {

@@ -305,8 +305,7 @@ where
                 Ok(Actions::just(self.react_to_failure(&failure)?))
             }
             SupervisionEvent::CreationResolved(event) => {
-                self.fleet
-                    .resolve_creation(event.nonce, event.result.is_ok());
+                self.fleet.resolve_creation(event.nonce, event.result);
                 if let Some(event) = B::Event::creation_resolved(event) {
                     let actions = self.inner.step(event).await?;
                     Ok(self.wrap(actions))

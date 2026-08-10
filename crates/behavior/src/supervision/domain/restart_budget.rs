@@ -7,7 +7,7 @@ use tokio::time::Instant;
 use crate::RestartDenial;
 
 /// A sliding-window restart budget.
-pub struct RestartBudget {
+pub(crate) struct RestartBudget {
     maximum: usize,
     window: Duration,
     admitted: Vec<Instant>,

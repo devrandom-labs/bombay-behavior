@@ -39,11 +39,10 @@ pub use shutdown::{FinalizeOnShutdown, ShutdownProtocol, ShutdownReaction, StopO
 pub use spec::Spec;
 pub use stashing::{StashRoute, Stashing};
 pub use supervision::{
-    Incarnation, IncarnationCreation, IncarnationEffects, IncarnationError, IncarnationInput,
-    IncarnationPhase, IncarnationReport, IncarnationState, Proxy, ProxyActions, ProxyCommand,
-    ProxySends, RestartPolicy, Strategy, Supervising, SupervisionEvent, SupervisionFailure,
-    SupervisionFailureReaction, SupervisorActions, SupervisorSends, restart_all, restart_one,
-    restart_rest, retire_on_supervision_failure, stop_on_supervision_failure,
+    IncarnationPhase, Proxy, ProxyActions, ProxyCommand, ProxySends, RestartPolicy, Strategy,
+    Supervising, SupervisionEvent, SupervisionFailure, SupervisionFailureReaction,
+    SupervisorActions, SupervisorSends, restart_all, restart_one, restart_rest,
+    retire_on_supervision_failure, stop_on_supervision_failure,
 };
 pub use time::{
     At, AtActions, AtEvent, AtReaction, AtSends, ReceiveTimeout, ReceiveTimeoutActions,

@@ -1,6 +1,7 @@
 //! Supervised stable-child topology and lifecycle.
 
 use super::super::Strategy;
+use crate::CreationRejection;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SlotState {
@@ -15,19 +16,19 @@ struct Slot<N> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FleetError<N> {
+pub(crate) enum FleetError<N> {
     UnknownChild(N),
     DuplicateChild(N),
     SequenceExhausted,
 }
 
-pub struct ReplacementCandidate<N> {
+pub(crate) struct ReplacementCandidate<N> {
     pub index: usize,
     pub nonce: N,
 }
 
 /// Ordered topology of stable supervised children.
-pub struct Fleet<N> {
+pub(crate) struct Fleet<N> {
     slots: Vec<Slot<N>>,
     configured: usize,
     next_sequence: u64,
@@ -79,12 +80,11 @@ impl<N: Copy + PartialEq> Fleet<N> {
         Ok(())
     }
 
-    pub fn resolve_creation(&mut self, nonce: N, installed: bool) {
+    pub(crate) fn resolve_creation(&mut self, nonce: N, result: Result<(), CreationRejection>) {
         if let Some(position) = self.position(nonce) {
-            self.slots[position].state = if installed {
-                SlotState::Available
-            } else {
-                SlotState::Retired
+            self.slots[position].state = match result {
+                Ok(()) => SlotState::Available,
+                Err(_) => SlotState::Retired,
             };
         }
     }

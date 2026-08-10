@@ -1,8 +1,6 @@
 //! Stable proxy lifecycle and fresh worker incarnation replacement.
 
-use super::super::domain::{
-    Incarnation, IncarnationEffects, IncarnationInput, IncarnationPhase, IncarnationReport,
-};
+use super::super::domain::{Incarnation, IncarnationEffects, IncarnationPhase, IncarnationReport};
 use super::super::protocol::{ProxyCommand, SupervisionEvent};
 use crate::behavior::{
     Actions, Address, Behavior, Births, Create, Delivery, Recipient, SendAlgebra, ServiceSends,
@@ -80,13 +78,6 @@ where
     C::Addr: Address,
     <C::Addr as Address>::Nonce: From<u64>,
 {
-    fn apply<M>(
-        &mut self,
-        input: IncarnationInput<<C::Addr as Address>::Nonce, C, M>,
-    ) -> IncarnationEffects<<C::Addr as Address>::Nonce, C, M> {
-        self.incarnation.transition(input)
-    }
-
     fn actions(
         effects: IncarnationEffects<<C::Addr as Address>::Nonce, C, C::Msg>,
         stopped: Option<&crate::ChildStopped<C::Addr>>,
@@ -97,7 +88,7 @@ where
                 .deliveries
                 .push(Delivery::new(Recipient::child(incarnation), message));
         }
-        for report in effects.reports {
+        if let Some(report) = effects.report {
             match report {
                 IncarnationReport::CreationResolved {
                     incarnation,
@@ -159,24 +150,21 @@ where
     ) -> Result<Actions<C::Addr, Never, Self::Sends, Births<C>>, Never> {
         Ok(match event {
             SupervisionEvent::CreationResolved(resolved) => Self::actions(
-                self.apply(IncarnationInput::creation_resolved(
-                    resolved.nonce,
-                    resolved.kind,
-                    resolved.result,
-                )),
+                self.incarnation
+                    .creation_resolved(resolved.nonce, resolved.kind, resolved.result),
                 None,
             ),
             SupervisionEvent::ChildStopped(event) => {
-                let effects = self.apply(IncarnationInput::child_stopped(event.nonce));
+                let effects = self.incarnation.child_stopped(event.nonce);
                 Self::actions(effects, Some(&event))
             }
             SupervisionEvent::Inner(event) => match event.message {
                 ProxyCommand::Forward(message) => {
-                    let effects = self.apply(IncarnationInput::forward(message));
+                    let effects = self.incarnation.forward(message);
                     Self::actions(effects, None)
                 }
                 ProxyCommand::Replace(child) => {
-                    let effects = self.apply(IncarnationInput::replace(child));
+                    let effects = self.incarnation.replace(child);
                     Self::actions(effects, None)
                 }
             },
