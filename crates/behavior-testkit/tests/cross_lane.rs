@@ -159,7 +159,7 @@ async fn supervision_preserves_inner_at_routing() {
     assert_eq!(initial.creates.len(), 1);
 
     let fired = behavior
-        .step(SupervisionEvent::Inner(AtEvent::Reached(TimerElapsed {
+        .step(SupervisionEvent::Inner(AtEvent::Elapsed(TimerElapsed {
             id: TimerId(0),
             generation: TimerGeneration(0),
         })))
@@ -204,7 +204,7 @@ async fn full_stack_all_four_layers_keep_their_own_lanes() {
 
     // Time lane: fires the inner At.
     let fired = behavior
-        .step(SupervisionEvent::Inner(AtEvent::Reached(TimerElapsed {
+        .step(SupervisionEvent::Inner(AtEvent::Elapsed(TimerElapsed {
             id: TimerId(0),
             generation: TimerGeneration(0),
         })))
@@ -314,7 +314,7 @@ proptest! {
                     // Time lane: matching Reached fires (Continue) once, then
                     // duplicates are inert.
                     runtime
-                        .block_on(behavior.step(SupervisionEvent::Inner(AtEvent::Reached(
+                        .block_on(behavior.step(SupervisionEvent::Inner(AtEvent::Elapsed(
                             TimerElapsed { id: TimerId(0), generation: TimerGeneration(0) },
                         ))))
                         .unwrap()

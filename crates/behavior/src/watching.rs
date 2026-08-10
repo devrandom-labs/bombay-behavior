@@ -4,11 +4,8 @@ use crate::behavior::{
     Actions, Address, Become, Behavior, BirthMode, SendAlgebra, SendProduct, ServiceSends, User,
     UserEvent,
 };
-use crate::protocol::{
-    ChildEvent, ChildStopped, CreationEvent, CreationResolved, ObservePeer, PeerEvent, PeerStopped,
-    ShutdownEvent, ShutdownRequested, TimeEvent, TimerElapsed, WorkerCreationEvent,
-    WorkerCreationResolved, WorkerEvent, WorkerStopped,
-};
+use crate::protocol::forward::forward_event_lane;
+use crate::protocol::{ObservePeer, PeerEvent, PeerStopped};
 use crate::{Crash, Exit, Step};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -39,43 +36,37 @@ impl<E: UserEvent> UserEvent for WatchEvent<E> {
     }
 }
 
-impl<E: TimeEvent> TimeEvent for WatchEvent<E> {
-    fn time_reached(event: TimerElapsed) -> Option<Self> {
-        E::time_reached(event).map(Self::Inner)
-    }
-}
-
-impl<E: ChildEvent> ChildEvent for WatchEvent<E> {
-    fn child_stopped(event: ChildStopped<E::Addr>) -> Option<Self> {
-        E::child_stopped(event).map(Self::Inner)
-    }
-}
-
-impl<E: WorkerEvent> WorkerEvent for WatchEvent<E> {
-    fn worker_stopped(event: WorkerStopped<E::Addr>) -> Option<Self> {
-        E::worker_stopped(event).map(Self::Inner)
-    }
-}
-
-impl<E: CreationEvent> CreationEvent for WatchEvent<E> {
-    fn creation_resolved(event: CreationResolved<<E::Addr as Address>::Nonce>) -> Option<Self> {
-        E::creation_resolved(event).map(Self::Inner)
-    }
-}
-
-impl<E: WorkerCreationEvent> WorkerCreationEvent for WatchEvent<E> {
-    fn worker_creation_resolved(
-        event: WorkerCreationResolved<<E::Addr as Address>::Nonce>,
-    ) -> Option<Self> {
-        E::worker_creation_resolved(event).map(Self::Inner)
-    }
-}
-
-impl<E: ShutdownEvent> ShutdownEvent for WatchEvent<E> {
-    fn shutdown_requested(event: ShutdownRequested) -> Option<Self> {
-        E::shutdown_requested(event).map(Self::Inner)
-    }
-}
+forward_event_lane!(WatchEvent, TimeEvent, time_reached, crate::TimerElapsed);
+forward_event_lane!(
+    WatchEvent,
+    ChildEvent,
+    child_stopped,
+    crate::ChildStopped<E::Addr>
+);
+forward_event_lane!(
+    WatchEvent,
+    WorkerEvent,
+    worker_stopped,
+    crate::WorkerStopped<E::Addr>
+);
+forward_event_lane!(
+    WatchEvent,
+    CreationEvent,
+    creation_resolved,
+    crate::CreationResolved<<E::Addr as crate::Address>::Nonce>
+);
+forward_event_lane!(
+    WatchEvent,
+    WorkerCreationEvent,
+    worker_creation_resolved,
+    crate::WorkerCreationResolved<<E::Addr as crate::Address>::Nonce>
+);
+forward_event_lane!(
+    WatchEvent,
+    ShutdownEvent,
+    shutdown_requested,
+    crate::ShutdownRequested
+);
 
 pub type LinkReaction<B> = fn(
     &mut B,
@@ -166,11 +157,7 @@ impl<B: Behavior> Watching<B> {
         actions: Actions<B::Addr, B::Ph, B::Sends, B::Birth>,
         own: ServiceSends<ObservePeer<B::Addr>>,
     ) -> WatchActions<B> {
-        Actions::new(
-            SendProduct::new(actions.sends, own),
-            actions.creates,
-            actions.become_,
-        )
+        actions.map_sends(|inner| SendProduct::new(inner, own))
     }
 }
 

@@ -364,7 +364,7 @@ async fn terminal_initialization_consumes_absolute_timer_state() {
     assert!(initial.sends.own.is_empty());
 
     let after_stop = behavior
-        .step(AtEvent::Reached(TimerElapsed {
+        .step(AtEvent::Elapsed(TimerElapsed {
             id: TimerId(0),
             generation: TimerGeneration(0),
         }))

@@ -4,82 +4,14 @@
 use tokio::time::Instant;
 
 use super::domain::OneShotSchedule;
+use super::event::TimedEvent;
 use crate::Step;
 use crate::behavior::{
-    Actions, Address, Become, Behavior, BirthMode, SendAlgebra, SendProduct, ServiceSends, User,
-    UserEvent,
+    Actions, Address, Become, Behavior, BirthMode, SendAlgebra, SendProduct, ServiceSends,
 };
-use crate::protocol::{
-    ChildEvent, ChildStopped, CreationEvent, CreationResolved, PeerEvent, PeerStopped, ScheduleAt,
-    ShutdownEvent, ShutdownRequested, TimeEvent, TimerElapsed, TimerId, WorkerCreationEvent,
-    WorkerCreationResolved, WorkerEvent, WorkerStopped,
-};
+use crate::protocol::{ScheduleAt, TimeEvent, TimerId};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum AtEvent<E> {
-    Inner(E),
-    Reached(TimerElapsed),
-}
-
-impl<E: UserEvent> TimeEvent for AtEvent<E> {
-    fn time_reached(event: TimerElapsed) -> Option<Self> {
-        Some(Self::Reached(event))
-    }
-}
-
-impl<E: UserEvent> UserEvent for AtEvent<E> {
-    type Addr = E::Addr;
-    type Message = E::Message;
-
-    fn user(from: Self::Addr, message: Self::Message) -> Self {
-        Self::Inner(E::user(from, message))
-    }
-
-    fn into_user(self) -> Result<User<Self::Addr, Self::Message>, Self> {
-        match self {
-            Self::Inner(event) => event.into_user().map_err(Self::Inner),
-            reached @ Self::Reached(_) => Err(reached),
-        }
-    }
-}
-
-impl<E: PeerEvent> PeerEvent for AtEvent<E> {
-    fn peer_stopped(event: PeerStopped<E::Addr>) -> Option<Self> {
-        E::peer_stopped(event).map(Self::Inner)
-    }
-}
-
-impl<E: ChildEvent> ChildEvent for AtEvent<E> {
-    fn child_stopped(event: ChildStopped<E::Addr>) -> Option<Self> {
-        E::child_stopped(event).map(Self::Inner)
-    }
-}
-
-impl<E: WorkerEvent> WorkerEvent for AtEvent<E> {
-    fn worker_stopped(event: WorkerStopped<E::Addr>) -> Option<Self> {
-        E::worker_stopped(event).map(Self::Inner)
-    }
-}
-
-impl<E: CreationEvent> CreationEvent for AtEvent<E> {
-    fn creation_resolved(event: CreationResolved<<E::Addr as Address>::Nonce>) -> Option<Self> {
-        E::creation_resolved(event).map(Self::Inner)
-    }
-}
-
-impl<E: WorkerCreationEvent> WorkerCreationEvent for AtEvent<E> {
-    fn worker_creation_resolved(
-        event: WorkerCreationResolved<<E::Addr as Address>::Nonce>,
-    ) -> Option<Self> {
-        E::worker_creation_resolved(event).map(Self::Inner)
-    }
-}
-
-impl<E: ShutdownEvent> ShutdownEvent for AtEvent<E> {
-    fn shutdown_requested(event: ShutdownRequested) -> Option<Self> {
-        E::shutdown_requested(event).map(Self::Inner)
-    }
-}
+pub type AtEvent<E> = TimedEvent<E>;
 
 pub type AtReaction<B> =
     fn(&mut B) -> Result<Become<<B as Behavior>::Addr>, <B as Behavior>::Error>;
@@ -145,19 +77,15 @@ where
 
     async fn step(&mut self, event: Self::Event) -> Result<AtActions<B>, B::Error> {
         match event {
-            AtEvent::Reached(event) if self.schedule.accept(event.id, event.generation) => {
+            AtEvent::Elapsed(event) if self.schedule.accept(event.id, event.generation) => {
                 let become_ = match (self.on_reached)(&mut self.inner)? {
                     Step::Continue => Step::Continue,
                     Step::Goto(never) => match never {},
                     Step::Stop(exit) => Step::Stop(exit),
                 };
-                Ok(Actions::new(
-                    SendProduct::new(B::Sends::empty(), ServiceSends::empty()),
-                    Vec::new(),
-                    become_,
-                ))
+                Ok(Actions::just(become_))
             }
-            AtEvent::Reached(event) => match B::Event::time_reached(event) {
+            AtEvent::Elapsed(event) => match B::Event::time_reached(event) {
                 Some(inner) => {
                     let actions = self.inner.step(inner).await?;
                     if matches!(actions.become_, Step::Stop(_)) {
@@ -183,10 +111,6 @@ impl<B: Behavior> At<B> {
         actions: Actions<B::Addr, B::Ph, B::Sends, B::Birth>,
         own: ServiceSends<ScheduleAt>,
     ) -> AtActions<B> {
-        Actions::new(
-            SendProduct::new(actions.sends, own),
-            actions.creates,
-            actions.become_,
-        )
+        actions.map_sends(|inner| SendProduct::new(inner, own))
     }
 }

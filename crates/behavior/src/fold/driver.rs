@@ -44,7 +44,7 @@ where
     let mut sends = Sends::empty();
     let mut creates = Vec::new();
     let initial = behavior.init().await?;
-    sends.append(initial.sends);
+    sends = sends.combine(initial.sends);
     creates.extend(initial.creates);
     match initial.become_ {
         Step::Continue => {}
@@ -58,7 +58,7 @@ where
             continue;
         };
         let actions = behavior.step(B::Event::user(from, message)).await?;
-        sends.append(actions.sends);
+        sends = sends.combine(actions.sends);
         creates.extend(actions.creates);
         match actions.become_ {
             Step::Continue => {}

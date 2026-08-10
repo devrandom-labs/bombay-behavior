@@ -25,6 +25,36 @@ pub struct Actions<A: Address, Ph, Sends, Birth: BirthMode> {
     pub become_: Become<A, Ph>,
 }
 
+impl<A: Address, Ph, Sends, Birth: BirthMode> Actions<A, Ph, Sends, Birth> {
+    /// Transform only the send algebra, preserving creation order and the
+    /// next-behavior verdict exactly.
+    #[must_use]
+    pub fn map_sends<Mapped>(
+        self,
+        map: impl FnOnce(Sends) -> Mapped,
+    ) -> Actions<A, Ph, Mapped, Birth> {
+        Actions {
+            sends: map(self.sends),
+            creates: self.creates,
+            become_: self.become_,
+        }
+    }
+
+    /// Transform only the next-behavior verdict, preserving sends and
+    /// creation order exactly.
+    #[must_use]
+    pub fn map_become<NextPh>(
+        self,
+        map: impl FnOnce(Become<A, Ph>) -> Become<A, NextPh>,
+    ) -> Actions<A, NextPh, Sends, Birth> {
+        Actions {
+            sends: self.sends,
+            creates: self.creates,
+            become_: map(self.become_),
+        }
+    }
+}
+
 impl<A: Address, Ph, Sends: SendAlgebra, Birth: BirthMode> Actions<A, Ph, Sends, Birth> {
     #[must_use]
     pub const fn new(
@@ -77,3 +107,48 @@ impl<A: Address, Ph, Sends, Birth: BirthMode>
 }
 
 pub type Acted<A, Ph, Sends, Birth, E> = Result<Actions<A, Ph, Sends, Birth>, E>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{Births, CreationKind, MailAddr};
+
+    #[test]
+    fn mapping_sends_preserves_creation_order_and_verdict() {
+        let actions: Actions<MailAddr, u8, Vec<u8>, Births<()>> = Actions::new(
+            vec![1, 2],
+            vec![
+                Create::new(3, (), CreationKind::Birth),
+                Create::new(4, (), CreationKind::replacement_of(3)),
+            ],
+            Step::Goto(7),
+        );
+
+        let mapped = actions.map_sends(|sends| sends.len());
+        assert_eq!(mapped.sends, 2);
+        assert_eq!(
+            mapped
+                .creates
+                .iter()
+                .map(|creation| creation.nonce)
+                .collect::<Vec<_>>(),
+            [3, 4]
+        );
+        assert!(matches!(mapped.become_, Step::Goto(7)));
+    }
+
+    #[test]
+    fn mapping_become_preserves_sends_and_creation_order() {
+        let actions: Actions<MailAddr, u8, Vec<u8>, Births<()>> = Actions::new(
+            vec![1, 2],
+            vec![Create::new(3, (), CreationKind::Birth)],
+            Step::Goto(7),
+        );
+
+        let mapped: Actions<MailAddr, Never, Vec<u8>, Births<()>> =
+            actions.map_become(|_| Step::Stop(Exit::Normal));
+        assert_eq!(mapped.sends, [1, 2]);
+        assert_eq!(mapped.creates[0].nonce, 3);
+        assert!(matches!(mapped.become_, Step::Stop(Exit::Normal)));
+    }
+}

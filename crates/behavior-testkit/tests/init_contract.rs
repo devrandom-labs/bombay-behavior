@@ -12,7 +12,7 @@ use std::time::Duration;
 
 use behavior::{
     Acted, Actions, Base, Behavior, Crash, Delivery, MailAddr, Never, Proxy, ProxyCommand,
-    Recipient, Route, Spec, StashRoute, State, Step, SupervisionEvent, User, UserEvent,
+    ProxyEvent, Recipient, Route, Spec, StashRoute, State, Step, SupervisionEvent, User, UserEvent,
     WorkerStopped, stop_on_abnormal_death,
 };
 use tokio::time::Instant;
@@ -151,7 +151,7 @@ async fn full_stack_double_init_duplicates_every_init_effect() {
 async fn proxy_step_before_init_is_inert_until_worker_birth() {
     let mut proxy = Proxy::new(child(0));
     let actions = proxy
-        .step(SupervisionEvent::Inner(User::user(
+        .step(ProxyEvent::Inner(User::user(
             MailAddr(0),
             ProxyCommand::Forward(5),
         )))

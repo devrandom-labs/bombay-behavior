@@ -6,11 +6,8 @@
 //! concerns.
 
 use crate::behavior::{Actions, Address, Behavior, BirthMode, SendAlgebra, User, UserEvent};
-use crate::protocol::{
-    ChildEvent, ChildStopped, CreationEvent, CreationResolved, PeerEvent, PeerStopped,
-    ShutdownEvent, ShutdownRequested, TimeEvent, TimerElapsed, WorkerCreationEvent,
-    WorkerCreationResolved, WorkerEvent, WorkerStopped,
-};
+use crate::protocol::forward::forward_event_lane;
+use crate::protocol::{ShutdownEvent, ShutdownRequested};
 use crate::{Exit, Step};
 
 /// The complete protocol of a behavior that supports graceful shutdown.
@@ -42,43 +39,42 @@ impl<E: UserEvent> UserEvent for ShutdownProtocol<E> {
     }
 }
 
-impl<E: TimeEvent> TimeEvent for ShutdownProtocol<E> {
-    fn time_reached(event: TimerElapsed) -> Option<Self> {
-        E::time_reached(event).map(Self::Inner)
-    }
-}
-
-impl<E: PeerEvent> PeerEvent for ShutdownProtocol<E> {
-    fn peer_stopped(event: PeerStopped<E::Addr>) -> Option<Self> {
-        E::peer_stopped(event).map(Self::Inner)
-    }
-}
-
-impl<E: ChildEvent> ChildEvent for ShutdownProtocol<E> {
-    fn child_stopped(event: ChildStopped<E::Addr>) -> Option<Self> {
-        E::child_stopped(event).map(Self::Inner)
-    }
-}
-
-impl<E: WorkerEvent> WorkerEvent for ShutdownProtocol<E> {
-    fn worker_stopped(event: WorkerStopped<E::Addr>) -> Option<Self> {
-        E::worker_stopped(event).map(Self::Inner)
-    }
-}
-
-impl<E: CreationEvent> CreationEvent for ShutdownProtocol<E> {
-    fn creation_resolved(event: CreationResolved<<E::Addr as Address>::Nonce>) -> Option<Self> {
-        E::creation_resolved(event).map(Self::Inner)
-    }
-}
-
-impl<E: WorkerCreationEvent> WorkerCreationEvent for ShutdownProtocol<E> {
-    fn worker_creation_resolved(
-        event: WorkerCreationResolved<<E::Addr as Address>::Nonce>,
-    ) -> Option<Self> {
-        E::worker_creation_resolved(event).map(Self::Inner)
-    }
-}
+forward_event_lane!(
+    ShutdownProtocol,
+    TimeEvent,
+    time_reached,
+    crate::TimerElapsed
+);
+forward_event_lane!(
+    ShutdownProtocol,
+    PeerEvent,
+    peer_stopped,
+    crate::PeerStopped<E::Addr>
+);
+forward_event_lane!(
+    ShutdownProtocol,
+    ChildEvent,
+    child_stopped,
+    crate::ChildStopped<E::Addr>
+);
+forward_event_lane!(
+    ShutdownProtocol,
+    WorkerEvent,
+    worker_stopped,
+    crate::WorkerStopped<E::Addr>
+);
+forward_event_lane!(
+    ShutdownProtocol,
+    CreationEvent,
+    creation_resolved,
+    crate::CreationResolved<<E::Addr as crate::Address>::Nonce>
+);
+forward_event_lane!(
+    ShutdownProtocol,
+    WorkerCreationEvent,
+    worker_creation_resolved,
+    crate::WorkerCreationResolved<<E::Addr as crate::Address>::Nonce>
+);
 
 /// Stop normally when the shutdown lane is received.
 pub struct StopOnShutdown<B> {
@@ -174,10 +170,6 @@ impl_shutdown_behavior!(
     FinalizeOnShutdown,
     |this: &mut FinalizeOnShutdown<B>, request| {
         let actions = (this.finalize)(&mut this.inner, request)?;
-        Ok(Actions::new(
-            actions.sends,
-            actions.creates,
-            Step::Stop(Exit::Normal),
-        ))
+        Ok(actions.map_become(|_| Step::Stop(Exit::Normal)))
     }
 );

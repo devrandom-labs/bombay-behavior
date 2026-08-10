@@ -5,7 +5,7 @@ use std::time::Duration;
 use behavior::{
     Acted, Actions, At, AtEvent, Base, Become, Behavior, Births, ChildStopped, Crash, Create,
     CreationKind, CreationRejection, CreationResolved, Delivery, Exit, Fsm, MailAddr, Move, Never,
-    NoBirths, ObserveChild, PeerStopped, Proxy, ProxyCommand, Recipient, RestartDenial,
+    NoBirths, ObserveChild, PeerStopped, Proxy, ProxyCommand, ProxyEvent, Recipient, RestartDenial,
     RestartPolicy, Route, ServiceSends, ShutdownEvent, ShutdownRequested, Spec, StashRoute, State,
     Step, Strategy, Supervising, SupervisionEvent, SupervisionFailure, SupervisionFailureReason,
     TimeEvent, TimerElapsed, TimerGeneration, TimerId, User, UserEvent, WatchEvent, Watching,
@@ -164,7 +164,7 @@ async fn at_is_a_typed_clock_actor_protocol() {
     assert_eq!(initial.sends.own[0].at, now);
 
     let fired = behavior
-        .step(AtEvent::Reached(TimerElapsed {
+        .step(AtEvent::Elapsed(TimerElapsed {
             id: TimerId(0),
             generation: TimerGeneration(0),
         }))
@@ -202,7 +202,7 @@ async fn nested_at_composition_routes_stale_and_matching_events() {
     assert_eq!(initial.sends.inner.own[0].at, early);
     assert_eq!(initial.sends.own[0].at, late);
 
-    let early_event = AtEvent::Reached(TimerElapsed {
+    let early_event = AtEvent::Elapsed(TimerElapsed {
         id: TimerId(0),
         generation: TimerGeneration(0),
     });
@@ -223,7 +223,7 @@ async fn spec_hides_composed_protocols_without_losing_their_effects() {
     assert_eq!(initial.sends.inner.own[0].at, due);
     assert_eq!(initial.sends.own[0].peer, peer);
 
-    let time = WatchEvent::Inner(AtEvent::Reached(TimerElapsed {
+    let time = WatchEvent::Inner(AtEvent::Elapsed(TimerElapsed {
         id: TimerId(0),
         generation: TimerGeneration(0),
     }));
@@ -569,7 +569,7 @@ async fn a_proxy_ignores_a_stale_child_stop_nonce() {
     let mut proxy = Proxy::new(child(0));
     proxy.init().await.unwrap();
     proxy
-        .step(SupervisionEvent::CreationResolved(CreationResolved {
+        .step(ProxyEvent::CreationResolved(CreationResolved {
             nonce: 0,
             kind: CreationKind::Birth,
             result: Ok(()),
@@ -577,7 +577,7 @@ async fn a_proxy_ignores_a_stale_child_stop_nonce() {
         .await
         .unwrap();
     let stale = proxy
-        .step(SupervisionEvent::ChildStopped(ChildStopped {
+        .step(ProxyEvent::ChildStopped(ChildStopped {
             nonce: 99,
             outcome: Err(Crash::Failed),
             at: Instant::now(),
@@ -586,7 +586,7 @@ async fn a_proxy_ignores_a_stale_child_stop_nonce() {
         .unwrap();
     assert!(stale.sends.stopped_reports.is_empty());
     let forwarded = proxy
-        .step(SupervisionEvent::Inner(User::user(
+        .step(ProxyEvent::Inner(User::user(
             MailAddr(0),
             ProxyCommand::Forward(7),
         )))
@@ -691,7 +691,7 @@ async fn proxy_replacement_creates_a_fresh_incarnation() {
     assert_eq!(first.creates[0].nonce, 0);
     assert_eq!(first.creates[0].kind, CreationKind::Birth);
     proxy
-        .step(SupervisionEvent::CreationResolved(CreationResolved {
+        .step(ProxyEvent::CreationResolved(CreationResolved {
             nonce: 0,
             kind: CreationKind::Birth,
             result: Ok(()),
@@ -699,7 +699,7 @@ async fn proxy_replacement_creates_a_fresh_incarnation() {
         .await
         .unwrap();
     let second = proxy
-        .step(SupervisionEvent::Inner(User::user(
+        .step(ProxyEvent::Inner(User::user(
             MailAddr(0),
             ProxyCommand::Replace(child(0)),
         )))
@@ -708,7 +708,7 @@ async fn proxy_replacement_creates_a_fresh_incarnation() {
     assert!(second.creates.is_empty());
 
     let second = proxy
-        .step(SupervisionEvent::ChildStopped(ChildStopped {
+        .step(ProxyEvent::ChildStopped(ChildStopped {
             nonce: 0,
             outcome: Err(Crash::Failed),
             at: Instant::now(),
@@ -723,7 +723,7 @@ async fn proxy_replacement_creates_a_fresh_incarnation() {
     assert_eq!(second.sends.child_observations[0].nonce, 1);
     assert_eq!(second.sends.stopped_reports[0].outcome, Err(Crash::Failed));
     proxy
-        .step(SupervisionEvent::CreationResolved(CreationResolved {
+        .step(ProxyEvent::CreationResolved(CreationResolved {
             nonce: 1,
             kind: CreationKind::ReplacementIncarnation { replaces: 0 },
             result: Ok(()),
@@ -732,7 +732,7 @@ async fn proxy_replacement_creates_a_fresh_incarnation() {
         .unwrap();
 
     let forwarded = proxy
-        .step(SupervisionEvent::Inner(User::user(
+        .step(ProxyEvent::Inner(User::user(
             MailAddr(0),
             ProxyCommand::Forward(7),
         )))
@@ -748,7 +748,7 @@ async fn proxy_routes_only_after_matching_installation_and_rejection_stays_vacan
     proxy.init().await.unwrap();
 
     let pending = proxy
-        .step(SupervisionEvent::Inner(User::user(
+        .step(ProxyEvent::Inner(User::user(
             MailAddr(0),
             ProxyCommand::Forward(1),
         )))
@@ -757,7 +757,7 @@ async fn proxy_routes_only_after_matching_installation_and_rejection_stays_vacan
     assert!(pending.sends.deliveries.is_empty());
 
     let stale = proxy
-        .step(SupervisionEvent::CreationResolved(CreationResolved {
+        .step(ProxyEvent::CreationResolved(CreationResolved {
             nonce: 1,
             kind: CreationKind::Birth,
             result: Ok(()),
@@ -767,7 +767,7 @@ async fn proxy_routes_only_after_matching_installation_and_rejection_stays_vacan
     assert!(stale.sends.creation_reports.is_empty());
 
     let rejected = proxy
-        .step(SupervisionEvent::CreationResolved(CreationResolved {
+        .step(ProxyEvent::CreationResolved(CreationResolved {
             nonce: 0,
             kind: CreationKind::Birth,
             result: Err(CreationRejection::InitializationFailed),
@@ -780,7 +780,7 @@ async fn proxy_routes_only_after_matching_installation_and_rejection_stays_vacan
     );
 
     let vacant = proxy
-        .step(SupervisionEvent::Inner(User::user(
+        .step(ProxyEvent::Inner(User::user(
             MailAddr(0),
             ProxyCommand::Forward(2),
         )))
@@ -794,7 +794,7 @@ async fn proxy_serializes_attempts_and_rejection_preserves_last_installed_incarn
     let mut proxy = Proxy::new(child(0));
     proxy.init().await.unwrap();
     proxy
-        .step(SupervisionEvent::CreationResolved(CreationResolved {
+        .step(ProxyEvent::CreationResolved(CreationResolved {
             nonce: 0,
             kind: CreationKind::Birth,
             result: Ok(()),
@@ -802,14 +802,14 @@ async fn proxy_serializes_attempts_and_rejection_preserves_last_installed_incarn
         .await
         .unwrap();
     proxy
-        .step(SupervisionEvent::Inner(User::user(
+        .step(ProxyEvent::Inner(User::user(
             MailAddr(0),
             ProxyCommand::Replace(child(1)),
         )))
         .await
         .unwrap();
     let first_attempt = proxy
-        .step(SupervisionEvent::ChildStopped(ChildStopped {
+        .step(ProxyEvent::ChildStopped(ChildStopped {
             nonce: 0,
             outcome: Err(Crash::Failed),
             at: Instant::now(),
@@ -822,7 +822,7 @@ async fn proxy_serializes_attempts_and_rejection_preserves_last_installed_incarn
     );
 
     let overlapping = proxy
-        .step(SupervisionEvent::Inner(User::user(
+        .step(ProxyEvent::Inner(User::user(
             MailAddr(0),
             ProxyCommand::Replace(child(2)),
         )))
@@ -831,7 +831,7 @@ async fn proxy_serializes_attempts_and_rejection_preserves_last_installed_incarn
     assert!(overlapping.creates.is_empty());
 
     proxy
-        .step(SupervisionEvent::CreationResolved(CreationResolved {
+        .step(ProxyEvent::CreationResolved(CreationResolved {
             nonce: 1,
             kind: CreationKind::ReplacementIncarnation { replaces: 0 },
             result: Err(CreationRejection::EnvironmentFailed),
@@ -839,7 +839,7 @@ async fn proxy_serializes_attempts_and_rejection_preserves_last_installed_incarn
         .await
         .unwrap();
     let retry = proxy
-        .step(SupervisionEvent::Inner(User::user(
+        .step(ProxyEvent::Inner(User::user(
             MailAddr(0),
             ProxyCommand::Replace(child(3)),
         )))
@@ -858,7 +858,7 @@ async fn idle_proxy_marks_an_immediate_successor_as_a_replacement_incarnation() 
     let initial = proxy.init().await.unwrap();
     assert_eq!(initial.creates[0].kind, CreationKind::Birth);
     proxy
-        .step(SupervisionEvent::CreationResolved(CreationResolved {
+        .step(ProxyEvent::CreationResolved(CreationResolved {
             nonce: 0,
             kind: CreationKind::Birth,
             result: Ok(()),
@@ -867,7 +867,7 @@ async fn idle_proxy_marks_an_immediate_successor_as_a_replacement_incarnation() 
         .unwrap();
 
     let stopped = proxy
-        .step(SupervisionEvent::ChildStopped(ChildStopped {
+        .step(ProxyEvent::ChildStopped(ChildStopped {
             nonce: 0,
             outcome: Err(Crash::Failed),
             at: Instant::now(),
@@ -877,7 +877,7 @@ async fn idle_proxy_marks_an_immediate_successor_as_a_replacement_incarnation() 
     assert!(stopped.creates.is_empty());
 
     let replacement = proxy
-        .step(SupervisionEvent::Inner(User::user(
+        .step(ProxyEvent::Inner(User::user(
             MailAddr(0),
             ProxyCommand::Replace(child(0)),
         )))
@@ -909,7 +909,7 @@ async fn stable_proxy_reports_worker_stop_and_creates_fresh_replacement() {
     assert_eq!(worker_birth.creates[0].kind, CreationKind::Birth);
     assert_eq!(worker_birth.sends.child_observations[0].nonce, 0);
     proxy
-        .step(SupervisionEvent::CreationResolved(CreationResolved {
+        .step(ProxyEvent::CreationResolved(CreationResolved {
             nonce: 0,
             kind: CreationKind::Birth,
             result: Ok(()),
@@ -918,7 +918,7 @@ async fn stable_proxy_reports_worker_stop_and_creates_fresh_replacement() {
         .unwrap();
 
     let worker_stop = proxy
-        .step(SupervisionEvent::ChildStopped(ChildStopped {
+        .step(ProxyEvent::ChildStopped(ChildStopped {
             nonce: 0,
             outcome: Err(Crash::Panicked),
             at,
@@ -955,10 +955,7 @@ async fn stable_proxy_reports_worker_stop_and_creates_fresh_replacement() {
         .next()
         .unwrap();
     let replacement = proxy
-        .step(SupervisionEvent::Inner(User::user(
-            MailAddr(0),
-            command.message,
-        )))
+        .step(ProxyEvent::Inner(User::user(MailAddr(0), command.message)))
         .await
         .unwrap();
     assert_eq!(replacement.creates[0].nonce, 1);
@@ -1257,7 +1254,7 @@ async fn stale_time_events_do_not_fire_or_reschedule() {
         Ok(Step::Stop(Exit::Normal))
     });
     behavior.init().await.unwrap();
-    let stale = AtEvent::Reached(TimerElapsed {
+    let stale = AtEvent::Elapsed(TimerElapsed {
         id: TimerId(0),
         generation: TimerGeneration(1),
     });
@@ -1265,7 +1262,7 @@ async fn stale_time_events_do_not_fire_or_reschedule() {
     assert!(matches!(ignored.become_, Step::Continue));
 
     let fired = behavior
-        .step(AtEvent::Reached(TimerElapsed {
+        .step(AtEvent::Elapsed(TimerElapsed {
             id: TimerId(0),
             generation: TimerGeneration(0),
         }))
@@ -1274,7 +1271,7 @@ async fn stale_time_events_do_not_fire_or_reschedule() {
     assert!(matches!(fired.become_, Step::Stop(Exit::Normal)));
 
     let duplicate = behavior
-        .step(AtEvent::Reached(TimerElapsed {
+        .step(AtEvent::Elapsed(TimerElapsed {
             id: TimerId(0),
             generation: TimerGeneration(0),
         }))

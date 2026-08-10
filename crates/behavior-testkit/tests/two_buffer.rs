@@ -86,7 +86,7 @@ proptest! {
             // then inert) between user messages.
             if fire_index < fires.len() && fires[fire_index] % 2 == 0 {
                 let actions = runtime
-                    .block_on(behavior.step(AtEvent::Reached(TimerElapsed {
+                    .block_on(behavior.step(AtEvent::Elapsed(TimerElapsed {
                         id: TimerId(0),
                         generation: TimerGeneration(0),})))
                     .unwrap();

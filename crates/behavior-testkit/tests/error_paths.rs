@@ -168,7 +168,7 @@ async fn at_reaction_error_consumes_the_timer() {
     behavior.init().await.unwrap();
 
     let first = behavior
-        .step(AtEvent::Reached(TimerElapsed {
+        .step(AtEvent::Elapsed(TimerElapsed {
             id: TimerId(0),
             generation: TimerGeneration(0),
         }))
@@ -177,7 +177,7 @@ async fn at_reaction_error_consumes_the_timer() {
 
     // The duplicate delivery cannot re-fire the consumed timer.
     let second = behavior
-        .step(AtEvent::Reached(TimerElapsed {
+        .step(AtEvent::Elapsed(TimerElapsed {
             id: TimerId(0),
             generation: TimerGeneration(0),
         }))

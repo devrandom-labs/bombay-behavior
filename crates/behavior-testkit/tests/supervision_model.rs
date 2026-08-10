@@ -8,8 +8,8 @@ use std::time::Duration;
 
 use behavior::{
     Acted, Actions, Base, Behavior, ChildStopped, Crash, Create, CreationKind, CreationResolved,
-    Delivery, Exit, MailAddr, Never, Proxy, ProxyCommand, RestartDenial, RestartPolicy, Route,
-    State, Step, Strategy, Supervising, SupervisionEvent, SupervisionFailureReason, User,
+    Delivery, Exit, MailAddr, Never, Proxy, ProxyCommand, ProxyEvent, RestartDenial, RestartPolicy,
+    Route, State, Step, Strategy, Supervising, SupervisionEvent, SupervisionFailureReason, User,
     UserEvent, WorkerStopped, stop_on_supervision_failure,
 };
 use behavior_testkit::model::{
@@ -129,7 +129,7 @@ async fn creation_provenance_matches_the_independent_incarnation_model() {
     let initial = proxy.init().await.unwrap();
     assert_expected_creation(expected_initial, &initial.creates[0]);
     proxy
-        .step(SupervisionEvent::CreationResolved(CreationResolved {
+        .step(ProxyEvent::CreationResolved(CreationResolved {
             nonce: 0,
             kind: CreationKind::Birth,
             result: Ok(()),
@@ -143,7 +143,7 @@ async fn creation_provenance_matches_the_independent_incarnation_model() {
 
     assert_eq!(model.request_successor(), None);
     let requested = proxy
-        .step(SupervisionEvent::Inner(User::user(
+        .step(ProxyEvent::Inner(User::user(
             MailAddr(0),
             ProxyCommand::Replace(child(0)),
         )))
@@ -153,7 +153,7 @@ async fn creation_provenance_matches_the_independent_incarnation_model() {
 
     let expected_deferred = model.stopped(0).unwrap();
     let deferred = proxy
-        .step(SupervisionEvent::ChildStopped(ChildStopped {
+        .step(ProxyEvent::ChildStopped(ChildStopped {
             nonce: 0,
             outcome: Err(Crash::Failed),
             at: Instant::now(),
@@ -172,7 +172,7 @@ async fn immediate_and_denied_replacements_match_the_independent_models() {
     let mut proxy = Proxy::new(child(0));
     proxy.init().await.unwrap();
     proxy
-        .step(SupervisionEvent::CreationResolved(CreationResolved {
+        .step(ProxyEvent::CreationResolved(CreationResolved {
             nonce: 0,
             kind: CreationKind::Birth,
             result: Ok(()),
@@ -180,7 +180,7 @@ async fn immediate_and_denied_replacements_match_the_independent_models() {
         .await
         .unwrap();
     proxy
-        .step(SupervisionEvent::ChildStopped(ChildStopped {
+        .step(ProxyEvent::ChildStopped(ChildStopped {
             nonce: 0,
             outcome: Err(Crash::Failed),
             at: Instant::now(),
@@ -189,7 +189,7 @@ async fn immediate_and_denied_replacements_match_the_independent_models() {
         .unwrap();
     let expected_immediate = incarnation.request_successor().unwrap();
     let immediate = proxy
-        .step(SupervisionEvent::Inner(User::user(
+        .step(ProxyEvent::Inner(User::user(
             MailAddr(0),
             ProxyCommand::Replace(child(0)),
         )))

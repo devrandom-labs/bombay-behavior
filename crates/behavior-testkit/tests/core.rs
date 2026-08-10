@@ -3,9 +3,9 @@ use std::time::Duration;
 use behavior::{
     Acted, Actions, AtEvent, Base, Behavior, ChildStopped, Crash, Create, CreationKind,
     CreationResolved, Delivery, Exit, MailAddr, Move, Never, PeerStopped, Proxy, ProxyCommand,
-    Recipient, RestartPolicy, Route, Spec, StashRoute, State, Step, Strategy, SupervisionEvent,
-    TimerElapsed, TimerGeneration, TimerId, User, UserEvent, WatchEvent, WorkerStopped,
-    stop_on_abnormal_death,
+    ProxyEvent, Recipient, RestartPolicy, Route, Spec, StashRoute, State, Step, Strategy,
+    SupervisionEvent, TimerElapsed, TimerGeneration, TimerId, User, UserEvent, WatchEvent,
+    WorkerStopped, stop_on_abnormal_death,
 };
 use behavior_testkit::{Mailbox, drive};
 use tokio::time::Instant;
@@ -73,15 +73,15 @@ async fn stale_and_duplicate_time_observations_are_inert() {
     let mut behavior =
         Spec::new(Recorder::default()).at(Some(due), |_| Ok(Step::Stop(Exit::Normal)));
     let mut mailbox = Mailbox::new([
-        AtEvent::Reached(TimerElapsed {
+        AtEvent::Elapsed(TimerElapsed {
             id: TimerId(0),
             generation: TimerGeneration(1),
         }),
-        AtEvent::Reached(TimerElapsed {
+        AtEvent::Elapsed(TimerElapsed {
             id: TimerId(0),
             generation: TimerGeneration(0),
         }),
-        AtEvent::Reached(TimerElapsed {
+        AtEvent::Elapsed(TimerElapsed {
             id: TimerId(0),
             generation: TimerGeneration(0),
         }),
@@ -242,7 +242,7 @@ async fn proxy_forwards_only_to_the_current_fresh_generation() {
     let mut proxy = Proxy::new(child(0));
     assert_eq!(proxy.init().await.unwrap().creates[0].nonce, 0);
     proxy
-        .step(SupervisionEvent::CreationResolved(CreationResolved {
+        .step(ProxyEvent::CreationResolved(CreationResolved {
             nonce: 0,
             kind: CreationKind::Birth,
             result: Ok(()),
@@ -251,7 +251,7 @@ async fn proxy_forwards_only_to_the_current_fresh_generation() {
         .unwrap();
 
     let before = proxy
-        .step(SupervisionEvent::Inner(User::user(
+        .step(ProxyEvent::Inner(User::user(
             MailAddr(0),
             ProxyCommand::Forward(5),
         )))
@@ -260,7 +260,7 @@ async fn proxy_forwards_only_to_the_current_fresh_generation() {
     assert_eq!(before.sends.deliveries[0].to.route(), Route::Child(0));
 
     let replacement = proxy
-        .step(SupervisionEvent::Inner(User::user(
+        .step(ProxyEvent::Inner(User::user(
             MailAddr(0),
             ProxyCommand::Replace(child(0)),
         )))
@@ -269,7 +269,7 @@ async fn proxy_forwards_only_to_the_current_fresh_generation() {
     assert!(replacement.creates.is_empty());
 
     let replacement = proxy
-        .step(SupervisionEvent::ChildStopped(ChildStopped {
+        .step(ProxyEvent::ChildStopped(ChildStopped {
             nonce: 0,
             outcome: Ok(Exit::Normal),
             at: Instant::now(),
@@ -278,7 +278,7 @@ async fn proxy_forwards_only_to_the_current_fresh_generation() {
         .unwrap();
     assert_eq!(replacement.creates[0].nonce, 1);
     proxy
-        .step(SupervisionEvent::CreationResolved(CreationResolved {
+        .step(ProxyEvent::CreationResolved(CreationResolved {
             nonce: 1,
             kind: CreationKind::ReplacementIncarnation { replaces: 0 },
             result: Ok(()),
@@ -287,7 +287,7 @@ async fn proxy_forwards_only_to_the_current_fresh_generation() {
         .unwrap();
 
     let after = proxy
-        .step(SupervisionEvent::Inner(User::user(
+        .step(ProxyEvent::Inner(User::user(
             MailAddr(0),
             ProxyCommand::Forward(6),
         )))

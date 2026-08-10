@@ -141,7 +141,7 @@ async fn environment_lanes_bypass_stash_while_user_lane_is_intercepted() {
     behavior.init().await.unwrap();
 
     // Time lane: fires through the stash layer, nothing stashed.
-    let reached = AtEvent::Reached(TimerElapsed {
+    let reached = AtEvent::Elapsed(TimerElapsed {
         id: TimerId(0),
         generation: TimerGeneration(0),
     });
@@ -256,7 +256,7 @@ async fn unscheduled_at_is_inert_to_reached_events() {
 
     for id in [TimerId(0), TimerId(1)] {
         let actions = behavior
-            .step(AtEvent::Reached(TimerElapsed {
+            .step(AtEvent::Elapsed(TimerElapsed {
                 id,
                 generation: TimerGeneration(0),
             }))

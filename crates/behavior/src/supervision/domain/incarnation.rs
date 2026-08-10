@@ -1,6 +1,6 @@
 //! Pure lifecycle domain for one stable proxy's worker incarnation.
 
-use crate::{CreationKind, CreationRejection};
+use crate::{CreationKind, CreationRejection, CreationResolved};
 
 /// The complete lifecycle state of the worker behind one stable proxy.
 enum IncarnationState<N, C> {
@@ -57,14 +57,8 @@ impl<N, C> IncarnationCreation<N, C> {
 /// A lifecycle fact to report to the stable proxy's parent.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum IncarnationReport<N> {
-    CreationResolved {
-        incarnation: N,
-        kind: CreationKind<N>,
-        result: Result<(), CreationRejection>,
-    },
-    Stopped {
-        incarnation: N,
-    },
+    CreationResolved(CreationResolved<N>),
+    Stopped { incarnation: N },
 }
 
 impl<N> IncarnationReport<N> {
@@ -74,11 +68,7 @@ impl<N> IncarnationReport<N> {
         kind: CreationKind<N>,
         result: Result<(), CreationRejection>,
     ) -> Self {
-        Self::CreationResolved {
-            incarnation,
-            kind,
-            result,
-        }
+        Self::CreationResolved(CreationResolved::new(incarnation, kind, result))
     }
 
     #[must_use]

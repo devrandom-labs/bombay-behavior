@@ -3,8 +3,9 @@ use std::time::Duration;
 
 use behavior::{
     Acted, Actions, AtEvent, Base, Behavior, Crash, Delivery, Fsm, MailAddr, Move, Never, Proxy,
-    ProxyCommand, RestartPolicy, Route, Spec, StashRoute, State, Step, Strategy, Supervising,
-    SupervisionEvent, User, UserEvent, WatchEvent, WorkerStopped, stop_on_abnormal_death,
+    ProxyCommand, ProxyEvent, RestartPolicy, Route, Spec, StashRoute, State, Step, Strategy,
+    Supervising, SupervisionEvent, User, UserEvent, WatchEvent, WorkerStopped,
+    stop_on_abnormal_death,
 };
 use tokio::runtime::Builder;
 use tokio::time::Instant;
@@ -99,7 +100,7 @@ async fn measure_proxy() -> f64 {
         };
         black_box(
             proxy
-                .step(SupervisionEvent::Inner(User::user(
+                .step(ProxyEvent::Inner(User::user(
                     MailAddr(0),
                     black_box(command),
                 )))

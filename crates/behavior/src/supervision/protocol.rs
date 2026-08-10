@@ -1,11 +1,72 @@
 //! Typed event and command protocols used by supervision behaviors.
 
+use crate::protocol::forward::forward_event_lane;
 use crate::protocol::{
-    ChildEvent, ChildStopped, CreationEvent, CreationResolved, PeerEvent, PeerStopped,
-    ShutdownEvent, ShutdownRequested, TimeEvent, TimerElapsed, WorkerCreationEvent,
+    ChildEvent, ChildStopped, CreationEvent, CreationResolved, WorkerCreationEvent,
     WorkerCreationResolved, WorkerEvent, WorkerStopped,
 };
 use crate::{Address, Behavior, User, UserEvent};
+
+#[derive(Clone, PartialEq, Eq)]
+pub enum ProxyEvent<E: UserEvent> {
+    Inner(E),
+    ChildStopped(ChildStopped<E::Addr>),
+    CreationResolved(CreationResolved<<E::Addr as Address>::Nonce>),
+}
+
+impl<E: UserEvent> CreationEvent for ProxyEvent<E> {
+    fn creation_resolved(event: CreationResolved<<E::Addr as Address>::Nonce>) -> Option<Self> {
+        Some(Self::CreationResolved(event))
+    }
+}
+
+impl<E: UserEvent> ChildEvent for ProxyEvent<E> {
+    fn child_stopped(event: ChildStopped<E::Addr>) -> Option<Self> {
+        Some(Self::ChildStopped(event))
+    }
+}
+
+impl<E: UserEvent> UserEvent for ProxyEvent<E> {
+    type Addr = E::Addr;
+    type Message = E::Message;
+
+    fn user(from: Self::Addr, message: Self::Message) -> Self {
+        Self::Inner(E::user(from, message))
+    }
+
+    fn into_user(self) -> Result<User<Self::Addr, Self::Message>, Self> {
+        match self {
+            Self::Inner(event) => event.into_user().map_err(Self::Inner),
+            service @ (Self::ChildStopped(_) | Self::CreationResolved(_)) => Err(service),
+        }
+    }
+}
+
+forward_event_lane!(ProxyEvent, TimeEvent, time_reached, crate::TimerElapsed);
+forward_event_lane!(
+    ProxyEvent,
+    PeerEvent,
+    peer_stopped,
+    crate::PeerStopped<E::Addr>
+);
+forward_event_lane!(
+    ProxyEvent,
+    WorkerEvent,
+    worker_stopped,
+    crate::WorkerStopped<E::Addr>
+);
+forward_event_lane!(
+    ProxyEvent,
+    WorkerCreationEvent,
+    worker_creation_resolved,
+    crate::WorkerCreationResolved<<E::Addr as crate::Address>::Nonce>
+);
+forward_event_lane!(
+    ProxyEvent,
+    ShutdownEvent,
+    shutdown_requested,
+    crate::ShutdownRequested
+);
 
 #[derive(Clone, PartialEq, Eq)]
 pub enum SupervisionEvent<E: UserEvent> {
@@ -61,23 +122,24 @@ impl<E: UserEvent> UserEvent for SupervisionEvent<E> {
     }
 }
 
-impl<E: TimeEvent> TimeEvent for SupervisionEvent<E> {
-    fn time_reached(event: TimerElapsed) -> Option<Self> {
-        E::time_reached(event).map(Self::Inner)
-    }
-}
-
-impl<E: PeerEvent> PeerEvent for SupervisionEvent<E> {
-    fn peer_stopped(event: PeerStopped<E::Addr>) -> Option<Self> {
-        E::peer_stopped(event).map(Self::Inner)
-    }
-}
-
-impl<E: ShutdownEvent> ShutdownEvent for SupervisionEvent<E> {
-    fn shutdown_requested(event: ShutdownRequested) -> Option<Self> {
-        E::shutdown_requested(event).map(Self::Inner)
-    }
-}
+forward_event_lane!(
+    SupervisionEvent,
+    TimeEvent,
+    time_reached,
+    crate::TimerElapsed
+);
+forward_event_lane!(
+    SupervisionEvent,
+    PeerEvent,
+    peer_stopped,
+    crate::PeerStopped<E::Addr>
+);
+forward_event_lane!(
+    SupervisionEvent,
+    ShutdownEvent,
+    shutdown_requested,
+    crate::ShutdownRequested
+);
 
 /// Commands accepted by a stable proxy.
 #[derive(Debug)]

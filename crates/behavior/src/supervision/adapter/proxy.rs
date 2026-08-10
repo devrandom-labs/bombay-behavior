@@ -1,7 +1,7 @@
 //! Stable proxy lifecycle and fresh worker incarnation replacement.
 
 use super::super::domain::{Incarnation, IncarnationEffects, IncarnationPhase, IncarnationReport};
-use super::super::protocol::{ProxyCommand, SupervisionEvent};
+use super::super::protocol::{ProxyCommand, ProxyEvent};
 use crate::behavior::{
     Actions, Address, Behavior, Births, Create, Delivery, Recipient, SendAlgebra, ServiceSends,
     User,
@@ -90,16 +90,9 @@ where
         }
         if let Some(report) = effects.report {
             match report {
-                IncarnationReport::CreationResolved {
-                    incarnation,
-                    kind,
-                    result,
-                } => sends.creation_reports.extend([crate::CreationResolved::new(
-                    incarnation,
-                    kind,
-                    result,
-                )
-                .into()]),
+                IncarnationReport::CreationResolved(resolved) => {
+                    sends.creation_reports.extend([resolved.into()]);
+                }
                 IncarnationReport::Stopped { incarnation } => {
                     let event = stopped.expect("stop report originates from child stop input");
                     sends.stopped_reports.extend([ReportWorkerStopped::from(
@@ -130,7 +123,7 @@ where
 {
     type Addr = C::Addr;
     type Msg = ProxyCommand<C>;
-    type Event = SupervisionEvent<User<C::Addr, ProxyCommand<C>>>;
+    type Event = ProxyEvent<User<C::Addr, ProxyCommand<C>>>;
     type Sends = ProxySends<C::Addr, C::Msg>;
     type Ph = Never;
     type Error = Never;
@@ -149,16 +142,16 @@ where
         event: Self::Event,
     ) -> Result<Actions<C::Addr, Never, Self::Sends, Births<C>>, Never> {
         Ok(match event {
-            SupervisionEvent::CreationResolved(resolved) => Self::actions(
+            ProxyEvent::CreationResolved(resolved) => Self::actions(
                 self.incarnation
                     .creation_resolved(resolved.nonce, resolved.kind, resolved.result),
                 None,
             ),
-            SupervisionEvent::ChildStopped(event) => {
+            ProxyEvent::ChildStopped(event) => {
                 let effects = self.incarnation.child_stopped(event.nonce);
                 Self::actions(effects, Some(&event))
             }
-            SupervisionEvent::Inner(event) => match event.message {
+            ProxyEvent::Inner(event) => match event.message {
                 ProxyCommand::Forward(message) => {
                     let effects = self.incarnation.forward(message);
                     Self::actions(effects, None)
@@ -168,9 +161,6 @@ where
                     Self::actions(effects, None)
                 }
             },
-            SupervisionEvent::WorkerStopped(_) | SupervisionEvent::WorkerCreationResolved(_) => {
-                Actions::cont()
-            }
         })
     }
 }

@@ -12,6 +12,11 @@ impl<L, R> SendProduct<L, R> {
     pub const fn new(inner: L, own: R) -> Self {
         Self { inner, own }
     }
+
+    #[must_use]
+    pub fn split(self) -> (L, R) {
+        (self.inner, self.own)
+    }
 }
 
 impl<L, R> From<(L, R)> for SendProduct<L, R> {
@@ -24,6 +29,12 @@ impl<L, R> From<(L, R)> for SendProduct<L, R> {
 pub trait SendAlgebra: Sized {
     fn empty() -> Self;
     fn append(&mut self, other: Self);
+
+    #[must_use]
+    fn combine(mut self, other: Self) -> Self {
+        self.append(other);
+        self
+    }
 }
 
 impl<T> SendAlgebra for Vec<T> {
@@ -42,8 +53,9 @@ impl<L: SendAlgebra, R: SendAlgebra> SendAlgebra for SendProduct<L, R> {
     }
 
     fn append(&mut self, other: Self) {
-        self.inner.append(other.inner);
-        self.own.append(other.own);
+        let (inner, own) = other.split();
+        self.inner.append(inner);
+        self.own.append(own);
     }
 }
 
@@ -120,5 +132,21 @@ impl<M> SendAlgebra for ServiceSends<M> {
     }
     fn append(&mut self, mut other: Self) {
         self.requests.append(&mut other.requests);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn send_algebra_obeys_identity_and_associativity() {
+        let values = vec![1, 2];
+        assert_eq!(Vec::new().combine(values.clone()), values);
+        assert_eq!(values.clone().combine(Vec::new()), values);
+
+        let left = vec![1].combine(vec![2]).combine(vec![3]);
+        let right = vec![1].combine(vec![2].combine(vec![3]));
+        assert_eq!(left, right);
     }
 }

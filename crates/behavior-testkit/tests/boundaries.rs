@@ -513,7 +513,7 @@ async fn nested_at_identical_schedules_are_distinguished_by_identity() {
     let mut outer = At::new(inner, TimerId(1), Some(due), |_| Ok(Step::Continue));
     outer.init().await.unwrap();
 
-    let event = AtEvent::Reached(TimerElapsed {
+    let event = AtEvent::Elapsed(TimerElapsed {
         id: TimerId(0),
         generation: TimerGeneration(0),
     });

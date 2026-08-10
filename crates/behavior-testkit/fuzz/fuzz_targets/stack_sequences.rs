@@ -145,7 +145,7 @@ fuzz_target!(|bytes: &[u8]| {
                 2 => {
                     // Time lane: matching Reached fires once, then inert.
                     let actions = behavior
-                        .step(SupervisionEvent::Inner(AtEvent::Reached(TimerElapsed {
+                        .step(SupervisionEvent::Inner(AtEvent::Elapsed(TimerElapsed {
                             id: TimerId(0),
                             generation: TimerGeneration(0),})))
                         .await

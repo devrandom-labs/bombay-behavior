@@ -2,8 +2,9 @@ use std::time::Duration;
 
 use behavior::{
     Acted, Actions, At, Base, Behavior, ChildStopped, Crash, CreationKind, CreationResolved,
-    Delivery, Exit, MailAddr, Never, Proxy, ProxyCommand, Recipient, RestartPolicy, Route, State,
-    Step, Strategy, Supervising, SupervisionEvent, TimerId, User, UserEvent, WorkerStopped,
+    Delivery, Exit, MailAddr, Never, Proxy, ProxyCommand, ProxyEvent, Recipient, RestartPolicy,
+    Route, State, Step, Strategy, Supervising, SupervisionEvent, TimerId, User, UserEvent,
+    WorkerStopped,
 };
 use behavior_testkit::{Mailbox, drive};
 use proptest::collection::vec;
@@ -132,7 +133,7 @@ proptest! {
         let initial = runtime.block_on(proxy.init()).unwrap();
         prop_assert_eq!(initial.creates[0].nonce, 0);
         prop_assert_eq!(initial.creates[0].kind, CreationKind::Birth);
-        runtime.block_on(proxy.step(SupervisionEvent::CreationResolved(CreationResolved {
+        runtime.block_on(proxy.step(ProxyEvent::CreationResolved(CreationResolved {
             nonce: 0,
             kind: CreationKind::Birth,
             result: Ok(()),
@@ -142,12 +143,12 @@ proptest! {
         for (index, replace) in commands.into_iter().enumerate() {
             if replace {
                 generation += 1;
-                let actions = runtime.block_on(proxy.step(SupervisionEvent::Inner(User::user(
+                let actions = runtime.block_on(proxy.step(ProxyEvent::Inner(User::user(
                     MailAddr(0),
                     ProxyCommand::Replace(child(index)),
                 )))).unwrap();
                 prop_assert!(actions.creates.is_empty());
-                let actions = runtime.block_on(proxy.step(SupervisionEvent::ChildStopped(
+                let actions = runtime.block_on(proxy.step(ProxyEvent::ChildStopped(
                     ChildStopped {
                         nonce: generation - 1,
                         outcome: Ok(Exit::Normal),
@@ -163,7 +164,7 @@ proptest! {
                     }
                 );
                 prop_assert!(actions.sends.deliveries.is_empty());
-                runtime.block_on(proxy.step(SupervisionEvent::CreationResolved(CreationResolved {
+                runtime.block_on(proxy.step(ProxyEvent::CreationResolved(CreationResolved {
                     nonce: generation,
                     kind: CreationKind::ReplacementIncarnation {
                         replaces: generation - 1,
@@ -172,7 +173,7 @@ proptest! {
                 }))).unwrap();
             } else {
                 let message = u8::try_from(index % 255).unwrap();
-                let actions = runtime.block_on(proxy.step(SupervisionEvent::Inner(User::user(
+                let actions = runtime.block_on(proxy.step(ProxyEvent::Inner(User::user(
                     MailAddr(0),
                     ProxyCommand::Forward(message),
                 )))).unwrap();

@@ -2,7 +2,7 @@
 
 use behavior::{
     Acted, Actions, Base, Behavior, ChildStopped, CreationKind, CreationResolved, Delivery, Exit,
-    MailAddr, Never, Proxy, ProxyCommand, Route, State, SupervisionEvent, User, UserEvent,
+    MailAddr, Never, Proxy, ProxyCommand, ProxyEvent, Route, State, User, UserEvent,
 };
 use libfuzzer_sys::fuzz_target;
 use tokio::runtime::Builder;
@@ -35,7 +35,7 @@ fuzz_target!(|bytes: &[u8]| {
         assert_eq!(initial.creates[0].nonce, 0);
         assert_eq!(initial.creates[0].kind, CreationKind::Birth);
         proxy
-            .step(SupervisionEvent::CreationResolved(CreationResolved {
+            .step(ProxyEvent::CreationResolved(CreationResolved {
                 nonce: 0,
                 kind: CreationKind::Birth,
                 result: Ok(()),
@@ -47,7 +47,7 @@ fuzz_target!(|bytes: &[u8]| {
         for (index, byte) in bytes.iter().copied().enumerate() {
             if byte & 1 == 0 {
                 let actions = proxy
-                    .step(SupervisionEvent::Inner(User::user(
+                    .step(ProxyEvent::Inner(User::user(
                         MailAddr(0),
                         ProxyCommand::Forward(byte),
                     )))
@@ -60,7 +60,7 @@ fuzz_target!(|bytes: &[u8]| {
             } else {
                 generation = generation.checked_add(1).unwrap();
                 let actions = proxy
-                    .step(SupervisionEvent::Inner(User::user(
+                    .step(ProxyEvent::Inner(User::user(
                         MailAddr(0),
                         ProxyCommand::Replace(worker(index)),
                     )))
@@ -69,7 +69,7 @@ fuzz_target!(|bytes: &[u8]| {
                 assert!(actions.sends.deliveries.is_empty());
                 assert!(actions.creates.is_empty());
                 let actions = proxy
-                    .step(SupervisionEvent::ChildStopped(ChildStopped {
+                    .step(ProxyEvent::ChildStopped(ChildStopped {
                         nonce: generation - 1,
                         outcome: Ok(Exit::Normal),
                         at: tokio::time::Instant::now(),
@@ -85,7 +85,7 @@ fuzz_target!(|bytes: &[u8]| {
                     }
                 );
                 proxy
-                    .step(SupervisionEvent::CreationResolved(CreationResolved {
+                    .step(ProxyEvent::CreationResolved(CreationResolved {
                         nonce: generation,
                         kind: CreationKind::ReplacementIncarnation {
                             replaces: generation - 1,

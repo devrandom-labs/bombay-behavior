@@ -54,6 +54,24 @@ where
 }
 
 impl<B: Behavior> Spec<B> {
+    fn map_behavior<Mapped>(self, map: impl FnOnce(B) -> Mapped) -> Spec<Mapped> {
+        Spec {
+            behavior: map(self.behavior),
+            next_timer: self.next_timer,
+        }
+    }
+
+    fn map_timer<Mapped>(self, map: impl FnOnce(B, TimerId) -> Mapped) -> Spec<Mapped> {
+        let timer = TimerId(self.next_timer);
+        Spec {
+            behavior: map(self.behavior, timer),
+            next_timer: self
+                .next_timer
+                .checked_add(1)
+                .expect("timer identity exhausted"),
+        }
+    }
+
     #[must_use]
     pub fn from_behavior(behavior: B) -> Self {
         Self {
@@ -75,10 +93,7 @@ impl<B: Behavior> Spec<B> {
     /// Stop normally when a typed shutdown request is folded.
     #[must_use]
     pub fn stop_on_shutdown(self) -> Spec<StopOnShutdown<B>> {
-        Spec {
-            behavior: StopOnShutdown::new(self.behavior),
-            next_timer: self.next_timer,
-        }
+        self.map_behavior(StopOnShutdown::new)
     }
 
     /// Apply one final pure fold, retain its sends and creations, and stop
@@ -88,19 +103,13 @@ impl<B: Behavior> Spec<B> {
         self,
         finalize: ShutdownReaction<B>,
     ) -> Spec<FinalizeOnShutdown<B>> {
-        Spec {
-            behavior: FinalizeOnShutdown::new(self.behavior, finalize),
-            next_timer: self.next_timer,
-        }
+        self.map_behavior(|behavior| FinalizeOnShutdown::new(behavior, finalize))
     }
 
     /// Observe a peer and apply a pure reaction when it stops.
     #[must_use]
     pub fn watch(self, peer: B::Addr, on_stopped: LinkReaction<B>) -> Spec<Watching<B>> {
-        Spec {
-            behavior: Watching::new(self.behavior, peer, on_stopped),
-            next_timer: self.next_timer,
-        }
+        self.map_behavior(|behavior| Watching::new(behavior, peer, on_stopped))
     }
 
     /// Apply a pure reaction when the given absolute time is reached.
@@ -111,13 +120,7 @@ impl<B: Behavior> Spec<B> {
     /// capabilities.
     #[must_use]
     pub fn at(self, when: Option<Instant>, on_reached: AtReaction<B>) -> Spec<At<B>> {
-        Spec {
-            behavior: At::new(self.behavior, TimerId(self.next_timer), when, on_reached),
-            next_timer: self
-                .next_timer
-                .checked_add(1)
-                .expect("timer identity exhausted"),
-        }
+        self.map_timer(|behavior, timer| At::new(behavior, timer, when, on_reached))
     }
 
     /// Notify the behavior once after an idle period containing no successful
@@ -138,18 +141,7 @@ impl<B: Behavior> Spec<B> {
         after: Duration,
         on_elapsed: ReceiveTimeoutReaction<B>,
     ) -> Spec<ReceiveTimeout<B>> {
-        Spec {
-            behavior: ReceiveTimeout::new(
-                self.behavior,
-                TimerId(self.next_timer),
-                after,
-                on_elapsed,
-            ),
-            next_timer: self
-                .next_timer
-                .checked_add(1)
-                .expect("timer identity exhausted"),
-        }
+        self.map_timer(|behavior, timer| ReceiveTimeout::new(behavior, timer, after, on_elapsed))
     }
 
     /// Hold messages selected by `route` and replay them on `Release`.
@@ -158,10 +150,7 @@ impl<B: Behavior> Spec<B> {
     where
         B: Behavior<Ph = Never>,
     {
-        Spec {
-            behavior: Stashing::new(self.behavior, route),
-            next_timer: self.next_timer,
-        }
+        self.map_behavior(|behavior| Stashing::new(behavior, route))
     }
 
     /// Create a supervised child topology. Concrete proxy and monitor types
@@ -187,9 +176,9 @@ impl<B: Behavior> Spec<B> {
         B: Behavior<Birth = Births<C>>,
         C: Behavior<Ph = Never, Addr = B::Addr>,
     {
-        Spec {
-            behavior: Supervising::new(
-                self.behavior,
+        self.map_behavior(|behavior| {
+            Supervising::new(
+                behavior,
                 nonces,
                 count,
                 build,
@@ -197,9 +186,8 @@ impl<B: Behavior> Spec<B> {
                 DEFAULT_POLICY,
                 DEFAULT_BUDGET.0,
                 DEFAULT_BUDGET.1,
-            ),
-            next_timer: self.next_timer,
-        }
+            )
+        })
     }
 }
 

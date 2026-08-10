@@ -4,81 +4,14 @@
 use std::time::Duration;
 
 use super::domain::TimerLease;
+use super::event::TimedEvent;
 use crate::Step;
 use crate::behavior::{
     Actions, Address, Behavior, BirthMode, SendAlgebra, SendProduct, ServiceSends, UserEvent,
 };
-use crate::protocol::{
-    ChildEvent, ChildStopped, CreationEvent, CreationResolved, PeerEvent, PeerStopped,
-    ScheduleAfter, ShutdownEvent, ShutdownRequested, TimeEvent, TimerElapsed, TimerId,
-    WorkerCreationEvent, WorkerCreationResolved, WorkerEvent, WorkerStopped,
-};
+use crate::protocol::{ScheduleAfter, TimeEvent, TimerId};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ReceiveTimeoutEvent<E> {
-    Inner(E),
-    Elapsed(TimerElapsed),
-}
-
-impl<E: UserEvent> TimeEvent for ReceiveTimeoutEvent<E> {
-    fn time_reached(event: TimerElapsed) -> Option<Self> {
-        Some(Self::Elapsed(event))
-    }
-}
-
-impl<E: UserEvent> UserEvent for ReceiveTimeoutEvent<E> {
-    type Addr = E::Addr;
-    type Message = E::Message;
-
-    fn user(from: Self::Addr, message: Self::Message) -> Self {
-        Self::Inner(E::user(from, message))
-    }
-
-    fn into_user(self) -> Result<crate::User<Self::Addr, Self::Message>, Self> {
-        match self {
-            Self::Inner(event) => event.into_user().map_err(Self::Inner),
-            elapsed @ Self::Elapsed(_) => Err(elapsed),
-        }
-    }
-}
-
-impl<E: PeerEvent> PeerEvent for ReceiveTimeoutEvent<E> {
-    fn peer_stopped(event: PeerStopped<E::Addr>) -> Option<Self> {
-        E::peer_stopped(event).map(Self::Inner)
-    }
-}
-
-impl<E: ChildEvent> ChildEvent for ReceiveTimeoutEvent<E> {
-    fn child_stopped(event: ChildStopped<E::Addr>) -> Option<Self> {
-        E::child_stopped(event).map(Self::Inner)
-    }
-}
-
-impl<E: WorkerEvent> WorkerEvent for ReceiveTimeoutEvent<E> {
-    fn worker_stopped(event: WorkerStopped<E::Addr>) -> Option<Self> {
-        E::worker_stopped(event).map(Self::Inner)
-    }
-}
-
-impl<E: CreationEvent> CreationEvent for ReceiveTimeoutEvent<E> {
-    fn creation_resolved(event: CreationResolved<<E::Addr as Address>::Nonce>) -> Option<Self> {
-        E::creation_resolved(event).map(Self::Inner)
-    }
-}
-
-impl<E: WorkerCreationEvent> WorkerCreationEvent for ReceiveTimeoutEvent<E> {
-    fn worker_creation_resolved(
-        event: WorkerCreationResolved<<E::Addr as Address>::Nonce>,
-    ) -> Option<Self> {
-        E::worker_creation_resolved(event).map(Self::Inner)
-    }
-}
-
-impl<E: ShutdownEvent> ShutdownEvent for ReceiveTimeoutEvent<E> {
-    fn shutdown_requested(event: ShutdownRequested) -> Option<Self> {
-        E::shutdown_requested(event).map(Self::Inner)
-    }
-}
+pub type ReceiveTimeoutEvent<E> = TimedEvent<E>;
 
 /// A controlled receive-timeout failure.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -166,11 +99,7 @@ impl<B: Behavior> ReceiveTimeout<B> {
         actions: Actions<B::Addr, B::Ph, B::Sends, B::Birth>,
         own: ServiceSends<ScheduleAfter>,
     ) -> ReceiveTimeoutActions<B> {
-        Actions::new(
-            SendProduct::new(actions.sends, own),
-            actions.creates,
-            actions.become_,
-        )
+        actions.map_sends(|inner| SendProduct::new(inner, own))
     }
 
     fn terminal(actions: &Actions<B::Addr, B::Ph, B::Sends, B::Birth>) -> bool {
