@@ -36,3 +36,16 @@ produce a successful restart report.
 `ChildStopped` remains the terminal observation of one exact incarnation.
 `CreationResolved` reports realization of one staged creation. Neither event
 implies that supervision will or will not make a later attempt.
+
+## Rejected same-action observation
+
+Creation resolution precedes service-send interpretation by Bombay policy. If
+a creation is rejected, no child generation is installed at its nonce. A
+same-action `ObserveChild` for that nonce is therefore consumed as inert: it
+installs no observation, emits no `ChildStopped`, and is not retained for a
+later creation. The same-action `ObserveCreation` still emits exactly one
+rejected `CreationResolved`.
+
+This is not an actor-model lifecycle guarantee. It is Bombay's interpretation
+law preserving the distinction between a rejected creation request and the
+termination of an actor that was actually installed.

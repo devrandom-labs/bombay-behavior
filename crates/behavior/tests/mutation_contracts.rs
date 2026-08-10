@@ -5,8 +5,8 @@ use behavior::{
     ProxySends, Pure, ReceiveTimeoutEvent, ReceiveTimeoutSends, Recipient,
     ReportWorkerCreationResolved, ReportWorkerStopped, ScheduleAfter, ScheduleAt, SendAlgebra,
     ServiceSends, ShutdownEvent, ShutdownProtocol, ShutdownRequested, SupervisionEvent,
-    SupervisorSends, TimeEvent, TimerElapsed, TimerGeneration, TimerId, User, UserEvent,
-    WatchEvent, WatchSends, WorkerCreationEvent, WorkerCreationResolved, WorkerEvent,
+    SupervisorSends, TimeEvent, TimerElapsed, TimerGeneration, TimerId, UnwatchPeer, User,
+    UserEvent, WatchEvent, WatchSends, WorkerCreationEvent, WorkerCreationResolved, WorkerEvent,
     WorkerStopped,
 };
 use std::time::Duration;
@@ -297,6 +297,11 @@ fn typed_send_accumulation_finds_a_composed_inner_lane() {
     assert!(sends.observations.is_empty());
     assert!(sends.behavior.behavior.is_empty());
     assert_eq!(sends.behavior.schedules[0].at, at);
+
+    let mut watching = WatchSends::<MailAddr, ServiceSends<UnwatchPeer<MailAddr>>>::empty();
+    watching.send(UnwatchPeer::new(MailAddr(12)));
+    assert!(watching.observations.is_empty());
+    assert_eq!(watching.behavior[0].peer, MailAddr(12));
 }
 
 #[test]
@@ -308,6 +313,10 @@ fn typed_send_accumulation_routes_every_named_lane_once() {
     let mut watch = WatchSends::<MailAddr, Vec<u8>>::empty();
     watch.send(ObservePeer::new(MailAddr(4)));
     assert_eq!(watch.observations[0].peer, MailAddr(4));
+
+    let mut cancellations = ServiceSends::<UnwatchPeer<MailAddr>>::empty();
+    cancellations.send(UnwatchPeer::new(MailAddr(4)));
+    assert_eq!(cancellations[0].peer, MailAddr(4));
 
     let mut deadline = DeadlineSends::<Vec<u8>>::empty();
     deadline.send(5_u8);

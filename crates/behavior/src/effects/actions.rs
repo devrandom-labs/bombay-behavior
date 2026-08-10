@@ -15,10 +15,14 @@ pub type Become<A, Ph = Never> = Step<Ph, Exit<A>>;
 /// `sends` from this value. A successful resolution installs and binds the
 /// child; a rejected resolution binds nothing. This ordering lets a same-action
 /// [`crate::ObserveCreation`] request return the committed result rather than
-/// the behavior's intent. Creation order is vector order, and each concrete
-/// send lane retains its own order; this contract does not impose an order
-/// between independent lanes of a [`crate::SendProduct`]. Constructing a value
-/// remains pure.
+/// the behavior's intent. When creation is rejected, a same-action
+/// [`crate::ObserveChild`] for its nonce is consumed without installing an
+/// observation or emitting [`crate::ChildStopped`], while
+/// [`crate::ObserveCreation`] reports the rejection. A later creation cannot
+/// inherit that consumed observation. Creation order is vector order, and each
+/// concrete send lane retains its own order; this contract does not impose an
+/// order between independent lanes of a [`crate::SendProduct`]. Constructing a
+/// value remains pure.
 pub struct Actions<A: Address, Ph, Sends, Birth: BirthMode> {
     pub sends: Sends,
     pub creates: Vec<Create<A, Birth::Child>>,

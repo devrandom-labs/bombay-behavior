@@ -116,6 +116,16 @@ pub trait TimeEvent: UserEvent {
     fn time_reached(event: TimerElapsed) -> Option<Self>;
 }
 
+/// Ask the local interpreter to observe the exact peer incarnation selected at
+/// `peer` when this request is interpreted.
+///
+/// [`PeerStopped`] is the pure result protocol. It arrives eventually if a
+/// selected live incarnation later terminates, or may arrive immediately when
+/// the interpreter has authoritative retained termination for the requested
+/// incarnation. Absence from a live-address table is not such authority: an
+/// interpreter that can select neither a live incarnation nor retained
+/// terminal history must return an interpreter error rather than fabricate a
+/// stop result.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ObservePeer<A> {
     pub peer: A,
@@ -131,6 +141,32 @@ impl<A> ObservePeer<A> {
     #[must_use]
     pub const fn new(peer: A) -> Self {
         Self { peer }
+    }
+}
+
+/// Ask the local interpreter to cancel this actor's observation of `peer`.
+///
+/// Peer observation is a derived Bombay protocol, not an actor-model
+/// primitive. The address names the same observer-local relationship created
+/// by [`ObservePeer`]; exact-incarnation capture and cancellation belong to the
+/// interpreter. Cancellation does not retract a [`PeerStopped`] event already
+/// admitted to the actor's mailbox, and an interpreter treats a request for a
+/// relationship that is no longer present as inert.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UnwatchPeer<A> {
+    pub peer: A,
+}
+
+impl<A> UnwatchPeer<A> {
+    #[must_use]
+    pub const fn new(peer: A) -> Self {
+        Self { peer }
+    }
+}
+
+impl<A> From<A> for UnwatchPeer<A> {
+    fn from(peer: A) -> Self {
+        Self::new(peer)
     }
 }
 
@@ -165,6 +201,14 @@ impl<A: Address> ChildStopped<A> {
     }
 }
 
+/// Ask the local interpreter to observe the exact child generation bound at
+/// `nonce`.
+///
+/// Creation is resolved before same-action service sends. If that creation was
+/// rejected, no child exists to observe: the interpreter consumes this request
+/// without installing an observation or emitting [`ChildStopped`]. The
+/// rejection remains observable through [`ObserveCreation`], and a later
+/// creation cannot inherit the consumed observation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ObserveChild<N> {
     pub nonce: N,
