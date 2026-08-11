@@ -8,11 +8,24 @@ pub enum Own {}
 /// A lane reached through the product's composed behavior sends.
 pub struct Inner<Path>(PhantomData<fn(Path)>);
 
-/// Static evidence that a send product contains one request lane.
+/// Static evidence that a send algebra contains one request lane.
 ///
 /// Implementations append the input exactly once to that lane and leave every
 /// other lane unchanged. `Path` distinguishes repeated request types without
 /// erasing their position or choosing a lane at runtime.
+///
+/// [`Own`] selects the current algebra's owned lane. [`Inner<Path>`] descends
+/// through the composed-behavior side of one product or named wrapper before
+/// applying `Path`. Consequently, paths remain statically known through
+/// arbitrary wrapper depth.
+///
+/// ```compile_fail
+/// use behavior::{Inner, Own, SendAlgebra, SendProduct};
+///
+/// let mut sends = SendProduct::new(Vec::<u8>::new(), Vec::<u16>::new());
+/// // `u32` is not accepted by either lane at this path.
+/// sends.send::<_, Inner<Own>>(1_u32);
+/// ```
 pub trait SendInput<Input, Path> {
     fn emit(&mut self, input: Input);
 }
@@ -86,6 +99,24 @@ impl<T> SendAlgebra for Vec<T> {
 impl<T> SendInput<T, Own> for Vec<T> {
     fn emit(&mut self, input: T) {
         self.push(input);
+    }
+}
+
+impl<L, R, Input> SendInput<Input, Own> for SendProduct<L, R>
+where
+    R: SendInput<Input, Own>,
+{
+    fn emit(&mut self, input: Input) {
+        <R as SendInput<Input, Own>>::emit(&mut self.own, input);
+    }
+}
+
+impl<L, R, Input, Path> SendInput<Input, Inner<Path>> for SendProduct<L, R>
+where
+    L: SendInput<Input, Path>,
+{
+    fn emit(&mut self, input: Input) {
+        <L as SendInput<Input, Path>>::emit(&mut self.inner, input);
     }
 }
 
@@ -186,6 +217,7 @@ impl<M> SendInput<M, Own> for ServiceSends<M> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
 
     #[test]
     fn send_algebra_obeys_identity_and_associativity() {
@@ -196,5 +228,41 @@ mod tests {
         let left = vec![1].combine(vec![2]).combine(vec![3]);
         let right = vec![1].combine(vec![2].combine(vec![3]));
         assert_eq!(left, right);
+    }
+
+    #[test]
+    fn typed_paths_select_exactly_one_product_lane() {
+        type Sends = SendProduct<SendProduct<Vec<u8>, Vec<u16>>, Vec<u32>>;
+
+        let mut sends = Sends::empty();
+        sends.send::<_, Inner<Inner<Own>>>(1_u8);
+        sends.send::<_, Inner<Own>>(2_u16);
+        sends.send::<_, Own>(3_u32);
+
+        assert_eq!(sends.inner.inner, vec![1]);
+        assert_eq!(sends.inner.own, vec![2]);
+        assert_eq!(sends.own, vec![3]);
+    }
+
+    proptest! {
+        #[test]
+        fn typed_path_emission_preserves_every_unselected_lane(
+            inner in proptest::collection::vec(any::<u8>(), 0..16),
+            middle in proptest::collection::vec(any::<u16>(), 0..16),
+            own in proptest::collection::vec(any::<u32>(), 0..16),
+            input in any::<u16>(),
+        ) {
+            let original_inner = inner.clone();
+            let original_own = own.clone();
+            let mut sends = SendProduct::new(SendProduct::new(inner, middle.clone()), own);
+
+            sends.send::<_, Inner<Own>>(input);
+
+            prop_assert_eq!(sends.inner.inner, original_inner);
+            prop_assert_eq!(sends.inner.own.len(), middle.len() + 1);
+            prop_assert_eq!(&sends.inner.own[..middle.len()], middle.as_slice());
+            prop_assert_eq!(sends.inner.own.last(), Some(&input));
+            prop_assert_eq!(sends.own, original_own);
+        }
     }
 }
