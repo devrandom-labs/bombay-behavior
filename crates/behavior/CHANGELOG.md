@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.3](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.9.2...bombay-behavior-v0.9.3) - 2026-08-11
+
+### Added
+
+- add concrete behavior function adapter ([#32](https://github.com/devrandom-labs/bombay-behavior/pull/32))
+
 ## [0.9.2](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.9.1...bombay-behavior-v0.9.2) - 2026-08-11
 
 ### Other
