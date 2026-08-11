@@ -5,12 +5,12 @@ use std::time::Duration;
 use behavior::{
     Acted, Actions, Become, Behavior, Births, ChildStopped, Compose, Crash, Create, CreationKind,
     CreationRejection, CreationResolved, Deadline, DeadlineEvent, Delivery, Exit, Handler, Machine,
-    MailAddr, Move, Never, NoBirths, ObserveChild, PeerStopped, Proxy, ProxyCommand, ProxyEvent,
-    Pure, Recipient, RestartDenial, RestartPolicy, Route, ServiceSends, ShutdownEvent,
-    ShutdownRequested, StashRoute, Step, Strategy, SupervisionEvent, SupervisionFailure,
-    SupervisionFailureReason, Supervisor, TimeEvent, TimerElapsed, TimerGeneration, TimerId, User,
-    UserEvent, Watch, WatchEvent, WorkerEvent, WorkerStopped, run, stop_on_abnormal_death,
-    stop_on_supervision_failure, workers,
+    MailAddr, Move, Never, NoBirths, ObserveChild, Own, PeerStopped, Proxy, ProxyCommand,
+    ProxyEvent, Pure, Recipient, RestartDenial, RestartPolicy, Route, SendAlgebra, SendProduct,
+    ServiceSends, ShutdownEvent, ShutdownRequested, StashRoute, Step, Strategy, SupervisionEvent,
+    SupervisionFailure, SupervisionFailureReason, Supervisor, TimeEvent, TimerElapsed,
+    TimerGeneration, TimerId, User, UserEvent, Watch, WatchEvent, WorkerEvent, WorkerStopped, run,
+    stop_on_abnormal_death, stop_on_supervision_failure, workers,
 };
 use communication::{Config, channel};
 use proptest::prelude::*;
@@ -103,6 +103,80 @@ fn actions_expose_the_typed_actor_transition_effects() {
     assert_eq!(actions.sends[0].message, 42);
     assert!(actions.creates.is_empty());
     assert!(matches!(actions.become_, Step::Continue));
+}
+
+#[test]
+fn behavior_fn_preserves_explicit_initialization_and_transition_actions() {
+    type Sends = SendProduct<Vec<Delivery<MailAddr, u64>>, ServiceSends<ObserveChild<u64>>>;
+    type Child = Pure<Quiet>;
+
+    let mut behavior = Compose::from_fns(
+        Vec::<u64>::new(),
+        |state: &mut Vec<u64>| -> Acted<MailAddr, Never, Sends, Births<Child>, Never> {
+            state.push(1);
+            let mut sends = Sends::empty();
+            sends.send::<_, Own>(ObserveChild { nonce: 7 });
+            Ok(Actions::new(
+                sends,
+                vec![Create::birth(7, Pure::new(Quiet))],
+                Step::Continue,
+            ))
+        },
+        |state: &mut Vec<u64>, _from: MailAddr, message: u64| {
+            state.push(message);
+            Ok(Actions::new(
+                SendProduct::new(
+                    vec![Delivery::new(Recipient::global(MailAddr(9)), message)],
+                    ServiceSends::empty(),
+                ),
+                Vec::new(),
+                Step::Stop(Exit::Normal),
+            ))
+        },
+    );
+
+    let initialized = behavior.init().unwrap();
+    assert_eq!(
+        initialized.sends.own.as_slice(),
+        &[ObserveChild { nonce: 7 }]
+    );
+    assert_eq!(initialized.creates.len(), 1);
+    assert!(matches!(initialized.become_, Step::Continue));
+
+    let transitioned = behavior.receive(MailAddr(3), 5).unwrap();
+    assert_eq!(transitioned.sends.inner[0].message, 5);
+    assert!(transitioned.creates.is_empty());
+    assert!(matches!(transitioned.become_, Step::Stop(Exit::Normal)));
+    assert_eq!(behavior.behavior().state(), &[1, 5]);
+}
+
+#[test]
+fn behavior_fn_composes_with_existing_wrappers_and_init_order() {
+    let due = Instant::now();
+    let mut behavior = Compose::from_fns(
+        0_u8,
+        |state: &mut u8| -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, u8>>, NoBirths, Never> {
+            *state += 1;
+            Ok(Actions::new(
+                vec![Delivery::new(Recipient::global(MailAddr(4)), *state)],
+                Vec::new(),
+                Step::Continue,
+            ))
+        },
+        |state: &mut u8, _from: MailAddr, message: u8| {
+            *state += message;
+            Ok(Actions::cont())
+        },
+    )
+    .deadline(Some(due), |_| Ok(Step::Continue))
+    .stop_on_shutdown();
+
+    let initialized = behavior.init().unwrap();
+    assert_eq!(initialized.sends.behavior[0].message, 1);
+    assert_eq!(initialized.sends.schedules.len(), 1);
+
+    behavior.receive(MailAddr(2), 4).unwrap();
+    assert_eq!(behavior.behavior().inner().inner().state(), &5);
 }
 
 #[tokio::test]

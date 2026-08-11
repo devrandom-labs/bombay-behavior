@@ -28,8 +28,8 @@ pub use actor::{
     Route,
 };
 pub use calculus::{
-    ActionReducer, Behavior, BehaviorActed, Effects, EventInput, FoldFn, Folded, Handler, Pure,
-    User, UserEvent, fold_events,
+    ActionReducer, Behavior, BehaviorActed, BehaviorFn, Effects, EventInput, FoldFn, Folded,
+    Handler, Pure, User, UserEvent, fold_events,
 };
 pub use compose::Compose;
 pub use effects::{
