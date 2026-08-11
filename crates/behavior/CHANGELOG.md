@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.2](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.9.1...bombay-behavior-v0.9.2) - 2026-08-11
+
+### Other
+
+- Add recursive typed send forwarding ([#29](https://github.com/devrandom-labs/bombay-behavior/pull/29))
+
 ### Added
 
 - add recursive typed `SendInput` forwarding through `SendProduct`, allowing
