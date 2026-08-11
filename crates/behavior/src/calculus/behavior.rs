@@ -111,6 +111,65 @@ pub struct FoldFn<
     marker: PhantomData<fn(A, M, O, Br, E)>,
 }
 
+/// A concrete behavior defined by initialization and user-event folds.
+///
+/// Each function is invoked exactly once for its corresponding input and its
+/// returned [`Actions`] value is preserved unchanged. This adapter adds no
+/// event routing or effect interpretation; those remain the responsibility of
+/// concrete behavior wrappers and the runtime interpreter.
+pub struct BehaviorFn<S, A: Address, M, Sends, Br: BirthMode, E, I, F> {
+    state: S,
+    initialize: I,
+    transition: F,
+    marker: PhantomData<fn(A, M, Sends, Br, E)>,
+}
+
+impl<S, A: Address, M, Sends, Br: BirthMode, E, I, F> BehaviorFn<S, A, M, Sends, Br, E, I, F>
+where
+    Sends: SendAlgebra,
+    I: FnMut(&mut S) -> Acted<A, Never, Sends, Br, E>,
+    F: FnMut(&mut S, A, M) -> Acted<A, Never, Sends, Br, E>,
+{
+    #[must_use]
+    pub fn new(state: S, initialize: I, transition: F) -> Self {
+        Self {
+            state,
+            initialize,
+            transition,
+            marker: PhantomData,
+        }
+    }
+
+    #[must_use]
+    pub fn state(&self) -> &S {
+        &self.state
+    }
+}
+
+impl<S, A: Address, M, Sends, Br: BirthMode, E, I, F> Behavior
+    for BehaviorFn<S, A, M, Sends, Br, E, I, F>
+where
+    Sends: SendAlgebra,
+    I: FnMut(&mut S) -> Acted<A, Never, Sends, Br, E>,
+    F: FnMut(&mut S, A, M) -> Acted<A, Never, Sends, Br, E>,
+{
+    type Addr = A;
+    type Msg = M;
+    type Event = User<A, M>;
+    type Sends = Sends;
+    type Ph = Never;
+    type Error = E;
+    type Birth = Br;
+
+    fn init(&mut self) -> BehaviorActed<Self> {
+        (self.initialize)(&mut self.state)
+    }
+
+    fn transition(&mut self, event: Self::Event) -> BehaviorActed<Self> {
+        (self.transition)(&mut self.state, event.from, event.message)
+    }
+}
+
 impl<S, F, A: Address, M, O, Br: BirthMode, E> Handler<O, Br, E> for FoldFn<S, A, M, O, Br, E, F>
 where
     F: FnMut(&mut S, A, M) -> Acted<A, Never, Vec<Delivery<A, O>>, Br, E>,

@@ -14,7 +14,7 @@ use crate::supervision::{RestartPolicy, Strategy, SupervisionFailureReaction, Su
 use crate::timing::{Deadline, DeadlineReaction};
 use crate::timing::{ReceiveTimeout, ReceiveTimeoutReaction};
 use crate::watch::{LinkReaction, Watch};
-use crate::{Actions, Handler, Machine, Move, Pure, SendAlgebra};
+use crate::{Actions, BehaviorFn, Handler, Machine, Move, Pure, SendAlgebra};
 
 const DEFAULT_STRATEGY: Strategy = Strategy::OneForOne;
 const DEFAULT_POLICY: RestartPolicy = RestartPolicy::Transient;
@@ -48,6 +48,25 @@ where
     pub fn machine(state: S, phase: P, on: fn(P, &mut S, &M) -> Result<Move<P>, E>) -> Self {
         Self {
             behavior: Machine::new(state, phase, on),
+            next_timer: 0,
+        }
+    }
+}
+
+impl<S, A, M, Sends, Br, E, I, F> Compose<BehaviorFn<S, A, M, Sends, Br, E, I, F>>
+where
+    A: Address,
+    Sends: SendAlgebra,
+    Br: BirthMode,
+    I: FnMut(&mut S) -> crate::Acted<A, Never, Sends, Br, E>,
+    F: FnMut(&mut S, A, M) -> crate::Acted<A, Never, Sends, Br, E>,
+{
+    /// Define a concrete behavior from explicit initialization and user-event
+    /// folds, ready for typed wrapper composition.
+    #[must_use]
+    pub fn from_fns(state: S, initialize: I, transition: F) -> Self {
+        Self {
+            behavior: BehaviorFn::new(state, initialize, transition),
             next_timer: 0,
         }
     }
