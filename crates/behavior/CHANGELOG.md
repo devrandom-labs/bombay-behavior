@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- add recursive typed `SendInput` forwarding through `SendProduct`, allowing
+  callers to select arbitrarily nested send lanes with `Own` and `Inner<Path>`
+  without positional field mutation
+
 ## [0.9.1](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.9.0...bombay-behavior-v0.9.1) - 2026-08-10
 
 ### Other
