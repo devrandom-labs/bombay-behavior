@@ -96,10 +96,11 @@ pub trait Behavior {
 
 /// Fold one event through an inner behavior owned by a semantic wrapper.
 ///
-/// This is the canonical boundary for wrapper composition. It invokes the
-/// inner deterministic fold exactly once and preserves its complete typed
-/// action value unchanged. It does not execute a runtime turn, interpret
-/// effects, or provide an alternate actor executor; top-level runtime
+/// This is Bombay's derived, canonical boundary for wrapper composition; it is
+/// not an additional actor-model operation. It invokes the inner deterministic
+/// fold exactly once and returns its complete typed action value without
+/// inspecting or transforming it. It does not execute a runtime turn,
+/// interpret effects, or provide an alternate actor executor; top-level runtime
 /// transitions remain the responsibility of the runtime's machine adapter.
 ///
 /// # Errors
