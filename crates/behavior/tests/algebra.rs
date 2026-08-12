@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Duration;
 
 use behavior::{
@@ -9,8 +9,8 @@ use behavior::{
     ProxyEvent, Pure, Recipient, RestartDenial, RestartPolicy, Route, SendAlgebra, SendProduct,
     ServiceSends, ShutdownEvent, ShutdownRequested, StashRoute, Step, Strategy, SupervisionEvent,
     SupervisionFailure, SupervisionFailureReason, Supervisor, TimeEvent, TimerElapsed,
-    TimerGeneration, TimerId, User, UserEvent, Watch, WatchEvent, WorkerEvent, WorkerStopped, run,
-    stop_on_abnormal_death, stop_on_supervision_failure, workers,
+    TimerGeneration, TimerId, User, UserEvent, Watch, WatchEvent, WorkerEvent, WorkerStopped,
+    delegate_transition, run, stop_on_abnormal_death, stop_on_supervision_failure, workers,
 };
 use communication::{Config, channel};
 use proptest::prelude::*;
@@ -103,6 +103,43 @@ fn actions_expose_the_typed_actor_transition_effects() {
     assert_eq!(actions.sends[0].message, 42);
     assert!(actions.creates.is_empty());
     assert!(matches!(actions.become_, Step::Continue));
+}
+
+#[test]
+fn nested_delegation_invokes_one_inner_fold_and_preserves_actions() {
+    struct Counted {
+        calls: Arc<AtomicUsize>,
+    }
+
+    impl Handler<u64> for Counted {
+        type Addr = MailAddr;
+        type Msg = u64;
+
+        fn receive(
+            &mut self,
+            from: MailAddr,
+            message: u64,
+        ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, u64>>, NoBirths, Never> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            Ok(Actions::new(
+                vec![Delivery::new(Recipient::global(from), message)],
+                Vec::new(),
+                Step::Stop(Exit::Normal),
+            ))
+        }
+    }
+
+    let calls = Arc::new(AtomicUsize::new(0));
+    let mut inner = Pure::new(Counted {
+        calls: Arc::clone(&calls),
+    });
+    let actions = delegate_transition(&mut inner, User::new(MailAddr(7), 11)).unwrap();
+
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    assert_eq!(actions.sends.len(), 1);
+    assert_eq!(actions.sends[0].to.route(), Route::Global(MailAddr(7)));
+    assert_eq!(actions.sends[0].message, 11);
+    assert!(matches!(actions.become_, Step::Stop(Exit::Normal)));
 }
 
 #[test]
@@ -454,6 +491,10 @@ async fn stash_release_delivers_the_trigger_then_drains_the_held_fifo() {
     assert_eq!(behavior.behavior().held(), 0);
 }
 
+#[allow(
+    clippy::unnecessary_wraps,
+    reason = "the fixture implements the fallible watch-reaction signature"
+)]
 fn continue_on_death(
     _behavior: &mut Watch<Pure<Quiet>>,
     _peer: MailAddr,

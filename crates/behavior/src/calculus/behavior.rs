@@ -52,12 +52,24 @@ pub trait Behavior {
     type Birth: BirthMode;
 
     /// Produce initialization actions before the first event is accepted.
+    ///
+    /// # Errors
+    ///
+    /// Returns the behavior's declared controlled initialization failure.
     fn init(&mut self) -> BehaviorActed<Self>;
 
     /// Fold exactly one event into explicit actions and the next behavior.
+    ///
+    /// # Errors
+    ///
+    /// Returns the behavior's declared controlled transition failure.
     fn transition(&mut self, event: Self::Event) -> BehaviorActed<Self>;
 
     /// Fold one user communication through the composed protocol.
+    ///
+    /// # Errors
+    ///
+    /// Returns the behavior's declared controlled transition failure.
     fn receive(&mut self, from: Self::Addr, message: Self::Msg) -> BehaviorActed<Self>
     where
         Self: Sized,
@@ -69,6 +81,10 @@ pub trait Behavior {
     ///
     /// This method exists only when the concrete composed protocol proves that
     /// it contains `Input`; unsupported lanes therefore fail to compile.
+    ///
+    /// # Errors
+    ///
+    /// Returns the behavior's declared controlled transition failure.
     fn on<Input>(&mut self, input: Input) -> BehaviorActed<Self>
     where
         Self: Sized,
@@ -76,6 +92,21 @@ pub trait Behavior {
     {
         self.transition(Self::Event::inject(input))
     }
+}
+
+/// Fold one event through an inner behavior owned by a semantic wrapper.
+///
+/// This is the canonical boundary for wrapper composition. It invokes the
+/// inner deterministic fold exactly once and preserves its complete typed
+/// action value unchanged. It does not execute a runtime turn, interpret
+/// effects, or provide an alternate actor executor; top-level runtime
+/// transitions remain the responsibility of the runtime's machine adapter.
+///
+/// # Errors
+///
+/// Returns the inner behavior's controlled transition failure unchanged.
+pub fn delegate_transition<B: Behavior>(behavior: &mut B, event: B::Event) -> BehaviorActed<B> {
+    behavior.transition(event)
 }
 
 pub struct Pure<S: Handler<O, Br, E>, O = Never, Br: BirthMode = NoBirths, E = Never> {
@@ -108,6 +139,10 @@ pub struct FoldFn<
 > {
     pub state: S,
     pub transition: F,
+    #[allow(
+        clippy::type_complexity,
+        reason = "the marker retains the complete inferred behavior signature"
+    )]
     marker: PhantomData<fn(A, M, O, Br, E)>,
 }
 
@@ -121,6 +156,10 @@ pub struct BehaviorFn<S, A: Address, M, Sends, Br: BirthMode, E, I, F> {
     state: S,
     initialize: I,
     transition: F,
+    #[allow(
+        clippy::type_complexity,
+        reason = "the marker retains the complete inferred behavior signature"
+    )]
     marker: PhantomData<fn(A, M, Sends, Br, E)>,
 }
 

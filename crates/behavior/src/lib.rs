@@ -29,7 +29,7 @@ pub use actor::{
 };
 pub use calculus::{
     ActionReducer, Behavior, BehaviorActed, BehaviorFn, Effects, EventInput, FoldFn, Folded,
-    Handler, Pure, User, UserEvent, fold_events,
+    Handler, Pure, User, UserEvent, delegate_transition, fold_events,
 };
 pub use compose::Compose;
 pub use effects::{
