@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use behavior::{
@@ -107,39 +107,50 @@ fn actions_expose_the_typed_actor_transition_effects() {
 
 #[test]
 fn nested_delegation_invokes_one_inner_fold_and_preserves_actions() {
-    struct Counted {
-        calls: Arc<AtomicUsize>,
-    }
+    #[derive(Debug, PartialEq, Eq)]
+    struct Rejected(u64);
 
-    impl Handler<u64> for Counted {
-        type Addr = MailAddr;
-        type Msg = u64;
+    type Sends = Vec<Delivery<MailAddr, u64>>;
+    type Child = Pure<Quiet>;
 
-        fn receive(
-            &mut self,
-            from: MailAddr,
-            message: u64,
-        ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, u64>>, NoBirths, Never> {
-            self.calls.fetch_add(1, Ordering::SeqCst);
+    let inner = Compose::from_fns(
+        0_usize,
+        |_calls: &mut usize| -> Acted<MailAddr, Never, Sends, Births<Child>, Rejected> {
+            Ok(Actions::cont())
+        },
+        |calls: &mut usize, from: MailAddr, message: u64| {
+            *calls += 1;
+            if message == 0 {
+                return Err(Rejected(message));
+            }
+
             Ok(Actions::new(
                 vec![Delivery::new(Recipient::global(from), message)],
-                Vec::new(),
+                vec![Create::replacement_incarnation(5, 3, Pure::new(Quiet))],
                 Step::Stop(Exit::Normal),
             ))
-        }
-    }
+        },
+    );
+    let mut outer = Compose::from_behavior(inner);
+    let actions = delegate_transition(&mut outer, User::new(MailAddr(7), 11)).unwrap();
 
-    let calls = Arc::new(AtomicUsize::new(0));
-    let mut inner = Pure::new(Counted {
-        calls: Arc::clone(&calls),
-    });
-    let actions = delegate_transition(&mut inner, User::new(MailAddr(7), 11)).unwrap();
-
-    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    assert_eq!(*outer.behavior().behavior().state(), 1);
     assert_eq!(actions.sends.len(), 1);
     assert_eq!(actions.sends[0].to.route(), Route::Global(MailAddr(7)));
     assert_eq!(actions.sends[0].message, 11);
+    assert_eq!(actions.creates.len(), 1);
+    assert_eq!(actions.creates[0].nonce, 5);
+    assert_eq!(
+        actions.creates[0].kind,
+        CreationKind::ReplacementIncarnation { replaces: 3 }
+    );
     assert!(matches!(actions.become_, Step::Stop(Exit::Normal)));
+
+    assert!(matches!(
+        delegate_transition(&mut outer, User::new(MailAddr(7), 0)),
+        Err(Rejected(0))
+    ));
+    assert_eq!(*outer.behavior().behavior().state(), 2);
 }
 
 #[test]
