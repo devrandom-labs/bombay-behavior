@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.4](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.9.3...bombay-behavior-v0.9.4) - 2026-08-12
+
+### Other
+
+- Expose pure nested behavior transition delegation ([#34](https://github.com/devrandom-labs/bombay-behavior/pull/34))
+
 ### Added
 
 - add canonical exact-once nested behavior transition delegation for semantic
