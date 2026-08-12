@@ -48,7 +48,6 @@ impl<N: Copy + PartialEq> Fleet<N> {
         Ok(fleet)
     }
 
-    #[must_use]
     pub fn configured_nonces(&self) -> impl Iterator<Item = N> + '_ {
         self.slots[..self.configured].iter().map(|slot| slot.nonce)
     }
@@ -58,7 +57,6 @@ impl<N: Copy + PartialEq> Fleet<N> {
         self.slots.len()
     }
 
-    #[must_use]
     pub fn is_available(&self, nonce: N) -> Result<bool, FleetError<N>> {
         Ok(self.slot(nonce)?.state == SlotState::Available)
     }

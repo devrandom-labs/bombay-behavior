@@ -9,8 +9,8 @@ use behavior::{
     ProxyEvent, Pure, Recipient, RestartDenial, RestartPolicy, Route, SendAlgebra, SendProduct,
     ServiceSends, ShutdownEvent, ShutdownRequested, StashRoute, Step, Strategy, SupervisionEvent,
     SupervisionFailure, SupervisionFailureReason, Supervisor, TimeEvent, TimerElapsed,
-    TimerGeneration, TimerId, User, UserEvent, Watch, WatchEvent, WorkerEvent, WorkerStopped, run,
-    stop_on_abnormal_death, stop_on_supervision_failure, workers,
+    TimerGeneration, TimerId, User, UserEvent, Watch, WatchEvent, WorkerEvent, WorkerStopped,
+    delegate_transition, run, stop_on_abnormal_death, stop_on_supervision_failure, workers,
 };
 use communication::{Config, channel};
 use proptest::prelude::*;
@@ -103,6 +103,54 @@ fn actions_expose_the_typed_actor_transition_effects() {
     assert_eq!(actions.sends[0].message, 42);
     assert!(actions.creates.is_empty());
     assert!(matches!(actions.become_, Step::Continue));
+}
+
+#[test]
+fn nested_delegation_invokes_one_inner_fold_and_preserves_actions() {
+    #[derive(Debug, PartialEq, Eq)]
+    struct Rejected(u64);
+
+    type Sends = Vec<Delivery<MailAddr, u64>>;
+    type Child = Pure<Quiet>;
+
+    let inner = Compose::from_fns(
+        0_usize,
+        |_calls: &mut usize| -> Acted<MailAddr, Never, Sends, Births<Child>, Rejected> {
+            Ok(Actions::cont())
+        },
+        |calls: &mut usize, from: MailAddr, message: u64| {
+            *calls += 1;
+            if message == 0 {
+                return Err(Rejected(message));
+            }
+
+            Ok(Actions::new(
+                vec![Delivery::new(Recipient::global(from), message)],
+                vec![Create::replacement_incarnation(5, 3, Pure::new(Quiet))],
+                Step::Stop(Exit::Normal),
+            ))
+        },
+    );
+    let mut outer = Compose::from_behavior(inner);
+    let actions = delegate_transition(&mut outer, User::new(MailAddr(7), 11)).unwrap();
+
+    assert_eq!(*outer.behavior().behavior().state(), 1);
+    assert_eq!(actions.sends.len(), 1);
+    assert_eq!(actions.sends[0].to.route(), Route::Global(MailAddr(7)));
+    assert_eq!(actions.sends[0].message, 11);
+    assert_eq!(actions.creates.len(), 1);
+    assert_eq!(actions.creates[0].nonce, 5);
+    assert_eq!(
+        actions.creates[0].kind,
+        CreationKind::ReplacementIncarnation { replaces: 3 }
+    );
+    assert!(matches!(actions.become_, Step::Stop(Exit::Normal)));
+
+    assert!(matches!(
+        delegate_transition(&mut outer, User::new(MailAddr(7), 0)),
+        Err(Rejected(0))
+    ));
+    assert_eq!(*outer.behavior().behavior().state(), 2);
 }
 
 #[test]
@@ -454,6 +502,10 @@ async fn stash_release_delivers_the_trigger_then_drains_the_held_fifo() {
     assert_eq!(behavior.behavior().held(), 0);
 }
 
+#[allow(
+    clippy::unnecessary_wraps,
+    reason = "the fixture implements the fallible watch-reaction signature"
+)]
 fn continue_on_death(
     _behavior: &mut Watch<Pure<Quiet>>,
     _peer: MailAddr,

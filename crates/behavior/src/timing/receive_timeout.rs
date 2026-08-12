@@ -247,6 +247,10 @@ mod tests {
 
     type Inner = Pure<Count>;
 
+    #[allow(
+        clippy::unnecessary_wraps,
+        reason = "the reaction fixture must implement the fallible reaction signature"
+    )]
     fn elapsed(
         _inner: &mut Inner,
     ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, NoBirths, Never> {

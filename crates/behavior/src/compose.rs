@@ -14,7 +14,7 @@ use crate::supervision::{RestartPolicy, Strategy, SupervisionFailureReaction, Su
 use crate::timing::{Deadline, DeadlineReaction};
 use crate::timing::{ReceiveTimeout, ReceiveTimeoutReaction};
 use crate::watch::{LinkReaction, Watch};
-use crate::{Actions, BehaviorFn, Handler, Machine, Move, Pure, SendAlgebra};
+use crate::{Actions, BehaviorFn, Handler, Machine, Move, Pure, SendAlgebra, delegate_transition};
 
 const DEFAULT_STRATEGY: Strategy = Strategy::OneForOne;
 const DEFAULT_POLICY: RestartPolicy = RestartPolicy::Transient;
@@ -274,6 +274,6 @@ where
     }
 
     fn transition(&mut self, event: B::Event) -> Result<Actions<A, Ph, Sends, Br>, B::Error> {
-        self.behavior.transition(event)
+        delegate_transition(&mut self.behavior, event)
     }
 }

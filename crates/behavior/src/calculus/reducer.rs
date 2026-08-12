@@ -76,6 +76,10 @@ impl<A: Address, Sends: SendAlgebra, New> ActionReducer<A, Sends, New> {
 ///
 /// # Errors
 /// Returns the first controlled behavior failure.
+#[allow(
+    clippy::type_complexity,
+    reason = "the result exposes every behavior-owned effect and child seat"
+)]
 pub fn fold_events<B>(
     behavior: &mut B,
     events: impl IntoIterator<Item = B::Event>,

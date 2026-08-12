@@ -130,6 +130,10 @@ fn worker_creation() -> WorkerCreationResolved<u64> {
 }
 
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "one mutation contract exhaustively checks every environment lane"
+)]
 fn composed_protocols_forward_every_supported_environment_lane() {
     assert!(matches!(
         ProxyEvent::<Lane>::creation_resolved(creation()),
@@ -306,6 +310,8 @@ fn typed_send_accumulation_finds_a_composed_inner_lane() {
 
 #[test]
 fn typed_send_accumulation_routes_every_named_lane_once() {
+    type Child = Pure<Quiet>;
+
     let mut values = Vec::<u8>::empty();
     values.send(3);
     assert_eq!(values, [3]);
@@ -336,7 +342,6 @@ fn typed_send_accumulation_routes_every_named_lane_once() {
     assert_eq!(proxy.stopped_reports[0].worker, 11);
     assert_eq!(proxy.creation_reports[0].worker, 17);
 
-    type Child = Pure<Quiet>;
     let mut supervisor = SupervisorSends::<MailAddr, Vec<u8>, Child>::empty();
     supervisor.send(ObserveChild::new(8));
     supervisor.send(Delivery::new(
