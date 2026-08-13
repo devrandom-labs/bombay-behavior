@@ -6,7 +6,7 @@
 
 use core::convert::Infallible;
 use core::marker::PhantomData;
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, VecDeque};
 use std::time::Duration;
 
 use crate::{
@@ -773,26 +773,38 @@ where
             .checked_add(count)
             .expect("pool assignment identifiers exhausted");
 
-        let mut removed_positions = Vec::with_capacity(plan.len());
-        for (offset, planned) in plan.into_iter().enumerate() {
-            let removed_before = removed_positions
-                .iter()
-                .filter(|position| **position < planned.job_position)
-                .count();
-            let queued = self
-                .backlog
-                .remove(planned.job_position - removed_before)
-                .expect("the planned backlog position remains present");
+        let mut selected_by_position = BTreeMap::new();
+        for planned in plan {
+            selected_by_position.insert(planned.job_position, planned.slot_position);
+        }
+        let mut selected_by_slot: Vec<Option<QueuedJob<A, J, R>>> = std::iter::repeat_with(|| None)
+            .take(self.slots.len())
+            .collect();
+        let mut remaining = VecDeque::new();
+        for (position, queued) in self.backlog.drain(..).enumerate() {
+            if let Some(slot_position) = selected_by_position.remove(&position) {
+                selected_by_slot[slot_position] = Some(queued);
+            } else {
+                remaining.push_back(queued);
+            }
+        }
+        self.backlog = remaining;
+
+        for (offset, (slot_position, queued)) in selected_by_slot
+            .into_iter()
+            .enumerate()
+            .filter_map(|(slot_position, queued)| queued.map(|queued| (slot_position, queued)))
+            .enumerate()
+        {
             let payload = queued.dispatch_payload;
             let job = queued.accepted;
-            removed_positions.push(planned.job_position);
             let assignment = AssignmentId(
                 self.next_assignment
                     + u64::try_from(offset).expect("offset is bounded by the checked plan length"),
             );
-            let nonce = self.slots[planned.slot_position].nonce;
+            let nonce = self.slots[slot_position].nonce;
             let job_id = job.id;
-            self.slots[planned.slot_position].state = SlotState::Assigned { assignment, job };
+            self.slots[slot_position].state = SlotState::Assigned { assignment, job };
             actions.sends.behavior.send::<_, Own>(Delivery::new(
                 Recipient::child(nonce),
                 ProxyCommand::Forward(PoolAssignment {
@@ -899,6 +911,89 @@ where
                 Ok(self.supervisor_transition(SupervisionEvent::CreationResolved(resolved)))
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{MailAddr, NoBirths, Route};
+
+    #[derive(Clone, Copy)]
+    struct TestWorker;
+
+    impl Behavior for TestWorker {
+        type Addr = MailAddr;
+        type Msg = PoolAssignment<u8>;
+        type Event = User<MailAddr, PoolAssignment<u8>>;
+        type Sends = Vec<Delivery<MailAddr, Never>>;
+        type Ph = Never;
+        type Error = Never;
+        type Birth = NoBirths;
+
+        fn init(&mut self) -> crate::BehaviorActed<Self> {
+            Ok(Actions::cont())
+        }
+
+        fn transition(&mut self, _: Self::Event) -> crate::BehaviorActed<Self> {
+            Ok(Actions::cont())
+        }
+    }
+
+    fn test_worker(_: usize) -> TestWorker {
+        TestWorker
+    }
+
+    #[test]
+    fn one_dispatch_batch_preserves_fifo_jobs_across_index_removal() {
+        let mut pool = WorkerPool::new(
+            |index| u64::try_from(index).unwrap(),
+            2,
+            test_worker,
+            3,
+            InterruptionPolicy::Fail,
+            RestartPolicy::Permanent,
+            1,
+            Duration::from_secs(1),
+        )
+        .unwrap();
+        pool.init().unwrap();
+
+        for job in 1..=3 {
+            pool.transition(SupervisionEvent::Inner(User::new(
+                MailAddr(90),
+                PoolMessage::Submit {
+                    job: JobId(job),
+                    payload: u8::try_from(job).unwrap(),
+                    reply_to: Recipient::global(MailAddr(91)),
+                },
+            )))
+            .unwrap();
+        }
+        pool.slots[0].state = SlotState::Idle;
+        pool.slots[1].state = SlotState::Idle;
+
+        let mut actions: PoolActions<MailAddr, u8, (), TestWorker> = Actions::cont();
+        pool.dispatch(&mut actions);
+
+        let assignments = &actions.sends.behavior.assignments;
+        assert_eq!(assignments.len(), 2);
+        for (index, expected_job) in [JobId(1), JobId(2)].into_iter().enumerate() {
+            assert_eq!(
+                assignments[index].to.route(),
+                Route::Child(u64::try_from(index).unwrap())
+            );
+            let ProxyCommand::Forward(assignment) = &assignments[index].message else {
+                panic!("pool dispatches with Forward");
+            };
+            assert_eq!(
+                assignment.assignment,
+                AssignmentId(u64::try_from(index).unwrap())
+            );
+            assert_eq!(assignment.job, expected_job);
+        }
+        assert_eq!(pool.backlog.len(), 1);
+        assert_eq!(pool.backlog[0].accepted.id, JobId(3));
     }
 }
 

@@ -101,6 +101,46 @@ fn assignments(
 }
 
 #[test]
+fn targeted_submission_rejects_when_its_busy_workers_backlog_is_full() {
+    let mut pool = KeyedWorkerPool::<MailAddr, u8, u8, u16, Worker, _>::new(
+        nonce,
+        1,
+        worker,
+        1,
+        InterruptionPolicy::Retry,
+        RestartPolicy::Permanent,
+        64,
+        Duration::from_secs(60),
+        Selector::Parity,
+    )
+    .unwrap();
+    pool.init().unwrap();
+    pool.on(WorkerCreationResolved::new(
+        0,
+        0,
+        CreationKind::Birth,
+        Ok(()),
+    ))
+    .unwrap();
+
+    assert_eq!(assignments(&submit(&mut pool, 0, 1)).len(), 1);
+    assert!(assignments(&submit(&mut pool, 0, 2)).is_empty());
+    assert_eq!(pool.backlog_len(), 1);
+
+    let rejected = submit(&mut pool, 0, 3);
+    assert!(assignments(&rejected).is_empty());
+    assert!(matches!(
+        rejected.sends.behavior.responses[0].message,
+        PoolResponse::Rejected {
+            job: JobId(3),
+            payload: 0,
+            reason: behavior::PoolRejection::BacklogFull,
+        }
+    ));
+    assert_eq!(pool.backlog_len(), 1);
+}
+
+#[test]
 fn affinity_survives_fresh_worker_incarnation_replacement() {
     let mut pool = pool(Selector::Parity);
     submit(&mut pool, 4, 1);
