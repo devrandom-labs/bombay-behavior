@@ -12,6 +12,8 @@
 //! deliberate, documented step — not this macro's job yet).
 
 use proc_macro::TokenStream;
+use proc_macro_crate::{FoundCrate, crate_name};
+use proc_macro2::Span;
 use quote::{format_ident, quote};
 use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
@@ -26,6 +28,26 @@ mod behavior_kw {
     syn::custom_keyword!(sends);
     syn::custom_keyword!(births);
     syn::custom_keyword!(error);
+}
+
+fn behavior_crate() -> Result<proc_macro2::TokenStream> {
+    if std::env::var("CARGO_PKG_NAME").as_deref() == Ok("bombay-behavior") {
+        // This package deliberately exposes the library target as `behavior`,
+        // not Cargo's normalized package name `bombay_behavior`. The same path
+        // works in its unit, integration, and rustdoc crates.
+        return Ok(quote!(::behavior));
+    }
+    match crate_name("bombay-behavior") {
+        Ok(FoundCrate::Itself) => Ok(quote!(::behavior)),
+        Ok(FoundCrate::Name(name)) => {
+            let name = syn::Ident::new(&name, Span::call_site());
+            Ok(quote!(::#name))
+        }
+        Err(error) => Err(Error::new(
+            Span::call_site(),
+            format!("could not resolve the bombay-behavior crate: {error}"),
+        )),
+    }
 }
 
 struct BehaviorArgs {
@@ -173,27 +195,31 @@ pub fn behavior(args: TokenStream, item: TokenStream) -> TokenStream {
     } = args;
     let self_ty = &item.self_ty;
     let (impl_generics, _, where_clause) = item.generics.split_for_impl();
+    let behavior = match behavior_crate() {
+        Ok(behavior) => behavior,
+        Err(error) => return error.to_compile_error().into(),
+    };
 
     quote! {
         #item
 
-        impl #impl_generics ::behavior::Behavior for #self_ty #where_clause {
+        impl #impl_generics #behavior::Behavior for #self_ty #where_clause {
             type Addr = #addr;
             type Msg = #message;
-            type Event = ::behavior::User<#addr, #message>;
+            type Event = #behavior::User<#addr, #message>;
             type Sends = #sends;
-            type Ph = ::behavior::Never;
+            type Ph = #behavior::Never;
             type Error = #error;
             type Birth = #births;
 
-            fn init(&mut self) -> ::behavior::BehaviorActed<Self> {
+            fn init(&mut self) -> #behavior::BehaviorActed<Self> {
                 <#self_ty>::init(self)
             }
 
             fn transition(
                 &mut self,
                 event: Self::Event,
-            ) -> ::behavior::BehaviorActed<Self> {
+            ) -> #behavior::BehaviorActed<Self> {
                 <#self_ty>::receive(self, event.from, event.message)
             }
         }
@@ -257,6 +283,10 @@ pub fn workers(input: TokenStream) -> TokenStream {
     }
 
     let first_ty = &specs[0].ty;
+    let behavior = match behavior_crate() {
+        Ok(behavior) => behavior,
+        Err(error) => return error.to_compile_error().into(),
+    };
     let variants: Vec<_> = specs
         .iter()
         .enumerate()
@@ -293,17 +323,17 @@ pub fn workers(input: TokenStream) -> TokenStream {
                 #(#variant_defs),*
             }
 
-            impl ::behavior::Behavior for Crew {
-                type Addr = <#first_ty as ::behavior::Behavior>::Addr;
-                type Msg = <#first_ty as ::behavior::Behavior>::Msg;
-                type Event = <#first_ty as ::behavior::Behavior>::Event;
-                type Sends = <#first_ty as ::behavior::Behavior>::Sends;
-                type Ph = ::behavior::Never;
-                type Error = <#first_ty as ::behavior::Behavior>::Error;
-                type Birth = <#first_ty as ::behavior::Behavior>::Birth;
+            impl #behavior::Behavior for Crew {
+                type Addr = <#first_ty as #behavior::Behavior>::Addr;
+                type Msg = <#first_ty as #behavior::Behavior>::Msg;
+                type Event = <#first_ty as #behavior::Behavior>::Event;
+                type Sends = <#first_ty as #behavior::Behavior>::Sends;
+                type Ph = #behavior::Never;
+                type Error = <#first_ty as #behavior::Behavior>::Error;
+                type Birth = <#first_ty as #behavior::Behavior>::Birth;
 
                 fn init(&mut self) -> ::core::result::Result<
-                    ::behavior::Actions<Self::Addr, Self::Ph, Self::Sends, Self::Birth>,
+                    #behavior::Actions<Self::Addr, Self::Ph, Self::Sends, Self::Birth>,
                     Self::Error,
                 > {
                     match self {
@@ -315,7 +345,7 @@ pub fn workers(input: TokenStream) -> TokenStream {
                     &mut self,
                     ev: Self::Event,
                 ) -> ::core::result::Result<
-                    ::behavior::Actions<Self::Addr, Self::Ph, Self::Sends, Self::Birth>,
+                    #behavior::Actions<Self::Addr, Self::Ph, Self::Sends, Self::Birth>,
                     Self::Error,
                 > {
                     match self {

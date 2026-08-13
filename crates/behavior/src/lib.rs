@@ -40,9 +40,10 @@ pub use machine::{Machine, Move};
 pub use mailbox::{Transcript, run};
 pub use next::{Never, Step};
 pub use pool::{
-    AssignmentId, InterruptionPolicy, JobId, KeyedPoolEvent, KeyedPoolMessage, KeyedWorkerPool,
-    PoolActions, PoolAssignment, PoolConfigError, PoolError, PoolEvent, PoolInterruption,
-    PoolMessage, PoolRejection, PoolResponse, PoolSends, WorkerPhase, WorkerPool, WorkerRetirement,
+    AffinitySelector, AssignmentId, InterruptionPolicy, JobId, KeyedPoolEvent, KeyedPoolMessage,
+    KeyedWorkerPool, PoolActions, PoolAssignment, PoolBehaviorSends, PoolConfigError, PoolError,
+    PoolEvent, PoolInterruption, PoolMessage, PoolRejection, PoolResponse, PoolSends, WorkerPhase,
+    WorkerPool, WorkerRetirement,
 };
 pub use protocol::{
     ChildEvent, ChildStopped, CreationEvent, CreationRejection, CreationResolved, ObserveChild,
@@ -86,6 +87,48 @@ pub use exit::{Crash, Exit, RestartDenial, SupervisionFailureReason};
 /// )]
 /// impl Invalid {
 ///     fn init(&self) -> behavior::Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, NoBirths, Never> {
+///         Ok(Actions::cont())
+///     }
+///     fn receive(&mut self, _: MailAddr, _: u8) -> behavior::Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, NoBirths, Never> {
+///         Ok(Actions::cont())
+///     }
+/// }
+/// ```
+///
+/// Missing transition methods are rejected by the macro itself:
+///
+/// ```compile_fail
+/// use behavior::{Actions, Delivery, MailAddr, Never, NoBirths};
+/// struct Missing;
+/// #[behavior::behavior(
+///     addr = MailAddr,
+///     message = u8,
+///     sends = Vec<Delivery<MailAddr, Never>>,
+///     births = NoBirths,
+///     error = Never,
+/// )]
+/// impl Missing {
+///     fn init(&mut self) -> behavior::Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, NoBirths, Never> {
+///         Ok(Actions::cont())
+///     }
+/// }
+/// ```
+///
+/// Async behavior methods cannot introduce an erased or alternate execution
+/// path:
+///
+/// ```compile_fail
+/// use behavior::{Actions, Delivery, MailAddr, Never, NoBirths};
+/// struct Async;
+/// #[behavior::behavior(
+///     addr = MailAddr,
+///     message = u8,
+///     sends = Vec<Delivery<MailAddr, Never>>,
+///     births = NoBirths,
+///     error = Never,
+/// )]
+/// impl Async {
+///     async fn init(&mut self) -> behavior::Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, NoBirths, Never> {
 ///         Ok(Actions::cont())
 ///     }
 ///     fn receive(&mut self, _: MailAddr, _: u8) -> behavior::Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, NoBirths, Never> {

@@ -1,4 +1,8 @@
 use std::collections::VecDeque;
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 use std::time::Duration;
 
 use behavior::{
@@ -30,6 +34,46 @@ impl Behavior for Worker {
     fn transition(&mut self, _event: Self::Event) -> behavior::BehaviorActed<Self> {
         Ok(Actions::cont())
     }
+}
+
+struct PanicPayload {
+    panic_on_clone: Arc<AtomicBool>,
+}
+
+impl Clone for PanicPayload {
+    fn clone(&self) -> Self {
+        assert!(
+            !self.panic_on_clone.load(Ordering::SeqCst),
+            "adversarial clone"
+        );
+        Self {
+            panic_on_clone: self.panic_on_clone.clone(),
+        }
+    }
+}
+
+struct PanicWorker;
+
+impl Behavior for PanicWorker {
+    type Addr = MailAddr;
+    type Msg = PoolAssignment<PanicPayload>;
+    type Event = User<MailAddr, PoolAssignment<PanicPayload>>;
+    type Sends = Vec<Delivery<MailAddr, Never>>;
+    type Ph = Never;
+    type Error = Never;
+    type Birth = NoBirths;
+
+    fn init(&mut self) -> behavior::BehaviorActed<Self> {
+        Ok(Actions::cont())
+    }
+
+    fn transition(&mut self, _: Self::Event) -> behavior::BehaviorActed<Self> {
+        Ok(Actions::cont())
+    }
+}
+
+fn panic_worker(_: usize) -> PanicWorker {
+    PanicWorker
 }
 
 fn nonce(index: usize) -> u64 {
@@ -90,13 +134,13 @@ fn submit(
 fn assignments(
     actions: &behavior::PoolActions<MailAddr, u8, u16, Worker>,
 ) -> &[Delivery<MailAddr, ProxyCommand<Worker>>] {
-    &actions.sends.behavior.own
+    &actions.sends.behavior.assignments
 }
 
 fn responses(
     actions: &behavior::PoolActions<MailAddr, u8, u16, Worker>,
 ) -> &[Delivery<MailAddr, PoolResponse<u8, u16, MailAddr>>] {
-    &actions.sends.behavior.inner
+    &actions.sends.behavior.responses
 }
 
 #[test]
@@ -315,6 +359,134 @@ fn duplicate_configured_routes_are_rejected_before_initialization() {
 }
 
 #[test]
+fn zero_worker_pool_is_rejected_before_it_can_accept_owned_work() {
+    let result = WorkerPool::<MailAddr, u8, u16, Worker>::new(
+        nonce,
+        0,
+        worker,
+        8,
+        InterruptionPolicy::Fail,
+        RestartPolicy::Permanent,
+        1,
+        Duration::from_secs(1),
+    );
+    assert!(matches!(result, Err(PoolConfigError::NoWorkers)));
+}
+
+#[test]
+fn panicking_payload_clone_occurs_before_admission_state_is_committed() {
+    let mut pool = WorkerPool::<MailAddr, PanicPayload, (), PanicWorker>::new(
+        nonce,
+        1,
+        panic_worker,
+        1,
+        InterruptionPolicy::Retry,
+        RestartPolicy::Permanent,
+        1,
+        Duration::from_secs(1),
+    )
+    .unwrap();
+    pool.init().unwrap();
+    pool.on(WorkerCreationResolved::new(
+        0,
+        0,
+        CreationKind::Birth,
+        Ok(()),
+    ))
+    .unwrap();
+    let panic_on_clone = Arc::new(AtomicBool::new(true));
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _ = pool.receive(
+            MailAddr(90),
+            PoolMessage::Submit {
+                job: JobId(1),
+                payload: PanicPayload {
+                    panic_on_clone: panic_on_clone.clone(),
+                },
+                reply_to: Recipient::global(MailAddr(91)),
+            },
+        );
+    }));
+    assert!(result.is_err());
+    assert_eq!(pool.backlog_len(), 0);
+    assert_eq!(pool.worker_phase(0), Some(WorkerPhase::Idle));
+
+    panic_on_clone.store(false, Ordering::SeqCst);
+    let actions = pool
+        .receive(
+            MailAddr(90),
+            PoolMessage::Submit {
+                job: JobId(2),
+                payload: PanicPayload { panic_on_clone },
+                reply_to: Recipient::global(MailAddr(91)),
+            },
+        )
+        .unwrap();
+    assert_eq!(actions.sends.behavior.assignments.len(), 1);
+    assert_eq!(
+        pool.worker_phase(0),
+        Some(WorkerPhase::Assigned {
+            assignment: AssignmentId(0),
+            job: JobId(2),
+        })
+    );
+}
+
+#[test]
+fn panicking_retry_clone_preserves_the_exact_assigned_state() {
+    let mut pool = WorkerPool::<MailAddr, PanicPayload, (), PanicWorker>::new(
+        nonce,
+        1,
+        panic_worker,
+        1,
+        InterruptionPolicy::Retry,
+        RestartPolicy::Permanent,
+        1,
+        Duration::from_secs(1),
+    )
+    .unwrap();
+    pool.init().unwrap();
+    pool.on(WorkerCreationResolved::new(
+        0,
+        0,
+        CreationKind::Birth,
+        Ok(()),
+    ))
+    .unwrap();
+    let panic_on_clone = Arc::new(AtomicBool::new(false));
+    pool.receive(
+        MailAddr(90),
+        PoolMessage::Submit {
+            job: JobId(1),
+            payload: PanicPayload {
+                panic_on_clone: panic_on_clone.clone(),
+            },
+            reply_to: Recipient::global(MailAddr(91)),
+        },
+    )
+    .unwrap();
+    panic_on_clone.store(true, Ordering::SeqCst);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _ = pool.on(WorkerStopped::new(
+            0,
+            0,
+            Err(behavior::Crash::Panicked),
+            Instant::now(),
+        ));
+    }));
+    assert!(result.is_err());
+    assert_eq!(pool.backlog_len(), 0);
+    assert_eq!(
+        pool.worker_phase(0),
+        Some(WorkerPhase::Assigned {
+            assignment: AssignmentId(0),
+            job: JobId(1),
+        })
+    );
+}
+
+#[test]
 fn denied_replacement_retires_slot_instead_of_stranding_installation() {
     let mut pool = WorkerPool::new(
         nonce,
@@ -470,7 +642,7 @@ fn assignment_and_response_lanes_survive_shutdown_composition() {
             },
         )
         .unwrap();
-    assert_eq!(actions.sends.behavior.inner.len(), 1);
-    assert_eq!(actions.sends.behavior.own.len(), 1);
+    assert_eq!(actions.sends.behavior.responses.len(), 1);
+    assert_eq!(actions.sends.behavior.assignments.len(), 1);
     assert!(matches!(actions.become_, Step::Continue));
 }

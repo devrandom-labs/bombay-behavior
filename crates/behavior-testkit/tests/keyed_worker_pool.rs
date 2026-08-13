@@ -1,10 +1,10 @@
 use std::time::Duration;
 
 use behavior::{
-    Actions, AssignmentId, Behavior, CreationKind, Delivery, InterruptionPolicy, JobId,
-    KeyedPoolMessage, KeyedWorkerPool, MailAddr, Never, NoBirths, PoolAssignment, PoolError,
-    PoolResponse, ProxyCommand, Recipient, RestartPolicy, Route, User, WorkerCreationResolved,
-    WorkerPhase, WorkerStopped,
+    Actions, AffinitySelector, AssignmentId, Behavior, CreationKind, Delivery, InterruptionPolicy,
+    JobId, KeyedPoolMessage, KeyedWorkerPool, MailAddr, Never, NoBirths, PoolAssignment,
+    PoolBehaviorSends, PoolError, PoolResponse, ProxyCommand, Recipient, RestartPolicy, Route,
+    SendAlgebra, User, WorkerCreationResolved, WorkerPhase, WorkerStopped,
 };
 use proptest::prelude::*;
 use tokio::time::Instant;
@@ -38,16 +38,25 @@ fn worker(_: usize) -> Worker {
     Worker
 }
 
-fn parity(key: &u8) -> u64 {
-    u64::from(key % 2)
+#[derive(Clone, Copy)]
+enum Selector {
+    Parity,
+    Invalid,
 }
 
-fn invalid(_: &u8) -> u64 {
-    9
+impl AffinitySelector<u8, u64> for Selector {
+    fn select(&self, key: &u8) -> u64 {
+        match self {
+            Self::Parity => u64::from(key % 2),
+            Self::Invalid => 9,
+        }
+    }
 }
 
-fn pool(route: fn(&u8) -> u64) -> KeyedWorkerPool<MailAddr, u8, u8, u16, Worker> {
-    let mut pool = KeyedWorkerPool::new(
+type Pool = KeyedWorkerPool<MailAddr, u8, u8, u16, Worker, Selector>;
+
+fn pool(selector: Selector) -> Pool {
+    let mut pool = KeyedWorkerPool::<MailAddr, u8, u8, u16, Worker, _>::new(
         nonce,
         2,
         worker,
@@ -56,7 +65,7 @@ fn pool(route: fn(&u8) -> u64) -> KeyedWorkerPool<MailAddr, u8, u8, u16, Worker>
         RestartPolicy::Permanent,
         64,
         Duration::from_secs(60),
-        route,
+        selector,
     )
     .unwrap();
     pool.init().unwrap();
@@ -72,11 +81,7 @@ fn pool(route: fn(&u8) -> u64) -> KeyedWorkerPool<MailAddr, u8, u8, u16, Worker>
     pool
 }
 
-fn submit(
-    pool: &mut KeyedWorkerPool<MailAddr, u8, u8, u16, Worker>,
-    key: u8,
-    job: u64,
-) -> behavior::PoolActions<MailAddr, u8, u16, Worker> {
+fn submit(pool: &mut Pool, key: u8, job: u64) -> behavior::PoolActions<MailAddr, u8, u16, Worker> {
     pool.receive(
         MailAddr(90),
         KeyedPoolMessage::Submit {
@@ -92,12 +97,12 @@ fn submit(
 fn assignments(
     actions: &behavior::PoolActions<MailAddr, u8, u16, Worker>,
 ) -> &[Delivery<MailAddr, ProxyCommand<Worker>>] {
-    &actions.sends.behavior.own
+    &actions.sends.behavior.assignments
 }
 
 #[test]
 fn affinity_survives_fresh_worker_incarnation_replacement() {
-    let mut pool = pool(parity);
+    let mut pool = pool(Selector::Parity);
     submit(&mut pool, 4, 1);
     assert_eq!(pool.affinity(&4), Some(0));
 
@@ -128,7 +133,7 @@ fn affinity_survives_fresh_worker_incarnation_replacement() {
 
 #[test]
 fn explicit_rebalance_changes_future_admission_but_not_accepted_jobs() {
-    let mut pool = pool(parity);
+    let mut pool = pool(Selector::Parity);
     submit(&mut pool, 2, 1);
     let queued = submit(&mut pool, 2, 2);
     assert!(assignments(&queued).is_empty());
@@ -162,12 +167,12 @@ fn explicit_rebalance_changes_future_admission_but_not_accepted_jobs() {
 
 #[test]
 fn unavailable_route_refuses_owned_payload_without_creating_a_binding() {
-    let mut pool = pool(invalid);
+    let mut pool = pool(Selector::Invalid);
     let actions = submit(&mut pool, 7, 1);
     assert_eq!(pool.affinity(&7), None);
     assert!(assignments(&actions).is_empty());
     assert!(matches!(
-        actions.sends.behavior.inner[0].message,
+        actions.sends.behavior.responses[0].message,
         PoolResponse::Rejected {
             job: JobId(1),
             payload: 7,
@@ -178,7 +183,7 @@ fn unavailable_route_refuses_owned_payload_without_creating_a_binding() {
 
 #[test]
 fn rebalance_rejects_unknown_worker_without_changing_the_binding() {
-    let mut pool = pool(parity);
+    let mut pool = pool(Selector::Parity);
     submit(&mut pool, 2, 1);
     let result = pool.receive(
         MailAddr(90),
@@ -190,7 +195,7 @@ fn rebalance_rejects_unknown_worker_without_changing_the_binding() {
 
 #[test]
 fn retired_affinity_refuses_new_work_until_explicit_valid_rebalance() {
-    let mut pool = pool(parity);
+    let mut pool = pool(Selector::Parity);
     submit(&mut pool, 2, 1);
     pool.receive(
         MailAddr(90),
@@ -218,7 +223,7 @@ fn retired_affinity_refuses_new_work_until_explicit_valid_rebalance() {
 
     let refused = submit(&mut pool, 2, 2);
     assert!(matches!(
-        refused.sends.behavior.inner[0].message,
+        refused.sends.behavior.responses[0].message,
         PoolResponse::Rejected {
             reason: behavior::PoolRejection::AffinityUnavailable,
             ..
@@ -241,6 +246,106 @@ fn retired_affinity_refuses_new_work_until_explicit_valid_rebalance() {
     assert_eq!(assignments(&admitted)[0].to.route(), Route::Child(1));
 }
 
+#[test]
+fn retiring_one_affinity_slot_terminates_its_queue_while_other_slots_live() {
+    let mut pool = pool(Selector::Parity);
+    submit(&mut pool, 2, 1);
+    submit(&mut pool, 2, 2);
+    assert_eq!(pool.backlog_len(), 1);
+
+    pool.on(WorkerStopped::new(
+        0,
+        0,
+        Err(behavior::Crash::Panicked),
+        Instant::now(),
+    ))
+    .unwrap();
+    assert_eq!(pool.backlog_len(), 2);
+    let rejected = pool
+        .on(WorkerCreationResolved::new(
+            0,
+            2,
+            CreationKind::replacement_of(0),
+            Err(behavior::CreationRejection::InitializationFailed),
+        ))
+        .unwrap();
+
+    assert_eq!(pool.backlog_len(), 0);
+    assert_eq!(rejected.sends.behavior.responses.len(), 2);
+    assert!(
+        rejected
+            .sends
+            .behavior
+            .responses
+            .iter()
+            .any(|delivery| matches!(
+                delivery.message,
+                PoolResponse::Interrupted {
+                    job: JobId(2),
+                    reason: behavior::PoolInterruption::AffinityRetired { worker: 0, .. },
+                    ..
+                }
+            ))
+    );
+    assert_eq!(pool.worker_phase(1), Some(WorkerPhase::Idle));
+}
+
+#[test]
+fn unbound_rebalance_explicitly_establishes_affinity() {
+    let mut pool = pool(Selector::Parity);
+    assert_eq!(pool.affinity(&9), None);
+    pool.receive(
+        MailAddr(90),
+        KeyedPoolMessage::Rebalance { key: 9, worker: 0 },
+    )
+    .unwrap();
+    assert_eq!(pool.affinity(&9), Some(0));
+    let actions = submit(&mut pool, 9, 1);
+    assert_eq!(assignments(&actions)[0].to.route(), Route::Child(0));
+}
+
+#[test]
+fn captured_selector_state_is_statically_dispatched() {
+    let selected = 1_u64;
+    let mut pool = KeyedWorkerPool::<MailAddr, u8, u8, u16, Worker, _>::new(
+        nonce,
+        2,
+        worker,
+        1,
+        InterruptionPolicy::Fail,
+        RestartPolicy::Permanent,
+        1,
+        Duration::from_secs(1),
+        move |_: &u8| selected,
+    )
+    .unwrap();
+    pool.init().unwrap();
+    for slot in 0..2 {
+        pool.on(WorkerCreationResolved::new(
+            slot,
+            slot,
+            CreationKind::Birth,
+            Ok(()),
+        ))
+        .unwrap();
+    }
+    let actions = pool
+        .receive(
+            MailAddr(90),
+            KeyedPoolMessage::Submit {
+                key: 4,
+                job: JobId(1),
+                payload: 4,
+                reply_to: Recipient::global(MailAddr(91)),
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        actions.sends.behavior.assignments[0].to.route(),
+        Route::Child(1)
+    );
+}
+
 proptest! {
     #![proptest_config(ProptestConfig { cases: 128, ..ProptestConfig::default() })]
 
@@ -249,9 +354,9 @@ proptest! {
         key in any::<u8>(),
         rebalances in prop::collection::vec(0_u64..3, 0..64),
     ) {
-        let mut pool = pool(parity);
+        let mut pool = pool(Selector::Parity);
         submit(&mut pool, key, 0);
-        let mut model = parity(&key);
+        let mut model = u64::from(key % 2);
         for worker in rebalances {
             let result = pool.receive(
                 MailAddr(90),
@@ -272,7 +377,7 @@ proptest! {
 fn short_rebalance_sequences_exhaustively_match_the_binding_model() {
     for first in 0..3_u64 {
         for second in 0..3_u64 {
-            let mut pool = pool(parity);
+            let mut pool = pool(Selector::Parity);
             submit(&mut pool, 3, 0);
             let mut expected = 1;
             for worker in [first, second] {
@@ -292,7 +397,7 @@ fn short_rebalance_sequences_exhaustively_match_the_binding_model() {
 
 #[test]
 fn keyed_assignment_lanes_survive_shutdown_composition() {
-    let mut behavior = behavior::Compose::from_behavior(pool(parity))
+    let mut behavior = behavior::Compose::from_behavior(pool(Selector::Parity))
         .stop_on_shutdown()
         .build();
     let actions = behavior
@@ -306,7 +411,44 @@ fn keyed_assignment_lanes_survive_shutdown_composition() {
             },
         )
         .unwrap();
-    assert_eq!(actions.sends.behavior.inner.len(), 1);
-    assert_eq!(actions.sends.behavior.own.len(), 1);
-    assert_eq!(actions.sends.behavior.own[0].to.route(), Route::Child(1));
+    assert_eq!(actions.sends.behavior.responses.len(), 1);
+    assert_eq!(actions.sends.behavior.assignments.len(), 1);
+    assert_eq!(
+        actions.sends.behavior.assignments[0].to.route(),
+        Route::Child(1)
+    );
+}
+
+#[test]
+fn named_pool_send_product_appends_each_lane_once_in_order() {
+    type Sends = PoolBehaviorSends<MailAddr, u8, u16, Worker>;
+    let mut sends = Sends::empty();
+    sends.responses.push(Delivery::new(
+        Recipient::global(MailAddr(1)),
+        PoolResponse::Accepted { job: JobId(1) },
+    ));
+    let mut later = Sends::empty();
+    later.responses.push(Delivery::new(
+        Recipient::global(MailAddr(2)),
+        PoolResponse::Accepted { job: JobId(2) },
+    ));
+    later.assignments.push(Delivery::new(
+        Recipient::child(0),
+        ProxyCommand::Forward(PoolAssignment {
+            assignment: AssignmentId(0),
+            job: JobId(1),
+            payload: 7,
+        }),
+    ));
+
+    sends.append(later);
+    assert!(matches!(
+        sends.responses[0].message,
+        PoolResponse::Accepted { job: JobId(1) }
+    ));
+    assert!(matches!(
+        sends.responses[1].message,
+        PoolResponse::Accepted { job: JobId(2) }
+    ));
+    assert_eq!(sends.assignments.len(), 1);
 }

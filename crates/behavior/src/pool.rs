@@ -11,7 +11,7 @@ use std::time::Duration;
 
 use crate::{
     Actions, Address, Behavior, Births, Crash, CreationRejection, Delivery, Exit, Never, Own,
-    Proxy, ProxyCommand, Recipient, RestartPolicy, SendAlgebra, SendProduct, Strategy,
+    Proxy, ProxyCommand, Recipient, RestartPolicy, SendAlgebra, SendInput, Strategy,
     SupervisionEvent, Supervisor, SupervisorSends, User, WorkerCreationResolved, WorkerStopped,
     delegate_transition,
 };
@@ -89,6 +89,11 @@ pub enum PoolInterruption<A: Address> {
         outcome: Result<Exit<A>, Crash>,
     },
     NoRecoverableWorkers,
+    /// The job's selected stable slot retired while the job was queued.
+    AffinityRetired {
+        worker: A::Nonce,
+        reason: WorkerRetirement,
+    },
 }
 
 /// Complete response protocol for one submitted job.
@@ -146,7 +151,25 @@ pub enum WorkerRetirement {
 /// Invalid static pool topology.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PoolConfigError<N> {
+    /// No stable worker slot exists, so accepted ownership could never end.
+    NoWorkers,
+    /// Two configured positions selected the same stable worker nonce.
     DuplicateWorker(N),
+}
+
+/// Pure, statically dispatched policy for a previously unseen affinity key.
+pub trait AffinitySelector<K, N> {
+    /// Select the stable worker nonce for a key that has no binding yet.
+    fn select(&self, key: &K) -> N;
+}
+
+impl<K, N, F> AffinitySelector<K, N> for F
+where
+    F: Fn(&K) -> N,
+{
+    fn select(&self, key: &K) -> N {
+        self(key)
+    }
 }
 
 /// Typed rejection of an event that cannot apply to the current pool state.
@@ -174,7 +197,6 @@ pub enum PoolError<N> {
         worker: N,
         reason: WorkerRetirement,
     },
-    AssignmentSequenceExhausted,
 }
 
 struct AcceptedJob<A: Address, J, R> {
@@ -183,6 +205,11 @@ struct AcceptedJob<A: Address, J, R> {
     reply_to: Recipient<A, PoolResponse<J, R, A>>,
     interruption: Option<PoolInterruption<A>>,
     target: Option<A::Nonce>,
+}
+
+struct QueuedJob<A: Address, J, R> {
+    accepted: AcceptedJob<A, J, R>,
+    dispatch_payload: J,
 }
 
 enum SlotState<A: Address, J, R> {
@@ -202,17 +229,64 @@ struct Slot<A: Address, J, R> {
     state: SlotState<A, J, R>,
 }
 
+struct PlannedDispatch {
+    slot_position: usize,
+    job_position: usize,
+}
+
+enum Admission {
+    Accepted,
+    Rejected,
+}
+
 /// The pool's concrete event sum, including existing supervision facts.
 pub type PoolEvent<A, J, R> = SupervisionEvent<User<A, PoolMessage<A, J, R>>>;
 
 /// Concrete event sum for a [`KeyedWorkerPool`].
 pub type KeyedPoolEvent<A, K, J, R> = SupervisionEvent<User<A, KeyedPoolMessage<A, K, J, R>>>;
 
-type KernelSends<A, J, R, C> =
-    SendProduct<Vec<Delivery<A, PoolResponse<J, R, A>>>, Vec<Delivery<A, ProxyCommand<C>>>>;
+/// Named pool-owned delivery lanes.
+pub struct PoolBehaviorSends<A: Address, J, R, C: Behavior<Addr = A>> {
+    /// Admission and terminal responses addressed to submitters.
+    pub responses: Vec<Delivery<A, PoolResponse<J, R, A>>>,
+    /// Assignments addressed to the selected stable worker proxies.
+    pub assignments: Vec<Delivery<A, ProxyCommand<C>>>,
+}
 
-/// Pool effects use existing recursively interpreted products: responses and
-/// assignments remain distinct within the supervised behavior send lane.
+impl<A: Address, J, R, C: Behavior<Addr = A>> SendAlgebra for PoolBehaviorSends<A, J, R, C> {
+    fn empty() -> Self {
+        Self {
+            responses: Vec::new(),
+            assignments: Vec::new(),
+        }
+    }
+
+    fn append(&mut self, mut other: Self) {
+        self.responses.append(&mut other.responses);
+        self.assignments.append(&mut other.assignments);
+    }
+}
+
+impl<A: Address, J, R, C: Behavior<Addr = A>> SendInput<Delivery<A, PoolResponse<J, R, A>>, Own>
+    for PoolBehaviorSends<A, J, R, C>
+{
+    fn emit(&mut self, input: Delivery<A, PoolResponse<J, R, A>>) {
+        self.responses.push(input);
+    }
+}
+
+impl<A: Address, J, R, C: Behavior<Addr = A>> SendInput<Delivery<A, ProxyCommand<C>>, Own>
+    for PoolBehaviorSends<A, J, R, C>
+{
+    fn emit(&mut self, input: Delivery<A, ProxyCommand<C>>) {
+        self.assignments.push(input);
+    }
+}
+
+type KernelSends<A, J, R, C> = PoolBehaviorSends<A, J, R, C>;
+
+/// Pool effects keep responses and assignments in named, independently
+/// appendable lanes within the supervised behavior send product.
 pub type PoolSends<A, J, R, C> = SupervisorSends<A, KernelSends<A, J, R, C>, C>;
 
 /// Complete action type returned by a [`WorkerPool`] transition.
@@ -257,6 +331,17 @@ type PoolSupervisor<A, J, R, C> = Supervisor<PoolKernel<A, J, R, C>, C>;
 /// retained state records an assignment before the corresponding delivery is
 /// returned, and a completion must carry the exact assignment token.
 ///
+/// # Panics
+///
+/// Admission or retry propagates a panic from the application payload's
+/// `Clone` implementation before changing pool state. Dispatch panics at the
+/// physical assignment-counter boundary before committing its dispatch plan;
+/// the executor's poison-before-step contract makes that actor turn terminal
+/// rather than exposing partial successor state. The final counter value is
+/// deliberately reserved so every successful batch has a representable
+/// successor counter. This is a Bombay implementation boundary, not an actor
+/// model law.
+///
 /// A worker with any other message protocol cannot form a pool:
 ///
 /// ```compile_fail
@@ -283,7 +368,7 @@ where
 {
     supervisor: PoolSupervisor<A, J, R, C>,
     slots: Vec<Slot<A, J, R>>,
-    backlog: VecDeque<AcceptedJob<A, J, R>>,
+    backlog: VecDeque<QueuedJob<A, J, R>>,
     backlog_capacity: usize,
     next_assignment: u64,
     interruption: InterruptionPolicy,
@@ -299,7 +384,8 @@ where
     ///
     /// # Errors
     ///
-    /// Returns [`PoolConfigError::DuplicateWorker`] for the first repeated
+    /// Returns [`PoolConfigError::NoWorkers`] for an empty topology or
+    /// [`PoolConfigError::DuplicateWorker`] for the first repeated
     /// creator-local nonce. No behavior or creation request is produced.
     #[allow(
         clippy::too_many_arguments,
@@ -315,6 +401,9 @@ where
         max_restarts: u32,
         restart_window: Duration,
     ) -> Result<Self, PoolConfigError<A::Nonce>> {
+        if count == 0 {
+            return Err(PoolConfigError::NoWorkers);
+        }
         let mut slots = Vec::with_capacity(count);
         for index in 0..count {
             let nonce = nonces(index);
@@ -400,30 +489,31 @@ where
             .iter()
             .any(|slot| matches!(slot.state, SlotState::Idle));
         if !can_dispatch && self.backlog.len() == self.backlog_capacity {
-            actions
-                .sends
-                .behavior
-                .send::<_, crate::Inner<Own>>(Delivery::new(
-                    reply_to,
-                    PoolResponse::Rejected {
-                        job,
-                        payload,
-                        reason: PoolRejection::BacklogFull,
-                    },
-                ));
+            actions.sends.behavior.send::<_, Own>(Delivery::new(
+                reply_to,
+                PoolResponse::Rejected {
+                    job,
+                    payload,
+                    reason: PoolRejection::BacklogFull,
+                },
+            ));
             return;
         }
-        self.backlog.push_back(AcceptedJob {
-            id: job,
-            payload,
-            reply_to,
-            interruption: None,
-            target: None,
+        let dispatch_payload = payload.clone();
+        self.backlog.push_back(QueuedJob {
+            accepted: AcceptedJob {
+                id: job,
+                payload,
+                reply_to,
+                interruption: None,
+                target: None,
+            },
+            dispatch_payload,
         });
         actions
             .sends
             .behavior
-            .send::<_, crate::Inner<Own>>(Delivery::new(reply_to, PoolResponse::Accepted { job }));
+            .send::<_, Own>(Delivery::new(reply_to, PoolResponse::Accepted { job }));
     }
 
     fn submit_to(
@@ -433,62 +523,57 @@ where
         payload: J,
         reply_to: Recipient<A, PoolResponse<J, R, A>>,
         actions: &mut PoolActions<A, J, R, C>,
-    ) -> bool {
+    ) -> Admission {
         let Some(slot) = self.slots.iter().find(|slot| slot.nonce == target) else {
-            actions
-                .sends
-                .behavior
-                .send::<_, crate::Inner<Own>>(Delivery::new(
-                    reply_to,
-                    PoolResponse::Rejected {
-                        job,
-                        payload,
-                        reason: PoolRejection::AffinityUnavailable,
-                    },
-                ));
-            return false;
+            actions.sends.behavior.send::<_, Own>(Delivery::new(
+                reply_to,
+                PoolResponse::Rejected {
+                    job,
+                    payload,
+                    reason: PoolRejection::AffinityUnavailable,
+                },
+            ));
+            return Admission::Rejected;
         };
         if matches!(slot.state, SlotState::Retired { .. }) {
-            actions
-                .sends
-                .behavior
-                .send::<_, crate::Inner<Own>>(Delivery::new(
-                    reply_to,
-                    PoolResponse::Rejected {
-                        job,
-                        payload,
-                        reason: PoolRejection::AffinityUnavailable,
-                    },
-                ));
-            return false;
+            actions.sends.behavior.send::<_, Own>(Delivery::new(
+                reply_to,
+                PoolResponse::Rejected {
+                    job,
+                    payload,
+                    reason: PoolRejection::AffinityUnavailable,
+                },
+            ));
+            return Admission::Rejected;
         }
         let can_dispatch = matches!(slot.state, SlotState::Idle);
         if !can_dispatch && self.backlog.len() == self.backlog_capacity {
-            actions
-                .sends
-                .behavior
-                .send::<_, crate::Inner<Own>>(Delivery::new(
-                    reply_to,
-                    PoolResponse::Rejected {
-                        job,
-                        payload,
-                        reason: PoolRejection::BacklogFull,
-                    },
-                ));
-            return false;
+            actions.sends.behavior.send::<_, Own>(Delivery::new(
+                reply_to,
+                PoolResponse::Rejected {
+                    job,
+                    payload,
+                    reason: PoolRejection::BacklogFull,
+                },
+            ));
+            return Admission::Rejected;
         }
-        self.backlog.push_back(AcceptedJob {
-            id: job,
-            payload,
-            reply_to,
-            interruption: None,
-            target: Some(target),
+        let dispatch_payload = payload.clone();
+        self.backlog.push_back(QueuedJob {
+            accepted: AcceptedJob {
+                id: job,
+                payload,
+                reply_to,
+                interruption: None,
+                target: Some(target),
+            },
+            dispatch_payload,
         });
         actions
             .sends
             .behavior
-            .send::<_, crate::Inner<Own>>(Delivery::new(reply_to, PoolResponse::Accepted { job }));
-        true
+            .send::<_, Own>(Delivery::new(reply_to, PoolResponse::Accepted { job }));
+        Admission::Accepted
     }
 
     fn complete(
@@ -521,16 +606,13 @@ where
         else {
             unreachable!("the state was proven assigned")
         };
-        actions
-            .sends
-            .behavior
-            .send::<_, crate::Inner<Own>>(Delivery::new(
-                job.reply_to,
-                PoolResponse::Completed {
-                    job: job.id,
-                    result,
-                },
-            ));
+        actions.sends.behavior.send::<_, Own>(Delivery::new(
+            job.reply_to,
+            PoolResponse::Completed {
+                job: job.id,
+                result,
+            },
+        ));
         Ok(())
     }
 
@@ -549,26 +631,41 @@ where
                 phase,
             });
         }
+        if self.interruption == InterruptionPolicy::Retry {
+            if let SlotState::Assigned { job, .. } = &self.slots[position].state {
+                let dispatch_payload = job.payload.clone();
+                let SlotState::Assigned { mut job, .. } =
+                    core::mem::replace(&mut self.slots[position].state, SlotState::Installing)
+                else {
+                    unreachable!("the assigned state was matched before committing retry")
+                };
+                job.interruption = Some(PoolInterruption::WorkerStopped {
+                    worker: stopped.proxy,
+                    outcome: stopped.outcome,
+                });
+                self.backlog.push_front(QueuedJob {
+                    accepted: job,
+                    dispatch_payload,
+                });
+            } else {
+                self.slots[position].state = SlotState::Installing;
+            }
+            return Ok(());
+        }
+
         let previous = core::mem::replace(&mut self.slots[position].state, SlotState::Installing);
         if let SlotState::Assigned { job, .. } = previous {
-            let interruption = PoolInterruption::WorkerStopped {
-                worker: stopped.proxy,
-                outcome: stopped.outcome.clone(),
-            };
-            match self.interruption {
-                InterruptionPolicy::Fail => responses.push(Delivery::new(
-                    job.reply_to,
-                    PoolResponse::Interrupted {
-                        job: job.id,
-                        payload: job.payload,
-                        reason: interruption,
+            responses.push(Delivery::new(
+                job.reply_to,
+                PoolResponse::Interrupted {
+                    job: job.id,
+                    payload: job.payload,
+                    reason: PoolInterruption::WorkerStopped {
+                        worker: stopped.proxy,
+                        outcome: stopped.outcome,
                     },
-                )),
-                InterruptionPolicy::Retry => self.backlog.push_front(AcceptedJob {
-                    interruption: Some(interruption),
-                    ..job
-                }),
-            }
+                },
+            ));
         }
         Ok(())
     }
@@ -581,21 +678,46 @@ where
         {
             return;
         }
-        for job in self.backlog.drain(..) {
-            actions
-                .sends
-                .behavior
-                .send::<_, crate::Inner<Own>>(Delivery::new(
+        for queued in self.backlog.drain(..) {
+            let job = queued.accepted;
+            actions.sends.behavior.send::<_, Own>(Delivery::new(
+                job.reply_to,
+                PoolResponse::Interrupted {
+                    job: job.id,
+                    payload: job.payload,
+                    reason: job
+                        .interruption
+                        .unwrap_or(PoolInterruption::NoRecoverableWorkers),
+                },
+            ));
+        }
+    }
+
+    fn fail_jobs_for_retired_slot(
+        &mut self,
+        worker: A::Nonce,
+        reason: WorkerRetirement,
+        actions: &mut PoolActions<A, J, R, C>,
+    ) {
+        let mut retained = VecDeque::with_capacity(self.backlog.len());
+        while let Some(queued) = self.backlog.pop_front() {
+            if queued.accepted.target == Some(worker) {
+                let job = queued.accepted;
+                actions.sends.behavior.send::<_, Own>(Delivery::new(
                     job.reply_to,
                     PoolResponse::Interrupted {
                         job: job.id,
                         payload: job.payload,
                         reason: job
                             .interruption
-                            .unwrap_or(PoolInterruption::NoRecoverableWorkers),
+                            .unwrap_or(PoolInterruption::AffinityRetired { worker, reason }),
                     },
                 ));
+            } else {
+                retained.push_back(queued);
+            }
         }
+        self.backlog = retained;
     }
 
     fn creation_resolved(
@@ -621,43 +743,66 @@ where
         Ok(())
     }
 
-    fn dispatch(
-        &mut self,
-        actions: &mut PoolActions<A, J, R, C>,
-    ) -> Result<(), PoolError<A::Nonce>> {
-        for slot in &mut self.slots {
-            if !matches!(slot.state, SlotState::Idle) || self.backlog.is_empty() {
+    fn dispatch(&mut self, actions: &mut PoolActions<A, J, R, C>) {
+        let mut selected_jobs = Vec::new();
+        let mut plan = Vec::new();
+        for (slot_position, slot) in self.slots.iter().enumerate() {
+            if !matches!(slot.state, SlotState::Idle) {
                 continue;
             }
-            let Some(job_position) = self
-                .backlog
-                .iter()
-                .position(|job| job.target.is_none_or(|target| target == slot.nonce))
-            else {
+            let Some(job_position) = self.backlog.iter().enumerate().find_map(|(position, job)| {
+                (!selected_jobs.contains(&position)
+                    && job
+                        .accepted
+                        .target
+                        .is_none_or(|target| target == slot.nonce))
+                .then_some(position)
+            }) else {
                 continue;
             };
-            let next = self
-                .next_assignment
-                .checked_add(1)
-                .ok_or(PoolError::AssignmentSequenceExhausted)?;
-            let assignment = AssignmentId(self.next_assignment);
-            self.next_assignment = next;
-            let job = self
+            selected_jobs.push(job_position);
+            plan.push(PlannedDispatch {
+                slot_position,
+                job_position,
+            });
+        }
+        let count =
+            u64::try_from(plan.len()).expect("a pool cannot contain more than u64::MAX slots");
+        let next_assignment = self
+            .next_assignment
+            .checked_add(count)
+            .expect("pool assignment identifiers exhausted");
+
+        let mut removed_positions = Vec::with_capacity(plan.len());
+        for (offset, planned) in plan.into_iter().enumerate() {
+            let removed_before = removed_positions
+                .iter()
+                .filter(|position| **position < planned.job_position)
+                .count();
+            let queued = self
                 .backlog
-                .remove(job_position)
-                .expect("the eligible backlog position was found");
-            let delivery = Delivery::new(
-                Recipient::child(slot.nonce),
+                .remove(planned.job_position - removed_before)
+                .expect("the planned backlog position remains present");
+            let payload = queued.dispatch_payload;
+            let job = queued.accepted;
+            removed_positions.push(planned.job_position);
+            let assignment = AssignmentId(
+                self.next_assignment
+                    + u64::try_from(offset).expect("offset is bounded by the checked plan length"),
+            );
+            let nonce = self.slots[planned.slot_position].nonce;
+            let job_id = job.id;
+            self.slots[planned.slot_position].state = SlotState::Assigned { assignment, job };
+            actions.sends.behavior.send::<_, Own>(Delivery::new(
+                Recipient::child(nonce),
                 ProxyCommand::Forward(PoolAssignment {
                     assignment,
-                    job: job.id,
-                    payload: job.payload.clone(),
+                    job: job_id,
+                    payload,
                 }),
-            );
-            slot.state = SlotState::Assigned { assignment, job };
-            actions.sends.behavior.send::<_, Own>(delivery);
+            ));
         }
-        Ok(())
+        self.next_assignment = next_assignment;
     }
 }
 
@@ -696,7 +841,7 @@ where
             }) => {
                 let mut actions = Actions::cont();
                 self.submit(job, payload, reply_to, &mut actions);
-                self.dispatch(&mut actions)?;
+                self.dispatch(&mut actions);
                 Ok(actions)
             }
             SupervisionEvent::Inner(User {
@@ -710,7 +855,7 @@ where
             }) => {
                 let mut actions = Actions::cont();
                 self.complete(worker, assignment, result, &mut actions)?;
-                self.dispatch(&mut actions)?;
+                self.dispatch(&mut actions);
                 Ok(actions)
             }
             SupervisionEvent::WorkerStopped(stopped) => {
@@ -719,7 +864,7 @@ where
                 self.worker_stopped(&stopped, &mut responses)?;
                 let mut actions =
                     self.supervisor_transition(SupervisionEvent::WorkerStopped(stopped));
-                actions.sends.behavior.inner.extend(responses);
+                actions.sends.behavior.responses.extend(responses);
                 let replacement_requested = actions
                     .sends
                     .replacement_commands
@@ -727,19 +872,23 @@ where
                     .any(|delivery| delivery.to.route() == crate::Route::Child(proxy));
                 if !replacement_requested {
                     let position = self.slot_position(proxy)?;
-                    self.slots[position].state = SlotState::Retired {
-                        reason: WorkerRetirement::ReplacementUnavailable,
-                    };
+                    let reason = WorkerRetirement::ReplacementUnavailable;
+                    self.slots[position].state = SlotState::Retired { reason };
+                    self.fail_jobs_for_retired_slot(proxy, reason, &mut actions);
                 }
-                self.dispatch(&mut actions)?;
+                self.dispatch(&mut actions);
                 self.fail_backlog_if_irrecoverable(&mut actions);
                 Ok(actions)
             }
             SupervisionEvent::WorkerCreationResolved(resolved) => {
+                let proxy = resolved.proxy;
                 self.creation_resolved(&resolved)?;
                 let mut actions =
                     self.supervisor_transition(SupervisionEvent::WorkerCreationResolved(resolved));
-                self.dispatch(&mut actions)?;
+                if let Some(WorkerPhase::Retired { reason }) = self.worker_phase(proxy) {
+                    self.fail_jobs_for_retired_slot(proxy, reason, &mut actions);
+                }
+                self.dispatch(&mut actions);
                 self.fail_backlog_if_irrecoverable(&mut actions);
                 Ok(actions)
             }
@@ -755,7 +904,7 @@ where
 
 /// A worker pool whose admitted keys remain bound to stable worker slots.
 ///
-/// The routing function selects a stable proxy nonce only when a key is first
+/// The selector chooses a stable proxy nonce only when a key is first
 /// admitted. Replacement incarnations remain behind that proxy, so they do
 /// not alter affinity. [`KeyedPoolMessage::Rebalance`] is the sole transition
 /// that changes an established binding, and jobs accepted before it retain
@@ -783,28 +932,35 @@ where
 ///         Ok(Actions::cont())
 ///     }
 /// }
-/// let _: Option<KeyedWorkerPool<MailAddr, NonKey, u8, (), Worker>> = None;
+/// let _: Option<KeyedWorkerPool<MailAddr, NonKey, u8, (), Worker, fn(&NonKey) -> u64>> = None;
 /// ```
-pub struct KeyedWorkerPool<A: Address, K, J, R, C>
+pub struct KeyedWorkerPool<A: Address, K, J, R, C, S>
 where
     K: Eq,
     C: Behavior<Addr = A, Msg = PoolAssignment<J>, Ph = Never>,
+    S: AffinitySelector<K, A::Nonce>,
 {
     pool: WorkerPool<A, J, R, C>,
     bindings: Vec<(K, A::Nonce)>,
-    select: fn(&K) -> A::Nonce,
+    selector: S,
 }
 
-impl<A, K, J, R, C> KeyedWorkerPool<A, K, J, R, C>
+impl<A, K, J, R, C, S> KeyedWorkerPool<A, K, J, R, C, S>
 where
     A: Address,
     K: Eq,
     C: Behavior<Addr = A, Msg = PoolAssignment<J>, Ph = Never>,
+    S: AffinitySelector<K, A::Nonce>,
 {
     /// Construct a key-persistent pool over the same fixed supervised slots as
     /// [`WorkerPool`]. The selector is pure and is consulted once per
     /// previously unseen key. It chooses behavior policy; runtime route
     /// resolution remains outside this type.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PoolConfigError::NoWorkers`] for an empty topology or
+    /// [`PoolConfigError::DuplicateWorker`] for a repeated stable nonce.
     #[allow(
         clippy::too_many_arguments,
         reason = "the arguments expose the complete pool and affinity policy"
@@ -818,7 +974,7 @@ where
         restart_policy: RestartPolicy,
         max_restarts: u32,
         restart_window: Duration,
-        select: fn(&K) -> A::Nonce,
+        selector: S,
     ) -> Result<Self, PoolConfigError<A::Nonce>> {
         Ok(Self {
             pool: WorkerPool::new(
@@ -832,7 +988,7 @@ where
                 restart_window,
             )?,
             bindings: Vec::new(),
-            select,
+            selector,
         })
     }
 
@@ -868,13 +1024,14 @@ where
     }
 }
 
-impl<A, K, J, R, C> Behavior for KeyedWorkerPool<A, K, J, R, C>
+impl<A, K, J, R, C, S> Behavior for KeyedWorkerPool<A, K, J, R, C, S>
 where
     A: Address,
     A::Nonce: From<u64>,
-    K: Clone + Eq,
+    K: Eq,
     J: Clone,
     C: Behavior<Addr = A, Msg = PoolAssignment<J>, Ph = Never>,
+    S: AffinitySelector<K, A::Nonce>,
 {
     type Addr = A;
     type Msg = KeyedPoolMessage<A, K, J, R>;
@@ -901,15 +1058,17 @@ where
                 ..
             }) => {
                 let existing = self.affinity(&key);
-                let target = existing.unwrap_or_else(|| (self.select)(&key));
+                let target = existing.unwrap_or_else(|| self.selector.select(&key));
                 let mut actions = Actions::cont();
-                let accepted = self
+                let admission = self
                     .pool
                     .submit_to(target, job, payload, reply_to, &mut actions);
-                if accepted && existing.is_none() {
-                    self.bindings.push((key, target));
+                match (admission, existing) {
+                    (Admission::Accepted, None) => self.bindings.push((key, target)),
+                    (Admission::Accepted | Admission::Rejected, Some(_))
+                    | (Admission::Rejected, None) => {}
                 }
-                self.pool.dispatch(&mut actions)?;
+                self.pool.dispatch(&mut actions);
                 Ok(actions)
             }
             SupervisionEvent::Inner(User {
@@ -924,7 +1083,7 @@ where
                 let mut actions = Actions::cont();
                 self.pool
                     .complete(worker, assignment, result, &mut actions)?;
-                self.pool.dispatch(&mut actions)?;
+                self.pool.dispatch(&mut actions);
                 Ok(actions)
             }
             SupervisionEvent::Inner(User {

@@ -149,8 +149,9 @@ fuzz_target!(|bytes: &[u8]| {
             ))
             .unwrap();
     }
+    let mut incarnations = [0_u64, 1_u64];
     for (job, byte) in bytes.iter().copied().take(512).enumerate() {
-        match byte % 3 {
+        match byte % 4 {
             0 => {
                 keyed
                     .receive(
@@ -165,15 +166,13 @@ fuzz_target!(|bytes: &[u8]| {
                     .unwrap();
             }
             1 => {
-                keyed
-                    .receive(
-                        MailAddr(9),
-                        KeyedPoolMessage::Rebalance {
-                            key: byte >> 2,
-                            worker: u64::from((byte >> 1) & 1),
-                        },
-                    )
-                    .unwrap();
+                let _ = keyed.receive(
+                    MailAddr(9),
+                    KeyedPoolMessage::Rebalance {
+                        key: byte >> 2,
+                        worker: u64::from((byte >> 1) & 1),
+                    },
+                );
             }
             2 => {
                 let slot = u64::from((byte >> 1) & 1);
@@ -188,6 +187,43 @@ fuzz_target!(|bytes: &[u8]| {
                             },
                         )
                         .unwrap();
+                }
+            }
+            3 => {
+                let slot = usize::from((byte >> 1) & 1);
+                let nonce = u64::try_from(slot).unwrap();
+                if matches!(
+                    keyed.worker_phase(nonce),
+                    Some(WorkerPhase::Idle | WorkerPhase::Assigned { .. })
+                ) {
+                    let stopped = incarnations[slot];
+                    let actions = keyed
+                        .on(WorkerStopped::new(
+                            nonce,
+                            stopped,
+                            Err(behavior::Crash::Panicked),
+                            Instant::now(),
+                        ))
+                        .unwrap();
+                    if !actions.sends.replacement_commands.is_empty() {
+                        let replacement = stopped.wrapping_add(2);
+                        let result = if byte & 0x80 == 0 {
+                            Ok(())
+                        } else {
+                            Err(behavior::CreationRejection::EnvironmentFailed)
+                        };
+                        keyed
+                            .on(WorkerCreationResolved::new(
+                                nonce,
+                                replacement,
+                                CreationKind::replacement_of(stopped),
+                                result,
+                            ))
+                            .unwrap();
+                        if result.is_ok() {
+                            incarnations[slot] = replacement;
+                        }
+                    }
                 }
             }
             _ => unreachable!(),

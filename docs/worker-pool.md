@@ -35,6 +35,14 @@ delivery appears in the same `Actions` value. Completion must name the exact
 assignment token currently owned by the worker slot; stale, duplicate, and
 cross-slot completions are typed errors and cannot complete another job.
 
+Admission prepares one cloned dispatch payload before committing ownership.
+The queued state owns the caller's retained recovery payload and that prepared
+worker payload as a named product; dispatch moves the prepared value without
+cloning or another fallible policy call. Retry prepares its next dispatch value
+before leaving `Assigned`. A panicking application `Clone` therefore leaves
+the prior semantic state unchanged. This copying is the explicit cost of the
+pool's payload-returning failure and at-least-once retry contract.
+
 ## Worker phases
 
 Each stable supervised worker slot is exactly one of:
@@ -70,14 +78,17 @@ The complete binding law is:
 
 ```text
 unbound key + accepted submission -> bound to select(&key)
+unbound key + Rebalance           -> explicitly bound to named slot
 bound key + submission            -> same stable worker slot
 bound key + worker replacement    -> unchanged binding
 bound key + Rebalance             -> named new stable worker slot
 ```
 
-The selector is consulted only for an unbound key. A submission is
-not admitted and creates no binding if the selected route is unknown, retired,
-or lacks backlog capacity; the owned payload is returned in a typed
+The statically dispatched selector value is consulted only for an unbound key.
+It may capture immutable configuration without a trait object, registry, or
+free-standing function requirement. A submission is not admitted and creates
+no binding if the selected route is unknown, retired, or lacks backlog
+capacity; the owned payload is returned in a typed
 `PoolResponse::Rejected`. Equality is concrete through `K: Eq`; there is no
 hashing service, erased key, registry, or global membership lookup.
 
@@ -93,6 +104,12 @@ binding changes. Work for a busy or installing affinity slot remains queued
 even if another slot is idle. FIFO order is preserved among jobs eligible for
 the same slot; there is deliberately no global FIFO claim across independent
 affinity lanes.
+
+If a selected slot retires, every queued job still targeting it terminates in
+the same fold. A never-assigned job reports `AffinityRetired`; a retried job
+preserves its exact earlier `WorkerStopped` cause. Another live slot cannot
+hide or strand those jobs. A later rebalance can restore admission for the key
+but cannot resurrect already terminated ownership.
 
 The selector does not resolve an actor address. The fold emits an ordinary
 typed `Recipient::child(stable_nonce)` assignment. Actorpass derives the child
@@ -138,6 +155,22 @@ effect interpretation before the next input. Actorpass owns mailbox ingress,
 routing, fresh installation, typed creation resolution, worker termination
 observation, timers, and retirement. Neither the executor nor Actorpass may
 select a worker, mutate pool accounting, or infer retry policy.
+
+`PoolBehaviorSends` exposes the pool's two ordinary delivery lanes by semantic
+name: `responses` and `assignments`. An interpreter integrates this concrete
+product by routing both lanes in that order through its existing typed
+delivery router. It must not flatten them into an erased envelope or interpret
+either lane as a service request. Wrapper composition continues through the
+standard `SendInput` implementation and cannot consume or reorder either lane.
+
+Construction rejects a zero-worker topology with `PoolConfigError::NoWorkers`,
+so a pool cannot accept ownership without any possible worker slot.
+
+Assignment correlation uses a monotonic `u64` counter. The final counter value
+is reserved so a successful dispatch batch always has a representable successor
+counter. Reaching that physical boundary poisons the actor turn before the
+dispatch plan is committed; this is a Bombay implementation limit, not an actor
+model guarantee or ordinary recoverable pool outcome.
 
 ## Research classification
 
