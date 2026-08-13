@@ -3,8 +3,8 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, Pure, Behavior, Delivery, MailAddr, Never, NoBirths, ReceiveTimeoutEvent,
-    Compose, Handler, Step, TimerElapsed, TimerGeneration, TimerId, User, UserEvent,
+    Acted, Actions, Behavior, Compose, Delivery, Handler, MailAddr, Never, NoBirths, Pure,
+    ReceiveTimeoutEvent, Step, TimerElapsed, TimerGeneration, TimerId, User, UserEvent,
 };
 use libfuzzer_sys::fuzz_target;
 use tokio::runtime::Builder;
@@ -34,8 +34,8 @@ fn elapsed(
 
 fuzz_target!(|bytes: &[u8]| {
     let runtime = Builder::new_current_thread().build().unwrap();
-    async {
-        let mut behavior = Compose::new(Sink).receive_timeout(Duration::from_nanos(1, elapsed);
+    runtime.block_on(async {
+        let mut behavior = Compose::new(Sink).receive_timeout(Duration::from_nanos(1), elapsed);
         let initial = behavior.init().unwrap();
         assert_eq!(initial.sends.schedules[0].generation, TimerGeneration(0));
         let mut issued = 0_u64;
@@ -66,7 +66,7 @@ fuzz_target!(|bytes: &[u8]| {
                     if matched {
                         live = None;
                     }
-                    assert!(actions.sends.own.is_empty());
+                    assert!(actions.sends.behavior.is_empty());
                     assert!(matches!(actions.become_, Step::Continue));
                 }
                 _ => {
@@ -78,7 +78,7 @@ fuzz_target!(|bytes: &[u8]| {
                         }))
                         .unwrap();
                     assert_eq!(live, before);
-                    assert!(actions.sends.own.is_empty());
+                    assert!(actions.sends.behavior.is_empty());
                 }
             }
         }

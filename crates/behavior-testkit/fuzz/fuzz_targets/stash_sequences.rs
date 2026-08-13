@@ -7,7 +7,10 @@
 //! either delivered to the inner recorder exactly once or still held, so
 //! `|recorded| + held() == stepped` and no id is recorded twice.
 
-use behavior::{Acted, Actions, Pure, Behavior, Delivery, MailAddr, Never, Recipient, Handler, Step, StashRoute, Stash, User, UserEvent};
+use behavior::{
+    Acted, Actions, Behavior, Delivery, Handler, MailAddr, Never, Pure, Recipient, Stash,
+    StashRoute, Step, User, UserEvent,
+};
 use libfuzzer_sys::fuzz_target;
 use tokio::runtime::Builder;
 
@@ -44,8 +47,8 @@ fn route(message: &u64) -> StashRoute {
 
 fuzz_target!(|bytes: &[u8]| {
     let runtime = Builder::new_current_thread().enable_time().build().unwrap();
-    async {
-        let mut behavior = Stash::new(Pure::new(Recorder::default(), route);
+    runtime.block_on(async {
+        let mut behavior = Stash::new(Pure::new(Recorder::default()), route);
         for (index, _) in bytes.iter().enumerate() {
             let id = u64::try_from(index).unwrap();
             behavior.transition(User::user(MailAddr(0), id)).unwrap();
