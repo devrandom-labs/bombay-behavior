@@ -1,8 +1,8 @@
 #![no_main]
 
 use behavior::{
-    Acted, Actions, Pure, Behavior, ChildStopped, CreationKind, CreationResolved, Delivery, Exit,
-    MailAddr, Never, Proxy, ProxyCommand, ProxyEvent, Route, Handler, User, UserEvent,
+    Acted, Actions, Behavior, ChildStopped, CreationKind, CreationResolved, Delivery, Exit,
+    Handler, MailAddr, Never, Proxy, ProxyCommand, ProxyEvent, Pure, Route, User, UserEvent,
 };
 use libfuzzer_sys::fuzz_target;
 use tokio::runtime::Builder;
@@ -28,8 +28,8 @@ fn worker(_seed: usize) -> Pure<Worker, u8> {
 
 fuzz_target!(|bytes: &[u8]| {
     let runtime = Builder::new_current_thread().enable_time().build().unwrap();
-    async {
-        let mut proxy = Proxy::new(worker(0);
+    runtime.block_on(async {
+        let mut proxy = Proxy::new(worker(0));
         let initial = proxy.init().unwrap();
         assert_eq!(initial.creates.len(), 1);
         assert_eq!(initial.creates[0].nonce, 0);
@@ -53,7 +53,10 @@ fuzz_target!(|bytes: &[u8]| {
                     .unwrap();
                 assert!(actions.creates.is_empty());
                 assert_eq!(actions.sends.deliveries.len(), 1);
-                assert_eq!(actions.sends.deliveries[0].to.route(), Route::Child(generation));
+                assert_eq!(
+                    actions.sends.deliveries[0].to.route(),
+                    Route::Child(generation)
+                );
                 assert_eq!(actions.sends.deliveries[0].message, byte);
             } else {
                 generation = generation.checked_add(1).unwrap();

@@ -8,7 +8,7 @@
 //! `recorded + fsm_held + stash_held + goto_consumed == stepped`, with the
 //! goto class taken from the phase BEFORE the step (a Goto flips the phase).
 
-use behavior::{Behavior, Machine, MailAddr, Move, Never, Compose, StashRoute, User, UserEvent};
+use behavior::{Behavior, Compose, Machine, MailAddr, Move, Never, StashRoute, User, UserEvent};
 use libfuzzer_sys::fuzz_target;
 use tokio::runtime::Builder;
 
@@ -22,9 +22,9 @@ type Stack = behavior::Compose<behavior::Stash<Machine<MailAddr, Vec<u64>, u64, 
 
 fuzz_target!(|bytes: &[u8]| {
     let runtime = Builder::new_current_thread().enable_time().build().unwrap();
-    async {
+    runtime.block_on(async {
         let mut behavior: Stack = Compose::machine(
-            Vec::new(,
+            Vec::new(),
             Phase::A,
             |phase, seen: &mut Vec<u64>, id: &u64| {
                 Ok::<Move<Phase>, Never>(match (phase, id % 4) {
@@ -69,11 +69,7 @@ fuzz_target!(|bytes: &[u8]| {
             let mut sorted = behavior.behavior().inner().state().clone();
             sorted.sort_unstable();
             sorted.dedup();
-            assert_eq!(
-                sorted.len(),
-                recorded,
-                "duplicate delivery at byte {index}"
-            );
+            assert_eq!(sorted.len(), recorded, "duplicate delivery at byte {index}");
         }
     });
 });

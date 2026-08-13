@@ -9,8 +9,8 @@
 //! agree on every byte.
 
 use behavior::{
-    Acted, Actions, Pure, Behavior, Crash, Delivery, Exit, MailAddr, Never, RestartDenial,
-    RestartPolicy, Handler, Step, Strategy, Supervisor, SupervisionEvent, SupervisionFailureReason,
+    Acted, Actions, Behavior, Crash, Delivery, Exit, Handler, MailAddr, Never, Pure, RestartDenial,
+    RestartPolicy, Step, Strategy, SupervisionEvent, SupervisionFailureReason, Supervisor,
     WorkerStopped, stop_on_supervision_failure,
 };
 use libfuzzer_sys::fuzz_target;
@@ -50,16 +50,22 @@ impl Handler<Never, behavior::Births<Pure<Worker, u8>>, Never> for Parent {
         &mut self,
         _from: MailAddr,
         _message: u64,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, behavior::Births<Pure<Worker, u8>>, Never> {
+    ) -> Acted<
+        MailAddr,
+        Never,
+        Vec<Delivery<MailAddr, Never>>,
+        behavior::Births<Pure<Worker, u8>>,
+        Never,
+    > {
         Ok(Actions::cont())
     }
 }
 
 fuzz_target!(|bytes: &[u8]| {
     let runtime = Builder::new_current_thread().enable_time().build().unwrap();
-    async {
+    runtime.block_on(async {
         let mut behavior = Supervisor::new(
-            Pure::new(Parent,
+            Pure::new(Parent),
             |index| u64::try_from(index).unwrap(),
             FLEET,
             worker,
@@ -98,7 +104,7 @@ fuzz_target!(|bytes: &[u8]| {
                 .transition(SupervisionEvent::WorkerStopped(WorkerStopped {
                     proxy: u64::try_from(nonce).unwrap(),
                     worker: u64::try_from(nonce).unwrap(),
-            outcome: Err(Crash::Failed),
+                    outcome: Err(Crash::Failed),
                     at: base + std::time::Duration::from_nanos(at),
                 }))
                 .unwrap();
@@ -114,13 +120,11 @@ fuzz_target!(|bytes: &[u8]| {
                 assert_eq!(
                     actions.become_,
                     Step::Stop(Exit::SupervisionFailed(
-                        SupervisionFailureReason::RestartDenied(
-                            RestartDenial::BudgetExceeded {
-                                restarts_in_window: restarts.len(),
-                                replacements_requested: 1,
-                                maximum_restarts: BUDGET,
-                            }
-                        )
+                        SupervisionFailureReason::RestartDenied(RestartDenial::BudgetExceeded {
+                            restarts_in_window: restarts.len(),
+                            replacements_requested: 1,
+                            maximum_restarts: BUDGET,
+                        })
                     ))
                 );
             }

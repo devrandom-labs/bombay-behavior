@@ -9,10 +9,10 @@
 //! product lane and never leak across.
 
 use behavior::{
-    Acted, Actions, DeadlineEvent, TimerGeneration, TimerId, Pure, Behavior, Births, WorkerStopped, Crash,
-    Delivery, Exit, MailAddr, Never, PeerStopped, Recipient, RestartPolicy, Route, Compose, StashRoute,
-    Handler, Step, Strategy, SupervisionEvent, TimerElapsed, UserEvent, WatchEvent,
-    stop_on_abnormal_death,
+    Acted, Actions, Behavior, Births, Compose, Crash, DeadlineEvent, Delivery, Exit, Handler,
+    MailAddr, Never, PeerStopped, Pure, Recipient, RestartPolicy, Route, StashRoute, Step,
+    Strategy, SupervisionEvent, TimerElapsed, TimerGeneration, TimerId, UserEvent, WatchEvent,
+    WorkerStopped, stop_on_abnormal_death,
 };
 use libfuzzer_sys::fuzz_target;
 use tokio::runtime::Builder;
@@ -31,7 +31,8 @@ impl Handler<u64, behavior::Births<Pure<Echo, u8>>, Never> for EchoingParent {
         &mut self,
         _from: MailAddr,
         message: u64,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, u64>>, behavior::Births<Pure<Echo, u8>>, Never> {
+    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, u64>>, behavior::Births<Pure<Echo, u8>>, Never>
+    {
         self.seen.push(message);
         Ok(Actions {
             sends: vec![Delivery::new(Recipient::global(MailAddr(0)), message)],
@@ -82,8 +83,8 @@ type Stack = behavior::Compose<
 
 fuzz_target!(|bytes: &[u8]| {
     let runtime = Builder::new_current_thread().enable_time().build().unwrap();
-    async {
-        let due = Instant::now() + std::time::Duration::from_secs(1;
+    runtime.block_on(async {
+        let due = Instant::now() + std::time::Duration::from_secs(1);
         let peer = MailAddr(44);
         let mut behavior: Stack = Compose::new(EchoingParent::default())
             .stash(route)
@@ -102,15 +103,15 @@ fuzz_target!(|bytes: &[u8]| {
                     // User lane: stash filter — echo iff not Stash-routed.
                     let arg = u64::try_from(index).unwrap();
                     let actions = behavior
-                        .transition(SupervisionEvent::Inner(DeadlineEvent::Inner(WatchEvent::Inner(
-                            UserEvent::user(MailAddr(9), arg),
-                        ))))
+                        .transition(SupervisionEvent::Inner(DeadlineEvent::Inner(
+                            WatchEvent::Inner(UserEvent::user(MailAddr(9), arg)),
+                        )))
                         .unwrap();
                     let echo_step: Vec<u64> = actions
                         .sends
                         .behavior
-                        .inner
-                        .inner
+                        .behavior
+                        .behavior
                         .iter()
                         .map(|d| d.message)
                         .collect();
@@ -126,12 +127,12 @@ fuzz_target!(|bytes: &[u8]| {
                 1 => {
                     // Peer lane: watched abnormal death stops the fold.
                     let actions = behavior
-                        .transition(SupervisionEvent::Inner(DeadlineEvent::Inner(WatchEvent::PeerStopped(
-                            PeerStopped {
+                        .transition(SupervisionEvent::Inner(DeadlineEvent::Inner(
+                            WatchEvent::PeerStopped(PeerStopped {
                                 peer,
                                 outcome: Err(Crash::Failed),
-                            },
-                        ))))
+                            }),
+                        )))
                         .unwrap();
                     assert!(
                         matches!(actions.become_, Step::Stop(Exit::LinkDied(p)) if p == peer),
@@ -143,11 +144,18 @@ fuzz_target!(|bytes: &[u8]| {
                 2 => {
                     // Time lane: matching Reached fires once, then inert.
                     let actions = behavior
-                        .transition(SupervisionEvent::Inner(DeadlineEvent::Elapsed(TimerElapsed {
-                            id: TimerId(0),
-                            generation: TimerGeneration(0),})))
+                        .transition(SupervisionEvent::Inner(DeadlineEvent::Elapsed(
+                            TimerElapsed {
+                                id: TimerId(0),
+                                generation: TimerGeneration(0),
+                            },
+                        )))
                         .unwrap();
-                    assert_eq!(actions.become_, Step::Continue, "time verdict at byte {index}");
+                    assert_eq!(
+                        actions.become_,
+                        Step::Continue,
+                        "time verdict at byte {index}"
+                    );
                     actions
                 }
                 _ => {
@@ -157,8 +165,9 @@ fuzz_target!(|bytes: &[u8]| {
                         .transition(SupervisionEvent::WorkerStopped(WorkerStopped {
                             proxy: nonce,
                             worker: nonce,
-            outcome: Err(Crash::Failed),
-                            at: base + std::time::Duration::from_nanos(u64::try_from(index).unwrap()),
+                            outcome: Err(Crash::Failed),
+                            at: base
+                                + std::time::Duration::from_nanos(u64::try_from(index).unwrap()),
                         }))
                         .unwrap();
                     assert_eq!(
@@ -172,7 +181,7 @@ fuzz_target!(|bytes: &[u8]| {
                         "replacement route at byte {index}"
                     );
                     assert!(
-                        actions.sends.behavior.inner.inner.is_empty(),
+                        actions.sends.behavior.behavior.behavior.is_empty(),
                         "child event leaked into the echo lane at byte {index}"
                     );
                     assert_eq!(actions.become_, Step::Continue);
