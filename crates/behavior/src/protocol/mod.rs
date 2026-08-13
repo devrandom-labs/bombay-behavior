@@ -410,6 +410,29 @@ pub struct WorkerCreationResolved<N> {
     pub result: Result<(), CreationRejection>,
 }
 
+/// Consumer-facing resolution of one explicitly designated replacement.
+///
+/// This is a derived view of [`WorkerCreationResolved`], not another runtime
+/// fact or observation request. `replaced` is the exact prior incarnation
+/// carried by Behavior in [`CreationKind::ReplacementIncarnation`];
+/// `replacement`/`attempt` is the fresh creation nonce. The prior worker's
+/// terminal outcome remains the separate [`WorkerStopped`] fact so creation
+/// resolution cannot duplicate, erase, or reinterpret it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReplacementResolution<N> {
+    Installed {
+        proxy: N,
+        replaced: N,
+        replacement: N,
+    },
+    Rejected {
+        proxy: N,
+        replaced: N,
+        attempt: N,
+        rejection: CreationRejection,
+    },
+}
+
 impl<N> WorkerCreationResolved<N> {
     #[must_use]
     pub const fn new(
@@ -424,6 +447,28 @@ impl<N> WorkerCreationResolved<N> {
             kind,
             result,
         }
+    }
+
+    /// Project a replacement result without conflating ordinary birth with
+    /// replacement or inferring provenance from nonce arithmetic.
+    #[must_use]
+    pub fn into_replacement(self) -> Option<ReplacementResolution<N>> {
+        let CreationKind::ReplacementIncarnation { replaces } = self.kind else {
+            return None;
+        };
+        Some(match self.result {
+            Ok(()) => ReplacementResolution::Installed {
+                proxy: self.proxy,
+                replaced: replaces,
+                replacement: self.worker,
+            },
+            Err(rejection) => ReplacementResolution::Rejected {
+                proxy: self.proxy,
+                replaced: replaces,
+                attempt: self.worker,
+                rejection,
+            },
+        })
     }
 }
 
@@ -474,6 +519,39 @@ mod tests {
         assert_eq!(worker.worker, 4);
         assert_eq!(worker.kind, CreationKind::replacement_of(3));
         assert_eq!(worker.result, Err(CreationRejection::EnvironmentFailed));
+        assert_eq!(
+            worker.into_replacement(),
+            Some(ReplacementResolution::Rejected {
+                proxy: 7,
+                replaced: 3,
+                attempt: 4,
+                rejection: CreationRejection::EnvironmentFailed,
+            })
+        );
+
+        let installed = WorkerCreationResolved::new(7, 5, CreationKind::replacement_of(4), Ok(()));
+        assert_eq!(
+            installed.into_replacement(),
+            Some(ReplacementResolution::Installed {
+                proxy: 7,
+                replaced: 4,
+                replacement: 5,
+            })
+        );
+        assert_eq!(
+            WorkerCreationResolved::new(7, 0, CreationKind::Birth, Ok(())).into_replacement(),
+            None
+        );
+        assert_eq!(
+            WorkerCreationResolved::new(
+                7,
+                0,
+                CreationKind::Birth,
+                Err(CreationRejection::NonceAlreadyBound),
+            )
+            .into_replacement(),
+            None
+        );
     }
 
     #[test]

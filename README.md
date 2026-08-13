@@ -73,6 +73,14 @@ event streams can be evaluated with `fold_events`; it uses the same
 `ActionReducer` as the mailbox interpreter and stops at the first controlled
 failure or termination verdict.
 
+For a nominal user-message behavior, `#[behavior::behavior(...)]` may annotate
+an ordinary inherent impl containing `init(&mut self)` and
+`receive(&mut self, from, message)`. It preserves those methods and generates
+only the explicit `Behavior` wiring, making the type usable in `Births`,
+`Proxy`, `Supervisor`, pools, and interpreter endpoints. The exact expansion
+and deliberately narrow scope are documented in
+[Nominal Behavior Attribute](docs/behavior-attribute.md).
+
 ## Development and testing
 
 Enter the pinned development environment with:

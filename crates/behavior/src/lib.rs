@@ -46,10 +46,10 @@ pub use pool::{
 };
 pub use protocol::{
     ChildEvent, ChildStopped, CreationEvent, CreationRejection, CreationResolved, ObserveChild,
-    ObserveCreation, ObservePeer, PeerEvent, PeerStopped, ReportWorkerCreationResolved,
-    ReportWorkerStopped, ScheduleAfter, ScheduleAt, ShutdownEvent, ShutdownRequested, TimeEvent,
-    TimerElapsed, TimerGeneration, TimerId, UnwatchPeer, WorkerCreationEvent,
-    WorkerCreationResolved, WorkerEvent, WorkerStopped,
+    ObserveCreation, ObservePeer, PeerEvent, PeerStopped, ReplacementResolution,
+    ReportWorkerCreationResolved, ReportWorkerStopped, ScheduleAfter, ScheduleAt, ShutdownEvent,
+    ShutdownRequested, TimeEvent, TimerElapsed, TimerGeneration, TimerId, UnwatchPeer,
+    WorkerCreationEvent, WorkerCreationResolved, WorkerEvent, WorkerStopped,
 };
 pub use shutdown::{FinalizeOnShutdown, ShutdownProtocol, ShutdownReaction, StopOnShutdown};
 pub use stash::{Stash, StashRoute};
@@ -70,4 +70,28 @@ mod exit;
 
 pub use exit::{Crash, Exit, RestartDenial, SupervisionFailureReason};
 
+/// Generate `Behavior` wiring for an inherent impl with exact `&mut self`
+/// methods. Invalid receivers are rejected at compile time.
+///
+/// ```compile_fail
+/// use behavior::{Actions, Delivery, MailAddr, Never, NoBirths};
+///
+/// struct Invalid;
+/// #[behavior::behavior(
+///     addr = MailAddr,
+///     message = u8,
+///     sends = Vec<Delivery<MailAddr, Never>>,
+///     births = NoBirths,
+///     error = Never,
+/// )]
+/// impl Invalid {
+///     fn init(&self) -> behavior::Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, NoBirths, Never> {
+///         Ok(Actions::cont())
+///     }
+///     fn receive(&mut self, _: MailAddr, _: u8) -> behavior::Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, NoBirths, Never> {
+///         Ok(Actions::cont())
+///     }
+/// }
+/// ```
+pub use behavior_macros::behavior;
 pub use behavior_macros::workers;

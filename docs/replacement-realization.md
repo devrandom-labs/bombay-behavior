@@ -37,6 +37,29 @@ produce a successful restart report.
 `CreationResolved` reports realization of one staged creation. Neither event
 implies that supervision will or will not make a later attempt.
 
+## Replacement-facing observation
+
+The stable proxy reports `WorkerStopped` and `WorkerCreationResolved` to its
+parent as separate typed facts. This separation is intentional:
+
+- `WorkerStopped` owns the exact prior worker's terminal outcome and time;
+- `WorkerCreationResolved` owns the fresh attempt, its explicit
+  `CreationKind`, and the interpreter's installation result.
+
+For `CreationKind::ReplacementIncarnation`, the kind names the exact prior
+incarnation and the creation report names the fresh attempt. Therefore the
+report already distinguishes successful fresh replacement, the incarnation it
+replaces, and rejected replacement without address arithmetic, timing, or
+allocation inference. `WorkerCreationResolved::into_replacement` exposes this
+as the closed `ReplacementResolution::{Installed, Rejected}` sum.
+
+`ReplacementResolution` is a derived projection, not a new interpreter event.
+It deliberately does not copy the old worker's `Exit`/`Crash`: a consumer that
+needs both facts retains the earlier `WorkerStopped` and correlates it with the
+explicit `replaced` nonce. This prevents a combined convenience event from
+duplicating or reinterpreting terminal provenance and requires no Actorpass
+registry, lease, or additional observation lane.
+
 ## Rejected same-action observation
 
 Creation resolution precedes service-send interpretation by Bombay policy. If
