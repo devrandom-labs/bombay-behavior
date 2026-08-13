@@ -49,10 +49,36 @@ pub enum PoolMessage<A: Address, J, R> {
     },
 }
 
+/// Messages accepted by a key-persistent pool coordinator.
+///
+/// `Rebalance` is the only input that can change an established key binding.
+/// It affects later submissions; jobs already accepted retain their selected
+/// stable worker slot.
+#[derive(Clone, PartialEq, Eq)]
+pub enum KeyedPoolMessage<A: Address, K, J, R> {
+    Submit {
+        key: K,
+        job: JobId,
+        payload: J,
+        reply_to: Recipient<A, PoolResponse<J, R, A>>,
+    },
+    Completed {
+        worker: A::Nonce,
+        assignment: AssignmentId,
+        result: R,
+    },
+    Rebalance {
+        key: K,
+        worker: A::Nonce,
+    },
+}
+
 /// Why a submitted job was not accepted by the pool.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PoolRejection {
     BacklogFull,
+    /// The key's selected stable slot is unknown or permanently retired.
+    AffinityUnavailable,
 }
 
 /// Why an accepted assignment ended without a worker completion.
@@ -144,6 +170,10 @@ pub enum PoolError<N> {
         worker: N,
         phase: WorkerPhase,
     },
+    RebalanceToRetiredWorker {
+        worker: N,
+        reason: WorkerRetirement,
+    },
     AssignmentSequenceExhausted,
 }
 
@@ -152,6 +182,7 @@ struct AcceptedJob<A: Address, J, R> {
     payload: J,
     reply_to: Recipient<A, PoolResponse<J, R, A>>,
     interruption: Option<PoolInterruption<A>>,
+    target: Option<A::Nonce>,
 }
 
 enum SlotState<A: Address, J, R> {
@@ -173,6 +204,9 @@ struct Slot<A: Address, J, R> {
 
 /// The pool's concrete event sum, including existing supervision facts.
 pub type PoolEvent<A, J, R> = SupervisionEvent<User<A, PoolMessage<A, J, R>>>;
+
+/// Concrete event sum for a [`KeyedWorkerPool`].
+pub type KeyedPoolEvent<A, K, J, R> = SupervisionEvent<User<A, KeyedPoolMessage<A, K, J, R>>>;
 
 type KernelSends<A, J, R, C> =
     SendProduct<Vec<Delivery<A, PoolResponse<J, R, A>>>, Vec<Delivery<A, ProxyCommand<C>>>>;
@@ -384,11 +418,77 @@ where
             payload,
             reply_to,
             interruption: None,
+            target: None,
         });
         actions
             .sends
             .behavior
             .send::<_, crate::Inner<Own>>(Delivery::new(reply_to, PoolResponse::Accepted { job }));
+    }
+
+    fn submit_to(
+        &mut self,
+        target: A::Nonce,
+        job: JobId,
+        payload: J,
+        reply_to: Recipient<A, PoolResponse<J, R, A>>,
+        actions: &mut PoolActions<A, J, R, C>,
+    ) -> bool {
+        let Some(slot) = self.slots.iter().find(|slot| slot.nonce == target) else {
+            actions
+                .sends
+                .behavior
+                .send::<_, crate::Inner<Own>>(Delivery::new(
+                    reply_to,
+                    PoolResponse::Rejected {
+                        job,
+                        payload,
+                        reason: PoolRejection::AffinityUnavailable,
+                    },
+                ));
+            return false;
+        };
+        if matches!(slot.state, SlotState::Retired { .. }) {
+            actions
+                .sends
+                .behavior
+                .send::<_, crate::Inner<Own>>(Delivery::new(
+                    reply_to,
+                    PoolResponse::Rejected {
+                        job,
+                        payload,
+                        reason: PoolRejection::AffinityUnavailable,
+                    },
+                ));
+            return false;
+        }
+        let can_dispatch = matches!(slot.state, SlotState::Idle);
+        if !can_dispatch && self.backlog.len() == self.backlog_capacity {
+            actions
+                .sends
+                .behavior
+                .send::<_, crate::Inner<Own>>(Delivery::new(
+                    reply_to,
+                    PoolResponse::Rejected {
+                        job,
+                        payload,
+                        reason: PoolRejection::BacklogFull,
+                    },
+                ));
+            return false;
+        }
+        self.backlog.push_back(AcceptedJob {
+            id: job,
+            payload,
+            reply_to,
+            interruption: None,
+            target: Some(target),
+        });
+        actions
+            .sends
+            .behavior
+            .send::<_, crate::Inner<Own>>(Delivery::new(reply_to, PoolResponse::Accepted { job }));
+        true
     }
 
     fn complete(
@@ -529,6 +629,13 @@ where
             if !matches!(slot.state, SlotState::Idle) || self.backlog.is_empty() {
                 continue;
             }
+            let Some(job_position) = self
+                .backlog
+                .iter()
+                .position(|job| job.target.is_none_or(|target| target == slot.nonce))
+            else {
+                continue;
+            };
             let next = self
                 .next_assignment
                 .checked_add(1)
@@ -537,8 +644,8 @@ where
             self.next_assignment = next;
             let job = self
                 .backlog
-                .pop_front()
-                .expect("non-empty backlog was checked");
+                .remove(job_position)
+                .expect("the eligible backlog position was found");
             let delivery = Delivery::new(
                 Recipient::child(slot.nonce),
                 ProxyCommand::Forward(PoolAssignment {
@@ -642,6 +749,203 @@ where
             SupervisionEvent::CreationResolved(resolved) => {
                 Ok(self.supervisor_transition(SupervisionEvent::CreationResolved(resolved)))
             }
+        }
+    }
+}
+
+/// A worker pool whose admitted keys remain bound to stable worker slots.
+///
+/// The routing function selects a stable proxy nonce only when a key is first
+/// admitted. Replacement incarnations remain behind that proxy, so they do
+/// not alter affinity. [`KeyedPoolMessage::Rebalance`] is the sole transition
+/// that changes an established binding, and jobs accepted before it retain
+/// their original target.
+///
+/// Keys must have a concrete equality relation; a key type without `Eq` cannot
+/// form an affinity table:
+///
+/// ```compile_fail
+/// use behavior::{Actions, Delivery, KeyedWorkerPool, MailAddr, Never, NoBirths};
+/// struct NonKey(f64);
+/// struct Worker;
+/// #[behavior::behavior(
+///     addr = MailAddr,
+///     message = behavior::PoolAssignment<u8>,
+///     sends = Vec<Delivery<MailAddr, Never>>,
+///     births = NoBirths,
+///     error = Never,
+/// )]
+/// impl Worker {
+///     fn init(&mut self) -> behavior::Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, NoBirths, Never> {
+///         Ok(Actions::cont())
+///     }
+///     fn receive(&mut self, _: MailAddr, _: behavior::PoolAssignment<u8>) -> behavior::Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, NoBirths, Never> {
+///         Ok(Actions::cont())
+///     }
+/// }
+/// let _: Option<KeyedWorkerPool<MailAddr, NonKey, u8, (), Worker>> = None;
+/// ```
+pub struct KeyedWorkerPool<A: Address, K, J, R, C>
+where
+    K: Eq,
+    C: Behavior<Addr = A, Msg = PoolAssignment<J>, Ph = Never>,
+{
+    pool: WorkerPool<A, J, R, C>,
+    bindings: Vec<(K, A::Nonce)>,
+    select: fn(&K) -> A::Nonce,
+}
+
+impl<A, K, J, R, C> KeyedWorkerPool<A, K, J, R, C>
+where
+    A: Address,
+    K: Eq,
+    C: Behavior<Addr = A, Msg = PoolAssignment<J>, Ph = Never>,
+{
+    /// Construct a key-persistent pool over the same fixed supervised slots as
+    /// [`WorkerPool`]. The selector is pure and is consulted once per
+    /// previously unseen key. It chooses behavior policy; runtime route
+    /// resolution remains outside this type.
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "the arguments expose the complete pool and affinity policy"
+    )]
+    pub fn new(
+        nonces: fn(usize) -> A::Nonce,
+        count: usize,
+        build: fn(usize) -> C,
+        backlog_capacity: usize,
+        interruption: InterruptionPolicy,
+        restart_policy: RestartPolicy,
+        max_restarts: u32,
+        restart_window: Duration,
+        select: fn(&K) -> A::Nonce,
+    ) -> Result<Self, PoolConfigError<A::Nonce>> {
+        Ok(Self {
+            pool: WorkerPool::new(
+                nonces,
+                count,
+                build,
+                backlog_capacity,
+                interruption,
+                restart_policy,
+                max_restarts,
+                restart_window,
+            )?,
+            bindings: Vec::new(),
+            select,
+        })
+    }
+
+    /// Return the stable slot currently bound to `key`.
+    #[must_use]
+    pub fn affinity(&self, key: &K) -> Option<A::Nonce> {
+        self.bindings
+            .iter()
+            .find_map(|(bound, worker)| (bound == key).then_some(*worker))
+    }
+
+    #[must_use]
+    pub fn backlog_len(&self) -> usize {
+        self.pool.backlog_len()
+    }
+
+    #[must_use]
+    pub fn worker_phase(&self, worker: A::Nonce) -> Option<WorkerPhase> {
+        self.pool.worker_phase(worker)
+    }
+
+    fn rebalance(&mut self, key: K, worker: A::Nonce) -> Result<(), PoolError<A::Nonce>> {
+        let position = self.pool.slot_position(worker)?;
+        if let SlotState::Retired { reason } = self.pool.slots[position].state {
+            return Err(PoolError::RebalanceToRetiredWorker { worker, reason });
+        }
+        if let Some((_, bound)) = self.bindings.iter_mut().find(|(bound, _)| *bound == key) {
+            *bound = worker;
+        } else {
+            self.bindings.push((key, worker));
+        }
+        Ok(())
+    }
+}
+
+impl<A, K, J, R, C> Behavior for KeyedWorkerPool<A, K, J, R, C>
+where
+    A: Address,
+    A::Nonce: From<u64>,
+    K: Clone + Eq,
+    J: Clone,
+    C: Behavior<Addr = A, Msg = PoolAssignment<J>, Ph = Never>,
+{
+    type Addr = A;
+    type Msg = KeyedPoolMessage<A, K, J, R>;
+    type Event = KeyedPoolEvent<A, K, J, R>;
+    type Sends = PoolSends<A, J, R, C>;
+    type Ph = Never;
+    type Error = PoolError<A::Nonce>;
+    type Birth = Births<Proxy<C>>;
+
+    fn init(&mut self) -> crate::BehaviorActed<Self> {
+        self.pool.init()
+    }
+
+    fn transition(&mut self, event: Self::Event) -> crate::BehaviorActed<Self> {
+        match event {
+            SupervisionEvent::Inner(User {
+                message:
+                    KeyedPoolMessage::Submit {
+                        key,
+                        job,
+                        payload,
+                        reply_to,
+                    },
+                ..
+            }) => {
+                let existing = self.affinity(&key);
+                let target = existing.unwrap_or_else(|| (self.select)(&key));
+                let mut actions = Actions::cont();
+                let accepted = self
+                    .pool
+                    .submit_to(target, job, payload, reply_to, &mut actions);
+                if accepted && existing.is_none() {
+                    self.bindings.push((key, target));
+                }
+                self.pool.dispatch(&mut actions)?;
+                Ok(actions)
+            }
+            SupervisionEvent::Inner(User {
+                message:
+                    KeyedPoolMessage::Completed {
+                        worker,
+                        assignment,
+                        result,
+                    },
+                ..
+            }) => {
+                let mut actions = Actions::cont();
+                self.pool
+                    .complete(worker, assignment, result, &mut actions)?;
+                self.pool.dispatch(&mut actions)?;
+                Ok(actions)
+            }
+            SupervisionEvent::Inner(User {
+                message: KeyedPoolMessage::Rebalance { key, worker },
+                ..
+            }) => {
+                self.rebalance(key, worker)?;
+                Ok(Actions::cont())
+            }
+            SupervisionEvent::WorkerStopped(stopped) => self
+                .pool
+                .transition(SupervisionEvent::WorkerStopped(stopped)),
+            SupervisionEvent::WorkerCreationResolved(resolved) => self
+                .pool
+                .transition(SupervisionEvent::WorkerCreationResolved(resolved)),
+            SupervisionEvent::ChildStopped(stopped) => self
+                .pool
+                .transition(SupervisionEvent::ChildStopped(stopped)),
+            SupervisionEvent::CreationResolved(resolved) => self
+                .pool
+                .transition(SupervisionEvent::CreationResolved(resolved)),
         }
     }
 }

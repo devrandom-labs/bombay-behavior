@@ -3,9 +3,9 @@
 use std::time::Duration;
 
 use behavior::{
-    Actions, Behavior, CreationKind, Delivery, InterruptionPolicy, JobId, MailAddr,
-    Never, NoBirths, PoolAssignment, PoolMessage, Recipient, RestartPolicy, User,
-    WorkerCreationResolved, WorkerPhase, WorkerPool, WorkerStopped,
+    Actions, Behavior, CreationKind, Delivery, InterruptionPolicy, JobId, KeyedPoolMessage,
+    KeyedWorkerPool, MailAddr, Never, NoBirths, PoolAssignment, PoolMessage, Recipient,
+    RestartPolicy, User, WorkerCreationResolved, WorkerPhase, WorkerPool, WorkerStopped,
 };
 use libfuzzer_sys::fuzz_target;
 use tokio::time::Instant;
@@ -36,6 +36,10 @@ fn nonce(index: usize) -> u64 {
 
 fn worker(_index: usize) -> Worker {
     Worker
+}
+
+fn affinity(key: &u8) -> u64 {
+    u64::from(key & 1)
 }
 
 fuzz_target!(|bytes: &[u8]| {
@@ -116,6 +120,74 @@ fuzz_target!(|bytes: &[u8]| {
                         ))
                         .unwrap();
                     }
+                }
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    let mut keyed = KeyedWorkerPool::new(
+        nonce,
+        2,
+        worker,
+        4,
+        InterruptionPolicy::Retry,
+        RestartPolicy::Permanent,
+        u32::MAX,
+        Duration::from_secs(1),
+        affinity,
+    )
+    .unwrap();
+    keyed.init().unwrap();
+    for slot in 0..2 {
+        keyed
+            .on(WorkerCreationResolved::new(
+                slot,
+                slot,
+                CreationKind::Birth,
+                Ok(()),
+            ))
+            .unwrap();
+    }
+    for (job, byte) in bytes.iter().copied().take(512).enumerate() {
+        match byte % 3 {
+            0 => {
+                keyed
+                    .receive(
+                        MailAddr(9),
+                        KeyedPoolMessage::Submit {
+                            key: byte >> 2,
+                            job: JobId(u64::try_from(job).unwrap()),
+                            payload: byte,
+                            reply_to: Recipient::global(MailAddr(10)),
+                        },
+                    )
+                    .unwrap();
+            }
+            1 => {
+                keyed
+                    .receive(
+                        MailAddr(9),
+                        KeyedPoolMessage::Rebalance {
+                            key: byte >> 2,
+                            worker: u64::from((byte >> 1) & 1),
+                        },
+                    )
+                    .unwrap();
+            }
+            2 => {
+                let slot = u64::from((byte >> 1) & 1);
+                if let Some(WorkerPhase::Assigned { assignment, .. }) = keyed.worker_phase(slot) {
+                    keyed
+                        .receive(
+                            MailAddr(9),
+                            KeyedPoolMessage::Completed {
+                                worker: slot,
+                                assignment,
+                                result: byte,
+                            },
+                        )
+                        .unwrap();
                 }
             }
             _ => unreachable!(),

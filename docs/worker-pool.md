@@ -62,6 +62,45 @@ Creation-before-send interpretation remains the existing Bombay policy. The
 pool does not add an ordering guarantee between independent send-product
 lanes.
 
+## Key-persistent routing
+
+`KeyedWorkerPool` adds a typed key `K` and an explicit affinity table to the
+same pool fold. This is a derived Bombay policy, not an actor-model property.
+The complete binding law is:
+
+```text
+unbound key + accepted submission -> bound to select(&key)
+bound key + submission            -> same stable worker slot
+bound key + worker replacement    -> unchanged binding
+bound key + Rebalance             -> named new stable worker slot
+```
+
+The selector is consulted only for an unbound key. A submission is
+not admitted and creates no binding if the selected route is unknown, retired,
+or lacks backlog capacity; the owned payload is returned in a typed
+`PoolResponse::Rejected`. Equality is concrete through `K: Eq`; there is no
+hashing service, erased key, registry, or global membership lookup.
+
+Affinity names the stable supervised proxy nonce, never a fresh worker
+incarnation. A successful replacement therefore preserves affinity without
+address reuse inference. A rejected replacement retires the slot, and later
+submissions for its keys are explicitly refused until a valid `Rebalance`
+names another non-retired slot.
+
+Rebalance affects only future admission. Each accepted job stores its selected
+slot, so queued and interrupted/retried work cannot migrate implicitly when a
+binding changes. Work for a busy or installing affinity slot remains queued
+even if another slot is idle. FIFO order is preserved among jobs eligible for
+the same slot; there is deliberately no global FIFO claim across independent
+affinity lanes.
+
+The selector does not resolve an actor address. The fold emits an ordinary
+typed `Recipient::child(stable_nonce)` assignment. Actorpass derives the child
+address from that relative route and Bombay Address resolves the resulting
+address to the exact live registered endpoint. Thus Behavior owns selection
+policy while Bombay Address retains registration and endpoint-routing
+authority; neither duplicates the other.
+
 ## Admission
 
 Submission while an idle worker exists is accepted and assigned. Otherwise it

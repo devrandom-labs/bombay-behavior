@@ -40,9 +40,9 @@ pub use machine::{Machine, Move};
 pub use mailbox::{Transcript, run};
 pub use next::{Never, Step};
 pub use pool::{
-    AssignmentId, InterruptionPolicy, JobId, PoolActions, PoolAssignment, PoolConfigError,
-    PoolError, PoolEvent, PoolInterruption, PoolMessage, PoolRejection, PoolResponse, PoolSends,
-    WorkerPhase, WorkerPool, WorkerRetirement,
+    AssignmentId, InterruptionPolicy, JobId, KeyedPoolEvent, KeyedPoolMessage, KeyedWorkerPool,
+    PoolActions, PoolAssignment, PoolConfigError, PoolError, PoolEvent, PoolInterruption,
+    PoolMessage, PoolRejection, PoolResponse, PoolSends, WorkerPhase, WorkerPool, WorkerRetirement,
 };
 pub use protocol::{
     ChildEvent, ChildStopped, CreationEvent, CreationRejection, CreationResolved, ObserveChild,
