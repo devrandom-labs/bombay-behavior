@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.5](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-macros-v0.9.4...bombay-behavior-macros-v0.9.5) - 2026-08-13
+
+### Added
+
+- add typed worker pools and nominal behaviors ([#37](https://github.com/devrandom-labs/bombay-behavior/pull/37))
+
 ## [0.9.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-macros-v0.8.2...bombay-behavior-macros-v0.9.0) - 2026-08-10
 
 ### Other

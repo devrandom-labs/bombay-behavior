@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.5](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.9.4...bombay-behavior-v0.9.5) - 2026-08-13
+
+### Added
+
+- add typed worker pools and nominal behaviors ([#37](https://github.com/devrandom-labs/bombay-behavior/pull/37))
+
+### Other
+
+- *(behavior)* restore mutation gate ([#40](https://github.com/devrandom-labs/bombay-behavior/pull/40))
+- *(bombay-behavior)* release v0.9.4 ([#35](https://github.com/devrandom-labs/bombay-behavior/pull/35))
+
 ### Added
 
 - add a pure typed bounded FIFO worker pool with stable supervised workers,
