@@ -26,6 +26,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - make `#[behavior]` and `workers!` expansions resolve renamed
   `bombay-behavior` dependencies
 
+## [0.9.4](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.9.3...bombay-behavior-v0.9.4) - 2026-08-12
+
+### Other
+
+- Expose pure nested behavior transition delegation ([#34](https://github.com/devrandom-labs/bombay-behavior/pull/34))
+
+### Added
+
+- add canonical exact-once nested behavior transition delegation for semantic
+  wrappers, keeping top-level runtime execution distinct
+
 ## [0.9.3](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.9.2...bombay-behavior-v0.9.3) - 2026-08-11
 
 ### Added
