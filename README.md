@@ -9,6 +9,13 @@ Timing, peer watching, supervision, stashing, and finite-state behavior
 are ordinary composable protocols rather than runtime queries or erased
 messages.
 
+Bounded FIFO worker pools are likewise pure typed behaviors: admission,
+assignment ownership, completion correlation, and interruption policy remain
+in the fold, while an interpreter only realizes their existing creation,
+delivery, observation, and timing effects. Their laws and the Behavior versus
+Actorpass ownership boundary are documented in
+[Worker Pool Semantics](docs/worker-pool.md).
+
 Its core guarantees are:
 
 - message and event protocols remain statically typed;
@@ -65,6 +72,14 @@ For function-first code, `Pure::from_fn` accepts a capturing `FnMut`. Complete
 event streams can be evaluated with `fold_events`; it uses the same
 `ActionReducer` as the mailbox interpreter and stops at the first controlled
 failure or termination verdict.
+
+For a nominal user-message behavior, `#[behavior::behavior(...)]` may annotate
+an ordinary inherent impl containing `init(&mut self)` and
+`receive(&mut self, from, message)`. It preserves those methods and generates
+only the explicit `Behavior` wiring, making the type usable in `Births`,
+`Proxy`, `Supervisor`, pools, and interpreter endpoints. The exact expansion
+and deliberately narrow scope are documented in
+[Nominal Behavior Attribute](docs/behavior-attribute.md).
 
 ## Development and testing
 

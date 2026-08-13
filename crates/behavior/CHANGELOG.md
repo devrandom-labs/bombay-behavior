@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- add a pure typed bounded FIFO worker pool with stable supervised workers,
+  explicit admission and interruption outcomes, exact assignment correlation,
+  independent model/property tests, compile-fail coverage, and a stateful fuzz
+  target
+- add `ReplacementResolution` as a consumer-facing, interpreter-neutral
+  projection of explicit replacement provenance and installation outcome
+- add `#[behavior]` for nominal user-message behaviors while preserving normal
+  inherent `&mut self` methods, generics, state, and explicit protocol types
+- add `KeyedWorkerPool` with persistent stable-slot affinity, explicit
+  future-only rebalancing, payload-returning refusal, model/property tests, and
+  stateful fuzz coverage
+- harden pool ownership with zero-worker rejection, per-affinity retirement,
+  precommitted dispatch copies, captured static selectors, named response and
+  assignment lanes, and adversarial panic/retirement tests
+- make `#[behavior]` and `workers!` expansions resolve renamed
+  `bombay-behavior` dependencies
+
 ## [0.9.4](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.9.3...bombay-behavior-v0.9.4) - 2026-08-12
 
 ### Other

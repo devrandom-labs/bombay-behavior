@@ -11,6 +11,7 @@ mod actor;
 mod calculus;
 mod effects;
 mod next;
+mod pool;
 mod stash;
 mod supervision;
 mod timing;
@@ -38,12 +39,18 @@ pub use effects::{
 pub use machine::{Machine, Move};
 pub use mailbox::{Transcript, run};
 pub use next::{Never, Step};
+pub use pool::{
+    AffinitySelector, AssignmentId, InterruptionPolicy, JobId, KeyedPoolEvent, KeyedPoolMessage,
+    KeyedWorkerPool, PoolActions, PoolAssignment, PoolBehaviorSends, PoolConfigError, PoolError,
+    PoolEvent, PoolInterruption, PoolMessage, PoolRejection, PoolResponse, PoolSends, WorkerPhase,
+    WorkerPool, WorkerRetirement,
+};
 pub use protocol::{
     ChildEvent, ChildStopped, CreationEvent, CreationRejection, CreationResolved, ObserveChild,
-    ObserveCreation, ObservePeer, PeerEvent, PeerStopped, ReportWorkerCreationResolved,
-    ReportWorkerStopped, ScheduleAfter, ScheduleAt, ShutdownEvent, ShutdownRequested, TimeEvent,
-    TimerElapsed, TimerGeneration, TimerId, UnwatchPeer, WorkerCreationEvent,
-    WorkerCreationResolved, WorkerEvent, WorkerStopped,
+    ObserveCreation, ObservePeer, PeerEvent, PeerStopped, ReplacementResolution,
+    ReportWorkerCreationResolved, ReportWorkerStopped, ScheduleAfter, ScheduleAt, ShutdownEvent,
+    ShutdownRequested, TimeEvent, TimerElapsed, TimerGeneration, TimerId, UnwatchPeer,
+    WorkerCreationEvent, WorkerCreationResolved, WorkerEvent, WorkerStopped,
 };
 pub use shutdown::{FinalizeOnShutdown, ShutdownProtocol, ShutdownReaction, StopOnShutdown};
 pub use stash::{Stash, StashRoute};
@@ -64,4 +71,70 @@ mod exit;
 
 pub use exit::{Crash, Exit, RestartDenial, SupervisionFailureReason};
 
+/// Generate `Behavior` wiring for an inherent impl with exact `&mut self`
+/// methods. Invalid receivers are rejected at compile time.
+///
+/// ```compile_fail
+/// use behavior::{Actions, Delivery, MailAddr, Never, NoBirths};
+///
+/// struct Invalid;
+/// #[behavior::behavior(
+///     addr = MailAddr,
+///     message = u8,
+///     sends = Vec<Delivery<MailAddr, Never>>,
+///     births = NoBirths,
+///     error = Never,
+/// )]
+/// impl Invalid {
+///     fn init(&self) -> behavior::Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, NoBirths, Never> {
+///         Ok(Actions::cont())
+///     }
+///     fn receive(&mut self, _: MailAddr, _: u8) -> behavior::Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, NoBirths, Never> {
+///         Ok(Actions::cont())
+///     }
+/// }
+/// ```
+///
+/// Missing transition methods are rejected by the macro itself:
+///
+/// ```compile_fail
+/// use behavior::{Actions, Delivery, MailAddr, Never, NoBirths};
+/// struct Missing;
+/// #[behavior::behavior(
+///     addr = MailAddr,
+///     message = u8,
+///     sends = Vec<Delivery<MailAddr, Never>>,
+///     births = NoBirths,
+///     error = Never,
+/// )]
+/// impl Missing {
+///     fn init(&mut self) -> behavior::Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, NoBirths, Never> {
+///         Ok(Actions::cont())
+///     }
+/// }
+/// ```
+///
+/// Async behavior methods cannot introduce an erased or alternate execution
+/// path:
+///
+/// ```compile_fail
+/// use behavior::{Actions, Delivery, MailAddr, Never, NoBirths};
+/// struct Async;
+/// #[behavior::behavior(
+///     addr = MailAddr,
+///     message = u8,
+///     sends = Vec<Delivery<MailAddr, Never>>,
+///     births = NoBirths,
+///     error = Never,
+/// )]
+/// impl Async {
+///     async fn init(&mut self) -> behavior::Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, NoBirths, Never> {
+///         Ok(Actions::cont())
+///     }
+///     fn receive(&mut self, _: MailAddr, _: u8) -> behavior::Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, NoBirths, Never> {
+///         Ok(Actions::cont())
+///     }
+/// }
+/// ```
+pub use behavior_macros::behavior;
 pub use behavior_macros::workers;

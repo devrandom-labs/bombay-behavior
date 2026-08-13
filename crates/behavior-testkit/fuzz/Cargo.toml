@@ -75,4 +75,11 @@ test = false
 doc = false
 bench = false
 
+[[bin]]
+name = "pool_sequences"
+path = "fuzz_targets/pool_sequences.rs"
+test = false
+doc = false
+bench = false
+
 [workspace]
