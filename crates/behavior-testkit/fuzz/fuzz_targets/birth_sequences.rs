@@ -9,8 +9,8 @@
 //! state must agree.
 
 use behavior::{
-    Acted, Actions, Pure, Behavior, Crash, Create, CreationKind, Delivery, MailAddr, Never,
-    RestartPolicy, Handler, Step, Strategy, Supervisor, SupervisionEvent, UserEvent, WorkerStopped,
+    Acted, Actions, Behavior, Crash, Create, CreationKind, Delivery, Handler, MailAddr, Never,
+    Pure, RestartPolicy, Step, Strategy, SupervisionEvent, Supervisor, UserEvent, WorkerStopped,
 };
 use libfuzzer_sys::fuzz_target;
 use tokio::runtime::Builder;
@@ -48,7 +48,13 @@ impl Handler<Never, behavior::Births<Pure<Worker, u8>>, Never> for BirthingParen
         &mut self,
         _from: MailAddr,
         nonce: u64,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, behavior::Births<Pure<Worker, u8>>, Never> {
+    ) -> Acted<
+        MailAddr,
+        Never,
+        Vec<Delivery<MailAddr, Never>>,
+        behavior::Births<Pure<Worker, u8>>,
+        Never,
+    > {
         Ok(Actions {
             sends: Vec::new(),
             creates: vec![Create::birth(nonce, worker(0))],
@@ -65,9 +71,9 @@ struct Slot {
 
 fuzz_target!(|bytes: &[u8]| {
     let runtime = Builder::new_current_thread().enable_time().build().unwrap();
-    async {
+    runtime.block_on(async {
         let mut behavior = Supervisor::new(
-            Pure::new(BirthingParent,
+            Pure::new(BirthingParent),
             |index| u64::try_from(index).unwrap(),
             FLEET,
             worker,
@@ -122,7 +128,7 @@ fuzz_target!(|bytes: &[u8]| {
                     .transition(SupervisionEvent::WorkerStopped(WorkerStopped {
                         proxy: dead.nonce,
                         worker: dead.nonce,
-            outcome: Err(Crash::Failed),
+                        outcome: Err(Crash::Failed),
                         at: base + std::time::Duration::from_nanos(u64::try_from(index).unwrap()),
                     }))
                     .unwrap();

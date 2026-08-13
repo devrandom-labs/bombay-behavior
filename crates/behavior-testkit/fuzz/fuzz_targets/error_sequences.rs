@@ -20,9 +20,11 @@ enum Phase {
 
 fuzz_target!(|bytes: &[u8]| {
     let runtime = Builder::new_current_thread().enable_time().build().unwrap();
-    async {
-        let mut machine = Machine::new(Vec::new(, Phase::A, |phase, seen: &mut Vec<u64>, id: &u64| {
-            match (phase, id % 4) {
+    runtime.block_on(async {
+        let mut machine = Machine::new(
+            Vec::new(),
+            Phase::A,
+            |phase, seen: &mut Vec<u64>, id: &u64| match (phase, id % 4) {
                 (Phase::A, 0) => Ok(Move::Goto(Phase::B)),
                 (Phase::A, _) => Ok(Move::Defer),
                 (Phase::B, 1) => Err(()),
@@ -30,8 +32,8 @@ fuzz_target!(|bytes: &[u8]| {
                     seen.push(*id);
                     Ok(Move::Stay)
                 }
-            }
-        });
+            },
+        );
         let mut held_before = 0_usize;
         for (index, _) in bytes.iter().enumerate() {
             let id = u64::try_from(index).unwrap();
