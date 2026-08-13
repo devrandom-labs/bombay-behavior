@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- add a pure typed bounded FIFO worker pool with stable supervised workers,
+  explicit admission and interruption outcomes, exact assignment correlation,
+  independent model/property tests, compile-fail coverage, and a stateful fuzz
+  target
+
 ## [0.9.3](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.9.2...bombay-behavior-v0.9.3) - 2026-08-11
 
 ### Added

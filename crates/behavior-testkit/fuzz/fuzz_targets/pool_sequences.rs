@@ -1,0 +1,124 @@
+#![no_main]
+
+use std::time::Duration;
+
+use behavior::{
+    Actions, Behavior, CreationKind, Delivery, InterruptionPolicy, JobId, MailAddr,
+    Never, NoBirths, PoolAssignment, PoolMessage, Recipient, RestartPolicy, User,
+    WorkerCreationResolved, WorkerPhase, WorkerPool, WorkerStopped,
+};
+use libfuzzer_sys::fuzz_target;
+use tokio::time::Instant;
+
+struct Worker;
+
+impl Behavior for Worker {
+    type Addr = MailAddr;
+    type Msg = PoolAssignment<u8>;
+    type Event = User<MailAddr, PoolAssignment<u8>>;
+    type Sends = Vec<Delivery<MailAddr, Never>>;
+    type Ph = Never;
+    type Error = Never;
+    type Birth = NoBirths;
+
+    fn init(&mut self) -> behavior::BehaviorActed<Self> {
+        Ok(Actions::cont())
+    }
+
+    fn transition(&mut self, _event: Self::Event) -> behavior::BehaviorActed<Self> {
+        Ok(Actions::cont())
+    }
+}
+
+fn nonce(index: usize) -> u64 {
+    u64::try_from(index).unwrap()
+}
+
+fn worker(_index: usize) -> Worker {
+    Worker
+}
+
+fuzz_target!(|bytes: &[u8]| {
+    let mut pool = WorkerPool::new(
+        nonce,
+        2,
+        worker,
+        4,
+        if bytes.first().is_some_and(|byte| byte & 1 == 0) {
+            InterruptionPolicy::Fail
+        } else {
+            InterruptionPolicy::Retry
+        },
+        RestartPolicy::Permanent,
+        u32::MAX,
+        Duration::from_secs(1),
+    )
+    .unwrap();
+    pool.init().unwrap();
+    for slot in 0..2 {
+        pool.on(WorkerCreationResolved::new(
+            slot,
+            0,
+            CreationKind::Birth,
+            Ok(()),
+        ))
+        .unwrap();
+    }
+
+    let mut next_job = 0_u64;
+    for byte in bytes.iter().copied().take(512) {
+        let slot = u64::from((byte >> 2) & 1);
+        match byte & 3 {
+            0 | 1 => {
+                pool.receive(
+                    MailAddr(9),
+                    PoolMessage::Submit {
+                        job: JobId(next_job),
+                        payload: byte,
+                        reply_to: Recipient::global(MailAddr(10)),
+                    },
+                )
+                .unwrap();
+                next_job = next_job.wrapping_add(1);
+            }
+            2 => {
+                if let Some(WorkerPhase::Assigned { assignment, .. }) = pool.worker_phase(slot) {
+                    pool.receive(
+                        MailAddr(9),
+                        PoolMessage::Completed {
+                            worker: slot,
+                            assignment,
+                            result: byte,
+                        },
+                    )
+                    .unwrap();
+                }
+            }
+            3 => {
+                if matches!(
+                    pool.worker_phase(slot),
+                    Some(WorkerPhase::Idle | WorkerPhase::Assigned { .. })
+                ) {
+                    let actions = pool
+                        .on(WorkerStopped::new(
+                            slot,
+                            0,
+                            Err(behavior::Crash::Panicked),
+                            Instant::now(),
+                        ))
+                        .unwrap();
+                    if !actions.sends.replacement_commands.is_empty() {
+                        pool.on(WorkerCreationResolved::new(
+                            slot,
+                            1,
+                            CreationKind::replacement_of(0),
+                            Ok(()),
+                        ))
+                        .unwrap();
+                    }
+                }
+            }
+            _ => unreachable!(),
+        }
+    }
+});

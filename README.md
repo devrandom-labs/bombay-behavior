@@ -9,6 +9,13 @@ Timing, peer watching, supervision, stashing, and finite-state behavior
 are ordinary composable protocols rather than runtime queries or erased
 messages.
 
+Bounded FIFO worker pools are likewise pure typed behaviors: admission,
+assignment ownership, completion correlation, and interruption policy remain
+in the fold, while an interpreter only realizes their existing creation,
+delivery, observation, and timing effects. Their laws and the Behavior versus
+Actorpass ownership boundary are documented in
+[Worker Pool Semantics](docs/worker-pool.md).
+
 Its core guarantees are:
 
 - message and event protocols remain statically typed;
