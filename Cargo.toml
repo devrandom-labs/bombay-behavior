@@ -8,7 +8,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.9.5"
+version = "0.10.0"
 edition = "2024"
 rust-version = "1.95.0"
 license = "MIT OR Apache-2.0"
@@ -18,7 +18,7 @@ homepage = "https://devrandom-labs.github.io/bombay-behavior/"
 
 [workspace.dependencies]
 behavior = { package = "bombay-behavior", path = "crates/behavior" }
-behavior-macros = { package = "bombay-behavior-macros", version = "0.9.5", path = "crates/behavior-macros" }
+behavior-macros = { package = "bombay-behavior-macros", version = "0.10.0", path = "crates/behavior-macros" }
 behavior-testkit = { package = "bombay-behavior-testkit", path = "crates/behavior-testkit" }
 communication = { package = "bombay-communication", version = "0.1.1" }
 criterion = "0.8"
