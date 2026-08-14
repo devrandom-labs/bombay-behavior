@@ -9,29 +9,28 @@
 //! product lane and never leak across.
 
 use behavior::{
-    Acted, Actions, Behavior, Births, Compose, Crash, DeadlineEvent, Delivery, Exit, Handler,
-    MailAddr, Never, PeerStopped, Pure, Recipient, RestartPolicy, StashRoute, Step,
+    Acted, Actions, Compose, Crash, DeadlineEvent, Delivery, Exit,
+    MailAddr, Never, PeerStopped, Recipient, RestartPolicy, StashRoute, Step,
     Strategy, SupervisionEvent, TimerElapsed, TimerGeneration, TimerId, UserEvent, WatchEvent,
     WorkerStopped, stop_on_abnormal_death,
 };
 use libfuzzer_sys::fuzz_target;
 use tokio::runtime::Builder;
-use tokio::time::Instant;
+use std::time::Instant;
 
 #[derive(Default)]
 struct EchoingParent {
     seen: Vec<u64>,
 }
 
-impl Handler<Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u64>>>,  behavior::Births<Pure<Echo, Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u8>>>>>, Never> for EchoingParent {
-    type Addr = MailAddr;
-    type Msg = u64;
+#[behavior::behavior(addr = MailAddr, message = u64, sends = Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u64>>>, births = behavior::Births<Echo>, error = Never)]
+impl EchoingParent  {
 
     fn receive(
         &mut self,
         _from: MailAddr,
         message: u64,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u64>>>, behavior::Births<Pure<Echo, Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u8>>>>>, Never>
+    ) -> Acted<MailAddr, Never, Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u64>>>, behavior::Births<Echo>, Never>
     {
         self.seen.push(message);
         Ok(Actions {
@@ -45,9 +44,8 @@ impl Handler<Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u64>>>,  behavior:
 #[derive(Default)]
 struct Echo;
 
-impl Handler<Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u8>>>> for Echo {
-    type Addr = MailAddr;
-    type Msg = u8;
+#[behavior::behavior(addr = MailAddr, message = u8, sends = Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u8>>>, births = behavior::NoBirths, error = Never)]
+impl Echo  {
 
     fn receive(
         &mut self,
@@ -58,8 +56,8 @@ impl Handler<Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u8>>>> for Echo {
     }
 }
 
-fn child(_index: usize) -> Pure<Echo, Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u8>>>> {
-    Pure::new(Echo)
+fn child(_index: usize) -> Echo {
+    Echo
 }
 
 fn route(message: &u64) -> StashRoute {
@@ -70,31 +68,21 @@ fn route(message: &u64) -> StashRoute {
     }
 }
 
-type Stack = behavior::Compose<
-    behavior::Supervisor<
-        behavior::Deadline<
-            behavior::Watch<
-                behavior::Stash<Pure<EchoingParent, Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u64>>>,  Births<Pure<Echo, Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u8>>>>>, Never>>,
-            >,
-        >,
-        Pure<Echo, Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u8>>>>,
-    >,
->;
-
 fuzz_target!(|bytes: &[u8]| {
     let runtime = Builder::new_current_thread().enable_time().build().unwrap();
     runtime.block_on(async {
         let due = Instant::now() + std::time::Duration::from_secs(1);
         let peer = MailAddr(44);
-        let mut behavior: Stack = Compose::new(EchoingParent::default())
+        let behavior = Compose::new(EchoingParent::default())
             .stash(route)
             .watch(peer, stop_on_abnormal_death)
-            .deadline(Some(due), |_| Ok(Step::Continue))
-            .children((2, child))
+            .deadline(behavior::TimerId(0), Some(due), |_| Ok(Step::Continue))
+            .children(|index| u64::try_from(index).unwrap(), 2, |index| Some(child(index))).unwrap()
             .restart(Strategy::OneForOne)
             .when(RestartPolicy::Permanent)
             .within(u32::MAX, std::time::Duration::MAX);
-        behavior.init().unwrap();
+        let initialized = behavior.initialize().unwrap();
+        let mut behavior = initialized.behavior;
         let base = Instant::now();
 
         for (index, byte) in bytes.iter().copied().enumerate() {
@@ -103,8 +91,8 @@ fuzz_target!(|bytes: &[u8]| {
                     // User lane: stash filter — echo iff not Stash-routed.
                     let arg = u64::try_from(index).unwrap();
                     let actions = behavior
-                        .transition(SupervisionEvent::Inner(DeadlineEvent::Inner(
-                            WatchEvent::Inner(UserEvent::user(MailAddr(9), arg)),
+                        .transition(SupervisionEvent::Behavior(DeadlineEvent::Behavior(
+                            WatchEvent::Behavior(UserEvent::user(MailAddr(9), arg)),
                         )))
                         .unwrap();
                     let echo_step: Vec<u64> = actions
@@ -127,7 +115,7 @@ fuzz_target!(|bytes: &[u8]| {
                 1 => {
                     // Peer lane: watched abnormal death stops the fold.
                     let actions = behavior
-                        .transition(SupervisionEvent::Inner(DeadlineEvent::Inner(
+                        .transition(SupervisionEvent::Behavior(DeadlineEvent::Behavior(
                             WatchEvent::PeerStopped(PeerStopped {
                                 peer,
                                 outcome: Err(Crash::Failed),
@@ -144,7 +132,7 @@ fuzz_target!(|bytes: &[u8]| {
                 2 => {
                     // Time lane: matching Reached fires once, then inert.
                     let actions = behavior
-                        .transition(SupervisionEvent::Inner(DeadlineEvent::Elapsed(
+                        .transition(SupervisionEvent::Behavior(DeadlineEvent::Elapsed(
                             TimerElapsed {
                                 id: TimerId(0),
                                 generation: TimerGeneration(0),

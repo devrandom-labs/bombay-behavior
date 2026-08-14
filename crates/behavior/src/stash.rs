@@ -12,6 +12,12 @@ pub enum StashRoute {
     Release,
 }
 
+/// Semantic observation of the outermost composed stash, independent of its
+/// structural nesting depth.
+pub trait StashStatus {
+    fn stashed_messages(&self) -> usize;
+}
+
 pub struct Stash<B: Behavior> {
     inner: B,
     route: fn(&B::Msg) -> StashRoute,
@@ -20,7 +26,7 @@ pub struct Stash<B: Behavior> {
 
 impl<B: Behavior<Ph = Never>> Stash<B> {
     #[must_use]
-    pub fn new(inner: B, route: fn(&B::Msg) -> StashRoute) -> Self {
+    pub(crate) fn new(inner: B, route: fn(&B::Msg) -> StashRoute) -> Self {
         Self {
             inner,
             route,
@@ -29,13 +35,25 @@ impl<B: Behavior<Ph = Never>> Stash<B> {
     }
 
     #[must_use]
-    pub fn inner(&self) -> &B {
-        &self.inner
-    }
-
-    #[must_use]
     pub fn held(&self) -> usize {
         self.held.len()
+    }
+}
+
+impl<B: Behavior<Ph = Never>> StashStatus for Stash<B> {
+    fn stashed_messages(&self) -> usize {
+        self.held()
+    }
+}
+
+impl<B> crate::BehaviorBase for Stash<B>
+where
+    B: Behavior<Ph = Never> + crate::BehaviorBase,
+{
+    type Base = B::Base;
+
+    fn base(&self) -> &Self::Base {
+        self.inner.base()
     }
 }
 
@@ -55,9 +73,10 @@ where
             match (self.route)(&user.message) {
                 StashRoute::Stash => self.held.push_back(user),
                 StashRoute::Deliver | StashRoute::Release => {
-                    let actions = self
-                        .inner
-                        .transition(B::Event::user(user.from, user.message))?;
+                    let actions = crate::calculus::delegate_transition(
+                        &mut self.inner,
+                        B::Event::user(user.from, user.message),
+                    )?;
                     acc.sends.append(actions.sends);
                     acc.creates.extend(actions.creates);
                     if let Step::Stop(exit) = actions.become_ {
@@ -87,27 +106,36 @@ where
     type Error = B::Error;
     type Birth = Br;
 
-    fn init(&mut self) -> Result<Actions<A, Never, Sends, Br>, B::Error> {
-        self.inner.init()
+    fn init(
+        &mut self,
+        _: crate::InitializationTurn,
+    ) -> Result<Actions<A, Never, Sends, Br>, B::Error> {
+        crate::calculus::initialize(&mut self.inner)
     }
 
-    fn transition(&mut self, event: B::Event) -> Result<Actions<A, Never, Sends, Br>, B::Error> {
+    fn transition(
+        &mut self,
+        _: crate::ActiveTurn,
+        event: B::Event,
+    ) -> Result<Actions<A, Never, Sends, Br>, B::Error> {
         let user = match event.into_user() {
             Ok(user) => user,
-            Err(other) => return self.inner.transition(other),
+            Err(other) => return crate::calculus::delegate_transition(&mut self.inner, other),
         };
         match (self.route)(&user.message) {
             StashRoute::Stash => {
                 self.held.push_back(user);
                 Ok(Actions::cont())
             }
-            StashRoute::Deliver => self
-                .inner
-                .transition(B::Event::user(user.from, user.message)),
+            StashRoute::Deliver => crate::calculus::delegate_transition(
+                &mut self.inner,
+                B::Event::user(user.from, user.message),
+            ),
             StashRoute::Release => {
-                let mut actions = self
-                    .inner
-                    .transition(B::Event::user(user.from, user.message))?;
+                let mut actions = crate::calculus::delegate_transition(
+                    &mut self.inner,
+                    B::Event::user(user.from, user.message),
+                )?;
                 if !matches!(actions.become_, Step::Stop(_)) {
                     self.drain_into(&mut actions)?;
                 }

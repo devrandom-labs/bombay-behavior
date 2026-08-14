@@ -1,4 +1,4 @@
-//! `workers!` sum attacks: the macro-produced Crew must dispatch every fleet
+//! `workers!` sum attacks: the macro-produced Worker must dispatch every fleet
 //! index to its declared concrete variant (protocol-preserving), and a
 //! supervised mixed fleet must route replacements by birth sequence without
 //! crossing variants.
@@ -7,20 +7,15 @@ use std::marker::PhantomData;
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, Behavior, Crash, Delivery, Handler, MailAddr, Never, Pure, Recipient,
-    RestartPolicy, Step, Strategy, SupervisionEvent, Supervisor, User, UserEvent, WorkerStopped,
-    workers,
+    Acted, Actions, Behavior, Crash, Delivery, MailAddr, Never, Recipient, RestartPolicy, Step,
+    Strategy, SupervisionEvent, Supervisor, User, UserEvent, WorkerStopped, workers,
 };
-use tokio::time::Instant;
+use std::time::Instant;
 
 struct WorkerA;
 
-impl Handler<Vec<Delivery<behavior_testkit::TestRecipient<u8>>>, behavior::NoBirths, Never>
-    for WorkerA
-{
-    type Addr = MailAddr;
-    type Msg = u8;
-
+#[behavior::behavior(addr = MailAddr, message = u8, sends = Vec<Delivery<behavior_testkit::TestRecipient<u8>>>, births = behavior::NoBirths, error = Never)]
+impl WorkerA {
     fn receive(
         &mut self,
         from: MailAddr,
@@ -42,12 +37,8 @@ impl Handler<Vec<Delivery<behavior_testkit::TestRecipient<u8>>>, behavior::NoBir
 
 struct WorkerB;
 
-impl Handler<Vec<Delivery<behavior_testkit::TestRecipient<u8>>>, behavior::NoBirths, Never>
-    for WorkerB
-{
-    type Addr = MailAddr;
-    type Msg = u8;
-
+#[behavior::behavior(addr = MailAddr, message = u8, sends = Vec<Delivery<behavior_testkit::TestRecipient<u8>>>, births = behavior::NoBirths, error = Never)]
+impl WorkerB {
     fn receive(
         &mut self,
         from: MailAddr,
@@ -67,26 +58,24 @@ impl Handler<Vec<Delivery<behavior_testkit::TestRecipient<u8>>>, behavior::NoBir
     }
 }
 
-fn worker_a(_index: usize) -> Pure<WorkerA, Vec<Delivery<behavior_testkit::TestRecipient<u8>>>> {
-    Pure::new(WorkerA)
+fn worker_a(_index: usize) -> WorkerA {
+    WorkerA
 }
 
-fn worker_b(_index: usize) -> Pure<WorkerB, Vec<Delivery<behavior_testkit::TestRecipient<u8>>>> {
-    Pure::new(WorkerB)
+fn worker_b(_index: usize) -> WorkerB {
+    WorkerB
 }
 
 /// The supervising parent is generic over its offspring; instantiating it
-/// with the concrete `Crew` type happens implicitly at each `build` call
-/// site (the macro's `Crew` is block-scoped).
+/// with the concrete `Worker` type happens implicitly at each `build` call
+/// site (the macro's `Worker` is block-scoped).
 struct GenericParent<C>(PhantomData<C>);
 
-impl<C> Handler<Vec<Never>, behavior::Births<C>, Never> for GenericParent<C>
+#[behavior::behavior(addr = MailAddr, message = u64, sends = Vec<Never>, births = behavior::Births<C>, error = Never)]
+impl<C> GenericParent<C>
 where
     C: Behavior<Ph = Never, Addr = MailAddr>,
 {
-    type Addr = MailAddr;
-    type Msg = u64;
-
     fn receive(
         &mut self,
         _from: MailAddr,
@@ -98,14 +87,14 @@ where
 
 fn supervise_with<C>(
     count: usize,
-    build: fn(usize) -> C,
+    build: fn(usize) -> Option<C>,
     strategy: Strategy,
-) -> Supervisor<Pure<GenericParent<C>, Vec<Never>, behavior::Births<C>>, C>
+) -> Supervisor<GenericParent<C>, C>
 where
     C: Behavior<Ph = Never, Addr = MailAddr> + Send,
 {
     Supervisor::new(
-        Pure::new(GenericParent(PhantomData)),
+        GenericParent(PhantomData),
         |index| u64::try_from(index).unwrap(),
         count,
         build,
@@ -114,17 +103,18 @@ where
         u32::MAX,
         Duration::MAX,
     )
+    .unwrap()
 }
 
 /// The sum total and per-index variant dispatch are exact: slots 0..2 are
 /// `WorkerA` (tag 1), slot 2 is `WorkerB` (tag 2).
 #[tokio::test]
 async fn workers_sum_preserves_the_concrete_variant_per_index() {
-    let (count, build) = workers![(2, Pure<WorkerA, Vec<Delivery<behavior_testkit::TestRecipient<u8>>>>, worker_a), (1, Pure<WorkerB, Vec<Delivery<behavior_testkit::TestRecipient<u8>>>>, worker_b)];
+    let (count, build) = workers![(2, WorkerA, worker_a), (1, WorkerB, worker_b)];
     assert_eq!(count, 3);
 
     for index in 0..3 {
-        let mut worker = build(index);
+        let mut worker = build(index).unwrap().initialize().unwrap().behavior;
         let actions = worker.transition(User::user(MailAddr(0), 7)).unwrap();
         let expected = if index < 2 { 1 } else { 2 };
         assert_eq!(actions.sends[0].message, expected);
@@ -132,11 +122,10 @@ async fn workers_sum_preserves_the_concrete_variant_per_index() {
 }
 
 #[tokio::test]
-#[should_panic(expected = "workers!: fleet index out of range")]
-async fn workers_build_out_of_range_index_panics() {
-    let (count, build) = workers![(2, Pure<WorkerA, Vec<Delivery<behavior_testkit::TestRecipient<u8>>>>, worker_a), (1, Pure<WorkerB, Vec<Delivery<behavior_testkit::TestRecipient<u8>>>>, worker_b)];
+async fn workers_build_out_of_range_index_is_absent() {
+    let (count, build) = workers![(2, WorkerA, worker_a), (1, WorkerB, worker_b)];
     assert_eq!(count, 3);
-    let _ = build(3);
+    assert!(build(3).is_none());
 }
 
 /// A supervised mixed fleet: every slot is wrapped in its own proxy; a
@@ -145,9 +134,11 @@ async fn workers_build_out_of_range_index_panics() {
 /// `WorkerA` slot 0 — and each replacement keeps its declared variant.
 #[tokio::test]
 async fn supervised_mixed_fleet_routes_replacements_by_birth_sequence() {
-    let (count, build) = workers![(2, Pure<WorkerA, Vec<Delivery<behavior_testkit::TestRecipient<u8>>>>, worker_a), (1, Pure<WorkerB, Vec<Delivery<behavior_testkit::TestRecipient<u8>>>>, worker_b)];
-    let mut supervisor = supervise_with(count, build, Strategy::RestForOne);
-    let initial = supervisor.init().unwrap();
+    let (count, build) = workers![(2, WorkerA, worker_a), (1, WorkerB, worker_b)];
+    let supervisor = supervise_with(count, build, Strategy::RestForOne);
+    let initialized = supervisor.initialize().unwrap();
+    let initial = initialized.actions;
+    let mut supervisor = initialized.behavior;
     assert_eq!(initial.creates.len(), 3);
     assert_eq!(initial.sends.child_observations.len(), 3);
 
@@ -192,12 +183,8 @@ async fn supervised_mixed_fleet_routes_replacements_by_birth_sequence() {
 #[tokio::test]
 async fn workers_three_kinds_boundaries_route_exactly() {
     struct WorkerC;
-    impl Handler<Vec<Delivery<behavior_testkit::TestRecipient<u8>>>, behavior::NoBirths, Never>
-        for WorkerC
-    {
-        type Addr = MailAddr;
-        type Msg = u8;
-
+    #[behavior::behavior(addr = MailAddr, message = u8, sends = Vec<Delivery<behavior_testkit::TestRecipient<u8>>>, births = behavior::NoBirths, error = Never)]
+    impl WorkerC {
         fn receive(
             &mut self,
             from: MailAddr,
@@ -216,21 +203,19 @@ async fn workers_three_kinds_boundaries_route_exactly() {
             })
         }
     }
-    fn worker_c(
-        _index: usize,
-    ) -> Pure<WorkerC, Vec<Delivery<behavior_testkit::TestRecipient<u8>>>> {
-        Pure::new(WorkerC)
+    fn worker_c(_index: usize) -> WorkerC {
+        WorkerC
     }
 
     let (count, build) = workers![
-        (1, Pure<WorkerA, Vec<Delivery<behavior_testkit::TestRecipient<u8>>>>, worker_a),
-        (1, Pure<WorkerB, Vec<Delivery<behavior_testkit::TestRecipient<u8>>>>, worker_b),
-        (1, Pure<WorkerC, Vec<Delivery<behavior_testkit::TestRecipient<u8>>>>, worker_c)
+        (1, WorkerA, worker_a),
+        (1, WorkerB, worker_b),
+        (1, WorkerC, worker_c)
     ];
     assert_eq!(count, 3);
     let expected = [1, 2, 3];
     for (index, tag) in expected.into_iter().enumerate() {
-        let mut worker = build(index);
+        let mut worker = build(index).unwrap().initialize().unwrap().behavior;
         let actions = worker.transition(User::user(MailAddr(0), 7)).unwrap();
         assert_eq!(actions.sends[0].message, tag);
     }
@@ -240,9 +225,10 @@ async fn workers_three_kinds_boundaries_route_exactly() {
 /// each routed to its own declared variant's nonce.
 #[tokio::test]
 async fn workers_one_for_all_replaces_every_slot() {
-    let (count, build) = workers![(2, Pure<WorkerA, Vec<Delivery<behavior_testkit::TestRecipient<u8>>>>, worker_a), (1, Pure<WorkerB, Vec<Delivery<behavior_testkit::TestRecipient<u8>>>>, worker_b)];
-    let mut supervisor = supervise_with(count, build, Strategy::OneForAll);
-    supervisor.init().unwrap();
+    let (count, build) = workers![(2, WorkerA, worker_a), (1, WorkerB, worker_b)];
+    let supervisor = supervise_with(count, build, Strategy::OneForAll);
+    let initialized = supervisor.initialize().unwrap();
+    let mut supervisor = initialized.behavior;
     let actions = supervisor
         .transition(SupervisionEvent::WorkerStopped(WorkerStopped {
             proxy: 0,
@@ -261,7 +247,8 @@ async fn workers_one_for_all_replaces_every_slot() {
     for nonce in 0..3 {
         assert!(routes.contains(&behavior::Address::birth(MailAddr(17), nonce)));
     }
-    assert!(supervisor.is_alive(0));
-    assert!(supervisor.is_alive(1));
-    assert!(supervisor.is_alive(2));
+    assert!(supervisor.is_alive(0).unwrap());
+    assert!(supervisor.is_alive(1).unwrap());
+    assert!(supervisor.is_alive(2).unwrap());
 }
+use behavior_testkit::InitializeTest;

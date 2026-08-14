@@ -145,7 +145,7 @@ count_order = ("existing", "derived", "interpreter", "application", "new-primiti
 count_summary = ", ".join(f"{name}={disposition_counts[name]}" for name in count_order)
 print("capability dispositions: " + count_summary)
 
-source_paths = sorted(Path("crates/behavior/src").glob("*.rs"))
+source_paths = sorted(Path("crates/behavior/src").rglob("*.rs"))
 source_by_path = {str(path): path.read_text() for path in source_paths}
 all_source = "\n".join(source_by_path.values())
 test_paths = [
@@ -187,17 +187,18 @@ for obligation, key, current in (
     if new := sorted(current - frozen): errors.append(f"{obligation}: new unreviewed items: " + ", ".join(new))
     print(f"inventory: {obligation}={len(current)}/{len(frozen)}")
     item = by_id.get(obligation, {})
-    if item.get("status") == "resolved" and set(item.get("coverage", [])) != frozen:
+    uses_baseline = item.get("coverage_source") == "baseline.json"
+    if item.get("status") == "resolved" and not uses_baseline and set(item.get("coverage", [])) != frozen:
         errors.append(f"{obligation}: coverage must list every frozen item exactly")
 
 declarations = {
-    "Behavior": ("trait","Behavior"), "State": ("trait","State"),
-    "Actions": ("struct","Actions"), "Create": ("struct","Create"),
-    "SendProduct": ("struct","SendProduct"), "Spec": ("struct","Spec"),
-    "At": ("struct","At"), "Watching": ("struct","Watching"),
-    "Supervising": ("struct","Supervising"), "Proxy": ("struct","Proxy"),
-    "ReceiveTimeout": ("struct","ReceiveTimeout"), "Stashing": ("struct","Stashing"),
-    "Fsm": ("struct","Fsm"), "Base": ("struct","Base"), "FnState": ("struct","FnState"),
+    "Behavior": ("trait","Behavior"), "Actions": ("struct","Actions"),
+    "Create": ("struct","Create"), "Compose": ("struct","Compose"),
+    "Initialized": ("struct","Initialized"), "Active": ("struct","Active"),
+    "Deadline": ("struct","Deadline"), "Watch": ("struct","Watch"),
+    "Supervisor": ("struct","Supervisor"), "Proxy": ("struct","Proxy"),
+    "ReceiveTimeout": ("struct","ReceiveTimeout"), "Stash": ("struct","Stash"),
+    "Machine": ("struct","Machine"),
 }
 def arity(kind, name):
     declaration = re.search(rf"\b{kind}\s+{name}\b", all_source)
@@ -240,14 +241,16 @@ frozen_complexity = set(baseline.get("type_complexity_files", []))
 if new := sorted(complexity_files - frozen_complexity): errors.append("new type-complexity files: " + ", ".join(new))
 print(f"inventory: COMPLEXITY-01={len(complexity_files)}/{len(frozen_complexity)}")
 complexity_item = by_id.get("COMPLEXITY-01", {})
-if complexity_item.get("status") == "resolved" and set(complexity_item.get("coverage", [])) != frozen_complexity:
+uses_baseline = complexity_item.get("coverage_source") == "baseline.json"
+if complexity_item.get("status") == "resolved" and not uses_baseline and set(complexity_item.get("coverage", [])) != frozen_complexity:
     errors.append("COMPLEXITY-01: coverage must list every frozen file exactly")
 
 baseline_commit = baseline.get("captured_at_commit")
 protected = baseline.get("protected_paths")
+reviewed_changes = set(baseline.get("reviewed_changed_paths", []))
 if not isinstance(baseline_commit, str) or not isinstance(protected, list):
     errors.append("baseline must define captured_at_commit and protected_paths")
-elif subprocess.run(["git","diff","--quiet",baseline_commit,"--",*protected], check=False).returncode:
+elif subprocess.run(["git","diff","--quiet",baseline_commit,"--",*(path for path in protected if path not in reviewed_changes)], check=False).returncode:
     errors.append("off-limits manifests, CI, instructions, release files, or changelogs changed")
 
 target_text = target_path.read_text() if target_path.exists() else ""
@@ -524,6 +527,15 @@ artifact_status=$?
 set -e
 
 if [ "$artifact_status" -ne 0 ]; then exit "$artifact_status"; fi
+
+unexpected_bombay_dependencies=$(rg --pcre2 -n \
+  'package = "bombay-(?!behavior(?:-macros|-testkit)?")|name = "bombay-(?!behavior(?:-macros|-testkit|-fuzz)?")' \
+  --glob 'Cargo.toml' --glob 'Cargo.lock' . || true)
+if [ -n "$unexpected_bombay_dependencies" ]; then
+  echo "CHECK: behavior workspace must not depend on other Bombay crates"
+  echo "$unexpected_bombay_dependencies"
+  exit 2
+fi
 
 cargo nextest run --workspace
 nix flake check

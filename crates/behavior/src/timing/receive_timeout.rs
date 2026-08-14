@@ -9,24 +9,10 @@ use crate::Step;
 use crate::behavior::{
     Actions, Address, Behavior, BirthMode, SendAlgebra, ServiceSends, UserEvent,
 };
-use crate::protocol::{ScheduleAfter, TimeEvent, TimerId};
-use crate::{Inner, Own, SendInput};
+use crate::protocol::{ScheduleAfter, TimerElapsed, TimerId};
+use crate::{Own, RouteInput, SendInput};
 
 pub type ReceiveTimeoutEvent<E> = TimedEvent<E>;
-
-/// A controlled receive-timeout failure.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ReceiveTimeoutError<E> {
-    /// The inner fold or timeout reaction failed.
-    Inner(E),
-    /// Advancing the timer generation would make a stale delivery live again.
-    ///
-    /// This is detected after the successful continuing inner user fold: the
-    /// inner state mutation has occurred, but its returned sends and creations
-    /// are not emitted because the composed transition fails. Bombay behavior
-    /// folds are not transactional and wrappers cannot roll back inner state.
-    GenerationExhausted,
-}
 
 pub type ReceiveTimeoutReaction<B> = fn(
     &mut B,
@@ -41,6 +27,7 @@ pub type ReceiveTimeoutReaction<B> = fn(
 >;
 
 /// Named effect lanes added by [`ReceiveTimeout`].
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReceiveTimeoutSends<Sends> {
     pub behavior: Sends,
     pub schedules: ServiceSends<ScheduleAfter>,
@@ -66,16 +53,7 @@ impl<Sends> SendInput<ScheduleAfter, Own> for ReceiveTimeoutSends<Sends> {
     }
 }
 
-impl<Sends, Input, Path> SendInput<Input, Inner<Path>> for ReceiveTimeoutSends<Sends>
-where
-    Sends: SendInput<Input, Path>,
-{
-    fn emit(&mut self, input: Input) {
-        <Sends as SendInput<Input, Path>>::emit(&mut self.behavior, input);
-    }
-}
-
-pub type ReceiveTimeoutActions<B> = Actions<
+pub(crate) type ReceiveTimeoutActions<B> = Actions<
     <B as Behavior>::Addr,
     <B as Behavior>::Ph,
     ReceiveTimeoutSends<<B as Behavior>::Sends>,
@@ -99,7 +77,7 @@ pub struct ReceiveTimeout<B: Behavior> {
 
 impl<B: Behavior> ReceiveTimeout<B> {
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         inner: B,
         id: TimerId,
         after: Duration,
@@ -114,19 +92,12 @@ impl<B: Behavior> ReceiveTimeout<B> {
         }
     }
 
-    #[must_use]
-    pub fn inner(&self) -> &B {
-        &self.inner
-    }
-
-    fn schedule(&mut self) -> Result<ServiceSends<ScheduleAfter>, ReceiveTimeoutError<B::Error>> {
-        let generation = self
-            .timer
+    fn schedule(&mut self) -> ServiceSends<ScheduleAfter> {
+        self.timer
             .arm()
-            .map_err(|_| ReceiveTimeoutError::GenerationExhausted)?;
-        Ok(ServiceSends::one(ScheduleAfter::new(
-            self.id, generation, self.after,
-        )))
+            .map_or_else(ServiceSends::empty, |generation| {
+                ServiceSends::one(ScheduleAfter::new(self.id, generation, self.after))
+            })
     }
 
     fn wrap(
@@ -144,76 +115,90 @@ impl<B: Behavior> ReceiveTimeout<B> {
     }
 }
 
+impl<B: Behavior + crate::BehaviorBase> crate::BehaviorBase for ReceiveTimeout<B> {
+    type Base = B::Base;
+
+    fn base(&self) -> &Self::Base {
+        self.inner.base()
+    }
+}
+
+impl<B> crate::StashStatus for ReceiveTimeout<B>
+where
+    B: Behavior + crate::StashStatus,
+{
+    fn stashed_messages(&self) -> usize {
+        self.inner.stashed_messages()
+    }
+}
+
 impl<B, A, Ph, Sends, Br> Behavior for ReceiveTimeout<B>
 where
     A: Address,
     Sends: SendAlgebra,
     Br: BirthMode,
     B: Behavior<Addr = A, Ph = Ph, Sends = Sends, Birth = Br>,
-    B::Event: TimeEvent,
+    B::Event: crate::RouteInput<TimerElapsed>,
 {
     type Addr = A;
     type Msg = B::Msg;
     type Event = ReceiveTimeoutEvent<B::Event>;
     type Sends = ReceiveTimeoutSends<Sends>;
     type Ph = Ph;
-    type Error = ReceiveTimeoutError<B::Error>;
+    type Error = B::Error;
     type Birth = Br;
 
-    fn init(&mut self) -> Result<ReceiveTimeoutActions<B>, Self::Error> {
-        let actions = self.inner.init().map_err(ReceiveTimeoutError::Inner)?;
+    fn init(
+        &mut self,
+        _: crate::InitializationTurn,
+    ) -> Result<ReceiveTimeoutActions<B>, Self::Error> {
+        let actions = crate::calculus::initialize(&mut self.inner)?;
         let own = if Self::terminal(&actions) {
             self.timer.disarm();
             ServiceSends::empty()
         } else {
-            self.schedule()?
+            self.schedule()
         };
         Ok(Self::wrap(actions, own))
     }
 
-    fn transition(&mut self, event: Self::Event) -> Result<ReceiveTimeoutActions<B>, Self::Error> {
+    fn transition(
+        &mut self,
+        _: crate::ActiveTurn,
+        event: Self::Event,
+    ) -> Result<ReceiveTimeoutActions<B>, Self::Error> {
         match event {
             ReceiveTimeoutEvent::Elapsed(elapsed)
                 if elapsed.id == self.id && self.timer.accept(elapsed.generation) =>
             {
-                let actions =
-                    (self.on_elapsed)(&mut self.inner).map_err(ReceiveTimeoutError::Inner)?;
+                let actions = (self.on_elapsed)(&mut self.inner)?;
                 Ok(Self::wrap(actions, ServiceSends::empty()))
             }
             ReceiveTimeoutEvent::Elapsed(elapsed) if elapsed.id == self.id => Ok(Actions::cont()),
             ReceiveTimeoutEvent::Elapsed(elapsed) => {
-                let Some(inner) = B::Event::time_reached(elapsed) else {
+                let Ok(inner) = B::Event::route(elapsed) else {
                     return Ok(Actions::cont());
                 };
-                let actions = self
-                    .inner
-                    .transition(inner)
-                    .map_err(ReceiveTimeoutError::Inner)?;
+                let actions = crate::calculus::delegate_transition(&mut self.inner, inner)?;
                 if Self::terminal(&actions) {
                     self.timer.disarm();
                 }
                 Ok(Self::wrap(actions, ServiceSends::empty()))
             }
-            ReceiveTimeoutEvent::Inner(event) => match event.into_user() {
+            ReceiveTimeoutEvent::Behavior(event) => match event.into_user() {
                 Ok(user) => {
                     let event = B::Event::user(user.from, user.message);
-                    let actions = self
-                        .inner
-                        .transition(event)
-                        .map_err(ReceiveTimeoutError::Inner)?;
+                    let actions = crate::calculus::delegate_transition(&mut self.inner, event)?;
                     let own = if Self::terminal(&actions) {
                         self.timer.disarm();
                         ServiceSends::empty()
                     } else {
-                        self.schedule()?
+                        self.schedule()
                     };
                     Ok(Self::wrap(actions, own))
                 }
                 Err(service) => {
-                    let actions = self
-                        .inner
-                        .transition(service)
-                        .map_err(ReceiveTimeoutError::Inner)?;
+                    let actions = crate::calculus::delegate_transition(&mut self.inner, service)?;
                     if Self::terminal(&actions) {
                         self.timer.disarm();
                     }
@@ -227,52 +212,64 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Acted, Handler, MailAddr, Never, NoBirths, Pure, TimerGeneration, User};
+    use crate::{Acted, MailAddr, Never, NoBirths, TimerGeneration, User};
 
     struct Count(u8);
 
-    impl Handler for Count {
+    impl Behavior for Count {
         type Addr = MailAddr;
         type Msg = ();
+        type Event = User<MailAddr, ()>;
+        type Sends = Vec<Never>;
+        type Ph = Never;
+        type Error = Never;
+        type Birth = NoBirths;
 
-        fn receive(
+        fn transition(
             &mut self,
-            _from: MailAddr,
-            (): (),
-        ) -> Acted<MailAddr, Never, Vec<Never>, NoBirths, Never> {
+            _: crate::ActiveTurn,
+            _: Self::Event,
+        ) -> crate::BehaviorActed<Self> {
             self.0 += 1;
             Ok(Actions::cont())
         }
     }
 
-    type Inner = Pure<Count>;
+    type CountBehavior = Count;
+
+    impl crate::BehaviorBase for Count {
+        type Base = Self;
+
+        fn base(&self) -> &Self {
+            self
+        }
+    }
 
     #[allow(
         clippy::unnecessary_wraps,
         reason = "the reaction fixture must implement the fallible reaction signature"
     )]
-    fn elapsed(_inner: &mut Inner) -> Acted<MailAddr, Never, Vec<Never>, NoBirths, Never> {
+    fn elapsed(_inner: &mut CountBehavior) -> Acted<MailAddr, Never, Vec<Never>, NoBirths, Never> {
         Ok(Actions::cont())
     }
 
     #[tokio::test]
-    async fn exhaustion_follows_the_successful_inner_fold_without_emitting_its_actions() {
-        let mut timeout = ReceiveTimeout::new(
-            Pure::new(Count(0)),
-            TimerId(0),
-            Duration::from_secs(1),
-            elapsed,
-        );
-        timeout.init().unwrap();
+    async fn exhaustion_retires_only_the_timer_and_preserves_the_inner_fold() {
+        let mut timeout =
+            ReceiveTimeout::new(Count(0), TimerId(0), Duration::from_secs(1), elapsed);
+        crate::calculus::initialize(&mut timeout).unwrap();
         timeout.timer = TimerLease::idle(TimerGeneration(u64::MAX));
 
-        let result = timeout.transition(ReceiveTimeoutEvent::Inner(User::user(MailAddr(1), ())));
+        let actions = crate::calculus::delegate_transition(
+            &mut timeout,
+            ReceiveTimeoutEvent::Behavior(User::user(MailAddr(1), ())),
+        )
+        .unwrap();
 
-        assert!(matches!(
-            result,
-            Err(ReceiveTimeoutError::GenerationExhausted)
-        ));
-        assert_eq!(timeout.inner().state().0, 1);
+        assert!(actions.sends.schedules.is_empty());
+        assert!(actions.creates.is_empty());
+        assert!(matches!(actions.become_, Step::Continue));
+        assert_eq!(crate::BehaviorBase::base(&timeout).0, 1);
         assert_eq!(timeout.timer.live(), None);
     }
 }

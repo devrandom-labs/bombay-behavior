@@ -8,27 +8,23 @@ use std::time::Duration;
 
 use behavior::{
     Acted, Actions, Behavior, ChildStopped, Crash, Create, CreationKind, CreationResolved,
-    Delivery, Exit, Handler, MailAddr, Never, Proxy, ProxyCommand, ProxyEvent, Pure, RestartDenial,
-    RestartPolicy, Step, Strategy, SupervisionEvent, SupervisionFailureReason, Supervisor, User,
-    UserEvent, WorkerStopped, stop_on_supervision_failure,
+    Delivery, Exit, MailAddr, Never, Proxy, ProxyCommand, ProxyEvent, RestartDenial, RestartPolicy,
+    Step, Strategy, SupervisionEvent, SupervisionFailureReason, Supervisor, User, UserEvent,
+    WorkerStopped, stop_on_supervision_failure,
 };
 use behavior_testkit::model::{
     ExpectedCreation, ExpectedIncarnation, IncarnationModel, Model, Outcome,
 };
 use proptest::collection::vec;
 use proptest::prelude::*;
+use std::time::Instant;
 use tokio::runtime::Builder;
-use tokio::time::Instant;
 
 #[derive(Default)]
 struct Echo;
 
-impl Handler<Vec<Delivery<behavior_testkit::TestRecipient<u8>>>, behavior::NoBirths, Never>
-    for Echo
-{
-    type Addr = MailAddr;
-    type Msg = u8;
-
+#[behavior::behavior(addr = MailAddr, message = u8, sends = Vec<Delivery<behavior_testkit::TestRecipient<u8>>>, births = behavior::NoBirths, error = Never)]
+impl Echo {
     fn receive(
         &mut self,
         _from: MailAddr,
@@ -44,15 +40,13 @@ impl Handler<Vec<Delivery<behavior_testkit::TestRecipient<u8>>>, behavior::NoBir
     }
 }
 
-type Child = Pure<Echo, Vec<Delivery<behavior_testkit::TestRecipient<u8>>>>;
+type Child = Echo;
 
 /// Quiet parent for the static-fleet property.
 struct Parent;
 
-impl Handler<Vec<Never>, behavior::Births<Child>, Never> for Parent {
-    type Addr = MailAddr;
-    type Msg = u64;
-
+#[behavior::behavior(addr = MailAddr, message = u64, sends = Vec<Never>, births = behavior::Births<Child>, error = Never)]
+impl Parent {
     fn receive(
         &mut self,
         _from: MailAddr,
@@ -68,10 +62,8 @@ struct BirthingParent {
     births: Vec<u64>,
 }
 
-impl Handler<Vec<Never>, behavior::Births<Child>, Never> for BirthingParent {
-    type Addr = MailAddr;
-    type Msg = u64;
-
+#[behavior::behavior(addr = MailAddr, message = u64, sends = Vec<Never>, births = behavior::Births<Child>, error = Never)]
+impl BirthingParent {
     fn receive(
         &mut self,
         _from: MailAddr,
@@ -87,7 +79,7 @@ impl Handler<Vec<Never>, behavior::Births<Child>, Never> for BirthingParent {
 }
 
 fn child(_index: usize) -> Child {
-    Pure::new(Echo)
+    Echo
 }
 
 fn supervisor<B>(
@@ -105,12 +97,13 @@ where
         inner,
         |index| u64::try_from(index).unwrap(),
         count,
-        child,
+        |index| Some(child(index)),
         strategy,
         policy,
         maximum,
         window,
     )
+    .unwrap()
 }
 
 fn assert_expected_creation(expected: ExpectedIncarnation, actual: &Create<MailAddr, Child>) {
@@ -129,10 +122,12 @@ fn assert_expected_creation(expected: ExpectedIncarnation, actual: &Create<MailA
 #[tokio::test]
 async fn creation_provenance_matches_the_independent_incarnation_model() {
     let mut model = IncarnationModel::new();
-    let mut proxy = Proxy::new(child(0));
+    let proxy = Proxy::new(child(0));
 
     let expected_initial = model.initialize();
-    let initial = proxy.init().unwrap();
+    let initialized = proxy.initialize().unwrap();
+    let initial = initialized.actions;
+    let mut proxy = initialized.behavior;
     assert_expected_creation(expected_initial, &initial.creates[0]);
     proxy
         .transition(ProxyEvent::CreationResolved(CreationResolved {
@@ -148,7 +143,7 @@ async fn creation_provenance_matches_the_independent_incarnation_model() {
 
     assert_eq!(model.request_successor(), None);
     let requested = proxy
-        .transition(ProxyEvent::Inner(User::user(
+        .transition(ProxyEvent::Command(User::user(
             MailAddr(0),
             ProxyCommand::Replace(child(0)),
         )))
@@ -172,8 +167,9 @@ async fn immediate_and_denied_replacements_match_the_independent_models() {
     let _initial = incarnation.initialize();
     assert_eq!(incarnation.stopped(0), None);
 
-    let mut proxy = Proxy::new(child(0));
-    proxy.init().unwrap();
+    let proxy = Proxy::new(child(0));
+    let initialized = proxy.initialize().unwrap();
+    let mut proxy = initialized.behavior;
     proxy
         .transition(ProxyEvent::CreationResolved(CreationResolved {
             nonce: 0,
@@ -190,7 +186,7 @@ async fn immediate_and_denied_replacements_match_the_independent_models() {
         .unwrap();
     let expected_immediate = incarnation.request_successor().unwrap();
     let immediate = proxy
-        .transition(ProxyEvent::Inner(User::user(
+        .transition(ProxyEvent::Command(User::user(
             MailAddr(0),
             ProxyCommand::Replace(child(0)),
         )))
@@ -209,15 +205,16 @@ async fn immediate_and_denied_replacements_match_the_independent_models() {
     );
     assert!(denied.is_empty());
 
-    let mut behavior = supervisor(
-        Pure::new(Parent),
+    let behavior = supervisor(
+        Parent,
         Strategy::OneForOne,
         RestartPolicy::Permanent,
         0,
         Duration::MAX,
         1,
     );
-    behavior.init().unwrap();
+    let initialized = behavior.initialize().unwrap();
+    let mut behavior = initialized.behavior;
     let denied = behavior
         .transition(SupervisionEvent::WorkerStopped(WorkerStopped {
             proxy: 0,
@@ -265,11 +262,12 @@ proptest! {
         let window_duration = window.map_or(Duration::MAX, Duration::from_nanos);
 
         let mut model = Model::new(count);
-        let mut behavior = supervisor(Pure::new(Parent), strategy, policy, maximum, window_duration, count)
+        let behavior = supervisor(Parent, strategy, policy, maximum, window_duration, count)
             .with_failure_reaction(stop_on_supervision_failure);
         let base = Instant::now();
         let runtime = Builder::new_current_thread().enable_all().build().unwrap();
-        behavior.init().unwrap();
+        let initialized = behavior.initialize().unwrap();
+        let mut behavior = initialized.behavior;
 
         for (dead_seed, outcome_tag, at) in events {
             let dead = dead_seed % u64::try_from(count).unwrap();
@@ -312,7 +310,7 @@ proptest! {
 
             for nonce in 0..count {
                 prop_assert_eq!(
-                    behavior.is_alive(u64::try_from(nonce).unwrap()),
+                    behavior.is_alive(u64::try_from(nonce).unwrap()).unwrap(),
                     model.alive(u64::try_from(nonce).unwrap()).unwrap(),
                     "alive mismatch nonce={} dead={} outcome={} at={}",
                     nonce,
@@ -342,8 +340,8 @@ proptest! {
         // window pruning — the cross product the static-fleet property and
         // the MAX-window mixed property each cover only partially.
         let mut model = Model::new(count);
-        let mut behavior = supervisor(
-            Pure::new(BirthingParent { births: Vec::new() }),
+        let behavior = supervisor(
+            BirthingParent { births: Vec::new() },
             strategy,
             RestartPolicy::Permanent,
             maximum,
@@ -352,7 +350,8 @@ proptest! {
         );
         let base = Instant::now();
         let runtime = Builder::new_current_thread().enable_all().build().unwrap();
-        behavior.init().unwrap();
+        let initialized = behavior.initialize().unwrap();
+        let mut behavior = initialized.behavior;
 
         let mut births: u64 = u64::try_from(count).unwrap();
         for (tag, arg, at) in events {
@@ -362,7 +361,7 @@ proptest! {
                 births += 1;
                 model.birth(nonce);
                 let actions = runtime
-                    .block_on(async { behavior.transition(SupervisionEvent::Inner(UserEvent::user(
+                    .block_on(async { behavior.transition(SupervisionEvent::Behavior(UserEvent::user(
                         MailAddr(0),
                         nonce,
                     ))) })
@@ -408,7 +407,7 @@ proptest! {
 
             for slot in model.slots() {
                 prop_assert_eq!(
-                    behavior.is_alive(slot.nonce),
+                    behavior.is_alive(slot.nonce).unwrap(),
                     slot.alive,
                     "alive mismatch for nonce {}",
                     slot.nonce
@@ -424,15 +423,16 @@ proptest! {
 #[tokio::test]
 async fn budget_recovers_after_stamps_age_out_of_the_window() {
     let base = Instant::now();
-    let mut behavior = supervisor(
-        Pure::new(Parent),
+    let behavior = supervisor(
+        Parent,
         Strategy::OneForOne,
         RestartPolicy::Permanent,
         3,
         Duration::from_nanos(100),
         1,
     );
-    behavior.init().unwrap();
+    let initialized = behavior.initialize().unwrap();
+    let mut behavior = initialized.behavior;
 
     for offset in 0..3 {
         behavior
@@ -456,7 +456,7 @@ async fn budget_recovers_after_stamps_age_out_of_the_window() {
         }))
         .unwrap();
     assert!(denied.sends.replacement_commands.is_empty());
-    assert!(!behavior.is_alive(0));
+    assert!(!behavior.is_alive(0).unwrap());
 
     // Deadline 100ns: all three stamps still inside the inclusive window; denied.
     let edge = behavior
@@ -479,7 +479,7 @@ async fn budget_recovers_after_stamps_age_out_of_the_window() {
         }))
         .unwrap();
     assert_eq!(recovered.sends.replacement_commands.len(), 1);
-    assert!(behavior.is_alive(0));
+    assert!(behavior.is_alive(0).unwrap());
 }
 
 /// With a finite window, the restart-stamp vector stays bounded by the
@@ -489,15 +489,16 @@ async fn budget_recovers_after_stamps_age_out_of_the_window() {
 #[tokio::test]
 async fn restart_stamps_stay_bounded_by_the_window() {
     let base = Instant::now();
-    let mut behavior = supervisor(
-        Pure::new(Parent),
+    let behavior = supervisor(
+        Parent,
         Strategy::OneForOne,
         RestartPolicy::Permanent,
         u32::MAX,
         Duration::from_nanos(50),
         1,
     );
-    behavior.init().unwrap();
+    let initialized = behavior.initialize().unwrap();
+    let mut behavior = initialized.behavior;
 
     let mut peak = 0_usize;
     for offset in 0..1000 {
@@ -518,3 +519,4 @@ async fn restart_stamps_stay_bounded_by_the_window() {
     );
     assert!(peak >= 51, "window never filled: peak {peak}");
 }
+use behavior_testkit::InitializeTest;

@@ -10,10 +10,10 @@ use std::collections::{BTreeMap, VecDeque};
 use std::time::Duration;
 
 use crate::{
-    Actions, Address, Behavior, Births, Crash, CreationRejection, Delivery, Exit, Never, Own,
-    Proxy, ProxyCommand, Recipient, RestartPolicy, SendAlgebra, SendInput, Strategy,
-    SupervisionEvent, Supervisor, SupervisorSends, User, WorkerCreationResolved, WorkerStopped,
-    delegate_transition,
+    Actions, Address, Behavior, Births, Crash, CreationRejection, Delivery, Exit, FleetError,
+    Never, Own, Proxy, ProxyCommand, Recipient, RestartPolicy, SendAlgebra, SendInput, Strategy,
+    SupervisionEvent, Supervisor, SupervisorError, SupervisorSends, User, WorkerCreationResolved,
+    WorkerStopped,
 };
 
 /// Caller-chosen identity used to correlate pool responses.
@@ -157,12 +157,16 @@ pub enum WorkerRetirement {
 }
 
 /// Invalid static pool topology.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub enum PoolConfigError<N> {
     /// No stable worker slot exists, so accepted ownership could never end.
+    #[error("a worker pool requires at least one worker")]
     NoWorkers,
     /// Two configured positions selected the same stable worker nonce.
+    #[error("two configured worker positions selected the same nonce")]
     DuplicateWorker(N),
+    #[error("the configured worker nonce sequence is exhausted")]
+    SequenceExhausted,
 }
 
 /// Pure, statically dispatched policy for a previously unseen affinity key.
@@ -181,30 +185,30 @@ where
 }
 
 /// Typed rejection of an event that cannot apply to the current pool state.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub enum PoolError<N> {
+    #[error("the event names an unknown worker")]
     UnknownWorker(N),
-    CompletionForUnavailableWorker {
-        worker: N,
-        phase: WorkerPhase,
-    },
+    #[error("the worker nonce is already configured")]
+    DuplicateWorker(N),
+    #[error("a pool-owned sequence is exhausted")]
+    SequenceExhausted,
+    #[error("the worker factory rejected a configured index")]
+    WorkerFactoryIndex { index: usize },
+    #[error("a completion targeted a worker that cannot complete work")]
+    CompletionForUnavailableWorker { worker: N, phase: WorkerPhase },
+    #[error("the completion carries a stale assignment identifier")]
     StaleCompletion {
         worker: N,
         expected: AssignmentId,
         received: AssignmentId,
     },
-    WorkerStoppedWhileUnavailable {
-        worker: N,
-        phase: WorkerPhase,
-    },
-    CreationResolvedWhileUnavailable {
-        worker: N,
-        phase: WorkerPhase,
-    },
-    RebalanceToRetiredWorker {
-        worker: N,
-        reason: WorkerRetirement,
-    },
+    #[error("a stop observation targeted an unavailable worker")]
+    WorkerStoppedWhileUnavailable { worker: N, phase: WorkerPhase },
+    #[error("a creation result targeted a worker that is not installing")]
+    CreationResolvedWhileUnavailable { worker: N, phase: WorkerPhase },
+    #[error("an affinity rebalance targeted a retired worker")]
+    RebalanceToRetiredWorker { worker: N, reason: WorkerRetirement },
 }
 
 struct AcceptedJob<A: Address, D: Behavior<Addr = A, Msg = PoolResponse<J, R, A>>, J, R> {
@@ -235,6 +239,24 @@ enum SlotState<A: Address, D: Behavior<Addr = A, Msg = PoolResponse<J, R, A>>, J
 struct Slot<A: Address, D: Behavior<Addr = A, Msg = PoolResponse<J, R, A>>, J, R> {
     nonce: A::Nonce,
     state: SlotState<A, D, J, R>,
+}
+
+impl<A, D, J, R> Slot<A, D, J, R>
+where
+    A: Address,
+    D: Behavior<Addr = A, Msg = PoolResponse<J, R, A>>,
+{
+    fn phase(&self) -> WorkerPhase {
+        match &self.state {
+            SlotState::Installing => WorkerPhase::Installing,
+            SlotState::Idle => WorkerPhase::Idle,
+            SlotState::Assigned { assignment, job } => WorkerPhase::Assigned {
+                assignment: *assignment,
+                job: job.id,
+            },
+            SlotState::Retired { reason } => WorkerPhase::Retired { reason: *reason },
+        }
+    }
 }
 
 struct PlannedDispatch {
@@ -347,11 +369,15 @@ where
     type Error = Infallible;
     type Birth = Births<C>;
 
-    fn init(&mut self) -> crate::BehaviorActed<Self> {
+    fn init(&mut self, _: crate::InitializationTurn) -> crate::BehaviorActed<Self> {
         Ok(Actions::cont())
     }
 
-    fn transition(&mut self, _event: Self::Event) -> crate::BehaviorActed<Self> {
+    fn transition(
+        &mut self,
+        _: crate::ActiveTurn,
+        _event: Self::Event,
+    ) -> crate::BehaviorActed<Self> {
         Ok(Actions::cont())
     }
 }
@@ -365,16 +391,10 @@ type PoolSupervisor<A, D, J, R, C> = Supervisor<PoolKernel<A, D, J, R, C>, C>;
 /// retained state records an assignment before the corresponding delivery is
 /// returned, and a completion must carry the exact assignment token.
 ///
-/// # Panics
-///
-/// Admission or retry propagates a panic from the application payload's
-/// `Clone` implementation before changing pool state. Dispatch panics at the
-/// physical assignment-counter boundary before committing its dispatch plan;
-/// the executor's poison-before-step contract makes that actor turn terminal
-/// rather than exposing partial successor state. The final counter value is
-/// deliberately reserved so every successful batch has a representable
-/// successor counter. This is a Bombay implementation boundary, not an actor
-/// model law.
+/// Assignment-sequence exhaustion is a typed [`PoolError::SequenceExhausted`]
+/// rejection selected before backlog or slot state is changed. As with any
+/// generic Rust API, a user-provided `Clone` implementation can itself unwind;
+/// the pool introduces no panic path of its own.
 ///
 /// A worker with any other message protocol cannot form a pool:
 ///
@@ -391,8 +411,8 @@ type PoolSupervisor<A, D, J, R, C> = Supervisor<PoolKernel<A, D, J, R, C>, C>;
 ///     type Ph = Never;
 ///     type Error = Never;
 ///     type Birth = NoBirths;
-///     fn init(&mut self) -> behavior::BehaviorActed<Self> { Ok(Actions::cont()) }
-///     fn transition(&mut self, _: Self::Event) -> behavior::BehaviorActed<Self> { Ok(Actions::cont()) }
+///     fn init(&mut self, _: crate::InitializationTurn) -> behavior::BehaviorActed<Self> { Ok(Actions::cont()) }
+///     fn transition(&mut self, _: crate::ActiveTurn, _: Self::Event) -> behavior::BehaviorActed<Self> { Ok(Actions::cont()) }
 /// }
 /// impl Behavior for WrongWorker {
 ///     type Addr = MailAddr;
@@ -402,8 +422,8 @@ type PoolSupervisor<A, D, J, R, C> = Supervisor<PoolKernel<A, D, J, R, C>, C>;
 ///     type Ph = Never;
 ///     type Error = Never;
 ///     type Birth = NoBirths;
-///     fn init(&mut self) -> behavior::BehaviorActed<Self> { unimplemented!() }
-///     fn transition(&mut self, _: Self::Event) -> behavior::BehaviorActed<Self> { unimplemented!() }
+///     fn init(&mut self, _: crate::InitializationTurn) -> behavior::BehaviorActed<Self> { Ok(Actions::cont()) }
+///     fn transition(&mut self, _: crate::ActiveTurn, _: Self::Event) -> behavior::BehaviorActed<Self> { Ok(Actions::cont()) }
 /// }
 ///
 /// // `WrongWorker::Msg` is not `PoolAssignment<String>`.
@@ -445,7 +465,7 @@ where
     pub fn new(
         nonces: fn(usize) -> A::Nonce,
         count: usize,
-        build: fn(usize) -> C,
+        build: fn(usize) -> Option<C>,
         backlog_capacity: usize,
         interruption: InterruptionPolicy,
         restart_policy: RestartPolicy,
@@ -479,7 +499,13 @@ where
                 restart_policy,
                 max_restarts,
                 restart_window,
-            ),
+            )
+            .map_err(|error| match error {
+                FleetError::UnknownChild(nonce) | FleetError::DuplicateChild(nonce) => {
+                    PoolConfigError::DuplicateWorker(nonce)
+                }
+                FleetError::SequenceExhausted => PoolConfigError::SequenceExhausted,
+            })?,
             slots,
             backlog: VecDeque::new(),
             backlog_capacity,
@@ -498,15 +524,7 @@ where
         self.slots
             .iter()
             .find(|slot| slot.nonce == worker)
-            .map(|slot| match &slot.state {
-                SlotState::Installing => WorkerPhase::Installing,
-                SlotState::Idle => WorkerPhase::Idle,
-                SlotState::Assigned { assignment, job } => WorkerPhase::Assigned {
-                    assignment: *assignment,
-                    job: job.id,
-                },
-                SlotState::Retired { reason } => WorkerPhase::Retired { reason: *reason },
-            })
+            .map(Slot::phase)
     }
 
     fn slot_position(&self, worker: A::Nonce) -> Result<usize, PoolError<A::Nonce>> {
@@ -528,11 +546,22 @@ where
     fn supervisor_transition(
         &mut self,
         event: PoolEvent<A, D, J, R>,
-    ) -> PoolActions<A, D, J, R, C> {
-        match delegate_transition(&mut self.supervisor, event) {
-            Ok(actions) => actions,
-            Err(never) => match never {},
-        }
+    ) -> Result<PoolActions<A, D, J, R, C>, PoolError<A::Nonce>> {
+        crate::calculus::delegate_transition(&mut self.supervisor, event).map_err(|error| {
+            match error {
+                SupervisorError::Behavior(never) => match never {},
+                SupervisorError::Fleet(FleetError::UnknownChild(nonce)) => {
+                    PoolError::UnknownWorker(nonce)
+                }
+                SupervisorError::Fleet(FleetError::DuplicateChild(nonce)) => {
+                    PoolError::DuplicateWorker(nonce)
+                }
+                SupervisorError::Fleet(FleetError::SequenceExhausted) => {
+                    PoolError::SequenceExhausted
+                }
+                SupervisorError::FactoryIndex { index } => PoolError::WorkerFactoryIndex { index },
+            }
+        })
     }
 
     fn submit(
@@ -648,27 +677,39 @@ where
         actions: &mut PoolActions<A, D, J, R, C>,
     ) -> Result<(), PoolError<A::Nonce>> {
         let position = self.slot_position(worker)?;
-        let phase = self
-            .worker_phase(worker)
-            .expect("position proves the slot exists");
-        let SlotState::Assigned {
-            assignment: expected,
-            ..
-        } = &self.slots[position].state
-        else {
-            return Err(PoolError::CompletionForUnavailableWorker { worker, phase });
-        };
-        if *expected != assignment {
-            return Err(PoolError::StaleCompletion {
-                worker,
-                expected: *expected,
-                received: assignment,
-            });
-        }
-        let SlotState::Assigned { job, .. } =
-            core::mem::replace(&mut self.slots[position].state, SlotState::Idle)
-        else {
-            unreachable!("the state was proven assigned")
+        let previous = core::mem::replace(&mut self.slots[position].state, SlotState::Idle);
+        let job = match previous {
+            SlotState::Assigned {
+                assignment: expected,
+                job,
+            } if expected == assignment => job,
+            SlotState::Assigned {
+                assignment: expected,
+                job,
+            } => {
+                self.slots[position].state = SlotState::Assigned {
+                    assignment: expected,
+                    job,
+                };
+                return Err(PoolError::StaleCompletion {
+                    worker,
+                    expected,
+                    received: assignment,
+                });
+            }
+            state => {
+                let phase = match &state {
+                    SlotState::Installing => WorkerPhase::Installing,
+                    SlotState::Idle => WorkerPhase::Idle,
+                    SlotState::Assigned { assignment, job } => WorkerPhase::Assigned {
+                        assignment: *assignment,
+                        job: job.id,
+                    },
+                    SlotState::Retired { reason } => WorkerPhase::Retired { reason: *reason },
+                };
+                self.slots[position].state = state;
+                return Err(PoolError::CompletionForUnavailableWorker { worker, phase });
+            }
         };
         actions.sends.behavior.send::<_, Own>(Delivery::new(
             job.reply_to,
@@ -686,9 +727,7 @@ where
         responses: &mut Vec<Delivery<D>>,
     ) -> Result<(), PoolError<A::Nonce>> {
         let position = self.slot_position(stopped.proxy)?;
-        let phase = self
-            .worker_phase(stopped.proxy)
-            .expect("position proves the slot exists");
+        let phase = self.slots[position].phase();
         if matches!(phase, WorkerPhase::Installing | WorkerPhase::Retired { .. }) {
             return Err(PoolError::WorkerStoppedWhileUnavailable {
                 worker: stopped.proxy,
@@ -696,13 +735,19 @@ where
             });
         }
         if self.interruption == InterruptionPolicy::Retry {
-            if let SlotState::Assigned { job, .. } = &self.slots[position].state {
-                let dispatch_payload = job.payload.clone();
-                let SlotState::Assigned { mut job, .. } =
-                    core::mem::replace(&mut self.slots[position].state, SlotState::Installing)
-                else {
-                    unreachable!("the assigned state was matched before committing retry")
-                };
+            // Cloning a user payload can execute arbitrary `Clone` code. Prepare it
+            // before committing the slot transition so unwinding cannot leave the
+            // worker marked as installing while its accepted job is lost.
+            let dispatch_payload = match &self.slots[position].state {
+                SlotState::Assigned { job, .. } => Some(job.payload.clone()),
+                SlotState::Idle => None,
+                SlotState::Installing | SlotState::Retired { .. } => return Ok(()),
+            };
+            let previous =
+                core::mem::replace(&mut self.slots[position].state, SlotState::Installing);
+            if let (SlotState::Assigned { mut job, .. }, Some(dispatch_payload)) =
+                (previous, dispatch_payload)
+            {
                 job.interruption = Some(PoolInterruption::WorkerStopped {
                     worker: stopped.proxy,
                     outcome: stopped.outcome,
@@ -711,8 +756,6 @@ where
                     accepted: job,
                     dispatch_payload,
                 });
-            } else {
-                self.slots[position].state = SlotState::Installing;
             }
             return Ok(());
         }
@@ -789,9 +832,7 @@ where
         resolved: &WorkerCreationResolved<A::Nonce>,
     ) -> Result<(), PoolError<A::Nonce>> {
         let position = self.slot_position(resolved.proxy)?;
-        let phase = self
-            .worker_phase(resolved.proxy)
-            .expect("position proves the slot exists");
+        let phase = self.slots[position].phase();
         if !matches!(phase, WorkerPhase::Installing) {
             return Err(PoolError::CreationResolvedWhileUnavailable {
                 worker: resolved.proxy,
@@ -807,7 +848,10 @@ where
         Ok(())
     }
 
-    fn dispatch(&mut self, actions: &mut PoolActions<A, D, J, R, C>) {
+    fn dispatch(
+        &mut self,
+        actions: &mut PoolActions<A, D, J, R, C>,
+    ) -> Result<(), PoolError<A::Nonce>> {
         let mut selected_jobs = Vec::new();
         let mut plan = Vec::new();
         for (slot_position, slot) in self.slots.iter().enumerate() {
@@ -830,12 +874,11 @@ where
                 job_position,
             });
         }
-        let count =
-            u64::try_from(plan.len()).expect("a pool cannot contain more than u64::MAX slots");
+        let count = u64::try_from(plan.len()).map_err(|_| PoolError::SequenceExhausted)?;
         let next_assignment = self
             .next_assignment
             .checked_add(count)
-            .expect("pool assignment identifiers exhausted");
+            .ok_or(PoolError::SequenceExhausted)?;
 
         let mut selected_by_position = BTreeMap::new();
         for planned in plan {
@@ -855,18 +898,15 @@ where
         }
         self.backlog = remaining;
 
-        for (offset, (slot_position, queued)) in selected_by_slot
-            .into_iter()
-            .enumerate()
-            .filter_map(|(slot_position, queued)| queued.map(|queued| (slot_position, queued)))
-            .enumerate()
-        {
+        for (assignment, (slot_position, queued)) in (self.next_assignment..next_assignment).zip(
+            selected_by_slot
+                .into_iter()
+                .enumerate()
+                .filter_map(|(slot_position, queued)| queued.map(|queued| (slot_position, queued))),
+        ) {
             let payload = queued.dispatch_payload;
             let job = queued.accepted;
-            let assignment = AssignmentId(
-                self.next_assignment
-                    + u64::try_from(offset).expect("offset is bounded by the checked plan length"),
-            );
+            let assignment = AssignmentId(assignment);
             let nonce = self.slots[slot_position].nonce;
             let job_id = job.id;
             self.slots[slot_position].state = SlotState::Assigned { assignment, job };
@@ -883,6 +923,7 @@ where
                 ));
         }
         self.next_assignment = next_assignment;
+        Ok(())
     }
 }
 
@@ -902,16 +943,27 @@ where
     type Error = PoolError<A::Nonce>;
     type Birth = Births<Proxy<C>>;
 
-    fn init(&mut self) -> crate::BehaviorActed<Self> {
-        match self.supervisor.init() {
-            Ok(actions) => Ok(actions),
-            Err(never) => match never {},
-        }
+    fn init(&mut self, _: crate::InitializationTurn) -> crate::BehaviorActed<Self> {
+        crate::calculus::initialize(&mut self.supervisor).map_err(|error| match error {
+            SupervisorError::Behavior(never) => match never {},
+            SupervisorError::Fleet(FleetError::UnknownChild(nonce)) => {
+                PoolError::UnknownWorker(nonce)
+            }
+            SupervisorError::Fleet(FleetError::DuplicateChild(nonce)) => {
+                PoolError::DuplicateWorker(nonce)
+            }
+            SupervisorError::Fleet(FleetError::SequenceExhausted) => PoolError::SequenceExhausted,
+            SupervisorError::FactoryIndex { index } => PoolError::WorkerFactoryIndex { index },
+        })
     }
 
-    fn transition(&mut self, event: Self::Event) -> crate::BehaviorActed<Self> {
+    fn transition(
+        &mut self,
+        _: crate::ActiveTurn,
+        event: Self::Event,
+    ) -> crate::BehaviorActed<Self> {
         match event {
-            SupervisionEvent::Inner(User {
+            SupervisionEvent::Behavior(User {
                 message:
                     PoolMessage::Submit {
                         job,
@@ -922,10 +974,10 @@ where
             }) => {
                 let mut actions = Actions::cont();
                 self.submit(job, payload, reply_to, &mut actions);
-                self.dispatch(&mut actions);
+                self.dispatch(&mut actions)?;
                 Ok(actions)
             }
-            SupervisionEvent::Inner(User {
+            SupervisionEvent::Behavior(User {
                 message:
                     PoolMessage::Completed {
                         worker,
@@ -936,7 +988,7 @@ where
             }) => {
                 let mut actions = Actions::cont();
                 self.complete(worker, assignment, result, &mut actions)?;
-                self.dispatch(&mut actions);
+                self.dispatch(&mut actions)?;
                 Ok(actions)
             }
             SupervisionEvent::WorkerStopped(stopped) => {
@@ -944,7 +996,7 @@ where
                 let mut responses = Vec::new();
                 self.worker_stopped(&stopped, &mut responses)?;
                 let mut actions =
-                    self.supervisor_transition(SupervisionEvent::WorkerStopped(stopped));
+                    self.supervisor_transition(SupervisionEvent::WorkerStopped(stopped))?;
                 actions.sends.behavior.responses.extend(responses);
                 let replacement_requested = actions
                     .sends
@@ -957,7 +1009,7 @@ where
                     self.slots[position].state = SlotState::Retired { reason };
                     self.fail_jobs_for_retired_slot(proxy, reason, &mut actions);
                 }
-                self.dispatch(&mut actions);
+                self.dispatch(&mut actions)?;
                 self.fail_backlog_if_irrecoverable(&mut actions);
                 Ok(actions)
             }
@@ -965,19 +1017,19 @@ where
                 let proxy = resolved.proxy;
                 self.creation_resolved(&resolved)?;
                 let mut actions =
-                    self.supervisor_transition(SupervisionEvent::WorkerCreationResolved(resolved));
+                    self.supervisor_transition(SupervisionEvent::WorkerCreationResolved(resolved))?;
                 if let Some(WorkerPhase::Retired { reason }) = self.worker_phase(proxy) {
                     self.fail_jobs_for_retired_slot(proxy, reason, &mut actions);
                 }
-                self.dispatch(&mut actions);
+                self.dispatch(&mut actions)?;
                 self.fail_backlog_if_irrecoverable(&mut actions);
                 Ok(actions)
             }
             SupervisionEvent::ChildStopped(stopped) => {
-                Ok(self.supervisor_transition(SupervisionEvent::ChildStopped(stopped)))
+                self.supervisor_transition(SupervisionEvent::ChildStopped(stopped))
             }
             SupervisionEvent::CreationResolved(resolved) => {
-                Ok(self.supervisor_transition(SupervisionEvent::CreationResolved(resolved)))
+                self.supervisor_transition(SupervisionEvent::CreationResolved(resolved))
             }
         }
     }
@@ -1003,11 +1055,15 @@ mod tests {
         type Error = Never;
         type Birth = NoBirths;
 
-        fn init(&mut self) -> crate::BehaviorActed<Self> {
+        fn init(&mut self, _: crate::InitializationTurn) -> crate::BehaviorActed<Self> {
             Ok(Actions::cont())
         }
 
-        fn transition(&mut self, _: Self::Event) -> crate::BehaviorActed<Self> {
+        fn transition(
+            &mut self,
+            _: crate::ActiveTurn,
+            _: Self::Event,
+        ) -> crate::BehaviorActed<Self> {
             Ok(Actions::cont())
         }
     }
@@ -1024,11 +1080,15 @@ mod tests {
         type Error = Never;
         type Birth = NoBirths;
 
-        fn init(&mut self) -> crate::BehaviorActed<Self> {
+        fn init(&mut self, _: crate::InitializationTurn) -> crate::BehaviorActed<Self> {
             Ok(Actions::cont())
         }
 
-        fn transition(&mut self, _: Self::Event) -> crate::BehaviorActed<Self> {
+        fn transition(
+            &mut self,
+            _: crate::ActiveTurn,
+            _: Self::Event,
+        ) -> crate::BehaviorActed<Self> {
             Ok(Actions::cont())
         }
     }
@@ -1042,7 +1102,7 @@ mod tests {
         let mut pool = WorkerPool::new(
             |index| u64::try_from(index).unwrap(),
             2,
-            test_worker,
+            |index| Some(test_worker(index)),
             3,
             InterruptionPolicy::Fail,
             RestartPolicy::Permanent,
@@ -1050,24 +1110,27 @@ mod tests {
             Duration::from_secs(1),
         )
         .unwrap();
-        pool.init().unwrap();
+        crate::calculus::initialize(&mut pool).unwrap();
 
         for job in 1..=3 {
-            pool.transition(SupervisionEvent::Inner(User::new(
-                MailAddr(90),
-                PoolMessage::Submit {
-                    job: JobId(job),
-                    payload: u8::try_from(job).unwrap(),
-                    reply_to: Recipient::global(MailAddr(91)),
-                },
-            )))
+            crate::calculus::delegate_transition(
+                &mut pool,
+                SupervisionEvent::Behavior(User::new(
+                    MailAddr(90),
+                    PoolMessage::Submit {
+                        job: JobId(job),
+                        payload: u8::try_from(job).unwrap(),
+                        reply_to: Recipient::global(MailAddr(91)),
+                    },
+                )),
+            )
             .unwrap();
         }
         pool.slots[0].state = SlotState::Idle;
         pool.slots[1].state = SlotState::Idle;
 
         let mut actions: PoolActions<MailAddr, TestReply, u8, (), TestWorker> = Actions::cont();
-        pool.dispatch(&mut actions);
+        pool.dispatch(&mut actions).unwrap();
 
         let assignments = &actions.sends.behavior.assignments;
         assert_eq!(assignments.len(), 2);
@@ -1115,8 +1178,8 @@ mod tests {
 ///     type Ph = Never;
 ///     type Error = Never;
 ///     type Birth = NoBirths;
-///     fn init(&mut self) -> behavior::BehaviorActed<Self> { Ok(Actions::cont()) }
-///     fn transition(&mut self, _: Self::Event) -> behavior::BehaviorActed<Self> { Ok(Actions::cont()) }
+///     fn init(&mut self, _: crate::InitializationTurn) -> behavior::BehaviorActed<Self> { Ok(Actions::cont()) }
+///     fn transition(&mut self, _: crate::ActiveTurn, _: Self::Event) -> behavior::BehaviorActed<Self> { Ok(Actions::cont()) }
 /// }
 /// #[behavior::behavior(
 ///     addr = MailAddr,
@@ -1126,7 +1189,7 @@ mod tests {
 ///     error = Never,
 /// )]
 /// impl Worker {
-///     fn init(&mut self) -> behavior::Acted<MailAddr, Never, Vec<Never>, NoBirths, Never> {
+///     fn init(&mut self, _: crate::InitializationTurn) -> behavior::Acted<MailAddr, Never, Vec<Never>, NoBirths, Never> {
 ///         Ok(Actions::cont())
 ///     }
 ///     fn receive(&mut self, _: MailAddr, _: behavior::PoolAssignment<u8>) -> behavior::Acted<MailAddr, Never, Vec<Never>, NoBirths, Never> {
@@ -1173,7 +1236,7 @@ where
     pub fn new(
         nonces: fn(usize) -> A::Nonce,
         count: usize,
-        build: fn(usize) -> C,
+        build: fn(usize) -> Option<C>,
         backlog_capacity: usize,
         interruption: InterruptionPolicy,
         restart_policy: RestartPolicy,
@@ -1247,13 +1310,17 @@ where
     type Error = PoolError<A::Nonce>;
     type Birth = Births<Proxy<C>>;
 
-    fn init(&mut self) -> crate::BehaviorActed<Self> {
-        self.pool.init()
+    fn init(&mut self, _: crate::InitializationTurn) -> crate::BehaviorActed<Self> {
+        crate::calculus::initialize(&mut self.pool)
     }
 
-    fn transition(&mut self, event: Self::Event) -> crate::BehaviorActed<Self> {
+    fn transition(
+        &mut self,
+        _: crate::ActiveTurn,
+        event: Self::Event,
+    ) -> crate::BehaviorActed<Self> {
         match event {
-            SupervisionEvent::Inner(User {
+            SupervisionEvent::Behavior(User {
                 message:
                     KeyedPoolMessage::Submit {
                         key,
@@ -1274,10 +1341,10 @@ where
                     (Admission::Accepted | Admission::Rejected, Some(_))
                     | (Admission::Rejected, None) => {}
                 }
-                self.pool.dispatch(&mut actions);
+                self.pool.dispatch(&mut actions)?;
                 Ok(actions)
             }
-            SupervisionEvent::Inner(User {
+            SupervisionEvent::Behavior(User {
                 message:
                     KeyedPoolMessage::Completed {
                         worker,
@@ -1289,28 +1356,34 @@ where
                 let mut actions = Actions::cont();
                 self.pool
                     .complete(worker, assignment, result, &mut actions)?;
-                self.pool.dispatch(&mut actions);
+                self.pool.dispatch(&mut actions)?;
                 Ok(actions)
             }
-            SupervisionEvent::Inner(User {
+            SupervisionEvent::Behavior(User {
                 message: KeyedPoolMessage::Rebalance { key, worker },
                 ..
             }) => {
                 self.rebalance(key, worker)?;
                 Ok(Actions::cont())
             }
-            SupervisionEvent::WorkerStopped(stopped) => self
-                .pool
-                .transition(SupervisionEvent::WorkerStopped(stopped)),
-            SupervisionEvent::WorkerCreationResolved(resolved) => self
-                .pool
-                .transition(SupervisionEvent::WorkerCreationResolved(resolved)),
-            SupervisionEvent::ChildStopped(stopped) => self
-                .pool
-                .transition(SupervisionEvent::ChildStopped(stopped)),
-            SupervisionEvent::CreationResolved(resolved) => self
-                .pool
-                .transition(SupervisionEvent::CreationResolved(resolved)),
+            SupervisionEvent::WorkerStopped(stopped) => crate::calculus::delegate_transition(
+                &mut self.pool,
+                SupervisionEvent::WorkerStopped(stopped),
+            ),
+            SupervisionEvent::WorkerCreationResolved(resolved) => {
+                crate::calculus::delegate_transition(
+                    &mut self.pool,
+                    SupervisionEvent::WorkerCreationResolved(resolved),
+                )
+            }
+            SupervisionEvent::ChildStopped(stopped) => crate::calculus::delegate_transition(
+                &mut self.pool,
+                SupervisionEvent::ChildStopped(stopped),
+            ),
+            SupervisionEvent::CreationResolved(resolved) => crate::calculus::delegate_transition(
+                &mut self.pool,
+                SupervisionEvent::CreationResolved(resolved),
+            ),
         }
     }
 }

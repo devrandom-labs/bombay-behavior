@@ -8,7 +8,7 @@
 //! `recorded + fsm_held + stash_held + goto_consumed == stepped`, with the
 //! goto class taken from the phase BEFORE the step (a Goto flips the phase).
 
-use behavior::{Behavior, Compose, Machine, MailAddr, Move, Never, StashRoute, User, UserEvent};
+use behavior::{Compose, Machine, MailAddr, Move, Never, StashRoute, User, UserEvent};
 use libfuzzer_sys::fuzz_target;
 use tokio::runtime::Builder;
 
@@ -18,12 +18,13 @@ enum Phase {
     B,
 }
 
-type Stack = behavior::Compose<behavior::Stash<Machine<MailAddr, Vec<u64>, u64, Phase, Never>>>;
+type StackDefinition =
+    behavior::Compose<behavior::Stash<Machine<MailAddr, Vec<u64>, u64, Phase, Never>>>;
 
 fuzz_target!(|bytes: &[u8]| {
     let runtime = Builder::new_current_thread().enable_time().build().unwrap();
     runtime.block_on(async {
-        let mut behavior: Stack = Compose::machine(
+        let behavior: StackDefinition = Compose::new(Machine::new(
             Vec::new(),
             Phase::A,
             |phase, seen: &mut Vec<u64>, id: &u64| {
@@ -37,18 +38,19 @@ fuzz_target!(|bytes: &[u8]| {
                     }
                 })
             },
-        )
+        ))
         .stash(|message: &u64| match message % 3 {
             0 => StashRoute::Release,
             1 => StashRoute::Deliver,
             _ => StashRoute::Stash,
         });
+        let mut behavior = behavior.initialize().unwrap().behavior;
 
         let mut consumed = 0_usize;
         let mut stepped = 0_usize;
         for (index, _) in bytes.iter().enumerate() {
             let id = u64::try_from(index).unwrap();
-            let phase_before = behavior.behavior().inner().phase();
+            let phase_before = behavior.base().phase();
             behavior.transition(User::user(MailAddr(0), id)).unwrap();
             stepped += 1;
             if id % 3 != 2 {
@@ -58,15 +60,15 @@ fuzz_target!(|bytes: &[u8]| {
                 };
                 consumed += usize::from(id % 4 == goto_class);
             }
-            let recorded = behavior.behavior().inner().state().len();
-            let fsm_held = behavior.behavior().inner().held();
-            let stash_held = behavior.behavior().held();
+            let recorded = behavior.base().state().len();
+            let fsm_held = behavior.base().held();
+            let stash_held = behavior.stashed();
             assert_eq!(
                 recorded + fsm_held + stash_held + consumed,
                 stepped,
                 "drop/dup across two buffers at byte {index}"
             );
-            let mut sorted = behavior.behavior().inner().state().clone();
+            let mut sorted = behavior.base().state().clone();
             sorted.sort_unstable();
             sorted.dedup();
             assert_eq!(sorted.len(), recorded, "duplicate delivery at byte {index}");

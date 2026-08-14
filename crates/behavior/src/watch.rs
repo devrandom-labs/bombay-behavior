@@ -4,19 +4,19 @@ use crate::behavior::{
     Actions, Address, Become, Behavior, BirthMode, SendAlgebra, ServiceSends, User, UserEvent,
 };
 use crate::protocol::forward::forward_event_lane;
-use crate::protocol::{ObservePeer, PeerEvent, PeerStopped};
+use crate::protocol::{ObservePeer, PeerStopped};
 use crate::{Crash, Exit, Step};
-use crate::{Inner, Own, SendInput};
+use crate::{Own, RouteInput, SendInput};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WatchEvent<E: UserEvent> {
-    Inner(E),
+    Behavior(E),
     PeerStopped(PeerStopped<E::Addr>),
 }
 
-impl<E: UserEvent> PeerEvent for WatchEvent<E> {
-    fn peer_stopped(event: PeerStopped<E::Addr>) -> Option<Self> {
-        Some(Self::PeerStopped(event))
+impl<E: UserEvent> crate::RouteInput<PeerStopped<E::Addr>> for WatchEvent<E> {
+    fn route(event: PeerStopped<E::Addr>) -> Result<Self, PeerStopped<E::Addr>> {
+        Ok(Self::PeerStopped(event))
     }
 }
 
@@ -31,48 +31,29 @@ impl<E: UserEvent> UserEvent for WatchEvent<E> {
     type Message = E::Message;
 
     fn user(from: Self::Addr, message: Self::Message) -> Self {
-        Self::Inner(E::user(from, message))
+        Self::Behavior(E::user(from, message))
     }
 
     fn into_user(self) -> Result<User<Self::Addr, Self::Message>, Self> {
         match self {
-            Self::Inner(event) => event.into_user().map_err(Self::Inner),
+            Self::Behavior(event) => event.into_user().map_err(Self::Behavior),
             stopped @ Self::PeerStopped(_) => Err(stopped),
         }
     }
 }
 
-forward_event_lane!(WatchEvent, TimeEvent, time_reached, crate::TimerElapsed);
+forward_event_lane!(WatchEvent, crate::TimerElapsed);
+forward_event_lane!(WatchEvent, crate::ChildStopped<E::Addr>);
+forward_event_lane!(WatchEvent, crate::WorkerStopped<E::Addr>);
 forward_event_lane!(
     WatchEvent,
-    ChildEvent,
-    child_stopped,
-    crate::ChildStopped<E::Addr>
-);
-forward_event_lane!(
-    WatchEvent,
-    WorkerEvent,
-    worker_stopped,
-    crate::WorkerStopped<E::Addr>
-);
-forward_event_lane!(
-    WatchEvent,
-    CreationEvent,
-    creation_resolved,
     crate::CreationResolved<<E::Addr as crate::Address>::Nonce>
 );
 forward_event_lane!(
     WatchEvent,
-    WorkerCreationEvent,
-    worker_creation_resolved,
     crate::WorkerCreationResolved<<E::Addr as crate::Address>::Nonce>
 );
-forward_event_lane!(
-    WatchEvent,
-    ShutdownEvent,
-    shutdown_requested,
-    crate::ShutdownRequested
-);
+forward_event_lane!(WatchEvent, crate::ShutdownRequested);
 
 pub type LinkReaction<B> = fn(
     &mut B,
@@ -81,6 +62,7 @@ pub type LinkReaction<B> = fn(
 ) -> Result<Become<<B as Behavior>::Addr>, <B as Behavior>::Error>;
 
 /// Named effect lanes added by [`Watch`].
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WatchSends<A: Address, Sends> {
     pub behavior: Sends,
     pub observations: ServiceSends<ObservePeer<A>>,
@@ -106,16 +88,7 @@ impl<A: Address, Sends> SendInput<ObservePeer<A>, Own> for WatchSends<A, Sends> 
     }
 }
 
-impl<A: Address, Sends, Input, Path> SendInput<Input, Inner<Path>> for WatchSends<A, Sends>
-where
-    Sends: SendInput<Input, Path>,
-{
-    fn emit(&mut self, input: Input) {
-        <Sends as SendInput<Input, Path>>::emit(&mut self.behavior, input);
-    }
-}
-
-pub type WatchActions<B> = Actions<
+pub(crate) type WatchActions<B> = Actions<
     <B as Behavior>::Addr,
     <B as Behavior>::Ph,
     WatchSends<<B as Behavior>::Addr, <B as Behavior>::Sends>,
@@ -138,17 +111,29 @@ pub struct Watch<B: Behavior> {
 
 impl<B: Behavior> Watch<B> {
     #[must_use]
-    pub fn new(inner: B, peer: B::Addr, on_stopped: LinkReaction<B>) -> Self {
+    pub(crate) fn new(inner: B, peer: B::Addr, on_stopped: LinkReaction<B>) -> Self {
         Self {
             inner,
             peer,
             on_stopped,
         }
     }
+}
 
-    #[must_use]
-    pub fn inner(&self) -> &B {
-        &self.inner
+impl<B: Behavior + crate::BehaviorBase> crate::BehaviorBase for Watch<B> {
+    type Base = B::Base;
+
+    fn base(&self) -> &Self::Base {
+        self.inner.base()
+    }
+}
+
+impl<B> crate::StashStatus for Watch<B>
+where
+    B: Behavior + crate::StashStatus,
+{
+    fn stashed_messages(&self) -> usize {
+        self.inner.stashed_messages()
     }
 }
 
@@ -158,7 +143,7 @@ where
     Sends: SendAlgebra,
     Br: BirthMode,
     B: Behavior<Addr = A, Ph = Ph, Sends = Sends, Birth = Br>,
-    B::Event: PeerEvent,
+    B::Event: crate::RouteInput<PeerStopped<A>>,
 {
     type Addr = A;
     type Msg = B::Msg;
@@ -168,12 +153,16 @@ where
     type Error = B::Error;
     type Birth = Br;
 
-    fn init(&mut self) -> Result<WatchActions<B>, B::Error> {
-        let actions = self.inner.init()?;
+    fn init(&mut self, _: crate::InitializationTurn) -> Result<WatchActions<B>, B::Error> {
+        let actions = crate::calculus::initialize(&mut self.inner)?;
         Ok(Self::wrap(actions, ServiceSends::one(self.peer.into())))
     }
 
-    fn transition(&mut self, event: Self::Event) -> Result<WatchActions<B>, B::Error> {
+    fn transition(
+        &mut self,
+        _: crate::ActiveTurn,
+        event: Self::Event,
+    ) -> Result<WatchActions<B>, B::Error> {
         match event {
             WatchEvent::PeerStopped(event) if event.peer == self.peer => {
                 let become_ = match (self.on_stopped)(&mut self.inner, event.peer, &event.outcome)?
@@ -184,17 +173,15 @@ where
                 };
                 Ok(Actions::new(Self::Sends::empty(), Vec::new(), become_))
             }
-            WatchEvent::PeerStopped(event) => match B::Event::peer_stopped(event) {
-                Some(inner) => self
-                    .inner
-                    .transition(inner)
+            WatchEvent::PeerStopped(event) => match B::Event::route(event) {
+                Ok(inner) => crate::calculus::delegate_transition(&mut self.inner, inner)
                     .map(|actions| Self::wrap(actions, ServiceSends::empty())),
-                None => Ok(Actions::cont()),
+                Err(_) => Ok(Actions::cont()),
             },
-            WatchEvent::Inner(event) => self
-                .inner
-                .transition(event)
-                .map(|actions| Self::wrap(actions, ServiceSends::empty())),
+            WatchEvent::Behavior(event) => {
+                crate::calculus::delegate_transition(&mut self.inner, event)
+                    .map(|actions| Self::wrap(actions, ServiceSends::empty()))
+            }
         }
     }
 }

@@ -1,11 +1,15 @@
-use behavior::{Acted, Actions, Handler, MailAddr, Never, NoBirths, Pure};
+use behavior::{Acted, Actions, MailAddr, Never, NoBirths};
 
 struct Counter(u64);
 
-impl Handler for Counter {
-    type Addr = MailAddr;
-    type Msg = u64;
-
+#[behavior::behavior(
+    addr = MailAddr,
+    message = u64,
+    sends = Vec<Never>,
+    births = NoBirths,
+    error = Never,
+)]
+impl Counter {
     fn receive(
         &mut self,
         _from: MailAddr,
@@ -17,5 +21,5 @@ impl Handler for Counter {
 }
 
 fn main() {
-    let _behavior = Pure::new(Counter(0));
+    let _behavior = Counter(0);
 }

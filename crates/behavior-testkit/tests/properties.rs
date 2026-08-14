@@ -1,26 +1,21 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, Behavior, ChildStopped, Crash, CreationKind, CreationResolved, Deadline,
-    Delivery, Exit, Handler, MailAddr, Never, Proxy, ProxyCommand, ProxyEvent, Pure, Recipient,
-    RestartPolicy, Step, Strategy, SupervisionEvent, Supervisor, TimerId, User, UserEvent,
-    WorkerStopped,
+    Acted, Actions, ChildStopped, Compose, Crash, CreationKind, CreationResolved, Delivery, Exit,
+    MailAddr, Never, Proxy, ProxyCommand, ProxyEvent, Recipient, RestartPolicy, Step, Strategy,
+    SupervisionEvent, Supervisor, TimerId, User, UserEvent, WorkerStopped,
 };
 use behavior_testkit::{Mailbox, drive};
 use proptest::collection::vec;
 use proptest::prelude::*;
+use std::time::Instant;
 use tokio::runtime::Builder;
-use tokio::time::Instant;
 
 #[derive(Default)]
 struct Echo;
 
-impl Handler<Vec<Delivery<behavior_testkit::TestRecipient<u8>>>, behavior::NoBirths, Never>
-    for Echo
-{
-    type Addr = MailAddr;
-    type Msg = u8;
-
+#[behavior::behavior(addr = MailAddr, message = u8, sends = Vec<Delivery<behavior_testkit::TestRecipient<u8>>>, births = behavior::NoBirths, error = Never)]
+impl Echo {
     fn receive(
         &mut self,
         from: MailAddr,
@@ -44,14 +39,12 @@ impl Handler<Vec<Delivery<behavior_testkit::TestRecipient<u8>>>, behavior::NoBir
     }
 }
 
-type Child = Pure<Echo, Vec<Delivery<behavior_testkit::TestRecipient<u8>>>>;
+type Child = Echo;
 
 struct Parent;
 
-impl Handler<Vec<Never>, behavior::Births<Child>, Never> for Parent {
-    type Addr = MailAddr;
-    type Msg = u8;
-
+#[behavior::behavior(addr = MailAddr, message = u8, sends = Vec<Never>, births = behavior::Births<Child>, error = Never)]
+impl Parent {
     fn receive(
         &mut self,
         _from: MailAddr,
@@ -62,23 +55,21 @@ impl Handler<Vec<Never>, behavior::Births<Child>, Never> for Parent {
 }
 
 fn child(_index: usize) -> Child {
-    Pure::new(Echo)
+    Echo
 }
 
-fn supervisor(
-    strategy: Strategy,
-    count: usize,
-) -> Supervisor<Pure<Parent, Vec<Never>, behavior::Births<Child>>, Child> {
+fn supervisor(strategy: Strategy, count: usize) -> Supervisor<Parent, Child> {
     Supervisor::new(
-        Pure::new(Parent),
+        Parent,
         |index| u64::try_from(index).unwrap(),
         count,
-        child,
+        |index| Some(child(index)),
         strategy,
         RestartPolicy::Permanent,
         u32::MAX,
         Duration::MAX,
     )
+    .unwrap()
 }
 
 proptest! {
@@ -96,8 +87,8 @@ proptest! {
             .enumerate()
             .map(|(index, message)| User::user(MailAddr(u64::try_from(index).unwrap()), *message));
         let mut mailbox = Mailbox::new(events);
-        let mut behavior = Pure::new(Echo);
-        let trace = drive(&mut behavior, &mut mailbox).unwrap();
+        let behavior = behavior::Compose::new(Echo);
+        let trace = drive(behavior, &mut mailbox).unwrap();
         let expected_len = messages
             .iter()
             .position(|message| *message == u8::MAX)
@@ -118,15 +109,19 @@ proptest! {
         let _runtime = Builder::new_current_thread().enable_all().build().unwrap();
         let origin = Instant::now();
         let first = origin + Duration::from_nanos(offsets[0]);
-        let mut one = Deadline::new(Pure::new(Echo), TimerId(0), Some(first), |_| Ok(Step::Continue));
-        let initial = one.init().unwrap();
+        let one = Compose::new(Echo).deadline(TimerId(0), Some(first), |_| Ok(Step::Continue));
+        let initialized = one.initialize().unwrap();
+    let initial = initialized.actions;
+    let _one = initialized.behavior;
         prop_assert_eq!(initial.sends.schedules.len(), 1);
         prop_assert_eq!(initial.sends.schedules[0].at, first);
 
         for offset in &offsets {
             let due = origin + Duration::from_nanos(*offset);
-            let mut composed = Deadline::new(Pure::new(Echo), TimerId(0), Some(due), |_| Ok(Step::Continue));
-            let actions = composed.init().unwrap();
+            let composed = Compose::new(Echo).deadline(TimerId(0), Some(due), |_| Ok(Step::Continue));
+            let initialized = composed.initialize().unwrap();
+    let actions = initialized.actions;
+    let _composed = initialized.behavior;
             prop_assert_eq!(actions.sends.schedules[0].at, due);
         }
     }
@@ -136,8 +131,10 @@ proptest! {
         commands in vec(any::<bool>(), 0..256)
     ) {
         let _runtime = Builder::new_current_thread().enable_all().build().unwrap();
-        let mut proxy = Proxy::new(child(0));
-        let initial = proxy.init().unwrap();
+        let proxy = Proxy::new(child(0));
+        let initialized = proxy.initialize().unwrap();
+    let initial = initialized.actions;
+    let mut proxy = initialized.behavior;
         prop_assert_eq!(initial.creates[0].nonce, 0);
         prop_assert_eq!(initial.creates[0].kind, CreationKind::Birth);
         proxy
@@ -153,7 +150,7 @@ proptest! {
             if replace {
                 generation += 1;
                 let actions = proxy
-                    .transition(ProxyEvent::Inner(User::user(
+                    .transition(ProxyEvent::Command(User::user(
                         MailAddr(0),
                         ProxyCommand::Replace(child(index)),
                     )))
@@ -188,7 +185,7 @@ proptest! {
             } else {
                 let message = u8::try_from(index % 255).unwrap();
                 let actions = proxy
-                    .transition(ProxyEvent::Inner(User::user(
+                    .transition(ProxyEvent::Command(User::user(
                         MailAddr(0),
                         ProxyCommand::Forward(message),
                     )))
@@ -221,7 +218,8 @@ proptest! {
             Strategy::RestForOne => count - dead,
         };
         let _runtime = Builder::new_current_thread().enable_all().build().unwrap();
-        let mut behavior = supervisor(strategy, count);
+        let initialized = supervisor(strategy, count).initialize().unwrap();
+        let mut behavior = initialized.behavior;
         let event = SupervisionEvent::WorkerStopped(WorkerStopped {
             proxy: u64::try_from(dead).unwrap(),
             worker: u64::try_from(dead).unwrap(),
@@ -240,3 +238,4 @@ proptest! {
         }
     }
 }
+use behavior_testkit::InitializeTest;

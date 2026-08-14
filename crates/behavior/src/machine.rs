@@ -13,12 +13,30 @@ pub enum Move<P> {
     Stop,
 }
 
+enum Advance<A: Address> {
+    Continue,
+    PhaseChanged,
+    Stop(Exit<A>),
+}
+
 pub struct Machine<A: Address, S, M, P, E> {
     state: S,
     phase: P,
     on: fn(P, &mut S, &M) -> Result<Move<P>, E>,
     held: VecDeque<M>,
     address: core::marker::PhantomData<A>,
+}
+
+impl<A, S, M, P, E> crate::BehaviorBase for Machine<A, S, M, P, E>
+where
+    A: Address,
+    P: Copy + PartialEq,
+{
+    type Base = Self;
+
+    fn base(&self) -> &Self {
+        self
+    }
 }
 
 impl<A: Address, S, M, P: Copy + PartialEq, E> Machine<A, S, M, P, E> {
@@ -48,18 +66,22 @@ impl<A: Address, S, M, P: Copy + PartialEq, E> Machine<A, S, M, P, E> {
         self.held.len()
     }
 
-    fn advance(&mut self, message: M) -> Result<(Step<Never, Exit<A>>, bool), E> {
+    fn advance(&mut self, message: M) -> Result<Advance<A>, E> {
         Ok(match (self.on)(self.phase, &mut self.state, &message)? {
-            Move::Stay => (Step::Continue, false),
+            Move::Stay => Advance::Continue,
             Move::Defer => {
                 self.held.push_back(message);
-                (Step::Continue, false)
+                Advance::Continue
             }
-            Move::Stop => (Step::Stop(Exit::Normal), false),
+            Move::Stop => Advance::Stop(Exit::Normal),
             Move::Goto(next) => {
                 let changed = next != self.phase;
                 self.phase = next;
-                (Step::Continue, changed)
+                if changed {
+                    Advance::PhaseChanged
+                } else {
+                    Advance::Continue
+                }
             }
         })
     }
@@ -67,13 +89,20 @@ impl<A: Address, S, M, P: Copy + PartialEq, E> Machine<A, S, M, P, E> {
     fn drain(&mut self) -> Result<Step<Never, Exit<A>>, E> {
         let mut batch: VecDeque<M> = self.held.drain(..).collect();
         while let Some(message) = batch.pop_front() {
-            let (verdict, changed) = self.advance(message)?;
-            if let Step::Stop(exit) = verdict {
-                self.held.extend(batch);
-                return Ok(Step::Stop(exit));
-            }
-            if changed {
-                batch.extend(self.held.drain(..));
+            let outcome = match self.advance(message) {
+                Ok(transition) => transition,
+                Err(error) => {
+                    self.held.extend(batch);
+                    return Err(error);
+                }
+            };
+            match outcome {
+                Advance::Continue => {}
+                Advance::PhaseChanged => batch.extend(self.held.drain(..)),
+                Advance::Stop(exit) => {
+                    self.held.extend(batch);
+                    return Ok(Step::Stop(exit));
+                }
             }
         }
         Ok(Step::Continue)
@@ -93,19 +122,22 @@ where
     type Error = E;
     type Birth = NoBirths;
 
-    fn init(&mut self) -> Result<Actions<A, Never, Self::Sends, NoBirths>, E> {
+    fn init(
+        &mut self,
+        _: crate::InitializationTurn,
+    ) -> Result<Actions<A, Never, Self::Sends, NoBirths>, E> {
         Ok(Actions::cont())
     }
 
     fn transition(
         &mut self,
+        _: crate::ActiveTurn,
         event: Self::Event,
     ) -> Result<Actions<A, Never, Self::Sends, NoBirths>, E> {
-        let (verdict, changed) = self.advance(event.message)?;
-        match verdict {
-            Step::Stop(exit) => Ok(Actions::stop(exit)),
-            _ if changed => Ok(Actions::just(self.drain()?)),
-            _ => Ok(Actions::cont()),
+        match self.advance(event.message)? {
+            Advance::Stop(exit) => Ok(Actions::stop(exit)),
+            Advance::PhaseChanged => Ok(Actions::just(self.drain()?)),
+            Advance::Continue => Ok(Actions::cont()),
         }
     }
 }

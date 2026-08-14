@@ -1,26 +1,22 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, Behavior, ChildStopped, Compose, Crash, Create, CreationKind, CreationResolved,
-    DeadlineEvent, Delivery, Exit, Handler, MailAddr, Move, Never, PeerStopped, Proxy,
-    ProxyCommand, ProxyEvent, Pure, Recipient, RestartPolicy, StashRoute, Step, Strategy,
+    Acted, Actions, ChildStopped, Compose, Crash, Create, CreationKind, CreationResolved,
+    DeadlineEvent, Delivery, Exit, Machine, MailAddr, Move, Never, PeerStopped, Proxy,
+    ProxyCommand, ProxyEvent, Recipient, RestartPolicy, StashRoute, Step, Strategy,
     SupervisionEvent, TimerElapsed, TimerGeneration, TimerId, User, UserEvent, WatchEvent,
     WorkerStopped, stop_on_abnormal_death,
 };
 use behavior_testkit::{Mailbox, drive};
-use tokio::time::Instant;
+use std::time::Instant;
 
 #[derive(Default)]
 struct Recorder {
     seen: Vec<(MailAddr, u8)>,
 }
 
-impl Handler<Vec<Delivery<behavior_testkit::TestRecipient<u8>>>, behavior::NoBirths, Never>
-    for Recorder
-{
-    type Addr = MailAddr;
-    type Msg = u8;
-
+#[behavior::behavior(addr = MailAddr, message = u8, sends = Vec<Delivery<behavior_testkit::TestRecipient<u8>>>, births = behavior::NoBirths, error = Never)]
+impl Recorder {
     fn receive(
         &mut self,
         from: MailAddr,
@@ -47,13 +43,13 @@ impl Handler<Vec<Delivery<behavior_testkit::TestRecipient<u8>>>, behavior::NoBir
 
 #[tokio::test]
 async fn owned_mailbox_is_fifo_and_stops_without_consuming_tail() {
-    let mut behavior = Pure::new(Recorder::default());
+    let behavior = Compose::new(Recorder::default());
     let mut mailbox = Mailbox::new([
         User::user(MailAddr(1), 3),
         User::user(MailAddr(2), u8::MAX),
         User::user(MailAddr(3), 7),
     ]);
-    let trace = drive(&mut behavior, &mut mailbox).unwrap();
+    let trace = drive(behavior, &mut mailbox).unwrap();
 
     assert_eq!(trace.transitions, 3);
     assert_eq!(trace.pending, 1);
@@ -66,10 +62,11 @@ async fn owned_mailbox_is_fifo_and_stops_without_consuming_tail() {
 #[tokio::test]
 async fn empty_mailbox_still_observes_initialization_exactly_once() {
     let due = Instant::now() + Duration::from_secs(1);
-    let mut behavior =
-        Compose::new(Recorder::default()).deadline(Some(due), |_| Ok(Step::Continue));
+    let behavior =
+        Compose::new(Recorder::default())
+            .deadline(behavior::TimerId(0), Some(due), |_| Ok(Step::Continue));
     let mut mailbox = Mailbox::new([]);
-    let trace = drive(&mut behavior, &mut mailbox).unwrap();
+    let trace = drive(behavior, &mut mailbox).unwrap();
 
     assert_eq!(trace.transitions, 1);
     assert_eq!(trace.sends.schedules.len(), 1);
@@ -79,8 +76,10 @@ async fn empty_mailbox_still_observes_initialization_exactly_once() {
 #[tokio::test]
 async fn stale_and_duplicate_time_observations_are_inert() {
     let due = Instant::now() + Duration::from_secs(2);
-    let mut behavior =
-        Compose::new(Recorder::default()).deadline(Some(due), |_| Ok(Step::Stop(Exit::Normal)));
+    let behavior =
+        Compose::new(Recorder::default()).deadline(behavior::TimerId(0), Some(due), |_| {
+            Ok(Step::Stop(Exit::Normal))
+        });
     let mut mailbox = Mailbox::new([
         DeadlineEvent::Elapsed(TimerElapsed {
             id: TimerId(0),
@@ -95,7 +94,7 @@ async fn stale_and_duplicate_time_observations_are_inert() {
             generation: TimerGeneration(0),
         }),
     ]);
-    let trace = drive(&mut behavior, &mut mailbox).unwrap();
+    let trace = drive(behavior, &mut mailbox).unwrap();
 
     assert_eq!(trace.exit, Some(Exit::Normal));
     assert_eq!(trace.pending, 1);
@@ -106,17 +105,21 @@ async fn stale_and_duplicate_time_observations_are_inert() {
 async fn wrapper_orderings_preserve_both_initial_protocols() {
     let due = Instant::now() + Duration::from_secs(1);
     let peer = MailAddr(44);
-    let mut at_then_watch = Compose::new(Recorder::default())
-        .deadline(Some(due), |_| Ok(Step::Continue))
+    let at_then_watch = Compose::new(Recorder::default())
+        .deadline(behavior::TimerId(0), Some(due), |_| Ok(Step::Continue))
         .watch(peer, stop_on_abnormal_death);
-    let first = at_then_watch.init().unwrap();
+    let initialized = at_then_watch.initialize().unwrap();
+    let first = initialized.actions;
+    let _at_then_watch = initialized.behavior;
     assert_eq!(first.sends.behavior.schedules[0].at, due);
     assert_eq!(first.sends.observations[0].peer, peer);
 
-    let mut watch_then_at = Compose::new(Recorder::default())
+    let watch_then_at = Compose::new(Recorder::default())
         .watch(peer, stop_on_abnormal_death)
-        .deadline(Some(due), |_| Ok(Step::Continue));
-    let second = watch_then_at.init().unwrap();
+        .deadline(behavior::TimerId(0), Some(due), |_| Ok(Step::Continue));
+    let initialized = watch_then_at.initialize().unwrap();
+    let second = initialized.actions;
+    let _watch_then_at = initialized.behavior;
     assert_eq!(second.sends.behavior.observations[0].peer, peer);
     assert_eq!(second.sends.schedules[0].at, due);
 }
@@ -125,10 +128,11 @@ async fn wrapper_orderings_preserve_both_initial_protocols() {
 async fn unrelated_peer_event_passes_to_the_inner_watcher() {
     let inner_peer = MailAddr(1);
     let outer_peer = MailAddr(2);
-    let mut behavior = Compose::new(Recorder::default())
+    let behavior = Compose::new(Recorder::default())
         .watch(inner_peer, stop_on_abnormal_death)
         .watch(outer_peer, stop_on_abnormal_death);
-    behavior.init().unwrap();
+    let initialized = behavior.initialize().unwrap();
+    let mut behavior = initialized.behavior;
     let event = WatchEvent::PeerStopped(PeerStopped {
         peer: inner_peer,
         outcome: Err(Crash::Failed),
@@ -148,11 +152,13 @@ async fn unrelated_peer_event_passes_to_the_inner_watcher() {
 // `Deliver`-routed messages pass straight through with their origin intact.
 #[tokio::test]
 async fn stash_holds_in_fifo_order_without_loss_or_duplication_across_releases() {
-    let mut behavior = Compose::new(Recorder::default()).stash(|message| match message {
+    let behavior = Compose::new(Recorder::default()).stash(|message| match message {
         0 => StashRoute::Release,
         1..=9 => StashRoute::Stash,
         _ => StashRoute::Deliver,
     });
+    let initialized = behavior.initialize().unwrap();
+    let mut behavior = initialized.behavior;
     for (from, message) in [
         (MailAddr(1), 3),  // Stash
         (MailAddr(2), 3),  // Stash
@@ -162,18 +168,15 @@ async fn stash_holds_in_fifo_order_without_loss_or_duplication_across_releases()
         behavior.transition(UserEvent::user(from, message)).unwrap();
     }
 
-    assert_eq!(
-        behavior.behavior().inner().state().seen,
-        [(MailAddr(3), 42), (MailAddr(9), 0)]
-    );
-    assert_eq!(behavior.behavior().held(), 2);
+    assert_eq!(behavior.base().seen, [(MailAddr(3), 42), (MailAddr(9), 0)]);
+    assert_eq!(behavior.held(), 2);
 
     // A second release neither replays nor drops the held pair.
     behavior
         .transition(UserEvent::user(MailAddr(9), 0))
         .unwrap();
-    assert_eq!(behavior.behavior().inner().state().seen.len(), 3);
-    assert_eq!(behavior.behavior().held(), 2);
+    assert_eq!(behavior.base().seen.len(), 3);
+    assert_eq!(behavior.held(), 2);
 }
 
 #[tokio::test]
@@ -188,7 +191,7 @@ async fn fsm_replays_deferred_messages_once_after_phase_change() {
         Value(u8),
         Open,
     }
-    let mut machine = Compose::machine(
+    let machine = Compose::new(Machine::new(
         Vec::new(),
         Phase::Closed,
         |phase, seen: &mut Vec<u8>, message| {
@@ -201,25 +204,25 @@ async fn fsm_replays_deferred_messages_once_after_phase_change() {
                 (_, Message::Open) => Move::Goto(Phase::Open),
             })
         },
-    );
+    ));
+    let initialized = machine.initialize().unwrap();
+    let mut machine = initialized.behavior;
     for message in [Message::Value(1), Message::Value(1), Message::Open] {
         machine
             .transition(User::user(MailAddr(0), message))
             .unwrap();
     }
 
-    assert_eq!(machine.behavior().state(), &[1, 1]);
-    assert_eq!(machine.behavior().held(), 0);
+    assert_eq!(machine.state(), &[1, 1]);
+    assert_eq!(machine.held(), 0);
 }
 
-type Child = Pure<Recorder, Vec<Delivery<behavior_testkit::TestRecipient<u8>>>>;
+type Child = Recorder;
 
 struct Parent(bool);
 
-impl Handler<Vec<Never>, behavior::Births<Child>, Never> for Parent {
-    type Addr = MailAddr;
-    type Msg = u64;
-
+#[behavior::behavior(addr = MailAddr, message = u64, sends = Vec<Never>, births = behavior::Births<Child>, error = Never)]
+impl Parent {
     fn receive(
         &mut self,
         _from: MailAddr,
@@ -240,13 +243,14 @@ impl Handler<Vec<Never>, behavior::Births<Child>, Never> for Parent {
 }
 
 fn child(_index: usize) -> Child {
-    Pure::new(Recorder::default())
+    Recorder::default()
 }
 
 #[tokio::test]
 async fn proxy_forwards_only_to_the_current_fresh_generation() {
-    let mut proxy = Proxy::new(child(0));
-    assert_eq!(proxy.init().unwrap().creates[0].nonce, 0);
+    let initialized = Proxy::new(child(0)).initialize().unwrap();
+    assert_eq!(initialized.actions.creates[0].nonce, 0);
+    let mut proxy = initialized.behavior;
     proxy
         .transition(ProxyEvent::CreationResolved(CreationResolved {
             nonce: 0,
@@ -256,7 +260,7 @@ async fn proxy_forwards_only_to_the_current_fresh_generation() {
         .unwrap();
 
     let before = proxy
-        .transition(ProxyEvent::Inner(User::user(
+        .transition(ProxyEvent::Command(User::user(
             MailAddr(0),
             ProxyCommand::Forward(5),
         )))
@@ -267,7 +271,7 @@ async fn proxy_forwards_only_to_the_current_fresh_generation() {
     );
 
     let replacement = proxy
-        .transition(ProxyEvent::Inner(User::user(
+        .transition(ProxyEvent::Command(User::user(
             MailAddr(0),
             ProxyCommand::Replace(child(0)),
         )))
@@ -291,7 +295,7 @@ async fn proxy_forwards_only_to_the_current_fresh_generation() {
         .unwrap();
 
     let after = proxy
-        .transition(ProxyEvent::Inner(User::user(
+        .transition(ProxyEvent::Command(User::user(
             MailAddr(0),
             ProxyCommand::Forward(6),
         )))
@@ -305,12 +309,18 @@ async fn proxy_forwards_only_to_the_current_fresh_generation() {
 #[tokio::test]
 async fn restart_window_boundary_is_inclusive() {
     let start = Instant::now();
-    let mut supervisor = Compose::new(Parent(true))
-        .children((1, child))
+    let supervisor = Compose::new(Parent(true))
+        .children(
+            |index| u64::try_from(index).unwrap(),
+            1,
+            |index| Some(child(index)),
+        )
+        .unwrap()
         .restart(Strategy::OneForOne)
         .when(RestartPolicy::Permanent)
         .within(1, Duration::from_secs(5));
-    supervisor.init().unwrap();
+    let initialized = supervisor.initialize().unwrap();
+    let mut supervisor = initialized.behavior;
 
     let first = SupervisionEvent::WorkerStopped(WorkerStopped {
         proxy: 0,
@@ -345,11 +355,21 @@ async fn restart_window_boundary_is_inclusive() {
 }
 
 #[tokio::test]
-#[should_panic(expected = "a child birth nonce must be fresh")]
 async fn duplicate_dynamic_birth_is_rejected() {
-    let mut supervisor = Compose::new(Parent(false)).children((1, child));
-    supervisor.init().unwrap();
-    supervisor
-        .transition(UserEvent::user(MailAddr(0), 0))
+    let supervisor = Compose::new(Parent(false))
+        .children(
+            |index| u64::try_from(index).unwrap(),
+            1,
+            |index| Some(child(index)),
+        )
         .unwrap();
+    let initialized = supervisor.initialize().unwrap();
+    let mut supervisor = initialized.behavior;
+    assert!(matches!(
+        supervisor.transition(UserEvent::user(MailAddr(0), 0)),
+        Err(behavior::SupervisorError::Fleet(
+            behavior::FleetError::DuplicateChild(0)
+        ))
+    ));
 }
+use behavior_testkit::InitializeTest;

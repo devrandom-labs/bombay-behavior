@@ -1,7 +1,4 @@
-use behavior::{
-    Actions, Behavior, Delivery, Inner, MailAddr, Never, NoBirths, Own, Recipient, SendAlgebra,
-    SendProduct, User,
-};
+use behavior::{Actions, Behavior, Delivery, MailAddr, Never, NoBirths, Recipient, User};
 
 struct Queue;
 struct Worker;
@@ -17,11 +14,15 @@ macro_rules! inert {
             type Error = Never;
             type Birth = NoBirths;
 
-            fn init(&mut self) -> behavior::BehaviorActed<Self> {
+            fn init(&mut self, _: behavior::InitializationTurn) -> behavior::BehaviorActed<Self> {
                 Ok(Actions::cont())
             }
 
-            fn transition(&mut self, _: Self::Event) -> behavior::BehaviorActed<Self> {
+            fn transition(
+                &mut self,
+                _: behavior::ActiveTurn,
+                _: Self::Event,
+            ) -> behavior::BehaviorActed<Self> {
                 Ok(Actions::cont())
             }
         }
@@ -54,11 +55,15 @@ impl Behavior for SelfSending {
     type Error = Never;
     type Birth = NoBirths;
 
-    fn init(&mut self) -> behavior::BehaviorActed<Self> {
+    fn init(&mut self, _: behavior::InitializationTurn) -> behavior::BehaviorActed<Self> {
         Ok(Actions::cont())
     }
 
-    fn transition(&mut self, _: Self::Event) -> behavior::BehaviorActed<Self> {
+    fn transition(
+        &mut self,
+        _: behavior::ActiveTurn,
+        _: Self::Event,
+    ) -> behavior::BehaviorActed<Self> {
         Ok(Actions::new(
             vec![Delivery::new(Recipient::global(MailAddr(9)), 11)],
             Vec::new(),
@@ -70,6 +75,9 @@ impl Behavior for SelfSending {
 #[test]
 fn a_behavior_can_name_its_own_protocol_as_a_destination() {
     let actions = SelfSending
+        .initialize()
+        .unwrap()
+        .behavior
         .receive(MailAddr(1), 3)
         .expect("self-send transition succeeds");
 
@@ -78,14 +86,18 @@ fn a_behavior_can_name_its_own_protocol_as_a_destination() {
 
 #[test]
 fn equal_payloads_cannot_conflate_adjacent_protocol_lanes() {
-    type Lanes = SendProduct<Vec<Delivery<Queue>>, Vec<Delivery<Worker>>>;
+    struct DestinationSends {
+        queues: Vec<Delivery<Queue>>,
+        workers: Vec<Delivery<Worker>>,
+    }
 
-    let mut sends = Lanes::empty();
-    sends.send::<_, Inner<Own>>(Delivery::new(Recipient::<Queue>::global(MailAddr(4)), 7));
-    sends.send::<_, Own>(Delivery::new(Recipient::<Worker>::global(MailAddr(4)), 7));
+    let sends = DestinationSends {
+        queues: vec![Delivery::new(Recipient::<Queue>::global(MailAddr(4)), 7)],
+        workers: vec![Delivery::new(Recipient::<Worker>::global(MailAddr(4)), 7)],
+    };
 
-    assert_eq!(sends.inner.len(), 1);
-    assert_eq!(sends.own.len(), 1);
+    assert_eq!(sends.queues.len(), 1);
+    assert_eq!(sends.workers.len(), 1);
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -110,11 +122,15 @@ impl Behavior for Remote {
     type Error = Never;
     type Birth = NoBirths;
 
-    fn init(&mut self) -> behavior::BehaviorActed<Self> {
+    fn init(&mut self, _: behavior::InitializationTurn) -> behavior::BehaviorActed<Self> {
         Ok(Actions::cont())
     }
 
-    fn transition(&mut self, _: Self::Event) -> behavior::BehaviorActed<Self> {
+    fn transition(
+        &mut self,
+        _: behavior::ActiveTurn,
+        _: Self::Event,
+    ) -> behavior::BehaviorActed<Self> {
         Ok(Actions::cont())
     }
 }
@@ -130,11 +146,15 @@ impl Behavior for CrossNamespaceSender {
     type Error = Never;
     type Birth = NoBirths;
 
-    fn init(&mut self) -> behavior::BehaviorActed<Self> {
+    fn init(&mut self, _: behavior::InitializationTurn) -> behavior::BehaviorActed<Self> {
         Ok(Actions::cont())
     }
 
-    fn transition(&mut self, _: Self::Event) -> behavior::BehaviorActed<Self> {
+    fn transition(
+        &mut self,
+        _: behavior::ActiveTurn,
+        _: Self::Event,
+    ) -> behavior::BehaviorActed<Self> {
         Ok(Actions::new(
             vec![Delivery::new(Recipient::global(RemoteAddr(31)), 5)],
             Vec::new(),
@@ -146,6 +166,9 @@ impl Behavior for CrossNamespaceSender {
 #[test]
 fn destination_protocol_owns_the_address_namespace() {
     let actions = CrossNamespaceSender
+        .initialize()
+        .unwrap()
+        .behavior
         .receive(MailAddr(1), ())
         .expect("cross-namespace send succeeds");
 
@@ -159,3 +182,4 @@ fn protocol_markers_need_no_clone_or_equality_implementation() {
 
     assert!(cloned == delivery);
 }
+use behavior_testkit::InitializeTest;

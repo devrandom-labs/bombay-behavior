@@ -13,7 +13,7 @@ use behavior::{
 };
 use proptest::collection::vec;
 use proptest::prelude::*;
-use tokio::time::Instant;
+use std::time::Instant;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Worker;
@@ -29,11 +29,15 @@ impl Behavior for Reply {
     type Error = Never;
     type Birth = NoBirths;
 
-    fn init(&mut self) -> behavior::BehaviorActed<Self> {
+    fn init(&mut self, _: behavior::InitializationTurn) -> behavior::BehaviorActed<Self> {
         Ok(Actions::cont())
     }
 
-    fn transition(&mut self, _: Self::Event) -> behavior::BehaviorActed<Self> {
+    fn transition(
+        &mut self,
+        _: behavior::ActiveTurn,
+        _: Self::Event,
+    ) -> behavior::BehaviorActed<Self> {
         Ok(Actions::cont())
     }
 }
@@ -47,11 +51,15 @@ impl Behavior for Worker {
     type Error = Never;
     type Birth = NoBirths;
 
-    fn init(&mut self) -> behavior::BehaviorActed<Self> {
+    fn init(&mut self, _: behavior::InitializationTurn) -> behavior::BehaviorActed<Self> {
         Ok(Actions::cont())
     }
 
-    fn transition(&mut self, _event: Self::Event) -> behavior::BehaviorActed<Self> {
+    fn transition(
+        &mut self,
+        _: behavior::ActiveTurn,
+        _event: Self::Event,
+    ) -> behavior::BehaviorActed<Self> {
         Ok(Actions::cont())
     }
 }
@@ -85,11 +93,15 @@ impl Behavior for PanicReply {
     type Error = Never;
     type Birth = NoBirths;
 
-    fn init(&mut self) -> behavior::BehaviorActed<Self> {
+    fn init(&mut self, _: behavior::InitializationTurn) -> behavior::BehaviorActed<Self> {
         Ok(Actions::cont())
     }
 
-    fn transition(&mut self, _: Self::Event) -> behavior::BehaviorActed<Self> {
+    fn transition(
+        &mut self,
+        _: behavior::ActiveTurn,
+        _: Self::Event,
+    ) -> behavior::BehaviorActed<Self> {
         Ok(Actions::cont())
     }
 }
@@ -103,11 +115,15 @@ impl Behavior for PanicWorker {
     type Error = Never;
     type Birth = NoBirths;
 
-    fn init(&mut self) -> behavior::BehaviorActed<Self> {
+    fn init(&mut self, _: behavior::InitializationTurn) -> behavior::BehaviorActed<Self> {
         Ok(Actions::cont())
     }
 
-    fn transition(&mut self, _: Self::Event) -> behavior::BehaviorActed<Self> {
+    fn transition(
+        &mut self,
+        _: behavior::ActiveTurn,
+        _: Self::Event,
+    ) -> behavior::BehaviorActed<Self> {
         Ok(Actions::cont())
     }
 }
@@ -132,7 +148,7 @@ fn pool(
     WorkerPool::new(
         nonce,
         workers,
-        worker,
+        |index| Some(worker(index)),
         capacity,
         interruption,
         RestartPolicy::Permanent,
@@ -143,7 +159,7 @@ fn pool(
 }
 
 fn install(
-    pool: &mut WorkerPool<MailAddr, Reply, u8, u16, Worker>,
+    pool: &mut behavior::Active<WorkerPool<MailAddr, Reply, u8, u16, Worker>>,
     slot: u64,
 ) -> behavior::PoolActions<MailAddr, Reply, u8, u16, Worker> {
     pool.on(WorkerCreationResolved::new(
@@ -156,7 +172,7 @@ fn install(
 }
 
 fn submit(
-    pool: &mut WorkerPool<MailAddr, Reply, u8, u16, Worker>,
+    pool: &mut behavior::Active<WorkerPool<MailAddr, Reply, u8, u16, Worker>>,
     id: u64,
     payload: u8,
 ) -> behavior::PoolActions<MailAddr, Reply, u8, u16, Worker> {
@@ -185,8 +201,10 @@ fn responses(
 
 #[test]
 fn initialization_stages_and_observes_every_stable_proxy_before_dispatch() {
-    let mut pool = pool(2, 4, InterruptionPolicy::Fail);
-    let actions = pool.init().unwrap();
+    let pool = pool(2, 4, InterruptionPolicy::Fail);
+    let initialized = pool.initialize().unwrap();
+    let actions = initialized.actions;
+    let pool = initialized.behavior;
     assert_eq!(actions.creates.len(), 2);
     assert_eq!(actions.sends.child_observations.len(), 2);
     assert!(assignments(&actions).is_empty());
@@ -196,8 +214,9 @@ fn initialization_stages_and_observes_every_stable_proxy_before_dispatch() {
 
 #[test]
 fn accepted_job_is_recorded_before_one_exact_dispatch() {
-    let mut pool = pool(1, 0, InterruptionPolicy::Fail);
-    pool.init().unwrap();
+    let pool = pool(1, 0, InterruptionPolicy::Fail);
+    let initialized = pool.initialize().unwrap();
+    let mut pool = initialized.behavior;
     install(&mut pool, 0);
 
     let actions = submit(&mut pool, 7, 42);
@@ -226,8 +245,9 @@ fn accepted_job_is_recorded_before_one_exact_dispatch() {
 
 #[test]
 fn full_backlog_returns_the_unaccepted_owned_job() {
-    let mut pool = pool(1, 1, InterruptionPolicy::Fail);
-    pool.init().unwrap();
+    let pool = pool(1, 1, InterruptionPolicy::Fail);
+    let initialized = pool.initialize().unwrap();
+    let mut pool = initialized.behavior;
     let accepted = submit(&mut pool, 1, 10);
     assert!(matches!(
         responses(&accepted)[0].message,
@@ -247,8 +267,9 @@ fn full_backlog_returns_the_unaccepted_owned_job() {
 
 #[test]
 fn matching_completion_releases_slot_and_dispatches_fifo_successor() {
-    let mut pool = pool(1, 2, InterruptionPolicy::Fail);
-    pool.init().unwrap();
+    let pool = pool(1, 2, InterruptionPolicy::Fail);
+    let initialized = pool.initialize().unwrap();
+    let mut pool = initialized.behavior;
     install(&mut pool, 0);
     submit(&mut pool, 1, 10);
     submit(&mut pool, 2, 20);
@@ -279,8 +300,9 @@ fn matching_completion_releases_slot_and_dispatches_fifo_successor() {
 
 #[test]
 fn stale_completion_is_typed_and_preserves_current_ownership() {
-    let mut pool = pool(1, 0, InterruptionPolicy::Fail);
-    pool.init().unwrap();
+    let pool = pool(1, 0, InterruptionPolicy::Fail);
+    let initialized = pool.initialize().unwrap();
+    let mut pool = initialized.behavior;
     install(&mut pool, 0);
     submit(&mut pool, 1, 10);
     let error = match pool.receive(
@@ -314,8 +336,9 @@ fn stale_completion_is_typed_and_preserves_current_ownership() {
 #[test]
 fn interruption_policy_distinguishes_failure_from_at_least_once_retry() {
     for policy in [InterruptionPolicy::Fail, InterruptionPolicy::Retry] {
-        let mut pool = pool(1, 1, policy);
-        pool.init().unwrap();
+        let pool = pool(1, 1, policy);
+        let initialized = pool.initialize().unwrap();
+        let mut pool = initialized.behavior;
         install(&mut pool, 0);
         submit(&mut pool, 1, 10);
         let actions = pool
@@ -352,8 +375,9 @@ fn interruption_policy_distinguishes_failure_from_at_least_once_retry() {
 
 #[test]
 fn rejected_worker_creation_never_dispatches() {
-    let mut pool = pool(1, 1, InterruptionPolicy::Retry);
-    pool.init().unwrap();
+    let pool = pool(1, 1, InterruptionPolicy::Retry);
+    let initialized = pool.initialize().unwrap();
+    let mut pool = initialized.behavior;
     submit(&mut pool, 1, 10);
     let actions = pool
         .on(WorkerCreationResolved::new(
@@ -391,7 +415,7 @@ fn duplicate_configured_routes_are_rejected_before_initialization() {
     let result = WorkerPool::<MailAddr, Reply, u8, u16, Worker>::new(
         duplicate,
         2,
-        worker,
+        |index| Some(worker(index)),
         1,
         InterruptionPolicy::Fail,
         RestartPolicy::Permanent,
@@ -406,7 +430,7 @@ fn zero_worker_pool_is_rejected_before_it_can_accept_owned_work() {
     let result = WorkerPool::<MailAddr, Reply, u8, u16, Worker>::new(
         nonce,
         0,
-        worker,
+        |index| Some(worker(index)),
         8,
         InterruptionPolicy::Fail,
         RestartPolicy::Permanent,
@@ -418,10 +442,10 @@ fn zero_worker_pool_is_rejected_before_it_can_accept_owned_work() {
 
 #[test]
 fn panicking_payload_clone_occurs_before_admission_state_is_committed() {
-    let mut pool = WorkerPool::<MailAddr, PanicReply, PanicPayload, (), PanicWorker>::new(
+    let pool = WorkerPool::<MailAddr, PanicReply, PanicPayload, (), PanicWorker>::new(
         nonce,
         1,
-        panic_worker,
+        |index| Some(panic_worker(index)),
         1,
         InterruptionPolicy::Retry,
         RestartPolicy::Permanent,
@@ -429,7 +453,8 @@ fn panicking_payload_clone_occurs_before_admission_state_is_committed() {
         Duration::from_secs(1),
     )
     .unwrap();
-    pool.init().unwrap();
+    let initialized = pool.initialize().unwrap();
+    let mut pool = initialized.behavior;
     pool.on(WorkerCreationResolved::new(
         0,
         0,
@@ -477,10 +502,10 @@ fn panicking_payload_clone_occurs_before_admission_state_is_committed() {
 
 #[test]
 fn panicking_retry_clone_preserves_the_exact_assigned_state() {
-    let mut pool = WorkerPool::<MailAddr, PanicReply, PanicPayload, (), PanicWorker>::new(
+    let pool = WorkerPool::<MailAddr, PanicReply, PanicPayload, (), PanicWorker>::new(
         nonce,
         1,
-        panic_worker,
+        |index| Some(panic_worker(index)),
         1,
         InterruptionPolicy::Retry,
         RestartPolicy::Permanent,
@@ -488,7 +513,8 @@ fn panicking_retry_clone_preserves_the_exact_assigned_state() {
         Duration::from_secs(1),
     )
     .unwrap();
-    pool.init().unwrap();
+    let initialized = pool.initialize().unwrap();
+    let mut pool = initialized.behavior;
     pool.on(WorkerCreationResolved::new(
         0,
         0,
@@ -531,10 +557,10 @@ fn panicking_retry_clone_preserves_the_exact_assigned_state() {
 
 #[test]
 fn denied_replacement_retires_slot_instead_of_stranding_installation() {
-    let mut pool = WorkerPool::new(
+    let pool = WorkerPool::new(
         nonce,
         1,
-        worker,
+        |index| Some(worker(index)),
         1,
         InterruptionPolicy::Fail,
         RestartPolicy::Permanent,
@@ -542,7 +568,8 @@ fn denied_replacement_retires_slot_instead_of_stranding_installation() {
         Duration::from_secs(1),
     )
     .unwrap();
-    pool.init().unwrap();
+    let initialized = pool.initialize().unwrap();
+    let mut pool = initialized.behavior;
     install(&mut pool, 0);
     submit(&mut pool, 1, 10);
     let actions = pool
@@ -564,8 +591,9 @@ fn denied_replacement_retires_slot_instead_of_stranding_installation() {
 
 #[test]
 fn duplicate_creation_resolution_cannot_revive_or_overwrite_an_available_slot() {
-    let mut pool = pool(1, 1, InterruptionPolicy::Fail);
-    pool.init().unwrap();
+    let pool = pool(1, 1, InterruptionPolicy::Fail);
+    let initialized = pool.initialize().unwrap();
+    let mut pool = initialized.behavior;
     install(&mut pool, 0);
     let result = pool.on(WorkerCreationResolved::new(
         0,
@@ -608,8 +636,9 @@ proptest! {
     fn arbitrary_fifo_sequences_match_an_independent_ownership_model(
         commands in vec(prop_oneof![any::<u8>().prop_map(Command::Submit), Just(Command::Complete)], 0..128)
     ) {
-        let mut pool = pool(1, 8, InterruptionPolicy::Fail);
-        pool.init().unwrap();
+        let pool = pool(1, 8, InterruptionPolicy::Fail);
+        let initialized = pool.initialize().unwrap();
+        let mut pool = initialized.behavior;
         install(&mut pool, 0);
         let mut model = Model { slot: ModelSlot::Idle, queue: VecDeque::new(), next_assignment: 0 };
         let mut job = 0_u64;
@@ -663,10 +692,9 @@ proptest! {
 
 #[test]
 fn assignment_and_response_lanes_survive_shutdown_composition() {
-    let mut behavior = behavior::Compose::from_behavior(pool(1, 0, InterruptionPolicy::Fail))
-        .stop_on_shutdown()
-        .build();
-    behavior.init().unwrap();
+    let behavior = behavior::Compose::new(pool(1, 0, InterruptionPolicy::Fail)).stop_on_shutdown();
+    let initialized = behavior.initialize().unwrap();
+    let mut behavior = initialized.behavior;
     behavior
         .on(WorkerCreationResolved::new(
             0,
@@ -689,3 +717,4 @@ fn assignment_and_response_lanes_survive_shutdown_composition() {
     assert_eq!(actions.sends.behavior.assignments.len(), 1);
     assert!(matches!(actions.become_, Step::Continue));
 }
+use behavior_testkit::InitializeTest;

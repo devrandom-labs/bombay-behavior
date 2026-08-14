@@ -6,24 +6,19 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, Behavior, Compose, Crash, Create, Deadline, DeadlineEvent, Delivery, Exit,
-    Handler, Machine, MailAddr, Move, Never, Proxy, Pure, Recipient, RestartPolicy, StashRoute,
-    Step, Strategy, SupervisionEvent, Supervisor, TimerElapsed, TimerGeneration, TimerId, User,
-    UserEvent, WorkerStopped,
+    Acted, Actions, Compose, Crash, Create, DeadlineEvent, Delivery, Exit, Machine, MailAddr, Move,
+    Never, Proxy, Recipient, RestartPolicy, StashRoute, Step, Strategy, SupervisionEvent,
+    Supervisor, TimerElapsed, TimerGeneration, TimerId, User, UserEvent, WorkerStopped,
 };
-use tokio::time::Instant;
+use std::time::Instant;
 
 #[derive(Default)]
 struct Recorder {
     seen: Vec<(MailAddr, u8)>,
 }
 
-impl Handler<Vec<Delivery<behavior_testkit::TestRecipient<u8>>>, behavior::NoBirths, Never>
-    for Recorder
-{
-    type Addr = MailAddr;
-    type Msg = u8;
-
+#[behavior::behavior(addr = MailAddr, message = u8, sends = Vec<Delivery<behavior_testkit::TestRecipient<u8>>>, births = behavior::NoBirths, error = Never)]
+impl Recorder {
     fn receive(
         &mut self,
         from: MailAddr,
@@ -50,12 +45,8 @@ struct StopOnZero {
     seen: Vec<(MailAddr, u8)>,
 }
 
-impl Handler<Vec<Delivery<behavior_testkit::TestRecipient<u8>>>, behavior::NoBirths, Never>
-    for StopOnZero
-{
-    type Addr = MailAddr;
-    type Msg = u8;
-
+#[behavior::behavior(addr = MailAddr, message = u8, sends = Vec<Delivery<behavior_testkit::TestRecipient<u8>>>, births = behavior::NoBirths, error = Never)]
+impl StopOnZero {
     fn receive(
         &mut self,
         from: MailAddr,
@@ -80,14 +71,12 @@ impl Handler<Vec<Delivery<behavior_testkit::TestRecipient<u8>>>, behavior::NoBir
     }
 }
 
-type Child = Pure<Recorder, Vec<Delivery<behavior_testkit::TestRecipient<u8>>>>;
+type Child = Recorder;
 
 struct Parent;
 
-impl Handler<Vec<Never>, behavior::Births<Child>, Never> for Parent {
-    type Addr = MailAddr;
-    type Msg = u64;
-
+#[behavior::behavior(addr = MailAddr, message = u64, sends = Vec<Never>, births = behavior::Births<Child>, error = Never)]
+impl Parent {
     fn receive(
         &mut self,
         _from: MailAddr,
@@ -102,10 +91,8 @@ struct BirthingParent {
     born: bool,
 }
 
-impl Handler<Vec<Never>, behavior::Births<Child>, Never> for BirthingParent {
-    type Addr = MailAddr;
-    type Msg = u64;
-
+#[behavior::behavior(addr = MailAddr, message = u64, sends = Vec<Never>, births = behavior::Births<Child>, error = Never)]
+impl BirthingParent {
     fn receive(
         &mut self,
         _from: MailAddr,
@@ -124,7 +111,7 @@ impl Handler<Vec<Never>, behavior::Births<Child>, Never> for BirthingParent {
 }
 
 fn child(_index: usize) -> Child {
-    Pure::new(Recorder::default())
+    Recorder::default()
 }
 
 fn supervisor(
@@ -133,17 +120,18 @@ fn supervisor(
     maximum: u32,
     window: Duration,
     count: usize,
-) -> Supervisor<Pure<Parent, Vec<Never>, behavior::Births<Child>>, Child> {
+) -> Supervisor<Parent, Child> {
     Supervisor::new(
-        Pure::new(Parent),
+        Parent,
         |index| u64::try_from(index).unwrap(),
         count,
-        child,
+        |index| Some(child(index)),
         strategy,
         policy,
         maximum,
         window,
     )
+    .unwrap()
 }
 
 type SupervisorEvent = SupervisionEvent<User<MailAddr, u64>>;
@@ -158,17 +146,23 @@ fn stopped(nonce: u64, outcome: Result<Exit<MailAddr>, Crash>, at: Instant) -> S
 }
 
 #[tokio::test]
-#[should_panic(expected = "a proxy initializes once")]
-async fn proxy_double_init_is_rejected() {
-    let mut proxy = Proxy::new(child(0));
-    proxy.init().unwrap();
-    proxy.init().unwrap();
+async fn proxy_initialization_is_explicit() {
+    let initialized = Proxy::new(child(0)).initialize().unwrap();
+    assert_eq!(initialized.actions.creates.len(), 1);
 }
 
 #[tokio::test]
 async fn empty_fleet_supervisor_initializes_and_steps_cleanly() {
-    let mut supervisor = Compose::new(Parent).children((0, child));
-    let initial = supervisor.init().unwrap();
+    let supervisor = Compose::new(Parent)
+        .children(
+            |index| u64::try_from(index).unwrap(),
+            0,
+            |index| Some(child(index)),
+        )
+        .unwrap();
+    let initialized = supervisor.initialize().unwrap();
+    let initial = initialized.actions;
+    let mut supervisor = initialized.behavior;
     assert!(initial.creates.is_empty());
     assert!(initial.sends.child_observations.is_empty());
 
@@ -177,17 +171,26 @@ async fn empty_fleet_supervisor_initializes_and_steps_cleanly() {
         .unwrap();
     assert!(actions.creates.is_empty());
     assert!(actions.sends.child_observations.is_empty());
-    assert_eq!(supervisor.behavior().child_count(), 0);
+    assert_eq!(supervisor.child_count(), 0);
 }
 
 #[tokio::test]
-#[should_panic(expected = "unknown supervised nonce")]
-async fn child_stopped_for_unknown_nonce_panics() {
-    let mut supervisor = Compose::new(Parent).children((1, child));
-    supervisor.init().unwrap();
-    supervisor
-        .transition(stopped(42, Err(Crash::Failed), Instant::now()))
+async fn child_stopped_for_unknown_nonce_is_typed() {
+    let supervisor = Compose::new(Parent)
+        .children(
+            |index| u64::try_from(index).unwrap(),
+            1,
+            |index| Some(child(index)),
+        )
         .unwrap();
+    let initialized = supervisor.initialize().unwrap();
+    let mut supervisor = initialized.behavior;
+    assert!(matches!(
+        supervisor.transition(stopped(42, Err(Crash::Failed), Instant::now())),
+        Err(behavior::SupervisorError::Fleet(
+            behavior::FleetError::UnknownChild(42)
+        ))
+    ));
 }
 
 /// A redelivered `ChildStopped` (duplicate environmental event) triggers a
@@ -196,14 +199,15 @@ async fn child_stopped_for_unknown_nonce_panics() {
 #[tokio::test]
 async fn duplicate_child_stopped_triggers_a_second_restart() {
     let at = Instant::now();
-    let mut supervisor = supervisor(
+    let supervisor = supervisor(
         Strategy::OneForOne,
         RestartPolicy::Permanent,
         5,
         Duration::MAX,
         1,
     );
-    supervisor.init().unwrap();
+    let initialized = supervisor.initialize().unwrap();
+    let mut supervisor = initialized.behavior;
 
     let first = supervisor
         .transition(stopped(0, Err(Crash::Failed), at))
@@ -221,37 +225,41 @@ async fn duplicate_child_stopped_triggers_a_second_restart() {
 /// Configured nonces obey the same creator-local uniqueness law as dynamic
 /// births; an ambiguous topology is rejected before it can emit creations.
 #[test]
-#[should_panic(expected = "configured child nonces must be fresh")]
 fn duplicate_configured_nonces_are_rejected() {
-    let _supervisor = Supervisor::new(
-        Pure::new(Parent),
+    let result = Supervisor::new(
+        Parent,
         |_| 7,
         2,
-        child,
+        |index| Some(child(index)),
         Strategy::OneForOne,
         RestartPolicy::Permanent,
         u32::MAX,
         Duration::MAX,
     );
+    assert!(matches!(
+        result,
+        Err(behavior::FleetError::DuplicateChild(7))
+    ));
 }
 
 #[tokio::test]
 async fn transient_policy_restarts_only_abnormal_outcomes() {
     let at = Instant::now();
-    let mut supervisor = supervisor(
+    let supervisor = supervisor(
         Strategy::OneForOne,
         RestartPolicy::Transient,
         u32::MAX,
         Duration::MAX,
         3,
     );
-    supervisor.init().unwrap();
+    let initialized = supervisor.initialize().unwrap();
+    let mut supervisor = initialized.behavior;
 
     let normal = supervisor
         .transition(stopped(0, Ok(Exit::Normal), at))
         .unwrap();
     assert!(normal.sends.replacement_commands.is_empty());
-    assert!(!supervisor.is_alive(0));
+    assert!(!supervisor.is_alive(0).unwrap());
 
     let collected = supervisor
         .transition(stopped(0, Ok(Exit::Collected), at))
@@ -262,7 +270,7 @@ async fn transient_policy_restarts_only_abnormal_outcomes() {
         .transition(stopped(1, Ok(Exit::LinkDied(MailAddr(9))), at))
         .unwrap();
     assert_eq!(link.sends.replacement_commands.len(), 1);
-    assert!(supervisor.is_alive(1));
+    assert!(supervisor.is_alive(1).unwrap());
 
     for crash in [
         Crash::Failed,
@@ -272,7 +280,7 @@ async fn transient_policy_restarts_only_abnormal_outcomes() {
     ] {
         let crashed = supervisor.transition(stopped(2, Err(crash), at)).unwrap();
         assert_eq!(crashed.sends.replacement_commands.len(), 1);
-        assert!(supervisor.is_alive(2));
+        assert!(supervisor.is_alive(2).unwrap());
     }
 }
 
@@ -283,14 +291,15 @@ async fn transient_policy_restarts_only_abnormal_outcomes() {
 #[tokio::test]
 async fn one_for_all_skips_dead_slots_and_respects_budget() {
     let at = Instant::now();
-    let mut supervisor = supervisor(
+    let supervisor = supervisor(
         Strategy::OneForAll,
         RestartPolicy::Permanent,
         5,
         Duration::MAX,
         3,
     );
-    supervisor.init().unwrap();
+    let initialized = supervisor.initialize().unwrap();
+    let mut supervisor = initialized.behavior;
 
     let first = supervisor
         .transition(stopped(0, Err(Crash::Failed), at))
@@ -302,7 +311,7 @@ async fn one_for_all_skips_dead_slots_and_respects_budget() {
         .transition(stopped(1, Err(Crash::Failed), at))
         .unwrap();
     assert!(denied.sends.replacement_commands.is_empty());
-    assert!(!supervisor.is_alive(1));
+    assert!(!supervisor.is_alive(1).unwrap());
 
     // Third death: candidates are now only {0, 2} — the dead slot 1 is
     // excluded — so 3 + 2 = 5 <= budget: BOTH alive slots restart, and the
@@ -321,9 +330,9 @@ async fn one_for_all_skips_dead_slots_and_respects_budget() {
     assert!(routes.contains(&behavior::Address::birth(MailAddr(17), 0)));
     assert!(routes.contains(&behavior::Address::birth(MailAddr(17), 2)));
     assert!(!routes.contains(&behavior::Address::birth(MailAddr(17), 1)));
-    assert!(supervisor.is_alive(2));
-    assert!(supervisor.is_alive(0));
-    assert!(!supervisor.is_alive(1));
+    assert!(supervisor.is_alive(2).unwrap());
+    assert!(supervisor.is_alive(0).unwrap());
+    assert!(!supervisor.is_alive(1).unwrap());
 }
 
 /// `RestForOne` candidates are birth-sequence ordered, not index ordered: a
@@ -331,17 +340,19 @@ async fn one_for_all_skips_dead_slots_and_respects_budget() {
 #[tokio::test]
 async fn rest_for_one_uses_birth_sequence_not_index() {
     let at = Instant::now();
-    let mut supervisor = Supervisor::new(
-        Pure::new(BirthingParent { born: false }),
+    let supervisor = Supervisor::new(
+        BirthingParent { born: false },
         |index| u64::try_from(index).unwrap(),
         3,
-        child,
+        |index| Some(child(index)),
         Strategy::RestForOne,
         RestartPolicy::Permanent,
         u32::MAX,
         Duration::MAX,
-    );
-    supervisor.init().unwrap();
+    )
+    .unwrap();
+    let initialized = supervisor.initialize().unwrap();
+    let mut supervisor = initialized.behavior;
     supervisor
         .transition(UserEvent::user(MailAddr(0), 9))
         .unwrap();
@@ -384,14 +395,15 @@ async fn rest_for_one_uses_birth_sequence_not_index() {
 async fn restart_window_prunes_aged_stamps_but_keeps_future_ones() {
     let start = Instant::now();
     let window = Duration::from_nanos(50);
-    let mut supervisor = supervisor(
+    let supervisor = supervisor(
         Strategy::OneForOne,
         RestartPolicy::Permanent,
         u32::MAX,
         window,
         1,
     );
-    supervisor.init().unwrap();
+    let initialized = supervisor.initialize().unwrap();
+    let mut supervisor = initialized.behavior;
 
     supervisor
         .transition(stopped(0, Err(Crash::Failed), start))
@@ -424,21 +436,23 @@ async fn restart_window_prunes_aged_stamps_but_keeps_future_ones() {
 /// stops the fold, the drain is skipped, and held messages survive the stop.
 #[tokio::test]
 async fn stash_stop_skips_drain_and_preserves_held_messages() {
-    let mut behavior = Compose::new(StopOnZero::default()).stash(|message| match message {
+    let behavior = Compose::new(StopOnZero::default()).stash(|message| match message {
         0 => StashRoute::Release,
         _ => StashRoute::Stash,
     });
+    let initialized = behavior.initialize().unwrap();
+    let mut behavior = initialized.behavior;
     behavior
         .transition(UserEvent::user(MailAddr(1), 5))
         .unwrap();
-    assert_eq!(behavior.behavior().held(), 1);
+    assert_eq!(behavior.held(), 1);
 
     let actions = behavior
         .transition(UserEvent::user(MailAddr(9), 0))
         .unwrap();
     assert_eq!(actions.become_, Step::Stop(Exit::Normal));
-    assert_eq!(behavior.behavior().inner().state().seen, [(MailAddr(9), 0)]);
-    assert_eq!(behavior.behavior().held(), 1);
+    assert_eq!(behavior.base().seen, [(MailAddr(9), 0)]);
+    assert_eq!(behavior.held(), 1);
 }
 
 /// A message deferred mid-drain, then replayed after a phase change inside
@@ -460,7 +474,7 @@ async fn fsm_mid_drain_deferral_reorders_relative_to_fifo() {
         C,
         Open,
     }
-    let mut machine = Machine::new(
+    let machine = Machine::new(
         Vec::new(),
         Phase::P0,
         |phase, seen: &mut Vec<char>, message| {
@@ -480,6 +494,7 @@ async fn fsm_mid_drain_deferral_reorders_relative_to_fifo() {
             })
         },
     );
+    let mut machine = machine.initialize().unwrap().behavior;
     for message in [Message::A, Message::B, Message::C] {
         machine
             .transition(User::user(MailAddr(0), message))
@@ -500,14 +515,11 @@ async fn fsm_mid_drain_deferral_reorders_relative_to_fifo() {
 #[tokio::test]
 async fn nested_at_identical_schedules_are_distinguished_by_identity() {
     let due = Instant::now() + Duration::from_secs(1);
-    let inner = Deadline::new(
-        Pure::new(Recorder::default()),
-        TimerId(0),
-        Some(due),
-        |_| Ok(Step::Stop(Exit::Normal)),
-    );
-    let mut outer = Deadline::new(inner, TimerId(1), Some(due), |_| Ok(Step::Continue));
-    outer.init().unwrap();
+    let outer = Compose::new(Recorder::default())
+        .deadline(TimerId(0), Some(due), |_| Ok(Step::Stop(Exit::Normal)))
+        .deadline(TimerId(1), Some(due), |_| Ok(Step::Continue));
+    let initialized = outer.initialize().unwrap();
+    let mut outer = initialized.behavior;
 
     let event = DeadlineEvent::Elapsed(TimerElapsed {
         id: TimerId(0),
@@ -525,8 +537,15 @@ async fn nested_at_identical_schedules_are_distinguished_by_identity() {
 #[tokio::test]
 async fn spec_children_defaults_to_transient_with_budget_one() {
     let at = Instant::now();
-    let mut supervisor = Compose::new(Parent).children((1, child));
-    supervisor.init().unwrap();
+    let supervisor = Compose::new(Parent)
+        .children(
+            |index| u64::try_from(index).unwrap(),
+            1,
+            |index| Some(child(index)),
+        )
+        .unwrap();
+    let initialized = supervisor.initialize().unwrap();
+    let mut supervisor = initialized.behavior;
 
     let first = supervisor
         .transition(stopped(0, Err(Crash::Failed), at))
@@ -537,7 +556,7 @@ async fn spec_children_defaults_to_transient_with_budget_one() {
         .transition(stopped(0, Err(Crash::Failed), at + Duration::from_secs(1)))
         .unwrap();
     assert!(second.sends.replacement_commands.is_empty());
-    assert!(!supervisor.behavior().is_alive(0));
+    assert!(!supervisor.is_alive(0).unwrap());
 
     // A normal exit is never restarted under the default Transient policy.
     let normal = supervisor
@@ -553,17 +572,19 @@ async fn spec_children_defaults_to_transient_with_budget_one() {
 #[tokio::test]
 async fn supervising_inherent_builders_match_the_spec_defaults() {
     let at = Instant::now();
-    let mut supervisor = Supervisor::new(
-        Pure::new(Parent),
+    let supervisor = Supervisor::new(
+        Parent,
         |index| u64::try_from(index).unwrap(),
         1,
-        child,
+        |index| Some(child(index)),
         Strategy::OneForOne,
         RestartPolicy::Transient,
         1,
         Duration::from_secs(5),
-    );
-    supervisor.init().unwrap();
+    )
+    .unwrap();
+    let initialized = supervisor.initialize().unwrap();
+    let mut supervisor = initialized.behavior;
 
     let first = supervisor
         .transition(stopped(0, Err(Crash::Failed), at))
@@ -574,5 +595,6 @@ async fn supervising_inherent_builders_match_the_spec_defaults() {
         .transition(stopped(0, Err(Crash::Failed), at + Duration::from_secs(1)))
         .unwrap();
     assert!(second.sends.replacement_commands.is_empty());
-    assert!(!supervisor.is_alive(0));
+    assert!(!supervisor.is_alive(0).unwrap());
 }
+use behavior_testkit::InitializeTest;

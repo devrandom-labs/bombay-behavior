@@ -8,7 +8,7 @@ use behavior::{
     RestartPolicy, User, WorkerCreationResolved, WorkerPhase, WorkerPool, WorkerStopped,
 };
 use libfuzzer_sys::fuzz_target;
-use tokio::time::Instant;
+use std::time::Instant;
 
 type Reply = bombay_behavior_fuzz::TestRecipient<PoolResponse<u8, u8, MailAddr>>;
 
@@ -23,11 +23,11 @@ impl Behavior for Worker {
     type Error = Never;
     type Birth = NoBirths;
 
-    fn init(&mut self) -> behavior::BehaviorActed<Self> {
+    fn init(&mut self, _: behavior::InitializationTurn) -> behavior::BehaviorActed<Self> {
         Ok(Actions::cont())
     }
 
-    fn transition(&mut self, _event: Self::Event) -> behavior::BehaviorActed<Self> {
+    fn transition(&mut self, _: behavior::ActiveTurn, _event: Self::Event) -> behavior::BehaviorActed<Self> {
         Ok(Actions::cont())
     }
 }
@@ -45,10 +45,10 @@ fn affinity(key: &u8) -> u64 {
 }
 
 fuzz_target!(|bytes: &[u8]| {
-    let mut pool = WorkerPool::new(
+    let pool = WorkerPool::new(
         nonce,
         2,
-        worker,
+        |index| Some(worker(index)),
         4,
         if bytes.first().is_some_and(|byte| byte & 1 == 0) {
             InterruptionPolicy::Fail
@@ -60,7 +60,8 @@ fuzz_target!(|bytes: &[u8]| {
         Duration::from_secs(1),
     )
     .unwrap();
-    pool.init().unwrap();
+    let initialized = behavior::Compose::new(pool).initialize().unwrap();
+    let mut pool = initialized.behavior;
     for slot in 0..2 {
         pool.on(WorkerCreationResolved::new(
             slot,
@@ -128,10 +129,10 @@ fuzz_target!(|bytes: &[u8]| {
         }
     }
 
-    let mut keyed = KeyedWorkerPool::new(
+    let keyed = KeyedWorkerPool::new(
         nonce,
         2,
-        worker,
+        |index| Some(worker(index)),
         4,
         InterruptionPolicy::Retry,
         RestartPolicy::Permanent,
@@ -140,7 +141,8 @@ fuzz_target!(|bytes: &[u8]| {
         affinity,
     )
     .unwrap();
-    keyed.init().unwrap();
+    let initialized = behavior::Compose::new(keyed).initialize().unwrap();
+    let mut keyed = initialized.behavior;
     for slot in 0..2 {
         keyed
             .on(WorkerCreationResolved::new(

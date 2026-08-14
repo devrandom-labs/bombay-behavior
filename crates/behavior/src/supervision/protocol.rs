@@ -1,22 +1,23 @@
 //! Typed event and command protocols used by supervision behaviors.
 
 use crate::protocol::forward::forward_event_lane;
-use crate::protocol::{
-    ChildEvent, ChildStopped, CreationEvent, CreationResolved, WorkerCreationEvent,
-    WorkerCreationResolved, WorkerEvent, WorkerStopped,
-};
+use crate::protocol::{ChildStopped, CreationResolved, WorkerCreationResolved, WorkerStopped};
 use crate::{Address, Behavior, User, UserEvent};
 
 #[derive(Clone, PartialEq, Eq)]
 pub enum ProxyEvent<E: UserEvent> {
-    Inner(E),
+    Command(E),
     ChildStopped(ChildStopped<E::Addr>),
     CreationResolved(CreationResolved<<E::Addr as Address>::Nonce>),
 }
 
-impl<E: UserEvent> CreationEvent for ProxyEvent<E> {
-    fn creation_resolved(event: CreationResolved<<E::Addr as Address>::Nonce>) -> Option<Self> {
-        Some(Self::CreationResolved(event))
+impl<E: UserEvent> crate::RouteInput<CreationResolved<<E::Addr as Address>::Nonce>>
+    for ProxyEvent<E>
+{
+    fn route(
+        event: CreationResolved<<E::Addr as Address>::Nonce>,
+    ) -> Result<Self, CreationResolved<<E::Addr as Address>::Nonce>> {
+        Ok(Self::CreationResolved(event))
     }
 }
 
@@ -28,9 +29,9 @@ impl<E: UserEvent> crate::EventInput<CreationResolved<<E::Addr as Address>::Nonc
     }
 }
 
-impl<E: UserEvent> ChildEvent for ProxyEvent<E> {
-    fn child_stopped(event: ChildStopped<E::Addr>) -> Option<Self> {
-        Some(Self::ChildStopped(event))
+impl<E: UserEvent> crate::RouteInput<ChildStopped<E::Addr>> for ProxyEvent<E> {
+    fn route(event: ChildStopped<E::Addr>) -> Result<Self, ChildStopped<E::Addr>> {
+        Ok(Self::ChildStopped(event))
     }
 }
 
@@ -45,55 +46,43 @@ impl<E: UserEvent> UserEvent for ProxyEvent<E> {
     type Message = E::Message;
 
     fn user(from: Self::Addr, message: Self::Message) -> Self {
-        Self::Inner(E::user(from, message))
+        Self::Command(E::user(from, message))
     }
 
     fn into_user(self) -> Result<User<Self::Addr, Self::Message>, Self> {
         match self {
-            Self::Inner(event) => event.into_user().map_err(Self::Inner),
+            Self::Command(event) => event.into_user().map_err(Self::Command),
             service @ (Self::ChildStopped(_) | Self::CreationResolved(_)) => Err(service),
         }
     }
 }
 
-forward_event_lane!(ProxyEvent, TimeEvent, time_reached, crate::TimerElapsed);
+forward_event_lane!(ProxyEvent, crate::TimerElapsed, Command);
+forward_event_lane!(ProxyEvent, crate::PeerStopped<E::Addr>, Command);
+forward_event_lane!(ProxyEvent, crate::WorkerStopped<E::Addr>, Command);
 forward_event_lane!(
     ProxyEvent,
-    PeerEvent,
-    peer_stopped,
-    crate::PeerStopped<E::Addr>
+    crate::WorkerCreationResolved<<E::Addr as crate::Address>::Nonce>,
+    Command
 );
-forward_event_lane!(
-    ProxyEvent,
-    WorkerEvent,
-    worker_stopped,
-    crate::WorkerStopped<E::Addr>
-);
-forward_event_lane!(
-    ProxyEvent,
-    WorkerCreationEvent,
-    worker_creation_resolved,
-    crate::WorkerCreationResolved<<E::Addr as crate::Address>::Nonce>
-);
-forward_event_lane!(
-    ProxyEvent,
-    ShutdownEvent,
-    shutdown_requested,
-    crate::ShutdownRequested
-);
+forward_event_lane!(ProxyEvent, crate::ShutdownRequested, Command);
 
 #[derive(Clone, PartialEq, Eq)]
 pub enum SupervisionEvent<E: UserEvent> {
-    Inner(E),
+    Behavior(E),
     ChildStopped(ChildStopped<E::Addr>),
     WorkerStopped(WorkerStopped<E::Addr>),
     CreationResolved(CreationResolved<<E::Addr as Address>::Nonce>),
     WorkerCreationResolved(WorkerCreationResolved<<E::Addr as Address>::Nonce>),
 }
 
-impl<E: UserEvent> CreationEvent for SupervisionEvent<E> {
-    fn creation_resolved(event: CreationResolved<<E::Addr as Address>::Nonce>) -> Option<Self> {
-        Some(Self::CreationResolved(event))
+impl<E: UserEvent> crate::RouteInput<CreationResolved<<E::Addr as Address>::Nonce>>
+    for SupervisionEvent<E>
+{
+    fn route(
+        event: CreationResolved<<E::Addr as Address>::Nonce>,
+    ) -> Result<Self, CreationResolved<<E::Addr as Address>::Nonce>> {
+        Ok(Self::CreationResolved(event))
     }
 }
 
@@ -105,11 +94,13 @@ impl<E: UserEvent> crate::EventInput<CreationResolved<<E::Addr as Address>::Nonc
     }
 }
 
-impl<E: UserEvent> WorkerCreationEvent for SupervisionEvent<E> {
-    fn worker_creation_resolved(
+impl<E: UserEvent> crate::RouteInput<WorkerCreationResolved<<E::Addr as Address>::Nonce>>
+    for SupervisionEvent<E>
+{
+    fn route(
         event: WorkerCreationResolved<<E::Addr as Address>::Nonce>,
-    ) -> Option<Self> {
-        Some(Self::WorkerCreationResolved(event))
+    ) -> Result<Self, WorkerCreationResolved<<E::Addr as Address>::Nonce>> {
+        Ok(Self::WorkerCreationResolved(event))
     }
 }
 
@@ -121,9 +112,9 @@ impl<E: UserEvent> crate::EventInput<WorkerCreationResolved<<E::Addr as Address>
     }
 }
 
-impl<E: UserEvent> ChildEvent for SupervisionEvent<E> {
-    fn child_stopped(event: ChildStopped<E::Addr>) -> Option<Self> {
-        Some(Self::ChildStopped(event))
+impl<E: UserEvent> crate::RouteInput<ChildStopped<E::Addr>> for SupervisionEvent<E> {
+    fn route(event: ChildStopped<E::Addr>) -> Result<Self, ChildStopped<E::Addr>> {
+        Ok(Self::ChildStopped(event))
     }
 }
 
@@ -133,9 +124,9 @@ impl<E: UserEvent> crate::EventInput<ChildStopped<E::Addr>> for SupervisionEvent
     }
 }
 
-impl<E: UserEvent> WorkerEvent for SupervisionEvent<E> {
-    fn worker_stopped(event: WorkerStopped<E::Addr>) -> Option<Self> {
-        Some(Self::WorkerStopped(event))
+impl<E: UserEvent> crate::RouteInput<WorkerStopped<E::Addr>> for SupervisionEvent<E> {
+    fn route(event: WorkerStopped<E::Addr>) -> Result<Self, WorkerStopped<E::Addr>> {
+        Ok(Self::WorkerStopped(event))
     }
 }
 
@@ -150,12 +141,12 @@ impl<E: UserEvent> UserEvent for SupervisionEvent<E> {
     type Message = E::Message;
 
     fn user(from: Self::Addr, message: Self::Message) -> Self {
-        Self::Inner(E::user(from, message))
+        Self::Behavior(E::user(from, message))
     }
 
     fn into_user(self) -> Result<User<Self::Addr, Self::Message>, Self> {
         match self {
-            Self::Inner(event) => event.into_user().map_err(Self::Inner),
+            Self::Behavior(event) => event.into_user().map_err(Self::Behavior),
             service @ (Self::ChildStopped(_)
             | Self::WorkerStopped(_)
             | Self::CreationResolved(_)
@@ -164,24 +155,9 @@ impl<E: UserEvent> UserEvent for SupervisionEvent<E> {
     }
 }
 
-forward_event_lane!(
-    SupervisionEvent,
-    TimeEvent,
-    time_reached,
-    crate::TimerElapsed
-);
-forward_event_lane!(
-    SupervisionEvent,
-    PeerEvent,
-    peer_stopped,
-    crate::PeerStopped<E::Addr>
-);
-forward_event_lane!(
-    SupervisionEvent,
-    ShutdownEvent,
-    shutdown_requested,
-    crate::ShutdownRequested
-);
+forward_event_lane!(SupervisionEvent, crate::TimerElapsed);
+forward_event_lane!(SupervisionEvent, crate::PeerStopped<E::Addr>);
+forward_event_lane!(SupervisionEvent, crate::ShutdownRequested);
 
 /// Commands accepted by a stable proxy.
 #[derive(Debug)]

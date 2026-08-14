@@ -16,13 +16,11 @@ name = "behavior"
 
 [dependencies]
 behavior-macros.workspace = true
-communication.workspace = true
 thiserror.workspace = true
-tokio = { workspace = true, features = ["sync", "time", "macros", "rt"] }
 
 [dev-dependencies]
 proptest.workspace = true
-tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "time", "sync", "test-util"] }
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "sync"] }
 
 [lints]
 workspace = true

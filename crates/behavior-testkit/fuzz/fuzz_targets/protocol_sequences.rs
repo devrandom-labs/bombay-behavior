@@ -1,17 +1,16 @@
 #![no_main]
 
 use behavior::{
-    Acted, Actions, Behavior, ChildStopped, CreationKind, CreationResolved, Delivery, Exit,
-    Handler, MailAddr, Never, Proxy, ProxyCommand, ProxyEvent, Pure, User, UserEvent,
+    Acted, Actions, ChildStopped, CreationKind, CreationResolved, Delivery, Exit,
+    MailAddr, Never, Proxy, ProxyCommand, ProxyEvent, User, UserEvent,
 };
 use libfuzzer_sys::fuzz_target;
 use tokio::runtime::Builder;
 
 struct Worker;
 
-impl Handler<Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u8>>>> for Worker {
-    type Addr = MailAddr;
-    type Msg = u8;
+#[behavior::behavior(addr = MailAddr, message = u8, sends = Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u8>>>, births = behavior::NoBirths, error = Never)]
+impl Worker  {
 
     fn receive(
         &mut self,
@@ -22,15 +21,17 @@ impl Handler<Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u8>>>> for Worker 
     }
 }
 
-fn worker(_seed: usize) -> Pure<Worker, Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u8>>>> {
-    Pure::new(Worker)
+fn worker(_seed: usize) -> Worker {
+    Worker
 }
 
 fuzz_target!(|bytes: &[u8]| {
     let runtime = Builder::new_current_thread().enable_time().build().unwrap();
     runtime.block_on(async {
-        let mut proxy = Proxy::new(worker(0));
-        let initial = proxy.init().unwrap();
+        let proxy = Proxy::new(worker(0));
+        let initialized = behavior::Compose::new(proxy).initialize().unwrap();
+    let initial = initialized.actions;
+    let mut proxy = initialized.behavior;
         assert_eq!(initial.creates.len(), 1);
         assert_eq!(initial.creates[0].nonce, 0);
         assert_eq!(initial.creates[0].kind, CreationKind::Birth);
@@ -46,7 +47,7 @@ fuzz_target!(|bytes: &[u8]| {
         for (index, byte) in bytes.iter().copied().enumerate() {
             if byte & 1 == 0 {
                 let actions = proxy
-                    .transition(ProxyEvent::Inner(User::user(
+                    .transition(ProxyEvent::Command(User::user(
                         MailAddr(0),
                         ProxyCommand::Forward(byte),
                     )))
@@ -61,7 +62,7 @@ fuzz_target!(|bytes: &[u8]| {
             } else {
                 generation = generation.checked_add(1).unwrap();
                 let actions = proxy
-                    .transition(ProxyEvent::Inner(User::user(
+                    .transition(ProxyEvent::Command(User::user(
                         MailAddr(0),
                         ProxyCommand::Replace(worker(index)),
                     )))
@@ -72,7 +73,7 @@ fuzz_target!(|bytes: &[u8]| {
                     .transition(ProxyEvent::ChildStopped(ChildStopped {
                         nonce: generation - 1,
                         outcome: Ok(Exit::Normal),
-                        at: tokio::time::Instant::now(),
+                        at: std::time::Instant::now(),
                     }))
                     .unwrap();
                 assert_eq!(actions.creates.len(), 1);

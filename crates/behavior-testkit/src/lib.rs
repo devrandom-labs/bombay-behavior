@@ -2,7 +2,9 @@
 
 use std::collections::VecDeque;
 
-use behavior::{ActionReducer, Address, Behavior, BirthMode, Create, Exit, SendAlgebra};
+use behavior::{
+    ActionReducer, Active, Address, Behavior, BirthMode, Compose, Create, Exit, SendAlgebra,
+};
 use core::marker::PhantomData;
 
 /// A nominal, inert destination used by behavior tests that inspect emitted
@@ -18,15 +20,29 @@ impl<M> Behavior for TestRecipient<M> {
     type Error = behavior::Never;
     type Birth = behavior::NoBirths;
 
-    fn init(&mut self) -> behavior::BehaviorActed<Self> {
+    fn init(&mut self, _: behavior::InitializationTurn) -> behavior::BehaviorActed<Self> {
         Ok(behavior::Actions::cont())
     }
 
-    fn transition(&mut self, _: Self::Event) -> behavior::BehaviorActed<Self> {
+    fn transition(
+        &mut self,
+        _: behavior::ActiveTurn,
+        _: Self::Event,
+    ) -> behavior::BehaviorActed<Self> {
         Ok(behavior::Actions::cont())
     }
 }
 use core::ops::ControlFlow;
+
+/// Test-fixture shorthand for activating a raw concrete behavior through the
+/// same `Compose` boundary used by production definitions.
+pub trait InitializeTest: Behavior + Sized {
+    fn initialize(self) -> Result<behavior::Initialized<Self>, Self::Error> {
+        Compose::new(self).initialize()
+    }
+}
+
+impl<B: Behavior> InitializeTest for B {}
 
 pub mod model;
 
@@ -52,10 +68,11 @@ impl<E> Mailbox<E> {
     }
 }
 
-pub struct Trace<A: Address, Sends, New> {
-    pub sends: Sends,
-    pub creates: Vec<Create<A, New>>,
-    pub exit: Option<Exit<A>>,
+pub struct Trace<B: Behavior> {
+    pub behavior: Active<B>,
+    pub sends: B::Sends,
+    pub creates: Vec<Create<B::Addr, <B::Birth as BirthMode>::Child>>,
+    pub exit: Option<Exit<B::Addr>>,
     pub transitions: usize,
     pub pending: usize,
 }
@@ -67,17 +84,19 @@ pub struct Trace<A: Address, Sends, New> {
 /// # Errors
 /// Returns the behavior's first controlled failure (`B::Error`).
 pub fn drive<B, A, Sends, Br>(
-    behavior: &mut B,
+    definition: Compose<B>,
     mailbox: &mut Mailbox<B::Event>,
-) -> Result<Trace<A, Sends, Br::Child>, B::Error>
+) -> Result<Trace<B>, B::Error>
 where
     A: Address,
     Sends: SendAlgebra,
     Br: BirthMode,
     B: Behavior<Addr = A, Ph = behavior::Never, Sends = Sends, Birth = Br>,
 {
+    let initialized = definition.initialize()?;
+    let mut behavior = initialized.behavior;
     let mut fold = ActionReducer::new();
-    let mut exit = match fold.push(behavior.init()?) {
+    let mut exit = match fold.push(initialized.actions) {
         ControlFlow::Continue(()) => None,
         ControlFlow::Break(exit) => Some(exit),
     };
@@ -95,6 +114,7 @@ where
     let folded = fold.finish(exit);
 
     Ok(Trace {
+        behavior,
         sends: folded.effects.sends,
         creates: folded.effects.creates,
         exit: folded.exit,

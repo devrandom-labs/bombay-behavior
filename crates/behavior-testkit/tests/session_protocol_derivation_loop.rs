@@ -98,10 +98,14 @@ impl Behavior for LeaseClient {
     type Error = Never;
     type Birth = NoBirths;
 
-    fn init(&mut self) -> behavior::BehaviorActed<Self> {
+    fn init(&mut self, _: behavior::InitializationTurn) -> behavior::BehaviorActed<Self> {
         Ok(Actions::cont())
     }
-    fn transition(&mut self, _: Self::Event) -> behavior::BehaviorActed<Self> {
+    fn transition(
+        &mut self,
+        _: behavior::ActiveTurn,
+        _: Self::Event,
+    ) -> behavior::BehaviorActed<Self> {
         Ok(Actions::cont())
     }
 }
@@ -150,8 +154,12 @@ impl PoolState {
 // Attempt 1: Existing Machine (FSM-01)
 // ============================================================================
 
-fn pool_fsm() -> Machine<MailAddr, PoolState, PoolMsg, Phase, Never> {
+fn pool_fsm_definition() -> Machine<MailAddr, PoolState, PoolMsg, Phase, Never> {
     Machine::new(PoolState::new(), Phase::Initializing, pool_transition)
+}
+
+fn pool_fsm() -> behavior::Active<Machine<MailAddr, PoolState, PoolMsg, Phase, Never>> {
+    pool_fsm_definition().initialize().unwrap().behavior
 }
 
 fn pool_transition(
@@ -397,6 +405,7 @@ trait PhaseProtocol {
 
     fn transition(
         &mut self,
+        _: behavior::ActiveTurn,
         event: Self::Event,
     ) -> Result<(Step<Self::Phase, Exit<MailAddr>>, Self::Sends), Self::Error>;
 }
@@ -473,12 +482,13 @@ mod compile_fail_probes {
 #[cfg(test)]
 mod composition_checks {
     use super::*;
-    use behavior::{Watch, stop_on_abnormal_death};
+    use behavior::{Compose, stop_on_abnormal_death};
 
     /// Verify FSM composes with Watch.
     #[tokio::test]
     async fn fsm_composes_with_watching() {
-        let fsm = pool_fsm();
-        let _watching = Watch::new(fsm, MailAddr(1), stop_on_abnormal_death);
+        let fsm = pool_fsm_definition();
+        let _watching = Compose::new(fsm).watch(MailAddr(1), stop_on_abnormal_death);
     }
 }
+use behavior_testkit::InitializeTest;

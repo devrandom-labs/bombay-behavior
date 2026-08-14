@@ -1,5 +1,23 @@
 # Loop progress
 
+## 2026-08-14 — behavior-owned wart pass in progress
+
+- Replaced runtime initialization guards with the consuming
+  `Compose<B> -> Initialized<B> -> Active<B>` typestate boundary.
+- Removed the alternate state/function behavior-definition hierarchy and kept
+  only direct `Behavior` implementations plus `#[behavior]` authoring syntax.
+- Replaced positional nested send products with named semantic products.
+- Removed production panic paths from proxy, supervisor, worker-fleet, pool,
+  timer, and creation handling; retained failures are typed.
+- Corrected `Machine` replay-on-error so the unprocessed suffix is preserved,
+  and replaced its correlated `(Step, bool)` result with an exhaustive outcome.
+- Updated the architecture checker to recursively inspect the current module
+  tree and ratchet the current symbols, traits, generics, and reviewed manifest
+  changes. Historical 2026-08-08/09 counts below no longer describe HEAD.
+- Final evidence: workspace nextest 208/208, behavior doctests 10/10, and all
+  seven aarch64-darwin `nix flake check` derivations pass. All ten fuzz targets
+  compile; `cargo-fuzz` itself is not installed in the pinned shell.
+
 ## 2026-08-09 — schema-v2 reclassification: first continuation batch COMPLETE
 
 - Status: LOOP_DONE. The first continuation batch from HANDOFF.md is complete.

@@ -9,22 +9,20 @@
 //! state must agree.
 
 use behavior::{
-    Acted, Actions, Behavior, Crash, Create, CreationKind, Delivery, Handler, MailAddr, Never,
-    Pure, RestartPolicy, Step, Strategy, SupervisionEvent, Supervisor, UserEvent, WorkerStopped,
+    Acted, Actions, Crash, Create, CreationKind, Delivery, MailAddr, Never,
+    RestartPolicy, Step, Strategy, SupervisionEvent, Supervisor, UserEvent, WorkerStopped,
 };
 use libfuzzer_sys::fuzz_target;
 use tokio::runtime::Builder;
-use tokio::time::Instant;
+use std::time::Instant;
 
 const FLEET: usize = 2;
 const BUDGET: u32 = 2;
 
 struct Worker;
 
-impl Handler<Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u8>>>> for Worker {
-    type Addr = MailAddr;
-    type Msg = u8;
-
+#[behavior::behavior(addr = MailAddr, message = u8, sends = Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u8>>>, births = behavior::NoBirths, error = Never)]
+impl Worker {
     fn receive(
         &mut self,
         _from: MailAddr,
@@ -34,15 +32,14 @@ impl Handler<Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u8>>>> for Worker 
     }
 }
 
-fn worker(_index: usize) -> Pure<Worker, Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u8>>>> {
-    Pure::new(Worker)
+fn worker(_index: usize) -> Worker {
+    Worker
 }
 
 struct BirthingParent;
 
-impl Handler<Vec<Never>,  behavior::Births<Pure<Worker, Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u8>>>>>, Never> for BirthingParent {
-    type Addr = MailAddr;
-    type Msg = u64;
+#[behavior::behavior(addr = MailAddr, message = u64, sends = Vec<Never>, births = behavior::Births<Worker>, error = Never)]
+impl BirthingParent  {
 
     fn receive(
         &mut self,
@@ -52,7 +49,7 @@ impl Handler<Vec<Never>,  behavior::Births<Pure<Worker, Vec<Delivery<bombay_beha
         MailAddr,
         Never,
         Vec<Never>,
-        behavior::Births<Pure<Worker, Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u8>>>>>,
+        behavior::Births<Worker>,
         Never,
     > {
         Ok(Actions {
@@ -72,17 +69,18 @@ struct Slot {
 fuzz_target!(|bytes: &[u8]| {
     let runtime = Builder::new_current_thread().enable_time().build().unwrap();
     runtime.block_on(async {
-        let mut behavior = Supervisor::new(
-            Pure::new(BirthingParent),
+        let behavior = Supervisor::new(
+            BirthingParent,
             |index| u64::try_from(index).unwrap(),
             FLEET,
-            worker,
+            |index| Some(worker(index)),
             Strategy::OneForOne,
             RestartPolicy::Permanent,
             BUDGET,
             std::time::Duration::MAX,
-        );
-        behavior.init().unwrap();
+        ).unwrap();
+        let initialized = behavior::Compose::new(behavior).initialize().unwrap();
+        let mut behavior = initialized.behavior;
         let base = Instant::now();
 
         // Independent model: slot table in birth order, restart stamps.
@@ -102,7 +100,7 @@ fuzz_target!(|bytes: &[u8]| {
                 births += 1;
                 slots.push(Slot { nonce, alive: true });
                 let actions = behavior
-                    .transition(SupervisionEvent::Inner(UserEvent::user(MailAddr(0), nonce)))
+                    .transition(SupervisionEvent::Behavior(UserEvent::user(MailAddr(0), nonce)))
                     .unwrap();
                 assert_eq!(actions.creates.len(), 1, "birth create at byte {index}");
                 assert_eq!(actions.creates[0].nonce, nonce);
@@ -146,7 +144,7 @@ fuzz_target!(|bytes: &[u8]| {
 
             for slot in &slots {
                 assert_eq!(
-                    behavior.is_alive(slot.nonce),
+                    behavior.is_alive(slot.nonce).unwrap(),
                     slot.alive,
                     "alive mismatch at byte {index} for nonce {}",
                     slot.nonce

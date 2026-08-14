@@ -1,14 +1,14 @@
 //! Pure one-shot time composition. Scheduling is a request to the emitting
 //! actor's local clock service.
 
-use tokio::time::Instant;
+use std::time::Instant;
 
 use super::domain::OneShotSchedule;
 use super::event::TimedEvent;
 use crate::Step;
 use crate::behavior::{Actions, Address, Become, Behavior, BirthMode, SendAlgebra, ServiceSends};
-use crate::protocol::{ScheduleAt, TimeEvent, TimerId};
-use crate::{Inner, Own, SendInput};
+use crate::protocol::{ScheduleAt, TimerElapsed, TimerId};
+use crate::{Own, RouteInput, SendInput};
 
 pub type DeadlineEvent<E> = TimedEvent<E>;
 
@@ -16,6 +16,7 @@ pub type DeadlineReaction<B> =
     fn(&mut B) -> Result<Become<<B as Behavior>::Addr>, <B as Behavior>::Error>;
 
 /// Named effect lanes added by [`Deadline`].
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeadlineSends<Sends> {
     pub behavior: Sends,
     pub schedules: ServiceSends<ScheduleAt>,
@@ -41,16 +42,7 @@ impl<Sends> SendInput<ScheduleAt, Own> for DeadlineSends<Sends> {
     }
 }
 
-impl<Sends, Input, Path> SendInput<Input, Inner<Path>> for DeadlineSends<Sends>
-where
-    Sends: SendInput<Input, Path>,
-{
-    fn emit(&mut self, input: Input) {
-        <Sends as SendInput<Input, Path>>::emit(&mut self.behavior, input);
-    }
-}
-
-pub type DeadlineActions<B> = Actions<
+pub(crate) type DeadlineActions<B> = Actions<
     <B as Behavior>::Addr,
     <B as Behavior>::Ph,
     DeadlineSends<<B as Behavior>::Sends>,
@@ -65,7 +57,7 @@ pub struct Deadline<B: Behavior> {
 
 impl<B: Behavior> Deadline<B> {
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         inner: B,
         id: TimerId,
         at: Option<Instant>,
@@ -77,10 +69,22 @@ impl<B: Behavior> Deadline<B> {
             on_reached,
         }
     }
+}
 
-    #[must_use]
-    pub fn inner(&self) -> &B {
-        &self.inner
+impl<B: Behavior + crate::BehaviorBase> crate::BehaviorBase for Deadline<B> {
+    type Base = B::Base;
+
+    fn base(&self) -> &Self::Base {
+        self.inner.base()
+    }
+}
+
+impl<B> crate::StashStatus for Deadline<B>
+where
+    B: Behavior + crate::StashStatus,
+{
+    fn stashed_messages(&self) -> usize {
+        self.inner.stashed_messages()
     }
 }
 
@@ -90,7 +94,7 @@ where
     Sends: SendAlgebra,
     Br: BirthMode,
     B: Behavior<Addr = A, Ph = Ph, Sends = Sends, Birth = Br>,
-    B::Event: TimeEvent,
+    B::Event: crate::RouteInput<TimerElapsed>,
 {
     type Addr = A;
     type Msg = B::Msg;
@@ -100,8 +104,8 @@ where
     type Error = B::Error;
     type Birth = Br;
 
-    fn init(&mut self) -> Result<DeadlineActions<B>, B::Error> {
-        let actions = self.inner.init()?;
+    fn init(&mut self, _: crate::InitializationTurn) -> Result<DeadlineActions<B>, B::Error> {
+        let actions = crate::calculus::initialize(&mut self.inner)?;
         let own = if matches!(actions.become_, Step::Stop(_)) {
             self.schedule.cancel();
             ServiceSends::empty()
@@ -115,7 +119,11 @@ where
         Ok(Self::wrap(actions, own))
     }
 
-    fn transition(&mut self, event: Self::Event) -> Result<DeadlineActions<B>, B::Error> {
+    fn transition(
+        &mut self,
+        _: crate::ActiveTurn,
+        event: Self::Event,
+    ) -> Result<DeadlineActions<B>, B::Error> {
         match event {
             DeadlineEvent::Elapsed(event) if self.schedule.accept(event.id, event.generation) => {
                 let become_ = match (self.on_reached)(&mut self.inner)? {
@@ -125,18 +133,18 @@ where
                 };
                 Ok(Actions::just(become_))
             }
-            DeadlineEvent::Elapsed(event) => match B::Event::time_reached(event) {
-                Some(inner) => {
-                    let actions = self.inner.transition(inner)?;
+            DeadlineEvent::Elapsed(event) => match B::Event::route(event) {
+                Ok(inner) => {
+                    let actions = crate::calculus::delegate_transition(&mut self.inner, inner)?;
                     if matches!(actions.become_, Step::Stop(_)) {
                         self.schedule.cancel();
                     }
                     Ok(Self::wrap(actions, ServiceSends::empty()))
                 }
-                None => Ok(Actions::cont()),
+                Err(_) => Ok(Actions::cont()),
             },
-            DeadlineEvent::Inner(event) => {
-                let actions = self.inner.transition(event)?;
+            DeadlineEvent::Behavior(event) => {
+                let actions = crate::calculus::delegate_transition(&mut self.inner, event)?;
                 if matches!(actions.become_, Step::Stop(_)) {
                     self.schedule.cancel();
                 }
