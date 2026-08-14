@@ -169,12 +169,12 @@ pub fn behavior(args: TokenStream, item: TokenStream) -> TokenStream {
     {
         return error.to_compile_error().into();
     }
-    if let Some(init) = init {
-        if init.sig.inputs.len() != 1 {
-            return Error::new_spanned(&init.sig, "init must accept exactly &mut self")
-                .to_compile_error()
-                .into();
-        }
+    if let Some(init) = init
+        && init.sig.inputs.len() != 1
+    {
+        return Error::new_spanned(&init.sig, "init must accept exactly &mut self")
+            .to_compile_error()
+            .into();
     }
     if receive.sig.inputs.len() != 3 {
         return Error::new_spanned(

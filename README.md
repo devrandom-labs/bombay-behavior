@@ -40,7 +40,7 @@ Its core guarantees are:
 
 ```toml
 [dependencies]
-bombay-behavior = "0.1"
+bombay-behavior = "0.10"
 ```
 
 The package is named `bombay-behavior`; Rust code imports its library as
