@@ -1,4 +1,4 @@
-use behavior::{Acted, Actions, Delivery, Handler, MailAddr, Never, NoBirths, Pure};
+use behavior::{Acted, Actions, Handler, MailAddr, Never, NoBirths, Pure};
 
 struct Counter(u64);
 
@@ -10,7 +10,7 @@ impl Handler for Counter {
         &mut self,
         _from: MailAddr,
         message: u64,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, NoBirths, Never> {
+    ) -> Acted<MailAddr, Never, Vec<Never>, NoBirths, Never> {
         self.0 += message;
         Ok(Actions::cont())
     }

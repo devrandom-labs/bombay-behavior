@@ -227,7 +227,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Acted, Delivery, Handler, MailAddr, Never, NoBirths, Pure, TimerGeneration, User};
+    use crate::{Acted, Handler, MailAddr, Never, NoBirths, Pure, TimerGeneration, User};
 
     struct Count(u8);
 
@@ -239,7 +239,7 @@ mod tests {
             &mut self,
             _from: MailAddr,
             (): (),
-        ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, NoBirths, Never> {
+        ) -> Acted<MailAddr, Never, Vec<Never>, NoBirths, Never> {
             self.0 += 1;
             Ok(Actions::cont())
         }
@@ -251,9 +251,7 @@ mod tests {
         clippy::unnecessary_wraps,
         reason = "the reaction fixture must implement the fallible reaction signature"
     )]
-    fn elapsed(
-        _inner: &mut Inner,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, NoBirths, Never> {
+    fn elapsed(_inner: &mut Inner) -> Acted<MailAddr, Never, Vec<Never>, NoBirths, Never> {
         Ok(Actions::cont())
     }
 

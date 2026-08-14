@@ -13,22 +13,17 @@ use crate::protocol::{
 use crate::{Own, SendInput};
 
 /// The concrete, statically dispatched effect lanes emitted by a [`Proxy`].
-pub struct ProxySends<A: Address, M> {
-    pub deliveries: Vec<Delivery<A, M>>,
-    pub child_observations: ServiceSends<ObserveChild<A::Nonce>>,
-    pub creation_observations: ServiceSends<ObserveCreation<A::Nonce>>,
-    pub stopped_reports: ServiceSends<ReportWorkerStopped<A>>,
-    pub creation_reports: ServiceSends<ReportWorkerCreationResolved<A::Nonce>>,
+pub struct ProxySends<C: Behavior> {
+    pub deliveries: Vec<Delivery<C>>,
+    pub child_observations: ServiceSends<ObserveChild<<C::Addr as Address>::Nonce>>,
+    pub creation_observations: ServiceSends<ObserveCreation<<C::Addr as Address>::Nonce>>,
+    pub stopped_reports: ServiceSends<ReportWorkerStopped<C::Addr>>,
+    pub creation_reports: ServiceSends<ReportWorkerCreationResolved<<C::Addr as Address>::Nonce>>,
 }
 
-pub type ProxyActions<C> = Actions<
-    <C as Behavior>::Addr,
-    Never,
-    ProxySends<<C as Behavior>::Addr, <C as Behavior>::Msg>,
-    Births<C>,
->;
+pub type ProxyActions<C> = Actions<<C as Behavior>::Addr, Never, ProxySends<C>, Births<C>>;
 
-impl<A: Address, M> SendAlgebra for ProxySends<A, M> {
+impl<C: Behavior> SendAlgebra for ProxySends<C> {
     fn empty() -> Self {
         Self {
             deliveries: Vec::new(),
@@ -49,32 +44,34 @@ impl<A: Address, M> SendAlgebra for ProxySends<A, M> {
     }
 }
 
-impl<A: Address, M> SendInput<Delivery<A, M>, Own> for ProxySends<A, M> {
-    fn emit(&mut self, input: Delivery<A, M>) {
+impl<C: Behavior> SendInput<Delivery<C>, Own> for ProxySends<C> {
+    fn emit(&mut self, input: Delivery<C>) {
         self.deliveries.push(input);
     }
 }
 
-impl<A: Address, M> SendInput<ObserveChild<A::Nonce>, Own> for ProxySends<A, M> {
-    fn emit(&mut self, input: ObserveChild<A::Nonce>) {
+impl<C: Behavior> SendInput<ObserveChild<<C::Addr as Address>::Nonce>, Own> for ProxySends<C> {
+    fn emit(&mut self, input: ObserveChild<<C::Addr as Address>::Nonce>) {
         self.child_observations.send(input);
     }
 }
 
-impl<A: Address, M> SendInput<ObserveCreation<A::Nonce>, Own> for ProxySends<A, M> {
-    fn emit(&mut self, input: ObserveCreation<A::Nonce>) {
+impl<C: Behavior> SendInput<ObserveCreation<<C::Addr as Address>::Nonce>, Own> for ProxySends<C> {
+    fn emit(&mut self, input: ObserveCreation<<C::Addr as Address>::Nonce>) {
         self.creation_observations.send(input);
     }
 }
 
-impl<A: Address, M> SendInput<ReportWorkerStopped<A>, Own> for ProxySends<A, M> {
-    fn emit(&mut self, input: ReportWorkerStopped<A>) {
+impl<C: Behavior> SendInput<ReportWorkerStopped<C::Addr>, Own> for ProxySends<C> {
+    fn emit(&mut self, input: ReportWorkerStopped<C::Addr>) {
         self.stopped_reports.send(input);
     }
 }
 
-impl<A: Address, M> SendInput<ReportWorkerCreationResolved<A::Nonce>, Own> for ProxySends<A, M> {
-    fn emit(&mut self, input: ReportWorkerCreationResolved<A::Nonce>) {
+impl<C: Behavior> SendInput<ReportWorkerCreationResolved<<C::Addr as Address>::Nonce>, Own>
+    for ProxySends<C>
+{
+    fn emit(&mut self, input: ReportWorkerCreationResolved<<C::Addr as Address>::Nonce>) {
         self.creation_reports.send(input);
     }
 }
@@ -153,7 +150,7 @@ where
     type Addr = C::Addr;
     type Msg = ProxyCommand<C>;
     type Event = ProxyEvent<User<C::Addr, ProxyCommand<C>>>;
-    type Sends = ProxySends<C::Addr, C::Msg>;
+    type Sends = ProxySends<C>;
     type Ph = Never;
     type Error = Never;
     type Birth = Births<C>;

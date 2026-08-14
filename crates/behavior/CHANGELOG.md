@@ -20,6 +20,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- index `Recipient` and `Delivery` by the concrete destination `Behavior`, so
+  protocols sharing an address namespace and payload remain statically
+  distinct and runtimes can derive topology without endpoint aliases or
+  dynamic registries
+- make `Handler`/`Pure` carry their complete send algebra instead of deriving
+  an ambiguous delivery lane from an outbound payload type
+
 - add a pure typed bounded FIFO worker pool with stable supervised workers,
   explicit admission and interruption outcomes, exact assignment correlation,
   independent model/property tests, compile-fail coverage, and a stateful fuzz

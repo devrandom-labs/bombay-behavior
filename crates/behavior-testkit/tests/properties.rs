@@ -3,7 +3,7 @@ use std::time::Duration;
 use behavior::{
     Acted, Actions, Behavior, ChildStopped, Crash, CreationKind, CreationResolved, Deadline,
     Delivery, Exit, Handler, MailAddr, Never, Proxy, ProxyCommand, ProxyEvent, Pure, Recipient,
-    RestartPolicy, Route, Step, Strategy, SupervisionEvent, Supervisor, TimerId, User, UserEvent,
+    RestartPolicy, Step, Strategy, SupervisionEvent, Supervisor, TimerId, User, UserEvent,
     WorkerStopped,
 };
 use behavior_testkit::{Mailbox, drive};
@@ -15,7 +15,9 @@ use tokio::time::Instant;
 #[derive(Default)]
 struct Echo;
 
-impl Handler<u8, behavior::NoBirths, Never> for Echo {
+impl Handler<Vec<Delivery<behavior_testkit::TestRecipient<u8>>>, behavior::NoBirths, Never>
+    for Echo
+{
     type Addr = MailAddr;
     type Msg = u8;
 
@@ -23,7 +25,13 @@ impl Handler<u8, behavior::NoBirths, Never> for Echo {
         &mut self,
         from: MailAddr,
         message: u8,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, u8>>, behavior::NoBirths, Never> {
+    ) -> Acted<
+        MailAddr,
+        Never,
+        Vec<Delivery<behavior_testkit::TestRecipient<u8>>>,
+        behavior::NoBirths,
+        Never,
+    > {
         Ok(Actions {
             sends: vec![Delivery::new(Recipient::global(from), message)],
             creates: Vec::new(),
@@ -36,11 +44,11 @@ impl Handler<u8, behavior::NoBirths, Never> for Echo {
     }
 }
 
-type Child = Pure<Echo, u8>;
+type Child = Pure<Echo, Vec<Delivery<behavior_testkit::TestRecipient<u8>>>>;
 
 struct Parent;
 
-impl Handler<Never, behavior::Births<Child>, Never> for Parent {
+impl Handler<Vec<Never>, behavior::Births<Child>, Never> for Parent {
     type Addr = MailAddr;
     type Msg = u8;
 
@@ -48,8 +56,7 @@ impl Handler<Never, behavior::Births<Child>, Never> for Parent {
         &mut self,
         _from: MailAddr,
         _message: u8,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, behavior::Births<Child>, Never>
-    {
+    ) -> Acted<MailAddr, Never, Vec<Never>, behavior::Births<Child>, Never> {
         Ok(Actions::cont())
     }
 }
@@ -61,7 +68,7 @@ fn child(_index: usize) -> Child {
 fn supervisor(
     strategy: Strategy,
     count: usize,
-) -> Supervisor<Pure<Parent, Never, behavior::Births<Child>>, Child> {
+) -> Supervisor<Pure<Parent, Vec<Never>, behavior::Births<Child>>, Child> {
     Supervisor::new(
         Pure::new(Parent),
         |index| u64::try_from(index).unwrap(),
@@ -100,7 +107,7 @@ proptest! {
         prop_assert_eq!(trace.pending, messages.len() - expected_len);
         for (index, delivery) in trace.sends.iter().enumerate() {
             prop_assert_eq!(delivery.message, messages[index]);
-            prop_assert_eq!(delivery.to.route(), Route::Global(MailAddr(u64::try_from(index).unwrap())));
+            prop_assert_eq!(delivery.to.resolve(MailAddr(999)), MailAddr(u64::try_from(index).unwrap()));
         }
     }
 
@@ -187,7 +194,10 @@ proptest! {
                     )))
                     .unwrap();
                 prop_assert!(actions.creates.is_empty());
-                prop_assert_eq!(actions.sends.deliveries[0].to.route(), Route::Child(generation));
+                prop_assert_eq!(
+                    actions.sends.deliveries[0].to.resolve(MailAddr(17)),
+                    behavior::Address::birth(MailAddr(17), generation)
+                );
                 prop_assert_eq!(actions.sends.deliveries[0].message, message);
             }
         }
@@ -223,7 +233,10 @@ proptest! {
         prop_assert_eq!(actions.sends.replacement_commands.len(), expected);
         prop_assert!(actions.creates.is_empty());
         for delivery in actions.sends.replacement_commands {
-            prop_assert!(matches!(delivery.to.route(), Route::Child(_)));
+            prop_assert_ne!(
+                delivery.to.resolve(MailAddr(17)),
+                delivery.to.resolve(MailAddr(18))
+            );
         }
     }
 }

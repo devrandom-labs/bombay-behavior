@@ -81,7 +81,7 @@ impl Handler for Quiet {
         &mut self,
         _: MailAddr,
         _: u8,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, behavior::NoBirths, Never> {
+    ) -> Acted<MailAddr, Never, Vec<Never>, behavior::NoBirths, Never> {
         Ok(Actions::cont())
     }
 }
@@ -260,6 +260,7 @@ fn composed_protocols_forward_every_supported_environment_lane() {
 
 #[test]
 fn addressing_operations_preserve_their_exact_routes() {
+    type Child = Pure<Quiet>;
     let parent = MailAddr(0xF0);
     assert_eq!(u64::from(parent), 0xF0);
     assert_eq!(
@@ -267,10 +268,10 @@ fn addressing_operations_preserve_their_exact_routes() {
         MailAddr(0xF0 ^ 2_u64.wrapping_mul(0x9E37_79B9_7F4A_7C15))
     );
 
-    let one = Recipient::<MailAddr, u8>::global(MailAddr(1));
-    let same = Recipient::<MailAddr, u8>::global(MailAddr(1));
-    let other = Recipient::<MailAddr, u8>::global(MailAddr(2));
-    let child = Recipient::<MailAddr, u8>::child(1);
+    let one = Recipient::<Child>::global(MailAddr(1));
+    let same = Recipient::<Child>::global(MailAddr(1));
+    let other = Recipient::<Child>::global(MailAddr(2));
+    let child = Recipient::<Child>::child(1);
     assert_eq!(one, same);
     assert_ne!(one, other);
     assert_ne!(one, child);
@@ -287,7 +288,7 @@ fn named_wrapper_products_append_their_owned_lanes() {
     )));
     assert_eq!(timeout.schedules.len(), 1);
 
-    let mut proxy = ProxySends::<MailAddr, u8>::empty();
+    let mut proxy = ProxySends::<Pure<Quiet>>::empty();
     proxy.append(ProxySends::sending(ObserveChild::new(7)));
     assert_eq!(proxy.child_observations[0].nonce, 7);
 }
@@ -332,7 +333,7 @@ fn typed_send_accumulation_routes_every_named_lane_once() {
     timeout.send(6_u8);
     assert_eq!(timeout.behavior, [6]);
 
-    let mut proxy = ProxySends::<MailAddr, u8>::empty();
+    let mut proxy = ProxySends::<Child>::empty();
     proxy.send(Delivery::new(Recipient::child(1), 7));
     proxy.send(ObserveCreation::new(2));
     proxy.send(ReportWorkerStopped::from(child()));
@@ -351,8 +352,8 @@ fn typed_send_accumulation_routes_every_named_lane_once() {
     supervisor.send(9_u8);
     assert_eq!(supervisor.child_observations[0].nonce, 8);
     assert_eq!(
-        supervisor.replacement_commands[0].to.route(),
-        behavior::Route::Child(8)
+        supervisor.replacement_commands[0].to.resolve(MailAddr(17)),
+        behavior::Address::birth(MailAddr(17), 8)
     );
     assert_eq!(supervisor.behavior, [9]);
 }

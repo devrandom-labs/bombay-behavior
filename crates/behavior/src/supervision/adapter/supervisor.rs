@@ -20,17 +20,23 @@ use crate::{Become, Exit, SupervisionFailureReason};
 use crate::{Inner, Own, SendInput};
 
 /// Named effect lanes emitted by a supervised behavior.
-pub struct SupervisorSends<A: Address, Sends, C: Behavior<Addr = A>> {
+pub struct SupervisorSends<A, Sends, C>
+where
+    A: Address,
+    A::Nonce: From<u64>,
+    C: Behavior<Addr = A, Ph = Never>,
+{
     pub behavior: Sends,
     pub child_observations: ServiceSends<ObserveChild<A::Nonce>>,
-    pub replacement_commands: Vec<Delivery<A, ProxyCommand<C>>>,
+    pub replacement_commands: Vec<Delivery<Proxy<C>>>,
 }
 
 impl<A, Sends, C> SendAlgebra for SupervisorSends<A, Sends, C>
 where
     A: Address,
+    A::Nonce: From<u64>,
     Sends: SendAlgebra,
-    C: Behavior<Addr = A>,
+    C: Behavior<Addr = A, Ph = Never>,
 {
     fn empty() -> Self {
         Self {
@@ -50,19 +56,21 @@ where
 impl<A, Sends, C> SendInput<ObserveChild<A::Nonce>, Own> for SupervisorSends<A, Sends, C>
 where
     A: Address,
-    C: Behavior<Addr = A>,
+    A::Nonce: From<u64>,
+    C: Behavior<Addr = A, Ph = Never>,
 {
     fn emit(&mut self, input: ObserveChild<A::Nonce>) {
         self.child_observations.send(input);
     }
 }
 
-impl<A, Sends, C> SendInput<Delivery<A, ProxyCommand<C>>, Own> for SupervisorSends<A, Sends, C>
+impl<A, Sends, C> SendInput<Delivery<Proxy<C>>, Own> for SupervisorSends<A, Sends, C>
 where
     A: Address,
-    C: Behavior<Addr = A>,
+    A::Nonce: From<u64>,
+    C: Behavior<Addr = A, Ph = Never>,
 {
-    fn emit(&mut self, input: Delivery<A, ProxyCommand<C>>) {
+    fn emit(&mut self, input: Delivery<Proxy<C>>) {
         self.replacement_commands.push(input);
     }
 }
@@ -70,7 +78,8 @@ where
 impl<A, Sends, C, Input, Path> SendInput<Input, Inner<Path>> for SupervisorSends<A, Sends, C>
 where
     A: Address,
-    C: Behavior<Addr = A>,
+    A::Nonce: From<u64>,
+    C: Behavior<Addr = A, Ph = Never>,
     Sends: SendInput<Input, Path>,
 {
     fn emit(&mut self, input: Input) {
@@ -85,9 +94,14 @@ pub type SupervisorActions<B, C> = Actions<
     Births<Proxy<C>>,
 >;
 
-enum ReplacementDecision<A: Address, C: Behavior<Addr = A>> {
+enum ReplacementDecision<A, C>
+where
+    A: Address,
+    A::Nonce: From<u64>,
+    C: Behavior<Addr = A, Ph = Never>,
+{
     Retire,
-    Replace(Vec<Delivery<A, ProxyCommand<C>>>),
+    Replace(Vec<Delivery<Proxy<C>>>),
     Failed(SupervisionFailure<A>),
 }
 
@@ -104,6 +118,7 @@ pub struct Supervisor<B: Behavior, C: Behavior<Ph = Never, Addr = B::Addr>> {
 impl<B, C> Supervisor<B, C>
 where
     B: Behavior<Birth = Births<C>>,
+    <B::Addr as Address>::Nonce: From<u64>,
     C: Behavior<Ph = Never, Addr = B::Addr>,
 {
     #[allow(clippy::too_many_arguments, reason = "hidden by Compose")]

@@ -21,7 +21,7 @@ const BUDGET: u32 = 2;
 
 struct Worker;
 
-impl Handler<u8> for Worker {
+impl Handler<Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u8>>>> for Worker {
     type Addr = MailAddr;
     type Msg = u8;
 
@@ -29,18 +29,18 @@ impl Handler<u8> for Worker {
         &mut self,
         _from: MailAddr,
         _message: u8,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, u8>>, behavior::NoBirths, Never> {
+    ) -> Acted<MailAddr, Never, Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u8>>>, behavior::NoBirths, Never> {
         Ok(Actions::cont())
     }
 }
 
-fn worker(_index: usize) -> Pure<Worker, u8> {
+fn worker(_index: usize) -> Pure<Worker, Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u8>>>> {
     Pure::new(Worker)
 }
 
 struct BirthingParent;
 
-impl Handler<Never, behavior::Births<Pure<Worker, u8>>, Never> for BirthingParent {
+impl Handler<Vec<Never>,  behavior::Births<Pure<Worker, Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u8>>>>>, Never> for BirthingParent {
     type Addr = MailAddr;
     type Msg = u64;
 
@@ -51,8 +51,8 @@ impl Handler<Never, behavior::Births<Pure<Worker, u8>>, Never> for BirthingParen
     ) -> Acted<
         MailAddr,
         Never,
-        Vec<Delivery<MailAddr, Never>>,
-        behavior::Births<Pure<Worker, u8>>,
+        Vec<Never>,
+        behavior::Births<Pure<Worker, Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u8>>>>>,
         Never,
     > {
         Ok(Actions {

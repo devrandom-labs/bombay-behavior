@@ -12,8 +12,8 @@ use std::time::Duration;
 
 use behavior::{
     Acted, Actions, Behavior, Compose, Crash, Delivery, Handler, MailAddr, Never, Proxy,
-    ProxyCommand, ProxyEvent, Pure, Recipient, Route, StashRoute, Step, SupervisionEvent, User,
-    UserEvent, WorkerStopped, stop_on_abnormal_death,
+    ProxyCommand, ProxyEvent, Pure, Recipient, StashRoute, Step, SupervisionEvent, User, UserEvent,
+    WorkerStopped, stop_on_abnormal_death,
 };
 use tokio::time::Instant;
 
@@ -22,7 +22,9 @@ struct Recorder {
     seen: Vec<(MailAddr, u8)>,
 }
 
-impl Handler<u8, behavior::NoBirths, Never> for Recorder {
+impl Handler<Vec<Delivery<behavior_testkit::TestRecipient<u8>>>, behavior::NoBirths, Never>
+    for Recorder
+{
     type Addr = MailAddr;
     type Msg = u8;
 
@@ -30,7 +32,13 @@ impl Handler<u8, behavior::NoBirths, Never> for Recorder {
         &mut self,
         from: MailAddr,
         message: u8,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, u8>>, behavior::NoBirths, Never> {
+    ) -> Acted<
+        MailAddr,
+        Never,
+        Vec<Delivery<behavior_testkit::TestRecipient<u8>>>,
+        behavior::NoBirths,
+        Never,
+    > {
         self.seen.push((from, message));
         Ok(Actions {
             sends: vec![Delivery::new(Recipient::global(from), message)],
@@ -40,7 +48,7 @@ impl Handler<u8, behavior::NoBirths, Never> for Recorder {
     }
 }
 
-type Child = Pure<Recorder, u8>;
+type Child = Pure<Recorder, Vec<Delivery<behavior_testkit::TestRecipient<u8>>>>;
 
 fn child(_index: usize) -> Child {
     Pure::new(Recorder::default())
@@ -49,7 +57,7 @@ fn child(_index: usize) -> Child {
 /// A quiet parent that births nothing at init.
 struct Parent;
 
-impl Handler<Never, behavior::Births<Child>, Never> for Parent {
+impl Handler<Vec<Never>, behavior::Births<Child>, Never> for Parent {
     type Addr = MailAddr;
     type Msg = u64;
 
@@ -57,8 +65,7 @@ impl Handler<Never, behavior::Births<Child>, Never> for Parent {
         &mut self,
         _from: MailAddr,
         _message: u64,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, behavior::Births<Child>, Never>
-    {
+    ) -> Acted<MailAddr, Never, Vec<Never>, behavior::Births<Child>, Never> {
         Ok(Actions::cont())
     }
 }
@@ -180,8 +187,10 @@ async fn supervisor_step_before_init_routes_to_unborn_proxies() {
         .unwrap();
     assert_eq!(actions.sends.replacement_commands.len(), 1);
     assert_eq!(
-        actions.sends.replacement_commands[0].to.route(),
-        Route::Child(0)
+        actions.sends.replacement_commands[0]
+            .to
+            .resolve(MailAddr(17)),
+        behavior::Address::birth(MailAddr(17), 0)
     );
     assert!(actions.creates.is_empty()); // no proxy has ever been born
     assert!(behavior.behavior().is_alive(0)); // slot bookkeeping pre-exists

@@ -3,7 +3,7 @@ use std::time::Duration;
 use behavior::{
     Acted, Actions, Behavior, ChildStopped, Compose, Crash, Create, CreationKind, CreationResolved,
     DeadlineEvent, Delivery, Exit, Handler, MailAddr, Move, Never, PeerStopped, Proxy,
-    ProxyCommand, ProxyEvent, Pure, Recipient, RestartPolicy, Route, StashRoute, Step, Strategy,
+    ProxyCommand, ProxyEvent, Pure, Recipient, RestartPolicy, StashRoute, Step, Strategy,
     SupervisionEvent, TimerElapsed, TimerGeneration, TimerId, User, UserEvent, WatchEvent,
     WorkerStopped, stop_on_abnormal_death,
 };
@@ -15,7 +15,9 @@ struct Recorder {
     seen: Vec<(MailAddr, u8)>,
 }
 
-impl Handler<u8, behavior::NoBirths, Never> for Recorder {
+impl Handler<Vec<Delivery<behavior_testkit::TestRecipient<u8>>>, behavior::NoBirths, Never>
+    for Recorder
+{
     type Addr = MailAddr;
     type Msg = u8;
 
@@ -23,7 +25,13 @@ impl Handler<u8, behavior::NoBirths, Never> for Recorder {
         &mut self,
         from: MailAddr,
         message: u8,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, u8>>, behavior::NoBirths, Never> {
+    ) -> Acted<
+        MailAddr,
+        Never,
+        Vec<Delivery<behavior_testkit::TestRecipient<u8>>>,
+        behavior::NoBirths,
+        Never,
+    > {
         self.seen.push((from, message));
         Ok(Actions {
             sends: vec![Delivery::new(Recipient::global(from), message)],
@@ -204,11 +212,11 @@ async fn fsm_replays_deferred_messages_once_after_phase_change() {
     assert_eq!(machine.behavior().held(), 0);
 }
 
-type Child = Pure<Recorder, u8>;
+type Child = Pure<Recorder, Vec<Delivery<behavior_testkit::TestRecipient<u8>>>>;
 
 struct Parent(bool);
 
-impl Handler<Never, behavior::Births<Child>, Never> for Parent {
+impl Handler<Vec<Never>, behavior::Births<Child>, Never> for Parent {
     type Addr = MailAddr;
     type Msg = u64;
 
@@ -216,8 +224,7 @@ impl Handler<Never, behavior::Births<Child>, Never> for Parent {
         &mut self,
         _from: MailAddr,
         nonce: u64,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, behavior::Births<Child>, Never>
-    {
+    ) -> Acted<MailAddr, Never, Vec<Never>, behavior::Births<Child>, Never> {
         let creates = if self.0 {
             Vec::new()
         } else {
@@ -254,7 +261,10 @@ async fn proxy_forwards_only_to_the_current_fresh_generation() {
             ProxyCommand::Forward(5),
         )))
         .unwrap();
-    assert_eq!(before.sends.deliveries[0].to.route(), Route::Child(0));
+    assert_eq!(
+        before.sends.deliveries[0].to.resolve(MailAddr(17)),
+        behavior::Address::birth(MailAddr(17), 0)
+    );
 
     let replacement = proxy
         .transition(ProxyEvent::Inner(User::user(
@@ -286,7 +296,10 @@ async fn proxy_forwards_only_to_the_current_fresh_generation() {
             ProxyCommand::Forward(6),
         )))
         .unwrap();
-    assert_eq!(after.sends.deliveries[0].to.route(), Route::Child(1));
+    assert_eq!(
+        after.sends.deliveries[0].to.resolve(MailAddr(17)),
+        behavior::Address::birth(MailAddr(17), 1)
+    );
 }
 
 #[tokio::test]

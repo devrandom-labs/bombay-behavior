@@ -3,7 +3,7 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, Behavior, Compose, Delivery, Handler, MailAddr, Never, NoBirths, Pure,
+    Acted, Actions, Behavior, Compose, Handler, MailAddr, Never, NoBirths, Pure,
     ReceiveTimeoutEvent, Step, TimerElapsed, TimerGeneration, TimerId, User, UserEvent,
 };
 use libfuzzer_sys::fuzz_target;
@@ -19,7 +19,7 @@ impl Handler for Sink {
         &mut self,
         _from: MailAddr,
         _message: u8,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, NoBirths, Never> {
+    ) -> Acted<MailAddr, Never, Vec<Never>, NoBirths, Never> {
         Ok(Actions::cont())
     }
 }
@@ -28,7 +28,7 @@ type Inner = Pure<Sink>;
 
 fn elapsed(
     _inner: &mut Inner,
-) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, NoBirths, Never> {
+) -> Acted<MailAddr, Never, Vec<Never>, NoBirths, Never> {
     Ok(Actions::cont())
 }
 

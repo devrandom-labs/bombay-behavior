@@ -9,8 +9,8 @@ use std::time::Duration;
 use behavior::{
     Acted, Actions, Behavior, ChildStopped, Crash, Create, CreationKind, CreationResolved,
     Delivery, Exit, Handler, MailAddr, Never, Proxy, ProxyCommand, ProxyEvent, Pure, RestartDenial,
-    RestartPolicy, Route, Step, Strategy, SupervisionEvent, SupervisionFailureReason, Supervisor,
-    User, UserEvent, WorkerStopped, stop_on_supervision_failure,
+    RestartPolicy, Step, Strategy, SupervisionEvent, SupervisionFailureReason, Supervisor, User,
+    UserEvent, WorkerStopped, stop_on_supervision_failure,
 };
 use behavior_testkit::model::{
     ExpectedCreation, ExpectedIncarnation, IncarnationModel, Model, Outcome,
@@ -23,7 +23,9 @@ use tokio::time::Instant;
 #[derive(Default)]
 struct Echo;
 
-impl Handler<u8, behavior::NoBirths, Never> for Echo {
+impl Handler<Vec<Delivery<behavior_testkit::TestRecipient<u8>>>, behavior::NoBirths, Never>
+    for Echo
+{
     type Addr = MailAddr;
     type Msg = u8;
 
@@ -31,17 +33,23 @@ impl Handler<u8, behavior::NoBirths, Never> for Echo {
         &mut self,
         _from: MailAddr,
         _message: u8,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, u8>>, behavior::NoBirths, Never> {
+    ) -> Acted<
+        MailAddr,
+        Never,
+        Vec<Delivery<behavior_testkit::TestRecipient<u8>>>,
+        behavior::NoBirths,
+        Never,
+    > {
         Ok(Actions::cont())
     }
 }
 
-type Child = Pure<Echo, u8>;
+type Child = Pure<Echo, Vec<Delivery<behavior_testkit::TestRecipient<u8>>>>;
 
 /// Quiet parent for the static-fleet property.
 struct Parent;
 
-impl Handler<Never, behavior::Births<Child>, Never> for Parent {
+impl Handler<Vec<Never>, behavior::Births<Child>, Never> for Parent {
     type Addr = MailAddr;
     type Msg = u64;
 
@@ -49,8 +57,7 @@ impl Handler<Never, behavior::Births<Child>, Never> for Parent {
         &mut self,
         _from: MailAddr,
         _message: u64,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, behavior::Births<Child>, Never>
-    {
+    ) -> Acted<MailAddr, Never, Vec<Never>, behavior::Births<Child>, Never> {
         Ok(Actions::cont())
     }
 }
@@ -61,7 +68,7 @@ struct BirthingParent {
     births: Vec<u64>,
 }
 
-impl Handler<Never, behavior::Births<Child>, Never> for BirthingParent {
+impl Handler<Vec<Never>, behavior::Births<Child>, Never> for BirthingParent {
     type Addr = MailAddr;
     type Msg = u64;
 
@@ -69,8 +76,7 @@ impl Handler<Never, behavior::Births<Child>, Never> for BirthingParent {
         &mut self,
         _from: MailAddr,
         nonce: u64,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, behavior::Births<Child>, Never>
-    {
+    ) -> Acted<MailAddr, Never, Vec<Never>, behavior::Births<Child>, Never> {
         self.births.push(nonce);
         Ok(Actions {
             sends: Vec::new(),
@@ -278,13 +284,14 @@ proptest! {
                 })) })
                 .unwrap();
 
-            let sends: Vec<u64> = actions
+            let sends: Vec<MailAddr> = actions
                 .sends.replacement_commands
                 .iter()
-                .map(|delivery| match delivery.to.route() {
-                    Route::Child(nonce) => nonce,
-                    other @ Route::Global(_) => panic!("unexpected route {other:?}"),
-                })
+                .map(|delivery| delivery.to.resolve(MailAddr(17)))
+                .collect();
+            let expected: Vec<MailAddr> = expected
+                .into_iter()
+                .map(|nonce| behavior::Address::birth(MailAddr(17), nonce))
                 .collect();
             prop_assert_eq!(sends, expected);
             prop_assert!(actions.creates.is_empty());
@@ -387,13 +394,14 @@ proptest! {
                         at: base + Duration::from_nanos(at),
                     })) })
                     .unwrap();
-                let sends: Vec<u64> = actions
+                let sends: Vec<MailAddr> = actions
                     .sends.replacement_commands
                     .iter()
-                    .map(|delivery| match delivery.to.route() {
-                        Route::Child(nonce) => nonce,
-                        other @ Route::Global(_) => panic!("unexpected route {other:?}"),
-                    })
+                    .map(|delivery| delivery.to.resolve(MailAddr(17)))
+                    .collect();
+                let expected: Vec<MailAddr> = expected
+                    .into_iter()
+                    .map(|child| behavior::Address::birth(MailAddr(17), child))
                     .collect();
                 prop_assert_eq!(sends, expected);
             }

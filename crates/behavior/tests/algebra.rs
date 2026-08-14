@@ -6,7 +6,7 @@ use behavior::{
     Acted, Actions, Become, Behavior, Births, ChildStopped, Compose, Crash, Create, CreationKind,
     CreationRejection, CreationResolved, Deadline, DeadlineEvent, Delivery, Exit, Handler, Machine,
     MailAddr, Move, Never, NoBirths, ObserveChild, Own, PeerStopped, Proxy, ProxyCommand,
-    ProxyEvent, Pure, Recipient, RestartDenial, RestartPolicy, Route, SendAlgebra, SendProduct,
+    ProxyEvent, Pure, Recipient, RestartDenial, RestartPolicy, SendAlgebra, SendProduct,
     ServiceSends, ShutdownEvent, ShutdownRequested, StashRoute, Step, Strategy, SupervisionEvent,
     SupervisionFailure, SupervisionFailureReason, Supervisor, TimeEvent, TimerElapsed,
     TimerGeneration, TimerId, User, UserEvent, Watch, WatchEvent, WorkerEvent, WorkerStopped,
@@ -19,18 +19,38 @@ use tokio::time::Instant;
 
 struct Quiet;
 
+struct U8Sink;
+
+impl Behavior for U8Sink {
+    type Addr = MailAddr;
+    type Msg = u8;
+    type Event = User<MailAddr, u8>;
+    type Sends = Vec<Never>;
+    type Ph = Never;
+    type Error = Never;
+    type Birth = NoBirths;
+
+    fn init(&mut self) -> behavior::BehaviorActed<Self> {
+        Ok(Actions::cont())
+    }
+
+    fn transition(&mut self, _: Self::Event) -> behavior::BehaviorActed<Self> {
+        Ok(Actions::cont())
+    }
+}
+
 fn requires_no_births<B: Behavior<Birth = NoBirths>>(_behavior: &B) {}
 
 #[test]
 fn ordinary_and_service_send_algebras_have_disjoint_static_dispatch() {
     trait RouteSends<A: behavior::Address> {}
 
-    impl<A: behavior::Address, M> RouteSends<A> for Vec<Delivery<A, M>> {}
+    impl<B: Behavior<Addr = MailAddr>> RouteSends<MailAddr> for Vec<Delivery<B>> {}
     impl<A: behavior::Address> RouteSends<A> for ServiceSends<ObserveChild<A::Nonce>> {}
 
     fn requires_route_sends<A: behavior::Address, S: RouteSends<A>>() {}
 
-    requires_route_sends::<MailAddr, Vec<Delivery<MailAddr, ObserveChild<u64>>>>();
+    requires_route_sends::<MailAddr, Vec<Delivery<Pure<Quiet>>>>();
     requires_route_sends::<MailAddr, ServiceSends<ObserveChild<u64>>>();
 }
 
@@ -55,14 +75,14 @@ impl Handler for Quiet {
         &mut self,
         _from: MailAddr,
         _message: u64,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, NoBirths, Never> {
+    ) -> Acted<MailAddr, Never, Vec<Never>, NoBirths, Never> {
         Ok(Actions::cont())
     }
 }
 
 struct ShutdownParent;
 
-impl Handler<u64, Births<Pure<Quiet>>> for ShutdownParent {
+impl Handler<Vec<Delivery<Pure<Quiet>>>, Births<Pure<Quiet>>> for ShutdownParent {
     type Addr = MailAddr;
     type Msg = u64;
 
@@ -70,7 +90,7 @@ impl Handler<u64, Births<Pure<Quiet>>> for ShutdownParent {
         &mut self,
         _from: MailAddr,
         _message: u64,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, u64>>, Births<Pure<Quiet>>, Never> {
+    ) -> Acted<MailAddr, Never, Vec<Delivery<Pure<Quiet>>>, Births<Pure<Quiet>>, Never> {
         Ok(Actions::cont())
     }
 }
@@ -81,9 +101,9 @@ impl Handler<u64, Births<Pure<Quiet>>> for ShutdownParent {
     reason = "the shutdown reaction must expose the complete typed Actions and error seats"
 )]
 fn finalize_parent(
-    _behavior: &mut Pure<ShutdownParent, u64, Births<Pure<Quiet>>>,
+    _behavior: &mut Pure<ShutdownParent, Vec<Delivery<Pure<Quiet>>>, Births<Pure<Quiet>>>,
     _request: ShutdownRequested,
-) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, u64>>, Births<Pure<Quiet>>, Never> {
+) -> Acted<MailAddr, Never, Vec<Delivery<Pure<Quiet>>>, Births<Pure<Quiet>>, Never> {
     Ok(Actions {
         sends: vec![Delivery::new(Recipient::global(MailAddr(9)), 42)],
         creates: vec![Create::birth(7, Pure::new(Quiet))],
@@ -93,13 +113,13 @@ fn finalize_parent(
 
 #[test]
 fn actions_expose_the_typed_actor_transition_effects() {
-    let mut actions: Actions<MailAddr, Never, Vec<Delivery<MailAddr, u64>>, NoBirths> =
+    let mut actions: Actions<MailAddr, Never, Vec<Delivery<Pure<Quiet>>>, NoBirths> =
         Actions::cont();
     actions
         .sends
         .push(Delivery::new(Recipient::global(MailAddr(9)), 42));
 
-    assert_eq!(actions.sends[0].to.route(), Route::Global(MailAddr(9)));
+    assert_eq!(actions.sends[0].to.resolve(MailAddr(0)), MailAddr(9));
     assert_eq!(actions.sends[0].message, 42);
     assert!(actions.creates.is_empty());
     assert!(matches!(actions.become_, Step::Continue));
@@ -110,7 +130,7 @@ fn nested_delegation_invokes_one_inner_fold_and_preserves_actions() {
     #[derive(Debug, PartialEq, Eq)]
     struct Rejected(u64);
 
-    type Sends = Vec<Delivery<MailAddr, u64>>;
+    type Sends = Vec<Delivery<Pure<Quiet>>>;
     type Child = Pure<Quiet>;
 
     let inner = Compose::from_fns(
@@ -136,7 +156,7 @@ fn nested_delegation_invokes_one_inner_fold_and_preserves_actions() {
 
     assert_eq!(*outer.behavior().behavior().state(), 1);
     assert_eq!(actions.sends.len(), 1);
-    assert_eq!(actions.sends[0].to.route(), Route::Global(MailAddr(7)));
+    assert_eq!(actions.sends[0].to.resolve(MailAddr(0)), MailAddr(7));
     assert_eq!(actions.sends[0].message, 11);
     assert_eq!(actions.creates.len(), 1);
     assert_eq!(actions.creates[0].nonce, 5);
@@ -155,7 +175,7 @@ fn nested_delegation_invokes_one_inner_fold_and_preserves_actions() {
 
 #[test]
 fn behavior_fn_preserves_explicit_initialization_and_transition_actions() {
-    type Sends = SendProduct<Vec<Delivery<MailAddr, u64>>, ServiceSends<ObserveChild<u64>>>;
+    type Sends = SendProduct<Vec<Delivery<Pure<Quiet>>>, ServiceSends<ObserveChild<u64>>>;
     type Child = Pure<Quiet>;
 
     let mut behavior = Compose::from_fns(
@@ -203,7 +223,7 @@ fn behavior_fn_composes_with_existing_wrappers_and_init_order() {
     let due = Instant::now();
     let mut behavior = Compose::from_fns(
         0_u8,
-        |state: &mut u8| -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, u8>>, NoBirths, Never> {
+        |state: &mut u8| -> Acted<MailAddr, Never, Vec<Delivery<U8Sink>>, NoBirths, Never> {
             *state += 1;
             Ok(Actions::new(
                 vec![Delivery::new(Recipient::global(MailAddr(4)), *state)],
@@ -378,7 +398,7 @@ async fn stashing_is_local_state_and_replay() {
             &mut self,
             _from: MailAddr,
             message: u64,
-        ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, NoBirths, Never> {
+        ) -> Acted<MailAddr, Never, Vec<Never>, NoBirths, Never> {
             self.0.push(message);
             Ok(Actions::cont())
         }
@@ -432,7 +452,7 @@ type Child = Pure<Quiet>;
 
 struct Parent;
 
-impl Handler<Never, Births<Child>, Never> for Parent {
+impl Handler<Vec<Never>, Births<Child>, Never> for Parent {
     type Addr = MailAddr;
     type Msg = u64;
 
@@ -440,7 +460,7 @@ impl Handler<Never, Births<Child>, Never> for Parent {
         &mut self,
         _from: MailAddr,
         _message: u64,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, Births<Child>, Never> {
+    ) -> Acted<MailAddr, Never, Vec<Never>, Births<Child>, Never> {
         Ok(Actions::cont())
     }
 }
@@ -476,7 +496,7 @@ impl Handler for StashRecording {
         &mut self,
         _from: MailAddr,
         message: StashMessage,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, NoBirths, Never> {
+    ) -> Acted<MailAddr, Never, Vec<Never>, NoBirths, Never> {
         self.0.push(message.id);
         Ok(Actions::cont())
     }
@@ -642,7 +662,7 @@ impl Behavior for TimerAware {
     type Addr = MailAddr;
     type Msg = u64;
     type Event = TimerAwareEvent;
-    type Sends = Vec<Delivery<MailAddr, Never>>;
+    type Sends = Vec<Never>;
     type Ph = Never;
     type Error = Never;
     type Birth = NoBirths;
@@ -698,7 +718,10 @@ async fn a_proxy_ignores_a_stale_child_stop_nonce() {
             ProxyCommand::Forward(7),
         )))
         .unwrap();
-    assert_eq!(forwarded.sends.deliveries[0].to.route(), Route::Child(0));
+    assert_eq!(
+        forwarded.sends.deliveries[0].to.resolve(MailAddr(17)),
+        behavior::Address::birth(MailAddr(17), 0)
+    );
 }
 
 #[test]
@@ -722,7 +745,7 @@ fn supervisor(
     strategy: Strategy,
     policy: RestartPolicy,
     budget: u32,
-) -> Supervisor<Pure<Parent, Never, Births<Child>, Never>, Child> {
+) -> Supervisor<Pure<Parent, Vec<Never>, Births<Child>, Never>, Child> {
     Supervisor::new(
         Pure::new(Parent),
         |index| u64::try_from(index).unwrap(),
@@ -740,7 +763,7 @@ fn supervisor(
     reason = "the supervision reaction shares its wrapped behavior's controlled-error seat"
 )]
 fn verify_budget_failure_and_stop(
-    _parent: &mut Pure<Parent, Never, Births<Child>, Never>,
+    _parent: &mut Pure<Parent, Vec<Never>, Births<Child>, Never>,
     failure: &SupervisionFailure<MailAddr>,
 ) -> Result<Become<MailAddr>, Never> {
     assert_eq!(failure.child, 1);
@@ -785,8 +808,10 @@ async fn supervisor_creates_proxies_and_replacement_is_a_send() {
     assert!(actions.creates.is_empty());
     assert_eq!(actions.sends.replacement_commands.len(), 1);
     assert_eq!(
-        actions.sends.replacement_commands[0].to.route(),
-        Route::Child(0)
+        actions.sends.replacement_commands[0]
+            .to
+            .resolve(MailAddr(17)),
+        behavior::Address::birth(MailAddr(17), 0)
     );
 }
 
@@ -829,7 +854,10 @@ async fn proxy_replacement_creates_a_fresh_incarnation() {
             ProxyCommand::Forward(7),
         )))
         .unwrap();
-    assert_eq!(forwarded.sends.deliveries[0].to.route(), Route::Child(1));
+    assert_eq!(
+        forwarded.sends.deliveries[0].to.resolve(MailAddr(17)),
+        behavior::Address::birth(MailAddr(17), 1)
+    );
     assert_eq!(forwarded.sends.deliveries[0].message, 7);
 }
 
@@ -995,8 +1023,10 @@ async fn stable_proxy_reports_worker_stop_and_creates_fresh_replacement() {
     assert!(restart.creates.is_empty());
     assert_eq!(restart.sends.replacement_commands.len(), 1);
     assert_eq!(
-        restart.sends.replacement_commands[0].to.route(),
-        Route::Child(0)
+        restart.sends.replacement_commands[0]
+            .to
+            .resolve(MailAddr(17)),
+        behavior::Address::birth(MailAddr(17), 0)
     );
 
     let command = restart
@@ -1124,14 +1154,16 @@ async fn supervision_failure_exit_is_an_abnormal_transient_worker_outcome() {
 
     assert_eq!(actions.sends.replacement_commands.len(), 1);
     assert_eq!(
-        actions.sends.replacement_commands[0].to.route(),
-        Route::Child(0)
+        actions.sends.replacement_commands[0]
+            .to
+            .resolve(MailAddr(17)),
+        behavior::Address::birth(MailAddr(17), 0)
     );
 }
 
 struct BirthingParent(bool);
 
-impl Handler<Never, Births<Child>, Never> for BirthingParent {
+impl Handler<Vec<Never>, Births<Child>, Never> for BirthingParent {
     type Addr = MailAddr;
     type Msg = u64;
 
@@ -1139,7 +1171,7 @@ impl Handler<Never, Births<Child>, Never> for BirthingParent {
         &mut self,
         _from: MailAddr,
         nonce: u64,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, Births<Child>, Never> {
+    ) -> Acted<MailAddr, Never, Vec<Never>, Births<Child>, Never> {
         if self.0 {
             return Ok(Actions::cont());
         }
@@ -1154,7 +1186,7 @@ impl Handler<Never, Births<Child>, Never> for BirthingParent {
 
 struct ReplacingParent;
 
-impl Handler<Never, Births<Child>, Never> for ReplacingParent {
+impl Handler<Vec<Never>, Births<Child>, Never> for ReplacingParent {
     type Addr = MailAddr;
     type Msg = u64;
 
@@ -1162,7 +1194,7 @@ impl Handler<Never, Births<Child>, Never> for ReplacingParent {
         &mut self,
         _from: MailAddr,
         nonce: u64,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, Births<Child>, Never> {
+    ) -> Acted<MailAddr, Never, Vec<Never>, Births<Child>, Never> {
         Ok(Actions {
             sends: Vec::new(),
             creates: vec![Create::replacement_incarnation(nonce, nonce - 1, child(0))],
@@ -1198,8 +1230,10 @@ async fn supervisor_preserves_and_observes_dynamic_births_once() {
     let replacement = supervisor.transition(stopped).unwrap();
     assert_eq!(replacement.sends.replacement_commands.len(), 1);
     assert_eq!(
-        replacement.sends.replacement_commands[0].to.route(),
-        Route::Child(9)
+        replacement.sends.replacement_commands[0]
+            .to
+            .resolve(MailAddr(17)),
+        behavior::Address::birth(MailAddr(17), 9)
     );
 }
 
@@ -1326,7 +1360,7 @@ async fn workers_macro_hides_a_heterogeneous_child_sum() {
             &mut self,
             _from: MailAddr,
             _message: u64,
-        ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, NoBirths, Never> {
+        ) -> Acted<MailAddr, Never, Vec<Never>, NoBirths, Never> {
             Ok(Actions::cont())
         }
     }

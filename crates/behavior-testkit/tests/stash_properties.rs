@@ -13,12 +13,32 @@ use proptest::collection::vec;
 use proptest::prelude::*;
 use tokio::runtime::Builder;
 
+struct Sink;
+
+impl Behavior for Sink {
+    type Addr = MailAddr;
+    type Msg = u8;
+    type Event = User<MailAddr, u8>;
+    type Sends = Vec<Never>;
+    type Ph = Never;
+    type Error = Never;
+    type Birth = behavior::NoBirths;
+
+    fn init(&mut self) -> behavior::BehaviorActed<Self> {
+        Ok(Actions::cont())
+    }
+
+    fn transition(&mut self, _: Self::Event) -> behavior::BehaviorActed<Self> {
+        Ok(Actions::cont())
+    }
+}
+
 #[derive(Default)]
 struct Recorder {
     seen: Vec<(MailAddr, u8)>,
 }
 
-impl Handler<u8, behavior::NoBirths, Never> for Recorder {
+impl Handler<Vec<Delivery<Sink>>, behavior::NoBirths, Never> for Recorder {
     type Addr = MailAddr;
     type Msg = u8;
 
@@ -26,7 +46,7 @@ impl Handler<u8, behavior::NoBirths, Never> for Recorder {
         &mut self,
         from: MailAddr,
         message: u8,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, u8>>, behavior::NoBirths, Never> {
+    ) -> Acted<MailAddr, Never, Vec<Delivery<Sink>>, behavior::NoBirths, Never> {
         self.seen.push((from, message));
         Ok(Actions {
             sends: vec![Delivery::new(Recipient::global(from), message)],
@@ -192,7 +212,7 @@ struct StopRecorder {
     seen: Vec<(MailAddr, u8)>,
 }
 
-impl Handler<u8, behavior::NoBirths, Never> for StopRecorder {
+impl Handler<Vec<Delivery<Sink>>, behavior::NoBirths, Never> for StopRecorder {
     type Addr = MailAddr;
     type Msg = u8;
 
@@ -200,7 +220,7 @@ impl Handler<u8, behavior::NoBirths, Never> for StopRecorder {
         &mut self,
         from: MailAddr,
         message: u8,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, u8>>, behavior::NoBirths, Never> {
+    ) -> Acted<MailAddr, Never, Vec<Delivery<Sink>>, behavior::NoBirths, Never> {
         self.seen.push((from, message));
         Ok(Actions {
             sends: vec![Delivery::new(Recipient::global(from), message)],

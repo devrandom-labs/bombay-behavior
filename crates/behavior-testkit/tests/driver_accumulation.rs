@@ -9,8 +9,8 @@ use std::time::Duration;
 
 use behavior::{
     Acted, Actions, Behavior, Crash, Create, Delivery, Exit, Handler, MailAddr, Never, Pure,
-    Recipient, RestartPolicy, Route, SendAlgebra, SendProduct, Step, Strategy, SupervisionEvent,
-    User, UserEvent, WorkerStopped,
+    Recipient, RestartPolicy, SendAlgebra, SendProduct, Step, Strategy, SupervisionEvent, User,
+    UserEvent, WorkerStopped,
 };
 use behavior_testkit::{Mailbox, drive};
 use proptest::collection::vec;
@@ -20,7 +20,9 @@ use tokio::time::Instant;
 #[derive(Default)]
 struct Echo;
 
-impl Handler<u8, behavior::NoBirths, Never> for Echo {
+impl Handler<Vec<Delivery<behavior_testkit::TestRecipient<u8>>>, behavior::NoBirths, Never>
+    for Echo
+{
     type Addr = MailAddr;
     type Msg = u8;
 
@@ -28,12 +30,18 @@ impl Handler<u8, behavior::NoBirths, Never> for Echo {
         &mut self,
         _from: MailAddr,
         _message: u8,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, u8>>, behavior::NoBirths, Never> {
+    ) -> Acted<
+        MailAddr,
+        Never,
+        Vec<Delivery<behavior_testkit::TestRecipient<u8>>>,
+        behavior::NoBirths,
+        Never,
+    > {
         Ok(Actions::cont())
     }
 }
 
-type Child = Pure<Echo, u8>;
+type Child = Pure<Echo, Vec<Delivery<behavior_testkit::TestRecipient<u8>>>>;
 
 fn child(_index: usize) -> Child {
     Pure::new(Echo)
@@ -45,7 +53,9 @@ struct EchoingParent {
     seen: Vec<u64>,
 }
 
-impl Handler<u64, behavior::Births<Child>, Never> for EchoingParent {
+impl Handler<Vec<Delivery<behavior_testkit::TestRecipient<u64>>>, behavior::Births<Child>, Never>
+    for EchoingParent
+{
     type Addr = MailAddr;
     type Msg = u64;
 
@@ -53,7 +63,13 @@ impl Handler<u64, behavior::Births<Child>, Never> for EchoingParent {
         &mut self,
         _from: MailAddr,
         message: u64,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, u64>>, behavior::Births<Child>, Never> {
+    ) -> Acted<
+        MailAddr,
+        Never,
+        Vec<Delivery<behavior_testkit::TestRecipient<u64>>>,
+        behavior::Births<Child>,
+        Never,
+    > {
         self.seen.push(message);
         Ok(Actions {
             sends: vec![Delivery::new(Recipient::global(MailAddr(0)), message)],
@@ -67,7 +83,7 @@ struct BirthingParent {
     born: bool,
 }
 
-impl Handler<Never, behavior::Births<Child>, Never> for BirthingParent {
+impl Handler<Vec<Never>, behavior::Births<Child>, Never> for BirthingParent {
     type Addr = MailAddr;
     type Msg = u64;
 
@@ -75,8 +91,7 @@ impl Handler<Never, behavior::Births<Child>, Never> for BirthingParent {
         &mut self,
         _from: MailAddr,
         nonce: u64,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, behavior::Births<Child>, Never>
-    {
+    ) -> Acted<MailAddr, Never, Vec<Never>, behavior::Births<Child>, Never> {
         if self.born {
             return Ok(Actions::cont());
         }
@@ -89,8 +104,15 @@ impl Handler<Never, behavior::Births<Child>, Never> for BirthingParent {
     }
 }
 
-type TestSupervisor =
-    behavior::Supervisor<Pure<EchoingParent, u64, behavior::Births<Child>, Never>, Child>;
+type TestSupervisor = behavior::Supervisor<
+    Pure<
+        EchoingParent,
+        Vec<Delivery<behavior_testkit::TestRecipient<u64>>>,
+        behavior::Births<Child>,
+        Never,
+    >,
+    Child,
+>;
 
 /// A driven supervised trace: user echoes accumulate in the inner lane,
 /// replacement sends in the supervisor's own lane, observe-child sends stay
@@ -134,13 +156,19 @@ async fn driver_accumulates_supervising_send_products_losslessly() {
     let echoes: Vec<u64> = trace.sends.behavior.iter().map(|d| d.message).collect();
     assert_eq!(echoes, [3, 5]);
     // Supervisor's own replacement lane: one per death, in order.
-    let replacements: Vec<Route<MailAddr>> = trace
+    let replacements: Vec<MailAddr> = trace
         .sends
         .replacement_commands
         .iter()
-        .map(|d| d.to.route())
+        .map(|d| d.to.resolve(MailAddr(17)))
         .collect();
-    assert_eq!(replacements, [Route::Child(0), Route::Child(1)]);
+    assert_eq!(
+        replacements,
+        [
+            behavior::Address::birth(MailAddr(17), 0),
+            behavior::Address::birth(MailAddr(17), 1)
+        ]
+    );
     // Observe-child sends: emitted once at init, never again.
     assert_eq!(trace.sends.child_observations.len(), 2);
     // Creates: exactly the two init proxies; the driver never re-creates.
@@ -235,8 +263,10 @@ async fn empty_fleet_dynamic_birth_then_death_restarts() {
         .unwrap();
     assert_eq!(actions.sends.replacement_commands.len(), 1);
     assert_eq!(
-        actions.sends.replacement_commands[0].to.route(),
-        Route::Child(9)
+        actions.sends.replacement_commands[0]
+            .to
+            .resolve(MailAddr(17)),
+        behavior::Address::birth(MailAddr(17), 9)
     );
     assert!(supervisor.is_alive(9));
 }
@@ -335,7 +365,13 @@ async fn fn_state_adapter_drives_like_a_base() {
         seen: &mut Vec<u64>,
         _from: MailAddr,
         message: u64,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, u64>>, behavior::NoBirths, Never> {
+    ) -> Acted<
+        MailAddr,
+        Never,
+        Vec<Delivery<behavior_testkit::TestRecipient<u64>>>,
+        behavior::NoBirths,
+        Never,
+    > {
         seen.push(message);
         Ok(Actions {
             sends: vec![Delivery::new(Recipient::global(MailAddr(0)), message)],
@@ -348,8 +384,15 @@ async fn fn_state_adapter_drives_like_a_base() {
         })
     }
     let mut behavior: Pure<
-        behavior::FoldFn<Vec<u64>, MailAddr, u64, u64, behavior::NoBirths, Never>,
-        u64,
+        behavior::FoldFn<
+            Vec<u64>,
+            MailAddr,
+            u64,
+            Vec<Delivery<behavior_testkit::TestRecipient<u64>>>,
+            behavior::NoBirths,
+            Never,
+        >,
+        Vec<Delivery<behavior_testkit::TestRecipient<u64>>>,
         behavior::NoBirths,
         Never,
     > = Pure::from_fn(Vec::new(), receive);
@@ -377,7 +420,9 @@ async fn driver_stash_stop_preserves_held_and_stops() {
     struct StopOnZero {
         seen: Vec<(MailAddr, u64)>,
     }
-    impl Handler<u64, behavior::NoBirths, Never> for StopOnZero {
+    impl Handler<Vec<Delivery<behavior_testkit::TestRecipient<u64>>>, behavior::NoBirths, Never>
+        for StopOnZero
+    {
         type Addr = MailAddr;
         type Msg = u64;
 
@@ -385,8 +430,13 @@ async fn driver_stash_stop_preserves_held_and_stops() {
             &mut self,
             from: MailAddr,
             message: u64,
-        ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, u64>>, behavior::NoBirths, Never>
-        {
+        ) -> Acted<
+            MailAddr,
+            Never,
+            Vec<Delivery<behavior_testkit::TestRecipient<u64>>>,
+            behavior::NoBirths,
+            Never,
+        > {
             self.seen.push((from, message));
             Ok(Actions {
                 sends: Vec::new(),

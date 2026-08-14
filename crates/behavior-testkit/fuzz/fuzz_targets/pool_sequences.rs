@@ -3,12 +3,14 @@
 use std::time::Duration;
 
 use behavior::{
-    Actions, Behavior, CreationKind, Delivery, InterruptionPolicy, JobId, KeyedPoolMessage,
-    KeyedWorkerPool, MailAddr, Never, NoBirths, PoolAssignment, PoolMessage, Recipient,
+    Actions, Behavior, CreationKind, InterruptionPolicy, JobId, KeyedPoolMessage,
+    KeyedWorkerPool, MailAddr, Never, NoBirths, PoolAssignment, PoolMessage, PoolResponse, Recipient,
     RestartPolicy, User, WorkerCreationResolved, WorkerPhase, WorkerPool, WorkerStopped,
 };
 use libfuzzer_sys::fuzz_target;
 use tokio::time::Instant;
+
+type Reply = bombay_behavior_fuzz::TestRecipient<PoolResponse<u8, u8, MailAddr>>;
 
 struct Worker;
 
@@ -16,7 +18,7 @@ impl Behavior for Worker {
     type Addr = MailAddr;
     type Msg = PoolAssignment<u8>;
     type Event = User<MailAddr, PoolAssignment<u8>>;
-    type Sends = Vec<Delivery<MailAddr, Never>>;
+    type Sends = Vec<Never>;
     type Ph = Never;
     type Error = Never;
     type Birth = NoBirths;
@@ -79,7 +81,7 @@ fuzz_target!(|bytes: &[u8]| {
                     PoolMessage::Submit {
                         job: JobId(next_job),
                         payload: byte,
-                        reply_to: Recipient::global(MailAddr(10)),
+                        reply_to: Recipient::<Reply>::global(MailAddr(10)),
                     },
                 )
                 .unwrap();
@@ -160,7 +162,7 @@ fuzz_target!(|bytes: &[u8]| {
                             key: byte >> 2,
                             job: JobId(u64::try_from(job).unwrap()),
                             payload: byte,
-                            reply_to: Recipient::global(MailAddr(10)),
+                            reply_to: Recipient::<Reply>::global(MailAddr(10)),
                         },
                     )
                     .unwrap();

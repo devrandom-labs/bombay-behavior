@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use behavior::{
     Acted, Actions, Behavior, Compose, Crash, Delivery, Exit, Handler, MailAddr, Never, Pure,
-    Recipient, RestartPolicy, Route, StashRoute, Step, Strategy, SupervisionEvent, TimerElapsed,
+    Recipient, RestartPolicy, StashRoute, Step, Strategy, SupervisionEvent, TimerElapsed,
     TimerGeneration, TimerId, UserEvent, WorkerStopped,
 };
 use proptest::collection::vec;
@@ -19,7 +19,9 @@ use tokio::time::Instant;
 #[derive(Default)]
 struct Recorder;
 
-impl Handler<u8, behavior::NoBirths, Never> for Recorder {
+impl Handler<Vec<Delivery<behavior_testkit::TestRecipient<u8>>>, behavior::NoBirths, Never>
+    for Recorder
+{
     type Addr = MailAddr;
     type Msg = u8;
 
@@ -27,12 +29,18 @@ impl Handler<u8, behavior::NoBirths, Never> for Recorder {
         &mut self,
         _from: MailAddr,
         _message: u8,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, u8>>, behavior::NoBirths, Never> {
+    ) -> Acted<
+        MailAddr,
+        Never,
+        Vec<Delivery<behavior_testkit::TestRecipient<u8>>>,
+        behavior::NoBirths,
+        Never,
+    > {
         Ok(Actions::cont())
     }
 }
 
-type Child = Pure<Recorder, u8>;
+type Child = Pure<Recorder, Vec<Delivery<behavior_testkit::TestRecipient<u8>>>>;
 
 fn child(_index: usize) -> Child {
     Pure::new(Recorder)
@@ -45,7 +53,9 @@ struct EchoingParent {
     seen: Vec<u64>,
 }
 
-impl Handler<u64, behavior::Births<Child>, Never> for EchoingParent {
+impl Handler<Vec<Delivery<behavior_testkit::TestRecipient<u64>>>, behavior::Births<Child>, Never>
+    for EchoingParent
+{
     type Addr = MailAddr;
     type Msg = u64;
 
@@ -53,7 +63,13 @@ impl Handler<u64, behavior::Births<Child>, Never> for EchoingParent {
         &mut self,
         _from: MailAddr,
         message: u64,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, u64>>, behavior::Births<Child>, Never> {
+    ) -> Acted<
+        MailAddr,
+        Never,
+        Vec<Delivery<behavior_testkit::TestRecipient<u64>>>,
+        behavior::Births<Child>,
+        Never,
+    > {
         self.seen.push(message);
         Ok(Actions {
             sends: vec![Delivery::new(Recipient::global(MailAddr(0)), message)],
@@ -77,7 +93,14 @@ fn route(message: &u64) -> StashRoute {
 
 type Stack = behavior::Compose<
     behavior::Supervisor<
-        behavior::Stash<Pure<EchoingParent, u64, behavior::Births<Child>, Never>>,
+        behavior::Stash<
+            Pure<
+                EchoingParent,
+                Vec<Delivery<behavior_testkit::TestRecipient<u64>>>,
+                behavior::Births<Child>,
+                Never,
+            >,
+        >,
         Child,
     >,
 >;
@@ -133,8 +156,10 @@ async fn child_death_never_leaks_into_the_user_lane() {
         .unwrap();
     assert_eq!(actions.sends.replacement_commands.len(), 1);
     assert_eq!(
-        actions.sends.replacement_commands[0].to.route(),
-        Route::Child(0)
+        actions.sends.replacement_commands[0]
+            .to
+            .resolve(MailAddr(17)),
+        behavior::Address::birth(MailAddr(17), 0)
     );
     assert!(actions.sends.behavior.is_empty());
     assert!(actions.sends.child_observations.is_empty());
@@ -240,8 +265,10 @@ async fn full_stack_all_four_layers_keep_their_own_lanes() {
         .unwrap();
     assert_eq!(replacement.sends.replacement_commands.len(), 1);
     assert_eq!(
-        replacement.sends.replacement_commands[0].to.route(),
-        Route::Child(0)
+        replacement.sends.replacement_commands[0]
+            .to
+            .resolve(MailAddr(17)),
+        behavior::Address::birth(MailAddr(17), 0)
     );
     assert!(replacement.sends.behavior.behavior.behavior.is_empty());
 }
@@ -347,8 +374,8 @@ proptest! {
             if tag == 3 {
                 prop_assert_eq!(actions.sends.replacement_commands.len(), 1);
                 prop_assert_eq!(
-                    actions.sends.replacement_commands[0].to.route(),
-                    Route::Child(u64::from(arg % 2))
+                    actions.sends.replacement_commands[0].to.resolve(MailAddr(17)),
+                    behavior::Address::birth(MailAddr(17), u64::from(arg % 2))
                 );
                 prop_assert!(echo_step.is_empty());
             } else {

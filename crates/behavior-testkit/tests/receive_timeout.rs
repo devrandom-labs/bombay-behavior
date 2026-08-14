@@ -20,7 +20,7 @@ impl Handler for Child {
         &mut self,
         _from: MailAddr,
         _message: u8,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, NoBirths, Never> {
+    ) -> Acted<MailAddr, Never, Vec<Never>, NoBirths, Never> {
         Ok(Actions::cont())
     }
 }
@@ -32,7 +32,9 @@ struct Subject {
     accepted: Vec<u8>,
 }
 
-impl Handler<u8, Births<ChildBehavior>, Failed> for Subject {
+impl Handler<Vec<Delivery<behavior_testkit::TestRecipient<u8>>>, Births<ChildBehavior>, Failed>
+    for Subject
+{
     type Addr = MailAddr;
     type Msg = u8;
 
@@ -40,7 +42,13 @@ impl Handler<u8, Births<ChildBehavior>, Failed> for Subject {
         &mut self,
         _from: MailAddr,
         message: u8,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, u8>>, Births<ChildBehavior>, Failed> {
+    ) -> Acted<
+        MailAddr,
+        Never,
+        Vec<Delivery<behavior_testkit::TestRecipient<u8>>>,
+        Births<ChildBehavior>,
+        Failed,
+    > {
         if message == 7 {
             return Err(Failed);
         }
@@ -48,7 +56,7 @@ impl Handler<u8, Births<ChildBehavior>, Failed> for Subject {
         let mut actions: Actions<
             MailAddr,
             Never,
-            Vec<Delivery<MailAddr, u8>>,
+            Vec<Delivery<behavior_testkit::TestRecipient<u8>>>,
             Births<ChildBehavior>,
         > = Actions::cont();
         actions
@@ -64,11 +72,22 @@ impl Handler<u8, Births<ChildBehavior>, Failed> for Subject {
     }
 }
 
-type Inner = Pure<Subject, u8, Births<ChildBehavior>, Failed>;
+type Inner = Pure<
+    Subject,
+    Vec<Delivery<behavior_testkit::TestRecipient<u8>>>,
+    Births<ChildBehavior>,
+    Failed,
+>;
 
 fn on_timeout(
     _inner: &mut Inner,
-) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, u8>>, Births<ChildBehavior>, Failed> {
+) -> Acted<
+    MailAddr,
+    Never,
+    Vec<Delivery<behavior_testkit::TestRecipient<u8>>>,
+    Births<ChildBehavior>,
+    Failed,
+> {
     Ok(Actions {
         sends: vec![Delivery::new(Recipient::global(MailAddr(91)), 99)],
         creates: vec![Create::birth(99, Pure::new(Child))],
@@ -311,7 +330,7 @@ impl Behavior for StopsAtInitialization {
     type Addr = MailAddr;
     type Msg = ();
     type Event = User<MailAddr, ()>;
-    type Sends = Vec<Delivery<MailAddr, Never>>;
+    type Sends = Vec<Never>;
     type Ph = Never;
     type Error = Never;
     type Birth = NoBirths;

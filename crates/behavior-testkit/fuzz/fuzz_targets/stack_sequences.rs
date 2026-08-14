@@ -10,7 +10,7 @@
 
 use behavior::{
     Acted, Actions, Behavior, Births, Compose, Crash, DeadlineEvent, Delivery, Exit, Handler,
-    MailAddr, Never, PeerStopped, Pure, Recipient, RestartPolicy, Route, StashRoute, Step,
+    MailAddr, Never, PeerStopped, Pure, Recipient, RestartPolicy, StashRoute, Step,
     Strategy, SupervisionEvent, TimerElapsed, TimerGeneration, TimerId, UserEvent, WatchEvent,
     WorkerStopped, stop_on_abnormal_death,
 };
@@ -23,7 +23,7 @@ struct EchoingParent {
     seen: Vec<u64>,
 }
 
-impl Handler<u64, behavior::Births<Pure<Echo, u8>>, Never> for EchoingParent {
+impl Handler<Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u64>>>,  behavior::Births<Pure<Echo, Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u8>>>>>, Never> for EchoingParent {
     type Addr = MailAddr;
     type Msg = u64;
 
@@ -31,7 +31,7 @@ impl Handler<u64, behavior::Births<Pure<Echo, u8>>, Never> for EchoingParent {
         &mut self,
         _from: MailAddr,
         message: u64,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, u64>>, behavior::Births<Pure<Echo, u8>>, Never>
+    ) -> Acted<MailAddr, Never, Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u64>>>, behavior::Births<Pure<Echo, Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u8>>>>>, Never>
     {
         self.seen.push(message);
         Ok(Actions {
@@ -45,7 +45,7 @@ impl Handler<u64, behavior::Births<Pure<Echo, u8>>, Never> for EchoingParent {
 #[derive(Default)]
 struct Echo;
 
-impl Handler<u8> for Echo {
+impl Handler<Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u8>>>> for Echo {
     type Addr = MailAddr;
     type Msg = u8;
 
@@ -53,12 +53,12 @@ impl Handler<u8> for Echo {
         &mut self,
         _from: MailAddr,
         _message: u8,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, u8>>, behavior::NoBirths, Never> {
+    ) -> Acted<MailAddr, Never, Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u8>>>, behavior::NoBirths, Never> {
         Ok(Actions::cont())
     }
 }
 
-fn child(_index: usize) -> Pure<Echo, u8> {
+fn child(_index: usize) -> Pure<Echo, Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u8>>>> {
     Pure::new(Echo)
 }
 
@@ -74,10 +74,10 @@ type Stack = behavior::Compose<
     behavior::Supervisor<
         behavior::Deadline<
             behavior::Watch<
-                behavior::Stash<Pure<EchoingParent, u64, Births<Pure<Echo, u8>>, Never>>,
+                behavior::Stash<Pure<EchoingParent, Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u64>>>,  Births<Pure<Echo, Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u8>>>>>, Never>>,
             >,
         >,
-        Pure<Echo, u8>,
+        Pure<Echo, Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u8>>>>,
     >,
 >;
 
@@ -176,8 +176,8 @@ fuzz_target!(|bytes: &[u8]| {
                         "replacement at byte {index}"
                     );
                     assert_eq!(
-                        actions.sends.replacement_commands[0].to.route(),
-                        Route::Child(nonce),
+                        actions.sends.replacement_commands[0].to.resolve(MailAddr(17)),
+                        behavior::Address::birth(MailAddr(17), nonce),
                         "replacement route at byte {index}"
                     );
                     assert!(

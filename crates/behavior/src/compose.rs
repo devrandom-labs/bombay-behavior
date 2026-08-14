@@ -29,7 +29,12 @@ pub struct Compose<B> {
     next_timer: u64,
 }
 
-impl<S: Handler<O, Br, E>, O, Br: BirthMode, E> Compose<Pure<S, O, Br, E>> {
+impl<S, Sends, Br, E> Compose<Pure<S, Sends, Br, E>>
+where
+    S: Handler<Sends, Br, E>,
+    Sends: SendAlgebra,
+    Br: BirthMode,
+{
     #[must_use]
     pub fn new(state: S) -> Self {
         Self {
@@ -198,6 +203,7 @@ impl<B: Behavior> Compose<B> {
     where
         B: Behavior<Birth = Births<C>>,
         C: Behavior<Ph = Never, Addr = B::Addr>,
+        <B::Addr as Address>::Nonce: From<u64>,
     {
         self.map_behavior(|behavior| {
             Supervisor::new(
@@ -218,6 +224,7 @@ impl<B, C> Compose<Supervisor<B, C>>
 where
     B: Behavior<Birth = Births<C>>,
     C: Behavior<Ph = Never, Addr = B::Addr>,
+    <B::Addr as Address>::Nonce: From<u64>,
 {
     #[must_use]
     pub fn restart(self, strategy: Strategy) -> Self {

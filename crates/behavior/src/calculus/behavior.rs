@@ -3,11 +3,11 @@
 use core::marker::PhantomData;
 
 use super::user_event::{EventInput, User, UserEvent};
-use crate::actor::{Address, BirthMode, Delivery, NoBirths};
+use crate::actor::{Address, BirthMode, NoBirths};
 use crate::effects::{Acted, Actions, SendAlgebra};
 use crate::next::Never;
 
-pub type StateActed<A, Out, Birth, Err> = Acted<A, Never, Vec<Delivery<A, Out>>, Birth, Err>;
+pub type StateActed<A, Sends, Birth, Err> = Acted<A, Never, Sends, Birth, Err>;
 
 /// The only successful effect shape admitted by a [`Behavior`] implementation.
 pub type BehaviorActed<B> = Acted<
@@ -18,8 +18,9 @@ pub type BehaviorActed<B> = Acted<
     <B as Behavior>::Error,
 >;
 
-pub trait Handler<Out = Never, Birth = NoBirths, Err = Never>
+pub trait Handler<Sends = Vec<Never>, Birth = NoBirths, Err = Never>
 where
+    Sends: SendAlgebra,
     Birth: BirthMode,
 {
     type Addr: Address;
@@ -37,7 +38,7 @@ where
         &mut self,
         from: Self::Addr,
         message: Self::Msg,
-    ) -> StateActed<Self::Addr, Out, Birth, Err>;
+    ) -> StateActed<Self::Addr, Sends, Birth, Err>;
 }
 
 /// A composed pure behavior. `Event` is the complete accepted protocol;
@@ -110,12 +111,21 @@ pub fn delegate_transition<B: Behavior>(behavior: &mut B, event: B::Event) -> Be
     behavior.transition(event)
 }
 
-pub struct Pure<S: Handler<O, Br, E>, O = Never, Br: BirthMode = NoBirths, E = Never> {
+pub struct Pure<S, Sends = Vec<Never>, Br: BirthMode = NoBirths, E = Never>
+where
+    S: Handler<Sends, Br, E>,
+    Sends: SendAlgebra,
+{
     state: S,
-    marker: PhantomData<fn(O, Br, E)>,
+    marker: PhantomData<fn(Sends, Br, E)>,
 }
 
-impl<S: Handler<O, Br, E>, O, Br: BirthMode, E> Pure<S, O, Br, E> {
+impl<S, Sends, Br, E> Pure<S, Sends, Br, E>
+where
+    S: Handler<Sends, Br, E>,
+    Sends: SendAlgebra,
+    Br: BirthMode,
+{
     #[must_use]
     pub fn new(state: S) -> Self {
         Self {
@@ -133,10 +143,10 @@ pub struct FoldFn<
     S,
     A: Address,
     M,
-    O = Never,
+    Sends = Vec<Never>,
     Br: BirthMode = NoBirths,
     E = Never,
-    F = fn(&mut S, A, M) -> Acted<A, Never, Vec<Delivery<A, O>>, Br, E>,
+    F = fn(&mut S, A, M) -> Acted<A, Never, Sends, Br, E>,
 > {
     pub state: S,
     pub transition: F,
@@ -144,7 +154,7 @@ pub struct FoldFn<
         clippy::type_complexity,
         reason = "the marker retains the complete inferred behavior signature"
     )]
-    marker: PhantomData<fn(A, M, O, Br, E)>,
+    marker: PhantomData<fn(A, M, Sends, Br, E)>,
 }
 
 /// A concrete behavior defined by initialization and user-event folds.
@@ -210,21 +220,25 @@ where
     }
 }
 
-impl<S, F, A: Address, M, O, Br: BirthMode, E> Handler<O, Br, E> for FoldFn<S, A, M, O, Br, E, F>
+impl<S, F, A: Address, M, Sends, Br: BirthMode, E> Handler<Sends, Br, E>
+    for FoldFn<S, A, M, Sends, Br, E, F>
 where
-    F: FnMut(&mut S, A, M) -> Acted<A, Never, Vec<Delivery<A, O>>, Br, E>,
+    Sends: SendAlgebra,
+    F: FnMut(&mut S, A, M) -> Acted<A, Never, Sends, Br, E>,
 {
     type Addr = A;
     type Msg = M;
 
-    fn receive(&mut self, from: A, message: M) -> Acted<A, Never, Vec<Delivery<A, O>>, Br, E> {
+    fn receive(&mut self, from: A, message: M) -> Acted<A, Never, Sends, Br, E> {
         (self.transition)(&mut self.state, from, message)
     }
 }
 
-impl<S, F, A: Address, M, O, Br: BirthMode, E> Pure<FoldFn<S, A, M, O, Br, E, F>, O, Br, E>
+impl<S, F, A: Address, M, Sends, Br: BirthMode, E>
+    Pure<FoldFn<S, A, M, Sends, Br, E, F>, Sends, Br, E>
 where
-    F: FnMut(&mut S, A, M) -> Acted<A, Never, Vec<Delivery<A, O>>, Br, E>,
+    Sends: SendAlgebra,
+    F: FnMut(&mut S, A, M) -> Acted<A, Never, Sends, Br, E>,
 {
     #[must_use]
     pub fn from_fn(state: S, transition: F) -> Self {
@@ -236,24 +250,25 @@ where
     }
 }
 
-impl<S, O, Br, E> Behavior for Pure<S, O, Br, E>
+impl<S, Sends, Br, E> Behavior for Pure<S, Sends, Br, E>
 where
-    S: Handler<O, Br, E>,
+    S: Handler<Sends, Br, E>,
+    Sends: SendAlgebra,
     Br: BirthMode,
 {
     type Addr = S::Addr;
     type Msg = S::Msg;
     type Event = User<S::Addr, S::Msg>;
-    type Sends = Vec<Delivery<S::Addr, O>>;
+    type Sends = Sends;
     type Ph = Never;
     type Error = E;
     type Birth = Br;
 
-    fn init(&mut self) -> StateActed<S::Addr, O, Br, E> {
+    fn init(&mut self) -> StateActed<S::Addr, Sends, Br, E> {
         Ok(Actions::cont())
     }
 
-    fn transition(&mut self, event: Self::Event) -> StateActed<S::Addr, O, Br, E> {
+    fn transition(&mut self, event: Self::Event) -> StateActed<S::Addr, Sends, Br, E> {
         self.state.receive(event.from, event.message)
     }
 }
