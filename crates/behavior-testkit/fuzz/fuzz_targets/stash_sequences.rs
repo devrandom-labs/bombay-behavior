@@ -19,7 +19,7 @@ struct Recorder {
     seen: Vec<u64>,
 }
 
-impl Handler<u64> for Recorder {
+impl Handler<Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u64>>>> for Recorder {
     type Addr = MailAddr;
     type Msg = u64;
 
@@ -27,7 +27,7 @@ impl Handler<u64> for Recorder {
         &mut self,
         _from: MailAddr,
         message: u64,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, u64>>, behavior::NoBirths, Never> {
+    ) -> Acted<MailAddr, Never, Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u64>>>, behavior::NoBirths, Never> {
         self.seen.push(message);
         Ok(Actions {
             sends: vec![Delivery::new(Recipient::global(MailAddr(0)), message)],

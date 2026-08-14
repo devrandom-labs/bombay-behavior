@@ -7,21 +7,21 @@ where-clauses, visibility, documentation, and `&mut self` behavior methods
 remain ordinary Rust:
 
 ```rust
-use behavior::{Actions, Delivery, MailAddr, Never, NoBirths};
+use behavior::{Actions, MailAddr, Never, NoBirths};
 
 struct Counter(u64);
 
 #[behavior::behavior(
     addr = MailAddr,
     message = u64,
-    sends = Vec<Delivery<MailAddr, Never>>,
+    sends = Vec<Never>,
     births = NoBirths,
     error = Never,
 )]
 impl Counter {
     fn init(
         &mut self,
-    ) -> behavior::Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, NoBirths, Never> {
+    ) -> behavior::Acted<MailAddr, Never, Vec<Never>, NoBirths, Never> {
         Ok(Actions::cont())
     }
 
@@ -29,7 +29,7 @@ impl Counter {
         &mut self,
         _from: MailAddr,
         value: u64,
-    ) -> behavior::Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, NoBirths, Never> {
+    ) -> behavior::Acted<MailAddr, Never, Vec<Never>, NoBirths, Never> {
         self.0 += value;
         Ok(Actions::cont())
     }

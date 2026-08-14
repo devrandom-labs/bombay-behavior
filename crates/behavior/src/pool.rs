@@ -36,14 +36,18 @@ pub struct PoolAssignment<J> {
 
 /// Messages accepted by a pool coordinator.
 #[derive(Clone, PartialEq, Eq)]
-pub enum PoolMessage<A: Address, J, R> {
+pub enum PoolMessage<A, D, J, R>
+where
+    A: Address,
+    D: Behavior<Addr = A, Msg = PoolResponse<J, R, A>>,
+{
     Submit {
         job: JobId,
         payload: J,
-        reply_to: Recipient<A, PoolResponse<J, R, A>>,
+        reply_to: Recipient<D>,
     },
     Completed {
-        worker: A::Nonce,
+        worker: <D::Addr as Address>::Nonce,
         assignment: AssignmentId,
         result: R,
     },
@@ -55,21 +59,25 @@ pub enum PoolMessage<A: Address, J, R> {
 /// It affects later submissions; jobs already accepted retain their selected
 /// stable worker slot.
 #[derive(Clone, PartialEq, Eq)]
-pub enum KeyedPoolMessage<A: Address, K, J, R> {
+pub enum KeyedPoolMessage<A, D, K, J, R>
+where
+    A: Address,
+    D: Behavior<Addr = A, Msg = PoolResponse<J, R, A>>,
+{
     Submit {
         key: K,
         job: JobId,
         payload: J,
-        reply_to: Recipient<A, PoolResponse<J, R, A>>,
+        reply_to: Recipient<D>,
     },
     Completed {
-        worker: A::Nonce,
+        worker: <D::Addr as Address>::Nonce,
         assignment: AssignmentId,
         result: R,
     },
     Rebalance {
         key: K,
-        worker: A::Nonce,
+        worker: <D::Addr as Address>::Nonce,
     },
 }
 
@@ -199,34 +207,34 @@ pub enum PoolError<N> {
     },
 }
 
-struct AcceptedJob<A: Address, J, R> {
+struct AcceptedJob<A: Address, D: Behavior<Addr = A, Msg = PoolResponse<J, R, A>>, J, R> {
     id: JobId,
     payload: J,
-    reply_to: Recipient<A, PoolResponse<J, R, A>>,
+    reply_to: Recipient<D>,
     interruption: Option<PoolInterruption<A>>,
     target: Option<A::Nonce>,
 }
 
-struct QueuedJob<A: Address, J, R> {
-    accepted: AcceptedJob<A, J, R>,
+struct QueuedJob<A: Address, D: Behavior<Addr = A, Msg = PoolResponse<J, R, A>>, J, R> {
+    accepted: AcceptedJob<A, D, J, R>,
     dispatch_payload: J,
 }
 
-enum SlotState<A: Address, J, R> {
+enum SlotState<A: Address, D: Behavior<Addr = A, Msg = PoolResponse<J, R, A>>, J, R> {
     Installing,
     Idle,
     Assigned {
         assignment: AssignmentId,
-        job: AcceptedJob<A, J, R>,
+        job: AcceptedJob<A, D, J, R>,
     },
     Retired {
         reason: WorkerRetirement,
     },
 }
 
-struct Slot<A: Address, J, R> {
+struct Slot<A: Address, D: Behavior<Addr = A, Msg = PoolResponse<J, R, A>>, J, R> {
     nonce: A::Nonce,
-    state: SlotState<A, J, R>,
+    state: SlotState<A, D, J, R>,
 }
 
 struct PlannedDispatch {
@@ -240,20 +248,32 @@ enum Admission {
 }
 
 /// The pool's concrete event sum, including existing supervision facts.
-pub type PoolEvent<A, J, R> = SupervisionEvent<User<A, PoolMessage<A, J, R>>>;
+pub type PoolEvent<A, D, J, R> = SupervisionEvent<User<A, PoolMessage<A, D, J, R>>>;
 
 /// Concrete event sum for a [`KeyedWorkerPool`].
-pub type KeyedPoolEvent<A, K, J, R> = SupervisionEvent<User<A, KeyedPoolMessage<A, K, J, R>>>;
+pub type KeyedPoolEvent<A, D, K, J, R> = SupervisionEvent<User<A, KeyedPoolMessage<A, D, K, J, R>>>;
 
 /// Named pool-owned delivery lanes.
-pub struct PoolBehaviorSends<A: Address, J, R, C: Behavior<Addr = A>> {
+pub struct PoolBehaviorSends<A, D, J, R, C>
+where
+    A: Address,
+    A::Nonce: From<u64>,
+    D: Behavior<Addr = A, Msg = PoolResponse<J, R, A>>,
+    C: Behavior<Addr = A, Ph = Never>,
+{
     /// Admission and terminal responses addressed to submitters.
-    pub responses: Vec<Delivery<A, PoolResponse<J, R, A>>>,
+    pub responses: Vec<Delivery<D>>,
     /// Assignments addressed to the selected stable worker proxies.
-    pub assignments: Vec<Delivery<A, ProxyCommand<C>>>,
+    pub assignments: Vec<Delivery<Proxy<C>>>,
 }
 
-impl<A: Address, J, R, C: Behavior<Addr = A>> SendAlgebra for PoolBehaviorSends<A, J, R, C> {
+impl<A, D, J, R, C> SendAlgebra for PoolBehaviorSends<A, D, J, R, C>
+where
+    A: Address,
+    A::Nonce: From<u64>,
+    D: Behavior<Addr = A, Msg = PoolResponse<J, R, A>>,
+    C: Behavior<Addr = A, Ph = Never>,
+{
     fn empty() -> Self {
         Self {
             responses: Vec::new(),
@@ -267,48 +287,62 @@ impl<A: Address, J, R, C: Behavior<Addr = A>> SendAlgebra for PoolBehaviorSends<
     }
 }
 
-impl<A: Address, J, R, C: Behavior<Addr = A>> SendInput<Delivery<A, PoolResponse<J, R, A>>, Own>
-    for PoolBehaviorSends<A, J, R, C>
+impl<A, D, J, R, C> SendInput<Delivery<D>, Own> for PoolBehaviorSends<A, D, J, R, C>
+where
+    A: Address,
+    A::Nonce: From<u64>,
+    D: Behavior<Addr = A, Msg = PoolResponse<J, R, A>>,
+    C: Behavior<Addr = A, Ph = Never>,
 {
-    fn emit(&mut self, input: Delivery<A, PoolResponse<J, R, A>>) {
+    fn emit(&mut self, input: Delivery<D>) {
         self.responses.push(input);
     }
 }
 
-impl<A: Address, J, R, C: Behavior<Addr = A>> SendInput<Delivery<A, ProxyCommand<C>>, Own>
-    for PoolBehaviorSends<A, J, R, C>
+impl<A, D, J, R, C> SendInput<Delivery<Proxy<C>>, Own> for PoolBehaviorSends<A, D, J, R, C>
+where
+    A: Address,
+    A::Nonce: From<u64>,
+    D: Behavior<Addr = A, Msg = PoolResponse<J, R, A>>,
+    C: Behavior<Addr = A, Ph = Never>,
 {
-    fn emit(&mut self, input: Delivery<A, ProxyCommand<C>>) {
+    fn emit(&mut self, input: Delivery<Proxy<C>>) {
         self.assignments.push(input);
     }
 }
 
-type KernelSends<A, J, R, C> = PoolBehaviorSends<A, J, R, C>;
+type KernelSends<A, D, J, R, C> = PoolBehaviorSends<A, D, J, R, C>;
 
 /// Pool effects keep responses and assignments in named, independently
 /// appendable lanes within the supervised behavior send product.
-pub type PoolSends<A, J, R, C> = SupervisorSends<A, KernelSends<A, J, R, C>, C>;
+pub type PoolSends<A, D, J, R, C> = SupervisorSends<A, KernelSends<A, D, J, R, C>, C>;
 
 /// Complete action type returned by a [`WorkerPool`] transition.
-pub type PoolActions<A, J, R, C> = Actions<A, Never, PoolSends<A, J, R, C>, Births<Proxy<C>>>;
+pub type PoolActions<A, D, J, R, C> = Actions<A, Never, PoolSends<A, D, J, R, C>, Births<Proxy<C>>>;
 
-struct PoolKernel<A: Address, J, R, C>(PhantomData<fn(A, J, R, C)>);
+#[allow(
+    clippy::type_complexity,
+    reason = "the marker retains the complete pool topology signature"
+)]
+struct PoolKernel<A: Address, D, J, R, C>(PhantomData<fn(A, D, J, R, C)>);
 
-impl<A: Address, J, R, C> PoolKernel<A, J, R, C> {
+impl<A: Address, D, J, R, C> PoolKernel<A, D, J, R, C> {
     const fn new() -> Self {
         Self(PhantomData)
     }
 }
 
-impl<A, J, R, C> Behavior for PoolKernel<A, J, R, C>
+impl<A, D, J, R, C> Behavior for PoolKernel<A, D, J, R, C>
 where
     A: Address,
+    A::Nonce: From<u64>,
+    D: Behavior<Addr = A, Msg = PoolResponse<J, R, A>>,
     C: Behavior<Addr = A, Msg = PoolAssignment<J>, Ph = Never>,
 {
     type Addr = A;
-    type Msg = PoolMessage<A, J, R>;
-    type Event = User<A, PoolMessage<A, J, R>>;
-    type Sends = KernelSends<A, J, R, C>;
+    type Msg = PoolMessage<A, D, J, R>;
+    type Event = User<A, PoolMessage<A, D, J, R>>;
+    type Sends = KernelSends<A, D, J, R, C>;
     type Ph = Never;
     type Error = Infallible;
     type Birth = Births<C>;
@@ -322,7 +356,7 @@ where
     }
 }
 
-type PoolSupervisor<A, J, R, C> = Supervisor<PoolKernel<A, J, R, C>, C>;
+type PoolSupervisor<A, D, J, R, C> = Supervisor<PoolKernel<A, D, J, R, C>, C>;
 
 /// A fixed, homogeneous, bounded FIFO worker pool.
 ///
@@ -345,14 +379,26 @@ type PoolSupervisor<A, J, R, C> = Supervisor<PoolKernel<A, J, R, C>, C>;
 /// A worker with any other message protocol cannot form a pool:
 ///
 /// ```compile_fail
-/// use behavior::{Behavior, MailAddr, Never, NoBirths, PoolAssignment, User, WorkerPool};
+/// use behavior::{Actions, Behavior, MailAddr, Never, NoBirths, PoolResponse, User, WorkerPool};
 ///
+/// struct Reply;
 /// struct WrongWorker;
+/// impl Behavior for Reply {
+///     type Addr = MailAddr;
+///     type Msg = PoolResponse<String, (), MailAddr>;
+///     type Event = User<MailAddr, Self::Msg>;
+///     type Sends = Vec<Never>;
+///     type Ph = Never;
+///     type Error = Never;
+///     type Birth = NoBirths;
+///     fn init(&mut self) -> behavior::BehaviorActed<Self> { Ok(Actions::cont()) }
+///     fn transition(&mut self, _: Self::Event) -> behavior::BehaviorActed<Self> { Ok(Actions::cont()) }
+/// }
 /// impl Behavior for WrongWorker {
 ///     type Addr = MailAddr;
 ///     type Msg = u8;
 ///     type Event = User<MailAddr, u8>;
-///     type Sends = Vec<behavior::Delivery<MailAddr, Never>>;
+///     type Sends = Vec<behavior::Never>;
 ///     type Ph = Never;
 ///     type Error = Never;
 ///     type Birth = NoBirths;
@@ -360,23 +406,28 @@ type PoolSupervisor<A, J, R, C> = Supervisor<PoolKernel<A, J, R, C>, C>;
 ///     fn transition(&mut self, _: Self::Event) -> behavior::BehaviorActed<Self> { unimplemented!() }
 /// }
 ///
-/// let _: Option<WorkerPool<MailAddr, String, (), WrongWorker>> = None;
+/// // `WrongWorker::Msg` is not `PoolAssignment<String>`.
+/// let _: Option<WorkerPool<MailAddr, Reply, String, (), WrongWorker>> = None;
 /// ```
-pub struct WorkerPool<A: Address, J, R, C>
+pub struct WorkerPool<A: Address, D, J, R, C>
 where
+    D: Behavior<Addr = A, Msg = PoolResponse<J, R, A>>,
+    A::Nonce: From<u64>,
     C: Behavior<Addr = A, Msg = PoolAssignment<J>, Ph = Never>,
 {
-    supervisor: PoolSupervisor<A, J, R, C>,
-    slots: Vec<Slot<A, J, R>>,
-    backlog: VecDeque<QueuedJob<A, J, R>>,
+    supervisor: PoolSupervisor<A, D, J, R, C>,
+    slots: Vec<Slot<A, D, J, R>>,
+    backlog: VecDeque<QueuedJob<A, D, J, R>>,
     backlog_capacity: usize,
     next_assignment: u64,
     interruption: InterruptionPolicy,
 }
 
-impl<A, J, R, C> WorkerPool<A, J, R, C>
+impl<A, D, J, R, C> WorkerPool<A, D, J, R, C>
 where
     A: Address,
+    A::Nonce: From<u64>,
+    D: Behavior<Addr = A, Msg = PoolResponse<J, R, A>>,
     C: Behavior<Addr = A, Msg = PoolAssignment<J>, Ph = Never>,
 {
     /// Construct a pool after proving that every configured child route is
@@ -407,7 +458,10 @@ where
         let mut slots = Vec::with_capacity(count);
         for index in 0..count {
             let nonce = nonces(index);
-            if slots.iter().any(|slot: &Slot<A, J, R>| slot.nonce == nonce) {
+            if slots
+                .iter()
+                .any(|slot: &Slot<A, D, J, R>| slot.nonce == nonce)
+            {
                 return Err(PoolConfigError::DuplicateWorker(nonce));
             }
             slots.push(Slot {
@@ -463,14 +517,18 @@ where
     }
 }
 
-impl<A, J, R, C> WorkerPool<A, J, R, C>
+impl<A, D, J, R, C> WorkerPool<A, D, J, R, C>
 where
     A: Address,
     A::Nonce: From<u64>,
+    D: Behavior<Addr = A, Msg = PoolResponse<J, R, A>>,
     J: Clone,
     C: Behavior<Addr = A, Msg = PoolAssignment<J>, Ph = Never>,
 {
-    fn supervisor_transition(&mut self, event: PoolEvent<A, J, R>) -> PoolActions<A, J, R, C> {
+    fn supervisor_transition(
+        &mut self,
+        event: PoolEvent<A, D, J, R>,
+    ) -> PoolActions<A, D, J, R, C> {
         match delegate_transition(&mut self.supervisor, event) {
             Ok(actions) => actions,
             Err(never) => match never {},
@@ -481,22 +539,25 @@ where
         &mut self,
         job: JobId,
         payload: J,
-        reply_to: Recipient<A, PoolResponse<J, R, A>>,
-        actions: &mut PoolActions<A, J, R, C>,
+        reply_to: Recipient<D>,
+        actions: &mut PoolActions<A, D, J, R, C>,
     ) {
         let can_dispatch = self
             .slots
             .iter()
             .any(|slot| matches!(slot.state, SlotState::Idle));
         if !can_dispatch && self.backlog.len() == self.backlog_capacity {
-            actions.sends.behavior.send::<_, Own>(Delivery::new(
-                reply_to,
-                PoolResponse::Rejected {
-                    job,
-                    payload,
-                    reason: PoolRejection::BacklogFull,
-                },
-            ));
+            actions
+                .sends
+                .behavior
+                .send::<Delivery<D>, Own>(Delivery::new(
+                    reply_to,
+                    PoolResponse::Rejected {
+                        job,
+                        payload,
+                        reason: PoolRejection::BacklogFull,
+                    },
+                ));
             return;
         }
         let dispatch_payload = payload.clone();
@@ -521,18 +582,21 @@ where
         target: A::Nonce,
         job: JobId,
         payload: J,
-        reply_to: Recipient<A, PoolResponse<J, R, A>>,
-        actions: &mut PoolActions<A, J, R, C>,
+        reply_to: Recipient<D>,
+        actions: &mut PoolActions<A, D, J, R, C>,
     ) -> Admission {
         let Some(slot) = self.slots.iter().find(|slot| slot.nonce == target) else {
-            actions.sends.behavior.send::<_, Own>(Delivery::new(
-                reply_to,
-                PoolResponse::Rejected {
-                    job,
-                    payload,
-                    reason: PoolRejection::AffinityUnavailable,
-                },
-            ));
+            actions
+                .sends
+                .behavior
+                .send::<Delivery<D>, Own>(Delivery::new(
+                    reply_to,
+                    PoolResponse::Rejected {
+                        job,
+                        payload,
+                        reason: PoolRejection::AffinityUnavailable,
+                    },
+                ));
             return Admission::Rejected;
         };
         if matches!(slot.state, SlotState::Retired { .. }) {
@@ -581,7 +645,7 @@ where
         worker: A::Nonce,
         assignment: AssignmentId,
         result: R,
-        actions: &mut PoolActions<A, J, R, C>,
+        actions: &mut PoolActions<A, D, J, R, C>,
     ) -> Result<(), PoolError<A::Nonce>> {
         let position = self.slot_position(worker)?;
         let phase = self
@@ -619,7 +683,7 @@ where
     fn worker_stopped(
         &mut self,
         stopped: &WorkerStopped<A>,
-        responses: &mut Vec<Delivery<A, PoolResponse<J, R, A>>>,
+        responses: &mut Vec<Delivery<D>>,
     ) -> Result<(), PoolError<A::Nonce>> {
         let position = self.slot_position(stopped.proxy)?;
         let phase = self
@@ -670,7 +734,7 @@ where
         Ok(())
     }
 
-    fn fail_backlog_if_irrecoverable(&mut self, actions: &mut PoolActions<A, J, R, C>) {
+    fn fail_backlog_if_irrecoverable(&mut self, actions: &mut PoolActions<A, D, J, R, C>) {
         if self
             .slots
             .iter()
@@ -697,7 +761,7 @@ where
         &mut self,
         worker: A::Nonce,
         reason: WorkerRetirement,
-        actions: &mut PoolActions<A, J, R, C>,
+        actions: &mut PoolActions<A, D, J, R, C>,
     ) {
         let mut retained = VecDeque::with_capacity(self.backlog.len());
         while let Some(queued) = self.backlog.pop_front() {
@@ -743,7 +807,7 @@ where
         Ok(())
     }
 
-    fn dispatch(&mut self, actions: &mut PoolActions<A, J, R, C>) {
+    fn dispatch(&mut self, actions: &mut PoolActions<A, D, J, R, C>) {
         let mut selected_jobs = Vec::new();
         let mut plan = Vec::new();
         for (slot_position, slot) in self.slots.iter().enumerate() {
@@ -777,9 +841,10 @@ where
         for planned in plan {
             selected_by_position.insert(planned.job_position, planned.slot_position);
         }
-        let mut selected_by_slot: Vec<Option<QueuedJob<A, J, R>>> = std::iter::repeat_with(|| None)
-            .take(self.slots.len())
-            .collect();
+        let mut selected_by_slot: Vec<Option<QueuedJob<A, D, J, R>>> =
+            std::iter::repeat_with(|| None)
+                .take(self.slots.len())
+                .collect();
         let mut remaining = VecDeque::new();
         for (position, queued) in self.backlog.drain(..).enumerate() {
             if let Some(slot_position) = selected_by_position.remove(&position) {
@@ -805,30 +870,34 @@ where
             let nonce = self.slots[slot_position].nonce;
             let job_id = job.id;
             self.slots[slot_position].state = SlotState::Assigned { assignment, job };
-            actions.sends.behavior.send::<_, Own>(Delivery::new(
-                Recipient::child(nonce),
-                ProxyCommand::Forward(PoolAssignment {
-                    assignment,
-                    job: job_id,
-                    payload,
-                }),
-            ));
+            actions
+                .sends
+                .behavior
+                .send::<Delivery<Proxy<C>>, Own>(Delivery::new(
+                    Recipient::child(nonce),
+                    ProxyCommand::Forward(PoolAssignment {
+                        assignment,
+                        job: job_id,
+                        payload,
+                    }),
+                ));
         }
         self.next_assignment = next_assignment;
     }
 }
 
-impl<A, J, R, C> Behavior for WorkerPool<A, J, R, C>
+impl<A, D, J, R, C> Behavior for WorkerPool<A, D, J, R, C>
 where
     A: Address,
     A::Nonce: From<u64>,
+    D: Behavior<Addr = A, Msg = PoolResponse<J, R, A>>,
     J: Clone,
     C: Behavior<Addr = A, Msg = PoolAssignment<J>, Ph = Never>,
 {
     type Addr = A;
-    type Msg = PoolMessage<A, J, R>;
-    type Event = PoolEvent<A, J, R>;
-    type Sends = PoolSends<A, J, R, C>;
+    type Msg = PoolMessage<A, D, J, R>;
+    type Event = PoolEvent<A, D, J, R>;
+    type Sends = PoolSends<A, D, J, R, C>;
     type Ph = Never;
     type Error = PoolError<A::Nonce>;
     type Birth = Births<Proxy<C>>;
@@ -881,7 +950,7 @@ where
                     .sends
                     .replacement_commands
                     .iter()
-                    .any(|delivery| delivery.to.route() == crate::Route::Child(proxy));
+                    .any(|delivery| delivery.to.is_child(proxy));
                 if !replacement_requested {
                     let position = self.slot_position(proxy)?;
                     let reason = WorkerRetirement::ReplacementUnavailable;
@@ -915,9 +984,33 @@ where
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::items_after_test_module,
+    reason = "the local fixed-pool regression sits beside that implementation"
+)]
 mod tests {
     use super::*;
-    use crate::{MailAddr, NoBirths, Route};
+    use crate::{MailAddr, NoBirths};
+
+    struct TestReply;
+
+    impl Behavior for TestReply {
+        type Addr = MailAddr;
+        type Msg = PoolResponse<u8, (), MailAddr>;
+        type Event = User<MailAddr, Self::Msg>;
+        type Sends = Vec<Never>;
+        type Ph = Never;
+        type Error = Never;
+        type Birth = NoBirths;
+
+        fn init(&mut self) -> crate::BehaviorActed<Self> {
+            Ok(Actions::cont())
+        }
+
+        fn transition(&mut self, _: Self::Event) -> crate::BehaviorActed<Self> {
+            Ok(Actions::cont())
+        }
+    }
 
     #[derive(Clone, Copy)]
     struct TestWorker;
@@ -926,7 +1019,7 @@ mod tests {
         type Addr = MailAddr;
         type Msg = PoolAssignment<u8>;
         type Event = User<MailAddr, PoolAssignment<u8>>;
-        type Sends = Vec<Delivery<MailAddr, Never>>;
+        type Sends = Vec<Never>;
         type Ph = Never;
         type Error = Never;
         type Birth = NoBirths;
@@ -973,15 +1066,16 @@ mod tests {
         pool.slots[0].state = SlotState::Idle;
         pool.slots[1].state = SlotState::Idle;
 
-        let mut actions: PoolActions<MailAddr, u8, (), TestWorker> = Actions::cont();
+        let mut actions: PoolActions<MailAddr, TestReply, u8, (), TestWorker> = Actions::cont();
         pool.dispatch(&mut actions);
 
         let assignments = &actions.sends.behavior.assignments;
         assert_eq!(assignments.len(), 2);
         for (index, expected_job) in [JobId(1), JobId(2)].into_iter().enumerate() {
-            assert_eq!(
-                assignments[index].to.route(),
-                Route::Child(u64::try_from(index).unwrap())
+            assert!(
+                assignments[index]
+                    .to
+                    .is_child(u64::try_from(index).unwrap())
             );
             let ProxyCommand::Forward(assignment) = &assignments[index].message else {
                 panic!("pool dispatches with Forward");
@@ -1009,40 +1103,56 @@ mod tests {
 /// form an affinity table:
 ///
 /// ```compile_fail
-/// use behavior::{Actions, Delivery, KeyedWorkerPool, MailAddr, Never, NoBirths};
+/// use behavior::{Actions, Behavior, KeyedWorkerPool, MailAddr, Never, NoBirths, PoolResponse, User};
 /// struct NonKey(f64);
+/// struct Reply;
 /// struct Worker;
+/// impl Behavior for Reply {
+///     type Addr = MailAddr;
+///     type Msg = PoolResponse<u8, (), MailAddr>;
+///     type Event = User<MailAddr, Self::Msg>;
+///     type Sends = Vec<Never>;
+///     type Ph = Never;
+///     type Error = Never;
+///     type Birth = NoBirths;
+///     fn init(&mut self) -> behavior::BehaviorActed<Self> { Ok(Actions::cont()) }
+///     fn transition(&mut self, _: Self::Event) -> behavior::BehaviorActed<Self> { Ok(Actions::cont()) }
+/// }
 /// #[behavior::behavior(
 ///     addr = MailAddr,
 ///     message = behavior::PoolAssignment<u8>,
-///     sends = Vec<Delivery<MailAddr, Never>>,
+///     sends = Vec<Never>,
 ///     births = NoBirths,
 ///     error = Never,
 /// )]
 /// impl Worker {
-///     fn init(&mut self) -> behavior::Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, NoBirths, Never> {
+///     fn init(&mut self) -> behavior::Acted<MailAddr, Never, Vec<Never>, NoBirths, Never> {
 ///         Ok(Actions::cont())
 ///     }
-///     fn receive(&mut self, _: MailAddr, _: behavior::PoolAssignment<u8>) -> behavior::Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, NoBirths, Never> {
+///     fn receive(&mut self, _: MailAddr, _: behavior::PoolAssignment<u8>) -> behavior::Acted<MailAddr, Never, Vec<Never>, NoBirths, Never> {
 ///         Ok(Actions::cont())
 ///     }
 /// }
-/// let _: Option<KeyedWorkerPool<MailAddr, NonKey, u8, (), Worker, fn(&NonKey) -> u64>> = None;
+/// let _: Option<KeyedWorkerPool<MailAddr, Reply, NonKey, u8, (), Worker, fn(&NonKey) -> u64>> = None;
 /// ```
-pub struct KeyedWorkerPool<A: Address, K, J, R, C, S>
+pub struct KeyedWorkerPool<A: Address, D, K, J, R, C, S>
 where
+    A::Nonce: From<u64>,
+    D: Behavior<Addr = A, Msg = PoolResponse<J, R, A>>,
     K: Eq,
     C: Behavior<Addr = A, Msg = PoolAssignment<J>, Ph = Never>,
     S: AffinitySelector<K, A::Nonce>,
 {
-    pool: WorkerPool<A, J, R, C>,
+    pool: WorkerPool<A, D, J, R, C>,
     bindings: Vec<(K, A::Nonce)>,
     selector: S,
 }
 
-impl<A, K, J, R, C, S> KeyedWorkerPool<A, K, J, R, C, S>
+impl<A, D, K, J, R, C, S> KeyedWorkerPool<A, D, K, J, R, C, S>
 where
     A: Address,
+    A::Nonce: From<u64>,
+    D: Behavior<Addr = A, Msg = PoolResponse<J, R, A>>,
     K: Eq,
     C: Behavior<Addr = A, Msg = PoolAssignment<J>, Ph = Never>,
     S: AffinitySelector<K, A::Nonce>,
@@ -1119,19 +1229,20 @@ where
     }
 }
 
-impl<A, K, J, R, C, S> Behavior for KeyedWorkerPool<A, K, J, R, C, S>
+impl<A, D, K, J, R, C, S> Behavior for KeyedWorkerPool<A, D, K, J, R, C, S>
 where
     A: Address,
     A::Nonce: From<u64>,
+    D: Behavior<Addr = A, Msg = PoolResponse<J, R, A>>,
     K: Eq,
     J: Clone,
     C: Behavior<Addr = A, Msg = PoolAssignment<J>, Ph = Never>,
     S: AffinitySelector<K, A::Nonce>,
 {
     type Addr = A;
-    type Msg = KeyedPoolMessage<A, K, J, R>;
-    type Event = KeyedPoolEvent<A, K, J, R>;
-    type Sends = PoolSends<A, J, R, C>;
+    type Msg = KeyedPoolMessage<A, D, K, J, R>;
+    type Event = KeyedPoolEvent<A, D, K, J, R>;
+    type Sends = PoolSends<A, D, J, R, C>;
     type Ph = Never;
     type Error = PoolError<A::Nonce>;
     type Birth = Births<Proxy<C>>;

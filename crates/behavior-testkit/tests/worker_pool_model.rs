@@ -8,7 +8,7 @@ use std::time::Duration;
 use behavior::{
     Actions, AssignmentId, Behavior, CreationKind, CreationRejection, Delivery, InterruptionPolicy,
     JobId, MailAddr, Never, NoBirths, PoolAssignment, PoolConfigError, PoolError, PoolMessage,
-    PoolResponse, ProxyCommand, Recipient, RestartPolicy, Route, Step, User,
+    PoolResponse, Proxy, ProxyCommand, Recipient, RestartPolicy, Step, User,
     WorkerCreationResolved, WorkerPhase, WorkerPool, WorkerStopped,
 };
 use proptest::collection::vec;
@@ -18,11 +18,31 @@ use tokio::time::Instant;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Worker;
 
+struct Reply;
+
+impl Behavior for Reply {
+    type Addr = MailAddr;
+    type Msg = PoolResponse<u8, u16, MailAddr>;
+    type Event = User<MailAddr, Self::Msg>;
+    type Sends = Vec<Never>;
+    type Ph = Never;
+    type Error = Never;
+    type Birth = NoBirths;
+
+    fn init(&mut self) -> behavior::BehaviorActed<Self> {
+        Ok(Actions::cont())
+    }
+
+    fn transition(&mut self, _: Self::Event) -> behavior::BehaviorActed<Self> {
+        Ok(Actions::cont())
+    }
+}
+
 impl Behavior for Worker {
     type Addr = MailAddr;
     type Msg = PoolAssignment<u8>;
     type Event = User<MailAddr, PoolAssignment<u8>>;
-    type Sends = Vec<Delivery<MailAddr, Never>>;
+    type Sends = Vec<Never>;
     type Ph = Never;
     type Error = Never;
     type Birth = NoBirths;
@@ -54,11 +74,31 @@ impl Clone for PanicPayload {
 
 struct PanicWorker;
 
+struct PanicReply;
+
+impl Behavior for PanicReply {
+    type Addr = MailAddr;
+    type Msg = PoolResponse<PanicPayload, (), MailAddr>;
+    type Event = User<MailAddr, Self::Msg>;
+    type Sends = Vec<Never>;
+    type Ph = Never;
+    type Error = Never;
+    type Birth = NoBirths;
+
+    fn init(&mut self) -> behavior::BehaviorActed<Self> {
+        Ok(Actions::cont())
+    }
+
+    fn transition(&mut self, _: Self::Event) -> behavior::BehaviorActed<Self> {
+        Ok(Actions::cont())
+    }
+}
+
 impl Behavior for PanicWorker {
     type Addr = MailAddr;
     type Msg = PoolAssignment<PanicPayload>;
     type Event = User<MailAddr, PoolAssignment<PanicPayload>>;
-    type Sends = Vec<Delivery<MailAddr, Never>>;
+    type Sends = Vec<Never>;
     type Ph = Never;
     type Error = Never;
     type Birth = NoBirths;
@@ -88,7 +128,7 @@ fn pool(
     workers: usize,
     capacity: usize,
     interruption: InterruptionPolicy,
-) -> WorkerPool<MailAddr, u8, u16, Worker> {
+) -> WorkerPool<MailAddr, Reply, u8, u16, Worker> {
     WorkerPool::new(
         nonce,
         workers,
@@ -103,9 +143,9 @@ fn pool(
 }
 
 fn install(
-    pool: &mut WorkerPool<MailAddr, u8, u16, Worker>,
+    pool: &mut WorkerPool<MailAddr, Reply, u8, u16, Worker>,
     slot: u64,
-) -> behavior::PoolActions<MailAddr, u8, u16, Worker> {
+) -> behavior::PoolActions<MailAddr, Reply, u8, u16, Worker> {
     pool.on(WorkerCreationResolved::new(
         slot,
         0,
@@ -116,10 +156,10 @@ fn install(
 }
 
 fn submit(
-    pool: &mut WorkerPool<MailAddr, u8, u16, Worker>,
+    pool: &mut WorkerPool<MailAddr, Reply, u8, u16, Worker>,
     id: u64,
     payload: u8,
-) -> behavior::PoolActions<MailAddr, u8, u16, Worker> {
+) -> behavior::PoolActions<MailAddr, Reply, u8, u16, Worker> {
     pool.receive(
         MailAddr(90),
         PoolMessage::Submit {
@@ -132,14 +172,14 @@ fn submit(
 }
 
 fn assignments(
-    actions: &behavior::PoolActions<MailAddr, u8, u16, Worker>,
-) -> &[Delivery<MailAddr, ProxyCommand<Worker>>] {
+    actions: &behavior::PoolActions<MailAddr, Reply, u8, u16, Worker>,
+) -> &[Delivery<Proxy<Worker>>] {
     &actions.sends.behavior.assignments
 }
 
 fn responses(
-    actions: &behavior::PoolActions<MailAddr, u8, u16, Worker>,
-) -> &[Delivery<MailAddr, PoolResponse<u8, u16, MailAddr>>] {
+    actions: &behavior::PoolActions<MailAddr, Reply, u8, u16, Worker>,
+) -> &[Delivery<Reply>] {
     &actions.sends.behavior.responses
 }
 
@@ -171,7 +211,10 @@ fn accepted_job_is_recorded_before_one_exact_dispatch() {
     assert_eq!(assignment.assignment, AssignmentId(0));
     assert_eq!(assignment.job, JobId(7));
     assert_eq!(assignment.payload, 42);
-    assert_eq!(assignments(&actions)[0].to.route(), Route::Child(0));
+    assert_eq!(
+        assignments(&actions)[0].to.resolve(MailAddr(17)),
+        behavior::Address::birth(MailAddr(17), 0)
+    );
     assert_eq!(
         pool.worker_phase(0),
         Some(WorkerPhase::Assigned {
@@ -345,7 +388,7 @@ fn duplicate_configured_routes_are_rejected_before_initialization() {
     fn duplicate(_index: usize) -> u64 {
         7
     }
-    let result = WorkerPool::<MailAddr, u8, u16, Worker>::new(
+    let result = WorkerPool::<MailAddr, Reply, u8, u16, Worker>::new(
         duplicate,
         2,
         worker,
@@ -360,7 +403,7 @@ fn duplicate_configured_routes_are_rejected_before_initialization() {
 
 #[test]
 fn zero_worker_pool_is_rejected_before_it_can_accept_owned_work() {
-    let result = WorkerPool::<MailAddr, u8, u16, Worker>::new(
+    let result = WorkerPool::<MailAddr, Reply, u8, u16, Worker>::new(
         nonce,
         0,
         worker,
@@ -375,7 +418,7 @@ fn zero_worker_pool_is_rejected_before_it_can_accept_owned_work() {
 
 #[test]
 fn panicking_payload_clone_occurs_before_admission_state_is_committed() {
-    let mut pool = WorkerPool::<MailAddr, PanicPayload, (), PanicWorker>::new(
+    let mut pool = WorkerPool::<MailAddr, PanicReply, PanicPayload, (), PanicWorker>::new(
         nonce,
         1,
         panic_worker,
@@ -434,7 +477,7 @@ fn panicking_payload_clone_occurs_before_admission_state_is_committed() {
 
 #[test]
 fn panicking_retry_clone_preserves_the_exact_assigned_state() {
-    let mut pool = WorkerPool::<MailAddr, PanicPayload, (), PanicWorker>::new(
+    let mut pool = WorkerPool::<MailAddr, PanicReply, PanicPayload, (), PanicWorker>::new(
         nonce,
         1,
         panic_worker,

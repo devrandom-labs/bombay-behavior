@@ -113,7 +113,27 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Acted, Actions, Delivery, MailAddr, NoBirths, Pure, Recipient, User};
+    use crate::{Acted, Actions, Behavior, Delivery, MailAddr, NoBirths, Pure, Recipient, User};
+
+    struct Sink;
+
+    impl Behavior for Sink {
+        type Addr = MailAddr;
+        type Msg = u8;
+        type Event = User<MailAddr, u8>;
+        type Sends = Vec<Never>;
+        type Ph = Never;
+        type Error = Never;
+        type Birth = NoBirths;
+
+        fn init(&mut self) -> crate::BehaviorActed<Self> {
+            Ok(Actions::cont())
+        }
+
+        fn transition(&mut self, _: Self::Event) -> crate::BehaviorActed<Self> {
+            Ok(Actions::cont())
+        }
+    }
 
     #[test]
     fn event_fold_short_circuits_and_accepts_capturing_transitions() {
@@ -123,13 +143,7 @@ mod tests {
             move |sum: &mut u8,
                   _from: MailAddr,
                   message: u8|
-                  -> Acted<
-                MailAddr,
-                Never,
-                Vec<Delivery<MailAddr, u8>>,
-                NoBirths,
-                Never,
-            > {
+                  -> Acted<MailAddr, Never, Vec<Delivery<Sink>>, NoBirths, Never> {
                 *sum += message;
                 let sends = vec![Delivery::new(Recipient::global(MailAddr(9)), *sum)];
                 Ok(Actions::new(

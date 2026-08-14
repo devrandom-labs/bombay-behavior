@@ -7,18 +7,38 @@ use std::time::Duration;
 
 use behavior::{
     Acted, Actions, Behavior, Compose, Crash, DeadlineEvent, Delivery, Exit, Handler, MailAddr,
-    Never, PeerStopped, Pure, Recipient, RestartDenial, Route, StashRoute, Step, SupervisionEvent,
+    Never, PeerStopped, Pure, Recipient, RestartDenial, StashRoute, Step, SupervisionEvent,
     SupervisionFailureReason, TimerElapsed, TimerGeneration, TimerId, User, UserEvent, WatchEvent,
     WorkerStopped, stop_on_abnormal_death, stop_on_supervision_failure,
 };
 use tokio::time::Instant;
+
+struct Sink;
+
+impl Behavior for Sink {
+    type Addr = MailAddr;
+    type Msg = u8;
+    type Event = User<MailAddr, u8>;
+    type Sends = Vec<Never>;
+    type Ph = Never;
+    type Error = Never;
+    type Birth = behavior::NoBirths;
+
+    fn init(&mut self) -> behavior::BehaviorActed<Self> {
+        Ok(Actions::cont())
+    }
+
+    fn transition(&mut self, _: Self::Event) -> behavior::BehaviorActed<Self> {
+        Ok(Actions::cont())
+    }
+}
 
 #[derive(Default)]
 struct Recorder {
     seen: Vec<(MailAddr, u8)>,
 }
 
-impl Handler<u8, behavior::NoBirths, Never> for Recorder {
+impl Handler<Vec<Delivery<Sink>>, behavior::NoBirths, Never> for Recorder {
     type Addr = MailAddr;
     type Msg = u8;
 
@@ -26,7 +46,7 @@ impl Handler<u8, behavior::NoBirths, Never> for Recorder {
         &mut self,
         from: MailAddr,
         message: u8,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, u8>>, behavior::NoBirths, Never> {
+    ) -> Acted<MailAddr, Never, Vec<Delivery<Sink>>, behavior::NoBirths, Never> {
         self.seen.push((from, message));
         Ok(Actions {
             sends: vec![Delivery::new(Recipient::global(from), message)],
@@ -36,7 +56,7 @@ impl Handler<u8, behavior::NoBirths, Never> for Recorder {
     }
 }
 
-type Child = Pure<Recorder, u8>;
+type Child = Pure<Recorder, Vec<Delivery<Sink>>>;
 
 fn child(_index: usize) -> Child {
     Pure::new(Recorder::default())
@@ -309,7 +329,7 @@ async fn abnormal_death_reaction_outcome_classes() {
 #[tokio::test]
 async fn supervision_preserves_inner_watch_routing() {
     struct Parent;
-    impl Handler<Never, behavior::Births<Child>, Never> for Parent {
+    impl Handler<Vec<Never>, behavior::Births<Child>, Never> for Parent {
         type Addr = MailAddr;
         type Msg = u64;
 
@@ -317,8 +337,7 @@ async fn supervision_preserves_inner_watch_routing() {
             &mut self,
             _from: MailAddr,
             _message: u64,
-        ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, behavior::Births<Child>, Never>
-        {
+        ) -> Acted<MailAddr, Never, Vec<Never>, behavior::Births<Child>, Never> {
             Ok(Actions::cont())
         }
     }
@@ -360,8 +379,10 @@ async fn supervision_preserves_inner_watch_routing() {
         .unwrap();
     assert_eq!(actions.sends.replacement_commands.len(), 1);
     assert_eq!(
-        actions.sends.replacement_commands[0].to.route(),
-        Route::Child(0)
+        actions.sends.replacement_commands[0]
+            .to
+            .resolve(MailAddr(17)),
+        behavior::Address::birth(MailAddr(17), 0)
     );
 }
 
@@ -371,7 +392,7 @@ async fn supervision_preserves_inner_watch_routing() {
 #[tokio::test]
 async fn supervision_failure_reaction_preserves_composed_send_lanes() {
     struct Parent;
-    impl Handler<Never, behavior::Births<Child>, Never> for Parent {
+    impl Handler<Vec<Never>, behavior::Births<Child>, Never> for Parent {
         type Addr = MailAddr;
         type Msg = u64;
 
@@ -379,8 +400,7 @@ async fn supervision_failure_reaction_preserves_composed_send_lanes() {
             &mut self,
             _from: MailAddr,
             _message: u64,
-        ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, behavior::Births<Child>, Never>
-        {
+        ) -> Acted<MailAddr, Never, Vec<Never>, behavior::Births<Child>, Never> {
             Ok(Actions::cont())
         }
     }

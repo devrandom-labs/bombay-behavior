@@ -2,14 +2,14 @@
 
 use behavior::{
     Acted, Actions, Behavior, ChildStopped, CreationKind, CreationResolved, Delivery, Exit,
-    Handler, MailAddr, Never, Proxy, ProxyCommand, ProxyEvent, Pure, Route, User, UserEvent,
+    Handler, MailAddr, Never, Proxy, ProxyCommand, ProxyEvent, Pure, User, UserEvent,
 };
 use libfuzzer_sys::fuzz_target;
 use tokio::runtime::Builder;
 
 struct Worker;
 
-impl Handler<u8> for Worker {
+impl Handler<Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u8>>>> for Worker {
     type Addr = MailAddr;
     type Msg = u8;
 
@@ -17,12 +17,12 @@ impl Handler<u8> for Worker {
         &mut self,
         _from: MailAddr,
         _message: u8,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, u8>>, behavior::NoBirths, Never> {
+    ) -> Acted<MailAddr, Never, Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u8>>>, behavior::NoBirths, Never> {
         Ok(Actions::cont())
     }
 }
 
-fn worker(_seed: usize) -> Pure<Worker, u8> {
+fn worker(_seed: usize) -> Pure<Worker, Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u8>>>> {
     Pure::new(Worker)
 }
 
@@ -54,8 +54,8 @@ fuzz_target!(|bytes: &[u8]| {
                 assert!(actions.creates.is_empty());
                 assert_eq!(actions.sends.deliveries.len(), 1);
                 assert_eq!(
-                    actions.sends.deliveries[0].to.route(),
-                    Route::Child(generation)
+                    actions.sends.deliveries[0].to.resolve(MailAddr(17)),
+                    behavior::Address::birth(MailAddr(17), generation)
                 );
                 assert_eq!(actions.sends.deliveries[0].message, byte);
             } else {

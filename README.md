@@ -47,7 +47,7 @@ The package is named `bombay-behavior`; Rust code imports its library as
 `behavior`:
 
 ```rust
-use behavior::{Acted, Actions, Delivery, Handler, MailAddr, Never, NoBirths, Pure};
+use behavior::{Acted, Actions, Handler, MailAddr, Never, NoBirths, Pure};
 
 struct Counter(u64);
 
@@ -59,7 +59,7 @@ impl Handler for Counter {
         &mut self,
         _from: MailAddr,
         message: u64,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, NoBirths, Never> {
+    ) -> Acted<MailAddr, Never, Vec<Never>, NoBirths, Never> {
         self.0 += message;
         Ok(Actions::cont())
     }
@@ -67,6 +67,20 @@ impl Handler for Counter {
 
 let behavior = Pure::new(Counter(0));
 ```
+
+Ordinary communications name their destination behavior protocol, not an
+address/message pair:
+
+```rust,ignore
+let worker: Recipient<Worker> = Recipient::child(worker_nonce);
+let send: Delivery<Worker> = Delivery::new(worker, assignment);
+```
+
+`Worker::Addr` determines the route namespace and `Worker::Msg` determines the
+payload. Therefore two behaviors accepting the same payload in the same
+address namespace still produce different communication types. Recipients are
+pure route intent; endpoint tables, registration, lookup, and mailbox delivery
+belong to the runtime interpreter.
 
 For function-first code, `Pure::from_fn` accepts a capturing `FnMut`. Complete
 event streams can be evaluated with `fold_events`; it uses the same

@@ -26,7 +26,6 @@ mod shutdown;
 
 pub use actor::{
     Address, BirthMode, Births, Create, CreationKind, Delivery, MailAddr, NoBirths, Recipient,
-    Route,
 };
 pub use calculus::{
     ActionReducer, Behavior, BehaviorActed, BehaviorFn, Effects, EventInput, FoldFn, Folded,
@@ -81,15 +80,15 @@ pub use exit::{Crash, Exit, RestartDenial, SupervisionFailureReason};
 /// #[behavior::behavior(
 ///     addr = MailAddr,
 ///     message = u8,
-///     sends = Vec<Delivery<MailAddr, Never>>,
+///     sends = Vec<Never>,
 ///     births = NoBirths,
 ///     error = Never,
 /// )]
 /// impl Invalid {
-///     fn init(&self) -> behavior::Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, NoBirths, Never> {
+///     fn init(&self) -> behavior::Acted<MailAddr, Never, Vec<Never>, NoBirths, Never> {
 ///         Ok(Actions::cont())
 ///     }
-///     fn receive(&mut self, _: MailAddr, _: u8) -> behavior::Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, NoBirths, Never> {
+///     fn receive(&mut self, _: MailAddr, _: u8) -> behavior::Acted<MailAddr, Never, Vec<Never>, NoBirths, Never> {
 ///         Ok(Actions::cont())
 ///     }
 /// }
@@ -103,12 +102,12 @@ pub use exit::{Crash, Exit, RestartDenial, SupervisionFailureReason};
 /// #[behavior::behavior(
 ///     addr = MailAddr,
 ///     message = u8,
-///     sends = Vec<Delivery<MailAddr, Never>>,
+///     sends = Vec<Never>,
 ///     births = NoBirths,
 ///     error = Never,
 /// )]
 /// impl Missing {
-///     fn init(&mut self) -> behavior::Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, NoBirths, Never> {
+///     fn init(&mut self) -> behavior::Acted<MailAddr, Never, Vec<Never>, NoBirths, Never> {
 ///         Ok(Actions::cont())
 ///     }
 /// }
@@ -123,15 +122,15 @@ pub use exit::{Crash, Exit, RestartDenial, SupervisionFailureReason};
 /// #[behavior::behavior(
 ///     addr = MailAddr,
 ///     message = u8,
-///     sends = Vec<Delivery<MailAddr, Never>>,
+///     sends = Vec<Never>,
 ///     births = NoBirths,
 ///     error = Never,
 /// )]
 /// impl Async {
-///     async fn init(&mut self) -> behavior::Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, NoBirths, Never> {
+///     async fn init(&mut self) -> behavior::Acted<MailAddr, Never, Vec<Never>, NoBirths, Never> {
 ///         Ok(Actions::cont())
 ///     }
-///     fn receive(&mut self, _: MailAddr, _: u8) -> behavior::Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, NoBirths, Never> {
+///     fn receive(&mut self, _: MailAddr, _: u8) -> behavior::Acted<MailAddr, Never, Vec<Never>, NoBirths, Never> {
 ///         Ok(Actions::cont())
 ///     }
 /// }

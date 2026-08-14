@@ -2,9 +2,9 @@ use std::hint::black_box;
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, Behavior, Compose, Crash, Delivery, Handler, Machine, MailAddr, Move, Never,
-    Proxy, ProxyCommand, Pure, RestartPolicy, Route, StashRoute, Step, Strategy, Supervisor,
-    WorkerStopped, stop_on_abnormal_death,
+    Acted, Actions, Behavior, Compose, Crash, Handler, Machine, MailAddr, Move, Never, Proxy,
+    ProxyCommand, Pure, RestartPolicy, StashRoute, Step, Strategy, Supervisor, WorkerStopped,
+    stop_on_abnormal_death,
 };
 use tokio::time::Instant;
 
@@ -21,7 +21,7 @@ impl Handler for Sink {
         &mut self,
         _from: MailAddr,
         message: u64,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, behavior::NoBirths, Never> {
+    ) -> Acted<MailAddr, Never, Vec<Never>, behavior::NoBirths, Never> {
         self.0 = self.0.wrapping_add(message);
         Ok(Actions::cont())
     }
@@ -35,7 +35,7 @@ fn child(_index: usize) -> Pure<Sink> {
 /// type (a fleet parent must produce the fleet, not `Never`).
 struct FleetParent;
 
-impl Handler<Never, behavior::Births<Pure<Sink>>, Never> for FleetParent {
+impl Handler<Vec<Never>, behavior::Births<Pure<Sink>>, Never> for FleetParent {
     type Addr = MailAddr;
     type Msg = u64;
 
@@ -43,8 +43,7 @@ impl Handler<Never, behavior::Births<Pure<Sink>>, Never> for FleetParent {
         &mut self,
         _from: MailAddr,
         _message: u64,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, behavior::Births<Pure<Sink>>, Never>
-    {
+    ) -> Acted<MailAddr, Never, Vec<Never>, behavior::Births<Pure<Sink>>, Never> {
         Ok(Actions::cont())
     }
 }
@@ -128,8 +127,10 @@ fn measure_supervise(fleet: usize) -> f64 {
         // unbounded budget) — correctness checked while measuring.
         assert_eq!(actions.sends.replacement_commands.len(), 1);
         assert_eq!(
-            actions.sends.replacement_commands[0].to.route(),
-            Route::Child(nonce)
+            actions.sends.replacement_commands[0]
+                .to
+                .resolve(MailAddr(17)),
+            behavior::Address::birth(MailAddr(17), nonce)
         );
         black_box(actions);
     }

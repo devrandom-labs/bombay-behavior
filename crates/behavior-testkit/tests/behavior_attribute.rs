@@ -13,14 +13,20 @@ struct Counter {
 #[behavior::behavior(
     addr = MailAddr,
     message = u64,
-    sends = Vec<Delivery<MailAddr, u64>>,
+    sends = Vec<Delivery<behavior_testkit::TestRecipient<u64>>>,
     births = NoBirths,
     error = Never,
 )]
 impl Counter {
     fn init(
         &mut self,
-    ) -> behavior::Acted<MailAddr, Never, Vec<Delivery<MailAddr, u64>>, NoBirths, Never> {
+    ) -> behavior::Acted<
+        MailAddr,
+        Never,
+        Vec<Delivery<behavior_testkit::TestRecipient<u64>>>,
+        NoBirths,
+        Never,
+    > {
         self.total = 1;
         Ok(Actions::cont())
     }
@@ -29,7 +35,13 @@ impl Counter {
         &mut self,
         from: MailAddr,
         message: u64,
-    ) -> behavior::Acted<MailAddr, Never, Vec<Delivery<MailAddr, u64>>, NoBirths, Never> {
+    ) -> behavior::Acted<
+        MailAddr,
+        Never,
+        Vec<Delivery<behavior_testkit::TestRecipient<u64>>>,
+        NoBirths,
+        Never,
+    > {
         self.total += message;
         Ok(Actions::new(
             vec![Delivery::new(Recipient::global(from), self.total)],
@@ -44,14 +56,12 @@ struct Worker;
 #[behavior::behavior(
     addr = MailAddr,
     message = PoolAssignment<u8>,
-    sends = Vec<Delivery<MailAddr, Never>>,
+    sends = Vec<Never>,
     births = NoBirths,
     error = Never,
 )]
 impl Worker {
-    fn init(
-        &mut self,
-    ) -> behavior::Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, NoBirths, Never> {
+    fn init(&mut self) -> behavior::Acted<MailAddr, Never, Vec<Never>, NoBirths, Never> {
         Ok(Actions::cont())
     }
 
@@ -59,7 +69,7 @@ impl Worker {
         &mut self,
         _from: MailAddr,
         _assignment: PoolAssignment<u8>,
-    ) -> behavior::Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, NoBirths, Never> {
+    ) -> behavior::Acted<MailAddr, Never, Vec<Never>, NoBirths, Never> {
         Ok(Actions::cont())
     }
 }
@@ -71,7 +81,7 @@ struct Generic<T> {
 #[behavior::behavior(
     addr = MailAddr,
     message = T,
-    sends = Vec<Delivery<MailAddr, T>>,
+    sends = Vec<Delivery<behavior_testkit::TestRecipient<T>>>,
     births = NoBirths,
     error = Never,
 )]
@@ -81,7 +91,13 @@ where
 {
     fn init(
         &mut self,
-    ) -> behavior::Acted<MailAddr, Never, Vec<Delivery<MailAddr, T>>, NoBirths, Never> {
+    ) -> behavior::Acted<
+        MailAddr,
+        Never,
+        Vec<Delivery<behavior_testkit::TestRecipient<T>>>,
+        NoBirths,
+        Never,
+    > {
         Ok(Actions::cont())
     }
 
@@ -89,7 +105,13 @@ where
         &mut self,
         from: MailAddr,
         message: T,
-    ) -> behavior::Acted<MailAddr, Never, Vec<Delivery<MailAddr, T>>, NoBirths, Never> {
+    ) -> behavior::Acted<
+        MailAddr,
+        Never,
+        Vec<Delivery<behavior_testkit::TestRecipient<T>>>,
+        NoBirths,
+        Never,
+    > {
         self.last = Some(message.clone());
         Ok(Actions::new(
             vec![Delivery::new(Recipient::global(from), message)],
@@ -119,7 +141,13 @@ fn attribute_preserves_normal_methods_and_exact_actions() {
 
 #[test]
 fn generated_behavior_is_nominal_in_pool_and_supervision_positions() {
-    let mut pool: WorkerPool<MailAddr, u8, (), Worker> = WorkerPool::new(
+    let mut pool: WorkerPool<
+        MailAddr,
+        behavior_testkit::TestRecipient<behavior::PoolResponse<u8, (), MailAddr>>,
+        u8,
+        (),
+        Worker,
+    > = WorkerPool::new(
         nonce,
         1,
         worker,

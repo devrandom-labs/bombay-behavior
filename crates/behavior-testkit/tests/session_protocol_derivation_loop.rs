@@ -45,7 +45,10 @@
 // All types in this file are illustrative for the derivation campaign.
 #![allow(dead_code)]
 
-use behavior::{Behavior, Exit, Machine, MailAddr, Move, Never, Recipient, Step, User, UserEvent};
+use behavior::{
+    Actions, Behavior, Exit, Machine, MailAddr, Move, Never, NoBirths, Recipient, Step, User,
+    UserEvent,
+};
 
 // ============================================================================
 // Phase and message vocabulary
@@ -66,7 +69,7 @@ struct PoolConfig {
 
 #[derive(Debug, Clone)]
 struct Acquire {
-    reply_to: Recipient<MailAddr, LeaseReply>,
+    reply_to: Recipient<LeaseClient>,
 }
 
 #[derive(Debug, Clone)]
@@ -82,6 +85,25 @@ struct DrainStatus;
 enum LeaseReply {
     Granted { worker: MailAddr },
     NoWorkersAvailable,
+}
+
+struct LeaseClient;
+
+impl Behavior for LeaseClient {
+    type Addr = MailAddr;
+    type Msg = LeaseReply;
+    type Event = User<MailAddr, LeaseReply>;
+    type Sends = Vec<Never>;
+    type Ph = Never;
+    type Error = Never;
+    type Birth = NoBirths;
+
+    fn init(&mut self) -> behavior::BehaviorActed<Self> {
+        Ok(Actions::cont())
+    }
+    fn transition(&mut self, _: Self::Event) -> behavior::BehaviorActed<Self> {
+        Ok(Actions::cont())
+    }
 }
 
 /// Union of all inbound messages across all phases (runtime FSM approach).
@@ -142,7 +164,7 @@ fn pool_transition(
             state.capacity = cfg.size;
             // In a real pool, the FSM would emit Create actions for N children.
             // FSM cannot carry birth capability (Birth is NoBirths,
-            // Sends is Vec<Delivery<A,Never>> — sends are empty).
+            // Sends is Vec<Never> — ordinary sends are uninhabited).
             Ok(Move::Goto(Phase::Serving))
         }
         (Phase::Serving, PoolMsg::Acquire(_req)) => Ok(Move::Stay),

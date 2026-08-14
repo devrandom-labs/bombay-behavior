@@ -24,7 +24,9 @@ struct Boom;
 #[derive(Default)]
 struct Echo;
 
-impl Handler<u8, behavior::NoBirths, Never> for Echo {
+impl Handler<Vec<Delivery<behavior_testkit::TestRecipient<u8>>>, behavior::NoBirths, Never>
+    for Echo
+{
     type Addr = MailAddr;
     type Msg = u8;
 
@@ -32,12 +34,18 @@ impl Handler<u8, behavior::NoBirths, Never> for Echo {
         &mut self,
         _from: MailAddr,
         _message: u8,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, u8>>, behavior::NoBirths, Never> {
+    ) -> Acted<
+        MailAddr,
+        Never,
+        Vec<Delivery<behavior_testkit::TestRecipient<u8>>>,
+        behavior::NoBirths,
+        Never,
+    > {
         Ok(Actions::cont())
     }
 }
 
-type Child = Pure<Echo, u8>;
+type Child = Pure<Echo, Vec<Delivery<behavior_testkit::TestRecipient<u8>>>>;
 
 fn child(_index: usize) -> Child {
     Pure::new(Echo)
@@ -48,7 +56,7 @@ struct FailingParent {
     fail: bool,
 }
 
-impl Handler<Never, behavior::Births<Child>, Boom> for FailingParent {
+impl Handler<Vec<Never>, behavior::Births<Child>, Boom> for FailingParent {
     type Addr = MailAddr;
     type Msg = u64;
 
@@ -56,7 +64,7 @@ impl Handler<Never, behavior::Births<Child>, Boom> for FailingParent {
         &mut self,
         _from: MailAddr,
         _message: u64,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, behavior::Births<Child>, Boom> {
+    ) -> Acted<MailAddr, Never, Vec<Never>, behavior::Births<Child>, Boom> {
         if self.fail {
             self.fail = false;
             return Err(Boom);

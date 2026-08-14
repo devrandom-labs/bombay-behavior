@@ -7,9 +7,9 @@ use std::time::Duration;
 
 use behavior::{
     Acted, Actions, Behavior, Compose, Crash, Create, Deadline, DeadlineEvent, Delivery, Exit,
-    Handler, Machine, MailAddr, Move, Never, Proxy, Pure, Recipient, RestartPolicy, Route,
-    StashRoute, Step, Strategy, SupervisionEvent, Supervisor, TimerElapsed, TimerGeneration,
-    TimerId, User, UserEvent, WorkerStopped,
+    Handler, Machine, MailAddr, Move, Never, Proxy, Pure, Recipient, RestartPolicy, StashRoute,
+    Step, Strategy, SupervisionEvent, Supervisor, TimerElapsed, TimerGeneration, TimerId, User,
+    UserEvent, WorkerStopped,
 };
 use tokio::time::Instant;
 
@@ -18,7 +18,9 @@ struct Recorder {
     seen: Vec<(MailAddr, u8)>,
 }
 
-impl Handler<u8, behavior::NoBirths, Never> for Recorder {
+impl Handler<Vec<Delivery<behavior_testkit::TestRecipient<u8>>>, behavior::NoBirths, Never>
+    for Recorder
+{
     type Addr = MailAddr;
     type Msg = u8;
 
@@ -26,7 +28,13 @@ impl Handler<u8, behavior::NoBirths, Never> for Recorder {
         &mut self,
         from: MailAddr,
         message: u8,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, u8>>, behavior::NoBirths, Never> {
+    ) -> Acted<
+        MailAddr,
+        Never,
+        Vec<Delivery<behavior_testkit::TestRecipient<u8>>>,
+        behavior::NoBirths,
+        Never,
+    > {
         self.seen.push((from, message));
         Ok(Actions {
             sends: vec![Delivery::new(Recipient::global(from), message)],
@@ -42,7 +50,9 @@ struct StopOnZero {
     seen: Vec<(MailAddr, u8)>,
 }
 
-impl Handler<u8, behavior::NoBirths, Never> for StopOnZero {
+impl Handler<Vec<Delivery<behavior_testkit::TestRecipient<u8>>>, behavior::NoBirths, Never>
+    for StopOnZero
+{
     type Addr = MailAddr;
     type Msg = u8;
 
@@ -50,7 +60,13 @@ impl Handler<u8, behavior::NoBirths, Never> for StopOnZero {
         &mut self,
         from: MailAddr,
         message: u8,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, u8>>, behavior::NoBirths, Never> {
+    ) -> Acted<
+        MailAddr,
+        Never,
+        Vec<Delivery<behavior_testkit::TestRecipient<u8>>>,
+        behavior::NoBirths,
+        Never,
+    > {
         self.seen.push((from, message));
         Ok(Actions {
             sends: Vec::new(),
@@ -64,11 +80,11 @@ impl Handler<u8, behavior::NoBirths, Never> for StopOnZero {
     }
 }
 
-type Child = Pure<Recorder, u8>;
+type Child = Pure<Recorder, Vec<Delivery<behavior_testkit::TestRecipient<u8>>>>;
 
 struct Parent;
 
-impl Handler<Never, behavior::Births<Child>, Never> for Parent {
+impl Handler<Vec<Never>, behavior::Births<Child>, Never> for Parent {
     type Addr = MailAddr;
     type Msg = u64;
 
@@ -76,8 +92,7 @@ impl Handler<Never, behavior::Births<Child>, Never> for Parent {
         &mut self,
         _from: MailAddr,
         _message: u64,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, behavior::Births<Child>, Never>
-    {
+    ) -> Acted<MailAddr, Never, Vec<Never>, behavior::Births<Child>, Never> {
         Ok(Actions::cont())
     }
 }
@@ -87,7 +102,7 @@ struct BirthingParent {
     born: bool,
 }
 
-impl Handler<Never, behavior::Births<Child>, Never> for BirthingParent {
+impl Handler<Vec<Never>, behavior::Births<Child>, Never> for BirthingParent {
     type Addr = MailAddr;
     type Msg = u64;
 
@@ -95,8 +110,7 @@ impl Handler<Never, behavior::Births<Child>, Never> for BirthingParent {
         &mut self,
         _from: MailAddr,
         nonce: u64,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, behavior::Births<Child>, Never>
-    {
+    ) -> Acted<MailAddr, Never, Vec<Never>, behavior::Births<Child>, Never> {
         if self.born {
             return Ok(Actions::cont());
         }
@@ -119,7 +133,7 @@ fn supervisor(
     maximum: u32,
     window: Duration,
     count: usize,
-) -> Supervisor<Pure<Parent, Never, behavior::Births<Child>>, Child> {
+) -> Supervisor<Pure<Parent, Vec<Never>, behavior::Births<Child>>, Child> {
     Supervisor::new(
         Pure::new(Parent),
         |index| u64::try_from(index).unwrap(),
@@ -302,11 +316,11 @@ async fn one_for_all_skips_dead_slots_and_respects_budget() {
         .sends
         .replacement_commands
         .iter()
-        .map(|d| d.to.route())
+        .map(|d| d.to.resolve(MailAddr(17)))
         .collect();
-    assert!(routes.contains(&Route::Child(0)));
-    assert!(routes.contains(&Route::Child(2)));
-    assert!(!routes.contains(&Route::Child(1)));
+    assert!(routes.contains(&behavior::Address::birth(MailAddr(17), 0)));
+    assert!(routes.contains(&behavior::Address::birth(MailAddr(17), 2)));
+    assert!(!routes.contains(&behavior::Address::birth(MailAddr(17), 1)));
     assert!(supervisor.is_alive(2));
     assert!(supervisor.is_alive(0));
     assert!(!supervisor.is_alive(1));
@@ -342,12 +356,12 @@ async fn rest_for_one_uses_birth_sequence_not_index() {
         .sends
         .replacement_commands
         .iter()
-        .map(|d| d.to.route())
+        .map(|d| d.to.resolve(MailAddr(17)))
         .collect();
     for nonce in 0..3 {
-        assert!(routes.contains(&Route::Child(nonce)));
+        assert!(routes.contains(&behavior::Address::birth(MailAddr(17), nonce)));
     }
-    assert!(routes.contains(&Route::Child(9)));
+    assert!(routes.contains(&behavior::Address::birth(MailAddr(17), 9)));
 
     // Death of dynamic slot 9 (sequence 3): only later-born slots restart —
     // the configured slots (sequences 0..3) are untouched even though they
@@ -357,8 +371,10 @@ async fn rest_for_one_uses_birth_sequence_not_index() {
         .unwrap();
     assert_eq!(narrow.sends.replacement_commands.len(), 1);
     assert_eq!(
-        narrow.sends.replacement_commands[0].to.route(),
-        Route::Child(9)
+        narrow.sends.replacement_commands[0]
+            .to
+            .resolve(MailAddr(17)),
+        behavior::Address::birth(MailAddr(17), 9)
     );
 }
 

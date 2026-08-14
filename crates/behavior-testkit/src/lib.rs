@@ -3,6 +3,29 @@
 use std::collections::VecDeque;
 
 use behavior::{ActionReducer, Address, Behavior, BirthMode, Create, Exit, SendAlgebra};
+use core::marker::PhantomData;
+
+/// A nominal, inert destination used by behavior tests that inspect emitted
+/// communications without interpreting a recipient mailbox.
+pub struct TestRecipient<M>(PhantomData<fn(M)>);
+
+impl<M> Behavior for TestRecipient<M> {
+    type Addr = behavior::MailAddr;
+    type Msg = M;
+    type Event = behavior::User<behavior::MailAddr, M>;
+    type Sends = Vec<behavior::Never>;
+    type Ph = behavior::Never;
+    type Error = behavior::Never;
+    type Birth = behavior::NoBirths;
+
+    fn init(&mut self) -> behavior::BehaviorActed<Self> {
+        Ok(behavior::Actions::cont())
+    }
+
+    fn transition(&mut self, _: Self::Event) -> behavior::BehaviorActed<Self> {
+        Ok(behavior::Actions::cont())
+    }
+}
 use core::ops::ControlFlow;
 
 pub mod model;

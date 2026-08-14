@@ -7,8 +7,8 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, Behavior, Delivery, Handler, MailAddr, Never, Pure, RestartPolicy, Route,
-    Strategy, SupervisionEvent, Supervisor, WorkerStopped,
+    Acted, Actions, Behavior, Delivery, Handler, MailAddr, Never, Pure, RestartPolicy, Strategy,
+    SupervisionEvent, Supervisor, WorkerStopped,
 };
 use behavior_testkit::model::{Model, Outcome};
 use tokio::runtime::Builder;
@@ -17,7 +17,9 @@ use tokio::time::Instant;
 #[derive(Default)]
 struct Echo;
 
-impl Handler<u8, behavior::NoBirths, Never> for Echo {
+impl Handler<Vec<Delivery<behavior_testkit::TestRecipient<u8>>>, behavior::NoBirths, Never>
+    for Echo
+{
     type Addr = MailAddr;
     type Msg = u8;
 
@@ -25,16 +27,22 @@ impl Handler<u8, behavior::NoBirths, Never> for Echo {
         &mut self,
         _from: MailAddr,
         _message: u8,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, u8>>, behavior::NoBirths, Never> {
+    ) -> Acted<
+        MailAddr,
+        Never,
+        Vec<Delivery<behavior_testkit::TestRecipient<u8>>>,
+        behavior::NoBirths,
+        Never,
+    > {
         Ok(Actions::cont())
     }
 }
 
-type Child = Pure<Echo, u8>;
+type Child = Pure<Echo, Vec<Delivery<behavior_testkit::TestRecipient<u8>>>>;
 
 struct Parent;
 
-impl Handler<Never, behavior::Births<Child>, Never> for Parent {
+impl Handler<Vec<Never>, behavior::Births<Child>, Never> for Parent {
     type Addr = MailAddr;
     type Msg = u64;
 
@@ -42,8 +50,7 @@ impl Handler<Never, behavior::Births<Child>, Never> for Parent {
         &mut self,
         _from: MailAddr,
         _message: u64,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, Never>>, behavior::Births<Child>, Never>
-    {
+    ) -> Acted<MailAddr, Never, Vec<Never>, behavior::Births<Child>, Never> {
         Ok(Actions::cont())
     }
 }
@@ -136,16 +143,15 @@ fn exhaustive_supervision_sequences_match_the_reference_model() {
                                         ))
                                     })
                                     .unwrap();
-                                let sends: Vec<u64> = actions
+                                let sends: Vec<MailAddr> = actions
                                     .sends
                                     .replacement_commands
                                     .iter()
-                                    .map(|delivery| match delivery.to.route() {
-                                        Route::Child(nonce) => nonce,
-                                        other @ Route::Global(_) => {
-                                            panic!("unexpected route {other:?}")
-                                        }
-                                    })
+                                    .map(|delivery| delivery.to.resolve(MailAddr(17)))
+                                    .collect();
+                                let expected: Vec<MailAddr> = expected
+                                    .into_iter()
+                                    .map(|nonce| behavior::Address::birth(MailAddr(17), nonce))
                                     .collect();
                                 assert_eq!(
                                     sends, expected,

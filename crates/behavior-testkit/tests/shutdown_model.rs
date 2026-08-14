@@ -9,7 +9,7 @@ use tokio::runtime::Builder;
 
 struct Echo;
 
-impl Handler<u8> for Echo {
+impl Handler<Vec<Delivery<behavior_testkit::TestRecipient<u8>>>> for Echo {
     type Addr = MailAddr;
     type Msg = u8;
 
@@ -17,7 +17,8 @@ impl Handler<u8> for Echo {
         &mut self,
         from: MailAddr,
         message: u8,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<MailAddr, u8>>, NoBirths, Never> {
+    ) -> Acted<MailAddr, Never, Vec<Delivery<behavior_testkit::TestRecipient<u8>>>, NoBirths, Never>
+    {
         Ok(Actions {
             sends: vec![Delivery::new(Recipient::global(from), message)],
             creates: Vec::new(),
