@@ -65,10 +65,20 @@ impl<K> ComponentHealthState<K> {
 /// Factual point-in-time result returned by [`Health`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HealthReport<K> {
-    /// Worst status among present components, or `Healthy` when none exist.
-    pub overall: HealthStatus,
     /// Present components in first-observation order; tombstones are omitted.
     pub components: Vec<ComponentHealth<K>>,
+}
+
+impl<K> HealthReport<K> {
+    /// Worst status among present components, or `Healthy` when none exist.
+    #[must_use]
+    pub fn overall(&self) -> HealthStatus {
+        self.components
+            .iter()
+            .map(|component| component.status)
+            .max()
+            .unwrap_or(HealthStatus::Healthy)
+    }
 }
 
 /// Commands accepted by [`Health`].
@@ -225,7 +235,6 @@ where
         self.components[index] = replacement;
         Ok(())
     }
-
     fn report(&self) -> HealthReport<K> {
         let components = self
             .components
@@ -235,15 +244,7 @@ where
                 ComponentHealthState::Removed { .. } => None,
             })
             .collect::<Vec<_>>();
-        let overall = components
-            .iter()
-            .map(|health| health.status)
-            .max()
-            .unwrap_or(HealthStatus::Healthy);
-        HealthReport {
-            overall,
-            components,
-        }
+        HealthReport { components }
     }
 }
 
@@ -383,26 +384,27 @@ mod tests {
         let report = health
             .receive(MailAddr(9), HealthMessage::Query { reply_to: reply })
             .unwrap();
-        assert!(
-            report.sends
-                == vec![Delivery::new(
-                    reply,
-                    HealthReport {
-                        overall: HealthStatus::Unhealthy,
-                        components: vec![
-                            ComponentHealth {
-                                component: 1,
-                                version: ObservationVersion(1),
-                                status: HealthStatus::Healthy,
-                            },
-                            ComponentHealth {
-                                component: 2,
-                                version: ObservationVersion(1),
-                                status: HealthStatus::Unhealthy,
-                            },
-                        ],
-                    },
-                )]
+        let sent = report
+            .sends
+            .into_iter()
+            .next()
+            .expect("one report delivery");
+        assert_eq!(sent.to, reply);
+        assert_eq!(sent.message.overall(), HealthStatus::Unhealthy);
+        assert_eq!(
+            sent.message.components,
+            vec![
+                ComponentHealth {
+                    component: 1,
+                    version: ObservationVersion(1),
+                    status: HealthStatus::Healthy,
+                },
+                ComponentHealth {
+                    component: 2,
+                    version: ObservationVersion(1),
+                    status: HealthStatus::Unhealthy,
+                },
+            ]
         );
 
         health
@@ -428,19 +430,16 @@ mod tests {
         let after = health
             .receive(MailAddr(9), HealthMessage::Query { reply_to: reply })
             .unwrap();
-        assert!(
-            after.sends
-                == vec![Delivery::new(
-                    reply,
-                    HealthReport {
-                        overall: HealthStatus::Healthy,
-                        components: vec![ComponentHealth {
-                            component: 1,
-                            version: ObservationVersion(1),
-                            status: HealthStatus::Healthy,
-                        }],
-                    },
-                )]
+        let sent = after.sends.into_iter().next().expect("one report delivery");
+        assert_eq!(sent.to, reply);
+        assert_eq!(sent.message.overall(), HealthStatus::Healthy);
+        assert_eq!(
+            sent.message.components,
+            vec![ComponentHealth {
+                component: 1,
+                version: ObservationVersion(1),
+                status: HealthStatus::Healthy,
+            }]
         );
     }
 }

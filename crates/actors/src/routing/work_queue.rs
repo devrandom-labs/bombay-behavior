@@ -11,10 +11,22 @@ use behavior::{
 pub struct WorkQueueState<W: Behavior> {
     /// Maximum values that may wait; zero permits only immediate dispatch.
     pub capacity: usize,
+    available: Vec<Recipient<W>>,
+    queued: usize,
+}
+
+impl<W: Behavior> WorkQueueState<W> {
     /// Workers eligible for one dispatch, in availability order.
-    pub available: Vec<Recipient<W>>,
+    #[must_use]
+    pub fn available(&self) -> &[Recipient<W>] {
+        &self.available
+    }
+
     /// Number of owned values waiting in FIFO order.
-    pub queued: usize,
+    #[must_use]
+    pub fn queued(&self) -> usize {
+        self.queued
+    }
 }
 
 /// Exhaustive work-admission rejection reason.
@@ -308,7 +320,7 @@ mod tests {
                 assert_eq!(a.sends.assignments[0].message, value);
             }
         }
-        assert_eq!(s.state().queued, 1);
+        assert_eq!(s.state().queued(), 1);
         let a = s
             .receive(
                 MailAddr(0),
@@ -339,6 +351,6 @@ mod tests {
                 reason: WorkQueueRejection::Full
             }
         ));
-        assert_eq!(s.state().queued, 0);
+        assert_eq!(s.state().queued(), 0);
     }
 }

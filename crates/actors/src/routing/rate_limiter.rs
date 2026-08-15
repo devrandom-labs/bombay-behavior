@@ -29,8 +29,15 @@ impl TokenCount {
 pub struct RateLimiterState {
     /// Positive bucket capacity.
     pub capacity: TokenCount,
-    /// Currently available tokens.
-    pub available: u64,
+    available: u64,
+}
+
+impl RateLimiterState {
+    /// Currently available tokens, always at most `capacity`.
+    #[must_use]
+    pub fn available(&self) -> u64 {
+        self.available
+    }
 }
 
 /// Exhaustive admission rejection reason.
@@ -324,7 +331,7 @@ mod tests {
                 reason: RateLimitRejection::ExceedsCapacity
             }
         ));
-        assert_eq!(s.state().available, 1);
+        assert_eq!(s.state().available(), 1);
     }
     #[test]
     fn refill_saturates_without_overflow() {
@@ -339,6 +346,6 @@ mod tests {
             },
         )
         .unwrap();
-        assert_eq!(s.state().available, 5);
+        assert_eq!(s.state().available(), 5);
     }
 }

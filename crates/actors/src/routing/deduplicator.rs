@@ -13,8 +13,15 @@ use thiserror::Error;
 pub struct DeduplicatorState<K> {
     /// Positive maximum number of retained keys.
     pub capacity: usize,
+    retained: Vec<K>,
+}
+
+impl<K> DeduplicatorState<K> {
     /// Retained keys from oldest to newest.
-    pub retained: Vec<K>,
+    #[must_use]
+    pub fn retained(&self) -> &[K] {
+        &self.retained
+    }
 }
 
 /// Factual outcome of one keyed delivery attempt.
@@ -268,7 +275,7 @@ mod tests {
             duplicate.sends.outcomes[0].message,
             DeduplicatorOutcome::Duplicate { key: 1, value: 11 }
         ));
-        assert_eq!(subject.state().retained, vec![1]);
+        assert_eq!(subject.state().retained().to_vec(), vec![1]);
     }
 
     #[test]
@@ -287,7 +294,7 @@ mod tests {
                 evicted: Some(1)
             }
         ));
-        assert_eq!(subject.state().retained, vec![2, 3]);
+        assert_eq!(subject.state().retained().to_vec(), vec![2, 3]);
         assert_eq!(deliver(&mut subject, 1, 12).sends.deliveries.len(), 1);
     }
 

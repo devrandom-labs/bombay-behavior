@@ -10,6 +10,10 @@ struct Counter(u64);
     error = Never,
 )]
 impl Counter {
+    #[allow(
+        clippy::unnecessary_wraps,
+        reason = "the behavior macro requires the declared typed error result"
+    )]
     fn receive(
         &mut self,
         _from: MailAddr,
@@ -21,5 +25,8 @@ impl Counter {
 }
 
 fn main() {
-    let _behavior = Counter(0);
+    let mut behavior = Counter(0);
+    let result = behavior.receive(MailAddr(1), 2);
+    assert!(result.is_ok());
+    assert_eq!(behavior.0, 2);
 }

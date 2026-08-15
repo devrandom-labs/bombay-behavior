@@ -74,11 +74,13 @@ pub enum BreakerRejection {
 /// Facts emitted to the recipient supplied with an admission request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BreakerOutcome {
-    /// The caller may begin this uniquely identified operation.
-    Admitted {
-        attempt: BreakerAttempt,
-        probe: bool,
-    },
+    /// The caller may begin this uniquely identified operation while the
+    /// circuit is closed.
+    Admitted { attempt: BreakerAttempt },
+    /// The caller's request is the single half-open recovery probe: a later
+    /// [`BreakerOutcome::Succeeded`] closes the circuit, while a failed
+    /// completion reopens it with a fresh timer generation.
+    ProbeAdmitted { attempt: BreakerAttempt },
     /// A request was not admitted.
     Rejected(BreakerRejection),
     /// The admitted operation succeeded and closed the circuit.
@@ -202,37 +204,25 @@ impl<A: Address, Reply: Behavior<Addr = A, Msg = BreakerOutcome>> CircuitBreaker
                 consecutive_failures,
             }) if next.is_some() => {
                 let failures = *consecutive_failures;
-                self.next_attempt = next.unwrap_or(self.next_attempt);
+                self.next_attempt = next.expect("the is_some guard proves the counter advanced");
                 self.phase = BreakerPhase::Closed(ClosedPhase::Awaiting {
                     consecutive_failures: failures,
                     attempt,
                     reply_to,
                 });
-                Self::reply(
-                    reply_to,
-                    BreakerOutcome::Admitted {
-                        attempt,
-                        probe: false,
-                    },
-                )
+                Self::reply(reply_to, BreakerOutcome::Admitted { attempt })
             }
             BreakerPhase::Probing {
                 generation,
                 phase: ProbePhase::Available,
             } if next.is_some() => {
                 let generation = *generation;
-                self.next_attempt = next.unwrap_or(self.next_attempt);
+                self.next_attempt = next.expect("the is_some guard proves the counter advanced");
                 self.phase = BreakerPhase::Probing {
                     generation,
                     phase: ProbePhase::Awaiting { attempt, reply_to },
                 };
-                Self::reply(
-                    reply_to,
-                    BreakerOutcome::Admitted {
-                        attempt,
-                        probe: true,
-                    },
-                )
+                Self::reply(reply_to, BreakerOutcome::ProbeAdmitted { attempt })
             }
             BreakerPhase::Open { generation } => Self::reply(
                 reply_to,
@@ -265,9 +255,7 @@ impl<A: Address, Reply: Behavior<Addr = A, Msg = BreakerOutcome>> CircuitBreaker
                 consecutive_failures,
                 attempt: current,
                 reply_to,
-            }) if *current == attempt => {
-                Some((*reply_to, *consecutive_failures, false, TimerGeneration(0)))
-            }
+            }) if *current == attempt => Some((*reply_to, *consecutive_failures, None)),
             BreakerPhase::Probing {
                 generation,
                 phase:
@@ -275,10 +263,10 @@ impl<A: Address, Reply: Behavior<Addr = A, Msg = BreakerOutcome>> CircuitBreaker
                         attempt: current,
                         reply_to,
                     },
-            } if *current == attempt => Some((*reply_to, 0, true, *generation)),
+            } if *current == attempt => Some((*reply_to, 0, Some(*generation))),
             _ => None,
         };
-        let Some((reply_to, failures, probe, generation)) = ownership else {
+        let Some((reply_to, failures, probe_generation)) = ownership else {
             return Actions::cont();
         };
         if succeeded {
@@ -288,7 +276,7 @@ impl<A: Address, Reply: Behavior<Addr = A, Msg = BreakerOutcome>> CircuitBreaker
             return Self::reply(reply_to, BreakerOutcome::Succeeded { attempt });
         }
         let failures = failures.saturating_add(1);
-        if !probe && failures < self.threshold.get() {
+        if probe_generation.is_none() && failures < self.threshold.get() {
             self.phase = BreakerPhase::Closed(ClosedPhase::Idle {
                 consecutive_failures: failures,
             });
@@ -300,10 +288,9 @@ impl<A: Address, Reply: Behavior<Addr = A, Msg = BreakerOutcome>> CircuitBreaker
                 },
             );
         }
-        let next_generation = if probe {
-            generation.0.checked_add(1).map(TimerGeneration)
-        } else {
-            Some(TimerGeneration(0))
+        let next_generation = match probe_generation {
+            Some(generation) => generation.0.checked_add(1).map(TimerGeneration),
+            None => Some(TimerGeneration(0)),
         };
         let Some(generation) = next_generation else {
             self.phase = BreakerPhase::Exhausted;
@@ -410,7 +397,9 @@ mod tests {
             .receive(MailAddr(0), BreakerMessage::Admit { reply_to: reply() })
             .unwrap();
         match actions.sends.replies[0].message {
-            BreakerOutcome::Admitted { attempt, .. } => attempt,
+            BreakerOutcome::Admitted { attempt } | BreakerOutcome::ProbeAdmitted { attempt } => {
+                attempt
+            }
             _ => unreachable!("test expected admission"),
         }
     }
@@ -488,6 +477,56 @@ mod tests {
         assert!(matches!(
             success.sends.replies[0].message,
             BreakerOutcome::Succeeded { .. }
+        ));
+    }
+
+    fn breaker() -> CircuitBreaker<MailAddr, Reply> {
+        CircuitBreaker::new(
+            NonZeroU32::new(2).unwrap(),
+            Duration::from_secs(1),
+            TimerId(8),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn attempt_counter_exhaustion_is_typed_not_wrapped() {
+        let mut breaker = breaker();
+        breaker.next_attempt = u64::MAX;
+        let mut subject = crate::Compose::new(breaker).initialize().unwrap().behavior;
+        let actions = subject
+            .receive(MailAddr(0), BreakerMessage::Admit { reply_to: reply() })
+            .unwrap();
+        assert!(matches!(*subject.phase(), BreakerPhase::Exhausted));
+        assert!(matches!(
+            actions.sends.replies[0].message,
+            BreakerOutcome::Rejected(BreakerRejection::Exhausted)
+        ));
+    }
+
+    #[test]
+    fn timer_generation_exhaustion_is_typed_not_wrapped() {
+        let mut breaker = breaker();
+        breaker.phase = BreakerPhase::Probing {
+            generation: TimerGeneration(u64::MAX),
+            phase: ProbePhase::Awaiting {
+                attempt: BreakerAttempt(0),
+                reply_to: reply(),
+            },
+        };
+        let mut subject = crate::Compose::new(breaker).initialize().unwrap().behavior;
+        let actions = subject
+            .receive(
+                MailAddr(0),
+                BreakerMessage::Failed {
+                    attempt: BreakerAttempt(0),
+                },
+            )
+            .unwrap();
+        assert!(matches!(*subject.phase(), BreakerPhase::Exhausted));
+        assert!(matches!(
+            actions.sends.replies[0].message,
+            BreakerOutcome::Rejected(BreakerRejection::Exhausted)
         ));
     }
 }

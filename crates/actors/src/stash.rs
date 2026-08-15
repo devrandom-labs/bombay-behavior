@@ -68,7 +68,7 @@ where
         &mut self,
         acc: &mut Actions<B::Addr, Never, B::Sends, B::Birth>,
     ) -> Result<(), B::Error> {
-        let mut batch: VecDeque<_> = self.held.drain(..).collect();
+        let mut batch = core::mem::take(&mut self.held);
         while let Some(user) = batch.pop_front() {
             match (self.route)(&user.message) {
                 StashRoute::Stash => self.held.push_back(user),

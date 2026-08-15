@@ -3,5 +3,5 @@
 mod proxy;
 mod supervisor;
 
-pub use proxy::{Proxy, ProxyError, ProxySends};
+pub use proxy::{Proxy, ProxySends};
 pub use supervisor::{Supervisor, SupervisorError, SupervisorSends};

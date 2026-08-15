@@ -43,10 +43,24 @@ pub struct DependencyReadiness<K> {
 /// Point-in-time readiness result.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReadinessReport<K> {
-    /// True exactly when every configured dependency is ready.
-    pub ready: bool,
     /// Dependencies in configuration order with complete current evidence.
     pub dependencies: Vec<DependencyReadiness<K>>,
+}
+
+impl<K> ReadinessReport<K> {
+    /// True exactly when every configured dependency is ready.
+    #[must_use]
+    pub fn ready(&self) -> bool {
+        self.dependencies.iter().all(|state| {
+            matches!(
+                state.evidence,
+                ReadinessEvidence::Observed {
+                    status: ReadinessStatus::Ready,
+                    ..
+                }
+            )
+        })
+    }
 }
 
 /// Inputs accepted by [`Readiness`].
@@ -189,15 +203,6 @@ where
 
     fn report(&self) -> ReadinessReport<K> {
         ReadinessReport {
-            ready: self.dependencies.iter().all(|state| {
-                matches!(
-                    state.evidence,
-                    ReadinessEvidence::Observed {
-                        status: ReadinessStatus::Ready,
-                        ..
-                    }
-                )
-            }),
             dependencies: self.dependencies.clone(),
         }
     }
@@ -283,7 +288,7 @@ mod tests {
                 )
                 .unwrap()
         };
-        assert!(!query(&mut subject).sends[0].message.ready);
+        assert!(!query(&mut subject).sends[0].message.ready());
         let _ = subject
             .receive(
                 MailAddr(9),
@@ -294,7 +299,7 @@ mod tests {
                 },
             )
             .unwrap();
-        assert!(!query(&mut subject).sends[0].message.ready);
+        assert!(!query(&mut subject).sends[0].message.ready());
         let _ = subject
             .receive(
                 MailAddr(9),
@@ -305,7 +310,7 @@ mod tests {
                 },
             )
             .unwrap();
-        assert!(query(&mut subject).sends[0].message.ready);
+        assert!(query(&mut subject).sends[0].message.ready());
     }
 
     #[test]
@@ -380,6 +385,6 @@ mod tests {
                 },
             )
             .unwrap();
-        assert!(report.sends[0].message.ready);
+        assert!(report.sends[0].message.ready());
     }
 }

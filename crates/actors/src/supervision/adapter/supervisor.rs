@@ -171,10 +171,14 @@ where
     <B::Addr as Address>::Nonce: From<u64>,
     C: Behavior<Ph = Never, Addr = B::Addr>,
 {
-    #[allow(clippy::too_many_arguments, reason = "hidden by Compose")]
-    /// Construct the concrete supervisor behavior hidden by `Compose`.
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "builder-style policy configuration is available via Compose::children and the with_* methods"
+    )]
+    /// Construct the concrete supervisor behavior directly.
     ///
-    /// Invalid configured routes reject construction before a behavior exists.
+    /// Prefer [`crate::Compose::children`] plus the `with_*` builder methods for
+    /// builder-style policy configuration.
     ///
     /// # Errors
     /// Returns the first typed topology rejection.
@@ -308,7 +312,6 @@ where
         actions: Actions<B::Addr, B::Ph, B::Sends, Births<C>>,
     ) -> WrappedSupervisorResult<B, C> {
         let fleet = &mut self.fleet;
-        let born: Vec<_> = actions.creates.iter().map(|create| create.nonce).collect();
         for create in &actions.creates {
             fleet.register(create.nonce)?;
         }
@@ -316,7 +319,11 @@ where
             SupervisorSends {
                 behavior: actions.sends,
                 child_observations: ServiceSends::new(
-                    born.into_iter().map(ObserveChild::new).collect(),
+                    actions
+                        .creates
+                        .iter()
+                        .map(|create| ObserveChild::new(create.nonce))
+                        .collect(),
                 ),
                 replacement_commands: Vec::new(),
                 failure_reports: ServiceSends::empty(),

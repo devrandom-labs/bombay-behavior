@@ -153,8 +153,8 @@ pub enum BufferConfigError {
 /// actors, and the buffer never terminates itself. FIFO and overflow semantics
 /// are Bombay policy. Physical mailbox buffering, admission, fairness, and
 /// backpressure remain `bombay-communication` responsibilities. Construction
-/// returns [`BufferConfigError`] rather than creating an ownership sink. No
-/// The internal full-queue eviction uses the proven invariant that positive
+/// returns [`BufferConfigError`] rather than creating an ownership sink. The
+/// internal full-queue eviction uses the proven invariant that positive
 /// capacity plus the full-offer branch implies a non-empty queue; callers
 /// cannot violate that invariant through the public API.
 pub struct Buffer<

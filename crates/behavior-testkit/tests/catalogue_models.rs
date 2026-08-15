@@ -147,7 +147,10 @@ proptest! {
                 retained.push_back(key);
                 prop_assert_eq!(actions.sends.deliveries[0].message, value);
             }
-            prop_assert_eq!(actual.state().retained, retained.iter().copied().collect::<Vec<_>>());
+            prop_assert_eq!(
+                actual.state().retained().to_vec(),
+                retained.iter().copied().collect::<Vec<_>>()
+            );
         }
     }
 
@@ -195,7 +198,7 @@ proptest! {
             }
             let state = actual.state();
             prop_assert_eq!(state.watermark, watermark);
-            prop_assert_eq!(state.held, held.len());
+            prop_assert_eq!(state.held(), held.len());
         }
     }
 }

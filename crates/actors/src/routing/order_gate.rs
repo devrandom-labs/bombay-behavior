@@ -12,8 +12,15 @@ use behavior::{
 pub struct OrderGateState<K> {
     /// Greatest explicitly opened key, or absence before the first opening.
     pub watermark: Option<K>,
+    held: usize,
+}
+
+impl<K> OrderGateState<K> {
     /// Number of values retained above the watermark.
-    pub held: usize,
+    #[must_use]
+    pub fn held(&self) -> usize {
+        self.held
+    }
 }
 
 /// Factual result of one gate operation.
@@ -369,13 +376,8 @@ mod tests {
             vec![10]
         );
         assert_eq!(hold(&mut s, 2, 20).sends.deliveries.len(), 1);
-        assert_eq!(
-            s.state(),
-            OrderGateState {
-                watermark: Some(2),
-                held: 1
-            }
-        );
+        assert_eq!(s.state().watermark, Some(2));
+        assert_eq!(s.state().held(), 1);
     }
     #[test]
     fn duplicate_and_stale_opening_are_atomic() {

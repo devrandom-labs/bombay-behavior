@@ -86,7 +86,7 @@ impl<A: Address, S, M, P: Copy + PartialEq, E> Machine<A, S, M, P, E> {
     }
 
     fn drain(&mut self) -> Result<Step<Never, Stopped>, E> {
-        let mut batch: VecDeque<M> = self.held.drain(..).collect();
+        let mut batch = core::mem::take(&mut self.held);
         while let Some(message) = batch.pop_front() {
             let outcome = match self.advance(message) {
                 Ok(transition) => transition,

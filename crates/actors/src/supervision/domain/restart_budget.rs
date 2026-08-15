@@ -8,7 +8,7 @@ use crate::RestartDenial;
 
 /// A sliding-window restart budget.
 pub(crate) struct RestartBudget {
-    maximum: usize,
+    maximum: u32,
     window: Duration,
     admitted: Vec<Instant>,
 }
@@ -17,7 +17,7 @@ impl RestartBudget {
     #[must_use]
     pub const fn new(maximum: u32, window: Duration) -> Self {
         Self {
-            maximum: maximum as usize,
+            maximum,
             window,
             admitted: Vec::new(),
         }
@@ -31,11 +31,11 @@ impl RestartBudget {
     /// Admit an atomic replacement set or leave the budget unchanged.
     pub fn admit(&mut self, at: Instant, requested: usize) -> Result<(), RestartDenial> {
         self.prune(at);
-        if self.admitted.len() + requested > self.maximum {
+        if self.admitted.len() + requested > self.maximum as usize {
             return Err(RestartDenial::BudgetExceeded {
                 restarts_in_window: self.admitted.len(),
                 replacements_requested: requested,
-                maximum_restarts: self.maximum.try_into().unwrap_or(u32::MAX),
+                maximum_restarts: self.maximum,
             });
         }
         self.admitted.resize(self.admitted.len() + requested, at);
