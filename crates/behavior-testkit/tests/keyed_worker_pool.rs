@@ -1,10 +1,10 @@
 use std::time::Duration;
 
 use behavior::{
-    Actions, AffinitySelector, AssignmentId, Behavior, CreationKind, Delivery, InterruptionPolicy,
-    JobId, KeyedPoolMessage, KeyedWorkerPool, MailAddr, Never, NoBirths, PoolAssignment,
-    PoolBehaviorSends, PoolError, PoolResponse, Proxy, ProxyCommand, Recipient, RestartPolicy,
-    SendAlgebra, User, WorkerCreationResolved, WorkerPhase, WorkerStopped,
+    Actions, AffinitySelector, AssignmentId, Behavior, Compose, CreationKind, Delivery,
+    InterruptionPolicy, JobId, KeyedPoolMessage, KeyedWorkerPool, MailAddr, Never, NoBirths,
+    PoolAssignment, PoolBehaviorSends, PoolError, PoolResponse, Proxy, ProxyCommand, Recipient,
+    RestartPolicy, SendAlgebra, User, WorkerCreationResolved, WorkerPhase, WorkerStopped,
 };
 use proptest::prelude::*;
 use std::time::Instant;
@@ -63,14 +63,14 @@ type Pool = behavior::Active<PoolDefinition>;
 
 fn pool_definition(selector: Selector) -> PoolDefinition {
     KeyedWorkerPool::<MailAddr, Reply, u8, u8, u16, Worker, _>::new(
-        nonce,
-        2,
-        |index| Some(worker(index)),
-        8,
-        InterruptionPolicy::Retry,
-        RestartPolicy::Permanent,
-        64,
-        Duration::from_secs(60),
+        behavior::ChildTopology::indexed(nonce, 2, |index| Some(worker(index))),
+        behavior::PoolConfiguration::new(
+            8,
+            InterruptionPolicy::Retry,
+            RestartPolicy::Permanent,
+            64,
+            Duration::from_secs(60),
+        ),
         selector,
     )
     .unwrap()
@@ -118,14 +118,14 @@ fn assignments(
 #[test]
 fn targeted_submission_rejects_when_its_busy_workers_backlog_is_full() {
     let pool = KeyedWorkerPool::<MailAddr, Reply, u8, u8, u16, Worker, _>::new(
-        nonce,
-        1,
-        |index| Some(worker(index)),
-        1,
-        InterruptionPolicy::Retry,
-        RestartPolicy::Permanent,
-        64,
-        Duration::from_secs(60),
+        behavior::ChildTopology::indexed(nonce, 1, |index| Some(worker(index))),
+        behavior::PoolConfiguration::new(
+            1,
+            InterruptionPolicy::Retry,
+            RestartPolicy::Permanent,
+            64,
+            Duration::from_secs(60),
+        ),
         Selector::Parity,
     )
     .unwrap();
@@ -379,14 +379,14 @@ fn unbound_rebalance_explicitly_establishes_affinity() {
 fn captured_selector_state_is_statically_dispatched() {
     let selected = 1_u64;
     let pool = KeyedWorkerPool::<MailAddr, Reply, u8, u8, u16, Worker, _>::new(
-        nonce,
-        2,
-        |index| Some(worker(index)),
-        1,
-        InterruptionPolicy::Fail,
-        RestartPolicy::Permanent,
-        1,
-        Duration::from_secs(1),
+        behavior::ChildTopology::indexed(nonce, 2, |index| Some(worker(index))),
+        behavior::PoolConfiguration::new(
+            1,
+            InterruptionPolicy::Fail,
+            RestartPolicy::Permanent,
+            1,
+            Duration::from_secs(1),
+        ),
         move |_: &u8| selected,
     )
     .unwrap();
@@ -471,7 +471,7 @@ fn short_rebalance_sequences_exhaustively_match_the_binding_model() {
 
 #[test]
 fn keyed_assignment_lanes_survive_shutdown_composition() {
-    let behavior = behavior::Compose::new(pool_definition(Selector::Parity))
+    let behavior = (pool_definition(Selector::Parity))
         .stop_on_shutdown()
         .initialize()
         .unwrap();

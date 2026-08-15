@@ -286,7 +286,7 @@ impl WorkerApp {
         &mut self,
         _: behavior::ActiveTurn,
         msg: AppMsg,
-    ) -> Result<Step<Never, Exit<MailAddr>>, Never> {
+    ) -> Result<Step<Never, behavior::Stopped>, Never> {
         match msg {
             AppMsg::Configure(config) => {
                 if let WorkerApp::Starting(state) = self {
@@ -306,7 +306,7 @@ impl WorkerApp {
                     *self = WorkerApp::Draining(WorkerDraining { in_flight });
                 } else if let WorkerApp::Draining(state) = self {
                     if state.in_flight.is_empty() {
-                        return Ok(Step::Stop(Exit::Normal));
+                        return Ok(Step::Stop(behavior::Stopped));
                     }
                 }
             }

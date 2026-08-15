@@ -3,7 +3,7 @@
 
 use std::time::Duration;
 
-use behavior::{Acted, Actions, Compose, Delivery, MailAddr, Never, Recipient, Step};
+use behavior::{Acted, Actions, Activate, Compose, Delivery, MailAddr, Never, Recipient, Step};
 use std::time::Instant;
 
 #[derive(Default)]
@@ -57,8 +57,7 @@ impl Parent {
 async fn deadline_initialization_emits_exactly_one_schedule() {
     let due = Instant::now() + Duration::from_secs(1);
     let behavior =
-        Compose::new(Recorder::default())
-            .deadline(behavior::TimerId(0), Some(due), |_| Ok(Step::Continue));
+        (Recorder::default()).deadline(behavior::TimerId(0), Some(due), |_| Ok(Step::Continue));
     let initialized = behavior.initialize().unwrap();
     assert_eq!(initialized.actions.sends.schedules.len(), 1);
 }
@@ -66,7 +65,7 @@ async fn deadline_initialization_emits_exactly_one_schedule() {
 #[tokio::test]
 async fn initialized_behavior_processes_mailbox_events() {
     let peer = MailAddr(44);
-    let initialized = Compose::new(Recorder::default()).initialize().unwrap();
+    let initialized = (Recorder::default()).initialize().unwrap();
     let mut behavior = initialized.behavior;
     behavior.receive(peer, 7).unwrap();
     assert_eq!(behavior.seen, [(peer, 7)]);
@@ -74,7 +73,7 @@ async fn initialized_behavior_processes_mailbox_events() {
 
 #[tokio::test]
 async fn supervisor_initialization_emits_the_configured_fleet_once() {
-    let behavior = Compose::new(Parent)
+    let behavior = (Parent)
         .children(
             |index| u64::try_from(index).unwrap(),
             2,

@@ -201,7 +201,7 @@ async fn fsm_stop_mid_drain_preserves_remaining_batch() {
     machine.transition(User::user(MailAddr(0), 1)).unwrap();
     machine.transition(User::user(MailAddr(0), 2)).unwrap();
     let opened = machine.transition(User::user(MailAddr(0), 0)).unwrap();
-    assert!(matches!(opened.become_, Step::Stop(behavior::Exit::Normal)));
+    assert!(matches!(opened.become_, Step::Stop(behavior::Stopped)));
     assert!(machine.state().is_empty());
     assert_eq!(machine.held(), 1);
 

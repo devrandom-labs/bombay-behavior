@@ -7,7 +7,7 @@
 //! (recorded + held + fresh-goto-consumed == stepped), and no occurrence is
 //! ever recorded twice.
 
-use behavior::{Machine, MailAddr, Move, Never, User, UserEvent};
+use behavior::{Activate, Machine, MailAddr, Move, Never, User, UserEvent};
 use libfuzzer_sys::fuzz_target;
 use tokio::runtime::Builder;
 
@@ -35,7 +35,10 @@ fuzz_target!(|bytes: &[u8]| {
                 })
             },
         );
-        let mut machine = behavior::Compose::new(machine).initialize().unwrap().behavior;
+        let mut machine = (machine)
+            .initialize()
+            .unwrap()
+            .behavior;
         let mut consumed = 0_usize;
         for (index, _) in bytes.iter().enumerate() {
             let id = u64::try_from(index).unwrap();

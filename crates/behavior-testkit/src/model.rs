@@ -34,14 +34,14 @@ impl InactivityModel {
     pub fn activity(&mut self) -> Option<u64> {
         self.last_token
             .and_then(|token| token.checked_add(1))
-            .map(|token| {
+            .inspect(|&token| {
                 self.last_token = Some(token);
                 self.live_token = Some(token);
-                token
             })
     }
 
     /// Errors, terminal turns, and all service traffic leave timer state alone.
+    #[must_use]
     pub const fn no_activity(&self) -> Option<u64> {
         self.live_token
     }

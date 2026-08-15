@@ -1,5 +1,11 @@
 # Goal: derive and verify the pure actor-behavior algebra
 
+> **Archived campaign vocabulary:** Behaviorpass is now
+> `bombay-behavior`; Actorpass runtime ownership now belongs to Bombay and its
+> focused sibling crates. See `research/README.md` and `docs/ecosystem.md`.
+> Instructions below describe the completed campaign boundary, not current
+> repository naming or a recommendation to treat siblings as external systems.
+
 > **Campaign boundary:** This is the system-wide architecture audit. It may
 > identify `protocol-session` as a partial capability, but concrete
 > phase-indexed protocol derivations belong to the separate session campaign.

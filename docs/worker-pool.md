@@ -15,7 +15,7 @@ The pool remains a deterministic fold:
 
 `Actions` remains the complete effect boundary. The pool does not inspect a
 mailbox, spawn a task, allocate an actor, read a clock, or query worker
-liveness. Actorpass gives the pool's typed creations, deliveries, creation
+liveness. The Bombay runtime gives the pool's typed creations, deliveries, creation
 resolutions, and worker-stop observations their runtime meaning.
 
 ## Ownership law
@@ -56,7 +56,7 @@ A replacement request does not make a slot idle. Only a matching successful
 `WorkerCreationResolved` event does so. A rejected creation retires the slot.
 The stable proxy and fresh worker-incarnation protocol are the existing
 Bombay supervision construction; fresh creation is still interpreted by
-Actorpass.
+the Bombay runtime.
 
 ## Ordering policy
 
@@ -112,11 +112,33 @@ hide or strand those jobs. A later rebalance can restore admission for the key
 but cannot resurrect already terminated ownership.
 
 The selector does not resolve an actor address. The fold emits an ordinary
-typed `Recipient::child(stable_nonce)` assignment. Actorpass derives the child
+typed `Recipient::child(stable_nonce)` assignment. The Bombay runtime derives the child
 address from that relative route and Bombay Address resolves the resulting
 address to the exact live registered endpoint. Thus Behavior owns selection
 policy while Bombay Address retains registration and endpoint-routing
 authority; neither duplicates the other.
+
+## Construction products
+
+Pool construction separates topology from operating policy:
+
+```rust,ignore
+let topology = ChildTopology::indexed(nonce_for, worker_count, build_worker);
+let configuration = PoolConfiguration::new(
+    backlog_capacity,
+    InterruptionPolicy::Retry,
+    RestartPolicy::Permanent,
+    maximum_restarts,
+    restart_window,
+);
+let pool = WorkerPool::new(topology, configuration)?;
+```
+
+`ChildTopology` owns the ordered creator-local nonces and the pure slot
+factory. `PoolConfiguration` owns backlog, interruption, and restart policy.
+`KeyedWorkerPool::new` accepts those same two products plus its selector. No
+positional argument carries meaning by its location, and construction still
+rejects empty or duplicate topology before a behavior exists.
 
 ## Admission
 
@@ -151,9 +173,9 @@ whether a replacement is requested.
 Bombay Behavior owns the pool protocol, slot/backlog state, selection,
 admission, assignment correlation, interruption decision, and resulting
 `Actions`. The behavior executor owns exclusive turn execution and complete
-effect interpretation before the next input. Actorpass owns mailbox ingress,
+effect interpretation before the next input. The Bombay runtime owns mailbox ingress,
 routing, fresh installation, typed creation resolution, worker termination
-observation, timers, and retirement. Neither the executor nor Actorpass may
+observation, timers, and retirement. Neither the executor nor the Bombay runtime may
 select a worker, mutate pool accounting, or infer retry policy.
 
 `PoolBehaviorSends` exposes the pool's two ordinary delivery lanes by semantic

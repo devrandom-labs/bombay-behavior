@@ -1,5 +1,9 @@
 # Goal: derive or reject phase-indexed actor protocol typing
 
+> **Archived surface vocabulary:** this completed campaign uses the historical
+> `Fsm` name. The current reusable finite-state construction is `Machine`; see
+> `research/README.md` for the current repository and ecosystem mapping.
+
 > **Campaign boundary:** This is an independent focused validation using the
 > Resource Pool protocol. It consumes the architecture audit's laws and static
 > constraints, but it does not reopen or continue that audit. The original

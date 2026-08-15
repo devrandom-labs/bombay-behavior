@@ -9,12 +9,12 @@
 //! state must agree.
 
 use behavior::{
-    Acted, Actions, Crash, Create, CreationKind, Delivery, MailAddr, Never,
+    Acted, Actions, Activate, Crash, Create, CreationKind, Delivery, MailAddr, Never,
     RestartPolicy, Step, Strategy, SupervisionEvent, Supervisor, UserEvent, WorkerStopped,
 };
 use libfuzzer_sys::fuzz_target;
-use tokio::runtime::Builder;
 use std::time::Instant;
+use tokio::runtime::Builder;
 
 const FLEET: usize = 2;
 const BUDGET: u32 = 2;
@@ -27,7 +27,13 @@ impl Worker {
         &mut self,
         _from: MailAddr,
         _message: u8,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u8>>>, behavior::NoBirths, Never> {
+    ) -> Acted<
+        MailAddr,
+        Never,
+        Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u8>>>,
+        behavior::NoBirths,
+        Never,
+    > {
         Ok(Actions::cont())
     }
 }
@@ -39,19 +45,12 @@ fn worker(_index: usize) -> Worker {
 struct BirthingParent;
 
 #[behavior::behavior(addr = MailAddr, message = u64, sends = Vec<Never>, births = behavior::Births<Worker>, error = Never)]
-impl BirthingParent  {
-
+impl BirthingParent {
     fn receive(
         &mut self,
         _from: MailAddr,
         nonce: u64,
-    ) -> Acted<
-        MailAddr,
-        Never,
-        Vec<Never>,
-        behavior::Births<Worker>,
-        Never,
-    > {
+    ) -> Acted<MailAddr, Never, Vec<Never>, behavior::Births<Worker>, Never> {
         Ok(Actions {
             sends: Vec::new(),
             creates: vec![Create::birth(nonce, worker(0))],
@@ -71,15 +70,20 @@ fuzz_target!(|bytes: &[u8]| {
     runtime.block_on(async {
         let behavior = Supervisor::new(
             BirthingParent,
-            |index| u64::try_from(index).unwrap(),
-            FLEET,
-            |index| Some(worker(index)),
-            Strategy::OneForOne,
-            RestartPolicy::Permanent,
-            BUDGET,
-            std::time::Duration::MAX,
-        ).unwrap();
-        let initialized = behavior::Compose::new(behavior).initialize().unwrap();
+            behavior::ChildTopology::indexed(
+                |index| u64::try_from(index).unwrap(),
+                FLEET,
+                |index| Some(worker(index)),
+            ),
+            behavior::RestartConfiguration::new(
+                Strategy::OneForOne,
+                RestartPolicy::Permanent,
+                BUDGET,
+                std::time::Duration::MAX,
+            ),
+        )
+        .unwrap();
+        let initialized = (behavior).initialize().unwrap();
         let mut behavior = initialized.behavior;
         let base = Instant::now();
 
@@ -100,7 +104,10 @@ fuzz_target!(|bytes: &[u8]| {
                 births += 1;
                 slots.push(Slot { nonce, alive: true });
                 let actions = behavior
-                    .transition(SupervisionEvent::Behavior(UserEvent::user(MailAddr(0), nonce)))
+                    .transition(SupervisionEvent::Behavior(UserEvent::user(
+                        MailAddr(0),
+                        nonce,
+                    )))
                     .unwrap();
                 assert_eq!(actions.creates.len(), 1, "birth create at byte {index}");
                 assert_eq!(actions.creates[0].nonce, nonce);

@@ -8,7 +8,8 @@ publish = false
 cargo-fuzz = true
 
 [dependencies]
-behavior = { package = "bombay-behavior", path = "../../../crates/behavior" }
+behavior = { package = "bombay-behavior-actors", path = "../../../crates/actors" }
+foundation = { package = "bombay-behavior", path = "../../../crates/behavior" }
 libfuzzer-sys = "0.4"
 tokio = { version = "1.47", features = ["rt", "time"] }
 
@@ -78,6 +79,13 @@ bench = false
 [[bin]]
 name = "pool_sequences"
 path = "fuzz_targets/pool_sequences.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "catalogue_sequences"
+path = "fuzz_targets/catalogue_sequences.rs"
 test = false
 doc = false
 bench = false

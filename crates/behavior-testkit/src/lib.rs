@@ -2,9 +2,7 @@
 
 use std::collections::VecDeque;
 
-use behavior::{
-    ActionReducer, Active, Address, Behavior, BirthMode, Compose, Create, Exit, SendAlgebra,
-};
+use behavior::{ActionReducer, Active, Address, Behavior, BirthMode, Create, SendAlgebra};
 use core::marker::PhantomData;
 
 /// A nominal, inert destination used by behavior tests that inspect emitted
@@ -35,10 +33,16 @@ impl<M> Behavior for TestRecipient<M> {
 use core::ops::ControlFlow;
 
 /// Test-fixture shorthand for activating a raw concrete behavior through the
-/// same `Compose` boundary used by production definitions.
+/// same activation boundary used by production definitions.
 pub trait InitializeTest: Behavior + Sized {
+    /// Activate the fixture and preserve its complete initialization actions.
+    ///
+    /// # Errors
+    ///
+    /// Returns the concrete behavior error when its initialization fold
+    /// rejects activation.
     fn initialize(self) -> Result<behavior::Initialized<Self>, Self::Error> {
-        Compose::new(self).initialize()
+        behavior::Activate::initialize(self)
     }
 }
 
@@ -72,7 +76,7 @@ pub struct Trace<B: Behavior> {
     pub behavior: Active<B>,
     pub sends: B::Sends,
     pub creates: Vec<Create<B::Addr, <B::Birth as BirthMode>::Child>>,
-    pub exit: Option<Exit<B::Addr>>,
+    pub stopped: bool,
     pub transitions: usize,
     pub pending: usize,
 }
@@ -84,7 +88,7 @@ pub struct Trace<B: Behavior> {
 /// # Errors
 /// Returns the behavior's first controlled failure (`B::Error`).
 pub fn drive<B, A, Sends, Br>(
-    definition: Compose<B>,
+    definition: B,
     mailbox: &mut Mailbox<B::Event>,
 ) -> Result<Trace<B>, B::Error>
 where
@@ -93,7 +97,7 @@ where
     Br: BirthMode,
     B: Behavior<Addr = A, Ph = behavior::Never, Sends = Sends, Birth = Br>,
 {
-    let initialized = definition.initialize()?;
+    let initialized = behavior::Activate::initialize(definition)?;
     let mut behavior = initialized.behavior;
     let mut fold = ActionReducer::new();
     let mut exit = match fold.push(initialized.actions) {
@@ -111,13 +115,13 @@ where
         };
     }
 
-    let folded = fold.finish(exit);
+    let folded = fold.finish(exit.is_some());
 
     Ok(Trace {
         behavior,
         sends: folded.effects.sends,
         creates: folded.effects.creates,
-        exit: folded.exit,
+        stopped: folded.stopped,
         transitions: folded.transitions,
         pending: mailbox.pending(),
     })

@@ -8,8 +8,8 @@
 use std::time::Duration;
 
 use behavior::{
-    Compose, DeadlineEvent, Machine, MailAddr, Move, Never, StashRoute, Step, TimerElapsed,
-    TimerGeneration, TimerId, UserEvent,
+    Activate, Compose, DeadlineEvent, Machine, MailAddr, Move, Never, StashRoute, Step,
+    TimerElapsed, TimerGeneration, TimerId, UserEvent,
 };
 use proptest::collection::vec;
 use proptest::prelude::*;
@@ -51,10 +51,6 @@ fn route(message: &u64) -> StashRoute {
     }
 }
 
-type Stack = behavior::Compose<
-    behavior::Deadline<behavior::Stash<Machine<MailAddr, Vec<u64>, u64, Phase, Never>>>,
->;
-
 proptest! {
     #![proptest_config(ProptestConfig {
         cases: 256,
@@ -71,7 +67,7 @@ proptest! {
         fires in vec(any::<u8>(), 0..32),
     ) {
         let due = Instant::now() + Duration::from_secs(1);
-        let behavior: Stack = Compose::new(Machine::new(Vec::new(), Phase::A, on))
+        let behavior = Machine::new(Vec::new(), Phase::A, on)
             .stash(route)
             .deadline(behavior::TimerId(0), Some(due), |_| Ok(Step::Continue));
         let runtime = Builder::new_current_thread().enable_all().build().unwrap();

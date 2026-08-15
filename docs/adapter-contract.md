@@ -1,0 +1,173 @@
+# Behavior Adapter Contract
+
+This document defines the complete runtime-neutral contract for driving a
+concrete Bombay behavior. It does not define a runtime, executor, mailbox,
+transport, or capability registry. Bombay's Driver and an independent adapter
+are both implementations of this same boundary.
+
+## Universal execution law
+
+An adapter accepts one exact, closed behavior `B` and an environment capable of
+producing `B::Event` and interpreting every lane of `B::Sends` and `B::Birth`:
+
+```text
+own one B
+    -> initialize B exactly once
+    -> commit the complete initialization Actions
+    -> if terminal, retire
+    -> otherwise repeat:
+        obtain one B::Event
+        -> fold it exactly once
+        -> commit the complete successful Actions exactly once
+        -> if terminal, retire
+```
+
+The algorithm is identical for `Machine`, `Supervisor`, `Deadline`, routing
+templates, persistence-derived templates, nominal domain behaviors, and any
+composition of them. An adapter must never inspect a wrapper type or select a
+template-specific loop.
+
+## Static boundary
+
+For a concrete `B: Behavior<Ph = Never>`, the adapter must statically supply:
+
+- an ordered source of the exact closed `B::Event` sum;
+- an interpreter for every named lane in `B::Sends`;
+- fresh creation for `<B::Birth as BirthMode>::Child`;
+- exact behavior and capability errors;
+- incarnation-local retirement.
+
+Missing capability support is a compile-time failure. Dynamic capability maps,
+`Any`, downcasting, type-name dispatch, erased messages, and string routing are
+not valid adapter mechanisms.
+
+## Activation
+
+`Activate::initialize` consumes a concrete definition and returns:
+
+```rust,ignore
+Initialized {
+    behavior: Active<B>,
+    actions: Actions<B::Addr, B::Ph, B::Sends, B::Birth>,
+}
+```
+
+The complete initialization actions must be committed before the event source
+can expose the actor for delivery. A failed initialization consumes the
+definition and produces no successful actions. `Active<B>` cannot initialize
+again.
+
+## Action commitment
+
+One successful fold yields one indivisible decision value. The adapter receives
+that complete value exactly once. This does not make external effects
+transactional.
+
+Commitment obeys these laws:
+
+1. creations are attempted in vector order before same-action sends;
+2. a nonce collision is a typed rejection, never replacement;
+3. creation observations describe only creations in that exact action value;
+4. order within every named send lane is preserved;
+5. no payload is dropped, duplicated, or reconstructed;
+6. a successfully committed prefix remains factual after a later failure;
+7. the adapter performs no implicit retry or rollback;
+8. final actions are committed before terminal retirement;
+9. delivery admission does not claim recipient processing or business success.
+
+## Named products
+
+Behavior Actors products expose semantic fields specifically so adapters can
+compose interpreters without positional nesting knowledge. For example:
+
+```rust,ignore
+let DeadlineSends { behavior, schedules } = sends;
+interpret_behavior(behavior)?;
+interpret_schedules(schedules)?;
+```
+
+```rust,ignore
+let SupervisorSends {
+    behavior,
+    child_observations,
+    replacement_commands,
+    failure_reports,
+} = sends;
+```
+
+An adapter may define its own local, statically dispatched interpretation
+traits for these public products. The behavior crates do not prescribe one
+runtime trait or error sum. Public products must retain named owned fields so
+such implementations require neither tuple positions nor wrapper inspection.
+
+## Event injection
+
+Runtime facts return as later typed events. `EventInput<Input>` and
+`RouteInput<Input>` prove that the concrete closed event sum accepts a given
+input. Timer callbacks, creation callbacks, lifecycle callbacks, and
+observation callbacks must enqueue their typed input; they must not synchronously
+re-enter the behavior fold.
+
+## Error and cancellation law
+
+Behavior failure and environment failure remain distinct concrete error types.
+An adapter may compose capability failures into its own closed `thiserror` sum,
+but must not erase or stringify them.
+
+Cancellation drops the values owned by the cancelled future. It cannot claim
+that asynchronous retirement or an uncertain external effect completed. Panic
+or cancellation must not permit later polling of the consumed execution.
+
+## Nameability
+
+Local construction relies on inference:
+
+```rust,ignore
+let behavior = worker.stash(route).deadline(timer, when, react);
+run(behavior, environment);
+```
+
+Adapter entry points should be generic over the concrete behavior:
+
+```rust,ignore
+fn run<B, E>(behavior: B, environment: E)
+where
+    B: Behavior<Ph = Never>,
+    E: EnvironmentFor<B>,
+{
+    // Activate and drive this exact B.
+}
+```
+
+This preserves the exact event, sends, phase, error, birth, initialization,
+and transition contracts while allowing callers to rely on inference. A rare
+component-internal storage boundary may use an ordinary Rust alias or newtype;
+the catalogue does not define another macro or erased adapter type for it.
+
+## Conformance checklist
+
+An adapter is conforming only when tests kill each of these inversions:
+
+| Law | Required negative proof |
+|---|---|
+| Initialization once | missing or duplicate initialization fails |
+| Initialization precedence | ingress before initialization commitment fails |
+| One event, one fold | skipped or duplicate fold fails |
+| One decision, one commit | dropped or duplicate action commitment fails |
+| No prefetch | requesting the next event before commitment fails |
+| No re-entry | folding while commitment is pending fails |
+| Complete output | projecting or dropping a named lane fails |
+| Lane order | reordering one lane fails |
+| Creation precedence | sending before completing creation attempts fails |
+| Creation-result scope | cross-action or reordered results fail |
+| Terminal fusion | work after stop, failure, or input closure fails |
+| Exact errors | behavior or capability error erasure fails |
+| No retry | a second uncertain commitment attempt fails |
+| No rollback | reconstructing predecessor state fails |
+| Honest completion | external delivery completion claims fail |
+| Retirement | missing or duplicate ordinary retirement fails |
+
+The behavior testkit supplies deterministic folds, model traces, exhaustive
+sequences, properties, and fuzz targets for the template side of these laws.
+An execution adapter must additionally test its asynchronous event source,
+commitment, cancellation, and retirement implementation.

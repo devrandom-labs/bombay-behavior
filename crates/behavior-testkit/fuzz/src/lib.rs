@@ -17,7 +17,11 @@ impl<M> Behavior for TestRecipient<M> {
         Ok(Actions::cont())
     }
 
-    fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> behavior::BehaviorActed<Self> {
+    fn transition(
+        &mut self,
+        _: behavior::ActiveTurn,
+        _: Self::Event,
+    ) -> behavior::BehaviorActed<Self> {
         Ok(Actions::cont())
     }
 }

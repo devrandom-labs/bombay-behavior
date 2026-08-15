@@ -8,9 +8,8 @@ use std::time::Duration;
 
 use behavior::{
     Acted, Actions, Behavior, ChildStopped, Crash, Create, CreationKind, CreationResolved,
-    Delivery, Exit, MailAddr, Never, Proxy, ProxyCommand, ProxyEvent, RestartDenial, RestartPolicy,
-    Step, Strategy, SupervisionEvent, SupervisionFailureReason, Supervisor, User, UserEvent,
-    WorkerStopped, stop_on_supervision_failure,
+    Delivery, MailAddr, Never, Proxy, ProxyCommand, ProxyEvent, RestartPolicy, Step, Strategy,
+    SupervisionEvent, Supervisor, User, UserEvent, WorkerStopped, stop_on_supervision_failure,
 };
 use behavior_testkit::model::{
     ExpectedCreation, ExpectedIncarnation, IncarnationModel, Model, Outcome,
@@ -95,13 +94,12 @@ where
 {
     Supervisor::new(
         inner,
-        |index| u64::try_from(index).unwrap(),
-        count,
-        |index| Some(child(index)),
-        strategy,
-        policy,
-        maximum,
-        window,
+        behavior::ChildTopology::indexed(
+            |index| u64::try_from(index).unwrap(),
+            count,
+            |index| Some(child(index)),
+        ),
+        behavior::RestartConfiguration::new(strategy, policy, maximum, window),
     )
     .unwrap()
 }
@@ -294,16 +292,7 @@ proptest! {
             prop_assert_eq!(sends, expected);
             prop_assert!(actions.creates.is_empty());
             if model.last_restart_denied() {
-                prop_assert_eq!(
-                    actions.become_,
-                    Step::Stop(Exit::SupervisionFailed(
-                        SupervisionFailureReason::RestartDenied(RestartDenial::BudgetExceeded {
-                            restarts_in_window: model.restarts(),
-                            replacements_requested: model.last_replacements_requested(),
-                            maximum_restarts: maximum,
-                        })
-                    ))
-                );
+                prop_assert_eq!(actions.become_, Step::Stop(behavior::Stopped));
             } else {
                 prop_assert_eq!(actions.become_, Step::Continue);
             }

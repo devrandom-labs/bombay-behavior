@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Move reusable actors, protocols, composition, and worker pools to the new
+  `bombay-behavior-actors` package, leaving this package focused on the typed
+  behavior boundary and explicit transition effects.
+- Make the terminal alternative of `become` a payload-free `Stopped` marker;
+  lifecycle, supervision, collection, and runtime-failure provenance no longer
+  appears in the foundational behavior API.
+
 ## [0.11.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.10.0...bombay-behavior-v0.11.0) - 2026-08-15
 
 ### Other

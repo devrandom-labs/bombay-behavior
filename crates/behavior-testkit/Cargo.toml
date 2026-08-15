@@ -14,7 +14,8 @@ publish = false
 name = "behavior_testkit"
 
 [dependencies]
-behavior.workspace = true
+behavior = { package = "bombay-behavior-actors", path = "../actors" }
+foundation = { package = "bombay-behavior", path = "../behavior" }
 proptest.workspace = true
 tokio = { workspace = true, features = ["macros", "rt"] }
 

@@ -1,6 +1,6 @@
 use behavior::{
-    Acted, Actions, Compose, Delivery, Exit, MailAddr, Never, NoBirths, Recipient,
-    ShutdownProtocol, ShutdownRequested, User,
+    Acted, Actions, Compose, Delivery, MailAddr, Never, NoBirths, Recipient, ShutdownProtocol,
+    ShutdownRequested, User,
 };
 use behavior_testkit::{Mailbox, drive};
 use proptest::collection::vec;
@@ -48,7 +48,7 @@ proptest! {
             }
         });
         let mut mailbox = Mailbox::new(events);
-        let behavior = Compose::new(Echo).stop_on_shutdown();
+        let behavior = (Echo).stop_on_shutdown();
         let trace = drive(behavior, &mut mailbox).unwrap();
         let stop = inputs.iter().position(|(shutdown, _)| *shutdown);
         let consumed = stop.map_or(inputs.len(), |index| index + 1);
@@ -65,6 +65,6 @@ proptest! {
             trace.sends.iter().map(|delivery| delivery.message).collect::<Vec<_>>(),
             expected_messages
         );
-        prop_assert_eq!(trace.exit, stop.map(|_| Exit::Normal));
+        prop_assert_eq!(trace.stopped, stop.is_some());
     }
 }

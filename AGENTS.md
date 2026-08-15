@@ -247,8 +247,12 @@ prefer typed errors otherwise.
 
 ## Repository boundaries
 
-- `crates/behavior`: the public algebra, concrete combinators, and minimal
-  interpreter-facing contracts. Keep this surface small.
+- `crates/behavior`: the public behavior primitives and minimal
+  interpreter-facing contracts. Keep this surface small and independent of
+  reusable actor implementations.
+- `crates/actors`: reusable actors, concrete protocol transformations, and
+  composition helpers built on `bombay-behavior`. It may depend on
+  `crates/behavior`; the reverse dependency is forbidden.
 - `crates/behavior-macros`: syntax generation only. Macros must emit the same
   concrete types a careful user could write and must not hide dynamic behavior.
 - `crates/behavior-testkit`: independent models, adversarial suites,

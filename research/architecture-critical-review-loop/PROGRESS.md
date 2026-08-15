@@ -1,9 +1,10 @@
 # Loop progress
 
-## 2026-08-14 — behavior-owned wart pass in progress
+## 2026-08-15 — behavior-owned wart and adapter ergonomics pass complete
 
 - Replaced runtime initialization guards with the consuming
-  `Compose<B> -> Initialized<B> -> Active<B>` typestate boundary.
+  `Activate: B -> Initialized<B> -> Active<B>` typestate boundary; `Compose`
+  is a wrapper-only extension trait.
 - Removed the alternate state/function behavior-definition hierarchy and kept
   only direct `Behavior` implementations plus `#[behavior]` authoring syntax.
 - Replaced positional nested send products with named semantic products.
@@ -14,7 +15,11 @@
 - Updated the architecture checker to recursively inspect the current module
   tree and ratchet the current symbols, traits, generics, and reviewed manifest
   changes. Historical 2026-08-08/09 counts below no longer describe HEAD.
-- Final evidence: workspace nextest 208/208, behavior doctests 10/10, and all
+- Added `ChildTopology`, `RestartConfiguration`, and `PoolConfiguration`;
+  removed the `workers!` and `#[behavior_stack]` convenience macros so
+  `#[behavior]` remains the sole optional authoring macro; documented and
+  tested the runtime-neutral adapter contract.
+- Final evidence: workspace nextest 283/283, workspace doctests 10/10, and all
   seven aarch64-darwin `nix flake check` derivations pass. All ten fuzz targets
   compile; `cargo-fuzz` itself is not installed in the pinned shell.
 

@@ -11,6 +11,27 @@ Hewitt, Agha, Agha and collaborators' later functional and algebraic actor work,
 formal lambda-calculus foundations of actors—not generic reactor/event-loop
 literature.
 
+## 2026-08-15 repository and ecosystem revision
+
+The research conclusions remain evidence for the foundational algebra, but
+the current package and system boundaries are now:
+
+- `bombay-behavior` contains only the foundational pure fold and `Actions`;
+- `bombay-behavior-actors` contains `Compose`, `Active`, reusable templates,
+  and their concrete protocols;
+- `bombay-engine::Driver` is the one universal runtime loop;
+- the Bombay runtime and focused Communication, Address, Observe, Timers,
+  Transition, Machine Executor, and Entity crates interpret capabilities;
+- Mnesis/Nexus is Bombay's durability, event-sourcing, projection, and saga
+  substrate through `mnesis-bombay`; and
+- CESR/KERI is the owned CESR framing and verifiable-identity protocol
+  substrate for boundaries that select those protocols.
+
+References below to Behaviorpass, Actorpass, old wrapper names, old module
+paths, or pre-split public counts are campaign history rather than current API
+or repository ownership. The current architecture sources are
+`docs/ecosystem.md`, `docs/driver.md`, and `docs/actor-catalogue.md`.
+
 ## 2026-08-14 implementation revision
 
 The 2026-08-08/09 passages below are retained as campaign history, but their
@@ -19,10 +40,16 @@ The behavior-owned wart pass replaced that representation as follows:
 
 - `Behavior` plus `#[behavior]` are the only behavior-definition paths;
   `State`, `Base`, `FnState`, and the erased function adapters were removed.
-- `Compose<B>` is now a definition builder. Consuming `initialize` produces
+- `Activate` is the consuming initialization boundary and produces
   `Initialized<B> { behavior: Active<B>, actions }`; only `Active<B>` accepts
-  mailbox events. Pre-initialization transition and repeated initialization
-  are compile-time errors, not runtime lifecycle branches.
+  mailbox events. `Compose` is now a zero-state extension trait used only to
+  construct typed wrappers. Pre-initialization transition and repeated
+  initialization are compile-time errors, not runtime lifecycle branches.
+- Generic `B: Behavior` boundaries preserve inference for exact static wrapper
+  compositions. The `workers!` and `#[behavior_stack]` convenience macros are
+  removed; `#[behavior]` is the sole optional authoring macro.
+  `ChildTopology`, `RestartConfiguration`, and `PoolConfiguration` replace
+  long positional supervisor and pool constructors.
 - Positional `SendProduct { inner, own }` chains were replaced by named send
   products whose fields identify their semantic lanes.
 - Current wrapper names are `Deadline`, `Watch`, `Supervisor`, `Stash`, and

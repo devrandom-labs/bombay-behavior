@@ -31,7 +31,7 @@ impl Echo {
             sends: vec![Delivery::new(Recipient::global(from), message)],
             creates: Vec::new(),
             become_: if message == u8::MAX {
-                Step::Stop(Exit::Normal)
+                Step::Stop(behavior::Stopped)
             } else {
                 Step::Continue
             },
@@ -61,13 +61,17 @@ fn child(_index: usize) -> Child {
 fn supervisor(strategy: Strategy, count: usize) -> Supervisor<Parent, Child> {
     Supervisor::new(
         Parent,
-        |index| u64::try_from(index).unwrap(),
-        count,
-        |index| Some(child(index)),
-        strategy,
-        RestartPolicy::Permanent,
-        u32::MAX,
-        Duration::MAX,
+        behavior::ChildTopology::indexed(
+            |index| u64::try_from(index).unwrap(),
+            count,
+            |index| Some(child(index)),
+        ),
+        behavior::RestartConfiguration::new(
+            strategy,
+            RestartPolicy::Permanent,
+            u32::MAX,
+            Duration::MAX,
+        ),
     )
     .unwrap()
 }
@@ -87,7 +91,7 @@ proptest! {
             .enumerate()
             .map(|(index, message)| User::user(MailAddr(u64::try_from(index).unwrap()), *message));
         let mut mailbox = Mailbox::new(events);
-        let behavior = behavior::Compose::new(Echo);
+        let behavior = Echo;
         let trace = drive(behavior, &mut mailbox).unwrap();
         let expected_len = messages
             .iter()
@@ -109,7 +113,7 @@ proptest! {
         let _runtime = Builder::new_current_thread().enable_all().build().unwrap();
         let origin = Instant::now();
         let first = origin + Duration::from_nanos(offsets[0]);
-        let one = Compose::new(Echo).deadline(TimerId(0), Some(first), |_| Ok(Step::Continue));
+        let one = (Echo).deadline(TimerId(0), Some(first), |_| Ok(Step::Continue));
         let initialized = one.initialize().unwrap();
     let initial = initialized.actions;
     let _one = initialized.behavior;
@@ -118,7 +122,7 @@ proptest! {
 
         for offset in &offsets {
             let due = origin + Duration::from_nanos(*offset);
-            let composed = Compose::new(Echo).deadline(TimerId(0), Some(due), |_| Ok(Step::Continue));
+            let composed = (Echo).deadline(TimerId(0), Some(due), |_| Ok(Step::Continue));
             let initialized = composed.initialize().unwrap();
     let actions = initialized.actions;
     let _composed = initialized.behavior;

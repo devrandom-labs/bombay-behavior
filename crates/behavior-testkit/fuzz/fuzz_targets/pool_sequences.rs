@@ -3,9 +3,9 @@
 use std::time::Duration;
 
 use behavior::{
-    Actions, Behavior, CreationKind, InterruptionPolicy, JobId, KeyedPoolMessage,
-    KeyedWorkerPool, MailAddr, Never, NoBirths, PoolAssignment, PoolMessage, PoolResponse, Recipient,
-    RestartPolicy, User, WorkerCreationResolved, WorkerPhase, WorkerPool, WorkerStopped,
+    Actions, Activate, Behavior, CreationKind, InterruptionPolicy, JobId, KeyedPoolMessage,
+    KeyedWorkerPool, MailAddr, Never, NoBirths, PoolAssignment, PoolMessage, PoolResponse,
+    Recipient, RestartPolicy, User, WorkerCreationResolved, WorkerPhase, WorkerPool, WorkerStopped,
 };
 use libfuzzer_sys::fuzz_target;
 use std::time::Instant;
@@ -27,7 +27,11 @@ impl Behavior for Worker {
         Ok(Actions::cont())
     }
 
-    fn transition(&mut self, _: behavior::ActiveTurn, _event: Self::Event) -> behavior::BehaviorActed<Self> {
+    fn transition(
+        &mut self,
+        _: behavior::ActiveTurn,
+        _event: Self::Event,
+    ) -> behavior::BehaviorActed<Self> {
         Ok(Actions::cont())
     }
 }
@@ -46,21 +50,21 @@ fn affinity(key: &u8) -> u64 {
 
 fuzz_target!(|bytes: &[u8]| {
     let pool = WorkerPool::new(
-        nonce,
-        2,
-        |index| Some(worker(index)),
-        4,
-        if bytes.first().is_some_and(|byte| byte & 1 == 0) {
-            InterruptionPolicy::Fail
-        } else {
-            InterruptionPolicy::Retry
-        },
-        RestartPolicy::Permanent,
-        u32::MAX,
-        Duration::from_secs(1),
+        behavior::ChildTopology::indexed(nonce, 2, |index| Some(worker(index))),
+        behavior::PoolConfiguration::new(
+            4,
+            if bytes.first().is_some_and(|byte| byte & 1 == 0) {
+                InterruptionPolicy::Fail
+            } else {
+                InterruptionPolicy::Retry
+            },
+            RestartPolicy::Permanent,
+            u32::MAX,
+            Duration::from_secs(1),
+        ),
     )
     .unwrap();
-    let initialized = behavior::Compose::new(pool).initialize().unwrap();
+    let initialized = (pool).initialize().unwrap();
     let mut pool = initialized.behavior;
     for slot in 0..2 {
         pool.on(WorkerCreationResolved::new(
@@ -130,18 +134,18 @@ fuzz_target!(|bytes: &[u8]| {
     }
 
     let keyed = KeyedWorkerPool::new(
-        nonce,
-        2,
-        |index| Some(worker(index)),
-        4,
-        InterruptionPolicy::Retry,
-        RestartPolicy::Permanent,
-        u32::MAX,
-        Duration::from_secs(1),
+        behavior::ChildTopology::indexed(nonce, 2, |index| Some(worker(index))),
+        behavior::PoolConfiguration::new(
+            4,
+            InterruptionPolicy::Retry,
+            RestartPolicy::Permanent,
+            u32::MAX,
+            Duration::from_secs(1),
+        ),
         affinity,
     )
     .unwrap();
-    let initialized = behavior::Compose::new(keyed).initialize().unwrap();
+    let initialized = (keyed).initialize().unwrap();
     let mut keyed = initialized.behavior;
     for slot in 0..2 {
         keyed

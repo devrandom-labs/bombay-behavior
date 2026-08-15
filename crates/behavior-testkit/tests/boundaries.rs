@@ -63,7 +63,7 @@ impl StopOnZero {
             sends: Vec::new(),
             creates: Vec::new(),
             become_: if message == 0 {
-                Step::Stop(Exit::Normal)
+                Step::Stop(behavior::Stopped)
             } else {
                 Step::Continue
             },
@@ -123,13 +123,12 @@ fn supervisor(
 ) -> Supervisor<Parent, Child> {
     Supervisor::new(
         Parent,
-        |index| u64::try_from(index).unwrap(),
-        count,
-        |index| Some(child(index)),
-        strategy,
-        policy,
-        maximum,
-        window,
+        behavior::ChildTopology::indexed(
+            |index| u64::try_from(index).unwrap(),
+            count,
+            |index| Some(child(index)),
+        ),
+        behavior::RestartConfiguration::new(strategy, policy, maximum, window),
     )
     .unwrap()
 }
@@ -153,7 +152,7 @@ async fn proxy_initialization_is_explicit() {
 
 #[tokio::test]
 async fn empty_fleet_supervisor_initializes_and_steps_cleanly() {
-    let supervisor = Compose::new(Parent)
+    let supervisor = (Parent)
         .children(
             |index| u64::try_from(index).unwrap(),
             0,
@@ -176,7 +175,7 @@ async fn empty_fleet_supervisor_initializes_and_steps_cleanly() {
 
 #[tokio::test]
 async fn child_stopped_for_unknown_nonce_is_typed() {
-    let supervisor = Compose::new(Parent)
+    let supervisor = (Parent)
         .children(
             |index| u64::try_from(index).unwrap(),
             1,
@@ -228,13 +227,13 @@ async fn duplicate_child_stopped_triggers_a_second_restart() {
 fn duplicate_configured_nonces_are_rejected() {
     let result = Supervisor::new(
         Parent,
-        |_| 7,
-        2,
-        |index| Some(child(index)),
-        Strategy::OneForOne,
-        RestartPolicy::Permanent,
-        u32::MAX,
-        Duration::MAX,
+        behavior::ChildTopology::indexed(|_| 7, 2, |index| Some(child(index))),
+        behavior::RestartConfiguration::new(
+            Strategy::OneForOne,
+            RestartPolicy::Permanent,
+            u32::MAX,
+            Duration::MAX,
+        ),
     );
     assert!(matches!(
         result,
@@ -342,13 +341,17 @@ async fn rest_for_one_uses_birth_sequence_not_index() {
     let at = Instant::now();
     let supervisor = Supervisor::new(
         BirthingParent { born: false },
-        |index| u64::try_from(index).unwrap(),
-        3,
-        |index| Some(child(index)),
-        Strategy::RestForOne,
-        RestartPolicy::Permanent,
-        u32::MAX,
-        Duration::MAX,
+        behavior::ChildTopology::indexed(
+            |index| u64::try_from(index).unwrap(),
+            3,
+            |index| Some(child(index)),
+        ),
+        behavior::RestartConfiguration::new(
+            Strategy::RestForOne,
+            RestartPolicy::Permanent,
+            u32::MAX,
+            Duration::MAX,
+        ),
     )
     .unwrap();
     let initialized = supervisor.initialize().unwrap();
@@ -436,7 +439,7 @@ async fn restart_window_prunes_aged_stamps_but_keeps_future_ones() {
 /// stops the fold, the drain is skipped, and held messages survive the stop.
 #[tokio::test]
 async fn stash_stop_skips_drain_and_preserves_held_messages() {
-    let behavior = Compose::new(StopOnZero::default()).stash(|message| match message {
+    let behavior = (StopOnZero::default()).stash(|message| match message {
         0 => StashRoute::Release,
         _ => StashRoute::Stash,
     });
@@ -450,7 +453,7 @@ async fn stash_stop_skips_drain_and_preserves_held_messages() {
     let actions = behavior
         .transition(UserEvent::user(MailAddr(9), 0))
         .unwrap();
-    assert_eq!(actions.become_, Step::Stop(Exit::Normal));
+    assert_eq!(actions.become_, Step::Stop(behavior::Stopped));
     assert_eq!(behavior.base().seen, [(MailAddr(9), 0)]);
     assert_eq!(behavior.held(), 1);
 }
@@ -515,8 +518,8 @@ async fn fsm_mid_drain_deferral_reorders_relative_to_fifo() {
 #[tokio::test]
 async fn nested_at_identical_schedules_are_distinguished_by_identity() {
     let due = Instant::now() + Duration::from_secs(1);
-    let outer = Compose::new(Recorder::default())
-        .deadline(TimerId(0), Some(due), |_| Ok(Step::Stop(Exit::Normal)))
+    let outer = (Recorder::default())
+        .deadline(TimerId(0), Some(due), |_| Ok(Step::Stop(behavior::Stopped)))
         .deadline(TimerId(1), Some(due), |_| Ok(Step::Continue));
     let initialized = outer.initialize().unwrap();
     let mut outer = initialized.behavior;
@@ -526,7 +529,7 @@ async fn nested_at_identical_schedules_are_distinguished_by_identity() {
         generation: TimerGeneration(0),
     });
     let first = outer.transition(event).unwrap();
-    assert_eq!(first.become_, Step::Stop(Exit::Normal));
+    assert_eq!(first.become_, Step::Stop(behavior::Stopped));
 }
 
 /// `Compose::children` defaults are Transient policy with a budget of one
@@ -537,7 +540,7 @@ async fn nested_at_identical_schedules_are_distinguished_by_identity() {
 #[tokio::test]
 async fn spec_children_defaults_to_transient_with_budget_one() {
     let at = Instant::now();
-    let supervisor = Compose::new(Parent)
+    let supervisor = (Parent)
         .children(
             |index| u64::try_from(index).unwrap(),
             1,
@@ -574,13 +577,17 @@ async fn supervising_inherent_builders_match_the_spec_defaults() {
     let at = Instant::now();
     let supervisor = Supervisor::new(
         Parent,
-        |index| u64::try_from(index).unwrap(),
-        1,
-        |index| Some(child(index)),
-        Strategy::OneForOne,
-        RestartPolicy::Transient,
-        1,
-        Duration::from_secs(5),
+        behavior::ChildTopology::indexed(
+            |index| u64::try_from(index).unwrap(),
+            1,
+            |index| Some(child(index)),
+        ),
+        behavior::RestartConfiguration::new(
+            Strategy::OneForOne,
+            RestartPolicy::Transient,
+            1,
+            Duration::from_secs(5),
+        ),
     )
     .unwrap();
     let initialized = supervisor.initialize().unwrap();

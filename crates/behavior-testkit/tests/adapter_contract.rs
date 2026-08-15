@@ -1,0 +1,254 @@
+use std::time::{Duration, Instant};
+
+use behavior::{
+    Actions, Activate, Behavior, BehaviorActed, Births, ChildTopology, Compose, Create,
+    DeadlineSends, Delivery, MailAddr, Never, NoBirths, ObserveChild, PoolAssignment,
+    PoolConfiguration, PoolResponse, Proxy, Recipient, RestartConfiguration, RestartPolicy,
+    ServiceSends, StashRoute, Step, Strategy, Supervisor, SupervisorSends, TimerId, User,
+    WorkerPool,
+};
+
+struct Sink;
+
+impl Behavior for Sink {
+    type Addr = MailAddr;
+    type Msg = u64;
+    type Event = User<MailAddr, u64>;
+    type Sends = Vec<Never>;
+    type Ph = Never;
+    type Error = Never;
+    type Birth = NoBirths;
+
+    fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
+        Ok(Actions::cont())
+    }
+}
+
+struct Domain;
+
+impl Behavior for Domain {
+    type Addr = MailAddr;
+    type Msg = u64;
+    type Event = User<MailAddr, u64>;
+    type Sends = Vec<Delivery<Sink>>;
+    type Ph = Never;
+    type Error = Never;
+    type Birth = NoBirths;
+
+    fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+        Ok(Actions::send(vec![Delivery::new(
+            Recipient::global(event.from),
+            event.message,
+        )]))
+    }
+}
+
+impl behavior::BehaviorBase for Domain {
+    type Base = Self;
+
+    fn base(&self) -> &Self {
+        self
+    }
+}
+
+#[allow(
+    clippy::trivially_copy_pass_by_ref,
+    reason = "StashRoute requires one uniform reaction signature for every message type"
+)]
+fn deliver(_: &u64) -> StashRoute {
+    StashRoute::Deliver
+}
+
+#[allow(
+    clippy::unnecessary_wraps,
+    reason = "DeadlineReaction requires the behavior's exact controlled-failure result"
+)]
+fn deadline(_: &mut behavior::Stash<Domain>) -> Result<behavior::Become, Never> {
+    Ok(Step::Continue)
+}
+
+fn accepts_closed_behavior<B>(behavior: B) -> B
+where
+    B: Behavior<Ph = Never>,
+{
+    behavior
+}
+
+#[test]
+fn inferred_stack_crosses_one_generic_adapter_boundary() {
+    let inferred = accepts_closed_behavior(Domain.stash(deliver).deadline(
+        TimerId(4),
+        Some(Instant::now()),
+        deadline,
+    ));
+    let initialized = inferred.initialize().unwrap();
+
+    let Actions {
+        sends: DeadlineSends {
+            behavior,
+            schedules,
+        },
+        creates,
+        become_,
+    } = initialized.actions;
+    assert!(behavior.is_empty());
+    assert!(creates.is_empty());
+    assert!(matches!(become_, Step::Continue));
+    let [schedule] = schedules.as_slice() else {
+        panic!("one named absolute schedule lane")
+    };
+    assert_eq!(schedule.id, TimerId(4));
+}
+
+struct Child;
+
+impl Behavior for Child {
+    type Addr = MailAddr;
+    type Msg = u8;
+    type Event = User<MailAddr, u8>;
+    type Sends = Vec<Never>;
+    type Ph = Never;
+    type Error = Never;
+    type Birth = NoBirths;
+
+    fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
+        Ok(Actions::cont())
+    }
+}
+
+struct Parent;
+
+impl Behavior for Parent {
+    type Addr = MailAddr;
+    type Msg = ();
+    type Event = User<MailAddr, ()>;
+    type Sends = Vec<Never>;
+    type Ph = Never;
+    type Error = Never;
+    type Birth = Births<Child>;
+
+    fn init(&mut self, _: behavior::InitializationTurn) -> BehaviorActed<Self> {
+        Ok(Actions::create(vec![Create::birth(9, Child)]))
+    }
+
+    fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
+        Ok(Actions::cont())
+    }
+}
+
+#[allow(
+    clippy::unnecessary_wraps,
+    reason = "ChildTopology factories represent index rejection with absence"
+)]
+fn child(_: usize) -> Option<Child> {
+    Some(Child)
+}
+
+#[test]
+fn supervisor_products_are_named_and_creation_order_is_adapter_visible() {
+    let supervisor = Supervisor::new(
+        Parent,
+        ChildTopology::new([1, 2], child),
+        RestartConfiguration::new(
+            Strategy::OneForOne,
+            RestartPolicy::Permanent,
+            4,
+            Duration::from_secs(1),
+        ),
+    )
+    .unwrap();
+    let initialized = supervisor.initialize().unwrap();
+    let Actions {
+        sends:
+            SupervisorSends {
+                behavior,
+                child_observations,
+                replacement_commands,
+                failure_reports,
+            },
+        creates,
+        become_,
+    } = initialized.actions;
+
+    let created: Vec<_> = creates.iter().map(|creation| creation.nonce).collect();
+    assert_eq!(created, [9, 1, 2]);
+    let observed: Vec<_> = child_observations
+        .iter()
+        .map(|ObserveChild { nonce }| *nonce)
+        .collect();
+    assert_eq!(observed, [9, 1, 2]);
+    assert!(behavior.is_empty());
+    assert!(replacement_commands.is_empty());
+    assert!(failure_reports.is_empty());
+    assert!(matches!(become_, Step::Continue));
+}
+
+struct Reply;
+
+impl Behavior for Reply {
+    type Addr = MailAddr;
+    type Msg = PoolResponse<u8, (), MailAddr>;
+    type Event = User<MailAddr, Self::Msg>;
+    type Sends = Vec<Never>;
+    type Ph = Never;
+    type Error = Never;
+    type Birth = NoBirths;
+
+    fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
+        Ok(Actions::cont())
+    }
+}
+
+struct Worker;
+
+impl Behavior for Worker {
+    type Addr = MailAddr;
+    type Msg = PoolAssignment<u8>;
+    type Event = User<MailAddr, Self::Msg>;
+    type Sends = Vec<Never>;
+    type Ph = Never;
+    type Error = Never;
+    type Birth = NoBirths;
+
+    fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
+        Ok(Actions::cont())
+    }
+}
+
+#[allow(
+    clippy::unnecessary_wraps,
+    reason = "ChildTopology factories represent index rejection with absence"
+)]
+fn worker(_: usize) -> Option<Worker> {
+    Some(Worker)
+}
+
+#[test]
+fn pool_configuration_separates_topology_from_runtime_neutral_policy() {
+    let pool = WorkerPool::<MailAddr, Reply, u8, (), Worker>::new(
+        ChildTopology::new([3, 7], worker),
+        PoolConfiguration::new(
+            8,
+            behavior::InterruptionPolicy::Retry,
+            RestartPolicy::Transient,
+            2,
+            Duration::from_secs(10),
+        ),
+    )
+    .unwrap();
+    let initialized = pool.initialize().unwrap();
+    assert_eq!(initialized.actions.creates.len(), 2);
+    assert!(initialized.actions.sends.behavior.responses.is_empty());
+    assert!(initialized.actions.sends.behavior.assignments.is_empty());
+    assert_eq!(
+        initialized
+            .actions
+            .sends
+            .child_observations
+            .as_slice()
+            .len(),
+        2
+    );
+    let _: ServiceSends<ObserveChild<u64>> = initialized.actions.sends.child_observations;
+    let _: Vec<Delivery<Proxy<Worker>>> = initialized.actions.sends.replacement_commands;
+}

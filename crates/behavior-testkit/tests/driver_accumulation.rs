@@ -8,7 +8,7 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, Crash, Create, Delivery, Exit, MailAddr, Never, Recipient, RestartPolicy,
+    Acted, Actions, Compose, Crash, Create, Delivery, MailAddr, Never, Recipient, RestartPolicy,
     SendAlgebra, Step, Strategy, SupervisionEvent, User, UserEvent, WorkerStopped,
 };
 use behavior_testkit::{Mailbox, drive};
@@ -103,13 +103,17 @@ async fn driver_accumulates_supervising_send_products_losslessly() {
     let at = Instant::now();
     let supervisor: TestSupervisor = behavior::Supervisor::new(
         EchoingParent { seen: Vec::new() },
-        |index| u64::try_from(index).unwrap(),
-        2,
-        |index| Some(child(index)),
-        Strategy::OneForOne,
-        RestartPolicy::Permanent,
-        u32::MAX,
-        Duration::MAX,
+        behavior::ChildTopology::indexed(
+            |index| u64::try_from(index).unwrap(),
+            2,
+            |index| Some(child(index)),
+        ),
+        behavior::RestartConfiguration::new(
+            Strategy::OneForOne,
+            RestartPolicy::Permanent,
+            u32::MAX,
+            Duration::MAX,
+        ),
     )
     .unwrap();
     let mut mailbox = Mailbox::new([
@@ -128,11 +132,11 @@ async fn driver_accumulates_supervising_send_products_losslessly() {
             at,
         }),
     ]);
-    let trace = drive(behavior::Compose::new(supervisor), &mut mailbox).unwrap();
+    let trace = drive(supervisor, &mut mailbox).unwrap();
 
     assert_eq!(trace.transitions, 5);
     assert_eq!(trace.pending, 0);
-    assert_eq!(trace.exit, None);
+    assert!(!trace.stopped);
 
     // Inner lane: user echoes, in order, exactly the delivered messages.
     let echoes: Vec<u64> = trace.sends.behavior.iter().map(|d| d.message).collect();
@@ -200,13 +204,17 @@ async fn empty_fleet_dynamic_birth_then_death_restarts() {
     let at = Instant::now();
     let supervisor = behavior::Supervisor::new(
         BirthingParent { born: false },
-        |index| u64::try_from(index).unwrap(),
-        0,
-        |index| Some(child(index)),
-        Strategy::OneForOne,
-        RestartPolicy::Permanent,
-        u32::MAX,
-        Duration::MAX,
+        behavior::ChildTopology::indexed(
+            |index| u64::try_from(index).unwrap(),
+            0,
+            |index| Some(child(index)),
+        ),
+        behavior::RestartConfiguration::new(
+            Strategy::OneForOne,
+            RestartPolicy::Permanent,
+            u32::MAX,
+            Duration::MAX,
+        ),
     )
     .unwrap();
     let initialized = supervisor.initialize().unwrap();
@@ -248,7 +256,7 @@ async fn driver_full_stack_mixed_lanes_stop_on_peer_death() {
 
     let due = Instant::now() + Duration::from_secs(1);
     let peer = MailAddr(44);
-    let behavior = Compose::new(EchoingParent { seen: Vec::new() })
+    let behavior = (EchoingParent { seen: Vec::new() })
         .stash(|m| {
             if m % 3 == 2 {
                 StashRoute::Stash
@@ -264,9 +272,9 @@ async fn driver_full_stack_mixed_lanes_stop_on_peer_death() {
             |index| Some(child(index)),
         )
         .unwrap()
-        .restart(Strategy::OneForOne)
-        .when(RestartPolicy::Permanent)
-        .within(u32::MAX, Duration::MAX);
+        .with_strategy(Strategy::OneForOne)
+        .with_policy(RestartPolicy::Permanent)
+        .with_budget(u32::MAX, Duration::MAX);
     let mut mailbox = Mailbox::new([
         SupervisionEvent::Behavior(DeadlineEvent::Behavior(WatchEvent::Behavior(User::user(
             MailAddr(9),
@@ -296,7 +304,7 @@ async fn driver_full_stack_mixed_lanes_stop_on_peer_death() {
     // Stopped at the peer death: init + 4 processed events, tail left.
     assert_eq!(trace.transitions, 5);
     assert_eq!(trace.pending, 1);
-    assert!(matches!(trace.exit, Some(Exit::LinkDied(p)) if p == peer));
+    assert!(trace.stopped);
 
     // Echo lane accumulated exactly the Deliver-routed message (1); the
     // stashed message (5 % 3 == 2 -> Stash) and the post-stop message (7)
@@ -348,7 +356,7 @@ async fn macro_defined_behavior_drives_like_a_base() {
                 sends: vec![Delivery::new(Recipient::global(MailAddr(0)), message)],
                 creates: Vec::new(),
                 become_: if message == 9 {
-                    Step::Stop(Exit::Normal)
+                    Step::Stop(behavior::Stopped)
                 } else {
                     Step::Continue
                 },
@@ -356,7 +364,7 @@ async fn macro_defined_behavior_drives_like_a_base() {
         }
     }
 
-    let behavior = behavior::Compose::new(FnRecorder { seen: Vec::new() });
+    let behavior = FnRecorder { seen: Vec::new() };
     let mut mailbox = Mailbox::new([
         User::user(MailAddr(1), 3),
         User::user(MailAddr(2), 9),
@@ -366,7 +374,7 @@ async fn macro_defined_behavior_drives_like_a_base() {
 
     assert_eq!(trace.transitions, 3);
     assert_eq!(trace.pending, 1);
-    assert_eq!(trace.exit, Some(Exit::Normal));
+    assert!(trace.stopped);
     let echoes: Vec<u64> = trace.sends.iter().map(|d| d.message).collect();
     assert_eq!(echoes, [3, 9]);
     assert_eq!(trace.behavior.seen, [3, 9]);
@@ -399,7 +407,7 @@ async fn driver_stash_stop_preserves_held_and_stops() {
                 sends: Vec::new(),
                 creates: Vec::new(),
                 become_: if message == 0 {
-                    Step::Stop(Exit::Normal)
+                    Step::Stop(behavior::Stopped)
                 } else {
                     Step::Continue
                 },
@@ -407,7 +415,7 @@ async fn driver_stash_stop_preserves_held_and_stops() {
         }
     }
 
-    let behavior = behavior::Compose::new(StopOnZero { seen: Vec::new() }).stash(|m: &u64| {
+    let behavior = (StopOnZero { seen: Vec::new() }).stash(|m: &u64| {
         if *m == 0 {
             StashRoute::Release
         } else {
@@ -419,7 +427,7 @@ async fn driver_stash_stop_preserves_held_and_stops() {
 
     assert_eq!(trace.transitions, 3);
     assert_eq!(trace.pending, 0);
-    assert_eq!(trace.exit, Some(Exit::Normal));
+    assert!(trace.stopped);
     assert_eq!(trace.behavior.held(), 1); // the stashed message survives the stop
     assert_eq!(trace.behavior.base().seen, [(MailAddr(9), 0)]);
 }

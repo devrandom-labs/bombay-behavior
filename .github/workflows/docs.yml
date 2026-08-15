@@ -24,7 +24,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
       - name: Build documentation
-        run: cargo doc -p bombay-behavior --no-deps
+        run: cargo doc -p bombay-behavior -p bombay-behavior-actors --no-deps
       - name: Add landing page
         run: cp docs/index.html target/doc/index.html
       - name: Configure Pages

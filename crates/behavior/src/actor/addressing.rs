@@ -96,7 +96,8 @@ impl<B: Behavior> Recipient<B> {
         }
     }
 
-    pub(crate) fn is_child(self, expected: <B::Addr as Address>::Nonce) -> bool {
+    #[doc(hidden)]
+    pub fn is_child(self, expected: <B::Addr as Address>::Nonce) -> bool {
         matches!(self.route, Route::Child(nonce) if nonce == expected)
     }
 
