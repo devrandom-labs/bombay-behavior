@@ -159,4 +159,21 @@ mod tests {
         let right = vec![1].combine(vec![2].combine(vec![3]));
         assert_eq!(left, right);
     }
+
+    #[test]
+    fn vector_and_service_lanes_emit_and_iterate_in_order() {
+        let mut vector = Vec::new();
+        <Vec<u8> as SendInput<u8, Own>>::emit(&mut vector, 1);
+        assert_eq!(vector, [1]);
+
+        let mut services = ServiceSends::one(2);
+        <ServiceSends<u8> as SendInput<u8, Own>>::emit(&mut services, 3);
+        assert!(!services.is_empty());
+        assert_eq!(services.as_slice(), [2, 3]);
+        assert_eq!((&services).into_iter().copied().collect::<Vec<_>>(), [2, 3]);
+        assert_eq!(services.into_iter().collect::<Vec<_>>(), [2, 3]);
+
+        let requests = ServiceSends::new(vec![4, 5]).into_requests();
+        assert_eq!(requests, [4, 5]);
+    }
 }

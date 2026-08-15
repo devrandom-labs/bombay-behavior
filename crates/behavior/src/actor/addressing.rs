@@ -242,3 +242,71 @@ where
     B::Msg: Eq,
 {
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{Actions, Never, NoBirths, User};
+
+    struct Inbox;
+
+    impl Behavior for Inbox {
+        type Addr = MailAddr;
+        type Msg = u8;
+        type Event = User<MailAddr, u8>;
+        type Sends = Vec<Never>;
+        type Ph = Never;
+        type Error = Never;
+        type Birth = NoBirths;
+
+        fn init(&mut self, _: crate::InitializationTurn) -> crate::BehaviorActed<Self> {
+            Ok(Actions::cont())
+        }
+
+        fn transition(
+            &mut self,
+            _: crate::ActiveTurn,
+            _: Self::Event,
+        ) -> crate::BehaviorActed<Self> {
+            Ok(Actions::cont())
+        }
+    }
+
+    #[test]
+    fn mail_address_conversion_preserves_nonzero_value() {
+        assert_eq!(u64::from(MailAddr(41)), 41);
+    }
+
+    #[test]
+    fn recipient_value_contract_distinguishes_routes() {
+        let global = Recipient::<Inbox>::global(MailAddr(7));
+        let same_global = Recipient::<Inbox>::global(MailAddr(7));
+        let other_global = Recipient::<Inbox>::global(MailAddr(8));
+        let child = Recipient::<Inbox>::child(3);
+        let other_child = Recipient::<Inbox>::child(4);
+
+        assert_eq!(global, same_global);
+        assert_ne!(global, other_global);
+        assert_ne!(global, child);
+        assert_ne!(child, other_child);
+        assert!(child.is_child(3));
+        assert!(!child.is_child(4));
+        assert!(!global.is_child(3));
+        assert_eq!(format!("{global:?}"), "Global(MailAddr(7))");
+        assert_eq!(format!("{child:?}"), "Child(3)");
+    }
+
+    #[test]
+    fn delivery_equality_requires_both_destination_and_message() {
+        let value = Delivery::<Inbox>::new(Recipient::global(MailAddr(1)), 5);
+        let same = Delivery::<Inbox>::new(Recipient::global(MailAddr(1)), 5);
+        let other_destination = Delivery::<Inbox>::new(Recipient::global(MailAddr(2)), 5);
+        let other_message = Delivery::<Inbox>::new(Recipient::global(MailAddr(1)), 6);
+        let both_different = Delivery::<Inbox>::new(Recipient::global(MailAddr(2)), 6);
+
+        assert!(value == same);
+        assert!(value != other_destination);
+        assert!(value != other_message);
+        assert!(value != both_different);
+    }
+}

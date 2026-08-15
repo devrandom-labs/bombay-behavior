@@ -161,6 +161,23 @@ mod tests {
         stop_at: u8,
     }
 
+    #[test]
+    fn fold_failure_debug_reports_error_and_transition_count() {
+        let failure = FoldFailure::<MailAddr, Vec<u8>, (), _> {
+            effects: Effects {
+                sends: vec![1],
+                creates: Vec::new(),
+            },
+            error: "boom",
+            transitions: 2,
+        };
+
+        assert_eq!(
+            format!("{failure:?}"),
+            "FoldFailure { error: \"boom\", transitions: 2, .. }"
+        );
+    }
+
     impl Behavior for Accumulator {
         type Addr = MailAddr;
         type Msg = u8;
