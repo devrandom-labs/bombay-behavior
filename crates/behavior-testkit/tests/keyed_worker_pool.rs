@@ -7,7 +7,7 @@ use behavior::{
     SendAlgebra, User, WorkerCreationResolved, WorkerPhase, WorkerStopped,
 };
 use proptest::prelude::*;
-use tokio::time::Instant;
+use std::time::Instant;
 
 #[derive(Clone, Copy)]
 struct Worker;
@@ -21,11 +21,15 @@ impl Behavior for Worker {
     type Error = Never;
     type Birth = NoBirths;
 
-    fn init(&mut self) -> behavior::BehaviorActed<Self> {
+    fn init(&mut self, _: behavior::InitializationTurn) -> behavior::BehaviorActed<Self> {
         Ok(Actions::cont())
     }
 
-    fn transition(&mut self, _: Self::Event) -> behavior::BehaviorActed<Self> {
+    fn transition(
+        &mut self,
+        _: behavior::ActiveTurn,
+        _: Self::Event,
+    ) -> behavior::BehaviorActed<Self> {
         Ok(Actions::cont())
     }
 }
@@ -54,13 +58,14 @@ impl AffinitySelector<u8, u64> for Selector {
 }
 
 type Reply = behavior_testkit::TestRecipient<PoolResponse<u8, u16, MailAddr>>;
-type Pool = KeyedWorkerPool<MailAddr, Reply, u8, u8, u16, Worker, Selector>;
+type PoolDefinition = KeyedWorkerPool<MailAddr, Reply, u8, u8, u16, Worker, Selector>;
+type Pool = behavior::Active<PoolDefinition>;
 
-fn pool(selector: Selector) -> Pool {
-    let mut pool = KeyedWorkerPool::<MailAddr, Reply, u8, u8, u16, Worker, _>::new(
+fn pool_definition(selector: Selector) -> PoolDefinition {
+    KeyedWorkerPool::<MailAddr, Reply, u8, u8, u16, Worker, _>::new(
         nonce,
         2,
-        worker,
+        |index| Some(worker(index)),
         8,
         InterruptionPolicy::Retry,
         RestartPolicy::Permanent,
@@ -68,8 +73,13 @@ fn pool(selector: Selector) -> Pool {
         Duration::from_secs(60),
         selector,
     )
-    .unwrap();
-    pool.init().unwrap();
+    .unwrap()
+}
+
+fn pool(selector: Selector) -> Pool {
+    let pool = pool_definition(selector);
+    let initialized = pool.initialize().unwrap();
+    let mut pool = initialized.behavior;
     for slot in 0..2 {
         pool.on(WorkerCreationResolved::new(
             slot,
@@ -107,10 +117,10 @@ fn assignments(
 
 #[test]
 fn targeted_submission_rejects_when_its_busy_workers_backlog_is_full() {
-    let mut pool = KeyedWorkerPool::<MailAddr, Reply, u8, u8, u16, Worker, _>::new(
+    let pool = KeyedWorkerPool::<MailAddr, Reply, u8, u8, u16, Worker, _>::new(
         nonce,
         1,
-        worker,
+        |index| Some(worker(index)),
         1,
         InterruptionPolicy::Retry,
         RestartPolicy::Permanent,
@@ -119,7 +129,8 @@ fn targeted_submission_rejects_when_its_busy_workers_backlog_is_full() {
         Selector::Parity,
     )
     .unwrap();
-    pool.init().unwrap();
+    let initialized = pool.initialize().unwrap();
+    let mut pool = initialized.behavior;
     pool.on(WorkerCreationResolved::new(
         0,
         0,
@@ -367,10 +378,10 @@ fn unbound_rebalance_explicitly_establishes_affinity() {
 #[test]
 fn captured_selector_state_is_statically_dispatched() {
     let selected = 1_u64;
-    let mut pool = KeyedWorkerPool::<MailAddr, Reply, u8, u8, u16, Worker, _>::new(
+    let pool = KeyedWorkerPool::<MailAddr, Reply, u8, u8, u16, Worker, _>::new(
         nonce,
         2,
-        worker,
+        |index| Some(worker(index)),
         1,
         InterruptionPolicy::Fail,
         RestartPolicy::Permanent,
@@ -379,7 +390,8 @@ fn captured_selector_state_is_statically_dispatched() {
         move |_: &u8| selected,
     )
     .unwrap();
-    pool.init().unwrap();
+    let initialized = pool.initialize().unwrap();
+    let mut pool = initialized.behavior;
     for slot in 0..2 {
         pool.on(WorkerCreationResolved::new(
             slot,
@@ -459,9 +471,21 @@ fn short_rebalance_sequences_exhaustively_match_the_binding_model() {
 
 #[test]
 fn keyed_assignment_lanes_survive_shutdown_composition() {
-    let mut behavior = behavior::Compose::from_behavior(pool(Selector::Parity))
+    let behavior = behavior::Compose::new(pool_definition(Selector::Parity))
         .stop_on_shutdown()
-        .build();
+        .initialize()
+        .unwrap();
+    let mut behavior = behavior.behavior;
+    for slot in 0..2 {
+        behavior
+            .on(WorkerCreationResolved::new(
+                slot,
+                slot,
+                CreationKind::Birth,
+                Ok(()),
+            ))
+            .unwrap();
+    }
     let actions = behavior
         .receive(
             MailAddr(90),
@@ -516,3 +540,4 @@ fn named_pool_send_product_appends_each_lane_once_in_order() {
     ));
     assert_eq!(sends.assignments.len(), 1);
 }
+use behavior_testkit::InitializeTest;

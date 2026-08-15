@@ -1,17 +1,15 @@
 //! Typed timer lifecycle domains used by behavior wrappers.
 
-use tokio::time::Instant;
+use std::time::Instant;
 
 use crate::{TimerGeneration, TimerId};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct GenerationExhausted;
 
 /// Lifecycle of a re-armable generation-tagged timer.
 pub(crate) enum TimerLease {
     NeverIssued,
     Armed(TimerGeneration),
     Idle(TimerGeneration),
+    Exhausted,
 }
 
 impl TimerLease {
@@ -24,15 +22,20 @@ impl TimerLease {
         Self::Idle(generation)
     }
 
-    pub(crate) fn arm(&mut self) -> Result<TimerGeneration, GenerationExhausted> {
+    pub(crate) fn arm(&mut self) -> Option<TimerGeneration> {
         let generation = match *self {
             Self::NeverIssued => TimerGeneration(0),
             Self::Armed(TimerGeneration(previous)) | Self::Idle(TimerGeneration(previous)) => {
-                TimerGeneration(previous.checked_add(1).ok_or(GenerationExhausted)?)
+                let Some(next) = previous.checked_add(1) else {
+                    *self = Self::Exhausted;
+                    return None;
+                };
+                TimerGeneration(next)
             }
+            Self::Exhausted => return None,
         };
         *self = Self::Armed(generation);
-        Ok(generation)
+        Some(generation)
     }
 
     pub(crate) fn accept(&mut self, generation: TimerGeneration) -> bool {
@@ -41,7 +44,7 @@ impl TimerLease {
                 *self = Self::Idle(live);
                 true
             }
-            Self::NeverIssued | Self::Armed(_) | Self::Idle(_) => false,
+            Self::NeverIssued | Self::Armed(_) | Self::Idle(_) | Self::Exhausted => false,
         }
     }
 
@@ -55,7 +58,7 @@ impl TimerLease {
     pub(crate) const fn live(&self) -> Option<TimerGeneration> {
         match self {
             Self::Armed(generation) => Some(*generation),
-            Self::NeverIssued | Self::Idle(_) => None,
+            Self::NeverIssued | Self::Idle(_) | Self::Exhausted => None,
         }
     }
 }

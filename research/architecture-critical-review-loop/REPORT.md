@@ -11,6 +11,35 @@ Hewitt, Agha, Agha and collaborators' later functional and algebraic actor work,
 formal lambda-calculus foundations of actors—not generic reactor/event-loop
 literature.
 
+## 2026-08-14 implementation revision
+
+The 2026-08-08/09 passages below are retained as campaign history, but their
+old Rust names and surface counts are not current implementation evidence.
+The behavior-owned wart pass replaced that representation as follows:
+
+- `Behavior` plus `#[behavior]` are the only behavior-definition paths;
+  `State`, `Base`, `FnState`, and the erased function adapters were removed.
+- `Compose<B>` is now a definition builder. Consuming `initialize` produces
+  `Initialized<B> { behavior: Active<B>, actions }`; only `Active<B>` accepts
+  mailbox events. Pre-initialization transition and repeated initialization
+  are compile-time errors, not runtime lifecycle branches.
+- Positional `SendProduct { inner, own }` chains were replaced by named send
+  products whose fields identify their semantic lanes.
+- Current wrapper names are `Deadline`, `Watch`, `Supervisor`, `Stash`, and
+  `Machine`; the former `At`, `Watching`, `Supervising`, `Stashing`, `Fsm`,
+  and `Spec` names are historical.
+- Worker terminology is singular and consistent; the `Crew` name was removed.
+- Proxy, supervision, pool, timer, and creation failures are typed; production
+  panic paths introduced by the old lifecycle implementation were removed.
+- `thiserror` is used without default features. Named wrapper errors compose
+  with `?` where Rust coherence permits an unambiguous `From`; explicit
+  `map_err` remains only where it selects a generic semantic error lane.
+
+The current ratchet is `baseline.json`; `check.sh` recursively inventories the
+module tree rather than the obsolete top-level-only layout. Current gate
+evidence must be recorded in the final verification entry after this revision's
+full `cargo nextest run --workspace` and `nix flake check` runs.
+
 Every capability entry must begin from behaviorpass's functional combinatorics:
 pure folds, typed sums, typed products, higher-order transformations, and their
 composition laws. Named framework features are observations to explain, not an

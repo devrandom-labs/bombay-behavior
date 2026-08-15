@@ -2,21 +2,19 @@ use std::hint::black_box;
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, Behavior, Compose, Crash, Handler, Machine, MailAddr, Move, Never, Proxy,
-    ProxyCommand, Pure, RestartPolicy, StashRoute, Step, Strategy, Supervisor, WorkerStopped,
-    stop_on_abnormal_death,
+    Acted, Actions, Compose, Crash, Machine, MailAddr, Move, Never, Proxy, ProxyCommand,
+    RestartPolicy, StashRoute, Step, Strategy, Supervisor, WorkerStopped, stop_on_abnormal_death,
 };
-use tokio::time::Instant;
+use behavior_testkit::InitializeTest;
+use std::time::Instant;
 
 const ITERATIONS: usize = 250_000;
 const SHORT_ITERATIONS: usize = 100_000;
 
 struct Sink(u64);
 
-impl Handler for Sink {
-    type Addr = MailAddr;
-    type Msg = u64;
-
+#[behavior::behavior(addr = MailAddr, message = u64, sends = Vec<Never>, births = behavior::NoBirths, error = Never)]
+impl Sink {
     fn receive(
         &mut self,
         _from: MailAddr,
@@ -27,23 +25,21 @@ impl Handler for Sink {
     }
 }
 
-fn child(_index: usize) -> Pure<Sink> {
-    Pure::new(Sink(0))
+fn child(_index: usize) -> Sink {
+    Sink(0)
 }
 
 /// The supervising parent: quiet, with the supervised child as its offspring
 /// type (a fleet parent must produce the fleet, not `Never`).
 struct FleetParent;
 
-impl Handler<Vec<Never>, behavior::Births<Pure<Sink>>, Never> for FleetParent {
-    type Addr = MailAddr;
-    type Msg = u64;
-
+#[behavior::behavior(addr = MailAddr, message = u64, sends = Vec<Never>, births = behavior::Births<Sink>, error = Never)]
+impl FleetParent {
     fn receive(
         &mut self,
         _from: MailAddr,
         _message: u64,
-    ) -> Acted<MailAddr, Never, Vec<Never>, behavior::Births<Pure<Sink>>, Never> {
+    ) -> Acted<MailAddr, Never, Vec<Never>, behavior::Births<Sink>, Never> {
         Ok(Actions::cont())
     }
 }
@@ -70,7 +66,7 @@ fn main() {
 }
 
 fn measure_base() -> f64 {
-    let mut behavior = Pure::new(Sink(0));
+    let mut behavior = Sink(0);
     let started = Instant::now();
     for index in 0..ITERATIONS {
         let message = u64::try_from(index).unwrap();
@@ -80,8 +76,9 @@ fn measure_base() -> f64 {
 }
 
 fn measure_proxy() -> f64 {
-    let mut proxy = Proxy::new(child(0));
-    proxy.init().unwrap();
+    let proxy = Proxy::new(child(0));
+    let initialized = proxy.initialize().unwrap();
+    let mut proxy = initialized.behavior;
     let started = Instant::now();
     for index in 0..ITERATIONS {
         let command = if index % 64 == 0 {
@@ -99,17 +96,19 @@ fn measure_proxy() -> f64 {
 /// slot list (linear in fleet size) and appends one restart stamp
 /// (linear memory growth in emitted events).
 fn measure_supervise(fleet: usize) -> f64 {
-    let mut behavior = Supervisor::new(
-        Pure::new(FleetParent),
+    let behavior = Supervisor::new(
+        FleetParent,
         |index| u64::try_from(index).unwrap(),
         fleet,
-        child,
+        |index| Some(child(index)),
         Strategy::OneForOne,
         RestartPolicy::Permanent,
         u32::MAX,
         Duration::MAX,
-    );
-    behavior.init().unwrap();
+    )
+    .unwrap();
+    let initialized = behavior.initialize().unwrap();
+    let mut behavior = initialized.behavior;
     let at = Instant::now();
     let started = Instant::now();
     for index in 0..SHORT_ITERATIONS {
@@ -149,12 +148,13 @@ fn measure_fsm() -> f64 {
         A,
         B,
     }
-    let mut machine = Machine::new((), Phase::A, |phase, (): &mut (), _: &u64| {
+    let machine = Machine::new((), Phase::A, |phase, (): &mut (), _: &u64| {
         Ok::<Move<Phase>, Never>(match phase {
             Phase::A => Move::Goto(Phase::B),
             Phase::B => Move::Stay,
         })
     });
+    let mut machine = machine.initialize().unwrap().behavior;
     let started = Instant::now();
     for index in 0..SHORT_ITERATIONS {
         black_box(
@@ -169,7 +169,8 @@ fn measure_fsm() -> f64 {
 /// Stash passthrough (every message routes Deliver): buffer machinery on
 /// the hot path without holding.
 fn measure_stash() -> f64 {
-    let mut behavior = Compose::new(Sink(0)).stash(|_| StashRoute::Deliver);
+    let behavior = Compose::new(Sink(0)).stash(|_| StashRoute::Deliver);
+    let mut behavior = behavior.initialize().unwrap().behavior;
     let started = Instant::now();
     for index in 0..SHORT_ITERATIONS {
         black_box(
@@ -186,11 +187,12 @@ fn measure_stash() -> f64 {
 /// stack.
 fn measure_nested() -> f64 {
     let due = Instant::now() + Duration::from_mins(1);
-    let mut behavior = Compose::new(Sink(0))
+    let behavior = Compose::new(Sink(0))
         .stash(|_| StashRoute::Deliver)
         .watch(MailAddr(7), stop_on_abnormal_death)
-        .deadline(Some(due), |_| Ok(Step::Continue));
-    behavior.init().unwrap();
+        .deadline(behavior::TimerId(0), Some(due), |_| Ok(Step::Continue));
+    let initialized = behavior.initialize().unwrap();
+    let mut behavior = initialized.behavior;
     let started = Instant::now();
     for index in 0..SHORT_ITERATIONS {
         black_box(

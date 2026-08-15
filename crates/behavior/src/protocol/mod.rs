@@ -8,10 +8,9 @@ pub(crate) mod forward;
 
 use std::time::Duration;
 
-use tokio::time::Instant;
+use std::time::Instant;
 
 use crate::behavior::Address;
-use crate::calculus::UserEvent;
 use crate::{Crash, CreationKind, Exit};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -112,10 +111,6 @@ impl From<(TimerId, TimerGeneration)> for TimerElapsed {
     }
 }
 
-pub trait TimeEvent: UserEvent {
-    fn time_reached(event: TimerElapsed) -> Option<Self>;
-}
-
 /// Ask the local interpreter to observe the exact peer incarnation selected at
 /// `peer` when this request is interpreted.
 ///
@@ -181,10 +176,6 @@ impl<A: Address> PeerStopped<A> {
     pub fn new(peer: A, outcome: Result<Exit<A>, Crash>) -> Self {
         Self { peer, outcome }
     }
-}
-
-pub trait PeerEvent: UserEvent {
-    fn peer_stopped(event: PeerStopped<Self::Addr>) -> Option<Self>;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -280,14 +271,6 @@ impl<A: Address> From<(A::Nonce, ReportWorkerStopped<A>)> for WorkerStopped<A> {
     }
 }
 
-pub trait ChildEvent: UserEvent {
-    fn child_stopped(event: ChildStopped<Self::Addr>) -> Option<Self>;
-}
-
-pub trait WorkerEvent: UserEvent {
-    fn worker_stopped(event: WorkerStopped<Self::Addr>) -> Option<Self>;
-}
-
 /// Why a staged fresh creation was not committed by an interpreter.
 ///
 /// This is a closed semantic classification; interpreter-specific error
@@ -354,7 +337,7 @@ impl<N> CreationResolved<N> {
 }
 
 /// Ask the local interpreter to return the committed result of the same-action
-/// creation at `nonce` through the behavior's [`CreationEvent`] lane.
+/// creation at `nonce` through the behavior's typed creation-result lane.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ObserveCreation<N> {
     pub nonce: N,
@@ -365,10 +348,6 @@ impl<N> ObserveCreation<N> {
     pub const fn new(nonce: N) -> Self {
         Self { nonce }
     }
-}
-
-pub trait CreationEvent: UserEvent {
-    fn creation_resolved(event: CreationResolved<<Self::Addr as Address>::Nonce>) -> Option<Self>;
 }
 
 /// Ask a proxy's interpreter to report a worker creation result to its parent.
@@ -478,19 +457,9 @@ impl<N> From<(N, ReportWorkerCreationResolved<N>)> for WorkerCreationResolved<N>
     }
 }
 
-pub trait WorkerCreationEvent: UserEvent {
-    fn worker_creation_resolved(
-        event: WorkerCreationResolved<<Self::Addr as Address>::Nonce>,
-    ) -> Option<Self>;
-}
-
 /// A request to finish through one serialized behavior transition.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub struct ShutdownRequested;
-
-pub trait ShutdownEvent: UserEvent {
-    fn shutdown_requested(event: ShutdownRequested) -> Option<Self>;
-}
 
 #[cfg(test)]
 mod tests {

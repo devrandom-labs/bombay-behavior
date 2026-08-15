@@ -7,22 +7,18 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, Behavior, Delivery, Handler, MailAddr, Never, Pure, RestartPolicy, Strategy,
-    SupervisionEvent, Supervisor, WorkerStopped,
+    Acted, Actions, Delivery, MailAddr, Never, RestartPolicy, Strategy, SupervisionEvent,
+    Supervisor, WorkerStopped,
 };
 use behavior_testkit::model::{Model, Outcome};
+use std::time::Instant;
 use tokio::runtime::Builder;
-use tokio::time::Instant;
 
 #[derive(Default)]
 struct Echo;
 
-impl Handler<Vec<Delivery<behavior_testkit::TestRecipient<u8>>>, behavior::NoBirths, Never>
-    for Echo
-{
-    type Addr = MailAddr;
-    type Msg = u8;
-
+#[behavior::behavior(addr = MailAddr, message = u8, sends = Vec<Delivery<behavior_testkit::TestRecipient<u8>>>, births = behavior::NoBirths, error = Never)]
+impl Echo {
     fn receive(
         &mut self,
         _from: MailAddr,
@@ -38,14 +34,12 @@ impl Handler<Vec<Delivery<behavior_testkit::TestRecipient<u8>>>, behavior::NoBir
     }
 }
 
-type Child = Pure<Echo, Vec<Delivery<behavior_testkit::TestRecipient<u8>>>>;
+type Child = Echo;
 
 struct Parent;
 
-impl Handler<Vec<Never>, behavior::Births<Child>, Never> for Parent {
-    type Addr = MailAddr;
-    type Msg = u64;
-
+#[behavior::behavior(addr = MailAddr, message = u64, sends = Vec<Never>, births = behavior::Births<Child>, error = Never)]
+impl Parent {
     fn receive(
         &mut self,
         _from: MailAddr,
@@ -56,7 +50,7 @@ impl Handler<Vec<Never>, behavior::Births<Child>, Never> for Parent {
 }
 
 fn child(_index: usize) -> Child {
-    Pure::new(Echo)
+    Echo
 }
 
 const FLEET: usize = 2;
@@ -116,17 +110,19 @@ fn exhaustive_supervision_sequences_match_the_reference_model() {
                             }
 
                             let mut model = Model::new(FLEET);
-                            let mut behavior = Supervisor::new(
-                                Pure::new(Parent),
+                            let behavior = Supervisor::new(
+                                Parent,
                                 |index| u64::try_from(index).unwrap(),
                                 FLEET,
-                                child,
+                                |index| Some(child(index)),
                                 strategy,
                                 policy,
                                 maximum,
                                 window_duration,
-                            );
-                            behavior.init().unwrap();
+                            )
+                            .unwrap();
+                            let initialized = behavior.initialize().unwrap();
+                            let mut behavior = initialized.behavior;
 
                             for (nonce, outcome, at) in events {
                                 let expected = model
@@ -159,7 +155,7 @@ fn exhaustive_supervision_sequences_match_the_reference_model() {
                                 );
                                 for slot in model.slots() {
                                     assert_eq!(
-                                        behavior.is_alive(slot.nonce),
+                                        behavior.is_alive(slot.nonce).unwrap(),
                                         slot.alive,
                                         "alive mismatch nonce={} strategy={strategy:?} policy={policy:?} maximum={maximum} window={window:?}",
                                         slot.nonce
@@ -183,3 +179,4 @@ fn exhaustive_supervision_sequences_match_the_reference_model() {
     // + 28^3) sequences.
     assert_eq!(checked, 3 * 3 * 3 * 2 * (1 + 28 + 28 * 28 + 28 * 28 * 28));
 }
+use behavior_testkit::InitializeTest;

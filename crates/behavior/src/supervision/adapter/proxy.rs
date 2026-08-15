@@ -1,6 +1,8 @@
 //! Stable proxy lifecycle and fresh worker incarnation replacement.
 
-use super::super::domain::{Incarnation, IncarnationEffects, IncarnationPhase, IncarnationReport};
+use super::super::domain::{
+    Incarnation, IncarnationEffects, IncarnationError, IncarnationPhase, IncarnationStopEffects,
+};
 use super::super::protocol::{ProxyCommand, ProxyEvent};
 use crate::behavior::{
     Actions, Address, Behavior, Births, Create, Delivery, Recipient, SendAlgebra, ServiceSends,
@@ -21,7 +23,25 @@ pub struct ProxySends<C: Behavior> {
     pub creation_reports: ServiceSends<ReportWorkerCreationResolved<<C::Addr as Address>::Nonce>>,
 }
 
-pub type ProxyActions<C> = Actions<<C as Behavior>::Addr, Never, ProxySends<C>, Births<C>>;
+pub(crate) type ProxyActions<C> = Actions<<C as Behavior>::Addr, Never, ProxySends<C>, Births<C>>;
+
+/// A failure of the proxy's own worker-incarnation lifecycle.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum ProxyError {
+    #[error("the proxy worker lifecycle was already initialized")]
+    AlreadyInitialized,
+    #[error("the proxy worker creation-attempt sequence is exhausted")]
+    AttemptSequenceExhausted,
+}
+
+impl From<IncarnationError> for ProxyError {
+    fn from(error: IncarnationError) -> Self {
+        match error {
+            IncarnationError::AlreadyInitialized => Self::AlreadyInitialized,
+            IncarnationError::AttemptSequenceExhausted => Self::AttemptSequenceExhausted,
+        }
+    }
+}
 
 impl<C: Behavior> SendAlgebra for ProxySends<C> {
     fn empty() -> Self {
@@ -108,7 +128,6 @@ where
 {
     fn actions(
         effects: IncarnationEffects<<C::Addr as Address>::Nonce, C, C::Msg>,
-        stopped: Option<&crate::ChildStopped<C::Addr>>,
     ) -> ProxyActions<C> {
         let mut sends = ProxySends::empty();
         if let Some((incarnation, message)) = effects.delivery {
@@ -116,18 +135,8 @@ where
                 .deliveries
                 .push(Delivery::new(Recipient::child(incarnation), message));
         }
-        if let Some(report) = effects.report {
-            match report {
-                IncarnationReport::CreationResolved(resolved) => {
-                    sends.creation_reports.extend([resolved.into()]);
-                }
-                IncarnationReport::Stopped { incarnation } => {
-                    let event = stopped.expect("stop report originates from child stop input");
-                    sends.stopped_reports.extend([ReportWorkerStopped::from(
-                        crate::ChildStopped::new(incarnation, event.outcome, event.at),
-                    )]);
-                }
-            }
+        if let Some(resolved) = effects.creation_report {
+            sends.creation_reports.extend([resolved.into()]);
         }
         let creates = effects.creation.map_or_else(Vec::new, |creation| {
             sends
@@ -139,6 +148,24 @@ where
             vec![Create::new(creation.attempt, creation.child, creation.kind)]
         });
         Actions::new(sends, creates, Step::Continue)
+    }
+
+    fn stopped_actions(
+        effects: IncarnationStopEffects<<C::Addr as Address>::Nonce, C>,
+        event: crate::ChildStopped<C::Addr>,
+    ) -> ProxyActions<C> {
+        let mut actions = Self::actions(IncarnationEffects::new(effects.creation, None, None));
+        if let Some(incarnation) = effects.stopped {
+            actions
+                .sends
+                .stopped_reports
+                .extend([ReportWorkerStopped::from(crate::ChildStopped::new(
+                    incarnation,
+                    event.outcome,
+                    event.at,
+                ))]);
+        }
+        actions
     }
 }
 
@@ -152,39 +179,39 @@ where
     type Event = ProxyEvent<User<C::Addr, ProxyCommand<C>>>;
     type Sends = ProxySends<C>;
     type Ph = Never;
-    type Error = Never;
+    type Error = ProxyError;
     type Birth = Births<C>;
 
-    fn init(&mut self) -> Result<Actions<C::Addr, Never, Self::Sends, Births<C>>, Never> {
-        let effects = self
-            .incarnation
-            .initialize()
-            .expect("a proxy initializes once");
-        Ok(Self::actions(effects, None))
+    fn init(
+        &mut self,
+        _: crate::InitializationTurn,
+    ) -> Result<Actions<C::Addr, Never, Self::Sends, Births<C>>, ProxyError> {
+        let effects = self.incarnation.initialize()?;
+        Ok(Self::actions(effects))
     }
 
     fn transition(
         &mut self,
+        _: crate::ActiveTurn,
         event: Self::Event,
-    ) -> Result<Actions<C::Addr, Never, Self::Sends, Births<C>>, Never> {
+    ) -> Result<Actions<C::Addr, Never, Self::Sends, Births<C>>, ProxyError> {
         Ok(match event {
             ProxyEvent::CreationResolved(resolved) => Self::actions(
                 self.incarnation
                     .creation_resolved(resolved.nonce, resolved.kind, resolved.result),
-                None,
             ),
             ProxyEvent::ChildStopped(event) => {
-                let effects = self.incarnation.child_stopped(event.nonce);
-                Self::actions(effects, Some(&event))
+                let effects = self.incarnation.child_stopped(event.nonce)?;
+                Self::stopped_actions(effects, event)
             }
-            ProxyEvent::Inner(event) => match event.message {
+            ProxyEvent::Command(event) => match event.message {
                 ProxyCommand::Forward(message) => {
                     let effects = self.incarnation.forward(message);
-                    Self::actions(effects, None)
+                    Self::actions(effects)
                 }
                 ProxyCommand::Replace(child) => {
-                    let effects = self.incarnation.replace(child);
-                    Self::actions(effects, None)
+                    let effects = self.incarnation.replace(child)?;
+                    Self::actions(effects)
                 }
             },
         })

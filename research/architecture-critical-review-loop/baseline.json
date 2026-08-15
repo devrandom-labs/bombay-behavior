@@ -1,21 +1,24 @@
 {
   "schema_version": 1,
-  "captured_at_commit": "2d40944",
-  "test_turbofish_expressions": 31,
-  "test_helper_type_aliases": 18,
-  "production_panic_expect_sites": 12,
+  "captured_at_commit": "4c756f5a6e8bf6aacfe6435250b95fb9fdcab985",
+  "test_turbofish_expressions": 92,
+  "test_helper_type_aliases": 23,
+  "production_panic_expect_sites": 2,
   "generic_arities": {
-    "Behavior": 0, "State": 3, "Actions": 4, "Create": 2,
-    "SendProduct": 2, "Spec": 1, "At": 1, "Watching": 1,
-    "Supervising": 2, "Proxy": 1, "ReceiveTimeout": 1,
-    "Stashing": 1, "Fsm": 5, "Base": 4, "FnState": 6
+    "Behavior": 0, "Actions": 4, "Create": 2, "Compose": 1,
+    "Initialized": 1, "Active": 1, "Deadline": 1, "Watch": 1,
+    "Supervisor": 2, "Proxy": 1, "ReceiveTimeout": 1, "Stash": 1,
+    "Machine": 5
   },
   "public_symbols": [
-    "Acted","Actions","Address","At","AtActions","AtEvent","AtReaction","AtSends","Base","Become","Behavior","BehaviorActed","BirthMode","Births","ChildEvent","ChildStopped","Crash","Create","CreationKind","Delivery","Exit","FinalizeOnShutdown","FnState","Fsm","LinkReaction","MailAddr","Move","Never","NoBirths","ObserveChild","ObservePeer","PeerEvent","PeerStopped","Proxy","ProxyCommand","ReceiveTimeout","ReceiveTimeoutActions","ReceiveTimeoutError","ReceiveTimeoutEvent","ReceiveTimeoutReaction","ReceiveTimeoutSends","Recipient","ReportWorkerStopped","RestartDenial","RestartPolicy","Route","ScheduleAfter","ScheduleAt","SendAlgebra","SendProduct","ServiceSends","ShutdownEvent","ShutdownProtocol","ShutdownReaction","ShutdownRequested","Spec","StashRoute","Stashing","State","StateActed","Step","StopOnShutdown","Strategy","Supervising","SupervisionEvent","SupervisionFailure","SupervisionFailureReaction","SupervisionFailureReason","SupervisorActions","SupervisorSends","TimeEvent","TimerElapsed","TimerGeneration","TimerId","Transcript","Transition","User","UserEvent","WatchActions","WatchEvent","WatchSends","Watching","WorkerEvent","WorkerStopped"
+    "Acted","ActionReducer","Actions","Active","ActiveTurn","Address","AffinitySelector","AssignmentId","Become","Behavior","BehaviorActed","BehaviorBase","BirthMode","Births","ChildStopped","Compose","Crash","Create","CreationKind","CreationRejection","CreationResolved","Deadline","DeadlineEvent","DeadlineReaction","DeadlineSends","Delivery","Effects","EventInput","Exit","FinalizeOnShutdown","FleetError","FoldFailure","Folded","IncarnationPhase","InitializationTurn","Initialized","InterruptionPolicy","JobId","KeyedPoolEvent","KeyedPoolMessage","KeyedWorkerPool","LinkReaction","Machine","MailAddr","Move","Never","NoBirths","ObserveChild","ObserveCreation","ObservePeer","Own","PeerStopped","PoolActions","PoolAssignment","PoolBehaviorSends","PoolConfigError","PoolError","PoolEvent","PoolInterruption","PoolMessage","PoolRejection","PoolResponse","PoolSends","Proxy","ProxyCommand","ProxyError","ProxyEvent","ProxySends","ReceiveTimeout","ReceiveTimeoutEvent","ReceiveTimeoutReaction","ReceiveTimeoutSends","Recipient","ReplacementResolution","ReportWorkerCreationResolved","ReportWorkerStopped","RestartDenial","RestartPolicy","RouteInput","ScheduleAfter","ScheduleAt","SendAlgebra","SendInput","ServiceSends","ShutdownProtocol","ShutdownReaction","ShutdownRequested","Stash","StashRoute","StashStatus","Step","StopOnShutdown","Strategy","SupervisionEvent","SupervisionFailure","SupervisionFailureReaction","SupervisionFailureReason","Supervisor","SupervisorError","SupervisorSends","TimedEvent","TimerElapsed","TimerGeneration","TimerId","UnwatchPeer","User","UserEvent","Watch","WatchEvent","WatchSends","WorkerCreationResolved","WorkerPhase","WorkerPool","WorkerRetirement","WorkerStopped"
   ],
-  "public_traits": ["Address","Behavior","BirthMode","ChildEvent","PeerEvent","SendAlgebra","ShutdownEvent","State","TimeEvent","UserEvent","WorkerEvent"],
-  "phantom_field_count": 4,
-  "type_complexity_files": ["crates/behavior/src/behavior.rs"],
+  "public_traits": ["Address","AffinitySelector","Behavior","BehaviorBase","BirthMode","EventInput","RouteInput","SendAlgebra","SendInput","StashStatus","UserEvent"],
+  "phantom_field_count": 3,
+  "type_complexity_files": ["crates/behavior/src/calculus/reducer.rs", "crates/behavior/src/pool.rs"],
+  "reviewed_changed_paths": [
+    "Cargo.toml", "Cargo.lock", "crates/behavior/Cargo.toml", "crates/behavior-testkit/Cargo.toml"
+  ],
   "protected_paths": [
     ".github","AGENTS.md","Cargo.toml","Cargo.lock","flake.nix","flake.lock",
     "crates/behavior/Cargo.toml","crates/behavior-macros/Cargo.toml",

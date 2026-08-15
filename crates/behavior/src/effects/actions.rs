@@ -20,13 +20,57 @@ pub type Become<A, Ph = Never> = Step<Ph, Exit<A>>;
 /// observation or emitting [`crate::ChildStopped`], while
 /// [`crate::ObserveCreation`] reports the rejection. A later creation cannot
 /// inherit that consumed observation. Creation order is vector order, and each
-/// concrete send lane retains its own order; this contract does not impose an
-/// order between independent lanes of a [`crate::SendProduct`]. Constructing a
-/// value remains pure.
+/// concrete named send lane retains its own order; this contract does not
+/// impose an order between independent lanes. Constructing a value remains
+/// pure.
 pub struct Actions<A: Address, Ph, Sends, Birth: BirthMode> {
     pub sends: Sends,
     pub creates: Vec<Create<A, Birth::Child>>,
     pub become_: Become<A, Ph>,
+}
+
+impl<A, Ph, Sends, Birth> core::fmt::Debug for Actions<A, Ph, Sends, Birth>
+where
+    A: Address + core::fmt::Debug,
+    A::Nonce: core::fmt::Debug,
+    Ph: core::fmt::Debug,
+    Sends: core::fmt::Debug,
+    Birth: BirthMode,
+    Birth::Child: core::fmt::Debug,
+{
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        formatter
+            .debug_struct("Actions")
+            .field("sends", &self.sends)
+            .field("creates", &self.creates)
+            .field("become", &self.become_)
+            .finish()
+    }
+}
+
+impl<A, Ph, Sends, Birth> PartialEq for Actions<A, Ph, Sends, Birth>
+where
+    A: Address + PartialEq,
+    A::Nonce: PartialEq,
+    Ph: PartialEq,
+    Sends: PartialEq,
+    Birth: BirthMode,
+    Birth::Child: PartialEq,
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.sends == other.sends && self.creates == other.creates && self.become_ == other.become_
+    }
+}
+
+impl<A, Ph, Sends, Birth> Eq for Actions<A, Ph, Sends, Birth>
+where
+    A: Address + Eq,
+    A::Nonce: Eq,
+    Ph: Eq,
+    Sends: Eq,
+    Birth: BirthMode,
+    Birth::Child: Eq,
+{
 }
 
 impl<A: Address, Ph, Sends, Birth: BirthMode> Actions<A, Ph, Sends, Birth> {
@@ -93,6 +137,18 @@ impl<A: Address, Ph, Sends: SendAlgebra, Birth: BirthMode> Actions<A, Ph, Sends,
     #[must_use]
     pub fn goto(phase: Ph) -> Self {
         Self::just(Step::Goto(phase))
+    }
+
+    /// Continue after emitting the complete declared send product.
+    #[must_use]
+    pub fn send(sends: Sends) -> Self {
+        Self::new(sends, Vec::new(), Step::Continue)
+    }
+
+    /// Continue after staging the complete declared creation product.
+    #[must_use]
+    pub fn create(creates: Vec<Create<A, Birth::Child>>) -> Self {
+        Self::new(Sends::empty(), creates, Step::Continue)
     }
 }
 

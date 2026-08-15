@@ -19,12 +19,6 @@ struct Counter(u64);
     error = Never,
 )]
 impl Counter {
-    fn init(
-        &mut self,
-    ) -> behavior::Acted<MailAddr, Never, Vec<Never>, NoBirths, Never> {
-        Ok(Actions::cont())
-    }
-
     fn receive(
         &mut self,
         _from: MailAddr,
@@ -46,13 +40,15 @@ Ph    = Never               Error = declared error
 Birth = declared births
 ```
 
-`Behavior::init` calls the inherent `init` method exactly once.
+When present, `Behavior::init` calls the inherent `init` method during the
+single consuming `initialize` transition.
+When omitted, it returns the explicit empty initialization transition.
 `Behavior::transition` destructures the concrete `User` event and calls the
 inherent `receive` method exactly once. Rust checks both returned values against
 `BehaviorActed<Self>`; the macro does not parse or infer semantic types from a
 return-type alias.
 
-The five associated types are deliberately explicit and ordered. The macro
+The seven associated types are deliberately explicit and ordered. The macro
 does not provide defaults, accept unknown options, infer capabilities, create
 constructors, add state, generate messages, register protocols, erase types,
 box futures, interpret effects, or introduce another transition path.

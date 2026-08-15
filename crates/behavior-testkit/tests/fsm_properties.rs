@@ -8,7 +8,7 @@
 
 use std::collections::HashSet;
 
-use behavior::{Behavior, Machine, MailAddr, Move, Never, Step, User, UserEvent};
+use behavior::{Machine, MailAddr, Move, Never, Step, User, UserEvent};
 use proptest::collection::vec;
 use proptest::prelude::*;
 use tokio::runtime::Builder;
@@ -24,7 +24,9 @@ enum Phase {
 ///
 /// - A: `id % 4 == 0` -> Goto(B); `id % 4 == 1` -> Defer; else record.
 /// - B: `id % 4 == 2` -> Goto(A); `id % 4 == 1` -> Defer; else record.
-fn machine() -> Machine<MailAddr, Vec<u64>, u64, Phase, Never> {
+type MachineDefinition = Machine<MailAddr, Vec<u64>, u64, Phase, Never>;
+
+fn machine() -> behavior::Active<MachineDefinition> {
     Machine::new(
         Vec::new(),
         Phase::A,
@@ -40,6 +42,9 @@ fn machine() -> Machine<MailAddr, Vec<u64>, u64, Phase, Never> {
             })
         },
     )
+    .initialize()
+    .unwrap()
+    .behavior
 }
 
 fn assert_no_drop_no_dup(seen: &[u64], held: usize, consumed: usize, stepped: usize) {
@@ -92,7 +97,7 @@ proptest! {
             B,
             C,
         }
-        let mut machine = Machine::new(Vec::new(), Phase3::A, |phase, seen: &mut Vec<u64>, id: &u64| {
+        let machine = Machine::new(Vec::new(), Phase3::A, |phase, seen: &mut Vec<u64>, id: &u64| {
             Ok::<Move<Phase3>, Never>(match (phase, id % 5) {
                 (Phase3::A, 0) => Move::Goto(Phase3::B),
                 (Phase3::B, 2) => Move::Goto(Phase3::C),
@@ -104,6 +109,7 @@ proptest! {
                 }
             })
         });
+        let mut machine = machine.initialize().unwrap().behavior;
         let _runtime = Builder::new_current_thread().enable_all().build().unwrap();
         let mut consumed = 0_usize;
         for (index, _) in ids.iter().enumerate() {
@@ -174,7 +180,7 @@ async fn fsm_stop_mid_drain_preserves_remaining_batch() {
         P0,
         P1,
     }
-    let mut machine = Machine::new(
+    let machine = Machine::new(
         Vec::new(),
         Phase::P0,
         |phase, seen: &mut Vec<u64>, id: &u64| {
@@ -189,6 +195,7 @@ async fn fsm_stop_mid_drain_preserves_remaining_batch() {
             })
         },
     );
+    let mut machine = machine.initialize().unwrap().behavior;
     // Defer ids 1 and 2 in P0; id 0 opens P1 and drains: id 1 re-defers in
     // P1, id 2 stops the drain — id 1 must remain held.
     machine.transition(User::user(MailAddr(0), 1)).unwrap();
@@ -213,7 +220,7 @@ async fn fsm_self_goto_does_not_drain() {
         A,
         B,
     }
-    let mut machine = Machine::new(
+    let machine = Machine::new(
         Vec::new(),
         Phase::A,
         |phase, seen: &mut Vec<u64>, id: &u64| {
@@ -228,6 +235,7 @@ async fn fsm_self_goto_does_not_drain() {
             })
         },
     );
+    let mut machine = machine.initialize().unwrap().behavior;
     machine.transition(User::user(MailAddr(0), 1)).unwrap(); // defer
     assert_eq!(machine.held(), 1);
 
@@ -241,3 +249,4 @@ async fn fsm_self_goto_does_not_drain() {
     assert_eq!(machine.state().as_slice(), &[1]);
     assert_eq!(machine.held(), 0);
 }
+use behavior_testkit::InitializeTest;

@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use super::super::domain::{Fleet, RestartBudget};
+use super::super::domain::{Fleet, FleetError, RestartBudget};
 use super::super::policy::{
     RestartPolicy, Strategy, SupervisionFailure, SupervisionFailureReaction,
     retire_on_supervision_failure,
@@ -14,10 +14,10 @@ use crate::behavior::{
 };
 use crate::next::{Never, Step};
 use crate::protocol::{
-    ChildEvent, CreationEvent, ObserveChild, WorkerCreationEvent, WorkerStopped,
+    ChildStopped, CreationResolved, ObserveChild, WorkerCreationResolved, WorkerStopped,
 };
 use crate::{Become, Exit, SupervisionFailureReason};
-use crate::{Inner, Own, SendInput};
+use crate::{Own, RouteInput, SendInput};
 
 /// Named effect lanes emitted by a supervised behavior.
 pub struct SupervisorSends<A, Sends, C>
@@ -75,24 +75,26 @@ where
     }
 }
 
-impl<A, Sends, C, Input, Path> SendInput<Input, Inner<Path>> for SupervisorSends<A, Sends, C>
-where
-    A: Address,
-    A::Nonce: From<u64>,
-    C: Behavior<Addr = A, Ph = Never>,
-    Sends: SendInput<Input, Path>,
-{
-    fn emit(&mut self, input: Input) {
-        <Sends as SendInput<Input, Path>>::emit(&mut self.behavior, input);
-    }
-}
-
-pub type SupervisorActions<B, C> = Actions<
+pub(crate) type SupervisorActions<B, C> = Actions<
     <B as Behavior>::Addr,
     <B as Behavior>::Ph,
     SupervisorSends<<B as Behavior>::Addr, <B as Behavior>::Sends, C>,
     Births<Proxy<C>>,
 >;
+
+/// A controlled supervisor-fold failure.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum SupervisorError<E, N> {
+    /// The supervised behavior rejected its fold.
+    #[error("supervised behavior rejected the transition")]
+    Behavior(E),
+    /// The supervisor's child topology rejected the operation.
+    #[error(transparent)]
+    Fleet(#[from] FleetError<N>),
+    /// The configured worker factory did not define a requested fleet index.
+    #[error("worker factory rejected configured fleet index {index}")]
+    FactoryIndex { index: usize },
+}
 
 enum ReplacementDecision<A, C>
 where
@@ -108,11 +110,35 @@ where
 pub struct Supervisor<B: Behavior, C: Behavior<Ph = Never, Addr = B::Addr>> {
     inner: B,
     fleet: Fleet<<B::Addr as Address>::Nonce>,
-    build: fn(usize) -> C,
+    build: fn(usize) -> Option<C>,
     strategy: Strategy,
     policy: RestartPolicy,
     budget: RestartBudget,
     on_failure: SupervisionFailureReaction<B>,
+}
+
+impl<B, C> crate::BehaviorBase for Supervisor<B, C>
+where
+    B: Behavior<Birth = Births<C>> + crate::BehaviorBase,
+    <B::Addr as Address>::Nonce: From<u64>,
+    C: Behavior<Ph = Never, Addr = B::Addr>,
+{
+    type Base = B::Base;
+
+    fn base(&self) -> &Self::Base {
+        self.inner.base()
+    }
+}
+
+impl<B, C> crate::StashStatus for Supervisor<B, C>
+where
+    B: Behavior<Birth = Births<C>> + crate::StashStatus,
+    <B::Addr as Address>::Nonce: From<u64>,
+    C: Behavior<Ph = Never, Addr = B::Addr>,
+{
+    fn stashed_messages(&self) -> usize {
+        self.inner.stashed_messages()
+    }
 }
 
 impl<B, C> Supervisor<B, C>
@@ -124,24 +150,22 @@ where
     #[allow(clippy::too_many_arguments, reason = "hidden by Compose")]
     /// Construct the concrete supervisor behavior hidden by `Compose`.
     ///
-    /// # Panics
-    /// Panics when configured child nonces are not unique. Such a topology
-    /// would violate creator-local child routing and creation freshness before
-    /// the behavior could return an initialization result.
-    #[must_use]
+    /// Invalid configured routes reject construction before a behavior exists.
+    ///
+    /// # Errors
+    /// Returns the first typed topology rejection.
     pub fn new(
         inner: B,
         nonces: fn(usize) -> <B::Addr as Address>::Nonce,
         count: usize,
-        build: fn(usize) -> C,
+        build: fn(usize) -> Option<C>,
         strategy: Strategy,
         policy: RestartPolicy,
         max_restarts: u32,
         window: Duration,
-    ) -> Self {
-        let fleet = Fleet::configured((0..count).map(nonces))
-            .unwrap_or_else(|_| panic!("configured child nonces must be fresh"));
-        Self {
+    ) -> Result<Self, FleetError<<B::Addr as Address>::Nonce>> {
+        let fleet = Fleet::configured((0..count).map(nonces))?;
+        Ok(Self {
             inner,
             fleet,
             build,
@@ -149,7 +173,7 @@ where
             policy,
             budget: RestartBudget::new(max_restarts, window),
             on_failure: retire_on_supervision_failure::<B>,
-        }
+        })
     }
 
     #[must_use]
@@ -180,12 +204,13 @@ where
     #[must_use]
     /// Report whether a known supervised proxy is alive.
     ///
-    /// # Panics
-    /// Panics when `nonce` is not part of this supervisor topology.
-    pub fn is_alive(&self, nonce: <B::Addr as Address>::Nonce) -> bool {
-        self.fleet
-            .is_available(nonce)
-            .unwrap_or_else(|_| panic!("unknown supervised nonce"))
+    /// # Errors
+    /// Returns the unknown nonce when it is not part of this topology.
+    pub fn is_alive(
+        &self,
+        nonce: <B::Addr as Address>::Nonce,
+    ) -> Result<bool, SupervisorError<core::convert::Infallible, <B::Addr as Address>::Nonce>> {
+        Ok(self.fleet.is_available(nonce)?)
     }
 
     #[must_use]
@@ -201,8 +226,13 @@ where
     fn replacement_decision(
         &mut self,
         event: &WorkerStopped<B::Addr>,
-    ) -> ReplacementDecision<B::Addr, C> {
-        let eligible = match self.policy {
+    ) -> Result<
+        ReplacementDecision<B::Addr, C>,
+        SupervisorError<B::Error, <B::Addr as Address>::Nonce>,
+    > {
+        let policy = self.policy;
+        let strategy = self.strategy;
+        let eligible = match policy {
             RestartPolicy::Permanent => true,
             RestartPolicy::Transient => {
                 !matches!(&event.outcome, Ok(Exit::Normal | Exit::Collected))
@@ -210,41 +240,39 @@ where
             RestartPolicy::Temporary => false,
         };
         if !eligible {
-            self.fleet
-                .retire(event.proxy)
-                .unwrap_or_else(|_| panic!("unknown supervised nonce"));
-            return ReplacementDecision::Retire;
+            self.fleet.retire(event.proxy)?;
+            return Ok(ReplacementDecision::Retire);
         }
-        let candidates = self
-            .fleet
-            .replacements(event.proxy, self.strategy)
-            .unwrap_or_else(|_| panic!("unknown supervised nonce"));
+        let candidates = self.fleet.replacements(event.proxy, strategy)?;
+        let replacements = candidates
+            .iter()
+            .map(|candidate| {
+                (self.build)(candidate.index)
+                    .map(|child| (candidate.nonce, child))
+                    .ok_or(SupervisorError::FactoryIndex {
+                        index: candidate.index,
+                    })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
         if let Err(reason) = self.budget.admit(event.at, candidates.len()) {
-            self.fleet
-                .retire(event.proxy)
-                .unwrap_or_else(|_| panic!("unknown supervised nonce"));
-            return ReplacementDecision::Failed(SupervisionFailure::new(
+            self.fleet.retire(event.proxy)?;
+            return Ok(ReplacementDecision::Failed(SupervisionFailure::new(
                 event.proxy,
                 event.outcome,
                 SupervisionFailureReason::RestartDenied(reason),
-            ));
+            )));
         }
         for candidate in &candidates {
-            self.fleet
-                .replacement_requested(candidate.nonce)
-                .unwrap_or_else(|_| unreachable!("candidate belongs to fleet"));
+            self.fleet.replacement_requested(candidate.nonce)?;
         }
-        ReplacementDecision::Replace(
-            candidates
+        Ok(ReplacementDecision::Replace(
+            replacements
                 .into_iter()
-                .map(|candidate| {
-                    Delivery::new(
-                        Recipient::child(candidate.nonce),
-                        ProxyCommand::Replace((self.build)(candidate.index)),
-                    )
+                .map(|(nonce, child)| {
+                    Delivery::new(Recipient::child(nonce), ProxyCommand::Replace(child))
                 })
                 .collect(),
-        )
+        ))
     }
 
     fn react_to_failure(
@@ -261,14 +289,14 @@ where
     fn wrap(
         &mut self,
         actions: Actions<B::Addr, B::Ph, B::Sends, Births<C>>,
-    ) -> SupervisorActions<B, C> {
+    ) -> Result<SupervisorActions<B, C>, SupervisorError<B::Error, <B::Addr as Address>::Nonce>>
+    {
+        let fleet = &mut self.fleet;
         let born: Vec<_> = actions.creates.iter().map(|create| create.nonce).collect();
         for create in &actions.creates {
-            self.fleet
-                .register(create.nonce)
-                .unwrap_or_else(|_| panic!("a child birth nonce must be fresh"));
+            fleet.register(create.nonce)?;
         }
-        Actions::new(
+        Ok(Actions::new(
             SupervisorSends {
                 behavior: actions.sends,
                 child_observations: ServiceSends::new(
@@ -282,7 +310,7 @@ where
                 .map(|create| Create::new(create.nonce, Proxy::new(create.child), create.kind))
                 .collect(),
             actions.become_,
-        )
+        ))
     }
 }
 
@@ -291,7 +319,9 @@ where
     A: Address,
     Sends: SendAlgebra,
     B: Behavior<Addr = A, Ph = Ph, Sends = Sends, Birth = Births<C>>,
-    B::Event: ChildEvent + CreationEvent + WorkerCreationEvent,
+    B::Event: crate::RouteInput<ChildStopped<A>>
+        + crate::RouteInput<CreationResolved<A::Nonce>>
+        + crate::RouteInput<WorkerCreationResolved<A::Nonce>>,
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never, Addr = B::Addr>,
 {
@@ -300,29 +330,47 @@ where
     type Event = SupervisionEvent<B::Event>;
     type Sends = SupervisorSends<A, Sends, C>;
     type Ph = Ph;
-    type Error = B::Error;
+    type Error = SupervisorError<B::Error, A::Nonce>;
     type Birth = Births<Proxy<C>>;
 
-    fn init(&mut self) -> Result<SupervisorActions<B, C>, B::Error> {
-        let actions = self.inner.init()?;
-        let mut actions = self.wrap(actions);
+    fn init(
+        &mut self,
+        _: crate::InitializationTurn,
+    ) -> Result<SupervisorActions<B, C>, Self::Error> {
+        let configured: Vec<_> = self.fleet.configured_nonces().collect();
+        let workers = configured
+            .iter()
+            .copied()
+            .enumerate()
+            .map(|(index, nonce)| {
+                (self.build)(index)
+                    .map(|worker| (nonce, worker))
+                    .ok_or(SupervisorError::FactoryIndex { index })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let actions =
+            crate::calculus::initialize(&mut self.inner).map_err(SupervisorError::Behavior)?;
+        let mut actions = self.wrap(actions)?;
         actions.creates.extend(
-            self.fleet
-                .configured_nonces()
-                .enumerate()
-                .map(|(index, nonce)| Create::birth(nonce, Proxy::new((self.build)(index)))),
+            workers
+                .into_iter()
+                .map(|(nonce, worker)| Create::birth(nonce, Proxy::new(worker))),
         );
         actions
             .sends
             .child_observations
-            .extend(self.fleet.configured_nonces().map(ObserveChild::new));
+            .extend(configured.into_iter().map(ObserveChild::new));
         Ok(actions)
     }
 
-    fn transition(&mut self, event: Self::Event) -> Result<SupervisorActions<B, C>, B::Error> {
+    fn transition(
+        &mut self,
+        _: crate::ActiveTurn,
+        event: Self::Event,
+    ) -> Result<SupervisorActions<B, C>, Self::Error> {
         match event {
             SupervisionEvent::WorkerStopped(event) => {
-                let decision = self.replacement_decision(&event);
+                let decision = self.replacement_decision(&event)?;
                 match decision {
                     ReplacementDecision::Retire => Ok(Actions::cont()),
                     ReplacementDecision::Replace(replacements) => Ok(Actions::new(
@@ -334,27 +382,30 @@ where
                         Vec::new(),
                         Step::Continue,
                     )),
-                    ReplacementDecision::Failed(failure) => {
-                        Ok(Actions::just(self.react_to_failure(&failure)?))
-                    }
+                    ReplacementDecision::Failed(failure) => Ok(Actions::just(
+                        self.react_to_failure(&failure)
+                            .map_err(SupervisorError::Behavior)?,
+                    )),
                 }
             }
             SupervisionEvent::ChildStopped(event) => {
-                self.fleet
-                    .retire(event.nonce)
-                    .unwrap_or_else(|_| panic!("unknown supervised nonce"));
+                self.fleet.retire(event.nonce)?;
                 let failure = SupervisionFailure::new(
                     event.nonce,
                     event.outcome,
                     SupervisionFailureReason::StableChildStopped,
                 );
-                Ok(Actions::just(self.react_to_failure(&failure)?))
+                Ok(Actions::just(
+                    self.react_to_failure(&failure)
+                        .map_err(SupervisorError::Behavior)?,
+                ))
             }
             SupervisionEvent::CreationResolved(event) => {
                 self.fleet.resolve_creation(event.nonce, event.result);
-                if let Some(event) = B::Event::creation_resolved(event) {
-                    let actions = self.inner.transition(event)?;
-                    Ok(self.wrap(actions))
+                if let Ok(event) = B::Event::route(event) {
+                    let actions = crate::calculus::delegate_transition(&mut self.inner, event)
+                        .map_err(SupervisorError::Behavior)?;
+                    self.wrap(actions)
                 } else {
                     Ok(Actions::cont())
                 }
@@ -363,16 +414,18 @@ where
                 // Worker realization does not change the stable proxy's
                 // liveness. The typed result remains distinct from a proxy
                 // terminal observation.
-                if let Some(event) = B::Event::worker_creation_resolved(event) {
-                    let actions = self.inner.transition(event)?;
-                    Ok(self.wrap(actions))
+                if let Ok(event) = B::Event::route(event) {
+                    let actions = crate::calculus::delegate_transition(&mut self.inner, event)
+                        .map_err(SupervisorError::Behavior)?;
+                    self.wrap(actions)
                 } else {
                     Ok(Actions::cont())
                 }
             }
-            SupervisionEvent::Inner(event) => {
-                let actions = self.inner.transition(event)?;
-                Ok(self.wrap(actions))
+            SupervisionEvent::Behavior(event) => {
+                let actions = crate::calculus::delegate_transition(&mut self.inner, event)
+                    .map_err(SupervisorError::Behavior)?;
+                self.wrap(actions)
             }
         }
     }

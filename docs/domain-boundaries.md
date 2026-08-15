@@ -59,16 +59,15 @@ which typed environmental events belong to their timer.
 
 ## Named effect products
 
-`ProxySends` and `SupervisorSends` are semantic products because their lanes
-coexist independently. Their fields are named by meaning. `SendProduct` remains
-the generic binary composition primitive used by ordinary wrappers, but domain
-consumers do not navigate a supervision protocol by positional `.inner` or
-`.own` depth.
+Every wrapper send product is a named semantic product because its lanes
+coexist independently. Fields describe the protocol owner—for example,
+`behavior`, `timers`, and `child_observations`—so adding or reordering wrappers
+does not force consumers to navigate positional nesting.
 
 ## Intentionally retained structures
 
 `Stash` already owns one explicit route sum and one FIFO buffer in a single
-cohesive module. Splitting the queue from the async replay adapter would not
+cohesive module. Splitting the queue from the pure replay adapter would not
 introduce an additional invariant or pure transition boundary.
 
 The event-lane traits and wrapper event enums are static protocol composition,

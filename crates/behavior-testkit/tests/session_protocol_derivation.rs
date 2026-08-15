@@ -43,9 +43,7 @@
 // dead-code warnings are expected and suppressed.
 #![allow(dead_code)]
 
-use behavior::{
-    Behavior, Exit, Machine, MailAddr, Move, Never, SendAlgebra, Step, User, UserEvent,
-};
+use behavior::{Exit, Machine, MailAddr, Move, Never, SendAlgebra, Step, User, UserEvent};
 
 // ---------------------------------------------------------------------------
 // Phase and message vocabulary (used by all derivation attempts)
@@ -127,8 +125,10 @@ mod fsm_baseline {
 
     #[tokio::test]
     async fn fsm_accepts_valid_phase_transitions() {
-        let mut fsm = worker_fsm();
-        let _ = fsm.init().unwrap();
+        let fsm = worker_fsm();
+        let initialized = fsm.initialize().unwrap();
+        let _ = initialized.actions;
+        let mut fsm = initialized.behavior;
         assert_eq!(fsm.phase(), Phase::Starting);
 
         let event = User {
@@ -144,8 +144,10 @@ mod fsm_baseline {
 
     #[tokio::test]
     async fn fsm_defers_work_in_starting_phase() {
-        let mut fsm = worker_fsm();
-        let _ = fsm.init().unwrap();
+        let fsm = worker_fsm();
+        let initialized = fsm.initialize().unwrap();
+        let _ = initialized.actions;
+        let mut fsm = initialized.behavior;
 
         let work_event = User {
             from: MailAddr(2),
@@ -162,8 +164,10 @@ mod fsm_baseline {
 
     #[tokio::test]
     async fn fsm_replays_deferred_after_phase_change() {
-        let mut fsm = worker_fsm();
-        let _ = fsm.init().unwrap();
+        let fsm = worker_fsm();
+        let initialized = fsm.initialize().unwrap();
+        let _ = initialized.actions;
+        let mut fsm = initialized.behavior;
 
         let work_event = User {
             from: MailAddr(2),
@@ -278,7 +282,11 @@ enum AppMsg {
 }
 
 impl WorkerApp {
-    fn transition(&mut self, msg: AppMsg) -> Result<Step<Never, Exit<MailAddr>>, Never> {
+    fn transition(
+        &mut self,
+        _: behavior::ActiveTurn,
+        msg: AppMsg,
+    ) -> Result<Step<Never, Exit<MailAddr>>, Never> {
         match msg {
             AppMsg::Configure(config) => {
                 if let WorkerApp::Starting(state) = self {
@@ -330,7 +338,7 @@ trait PhaseBehavior {
 
 // OBSTRUCTION: A generic wrapper over PhaseBehavior cannot implement Behavior
 // because Behavior::Event must be a SINGLE concrete type. To bridge
-// PhaseBehavior -> Behavior, we'd need a sum type over all phase events,
+// PhaseBehavior -> we'd need a sum type over all phase events,
 // recreating the flat enum problem.
 
 // ---------------------------------------------------------------------------
@@ -420,3 +428,4 @@ mod composition_checks {
         let _fsm = worker_fsm();
     }
 }
+use behavior_testkit::InitializeTest;

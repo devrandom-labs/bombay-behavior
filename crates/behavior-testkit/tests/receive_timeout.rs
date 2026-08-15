@@ -1,9 +1,9 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, Behavior, Births, Compose, Create, Deadline, DeadlineEvent, Delivery, Exit,
-    Handler, MailAddr, Never, NoBirths, Pure, ReceiveTimeoutError, ReceiveTimeoutEvent, Recipient,
-    Step, TimerElapsed, TimerGeneration, TimerId, User, UserEvent,
+    Acted, Actions, Behavior, Births, Compose, Create, DeadlineEvent, Delivery, Exit, MailAddr,
+    Never, NoBirths, ReceiveTimeoutEvent, Recipient, Step, TimerElapsed, TimerGeneration, TimerId,
+    User, UserEvent,
 };
 use behavior_testkit::model::InactivityModel;
 
@@ -12,10 +12,8 @@ struct Failed;
 
 struct Child;
 
-impl Handler for Child {
-    type Addr = MailAddr;
-    type Msg = u8;
-
+#[behavior::behavior(addr = MailAddr, message = u8, sends = Vec<Never>, births = behavior::NoBirths, error = Never)]
+impl Child {
     fn receive(
         &mut self,
         _from: MailAddr,
@@ -25,19 +23,15 @@ impl Handler for Child {
     }
 }
 
-type ChildBehavior = Pure<Child>;
+type ChildBehavior = Child;
 
 #[derive(Default)]
 struct Subject {
     accepted: Vec<u8>,
 }
 
-impl Handler<Vec<Delivery<behavior_testkit::TestRecipient<u8>>>, Births<ChildBehavior>, Failed>
-    for Subject
-{
-    type Addr = MailAddr;
-    type Msg = u8;
-
+#[behavior::behavior(addr = MailAddr, message = u8, sends = Vec<Delivery<behavior_testkit::TestRecipient<u8>>>, births = Births<ChildBehavior>, error = Failed)]
+impl Subject {
     fn receive(
         &mut self,
         _from: MailAddr,
@@ -64,7 +58,7 @@ impl Handler<Vec<Delivery<behavior_testkit::TestRecipient<u8>>>, Births<ChildBeh
             .push(Delivery::new(Recipient::global(MailAddr(90)), message));
         actions
             .creates
-            .push(Create::birth(u64::from(message), Pure::new(Child)));
+            .push(Create::birth(u64::from(message), Child));
         if message == 0 {
             actions.become_ = Step::Stop(Exit::Normal);
         }
@@ -72,15 +66,10 @@ impl Handler<Vec<Delivery<behavior_testkit::TestRecipient<u8>>>, Births<ChildBeh
     }
 }
 
-type Inner = Pure<
-    Subject,
-    Vec<Delivery<behavior_testkit::TestRecipient<u8>>>,
-    Births<ChildBehavior>,
-    Failed,
->;
+type SubjectBehavior = Subject;
 
 fn on_timeout(
-    _inner: &mut Inner,
+    _inner: &mut SubjectBehavior,
 ) -> Acted<
     MailAddr,
     Never,
@@ -90,7 +79,7 @@ fn on_timeout(
 > {
     Ok(Actions {
         sends: vec![Delivery::new(Recipient::global(MailAddr(91)), 99)],
-        creates: vec![Create::birth(99, Pure::new(Child))],
+        creates: vec![Create::birth(99, Child)],
         become_: Step::Continue,
     })
 }
@@ -98,10 +87,12 @@ fn on_timeout(
 #[tokio::test]
 async fn initialization_and_successful_user_folds_arm_after_preserving_actions() {
     let after = Duration::from_secs(5);
-    let mut behavior =
-        Compose::from_behavior(Pure::new(Subject::default())).receive_timeout(after, on_timeout);
+    let behavior =
+        Compose::new(Subject::default()).receive_timeout(behavior::TimerId(0), after, on_timeout);
 
-    let initial = behavior.init().unwrap();
+    let initialized = behavior.initialize().unwrap();
+    let initial = initialized.actions;
+    let mut behavior = initialized.behavior;
     assert!(initial.sends.behavior.is_empty());
     assert!(initial.creates.is_empty());
     assert_eq!(initial.become_, Step::Continue);
@@ -111,7 +102,7 @@ async fn initialization_and_successful_user_folds_arm_after_preserving_actions()
     assert_eq!(initial.sends.schedules[0].after, after);
 
     let first = behavior
-        .transition(ReceiveTimeoutEvent::Inner(User::user(MailAddr(1), 1)))
+        .transition(ReceiveTimeoutEvent::Behavior(User::user(MailAddr(1), 1)))
         .unwrap();
     assert_eq!(first.sends.behavior.len(), 1);
     assert_eq!(first.sends.behavior[0].message, 1);
@@ -121,16 +112,20 @@ async fn initialization_and_successful_user_folds_arm_after_preserving_actions()
     assert_eq!(first.sends.schedules[0].generation, TimerGeneration(1));
 
     let second = behavior
-        .transition(ReceiveTimeoutEvent::Inner(User::user(MailAddr(1), 2)))
+        .transition(ReceiveTimeoutEvent::Behavior(User::user(MailAddr(1), 2)))
         .unwrap();
     assert_eq!(second.sends.schedules[0].generation, TimerGeneration(2));
 }
 
 #[tokio::test]
 async fn matching_delivery_consumes_once_and_reaction_preserves_full_actions() {
-    let mut behavior = Compose::from_behavior(Pure::new(Subject::default()))
-        .receive_timeout(Duration::from_secs(1), on_timeout);
-    behavior.init().unwrap();
+    let behavior = Compose::new(Subject::default()).receive_timeout(
+        behavior::TimerId(0),
+        Duration::from_secs(1),
+        on_timeout,
+    );
+    let initialized = behavior.initialize().unwrap();
+    let mut behavior = initialized.behavior;
 
     let stale = behavior
         .transition(ReceiveTimeoutEvent::Elapsed(TimerElapsed {
@@ -162,18 +157,22 @@ async fn matching_delivery_consumes_once_and_reaction_preserves_full_actions() {
     assert!(duplicate.sends.schedules.is_empty());
 
     let rearmed = behavior
-        .transition(ReceiveTimeoutEvent::Inner(User::user(MailAddr(1), 3)))
+        .transition(ReceiveTimeoutEvent::Behavior(User::user(MailAddr(1), 3)))
         .unwrap();
     assert_eq!(rearmed.sends.schedules[0].generation, TimerGeneration(1));
 }
 
 #[tokio::test]
 async fn errors_and_terminal_user_folds_do_not_rearm() {
-    let mut failing = Compose::from_behavior(Pure::new(Subject::default()))
-        .receive_timeout(Duration::from_secs(1), on_timeout);
-    failing.init().unwrap();
-    let failed = failing.transition(ReceiveTimeoutEvent::Inner(User::user(MailAddr(1), 7)));
-    assert!(matches!(failed, Err(ReceiveTimeoutError::Inner(Failed))));
+    let failing = Compose::new(Subject::default()).receive_timeout(
+        behavior::TimerId(0),
+        Duration::from_secs(1),
+        on_timeout,
+    );
+    let initialized = failing.initialize().unwrap();
+    let mut failing = initialized.behavior;
+    let failed = failing.transition(ReceiveTimeoutEvent::Behavior(User::user(MailAddr(1), 7)));
+    assert!(matches!(failed, Err(Failed)));
     let still_live = failing
         .transition(ReceiveTimeoutEvent::Elapsed(TimerElapsed {
             id: TimerId(0),
@@ -182,11 +181,15 @@ async fn errors_and_terminal_user_folds_do_not_rearm() {
         .unwrap();
     assert_eq!(still_live.sends.behavior[0].message, 99);
 
-    let mut terminal = Compose::from_behavior(Pure::new(Subject::default()))
-        .receive_timeout(Duration::from_secs(1), on_timeout);
-    terminal.init().unwrap();
+    let terminal = Compose::new(Subject::default()).receive_timeout(
+        behavior::TimerId(0),
+        Duration::from_secs(1),
+        on_timeout,
+    );
+    let initialized = terminal.initialize().unwrap();
+    let mut terminal = initialized.behavior;
     let stopped = terminal
-        .transition(ReceiveTimeoutEvent::Inner(User::user(MailAddr(1), 0)))
+        .transition(ReceiveTimeoutEvent::Behavior(User::user(MailAddr(1), 0)))
         .unwrap();
     assert_eq!(stopped.become_, Step::Stop(Exit::Normal));
     assert!(stopped.sends.schedules.is_empty());
@@ -203,18 +206,18 @@ async fn errors_and_terminal_user_folds_do_not_rearm() {
     assert!(formerly_live.sends.schedules.is_empty());
 }
 
-fn inner_at(_inner: &mut Inner) -> Result<behavior::Become<MailAddr>, Failed> {
+fn inner_at(_inner: &mut SubjectBehavior) -> Result<behavior::Become<MailAddr>, Failed> {
     Ok(Step::Continue)
 }
 
-type TimedInner = behavior::Deadline<Inner>;
+type TimedInner = behavior::Deadline<SubjectBehavior>;
 
 fn outer_timeout(
     _inner: &mut TimedInner,
 ) -> Acted<
     MailAddr,
     Never,
-    behavior::DeadlineSends<<Inner as Behavior>::Sends>,
+    behavior::DeadlineSends<<SubjectBehavior as Behavior>::Sends>,
     Births<ChildBehavior>,
     Failed,
 > {
@@ -223,11 +226,13 @@ fn outer_timeout(
 
 #[tokio::test]
 async fn nested_timer_service_events_never_reset_receive_inactivity() {
-    let due = tokio::time::Instant::now() + Duration::from_secs(2);
-    let mut behavior = Compose::from_behavior(Pure::new(Subject::default()))
-        .deadline(Some(due), inner_at)
-        .receive_timeout(Duration::from_secs(1), outer_timeout);
-    let initial = behavior.init().unwrap();
+    let due = std::time::Instant::now() + Duration::from_secs(2);
+    let behavior = Compose::new(Subject::default())
+        .deadline(behavior::TimerId(0), Some(due), inner_at)
+        .receive_timeout(behavior::TimerId(1), Duration::from_secs(1), outer_timeout);
+    let initialized = behavior.initialize().unwrap();
+    let initial = initialized.actions;
+    let mut behavior = initialized.behavior;
     assert_eq!(initial.sends.behavior.schedules[0].id, TimerId(0));
     assert_eq!(initial.sends.schedules[0].id, TimerId(1));
 
@@ -259,17 +264,22 @@ async fn nested_timer_service_events_never_reset_receive_inactivity() {
 #[tokio::test]
 async fn accepted_stale_timeout_error_and_terminal_turns_match_independent_model() {
     let mut model = InactivityModel::new();
-    let mut behavior = Compose::from_behavior(Pure::new(Subject::default()))
-        .receive_timeout(Duration::from_secs(1), on_timeout);
+    let behavior = Compose::new(Subject::default()).receive_timeout(
+        behavior::TimerId(0),
+        Duration::from_secs(1),
+        on_timeout,
+    );
 
-    let initial = behavior.init().unwrap();
+    let initialized = behavior.initialize().unwrap();
+    let initial = initialized.actions;
+    let mut behavior = initialized.behavior;
     assert_eq!(
         initial.sends.schedules[0].generation,
         TimerGeneration(model.initialize())
     );
 
     let accepted = behavior
-        .transition(ReceiveTimeoutEvent::Inner(User::user(MailAddr(1), 1)))
+        .transition(ReceiveTimeoutEvent::Behavior(User::user(MailAddr(1), 1)))
         .unwrap();
     assert_eq!(
         accepted.sends.schedules[0].generation,
@@ -305,11 +315,11 @@ async fn accepted_stale_timeout_error_and_terminal_turns_match_independent_model
     assert!(duplicate.sends.behavior.is_empty());
 
     assert_eq!(model.no_activity(), None);
-    let failed = behavior.transition(ReceiveTimeoutEvent::Inner(User::user(MailAddr(1), 7)));
-    assert!(matches!(failed, Err(ReceiveTimeoutError::Inner(Failed))));
+    let failed = behavior.transition(ReceiveTimeoutEvent::Behavior(User::user(MailAddr(1), 7)));
+    assert!(matches!(failed, Err(Failed)));
 
     let accepted = behavior
-        .transition(ReceiveTimeoutEvent::Inner(User::user(MailAddr(1), 2)))
+        .transition(ReceiveTimeoutEvent::Behavior(User::user(MailAddr(1), 2)))
         .unwrap();
     assert_eq!(
         accepted.sends.schedules[0].generation,
@@ -317,7 +327,7 @@ async fn accepted_stale_timeout_error_and_terminal_turns_match_independent_model
     );
 
     let terminal = behavior
-        .transition(ReceiveTimeoutEvent::Inner(User::user(MailAddr(1), 0)))
+        .transition(ReceiveTimeoutEvent::Behavior(User::user(MailAddr(1), 0)))
         .unwrap();
     assert_eq!(terminal.become_, Step::Stop(Exit::Normal));
     assert!(terminal.sends.schedules.is_empty());
@@ -335,12 +345,16 @@ impl Behavior for StopsAtInitialization {
     type Error = Never;
     type Birth = NoBirths;
 
-    fn init(&mut self) -> Acted<MailAddr, Never, Self::Sends, NoBirths, Never> {
+    fn init(
+        &mut self,
+        _: behavior::InitializationTurn,
+    ) -> Acted<MailAddr, Never, Self::Sends, NoBirths, Never> {
         Ok(Actions::stop(Exit::Normal))
     }
 
     fn transition(
         &mut self,
+        _: behavior::ActiveTurn,
         _event: Self::Event,
     ) -> Acted<MailAddr, Never, Self::Sends, NoBirths, Never> {
         Ok(Actions::cont())
@@ -355,14 +369,12 @@ fn stopped_at_reaction(
 
 #[tokio::test]
 async fn terminal_initialization_consumes_absolute_timer_state() {
-    let due = tokio::time::Instant::now() + Duration::from_secs(1);
-    let mut behavior = Deadline::new(
-        StopsAtInitialization,
-        TimerId(0),
-        Some(due),
-        stopped_at_reaction,
-    );
-    let initial = behavior.init().unwrap();
+    let due = std::time::Instant::now() + Duration::from_secs(1);
+    let behavior =
+        Compose::new(StopsAtInitialization).deadline(TimerId(0), Some(due), stopped_at_reaction);
+    let initialized = behavior.initialize().unwrap();
+    let initial = initialized.actions;
+    let mut behavior = initialized.behavior;
     assert_eq!(initial.become_, Step::Stop(Exit::Normal));
     assert!(initial.sends.schedules.is_empty());
 

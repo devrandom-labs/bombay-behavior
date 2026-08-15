@@ -8,7 +8,7 @@
 //! - no occurrence is ever recorded twice (no duplicate delivery);
 //! - the fold never panics.
 
-use behavior::{Behavior, Machine, MailAddr, Move, User, UserEvent};
+use behavior::{Machine, MailAddr, Move, User, UserEvent};
 use libfuzzer_sys::fuzz_target;
 use tokio::runtime::Builder;
 
@@ -21,7 +21,7 @@ enum Phase {
 fuzz_target!(|bytes: &[u8]| {
     let runtime = Builder::new_current_thread().enable_time().build().unwrap();
     runtime.block_on(async {
-        let mut machine = Machine::new(
+        let machine = Machine::new(
             Vec::new(),
             Phase::A,
             |phase, seen: &mut Vec<u64>, id: &u64| match (phase, id % 4) {
@@ -34,6 +34,7 @@ fuzz_target!(|bytes: &[u8]| {
                 }
             },
         );
+        let mut machine = behavior::Compose::new(machine).initialize().unwrap().behavior;
         let mut held_before = 0_usize;
         for (index, _) in bytes.iter().enumerate() {
             let id = u64::try_from(index).unwrap();

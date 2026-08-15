@@ -2,19 +2,25 @@
 //! an event lane to its inner protocol without changing the payload.
 
 macro_rules! forward_event_lane {
-    ($wrapper:ident, $trait:ident, $method:ident, $event:ty) => {
-        impl<E: $crate::$trait> $crate::$trait for $wrapper<E> {
-            fn $method(event: $event) -> Option<Self> {
-                E::$method(event).map(Self::Inner)
+    ($wrapper:ident, $event:ty) => {
+        $crate::protocol::forward::forward_event_lane!($wrapper, $event, Behavior);
+    };
+    ($wrapper:ident, $event:ty, $wrapped:ident) => {
+        impl<E> $crate::RouteInput<$event> for $wrapper<E>
+        where
+            E: $crate::UserEvent + $crate::RouteInput<$event>,
+        {
+            fn route(event: $event) -> Result<Self, $event> {
+                E::route(event).map(Self::$wrapped)
             }
         }
 
         impl<E> $crate::EventInput<$event> for $wrapper<E>
         where
-            E: $crate::$trait + $crate::EventInput<$event>,
+            E: $crate::UserEvent + $crate::EventInput<$event>,
         {
             fn inject(event: $event) -> Self {
-                Self::Inner(E::inject(event))
+                Self::$wrapped(E::inject(event))
             }
         }
     };

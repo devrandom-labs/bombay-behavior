@@ -40,32 +40,39 @@ Its core guarantees are:
 
 ```toml
 [dependencies]
-bombay-behavior = "0.1"
+bombay-behavior = "0.10"
 ```
 
 The package is named `bombay-behavior`; Rust code imports its library as
 `behavior`:
 
 ```rust
-use behavior::{Acted, Actions, Handler, MailAddr, Never, NoBirths, Pure};
+use behavior::{Actions, Compose, MailAddr, Never, NoBirths};
 
 struct Counter(u64);
 
-impl Handler for Counter {
-    type Addr = MailAddr;
-    type Msg = u64;
-
+#[behavior::behavior(
+    addr = MailAddr,
+    message = u64,
+    sends = Vec<Never>,
+    births = NoBirths,
+    error = Never,
+)]
+impl Counter {
     fn receive(
         &mut self,
         _from: MailAddr,
         message: u64,
-    ) -> Acted<MailAddr, Never, Vec<Never>, NoBirths, Never> {
+    ) -> behavior::Acted<MailAddr, Never, Vec<Never>, NoBirths, Never> {
         self.0 += message;
         Ok(Actions::cont())
     }
 }
 
-let behavior = Pure::new(Counter(0));
+let definition = Compose::new(Counter(0));
+let initialized = definition.initialize().unwrap();
+let mut worker = initialized.behavior;
+worker.receive(MailAddr(0), 1).unwrap();
 ```
 
 Ordinary communications name their destination behavior protocol, not an
@@ -82,14 +89,23 @@ address namespace still produce different communication types. Recipients are
 pure route intent; endpoint tables, registration, lookup, and mailbox delivery
 belong to the runtime interpreter.
 
-For function-first code, `Pure::from_fn` accepts a capturing `FnMut`. Complete
+There are two behavior-definition paths: use `#[behavior::behavior(...)]` for
+an ordinary nominal user-message actor, and implement `Behavior` directly for
+a type that owns service-event variants, phases, or wrapper semantics. Complete
 event streams can be evaluated with `fold_events`; it uses the same
 `ActionReducer` as the mailbox interpreter and stops at the first controlled
 failure or termination verdict.
 
+Initialization is a consuming typestate transition. `Compose<B>` is a
+definition and cannot process mailbox events. `initialize` returns
+`Initialized<B>`, whose `actions` must be interpreted before using its
+`Active<B>` behavior. `Active<B>` can process events but cannot be initialized
+again. The call order is enforced by types rather than `NotInitialized` or
+`AlreadyInitialized` runtime branches.
+
 For a nominal user-message behavior, `#[behavior::behavior(...)]` may annotate
-an ordinary inherent impl containing `init(&mut self)` and
-`receive(&mut self, from, message)`. It preserves those methods and generates
+an ordinary inherent impl containing `receive(&mut self, from, message)` and an
+optional `init(&mut self)`. It preserves those methods and generates
 only the explicit `Behavior` wiring, making the type usable in `Births`,
 `Proxy`, `Supervisor`, pools, and interpreter endpoints. The exact expansion
 and deliberately narrow scope are documented in
@@ -131,6 +147,9 @@ cancellation are documented in
 
 The functional core and its reduction laws are documented in
 [Functional Core](docs/functional-core.md).
+
+The completed behavior-owned cleanup and its verification evidence are listed
+in [Behavior-owned Wart Audit](docs/behavior-wart-audit.md).
 
 ## License
 

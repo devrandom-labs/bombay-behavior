@@ -61,10 +61,6 @@ struct Worker;
     error = Never,
 )]
 impl Worker {
-    fn init(&mut self) -> behavior::Acted<MailAddr, Never, Vec<Never>, NoBirths, Never> {
-        Ok(Actions::cont())
-    }
-
     fn receive(
         &mut self,
         _from: MailAddr,
@@ -72,6 +68,46 @@ impl Worker {
     ) -> behavior::Acted<MailAddr, Never, Vec<Never>, NoBirths, Never> {
         Ok(Actions::cont())
     }
+}
+
+struct Manual;
+
+impl Behavior for Manual {
+    type Addr = MailAddr;
+    type Msg = ();
+    type Event = behavior::User<MailAddr, ()>;
+    type Sends = Vec<Never>;
+    type Ph = Never;
+    type Error = Never;
+    type Birth = NoBirths;
+
+    fn transition(
+        &mut self,
+        _: behavior::ActiveTurn,
+        _event: Self::Event,
+    ) -> behavior::BehaviorActed<Self> {
+        Ok(Actions::cont())
+    }
+}
+
+#[test]
+fn omitted_initialization_is_the_explicit_empty_transition() {
+    let initialized = Worker.initialize().unwrap();
+    let actions = initialized.actions;
+
+    assert!(actions.sends.is_empty());
+    assert!(actions.creates.is_empty());
+    assert!(matches!(actions.become_, Step::Continue));
+}
+
+#[test]
+fn behavior_trait_provides_the_same_empty_initialization_transition() {
+    let initialized = Manual.initialize().unwrap();
+    let actions = initialized.actions;
+
+    assert!(actions.sends.is_empty());
+    assert!(actions.creates.is_empty());
+    assert!(matches!(actions.become_, Step::Continue));
 }
 
 struct Generic<T> {
@@ -131,8 +167,9 @@ fn worker(_index: usize) -> Worker {
 
 #[test]
 fn attribute_preserves_normal_methods_and_exact_actions() {
-    let mut counter = Counter { total: 0 };
-    counter.init().unwrap();
+    let counter = Counter { total: 0 };
+    let initialized = counter.initialize().unwrap();
+    let mut counter = initialized.behavior;
     let actions = counter.receive(MailAddr(7), 4).unwrap();
     assert_eq!(counter.total, 5);
     assert_eq!(actions.sends[0].message, 5);
@@ -141,7 +178,7 @@ fn attribute_preserves_normal_methods_and_exact_actions() {
 
 #[test]
 fn generated_behavior_is_nominal_in_pool_and_supervision_positions() {
-    let mut pool: WorkerPool<
+    let pool: WorkerPool<
         MailAddr,
         behavior_testkit::TestRecipient<behavior::PoolResponse<u8, (), MailAddr>>,
         u8,
@@ -150,7 +187,7 @@ fn generated_behavior_is_nominal_in_pool_and_supervision_positions() {
     > = WorkerPool::new(
         nonce,
         1,
-        worker,
+        |index| Some(worker(index)),
         0,
         InterruptionPolicy::Fail,
         RestartPolicy::Permanent,
@@ -158,7 +195,9 @@ fn generated_behavior_is_nominal_in_pool_and_supervision_positions() {
         Duration::from_secs(1),
     )
     .unwrap();
-    let initial = pool.init().unwrap();
+    let initialized = pool.initialize().unwrap();
+    let initial = initialized.actions;
+    let mut pool = initialized.behavior;
     assert_eq!(initial.creates.len(), 1);
     pool.on(WorkerCreationResolved::new(
         0,
@@ -182,8 +221,9 @@ fn generated_behavior_is_nominal_in_pool_and_supervision_positions() {
 
 #[test]
 fn attribute_preserves_impl_generics_and_where_clause() {
-    let mut generic = Generic::<u16> { last: None };
-    generic.init().unwrap();
+    let generic = Generic::<u16> { last: None };
+    let initialized = generic.initialize().unwrap();
+    let mut generic = initialized.behavior;
     let actions = generic.receive(MailAddr(3), 11).unwrap();
     assert_eq!(generic.last, Some(11));
     assert_eq!(actions.sends[0].message, 11);
@@ -191,3 +231,4 @@ fn attribute_preserves_impl_generics_and_where_clause() {
 
 #[allow(dead_code)]
 type NameableBirth = Births<Counter>;
+use behavior_testkit::InitializeTest;

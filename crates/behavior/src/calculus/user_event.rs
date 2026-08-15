@@ -1,11 +1,6 @@
 //! The user-message lane and its composition contracts.
 
 use crate::actor::Address;
-use crate::protocol::{
-    ChildEvent, ChildStopped, CreationEvent, CreationResolved, PeerEvent, PeerStopped,
-    ShutdownEvent, ShutdownRequested, TimeEvent, TimerElapsed, WorkerCreationEvent,
-    WorkerCreationResolved, WorkerEvent, WorkerStopped,
-};
 
 /// The user-message event at the Agha floor.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -23,9 +18,24 @@ pub trait EventInput<Input>: Sized {
     fn inject(input: Input) -> Self;
 }
 
+/// Attempt to route one input through a nested event product.
+///
+/// Unlike [`EventInput`], this is not an acceptance capability. It is the
+/// lossless routing operation used by an outer wrapper when it does not own an
+/// input itself. Rejection returns the original input unchanged.
+pub trait RouteInput<Input>: Sized {
+    fn route(input: Input) -> Result<Self, Input>;
+}
+
 impl<A, M> EventInput<User<A, M>> for User<A, M> {
     fn inject(input: User<A, M>) -> Self {
         input
+    }
+}
+
+impl<A, M, Input> RouteInput<Input> for User<A, M> {
+    fn route(input: Input) -> Result<Self, Input> {
+        Err(input)
     }
 }
 
@@ -63,41 +73,5 @@ impl<A: Address, M> UserEvent for User<A, M> {
     }
     fn into_user(self) -> Result<Self, Self> {
         Ok(self)
-    }
-}
-
-impl<A: Address, M> TimeEvent for User<A, M> {
-    fn time_reached(_: TimerElapsed) -> Option<Self> {
-        None
-    }
-}
-impl<A: Address, M> PeerEvent for User<A, M> {
-    fn peer_stopped(_: PeerStopped<A>) -> Option<Self> {
-        None
-    }
-}
-impl<A: Address, M> ChildEvent for User<A, M> {
-    fn child_stopped(_: ChildStopped<A>) -> Option<Self> {
-        None
-    }
-}
-impl<A: Address, M> WorkerEvent for User<A, M> {
-    fn worker_stopped(_: WorkerStopped<A>) -> Option<Self> {
-        None
-    }
-}
-impl<A: Address, M> CreationEvent for User<A, M> {
-    fn creation_resolved(_: CreationResolved<A::Nonce>) -> Option<Self> {
-        None
-    }
-}
-impl<A: Address, M> WorkerCreationEvent for User<A, M> {
-    fn worker_creation_resolved(_: WorkerCreationResolved<A::Nonce>) -> Option<Self> {
-        None
-    }
-}
-impl<A: Address, M> ShutdownEvent for User<A, M> {
-    fn shutdown_requested(_: ShutdownRequested) -> Option<Self> {
-        None
     }
 }

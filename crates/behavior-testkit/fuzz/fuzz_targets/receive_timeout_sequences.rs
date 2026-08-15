@@ -3,7 +3,7 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, Behavior, Compose, Handler, MailAddr, Never, NoBirths, Pure,
+    Acted, Actions, Compose, MailAddr, Never, NoBirths,
     ReceiveTimeoutEvent, Step, TimerElapsed, TimerGeneration, TimerId, User, UserEvent,
 };
 use libfuzzer_sys::fuzz_target;
@@ -11,10 +11,8 @@ use tokio::runtime::Builder;
 
 struct Sink;
 
-impl Handler for Sink {
-    type Addr = MailAddr;
-    type Msg = u8;
-
+#[behavior::behavior(addr = MailAddr, message = u8, sends = Vec<Never>, births = NoBirths, error = Never)]
+impl Sink {
     fn receive(
         &mut self,
         _from: MailAddr,
@@ -24,10 +22,10 @@ impl Handler for Sink {
     }
 }
 
-type Inner = Pure<Sink>;
+type SinkBehavior = Sink;
 
 fn elapsed(
-    _inner: &mut Inner,
+    _inner: &mut SinkBehavior,
 ) -> Acted<MailAddr, Never, Vec<Never>, NoBirths, Never> {
     Ok(Actions::cont())
 }
@@ -35,8 +33,14 @@ fn elapsed(
 fuzz_target!(|bytes: &[u8]| {
     let runtime = Builder::new_current_thread().build().unwrap();
     runtime.block_on(async {
-        let mut behavior = Compose::new(Sink).receive_timeout(Duration::from_nanos(1), elapsed);
-        let initial = behavior.init().unwrap();
+        let behavior = Compose::new(Sink).receive_timeout(
+            TimerId(0),
+            Duration::from_nanos(1),
+            elapsed,
+        );
+        let initialized = behavior.initialize().unwrap();
+    let initial = initialized.actions;
+    let mut behavior = initialized.behavior;
         assert_eq!(initial.sends.schedules[0].generation, TimerGeneration(0));
         let mut issued = 0_u64;
         let mut live = Some(0_u64);
@@ -48,7 +52,7 @@ fuzz_target!(|bytes: &[u8]| {
                         break;
                     };
                     let actions = behavior
-                        .transition(ReceiveTimeoutEvent::Inner(User::user(MailAddr(1), byte)))
+                        .transition(ReceiveTimeoutEvent::Behavior(User::user(MailAddr(1), byte)))
                         .unwrap();
                     issued = next;
                     live = Some(next);

@@ -9,13 +9,13 @@
 //! agree on every byte.
 
 use behavior::{
-    Acted, Actions, Behavior, Crash, Delivery, Exit, Handler, MailAddr, Never, Pure, RestartDenial,
+    Acted, Actions, Crash, Delivery, Exit, MailAddr, Never, RestartDenial,
     RestartPolicy, Step, Strategy, SupervisionEvent, SupervisionFailureReason, Supervisor,
     WorkerStopped, stop_on_supervision_failure,
 };
 use libfuzzer_sys::fuzz_target;
 use tokio::runtime::Builder;
-use tokio::time::Instant;
+use std::time::Instant;
 
 const FLEET: usize = 4;
 const BUDGET: u32 = 2;
@@ -23,10 +23,8 @@ const WINDOW_NANOS: u64 = 100;
 
 struct Worker;
 
-impl Handler<Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u8>>>> for Worker {
-    type Addr = MailAddr;
-    type Msg = u8;
-
+#[behavior::behavior(addr = MailAddr, message = u8, sends = Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u8>>>, births = behavior::NoBirths, error = Never)]
+impl Worker {
     fn receive(
         &mut self,
         _from: MailAddr,
@@ -36,15 +34,14 @@ impl Handler<Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u8>>>> for Worker 
     }
 }
 
-fn worker(_index: usize) -> Pure<Worker, Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u8>>>> {
-    Pure::new(Worker)
+fn worker(_index: usize) -> Worker {
+    Worker
 }
 
 struct Parent;
 
-impl Handler<Vec<Never>,  behavior::Births<Pure<Worker, Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u8>>>>>, Never> for Parent {
-    type Addr = MailAddr;
-    type Msg = u64;
+#[behavior::behavior(addr = MailAddr, message = u64, sends = Vec<Never>, births = behavior::Births<Worker>, error = Never)]
+impl Parent  {
 
     fn receive(
         &mut self,
@@ -54,7 +51,7 @@ impl Handler<Vec<Never>,  behavior::Births<Pure<Worker, Vec<Delivery<bombay_beha
         MailAddr,
         Never,
         Vec<Never>,
-        behavior::Births<Pure<Worker, Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u8>>>>>,
+        behavior::Births<Worker>,
         Never,
     > {
         Ok(Actions::cont())
@@ -64,18 +61,19 @@ impl Handler<Vec<Never>,  behavior::Births<Pure<Worker, Vec<Delivery<bombay_beha
 fuzz_target!(|bytes: &[u8]| {
     let runtime = Builder::new_current_thread().enable_time().build().unwrap();
     runtime.block_on(async {
-        let mut behavior = Supervisor::new(
-            Pure::new(Parent),
+        let behavior = Supervisor::new(
+            Parent,
             |index| u64::try_from(index).unwrap(),
             FLEET,
-            worker,
+            |index| Some(worker(index)),
             Strategy::OneForOne,
             RestartPolicy::Permanent,
             BUDGET,
             std::time::Duration::from_nanos(WINDOW_NANOS),
-        )
+        ).unwrap()
         .with_failure_reaction(stop_on_supervision_failure);
-        behavior.init().unwrap();
+        let initialized = behavior::Compose::new(behavior).initialize().unwrap();
+        let mut behavior = initialized.behavior;
         let base = Instant::now();
 
         // Independent budget/window model over the same event stream.
@@ -130,7 +128,7 @@ fuzz_target!(|bytes: &[u8]| {
             }
             for slot in 0..FLEET {
                 assert_eq!(
-                    behavior.is_alive(u64::try_from(slot).unwrap()),
+                    behavior.is_alive(u64::try_from(slot).unwrap()).unwrap(),
                     alive[slot],
                     "alive mismatch at byte {index}"
                 );

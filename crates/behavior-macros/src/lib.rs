@@ -2,13 +2,13 @@
 //!
 //! `workers!` compiles a mixed fleet declaration into the erasure-free sum
 //! a `Supervisor` fleet requires (design: actorpass docs, surface talk #2):
-//! `(count, Type, build_fn)` per worker kind → a `Crew` enum with a
-//! delegated `Behavior` impl, a per-variant range `crew_build`, and the
-//! total count. `Crew` is a TYPE — every worker stays its own actor.
+//! `(count, Type, build_fn)` per worker kind → a `Worker` enum with a
+//! delegated `Behavior` impl, a per-variant range `build_worker`, and the
+//! total count. `Worker` is a type—every worker stays its own actor.
 //!
 //! v1 scope: every worker kind shares the SAME protocol (`Event`, `Sends`,
 //! `Error`, and `Birth` — taken from the first kind). Mixed
-//! protocols need the hand-written sum (the `CrewMsg` widening is a
+//! protocols need the hand-written sum (the `WorkerMsg` widening is a
 //! deliberate, documented step — not this macro's job yet).
 
 use proc_macro::TokenStream;
@@ -129,8 +129,10 @@ fn validate_receiver(method: &syn::ImplItemFn) -> Result<()> {
 }
 
 /// Generate the mechanical `Behavior` implementation for a normal inherent
-/// impl containing `init(&mut self)` and `receive(&mut self, from, message)`.
-/// The original impl and methods are preserved unchanged.
+/// impl containing `receive(&mut self, from, message)` and, optionally,
+/// `init(&mut self)`. Omitting `init` selects the behavior algebra's empty
+/// initialization transition. The original impl and methods are preserved
+/// unchanged.
 #[proc_macro_attribute]
 pub fn behavior(args: TokenStream, item: TokenStream) -> TokenStream {
     let args = parse_macro_input!(args as BehaviorArgs);
@@ -153,14 +155,6 @@ pub fn behavior(args: TokenStream, item: TokenStream) -> TokenStream {
         ImplItem::Fn(method) if method.sig.ident == "receive" => Some(method),
         _ => None,
     });
-    let Some(init) = init else {
-        return Error::new_spanned(
-            &item.self_ty,
-            "#[behavior] requires an init(&mut self) method",
-        )
-        .to_compile_error()
-        .into();
-    };
     let Some(receive) = receive else {
         return Error::new_spanned(
             &item.self_ty,
@@ -169,10 +163,15 @@ pub fn behavior(args: TokenStream, item: TokenStream) -> TokenStream {
         .to_compile_error()
         .into();
     };
-    if let Err(error) = validate_receiver(init).and_then(|()| validate_receiver(receive)) {
+    if let Err(error) = init
+        .map_or(Ok(()), validate_receiver)
+        .and_then(|()| validate_receiver(receive))
+    {
         return error.to_compile_error().into();
     }
-    if init.sig.inputs.len() != 1 {
+    if let Some(init) = init
+        && init.sig.inputs.len() != 1
+    {
         return Error::new_spanned(&init.sig, "init must accept exactly &mut self")
             .to_compile_error()
             .into();
@@ -199,6 +198,10 @@ pub fn behavior(args: TokenStream, item: TokenStream) -> TokenStream {
         Ok(behavior) => behavior,
         Err(error) => return error.to_compile_error().into(),
     };
+    let initialize = init.map_or_else(
+        || quote!(::core::result::Result::Ok(#behavior::Actions::cont())),
+        |_| quote!(<#self_ty>::init(self)),
+    );
 
     quote! {
         #item
@@ -212,15 +215,27 @@ pub fn behavior(args: TokenStream, item: TokenStream) -> TokenStream {
             type Error = #error;
             type Birth = #births;
 
-            fn init(&mut self) -> #behavior::BehaviorActed<Self> {
-                <#self_ty>::init(self)
+            fn init(
+                &mut self,
+                _: #behavior::InitializationTurn,
+            ) -> #behavior::BehaviorActed<Self> {
+                #initialize
             }
 
             fn transition(
                 &mut self,
+                _: #behavior::ActiveTurn,
                 event: Self::Event,
             ) -> #behavior::BehaviorActed<Self> {
                 <#self_ty>::receive(self, event.from, event.message)
+            }
+        }
+
+        impl #impl_generics #behavior::BehaviorBase for #self_ty #where_clause {
+            type Base = Self;
+
+            fn base(&self) -> &Self {
+                self
             }
         }
     }
@@ -266,7 +281,7 @@ impl Parse for Specs {
 }
 
 /// `workers![(4, WorkerA, build_a), (2, WorkerB, build_b)]` → a block
-/// declaring the `Crew` sum and yielding `(total, crew_build)` for
+/// declaring the `Worker` sum and yielding `(total, build_worker)` for
 /// `Supervisor`'s fleet. Slots are contiguous per variant (slot = nonce;
 /// rest-for-one's birth order is the declaration order).
 #[proc_macro]
@@ -306,24 +321,27 @@ pub fn workers(input: TokenStream) -> TokenStream {
         };
         let end = start + n;
         let build = &s.build;
-        build_arms.push(quote! { #start..#end => Crew::#v((#build)(i)) });
+        build_arms
+            .push(quote! { #start..#end => ::core::option::Option::Some(Worker::#v((#build)(i))) });
         start = end;
     }
     let total = start;
 
     let step_arms = variants
         .iter()
-        .map(|v| quote! { Crew::#v(b) => b.transition(ev) });
-    let init_arms = variants.iter().map(|v| quote! { Crew::#v(b) => b.init() });
+        .map(|v| quote! { Worker::#v(b) => b.transition(turn, ev) });
+    let init_arms = variants
+        .iter()
+        .map(|v| quote! { Worker::#v(b) => b.init(turn) });
 
     let out = quote! {
         {
             /// The macro-generated mixed-fleet sum (see `workers!`).
-            enum Crew {
+            enum Worker {
                 #(#variant_defs),*
             }
 
-            impl #behavior::Behavior for Crew {
+            impl #behavior::Behavior for Worker {
                 type Addr = <#first_ty as #behavior::Behavior>::Addr;
                 type Msg = <#first_ty as #behavior::Behavior>::Msg;
                 type Event = <#first_ty as #behavior::Behavior>::Event;
@@ -332,7 +350,7 @@ pub fn workers(input: TokenStream) -> TokenStream {
                 type Error = <#first_ty as #behavior::Behavior>::Error;
                 type Birth = <#first_ty as #behavior::Behavior>::Birth;
 
-                fn init(&mut self) -> ::core::result::Result<
+                fn init(&mut self, turn: #behavior::InitializationTurn) -> ::core::result::Result<
                     #behavior::Actions<Self::Addr, Self::Ph, Self::Sends, Self::Birth>,
                     Self::Error,
                 > {
@@ -343,6 +361,7 @@ pub fn workers(input: TokenStream) -> TokenStream {
 
                 fn transition(
                     &mut self,
+                    turn: #behavior::ActiveTurn,
                     ev: Self::Event,
                 ) -> ::core::result::Result<
                     #behavior::Actions<Self::Addr, Self::Ph, Self::Sends, Self::Birth>,
@@ -355,14 +374,14 @@ pub fn workers(input: TokenStream) -> TokenStream {
 
             }
 
-            fn crew_build(i: usize) -> Crew {
+            fn build_worker(i: usize) -> ::core::option::Option<Worker> {
                 match i {
                     #(#build_arms,)*
-                    _ => unreachable!("workers!: fleet index out of range — driver/behavior desync"),
+                    _ => ::core::option::Option::None,
                 }
             }
 
-            (#total, crew_build as fn(usize) -> Crew)
+            (#total, build_worker as fn(usize) -> ::core::option::Option<Worker>)
         }
     };
     out.into()

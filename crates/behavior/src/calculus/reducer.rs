@@ -2,7 +2,7 @@
 
 use core::ops::ControlFlow;
 
-use super::Behavior;
+use super::{Behavior, delegate_transition, initialize};
 use crate::Exit;
 use crate::actor::{Address, BirthMode, Create};
 use crate::effects::{Actions, SendAlgebra};
@@ -19,6 +19,25 @@ pub struct Folded<A: Address, Sends, New> {
     pub effects: Effects<A, Sends, New>,
     pub exit: Option<Exit<A>>,
     pub transitions: usize,
+}
+
+/// A controlled fold failure together with every previously committed effect.
+pub struct FoldFailure<A: Address, Sends, New, E> {
+    pub effects: Effects<A, Sends, New>,
+    pub error: E,
+    pub transitions: usize,
+}
+
+impl<A: Address, Sends, New, E: core::fmt::Debug> core::fmt::Debug
+    for FoldFailure<A, Sends, New, E>
+{
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        formatter
+            .debug_struct("FoldFailure")
+            .field("error", &self.error)
+            .field("transitions", &self.transitions)
+            .finish_non_exhaustive()
+    }
 }
 
 /// A left fold over Bombay actions.
@@ -81,19 +100,33 @@ impl<A: Address, Sends: SendAlgebra, New> ActionReducer<A, Sends, New> {
     reason = "the result exposes every behavior-owned effect and child seat"
 )]
 pub fn fold_events<B>(
-    behavior: &mut B,
+    mut behavior: B,
     events: impl IntoIterator<Item = B::Event>,
-) -> Result<Folded<B::Addr, B::Sends, <B::Birth as BirthMode>::Child>, B::Error>
+) -> Result<
+    Folded<B::Addr, B::Sends, <B::Birth as BirthMode>::Child>,
+    FoldFailure<B::Addr, B::Sends, <B::Birth as BirthMode>::Child, B::Error>,
+>
 where
     B: Behavior<Ph = Never>,
 {
     let mut reducer = ActionReducer::new();
-    if let ControlFlow::Break(exit) = reducer.push(behavior.init()?) {
+    let initialization = match initialize(&mut behavior) {
+        Ok(actions) => actions,
+        Err(error) => {
+            let folded = reducer.finish(None);
+            return Err(FoldFailure {
+                effects: folded.effects,
+                error,
+                transitions: folded.transitions,
+            });
+        }
+    };
+    if let ControlFlow::Break(exit) = reducer.push(initialization) {
         return Ok(reducer.finish(Some(exit)));
     }
 
     let result = events.into_iter().try_fold((), |(), event| {
-        let actions = match behavior.transition(event) {
+        let actions = match delegate_transition(&mut behavior, event) {
             Ok(actions) => actions,
             Err(error) => return ControlFlow::Break(Err(error)),
         };
@@ -106,16 +139,56 @@ where
     match result {
         ControlFlow::Continue(()) => Ok(reducer.finish(None)),
         ControlFlow::Break(Ok(exit)) => Ok(reducer.finish(Some(exit))),
-        ControlFlow::Break(Err(error)) => Err(error),
+        ControlFlow::Break(Err(error)) => {
+            let folded = reducer.finish(None);
+            Err(FoldFailure {
+                effects: folded.effects,
+                error,
+                transitions: folded.transitions,
+            })
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Acted, Actions, Behavior, Delivery, MailAddr, NoBirths, Pure, Recipient, User};
+    use crate::{Actions, Behavior, Delivery, MailAddr, NoBirths, Recipient, User};
 
     struct Sink;
+
+    struct Accumulator {
+        sum: u8,
+        stop_at: u8,
+    }
+
+    impl Behavior for Accumulator {
+        type Addr = MailAddr;
+        type Msg = u8;
+        type Event = User<MailAddr, u8>;
+        type Sends = Vec<Delivery<Sink>>;
+        type Ph = Never;
+        type Error = Never;
+        type Birth = NoBirths;
+
+        fn transition(
+            &mut self,
+            _: crate::ActiveTurn,
+            event: Self::Event,
+        ) -> crate::BehaviorActed<Self> {
+            self.sum += event.message;
+            let sends = vec![Delivery::new(Recipient::global(MailAddr(9)), self.sum)];
+            Ok(Actions::new(
+                sends,
+                Vec::new(),
+                if self.sum >= self.stop_at {
+                    Step::Stop(Exit::Normal)
+                } else {
+                    Step::Continue
+                },
+            ))
+        }
+    }
 
     impl Behavior for Sink {
         type Addr = MailAddr;
@@ -126,40 +199,25 @@ mod tests {
         type Error = Never;
         type Birth = NoBirths;
 
-        fn init(&mut self) -> crate::BehaviorActed<Self> {
+        fn init(&mut self, _: crate::InitializationTurn) -> crate::BehaviorActed<Self> {
             Ok(Actions::cont())
         }
 
-        fn transition(&mut self, _: Self::Event) -> crate::BehaviorActed<Self> {
+        fn transition(
+            &mut self,
+            _: crate::ActiveTurn,
+            _: Self::Event,
+        ) -> crate::BehaviorActed<Self> {
             Ok(Actions::cont())
         }
     }
 
     #[test]
     fn event_fold_short_circuits_and_accepts_capturing_transitions() {
-        let stop_at = 3;
-        let mut behavior = Pure::from_fn(
-            0_u8,
-            move |sum: &mut u8,
-                  _from: MailAddr,
-                  message: u8|
-                  -> Acted<MailAddr, Never, Vec<Delivery<Sink>>, NoBirths, Never> {
-                *sum += message;
-                let sends = vec![Delivery::new(Recipient::global(MailAddr(9)), *sum)];
-                Ok(Actions::new(
-                    sends,
-                    Vec::new(),
-                    if *sum >= stop_at {
-                        Step::Stop(Exit::Normal)
-                    } else {
-                        Step::Continue
-                    },
-                ))
-            },
-        );
+        let behavior = Accumulator { sum: 0, stop_at: 3 };
 
         let folded = fold_events(
-            &mut behavior,
+            behavior,
             [
                 User::new(MailAddr(1), 1),
                 User::new(MailAddr(1), 2),
@@ -171,6 +229,5 @@ mod tests {
         assert_eq!(folded.transitions, 3); // initialization plus two events
         assert_eq!(folded.effects.sends.len(), 2);
         assert!(matches!(folded.exit, Some(Exit::Normal)));
-        assert_eq!(behavior.state().state, 3);
     }
 }

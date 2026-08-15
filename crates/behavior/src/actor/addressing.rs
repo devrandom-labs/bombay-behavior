@@ -147,8 +147,8 @@ where
 ///             type Ph = Never;
 ///             type Error = Never;
 ///             type Birth = NoBirths;
-///             fn init(&mut self) -> behavior::BehaviorActed<Self> { Ok(Actions::cont()) }
-///             fn transition(&mut self, _: Self::Event) -> behavior::BehaviorActed<Self> {
+///             fn init(&mut self, _: crate::InitializationTurn) -> behavior::BehaviorActed<Self> { Ok(Actions::cont()) }
+///             fn transition(&mut self, _: crate::ActiveTurn, _: Self::Event) -> behavior::BehaviorActed<Self> {
 ///                 Ok(Actions::cont())
 ///             }
 ///         }
@@ -180,8 +180,8 @@ where
 ///     type Ph = Never;
 ///     type Error = Never;
 ///     type Birth = NoBirths;
-///     fn init(&mut self) -> behavior::BehaviorActed<Self> { Ok(Actions::cont()) }
-///     fn transition(&mut self, _: Self::Event) -> behavior::BehaviorActed<Self> { Ok(Actions::cont()) }
+///     fn init(&mut self, _: crate::InitializationTurn) -> behavior::BehaviorActed<Self> { Ok(Actions::cont()) }
+///     fn transition(&mut self, _: crate::ActiveTurn, _: Self::Event) -> behavior::BehaviorActed<Self> { Ok(Actions::cont()) }
 /// }
 /// let _ = Recipient::<Worker>::global(OtherAddr(1));
 /// ```
@@ -197,8 +197,8 @@ where
 /// #     type Ph = Never;
 /// #     type Error = Never;
 /// #     type Birth = NoBirths;
-/// #     fn init(&mut self) -> behavior::BehaviorActed<Self> { Ok(Actions::cont()) }
-/// #     fn transition(&mut self, _: Self::Event) -> behavior::BehaviorActed<Self> { Ok(Actions::cont()) }
+/// #     fn init(&mut self, _: crate::InitializationTurn) -> behavior::BehaviorActed<Self> { Ok(Actions::cont()) }
+/// #     fn transition(&mut self, _: crate::ActiveTurn, _: Self::Event) -> behavior::BehaviorActed<Self> { Ok(Actions::cont()) }
 /// # }
 /// let worker = Recipient::<Worker>::global(MailAddr(1));
 /// let _ = Delivery::<Worker>::new(worker, "wrong payload");

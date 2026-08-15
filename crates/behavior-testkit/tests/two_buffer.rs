@@ -8,13 +8,13 @@
 use std::time::Duration;
 
 use behavior::{
-    Behavior, Compose, DeadlineEvent, Machine, MailAddr, Move, Never, StashRoute, Step,
-    TimerElapsed, TimerGeneration, TimerId, UserEvent,
+    Compose, DeadlineEvent, Machine, MailAddr, Move, Never, StashRoute, Step, TimerElapsed,
+    TimerGeneration, TimerId, UserEvent,
 };
 use proptest::collection::vec;
 use proptest::prelude::*;
+use std::time::Instant;
 use tokio::runtime::Builder;
-use tokio::time::Instant;
 
 #[derive(Clone, Copy, PartialEq)]
 enum Phase {
@@ -71,11 +71,12 @@ proptest! {
         fires in vec(any::<u8>(), 0..32),
     ) {
         let due = Instant::now() + Duration::from_secs(1);
-        let mut behavior: Stack = Compose::machine(Vec::new(), Phase::A, on)
+        let behavior: Stack = Compose::new(Machine::new(Vec::new(), Phase::A, on))
             .stash(route)
-            .deadline(Some(due), |_| Ok(Step::Continue));
+            .deadline(behavior::TimerId(0), Some(due), |_| Ok(Step::Continue));
         let runtime = Builder::new_current_thread().enable_all().build().unwrap();
-        behavior.init().unwrap();
+        let initialized = behavior.initialize().unwrap();
+        let mut behavior = initialized.behavior;
 
         let mut consumed = 0_usize;
         let mut stepped = 0_usize;
@@ -97,9 +98,9 @@ proptest! {
 
             // User message through the stack. The fresh message is classified
             // in the phase BEFORE the step (a Goto flips the phase).
-            let phase_before = behavior.behavior().inner().inner().phase();
+            let phase_before = behavior.base().phase();
             let _ = runtime
-                .block_on(async { behavior.transition(DeadlineEvent::Inner(UserEvent::user(MailAddr(0), id))) })
+                .block_on(async { behavior.transition(DeadlineEvent::Behavior(UserEvent::user(MailAddr(0), id))) })
                 .unwrap();
             stepped += 1;
             // Only Deliver/Release-routed messages reach the FSM, and only
@@ -112,9 +113,9 @@ proptest! {
                 consumed += usize::from(id % 4 == goto_class);
             }
 
-            let recorded = behavior.behavior().inner().inner().state().len();
-            let fsm_held = behavior.behavior().inner().inner().held();
-            let stash_held = behavior.behavior().inner().held();
+            let recorded = behavior.base().state().len();
+            let fsm_held = behavior.base().held();
+            let stash_held = behavior.stashed();
             prop_assert_eq!(
                 recorded + fsm_held + stash_held + consumed,
                 stepped,

@@ -6,20 +6,20 @@
 //! concerns.
 
 use crate::behavior::{Actions, Address, Behavior, BirthMode, SendAlgebra, User, UserEvent};
+use crate::protocol::ShutdownRequested;
 use crate::protocol::forward::forward_event_lane;
-use crate::protocol::{ShutdownEvent, ShutdownRequested};
 use crate::{Exit, Step};
 
 /// The complete protocol of a behavior that supports graceful shutdown.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ShutdownProtocol<E> {
-    Inner(E),
+    Behavior(E),
     ShutdownRequested(ShutdownRequested),
 }
 
-impl<E: UserEvent> ShutdownEvent for ShutdownProtocol<E> {
-    fn shutdown_requested(event: ShutdownRequested) -> Option<Self> {
-        Some(Self::ShutdownRequested(event))
+impl<E: UserEvent> crate::RouteInput<ShutdownRequested> for ShutdownProtocol<E> {
+    fn route(event: ShutdownRequested) -> Result<Self, ShutdownRequested> {
+        Ok(Self::ShutdownRequested(event))
     }
 }
 
@@ -34,51 +34,27 @@ impl<E: UserEvent> UserEvent for ShutdownProtocol<E> {
     type Message = E::Message;
 
     fn user(from: Self::Addr, message: Self::Message) -> Self {
-        Self::Inner(E::user(from, message))
+        Self::Behavior(E::user(from, message))
     }
 
     fn into_user(self) -> Result<User<Self::Addr, Self::Message>, Self> {
         match self {
-            Self::Inner(event) => event.into_user().map_err(Self::Inner),
+            Self::Behavior(event) => event.into_user().map_err(Self::Behavior),
             shutdown @ Self::ShutdownRequested(_) => Err(shutdown),
         }
     }
 }
 
+forward_event_lane!(ShutdownProtocol, crate::TimerElapsed);
+forward_event_lane!(ShutdownProtocol, crate::PeerStopped<E::Addr>);
+forward_event_lane!(ShutdownProtocol, crate::ChildStopped<E::Addr>);
+forward_event_lane!(ShutdownProtocol, crate::WorkerStopped<E::Addr>);
 forward_event_lane!(
     ShutdownProtocol,
-    TimeEvent,
-    time_reached,
-    crate::TimerElapsed
-);
-forward_event_lane!(
-    ShutdownProtocol,
-    PeerEvent,
-    peer_stopped,
-    crate::PeerStopped<E::Addr>
-);
-forward_event_lane!(
-    ShutdownProtocol,
-    ChildEvent,
-    child_stopped,
-    crate::ChildStopped<E::Addr>
-);
-forward_event_lane!(
-    ShutdownProtocol,
-    WorkerEvent,
-    worker_stopped,
-    crate::WorkerStopped<E::Addr>
-);
-forward_event_lane!(
-    ShutdownProtocol,
-    CreationEvent,
-    creation_resolved,
     crate::CreationResolved<<E::Addr as crate::Address>::Nonce>
 );
 forward_event_lane!(
     ShutdownProtocol,
-    WorkerCreationEvent,
-    worker_creation_resolved,
     crate::WorkerCreationResolved<<E::Addr as crate::Address>::Nonce>
 );
 
@@ -89,13 +65,22 @@ pub struct StopOnShutdown<B> {
 
 impl<B> StopOnShutdown<B> {
     #[must_use]
-    pub fn new(inner: B) -> Self {
+    pub(crate) fn new(inner: B) -> Self {
         Self { inner }
     }
+}
 
-    #[must_use]
-    pub fn inner(&self) -> &B {
-        &self.inner
+impl<B: Behavior + crate::BehaviorBase> crate::BehaviorBase for StopOnShutdown<B> {
+    type Base = B::Base;
+
+    fn base(&self) -> &Self::Base {
+        self.inner.base()
+    }
+}
+
+impl<B: crate::StashStatus> crate::StashStatus for StopOnShutdown<B> {
+    fn stashed_messages(&self) -> usize {
+        self.inner.stashed_messages()
     }
 }
 
@@ -122,13 +107,25 @@ pub struct FinalizeOnShutdown<B: Behavior> {
 
 impl<B: Behavior> FinalizeOnShutdown<B> {
     #[must_use]
-    pub fn new(inner: B, finalize: ShutdownReaction<B>) -> Self {
+    pub(crate) fn new(inner: B, finalize: ShutdownReaction<B>) -> Self {
         Self { inner, finalize }
     }
+}
 
-    #[must_use]
-    pub fn inner(&self) -> &B {
-        &self.inner
+impl<B: Behavior + crate::BehaviorBase> crate::BehaviorBase for FinalizeOnShutdown<B> {
+    type Base = B::Base;
+
+    fn base(&self) -> &Self::Base {
+        self.inner.base()
+    }
+}
+
+impl<B> crate::StashStatus for FinalizeOnShutdown<B>
+where
+    B: Behavior + crate::StashStatus,
+{
+    fn stashed_messages(&self) -> usize {
+        self.inner.stashed_messages()
     }
 }
 
@@ -149,16 +146,22 @@ macro_rules! impl_shutdown_behavior {
             type Error = B::Error;
             type Birth = Br;
 
-            fn init(&mut self) -> Result<Actions<A, Ph, Sends, Br>, B::Error> {
-                self.inner.init()
+            fn init(
+                &mut self,
+                _: crate::InitializationTurn,
+            ) -> Result<Actions<A, Ph, Sends, Br>, B::Error> {
+                crate::calculus::initialize(&mut self.inner)
             }
 
             fn transition(
                 &mut self,
+                _: crate::ActiveTurn,
                 event: Self::Event,
             ) -> Result<Actions<A, Ph, Sends, Br>, B::Error> {
                 match event {
-                    ShutdownProtocol::Inner(event) => self.inner.transition(event),
+                    ShutdownProtocol::Behavior(event) => {
+                        crate::calculus::delegate_transition(&mut self.inner, event)
+                    }
                     ShutdownProtocol::ShutdownRequested(request) => $shutdown(self, request),
                 }
             }
