@@ -1,9 +1,9 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, Behavior, Births, Compose, Create, DeadlineEvent, Delivery, MailAddr, Never,
-    NoBirths, ReceiveTimeoutEvent, Recipient, Step, TimerElapsed, TimerGeneration, TimerId, User,
-    UserEvent,
+    Acted, Actions, Activate, Behavior, Births, Compose, Create, DeadlineEvent, Delivery, MailAddr,
+    Never, NoBirths, ReceiveTimeoutEvent, Recipient, Step, TimerElapsed, TimerGeneration, TimerId,
+    User, UserEvent,
 };
 use behavior_testkit::model::InactivityModel;
 
@@ -87,8 +87,7 @@ fn on_timeout(
 #[tokio::test]
 async fn initialization_and_successful_user_folds_arm_after_preserving_actions() {
     let after = Duration::from_secs(5);
-    let behavior =
-        Compose::new(Subject::default()).receive_timeout(behavior::TimerId(0), after, on_timeout);
+    let behavior = (Subject::default()).receive_timeout(behavior::TimerId(0), after, on_timeout);
 
     let initialized = behavior.initialize().unwrap();
     let initial = initialized.actions;
@@ -119,7 +118,7 @@ async fn initialization_and_successful_user_folds_arm_after_preserving_actions()
 
 #[tokio::test]
 async fn matching_delivery_consumes_once_and_reaction_preserves_full_actions() {
-    let behavior = Compose::new(Subject::default()).receive_timeout(
+    let behavior = (Subject::default()).receive_timeout(
         behavior::TimerId(0),
         Duration::from_secs(1),
         on_timeout,
@@ -164,7 +163,7 @@ async fn matching_delivery_consumes_once_and_reaction_preserves_full_actions() {
 
 #[tokio::test]
 async fn errors_and_terminal_user_folds_do_not_rearm() {
-    let failing = Compose::new(Subject::default()).receive_timeout(
+    let failing = (Subject::default()).receive_timeout(
         behavior::TimerId(0),
         Duration::from_secs(1),
         on_timeout,
@@ -181,7 +180,7 @@ async fn errors_and_terminal_user_folds_do_not_rearm() {
         .unwrap();
     assert_eq!(still_live.sends.behavior[0].message, 99);
 
-    let terminal = Compose::new(Subject::default()).receive_timeout(
+    let terminal = (Subject::default()).receive_timeout(
         behavior::TimerId(0),
         Duration::from_secs(1),
         on_timeout,
@@ -227,7 +226,7 @@ fn outer_timeout(
 #[tokio::test]
 async fn nested_timer_service_events_never_reset_receive_inactivity() {
     let due = std::time::Instant::now() + Duration::from_secs(2);
-    let behavior = Compose::new(Subject::default())
+    let behavior = (Subject::default())
         .deadline(behavior::TimerId(0), Some(due), inner_at)
         .receive_timeout(behavior::TimerId(1), Duration::from_secs(1), outer_timeout);
     let initialized = behavior.initialize().unwrap();
@@ -264,7 +263,7 @@ async fn nested_timer_service_events_never_reset_receive_inactivity() {
 #[tokio::test]
 async fn accepted_stale_timeout_error_and_terminal_turns_match_independent_model() {
     let mut model = InactivityModel::new();
-    let behavior = Compose::new(Subject::default()).receive_timeout(
+    let behavior = (Subject::default()).receive_timeout(
         behavior::TimerId(0),
         Duration::from_secs(1),
         on_timeout,
@@ -368,8 +367,7 @@ fn stopped_at_reaction(_inner: &mut StopsAtInitialization) -> Result<behavior::B
 #[tokio::test]
 async fn terminal_initialization_consumes_absolute_timer_state() {
     let due = std::time::Instant::now() + Duration::from_secs(1);
-    let behavior =
-        Compose::new(StopsAtInitialization).deadline(TimerId(0), Some(due), stopped_at_reaction);
+    let behavior = (StopsAtInitialization).deadline(TimerId(0), Some(due), stopped_at_reaction);
     let initialized = behavior.initialize().unwrap();
     let initial = initialized.actions;
     let mut behavior = initialized.behavior;

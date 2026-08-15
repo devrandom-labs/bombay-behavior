@@ -8,7 +8,7 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, Crash, Create, Delivery, MailAddr, Never, Recipient, RestartPolicy,
+    Acted, Actions, Compose, Crash, Create, Delivery, MailAddr, Never, Recipient, RestartPolicy,
     SendAlgebra, Step, Strategy, SupervisionEvent, User, UserEvent, WorkerStopped,
 };
 use behavior_testkit::{Mailbox, drive};
@@ -128,7 +128,7 @@ async fn driver_accumulates_supervising_send_products_losslessly() {
             at,
         }),
     ]);
-    let trace = drive(behavior::Compose::new(supervisor), &mut mailbox).unwrap();
+    let trace = drive(supervisor, &mut mailbox).unwrap();
 
     assert_eq!(trace.transitions, 5);
     assert_eq!(trace.pending, 0);
@@ -248,7 +248,7 @@ async fn driver_full_stack_mixed_lanes_stop_on_peer_death() {
 
     let due = Instant::now() + Duration::from_secs(1);
     let peer = MailAddr(44);
-    let behavior = Compose::new(EchoingParent { seen: Vec::new() })
+    let behavior = (EchoingParent { seen: Vec::new() })
         .stash(|m| {
             if m % 3 == 2 {
                 StashRoute::Stash
@@ -264,9 +264,9 @@ async fn driver_full_stack_mixed_lanes_stop_on_peer_death() {
             |index| Some(child(index)),
         )
         .unwrap()
-        .restart(Strategy::OneForOne)
-        .when(RestartPolicy::Permanent)
-        .within(u32::MAX, Duration::MAX);
+        .with_strategy(Strategy::OneForOne)
+        .with_policy(RestartPolicy::Permanent)
+        .with_budget(u32::MAX, Duration::MAX);
     let mut mailbox = Mailbox::new([
         SupervisionEvent::Behavior(DeadlineEvent::Behavior(WatchEvent::Behavior(User::user(
             MailAddr(9),
@@ -356,7 +356,7 @@ async fn macro_defined_behavior_drives_like_a_base() {
         }
     }
 
-    let behavior = behavior::Compose::new(FnRecorder { seen: Vec::new() });
+    let behavior = FnRecorder { seen: Vec::new() };
     let mut mailbox = Mailbox::new([
         User::user(MailAddr(1), 3),
         User::user(MailAddr(2), 9),
@@ -407,7 +407,7 @@ async fn driver_stash_stop_preserves_held_and_stops() {
         }
     }
 
-    let behavior = behavior::Compose::new(StopOnZero { seen: Vec::new() }).stash(|m: &u64| {
+    let behavior = (StopOnZero { seen: Vec::new() }).stash(|m: &u64| {
         if *m == 0 {
             StashRoute::Release
         } else {

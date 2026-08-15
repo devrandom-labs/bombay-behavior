@@ -308,6 +308,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Activate as _;
     use behavior::MailAddr;
     struct Target;
     struct Reply;
@@ -362,10 +363,7 @@ mod tests {
     }
     #[test]
     fn greater_priority_and_fifo_ties_are_stable() {
-        let mut s = crate::Compose::new(Subject::new(4).unwrap())
-            .initialize()
-            .unwrap()
-            .behavior;
+        let mut s = (Subject::new(4).unwrap()).initialize().unwrap().behavior;
         for pair in [(1, 2), (2, 3), (3, 3), (4, 1)] {
             offer(&mut s, pair.0, pair.1);
         }
@@ -381,10 +379,7 @@ mod tests {
     }
     #[test]
     fn full_and_empty_are_explicit() {
-        let mut s = crate::Compose::new(Subject::new(1).unwrap())
-            .initialize()
-            .unwrap()
-            .behavior;
+        let mut s = (Subject::new(1).unwrap()).initialize().unwrap().behavior;
         offer(&mut s, 1, 0);
         let rejected = s
             .receive(
@@ -414,10 +409,7 @@ mod tests {
     fn insertion_sequence_exhaustion_never_wraps_or_consumes_the_next_value() {
         let mut definition = Subject::new(2).unwrap();
         definition.next = Some(u64::MAX);
-        let mut subject = crate::Compose::new(definition)
-            .initialize()
-            .unwrap()
-            .behavior;
+        let mut subject = (definition).initialize().unwrap().behavior;
         offer(&mut subject, 1, 0);
         assert_eq!(subject.state(), PriorityQueueState::Exhausted { queued: 1 });
         let rejected = subject

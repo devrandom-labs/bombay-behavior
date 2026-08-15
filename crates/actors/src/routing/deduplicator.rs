@@ -211,6 +211,7 @@ where
 
 #[cfg(test)]
 mod tests {
+    use crate::Activate as _;
     use behavior::MailAddr;
 
     use super::*;
@@ -264,10 +265,7 @@ mod tests {
 
     #[test]
     fn duplicate_returns_value_without_refreshing_retention() {
-        let mut subject = crate::Compose::new(Subject::new(2).unwrap())
-            .initialize()
-            .unwrap()
-            .behavior;
+        let mut subject = (Subject::new(2).unwrap()).initialize().unwrap().behavior;
         let _ = deliver(&mut subject, 1, 10);
         let duplicate = deliver(&mut subject, 1, 11);
         assert!(duplicate.sends.deliveries.is_empty());
@@ -280,10 +278,7 @@ mod tests {
 
     #[test]
     fn eviction_is_explicit_and_allows_later_readmission() {
-        let mut subject = crate::Compose::new(Subject::new(2).unwrap())
-            .initialize()
-            .unwrap()
-            .behavior;
+        let mut subject = (Subject::new(2).unwrap()).initialize().unwrap().behavior;
         let _ = deliver(&mut subject, 1, 10);
         let _ = deliver(&mut subject, 2, 20);
         let third = deliver(&mut subject, 3, 30);

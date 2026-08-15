@@ -184,6 +184,7 @@ where
 
 #[cfg(test)]
 mod tests {
+    use crate::Activate as _;
     use behavior::MailAddr;
 
     use super::*;
@@ -206,10 +207,7 @@ mod tests {
 
     #[test]
     fn stale_and_conflicting_candidates_return_ownership_atomically() {
-        let mut subject = crate::Compose::new(Subject::new())
-            .initialize()
-            .unwrap()
-            .behavior;
+        let mut subject = (Subject::new()).initialize().unwrap().behavior;
         let _ = subject
             .receive(
                 MailAddr(9),
@@ -250,10 +248,7 @@ mod tests {
 
     #[test]
     fn query_reports_unconfigured_and_configured_as_distinct_states() {
-        let mut subject = crate::Compose::new(Subject::new())
-            .initialize()
-            .unwrap()
-            .behavior;
+        let mut subject = (Subject::new()).initialize().unwrap().behavior;
         let initial = subject
             .receive(
                 MailAddr(9),

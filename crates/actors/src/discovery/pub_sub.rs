@@ -202,6 +202,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Activate as _;
     use behavior::MailAddr;
     struct Destination;
     impl Behavior for Destination {
@@ -221,10 +222,7 @@ mod tests {
     fn topics_and_subscribers_preserve_first_order() {
         let one = Recipient::global(MailAddr(1));
         let two = Recipient::global(MailAddr(2));
-        let mut s = crate::Compose::new(Subject::new())
-            .initialize()
-            .unwrap()
-            .behavior;
+        let mut s = (Subject::new()).initialize().unwrap().behavior;
         for subscriber in [one, two, one] {
             s.receive(
                 MailAddr(9),
@@ -243,10 +241,7 @@ mod tests {
     #[test]
     fn empty_known_and_unknown_topics_return_publication() {
         let one = Recipient::global(MailAddr(1));
-        let mut s = crate::Compose::new(Subject::new())
-            .initialize()
-            .unwrap()
-            .behavior;
+        let mut s = (Subject::new()).initialize().unwrap().behavior;
         s.receive(
             MailAddr(9),
             PubSubMessage::Subscribe {

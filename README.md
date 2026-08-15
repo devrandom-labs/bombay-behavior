@@ -59,7 +59,7 @@ Rust code imports `bombay-behavior` as `behavior` and
 
 ```rust
 use behavior::{Actions, MailAddr, Never, NoBirths};
-use behavior_actors::Compose;
+use behavior_actors::Activate;
 
 struct Counter(u64);
 
@@ -81,8 +81,7 @@ impl Counter {
     }
 }
 
-let definition = Compose::new(Counter(0));
-let initialized = definition.initialize().unwrap();
+let initialized = Counter(0).initialize().unwrap();
 let mut worker = initialized.behavior;
 worker.receive(MailAddr(0), 1).unwrap();
 ```
@@ -110,12 +109,16 @@ controlled failure or termination verdict. Production mailbox execution uses
 the one universal `bombay-engine::Driver`; `fold_events` is not a second actor
 runtime.
 
-Initialization is a consuming typestate transition. `Compose<B>` is a
-definition and cannot process mailbox events. `initialize` returns
-`Initialized<B>`, whose `actions` must be interpreted before using its
-`Active<B>` behavior. `Active<B>` can process events but cannot be initialized
-again. The call order is enforced by types rather than `NotInitialized` or
-`AlreadyInitialized` runtime branches.
+Initialization is a consuming typestate transition. Every concrete `Behavior`
+implements the `Activate` extension trait, so a standalone catalogue template
+or domain behavior initializes directly without a composition container.
+`initialize` returns `Initialized<B>`, whose `actions` must be interpreted
+before using its `Active<B>` behavior. `Active<B>` can process events but cannot
+be initialized again. The call order is enforced by types rather than
+`NotInitialized` or `AlreadyInitialized` runtime branches. Import `Compose`
+only when applying typed wrappers such as `watch`, `deadline`, `stash`, or
+`stop_on_shutdown`; constructors and policy configuration remain on their
+owning concrete template types.
 
 For a nominal user-message behavior, `#[behavior::behavior(...)]` may annotate
 an ordinary inherent impl containing `receive(&mut self, from, message)` and an

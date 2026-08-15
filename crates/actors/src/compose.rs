@@ -1,5 +1,4 @@
-//! Intent-facing typestate composition. Every method immediately builds a
-//! concrete pure behavior; there is no separate intent representation.
+//! Direct activation and statically typed wrapper composition.
 
 use std::time::Duration;
 
@@ -10,7 +9,7 @@ use crate::BehaviorBase;
 use crate::protocol::TimerId;
 use crate::shutdown::{FinalizeOnShutdown, ShutdownReaction, StopOnShutdown};
 use crate::stash::{Stash, StashRoute};
-use crate::supervision::{RestartPolicy, Strategy, SupervisionFailureReaction, Supervisor};
+use crate::supervision::{RestartPolicy, Strategy, Supervisor};
 use crate::time::{Deadline, DeadlineReaction};
 use crate::time::{OneShot, OneShotReaction};
 use crate::time::{Periodic, PeriodicReaction};
@@ -24,25 +23,13 @@ const DEFAULT_STRATEGY: Strategy = Strategy::OneForOne;
 const DEFAULT_POLICY: RestartPolicy = RestartPolicy::Transient;
 const DEFAULT_BUDGET: (u32, Duration) = (1, Duration::from_secs(5));
 
-/// A behavior definition that may still be wrapped and initialized.
-///
-/// Definitions deliberately expose no mailbox fold:
-///
-/// ```compile_fail
-/// use behavior::{Compose, Machine, MailAddr, Move, Never};
-///
-/// let mut definition: Compose<Machine<MailAddr, (), u8, (), Never>> =
-///     Compose::new(Machine::new((), (), |_, _, _| Ok(Move::Stay)));
-/// definition.receive(MailAddr(0), 1);
-/// ```
-pub struct Compose<B> {
-    behavior: B,
-}
-
 /// An initialized behavior and the effects that must be interpreted before
 /// its first mailbox turn.
 pub struct Initialized<B: Behavior> {
+    /// The activated behavior; only this value can fold mailbox events.
     pub behavior: Active<B>,
+    /// Ordered initialization effects that the Driver interprets before the
+    /// first mailbox event.
     pub actions: Actions<B::Addr, B::Ph, B::Sends, B::Birth>,
 }
 
@@ -52,10 +39,13 @@ pub struct Initialized<B: Behavior> {
 /// repeated through the public API:
 ///
 /// ```compile_fail
-/// use behavior::{Behavior, Compose, Machine, MailAddr, Move, Never};
+/// use behavior_actors::{Activate, Behavior, Machine, MailAddr, Move, Never};
 ///
-/// let definition: Compose<Machine<MailAddr, (), u8, (), Never>> =
-///     Compose::new(Machine::new((), (), |_, _, _| Ok(Move::Stay)));
+/// let definition = Machine::<MailAddr, _, _, _, Never>::new(
+///     (),
+///     (),
+///     |_, _, _| Ok(Move::Stay),
+/// );
 /// let active = definition.initialize().unwrap().behavior;
 /// active.initialize();
 /// ```
@@ -64,6 +54,7 @@ pub struct Active<B: Behavior> {
 }
 
 impl<B: Behavior> Active<B> {
+    /// Inspect the authored base behavior through any wrapper depth.
     #[must_use]
     pub fn base(&self) -> &B::Base
     where
@@ -72,6 +63,7 @@ impl<B: Behavior> Active<B> {
         self.behavior.base()
     }
 
+    /// Return the number of messages held by a composed stash layer.
     #[must_use]
     pub fn stashed(&self) -> usize
     where
@@ -119,42 +111,25 @@ impl<B: Behavior> core::ops::Deref for Active<B> {
     }
 }
 
-impl<B> Compose<B> {
-    /// Begin a composition from the one concrete [`Behavior`] value being
-    /// defined directly or by `#[behavior]`.
-    #[must_use]
-    pub const fn new(behavior: B) -> Self {
-        Self { behavior }
-    }
-}
-
-impl<B: Behavior> Compose<B> {
-    fn map_behavior<Mapped>(self, map: impl FnOnce(B) -> Mapped) -> Compose<Mapped> {
-        Compose {
-            behavior: map(self.behavior),
-        }
-    }
-
-    fn try_map_behavior<Mapped, E>(
-        self,
-        map: impl FnOnce(B) -> Result<Mapped, E>,
-    ) -> Result<Compose<Mapped>, E> {
-        map(self.behavior).map(|behavior| Compose { behavior })
-    }
-
-    #[must_use]
-    pub fn base(&self) -> &B::Base
-    where
-        B: BehaviorBase,
-    {
-        self.behavior.base()
-    }
-
-    #[must_use]
-    pub fn definition(&self) -> &B {
-        &self.behavior
-    }
-
+/// Consuming initialization for any concrete behavior definition.
+///
+/// This trait makes standalone catalogue templates directly usable without a
+/// composition container. It is deliberately separate from [`Compose`]:
+/// initialization is a lifecycle transition, not a wrapper transformation.
+///
+/// A raw definition cannot use the active mailbox API:
+///
+/// ```compile_fail
+/// use behavior_actors::{Machine, MailAddr, Move, Never};
+///
+/// let mut definition = Machine::<MailAddr, _, _, _, Never>::new(
+///     (),
+///     (),
+///     |_, _, _| Ok(Move::Stay),
+/// );
+/// definition.receive(MailAddr(0), 1_u8);
+/// ```
+pub trait Activate: Behavior + Sized {
     /// Consume this definition, perform its one initialization fold, and
     /// return the active behavior together with the ordered initialization
     /// effects.
@@ -163,47 +138,57 @@ impl<B: Behavior> Compose<B> {
     ///
     /// Returns the behavior's controlled initialization failure. A failed
     /// definition is consumed and cannot be activated or retried.
-    pub fn initialize(self) -> Result<Initialized<B>, B::Error> {
-        let mut behavior = self.behavior;
+    fn initialize(self) -> Result<Initialized<Self>, Self::Error> {
+        let mut behavior = self;
         let actions = behavior::initialize(&mut behavior)?;
         Ok(Initialized {
             behavior: Active { behavior },
             actions,
         })
     }
+}
 
+impl<B: Behavior> Activate for B {}
+
+/// Statically typed wrapper composition for any concrete behavior.
+///
+/// Catalogue templates are constructed directly through their owning types.
+/// This trait exists only for transformations that wrap a complete behavior,
+/// change its closed event sum or named effect products, and preserve those
+/// lanes through initialization and transition folds.
+///
+/// Standalone catalogue types do not require this trait. Import it only when a
+/// wrapper method below is part of the concrete behavior definition.
+pub trait Compose: Behavior + Sized {
     /// Stop normally when a typed shutdown request is folded.
     #[must_use]
-    pub fn stop_on_shutdown(self) -> Compose<StopOnShutdown<B>> {
-        self.map_behavior(StopOnShutdown::new)
+    fn stop_on_shutdown(self) -> StopOnShutdown<Self> {
+        StopOnShutdown::new(self)
     }
 
     /// Apply one final pure fold, retain its sends and creations, and stop
     /// normally regardless of the fold's become verdict.
     #[must_use]
-    pub fn finalize_on_shutdown(
-        self,
-        finalize: ShutdownReaction<B>,
-    ) -> Compose<FinalizeOnShutdown<B>> {
-        self.map_behavior(|behavior| FinalizeOnShutdown::new(behavior, finalize))
+    fn finalize_on_shutdown(self, finalize: ShutdownReaction<Self>) -> FinalizeOnShutdown<Self> {
+        FinalizeOnShutdown::new(self, finalize)
     }
 
     /// Observe a peer and apply a pure reaction when it stops.
     #[must_use]
-    pub fn watch(self, peer: B::Addr, on_stopped: LinkReaction<B>) -> Compose<Watch<B>> {
-        self.map_behavior(|behavior| Watch::new(behavior, peer, on_stopped))
+    fn watch(self, peer: Self::Addr, on_stopped: LinkReaction<Self>) -> Watch<Self> {
+        Watch::new(self, peer, on_stopped)
     }
 
     /// Apply a pure reaction when the given absolute time is reached.
     ///
     #[must_use]
-    pub fn deadline(
+    fn deadline(
         self,
         timer: TimerId,
         when: Option<Instant>,
-        on_reached: DeadlineReaction<B>,
-    ) -> Compose<Deadline<B>> {
-        self.map_behavior(|behavior| Deadline::new(behavior, timer, when, on_reached))
+        on_reached: DeadlineReaction<Self>,
+    ) -> Deadline<Self> {
+        Deadline::new(self, timer, when, on_reached)
     }
 
     /// Notify the behavior once after an idle period containing no successful
@@ -215,50 +200,50 @@ impl<B: Behavior> Compose<B> {
     /// unarmed until another successful continuing user communication.
     ///
     #[must_use]
-    pub fn receive_timeout(
+    fn receive_timeout(
         self,
         timer: TimerId,
         after: Duration,
-        on_elapsed: ReceiveTimeoutReaction<B>,
-    ) -> Compose<ReceiveTimeout<B>> {
-        self.map_behavior(|behavior| ReceiveTimeout::new(behavior, timer, after, on_elapsed))
+        on_elapsed: ReceiveTimeoutReaction<Self>,
+    ) -> ReceiveTimeout<Self> {
+        ReceiveTimeout::new(self, timer, after, on_elapsed)
     }
 
     /// Notify the behavior exactly once after a relative delay.
     #[must_use]
-    pub fn one_shot(
+    fn one_shot(
         self,
         timer: TimerId,
         after: Duration,
-        on_elapsed: OneShotReaction<B>,
-    ) -> Compose<OneShot<B>>
+        on_elapsed: OneShotReaction<Self>,
+    ) -> OneShot<Self>
     where
-        B::Event: crate::RouteInput<crate::TimerElapsed>,
+        Self::Event: crate::RouteInput<crate::TimerElapsed>,
     {
-        self.map_behavior(|behavior| OneShot::new(behavior, timer, after, on_elapsed))
+        OneShot::new(self, timer, after, on_elapsed)
     }
 
     /// Notify the behavior after every accepted relative timer generation.
     #[must_use]
-    pub fn periodic(
+    fn periodic(
         self,
         timer: TimerId,
         every: Duration,
-        on_elapsed: PeriodicReaction<B>,
-    ) -> Compose<Periodic<B>>
+        on_elapsed: PeriodicReaction<Self>,
+    ) -> Periodic<Self>
     where
-        B::Event: crate::RouteInput<crate::TimerElapsed>,
+        Self::Event: crate::RouteInput<crate::TimerElapsed>,
     {
-        self.map_behavior(|behavior| Periodic::new(behavior, timer, every, on_elapsed))
+        Periodic::new(self, timer, every, on_elapsed)
     }
 
     /// Hold messages selected by `route` and replay them on `Release`.
     #[must_use]
-    pub fn stash(self, route: fn(&B::Msg) -> StashRoute) -> Compose<Stash<B>>
+    fn stash(self, route: fn(&Self::Msg) -> StashRoute) -> Stash<Self>
     where
-        B: Behavior<Ph = Never>,
+        Self: Behavior<Ph = Never>,
     {
-        self.map_behavior(|behavior| Stash::new(behavior, route))
+        Stash::new(self, route)
     }
 
     /// Create a supervised child topology with an explicit creator-local
@@ -269,69 +254,32 @@ impl<B: Behavior> Compose<B> {
     ///
     /// Returns a typed fleet error when a configured nonce is duplicated or
     /// another topology invariant cannot be established.
-    pub fn children<C>(
+    fn children<C>(
         self,
-        nonces: fn(usize) -> <B::Addr as Address>::Nonce,
+        nonces: fn(usize) -> <Self::Addr as Address>::Nonce,
         count: usize,
         build: fn(usize) -> Option<C>,
-    ) -> ChildrenResult<B, C>
+    ) -> ChildrenResult<Self, C>
     where
-        B: Behavior<Birth = Births<C>>,
-        C: Behavior<Ph = Never, Addr = B::Addr>,
-        <B::Addr as Address>::Nonce: From<u64>,
+        Self: Behavior<Birth = Births<C>>,
+        C: Behavior<Ph = Never, Addr = Self::Addr>,
+        <Self::Addr as Address>::Nonce: From<u64>,
     {
-        self.try_map_behavior(|behavior| {
-            Supervisor::new(
-                behavior,
-                nonces,
-                count,
-                build,
-                DEFAULT_STRATEGY,
-                DEFAULT_POLICY,
-                DEFAULT_BUDGET.0,
-                DEFAULT_BUDGET.1,
-            )
-        })
+        Supervisor::new(
+            self,
+            nonces,
+            count,
+            build,
+            DEFAULT_STRATEGY,
+            DEFAULT_POLICY,
+            DEFAULT_BUDGET.0,
+            DEFAULT_BUDGET.1,
+        )
     }
 }
+
+impl<B: Behavior> Compose for B {}
 
 /// Result of constructing a statically typed supervised child topology.
 pub type ChildrenResult<B, C> =
-    Result<Compose<Supervisor<B, C>>, crate::FleetError<<<B as Behavior>::Addr as Address>::Nonce>>;
-
-impl<B, C> Compose<Supervisor<B, C>>
-where
-    B: Behavior<Birth = Births<C>>,
-    C: Behavior<Ph = Never, Addr = B::Addr>,
-    <B::Addr as Address>::Nonce: From<u64>,
-{
-    #[must_use]
-    pub fn restart(self, strategy: Strategy) -> Self {
-        Self {
-            behavior: self.behavior.with_strategy(strategy),
-        }
-    }
-
-    #[must_use]
-    pub fn when(self, policy: RestartPolicy) -> Self {
-        Self {
-            behavior: self.behavior.with_policy(policy),
-        }
-    }
-
-    #[must_use]
-    pub fn within(self, maximum: u32, window: Duration) -> Self {
-        Self {
-            behavior: self.behavior.with_budget(maximum, window),
-        }
-    }
-
-    /// Apply a pure reaction when supervision can no longer preserve its
-    /// child topology.
-    #[must_use]
-    pub fn on_supervision_failure(self, reaction: SupervisionFailureReaction<B>) -> Self {
-        Self {
-            behavior: self.behavior.with_failure_reaction(reaction),
-        }
-    }
-}
+    Result<Supervisor<B, C>, crate::FleetError<<<B as Behavior>::Addr as Address>::Nonce>>;

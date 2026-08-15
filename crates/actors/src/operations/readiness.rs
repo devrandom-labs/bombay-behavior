@@ -254,6 +254,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Activate as _;
     use behavior::MailAddr;
 
     struct Reply;
@@ -274,10 +275,7 @@ mod tests {
 
     #[test]
     fn all_dependencies_must_have_ready_evidence() {
-        let mut subject = crate::Compose::new(Subject::new([1, 1, 2]))
-            .initialize()
-            .unwrap()
-            .behavior;
+        let mut subject = (Subject::new([1, 1, 2])).initialize().unwrap().behavior;
         let query = |subject: &mut crate::Active<Subject>| {
             subject
                 .receive(
@@ -315,10 +313,7 @@ mod tests {
 
     #[test]
     fn stale_conflicting_and_unknown_evidence_are_atomic() {
-        let mut subject = crate::Compose::new(Subject::new([1]))
-            .initialize()
-            .unwrap()
-            .behavior;
+        let mut subject = (Subject::new([1])).initialize().unwrap().behavior;
         let _ = subject
             .receive(
                 MailAddr(9),
@@ -373,10 +368,7 @@ mod tests {
 
     #[test]
     fn empty_dependency_set_is_ready() {
-        let mut subject = crate::Compose::new(Subject::new([]))
-            .initialize()
-            .unwrap()
-            .behavior;
+        let mut subject = (Subject::new([])).initialize().unwrap().behavior;
         let report = subject
             .receive(
                 MailAddr(9),

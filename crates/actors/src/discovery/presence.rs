@@ -459,6 +459,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Activate as _;
     use behavior::MailAddr;
     #[derive(Debug, Clone, PartialEq, Eq)]
     struct Participant(u8);
@@ -487,10 +488,7 @@ mod tests {
     }
     #[test]
     fn refresh_and_expiry_are_version_and_generation_safe() {
-        let mut s = crate::Compose::new(Subject::new(timer))
-            .initialize()
-            .unwrap()
-            .behavior;
+        let mut s = (Subject::new(timer)).initialize().unwrap().behavior;
         s.receive(
             MailAddr(0),
             PresenceMessage::Announce {
@@ -545,10 +543,7 @@ mod tests {
         fn collision(_: &Participant) -> TimerId {
             TimerId(1)
         }
-        let mut s = crate::Compose::new(Subject::new(collision))
-            .initialize()
-            .unwrap()
-            .behavior;
+        let mut s = (Subject::new(collision)).initialize().unwrap().behavior;
         s.receive(
             MailAddr(0),
             PresenceMessage::Announce {
@@ -598,10 +593,7 @@ mod tests {
 
     #[test]
     fn identical_evidence_is_idempotent_without_rescheduling() {
-        let mut s = crate::Compose::new(Subject::new(timer))
-            .initialize()
-            .unwrap()
-            .behavior;
+        let mut s = (Subject::new(timer)).initialize().unwrap().behavior;
         let message = || PresenceMessage::Announce {
             participant: Participant(1),
             version: PresenceVersion(1),
@@ -635,10 +627,7 @@ mod tests {
             },
             notify: reply(),
         });
-        let mut s = crate::Compose::new(definition)
-            .initialize()
-            .unwrap()
-            .behavior;
+        let mut s = (definition).initialize().unwrap().behavior;
         let rejected = s
             .receive(
                 MailAddr(0),

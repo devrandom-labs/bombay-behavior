@@ -6,10 +6,10 @@ use std::sync::{
 use std::time::Duration;
 
 use behavior::{
-    Actions, AssignmentId, Behavior, CreationKind, CreationRejection, Delivery, InterruptionPolicy,
-    JobId, MailAddr, Never, NoBirths, PoolAssignment, PoolConfigError, PoolError, PoolMessage,
-    PoolResponse, Proxy, ProxyCommand, Recipient, RestartPolicy, Step, User,
-    WorkerCreationResolved, WorkerPhase, WorkerPool, WorkerStopped,
+    Actions, AssignmentId, Behavior, Compose, CreationKind, CreationRejection, Delivery,
+    InterruptionPolicy, JobId, MailAddr, Never, NoBirths, PoolAssignment, PoolConfigError,
+    PoolError, PoolMessage, PoolResponse, Proxy, ProxyCommand, Recipient, RestartPolicy, Step,
+    User, WorkerCreationResolved, WorkerPhase, WorkerPool, WorkerStopped,
 };
 use proptest::collection::vec;
 use proptest::prelude::*;
@@ -692,7 +692,7 @@ proptest! {
 
 #[test]
 fn assignment_and_response_lanes_survive_shutdown_composition() {
-    let behavior = behavior::Compose::new(pool(1, 0, InterruptionPolicy::Fail)).stop_on_shutdown();
+    let behavior = (pool(1, 0, InterruptionPolicy::Fail)).stop_on_shutdown();
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
     behavior

@@ -39,10 +39,14 @@ items are recorded, not silently dropped:
 - E11a — `order_gate` watermark clone: rejected (clean fix doesn't typecheck for
   generic K; verbose `Bound` form costs more than the clone).
 
-## Active experiment
+## Completed experiment
 
-None — practical fixed point reached for high-value findings. The loop remains
-open per operator directive; any fresh audit can reopen it.
+E13 — removed the mandatory `Compose<B>` container while retaining typed
+wrapper composition. Direct catalogue definitions activate through `Activate`;
+`Compose` is now a wrapper-only extension trait. Normal construction, including
+the two-buffer `Machine`/`Stash`/`Deadline` stack, relies on inference instead
+of an explicit nested alias. The workspace, doctests, architecture review,
+fuzz-target build, and authoritative Nix gate pass.
 
 Independent audit correction: E05 reverted; generated `.serena/` local state
 is ignored rather than entering the repository. Pinned-Nix format, all-target
@@ -50,5 +54,4 @@ check, and 10 documentation tests pass after the correction.
 
 ## Exact next actions
 
-1. Operator decision on Lens 2 (positional constructors) if the churn is wanted.
-2. Otherwise continue re-auditing on demand; ledger is current and resumable.
+1. Commit the verified direct-use composition surface without pushing.

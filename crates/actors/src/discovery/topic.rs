@@ -123,6 +123,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Activate as _;
     use behavior::MailAddr;
 
     struct Subscriber;
@@ -145,7 +146,7 @@ mod tests {
     fn membership_is_idempotent_and_publication_ordered() {
         let one = Recipient::<Subscriber>::global(MailAddr(1));
         let two = Recipient::<Subscriber>::global(MailAddr(2));
-        let mut topic = crate::Compose::new(Topic::<MailAddr, u8, Subscriber>::new())
+        let mut topic = (Topic::<MailAddr, u8, Subscriber>::new())
             .initialize()
             .unwrap()
             .behavior;
@@ -167,7 +168,7 @@ mod tests {
 
     #[test]
     fn empty_publication_returns_owned_value() {
-        let mut topic = crate::Compose::new(Topic::<MailAddr, u8, Subscriber>::new())
+        let mut topic = (Topic::<MailAddr, u8, Subscriber>::new())
             .initialize()
             .unwrap()
             .behavior;

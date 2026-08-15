@@ -744,6 +744,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Activate as _;
     use behavior::{MailAddr, Step};
 
     struct Destination;
@@ -798,11 +799,10 @@ mod tests {
         let one = Recipient::<Destination>::global(MailAddr(1));
         let two = Recipient::<Destination>::global(MailAddr(2));
         let three = Recipient::<Destination>::global(MailAddr(3));
-        let mut router =
-            crate::Compose::new(Router::new(vec![one, two, three], RoundRobin::default()))
-                .initialize()
-                .unwrap()
-                .behavior;
+        let mut router = (Router::new(vec![one, two, three], RoundRobin::default()))
+            .initialize()
+            .unwrap()
+            .behavior;
 
         let first = router
             .receive(MailAddr(9), RouterMessage::Route(7))
@@ -823,7 +823,7 @@ mod tests {
     fn broadcast_preserves_membership_order_and_deduplicates() {
         let one = Recipient::<Destination>::global(MailAddr(1));
         let two = Recipient::<Destination>::global(MailAddr(2));
-        let mut router = crate::Compose::new(Router::new(vec![one, two, one], Broadcast))
+        let mut router = (Router::new(vec![one, two, one], Broadcast))
             .initialize()
             .unwrap()
             .behavior;
@@ -836,13 +836,11 @@ mod tests {
 
     #[test]
     fn empty_membership_returns_the_owned_payload() {
-        let mut router = crate::Compose::new(Router::<MailAddr, Destination, _>::new(
-            Vec::new(),
-            RoundRobin::default(),
-        ))
-        .initialize()
-        .unwrap()
-        .behavior;
+        let mut router =
+            (Router::<MailAddr, Destination, _>::new(Vec::new(), RoundRobin::default()))
+                .initialize()
+                .unwrap()
+                .behavior;
 
         assert!(matches!(
             router.receive(MailAddr(9), RouterMessage::Route(11)),
@@ -855,13 +853,10 @@ mod tests {
     fn least_loaded_requires_typed_evidence_and_breaks_ties_by_membership_order() {
         let one = Recipient::<Destination>::global(MailAddr(1));
         let two = Recipient::<Destination>::global(MailAddr(2));
-        let mut router = crate::Compose::new(Router::new(
-            vec![one, two],
-            LeastLoaded::<Destination>::new(),
-        ))
-        .initialize()
-        .unwrap()
-        .behavior;
+        let mut router = (Router::new(vec![one, two], LeastLoaded::<Destination>::new()))
+            .initialize()
+            .unwrap()
+            .behavior;
 
         assert!(matches!(
             router.receive(MailAddr(9), RouterMessage::Route(1)),
@@ -904,11 +899,10 @@ mod tests {
     fn least_loaded_rejects_stale_and_unknown_evidence_without_mutation() {
         let one = Recipient::<Destination>::global(MailAddr(1));
         let unknown = Recipient::<Destination>::global(MailAddr(8));
-        let mut router =
-            crate::Compose::new(Router::new(vec![one], LeastLoaded::<Destination>::new()))
-                .initialize()
-                .unwrap()
-                .behavior;
+        let mut router = (Router::new(vec![one], LeastLoaded::<Destination>::new()))
+            .initialize()
+            .unwrap()
+            .behavior;
         router
             .receive(
                 MailAddr(9),
@@ -973,7 +967,7 @@ mod tests {
             Recipient::<KeyedDestination>::global(MailAddr(2)),
             Recipient::<KeyedDestination>::global(MailAddr(3)),
         ];
-        let mut router = crate::Compose::new(Router::new(
+        let mut router = (Router::new(
             members.to_vec(),
             ConsistentHash::new(NonZeroU16::new(8).unwrap(), identity_hash),
         ))
@@ -1032,13 +1026,10 @@ mod tests {
     fn rendezvous_hash_is_deterministic_and_rejects_conflicting_tokens() {
         let one = Recipient::<KeyedDestination>::global(MailAddr(1));
         let two = Recipient::<KeyedDestination>::global(MailAddr(2));
-        let mut router = crate::Compose::new(Router::new(
-            vec![one, two],
-            RendezvousHash::new(identity_hash),
-        ))
-        .initialize()
-        .unwrap()
-        .behavior;
+        let mut router = (Router::new(vec![one, two], RendezvousHash::new(identity_hash)))
+            .initialize()
+            .unwrap()
+            .behavior;
         for (recipient, token) in [(one, 11), (two, 22)] {
             router
                 .receive(

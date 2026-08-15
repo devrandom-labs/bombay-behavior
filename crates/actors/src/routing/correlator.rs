@@ -205,6 +205,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Activate as _;
     use behavior::MailAddr;
 
     struct Reply;
@@ -228,10 +229,7 @@ mod tests {
     #[test]
     fn resolve_commits_before_one_terminal_delivery_and_marks_duplicates_stale() {
         let reply = Recipient::<Reply>::global(MailAddr(8));
-        let mut correlator = crate::Compose::new(TestCorrelator::new())
-            .initialize()
-            .unwrap()
-            .behavior;
+        let mut correlator = (TestCorrelator::new()).initialize().unwrap().behavior;
         correlator
             .receive(
                 MailAddr(9),
@@ -271,10 +269,7 @@ mod tests {
     #[test]
     fn cancel_is_terminal_and_unknown_reply_preserves_the_value() {
         let reply = Recipient::<Reply>::global(MailAddr(8));
-        let mut correlator = crate::Compose::new(TestCorrelator::new())
-            .initialize()
-            .unwrap()
-            .behavior;
+        let mut correlator = (TestCorrelator::new()).initialize().unwrap().behavior;
         assert!(matches!(
             correlator.receive(
                 MailAddr(9),

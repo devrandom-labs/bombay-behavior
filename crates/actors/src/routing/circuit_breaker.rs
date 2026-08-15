@@ -360,6 +360,7 @@ impl<A: Address, Reply: Behavior<Addr = A, Msg = BreakerOutcome>> Behavior
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Activate as _;
     use behavior::MailAddr;
 
     struct Reply;
@@ -377,14 +378,12 @@ mod tests {
     }
 
     fn subject() -> crate::Active<CircuitBreaker<MailAddr, Reply>> {
-        crate::Compose::new(
-            CircuitBreaker::new(
-                NonZeroU32::new(2).unwrap(),
-                Duration::from_secs(1),
-                TimerId(8),
-            )
-            .unwrap(),
+        (CircuitBreaker::new(
+            NonZeroU32::new(2).unwrap(),
+            Duration::from_secs(1),
+            TimerId(8),
         )
+        .unwrap())
         .initialize()
         .unwrap()
         .behavior
@@ -493,7 +492,7 @@ mod tests {
     fn attempt_counter_exhaustion_is_typed_not_wrapped() {
         let mut breaker = breaker();
         breaker.next_attempt = u64::MAX;
-        let mut subject = crate::Compose::new(breaker).initialize().unwrap().behavior;
+        let mut subject = (breaker).initialize().unwrap().behavior;
         let actions = subject
             .receive(MailAddr(0), BreakerMessage::Admit { reply_to: reply() })
             .unwrap();
@@ -514,7 +513,7 @@ mod tests {
                 reply_to: reply(),
             },
         };
-        let mut subject = crate::Compose::new(breaker).initialize().unwrap().behavior;
+        let mut subject = (breaker).initialize().unwrap().behavior;
         let actions = subject
             .receive(
                 MailAddr(0),

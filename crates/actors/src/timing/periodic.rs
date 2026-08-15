@@ -168,6 +168,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Activate as _;
+    use crate::Compose as _;
     use behavior::{MailAddr, Never, NoBirths, Step, User};
 
     struct Probe(usize);
@@ -210,7 +212,7 @@ mod tests {
     #[test]
     fn accepted_ticks_rearm_until_the_reaction_stops() {
         let every = Duration::from_secs(3);
-        let initialized = crate::Compose::new(Probe(0))
+        let initialized = (Probe(0))
             .periodic(TimerId(2), every, tick)
             .initialize()
             .unwrap();

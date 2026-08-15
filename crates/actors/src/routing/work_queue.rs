@@ -262,6 +262,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Activate as _;
     use behavior::MailAddr;
     struct Worker;
     struct Reply;
@@ -298,10 +299,7 @@ mod tests {
     }
     #[test]
     fn availability_and_waiting_are_fifo() {
-        let mut s = crate::Compose::new(Subject::new(2))
-            .initialize()
-            .unwrap()
-            .behavior;
+        let mut s = (Subject::new(2)).initialize().unwrap().behavior;
         for w in [worker(1), worker(2)] {
             s.receive(MailAddr(0), WorkQueueMessage::Available { worker: w })
                 .unwrap();
@@ -331,10 +329,7 @@ mod tests {
     }
     #[test]
     fn zero_capacity_returns_unaccepted_value() {
-        let mut s = crate::Compose::new(Subject::new(0))
-            .initialize()
-            .unwrap()
-            .behavior;
+        let mut s = (Subject::new(0)).initialize().unwrap().behavior;
         let a = s
             .receive(
                 MailAddr(0),

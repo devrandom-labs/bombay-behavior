@@ -391,6 +391,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Activate as _;
     use behavior::MailAddr;
 
     struct Reply;
@@ -456,7 +457,7 @@ mod tests {
 
     #[test]
     fn diamond_activates_each_step_once_after_all_prerequisites() {
-        let mut subject = crate::Compose::new(Subject::new(diamond()).unwrap())
+        let mut subject = (Subject::new(diamond()).unwrap())
             .initialize()
             .unwrap()
             .behavior;
@@ -495,7 +496,7 @@ mod tests {
 
     #[test]
     fn blocked_failure_and_duplicate_completion_are_atomic() {
-        let mut subject = crate::Compose::new(Subject::new(diamond()).unwrap())
+        let mut subject = (Subject::new(diamond()).unwrap())
             .initialize()
             .unwrap()
             .behavior;

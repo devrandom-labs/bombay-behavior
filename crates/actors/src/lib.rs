@@ -9,6 +9,12 @@
 //! lanes for Bombay's one universal Driver and statically selected Environment
 //! interpreters.
 //!
+//! Catalogue values are constructed directly. [`Activate`] consumes any
+//! concrete definition into its one initialized [`Active`] state, while
+//! [`Compose`] is needed only when adding a typed behavior wrapper. Rust can
+//! infer wrapper stacks at construction and spawn call sites; applications do
+//! not need to name types such as `Deadline<Stash<Machine<...>>>`.
+//!
 //! The top-level Bombay package is the ordinary application façade. Direct use
 //! of this component crate is intended for interpreter implementation,
 //! component tests, and advanced framework extension.
@@ -35,7 +41,7 @@ pub mod time;
 mod watch;
 pub mod workflow;
 
-pub use compose::{Active, ChildrenResult, Compose, Initialized};
+pub use compose::{Activate, Active, ChildrenResult, Compose, Initialized};
 pub use discovery::{
     Presence, PresenceEntry, PresenceError, PresenceMessage, PresenceOutcome, PresencePhase,
     PresenceReply, PresenceReport, PresenceSends, PresenceVersion, PubSub, PubSubError,

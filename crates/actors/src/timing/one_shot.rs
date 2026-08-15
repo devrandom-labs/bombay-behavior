@@ -155,6 +155,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Activate as _;
+    use crate::Compose as _;
     use behavior::{MailAddr, Never, NoBirths, Step, User};
 
     struct Probe {
@@ -195,7 +197,7 @@ mod tests {
     #[test]
     fn initialization_schedules_then_matching_generation_fires_once() {
         let delay = Duration::from_millis(20);
-        let initialized = crate::Compose::new(Probe { elapsed: 0 })
+        let initialized = (Probe { elapsed: 0 })
             .one_shot(TimerId(7), delay, mark)
             .initialize()
             .unwrap();

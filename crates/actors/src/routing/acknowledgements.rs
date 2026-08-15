@@ -385,6 +385,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Activate as _;
     use behavior::MailAddr;
 
     struct Reply;
@@ -408,10 +409,7 @@ mod tests {
 
     #[test]
     fn membership_is_normalized_and_completion_is_terminal() {
-        let mut subject = crate::Compose::new(Subject::new())
-            .initialize()
-            .unwrap()
-            .behavior;
+        let mut subject = (Subject::new()).initialize().unwrap().behavior;
         let started = subject
             .receive(
                 MailAddr(9),
@@ -475,10 +473,7 @@ mod tests {
 
     #[test]
     fn rejection_and_cancellation_do_not_conflate_phases() {
-        let mut subject = crate::Compose::new(Subject::new())
-            .initialize()
-            .unwrap()
-            .behavior;
+        let mut subject = (Subject::new()).initialize().unwrap().behavior;
         let _ = subject
             .receive(
                 MailAddr(9),

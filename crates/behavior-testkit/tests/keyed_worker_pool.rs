@@ -1,10 +1,10 @@
 use std::time::Duration;
 
 use behavior::{
-    Actions, AffinitySelector, AssignmentId, Behavior, CreationKind, Delivery, InterruptionPolicy,
-    JobId, KeyedPoolMessage, KeyedWorkerPool, MailAddr, Never, NoBirths, PoolAssignment,
-    PoolBehaviorSends, PoolError, PoolResponse, Proxy, ProxyCommand, Recipient, RestartPolicy,
-    SendAlgebra, User, WorkerCreationResolved, WorkerPhase, WorkerStopped,
+    Actions, AffinitySelector, AssignmentId, Behavior, Compose, CreationKind, Delivery,
+    InterruptionPolicy, JobId, KeyedPoolMessage, KeyedWorkerPool, MailAddr, Never, NoBirths,
+    PoolAssignment, PoolBehaviorSends, PoolError, PoolResponse, Proxy, ProxyCommand, Recipient,
+    RestartPolicy, SendAlgebra, User, WorkerCreationResolved, WorkerPhase, WorkerStopped,
 };
 use proptest::prelude::*;
 use std::time::Instant;
@@ -471,7 +471,7 @@ fn short_rebalance_sequences_exhaustively_match_the_binding_model() {
 
 #[test]
 fn keyed_assignment_lanes_survive_shutdown_composition() {
-    let behavior = behavior::Compose::new(pool_definition(Selector::Parity))
+    let behavior = (pool_definition(Selector::Parity))
         .stop_on_shutdown()
         .initialize()
         .unwrap();

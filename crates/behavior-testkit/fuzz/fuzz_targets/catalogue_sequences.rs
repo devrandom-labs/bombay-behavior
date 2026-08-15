@@ -3,7 +3,7 @@
 use std::{num::NonZeroU32, time::Duration};
 
 use behavior::{
-    BreakerMessage, BreakerOutcome, CircuitBreaker, Compose, MailAddr, Presence, PresenceMessage,
+    Activate, BreakerMessage, BreakerOutcome, CircuitBreaker, MailAddr, Presence, PresenceMessage,
     PresenceReply, PresenceVersion, Recipient, TimerElapsed, TimerGeneration, TimerId, Workflow,
     WorkflowDefinition, WorkflowMessage, WorkflowOutcome,
 };
@@ -19,28 +19,24 @@ fn timer(key: &Vec<u8>) -> TimerId {
 }
 
 fuzz_target!(|bytes: &[u8]| {
-    let mut breaker = Compose::new(
-        CircuitBreaker::<MailAddr, BreakerReply>::new(
+    let mut breaker = CircuitBreaker::<MailAddr, BreakerReply>::new(
             NonZeroU32::new(2).expect("constant is non-zero"),
             Duration::from_nanos(1),
             TimerId(1),
         )
-        .expect("constant reset delay is positive"),
-    )
+        .expect("constant reset delay is positive")
     .initialize()
     .expect("breaker initialization is infallible")
     .behavior;
-    let mut presence = Compose::new(Presence::<MailAddr, Vec<u8>, PresenceReplyTarget>::new(timer))
+    let mut presence = (Presence::<MailAddr, Vec<u8>, PresenceReplyTarget>::new(timer))
         .initialize()
         .expect("presence initialization is infallible")
         .behavior;
-    let mut workflow = Compose::new(
-        Workflow::<MailAddr, u8, WorkflowReply>::new(WorkflowDefinition {
+    let mut workflow = Workflow::<MailAddr, u8, WorkflowReply>::new(WorkflowDefinition {
             steps: vec![0, 1, 2],
             dependencies: vec![(0, 2), (1, 2)],
         })
-        .expect("constant graph is acyclic"),
-    )
+        .expect("constant graph is acyclic")
     .initialize()
     .expect("workflow initialization is infallible")
     .behavior;

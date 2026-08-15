@@ -303,6 +303,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Activate as _;
     use behavior::MailAddr;
     struct Target;
     struct Reply;
@@ -360,10 +361,7 @@ mod tests {
     }
     #[test]
     fn opening_releases_in_key_order_and_future_open_keys_deliver_immediately() {
-        let mut s = crate::Compose::new(Subject::new())
-            .initialize()
-            .unwrap()
-            .behavior;
+        let mut s = (Subject::new()).initialize().unwrap().behavior;
         let _ = hold(&mut s, 3, 30);
         let _ = hold(&mut s, 1, 10);
         let a = open(&mut s, 2);
@@ -381,10 +379,7 @@ mod tests {
     }
     #[test]
     fn duplicate_and_stale_opening_are_atomic() {
-        let mut s = crate::Compose::new(Subject::new())
-            .initialize()
-            .unwrap()
-            .behavior;
+        let mut s = (Subject::new()).initialize().unwrap().behavior;
         let _ = hold(&mut s, 2, 20);
         assert!(matches!(
             hold(&mut s, 2, 21).sends.outcomes[0].message,

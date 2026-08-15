@@ -326,6 +326,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Activate as _;
     use behavior::MailAddr;
 
     struct Target;
@@ -362,7 +363,7 @@ mod tests {
     type TestBuffer = Buffer<MailAddr, u8, Target, Reply>;
 
     fn active(policy: OverflowPolicy) -> crate::Active<TestBuffer> {
-        crate::Compose::new(TestBuffer::new(2, policy).unwrap())
+        (TestBuffer::new(2, policy).unwrap())
             .initialize()
             .unwrap()
             .behavior

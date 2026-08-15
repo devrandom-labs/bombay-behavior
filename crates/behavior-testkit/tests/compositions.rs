@@ -6,9 +6,9 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, Behavior, Compose, Crash, DeadlineEvent, Delivery, Exit, MailAddr, Never,
-    PeerStopped, Recipient, StashRoute, Step, SupervisionEvent, TimerElapsed, TimerGeneration,
-    TimerId, User, UserEvent, WatchEvent, WorkerStopped, stop_on_abnormal_death,
+    Acted, Actions, Activate, Behavior, Compose, Crash, DeadlineEvent, Delivery, Exit, MailAddr,
+    Never, PeerStopped, Recipient, StashRoute, Step, SupervisionEvent, TimerElapsed,
+    TimerGeneration, TimerId, User, UserEvent, WatchEvent, WorkerStopped, stop_on_abnormal_death,
     stop_on_supervision_failure,
 };
 use std::time::Instant;
@@ -66,7 +66,7 @@ fn child(_index: usize) -> Child {
 
 const PEER: MailAddr = MailAddr(44);
 
-fn at<T: Behavior>(behavior: Compose<T>, when: Instant) -> Compose<behavior::Deadline<T>> {
+fn at<T: Behavior>(behavior: T, when: Instant) -> behavior::Deadline<T> {
     behavior.deadline(behavior::TimerId(0), Some(when), |_| Ok(Step::Continue))
 }
 
@@ -80,7 +80,7 @@ async fn all_wrapper_permutations_preserve_init_protocol_nesting() {
 
     // Chain .deadline(behavior::TimerId(0), T1).watch(p).deadline(behavior::TimerId(0), T2): outermost Deadline owns T2, Watch owns p,
     // innermost Deadline owns T1.
-    let c1 = at(Compose::new(Recorder::default()), first)
+    let c1 = at(Recorder::default(), first)
         .watch(PEER, stop_on_abnormal_death)
         .deadline(behavior::TimerId(0), Some(second), |_| Ok(Step::Continue));
     let initialized = c1.initialize().unwrap();
@@ -91,7 +91,7 @@ async fn all_wrapper_permutations_preserve_init_protocol_nesting() {
     assert_eq!(i1.sends.behavior.behavior.schedules[0].at, first);
 
     // Chain .deadline(behavior::TimerId(0), T1).deadline(behavior::TimerId(0), T2).watch(p): Watch owns the outer product.
-    let c2 = at(Compose::new(Recorder::default()), first)
+    let c2 = at(Recorder::default(), first)
         .deadline(behavior::TimerId(0), Some(second), |_| Ok(Step::Continue))
         .watch(PEER, stop_on_abnormal_death);
     let initialized = c2.initialize().unwrap();
@@ -102,7 +102,7 @@ async fn all_wrapper_permutations_preserve_init_protocol_nesting() {
     assert_eq!(i2.sends.behavior.behavior.schedules[0].at, first);
 
     // Chain .watch(p).deadline(behavior::TimerId(0), T1).deadline(behavior::TimerId(0), T2).
-    let c3 = Compose::new(Recorder::default())
+    let c3 = (Recorder::default())
         .watch(PEER, stop_on_abnormal_death)
         .deadline(behavior::TimerId(0), Some(first), |_| Ok(Step::Continue))
         .deadline(behavior::TimerId(0), Some(second), |_| Ok(Step::Continue));
@@ -114,7 +114,7 @@ async fn all_wrapper_permutations_preserve_init_protocol_nesting() {
     assert_eq!(i3.sends.behavior.behavior.observations[0].peer, PEER);
 
     // Chain .deadline(behavior::TimerId(0), T2).deadline(behavior::TimerId(0), T1).watch(p).
-    let c4 = at(Compose::new(Recorder::default()), second)
+    let c4 = at(Recorder::default(), second)
         .deadline(behavior::TimerId(0), Some(first), |_| Ok(Step::Continue))
         .watch(PEER, stop_on_abnormal_death);
     let initialized = c4.initialize().unwrap();
@@ -125,7 +125,7 @@ async fn all_wrapper_permutations_preserve_init_protocol_nesting() {
     assert_eq!(i4.sends.behavior.behavior.schedules[0].at, second);
 
     // Chain .deadline(behavior::TimerId(0), T2).watch(p).deadline(behavior::TimerId(0), T1).
-    let c5 = at(Compose::new(Recorder::default()), second)
+    let c5 = at(Recorder::default(), second)
         .watch(PEER, stop_on_abnormal_death)
         .deadline(behavior::TimerId(0), Some(first), |_| Ok(Step::Continue));
     let initialized = c5.initialize().unwrap();
@@ -136,7 +136,7 @@ async fn all_wrapper_permutations_preserve_init_protocol_nesting() {
     assert_eq!(i5.sends.behavior.behavior.schedules[0].at, second);
 
     // Chain .watch(p).deadline(behavior::TimerId(0), T2).deadline(behavior::TimerId(0), T1).
-    let c6 = Compose::new(Recorder::default())
+    let c6 = (Recorder::default())
         .watch(PEER, stop_on_abnormal_death)
         .deadline(behavior::TimerId(0), Some(second), |_| Ok(Step::Continue))
         .deadline(behavior::TimerId(0), Some(first), |_| Ok(Step::Continue));
@@ -153,7 +153,7 @@ async fn all_wrapper_permutations_preserve_init_protocol_nesting() {
 #[tokio::test]
 async fn stash_layer_contributes_no_init_sends() {
     let due = Instant::now() + Duration::from_secs(1);
-    let behavior = Compose::new(Recorder::default())
+    let behavior = (Recorder::default())
         .stash(|_| StashRoute::Deliver)
         .watch(PEER, stop_on_abnormal_death)
         .deadline(behavior::TimerId(0), Some(due), |_| Ok(Step::Continue));
@@ -170,7 +170,7 @@ async fn stash_layer_contributes_no_init_sends() {
 #[tokio::test]
 async fn environment_lanes_bypass_stash_while_user_lane_is_intercepted() {
     let due = Instant::now() + Duration::from_secs(1);
-    let behavior = Compose::new(Recorder::default())
+    let behavior = (Recorder::default())
         .stash(|_| StashRoute::Stash)
         .watch(PEER, stop_on_abnormal_death)
         .deadline(behavior::TimerId(0), Some(due), |_| Ok(Step::Continue));
@@ -208,7 +208,7 @@ async fn environment_lanes_bypass_stash_while_user_lane_is_intercepted() {
 /// the reaction on each matching death; ordinary user messages still fold.
 #[tokio::test]
 async fn watch_reaction_reinvokes_on_each_death_and_fold_continues() {
-    let behavior = Compose::new(Recorder::default()).watch(PEER, stop_on_abnormal_death);
+    let behavior = (Recorder::default()).watch(PEER, stop_on_abnormal_death);
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
 
@@ -236,7 +236,7 @@ async fn watch_reaction_reinvokes_on_each_death_and_fold_continues() {
 async fn watch_of_watch_routes_each_peer_to_its_own_layer() {
     let inner_peer = MailAddr(1);
     let outer_peer = MailAddr(2);
-    let behavior = Compose::new(Recorder::default())
+    let behavior = (Recorder::default())
         .watch(inner_peer, stop_on_abnormal_death)
         .watch(outer_peer, stop_on_abnormal_death);
     let initialized = behavior.initialize().unwrap();
@@ -263,7 +263,7 @@ async fn watch_of_watch_routes_each_peer_to_its_own_layer() {
 /// Reached event: the reaction never fires.
 #[tokio::test]
 async fn unscheduled_at_is_inert_to_reached_events() {
-    let behavior = Compose::new(Recorder::default()).deadline(behavior::TimerId(0), None, |_| {
+    let behavior = (Recorder::default()).deadline(behavior::TimerId(0), None, |_| {
         Ok(Step::Stop(behavior::Stopped))
     });
     let initialized = behavior.initialize().unwrap();
@@ -286,7 +286,7 @@ async fn unscheduled_at_is_inert_to_reached_events() {
 /// the fold alive; `LinkDied` and crashes stop it carrying the peer address.
 #[tokio::test]
 async fn abnormal_death_reaction_outcome_classes() {
-    let behavior = Compose::new(Recorder::default()).watch(PEER, stop_on_abnormal_death);
+    let behavior = (Recorder::default()).watch(PEER, stop_on_abnormal_death);
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
 
@@ -333,7 +333,7 @@ async fn supervision_preserves_inner_watch_routing() {
         }
     }
 
-    let behavior = Compose::new(Parent)
+    let behavior = (Parent)
         .watch(PEER, stop_on_abnormal_death)
         .children(
             |index| u64::try_from(index).unwrap(),
@@ -360,7 +360,7 @@ async fn supervision_preserves_inner_watch_routing() {
     assert!(matches!(died.become_, Step::Stop(behavior::Stopped)));
 
     // Child lane: a death still yields a replacement send on a fresh stack.
-    let replacement = Compose::new(Parent)
+    let replacement = (Parent)
         .watch(PEER, stop_on_abnormal_death)
         .children(
             |index| u64::try_from(index).unwrap(),
@@ -404,7 +404,7 @@ async fn supervision_failure_reaction_preserves_composed_send_lanes() {
         }
     }
 
-    let behavior = Compose::new(Parent)
+    let behavior = (Parent)
         .watch(PEER, stop_on_abnormal_death)
         .children(
             |index| u64::try_from(index).unwrap(),
@@ -412,8 +412,8 @@ async fn supervision_failure_reaction_preserves_composed_send_lanes() {
             |index| Some(child(index)),
         )
         .unwrap()
-        .within(0, Duration::MAX)
-        .on_supervision_failure(stop_on_supervision_failure);
+        .with_budget(0, Duration::MAX)
+        .with_failure_reaction(stop_on_supervision_failure);
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
 

@@ -237,6 +237,7 @@ where
 
 #[cfg(test)]
 mod tests {
+    use crate::Activate as _;
     use behavior::{MailAddr, Step};
 
     use super::*;
@@ -295,10 +296,7 @@ mod tests {
 
     #[test]
     fn gaps_release_only_after_the_missing_position_arrives() {
-        let mut subject = crate::Compose::new(Subject::new(Sequence(3)))
-            .initialize()
-            .unwrap()
-            .behavior;
+        let mut subject = (Subject::new(Sequence(3))).initialize().unwrap().behavior;
         let future = offer(&mut subject, 4, 40);
         assert!(future.sends.deliveries.is_empty());
         assert_eq!(
@@ -330,10 +328,7 @@ mod tests {
 
     #[test]
     fn stale_and_duplicate_offers_return_the_rejected_value() {
-        let mut subject = crate::Compose::new(Subject::new(Sequence(1)))
-            .initialize()
-            .unwrap()
-            .behavior;
+        let mut subject = (Subject::new(Sequence(1))).initialize().unwrap().behavior;
         let _ = offer(&mut subject, 2, 20);
         let duplicate = offer(&mut subject, 2, 21);
         assert!(matches!(
@@ -356,7 +351,7 @@ mod tests {
 
     #[test]
     fn maximum_position_exhausts_without_wrapping() {
-        let mut subject = crate::Compose::new(Subject::new(Sequence(u64::MAX)))
+        let mut subject = (Subject::new(Sequence(u64::MAX)))
             .initialize()
             .unwrap()
             .behavior;

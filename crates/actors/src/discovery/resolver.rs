@@ -152,6 +152,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Activate as _;
     use behavior::MailAddr;
     struct Destination;
     struct Reply;
@@ -193,7 +194,7 @@ mod tests {
     #[test]
     fn protocol_reports_found_and_missing_without_mutation_authority() {
         let destination = Recipient::global(MailAddr(1));
-        let mut s = crate::Compose::new(Subject::from_bindings(&[(1, destination)]).unwrap())
+        let mut s = (Subject::from_bindings(&[(1, destination)]).unwrap())
             .initialize()
             .unwrap()
             .behavior;

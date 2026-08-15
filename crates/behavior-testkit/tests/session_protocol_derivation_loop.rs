@@ -488,7 +488,7 @@ mod composition_checks {
     #[tokio::test]
     async fn fsm_composes_with_watching() {
         let fsm = pool_fsm_definition();
-        let _watching = Compose::new(fsm).watch(MailAddr(1), stop_on_abnormal_death);
+        let _watching = (fsm).watch(MailAddr(1), stop_on_abnormal_death);
     }
 }
 use behavior_testkit::InitializeTest;

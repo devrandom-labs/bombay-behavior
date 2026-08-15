@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, VecDeque};
 
 use behavior::{
-    Actions, Behavior, BehaviorActed, Compose, Deduplicator, DeduplicatorMessage,
+    Actions, Activate, Behavior, BehaviorActed, Deduplicator, DeduplicatorMessage,
     DeduplicatorOutcome, MailAddr, Never, NoBirths, OrderGate, OrderGateMessage, Recipient,
     Sequence, Sequencer, SequencerMessage, SequencerState, User,
 };
@@ -89,7 +89,7 @@ proptest! {
         offers in vec((0_u64..24, any::<u8>()), 0..128)
     ) {
         type Subject = Sequencer<MailAddr, u8, ByteTarget, SequenceReply>;
-        let mut actual = Compose::new(Subject::new(Sequence(0))).initialize().unwrap().behavior;
+        let mut actual = (Subject::new(Sequence(0))).initialize().unwrap().behavior;
         let mut oracle = SequenceOracle::default();
 
         for (sequence, value) in offers {
@@ -118,7 +118,7 @@ proptest! {
         attempts in vec((0_u8..16, any::<u8>()), 0..128)
     ) {
         type Subject = Deduplicator<MailAddr, u8, u8, ByteTarget, DedupReply>;
-        let mut actual = Compose::new(Subject::new(capacity).unwrap()).initialize().unwrap().behavior;
+        let mut actual = (Subject::new(capacity).unwrap()).initialize().unwrap().behavior;
         let mut retained = VecDeque::new();
 
         for (key, value) in attempts {
@@ -159,7 +159,7 @@ proptest! {
         operations in gate_operations()
     ) {
         type Subject = OrderGate<MailAddr, u8, u8, ByteTarget, GateReply>;
-        let mut actual = Compose::new(Subject::new()).initialize().unwrap().behavior;
+        let mut actual = (Subject::new()).initialize().unwrap().behavior;
         let mut watermark = None;
         let mut held = BTreeMap::new();
 

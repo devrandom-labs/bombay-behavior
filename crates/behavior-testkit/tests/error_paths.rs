@@ -170,11 +170,8 @@ async fn supervision_propagates_inner_errors_without_touching_slots() {
 #[tokio::test]
 async fn at_reaction_error_consumes_the_timer() {
     let due = Instant::now() + Duration::from_secs(1);
-    let behavior = Compose::new(FailingParent { fail: true }).deadline(
-        behavior::TimerId(0),
-        Some(due),
-        |_| Err(Boom),
-    );
+    let behavior =
+        (FailingParent { fail: true }).deadline(behavior::TimerId(0), Some(due), |_| Err(Boom));
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
 
@@ -198,7 +195,7 @@ async fn at_reaction_error_consumes_the_timer() {
 #[tokio::test]
 async fn watch_reaction_error_propagates() {
     let peer = MailAddr(44);
-    let behavior = Compose::new(FailingParent { fail: true }).watch(peer, |_b, _p, _o| Err(Boom));
+    let behavior = (FailingParent { fail: true }).watch(peer, |_b, _p, _o| Err(Boom));
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
 
@@ -224,7 +221,7 @@ fn restart_helpers_expose_the_documented_strategies() {
 async fn stash_deliver_arm_error_keeps_held_intact() {
     use behavior::{Compose, StashRoute};
 
-    let behavior = Compose::new(FailingParent { fail: true }).stash(|message| match *message {
+    let behavior = (FailingParent { fail: true }).stash(|message| match *message {
         0 => StashRoute::Release,
         1 => StashRoute::Stash,
         _ => StashRoute::Deliver,
@@ -262,7 +259,7 @@ async fn driver_propagates_errors_and_preserves_the_tail() {
         SupervisionEvent::Behavior(UserEvent::user(MailAddr(9), 3)), // fails (first)
         SupervisionEvent::Behavior(UserEvent::user(MailAddr(9), 5)), // never reached
     ]);
-    let result = drive(Compose::new(supervisor), &mut mailbox);
+    let result = drive(supervisor, &mut mailbox);
     assert!(matches!(
         result,
         Err(behavior::SupervisorError::Behavior(Boom))

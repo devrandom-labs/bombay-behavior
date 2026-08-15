@@ -263,6 +263,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Activate as _;
     use behavior::MailAddr;
     struct Target;
     struct Reply;
@@ -312,7 +313,7 @@ mod tests {
     }
     #[test]
     fn admission_and_rejections_preserve_tokens_and_ownership() {
-        let mut s = crate::Compose::new(Subject::new(tokens(5), 3).unwrap())
+        let mut s = (Subject::new(tokens(5), 3).unwrap())
             .initialize()
             .unwrap()
             .behavior;
@@ -335,7 +336,7 @@ mod tests {
     }
     #[test]
     fn refill_saturates_without_overflow() {
-        let mut s = crate::Compose::new(Subject::new(tokens(5), 0).unwrap())
+        let mut s = (Subject::new(tokens(5), 0).unwrap())
             .initialize()
             .unwrap()
             .behavior;

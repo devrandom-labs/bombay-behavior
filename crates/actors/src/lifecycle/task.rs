@@ -163,6 +163,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Activate as _;
     use behavior::MailAddr;
 
     struct Reply;
@@ -186,10 +187,7 @@ mod tests {
     #[test]
     fn completion_reports_owned_result_and_stops_atomically() {
         let reply = Recipient::<Reply>::global(MailAddr(8));
-        let mut task = crate::Compose::new(TestTask::new())
-            .initialize()
-            .unwrap()
-            .behavior;
+        let mut task = (TestTask::new()).initialize().unwrap().behavior;
         let completed = task
             .receive(
                 MailAddr(9),
@@ -218,10 +216,7 @@ mod tests {
     #[test]
     fn cancellation_is_a_distinct_terminal_fact() {
         let reply = Recipient::<Reply>::global(MailAddr(8));
-        let mut task = crate::Compose::new(TestTask::new())
-            .initialize()
-            .unwrap()
-            .behavior;
+        let mut task = (TestTask::new()).initialize().unwrap().behavior;
         let cancelled = task
             .receive(MailAddr(9), TaskMessage::Cancel { reply_to: reply })
             .unwrap();

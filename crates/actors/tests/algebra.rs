@@ -12,25 +12,17 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, Become, Behavior, Births, ChildStopped, Compose, Crash, Create, CreationKind,
-    CreationRejection, CreationResolved, DeadlineEvent, Delivery, Exit, Machine, MailAddr, Move,
-    Never, NoBirths, ObserveChild, PeerStopped, Proxy, ProxyCommand, ProxyEvent, Recipient,
-    RestartDenial, RestartPolicy, RouteInput, SendAlgebra, ServiceSends, ShutdownRequested,
-    StashRoute, Step, Strategy, SupervisionEvent, SupervisionFailure, SupervisionFailureReason,
-    Supervisor, TimerElapsed, TimerGeneration, TimerId, User, UserEvent, Watch, WatchEvent,
-    WorkerStopped, stop_on_abnormal_death, stop_on_supervision_failure, workers,
+    Acted, Actions, Activate, Become, Behavior, BehaviorBase, Births, ChildStopped, Compose, Crash,
+    Create, CreationKind, CreationRejection, CreationResolved, DeadlineEvent, Delivery, Exit,
+    Machine, MailAddr, Move, Never, NoBirths, ObserveChild, PeerStopped, Proxy, ProxyCommand,
+    ProxyEvent, Recipient, RestartDenial, RestartPolicy, RouteInput, SendAlgebra, ServiceSends,
+    ShutdownRequested, StashRoute, Step, Strategy, SupervisionEvent, SupervisionFailure,
+    SupervisionFailureReason, Supervisor, TimerElapsed, TimerGeneration, TimerId, User, UserEvent,
+    Watch, WatchEvent, WorkerStopped, stop_on_abnormal_death, stop_on_supervision_failure, workers,
 };
 use proptest::prelude::*;
 use std::time::Instant;
 use tokio::runtime::Builder;
-
-trait InitializeTest: Behavior + Sized {
-    fn initialize(self) -> Result<behavior::Initialized<Self>, Self::Error> {
-        Compose::new(self).initialize()
-    }
-}
-
-impl<B: Behavior> InitializeTest for B {}
 
 struct Quiet;
 
@@ -264,7 +256,7 @@ fn active_behavior_invokes_one_fold_and_preserves_actions() {
 
 #[test]
 fn direct_behavior_preserves_explicit_initialization_and_transition_actions() {
-    let behavior = Compose::new(ExplicitInitialization(Vec::new()));
+    let behavior = ExplicitInitialization(Vec::new());
 
     let initialized = behavior.initialize().unwrap();
     let initial = initialized.actions;
@@ -289,7 +281,7 @@ fn direct_behavior_preserves_explicit_initialization_and_transition_actions() {
 #[test]
 fn direct_behavior_composes_with_existing_wrappers_and_init_order() {
     let due = Instant::now();
-    let behavior = Compose::new(InitializationCounter(0))
+    let behavior = (InitializationCounter(0))
         .deadline(TimerId(0), Some(due), |_| Ok(Step::Continue))
         .stop_on_shutdown();
 
@@ -305,7 +297,7 @@ fn direct_behavior_composes_with_existing_wrappers_and_init_order() {
 
 #[tokio::test]
 async fn typed_shutdown_stops_normally_without_running_the_inner_fold() {
-    let behavior = Compose::new(Quiet).stop_on_shutdown();
+    let behavior = (Quiet).stop_on_shutdown();
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
     let event = <_ as RouteInput<ShutdownRequested>>::route(ShutdownRequested).unwrap();
@@ -318,7 +310,7 @@ async fn typed_shutdown_stops_normally_without_running_the_inner_fold() {
 
 #[tokio::test]
 async fn final_shutdown_fold_preserves_effects_and_forces_normal_stop() {
-    let behavior = Compose::new(ShutdownParent).finalize_on_shutdown(finalize_parent);
+    let behavior = (ShutdownParent).finalize_on_shutdown(finalize_parent);
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
     let event = <_ as RouteInput<ShutdownRequested>>::route(ShutdownRequested).unwrap();
@@ -333,7 +325,7 @@ async fn final_shutdown_fold_preserves_effects_and_forces_normal_stop() {
 
 #[tokio::test]
 async fn outer_combinators_preserve_the_shutdown_lane() {
-    let behavior = Compose::new(Quiet)
+    let behavior = (Quiet)
         .stop_on_shutdown()
         .deadline(TimerId(0), None, |_| Ok(Step::Continue))
         .watch(MailAddr(8), stop_on_abnormal_death);
@@ -348,7 +340,7 @@ async fn outer_combinators_preserve_the_shutdown_lane() {
 #[tokio::test]
 async fn shutdown_composition_preserves_inner_initialization_effects() {
     let due = Instant::now() + Duration::from_secs(1);
-    let behavior = Compose::new(Quiet)
+    let behavior = (Quiet)
         .deadline(TimerId(0), Some(due), |_| Ok(Step::Continue))
         .stop_on_shutdown();
     let initialized = behavior.initialize().unwrap();
@@ -363,7 +355,7 @@ async fn shutdown_composition_preserves_inner_initialization_effects() {
 #[tokio::test]
 async fn at_is_a_typed_clock_actor_protocol() {
     let now = Instant::now();
-    let behavior = Compose::new(Quiet).deadline(TimerId(0), Some(now), |_| Ok(Step::Continue));
+    let behavior = (Quiet).deadline(TimerId(0), Some(now), |_| Ok(Step::Continue));
 
     let initialized = behavior.initialize().unwrap();
     let initial = initialized.actions;
@@ -385,7 +377,7 @@ async fn at_is_a_typed_clock_actor_protocol() {
 async fn nested_at_composition_routes_stale_and_matching_events() {
     let early = Instant::now() + Duration::from_secs(1);
     let late = early + Duration::from_secs(1);
-    let outer = Compose::new(Quiet)
+    let outer = (Quiet)
         .deadline(TimerId(0), Some(early), |_| Ok(Step::Continue))
         .deadline(TimerId(1), Some(late), |_| Ok(Step::Continue));
 
@@ -409,7 +401,7 @@ async fn nested_at_composition_routes_stale_and_matching_events() {
 async fn spec_hides_composed_protocols_without_losing_their_effects() {
     let due = Instant::now() + Duration::from_secs(1);
     let peer = MailAddr(8);
-    let behavior = Compose::new(Quiet)
+    let behavior = (Quiet)
         .deadline(TimerId(0), Some(due), |_| Ok(Step::Continue))
         .watch(peer, stop_on_abnormal_death)
         .stash(|_| StashRoute::Deliver);
@@ -431,7 +423,7 @@ async fn spec_hides_composed_protocols_without_losing_their_effects() {
 #[tokio::test]
 async fn watching_registers_and_reacts_through_messages() {
     let peer = MailAddr(7);
-    let behavior = Compose::new(Quiet).watch(peer, stop_on_abnormal_death);
+    let behavior = (Quiet).watch(peer, stop_on_abnormal_death);
     let initialized = behavior.initialize().unwrap();
     let initial = initialized.actions;
     let mut behavior = initialized.behavior;
@@ -459,7 +451,7 @@ async fn stashing_is_local_state_and_replay() {
             Ok(Actions::cont())
         }
     }
-    let behavior = Compose::new(Seen(Vec::new())).stash(|message| match message {
+    let behavior = (Seen(Vec::new())).stash(|message| match message {
         0 => StashRoute::Release,
         1 => StashRoute::Stash,
         _ => StashRoute::Deliver,
@@ -483,7 +475,7 @@ async fn fsm_is_receive_plus_become_policy() {
         Work(u64),
         Ready,
     }
-    let machine = Compose::new(Machine::new(
+    let machine = Machine::new(
         Vec::new(),
         Phase::Loading,
         |phase, seen: &mut Vec<u64>, message| {
@@ -496,7 +488,7 @@ async fn fsm_is_receive_plus_become_policy() {
                 (_, Message::Ready) => Move::Goto(Phase::Ready),
             })
         },
-    ));
+    );
     let initialized = machine.initialize().unwrap();
     let mut machine = initialized.behavior;
     machine
@@ -561,7 +553,7 @@ impl StashRecording {
 #[tokio::test]
 async fn stash_release_delivers_the_trigger_then_drains_the_held_fifo() {
     let release = Arc::new(AtomicBool::new(false));
-    let behavior = Compose::new(StashRecording(Vec::new())).stash(mutation_stash_route);
+    let behavior = (StashRecording(Vec::new())).stash(mutation_stash_route);
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
     behavior
@@ -594,7 +586,7 @@ fn continue_on_death(
 
 #[tokio::test]
 async fn an_outer_watcher_forwards_a_different_peer_to_the_inner_watcher() {
-    let behavior = Compose::new(Quiet)
+    let behavior = (Quiet)
         .watch(MailAddr(1), stop_on_abnormal_death)
         .watch(MailAddr(2), continue_on_death);
     let initialized = behavior.initialize().unwrap();
@@ -654,7 +646,7 @@ async fn fsm_preserves_direct_stop_and_does_not_drain_on_stay() {
 
 #[tokio::test]
 async fn receive_timeout_reacts_only_to_its_own_live_timer_id() {
-    let behavior = Compose::new(Quiet)
+    let behavior = (Quiet)
         .deadline(TimerId(0), Some(Instant::now()), |_| {
             Ok(Step::Stop(behavior::Stopped))
         })
@@ -668,7 +660,7 @@ async fn receive_timeout_reacts_only_to_its_own_live_timer_id() {
         }))
         .unwrap();
     assert!(matches!(wrong.become_, Step::Stop(behavior::Stopped)));
-    let matching_behavior = Compose::new(Quiet)
+    let matching_behavior = (Quiet)
         .deadline(TimerId(0), Some(Instant::now()), |_| {
             Ok(Step::Stop(behavior::Stopped))
         })
@@ -749,8 +741,7 @@ impl Behavior for TimerAware {
 #[tokio::test]
 async fn a_stale_local_receive_timeout_is_consumed_not_forwarded() {
     let behavior =
-        Compose::new(TimerAware)
-            .receive_timeout(TimerId(0), Duration::from_secs(1), |_| Ok(Actions::stop()));
+        (TimerAware).receive_timeout(TimerId(0), Duration::from_secs(1), |_| Ok(Actions::stop()));
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
     let stale = behavior
@@ -790,24 +781,24 @@ async fn a_proxy_ignores_a_stale_child_stop_nonce() {
 
 #[test]
 fn birth_modes_are_disjoint_and_wrappers_forward_them() {
-    requires_no_births(Compose::new(Quiet).base());
+    requires_no_births((Quiet).base());
 
-    let creator = Compose::new(Parent)
+    let creator = (Parent)
         .deadline(TimerId(0), None, |_| Ok(Step::Continue))
         .watch(MailAddr(4), stop_on_abnormal_death)
         .stash(|_| StashRoute::Deliver);
-    requires_births::<_, Child>(creator.definition());
+    requires_births::<_, Child>(&creator);
 
-    let supervisor = Compose::new(Parent)
+    let supervisor = (Parent)
         .children(
             |index| u64::try_from(index).unwrap(),
             1,
             |index| Some(child(index)),
         )
         .unwrap();
-    requires_births::<_, Proxy<Child>>(supervisor.definition());
-    requires_worker_events(supervisor.definition());
-    let timed_supervisor = Compose::new(Parent)
+    requires_births::<_, Proxy<Child>>(&supervisor);
+    requires_worker_events(&supervisor);
+    let timed_supervisor = (Parent)
         .children(
             |index| u64::try_from(index).unwrap(),
             1,
@@ -815,7 +806,7 @@ fn birth_modes_are_disjoint_and_wrappers_forward_them() {
         )
         .unwrap()
         .deadline(TimerId(0), None, |_| Ok(Step::Continue));
-    requires_worker_events(timed_supervisor.definition());
+    requires_worker_events(&timed_supervisor);
     requires_births::<_, Child>(&Proxy::new(child(0)));
 }
 
@@ -857,16 +848,16 @@ fn verify_budget_failure_and_stop(
 
 #[tokio::test]
 async fn supervisor_creates_proxies_and_replacement_is_a_send() {
-    let supervisor = Compose::new(Parent)
+    let supervisor = (Parent)
         .children(
             |index| u64::try_from(index).unwrap(),
             2,
             |index| Some(child(index)),
         )
         .unwrap()
-        .restart(Strategy::OneForOne)
-        .when(RestartPolicy::Transient)
-        .within(2, Duration::MAX);
+        .with_strategy(Strategy::OneForOne)
+        .with_policy(RestartPolicy::Transient)
+        .with_budget(2, Duration::MAX);
     let initialized = supervisor.initialize().unwrap();
     let initial = initialized.actions;
     let mut supervisor = initialized.behavior;
@@ -1070,16 +1061,16 @@ async fn idle_proxy_marks_an_immediate_successor_as_a_replacement_incarnation() 
 #[tokio::test]
 async fn stable_proxy_reports_worker_stop_and_creates_fresh_replacement() {
     let at = Instant::now();
-    let supervisor = Compose::new(Parent)
+    let supervisor = (Parent)
         .children(
             |index| u64::try_from(index).unwrap(),
             1,
             |index| Some(child(index)),
         )
         .unwrap()
-        .restart(Strategy::OneForOne)
-        .when(RestartPolicy::Transient)
-        .within(1, Duration::MAX);
+        .with_strategy(Strategy::OneForOne)
+        .with_policy(RestartPolicy::Transient)
+        .with_budget(1, Duration::MAX);
 
     let initialized = supervisor.initialize().unwrap();
     let mut initial = initialized.actions;
@@ -1170,17 +1161,17 @@ async fn stopped_proxy_is_retired_without_sending_to_its_dead_address() {
 
 #[tokio::test]
 async fn configured_supervision_failure_reaction_stops_on_budget_denial() {
-    let supervisor = Compose::new(Parent)
+    let supervisor = (Parent)
         .children(
             |index| u64::try_from(index).unwrap(),
             3,
             |index| Some(child(index)),
         )
         .unwrap()
-        .restart(Strategy::OneForAll)
-        .when(RestartPolicy::Permanent)
-        .within(2, Duration::MAX)
-        .on_supervision_failure(verify_budget_failure_and_stop);
+        .with_strategy(Strategy::OneForAll)
+        .with_policy(RestartPolicy::Permanent)
+        .with_budget(2, Duration::MAX)
+        .with_failure_reaction(verify_budget_failure_and_stop);
     let initialized = supervisor.initialize().unwrap();
     let mut supervisor = initialized.behavior;
 
@@ -1210,14 +1201,14 @@ async fn configured_supervision_failure_reaction_stops_on_budget_denial() {
 
 #[tokio::test]
 async fn configured_supervision_failure_reaction_stops_when_stable_proxy_stops() {
-    let supervisor = Compose::new(Parent)
+    let supervisor = (Parent)
         .children(
             |index| u64::try_from(index).unwrap(),
             1,
             |index| Some(child(index)),
         )
         .unwrap()
-        .on_supervision_failure(stop_on_supervision_failure);
+        .with_failure_reaction(stop_on_supervision_failure);
     let initialized = supervisor.initialize().unwrap();
     let mut supervisor = initialized.behavior;
     let actions = supervisor
@@ -1239,15 +1230,15 @@ async fn configured_supervision_failure_reaction_stops_when_stable_proxy_stops()
 
 #[tokio::test]
 async fn restart_policy_ineligibility_is_not_a_supervision_failure() {
-    let supervisor = Compose::new(Parent)
+    let supervisor = (Parent)
         .children(
             |index| u64::try_from(index).unwrap(),
             1,
             |index| Some(child(index)),
         )
         .unwrap()
-        .when(RestartPolicy::Temporary)
-        .on_supervision_failure(stop_on_supervision_failure);
+        .with_policy(RestartPolicy::Temporary)
+        .with_failure_reaction(stop_on_supervision_failure);
     let initialized = supervisor.initialize().unwrap();
     let mut supervisor = initialized.behavior;
     let actions = supervisor
@@ -1329,14 +1320,14 @@ impl ReplacingParent {
 
 #[tokio::test]
 async fn supervisor_preserves_and_observes_dynamic_births_once() {
-    let supervisor = Compose::new(BirthingParent(false))
+    let supervisor = (BirthingParent(false))
         .children(
             |index| u64::try_from(index).unwrap(),
             0,
             |index| Some(child(index)),
         )
         .unwrap()
-        .within(1, Duration::MAX);
+        .with_budget(1, Duration::MAX);
     let initialized = supervisor.initialize().unwrap();
     let initial = initialized.actions;
     let mut supervisor = initialized.behavior;
@@ -1370,14 +1361,14 @@ async fn supervisor_preserves_and_observes_dynamic_births_once() {
 
 #[tokio::test]
 async fn supervisor_preserves_dynamic_replacement_provenance_when_wrapping_the_child() {
-    let supervisor = Compose::new(ReplacingParent)
+    let supervisor = (ReplacingParent)
         .children(
             |index| u64::try_from(index).unwrap(),
             0,
             |index| Some(child(index)),
         )
         .unwrap()
-        .within(1, Duration::MAX);
+        .with_budget(1, Duration::MAX);
     let initialized = supervisor.initialize().unwrap();
     let mut supervisor = initialized.behavior;
 
@@ -1474,8 +1465,7 @@ async fn supervision_strategy_policy_and_budget_are_pure_send_decisions() {
 #[tokio::test]
 async fn stale_time_events_do_not_fire_or_reschedule() {
     let due = Instant::now() + Duration::from_secs(2);
-    let behavior =
-        Compose::new(Quiet).deadline(TimerId(0), Some(due), |_| Ok(Step::Stop(behavior::Stopped)));
+    let behavior = (Quiet).deadline(TimerId(0), Some(due), |_| Ok(Step::Stop(behavior::Stopped)));
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
     let stale = DeadlineEvent::Elapsed(TimerElapsed {
@@ -1533,7 +1523,7 @@ proptest! {
         let origin = Instant::now();
         let first = origin + Duration::from_nanos(first);
         let second = origin + Duration::from_nanos(second);
-        let outer = Compose::new(Quiet)
+        let outer = (Quiet)
             .deadline(TimerId(0), Some(first), |_| Ok(Step::Continue))
             .deadline(TimerId(1), Some(second), |_| Ok(Step::Continue));
         let _runtime = Builder::new_current_thread().enable_all().build().unwrap();

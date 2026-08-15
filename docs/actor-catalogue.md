@@ -131,7 +131,7 @@ service used by the fold.
 
 | Catalogue family | Actors module | Owned templates and compositions | Owned state, protocol, products, and errors | Shared construction dependencies | Runtime capability dependencies | Bombay façade |
 |---|---|---|---|---|---|---|
-| Fundamental composition | `composition` | `Compose`, `Active`, `Machine`, protocol forwarding, stash | initialization typestates, machine moves, stash route/status | event injection, named-lane forwarding | none beyond the universal Driver | `bombay::behavior::{Behavior, Actions, Compose, Machine, Stash}` |
+| Fundamental composition | `composition` | direct `Activate`, wrapper-only `Compose`, `Active`, `Machine`, protocol forwarding, stash | initialization typestates, machine moves, stash route/status | event injection, named-lane forwarding | none beyond the universal Driver | `bombay::behavior::{Behavior, Actions, Activate, Compose, Machine, Stash}` |
 | Lifecycle | `lifecycle` | watch/link policy, shutdown, lifecycle monitor compositions | observation and shutdown events, reactions, terminal classifications | initialization accumulation, observation forwarding | Observe, child installation, terminal publication | `bombay::actors::{Watch, Task, Guardian, ShutdownCoordinator}` as each concrete template ships |
 | Supervision | `supervision` | `Proxy`, `Supervisor`, worker pools, restart policies | incarnation/fleet/budget sums, replacement protocol, named supervision and pool products, typed errors | creation-result correlation, recipient membership | fresh installation, Observe, Timers for backoff | `bombay::actors::{Proxy, Supervisor, Pool, KeyedPool}` |
 | Routing and delivery | `routing` | routers and strategies, work admission, correlation, ordering, retention and delivery-policy compositions | recipient membership, pending/attempt/order states, delivery outcomes and named delivery products | bounded FIFO, keyed pending correlation, bounded retention | Address and Communication; Timers for timed policies | `bombay::actors::routing::*` selected collision-free role exports |
@@ -151,6 +151,17 @@ Mnesis stores, and transport/codec adapters remain framework-extension or
 private implementation surface. This is a proposed integration map: the
 Bombay repository currently re-exports the foundational `behavior` crate but
 does not yet depend on or re-export the split `bombay-behavior-actors` crate.
+
+The future `System` construction boundary must accept an inferred concrete
+behavior value (`spawn<B: Behavior>(definition: B)` schematically). Ordinary
+users must not name types such as
+`Deadline<Stash<Machine<...>>>` merely to start an actor. Local variables and
+generic spawn calls infer that type from the wrapper chain. An explicit nested
+type is appropriate only at an advanced component-extension boundary that
+stores the value in a named field, exposes it in a function signature, or
+defines a reaction whose parameter is that exact inner composition. Bombay may
+offer nominal macros for those advanced boundaries, but must not erase the
+protocol or require such a name for normal construction.
 
 ### Complete catalogue classification
 
@@ -178,7 +189,7 @@ from this ledger remain prospective even when named in the catalogue.
 
 | Family / owning module | Implemented role | State and protocol owner | Named effects / errors | Runtime capability | Current verification | Proposed Bombay exposure |
 |---|---|---|---|---|---|---|
-| `composition` | `Compose` / `Active` | initialization typestate and routed concrete event sums | `Initialized`, `ChildrenResult`; concrete nested errors | universal Driver only | unit, composition, compile-fail, properties | `bombay::behavior::{Compose, Active}` |
+| `composition` | `Activate` / `Compose` / `Active` | direct consuming initialization plus wrapper-only composition over routed concrete event sums | `Initialized`, `ChildrenResult`; concrete nested errors | universal Driver only | unit, composition, compile-fail, properties | `bombay::behavior::{Activate, Compose, Active}` |
 | `composition` | `Machine` | `Move` and user state/event types | domain behavior actions/errors unchanged | universal Driver only | unit, exhaustive FSM, properties, fuzz | `bombay::behavior::{Machine, Move}` |
 | `composition` | `Stash` | `StashRoute`, retained FIFO | `StashStatus`; inner products preserved | universal Driver only | unit, model, exhaustive, properties, fuzz | `bombay::actors::Stash` |
 | `lifecycle` | `Watch` / link reaction | `WatchEvent`, peer lifecycle protocol | `WatchSends`, `LinkReaction` | Observe | unit, composition, lifecycle model | `bombay::actors::{Watch, LinkReaction}` |

@@ -180,6 +180,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Activate as _;
     use behavior::{MailAddr, Step};
 
     #[derive(PartialEq, Eq)]
@@ -220,10 +221,7 @@ mod tests {
     fn mutations_are_atomic_and_stale_unbind_is_typed() {
         let one = Recipient::<Destination>::global(MailAddr(1));
         let two = Recipient::<Destination>::global(MailAddr(2));
-        let mut registry = crate::Compose::new(TestRegistry::new())
-            .initialize()
-            .unwrap()
-            .behavior;
+        let mut registry = (TestRegistry::new()).initialize().unwrap().behavior;
 
         let bound = registry
             .receive(
@@ -276,10 +274,7 @@ mod tests {
     fn lookups_return_found_and_missing_as_facts() {
         let destination = Recipient::<Destination>::global(MailAddr(1));
         let reply = Recipient::<Reply>::global(MailAddr(8));
-        let mut registry = crate::Compose::new(TestRegistry::new())
-            .initialize()
-            .unwrap()
-            .behavior;
+        let mut registry = (TestRegistry::new()).initialize().unwrap().behavior;
         registry
             .receive(
                 MailAddr(9),

@@ -271,6 +271,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Activate as _;
     use behavior::MailAddr;
 
     struct Participant;
@@ -307,7 +308,7 @@ mod tests {
     fn generation_releases_exact_membership_in_arrival_order() {
         let one = Recipient::<Participant>::global(MailAddr(1));
         let two = Recipient::<Participant>::global(MailAddr(2));
-        let mut barrier = crate::Compose::new(TestBarrier::new(vec![1, 2]).unwrap())
+        let mut barrier = (TestBarrier::new(vec![1, 2]).unwrap())
             .initialize()
             .unwrap()
             .behavior;
@@ -394,10 +395,7 @@ mod tests {
             generation: BarrierGeneration(u64::MAX),
             arrivals: Vec::new(),
         };
-        let mut barrier = crate::Compose::new(definition)
-            .initialize()
-            .unwrap()
-            .behavior;
+        let mut barrier = (definition).initialize().unwrap().behavior;
         let released = barrier
             .receive(
                 MailAddr(9),

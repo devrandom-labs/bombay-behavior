@@ -9,8 +9,8 @@
 //! state must agree.
 
 use behavior::{
-    Acted, Actions, Crash, Create, CreationKind, Delivery, MailAddr, Never, RestartPolicy, Step,
-    Strategy, SupervisionEvent, Supervisor, UserEvent, WorkerStopped,
+    Acted, Actions, Activate, Crash, Create, CreationKind, Delivery, MailAddr, Never, RestartPolicy,
+    Step, Strategy, SupervisionEvent, Supervisor, UserEvent, WorkerStopped,
 };
 use libfuzzer_sys::fuzz_target;
 use std::time::Instant;
@@ -79,7 +79,7 @@ fuzz_target!(|bytes: &[u8]| {
             std::time::Duration::MAX,
         )
         .unwrap();
-        let initialized = behavior::Compose::new(behavior).initialize().unwrap();
+        let initialized = (behavior).initialize().unwrap();
         let mut behavior = initialized.behavior;
         let base = Instant::now();
 

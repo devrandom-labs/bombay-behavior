@@ -252,6 +252,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Activate as _;
     use behavior::MailAddr;
 
     struct Reply;
@@ -305,10 +306,7 @@ mod tests {
     #[test]
     fn hits_refresh_recency_and_capacity_returns_eviction() {
         let reply = Recipient::<Reply>::global(MailAddr(8));
-        let mut cache = crate::Compose::new(TestCache::new(2).unwrap())
-            .initialize()
-            .unwrap()
-            .behavior;
+        let mut cache = (TestCache::new(2).unwrap()).initialize().unwrap().behavior;
         assert!(matches!(
             put(&mut cache, reply, 1, 10),
             CacheResult::Stored {
@@ -361,10 +359,7 @@ mod tests {
     #[test]
     fn replacement_and_remove_return_every_displaced_value() {
         let reply = Recipient::<Reply>::global(MailAddr(8));
-        let mut cache = crate::Compose::new(TestCache::new(2).unwrap())
-            .initialize()
-            .unwrap()
-            .behavior;
+        let mut cache = (TestCache::new(2).unwrap()).initialize().unwrap().behavior;
         put(&mut cache, reply, 1, 10);
         assert_eq!(
             put(&mut cache, reply, 1, 11),

@@ -61,6 +61,15 @@ transfer. In particular:
 - Behavior templates do not execute runtime mechanisms.
 - The Driver does not learn template-specific or domain-specific semantics.
 
+At the user-facing boundary, concrete templates from
+`bombay-behavior-actors` are constructed directly and consumed by Bombay's
+`System`. `Activate` expresses the one initialization typestate transition;
+the optional `Compose` extension trait only builds concrete wrapper types.
+Neither API asks users to select, initialize, or wire the owned runtime
+components in this table. Bombay's top-level façade should re-export both
+traits beside `Behavior` and `Actions`, while component interpreter functions
+remain framework-extension surface.
+
 ## Reuse rule
 
 Before adding a crate or subsystem:

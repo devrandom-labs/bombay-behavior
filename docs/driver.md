@@ -76,6 +76,13 @@ Driver<EventSourced<Order>, MnesisEnvironment>
 There is no supervisor Driver, proxy Driver, task Driver, or persistence
 Driver. Adding a template must never add another execution loop.
 
+Catalogue construction does not introduce a driver-facing definition wrapper.
+A standalone concrete behavior is consumed directly through
+`Activate::initialize`; applying the `Compose` extension trait returns another
+concrete behavior type. Both paths therefore deliver the same `Initialized<B>`
+product to the universal Driver. `Compose` owns no state, initialization loop,
+runtime capability, or alternate interpretation path.
+
 ## Domain injection and templates
 
 An application supplies its statically known domain protocol, state, and pure
@@ -93,6 +100,18 @@ Each wrapper transforms the complete event sum, action product, state, and
 error sum while preserving the inner behavior's effects according to its
 documented composition law. The resulting Rust type is verbose but truthful;
 an alias or macro may name it without erasing it.
+
+Concrete catalogue templates are constructed and configured through their
+owning types. The `Compose` trait is imported only to apply a wrapper
+transformation such as watching, timing, stashing, shutdown, or supervised
+children; it is not a mandatory container around `Router`, `Task`, `Buffer`, or
+any other standalone template.
+
+The `System` integration should take the fully composed value generically and
+allow Rust to infer `B`; application code must not spell the nested wrapper
+type just to spawn it. Naming a composition remains possible for framework
+extensions that store it or expose it in a signature, but that is an explicit
+static protocol boundary rather than ordinary actor startup ceremony.
 
 A future syntax layer may let a user define a domain object and select
 templates declaratively. For example, the intended experience could resemble:

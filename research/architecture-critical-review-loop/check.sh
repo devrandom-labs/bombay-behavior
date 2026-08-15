@@ -195,7 +195,7 @@ for obligation, key, current in (
 
 declarations = {
     "Behavior": ("trait","Behavior"), "Actions": ("struct","Actions"),
-    "Create": ("struct","Create"), "Compose": ("struct","Compose"),
+    "Create": ("struct","Create"), "Compose": ("trait","Compose"),
     "Initialized": ("struct","Initialized"), "Active": ("struct","Active"),
     "Deadline": ("struct","Deadline"), "Watch": ("struct","Watch"),
     "Supervisor": ("struct","Supervisor"), "Proxy": ("struct","Proxy"),

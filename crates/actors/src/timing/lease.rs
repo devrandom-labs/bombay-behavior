@@ -371,6 +371,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Activate as _;
     use behavior::MailAddr;
     struct Reply;
     impl Behavior for Reply {
@@ -394,10 +395,7 @@ mod tests {
     }
     #[test]
     fn acquire_renew_release_and_stale_elapsed_are_generation_safe() {
-        let mut s = crate::Compose::new(Subject::new(TimerId(7)))
-            .initialize()
-            .unwrap()
-            .behavior;
+        let mut s = (Subject::new(TimerId(7))).initialize().unwrap().behavior;
         let acquired = s
             .receive(
                 MailAddr(0),
@@ -450,10 +448,7 @@ mod tests {
     }
     #[test]
     fn wrong_holder_and_matching_expiry_are_distinct() {
-        let mut s = crate::Compose::new(Subject::new(TimerId(7)))
-            .initialize()
-            .unwrap()
-            .behavior;
+        let mut s = (Subject::new(TimerId(7))).initialize().unwrap().behavior;
         s.receive(
             MailAddr(0),
             LeaseMessage::Acquire {
@@ -494,10 +489,7 @@ mod tests {
     fn generation_exhaustion_is_terminal_and_never_wraps() {
         let mut definition = Subject::new(TimerId(7));
         definition.next = Some(u64::MAX);
-        let mut subject = crate::Compose::new(definition)
-            .initialize()
-            .unwrap()
-            .behavior;
+        let mut subject = (definition).initialize().unwrap().behavior;
         subject
             .receive(
                 MailAddr(0),

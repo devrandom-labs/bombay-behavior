@@ -153,7 +153,7 @@ async fn proxy_initialization_is_explicit() {
 
 #[tokio::test]
 async fn empty_fleet_supervisor_initializes_and_steps_cleanly() {
-    let supervisor = Compose::new(Parent)
+    let supervisor = (Parent)
         .children(
             |index| u64::try_from(index).unwrap(),
             0,
@@ -176,7 +176,7 @@ async fn empty_fleet_supervisor_initializes_and_steps_cleanly() {
 
 #[tokio::test]
 async fn child_stopped_for_unknown_nonce_is_typed() {
-    let supervisor = Compose::new(Parent)
+    let supervisor = (Parent)
         .children(
             |index| u64::try_from(index).unwrap(),
             1,
@@ -436,7 +436,7 @@ async fn restart_window_prunes_aged_stamps_but_keeps_future_ones() {
 /// stops the fold, the drain is skipped, and held messages survive the stop.
 #[tokio::test]
 async fn stash_stop_skips_drain_and_preserves_held_messages() {
-    let behavior = Compose::new(StopOnZero::default()).stash(|message| match message {
+    let behavior = (StopOnZero::default()).stash(|message| match message {
         0 => StashRoute::Release,
         _ => StashRoute::Stash,
     });
@@ -515,7 +515,7 @@ async fn fsm_mid_drain_deferral_reorders_relative_to_fifo() {
 #[tokio::test]
 async fn nested_at_identical_schedules_are_distinguished_by_identity() {
     let due = Instant::now() + Duration::from_secs(1);
-    let outer = Compose::new(Recorder::default())
+    let outer = (Recorder::default())
         .deadline(TimerId(0), Some(due), |_| Ok(Step::Stop(behavior::Stopped)))
         .deadline(TimerId(1), Some(due), |_| Ok(Step::Continue));
     let initialized = outer.initialize().unwrap();
@@ -537,7 +537,7 @@ async fn nested_at_identical_schedules_are_distinguished_by_identity() {
 #[tokio::test]
 async fn spec_children_defaults_to_transient_with_budget_one() {
     let at = Instant::now();
-    let supervisor = Compose::new(Parent)
+    let supervisor = (Parent)
         .children(
             |index| u64::try_from(index).unwrap(),
             1,

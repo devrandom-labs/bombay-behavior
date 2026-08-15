@@ -9,8 +9,8 @@
 //! agree on every byte.
 
 use behavior::{
-    Acted, Actions, Crash, Delivery, MailAddr, Never, RestartDenial, RestartPolicy, Step, Strategy,
-    SupervisionEvent, SupervisionFailureReason, Supervisor, WorkerStopped,
+    Acted, Actions, Activate, Crash, Delivery, MailAddr, Never, RestartDenial, RestartPolicy, Step,
+    Strategy, SupervisionEvent, SupervisionFailureReason, Supervisor, WorkerStopped,
     stop_on_supervision_failure,
 };
 use libfuzzer_sys::fuzz_target;
@@ -72,7 +72,7 @@ fuzz_target!(|bytes: &[u8]| {
         )
         .unwrap()
         .with_failure_reaction(stop_on_supervision_failure);
-        let initialized = behavior::Compose::new(behavior).initialize().unwrap();
+        let initialized = (behavior).initialize().unwrap();
         let mut behavior = initialized.behavior;
         let base = Instant::now();
 

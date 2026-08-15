@@ -3,9 +3,9 @@
 use std::time::Duration;
 
 use behavior::{
-    Actions, Behavior, CreationKind, InterruptionPolicy, JobId, KeyedPoolMessage, KeyedWorkerPool,
-    MailAddr, Never, NoBirths, PoolAssignment, PoolMessage, PoolResponse, Recipient, RestartPolicy,
-    User, WorkerCreationResolved, WorkerPhase, WorkerPool, WorkerStopped,
+    Actions, Activate, Behavior, CreationKind, InterruptionPolicy, JobId, KeyedPoolMessage,
+    KeyedWorkerPool, MailAddr, Never, NoBirths, PoolAssignment, PoolMessage, PoolResponse, Recipient,
+    RestartPolicy, User, WorkerCreationResolved, WorkerPhase, WorkerPool, WorkerStopped,
 };
 use libfuzzer_sys::fuzz_target;
 use std::time::Instant;
@@ -64,7 +64,7 @@ fuzz_target!(|bytes: &[u8]| {
         Duration::from_secs(1),
     )
     .unwrap();
-    let initialized = behavior::Compose::new(pool).initialize().unwrap();
+    let initialized = (pool).initialize().unwrap();
     let mut pool = initialized.behavior;
     for slot in 0..2 {
         pool.on(WorkerCreationResolved::new(
@@ -145,7 +145,7 @@ fuzz_target!(|bytes: &[u8]| {
         affinity,
     )
     .unwrap();
-    let initialized = behavior::Compose::new(keyed).initialize().unwrap();
+    let initialized = (keyed).initialize().unwrap();
     let mut keyed = initialized.behavior;
     for slot in 0..2 {
         keyed

@@ -286,6 +286,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Activate as _;
     use behavior::MailAddr;
 
     struct Reply;
@@ -308,10 +309,7 @@ mod tests {
 
     #[test]
     fn stale_and_conflicting_evidence_preserve_committed_state() {
-        let mut health = crate::Compose::new(TestHealth::new())
-            .initialize()
-            .unwrap()
-            .behavior;
+        let mut health = (TestHealth::new()).initialize().unwrap().behavior;
         health
             .receive(
                 MailAddr(9),
@@ -365,10 +363,7 @@ mod tests {
     #[test]
     fn tombstone_rejects_resurrection_and_report_aggregates_worst_status() {
         let reply = Recipient::<Reply>::global(MailAddr(8));
-        let mut health = crate::Compose::new(TestHealth::new())
-            .initialize()
-            .unwrap()
-            .behavior;
+        let mut health = (TestHealth::new()).initialize().unwrap().behavior;
         for (component, status) in [(1, HealthStatus::Healthy), (2, HealthStatus::Unhealthy)] {
             health
                 .receive(

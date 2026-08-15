@@ -139,6 +139,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Activate as _;
     use behavior::MailAddr;
 
     struct Participant;
@@ -162,7 +163,7 @@ mod tests {
         let one = Recipient::<Participant>::global(MailAddr(1));
         let two = Recipient::<Participant>::global(MailAddr(2));
         let late = Recipient::<Participant>::global(MailAddr(3));
-        let mut latch = crate::Compose::new(Latch::<MailAddr, Participant>::new(2))
+        let mut latch = (Latch::<MailAddr, Participant>::new(2))
             .initialize()
             .unwrap()
             .behavior;
@@ -201,7 +202,7 @@ mod tests {
     #[test]
     fn zero_count_starts_released() {
         let participant = Recipient::<Participant>::global(MailAddr(1));
-        let mut latch = crate::Compose::new(Latch::<MailAddr, Participant>::new(0))
+        let mut latch = (Latch::<MailAddr, Participant>::new(0))
             .initialize()
             .unwrap()
             .behavior;

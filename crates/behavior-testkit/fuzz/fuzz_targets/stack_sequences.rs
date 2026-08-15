@@ -9,7 +9,7 @@
 //! product lane and never leak across.
 
 use behavior::{
-    Acted, Actions, Compose, Crash, DeadlineEvent, Delivery, MailAddr, Never, PeerStopped,
+    Acted, Actions, Activate, Compose, Crash, DeadlineEvent, Delivery, MailAddr, Never, PeerStopped,
     Recipient, RestartPolicy, StashRoute, Step, Strategy, SupervisionEvent, TimerElapsed,
     TimerGeneration, TimerId, UserEvent, WatchEvent, WorkerStopped, stop_on_abnormal_death,
 };
@@ -81,7 +81,7 @@ fuzz_target!(|bytes: &[u8]| {
     runtime.block_on(async {
         let due = Instant::now() + std::time::Duration::from_secs(1);
         let peer = MailAddr(44);
-        let behavior = Compose::new(EchoingParent::default())
+        let behavior = (EchoingParent::default())
             .stash(route)
             .watch(peer, stop_on_abnormal_death)
             .deadline(behavior::TimerId(0), Some(due), |_| Ok(Step::Continue))
@@ -91,9 +91,9 @@ fuzz_target!(|bytes: &[u8]| {
                 |index| Some(child(index)),
             )
             .unwrap()
-            .restart(Strategy::OneForOne)
-            .when(RestartPolicy::Permanent)
-            .within(u32::MAX, std::time::Duration::MAX);
+            .with_strategy(Strategy::OneForOne)
+            .with_policy(RestartPolicy::Permanent)
+            .with_budget(u32::MAX, std::time::Duration::MAX);
         let initialized = behavior.initialize().unwrap();
         let mut behavior = initialized.behavior;
         let base = Instant::now();

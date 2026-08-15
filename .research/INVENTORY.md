@@ -75,3 +75,10 @@ circuit-breaker dummy-generation tuple (E09). Similar versions, generations,
 IDs, evidence types, errors, phases, and aliases were retained when their
 authority or laws differ. E05's broad primitive conversions were reverted as
 unused convenience surface rather than semantic composition.
+
+The later composition-surface audit found that the former `Compose<B>` value
+mixed activation, wrapper construction, and supervisor policy configuration.
+The final ownership is: concrete templates own construction and policy;
+`Activate` owns consuming initialization; the blanket `Compose` trait owns
+only transformations that produce a concrete wrapper with a changed event sum
+or named effect product; `Active<B>` owns post-initialization folds.

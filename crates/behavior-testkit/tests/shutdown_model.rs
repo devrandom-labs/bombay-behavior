@@ -48,7 +48,7 @@ proptest! {
             }
         });
         let mut mailbox = Mailbox::new(events);
-        let behavior = Compose::new(Echo).stop_on_shutdown();
+        let behavior = (Echo).stop_on_shutdown();
         let trace = drive(behavior, &mut mailbox).unwrap();
         let stop = inputs.iter().position(|(shutdown, _)| *shutdown);
         let consumed = stop.map_or(inputs.len(), |index| index + 1);

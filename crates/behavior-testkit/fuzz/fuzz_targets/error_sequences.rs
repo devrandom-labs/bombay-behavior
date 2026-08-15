@@ -8,7 +8,7 @@
 //! - no occurrence is ever recorded twice (no duplicate delivery);
 //! - the fold never panics.
 
-use behavior::{Machine, MailAddr, Move, User, UserEvent};
+use behavior::{Activate, Machine, MailAddr, Move, User, UserEvent};
 use libfuzzer_sys::fuzz_target;
 use tokio::runtime::Builder;
 
@@ -34,7 +34,7 @@ fuzz_target!(|bytes: &[u8]| {
                 }
             },
         );
-        let mut machine = behavior::Compose::new(machine)
+        let mut machine = (machine)
             .initialize()
             .unwrap()
             .behavior;
