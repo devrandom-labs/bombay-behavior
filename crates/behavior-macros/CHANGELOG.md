@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.1](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-macros-v0.11.0...bombay-behavior-macros-v0.11.1) - 2026-08-15
+
+### Other
+
+- Split and complete the reusable behavior actor catalogue ([#45](https://github.com/devrandom-labs/bombay-behavior/pull/45))
+
 ### Removed
 
 - Remove `workers!` and the unreleased `#[behavior_stack]` experiment. The
