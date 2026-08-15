@@ -10,8 +10,17 @@ checksum = "c3d036a3c4ab069c7b410a2ce876bd74808d2d0888a82667669f8e783a898bf1"
 
 [[package]]
 name = "bombay-behavior"
-version = "0.10.0"
+version = "0.12.0"
 dependencies = [
+ "bombay-behavior-macros",
+ "thiserror",
+]
+
+[[package]]
+name = "bombay-behavior-actors"
+version = "0.12.0"
+dependencies = [
+ "bombay-behavior",
  "bombay-behavior-macros",
  "thiserror",
 ]
@@ -21,13 +30,14 @@ name = "bombay-behavior-fuzz"
 version = "0.0.0"
 dependencies = [
  "bombay-behavior",
+ "bombay-behavior-actors",
  "libfuzzer-sys",
  "tokio",
 ]
 
 [[package]]
 name = "bombay-behavior-macros"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",

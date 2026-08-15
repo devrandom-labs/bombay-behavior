@@ -1,9 +1,9 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, Behavior, Births, Compose, Create, DeadlineEvent, Delivery, Exit, MailAddr,
-    Never, NoBirths, ReceiveTimeoutEvent, Recipient, Step, TimerElapsed, TimerGeneration, TimerId,
-    User, UserEvent,
+    Acted, Actions, Behavior, Births, Compose, Create, DeadlineEvent, Delivery, MailAddr, Never,
+    NoBirths, ReceiveTimeoutEvent, Recipient, Step, TimerElapsed, TimerGeneration, TimerId, User,
+    UserEvent,
 };
 use behavior_testkit::model::InactivityModel;
 
@@ -60,7 +60,7 @@ impl Subject {
             .creates
             .push(Create::birth(u64::from(message), Child));
         if message == 0 {
-            actions.become_ = Step::Stop(Exit::Normal);
+            actions.become_ = Step::Stop(behavior::Stopped);
         }
         Ok(actions)
     }
@@ -191,7 +191,7 @@ async fn errors_and_terminal_user_folds_do_not_rearm() {
     let stopped = terminal
         .transition(ReceiveTimeoutEvent::Behavior(User::user(MailAddr(1), 0)))
         .unwrap();
-    assert_eq!(stopped.become_, Step::Stop(Exit::Normal));
+    assert_eq!(stopped.become_, Step::Stop(behavior::Stopped));
     assert!(stopped.sends.schedules.is_empty());
     assert_eq!(stopped.sends.behavior[0].message, 0);
     assert_eq!(stopped.creates[0].nonce, 0);
@@ -206,7 +206,7 @@ async fn errors_and_terminal_user_folds_do_not_rearm() {
     assert!(formerly_live.sends.schedules.is_empty());
 }
 
-fn inner_at(_inner: &mut SubjectBehavior) -> Result<behavior::Become<MailAddr>, Failed> {
+fn inner_at(_inner: &mut SubjectBehavior) -> Result<behavior::Become, Failed> {
     Ok(Step::Continue)
 }
 
@@ -329,7 +329,7 @@ async fn accepted_stale_timeout_error_and_terminal_turns_match_independent_model
     let terminal = behavior
         .transition(ReceiveTimeoutEvent::Behavior(User::user(MailAddr(1), 0)))
         .unwrap();
-    assert_eq!(terminal.become_, Step::Stop(Exit::Normal));
+    assert_eq!(terminal.become_, Step::Stop(behavior::Stopped));
     assert!(terminal.sends.schedules.is_empty());
     assert_eq!(model.no_activity(), Some(2));
 }
@@ -349,7 +349,7 @@ impl Behavior for StopsAtInitialization {
         &mut self,
         _: behavior::InitializationTurn,
     ) -> Acted<MailAddr, Never, Self::Sends, NoBirths, Never> {
-        Ok(Actions::stop(Exit::Normal))
+        Ok(Actions::stop())
     }
 
     fn transition(
@@ -361,9 +361,7 @@ impl Behavior for StopsAtInitialization {
     }
 }
 
-fn stopped_at_reaction(
-    _inner: &mut StopsAtInitialization,
-) -> Result<behavior::Become<MailAddr>, Never> {
+fn stopped_at_reaction(_inner: &mut StopsAtInitialization) -> Result<behavior::Become, Never> {
     Ok(Step::Continue)
 }
 
@@ -375,7 +373,7 @@ async fn terminal_initialization_consumes_absolute_timer_state() {
     let initialized = behavior.initialize().unwrap();
     let initial = initialized.actions;
     let mut behavior = initialized.behavior;
-    assert_eq!(initial.become_, Step::Stop(Exit::Normal));
+    assert_eq!(initial.become_, Step::Stop(behavior::Stopped));
     assert!(initial.sends.schedules.is_empty());
 
     let after_stop = behavior

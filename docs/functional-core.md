@@ -18,8 +18,12 @@ Bombay policies.
 
 ## Reduction
 
-`ActionReducer` is the single left-fold accumulator used by stream evaluation
-and the mailbox interpreter. It obeys these laws:
+`ActionReducer` is the single left-fold accumulator used by finite stream,
+model, testkit, and fuzz evaluation. Production actor execution is owned by the
+universal `bombay-engine::Driver`, which delegates one event at a time through
+Bombay Transition and Machine Executor and hands each complete `Actions` value
+to its environment. It does not use `ActionReducer` as a second mailbox loop.
+The reducer obeys these laws:
 
 - send accumulation has identity and is associative;
 - creation vectors preserve transition order;

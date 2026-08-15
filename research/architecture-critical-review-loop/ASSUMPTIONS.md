@@ -1,5 +1,9 @@
 # Assumptions and judgment calls
 
+The first entry preserves the completed campaign's old name. Actorpass is now
+represented by Bombay and its focused runtime crates; current ownership is
+documented in `docs/ecosystem.md`.
+
 - Actorpass is treated as an out-of-repo interpreter: its obligations
   (freshness acceptance, collision errors, Restarted diagnostics) are
   specified here and validated through the testkit's pure drivers, not through

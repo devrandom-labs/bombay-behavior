@@ -146,10 +146,12 @@ count_summary = ", ".join(f"{name}={disposition_counts[name]}" for name in count
 print("capability dispositions: " + count_summary)
 
 source_paths = sorted(Path("crates/behavior/src").rglob("*.rs"))
+source_paths += sorted(Path("crates/actors/src").rglob("*.rs"))
 source_by_path = {str(path): path.read_text() for path in source_paths}
 all_source = "\n".join(source_by_path.values())
 test_paths = [
     *Path("crates/behavior/tests").rglob("*.rs"),
+    *Path("crates/actors/tests").rglob("*.rs"),
     *Path("crates/behavior-testkit/src").rglob("*.rs"),
     *Path("crates/behavior-testkit/tests").rglob("*.rs"),
 ]
@@ -529,7 +531,7 @@ set -e
 if [ "$artifact_status" -ne 0 ]; then exit "$artifact_status"; fi
 
 unexpected_bombay_dependencies=$(rg --pcre2 -n \
-  'package = "bombay-(?!behavior(?:-macros|-testkit)?")|name = "bombay-(?!behavior(?:-macros|-testkit|-fuzz)?")' \
+  'package = "bombay-(?!behavior(?:-actors|-macros|-testkit)?")|name = "bombay-(?!behavior(?:-actors|-macros|-testkit|-fuzz)?")' \
   --glob 'Cargo.toml' --glob 'Cargo.lock' . || true)
 if [ -n "$unexpected_bombay_dependencies" ]; then
   echo "CHECK: behavior workspace must not depend on other Bombay crates"

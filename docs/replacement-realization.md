@@ -57,7 +57,7 @@ as the closed `ReplacementResolution::{Installed, Rejected}` sum.
 It deliberately does not copy the old worker's `Exit`/`Crash`: a consumer that
 needs both facts retains the earlier `WorkerStopped` and correlates it with the
 explicit `replaced` nonce. This prevents a combined convenience event from
-duplicating or reinterpreting terminal provenance and requires no Actorpass
+duplicating or reinterpreting terminal provenance and requires no Bombay runtime
 registry, lease, or additional observation lane.
 
 ## Rejected same-action observation

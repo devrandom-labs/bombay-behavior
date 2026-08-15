@@ -1,8 +1,8 @@
 #![no_main]
 
 use behavior::{
-    Acted, Actions, ChildStopped, CreationKind, CreationResolved, Delivery, Exit,
-    MailAddr, Never, Proxy, ProxyCommand, ProxyEvent, User, UserEvent,
+    Acted, Actions, ChildStopped, CreationKind, CreationResolved, Delivery, Exit, MailAddr, Never,
+    Proxy, ProxyCommand, ProxyEvent, User, UserEvent,
 };
 use libfuzzer_sys::fuzz_target;
 use tokio::runtime::Builder;
@@ -10,13 +10,18 @@ use tokio::runtime::Builder;
 struct Worker;
 
 #[behavior::behavior(addr = MailAddr, message = u8, sends = Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u8>>>, births = behavior::NoBirths, error = Never)]
-impl Worker  {
-
+impl Worker {
     fn receive(
         &mut self,
         _from: MailAddr,
         _message: u8,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u8>>>, behavior::NoBirths, Never> {
+    ) -> Acted<
+        MailAddr,
+        Never,
+        Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u8>>>,
+        behavior::NoBirths,
+        Never,
+    > {
         Ok(Actions::cont())
     }
 }
@@ -30,8 +35,8 @@ fuzz_target!(|bytes: &[u8]| {
     runtime.block_on(async {
         let proxy = Proxy::new(worker(0));
         let initialized = behavior::Compose::new(proxy).initialize().unwrap();
-    let initial = initialized.actions;
-    let mut proxy = initialized.behavior;
+        let initial = initialized.actions;
+        let mut proxy = initialized.behavior;
         assert_eq!(initial.creates.len(), 1);
         assert_eq!(initial.creates[0].nonce, 0);
         assert_eq!(initial.creates[0].kind, CreationKind::Birth);

@@ -31,7 +31,7 @@ impl Echo {
             sends: vec![Delivery::new(Recipient::global(from), message)],
             creates: Vec::new(),
             become_: if message == u8::MAX {
-                Step::Stop(Exit::Normal)
+                Step::Stop(behavior::Stopped)
             } else {
                 Step::Continue
             },

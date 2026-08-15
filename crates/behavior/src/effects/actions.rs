@@ -1,11 +1,10 @@
 //! The explicit result of one actor behavior transition.
 
 use super::sending::SendAlgebra;
-use crate::Exit;
 use crate::actor::{Address, BirthMode, Create};
-use crate::next::{Never, Step};
+use crate::next::{Never, Step, Stopped};
 
-pub type Become<A, Ph = Never> = Step<Ph, Exit<A>>;
+pub type Become<Ph = Never> = Step<Ph, Stopped>;
 
 /// Bombay's typed realization of the actor transition effects: communications,
 /// fresh actor creation, and next behavior or termination.
@@ -26,7 +25,7 @@ pub type Become<A, Ph = Never> = Step<Ph, Exit<A>>;
 pub struct Actions<A: Address, Ph, Sends, Birth: BirthMode> {
     pub sends: Sends,
     pub creates: Vec<Create<A, Birth::Child>>,
-    pub become_: Become<A, Ph>,
+    pub become_: Become<Ph>,
 }
 
 impl<A, Ph, Sends, Birth> core::fmt::Debug for Actions<A, Ph, Sends, Birth>
@@ -93,7 +92,7 @@ impl<A: Address, Ph, Sends, Birth: BirthMode> Actions<A, Ph, Sends, Birth> {
     #[must_use]
     pub fn map_become<NextPh>(
         self,
-        map: impl FnOnce(Become<A, Ph>) -> Become<A, NextPh>,
+        map: impl FnOnce(Become<Ph>) -> Become<NextPh>,
     ) -> Actions<A, NextPh, Sends, Birth> {
         Actions {
             sends: self.sends,
@@ -108,7 +107,7 @@ impl<A: Address, Ph, Sends: SendAlgebra, Birth: BirthMode> Actions<A, Ph, Sends,
     pub const fn new(
         sends: Sends,
         creates: Vec<Create<A, Birth::Child>>,
-        become_: Become<A, Ph>,
+        become_: Become<Ph>,
     ) -> Self {
         Self {
             sends,
@@ -118,7 +117,7 @@ impl<A: Address, Ph, Sends: SendAlgebra, Birth: BirthMode> Actions<A, Ph, Sends,
     }
 
     #[must_use]
-    pub fn just(become_: Become<A, Ph>) -> Self {
+    pub fn just(become_: Become<Ph>) -> Self {
         Self {
             sends: Sends::empty(),
             creates: Vec::new(),
@@ -131,8 +130,8 @@ impl<A: Address, Ph, Sends: SendAlgebra, Birth: BirthMode> Actions<A, Ph, Sends,
         Self::just(Step::Continue)
     }
     #[must_use]
-    pub fn stop(exit: Exit<A>) -> Self {
-        Self::just(Step::Stop(exit))
+    pub fn stop() -> Self {
+        Self::just(Step::Stop(Stopped))
     }
     #[must_use]
     pub fn goto(phase: Ph) -> Self {
@@ -153,11 +152,9 @@ impl<A: Address, Ph, Sends: SendAlgebra, Birth: BirthMode> Actions<A, Ph, Sends,
 }
 
 impl<A: Address, Ph, Sends, Birth: BirthMode>
-    From<(Sends, Vec<Create<A, Birth::Child>>, Become<A, Ph>)> for Actions<A, Ph, Sends, Birth>
+    From<(Sends, Vec<Create<A, Birth::Child>>, Become<Ph>)> for Actions<A, Ph, Sends, Birth>
 {
-    fn from(
-        (sends, creates, become_): (Sends, Vec<Create<A, Birth::Child>>, Become<A, Ph>),
-    ) -> Self {
+    fn from((sends, creates, become_): (Sends, Vec<Create<A, Birth::Child>>, Become<Ph>)) -> Self {
         Self {
             sends,
             creates,
@@ -206,9 +203,9 @@ mod tests {
         );
 
         let mapped: Actions<MailAddr, Never, Vec<u8>, Births<()>> =
-            actions.map_become(|_| Step::Stop(Exit::Normal));
+            actions.map_become(|_| Step::Stop(Stopped));
         assert_eq!(mapped.sends, [1, 2]);
         assert_eq!(mapped.creates[0].nonce, 3);
-        assert!(matches!(mapped.become_, Step::Stop(Exit::Normal)));
+        assert!(matches!(mapped.become_, Step::Stop(Stopped)));
     }
 }

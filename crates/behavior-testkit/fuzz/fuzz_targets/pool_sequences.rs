@@ -3,9 +3,9 @@
 use std::time::Duration;
 
 use behavior::{
-    Actions, Behavior, CreationKind, InterruptionPolicy, JobId, KeyedPoolMessage,
-    KeyedWorkerPool, MailAddr, Never, NoBirths, PoolAssignment, PoolMessage, PoolResponse, Recipient,
-    RestartPolicy, User, WorkerCreationResolved, WorkerPhase, WorkerPool, WorkerStopped,
+    Actions, Behavior, CreationKind, InterruptionPolicy, JobId, KeyedPoolMessage, KeyedWorkerPool,
+    MailAddr, Never, NoBirths, PoolAssignment, PoolMessage, PoolResponse, Recipient, RestartPolicy,
+    User, WorkerCreationResolved, WorkerPhase, WorkerPool, WorkerStopped,
 };
 use libfuzzer_sys::fuzz_target;
 use std::time::Instant;
@@ -27,7 +27,11 @@ impl Behavior for Worker {
         Ok(Actions::cont())
     }
 
-    fn transition(&mut self, _: behavior::ActiveTurn, _event: Self::Event) -> behavior::BehaviorActed<Self> {
+    fn transition(
+        &mut self,
+        _: behavior::ActiveTurn,
+        _event: Self::Event,
+    ) -> behavior::BehaviorActed<Self> {
         Ok(Actions::cont())
     }
 }

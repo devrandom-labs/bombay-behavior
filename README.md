@@ -1,22 +1,25 @@
 # Bombay Behavior
 
-Bombay Behavior is a small, composable actor behavior algebra for Rust. A
-behavior receives its statically associated event protocol and returns an
-`Actions` value containing typed sends, fresh child creations, and its next
-behavior or termination. `Behavior::transition` is synchronous: evaluation is
-a pure fold, while waiting for a mailbox belongs only to the interpreter.
-Timing, peer watching, supervision, stashing, and finite-state behavior
-are ordinary composable protocols rather than runtime queries or erased
-messages.
+Bombay Behavior provides two published Rust packages. `bombay-behavior`
+defines the pure typed behavior boundary: a behavior receives its statically
+associated event protocol and returns `Actions` containing typed sends, fresh
+child creations, and its next behavior or termination.
+`bombay-behavior-actors` builds the modular reusable template catalogue on that
+boundary: composition, lifecycle and supervision, routing and delivery,
+discovery, time, persistence policy, workflows, and operational boundaries.
+
+`Behavior::transition` is synchronous: evaluation is a pure fold, while
+mailboxes, scheduling, clocks, transport, and effect interpretation remain at
+the runtime boundary.
 
 Bounded FIFO worker pools are likewise pure typed behaviors: admission,
 assignment ownership, completion correlation, and interruption policy remain
 in the fold, while an interpreter only realizes their existing creation,
 delivery, observation, and timing effects. Their laws and the Behavior versus
-Actorpass ownership boundary are documented in
+Bombay runtime ownership boundary are documented in
 [Worker Pool Semantics](docs/worker-pool.md).
 
-Its core guarantees are:
+The packages preserve these guarantees:
 
 - message and event protocols remain statically typed;
 - independent send protocols compose without `dyn`, `Any`, or a global envelope;
@@ -36,18 +39,27 @@ Its core guarantees are:
 - timers, observation, stashing, and state transitions compose without hidden
   runtime side channels.
 
-## Installation
+## Component installation
+
+Ordinary applications should use Bombay's top-level façade once the split
+catalogue integration lands there. They should not assemble behavior, engine,
+address, observation, timer, communication, entity, Mnesis, or CESR components
+themselves. The dependencies and imports below document this repository's
+component-extension boundary and its tests, not the ordinary application
+composition root.
 
 ```toml
 [dependencies]
-bombay-behavior = "0.10"
+bombay-behavior = "0.12"
+bombay-behavior-actors = "0.12"
 ```
 
-The package is named `bombay-behavior`; Rust code imports its library as
-`behavior`:
+Rust code imports `bombay-behavior` as `behavior` and
+`bombay-behavior-actors` as `behavior_actors`:
 
 ```rust
-use behavior::{Actions, Compose, MailAddr, Never, NoBirths};
+use behavior::{Actions, MailAddr, Never, NoBirths};
+use behavior_actors::Compose;
 
 struct Counter(u64);
 
@@ -93,8 +105,10 @@ There are two behavior-definition paths: use `#[behavior::behavior(...)]` for
 an ordinary nominal user-message actor, and implement `Behavior` directly for
 a type that owns service-event variants, phases, or wrapper semantics. Complete
 event streams can be evaluated with `fold_events`; it uses the same
-`ActionReducer` as the mailbox interpreter and stops at the first controlled
-failure or termination verdict.
+`ActionReducer` as the deterministic test/model path and stops at the first
+controlled failure or termination verdict. Production mailbox execution uses
+the one universal `bombay-engine::Driver`; `fold_events` is not a second actor
+runtime.
 
 Initialization is a consuming typestate transition. `Compose<B>` is a
 definition and cannot process mailbox events. `initialize` returns
@@ -147,6 +161,17 @@ cancellation are documented in
 
 The functional core and its reduction laws are documented in
 [Functional Core](docs/functional-core.md).
+
+The canonical reusable template names, their algebraic compositions, package
+ownership, and eligible implementation dependencies are recorded in the
+[Bombay Behavior-Template Catalogue](docs/actor-catalogue.md).
+The actor roles that require runtime interpreters or external capability
+adapters are recorded in
+[Runtime-Backed Actor Capabilities](docs/runtime-backed-actors.md).
+Their shared execution contract is documented in the
+[Universal Behavior Driver](docs/driver.md).
+Ownership across Bombay, Mnesis/Nexus, and CESR/KERI is recorded in the
+[Bombay Ecosystem](docs/ecosystem.md).
 
 The completed behavior-owned cleanup and its verification evidence are listed
 in [Behavior-owned Wart Audit](docs/behavior-wart-audit.md).

@@ -2,9 +2,7 @@
 
 use std::collections::VecDeque;
 
-use behavior::{
-    ActionReducer, Active, Address, Behavior, BirthMode, Compose, Create, Exit, SendAlgebra,
-};
+use behavior::{ActionReducer, Active, Address, Behavior, BirthMode, Compose, Create, SendAlgebra};
 use core::marker::PhantomData;
 
 /// A nominal, inert destination used by behavior tests that inspect emitted
@@ -37,6 +35,12 @@ use core::ops::ControlFlow;
 /// Test-fixture shorthand for activating a raw concrete behavior through the
 /// same `Compose` boundary used by production definitions.
 pub trait InitializeTest: Behavior + Sized {
+    /// Activate the fixture and preserve its complete initialization actions.
+    ///
+    /// # Errors
+    ///
+    /// Returns the concrete behavior error when its initialization fold
+    /// rejects activation.
     fn initialize(self) -> Result<behavior::Initialized<Self>, Self::Error> {
         Compose::new(self).initialize()
     }
@@ -72,7 +76,7 @@ pub struct Trace<B: Behavior> {
     pub behavior: Active<B>,
     pub sends: B::Sends,
     pub creates: Vec<Create<B::Addr, <B::Birth as BirthMode>::Child>>,
-    pub exit: Option<Exit<B::Addr>>,
+    pub stopped: bool,
     pub transitions: usize,
     pub pending: usize,
 }
@@ -111,13 +115,13 @@ where
         };
     }
 
-    let folded = fold.finish(exit);
+    let folded = fold.finish(exit.is_some());
 
     Ok(Trace {
         behavior,
         sends: folded.effects.sends,
         creates: folded.effects.creates,
-        exit: folded.exit,
+        stopped: folded.stopped,
         transitions: folded.transitions,
         pending: mailbox.pending(),
     })

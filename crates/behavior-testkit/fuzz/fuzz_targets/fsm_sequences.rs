@@ -35,7 +35,10 @@ fuzz_target!(|bytes: &[u8]| {
                 })
             },
         );
-        let mut machine = behavior::Compose::new(machine).initialize().unwrap().behavior;
+        let mut machine = behavior::Compose::new(machine)
+            .initialize()
+            .unwrap()
+            .behavior;
         let mut consumed = 0_usize;
         for (index, _) in bytes.iter().enumerate() {
             let id = u64::try_from(index).unwrap();

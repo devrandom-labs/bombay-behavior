@@ -7,9 +7,9 @@ use std::time::Duration;
 
 use behavior::{
     Acted, Actions, Behavior, Compose, Crash, DeadlineEvent, Delivery, Exit, MailAddr, Never,
-    PeerStopped, Recipient, RestartDenial, StashRoute, Step, SupervisionEvent,
-    SupervisionFailureReason, TimerElapsed, TimerGeneration, TimerId, User, UserEvent, WatchEvent,
-    WorkerStopped, stop_on_abnormal_death, stop_on_supervision_failure,
+    PeerStopped, Recipient, StashRoute, Step, SupervisionEvent, TimerElapsed, TimerGeneration,
+    TimerId, User, UserEvent, WatchEvent, WorkerStopped, stop_on_abnormal_death,
+    stop_on_supervision_failure,
 };
 use std::time::Instant;
 
@@ -192,10 +192,7 @@ async fn environment_lanes_bypass_stash_while_user_lane_is_intercepted() {
         outcome: Err(Crash::Failed),
     });
     let died = behavior.transition(DeadlineEvent::Behavior(peer)).unwrap();
-    assert!(matches!(
-        died.become_,
-        Step::Stop(Exit::LinkDied(p)) if p == PEER
-    ));
+    assert!(matches!(died.become_, Step::Stop(behavior::Stopped)));
     assert_eq!(behavior.stashed(), 0);
 
     // User lane: intercepted by the stash buffer.
@@ -220,16 +217,10 @@ async fn watch_reaction_reinvokes_on_each_death_and_fold_continues() {
         outcome: Err(Crash::Failed),
     });
     let first = behavior.transition(death.clone()).unwrap();
-    assert!(matches!(
-        first.become_,
-        Step::Stop(Exit::LinkDied(p)) if p == PEER
-    ));
+    assert!(matches!(first.become_, Step::Stop(behavior::Stopped)));
 
     let second = behavior.transition(death).unwrap();
-    assert!(matches!(
-        second.become_,
-        Step::Stop(Exit::LinkDied(p)) if p == PEER
-    ));
+    assert!(matches!(second.become_, Step::Stop(behavior::Stopped)));
 
     // The fold is still usable: a user message after the stop is processed.
     let actions = behavior
@@ -257,10 +248,7 @@ async fn watch_of_watch_routes_each_peer_to_its_own_layer() {
         outcome: Err(Crash::Failed),
     });
     let outer = behavior.transition(outer_death).unwrap();
-    assert!(matches!(
-        outer.become_,
-        Step::Stop(Exit::LinkDied(p)) if p == outer_peer
-    ));
+    assert!(matches!(outer.become_, Step::Stop(behavior::Stopped)));
 
     // Inner peer death: forwarded to the inner watcher.
     let inner_death = WatchEvent::PeerStopped(PeerStopped {
@@ -268,18 +256,16 @@ async fn watch_of_watch_routes_each_peer_to_its_own_layer() {
         outcome: Err(Crash::Failed),
     });
     let inner = behavior.transition(inner_death).unwrap();
-    assert!(matches!(
-        inner.become_,
-        Step::Stop(Exit::LinkDied(p)) if p == inner_peer
-    ));
+    assert!(matches!(inner.become_, Step::Stop(behavior::Stopped)));
 }
 
 /// An `Deadline` constructed with `None` schedules nothing and is inert to every
 /// Reached event: the reaction never fires.
 #[tokio::test]
 async fn unscheduled_at_is_inert_to_reached_events() {
-    let behavior = Compose::new(Recorder::default())
-        .deadline(behavior::TimerId(0), None, |_| Ok(Step::Stop(Exit::Normal)));
+    let behavior = Compose::new(Recorder::default()).deadline(behavior::TimerId(0), None, |_| {
+        Ok(Step::Stop(behavior::Stopped))
+    });
     let initialized = behavior.initialize().unwrap();
     let initial = initialized.actions;
     let mut behavior = initialized.behavior;
@@ -317,10 +303,7 @@ async fn abnormal_death_reaction_outcome_classes() {
     let linked = behavior
         .transition(outcome(Ok(Exit::LinkDied(MailAddr(3)))))
         .unwrap();
-    assert!(matches!(
-        linked.become_,
-        Step::Stop(Exit::LinkDied(p)) if p == PEER
-    ));
+    assert!(matches!(linked.become_, Step::Stop(behavior::Stopped)));
     for crash in [
         Crash::Failed,
         Crash::EnvironmentFailed,
@@ -328,10 +311,7 @@ async fn abnormal_death_reaction_outcome_classes() {
         Crash::Cancelled,
     ] {
         let crashed = behavior.transition(outcome(Err(crash))).unwrap();
-        assert!(matches!(
-            crashed.become_,
-            Step::Stop(Exit::LinkDied(p)) if p == PEER
-        ));
+        assert!(matches!(crashed.become_, Step::Stop(behavior::Stopped)));
     }
 }
 
@@ -377,10 +357,7 @@ async fn supervision_preserves_inner_watch_routing() {
             outcome: Err(Crash::Failed),
         })
         .unwrap();
-    assert!(matches!(
-        died.become_,
-        Step::Stop(Exit::LinkDied(p)) if p == PEER
-    ));
+    assert!(matches!(died.become_, Step::Stop(behavior::Stopped)));
 
     // Child lane: a death still yields a replacement send on a fresh stack.
     let replacement = Compose::new(Parent)
@@ -453,14 +430,5 @@ async fn supervision_failure_reaction_preserves_composed_send_lanes() {
     assert!(actions.sends.behavior.observations.is_empty());
     assert!(actions.sends.child_observations.is_empty());
     assert!(actions.sends.replacement_commands.is_empty());
-    assert_eq!(
-        actions.become_,
-        Step::Stop(Exit::SupervisionFailed(
-            SupervisionFailureReason::RestartDenied(RestartDenial::BudgetExceeded {
-                restarts_in_window: 0,
-                replacements_requested: 1,
-                maximum_restarts: 0,
-            })
-        ))
-    );
+    assert_eq!(actions.become_, Step::Stop(behavior::Stopped));
 }

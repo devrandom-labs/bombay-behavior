@@ -9,13 +9,13 @@
 //! agree on every byte.
 
 use behavior::{
-    Acted, Actions, Crash, Delivery, Exit, MailAddr, Never, RestartDenial,
-    RestartPolicy, Step, Strategy, SupervisionEvent, SupervisionFailureReason, Supervisor,
-    WorkerStopped, stop_on_supervision_failure,
+    Acted, Actions, Crash, Delivery, MailAddr, Never, RestartDenial, RestartPolicy, Step, Strategy,
+    SupervisionEvent, SupervisionFailureReason, Supervisor, WorkerStopped,
+    stop_on_supervision_failure,
 };
 use libfuzzer_sys::fuzz_target;
-use tokio::runtime::Builder;
 use std::time::Instant;
+use tokio::runtime::Builder;
 
 const FLEET: usize = 4;
 const BUDGET: u32 = 2;
@@ -29,7 +29,13 @@ impl Worker {
         &mut self,
         _from: MailAddr,
         _message: u8,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u8>>>, behavior::NoBirths, Never> {
+    ) -> Acted<
+        MailAddr,
+        Never,
+        Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u8>>>,
+        behavior::NoBirths,
+        Never,
+    > {
         Ok(Actions::cont())
     }
 }
@@ -41,19 +47,12 @@ fn worker(_index: usize) -> Worker {
 struct Parent;
 
 #[behavior::behavior(addr = MailAddr, message = u64, sends = Vec<Never>, births = behavior::Births<Worker>, error = Never)]
-impl Parent  {
-
+impl Parent {
     fn receive(
         &mut self,
         _from: MailAddr,
         _message: u64,
-    ) -> Acted<
-        MailAddr,
-        Never,
-        Vec<Never>,
-        behavior::Births<Worker>,
-        Never,
-    > {
+    ) -> Acted<MailAddr, Never, Vec<Never>, behavior::Births<Worker>, Never> {
         Ok(Actions::cont())
     }
 }
@@ -70,7 +69,8 @@ fuzz_target!(|bytes: &[u8]| {
             RestartPolicy::Permanent,
             BUDGET,
             std::time::Duration::from_nanos(WINDOW_NANOS),
-        ).unwrap()
+        )
+        .unwrap()
         .with_failure_reaction(stop_on_supervision_failure);
         let initialized = behavior::Compose::new(behavior).initialize().unwrap();
         let mut behavior = initialized.behavior;
@@ -115,15 +115,15 @@ fuzz_target!(|bytes: &[u8]| {
             if expected_restart {
                 assert_eq!(actions.become_, Step::Continue);
             } else {
+                assert_eq!(actions.become_, Step::Stop(behavior::Stopped));
+                assert_eq!(actions.sends.failure_reports.len(), 1);
                 assert_eq!(
-                    actions.become_,
-                    Step::Stop(Exit::SupervisionFailed(
-                        SupervisionFailureReason::RestartDenied(RestartDenial::BudgetExceeded {
-                            restarts_in_window: restarts.len(),
-                            replacements_requested: 1,
-                            maximum_restarts: BUDGET,
-                        })
-                    ))
+                    actions.sends.failure_reports[0].failure.reason,
+                    SupervisionFailureReason::RestartDenied(RestartDenial::BudgetExceeded {
+                        restarts_in_window: restarts.len(),
+                        replacements_requested: 1,
+                        maximum_restarts: BUDGET,
+                    })
                 );
             }
             for slot in 0..FLEET {

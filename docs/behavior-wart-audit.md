@@ -3,7 +3,7 @@
 This ledger records the behavior-owned findings closed by the 2026-08-14
 wart pass. It is an implementation audit, not a new actor-model authority.
 Research-mandated laws, Bombay-derived constructions, and Bombay policy are
-distinguished below. The adjacent `vbombay` runtime is outside this workspace;
+distinguished below. The sibling Bombay runtime is outside this workspace;
 this list makes no claim that runtime-owned interpreter work was changed here.
 
 | # | Closed wart | Classification | Current evidence |
@@ -58,15 +58,16 @@ this list makes no claim that runtime-owned interpreter work was changed here.
   state belongs in the concrete behavior value; making every reaction a new
   generic parameter would multiply wrapper and protocol types without adding a
   semantic capability.
-- Worker-pool types remain in this crate. Moving them into another Bombay crate
-  would violate the dependency boundary, while erasing them behind a generic
-  runtime facility would violate static protocol composition. `PoolActions`
-  remains the one named alias used across both pool variants.
+- Worker-pool types and the other reusable actor implementations live in
+  `bombay-behavior-actors`, which depends one-way on `bombay-behavior` and
+  preserves their concrete static protocols. `PoolActions` remains the one
+  named alias used across both pool variants.
 
 ## Static and verification evidence
 
 - Zero `dyn Trait`, `Any`, `TypeId`, `unsafe`, registry, erased future, or
-  untyped global envelope exists in `crates/behavior/src`.
+  untyped global envelope exists in `crates/behavior/src` or
+  `crates/actors/src`.
 - `cargo nextest run --workspace`: 207 passed, 0 skipped after the transport-bound driver test moved out of the core surface.
 - `cargo test -p bombay-behavior --doc`: 10 passed, including lifecycle
   compile-fail proofs.

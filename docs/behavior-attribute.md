@@ -80,5 +80,10 @@ its [procedural macros overview][procedural-macros].
 This rationale concerns Rust authoring syntax. It does not change the actor
 transition law or grant the macro any interpreter capability.
 
+Future syntax for selecting reusable templates around this generated domain
+behavior is governed by the [Universal Behavior Driver](driver.md). Such a
+macro may generate only the same concrete wrapper types and static capability
+requirements available through ordinary Rust composition.
+
 [attribute-macros]: https://doc.rust-lang.org/reference/procedural-macros.html#attribute-macros
 [procedural-macros]: https://doc.rust-lang.org/book/ch20-05-macros.html

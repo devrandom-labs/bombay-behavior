@@ -1,5 +1,27 @@
 # Research campaigns
 
+## Archival naming and current architecture
+
+These campaigns preserve the vocabulary and repository layout under which
+their evidence was collected. Historical references to **Behaviorpass** mean
+the repository now published as `bombay-behavior`; historical references to
+**Actorpass** mean the predecessor runtime whose responsibilities now live in
+the Bombay repository and its focused sibling crates. Historical `Fsm` surface
+references map to the current `Machine` construction where the report is
+discussing implementation rather than a cited formalism.
+
+The current production architecture is documented in
+[`docs/ecosystem.md`](../docs/ecosystem.md),
+[`docs/driver.md`](../docs/driver.md), and
+[`docs/actor-catalogue.md`](../docs/actor-catalogue.md). Mnesis/Nexus owns the
+durability substrate, `mnesis-bombay` owns its Bombay integration boundary,
+and CESR/KERI owns CESR framing and KERI protocol/identity semantics. Those are
+components of the Bombay architecture, not external framework candidates.
+
+Campaign documents below are immutable research provenance unless a concrete
+research claim is reopened. Their old project names must not be read as current
+package, repository, or ownership guidance.
+
 The research tree contains two separate campaigns. They share the repository's
 actor-model laws, but they answer different questions and must not be treated as
 one continuous loop.

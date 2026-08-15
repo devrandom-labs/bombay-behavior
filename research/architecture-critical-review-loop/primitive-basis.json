@@ -256,7 +256,7 @@
       "id": "N-become",
       "name": "Designate next behavior",
       "layer": "actor-nucleus",
-      "rust_type": "become_ seat: Step<Ph, Exit<A>> verdict (behavior.rs:305-316; verdict.rs)",
+      "rust_type": "become_ seat: Step<Ph, Stopped> verdict; Stopped carries no actor lifecycle or runtime provenance",
       "formation_rule": "A transition designates the behavior for the next communication (or, as a Bombay extension, stops).",
       "input_types": [
         "next behavior or verdict"
@@ -315,15 +315,15 @@
       "id": "B-stop",
       "name": "Explicit termination verdict",
       "layer": "bombay-derived",
-      "rust_type": "Step::Stop(Exit<A>) (verdict.rs)",
+      "rust_type": "Step::Stop(Stopped), the payload-free terminal alternative inside become",
       "formation_rule": "A transition may return the stop verdict, signaling end of life to the interpreter.",
       "input_types": [
-        "Exit<A>"
+        "Stopped"
       ],
       "output_types": [
         "terminal verdict"
       ],
-      "operational_semantics": "Stop is final; the interpreter reaps. Model-level inertness would be become-to-sink; the explicit verdict carries the exit value.",
+      "operational_semantics": "Stop is final; the interpreter may reap. Model-level inertness is become-to-sink. Lifecycle, supervision, collection, and crash provenance travel through typed actor/runtime protocols rather than the become verdict.",
       "classification": "bombay-derived",
       "laws": [
         "Stop is terminal and total per fold"
@@ -356,7 +356,7 @@
           {
             "approach": "Model termination as becoming an inert sink behavior",
             "code_summary": "sink = rec(b.behavior ignoring all messages) (AMST 1997 defines exactly this sink)",
-            "obstruction": "Derivation SUCCEEDS semantically: inertness is expressible. Retention of Stop is a Bombay policy: an explicit terminal verdict gives the interpreter a typed reclamation signal and Exit value that a sink cannot distinguish from a live behavior",
+            "obstruction": "Derivation SUCCEEDS semantically: inertness is expressible. Retention of Stop is a Bombay policy: an explicit payload-free terminal verdict gives the interpreter a typed reclamation signal that a sink cannot distinguish from a live behavior",
             "obstruction_kind": "semantic"
           }
         ],
@@ -373,7 +373,7 @@
       "limitations": [
         "Explicit termination is a Bombay policy extension; Agha's actors persist",
         "A sink behavior cannot signal reclamation to the interpreter",
-        "Exit value semantics are interpreter-defined"
+        "Lifecycle and runtime outcome semantics are carried by typed protocols outside the become seat"
       ]
     },
     {

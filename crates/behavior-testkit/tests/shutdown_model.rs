@@ -1,6 +1,6 @@
 use behavior::{
-    Acted, Actions, Compose, Delivery, Exit, MailAddr, Never, NoBirths, Recipient,
-    ShutdownProtocol, ShutdownRequested, User,
+    Acted, Actions, Compose, Delivery, MailAddr, Never, NoBirths, Recipient, ShutdownProtocol,
+    ShutdownRequested, User,
 };
 use behavior_testkit::{Mailbox, drive};
 use proptest::collection::vec;
@@ -65,6 +65,6 @@ proptest! {
             trace.sends.iter().map(|delivery| delivery.message).collect::<Vec<_>>(),
             expected_messages
         );
-        prop_assert_eq!(trace.exit, stop.map(|_| Exit::Normal));
+        prop_assert_eq!(trace.stopped, stop.is_some());
     }
 }

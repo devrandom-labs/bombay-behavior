@@ -63,7 +63,7 @@ impl StopOnZero {
             sends: Vec::new(),
             creates: Vec::new(),
             become_: if message == 0 {
-                Step::Stop(Exit::Normal)
+                Step::Stop(behavior::Stopped)
             } else {
                 Step::Continue
             },
@@ -450,7 +450,7 @@ async fn stash_stop_skips_drain_and_preserves_held_messages() {
     let actions = behavior
         .transition(UserEvent::user(MailAddr(9), 0))
         .unwrap();
-    assert_eq!(actions.become_, Step::Stop(Exit::Normal));
+    assert_eq!(actions.become_, Step::Stop(behavior::Stopped));
     assert_eq!(behavior.base().seen, [(MailAddr(9), 0)]);
     assert_eq!(behavior.held(), 1);
 }
@@ -516,7 +516,7 @@ async fn fsm_mid_drain_deferral_reorders_relative_to_fifo() {
 async fn nested_at_identical_schedules_are_distinguished_by_identity() {
     let due = Instant::now() + Duration::from_secs(1);
     let outer = Compose::new(Recorder::default())
-        .deadline(TimerId(0), Some(due), |_| Ok(Step::Stop(Exit::Normal)))
+        .deadline(TimerId(0), Some(due), |_| Ok(Step::Stop(behavior::Stopped)))
         .deadline(TimerId(1), Some(due), |_| Ok(Step::Continue));
     let initialized = outer.initialize().unwrap();
     let mut outer = initialized.behavior;
@@ -526,7 +526,7 @@ async fn nested_at_identical_schedules_are_distinguished_by_identity() {
         generation: TimerGeneration(0),
     });
     let first = outer.transition(event).unwrap();
-    assert_eq!(first.become_, Step::Stop(Exit::Normal));
+    assert_eq!(first.become_, Step::Stop(behavior::Stopped));
 }
 
 /// `Compose::children` defaults are Transient policy with a budget of one

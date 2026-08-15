@@ -7,7 +7,7 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, Compose, Crash, Delivery, Exit, MailAddr, Never, Recipient, RestartPolicy,
+    Acted, Actions, Compose, Crash, Delivery, MailAddr, Never, Recipient, RestartPolicy,
     StashRoute, Step, Strategy, SupervisionEvent, TimerElapsed, TimerGeneration, TimerId,
     UserEvent, WorkerStopped,
 };
@@ -166,7 +166,7 @@ async fn supervision_preserves_inner_at_routing() {
     let due = Instant::now() + Duration::from_secs(1);
     let behavior = Compose::new(EchoingParent { seen: Vec::new() })
         .deadline(behavior::TimerId(0), Some(due), |_| {
-            Ok(Step::Stop(Exit::Normal))
+            Ok(Step::Stop(behavior::Stopped))
         })
         .children(
             |index| u64::try_from(index).unwrap(),
@@ -188,7 +188,7 @@ async fn supervision_preserves_inner_at_routing() {
             generation: TimerGeneration(0),
         })
         .unwrap();
-    assert_eq!(fired.become_, Step::Stop(Exit::Normal));
+    assert_eq!(fired.become_, Step::Stop(behavior::Stopped));
     assert!(fired.sends.replacement_commands.is_empty());
 }
 
@@ -251,10 +251,7 @@ async fn full_stack_all_four_layers_keep_their_own_lanes() {
             }),
         )))
         .unwrap();
-    assert!(matches!(
-        died.become_,
-        Step::Stop(Exit::LinkDied(p)) if p == peer
-    ));
+    assert!(matches!(died.become_, Step::Stop(behavior::Stopped)));
 
     // Child lane on a fresh stack: replacement send only.
     let fresh = Compose::new(EchoingParent { seen: Vec::new() })
@@ -401,7 +398,7 @@ proptest! {
             if tag == 1 {
                 prop_assert!(matches!(
                     actions.become_,
-                    Step::Stop(Exit::LinkDied(p)) if p == peer
+                    Step::Stop(behavior::Stopped)
                 ));
             } else {
                 prop_assert_eq!(actions.become_, Step::Continue);

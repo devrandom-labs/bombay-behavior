@@ -25,10 +25,10 @@ terminal observation is a semantic input to `Watch`.
 Absence from a live-address table is not proof of termination. An interpreter
 that can select neither a live incarnation nor authoritative retained terminal
 history must return an interpreter error and must not fabricate `PeerStopped`.
-Actorpass currently has no tombstone authority, so it implements only the live
+The Bombay runtime currently has no tombstone authority, so it implements only the live
 selection leg.
 
-Behaviorpass exposes only the peer address and normalized outcome. Exact
+Bombay Behavior exposes only the peer address and normalized outcome. Exact
 incarnation handles, generations, tombstone retention, and lookup are runtime
 capabilities and do not enter the pure behavior algebra.
 
@@ -40,7 +40,7 @@ other observer, does not terminate the peer, and does not affect a later
 `ObservePeer` request. It cannot retract `PeerStopped` already admitted to the
 actor's mailbox.
 
-Behaviorpass deliberately provides only this pure request vocabulary. Runtime
+Bombay Behavior deliberately provides only this pure request vocabulary. Runtime
 monitor ownership and cancellation remain interpreter concerns; a higher-level
 dynamic watching transformation should be added only with a concrete behavior
 whose transition laws demonstrate the need.

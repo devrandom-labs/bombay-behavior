@@ -9,14 +9,13 @@
 //! product lane and never leak across.
 
 use behavior::{
-    Acted, Actions, Compose, Crash, DeadlineEvent, Delivery, Exit,
-    MailAddr, Never, PeerStopped, Recipient, RestartPolicy, StashRoute, Step,
-    Strategy, SupervisionEvent, TimerElapsed, TimerGeneration, TimerId, UserEvent, WatchEvent,
-    WorkerStopped, stop_on_abnormal_death,
+    Acted, Actions, Compose, Crash, DeadlineEvent, Delivery, MailAddr, Never, PeerStopped,
+    Recipient, RestartPolicy, StashRoute, Step, Strategy, SupervisionEvent, TimerElapsed,
+    TimerGeneration, TimerId, UserEvent, WatchEvent, WorkerStopped, stop_on_abnormal_death,
 };
 use libfuzzer_sys::fuzz_target;
-use tokio::runtime::Builder;
 use std::time::Instant;
+use tokio::runtime::Builder;
 
 #[derive(Default)]
 struct EchoingParent {
@@ -24,14 +23,18 @@ struct EchoingParent {
 }
 
 #[behavior::behavior(addr = MailAddr, message = u64, sends = Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u64>>>, births = behavior::Births<Echo>, error = Never)]
-impl EchoingParent  {
-
+impl EchoingParent {
     fn receive(
         &mut self,
         _from: MailAddr,
         message: u64,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u64>>>, behavior::Births<Echo>, Never>
-    {
+    ) -> Acted<
+        MailAddr,
+        Never,
+        Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u64>>>,
+        behavior::Births<Echo>,
+        Never,
+    > {
         self.seen.push(message);
         Ok(Actions {
             sends: vec![Delivery::new(Recipient::global(MailAddr(0)), message)],
@@ -45,13 +48,18 @@ impl EchoingParent  {
 struct Echo;
 
 #[behavior::behavior(addr = MailAddr, message = u8, sends = Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u8>>>, births = behavior::NoBirths, error = Never)]
-impl Echo  {
-
+impl Echo {
     fn receive(
         &mut self,
         _from: MailAddr,
         _message: u8,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u8>>>, behavior::NoBirths, Never> {
+    ) -> Acted<
+        MailAddr,
+        Never,
+        Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u8>>>,
+        behavior::NoBirths,
+        Never,
+    > {
         Ok(Actions::cont())
     }
 }
@@ -77,7 +85,12 @@ fuzz_target!(|bytes: &[u8]| {
             .stash(route)
             .watch(peer, stop_on_abnormal_death)
             .deadline(behavior::TimerId(0), Some(due), |_| Ok(Step::Continue))
-            .children(|index| u64::try_from(index).unwrap(), 2, |index| Some(child(index))).unwrap()
+            .children(
+                |index| u64::try_from(index).unwrap(),
+                2,
+                |index| Some(child(index)),
+            )
+            .unwrap()
             .restart(Strategy::OneForOne)
             .when(RestartPolicy::Permanent)
             .within(u32::MAX, std::time::Duration::MAX);
@@ -123,7 +136,7 @@ fuzz_target!(|bytes: &[u8]| {
                         )))
                         .unwrap();
                     assert!(
-                        matches!(actions.become_, Step::Stop(Exit::LinkDied(p)) if p == peer),
+                        matches!(actions.become_, Step::Stop(behavior::Stopped)),
                         "peer death verdict at byte {index}"
                     );
                     assert!(actions.sends.replacement_commands.is_empty());
@@ -164,7 +177,9 @@ fuzz_target!(|bytes: &[u8]| {
                         "replacement at byte {index}"
                     );
                     assert_eq!(
-                        actions.sends.replacement_commands[0].to.resolve(MailAddr(17)),
+                        actions.sends.replacement_commands[0]
+                            .to
+                            .resolve(MailAddr(17)),
                         behavior::Address::birth(MailAddr(17), nonce),
                         "replacement route at byte {index}"
                     );

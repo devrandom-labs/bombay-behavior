@@ -7,7 +7,7 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 homepage.workspace = true
-description = "Composable, statically typed actor behavior algebra"
+description = "Pure, statically typed actor behavior primitives"
 keywords = ["actor", "async", "behavior", "concurrency"]
 categories = ["asynchronous", "concurrency"]
 

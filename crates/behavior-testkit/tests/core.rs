@@ -33,7 +33,7 @@ impl Recorder {
             sends: vec![Delivery::new(Recipient::global(from), message)],
             creates: Vec::new(),
             become_: if message == u8::MAX {
-                Step::Stop(Exit::Normal)
+                Step::Stop(behavior::Stopped)
             } else {
                 Step::Continue
             },
@@ -53,7 +53,7 @@ async fn owned_mailbox_is_fifo_and_stops_without_consuming_tail() {
 
     assert_eq!(trace.transitions, 3);
     assert_eq!(trace.pending, 1);
-    assert_eq!(trace.exit, Some(Exit::Normal));
+    assert!(trace.stopped);
     assert_eq!(trace.sends.len(), 2);
     assert_eq!(trace.sends[0].message, 3);
     assert_eq!(trace.sends[1].message, u8::MAX);
@@ -78,7 +78,7 @@ async fn stale_and_duplicate_time_observations_are_inert() {
     let due = Instant::now() + Duration::from_secs(2);
     let behavior =
         Compose::new(Recorder::default()).deadline(behavior::TimerId(0), Some(due), |_| {
-            Ok(Step::Stop(Exit::Normal))
+            Ok(Step::Stop(behavior::Stopped))
         });
     let mut mailbox = Mailbox::new([
         DeadlineEvent::Elapsed(TimerElapsed {
@@ -96,7 +96,7 @@ async fn stale_and_duplicate_time_observations_are_inert() {
     ]);
     let trace = drive(behavior, &mut mailbox).unwrap();
 
-    assert_eq!(trace.exit, Some(Exit::Normal));
+    assert!(trace.stopped);
     assert_eq!(trace.pending, 1);
     assert_eq!(trace.transitions, 3);
 }
@@ -139,7 +139,7 @@ async fn unrelated_peer_event_passes_to_the_inner_watcher() {
     });
     let actions = behavior.transition(event).unwrap();
 
-    assert_eq!(actions.become_, Step::Stop(Exit::LinkDied(inner_peer)));
+    assert_eq!(actions.become_, Step::Stop(behavior::Stopped));
 }
 
 // A `Release` first delivers its own trigger message, then drains the held

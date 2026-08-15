@@ -5,8 +5,8 @@
 //! across any number of release events.
 
 use behavior::{
-    Acted, Actions, Behavior, Compose, Delivery, Exit, MailAddr, Never, Recipient, StashRoute,
-    Step, User, UserEvent,
+    Acted, Actions, Behavior, Compose, Delivery, MailAddr, Never, Recipient, StashRoute, Step,
+    User, UserEvent,
 };
 use behavior_testkit::Mailbox;
 use proptest::collection::vec;
@@ -226,7 +226,7 @@ impl StopRecorder {
             sends: vec![Delivery::new(Recipient::global(from), message)],
             creates: Vec::new(),
             become_: if message == 9 {
-                Step::Stop(Exit::Normal)
+                Step::Stop(behavior::Stopped)
             } else {
                 Step::Continue
             },
@@ -252,7 +252,7 @@ fn stash_filter_with_a_stopping_inner_matches_the_prefix_model() {
         let actions = runtime
             .block_on(async { behavior.transition(UserEvent::user(from, message)) })
             .unwrap();
-        if matches!(actions.become_, Step::Stop(Exit::Normal)) {
+        if matches!(actions.become_, Step::Stop(behavior::Stopped)) {
             stopped = true;
         }
     }

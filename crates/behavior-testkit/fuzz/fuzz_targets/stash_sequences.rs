@@ -8,8 +8,7 @@
 //! `|recorded| + held() == stepped` and no id is recorded twice.
 
 use behavior::{
-    Acted, Actions, Delivery, MailAddr, Never, Recipient,
-    StashRoute, Step, User, UserEvent,
+    Acted, Actions, Delivery, MailAddr, Never, Recipient, StashRoute, Step, User, UserEvent,
 };
 use libfuzzer_sys::fuzz_target;
 use tokio::runtime::Builder;
@@ -25,7 +24,13 @@ impl Recorder {
         &mut self,
         _from: MailAddr,
         message: u64,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u64>>>, behavior::NoBirths, Never> {
+    ) -> Acted<
+        MailAddr,
+        Never,
+        Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u64>>>,
+        behavior::NoBirths,
+        Never,
+    > {
         self.seen.push(message);
         Ok(Actions {
             sends: vec![Delivery::new(Recipient::global(MailAddr(0)), message)],
