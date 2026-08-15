@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-macros-v0.10.0...bombay-behavior-macros-v0.11.0) - 2026-08-15
+
+### Other
+
+- Refactor behavior algebra and typed lifecycle ([#43](https://github.com/devrandom-labs/bombay-behavior/pull/43))
+
 ## [0.9.5](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-macros-v0.9.4...bombay-behavior-macros-v0.9.5) - 2026-08-13
 
 ### Added
