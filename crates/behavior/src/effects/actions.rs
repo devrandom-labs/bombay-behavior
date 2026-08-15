@@ -168,7 +168,35 @@ pub type Acted<A, Ph, Sends, Birth, E> = Result<Actions<A, Ph, Sends, Birth>, E>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Births, CreationKind, MailAddr};
+    use crate::{Births, CreationKind, MailAddr, NoBirths};
+
+    #[test]
+    fn equality_and_debug_cover_every_named_effect_leg() {
+        type Plain = Actions<MailAddr, u8, Vec<u8>, NoBirths>;
+
+        let value = Plain::new(vec![1], Vec::new(), Step::Goto(3));
+        assert_eq!(value, Plain::new(vec![1], Vec::new(), Step::Goto(3)));
+        assert_ne!(value, Plain::new(vec![2], Vec::new(), Step::Goto(3)));
+        assert_ne!(value, Plain::new(vec![1], Vec::new(), Step::Goto(4)));
+        assert_ne!(value, Plain::new(vec![1], Vec::new(), Step::Continue));
+        assert_eq!(
+            format!("{value:?}"),
+            "Actions { sends: [1], creates: [], become: Goto(3) }"
+        );
+
+        type Creating = Actions<MailAddr, Never, Vec<u8>, Births<u8>>;
+        let created = Creating::new(
+            Vec::new(),
+            vec![Create::new(7, 9, CreationKind::Birth)],
+            Step::Continue,
+        );
+        let other_creation = Creating::new(
+            Vec::new(),
+            vec![Create::new(8, 9, CreationKind::Birth)],
+            Step::Continue,
+        );
+        assert_ne!(created, other_creation);
+    }
 
     #[test]
     fn mapping_sends_preserves_creation_order_and_verdict() {
