@@ -17,7 +17,9 @@ pub type DeadlineReaction<B> = fn(&mut B) -> Result<Become, <B as Behavior>::Err
 /// Named effect lanes added by [`Deadline`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeadlineSends<Sends> {
+    /// Sends emitted by the wrapped behavior or its deadline reaction.
     pub behavior: Sends,
+    /// Absolute scheduling requests interpreted by the local timer capability.
     pub schedules: ServiceSends<ScheduleAt>,
 }
 

@@ -82,7 +82,6 @@ name = "bombay-behavior-actors"
 version = "0.12.0"
 dependencies = [
  "bombay-behavior",
- "bombay-behavior-macros",
  "proptest",
  "thiserror",
  "tokio",

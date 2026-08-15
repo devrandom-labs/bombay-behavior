@@ -80,10 +80,17 @@ its [procedural macros overview][procedural-macros].
 This rationale concerns Rust authoring syntax. It does not change the actor
 transition law or grant the macro any interpreter capability.
 
-Future syntax for selecting reusable templates around this generated domain
-behavior is governed by the [Universal Behavior Driver](driver.md). Such a
-macro may generate only the same concrete wrapper types and static capability
-requirements available through ordinary Rust composition.
+## One macro boundary
+
+`#[behavior]` is the only public behavior macro. Wrapper stacks are ordinary
+Rust values built with `Compose` and inferred at local, generic spawn, and
+adapter boundaries. A framework extension that truly stores one exact stack
+may use an ordinary Rust type alias or newtype and write the same static
+delegation explicitly; the component API does not create another authoring
+language for that uncommon case.
+
+The attribute is governed by the [Universal Behavior Driver](driver.md). It
+generates only the concrete implementation a user could write manually.
 
 [attribute-macros]: https://doc.rust-lang.org/reference/procedural-macros.html#attribute-macros
 [procedural-macros]: https://doc.rust-lang.org/book/ch20-05-macros.html

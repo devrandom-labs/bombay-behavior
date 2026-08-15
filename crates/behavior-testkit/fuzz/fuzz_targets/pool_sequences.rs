@@ -4,8 +4,8 @@ use std::time::Duration;
 
 use behavior::{
     Actions, Activate, Behavior, CreationKind, InterruptionPolicy, JobId, KeyedPoolMessage,
-    KeyedWorkerPool, MailAddr, Never, NoBirths, PoolAssignment, PoolMessage, PoolResponse, Recipient,
-    RestartPolicy, User, WorkerCreationResolved, WorkerPhase, WorkerPool, WorkerStopped,
+    KeyedWorkerPool, MailAddr, Never, NoBirths, PoolAssignment, PoolMessage, PoolResponse,
+    Recipient, RestartPolicy, User, WorkerCreationResolved, WorkerPhase, WorkerPool, WorkerStopped,
 };
 use libfuzzer_sys::fuzz_target;
 use std::time::Instant;
@@ -50,18 +50,18 @@ fn affinity(key: &u8) -> u64 {
 
 fuzz_target!(|bytes: &[u8]| {
     let pool = WorkerPool::new(
-        nonce,
-        2,
-        |index| Some(worker(index)),
-        4,
-        if bytes.first().is_some_and(|byte| byte & 1 == 0) {
-            InterruptionPolicy::Fail
-        } else {
-            InterruptionPolicy::Retry
-        },
-        RestartPolicy::Permanent,
-        u32::MAX,
-        Duration::from_secs(1),
+        behavior::ChildTopology::indexed(nonce, 2, |index| Some(worker(index))),
+        behavior::PoolConfiguration::new(
+            4,
+            if bytes.first().is_some_and(|byte| byte & 1 == 0) {
+                InterruptionPolicy::Fail
+            } else {
+                InterruptionPolicy::Retry
+            },
+            RestartPolicy::Permanent,
+            u32::MAX,
+            Duration::from_secs(1),
+        ),
     )
     .unwrap();
     let initialized = (pool).initialize().unwrap();
@@ -134,14 +134,14 @@ fuzz_target!(|bytes: &[u8]| {
     }
 
     let keyed = KeyedWorkerPool::new(
-        nonce,
-        2,
-        |index| Some(worker(index)),
-        4,
-        InterruptionPolicy::Retry,
-        RestartPolicy::Permanent,
-        u32::MAX,
-        Duration::from_secs(1),
+        behavior::ChildTopology::indexed(nonce, 2, |index| Some(worker(index))),
+        behavior::PoolConfiguration::new(
+            4,
+            InterruptionPolicy::Retry,
+            RestartPolicy::Permanent,
+            u32::MAX,
+            Duration::from_secs(1),
+        ),
         affinity,
     )
     .unwrap();

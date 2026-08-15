@@ -70,6 +70,11 @@ components in this table. Bombay's top-level façade should re-export both
 traits beside `Behavior` and `Actions`, while component interpreter functions
 remain framework-extension surface.
 
+Exact wrapper stacks remain inferred across generic `B: Behavior` boundaries.
+Supervisor and pool topology and policy cross the construction boundary through `ChildTopology`,
+`RestartConfiguration`, and `PoolConfiguration`; none of these products owns
+runtime interpretation.
+
 ## Reuse rule
 
 Before adding a crate or subsystem:

@@ -112,13 +112,17 @@ fn exhaustive_supervision_sequences_match_the_reference_model() {
                             let mut model = Model::new(FLEET);
                             let behavior = Supervisor::new(
                                 Parent,
-                                |index| u64::try_from(index).unwrap(),
-                                FLEET,
-                                |index| Some(child(index)),
-                                strategy,
-                                policy,
-                                maximum,
-                                window_duration,
+                                behavior::ChildTopology::indexed(
+                                    |index| u64::try_from(index).unwrap(),
+                                    FLEET,
+                                    |index| Some(child(index)),
+                                ),
+                                behavior::RestartConfiguration::new(
+                                    strategy,
+                                    policy,
+                                    maximum,
+                                    window_duration,
+                                ),
                             )
                             .unwrap();
                             let initialized = behavior.initialize().unwrap();

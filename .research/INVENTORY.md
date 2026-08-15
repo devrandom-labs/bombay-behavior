@@ -48,7 +48,7 @@ Discover and record unit/example, composition, independent-model, exhaustive,
 property, fuzz, compile-fail, documentation, architecture, mutation, and
 dependency gates. No coverage claim is established by this scaffold.
 
-Observed coverage: 282 nextest cases and 10 doctests/compile-fail examples.
+Observed coverage: 283 nextest cases and 10 doctests/compile-fail examples.
 E10 adds the two previously missing circuit-breaker exhaustion boundaries.
 The independent audit found no failing all-target build or doctest.
 
@@ -82,3 +82,12 @@ The final ownership is: concrete templates own construction and policy;
 `Activate` owns consuming initialization; the blanket `Compose` trait owns
 only transformations that produce a concrete wrapper with a changed event sum
 or named effect product; `Active<B>` owns post-initialization folds.
+
+The adapter-ergonomics audit retains one narrowly demonstrated construction:
+`ChildTopology`, `RestartConfiguration`, and `PoolConfiguration` are named
+semantic products shared by supervisor and pool construction. Exact wrapper
+compositions remain inferred across generic `B: Behavior` boundaries. The
+`workers!` and `#[behavior_stack]` convenience macros were removed so
+`#[behavior]` is the sole optional behavior-authoring macro. No Driver,
+Environment, executor, transport, or capability-registry abstraction was
+added to this repository.

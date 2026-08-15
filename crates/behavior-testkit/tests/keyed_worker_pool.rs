@@ -63,14 +63,14 @@ type Pool = behavior::Active<PoolDefinition>;
 
 fn pool_definition(selector: Selector) -> PoolDefinition {
     KeyedWorkerPool::<MailAddr, Reply, u8, u8, u16, Worker, _>::new(
-        nonce,
-        2,
-        |index| Some(worker(index)),
-        8,
-        InterruptionPolicy::Retry,
-        RestartPolicy::Permanent,
-        64,
-        Duration::from_secs(60),
+        behavior::ChildTopology::indexed(nonce, 2, |index| Some(worker(index))),
+        behavior::PoolConfiguration::new(
+            8,
+            InterruptionPolicy::Retry,
+            RestartPolicy::Permanent,
+            64,
+            Duration::from_secs(60),
+        ),
         selector,
     )
     .unwrap()
@@ -118,14 +118,14 @@ fn assignments(
 #[test]
 fn targeted_submission_rejects_when_its_busy_workers_backlog_is_full() {
     let pool = KeyedWorkerPool::<MailAddr, Reply, u8, u8, u16, Worker, _>::new(
-        nonce,
-        1,
-        |index| Some(worker(index)),
-        1,
-        InterruptionPolicy::Retry,
-        RestartPolicy::Permanent,
-        64,
-        Duration::from_secs(60),
+        behavior::ChildTopology::indexed(nonce, 1, |index| Some(worker(index))),
+        behavior::PoolConfiguration::new(
+            1,
+            InterruptionPolicy::Retry,
+            RestartPolicy::Permanent,
+            64,
+            Duration::from_secs(60),
+        ),
         Selector::Parity,
     )
     .unwrap();
@@ -379,14 +379,14 @@ fn unbound_rebalance_explicitly_establishes_affinity() {
 fn captured_selector_state_is_statically_dispatched() {
     let selected = 1_u64;
     let pool = KeyedWorkerPool::<MailAddr, Reply, u8, u8, u16, Worker, _>::new(
-        nonce,
-        2,
-        |index| Some(worker(index)),
-        1,
-        InterruptionPolicy::Fail,
-        RestartPolicy::Permanent,
-        1,
-        Duration::from_secs(1),
+        behavior::ChildTopology::indexed(nonce, 2, |index| Some(worker(index))),
+        behavior::PoolConfiguration::new(
+            1,
+            InterruptionPolicy::Fail,
+            RestartPolicy::Permanent,
+            1,
+            Duration::from_secs(1),
+        ),
         move |_: &u8| selected,
     )
     .unwrap();

@@ -9,7 +9,9 @@ use crate::BehaviorBase;
 use crate::protocol::TimerId;
 use crate::shutdown::{FinalizeOnShutdown, ShutdownReaction, StopOnShutdown};
 use crate::stash::{Stash, StashRoute};
-use crate::supervision::{RestartPolicy, Strategy, Supervisor};
+use crate::supervision::{
+    ChildTopology, RestartConfiguration, RestartPolicy, Strategy, Supervisor,
+};
 use crate::time::{Deadline, DeadlineReaction};
 use crate::time::{OneShot, OneShotReaction};
 use crate::time::{Periodic, PeriodicReaction};
@@ -267,13 +269,13 @@ pub trait Compose: Behavior + Sized {
     {
         Supervisor::new(
             self,
-            nonces,
-            count,
-            build,
-            DEFAULT_STRATEGY,
-            DEFAULT_POLICY,
-            DEFAULT_BUDGET.0,
-            DEFAULT_BUDGET.1,
+            ChildTopology::new((0..count).map(nonces), build),
+            RestartConfiguration::new(
+                DEFAULT_STRATEGY,
+                DEFAULT_POLICY,
+                DEFAULT_BUDGET.0,
+                DEFAULT_BUDGET.1,
+            ),
         )
     }
 }

@@ -137,13 +137,17 @@ async fn fsm_direct_step_error_keeps_held_intact() {
 async fn supervision_propagates_inner_errors_without_touching_slots() {
     let supervisor = Supervisor::new(
         FailingParent { fail: true },
-        |index| u64::try_from(index).unwrap(),
-        2,
-        |index| Some(child(index)),
-        Strategy::OneForOne,
-        RestartPolicy::Permanent,
-        u32::MAX,
-        Duration::MAX,
+        behavior::ChildTopology::indexed(
+            |index| u64::try_from(index).unwrap(),
+            2,
+            |index| Some(child(index)),
+        ),
+        behavior::RestartConfiguration::new(
+            Strategy::OneForOne,
+            RestartPolicy::Permanent,
+            u32::MAX,
+            Duration::MAX,
+        ),
     )
     .unwrap();
     let initialized = supervisor.initialize().unwrap();
@@ -246,13 +250,17 @@ async fn stash_deliver_arm_error_keeps_held_intact() {
 async fn driver_propagates_errors_and_preserves_the_tail() {
     let supervisor = Supervisor::new(
         FailingParent { fail: true },
-        |index| u64::try_from(index).unwrap(),
-        1,
-        |index| Some(child(index)),
-        Strategy::OneForOne,
-        RestartPolicy::Permanent,
-        u32::MAX,
-        Duration::MAX,
+        behavior::ChildTopology::indexed(
+            |index| u64::try_from(index).unwrap(),
+            1,
+            |index| Some(child(index)),
+        ),
+        behavior::RestartConfiguration::new(
+            Strategy::OneForOne,
+            RestartPolicy::Permanent,
+            u32::MAX,
+            Duration::MAX,
+        ),
     )
     .unwrap();
     let mut mailbox = Mailbox::new([

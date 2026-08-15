@@ -2,11 +2,11 @@
 
 ## Current state
 
-Twelve retained loop changes (E01-E04, E06-E12). E05 was reverted by the
+Fifteen retained loop changes (E01-E04, E06-E15). E05 was reverted by the
 independent audit because unused convenience conversion APIs violate the
 repository contract. Authoritative `nix flake check` passes
 7/7 (build, nextest, doc, fmt, toml-fmt, audit, deny). Full verification:
-282 nextest, 10 doc, clippy clean on scoped crates, fmt clean, diff --check
+283 nextest, 10 doc, clippy clean on production crates, fmt clean, diff --check
 clean, 0 unsafe, deny licenses ok (0 warnings). Production panic surface: 2
 provably-unreachable guarded `expect` (circuit_breaker counter guards), 0
 `unwrap`/`panic!`/`unreachable!`.
@@ -30,12 +30,13 @@ provably-unreachable guarded `expect` (circuit_breaker counter guards), 0
 Three fresh whole-repository audit passes (7 scouts) + manual sweeps covered all
 13 audit lenses. Findings trended HIGH→LOW (duplicated authority/boolean
 blindness/sentinels/forgeable types → allocation micro-wins → config hygiene).
-Final pass found no remaining credible high-value hypothesis. The two surviving
-items are recorded, not silently dropped:
+The later adapter-ergonomics pass closed the previously deferred constructor
+and type-nameability findings:
 
-- Lens 2 — positional constructors (`Supervisor::new` 8, `WorkerPool::new` 8,
-  `KeyedWorkerPool::new` 9): ergonomic, `#[allow]`ed, deferred pending operator
-  decision on churn vs. value (would be a `PoolConfig` product-type change).
+- E14 was subsequently removed: generic `B: Behavior` boundaries preserve
+  inference without introducing a second authoring macro.
+- E15: `ChildTopology`, `RestartConfiguration`, and `PoolConfiguration`
+  replace the eight- and nine-argument supervisor/pool constructors.
 - E11a — `order_gate` watermark clone: rejected (clean fix doesn't typecheck for
   generic K; verbose `Bound` form costs more than the clone).
 
@@ -54,4 +55,4 @@ check, and 10 documentation tests pass after the correction.
 
 ## Exact next actions
 
-1. Commit the verified direct-use composition surface without pushing.
+1. Review and commit the verified behavior-owned adapter ergonomics changes.

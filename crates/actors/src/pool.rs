@@ -10,10 +10,10 @@ use std::collections::{BTreeMap, VecDeque};
 use std::time::Duration;
 
 use crate::{
-    Actions, Address, Behavior, Births, Crash, CreationRejection, Delivery, Exit, FleetError,
-    Never, Own, Proxy, ProxyCommand, Recipient, RestartPolicy, SendAlgebra, SendInput, Strategy,
-    SupervisionEvent, Supervisor, SupervisorError, SupervisorSends, User, WorkerCreationResolved,
-    WorkerStopped,
+    Actions, Address, Behavior, Births, ChildTopology, Crash, CreationRejection, Delivery, Exit,
+    FleetError, Never, Own, Proxy, ProxyCommand, Recipient, RestartConfiguration, RestartPolicy,
+    SendAlgebra, SendInput, Strategy, SupervisionEvent, Supervisor, SupervisorError,
+    SupervisorSends, User, WorkerCreationResolved, WorkerStopped,
 };
 
 /// Caller-chosen identity used to correlate pool responses.
@@ -133,6 +133,41 @@ pub enum InterruptionPolicy {
     Fail,
     /// Put the job at the front of the backlog for at-least-once assignment.
     Retry,
+}
+
+/// Admission, interruption, and replacement policy for a worker pool.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PoolConfiguration {
+    /// Maximum jobs retained while every eligible worker is occupied.
+    pub backlog_capacity: usize,
+    /// Ownership policy when an assigned worker stops.
+    pub interruption: InterruptionPolicy,
+    /// Worker exits eligible for replacement.
+    pub restart_policy: RestartPolicy,
+    /// Maximum accepted replacements inside `restart_window`.
+    pub maximum_restarts: u32,
+    /// Inclusive restart-budget window.
+    pub restart_window: Duration,
+}
+
+impl PoolConfiguration {
+    /// Define the complete pool policy independently of its worker topology.
+    #[must_use]
+    pub const fn new(
+        backlog_capacity: usize,
+        interruption: InterruptionPolicy,
+        restart_policy: RestartPolicy,
+        maximum_restarts: u32,
+        restart_window: Duration,
+    ) -> Self {
+        Self {
+            backlog_capacity,
+            interruption,
+            restart_policy,
+            maximum_restarts,
+            restart_window,
+        }
+    }
 }
 
 /// Public, payload-free view of one stable worker slot.
@@ -461,26 +496,17 @@ where
     /// Returns [`PoolConfigError::NoWorkers`] for an empty topology or
     /// [`PoolConfigError::DuplicateWorker`] for the first repeated
     /// creator-local nonce. No behavior or creation request is produced.
-    #[allow(
-        clippy::too_many_arguments,
-        reason = "the arguments expose the complete pool policy"
-    )]
     pub fn new(
-        nonces: fn(usize) -> A::Nonce,
-        count: usize,
-        build: fn(usize) -> Option<C>,
-        backlog_capacity: usize,
-        interruption: InterruptionPolicy,
-        restart_policy: RestartPolicy,
-        max_restarts: u32,
-        restart_window: Duration,
+        topology: ChildTopology<A::Nonce, C>,
+        configuration: PoolConfiguration,
     ) -> Result<Self, PoolConfigError<A::Nonce>> {
+        let ChildTopology { nonces, build } = topology;
+        let count = nonces.len();
         if count == 0 {
             return Err(PoolConfigError::NoWorkers);
         }
         let mut slots = Vec::with_capacity(count);
-        for index in 0..count {
-            let nonce = nonces(index);
+        for &nonce in &nonces {
             if slots
                 .iter()
                 .any(|slot: &Slot<A, D, J, R>| slot.nonce == nonce)
@@ -495,13 +521,13 @@ where
         Ok(Self {
             supervisor: Supervisor::new(
                 PoolKernel::new(),
-                nonces,
-                count,
-                build,
-                Strategy::OneForOne,
-                restart_policy,
-                max_restarts,
-                restart_window,
+                ChildTopology::new(nonces, build),
+                RestartConfiguration::new(
+                    Strategy::OneForOne,
+                    configuration.restart_policy,
+                    configuration.maximum_restarts,
+                    configuration.restart_window,
+                ),
             )
             .map_err(|error| match error {
                 FleetError::UnknownChild(nonce) | FleetError::DuplicateChild(nonce) => {
@@ -511,9 +537,9 @@ where
             })?,
             slots,
             backlog: VecDeque::new(),
-            backlog_capacity,
+            backlog_capacity: configuration.backlog_capacity,
             next_assignment: 0,
-            interruption,
+            interruption: configuration.interruption,
         })
     }
 
@@ -1099,14 +1125,18 @@ mod tests {
     #[test]
     fn one_dispatch_batch_preserves_fifo_jobs_across_index_removal() {
         let mut pool = WorkerPool::new(
-            |index| u64::try_from(index).unwrap(),
-            2,
-            |index| Some(test_worker(index)),
-            3,
-            InterruptionPolicy::Fail,
-            RestartPolicy::Permanent,
-            1,
-            Duration::from_secs(1),
+            ChildTopology::indexed(
+                |index| u64::try_from(index).unwrap(),
+                2,
+                |index| Some(test_worker(index)),
+            ),
+            PoolConfiguration::new(
+                3,
+                InterruptionPolicy::Fail,
+                RestartPolicy::Permanent,
+                1,
+                Duration::from_secs(1),
+            ),
         )
         .unwrap();
         behavior::initialize(&mut pool).unwrap();
@@ -1228,32 +1258,13 @@ where
     ///
     /// Returns [`PoolConfigError::NoWorkers`] for an empty topology or
     /// [`PoolConfigError::DuplicateWorker`] for a repeated stable nonce.
-    #[allow(
-        clippy::too_many_arguments,
-        reason = "the arguments expose the complete pool and affinity policy"
-    )]
     pub fn new(
-        nonces: fn(usize) -> A::Nonce,
-        count: usize,
-        build: fn(usize) -> Option<C>,
-        backlog_capacity: usize,
-        interruption: InterruptionPolicy,
-        restart_policy: RestartPolicy,
-        max_restarts: u32,
-        restart_window: Duration,
+        topology: ChildTopology<A::Nonce, C>,
+        configuration: PoolConfiguration,
         selector: S,
     ) -> Result<Self, PoolConfigError<A::Nonce>> {
         Ok(Self {
-            pool: WorkerPool::new(
-                nonces,
-                count,
-                build,
-                backlog_capacity,
-                interruption,
-                restart_policy,
-                max_restarts,
-                restart_window,
-            )?,
+            pool: WorkerPool::new(topology, configuration)?,
             bindings: Vec::new(),
             selector,
         })

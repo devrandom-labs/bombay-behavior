@@ -38,6 +38,12 @@ and strategy candidate selection. The strategy laws are explicit:
 
 These are Bombay supervision policies, not actor-model primitives.
 
+`ChildTopology` is the public construction product for this domain: it keeps
+ordered stable nonces and their slot factory together. `RestartConfiguration`
+separately owns strategy, eligibility policy, maximum accepted replacements,
+and the budget window. The products prevent those independent facts from
+being encoded as a positional constructor protocol.
+
 ## Restart admission
 
 `supervision::restart_budget` owns the sliding time window and atomic admission

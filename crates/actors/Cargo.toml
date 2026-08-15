@@ -16,7 +16,6 @@ name = "behavior_actors"
 
 [dependencies]
 behavior.workspace = true
-behavior-macros.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]

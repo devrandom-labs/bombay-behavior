@@ -4,4 +4,6 @@ mod proxy;
 mod supervisor;
 
 pub use proxy::{Proxy, ProxySends};
-pub use supervisor::{Supervisor, SupervisorError, SupervisorSends};
+pub use supervisor::{
+    ChildTopology, RestartConfiguration, Supervisor, SupervisorError, SupervisorSends,
+};

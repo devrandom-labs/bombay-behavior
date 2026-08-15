@@ -3,8 +3,8 @@
 //! next behavior or termination. Higher capabilities are composed from these
 //! explicit transition parts.
 
-// The `workers!` macro emits `::behavior::…` paths; this alias lets
-// those expansions resolve inside this crate too (macro hygiene).
+// The `#[behavior]` expansion emits `::behavior::…` paths; this alias lets the
+// expansion resolve inside this crate too.
 extern crate self as behavior;
 
 mod actor;

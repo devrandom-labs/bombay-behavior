@@ -23,7 +23,7 @@ nix flake check
 git diff --check
 ```
 
-- `cargo nextest run --workspace`: 282 passed.
+- `cargo nextest run --workspace`: 283 passed.
 - `cargo test --workspace --doc`: 10 passed, including compile-fail doctests.
 - `cargo fmt --all -- --check`: passed.
 - Scoped Clippy: passed warning-clean.

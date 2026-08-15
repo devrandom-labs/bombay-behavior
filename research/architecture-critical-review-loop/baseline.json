@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "captured_at_commit": "2ffa7bcd9037bebe61d97116834e40832872a84b",
-  "test_turbofish_expressions": 99,
+  "test_turbofish_expressions": 102,
   "test_helper_type_aliases": 23,
   "production_panic_expect_sites": 7,
   "generic_arities": {
@@ -71,6 +71,7 @@
     "CacheMessage",
     "CacheResult",
     "CacheState",
+    "ChildTopology",
     "ChildStopped",
     "ChildrenResult",
     "CircuitBreaker",
@@ -183,6 +184,7 @@
     "PoolAssignment",
     "PoolBehaviorSends",
     "PoolConfigError",
+    "PoolConfiguration",
     "PoolError",
     "PoolEvent",
     "PoolInterruption",
@@ -247,6 +249,7 @@
     "Resolver",
     "ResolverConfigError",
     "ResolverMessage",
+    "RestartConfiguration",
     "RestartDenial",
     "RestartPolicy",
     "RoundRobin",
@@ -356,6 +359,7 @@
     "crates/behavior/Cargo.toml",
     "crates/behavior/CHANGELOG.md",
     "crates/behavior-macros/Cargo.toml",
+    "crates/behavior-macros/CHANGELOG.md",
     "crates/behavior-testkit/Cargo.toml"
   ],
   "protected_paths": [

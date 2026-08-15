@@ -103,13 +103,17 @@ async fn driver_accumulates_supervising_send_products_losslessly() {
     let at = Instant::now();
     let supervisor: TestSupervisor = behavior::Supervisor::new(
         EchoingParent { seen: Vec::new() },
-        |index| u64::try_from(index).unwrap(),
-        2,
-        |index| Some(child(index)),
-        Strategy::OneForOne,
-        RestartPolicy::Permanent,
-        u32::MAX,
-        Duration::MAX,
+        behavior::ChildTopology::indexed(
+            |index| u64::try_from(index).unwrap(),
+            2,
+            |index| Some(child(index)),
+        ),
+        behavior::RestartConfiguration::new(
+            Strategy::OneForOne,
+            RestartPolicy::Permanent,
+            u32::MAX,
+            Duration::MAX,
+        ),
     )
     .unwrap();
     let mut mailbox = Mailbox::new([
@@ -200,13 +204,17 @@ async fn empty_fleet_dynamic_birth_then_death_restarts() {
     let at = Instant::now();
     let supervisor = behavior::Supervisor::new(
         BirthingParent { born: false },
-        |index| u64::try_from(index).unwrap(),
-        0,
-        |index| Some(child(index)),
-        Strategy::OneForOne,
-        RestartPolicy::Permanent,
-        u32::MAX,
-        Duration::MAX,
+        behavior::ChildTopology::indexed(
+            |index| u64::try_from(index).unwrap(),
+            0,
+            |index| Some(child(index)),
+        ),
+        behavior::RestartConfiguration::new(
+            Strategy::OneForOne,
+            RestartPolicy::Permanent,
+            u32::MAX,
+            Duration::MAX,
+        ),
     )
     .unwrap();
     let initialized = supervisor.initialize().unwrap();

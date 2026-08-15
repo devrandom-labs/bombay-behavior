@@ -118,6 +118,28 @@ address to the exact live registered endpoint. Thus Behavior owns selection
 policy while Bombay Address retains registration and endpoint-routing
 authority; neither duplicates the other.
 
+## Construction products
+
+Pool construction separates topology from operating policy:
+
+```rust,ignore
+let topology = ChildTopology::indexed(nonce_for, worker_count, build_worker);
+let configuration = PoolConfiguration::new(
+    backlog_capacity,
+    InterruptionPolicy::Retry,
+    RestartPolicy::Permanent,
+    maximum_restarts,
+    restart_window,
+);
+let pool = WorkerPool::new(topology, configuration)?;
+```
+
+`ChildTopology` owns the ordered creator-local nonces and the pure slot
+factory. `PoolConfiguration` owns backlog, interruption, and restart policy.
+`KeyedWorkerPool::new` accepts those same two products plus its selector. No
+positional argument carries meaning by its location, and construction still
+rejects empty or duplicate topology before a behavior exists.
+
 ## Admission
 
 Submission while an idle worker exists is accepted and assigned. Otherwise it

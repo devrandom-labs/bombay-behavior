@@ -3,7 +3,10 @@ mod domain;
 mod policy;
 mod protocol;
 
-pub use adapter::{Proxy, ProxySends, Supervisor, SupervisorError, SupervisorSends};
+pub use adapter::{
+    ChildTopology, Proxy, ProxySends, RestartConfiguration, Supervisor, SupervisorError,
+    SupervisorSends,
+};
 pub use domain::{FleetError, IncarnationError as ProxyError, IncarnationPhase};
 pub use policy::{
     ReportSupervisionFailure, RestartPolicy, Strategy, SupervisionFailure,

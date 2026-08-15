@@ -185,14 +185,14 @@ fn generated_behavior_is_nominal_in_pool_and_supervision_positions() {
         (),
         Worker,
     > = WorkerPool::new(
-        nonce,
-        1,
-        |index| Some(worker(index)),
-        0,
-        InterruptionPolicy::Fail,
-        RestartPolicy::Permanent,
-        1,
-        Duration::from_secs(1),
+        behavior::ChildTopology::indexed(nonce, 1, |index| Some(worker(index))),
+        behavior::PoolConfiguration::new(
+            0,
+            InterruptionPolicy::Fail,
+            RestartPolicy::Permanent,
+            1,
+            Duration::from_secs(1),
+        ),
     )
     .unwrap();
     let initialized = pool.initialize().unwrap();

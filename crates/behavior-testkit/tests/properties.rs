@@ -61,13 +61,17 @@ fn child(_index: usize) -> Child {
 fn supervisor(strategy: Strategy, count: usize) -> Supervisor<Parent, Child> {
     Supervisor::new(
         Parent,
-        |index| u64::try_from(index).unwrap(),
-        count,
-        |index| Some(child(index)),
-        strategy,
-        RestartPolicy::Permanent,
-        u32::MAX,
-        Duration::MAX,
+        behavior::ChildTopology::indexed(
+            |index| u64::try_from(index).unwrap(),
+            count,
+            |index| Some(child(index)),
+        ),
+        behavior::RestartConfiguration::new(
+            strategy,
+            RestartPolicy::Permanent,
+            u32::MAX,
+            Duration::MAX,
+        ),
     )
     .unwrap()
 }

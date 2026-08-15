@@ -17,8 +17,15 @@ All notable changes to `bombay-behavior-actors` are documented here.
   rate policies; discovery, pub/sub and presence; generation-safe timers and
   leases; bounded cache policy; dependency workflows and coordination; and
   typed health, readiness and configuration boundaries.
+- Add `ChildTopology`, `RestartConfiguration`, and `PoolConfiguration` so
+  supervisor and pool construction uses named semantic products.
 
 ### Changed
 
 - Derive the actor crate's public error types with `thiserror`; wrapped fleet
   and behavior failures participate in typed source chains.
+- Change supervisor and pool constructors to accept named topology and
+  configuration products instead of long positional argument lists.
+- Remove the `workers!` and `#[behavior_stack]` convenience macros. The sole
+  behavior authoring macro is `#[behavior]`; wrapper stacks use inference and
+  heterogeneous fleets use explicit exhaustive sums.

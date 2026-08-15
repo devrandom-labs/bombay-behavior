@@ -20,8 +20,6 @@
 //! component tests, and advanced framework extension.
 
 pub use behavior::*;
-pub use behavior_macros::workers;
-
 mod compose;
 pub mod composition;
 pub mod discovery;
@@ -60,9 +58,9 @@ pub use operations::{
 pub use persistence::{Cache, CacheConfigError, CacheEntry, CacheMessage, CacheResult, CacheState};
 pub use pool::{
     AffinitySelector, AssignmentId, InterruptionPolicy, JobId, KeyedPoolEvent, KeyedPoolMessage,
-    KeyedWorkerPool, PoolActions, PoolAssignment, PoolBehaviorSends, PoolConfigError, PoolError,
-    PoolEvent, PoolInterruption, PoolMessage, PoolRejection, PoolResponse, PoolSends, WorkerPhase,
-    WorkerPool, WorkerRetirement,
+    KeyedWorkerPool, PoolActions, PoolAssignment, PoolBehaviorSends, PoolConfigError,
+    PoolConfiguration, PoolError, PoolEvent, PoolInterruption, PoolMessage, PoolRejection,
+    PoolResponse, PoolSends, WorkerPhase, WorkerPool, WorkerRetirement,
 };
 pub use protocol::{
     ChildStopped, CreationRejection, CreationResolved, ObserveChild, ObserveCreation, ObservePeer,
@@ -92,10 +90,11 @@ pub use routing::{
 pub use shutdown::{FinalizeOnShutdown, ShutdownProtocol, ShutdownReaction, StopOnShutdown};
 pub use stash::{Stash, StashRoute, StashStatus};
 pub use supervision::{
-    FleetError, IncarnationPhase, Proxy, ProxyCommand, ProxyError, ProxyEvent, ProxySends,
-    ReportSupervisionFailure, RestartPolicy, Strategy, SupervisionEvent, SupervisionFailure,
-    SupervisionFailureReaction, Supervisor, SupervisorError, SupervisorSends, restart_all,
-    restart_one, restart_rest, retire_on_supervision_failure, stop_on_supervision_failure,
+    ChildTopology, FleetError, IncarnationPhase, Proxy, ProxyCommand, ProxyError, ProxyEvent,
+    ProxySends, ReportSupervisionFailure, RestartConfiguration, RestartPolicy, Strategy,
+    SupervisionEvent, SupervisionFailure, SupervisionFailureReaction, Supervisor, SupervisorError,
+    SupervisorSends, restart_all, restart_one, restart_rest, retire_on_supervision_failure,
+    stop_on_supervision_failure,
 };
 pub use termination::{Crash, Exit, RestartDenial, SupervisionFailureReason};
 pub use time::{

@@ -40,10 +40,16 @@ The behavior-owned wart pass replaced that representation as follows:
 
 - `Behavior` plus `#[behavior]` are the only behavior-definition paths;
   `State`, `Base`, `FnState`, and the erased function adapters were removed.
-- `Compose<B>` is now a definition builder. Consuming `initialize` produces
+- `Activate` is the consuming initialization boundary and produces
   `Initialized<B> { behavior: Active<B>, actions }`; only `Active<B>` accepts
-  mailbox events. Pre-initialization transition and repeated initialization
-  are compile-time errors, not runtime lifecycle branches.
+  mailbox events. `Compose` is now a zero-state extension trait used only to
+  construct typed wrappers. Pre-initialization transition and repeated
+  initialization are compile-time errors, not runtime lifecycle branches.
+- Generic `B: Behavior` boundaries preserve inference for exact static wrapper
+  compositions. The `workers!` and `#[behavior_stack]` convenience macros are
+  removed; `#[behavior]` is the sole optional authoring macro.
+  `ChildTopology`, `RestartConfiguration`, and `PoolConfiguration` replace
+  long positional supervisor and pool constructors.
 - Positional `SendProduct { inner, own }` chains were replaced by named send
   products whose fields identify their semantic lanes.
 - Current wrapper names are `Deadline`, `Watch`, `Supervisor`, `Stash`, and

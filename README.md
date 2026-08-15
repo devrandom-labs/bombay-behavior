@@ -128,6 +128,12 @@ only the explicit `Behavior` wiring, making the type usable in `Births`,
 and deliberately narrow scope are documented in
 [Nominal Behavior Attribute](docs/behavior-attribute.md).
 
+Wrapper stacks remain ordinary inferred Rust values. Adapter and spawn
+boundaries are generic over `B: Behavior`; the library does not add a second
+macro for naming compositions. Supervisor and pool construction uses the named
+`ChildTopology`, `RestartConfiguration`, and `PoolConfiguration` products
+instead of positional argument lists.
+
 ## Development and testing
 
 Enter the pinned development environment with:
@@ -164,6 +170,10 @@ cancellation are documented in
 
 The functional core and its reduction laws are documented in
 [Functional Core](docs/functional-core.md).
+Nominal domain behavior authoring and exact static stack naming are documented
+in [Behavior Attributes](docs/behavior-attribute.md). Worker admission,
+assignment, interruption, and construction laws are documented in
+[Worker Pool Semantics](docs/worker-pool.md).
 
 The canonical reusable template names, their algebraic compositions, package
 ownership, and eligible implementation dependencies are recorded in the
@@ -173,6 +183,8 @@ adapters are recorded in
 [Runtime-Backed Actor Capabilities](docs/runtime-backed-actors.md).
 Their shared execution contract is documented in the
 [Universal Behavior Driver](docs/driver.md).
+The runtime-neutral obligations for any adapter that drives these templates
+are documented in the [Behavior Adapter Contract](docs/adapter-contract.md).
 Ownership across Bombay, Mnesis/Nexus, and CESR/KERI is recorded in the
 [Bombay Ecosystem](docs/ecosystem.md).
 

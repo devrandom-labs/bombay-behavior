@@ -67,10 +67,9 @@ The Driver is generic source code, not an erased runtime object. Rust produces
 a concrete instantiation for each closed composition:
 
 ```text
-Driver<Proxy<Order>, OrderEnvironment>
-Driver<Supervisor<Proxy<Order>>, SupervisionEnvironment>
-Driver<Task<Supervisor<Proxy<Order>>>, TaskEnvironment>
-Driver<EventSourced<Order>, MnesisEnvironment>
+Driver<OrderBehavior, OrderEnvironment>
+Driver<CheckoutBehavior, CheckoutEnvironment>
+Driver<ProjectionHost, MnesisEnvironment>
 ```
 
 There is no supervisor Driver, proxy Driver, task Driver, or persistence
@@ -98,8 +97,10 @@ Task<Supervisor<Proxy<Order>>>
 
 Each wrapper transforms the complete event sum, action product, state, and
 error sum while preserving the inner behavior's effects according to its
-documented composition law. The resulting Rust type is verbose but truthful;
-an alias or macro may name it without erasing it.
+documented composition law. The resulting Rust type is verbose but truthful.
+Local construction relies on inference. A boundary that must store or expose
+the exact stack can use an ordinary Rust alias or newtype. Runtime entry points
+should remain generic over `B: Behavior`, so ordinary users do not need one.
 
 Concrete catalogue templates are constructed and configured through their
 owning types. The `Compose` trait is imported only to apply a wrapper
@@ -113,35 +114,20 @@ type just to spawn it. Naming a composition remains possible for framework
 extensions that store it or expose it in a signature, but that is an explicit
 static protocol boundary rather than ordinary actor startup ceremony.
 
-A future syntax layer may let a user define a domain object and select
-templates declaratively. For example, the intended experience could resemble:
+Normal construction and adapter integration use inference:
 
 ```rust,ignore
-#[bombay::behavior]
-impl Order {
-    fn receive(&mut self, command: OrderCommand) -> OrderActions {
-        // Pure domain transition.
-    }
-}
+let behavior = machine
+    .stash(route)
+    .deadline(timer, when, on_elapsed);
 
-#[bombay::actor(
-    proxy,
-    supervised(strategy = "one_for_one"),
-    task,
-    receive_timeout = "30s"
-)]
-struct OrderActor(Order);
+system.spawn(behavior)?;
 ```
 
-The generated result must be equivalent to a concrete composition such as:
-
-```rust,ignore
-ReceiveTimeout<Task<Supervisor<Proxy<Order>>>>
-```
-
-This syntax is prospective. A macro may generate concrete types and wiring a
-careful user could write manually; it must not add a hidden executor, dynamic
-registry, erased envelope, ambient capability, or alternate semantic path.
+The generic `spawn<B: Behavior>` boundary infers the concrete stack. No macro,
+hidden executor, dynamic registry, or erased envelope is required. See
+[Nominal Behavior Attribute](behavior-attribute.md) for the sole optional
+domain-authoring macro.
 
 ## Conditions for universal driveability
 
@@ -207,6 +193,12 @@ The distilled dependency decisions for template algorithms and runtime
 adapters are maintained in the
 [behavior-template catalogue](actor-catalogue.md#distilled-crate-adoption-map).
 No dependency selected there changes the universal Driver law.
+
+Independent runtimes should use the
+[Behavior Adapter Contract](adapter-contract.md) as the executable integration
+checklist. It restates this law in terms of the concrete `Behavior`,
+`Initialized`, `Active`, and named action products exposed here; it deliberately
+does not define an adapter trait or duplicate a runtime.
 
 ## Driver and Environment responsibilities
 

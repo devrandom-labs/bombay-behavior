@@ -62,13 +62,17 @@ fuzz_target!(|bytes: &[u8]| {
     runtime.block_on(async {
         let behavior = Supervisor::new(
             Parent,
-            |index| u64::try_from(index).unwrap(),
-            FLEET,
-            |index| Some(worker(index)),
-            Strategy::OneForOne,
-            RestartPolicy::Permanent,
-            BUDGET,
-            std::time::Duration::from_nanos(WINDOW_NANOS),
+            behavior::ChildTopology::indexed(
+                |index| u64::try_from(index).unwrap(),
+                FLEET,
+                |index| Some(worker(index)),
+            ),
+            behavior::RestartConfiguration::new(
+                Strategy::OneForOne,
+                RestartPolicy::Permanent,
+                BUDGET,
+                std::time::Duration::from_nanos(WINDOW_NANOS),
+            ),
         )
         .unwrap()
         .with_failure_reaction(stop_on_supervision_failure);

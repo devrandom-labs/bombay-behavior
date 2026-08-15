@@ -94,13 +94,12 @@ where
 {
     Supervisor::new(
         inner,
-        |index| u64::try_from(index).unwrap(),
-        count,
-        |index| Some(child(index)),
-        strategy,
-        policy,
-        maximum,
-        window,
+        behavior::ChildTopology::indexed(
+            |index| u64::try_from(index).unwrap(),
+            count,
+            |index| Some(child(index)),
+        ),
+        behavior::RestartConfiguration::new(strategy, policy, maximum, window),
     )
     .unwrap()
 }

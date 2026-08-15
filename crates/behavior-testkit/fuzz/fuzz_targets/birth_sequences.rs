@@ -9,8 +9,8 @@
 //! state must agree.
 
 use behavior::{
-    Acted, Actions, Activate, Crash, Create, CreationKind, Delivery, MailAddr, Never, RestartPolicy,
-    Step, Strategy, SupervisionEvent, Supervisor, UserEvent, WorkerStopped,
+    Acted, Actions, Activate, Crash, Create, CreationKind, Delivery, MailAddr, Never,
+    RestartPolicy, Step, Strategy, SupervisionEvent, Supervisor, UserEvent, WorkerStopped,
 };
 use libfuzzer_sys::fuzz_target;
 use std::time::Instant;
@@ -70,13 +70,17 @@ fuzz_target!(|bytes: &[u8]| {
     runtime.block_on(async {
         let behavior = Supervisor::new(
             BirthingParent,
-            |index| u64::try_from(index).unwrap(),
-            FLEET,
-            |index| Some(worker(index)),
-            Strategy::OneForOne,
-            RestartPolicy::Permanent,
-            BUDGET,
-            std::time::Duration::MAX,
+            behavior::ChildTopology::indexed(
+                |index| u64::try_from(index).unwrap(),
+                FLEET,
+                |index| Some(worker(index)),
+            ),
+            behavior::RestartConfiguration::new(
+                Strategy::OneForOne,
+                RestartPolicy::Permanent,
+                BUDGET,
+                std::time::Duration::MAX,
+            ),
         )
         .unwrap();
         let initialized = (behavior).initialize().unwrap();

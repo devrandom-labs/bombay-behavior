@@ -98,13 +98,17 @@ fn measure_proxy() -> f64 {
 fn measure_supervise(fleet: usize) -> f64 {
     let behavior = Supervisor::new(
         FleetParent,
-        |index| u64::try_from(index).unwrap(),
-        fleet,
-        |index| Some(child(index)),
-        Strategy::OneForOne,
-        RestartPolicy::Permanent,
-        u32::MAX,
-        Duration::MAX,
+        behavior::ChildTopology::indexed(
+            |index| u64::try_from(index).unwrap(),
+            fleet,
+            |index| Some(child(index)),
+        ),
+        behavior::RestartConfiguration::new(
+            Strategy::OneForOne,
+            RestartPolicy::Permanent,
+            u32::MAX,
+            Duration::MAX,
+        ),
     )
     .unwrap();
     let initialized = behavior.initialize().unwrap();

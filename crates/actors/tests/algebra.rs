@@ -18,7 +18,7 @@ use behavior::{
     ProxyEvent, Recipient, RestartDenial, RestartPolicy, RouteInput, SendAlgebra, ServiceSends,
     ShutdownRequested, StashRoute, Step, Strategy, SupervisionEvent, SupervisionFailure,
     SupervisionFailureReason, Supervisor, TimerElapsed, TimerGeneration, TimerId, User, UserEvent,
-    Watch, WatchEvent, WorkerStopped, stop_on_abnormal_death, stop_on_supervision_failure, workers,
+    Watch, WatchEvent, WorkerStopped, stop_on_abnormal_death, stop_on_supervision_failure,
 };
 use proptest::prelude::*;
 use std::time::Instant;
@@ -813,13 +813,12 @@ fn birth_modes_are_disjoint_and_wrappers_forward_them() {
 fn supervisor(strategy: Strategy, policy: RestartPolicy, budget: u32) -> Supervisor<Parent, Child> {
     Supervisor::new(
         Parent,
-        |index| u64::try_from(index).unwrap(),
-        3,
-        |index| Some(child(index)),
-        strategy,
-        policy,
-        budget,
-        Duration::MAX,
+        behavior::ChildTopology::indexed(
+            |index| u64::try_from(index).unwrap(),
+            3,
+            |index| Some(child(index)),
+        ),
+        behavior::RestartConfiguration::new(strategy, policy, budget, Duration::MAX),
     )
     .unwrap()
 }
@@ -1490,29 +1489,6 @@ async fn stale_time_events_do_not_fire_or_reschedule() {
         }))
         .unwrap();
     assert!(matches!(duplicate.become_, Step::Continue));
-}
-
-#[tokio::test]
-async fn workers_macro_hides_a_heterogeneous_child_sum() {
-    struct Other;
-    #[behavior::behavior(addr = MailAddr, message = u64, sends = Vec<Never>, births = NoBirths, error = Never)]
-    impl Other {
-        fn receive(
-            &mut self,
-            _from: MailAddr,
-            _message: u64,
-        ) -> Acted<MailAddr, Never, Vec<Never>, NoBirths, Never> {
-            Ok(Actions::cont())
-        }
-    }
-    fn other(_index: usize) -> Other {
-        Other
-    }
-
-    let (count, build) = workers![(2, Child, child), (1, Other, other)];
-    assert_eq!(count, 3);
-    let mut worker = build(2).unwrap().initialize().unwrap().behavior;
-    worker.transition(User::user(MailAddr(0), 7)).unwrap();
 }
 
 proptest! {

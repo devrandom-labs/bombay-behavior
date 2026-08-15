@@ -64,7 +64,9 @@ pub type LinkReaction<B> = fn(
 /// Named effect lanes added by [`Watch`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WatchSends<A: Address, Sends> {
+    /// Sends emitted by the wrapped behavior or its pure stop reaction.
     pub behavior: Sends,
+    /// Peer-observation requests interpreted by the local observation capability.
     pub observations: ServiceSends<ObservePeer<A>>,
 }
 

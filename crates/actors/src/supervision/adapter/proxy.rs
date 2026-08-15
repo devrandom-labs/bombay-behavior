@@ -16,10 +16,15 @@ use behavior::{Never, Step};
 
 /// The concrete, statically dispatched effect lanes emitted by a [`Proxy`].
 pub struct ProxySends<C: Behavior> {
+    /// User payloads forwarded to the currently installed worker incarnation.
     pub deliveries: Vec<Delivery<C>>,
+    /// Requests to observe installed child incarnations.
     pub child_observations: ServiceSends<ObserveChild<<C::Addr as Address>::Nonce>>,
+    /// Requests for exact creation acceptance or rejection facts.
     pub creation_observations: ServiceSends<ObserveCreation<<C::Addr as Address>::Nonce>>,
+    /// Worker-stop facts reported to the owning supervisor.
     pub stopped_reports: ServiceSends<ReportWorkerStopped<C::Addr>>,
+    /// Creation-resolution facts reported to the owning supervisor.
     pub creation_reports: ServiceSends<ReportWorkerCreationResolved<<C::Addr as Address>::Nonce>>,
 }
 

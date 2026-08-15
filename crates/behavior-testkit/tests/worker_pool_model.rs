@@ -146,14 +146,14 @@ fn pool(
     interruption: InterruptionPolicy,
 ) -> WorkerPool<MailAddr, Reply, u8, u16, Worker> {
     WorkerPool::new(
-        nonce,
-        workers,
-        |index| Some(worker(index)),
-        capacity,
-        interruption,
-        RestartPolicy::Permanent,
-        64,
-        Duration::from_secs(60),
+        behavior::ChildTopology::indexed(nonce, workers, |index| Some(worker(index))),
+        behavior::PoolConfiguration::new(
+            capacity,
+            interruption,
+            RestartPolicy::Permanent,
+            64,
+            Duration::from_secs(60),
+        ),
     )
     .unwrap()
 }
@@ -413,14 +413,14 @@ fn duplicate_configured_routes_are_rejected_before_initialization() {
         7
     }
     let result = WorkerPool::<MailAddr, Reply, u8, u16, Worker>::new(
-        duplicate,
-        2,
-        |index| Some(worker(index)),
-        1,
-        InterruptionPolicy::Fail,
-        RestartPolicy::Permanent,
-        1,
-        Duration::from_secs(1),
+        behavior::ChildTopology::indexed(duplicate, 2, |index| Some(worker(index))),
+        behavior::PoolConfiguration::new(
+            1,
+            InterruptionPolicy::Fail,
+            RestartPolicy::Permanent,
+            1,
+            Duration::from_secs(1),
+        ),
     );
     assert!(matches!(result, Err(PoolConfigError::DuplicateWorker(7))));
 }
@@ -428,14 +428,14 @@ fn duplicate_configured_routes_are_rejected_before_initialization() {
 #[test]
 fn zero_worker_pool_is_rejected_before_it_can_accept_owned_work() {
     let result = WorkerPool::<MailAddr, Reply, u8, u16, Worker>::new(
-        nonce,
-        0,
-        |index| Some(worker(index)),
-        8,
-        InterruptionPolicy::Fail,
-        RestartPolicy::Permanent,
-        1,
-        Duration::from_secs(1),
+        behavior::ChildTopology::indexed(nonce, 0, |index| Some(worker(index))),
+        behavior::PoolConfiguration::new(
+            8,
+            InterruptionPolicy::Fail,
+            RestartPolicy::Permanent,
+            1,
+            Duration::from_secs(1),
+        ),
     );
     assert!(matches!(result, Err(PoolConfigError::NoWorkers)));
 }
@@ -443,14 +443,14 @@ fn zero_worker_pool_is_rejected_before_it_can_accept_owned_work() {
 #[test]
 fn panicking_payload_clone_occurs_before_admission_state_is_committed() {
     let pool = WorkerPool::<MailAddr, PanicReply, PanicPayload, (), PanicWorker>::new(
-        nonce,
-        1,
-        |index| Some(panic_worker(index)),
-        1,
-        InterruptionPolicy::Retry,
-        RestartPolicy::Permanent,
-        1,
-        Duration::from_secs(1),
+        behavior::ChildTopology::indexed(nonce, 1, |index| Some(panic_worker(index))),
+        behavior::PoolConfiguration::new(
+            1,
+            InterruptionPolicy::Retry,
+            RestartPolicy::Permanent,
+            1,
+            Duration::from_secs(1),
+        ),
     )
     .unwrap();
     let initialized = pool.initialize().unwrap();
@@ -503,14 +503,14 @@ fn panicking_payload_clone_occurs_before_admission_state_is_committed() {
 #[test]
 fn panicking_retry_clone_preserves_the_exact_assigned_state() {
     let pool = WorkerPool::<MailAddr, PanicReply, PanicPayload, (), PanicWorker>::new(
-        nonce,
-        1,
-        |index| Some(panic_worker(index)),
-        1,
-        InterruptionPolicy::Retry,
-        RestartPolicy::Permanent,
-        1,
-        Duration::from_secs(1),
+        behavior::ChildTopology::indexed(nonce, 1, |index| Some(panic_worker(index))),
+        behavior::PoolConfiguration::new(
+            1,
+            InterruptionPolicy::Retry,
+            RestartPolicy::Permanent,
+            1,
+            Duration::from_secs(1),
+        ),
     )
     .unwrap();
     let initialized = pool.initialize().unwrap();
@@ -558,14 +558,14 @@ fn panicking_retry_clone_preserves_the_exact_assigned_state() {
 #[test]
 fn denied_replacement_retires_slot_instead_of_stranding_installation() {
     let pool = WorkerPool::new(
-        nonce,
-        1,
-        |index| Some(worker(index)),
-        1,
-        InterruptionPolicy::Fail,
-        RestartPolicy::Permanent,
-        0,
-        Duration::from_secs(1),
+        behavior::ChildTopology::indexed(nonce, 1, |index| Some(worker(index))),
+        behavior::PoolConfiguration::new(
+            1,
+            InterruptionPolicy::Fail,
+            RestartPolicy::Permanent,
+            0,
+            Duration::from_secs(1),
+        ),
     )
     .unwrap();
     let initialized = pool.initialize().unwrap();

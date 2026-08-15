@@ -123,13 +123,12 @@ fn supervisor(
 ) -> Supervisor<Parent, Child> {
     Supervisor::new(
         Parent,
-        |index| u64::try_from(index).unwrap(),
-        count,
-        |index| Some(child(index)),
-        strategy,
-        policy,
-        maximum,
-        window,
+        behavior::ChildTopology::indexed(
+            |index| u64::try_from(index).unwrap(),
+            count,
+            |index| Some(child(index)),
+        ),
+        behavior::RestartConfiguration::new(strategy, policy, maximum, window),
     )
     .unwrap()
 }
@@ -228,13 +227,13 @@ async fn duplicate_child_stopped_triggers_a_second_restart() {
 fn duplicate_configured_nonces_are_rejected() {
     let result = Supervisor::new(
         Parent,
-        |_| 7,
-        2,
-        |index| Some(child(index)),
-        Strategy::OneForOne,
-        RestartPolicy::Permanent,
-        u32::MAX,
-        Duration::MAX,
+        behavior::ChildTopology::indexed(|_| 7, 2, |index| Some(child(index))),
+        behavior::RestartConfiguration::new(
+            Strategy::OneForOne,
+            RestartPolicy::Permanent,
+            u32::MAX,
+            Duration::MAX,
+        ),
     );
     assert!(matches!(
         result,
@@ -342,13 +341,17 @@ async fn rest_for_one_uses_birth_sequence_not_index() {
     let at = Instant::now();
     let supervisor = Supervisor::new(
         BirthingParent { born: false },
-        |index| u64::try_from(index).unwrap(),
-        3,
-        |index| Some(child(index)),
-        Strategy::RestForOne,
-        RestartPolicy::Permanent,
-        u32::MAX,
-        Duration::MAX,
+        behavior::ChildTopology::indexed(
+            |index| u64::try_from(index).unwrap(),
+            3,
+            |index| Some(child(index)),
+        ),
+        behavior::RestartConfiguration::new(
+            Strategy::RestForOne,
+            RestartPolicy::Permanent,
+            u32::MAX,
+            Duration::MAX,
+        ),
     )
     .unwrap();
     let initialized = supervisor.initialize().unwrap();
@@ -574,13 +577,17 @@ async fn supervising_inherent_builders_match_the_spec_defaults() {
     let at = Instant::now();
     let supervisor = Supervisor::new(
         Parent,
-        |index| u64::try_from(index).unwrap(),
-        1,
-        |index| Some(child(index)),
-        Strategy::OneForOne,
-        RestartPolicy::Transient,
-        1,
-        Duration::from_secs(5),
+        behavior::ChildTopology::indexed(
+            |index| u64::try_from(index).unwrap(),
+            1,
+            |index| Some(child(index)),
+        ),
+        behavior::RestartConfiguration::new(
+            Strategy::OneForOne,
+            RestartPolicy::Transient,
+            1,
+            Duration::from_secs(5),
+        ),
     )
     .unwrap();
     let initialized = supervisor.initialize().unwrap();

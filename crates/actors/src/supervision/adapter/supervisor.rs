@@ -19,6 +19,82 @@ use behavior::{
 };
 use behavior::{Never, Step};
 
+/// A fixed supervised topology and the pure factory for its ordered slots.
+///
+/// The nonce sequence is the topology's stable semantic identity. Its position
+/// selects the matching factory input but is never itself used as an address
+/// or inferred as a nonce.
+pub struct ChildTopology<N, C> {
+    pub(crate) nonces: Vec<N>,
+    pub(crate) build: fn(usize) -> Option<C>,
+}
+
+impl<N, C> ChildTopology<N, C> {
+    /// Define an ordered topology from explicit creator-local nonces.
+    #[must_use]
+    pub fn new(nonces: impl IntoIterator<Item = N>, build: fn(usize) -> Option<C>) -> Self {
+        Self {
+            nonces: nonces.into_iter().collect(),
+            build,
+        }
+    }
+
+    /// Define `count` ordered slots through one explicit nonce function.
+    #[must_use]
+    pub fn indexed(nonces: fn(usize) -> N, count: usize, build: fn(usize) -> Option<C>) -> Self {
+        Self::new((0..count).map(nonces), build)
+    }
+
+    /// Return the configured nonce sequence in birth order.
+    #[must_use]
+    pub fn nonces(&self) -> &[N] {
+        &self.nonces
+    }
+
+    /// Return the number of configured slots.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.nonces.len()
+    }
+
+    /// Report whether the topology contains no slots.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.nonces.is_empty()
+    }
+}
+
+/// Supervision strategy, eligibility, and restart-budget policy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RestartConfiguration {
+    /// Candidate-selection strategy after an eligible stop.
+    pub strategy: Strategy,
+    /// Exit classification eligible for replacement.
+    pub policy: RestartPolicy,
+    /// Maximum accepted replacements inside `window`.
+    pub maximum: u32,
+    /// Inclusive restart-budget window.
+    pub window: Duration,
+}
+
+impl RestartConfiguration {
+    /// Define a complete restart policy.
+    #[must_use]
+    pub const fn new(
+        strategy: Strategy,
+        policy: RestartPolicy,
+        maximum: u32,
+        window: Duration,
+    ) -> Self {
+        Self {
+            strategy,
+            policy,
+            maximum,
+            window,
+        }
+    }
+}
+
 /// Named effect lanes emitted by a supervised behavior.
 pub struct SupervisorSends<A, Sends, C>
 where
@@ -26,9 +102,13 @@ where
     A::Nonce: From<u64>,
     C: Behavior<Addr = A, Ph = Never>,
 {
+    /// Sends emitted by the supervised domain behavior.
     pub behavior: Sends,
+    /// Requests to observe every accepted stable proxy creation.
     pub child_observations: ServiceSends<ObserveChild<A::Nonce>>,
+    /// Commands asking stable proxies to install fresh worker incarnations.
     pub replacement_commands: Vec<Delivery<Proxy<C>>>,
+    /// Typed terminal supervision failures for the local runtime observer.
     pub failure_reports: ServiceSends<ReportSupervisionFailure<A>>,
 }
 
@@ -171,35 +251,27 @@ where
     <B::Addr as Address>::Nonce: From<u64>,
     C: Behavior<Ph = Never, Addr = B::Addr>,
 {
-    #[allow(
-        clippy::too_many_arguments,
-        reason = "builder-style policy configuration is available via Compose::children and the with_* methods"
-    )]
     /// Construct the concrete supervisor behavior directly.
     ///
-    /// Prefer [`crate::Compose::children`] plus the `with_*` builder methods for
-    /// builder-style policy configuration.
+    /// [`ChildTopology`] owns stable child routes and their factory;
+    /// [`RestartConfiguration`] owns the complete restart policy. Construction
+    /// is therefore independent of wrapper nesting.
     ///
     /// # Errors
     /// Returns the first typed topology rejection.
     pub fn new(
         inner: B,
-        nonces: fn(usize) -> <B::Addr as Address>::Nonce,
-        count: usize,
-        build: fn(usize) -> Option<C>,
-        strategy: Strategy,
-        policy: RestartPolicy,
-        max_restarts: u32,
-        window: Duration,
+        topology: ChildTopology<<B::Addr as Address>::Nonce, C>,
+        restart: RestartConfiguration,
     ) -> Result<Self, FleetError<<B::Addr as Address>::Nonce>> {
-        let fleet = Fleet::configured((0..count).map(nonces))?;
+        let fleet = Fleet::configured(topology.nonces)?;
         Ok(Self {
             inner,
             fleet,
-            build,
-            strategy,
-            policy,
-            budget: RestartBudget::new(max_restarts, window),
+            build: topology.build,
+            strategy: restart.strategy,
+            policy: restart.policy,
+            budget: RestartBudget::new(restart.maximum, restart.window),
             on_failure: retire_on_supervision_failure::<B>,
         })
     }

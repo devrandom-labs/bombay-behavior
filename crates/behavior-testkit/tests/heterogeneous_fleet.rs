@@ -1,14 +1,13 @@
-//! `workers!` sum attacks: the macro-produced Worker must dispatch every fleet
-//! index to its declared concrete variant (protocol-preserving), and a
-//! supervised mixed fleet must route replacements by birth sequence without
-//! crossing variants.
+//! Explicit heterogeneous-worker sum checks: each fleet index dispatches to
+//! its declared concrete variant, and supervision routes replacements by birth
+//! sequence without crossing variants.
 
 use std::marker::PhantomData;
 use std::time::Duration;
 
 use behavior::{
     Acted, Actions, Behavior, Crash, Delivery, MailAddr, Never, Recipient, RestartPolicy, Step,
-    Strategy, SupervisionEvent, Supervisor, User, UserEvent, WorkerStopped, workers,
+    Strategy, SupervisionEvent, Supervisor, User, UserEvent, WorkerStopped,
 };
 use std::time::Instant;
 
@@ -66,9 +65,49 @@ fn worker_b(_index: usize) -> WorkerB {
     WorkerB
 }
 
+enum Worker {
+    A(WorkerA),
+    B(WorkerB),
+}
+
+impl Behavior for Worker {
+    type Addr = MailAddr;
+    type Msg = u8;
+    type Event = User<MailAddr, u8>;
+    type Sends = Vec<Delivery<behavior_testkit::TestRecipient<u8>>>;
+    type Ph = Never;
+    type Error = Never;
+    type Birth = behavior::NoBirths;
+
+    fn init(&mut self, turn: behavior::InitializationTurn) -> behavior::BehaviorActed<Self> {
+        match self {
+            Self::A(worker) => worker.init(turn),
+            Self::B(worker) => worker.init(turn),
+        }
+    }
+
+    fn transition(
+        &mut self,
+        turn: behavior::ActiveTurn,
+        event: Self::Event,
+    ) -> behavior::BehaviorActed<Self> {
+        match self {
+            Self::A(worker) => worker.transition(turn, event),
+            Self::B(worker) => worker.transition(turn, event),
+        }
+    }
+}
+
+fn build_worker(index: usize) -> Option<Worker> {
+    match index {
+        0..2 => Some(Worker::A(worker_a(index))),
+        2 => Some(Worker::B(worker_b(index))),
+        _ => None,
+    }
+}
+
 /// The supervising parent is generic over its offspring; instantiating it
-/// with the concrete `Worker` type happens implicitly at each `build` call
-/// site (the macro's `Worker` is block-scoped).
+/// with the concrete `Worker` type happens at each `build` call site.
 struct GenericParent<C>(PhantomData<C>);
 
 #[behavior::behavior(addr = MailAddr, message = u64, sends = Vec<Never>, births = behavior::Births<C>, error = Never)]
@@ -95,13 +134,13 @@ where
 {
     Supervisor::new(
         GenericParent(PhantomData),
-        |index| u64::try_from(index).unwrap(),
-        count,
-        build,
-        strategy,
-        RestartPolicy::Permanent,
-        u32::MAX,
-        Duration::MAX,
+        behavior::ChildTopology::indexed(|index| u64::try_from(index).unwrap(), count, build),
+        behavior::RestartConfiguration::new(
+            strategy,
+            RestartPolicy::Permanent,
+            u32::MAX,
+            Duration::MAX,
+        ),
     )
     .unwrap()
 }
@@ -110,7 +149,7 @@ where
 /// `WorkerA` (tag 1), slot 2 is `WorkerB` (tag 2).
 #[tokio::test]
 async fn workers_sum_preserves_the_concrete_variant_per_index() {
-    let (count, build) = workers![(2, WorkerA, worker_a), (1, WorkerB, worker_b)];
+    let (count, build) = (3, build_worker as fn(usize) -> Option<Worker>);
     assert_eq!(count, 3);
 
     for index in 0..3 {
@@ -123,7 +162,7 @@ async fn workers_sum_preserves_the_concrete_variant_per_index() {
 
 #[tokio::test]
 async fn workers_build_out_of_range_index_is_absent() {
-    let (count, build) = workers![(2, WorkerA, worker_a), (1, WorkerB, worker_b)];
+    let (count, build) = (3, build_worker as fn(usize) -> Option<Worker>);
     assert_eq!(count, 3);
     assert!(build(3).is_none());
 }
@@ -134,7 +173,7 @@ async fn workers_build_out_of_range_index_is_absent() {
 /// `WorkerA` slot 0 — and each replacement keeps its declared variant.
 #[tokio::test]
 async fn supervised_mixed_fleet_routes_replacements_by_birth_sequence() {
-    let (count, build) = workers![(2, WorkerA, worker_a), (1, WorkerB, worker_b)];
+    let (count, build) = (3, build_worker as fn(usize) -> Option<Worker>);
     let supervisor = supervise_with(count, build, Strategy::RestForOne);
     let initialized = supervisor.initialize().unwrap();
     let initial = initialized.actions;
@@ -178,54 +217,11 @@ async fn supervised_mixed_fleet_routes_replacements_by_birth_sequence() {
     );
 }
 
-/// Three kinds: each kind's slots route to its own variant, exactly at the
-/// kind boundaries.
-#[tokio::test]
-async fn workers_three_kinds_boundaries_route_exactly() {
-    struct WorkerC;
-    #[behavior::behavior(addr = MailAddr, message = u8, sends = Vec<Delivery<behavior_testkit::TestRecipient<u8>>>, births = behavior::NoBirths, error = Never)]
-    impl WorkerC {
-        fn receive(
-            &mut self,
-            from: MailAddr,
-            _message: u8,
-        ) -> Acted<
-            MailAddr,
-            Never,
-            Vec<Delivery<behavior_testkit::TestRecipient<u8>>>,
-            behavior::NoBirths,
-            Never,
-        > {
-            Ok(Actions {
-                sends: vec![Delivery::new(Recipient::global(from), 3)],
-                creates: Vec::new(),
-                become_: Step::Continue,
-            })
-        }
-    }
-    fn worker_c(_index: usize) -> WorkerC {
-        WorkerC
-    }
-
-    let (count, build) = workers![
-        (1, WorkerA, worker_a),
-        (1, WorkerB, worker_b),
-        (1, WorkerC, worker_c)
-    ];
-    assert_eq!(count, 3);
-    let expected = [1, 2, 3];
-    for (index, tag) in expected.into_iter().enumerate() {
-        let mut worker = build(index).unwrap().initialize().unwrap().behavior;
-        let actions = worker.transition(User::user(MailAddr(0), 7)).unwrap();
-        assert_eq!(actions.sends[0].message, tag);
-    }
-}
-
-/// A `workers!` fleet under `OneForAll`: one death replaces every alive slot,
+/// A heterogeneous fleet under `OneForAll`: one death replaces every alive slot,
 /// each routed to its own declared variant's nonce.
 #[tokio::test]
 async fn workers_one_for_all_replaces_every_slot() {
-    let (count, build) = workers![(2, WorkerA, worker_a), (1, WorkerB, worker_b)];
+    let (count, build) = (3, build_worker as fn(usize) -> Option<Worker>);
     let supervisor = supervise_with(count, build, Strategy::OneForAll);
     let initialized = supervisor.initialize().unwrap();
     let mut supervisor = initialized.behavior;

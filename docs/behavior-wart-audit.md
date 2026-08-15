@@ -43,6 +43,10 @@ this list makes no claim that runtime-owned interpreter work was changed here.
 | 33 | Child creation silently derived nonces from collection indexes and saturated on conversion failure. | Freshness staging policy | The composition trait's `children` transformation requires an explicit index-to-nonce function. The caller owns the routing policy; no hidden collision-producing fallback exists. |
 | 34 | Raw initialization and composition exposed competing production lifecycle entry points. | Lifecycle capability policy | `Activate::initialize` is the single ordinary consuming activation API for both standalone and wrapped concrete behaviors; `Active<B>` cannot activate again. Interpreter-facing primitives remain component-level. |
 | 35 | Concrete semantic-wrapper constructors let callers bypass the single authoring path. | Bombay API policy | Deadline, receive-timeout, watch, stash, and shutdown wrappers have crate-private constructors and are authored through the `Compose` extension trait; their concrete types remain public so the static composed protocol stays visible. |
+| 36 | Exact wrapper types appeared necessary at adapter boundaries. | Static naming policy | Adapter and spawn boundaries are generic over `B: Behavior`, so ordinary compositions remain inferred. Rare internal storage may use ordinary Rust aliases or newtypes; a second behavior macro was removed. |
+| 37 | Supervisor and pool constructors encoded topology, restart policy, capacity, and interruption as eight or nine positional arguments. | Rust product-type discipline | `ChildTopology`, `RestartConfiguration`, and `PoolConfiguration` name the coexisting semantic facts. Constructors accept those products and reject invalid topology before a behavior exists. |
+| 38 | Independent adapter authors had to reconstruct the Driver contract from several architecture documents and runtime tests. | Interpreter-boundary policy | `docs/adapter-contract.md` specifies activation, one-event folds, action commitment ordering, named lane interpretation, event injection, terminal handling, and conformance tests without introducing a second runtime abstraction. |
+| 39 | `workers!` generated a block-scoped heterogeneous sum and factory through a second macro language. | Static protocol policy | The macro was removed. Heterogeneous fleets use an explicit exhaustive enum with an ordinary `Behavior` implementation and `ChildTopology`; homogeneous fleets use their concrete worker type directly. |
 
 ## Reviewed and deliberately retained
 
@@ -53,7 +57,13 @@ this list makes no claim that runtime-owned interpreter work was changed here.
 - `Proxy::new` remains public because a proxy is itself a concrete derived
   behavior, including the vacant/installation state that cannot be expressed as
   a transparent wrapper. `Supervisor::new` remains fallible because custom
-  strategies and factories need a typed configuration boundary.
+  strategies and factories need a typed configuration boundary. Its function
+  pointer factory remains static and non-capturing: no concrete catalogue use
+  demonstrates that another factory generic would improve the semantic model.
+- `<A as Address>::Nonce: From<u64>` remains required by proxy incarnation
+  allocation, which derives distinct attempt nonces from a checked monotonic
+  sequence. It is a concrete creation dependency, not an Environment service
+  or convenience conversion.
 - Reaction function pointers remain statically dispatched. Captured application
   state belongs in the concrete behavior value; making every reaction a new
   generic parameter would multiply wrapper and protocol types without adding a
@@ -68,7 +78,7 @@ this list makes no claim that runtime-owned interpreter work was changed here.
 - Zero `dyn Trait`, `Any`, `TypeId`, `unsafe`, registry, erased future, or
   untyped global envelope exists in `crates/behavior/src` or
   `crates/actors/src`.
-- `cargo nextest run --workspace`: 207 passed, 0 skipped after the transport-bound driver test moved out of the core surface.
+- `cargo nextest run --workspace`: 283/283 passed.
 - `cargo test -p bombay-behavior --doc`: 10 passed, including lifecycle
   compile-fail proofs.
 - All ten fuzz targets compile. The pinned shell does not install `cargo-fuzz`,
