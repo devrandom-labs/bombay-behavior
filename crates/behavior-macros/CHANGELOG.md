@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Add `#[births]` for closed creation-only heterogeneous child sums with
   exhaustive, statically bounded installation dispatch.
+- Resolve generated paths through either a direct `bombay-behavior` dependency
+  or the `bombay-rs` façade, including Cargo dependency renames; a direct
+  dependency takes precedence when both are present.
 
 ### Removed
 

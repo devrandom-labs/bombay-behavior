@@ -6,7 +6,7 @@
 
 use proc_macro::TokenStream;
 use proc_macro_crate::{FoundCrate, crate_name};
-use proc_macro2::Span;
+use proc_macro2::{Span, TokenStream as TokenStream2};
 use quote::quote;
 use syn::parse::{Parse, ParseStream};
 use syn::{
@@ -22,24 +22,34 @@ mod behavior_kw {
     syn::custom_keyword!(error);
 }
 
-fn behavior_crate() -> Result<proc_macro2::TokenStream> {
+fn crate_path(found: FoundCrate) -> TokenStream2 {
+    match found {
+        FoundCrate::Itself => quote!(crate),
+        FoundCrate::Name(name) => {
+            let name = syn::Ident::new(&name, Span::call_site());
+            quote!(::#name)
+        }
+    }
+}
+
+fn behavior_crate() -> Result<TokenStream2> {
     if std::env::var("CARGO_PKG_NAME").as_deref() == Ok("bombay-behavior") {
         // This package deliberately exposes the library target as `behavior`,
         // not Cargo's normalized package name `bombay_behavior`. The same path
         // works in its unit, integration, and rustdoc crates.
         return Ok(quote!(::behavior));
     }
-    match crate_name("bombay-behavior") {
-        Ok(FoundCrate::Itself) => Ok(quote!(::behavior)),
-        Ok(FoundCrate::Name(name)) => {
-            let name = syn::Ident::new(&name, Span::call_site());
-            Ok(quote!(::#name))
-        }
-        Err(error) => Err(Error::new(
-            Span::call_site(),
-            format!("could not resolve the bombay-behavior crate: {error}"),
-        )),
+    if let Ok(found) = crate_name("bombay-behavior") {
+        return Ok(crate_path(found));
     }
+    if let Ok(found) = crate_name("bombay-rs") {
+        let bombay = crate_path(found);
+        return Ok(quote!(#bombay::behavior));
+    }
+    Err(Error::new(
+        Span::call_site(),
+        "could not resolve `bombay-behavior` directly or through `bombay-rs`",
+    ))
 }
 
 struct BehaviorArgs {

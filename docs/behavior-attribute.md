@@ -109,5 +109,11 @@ Both attributes are governed by the [Universal Behavior Driver](driver.md).
 They generate only concrete static implementations a user could write
 manually.
 
+Applications may depend on `bombay-behavior` directly or use its re-export
+through the `bombay-rs` façade. Generated paths first select the direct package
+when present, then fall back to `bombay-rs::behavior`; Cargo dependency aliases
+are preserved in both cases. If neither package is a direct dependency, macro
+expansion fails with a compile-time resolution error.
+
 [attribute-macros]: https://doc.rust-lang.org/reference/procedural-macros.html#attribute-macros
 [procedural-macros]: https://doc.rust-lang.org/book/ch20-05-macros.html

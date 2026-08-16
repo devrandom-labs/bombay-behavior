@@ -1,0 +1,8 @@
+[package]
+name = "facade-only"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+bombay = { package = "bombay-rs", path = "../facade" }

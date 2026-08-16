@@ -1,0 +1,9 @@
+[workspace]
+resolver = "2"
+members = [
+    "facade",
+    "facade-only",
+    "renamed-facade",
+    "direct-and-facade",
+    "missing-dependency",
+]
