@@ -19,6 +19,22 @@ All notable changes to `bombay-behavior-actors` are documented here.
   typed health, readiness and configuration boundaries.
 - Add `ChildTopology`, `RestartConfiguration`, and `PoolConfiguration` so
   supervisor and pool construction uses named semantic products.
+- Add `Guardian<B>` as the application or subtree lifecycle boundary that
+  preserves bootstrap effects and adds normal shutdown without supervision
+  policy.
+- Add `TerminationMonitor<B>` for consuming one exact peer-terminal fact into
+  complete behavior actions without runtime-owned cleanup or publication
+  policy.
+- Add validated phased and dependency-ordered `ShutdownCoordinator` /
+  `TreeShutdown` folds with explicit child-shutdown rejection.
+- Add checked constant, linear, and exponential `Backoff` plus
+  `BackoffSupervisor`, which withholds replacement commands until the exact
+  scheduled timer generation is observed.
+- Add `DynamicSupervisor` with typed start, stop, replace, and query commands;
+  command acceptance remains distinct from committed creation, replacement,
+  and termination facts.
+- Add `Link` as the honest named specialization of `Watch`; reciprocal linking
+  is two statically typed endpoint compositions, not a hidden runtime table.
 
 ### Changed
 

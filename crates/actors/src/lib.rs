@@ -46,7 +46,13 @@ pub use discovery::{
     PubSubMessage, Registry, RegistryError, RegistryMessage, RegistryResult, Resolution, Resolver,
     ResolverConfigError, ResolverMessage, Topic, TopicError, TopicMembership, TopicMessage,
 };
-pub use lifecycle::{Task, TaskError, TaskMessage, TaskResult, TaskState};
+pub use lifecycle::{
+    CleanupReaction, Guardian, LifecyclePublication, LifecyclePublisher, Reaper,
+    ShutdownCoordinator, ShutdownCoordinatorError, ShutdownCoordinatorEvent,
+    ShutdownCoordinatorSends, ShutdownPlan, ShutdownPlanError, ShutdownState, ShutdownTree,
+    ShutdownTreeError, Task, TaskError, TaskMessage, TaskResult, TaskState, TerminationMonitor,
+    TerminationObservation, TerminationReaction, TreeShutdown,
+};
 pub use machine::{Machine, Move};
 pub use operations::{
     ComponentHealth, ComponentHealthState, Configuration, ConfigurationError, ConfigurationMessage,
@@ -63,9 +69,10 @@ pub use pool::{
     PoolResponse, PoolSends, WorkerPhase, WorkerPool, WorkerRetirement,
 };
 pub use protocol::{
-    ChildStopped, CreationRejection, CreationResolved, ObserveChild, ObserveCreation, ObservePeer,
-    PeerStopped, ReplacementResolution, ReportWorkerCreationResolved, ReportWorkerStopped,
-    ScheduleAfter, ScheduleAt, ShutdownRequested, TimerElapsed, TimerGeneration, TimerId,
+    ChildShutdownRejected, ChildShutdownRejection, ChildStopped, CreationRejection,
+    CreationResolved, ObserveChild, ObserveCreation, ObservePeer, PeerStopped,
+    ReplacementResolution, ReportWorkerCreationResolved, ReportWorkerStopped, ScheduleAfter,
+    ScheduleAt, ShutdownChild, ShutdownRequested, TimerElapsed, TimerGeneration, TimerId,
     UnwatchPeer, WorkerCreationResolved, WorkerStopped,
 };
 pub use routing::{
@@ -90,11 +97,14 @@ pub use routing::{
 pub use shutdown::{FinalizeOnShutdown, ShutdownProtocol, ShutdownReaction, StopOnShutdown};
 pub use stash::{Stash, StashRoute, StashStatus};
 pub use supervision::{
-    ChildTopology, FleetError, IncarnationPhase, Proxy, ProxyCommand, ProxyError, ProxyEvent,
-    ProxySends, ReportSupervisionFailure, RestartConfiguration, RestartPolicy, Strategy,
-    SupervisionEvent, SupervisionFailure, SupervisionFailureReaction, Supervisor, SupervisorError,
-    SupervisorSends, restart_all, restart_one, restart_rest, retire_on_supervision_failure,
-    stop_on_supervision_failure,
+    Backoff, BackoffConfigError, BackoffError, BackoffSupervisor, BackoffSupervisorError,
+    BackoffSupervisorSends, ChildTopology, DynamicChildPhase, DynamicSupervisor,
+    DynamicSupervisorEvent, DynamicSupervisorMessage, DynamicSupervisorOutcome,
+    DynamicSupervisorRejection, DynamicSupervisorSends, FleetError, IncarnationPhase, Proxy,
+    ProxyCommand, ProxyError, ProxyEvent, ProxySends, ReportSupervisionFailure,
+    RestartConfiguration, RestartPolicy, Strategy, SupervisionEvent, SupervisionFailure,
+    SupervisionFailureReaction, Supervisor, SupervisorError, SupervisorSends, restart_all,
+    restart_one, restart_rest, retire_on_supervision_failure, stop_on_supervision_failure,
 };
 pub use termination::{Crash, Exit, RestartDenial, SupervisionFailureReason};
 pub use time::{
@@ -103,7 +113,7 @@ pub use time::{
     Periodic, PeriodicEvent, PeriodicReaction, PeriodicSends, ReceiveTimeout, ReceiveTimeoutEvent,
     ReceiveTimeoutReaction, ReceiveTimeoutSends, TimedEvent,
 };
-pub use watch::{LinkReaction, Watch, WatchEvent, WatchSends, stop_on_abnormal_death};
+pub use watch::{Link, LinkReaction, Watch, WatchEvent, WatchSends, stop_on_abnormal_death};
 pub use workflow::{
     Barrier, BarrierArrival, BarrierConfigError, BarrierError, BarrierGeneration, BarrierMessage,
     BarrierReleased, BarrierState, Latch, LatchMessage, LatchReleased, LatchState, Workflow,

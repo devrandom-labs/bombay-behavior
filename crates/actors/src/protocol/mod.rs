@@ -461,6 +461,50 @@ impl<N> From<(N, ReportWorkerCreationResolved<N>)> for WorkerCreationResolved<N>
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub struct ShutdownRequested;
 
+/// Ask the local interpreter to begin orderly shutdown of one established
+/// child in the emitting actor's namespace.
+///
+/// Acceptance is not completion. A successfully accepted request is completed
+/// only by the corresponding [`ChildStopped`] fact. If the interpreter cannot
+/// select an established child, it must return [`ChildShutdownRejected`]
+/// rather than fabricate termination or fail the whole action application.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ShutdownChild<N> {
+    pub nonce: N,
+}
+
+impl<N> ShutdownChild<N> {
+    #[must_use]
+    pub const fn new(nonce: N) -> Self {
+        Self { nonce }
+    }
+}
+
+/// Why a local child-shutdown request was not accepted.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum ChildShutdownRejection {
+    /// No established child is bound at the requested creator-local nonce.
+    #[error("no established child exists at the requested nonce")]
+    NotEstablished,
+    /// Shutdown was already accepted for the selected child.
+    #[error("child shutdown is already in progress")]
+    AlreadyStopping,
+}
+
+/// Explicit failed resolution of one [`ShutdownChild`] request.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ChildShutdownRejected<N> {
+    pub nonce: N,
+    pub reason: ChildShutdownRejection,
+}
+
+impl<N> ChildShutdownRejected<N> {
+    #[must_use]
+    pub const fn new(nonce: N, reason: ChildShutdownRejection) -> Self {
+        Self { nonce, reason }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

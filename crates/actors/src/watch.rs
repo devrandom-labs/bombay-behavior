@@ -61,6 +61,11 @@ pub type LinkReaction<B> = fn(
     &Result<Exit<<B as Behavior>::Addr>, Crash>,
 ) -> Result<Become, <B as Behavior>::Error>;
 
+/// A mutual-lifecycle-policy specialization uses the same typed observation
+/// algebra as [`Watch`]; reciprocity is established by applying it at both
+/// endpoints rather than by a privileged runtime link table.
+pub type Link<B> = Watch<B>;
+
 /// Named effect lanes added by [`Watch`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WatchSends<A: Address, Sends> {

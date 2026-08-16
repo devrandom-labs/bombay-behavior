@@ -1,7 +1,20 @@
-//! Lifecycle observation, terminal-result, and graceful-shutdown behaviors.
+//! Lifecycle observation, application-root, terminal-result, and graceful-shutdown behaviors.
 
+mod guardian;
+mod shutdown_coordinator;
 mod task;
+mod termination_monitor;
 
 pub use crate::shutdown::{FinalizeOnShutdown, ShutdownProtocol, ShutdownReaction, StopOnShutdown};
 pub use crate::watch::{LinkReaction, Watch, WatchEvent, WatchSends, stop_on_abnormal_death};
+pub use guardian::Guardian;
+pub use shutdown_coordinator::{
+    ShutdownCoordinator, ShutdownCoordinatorError, ShutdownCoordinatorEvent,
+    ShutdownCoordinatorSends, ShutdownPlan, ShutdownPlanError, ShutdownState, ShutdownTree,
+    ShutdownTreeError, TreeShutdown,
+};
 pub use task::{Task, TaskError, TaskMessage, TaskResult, TaskState};
+pub use termination_monitor::{
+    CleanupReaction, LifecyclePublication, LifecyclePublisher, Reaper, TerminationMonitor,
+    TerminationObservation, TerminationReaction,
+};

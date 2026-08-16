@@ -173,6 +173,7 @@ mod tests {
     #[test]
     fn equality_and_debug_cover_every_named_effect_leg() {
         type Plain = Actions<MailAddr, u8, Vec<u8>, NoBirths>;
+        type Creating = Actions<MailAddr, Never, Vec<u8>, Births<u8>>;
 
         let value = Plain::new(vec![1], Vec::new(), Step::Goto(3));
         assert_eq!(value, Plain::new(vec![1], Vec::new(), Step::Goto(3)));
@@ -184,7 +185,6 @@ mod tests {
             "Actions { sends: [1], creates: [], become: Goto(3) }"
         );
 
-        type Creating = Actions<MailAddr, Never, Vec<u8>, Births<u8>>;
         let created = Creating::new(
             Vec::new(),
             vec![Create::new(7, 9, CreationKind::Birth)],

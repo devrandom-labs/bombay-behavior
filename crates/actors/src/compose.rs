@@ -181,6 +181,32 @@ pub trait Compose: Behavior + Sized {
         Watch::new(self, peer, on_stopped)
     }
 
+    /// Observe one peer and fold its exact terminal fact into complete actions.
+    #[must_use]
+    fn monitor_termination(
+        self,
+        peer: Self::Addr,
+        on_stopped: crate::TerminationReaction<Self>,
+    ) -> crate::TerminationMonitor<Self> {
+        crate::TerminationMonitor::new(self, peer, on_stopped)
+    }
+
+    /// Observe one peer once and emit the supplied explicit cleanup actions.
+    #[must_use]
+    fn reap(self, peer: Self::Addr, cleanup: crate::CleanupReaction<Self>) -> crate::Reaper<Self> {
+        crate::Reaper::new(self, peer, cleanup)
+    }
+
+    /// Observe one peer once and emit typed lifecycle-publication actions.
+    #[must_use]
+    fn publish_lifecycle(
+        self,
+        peer: Self::Addr,
+        publish: crate::LifecyclePublication<Self>,
+    ) -> crate::LifecyclePublisher<Self> {
+        crate::LifecyclePublisher::new(self, peer, publish)
+    }
+
     /// Apply a pure reaction when the given absolute time is reached.
     ///
     #[must_use]
