@@ -321,6 +321,12 @@ modifies the Driver loop.
 There is no dynamic fallback. A missing interpreter is a compile-time
 integration gap, not a runtime capability lookup.
 
+When `B::Birth::Child` is a `#[behavior::births]` sum, `realize B::Birth`
+means proving `InstallBirth` for every contained concrete behavior. The
+generated exhaustive dispatch runs inside the existing ordered creation leg;
+it neither changes the Driver algorithm nor turns the sum into an installed
+actor protocol.
+
 ## Backpressure and liveness policy
 
 Whether outbound delivery waits for bounded destination admission is an

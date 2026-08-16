@@ -80,17 +80,34 @@ its [procedural macros overview][procedural-macros].
 This rationale concerns Rust authoring syntax. It does not change the actor
 transition law or grant the macro any interpreter capability.
 
-## One macro boundary
+## Separate macro boundaries
 
-`#[behavior]` is the only public behavior macro. Wrapper stacks are ordinary
-Rust values built with `Compose` and inferred at local, generic spawn, and
-adapter boundaries. A framework extension that truly stores one exact stack
-may use an ordinary Rust type alias or newtype and write the same static
-delegation explicitly; the component API does not create another authoring
-language for that uncommon case.
+`#[behavior]` generates only nominal user-message fold wiring.
+`#[behavior::births]` applies to a closed enum whose variants each contain one
+concrete child behavior. It generates only exhaustive `DispatchBirth` wiring:
+the enum is a creation product and never a `Behavior`, message union, factory,
+registry, or protocol adapter. Wrapper stacks remain ordinary Rust values built
+with `Compose` and inferred at local, generic spawn, and adapter boundaries.
 
-The attribute is governed by the [Universal Behavior Driver](driver.md). It
-generates only the concrete implementation a user could write manually.
+```rust,ignore
+#[behavior::births]
+enum ApplicationChildren {
+    DeviceGroups(DynamicSupervisor<...>),
+    Queries(WorkerPool<...>),
+}
+
+type Birth = behavior::Births<ApplicationChildren>;
+```
+
+The generated implementation requires the selected installer to implement
+`InstallBirth` for both concrete variants. Its exhaustive match forwards the
+original nonce and `CreationKind`; it does not install `ApplicationChildren`
+as an actor. This keeps each child recipient indexed by its concrete behavior
+protocol and makes incomplete runtime support a compile-time error.
+
+Both attributes are governed by the [Universal Behavior Driver](driver.md).
+They generate only concrete static implementations a user could write
+manually.
 
 [attribute-macros]: https://doc.rust-lang.org/reference/procedural-macros.html#attribute-macros
 [procedural-macros]: https://doc.rust-lang.org/book/ch20-05-macros.html

@@ -1,8 +1,10 @@
 //! Staged fresh-actor creation capabilities.
 
+use core::future::Future;
 use core::marker::PhantomData;
 
 use super::addressing::Address;
+use crate::Behavior;
 use crate::next::Never;
 
 /// Behavior-owned provenance for a staged fresh actor creation request.
@@ -52,6 +54,57 @@ impl<A: Address, New> Create<A, New> {
     #[must_use]
     pub const fn replacement_incarnation(nonce: A::Nonce, replaces: A::Nonce, child: New) -> Self {
         Self::new(nonce, child, CreationKind::replacement_of(replaces))
+    }
+}
+
+/// Static interpreter capability for installing one concrete child behavior.
+///
+/// An interpreter implements this trait separately for every concrete child
+/// protocol it can install. Heterogeneous birth sums require all applicable
+/// implementations through generated bounds, so unsupported variants fail to
+/// compile instead of falling through to a registry or erased path.
+pub trait InstallBirth<A: Address, C: Behavior<Addr = A>, Output, Error> {
+    /// Install and commit exactly the supplied concrete creation.
+    ///
+    /// # Errors
+    /// Returns the interpreter's typed allocation, initialization, or commit
+    /// failure without binding the requested nonce.
+    fn install_birth(
+        &mut self,
+        creation: Create<A, C>,
+    ) -> impl Future<Output = Result<Output, Error>>;
+}
+
+/// Exhaustive static dispatch of one creation-only child sum.
+///
+/// This is an interpreter-facing derived construction, not another actor-model
+/// operation. Implementations must preserve the nonce and provenance and call
+/// exactly one concrete [`InstallBirth`] implementation. The `#[births]`
+/// attribute generates this implementation for a closed enum.
+pub trait DispatchBirth<A: Address, Installer, Output, Error>: Sized {
+    /// Select exactly one concrete installer while preserving creation data.
+    ///
+    /// # Errors
+    /// Returns the selected concrete installer's typed failure unchanged.
+    fn dispatch_birth(
+        self,
+        nonce: A::Nonce,
+        kind: CreationKind<A::Nonce>,
+        installer: &mut Installer,
+    ) -> impl Future<Output = Result<Output, Error>>;
+}
+
+impl<A, Installer, Output, Error> DispatchBirth<A, Installer, Output, Error> for Never
+where
+    A: Address,
+{
+    async fn dispatch_birth(
+        self,
+        _nonce: A::Nonce,
+        _kind: CreationKind<A::Nonce>,
+        _installer: &mut Installer,
+    ) -> Result<Output, Error> {
+        match self {}
     }
 }
 

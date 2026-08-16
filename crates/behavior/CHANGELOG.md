@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Add `InstallBirth` and `DispatchBirth` as the statically dispatched
+  interpreter contract for closed heterogeneous creation products.
+
 ### Changed
 
 - Move reusable actors, protocols, composition, and worker pools to the new

@@ -23,7 +23,10 @@ The packages preserve these guarantees:
 
 - message and event protocols remain statically typed;
 - independent send protocols compose without `dyn`, `Any`, or a global envelope;
-- `NoBirths` makes creation uninhabited, while `Births<C>` permits only fresh,
+- `NoBirths` makes creation uninhabited, while `Births<C>` permits fresh,
+  staged children of one concrete type or one closed creation-only sum made
+  with `#[behavior::births]`. Generated static dispatch requires interpreter
+  support for every variant while retaining each installed child protocol.
   typed `Create` values;
 - each `Create` carries Behavior-owned provenance distinguishing an ordinary
   birth from a replacement of one exact incarnation, while a typed creation

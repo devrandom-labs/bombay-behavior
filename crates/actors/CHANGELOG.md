@@ -38,6 +38,10 @@ All notable changes to `bombay-behavior-actors` are documented here.
 
 ### Changed
 
+- Allow application roots and other behaviors to use the foundational
+  `#[behavior::births]` heterogeneous creation product without turning child
+  protocols into a forwarding behavior enum.
+
 - Derive the actor crate's public error types with `thiserror`; wrapped fleet
   and behavior failures participate in typed source chains.
 - Change supervisor and pool constructors to accept named topology and

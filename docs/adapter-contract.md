@@ -33,7 +33,10 @@ For a concrete `B: Behavior<Ph = Never>`, the adapter must statically supply:
 
 - an ordered source of the exact closed `B::Event` sum;
 - an interpreter for every named lane in `B::Sends`;
-- fresh creation for `<B::Birth as BirthMode>::Child`;
+- fresh creation for `<B::Birth as BirthMode>::Child`; a child may be one
+  concrete behavior or a closed `#[behavior::births]` sum whose exhaustive
+  `DispatchBirth` implementation requires one concrete `InstallBirth` adapter
+  per variant;
 - exact behavior and capability errors;
 - incarnation-local retirement.
 
@@ -75,6 +78,12 @@ Commitment obeys these laws:
 8. final actions are committed before terminal retirement;
 9. delivery admission does not claim recipient processing or business success.
 
+For a heterogeneous birth sum, variant dispatch occurs inside the same ordered
+creation loop. It does not create another nonce namespace: collision checks,
+`ObserveCreation`, and `ObserveChild` correlation all use the original
+creator-local nonce and provenance. A successful arm installs the contained
+concrete behavior protocol, never the sum enum as an actor protocol.
+
 ## Named products
 
 Behavior Actors products expose semantic fields specifically so adapters can
@@ -96,9 +105,11 @@ let SupervisorSends {
 ```
 
 An adapter may define its own local, statically dispatched interpretation
-traits for these public products. The behavior crates do not prescribe one
-runtime trait or error sum. Public products must retain named owned fields so
-such implementations require neither tuple positions nor wrapper inspection.
+traits for these public send products. Apart from the minimal `InstallBirth` /
+`DispatchBirth` completeness contract needed to open a heterogeneous creation
+sum without erasure, the behavior crates do not prescribe one runtime trait or
+error sum. Public products must retain named owned fields so such
+implementations require neither tuple positions nor wrapper inspection.
 
 ## Event injection
 
