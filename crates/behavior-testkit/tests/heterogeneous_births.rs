@@ -106,6 +106,8 @@ fn installer() -> ModelInstaller {
     }
 }
 
+fn assert_send<T: Send>(_: &T) {}
+
 #[tokio::test]
 async fn one_ordered_creation_vector_dispatches_to_concrete_protocol_installers() {
     let actions: Actions<MailAddr, Never, Vec<Never>, Births<IoTChildren>> = Actions::create(vec![
@@ -137,16 +139,14 @@ async fn one_ordered_creation_vector_dispatches_to_concrete_protocol_installers(
 #[tokio::test]
 async fn nonce_collision_is_global_across_variants_and_preserves_the_first_binding() {
     let mut model = installer();
-    IoTChildren::DeviceGroups(DeviceGroups)
-        .dispatch_birth(5, CreationKind::Birth, &mut model)
-        .await
-        .unwrap();
-    assert_eq!(
-        IoTChildren::Queries(Queries)
-            .dispatch_birth(5, CreationKind::Birth, &mut model)
-            .await,
-        Err(InstallError::Collision)
-    );
+    let first =
+        IoTChildren::DeviceGroups(DeviceGroups).dispatch_birth(5, CreationKind::Birth, &mut model);
+    assert_send(&first);
+    first.await.unwrap();
+    let collision =
+        IoTChildren::Queries(Queries).dispatch_birth(5, CreationKind::Birth, &mut model);
+    assert_send(&collision);
+    assert_eq!(collision.await, Err(InstallError::Collision));
     assert_eq!(
         model.trace,
         [(5, InstalledKind::DeviceGroups, CreationKind::Birth)]

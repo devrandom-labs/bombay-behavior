@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   interpreter contract for closed heterogeneous creation products.
 - Implement `DispatchBirth` for every concrete `Behavior`, so homogeneous
   `Births<C>` and generated heterogeneous sums share the same interpreter leg.
+- Require `InstallBirth` and `DispatchBirth` to return `Send` futures so
+  recursive runtime drivers can remain eligible for thread-safe spawning.
 
 ### Changed
 

@@ -331,6 +331,14 @@ the one concrete `InstallBirth<A, C, ...>` exactly once with the original nonce
 and creation provenance. Both shapes therefore use the same Driver bound and
 ordered interpretation path.
 
+Both installation and dispatch return `Send` futures. This is an
+interpreter-facing concurrency guarantee, not a new behavior effect: it lets a
+recursive Driver remain eligible for a thread-safe executor spawn while the
+pure creation request and concrete child protocol stay unchanged. A generated
+heterogeneous dispatch holds its selected sum across the await, so every child
+variant, the creator-local nonce, and the installer must be `Send`; the macro
+emits those bounds explicitly.
+
 ## Backpressure and liveness policy
 
 Whether outbound delivery waits for bounded destination admission is an

@@ -62,7 +62,9 @@ impl<A: Address, New> Create<A, New> {
 /// An interpreter implements this trait separately for every concrete child
 /// protocol it can install. Heterogeneous birth sums require all applicable
 /// implementations through generated bounds, so unsupported variants fail to
-/// compile instead of falling through to a registry or erased path.
+/// compile instead of falling through to a registry or erased path. The
+/// returned future is sendable so an interpreter may remain inside a
+/// thread-safe recursive driver future.
 pub trait InstallBirth<A: Address, C: Behavior<Addr = A>, Output, Error> {
     /// Install and commit exactly the supplied concrete creation.
     ///
@@ -72,7 +74,7 @@ pub trait InstallBirth<A: Address, C: Behavior<Addr = A>, Output, Error> {
     fn install_birth(
         &mut self,
         creation: Create<A, C>,
-    ) -> impl Future<Output = Result<Output, Error>>;
+    ) -> impl Future<Output = Result<Output, Error>> + Send;
 }
 
 /// Exhaustive static dispatch of one creation-only child sum.
@@ -80,7 +82,9 @@ pub trait InstallBirth<A: Address, C: Behavior<Addr = A>, Output, Error> {
 /// This is an interpreter-facing derived construction, not another actor-model
 /// operation. Implementations must preserve the nonce and provenance and call
 /// exactly one concrete [`InstallBirth`] implementation. The `#[births]`
-/// attribute generates this implementation for a closed enum.
+/// attribute generates this implementation for a closed enum. Dispatch futures
+/// are sendable; heterogeneous sums therefore require sendable variants,
+/// creator-local nonces, and installers.
 pub trait DispatchBirth<A: Address, Installer, Output, Error>: Sized {
     /// Select exactly one concrete installer while preserving creation data.
     ///
@@ -91,20 +95,20 @@ pub trait DispatchBirth<A: Address, Installer, Output, Error>: Sized {
         nonce: A::Nonce,
         kind: CreationKind<A::Nonce>,
         installer: &mut Installer,
-    ) -> impl Future<Output = Result<Output, Error>>;
+    ) -> impl Future<Output = Result<Output, Error>> + Send;
 }
 
 impl<A, Installer, Output, Error> DispatchBirth<A, Installer, Output, Error> for Never
 where
     A: Address,
 {
-    async fn dispatch_birth(
+    fn dispatch_birth(
         self,
         _nonce: A::Nonce,
         _kind: CreationKind<A::Nonce>,
         _installer: &mut Installer,
-    ) -> Result<Output, Error> {
-        match self {}
+    ) -> impl Future<Output = Result<Output, Error>> + Send {
+        async move { match self {} }
     }
 }
 
@@ -114,15 +118,13 @@ where
     C: Behavior<Addr = A>,
     Installer: InstallBirth<A, C, Output, Error>,
 {
-    async fn dispatch_birth(
+    fn dispatch_birth(
         self,
         nonce: A::Nonce,
         kind: CreationKind<A::Nonce>,
         installer: &mut Installer,
-    ) -> Result<Output, Error> {
-        installer
-            .install_birth(Create::new(nonce, self, kind))
-            .await
+    ) -> impl Future<Output = Result<Output, Error>> + Send {
+        installer.install_birth(Create::new(nonce, self, kind))
     }
 }
 
@@ -198,16 +200,18 @@ mod tests {
         }
     }
 
+    fn assert_send<T: Send>(_: &T) {}
+
     #[tokio::test]
     async fn concrete_child_dispatches_once_with_exact_nonce_provenance_and_output() {
         let mut installer = installer(Ok(91));
-        let result = Child
-            .dispatch_birth(
-                17,
-                CreationKind::ReplacementIncarnation { replaces: 8 },
-                &mut installer,
-            )
-            .await;
+        let future = Child.dispatch_birth(
+            17,
+            CreationKind::ReplacementIncarnation { replaces: 8 },
+            &mut installer,
+        );
+        assert_send(&future);
+        let result = future.await;
 
         assert_eq!(result, Ok(91));
         assert_eq!(installer.calls, 1);
@@ -220,9 +224,9 @@ mod tests {
     #[tokio::test]
     async fn concrete_child_returns_the_exact_installer_error_without_retry() {
         let mut installer = installer(Err(InstallError::Refused));
-        let result = Child
-            .dispatch_birth(23, CreationKind::replacement_of(19), &mut installer)
-            .await;
+        let future = Child.dispatch_birth(23, CreationKind::replacement_of(19), &mut installer);
+        assert_send(&future);
+        let result = future.await;
 
         assert_eq!(result, Err(InstallError::Refused));
         assert_eq!(installer.calls, 1);

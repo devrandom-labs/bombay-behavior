@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Resolve generated paths through either a direct `bombay-behavior` dependency
   or the `bombay-rs` façade, including Cargo dependency renames; a direct
   dependency takes precedence when both are present.
+- Preserve the `DispatchBirth` sendability contract in generated heterogeneous
+  dispatch, with explicit static bounds for every value held across the await.
 
 ### Removed
 

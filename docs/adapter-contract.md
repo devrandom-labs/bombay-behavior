@@ -37,6 +37,8 @@ For a concrete `B: Behavior<Ph = Never>`, the adapter must statically supply:
   concrete behavior or a closed `#[behavior::births]` sum whose exhaustive
   `DispatchBirth` implementation requires one concrete `InstallBirth` adapter
   per variant;
+- `Send` futures from concrete installation and exhaustive dispatch, preserving
+  the recursive driver's eligibility for a thread-safe executor spawn;
 - exact behavior and capability errors;
 - incarnation-local retirement.
 

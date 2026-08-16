@@ -304,10 +304,16 @@ pub fn births(args: TokenStream, item: TokenStream) -> TokenStream {
     dispatch_where
         .predicates
         .push(syn::parse_quote!(__A: #behavior::Address));
+    dispatch_where.predicates.push(syn::parse_quote!(
+        <__A as #behavior::Address>::Nonce: ::core::marker::Send
+    ));
+    dispatch_where
+        .predicates
+        .push(syn::parse_quote!(__Installer: ::core::marker::Send));
     for child in &child_types {
-        dispatch_where
-            .predicates
-            .push(syn::parse_quote!(#child: #behavior::Behavior<Addr = __A>));
+        dispatch_where.predicates.push(
+            syn::parse_quote!(#child: #behavior::Behavior<Addr = __A> + ::core::marker::Send),
+        );
         dispatch_where.predicates.push(syn::parse_quote!(
             __Installer: #behavior::InstallBirth<__A, #child, __Output, __Error>
         ));
