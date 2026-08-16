@@ -326,6 +326,10 @@ means proving `InstallBirth` for every contained concrete behavior. The
 generated exhaustive dispatch runs inside the existing ordered creation leg;
 it neither changes the Driver algorithm nor turns the sum into an installed
 actor protocol.
+For ordinary `Births<C>`, the blanket `DispatchBirth` implementation invokes
+the one concrete `InstallBirth<A, C, ...>` exactly once with the original nonce
+and creation provenance. Both shapes therefore use the same Driver bound and
+ordered interpretation path.
 
 ## Backpressure and liveness policy
 

@@ -106,9 +106,9 @@ let SupervisorSends {
 
 An adapter may define its own local, statically dispatched interpretation
 traits for these public send products. Apart from the minimal `InstallBirth` /
-`DispatchBirth` completeness contract needed to open a heterogeneous creation
-sum without erasure, the behavior crates do not prescribe one runtime trait or
-error sum. Public products must retain named owned fields so such
+`DispatchBirth` completeness contract needed to install either a direct child
+or a heterogeneous creation sum without erasure, the behavior crates do not
+prescribe one runtime trait or error sum. Public products must retain named owned fields so such
 implementations require neither tuple positions nor wrapper inspection.
 
 ## Event injection

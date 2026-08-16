@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Add `InstallBirth` and `DispatchBirth` as the statically dispatched
   interpreter contract for closed heterogeneous creation products.
+- Implement `DispatchBirth` for every concrete `Behavior`, so homogeneous
+  `Births<C>` and generated heterogeneous sums share the same interpreter leg.
 
 ### Changed
 

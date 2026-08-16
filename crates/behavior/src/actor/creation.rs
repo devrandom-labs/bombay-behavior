@@ -108,6 +108,24 @@ where
     }
 }
 
+impl<A, C, Installer, Output, Error> DispatchBirth<A, Installer, Output, Error> for C
+where
+    A: Address,
+    C: Behavior<Addr = A>,
+    Installer: InstallBirth<A, C, Output, Error>,
+{
+    async fn dispatch_birth(
+        self,
+        nonce: A::Nonce,
+        kind: CreationKind<A::Nonce>,
+        installer: &mut Installer,
+    ) -> Result<Output, Error> {
+        installer
+            .install_birth(Create::new(nonce, self, kind))
+            .await
+    }
+}
+
 /// A type-level description of a behavior's creation capability.
 pub trait BirthMode {
     type Child;
@@ -127,4 +145,87 @@ pub struct Births<C>(PhantomData<fn() -> C>);
 
 impl<C> BirthMode for Births<C> {
     type Child = C;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{Actions, BehaviorActed, MailAddr, NoBirths, User};
+
+    struct Child;
+
+    impl Behavior for Child {
+        type Addr = MailAddr;
+        type Msg = u8;
+        type Event = User<MailAddr, u8>;
+        type Sends = Vec<Never>;
+        type Ph = Never;
+        type Error = Never;
+        type Birth = NoBirths;
+
+        fn transition(&mut self, _: crate::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
+            Ok(Actions::cont())
+        }
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum InstallError {
+        Refused,
+    }
+
+    struct RecordingInstaller {
+        calls: usize,
+        observed: Vec<(u64, CreationKind<u64>)>,
+        result: Result<u32, InstallError>,
+    }
+
+    impl InstallBirth<MailAddr, Child, u32, InstallError> for RecordingInstaller {
+        async fn install_birth(
+            &mut self,
+            creation: Create<MailAddr, Child>,
+        ) -> Result<u32, InstallError> {
+            self.calls += 1;
+            self.observed.push((creation.nonce, creation.kind));
+            self.result
+        }
+    }
+
+    fn installer(result: Result<u32, InstallError>) -> RecordingInstaller {
+        RecordingInstaller {
+            calls: 0,
+            observed: Vec::new(),
+            result,
+        }
+    }
+
+    #[tokio::test]
+    async fn concrete_child_dispatches_once_with_exact_nonce_provenance_and_output() {
+        let mut installer = installer(Ok(91));
+        let result = Child
+            .dispatch_birth(
+                17,
+                CreationKind::ReplacementIncarnation { replaces: 8 },
+                &mut installer,
+            )
+            .await;
+
+        assert_eq!(result, Ok(91));
+        assert_eq!(installer.calls, 1);
+        assert_eq!(
+            installer.observed,
+            [(17, CreationKind::ReplacementIncarnation { replaces: 8 })]
+        );
+    }
+
+    #[tokio::test]
+    async fn concrete_child_returns_the_exact_installer_error_without_retry() {
+        let mut installer = installer(Err(InstallError::Refused));
+        let result = Child
+            .dispatch_birth(23, CreationKind::replacement_of(19), &mut installer)
+            .await;
+
+        assert_eq!(result, Err(InstallError::Refused));
+        assert_eq!(installer.calls, 1);
+        assert_eq!(installer.observed, [(23, CreationKind::replacement_of(19))]);
+    }
 }
