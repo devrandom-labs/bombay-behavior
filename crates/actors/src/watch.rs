@@ -117,8 +117,13 @@ pub struct Watch<B: Behavior> {
 }
 
 impl<B: Behavior> Watch<B> {
+    /// Wrap `inner` with one statically addressed peer observation.
+    ///
+    /// Initialization emits the observation request after preserving the
+    /// wrapped behavior's initialization effects. A matching terminal fact is
+    /// folded exactly once through `on_stopped`.
     #[must_use]
-    pub(crate) fn new(inner: B, peer: B::Addr, on_stopped: LinkReaction<B>) -> Self {
+    pub fn new(inner: B, peer: B::Addr, on_stopped: LinkReaction<B>) -> Self {
         Self {
             inner,
             peer,

@@ -148,7 +148,6 @@ where
 mod tests {
     use super::*;
     use crate::Activate as _;
-    use crate::Compose as _;
     use crate::{Crash, Exit};
     use behavior::{Births, Create, MailAddr, Never, Step, User};
 
@@ -197,8 +196,7 @@ mod tests {
 
     #[test]
     fn matching_terminal_fact_preserves_complete_reaction_actions() {
-        let initialized = Probe
-            .monitor_termination(MailAddr(4), reap)
+        let initialized = crate::TerminationMonitor::new(Probe, MailAddr(4), reap)
             .initialize()
             .unwrap();
         assert_eq!(initialized.actions.sends.behavior, [1]);
@@ -226,8 +224,7 @@ mod tests {
 
     #[test]
     fn unmatched_terminal_fact_is_inert_and_user_actions_still_delegate() {
-        let mut active = Probe
-            .monitor_termination(MailAddr(4), reap)
+        let mut active = crate::TerminationMonitor::new(Probe, MailAddr(4), reap)
             .initialize()
             .unwrap()
             .behavior;

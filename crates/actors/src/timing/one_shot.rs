@@ -64,12 +64,7 @@ pub struct OneShot<B: Behavior> {
 impl<B: Behavior> OneShot<B> {
     /// Construct a relative one-shot wrapper definition.
     #[must_use]
-    pub(crate) fn new(
-        inner: B,
-        id: TimerId,
-        after: Duration,
-        on_elapsed: OneShotReaction<B>,
-    ) -> Self {
+    pub fn new(inner: B, id: TimerId, after: Duration, on_elapsed: OneShotReaction<B>) -> Self {
         Self {
             inner,
             id,
@@ -156,7 +151,6 @@ where
 mod tests {
     use super::*;
     use crate::Activate as _;
-    use crate::Compose as _;
     use behavior::{MailAddr, Never, NoBirths, Step, User};
 
     struct Probe {
@@ -197,8 +191,7 @@ mod tests {
     #[test]
     fn initialization_schedules_then_matching_generation_fires_once() {
         let delay = Duration::from_millis(20);
-        let initialized = (Probe { elapsed: 0 })
-            .one_shot(TimerId(7), delay, mark)
+        let initialized = crate::OneShot::new(Probe { elapsed: 0 }, TimerId(7), delay, mark)
             .initialize()
             .unwrap();
         assert!(initialized.actions.sends.behavior.is_empty());

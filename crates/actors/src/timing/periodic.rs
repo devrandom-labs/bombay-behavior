@@ -62,13 +62,12 @@ pub struct Periodic<B: Behavior> {
 }
 
 impl<B: Behavior> Periodic<B> {
+    /// Wrap `inner` with a relative periodic timer and pure reaction.
+    ///
+    /// Accepted timer generations are rearmed only after a continuing
+    /// reaction. Clock access and scheduling remain interpreter capabilities.
     #[must_use]
-    pub(crate) fn new(
-        inner: B,
-        id: TimerId,
-        every: Duration,
-        on_elapsed: PeriodicReaction<B>,
-    ) -> Self {
+    pub fn new(inner: B, id: TimerId, every: Duration, on_elapsed: PeriodicReaction<B>) -> Self {
         Self {
             inner,
             id,
@@ -169,7 +168,6 @@ where
 mod tests {
     use super::*;
     use crate::Activate as _;
-    use crate::Compose as _;
     use behavior::{MailAddr, Never, NoBirths, Step, User};
 
     struct Probe(usize);
@@ -212,8 +210,7 @@ mod tests {
     #[test]
     fn accepted_ticks_rearm_until_the_reaction_stops() {
         let every = Duration::from_secs(3);
-        let initialized = (Probe(0))
-            .periodic(TimerId(2), every, tick)
+        let initialized = crate::Periodic::new(Probe(0), TimerId(2), every, tick)
             .initialize()
             .unwrap();
         assert_eq!(

@@ -3,7 +3,7 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, Activate, Compose, MailAddr, Never, NoBirths, ReceiveTimeoutEvent, Step,
+    Acted, Actions, Activate, MailAddr, Never, NoBirths, ReceiveTimeoutEvent, Step,
     TimerElapsed, TimerGeneration, TimerId, User, UserEvent,
 };
 use libfuzzer_sys::fuzz_target;
@@ -31,8 +31,12 @@ fn elapsed(_inner: &mut SinkBehavior) -> Acted<MailAddr, Never, Vec<Never>, NoBi
 fuzz_target!(|bytes: &[u8]| {
     let runtime = Builder::new_current_thread().build().unwrap();
     runtime.block_on(async {
-        let behavior =
-            (Sink).receive_timeout(TimerId(0), Duration::from_nanos(1), elapsed);
+        let behavior = behavior::ReceiveTimeout::new(
+            Sink,
+            TimerId(0),
+            Duration::from_nanos(1),
+            elapsed,
+        );
         let initialized = behavior.initialize().unwrap();
         let initial = initialized.actions;
         let mut behavior = initialized.behavior;

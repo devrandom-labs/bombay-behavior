@@ -64,11 +64,11 @@ transfer. In particular:
 At the user-facing boundary, concrete templates from
 `bombay-behavior-actors` are constructed directly and consumed by Bombay's
 `System`. `Activate` expresses the one initialization typestate transition;
-the optional `Compose` extension trait only builds concrete wrapper types.
-Neither API asks users to select, initialize, or wire the owned runtime
-components in this table. Bombay's top-level façade should re-export both
-traits beside `Behavior` and `Actions`, while component interpreter functions
-remain framework-extension surface.
+public owning-type constructors build concrete wrapper types. Neither API asks
+users to select, initialize, or wire the owned runtime components in this
+table. Bombay's top-level façade may add fluent construction sugar, while the
+component crates retain one explicit construction path and interpreter
+functions remain framework-extension surface.
 
 Exact wrapper stacks remain inferred across generic `B: Behavior` boundaries.
 Supervisor and pool topology and policy cross the construction boundary through `ChildTopology`,

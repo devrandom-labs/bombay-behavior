@@ -1,8 +1,8 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, ChildStopped, Compose, Crash, CreationKind, CreationResolved, Delivery, Exit,
-    MailAddr, Never, Proxy, ProxyCommand, ProxyEvent, Recipient, RestartPolicy, Step, Strategy,
+    Acted, Actions, ChildStopped, Crash, CreationKind, CreationResolved, Delivery, Exit, MailAddr,
+    Never, Proxy, ProxyCommand, ProxyEvent, Recipient, RestartPolicy, Step, Strategy,
     SupervisionEvent, Supervisor, TimerId, User, UserEvent, WorkerStopped,
 };
 use behavior_testkit::{Mailbox, drive};
@@ -113,7 +113,7 @@ proptest! {
         let _runtime = Builder::new_current_thread().enable_all().build().unwrap();
         let origin = Instant::now();
         let first = origin + Duration::from_nanos(offsets[0]);
-        let one = (Echo).deadline(TimerId(0), Some(first), |_| Ok(Step::Continue));
+        let one = behavior::Deadline::new(Echo, TimerId(0), Some(first), |_| Ok(Step::Continue));
         let initialized = one.initialize().unwrap();
     let initial = initialized.actions;
     let _one = initialized.behavior;
@@ -122,7 +122,7 @@ proptest! {
 
         for offset in &offsets {
             let due = origin + Duration::from_nanos(*offset);
-            let composed = (Echo).deadline(TimerId(0), Some(due), |_| Ok(Step::Continue));
+            let composed = behavior::Deadline::new(Echo, TimerId(0), Some(due), |_| Ok(Step::Continue));
             let initialized = composed.initialize().unwrap();
     let actions = initialized.actions;
     let _composed = initialized.behavior;

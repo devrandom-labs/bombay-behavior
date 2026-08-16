@@ -3,7 +3,7 @@
 
 use std::time::Duration;
 
-use behavior::{Acted, Actions, Activate, Compose, Delivery, MailAddr, Never, Recipient, Step};
+use behavior::{Acted, Actions, Activate, Delivery, MailAddr, Never, Recipient, Step};
 use std::time::Instant;
 
 #[derive(Default)]
@@ -57,7 +57,9 @@ impl Parent {
 async fn deadline_initialization_emits_exactly_one_schedule() {
     let due = Instant::now() + Duration::from_secs(1);
     let behavior =
-        (Recorder::default()).deadline(behavior::TimerId(0), Some(due), |_| Ok(Step::Continue));
+        behavior::Deadline::new(Recorder::default(), behavior::TimerId(0), Some(due), |_| {
+            Ok(Step::Continue)
+        });
     let initialized = behavior.initialize().unwrap();
     assert_eq!(initialized.actions.sends.schedules.len(), 1);
 }
@@ -73,13 +75,19 @@ async fn initialized_behavior_processes_mailbox_events() {
 
 #[tokio::test]
 async fn supervisor_initialization_emits_the_configured_fleet_once() {
-    let behavior = (Parent)
-        .children(
-            |index| u64::try_from(index).unwrap(),
-            2,
-            |index| Some(child(index)),
-        )
-        .unwrap();
+    let behavior = behavior::Supervisor::new(
+        Parent,
+        behavior::ChildTopology::new((0..2).map(|index| u64::try_from(index).unwrap()), |index| {
+            Some(child(index))
+        }),
+        behavior::RestartConfiguration::new(
+            behavior::Strategy::OneForOne,
+            behavior::RestartPolicy::Transient,
+            1,
+            std::time::Duration::from_secs(5),
+        ),
+    )
+    .unwrap();
     let initialized = behavior.initialize().unwrap();
     assert_eq!(initialized.actions.creates.len(), 2);
     assert_eq!(initialized.actions.sends.child_observations.len(), 2);

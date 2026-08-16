@@ -118,10 +118,9 @@ or domain behavior initializes directly without a composition container.
 `initialize` returns `Initialized<B>`, whose `actions` must be interpreted
 before using its `Active<B>` behavior. `Active<B>` can process events but cannot
 be initialized again. The call order is enforced by types rather than
-`NotInitialized` or `AlreadyInitialized` runtime branches. Import `Compose`
-only when applying typed wrappers such as `watch`, `deadline`, `stash`, or
-`stop_on_shutdown`; constructors and policy configuration remain on their
-owning concrete template types.
+`NotInitialized` or `AlreadyInitialized` runtime branches. Typed wrappers are
+constructed explicitly through their owning types, for example
+`Deadline::new(Stash::new(behavior, route), timer, when, on_elapsed)`.
 
 For a nominal user-message behavior, `#[behavior::behavior(...)]` may annotate
 an ordinary inherent impl containing `receive(&mut self, from, message)` and an

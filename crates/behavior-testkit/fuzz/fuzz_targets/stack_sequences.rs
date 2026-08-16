@@ -9,7 +9,7 @@
 //! product lane and never leak across.
 
 use behavior::{
-    Acted, Actions, Activate, Compose, Crash, DeadlineEvent, Delivery, MailAddr, Never, PeerStopped,
+    Acted, Actions, Activate, Crash, DeadlineEvent, Delivery, MailAddr, Never, PeerStopped,
     Recipient, RestartPolicy, StashRoute, Step, Strategy, SupervisionEvent, TimerElapsed,
     TimerGeneration, TimerId, UserEvent, WatchEvent, WorkerStopped, stop_on_abnormal_death,
 };
@@ -81,19 +81,28 @@ fuzz_target!(|bytes: &[u8]| {
     runtime.block_on(async {
         let due = Instant::now() + std::time::Duration::from_secs(1);
         let peer = MailAddr(44);
-        let behavior = (EchoingParent::default())
-            .stash(route)
-            .watch(peer, stop_on_abnormal_death)
-            .deadline(behavior::TimerId(0), Some(due), |_| Ok(Step::Continue))
-            .children(
-                |index| u64::try_from(index).unwrap(),
-                2,
+        let behavior = behavior::Supervisor::new(
+            behavior::Deadline::new(
+                behavior::Watch::new(
+                    behavior::Stash::new(EchoingParent::default(), route),
+                    peer,
+                    stop_on_abnormal_death,
+                ),
+                behavior::TimerId(0),
+                Some(due),
+                |_| Ok(Step::Continue),
+            ),
+            behavior::ChildTopology::new(
+                (0..2).map(|index| u64::try_from(index).unwrap()),
                 |index| Some(child(index)),
-            )
-            .unwrap()
-            .with_strategy(Strategy::OneForOne)
-            .with_policy(RestartPolicy::Permanent)
-            .with_budget(u32::MAX, std::time::Duration::MAX);
+            ),
+            behavior::RestartConfiguration::new(
+                Strategy::OneForOne,
+                RestartPolicy::Permanent,
+                u32::MAX,
+                std::time::Duration::MAX,
+            ),
+        ).unwrap();
         let initialized = behavior.initialize().unwrap();
         let mut behavior = initialized.behavior;
         let base = Instant::now();

@@ -1,11 +1,10 @@
 use std::time::{Duration, Instant};
 
 use behavior::{
-    Actions, Activate, Behavior, BehaviorActed, Births, ChildTopology, Compose, Create,
-    DeadlineSends, Delivery, MailAddr, Never, NoBirths, ObserveChild, PoolAssignment,
-    PoolConfiguration, PoolResponse, Proxy, Recipient, RestartConfiguration, RestartPolicy,
-    ServiceSends, StashRoute, Step, Strategy, Supervisor, SupervisorSends, TimerId, User,
-    WorkerPool,
+    Actions, Activate, Behavior, BehaviorActed, Births, ChildTopology, Create, DeadlineSends,
+    Delivery, MailAddr, Never, NoBirths, ObserveChild, PoolAssignment, PoolConfiguration,
+    PoolResponse, Proxy, Recipient, RestartConfiguration, RestartPolicy, ServiceSends, StashRoute,
+    Step, Strategy, Supervisor, SupervisorSends, TimerId, User, WorkerPool,
 };
 
 struct Sink;
@@ -76,7 +75,8 @@ where
 
 #[test]
 fn inferred_stack_crosses_one_generic_adapter_boundary() {
-    let inferred = accepts_closed_behavior(Domain.stash(deliver).deadline(
+    let inferred = accepts_closed_behavior(behavior::Deadline::new(
+        behavior::Stash::new(Domain, deliver),
         TimerId(4),
         Some(Instant::now()),
         deadline,

@@ -136,7 +136,7 @@ or cancellation must not permit later polling of the consumed execution.
 Local construction relies on inference:
 
 ```rust,ignore
-let behavior = worker.stash(route).deadline(timer, when, react);
+let behavior = Deadline::new(Stash::new(worker, route), timer, when, react);
 run(behavior, environment);
 ```
 

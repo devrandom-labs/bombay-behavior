@@ -4,6 +4,13 @@ All notable changes to `bombay-behavior-actors` are documented here.
 
 ## [Unreleased]
 
+### Changed
+
+- Make every semantic wrapper constructor public and remove the parallel
+  `Compose` extension API, including its policy-bearing `children` shortcut.
+- Require supervisor restart strategy, eligibility, and budget to enter
+  together through `RestartConfiguration`; remove the split policy setters.
+
 ### Added
 
 - Extract Bombay's reusable actors, protocols, and composition API from

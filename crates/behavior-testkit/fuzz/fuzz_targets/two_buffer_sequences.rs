@@ -8,7 +8,7 @@
 //! `recorded + fsm_held + stash_held + goto_consumed == stepped`, with the
 //! goto class taken from the phase BEFORE the step (a Goto flips the phase).
 
-use behavior::{Activate, Compose, Machine, MailAddr, Move, Never, StashRoute, User, UserEvent};
+use behavior::{Activate, Machine, MailAddr, Move, Never, StashRoute, User, UserEvent};
 use libfuzzer_sys::fuzz_target;
 use tokio::runtime::Builder;
 
@@ -35,8 +35,8 @@ fuzz_target!(|bytes: &[u8]| {
                     }
                 })
             },
-        )
-        .stash(|message: &u64| match message % 3 {
+        );
+        let behavior = behavior::Stash::new(behavior, |message: &u64| match message % 3 {
             0 => StashRoute::Release,
             1 => StashRoute::Deliver,
             _ => StashRoute::Stash,

@@ -12,10 +12,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, Activate, Become, Behavior, BehaviorBase, Births, ChildStopped, Compose, Crash,
-    Create, CreationKind, CreationRejection, CreationResolved, DeadlineEvent, Delivery, Exit,
-    Machine, MailAddr, Move, Never, NoBirths, ObserveChild, PeerStopped, Proxy, ProxyCommand,
-    ProxyEvent, Recipient, RestartDenial, RestartPolicy, RouteInput, SendAlgebra, ServiceSends,
+    Acted, Actions, Activate, Become, Behavior, BehaviorBase, Births, ChildStopped, Crash, Create,
+    CreationKind, CreationRejection, CreationResolved, DeadlineEvent, Delivery, Exit, Machine,
+    MailAddr, Move, Never, NoBirths, ObserveChild, PeerStopped, Proxy, ProxyCommand, ProxyEvent,
+    Recipient, RestartDenial, RestartPolicy, RouteInput, SendAlgebra, ServiceSends,
     ShutdownRequested, StashRoute, Step, Strategy, SupervisionEvent, SupervisionFailure,
     SupervisionFailureReason, Supervisor, TimerElapsed, TimerGeneration, TimerId, User, UserEvent,
     Watch, WatchEvent, WorkerStopped, stop_on_abnormal_death, stop_on_supervision_failure,
@@ -281,9 +281,12 @@ fn direct_behavior_preserves_explicit_initialization_and_transition_actions() {
 #[test]
 fn direct_behavior_composes_with_existing_wrappers_and_init_order() {
     let due = Instant::now();
-    let behavior = (InitializationCounter(0))
-        .deadline(TimerId(0), Some(due), |_| Ok(Step::Continue))
-        .stop_on_shutdown();
+    let behavior = behavior_actors::StopOnShutdown::new(behavior_actors::Deadline::new(
+        InitializationCounter(0),
+        TimerId(0),
+        Some(due),
+        |_| Ok(Step::Continue),
+    ));
 
     let initialized = behavior.initialize().unwrap();
     let initial = initialized.actions;
@@ -297,7 +300,7 @@ fn direct_behavior_composes_with_existing_wrappers_and_init_order() {
 
 #[tokio::test]
 async fn typed_shutdown_stops_normally_without_running_the_inner_fold() {
-    let behavior = (Quiet).stop_on_shutdown();
+    let behavior = behavior_actors::StopOnShutdown::new(Quiet);
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
     let event = <_ as RouteInput<ShutdownRequested>>::route(ShutdownRequested).unwrap();
@@ -310,7 +313,7 @@ async fn typed_shutdown_stops_normally_without_running_the_inner_fold() {
 
 #[tokio::test]
 async fn final_shutdown_fold_preserves_effects_and_forces_normal_stop() {
-    let behavior = (ShutdownParent).finalize_on_shutdown(finalize_parent);
+    let behavior = behavior_actors::FinalizeOnShutdown::new(ShutdownParent, finalize_parent);
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
     let event = <_ as RouteInput<ShutdownRequested>>::route(ShutdownRequested).unwrap();
@@ -325,10 +328,16 @@ async fn final_shutdown_fold_preserves_effects_and_forces_normal_stop() {
 
 #[tokio::test]
 async fn outer_combinators_preserve_the_shutdown_lane() {
-    let behavior = (Quiet)
-        .stop_on_shutdown()
-        .deadline(TimerId(0), None, |_| Ok(Step::Continue))
-        .watch(MailAddr(8), stop_on_abnormal_death);
+    let behavior = behavior_actors::Watch::new(
+        behavior_actors::Deadline::new(
+            behavior_actors::StopOnShutdown::new(Quiet),
+            TimerId(0),
+            None,
+            |_| Ok(Step::Continue),
+        ),
+        MailAddr(8),
+        stop_on_abnormal_death,
+    );
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
     let event = <_ as RouteInput<ShutdownRequested>>::route(ShutdownRequested).unwrap();
@@ -340,9 +349,12 @@ async fn outer_combinators_preserve_the_shutdown_lane() {
 #[tokio::test]
 async fn shutdown_composition_preserves_inner_initialization_effects() {
     let due = Instant::now() + Duration::from_secs(1);
-    let behavior = (Quiet)
-        .deadline(TimerId(0), Some(due), |_| Ok(Step::Continue))
-        .stop_on_shutdown();
+    let behavior = behavior_actors::StopOnShutdown::new(behavior_actors::Deadline::new(
+        Quiet,
+        TimerId(0),
+        Some(due),
+        |_| Ok(Step::Continue),
+    ));
     let initialized = behavior.initialize().unwrap();
     let initial = initialized.actions;
     let _behavior = initialized.behavior;
@@ -355,7 +367,8 @@ async fn shutdown_composition_preserves_inner_initialization_effects() {
 #[tokio::test]
 async fn at_is_a_typed_clock_actor_protocol() {
     let now = Instant::now();
-    let behavior = (Quiet).deadline(TimerId(0), Some(now), |_| Ok(Step::Continue));
+    let behavior =
+        behavior_actors::Deadline::new(Quiet, TimerId(0), Some(now), |_| Ok(Step::Continue));
 
     let initialized = behavior.initialize().unwrap();
     let initial = initialized.actions;
@@ -377,9 +390,12 @@ async fn at_is_a_typed_clock_actor_protocol() {
 async fn nested_at_composition_routes_stale_and_matching_events() {
     let early = Instant::now() + Duration::from_secs(1);
     let late = early + Duration::from_secs(1);
-    let outer = (Quiet)
-        .deadline(TimerId(0), Some(early), |_| Ok(Step::Continue))
-        .deadline(TimerId(1), Some(late), |_| Ok(Step::Continue));
+    let outer = behavior_actors::Deadline::new(
+        behavior_actors::Deadline::new(Quiet, TimerId(0), Some(early), |_| Ok(Step::Continue)),
+        TimerId(1),
+        Some(late),
+        |_| Ok(Step::Continue),
+    );
 
     let initialized = outer.initialize().unwrap();
     let initial = initialized.actions;
@@ -401,10 +417,14 @@ async fn nested_at_composition_routes_stale_and_matching_events() {
 async fn spec_hides_composed_protocols_without_losing_their_effects() {
     let due = Instant::now() + Duration::from_secs(1);
     let peer = MailAddr(8);
-    let behavior = (Quiet)
-        .deadline(TimerId(0), Some(due), |_| Ok(Step::Continue))
-        .watch(peer, stop_on_abnormal_death)
-        .stash(|_| StashRoute::Deliver);
+    let behavior = behavior_actors::Stash::new(
+        behavior_actors::Watch::new(
+            behavior_actors::Deadline::new(Quiet, TimerId(0), Some(due), |_| Ok(Step::Continue)),
+            peer,
+            stop_on_abnormal_death,
+        ),
+        |_| StashRoute::Deliver,
+    );
 
     let initialized = behavior.initialize().unwrap();
     let initial = initialized.actions;
@@ -423,7 +443,7 @@ async fn spec_hides_composed_protocols_without_losing_their_effects() {
 #[tokio::test]
 async fn watching_registers_and_reacts_through_messages() {
     let peer = MailAddr(7);
-    let behavior = (Quiet).watch(peer, stop_on_abnormal_death);
+    let behavior = behavior_actors::Watch::new(Quiet, peer, stop_on_abnormal_death);
     let initialized = behavior.initialize().unwrap();
     let initial = initialized.actions;
     let mut behavior = initialized.behavior;
@@ -451,7 +471,7 @@ async fn stashing_is_local_state_and_replay() {
             Ok(Actions::cont())
         }
     }
-    let behavior = (Seen(Vec::new())).stash(|message| match message {
+    let behavior = behavior_actors::Stash::new(Seen(Vec::new()), |message| match message {
         0 => StashRoute::Release,
         1 => StashRoute::Stash,
         _ => StashRoute::Deliver,
@@ -553,7 +573,7 @@ impl StashRecording {
 #[tokio::test]
 async fn stash_release_delivers_the_trigger_then_drains_the_held_fifo() {
     let release = Arc::new(AtomicBool::new(false));
-    let behavior = (StashRecording(Vec::new())).stash(mutation_stash_route);
+    let behavior = behavior_actors::Stash::new(StashRecording(Vec::new()), mutation_stash_route);
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
     behavior
@@ -586,9 +606,11 @@ fn continue_on_death(
 
 #[tokio::test]
 async fn an_outer_watcher_forwards_a_different_peer_to_the_inner_watcher() {
-    let behavior = (Quiet)
-        .watch(MailAddr(1), stop_on_abnormal_death)
-        .watch(MailAddr(2), continue_on_death);
+    let behavior = behavior_actors::Watch::new(
+        behavior_actors::Watch::new(Quiet, MailAddr(1), stop_on_abnormal_death),
+        MailAddr(2),
+        continue_on_death,
+    );
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
     let actions = behavior
@@ -646,11 +668,14 @@ async fn fsm_preserves_direct_stop_and_does_not_drain_on_stay() {
 
 #[tokio::test]
 async fn receive_timeout_reacts_only_to_its_own_live_timer_id() {
-    let behavior = (Quiet)
-        .deadline(TimerId(0), Some(Instant::now()), |_| {
+    let behavior = behavior_actors::ReceiveTimeout::new(
+        behavior_actors::Deadline::new(Quiet, TimerId(0), Some(Instant::now()), |_| {
             Ok(Step::Stop(behavior::Stopped))
-        })
-        .receive_timeout(TimerId(1), Duration::from_secs(1), |_| Ok(Actions::stop()));
+        }),
+        TimerId(1),
+        Duration::from_secs(1),
+        |_| Ok(Actions::stop()),
+    );
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
     let wrong = behavior
@@ -660,11 +685,14 @@ async fn receive_timeout_reacts_only_to_its_own_live_timer_id() {
         }))
         .unwrap();
     assert!(matches!(wrong.become_, Step::Stop(behavior::Stopped)));
-    let matching_behavior = (Quiet)
-        .deadline(TimerId(0), Some(Instant::now()), |_| {
+    let matching_behavior = behavior_actors::ReceiveTimeout::new(
+        behavior_actors::Deadline::new(Quiet, TimerId(0), Some(Instant::now()), |_| {
             Ok(Step::Stop(behavior::Stopped))
-        })
-        .receive_timeout(TimerId(1), Duration::from_secs(1), |_| Ok(Actions::stop()));
+        }),
+        TimerId(1),
+        Duration::from_secs(1),
+        |_| Ok(Actions::stop()),
+    );
     let initialized = matching_behavior.initialize().unwrap();
     let matching_generation = initialized.actions.sends.schedules[0].generation;
     let mut matching_behavior = initialized.behavior;
@@ -740,8 +768,12 @@ impl Behavior for TimerAware {
 
 #[tokio::test]
 async fn a_stale_local_receive_timeout_is_consumed_not_forwarded() {
-    let behavior =
-        (TimerAware).receive_timeout(TimerId(0), Duration::from_secs(1), |_| Ok(Actions::stop()));
+    let behavior = behavior_actors::ReceiveTimeout::new(
+        TimerAware,
+        TimerId(0),
+        Duration::from_secs(1),
+        |_| Ok(Actions::stop()),
+    );
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
     let stale = behavior
@@ -783,29 +815,51 @@ async fn a_proxy_ignores_a_stale_child_stop_nonce() {
 fn birth_modes_are_disjoint_and_wrappers_forward_them() {
     requires_no_births((Quiet).base());
 
-    let creator = (Parent)
-        .deadline(TimerId(0), None, |_| Ok(Step::Continue))
-        .watch(MailAddr(4), stop_on_abnormal_death)
-        .stash(|_| StashRoute::Deliver);
+    let creator = behavior_actors::Stash::new(
+        behavior_actors::Watch::new(
+            behavior_actors::Deadline::new(Parent, TimerId(0), None, |_| Ok(Step::Continue)),
+            MailAddr(4),
+            stop_on_abnormal_death,
+        ),
+        |_| StashRoute::Deliver,
+    );
     requires_births::<_, Child>(&creator);
 
-    let supervisor = (Parent)
-        .children(
-            |index| u64::try_from(index).unwrap(),
-            1,
+    let supervisor = behavior_actors::Supervisor::new(
+        Parent,
+        behavior_actors::ChildTopology::new(
+            (0..1).map(|index| u64::try_from(index).unwrap()),
             |index| Some(child(index)),
-        )
-        .unwrap();
+        ),
+        behavior_actors::RestartConfiguration::new(
+            behavior_actors::Strategy::OneForOne,
+            RestartPolicy::Transient,
+            1,
+            std::time::Duration::from_secs(5),
+        ),
+    )
+    .unwrap();
     requires_births::<_, Proxy<Child>>(&supervisor);
     requires_worker_events(&supervisor);
-    let timed_supervisor = (Parent)
-        .children(
-            |index| u64::try_from(index).unwrap(),
-            1,
-            |index| Some(child(index)),
+    let timed_supervisor = behavior_actors::Deadline::new(
+        behavior_actors::Supervisor::new(
+            Parent,
+            behavior_actors::ChildTopology::new(
+                (0..1).map(|index| u64::try_from(index).unwrap()),
+                |index| Some(child(index)),
+            ),
+            behavior_actors::RestartConfiguration::new(
+                behavior_actors::Strategy::OneForOne,
+                behavior_actors::RestartPolicy::Transient,
+                1,
+                std::time::Duration::from_secs(5),
+            ),
         )
-        .unwrap()
-        .deadline(TimerId(0), None, |_| Ok(Step::Continue));
+        .unwrap(),
+        TimerId(0),
+        None,
+        |_| Ok(Step::Continue),
+    );
     requires_worker_events(&timed_supervisor);
     requires_births::<_, Child>(&Proxy::new(child(0)));
 }
@@ -847,16 +901,20 @@ fn verify_budget_failure_and_stop(
 
 #[tokio::test]
 async fn supervisor_creates_proxies_and_replacement_is_a_send() {
-    let supervisor = (Parent)
-        .children(
-            |index| u64::try_from(index).unwrap(),
-            2,
+    let supervisor = behavior_actors::Supervisor::new(
+        Parent,
+        behavior_actors::ChildTopology::new(
+            (0..2).map(|index| u64::try_from(index).unwrap()),
             |index| Some(child(index)),
-        )
-        .unwrap()
-        .with_strategy(Strategy::OneForOne)
-        .with_policy(RestartPolicy::Transient)
-        .with_budget(2, Duration::MAX);
+        ),
+        behavior_actors::RestartConfiguration::new(
+            behavior_actors::Strategy::OneForOne,
+            behavior_actors::RestartPolicy::Transient,
+            2,
+            Duration::MAX,
+        ),
+    )
+    .unwrap();
     let initialized = supervisor.initialize().unwrap();
     let initial = initialized.actions;
     let mut supervisor = initialized.behavior;
@@ -1060,16 +1118,20 @@ async fn idle_proxy_marks_an_immediate_successor_as_a_replacement_incarnation() 
 #[tokio::test]
 async fn stable_proxy_reports_worker_stop_and_creates_fresh_replacement() {
     let at = Instant::now();
-    let supervisor = (Parent)
-        .children(
-            |index| u64::try_from(index).unwrap(),
-            1,
+    let supervisor = behavior_actors::Supervisor::new(
+        Parent,
+        behavior_actors::ChildTopology::new(
+            (0..1).map(|index| u64::try_from(index).unwrap()),
             |index| Some(child(index)),
-        )
-        .unwrap()
-        .with_strategy(Strategy::OneForOne)
-        .with_policy(RestartPolicy::Transient)
-        .with_budget(1, Duration::MAX);
+        ),
+        behavior_actors::RestartConfiguration::new(
+            behavior_actors::Strategy::OneForOne,
+            behavior_actors::RestartPolicy::Transient,
+            1,
+            Duration::MAX,
+        ),
+    )
+    .unwrap();
 
     let initialized = supervisor.initialize().unwrap();
     let mut initial = initialized.actions;
@@ -1160,17 +1222,21 @@ async fn stopped_proxy_is_retired_without_sending_to_its_dead_address() {
 
 #[tokio::test]
 async fn configured_supervision_failure_reaction_stops_on_budget_denial() {
-    let supervisor = (Parent)
-        .children(
-            |index| u64::try_from(index).unwrap(),
-            3,
+    let supervisor = behavior_actors::Supervisor::new(
+        Parent,
+        behavior_actors::ChildTopology::new(
+            (0..3).map(|index| u64::try_from(index).unwrap()),
             |index| Some(child(index)),
-        )
-        .unwrap()
-        .with_strategy(Strategy::OneForAll)
-        .with_policy(RestartPolicy::Permanent)
-        .with_budget(2, Duration::MAX)
-        .with_failure_reaction(verify_budget_failure_and_stop);
+        ),
+        behavior_actors::RestartConfiguration::new(
+            Strategy::OneForAll,
+            RestartPolicy::Permanent,
+            2,
+            Duration::MAX,
+        ),
+    )
+    .unwrap()
+    .with_failure_reaction(verify_budget_failure_and_stop);
     let initialized = supervisor.initialize().unwrap();
     let mut supervisor = initialized.behavior;
 
@@ -1200,14 +1266,21 @@ async fn configured_supervision_failure_reaction_stops_on_budget_denial() {
 
 #[tokio::test]
 async fn configured_supervision_failure_reaction_stops_when_stable_proxy_stops() {
-    let supervisor = (Parent)
-        .children(
-            |index| u64::try_from(index).unwrap(),
-            1,
+    let supervisor = behavior_actors::Supervisor::new(
+        Parent,
+        behavior_actors::ChildTopology::new(
+            (0..1).map(|index| u64::try_from(index).unwrap()),
             |index| Some(child(index)),
-        )
-        .unwrap()
-        .with_failure_reaction(stop_on_supervision_failure);
+        ),
+        behavior_actors::RestartConfiguration::new(
+            behavior_actors::Strategy::OneForOne,
+            RestartPolicy::Transient,
+            1,
+            std::time::Duration::from_secs(5),
+        ),
+    )
+    .unwrap()
+    .with_failure_reaction(stop_on_supervision_failure);
     let initialized = supervisor.initialize().unwrap();
     let mut supervisor = initialized.behavior;
     let actions = supervisor
@@ -1229,15 +1302,21 @@ async fn configured_supervision_failure_reaction_stops_when_stable_proxy_stops()
 
 #[tokio::test]
 async fn restart_policy_ineligibility_is_not_a_supervision_failure() {
-    let supervisor = (Parent)
-        .children(
-            |index| u64::try_from(index).unwrap(),
-            1,
+    let supervisor = behavior_actors::Supervisor::new(
+        Parent,
+        behavior_actors::ChildTopology::new(
+            (0..1).map(|index| u64::try_from(index).unwrap()),
             |index| Some(child(index)),
-        )
-        .unwrap()
-        .with_policy(RestartPolicy::Temporary)
-        .with_failure_reaction(stop_on_supervision_failure);
+        ),
+        behavior_actors::RestartConfiguration::new(
+            behavior_actors::Strategy::OneForOne,
+            RestartPolicy::Temporary,
+            1,
+            std::time::Duration::from_secs(5),
+        ),
+    )
+    .unwrap()
+    .with_failure_reaction(stop_on_supervision_failure);
     let initialized = supervisor.initialize().unwrap();
     let mut supervisor = initialized.behavior;
     let actions = supervisor
@@ -1319,14 +1398,20 @@ impl ReplacingParent {
 
 #[tokio::test]
 async fn supervisor_preserves_and_observes_dynamic_births_once() {
-    let supervisor = (BirthingParent(false))
-        .children(
-            |index| u64::try_from(index).unwrap(),
-            0,
+    let supervisor = behavior_actors::Supervisor::new(
+        BirthingParent(false),
+        behavior_actors::ChildTopology::new(
+            (0..0).map(|index| u64::try_from(index).unwrap()),
             |index| Some(child(index)),
-        )
-        .unwrap()
-        .with_budget(1, Duration::MAX);
+        ),
+        behavior_actors::RestartConfiguration::new(
+            behavior_actors::Strategy::OneForOne,
+            behavior_actors::RestartPolicy::Transient,
+            1,
+            Duration::MAX,
+        ),
+    )
+    .unwrap();
     let initialized = supervisor.initialize().unwrap();
     let initial = initialized.actions;
     let mut supervisor = initialized.behavior;
@@ -1360,14 +1445,20 @@ async fn supervisor_preserves_and_observes_dynamic_births_once() {
 
 #[tokio::test]
 async fn supervisor_preserves_dynamic_replacement_provenance_when_wrapping_the_child() {
-    let supervisor = (ReplacingParent)
-        .children(
-            |index| u64::try_from(index).unwrap(),
-            0,
+    let supervisor = behavior_actors::Supervisor::new(
+        ReplacingParent,
+        behavior_actors::ChildTopology::new(
+            (0..0).map(|index| u64::try_from(index).unwrap()),
             |index| Some(child(index)),
-        )
-        .unwrap()
-        .with_budget(1, Duration::MAX);
+        ),
+        behavior_actors::RestartConfiguration::new(
+            behavior_actors::Strategy::OneForOne,
+            behavior_actors::RestartPolicy::Transient,
+            1,
+            Duration::MAX,
+        ),
+    )
+    .unwrap();
     let initialized = supervisor.initialize().unwrap();
     let mut supervisor = initialized.behavior;
 
@@ -1464,7 +1555,9 @@ async fn supervision_strategy_policy_and_budget_are_pure_send_decisions() {
 #[tokio::test]
 async fn stale_time_events_do_not_fire_or_reschedule() {
     let due = Instant::now() + Duration::from_secs(2);
-    let behavior = (Quiet).deadline(TimerId(0), Some(due), |_| Ok(Step::Stop(behavior::Stopped)));
+    let behavior = behavior_actors::Deadline::new(Quiet, TimerId(0), Some(due), |_| {
+        Ok(Step::Stop(behavior::Stopped))
+    });
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
     let stale = DeadlineEvent::Elapsed(TimerElapsed {
@@ -1499,9 +1592,12 @@ proptest! {
         let origin = Instant::now();
         let first = origin + Duration::from_nanos(first);
         let second = origin + Duration::from_nanos(second);
-        let outer = (Quiet)
-            .deadline(TimerId(0), Some(first), |_| Ok(Step::Continue))
-            .deadline(TimerId(1), Some(second), |_| Ok(Step::Continue));
+        let outer = behavior_actors::Deadline::new(
+            behavior_actors::Deadline::new(Quiet, TimerId(0), Some(first), |_| Ok(Step::Continue)),
+            TimerId(1),
+            Some(second),
+            |_| Ok(Step::Continue),
+        );
         let _runtime = Builder::new_current_thread().enable_all().build().unwrap();
         let initialized = outer.initialize().unwrap();
     let actions = initialized.actions;

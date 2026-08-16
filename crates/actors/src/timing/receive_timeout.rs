@@ -74,8 +74,12 @@ pub struct ReceiveTimeout<B: Behavior> {
 }
 
 impl<B: Behavior> ReceiveTimeout<B> {
+    /// Wrap `inner` with a relative inactivity timeout.
+    ///
+    /// Initialization and each successful continuing user fold stage a fresh
+    /// timer generation. Service events do not reset inactivity.
     #[must_use]
-    pub(crate) fn new(
+    pub fn new(
         inner: B,
         id: TimerId,
         after: Duration,

@@ -8,7 +8,7 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, Compose, Crash, Create, Delivery, MailAddr, Never, Recipient, RestartPolicy,
+    Acted, Actions, Crash, Create, Delivery, MailAddr, Never, Recipient, RestartPolicy,
     SendAlgebra, Step, Strategy, SupervisionEvent, User, UserEvent, WorkerStopped,
 };
 use behavior_testkit::{Mailbox, drive};
@@ -250,31 +250,40 @@ async fn empty_fleet_dynamic_birth_then_death_restarts() {
 #[tokio::test]
 async fn driver_full_stack_mixed_lanes_stop_on_peer_death() {
     use behavior::{
-        Compose, DeadlineEvent, PeerStopped, StashRoute, TimerElapsed, TimerGeneration, TimerId,
-        WatchEvent, stop_on_abnormal_death,
+        DeadlineEvent, PeerStopped, StashRoute, TimerElapsed, TimerGeneration, TimerId, WatchEvent,
+        stop_on_abnormal_death,
     };
 
     let due = Instant::now() + Duration::from_secs(1);
     let peer = MailAddr(44);
-    let behavior = (EchoingParent { seen: Vec::new() })
-        .stash(|m| {
-            if m % 3 == 2 {
-                StashRoute::Stash
-            } else {
-                StashRoute::Deliver
-            }
-        })
-        .watch(peer, stop_on_abnormal_death)
-        .deadline(behavior::TimerId(0), Some(due), |_| Ok(Step::Continue))
-        .children(
-            |index| u64::try_from(index).unwrap(),
-            2,
-            |index| Some(child(index)),
-        )
-        .unwrap()
-        .with_strategy(Strategy::OneForOne)
-        .with_policy(RestartPolicy::Permanent)
-        .with_budget(u32::MAX, Duration::MAX);
+    let behavior = behavior::Supervisor::new(
+        behavior::Deadline::new(
+            behavior::Watch::new(
+                behavior::Stash::new(EchoingParent { seen: Vec::new() }, |m| {
+                    if m % 3 == 2 {
+                        StashRoute::Stash
+                    } else {
+                        StashRoute::Deliver
+                    }
+                }),
+                peer,
+                stop_on_abnormal_death,
+            ),
+            behavior::TimerId(0),
+            Some(due),
+            |_| Ok(Step::Continue),
+        ),
+        behavior::ChildTopology::new((0..2).map(|index| u64::try_from(index).unwrap()), |index| {
+            Some(child(index))
+        }),
+        behavior::RestartConfiguration::new(
+            behavior::Strategy::OneForOne,
+            RestartPolicy::Permanent,
+            u32::MAX,
+            Duration::MAX,
+        ),
+    )
+    .unwrap();
     let mut mailbox = Mailbox::new([
         SupervisionEvent::Behavior(DeadlineEvent::Behavior(WatchEvent::Behavior(User::user(
             MailAddr(9),
@@ -415,7 +424,7 @@ async fn driver_stash_stop_preserves_held_and_stops() {
         }
     }
 
-    let behavior = (StopOnZero { seen: Vec::new() }).stash(|m: &u64| {
+    let behavior = behavior::Stash::new(StopOnZero { seen: Vec::new() }, |m: &u64| {
         if *m == 0 {
             StashRoute::Release
         } else {

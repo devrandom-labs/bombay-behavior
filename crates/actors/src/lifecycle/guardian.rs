@@ -94,7 +94,6 @@ where
 mod tests {
     use super::*;
     use crate::Activate as _;
-    use crate::Compose as _;
     use crate::{Crash, Exit, PeerStopped, WatchEvent, WatchSends};
     use behavior::{Births, Create, MailAddr, Never, ServiceSends, Step, User};
 
@@ -178,11 +177,14 @@ mod tests {
 
     #[test]
     fn guardian_and_watch_preserve_initialization_in_both_wrapper_orders() {
-        let outer_watch = Guardian::new(Application)
-            .watch(MailAddr(4), continue_guardian_after_stop)
-            .initialize()
-            .unwrap()
-            .actions;
+        let outer_watch = crate::Watch::new(
+            Guardian::new(Application),
+            MailAddr(4),
+            continue_guardian_after_stop,
+        )
+        .initialize()
+        .unwrap()
+        .actions;
         assert_eq!(outer_watch.sends.behavior, [1]);
         assert_eq!(
             outer_watch.sends.observations,
@@ -190,10 +192,14 @@ mod tests {
         );
         assert_eq!(outer_watch.creates, [Create::birth(7, ())]);
 
-        let outer_guardian = Guardian::new(Application.watch(MailAddr(4), continue_after_stop))
-            .initialize()
-            .unwrap()
-            .actions;
+        let outer_guardian = Guardian::new(crate::Watch::new(
+            Application,
+            MailAddr(4),
+            continue_after_stop,
+        ))
+        .initialize()
+        .unwrap()
+        .actions;
         assert_eq!(
             outer_guardian.sends,
             WatchSends {
@@ -206,22 +212,28 @@ mod tests {
 
     #[test]
     fn guardian_shutdown_routes_through_an_outer_watch_without_observing_a_peer_stop() {
-        let mut active = Guardian::new(Application)
-            .watch(MailAddr(4), continue_guardian_after_stop)
-            .initialize()
-            .unwrap()
-            .behavior;
+        let mut active = crate::Watch::new(
+            Guardian::new(Application),
+            MailAddr(4),
+            continue_guardian_after_stop,
+        )
+        .initialize()
+        .unwrap()
+        .behavior;
 
         let stopped = active.on(ShutdownRequested).unwrap();
         assert_eq!(stopped.sends, WatchSends::empty());
         assert!(stopped.creates.is_empty());
         assert!(matches!(stopped.become_, Step::Stop(_)));
 
-        let mut peer_active = Guardian::new(Application)
-            .watch(MailAddr(4), continue_guardian_after_stop)
-            .initialize()
-            .unwrap()
-            .behavior;
+        let mut peer_active = crate::Watch::new(
+            Guardian::new(Application),
+            MailAddr(4),
+            continue_guardian_after_stop,
+        )
+        .initialize()
+        .unwrap()
+        .behavior;
         let peer = peer_active
             .transition(WatchEvent::PeerStopped(PeerStopped::new(
                 MailAddr(4),

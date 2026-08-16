@@ -2,8 +2,8 @@ use std::hint::black_box;
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, Compose, Crash, Machine, MailAddr, Move, Never, Proxy, ProxyCommand,
-    RestartPolicy, StashRoute, Step, Strategy, Supervisor, WorkerStopped, stop_on_abnormal_death,
+    Acted, Actions, Crash, Machine, MailAddr, Move, Never, Proxy, ProxyCommand, RestartPolicy,
+    StashRoute, Step, Strategy, Supervisor, WorkerStopped, stop_on_abnormal_death,
 };
 use behavior_testkit::InitializeTest;
 use std::time::Instant;
@@ -173,7 +173,7 @@ fn measure_fsm() -> f64 {
 /// Stash passthrough (every message routes Deliver): buffer machinery on
 /// the hot path without holding.
 fn measure_stash() -> f64 {
-    let behavior = (Sink(0)).stash(|_| StashRoute::Deliver);
+    let behavior = behavior::Stash::new(Sink(0), |_| StashRoute::Deliver);
     let mut behavior = behavior.initialize().unwrap().behavior;
     let started = Instant::now();
     for index in 0..SHORT_ITERATIONS {
@@ -191,10 +191,16 @@ fn measure_stash() -> f64 {
 /// stack.
 fn measure_nested() -> f64 {
     let due = Instant::now() + Duration::from_mins(1);
-    let behavior = (Sink(0))
-        .stash(|_| StashRoute::Deliver)
-        .watch(MailAddr(7), stop_on_abnormal_death)
-        .deadline(behavior::TimerId(0), Some(due), |_| Ok(Step::Continue));
+    let behavior = behavior::Deadline::new(
+        behavior::Watch::new(
+            behavior::Stash::new(Sink(0), |_| StashRoute::Deliver),
+            MailAddr(7),
+            stop_on_abnormal_death,
+        ),
+        behavior::TimerId(0),
+        Some(due),
+        |_| Ok(Step::Continue),
+    );
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
     let started = Instant::now();

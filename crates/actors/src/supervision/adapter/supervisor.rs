@@ -277,24 +277,6 @@ where
     }
 
     #[must_use]
-    pub fn with_strategy(mut self, strategy: Strategy) -> Self {
-        self.strategy = strategy;
-        self
-    }
-
-    #[must_use]
-    pub fn with_policy(mut self, policy: RestartPolicy) -> Self {
-        self.policy = policy;
-        self
-    }
-
-    #[must_use]
-    pub fn with_budget(mut self, max: u32, window: Duration) -> Self {
-        self.budget = RestartBudget::new(max, window);
-        self
-    }
-
-    #[must_use]
     /// Replace the pure reaction used for typed supervision failures.
     pub fn with_failure_reaction(mut self, reaction: SupervisionFailureReaction<B>) -> Self {
         self.on_failure = reaction;

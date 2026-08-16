@@ -1,5 +1,5 @@
 use behavior::{
-    Acted, Actions, Compose, Delivery, MailAddr, Never, NoBirths, Recipient, ShutdownProtocol,
+    Acted, Actions, Delivery, MailAddr, Never, NoBirths, Recipient, ShutdownProtocol,
     ShutdownRequested, User,
 };
 use behavior_testkit::{Mailbox, drive};
@@ -48,7 +48,7 @@ proptest! {
             }
         });
         let mut mailbox = Mailbox::new(events);
-        let behavior = (Echo).stop_on_shutdown();
+        let behavior = behavior::StopOnShutdown::new(Echo);
         let trace = drive(behavior, &mut mailbox).unwrap();
         let stop = inputs.iter().position(|(shutdown, _)| *shutdown);
         let consumed = stop.map_or(inputs.len(), |index| index + 1);

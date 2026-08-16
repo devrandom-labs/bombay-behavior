@@ -17,8 +17,8 @@ The research conclusions remain evidence for the foundational algebra, but
 the current package and system boundaries are now:
 
 - `bombay-behavior` contains only the foundational pure fold and `Actions`;
-- `bombay-behavior-actors` contains `Compose`, `Active`, reusable templates,
-  and their concrete protocols;
+- `bombay-behavior-actors` contains `Active`, reusable templates, their public
+  constructors, and their concrete protocols;
 - `bombay-engine::Driver` is the one universal runtime loop;
 - the Bombay runtime and focused Communication, Address, Observe, Timers,
   Transition, Machine Executor, and Entity crates interpret capabilities;
@@ -42,8 +42,8 @@ The behavior-owned wart pass replaced that representation as follows:
   `State`, `Base`, `FnState`, and the erased function adapters were removed.
 - `Activate` is the consuming initialization boundary and produces
   `Initialized<B> { behavior: Active<B>, actions }`; only `Active<B>` accepts
-  mailbox events. `Compose` is now a zero-state extension trait used only to
-  construct typed wrappers. Pre-initialization transition and repeated
+  mailbox events. Public owning-type constructors build typed wrappers;
+  the parallel `Compose` extension trait was removed. Pre-initialization transition and repeated
   initialization are compile-time errors, not runtime lifecycle branches.
 - Generic `B: Behavior` boundaries preserve inference for exact static wrapper
   compositions. The `workers!` and `#[behavior_stack]` convenience macros are

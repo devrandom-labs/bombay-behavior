@@ -76,11 +76,10 @@ There is no supervisor Driver, proxy Driver, task Driver, or persistence
 Driver. Adding a template must never add another execution loop.
 
 Catalogue construction does not introduce a driver-facing definition wrapper.
-A standalone concrete behavior is consumed directly through
-`Activate::initialize`; applying the `Compose` extension trait returns another
-concrete behavior type. Both paths therefore deliver the same `Initialized<B>`
-product to the universal Driver. `Compose` owns no state, initialization loop,
-runtime capability, or alternate interpretation path.
+A standalone or explicitly wrapped concrete behavior is consumed directly
+through `Activate::initialize`. Public owning-type constructors return ordinary
+concrete behavior types, so every topology delivers the same `Initialized<B>`
+product to the universal Driver without an alternate authoring abstraction.
 
 ## Domain injection and templates
 
@@ -102,11 +101,10 @@ Local construction relies on inference. A boundary that must store or expose
 the exact stack can use an ordinary Rust alias or newtype. Runtime entry points
 should remain generic over `B: Behavior`, so ordinary users do not need one.
 
-Concrete catalogue templates are constructed and configured through their
-owning types. The `Compose` trait is imported only to apply a wrapper
-transformation such as watching, timing, stashing, shutdown, or supervised
-children; it is not a mandatory container around `Router`, `Task`, `Buffer`, or
-any other standalone template.
+Concrete catalogue templates and wrappers are constructed and configured
+through their owning types. Supervision uses `Supervisor::new` with explicit
+`ChildTopology` and `RestartConfiguration`; no wrapper constructor supplies
+hidden topology or restart defaults.
 
 The `System` integration should take the fully composed value generically and
 allow Rust to infer `B`; application code must not spell the nested wrapper
@@ -117,9 +115,12 @@ static protocol boundary rather than ordinary actor startup ceremony.
 Normal construction and adapter integration use inference:
 
 ```rust,ignore
-let behavior = machine
-    .stash(route)
-    .deadline(timer, when, on_elapsed);
+let behavior = Deadline::new(
+    Stash::new(machine, route),
+    timer,
+    when,
+    on_elapsed,
+);
 
 system.spawn(behavior)?;
 ```

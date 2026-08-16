@@ -131,7 +131,7 @@ service used by the fold.
 
 | Catalogue family | Actors module | Owned templates and compositions | Owned state, protocol, products, and errors | Shared construction dependencies | Runtime capability dependencies | Bombay façade |
 |---|---|---|---|---|---|---|
-| Fundamental composition | `composition` | direct `Activate`, wrapper-only `Compose`, `Active`, `Machine`, protocol forwarding, stash | initialization typestates, machine moves, stash route/status, closed heterogeneous birth products | event injection, named-lane forwarding, exhaustive `DispatchBirth` | none beyond the universal Driver and concrete `InstallBirth` implementations | `bombay::behavior::{Behavior, Actions, Births, Activate, Compose, Machine, Stash}` |
+| Fundamental composition | `composition` | direct `Activate`, `Active`, public concrete wrapper constructors, `Machine`, protocol forwarding, stash | initialization typestates, machine moves, stash route/status, closed heterogeneous birth products | event injection, named-lane forwarding, exhaustive `DispatchBirth` | none beyond the universal Driver and concrete `InstallBirth` implementations | `bombay::behavior::{Behavior, Actions, Births, Activate, Machine}` and `bombay::actors` wrapper types |
 | Lifecycle | `lifecycle` | watch/link policy, shutdown, lifecycle monitor compositions | observation and shutdown events, reactions, terminal classifications | initialization accumulation, observation forwarding | Observe, child installation, terminal publication | `bombay::actors::{Watch, Task, Guardian, ShutdownCoordinator}` as each concrete template ships |
 | Supervision | `supervision` | `Proxy`, `Supervisor`, worker pools, restart policies | incarnation/fleet/budget sums, replacement protocol, `ChildTopology`, `RestartConfiguration`, `PoolConfiguration`, named supervision and pool products, typed errors | creation-result correlation, recipient membership | fresh installation, Observe, Timers for backoff | `bombay::actors::{Proxy, Supervisor, Pool, KeyedPool}` plus semantic configurations |
 | Routing and delivery | `routing` | routers and strategies, work admission, correlation, ordering, retention and delivery-policy compositions | recipient membership, pending/attempt/order states, delivery outcomes and named delivery products | bounded FIFO, keyed pending correlation, bounded retention | Address and Communication; Timers for timed policies | `bombay::actors::routing::*` selected collision-free role exports |
@@ -189,7 +189,7 @@ from this ledger remain prospective even when named in the catalogue.
 
 | Family / owning module | Implemented role | State and protocol owner | Named effects / errors | Runtime capability | Current verification | Proposed Bombay exposure |
 |---|---|---|---|---|---|---|
-| `composition` | `Activate` / `Compose` / `Active` | direct consuming initialization and wrapper-only composition over routed concrete event sums | `Initialized`, `ChildrenResult`; concrete nested errors | universal Driver only | unit, composition, compile-fail, properties, adapter-contract tests | `bombay::behavior::{Activate, Compose, Active}` |
+| `composition` | `Activate` / `Active` / concrete wrapper constructors | direct consuming initialization and explicit construction over routed concrete event sums | `Initialized`; concrete nested errors | universal Driver only | unit, composition, compile-fail, properties, adapter-contract tests | `bombay::behavior::{Activate, Active}` and `bombay::actors` wrapper types |
 | `composition` | `Machine` | `Move` and user state/event types | domain behavior actions/errors unchanged | universal Driver only | unit, exhaustive FSM, properties, fuzz | `bombay::behavior::{Machine, Move}` |
 | `composition` | `Stash` | `StashRoute`, retained FIFO | `StashStatus`; inner products preserved | universal Driver only | unit, model, exhaustive, properties, fuzz | `bombay::actors::Stash` |
 | `lifecycle` | `Guardian` | application/subtree boundary over the wrapped initialization and event contract | inner products preserved; normal shutdown adds no effects | universal Driver activation, shutdown delivery and retirement | unit, error-path, composition-order, compile-fail | `bombay::actors::Guardian` |
@@ -737,8 +737,8 @@ public law needs it and after the exact release passes repository policy.
 | Every template | `bombay-engine`, `bombay-transition`, `bombay-machine-executor` | Bombay engine/runtime | Reuse the universal Driver and exclusive turn machinery; never add a template-specific loop |
 | `EventSourced`, `Recovery`, durable projection, checkpoint, saga/process manager, relay, inbox/outbox | Mnesis and `mnesis-bombay` | `mnesis-bombay`, not Actors | Bombay hosts, typed adapter protocols, receipts, and composition root; never another persistence abstraction |
 
-“Compose” in this table means protocol composition across crate boundaries. It
-does not mean adding these runtime crates as dependencies of
+“Composition” in this table means protocol composition across crate
+boundaries. It does not mean adding these runtime crates as dependencies of
 `bombay-behavior-actors`. A template declares typed requirements; the System's
 environment supplies the implementation and the compiler rejects an
 insufficient environment.

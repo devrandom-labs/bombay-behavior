@@ -8,8 +8,8 @@
 use std::time::Duration;
 
 use behavior::{
-    Activate, Compose, DeadlineEvent, Machine, MailAddr, Move, Never, StashRoute, Step,
-    TimerElapsed, TimerGeneration, TimerId, UserEvent,
+    Activate, DeadlineEvent, Machine, MailAddr, Move, Never, StashRoute, Step, TimerElapsed,
+    TimerGeneration, TimerId, UserEvent,
 };
 use proptest::collection::vec;
 use proptest::prelude::*;
@@ -67,9 +67,12 @@ proptest! {
         fires in vec(any::<u8>(), 0..32),
     ) {
         let due = Instant::now() + Duration::from_secs(1);
-        let behavior = Machine::new(Vec::new(), Phase::A, on)
-            .stash(route)
-            .deadline(behavior::TimerId(0), Some(due), |_| Ok(Step::Continue));
+        let behavior = behavior::Deadline::new(
+            behavior::Stash::new(Machine::new(Vec::new(), Phase::A, on), route),
+            behavior::TimerId(0),
+            Some(due),
+            |_| Ok(Step::Continue),
+        );
         let runtime = Builder::new_current_thread().enable_all().build().unwrap();
         let initialized = behavior.initialize().unwrap();
         let mut behavior = initialized.behavior;

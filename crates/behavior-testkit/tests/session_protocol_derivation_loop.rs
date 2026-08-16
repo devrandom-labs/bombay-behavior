@@ -482,13 +482,13 @@ mod compile_fail_probes {
 #[cfg(test)]
 mod composition_checks {
     use super::*;
-    use behavior::{Compose, stop_on_abnormal_death};
+    use behavior::stop_on_abnormal_death;
 
     /// Verify FSM composes with Watch.
     #[tokio::test]
     async fn fsm_composes_with_watching() {
         let fsm = pool_fsm_definition();
-        let _watching = (fsm).watch(MailAddr(1), stop_on_abnormal_death);
+        let _watching = behavior::Watch::new(fsm, MailAddr(1), stop_on_abnormal_death);
     }
 }
 use behavior_testkit::InitializeTest;

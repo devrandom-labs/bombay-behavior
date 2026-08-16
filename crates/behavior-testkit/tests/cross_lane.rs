@@ -7,7 +7,7 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, Activate, Compose, Crash, Delivery, MailAddr, Never, Recipient, RestartPolicy,
+    Acted, Actions, Activate, Crash, Delivery, MailAddr, Never, Recipient, RestartPolicy,
     StashRoute, Step, Strategy, SupervisionEvent, TimerElapsed, TimerGeneration, TimerId,
     UserEvent, WorkerStopped,
 };
@@ -100,14 +100,19 @@ async fn user(behavior: &mut Stack, message: u64) -> Vec<u64> {
 /// no user step ever emits a supervision send.
 #[tokio::test]
 async fn supervised_stash_routes_user_lane_without_cross_lane_effects() {
-    let behavior = (EchoingParent { seen: Vec::new() })
-        .stash(route)
-        .children(
-            |index| u64::try_from(index).unwrap(),
-            2,
-            |index| Some(child(index)),
-        )
-        .unwrap();
+    let behavior = behavior::Supervisor::new(
+        behavior::Stash::new(EchoingParent { seen: Vec::new() }, route),
+        behavior::ChildTopology::new((0..2).map(|index| u64::try_from(index).unwrap()), |index| {
+            Some(child(index))
+        }),
+        behavior::RestartConfiguration::new(
+            behavior::Strategy::OneForOne,
+            behavior::RestartPolicy::Transient,
+            1,
+            std::time::Duration::from_secs(5),
+        ),
+    )
+    .unwrap();
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
 
@@ -125,14 +130,19 @@ async fn supervised_stash_routes_user_lane_without_cross_lane_effects() {
 /// and the stash buffer stay untouched.
 #[tokio::test]
 async fn child_death_never_leaks_into_the_user_lane() {
-    let behavior = (EchoingParent { seen: Vec::new() })
-        .stash(route)
-        .children(
-            |index| u64::try_from(index).unwrap(),
-            2,
-            |index| Some(child(index)),
-        )
-        .unwrap();
+    let behavior = behavior::Supervisor::new(
+        behavior::Stash::new(EchoingParent { seen: Vec::new() }, route),
+        behavior::ChildTopology::new((0..2).map(|index| u64::try_from(index).unwrap()), |index| {
+            Some(child(index))
+        }),
+        behavior::RestartConfiguration::new(
+            behavior::Strategy::OneForOne,
+            behavior::RestartPolicy::Transient,
+            1,
+            std::time::Duration::from_secs(5),
+        ),
+    )
+    .unwrap();
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
 
@@ -164,16 +174,24 @@ async fn child_death_never_leaks_into_the_user_lane() {
 #[tokio::test]
 async fn supervision_preserves_inner_at_routing() {
     let due = Instant::now() + Duration::from_secs(1);
-    let behavior = (EchoingParent { seen: Vec::new() })
-        .deadline(behavior::TimerId(0), Some(due), |_| {
-            Ok(Step::Stop(behavior::Stopped))
-        })
-        .children(
-            |index| u64::try_from(index).unwrap(),
+    let behavior = behavior::Supervisor::new(
+        behavior::Deadline::new(
+            EchoingParent { seen: Vec::new() },
+            behavior::TimerId(0),
+            Some(due),
+            |_| Ok(Step::Stop(behavior::Stopped)),
+        ),
+        behavior::ChildTopology::new((0..1).map(|index| u64::try_from(index).unwrap()), |index| {
+            Some(child(index))
+        }),
+        behavior::RestartConfiguration::new(
+            behavior::Strategy::OneForOne,
+            behavior::RestartPolicy::Transient,
             1,
-            |index| Some(child(index)),
-        )
-        .unwrap();
+            std::time::Duration::from_secs(5),
+        ),
+    )
+    .unwrap();
     let initialized = behavior.initialize().unwrap();
     let initial = initialized.actions;
     let mut behavior = initialized.behavior;
@@ -202,16 +220,28 @@ async fn full_stack_all_four_layers_keep_their_own_lanes() {
 
     let due = Instant::now() + Duration::from_secs(1);
     let peer = MailAddr(44);
-    let behavior = (EchoingParent { seen: Vec::new() })
-        .stash(route)
-        .watch(peer, stop_on_abnormal_death)
-        .deadline(behavior::TimerId(0), Some(due), |_| Ok(Step::Continue))
-        .children(
-            |index| u64::try_from(index).unwrap(),
-            2,
-            |index| Some(child(index)),
-        )
-        .unwrap();
+    let behavior = behavior::Supervisor::new(
+        behavior::Deadline::new(
+            behavior::Watch::new(
+                behavior::Stash::new(EchoingParent { seen: Vec::new() }, route),
+                peer,
+                stop_on_abnormal_death,
+            ),
+            behavior::TimerId(0),
+            Some(due),
+            |_| Ok(Step::Continue),
+        ),
+        behavior::ChildTopology::new((0..2).map(|index| u64::try_from(index).unwrap()), |index| {
+            Some(child(index))
+        }),
+        behavior::RestartConfiguration::new(
+            behavior::Strategy::OneForOne,
+            behavior::RestartPolicy::Transient,
+            1,
+            std::time::Duration::from_secs(5),
+        ),
+    )
+    .unwrap();
     let initialized = behavior.initialize().unwrap();
     let initial = initialized.actions;
     let mut behavior = initialized.behavior;
@@ -254,16 +284,28 @@ async fn full_stack_all_four_layers_keep_their_own_lanes() {
     assert!(matches!(died.become_, Step::Stop(behavior::Stopped)));
 
     // Child lane on a fresh stack: replacement send only.
-    let fresh = (EchoingParent { seen: Vec::new() })
-        .stash(route)
-        .watch(peer, stop_on_abnormal_death)
-        .deadline(behavior::TimerId(0), Some(due), |_| Ok(Step::Continue))
-        .children(
-            |index| u64::try_from(index).unwrap(),
-            2,
-            |index| Some(child(index)),
-        )
-        .unwrap();
+    let fresh = behavior::Supervisor::new(
+        behavior::Deadline::new(
+            behavior::Watch::new(
+                behavior::Stash::new(EchoingParent { seen: Vec::new() }, route),
+                peer,
+                stop_on_abnormal_death,
+            ),
+            behavior::TimerId(0),
+            Some(due),
+            |_| Ok(Step::Continue),
+        ),
+        behavior::ChildTopology::new((0..2).map(|index| u64::try_from(index).unwrap()), |index| {
+            Some(child(index))
+        }),
+        behavior::RestartConfiguration::new(
+            behavior::Strategy::OneForOne,
+            behavior::RestartPolicy::Transient,
+            1,
+            std::time::Duration::from_secs(5),
+        ),
+    )
+    .unwrap();
     let initialized = fresh.initialize().unwrap();
     let mut fresh = initialized.behavior;
     let replacement = fresh
@@ -303,14 +345,28 @@ proptest! {
 
         let due = Instant::now() + Duration::from_secs(1);
         let peer = MailAddr(44);
-        let behavior = (EchoingParent { seen: Vec::new() })
-            .stash(route)
-            .watch(peer, stop_on_abnormal_death)
-            .deadline(behavior::TimerId(0), Some(due), |_| Ok(Step::Continue))
-            .children(|index| u64::try_from(index).unwrap(), 2, |index| Some(child(index))).unwrap()
-            .with_strategy(Strategy::OneForOne)
-            .with_policy(RestartPolicy::Permanent)
-            .with_budget(u32::MAX, Duration::MAX);
+        let behavior = behavior::Supervisor::new(
+            behavior::Deadline::new(
+                behavior::Watch::new(
+                    behavior::Stash::new(EchoingParent { seen: Vec::new() }, route),
+                    peer,
+                    stop_on_abnormal_death,
+                ),
+                behavior::TimerId(0),
+                Some(due),
+                |_| Ok(Step::Continue),
+            ),
+            behavior::ChildTopology::new(
+                (0..2).map(|index| u64::try_from(index).unwrap()),
+                |index| Some(child(index)),
+            ),
+            behavior::RestartConfiguration::new(
+                Strategy::OneForOne,
+                RestartPolicy::Permanent,
+                u32::MAX,
+                Duration::MAX,
+            ),
+        ).unwrap();
         let runtime = Builder::new_current_thread().enable_all().build().unwrap();
         let initialized = behavior.initialize().unwrap();
         let mut behavior = initialized.behavior;

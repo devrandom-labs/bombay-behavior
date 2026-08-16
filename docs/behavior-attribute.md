@@ -87,7 +87,8 @@ transition law or grant the macro any interpreter capability.
 concrete child behavior. It generates only exhaustive `DispatchBirth` wiring:
 the enum is a creation product and never a `Behavior`, message union, factory,
 registry, or protocol adapter. Wrapper stacks remain ordinary Rust values built
-with `Compose` and inferred at local, generic spawn, and adapter boundaries.
+through public owning-type constructors and inferred at local, generic spawn,
+and adapter boundaries.
 
 ```rust,ignore
 #[behavior::births]

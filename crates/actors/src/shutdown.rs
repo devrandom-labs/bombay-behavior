@@ -64,8 +64,9 @@ pub struct StopOnShutdown<B> {
 }
 
 impl<B> StopOnShutdown<B> {
+    /// Wrap `inner` so the first typed shutdown request stops it normally.
     #[must_use]
-    pub(crate) fn new(inner: B) -> Self {
+    pub const fn new(inner: B) -> Self {
         Self { inner }
     }
 }
@@ -106,8 +107,12 @@ pub struct FinalizeOnShutdown<B: Behavior> {
 }
 
 impl<B: Behavior> FinalizeOnShutdown<B> {
+    /// Wrap `inner` with one pure finalization fold on typed shutdown.
+    ///
+    /// The final fold's sends and creations are preserved and the wrapper then
+    /// stops normally regardless of the fold's continuation verdict.
     #[must_use]
-    pub(crate) fn new(inner: B, finalize: ShutdownReaction<B>) -> Self {
+    pub const fn new(inner: B, finalize: ShutdownReaction<B>) -> Self {
         Self { inner, finalize }
     }
 }

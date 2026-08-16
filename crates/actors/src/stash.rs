@@ -25,8 +25,13 @@ pub struct Stash<B: Behavior> {
 }
 
 impl<B: Behavior<Ph = Never>> Stash<B> {
+    /// Wrap `inner` with the pure message-routing decision `route`.
+    ///
+    /// Stashed messages retain FIFO order and ownership until a later
+    /// [`StashRoute::Release`]. Construction performs no transition or runtime
+    /// operation.
     #[must_use]
-    pub(crate) fn new(inner: B, route: fn(&B::Msg) -> StashRoute) -> Self {
+    pub fn new(inner: B, route: fn(&B::Msg) -> StashRoute) -> Self {
         Self {
             inner,
             route,

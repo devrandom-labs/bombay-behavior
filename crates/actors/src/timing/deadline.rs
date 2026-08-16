@@ -57,8 +57,12 @@ pub struct Deadline<B: Behavior> {
 }
 
 impl<B: Behavior> Deadline<B> {
+    /// Wrap `inner` with one optional absolute deadline and pure reaction.
+    ///
+    /// Initialization stages the schedule when `at` is present. Clock access
+    /// and timer delivery remain interpreter capabilities.
     #[must_use]
-    pub(crate) fn new(
+    pub fn new(
         inner: B,
         id: TimerId,
         at: Option<Instant>,

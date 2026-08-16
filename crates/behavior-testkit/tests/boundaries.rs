@@ -6,9 +6,9 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, Compose, Crash, Create, DeadlineEvent, Delivery, Exit, Machine, MailAddr, Move,
-    Never, Proxy, Recipient, RestartPolicy, StashRoute, Step, Strategy, SupervisionEvent,
-    Supervisor, TimerElapsed, TimerGeneration, TimerId, User, UserEvent, WorkerStopped,
+    Acted, Actions, Crash, Create, DeadlineEvent, Delivery, Exit, Machine, MailAddr, Move, Never,
+    Proxy, Recipient, RestartPolicy, StashRoute, Step, Strategy, SupervisionEvent, Supervisor,
+    TimerElapsed, TimerGeneration, TimerId, User, UserEvent, WorkerStopped,
 };
 use std::time::Instant;
 
@@ -152,13 +152,19 @@ async fn proxy_initialization_is_explicit() {
 
 #[tokio::test]
 async fn empty_fleet_supervisor_initializes_and_steps_cleanly() {
-    let supervisor = (Parent)
-        .children(
-            |index| u64::try_from(index).unwrap(),
-            0,
-            |index| Some(child(index)),
-        )
-        .unwrap();
+    let supervisor = behavior::Supervisor::new(
+        Parent,
+        behavior::ChildTopology::new((0..0).map(|index| u64::try_from(index).unwrap()), |index| {
+            Some(child(index))
+        }),
+        behavior::RestartConfiguration::new(
+            behavior::Strategy::OneForOne,
+            behavior::RestartPolicy::Transient,
+            1,
+            std::time::Duration::from_secs(5),
+        ),
+    )
+    .unwrap();
     let initialized = supervisor.initialize().unwrap();
     let initial = initialized.actions;
     let mut supervisor = initialized.behavior;
@@ -175,13 +181,19 @@ async fn empty_fleet_supervisor_initializes_and_steps_cleanly() {
 
 #[tokio::test]
 async fn child_stopped_for_unknown_nonce_is_typed() {
-    let supervisor = (Parent)
-        .children(
-            |index| u64::try_from(index).unwrap(),
+    let supervisor = behavior::Supervisor::new(
+        Parent,
+        behavior::ChildTopology::new((0..1).map(|index| u64::try_from(index).unwrap()), |index| {
+            Some(child(index))
+        }),
+        behavior::RestartConfiguration::new(
+            behavior::Strategy::OneForOne,
+            behavior::RestartPolicy::Transient,
             1,
-            |index| Some(child(index)),
-        )
-        .unwrap();
+            std::time::Duration::from_secs(5),
+        ),
+    )
+    .unwrap();
     let initialized = supervisor.initialize().unwrap();
     let mut supervisor = initialized.behavior;
     assert!(matches!(
@@ -439,7 +451,7 @@ async fn restart_window_prunes_aged_stamps_but_keeps_future_ones() {
 /// stops the fold, the drain is skipped, and held messages survive the stop.
 #[tokio::test]
 async fn stash_stop_skips_drain_and_preserves_held_messages() {
-    let behavior = (StopOnZero::default()).stash(|message| match message {
+    let behavior = behavior::Stash::new(StopOnZero::default(), |message| match message {
         0 => StashRoute::Release,
         _ => StashRoute::Stash,
     });
@@ -518,9 +530,14 @@ async fn fsm_mid_drain_deferral_reorders_relative_to_fifo() {
 #[tokio::test]
 async fn nested_at_identical_schedules_are_distinguished_by_identity() {
     let due = Instant::now() + Duration::from_secs(1);
-    let outer = (Recorder::default())
-        .deadline(TimerId(0), Some(due), |_| Ok(Step::Stop(behavior::Stopped)))
-        .deadline(TimerId(1), Some(due), |_| Ok(Step::Continue));
+    let outer = behavior::Deadline::new(
+        behavior::Deadline::new(Recorder::default(), TimerId(0), Some(due), |_| {
+            Ok(Step::Stop(behavior::Stopped))
+        }),
+        TimerId(1),
+        Some(due),
+        |_| Ok(Step::Continue),
+    );
     let initialized = outer.initialize().unwrap();
     let mut outer = initialized.behavior;
 
@@ -532,61 +549,22 @@ async fn nested_at_identical_schedules_are_distinguished_by_identity() {
     assert_eq!(first.become_, Step::Stop(behavior::Stopped));
 }
 
-/// `Compose::children` defaults are Transient policy with a budget of one
-/// restart per 5-second window: a second abnormal death inside the window
-/// is denied, even under a strategy that would otherwise restart. The
-/// builder's explicit `when`/`within` calls are required for unbounded
-/// restart semantics.
+/// One explicit restart configuration applies its strategy, eligibility, and
+/// budget as a correlated product: a second abnormal death inside the window
+/// is denied and a normal exit is ineligible under `Transient` policy.
 #[tokio::test]
-async fn spec_children_defaults_to_transient_with_budget_one() {
+async fn restart_configuration_controls_eligibility_and_budget_together() {
     let at = Instant::now();
-    let supervisor = (Parent)
-        .children(
-            |index| u64::try_from(index).unwrap(),
-            1,
-            |index| Some(child(index)),
-        )
-        .unwrap();
-    let initialized = supervisor.initialize().unwrap();
-    let mut supervisor = initialized.behavior;
-
-    let first = supervisor
-        .transition(stopped(0, Err(Crash::Failed), at))
-        .unwrap();
-    assert_eq!(first.sends.replacement_commands.len(), 1);
-
-    let second = supervisor
-        .transition(stopped(0, Err(Crash::Failed), at + Duration::from_secs(1)))
-        .unwrap();
-    assert!(second.sends.replacement_commands.is_empty());
-    assert!(!supervisor.is_alive(0).unwrap());
-
-    // A normal exit is never restarted under the default Transient policy.
-    let normal = supervisor
-        .transition(stopped(0, Ok(Exit::Normal), at))
-        .unwrap();
-    assert!(normal.sends.replacement_commands.is_empty());
-}
-
-/// The `Supervisor` inherent builders (`with_strategy`, `with_policy`,
-/// `with_budget`) are exactly what `Compose::restart`/`when`/`within` call:
-/// a directly built supervisor configured identically to the `Compose`
-/// defaults behaves identically (Transient + budget 1/5s).
-#[tokio::test]
-async fn supervising_inherent_builders_match_the_spec_defaults() {
-    let at = Instant::now();
-    let supervisor = Supervisor::new(
+    let supervisor = behavior::Supervisor::new(
         Parent,
-        behavior::ChildTopology::indexed(
-            |index| u64::try_from(index).unwrap(),
-            1,
-            |index| Some(child(index)),
-        ),
+        behavior::ChildTopology::new((0..1).map(|index| u64::try_from(index).unwrap()), |index| {
+            Some(child(index))
+        }),
         behavior::RestartConfiguration::new(
-            Strategy::OneForOne,
-            RestartPolicy::Transient,
+            behavior::Strategy::OneForOne,
+            behavior::RestartPolicy::Transient,
             1,
-            Duration::from_secs(5),
+            std::time::Duration::from_secs(5),
         ),
     )
     .unwrap();
@@ -603,5 +581,11 @@ async fn supervising_inherent_builders_match_the_spec_defaults() {
         .unwrap();
     assert!(second.sends.replacement_commands.is_empty());
     assert!(!supervisor.is_alive(0).unwrap());
+
+    // A normal exit is never restarted under the selected Transient policy.
+    let normal = supervisor
+        .transition(stopped(0, Ok(Exit::Normal), at))
+        .unwrap();
+    assert!(normal.sends.replacement_commands.is_empty());
 }
 use behavior_testkit::InitializeTest;

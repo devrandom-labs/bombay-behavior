@@ -8,9 +8,9 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, Compose, Crash, DeadlineEvent, Delivery, Machine, MailAddr, Move, Never,
-    PeerStopped, RestartPolicy, Step, Strategy, SupervisionEvent, Supervisor, TimerElapsed,
-    TimerGeneration, TimerId, User, UserEvent, WatchEvent, restart_all, restart_one, restart_rest,
+    Acted, Actions, Crash, DeadlineEvent, Delivery, Machine, MailAddr, Move, Never, PeerStopped,
+    RestartPolicy, Step, Strategy, SupervisionEvent, Supervisor, TimerElapsed, TimerGeneration,
+    TimerId, User, UserEvent, WatchEvent, restart_all, restart_one, restart_rest,
 };
 use behavior_testkit::{Mailbox, drive};
 use std::time::Instant;
@@ -174,8 +174,12 @@ async fn supervision_propagates_inner_errors_without_touching_slots() {
 #[tokio::test]
 async fn at_reaction_error_consumes_the_timer() {
     let due = Instant::now() + Duration::from_secs(1);
-    let behavior =
-        (FailingParent { fail: true }).deadline(behavior::TimerId(0), Some(due), |_| Err(Boom));
+    let behavior = behavior::Deadline::new(
+        FailingParent { fail: true },
+        behavior::TimerId(0),
+        Some(due),
+        |_| Err(Boom),
+    );
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
 
@@ -199,7 +203,7 @@ async fn at_reaction_error_consumes_the_timer() {
 #[tokio::test]
 async fn watch_reaction_error_propagates() {
     let peer = MailAddr(44);
-    let behavior = (FailingParent { fail: true }).watch(peer, |_b, _p, _o| Err(Boom));
+    let behavior = behavior::Watch::new(FailingParent { fail: true }, peer, |_b, _p, _o| Err(Boom));
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
 
@@ -223,9 +227,9 @@ fn restart_helpers_expose_the_documented_strategies() {
 /// untouched (the errored message was the fresh one, not a replayed one).
 #[tokio::test]
 async fn stash_deliver_arm_error_keeps_held_intact() {
-    use behavior::{Compose, StashRoute};
+    use behavior::StashRoute;
 
-    let behavior = (FailingParent { fail: true }).stash(|message| match *message {
+    let behavior = behavior::Stash::new(FailingParent { fail: true }, |message| match *message {
         0 => StashRoute::Release,
         1 => StashRoute::Stash,
         _ => StashRoute::Deliver,
