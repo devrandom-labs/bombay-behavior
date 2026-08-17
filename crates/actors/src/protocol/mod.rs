@@ -472,16 +472,18 @@ pub struct ShutdownRequested;
 /// the same address and nonce types:
 ///
 /// ```compile_fail
-/// use behavior::{Actions, Behavior, MailAddr, Never, NoBirths, User};
+/// use behavior::{Actions, Behavior, MailAddr, Never, NoBirths, Protocol, User};
 /// use behavior_actors::ShutdownChild;
 ///
 /// struct Queue;
 /// struct Worker;
 /// macro_rules! inert {
 ///     ($actor:ty) => {
-///         impl Behavior for $actor {
+///         impl Protocol for $actor {
 ///             type Addr = MailAddr;
 ///             type Msg = u8;
+///         }
+///         impl Behavior for $actor {
 ///             type Event = User<MailAddr, u8>;
 ///             type Sends = Vec<Never>;
 ///             type Ph = Never;

@@ -17,9 +17,12 @@ use behavior_actors::{
 
 struct Inert;
 
-impl Behavior for Inert {
+impl behavior::Protocol for Inert {
     type Addr = MailAddr;
     type Msg = ();
+}
+
+impl Behavior for Inert {
     type Event = User<MailAddr, ()>;
     type Sends = Vec<Never>;
     type Ph = Never;
@@ -36,9 +39,12 @@ impl Behavior for Inert {
 }
 
 struct BreakerReply;
-impl Behavior for BreakerReply {
+impl behavior::Protocol for BreakerReply {
     type Addr = MailAddr;
     type Msg = BreakerOutcome;
+}
+
+impl Behavior for BreakerReply {
     type Event = User<MailAddr, BreakerOutcome>;
     type Sends = Vec<Never>;
     type Ph = Never;
@@ -55,9 +61,12 @@ impl Behavior for BreakerReply {
 }
 
 struct LeaseReply;
-impl Behavior for LeaseReply {
+impl behavior::Protocol for LeaseReply {
     type Addr = MailAddr;
     type Msg = LeaseOutcome<u8>;
+}
+
+impl Behavior for LeaseReply {
     type Event = User<MailAddr, Self::Msg>;
     type Sends = Vec<Never>;
     type Ph = Never;
@@ -74,9 +83,12 @@ impl Behavior for LeaseReply {
 }
 
 struct PresenceReplyBehavior;
-impl Behavior for PresenceReplyBehavior {
+impl behavior::Protocol for PresenceReplyBehavior {
     type Addr = MailAddr;
     type Msg = PresenceReply<u8>;
+}
+
+impl Behavior for PresenceReplyBehavior {
     type Event = User<MailAddr, Self::Msg>;
     type Sends = Vec<Never>;
     type Ph = Never;
@@ -93,9 +105,12 @@ impl Behavior for PresenceReplyBehavior {
 }
 
 struct DynamicReply;
-impl Behavior for DynamicReply {
+impl behavior::Protocol for DynamicReply {
     type Addr = MailAddr;
     type Msg = DynamicSupervisorOutcome<u64, Inert>;
+}
+
+impl Behavior for DynamicReply {
     type Event = User<MailAddr, Self::Msg>;
     type Sends = Vec<Never>;
     type Ph = Never;
@@ -112,9 +127,12 @@ impl Behavior for DynamicReply {
 }
 
 struct Parent;
-impl Behavior for Parent {
+impl behavior::Protocol for Parent {
     type Addr = MailAddr;
     type Msg = ();
+}
+
+impl Behavior for Parent {
     type Event = User<MailAddr, ()>;
     type Sends = Vec<Never>;
     type Ph = Never;

@@ -4,9 +4,23 @@ use crate::actor::{Address, BirthMode};
 use crate::effects::{Acted, Actions, SendAlgebra};
 use crate::user_event::UserEvent;
 
+/// The statically known address and message signature of an actor protocol.
+///
+/// This signature is deliberately independent of [`Behavior`]'s transition
+/// algebra. A [`Recipient`](crate::Recipient) or [`Delivery`](crate::Delivery)
+/// needs to prove only which address namespace and message type it names; it
+/// must not recursively prove the destination's sends, births, phases, or
+/// transition implementation. That separation permits closed static actor
+/// topologies in which a root sends to an actor whose reply path returns to the
+/// same root.
+pub trait Protocol {
+    type Addr: Address;
+    type Msg;
+}
+
 /// The only successful effect shape admitted by a [`Behavior`] implementation.
 pub type BehaviorActed<B> = Acted<
-    <B as Behavior>::Addr,
+    <B as Protocol>::Addr,
     <B as Behavior>::Ph,
     <B as Behavior>::Sends,
     <B as Behavior>::Birth,
@@ -44,9 +58,7 @@ impl ActiveTurn {
 
 /// A composed pure behavior. `Event` is the complete accepted protocol;
 /// every successful transition returns the declared [`Actions`] value.
-pub trait Behavior {
-    type Addr: Address;
-    type Msg;
+pub trait Behavior: Protocol {
     type Event: UserEvent<Addr = Self::Addr, Message = Self::Msg>;
     type Sends: SendAlgebra;
     type Ph;

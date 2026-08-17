@@ -66,7 +66,7 @@ pub enum CacheResult<K, V> {
 }
 
 /// Commands accepted by [`Cache`].
-pub enum CacheMessage<K, V, Reply: Behavior> {
+pub enum CacheMessage<K, V, Reply: behavior::Protocol> {
     /// Insert or replace one value.
     Put {
         /// Key to store.
@@ -112,7 +112,7 @@ pub enum CacheConfigError {
 /// authority. The standard-library vector is intentional for this initial
 /// deterministic policy; an `lru` dependency requires a demonstrated scale
 /// need and must remain private. No method has a semantic panic condition.
-pub struct Cache<A: Address, K, V, Reply: Behavior<Addr = A, Msg = CacheResult<K, V>>> {
+pub struct Cache<A: Address, K, V, Reply: behavior::Protocol<Addr = A, Msg = CacheResult<K, V>>> {
     state: CacheState<K, V>,
     address: core::marker::PhantomData<fn() -> (A, Reply)>,
 }
@@ -120,7 +120,7 @@ pub struct Cache<A: Address, K, V, Reply: Behavior<Addr = A, Msg = CacheResult<K
 impl<A, K, V, Reply> Cache<A, K, V, Reply>
 where
     A: Address,
-    Reply: Behavior<Addr = A, Msg = CacheResult<K, V>>,
+    Reply: behavior::Protocol<Addr = A, Msg = CacheResult<K, V>>,
 {
     /// Construct an empty bounded cache.
     ///
@@ -150,7 +150,7 @@ where
 impl<A, K, V, Reply> BehaviorBase for Cache<A, K, V, Reply>
 where
     A: Address,
-    Reply: Behavior<Addr = A, Msg = CacheResult<K, V>>,
+    Reply: behavior::Protocol<Addr = A, Msg = CacheResult<K, V>>,
 {
     type Base = Self;
 
@@ -159,15 +159,24 @@ where
     }
 }
 
+impl<A, K, V, Reply> behavior::Protocol for Cache<A, K, V, Reply>
+where
+    A: Address,
+    K: Clone + Eq,
+    V: Clone,
+    Reply: behavior::Protocol<Addr = A, Msg = CacheResult<K, V>>,
+{
+    type Addr = A;
+    type Msg = CacheMessage<K, V, Reply>;
+}
+
 impl<A, K, V, Reply> Behavior for Cache<A, K, V, Reply>
 where
     A: Address,
     K: Clone + Eq,
     V: Clone,
-    Reply: Behavior<Addr = A, Msg = CacheResult<K, V>>,
+    Reply: behavior::Protocol<Addr = A, Msg = CacheResult<K, V>>,
 {
-    type Addr = A;
-    type Msg = CacheMessage<K, V, Reply>;
     type Event = User<A, Self::Msg>;
     type Sends = Vec<Delivery<Reply>>;
     type Ph = Never;
@@ -257,9 +266,12 @@ mod tests {
 
     struct Reply;
 
-    impl Behavior for Reply {
+    impl behavior::Protocol for Reply {
         type Addr = MailAddr;
         type Msg = CacheResult<u8, u16>;
+    }
+
+    impl Behavior for Reply {
         type Event = User<MailAddr, Self::Msg>;
         type Sends = Vec<Never>;
         type Ph = Never;

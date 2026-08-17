@@ -20,9 +20,12 @@ struct Worker;
 
 struct Reply;
 
-impl Behavior for Reply {
+impl behavior::Protocol for Reply {
     type Addr = MailAddr;
     type Msg = PoolResponse<u8, u16, MailAddr>;
+}
+
+impl Behavior for Reply {
     type Event = User<MailAddr, Self::Msg>;
     type Sends = Vec<Never>;
     type Ph = Never;
@@ -42,9 +45,12 @@ impl Behavior for Reply {
     }
 }
 
-impl Behavior for Worker {
+impl behavior::Protocol for Worker {
     type Addr = MailAddr;
     type Msg = PoolAssignment<u8>;
+}
+
+impl Behavior for Worker {
     type Event = User<MailAddr, PoolAssignment<u8>>;
     type Sends = Vec<Never>;
     type Ph = Never;
@@ -84,9 +90,12 @@ struct PanicWorker;
 
 struct PanicReply;
 
-impl Behavior for PanicReply {
+impl behavior::Protocol for PanicReply {
     type Addr = MailAddr;
     type Msg = PoolResponse<PanicPayload, (), MailAddr>;
+}
+
+impl Behavior for PanicReply {
     type Event = User<MailAddr, Self::Msg>;
     type Sends = Vec<Never>;
     type Ph = Never;
@@ -106,9 +115,12 @@ impl Behavior for PanicReply {
     }
 }
 
-impl Behavior for PanicWorker {
+impl behavior::Protocol for PanicWorker {
     type Addr = MailAddr;
     type Msg = PoolAssignment<PanicPayload>;
+}
+
+impl Behavior for PanicWorker {
     type Event = User<MailAddr, PoolAssignment<PanicPayload>>;
     type Sends = Vec<Never>;
     type Ph = Never;

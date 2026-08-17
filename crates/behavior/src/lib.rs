@@ -25,8 +25,8 @@ pub use effects::{Acted, Actions, Become, Own, SendAlgebra, SendInput, ServiceSe
 pub use next::{Never, Step, Stopped};
 pub use reducer::{ActionReducer, Effects, FoldFailure, Folded, fold_events};
 pub use transition::{
-    ActiveTurn, Behavior, BehaviorActed, BehaviorBase, InitializationTurn, delegate_transition,
-    initialize,
+    ActiveTurn, Behavior, BehaviorActed, BehaviorBase, InitializationTurn, Protocol,
+    delegate_transition, initialize,
 };
 pub use user_event::{EventInput, RouteInput, User, UserEvent};
 

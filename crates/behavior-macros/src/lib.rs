@@ -218,9 +218,12 @@ pub fn actor(args: TokenStream, item: TokenStream) -> TokenStream {
     quote! {
         #item
 
-        impl #impl_generics #behavior::Behavior for #self_ty #where_clause {
+        impl #impl_generics #behavior::Protocol for #self_ty #where_clause {
             type Addr = #address;
             type Msg = #message;
+        }
+
+        impl #impl_generics #behavior::Behavior for #self_ty #where_clause {
             type Event = #behavior::User<#address, #message>;
             type Sends = ::std::vec::Vec<#send>;
             type Ph = #behavior::Never;
@@ -334,9 +337,12 @@ pub fn behavior(args: TokenStream, item: TokenStream) -> TokenStream {
     quote! {
         #item
 
-        impl #impl_generics #behavior::Behavior for #self_ty #where_clause {
+        impl #impl_generics #behavior::Protocol for #self_ty #where_clause {
             type Addr = #addr;
             type Msg = #message;
+        }
+
+        impl #impl_generics #behavior::Behavior for #self_ty #where_clause {
             type Event = #behavior::User<#addr, #message>;
             type Sends = #sends;
             type Ph = #behavior::Never;

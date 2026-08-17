@@ -25,7 +25,7 @@ use behavior::{
 /// any other [`Behavior`] fold; no successful [`Actions`] value is returned.
 pub struct MessageAdapter<Input, Destination>
 where
-    Destination: Behavior,
+    Destination: behavior::Protocol,
 {
     destination: Recipient<Destination>,
     adapt: fn(Input) -> Destination::Msg,
@@ -33,7 +33,7 @@ where
 
 impl<Input, Destination> MessageAdapter<Input, Destination>
 where
-    Destination: Behavior,
+    Destination: behavior::Protocol,
 {
     /// Construct an adapter for one concrete destination protocol.
     #[must_use]
@@ -53,7 +53,7 @@ where
 
 impl<Input, Destination> BehaviorBase for MessageAdapter<Input, Destination>
 where
-    Destination: Behavior,
+    Destination: behavior::Protocol,
 {
     type Base = Self;
 
@@ -62,12 +62,18 @@ where
     }
 }
 
-impl<Input, Destination> Behavior for MessageAdapter<Input, Destination>
+impl<Input, Destination> behavior::Protocol for MessageAdapter<Input, Destination>
 where
-    Destination: Behavior,
+    Destination: behavior::Protocol,
 {
     type Addr = Destination::Addr;
     type Msg = Input;
+}
+
+impl<Input, Destination> Behavior for MessageAdapter<Input, Destination>
+where
+    Destination: behavior::Protocol,
+{
     type Event = User<Destination::Addr, Input>;
     type Sends = Vec<Delivery<Destination>>;
     type Ph = Never;
@@ -91,9 +97,12 @@ mod tests {
 
     struct Destination;
 
-    impl Behavior for Destination {
+    impl behavior::Protocol for Destination {
         type Addr = MailAddr;
         type Msg = String;
+    }
+
+    impl Behavior for Destination {
         type Event = User<MailAddr, String>;
         type Sends = Vec<Never>;
         type Ph = Never;

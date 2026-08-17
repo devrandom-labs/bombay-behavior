@@ -72,7 +72,7 @@ impl<A: Address, P, Subscriber: Behavior<Addr = A, Msg = P>> BehaviorBase
     }
 }
 
-impl<A, P, Subscriber> Behavior for Topic<A, P, Subscriber>
+impl<A, P, Subscriber> behavior::Protocol for Topic<A, P, Subscriber>
 where
     A: Address,
     P: Clone,
@@ -80,6 +80,14 @@ where
 {
     type Addr = A;
     type Msg = TopicMessage<P, Subscriber>;
+}
+
+impl<A, P, Subscriber> Behavior for Topic<A, P, Subscriber>
+where
+    A: Address,
+    P: Clone,
+    Subscriber: Behavior<Addr = A, Msg = P>,
+{
     type Event = User<A, Self::Msg>;
     type Sends = Vec<Delivery<Subscriber>>;
     type Ph = Never;
@@ -128,9 +136,12 @@ mod tests {
 
     struct Subscriber;
 
-    impl Behavior for Subscriber {
+    impl behavior::Protocol for Subscriber {
         type Addr = MailAddr;
         type Msg = u8;
+    }
+
+    impl Behavior for Subscriber {
         type Event = User<MailAddr, u8>;
         type Sends = Vec<Never>;
         type Ph = Never;

@@ -348,9 +348,12 @@ async fn accepted_stale_timeout_error_and_terminal_turns_match_independent_model
 
 struct StopsAtInitialization;
 
-impl Behavior for StopsAtInitialization {
+impl behavior::Protocol for StopsAtInitialization {
     type Addr = MailAddr;
     type Msg = ();
+}
+
+impl Behavior for StopsAtInitialization {
     type Event = User<MailAddr, ()>;
     type Sends = Vec<Never>;
     type Ph = Never;

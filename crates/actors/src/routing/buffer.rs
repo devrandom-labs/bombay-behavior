@@ -58,7 +58,7 @@ pub enum BufferOutcome<T> {
 }
 
 /// One accepted value and the recipient that must receive an eviction fact.
-pub struct Buffered<T, Reply: Behavior> {
+pub struct Buffered<T, Reply: behavior::Protocol> {
     /// Value owned by the buffer.
     pub value: T,
     /// Typed outcome recipient supplied with the original offer.
@@ -66,7 +66,7 @@ pub struct Buffered<T, Reply: Behavior> {
 }
 
 /// Complete valid state product of a [`Buffer`].
-pub struct BufferState<T, Reply: Behavior> {
+pub struct BufferState<T, Reply: behavior::Protocol> {
     /// Positive maximum accepted queue length.
     pub capacity: usize,
     /// Exhaustive policy used at capacity.
@@ -74,7 +74,7 @@ pub struct BufferState<T, Reply: Behavior> {
     queued: VecDeque<Buffered<T, Reply>>,
 }
 
-impl<T, Reply: Behavior> BufferState<T, Reply> {
+impl<T, Reply: behavior::Protocol> BufferState<T, Reply> {
     /// Number of accepted values currently owned.
     #[must_use]
     pub fn len(&self) -> usize {
@@ -95,7 +95,7 @@ impl<T, Reply: Behavior> BufferState<T, Reply> {
 }
 
 /// Commands accepted by [`Buffer`].
-pub enum BufferMessage<T, Target: Behavior, Reply: Behavior> {
+pub enum BufferMessage<T, Target: Behavior, Reply: behavior::Protocol> {
     /// Offer ownership of one value under the configured overflow policy.
     Offer {
         /// Offered value.
@@ -113,14 +113,14 @@ pub enum BufferMessage<T, Target: Behavior, Reply: Behavior> {
 }
 
 /// Named delivery products emitted by [`Buffer`].
-pub struct BufferSends<Target: Behavior, Reply: Behavior> {
+pub struct BufferSends<Target: Behavior, Reply: behavior::Protocol> {
     /// Released values in FIFO order.
     pub deliveries: Vec<Delivery<Target>>,
     /// Acceptance, rejection, eviction, release, and empty facts.
     pub outcomes: Vec<Delivery<Reply>>,
 }
 
-impl<Target: Behavior, Reply: Behavior> SendAlgebra for BufferSends<Target, Reply> {
+impl<Target: Behavior, Reply: behavior::Protocol> SendAlgebra for BufferSends<Target, Reply> {
     fn empty() -> Self {
         Self {
             deliveries: Vec::new(),
@@ -161,7 +161,7 @@ pub struct Buffer<
     A: Address,
     T,
     Target: Behavior<Addr = A, Msg = T>,
-    Reply: Behavior<Addr = A, Msg = BufferOutcome<T>>,
+    Reply: behavior::Protocol<Addr = A, Msg = BufferOutcome<T>>,
 > {
     state: BufferState<T, Reply>,
     address: core::marker::PhantomData<fn() -> (A, Target)>,
@@ -171,7 +171,7 @@ impl<A, T, Target, Reply> Buffer<A, T, Target, Reply>
 where
     A: Address,
     Target: Behavior<Addr = A, Msg = T>,
-    Reply: Behavior<Addr = A, Msg = BufferOutcome<T>>,
+    Reply: behavior::Protocol<Addr = A, Msg = BufferOutcome<T>>,
 {
     /// Construct an empty bounded buffer.
     ///
@@ -213,7 +213,7 @@ impl<A, T, Target, Reply> BehaviorBase for Buffer<A, T, Target, Reply>
 where
     A: Address,
     Target: Behavior<Addr = A, Msg = T>,
-    Reply: Behavior<Addr = A, Msg = BufferOutcome<T>>,
+    Reply: behavior::Protocol<Addr = A, Msg = BufferOutcome<T>>,
 {
     type Base = Self;
 
@@ -222,14 +222,22 @@ where
     }
 }
 
+impl<A, T, Target, Reply> behavior::Protocol for Buffer<A, T, Target, Reply>
+where
+    A: Address,
+    Target: Behavior<Addr = A, Msg = T>,
+    Reply: behavior::Protocol<Addr = A, Msg = BufferOutcome<T>>,
+{
+    type Addr = A;
+    type Msg = BufferMessage<T, Target, Reply>;
+}
+
 impl<A, T, Target, Reply> Behavior for Buffer<A, T, Target, Reply>
 where
     A: Address,
     Target: Behavior<Addr = A, Msg = T>,
-    Reply: Behavior<Addr = A, Msg = BufferOutcome<T>>,
+    Reply: behavior::Protocol<Addr = A, Msg = BufferOutcome<T>>,
 {
-    type Addr = A;
-    type Msg = BufferMessage<T, Target, Reply>;
     type Event = User<A, Self::Msg>;
     type Sends = BufferSends<Target, Reply>;
     type Ph = Never;
@@ -332,9 +340,12 @@ mod tests {
     struct Target;
     struct Reply;
 
-    impl Behavior for Target {
+    impl behavior::Protocol for Target {
         type Addr = MailAddr;
         type Msg = u8;
+    }
+
+    impl Behavior for Target {
         type Event = User<MailAddr, u8>;
         type Sends = Vec<Never>;
         type Ph = Never;
@@ -346,9 +357,12 @@ mod tests {
         }
     }
 
-    impl Behavior for Reply {
+    impl behavior::Protocol for Reply {
         type Addr = MailAddr;
         type Msg = BufferOutcome<u8>;
+    }
+
+    impl Behavior for Reply {
         type Event = User<MailAddr, Self::Msg>;
         type Sends = Vec<Never>;
         type Ph = Never;

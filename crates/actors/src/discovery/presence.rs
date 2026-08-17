@@ -145,7 +145,7 @@ pub enum PresenceReply<K> {
 }
 
 /// User commands accepted by [`Presence`].
-pub enum PresenceMessage<K, Reply: Behavior> {
+pub enum PresenceMessage<K, Reply: behavior::Protocol> {
     /// Announce versioned presence for a relative lifetime.
     Announce {
         /// Participant.
@@ -165,13 +165,13 @@ pub enum PresenceMessage<K, Reply: Behavior> {
 }
 
 /// Named effect lanes emitted by [`Presence`].
-pub struct PresenceSends<Reply: Behavior> {
+pub struct PresenceSends<Reply: behavior::Protocol> {
     /// Transition and query facts.
     pub replies: Vec<Delivery<Reply>>,
     /// Relative expiry requests.
     pub schedules: ServiceSends<ScheduleAfter>,
 }
-impl<Reply: Behavior> SendAlgebra for PresenceSends<Reply> {
+impl<Reply: behavior::Protocol> SendAlgebra for PresenceSends<Reply> {
     fn empty() -> Self {
         Self {
             replies: Vec::new(),
@@ -184,7 +184,7 @@ impl<Reply: Behavior> SendAlgebra for PresenceSends<Reply> {
     }
 }
 
-struct Record<K, Reply: Behavior> {
+struct Record<K, Reply: behavior::Protocol> {
     entry: PresenceEntry<K>,
     notify: Recipient<Reply>,
 }
@@ -202,7 +202,11 @@ struct Record<K, Reply: Behavior> {
 /// timer mapping, and tombstone retention are Bombay policy. Scheduling belongs
 /// to Timers; release/cancellation is not part of this announcement protocol.
 /// No transition has a semantic panic condition.
-pub struct Presence<A: Address, K: Clone + Eq, Reply: Behavior<Addr = A, Msg = PresenceReply<K>>> {
+pub struct Presence<
+    A: Address,
+    K: Clone + Eq,
+    Reply: behavior::Protocol<Addr = A, Msg = PresenceReply<K>>,
+> {
     timer_id: fn(&K) -> TimerId,
     records: Vec<Record<K, Reply>>,
     marker: core::marker::PhantomData<fn() -> A>,
@@ -212,7 +216,7 @@ impl<A, K, Reply> Presence<A, K, Reply>
 where
     A: Address,
     K: Clone + Eq,
-    Reply: Behavior<Addr = A, Msg = PresenceReply<K>>,
+    Reply: behavior::Protocol<Addr = A, Msg = PresenceReply<K>>,
 {
     /// Construct an empty presence table with a pure actor-local timer mapping.
     #[must_use]
@@ -394,21 +398,29 @@ impl<A, K, Reply> BehaviorBase for Presence<A, K, Reply>
 where
     A: Address,
     K: Clone + Eq,
-    Reply: Behavior<Addr = A, Msg = PresenceReply<K>>,
+    Reply: behavior::Protocol<Addr = A, Msg = PresenceReply<K>>,
 {
     type Base = Self;
     fn base(&self) -> &Self {
         self
     }
 }
+impl<A, K, Reply> behavior::Protocol for Presence<A, K, Reply>
+where
+    A: Address,
+    K: Clone + Eq,
+    Reply: behavior::Protocol<Addr = A, Msg = PresenceReply<K>>,
+{
+    type Addr = A;
+    type Msg = PresenceMessage<K, Reply>;
+}
+
 impl<A, K, Reply> Behavior for Presence<A, K, Reply>
 where
     A: Address,
     K: Clone + Eq,
-    Reply: Behavior<Addr = A, Msg = PresenceReply<K>>,
+    Reply: behavior::Protocol<Addr = A, Msg = PresenceReply<K>>,
 {
-    type Addr = A;
-    type Msg = PresenceMessage<K, Reply>;
     type Event = TimedEvent<User<A, Self::Msg>>;
     type Sends = PresenceSends<Reply>;
     type Ph = Never;
@@ -464,9 +476,12 @@ mod tests {
     #[derive(Debug, Clone, PartialEq, Eq)]
     struct Participant(u8);
     struct Reply;
-    impl Behavior for Reply {
+    impl behavior::Protocol for Reply {
         type Addr = MailAddr;
         type Msg = PresenceReply<Participant>;
+    }
+
+    impl Behavior for Reply {
         type Event = User<MailAddr, Self::Msg>;
         type Sends = Vec<Never>;
         type Ph = Never;

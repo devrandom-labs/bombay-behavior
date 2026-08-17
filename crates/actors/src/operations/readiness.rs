@@ -64,7 +64,7 @@ impl<K> ReadinessReport<K> {
 }
 
 /// Inputs accepted by [`Readiness`].
-pub enum ReadinessMessage<K, Reply: Behavior> {
+pub enum ReadinessMessage<K, Reply: behavior::Protocol> {
     /// Commit versioned readiness evidence for a configured dependency.
     Observe {
         /// Dependency identity.
@@ -122,7 +122,7 @@ pub enum ReadinessError<K> {
 /// membership, version ordering, and empty-set readiness are deliberate Bombay
 /// policy. Export through HTTP or orchestration remains a System adapter
 /// responsibility. No method has a semantic panic condition.
-pub struct Readiness<A: Address, K, Reply: Behavior<Addr = A, Msg = ReadinessReport<K>>> {
+pub struct Readiness<A: Address, K, Reply: behavior::Protocol<Addr = A, Msg = ReadinessReport<K>>> {
     dependencies: Vec<DependencyReadiness<K>>,
     marker: core::marker::PhantomData<fn() -> (A, Reply)>,
 }
@@ -131,7 +131,7 @@ impl<A, K, Reply> Readiness<A, K, Reply>
 where
     A: Address,
     K: Clone + Eq,
-    Reply: Behavior<Addr = A, Msg = ReadinessReport<K>>,
+    Reply: behavior::Protocol<Addr = A, Msg = ReadinessReport<K>>,
 {
     /// Construct readiness policy for a fixed dependency set.
     #[must_use]
@@ -212,7 +212,7 @@ impl<A, K, Reply> BehaviorBase for Readiness<A, K, Reply>
 where
     A: Address,
     K: Clone + Eq,
-    Reply: Behavior<Addr = A, Msg = ReadinessReport<K>>,
+    Reply: behavior::Protocol<Addr = A, Msg = ReadinessReport<K>>,
 {
     type Base = Self;
     fn base(&self) -> &Self {
@@ -220,14 +220,22 @@ where
     }
 }
 
+impl<A, K, Reply> behavior::Protocol for Readiness<A, K, Reply>
+where
+    A: Address,
+    K: Clone + Eq,
+    Reply: behavior::Protocol<Addr = A, Msg = ReadinessReport<K>>,
+{
+    type Addr = A;
+    type Msg = ReadinessMessage<K, Reply>;
+}
+
 impl<A, K, Reply> Behavior for Readiness<A, K, Reply>
 where
     A: Address,
     K: Clone + Eq,
-    Reply: Behavior<Addr = A, Msg = ReadinessReport<K>>,
+    Reply: behavior::Protocol<Addr = A, Msg = ReadinessReport<K>>,
 {
-    type Addr = A;
-    type Msg = ReadinessMessage<K, Reply>;
     type Event = User<A, Self::Msg>;
     type Sends = Vec<Delivery<Reply>>;
     type Ph = Never;
@@ -258,9 +266,12 @@ mod tests {
     use behavior::MailAddr;
 
     struct Reply;
-    impl Behavior for Reply {
+    impl behavior::Protocol for Reply {
         type Addr = MailAddr;
         type Msg = ReadinessReport<u8>;
+    }
+
+    impl Behavior for Reply {
         type Event = User<MailAddr, Self::Msg>;
         type Sends = Vec<Never>;
         type Ph = Never;

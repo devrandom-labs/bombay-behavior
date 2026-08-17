@@ -688,7 +688,7 @@ impl<A: Address, D: Behavior<Addr = A>, R: RoutingStrategy<D>> BehaviorBase for 
     }
 }
 
-impl<A, D, R> Behavior for Router<A, D, R>
+impl<A, D, R> behavior::Protocol for Router<A, D, R>
 where
     A: Address,
     D: Behavior<Addr = A>,
@@ -697,6 +697,15 @@ where
 {
     type Addr = A;
     type Msg = RouterMessage<D, R>;
+}
+
+impl<A, D, R> Behavior for Router<A, D, R>
+where
+    A: Address,
+    D: Behavior<Addr = A>,
+    D::Msg: Clone,
+    R: RoutingStrategy<D>,
+{
     type Event = User<A, RouterMessage<D, R>>;
     type Sends = Vec<Delivery<D>>;
     type Ph = Never;
@@ -766,9 +775,12 @@ mod tests {
 
     struct KeyedDestination;
 
-    impl Behavior for Destination {
+    impl behavior::Protocol for Destination {
         type Addr = MailAddr;
         type Msg = u8;
+    }
+
+    impl Behavior for Destination {
         type Event = User<MailAddr, u8>;
         type Sends = Vec<Never>;
         type Ph = Never;
@@ -780,9 +792,12 @@ mod tests {
         }
     }
 
-    impl Behavior for KeyedDestination {
+    impl behavior::Protocol for KeyedDestination {
         type Addr = MailAddr;
         type Msg = KeyedMessage;
+    }
+
+    impl Behavior for KeyedDestination {
         type Event = User<MailAddr, KeyedMessage>;
         type Sends = Vec<Never>;
         type Ph = Never;

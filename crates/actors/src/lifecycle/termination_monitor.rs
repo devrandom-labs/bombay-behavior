@@ -5,7 +5,7 @@ use behavior::{Actions, Address, Behavior, BehaviorActed, BirthMode, SendAlgebra
 
 /// Pure fold applied to the exact matching terminal fact.
 pub type TerminationReaction<B> =
-    fn(&mut B, PeerStopped<<B as Behavior>::Addr>) -> BehaviorActed<B>;
+    fn(&mut B, PeerStopped<<B as crate::Protocol>::Addr>) -> BehaviorActed<B>;
 
 /// Cleanup specialization of an action-producing terminal reaction.
 pub type CleanupReaction<B> = TerminationReaction<B>;
@@ -49,9 +49,9 @@ pub type Reaper<B> = TerminationMonitor<B>;
 /// topic; no ambient lifecycle side channel is introduced.
 pub type LifecyclePublisher<B> = TerminationMonitor<B>;
 type TerminationMonitorActions<B> = Actions<
-    <B as Behavior>::Addr,
+    <B as crate::Protocol>::Addr,
     <B as Behavior>::Ph,
-    WatchSends<<B as Behavior>::Addr, <B as Behavior>::Sends>,
+    WatchSends<<B as crate::Protocol>::Addr, <B as Behavior>::Sends>,
     <B as Behavior>::Birth,
 >;
 
@@ -98,7 +98,7 @@ impl<B: Behavior + crate::StashStatus> crate::StashStatus for TerminationMonitor
     }
 }
 
-impl<B, A, Ph, Sends, Br> Behavior for TerminationMonitor<B>
+impl<B, A, Ph, Sends, Br> behavior::Protocol for TerminationMonitor<B>
 where
     A: Address,
     Sends: SendAlgebra,
@@ -108,6 +108,16 @@ where
 {
     type Addr = A;
     type Msg = B::Msg;
+}
+
+impl<B, A, Ph, Sends, Br> Behavior for TerminationMonitor<B>
+where
+    A: Address,
+    Sends: SendAlgebra,
+    Br: BirthMode,
+    B: Behavior<Addr = A, Ph = Ph, Sends = Sends, Birth = Br>,
+    B::Event: RouteInput<PeerStopped<A>>,
+{
     type Event = WatchEvent<B::Event>;
     type Sends = WatchSends<A, Sends>;
     type Ph = Ph;
@@ -161,9 +171,12 @@ mod tests {
         }
     }
 
-    impl Behavior for Probe {
+    impl behavior::Protocol for Probe {
         type Addr = MailAddr;
         type Msg = u8;
+    }
+
+    impl Behavior for Probe {
         type Event = User<MailAddr, u8>;
         type Sends = Vec<u8>;
         type Ph = Never;
@@ -244,9 +257,12 @@ mod tests {
 
     struct Fallible;
 
-    impl Behavior for Fallible {
+    impl behavior::Protocol for Fallible {
         type Addr = MailAddr;
         type Msg = ();
+    }
+
+    impl Behavior for Fallible {
         type Event = User<MailAddr, ()>;
         type Sends = Vec<Never>;
         type Ph = Never;

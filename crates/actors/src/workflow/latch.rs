@@ -87,13 +87,20 @@ impl<A: Address, P: Behavior<Addr = A, Msg = LatchReleased>> BehaviorBase for La
     }
 }
 
-impl<A, P> Behavior for Latch<A, P>
+impl<A, P> behavior::Protocol for Latch<A, P>
 where
     A: Address,
     P: Behavior<Addr = A, Msg = LatchReleased>,
 {
     type Addr = A;
     type Msg = LatchMessage<P>;
+}
+
+impl<A, P> Behavior for Latch<A, P>
+where
+    A: Address,
+    P: Behavior<Addr = A, Msg = LatchReleased>,
+{
     type Event = User<A, Self::Msg>;
     type Sends = Vec<Delivery<P>>;
     type Ph = Never;
@@ -144,9 +151,12 @@ mod tests {
 
     struct Participant;
 
-    impl Behavior for Participant {
+    impl behavior::Protocol for Participant {
         type Addr = MailAddr;
         type Msg = LatchReleased;
+    }
+
+    impl Behavior for Participant {
         type Event = User<MailAddr, LatchReleased>;
         type Sends = Vec<Never>;
         type Ph = Never;

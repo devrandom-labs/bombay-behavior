@@ -187,9 +187,9 @@ where
 }
 
 pub(crate) type SupervisorActions<B, C> = Actions<
-    <B as Behavior>::Addr,
+    <B as crate::Protocol>::Addr,
     <B as Behavior>::Ph,
-    SupervisorSends<<B as Behavior>::Addr, <B as Behavior>::Sends, C>,
+    SupervisorSends<<B as crate::Protocol>::Addr, <B as Behavior>::Sends, C>,
     Births<Proxy<C>>,
 >;
 
@@ -219,13 +219,13 @@ where
 }
 
 type ReplacementResult<B, C> = Result<
-    ReplacementDecision<<B as Behavior>::Addr, C>,
-    SupervisorError<<B as Behavior>::Error, <<B as Behavior>::Addr as Address>::Nonce>,
+    ReplacementDecision<<B as crate::Protocol>::Addr, C>,
+    SupervisorError<<B as Behavior>::Error, <<B as crate::Protocol>::Addr as Address>::Nonce>,
 >;
 
 type WrappedSupervisorResult<B, C> = Result<
     SupervisorActions<B, C>,
-    SupervisorError<<B as Behavior>::Error, <<B as Behavior>::Addr as Address>::Nonce>,
+    SupervisorError<<B as Behavior>::Error, <<B as crate::Protocol>::Addr as Address>::Nonce>,
 >;
 
 pub struct Supervisor<B: Behavior, C: Behavior<Ph = Never, Addr = B::Addr>> {
@@ -416,7 +416,7 @@ where
     }
 }
 
-impl<B, C, A, Ph, Sends> Behavior for Supervisor<B, C>
+impl<B, C, A, Ph, Sends> behavior::Protocol for Supervisor<B, C>
 where
     A: Address,
     Sends: SendAlgebra,
@@ -429,6 +429,19 @@ where
 {
     type Addr = A;
     type Msg = B::Msg;
+}
+
+impl<B, C, A, Ph, Sends> Behavior for Supervisor<B, C>
+where
+    A: Address,
+    Sends: SendAlgebra,
+    B: Behavior<Addr = A, Ph = Ph, Sends = Sends, Birth = Births<C>>,
+    B::Event: crate::RouteInput<ChildStopped<A>>
+        + crate::RouteInput<CreationResolved<A::Nonce>>
+        + crate::RouteInput<WorkerCreationResolved<A::Nonce>>,
+    A::Nonce: From<u64>,
+    C: Behavior<Ph = Never, Addr = B::Addr>,
+{
     type Event = SupervisionEvent<B::Event>;
     type Sends = SupervisorSends<A, Sends, C>;
     type Ph = Ph;

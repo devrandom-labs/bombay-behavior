@@ -59,7 +59,7 @@ pub enum WorkQueueOutcome<T> {
 }
 
 /// Operations accepted by [`WorkQueue`].
-pub enum WorkQueueMessage<T, W: Behavior, Reply: Behavior> {
+pub enum WorkQueueMessage<T, W: Behavior, Reply: behavior::Protocol> {
     /// Submit one value and its typed outcome recipient.
     Submit {
         /// Work value.
@@ -80,14 +80,14 @@ pub enum WorkQueueMessage<T, W: Behavior, Reply: Behavior> {
 }
 
 /// Named effect lanes emitted by [`WorkQueue`].
-pub struct WorkQueueSends<W: Behavior, Reply: Behavior> {
+pub struct WorkQueueSends<W: Behavior, Reply: behavior::Protocol> {
     /// Work assigned to workers.
     pub assignments: Vec<Delivery<W>>,
     /// Submission admission and dispatch facts.
     pub outcomes: Vec<Delivery<Reply>>,
 }
 
-impl<W: Behavior, Reply: Behavior> SendAlgebra for WorkQueueSends<W, Reply> {
+impl<W: Behavior, Reply: behavior::Protocol> SendAlgebra for WorkQueueSends<W, Reply> {
     fn empty() -> Self {
         Self {
             assignments: Vec::new(),
@@ -100,7 +100,7 @@ impl<W: Behavior, Reply: Behavior> SendAlgebra for WorkQueueSends<W, Reply> {
     }
 }
 
-struct Waiting<T, Reply: Behavior> {
+struct Waiting<T, Reply: behavior::Protocol> {
     value: T,
     reply_to: Recipient<Reply>,
 }
@@ -119,7 +119,7 @@ pub struct WorkQueue<
     A: Address,
     T,
     W: Behavior<Addr = A, Msg = T>,
-    Reply: Behavior<Addr = A, Msg = WorkQueueOutcome<T>>,
+    Reply: behavior::Protocol<Addr = A, Msg = WorkQueueOutcome<T>>,
 > {
     capacity: usize,
     available: VecDeque<Recipient<W>>,
@@ -133,7 +133,7 @@ impl<A, T, W, Reply> WorkQueue<A, T, W, Reply>
 where
     A: Address,
     W: Behavior<Addr = A, Msg = T>,
-    Reply: Behavior<Addr = A, Msg = WorkQueueOutcome<T>>,
+    Reply: behavior::Protocol<Addr = A, Msg = WorkQueueOutcome<T>>,
 {
     /// Construct an empty queue with explicit waiting capacity.
     #[must_use]
@@ -221,21 +221,29 @@ impl<A, T, W, Reply> BehaviorBase for WorkQueue<A, T, W, Reply>
 where
     A: Address,
     W: Behavior<Addr = A, Msg = T>,
-    Reply: Behavior<Addr = A, Msg = WorkQueueOutcome<T>>,
+    Reply: behavior::Protocol<Addr = A, Msg = WorkQueueOutcome<T>>,
 {
     type Base = Self;
     fn base(&self) -> &Self {
         self
     }
 }
+impl<A, T, W, Reply> behavior::Protocol for WorkQueue<A, T, W, Reply>
+where
+    A: Address,
+    W: Behavior<Addr = A, Msg = T>,
+    Reply: behavior::Protocol<Addr = A, Msg = WorkQueueOutcome<T>>,
+{
+    type Addr = A;
+    type Msg = WorkQueueMessage<T, W, Reply>;
+}
+
 impl<A, T, W, Reply> Behavior for WorkQueue<A, T, W, Reply>
 where
     A: Address,
     W: Behavior<Addr = A, Msg = T>,
-    Reply: Behavior<Addr = A, Msg = WorkQueueOutcome<T>>,
+    Reply: behavior::Protocol<Addr = A, Msg = WorkQueueOutcome<T>>,
 {
-    type Addr = A;
-    type Msg = WorkQueueMessage<T, W, Reply>;
     type Event = User<A, Self::Msg>;
     type Sends = WorkQueueSends<W, Reply>;
     type Ph = Never;
@@ -266,9 +274,12 @@ mod tests {
     use behavior::MailAddr;
     struct Worker;
     struct Reply;
-    impl Behavior for Worker {
+    impl behavior::Protocol for Worker {
         type Addr = MailAddr;
         type Msg = u8;
+    }
+
+    impl Behavior for Worker {
         type Event = User<MailAddr, u8>;
         type Sends = Vec<Never>;
         type Ph = Never;
@@ -278,9 +289,12 @@ mod tests {
             Ok(Actions::cont())
         }
     }
-    impl Behavior for Reply {
+    impl behavior::Protocol for Reply {
         type Addr = MailAddr;
         type Msg = WorkQueueOutcome<u8>;
+    }
+
+    impl Behavior for Reply {
         type Event = User<MailAddr, Self::Msg>;
         type Sends = Vec<Never>;
         type Ph = Never;

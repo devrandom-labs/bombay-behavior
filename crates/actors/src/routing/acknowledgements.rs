@@ -110,7 +110,7 @@ pub enum AcknowledgementOutcome<K, P> {
 }
 
 /// Operations accepted by [`Acknowledgements`].
-pub enum AcknowledgementMessage<K, P, Reply: Behavior> {
+pub enum AcknowledgementMessage<K, P, Reply: behavior::Protocol> {
     /// Establish a fresh acknowledgement lifecycle.
     Begin {
         /// Correlation key.
@@ -155,7 +155,7 @@ pub struct Acknowledgements<
     A: Address,
     K,
     P,
-    Reply: Behavior<Addr = A, Msg = AcknowledgementOutcome<K, P>>,
+    Reply: behavior::Protocol<Addr = A, Msg = AcknowledgementOutcome<K, P>>,
 > {
     records: Vec<AcknowledgementRecord<K, P>>,
     marker: core::marker::PhantomData<fn() -> (A, Reply)>,
@@ -166,7 +166,7 @@ where
     A: Address,
     K: Clone + Eq,
     P: Clone + Eq,
-    Reply: Behavior<Addr = A, Msg = AcknowledgementOutcome<K, P>>,
+    Reply: behavior::Protocol<Addr = A, Msg = AcknowledgementOutcome<K, P>>,
 {
     /// Construct an empty acknowledgement table.
     #[must_use]
@@ -330,7 +330,7 @@ where
     A: Address,
     K: Clone + Eq,
     P: Clone + Eq,
-    Reply: Behavior<Addr = A, Msg = AcknowledgementOutcome<K, P>>,
+    Reply: behavior::Protocol<Addr = A, Msg = AcknowledgementOutcome<K, P>>,
 {
     fn default() -> Self {
         Self::new()
@@ -342,7 +342,7 @@ where
     A: Address,
     K: Clone + Eq,
     P: Clone + Eq,
-    Reply: Behavior<Addr = A, Msg = AcknowledgementOutcome<K, P>>,
+    Reply: behavior::Protocol<Addr = A, Msg = AcknowledgementOutcome<K, P>>,
 {
     type Base = Self;
     fn base(&self) -> &Self {
@@ -350,15 +350,24 @@ where
     }
 }
 
+impl<A, K, P, Reply> behavior::Protocol for Acknowledgements<A, K, P, Reply>
+where
+    A: Address,
+    K: Clone + Eq,
+    P: Clone + Eq,
+    Reply: behavior::Protocol<Addr = A, Msg = AcknowledgementOutcome<K, P>>,
+{
+    type Addr = A;
+    type Msg = AcknowledgementMessage<K, P, Reply>;
+}
+
 impl<A, K, P, Reply> Behavior for Acknowledgements<A, K, P, Reply>
 where
     A: Address,
     K: Clone + Eq,
     P: Clone + Eq,
-    Reply: Behavior<Addr = A, Msg = AcknowledgementOutcome<K, P>>,
+    Reply: behavior::Protocol<Addr = A, Msg = AcknowledgementOutcome<K, P>>,
 {
-    type Addr = A;
-    type Msg = AcknowledgementMessage<K, P, Reply>;
     type Event = User<A, Self::Msg>;
     type Sends = Vec<Delivery<Reply>>;
     type Ph = Never;
@@ -389,9 +398,12 @@ mod tests {
     use behavior::MailAddr;
 
     struct Reply;
-    impl Behavior for Reply {
+    impl behavior::Protocol for Reply {
         type Addr = MailAddr;
         type Msg = AcknowledgementOutcome<u8, u8>;
+    }
+
+    impl Behavior for Reply {
         type Event = User<MailAddr, Self::Msg>;
         type Sends = Vec<Never>;
         type Ph = Never;

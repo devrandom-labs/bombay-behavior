@@ -96,7 +96,7 @@ where
     }
 }
 
-impl<B, A, Sends, Br> Behavior for Stash<B>
+impl<B, A, Sends, Br> behavior::Protocol for Stash<B>
 where
     A: Address,
     Sends: SendAlgebra,
@@ -105,6 +105,15 @@ where
 {
     type Addr = A;
     type Msg = B::Msg;
+}
+
+impl<B, A, Sends, Br> Behavior for Stash<B>
+where
+    A: Address,
+    Sends: SendAlgebra,
+    Br: BirthMode,
+    B: Behavior<Addr = A, Ph = Never, Sends = Sends, Birth = Br>,
+{
     type Event = B::Event;
     type Sends = Sends;
     type Ph = Never;

@@ -182,7 +182,7 @@ where
     }
 }
 
-impl<A, K, Participant> Behavior for Barrier<A, K, Participant>
+impl<A, K, Participant> behavior::Protocol for Barrier<A, K, Participant>
 where
     A: Address,
     K: Clone + Eq,
@@ -190,6 +190,14 @@ where
 {
     type Addr = A;
     type Msg = BarrierMessage<K, Participant>;
+}
+
+impl<A, K, Participant> Behavior for Barrier<A, K, Participant>
+where
+    A: Address,
+    K: Clone + Eq,
+    Participant: Behavior<Addr = A, Msg = BarrierReleased>,
+{
     type Event = User<A, Self::Msg>;
     type Sends = Vec<Delivery<Participant>>;
     type Ph = Never;
@@ -276,9 +284,12 @@ mod tests {
 
     struct Participant;
 
-    impl Behavior for Participant {
+    impl behavior::Protocol for Participant {
         type Addr = MailAddr;
         type Msg = BarrierReleased;
+    }
+
+    impl Behavior for Participant {
         type Event = User<MailAddr, BarrierReleased>;
         type Sends = Vec<Never>;
         type Ph = Never;

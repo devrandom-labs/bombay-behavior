@@ -117,7 +117,7 @@ impl<B: Behavior + crate::BehaviorBase> crate::BehaviorBase for Periodic<B> {
     }
 }
 
-impl<B, A, Ph, Sends, Br> Behavior for Periodic<B>
+impl<B, A, Ph, Sends, Br> behavior::Protocol for Periodic<B>
 where
     A: Address,
     Sends: SendAlgebra,
@@ -127,6 +127,16 @@ where
 {
     type Addr = A;
     type Msg = B::Msg;
+}
+
+impl<B, A, Ph, Sends, Br> Behavior for Periodic<B>
+where
+    A: Address,
+    Sends: SendAlgebra,
+    Br: BirthMode,
+    B: Behavior<Addr = A, Ph = Ph, Sends = Sends, Birth = Br>,
+    B::Event: RouteInput<TimerElapsed>,
+{
     type Event = PeriodicEvent<B::Event>;
     type Sends = PeriodicSends<Sends>;
     type Ph = Ph;
@@ -180,9 +190,12 @@ mod tests {
         }
     }
 
-    impl Behavior for Probe {
+    impl behavior::Protocol for Probe {
         type Addr = MailAddr;
         type Msg = ();
+    }
+
+    impl Behavior for Probe {
         type Event = User<MailAddr, ()>;
         type Sends = Vec<Never>;
         type Ph = Never;

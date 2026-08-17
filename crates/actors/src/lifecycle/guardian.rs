@@ -61,6 +61,11 @@ impl<B: crate::StashStatus> crate::StashStatus for Guardian<B> {
     }
 }
 
+impl<B: behavior::Protocol> behavior::Protocol for Guardian<B> {
+    type Addr = B::Addr;
+    type Msg = B::Msg;
+}
+
 impl<B, A, Ph, Sends, Br> Behavior for Guardian<B>
 where
     A: Address,
@@ -68,8 +73,6 @@ where
     Br: BirthMode,
     B: Behavior<Addr = A, Ph = Ph, Sends = Sends, Birth = Br>,
 {
-    type Addr = A;
-    type Msg = B::Msg;
     type Event = ShutdownProtocol<B::Event>;
     type Sends = Sends;
     type Ph = Ph;
@@ -107,9 +110,12 @@ mod tests {
         }
     }
 
-    impl Behavior for Application {
+    impl behavior::Protocol for Application {
         type Addr = MailAddr;
         type Msg = u8;
+    }
+
+    impl Behavior for Application {
         type Event = User<MailAddr, u8>;
         type Sends = Vec<u8>;
         type Ph = Never;
@@ -253,9 +259,12 @@ mod tests {
         initialization: bool,
     }
 
-    impl Behavior for Rejecting {
+    impl behavior::Protocol for Rejecting {
         type Addr = MailAddr;
         type Msg = ();
+    }
+
+    impl Behavior for Rejecting {
         type Event = User<MailAddr, ()>;
         type Sends = Vec<Never>;
         type Ph = Never;

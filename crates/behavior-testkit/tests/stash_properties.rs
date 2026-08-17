@@ -15,9 +15,12 @@ use tokio::runtime::Builder;
 
 struct Sink;
 
-impl Behavior for Sink {
+impl behavior::Protocol for Sink {
     type Addr = MailAddr;
     type Msg = u8;
+}
+
+impl Behavior for Sink {
     type Event = User<MailAddr, u8>;
     type Sends = Vec<Never>;
     type Ph = Never;

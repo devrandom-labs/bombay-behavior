@@ -2,6 +2,9 @@
 
 use core::marker::PhantomData;
 
+use crate::Protocol;
+
+#[cfg(test)]
 use crate::Behavior;
 
 /// A pure actor-address namespace.
@@ -54,25 +57,28 @@ impl<A: Address> Route<A> {
     }
 }
 
-/// Pure routing intent for one concrete destination behavior protocol.
+/// Pure routing intent for one concrete destination protocol signature.
 ///
-/// The destination behavior is part of the type even when two protocols share
-/// the same address namespace and message type. The value contains no mailbox,
-/// endpoint, registry entry, or other interpreter-owned capability.
-pub struct Recipient<B: Behavior> {
+/// The destination protocol owner is part of the type even when two protocols
+/// share the same address namespace and message type. A recipient proves the
+/// static signature only; it does not prove that an executable
+/// [`Behavior`](crate::Behavior)
+/// has been installed at the route. The value contains no mailbox, endpoint,
+/// registry entry, or other interpreter-owned capability.
+pub struct Recipient<B: Protocol> {
     route: Route<B::Addr>,
     protocol: PhantomData<fn() -> B>,
 }
 
-impl<B: Behavior> Copy for Recipient<B> {}
+impl<B: Protocol> Copy for Recipient<B> {}
 
-impl<B: Behavior> Clone for Recipient<B> {
+impl<B: Protocol> Clone for Recipient<B> {
     fn clone(&self) -> Self {
         *self
     }
 }
 
-impl<B: Behavior> Recipient<B> {
+impl<B: Protocol> Recipient<B> {
     #[must_use]
     pub fn global(address: B::Addr) -> Self {
         Self::from_route(Route::global(address))
@@ -109,15 +115,15 @@ impl<B: Behavior> Recipient<B> {
     }
 }
 
-impl<B: Behavior> PartialEq for Recipient<B> {
+impl<B: Protocol> PartialEq for Recipient<B> {
     fn eq(&self, other: &Self) -> bool {
         self.route == other.route
     }
 }
 
-impl<B: Behavior> Eq for Recipient<B> {}
+impl<B: Protocol> Eq for Recipient<B> {}
 
-impl<B: Behavior> core::fmt::Debug for Recipient<B>
+impl<B: Protocol> core::fmt::Debug for Recipient<B>
 where
     B::Addr: core::fmt::Debug,
     <B::Addr as Address>::Nonce: core::fmt::Debug,
@@ -127,22 +133,24 @@ where
     }
 }
 
-/// One pure communication addressed to a concrete behavior protocol.
+/// One pure communication addressed to a concrete protocol signature.
 ///
 /// Protocol identity is not inferred from the payload. Consequently, two
 /// behaviors accepting the same address and message types still have distinct
 /// delivery types.
 ///
 /// ```compile_fail
-/// use behavior::{Actions, Behavior, Delivery, MailAddr, Never, NoBirths, Recipient, User};
+/// use behavior::{Actions, Behavior, Delivery, MailAddr, Never, NoBirths, Protocol, Recipient, User};
 ///
 /// struct Queue;
 /// struct Worker;
 /// macro_rules! inert {
 ///     ($actor:ty) => {
-///         impl Behavior for $actor {
+///         impl Protocol for $actor {
 ///             type Addr = MailAddr;
 ///             type Msg = u8;
+///         }
+///         impl Behavior for $actor {
 ///             type Event = User<MailAddr, u8>;
 ///             type Sends = Vec<Never>;
 ///             type Ph = Never;
@@ -165,7 +173,7 @@ where
 /// A destination also fixes its message and address namespaces:
 ///
 /// ```compile_fail
-/// use behavior::{Actions, Address, Behavior, Delivery, MailAddr, Never, NoBirths, Recipient, User};
+/// use behavior::{Actions, Address, Behavior, Delivery, MailAddr, Never, NoBirths, Protocol, Recipient, User};
 /// #[derive(Clone, Copy, PartialEq, Eq)]
 /// struct OtherAddr(u64);
 /// impl Address for OtherAddr {
@@ -173,9 +181,11 @@ where
 ///     fn birth(self, nonce: u64) -> Self { Self(self.0 ^ nonce) }
 /// }
 /// struct Worker;
-/// impl Behavior for Worker {
+/// impl Protocol for Worker {
 ///     type Addr = MailAddr;
 ///     type Msg = u8;
+/// }
+/// impl Behavior for Worker {
 ///     type Event = User<MailAddr, u8>;
 ///     type Sends = Vec<Never>;
 ///     type Ph = Never;
@@ -188,11 +198,13 @@ where
 /// ```
 ///
 /// ```compile_fail
-/// # use behavior::{Actions, Behavior, Delivery, MailAddr, Never, NoBirths, Recipient, User};
+/// # use behavior::{Actions, Behavior, Delivery, MailAddr, Never, NoBirths, Protocol, Recipient, User};
 /// # struct Worker;
-/// # impl Behavior for Worker {
+/// # impl Protocol for Worker {
 /// #     type Addr = MailAddr;
 /// #     type Msg = u8;
+/// # }
+/// # impl Behavior for Worker {
 /// #     type Event = User<MailAddr, u8>;
 /// #     type Sends = Vec<Never>;
 /// #     type Ph = Never;
@@ -204,12 +216,12 @@ where
 /// let worker = Recipient::<Worker>::global(MailAddr(1));
 /// let _ = Delivery::<Worker>::new(worker, "wrong payload");
 /// ```
-pub struct Delivery<B: Behavior> {
+pub struct Delivery<B: Protocol> {
     pub to: Recipient<B>,
     pub message: B::Msg,
 }
 
-impl<B: Behavior> Delivery<B> {
+impl<B: Protocol> Delivery<B> {
     #[must_use]
     pub fn new(to: Recipient<B>, message: B::Msg) -> Self {
         Self { to, message }
@@ -218,7 +230,7 @@ impl<B: Behavior> Delivery<B> {
 
 impl<B> Clone for Delivery<B>
 where
-    B: Behavior,
+    B: Protocol,
     B::Msg: Clone,
 {
     fn clone(&self) -> Self {
@@ -228,7 +240,7 @@ where
 
 impl<B> PartialEq for Delivery<B>
 where
-    B: Behavior,
+    B: Protocol,
     B::Msg: PartialEq,
 {
     fn eq(&self, other: &Self) -> bool {
@@ -238,7 +250,7 @@ where
 
 impl<B> Eq for Delivery<B>
 where
-    B: Behavior,
+    B: Protocol,
     B::Msg: Eq,
 {
 }
@@ -250,9 +262,19 @@ mod tests {
 
     struct Inbox;
 
-    impl Behavior for Inbox {
+    struct SignatureOnly;
+
+    impl crate::Protocol for SignatureOnly {
         type Addr = MailAddr;
         type Msg = u8;
+    }
+
+    impl behavior::Protocol for Inbox {
+        type Addr = MailAddr;
+        type Msg = u8;
+    }
+
+    impl Behavior for Inbox {
         type Event = User<MailAddr, u8>;
         type Sends = Vec<Never>;
         type Ph = Never;
@@ -275,6 +297,15 @@ mod tests {
     #[test]
     fn mail_address_conversion_preserves_nonzero_value() {
         assert_eq!(u64::from(MailAddr(41)), 41);
+    }
+
+    #[test]
+    fn routing_requires_only_the_static_protocol_signature() {
+        let recipient = Recipient::<SignatureOnly>::global(MailAddr(7));
+        let delivery = Delivery::new(recipient, 11);
+
+        assert_eq!(delivery.to.resolve(MailAddr(99)), MailAddr(7));
+        assert_eq!(delivery.message, 11);
     }
 
     #[test]

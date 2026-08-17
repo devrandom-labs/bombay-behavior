@@ -89,9 +89,12 @@ enum LeaseReply {
 
 struct LeaseClient;
 
-impl Behavior for LeaseClient {
+impl behavior::Protocol for LeaseClient {
     type Addr = MailAddr;
     type Msg = LeaseReply;
+}
+
+impl Behavior for LeaseClient {
     type Event = User<MailAddr, LeaseReply>;
     type Sends = Vec<Never>;
     type Ph = Never;

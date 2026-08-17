@@ -110,7 +110,7 @@ pub trait DispatchBirth<A: Address, Installer, Output, Error>: Sized {
 /// ```compile_fail
 /// use behavior::{
 ///     Actions, Behavior, BehaviorActed, ChildChoice, Create, DispatchBirth,
-///     InstallBirth, MailAddr, Never, NoBirths, User,
+///     InstallBirth, MailAddr, Never, NoBirths, Protocol, User,
 /// };
 ///
 /// struct First;
@@ -118,9 +118,11 @@ pub trait DispatchBirth<A: Address, Installer, Output, Error>: Sized {
 ///
 /// macro_rules! inert {
 ///     ($child:ty) => {
-///         impl Behavior for $child {
+///         impl Protocol for $child {
 ///             type Addr = MailAddr;
 ///             type Msg = Never;
+///         }
+///         impl Behavior for $child {
 ///             type Event = User<MailAddr, Never>;
 ///             type Sends = Vec<Never>;
 ///             type Ph = Never;
@@ -404,9 +406,12 @@ mod tests {
 
     struct Child;
 
-    impl Behavior for Child {
+    impl behavior::Protocol for Child {
         type Addr = MailAddr;
         type Msg = u8;
+    }
+
+    impl Behavior for Child {
         type Event = User<MailAddr, u8>;
         type Sends = Vec<Never>;
         type Ph = Never;

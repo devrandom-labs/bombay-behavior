@@ -12,9 +12,12 @@ use std::time::Instant;
 #[derive(Clone, Copy)]
 struct Worker;
 
-impl Behavior for Worker {
+impl behavior::Protocol for Worker {
     type Addr = MailAddr;
     type Msg = PoolAssignment<u8>;
+}
+
+impl Behavior for Worker {
     type Event = User<MailAddr, PoolAssignment<u8>>;
     type Sends = Vec<Never>;
     type Ph = Never;

@@ -9,9 +9,12 @@ use foundation::{
 use proptest::prelude::*;
 
 struct DeviceGroups;
-impl Behavior for DeviceGroups {
+impl behavior::Protocol for DeviceGroups {
     type Addr = MailAddr;
     type Msg = u8;
+}
+
+impl Behavior for DeviceGroups {
     type Event = User<MailAddr, u8>;
     type Sends = Vec<Never>;
     type Ph = Never;
@@ -23,9 +26,12 @@ impl Behavior for DeviceGroups {
 }
 
 struct Queries;
-impl Behavior for Queries {
+impl behavior::Protocol for Queries {
     type Addr = MailAddr;
     type Msg = &'static str;
+}
+
+impl Behavior for Queries {
     type Event = User<MailAddr, &'static str>;
     type Sends = Vec<Never>;
     type Ph = Never;

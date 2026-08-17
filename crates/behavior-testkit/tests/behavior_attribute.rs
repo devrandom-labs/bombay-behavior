@@ -86,9 +86,12 @@ impl Worker {
 
 struct Manual;
 
-impl Behavior for Manual {
+impl behavior::Protocol for Manual {
     type Addr = MailAddr;
     type Msg = ();
+}
+
+impl Behavior for Manual {
     type Event = behavior::User<MailAddr, ()>;
     type Sends = Vec<Never>;
     type Ph = Never;

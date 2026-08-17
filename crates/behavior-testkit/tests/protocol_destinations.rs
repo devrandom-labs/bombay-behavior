@@ -5,9 +5,12 @@ struct Worker;
 
 macro_rules! inert {
     ($actor:ty) => {
-        impl Behavior for $actor {
+        impl behavior::Protocol for $actor {
             type Addr = MailAddr;
             type Msg = u8;
+        }
+
+        impl Behavior for $actor {
             type Event = User<MailAddr, u8>;
             type Sends = Vec<Never>;
             type Ph = Never;
@@ -46,9 +49,12 @@ fn identical_address_and_message_types_keep_distinct_protocol_lanes() {
 
 struct SelfSending;
 
-impl Behavior for SelfSending {
+impl behavior::Protocol for SelfSending {
     type Addr = MailAddr;
     type Msg = u8;
+}
+
+impl Behavior for SelfSending {
     type Event = User<MailAddr, u8>;
     type Sends = Vec<Delivery<Self>>;
     type Ph = Never;
@@ -113,9 +119,12 @@ impl behavior::Address for RemoteAddr {
 
 struct Remote;
 
-impl Behavior for Remote {
+impl behavior::Protocol for Remote {
     type Addr = RemoteAddr;
     type Msg = u8;
+}
+
+impl Behavior for Remote {
     type Event = User<RemoteAddr, u8>;
     type Sends = Vec<Never>;
     type Ph = Never;
@@ -137,9 +146,12 @@ impl Behavior for Remote {
 
 struct CrossNamespaceSender;
 
-impl Behavior for CrossNamespaceSender {
+impl behavior::Protocol for CrossNamespaceSender {
     type Addr = MailAddr;
     type Msg = ();
+}
+
+impl Behavior for CrossNamespaceSender {
     type Event = User<MailAddr, ()>;
     type Sends = Vec<Delivery<Remote>>;
     type Ph = Never;

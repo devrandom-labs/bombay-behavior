@@ -178,9 +178,12 @@ mod tests {
         );
     }
 
-    impl Behavior for Accumulator {
+    impl behavior::Protocol for Accumulator {
         type Addr = MailAddr;
         type Msg = u8;
+    }
+
+    impl Behavior for Accumulator {
         type Event = User<MailAddr, u8>;
         type Sends = Vec<Delivery<Sink>>;
         type Ph = Never;
@@ -206,9 +209,12 @@ mod tests {
         }
     }
 
-    impl Behavior for Sink {
+    impl behavior::Protocol for Sink {
         type Addr = MailAddr;
         type Msg = u8;
+    }
+
+    impl Behavior for Sink {
         type Event = User<MailAddr, u8>;
         type Sends = Vec<Never>;
         type Ph = Never;

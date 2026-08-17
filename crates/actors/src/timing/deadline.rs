@@ -44,7 +44,7 @@ impl<Sends> SendInput<ScheduleAt, Own> for DeadlineSends<Sends> {
 }
 
 pub(crate) type DeadlineActions<B> = Actions<
-    <B as Behavior>::Addr,
+    <B as crate::Protocol>::Addr,
     <B as Behavior>::Ph,
     DeadlineSends<<B as Behavior>::Sends>,
     <B as Behavior>::Birth,
@@ -93,7 +93,7 @@ where
     }
 }
 
-impl<B, A, Ph, Sends, Br> Behavior for Deadline<B>
+impl<B, A, Ph, Sends, Br> behavior::Protocol for Deadline<B>
 where
     A: Address,
     Sends: SendAlgebra,
@@ -103,6 +103,16 @@ where
 {
     type Addr = A;
     type Msg = B::Msg;
+}
+
+impl<B, A, Ph, Sends, Br> Behavior for Deadline<B>
+where
+    A: Address,
+    Sends: SendAlgebra,
+    Br: BirthMode,
+    B: Behavior<Addr = A, Ph = Ph, Sends = Sends, Birth = Br>,
+    B::Event: crate::RouteInput<TimerElapsed>,
+{
     type Event = DeadlineEvent<B::Event>;
     type Sends = DeadlineSends<Sends>;
     type Ph = Ph;

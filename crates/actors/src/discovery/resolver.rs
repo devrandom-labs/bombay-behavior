@@ -23,7 +23,7 @@ pub enum Resolution<K, D: Behavior> {
 }
 
 /// The only operation exposed by a [`Resolver`] recipient.
-pub enum ResolverMessage<K, Reply: Behavior> {
+pub enum ResolverMessage<K, Reply: behavior::Protocol> {
     /// Resolve one typed key without granting mutation authority.
     Resolve {
         /// Queried key.
@@ -61,7 +61,7 @@ pub struct Resolver<
     A: Address,
     K,
     D: Behavior<Addr = A>,
-    Reply: Behavior<Addr = A, Msg = Resolution<K, D>>,
+    Reply: behavior::Protocol<Addr = A, Msg = Resolution<K, D>>,
 > {
     bindings: Vec<(K, Recipient<D>)>,
     marker: core::marker::PhantomData<fn() -> (A, Reply)>,
@@ -72,7 +72,7 @@ where
     A: Address,
     K: Clone + Eq,
     D: Behavior<Addr = A>,
-    Reply: Behavior<Addr = A, Msg = Resolution<K, D>>,
+    Reply: behavior::Protocol<Addr = A, Msg = Resolution<K, D>>,
 {
     /// Copy one borrowed immutable binding definition.
     ///
@@ -109,7 +109,7 @@ where
     A: Address,
     K: Clone + Eq,
     D: Behavior<Addr = A>,
-    Reply: Behavior<Addr = A, Msg = Resolution<K, D>>,
+    Reply: behavior::Protocol<Addr = A, Msg = Resolution<K, D>>,
 {
     type Base = Self;
     fn base(&self) -> &Self {
@@ -117,15 +117,24 @@ where
     }
 }
 
+impl<A, K, D, Reply> behavior::Protocol for Resolver<A, K, D, Reply>
+where
+    A: Address,
+    K: Clone + Eq,
+    D: Behavior<Addr = A>,
+    Reply: behavior::Protocol<Addr = A, Msg = Resolution<K, D>>,
+{
+    type Addr = A;
+    type Msg = ResolverMessage<K, Reply>;
+}
+
 impl<A, K, D, Reply> Behavior for Resolver<A, K, D, Reply>
 where
     A: Address,
     K: Clone + Eq,
     D: Behavior<Addr = A>,
-    Reply: Behavior<Addr = A, Msg = Resolution<K, D>>,
+    Reply: behavior::Protocol<Addr = A, Msg = Resolution<K, D>>,
 {
-    type Addr = A;
-    type Msg = ResolverMessage<K, Reply>;
     type Event = User<A, Self::Msg>;
     type Sends = Vec<Delivery<Reply>>;
     type Ph = Never;
@@ -156,9 +165,12 @@ mod tests {
     use behavior::MailAddr;
     struct Destination;
     struct Reply;
-    impl Behavior for Destination {
+    impl behavior::Protocol for Destination {
         type Addr = MailAddr;
         type Msg = u8;
+    }
+
+    impl Behavior for Destination {
         type Event = User<MailAddr, u8>;
         type Sends = Vec<Never>;
         type Ph = Never;
@@ -168,9 +180,12 @@ mod tests {
             Ok(Actions::cont())
         }
     }
-    impl Behavior for Reply {
+    impl behavior::Protocol for Reply {
         type Addr = MailAddr;
         type Msg = Resolution<u8, Destination>;
+    }
+
+    impl Behavior for Reply {
         type Event = User<MailAddr, Self::Msg>;
         type Sends = Vec<Never>;
         type Ph = Never;

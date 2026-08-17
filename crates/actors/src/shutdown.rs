@@ -92,7 +92,7 @@ pub type ShutdownReaction<B> = fn(
     ShutdownRequested,
 ) -> Result<
     Actions<
-        <B as Behavior>::Addr,
+        <B as crate::Protocol>::Addr,
         <B as Behavior>::Ph,
         <B as Behavior>::Sends,
         <B as Behavior>::Birth,
@@ -136,7 +136,7 @@ where
 
 macro_rules! impl_shutdown_behavior {
     ($wrapper:ident, $shutdown:expr) => {
-        impl<B, A, Ph, Sends, Br> Behavior for $wrapper<B>
+        impl<B, A, Ph, Sends, Br> behavior::Protocol for $wrapper<B>
         where
             A: Address,
             Sends: SendAlgebra,
@@ -145,6 +145,15 @@ macro_rules! impl_shutdown_behavior {
         {
             type Addr = A;
             type Msg = B::Msg;
+        }
+
+        impl<B, A, Ph, Sends, Br> Behavior for $wrapper<B>
+        where
+            A: Address,
+            Sends: SendAlgebra,
+            Br: BirthMode,
+            B: Behavior<Addr = A, Ph = Ph, Sends = Sends, Birth = Br>,
+        {
             type Event = ShutdownProtocol<B::Event>;
             type Sends = Sends;
             type Ph = Ph;

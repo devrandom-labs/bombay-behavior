@@ -70,9 +70,12 @@ enum Worker {
     B(WorkerB),
 }
 
-impl Behavior for Worker {
+impl behavior::Protocol for Worker {
     type Addr = MailAddr;
     type Msg = u8;
+}
+
+impl Behavior for Worker {
     type Event = User<MailAddr, u8>;
     type Sends = Vec<Delivery<behavior_testkit::TestRecipient<u8>>>;
     type Ph = Never;

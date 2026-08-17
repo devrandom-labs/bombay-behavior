@@ -14,9 +14,12 @@ type Reply = bombay_behavior_fuzz::TestRecipient<PoolResponse<u8, u8, MailAddr>>
 
 struct Worker;
 
-impl Behavior for Worker {
+impl behavior::Protocol for Worker {
     type Addr = MailAddr;
     type Msg = PoolAssignment<u8>;
+}
+
+impl Behavior for Worker {
     type Event = User<MailAddr, PoolAssignment<u8>>;
     type Sends = Vec<Never>;
     type Ph = Never;

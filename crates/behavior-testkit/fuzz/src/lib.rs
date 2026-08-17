@@ -4,9 +4,12 @@ use behavior::{Actions, Behavior, MailAddr, Never, NoBirths, User};
 
 pub struct TestRecipient<M>(PhantomData<fn(M)>);
 
-impl<M> Behavior for TestRecipient<M> {
+impl<M> behavior::Protocol for TestRecipient<M> {
     type Addr = MailAddr;
     type Msg = M;
+}
+
+impl<M> Behavior for TestRecipient<M> {
     type Event = User<MailAddr, M>;
     type Sends = Vec<Never>;
     type Ph = Never;

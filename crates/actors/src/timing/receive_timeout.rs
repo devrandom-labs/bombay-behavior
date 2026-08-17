@@ -16,7 +16,7 @@ pub type ReceiveTimeoutReaction<B> = fn(
     &mut B,
 ) -> Result<
     Actions<
-        <B as Behavior>::Addr,
+        <B as crate::Protocol>::Addr,
         <B as Behavior>::Ph,
         <B as Behavior>::Sends,
         <B as Behavior>::Birth,
@@ -52,7 +52,7 @@ impl<Sends> SendInput<ScheduleAfter, Own> for ReceiveTimeoutSends<Sends> {
 }
 
 pub(crate) type ReceiveTimeoutActions<B> = Actions<
-    <B as Behavior>::Addr,
+    <B as crate::Protocol>::Addr,
     <B as Behavior>::Ph,
     ReceiveTimeoutSends<<B as Behavior>::Sends>,
     <B as Behavior>::Birth,
@@ -134,7 +134,7 @@ where
     }
 }
 
-impl<B, A, Ph, Sends, Br> Behavior for ReceiveTimeout<B>
+impl<B, A, Ph, Sends, Br> behavior::Protocol for ReceiveTimeout<B>
 where
     A: Address,
     Sends: SendAlgebra,
@@ -144,6 +144,16 @@ where
 {
     type Addr = A;
     type Msg = B::Msg;
+}
+
+impl<B, A, Ph, Sends, Br> Behavior for ReceiveTimeout<B>
+where
+    A: Address,
+    Sends: SendAlgebra,
+    Br: BirthMode,
+    B: Behavior<Addr = A, Ph = Ph, Sends = Sends, Birth = Br>,
+    B::Event: crate::RouteInput<TimerElapsed>,
+{
     type Event = ReceiveTimeoutEvent<B::Event>;
     type Sends = ReceiveTimeoutSends<Sends>;
     type Ph = Ph;
@@ -218,9 +228,12 @@ mod tests {
 
     struct Count(u8);
 
-    impl Behavior for Count {
+    impl behavior::Protocol for Count {
         type Addr = MailAddr;
         type Msg = ();
+    }
+
+    impl Behavior for Count {
         type Event = User<MailAddr, ()>;
         type Sends = Vec<Never>;
         type Ph = Never;

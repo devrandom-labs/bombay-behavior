@@ -11,7 +11,7 @@ use thiserror::Error;
 use crate::{ScheduleAfter, TimedEvent, TimerGeneration, TimerId};
 
 /// Complete exclusive lease phase.
-pub enum LeaseState<K, Reply: Behavior> {
+pub enum LeaseState<K, Reply: behavior::Protocol> {
     /// No holder owns the lease.
     Vacant,
     /// One holder owns exactly this timer generation.
@@ -94,7 +94,7 @@ pub enum LeaseOutcome<K> {
 }
 
 /// User commands accepted by [`Lease`].
-pub enum LeaseMessage<K, Reply: Behavior> {
+pub enum LeaseMessage<K, Reply: behavior::Protocol> {
     /// Acquire a vacant lease for a relative duration.
     Acquire {
         /// Requested holder.
@@ -127,13 +127,13 @@ pub enum LeaseMessage<K, Reply: Behavior> {
 }
 
 /// Named effect lanes emitted by [`Lease`].
-pub struct LeaseSends<Reply: Behavior> {
+pub struct LeaseSends<Reply: behavior::Protocol> {
     /// Lease facts.
     pub outcomes: Vec<Delivery<Reply>>,
     /// Relative expiry requests.
     pub schedules: ServiceSends<ScheduleAfter>,
 }
-impl<Reply: Behavior> SendAlgebra for LeaseSends<Reply> {
+impl<Reply: behavior::Protocol> SendAlgebra for LeaseSends<Reply> {
     fn empty() -> Self {
         Self {
             outcomes: Vec::new(),
@@ -160,7 +160,11 @@ impl<Reply: Behavior> SendAlgebra for LeaseSends<Reply> {
 /// policy. Scheduling and sleeping belong to Timers. The current Bombay timer
 /// adapter has no cancellation effect lane; release is semantically immediate
 /// while the stale queue entry may remain until due. No transition panics.
-pub struct Lease<A: Address, K: Clone + Eq, Reply: Behavior<Addr = A, Msg = LeaseOutcome<K>>> {
+pub struct Lease<
+    A: Address,
+    K: Clone + Eq,
+    Reply: behavior::Protocol<Addr = A, Msg = LeaseOutcome<K>>,
+> {
     id: TimerId,
     state: LeaseState<K, Reply>,
     next: Option<u64>,
@@ -171,7 +175,7 @@ impl<A, K, Reply> Lease<A, K, Reply>
 where
     A: Address,
     K: Clone + Eq,
-    Reply: Behavior<Addr = A, Msg = LeaseOutcome<K>>,
+    Reply: behavior::Protocol<Addr = A, Msg = LeaseOutcome<K>>,
 {
     /// Construct a vacant lease using one actor-local timer key.
     #[must_use]
@@ -260,21 +264,29 @@ impl<A, K, Reply> BehaviorBase for Lease<A, K, Reply>
 where
     A: Address,
     K: Clone + Eq,
-    Reply: Behavior<Addr = A, Msg = LeaseOutcome<K>>,
+    Reply: behavior::Protocol<Addr = A, Msg = LeaseOutcome<K>>,
 {
     type Base = Self;
     fn base(&self) -> &Self {
         self
     }
 }
+impl<A, K, Reply> behavior::Protocol for Lease<A, K, Reply>
+where
+    A: Address,
+    K: Clone + Eq,
+    Reply: behavior::Protocol<Addr = A, Msg = LeaseOutcome<K>>,
+{
+    type Addr = A;
+    type Msg = LeaseMessage<K, Reply>;
+}
+
 impl<A, K, Reply> Behavior for Lease<A, K, Reply>
 where
     A: Address,
     K: Clone + Eq,
-    Reply: Behavior<Addr = A, Msg = LeaseOutcome<K>>,
+    Reply: behavior::Protocol<Addr = A, Msg = LeaseOutcome<K>>,
 {
-    type Addr = A;
-    type Msg = LeaseMessage<K, Reply>;
     type Event = TimedEvent<User<A, Self::Msg>>;
     type Sends = LeaseSends<Reply>;
     type Ph = Never;
@@ -374,9 +386,12 @@ mod tests {
     use crate::{Activate as _, TimerElapsed};
     use behavior::MailAddr;
     struct Reply;
-    impl Behavior for Reply {
+    impl behavior::Protocol for Reply {
         type Addr = MailAddr;
         type Msg = LeaseOutcome<u8>;
+    }
+
+    impl Behavior for Reply {
         type Event = User<MailAddr, Self::Msg>;
         type Sends = Vec<Never>;
         type Ph = Never;

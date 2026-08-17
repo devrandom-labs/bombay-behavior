@@ -57,8 +57,8 @@ forward_event_lane!(WatchEvent, crate::ShutdownRequested);
 
 pub type LinkReaction<B> = fn(
     &mut B,
-    <B as Behavior>::Addr,
-    &Result<Exit<<B as Behavior>::Addr>, Crash>,
+    <B as crate::Protocol>::Addr,
+    &Result<Exit<<B as crate::Protocol>::Addr>, Crash>,
 ) -> Result<Become, <B as Behavior>::Error>;
 
 /// A mutual-lifecycle-policy specialization uses the same typed observation
@@ -96,9 +96,9 @@ impl<A: Address, Sends> SendInput<ObservePeer<A>, Own> for WatchSends<A, Sends> 
 }
 
 pub(crate) type WatchActions<B> = Actions<
-    <B as Behavior>::Addr,
+    <B as crate::Protocol>::Addr,
     <B as Behavior>::Ph,
-    WatchSends<<B as Behavior>::Addr, <B as Behavior>::Sends>,
+    WatchSends<<B as crate::Protocol>::Addr, <B as Behavior>::Sends>,
     <B as Behavior>::Birth,
 >;
 
@@ -149,7 +149,7 @@ where
     }
 }
 
-impl<B, A, Ph, Sends, Br> Behavior for Watch<B>
+impl<B, A, Ph, Sends, Br> behavior::Protocol for Watch<B>
 where
     A: Address,
     Sends: SendAlgebra,
@@ -159,6 +159,16 @@ where
 {
     type Addr = A;
     type Msg = B::Msg;
+}
+
+impl<B, A, Ph, Sends, Br> Behavior for Watch<B>
+where
+    A: Address,
+    Sends: SendAlgebra,
+    Br: BirthMode,
+    B: Behavior<Addr = A, Ph = Ph, Sends = Sends, Birth = Br>,
+    B::Event: crate::RouteInput<PeerStopped<A>>,
+{
     type Event = WatchEvent<B::Event>;
     type Sends = WatchSends<A, Sends>;
     type Ph = Ph;

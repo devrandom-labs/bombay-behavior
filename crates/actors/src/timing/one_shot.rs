@@ -101,7 +101,7 @@ impl<B: Behavior + crate::BehaviorBase> crate::BehaviorBase for OneShot<B> {
     }
 }
 
-impl<B, A, Ph, Sends, Br> Behavior for OneShot<B>
+impl<B, A, Ph, Sends, Br> behavior::Protocol for OneShot<B>
 where
     A: Address,
     Sends: SendAlgebra,
@@ -111,6 +111,16 @@ where
 {
     type Addr = A;
     type Msg = B::Msg;
+}
+
+impl<B, A, Ph, Sends, Br> Behavior for OneShot<B>
+where
+    A: Address,
+    Sends: SendAlgebra,
+    Br: BirthMode,
+    B: Behavior<Addr = A, Ph = Ph, Sends = Sends, Birth = Br>,
+    B::Event: RouteInput<TimerElapsed>,
+{
     type Event = OneShotEvent<B::Event>;
     type Sends = OneShotSends<Sends>;
     type Ph = Ph;
@@ -165,9 +175,12 @@ mod tests {
         }
     }
 
-    impl Behavior for Probe {
+    impl behavior::Protocol for Probe {
         type Addr = MailAddr;
         type Msg = ();
+    }
+
+    impl Behavior for Probe {
         type Event = User<MailAddr, ()>;
         type Sends = Vec<Never>;
         type Ph = Never;

@@ -9,9 +9,12 @@ use behavior::{
 
 struct Sink;
 
-impl Behavior for Sink {
+impl behavior::Protocol for Sink {
     type Addr = MailAddr;
     type Msg = u64;
+}
+
+impl Behavior for Sink {
     type Event = User<MailAddr, u64>;
     type Sends = Vec<Never>;
     type Ph = Never;
@@ -25,9 +28,12 @@ impl Behavior for Sink {
 
 struct Domain;
 
-impl Behavior for Domain {
+impl behavior::Protocol for Domain {
     type Addr = MailAddr;
     type Msg = u64;
+}
+
+impl Behavior for Domain {
     type Event = User<MailAddr, u64>;
     type Sends = Vec<Delivery<Sink>>;
     type Ph = Never;
@@ -102,9 +108,12 @@ fn inferred_stack_crosses_one_generic_adapter_boundary() {
 
 struct Child;
 
-impl Behavior for Child {
+impl behavior::Protocol for Child {
     type Addr = MailAddr;
     type Msg = u8;
+}
+
+impl Behavior for Child {
     type Event = User<MailAddr, u8>;
     type Sends = Vec<Never>;
     type Ph = Never;
@@ -118,9 +127,12 @@ impl Behavior for Child {
 
 struct Parent;
 
-impl Behavior for Parent {
+impl behavior::Protocol for Parent {
     type Addr = MailAddr;
     type Msg = ();
+}
+
+impl Behavior for Parent {
     type Event = User<MailAddr, ()>;
     type Sends = Vec<Never>;
     type Ph = Never;
@@ -191,9 +203,12 @@ fn supervisor_products_are_named_and_creation_order_is_adapter_visible() {
 
 struct Reply;
 
-impl Behavior for Reply {
+impl behavior::Protocol for Reply {
     type Addr = MailAddr;
     type Msg = PoolResponse<u8, (), MailAddr>;
+}
+
+impl Behavior for Reply {
     type Event = User<MailAddr, Self::Msg>;
     type Sends = Vec<Never>;
     type Ph = Never;
@@ -207,9 +222,12 @@ impl Behavior for Reply {
 
 struct Worker;
 
-impl Behavior for Worker {
+impl behavior::Protocol for Worker {
     type Addr = MailAddr;
     type Msg = PoolAssignment<u8>;
+}
+
+impl Behavior for Worker {
     type Event = User<MailAddr, Self::Msg>;
     type Sends = Vec<Never>;
     type Ph = Never;

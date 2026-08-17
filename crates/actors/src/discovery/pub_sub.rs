@@ -156,7 +156,7 @@ where
     }
 }
 
-impl<A, K, P, D> Behavior for PubSub<A, K, P, D>
+impl<A, K, P, D> behavior::Protocol for PubSub<A, K, P, D>
 where
     A: Address,
     K: Clone + Eq,
@@ -165,6 +165,15 @@ where
 {
     type Addr = A;
     type Msg = PubSubMessage<K, P, D>;
+}
+
+impl<A, K, P, D> Behavior for PubSub<A, K, P, D>
+where
+    A: Address,
+    K: Clone + Eq,
+    P: Clone,
+    D: Behavior<Addr = A, Msg = P>,
+{
     type Event = User<A, Self::Msg>;
     type Sends = Vec<Delivery<D>>;
     type Ph = Never;
@@ -205,9 +214,12 @@ mod tests {
     use crate::Activate as _;
     use behavior::MailAddr;
     struct Destination;
-    impl Behavior for Destination {
+    impl behavior::Protocol for Destination {
         type Addr = MailAddr;
         type Msg = u8;
+    }
+
+    impl Behavior for Destination {
         type Event = User<MailAddr, u8>;
         type Sends = Vec<Never>;
         type Ph = Never;

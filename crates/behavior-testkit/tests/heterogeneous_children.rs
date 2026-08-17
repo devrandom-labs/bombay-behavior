@@ -9,9 +9,12 @@ use foundation::{
 #[derive(Debug, PartialEq, Eq)]
 struct Devices;
 
-impl Behavior for Devices {
+impl behavior::Protocol for Devices {
     type Addr = MailAddr;
     type Msg = Never;
+}
+
+impl Behavior for Devices {
     type Event = User<MailAddr, Never>;
     type Sends = Vec<Never>;
     type Ph = Never;
@@ -26,9 +29,12 @@ impl Behavior for Devices {
 #[derive(Debug, PartialEq, Eq)]
 struct Queries;
 
-impl Behavior for Queries {
+impl behavior::Protocol for Queries {
     type Addr = MailAddr;
     type Msg = Never;
+}
+
+impl Behavior for Queries {
     type Event = User<MailAddr, Never>;
     type Sends = Vec<Never>;
     type Ph = Never;
@@ -42,9 +48,12 @@ impl Behavior for Queries {
 
 struct SupervisorReply;
 
-impl Behavior for SupervisorReply {
+impl behavior::Protocol for SupervisorReply {
     type Addr = MailAddr;
     type Msg = DynamicSupervisorOutcome<u64, Devices>;
+}
+
+impl Behavior for SupervisorReply {
     type Event = User<MailAddr, Self::Msg>;
     type Sends = Vec<Never>;
     type Ph = Never;
@@ -69,9 +78,12 @@ impl behavior::BehaviorBase for Root {
     }
 }
 
-impl Behavior for Root {
+impl behavior::Protocol for Root {
     type Addr = MailAddr;
     type Msg = Never;
+}
+
+impl Behavior for Root {
     type Event = User<MailAddr, Never>;
     type Sends = Vec<Never>;
     type Ph = Never;

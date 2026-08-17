@@ -82,7 +82,7 @@ impl<K> HealthReport<K> {
 }
 
 /// Commands accepted by [`Health`].
-pub enum HealthMessage<K, Reply: Behavior> {
+pub enum HealthMessage<K, Reply: behavior::Protocol> {
     /// Commit versioned evidence for a present component.
     Observe {
         /// Component identity.
@@ -141,12 +141,14 @@ pub enum HealthError<K> {
 /// policy, and it requires only ordinary typed delivery interpretation.
 /// Versioning, aggregate ordering, and empty-set health are Bombay policy, not
 /// actor-model laws. No method has a semantic panic condition.
-pub struct Health<A: Address, K, Reply: Behavior<Addr = A, Msg = HealthReport<K>>> {
+pub struct Health<A: Address, K, Reply: behavior::Protocol<Addr = A, Msg = HealthReport<K>>> {
     components: Vec<ComponentHealthState<K>>,
     address: core::marker::PhantomData<fn() -> (A, Reply)>,
 }
 
-impl<A: Address, K, Reply: Behavior<Addr = A, Msg = HealthReport<K>>> Health<A, K, Reply> {
+impl<A: Address, K, Reply: behavior::Protocol<Addr = A, Msg = HealthReport<K>>>
+    Health<A, K, Reply>
+{
     /// Construct an empty health definition.
     #[must_use]
     pub const fn new() -> Self {
@@ -163,7 +165,7 @@ impl<A: Address, K, Reply: Behavior<Addr = A, Msg = HealthReport<K>>> Health<A, 
     }
 }
 
-impl<A: Address, K, Reply: Behavior<Addr = A, Msg = HealthReport<K>>> Default
+impl<A: Address, K, Reply: behavior::Protocol<Addr = A, Msg = HealthReport<K>>> Default
     for Health<A, K, Reply>
 {
     fn default() -> Self {
@@ -171,7 +173,7 @@ impl<A: Address, K, Reply: Behavior<Addr = A, Msg = HealthReport<K>>> Default
     }
 }
 
-impl<A: Address, K, Reply: Behavior<Addr = A, Msg = HealthReport<K>>> BehaviorBase
+impl<A: Address, K, Reply: behavior::Protocol<Addr = A, Msg = HealthReport<K>>> BehaviorBase
     for Health<A, K, Reply>
 {
     type Base = Self;
@@ -191,7 +193,7 @@ impl<A, K, Reply> Health<A, K, Reply>
 where
     A: Address,
     K: Clone + Eq,
-    Reply: Behavior<Addr = A, Msg = HealthReport<K>>,
+    Reply: behavior::Protocol<Addr = A, Msg = HealthReport<K>>,
 {
     fn commit(
         &mut self,
@@ -248,14 +250,22 @@ where
     }
 }
 
+impl<A, K, Reply> behavior::Protocol for Health<A, K, Reply>
+where
+    A: Address,
+    K: Clone + Eq,
+    Reply: behavior::Protocol<Addr = A, Msg = HealthReport<K>>,
+{
+    type Addr = A;
+    type Msg = HealthMessage<K, Reply>;
+}
+
 impl<A, K, Reply> Behavior for Health<A, K, Reply>
 where
     A: Address,
     K: Clone + Eq,
-    Reply: Behavior<Addr = A, Msg = HealthReport<K>>,
+    Reply: behavior::Protocol<Addr = A, Msg = HealthReport<K>>,
 {
-    type Addr = A;
-    type Msg = HealthMessage<K, Reply>;
     type Event = User<A, Self::Msg>;
     type Sends = Vec<Delivery<Reply>>;
     type Ph = Never;
@@ -291,9 +301,12 @@ mod tests {
 
     struct Reply;
 
-    impl Behavior for Reply {
+    impl behavior::Protocol for Reply {
         type Addr = MailAddr;
         type Msg = HealthReport<u8>;
+    }
+
+    impl Behavior for Reply {
         type Event = User<MailAddr, Self::Msg>;
         type Sends = Vec<Never>;
         type Ph = Never;

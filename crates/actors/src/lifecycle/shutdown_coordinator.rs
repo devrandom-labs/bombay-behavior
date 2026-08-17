@@ -290,13 +290,15 @@ pub enum ShutdownCoordinatorError<E, N> {
 /// coordinator:
 ///
 /// ```compile_fail
-/// use behavior::{Actions, Behavior, MailAddr, Never, NoBirths, User};
+/// use behavior::{Actions, Behavior, MailAddr, Never, NoBirths, Protocol, User};
 /// use behavior_actors::{ShutdownCoordinator, ShutdownPlan};
 ///
 /// struct Plain;
-/// impl Behavior for Plain {
+/// impl Protocol for Plain {
 ///     type Addr = MailAddr;
 ///     type Msg = ();
+/// }
+/// impl Behavior for Plain {
 ///     type Event = User<MailAddr, ()>;
 ///     type Sends = Vec<Never>;
 ///     type Ph = Never;
@@ -319,7 +321,7 @@ pub struct ShutdownCoordinator<B: Behavior, C: Behavior<Addr = B::Addr>> {
 }
 
 type ShutdownCoordinatorActions<B, C> = Actions<
-    <B as Behavior>::Addr,
+    <B as crate::Protocol>::Addr,
     <B as Behavior>::Ph,
     ShutdownCoordinatorSends<C, <B as Behavior>::Sends>,
     <B as Behavior>::Birth,
@@ -390,7 +392,7 @@ where
     }
 }
 
-impl<B, C, A, Ph, S, Br> Behavior for ShutdownCoordinator<B, C>
+impl<B, C, A, Ph, S, Br> behavior::Protocol for ShutdownCoordinator<B, C>
 where
     A: Address,
     A::Nonce: Copy + Eq,
@@ -404,6 +406,20 @@ where
 {
     type Addr = A;
     type Msg = B::Msg;
+}
+
+impl<B, C, A, Ph, S, Br> Behavior for ShutdownCoordinator<B, C>
+where
+    A: Address,
+    A::Nonce: Copy + Eq,
+    S: SendAlgebra,
+    Br: BirthMode,
+    B: Behavior<Addr = A, Ph = Ph, Sends = S, Birth = Br>,
+    C: Behavior<Addr = A>,
+    C::Event: crate::EventInput<crate::ShutdownRequested>,
+    B::Event:
+        crate::RouteInput<ChildStopped<A>> + crate::RouteInput<ChildShutdownRejected<A::Nonce>>,
+{
     type Event = ShutdownCoordinatorEvent<B::Event>;
     type Sends = ShutdownCoordinatorSends<C, S>;
     type Ph = Ph;
@@ -508,9 +524,12 @@ mod tests {
         }
     }
 
-    impl Behavior for Probe {
+    impl behavior::Protocol for Probe {
         type Addr = MailAddr;
         type Msg = u8;
+    }
+
+    impl Behavior for Probe {
         type Event = User<MailAddr, u8>;
         type Sends = Vec<u8>;
         type Ph = Never;

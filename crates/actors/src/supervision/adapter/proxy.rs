@@ -30,7 +30,8 @@ pub struct ProxySends<C: Behavior> {
     pub shutdowns: ServiceSends<ShutdownChild<C>>,
 }
 
-pub(crate) type ProxyActions<C> = Actions<<C as Behavior>::Addr, Never, ProxySends<C>, Births<C>>;
+pub(crate) type ProxyActions<C> =
+    Actions<<C as crate::Protocol>::Addr, Never, ProxySends<C>, Births<C>>;
 
 impl<C: Behavior> SendAlgebra for ProxySends<C> {
     fn empty() -> Self {
@@ -204,13 +205,20 @@ where
     }
 }
 
-impl<C> Behavior for Proxy<C>
+impl<C> behavior::Protocol for Proxy<C>
 where
     C: Behavior<Ph = Never>,
     <C::Addr as Address>::Nonce: From<u64>,
 {
     type Addr = C::Addr;
     type Msg = ProxyCommand<C>;
+}
+
+impl<C> Behavior for Proxy<C>
+where
+    C: Behavior<Ph = Never>,
+    <C::Addr as Address>::Nonce: From<u64>,
+{
     type Event = ProxyEvent<User<C::Addr, ProxyCommand<C>>>;
     type Sends = ProxySends<C>;
     type Ph = Never;

@@ -9,9 +9,12 @@ use core::marker::PhantomData;
 /// communications without interpreting a recipient mailbox.
 pub struct TestRecipient<M>(PhantomData<fn(M)>);
 
-impl<M> Behavior for TestRecipient<M> {
+impl<M> behavior::Protocol for TestRecipient<M> {
     type Addr = behavior::MailAddr;
     type Msg = M;
+}
+
+impl<M> Behavior for TestRecipient<M> {
     type Event = behavior::User<behavior::MailAddr, M>;
     type Sends = Vec<behavior::Never>;
     type Ph = behavior::Never;

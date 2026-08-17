@@ -11,8 +11,8 @@ use std::time::Duration;
 
 use crate::{
     Actions, Address, Behavior, Births, ChildTopology, Crash, CreationRejection, Delivery, Exit,
-    FleetError, Never, Own, Proxy, ProxyCommand, Recipient, RestartConfiguration, RestartPolicy,
-    SendAlgebra, SendInput, Strategy, SupervisionEvent, Supervisor, SupervisorError,
+    FleetError, Never, Own, Protocol, Proxy, ProxyCommand, Recipient, RestartConfiguration,
+    RestartPolicy, SendAlgebra, SendInput, Strategy, SupervisionEvent, Supervisor, SupervisorError,
     SupervisorSends, User, WorkerCreationResolved, WorkerStopped,
 };
 
@@ -39,7 +39,7 @@ pub struct PoolAssignment<J> {
 pub enum PoolMessage<A, D, J, R>
 where
     A: Address,
-    D: Behavior<Addr = A, Msg = PoolResponse<J, R, A>>,
+    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
 {
     Submit {
         job: JobId,
@@ -62,7 +62,7 @@ where
 pub enum KeyedPoolMessage<A, D, K, J, R>
 where
     A: Address,
-    D: Behavior<Addr = A, Msg = PoolResponse<J, R, A>>,
+    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
 {
     Submit {
         key: K,
@@ -246,7 +246,7 @@ pub enum PoolError<N> {
     RebalanceToRetiredWorker { worker: N, reason: WorkerRetirement },
 }
 
-struct AcceptedJob<A: Address, D: Behavior<Addr = A, Msg = PoolResponse<J, R, A>>, J, R> {
+struct AcceptedJob<A: Address, D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>, J, R> {
     id: JobId,
     payload: J,
     reply_to: Recipient<D>,
@@ -254,12 +254,12 @@ struct AcceptedJob<A: Address, D: Behavior<Addr = A, Msg = PoolResponse<J, R, A>
     target: Option<A::Nonce>,
 }
 
-struct QueuedJob<A: Address, D: Behavior<Addr = A, Msg = PoolResponse<J, R, A>>, J, R> {
+struct QueuedJob<A: Address, D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>, J, R> {
     accepted: AcceptedJob<A, D, J, R>,
     dispatch_payload: J,
 }
 
-enum SlotState<A: Address, D: Behavior<Addr = A, Msg = PoolResponse<J, R, A>>, J, R> {
+enum SlotState<A: Address, D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>, J, R> {
     Installing,
     Idle,
     Assigned {
@@ -271,7 +271,7 @@ enum SlotState<A: Address, D: Behavior<Addr = A, Msg = PoolResponse<J, R, A>>, J
     },
 }
 
-struct Slot<A: Address, D: Behavior<Addr = A, Msg = PoolResponse<J, R, A>>, J, R> {
+struct Slot<A: Address, D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>, J, R> {
     nonce: A::Nonce,
     state: SlotState<A, D, J, R>,
 }
@@ -279,7 +279,7 @@ struct Slot<A: Address, D: Behavior<Addr = A, Msg = PoolResponse<J, R, A>>, J, R
 impl<A, D, J, R> Slot<A, D, J, R>
 where
     A: Address,
-    D: Behavior<Addr = A, Msg = PoolResponse<J, R, A>>,
+    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
 {
     fn phase(&self) -> WorkerPhase {
         match &self.state {
@@ -315,7 +315,7 @@ pub struct PoolBehaviorSends<A, D, J, R, C>
 where
     A: Address,
     A::Nonce: From<u64>,
-    D: Behavior<Addr = A, Msg = PoolResponse<J, R, A>>,
+    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
     C: Behavior<Addr = A, Ph = Never>,
 {
     /// Admission and terminal responses addressed to submitters.
@@ -328,7 +328,7 @@ impl<A, D, J, R, C> SendAlgebra for PoolBehaviorSends<A, D, J, R, C>
 where
     A: Address,
     A::Nonce: From<u64>,
-    D: Behavior<Addr = A, Msg = PoolResponse<J, R, A>>,
+    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
     C: Behavior<Addr = A, Ph = Never>,
 {
     fn empty() -> Self {
@@ -348,7 +348,7 @@ impl<A, D, J, R, C> SendInput<Delivery<D>, Own> for PoolBehaviorSends<A, D, J, R
 where
     A: Address,
     A::Nonce: From<u64>,
-    D: Behavior<Addr = A, Msg = PoolResponse<J, R, A>>,
+    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
     C: Behavior<Addr = A, Ph = Never>,
 {
     fn emit(&mut self, input: Delivery<D>) {
@@ -360,7 +360,7 @@ impl<A, D, J, R, C> SendInput<Delivery<Proxy<C>>, Own> for PoolBehaviorSends<A, 
 where
     A: Address,
     A::Nonce: From<u64>,
-    D: Behavior<Addr = A, Msg = PoolResponse<J, R, A>>,
+    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
     C: Behavior<Addr = A, Ph = Never>,
 {
     fn emit(&mut self, input: Delivery<Proxy<C>>) {
@@ -392,15 +392,24 @@ impl<A: Address, D, J, R, C> PoolKernel<A, D, J, R, C> {
     }
 }
 
-impl<A, D, J, R, C> Behavior for PoolKernel<A, D, J, R, C>
+impl<A, D, J, R, C> behavior::Protocol for PoolKernel<A, D, J, R, C>
 where
     A: Address,
     A::Nonce: From<u64>,
-    D: Behavior<Addr = A, Msg = PoolResponse<J, R, A>>,
+    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
     C: Behavior<Addr = A, Msg = PoolAssignment<J>, Ph = Never>,
 {
     type Addr = A;
     type Msg = PoolMessage<A, D, J, R>;
+}
+
+impl<A, D, J, R, C> Behavior for PoolKernel<A, D, J, R, C>
+where
+    A: Address,
+    A::Nonce: From<u64>,
+    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
+    C: Behavior<Addr = A, Msg = PoolAssignment<J>, Ph = Never>,
+{
     type Event = User<A, PoolMessage<A, D, J, R>>;
     type Sends = KernelSends<A, D, J, R, C>;
     type Ph = Never;
@@ -437,13 +446,15 @@ type PoolSupervisor<A, D, J, R, C> = Supervisor<PoolKernel<A, D, J, R, C>, C>;
 /// A worker with any other message protocol cannot form a pool:
 ///
 /// ```compile_fail
-/// use behavior::{Actions, Behavior, MailAddr, Never, NoBirths, PoolResponse, User, WorkerPool};
+/// use behavior::{Actions, Behavior, MailAddr, Never, NoBirths, PoolResponse, Protocol, User, WorkerPool};
 ///
 /// struct Reply;
 /// struct WrongWorker;
-/// impl Behavior for Reply {
+/// impl Protocol for Reply {
 ///     type Addr = MailAddr;
 ///     type Msg = PoolResponse<String, (), MailAddr>;
+/// }
+/// impl Behavior for Reply {
 ///     type Event = User<MailAddr, Self::Msg>;
 ///     type Sends = Vec<Never>;
 ///     type Ph = Never;
@@ -452,9 +463,11 @@ type PoolSupervisor<A, D, J, R, C> = Supervisor<PoolKernel<A, D, J, R, C>, C>;
 ///     fn init(&mut self, _: crate::InitializationTurn) -> behavior::BehaviorActed<Self> { Ok(Actions::cont()) }
 ///     fn transition(&mut self, _: crate::ActiveTurn, _: Self::Event) -> behavior::BehaviorActed<Self> { Ok(Actions::cont()) }
 /// }
-/// impl Behavior for WrongWorker {
+/// impl Protocol for WrongWorker {
 ///     type Addr = MailAddr;
 ///     type Msg = u8;
+/// }
+/// impl Behavior for WrongWorker {
 ///     type Event = User<MailAddr, u8>;
 ///     type Sends = Vec<behavior::Never>;
 ///     type Ph = Never;
@@ -469,7 +482,7 @@ type PoolSupervisor<A, D, J, R, C> = Supervisor<PoolKernel<A, D, J, R, C>, C>;
 /// ```
 pub struct WorkerPool<A: Address, D, J, R, C>
 where
-    D: Behavior<Addr = A, Msg = PoolResponse<J, R, A>>,
+    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
     A::Nonce: From<u64>,
     C: Behavior<Addr = A, Msg = PoolAssignment<J>, Ph = Never>,
 {
@@ -485,7 +498,7 @@ impl<A, D, J, R, C> WorkerPool<A, D, J, R, C>
 where
     A: Address,
     A::Nonce: From<u64>,
-    D: Behavior<Addr = A, Msg = PoolResponse<J, R, A>>,
+    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
     C: Behavior<Addr = A, Msg = PoolAssignment<J>, Ph = Never>,
 {
     /// Construct a pool after proving that every configured child route is
@@ -568,7 +581,7 @@ impl<A, D, J, R, C> WorkerPool<A, D, J, R, C>
 where
     A: Address,
     A::Nonce: From<u64>,
-    D: Behavior<Addr = A, Msg = PoolResponse<J, R, A>>,
+    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
     J: Clone,
     C: Behavior<Addr = A, Msg = PoolAssignment<J>, Ph = Never>,
 {
@@ -952,16 +965,26 @@ where
     }
 }
 
-impl<A, D, J, R, C> Behavior for WorkerPool<A, D, J, R, C>
+impl<A, D, J, R, C> behavior::Protocol for WorkerPool<A, D, J, R, C>
 where
     A: Address,
     A::Nonce: From<u64>,
-    D: Behavior<Addr = A, Msg = PoolResponse<J, R, A>>,
+    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
     J: Clone,
     C: Behavior<Addr = A, Msg = PoolAssignment<J>, Ph = Never>,
 {
     type Addr = A;
     type Msg = PoolMessage<A, D, J, R>;
+}
+
+impl<A, D, J, R, C> Behavior for WorkerPool<A, D, J, R, C>
+where
+    A: Address,
+    A::Nonce: From<u64>,
+    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
+    J: Clone,
+    C: Behavior<Addr = A, Msg = PoolAssignment<J>, Ph = Never>,
+{
     type Event = PoolEvent<A, D, J, R>;
     type Sends = PoolSends<A, D, J, R, C>;
     type Ph = Never;
@@ -1071,9 +1094,12 @@ mod tests {
 
     struct TestReply;
 
-    impl Behavior for TestReply {
+    impl behavior::Protocol for TestReply {
         type Addr = MailAddr;
         type Msg = PoolResponse<u8, (), MailAddr>;
+    }
+
+    impl Behavior for TestReply {
         type Event = User<MailAddr, Self::Msg>;
         type Sends = Vec<Never>;
         type Ph = Never;
@@ -1096,9 +1122,12 @@ mod tests {
     #[derive(Clone, Copy)]
     struct TestWorker;
 
-    impl Behavior for TestWorker {
+    impl behavior::Protocol for TestWorker {
         type Addr = MailAddr;
         type Msg = PoolAssignment<u8>;
+    }
+
+    impl Behavior for TestWorker {
         type Event = User<MailAddr, PoolAssignment<u8>>;
         type Sends = Vec<Never>;
         type Ph = Never;
@@ -1195,13 +1224,15 @@ mod tests {
 /// form an affinity table:
 ///
 /// ```compile_fail
-/// use behavior::{Actions, Behavior, KeyedWorkerPool, MailAddr, Never, NoBirths, PoolResponse, User};
+/// use behavior::{Actions, Behavior, KeyedWorkerPool, MailAddr, Never, NoBirths, PoolResponse, Protocol, User};
 /// struct NonKey(f64);
 /// struct Reply;
 /// struct Worker;
-/// impl Behavior for Reply {
+/// impl Protocol for Reply {
 ///     type Addr = MailAddr;
 ///     type Msg = PoolResponse<u8, (), MailAddr>;
+/// }
+/// impl Behavior for Reply {
 ///     type Event = User<MailAddr, Self::Msg>;
 ///     type Sends = Vec<Never>;
 ///     type Ph = Never;
@@ -1230,7 +1261,7 @@ mod tests {
 pub struct KeyedWorkerPool<A: Address, D, K, J, R, C, S>
 where
     A::Nonce: From<u64>,
-    D: Behavior<Addr = A, Msg = PoolResponse<J, R, A>>,
+    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
     K: Eq,
     C: Behavior<Addr = A, Msg = PoolAssignment<J>, Ph = Never>,
     S: AffinitySelector<K, A::Nonce>,
@@ -1244,7 +1275,7 @@ impl<A, D, K, J, R, C, S> KeyedWorkerPool<A, D, K, J, R, C, S>
 where
     A: Address,
     A::Nonce: From<u64>,
-    D: Behavior<Addr = A, Msg = PoolResponse<J, R, A>>,
+    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
     K: Eq,
     C: Behavior<Addr = A, Msg = PoolAssignment<J>, Ph = Never>,
     S: AffinitySelector<K, A::Nonce>,
@@ -1302,11 +1333,11 @@ where
     }
 }
 
-impl<A, D, K, J, R, C, S> Behavior for KeyedWorkerPool<A, D, K, J, R, C, S>
+impl<A, D, K, J, R, C, S> behavior::Protocol for KeyedWorkerPool<A, D, K, J, R, C, S>
 where
     A: Address,
     A::Nonce: From<u64>,
-    D: Behavior<Addr = A, Msg = PoolResponse<J, R, A>>,
+    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
     K: Eq,
     J: Clone,
     C: Behavior<Addr = A, Msg = PoolAssignment<J>, Ph = Never>,
@@ -1314,6 +1345,18 @@ where
 {
     type Addr = A;
     type Msg = KeyedPoolMessage<A, D, K, J, R>;
+}
+
+impl<A, D, K, J, R, C, S> Behavior for KeyedWorkerPool<A, D, K, J, R, C, S>
+where
+    A: Address,
+    A::Nonce: From<u64>,
+    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
+    K: Eq,
+    J: Clone,
+    C: Behavior<Addr = A, Msg = PoolAssignment<J>, Ph = Never>,
+    S: AffinitySelector<K, A::Nonce>,
+{
     type Event = KeyedPoolEvent<A, D, K, J, R>;
     type Sends = PoolSends<A, D, J, R, C>;
     type Ph = Never;

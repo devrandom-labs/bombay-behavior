@@ -6,8 +6,8 @@ use crate::{
     WorkerStopped,
 };
 use behavior::{
-    Actions, Address, Behavior, BehaviorActed, Births, Create, Delivery, Never, Recipient,
-    SendAlgebra, ServiceSends, User, UserEvent,
+    Actions, Address, Behavior, BehaviorActed, Births, Create, Delivery, Never, Protocol,
+    Recipient, SendAlgebra, ServiceSends, User, UserEvent,
 };
 
 /// One dynamically managed stable-child phase.
@@ -39,8 +39,8 @@ pub enum DynamicSupervisorRejection {
 pub enum DynamicSupervisorMessage<A, C, Reply>
 where
     A: Address,
-    C: Behavior<Addr = A>,
-    Reply: Behavior<Addr = A>,
+    C: Protocol<Addr = A>,
+    Reply: Protocol<Addr = A>,
 {
     Start {
         nonce: A::Nonce,
@@ -110,7 +110,7 @@ pub enum DynamicSupervisorOutcome<N, C> {
     },
 }
 
-enum DynamicChild<R: Behavior> {
+enum DynamicChild<R: Protocol> {
     Installing { reply_to: Recipient<R> },
     Available,
     Stopping { reply_to: Recipient<R> },
@@ -118,7 +118,7 @@ enum DynamicChild<R: Behavior> {
     Retired,
 }
 
-impl<R: Behavior> DynamicChild<R> {
+impl<R: Protocol> DynamicChild<R> {
     const fn phase(&self) -> DynamicChildPhase {
         match self {
             Self::Installing { .. } => DynamicChildPhase::Installing,
@@ -135,7 +135,7 @@ pub enum DynamicSupervisorEvent<A, C, Reply>
 where
     A: Address,
     C: Behavior<Addr = A>,
-    Reply: Behavior<Addr = A>,
+    Reply: behavior::Protocol<Addr = A>,
 {
     Command(User<A, DynamicSupervisorMessage<A, C, Reply>>),
     ChildStopped(ChildStopped<A>),
@@ -149,7 +149,7 @@ impl<A, C, Reply> UserEvent for DynamicSupervisorEvent<A, C, Reply>
 where
     A: Address,
     C: Behavior<Addr = A>,
-    Reply: Behavior<Addr = A>,
+    Reply: behavior::Protocol<Addr = A>,
 {
     type Addr = A;
     type Message = DynamicSupervisorMessage<A, C, Reply>;
@@ -170,7 +170,7 @@ macro_rules! event_lane {
         where
             A: Address,
             C: Behavior<Addr = A>,
-            Reply: Behavior<Addr = A>,
+            Reply: behavior::Protocol<Addr = A>,
         {
             fn route(value: $ty) -> Result<Self, $ty> {
                 Ok(Self::$variant(value))
@@ -180,7 +180,7 @@ macro_rules! event_lane {
         where
             A: Address,
             C: Behavior<Addr = A>,
-            Reply: Behavior<Addr = A>,
+            Reply: behavior::Protocol<Addr = A>,
         {
             fn inject(value: $ty) -> Self {
                 Self::$variant(value)
@@ -206,7 +206,7 @@ where
     A: Address,
     A::Nonce: From<u64>,
     C: Behavior<Addr = A, Ph = Never>,
-    Reply: Behavior<Addr = A>,
+    Reply: behavior::Protocol<Addr = A>,
 {
     pub outcomes: Vec<Delivery<Reply>>,
     pub child_observations: ServiceSends<ObserveChild<A::Nonce>>,
@@ -220,7 +220,7 @@ where
     A: Address,
     A::Nonce: From<u64>,
     C: Behavior<Addr = A, Ph = Never>,
-    Reply: Behavior<Addr = A>,
+    Reply: behavior::Protocol<Addr = A>,
 {
     fn empty() -> Self {
         Self {
@@ -245,7 +245,7 @@ where
     A: Address,
     A::Nonce: From<u64>,
     C: Behavior<Addr = A, Ph = Never>,
-    Reply: Behavior<Addr = A>,
+    Reply: behavior::Protocol<Addr = A>,
 {
     fn emit(&mut self, value: ObserveChild<A::Nonce>) {
         self.child_observations.send(value);
@@ -256,7 +256,7 @@ where
     A: Address,
     A::Nonce: From<u64>,
     C: Behavior<Addr = A, Ph = Never>,
-    Reply: Behavior<Addr = A>,
+    Reply: behavior::Protocol<Addr = A>,
 {
     fn emit(&mut self, value: ObserveCreation<A::Nonce>) {
         self.creation_observations.send(value);
@@ -268,7 +268,7 @@ where
     A: Address,
     A::Nonce: From<u64>,
     C: Behavior<Addr = A, Ph = Never>,
-    Reply: Behavior<Addr = A>,
+    Reply: behavior::Protocol<Addr = A>,
 {
     fn emit(&mut self, value: ShutdownChild<DynamicProxy<C>>) {
         self.shutdowns.send(value);
@@ -280,8 +280,8 @@ where
 pub struct DynamicSupervisor<A, C, Reply>
 where
     A: Address,
-    C: Behavior<Addr = A>,
-    Reply: Behavior<Addr = A>,
+    C: Protocol<Addr = A>,
+    Reply: Protocol<Addr = A>,
 {
     children: Vec<(A::Nonce, DynamicChild<Reply>)>,
     marker: core::marker::PhantomData<fn() -> C>,
@@ -290,8 +290,8 @@ where
 impl<A, C, Reply> DynamicSupervisor<A, C, Reply>
 where
     A: Address,
-    C: Behavior<Addr = A>,
-    Reply: Behavior<Addr = A>,
+    C: Protocol<Addr = A>,
+    Reply: Protocol<Addr = A>,
 {
     #[must_use]
     pub const fn new() -> Self {
@@ -314,8 +314,8 @@ where
 impl<A, C, Reply> Default for DynamicSupervisor<A, C, Reply>
 where
     A: Address,
-    C: Behavior<Addr = A>,
-    Reply: Behavior<Addr = A>,
+    C: Protocol<Addr = A>,
+    Reply: Protocol<Addr = A>,
 {
     fn default() -> Self {
         Self::new()
@@ -324,8 +324,8 @@ where
 impl<A, C, Reply> crate::BehaviorBase for DynamicSupervisor<A, C, Reply>
 where
     A: Address,
-    C: Behavior<Addr = A>,
-    Reply: Behavior<Addr = A>,
+    C: Protocol<Addr = A>,
+    Reply: Protocol<Addr = A>,
 {
     type Base = Self;
     fn base(&self) -> &Self {
@@ -333,15 +333,23 @@ where
     }
 }
 
+impl<A, C, Reply> behavior::Protocol for DynamicSupervisor<A, C, Reply>
+where
+    A: Address,
+    C: Protocol<Addr = A>,
+    Reply: Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A::Nonce, C>>,
+{
+    type Addr = A;
+    type Msg = DynamicSupervisorMessage<A, C, Reply>;
+}
+
 impl<A, C, Reply> Behavior for DynamicSupervisor<A, C, Reply>
 where
     A: Address,
     A::Nonce: Copy + Eq + From<u64>,
     C: Behavior<Addr = A, Ph = Never>,
-    Reply: Behavior<Addr = A, Msg = DynamicSupervisorOutcome<A::Nonce, C>>,
+    Reply: behavior::Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A::Nonce, C>>,
 {
-    type Addr = A;
-    type Msg = DynamicSupervisorMessage<A, C, Reply>;
     type Event = DynamicSupervisorEvent<A, C, Reply>;
     type Sends = DynamicSupervisorSends<A, C, Reply>;
     type Ph = Never;
@@ -577,9 +585,12 @@ mod tests {
     use behavior::{MailAddr, NoBirths};
 
     struct Worker;
-    impl Behavior for Worker {
+    impl behavior::Protocol for Worker {
         type Addr = MailAddr;
         type Msg = u8;
+    }
+
+    impl Behavior for Worker {
         type Event = User<MailAddr, u8>;
         type Sends = Vec<Never>;
         type Ph = Never;
@@ -591,9 +602,12 @@ mod tests {
     }
 
     struct Reply;
-    impl Behavior for Reply {
+    impl behavior::Protocol for Reply {
         type Addr = MailAddr;
         type Msg = DynamicSupervisorOutcome<u64, Worker>;
+    }
+
+    impl Behavior for Reply {
         type Event = User<MailAddr, Self::Msg>;
         type Sends = Vec<Never>;
         type Ph = Never;

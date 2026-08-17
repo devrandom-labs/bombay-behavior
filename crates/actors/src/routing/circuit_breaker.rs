@@ -15,7 +15,7 @@ use crate::{ScheduleAfter, TimedEvent, TimerGeneration, TimerId};
 pub struct BreakerAttempt(pub u64);
 
 /// Closed-state subphase; only one operation may own the breaker at a time.
-pub enum ClosedPhase<Reply: Behavior> {
+pub enum ClosedPhase<Reply: behavior::Protocol> {
     /// The breaker may admit one operation.
     Idle { consecutive_failures: u32 },
     /// One admitted operation owns its terminal report capability.
@@ -27,7 +27,7 @@ pub enum ClosedPhase<Reply: Behavior> {
 }
 
 /// Half-open probe subphase.
-pub enum ProbePhase<Reply: Behavior> {
+pub enum ProbePhase<Reply: behavior::Protocol> {
     /// Exactly one probe may be admitted.
     Available,
     /// The admitted probe owns its terminal report capability.
@@ -38,7 +38,7 @@ pub enum ProbePhase<Reply: Behavior> {
 }
 
 /// Complete circuit-breaker phase sum.
-pub enum BreakerPhase<Reply: Behavior> {
+pub enum BreakerPhase<Reply: behavior::Protocol> {
     /// Ordinary admission with a consecutive-failure count.
     Closed(ClosedPhase<Reply>),
     /// Admission is denied until matching timer evidence arrives.
@@ -98,7 +98,7 @@ pub enum BreakerOutcome {
 }
 
 /// Closed user-command protocol.
-pub enum BreakerMessage<Reply: Behavior> {
+pub enum BreakerMessage<Reply: behavior::Protocol> {
     /// Request one operation admission.
     Admit { reply_to: Recipient<Reply> },
     /// Report successful completion of an admitted operation.
@@ -108,14 +108,14 @@ pub enum BreakerMessage<Reply: Behavior> {
 }
 
 /// Named output lanes for circuit facts and reset scheduling.
-pub struct BreakerSends<Reply: Behavior> {
+pub struct BreakerSends<Reply: behavior::Protocol> {
     /// Admission and completion facts.
     pub replies: Vec<Delivery<Reply>>,
     /// Relative reset requests interpreted by Bombay Timers.
     pub schedules: ServiceSends<ScheduleAfter>,
 }
 
-impl<Reply: Behavior> SendAlgebra for BreakerSends<Reply> {
+impl<Reply: behavior::Protocol> SendAlgebra for BreakerSends<Reply> {
     fn empty() -> Self {
         Self {
             replies: Vec::new(),
@@ -139,7 +139,7 @@ impl<Reply: Behavior> SendAlgebra for BreakerSends<Reply> {
 /// initialization, single-flight policy, failure counting, and reset ordering
 /// are Bombay policy. Timer scheduling is interpreted by Bombay Timers; the
 /// protected operation remains ordinary domain behavior. No transition panics.
-pub struct CircuitBreaker<A: Address, Reply: Behavior<Addr = A, Msg = BreakerOutcome>> {
+pub struct CircuitBreaker<A: Address, Reply: behavior::Protocol<Addr = A, Msg = BreakerOutcome>> {
     threshold: NonZeroU32,
     reset_after: Duration,
     timer_id: TimerId,
@@ -148,7 +148,9 @@ pub struct CircuitBreaker<A: Address, Reply: Behavior<Addr = A, Msg = BreakerOut
     marker: core::marker::PhantomData<fn() -> A>,
 }
 
-impl<A: Address, Reply: Behavior<Addr = A, Msg = BreakerOutcome>> CircuitBreaker<A, Reply> {
+impl<A: Address, Reply: behavior::Protocol<Addr = A, Msg = BreakerOutcome>>
+    CircuitBreaker<A, Reply>
+{
     /// Construct a closed breaker.
     ///
     /// # Errors
@@ -315,7 +317,7 @@ impl<A: Address, Reply: Behavior<Addr = A, Msg = BreakerOutcome>> CircuitBreaker
     }
 }
 
-impl<A: Address, Reply: Behavior<Addr = A, Msg = BreakerOutcome>> BehaviorBase
+impl<A: Address, Reply: behavior::Protocol<Addr = A, Msg = BreakerOutcome>> BehaviorBase
     for CircuitBreaker<A, Reply>
 {
     type Base = Self;
@@ -324,11 +326,16 @@ impl<A: Address, Reply: Behavior<Addr = A, Msg = BreakerOutcome>> BehaviorBase
     }
 }
 
-impl<A: Address, Reply: Behavior<Addr = A, Msg = BreakerOutcome>> Behavior
+impl<A: Address, Reply: behavior::Protocol<Addr = A, Msg = BreakerOutcome>> behavior::Protocol
     for CircuitBreaker<A, Reply>
 {
     type Addr = A;
     type Msg = BreakerMessage<Reply>;
+}
+
+impl<A: Address, Reply: behavior::Protocol<Addr = A, Msg = BreakerOutcome>> Behavior
+    for CircuitBreaker<A, Reply>
+{
     type Event = TimedEvent<User<A, Self::Msg>>;
     type Sends = BreakerSends<Reply>;
     type Ph = Never;
@@ -364,9 +371,12 @@ mod tests {
     use behavior::MailAddr;
 
     struct Reply;
-    impl Behavior for Reply {
+    impl behavior::Protocol for Reply {
         type Addr = MailAddr;
         type Msg = BreakerOutcome;
+    }
+
+    impl Behavior for Reply {
         type Event = User<MailAddr, Self::Msg>;
         type Sends = Vec<Never>;
         type Ph = Never;

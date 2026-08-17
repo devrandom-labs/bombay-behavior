@@ -127,9 +127,12 @@ impl SendAlgebra for BehaviorSends {
 
 struct U8Sink;
 
-impl Behavior for U8Sink {
+impl behavior::Protocol for U8Sink {
     type Addr = MailAddr;
     type Msg = u8;
+}
+
+impl Behavior for U8Sink {
     type Event = User<MailAddr, u8>;
     type Sends = Vec<Never>;
     type Ph = Never;
@@ -736,9 +739,12 @@ impl RouteInput<TimerElapsed> for TimerAwareEvent {
 
 struct TimerAware;
 
-impl Behavior for TimerAware {
+impl behavior::Protocol for TimerAware {
     type Addr = MailAddr;
     type Msg = u64;
+}
+
+impl Behavior for TimerAware {
     type Event = TimerAwareEvent;
     type Sends = Vec<Never>;
     type Ph = Never;

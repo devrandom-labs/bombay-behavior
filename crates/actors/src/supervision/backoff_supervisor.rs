@@ -38,8 +38,11 @@ struct Prepared<N> {
 }
 
 type PreparedResult<B> = Result<
-    Option<Prepared<<<B as Behavior>::Addr as Address>::Nonce>>,
-    BackoffSupervisorError<<B as Behavior>::Error, <<B as Behavior>::Addr as Address>::Nonce>,
+    Option<Prepared<<<B as crate::Protocol>::Addr as Address>::Nonce>>,
+    BackoffSupervisorError<
+        <B as Behavior>::Error,
+        <<B as crate::Protocol>::Addr as Address>::Nonce,
+    >,
 >;
 
 /// Named products emitted by delayed supervision.
@@ -206,7 +209,7 @@ where
     }
 }
 
-impl<B, C, A, Ph, Sends> Behavior for BackoffSupervisor<B, C>
+impl<B, C, A, Ph, Sends> behavior::Protocol for BackoffSupervisor<B, C>
 where
     A: Address,
     A::Nonce: Copy + Eq + From<u64>,
@@ -220,6 +223,20 @@ where
 {
     type Addr = A;
     type Msg = B::Msg;
+}
+
+impl<B, C, A, Ph, Sends> Behavior for BackoffSupervisor<B, C>
+where
+    A: Address,
+    A::Nonce: Copy + Eq + From<u64>,
+    Sends: SendAlgebra,
+    B: Behavior<Addr = A, Ph = Ph, Sends = Sends, Birth = Births<C>>,
+    B::Event: crate::RouteInput<crate::ChildStopped<A>>
+        + crate::RouteInput<crate::CreationResolved<A::Nonce>>
+        + crate::RouteInput<crate::WorkerCreationResolved<A::Nonce>>
+        + crate::RouteInput<TimerElapsed>,
+    C: Behavior<Addr = A, Ph = Never>,
+{
     type Event = TimedEvent<SupervisionEvent<B::Event>>;
     type Sends = BackoffSupervisorSends<A, Sends, C>;
     type Ph = Ph;
@@ -339,9 +356,12 @@ mod tests {
     use behavior::{Actions, MailAddr, NoBirths, User};
 
     struct Child;
-    impl Behavior for Child {
+    impl behavior::Protocol for Child {
         type Addr = MailAddr;
         type Msg = ();
+    }
+
+    impl Behavior for Child {
         type Event = User<MailAddr, ()>;
         type Sends = Vec<Never>;
         type Ph = Never;
@@ -356,9 +376,12 @@ mod tests {
         }
     }
     struct Parent;
-    impl Behavior for Parent {
+    impl behavior::Protocol for Parent {
         type Addr = MailAddr;
         type Msg = ();
+    }
+
+    impl Behavior for Parent {
         type Event = User<MailAddr, ()>;
         type Sends = Vec<Never>;
         type Ph = Never;

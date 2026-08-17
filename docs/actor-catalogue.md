@@ -190,6 +190,7 @@ from this ledger remain prospective even when named in the catalogue.
 | Family / owning module | Implemented role | State and protocol owner | Named effects / errors | Runtime capability | Current verification | Proposed Bombay exposure |
 |---|---|---|---|---|---|---|
 | `composition` | `Activate` / `Active` / concrete wrapper constructors | direct consuming initialization and explicit construction over routed concrete event sums | `Initialized`; concrete nested errors | universal Driver only | unit, composition, compile-fail, properties, adapter-contract tests | `bombay::behavior::{Activate, Active}` and `bombay::actors` wrapper types |
+| `composition` | `MessageAdapter` | one function-pointer mapping from an input protocol to a concrete destination protocol | exactly one ordinary typed delivery; no custom effect lane | universal Driver and Communication | unit, concrete recursive supervisor/pool roots, recursive compile-time matrix for all reply templates | `bombay::actors::MessageAdapter` |
 | `composition` | `Machine` | `Move` and user state/event types | domain behavior actions/errors unchanged | universal Driver only | unit, exhaustive FSM, properties, fuzz | `bombay::behavior::{Machine, Move}` |
 | `composition` | `Stash` | `StashRoute`, retained FIFO | `StashStatus`; inner products preserved | universal Driver only | unit, model, exhaustive, properties, fuzz | `bombay::actors::Stash` |
 | `lifecycle` | `Guardian` | application/subtree boundary over the wrapped initialization and event contract | inner products preserved; normal shutdown adds no effects | universal Driver activation, shutdown delivery and retirement | unit, error-path, composition-order, compile-fail | `bombay::actors::Guardian` |
@@ -284,7 +285,7 @@ shipped.
 | `Protocol<P>` | Typestate protocol phases | Actors | None |
 | `Handler<E>` | Event lane plus behavior | Actors | None |
 | `Forwarder<P>` | Recipient plus forwarding behavior | Actors | None |
-| `Adapter<In, Out>` | Statically typed protocol transformation | Actors | None |
+| `MessageAdapter<In, Destination>` | One function-pointer protocol transformation and one ordinary typed delivery | Actors | None |
 | `Spawner<C>` | Behavior plus staged fresh child creation | Actors | None |
 | `Proxy<P>` | Stable endpoint plus current recipient | Actors | None |
 
