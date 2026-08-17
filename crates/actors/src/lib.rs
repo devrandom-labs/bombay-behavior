@@ -40,6 +40,7 @@ mod watch;
 pub mod workflow;
 
 pub use activation::{Activate, Active, Initialized};
+pub use composition::MessageAdapter;
 pub use discovery::{
     Presence, PresenceEntry, PresenceError, PresenceMessage, PresenceOutcome, PresencePhase,
     PresenceReply, PresenceReport, PresenceSends, PresenceVersion, PubSub, PubSubError,
