@@ -14,8 +14,9 @@ pub use backoff::{Backoff, BackoffConfigError, BackoffError};
 pub use backoff_supervisor::{BackoffSupervisor, BackoffSupervisorError, BackoffSupervisorSends};
 pub use domain::{FleetError, IncarnationError as ProxyError, IncarnationPhase};
 pub use dynamic_supervisor::{
-    DynamicChildPhase, DynamicSupervisor, DynamicSupervisorEvent, DynamicSupervisorMessage,
-    DynamicSupervisorOutcome, DynamicSupervisorRejection, DynamicSupervisorSends,
+    DynamicChildPhase, DynamicProxy, DynamicSupervisor, DynamicSupervisorEvent,
+    DynamicSupervisorMessage, DynamicSupervisorOutcome, DynamicSupervisorRejection,
+    DynamicSupervisorSends,
 };
 pub use policy::{
     ReportSupervisionFailure, RestartPolicy, Strategy, SupervisionFailure,

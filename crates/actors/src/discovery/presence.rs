@@ -8,7 +8,7 @@ use behavior::{
 };
 use thiserror::Error;
 
-use crate::{ScheduleAfter, TimerElapsed, TimerGeneration, TimerId};
+use crate::{ScheduleAfter, TimedEvent, TimerGeneration, TimerId};
 
 /// Version within one participant's presence-evidence stream.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -144,7 +144,7 @@ pub enum PresenceReply<K> {
     Report(PresenceReport<K>),
 }
 
-/// Commands and timer evidence accepted by [`Presence`].
+/// User commands accepted by [`Presence`].
 pub enum PresenceMessage<K, Reply: Behavior> {
     /// Announce versioned presence for a relative lifetime.
     Announce {
@@ -157,8 +157,6 @@ pub enum PresenceMessage<K, Reply: Behavior> {
         /// Outcome and later-expiry recipient.
         reply_to: Recipient<Reply>,
     },
-    /// Timer evidence supplied by Bombay Timers.
-    Elapsed(TimerElapsed),
     /// Return every retained present or expired state.
     Query {
         /// Typed report recipient.
@@ -411,23 +409,25 @@ where
 {
     type Addr = A;
     type Msg = PresenceMessage<K, Reply>;
-    type Event = User<A, Self::Msg>;
+    type Event = TimedEvent<User<A, Self::Msg>>;
     type Sends = PresenceSends<Reply>;
     type Ph = Never;
     type Error = Never;
     type Birth = NoBirths;
     fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
-        Ok(match event.message {
-            PresenceMessage::Announce {
-                participant,
-                version,
-                lifetime,
-                reply_to,
-            } => self.announce(participant, version, lifetime, reply_to),
-            PresenceMessage::Query { reply_to } => {
-                Self::reply(reply_to, PresenceReply::Report(self.report()))
-            }
-            PresenceMessage::Elapsed(elapsed) => {
+        Ok(match event {
+            TimedEvent::Behavior(event) => match event.message {
+                PresenceMessage::Announce {
+                    participant,
+                    version,
+                    lifetime,
+                    reply_to,
+                } => self.announce(participant, version, lifetime, reply_to),
+                PresenceMessage::Query { reply_to } => {
+                    Self::reply(reply_to, PresenceReply::Report(self.report()))
+                }
+            },
+            TimedEvent::Elapsed(elapsed) => {
                 let Some(index)=self.records.iter().position(|record|record.entry.timer_id==elapsed.id&&matches!(record.entry.phase,PresencePhase::Present{generation,..}if generation==elapsed.generation))else{return Ok(Actions::cont());};
                 let (version, generation) = match self.records[index].entry.phase {
                     PresencePhase::Present {
@@ -459,7 +459,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Activate as _;
+    use crate::{Activate as _, TimerElapsed};
     use behavior::MailAddr;
     #[derive(Debug, Clone, PartialEq, Eq)]
     struct Participant(u8);
@@ -515,20 +515,14 @@ mod tests {
             TimerGeneration(1)
         );
         assert!(
-            s.receive(
-                MailAddr(0),
-                PresenceMessage::Elapsed(TimerElapsed::new(TimerId(1), TimerGeneration(0)))
-            )
-            .unwrap()
-            .sends
-            .replies
-            .is_empty()
+            s.on(TimerElapsed::new(TimerId(1), TimerGeneration(0)))
+                .unwrap()
+                .sends
+                .replies
+                .is_empty()
         );
         let expired = s
-            .receive(
-                MailAddr(0),
-                PresenceMessage::Elapsed(TimerElapsed::new(TimerId(1), TimerGeneration(1))),
-            )
+            .on(TimerElapsed::new(TimerId(1), TimerGeneration(1)))
             .unwrap();
         assert!(matches!(
             expired.sends.replies[0].message,

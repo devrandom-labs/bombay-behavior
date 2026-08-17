@@ -285,6 +285,32 @@ pub enum ShutdownCoordinatorError<E, N> {
 /// an actor-model allocation or ordering guarantee.
 ///
 /// The fold introduces no panic conditions.
+///
+/// A child protocol without the shutdown input cannot form an executable
+/// coordinator:
+///
+/// ```compile_fail
+/// use behavior::{Actions, Behavior, MailAddr, Never, NoBirths, User};
+/// use behavior_actors::{ShutdownCoordinator, ShutdownPlan};
+///
+/// struct Plain;
+/// impl Behavior for Plain {
+///     type Addr = MailAddr;
+///     type Msg = ();
+///     type Event = User<MailAddr, ()>;
+///     type Sends = Vec<Never>;
+///     type Ph = Never;
+///     type Error = Never;
+///     type Birth = NoBirths;
+///     fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> behavior::BehaviorActed<Self> {
+///         Ok(Actions::cont())
+///     }
+/// }
+///
+/// fn require_behavior<B: Behavior>(_: B) {}
+/// let plan = ShutdownPlan::new([vec![1]]).unwrap();
+/// require_behavior(ShutdownCoordinator::<Plain, Plain>::new(Plain, plan));
+/// ```
 pub struct ShutdownCoordinator<B: Behavior, C: Behavior<Addr = B::Addr>> {
     inner: B,
     plan: ShutdownPlan<<B::Addr as Address>::Nonce>,
@@ -372,6 +398,7 @@ where
     Br: BirthMode,
     B: Behavior<Addr = A, Ph = Ph, Sends = S, Birth = Br>,
     C: Behavior<Addr = A>,
+    C::Event: crate::EventInput<crate::ShutdownRequested>,
     B::Event:
         crate::RouteInput<ChildStopped<A>> + crate::RouteInput<ChildShutdownRejected<A::Nonce>>,
 {
@@ -534,9 +561,10 @@ mod tests {
     #[test]
     fn phases_advance_only_after_every_current_child_stops() {
         let plan = ShutdownPlan::new([vec![1, 2], vec![3]]).unwrap();
-        let initialized = ShutdownCoordinator::<Probe, Probe>::new(Probe, plan)
-            .initialize()
-            .unwrap();
+        let initialized =
+            ShutdownCoordinator::<Probe, crate::StopOnShutdown<Probe>>::new(Probe, plan)
+                .initialize()
+                .unwrap();
         assert_eq!(initialized.actions.sends.behavior, [1]);
         assert!(initialized.actions.sends.shutdowns.is_empty());
         let mut active = initialized.behavior;
@@ -582,10 +610,11 @@ mod tests {
     #[test]
     fn duplicates_stale_children_and_repeated_shutdown_are_inert() {
         let plan = ShutdownPlan::new([vec![1, 2]]).unwrap();
-        let mut active = ShutdownCoordinator::<Probe, Probe>::new(Probe, plan)
-            .initialize()
-            .unwrap()
-            .behavior;
+        let mut active =
+            ShutdownCoordinator::<Probe, crate::StopOnShutdown<Probe>>::new(Probe, plan)
+                .initialize()
+                .unwrap()
+                .behavior;
         active.on(stopped(9)).unwrap();
         active.on(ShutdownRequested).unwrap();
         assert_eq!(
@@ -609,10 +638,11 @@ mod tests {
     #[test]
     fn matching_rejection_is_typed_and_does_not_mutate_phase() {
         let plan = ShutdownPlan::new([vec![1]]).unwrap();
-        let mut active = ShutdownCoordinator::<Probe, Probe>::new(Probe, plan)
-            .initialize()
-            .unwrap()
-            .behavior;
+        let mut active =
+            ShutdownCoordinator::<Probe, crate::StopOnShutdown<Probe>>::new(Probe, plan)
+                .initialize()
+                .unwrap()
+                .behavior;
         active.on(ShutdownRequested).unwrap();
         let before = active.state().clone();
         assert_eq!(
@@ -631,10 +661,11 @@ mod tests {
     #[test]
     fn empty_plan_stops_immediately_and_user_actions_preserve_named_lanes() {
         let plan = ShutdownPlan::<u64>::new([]).unwrap();
-        let mut active = ShutdownCoordinator::<Probe, Probe>::new(Probe, plan)
-            .initialize()
-            .unwrap()
-            .behavior;
+        let mut active =
+            ShutdownCoordinator::<Probe, crate::StopOnShutdown<Probe>>::new(Probe, plan)
+                .initialize()
+                .unwrap()
+                .behavior;
         let user = active.receive(MailAddr(0), 7).unwrap();
         assert_eq!(user.sends.behavior, [7]);
         assert!(user.sends.shutdowns.is_empty());

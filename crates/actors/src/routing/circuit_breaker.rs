@@ -8,7 +8,7 @@ use behavior::{
 };
 use thiserror::Error;
 
-use crate::{ScheduleAfter, TimerElapsed, TimerGeneration, TimerId};
+use crate::{ScheduleAfter, TimedEvent, TimerGeneration, TimerId};
 
 /// Identity of one admitted operation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -97,7 +97,7 @@ pub enum BreakerOutcome {
     },
 }
 
-/// Closed command and timer-evidence protocol.
+/// Closed user-command protocol.
 pub enum BreakerMessage<Reply: Behavior> {
     /// Request one operation admission.
     Admit { reply_to: Recipient<Reply> },
@@ -105,8 +105,6 @@ pub enum BreakerMessage<Reply: Behavior> {
     Succeeded { attempt: BreakerAttempt },
     /// Report failed completion of an admitted operation.
     Failed { attempt: BreakerAttempt },
-    /// Reset timer evidence from Bombay Timers.
-    Elapsed(TimerElapsed),
 }
 
 /// Named output lanes for circuit facts and reset scheduling.
@@ -331,17 +329,19 @@ impl<A: Address, Reply: Behavior<Addr = A, Msg = BreakerOutcome>> Behavior
 {
     type Addr = A;
     type Msg = BreakerMessage<Reply>;
-    type Event = User<A, Self::Msg>;
+    type Event = TimedEvent<User<A, Self::Msg>>;
     type Sends = BreakerSends<Reply>;
     type Ph = Never;
     type Error = Never;
     type Birth = NoBirths;
     fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
-        Ok(match event.message {
-            BreakerMessage::Admit { reply_to } => self.admit(reply_to),
-            BreakerMessage::Succeeded { attempt } => self.complete(attempt, true),
-            BreakerMessage::Failed { attempt } => self.complete(attempt, false),
-            BreakerMessage::Elapsed(elapsed) => {
+        Ok(match event {
+            TimedEvent::Behavior(event) => match event.message {
+                BreakerMessage::Admit { reply_to } => self.admit(reply_to),
+                BreakerMessage::Succeeded { attempt } => self.complete(attempt, true),
+                BreakerMessage::Failed { attempt } => self.complete(attempt, false),
+            },
+            TimedEvent::Elapsed(elapsed) => {
                 if let BreakerPhase::Open { generation } = self.phase
                     && elapsed.id == self.timer_id
                     && elapsed.generation == generation
@@ -360,7 +360,7 @@ impl<A: Address, Reply: Behavior<Addr = A, Msg = BreakerOutcome>> Behavior
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Activate as _;
+    use crate::{Activate as _, TimerElapsed};
     use behavior::MailAddr;
 
     struct Reply;
@@ -426,10 +426,7 @@ mod tests {
             BreakerOutcome::Rejected(BreakerRejection::Open { .. })
         ));
         subject
-            .receive(
-                MailAddr(0),
-                BreakerMessage::Elapsed(TimerElapsed::new(TimerId(8), TimerGeneration(0))),
-            )
+            .on(TimerElapsed::new(TimerId(8), TimerGeneration(0)))
             .unwrap();
         let probe = admit(&mut subject);
         assert_eq!(probe, BreakerAttempt(2));
@@ -461,10 +458,7 @@ mod tests {
         );
         assert!(
             subject
-                .receive(
-                    MailAddr(0),
-                    BreakerMessage::Elapsed(TimerElapsed::new(TimerId(8), TimerGeneration(7)))
-                )
+                .on(TimerElapsed::new(TimerId(8), TimerGeneration(7)))
                 .unwrap()
                 .sends
                 .replies

@@ -98,7 +98,7 @@ pub use shutdown::{FinalizeOnShutdown, ShutdownProtocol, ShutdownReaction, StopO
 pub use stash::{Stash, StashRoute, StashStatus};
 pub use supervision::{
     Backoff, BackoffConfigError, BackoffError, BackoffSupervisor, BackoffSupervisorError,
-    BackoffSupervisorSends, ChildTopology, DynamicChildPhase, DynamicSupervisor,
+    BackoffSupervisorSends, ChildTopology, DynamicChildPhase, DynamicProxy, DynamicSupervisor,
     DynamicSupervisorEvent, DynamicSupervisorMessage, DynamicSupervisorOutcome,
     DynamicSupervisorRejection, DynamicSupervisorSends, FleetError, IncarnationPhase, Proxy,
     ProxyCommand, ProxyError, ProxyEvent, ProxySends, ReportSupervisionFailure,

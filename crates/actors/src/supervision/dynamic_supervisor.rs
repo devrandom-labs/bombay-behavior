@@ -2,7 +2,8 @@
 
 use crate::{
     ChildShutdownRejected, ChildStopped, CreationRejection, CreationResolved, ObserveChild,
-    ObserveCreation, Own, Proxy, ProxyCommand, SendInput, ShutdownChild, WorkerCreationResolved,
+    ObserveCreation, Own, Proxy, ProxyCommand, SendInput, ShutdownChild, StopOnShutdown,
+    WorkerCreationResolved, WorkerStopped,
 };
 use behavior::{
     Actions, Address, Behavior, BehaviorActed, Births, Create, Delivery, Never, Recipient,
@@ -12,10 +13,17 @@ use behavior::{
 /// One dynamically managed stable-child phase.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DynamicChildPhase {
+    /// The stable proxy creation has been staged but not committed.
     Installing,
+    /// The stable proxy is established and accepts management commands.
+    ///
+    /// This describes the proxy slot, not one worker incarnation behind it.
     Available,
+    /// Orderly shutdown of the stable proxy has been accepted.
     Stopping,
+    /// The stable proxy is realizing a fresh worker incarnation.
     Replacing,
+    /// The stable proxy slot has terminated or failed installation.
     Retired,
 }
 
@@ -133,6 +141,7 @@ where
     ChildStopped(ChildStopped<A>),
     CreationResolved(CreationResolved<A::Nonce>),
     WorkerCreationResolved(WorkerCreationResolved<A::Nonce>),
+    WorkerStopped(WorkerStopped<A>),
     ChildShutdownRejected(ChildShutdownRejected<A::Nonce>),
 }
 
@@ -182,7 +191,16 @@ macro_rules! event_lane {
 event_lane!(ChildStopped<A>, ChildStopped);
 event_lane!(CreationResolved<A::Nonce>, CreationResolved);
 event_lane!(WorkerCreationResolved<A::Nonce>, WorkerCreationResolved);
+event_lane!(WorkerStopped<A>, WorkerStopped);
 event_lane!(ChildShutdownRejected<A::Nonce>, ChildShutdownRejected);
+
+/// Shutdown-capable stable proxy protocol installed by [`DynamicSupervisor`].
+///
+/// The wrapper makes orderly shutdown an explicit part of the concrete child
+/// event sum. It does not change the proxy's user commands, worker creation,
+/// reporting lanes, or stable-address construction.
+pub type DynamicProxy<C> = StopOnShutdown<Proxy<C>>;
+
 /// Named effect product for dynamic topology management.
 pub struct DynamicSupervisorSends<A, C, Reply>
 where
@@ -194,8 +212,8 @@ where
     pub outcomes: Vec<Delivery<Reply>>,
     pub child_observations: ServiceSends<ObserveChild<A::Nonce>>,
     pub creation_observations: ServiceSends<ObserveCreation<A::Nonce>>,
-    pub shutdowns: ServiceSends<ShutdownChild<Proxy<C>>>,
-    pub replacements: Vec<Delivery<Proxy<C>>>,
+    pub shutdowns: ServiceSends<ShutdownChild<DynamicProxy<C>>>,
+    pub replacements: Vec<Delivery<DynamicProxy<C>>>,
 }
 
 impl<A, C, Reply> SendAlgebra for DynamicSupervisorSends<A, C, Reply>
@@ -245,14 +263,15 @@ where
         self.creation_observations.send(value);
     }
 }
-impl<A, C, Reply> SendInput<ShutdownChild<Proxy<C>>, Own> for DynamicSupervisorSends<A, C, Reply>
+impl<A, C, Reply> SendInput<ShutdownChild<DynamicProxy<C>>, Own>
+    for DynamicSupervisorSends<A, C, Reply>
 where
     A: Address,
     A::Nonce: From<u64>,
     C: Behavior<Addr = A, Ph = Never>,
     Reply: Behavior<Addr = A>,
 {
-    fn emit(&mut self, value: ShutdownChild<Proxy<C>>) {
+    fn emit(&mut self, value: ShutdownChild<DynamicProxy<C>>) {
         self.shutdowns.send(value);
     }
 }
@@ -328,7 +347,7 @@ where
     type Sends = DynamicSupervisorSends<A, C, Reply>;
     type Ph = Never;
     type Error = Never;
-    type Birth = Births<Proxy<C>>;
+    type Birth = Births<DynamicProxy<C>>;
 
     #[allow(clippy::too_many_lines)]
     fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
@@ -371,7 +390,7 @@ where
                         .send(ObserveCreation::new(nonce));
                     Ok(Actions::new(
                         sends,
-                        vec![Create::birth(nonce, Proxy::new(child))],
+                        vec![Create::birth(nonce, StopOnShutdown::new(Proxy::new(child)))],
                         crate::Step::Continue,
                     ))
                 }
@@ -379,7 +398,9 @@ where
                     match self.children.iter_mut().find(|(n, _)| *n == nonce) {
                         Some((_, state @ DynamicChild::Available)) => {
                             *state = DynamicChild::Stopping { reply_to };
-                            sends.shutdowns.send(ShutdownChild::<Proxy<C>>::new(nonce));
+                            sends
+                                .shutdowns
+                                .send(ShutdownChild::<DynamicProxy<C>>::new(nonce));
                             sends.outcomes.push(Delivery::new(
                                 reply_to,
                                 DynamicSupervisorOutcome::StopAccepted { nonce },
@@ -521,6 +542,10 @@ where
                 sends.outcomes.push(Delivery::new(reply, outcome));
                 Ok(Actions::send(sends))
             }
+            // The phase describes availability of the stable proxy slot, not
+            // liveness of one worker incarnation behind it. Replacement
+            // realization remains the separate `WorkerCreationResolved` fact.
+            DynamicSupervisorEvent::WorkerStopped(_) => Ok(Actions::cont()),
             DynamicSupervisorEvent::ChildShutdownRejected(rejected) => {
                 let Some((_, state)) = self.children.iter_mut().find(|(n, _)| *n == rejected.nonce)
                 else {
@@ -744,5 +769,32 @@ mod tests {
             .on(ChildStopped::new(3, Ok(Exit::Normal), Instant::now()))
             .unwrap();
         assert_eq!(active.phase(3), Some(DynamicChildPhase::Retired));
+    }
+
+    #[test]
+    fn worker_stop_is_accepted_without_reinterpreting_proxy_slot_state() {
+        let initialized = DynamicSupervisor::<MailAddr, Worker, Reply>::new()
+            .initialize()
+            .unwrap();
+        let mut active = initialized.behavior;
+        active
+            .receive(
+                MailAddr(1),
+                DynamicSupervisorMessage::Start {
+                    nonce: 3,
+                    child: Worker,
+                    reply_to: reply(),
+                },
+            )
+            .unwrap();
+        active.on(CreationResolved::birth(3)).unwrap();
+        let actions = active
+            .on(WorkerStopped::new(3, 0, Ok(Exit::Normal), Instant::now()))
+            .unwrap();
+
+        assert!(actions.sends.outcomes.is_empty());
+        assert!(actions.creates.is_empty());
+        assert!(matches!(actions.become_, crate::Step::Continue));
+        assert_eq!(active.phase(3), Some(DynamicChildPhase::Available));
     }
 }

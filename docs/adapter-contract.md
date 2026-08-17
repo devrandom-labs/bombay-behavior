@@ -159,6 +159,13 @@ the catalogue does not define another macro or erased adapter type for it.
 
 ## Conformance checklist
 
+`crates/actors/tests/runtime_contracts.rs` is the compile-time template
+manifest for interpreter-originated lanes. It enumerates every timer,
+observation, creation, parent-report, and shutdown request/fact pair and fails
+to compile when a concrete template emits a request whose returned fact cannot
+enter the owning event sum, or when `ShutdownChild<C>` names a child protocol
+that cannot accept `ShutdownRequested`.
+
 An adapter is conforming only when tests kill each of these inversions:
 
 | Law | Required negative proof |

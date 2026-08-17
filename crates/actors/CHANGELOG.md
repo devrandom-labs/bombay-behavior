@@ -6,6 +6,11 @@ All notable changes to `bombay-behavior-actors` are documented here.
 
 ### Changed
 
+- Make every runtime callback lane part of its concrete template protocol:
+  `CircuitBreaker`, `Lease`, and `Presence` now receive `TimerElapsed` through
+  `TimedEvent`; `DynamicSupervisor` installs a shutdown-capable `DynamicProxy`
+  and accepts `WorkerStopped`; and `ShutdownCoordinator` requires its concrete
+  child protocol to accept `ShutdownRequested`.
 - Preserve the concrete child behavior protocol in `ShutdownChild<C>` and in
   the homogeneous `ShutdownCoordinator<B, C>` effect lane, allowing runtimes
   to select the hosted namespace without ambient lookup or type erasure.
