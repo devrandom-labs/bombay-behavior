@@ -161,6 +161,8 @@ fn every_observation_and_parent_report_has_an_exact_fact_input() {
     accepts::<TerminationMonitor<Inert>, PeerStopped<MailAddr>>();
     accepts::<Proxy<Inert>, ChildStopped<MailAddr>>();
     accepts::<Proxy<Inert>, CreationResolved<u64>>();
+    accepts::<Proxy<Inert>, ShutdownRequested>();
+    accepts::<Proxy<Inert>, ChildShutdownRejected<u64>>();
 
     type Dynamic = DynamicSupervisor<MailAddr, Inert, DynamicReply>;
     accepts::<Dynamic, ChildStopped<MailAddr>>();
@@ -172,6 +174,8 @@ fn every_observation_and_parent_report_has_an_exact_fact_input() {
     type ProxyProtocol = ProxyEvent<User<MailAddr, ProxyCommand<Inert>>>;
     event_accepts::<ProxyProtocol, ChildStopped<MailAddr>>();
     event_accepts::<ProxyProtocol, CreationResolved<u64>>();
+    event_accepts::<ProxyProtocol, ShutdownRequested>();
+    event_accepts::<ProxyProtocol, ChildShutdownRejected<u64>>();
 
     type SupervisorProtocol = SupervisionEvent<User<MailAddr, ()>>;
     event_accepts::<SupervisorProtocol, ChildStopped<MailAddr>>();

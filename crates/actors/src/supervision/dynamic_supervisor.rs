@@ -2,8 +2,8 @@
 
 use crate::{
     ChildShutdownRejected, ChildStopped, CreationRejection, CreationResolved, ObserveChild,
-    ObserveCreation, Own, Proxy, ProxyCommand, SendInput, ShutdownChild, StopOnShutdown,
-    WorkerCreationResolved, WorkerStopped,
+    ObserveCreation, Own, Proxy, ProxyCommand, SendInput, ShutdownChild, WorkerCreationResolved,
+    WorkerStopped,
 };
 use behavior::{
     Actions, Address, Behavior, BehaviorActed, Births, Create, Delivery, Never, Recipient,
@@ -196,10 +196,9 @@ event_lane!(ChildShutdownRejected<A::Nonce>, ChildShutdownRejected);
 
 /// Shutdown-capable stable proxy protocol installed by [`DynamicSupervisor`].
 ///
-/// The wrapper makes orderly shutdown an explicit part of the concrete child
-/// event sum. It does not change the proxy's user commands, worker creation,
-/// reporting lanes, or stable-address construction.
-pub type DynamicProxy<C> = StopOnShutdown<Proxy<C>>;
+/// The proxy makes orderly subtree shutdown an explicit part of its concrete
+/// event and effect products while preserving stable-address construction.
+pub type DynamicProxy<C> = Proxy<C>;
 
 /// Named effect product for dynamic topology management.
 pub struct DynamicSupervisorSends<A, C, Reply>
@@ -390,7 +389,7 @@ where
                         .send(ObserveCreation::new(nonce));
                     Ok(Actions::new(
                         sends,
-                        vec![Create::birth(nonce, StopOnShutdown::new(Proxy::new(child)))],
+                        vec![Create::birth(nonce, Proxy::new(child))],
                         crate::Step::Continue,
                     ))
                 }

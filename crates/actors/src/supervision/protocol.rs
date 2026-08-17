@@ -1,7 +1,10 @@
 //! Typed event and command protocols used by supervision behaviors.
 
 use crate::protocol::forward::forward_event_lane;
-use crate::protocol::{ChildStopped, CreationResolved, WorkerCreationResolved, WorkerStopped};
+use crate::protocol::{
+    ChildShutdownRejected, ChildStopped, CreationResolved, ShutdownRequested,
+    WorkerCreationResolved, WorkerStopped,
+};
 use crate::{Address, Behavior, User, UserEvent};
 
 #[derive(Clone, PartialEq, Eq)]
@@ -9,6 +12,8 @@ pub enum ProxyEvent<E: UserEvent> {
     Command(E),
     ChildStopped(ChildStopped<E::Addr>),
     CreationResolved(CreationResolved<<E::Addr as Address>::Nonce>),
+    ShutdownRequested(ShutdownRequested),
+    ChildShutdownRejected(ChildShutdownRejected<<E::Addr as Address>::Nonce>),
 }
 
 impl<E: UserEvent> crate::RouteInput<CreationResolved<<E::Addr as Address>::Nonce>>
@@ -52,7 +57,10 @@ impl<E: UserEvent> UserEvent for ProxyEvent<E> {
     fn into_user(self) -> Result<User<Self::Addr, Self::Message>, Self> {
         match self {
             Self::Command(event) => event.into_user().map_err(Self::Command),
-            service @ (Self::ChildStopped(_) | Self::CreationResolved(_)) => Err(service),
+            service @ (Self::ChildStopped(_)
+            | Self::CreationResolved(_)
+            | Self::ShutdownRequested(_)
+            | Self::ChildShutdownRejected(_)) => Err(service),
         }
     }
 }
@@ -65,7 +73,35 @@ forward_event_lane!(
     crate::WorkerCreationResolved<<E::Addr as crate::Address>::Nonce>,
     Command
 );
-forward_event_lane!(ProxyEvent, crate::ShutdownRequested, Command);
+impl<E: UserEvent> crate::RouteInput<ShutdownRequested> for ProxyEvent<E> {
+    fn route(event: ShutdownRequested) -> Result<Self, ShutdownRequested> {
+        Ok(Self::ShutdownRequested(event))
+    }
+}
+
+impl<E: UserEvent> crate::EventInput<ShutdownRequested> for ProxyEvent<E> {
+    fn inject(event: ShutdownRequested) -> Self {
+        Self::ShutdownRequested(event)
+    }
+}
+
+impl<E: UserEvent> crate::RouteInput<ChildShutdownRejected<<E::Addr as Address>::Nonce>>
+    for ProxyEvent<E>
+{
+    fn route(
+        event: ChildShutdownRejected<<E::Addr as Address>::Nonce>,
+    ) -> Result<Self, ChildShutdownRejected<<E::Addr as Address>::Nonce>> {
+        Ok(Self::ChildShutdownRejected(event))
+    }
+}
+
+impl<E: UserEvent> crate::EventInput<ChildShutdownRejected<<E::Addr as Address>::Nonce>>
+    for ProxyEvent<E>
+{
+    fn inject(event: ChildShutdownRejected<<E::Addr as Address>::Nonce>) -> Self {
+        Self::ChildShutdownRejected(event)
+    }
+}
 
 #[derive(Clone, PartialEq, Eq)]
 pub enum SupervisionEvent<E: UserEvent> {

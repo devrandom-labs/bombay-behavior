@@ -5,7 +5,7 @@ use super::super::domain::{
 };
 use super::super::protocol::{ProxyCommand, ProxyEvent};
 use crate::protocol::{
-    ObserveChild, ObserveCreation, ReportWorkerCreationResolved, ReportWorkerStopped,
+    ObserveChild, ObserveCreation, ReportWorkerCreationResolved, ReportWorkerStopped, ShutdownChild,
 };
 use crate::{Own, SendInput};
 use behavior::{
@@ -26,6 +26,8 @@ pub struct ProxySends<C: Behavior> {
     pub stopped_reports: ServiceSends<ReportWorkerStopped<C::Addr>>,
     /// Creation-resolution facts reported to the owning supervisor.
     pub creation_reports: ServiceSends<ReportWorkerCreationResolved<<C::Addr as Address>::Nonce>>,
+    /// Requests orderly termination of the exact installed worker incarnation.
+    pub shutdowns: ServiceSends<ShutdownChild<C>>,
 }
 
 pub(crate) type ProxyActions<C> = Actions<<C as Behavior>::Addr, Never, ProxySends<C>, Births<C>>;
@@ -38,6 +40,7 @@ impl<C: Behavior> SendAlgebra for ProxySends<C> {
             creation_observations: ServiceSends::empty(),
             stopped_reports: ServiceSends::empty(),
             creation_reports: ServiceSends::empty(),
+            shutdowns: ServiceSends::empty(),
         }
     }
 
@@ -48,6 +51,7 @@ impl<C: Behavior> SendAlgebra for ProxySends<C> {
             .append(other.creation_observations);
         self.stopped_reports.append(other.stopped_reports);
         self.creation_reports.append(other.creation_reports);
+        self.shutdowns.append(other.shutdowns);
     }
 }
 
@@ -83,12 +87,25 @@ impl<C: Behavior> SendInput<ReportWorkerCreationResolved<<C::Addr as Address>::N
     }
 }
 
-/// A stable actor that serializes fresh worker-incarnation installation.
+impl<C: Behavior> SendInput<ShutdownChild<C>, Own> for ProxySends<C> {
+    fn emit(&mut self, input: ShutdownChild<C>) {
+        self.shutdowns.send(input);
+    }
+}
+
+/// A stable actor that serializes fresh worker-incarnation installation and
+/// orderly termination of its owned worker subtree.
 ///
 /// A worker is routable only in `Running`. Deadline most one creation can be
 /// `Installing`; stale or provenance-mismatched results are inert. Rejection
 /// leaves `last_installed` unchanged, so a later attempt still names the last
 /// incarnation that actually existed.
+///
+/// On typed shutdown, an installed worker receives one [`ShutdownChild`]
+/// request and the proxy stops only after the matching child-stop fact. If
+/// creation is unresolved, the proxy first waits for its exact resolution.
+/// Shutdown rejection is a typed [`IncarnationError`] and never fabricates a
+/// successful child termination.
 pub struct Proxy<C: Behavior<Ph = Never>> {
     incarnation: Incarnation<<C::Addr as Address>::Nonce, C>,
 }
@@ -140,6 +157,25 @@ where
             IncarnationEffects::Report(resolved) => {
                 sends.creation_reports.extend([resolved.into()]);
                 Vec::new()
+            }
+            IncarnationEffects::ReportAndShutdown {
+                resolved,
+                incarnation,
+            } => {
+                sends.creation_reports.extend([resolved.into()]);
+                sends.shutdowns.send(ShutdownChild::new(incarnation));
+                Vec::new()
+            }
+            IncarnationEffects::ReportAndStop(resolved) => {
+                sends.creation_reports.extend([resolved.into()]);
+                return Actions::new(sends, Vec::new(), Step::Stop(behavior::Stopped));
+            }
+            IncarnationEffects::Shutdown(incarnation) => {
+                sends.shutdowns.send(ShutdownChild::new(incarnation));
+                Vec::new()
+            }
+            IncarnationEffects::Stop => {
+                return Actions::new(sends, Vec::new(), Step::Stop(behavior::Stopped));
             }
         };
         Actions::new(sends, creates, Step::Continue)
@@ -200,9 +236,19 @@ where
                     .creation_resolved(resolved.nonce, resolved.kind, resolved.result),
             ),
             ProxyEvent::ChildStopped(event) => {
+                let completes_shutdown = self.incarnation.shutdown_complete_after(event.nonce);
                 let effects = self.incarnation.child_stopped(event.nonce)?;
-                Self::stopped_actions(effects, event)
+                let mut actions = Self::stopped_actions(effects, event);
+                if completes_shutdown {
+                    actions.become_ = Step::Stop(behavior::Stopped);
+                }
+                actions
             }
+            ProxyEvent::ShutdownRequested(_) => Self::actions(self.incarnation.shutdown()),
+            ProxyEvent::ChildShutdownRejected(rejected) => Self::actions(
+                self.incarnation
+                    .shutdown_rejected(rejected.nonce, rejected.reason)?,
+            ),
             ProxyEvent::Command(event) => match event.message {
                 ProxyCommand::Forward(message) => {
                     let effects = self.incarnation.forward(message);

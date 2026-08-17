@@ -6,6 +6,10 @@ All notable changes to `bombay-behavior-actors` are documented here.
 
 ### Changed
 
+- Make `Proxy<C>` an orderly subtree owner: shutdown now emits a typed
+  `ShutdownChild<C>` for the exact installed incarnation and stops only after
+  its matching `ChildStopped`. Shutdown during installation waits for creation
+  resolution, and rejection remains a typed `ProxyError`.
 - Make every runtime callback lane part of its concrete template protocol:
   `CircuitBreaker`, `Lease`, and `Presence` now receive `TimerElapsed` through
   `TimedEvent`; `DynamicSupervisor` installs a shutdown-capable `DynamicProxy`

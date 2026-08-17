@@ -1,6 +1,6 @@
 //! Pure lifecycle domain for one stable proxy's worker incarnation.
 
-use crate::{CreationKind, CreationRejection, CreationResolved};
+use crate::{ChildShutdownRejection, CreationKind, CreationRejection, CreationResolved};
 
 /// The complete lifecycle state of the worker behind one stable proxy.
 enum IncarnationState<N, C> {
@@ -11,9 +11,16 @@ enum IncarnationState<N, C> {
         attempt: N,
         kind: CreationKind<N>,
     },
+    InstallingDuringShutdown {
+        attempt: N,
+        kind: CreationKind<N>,
+    },
     Running {
         incarnation: N,
         queued_replacement: Option<C>,
+    },
+    ShuttingDown {
+        incarnation: N,
     },
     Vacant {
         last_installed: Option<N>,
@@ -25,8 +32,10 @@ enum IncarnationState<N, C> {
 pub enum IncarnationPhase<N> {
     Dormant,
     Installing { attempt: N, kind: CreationKind<N> },
+    InstallingDuringShutdown { attempt: N, kind: CreationKind<N> },
     Running { incarnation: N },
     AwaitingStop { incarnation: N },
+    ShuttingDown { incarnation: N },
     Vacant { last_installed: Option<N> },
 }
 
@@ -40,6 +49,8 @@ pub enum IncarnationError {
     AlreadyInitialized,
     #[error("the incarnation creation-attempt sequence is exhausted")]
     AttemptSequenceExhausted,
+    #[error("orderly worker shutdown was rejected: {0}")]
+    ShutdownRejected(ChildShutdownRejection),
 }
 
 /// A fresh child creation selected by the lifecycle transition.
@@ -71,8 +82,18 @@ impl<N, C> IncarnationCreation<N, C> {
 pub(crate) enum IncarnationEffects<N, C, M> {
     None,
     Create(IncarnationCreation<N, C>),
-    Deliver { incarnation: N, message: M },
+    Deliver {
+        incarnation: N,
+        message: M,
+    },
     Report(CreationResolved<N>),
+    ReportAndShutdown {
+        resolved: CreationResolved<N>,
+        incarnation: N,
+    },
+    ReportAndStop(CreationResolved<N>),
+    Shutdown(N),
+    Stop,
 }
 
 /// Effects of accepting an exact child-stop observation.
@@ -110,6 +131,12 @@ impl<N: Copy, C> Incarnation<N, C> {
                 attempt: *attempt,
                 kind: *kind,
             },
+            IncarnationState::InstallingDuringShutdown { attempt, kind } => {
+                IncarnationPhase::InstallingDuringShutdown {
+                    attempt: *attempt,
+                    kind: *kind,
+                }
+            }
             IncarnationState::Running {
                 incarnation,
                 queued_replacement: Some(_),
@@ -120,6 +147,9 @@ impl<N: Copy, C> Incarnation<N, C> {
                 incarnation,
                 queued_replacement: None,
             } => IncarnationPhase::Running {
+                incarnation: *incarnation,
+            },
+            IncarnationState::ShuttingDown { incarnation } => IncarnationPhase::ShuttingDown {
                 incarnation: *incarnation,
             },
             IncarnationState::Vacant { last_installed } => IncarnationPhase::Vacant {
@@ -175,17 +205,18 @@ impl<N: Copy + From<u64> + PartialEq, C> Incarnation<N, C> {
         kind: CreationKind<N>,
         result: Result<(), CreationRejection>,
     ) -> IncarnationEffects<N, C, M> {
-        let IncarnationState::Installing {
-            attempt: pending,
-            kind: pending_kind,
-        } = self.state
-        else {
-            return IncarnationEffects::None;
+        let (pending, pending_kind, shutting_down) = match self.state {
+            IncarnationState::Installing { attempt, kind } => (attempt, kind, false),
+            IncarnationState::InstallingDuringShutdown { attempt, kind } => (attempt, kind, true),
+            _ => return IncarnationEffects::None,
         };
         if attempt != pending || kind != pending_kind {
             return IncarnationEffects::None;
         }
         self.state = match result {
+            Ok(()) if shutting_down => IncarnationState::ShuttingDown {
+                incarnation: attempt,
+            },
             Ok(()) => IncarnationState::Running {
                 incarnation: attempt,
                 queued_replacement: None,
@@ -197,13 +228,36 @@ impl<N: Copy + From<u64> + PartialEq, C> Incarnation<N, C> {
                 },
             },
         };
-        IncarnationEffects::Report(CreationResolved::new(attempt, kind, result))
+        let resolved = CreationResolved::new(attempt, kind, result);
+        match (shutting_down, result) {
+            (true, Ok(())) => IncarnationEffects::ReportAndShutdown {
+                resolved,
+                incarnation: attempt,
+            },
+            (true, Err(_)) => IncarnationEffects::ReportAndStop(resolved),
+            (false, _) => IncarnationEffects::Report(resolved),
+        }
     }
 
     pub(crate) fn child_stopped(
         &mut self,
         stopped: N,
     ) -> Result<IncarnationStopEffects<N, C>, IncarnationError> {
+        if let IncarnationState::ShuttingDown { incarnation } = self.state {
+            if stopped == incarnation {
+                self.state = IncarnationState::Vacant {
+                    last_installed: Some(incarnation),
+                };
+                return Ok(IncarnationStopEffects {
+                    creation: None,
+                    stopped: Some(incarnation),
+                });
+            }
+            return Ok(IncarnationStopEffects {
+                creation: None,
+                stopped: None,
+            });
+        }
         let IncarnationState::Running { incarnation, .. } = self.state else {
             return Ok(IncarnationStopEffects {
                 creation: None,
@@ -256,6 +310,8 @@ impl<N: Copy + From<u64> + PartialEq, C> Incarnation<N, C> {
             },
             IncarnationState::Dormant { .. }
             | IncarnationState::Installing { .. }
+            | IncarnationState::InstallingDuringShutdown { .. }
+            | IncarnationState::ShuttingDown { .. }
             | IncarnationState::Vacant { .. } => IncarnationEffects::None,
         }
     }
@@ -282,11 +338,78 @@ impl<N: Copy + From<u64> + PartialEq, C> Incarnation<N, C> {
             }
             IncarnationState::Dormant { .. }
             | IncarnationState::Installing { .. }
+            | IncarnationState::InstallingDuringShutdown { .. }
+            | IncarnationState::ShuttingDown { .. }
             | IncarnationState::Running { .. }
             | IncarnationState::Vacant {
                 last_installed: None,
             } => IncarnationEffects::None,
         })
+    }
+
+    /// Begin orderly shutdown without inferring whether an in-flight creation
+    /// has been committed. A pending creation is resolved before the proxy
+    /// decides whether a child must be shut down.
+    pub(crate) fn shutdown<M>(&mut self) -> IncarnationEffects<N, C, M> {
+        let previous = core::mem::replace(
+            &mut self.state,
+            IncarnationState::Vacant {
+                last_installed: None,
+            },
+        );
+        match previous {
+            IncarnationState::Dormant { .. } => IncarnationEffects::Stop,
+            IncarnationState::Installing { attempt, kind } => {
+                self.state = IncarnationState::InstallingDuringShutdown { attempt, kind };
+                IncarnationEffects::None
+            }
+            IncarnationState::InstallingDuringShutdown { attempt, kind } => {
+                self.state = IncarnationState::InstallingDuringShutdown { attempt, kind };
+                IncarnationEffects::None
+            }
+            IncarnationState::Running { incarnation, .. } => {
+                self.state = IncarnationState::ShuttingDown { incarnation };
+                IncarnationEffects::Shutdown(incarnation)
+            }
+            IncarnationState::ShuttingDown { incarnation } => {
+                self.state = IncarnationState::ShuttingDown { incarnation };
+                IncarnationEffects::None
+            }
+            IncarnationState::Vacant { last_installed } => {
+                self.state = IncarnationState::Vacant { last_installed };
+                IncarnationEffects::Stop
+            }
+        }
+    }
+
+    pub(crate) fn shutdown_complete_after(&self, stopped: N) -> bool {
+        matches!(
+            self.state,
+            IncarnationState::ShuttingDown { incarnation } if incarnation == stopped
+        )
+    }
+
+    /// Resolve only a rejection for the exact incarnation whose shutdown this
+    /// lifecycle requested. `NotEstablished` proves that no owned child
+    /// remains at that nonce; `AlreadyStopping` still requires the terminal
+    /// observation.
+    pub(crate) fn shutdown_rejected<M>(
+        &mut self,
+        nonce: N,
+        reason: ChildShutdownRejection,
+    ) -> Result<IncarnationEffects<N, C, M>, IncarnationError> {
+        let IncarnationState::ShuttingDown { incarnation } = self.state else {
+            return Ok(IncarnationEffects::None);
+        };
+        if nonce != incarnation {
+            return Ok(IncarnationEffects::None);
+        }
+        match reason {
+            ChildShutdownRejection::AlreadyStopping => Ok(IncarnationEffects::None),
+            ChildShutdownRejection::NotEstablished => {
+                Err(IncarnationError::ShutdownRejected(reason))
+            }
+        }
     }
 }
 

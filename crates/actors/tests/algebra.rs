@@ -12,13 +12,14 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, Activate, Become, Behavior, BehaviorBase, Births, ChildStopped, Crash, Create,
-    CreationKind, CreationRejection, CreationResolved, DeadlineEvent, Delivery, Exit, Machine,
-    MailAddr, Move, Never, NoBirths, ObserveChild, PeerStopped, Proxy, ProxyCommand, ProxyEvent,
-    Recipient, RestartDenial, RestartPolicy, RouteInput, SendAlgebra, ServiceSends,
-    ShutdownRequested, StashRoute, Step, Strategy, SupervisionEvent, SupervisionFailure,
-    SupervisionFailureReason, Supervisor, TimerElapsed, TimerGeneration, TimerId, User, UserEvent,
-    Watch, WatchEvent, WorkerStopped, stop_on_abnormal_death, stop_on_supervision_failure,
+    Acted, Actions, Activate, Become, Behavior, BehaviorBase, Births, ChildShutdownRejected,
+    ChildShutdownRejection, ChildStopped, Crash, Create, CreationKind, CreationRejection,
+    CreationResolved, DeadlineEvent, Delivery, Exit, Machine, MailAddr, Move, Never, NoBirths,
+    ObserveChild, PeerStopped, Proxy, ProxyCommand, ProxyEvent, Recipient, RestartDenial,
+    RestartPolicy, RouteInput, SendAlgebra, ServiceSends, ShutdownChild, ShutdownRequested,
+    StashRoute, Step, Strategy, SupervisionEvent, SupervisionFailure, SupervisionFailureReason,
+    Supervisor, TimerElapsed, TimerGeneration, TimerId, User, UserEvent, Watch, WatchEvent,
+    WorkerStopped, stop_on_abnormal_death, stop_on_supervision_failure,
 };
 use proptest::prelude::*;
 use std::time::Instant;
@@ -809,6 +810,92 @@ async fn a_proxy_ignores_a_stale_child_stop_nonce() {
         forwarded.sends.deliveries[0].to.resolve(MailAddr(17)),
         behavior::Address::birth(MailAddr(17), 0)
     );
+}
+
+#[tokio::test]
+async fn a_proxy_shuts_down_its_exact_worker_before_stopping() {
+    let initialized = Proxy::new(child(0)).initialize().unwrap();
+    let mut proxy = initialized.behavior;
+    proxy.on(CreationResolved::birth(0)).unwrap();
+
+    let requested = proxy.on(ShutdownRequested).unwrap();
+    assert_eq!(
+        requested.sends.shutdowns.as_slice(),
+        [ShutdownChild::new(0)]
+    );
+    assert!(matches!(requested.become_, Step::Continue));
+
+    let stale = proxy
+        .on(ChildStopped::new(9, Ok(Exit::Normal), Instant::now()))
+        .unwrap();
+    assert!(matches!(stale.become_, Step::Continue));
+
+    let stopped = proxy
+        .on(ChildStopped::new(0, Ok(Exit::Normal), Instant::now()))
+        .unwrap();
+    assert!(matches!(stopped.become_, Step::Stop(_)));
+    assert_eq!(stopped.sends.stopped_reports.len(), 1);
+}
+
+#[tokio::test]
+async fn proxy_shutdown_waits_for_in_flight_creation_resolution() {
+    let initialized = Proxy::new(child(0)).initialize().unwrap();
+    let mut accepted = initialized.behavior;
+    let waiting = accepted.on(ShutdownRequested).unwrap();
+    assert!(waiting.sends.shutdowns.is_empty());
+    assert!(matches!(waiting.become_, Step::Continue));
+
+    let resolved = accepted.on(CreationResolved::birth(0)).unwrap();
+    assert_eq!(resolved.sends.shutdowns.as_slice(), [ShutdownChild::new(0)]);
+    assert!(matches!(resolved.become_, Step::Continue));
+
+    let initialized = Proxy::new(child(0)).initialize().unwrap();
+    let mut rejected = initialized.behavior;
+    rejected.on(ShutdownRequested).unwrap();
+    let resolved = rejected
+        .on(CreationResolved::new(
+            0,
+            CreationKind::Birth,
+            Err(CreationRejection::EnvironmentFailed),
+        ))
+        .unwrap();
+    assert!(resolved.sends.shutdowns.is_empty());
+    assert!(matches!(resolved.become_, Step::Stop(_)));
+}
+
+#[tokio::test]
+async fn proxy_shutdown_rejection_is_correlated_to_the_requested_worker() {
+    let initialized = Proxy::new(child(0)).initialize().unwrap();
+    let mut proxy = initialized.behavior;
+    proxy.on(CreationResolved::birth(0)).unwrap();
+    proxy.on(ShutdownRequested).unwrap();
+
+    let stale = proxy
+        .on(ChildShutdownRejected::new(
+            9,
+            ChildShutdownRejection::NotEstablished,
+        ))
+        .unwrap();
+    assert!(matches!(stale.become_, Step::Continue));
+
+    let already = proxy
+        .on(ChildShutdownRejected::new(
+            0,
+            ChildShutdownRejection::AlreadyStopping,
+        ))
+        .unwrap();
+    assert!(matches!(already.become_, Step::Continue));
+
+    let rejected = proxy.on(ChildShutdownRejected::new(
+        0,
+        ChildShutdownRejection::NotEstablished,
+    ));
+    assert!(matches!(
+        rejected,
+        Err(behavior::ProxyError::ShutdownRejected(
+            ChildShutdownRejection::NotEstablished
+        ))
+    ));
 }
 
 #[test]
