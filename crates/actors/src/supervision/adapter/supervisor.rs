@@ -10,7 +10,8 @@ use super::super::policy::{
 use super::super::protocol::{ProxyCommand, SupervisionEvent};
 use super::proxy::Proxy;
 use crate::protocol::{
-    ChildStopped, CreationResolved, ObserveChild, WorkerCreationResolved, WorkerStopped,
+    ChildStopped, CreationResolved, ObserveChild, ObserveCreation, WorkerCreationResolved,
+    WorkerStopped,
 };
 use crate::{Become, Exit, SupervisionFailureReason};
 use crate::{Own, RouteInput, SendInput};
@@ -106,6 +107,8 @@ where
     pub behavior: Sends,
     /// Requests to observe every accepted stable proxy creation.
     pub child_observations: ServiceSends<ObserveChild<A::Nonce>>,
+    /// Requests for the committed result of every staged stable proxy creation.
+    pub creation_observations: ServiceSends<ObserveCreation<A::Nonce>>,
     /// Commands asking stable proxies to install fresh worker incarnations.
     pub replacement_commands: Vec<Delivery<Proxy<C>>>,
     /// Typed terminal supervision failures for the local runtime observer.
@@ -123,6 +126,7 @@ where
         Self {
             behavior: Sends::empty(),
             child_observations: ServiceSends::empty(),
+            creation_observations: ServiceSends::empty(),
             replacement_commands: Vec::new(),
             failure_reports: ServiceSends::empty(),
         }
@@ -131,8 +135,21 @@ where
     fn append(&mut self, other: Self) {
         self.behavior.append(other.behavior);
         self.child_observations.append(other.child_observations);
+        self.creation_observations
+            .append(other.creation_observations);
         self.replacement_commands.extend(other.replacement_commands);
         self.failure_reports.append(other.failure_reports);
+    }
+}
+
+impl<A, Sends, C> SendInput<ObserveCreation<A::Nonce>, Own> for SupervisorSends<A, Sends, C>
+where
+    A: Address,
+    A::Nonce: From<u64>,
+    C: Behavior<Addr = A, Ph = Never>,
+{
+    fn emit(&mut self, input: ObserveCreation<A::Nonce>) {
+        self.creation_observations.send(input);
     }
 }
 
@@ -379,6 +396,13 @@ where
                         .map(|create| ObserveChild::new(create.nonce))
                         .collect(),
                 ),
+                creation_observations: ServiceSends::new(
+                    actions
+                        .creates
+                        .iter()
+                        .map(|create| ObserveCreation::new(create.nonce))
+                        .collect(),
+                ),
                 replacement_commands: Vec::new(),
                 failure_reports: ServiceSends::empty(),
             },
@@ -436,7 +460,11 @@ where
         actions
             .sends
             .child_observations
-            .extend(configured.into_iter().map(ObserveChild::new));
+            .extend(configured.iter().copied().map(ObserveChild::new));
+        actions
+            .sends
+            .creation_observations
+            .extend(configured.into_iter().map(ObserveCreation::new));
         Ok(actions)
     }
 
@@ -454,6 +482,7 @@ where
                         SupervisorSends {
                             behavior: B::Sends::empty(),
                             child_observations: ServiceSends::empty(),
+                            creation_observations: ServiceSends::empty(),
                             replacement_commands: replacements,
                             failure_reports: ServiceSends::empty(),
                         },
@@ -464,6 +493,7 @@ where
                         SupervisorSends {
                             behavior: B::Sends::empty(),
                             child_observations: ServiceSends::empty(),
+                            creation_observations: ServiceSends::empty(),
                             replacement_commands: Vec::new(),
                             failure_reports: ServiceSends::one(ReportSupervisionFailure::new(
                                 failure,
@@ -486,6 +516,7 @@ where
                     SupervisorSends {
                         behavior: B::Sends::empty(),
                         child_observations: ServiceSends::empty(),
+                        creation_observations: ServiceSends::empty(),
                         replacement_commands: Vec::new(),
                         failure_reports: ServiceSends::one(ReportSupervisionFailure::new(failure)),
                     },

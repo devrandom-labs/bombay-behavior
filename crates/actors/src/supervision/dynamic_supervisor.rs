@@ -1,8 +1,8 @@
 //! Explicitly managed dynamic stable-child topology.
 
 use crate::{
-    ChildShutdownRejected, ChildStopped, CreationRejection, CreationResolved, ObserveChild, Own,
-    Proxy, ProxyCommand, SendInput, ShutdownChild, WorkerCreationResolved,
+    ChildShutdownRejected, ChildStopped, CreationRejection, CreationResolved, ObserveChild,
+    ObserveCreation, Own, Proxy, ProxyCommand, SendInput, ShutdownChild, WorkerCreationResolved,
 };
 use behavior::{
     Actions, Address, Behavior, BehaviorActed, Births, Create, Delivery, Never, Recipient,
@@ -193,6 +193,7 @@ where
 {
     pub outcomes: Vec<Delivery<Reply>>,
     pub child_observations: ServiceSends<ObserveChild<A::Nonce>>,
+    pub creation_observations: ServiceSends<ObserveCreation<A::Nonce>>,
     pub shutdowns: ServiceSends<ShutdownChild<Proxy<C>>>,
     pub replacements: Vec<Delivery<Proxy<C>>>,
 }
@@ -208,6 +209,7 @@ where
         Self {
             outcomes: vec![],
             child_observations: ServiceSends::empty(),
+            creation_observations: ServiceSends::empty(),
             shutdowns: ServiceSends::empty(),
             replacements: vec![],
         }
@@ -215,6 +217,8 @@ where
     fn append(&mut self, other: Self) {
         self.outcomes.extend(other.outcomes);
         self.child_observations.append(other.child_observations);
+        self.creation_observations
+            .append(other.creation_observations);
         self.shutdowns.append(other.shutdowns);
         self.replacements.extend(other.replacements);
     }
@@ -228,6 +232,17 @@ where
 {
     fn emit(&mut self, value: ObserveChild<A::Nonce>) {
         self.child_observations.send(value);
+    }
+}
+impl<A, C, Reply> SendInput<ObserveCreation<A::Nonce>, Own> for DynamicSupervisorSends<A, C, Reply>
+where
+    A: Address,
+    A::Nonce: From<u64>,
+    C: Behavior<Addr = A, Ph = Never>,
+    Reply: Behavior<Addr = A>,
+{
+    fn emit(&mut self, value: ObserveCreation<A::Nonce>) {
+        self.creation_observations.send(value);
     }
 }
 impl<A, C, Reply> SendInput<ShutdownChild<Proxy<C>>, Own> for DynamicSupervisorSends<A, C, Reply>
@@ -351,6 +366,9 @@ where
                         DynamicSupervisorOutcome::StartAccepted { nonce },
                     ));
                     sends.child_observations.send(ObserveChild::new(nonce));
+                    sends
+                        .creation_observations
+                        .send(ObserveCreation::new(nonce));
                     Ok(Actions::new(
                         sends,
                         vec![Create::birth(nonce, Proxy::new(child))],
@@ -584,6 +602,14 @@ mod tests {
             .unwrap();
         assert_eq!(active.phase(7), Some(DynamicChildPhase::Installing));
         assert_eq!(accepted.creates.len(), 1);
+        assert_eq!(
+            accepted.sends.child_observations.as_slice(),
+            [ObserveChild::new(7)]
+        );
+        assert_eq!(
+            accepted.sends.creation_observations.as_slice(),
+            [ObserveCreation::new(7)]
+        );
         assert!(matches!(
             accepted.sends.outcomes[0].message,
             DynamicSupervisorOutcome::StartAccepted { nonce: 7 }
@@ -600,6 +626,8 @@ mod tests {
             )
             .unwrap();
         assert!(duplicate.creates.is_empty());
+        assert!(duplicate.sends.child_observations.is_empty());
+        assert!(duplicate.sends.creation_observations.is_empty());
         assert!(matches!(
             duplicate.sends.outcomes[0].message,
             DynamicSupervisorOutcome::StartRejected {
@@ -616,6 +644,48 @@ mod tests {
         assert!(matches!(
             installed.sends.outcomes[0].message,
             DynamicSupervisorOutcome::Started { nonce: 7 }
+        ));
+    }
+
+    #[test]
+    fn rejected_start_resolution_retires_the_slot_without_losing_the_observation_request() {
+        let mut active = DynamicSupervisor::<MailAddr, Worker, Reply>::new()
+            .initialize()
+            .unwrap()
+            .behavior;
+        let start = active
+            .receive(
+                MailAddr(1),
+                DynamicSupervisorMessage::Start {
+                    nonce: 5,
+                    child: Worker,
+                    reply_to: reply(),
+                },
+            )
+            .unwrap();
+        assert_eq!(
+            start.sends.child_observations.as_slice(),
+            [ObserveChild::new(5)]
+        );
+        assert_eq!(
+            start.sends.creation_observations.as_slice(),
+            [ObserveCreation::new(5)]
+        );
+
+        let rejected = active
+            .on(CreationResolved::rejected(
+                5,
+                CreationKind::Birth,
+                CreationRejection::EnvironmentFailed,
+            ))
+            .unwrap();
+        assert_eq!(active.phase(5), Some(DynamicChildPhase::Retired));
+        assert!(matches!(
+            rejected.sends.outcomes[0].message,
+            DynamicSupervisorOutcome::StartFailed {
+                nonce: 5,
+                reason: CreationRejection::EnvironmentFailed,
+            }
         ));
     }
 

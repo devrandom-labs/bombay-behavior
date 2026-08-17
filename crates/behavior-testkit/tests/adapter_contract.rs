@@ -163,6 +163,7 @@ fn supervisor_products_are_named_and_creation_order_is_adapter_visible() {
             SupervisorSends {
                 behavior,
                 child_observations,
+                creation_observations,
                 replacement_commands,
                 failure_reports,
             },
@@ -177,6 +178,11 @@ fn supervisor_products_are_named_and_creation_order_is_adapter_visible() {
         .map(|ObserveChild { nonce }| *nonce)
         .collect();
     assert_eq!(observed, [9, 1, 2]);
+    let creation_observed: Vec<_> = creation_observations
+        .iter()
+        .map(|behavior::ObserveCreation { nonce }| *nonce)
+        .collect();
+    assert_eq!(creation_observed, [9, 1, 2]);
     assert!(behavior.is_empty());
     assert!(replacement_commands.is_empty());
     assert!(failure_reports.is_empty());
@@ -250,5 +256,7 @@ fn pool_configuration_separates_topology_from_runtime_neutral_policy() {
         2
     );
     let _: ServiceSends<ObserveChild<u64>> = initialized.actions.sends.child_observations;
+    let _: ServiceSends<behavior::ObserveCreation<u64>> =
+        initialized.actions.sends.creation_observations;
     let _: Vec<Delivery<Proxy<Worker>>> = initialized.actions.sends.replacement_commands;
 }

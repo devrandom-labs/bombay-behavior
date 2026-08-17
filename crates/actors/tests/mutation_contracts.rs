@@ -356,12 +356,14 @@ fn typed_send_accumulation_routes_every_named_lane_once() {
 
     let mut supervisor = SupervisorSends::<MailAddr, Vec<u8>, Child>::empty();
     supervisor.send(ObserveChild::new(8));
+    supervisor.send(ObserveCreation::new(8));
     supervisor.send(Delivery::new(
         Recipient::child(8),
         ProxyCommand::Replace(Quiet),
     ));
     supervisor.behavior.send(9_u8);
     assert_eq!(supervisor.child_observations[0].nonce, 8);
+    assert_eq!(supervisor.creation_observations[0].nonce, 8);
     assert_eq!(
         supervisor.replacement_commands[0].to.resolve(MailAddr(17)),
         behavior::Address::birth(MailAddr(17), 8)

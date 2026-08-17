@@ -406,6 +406,8 @@ async fn supervision_preserves_inner_watch_routing() {
     assert_eq!(initial.creates.len(), 2);
     assert_eq!(initial.sends.child_observations.len(), 2); // observe-child x2
     assert_eq!(initial.sends.child_observations[0].nonce, 0);
+    assert_eq!(initial.sends.creation_observations.len(), 2);
+    assert_eq!(initial.sends.creation_observations[0].nonce, 0);
     assert_eq!(initial.sends.behavior.observations.len(), 1); // observe-peer
     assert_eq!(initial.sends.behavior.observations[0].peer, PEER);
 

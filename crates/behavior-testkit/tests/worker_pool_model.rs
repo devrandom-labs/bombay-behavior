@@ -207,6 +207,14 @@ fn initialization_stages_and_observes_every_stable_proxy_before_dispatch() {
     let pool = initialized.behavior;
     assert_eq!(actions.creates.len(), 2);
     assert_eq!(actions.sends.child_observations.len(), 2);
+    assert_eq!(actions.sends.creation_observations.len(), 2);
+    for (creation, observation) in actions
+        .creates
+        .iter()
+        .zip(actions.sends.creation_observations.iter())
+    {
+        assert_eq!(creation.nonce, observation.nonce);
+    }
     assert!(assignments(&actions).is_empty());
     assert_eq!(pool.worker_phase(0), Some(WorkerPhase::Installing));
     assert_eq!(pool.worker_phase(1), Some(WorkerPhase::Installing));

@@ -360,6 +360,8 @@ proptest! {
                 // The born child is observed exactly once.
                 prop_assert_eq!(actions.sends.child_observations.len(), 1);
                 prop_assert_eq!(actions.sends.child_observations[0].nonce, nonce);
+                prop_assert_eq!(actions.sends.creation_observations.len(), 1);
+                prop_assert_eq!(actions.sends.creation_observations[0].nonce, nonce);
             } else {
                 // Child-stopped for an existing slot.
                 let known = model.slot_count();

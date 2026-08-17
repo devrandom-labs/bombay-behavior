@@ -408,6 +408,25 @@ mod tests {
     fn accepted_replacement_is_scheduled_then_released_by_exact_timer() {
         let initialized = subject(timer).initialize().unwrap();
         assert_eq!(initialized.actions.creates.len(), 2);
+        assert_eq!(
+            initialized
+                .actions
+                .sends
+                .supervision
+                .creation_observations
+                .len(),
+            2
+        );
+        for (creation, observation) in initialized.actions.creates.iter().zip(
+            initialized
+                .actions
+                .sends
+                .supervision
+                .creation_observations
+                .iter(),
+        ) {
+            assert_eq!(creation.nonce, observation.nonce);
+        }
         assert!(initialized.actions.sends.schedules.is_empty());
         let mut active = initialized.behavior;
         let delayed = active.on(stopped(1)).unwrap();
