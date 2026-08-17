@@ -1,10 +1,24 @@
 use std::time::Duration;
 
 use behavior::{
-    Actions, Behavior, Births, CreationKind, Delivery, InterruptionPolicy, JobId, MailAddr, Never,
-    NoBirths, PoolAssignment, PoolMessage, Recipient, RestartPolicy, Step, WorkerCreationResolved,
-    WorkerPool,
+    Actions, Behavior, Births, CreationKind, Delivery, Effect, InterruptionPolicy, JobId, MailAddr,
+    Never, NoBirths, PoolAssignment, PoolMessage, Recipient, RestartPolicy, Step,
+    WorkerCreationResolved, WorkerPool,
 };
+
+struct Printer(u64);
+
+#[behavior::actor]
+impl Printer {
+    fn receive(
+        &mut self,
+        from: MailAddr,
+        message: u64,
+    ) -> Effect<Delivery<behavior_testkit::TestRecipient<u64>>> {
+        self.0 += message;
+        Effect::send(Delivery::new(Recipient::global(from), self.0))
+    }
+}
 
 struct Counter {
     total: u64,
@@ -98,6 +112,24 @@ fn omitted_initialization_is_the_explicit_empty_transition() {
     assert!(actions.sends.is_empty());
     assert!(actions.creates.is_empty());
     assert!(matches!(actions.become_, Step::Continue));
+}
+
+#[test]
+fn actor_attribute_infers_the_honest_infallible_no_birth_subset() {
+    fn assert_protocol<B>(_: &B)
+    where
+        B: Behavior<Addr = MailAddr, Msg = u64, Error = Never, Birth = NoBirths>,
+    {
+    }
+
+    let printer = Printer(1);
+    assert_protocol(&printer);
+    let initialized = printer.initialize().unwrap();
+    assert!(initialized.actions.sends.is_empty());
+    let mut printer = initialized.behavior;
+    let actions = printer.receive(MailAddr(7), 4).unwrap();
+    assert_eq!(actions.sends[0].message, 5);
+    assert_eq!(actions.sends[0].to, Recipient::global(MailAddr(7)));
 }
 
 #[test]

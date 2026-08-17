@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Add the runtime-free `Effect` shorthand and `#[actor]` macro for the honest
+  synchronous, infallible, no-birth subset of the Behavior algebra.
+
 - Add `InstallBirth` and `DispatchBirth` as the statically dispatched
   interpreter contract for closed heterogeneous creation products.
 - Implement `DispatchBirth` for every concrete `Behavior`, so homogeneous

@@ -193,7 +193,7 @@ where
 {
     pub outcomes: Vec<Delivery<Reply>>,
     pub child_observations: ServiceSends<ObserveChild<A::Nonce>>,
-    pub shutdowns: ServiceSends<ShutdownChild<A::Nonce>>,
+    pub shutdowns: ServiceSends<ShutdownChild<Proxy<C>>>,
     pub replacements: Vec<Delivery<Proxy<C>>>,
 }
 
@@ -230,14 +230,14 @@ where
         self.child_observations.send(value);
     }
 }
-impl<A, C, Reply> SendInput<ShutdownChild<A::Nonce>, Own> for DynamicSupervisorSends<A, C, Reply>
+impl<A, C, Reply> SendInput<ShutdownChild<Proxy<C>>, Own> for DynamicSupervisorSends<A, C, Reply>
 where
     A: Address,
     A::Nonce: From<u64>,
     C: Behavior<Addr = A, Ph = Never>,
     Reply: Behavior<Addr = A>,
 {
-    fn emit(&mut self, value: ShutdownChild<A::Nonce>) {
+    fn emit(&mut self, value: ShutdownChild<Proxy<C>>) {
         self.shutdowns.send(value);
     }
 }
@@ -361,7 +361,7 @@ where
                     match self.children.iter_mut().find(|(n, _)| *n == nonce) {
                         Some((_, state @ DynamicChild::Available)) => {
                             *state = DynamicChild::Stopping { reply_to };
-                            sends.shutdowns.send(ShutdownChild::new(nonce));
+                            sends.shutdowns.send(ShutdownChild::<Proxy<C>>::new(nonce));
                             sends.outcomes.push(Delivery::new(
                                 reply_to,
                                 DynamicSupervisorOutcome::StopAccepted { nonce },

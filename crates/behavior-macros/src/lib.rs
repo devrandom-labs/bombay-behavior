@@ -1,8 +1,8 @@
 //! `behavior-macros` — proc-macros for the behavior algebra.
 //!
-//! `#[behavior]` wires an ordinary inherent user-message fold to the concrete
-//! `Behavior` trait. `#[births]` wires a closed creation-only enum to exhaustive
-//! static installation; it never generates a behavior or forwarding protocol.
+//! `#[actor]` wires the ordinary infallible/no-birth subset, `#[behavior]`
+//! wires a fully declared inherent user-message fold, and `#[births]` wires a
+//! closed creation-only enum to exhaustive static installation.
 
 use proc_macro::TokenStream;
 use proc_macro_crate::{FoundCrate, crate_name};
@@ -10,8 +10,8 @@ use proc_macro2::{Span, TokenStream as TokenStream2};
 use quote::quote;
 use syn::parse::{Parse, ParseStream};
 use syn::{
-    Error, Fields, FnArg, ImplItem, ItemEnum, ItemImpl, Result, ReturnType, Token, Type,
-    parse_macro_input,
+    Error, Fields, FnArg, GenericArgument, ImplItem, ItemEnum, ItemImpl, PathArguments, Result,
+    ReturnType, Token, Type, parse_macro_input,
 };
 
 mod behavior_kw {
@@ -128,6 +128,133 @@ fn validate_receiver(method: &syn::ImplItemFn) -> Result<()> {
         ));
     }
     Ok(())
+}
+
+/// Define the common synchronous, infallible, no-birth behavior subset.
+#[proc_macro_attribute]
+pub fn actor(args: TokenStream, item: TokenStream) -> TokenStream {
+    if !args.is_empty() {
+        return Error::new(Span::call_site(), "#[actor] accepts no arguments")
+            .to_compile_error()
+            .into();
+    }
+    let item = parse_macro_input!(item as ItemImpl);
+    if item.trait_.is_some() {
+        return Error::new_spanned(&item, "#[actor] applies to an inherent impl")
+            .to_compile_error()
+            .into();
+    }
+    let Some(receive) = item.items.iter().find_map(|item| match item {
+        ImplItem::Fn(method) if method.sig.ident == "receive" => Some(method),
+        _ => None,
+    }) else {
+        return Error::new_spanned(
+            &item.self_ty,
+            "#[actor] requires receive(&mut self, from, message)",
+        )
+        .to_compile_error()
+        .into();
+    };
+    if let Err(error) = validate_receiver(receive) {
+        return error.to_compile_error().into();
+    }
+    if receive.sig.inputs.len() != 3 {
+        return Error::new_spanned(
+            &receive.sig,
+            "receive must accept exactly &mut self, from, and message",
+        )
+        .to_compile_error()
+        .into();
+    }
+    let mut parameters = receive.sig.inputs.iter().skip(1);
+    let Some(FnArg::Typed(from)) = parameters.next() else {
+        return Error::new_spanned(&receive.sig, "from requires an explicit address type")
+            .to_compile_error()
+            .into();
+    };
+    let Some(FnArg::Typed(message)) = parameters.next() else {
+        return Error::new_spanned(&receive.sig, "message requires an explicit type")
+            .to_compile_error()
+            .into();
+    };
+    let ReturnType::Type(_, result) = &receive.sig.output else {
+        return Error::new_spanned(&receive.sig, "receive must return Effect<Send>")
+            .to_compile_error()
+            .into();
+    };
+    let Type::Path(result_path) = result.as_ref() else {
+        return Error::new_spanned(result, "receive must return Effect<Send>")
+            .to_compile_error()
+            .into();
+    };
+    let Some(effect) = result_path.path.segments.last() else {
+        return Error::new_spanned(result, "receive must return Effect<Send>")
+            .to_compile_error()
+            .into();
+    };
+    if effect.ident != "Effect" {
+        return Error::new_spanned(result, "receive must return Effect<Send>")
+            .to_compile_error()
+            .into();
+    }
+    let PathArguments::AngleBracketed(arguments) = &effect.arguments else {
+        return Error::new_spanned(result, "Effect requires its send value type")
+            .to_compile_error()
+            .into();
+    };
+    let Some(GenericArgument::Type(send)) = arguments.args.first() else {
+        return Error::new_spanned(result, "Effect requires its send value type")
+            .to_compile_error()
+            .into();
+    };
+    let behavior = match behavior_crate() {
+        Ok(behavior) => behavior,
+        Err(error) => return error.to_compile_error().into(),
+    };
+    let self_ty = &item.self_ty;
+    let address = &from.ty;
+    let message = &message.ty;
+    let (impl_generics, _, where_clause) = item.generics.split_for_impl();
+
+    quote! {
+        #item
+
+        impl #impl_generics #behavior::Behavior for #self_ty #where_clause {
+            type Addr = #address;
+            type Msg = #message;
+            type Event = #behavior::User<#address, #message>;
+            type Sends = ::std::vec::Vec<#send>;
+            type Ph = #behavior::Never;
+            type Error = #behavior::Never;
+            type Birth = #behavior::NoBirths;
+
+            fn init(
+                &mut self,
+                _: #behavior::InitializationTurn,
+            ) -> #behavior::BehaviorActed<Self> {
+                ::core::result::Result::Ok(#behavior::Actions::cont())
+            }
+
+            fn transition(
+                &mut self,
+                _: #behavior::ActiveTurn,
+                event: Self::Event,
+            ) -> #behavior::BehaviorActed<Self> {
+                ::core::result::Result::Ok(::core::convert::Into::into(
+                    <#self_ty>::receive(self, event.from, event.message)
+                ))
+            }
+        }
+
+        impl #impl_generics #behavior::BehaviorBase for #self_ty #where_clause {
+            type Base = Self;
+
+            fn base(&self) -> &Self {
+                self
+            }
+        }
+    }
+    .into()
 }
 
 /// Generate the mechanical `Behavior` implementation for a normal inherent

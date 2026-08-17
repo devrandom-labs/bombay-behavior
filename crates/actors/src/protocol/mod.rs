@@ -462,21 +462,85 @@ impl<N> From<(N, ReportWorkerCreationResolved<N>)> for WorkerCreationResolved<N>
 pub struct ShutdownRequested;
 
 /// Ask the local interpreter to begin orderly shutdown of one established
-/// child in the emitting actor's namespace.
+/// child of protocol `C` in the emitting actor's namespace.
 ///
 /// Acceptance is not completion. A successfully accepted request is completed
 /// only by the corresponding [`ChildStopped`] fact. If the interpreter cannot
-/// select an established child, it must return [`ChildShutdownRejected`]
+/// select an established `C` child, it must return [`ChildShutdownRejected`]
 /// rather than fabricate termination or fail the whole action application.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ShutdownChild<N> {
-    pub nonce: N,
+/// Protocol identity is retained in the type even when two child protocols use
+/// the same address and nonce types:
+///
+/// ```compile_fail
+/// use behavior::{Actions, Behavior, MailAddr, Never, NoBirths, User};
+/// use behavior_actors::ShutdownChild;
+///
+/// struct Queue;
+/// struct Worker;
+/// macro_rules! inert {
+///     ($actor:ty) => {
+///         impl Behavior for $actor {
+///             type Addr = MailAddr;
+///             type Msg = u8;
+///             type Event = User<MailAddr, u8>;
+///             type Sends = Vec<Never>;
+///             type Ph = Never;
+///             type Error = Never;
+///             type Birth = NoBirths;
+///             fn init(&mut self, _: crate::InitializationTurn) -> behavior::BehaviorActed<Self> {
+///                 Ok(Actions::cont())
+///             }
+///             fn transition(&mut self, _: crate::ActiveTurn, _: Self::Event) -> behavior::BehaviorActed<Self> {
+///                 Ok(Actions::cont())
+///             }
+///         }
+///     };
+/// }
+/// inert!(Queue);
+/// inert!(Worker);
+///
+/// let queue = ShutdownChild::<Queue>::new(1);
+/// let _: ShutdownChild<Worker> = queue;
+/// ```
+pub struct ShutdownChild<C: behavior::Behavior> {
+    pub nonce: <C::Addr as behavior::Address>::Nonce,
+    protocol: core::marker::PhantomData<fn() -> C>,
 }
 
-impl<N> ShutdownChild<N> {
+impl<C: behavior::Behavior> ShutdownChild<C> {
     #[must_use]
-    pub const fn new(nonce: N) -> Self {
-        Self { nonce }
+    pub const fn new(nonce: <C::Addr as behavior::Address>::Nonce) -> Self {
+        Self {
+            nonce,
+            protocol: core::marker::PhantomData,
+        }
+    }
+}
+
+impl<C: behavior::Behavior> Copy for ShutdownChild<C> {}
+
+impl<C: behavior::Behavior> Clone for ShutdownChild<C> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<C: behavior::Behavior> PartialEq for ShutdownChild<C> {
+    fn eq(&self, other: &Self) -> bool {
+        self.nonce == other.nonce
+    }
+}
+
+impl<C: behavior::Behavior> Eq for ShutdownChild<C> {}
+
+impl<C: behavior::Behavior> core::fmt::Debug for ShutdownChild<C>
+where
+    <C::Addr as behavior::Address>::Nonce: core::fmt::Debug,
+{
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("ShutdownChild")
+            .field("nonce", &self.nonce)
+            .finish()
     }
 }
 

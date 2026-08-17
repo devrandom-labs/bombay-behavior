@@ -6,6 +6,9 @@ All notable changes to `bombay-behavior-actors` are documented here.
 
 ### Changed
 
+- Preserve the concrete child behavior protocol in `ShutdownChild<C>` and in
+  the homogeneous `ShutdownCoordinator<B, C>` effect lane, allowing runtimes
+  to select the hosted namespace without ambient lookup or type erasure.
 - Make every semantic wrapper constructor public and remove the parallel
   `Compose` extension API, including its policy-bearing `children` shortcut.
 - Require supervisor restart strategy, eligibility, and budget to enter

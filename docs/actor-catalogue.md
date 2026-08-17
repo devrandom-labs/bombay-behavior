@@ -310,8 +310,8 @@ must not import a second implementation of those semantics.
 | `LifecyclePublisher<T>` | Lifecycle events plus subscribers | Actors | None |
 | `TerminationMonitor<T>` | Watch plus termination classification | Actors | None |
 | `Reaper<T>` | Monitor plus cleanup communications | Actors | None |
-| `ShutdownCoordinator<T>` | Shutdown phases plus acknowledgements | Actors | None |
-| `TreeShutdown<T>` | Child topology plus ordered shutdown | Actors | `petgraph` only for a dependency graph |
+| `ShutdownCoordinator<B, C>` | Homogeneous typed-child shutdown phases plus acknowledgements | Actors | None |
+| `TreeShutdown<B, C>` | Homogeneous typed-child topology plus ordered shutdown | Actors | `petgraph` only for a dependency graph |
 
 Backoff is small and semantically observable, so Bombay should define its own
 exhaustive policy instead of importing the assumptions of an asynchronous

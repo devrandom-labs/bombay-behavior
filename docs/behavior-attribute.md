@@ -82,6 +82,26 @@ transition law or grant the macro any interpreter capability.
 
 ## Separate macro boundaries
 
+`#[behavior::actor]` is the inferred shorthand for the common synchronous,
+infallible, no-birth subset:
+
+```rust,ignore
+#[behavior::actor]
+impl Printer {
+    fn receive(&mut self, from: MailAddr, message: String) -> Effect<Delivery<Sink>> {
+        Effect::send(Delivery::new(Recipient::global(from), message))
+    }
+}
+```
+
+It infers `Addr` and `Msg` from the explicit parameters and the vector send
+element from `Effect<Send>`. Its remaining associated types are truthfully
+fixed to `Never` phase/error and `NoBirths`. `Effect` is only a pure shorthand
+for `Actions<A, Never, Vec<Send>, NoBirths>`; it has no runtime dependency or
+interpretation authority. Any behavior requiring initialization effects,
+named send products, controlled errors, births, phases, or service-event sums
+uses the complete `#[behavior(...)]` contract.
+
 `#[behavior]` generates only nominal user-message fold wiring.
 `#[behavior::births]` applies to a closed enum whose variants each contain one
 concrete child behavior. It generates only exhaustive `DispatchBirth` wiring:

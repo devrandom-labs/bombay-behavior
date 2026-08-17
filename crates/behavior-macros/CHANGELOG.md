@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Add Behavior-owned `#[actor]` inference for synchronous methods returning
+  the narrow `Effect<Send>` algebra, replacing the misplaced Bombay-runtime
+  implementation without weakening the complete `#[behavior]` path.
+
 - Add `#[births]` for closed creation-only heterogeneous child sums with
   exhaustive, statically bounded installation dispatch.
 - Resolve generated paths through either a direct `bombay-behavior` dependency

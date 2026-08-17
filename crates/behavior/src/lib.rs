@@ -8,6 +8,7 @@
 extern crate self as behavior;
 
 mod actor;
+mod effect;
 mod effects;
 mod next;
 mod reducer;
@@ -18,6 +19,7 @@ pub use actor::{
     Address, BirthMode, Births, Create, CreationKind, Delivery, DispatchBirth, InstallBirth,
     MailAddr, NoBirths, Recipient,
 };
+pub use effect::Effect;
 pub use effects::{Acted, Actions, Become, Own, SendAlgebra, SendInput, ServiceSends};
 pub use next::{Never, Step, Stopped};
 pub use reducer::{ActionReducer, Effects, FoldFailure, Folded, fold_events};
@@ -92,6 +94,17 @@ pub use user_event::{EventInput, RouteInput, User, UserEvent};
 /// }
 /// ```
 pub use behavior_macros::behavior;
+
+/// Define an ordinary synchronous, infallible, no-birth behavior from a
+/// `receive(&mut self, from, message) -> Effect<Send>` method.
+///
+/// The macro infers the address and message types from the two explicit method
+/// parameters and the send element from [`Effect`]. It generates the same
+/// concrete [`Behavior`] algebra as `#[behavior]`, fixing only the deliberately
+/// narrow `Never` phase/error and [`NoBirths`] capability. Advanced protocols
+/// must use `#[behavior]` rather than concealing capabilities behind this
+/// convenience surface.
+pub use behavior_macros::actor;
 
 /// Define a closed, creation-only heterogeneous child sum.
 ///

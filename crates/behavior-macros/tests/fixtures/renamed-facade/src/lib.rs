@@ -1,4 +1,4 @@
-use runtime::behavior::{Actions, BehaviorActed, MailAddr, Never, NoBirths};
+use runtime::behavior::{Actions, BehaviorActed, Effect, MailAddr, Never, NoBirths};
 
 struct First;
 struct Second;
@@ -33,4 +33,13 @@ impl Second {
 enum Children {
     First(First),
     Second(Second),
+}
+
+struct Inferred;
+
+#[runtime::behavior::actor]
+impl Inferred {
+    fn receive(&mut self, _: MailAddr, _: u32) -> Effect<Never> {
+        Effect::none()
+    }
 }

@@ -203,15 +203,46 @@ forward_event_lane!(
     crate::WorkerCreationResolved<<E::Addr as Address>::Nonce>
 );
 
-/// Named effects added by coordinated shutdown.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ShutdownCoordinatorSends<N, S> {
+/// Named effects added by homogeneous coordinated shutdown.
+///
+/// `C` remains in the shutdown lane so an interpreter can select the concrete
+/// hosted child namespace without a registry, downcast, or erased envelope.
+pub struct ShutdownCoordinatorSends<C: Behavior, S> {
     /// Sends emitted by the wrapped behavior.
     pub behavior: S,
     /// Local requests to shut down children in the active phase.
-    pub shutdowns: ServiceSends<ShutdownChild<N>>,
+    pub shutdowns: ServiceSends<ShutdownChild<C>>,
 }
-impl<N, S: SendAlgebra> SendAlgebra for ShutdownCoordinatorSends<N, S> {
+
+impl<C: Behavior, S: Clone> Clone for ShutdownCoordinatorSends<C, S> {
+    fn clone(&self) -> Self {
+        Self {
+            behavior: self.behavior.clone(),
+            shutdowns: self.shutdowns.clone(),
+        }
+    }
+}
+
+impl<C: Behavior, S: PartialEq> PartialEq for ShutdownCoordinatorSends<C, S> {
+    fn eq(&self, other: &Self) -> bool {
+        self.behavior == other.behavior && self.shutdowns == other.shutdowns
+    }
+}
+
+impl<C: Behavior, S: Eq> Eq for ShutdownCoordinatorSends<C, S> {}
+
+impl<C: Behavior, S: core::fmt::Debug> core::fmt::Debug for ShutdownCoordinatorSends<C, S>
+where
+    <C::Addr as Address>::Nonce: core::fmt::Debug,
+{
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("ShutdownCoordinatorSends")
+            .field("behavior", &self.behavior)
+            .field("shutdowns", &self.shutdowns)
+            .finish()
+    }
+}
+impl<C: Behavior, S: SendAlgebra> SendAlgebra for ShutdownCoordinatorSends<C, S> {
     fn empty() -> Self {
         Self {
             behavior: S::empty(),
@@ -223,8 +254,8 @@ impl<N, S: SendAlgebra> SendAlgebra for ShutdownCoordinatorSends<N, S> {
         self.shutdowns.append(other.shutdowns);
     }
 }
-impl<N, S> SendInput<ShutdownChild<N>, Own> for ShutdownCoordinatorSends<N, S> {
-    fn emit(&mut self, input: ShutdownChild<N>) {
+impl<C: Behavior, S> SendInput<ShutdownChild<C>, Own> for ShutdownCoordinatorSends<C, S> {
+    fn emit(&mut self, input: ShutdownChild<C>) {
         self.shutdowns.send(input);
     }
 }
@@ -241,21 +272,34 @@ pub enum ShutdownCoordinatorError<E, N> {
     },
 }
 
-/// Pure phased shutdown wrapper over an explicitly validated child topology.
-pub struct ShutdownCoordinator<B: Behavior> {
+/// Pure phased shutdown wrapper over an explicitly validated homogeneous child
+/// topology.
+///
+/// `B` is the wrapped coordinator behavior and `C` is the one concrete child
+/// protocol addressed by every nonce in the plan. Starting a phase emits one
+/// typed [`ShutdownChild<C>`] request per member in plan order. A phase advances
+/// only after every matching [`ChildStopped`] fact arrives. An acceptance
+/// rejection returns [`ShutdownCoordinatorError::ChildRejected`] without
+/// changing the phase; stale facts are delegated when the inner protocol
+/// accepts them and are otherwise inert. This is Bombay lifecycle policy, not
+/// an actor-model allocation or ordering guarantee.
+///
+/// The fold introduces no panic conditions.
+pub struct ShutdownCoordinator<B: Behavior, C: Behavior<Addr = B::Addr>> {
     inner: B,
     plan: ShutdownPlan<<B::Addr as Address>::Nonce>,
     state: ShutdownState<<B::Addr as Address>::Nonce>,
+    child: core::marker::PhantomData<fn() -> C>,
 }
 
-type ShutdownCoordinatorActions<B> = Actions<
+type ShutdownCoordinatorActions<B, C> = Actions<
     <B as Behavior>::Addr,
     <B as Behavior>::Ph,
-    ShutdownCoordinatorSends<<<B as Behavior>::Addr as Address>::Nonce, <B as Behavior>::Sends>,
+    ShutdownCoordinatorSends<C, <B as Behavior>::Sends>,
     <B as Behavior>::Birth,
 >;
 
-impl<B: Behavior> ShutdownCoordinator<B>
+impl<B: Behavior, C: Behavior<Addr = B::Addr>> ShutdownCoordinator<B, C>
 where
     <B::Addr as Address>::Nonce: Copy + Eq,
 {
@@ -265,6 +309,7 @@ where
             inner,
             plan,
             state: ShutdownState::Running,
+            child: core::marker::PhantomData,
         }
     }
     #[must_use]
@@ -272,19 +317,21 @@ where
         &self.state
     }
 
-    fn wrap(actions: Actions<B::Addr, B::Ph, B::Sends, B::Birth>) -> ShutdownCoordinatorActions<B> {
+    fn wrap(
+        actions: Actions<B::Addr, B::Ph, B::Sends, B::Birth>,
+    ) -> ShutdownCoordinatorActions<B, C> {
         actions.map_sends(|behavior| ShutdownCoordinatorSends {
             behavior,
             shutdowns: ServiceSends::empty(),
         })
     }
 
-    fn phase_actions(&self, phase: usize) -> ShutdownCoordinatorActions<B> {
+    fn phase_actions(&self, phase: usize) -> ShutdownCoordinatorActions<B, C> {
         let shutdowns = ServiceSends::new(
             self.plan.phases[phase]
                 .iter()
                 .copied()
-                .map(ShutdownChild::new)
+                .map(ShutdownChild::<C>::new)
                 .collect(),
         );
         Actions::send(ShutdownCoordinatorSends {
@@ -294,9 +341,10 @@ where
     }
 }
 
-impl<B> crate::BehaviorBase for ShutdownCoordinator<B>
+impl<B, C> crate::BehaviorBase for ShutdownCoordinator<B, C>
 where
     B: Behavior + crate::BehaviorBase,
+    C: Behavior<Addr = B::Addr>,
     <B::Addr as Address>::Nonce: Copy + Eq,
 {
     type Base = B::Base;
@@ -305,9 +353,10 @@ where
     }
 }
 
-impl<B> crate::StashStatus for ShutdownCoordinator<B>
+impl<B, C> crate::StashStatus for ShutdownCoordinator<B, C>
 where
     B: Behavior + crate::StashStatus,
+    C: Behavior<Addr = B::Addr>,
     <B::Addr as Address>::Nonce: Copy + Eq,
 {
     fn stashed_messages(&self) -> usize {
@@ -315,20 +364,21 @@ where
     }
 }
 
-impl<B, A, Ph, S, Br> Behavior for ShutdownCoordinator<B>
+impl<B, C, A, Ph, S, Br> Behavior for ShutdownCoordinator<B, C>
 where
     A: Address,
     A::Nonce: Copy + Eq,
     S: SendAlgebra,
     Br: BirthMode,
     B: Behavior<Addr = A, Ph = Ph, Sends = S, Birth = Br>,
+    C: Behavior<Addr = A>,
     B::Event:
         crate::RouteInput<ChildStopped<A>> + crate::RouteInput<ChildShutdownRejected<A::Nonce>>,
 {
     type Addr = A;
     type Msg = B::Msg;
     type Event = ShutdownCoordinatorEvent<B::Event>;
-    type Sends = ShutdownCoordinatorSends<A::Nonce, S>;
+    type Sends = ShutdownCoordinatorSends<C, S>;
     type Ph = Ph;
     type Error = ShutdownCoordinatorError<B::Error, A::Nonce>;
     type Birth = Br;
@@ -410,8 +460,8 @@ where
     }
 }
 
-/// Dependency-ordered shutdown uses the same validated phase machine.
-pub type TreeShutdown<B> = ShutdownCoordinator<B>;
+/// Homogeneous dependency-ordered shutdown uses the same validated phase machine.
+pub type TreeShutdown<B, C> = ShutdownCoordinator<B, C>;
 
 #[cfg(test)]
 mod tests {
@@ -484,7 +534,9 @@ mod tests {
     #[test]
     fn phases_advance_only_after_every_current_child_stops() {
         let plan = ShutdownPlan::new([vec![1, 2], vec![3]]).unwrap();
-        let initialized = ShutdownCoordinator::new(Probe, plan).initialize().unwrap();
+        let initialized = ShutdownCoordinator::<Probe, Probe>::new(Probe, plan)
+            .initialize()
+            .unwrap();
         assert_eq!(initialized.actions.sends.behavior, [1]);
         assert!(initialized.actions.sends.shutdowns.is_empty());
         let mut active = initialized.behavior;
@@ -530,7 +582,7 @@ mod tests {
     #[test]
     fn duplicates_stale_children_and_repeated_shutdown_are_inert() {
         let plan = ShutdownPlan::new([vec![1, 2]]).unwrap();
-        let mut active = ShutdownCoordinator::new(Probe, plan)
+        let mut active = ShutdownCoordinator::<Probe, Probe>::new(Probe, plan)
             .initialize()
             .unwrap()
             .behavior;
@@ -557,7 +609,7 @@ mod tests {
     #[test]
     fn matching_rejection_is_typed_and_does_not_mutate_phase() {
         let plan = ShutdownPlan::new([vec![1]]).unwrap();
-        let mut active = ShutdownCoordinator::new(Probe, plan)
+        let mut active = ShutdownCoordinator::<Probe, Probe>::new(Probe, plan)
             .initialize()
             .unwrap()
             .behavior;
@@ -579,7 +631,7 @@ mod tests {
     #[test]
     fn empty_plan_stops_immediately_and_user_actions_preserve_named_lanes() {
         let plan = ShutdownPlan::<u64>::new([]).unwrap();
-        let mut active = ShutdownCoordinator::new(Probe, plan)
+        let mut active = ShutdownCoordinator::<Probe, Probe>::new(Probe, plan)
             .initialize()
             .unwrap()
             .behavior;
