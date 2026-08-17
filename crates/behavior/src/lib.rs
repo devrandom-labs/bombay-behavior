@@ -16,8 +16,9 @@ mod transition;
 mod user_event;
 
 pub use actor::{
-    Address, BirthMode, Births, Create, CreationKind, Delivery, DispatchBirth, InstallBirth,
-    MailAddr, NoBirths, Recipient,
+    Address, BirthMode, Births, ChildChoice, ChildCons, ChildProduct, Children, ChildrenError,
+    Create, CreationKind, Delivery, DispatchBirth, InstallBirth, MailAddr, NoBirths, NoChildren,
+    Recipient,
 };
 pub use effect::Effect;
 pub use effects::{Acted, Actions, Become, Own, SendAlgebra, SendInput, ServiceSends};
@@ -105,42 +106,3 @@ pub use behavior_macros::behavior;
 /// must use `#[behavior]` rather than concealing capabilities behind this
 /// convenience surface.
 pub use behavior_macros::actor;
-
-/// Define a closed, creation-only heterogeneous child sum.
-///
-/// The generated [`DispatchBirth`] implementation exhaustively selects the
-/// matching concrete [`InstallBirth`] capability. The enum does not implement
-/// [`Behavior`], so installed children retain their own protocols.
-///
-/// An interpreter missing any variant is rejected at compile time:
-///
-/// ```compile_fail
-/// use behavior::{Actions, Behavior, BehaviorActed, Create, DispatchBirth, InstallBirth, MailAddr, Never, NoBirths, User};
-/// struct First;
-/// struct Second;
-/// macro_rules! inert {
-///     ($actor:ty, $msg:ty) => {
-///         impl Behavior for $actor {
-///             type Addr = MailAddr;
-///             type Msg = $msg;
-///             type Event = User<MailAddr, $msg>;
-///             type Sends = Vec<Never>;
-///             type Ph = Never;
-///             type Error = Never;
-///             type Birth = NoBirths;
-///             fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> { Ok(Actions::cont()) }
-///         }
-///     };
-/// }
-/// inert!(First, u8);
-/// inert!(Second, u16);
-/// #[behavior::births]
-/// enum Children { First(First), Second(Second) }
-/// struct Incomplete;
-/// impl InstallBirth<MailAddr, First, (), Never> for Incomplete {
-///     async fn install_birth(&mut self, _: Create<MailAddr, First>) -> Result<(), Never> { Ok(()) }
-/// }
-/// fn require_complete<T: DispatchBirth<MailAddr, Incomplete, (), Never>>() {}
-/// require_complete::<Children>();
-/// ```
-pub use behavior_macros::births;

@@ -3,8 +3,8 @@
 use std::collections::BTreeSet;
 
 use foundation::{
-    Actions, Behavior, BehaviorActed, Births, Create, CreationKind, DispatchBirth, InstallBirth,
-    MailAddr, Never, NoBirths, Recipient, User,
+    Actions, Behavior, BehaviorActed, Births, ChildChoice, Create, CreationKind, DispatchBirth,
+    InstallBirth, MailAddr, Never, NoBirths, Recipient, User,
 };
 use proptest::prelude::*;
 
@@ -36,11 +36,7 @@ impl Behavior for Queries {
     }
 }
 
-#[foundation::births]
-enum IoTChildren {
-    DeviceGroups(DeviceGroups),
-    Queries(Queries),
-}
+type IoTChildren = ChildChoice<DeviceGroups, ChildChoice<Queries, Never>>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum InstalledKind {
@@ -111,9 +107,9 @@ fn assert_send<T: Send>(_: &T) {}
 #[tokio::test]
 async fn one_ordered_creation_vector_dispatches_to_concrete_protocol_installers() {
     let actions: Actions<MailAddr, Never, Vec<Never>, Births<IoTChildren>> = Actions::create(vec![
-        Create::birth(9, IoTChildren::DeviceGroups(DeviceGroups)),
-        Create::replacement_incarnation(4, 2, IoTChildren::Queries(Queries)),
-        Create::birth(7, IoTChildren::Queries(Queries)),
+        Create::birth(9, ChildChoice::Head(DeviceGroups)),
+        Create::replacement_incarnation(4, 2, ChildChoice::Tail(ChildChoice::Head(Queries))),
+        Create::birth(7, ChildChoice::Tail(ChildChoice::Head(Queries))),
     ]);
     let mut model = installer();
     for creation in actions.creates {
@@ -139,12 +135,13 @@ async fn one_ordered_creation_vector_dispatches_to_concrete_protocol_installers(
 #[tokio::test]
 async fn nonce_collision_is_global_across_variants_and_preserves_the_first_binding() {
     let mut model = installer();
-    let first =
-        IoTChildren::DeviceGroups(DeviceGroups).dispatch_birth(5, CreationKind::Birth, &mut model);
+    let first = ChildChoice::<DeviceGroups, ChildChoice<Queries, Never>>::Head(DeviceGroups)
+        .dispatch_birth(5, CreationKind::Birth, &mut model);
     assert_send(&first);
     first.await.unwrap();
     let collision =
-        IoTChildren::Queries(Queries).dispatch_birth(5, CreationKind::Birth, &mut model);
+        ChildChoice::<DeviceGroups, ChildChoice<Queries, Never>>::Tail(ChildChoice::Head(Queries))
+            .dispatch_birth(5, CreationKind::Birth, &mut model);
     assert_send(&collision);
     assert_eq!(collision.await, Err(InstallError::Collision));
     assert_eq!(
@@ -178,11 +175,13 @@ proptest! {
             };
             let actual = runtime.block_on(async {
                 if device {
-                    IoTChildren::DeviceGroups(DeviceGroups)
+                    ChildChoice::<DeviceGroups, ChildChoice<Queries, Never>>::Head(DeviceGroups)
                         .dispatch_birth(nonce, CreationKind::Birth, &mut installer)
                         .await
                 } else {
-                    IoTChildren::Queries(Queries)
+                    ChildChoice::<DeviceGroups, ChildChoice<Queries, Never>>::Tail(
+                        ChildChoice::Head(Queries),
+                    )
                         .dispatch_birth(nonce, CreationKind::Birth, &mut installer)
                         .await
                 }

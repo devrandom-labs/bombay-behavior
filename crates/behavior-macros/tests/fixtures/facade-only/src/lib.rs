@@ -29,12 +29,6 @@ impl Second {
     }
 }
 
-#[bombay::behavior::births]
-enum Children {
-    First(First),
-    Second(Second),
-}
-
 struct Inferred;
 
 #[bombay::behavior::actor]

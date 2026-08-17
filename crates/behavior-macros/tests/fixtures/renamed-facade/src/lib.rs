@@ -29,12 +29,6 @@ impl Second {
     }
 }
 
-#[runtime::behavior::births]
-enum Children {
-    First(First),
-    Second(Second),
-}
-
 struct Inferred;
 
 #[runtime::behavior::actor]

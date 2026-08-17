@@ -34,9 +34,9 @@ For a concrete `B: Behavior<Ph = Never>`, the adapter must statically supply:
 - an ordered source of the exact closed `B::Event` sum;
 - an interpreter for every named lane in `B::Sends`;
 - fresh creation for `<B::Birth as BirthMode>::Child`; a child may be one
-  concrete behavior or a closed `#[behavior::births]` sum whose exhaustive
+  concrete behavior or a closed recursive `ChildChoice` whose exhaustive
   `DispatchBirth` implementation requires one concrete `InstallBirth` adapter
-  per variant;
+  per alternative;
 - `Send` futures from concrete installation and exhaustive dispatch, preserving
   the recursive driver's eligibility for a thread-safe executor spawn;
 - exact behavior and capability errors;
@@ -80,11 +80,11 @@ Commitment obeys these laws:
 8. final actions are committed before terminal retirement;
 9. delivery admission does not claim recipient processing or business success.
 
-For a heterogeneous birth sum, variant dispatch occurs inside the same ordered
+For a heterogeneous creation sum, alternative dispatch occurs inside the same ordered
 creation loop. It does not create another nonce namespace: collision checks,
 `ObserveCreation`, and `ObserveChild` correlation all use the original
 creator-local nonce and provenance. A successful arm installs the contained
-concrete behavior protocol, never the sum enum as an actor protocol.
+concrete behavior protocol, never the sum as an actor protocol.
 
 ## Named products
 

@@ -15,11 +15,6 @@ impl Direct {
     }
 }
 
-#[core_behavior::births]
-enum Children {
-    Direct(Direct),
-}
-
 fn facade_is_also_present() -> bombay::behavior::MailAddr {
     bombay::behavior::MailAddr(0)
 }

@@ -13,19 +13,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the narrow `Effect<Send>` algebra, replacing the misplaced Bombay-runtime
   implementation without weakening the complete `#[behavior]` path.
 
-- Add `#[births]` for closed creation-only heterogeneous child sums with
-  exhaustive, statically bounded installation dispatch.
 - Resolve generated paths through either a direct `bombay-behavior` dependency
   or the `bombay-rs` façade, including Cargo dependency renames; a direct
   dependency takes precedence when both are present.
-- Preserve the `DispatchBirth` sendability contract in generated heterogeneous
-  dispatch, with explicit static bounds for every value held across the await.
 
 ### Removed
 
+- Remove the unreleased `#[births]` attribute. The foundational `Children`
+  product and generic `ChildChoice` dispatch provide heterogeneous creation
+  without per-application procedural generation.
 - Remove `workers!` and the unreleased `#[behavior_stack]` experiment. The
-  remaining attributes generate nominal behavior wiring or creation-only
-  installation dispatch, never a hidden forwarding protocol.
+  remaining attributes generate only nominal behavior wiring.
 
 ## [0.11.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-macros-v0.10.0...bombay-behavior-macros-v0.11.0) - 2026-08-15
 

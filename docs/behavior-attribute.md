@@ -102,33 +102,21 @@ interpretation authority. Any behavior requiring initialization effects,
 named send products, controlled errors, births, phases, or service-event sums
 uses the complete `#[behavior(...)]` contract.
 
-`#[behavior]` generates only nominal user-message fold wiring.
-`#[behavior::births]` applies to a closed enum whose variants each contain one
-concrete child behavior. It generates only exhaustive `DispatchBirth` wiring:
-the enum is a creation product and never a `Behavior`, message union, factory,
-registry, or protocol adapter. Wrapper stacks remain ordinary Rust values built
-through public owning-type constructors and inferred at local, generic spawn,
-and adapter boundaries.
+`#[behavior]` generates only nominal user-message fold wiring. Heterogeneous
+direct-child creation is authored with the foundational `Children` product.
+Each fluent `child` or `create` call extends its closed recursive `ChildChoice`
+type and conversion emits ordinary ordered `Create` requests; it does not
+require another authoring macro or create another actor boundary.
 
-```rust,ignore
-#[behavior::births]
-enum ApplicationChildren {
-    DeviceGroups(DynamicSupervisor<...>),
-    Queries(WorkerPool<...>),
-}
+The selected interpreter must implement `InstallBirth` for every concrete
+choice. Recursive exhaustive dispatch forwards the original nonce and
+`CreationKind` and never installs `ChildChoice` as an actor. Each child remains
+indexed by its concrete behavior protocol, and incomplete runtime support is a
+compile-time error.
 
-type Birth = behavior::Births<ApplicationChildren>;
-```
-
-The generated implementation requires the selected installer to implement
-`InstallBirth` for both concrete variants. Its exhaustive match forwards the
-original nonce and `CreationKind`; it does not install `ApplicationChildren`
-as an actor. This keeps each child recipient indexed by its concrete behavior
-protocol and makes incomplete runtime support a compile-time error.
-
-Both attributes are governed by the [Universal Behavior Driver](driver.md).
-They generate only concrete static implementations a user could write
-manually.
+The attributes are governed by the [Universal Behavior Driver](driver.md).
+They generate only concrete nominal behavior implementations a user could
+write manually.
 
 Applications may depend on `bombay-behavior` directly or use its re-export
 through the `bombay-rs` façade. Generated paths first select the direct package

@@ -322,11 +322,11 @@ modifies the Driver loop.
 There is no dynamic fallback. A missing interpreter is a compile-time
 integration gap, not a runtime capability lookup.
 
-When `B::Birth::Child` is a `#[behavior::births]` sum, `realize B::Birth`
-means proving `InstallBirth` for every contained concrete behavior. The
-generated exhaustive dispatch runs inside the existing ordered creation leg;
-it neither changes the Driver algorithm nor turns the sum into an installed
-actor protocol.
+When `B::Birth::Child` is a recursive `ChildChoice`, `realize B::Birth` means
+proving `InstallBirth` for every contained concrete behavior. Exhaustive
+recursive dispatch runs inside the existing ordered creation leg; it neither
+changes the Driver algorithm nor turns the sum into an installed actor
+protocol.
 For ordinary `Births<C>`, the blanket `DispatchBirth` implementation invokes
 the one concrete `InstallBirth<A, C, ...>` exactly once with the original nonce
 and creation provenance. Both shapes therefore use the same Driver bound and
@@ -335,10 +335,9 @@ ordered interpretation path.
 Both installation and dispatch return `Send` futures. This is an
 interpreter-facing concurrency guarantee, not a new behavior effect: it lets a
 recursive Driver remain eligible for a thread-safe executor spawn while the
-pure creation request and concrete child protocol stay unchanged. A generated
+pure creation request and concrete child protocol stay unchanged. Recursive
 heterogeneous dispatch holds its selected sum across the await, so every child
-variant, the creator-local nonce, and the installer must be `Send`; the macro
-emits those bounds explicitly.
+alternative, the creator-local nonce, and the installer must be `Send`.
 
 ## Backpressure and liveness policy
 

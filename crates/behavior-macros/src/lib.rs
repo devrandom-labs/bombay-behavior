@@ -1,8 +1,7 @@
 //! `behavior-macros` — proc-macros for the behavior algebra.
 //!
-//! `#[actor]` wires the ordinary infallible/no-birth subset, `#[behavior]`
-//! wires a fully declared inherent user-message fold, and `#[births]` wires a
-//! closed creation-only enum to exhaustive static installation.
+//! `#[actor]` wires the ordinary infallible/no-birth subset and `#[behavior]`
+//! wires a fully declared inherent user-message fold.
 
 use proc_macro::TokenStream;
 use proc_macro_crate::{FoundCrate, crate_name};
@@ -10,8 +9,8 @@ use proc_macro2::{Span, TokenStream as TokenStream2};
 use quote::quote;
 use syn::parse::{Parse, ParseStream};
 use syn::{
-    Error, Fields, FnArg, GenericArgument, ImplItem, ItemEnum, ItemImpl, PathArguments, Result,
-    ReturnType, Token, Type, parse_macro_input,
+    Error, FnArg, GenericArgument, ImplItem, ItemImpl, PathArguments, Result, ReturnType, Token,
+    Type, parse_macro_input,
 };
 
 mod behavior_kw {
@@ -365,112 +364,6 @@ pub fn behavior(args: TokenStream, item: TokenStream) -> TokenStream {
 
             fn base(&self) -> &Self {
                 self
-            }
-        }
-    }
-    .into()
-}
-
-/// Generate exhaustive static installation dispatch for a closed,
-/// creation-only heterogeneous child sum.
-#[proc_macro_attribute]
-pub fn births(args: TokenStream, item: TokenStream) -> TokenStream {
-    if !args.is_empty() {
-        return Error::new(Span::call_site(), "#[births] accepts no arguments")
-            .to_compile_error()
-            .into();
-    }
-    let item = parse_macro_input!(item as ItemEnum);
-    if item.variants.is_empty() {
-        return Error::new_spanned(&item, "a birth sum must contain at least one variant")
-            .to_compile_error()
-            .into();
-    }
-    let mut variants = Vec::new();
-    for variant in &item.variants {
-        if variant.discriminant.is_some() {
-            return Error::new_spanned(variant, "birth variants cannot have discriminants")
-                .to_compile_error()
-                .into();
-        }
-        let Fields::Unnamed(fields) = &variant.fields else {
-            return Error::new_spanned(
-                variant,
-                "each birth variant must contain exactly one unnamed child type",
-            )
-            .to_compile_error()
-            .into();
-        };
-        if fields.unnamed.len() != 1 {
-            return Error::new_spanned(
-                variant,
-                "each birth variant must contain exactly one unnamed child type",
-            )
-            .to_compile_error()
-            .into();
-        }
-        variants.push((variant.ident.clone(), fields.unnamed[0].ty.clone()));
-    }
-
-    let behavior = match behavior_crate() {
-        Ok(behavior) => behavior,
-        Err(error) => return error.to_compile_error().into(),
-    };
-    let name = &item.ident;
-    let (_, type_generics, _) = item.generics.split_for_impl();
-    let variant_names: Vec<_> = variants.iter().map(|(name, _)| name).collect();
-    let child_types: Vec<_> = variants.iter().map(|(_, child)| child).collect();
-    let mut dispatch_generics = item.generics.clone();
-    dispatch_generics.params.push(syn::parse_quote!(__A));
-    dispatch_generics
-        .params
-        .push(syn::parse_quote!(__Installer));
-    dispatch_generics.params.push(syn::parse_quote!(__Output));
-    dispatch_generics.params.push(syn::parse_quote!(__Error));
-    let dispatch_where = dispatch_generics.make_where_clause();
-    dispatch_where
-        .predicates
-        .push(syn::parse_quote!(__A: #behavior::Address));
-    dispatch_where.predicates.push(syn::parse_quote!(
-        <__A as #behavior::Address>::Nonce: ::core::marker::Send
-    ));
-    dispatch_where
-        .predicates
-        .push(syn::parse_quote!(__Installer: ::core::marker::Send));
-    for child in &child_types {
-        dispatch_where.predicates.push(
-            syn::parse_quote!(#child: #behavior::Behavior<Addr = __A> + ::core::marker::Send),
-        );
-        dispatch_where.predicates.push(syn::parse_quote!(
-            __Installer: #behavior::InstallBirth<__A, #child, __Output, __Error>
-        ));
-    }
-    let (dispatch_impl_generics, _, dispatch_where_clause) = dispatch_generics.split_for_impl();
-
-    quote! {
-        #item
-
-        impl #dispatch_impl_generics
-            #behavior::DispatchBirth<__A, __Installer, __Output, __Error>
-            for #name #type_generics
-            #dispatch_where_clause
-        {
-            async fn dispatch_birth(
-                self,
-                nonce: <__A as #behavior::Address>::Nonce,
-                kind: #behavior::CreationKind<<__A as #behavior::Address>::Nonce>,
-                installer: &mut __Installer,
-            ) -> ::core::result::Result<__Output, __Error> {
-                match self {
-                    #(
-                        Self::#variant_names(child) => {
-                            #behavior::InstallBirth::install_birth(
-                                installer,
-                                #behavior::Create::new(nonce, child, kind),
-                            ).await
-                        }
-                    )*
-                }
             }
         }
     }
