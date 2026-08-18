@@ -1,9 +1,10 @@
 //! Typed send effects, their composition contract, and event ownership.
 
 use crate::{ComposedEvent, Delivery, InjectEvent, Inside, Protocol};
+use core::future::Future;
 
 /// Error domain shared by one concrete effect interpreter.
-pub trait SendInterpreter {
+pub trait SendInterpreter: Send {
     type Error;
 }
 
@@ -14,33 +15,48 @@ pub trait SendInterpreter {
 /// ultimately enqueued for the actor and `Path` is the current send owner's
 /// absolute position in it. Composite products must visit every constituent
 /// lane exactly once without discarding either index.
-pub trait InterpretSends<Interpreter: SendInterpreter, RootEvent, Path>: Sized {
+pub trait InterpretSends<Interpreter: SendInterpreter, RootEvent, Path>: Sized + Send {
     /// Interpret every value in this product in its defined structural order.
+    /// The returned future completes each effect before beginning the next, so
+    /// an asynchronous delivery can wait for bounded-mailbox capacity without
+    /// reordering later effects or converting pressure into rejection.
     ///
     /// # Errors
     /// Returns the interpreter's concrete error without consuming later lanes.
-    fn interpret(self, interpreter: &mut Interpreter) -> Result<(), Interpreter::Error>;
+    fn interpret(
+        self,
+        interpreter: &mut Interpreter,
+    ) -> impl Future<Output = Result<(), Interpreter::Error>> + Send;
 }
 
 /// Interpreter capability for one request at one exact root-event path.
 pub trait InterpretRequest<Request, RootEvent, Path>: SendInterpreter {
     /// Interpret one request emitted by the actor hosted by this interpreter.
+    /// The returned future remains concrete and may await runtime capacity or
+    /// other interpreter-owned asynchronous work.
     /// A returning implementation can require
     /// `RootEvent: InjectEvent<ReturnedFact, Path>` and retain that exact
     /// constructor for later completion.
     ///
     /// # Errors
     /// Returns this interpreter's concrete request failure.
-    fn interpret_request(&mut self, request: Request) -> Result<(), Self::Error>;
+    fn interpret_request(
+        &mut self,
+        request: Request,
+    ) -> impl Future<Output = Result<(), Self::Error>> + Send;
 }
 
 /// Interpreter capability for deliveries to one concrete actor protocol.
 pub trait InterpretDelivery<P: Protocol>: SendInterpreter {
-    /// Interpret one typed delivery.
+    /// Interpret one typed delivery, awaiting bounded-mailbox capacity when
+    /// required by the concrete communication transport.
     ///
     /// # Errors
     /// Returns this interpreter's concrete delivery failure.
-    fn interpret_delivery(&mut self, delivery: Delivery<P>) -> Result<(), Self::Error>;
+    fn interpret_delivery(
+        &mut self,
+        delivery: Delivery<P>,
+    ) -> impl Future<Output = Result<(), Self::Error>> + Send;
 }
 
 /// The lane owned by the current named send product.
@@ -163,8 +179,11 @@ impl<Event> SendsFor<Event> for NoSends {}
 impl<Interpreter: SendInterpreter, RootEvent, Path> InterpretSends<Interpreter, RootEvent, Path>
     for NoSends
 {
-    fn interpret(self, _: &mut Interpreter) -> Result<(), Interpreter::Error> {
-        Ok(())
+    fn interpret(
+        self,
+        _: &mut Interpreter,
+    ) -> impl Future<Output = Result<(), Interpreter::Error>> + Send {
+        async { Ok(()) }
     }
 }
 
@@ -228,17 +247,28 @@ impl<Interpreter, RootEvent, Path, Owned, Inner> InterpretSends<Interpreter, Roo
     for SendLayer<Owned, Inner>
 where
     Interpreter: SendInterpreter,
-    Owned: InterpretSends<Interpreter, RootEvent, Path>,
-    Inner: InterpretSends<Interpreter, RootEvent, Inside<Path>>,
+    Interpreter: Send,
+    Owned: InterpretSends<Interpreter, RootEvent, Path> + Send,
+    Inner: InterpretSends<Interpreter, RootEvent, Inside<Path>> + Send,
 {
-    fn interpret(self, interpreter: &mut Interpreter) -> Result<(), Interpreter::Error> {
-        // Initialization and delegated transition effects retain authored
-        // inner-to-outer order. Failure short-circuits before later effects.
-        <Inner as InterpretSends<Interpreter, RootEvent, Inside<Path>>>::interpret(
-            self.inner,
-            interpreter,
-        )?;
-        <Owned as InterpretSends<Interpreter, RootEvent, Path>>::interpret(self.owned, interpreter)
+    fn interpret(
+        self,
+        interpreter: &mut Interpreter,
+    ) -> impl Future<Output = Result<(), Interpreter::Error>> + Send {
+        async move {
+            // Initialization and delegated transition effects retain authored
+            // inner-to-outer order. Failure short-circuits before later effects.
+            <Inner as InterpretSends<Interpreter, RootEvent, Inside<Path>>>::interpret(
+                self.inner,
+                interpreter,
+            )
+            .await?;
+            <Owned as InterpretSends<Interpreter, RootEvent, Path>>::interpret(
+                self.owned,
+                interpreter,
+            )
+            .await
+        }
     }
 }
 
@@ -258,24 +288,36 @@ impl<Interpreter, RootEvent, Path, P> InterpretSends<Interpreter, RootEvent, Pat
     for Vec<Delivery<P>>
 where
     Interpreter: InterpretDelivery<P>,
+    Interpreter: Send,
     P: Protocol,
+    Delivery<P>: Send,
 {
-    fn interpret(self, interpreter: &mut Interpreter) -> Result<(), Interpreter::Error> {
-        for delivery in self {
-            interpreter.interpret_delivery(delivery)?;
+    fn interpret(
+        self,
+        interpreter: &mut Interpreter,
+    ) -> impl Future<Output = Result<(), Interpreter::Error>> + Send {
+        async move {
+            for delivery in self {
+                interpreter.interpret_delivery(delivery).await?;
+            }
+            Ok(())
         }
-        Ok(())
     }
 }
 
 impl<Interpreter: SendInterpreter, RootEvent, Path> InterpretSends<Interpreter, RootEvent, Path>
     for Vec<crate::Never>
 {
-    fn interpret(self, _: &mut Interpreter) -> Result<(), Interpreter::Error> {
-        for never in self {
-            match never {}
+    fn interpret(
+        self,
+        _: &mut Interpreter,
+    ) -> impl Future<Output = Result<(), Interpreter::Error>> + Send {
+        async move {
+            for never in self {
+                match never {}
+            }
+            Ok(())
         }
-        Ok(())
     }
 }
 
@@ -378,15 +420,23 @@ impl<Interpreter, RootEvent, Path, Request> InterpretSends<Interpreter, RootEven
     for InterpreterRequests<Request>
 where
     Interpreter: InterpretRequest<Request, RootEvent, Path>,
+    Interpreter: Send,
+    Request: Send,
 {
-    fn interpret(self, interpreter: &mut Interpreter) -> Result<(), Interpreter::Error> {
-        for request in self {
-            <Interpreter as InterpretRequest<Request, RootEvent, Path>>::interpret_request(
-                interpreter,
-                request,
-            )?;
+    fn interpret(
+        self,
+        interpreter: &mut Interpreter,
+    ) -> impl Future<Output = Result<(), Interpreter::Error>> + Send {
+        async move {
+            for request in self {
+                <Interpreter as InterpretRequest<Request, RootEvent, Path>>::interpret_request(
+                    interpreter,
+                    request,
+                )
+                .await?;
+            }
+            Ok(())
         }
-        Ok(())
     }
 }
 
@@ -455,28 +505,40 @@ mod tests {
     }
 
     impl InterpretRequest<u8, TraceEvent, crate::Inside<crate::Here>> for Trace {
-        fn interpret_request(&mut self, request: u8) -> Result<(), Self::Error> {
-            self.0.push(Seen::Inner(request));
-            Ok(())
+        fn interpret_request(
+            &mut self,
+            request: u8,
+        ) -> impl Future<Output = Result<(), Self::Error>> + Send {
+            async move {
+                self.0.push(Seen::Inner(request));
+                Ok(())
+            }
         }
     }
 
     impl InterpretRequest<u16, TraceEvent, crate::Here> for Trace {
-        fn interpret_request(&mut self, request: u16) -> Result<(), Self::Error> {
-            self.0.push(Seen::Outer(request));
-            Ok(())
+        fn interpret_request(
+            &mut self,
+            request: u16,
+        ) -> impl Future<Output = Result<(), Self::Error>> + Send {
+            async move {
+                self.0.push(Seen::Outer(request));
+                Ok(())
+            }
         }
     }
 
-    #[test]
-    fn structural_interpretation_visits_every_lane_inner_to_outer() {
+    #[tokio::test]
+    async fn structural_interpretation_visits_every_lane_inner_to_outer() {
         let effects = SendLayer::new(
             InterpreterRequests::new(vec![3_u16, 5]),
             SendLayer::new(InterpreterRequests::one(2_u8), NoSends),
         );
         let mut trace = Trace(Vec::new());
 
-        <_ as InterpretSends<_, TraceEvent, crate::Here>>::interpret(effects, &mut trace).unwrap();
+        <_ as InterpretSends<_, TraceEvent, crate::Here>>::interpret(effects, &mut trace)
+            .await
+            .unwrap();
 
         assert_eq!(trace.0, [Seen::Inner(2), Seen::Outer(3), Seen::Outer(5)]);
     }

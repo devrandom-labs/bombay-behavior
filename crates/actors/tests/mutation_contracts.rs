@@ -14,6 +14,7 @@ use behavior::{
     UserEvent, WatchEvent, WorkerCreationResolved, WorkerStopped,
 };
 use behavior_actors as behavior;
+use core::future::Future;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -286,8 +287,8 @@ fn service_send_views_and_iterators_preserve_every_request() {
     );
 }
 
-#[test]
-fn nested_actor_send_effects_traverse_every_lane_once_in_structural_order() {
+#[tokio::test]
+async fn nested_actor_send_effects_traverse_every_lane_once_in_structural_order() {
     type Reply = behavior::MessageProtocol<MailAddr, behavior::BreakerOutcome>;
     type RootEvent = EventLayer<
         TimerElapsed,
@@ -308,23 +309,38 @@ fn nested_actor_send_effects_traverse_every_lane_once_in_structural_order() {
     }
 
     impl behavior::InterpretDelivery<Reply> for RecordingInterpreter {
-        fn interpret_delivery(&mut self, _: Delivery<Reply>) -> Result<(), Self::Error> {
-            self.0.push(Seen::Reply);
-            Ok(())
+        fn interpret_delivery(
+            &mut self,
+            _: Delivery<Reply>,
+        ) -> impl Future<Output = Result<(), Self::Error>> + Send {
+            async move {
+                self.0.push(Seen::Reply);
+                Ok(())
+            }
         }
     }
 
     impl behavior::InterpretRequest<ScheduleAfter, RootEvent, Inside<Here>> for RecordingInterpreter {
-        fn interpret_request(&mut self, request: ScheduleAfter) -> Result<(), Self::Error> {
-            self.0.push(Seen::Reset(request.id));
-            Ok(())
+        fn interpret_request(
+            &mut self,
+            request: ScheduleAfter,
+        ) -> impl Future<Output = Result<(), Self::Error>> + Send {
+            async move {
+                self.0.push(Seen::Reset(request.id));
+                Ok(())
+            }
         }
     }
 
     impl behavior::InterpretRequest<ScheduleAt, RootEvent, Here> for RecordingInterpreter {
-        fn interpret_request(&mut self, request: ScheduleAt) -> Result<(), Self::Error> {
-            self.0.push(Seen::Deadline(request.id));
-            Ok(())
+        fn interpret_request(
+            &mut self,
+            request: ScheduleAt,
+        ) -> impl Future<Output = Result<(), Self::Error>> + Send {
+            async move {
+                self.0.push(Seen::Deadline(request.id));
+                Ok(())
+            }
         }
     }
 
@@ -353,6 +369,7 @@ fn nested_actor_send_effects_traverse_every_lane_once_in_structural_order() {
 
     let mut interpreter = RecordingInterpreter(Vec::new());
     <_ as behavior::InterpretSends<_, RootEvent, Here>>::interpret(sends, &mut interpreter)
+        .await
         .unwrap();
 
     assert_eq!(

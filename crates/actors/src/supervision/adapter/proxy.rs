@@ -79,14 +79,20 @@ where
     InterpreterRequests<ReportWorkerCreationResolved<<crate::BehaviorAddr<C> as Address>::Nonce>>:
         behavior::InterpretSends<I, RootEvent, Path>,
     InterpreterRequests<ShutdownChild<C>>: behavior::InterpretSends<I, RootEvent, Path>,
+    ProxySends<C>: Send,
 {
-    fn interpret(self, interpreter: &mut I) -> Result<(), I::Error> {
-        behavior::InterpretSends::interpret(self.deliveries, interpreter)?;
-        behavior::InterpretSends::interpret(self.child_observations, interpreter)?;
-        behavior::InterpretSends::interpret(self.creation_observations, interpreter)?;
-        behavior::InterpretSends::interpret(self.stopped_reports, interpreter)?;
-        behavior::InterpretSends::interpret(self.creation_reports, interpreter)?;
-        behavior::InterpretSends::interpret(self.shutdowns, interpreter)
+    fn interpret(
+        self,
+        interpreter: &mut I,
+    ) -> impl core::future::Future<Output = Result<(), I::Error>> + Send {
+        async move {
+            behavior::InterpretSends::interpret(self.deliveries, interpreter).await?;
+            behavior::InterpretSends::interpret(self.child_observations, interpreter).await?;
+            behavior::InterpretSends::interpret(self.creation_observations, interpreter).await?;
+            behavior::InterpretSends::interpret(self.stopped_reports, interpreter).await?;
+            behavior::InterpretSends::interpret(self.creation_reports, interpreter).await?;
+            behavior::InterpretSends::interpret(self.shutdowns, interpreter).await
+        }
     }
 }
 

@@ -43,10 +43,16 @@ where
     Reply: Protocol,
     Vec<Delivery<Target>>: InterpretSends<I, RootEvent, Path>,
     Vec<Delivery<Reply>>: InterpretSends<I, RootEvent, Path>,
+    DeliveryOutcomes<Target, Reply>: Send,
 {
-    fn interpret(self, interpreter: &mut I) -> Result<(), I::Error> {
-        self.deliveries.interpret(interpreter)?;
-        self.outcomes.interpret(interpreter)
+    fn interpret(
+        self,
+        interpreter: &mut I,
+    ) -> impl core::future::Future<Output = Result<(), I::Error>> + Send {
+        async move {
+            self.deliveries.interpret(interpreter).await?;
+            self.outcomes.interpret(interpreter).await
+        }
     }
 }
 

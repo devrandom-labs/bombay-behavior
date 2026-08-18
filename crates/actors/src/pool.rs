@@ -392,10 +392,16 @@ where
     C::Protocol: crate::Protocol<Addr = A>,
     Vec<Delivery<D>>: behavior::InterpretSends<I, RootEvent, Path>,
     Vec<Delivery<Proxy<C>>>: behavior::InterpretSends<I, RootEvent, Path>,
+    PoolBehaviorSends<A, D, J, R, C>: Send,
 {
-    fn interpret(self, interpreter: &mut I) -> Result<(), I::Error> {
-        behavior::InterpretSends::interpret(self.responses, interpreter)?;
-        behavior::InterpretSends::interpret(self.assignments, interpreter)
+    fn interpret(
+        self,
+        interpreter: &mut I,
+    ) -> impl core::future::Future<Output = Result<(), I::Error>> + Send {
+        async move {
+            behavior::InterpretSends::interpret(self.responses, interpreter).await?;
+            behavior::InterpretSends::interpret(self.assignments, interpreter).await
+        }
     }
 }
 

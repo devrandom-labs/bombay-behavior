@@ -320,13 +320,19 @@ where
     InterpreterRequests<ShutdownChild<DynamicProxy<C>>>:
         behavior::InterpretSends<I, RootEvent, Path>,
     Vec<Delivery<DynamicProxy<C>>>: behavior::InterpretSends<I, RootEvent, Path>,
+    DynamicSupervisorSends<A, C, Reply>: Send,
 {
-    fn interpret(self, interpreter: &mut I) -> Result<(), I::Error> {
-        behavior::InterpretSends::interpret(self.outcomes, interpreter)?;
-        behavior::InterpretSends::interpret(self.child_observations, interpreter)?;
-        behavior::InterpretSends::interpret(self.creation_observations, interpreter)?;
-        behavior::InterpretSends::interpret(self.shutdowns, interpreter)?;
-        behavior::InterpretSends::interpret(self.replacements, interpreter)
+    fn interpret(
+        self,
+        interpreter: &mut I,
+    ) -> impl core::future::Future<Output = Result<(), I::Error>> + Send {
+        async move {
+            behavior::InterpretSends::interpret(self.outcomes, interpreter).await?;
+            behavior::InterpretSends::interpret(self.child_observations, interpreter).await?;
+            behavior::InterpretSends::interpret(self.creation_observations, interpreter).await?;
+            behavior::InterpretSends::interpret(self.shutdowns, interpreter).await?;
+            behavior::InterpretSends::interpret(self.replacements, interpreter).await
+        }
     }
 }
 impl<A, C, Reply> SendInput<ObserveChild<A>, Own> for DynamicSupervisorSends<A, C, Reply>

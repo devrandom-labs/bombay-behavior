@@ -162,12 +162,18 @@ where
     Vec<Delivery<Proxy<C>>>: behavior::InterpretSends<Interpreter, RootEvent, Path>,
     InterpreterRequests<ReportSupervisionFailure<A>>:
         behavior::InterpretSends<Interpreter, RootEvent, Path>,
+    SupervisorSends<A, C>: Send,
 {
-    fn interpret(self, interpreter: &mut Interpreter) -> Result<(), Interpreter::Error> {
-        self.child_observations.interpret(interpreter)?;
-        self.creation_observations.interpret(interpreter)?;
-        self.replacement_commands.interpret(interpreter)?;
-        self.failure_reports.interpret(interpreter)
+    fn interpret(
+        self,
+        interpreter: &mut Interpreter,
+    ) -> impl core::future::Future<Output = Result<(), Interpreter::Error>> + Send {
+        async move {
+            self.child_observations.interpret(interpreter).await?;
+            self.creation_observations.interpret(interpreter).await?;
+            self.replacement_commands.interpret(interpreter).await?;
+            self.failure_reports.interpret(interpreter).await
+        }
     }
 }
 

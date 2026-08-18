@@ -113,10 +113,16 @@ where
     Reply: behavior::Protocol,
     Vec<Delivery<W>>: behavior::InterpretSends<I, RootEvent, Path>,
     Vec<Delivery<Reply>>: behavior::InterpretSends<I, RootEvent, Path>,
+    WorkQueueSends<W, Reply>: Send,
 {
-    fn interpret(self, interpreter: &mut I) -> Result<(), I::Error> {
-        behavior::InterpretSends::interpret(self.assignments, interpreter)?;
-        behavior::InterpretSends::interpret(self.outcomes, interpreter)
+    fn interpret(
+        self,
+        interpreter: &mut I,
+    ) -> impl core::future::Future<Output = Result<(), I::Error>> + Send {
+        async move {
+            behavior::InterpretSends::interpret(self.assignments, interpreter).await?;
+            behavior::InterpretSends::interpret(self.outcomes, interpreter).await
+        }
     }
 }
 

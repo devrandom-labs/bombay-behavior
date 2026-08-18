@@ -7,6 +7,7 @@
 )]
 
 use behavior_actors as behavior;
+use core::future::Future;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
@@ -370,8 +371,8 @@ async fn shutdown_composition_preserves_inner_initialization_effects() {
     assert!(matches!(initial.become_, Step::Continue));
 }
 
-#[test]
-fn shutdown_over_two_deadlines_preserves_both_exact_local_continuations() {
+#[tokio::test]
+async fn shutdown_over_two_deadlines_preserves_both_exact_local_continuations() {
     type RootEvent = behavior::ShutdownEvent<
         behavior::DeadlineEvent<behavior::DeadlineEvent<User<MailAddr, u64>>>,
     >;
@@ -385,27 +386,39 @@ fn shutdown_over_two_deadlines_preserves_both_exact_local_continuations() {
     }
 
     impl InterpretRequest<ScheduleAt, RootEvent, Inside<Here>> for TimerInterpreter {
-        fn interpret_request(&mut self, request: ScheduleAt) -> Result<(), Self::Error> {
-            self.pending.push(
-                <RootEvent as InjectEvent<TimerElapsed, Inside<Here>>>::inject_at(TimerElapsed {
-                    id: request.id,
-                    generation: request.generation,
-                }),
-            );
-            Ok(())
+        fn interpret_request(
+            &mut self,
+            request: ScheduleAt,
+        ) -> impl Future<Output = Result<(), Self::Error>> + Send {
+            async move {
+                self.pending.push(
+                    <RootEvent as InjectEvent<TimerElapsed, Inside<Here>>>::inject_at(
+                        TimerElapsed {
+                            id: request.id,
+                            generation: request.generation,
+                        },
+                    ),
+                );
+                Ok(())
+            }
         }
     }
 
     impl InterpretRequest<ScheduleAt, RootEvent, Inside<Inside<Here>>> for TimerInterpreter {
-        fn interpret_request(&mut self, request: ScheduleAt) -> Result<(), Self::Error> {
-            self.pending.push(<RootEvent as InjectEvent<
-                TimerElapsed,
-                Inside<Inside<Here>>,
-            >>::inject_at(TimerElapsed {
-                id: request.id,
-                generation: request.generation,
-            }));
-            Ok(())
+        fn interpret_request(
+            &mut self,
+            request: ScheduleAt,
+        ) -> impl Future<Output = Result<(), Self::Error>> + Send {
+            async move {
+                self.pending.push(<RootEvent as InjectEvent<
+                    TimerElapsed,
+                    Inside<Inside<Here>>,
+                >>::inject_at(TimerElapsed {
+                    id: request.id,
+                    generation: request.generation,
+                }));
+                Ok(())
+            }
         }
     }
 
@@ -425,6 +438,7 @@ fn shutdown_over_two_deadlines_preserves_both_exact_local_continuations() {
         pending: Vec::new(),
     };
     <_ as InterpretSends<_, RootEvent, Here>>::interpret(initialized.actions.sends, &mut timers)
+        .await
         .unwrap();
     assert_eq!(timers.pending.len(), 2);
 

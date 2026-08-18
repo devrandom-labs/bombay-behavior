@@ -162,10 +162,16 @@ where
     Reply: behavior::Protocol,
     Vec<Delivery<Reply>>: behavior::InterpretSends<I, RootEvent, Path>,
     InterpreterRequests<ScheduleAfter>: behavior::InterpretSends<I, RootEvent, Path>,
+    LeaseSends<Reply>: Send,
 {
-    fn interpret(self, interpreter: &mut I) -> Result<(), I::Error> {
-        behavior::InterpretSends::interpret(self.outcomes, interpreter)?;
-        behavior::InterpretSends::interpret(self.schedules, interpreter)
+    fn interpret(
+        self,
+        interpreter: &mut I,
+    ) -> impl core::future::Future<Output = Result<(), I::Error>> + Send {
+        async move {
+            behavior::InterpretSends::interpret(self.outcomes, interpreter).await?;
+            behavior::InterpretSends::interpret(self.schedules, interpreter).await
+        }
     }
 }
 
