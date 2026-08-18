@@ -170,13 +170,13 @@ async fn empty_fleet_supervisor_initializes_and_steps_cleanly() {
     let initial = initialized.actions;
     let mut supervisor = initialized.behavior;
     assert!(initial.creates.is_empty());
-    assert!(initial.sends.child_observations.is_empty());
+    assert!(initial.sends.owned.child_observations.is_empty());
 
     let actions = supervisor
         .transition(UserEvent::user(MailAddr(0), 3))
         .unwrap();
     assert!(actions.creates.is_empty());
-    assert!(actions.sends.child_observations.is_empty());
+    assert!(actions.sends.owned.child_observations.is_empty());
     assert_eq!(supervisor.child_count(), 0);
 }
 
@@ -201,8 +201,8 @@ async fn stale_child_stopped_is_inert_at_its_selected_supervisor_owner() {
         .transition(stopped(42, Err(Crash::Failed), Instant::now()))
         .unwrap();
 
-    assert!(actions.sends.replacement_commands.is_empty());
-    assert!(actions.sends.failure_reports.is_empty());
+    assert!(actions.sends.owned.replacement_commands.is_empty());
+    assert!(actions.sends.owned.failure_reports.is_empty());
     assert!(actions.creates.is_empty());
     assert_eq!(actions.become_, Step::Continue);
     assert_eq!(supervisor.child_count(), 1);
@@ -227,13 +227,13 @@ async fn duplicate_child_stopped_triggers_a_second_restart() {
     let first = supervisor
         .transition(stopped(0, Err(Crash::Failed), at))
         .unwrap();
-    assert_eq!(first.sends.replacement_commands.len(), 1);
+    assert_eq!(first.sends.owned.replacement_commands.len(), 1);
     assert_eq!(supervisor.restarts_in_window(), 1);
 
     let duplicate = supervisor
         .transition(stopped(0, Err(Crash::Failed), at))
         .unwrap();
-    assert_eq!(duplicate.sends.replacement_commands.len(), 1);
+    assert_eq!(duplicate.sends.owned.replacement_commands.len(), 1);
     assert_eq!(supervisor.restarts_in_window(), 2);
 }
 
@@ -273,18 +273,18 @@ async fn transient_policy_restarts_only_abnormal_outcomes() {
     let normal = supervisor
         .transition(stopped(0, Ok(Exit::Normal), at))
         .unwrap();
-    assert!(normal.sends.replacement_commands.is_empty());
+    assert!(normal.sends.owned.replacement_commands.is_empty());
     assert!(!supervisor.is_alive(0).unwrap());
 
     let collected = supervisor
         .transition(stopped(0, Ok(Exit::Collected), at))
         .unwrap();
-    assert!(collected.sends.replacement_commands.is_empty());
+    assert!(collected.sends.owned.replacement_commands.is_empty());
 
     let link = supervisor
         .transition(stopped(1, Ok(Exit::LinkDied(MailAddr(9))), at))
         .unwrap();
-    assert_eq!(link.sends.replacement_commands.len(), 1);
+    assert_eq!(link.sends.owned.replacement_commands.len(), 1);
     assert!(supervisor.is_alive(1).unwrap());
 
     for crash in [
@@ -294,7 +294,7 @@ async fn transient_policy_restarts_only_abnormal_outcomes() {
         Crash::Cancelled,
     ] {
         let crashed = supervisor.transition(stopped(2, Err(crash), at)).unwrap();
-        assert_eq!(crashed.sends.replacement_commands.len(), 1);
+        assert_eq!(crashed.sends.owned.replacement_commands.len(), 1);
         assert!(supervisor.is_alive(2).unwrap());
     }
 }
@@ -319,13 +319,13 @@ async fn one_for_all_skips_dead_slots_and_respects_budget() {
     let first = supervisor
         .transition(stopped(0, Err(Crash::Failed), at))
         .unwrap();
-    assert_eq!(first.sends.replacement_commands.len(), 3);
+    assert_eq!(first.sends.owned.replacement_commands.len(), 3);
 
     // Second death: 3 alive candidates + 3 prior stamps = 6 > budget 5.
     let denied = supervisor
         .transition(stopped(1, Err(Crash::Failed), at))
         .unwrap();
-    assert!(denied.sends.replacement_commands.is_empty());
+    assert!(denied.sends.owned.replacement_commands.is_empty());
     assert!(!supervisor.is_alive(1).unwrap());
 
     // Third death: candidates are now only {0, 2} — the dead slot 1 is
@@ -335,9 +335,10 @@ async fn one_for_all_skips_dead_slots_and_respects_budget() {
     let third = supervisor
         .transition(stopped(2, Err(Crash::Failed), at))
         .unwrap();
-    assert_eq!(third.sends.replacement_commands.len(), 2);
+    assert_eq!(third.sends.owned.replacement_commands.len(), 2);
     let routes: Vec<_> = third
         .sends
+        .owned
         .replacement_commands
         .iter()
         .map(|d| d.to.resolve(MailAddr(17)))
@@ -381,9 +382,10 @@ async fn rest_for_one_uses_birth_sequence_not_index() {
     let wide = supervisor
         .transition(stopped(0, Err(Crash::Failed), at))
         .unwrap();
-    assert_eq!(wide.sends.replacement_commands.len(), 4);
+    assert_eq!(wide.sends.owned.replacement_commands.len(), 4);
     let routes: Vec<_> = wide
         .sends
+        .owned
         .replacement_commands
         .iter()
         .map(|d| d.to.resolve(MailAddr(17)))
@@ -399,9 +401,9 @@ async fn rest_for_one_uses_birth_sequence_not_index() {
     let narrow = supervisor
         .transition(stopped(9, Err(Crash::Failed), at))
         .unwrap();
-    assert_eq!(narrow.sends.replacement_commands.len(), 1);
+    assert_eq!(narrow.sends.owned.replacement_commands.len(), 1);
     assert_eq!(
-        narrow.sends.replacement_commands[0]
+        narrow.sends.owned.replacement_commands[0]
             .to
             .resolve(MailAddr(17)),
         behavior::Address::birth(MailAddr(17), 9)
@@ -609,18 +611,18 @@ async fn restart_configuration_controls_eligibility_and_budget_together() {
     let first = supervisor
         .transition(stopped(0, Err(Crash::Failed), at))
         .unwrap();
-    assert_eq!(first.sends.replacement_commands.len(), 1);
+    assert_eq!(first.sends.owned.replacement_commands.len(), 1);
 
     let second = supervisor
         .transition(stopped(0, Err(Crash::Failed), at + Duration::from_secs(1)))
         .unwrap();
-    assert!(second.sends.replacement_commands.is_empty());
+    assert!(second.sends.owned.replacement_commands.is_empty());
     assert!(!supervisor.is_alive(0).unwrap());
 
     // A normal exit is never restarted under the selected Transient policy.
     let normal = supervisor
         .transition(stopped(0, Ok(Exit::Normal), at))
         .unwrap();
-    assert!(normal.sends.replacement_commands.is_empty());
+    assert!(normal.sends.owned.replacement_commands.is_empty());
 }
 use behavior_testkit::InitializeTest;

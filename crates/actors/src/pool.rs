@@ -12,8 +12,8 @@ use std::time::Duration;
 use crate::{
     Actions, Address, Behavior, Births, ChildTopology, Crash, CreationRejection, Delivery, Exit,
     FleetError, Never, Own, Protocol, Proxy, ProxyCommand, Recipient, RestartConfiguration,
-    RestartPolicy, SendAlgebra, SendInput, Strategy, SupervisionEvent, Supervisor, SupervisorError,
-    SupervisorSends, User, WorkerCreationResolved, WorkerStopped,
+    RestartPolicy, SendEffects, SendInput, SendLayer, Strategy, SupervisionEvent, Supervisor,
+    SupervisorError, SupervisorSends, User, WorkerCreationResolved, WorkerStopped,
 };
 
 /// Caller-chosen identity used to correlate pool responses.
@@ -350,7 +350,7 @@ where
     pub assignments: Vec<Delivery<Proxy<C>>>,
 }
 
-impl<A, D, J, R, C> SendAlgebra for PoolBehaviorSends<A, D, J, R, C>
+impl<A, D, J, R, C> SendEffects for PoolBehaviorSends<A, D, J, R, C>
 where
     A: Address,
     A::Nonce: From<u64>,
@@ -368,6 +368,34 @@ where
     fn append(&mut self, mut other: Self) {
         self.responses.append(&mut other.responses);
         self.assignments.append(&mut other.assignments);
+    }
+}
+
+impl<Event, A, D, J, R, C> behavior::SendsFor<Event> for PoolBehaviorSends<A, D, J, R, C>
+where
+    A: Address,
+    A::Nonce: From<u64>,
+    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = A>,
+{
+}
+
+impl<I, RootEvent, Path, A, D, J, R, C> behavior::InterpretSends<I, RootEvent, Path>
+    for PoolBehaviorSends<A, D, J, R, C>
+where
+    I: behavior::SendInterpreter,
+    A: Address,
+    A::Nonce: From<u64>,
+    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = A>,
+    Vec<Delivery<D>>: behavior::InterpretSends<I, RootEvent, Path>,
+    Vec<Delivery<Proxy<C>>>: behavior::InterpretSends<I, RootEvent, Path>,
+{
+    fn interpret(self, interpreter: &mut I) -> Result<(), I::Error> {
+        behavior::InterpretSends::interpret(self.responses, interpreter)?;
+        behavior::InterpretSends::interpret(self.assignments, interpreter)
     }
 }
 
@@ -401,7 +429,7 @@ type KernelSends<A, D, J, R, C> = PoolBehaviorSends<A, D, J, R, C>;
 
 /// Pool effects keep responses and assignments in named, independently
 /// appendable lanes within the supervised behavior send product.
-pub type PoolSends<A, D, J, R, C> = SupervisorSends<A, KernelSends<A, D, J, R, C>, C>;
+pub type PoolSends<A, D, J, R, C> = SendLayer<SupervisorSends<A, C>, KernelSends<A, D, J, R, C>>;
 
 /// Complete action type returned by a [`WorkerPool`] transition.
 pub type PoolActions<A, D, J, R, C> = Actions<A, Never, PoolSends<A, D, J, R, C>, Births<Proxy<C>>>;
@@ -658,17 +686,14 @@ where
             .iter()
             .any(|slot| matches!(slot.state, SlotState::Idle));
         if !can_dispatch && self.backlog.len() == self.backlog_capacity {
-            actions
-                .sends
-                .behavior
-                .send::<Delivery<D>, Own>(Delivery::new(
-                    reply_to,
-                    PoolResponse::Rejected {
-                        job,
-                        payload,
-                        reason: PoolRejection::BacklogFull,
-                    },
-                ));
+            actions.sends.inner.send::<Delivery<D>, Own>(Delivery::new(
+                reply_to,
+                PoolResponse::Rejected {
+                    job,
+                    payload,
+                    reason: PoolRejection::BacklogFull,
+                },
+            ));
             return;
         }
         let dispatch_payload = payload.clone();
@@ -684,7 +709,7 @@ where
         });
         actions
             .sends
-            .behavior
+            .inner
             .send::<_, Own>(Delivery::new(reply_to, PoolResponse::Accepted { job }));
     }
 
@@ -697,21 +722,18 @@ where
         actions: &mut PoolActions<A, D, J, R, C>,
     ) -> Admission {
         let Some(slot) = self.slots.iter().find(|slot| slot.nonce == target) else {
-            actions
-                .sends
-                .behavior
-                .send::<Delivery<D>, Own>(Delivery::new(
-                    reply_to,
-                    PoolResponse::Rejected {
-                        job,
-                        payload,
-                        reason: PoolRejection::AffinityUnavailable,
-                    },
-                ));
+            actions.sends.inner.send::<Delivery<D>, Own>(Delivery::new(
+                reply_to,
+                PoolResponse::Rejected {
+                    job,
+                    payload,
+                    reason: PoolRejection::AffinityUnavailable,
+                },
+            ));
             return Admission::Rejected;
         };
         if matches!(slot.state, SlotState::Retired { .. }) {
-            actions.sends.behavior.send::<_, Own>(Delivery::new(
+            actions.sends.inner.send::<_, Own>(Delivery::new(
                 reply_to,
                 PoolResponse::Rejected {
                     job,
@@ -723,7 +745,7 @@ where
         }
         let can_dispatch = matches!(slot.state, SlotState::Idle);
         if !can_dispatch && self.backlog.len() == self.backlog_capacity {
-            actions.sends.behavior.send::<_, Own>(Delivery::new(
+            actions.sends.inner.send::<_, Own>(Delivery::new(
                 reply_to,
                 PoolResponse::Rejected {
                     job,
@@ -746,7 +768,7 @@ where
         });
         actions
             .sends
-            .behavior
+            .inner
             .send::<_, Own>(Delivery::new(reply_to, PoolResponse::Accepted { job }));
         Admission::Accepted
     }
@@ -793,7 +815,7 @@ where
                 return Err(PoolError::CompletionForUnavailableWorker { worker, phase });
             }
         };
-        actions.sends.behavior.send::<_, Own>(Delivery::new(
+        actions.sends.inner.send::<_, Own>(Delivery::new(
             job.reply_to,
             PoolResponse::Completed {
                 job: job.id,
@@ -869,7 +891,7 @@ where
         }
         for queued in self.backlog.drain(..) {
             let job = queued.accepted;
-            actions.sends.behavior.send::<_, Own>(Delivery::new(
+            actions.sends.inner.send::<_, Own>(Delivery::new(
                 job.reply_to,
                 PoolResponse::Interrupted {
                     job: job.id,
@@ -892,7 +914,7 @@ where
         while let Some(queued) = self.backlog.pop_front() {
             if queued.accepted.target == Some(worker) {
                 let job = queued.accepted;
-                actions.sends.behavior.send::<_, Own>(Delivery::new(
+                actions.sends.inner.send::<_, Own>(Delivery::new(
                     job.reply_to,
                     PoolResponse::Interrupted {
                         job: job.id,
@@ -994,7 +1016,7 @@ where
             self.slots[slot_position].state = SlotState::Assigned { assignment, job };
             actions
                 .sends
-                .behavior
+                .inner
                 .send::<Delivery<Proxy<C>>, Own>(Delivery::local_child(
                     behavior::ChildRecipient::new(nonce),
                     ProxyCommand::Forward(PoolAssignment {
@@ -1096,9 +1118,10 @@ where
                 self.worker_stopped(&stopped, &mut responses)?;
                 let mut actions =
                     self.supervisor_transition(SupervisionEvent::WorkerStopped(stopped))?;
-                actions.sends.behavior.responses.extend(responses);
+                actions.sends.inner.responses.extend(responses);
                 let replacement_requested = actions
                     .sends
+                    .owned
                     .replacement_commands
                     .iter()
                     .any(|delivery| delivery.to.is_local_child(proxy));
@@ -1317,7 +1340,7 @@ mod tests {
         let mut actions: PoolActions<MailAddr, TestReply, u8, (), TestWorker> = Actions::cont();
         pool.dispatch(&mut actions).unwrap();
 
-        let assignments = &actions.sends.behavior.assignments;
+        let assignments = &actions.sends.inner.assignments;
         assert_eq!(assignments.len(), 2);
         for (index, expected_job) in [JobId(1), JobId(2)].into_iter().enumerate() {
             assert!(

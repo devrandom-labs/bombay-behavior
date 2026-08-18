@@ -9,7 +9,7 @@ use crate::protocol::{
 };
 use crate::{Own, SendInput};
 use behavior::{
-    Actions, Address, Behavior, Births, Create, Delivery, SendAlgebra, ServiceSends, User,
+    Actions, Address, Behavior, Births, Create, Delivery, InterpreterRequests, SendEffects, User,
 };
 use behavior::{Never, Step};
 
@@ -18,29 +18,30 @@ pub struct ProxySends<C: Behavior> {
     /// User payloads forwarded to the currently installed worker incarnation.
     pub deliveries: Vec<Delivery<C::Protocol>>,
     /// Requests to observe installed child incarnations.
-    pub child_observations: ServiceSends<ObserveChild<crate::BehaviorAddr<C>>>,
+    pub child_observations: InterpreterRequests<ObserveChild<crate::BehaviorAddr<C>>>,
     /// Requests for exact creation acceptance or rejection facts.
-    pub creation_observations: ServiceSends<ObserveCreation<crate::BehaviorAddr<C>>>,
+    pub creation_observations: InterpreterRequests<ObserveCreation<crate::BehaviorAddr<C>>>,
     /// Worker-stop facts reported to the owning supervisor.
-    pub stopped_reports: ServiceSends<ReportWorkerStopped<crate::BehaviorAddr<C>>>,
+    pub stopped_reports: InterpreterRequests<ReportWorkerStopped<crate::BehaviorAddr<C>>>,
     /// Creation-resolution facts reported to the owning supervisor.
-    pub creation_reports:
-        ServiceSends<ReportWorkerCreationResolved<<crate::BehaviorAddr<C> as Address>::Nonce>>,
+    pub creation_reports: InterpreterRequests<
+        ReportWorkerCreationResolved<<crate::BehaviorAddr<C> as Address>::Nonce>,
+    >,
     /// Requests orderly termination of the exact installed worker incarnation.
-    pub shutdowns: ServiceSends<ShutdownChild<C>>,
+    pub shutdowns: InterpreterRequests<ShutdownChild<C>>,
 }
 
 pub(crate) type ProxyActions<C> = Actions<crate::BehaviorAddr<C>, Never, ProxySends<C>, Births<C>>;
 
-impl<C: Behavior> SendAlgebra for ProxySends<C> {
+impl<C: Behavior> SendEffects for ProxySends<C> {
     fn empty() -> Self {
         Self {
             deliveries: Vec::new(),
-            child_observations: ServiceSends::empty(),
-            creation_observations: ServiceSends::empty(),
-            stopped_reports: ServiceSends::empty(),
-            creation_reports: ServiceSends::empty(),
-            shutdowns: ServiceSends::empty(),
+            child_observations: InterpreterRequests::empty(),
+            creation_observations: InterpreterRequests::empty(),
+            stopped_reports: InterpreterRequests::empty(),
+            creation_reports: InterpreterRequests::empty(),
+            shutdowns: InterpreterRequests::empty(),
         }
     }
 
@@ -52,6 +53,40 @@ impl<C: Behavior> SendAlgebra for ProxySends<C> {
         self.stopped_reports.append(other.stopped_reports);
         self.creation_reports.append(other.creation_reports);
         self.shutdowns.append(other.shutdowns);
+    }
+}
+
+impl<C, Event> behavior::SendsFor<Event> for ProxySends<C>
+where
+    C: Behavior<Ph = Never>,
+    InterpreterRequests<ObserveChild<crate::BehaviorAddr<C>>>: behavior::SendsFor<Event>,
+    InterpreterRequests<ObserveCreation<crate::BehaviorAddr<C>>>: behavior::SendsFor<Event>,
+    InterpreterRequests<ShutdownChild<C>>: behavior::SendsFor<Event>,
+{
+}
+
+impl<I, RootEvent, Path, C> behavior::InterpretSends<I, RootEvent, Path> for ProxySends<C>
+where
+    I: behavior::SendInterpreter,
+    C: Behavior<Ph = Never>,
+    Vec<Delivery<C::Protocol>>: behavior::InterpretSends<I, RootEvent, Path>,
+    InterpreterRequests<ObserveChild<crate::BehaviorAddr<C>>>:
+        behavior::InterpretSends<I, RootEvent, Path>,
+    InterpreterRequests<ObserveCreation<crate::BehaviorAddr<C>>>:
+        behavior::InterpretSends<I, RootEvent, Path>,
+    InterpreterRequests<ReportWorkerStopped<crate::BehaviorAddr<C>>>:
+        behavior::InterpretSends<I, RootEvent, Path>,
+    InterpreterRequests<ReportWorkerCreationResolved<<crate::BehaviorAddr<C> as Address>::Nonce>>:
+        behavior::InterpretSends<I, RootEvent, Path>,
+    InterpreterRequests<ShutdownChild<C>>: behavior::InterpretSends<I, RootEvent, Path>,
+{
+    fn interpret(self, interpreter: &mut I) -> Result<(), I::Error> {
+        behavior::InterpretSends::interpret(self.deliveries, interpreter)?;
+        behavior::InterpretSends::interpret(self.child_observations, interpreter)?;
+        behavior::InterpretSends::interpret(self.creation_observations, interpreter)?;
+        behavior::InterpretSends::interpret(self.stopped_reports, interpreter)?;
+        behavior::InterpretSends::interpret(self.creation_reports, interpreter)?;
+        behavior::InterpretSends::interpret(self.shutdowns, interpreter)
     }
 }
 

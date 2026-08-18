@@ -1,11 +1,9 @@
 //! Phased child-topology shutdown.
 
-use crate::{
-    ChildShutdownRejected, ChildShutdownRejection, ChildStopped, Own, SendInput, ShutdownChild,
-};
+use crate::{ChildShutdownRejected, ChildShutdownRejection, ChildStopped, ShutdownChild};
 use behavior::{
-    Actions, Address, Behavior, BehaviorActed, BirthMode, Here, InjectEvent, Inside, SendAlgebra,
-    ServiceSends,
+    Actions, Address, Behavior, BehaviorActed, BirthMode, Here, InjectEvent, Inside,
+    InterpreterRequests, SendEffects, SendLayer,
 };
 use behavior::{User, UserEvent};
 
@@ -156,6 +154,14 @@ impl<E: UserEvent> UserEvent for ShutdownCoordinatorEvent<E> {
     }
 }
 
+impl<E: UserEvent> behavior::ComposedEvent for ShutdownCoordinatorEvent<E> {
+    type Inner = E;
+
+    fn from_inner(event: E) -> Self {
+        Self::Behavior(event)
+    }
+}
+
 impl<E: UserEvent> InjectEvent<crate::ShutdownRequested, Here> for ShutdownCoordinatorEvent<E> {
     fn inject_at(value: crate::ShutdownRequested) -> Self {
         Self::Requested(value)
@@ -180,63 +186,6 @@ where
 {
     fn inject_at(input: Input) -> Self {
         Self::Behavior(E::inject_at(input))
-    }
-}
-
-/// Named effects added by homogeneous coordinated shutdown.
-///
-/// `C` remains in the shutdown lane so an interpreter can select the concrete
-/// hosted child namespace without a registry, downcast, or erased envelope.
-pub struct ShutdownCoordinatorSends<C: Behavior, S> {
-    /// Sends emitted by the wrapped behavior.
-    pub behavior: S,
-    /// Local requests to shut down children in the active phase.
-    pub shutdowns: ServiceSends<ShutdownChild<C>>,
-}
-
-impl<C: Behavior, S: Clone> Clone for ShutdownCoordinatorSends<C, S> {
-    fn clone(&self) -> Self {
-        Self {
-            behavior: self.behavior.clone(),
-            shutdowns: self.shutdowns.clone(),
-        }
-    }
-}
-
-impl<C: Behavior, S: PartialEq> PartialEq for ShutdownCoordinatorSends<C, S> {
-    fn eq(&self, other: &Self) -> bool {
-        self.behavior == other.behavior && self.shutdowns == other.shutdowns
-    }
-}
-
-impl<C: Behavior, S: Eq> Eq for ShutdownCoordinatorSends<C, S> {}
-
-impl<C: Behavior, S: core::fmt::Debug> core::fmt::Debug for ShutdownCoordinatorSends<C, S>
-where
-    <crate::BehaviorAddr<C> as Address>::Nonce: core::fmt::Debug,
-{
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("ShutdownCoordinatorSends")
-            .field("behavior", &self.behavior)
-            .field("shutdowns", &self.shutdowns)
-            .finish()
-    }
-}
-impl<C: Behavior, S: SendAlgebra> SendAlgebra for ShutdownCoordinatorSends<C, S> {
-    fn empty() -> Self {
-        Self {
-            behavior: S::empty(),
-            shutdowns: ServiceSends::empty(),
-        }
-    }
-    fn append(&mut self, other: Self) {
-        self.behavior.append(other.behavior);
-        self.shutdowns.append(other.shutdowns);
-    }
-}
-impl<C: Behavior, S> SendInput<ShutdownChild<C>, Own> for ShutdownCoordinatorSends<C, S> {
-    fn emit(&mut self, input: ShutdownChild<C>) {
-        self.shutdowns.send(input);
     }
 }
 
@@ -306,7 +255,7 @@ where
 type ShutdownCoordinatorActions<B, C> = Actions<
     crate::BehaviorAddr<B>,
     <B as Behavior>::Ph,
-    ShutdownCoordinatorSends<C, <B as Behavior>::Sends>,
+    SendLayer<InterpreterRequests<ShutdownChild<C>>, <B as Behavior>::Sends>,
     <B as Behavior>::Birth,
 >;
 
@@ -335,24 +284,18 @@ where
     fn wrap(
         actions: Actions<crate::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>,
     ) -> ShutdownCoordinatorActions<B, C> {
-        actions.map_sends(|behavior| ShutdownCoordinatorSends {
-            behavior,
-            shutdowns: ServiceSends::empty(),
-        })
+        actions.map_sends(|inner| SendLayer::new(InterpreterRequests::empty(), inner))
     }
 
     fn phase_actions(&self, phase: usize) -> ShutdownCoordinatorActions<B, C> {
-        let shutdowns = ServiceSends::new(
+        let shutdowns = InterpreterRequests::new(
             self.plan.phases[phase]
                 .iter()
                 .copied()
                 .map(ShutdownChild::<C>::new)
                 .collect(),
         );
-        Actions::send(ShutdownCoordinatorSends {
-            behavior: B::Sends::empty(),
-            shutdowns,
-        })
+        Actions::send(SendLayer::new(shutdowns, B::Sends::empty()))
     }
 }
 
@@ -385,7 +328,7 @@ impl<B, C, A, Ph, S, Br> Behavior for ShutdownCoordinator<B, C>
 where
     A: Address,
     A::Nonce: Copy + Eq,
-    S: SendAlgebra,
+    S: SendEffects + behavior::SendsFor<B::Event>,
     Br: BirthMode,
     B: Behavior<Ph = Ph, Sends = S, Birth = Br>,
     B::Protocol: crate::Protocol<Addr = A>,
@@ -395,7 +338,7 @@ where
 {
     type Protocol = B::Protocol;
     type Event = ShutdownCoordinatorEvent<B::Event>;
-    type Sends = ShutdownCoordinatorSends<C, S>;
+    type Sends = SendLayer<InterpreterRequests<ShutdownChild<C>>, S>;
     type Ph = Ph;
     type Error = ShutdownCoordinatorError<B::Error, A::Nonce>;
     type Birth = Br;
@@ -549,13 +492,13 @@ mod tests {
             ShutdownCoordinator::<Probe, crate::StopOnShutdown<Probe>>::new(Probe, plan)
                 .initialize()
                 .unwrap();
-        assert_eq!(initialized.actions.sends.behavior, [1]);
-        assert!(initialized.actions.sends.shutdowns.is_empty());
+        assert_eq!(initialized.actions.sends.inner, [1]);
+        assert!(initialized.actions.sends.owned.is_empty());
         let mut active = initialized.behavior;
 
         let first = active.on_path(ShutdownRequested).unwrap();
         assert_eq!(
-            first.sends.shutdowns.as_slice(),
+            first.sends.owned.as_slice(),
             [ShutdownChild::new(1), ShutdownChild::new(2)]
         );
         assert_eq!(
@@ -567,7 +510,7 @@ mod tests {
         );
 
         let one = active.on_path(stopped(2)).unwrap();
-        assert_eq!(one.sends, ShutdownCoordinatorSends::empty());
+        assert_eq!(one.sends, SendLayer::empty());
         assert_eq!(
             active.state(),
             &ShutdownState::Stopping {
@@ -577,7 +520,7 @@ mod tests {
         );
 
         let second = active.on_path(stopped(1)).unwrap();
-        assert_eq!(second.sends.shutdowns.as_slice(), [ShutdownChild::new(3)]);
+        assert_eq!(second.sends.owned.as_slice(), [ShutdownChild::new(3)]);
         assert_eq!(
             active.state(),
             &ShutdownState::Stopping {
@@ -604,7 +547,10 @@ mod tests {
 
         let actions = active.on(ShutdownRequested).unwrap();
 
-        assert_eq!(actions.sends.shutdowns.as_slice(), [ShutdownChild::new(7)]);
+        assert_eq!(
+            actions.sends.inner.owned.as_slice(),
+            [ShutdownChild::new(7)]
+        );
         assert!(matches!(actions.become_, Step::Continue));
     }
 
@@ -620,12 +566,12 @@ mod tests {
         active.on_path(ShutdownRequested).unwrap();
         assert_eq!(
             active.on_path(ShutdownRequested).unwrap().sends,
-            ShutdownCoordinatorSends::empty()
+            SendLayer::empty()
         );
         active.on_path(stopped(1)).unwrap();
         assert_eq!(
             active.on_path(stopped(1)).unwrap().sends,
-            ShutdownCoordinatorSends::empty()
+            SendLayer::empty()
         );
         assert_eq!(
             active.state(),
@@ -668,8 +614,8 @@ mod tests {
                 .unwrap()
                 .behavior;
         let user = active.receive(MailAddr(0), 7).unwrap();
-        assert_eq!(user.sends.behavior, [7]);
-        assert!(user.sends.shutdowns.is_empty());
+        assert_eq!(user.sends.inner, [7]);
+        assert!(user.sends.owned.is_empty());
         assert!(matches!(
             active.on_path(ShutdownRequested).unwrap().become_,
             Step::Stop(_)

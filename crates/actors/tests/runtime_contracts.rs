@@ -7,16 +7,14 @@
 
 use behavior_actors::{
     Actions, BackoffSupervisor, Behavior, BehaviorActed, Births, BreakerOutcome,
-    ChildShutdownRejected, ChildStopped, CircuitBreaker, CreationKind, CreationResolved, Deadline,
-    DynamicProxy, DynamicSupervisor, DynamicSupervisorOutcome, Here, Ingress, InjectEvent, Lease,
-    LeaseOutcome, MailAddr, Never, NoBirths, ObserveChild, ObserveCreation, ObservePeer, OneShot,
-    PeerStopped, Periodic, Presence, PresenceReply, Proxy, ProxyCommand, ProxyEvent,
-    ReceiveTimeout, ReportWorkerCreationResolved, ReportWorkerStopped, ScheduleAfter, ScheduleAt,
-    ShutdownChild, ShutdownCoordinator, ShutdownCoordinatorEvent, ShutdownRequested,
-    StopOnShutdown, SupervisionEvent, TerminationMonitor, TimerElapsed, TimerGeneration, TimerId,
-    User, Watch, WatchEvent, WorkerCreationResolved, WorkerStopped,
+    ChildShutdownRejected, ChildStopped, CircuitBreaker, CreationResolved, Deadline, DynamicProxy,
+    DynamicSupervisor, DynamicSupervisorOutcome, Here, Ingress, InjectEvent, Lease, LeaseOutcome,
+    MailAddr, Never, NoBirths, ObserveChild, ObserveCreation, ObservePeer, OneShot, PeerStopped,
+    Periodic, Presence, PresenceReply, Proxy, ProxyCommand, ProxyEvent, ReceiveTimeout,
+    ScheduleAfter, ScheduleAt, ShutdownChild, ShutdownCoordinator, ShutdownCoordinatorEvent,
+    ShutdownRequested, StopOnShutdown, SupervisionEvent, TerminationMonitor, TimerElapsed, User,
+    Watch, WatchEvent, WorkerCreationResolved, WorkerStopped,
 };
-use std::time::{Duration, Instant};
 
 struct Inert;
 
@@ -248,21 +246,22 @@ fn shutdown_wrapper_owns_dynamic_supervisor_shutdown_end_to_end() {
 }
 
 #[test]
-fn every_deferred_local_fact_request_carries_its_here_destination() {
-    fn here<Input>(_: Ingress<Input, Here>) {}
+fn every_deferred_local_fact_request_declares_its_relative_destination() {
+    fn returns_here<Request, Fact>()
+    where
+        Request: behavior_actors::InterpreterRequest<
+                ReturnToEmitter = behavior_actors::ReturnsToEmitter<Fact, Here>,
+            >,
+    {
+    }
 
-    here(ScheduleAt::new(TimerId(1), TimerGeneration(2), Instant::now()).ingress);
-    here(ScheduleAfter::new(TimerId(1), TimerGeneration(2), Duration::from_secs(1)).ingress);
-    here(ObservePeer::new(MailAddr(3)).ingress);
-    here(ObserveChild::<MailAddr>::new(4).ingress);
-    here(ObserveCreation::<MailAddr>::new(5).ingress);
-    here(
-        ReportWorkerStopped::<MailAddr>::new(6, Ok(behavior_actors::Exit::Normal), Instant::now())
-            .ingress,
-    );
-    here(ReportWorkerCreationResolved::new(7_u64, CreationKind::Birth, Ok(())).ingress);
-
+    returns_here::<ScheduleAt, TimerElapsed>();
+    returns_here::<ScheduleAfter, TimerElapsed>();
+    returns_here::<ObservePeer<MailAddr>, PeerStopped<MailAddr>>();
+    returns_here::<ObserveChild<MailAddr>, ChildStopped<MailAddr>>();
+    returns_here::<ObserveCreation<MailAddr>, CreationResolved<MailAddr>>();
     let shutdown = ShutdownChild::<StopOnShutdown<Inert>>::new(8);
+    fn here<Input>(_: Ingress<Input, Here>) {}
     here(shutdown.ingress);
-    here(shutdown.rejection);
+    returns_here::<ShutdownChild<StopOnShutdown<Inert>>, ChildShutdownRejected<u64>>();
 }

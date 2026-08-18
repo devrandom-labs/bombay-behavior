@@ -2,7 +2,7 @@
 
 use std::collections::VecDeque;
 
-use behavior::{Actions, Address, Behavior, BirthMode, SendAlgebra, User, UserEvent};
+use behavior::{Actions, Address, Behavior, BirthMode, SendEffects, User, UserEvent};
 use behavior::{Never, Step};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -65,7 +65,7 @@ where
 impl<B, A, Sends, Br> Stash<B>
 where
     A: Address,
-    Sends: SendAlgebra,
+    Sends: SendEffects + behavior::SendsFor<B::Event>,
     Br: BirthMode,
     B: Behavior<Ph = Never, Sends = Sends, Birth = Br>,
     B::Protocol: crate::Protocol<Addr = A>,
@@ -100,7 +100,7 @@ where
 impl<B, A, Sends, Br> Behavior for Stash<B>
 where
     A: Address,
-    Sends: SendAlgebra,
+    Sends: SendEffects + behavior::SendsFor<B::Event>,
     Br: BirthMode,
     B: Behavior<Ph = Never, Sends = Sends, Birth = Br>,
     B::Protocol: crate::Protocol<Addr = A>,

@@ -154,7 +154,7 @@ fuzz_target!(|bytes: &[u8]| {
                             Instant::now(),
                         ))
                         .unwrap();
-                    if !actions.sends.replacement_commands.is_empty() {
+                    if !actions.sends.owned.replacement_commands.is_empty() {
                         pool.on_path(WorkerCreationResolved::new(
                             slot,
                             1,
@@ -250,7 +250,7 @@ fuzz_target!(|bytes: &[u8]| {
                             Instant::now(),
                         ))
                         .unwrap();
-                    if !actions.sends.replacement_commands.is_empty() {
+                    if !actions.sends.owned.replacement_commands.is_empty() {
                         let replacement = stopped.wrapping_add(2);
                         let result = if byte & 0x80 == 0 {
                             Ok(())

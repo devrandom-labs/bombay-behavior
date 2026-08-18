@@ -1,8 +1,8 @@
 //! Driver-level lossless accumulation: `drive` folds every transition's
-//! effect into the trace via `SendAlgebra::append`. For composed behaviors
+//! effect into the trace via `SendEffects::append`. For composed behaviors
 //! the sends use named products; this is where "send/create order and wrapper
 //! preservation are lossless under composition" (contract #3) is enforced at
-//! the trace level. Also: the `SendAlgebra` monoid law itself, and the
+//! the trace level. Also: the `SendEffects` monoid law itself, and the
 //! empty-fleet birth→death restart path.
 
 use std::time::Duration;
@@ -10,7 +10,7 @@ use std::time::Duration;
 use behavior::EventLayer;
 use behavior::{
     Acted, Actions, Crash, Create, Delivery, MailAddr, Never, Recipient, RestartPolicy,
-    SendAlgebra, Step, Strategy, SupervisionEvent, User, UserEvent, WorkerStopped,
+    SendEffects, Step, Strategy, SupervisionEvent, User, UserEvent, WorkerStopped,
 };
 use behavior_testkit::{Mailbox, drive};
 use proptest::collection::vec;
@@ -140,11 +140,12 @@ async fn driver_accumulates_supervising_send_products_losslessly() {
     assert!(!trace.stopped);
 
     // Inner lane: user echoes, in order, exactly the delivered messages.
-    let echoes: Vec<u64> = trace.sends.behavior.iter().map(|d| d.message).collect();
+    let echoes: Vec<u64> = trace.sends.inner.iter().map(|d| d.message).collect();
     assert_eq!(echoes, [3, 5]);
     // Supervisor's own replacement lane: one per death, in order.
     let replacements: Vec<MailAddr> = trace
         .sends
+        .owned
         .replacement_commands
         .iter()
         .map(|d| d.to.resolve(MailAddr(17)))
@@ -157,12 +158,12 @@ async fn driver_accumulates_supervising_send_products_losslessly() {
         ]
     );
     // Observe-child sends: emitted once at init, never again.
-    assert_eq!(trace.sends.child_observations.len(), 2);
+    assert_eq!(trace.sends.owned.child_observations.len(), 2);
     // Creates: exactly the two init proxies; the driver never re-creates.
     assert_eq!(trace.creates.len(), 2);
 }
 
-// The `SendAlgebra` monoid law that the driver's accumulation depends on:
+// The `SendEffects` monoid law that the driver's accumulation depends on:
 // `empty` is a two-sided identity and `append` is associative, at both the
 // `Vec` level. Named wrapper products have composition-specific tests below.
 proptest! {
@@ -172,27 +173,27 @@ proptest! {
     })]
 
     #[test]
-    fn send_algebra_is_a_monoid(
+    fn send_effect_accumulation_has_identity_and_associativity(
         a in vec(any::<u8>(), 0..32),
         b in vec(any::<u8>(), 0..32),
         c in vec(any::<u8>(), 0..32),
     ) {
         // Vec: empty is a two-sided identity.
         let mut left_id = Vec::empty();
-        SendAlgebra::append(&mut left_id, a.clone());
+        SendEffects::append(&mut left_id, a.clone());
         prop_assert_eq!(&left_id, &a);
         let mut right_id = a.clone();
-        SendAlgebra::append(&mut right_id, Vec::empty());
+        SendEffects::append(&mut right_id, Vec::empty());
         prop_assert_eq!(&right_id, &a);
 
         // Vec: append is associative.
         let mut left_assoc = a.clone();
-        SendAlgebra::append(&mut left_assoc, b.clone());
-        SendAlgebra::append(&mut left_assoc, c.clone());
+        SendEffects::append(&mut left_assoc, b.clone());
+        SendEffects::append(&mut left_assoc, c.clone());
         let mut mid = b.clone();
-        SendAlgebra::append(&mut mid, c.clone());
+        SendEffects::append(&mut mid, c.clone());
         let mut right_assoc = a.clone();
-        SendAlgebra::append(&mut right_assoc, mid);
+        SendEffects::append(&mut right_assoc, mid);
         prop_assert_eq!(&left_assoc, &right_assoc);
 
     }
@@ -234,9 +235,9 @@ async fn empty_fleet_dynamic_birth_then_death_restarts() {
             at,
         }))
         .unwrap();
-    assert_eq!(actions.sends.replacement_commands.len(), 1);
+    assert_eq!(actions.sends.owned.replacement_commands.len(), 1);
     assert_eq!(
-        actions.sends.replacement_commands[0]
+        actions.sends.owned.replacement_commands[0]
             .to
             .resolve(MailAddr(17)),
         behavior::Address::birth(MailAddr(17), 9)
@@ -318,19 +319,19 @@ async fn driver_full_stack_mixed_lanes_stop_on_peer_death() {
     // never reached the parent.
     let echoes: Vec<u64> = trace
         .sends
-        .behavior
-        .behavior
-        .behavior
+        .inner
+        .inner
+        .inner
         .iter()
         .map(|d| d.message)
         .collect();
     assert_eq!(echoes, [1]);
     // Schedule send emitted once at init.
-    assert_eq!(trace.sends.behavior.schedules.len(), 1);
+    assert_eq!(trace.sends.inner.owned.len(), 1);
     // Observe-peer emitted once at init.
-    assert_eq!(trace.sends.behavior.behavior.observations.len(), 1);
+    assert_eq!(trace.sends.inner.inner.owned.len(), 1);
     // Observe-child sends emitted once at init.
-    assert_eq!(trace.sends.child_observations.len(), 2);
+    assert_eq!(trace.sends.owned.child_observations.len(), 2);
 }
 
 /// A macro-defined behavior folds through the same driver boundary as a

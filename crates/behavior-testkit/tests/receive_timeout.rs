@@ -93,28 +93,28 @@ async fn initialization_and_successful_user_folds_arm_after_preserving_actions()
     let initialized = behavior.initialize().unwrap();
     let initial = initialized.actions;
     let mut behavior = initialized.behavior;
-    assert!(initial.sends.behavior.is_empty());
+    assert!(initial.sends.inner.is_empty());
     assert!(initial.creates.is_empty());
     assert_eq!(initial.become_, Step::Continue);
-    assert_eq!(initial.sends.schedules.len(), 1);
-    assert_eq!(initial.sends.schedules[0].id, TimerId(0));
-    assert_eq!(initial.sends.schedules[0].generation, TimerGeneration(0));
-    assert_eq!(initial.sends.schedules[0].after, after);
+    assert_eq!(initial.sends.owned.len(), 1);
+    assert_eq!(initial.sends.owned[0].id, TimerId(0));
+    assert_eq!(initial.sends.owned[0].generation, TimerGeneration(0));
+    assert_eq!(initial.sends.owned[0].after, after);
 
     let first = behavior
         .transition(EventLayer::Inner(User::user(MailAddr(1), 1)))
         .unwrap();
-    assert_eq!(first.sends.behavior.len(), 1);
-    assert_eq!(first.sends.behavior[0].message, 1);
+    assert_eq!(first.sends.inner.len(), 1);
+    assert_eq!(first.sends.inner[0].message, 1);
     assert_eq!(first.creates.len(), 1);
     assert_eq!(first.creates[0].nonce, 1);
     assert_eq!(first.become_, Step::Continue);
-    assert_eq!(first.sends.schedules[0].generation, TimerGeneration(1));
+    assert_eq!(first.sends.owned[0].generation, TimerGeneration(1));
 
     let second = behavior
         .transition(EventLayer::Inner(User::user(MailAddr(1), 2)))
         .unwrap();
-    assert_eq!(second.sends.schedules[0].generation, TimerGeneration(2));
+    assert_eq!(second.sends.owned[0].generation, TimerGeneration(2));
 }
 
 #[tokio::test]
@@ -134,8 +134,8 @@ async fn matching_delivery_consumes_once_and_reaction_preserves_full_actions() {
             generation: TimerGeneration(1),
         }))
         .unwrap();
-    assert!(stale.sends.behavior.is_empty());
-    assert!(stale.sends.schedules.is_empty());
+    assert!(stale.sends.inner.is_empty());
+    assert!(stale.sends.owned.is_empty());
 
     let fired = behavior
         .transition(EventLayer::Owned(TimerElapsed {
@@ -143,10 +143,10 @@ async fn matching_delivery_consumes_once_and_reaction_preserves_full_actions() {
             generation: TimerGeneration(0),
         }))
         .unwrap();
-    assert_eq!(fired.sends.behavior[0].message, 99);
+    assert_eq!(fired.sends.inner[0].message, 99);
     assert_eq!(fired.creates[0].nonce, 99);
     assert_eq!(fired.become_, Step::Continue);
-    assert!(fired.sends.schedules.is_empty());
+    assert!(fired.sends.owned.is_empty());
 
     let duplicate = behavior
         .transition(EventLayer::Owned(TimerElapsed {
@@ -154,13 +154,13 @@ async fn matching_delivery_consumes_once_and_reaction_preserves_full_actions() {
             generation: TimerGeneration(0),
         }))
         .unwrap();
-    assert!(duplicate.sends.behavior.is_empty());
-    assert!(duplicate.sends.schedules.is_empty());
+    assert!(duplicate.sends.inner.is_empty());
+    assert!(duplicate.sends.owned.is_empty());
 
     let rearmed = behavior
         .transition(EventLayer::Inner(User::user(MailAddr(1), 3)))
         .unwrap();
-    assert_eq!(rearmed.sends.schedules[0].generation, TimerGeneration(1));
+    assert_eq!(rearmed.sends.owned[0].generation, TimerGeneration(1));
 }
 
 #[tokio::test]
@@ -181,7 +181,7 @@ async fn errors_and_terminal_user_folds_do_not_rearm() {
             generation: TimerGeneration(0),
         }))
         .unwrap();
-    assert_eq!(still_live.sends.behavior[0].message, 99);
+    assert_eq!(still_live.sends.inner[0].message, 99);
 
     let terminal = behavior::ReceiveTimeout::new(
         Subject::default(),
@@ -195,8 +195,8 @@ async fn errors_and_terminal_user_folds_do_not_rearm() {
         .transition(EventLayer::Inner(User::user(MailAddr(1), 0)))
         .unwrap();
     assert_eq!(stopped.become_, Step::Stop(behavior::Stopped));
-    assert!(stopped.sends.schedules.is_empty());
-    assert_eq!(stopped.sends.behavior[0].message, 0);
+    assert!(stopped.sends.owned.is_empty());
+    assert_eq!(stopped.sends.inner[0].message, 0);
     assert_eq!(stopped.creates[0].nonce, 0);
 
     let formerly_live = terminal
@@ -205,8 +205,8 @@ async fn errors_and_terminal_user_folds_do_not_rearm() {
             generation: TimerGeneration(0),
         }))
         .unwrap();
-    assert!(formerly_live.sends.behavior.is_empty());
-    assert!(formerly_live.sends.schedules.is_empty());
+    assert!(formerly_live.sends.inner.is_empty());
+    assert!(formerly_live.sends.owned.is_empty());
 }
 
 fn inner_at(_inner: &mut SubjectBehavior) -> Result<behavior::Become, Failed> {
@@ -220,7 +220,10 @@ fn outer_timeout(
 ) -> Acted<
     MailAddr,
     Never,
-    behavior::DeadlineSends<<SubjectBehavior as Behavior>::Sends>,
+    behavior::SendLayer<
+        behavior::InterpreterRequests<behavior::ScheduleAt>,
+        <SubjectBehavior as Behavior>::Sends,
+    >,
     Births<ChildBehavior>,
     Failed,
 > {
@@ -244,8 +247,8 @@ async fn nested_timer_service_events_never_reset_receive_inactivity() {
     let initialized = behavior.initialize().unwrap();
     let initial = initialized.actions;
     let mut behavior = initialized.behavior;
-    assert_eq!(initial.sends.behavior.schedules[0].id, TimerId(0));
-    assert_eq!(initial.sends.schedules[0].id, TimerId(1));
+    assert_eq!(initial.sends.inner.owned[0].id, TimerId(0));
+    assert_eq!(initial.sends.owned[0].id, TimerId(1));
 
     let accepted = behavior
         .transition(EventLayer::Owned(TimerElapsed {
@@ -253,7 +256,7 @@ async fn nested_timer_service_events_never_reset_receive_inactivity() {
             generation: TimerGeneration(0),
         }))
         .unwrap();
-    assert!(accepted.sends.schedules.is_empty());
+    assert!(accepted.sends.owned.is_empty());
 
     let stale = behavior
         .transition(EventLayer::Owned(TimerElapsed {
@@ -261,7 +264,7 @@ async fn nested_timer_service_events_never_reset_receive_inactivity() {
             generation: TimerGeneration(0),
         }))
         .unwrap();
-    assert!(stale.sends.schedules.is_empty());
+    assert!(stale.sends.owned.is_empty());
 
     let outer = behavior
         .transition(EventLayer::Owned(TimerElapsed {
@@ -286,7 +289,7 @@ async fn accepted_stale_timeout_error_and_terminal_turns_match_independent_model
     let initial = initialized.actions;
     let mut behavior = initialized.behavior;
     assert_eq!(
-        initial.sends.schedules[0].generation,
+        initial.sends.owned[0].generation,
         TimerGeneration(model.initialize())
     );
 
@@ -294,7 +297,7 @@ async fn accepted_stale_timeout_error_and_terminal_turns_match_independent_model
         .transition(EventLayer::Inner(User::user(MailAddr(1), 1)))
         .unwrap();
     assert_eq!(
-        accepted.sends.schedules[0].generation,
+        accepted.sends.owned[0].generation,
         TimerGeneration(model.activity().unwrap())
     );
 
@@ -305,7 +308,7 @@ async fn accepted_stale_timeout_error_and_terminal_turns_match_independent_model
             generation: TimerGeneration(0),
         }))
         .unwrap();
-    assert!(stale.sends.behavior.is_empty());
+    assert!(stale.sends.inner.is_empty());
 
     assert!(model.notification(1));
     let timeout = behavior
@@ -314,8 +317,8 @@ async fn accepted_stale_timeout_error_and_terminal_turns_match_independent_model
             generation: TimerGeneration(1),
         }))
         .unwrap();
-    assert_eq!(timeout.sends.behavior[0].message, 99);
-    assert!(timeout.sends.schedules.is_empty());
+    assert_eq!(timeout.sends.inner[0].message, 99);
+    assert!(timeout.sends.owned.is_empty());
 
     assert!(!model.notification(1));
     let duplicate = behavior
@@ -324,7 +327,7 @@ async fn accepted_stale_timeout_error_and_terminal_turns_match_independent_model
             generation: TimerGeneration(1),
         }))
         .unwrap();
-    assert!(duplicate.sends.behavior.is_empty());
+    assert!(duplicate.sends.inner.is_empty());
 
     assert_eq!(model.no_activity(), None);
     let failed = behavior.transition(EventLayer::Inner(User::user(MailAddr(1), 7)));
@@ -334,7 +337,7 @@ async fn accepted_stale_timeout_error_and_terminal_turns_match_independent_model
         .transition(EventLayer::Inner(User::user(MailAddr(1), 2)))
         .unwrap();
     assert_eq!(
-        accepted.sends.schedules[0].generation,
+        accepted.sends.owned[0].generation,
         TimerGeneration(model.activity().unwrap())
     );
 
@@ -342,7 +345,7 @@ async fn accepted_stale_timeout_error_and_terminal_turns_match_independent_model
         .transition(EventLayer::Inner(User::user(MailAddr(1), 0)))
         .unwrap();
     assert_eq!(terminal.become_, Step::Stop(behavior::Stopped));
-    assert!(terminal.sends.schedules.is_empty());
+    assert!(terminal.sends.owned.is_empty());
     assert_eq!(model.no_activity(), Some(2));
 }
 
@@ -394,7 +397,7 @@ async fn terminal_initialization_consumes_absolute_timer_state() {
     let initial = initialized.actions;
     let mut behavior = initialized.behavior;
     assert_eq!(initial.become_, Step::Stop(behavior::Stopped));
-    assert!(initial.sends.schedules.is_empty());
+    assert!(initial.sends.owned.is_empty());
 
     let after_stop = behavior
         .transition(EventLayer::Owned(TimerElapsed {

@@ -3,12 +3,10 @@
 use std::time::Duration;
 
 use super::{Backoff, BackoffError, Proxy, Supervisor, SupervisorError, SupervisorSends};
-use crate::{
-    Own, ScheduleAfter, SendInput, SupervisionEvent, TimedEvent, TimerGeneration, TimerId,
-};
+use crate::{ScheduleAfter, SupervisionEvent, TimedEvent, TimerGeneration, TimerId};
 use behavior::{
-    Actions, Address, Behavior, Births, Delivery, EventLayer, Never, SendAlgebra, ServiceSends,
-    Step,
+    Actions, Address, Behavior, Births, Delivery, EventLayer, InterpreterRequests, Never,
+    SendEffects, SendLayer, Step,
 };
 
 struct Pending<A, C>
@@ -42,52 +40,6 @@ type PreparedResult<B> = Result<
     Option<Prepared<<crate::BehaviorAddr<B> as Address>::Nonce>>,
     BackoffSupervisorError<<B as Behavior>::Error, <crate::BehaviorAddr<B> as Address>::Nonce>,
 >;
-
-/// Named products emitted by delayed supervision.
-pub struct BackoffSupervisorSends<A, Sends, C>
-where
-    A: Address,
-    A::Nonce: From<u64>,
-    C: Behavior<Ph = Never>,
-    C::Protocol: crate::Protocol<Addr = A>,
-{
-    /// Every ordinary supervision lane, unchanged except that replacement
-    /// commands are withheld until their matching timer fires.
-    pub supervision: SupervisorSends<A, Sends, C>,
-    /// Relative restart schedules interpreted by Bombay Timers.
-    pub schedules: ServiceSends<ScheduleAfter>,
-}
-
-impl<A, Sends, C> SendAlgebra for BackoffSupervisorSends<A, Sends, C>
-where
-    A: Address,
-    A::Nonce: From<u64>,
-    Sends: SendAlgebra,
-    C: Behavior<Ph = Never>,
-    C::Protocol: crate::Protocol<Addr = A>,
-{
-    fn empty() -> Self {
-        Self {
-            supervision: SupervisorSends::empty(),
-            schedules: ServiceSends::empty(),
-        }
-    }
-    fn append(&mut self, other: Self) {
-        self.supervision.append(other.supervision);
-        self.schedules.append(other.schedules);
-    }
-}
-impl<A, Sends, C> SendInput<ScheduleAfter, Own> for BackoffSupervisorSends<A, Sends, C>
-where
-    A: Address,
-    A::Nonce: From<u64>,
-    C: Behavior<Ph = Never>,
-    C::Protocol: crate::Protocol<Addr = A>,
-{
-    fn emit(&mut self, input: ScheduleAfter) {
-        self.schedules.send(input);
-    }
-}
 
 /// Controlled delayed-supervision failure.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -217,7 +169,7 @@ impl<B, C, A, Ph, Sends> Behavior for BackoffSupervisor<B, C>
 where
     A: Address,
     A::Nonce: Copy + Eq + From<u64>,
-    Sends: SendAlgebra,
+    Sends: SendEffects + behavior::SendsFor<B::Event>,
     B: Behavior<Ph = Ph, Sends = Sends, Birth = Births<C>>,
     B::Protocol: crate::Protocol<Addr = A>,
     C: Behavior<Ph = Never>,
@@ -225,7 +177,8 @@ where
 {
     type Protocol = B::Protocol;
     type Event = TimedEvent<SupervisionEvent<B::Event>>;
-    type Sends = BackoffSupervisorSends<A, Sends, C>;
+    type Sends =
+        SendLayer<InterpreterRequests<ScheduleAfter>, SendLayer<SupervisorSends<A, C>, Sends>>;
     type Ph = Ph;
     type Error = BackoffSupervisorError<B::Error, A::Nonce>;
     type Birth = Births<Proxy<C>>;
@@ -233,9 +186,8 @@ where
     fn init(&mut self, _: crate::InitializationTurn) -> behavior::BehaviorActed<Self> {
         behavior::initialize(&mut self.inner)
             .map(|actions| {
-                actions.map_sends(|supervision| BackoffSupervisorSends {
-                    supervision,
-                    schedules: ServiceSends::empty(),
+                actions.map_sends(|supervision| {
+                    SendLayer::new(InterpreterRequests::empty(), supervision)
                 })
             })
             .map_err(BackoffSupervisorError::Supervisor)
@@ -254,13 +206,10 @@ where
                     return Ok(Actions::cont());
                 };
                 let pending = self.pending.remove(position);
-                let mut supervision = SupervisorSends::empty();
-                supervision.replacement_commands = pending.commands;
+                let mut supervision = SendLayer::new(SupervisorSends::empty(), B::Sends::empty());
+                supervision.owned.replacement_commands = pending.commands;
                 Ok(Actions::new(
-                    BackoffSupervisorSends {
-                        supervision,
-                        schedules: ServiceSends::empty(),
-                    },
+                    SendLayer::new(InterpreterRequests::empty(), supervision),
                     Vec::new(),
                     Step::Continue,
                 ))
@@ -284,27 +233,21 @@ where
                     creates,
                     become_,
                 } = actions;
-                if supervision.replacement_commands.is_empty() {
+                if supervision.owned.replacement_commands.is_empty() {
                     return Ok(Actions::new(
-                        BackoffSupervisorSends {
-                            supervision,
-                            schedules: ServiceSends::empty(),
-                        },
+                        SendLayer::new(InterpreterRequests::empty(), supervision),
                         creates,
                         become_,
                     ));
                 }
                 let Some(prepared) = prepared else {
                     return Ok(Actions::new(
-                        BackoffSupervisorSends {
-                            supervision,
-                            schedules: ServiceSends::empty(),
-                        },
+                        SendLayer::new(InterpreterRequests::empty(), supervision),
                         creates,
                         become_,
                     ));
                 };
-                let commands = core::mem::take(&mut supervision.replacement_commands);
+                let commands = core::mem::take(&mut supervision.owned.replacement_commands);
                 let schedule = ScheduleAfter::new(prepared.id, prepared.generation, prepared.delay);
                 self.commit_counter(&prepared);
                 self.pending.push(Pending {
@@ -314,10 +257,7 @@ where
                     commands,
                 });
                 Ok(Actions::new(
-                    BackoffSupervisorSends {
-                        supervision,
-                        schedules: ServiceSends::one(schedule),
-                    },
+                    SendLayer::new(InterpreterRequests::one(schedule), supervision),
                     creates,
                     become_,
                 ))
@@ -419,7 +359,8 @@ mod tests {
             initialized
                 .actions
                 .sends
-                .supervision
+                .inner
+                .owned
                 .creation_observations
                 .len(),
             2
@@ -428,18 +369,19 @@ mod tests {
             initialized
                 .actions
                 .sends
-                .supervision
+                .inner
+                .owned
                 .creation_observations
                 .iter(),
         ) {
             assert_eq!(creation.nonce, observation.nonce);
         }
-        assert!(initialized.actions.sends.schedules.is_empty());
+        assert!(initialized.actions.sends.owned.is_empty());
         let mut active = initialized.behavior;
         let delayed = active.on_path(stopped(1)).unwrap();
-        assert!(delayed.sends.supervision.replacement_commands.is_empty());
+        assert!(delayed.sends.inner.owned.replacement_commands.is_empty());
         assert_eq!(
-            delayed.sends.schedules.as_slice(),
+            delayed.sends.owned.as_slice(),
             [ScheduleAfter::new(
                 TimerId(11),
                 TimerGeneration(0),
@@ -451,15 +393,15 @@ mod tests {
         let stale = active
             .on_path(TimerElapsed::new(TimerId(11), TimerGeneration(9)))
             .unwrap();
-        assert!(stale.sends.supervision.replacement_commands.is_empty());
-        assert!(stale.sends.schedules.is_empty());
+        assert!(stale.sends.inner.owned.replacement_commands.is_empty());
+        assert!(stale.sends.owned.is_empty());
         assert_eq!(active.pending_restarts(), 1);
 
         let released = active
             .on_path(TimerElapsed::new(TimerId(11), TimerGeneration(0)))
             .unwrap();
-        assert_eq!(released.sends.supervision.replacement_commands.len(), 1);
-        assert!(released.sends.schedules.is_empty());
+        assert_eq!(released.sends.inner.owned.replacement_commands.len(), 1);
+        assert!(released.sends.owned.is_empty());
         assert_eq!(active.pending_restarts(), 0);
     }
 
@@ -468,14 +410,14 @@ mod tests {
         let mut active = subject(timer).initialize().unwrap().behavior;
         active.on_path(stopped(1)).unwrap();
         let duplicate = active.on_path(stopped(1)).unwrap();
-        assert!(duplicate.sends.supervision.replacement_commands.is_empty());
-        assert!(duplicate.sends.schedules.is_empty());
+        assert!(duplicate.sends.inner.owned.replacement_commands.is_empty());
+        assert!(duplicate.sends.owned.is_empty());
         active
             .on_path(TimerElapsed::new(TimerId(11), TimerGeneration(0)))
             .unwrap();
         let second = active.on_path(stopped(1)).unwrap();
         assert_eq!(
-            second.sends.schedules.as_slice(),
+            second.sends.owned.as_slice(),
             [ScheduleAfter::new(
                 TimerId(11),
                 TimerGeneration(1),

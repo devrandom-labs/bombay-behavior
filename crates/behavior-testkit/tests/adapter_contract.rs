@@ -1,10 +1,11 @@
 use std::time::{Duration, Instant};
 
 use behavior::{
-    Actions, Activate, Behavior, BehaviorActed, Births, ChildTopology, Create, DeadlineSends,
-    Delivery, MailAddr, Never, NoBirths, ObserveChild, PoolAssignment, PoolConfiguration,
-    PoolResponse, Proxy, Recipient, RestartConfiguration, RestartPolicy, ServiceSends, StashRoute,
-    Step, Strategy, Supervisor, SupervisorSends, TimerId, User, WorkerPool, WorkerPoolProtocol,
+    Actions, Activate, Behavior, BehaviorActed, Births, ChildTopology, Create, Delivery,
+    InterpreterRequests, MailAddr, Never, NoBirths, ObserveChild, PoolAssignment,
+    PoolConfiguration, PoolResponse, Proxy, Recipient, RestartConfiguration, RestartPolicy,
+    StashRoute, Step, Strategy, Supervisor, SupervisorSends, TimerId, User, WorkerPool,
+    WorkerPoolProtocol,
 };
 
 struct Sink;
@@ -92,10 +93,11 @@ fn inferred_stack_crosses_one_generic_adapter_boundary() {
     let initialized = inferred.initialize().unwrap();
 
     let Actions {
-        sends: DeadlineSends {
-            behavior,
-            schedules,
-        },
+        sends:
+            behavior::SendLayer {
+                owned: schedules,
+                inner: behavior,
+            },
         creates,
         become_,
     } = initialized.actions;
@@ -176,12 +178,15 @@ fn supervisor_products_are_named_and_creation_order_is_adapter_visible() {
     let initialized = supervisor.initialize().unwrap();
     let Actions {
         sends:
-            SupervisorSends {
-                behavior,
-                child_observations,
-                creation_observations,
-                replacement_commands,
-                failure_reports,
+            behavior::SendLayer {
+                owned:
+                    SupervisorSends {
+                        child_observations,
+                        creation_observations,
+                        replacement_commands,
+                        failure_reports,
+                    },
+                inner: behavior,
             },
         creates,
         become_,
@@ -260,19 +265,21 @@ fn pool_configuration_separates_topology_from_runtime_neutral_policy() {
     .unwrap();
     let initialized = pool.initialize().unwrap();
     assert_eq!(initialized.actions.creates.len(), 2);
-    assert!(initialized.actions.sends.behavior.responses.is_empty());
-    assert!(initialized.actions.sends.behavior.assignments.is_empty());
+    assert!(initialized.actions.sends.inner.responses.is_empty());
+    assert!(initialized.actions.sends.inner.assignments.is_empty());
     assert_eq!(
         initialized
             .actions
             .sends
+            .owned
             .child_observations
             .as_slice()
             .len(),
         2
     );
-    let _: ServiceSends<ObserveChild<MailAddr>> = initialized.actions.sends.child_observations;
-    let _: ServiceSends<behavior::ObserveCreation<MailAddr>> =
-        initialized.actions.sends.creation_observations;
-    let _: Vec<Delivery<Proxy<Worker>>> = initialized.actions.sends.replacement_commands;
+    let _: InterpreterRequests<ObserveChild<MailAddr>> =
+        initialized.actions.sends.owned.child_observations;
+    let _: InterpreterRequests<behavior::ObserveCreation<MailAddr>> =
+        initialized.actions.sends.owned.creation_observations;
+    let _: Vec<Delivery<Proxy<Worker>>> = initialized.actions.sends.owned.replacement_commands;
 }

@@ -4,7 +4,7 @@ use std::collections::VecDeque;
 
 use behavior::{
     Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, Never, NoBirths, Protocol,
-    Recipient, SendAlgebra, User,
+    Recipient, SendEffects, User,
 };
 
 /// Complete observable [`WorkQueue`] state.
@@ -87,7 +87,7 @@ pub struct WorkQueueSends<W: Protocol, Reply: behavior::Protocol> {
     pub outcomes: Vec<Delivery<Reply>>,
 }
 
-impl<W: Protocol, Reply: behavior::Protocol> SendAlgebra for WorkQueueSends<W, Reply> {
+impl<W: Protocol, Reply: behavior::Protocol> SendEffects for WorkQueueSends<W, Reply> {
     fn empty() -> Self {
         Self {
             assignments: Vec::new(),
@@ -97,6 +97,26 @@ impl<W: Protocol, Reply: behavior::Protocol> SendAlgebra for WorkQueueSends<W, R
     fn append(&mut self, mut other: Self) {
         self.assignments.append(&mut other.assignments);
         self.outcomes.append(&mut other.outcomes);
+    }
+}
+
+impl<Event, W: Protocol, Reply: behavior::Protocol> behavior::SendsFor<Event>
+    for WorkQueueSends<W, Reply>
+{
+}
+
+impl<I, RootEvent, Path, W, Reply> behavior::InterpretSends<I, RootEvent, Path>
+    for WorkQueueSends<W, Reply>
+where
+    I: behavior::SendInterpreter,
+    W: Protocol,
+    Reply: behavior::Protocol,
+    Vec<Delivery<W>>: behavior::InterpretSends<I, RootEvent, Path>,
+    Vec<Delivery<Reply>>: behavior::InterpretSends<I, RootEvent, Path>,
+{
+    fn interpret(self, interpreter: &mut I) -> Result<(), I::Error> {
+        behavior::InterpretSends::interpret(self.assignments, interpreter)?;
+        behavior::InterpretSends::interpret(self.outcomes, interpreter)
     }
 }
 

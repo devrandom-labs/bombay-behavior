@@ -2,9 +2,9 @@
 
 use crate::protocol::{ObservePeer, PeerStopped};
 use crate::{Crash, Exit, Step};
-use crate::{Own, SendInput};
 use behavior::{
-    Actions, Address, Become, Behavior, BirthMode, EventLayer, SendAlgebra, ServiceSends, UserEvent,
+    Actions, Address, Become, Behavior, BirthMode, EventLayer, InterpreterRequests, SendEffects,
+    SendLayer, UserEvent,
 };
 
 pub type WatchEvent<E> = EventLayer<PeerStopped<<E as UserEvent>::Addr>, E>;
@@ -20,39 +20,10 @@ pub type LinkReaction<B> = fn(
 /// endpoints rather than by a privileged runtime link table.
 pub type Link<B> = Watch<B>;
 
-/// Named effect lanes added by [`Watch`].
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct WatchSends<A: Address, Sends> {
-    /// Sends emitted by the wrapped behavior or its pure stop reaction.
-    pub behavior: Sends,
-    /// Peer-observation requests interpreted by the local observation capability.
-    pub observations: ServiceSends<ObservePeer<A>>,
-}
-
-impl<A: Address, Sends: SendAlgebra> SendAlgebra for WatchSends<A, Sends> {
-    fn empty() -> Self {
-        Self {
-            behavior: Sends::empty(),
-            observations: ServiceSends::empty(),
-        }
-    }
-
-    fn append(&mut self, other: Self) {
-        self.behavior.append(other.behavior);
-        self.observations.append(other.observations);
-    }
-}
-
-impl<A: Address, Sends> SendInput<ObservePeer<A>, Own> for WatchSends<A, Sends> {
-    fn emit(&mut self, input: ObservePeer<A>) {
-        self.observations.send(input);
-    }
-}
-
 pub(crate) type WatchActions<B> = Actions<
     crate::BehaviorAddr<B>,
     <B as Behavior>::Ph,
-    WatchSends<crate::BehaviorAddr<B>, <B as Behavior>::Sends>,
+    SendLayer<InterpreterRequests<ObservePeer<crate::BehaviorAddr<B>>>, <B as Behavior>::Sends>,
     <B as Behavior>::Birth,
 >;
 
@@ -109,21 +80,24 @@ where
 impl<B, A, Ph, Sends, Br> Behavior for Watch<B>
 where
     A: Address,
-    Sends: SendAlgebra,
+    Sends: SendEffects + behavior::SendsFor<B::Event>,
     Br: BirthMode,
     B: Behavior<Ph = Ph, Sends = Sends, Birth = Br>,
     B::Protocol: crate::Protocol<Addr = A>,
 {
     type Protocol = B::Protocol;
     type Event = WatchEvent<B::Event>;
-    type Sends = WatchSends<A, Sends>;
+    type Sends = SendLayer<InterpreterRequests<ObservePeer<A>>, Sends>;
     type Ph = Ph;
     type Error = B::Error;
     type Birth = Br;
 
     fn init(&mut self, _: crate::InitializationTurn) -> Result<WatchActions<B>, B::Error> {
         let actions = behavior::initialize(&mut self.inner)?;
-        Ok(Self::wrap(actions, ServiceSends::one(self.peer.into())))
+        Ok(Self::wrap(
+            actions,
+            InterpreterRequests::one(self.peer.into()),
+        ))
     }
 
     fn transition(
@@ -143,7 +117,7 @@ where
             }
             EventLayer::Owned(_) => Ok(Actions::cont()),
             EventLayer::Inner(event) => behavior::delegate_transition(&mut self.inner, event)
-                .map(|actions| Self::wrap(actions, ServiceSends::empty())),
+                .map(|actions| Self::wrap(actions, InterpreterRequests::empty())),
         }
     }
 }
@@ -151,12 +125,9 @@ where
 impl<B: Behavior> Watch<B> {
     fn wrap(
         actions: Actions<crate::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>,
-        own: ServiceSends<ObservePeer<crate::BehaviorAddr<B>>>,
+        own: InterpreterRequests<ObservePeer<crate::BehaviorAddr<B>>>,
     ) -> WatchActions<B> {
-        actions.map_sends(|behavior| WatchSends {
-            behavior,
-            observations: own,
-        })
+        actions.map_sends(|inner| SendLayer::new(own, inner))
     }
 }
 

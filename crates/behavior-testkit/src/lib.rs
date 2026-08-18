@@ -2,7 +2,7 @@
 
 use std::collections::VecDeque;
 
-use behavior::{ActionReducer, Active, Address, Behavior, BirthMode, Create, SendAlgebra};
+use behavior::{ActionReducer, Active, Address, Behavior, BirthMode, Create, SendEffects};
 use core::marker::PhantomData;
 
 /// A nominal, inert destination used by behavior tests that inspect emitted
@@ -77,7 +77,7 @@ pub fn drive<B, A, Sends, Br>(
 ) -> Result<Trace<B>, B::Error>
 where
     A: Address,
-    Sends: SendAlgebra,
+    Sends: SendEffects,
     Br: BirthMode,
     B: Behavior<Ph = behavior::Never, Sends = Sends, Birth = Br>,
     B::Protocol: behavior::Protocol<Addr = A>,

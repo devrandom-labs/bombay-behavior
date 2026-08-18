@@ -4,7 +4,7 @@ use std::collections::VecDeque;
 
 use behavior::{
     Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, MessageProtocol, Never,
-    NoBirths, Recipient, SendAlgebra, User,
+    NoBirths, Recipient, SendEffects, User,
 };
 use thiserror::Error;
 
@@ -125,7 +125,7 @@ pub struct BufferSends<A: Address, T> {
     pub outcomes: Vec<Delivery<MessageProtocol<A, BufferOutcome<T>>>>,
 }
 
-impl<A: Address, T> SendAlgebra for BufferSends<A, T> {
+impl<A: Address, T> SendEffects for BufferSends<A, T> {
     fn empty() -> Self {
         Self {
             deliveries: Vec::new(),
@@ -136,6 +136,22 @@ impl<A: Address, T> SendAlgebra for BufferSends<A, T> {
     fn append(&mut self, mut other: Self) {
         self.deliveries.append(&mut other.deliveries);
         self.outcomes.append(&mut other.outcomes);
+    }
+}
+
+impl<Event, A: Address, T> behavior::SendsFor<Event> for BufferSends<A, T> {}
+
+impl<I, RootEvent, Path, A, T> behavior::InterpretSends<I, RootEvent, Path> for BufferSends<A, T>
+where
+    I: behavior::SendInterpreter,
+    A: Address,
+    Vec<Delivery<MessageProtocol<A, T>>>: behavior::InterpretSends<I, RootEvent, Path>,
+    Vec<Delivery<MessageProtocol<A, BufferOutcome<T>>>>:
+        behavior::InterpretSends<I, RootEvent, Path>,
+{
+    fn interpret(self, interpreter: &mut I) -> Result<(), I::Error> {
+        behavior::InterpretSends::interpret(self.deliveries, interpreter)?;
+        behavior::InterpretSends::interpret(self.outcomes, interpreter)
     }
 }
 

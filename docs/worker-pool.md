@@ -190,7 +190,7 @@ select a worker, mutate pool accounting, or infer retry policy.
 name: `responses` and `assignments`. An interpreter integrates this concrete
 product by routing both lanes in that order through its existing typed
 delivery router. It must not flatten them into an erased envelope or interpret
-either lane as a service request. Wrapper composition continues through the
+either lane as a interpreter request. Wrapper composition continues through the
 standard `SendInput` implementation and cannot consume or reorder either lane.
 
 Construction rejects a zero-worker topology with `PoolConfigError::NoWorkers`,

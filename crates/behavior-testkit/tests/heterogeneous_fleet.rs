@@ -185,7 +185,7 @@ async fn supervised_mixed_fleet_routes_replacements_by_birth_sequence() {
     let initial = initialized.actions;
     let mut supervisor = initialized.behavior;
     assert_eq!(initial.creates.len(), 3);
-    assert_eq!(initial.sends.child_observations.len(), 3);
+    assert_eq!(initial.sends.owned.child_observations.len(), 3);
 
     let at = Instant::now();
     let wide = supervisor
@@ -198,6 +198,7 @@ async fn supervised_mixed_fleet_routes_replacements_by_birth_sequence() {
         .unwrap();
     let routes: Vec<MailAddr> = wide
         .sends
+        .owned
         .replacement_commands
         .iter()
         .map(|d| d.to.resolve(MailAddr(17)))
@@ -214,9 +215,9 @@ async fn supervised_mixed_fleet_routes_replacements_by_birth_sequence() {
             at,
         }))
         .unwrap();
-    assert_eq!(narrow.sends.replacement_commands.len(), 1);
+    assert_eq!(narrow.sends.owned.replacement_commands.len(), 1);
     assert_eq!(
-        narrow.sends.replacement_commands[0]
+        narrow.sends.owned.replacement_commands[0]
             .to
             .resolve(MailAddr(17)),
         behavior::Address::birth(MailAddr(17), 2)
@@ -241,6 +242,7 @@ async fn workers_one_for_all_replaces_every_slot() {
         .unwrap();
     let routes: Vec<MailAddr> = actions
         .sends
+        .owned
         .replacement_commands
         .iter()
         .map(|d| d.to.resolve(MailAddr(17)))

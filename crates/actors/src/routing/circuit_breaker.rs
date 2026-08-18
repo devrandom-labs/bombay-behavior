@@ -3,8 +3,8 @@
 use std::{num::NonZeroU32, time::Duration};
 
 use behavior::{
-    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, EventLayer, Never, NoBirths,
-    Recipient, SendAlgebra, ServiceSends, User,
+    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, EventLayer,
+    InterpreterRequests, Never, NoBirths, Recipient, SendEffects, User,
 };
 use thiserror::Error;
 
@@ -112,19 +112,39 @@ pub struct BreakerSends<Reply: behavior::Protocol> {
     /// Admission and completion facts.
     pub replies: Vec<Delivery<Reply>>,
     /// Relative reset requests interpreted by Bombay Timers.
-    pub schedules: ServiceSends<ScheduleAfter>,
+    pub schedules: InterpreterRequests<ScheduleAfter>,
 }
 
-impl<Reply: behavior::Protocol> SendAlgebra for BreakerSends<Reply> {
+impl<Reply: behavior::Protocol> SendEffects for BreakerSends<Reply> {
     fn empty() -> Self {
         Self {
             replies: Vec::new(),
-            schedules: ServiceSends::empty(),
+            schedules: InterpreterRequests::empty(),
         }
     }
     fn append(&mut self, mut other: Self) {
         self.replies.append(&mut other.replies);
         self.schedules.append(other.schedules);
+    }
+}
+
+impl<Event, Reply> behavior::SendsFor<Event> for BreakerSends<Reply>
+where
+    Reply: behavior::Protocol,
+    InterpreterRequests<ScheduleAfter>: behavior::SendsFor<Event>,
+{
+}
+
+impl<I, RootEvent, Path, Reply> behavior::InterpretSends<I, RootEvent, Path> for BreakerSends<Reply>
+where
+    I: behavior::SendInterpreter,
+    Reply: behavior::Protocol,
+    Vec<Delivery<Reply>>: behavior::InterpretSends<I, RootEvent, Path>,
+    InterpreterRequests<ScheduleAfter>: behavior::InterpretSends<I, RootEvent, Path>,
+{
+    fn interpret(self, interpreter: &mut I) -> Result<(), I::Error> {
+        behavior::InterpretSends::interpret(self.replies, interpreter)?;
+        behavior::InterpretSends::interpret(self.schedules, interpreter)
     }
 }
 
@@ -189,7 +209,7 @@ impl<A: Address, Reply: behavior::Protocol<Addr = A, Msg = BreakerOutcome>>
     fn reply(reply_to: Recipient<Reply>, outcome: BreakerOutcome) -> BreakerActions<A, Reply> {
         Actions::send(BreakerSends {
             replies: vec![Delivery::new(reply_to, outcome)],
-            schedules: ServiceSends::empty(),
+            schedules: InterpreterRequests::empty(),
         })
     }
 
@@ -301,7 +321,7 @@ impl<A: Address, Reply: behavior::Protocol<Addr = A, Msg = BreakerOutcome>>
                     generation,
                 },
             )],
-            schedules: ServiceSends::one(ScheduleAfter::new(
+            schedules: InterpreterRequests::one(ScheduleAfter::new(
                 self.timer_id,
                 generation,
                 self.reset_after,

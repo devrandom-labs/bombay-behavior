@@ -77,7 +77,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   protocols sharing an address namespace and payload remain statically
   distinct and runtimes can derive topology without endpoint aliases or
   dynamic registries
-- make `Handler`/`Pure` carry their complete send algebra instead of deriving
+- make `Handler`/`Pure` carry their complete send effects instead of deriving
   an ambiguous delivery lane from an outbound payload type
 
 - add a pure typed bounded FIFO worker pool with stable supervised workers,
@@ -122,7 +122,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- add recursive typed `SendInput` forwarding through `SendProduct`, allowing
+- add recursive typed `SendInput` forwarding through `SendEffects`, allowing
   callers to select arbitrarily nested send lanes with `Own` and `Inner<Path>`
   without positional field mutation
 
@@ -163,7 +163,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - replacement creation provenance now names the exact prior incarnation, and
   supervised proxies remain unroutable until installation is committed
 - supervision effect lanes are named by meaning instead of exposed through
-  positional `SendProduct` nesting
+  positional `SendEffects` nesting
 
 ## [0.8.2](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.8.1...bombay-behavior-v0.8.2) - 2026-08-09
 
@@ -235,7 +235,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - separate interpreter-local service requests from ordinary address-routed
-  deliveries with the `ServiceSends` algebra
+  deliveries with the `InterpreterRequests` algebra
 
 ## [0.3.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.2.1...bombay-behavior-v0.3.0) - 2026-08-07
 

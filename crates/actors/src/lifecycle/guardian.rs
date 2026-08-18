@@ -2,8 +2,8 @@
 
 use crate::{ShutdownEvent, ShutdownRequested};
 use behavior::{
-    Actions, Address, Behavior, BehaviorActed, BirthMode, EventLayer, Here, InjectEvent,
-    SendAlgebra,
+    Actions, Address, Behavior, BehaviorActed, BirthMode, EventLayer, Here, InjectEvent, NoSends,
+    SendEffects, SendLayer,
 };
 
 /// The application or subtree lifecycle boundary around one concrete behavior.
@@ -101,25 +101,27 @@ impl<B: crate::StashStatus, Policy> crate::StashStatus for GuardianRoot<B, Polic
 impl<B, A, Ph, Sends, Br> Behavior for GuardianRoot<B, DirectShutdown>
 where
     A: Address,
-    Sends: SendAlgebra,
+    Sends: SendEffects + behavior::SendsFor<B::Event>,
     Br: BirthMode,
     B: Behavior<Ph = Ph, Sends = Sends, Birth = Br>,
     B::Protocol: crate::Protocol<Addr = A>,
 {
     type Protocol = B::Protocol;
     type Event = ShutdownEvent<B::Event>;
-    type Sends = Sends;
+    type Sends = SendLayer<NoSends, Sends>;
     type Ph = Ph;
     type Error = B::Error;
     type Birth = Br;
 
     fn init(&mut self, _: crate::InitializationTurn) -> BehaviorActed<Self> {
         behavior::initialize(&mut self.inner)
+            .map(|actions| actions.map_sends(|inner| SendLayer::new(NoSends, inner)))
     }
 
     fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
         match event {
-            EventLayer::Inner(event) => behavior::delegate_transition(&mut self.inner, event),
+            EventLayer::Inner(event) => behavior::delegate_transition(&mut self.inner, event)
+                .map(|actions| actions.map_sends(|inner| SendLayer::new(NoSends, inner))),
             EventLayer::Owned(ShutdownRequested) => Ok(Actions::stop()),
         }
     }
@@ -128,7 +130,7 @@ where
 impl<B, A, Ph, Sends, Br> Behavior for GuardianRoot<B, CoordinatedShutdown>
 where
     A: Address,
-    Sends: SendAlgebra,
+    Sends: SendEffects + behavior::SendsFor<B::Event>,
     Br: BirthMode,
     B: Behavior<Ph = Ph, Sends = Sends, Birth = Br>,
     B::Protocol: crate::Protocol<Addr = A>,
@@ -136,13 +138,14 @@ where
 {
     type Protocol = B::Protocol;
     type Event = ShutdownEvent<B::Event>;
-    type Sends = Sends;
+    type Sends = SendLayer<NoSends, Sends>;
     type Ph = Ph;
     type Error = B::Error;
     type Birth = Br;
 
     fn init(&mut self, _: crate::InitializationTurn) -> BehaviorActed<Self> {
         behavior::initialize(&mut self.inner)
+            .map(|actions| actions.map_sends(|inner| SendLayer::new(NoSends, inner)))
     }
 
     fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
@@ -151,6 +154,7 @@ where
             EventLayer::Owned(request) => B::Event::inject_at(request),
         };
         behavior::delegate_transition(&mut self.inner, inner)
+            .map(|actions| actions.map_sends(|inner| SendLayer::new(NoSends, inner)))
     }
 }
 
@@ -158,8 +162,8 @@ where
 mod tests {
     use super::*;
     use crate::Activate as _;
-    use crate::{Crash, Exit, PeerStopped, WatchSends};
-    use behavior::{Births, Create, MailAddr, Never, ServiceSends, Step, User};
+    use crate::{Crash, Exit, PeerStopped};
+    use behavior::{Births, Create, InterpreterRequests, MailAddr, Never, Step, User};
 
     struct Application;
 
@@ -201,7 +205,7 @@ mod tests {
     #[test]
     fn initialization_preserves_application_bootstrap_exactly() {
         let initialized = Guardian::new(Application).initialize().unwrap();
-        assert_eq!(initialized.actions.sends, [1]);
+        assert_eq!(initialized.actions.sends.inner, [1]);
         assert_eq!(initialized.actions.creates, [Create::birth(7, ())]);
         assert!(matches!(initialized.actions.become_, Step::Continue));
     }
@@ -210,11 +214,11 @@ mod tests {
     fn user_turns_delegate_and_shutdown_stops_without_policy_effects() {
         let mut active = Guardian::new(Application).initialize().unwrap().behavior;
         let user = active.receive(MailAddr(9), 3).unwrap();
-        assert_eq!(user.sends, [3]);
+        assert_eq!(user.sends.inner, [3]);
         assert!(user.creates.is_empty());
 
         let stopped = active.on_path(ShutdownRequested).unwrap();
-        assert!(stopped.sends.is_empty());
+        assert!(stopped.sends.inner.is_empty());
         assert!(stopped.creates.is_empty());
         assert!(matches!(stopped.become_, Step::Stop(_)));
     }
@@ -253,10 +257,10 @@ mod tests {
         .initialize()
         .unwrap()
         .actions;
-        assert_eq!(outer_watch.sends.behavior, [1]);
+        assert_eq!(outer_watch.sends.inner.inner, [1]);
         assert_eq!(
-            outer_watch.sends.observations,
-            ServiceSends::one(crate::ObservePeer::new(MailAddr(4)))
+            outer_watch.sends.owned,
+            InterpreterRequests::one(crate::ObservePeer::new(MailAddr(4)))
         );
         assert_eq!(outer_watch.creates, [Create::birth(7, ())]);
 
@@ -269,11 +273,11 @@ mod tests {
         .unwrap()
         .actions;
         assert_eq!(
-            outer_guardian.sends,
-            WatchSends {
-                behavior: vec![1],
-                observations: ServiceSends::one(crate::ObservePeer::new(MailAddr(4))),
-            }
+            outer_guardian.sends.inner,
+            SendLayer::new(
+                InterpreterRequests::one(crate::ObservePeer::new(MailAddr(4))),
+                vec![1],
+            )
         );
         assert_eq!(outer_guardian.creates, [Create::birth(7, ())]);
     }
@@ -290,7 +294,7 @@ mod tests {
         .behavior;
 
         let stopped = active.on_path(ShutdownRequested).unwrap();
-        assert_eq!(stopped.sends, WatchSends::empty());
+        assert_eq!(stopped.sends, SendLayer::empty());
         assert!(stopped.creates.is_empty());
         assert!(matches!(stopped.become_, Step::Stop(_)));
 

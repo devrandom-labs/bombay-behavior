@@ -50,19 +50,12 @@ pub struct ScheduleAt {
     pub id: TimerId,
     pub generation: TimerGeneration,
     pub at: Instant,
-    /// Exact local timer-fact owner, relative to this named effect lane.
-    pub ingress: behavior::Ingress<TimerElapsed, behavior::Here>,
 }
 
 impl ScheduleAt {
     #[must_use]
     pub const fn new(id: TimerId, generation: TimerGeneration, at: Instant) -> Self {
-        Self {
-            id,
-            generation,
-            at,
-            ingress: behavior::Ingress::new(),
-        }
+        Self { id, generation, at }
     }
 }
 
@@ -70,6 +63,10 @@ impl From<(TimerId, TimerGeneration, Instant)> for ScheduleAt {
     fn from((id, generation, at): (TimerId, TimerGeneration, Instant)) -> Self {
         Self::new(id, generation, at)
     }
+}
+
+impl behavior::InterpreterRequest for ScheduleAt {
+    type ReturnToEmitter = behavior::ReturnsToEmitter<TimerElapsed, behavior::Here>;
 }
 
 /// Request scheduling relative to the interpreter's clock.
@@ -82,8 +79,6 @@ pub struct ScheduleAfter {
     pub id: TimerId,
     pub generation: TimerGeneration,
     pub after: Duration,
-    /// Exact local timer-fact owner, relative to this named effect lane.
-    pub ingress: behavior::Ingress<TimerElapsed, behavior::Here>,
 }
 
 impl ScheduleAfter {
@@ -93,7 +88,6 @@ impl ScheduleAfter {
             id,
             generation,
             after,
-            ingress: behavior::Ingress::new(),
         }
     }
 }
@@ -102,6 +96,10 @@ impl From<(TimerId, TimerGeneration, Duration)> for ScheduleAfter {
     fn from((id, generation, after): (TimerId, TimerGeneration, Duration)) -> Self {
         Self::new(id, generation, after)
     }
+}
+
+impl behavior::InterpreterRequest for ScheduleAfter {
+    type ReturnToEmitter = behavior::ReturnsToEmitter<TimerElapsed, behavior::Here>;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -136,8 +134,6 @@ impl From<(TimerId, TimerGeneration)> for TimerElapsed {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ObservePeer<A: Address> {
     pub peer: A,
-    /// Exact peer-stopped owner, relative to this observation effect lane.
-    pub ingress: behavior::Ingress<PeerStopped<A>, behavior::Here>,
 }
 
 impl<A: Address> From<A> for ObservePeer<A> {
@@ -149,11 +145,12 @@ impl<A: Address> From<A> for ObservePeer<A> {
 impl<A: Address> ObservePeer<A> {
     #[must_use]
     pub const fn new(peer: A) -> Self {
-        Self {
-            peer,
-            ingress: behavior::Ingress::new(),
-        }
+        Self { peer }
     }
+}
+
+impl<A: Address> behavior::InterpreterRequest for ObservePeer<A> {
+    type ReturnToEmitter = behavior::ReturnsToEmitter<PeerStopped<A>, behavior::Here>;
 }
 
 /// Ask the local interpreter to cancel this actor's observation of `peer`.
@@ -232,18 +229,17 @@ impl<A: Address> From<(A::Nonce, Result<Exit<A>, Crash>, Instant)> for ChildStop
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ObserveChild<A: Address> {
     pub nonce: A::Nonce,
-    /// Exact child-stopped owner, relative to this observation effect lane.
-    pub ingress: behavior::Ingress<ChildStopped<A>, behavior::Here>,
 }
 
 impl<A: Address> ObserveChild<A> {
     #[must_use]
     pub const fn new(nonce: A::Nonce) -> Self {
-        Self {
-            nonce,
-            ingress: behavior::Ingress::new(),
-        }
+        Self { nonce }
     }
+}
+
+impl<A: Address> behavior::InterpreterRequest for ObserveChild<A> {
+    type ReturnToEmitter = behavior::ReturnsToEmitter<ChildStopped<A>, behavior::Here>;
 }
 
 /// A proxy's request for its interpreter to report a worker termination to
@@ -254,8 +250,6 @@ pub struct ReportWorkerStopped<A: Address> {
     pub worker: A::Nonce,
     pub outcome: Result<Exit<A>, Crash>,
     pub at: Instant,
-    /// Exact parent worker-stop owner, relative to this report lane.
-    pub ingress: behavior::Ingress<WorkerStopped<A>, behavior::Here>,
 }
 
 impl<A: Address> ReportWorkerStopped<A> {
@@ -265,9 +259,12 @@ impl<A: Address> ReportWorkerStopped<A> {
             worker,
             outcome,
             at,
-            ingress: behavior::Ingress::new(),
         }
     }
+}
+
+impl<A: Address> behavior::InterpreterRequest for ReportWorkerStopped<A> {
+    type ReturnToEmitter = behavior::NoReturnToEmitter;
 }
 
 impl<A: Address> From<(A::Nonce, Result<Exit<A>, Crash>, Instant)> for ReportWorkerStopped<A> {
@@ -414,18 +411,17 @@ impl<A: behavior::Address>
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ObserveCreation<A: Address> {
     pub nonce: A::Nonce,
-    /// Exact creation-resolution owner, relative to this observation lane.
-    pub ingress: behavior::Ingress<CreationResolved<A>, behavior::Here>,
 }
 
 impl<A: Address> ObserveCreation<A> {
     #[must_use]
     pub const fn new(nonce: A::Nonce) -> Self {
-        Self {
-            nonce,
-            ingress: behavior::Ingress::new(),
-        }
+        Self { nonce }
     }
+}
+
+impl<A: Address> behavior::InterpreterRequest for ObserveCreation<A> {
+    type ReturnToEmitter = behavior::ReturnsToEmitter<CreationResolved<A>, behavior::Here>;
 }
 
 /// Ask a proxy's interpreter to report a worker creation result to its parent.
@@ -435,8 +431,6 @@ pub struct ReportWorkerCreationResolved<N> {
     pub worker: N,
     pub kind: CreationKind<N>,
     pub result: Result<(), CreationRejection>,
-    /// Exact parent creation-result owner, relative to this report lane.
-    pub ingress: behavior::Ingress<WorkerCreationResolved<N>, behavior::Here>,
 }
 
 impl<N> ReportWorkerCreationResolved<N> {
@@ -450,9 +444,12 @@ impl<N> ReportWorkerCreationResolved<N> {
             worker,
             kind,
             result,
-            ingress: behavior::Ingress::new(),
         }
     }
+}
+
+impl<N> behavior::InterpreterRequest for ReportWorkerCreationResolved<N> {
+    type ReturnToEmitter = behavior::NoReturnToEmitter;
 }
 
 impl<N> From<(N, CreationKind<N>, Result<(), CreationRejection>)>
@@ -610,11 +607,6 @@ pub struct ShutdownChild<C: behavior::Behavior> {
     pub nonce: <crate::BehaviorAddr<C> as behavior::Address>::Nonce,
     /// Exact shutdown owner in the selected child behavior.
     pub ingress: behavior::Ingress<ShutdownRequested, behavior::Here>,
-    /// Exact rejection owner in the emitting parent's local event algebra.
-    pub rejection: behavior::Ingress<
-        ChildShutdownRejected<<crate::BehaviorAddr<C> as behavior::Address>::Nonce>,
-        behavior::Here,
-    >,
     protocol: core::marker::PhantomData<fn() -> C>,
 }
 
@@ -624,10 +616,16 @@ impl<C: behavior::Behavior> ShutdownChild<C> {
         Self {
             nonce,
             ingress: behavior::Ingress::new(),
-            rejection: behavior::Ingress::new(),
             protocol: core::marker::PhantomData,
         }
     }
+}
+
+impl<C: behavior::Behavior> behavior::InterpreterRequest for ShutdownChild<C> {
+    type ReturnToEmitter = behavior::ReturnsToEmitter<
+        ChildShutdownRejected<<crate::BehaviorAddr<C> as behavior::Address>::Nonce>,
+        behavior::Here,
+    >;
 }
 
 impl<C: behavior::Behavior> Copy for ShutdownChild<C> {}

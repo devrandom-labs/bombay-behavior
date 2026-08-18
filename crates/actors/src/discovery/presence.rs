@@ -3,8 +3,8 @@
 use std::time::Duration;
 
 use behavior::{
-    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, EventLayer, Never, NoBirths,
-    Recipient, SendAlgebra, ServiceSends, User,
+    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, EventLayer,
+    InterpreterRequests, Never, NoBirths, Recipient, SendEffects, User,
 };
 use thiserror::Error;
 
@@ -169,21 +169,42 @@ pub struct PresenceSends<Reply: behavior::Protocol> {
     /// Transition and query facts.
     pub replies: Vec<Delivery<Reply>>,
     /// Relative expiry requests.
-    pub schedules: ServiceSends<ScheduleAfter>,
+    pub schedules: InterpreterRequests<ScheduleAfter>,
 }
-impl<Reply> SendAlgebra for PresenceSends<Reply>
+impl<Reply> SendEffects for PresenceSends<Reply>
 where
     Reply: behavior::Protocol,
 {
     fn empty() -> Self {
         Self {
             replies: Vec::new(),
-            schedules: ServiceSends::empty(),
+            schedules: InterpreterRequests::empty(),
         }
     }
     fn append(&mut self, mut other: Self) {
         self.replies.append(&mut other.replies);
         self.schedules.append(other.schedules);
+    }
+}
+
+impl<Event, Reply> behavior::SendsFor<Event> for PresenceSends<Reply>
+where
+    Reply: behavior::Protocol,
+    InterpreterRequests<ScheduleAfter>: behavior::SendsFor<Event>,
+{
+}
+
+impl<I, RootEvent, Path, Reply> behavior::InterpretSends<I, RootEvent, Path>
+    for PresenceSends<Reply>
+where
+    I: behavior::SendInterpreter,
+    Reply: behavior::Protocol,
+    Vec<Delivery<Reply>>: behavior::InterpretSends<I, RootEvent, Path>,
+    InterpreterRequests<ScheduleAfter>: behavior::InterpretSends<I, RootEvent, Path>,
+{
+    fn interpret(self, interpreter: &mut I) -> Result<(), I::Error> {
+        behavior::InterpretSends::interpret(self.replies, interpreter)?;
+        behavior::InterpretSends::interpret(self.schedules, interpreter)
     }
 }
 
@@ -244,7 +265,7 @@ where
     fn reply(reply_to: Recipient<Reply>, reply: PresenceReply<K>) -> PresenceActions<A, Reply> {
         Actions::send(PresenceSends {
             replies: vec![Delivery::new(reply_to, reply)],
-            schedules: ServiceSends::empty(),
+            schedules: InterpreterRequests::empty(),
         })
     }
     fn announce(
@@ -309,7 +330,7 @@ where
                     generation,
                 }),
             )],
-            schedules: ServiceSends::one(ScheduleAfter::new(timer_id, generation, lifetime)),
+            schedules: InterpreterRequests::one(ScheduleAfter::new(timer_id, generation, lifetime)),
         })
     }
 
@@ -393,7 +414,7 @@ where
                     generation,
                 }),
             )],
-            schedules: ServiceSends::one(ScheduleAfter::new(timer_id, generation, lifetime)),
+            schedules: InterpreterRequests::one(ScheduleAfter::new(timer_id, generation, lifetime)),
         })
     }
 }

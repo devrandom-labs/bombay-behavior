@@ -8,6 +8,9 @@ child creations, and its next behavior or termination.
 boundary: composition, lifecycle and supervision, routing and delivery,
 discovery, time, persistence policy, workflows, and operational boundaries.
 
+The unified mathematical contract and code-navigation map are in
+[Actor transition algebra](docs/actor-transition-algebra.md).
+
 `Behavior::transition` is synchronous: evaluation is a pure fold, while
 mailboxes, scheduling, clocks, transport, and effect interpretation remain at
 the runtime boundary.
@@ -69,6 +72,18 @@ Ingress ownership is structural. `EventLayer<Owned, Inner>` adds one layer;
 `InjectEvent<Input, Inside<Path>>` selects a nested owner. No wrapper maintains
 a list of other templates' event types, and stale facts never search inward by
 payload type.
+
+Every `Behavior::Sends` must implement `SendsFor<Behavior::Event>`. A local
+callback cannot remain at `Here` after an outer event layer is added; the
+wrapper must expose matching effect reindexing. Established, child, and
+ancestor destinations are not local callbacks and remain invariant when the
+emitter is wrapped.
+
+Interpretation retains the same proof operationally.
+`InterpretSends<Interpreter, RootEvent, Path>` starts at `Here`; `SendLayer`
+keeps owned requests at the current path and visits inner requests at
+`Inside<Path>`. Identical request types at different wrapper depths therefore
+construct different root events without payload search or runtime path lookup.
 
 A protocol can never serve as the behavior algebra: it has no state,
 initialization, service-event lanes, effects, errors, birth capability, or

@@ -7,48 +7,19 @@ use super::domain::OneShotSchedule;
 use super::event::TimedEvent;
 use crate::Step;
 use crate::protocol::{ScheduleAt, TimerId};
-use crate::{Own, SendInput};
 use behavior::{
-    Actions, Address, Become, Behavior, BirthMode, EventLayer, SendAlgebra, ServiceSends,
+    Actions, Address, Become, Behavior, BirthMode, EventLayer, InterpreterRequests, SendEffects,
+    SendLayer,
 };
 
 pub type DeadlineEvent<E> = TimedEvent<E>;
 
 pub type DeadlineReaction<B> = fn(&mut B) -> Result<Become, <B as Behavior>::Error>;
 
-/// Named effect lanes added by [`Deadline`].
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DeadlineSends<Sends> {
-    /// Sends emitted by the wrapped behavior or its deadline reaction.
-    pub behavior: Sends,
-    /// Absolute scheduling requests interpreted by the local timer capability.
-    pub schedules: ServiceSends<ScheduleAt>,
-}
-
-impl<Sends: SendAlgebra> SendAlgebra for DeadlineSends<Sends> {
-    fn empty() -> Self {
-        Self {
-            behavior: Sends::empty(),
-            schedules: ServiceSends::empty(),
-        }
-    }
-
-    fn append(&mut self, other: Self) {
-        self.behavior.append(other.behavior);
-        self.schedules.append(other.schedules);
-    }
-}
-
-impl<Sends> SendInput<ScheduleAt, Own> for DeadlineSends<Sends> {
-    fn emit(&mut self, input: ScheduleAt) {
-        self.schedules.send(input);
-    }
-}
-
 pub(crate) type DeadlineActions<B> = Actions<
     crate::BehaviorAddr<B>,
     <B as Behavior>::Ph,
-    DeadlineSends<<B as Behavior>::Sends>,
+    SendLayer<InterpreterRequests<ScheduleAt>, <B as Behavior>::Sends>,
     <B as Behavior>::Birth,
 >;
 
@@ -101,14 +72,14 @@ where
 impl<B, A, Ph, Sends, Br> Behavior for Deadline<B>
 where
     A: Address,
-    Sends: SendAlgebra,
+    Sends: SendEffects + behavior::SendsFor<B::Event>,
     Br: BirthMode,
     B: Behavior<Ph = Ph, Sends = Sends, Birth = Br>,
     B::Protocol: crate::Protocol<Addr = A>,
 {
     type Protocol = B::Protocol;
     type Event = DeadlineEvent<B::Event>;
-    type Sends = DeadlineSends<Sends>;
+    type Sends = SendLayer<InterpreterRequests<ScheduleAt>, Sends>;
     type Ph = Ph;
     type Error = B::Error;
     type Birth = Br;
@@ -117,13 +88,14 @@ where
         let actions = behavior::initialize(&mut self.inner)?;
         let own = if matches!(actions.become_, Step::Stop(_)) {
             self.schedule.cancel();
-            ServiceSends::empty()
+            InterpreterRequests::empty()
         } else {
-            self.schedule
-                .request()
-                .map_or_else(ServiceSends::empty, |(id, generation, at)| {
-                    ServiceSends::one(ScheduleAt::new(id, generation, at))
-                })
+            self.schedule.request().map_or_else(
+                InterpreterRequests::empty,
+                |(id, generation, at)| {
+                    InterpreterRequests::one(ScheduleAt::new(id, generation, at))
+                },
+            )
         };
         Ok(Self::wrap(actions, own))
     }
@@ -148,7 +120,7 @@ where
                 if matches!(actions.become_, Step::Stop(_)) {
                     self.schedule.cancel();
                 }
-                Ok(Self::wrap(actions, ServiceSends::empty()))
+                Ok(Self::wrap(actions, InterpreterRequests::empty()))
             }
         }
     }
@@ -157,11 +129,8 @@ where
 impl<B: Behavior> Deadline<B> {
     fn wrap(
         actions: Actions<crate::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>,
-        own: ServiceSends<ScheduleAt>,
+        own: InterpreterRequests<ScheduleAt>,
     ) -> DeadlineActions<B> {
-        actions.map_sends(|behavior| DeadlineSends {
-            behavior,
-            schedules: own,
-        })
+        actions.map_sends(|inner| SendLayer::new(own, inner))
     }
 }

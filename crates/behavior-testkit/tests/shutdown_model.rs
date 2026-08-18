@@ -60,9 +60,14 @@ proptest! {
 
         prop_assert_eq!(trace.pending, inputs.len() - consumed);
         prop_assert_eq!(trace.transitions, consumed + 1);
-        prop_assert_eq!(trace.sends.len(), expected_messages.len());
+        prop_assert_eq!(trace.sends.inner.len(), expected_messages.len());
         prop_assert_eq!(
-            trace.sends.iter().map(|delivery| delivery.message).collect::<Vec<_>>(),
+            trace
+                .sends
+                .inner
+                .iter()
+                .map(|delivery| delivery.message)
+                .collect::<Vec<_>>(),
             expected_messages
         );
         prop_assert_eq!(trace.stopped, stop.is_some());

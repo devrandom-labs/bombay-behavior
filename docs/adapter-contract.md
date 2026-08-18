@@ -92,32 +92,36 @@ creator-local nonce and provenance. A successful arm installs the contained
 concrete behavior and binds its declared `Behavior::Protocol`; the creation
 choice sum is neither an actor nor a public protocol.
 
-## Named products
+## Effect products
 
-Behavior Actors products expose semantic fields specifically so adapters can
-compose interpreters without positional nesting knowledge. For example:
+One owned lane uses the common layer algebra directly:
 
 ```rust,ignore
-let DeadlineSends { behavior, schedules } = sends;
-interpret_behavior(behavior)?;
-interpret_schedules(schedules)?;
+let SendLayer { owned: schedules, inner } = effects;
 ```
 
+Static `InterpretSends` traversal normally removes the need to destructure
+that layer. Named products remain appropriate when several domain lanes
+coexist, for example supervision observations, replacement communications,
+and failure reports:
+
 ```rust,ignore
-let SupervisorSends {
-    behavior,
-    child_observations,
-    replacement_commands,
-    failure_reports,
+let SendLayer {
+    owned: SupervisorSends {
+        child_observations,
+        creation_observations,
+        replacement_commands,
+        failure_reports,
+    },
+    inner,
 } = sends;
 ```
 
-An adapter may define its own local, statically dispatched interpretation
-traits for these public send products. Apart from the minimal `InstallBirth` /
-`DispatchBirth` completeness contract needed to install either a direct child
-or a heterogeneous creation sum without erasure, the behavior crates do not
-prescribe one runtime trait or error sum. Public products must retain named owned fields so such
-implementations require neither tuple positions nor wrapper inspection.
+`InterpretSends<Interpreter, RootEvent, Path>` recursively traverses structural
+layers. A layer's owned effects retain `Path`; its inner effects receive
+`Inside<Path>`. Concrete interpreters therefore see the exact root event and
+absolute structural destination for every request. Public multi-lane products
+retain named fields and propagate the same path through each field.
 
 ## Event injection
 
@@ -132,9 +136,27 @@ same path law.
 There is no payload search or fallthrough. The request selects its owner when
 emitted. A stale result is inert at that owner; it is never offered to an inner
 layer merely because that layer accepts the same Rust payload type. Named
-effect products preserve the dual structure: a wrapper's own service lane
-returns through `Here`, while a request in its `behavior` product remains
-owned by the inner layer and returns through `Inside<_>`.
+send effects preserve the dual structure: traversal begins at `Here`, a
+wrapper's own request retains the current path, and a request in its `inner`
+effects moves through `Inside<_>`.
+
+Request values do not carry a duplicate emitter-local `Ingress<_, Here>`.
+`InterpreterRequest::ReturnToEmitter` declares the relative continuation and
+path-indexed traversal supplies its absolute root path. A request targeting a
+different actor may still carry that separate actor's ingress capability; for
+example `ShutdownChild<C>` names shutdown inside the selected child while its
+typed rejection returns to the emitting parent.
+
+This duality applies only to emitter-return to the emitters. `SendsFor<Event>` and
+`InterpreterRequest::ReturnToEmitter` expose that scope statically. An adapter must not
+reindex an established recipient, child destination, or report targeting an
+already established parent/child relationship merely because the emitter has
+another behavior wrapper.
+
+If `k: Result -> InnerEvent` is local and `i` is the wrapper's inner event
+injection, the composed continuation is `i . k`. Identity and associativity
+follow from function composition. A non-local destination `d` instead obeys
+wrapper invariance: `W(d) = d`.
 
 Timer, creation, lifecycle, and observation callbacks must enqueue their
 structurally selected typed input; they must not synchronously re-enter the

@@ -93,7 +93,7 @@ async fn user(behavior: &mut Stack, message: u64) -> Vec<u64> {
             message,
         )))
         .unwrap();
-    actions.sends.behavior.iter().map(|d| d.message).collect()
+    actions.sends.inner.iter().map(|d| d.message).collect()
 }
 
 /// The user lane is filtered by the stash exactly as in the unfettered
@@ -157,15 +157,15 @@ async fn child_death_never_leaks_into_the_user_lane() {
             at: Instant::now(),
         }))
         .unwrap();
-    assert_eq!(actions.sends.replacement_commands.len(), 1);
+    assert_eq!(actions.sends.owned.replacement_commands.len(), 1);
     assert_eq!(
-        actions.sends.replacement_commands[0]
+        actions.sends.owned.replacement_commands[0]
             .to
             .resolve(MailAddr(17)),
         behavior::Address::birth(MailAddr(17), 0)
     );
-    assert!(actions.sends.behavior.is_empty());
-    assert!(actions.sends.child_observations.is_empty());
+    assert!(actions.sends.inner.is_empty());
+    assert!(actions.sends.owned.child_observations.is_empty());
 }
 
 /// The time lane through a supervised stack: the schedule send survives in
@@ -196,9 +196,9 @@ async fn supervision_preserves_inner_at_routing() {
     let initialized = behavior.initialize().unwrap();
     let initial = initialized.actions;
     let mut behavior = initialized.behavior;
-    assert_eq!(initial.sends.behavior.schedules[0].at, due);
-    assert_eq!(initial.sends.child_observations.len(), 1);
-    assert!(initial.sends.behavior.behavior.is_empty());
+    assert_eq!(initial.sends.inner.owned[0].at, due);
+    assert_eq!(initial.sends.owned.child_observations.len(), 1);
+    assert!(initial.sends.inner.inner.is_empty());
     assert_eq!(initial.creates.len(), 1);
 
     let fired = behavior
@@ -208,7 +208,7 @@ async fn supervision_preserves_inner_at_routing() {
         })
         .unwrap();
     assert_eq!(fired.become_, Step::Stop(behavior::Stopped));
-    assert!(fired.sends.replacement_commands.is_empty());
+    assert!(fired.sends.owned.replacement_commands.is_empty());
 }
 
 /// The full stack: supervision over at over watch over stash. All four
@@ -247,11 +247,11 @@ async fn full_stack_all_four_layers_keep_their_own_lanes() {
     let initial = initialized.actions;
     let mut behavior = initialized.behavior;
     assert_eq!(initial.creates.len(), 2);
-    assert_eq!(initial.sends.child_observations.len(), 2); // observe-child x2
-    assert_eq!(initial.sends.replacement_commands.len(), 0); // proxy commands
-    assert_eq!(initial.sends.behavior.schedules[0].at, due); // schedule
-    assert_eq!(initial.sends.behavior.behavior.observations[0].peer, peer); // observe-peer
-    assert!(initial.sends.behavior.behavior.behavior.is_empty()); // echo lane
+    assert_eq!(initial.sends.owned.child_observations.len(), 2); // observe-child x2
+    assert_eq!(initial.sends.owned.replacement_commands.len(), 0); // proxy commands
+    assert_eq!(initial.sends.inner.owned[0].at, due); // schedule
+    assert_eq!(initial.sends.inner.inner.owned[0].peer, peer); // observe-peer
+    assert!(initial.sends.inner.inner.inner.is_empty()); // echo lane
 
     // User lane: Deliver routes through every layer to the parent echo.
     let actions = behavior
@@ -259,8 +259,8 @@ async fn full_stack_all_four_layers_keep_their_own_lanes() {
             EventLayer::Inner(UserEvent::user(MailAddr(9), 1)),
         )))
         .unwrap();
-    assert_eq!(actions.sends.behavior.behavior.behavior[0].message, 1);
-    assert!(actions.sends.replacement_commands.is_empty());
+    assert_eq!(actions.sends.inner.inner.inner[0].message, 1);
+    assert!(actions.sends.owned.replacement_commands.is_empty());
 
     // Time lane: fires the inner Deadline.
     let fired = behavior
@@ -317,14 +317,14 @@ async fn full_stack_all_four_layers_keep_their_own_lanes() {
             at: Instant::now(),
         }))
         .unwrap();
-    assert_eq!(replacement.sends.replacement_commands.len(), 1);
+    assert_eq!(replacement.sends.owned.replacement_commands.len(), 1);
     assert_eq!(
-        replacement.sends.replacement_commands[0]
+        replacement.sends.owned.replacement_commands[0]
             .to
             .resolve(MailAddr(17)),
         behavior::Address::birth(MailAddr(17), 0)
     );
-    assert!(replacement.sends.behavior.behavior.behavior.is_empty());
+    assert!(replacement.sends.inner.inner.inner.is_empty());
 }
 
 proptest! {
@@ -425,9 +425,9 @@ proptest! {
 
             // Echo lane (user deliveries): exactly the filter model's output.
             let echo_step: Vec<u64> = actions
-                .sends.behavior
-                .behavior
-                .behavior
+                .sends.inner
+                .inner
+                .inner
                 .iter()
                 .map(|d| d.message)
                 .collect();
@@ -441,14 +441,14 @@ proptest! {
             // Cross-lane: user/time/peer steps never emit supervision sends;
             // child steps emit exactly one replacement and no echoes.
             if tag == 3 {
-                prop_assert_eq!(actions.sends.replacement_commands.len(), 1);
+                prop_assert_eq!(actions.sends.owned.replacement_commands.len(), 1);
                 prop_assert_eq!(
-                    actions.sends.replacement_commands[0].to.resolve(MailAddr(17)),
+                    actions.sends.owned.replacement_commands[0].to.resolve(MailAddr(17)),
                     behavior::Address::birth(MailAddr(17), u64::from(arg % 2))
                 );
                 prop_assert!(echo_step.is_empty());
             } else {
-                prop_assert!(actions.sends.replacement_commands.is_empty());
+                prop_assert!(actions.sends.owned.replacement_commands.is_empty());
             }
 
             // Verdict: only a watched-peer death stops the fold.

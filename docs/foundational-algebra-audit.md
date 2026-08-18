@@ -51,6 +51,20 @@ These pillars are orthogonal but not independent: their connections must be
 represented by typed capabilities and named products rather than inferred from
 addresses, IDs, nesting depth, or interpreter searches.
 
+In particular, the effect algebra is indexed by the event algebra for local
+runtime returns. `Behavior::Sends: SendsFor<Behavior::Event>` makes this
+connection a compiler obligation. `InterpreterRequest::ReturnToEmitter` distinguishes
+emitter-local continuations from child, parent, ancestor, and established
+destinations. A wrapper reindexes only the former.
+
+The audit found three wrappers that extended events while claiming literal
+send equality: `Guardian`, `StopOnShutdown`, and `FinalizeOnShutdown`. They now
+use `SendLayer<NoSends, Inner>`. `Stash` remains literally transparent
+because it changes neither event nor effect algebra. Worker lifecycle reports were also
+incorrectly described as local `Here` returns even though the emitting proxy
+targets its parent relationship; those reports are now explicitly one-way
+interpreter requests rather than false local ingress capabilities.
+
 ## Actor templates versus transition components
 
 A concrete actor template owns a nominal public protocol, complete state, and
@@ -304,7 +318,7 @@ child routes.
 - Initialization effects precede mailbox events and wrappers preserve their
   defined order.
 - Creations are committed before dependent same-action services and sends.
-- A service request selects the ingress destination of its eventual fact;
+- A interpreter request selects the ingress destination of its eventual fact;
   facts are not broadcast through wrapper layers.
 - Stale facts delivered to their selected keyed owner are inert unless that
   template documents a typed rejection.
@@ -316,72 +330,6 @@ child routes.
 Structural ingress is not presented as a primitive from Agha; it is Bombay's
 typed realization of interpreter-originated communication into a composed
 behavior.
-
-## Separate core-fold findings
-
-The ingress change does not implement the following API redesign. These are
-separate findings for a future semantic change, recorded here so structural
-ingress is not mistaken for a complete audit of transition atomicity. The
-current public fold continues to use `Sends`, `BirthMode`, `Ph`, and
-`Actions::become_`.
-
-The audit rejects three pieces of legacy vocabulary:
-
-- `Sends` is not truthful because the product also contains clock,
-  observation, shutdown, and other local interpreter requests. The associated
-  product is the behavior's concrete `Effects` algebra.
-- `BirthMode` plus `Births<C>`/`NoBirths` is an indirect description of the
-  actual capability. A behavior can expose `type Child`, using `Never` when no
-  creation value can exist.
-- `Ph` and `Step::Goto(Ph)` do not change the behavior or event type and no
-  concrete repository behavior uses an inhabited `Ph`. Domain phases already
-  belong in exhaustive actor state. Keeping a second phase value suggests a
-  typestate guarantee the driver cannot provide.
-
-One possible follow-up fold would be equivalent to:
-
-```rust,ignore
-trait Behavior {
-    type Protocol: Protocol;
-    type Event: UserEvent<
-        Addr = BehaviorAddr<Self>,
-        Message = BehaviorMessage<Self>,
-    >;
-    type Effects: EffectAlgebra;
-    type Child;
-    type Error;
-
-    fn init(&mut self, turn: InitializationTurn) -> BehaviorActed<Self>;
-    fn transition(
-        &mut self,
-        turn: ActiveTurn,
-        event: Self::Event,
-    ) -> BehaviorActed<Self>;
-}
-
-struct Actions<A, Effects, Child> {
-    effects: Effects,
-    creates: Vec<Create<A, Child>>,
-    next: Next,
-}
-
-enum Next {
-    Continue,
-    Stop,
-}
-```
-
-`Continue` designates the successfully updated concrete behavior value as the
-behavior for the next communication. Mutation is an implementation technique;
-the fold remains deterministic and emits no ambient effects. A controlled
-failure returns no `Actions`, so every implementation must either leave no
-reusable partially committed state or define failure as terminal at the
-activation boundary. Tests must audit that law explicitly.
-
-This remains Bombay's typed realization of communication, fresh creation, and
-next behavior/termination. The concrete representation is not described as
-literally Agha's triple because local interpreter effects and Bombay ordering
-policy remain visible additions.
 
 ## Status of the reported shutdown gap
 

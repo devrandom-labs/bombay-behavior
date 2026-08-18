@@ -4,7 +4,7 @@ use core::ops::ControlFlow;
 
 use super::{Behavior, BehaviorAddr, delegate_transition, initialize};
 use crate::actor::{Address, BirthMode, Create};
-use crate::effects::{Actions, SendAlgebra};
+use crate::effects::{Actions, SendEffects};
 use crate::next::{Never, Step, Stopped};
 
 /// The accumulated observable effects of a transition prefix.
@@ -45,7 +45,7 @@ pub struct ActionReducer<A: Address, Sends, New> {
     transitions: usize,
 }
 
-impl<A: Address, Sends: SendAlgebra, New> Default for ActionReducer<A, Sends, New> {
+impl<A: Address, Sends: SendEffects, New> Default for ActionReducer<A, Sends, New> {
     fn default() -> Self {
         Self {
             effects: Effects {
@@ -57,7 +57,7 @@ impl<A: Address, Sends: SendAlgebra, New> Default for ActionReducer<A, Sends, Ne
     }
 }
 
-impl<A: Address, Sends: SendAlgebra, New> ActionReducer<A, Sends, New> {
+impl<A: Address, Sends: SendEffects, New> ActionReducer<A, Sends, New> {
     #[must_use]
     pub fn new() -> Self {
         Self::default()

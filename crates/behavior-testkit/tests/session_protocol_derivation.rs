@@ -44,7 +44,7 @@
 // dead-code warnings are expected and suppressed.
 #![allow(dead_code)]
 
-use behavior::{Exit, Machine, MailAddr, Move, Never, SendAlgebra, Step, User, UserEvent};
+use behavior::{Exit, Machine, MailAddr, Move, Never, SendEffects, Step, User, UserEvent};
 
 // ---------------------------------------------------------------------------
 // Phase and message vocabulary (used by all derivation attempts)
@@ -327,7 +327,7 @@ impl WorkerApp {
 trait PhaseBehavior {
     type Event: UserEvent<Addr = MailAddr, Message = Self::Msg>;
     type Msg;
-    type Sends: SendAlgebra;
+    type Sends: SendEffects;
     type Error;
     type NextPhase;
 

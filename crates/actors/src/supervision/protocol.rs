@@ -89,6 +89,14 @@ impl<E: UserEvent> UserEvent for SupervisionEvent<E> {
     }
 }
 
+impl<E: UserEvent> behavior::ComposedEvent for SupervisionEvent<E> {
+    type Inner = E;
+
+    fn from_inner(event: E) -> Self {
+        Self::Behavior(event)
+    }
+}
+
 impl<E: UserEvent> InjectEvent<ChildStopped<E::Addr>, Here> for SupervisionEvent<E> {
     fn inject_at(value: ChildStopped<E::Addr>) -> Self {
         Self::ChildStopped(value)

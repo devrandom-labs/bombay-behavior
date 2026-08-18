@@ -25,14 +25,20 @@ pub use actor::{
     MailAddr, NoBirths, NoChildren, Recipient,
 };
 pub use effect::Effect;
-pub use effects::{Acted, Actions, Become, Own, SendAlgebra, SendInput, ServiceSends};
+pub use effects::{
+    Acted, Actions, Become, InterpretDelivery, InterpretRequest, InterpretSends,
+    InterpreterRequest, InterpreterRequests, NoReturnToEmitter, NoSends, Own, ReturnsToEmitter,
+    SendEffects, SendInput, SendInterpreter, SendLayer, SendsFor,
+};
 pub use next::{Never, Step, Stopped};
 pub use reducer::{ActionReducer, Effects, FoldFailure, Folded, fold_events};
 pub use transition::{
     ActiveTurn, Behavior, BehaviorActed, BehaviorAddr, BehaviorBase, BehaviorMessage,
     InitializationTurn, MessageProtocol, Protocol, delegate_transition, initialize,
 };
-pub use user_event::{EventLayer, Here, Ingress, InjectEvent, Inside, User, UserEvent};
+pub use user_event::{
+    ComposedEvent, EventLayer, Here, Ingress, InjectEvent, Inside, User, UserEvent,
+};
 
 /// Generate `Behavior` wiring for an inherent impl with an exact `receive`
 /// method and an optional exact `init` method. When omitted, initialization is

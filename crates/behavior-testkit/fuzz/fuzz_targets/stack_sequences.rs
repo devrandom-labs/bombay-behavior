@@ -120,16 +120,16 @@ fuzz_target!(|bytes: &[u8]| {
                         .unwrap();
                     let echo_step: Vec<u64> = actions
                         .sends
-                        .behavior
-                        .behavior
-                        .behavior
+                        .inner
+                        .inner
+                        .inner
                         .iter()
                         .map(|d| d.message)
                         .collect();
                     let expected = if arg % 3 != 2 { vec![arg] } else { vec![] };
                     assert_eq!(echo_step, expected, "echo lane mismatch at byte {index}");
                     assert!(
-                        actions.sends.replacement_commands.is_empty(),
+                        actions.sends.owned.replacement_commands.is_empty(),
                         "user leaked to child lane"
                     );
                     assert_eq!(actions.become_, Step::Continue);
@@ -149,7 +149,7 @@ fuzz_target!(|bytes: &[u8]| {
                         matches!(actions.become_, Step::Stop(behavior::Stopped)),
                         "peer death verdict at byte {index}"
                     );
-                    assert!(actions.sends.replacement_commands.is_empty());
+                    assert!(actions.sends.owned.replacement_commands.is_empty());
                     actions
                 }
                 2 => {
@@ -182,19 +182,19 @@ fuzz_target!(|bytes: &[u8]| {
                         }))
                         .unwrap();
                     assert_eq!(
-                        actions.sends.replacement_commands.len(),
+                        actions.sends.owned.replacement_commands.len(),
                         1,
                         "replacement at byte {index}"
                     );
                     assert_eq!(
-                        actions.sends.replacement_commands[0]
+                        actions.sends.owned.replacement_commands[0]
                             .to
                             .resolve(MailAddr(17)),
                         behavior::Address::birth(MailAddr(17), nonce),
                         "replacement route at byte {index}"
                     );
                     assert!(
-                        actions.sends.behavior.behavior.behavior.is_empty(),
+                        actions.sends.inner.inner.inner.is_empty(),
                         "child event leaked into the echo lane at byte {index}"
                     );
                     assert_eq!(actions.become_, Step::Continue);

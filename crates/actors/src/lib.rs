@@ -1,4 +1,4 @@
-//! Reusable, pure actors and behavior compositions built on [`behavior`].
+//! Reusable, pure actors and behavior compositions built on [`mod@behavior`].
 //!
 //! The public taxonomy follows actor-system semantics: [`composition`],
 //! [`lifecycle`], [`supervision`], [`routing`], [`discovery`], [`time`],
@@ -53,10 +53,10 @@ pub use discovery::{
 };
 pub use lifecycle::{
     CleanupReaction, CoordinatedGuardian, Guardian, LifecyclePublication, LifecyclePublisher,
-    Reaper, ShutdownCoordinator, ShutdownCoordinatorError, ShutdownCoordinatorEvent,
-    ShutdownCoordinatorSends, ShutdownPlan, ShutdownPlanError, ShutdownState, ShutdownTree,
-    ShutdownTreeError, Task, TaskError, TaskMessage, TaskResult, TaskState, TerminationMonitor,
-    TerminationObservation, TerminationReaction, TreeShutdown,
+    Reaper, ShutdownCoordinator, ShutdownCoordinatorError, ShutdownCoordinatorEvent, ShutdownPlan,
+    ShutdownPlanError, ShutdownState, ShutdownTree, ShutdownTreeError, Task, TaskError,
+    TaskMessage, TaskResult, TaskState, TerminationMonitor, TerminationObservation,
+    TerminationReaction, TreeShutdown,
 };
 pub use machine::{Machine, Move};
 pub use operations::{
@@ -106,22 +106,21 @@ pub use shutdown::{FinalizeOnShutdown, ShutdownEvent, ShutdownReaction, StopOnSh
 pub use stash::{Stash, StashRoute, StashStatus};
 pub use supervision::{
     Backoff, BackoffConfigError, BackoffError, BackoffSupervisor, BackoffSupervisorError,
-    BackoffSupervisorSends, ChildTopology, DynamicChildPhase, DynamicProxy, DynamicSupervisor,
-    DynamicSupervisorEvent, DynamicSupervisorMessage, DynamicSupervisorOutcome,
-    DynamicSupervisorRejection, DynamicSupervisorSends, FleetError, IncarnationPhase, Proxy,
-    ProxyCommand, ProxyError, ProxyEvent, ProxySends, ReportSupervisionFailure,
-    RestartConfiguration, RestartPolicy, Strategy, SupervisionEvent, SupervisionFailure,
-    SupervisionFailureReaction, Supervisor, SupervisorError, SupervisorSends, restart_all,
-    restart_one, restart_rest, retire_on_supervision_failure, stop_on_supervision_failure,
+    ChildTopology, DynamicChildPhase, DynamicProxy, DynamicSupervisor, DynamicSupervisorEvent,
+    DynamicSupervisorMessage, DynamicSupervisorOutcome, DynamicSupervisorRejection,
+    DynamicSupervisorSends, FleetError, IncarnationPhase, Proxy, ProxyCommand, ProxyError,
+    ProxyEvent, ProxySends, ReportSupervisionFailure, RestartConfiguration, RestartPolicy,
+    Strategy, SupervisionEvent, SupervisionFailure, SupervisionFailureReaction, Supervisor,
+    SupervisorError, SupervisorSends, restart_all, restart_one, restart_rest,
+    retire_on_supervision_failure, stop_on_supervision_failure,
 };
 pub use termination::{Crash, Exit, RestartDenial, SupervisionFailureReason};
 pub use time::{
-    Deadline, DeadlineEvent, DeadlineReaction, DeadlineSends, Lease, LeaseMessage, LeaseOutcome,
-    LeaseRejection, LeaseSends, LeaseState, OneShot, OneShotEvent, OneShotReaction, OneShotSends,
-    Periodic, PeriodicEvent, PeriodicReaction, PeriodicSends, ReceiveTimeout, ReceiveTimeoutEvent,
-    ReceiveTimeoutReaction, ReceiveTimeoutSends, TimedEvent,
+    Deadline, DeadlineEvent, DeadlineReaction, Lease, LeaseMessage, LeaseOutcome, LeaseRejection,
+    LeaseSends, LeaseState, OneShot, OneShotEvent, OneShotReaction, Periodic, PeriodicEvent,
+    PeriodicReaction, ReceiveTimeout, ReceiveTimeoutEvent, ReceiveTimeoutReaction, TimedEvent,
 };
-pub use watch::{Link, LinkReaction, Watch, WatchEvent, WatchSends, stop_on_abnormal_death};
+pub use watch::{Link, LinkReaction, Watch, WatchEvent, stop_on_abnormal_death};
 pub use workflow::{
     Barrier, BarrierArrival, BarrierConfigError, BarrierError, BarrierGeneration,
     BarrierMembership, BarrierMessage, BarrierReleased, BarrierState, Latch, LatchMessage,

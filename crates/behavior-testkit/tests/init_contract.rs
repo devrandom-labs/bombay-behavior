@@ -61,7 +61,7 @@ async fn deadline_initialization_emits_exactly_one_schedule() {
             Ok(Step::Continue)
         });
     let initialized = behavior.initialize().unwrap();
-    assert_eq!(initialized.actions.sends.schedules.len(), 1);
+    assert_eq!(initialized.actions.sends.owned.len(), 1);
 }
 
 #[tokio::test]
@@ -90,5 +90,5 @@ async fn supervisor_initialization_emits_the_configured_fleet_once() {
     .unwrap();
     let initialized = behavior.initialize().unwrap();
     assert_eq!(initialized.actions.creates.len(), 2);
-    assert_eq!(initialized.actions.sends.child_observations.len(), 2);
+    assert_eq!(initialized.actions.sends.owned.child_observations.len(), 2);
 }

@@ -95,9 +95,9 @@ async fn all_wrapper_permutations_preserve_init_protocol_nesting() {
     let initialized = c1.initialize().unwrap();
     let i1 = initialized.actions;
     let _c1 = initialized.behavior;
-    assert_eq!(i1.sends.schedules[0].at, second);
-    assert_eq!(i1.sends.behavior.observations[0].peer, PEER);
-    assert_eq!(i1.sends.behavior.behavior.schedules[0].at, first);
+    assert_eq!(i1.sends.owned[0].at, second);
+    assert_eq!(i1.sends.inner.owned[0].peer, PEER);
+    assert_eq!(i1.sends.inner.inner.owned[0].at, first);
 
     // Watch::new(Deadline::new(Deadline::new(inner, T1), T2), p): Watch owns the outer product.
     let c2 = behavior::Watch::new(
@@ -113,9 +113,9 @@ async fn all_wrapper_permutations_preserve_init_protocol_nesting() {
     let initialized = c2.initialize().unwrap();
     let i2 = initialized.actions;
     let _c2 = initialized.behavior;
-    assert_eq!(i2.sends.observations[0].peer, PEER);
-    assert_eq!(i2.sends.behavior.schedules[0].at, second);
-    assert_eq!(i2.sends.behavior.behavior.schedules[0].at, first);
+    assert_eq!(i2.sends.owned[0].peer, PEER);
+    assert_eq!(i2.sends.inner.owned[0].at, second);
+    assert_eq!(i2.sends.inner.inner.owned[0].at, first);
 
     // Deadline::new(Deadline::new(Watch::new(inner, p), T1), T2).
     let c3 = behavior::Deadline::new(
@@ -132,9 +132,9 @@ async fn all_wrapper_permutations_preserve_init_protocol_nesting() {
     let initialized = c3.initialize().unwrap();
     let i3 = initialized.actions;
     let _c3 = initialized.behavior;
-    assert_eq!(i3.sends.schedules[0].at, second);
-    assert_eq!(i3.sends.behavior.schedules[0].at, first);
-    assert_eq!(i3.sends.behavior.behavior.observations[0].peer, PEER);
+    assert_eq!(i3.sends.owned[0].at, second);
+    assert_eq!(i3.sends.inner.owned[0].at, first);
+    assert_eq!(i3.sends.inner.inner.owned[0].peer, PEER);
 
     // Watch::new(Deadline::new(Deadline::new(inner, T2), T1), p).
     let c4 = behavior::Watch::new(
@@ -150,9 +150,9 @@ async fn all_wrapper_permutations_preserve_init_protocol_nesting() {
     let initialized = c4.initialize().unwrap();
     let i4 = initialized.actions;
     let _c4 = initialized.behavior;
-    assert_eq!(i4.sends.observations[0].peer, PEER);
-    assert_eq!(i4.sends.behavior.schedules[0].at, first);
-    assert_eq!(i4.sends.behavior.behavior.schedules[0].at, second);
+    assert_eq!(i4.sends.owned[0].peer, PEER);
+    assert_eq!(i4.sends.inner.owned[0].at, first);
+    assert_eq!(i4.sends.inner.inner.owned[0].at, second);
 
     // Deadline::new(Watch::new(Deadline::new(inner, T2), p), T1).
     let c5 = behavior::Deadline::new(
@@ -168,9 +168,9 @@ async fn all_wrapper_permutations_preserve_init_protocol_nesting() {
     let initialized = c5.initialize().unwrap();
     let i5 = initialized.actions;
     let _c5 = initialized.behavior;
-    assert_eq!(i5.sends.schedules[0].at, first);
-    assert_eq!(i5.sends.behavior.observations[0].peer, PEER);
-    assert_eq!(i5.sends.behavior.behavior.schedules[0].at, second);
+    assert_eq!(i5.sends.owned[0].at, first);
+    assert_eq!(i5.sends.inner.owned[0].peer, PEER);
+    assert_eq!(i5.sends.inner.inner.owned[0].at, second);
 
     // Deadline::new(Deadline::new(Watch::new(inner, p), T2), T1).
     let c6 = behavior::Deadline::new(
@@ -187,9 +187,9 @@ async fn all_wrapper_permutations_preserve_init_protocol_nesting() {
     let initialized = c6.initialize().unwrap();
     let i6 = initialized.actions;
     let _c6 = initialized.behavior;
-    assert_eq!(i6.sends.schedules[0].at, first);
-    assert_eq!(i6.sends.behavior.schedules[0].at, second);
-    assert_eq!(i6.sends.behavior.behavior.observations[0].peer, PEER);
+    assert_eq!(i6.sends.owned[0].at, first);
+    assert_eq!(i6.sends.inner.owned[0].at, second);
+    assert_eq!(i6.sends.inner.inner.owned[0].peer, PEER);
 }
 
 /// A stash layer contributes no initialization sends and shifts nothing:
@@ -210,9 +210,9 @@ async fn stash_layer_contributes_no_init_sends() {
     let initialized = behavior.initialize().unwrap();
     let initial = initialized.actions;
     let _behavior = initialized.behavior;
-    assert_eq!(initial.sends.schedules[0].at, due);
-    assert_eq!(initial.sends.behavior.observations[0].peer, PEER);
-    assert!(initial.sends.behavior.behavior.is_empty());
+    assert_eq!(initial.sends.owned[0].at, due);
+    assert_eq!(initial.sends.inner.owned[0].peer, PEER);
+    assert!(initial.sends.inner.inner.is_empty());
 }
 
 /// In an Deadline∘Watch∘Stash stack, only the user lane enters the stash buffer:
@@ -360,7 +360,7 @@ async fn unscheduled_at_is_inert_to_reached_events() {
     let initialized = behavior.initialize().unwrap();
     let initial = initialized.actions;
     let mut behavior = initialized.behavior;
-    assert!(initial.sends.schedules.is_empty());
+    assert!(initial.sends.owned.is_empty());
 
     for id in [TimerId(0), TimerId(1)] {
         let actions = behavior
@@ -441,12 +441,12 @@ async fn supervision_preserves_inner_watch_routing() {
     let initial = initialized.actions;
     let mut behavior = initialized.behavior;
     assert_eq!(initial.creates.len(), 2);
-    assert_eq!(initial.sends.child_observations.len(), 2); // observe-child x2
-    assert_eq!(initial.sends.child_observations[0].nonce, 0);
-    assert_eq!(initial.sends.creation_observations.len(), 2);
-    assert_eq!(initial.sends.creation_observations[0].nonce, 0);
-    assert_eq!(initial.sends.behavior.observations.len(), 1); // observe-peer
-    assert_eq!(initial.sends.behavior.observations[0].peer, PEER);
+    assert_eq!(initial.sends.owned.child_observations.len(), 2); // observe-child x2
+    assert_eq!(initial.sends.owned.child_observations[0].nonce, 0);
+    assert_eq!(initial.sends.owned.creation_observations.len(), 2);
+    assert_eq!(initial.sends.owned.creation_observations[0].nonce, 0);
+    assert_eq!(initial.sends.inner.owned.len(), 1); // observe-peer
+    assert_eq!(initial.sends.inner.owned[0].peer, PEER);
 
     // Peer lane: the watch reaction stops the supervised fold.
     let died = behavior
@@ -481,9 +481,9 @@ async fn supervision_preserves_inner_watch_routing() {
             at: Instant::now(),
         }))
         .unwrap();
-    assert_eq!(actions.sends.replacement_commands.len(), 1);
+    assert_eq!(actions.sends.owned.replacement_commands.len(), 1);
     assert_eq!(
-        actions.sends.replacement_commands[0]
+        actions.sends.owned.replacement_commands[0]
             .to
             .resolve(MailAddr(17)),
         behavior::Address::birth(MailAddr(17), 0)
@@ -533,9 +533,9 @@ async fn supervision_failure_reaction_preserves_composed_send_lanes() {
         }))
         .unwrap();
 
-    assert!(actions.sends.behavior.behavior.is_empty());
-    assert!(actions.sends.behavior.observations.is_empty());
-    assert!(actions.sends.child_observations.is_empty());
-    assert!(actions.sends.replacement_commands.is_empty());
+    assert!(actions.sends.inner.inner.is_empty());
+    assert!(actions.sends.inner.owned.is_empty());
+    assert!(actions.sends.owned.child_observations.is_empty());
+    assert!(actions.sends.owned.replacement_commands.is_empty());
     assert_eq!(actions.become_, Step::Stop(behavior::Stopped));
 }

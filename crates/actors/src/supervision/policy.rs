@@ -53,6 +53,10 @@ impl<A: Address> ReportSupervisionFailure<A> {
     }
 }
 
+impl<A: Address> behavior::InterpreterRequest for ReportSupervisionFailure<A> {
+    type ReturnToEmitter = behavior::NoReturnToEmitter;
+}
+
 impl<A: Address> SupervisionFailure<A> {
     #[must_use]
     pub const fn new(

@@ -112,7 +112,7 @@ fuzz_target!(|bytes: &[u8]| {
                 .unwrap();
 
             assert_eq!(
-                actions.sends.replacement_commands.len(),
+                actions.sends.owned.replacement_commands.len(),
                 usize::from(expected_restart),
                 "replacement count mismatch at byte {index}"
             );
@@ -120,9 +120,9 @@ fuzz_target!(|bytes: &[u8]| {
                 assert_eq!(actions.become_, Step::Continue);
             } else {
                 assert_eq!(actions.become_, Step::Stop(behavior::Stopped));
-                assert_eq!(actions.sends.failure_reports.len(), 1);
+                assert_eq!(actions.sends.owned.failure_reports.len(), 1);
                 assert_eq!(
-                    actions.sends.failure_reports[0].failure.reason,
+                    actions.sends.owned.failure_reports[0].failure.reason,
                     SupervisionFailureReason::RestartDenied(RestartDenial::BudgetExceeded {
                         restarts_in_window: restarts.len(),
                         replacements_requested: 1,

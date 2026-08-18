@@ -4,10 +4,11 @@ use std::time::Duration;
 
 use super::domain::TimerLease;
 use super::event::TimedEvent;
+use crate::Step;
 use crate::protocol::{ScheduleAfter, TimerId};
-use crate::{Own, SendInput, Step};
 use behavior::{
-    Actions, Address, Behavior, BehaviorActed, BirthMode, EventLayer, SendAlgebra, ServiceSends,
+    Actions, Address, Behavior, BehaviorActed, BirthMode, EventLayer, InterpreterRequests,
+    SendEffects, SendLayer,
 };
 
 /// Complete event sum accepted by [`Periodic`].
@@ -15,35 +16,6 @@ pub type PeriodicEvent<E> = TimedEvent<E>;
 
 /// Pure fold invoked for each accepted periodic generation.
 pub type PeriodicReaction<B> = fn(&mut B) -> BehaviorActed<B>;
-
-/// Named send product contributed by [`Periodic`].
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PeriodicSends<Sends> {
-    /// Sends emitted by the wrapped behavior or periodic reaction.
-    pub behavior: Sends,
-    /// Relative schedule requests interpreted by Bombay Timers.
-    pub schedules: ServiceSends<ScheduleAfter>,
-}
-
-impl<Sends: SendAlgebra> SendAlgebra for PeriodicSends<Sends> {
-    fn empty() -> Self {
-        Self {
-            behavior: Sends::empty(),
-            schedules: ServiceSends::empty(),
-        }
-    }
-
-    fn append(&mut self, other: Self) {
-        self.behavior.append(other.behavior);
-        self.schedules.append(other.schedules);
-    }
-}
-
-impl<Sends> SendInput<ScheduleAfter, Own> for PeriodicSends<Sends> {
-    fn emit(&mut self, input: ScheduleAfter) {
-        self.schedules.send(input);
-    }
-}
 
 /// Repeatedly notify a wrapped behavior at a relative interval.
 ///
@@ -79,31 +51,38 @@ impl<B: Behavior> Periodic<B> {
         }
     }
 
-    fn schedule(&mut self) -> ServiceSends<ScheduleAfter> {
+    fn schedule(&mut self) -> InterpreterRequests<ScheduleAfter> {
         self.lease
             .arm()
-            .map_or_else(ServiceSends::empty, |generation| {
-                ServiceSends::one(ScheduleAfter::new(self.id, generation, self.every))
+            .map_or_else(InterpreterRequests::empty, |generation| {
+                InterpreterRequests::one(ScheduleAfter::new(self.id, generation, self.every))
             })
     }
 
     fn wrap(
         actions: Actions<crate::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>,
-        schedules: ServiceSends<ScheduleAfter>,
-    ) -> Actions<crate::BehaviorAddr<B>, B::Ph, PeriodicSends<B::Sends>, B::Birth> {
-        actions.map_sends(|behavior| PeriodicSends {
-            behavior,
-            schedules,
-        })
+        schedules: InterpreterRequests<ScheduleAfter>,
+    ) -> Actions<
+        crate::BehaviorAddr<B>,
+        B::Ph,
+        SendLayer<InterpreterRequests<ScheduleAfter>, B::Sends>,
+        B::Birth,
+    > {
+        actions.map_sends(|inner| SendLayer::new(schedules, inner))
     }
 
     fn wrap_and_rearm(
         &mut self,
         actions: Actions<crate::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>,
-    ) -> Actions<crate::BehaviorAddr<B>, B::Ph, PeriodicSends<B::Sends>, B::Birth> {
+    ) -> Actions<
+        crate::BehaviorAddr<B>,
+        B::Ph,
+        SendLayer<InterpreterRequests<ScheduleAfter>, B::Sends>,
+        B::Birth,
+    > {
         let schedules = if matches!(actions.become_, Step::Stop(_)) {
             self.lease.disarm();
-            ServiceSends::empty()
+            InterpreterRequests::empty()
         } else {
             self.schedule()
         };
@@ -122,14 +101,14 @@ impl<B: Behavior + crate::BehaviorBase> crate::BehaviorBase for Periodic<B> {
 impl<B, A, Ph, Sends, Br> Behavior for Periodic<B>
 where
     A: Address,
-    Sends: SendAlgebra,
+    Sends: SendEffects + behavior::SendsFor<B::Event>,
     Br: BirthMode,
     B: Behavior<Ph = Ph, Sends = Sends, Birth = Br>,
     B::Protocol: crate::Protocol<Addr = A>,
 {
     type Protocol = B::Protocol;
     type Event = PeriodicEvent<B::Event>;
-    type Sends = PeriodicSends<Sends>;
+    type Sends = SendLayer<InterpreterRequests<ScheduleAfter>, Sends>;
     type Ph = Ph;
     type Error = B::Error;
     type Birth = Br;
@@ -153,7 +132,7 @@ where
                 if matches!(actions.become_, Step::Stop(_)) {
                     self.lease.disarm();
                 }
-                Ok(Self::wrap(actions, ServiceSends::empty()))
+                Ok(Self::wrap(actions, InterpreterRequests::empty()))
             }
         }
     }
@@ -213,7 +192,7 @@ mod tests {
             .initialize()
             .unwrap();
         assert_eq!(
-            initialized.actions.sends.schedules.as_slice(),
+            initialized.actions.sends.owned.as_slice(),
             [ScheduleAfter::new(
                 TimerId(2),
                 crate::TimerGeneration(0),
@@ -226,7 +205,7 @@ mod tests {
             .on_path(TimerElapsed::new(TimerId(2), crate::TimerGeneration(0)))
             .unwrap();
         assert_eq!(
-            first.sends.schedules.as_slice(),
+            first.sends.owned.as_slice(),
             [ScheduleAfter::new(
                 TimerId(2),
                 crate::TimerGeneration(1),
@@ -239,13 +218,13 @@ mod tests {
         let duplicate = active
             .on_path(TimerElapsed::new(TimerId(2), crate::TimerGeneration(0)))
             .unwrap();
-        assert!(duplicate.sends.schedules.is_empty());
+        assert!(duplicate.sends.owned.is_empty());
         assert_eq!(active.base().0, 1);
 
         let stopped = active
             .on_path(TimerElapsed::new(TimerId(2), crate::TimerGeneration(1)))
             .unwrap();
-        assert!(stopped.sends.schedules.is_empty());
+        assert!(stopped.sends.owned.is_empty());
         assert!(matches!(stopped.become_, Step::Stop(_)));
         assert_eq!(active.base().0, 2);
     }

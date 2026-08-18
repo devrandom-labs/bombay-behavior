@@ -70,8 +70,8 @@ async fn empty_mailbox_still_observes_initialization_exactly_once() {
     let trace = drive(behavior, &mut mailbox).unwrap();
 
     assert_eq!(trace.transitions, 1);
-    assert_eq!(trace.sends.schedules.len(), 1);
-    assert_eq!(trace.sends.schedules[0].at, due);
+    assert_eq!(trace.sends.owned.len(), 1);
+    assert_eq!(trace.sends.owned[0].at, due);
 }
 
 #[tokio::test]
@@ -116,8 +116,8 @@ async fn wrapper_orderings_preserve_both_initial_protocols() {
     let initialized = at_then_watch.initialize().unwrap();
     let first = initialized.actions;
     let _at_then_watch = initialized.behavior;
-    assert_eq!(first.sends.behavior.schedules[0].at, due);
-    assert_eq!(first.sends.observations[0].peer, peer);
+    assert_eq!(first.sends.inner.owned[0].at, due);
+    assert_eq!(first.sends.owned[0].peer, peer);
 
     let watch_then_at = behavior::Deadline::new(
         behavior::Watch::new(Recorder::default(), peer, stop_on_abnormal_death),
@@ -128,8 +128,8 @@ async fn wrapper_orderings_preserve_both_initial_protocols() {
     let initialized = watch_then_at.initialize().unwrap();
     let second = initialized.actions;
     let _watch_then_at = initialized.behavior;
-    assert_eq!(second.sends.behavior.observations[0].peer, peer);
-    assert_eq!(second.sends.schedules[0].at, due);
+    assert_eq!(second.sends.inner.owned[0].peer, peer);
+    assert_eq!(second.sends.owned[0].at, due);
 }
 
 #[tokio::test]
@@ -352,6 +352,7 @@ async fn restart_window_boundary_is_inclusive() {
             .transition(first)
             .unwrap()
             .sends
+            .owned
             .replacement_commands
             .len(),
         1
@@ -368,6 +369,7 @@ async fn restart_window_boundary_is_inclusive() {
             .transition(edge)
             .unwrap()
             .sends
+            .owned
             .replacement_commands
             .is_empty()
     );

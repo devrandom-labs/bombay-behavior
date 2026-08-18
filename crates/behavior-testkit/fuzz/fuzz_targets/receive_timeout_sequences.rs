@@ -41,7 +41,7 @@ fuzz_target!(|bytes: &[u8]| {
         let initialized = behavior.initialize().unwrap();
         let initial = initialized.actions;
         let mut behavior = initialized.behavior;
-        assert_eq!(initial.sends.schedules[0].generation, TimerGeneration(0));
+        assert_eq!(initial.sends.owned[0].generation, TimerGeneration(0));
         let mut issued = 0_u64;
         let mut live = Some(0_u64);
 
@@ -56,7 +56,7 @@ fuzz_target!(|bytes: &[u8]| {
                         .unwrap();
                     issued = next;
                     live = Some(next);
-                    assert_eq!(actions.sends.schedules[0].generation, TimerGeneration(next));
+                    assert_eq!(actions.sends.owned[0].generation, TimerGeneration(next));
                 }
                 1 => {
                     let delivered = u64::from(byte / 3);
@@ -70,7 +70,7 @@ fuzz_target!(|bytes: &[u8]| {
                     if matched {
                         live = None;
                     }
-                    assert!(actions.sends.behavior.is_empty());
+                    assert!(actions.sends.inner.is_empty());
                     assert!(matches!(actions.become_, Step::Continue));
                 }
                 _ => {
@@ -82,7 +82,7 @@ fuzz_target!(|bytes: &[u8]| {
                         }))
                         .unwrap();
                     assert_eq!(live, before);
-                    assert!(actions.sends.behavior.is_empty());
+                    assert!(actions.sends.inner.is_empty());
                 }
             }
         }

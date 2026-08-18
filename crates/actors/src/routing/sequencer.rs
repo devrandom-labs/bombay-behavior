@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 use behavior::{
     Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, Never, NoBirths, Protocol,
-    Recipient, SendAlgebra, User,
+    Recipient, SendEffects, User,
 };
 
 /// A position in a [`Sequencer`] stream.
@@ -80,7 +80,7 @@ pub struct SequencerSends<Target: Protocol, Reply: behavior::Protocol> {
     pub outcomes: Vec<Delivery<Reply>>,
 }
 
-impl<Target: Protocol, Reply: behavior::Protocol> SendAlgebra for SequencerSends<Target, Reply> {
+impl<Target: Protocol, Reply: behavior::Protocol> SendEffects for SequencerSends<Target, Reply> {
     fn empty() -> Self {
         Self {
             deliveries: Vec::new(),
@@ -91,6 +91,26 @@ impl<Target: Protocol, Reply: behavior::Protocol> SendAlgebra for SequencerSends
     fn append(&mut self, mut other: Self) {
         self.deliveries.append(&mut other.deliveries);
         self.outcomes.append(&mut other.outcomes);
+    }
+}
+
+impl<Event, Target: Protocol, Reply: behavior::Protocol> behavior::SendsFor<Event>
+    for SequencerSends<Target, Reply>
+{
+}
+
+impl<I, RootEvent, Path, Target, Reply> behavior::InterpretSends<I, RootEvent, Path>
+    for SequencerSends<Target, Reply>
+where
+    I: behavior::SendInterpreter,
+    Target: Protocol,
+    Reply: behavior::Protocol,
+    Vec<Delivery<Target>>: behavior::InterpretSends<I, RootEvent, Path>,
+    Vec<Delivery<Reply>>: behavior::InterpretSends<I, RootEvent, Path>,
+{
+    fn interpret(self, interpreter: &mut I) -> Result<(), I::Error> {
+        behavior::InterpretSends::interpret(self.deliveries, interpreter)?;
+        behavior::InterpretSends::interpret(self.outcomes, interpreter)
     }
 }
 

@@ -4,7 +4,7 @@ use behavior::{
     Actions, AffinitySelector, AssignmentId, Behavior, CreationKind, Delivery, InterruptionPolicy,
     JobId, KeyedPoolMessage, KeyedWorkerPool, KeyedWorkerPoolProtocol, MailAddr, Never, NoBirths,
     PoolAssignment, PoolBehaviorSends, PoolError, PoolResponse, Proxy, ProxyCommand, Recipient,
-    RestartPolicy, SendAlgebra, User, WorkerCreationResolved, WorkerPhase, WorkerStopped,
+    RestartPolicy, SendEffects, User, WorkerCreationResolved, WorkerPhase, WorkerStopped,
 };
 use proptest::prelude::*;
 use std::time::Instant;
@@ -113,7 +113,7 @@ fn submit(
 fn assignments(
     actions: &behavior::PoolActions<MailAddr, Reply, u8, u16, Worker>,
 ) -> &[Delivery<Proxy<Worker>>] {
-    &actions.sends.behavior.assignments
+    &actions.sends.inner.assignments
 }
 
 #[test]
@@ -148,7 +148,7 @@ fn targeted_submission_rejects_when_its_busy_workers_backlog_is_full() {
     let rejected = submit(&mut pool, 0, 3);
     assert!(assignments(&rejected).is_empty());
     assert!(matches!(
-        rejected.sends.behavior.responses[0].message,
+        rejected.sends.inner.responses[0].message,
         PoolResponse::Rejected {
             job: JobId(3),
             payload: 0,
@@ -172,7 +172,7 @@ fn affinity_survives_fresh_worker_incarnation_replacement() {
             Instant::now(),
         ))
         .unwrap();
-    assert!(!stopped.sends.replacement_commands.is_empty());
+    assert!(!stopped.sends.owned.replacement_commands.is_empty());
     assert_eq!(pool.affinity(&4), Some(0));
     assert_eq!(pool.worker_phase(0), Some(WorkerPhase::Installing));
 
@@ -239,7 +239,7 @@ fn unavailable_route_refuses_owned_payload_without_creating_a_binding() {
     assert_eq!(pool.affinity(&7), None);
     assert!(assignments(&actions).is_empty());
     assert!(matches!(
-        actions.sends.behavior.responses[0].message,
+        actions.sends.inner.responses[0].message,
         PoolResponse::Rejected {
             job: JobId(1),
             payload: 7,
@@ -290,7 +290,7 @@ fn retired_affinity_refuses_new_work_until_explicit_valid_rebalance() {
 
     let refused = submit(&mut pool, 2, 2);
     assert!(matches!(
-        refused.sends.behavior.responses[0].message,
+        refused.sends.inner.responses[0].message,
         PoolResponse::Rejected {
             reason: behavior::PoolRejection::AffinityUnavailable,
             ..
@@ -341,11 +341,11 @@ fn retiring_one_affinity_slot_terminates_its_queue_while_other_slots_live() {
         .unwrap();
 
     assert_eq!(pool.backlog_len(), 0);
-    assert_eq!(rejected.sends.behavior.responses.len(), 2);
+    assert_eq!(rejected.sends.inner.responses.len(), 2);
     assert!(
         rejected
             .sends
-            .behavior
+            .inner
             .responses
             .iter()
             .any(|delivery| matches!(
@@ -416,9 +416,7 @@ fn captured_selector_state_is_statically_dispatched() {
         )
         .unwrap();
     assert_eq!(
-        actions.sends.behavior.assignments[0]
-            .to
-            .resolve(MailAddr(17)),
+        actions.sends.inner.assignments[0].to.resolve(MailAddr(17)),
         behavior::Address::birth(MailAddr(17), 1)
     );
 }
@@ -499,10 +497,10 @@ fn keyed_assignment_lanes_survive_shutdown_composition() {
             },
         )
         .unwrap();
-    assert_eq!(actions.sends.behavior.responses.len(), 1);
-    assert_eq!(actions.sends.behavior.assignments.len(), 1);
+    assert_eq!(actions.sends.inner.inner.responses.len(), 1);
+    assert_eq!(actions.sends.inner.inner.assignments.len(), 1);
     assert_eq!(
-        actions.sends.behavior.assignments[0]
+        actions.sends.inner.inner.assignments[0]
             .to
             .resolve(MailAddr(17)),
         behavior::Address::birth(MailAddr(17), 1)

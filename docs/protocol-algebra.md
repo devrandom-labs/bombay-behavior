@@ -33,6 +33,9 @@ Behavior::Event = Msg + timer + observation + lifecycle + supervision + ...
 Only `Protocol::Msg` may arrive through an ordinary `Recipient<P>`. Runtime
 facts enter through the concrete `Behavior::Event` sum. Service requests leave
 through named `Behavior::Sends` lanes. Neither direction is an ambient effect.
+`Behavior::Sends: SendsFor<Behavior::Event>` makes the dependency between
+return-to-emitter effects and the complete event algebra explicit without
+turning protocol identity into behavior identity.
 
 ## Structural ingress
 

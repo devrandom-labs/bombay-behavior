@@ -197,13 +197,13 @@ fn submit(
 fn assignments(
     actions: &behavior::PoolActions<MailAddr, Reply, u8, u16, Worker>,
 ) -> &[Delivery<Proxy<Worker>>] {
-    &actions.sends.behavior.assignments
+    &actions.sends.inner.assignments
 }
 
 fn responses(
     actions: &behavior::PoolActions<MailAddr, Reply, u8, u16, Worker>,
 ) -> &[Delivery<Reply>] {
-    &actions.sends.behavior.responses
+    &actions.sends.inner.responses
 }
 
 #[test]
@@ -213,12 +213,12 @@ fn initialization_stages_and_observes_every_stable_proxy_before_dispatch() {
     let actions = initialized.actions;
     let pool = initialized.behavior;
     assert_eq!(actions.creates.len(), 2);
-    assert_eq!(actions.sends.child_observations.len(), 2);
-    assert_eq!(actions.sends.creation_observations.len(), 2);
+    assert_eq!(actions.sends.owned.child_observations.len(), 2);
+    assert_eq!(actions.sends.owned.creation_observations.len(), 2);
     for (creation, observation) in actions
         .creates
         .iter()
-        .zip(actions.sends.creation_observations.iter())
+        .zip(actions.sends.owned.creation_observations.iter())
     {
         assert_eq!(creation.nonce, observation.nonce);
     }
@@ -510,7 +510,7 @@ fn panicking_payload_clone_occurs_before_admission_state_is_committed() {
             },
         )
         .unwrap();
-    assert_eq!(actions.sends.behavior.assignments.len(), 1);
+    assert_eq!(actions.sends.inner.assignments.len(), 1);
     assert_eq!(
         pool.worker_phase(0),
         Some(WorkerPhase::Assigned {
@@ -602,7 +602,7 @@ fn denied_replacement_retires_slot_instead_of_stranding_installation() {
             Instant::now(),
         ))
         .unwrap();
-    assert!(actions.sends.replacement_commands.is_empty());
+    assert!(actions.sends.owned.replacement_commands.is_empty());
     assert_eq!(
         pool.worker_phase(0),
         Some(WorkerPhase::Retired {
@@ -735,8 +735,8 @@ fn assignment_and_response_lanes_survive_shutdown_composition() {
             },
         )
         .unwrap();
-    assert_eq!(actions.sends.behavior.responses.len(), 1);
-    assert_eq!(actions.sends.behavior.assignments.len(), 1);
+    assert_eq!(actions.sends.inner.inner.responses.len(), 1);
+    assert_eq!(actions.sends.inner.inner.assignments.len(), 1);
     assert!(matches!(actions.become_, Step::Continue));
 }
 use behavior_testkit::InitializeTest;

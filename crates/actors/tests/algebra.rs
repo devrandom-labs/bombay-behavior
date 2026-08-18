@@ -14,11 +14,12 @@ use std::time::Duration;
 use behavior::{
     Acted, Actions, Activate, Become, Behavior, BehaviorBase, Births, ChildShutdownRejected,
     ChildShutdownRejection, ChildStopped, Crash, Create, CreationKind, CreationRejection,
-    CreationResolved, Delivery, EventLayer, Exit, Here, InjectEvent, Inside, Machine, MailAddr,
-    Move, Never, NoBirths, ObserveChild, PeerStopped, Proxy, ProxyCommand, ProxyEvent, Recipient,
-    RestartDenial, RestartPolicy, SendAlgebra, ServiceSends, ShutdownChild, ShutdownRequested,
-    StashRoute, Step, Strategy, SupervisionEvent, SupervisionFailure, SupervisionFailureReason,
-    Supervisor, TimerElapsed, TimerGeneration, TimerId, User, UserEvent, Watch, WorkerStopped,
+    CreationResolved, Delivery, EventLayer, Exit, Here, InjectEvent, Inside, InterpretRequest,
+    InterpretSends, InterpreterRequests, Machine, MailAddr, Move, Never, NoBirths, ObserveChild,
+    PeerStopped, Proxy, ProxyCommand, ProxyEvent, Recipient, RestartDenial, RestartPolicy,
+    ScheduleAt, SendEffects, SendInterpreter, ShutdownChild, ShutdownRequested, StashRoute, Step,
+    Strategy, SupervisionEvent, SupervisionFailure, SupervisionFailureReason, Supervisor,
+    TimerElapsed, TimerGeneration, TimerId, User, UserEvent, Watch, WorkerStopped,
     stop_on_abnormal_death, stop_on_supervision_failure,
 };
 use proptest::prelude::*;
@@ -29,7 +30,7 @@ struct Quiet;
 
 struct BehaviorSends {
     deliveries: Vec<Delivery<Quiet>>,
-    child_observations: ServiceSends<ObserveChild<MailAddr>>,
+    markers: Vec<u8>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -63,7 +64,7 @@ impl ExplicitInitialization {
     fn init(&mut self) -> Acted<MailAddr, Never, BehaviorSends, Births<Quiet>, Never> {
         self.0.push(1);
         let mut sends = BehaviorSends::empty();
-        sends.child_observations.extend([ObserveChild::new(7)]);
+        sends.markers.push(7);
         Ok(Actions::new(
             sends,
             vec![Create::birth(7, Quiet)],
@@ -80,7 +81,7 @@ impl ExplicitInitialization {
         Ok(Actions::new(
             BehaviorSends {
                 deliveries: vec![Delivery::new(Recipient::global(MailAddr(9)), message)],
-                child_observations: ServiceSends::empty(),
+                markers: Vec::new(),
             },
             Vec::new(),
             Step::Stop(behavior::Stopped),
@@ -111,19 +112,21 @@ impl InitializationCounter {
     }
 }
 
-impl SendAlgebra for BehaviorSends {
+impl SendEffects for BehaviorSends {
     fn empty() -> Self {
         Self {
             deliveries: Vec::new(),
-            child_observations: ServiceSends::empty(),
+            markers: Vec::new(),
         }
     }
 
     fn append(&mut self, mut other: Self) {
         self.deliveries.append(&mut other.deliveries);
-        self.child_observations.append(other.child_observations);
+        self.markers.append(&mut other.markers);
     }
 }
+
+impl<Event> behavior::SendsFor<Event> for BehaviorSends {}
 
 struct U8Sink;
 
@@ -156,16 +159,16 @@ impl Behavior for U8Sink {
 fn requires_no_births<B: Behavior<Birth = NoBirths>>(_behavior: &B) {}
 
 #[test]
-fn ordinary_and_service_send_algebras_have_disjoint_static_dispatch() {
+fn deliveries_and_interpreter_requests_have_disjoint_static_dispatch() {
     trait RouteSends<A: behavior::Address> {}
 
     impl<P> RouteSends<MailAddr> for Vec<Delivery<P>> where P: behavior::Protocol<Addr = MailAddr> {}
-    impl<A: behavior::Address> RouteSends<A> for ServiceSends<ObserveChild<A>> {}
+    impl<A: behavior::Address> RouteSends<A> for InterpreterRequests<ObserveChild<A>> {}
 
     fn requires_route_sends<A: behavior::Address, S: RouteSends<A>>() {}
 
     requires_route_sends::<MailAddr, Vec<Delivery<Quiet>>>();
-    requires_route_sends::<MailAddr, ServiceSends<ObserveChild<MailAddr>>>();
+    requires_route_sends::<MailAddr, InterpreterRequests<ObserveChild<MailAddr>>>();
 }
 
 fn requires_births<B, C>(_behavior: &B)
@@ -266,10 +269,7 @@ fn direct_behavior_preserves_explicit_initialization_and_transition_actions() {
     let initialized = behavior.initialize().unwrap();
     let initial = initialized.actions;
     let mut behavior = initialized.behavior;
-    assert_eq!(
-        initial.sends.child_observations.as_slice(),
-        &[ObserveChild::new(7)]
-    );
+    assert_eq!(initial.sends.markers, [7]);
     assert_eq!(initial.creates.len(), 1);
     assert!(matches!(initial.become_, Step::Continue));
 
@@ -296,8 +296,8 @@ fn direct_behavior_composes_with_existing_wrappers_and_init_order() {
     let initialized = behavior.initialize().unwrap();
     let initial = initialized.actions;
     let mut behavior = initialized.behavior;
-    assert_eq!(initial.sends.behavior[0].message, 1);
-    assert_eq!(initial.sends.schedules.len(), 1);
+    assert_eq!(initial.sends.inner.inner[0].message, 1);
+    assert_eq!(initial.sends.inner.owned.len(), 1);
 
     behavior.receive(MailAddr(2), 4).unwrap();
     assert_eq!(behavior.base().0, 5);
@@ -311,7 +311,7 @@ async fn typed_shutdown_stops_normally_without_running_the_inner_fold() {
     let event = <_ as InjectEvent<ShutdownRequested, Here>>::inject_at(ShutdownRequested);
     let actions = behavior.transition(event).unwrap();
 
-    assert!(actions.sends.is_empty());
+    assert!(actions.sends.inner.is_empty());
     assert!(actions.creates.is_empty());
     assert!(matches!(actions.become_, Step::Stop(behavior::Stopped)));
 }
@@ -324,8 +324,8 @@ async fn final_shutdown_fold_preserves_effects_and_forces_normal_stop() {
     let event = <_ as InjectEvent<ShutdownRequested, Here>>::inject_at(ShutdownRequested);
     let actions = behavior.transition(event).unwrap();
 
-    assert_eq!(actions.sends.len(), 1);
-    assert_eq!(actions.sends[0].message, 42);
+    assert_eq!(actions.sends.inner.len(), 1);
+    assert_eq!(actions.sends.inner[0].message, 42);
     assert_eq!(actions.creates.len(), 1);
     assert_eq!(actions.creates[0].nonce, 7);
     assert!(matches!(actions.become_, Step::Stop(behavior::Stopped)));
@@ -365,9 +365,80 @@ async fn shutdown_composition_preserves_inner_initialization_effects() {
     let initial = initialized.actions;
     let _behavior = initialized.behavior;
 
-    assert_eq!(initial.sends.schedules.len(), 1);
-    assert_eq!(initial.sends.schedules[0].at, due);
+    assert_eq!(initial.sends.inner.owned.len(), 1);
+    assert_eq!(initial.sends.inner.owned[0].at, due);
     assert!(matches!(initial.become_, Step::Continue));
+}
+
+#[test]
+fn shutdown_over_two_deadlines_preserves_both_exact_local_continuations() {
+    type RootEvent = behavior::ShutdownEvent<
+        behavior::DeadlineEvent<behavior::DeadlineEvent<User<MailAddr, u64>>>,
+    >;
+
+    struct TimerInterpreter {
+        pending: Vec<RootEvent>,
+    }
+
+    impl SendInterpreter for TimerInterpreter {
+        type Error = Never;
+    }
+
+    impl InterpretRequest<ScheduleAt, RootEvent, Inside<Here>> for TimerInterpreter {
+        fn interpret_request(&mut self, request: ScheduleAt) -> Result<(), Self::Error> {
+            self.pending.push(
+                <RootEvent as InjectEvent<TimerElapsed, Inside<Here>>>::inject_at(TimerElapsed {
+                    id: request.id,
+                    generation: request.generation,
+                }),
+            );
+            Ok(())
+        }
+    }
+
+    impl InterpretRequest<ScheduleAt, RootEvent, Inside<Inside<Here>>> for TimerInterpreter {
+        fn interpret_request(&mut self, request: ScheduleAt) -> Result<(), Self::Error> {
+            self.pending.push(<RootEvent as InjectEvent<
+                TimerElapsed,
+                Inside<Inside<Here>>,
+            >>::inject_at(TimerElapsed {
+                id: request.id,
+                generation: request.generation,
+            }));
+            Ok(())
+        }
+    }
+
+    let due = Instant::now() + Duration::from_secs(1);
+    let initialized = behavior_actors::StopOnShutdown::new(behavior_actors::Deadline::new(
+        behavior_actors::Deadline::new(Quiet, TimerId(0), Some(due), |_| {
+            Ok(Step::Stop(behavior::Stopped))
+        }),
+        TimerId(0),
+        Some(due),
+        |_| Ok(Step::Continue),
+    ))
+    .initialize()
+    .unwrap();
+
+    let mut timers = TimerInterpreter {
+        pending: Vec::new(),
+    };
+    <_ as InterpretSends<_, RootEvent, Here>>::interpret(initialized.actions.sends, &mut timers)
+        .unwrap();
+    assert_eq!(timers.pending.len(), 2);
+
+    let mut active = initialized.behavior;
+    // Traversal records the inner deadline first. Popping completes the two
+    // identical requests in reverse order: outer, then inner.
+    let outer = timers.pending.pop().unwrap();
+    assert_eq!(active.transition(outer).unwrap().become_, Step::Continue);
+
+    let inner = timers.pending.pop().unwrap();
+    assert_eq!(
+        active.transition(inner).unwrap().become_,
+        Step::Stop(behavior::Stopped)
+    );
 }
 
 #[tokio::test]
@@ -379,9 +450,9 @@ async fn at_is_a_typed_clock_actor_protocol() {
     let initialized = behavior.initialize().unwrap();
     let initial = initialized.actions;
     let mut behavior = initialized.behavior;
-    assert!(initial.sends.behavior.is_empty());
-    assert_eq!(initial.sends.schedules.len(), 1);
-    assert_eq!(initial.sends.schedules[0].at, now);
+    assert!(initial.sends.inner.is_empty());
+    assert_eq!(initial.sends.owned.len(), 1);
+    assert_eq!(initial.sends.owned[0].at, now);
 
     let fired = behavior
         .on_path(TimerElapsed {
@@ -389,7 +460,7 @@ async fn at_is_a_typed_clock_actor_protocol() {
             generation: TimerGeneration(0),
         })
         .unwrap();
-    assert!(fired.sends.schedules.is_empty());
+    assert!(fired.sends.owned.is_empty());
 }
 
 #[tokio::test]
@@ -406,17 +477,17 @@ async fn nested_at_composition_routes_stale_and_matching_events() {
     let initialized = outer.initialize().unwrap();
     let initial = initialized.actions;
     let mut outer = initialized.behavior;
-    assert_eq!(initial.sends.behavior.schedules[0].id, TimerId(0));
-    assert_eq!(initial.sends.schedules[0].id, TimerId(1));
-    assert_eq!(initial.sends.behavior.schedules[0].at, early);
-    assert_eq!(initial.sends.schedules[0].at, late);
+    assert_eq!(initial.sends.inner.owned[0].id, TimerId(0));
+    assert_eq!(initial.sends.owned[0].id, TimerId(1));
+    assert_eq!(initial.sends.inner.owned[0].at, early);
+    assert_eq!(initial.sends.owned[0].at, late);
 
     let early_event = EventLayer::Owned(TimerElapsed {
         id: TimerId(0),
         generation: TimerGeneration(0),
     });
     let actions = outer.transition(early_event).unwrap();
-    assert!(actions.sends.behavior.schedules.is_empty());
+    assert!(actions.sends.inner.owned.is_empty());
 }
 
 #[tokio::test]
@@ -435,8 +506,8 @@ async fn spec_hides_composed_protocols_without_losing_their_effects() {
     let initialized = behavior.initialize().unwrap();
     let initial = initialized.actions;
     let mut behavior = initialized.behavior;
-    assert_eq!(initial.sends.behavior.schedules[0].at, due);
-    assert_eq!(initial.sends.observations[0].peer, peer);
+    assert_eq!(initial.sends.inner.owned[0].at, due);
+    assert_eq!(initial.sends.owned[0].peer, peer);
 
     let time = EventLayer::Inner(EventLayer::Owned(TimerElapsed {
         id: TimerId(0),
@@ -453,7 +524,7 @@ async fn watching_registers_and_reacts_through_messages() {
     let initialized = behavior.initialize().unwrap();
     let initial = initialized.actions;
     let mut behavior = initialized.behavior;
-    assert_eq!(initial.sends.observations[0].peer, peer);
+    assert_eq!(initial.sends.owned[0].peer, peer);
 
     let stopped = EventLayer::Owned(PeerStopped {
         peer,
@@ -705,7 +776,7 @@ async fn receive_timeout_reacts_only_to_its_own_live_timer_id() {
         |_| Ok(Actions::stop()),
     );
     let initialized = matching_behavior.initialize().unwrap();
-    let matching_generation = initialized.actions.sends.schedules[0].generation;
+    let matching_generation = initialized.actions.sends.owned[0].generation;
     let mut matching_behavior = initialized.behavior;
     let matching = matching_behavior
         .transition(behavior::EventLayer::Owned(TimerElapsed {
@@ -1034,9 +1105,9 @@ async fn supervisor_creates_proxies_and_replacement_is_a_send() {
             .iter()
             .all(|create| create.kind == CreationKind::Birth)
     );
-    assert_eq!(initial.sends.child_observations.len(), 2);
-    assert_eq!(initial.sends.child_observations[0].nonce, 0);
-    assert_eq!(initial.sends.child_observations[1].nonce, 1);
+    assert_eq!(initial.sends.owned.child_observations.len(), 2);
+    assert_eq!(initial.sends.owned.child_observations[0].nonce, 0);
+    assert_eq!(initial.sends.owned.child_observations[1].nonce, 1);
 
     let event = SupervisionEvent::WorkerStopped(WorkerStopped {
         proxy: 0,
@@ -1046,9 +1117,9 @@ async fn supervisor_creates_proxies_and_replacement_is_a_send() {
     });
     let actions = supervisor.transition(event).unwrap();
     assert!(actions.creates.is_empty());
-    assert_eq!(actions.sends.replacement_commands.len(), 1);
+    assert_eq!(actions.sends.owned.replacement_commands.len(), 1);
     assert_eq!(
-        actions.sends.replacement_commands[0]
+        actions.sends.owned.replacement_commands[0]
             .to
             .resolve(MailAddr(17)),
         behavior::Address::birth(MailAddr(17), 0)
@@ -1254,7 +1325,7 @@ async fn stable_proxy_reports_worker_stop_and_creates_fresh_replacement() {
     let mut initial = initialized.actions;
     let mut supervisor = initialized.behavior;
     assert_eq!(initial.creates[0].nonce, 0);
-    assert_eq!(initial.sends.child_observations[0].nonce, 0);
+    assert_eq!(initial.sends.owned.child_observations[0].nonce, 0);
     let proxy = initial.creates.remove(0).child;
 
     let initialized = proxy.initialize().unwrap();
@@ -1290,9 +1361,9 @@ async fn stable_proxy_reports_worker_stop_and_creates_fresh_replacement() {
         }))
         .unwrap();
     assert!(restart.creates.is_empty());
-    assert_eq!(restart.sends.replacement_commands.len(), 1);
+    assert_eq!(restart.sends.owned.replacement_commands.len(), 1);
     assert_eq!(
-        restart.sends.replacement_commands[0]
+        restart.sends.owned.replacement_commands[0]
             .to
             .resolve(MailAddr(17)),
         behavior::Address::birth(MailAddr(17), 0)
@@ -1300,6 +1371,7 @@ async fn stable_proxy_reports_worker_stop_and_creates_fresh_replacement() {
 
     let command = restart
         .sends
+        .owned
         .replacement_commands
         .into_iter()
         .next()
@@ -1334,7 +1406,7 @@ async fn stopped_proxy_is_retired_without_sending_to_its_dead_address() {
         .unwrap();
 
     assert!(stopped.creates.is_empty());
-    assert!(stopped.sends.replacement_commands.is_empty());
+    assert!(stopped.sends.owned.replacement_commands.is_empty());
     assert!(!supervisor.is_alive(1).unwrap());
     assert_eq!(stopped.become_, Step::Continue);
 }
@@ -1368,10 +1440,10 @@ async fn configured_supervision_failure_reaction_stops_on_budget_denial() {
         }))
         .unwrap();
 
-    assert!(actions.sends.replacement_commands.is_empty());
-    assert_eq!(actions.sends.failure_reports.len(), 1);
+    assert!(actions.sends.owned.replacement_commands.is_empty());
+    assert_eq!(actions.sends.owned.failure_reports.len(), 1);
     assert_eq!(
-        actions.sends.failure_reports[0].failure.reason,
+        actions.sends.owned.failure_reports[0].failure.reason,
         SupervisionFailureReason::RestartDenied(RestartDenial::BudgetExceeded {
             restarts_in_window: 0,
             replacements_requested: 3,
@@ -1411,9 +1483,9 @@ async fn configured_supervision_failure_reaction_stops_when_stable_proxy_stops()
         .unwrap();
 
     assert_eq!(actions.become_, Step::Stop(behavior::Stopped));
-    assert_eq!(actions.sends.failure_reports.len(), 1);
+    assert_eq!(actions.sends.owned.failure_reports.len(), 1);
     assert_eq!(
-        actions.sends.failure_reports[0].failure.reason,
+        actions.sends.owned.failure_reports[0].failure.reason,
         SupervisionFailureReason::StableChildStopped
     );
     assert!(!supervisor.is_alive(0).unwrap());
@@ -1468,9 +1540,9 @@ async fn supervision_failure_exit_is_an_abnormal_transient_worker_outcome() {
         }))
         .unwrap();
 
-    assert_eq!(actions.sends.replacement_commands.len(), 1);
+    assert_eq!(actions.sends.owned.replacement_commands.len(), 1);
     assert_eq!(
-        actions.sends.replacement_commands[0]
+        actions.sends.owned.replacement_commands[0]
             .to
             .resolve(MailAddr(17)),
         behavior::Address::birth(MailAddr(17), 0)
@@ -1542,8 +1614,8 @@ async fn supervisor_preserves_and_observes_dynamic_births_once() {
     assert_eq!(born.creates.len(), 1);
     assert_eq!(born.creates[0].nonce, 9);
     assert_eq!(born.creates[0].kind, CreationKind::Birth);
-    assert_eq!(born.sends.child_observations.len(), 1);
-    assert_eq!(born.sends.child_observations[0].nonce, 9);
+    assert_eq!(born.sends.owned.child_observations.len(), 1);
+    assert_eq!(born.sends.owned.child_observations[0].nonce, 9);
     assert_eq!(supervisor.child_count(), 1);
 
     let stopped = SupervisionEvent::WorkerStopped(WorkerStopped {
@@ -1553,9 +1625,9 @@ async fn supervisor_preserves_and_observes_dynamic_births_once() {
         at: Instant::now(),
     });
     let replacement = supervisor.transition(stopped).unwrap();
-    assert_eq!(replacement.sends.replacement_commands.len(), 1);
+    assert_eq!(replacement.sends.owned.replacement_commands.len(), 1);
     assert_eq!(
-        replacement.sends.replacement_commands[0]
+        replacement.sends.owned.replacement_commands[0]
             .to
             .resolve(MailAddr(17)),
         behavior::Address::birth(MailAddr(17), 9)
@@ -1612,6 +1684,7 @@ async fn supervision_strategy_policy_and_budget_are_pure_send_decisions() {
         one.transition(stopped(1))
             .unwrap()
             .sends
+            .owned
             .replacement_commands
             .len(),
         1
@@ -1625,6 +1698,7 @@ async fn supervision_strategy_policy_and_budget_are_pure_send_decisions() {
         all.transition(stopped(1))
             .unwrap()
             .sends
+            .owned
             .replacement_commands
             .len(),
         3
@@ -1638,6 +1712,7 @@ async fn supervision_strategy_policy_and_budget_are_pure_send_decisions() {
         rest.transition(stopped(1))
             .unwrap()
             .sends
+            .owned
             .replacement_commands
             .len(),
         2
@@ -1652,6 +1727,7 @@ async fn supervision_strategy_policy_and_budget_are_pure_send_decisions() {
             .transition(stopped(1))
             .unwrap()
             .sends
+            .owned
             .replacement_commands
             .is_empty()
     );
@@ -1666,6 +1742,7 @@ async fn supervision_strategy_policy_and_budget_are_pure_send_decisions() {
             .transition(stopped(1))
             .unwrap()
             .sends
+            .owned
             .replacement_commands
             .is_empty()
     );
@@ -1721,8 +1798,8 @@ proptest! {
         let initialized = outer.initialize().unwrap();
     let actions = initialized.actions;
     let _outer = initialized.behavior;
-        prop_assert_eq!(actions.sends.behavior.schedules[0].at, first);
-        prop_assert_eq!(actions.sends.schedules[0].at, second);
+        prop_assert_eq!(actions.sends.inner.owned[0].at, first);
+        prop_assert_eq!(actions.sends.owned[0].at, second);
     }
 
     #[test]
@@ -1749,7 +1826,7 @@ proptest! {
         });
         let _runtime = Builder::new_current_thread().enable_all().build().unwrap();
         let actions = behavior.transition(event).unwrap();
-        prop_assert_eq!(actions.sends.replacement_commands.len(), expected);
+        prop_assert_eq!(actions.sends.owned.replacement_commands.len(), expected);
         prop_assert!(actions.creates.is_empty());
     }
 }

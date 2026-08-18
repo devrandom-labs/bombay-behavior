@@ -1,7 +1,7 @@
 //! Pure behavior folds from one typed event to explicit transition actions.
 
 use crate::actor::{Address, BirthMode};
-use crate::effects::{Acted, Actions, SendAlgebra};
+use crate::effects::{Acted, Actions, SendEffects};
 use crate::user_event::UserEvent;
 
 /// Reusable zero-state protocol identity for messages `M` addressed by `A`.
@@ -115,7 +115,7 @@ pub trait Behavior {
     type Protocol: Protocol;
 
     type Event: UserEvent<Addr = BehaviorAddr<Self>, Message = BehaviorMessage<Self>>;
-    type Sends: SendAlgebra;
+    type Sends: SendEffects + crate::SendsFor<Self::Event>;
     type Ph;
     type Error;
     type Birth: BirthMode;

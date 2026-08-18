@@ -145,6 +145,7 @@ fn exhaustive_supervision_sequences_match_the_reference_model() {
                                     .unwrap();
                                 let sends: Vec<MailAddr> = actions
                                     .sends
+                                    .owned
                                     .replacement_commands
                                     .iter()
                                     .map(|delivery| delivery.to.resolve(MailAddr(17)))

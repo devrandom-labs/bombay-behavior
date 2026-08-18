@@ -1,6 +1,6 @@
 //! The explicit result of one actor behavior transition.
 
-use super::sending::SendAlgebra;
+use super::sending::SendEffects;
 use crate::actor::{Address, BirthMode, Create};
 use crate::next::{Never, Step, Stopped};
 
@@ -10,14 +10,14 @@ pub type Become<Ph = Never> = Step<Ph, Stopped>;
 /// fresh actor creation, and next behavior or termination.
 ///
 /// An interpreter resolves every fresh creation in `creates` before
-/// interpreting any ordinary delivery or [`crate::ServiceSends`] request in
+/// interpreting any ordinary delivery or [`crate::InterpreterRequests`] request in
 /// `sends` from this value. A successful resolution installs and binds the
 /// child; a rejected resolution binds nothing. This ordering lets a same-action
-/// [`crate::ObserveCreation`] request return the committed result rather than
+/// typed creation-observation request return the committed result rather than
 /// the behavior's intent. When creation is rejected, a same-action
-/// [`crate::ObserveChild`] for its nonce is consumed without installing an
-/// observation or emitting [`crate::ChildStopped`], while
-/// [`crate::ObserveCreation`] reports the rejection. A later creation cannot
+/// child-observation request for its nonce is consumed without installing an
+/// observation or emitting a child-stopped fact, while the creation-observation
+/// request reports the rejection. A later creation cannot
 /// inherit that consumed observation. Creation order is vector order, and each
 /// concrete named send lane retains its own order; this contract does not
 /// impose an order between independent lanes. Constructing a value remains
@@ -73,7 +73,7 @@ where
 }
 
 impl<A: Address, Ph, Sends, Birth: BirthMode> Actions<A, Ph, Sends, Birth> {
-    /// Transform only the send algebra, preserving creation order and the
+    /// Transform only the send effects, preserving creation order and the
     /// next-behavior verdict exactly.
     #[must_use]
     pub fn map_sends<Mapped>(
@@ -102,7 +102,7 @@ impl<A: Address, Ph, Sends, Birth: BirthMode> Actions<A, Ph, Sends, Birth> {
     }
 }
 
-impl<A: Address, Ph, Sends: SendAlgebra, Birth: BirthMode> Actions<A, Ph, Sends, Birth> {
+impl<A: Address, Ph, Sends: SendEffects, Birth: BirthMode> Actions<A, Ph, Sends, Birth> {
     #[must_use]
     pub const fn new(
         sends: Sends,

@@ -6,8 +6,8 @@ use crate::{
     WorkerStopped,
 };
 use behavior::{
-    Actions, Address, Behavior, BehaviorActed, Births, Create, Delivery, Here, InjectEvent, Never,
-    Protocol, Recipient, SendAlgebra, ServiceSends, User, UserEvent,
+    Actions, Address, Behavior, BehaviorActed, Births, Create, Delivery, Here, InjectEvent,
+    InterpreterRequests, Never, Protocol, Recipient, SendEffects, User, UserEvent,
 };
 
 /// One dynamically managed stable-child phase.
@@ -256,13 +256,13 @@ where
     Reply: behavior::Protocol<Addr = A>,
 {
     pub outcomes: Vec<Delivery<Reply>>,
-    pub child_observations: ServiceSends<ObserveChild<A>>,
-    pub creation_observations: ServiceSends<ObserveCreation<A>>,
-    pub shutdowns: ServiceSends<ShutdownChild<DynamicProxy<C>>>,
+    pub child_observations: InterpreterRequests<ObserveChild<A>>,
+    pub creation_observations: InterpreterRequests<ObserveCreation<A>>,
+    pub shutdowns: InterpreterRequests<ShutdownChild<DynamicProxy<C>>>,
     pub replacements: Vec<Delivery<DynamicProxy<C>>>,
 }
 
-impl<A, C, Reply> SendAlgebra for DynamicSupervisorSends<A, C, Reply>
+impl<A, C, Reply> SendEffects for DynamicSupervisorSends<A, C, Reply>
 where
     A: Address,
     A::Nonce: From<u64>,
@@ -273,9 +273,9 @@ where
     fn empty() -> Self {
         Self {
             outcomes: vec![],
-            child_observations: ServiceSends::empty(),
-            creation_observations: ServiceSends::empty(),
-            shutdowns: ServiceSends::empty(),
+            child_observations: InterpreterRequests::empty(),
+            creation_observations: InterpreterRequests::empty(),
+            shutdowns: InterpreterRequests::empty(),
             replacements: vec![],
         }
     }
@@ -286,6 +286,47 @@ where
             .append(other.creation_observations);
         self.shutdowns.append(other.shutdowns);
         self.replacements.extend(other.replacements);
+    }
+}
+
+impl<A, C, Reply> behavior::SendsFor<DynamicSupervisorEvent<A, C, Reply>>
+    for DynamicSupervisorSends<A, C, Reply>
+where
+    A: Address,
+    A::Nonce: From<u64>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = A>,
+    Reply: behavior::Protocol<Addr = A>,
+    InterpreterRequests<ObserveChild<A>>: behavior::SendsFor<DynamicSupervisorEvent<A, C, Reply>>,
+    InterpreterRequests<ObserveCreation<A>>:
+        behavior::SendsFor<DynamicSupervisorEvent<A, C, Reply>>,
+    InterpreterRequests<ShutdownChild<DynamicProxy<C>>>:
+        behavior::SendsFor<DynamicSupervisorEvent<A, C, Reply>>,
+{
+}
+
+impl<I, RootEvent, Path, A, C, Reply> behavior::InterpretSends<I, RootEvent, Path>
+    for DynamicSupervisorSends<A, C, Reply>
+where
+    I: behavior::SendInterpreter,
+    A: Address,
+    A::Nonce: From<u64>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = A>,
+    Reply: behavior::Protocol<Addr = A>,
+    Vec<Delivery<Reply>>: behavior::InterpretSends<I, RootEvent, Path>,
+    InterpreterRequests<ObserveChild<A>>: behavior::InterpretSends<I, RootEvent, Path>,
+    InterpreterRequests<ObserveCreation<A>>: behavior::InterpretSends<I, RootEvent, Path>,
+    InterpreterRequests<ShutdownChild<DynamicProxy<C>>>:
+        behavior::InterpretSends<I, RootEvent, Path>,
+    Vec<Delivery<DynamicProxy<C>>>: behavior::InterpretSends<I, RootEvent, Path>,
+{
+    fn interpret(self, interpreter: &mut I) -> Result<(), I::Error> {
+        behavior::InterpretSends::interpret(self.outcomes, interpreter)?;
+        behavior::InterpretSends::interpret(self.child_observations, interpreter)?;
+        behavior::InterpretSends::interpret(self.creation_observations, interpreter)?;
+        behavior::InterpretSends::interpret(self.shutdowns, interpreter)?;
+        behavior::InterpretSends::interpret(self.replacements, interpreter)
     }
 }
 impl<A, C, Reply> SendInput<ObserveChild<A>, Own> for DynamicSupervisorSends<A, C, Reply>

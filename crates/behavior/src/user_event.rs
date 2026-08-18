@@ -87,6 +87,29 @@ pub enum EventLayer<Owned, Inner> {
     Inner(Inner),
 }
 
+/// A complete event algebra formed by adding owned inputs around an inner
+/// behavior event algebra.
+///
+/// `from_inner` is the structure-preserving injection used by effect
+/// composition. A single owned lane uses [`EventLayer`]; a domain with several
+/// genuinely coexisting owned inputs may use a named exhaustive sum.
+pub trait ComposedEvent: UserEvent {
+    type Inner: UserEvent<Addr = Self::Addr, Message = Self::Message>;
+
+    fn from_inner(event: Self::Inner) -> Self;
+}
+
+impl<Owned, Inner> ComposedEvent for EventLayer<Owned, Inner>
+where
+    Inner: UserEvent,
+{
+    type Inner = Inner;
+
+    fn from_inner(event: Inner) -> Self {
+        Self::Inner(event)
+    }
+}
+
 /// Path-indexed injection into a structural event coproduct.
 ///
 /// The path is compile-time routing evidence. It prevents the overlapping

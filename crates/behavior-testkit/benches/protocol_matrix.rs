@@ -128,9 +128,9 @@ fn measure_supervise(fleet: usize) -> f64 {
         // Asserting stress workload: every death yields exactly one
         // replacement routed to the dead slot (OneForOne, Permanent,
         // unbounded budget) — correctness checked while measuring.
-        assert_eq!(actions.sends.replacement_commands.len(), 1);
+        assert_eq!(actions.sends.owned.replacement_commands.len(), 1);
         assert_eq!(
-            actions.sends.replacement_commands[0]
+            actions.sends.owned.replacement_commands[0]
                 .to
                 .resolve(MailAddr(17)),
             behavior::Address::birth(MailAddr(17), nonce)

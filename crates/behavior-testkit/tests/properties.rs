@@ -117,8 +117,8 @@ proptest! {
         let initialized = one.initialize().unwrap();
     let initial = initialized.actions;
     let _one = initialized.behavior;
-        prop_assert_eq!(initial.sends.schedules.len(), 1);
-        prop_assert_eq!(initial.sends.schedules[0].at, first);
+        prop_assert_eq!(initial.sends.owned.len(), 1);
+        prop_assert_eq!(initial.sends.owned[0].at, first);
 
         for offset in &offsets {
             let due = origin + Duration::from_nanos(*offset);
@@ -126,7 +126,7 @@ proptest! {
             let initialized = composed.initialize().unwrap();
     let actions = initialized.actions;
     let _composed = initialized.behavior;
-            prop_assert_eq!(actions.sends.schedules[0].at, due);
+            prop_assert_eq!(actions.sends.owned[0].at, due);
         }
     }
 
@@ -232,9 +232,9 @@ proptest! {
         });
         let actions = behavior.transition(event).unwrap();
 
-        prop_assert_eq!(actions.sends.replacement_commands.len(), expected);
+        prop_assert_eq!(actions.sends.owned.replacement_commands.len(), expected);
         prop_assert!(actions.creates.is_empty());
-        for delivery in actions.sends.replacement_commands {
+        for delivery in actions.sends.owned.replacement_commands {
             prop_assert_ne!(
                 delivery.to.resolve(MailAddr(17)),
                 delivery.to.resolve(MailAddr(18))

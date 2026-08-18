@@ -29,8 +29,8 @@ impl<N> CreationKind<N> {
 /// A staged request to establish a fresh child at a creator-local nonce.
 ///
 /// The nonce is a routing and correlation key, not an actor identity or proof
-/// of freshness. The kind is Behavior-owned intent; [`crate::CreationResolved`]
-/// is the corresponding committed runtime fact. Replacement at an existing
+/// of freshness. The kind is Behavior-owned intent; a runtime's typed creation
+/// resolution is the corresponding committed fact. Replacement at an existing
 /// address is deliberately absent; stable identity is derived with a proxy
 /// actor.
 #[derive(Debug, Clone, PartialEq, Eq)]

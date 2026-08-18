@@ -3,8 +3,8 @@
 use std::time::Duration;
 
 use behavior::{
-    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, EventLayer, Never, NoBirths,
-    Recipient, SendAlgebra, ServiceSends, User,
+    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, EventLayer,
+    InterpreterRequests, Never, NoBirths, Recipient, SendEffects, User,
 };
 use thiserror::Error;
 
@@ -131,21 +131,41 @@ pub struct LeaseSends<Reply: behavior::Protocol> {
     /// Lease facts.
     pub outcomes: Vec<Delivery<Reply>>,
     /// Relative expiry requests.
-    pub schedules: ServiceSends<ScheduleAfter>,
+    pub schedules: InterpreterRequests<ScheduleAfter>,
 }
-impl<Reply> SendAlgebra for LeaseSends<Reply>
+impl<Reply> SendEffects for LeaseSends<Reply>
 where
     Reply: behavior::Protocol,
 {
     fn empty() -> Self {
         Self {
             outcomes: Vec::new(),
-            schedules: ServiceSends::empty(),
+            schedules: InterpreterRequests::empty(),
         }
     }
     fn append(&mut self, mut other: Self) {
         self.outcomes.append(&mut other.outcomes);
         self.schedules.append(other.schedules);
+    }
+}
+
+impl<Event, Reply> behavior::SendsFor<Event> for LeaseSends<Reply>
+where
+    Reply: behavior::Protocol,
+    InterpreterRequests<ScheduleAfter>: behavior::SendsFor<Event>,
+{
+}
+
+impl<I, RootEvent, Path, Reply> behavior::InterpretSends<I, RootEvent, Path> for LeaseSends<Reply>
+where
+    I: behavior::SendInterpreter,
+    Reply: behavior::Protocol,
+    Vec<Delivery<Reply>>: behavior::InterpretSends<I, RootEvent, Path>,
+    InterpreterRequests<ScheduleAfter>: behavior::InterpretSends<I, RootEvent, Path>,
+{
+    fn interpret(self, interpreter: &mut I) -> Result<(), I::Error> {
+        behavior::InterpretSends::interpret(self.outcomes, interpreter)?;
+        behavior::InterpretSends::interpret(self.schedules, interpreter)
     }
 }
 
@@ -198,7 +218,7 @@ where
     fn result(reply_to: Recipient<Reply>, outcome: LeaseOutcome<K>) -> LeaseActions<A, Reply> {
         Actions::send(LeaseSends {
             outcomes: vec![Delivery::new(reply_to, outcome)],
-            schedules: ServiceSends::empty(),
+            schedules: InterpreterRequests::empty(),
         })
     }
     fn acquire(
@@ -241,7 +261,7 @@ where
                 reply_to,
                 LeaseOutcome::Acquired { holder, generation },
             )],
-            schedules: ServiceSends::one(ScheduleAfter::new(self.id, generation, duration)),
+            schedules: InterpreterRequests::one(ScheduleAfter::new(self.id, generation, duration)),
         })
     }
     fn validate(&self, holder: &K, generation: TimerGeneration) -> Result<(), LeaseRejection<K>> {
@@ -334,7 +354,9 @@ where
                                 generation: fresh,
                             },
                         )],
-                        schedules: ServiceSends::one(ScheduleAfter::new(self.id, fresh, duration)),
+                        schedules: InterpreterRequests::one(ScheduleAfter::new(
+                            self.id, fresh, duration,
+                        )),
                     })
                 }
                 LeaseMessage::Release {

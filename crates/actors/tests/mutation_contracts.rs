@@ -5,13 +5,13 @@
 )]
 
 use behavior::{
-    Acted, Actions, Address, ChildStopped, CreationKind, CreationResolved, DeadlineEvent,
-    DeadlineSends, Delivery, EventLayer, Exit, Here, InjectEvent, Inside, MailAddr, Never,
+    Acted, Actions, Address, ChildStopped, CreationKind, CreationResolved, DeadlineEvent, Delivery,
+    EventLayer, Exit, Here, InjectEvent, Inside, InterpreterRequests, MailAddr, Never,
     ObserveChild, ObserveCreation, ObservePeer, PeerStopped, ProxyCommand, ProxyEvent, ProxySends,
-    ReceiveTimeoutEvent, ReceiveTimeoutSends, Recipient, ReportWorkerCreationResolved,
-    ReportWorkerStopped, ScheduleAfter, ScheduleAt, SendAlgebra, ServiceSends, ShutdownEvent,
-    ShutdownRequested, SupervisionEvent, SupervisorSends, TimerElapsed, TimerGeneration, TimerId,
-    UnwatchPeer, User, UserEvent, WatchEvent, WatchSends, WorkerCreationResolved, WorkerStopped,
+    ReceiveTimeoutEvent, Recipient, ReportWorkerCreationResolved, ReportWorkerStopped,
+    ScheduleAfter, ScheduleAt, SendEffects, SendLayer, ShutdownEvent, ShutdownRequested,
+    SupervisionEvent, SupervisorSends, TimerElapsed, TimerGeneration, TimerId, UnwatchPeer, User,
+    UserEvent, WatchEvent, WorkerCreationResolved, WorkerStopped,
 };
 use behavior_actors as behavior;
 use std::time::Duration;
@@ -186,13 +186,13 @@ fn addressing_operations_preserve_their_exact_routes() {
 
 #[test]
 fn named_wrapper_products_append_their_owned_lanes() {
-    let mut timeout = ReceiveTimeoutSends::<Vec<u8>>::empty();
-    timeout.append(ReceiveTimeoutSends::sending(ScheduleAfter::new(
+    let mut timeout = SendLayer::<InterpreterRequests<ScheduleAfter>, Vec<u8>>::empty();
+    timeout.append(SendLayer::sending(ScheduleAfter::new(
         TimerId(4),
         TimerGeneration(5),
         Duration::from_secs(6),
     )));
-    assert_eq!(timeout.schedules.len(), 1);
+    assert_eq!(timeout.owned.len(), 1);
 
     let mut proxy = ProxySends::<Quiet>::empty();
     proxy.append(ProxySends::sending(ObserveChild::new(7)));
@@ -202,19 +202,25 @@ fn named_wrapper_products_append_their_owned_lanes() {
 #[test]
 fn named_behavior_fields_reach_composed_lanes() {
     let at = Instant::now();
-    let mut sends = WatchSends::<MailAddr, DeadlineSends<Vec<u8>>>::empty();
+    let mut sends = SendLayer::<
+        InterpreterRequests<ObservePeer<MailAddr>>,
+        SendLayer<InterpreterRequests<ScheduleAt>, Vec<u8>>,
+    >::empty();
     sends
-        .behavior
+        .inner
         .send(ScheduleAt::new(TimerId(8), TimerGeneration(9), at));
 
-    assert!(sends.observations.is_empty());
-    assert!(sends.behavior.behavior.is_empty());
-    assert_eq!(sends.behavior.schedules[0].at, at);
+    assert!(sends.owned.is_empty());
+    assert!(sends.inner.inner.is_empty());
+    assert_eq!(sends.inner.owned[0].at, at);
 
-    let mut watching = WatchSends::<MailAddr, ServiceSends<UnwatchPeer<MailAddr>>>::empty();
-    watching.behavior.send(UnwatchPeer::new(MailAddr(12)));
-    assert!(watching.observations.is_empty());
-    assert_eq!(watching.behavior[0].peer, MailAddr(12));
+    let mut watching = SendLayer::<
+        InterpreterRequests<ObservePeer<MailAddr>>,
+        InterpreterRequests<UnwatchPeer<MailAddr>>,
+    >::empty();
+    watching.inner.send(UnwatchPeer::new(MailAddr(12)));
+    assert!(watching.owned.is_empty());
+    assert_eq!(watching.inner[0].peer, MailAddr(12));
 }
 
 #[test]
@@ -225,21 +231,21 @@ fn typed_send_accumulation_routes_every_named_lane_once() {
     values.send(3);
     assert_eq!(values, [3]);
 
-    let mut watch = WatchSends::<MailAddr, Vec<u8>>::empty();
+    let mut watch = SendLayer::<InterpreterRequests<ObservePeer<MailAddr>>, Vec<u8>>::empty();
     watch.send(ObservePeer::new(MailAddr(4)));
-    assert_eq!(watch.observations[0].peer, MailAddr(4));
+    assert_eq!(watch.owned[0].peer, MailAddr(4));
 
-    let mut cancellations = ServiceSends::<UnwatchPeer<MailAddr>>::empty();
+    let mut cancellations = InterpreterRequests::<UnwatchPeer<MailAddr>>::empty();
     cancellations.send(UnwatchPeer::new(MailAddr(4)));
     assert_eq!(cancellations[0].peer, MailAddr(4));
 
-    let mut deadline = DeadlineSends::<Vec<u8>>::empty();
-    deadline.behavior.send(5_u8);
-    assert_eq!(deadline.behavior, [5]);
+    let mut deadline = SendLayer::<InterpreterRequests<ScheduleAt>, Vec<u8>>::empty();
+    deadline.inner.send(5_u8);
+    assert_eq!(deadline.inner, [5]);
 
-    let mut timeout = ReceiveTimeoutSends::<Vec<u8>>::empty();
-    timeout.behavior.send(6_u8);
-    assert_eq!(timeout.behavior, [6]);
+    let mut timeout = SendLayer::<InterpreterRequests<ScheduleAfter>, Vec<u8>>::empty();
+    timeout.inner.send(6_u8);
+    assert_eq!(timeout.inner, [6]);
 
     let mut proxy = ProxySends::<Child>::empty();
     proxy.send(Delivery::local_child(behavior::ChildRecipient::new(1), 7));
@@ -251,27 +257,25 @@ fn typed_send_accumulation_routes_every_named_lane_once() {
     assert_eq!(proxy.stopped_reports[0].worker, 11);
     assert_eq!(proxy.creation_reports[0].worker, 17);
 
-    let mut supervisor = SupervisorSends::<MailAddr, Vec<u8>, Child>::empty();
+    let mut supervisor = SupervisorSends::<MailAddr, Child>::empty();
     supervisor.send(ObserveChild::new(8));
     supervisor.send(ObserveCreation::new(8));
     supervisor.send(Delivery::local_child(
         behavior::ChildRecipient::new(8),
         ProxyCommand::Replace(Quiet),
     ));
-    supervisor.behavior.send(9_u8);
     assert_eq!(supervisor.child_observations[0].nonce, 8);
     assert_eq!(supervisor.creation_observations[0].nonce, 8);
     assert_eq!(
         supervisor.replacement_commands[0].to.resolve(MailAddr(17)),
         behavior::Address::birth(MailAddr(17), 8)
     );
-    assert_eq!(supervisor.behavior, [9]);
     assert!(supervisor.failure_reports.is_empty());
 }
 
 #[test]
 fn service_send_views_and_iterators_preserve_every_request() {
-    let sends = ServiceSends::new(vec![3, 5, 8]);
+    let sends = InterpreterRequests::new(vec![3, 5, 8]);
     assert_eq!(sends.as_slice(), &[3, 5, 8]);
     assert!(!sends.is_empty());
     assert_eq!(sends.clone().into_requests(), vec![3, 5, 8]);
@@ -279,5 +283,84 @@ fn service_send_views_and_iterators_preserve_every_request() {
     assert_eq!(
         (&sends).into_iter().copied().collect::<Vec<_>>(),
         vec![3, 5, 8]
+    );
+}
+
+#[test]
+fn nested_actor_send_effects_traverse_every_lane_once_in_structural_order() {
+    type Reply = behavior::MessageProtocol<MailAddr, behavior::BreakerOutcome>;
+    type RootEvent = EventLayer<
+        TimerElapsed,
+        EventLayer<TimerElapsed, User<MailAddr, behavior::BreakerMessage<Reply>>>,
+    >;
+
+    #[derive(Debug, PartialEq, Eq)]
+    enum Seen {
+        Reply,
+        Reset(TimerId),
+        Deadline(TimerId),
+    }
+
+    struct RecordingInterpreter(Vec<Seen>);
+
+    impl behavior::SendInterpreter for RecordingInterpreter {
+        type Error = Never;
+    }
+
+    impl behavior::InterpretDelivery<Reply> for RecordingInterpreter {
+        fn interpret_delivery(&mut self, _: Delivery<Reply>) -> Result<(), Self::Error> {
+            self.0.push(Seen::Reply);
+            Ok(())
+        }
+    }
+
+    impl behavior::InterpretRequest<ScheduleAfter, RootEvent, Inside<Here>> for RecordingInterpreter {
+        fn interpret_request(&mut self, request: ScheduleAfter) -> Result<(), Self::Error> {
+            self.0.push(Seen::Reset(request.id));
+            Ok(())
+        }
+    }
+
+    impl behavior::InterpretRequest<ScheduleAt, RootEvent, Here> for RecordingInterpreter {
+        fn interpret_request(&mut self, request: ScheduleAt) -> Result<(), Self::Error> {
+            self.0.push(Seen::Deadline(request.id));
+            Ok(())
+        }
+    }
+
+    let reply = Delivery::new(
+        Recipient::global(MailAddr(9)),
+        behavior::BreakerOutcome::Rejected(behavior::BreakerRejection::Open {
+            generation: TimerGeneration(0),
+        }),
+    );
+    let breaker = behavior::BreakerSends {
+        replies: vec![reply],
+        schedules: InterpreterRequests::one(ScheduleAfter::new(
+            TimerId(2),
+            TimerGeneration(0),
+            Duration::from_secs(1),
+        )),
+    };
+    let sends = SendLayer::new(
+        InterpreterRequests::one(ScheduleAt::new(
+            TimerId(3),
+            TimerGeneration(0),
+            Instant::now(),
+        )),
+        breaker,
+    );
+
+    let mut interpreter = RecordingInterpreter(Vec::new());
+    <_ as behavior::InterpretSends<_, RootEvent, Here>>::interpret(sends, &mut interpreter)
+        .unwrap();
+
+    assert_eq!(
+        interpreter.0,
+        [
+            Seen::Reply,
+            Seen::Reset(TimerId(2)),
+            Seen::Deadline(TimerId(3))
+        ]
     );
 }

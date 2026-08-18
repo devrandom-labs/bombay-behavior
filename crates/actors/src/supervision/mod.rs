@@ -11,7 +11,7 @@ pub use adapter::{
     SupervisorSends,
 };
 pub use backoff::{Backoff, BackoffConfigError, BackoffError};
-pub use backoff_supervisor::{BackoffSupervisor, BackoffSupervisorError, BackoffSupervisorSends};
+pub use backoff_supervisor::{BackoffSupervisor, BackoffSupervisorError};
 pub use domain::{FleetError, IncarnationError as ProxyError, IncarnationPhase};
 pub use dynamic_supervisor::{
     DynamicChildPhase, DynamicProxy, DynamicSupervisor, DynamicSupervisorEvent,

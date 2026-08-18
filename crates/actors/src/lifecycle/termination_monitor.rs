@@ -1,8 +1,9 @@
 //! Action-producing peer termination observation.
 
-use crate::{PeerStopped, WatchEvent, WatchSends};
+use crate::{ObservePeer, PeerStopped, WatchEvent};
 use behavior::{
-    Actions, Address, Behavior, BehaviorActed, BirthMode, EventLayer, SendAlgebra, ServiceSends,
+    Actions, Address, Behavior, BehaviorActed, BirthMode, EventLayer, InterpreterRequests,
+    SendEffects, SendLayer,
 };
 
 /// Pure fold applied to the exact matching terminal fact.
@@ -53,7 +54,7 @@ pub type LifecyclePublisher<B> = TerminationMonitor<B>;
 type TerminationMonitorActions<B> = Actions<
     crate::BehaviorAddr<B>,
     <B as Behavior>::Ph,
-    WatchSends<crate::BehaviorAddr<B>, <B as Behavior>::Sends>,
+    SendLayer<InterpreterRequests<ObservePeer<crate::BehaviorAddr<B>>>, <B as Behavior>::Sends>,
     <B as Behavior>::Birth,
 >;
 
@@ -81,12 +82,9 @@ impl<B: Behavior> TerminationMonitor<B> {
 
     fn wrap(
         actions: Actions<crate::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>,
-        observations: ServiceSends<crate::ObservePeer<crate::BehaviorAddr<B>>>,
+        observations: InterpreterRequests<crate::ObservePeer<crate::BehaviorAddr<B>>>,
     ) -> TerminationMonitorActions<B> {
-        actions.map_sends(|behavior| WatchSends {
-            behavior,
-            observations,
-        })
+        actions.map_sends(|inner| SendLayer::new(observations, inner))
     }
 }
 
@@ -107,14 +105,14 @@ impl<B: Behavior + crate::StashStatus> crate::StashStatus for TerminationMonitor
 impl<B, A, Ph, Sends, Br> Behavior for TerminationMonitor<B>
 where
     A: Address,
-    Sends: SendAlgebra,
+    Sends: SendEffects + behavior::SendsFor<B::Event>,
     Br: BirthMode,
     B: Behavior<Ph = Ph, Sends = Sends, Birth = Br>,
     B::Protocol: crate::Protocol<Addr = A>,
 {
     type Protocol = B::Protocol;
     type Event = WatchEvent<B::Event>;
-    type Sends = WatchSends<A, Sends>;
+    type Sends = SendLayer<InterpreterRequests<ObservePeer<A>>, Sends>;
     type Ph = Ph;
     type Error = B::Error;
     type Birth = Br;
@@ -123,7 +121,7 @@ where
         let actions = behavior::initialize(&mut self.inner)?;
         Ok(Self::wrap(
             actions,
-            ServiceSends::one(crate::ObservePeer::new(self.peer)),
+            InterpreterRequests::one(crate::ObservePeer::new(self.peer)),
         ))
     }
 
@@ -135,11 +133,11 @@ where
             {
                 let actions = (self.on_stopped)(&mut self.inner, stopped)?;
                 self.observation = TerminationObservation::Observed;
-                Ok(Self::wrap(actions, ServiceSends::empty()))
+                Ok(Self::wrap(actions, InterpreterRequests::empty()))
             }
             EventLayer::Owned(_) => Ok(Actions::cont()),
             EventLayer::Inner(event) => behavior::delegate_transition(&mut self.inner, event)
-                .map(|actions| Self::wrap(actions, ServiceSends::empty())),
+                .map(|actions| Self::wrap(actions, InterpreterRequests::empty())),
         }
     }
 }
@@ -203,18 +201,18 @@ mod tests {
         let initialized = crate::TerminationMonitor::new(Probe, MailAddr(4), reap)
             .initialize()
             .unwrap();
-        assert_eq!(initialized.actions.sends.behavior, [1]);
+        assert_eq!(initialized.actions.sends.inner, [1]);
         assert_eq!(
-            initialized.actions.sends.observations,
-            ServiceSends::one(crate::ObservePeer::new(MailAddr(4)))
+            initialized.actions.sends.owned,
+            InterpreterRequests::one(crate::ObservePeer::new(MailAddr(4)))
         );
 
         let mut active = initialized.behavior;
         let actions = active
             .on_path(PeerStopped::new(MailAddr(4), Err(Crash::Panicked)))
             .unwrap();
-        assert_eq!(actions.sends.behavior, [9]);
-        assert!(actions.sends.observations.is_empty());
+        assert_eq!(actions.sends.inner, [9]);
+        assert!(actions.sends.owned.is_empty());
         assert_eq!(actions.creates, [Create::birth(8, ())]);
         assert!(matches!(actions.become_, Step::Continue));
         assert_eq!(active.observation(), TerminationObservation::Observed);
@@ -222,7 +220,7 @@ mod tests {
         let duplicate = active
             .on_path(PeerStopped::new(MailAddr(4), Err(Crash::Panicked)))
             .unwrap();
-        assert_eq!(duplicate.sends, WatchSends::empty());
+        assert_eq!(duplicate.sends, SendLayer::empty());
         assert!(duplicate.creates.is_empty());
     }
 
@@ -235,12 +233,12 @@ mod tests {
         let unmatched = active
             .on_path(PeerStopped::new(MailAddr(5), Ok(Exit::Normal)))
             .unwrap();
-        assert_eq!(unmatched.sends, WatchSends::empty());
+        assert_eq!(unmatched.sends, SendLayer::empty());
         assert!(unmatched.creates.is_empty());
 
         let delegated = active.receive(MailAddr(0), 7).unwrap();
-        assert_eq!(delegated.sends.behavior, [7]);
-        assert!(delegated.sends.observations.is_empty());
+        assert_eq!(delegated.sends.inner, [7]);
+        assert!(delegated.sends.owned.is_empty());
     }
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]

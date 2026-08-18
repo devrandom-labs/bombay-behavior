@@ -12,7 +12,10 @@ use super::proxy::Proxy;
 use crate::protocol::{ObserveChild, ObserveCreation, WorkerStopped};
 use crate::{Become, Exit, SupervisionFailureReason};
 use crate::{Own, SendInput};
-use behavior::{Actions, Address, Behavior, Births, Create, Delivery, SendAlgebra, ServiceSends};
+use behavior::{
+    Actions, Address, Behavior, Births, Create, Delivery, InterpreterRequests, SendEffects,
+    SendLayer,
+};
 use behavior::{Never, Step};
 
 /// A fixed supervised topology and the pure factory for its ordered slots.
@@ -92,45 +95,40 @@ impl RestartConfiguration {
 }
 
 /// Named effect lanes emitted by a supervised behavior.
-pub struct SupervisorSends<A, Sends, C>
+pub struct SupervisorSends<A, C>
 where
     A: Address,
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
 {
-    /// Sends emitted by the supervised domain behavior.
-    pub behavior: Sends,
     /// Requests to observe every accepted stable proxy creation.
-    pub child_observations: ServiceSends<ObserveChild<A>>,
+    pub child_observations: InterpreterRequests<ObserveChild<A>>,
     /// Requests for the committed result of every staged stable proxy creation.
-    pub creation_observations: ServiceSends<ObserveCreation<A>>,
+    pub creation_observations: InterpreterRequests<ObserveCreation<A>>,
     /// Commands asking stable proxies to install fresh worker incarnations.
     pub replacement_commands: Vec<Delivery<Proxy<C>>>,
     /// Typed terminal supervision failures for the local runtime observer.
-    pub failure_reports: ServiceSends<ReportSupervisionFailure<A>>,
+    pub failure_reports: InterpreterRequests<ReportSupervisionFailure<A>>,
 }
 
-impl<A, Sends, C> SendAlgebra for SupervisorSends<A, Sends, C>
+impl<A, C> SendEffects for SupervisorSends<A, C>
 where
     A: Address,
     A::Nonce: From<u64>,
-    Sends: SendAlgebra,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
 {
     fn empty() -> Self {
         Self {
-            behavior: Sends::empty(),
-            child_observations: ServiceSends::empty(),
-            creation_observations: ServiceSends::empty(),
+            child_observations: InterpreterRequests::empty(),
+            creation_observations: InterpreterRequests::empty(),
             replacement_commands: Vec::new(),
-            failure_reports: ServiceSends::empty(),
+            failure_reports: InterpreterRequests::empty(),
         }
     }
 
     fn append(&mut self, other: Self) {
-        self.behavior.append(other.behavior);
         self.child_observations.append(other.child_observations);
         self.creation_observations
             .append(other.creation_observations);
@@ -139,7 +137,41 @@ where
     }
 }
 
-impl<A, Sends, C> SendInput<ObserveCreation<A>, Own> for SupervisorSends<A, Sends, C>
+impl<A, Event, C> behavior::SendsFor<SupervisionEvent<Event>> for SupervisorSends<A, C>
+where
+    A: Address,
+    A::Nonce: From<u64>,
+    Event: behavior::UserEvent<Addr = A>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = A>,
+    InterpreterRequests<ObserveChild<A>>: behavior::SendsFor<SupervisionEvent<Event>>,
+    InterpreterRequests<ObserveCreation<A>>: behavior::SendsFor<SupervisionEvent<Event>>,
+{
+}
+
+impl<Interpreter, RootEvent, Path, A, C> behavior::InterpretSends<Interpreter, RootEvent, Path>
+    for SupervisorSends<A, C>
+where
+    Interpreter: behavior::SendInterpreter,
+    A: Address,
+    A::Nonce: From<u64>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = A>,
+    InterpreterRequests<ObserveChild<A>>: behavior::InterpretSends<Interpreter, RootEvent, Path>,
+    InterpreterRequests<ObserveCreation<A>>: behavior::InterpretSends<Interpreter, RootEvent, Path>,
+    Vec<Delivery<Proxy<C>>>: behavior::InterpretSends<Interpreter, RootEvent, Path>,
+    InterpreterRequests<ReportSupervisionFailure<A>>:
+        behavior::InterpretSends<Interpreter, RootEvent, Path>,
+{
+    fn interpret(self, interpreter: &mut Interpreter) -> Result<(), Interpreter::Error> {
+        self.child_observations.interpret(interpreter)?;
+        self.creation_observations.interpret(interpreter)?;
+        self.replacement_commands.interpret(interpreter)?;
+        self.failure_reports.interpret(interpreter)
+    }
+}
+
+impl<A, C> SendInput<ObserveCreation<A>, Own> for SupervisorSends<A, C>
 where
     A: Address,
     A::Nonce: From<u64>,
@@ -151,7 +183,7 @@ where
     }
 }
 
-impl<A, Sends, C> SendInput<ObserveChild<A>, Own> for SupervisorSends<A, Sends, C>
+impl<A, C> SendInput<ObserveChild<A>, Own> for SupervisorSends<A, C>
 where
     A: Address,
     A::Nonce: From<u64>,
@@ -163,7 +195,7 @@ where
     }
 }
 
-impl<A, Sends, C> SendInput<Delivery<Proxy<C>>, Own> for SupervisorSends<A, Sends, C>
+impl<A, C> SendInput<Delivery<Proxy<C>>, Own> for SupervisorSends<A, C>
 where
     A: Address,
     A::Nonce: From<u64>,
@@ -175,7 +207,7 @@ where
     }
 }
 
-impl<A, Sends, C> SendInput<ReportSupervisionFailure<A>, Own> for SupervisorSends<A, Sends, C>
+impl<A, C> SendInput<ReportSupervisionFailure<A>, Own> for SupervisorSends<A, C>
 where
     A: Address,
     A::Nonce: From<u64>,
@@ -190,7 +222,7 @@ where
 pub(crate) type SupervisorActions<B, C> = Actions<
     crate::BehaviorAddr<B>,
     <B as Behavior>::Ph,
-    SupervisorSends<crate::BehaviorAddr<B>, <B as Behavior>::Sends, C>,
+    SendLayer<SupervisorSends<crate::BehaviorAddr<B>, C>, <B as Behavior>::Sends>,
     Births<Proxy<C>>,
 >;
 
@@ -404,25 +436,27 @@ where
             fleet.register(create.nonce)?;
         }
         Ok(Actions::new(
-            SupervisorSends {
-                behavior: actions.sends,
-                child_observations: ServiceSends::new(
-                    actions
-                        .creates
-                        .iter()
-                        .map(|create| ObserveChild::new(create.nonce))
-                        .collect(),
-                ),
-                creation_observations: ServiceSends::new(
-                    actions
-                        .creates
-                        .iter()
-                        .map(|create| ObserveCreation::new(create.nonce))
-                        .collect(),
-                ),
-                replacement_commands: Vec::new(),
-                failure_reports: ServiceSends::empty(),
-            },
+            SendLayer::new(
+                SupervisorSends {
+                    child_observations: InterpreterRequests::new(
+                        actions
+                            .creates
+                            .iter()
+                            .map(|create| ObserveChild::new(create.nonce))
+                            .collect(),
+                    ),
+                    creation_observations: InterpreterRequests::new(
+                        actions
+                            .creates
+                            .iter()
+                            .map(|create| ObserveCreation::new(create.nonce))
+                            .collect(),
+                    ),
+                    replacement_commands: Vec::new(),
+                    failure_reports: InterpreterRequests::empty(),
+                },
+                actions.sends,
+            ),
             actions
                 .creates
                 .into_iter()
@@ -436,7 +470,7 @@ where
 impl<B, C, A, Ph, Sends> Behavior for Supervisor<B, C>
 where
     A: Address,
-    Sends: SendAlgebra,
+    Sends: SendEffects + behavior::SendsFor<B::Event>,
     B: Behavior<Ph = Ph, Sends = Sends, Birth = Births<C>>,
     B::Protocol: crate::Protocol<Addr = A>,
     A::Nonce: From<u64>,
@@ -445,7 +479,7 @@ where
 {
     type Protocol = B::Protocol;
     type Event = SupervisionEvent<B::Event>;
-    type Sends = SupervisorSends<A, Sends, C>;
+    type Sends = SendLayer<SupervisorSends<A, C>, Sends>;
     type Ph = Ph;
     type Error = SupervisorError<B::Error, A::Nonce>;
     type Birth = Births<Proxy<C>>;
@@ -474,10 +508,12 @@ where
         );
         actions
             .sends
+            .owned
             .child_observations
             .extend(configured.iter().copied().map(ObserveChild::new));
         actions
             .sends
+            .owned
             .creation_observations
             .extend(configured.into_iter().map(ObserveCreation::new));
         Ok(actions)
@@ -497,26 +533,30 @@ where
                 match decision {
                     ReplacementDecision::Retire => Ok(Actions::cont()),
                     ReplacementDecision::Replace(replacements) => Ok(Actions::new(
-                        SupervisorSends {
-                            behavior: B::Sends::empty(),
-                            child_observations: ServiceSends::empty(),
-                            creation_observations: ServiceSends::empty(),
-                            replacement_commands: replacements,
-                            failure_reports: ServiceSends::empty(),
-                        },
+                        SendLayer::new(
+                            SupervisorSends {
+                                child_observations: InterpreterRequests::empty(),
+                                creation_observations: InterpreterRequests::empty(),
+                                replacement_commands: replacements,
+                                failure_reports: InterpreterRequests::empty(),
+                            },
+                            B::Sends::empty(),
+                        ),
                         Vec::new(),
                         Step::Continue,
                     )),
                     ReplacementDecision::Failed(failure) => Ok(Actions::new(
-                        SupervisorSends {
-                            behavior: B::Sends::empty(),
-                            child_observations: ServiceSends::empty(),
-                            creation_observations: ServiceSends::empty(),
-                            replacement_commands: Vec::new(),
-                            failure_reports: ServiceSends::one(ReportSupervisionFailure::new(
-                                failure,
-                            )),
-                        },
+                        SendLayer::new(
+                            SupervisorSends {
+                                child_observations: InterpreterRequests::empty(),
+                                creation_observations: InterpreterRequests::empty(),
+                                replacement_commands: Vec::new(),
+                                failure_reports: InterpreterRequests::one(
+                                    ReportSupervisionFailure::new(failure),
+                                ),
+                            },
+                            B::Sends::empty(),
+                        ),
                         Vec::new(),
                         self.react_to_failure(&failure)
                             .map_err(SupervisorError::Behavior)?,
@@ -534,13 +574,17 @@ where
                     SupervisionFailureReason::StableChildStopped,
                 );
                 Ok(Actions::new(
-                    SupervisorSends {
-                        behavior: B::Sends::empty(),
-                        child_observations: ServiceSends::empty(),
-                        creation_observations: ServiceSends::empty(),
-                        replacement_commands: Vec::new(),
-                        failure_reports: ServiceSends::one(ReportSupervisionFailure::new(failure)),
-                    },
+                    SendLayer::new(
+                        SupervisorSends {
+                            child_observations: InterpreterRequests::empty(),
+                            creation_observations: InterpreterRequests::empty(),
+                            replacement_commands: Vec::new(),
+                            failure_reports: InterpreterRequests::one(
+                                ReportSupervisionFailure::new(failure),
+                            ),
+                        },
+                        B::Sends::empty(),
+                    ),
                     Vec::new(),
                     self.react_to_failure(&failure)
                         .map_err(SupervisorError::Behavior)?,

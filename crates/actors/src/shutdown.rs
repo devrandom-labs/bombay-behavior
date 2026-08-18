@@ -7,7 +7,9 @@
 
 use crate::Step;
 use crate::protocol::ShutdownRequested;
-use behavior::{Actions, Address, Behavior, BirthMode, EventLayer, SendAlgebra};
+use behavior::{
+    Actions, Address, Behavior, BirthMode, EventLayer, NoSends, SendEffects, SendLayer,
+};
 
 /// Internal event sum of a behavior that supports graceful shutdown.
 pub type ShutdownEvent<E> = EventLayer<ShutdownRequested, E>;
@@ -99,14 +101,14 @@ macro_rules! impl_shutdown_behavior {
         impl<B, A, Ph, Sends, Br> Behavior for $wrapper<B>
         where
             A: Address,
-            Sends: SendAlgebra,
+            Sends: SendEffects + behavior::SendsFor<B::Event>,
             Br: BirthMode,
             B: Behavior<Ph = Ph, Sends = Sends, Birth = Br>,
             B::Protocol: crate::Protocol<Addr = A>,
         {
             type Protocol = B::Protocol;
             type Event = ShutdownEvent<B::Event>;
-            type Sends = Sends;
+            type Sends = SendLayer<NoSends, Sends>;
             type Ph = Ph;
             type Error = B::Error;
             type Birth = Br;
@@ -114,18 +116,21 @@ macro_rules! impl_shutdown_behavior {
             fn init(
                 &mut self,
                 _: crate::InitializationTurn,
-            ) -> Result<Actions<A, Ph, Sends, Br>, B::Error> {
+            ) -> Result<Actions<A, Ph, Self::Sends, Br>, B::Error> {
                 behavior::initialize(&mut self.inner)
+                    .map(|actions| actions.map_sends(|inner| SendLayer::new(NoSends, inner)))
             }
 
             fn transition(
                 &mut self,
                 _: crate::ActiveTurn,
                 event: Self::Event,
-            ) -> Result<Actions<A, Ph, Sends, Br>, B::Error> {
+            ) -> Result<Actions<A, Ph, Self::Sends, Br>, B::Error> {
                 match event {
                     EventLayer::Inner(event) => {
-                        behavior::delegate_transition(&mut self.inner, event)
+                        behavior::delegate_transition(&mut self.inner, event).map(|actions| {
+                            actions.map_sends(|inner| SendLayer::new(NoSends, inner))
+                        })
                     }
                     EventLayer::Owned(request) => $shutdown(self, request),
                 }
@@ -142,6 +147,8 @@ impl_shutdown_behavior!(
     FinalizeOnShutdown,
     |this: &mut FinalizeOnShutdown<B>, request| {
         let actions = (this.finalize)(&mut this.inner, request)?;
-        Ok(actions.map_become(|_| Step::Stop(behavior::Stopped)))
+        Ok(actions
+            .map_become(|_| Step::Stop(behavior::Stopped))
+            .map_sends(|inner| SendLayer::new(NoSends, inner)))
     }
 );

@@ -223,7 +223,7 @@ async fn immediate_and_denied_replacements_match_the_independent_models() {
         }))
         .unwrap();
     assert!(denied.creates.is_empty());
-    assert!(denied.sends.replacement_commands.is_empty());
+    assert!(denied.sends.owned.replacement_commands.is_empty());
 }
 
 proptest! {
@@ -282,7 +282,7 @@ proptest! {
                 .unwrap();
 
             let sends: Vec<MailAddr> = actions
-                .sends.replacement_commands
+                .sends.owned.replacement_commands
                 .iter()
                 .map(|delivery| delivery.to.resolve(MailAddr(17)))
                 .collect();
@@ -359,10 +359,10 @@ proptest! {
                 prop_assert_eq!(actions.creates.len(), 1);
                 prop_assert_eq!(actions.creates[0].nonce, nonce);
                 // The born child is observed exactly once.
-                prop_assert_eq!(actions.sends.child_observations.len(), 1);
-                prop_assert_eq!(actions.sends.child_observations[0].nonce, nonce);
-                prop_assert_eq!(actions.sends.creation_observations.len(), 1);
-                prop_assert_eq!(actions.sends.creation_observations[0].nonce, nonce);
+                prop_assert_eq!(actions.sends.owned.child_observations.len(), 1);
+                prop_assert_eq!(actions.sends.owned.child_observations[0].nonce, nonce);
+                prop_assert_eq!(actions.sends.owned.creation_observations.len(), 1);
+                prop_assert_eq!(actions.sends.owned.creation_observations[0].nonce, nonce);
             } else {
                 // Child-stopped for an existing slot.
                 let known = model.slot_count();
@@ -386,7 +386,7 @@ proptest! {
                     })) })
                     .unwrap();
                 let sends: Vec<MailAddr> = actions
-                    .sends.replacement_commands
+                    .sends.owned.replacement_commands
                     .iter()
                     .map(|delivery| delivery.to.resolve(MailAddr(17)))
                     .collect();
@@ -447,7 +447,7 @@ async fn budget_recovers_after_stamps_age_out_of_the_window() {
             at: base + Duration::from_nanos(3),
         }))
         .unwrap();
-    assert!(denied.sends.replacement_commands.is_empty());
+    assert!(denied.sends.owned.replacement_commands.is_empty());
     assert!(!behavior.is_alive(0).unwrap());
 
     // Deadline 100ns: all three stamps still inside the inclusive window; denied.
@@ -459,7 +459,7 @@ async fn budget_recovers_after_stamps_age_out_of_the_window() {
             at: base + Duration::from_nanos(100),
         }))
         .unwrap();
-    assert!(edge.sends.replacement_commands.is_empty());
+    assert!(edge.sends.owned.replacement_commands.is_empty());
 
     // Deadline 101ns: the stamp at 0ns aged out (age 101 > 100); budget recovers.
     let recovered = behavior
@@ -470,7 +470,7 @@ async fn budget_recovers_after_stamps_age_out_of_the_window() {
             at: base + Duration::from_nanos(101),
         }))
         .unwrap();
-    assert_eq!(recovered.sends.replacement_commands.len(), 1);
+    assert_eq!(recovered.sends.owned.replacement_commands.len(), 1);
     assert!(behavior.is_alive(0).unwrap());
 }
 

@@ -43,15 +43,21 @@ path.
 
 ## Products and coproducts
 
-Event wrappers are exhaustive coproducts. Effect wrappers are named products:
-`DeadlineSends` exposes `behavior` and `schedules`; `WatchSends` exposes
-`behavior` and `observations`; `ReceiveTimeoutSends` exposes `behavior` and
-`schedules`. Wrapper order remains visible in the type and repeated capability
-types remain distinguishable by their typed nesting and timer identities.
+Event wrappers are exhaustive coproducts and effect wrappers are their aligned
+products. `EventLayer<Owned, Inner>` pairs with
+`SendLayer<OwnedEffects, InnerEffects>`. A deadline's single owned lane is
+therefore `InterpreterRequests<ScheduleAt>` directly; it does not require a
+bespoke deadline product. Wrapper order remains visible in the type and
+repeated capabilities remain distinguishable by their structural ownership.
 
 Transparent wrappers set `type Protocol = B::Protocol`. They may extend the
 event coproduct and effect product, but they do not create a new public
 recipient identity.
+
+Effect products are indexed by their complete event algebra through
+`SendsFor<Event>`. This is compile-time evidence, not a runtime capability.
+`SendLayer<NoSends, Inner>` records a wrapper with no owned effect lane.
+Named products are reserved for several semantic lanes that genuinely coexist.
 
 Frunk's HLists and coproducts were evaluated for this role. They provide useful
 generic mapping, folding, selection, and sculpting, but selection of repeated
