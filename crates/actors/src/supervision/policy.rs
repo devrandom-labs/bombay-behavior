@@ -71,7 +71,7 @@ impl<A: Address> SupervisionFailure<A> {
 /// Pure policy applied when a supervisor cannot preserve its child topology.
 pub type SupervisionFailureReaction<B> = fn(
     &mut B,
-    &SupervisionFailure<<B as crate::Protocol>::Addr>,
+    &SupervisionFailure<crate::BehaviorAddr<B>>,
 ) -> Result<Become, <B as Behavior>::Error>;
 
 /// Retire the failed slot and keep the supervisor alive.
@@ -80,7 +80,7 @@ pub type SupervisionFailureReaction<B> = fn(
 /// This supplied policy never returns a controlled behavior error.
 pub fn retire_on_supervision_failure<B: Behavior>(
     _behavior: &mut B,
-    _failure: &SupervisionFailure<B::Addr>,
+    _failure: &SupervisionFailure<crate::BehaviorAddr<B>>,
 ) -> Result<Become, B::Error> {
     Ok(Step::Continue)
 }
@@ -91,7 +91,7 @@ pub fn retire_on_supervision_failure<B: Behavior>(
 /// This supplied policy never returns a controlled behavior error.
 pub fn stop_on_supervision_failure<B: Behavior>(
     _behavior: &mut B,
-    _failure: &SupervisionFailure<B::Addr>,
+    _failure: &SupervisionFailure<crate::BehaviorAddr<B>>,
 ) -> Result<Become, B::Error> {
     Ok(Step::Stop(Stopped))
 }

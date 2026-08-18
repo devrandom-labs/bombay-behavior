@@ -1,5 +1,9 @@
 # Nominal Behavior Attribute
 
+The generated public `Protocol` and pure `Behavior` implementation have
+different semantic roles even though the nominal actor type witnesses both.
+See [Protocol, event, behavior, and effect algebras](protocol-algebra.md).
+
 `#[behavior::behavior(...)]` removes only the mechanical implementation that
 adapts an ordinary user-message method to `Behavior`. It is an attribute on a
 normal inherent impl, so state, constructors, helper methods, generics,
@@ -30,14 +34,15 @@ impl Counter {
 }
 ```
 
-The expansion preserves that inherent impl unchanged and adds an ordinary
-`Behavior` implementation with these exact associated types:
+The expansion preserves that inherent impl unchanged, implements the nominal
+public `Protocol` for the actor type, and adds an ordinary `Behavior`
+implementation with these exact associated types:
 
 ```text
-Addr  = declared addr       Msg   = declared message
-Event = User<Addr, Msg>     Sends = declared sends
-Ph    = Never               Error = declared error
-Birth = declared births
+Protocol::Addr = declared addr     Protocol::Msg = declared message
+Behavior::Protocol = Self          Event = User<Addr, Msg>
+Sends = declared sends             Ph = Never
+Error = declared error             Birth = declared births
 ```
 
 When present, `Behavior::init` calls the inherent `init` method during the
@@ -48,7 +53,8 @@ inherent `receive` method exactly once. Rust checks both returned values against
 `BehaviorActed<Self>`; the macro does not parse or infer semantic types from a
 return-type alias.
 
-The seven associated types are deliberately explicit and ordered. The macro
+The protocol signature and six behavior associated types are deliberately
+explicit and ordered. The macro
 does not provide defaults, accept unknown options, infer capabilities, create
 constructors, add state, generate messages, register protocols, erase types,
 box futures, interpret effects, or introduce another transition path.
@@ -110,9 +116,9 @@ require another authoring macro or create another actor boundary.
 
 The selected interpreter must implement `InstallBirth` for every concrete
 choice. Recursive exhaustive dispatch forwards the original nonce and
-`CreationKind` and never installs `ChildChoice` as an actor. Each child remains
-indexed by its concrete behavior protocol, and incomplete runtime support is a
-compile-time error.
+`CreationKind` and never installs `ChildChoice` as an actor. Each installed
+child retains its declared `Behavior::Protocol`, and incomplete runtime support
+is a compile-time error.
 
 The attributes are governed by the [Universal Behavior Driver](driver.md).
 They generate only concrete nominal behavior implementations a user could

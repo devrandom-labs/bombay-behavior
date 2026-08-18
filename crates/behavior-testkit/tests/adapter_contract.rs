@@ -4,7 +4,7 @@ use behavior::{
     Actions, Activate, Behavior, BehaviorActed, Births, ChildTopology, Create, DeadlineSends,
     Delivery, MailAddr, Never, NoBirths, ObserveChild, PoolAssignment, PoolConfiguration,
     PoolResponse, Proxy, Recipient, RestartConfiguration, RestartPolicy, ServiceSends, StashRoute,
-    Step, Strategy, Supervisor, SupervisorSends, TimerId, User, WorkerPool,
+    Step, Strategy, Supervisor, SupervisorSends, TimerId, User, WorkerPool, WorkerPoolProtocol,
 };
 
 struct Sink;
@@ -15,6 +15,7 @@ impl behavior::Protocol for Sink {
 }
 
 impl Behavior for Sink {
+    type Protocol = Self;
     type Event = User<MailAddr, u64>;
     type Sends = Vec<Never>;
     type Ph = Never;
@@ -34,6 +35,7 @@ impl behavior::Protocol for Domain {
 }
 
 impl Behavior for Domain {
+    type Protocol = Self;
     type Event = User<MailAddr, u64>;
     type Sends = Vec<Delivery<Sink>>;
     type Ph = Never;
@@ -114,6 +116,7 @@ impl behavior::Protocol for Child {
 }
 
 impl Behavior for Child {
+    type Protocol = Self;
     type Event = User<MailAddr, u8>;
     type Sends = Vec<Never>;
     type Ph = Never;
@@ -133,6 +136,7 @@ impl behavior::Protocol for Parent {
 }
 
 impl Behavior for Parent {
+    type Protocol = Self;
     type Event = User<MailAddr, ()>;
     type Sends = Vec<Never>;
     type Ph = Never;
@@ -209,7 +213,8 @@ impl behavior::Protocol for Reply {
 }
 
 impl Behavior for Reply {
-    type Event = User<MailAddr, Self::Msg>;
+    type Protocol = Self;
+    type Event = User<MailAddr, behavior::BehaviorMessage<Self>>;
     type Sends = Vec<Never>;
     type Ph = Never;
     type Error = Never;
@@ -221,14 +226,14 @@ impl Behavior for Reply {
 }
 
 struct Worker;
-
 impl behavior::Protocol for Worker {
     type Addr = MailAddr;
-    type Msg = PoolAssignment<u8>;
+    type Msg = PoolAssignment<WorkerPoolProtocol<MailAddr, Reply, u8, ()>>;
 }
 
 impl Behavior for Worker {
-    type Event = User<MailAddr, Self::Msg>;
+    type Protocol = Self;
+    type Event = User<MailAddr, behavior::BehaviorMessage<Self>>;
     type Sends = Vec<Never>;
     type Ph = Never;
     type Error = Never;
@@ -239,18 +244,10 @@ impl Behavior for Worker {
     }
 }
 
-#[allow(
-    clippy::unnecessary_wraps,
-    reason = "ChildTopology factories represent index rejection with absence"
-)]
-fn worker(_: usize) -> Option<Worker> {
-    Some(Worker)
-}
-
 #[test]
 fn pool_configuration_separates_topology_from_runtime_neutral_policy() {
-    let pool = WorkerPool::<MailAddr, Reply, u8, (), Worker>::new(
-        ChildTopology::new([3, 7], worker),
+    let pool = WorkerPool::new(
+        ChildTopology::new([3, 7], |_| Some(Worker)),
         PoolConfiguration::new(
             8,
             behavior::InterruptionPolicy::Retry,
@@ -258,6 +255,7 @@ fn pool_configuration_separates_topology_from_runtime_neutral_policy() {
             2,
             Duration::from_secs(10),
         ),
+        Recipient::global(MailAddr(9)),
     )
     .unwrap();
     let initialized = pool.initialize().unwrap();

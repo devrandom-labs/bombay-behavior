@@ -12,6 +12,11 @@ The common execution contract is defined in the
 [Universal Behavior Driver](driver.md). Every catalogue entry must use that
 one Driver law; a template is not admitted if it requires a private execution
 loop.
+Public destination identity, internal events, behavior state/fold, and effects
+follow the orthogonal model in
+[Protocol, event, behavior, and effect algebras](protocol-algebra.md). Catalogue
+wrappers may extend events and effects but must preserve the wrapped public
+protocol unless their stated purpose is message adaptation.
 Actor roles requiring clocks, tasks, address authority, durability, transport,
 operating-system resources, or other interpreted effects are tracked in the
 [Runtime-backed actor capability record](runtime-backed-actors.md). That record
@@ -197,7 +202,7 @@ from this ledger remain prospective even when named in the catalogue.
 | `lifecycle` | `TerminationMonitor` | one exact peer observation with explicit awaiting-or-consumed phase | `WatchSends`; complete reaction actions preserved | Observe | unit over matching, unrelated, duplicate and rejected reactions | `bombay::actors::{TerminationMonitor, TerminationObservation}` |
 | `lifecycle` | `Watch` / `Link` specialization | `WatchEvent`, exact peer lifecycle protocol; reciprocity is two endpoint compositions | `WatchSends`, `LinkReaction` | Observe | unit, composition, lifecycle model | `bombay::actors::{Watch, Link, LinkReaction}` |
 | `lifecycle` | `ShutdownCoordinator` / `TreeShutdown` | validated phases or acyclic dependency topology and exhaustive running/stopping/completed state | `ShutdownCoordinatorSends`, typed plan/tree/rejection errors | child shutdown request and exact `ChildStopped` facts | unit over validation, all phases, duplicates, stale facts, empty topology and atomic rejection | `bombay::actors::{ShutdownCoordinator, TreeShutdown, ShutdownTree}` |
-| `lifecycle` | shutdown policies | `ShutdownProtocol`, request phase | `ShutdownReaction`; inner lanes preserved | System shutdown delivery | unit, independent model, composition | `bombay::actors::{StopOnShutdown, FinalizeOnShutdown}` |
+| `lifecycle` | shutdown policies | internal `ShutdownEvent`, request ownership | `ShutdownReaction`; public protocol and inner lanes preserved | System shutdown delivery | unit, independent model, composition | `bombay::actors::{StopOnShutdown, FinalizeOnShutdown}` |
 | `lifecycle::task` | `Task` | `TaskState`, `TaskMessage`, `TaskResult` | typed `TaskError`, terminal result delivery | Observe terminal publication | unit including completion/cancellation/post-terminal input | `bombay::actors::Task` |
 | `supervision` | `Proxy` | explicit incarnation and replacement provenance | `ProxySends`, `ProxyError` | fresh installation, Observe | unit, model, exhaustive, properties, fuzz | `bombay::actors::Proxy` |
 | `supervision` | `Supervisor` | fleet/incarnation/restart-budget sums, `ChildTopology`, `RestartConfiguration`, and `SupervisionEvent` | `SupervisorSends`, `SupervisorError`, `SupervisionFailure` | fresh installation, Observe | unit, model, exhaustive, properties, fuzz, adapter contract | `bombay::actors::{Supervisor, ChildTopology, RestartConfiguration}` |
@@ -285,7 +290,7 @@ shipped.
 | `Protocol<P>` | Typestate protocol phases | Actors | None |
 | `Handler<E>` | Event lane plus behavior | Actors | None |
 | `Forwarder<P>` | Recipient plus forwarding behavior | Actors | None |
-| `MessageAdapter<In, Destination>` | One function-pointer protocol transformation and one ordinary typed delivery | Actors | None |
+| `MessageAdapter<In, Destination>` | A nominal actor protocol that maps one public input message algebra to one destination protocol and emits one ordinary typed delivery | Actors | None |
 | `Spawner<C>` | Behavior plus staged fresh child creation | Actors | None |
 | `Proxy<P>` | Stable endpoint plus current recipient | Actors | None |
 
@@ -526,7 +531,7 @@ systems that produce or consume those observations stay in the Bombay runtime.
 | `Features<F>` | Closed feature-state protocol | Actors | None |
 | `Resources<R>` | Resource ownership states plus interpreter results | Actors / Bombay runtime | Capability-specific |
 | `Authorizer<P>` | Concrete authorization protocol and decisions | Application | Security adapter |
-| `Gateway<In, Out>` | External protocol adapter plus application recipient | Bombay runtime | `tower`, `tonic`, or HTTP stack |
+| `Gateway<In, Out>` | External boundary translation plus an application public-protocol recipient | Bombay runtime | `tower`, `tonic`, or HTTP stack |
 | `Ingress<P>` | Decoded external input plus typed delivery | Bombay runtime | Codec and transport adapter |
 | `Egress<P>` | Typed communication plus external encoding | Bombay runtime | Codec and transport adapter |
 
@@ -540,7 +545,7 @@ evaluating another implementation crate:
 | Interpreter capability | Existing Bombay realization / candidate adapter | Constraint |
 |---|---|---|
 | Behavior driving and action interpretation | `bombay-engine::Driver` | One event invokes one fold; effects remain explicit and are interpreted at the boundary. |
-| Mailboxes, lane priority, fairness, and physical backpressure | `bombay-communication` | Never expose the channel as the behavior protocol or reproduce mailbox mechanics in a policy template. |
+| Mailboxes, lane priority, fairness, and physical backpressure | `bombay-communication` | Never expose the channel as a public actor protocol or reproduce mailbox mechanics in a policy template. |
 | Endpoint registration and resolution | `bombay-address` | Registration authority and generation safety remain runtime facts. |
 | Completion and lifecycle observation | `bombay-observe` | Translate publications into concrete typed observation events. |
 | Monotonic keyed timers | `bombay-timers` | Runtime owns clocks and sleeping; behavior owns timeout policy. |
@@ -738,8 +743,9 @@ public law needs it and after the exact release passes repository policy.
 | Every template | `bombay-engine`, `bombay-transition`, `bombay-machine-executor` | Bombay engine/runtime | Reuse the universal Driver and exclusive turn machinery; never add a template-specific loop |
 | `EventSourced`, `Recovery`, durable projection, checkpoint, saga/process manager, relay, inbox/outbox | Mnesis and `mnesis-bombay` | `mnesis-bombay`, not Actors | Bombay hosts, typed adapter protocols, receipts, and composition root; never another persistence abstraction |
 
-“Composition” in this table means protocol composition across crate
-boundaries. It does not mean adding these runtime crates as dependencies of
+“Composition” in this table means composition of public protocols and internal
+event/effect algebras across crate boundaries. It does not mean adding these
+runtime crates as dependencies of
 `bombay-behavior-actors`. A template declares typed requirements; the System's
 environment supplies the implementation and the compiler rejects an
 insufficient environment.

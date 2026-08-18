@@ -266,7 +266,8 @@ where
     K: Clone + Eq,
     Reply: behavior::Protocol<Addr = A, Msg = HealthReport<K>>,
 {
-    type Event = User<A, Self::Msg>;
+    type Protocol = Self;
+    type Event = User<A, crate::BehaviorMessage<Self>>;
     type Sends = Vec<Delivery<Reply>>;
     type Ph = Never;
     type Error = HealthError<K>;
@@ -307,7 +308,8 @@ mod tests {
     }
 
     impl Behavior for Reply {
-        type Event = User<MailAddr, Self::Msg>;
+        type Protocol = Self;
+        type Event = User<MailAddr, crate::BehaviorMessage<Self>>;
         type Sends = Vec<Never>;
         type Ph = Never;
         type Error = Never;

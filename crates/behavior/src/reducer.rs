@@ -2,7 +2,7 @@
 
 use core::ops::ControlFlow;
 
-use super::{Behavior, delegate_transition, initialize};
+use super::{Behavior, BehaviorAddr, delegate_transition, initialize};
 use crate::actor::{Address, BirthMode, Create};
 use crate::effects::{Actions, SendAlgebra};
 use crate::next::{Never, Step, Stopped};
@@ -102,8 +102,8 @@ pub fn fold_events<B>(
     mut behavior: B,
     events: impl IntoIterator<Item = B::Event>,
 ) -> Result<
-    Folded<B::Addr, B::Sends, <B::Birth as BirthMode>::Child>,
-    FoldFailure<B::Addr, B::Sends, <B::Birth as BirthMode>::Child, B::Error>,
+    Folded<BehaviorAddr<B>, B::Sends, <B::Birth as BirthMode>::Child>,
+    FoldFailure<BehaviorAddr<B>, B::Sends, <B::Birth as BirthMode>::Child, B::Error>,
 >
 where
     B: Behavior<Ph = Never>,
@@ -184,6 +184,7 @@ mod tests {
     }
 
     impl Behavior for Accumulator {
+        type Protocol = Self;
         type Event = User<MailAddr, u8>;
         type Sends = Vec<Delivery<Sink>>;
         type Ph = Never;
@@ -215,6 +216,7 @@ mod tests {
     }
 
     impl Behavior for Sink {
+        type Protocol = Self;
         type Event = User<MailAddr, u8>;
         type Sends = Vec<Never>;
         type Ph = Never;

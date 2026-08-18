@@ -3,8 +3,8 @@
 use std::collections::BTreeMap;
 
 use behavior::{
-    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, Never, NoBirths, Recipient,
-    SendAlgebra, User,
+    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, Never, NoBirths, Protocol,
+    Recipient, SendAlgebra, User,
 };
 
 /// Complete observable state of an [`OrderGate`].
@@ -64,7 +64,7 @@ pub enum OrderGateOutcome<K, T> {
 }
 
 /// Commands accepted by [`OrderGate`].
-pub enum OrderGateMessage<K, T, Target: Behavior, Reply: behavior::Protocol> {
+pub enum OrderGateMessage<K, T, Target: Protocol, Reply: behavior::Protocol> {
     /// Submit one keyed value.
     Hold {
         /// Ordered release key.
@@ -86,14 +86,14 @@ pub enum OrderGateMessage<K, T, Target: Behavior, Reply: behavior::Protocol> {
 }
 
 /// Named effect lanes emitted by [`OrderGate`].
-pub struct OrderGateSends<Target: Behavior, Reply: behavior::Protocol> {
+pub struct OrderGateSends<Target: Protocol, Reply: behavior::Protocol> {
     /// Values emitted in increasing key order for an opening.
     pub deliveries: Vec<Delivery<Target>>,
     /// Exactly one factual operation result.
     pub outcomes: Vec<Delivery<Reply>>,
 }
 
-impl<Target: Behavior, Reply: behavior::Protocol> SendAlgebra for OrderGateSends<Target, Reply> {
+impl<Target: Protocol, Reply: behavior::Protocol> SendAlgebra for OrderGateSends<Target, Reply> {
     fn empty() -> Self {
         Self {
             deliveries: Vec::new(),
@@ -106,7 +106,7 @@ impl<Target: Behavior, Reply: behavior::Protocol> SendAlgebra for OrderGateSends
     }
 }
 
-struct Held<T, Target: Behavior> {
+struct Held<T, Target: Protocol> {
     value: T,
     to: Recipient<Target>,
 }
@@ -125,7 +125,7 @@ pub struct OrderGate<
     A: Address,
     K,
     T,
-    Target: Behavior<Addr = A, Msg = T>,
+    Target: Protocol<Addr = A, Msg = T>,
     Reply: behavior::Protocol<Addr = A, Msg = OrderGateOutcome<K, T>>,
 > {
     watermark: Option<K>,
@@ -137,7 +137,7 @@ impl<A, K, T, Target, Reply> OrderGate<A, K, T, Target, Reply>
 where
     A: Address,
     K: Clone + Ord,
-    Target: Behavior<Addr = A, Msg = T>,
+    Target: Protocol<Addr = A, Msg = T>,
     Reply: behavior::Protocol<Addr = A, Msg = OrderGateOutcome<K, T>>,
 {
     /// Construct a closed gate with no retained values.
@@ -252,7 +252,7 @@ impl<A, K, T, Target, Reply> Default for OrderGate<A, K, T, Target, Reply>
 where
     A: Address,
     K: Clone + Ord,
-    Target: Behavior<Addr = A, Msg = T>,
+    Target: Protocol<Addr = A, Msg = T>,
     Reply: behavior::Protocol<Addr = A, Msg = OrderGateOutcome<K, T>>,
 {
     fn default() -> Self {
@@ -264,7 +264,7 @@ impl<A, K, T, Target, Reply> BehaviorBase for OrderGate<A, K, T, Target, Reply>
 where
     A: Address,
     K: Clone + Ord,
-    Target: Behavior<Addr = A, Msg = T>,
+    Target: Protocol<Addr = A, Msg = T>,
     Reply: behavior::Protocol<Addr = A, Msg = OrderGateOutcome<K, T>>,
 {
     type Base = Self;
@@ -277,7 +277,7 @@ impl<A, K, T, Target, Reply> behavior::Protocol for OrderGate<A, K, T, Target, R
 where
     A: Address,
     K: Clone + Ord,
-    Target: Behavior<Addr = A, Msg = T>,
+    Target: Protocol<Addr = A, Msg = T>,
     Reply: behavior::Protocol<Addr = A, Msg = OrderGateOutcome<K, T>>,
 {
     type Addr = A;
@@ -288,10 +288,11 @@ impl<A, K, T, Target, Reply> Behavior for OrderGate<A, K, T, Target, Reply>
 where
     A: Address,
     K: Clone + Ord,
-    Target: Behavior<Addr = A, Msg = T>,
+    Target: Protocol<Addr = A, Msg = T>,
     Reply: behavior::Protocol<Addr = A, Msg = OrderGateOutcome<K, T>>,
 {
-    type Event = User<A, Self::Msg>;
+    type Protocol = Self;
+    type Event = User<A, crate::BehaviorMessage<Self>>;
     type Sends = OrderGateSends<Target, Reply>;
     type Ph = Never;
     type Error = Never;
@@ -324,6 +325,7 @@ mod tests {
             }
 
             impl Behavior for $n {
+                type Protocol = Self;
                 type Event = User<MailAddr, $m>;
                 type Sends = Vec<Never>;
                 type Ph = Never;

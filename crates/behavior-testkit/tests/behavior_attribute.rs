@@ -3,7 +3,7 @@ use std::time::Duration;
 use behavior::{
     Actions, Behavior, Births, CreationKind, Delivery, Effect, InterruptionPolicy, JobId, MailAddr,
     Never, NoBirths, PoolAssignment, PoolMessage, Recipient, RestartPolicy, Step,
-    WorkerCreationResolved, WorkerPool,
+    WorkerCreationResolved, WorkerPool, WorkerPoolProtocol,
 };
 
 struct Printer(u64);
@@ -67,9 +67,10 @@ impl Counter {
 
 struct Worker;
 
+type PoolReply = behavior_testkit::TestRecipient<behavior::PoolResponse<u8, (), MailAddr>>;
 #[behavior::behavior(
     addr = MailAddr,
-    message = PoolAssignment<u8>,
+    message = PoolAssignment<WorkerPoolProtocol<MailAddr, PoolReply, u8, ()>>,
     sends = Vec<Never>,
     births = NoBirths,
     error = Never,
@@ -78,7 +79,7 @@ impl Worker {
     fn receive(
         &mut self,
         _from: MailAddr,
-        _assignment: PoolAssignment<u8>,
+        _assignment: PoolAssignment<WorkerPoolProtocol<MailAddr, PoolReply, u8, ()>>,
     ) -> behavior::Acted<MailAddr, Never, Vec<Never>, NoBirths, Never> {
         Ok(Actions::cont())
     }
@@ -92,6 +93,7 @@ impl behavior::Protocol for Manual {
 }
 
 impl Behavior for Manual {
+    type Protocol = Self;
     type Event = behavior::User<MailAddr, ()>;
     type Sends = Vec<Never>;
     type Ph = Never;
@@ -121,7 +123,8 @@ fn omitted_initialization_is_the_explicit_empty_transition() {
 fn actor_attribute_infers_the_honest_infallible_no_birth_subset() {
     fn assert_protocol<B>(_: &B)
     where
-        B: Behavior<Addr = MailAddr, Msg = u64, Error = Never, Birth = NoBirths>,
+        B: Behavior<Error = Never, Birth = NoBirths>,
+        B::Protocol: behavior::Protocol<Addr = MailAddr, Msg = u64>,
     {
     }
 
@@ -196,10 +199,6 @@ fn nonce(index: usize) -> u64 {
     u64::try_from(index).unwrap()
 }
 
-fn worker(_index: usize) -> Worker {
-    Worker
-}
-
 #[test]
 fn attribute_preserves_normal_methods_and_exact_actions() {
     let counter = Counter { total: 0 };
@@ -213,14 +212,8 @@ fn attribute_preserves_normal_methods_and_exact_actions() {
 
 #[test]
 fn generated_behavior_is_nominal_in_pool_and_supervision_positions() {
-    let pool: WorkerPool<
-        MailAddr,
-        behavior_testkit::TestRecipient<behavior::PoolResponse<u8, (), MailAddr>>,
-        u8,
-        (),
-        Worker,
-    > = WorkerPool::new(
-        behavior::ChildTopology::indexed(nonce, 1, |index| Some(worker(index))),
+    let pool = WorkerPool::new(
+        behavior::ChildTopology::indexed(nonce, 1, |_| Some(Worker)),
         behavior::PoolConfiguration::new(
             0,
             InterruptionPolicy::Fail,
@@ -228,6 +221,7 @@ fn generated_behavior_is_nominal_in_pool_and_supervision_positions() {
             1,
             Duration::from_secs(1),
         ),
+        Recipient::global(MailAddr(9)),
     )
     .unwrap();
     let initialized = pool.initialize().unwrap();

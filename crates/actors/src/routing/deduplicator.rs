@@ -3,8 +3,8 @@
 use std::collections::VecDeque;
 
 use behavior::{
-    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, Never, NoBirths, Recipient,
-    SendAlgebra, User,
+    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, Never, NoBirths, Protocol,
+    Recipient, SendAlgebra, User,
 };
 use thiserror::Error;
 
@@ -44,7 +44,7 @@ pub enum DeduplicatorOutcome<K, T> {
 }
 
 /// Commands accepted by [`Deduplicator`].
-pub enum DeduplicatorMessage<K, T, Target: Behavior, Reply: behavior::Protocol> {
+pub enum DeduplicatorMessage<K, T, Target: Protocol, Reply: behavior::Protocol> {
     /// Deliver `value` only if `key` is absent from bounded retention.
     Deliver {
         /// Application-defined idempotency key.
@@ -59,14 +59,14 @@ pub enum DeduplicatorMessage<K, T, Target: Behavior, Reply: behavior::Protocol> 
 }
 
 /// Named send lanes emitted by [`Deduplicator`].
-pub struct DeduplicatorSends<Target: Behavior, Reply: behavior::Protocol> {
+pub struct DeduplicatorSends<Target: Protocol, Reply: behavior::Protocol> {
     /// At most one accepted value.
     pub deliveries: Vec<Delivery<Target>>,
     /// Exactly one factual result.
     pub outcomes: Vec<Delivery<Reply>>,
 }
 
-impl<Target: Behavior, Reply: behavior::Protocol> SendAlgebra for DeduplicatorSends<Target, Reply> {
+impl<Target: Protocol, Reply: behavior::Protocol> SendAlgebra for DeduplicatorSends<Target, Reply> {
     fn empty() -> Self {
         Self {
             deliveries: Vec::new(),
@@ -106,7 +106,7 @@ pub struct Deduplicator<
     A: Address,
     K,
     T,
-    Target: Behavior<Addr = A, Msg = T>,
+    Target: Protocol<Addr = A, Msg = T>,
     Reply: behavior::Protocol<Addr = A, Msg = DeduplicatorOutcome<K, T>>,
 > {
     capacity: usize,
@@ -118,7 +118,7 @@ impl<A, K, T, Target, Reply> Deduplicator<A, K, T, Target, Reply>
 where
     A: Address,
     K: Clone + Eq,
-    Target: Behavior<Addr = A, Msg = T>,
+    Target: Protocol<Addr = A, Msg = T>,
     Reply: behavior::Protocol<Addr = A, Msg = DeduplicatorOutcome<K, T>>,
 {
     /// Construct empty positive bounded retention.
@@ -151,7 +151,7 @@ impl<A, K, T, Target, Reply> BehaviorBase for Deduplicator<A, K, T, Target, Repl
 where
     A: Address,
     K: Clone + Eq,
-    Target: Behavior<Addr = A, Msg = T>,
+    Target: Protocol<Addr = A, Msg = T>,
     Reply: behavior::Protocol<Addr = A, Msg = DeduplicatorOutcome<K, T>>,
 {
     type Base = Self;
@@ -165,7 +165,7 @@ impl<A, K, T, Target, Reply> behavior::Protocol for Deduplicator<A, K, T, Target
 where
     A: Address,
     K: Clone + Eq,
-    Target: Behavior<Addr = A, Msg = T>,
+    Target: Protocol<Addr = A, Msg = T>,
     Reply: behavior::Protocol<Addr = A, Msg = DeduplicatorOutcome<K, T>>,
 {
     type Addr = A;
@@ -176,10 +176,11 @@ impl<A, K, T, Target, Reply> Behavior for Deduplicator<A, K, T, Target, Reply>
 where
     A: Address,
     K: Clone + Eq,
-    Target: Behavior<Addr = A, Msg = T>,
+    Target: Protocol<Addr = A, Msg = T>,
     Reply: behavior::Protocol<Addr = A, Msg = DeduplicatorOutcome<K, T>>,
 {
-    type Event = User<A, Self::Msg>;
+    type Protocol = Self;
+    type Event = User<A, crate::BehaviorMessage<Self>>;
     type Sends = DeduplicatorSends<Target, Reply>;
     type Ph = Never;
     type Error = Never;
@@ -236,7 +237,8 @@ mod tests {
             }
 
             impl Behavior for $name {
-                type Event = User<MailAddr, Self::Msg>;
+                type Protocol = Self;
+                type Event = User<MailAddr, crate::BehaviorMessage<Self>>;
                 type Sends = Vec<Never>;
                 type Ph = Never;
                 type Error = Never;

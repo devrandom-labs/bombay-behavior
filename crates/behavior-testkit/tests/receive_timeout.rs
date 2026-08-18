@@ -354,6 +354,7 @@ impl behavior::Protocol for StopsAtInitialization {
 }
 
 impl Behavior for StopsAtInitialization {
+    type Protocol = Self;
     type Event = User<MailAddr, ()>;
     type Sends = Vec<Never>;
     type Ph = Never;

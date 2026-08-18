@@ -74,6 +74,7 @@ impl<Input, Destination> Behavior for MessageAdapter<Input, Destination>
 where
     Destination: behavior::Protocol,
 {
+    type Protocol = Self;
     type Event = User<Destination::Addr, Input>;
     type Sends = Vec<Delivery<Destination>>;
     type Ph = Never;
@@ -103,6 +104,7 @@ mod tests {
     }
 
     impl Behavior for Destination {
+        type Protocol = Self;
         type Event = User<MailAddr, String>;
         type Sends = Vec<Never>;
         type Ph = Never;

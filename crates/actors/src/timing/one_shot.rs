@@ -83,9 +83,9 @@ impl<B: Behavior> OneShot<B> {
     }
 
     fn wrap(
-        actions: Actions<B::Addr, B::Ph, B::Sends, B::Birth>,
+        actions: Actions<crate::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>,
         schedules: ServiceSends<ScheduleAfter>,
-    ) -> Actions<B::Addr, B::Ph, OneShotSends<B::Sends>, B::Birth> {
+    ) -> Actions<crate::BehaviorAddr<B>, B::Ph, OneShotSends<B::Sends>, B::Birth> {
         actions.map_sends(|behavior| OneShotSends {
             behavior,
             schedules,
@@ -101,26 +101,16 @@ impl<B: Behavior + crate::BehaviorBase> crate::BehaviorBase for OneShot<B> {
     }
 }
 
-impl<B, A, Ph, Sends, Br> behavior::Protocol for OneShot<B>
-where
-    A: Address,
-    Sends: SendAlgebra,
-    Br: BirthMode,
-    B: Behavior<Addr = A, Ph = Ph, Sends = Sends, Birth = Br>,
-    B::Event: RouteInput<TimerElapsed>,
-{
-    type Addr = A;
-    type Msg = B::Msg;
-}
-
 impl<B, A, Ph, Sends, Br> Behavior for OneShot<B>
 where
     A: Address,
     Sends: SendAlgebra,
     Br: BirthMode,
-    B: Behavior<Addr = A, Ph = Ph, Sends = Sends, Birth = Br>,
+    B: Behavior<Ph = Ph, Sends = Sends, Birth = Br>,
+    B::Protocol: crate::Protocol<Addr = A>,
     B::Event: RouteInput<TimerElapsed>,
 {
+    type Protocol = B::Protocol;
     type Event = OneShotEvent<B::Event>;
     type Sends = OneShotSends<Sends>;
     type Ph = Ph;
@@ -181,6 +171,7 @@ mod tests {
     }
 
     impl Behavior for Probe {
+        type Protocol = Self;
         type Event = User<MailAddr, ()>;
         type Sends = Vec<Never>;
         type Ph = Never;

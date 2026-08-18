@@ -21,7 +21,8 @@ macro_rules! leaf {
         }
 
         impl Behavior for $name {
-            type Event = User<MailAddr, Self::Msg>;
+            type Protocol = Self;
+            type Event = User<MailAddr, behavior::BehaviorMessage<Self>>;
             type Sends = Vec<Never>;
             type Ph = Never;
             type Error = Never;

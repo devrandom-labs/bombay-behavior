@@ -1,5 +1,10 @@
 # Functional Core
 
+The fold described here is orthogonal to public actor identity. `Protocol`
+names only an established `Addr`/`Msg` destination; `Behavior::Event` is the
+larger internal input algebra, and `Actions` is the explicit output algebra.
+See [Protocol, event, behavior, and effect algebras](protocol-algebra.md).
+
 Bombay models a behavior as a typed, deterministic transition:
 
 ```text
@@ -43,6 +48,10 @@ Event wrappers are exhaustive coproducts. Effect wrappers are named products:
 `behavior` and `observations`; `ReceiveTimeoutSends` exposes `behavior` and
 `schedules`. Wrapper order remains visible in the type and repeated capability
 types remain distinguishable by their typed nesting and timer identities.
+
+Transparent wrappers set `type Protocol = B::Protocol`. They may extend the
+event coproduct and effect product, but they do not create a new public
+recipient identity.
 
 Frunk's HLists and coproducts were evaluated for this role. They provide useful
 generic mapping, folding, selection, and sculpting, but selection of repeated

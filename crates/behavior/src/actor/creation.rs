@@ -4,8 +4,8 @@ use core::future::Future;
 use core::marker::PhantomData;
 
 use super::addressing::Address;
-use crate::Behavior;
 use crate::next::Never;
+use crate::{Behavior, Protocol};
 
 /// Behavior-owned provenance for a staged fresh actor creation request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -65,7 +65,10 @@ impl<A: Address, New> Create<A, New> {
 /// fail to compile instead of falling through to a registry or erased path. The
 /// returned future is sendable so an interpreter may remain inside a
 /// thread-safe recursive driver future.
-pub trait InstallBirth<A: Address, C: Behavior<Addr = A>, Output, Error> {
+pub trait InstallBirth<A: Address, C: Behavior, Output, Error>
+where
+    C::Protocol: Protocol<Addr = A>,
+{
     /// Install and commit exactly the supplied concrete creation.
     ///
     /// # Errors
@@ -228,7 +231,8 @@ impl<A: Address> ChildProduct<A> for NoChildren {
 impl<A, C, Earlier> ChildProduct<A> for ChildCons<A, C, Earlier>
 where
     A: Address,
-    C: Behavior<Addr = A>,
+    C: Behavior,
+    C::Protocol: Protocol<Addr = A>,
     Earlier: ChildProduct<A>,
 {
     type Choice = ChildChoice<C, Earlier::Choice>;
@@ -284,7 +288,8 @@ impl<A: Address, Product> Children<A, Product> {
     #[must_use]
     pub fn create<C>(self, creation: Create<A, C>) -> Children<A, ChildCons<A, C, Product>>
     where
-        C: Behavior<Addr = A>,
+        C: Behavior,
+        C::Protocol: Protocol<Addr = A>,
     {
         Children {
             product: ChildCons {
@@ -299,7 +304,8 @@ impl<A: Address, Product> Children<A, Product> {
     #[must_use]
     pub fn child<C>(self, nonce: A::Nonce, child: C) -> Children<A, ChildCons<A, C, Product>>
     where
-        C: Behavior<Addr = A>,
+        C: Behavior,
+        C::Protocol: Protocol<Addr = A>,
     {
         self.create(Create::birth(nonce, child))
     }
@@ -327,7 +333,8 @@ impl<A, Head, Tail, Installer, Output, Error> DispatchBirth<A, Installer, Output
 where
     A: Address,
     A::Nonce: Send,
-    Head: Behavior<Addr = A> + Send,
+    Head: Behavior + Send,
+    Head::Protocol: Protocol<Addr = A>,
     Tail: DispatchBirth<A, Installer, Output, Error> + Send,
     Installer: InstallBirth<A, Head, Output, Error> + Send,
 {
@@ -365,7 +372,8 @@ where
 impl<A, C, Installer, Output, Error> DispatchBirth<A, Installer, Output, Error> for C
 where
     A: Address,
-    C: Behavior<Addr = A>,
+    C: Behavior,
+    C::Protocol: Protocol<Addr = A>,
     Installer: InstallBirth<A, C, Output, Error>,
 {
     fn dispatch_birth(
@@ -412,6 +420,7 @@ mod tests {
     }
 
     impl Behavior for Child {
+        type Protocol = Self;
         type Event = User<MailAddr, u8>;
         type Sends = Vec<Never>;
         type Ph = Never;

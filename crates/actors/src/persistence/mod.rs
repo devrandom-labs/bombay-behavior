@@ -7,4 +7,6 @@
 
 mod cache;
 
-pub use cache::{Cache, CacheConfigError, CacheEntry, CacheMessage, CacheResult, CacheState};
+pub use cache::{
+    Cache, CacheConfigError, CacheConfiguration, CacheEntry, CacheMessage, CacheResult, CacheState,
+};

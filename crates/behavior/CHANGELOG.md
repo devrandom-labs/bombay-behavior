@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Add `Behavior::Protocol`, `BehaviorAddr`, and `BehaviorMessage` so public
+  destination identity is orthogonal to the current behavior implementation,
+  internal event algebra, and explicit effects.
+- Add `MessageProtocol<A, M>` as the zero-state structural endpoint for public
+  message signatures that have no nominal actor template.
+
 - Add the runtime-free `Effect` shorthand and `#[actor]` macro for the honest
   synchronous, infallible, no-birth subset of the Behavior algebra.
 
@@ -22,6 +28,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   recursive runtime drivers can remain eligible for thread-safe spawning.
 
 ### Changed
+
+- Remove `Protocol` as a `Behavior` supertrait. `Recipient<P>` and
+  `Delivery<P>` now require only the stable public protocol, while activation,
+  creation, wrapping, and interpretation project it through
+  `Behavior::Protocol`.
 
 - Move reusable actors, protocols, composition, and worker pools to the new
   `bombay-behavior-actors` package, leaving this package focused on the typed

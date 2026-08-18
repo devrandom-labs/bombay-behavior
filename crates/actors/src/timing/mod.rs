@@ -1,4 +1,9 @@
 //! Pure time domains and behavior adapters.
+//!
+//! Timer identity is the product `(TimerId, TimerGeneration)`. Nested adapters
+//! that reuse that complete identity intentionally share one lane, owned by
+//! the outermost matching adapter. Independent timers must use distinct IDs;
+//! this is a Bombay composition policy rather than an actor-model law.
 
 mod deadline;
 mod domain;

@@ -8,28 +8,28 @@
 use crate::Step;
 use crate::protocol::ShutdownRequested;
 use crate::protocol::forward::forward_event_lane;
-use behavior::{Actions, Address, Behavior, BirthMode, SendAlgebra, User, UserEvent};
+use behavior::{Actions, Address, Behavior, BirthMode, RouteInput, SendAlgebra, User, UserEvent};
 
-/// The complete protocol of a behavior that supports graceful shutdown.
+/// Internal event sum of a behavior that supports graceful shutdown.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ShutdownProtocol<E> {
+pub enum ShutdownEvent<E> {
     Behavior(E),
     ShutdownRequested(ShutdownRequested),
 }
 
-impl<E: UserEvent> crate::RouteInput<ShutdownRequested> for ShutdownProtocol<E> {
+impl<E: UserEvent> crate::RouteInput<ShutdownRequested> for ShutdownEvent<E> {
     fn route(event: ShutdownRequested) -> Result<Self, ShutdownRequested> {
         Ok(Self::ShutdownRequested(event))
     }
 }
 
-impl<E: UserEvent> crate::EventInput<ShutdownRequested> for ShutdownProtocol<E> {
+impl<E: UserEvent> crate::EventInput<ShutdownRequested> for ShutdownEvent<E> {
     fn inject(event: ShutdownRequested) -> Self {
         Self::ShutdownRequested(event)
     }
 }
 
-impl<E: UserEvent> UserEvent for ShutdownProtocol<E> {
+impl<E: UserEvent> UserEvent for ShutdownEvent<E> {
     type Addr = E::Addr;
     type Message = E::Message;
 
@@ -45,16 +45,13 @@ impl<E: UserEvent> UserEvent for ShutdownProtocol<E> {
     }
 }
 
-forward_event_lane!(ShutdownProtocol, crate::TimerElapsed);
-forward_event_lane!(ShutdownProtocol, crate::PeerStopped<E::Addr>);
-forward_event_lane!(ShutdownProtocol, crate::ChildStopped<E::Addr>);
-forward_event_lane!(ShutdownProtocol, crate::WorkerStopped<E::Addr>);
+forward_event_lane!(ShutdownEvent, crate::TimerElapsed);
+forward_event_lane!(ShutdownEvent, crate::PeerStopped<E::Addr>);
+forward_event_lane!(ShutdownEvent, crate::ChildStopped<E::Addr>);
+forward_event_lane!(ShutdownEvent, crate::WorkerStopped<E::Addr>);
+forward_event_lane!(ShutdownEvent, crate::CreationResolved<E::Addr>);
 forward_event_lane!(
-    ShutdownProtocol,
-    crate::CreationResolved<<E::Addr as crate::Address>::Nonce>
-);
-forward_event_lane!(
-    ShutdownProtocol,
+    ShutdownEvent,
     crate::WorkerCreationResolved<<E::Addr as crate::Address>::Nonce>
 );
 
@@ -65,6 +62,9 @@ pub struct StopOnShutdown<B> {
 
 impl<B> StopOnShutdown<B> {
     /// Wrap `inner` so the first typed shutdown request stops it normally.
+    /// If `inner` already accepts the shutdown lane, the request is routed to
+    /// that inner owner instead. Consequently nested shutdown policies have
+    /// one deterministic owner: the innermost wrapper that declares the lane.
     #[must_use]
     pub const fn new(inner: B) -> Self {
         Self { inner }
@@ -92,7 +92,7 @@ pub type ShutdownReaction<B> = fn(
     ShutdownRequested,
 ) -> Result<
     Actions<
-        <B as crate::Protocol>::Addr,
+        crate::BehaviorAddr<B>,
         <B as Behavior>::Ph,
         <B as Behavior>::Sends,
         <B as Behavior>::Birth,
@@ -111,6 +111,8 @@ impl<B: Behavior> FinalizeOnShutdown<B> {
     ///
     /// The final fold's sends and creations are preserved and the wrapper then
     /// stops normally regardless of the fold's continuation verdict.
+    /// An inner shutdown owner takes precedence, matching
+    /// [`StopOnShutdown`]'s composition law.
     #[must_use]
     pub const fn new(inner: B, finalize: ShutdownReaction<B>) -> Self {
         Self { inner, finalize }
@@ -136,25 +138,17 @@ where
 
 macro_rules! impl_shutdown_behavior {
     ($wrapper:ident, $shutdown:expr) => {
-        impl<B, A, Ph, Sends, Br> behavior::Protocol for $wrapper<B>
-        where
-            A: Address,
-            Sends: SendAlgebra,
-            Br: BirthMode,
-            B: Behavior<Addr = A, Ph = Ph, Sends = Sends, Birth = Br>,
-        {
-            type Addr = A;
-            type Msg = B::Msg;
-        }
-
         impl<B, A, Ph, Sends, Br> Behavior for $wrapper<B>
         where
             A: Address,
             Sends: SendAlgebra,
             Br: BirthMode,
-            B: Behavior<Addr = A, Ph = Ph, Sends = Sends, Birth = Br>,
+            B: Behavior<Ph = Ph, Sends = Sends, Birth = Br>,
+            B::Protocol: crate::Protocol<Addr = A>,
+            B::Event: RouteInput<ShutdownRequested>,
         {
-            type Event = ShutdownProtocol<B::Event>;
+            type Protocol = B::Protocol;
+            type Event = ShutdownEvent<B::Event>;
             type Sends = Sends;
             type Ph = Ph;
             type Error = B::Error;
@@ -173,10 +167,13 @@ macro_rules! impl_shutdown_behavior {
                 event: Self::Event,
             ) -> Result<Actions<A, Ph, Sends, Br>, B::Error> {
                 match event {
-                    ShutdownProtocol::Behavior(event) => {
+                    ShutdownEvent::Behavior(event) => {
                         behavior::delegate_transition(&mut self.inner, event)
                     }
-                    ShutdownProtocol::ShutdownRequested(request) => $shutdown(self, request),
+                    ShutdownEvent::ShutdownRequested(request) => match B::Event::route(request) {
+                        Ok(event) => behavior::delegate_transition(&mut self.inner, event),
+                        Err(request) => $shutdown(self, request),
+                    },
                 }
             }
         }

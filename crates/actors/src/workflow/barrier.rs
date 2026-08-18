@@ -1,8 +1,8 @@
 //! Fixed-membership cyclic barrier coordination.
 
 use behavior::{
-    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, Never, NoBirths, Recipient,
-    User,
+    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, MessageProtocol, Never,
+    NoBirths, Recipient, User,
 };
 use thiserror::Error;
 
@@ -18,31 +18,36 @@ pub struct BarrierReleased {
 }
 
 /// One keyed arrival at a [`Barrier`].
-pub struct BarrierMessage<K, Participant: Behavior> {
+pub struct BarrierMessage<A: Address, K> {
     /// Generation the participant intends to join.
     pub generation: BarrierGeneration,
     /// Participant key from the barrier's fixed membership.
     pub participant: K,
     /// Typed recipient for this generation's release.
-    pub reply_to: Recipient<Participant>,
+    pub reply_to: Recipient<MessageProtocol<A, BarrierReleased>>,
+}
+
+impl<A: Address, K> behavior::Protocol for BarrierMessage<A, K> {
+    type Addr = A;
+    type Msg = BarrierMessage<A, K>;
 }
 
 /// One accepted arrival retained until its generation releases.
-pub struct BarrierArrival<K, Participant: Behavior> {
+pub struct BarrierArrival<A: Address, K> {
     /// Fixed-membership key.
     pub participant: K,
     /// Typed release recipient.
-    pub reply_to: Recipient<Participant>,
+    pub reply_to: Recipient<MessageProtocol<A, BarrierReleased>>,
 }
 
 /// Complete semantic state of a cyclic [`Barrier`].
-pub enum BarrierState<K, Participant: Behavior> {
+pub enum BarrierState<A: Address, K> {
     /// The current generation is accepting its fixed membership once each.
     Gathering {
         /// Exact accepted generation.
         generation: BarrierGeneration,
         /// Accepted arrivals in arrival order.
-        arrivals: Vec<BarrierArrival<K, Participant>>,
+        arrivals: Vec<BarrierArrival<A, K>>,
     },
     /// The final representable generation released; no later generation exists.
     Exhausted {
@@ -60,6 +65,32 @@ pub enum BarrierConfigError<K> {
     /// One participant key appeared more than once.
     #[error("barrier membership contains a duplicate participant")]
     DuplicateParticipant(K),
+}
+
+/// Validated fixed barrier membership, independent of an address namespace.
+pub struct BarrierMembership<K> {
+    members: Vec<K>,
+}
+
+impl<K: Clone + Eq> BarrierMembership<K> {
+    /// Validate fixed membership before binding it to an actor protocol.
+    ///
+    /// # Errors
+    ///
+    /// Returns a typed error for empty or duplicate membership.
+    pub fn new(members: Vec<K>) -> Result<Self, BarrierConfigError<K>> {
+        if members.is_empty() {
+            return Err(BarrierConfigError::EmptyMembership);
+        }
+        for (index, participant) in members.iter().enumerate() {
+            if members[..index].contains(participant) {
+                return Err(BarrierConfigError::DuplicateParticipant(
+                    participant.clone(),
+                ));
+            }
+        }
+        Ok(Self { members })
+    }
 }
 
 /// Rejected barrier arrival.
@@ -118,42 +149,26 @@ pub enum BarrierError<K> {
 /// and release ordering are Bombay workflow policy; delivery is interpreted
 /// by Address and Communication. Construction rejects empty or duplicate
 /// membership. No method has a semantic panic condition.
-pub struct Barrier<A: Address, K, Participant: Behavior<Addr = A, Msg = BarrierReleased>> {
+pub struct Barrier<A: Address, K> {
     members: Vec<K>,
-    state: BarrierState<K, Participant>,
-    address: core::marker::PhantomData<A>,
+    state: BarrierState<A, K>,
 }
 
-impl<A, K, Participant> Barrier<A, K, Participant>
+impl<A, K> Barrier<A, K>
 where
     A: Address,
     K: Clone + Eq,
-    Participant: Behavior<Addr = A, Msg = BarrierReleased>,
 {
-    /// Construct generation zero with fixed membership order.
-    ///
-    /// # Errors
-    ///
-    /// Returns a typed error for empty or duplicate membership.
-    pub fn new(members: Vec<K>) -> Result<Self, BarrierConfigError<K>> {
-        if members.is_empty() {
-            return Err(BarrierConfigError::EmptyMembership);
-        }
-        for (index, participant) in members.iter().enumerate() {
-            if members[..index].contains(participant) {
-                return Err(BarrierConfigError::DuplicateParticipant(
-                    participant.clone(),
-                ));
-            }
-        }
-        Ok(Self {
-            members,
+    /// Bind validated membership to generation zero of a barrier actor.
+    #[must_use]
+    pub fn new(membership: BarrierMembership<K>) -> Self {
+        Self {
+            members: membership.members,
             state: BarrierState::Gathering {
                 generation: BarrierGeneration(0),
                 arrivals: Vec::new(),
             },
-            address: core::marker::PhantomData,
-        })
+        }
     }
 
     /// Fixed participant keys in definition order.
@@ -164,16 +179,15 @@ where
 
     /// Borrow the complete current generation state.
     #[must_use]
-    pub const fn state(&self) -> &BarrierState<K, Participant> {
+    pub const fn state(&self) -> &BarrierState<A, K> {
         &self.state
     }
 }
 
-impl<A, K, Participant> BehaviorBase for Barrier<A, K, Participant>
+impl<A, K> BehaviorBase for Barrier<A, K>
 where
     A: Address,
     K: Clone + Eq,
-    Participant: Behavior<Addr = A, Msg = BarrierReleased>,
 {
     type Base = Self;
 
@@ -182,24 +196,23 @@ where
     }
 }
 
-impl<A, K, Participant> behavior::Protocol for Barrier<A, K, Participant>
+impl<A, K> behavior::Protocol for Barrier<A, K>
 where
     A: Address,
     K: Clone + Eq,
-    Participant: Behavior<Addr = A, Msg = BarrierReleased>,
 {
     type Addr = A;
-    type Msg = BarrierMessage<K, Participant>;
+    type Msg = BarrierMessage<A, K>;
 }
 
-impl<A, K, Participant> Behavior for Barrier<A, K, Participant>
+impl<A, K> Behavior for Barrier<A, K>
 where
     A: Address,
     K: Clone + Eq,
-    Participant: Behavior<Addr = A, Msg = BarrierReleased>,
 {
-    type Event = User<A, Self::Msg>;
-    type Sends = Vec<Delivery<Participant>>;
+    type Protocol = BarrierMessage<A, K>;
+    type Event = User<A, crate::BehaviorMessage<Self>>;
+    type Sends = Vec<Delivery<MessageProtocol<A, BarrierReleased>>>;
     type Ph = Never;
     type Error = BarrierError<K>;
     type Birth = NoBirths;
@@ -282,44 +295,23 @@ mod tests {
     use crate::Activate as _;
     use behavior::MailAddr;
 
-    struct Participant;
-
-    impl behavior::Protocol for Participant {
-        type Addr = MailAddr;
-        type Msg = BarrierReleased;
-    }
-
-    impl Behavior for Participant {
-        type Event = User<MailAddr, BarrierReleased>;
-        type Sends = Vec<Never>;
-        type Ph = Never;
-        type Error = Never;
-        type Birth = NoBirths;
-
-        fn transition(&mut self, _: crate::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
-            Ok(Actions::cont())
-        }
-    }
-
-    type TestBarrier = Barrier<MailAddr, u8, Participant>;
-
     #[test]
     fn configuration_rejects_empty_and_duplicate_membership() {
         assert!(matches!(
-            TestBarrier::new(Vec::new()),
+            BarrierMembership::new(Vec::<u8>::new()),
             Err(BarrierConfigError::EmptyMembership)
         ));
         assert!(matches!(
-            TestBarrier::new(vec![1, 2, 1]),
+            BarrierMembership::new(vec![1, 2, 1]),
             Err(BarrierConfigError::DuplicateParticipant(1))
         ));
     }
 
     #[test]
     fn generation_releases_exact_membership_in_arrival_order() {
-        let one = Recipient::<Participant>::global(MailAddr(1));
-        let two = Recipient::<Participant>::global(MailAddr(2));
-        let mut barrier = (TestBarrier::new(vec![1, 2]).unwrap())
+        let one = Recipient::from(MailAddr(1));
+        let two = Recipient::from(MailAddr(2));
+        let mut barrier = Barrier::new(BarrierMembership::new(vec![1_u8, 2]).unwrap())
             .initialize()
             .unwrap()
             .behavior;
@@ -400,8 +392,8 @@ mod tests {
 
     #[test]
     fn final_generation_releases_then_exhausts_without_wraparound() {
-        let participant = Recipient::<Participant>::global(MailAddr(1));
-        let mut definition = TestBarrier::new(vec![1]).unwrap();
+        let participant = Recipient::from(MailAddr(1));
+        let mut definition = Barrier::new(BarrierMembership::new(vec![1_u8]).unwrap());
         definition.state = BarrierState::Gathering {
             generation: BarrierGeneration(u64::MAX),
             arrivals: Vec::new(),

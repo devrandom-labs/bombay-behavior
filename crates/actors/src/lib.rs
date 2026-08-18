@@ -9,6 +9,10 @@
 //! lanes for Bombay's one universal Driver and statically selected Environment
 //! interpreters.
 //!
+//! Public [`Protocol`] identity remains orthogonal to those internal event and
+//! effect algebras. Concrete actor templates declare their protocol; transparent
+//! wrappers preserve `B::Protocol` and do not become new recipient identities.
+//!
 //! Catalogue values and wrappers are constructed directly through their public
 //! owning-type constructors. [`Activate`] consumes any concrete definition
 //! into its one initialized [`Active`] state. Rust can infer wrapper stacks at
@@ -62,7 +66,9 @@ pub use operations::{
     HealthStatus, ObservationVersion, Readiness, ReadinessError, ReadinessEvidence,
     ReadinessMessage, ReadinessReport, ReadinessStatus,
 };
-pub use persistence::{Cache, CacheConfigError, CacheEntry, CacheMessage, CacheResult, CacheState};
+pub use persistence::{
+    Cache, CacheConfigError, CacheConfiguration, CacheEntry, CacheMessage, CacheResult, CacheState,
+};
 pub use pool::{
     AffinitySelector, AssignmentId, InterruptionPolicy, JobId, KeyedPoolEvent, KeyedPoolMessage,
     KeyedWorkerPool, PoolActions, PoolAssignment, PoolBehaviorSends, PoolConfigError,
@@ -71,31 +77,32 @@ pub use pool::{
 };
 pub use protocol::{
     ChildShutdownRejected, ChildShutdownRejection, ChildStopped, CreationRejection,
-    CreationResolved, ObserveChild, ObserveCreation, ObservePeer, PeerStopped,
-    ReplacementResolution, ReportWorkerCreationResolved, ReportWorkerStopped, ScheduleAfter,
-    ScheduleAt, ShutdownChild, ShutdownRequested, TimerElapsed, TimerGeneration, TimerId,
-    UnwatchPeer, WorkerCreationResolved, WorkerStopped,
+    CreationResolved, KeyedWorkerPoolProtocol, ObserveChild, ObserveCreation, ObservePeer,
+    PeerStopped, PoolAssignmentProtocol, ReplacementResolution, ReportWorkerCreationResolved,
+    ReportWorkerStopped, ScheduleAfter, ScheduleAt, ShutdownChild, ShutdownRequested, TimerElapsed,
+    TimerGeneration, TimerId, UnwatchPeer, WorkerCreationResolved, WorkerPoolProtocol,
+    WorkerStopped,
 };
 pub use routing::{
     AcknowledgementError, AcknowledgementMessage, AcknowledgementOutcome, AcknowledgementRecord,
     AcknowledgementState, Acknowledgements, BreakerAttempt, BreakerConfigError, BreakerMessage,
     BreakerOutcome, BreakerPhase, BreakerRejection, BreakerSends, Broadcast, Buffer,
-    BufferConfigError, BufferMessage, BufferOutcome, BufferRejection, BufferSends, BufferState,
-    Buffered, CircuitBreaker, ClosedPhase, ConsistentHash, CorrelationResult, CorrelationState,
-    Correlator, CorrelatorError, CorrelatorMessage, Deduplicator, DeduplicatorConfigError,
-    DeduplicatorMessage, DeduplicatorOutcome, DeduplicatorSends, DeduplicatorState,
-    HashPolicyError, LeastLoaded, LeastLoadedError, Load, LoadEvidence, LoadObservation,
-    LoadVersion, MemberToken, MemberTokenEvidence, MemberTokenObservation, MemberTokenVersion,
-    OrderGate, OrderGateMessage, OrderGateOutcome, OrderGateSends, OrderGateState, OverflowPolicy,
-    PriorityQueue, PriorityQueueConfigError, PriorityQueueMessage, PriorityQueueOutcome,
-    PriorityQueueRejection, PriorityQueueSends, PriorityQueueState, ProbePhase, RateLimitRejection,
-    RateLimiter, RateLimiterConfigError, RateLimiterMessage, RateLimiterOutcome, RateLimiterSends,
-    RateLimiterState, RendezvousHash, RoundRobin, RouteKey, Router, RouterError, RouterMessage,
-    RoutingStrategy, Sequence, Sequencer, SequencerMessage, SequencerOutcome, SequencerSends,
-    SequencerState, TokenCount, WorkQueue, WorkQueueMessage, WorkQueueOutcome, WorkQueueRejection,
-    WorkQueueSends, WorkQueueState,
+    BufferConfigError, BufferConfiguration, BufferMessage, BufferOutcome, BufferRejection,
+    BufferSends, BufferState, Buffered, CircuitBreaker, ClosedPhase, ConsistentHash,
+    CorrelationResult, CorrelationState, Correlator, CorrelatorError, CorrelatorMessage,
+    Deduplicator, DeduplicatorConfigError, DeduplicatorMessage, DeduplicatorOutcome,
+    DeduplicatorSends, DeduplicatorState, HashPolicyError, LeastLoaded, LeastLoadedError, Load,
+    LoadEvidence, LoadObservation, LoadVersion, MemberToken, MemberTokenEvidence,
+    MemberTokenObservation, MemberTokenVersion, OrderGate, OrderGateMessage, OrderGateOutcome,
+    OrderGateSends, OrderGateState, OverflowPolicy, PriorityQueue, PriorityQueueConfigError,
+    PriorityQueueMessage, PriorityQueueOutcome, PriorityQueueRejection, PriorityQueueSends,
+    PriorityQueueState, ProbePhase, RateLimitRejection, RateLimiter, RateLimiterConfigError,
+    RateLimiterMessage, RateLimiterOutcome, RateLimiterSends, RateLimiterState, RendezvousHash,
+    RoundRobin, RouteKey, Router, RouterError, RouterMessage, RoutingStrategy, Sequence, Sequencer,
+    SequencerMessage, SequencerOutcome, SequencerSends, SequencerState, TokenCount, WorkQueue,
+    WorkQueueMessage, WorkQueueOutcome, WorkQueueRejection, WorkQueueSends, WorkQueueState,
 };
-pub use shutdown::{FinalizeOnShutdown, ShutdownProtocol, ShutdownReaction, StopOnShutdown};
+pub use shutdown::{FinalizeOnShutdown, ShutdownEvent, ShutdownReaction, StopOnShutdown};
 pub use stash::{Stash, StashRoute, StashStatus};
 pub use supervision::{
     Backoff, BackoffConfigError, BackoffError, BackoffSupervisor, BackoffSupervisorError,
@@ -116,8 +123,8 @@ pub use time::{
 };
 pub use watch::{Link, LinkReaction, Watch, WatchEvent, WatchSends, stop_on_abnormal_death};
 pub use workflow::{
-    Barrier, BarrierArrival, BarrierConfigError, BarrierError, BarrierGeneration, BarrierMessage,
-    BarrierReleased, BarrierState, Latch, LatchMessage, LatchReleased, LatchState, Workflow,
-    WorkflowConfigError, WorkflowDefinition, WorkflowMessage, WorkflowOutcome, WorkflowRejection,
-    WorkflowState, WorkflowStepState,
+    Barrier, BarrierArrival, BarrierConfigError, BarrierError, BarrierGeneration,
+    BarrierMembership, BarrierMessage, BarrierReleased, BarrierState, Latch, LatchMessage,
+    LatchReleased, LatchState, Workflow, WorkflowConfigError, WorkflowDefinition, WorkflowMessage,
+    WorkflowOutcome, WorkflowRejection, WorkflowState, WorkflowStepState,
 };

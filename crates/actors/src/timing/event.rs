@@ -41,10 +41,7 @@ impl<E: UserEvent> UserEvent for TimedEvent<E> {
 forward_event_lane!(TimedEvent, crate::PeerStopped<E::Addr>);
 forward_event_lane!(TimedEvent, crate::ChildStopped<E::Addr>);
 forward_event_lane!(TimedEvent, crate::WorkerStopped<E::Addr>);
-forward_event_lane!(
-    TimedEvent,
-    crate::CreationResolved<<E::Addr as crate::Address>::Nonce>
-);
+forward_event_lane!(TimedEvent, crate::CreationResolved<E::Addr>);
 forward_event_lane!(
     TimedEvent,
     crate::WorkerCreationResolved<<E::Addr as crate::Address>::Nonce>

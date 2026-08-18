@@ -1,5 +1,10 @@
 # Behavior Adapter Contract
 
+This contract uses the orthogonal roles defined in
+[Protocol, event, behavior, and effect algebras](protocol-algebra.md). An
+adapter drives a `Behavior`; ordinary delivery addresses its projected
+`Behavior::Protocol`.
+
 This document defines the complete runtime-neutral contract for driving a
 concrete Bombay behavior. It does not define a runtime, executor, mailbox,
 transport, or capability registry. Bombay's Driver and an independent adapter
@@ -53,7 +58,7 @@ not valid adapter mechanisms.
 ```rust,ignore
 Initialized {
     behavior: Active<B>,
-    actions: Actions<B::Addr, B::Ph, B::Sends, B::Birth>,
+    actions: Actions<BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>,
 }
 ```
 
@@ -84,7 +89,8 @@ For a heterogeneous creation sum, alternative dispatch occurs inside the same or
 creation loop. It does not create another nonce namespace: collision checks,
 `ObserveCreation`, and `ObserveChild` correlation all use the original
 creator-local nonce and provenance. A successful arm installs the contained
-concrete behavior protocol, never the sum as an actor protocol.
+concrete behavior and binds its declared `Behavior::Protocol`; the creation
+choice sum is neither an actor nor a public protocol.
 
 ## Named products
 

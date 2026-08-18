@@ -44,7 +44,7 @@ impl<Sends> SendInput<ScheduleAt, Own> for DeadlineSends<Sends> {
 }
 
 pub(crate) type DeadlineActions<B> = Actions<
-    <B as crate::Protocol>::Addr,
+    crate::BehaviorAddr<B>,
     <B as Behavior>::Ph,
     DeadlineSends<<B as Behavior>::Sends>,
     <B as Behavior>::Birth,
@@ -61,6 +61,10 @@ impl<B: Behavior> Deadline<B> {
     ///
     /// Initialization stages the schedule when `at` is present. Clock access
     /// and timer delivery remain interpreter capabilities.
+    /// Nested timers that deliberately reuse the same `(id, generation)` are
+    /// one lane: the outermost matching wrapper owns that fact. Use distinct
+    /// timer identities when both reactions must remain independently
+    /// addressable.
     #[must_use]
     pub fn new(
         inner: B,
@@ -93,26 +97,16 @@ where
     }
 }
 
-impl<B, A, Ph, Sends, Br> behavior::Protocol for Deadline<B>
-where
-    A: Address,
-    Sends: SendAlgebra,
-    Br: BirthMode,
-    B: Behavior<Addr = A, Ph = Ph, Sends = Sends, Birth = Br>,
-    B::Event: crate::RouteInput<TimerElapsed>,
-{
-    type Addr = A;
-    type Msg = B::Msg;
-}
-
 impl<B, A, Ph, Sends, Br> Behavior for Deadline<B>
 where
     A: Address,
     Sends: SendAlgebra,
     Br: BirthMode,
-    B: Behavior<Addr = A, Ph = Ph, Sends = Sends, Birth = Br>,
+    B: Behavior<Ph = Ph, Sends = Sends, Birth = Br>,
+    B::Protocol: crate::Protocol<Addr = A>,
     B::Event: crate::RouteInput<TimerElapsed>,
 {
+    type Protocol = B::Protocol;
     type Event = DeadlineEvent<B::Event>;
     type Sends = DeadlineSends<Sends>;
     type Ph = Ph;
@@ -171,7 +165,7 @@ where
 
 impl<B: Behavior> Deadline<B> {
     fn wrap(
-        actions: Actions<B::Addr, B::Ph, B::Sends, B::Birth>,
+        actions: Actions<crate::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>,
         own: ServiceSends<ScheduleAt>,
     ) -> DeadlineActions<B> {
         actions.map_sends(|behavior| DeadlineSends {

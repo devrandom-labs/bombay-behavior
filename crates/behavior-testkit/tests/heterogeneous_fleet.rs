@@ -76,6 +76,7 @@ impl behavior::Protocol for Worker {
 }
 
 impl Behavior for Worker {
+    type Protocol = Self;
     type Event = User<MailAddr, u8>;
     type Sends = Vec<Delivery<behavior_testkit::TestRecipient<u8>>>;
     type Ph = Never;
@@ -116,7 +117,8 @@ struct GenericParent<C>(PhantomData<C>);
 #[behavior::behavior(addr = MailAddr, message = u64, sends = Vec<Never>, births = behavior::Births<C>, error = Never)]
 impl<C> GenericParent<C>
 where
-    C: Behavior<Ph = Never, Addr = MailAddr>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: behavior::Protocol<Addr = MailAddr>,
 {
     fn receive(
         &mut self,
@@ -133,7 +135,8 @@ fn supervise_with<C>(
     strategy: Strategy,
 ) -> Supervisor<GenericParent<C>, C>
 where
-    C: Behavior<Ph = Never, Addr = MailAddr> + Send,
+    C: Behavior<Ph = Never> + Send,
+    C::Protocol: behavior::Protocol<Addr = MailAddr>,
 {
     Supervisor::new(
         GenericParent(PhantomData),

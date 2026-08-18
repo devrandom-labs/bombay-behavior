@@ -1,5 +1,13 @@
 # Worker Pool Semantics
 
+Pool wiring follows the orthogonal protocol model described in
+[Protocol, event, behavior, and effect algebras](protocol-algebra.md).
+`WorkerPoolProtocol` is stable public pool identity; `PoolEvent` includes
+internal supervision facts; `WorkerPool` owns state and the fold; `PoolSends`
+is its explicit effect product. A worker assignment carries the established
+pool recipient needed for completion, so workers never reconstruct a global
+address or require the pool's behavior type.
+
 Bombay's worker pool is a derived behavior construction. It is not an
 actor-model primitive and it does not extend the actor transition effects.
 The actor-model law used here is only that an actor handles one communication

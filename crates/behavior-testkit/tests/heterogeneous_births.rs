@@ -15,6 +15,7 @@ impl behavior::Protocol for DeviceGroups {
 }
 
 impl Behavior for DeviceGroups {
+    type Protocol = Self;
     type Event = User<MailAddr, u8>;
     type Sends = Vec<Never>;
     type Ph = Never;
@@ -32,6 +33,7 @@ impl behavior::Protocol for Queries {
 }
 
 impl Behavior for Queries {
+    type Protocol = Self;
     type Event = User<MailAddr, &'static str>;
     type Sends = Vec<Never>;
     type Ph = Never;
@@ -83,7 +85,11 @@ impl InstallBirth<MailAddr, DeviceGroups, (), InstallError> for ModelInstaller {
         creation: Create<MailAddr, DeviceGroups>,
     ) -> Result<(), InstallError> {
         self.admit(creation.nonce, InstalledKind::DeviceGroups, creation.kind)?;
-        self.device_groups.push(Recipient::child(creation.nonce));
+        self.device_groups
+            .push(Recipient::global(behavior::Address::birth(
+                MailAddr(17),
+                creation.nonce,
+            )));
         Ok(())
     }
 }
@@ -94,7 +100,11 @@ impl InstallBirth<MailAddr, Queries, (), InstallError> for ModelInstaller {
         creation: Create<MailAddr, Queries>,
     ) -> Result<(), InstallError> {
         self.admit(creation.nonce, InstalledKind::Queries, creation.kind)?;
-        self.queries.push(Recipient::child(creation.nonce));
+        self.queries
+            .push(Recipient::global(behavior::Address::birth(
+                MailAddr(17),
+                creation.nonce,
+            )));
         Ok(())
     }
 }
@@ -154,7 +164,10 @@ async fn nonce_collision_is_global_across_variants_and_preserves_the_first_bindi
         model.trace,
         [(5, InstalledKind::DeviceGroups, CreationKind::Birth)]
     );
-    assert_eq!(model.device_groups, [Recipient::child(5)]);
+    assert_eq!(
+        model.device_groups,
+        [Recipient::global(behavior::Address::birth(MailAddr(17), 5))]
+    );
     assert!(model.queries.is_empty());
 }
 

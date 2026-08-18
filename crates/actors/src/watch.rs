@@ -45,10 +45,7 @@ impl<E: UserEvent> UserEvent for WatchEvent<E> {
 forward_event_lane!(WatchEvent, crate::TimerElapsed);
 forward_event_lane!(WatchEvent, crate::ChildStopped<E::Addr>);
 forward_event_lane!(WatchEvent, crate::WorkerStopped<E::Addr>);
-forward_event_lane!(
-    WatchEvent,
-    crate::CreationResolved<<E::Addr as crate::Address>::Nonce>
-);
+forward_event_lane!(WatchEvent, crate::CreationResolved<E::Addr>);
 forward_event_lane!(
     WatchEvent,
     crate::WorkerCreationResolved<<E::Addr as crate::Address>::Nonce>
@@ -57,8 +54,8 @@ forward_event_lane!(WatchEvent, crate::ShutdownRequested);
 
 pub type LinkReaction<B> = fn(
     &mut B,
-    <B as crate::Protocol>::Addr,
-    &Result<Exit<<B as crate::Protocol>::Addr>, Crash>,
+    crate::BehaviorAddr<B>,
+    &Result<Exit<crate::BehaviorAddr<B>>, Crash>,
 ) -> Result<Become, <B as Behavior>::Error>;
 
 /// A mutual-lifecycle-policy specialization uses the same typed observation
@@ -96,9 +93,9 @@ impl<A: Address, Sends> SendInput<ObservePeer<A>, Own> for WatchSends<A, Sends> 
 }
 
 pub(crate) type WatchActions<B> = Actions<
-    <B as crate::Protocol>::Addr,
+    crate::BehaviorAddr<B>,
     <B as Behavior>::Ph,
-    WatchSends<<B as crate::Protocol>::Addr, <B as Behavior>::Sends>,
+    WatchSends<crate::BehaviorAddr<B>, <B as Behavior>::Sends>,
     <B as Behavior>::Birth,
 >;
 
@@ -112,7 +109,7 @@ pub(crate) type WatchActions<B> = Actions<
 /// lifecycle flag; exact-incarnation selection belongs to the interpreter.
 pub struct Watch<B: Behavior> {
     inner: B,
-    peer: B::Addr,
+    peer: crate::BehaviorAddr<B>,
     on_stopped: LinkReaction<B>,
 }
 
@@ -122,8 +119,10 @@ impl<B: Behavior> Watch<B> {
     /// Initialization emits the observation request after preserving the
     /// wrapped behavior's initialization effects. A matching terminal fact is
     /// folded exactly once through `on_stopped`.
+    /// When nested watchers name the same peer, the outermost watcher owns the
+    /// fact; distinct peers continue to route to their matching layer.
     #[must_use]
-    pub fn new(inner: B, peer: B::Addr, on_stopped: LinkReaction<B>) -> Self {
+    pub fn new(inner: B, peer: crate::BehaviorAddr<B>, on_stopped: LinkReaction<B>) -> Self {
         Self {
             inner,
             peer,
@@ -149,26 +148,16 @@ where
     }
 }
 
-impl<B, A, Ph, Sends, Br> behavior::Protocol for Watch<B>
-where
-    A: Address,
-    Sends: SendAlgebra,
-    Br: BirthMode,
-    B: Behavior<Addr = A, Ph = Ph, Sends = Sends, Birth = Br>,
-    B::Event: crate::RouteInput<PeerStopped<A>>,
-{
-    type Addr = A;
-    type Msg = B::Msg;
-}
-
 impl<B, A, Ph, Sends, Br> Behavior for Watch<B>
 where
     A: Address,
     Sends: SendAlgebra,
     Br: BirthMode,
-    B: Behavior<Addr = A, Ph = Ph, Sends = Sends, Birth = Br>,
+    B: Behavior<Ph = Ph, Sends = Sends, Birth = Br>,
+    B::Protocol: crate::Protocol<Addr = A>,
     B::Event: crate::RouteInput<PeerStopped<A>>,
 {
+    type Protocol = B::Protocol;
     type Event = WatchEvent<B::Event>;
     type Sends = WatchSends<A, Sends>;
     type Ph = Ph;
@@ -208,8 +197,8 @@ where
 
 impl<B: Behavior> Watch<B> {
     fn wrap(
-        actions: Actions<B::Addr, B::Ph, B::Sends, B::Birth>,
-        own: ServiceSends<ObservePeer<B::Addr>>,
+        actions: Actions<crate::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>,
+        own: ServiceSends<ObservePeer<crate::BehaviorAddr<B>>>,
     ) -> WatchActions<B> {
         actions.map_sends(|behavior| WatchSends {
             behavior,
@@ -224,8 +213,8 @@ impl<B: Behavior> Watch<B> {
 /// This supplied policy never creates a controlled error.
 pub fn stop_on_abnormal_death<B: Behavior>(
     _behavior: &mut B,
-    peer: B::Addr,
-    outcome: &Result<Exit<B::Addr>, Crash>,
+    peer: crate::BehaviorAddr<B>,
+    outcome: &Result<Exit<crate::BehaviorAddr<B>>, Crash>,
 ) -> Result<Become, B::Error> {
     Ok(if let Ok(Exit::Normal | Exit::Collected) = outcome {
         Step::Continue

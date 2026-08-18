@@ -9,7 +9,7 @@ use behavior::{
     Actions, AssignmentId, Behavior, CreationKind, CreationRejection, Delivery, InterruptionPolicy,
     JobId, MailAddr, Never, NoBirths, PoolAssignment, PoolConfigError, PoolError, PoolMessage,
     PoolResponse, Proxy, ProxyCommand, Recipient, RestartPolicy, Step, User,
-    WorkerCreationResolved, WorkerPhase, WorkerPool, WorkerStopped,
+    WorkerCreationResolved, WorkerPhase, WorkerPool, WorkerPoolProtocol, WorkerStopped,
 };
 use proptest::collection::vec;
 use proptest::prelude::*;
@@ -20,13 +20,16 @@ struct Worker;
 
 struct Reply;
 
+type PoolDefinition = WorkerPool<MailAddr, Reply, u8, u16, Worker>;
+
 impl behavior::Protocol for Reply {
     type Addr = MailAddr;
     type Msg = PoolResponse<u8, u16, MailAddr>;
 }
 
 impl Behavior for Reply {
-    type Event = User<MailAddr, Self::Msg>;
+    type Protocol = Self;
+    type Event = User<MailAddr, behavior::BehaviorMessage<Self>>;
     type Sends = Vec<Never>;
     type Ph = Never;
     type Error = Never;
@@ -47,11 +50,12 @@ impl Behavior for Reply {
 
 impl behavior::Protocol for Worker {
     type Addr = MailAddr;
-    type Msg = PoolAssignment<u8>;
+    type Msg = PoolAssignment<WorkerPoolProtocol<MailAddr, Reply, u8, u16>>;
 }
 
 impl Behavior for Worker {
-    type Event = User<MailAddr, PoolAssignment<u8>>;
+    type Protocol = Self;
+    type Event = User<MailAddr, behavior::BehaviorMessage<Self>>;
     type Sends = Vec<Never>;
     type Ph = Never;
     type Error = Never;
@@ -96,7 +100,8 @@ impl behavior::Protocol for PanicReply {
 }
 
 impl Behavior for PanicReply {
-    type Event = User<MailAddr, Self::Msg>;
+    type Protocol = Self;
+    type Event = User<MailAddr, behavior::BehaviorMessage<Self>>;
     type Sends = Vec<Never>;
     type Ph = Never;
     type Error = Never;
@@ -117,11 +122,12 @@ impl Behavior for PanicReply {
 
 impl behavior::Protocol for PanicWorker {
     type Addr = MailAddr;
-    type Msg = PoolAssignment<PanicPayload>;
+    type Msg = PoolAssignment<WorkerPoolProtocol<MailAddr, PanicReply, PanicPayload, ()>>;
 }
 
 impl Behavior for PanicWorker {
-    type Event = User<MailAddr, PoolAssignment<PanicPayload>>;
+    type Protocol = Self;
+    type Event = User<MailAddr, behavior::BehaviorMessage<Self>>;
     type Sends = Vec<Never>;
     type Ph = Never;
     type Error = Never;
@@ -140,25 +146,13 @@ impl Behavior for PanicWorker {
     }
 }
 
-fn panic_worker(_: usize) -> PanicWorker {
-    PanicWorker
-}
-
 fn nonce(index: usize) -> u64 {
     u64::try_from(index).unwrap()
 }
 
-fn worker(_index: usize) -> Worker {
-    Worker
-}
-
-fn pool(
-    workers: usize,
-    capacity: usize,
-    interruption: InterruptionPolicy,
-) -> WorkerPool<MailAddr, Reply, u8, u16, Worker> {
+fn pool(workers: usize, capacity: usize, interruption: InterruptionPolicy) -> PoolDefinition {
     WorkerPool::new(
-        behavior::ChildTopology::indexed(nonce, workers, |index| Some(worker(index))),
+        behavior::ChildTopology::indexed(nonce, workers, |_| Some(Worker)),
         behavior::PoolConfiguration::new(
             capacity,
             interruption,
@@ -166,12 +160,13 @@ fn pool(
             64,
             Duration::from_secs(60),
         ),
+        Recipient::global(MailAddr(9)),
     )
     .unwrap()
 }
 
 fn install(
-    pool: &mut behavior::Active<WorkerPool<MailAddr, Reply, u8, u16, Worker>>,
+    pool: &mut behavior::Active<PoolDefinition>,
     slot: u64,
 ) -> behavior::PoolActions<MailAddr, Reply, u8, u16, Worker> {
     pool.on(WorkerCreationResolved::new(
@@ -184,7 +179,7 @@ fn install(
 }
 
 fn submit(
-    pool: &mut behavior::Active<WorkerPool<MailAddr, Reply, u8, u16, Worker>>,
+    pool: &mut behavior::Active<PoolDefinition>,
     id: u64,
     payload: u8,
 ) -> behavior::PoolActions<MailAddr, Reply, u8, u16, Worker> {
@@ -250,6 +245,8 @@ fn accepted_job_is_recorded_before_one_exact_dispatch() {
     assert_eq!(assignment.assignment, AssignmentId(0));
     assert_eq!(assignment.job, JobId(7));
     assert_eq!(assignment.payload, 42);
+    assert_eq!(assignment.worker, 0);
+    assert_eq!(assignment.complete_to.address(), MailAddr(9));
     assert_eq!(
         assignments(&actions)[0].to.resolve(MailAddr(17)),
         behavior::Address::birth(MailAddr(17), 0)
@@ -432,8 +429,8 @@ fn duplicate_configured_routes_are_rejected_before_initialization() {
     fn duplicate(_index: usize) -> u64 {
         7
     }
-    let result = WorkerPool::<MailAddr, Reply, u8, u16, Worker>::new(
-        behavior::ChildTopology::indexed(duplicate, 2, |index| Some(worker(index))),
+    let result = PoolDefinition::new(
+        behavior::ChildTopology::indexed(duplicate, 2, |_| Some(Worker)),
         behavior::PoolConfiguration::new(
             1,
             InterruptionPolicy::Fail,
@@ -441,14 +438,15 @@ fn duplicate_configured_routes_are_rejected_before_initialization() {
             1,
             Duration::from_secs(1),
         ),
+        Recipient::global(MailAddr(9)),
     );
     assert!(matches!(result, Err(PoolConfigError::DuplicateWorker(7))));
 }
 
 #[test]
 fn zero_worker_pool_is_rejected_before_it_can_accept_owned_work() {
-    let result = WorkerPool::<MailAddr, Reply, u8, u16, Worker>::new(
-        behavior::ChildTopology::indexed(nonce, 0, |index| Some(worker(index))),
+    let result = PoolDefinition::new(
+        behavior::ChildTopology::indexed(nonce, 0, |_| Some(Worker)),
         behavior::PoolConfiguration::new(
             8,
             InterruptionPolicy::Fail,
@@ -456,14 +454,15 @@ fn zero_worker_pool_is_rejected_before_it_can_accept_owned_work() {
             1,
             Duration::from_secs(1),
         ),
+        Recipient::global(MailAddr(9)),
     );
     assert!(matches!(result, Err(PoolConfigError::NoWorkers)));
 }
 
 #[test]
 fn panicking_payload_clone_occurs_before_admission_state_is_committed() {
-    let pool = WorkerPool::<MailAddr, PanicReply, PanicPayload, (), PanicWorker>::new(
-        behavior::ChildTopology::indexed(nonce, 1, |index| Some(panic_worker(index))),
+    let pool = WorkerPool::new(
+        behavior::ChildTopology::indexed(nonce, 1, |_| Some(PanicWorker)),
         behavior::PoolConfiguration::new(
             1,
             InterruptionPolicy::Retry,
@@ -471,6 +470,7 @@ fn panicking_payload_clone_occurs_before_admission_state_is_committed() {
             1,
             Duration::from_secs(1),
         ),
+        Recipient::global(MailAddr(9)),
     )
     .unwrap();
     let initialized = pool.initialize().unwrap();
@@ -522,8 +522,8 @@ fn panicking_payload_clone_occurs_before_admission_state_is_committed() {
 
 #[test]
 fn panicking_retry_clone_preserves_the_exact_assigned_state() {
-    let pool = WorkerPool::<MailAddr, PanicReply, PanicPayload, (), PanicWorker>::new(
-        behavior::ChildTopology::indexed(nonce, 1, |index| Some(panic_worker(index))),
+    let pool = WorkerPool::new(
+        behavior::ChildTopology::indexed(nonce, 1, |_| Some(PanicWorker)),
         behavior::PoolConfiguration::new(
             1,
             InterruptionPolicy::Retry,
@@ -531,6 +531,7 @@ fn panicking_retry_clone_preserves_the_exact_assigned_state() {
             1,
             Duration::from_secs(1),
         ),
+        Recipient::global(MailAddr(9)),
     )
     .unwrap();
     let initialized = pool.initialize().unwrap();
@@ -578,7 +579,7 @@ fn panicking_retry_clone_preserves_the_exact_assigned_state() {
 #[test]
 fn denied_replacement_retires_slot_instead_of_stranding_installation() {
     let pool = WorkerPool::new(
-        behavior::ChildTopology::indexed(nonce, 1, |index| Some(worker(index))),
+        behavior::ChildTopology::indexed(nonce, 1, |_| Some(Worker)),
         behavior::PoolConfiguration::new(
             1,
             InterruptionPolicy::Fail,
@@ -586,6 +587,7 @@ fn denied_replacement_retires_slot_instead_of_stranding_installation() {
             0,
             Duration::from_secs(1),
         ),
+        Recipient::global(MailAddr(9)),
     )
     .unwrap();
     let initialized = pool.initialize().unwrap();

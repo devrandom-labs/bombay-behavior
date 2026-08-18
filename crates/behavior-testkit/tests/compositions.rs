@@ -21,6 +21,7 @@ impl behavior::Protocol for Sink {
 }
 
 impl Behavior for Sink {
+    type Protocol = Self;
     type Event = User<MailAddr, u8>;
     type Sends = Vec<Never>;
     type Ph = Never;
@@ -314,6 +315,33 @@ async fn watch_of_watch_routes_each_peer_to_its_own_layer() {
     });
     let inner = behavior.transition(inner_death).unwrap();
     assert!(matches!(inner.become_, Step::Stop(behavior::Stopped)));
+}
+
+fn continue_after_death<B: Behavior>(
+    _: &mut B,
+    _: MailAddr,
+    _: &Result<Exit<MailAddr>, Crash>,
+) -> Result<Step<Never>, B::Error> {
+    Ok(Step::Continue)
+}
+
+#[tokio::test]
+async fn duplicate_nested_watch_peer_has_one_outermost_owner() {
+    let behavior = behavior::Watch::new(
+        behavior::Watch::new(Recorder::default(), PEER, stop_on_abnormal_death),
+        PEER,
+        continue_after_death,
+    );
+    let mut behavior = behavior.initialize().unwrap().behavior;
+
+    let actions = behavior
+        .transition(WatchEvent::PeerStopped(PeerStopped {
+            peer: PEER,
+            outcome: Err(Crash::Failed),
+        }))
+        .unwrap();
+
+    assert_eq!(actions.become_, Step::Continue);
 }
 
 /// An `Deadline` constructed with `None` schedules nothing and is inert to every

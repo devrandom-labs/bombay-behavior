@@ -15,9 +15,7 @@ use crate::protocol::{
 };
 use crate::{Become, Exit, SupervisionFailureReason};
 use crate::{Own, RouteInput, SendInput};
-use behavior::{
-    Actions, Address, Behavior, Births, Create, Delivery, Recipient, SendAlgebra, ServiceSends,
-};
+use behavior::{Actions, Address, Behavior, Births, Create, Delivery, SendAlgebra, ServiceSends};
 use behavior::{Never, Step};
 
 /// A fixed supervised topology and the pure factory for its ordered slots.
@@ -101,7 +99,8 @@ pub struct SupervisorSends<A, Sends, C>
 where
     A: Address,
     A::Nonce: From<u64>,
-    C: Behavior<Addr = A, Ph = Never>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = A>,
 {
     /// Sends emitted by the supervised domain behavior.
     pub behavior: Sends,
@@ -120,7 +119,8 @@ where
     A: Address,
     A::Nonce: From<u64>,
     Sends: SendAlgebra,
-    C: Behavior<Addr = A, Ph = Never>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = A>,
 {
     fn empty() -> Self {
         Self {
@@ -146,7 +146,8 @@ impl<A, Sends, C> SendInput<ObserveCreation<A::Nonce>, Own> for SupervisorSends<
 where
     A: Address,
     A::Nonce: From<u64>,
-    C: Behavior<Addr = A, Ph = Never>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = A>,
 {
     fn emit(&mut self, input: ObserveCreation<A::Nonce>) {
         self.creation_observations.send(input);
@@ -157,7 +158,8 @@ impl<A, Sends, C> SendInput<ObserveChild<A::Nonce>, Own> for SupervisorSends<A, 
 where
     A: Address,
     A::Nonce: From<u64>,
-    C: Behavior<Addr = A, Ph = Never>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = A>,
 {
     fn emit(&mut self, input: ObserveChild<A::Nonce>) {
         self.child_observations.send(input);
@@ -168,7 +170,8 @@ impl<A, Sends, C> SendInput<Delivery<Proxy<C>>, Own> for SupervisorSends<A, Send
 where
     A: Address,
     A::Nonce: From<u64>,
-    C: Behavior<Addr = A, Ph = Never>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = A>,
 {
     fn emit(&mut self, input: Delivery<Proxy<C>>) {
         self.replacement_commands.push(input);
@@ -179,7 +182,8 @@ impl<A, Sends, C> SendInput<ReportSupervisionFailure<A>, Own> for SupervisorSend
 where
     A: Address,
     A::Nonce: From<u64>,
-    C: Behavior<Addr = A, Ph = Never>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = A>,
 {
     fn emit(&mut self, input: ReportSupervisionFailure<A>) {
         self.failure_reports.send(input);
@@ -187,9 +191,9 @@ where
 }
 
 pub(crate) type SupervisorActions<B, C> = Actions<
-    <B as crate::Protocol>::Addr,
+    crate::BehaviorAddr<B>,
     <B as Behavior>::Ph,
-    SupervisorSends<<B as crate::Protocol>::Addr, <B as Behavior>::Sends, C>,
+    SupervisorSends<crate::BehaviorAddr<B>, <B as Behavior>::Sends, C>,
     Births<Proxy<C>>,
 >;
 
@@ -211,7 +215,8 @@ enum ReplacementDecision<A, C>
 where
     A: Address,
     A::Nonce: From<u64>,
-    C: Behavior<Addr = A, Ph = Never>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = A>,
 {
     Retire,
     Replace(Vec<Delivery<Proxy<C>>>),
@@ -219,18 +224,21 @@ where
 }
 
 type ReplacementResult<B, C> = Result<
-    ReplacementDecision<<B as crate::Protocol>::Addr, C>,
-    SupervisorError<<B as Behavior>::Error, <<B as crate::Protocol>::Addr as Address>::Nonce>,
+    ReplacementDecision<crate::BehaviorAddr<B>, C>,
+    SupervisorError<<B as Behavior>::Error, <crate::BehaviorAddr<B> as Address>::Nonce>,
 >;
 
 type WrappedSupervisorResult<B, C> = Result<
     SupervisorActions<B, C>,
-    SupervisorError<<B as Behavior>::Error, <<B as crate::Protocol>::Addr as Address>::Nonce>,
+    SupervisorError<<B as Behavior>::Error, <crate::BehaviorAddr<B> as Address>::Nonce>,
 >;
 
-pub struct Supervisor<B: Behavior, C: Behavior<Ph = Never, Addr = B::Addr>> {
+pub struct Supervisor<B: Behavior, C: Behavior<Ph = Never>>
+where
+    C::Protocol: crate::Protocol<Addr = crate::BehaviorAddr<B>>,
+{
     inner: B,
-    fleet: Fleet<<B::Addr as Address>::Nonce>,
+    fleet: Fleet<<crate::BehaviorAddr<B> as Address>::Nonce>,
     build: fn(usize) -> Option<C>,
     strategy: Strategy,
     policy: RestartPolicy,
@@ -241,8 +249,9 @@ pub struct Supervisor<B: Behavior, C: Behavior<Ph = Never, Addr = B::Addr>> {
 impl<B, C> crate::BehaviorBase for Supervisor<B, C>
 where
     B: Behavior<Birth = Births<C>> + crate::BehaviorBase,
-    <B::Addr as Address>::Nonce: From<u64>,
-    C: Behavior<Ph = Never, Addr = B::Addr>,
+    <crate::BehaviorAddr<B> as Address>::Nonce: From<u64>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = crate::BehaviorAddr<B>>,
 {
     type Base = B::Base;
 
@@ -254,8 +263,9 @@ where
 impl<B, C> crate::StashStatus for Supervisor<B, C>
 where
     B: Behavior<Birth = Births<C>> + crate::StashStatus,
-    <B::Addr as Address>::Nonce: From<u64>,
-    C: Behavior<Ph = Never, Addr = B::Addr>,
+    <crate::BehaviorAddr<B> as Address>::Nonce: From<u64>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = crate::BehaviorAddr<B>>,
 {
     fn stashed_messages(&self) -> usize {
         self.inner.stashed_messages()
@@ -265,8 +275,9 @@ where
 impl<B, C> Supervisor<B, C>
 where
     B: Behavior<Birth = Births<C>>,
-    <B::Addr as Address>::Nonce: From<u64>,
-    C: Behavior<Ph = Never, Addr = B::Addr>,
+    <crate::BehaviorAddr<B> as Address>::Nonce: From<u64>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = crate::BehaviorAddr<B>>,
 {
     /// Construct the concrete supervisor behavior directly.
     ///
@@ -278,9 +289,9 @@ where
     /// Returns the first typed topology rejection.
     pub fn new(
         inner: B,
-        topology: ChildTopology<<B::Addr as Address>::Nonce, C>,
+        topology: ChildTopology<<crate::BehaviorAddr<B> as Address>::Nonce, C>,
         restart: RestartConfiguration,
-    ) -> Result<Self, FleetError<<B::Addr as Address>::Nonce>> {
+    ) -> Result<Self, FleetError<<crate::BehaviorAddr<B> as Address>::Nonce>> {
         let fleet = Fleet::configured(topology.nonces)?;
         Ok(Self {
             inner,
@@ -306,8 +317,11 @@ where
     /// Returns the unknown nonce when it is not part of this topology.
     pub fn is_alive(
         &self,
-        nonce: <B::Addr as Address>::Nonce,
-    ) -> Result<bool, SupervisorError<core::convert::Infallible, <B::Addr as Address>::Nonce>> {
+        nonce: <crate::BehaviorAddr<B> as Address>::Nonce,
+    ) -> Result<
+        bool,
+        SupervisorError<core::convert::Infallible, <crate::BehaviorAddr<B> as Address>::Nonce>,
+    > {
         Ok(self.fleet.is_available(nonce)?)
     }
 
@@ -321,7 +335,10 @@ where
         self.budget.admitted()
     }
 
-    fn replacement_decision(&mut self, event: &WorkerStopped<B::Addr>) -> ReplacementResult<B, C> {
+    fn replacement_decision(
+        &mut self,
+        event: &WorkerStopped<crate::BehaviorAddr<B>>,
+    ) -> ReplacementResult<B, C> {
         let policy = self.policy;
         let strategy = self.strategy;
         let eligible = match policy {
@@ -361,7 +378,10 @@ where
             replacements
                 .into_iter()
                 .map(|(nonce, child)| {
-                    Delivery::new(Recipient::child(nonce), ProxyCommand::Replace(child))
+                    Delivery::local_child(
+                        behavior::ChildRecipient::new(nonce),
+                        ProxyCommand::Replace(child),
+                    )
                 })
                 .collect(),
         ))
@@ -369,7 +389,7 @@ where
 
     fn react_to_failure(
         &mut self,
-        failure: &SupervisionFailure<B::Addr>,
+        failure: &SupervisionFailure<crate::BehaviorAddr<B>>,
     ) -> Result<Become<B::Ph>, B::Error> {
         Ok(match (self.on_failure)(&mut self.inner, failure)? {
             Step::Continue => Step::Continue,
@@ -380,7 +400,7 @@ where
 
     fn wrap(
         &mut self,
-        actions: Actions<B::Addr, B::Ph, B::Sends, Births<C>>,
+        actions: Actions<crate::BehaviorAddr<B>, B::Ph, B::Sends, Births<C>>,
     ) -> WrappedSupervisorResult<B, C> {
         let fleet = &mut self.fleet;
         for create in &actions.creates {
@@ -416,32 +436,21 @@ where
     }
 }
 
-impl<B, C, A, Ph, Sends> behavior::Protocol for Supervisor<B, C>
-where
-    A: Address,
-    Sends: SendAlgebra,
-    B: Behavior<Addr = A, Ph = Ph, Sends = Sends, Birth = Births<C>>,
-    B::Event: crate::RouteInput<ChildStopped<A>>
-        + crate::RouteInput<CreationResolved<A::Nonce>>
-        + crate::RouteInput<WorkerCreationResolved<A::Nonce>>,
-    A::Nonce: From<u64>,
-    C: Behavior<Ph = Never, Addr = B::Addr>,
-{
-    type Addr = A;
-    type Msg = B::Msg;
-}
-
 impl<B, C, A, Ph, Sends> Behavior for Supervisor<B, C>
 where
     A: Address,
     Sends: SendAlgebra,
-    B: Behavior<Addr = A, Ph = Ph, Sends = Sends, Birth = Births<C>>,
+    B: Behavior<Ph = Ph, Sends = Sends, Birth = Births<C>>,
+    B::Protocol: crate::Protocol<Addr = A>,
     B::Event: crate::RouteInput<ChildStopped<A>>
-        + crate::RouteInput<CreationResolved<A::Nonce>>
+        + crate::RouteInput<WorkerStopped<A>>
+        + crate::RouteInput<CreationResolved<A>>
         + crate::RouteInput<WorkerCreationResolved<A::Nonce>>,
     A::Nonce: From<u64>,
-    C: Behavior<Ph = Never, Addr = B::Addr>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = crate::BehaviorAddr<B>>,
 {
+    type Protocol = B::Protocol;
     type Event = SupervisionEvent<B::Event>;
     type Sends = SupervisorSends<A, Sends, C>;
     type Ph = Ph;
@@ -488,6 +497,16 @@ where
     ) -> Result<SupervisorActions<B, C>, Self::Error> {
         match event {
             SupervisionEvent::WorkerStopped(event) => {
+                if !self.fleet.contains(event.proxy) {
+                    return match B::Event::route(event) {
+                        Ok(event) => {
+                            let actions = behavior::delegate_transition(&mut self.inner, event)
+                                .map_err(SupervisorError::Behavior)?;
+                            self.wrap(actions)
+                        }
+                        Err(_) => Ok(Actions::cont()),
+                    };
+                }
                 let decision = self.replacement_decision(&event)?;
                 match decision {
                     ReplacementDecision::Retire => Ok(Actions::cont()),
@@ -519,6 +538,16 @@ where
                 }
             }
             SupervisionEvent::ChildStopped(event) => {
+                if !self.fleet.contains(event.nonce) {
+                    return match B::Event::route(event) {
+                        Ok(event) => {
+                            let actions = behavior::delegate_transition(&mut self.inner, event)
+                                .map_err(SupervisorError::Behavior)?;
+                            self.wrap(actions)
+                        }
+                        Err(_) => Ok(Actions::cont()),
+                    };
+                }
                 self.fleet.retire(event.nonce)?;
                 let failure = SupervisionFailure::new(
                     event.nonce,
@@ -539,7 +568,8 @@ where
                 ))
             }
             SupervisionEvent::CreationResolved(event) => {
-                self.fleet.resolve_creation(event.nonce, event.result);
+                self.fleet
+                    .resolve_creation(event.nonce, event.result.map(|_| ()));
                 if let Ok(event) = B::Event::route(event) {
                     let actions = behavior::delegate_transition(&mut self.inner, event)
                         .map_err(SupervisorError::Behavior)?;
@@ -566,5 +596,105 @@ where
                 self.wrap(actions)
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod ownership_tests {
+    use std::time::{Duration, Instant};
+
+    use super::*;
+    use crate::{Activate as _, Crash, Exit, MailAddr, User};
+
+    struct Child;
+
+    impl crate::Protocol for Child {
+        type Addr = MailAddr;
+        type Msg = ();
+    }
+
+    impl Behavior for Child {
+        type Protocol = Self;
+        type Event = User<MailAddr, ()>;
+        type Sends = Vec<Never>;
+        type Ph = Never;
+        type Error = Never;
+        type Birth = behavior::NoBirths;
+
+        fn transition(&mut self, _: crate::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
+            Ok(Actions::cont())
+        }
+    }
+
+    #[derive(Default)]
+    struct Parent {
+        forwarded: usize,
+    }
+
+    impl crate::Protocol for Parent {
+        type Addr = MailAddr;
+        type Msg = ();
+    }
+
+    impl crate::BehaviorBase for Parent {
+        type Base = Self;
+
+        fn base(&self) -> &Self {
+            self
+        }
+    }
+
+    impl Behavior for Parent {
+        type Protocol = Self;
+        type Event = SupervisionEvent<User<MailAddr, ()>>;
+        type Sends = Vec<Never>;
+        type Ph = Never;
+        type Error = Never;
+        type Birth = Births<Child>;
+
+        fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+            if matches!(
+                event,
+                SupervisionEvent::ChildStopped(_) | SupervisionEvent::WorkerStopped(_)
+            ) {
+                self.forwarded += 1;
+            }
+            Ok(Actions::cont())
+        }
+    }
+
+    fn child(_: usize) -> Option<Child> {
+        Some(Child)
+    }
+
+    #[test]
+    fn unrelated_stop_facts_route_to_the_nested_owner() {
+        let definition = Supervisor::new(
+            Parent::default(),
+            behavior::ChildTopology::indexed(|_| 1, 1, child),
+            RestartConfiguration::new(
+                Strategy::OneForOne,
+                RestartPolicy::Permanent,
+                1,
+                Duration::from_secs(1),
+            ),
+        )
+        .unwrap();
+        let mut active = definition.initialize().unwrap().behavior;
+
+        active
+            .on(ChildStopped::new(9, Ok(Exit::Normal), Instant::now()))
+            .unwrap();
+        active
+            .on(WorkerStopped::new(
+                9,
+                10,
+                Err(Crash::Failed),
+                Instant::now(),
+            ))
+            .unwrap();
+
+        assert_eq!(active.base().forwarded, 2);
+        assert_eq!(active.child_count(), 1);
     }
 }

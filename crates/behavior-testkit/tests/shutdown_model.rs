@@ -1,5 +1,5 @@
 use behavior::{
-    Acted, Actions, Delivery, MailAddr, Never, NoBirths, Recipient, ShutdownProtocol,
+    Acted, Actions, Delivery, MailAddr, Never, NoBirths, Recipient, ShutdownEvent,
     ShutdownRequested, User,
 };
 use behavior_testkit::{Mailbox, drive};
@@ -39,9 +39,9 @@ proptest! {
         let _runtime = Builder::new_current_thread().enable_all().build().unwrap();
         let events = inputs.iter().enumerate().map(|(index, (shutdown, message))| {
             if *shutdown {
-                ShutdownProtocol::ShutdownRequested(ShutdownRequested)
+                ShutdownEvent::ShutdownRequested(ShutdownRequested)
             } else {
-                ShutdownProtocol::Behavior(User {
+                ShutdownEvent::Behavior(User {
                     from: MailAddr(u64::try_from(index).unwrap()),
                     message: *message,
                 })

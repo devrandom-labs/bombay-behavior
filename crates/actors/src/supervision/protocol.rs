@@ -11,25 +11,19 @@ use crate::{Address, Behavior, User, UserEvent};
 pub enum ProxyEvent<E: UserEvent> {
     Command(E),
     ChildStopped(ChildStopped<E::Addr>),
-    CreationResolved(CreationResolved<<E::Addr as Address>::Nonce>),
+    CreationResolved(CreationResolved<E::Addr>),
     ShutdownRequested(ShutdownRequested),
     ChildShutdownRejected(ChildShutdownRejected<<E::Addr as Address>::Nonce>),
 }
 
-impl<E: UserEvent> crate::RouteInput<CreationResolved<<E::Addr as Address>::Nonce>>
-    for ProxyEvent<E>
-{
-    fn route(
-        event: CreationResolved<<E::Addr as Address>::Nonce>,
-    ) -> Result<Self, CreationResolved<<E::Addr as Address>::Nonce>> {
+impl<E: UserEvent> crate::RouteInput<CreationResolved<E::Addr>> for ProxyEvent<E> {
+    fn route(event: CreationResolved<E::Addr>) -> Result<Self, CreationResolved<E::Addr>> {
         Ok(Self::CreationResolved(event))
     }
 }
 
-impl<E: UserEvent> crate::EventInput<CreationResolved<<E::Addr as Address>::Nonce>>
-    for ProxyEvent<E>
-{
-    fn inject(event: CreationResolved<<E::Addr as Address>::Nonce>) -> Self {
+impl<E: UserEvent> crate::EventInput<CreationResolved<E::Addr>> for ProxyEvent<E> {
+    fn inject(event: CreationResolved<E::Addr>) -> Self {
         Self::CreationResolved(event)
     }
 }
@@ -108,24 +102,18 @@ pub enum SupervisionEvent<E: UserEvent> {
     Behavior(E),
     ChildStopped(ChildStopped<E::Addr>),
     WorkerStopped(WorkerStopped<E::Addr>),
-    CreationResolved(CreationResolved<<E::Addr as Address>::Nonce>),
+    CreationResolved(CreationResolved<E::Addr>),
     WorkerCreationResolved(WorkerCreationResolved<<E::Addr as Address>::Nonce>),
 }
 
-impl<E: UserEvent> crate::RouteInput<CreationResolved<<E::Addr as Address>::Nonce>>
-    for SupervisionEvent<E>
-{
-    fn route(
-        event: CreationResolved<<E::Addr as Address>::Nonce>,
-    ) -> Result<Self, CreationResolved<<E::Addr as Address>::Nonce>> {
+impl<E: UserEvent> crate::RouteInput<CreationResolved<E::Addr>> for SupervisionEvent<E> {
+    fn route(event: CreationResolved<E::Addr>) -> Result<Self, CreationResolved<E::Addr>> {
         Ok(Self::CreationResolved(event))
     }
 }
 
-impl<E: UserEvent> crate::EventInput<CreationResolved<<E::Addr as Address>::Nonce>>
-    for SupervisionEvent<E>
-{
-    fn inject(event: CreationResolved<<E::Addr as Address>::Nonce>) -> Self {
+impl<E: UserEvent> crate::EventInput<CreationResolved<E::Addr>> for SupervisionEvent<E> {
+    fn inject(event: CreationResolved<E::Addr>) -> Self {
         Self::CreationResolved(event)
     }
 }
@@ -196,8 +184,7 @@ forward_event_lane!(SupervisionEvent, crate::PeerStopped<E::Addr>);
 forward_event_lane!(SupervisionEvent, crate::ShutdownRequested);
 
 /// Commands accepted by a stable proxy.
-#[derive(Debug)]
 pub enum ProxyCommand<C: Behavior> {
-    Forward(C::Msg),
+    Forward(crate::BehaviorMessage<C>),
     Replace(C),
 }

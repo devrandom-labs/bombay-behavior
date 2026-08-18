@@ -122,6 +122,7 @@ where
     A: Address,
     P: Copy + PartialEq,
 {
+    type Protocol = Self;
     type Event = User<A, M>;
     type Sends = Vec<Never>;
     type Ph = Never;

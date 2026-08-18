@@ -1,13 +1,13 @@
 //! Keyed typed publication and subscription membership.
 
 use behavior::{
-    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, Never, NoBirths, Recipient,
-    User,
+    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, Never, NoBirths, Protocol,
+    Recipient, User,
 };
 use thiserror::Error;
 
 /// One topic and its subscribers in delivery order.
-pub struct TopicMembership<K, D: Behavior> {
+pub struct TopicMembership<K, D: Protocol> {
     /// Application-defined topic identity.
     pub topic: K,
     /// Unique subscribers in subscription order.
@@ -15,7 +15,7 @@ pub struct TopicMembership<K, D: Behavior> {
 }
 
 /// Operations accepted by [`PubSub`].
-pub enum PubSubMessage<K, P, D: Behavior> {
+pub enum PubSubMessage<K, P, D: Protocol> {
     /// Idempotently subscribe one typed recipient.
     Subscribe {
         /// Topic identity.
@@ -77,7 +77,7 @@ pub enum PubSubError<K, P> {
 /// are Bombay policy; physical delivery remains a Communication capability.
 /// Cloning a publication can panic only if the application-provided `Clone`
 /// implementation panics, before any template state is changed.
-pub struct PubSub<A: Address, K, P, D: Behavior<Addr = A, Msg = P>> {
+pub struct PubSub<A: Address, K, P, D: Protocol<Addr = A, Msg = P>> {
     topics: Vec<TopicMembership<K, D>>,
     marker: core::marker::PhantomData<fn() -> (A, P)>,
 }
@@ -86,7 +86,7 @@ impl<A, K, P, D> PubSub<A, K, P, D>
 where
     A: Address,
     K: Eq,
-    D: Behavior<Addr = A, Msg = P>,
+    D: Protocol<Addr = A, Msg = P>,
 {
     /// Construct an empty keyed fabric.
     #[must_use]
@@ -136,7 +136,7 @@ impl<A, K, P, D> Default for PubSub<A, K, P, D>
 where
     A: Address,
     K: Eq,
-    D: Behavior<Addr = A, Msg = P>,
+    D: Protocol<Addr = A, Msg = P>,
 {
     fn default() -> Self {
         Self::new()
@@ -148,7 +148,7 @@ where
     A: Address,
     K: Clone + Eq,
     P: Clone,
-    D: Behavior<Addr = A, Msg = P>,
+    D: Protocol<Addr = A, Msg = P>,
 {
     type Base = Self;
     fn base(&self) -> &Self {
@@ -161,7 +161,7 @@ where
     A: Address,
     K: Clone + Eq,
     P: Clone,
-    D: Behavior<Addr = A, Msg = P>,
+    D: Protocol<Addr = A, Msg = P>,
 {
     type Addr = A;
     type Msg = PubSubMessage<K, P, D>;
@@ -172,9 +172,10 @@ where
     A: Address,
     K: Clone + Eq,
     P: Clone,
-    D: Behavior<Addr = A, Msg = P>,
+    D: Protocol<Addr = A, Msg = P>,
 {
-    type Event = User<A, Self::Msg>;
+    type Protocol = Self;
+    type Event = User<A, crate::BehaviorMessage<Self>>;
     type Sends = Vec<Delivery<D>>;
     type Ph = Never;
     type Error = PubSubError<K, P>;
@@ -220,6 +221,7 @@ mod tests {
     }
 
     impl Behavior for Destination {
+        type Protocol = Self;
         type Event = User<MailAddr, u8>;
         type Sends = Vec<Never>;
         type Ph = Never;

@@ -39,7 +39,9 @@ pub enum DynamicSupervisorRejection {
 pub enum DynamicSupervisorMessage<A, C, Reply>
 where
     A: Address,
-    C: Protocol<Addr = A>,
+    A::Nonce: From<u64>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = A>,
     Reply: Protocol<Addr = A>,
 {
     Start {
@@ -63,49 +65,56 @@ where
 }
 
 /// Complete command or realization outcome returned to a typed recipient.
-pub enum DynamicSupervisorOutcome<N, C> {
+pub enum DynamicSupervisorOutcome<A, C>
+where
+    A: Address,
+    A::Nonce: From<u64>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = A>,
+{
     StartAccepted {
-        nonce: N,
+        nonce: A::Nonce,
     },
     StartRejected {
-        nonce: N,
+        nonce: A::Nonce,
         child: C,
         reason: DynamicSupervisorRejection,
     },
     Started {
-        nonce: N,
+        nonce: A::Nonce,
+        child: Recipient<DynamicProxy<C>>,
     },
     StartFailed {
-        nonce: N,
+        nonce: A::Nonce,
         reason: CreationRejection,
     },
     StopAccepted {
-        nonce: N,
+        nonce: A::Nonce,
     },
     StopRejected {
-        nonce: N,
+        nonce: A::Nonce,
         reason: DynamicSupervisorRejection,
     },
     Stopped {
-        nonce: N,
+        nonce: A::Nonce,
     },
     ReplaceAccepted {
-        nonce: N,
+        nonce: A::Nonce,
     },
     ReplaceRejected {
-        nonce: N,
+        nonce: A::Nonce,
         child: C,
         reason: DynamicSupervisorRejection,
     },
     Replaced {
-        nonce: N,
+        nonce: A::Nonce,
     },
     ReplacementFailed {
-        nonce: N,
+        nonce: A::Nonce,
         reason: CreationRejection,
     },
     State {
-        nonce: N,
+        nonce: A::Nonce,
         phase: Option<DynamicChildPhase>,
     },
 }
@@ -134,12 +143,14 @@ impl<R: Protocol> DynamicChild<R> {
 pub enum DynamicSupervisorEvent<A, C, Reply>
 where
     A: Address,
-    C: Behavior<Addr = A>,
+    A::Nonce: From<u64>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = A>,
     Reply: behavior::Protocol<Addr = A>,
 {
     Command(User<A, DynamicSupervisorMessage<A, C, Reply>>),
     ChildStopped(ChildStopped<A>),
-    CreationResolved(CreationResolved<A::Nonce>),
+    CreationResolved(CreationResolved<A>),
     WorkerCreationResolved(WorkerCreationResolved<A::Nonce>),
     WorkerStopped(WorkerStopped<A>),
     ChildShutdownRejected(ChildShutdownRejected<A::Nonce>),
@@ -148,7 +159,9 @@ where
 impl<A, C, Reply> UserEvent for DynamicSupervisorEvent<A, C, Reply>
 where
     A: Address,
-    C: Behavior<Addr = A>,
+    A::Nonce: From<u64>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = A>,
     Reply: behavior::Protocol<Addr = A>,
 {
     type Addr = A;
@@ -169,7 +182,9 @@ macro_rules! event_lane {
         impl<A, C, Reply> crate::RouteInput<$ty> for DynamicSupervisorEvent<A, C, Reply>
         where
             A: Address,
-            C: Behavior<Addr = A>,
+            A::Nonce: From<u64>,
+            C: Behavior<Ph = Never>,
+            C::Protocol: crate::Protocol<Addr = A>,
             Reply: behavior::Protocol<Addr = A>,
         {
             fn route(value: $ty) -> Result<Self, $ty> {
@@ -179,7 +194,9 @@ macro_rules! event_lane {
         impl<A, C, Reply> crate::EventInput<$ty> for DynamicSupervisorEvent<A, C, Reply>
         where
             A: Address,
-            C: Behavior<Addr = A>,
+            A::Nonce: From<u64>,
+            C: Behavior<Ph = Never>,
+            C::Protocol: crate::Protocol<Addr = A>,
             Reply: behavior::Protocol<Addr = A>,
         {
             fn inject(value: $ty) -> Self {
@@ -189,7 +206,7 @@ macro_rules! event_lane {
     };
 }
 event_lane!(ChildStopped<A>, ChildStopped);
-event_lane!(CreationResolved<A::Nonce>, CreationResolved);
+event_lane!(CreationResolved<A>, CreationResolved);
 event_lane!(WorkerCreationResolved<A::Nonce>, WorkerCreationResolved);
 event_lane!(WorkerStopped<A>, WorkerStopped);
 event_lane!(ChildShutdownRejected<A::Nonce>, ChildShutdownRejected);
@@ -205,7 +222,8 @@ pub struct DynamicSupervisorSends<A, C, Reply>
 where
     A: Address,
     A::Nonce: From<u64>,
-    C: Behavior<Addr = A, Ph = Never>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = A>,
     Reply: behavior::Protocol<Addr = A>,
 {
     pub outcomes: Vec<Delivery<Reply>>,
@@ -219,7 +237,8 @@ impl<A, C, Reply> SendAlgebra for DynamicSupervisorSends<A, C, Reply>
 where
     A: Address,
     A::Nonce: From<u64>,
-    C: Behavior<Addr = A, Ph = Never>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = A>,
     Reply: behavior::Protocol<Addr = A>,
 {
     fn empty() -> Self {
@@ -244,7 +263,8 @@ impl<A, C, Reply> SendInput<ObserveChild<A::Nonce>, Own> for DynamicSupervisorSe
 where
     A: Address,
     A::Nonce: From<u64>,
-    C: Behavior<Addr = A, Ph = Never>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = A>,
     Reply: behavior::Protocol<Addr = A>,
 {
     fn emit(&mut self, value: ObserveChild<A::Nonce>) {
@@ -255,7 +275,8 @@ impl<A, C, Reply> SendInput<ObserveCreation<A::Nonce>, Own> for DynamicSuperviso
 where
     A: Address,
     A::Nonce: From<u64>,
-    C: Behavior<Addr = A, Ph = Never>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = A>,
     Reply: behavior::Protocol<Addr = A>,
 {
     fn emit(&mut self, value: ObserveCreation<A::Nonce>) {
@@ -267,7 +288,8 @@ impl<A, C, Reply> SendInput<ShutdownChild<DynamicProxy<C>>, Own>
 where
     A: Address,
     A::Nonce: From<u64>,
-    C: Behavior<Addr = A, Ph = Never>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = A>,
     Reply: behavior::Protocol<Addr = A>,
 {
     fn emit(&mut self, value: ShutdownChild<DynamicProxy<C>>) {
@@ -280,7 +302,8 @@ where
 pub struct DynamicSupervisor<A, C, Reply>
 where
     A: Address,
-    C: Protocol<Addr = A>,
+    C: Behavior,
+    C::Protocol: Protocol<Addr = A>,
     Reply: Protocol<Addr = A>,
 {
     children: Vec<(A::Nonce, DynamicChild<Reply>)>,
@@ -290,7 +313,8 @@ where
 impl<A, C, Reply> DynamicSupervisor<A, C, Reply>
 where
     A: Address,
-    C: Protocol<Addr = A>,
+    C: Behavior,
+    C::Protocol: Protocol<Addr = A>,
     Reply: Protocol<Addr = A>,
 {
     #[must_use]
@@ -314,7 +338,8 @@ where
 impl<A, C, Reply> Default for DynamicSupervisor<A, C, Reply>
 where
     A: Address,
-    C: Protocol<Addr = A>,
+    C: Behavior,
+    C::Protocol: Protocol<Addr = A>,
     Reply: Protocol<Addr = A>,
 {
     fn default() -> Self {
@@ -324,7 +349,8 @@ where
 impl<A, C, Reply> crate::BehaviorBase for DynamicSupervisor<A, C, Reply>
 where
     A: Address,
-    C: Protocol<Addr = A>,
+    C: Behavior,
+    C::Protocol: Protocol<Addr = A>,
     Reply: Protocol<Addr = A>,
 {
     type Base = Self;
@@ -336,8 +362,10 @@ where
 impl<A, C, Reply> behavior::Protocol for DynamicSupervisor<A, C, Reply>
 where
     A: Address,
-    C: Protocol<Addr = A>,
-    Reply: Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A::Nonce, C>>,
+    A::Nonce: From<u64>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = A>,
+    Reply: Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
 {
     type Addr = A;
     type Msg = DynamicSupervisorMessage<A, C, Reply>;
@@ -347,9 +375,11 @@ impl<A, C, Reply> Behavior for DynamicSupervisor<A, C, Reply>
 where
     A: Address,
     A::Nonce: Copy + Eq + From<u64>,
-    C: Behavior<Addr = A, Ph = Never>,
-    Reply: behavior::Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A::Nonce, C>>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = A>,
+    Reply: behavior::Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
 {
+    type Protocol = Self;
     type Event = DynamicSupervisorEvent<A, C, Reply>;
     type Sends = DynamicSupervisorSends<A, C, Reply>;
     type Ph = Never;
@@ -438,8 +468,8 @@ where
                     match self.children.iter_mut().find(|(n, _)| *n == nonce) {
                         Some((_, state @ DynamicChild::Available)) => {
                             *state = DynamicChild::Replacing { reply_to };
-                            sends.replacements.push(Delivery::new(
-                                Recipient::child(nonce),
+                            sends.replacements.push(Delivery::local_child(
+                                behavior::ChildRecipient::new(nonce),
                                 ProxyCommand::Replace(child),
                             ));
                             sends.outcomes.push(Delivery::new(
@@ -487,12 +517,13 @@ where
                 };
                 let reply = *reply_to;
                 match resolved.result {
-                    Ok(()) => {
+                    Ok(address) => {
                         *state = DynamicChild::Available;
                         sends.outcomes.push(Delivery::new(
                             reply,
                             DynamicSupervisorOutcome::Started {
                                 nonce: resolved.nonce,
+                                child: Recipient::global(address),
                             },
                         ));
                     }
@@ -591,6 +622,7 @@ mod tests {
     }
 
     impl Behavior for Worker {
+        type Protocol = Self;
         type Event = User<MailAddr, u8>;
         type Sends = Vec<Never>;
         type Ph = Never;
@@ -604,11 +636,12 @@ mod tests {
     struct Reply;
     impl behavior::Protocol for Reply {
         type Addr = MailAddr;
-        type Msg = DynamicSupervisorOutcome<u64, Worker>;
+        type Msg = DynamicSupervisorOutcome<MailAddr, Worker>;
     }
 
     impl Behavior for Reply {
-        type Event = User<MailAddr, Self::Msg>;
+        type Protocol = Self;
+        type Event = User<MailAddr, crate::BehaviorMessage<Self>>;
         type Sends = Vec<Never>;
         type Ph = Never;
         type Error = Never;
@@ -676,12 +709,17 @@ mod tests {
         ));
 
         let installed = active
-            .on(CreationResolved::installed(7, CreationKind::Birth))
+            .on(CreationResolved::installed(
+                7,
+                CreationKind::Birth,
+                MailAddr(70),
+            ))
             .unwrap();
         assert_eq!(active.phase(7), Some(DynamicChildPhase::Available));
         assert!(matches!(
             installed.sends.outcomes[0].message,
-            DynamicSupervisorOutcome::Started { nonce: 7 }
+            DynamicSupervisorOutcome::Started { nonce: 7, child }
+                if child.address() == MailAddr(70)
         ));
     }
 
@@ -743,7 +781,7 @@ mod tests {
                 },
             )
             .unwrap();
-        active.on(CreationResolved::birth(3)).unwrap();
+        active.on(CreationResolved::birth(3, MailAddr(30))).unwrap();
 
         let replacing = active
             .receive(
@@ -800,7 +838,7 @@ mod tests {
                 },
             )
             .unwrap();
-        active.on(CreationResolved::birth(3)).unwrap();
+        active.on(CreationResolved::birth(3, MailAddr(30))).unwrap();
         let actions = active
             .on(WorkerStopped::new(3, 0, Ok(Exit::Normal), Instant::now()))
             .unwrap();

@@ -194,10 +194,7 @@ impl<E: UserEvent> crate::RouteInput<ChildShutdownRejected<<E::Addr as Address>:
 forward_event_lane!(ShutdownCoordinatorEvent, crate::TimerElapsed);
 forward_event_lane!(ShutdownCoordinatorEvent, crate::PeerStopped<E::Addr>);
 forward_event_lane!(ShutdownCoordinatorEvent, crate::WorkerStopped<E::Addr>);
-forward_event_lane!(
-    ShutdownCoordinatorEvent,
-    crate::CreationResolved<<E::Addr as Address>::Nonce>
-);
+forward_event_lane!(ShutdownCoordinatorEvent, crate::CreationResolved<E::Addr>);
 forward_event_lane!(
     ShutdownCoordinatorEvent,
     crate::WorkerCreationResolved<<E::Addr as Address>::Nonce>
@@ -233,7 +230,7 @@ impl<C: Behavior, S: Eq> Eq for ShutdownCoordinatorSends<C, S> {}
 
 impl<C: Behavior, S: core::fmt::Debug> core::fmt::Debug for ShutdownCoordinatorSends<C, S>
 where
-    <C::Addr as Address>::Nonce: core::fmt::Debug,
+    <crate::BehaviorAddr<C> as Address>::Nonce: core::fmt::Debug,
 {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("ShutdownCoordinatorSends")
@@ -313,26 +310,33 @@ pub enum ShutdownCoordinatorError<E, N> {
 /// let plan = ShutdownPlan::new([vec![1]]).unwrap();
 /// require_behavior(ShutdownCoordinator::<Plain, Plain>::new(Plain, plan));
 /// ```
-pub struct ShutdownCoordinator<B: Behavior, C: Behavior<Addr = B::Addr>> {
+pub struct ShutdownCoordinator<B: Behavior, C: Behavior>
+where
+    C::Protocol: crate::Protocol<Addr = crate::BehaviorAddr<B>>,
+{
     inner: B,
-    plan: ShutdownPlan<<B::Addr as Address>::Nonce>,
-    state: ShutdownState<<B::Addr as Address>::Nonce>,
+    plan: ShutdownPlan<<crate::BehaviorAddr<B> as Address>::Nonce>,
+    state: ShutdownState<<crate::BehaviorAddr<B> as Address>::Nonce>,
     child: core::marker::PhantomData<fn() -> C>,
 }
 
 type ShutdownCoordinatorActions<B, C> = Actions<
-    <B as crate::Protocol>::Addr,
+    crate::BehaviorAddr<B>,
     <B as Behavior>::Ph,
     ShutdownCoordinatorSends<C, <B as Behavior>::Sends>,
     <B as Behavior>::Birth,
 >;
 
-impl<B: Behavior, C: Behavior<Addr = B::Addr>> ShutdownCoordinator<B, C>
+impl<B: Behavior, C: Behavior> ShutdownCoordinator<B, C>
 where
-    <B::Addr as Address>::Nonce: Copy + Eq,
+    C::Protocol: crate::Protocol<Addr = crate::BehaviorAddr<B>>,
+    <crate::BehaviorAddr<B> as Address>::Nonce: Copy + Eq,
 {
     #[must_use]
-    pub const fn new(inner: B, plan: ShutdownPlan<<B::Addr as Address>::Nonce>) -> Self {
+    pub const fn new(
+        inner: B,
+        plan: ShutdownPlan<<crate::BehaviorAddr<B> as Address>::Nonce>,
+    ) -> Self {
         Self {
             inner,
             plan,
@@ -341,12 +345,12 @@ where
         }
     }
     #[must_use]
-    pub fn state(&self) -> &ShutdownState<<B::Addr as Address>::Nonce> {
+    pub fn state(&self) -> &ShutdownState<<crate::BehaviorAddr<B> as Address>::Nonce> {
         &self.state
     }
 
     fn wrap(
-        actions: Actions<B::Addr, B::Ph, B::Sends, B::Birth>,
+        actions: Actions<crate::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>,
     ) -> ShutdownCoordinatorActions<B, C> {
         actions.map_sends(|behavior| ShutdownCoordinatorSends {
             behavior,
@@ -372,8 +376,9 @@ where
 impl<B, C> crate::BehaviorBase for ShutdownCoordinator<B, C>
 where
     B: Behavior + crate::BehaviorBase,
-    C: Behavior<Addr = B::Addr>,
-    <B::Addr as Address>::Nonce: Copy + Eq,
+    C: Behavior,
+    C::Protocol: crate::Protocol<Addr = crate::BehaviorAddr<B>>,
+    <crate::BehaviorAddr<B> as Address>::Nonce: Copy + Eq,
 {
     type Base = B::Base;
     fn base(&self) -> &Self::Base {
@@ -384,28 +389,13 @@ where
 impl<B, C> crate::StashStatus for ShutdownCoordinator<B, C>
 where
     B: Behavior + crate::StashStatus,
-    C: Behavior<Addr = B::Addr>,
-    <B::Addr as Address>::Nonce: Copy + Eq,
+    C: Behavior,
+    C::Protocol: crate::Protocol<Addr = crate::BehaviorAddr<B>>,
+    <crate::BehaviorAddr<B> as Address>::Nonce: Copy + Eq,
 {
     fn stashed_messages(&self) -> usize {
         self.inner.stashed_messages()
     }
-}
-
-impl<B, C, A, Ph, S, Br> behavior::Protocol for ShutdownCoordinator<B, C>
-where
-    A: Address,
-    A::Nonce: Copy + Eq,
-    S: SendAlgebra,
-    Br: BirthMode,
-    B: Behavior<Addr = A, Ph = Ph, Sends = S, Birth = Br>,
-    C: Behavior<Addr = A>,
-    C::Event: crate::EventInput<crate::ShutdownRequested>,
-    B::Event:
-        crate::RouteInput<ChildStopped<A>> + crate::RouteInput<ChildShutdownRejected<A::Nonce>>,
-{
-    type Addr = A;
-    type Msg = B::Msg;
 }
 
 impl<B, C, A, Ph, S, Br> Behavior for ShutdownCoordinator<B, C>
@@ -414,12 +404,15 @@ where
     A::Nonce: Copy + Eq,
     S: SendAlgebra,
     Br: BirthMode,
-    B: Behavior<Addr = A, Ph = Ph, Sends = S, Birth = Br>,
-    C: Behavior<Addr = A>,
+    B: Behavior<Ph = Ph, Sends = S, Birth = Br>,
+    B::Protocol: crate::Protocol<Addr = A>,
+    C: Behavior,
+    C::Protocol: crate::Protocol<Addr = A>,
     C::Event: crate::EventInput<crate::ShutdownRequested>,
     B::Event:
         crate::RouteInput<ChildStopped<A>> + crate::RouteInput<ChildShutdownRejected<A::Nonce>>,
 {
+    type Protocol = B::Protocol;
     type Event = ShutdownCoordinatorEvent<B::Event>;
     type Sends = ShutdownCoordinatorSends<C, S>;
     type Ph = Ph;
@@ -530,6 +523,7 @@ mod tests {
     }
 
     impl Behavior for Probe {
+        type Protocol = Self;
         type Event = User<MailAddr, u8>;
         type Sends = Vec<u8>;
         type Ph = Never;
@@ -624,6 +618,23 @@ mod tests {
         let done = active.on(stopped(3)).unwrap();
         assert!(matches!(done.become_, Step::Stop(_)));
         assert_eq!(active.state(), &ShutdownState::Completed);
+    }
+
+    #[test]
+    fn guardian_routes_shutdown_to_the_coordinator_before_applying_root_stop() {
+        let plan = ShutdownPlan::new([vec![7]]).unwrap();
+        let initialized = crate::Guardian::new(ShutdownCoordinator::<
+            Probe,
+            crate::StopOnShutdown<Probe>,
+        >::new(Probe, plan))
+        .initialize()
+        .unwrap();
+        let mut active = initialized.behavior;
+
+        let actions = active.on(ShutdownRequested).unwrap();
+
+        assert_eq!(actions.sends.shutdowns.as_slice(), [ShutdownChild::new(7)]);
+        assert!(matches!(actions.become_, Step::Continue));
     }
 
     #[test]

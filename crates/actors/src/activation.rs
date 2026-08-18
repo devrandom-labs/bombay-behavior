@@ -12,7 +12,7 @@ pub struct Initialized<B: Behavior> {
     pub behavior: Active<B>,
     /// Ordered initialization effects that the Driver interprets before the
     /// first mailbox event.
-    pub actions: Actions<B::Addr, B::Ph, B::Sends, B::Birth>,
+    pub actions: Actions<crate::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>,
 }
 
 /// A behavior whose initialization fold has completed exactly once.
@@ -68,7 +68,11 @@ impl<B: Behavior> Active<B> {
     /// # Errors
     ///
     /// Returns the behavior's declared controlled transition failure.
-    pub fn receive(&mut self, from: B::Addr, message: B::Msg) -> BehaviorActed<B> {
+    pub fn receive(
+        &mut self,
+        from: crate::BehaviorAddr<B>,
+        message: crate::BehaviorMessage<B>,
+    ) -> BehaviorActed<B> {
         self.transition(B::Event::user(from, message))
     }
 

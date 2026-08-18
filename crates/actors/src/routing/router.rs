@@ -3,8 +3,8 @@
 use core::num::NonZeroU16;
 
 use behavior::{
-    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, Never, NoBirths, Recipient,
-    User,
+    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, Never, NoBirths, Protocol,
+    Recipient, User,
 };
 use thiserror::Error;
 
@@ -14,7 +14,7 @@ use thiserror::Error;
 /// ownership of one destination-protocol message to the router. Duplicate
 /// members are inert and removal preserves the relative order of survivors.
 #[derive(Clone, PartialEq, Eq)]
-pub enum RouterMessage<D: Behavior, R: RoutingStrategy<D>> {
+pub enum RouterMessage<D: Protocol, R: RoutingStrategy<D>> {
     /// Add one eligible recipient if it is not already present.
     Add(Recipient<D>),
     /// Remove one eligible recipient if present.
@@ -45,7 +45,7 @@ pub enum RouterError<M, E> {
 /// indices into that exact snapshot. Returning an out-of-range index is a
 /// policy bug and is ignored rather than converted into an untyped runtime
 /// lookup. Policies perform no effects and obtain no ambient entropy.
-pub trait RoutingStrategy<D: Behavior> {
+pub trait RoutingStrategy<D: Protocol> {
     /// Closed observation type accepted by this policy.
     type Observation;
     /// Concrete observation rejection.
@@ -83,7 +83,7 @@ pub struct RoundRobin {
     next: usize,
 }
 
-impl<D: Behavior> RoutingStrategy<D> for RoundRobin {
+impl<D: Protocol> RoutingStrategy<D> for RoundRobin {
     type Observation = Never;
     type Error = Never;
 
@@ -119,7 +119,7 @@ impl<D: Behavior> RoutingStrategy<D> for RoundRobin {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Broadcast;
 
-impl<D: Behavior> RoutingStrategy<D> for Broadcast {
+impl<D: Protocol> RoutingStrategy<D> for Broadcast {
     type Observation = Never;
     type Error = Never;
 
@@ -141,7 +141,7 @@ pub struct LoadVersion(pub u64);
 pub struct Load(pub u64);
 
 /// Explicit typed load evidence for [`LeastLoaded`].
-pub struct LoadObservation<D: Behavior> {
+pub struct LoadObservation<D: Protocol> {
     /// Recipient whose load was observed.
     pub recipient: Recipient<D>,
     /// Version within that recipient's evidence stream.
@@ -164,14 +164,14 @@ pub enum LoadEvidence {
     },
 }
 
-struct RecipientLoad<D: Behavior> {
+struct RecipientLoad<D: Protocol> {
     recipient: Recipient<D>,
     evidence: LoadEvidence,
 }
 
 /// Rejected [`LeastLoaded`] evidence.
 #[derive(Clone, PartialEq, Eq, Error)]
-pub enum LeastLoadedError<D: Behavior> {
+pub enum LeastLoadedError<D: Protocol> {
     /// Evidence names a recipient outside current membership.
     #[error("load evidence names an unknown recipient")]
     UnknownRecipient(LoadObservation<D>),
@@ -183,7 +183,7 @@ pub enum LeastLoadedError<D: Behavior> {
     ConflictingVersion(LoadObservation<D>),
 }
 
-impl<D: Behavior> core::fmt::Debug for LeastLoadedError<D> {
+impl<D: Protocol> core::fmt::Debug for LeastLoadedError<D> {
     fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         formatter.write_str(match self {
             Self::UnknownRecipient(_) => "UnknownRecipient(..)",
@@ -193,7 +193,7 @@ impl<D: Behavior> core::fmt::Debug for LeastLoadedError<D> {
     }
 }
 
-impl<D: Behavior> Clone for LoadObservation<D> {
+impl<D: Protocol> Clone for LoadObservation<D> {
     fn clone(&self) -> Self {
         Self {
             recipient: self.recipient,
@@ -203,7 +203,7 @@ impl<D: Behavior> Clone for LoadObservation<D> {
     }
 }
 
-impl<D: Behavior> PartialEq for LoadObservation<D> {
+impl<D: Protocol> PartialEq for LoadObservation<D> {
     fn eq(&self, other: &Self) -> bool {
         self.recipient == other.recipient
             && self.version == other.version
@@ -211,7 +211,7 @@ impl<D: Behavior> PartialEq for LoadObservation<D> {
     }
 }
 
-impl<D: Behavior> Eq for LoadObservation<D> {}
+impl<D: Protocol> Eq for LoadObservation<D> {}
 
 /// Deterministic selection of the lowest observed load.
 ///
@@ -220,11 +220,11 @@ impl<D: Behavior> Eq for LoadObservation<D> {}
 /// conflicting evidence is rejected without mutation; identical evidence is
 /// idempotent. Membership removal discards its evidence. These evidence and
 /// tie rules are Bombay policy; gathering load remains an Environment concern.
-pub struct LeastLoaded<D: Behavior> {
+pub struct LeastLoaded<D: Protocol> {
     loads: Vec<RecipientLoad<D>>,
 }
 
-impl<D: Behavior> LeastLoaded<D> {
+impl<D: Protocol> LeastLoaded<D> {
     /// Construct a policy whose membership state is populated by [`Router`].
     #[must_use]
     pub const fn new() -> Self {
@@ -241,13 +241,13 @@ impl<D: Behavior> LeastLoaded<D> {
     }
 }
 
-impl<D: Behavior> Default for LeastLoaded<D> {
+impl<D: Protocol> Default for LeastLoaded<D> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<D: Behavior> RoutingStrategy<D> for LeastLoaded<D> {
+impl<D: Protocol> RoutingStrategy<D> for LeastLoaded<D> {
     type Observation = LoadObservation<D>;
     type Error = LeastLoadedError<D>;
 
@@ -334,7 +334,7 @@ pub struct MemberToken(pub u64);
 pub struct MemberTokenVersion(pub u64);
 
 /// Typed versioned stable-token evidence for hash routing.
-pub struct MemberTokenObservation<D: Behavior> {
+pub struct MemberTokenObservation<D: Protocol> {
     /// Eligible recipient described by the evidence.
     pub recipient: Recipient<D>,
     /// Evidence version.
@@ -343,7 +343,7 @@ pub struct MemberTokenObservation<D: Behavior> {
     pub token: MemberToken,
 }
 
-impl<D: Behavior> Clone for MemberTokenObservation<D> {
+impl<D: Protocol> Clone for MemberTokenObservation<D> {
     fn clone(&self) -> Self {
         Self {
             recipient: self.recipient,
@@ -353,7 +353,7 @@ impl<D: Behavior> Clone for MemberTokenObservation<D> {
     }
 }
 
-impl<D: Behavior> PartialEq for MemberTokenObservation<D> {
+impl<D: Protocol> PartialEq for MemberTokenObservation<D> {
     fn eq(&self, other: &Self) -> bool {
         self.recipient == other.recipient
             && self.version == other.version
@@ -361,7 +361,7 @@ impl<D: Behavior> PartialEq for MemberTokenObservation<D> {
     }
 }
 
-impl<D: Behavior> Eq for MemberTokenObservation<D> {}
+impl<D: Protocol> Eq for MemberTokenObservation<D> {}
 
 /// Complete stable-token evidence phase.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -379,7 +379,7 @@ pub enum MemberTokenEvidence {
 
 /// Rejected hash-membership evidence.
 #[derive(Clone, PartialEq, Eq, Error)]
-pub enum HashPolicyError<D: Behavior> {
+pub enum HashPolicyError<D: Protocol> {
     /// Evidence names a recipient outside current membership.
     #[error("hash-member evidence names an unknown recipient")]
     UnknownRecipient(MemberTokenObservation<D>),
@@ -391,7 +391,7 @@ pub enum HashPolicyError<D: Behavior> {
     ConflictingVersion(MemberTokenObservation<D>),
 }
 
-impl<D: Behavior> core::fmt::Debug for HashPolicyError<D> {
+impl<D: Protocol> core::fmt::Debug for HashPolicyError<D> {
     fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         formatter.write_str(match self {
             Self::UnknownRecipient(_) => "UnknownRecipient(..)",
@@ -401,16 +401,16 @@ impl<D: Behavior> core::fmt::Debug for HashPolicyError<D> {
     }
 }
 
-struct HashMember<D: Behavior> {
+struct HashMember<D: Protocol> {
     recipient: Recipient<D>,
     evidence: MemberTokenEvidence,
 }
 
-struct HashMembership<D: Behavior> {
+struct HashMembership<D: Protocol> {
     members: Vec<HashMember<D>>,
 }
 
-impl<D: Behavior> HashMembership<D> {
+impl<D: Protocol> HashMembership<D> {
     const fn new() -> Self {
         Self {
             members: Vec::new(),
@@ -507,13 +507,13 @@ fn mixed_hash(left: u64, right: u64) -> u64 {
 /// functions and observations. Tokens are policy data, never actor identities
 /// or freshness evidence. Ring mixing, clockwise tie order, and replica count
 /// are deliberate Bombay policy; no external hash-routing crate is used.
-pub struct ConsistentHash<D: Behavior, K> {
+pub struct ConsistentHash<D: Protocol, K> {
     membership: HashMembership<D>,
     replicas: NonZeroU16,
     hash_key: fn(&K) -> u64,
 }
 
-impl<D: Behavior, K> ConsistentHash<D, K> {
+impl<D: Protocol, K> ConsistentHash<D, K> {
     /// Construct a stable-ring policy with explicit virtual-point count.
     #[must_use]
     pub const fn new(replicas: NonZeroU16, hash_key: fn(&K) -> u64) -> Self {
@@ -533,7 +533,7 @@ impl<D: Behavior, K> ConsistentHash<D, K> {
 
 impl<D, K> RoutingStrategy<D> for ConsistentHash<D, K>
 where
-    D: Behavior,
+    D: Protocol,
     D::Msg: RouteKey<K>,
 {
     type Observation = MemberTokenObservation<D>;
@@ -576,12 +576,12 @@ where
 /// Evidence and identity laws are the same as [`ConsistentHash`]. This is a
 /// reviewed local algorithm so external crates cannot silently own Bombay's
 /// membership or hash policy.
-pub struct RendezvousHash<D: Behavior, K> {
+pub struct RendezvousHash<D: Protocol, K> {
     membership: HashMembership<D>,
     hash_key: fn(&K) -> u64,
 }
 
-impl<D: Behavior, K> RendezvousHash<D, K> {
+impl<D: Protocol, K> RendezvousHash<D, K> {
     /// Construct a highest-random-weight policy.
     #[must_use]
     pub const fn new(hash_key: fn(&K) -> u64) -> Self {
@@ -600,7 +600,7 @@ impl<D: Behavior, K> RendezvousHash<D, K> {
 
 impl<D, K> RoutingStrategy<D> for RendezvousHash<D, K>
 where
-    D: Behavior,
+    D: Protocol,
     D::Msg: RouteKey<K>,
 {
     type Observation = MemberTokenObservation<D>;
@@ -642,12 +642,12 @@ where
 /// order and continues; an empty selection returns [`RouterError`] without
 /// changing membership. The router never terminates by policy and requires
 /// only Bombay Address and Communication interpretation for its send lane.
-pub struct Router<A: Address, D: Behavior<Addr = A>, R> {
+pub struct Router<A: Address, D: Protocol<Addr = A>, R> {
     recipients: Vec<Recipient<D>>,
     strategy: R,
 }
 
-impl<A: Address, D: Behavior<Addr = A>, R: RoutingStrategy<D>> Router<A, D, R> {
+impl<A: Address, D: Protocol<Addr = A>, R: RoutingStrategy<D>> Router<A, D, R> {
     /// Construct a definition from explicit initial membership and policy.
     #[must_use]
     pub fn new(recipients: Vec<Recipient<D>>, strategy: R) -> Self {
@@ -680,7 +680,7 @@ impl<A: Address, D: Behavior<Addr = A>, R: RoutingStrategy<D>> Router<A, D, R> {
     }
 }
 
-impl<A: Address, D: Behavior<Addr = A>, R: RoutingStrategy<D>> BehaviorBase for Router<A, D, R> {
+impl<A: Address, D: Protocol<Addr = A>, R: RoutingStrategy<D>> BehaviorBase for Router<A, D, R> {
     type Base = Self;
 
     fn base(&self) -> &Self::Base {
@@ -691,7 +691,7 @@ impl<A: Address, D: Behavior<Addr = A>, R: RoutingStrategy<D>> BehaviorBase for 
 impl<A, D, R> behavior::Protocol for Router<A, D, R>
 where
     A: Address,
-    D: Behavior<Addr = A>,
+    D: Protocol<Addr = A>,
     D::Msg: Clone,
     R: RoutingStrategy<D>,
 {
@@ -702,10 +702,11 @@ where
 impl<A, D, R> Behavior for Router<A, D, R>
 where
     A: Address,
-    D: Behavior<Addr = A>,
+    D: Protocol<Addr = A>,
     D::Msg: Clone,
     R: RoutingStrategy<D>,
 {
+    type Protocol = Self;
     type Event = User<A, RouterMessage<D, R>>;
     type Sends = Vec<Delivery<D>>;
     type Ph = Never;
@@ -781,6 +782,7 @@ mod tests {
     }
 
     impl Behavior for Destination {
+        type Protocol = Self;
         type Event = User<MailAddr, u8>;
         type Sends = Vec<Never>;
         type Ph = Never;
@@ -798,6 +800,7 @@ mod tests {
     }
 
     impl Behavior for KeyedDestination {
+        type Protocol = Self;
         type Event = User<MailAddr, KeyedMessage>;
         type Sends = Vec<Never>;
         type Ph = Never;

@@ -3,8 +3,8 @@
 use std::collections::BTreeMap;
 
 use behavior::{
-    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, Never, NoBirths, Recipient,
-    SendAlgebra, User,
+    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, Never, NoBirths, Protocol,
+    Recipient, SendAlgebra, User,
 };
 
 /// A position in a [`Sequencer`] stream.
@@ -58,7 +58,7 @@ pub enum SequencerOutcome<T> {
 }
 
 /// Commands accepted by [`Sequencer`].
-pub enum SequencerMessage<T, Target: Behavior, Reply: behavior::Protocol> {
+pub enum SequencerMessage<T, Target: Protocol, Reply: behavior::Protocol> {
     /// Offer one value for delivery after all preceding positions.
     Offer {
         /// Explicit sequence position.
@@ -73,14 +73,14 @@ pub enum SequencerMessage<T, Target: Behavior, Reply: behavior::Protocol> {
 }
 
 /// Named effect lanes emitted by [`Sequencer`].
-pub struct SequencerSends<Target: Behavior, Reply: behavior::Protocol> {
+pub struct SequencerSends<Target: Protocol, Reply: behavior::Protocol> {
     /// Values released in increasing contiguous sequence order.
     pub deliveries: Vec<Delivery<Target>>,
     /// Exactly one factual result for the triggering offer.
     pub outcomes: Vec<Delivery<Reply>>,
 }
 
-impl<Target: Behavior, Reply: behavior::Protocol> SendAlgebra for SequencerSends<Target, Reply> {
+impl<Target: Protocol, Reply: behavior::Protocol> SendAlgebra for SequencerSends<Target, Reply> {
     fn empty() -> Self {
         Self {
             deliveries: Vec::new(),
@@ -94,7 +94,7 @@ impl<Target: Behavior, Reply: behavior::Protocol> SendAlgebra for SequencerSends
     }
 }
 
-struct Pending<T, Target: Behavior> {
+struct Pending<T, Target: Protocol> {
     value: T,
     to: Recipient<Target>,
 }
@@ -115,7 +115,7 @@ struct Pending<T, Target: Behavior> {
 pub struct Sequencer<
     A: Address,
     T,
-    Target: Behavior<Addr = A, Msg = T>,
+    Target: Protocol<Addr = A, Msg = T>,
     Reply: behavior::Protocol<Addr = A, Msg = SequencerOutcome<T>>,
 > {
     expected: Option<Sequence>,
@@ -126,7 +126,7 @@ pub struct Sequencer<
 impl<A, T, Target, Reply> Sequencer<A, T, Target, Reply>
 where
     A: Address,
-    Target: Behavior<Addr = A, Msg = T>,
+    Target: Protocol<Addr = A, Msg = T>,
     Reply: behavior::Protocol<Addr = A, Msg = SequencerOutcome<T>>,
 {
     /// Construct an empty sequencer beginning at `first`.
@@ -165,7 +165,7 @@ where
 impl<A, T, Target, Reply> BehaviorBase for Sequencer<A, T, Target, Reply>
 where
     A: Address,
-    Target: Behavior<Addr = A, Msg = T>,
+    Target: Protocol<Addr = A, Msg = T>,
     Reply: behavior::Protocol<Addr = A, Msg = SequencerOutcome<T>>,
 {
     type Base = Self;
@@ -178,7 +178,7 @@ where
 impl<A, T, Target, Reply> behavior::Protocol for Sequencer<A, T, Target, Reply>
 where
     A: Address,
-    Target: Behavior<Addr = A, Msg = T>,
+    Target: Protocol<Addr = A, Msg = T>,
     Reply: behavior::Protocol<Addr = A, Msg = SequencerOutcome<T>>,
 {
     type Addr = A;
@@ -188,10 +188,11 @@ where
 impl<A, T, Target, Reply> Behavior for Sequencer<A, T, Target, Reply>
 where
     A: Address,
-    Target: Behavior<Addr = A, Msg = T>,
+    Target: Protocol<Addr = A, Msg = T>,
     Reply: behavior::Protocol<Addr = A, Msg = SequencerOutcome<T>>,
 {
-    type Event = User<A, Self::Msg>;
+    type Protocol = Self;
+    type Event = User<A, crate::BehaviorMessage<Self>>;
     type Sends = SequencerSends<Target, Reply>;
     type Ph = Never;
     type Error = Never;
@@ -261,7 +262,8 @@ mod tests {
             }
 
             impl Behavior for $name {
-                type Event = behavior::User<MailAddr, Self::Msg>;
+                type Protocol = Self;
+                type Event = behavior::User<MailAddr, crate::BehaviorMessage<Self>>;
                 type Sends = Vec<behavior::Never>;
                 type Ph = behavior::Never;
                 type Error = behavior::Never;

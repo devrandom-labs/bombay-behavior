@@ -15,7 +15,8 @@ struct Pending<A, C>
 where
     A: Address,
     A::Nonce: From<u64>,
-    C: Behavior<Addr = A, Ph = Never>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = A>,
 {
     trigger: A::Nonce,
     id: TimerId,
@@ -38,11 +39,8 @@ struct Prepared<N> {
 }
 
 type PreparedResult<B> = Result<
-    Option<Prepared<<<B as crate::Protocol>::Addr as Address>::Nonce>>,
-    BackoffSupervisorError<
-        <B as Behavior>::Error,
-        <<B as crate::Protocol>::Addr as Address>::Nonce,
-    >,
+    Option<Prepared<<crate::BehaviorAddr<B> as Address>::Nonce>>,
+    BackoffSupervisorError<<B as Behavior>::Error, <crate::BehaviorAddr<B> as Address>::Nonce>,
 >;
 
 /// Named products emitted by delayed supervision.
@@ -50,7 +48,8 @@ pub struct BackoffSupervisorSends<A, Sends, C>
 where
     A: Address,
     A::Nonce: From<u64>,
-    C: Behavior<Addr = A, Ph = Never>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = A>,
 {
     /// Every ordinary supervision lane, unchanged except that replacement
     /// commands are withheld until their matching timer fires.
@@ -64,7 +63,8 @@ where
     A: Address,
     A::Nonce: From<u64>,
     Sends: SendAlgebra,
-    C: Behavior<Addr = A, Ph = Never>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = A>,
 {
     fn empty() -> Self {
         Self {
@@ -81,7 +81,8 @@ impl<A, Sends, C> SendInput<ScheduleAfter, Own> for BackoffSupervisorSends<A, Se
 where
     A: Address,
     A::Nonce: From<u64>,
-    C: Behavior<Addr = A, Ph = Never>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = A>,
 {
     fn emit(&mut self, input: ScheduleAfter) {
         self.schedules.send(input);
@@ -108,29 +109,31 @@ pub enum BackoffSupervisorError<E, N> {
 pub struct BackoffSupervisor<B, C>
 where
     B: Behavior,
-    B::Addr: Address,
-    <B::Addr as Address>::Nonce: From<u64>,
-    C: Behavior<Addr = B::Addr, Ph = Never>,
+    crate::BehaviorAddr<B>: Address,
+    <crate::BehaviorAddr<B> as Address>::Nonce: From<u64>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = crate::BehaviorAddr<B>>,
 {
     inner: Supervisor<B, C>,
     policy: Backoff,
-    timer: fn(<B::Addr as Address>::Nonce) -> TimerId,
-    counters: Vec<Counter<<B::Addr as Address>::Nonce>>,
-    pending: Vec<Pending<B::Addr, C>>,
+    timer: fn(<crate::BehaviorAddr<B> as Address>::Nonce) -> TimerId,
+    counters: Vec<Counter<<crate::BehaviorAddr<B> as Address>::Nonce>>,
+    pending: Vec<Pending<crate::BehaviorAddr<B>, C>>,
 }
 
 impl<B, C> BackoffSupervisor<B, C>
 where
     B: Behavior,
-    B::Addr: Address,
-    <B::Addr as Address>::Nonce: Copy + Eq + From<u64>,
-    C: Behavior<Addr = B::Addr, Ph = Never>,
+    crate::BehaviorAddr<B>: Address,
+    <crate::BehaviorAddr<B> as Address>::Nonce: Copy + Eq + From<u64>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = crate::BehaviorAddr<B>>,
 {
     #[must_use]
     pub const fn new(
         inner: Supervisor<B, C>,
         policy: Backoff,
-        timer: fn(<B::Addr as Address>::Nonce) -> TimerId,
+        timer: fn(<crate::BehaviorAddr<B> as Address>::Nonce) -> TimerId,
     ) -> Self {
         Self {
             inner,
@@ -146,7 +149,7 @@ where
         self.pending.len()
     }
 
-    fn prepare(&self, trigger: <B::Addr as Address>::Nonce) -> PreparedResult<B> {
+    fn prepare(&self, trigger: <crate::BehaviorAddr<B> as Address>::Nonce) -> PreparedResult<B> {
         if self
             .pending
             .iter()
@@ -178,7 +181,7 @@ where
         }))
     }
 
-    fn commit_counter(&mut self, prepared: &Prepared<<B::Addr as Address>::Nonce>) {
+    fn commit_counter(&mut self, prepared: &Prepared<<crate::BehaviorAddr<B> as Address>::Nonce>) {
         if let Some(counter) = self
             .counters
             .iter_mut()
@@ -199,9 +202,10 @@ where
 impl<B, C> crate::BehaviorBase for BackoffSupervisor<B, C>
 where
     B: Behavior<Birth = Births<C>> + crate::BehaviorBase,
-    B::Addr: Address,
-    <B::Addr as Address>::Nonce: Copy + Eq + From<u64>,
-    C: Behavior<Addr = B::Addr, Ph = Never>,
+    crate::BehaviorAddr<B>: Address,
+    <crate::BehaviorAddr<B> as Address>::Nonce: Copy + Eq + From<u64>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = crate::BehaviorAddr<B>>,
 {
     type Base = B::Base;
     fn base(&self) -> &Self::Base {
@@ -209,34 +213,22 @@ where
     }
 }
 
-impl<B, C, A, Ph, Sends> behavior::Protocol for BackoffSupervisor<B, C>
-where
-    A: Address,
-    A::Nonce: Copy + Eq + From<u64>,
-    Sends: SendAlgebra,
-    B: Behavior<Addr = A, Ph = Ph, Sends = Sends, Birth = Births<C>>,
-    B::Event: crate::RouteInput<crate::ChildStopped<A>>
-        + crate::RouteInput<crate::CreationResolved<A::Nonce>>
-        + crate::RouteInput<crate::WorkerCreationResolved<A::Nonce>>
-        + crate::RouteInput<TimerElapsed>,
-    C: Behavior<Addr = A, Ph = Never>,
-{
-    type Addr = A;
-    type Msg = B::Msg;
-}
-
 impl<B, C, A, Ph, Sends> Behavior for BackoffSupervisor<B, C>
 where
     A: Address,
     A::Nonce: Copy + Eq + From<u64>,
     Sends: SendAlgebra,
-    B: Behavior<Addr = A, Ph = Ph, Sends = Sends, Birth = Births<C>>,
+    B: Behavior<Ph = Ph, Sends = Sends, Birth = Births<C>>,
+    B::Protocol: crate::Protocol<Addr = A>,
     B::Event: crate::RouteInput<crate::ChildStopped<A>>
-        + crate::RouteInput<crate::CreationResolved<A::Nonce>>
+        + crate::RouteInput<crate::WorkerStopped<A>>
+        + crate::RouteInput<crate::CreationResolved<A>>
         + crate::RouteInput<crate::WorkerCreationResolved<A::Nonce>>
         + crate::RouteInput<TimerElapsed>,
-    C: Behavior<Addr = A, Ph = Never>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = A>,
 {
+    type Protocol = B::Protocol;
     type Event = TimedEvent<SupervisionEvent<B::Event>>;
     type Sends = BackoffSupervisorSends<A, Sends, C>;
     type Ph = Ph;
@@ -362,6 +354,7 @@ mod tests {
     }
 
     impl Behavior for Child {
+        type Protocol = Self;
         type Event = User<MailAddr, ()>;
         type Sends = Vec<Never>;
         type Ph = Never;
@@ -382,6 +375,7 @@ mod tests {
     }
 
     impl Behavior for Parent {
+        type Protocol = Self;
         type Event = User<MailAddr, ()>;
         type Sends = Vec<Never>;
         type Ph = Never;

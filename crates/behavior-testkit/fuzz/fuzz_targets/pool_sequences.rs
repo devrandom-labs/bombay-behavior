@@ -4,23 +4,51 @@ use std::time::Duration;
 
 use behavior::{
     Actions, Activate, Behavior, CreationKind, InterruptionPolicy, JobId, KeyedPoolMessage,
-    KeyedWorkerPool, MailAddr, Never, NoBirths, PoolAssignment, PoolMessage, PoolResponse,
-    Recipient, RestartPolicy, User, WorkerCreationResolved, WorkerPhase, WorkerPool, WorkerStopped,
+    KeyedWorkerPool, KeyedWorkerPoolProtocol, MailAddr, Never, NoBirths, PoolAssignment,
+    PoolMessage, PoolResponse, Recipient, RestartPolicy, User, WorkerCreationResolved, WorkerPhase,
+    WorkerPool, WorkerPoolProtocol, WorkerStopped,
 };
 use libfuzzer_sys::fuzz_target;
 use std::time::Instant;
 
 type Reply = bombay_behavior_fuzz::TestRecipient<PoolResponse<u8, u8, MailAddr>>;
-
 struct Worker;
+struct KeyedWorker;
 
 impl behavior::Protocol for Worker {
     type Addr = MailAddr;
-    type Msg = PoolAssignment<u8>;
+    type Msg = PoolAssignment<WorkerPoolProtocol<MailAddr, Reply, u8, u8>>;
 }
 
 impl Behavior for Worker {
-    type Event = User<MailAddr, PoolAssignment<u8>>;
+    type Protocol = Self;
+    type Event = User<MailAddr, behavior::BehaviorMessage<Self>>;
+    type Sends = Vec<Never>;
+    type Ph = Never;
+    type Error = Never;
+    type Birth = NoBirths;
+
+    fn init(&mut self, _: behavior::InitializationTurn) -> behavior::BehaviorActed<Self> {
+        Ok(Actions::cont())
+    }
+
+    fn transition(
+        &mut self,
+        _: behavior::ActiveTurn,
+        _event: Self::Event,
+    ) -> behavior::BehaviorActed<Self> {
+        Ok(Actions::cont())
+    }
+}
+
+impl behavior::Protocol for KeyedWorker {
+    type Addr = MailAddr;
+    type Msg = PoolAssignment<KeyedWorkerPoolProtocol<MailAddr, Reply, u8, u8, u8>>;
+}
+
+impl Behavior for KeyedWorker {
+    type Protocol = Self;
+    type Event = User<MailAddr, behavior::BehaviorMessage<Self>>;
     type Sends = Vec<Never>;
     type Ph = Never;
     type Error = Never;
@@ -47,6 +75,10 @@ fn worker(_index: usize) -> Worker {
     Worker
 }
 
+fn keyed_worker(_index: usize) -> KeyedWorker {
+    KeyedWorker
+}
+
 fn affinity(key: &u8) -> u64 {
     u64::from(key & 1)
 }
@@ -65,6 +97,7 @@ fuzz_target!(|bytes: &[u8]| {
             u32::MAX,
             Duration::from_secs(1),
         ),
+        Recipient::global(MailAddr(9)),
     )
     .unwrap();
     let initialized = (pool).initialize().unwrap();
@@ -137,7 +170,7 @@ fuzz_target!(|bytes: &[u8]| {
     }
 
     let keyed = KeyedWorkerPool::new(
-        behavior::ChildTopology::indexed(nonce, 2, |index| Some(worker(index))),
+        behavior::ChildTopology::indexed(nonce, 2, |index| Some(keyed_worker(index))),
         behavior::PoolConfiguration::new(
             4,
             InterruptionPolicy::Retry,
@@ -146,6 +179,7 @@ fuzz_target!(|bytes: &[u8]| {
             Duration::from_secs(1),
         ),
         affinity,
+        Recipient::global(MailAddr(9)),
     )
     .unwrap();
     let initialized = (keyed).initialize().unwrap();

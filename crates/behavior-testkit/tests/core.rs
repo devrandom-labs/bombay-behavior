@@ -264,7 +264,7 @@ async fn proxy_forwards_only_to_the_current_fresh_generation() {
         .transition(ProxyEvent::CreationResolved(CreationResolved {
             nonce: 0,
             kind: CreationKind::Birth,
-            result: Ok(()),
+            result: Ok(MailAddr(999)),
         }))
         .unwrap();
 
@@ -299,7 +299,7 @@ async fn proxy_forwards_only_to_the_current_fresh_generation() {
         .transition(ProxyEvent::CreationResolved(CreationResolved {
             nonce: 1,
             kind: CreationKind::ReplacementIncarnation { replaces: 0 },
-            result: Ok(()),
+            result: Ok(MailAddr(999)),
         }))
         .unwrap();
 

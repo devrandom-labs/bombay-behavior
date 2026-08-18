@@ -1,8 +1,8 @@
 //! Countdown latch coordination.
 
 use behavior::{
-    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, Never, NoBirths, Recipient,
-    User,
+    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, MessageProtocol, Never,
+    NoBirths, Recipient, User,
 };
 
 /// Release fact delivered to every accepted arrival.
@@ -14,27 +14,32 @@ pub struct LatchReleased;
 /// The reply recipient is retained until release. An arrival after release is
 /// answered immediately and does not reopen the latch.
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub struct LatchMessage<P: Behavior> {
+pub struct LatchMessage<A: Address> {
     /// Typed participant recipient awaiting the release fact.
-    pub reply_to: Recipient<P>,
+    pub reply_to: Recipient<MessageProtocol<A, LatchReleased>>,
 }
 
-impl<P: Behavior> LatchMessage<P> {
+impl<A: Address> behavior::Protocol for LatchMessage<A> {
+    type Addr = A;
+    type Msg = LatchMessage<A>;
+}
+
+impl<A: Address> LatchMessage<A> {
     /// Construct one owned arrival.
     #[must_use]
-    pub const fn arrive(reply_to: Recipient<P>) -> Self {
+    pub const fn arrive(reply_to: Recipient<MessageProtocol<A, LatchReleased>>) -> Self {
         Self { reply_to }
     }
 }
 
 /// Complete semantic state of a [`Latch`].
-pub enum LatchState<P: Behavior> {
+pub enum LatchState<A: Address> {
     /// More arrivals are required; every listed participant is waiting.
     Counting {
         /// Number of additional arrivals needed, including the next one.
         remaining: usize,
         /// Accepted participants in arrival order.
-        waiting: Vec<Recipient<P>>,
+        waiting: Vec<Recipient<MessageProtocol<A, LatchReleased>>>,
     },
     /// The threshold was reached and cannot be reset by this incarnation.
     Released,
@@ -50,12 +55,11 @@ pub enum LatchState<P: Behavior> {
 /// There are no rejection, retry, cancellation, or timer paths. The latch
 /// never terminates itself. Countdown and ordering are Bombay workflow policy,
 /// while typed delivery is interpreted by Address and Communication.
-pub struct Latch<A: Address, P: Behavior<Addr = A, Msg = LatchReleased>> {
-    state: LatchState<P>,
-    address: core::marker::PhantomData<A>,
+pub struct Latch<A: Address> {
+    state: LatchState<A>,
 }
 
-impl<A: Address, P: Behavior<Addr = A, Msg = LatchReleased>> Latch<A, P> {
+impl<A: Address> Latch<A> {
     /// Construct a latch requiring `count` arrivals.
     #[must_use]
     pub fn new(count: usize) -> Self {
@@ -68,18 +72,17 @@ impl<A: Address, P: Behavior<Addr = A, Msg = LatchReleased>> Latch<A, P> {
                     waiting: Vec::with_capacity(count),
                 }
             },
-            address: core::marker::PhantomData,
         }
     }
 
     /// Borrow the complete current semantic state.
     #[must_use]
-    pub const fn state(&self) -> &LatchState<P> {
+    pub const fn state(&self) -> &LatchState<A> {
         &self.state
     }
 }
 
-impl<A: Address, P: Behavior<Addr = A, Msg = LatchReleased>> BehaviorBase for Latch<A, P> {
+impl<A: Address> BehaviorBase for Latch<A> {
     type Base = Self;
 
     fn base(&self) -> &Self {
@@ -87,22 +90,15 @@ impl<A: Address, P: Behavior<Addr = A, Msg = LatchReleased>> BehaviorBase for La
     }
 }
 
-impl<A, P> behavior::Protocol for Latch<A, P>
-where
-    A: Address,
-    P: Behavior<Addr = A, Msg = LatchReleased>,
-{
+impl<A: Address> behavior::Protocol for Latch<A> {
     type Addr = A;
-    type Msg = LatchMessage<P>;
+    type Msg = LatchMessage<A>;
 }
 
-impl<A, P> Behavior for Latch<A, P>
-where
-    A: Address,
-    P: Behavior<Addr = A, Msg = LatchReleased>,
-{
-    type Event = User<A, Self::Msg>;
-    type Sends = Vec<Delivery<P>>;
+impl<A: Address> Behavior for Latch<A> {
+    type Protocol = LatchMessage<A>;
+    type Event = User<A, crate::BehaviorMessage<Self>>;
+    type Sends = Vec<Delivery<MessageProtocol<A, LatchReleased>>>;
     type Ph = Never;
     type Error = Never;
     type Birth = NoBirths;
@@ -149,34 +145,12 @@ mod tests {
     use crate::Activate as _;
     use behavior::MailAddr;
 
-    struct Participant;
-
-    impl behavior::Protocol for Participant {
-        type Addr = MailAddr;
-        type Msg = LatchReleased;
-    }
-
-    impl Behavior for Participant {
-        type Event = User<MailAddr, LatchReleased>;
-        type Sends = Vec<Never>;
-        type Ph = Never;
-        type Error = Never;
-        type Birth = NoBirths;
-
-        fn transition(&mut self, _: crate::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
-            Ok(Actions::cont())
-        }
-    }
-
     #[test]
     fn threshold_releases_waiters_in_arrival_order_once() {
-        let one = Recipient::<Participant>::global(MailAddr(1));
-        let two = Recipient::<Participant>::global(MailAddr(2));
-        let late = Recipient::<Participant>::global(MailAddr(3));
-        let mut latch = (Latch::<MailAddr, Participant>::new(2))
-            .initialize()
-            .unwrap()
-            .behavior;
+        let one = Recipient::from(MailAddr(1));
+        let two = Recipient::from(MailAddr(2));
+        let late = Recipient::from(MailAddr(3));
+        let mut latch = Latch::new(2).initialize().unwrap().behavior;
 
         let first = latch
             .receive(MailAddr(9), LatchMessage::arrive(one))
@@ -211,11 +185,8 @@ mod tests {
 
     #[test]
     fn zero_count_starts_released() {
-        let participant = Recipient::<Participant>::global(MailAddr(1));
-        let mut latch = (Latch::<MailAddr, Participant>::new(0))
-            .initialize()
-            .unwrap()
-            .behavior;
+        let participant = Recipient::from(MailAddr(1));
+        let mut latch = Latch::new(0).initialize().unwrap().behavior;
         assert!(matches!(latch.state(), LatchState::Released));
         let actions = latch
             .receive(MailAddr(9), LatchMessage::arrive(participant))

@@ -224,6 +224,7 @@ pub fn actor(args: TokenStream, item: TokenStream) -> TokenStream {
         }
 
         impl #impl_generics #behavior::Behavior for #self_ty #where_clause {
+            type Protocol = Self;
             type Event = #behavior::User<#address, #message>;
             type Sends = ::std::vec::Vec<#send>;
             type Ph = #behavior::Never;
@@ -343,6 +344,7 @@ pub fn behavior(args: TokenStream, item: TokenStream) -> TokenStream {
         }
 
         impl #impl_generics #behavior::Behavior for #self_ty #where_clause {
+            type Protocol = Self;
             type Event = #behavior::User<#addr, #message>;
             type Sends = #sends;
             type Ph = #behavior::Never;

@@ -95,6 +95,7 @@ impl behavior::Protocol for LeaseClient {
 }
 
 impl Behavior for LeaseClient {
+    type Protocol = Self;
     type Event = User<MailAddr, LeaseReply>;
     type Sends = Vec<Never>;
     type Ph = Never;

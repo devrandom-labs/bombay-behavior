@@ -60,8 +60,9 @@ ordered environmental observations.
 - an absolute one-shot schedule is `Unscheduled` or `Scheduled`.
 
 This makes contradictory combinations of `live` and `last_issued`
-unrepresentable. `ReceiveTimeout` and `Deadline` remain protocol adapters that decide
-which typed environmental events belong to their timer.
+unrepresentable. `ReceiveTimeout` and `Deadline` remain behavior adapters that
+extend the internal event algebra while preserving the wrapped public
+protocol.
 
 ## Named effect products
 
@@ -76,8 +77,8 @@ does not force consumers to navigate positional nesting.
 cohesive module. Splitting the queue from the pure replay adapter would not
 introduce an additional invariant or pure transition boundary.
 
-The event-lane traits and wrapper event enums are static protocol composition,
-not hidden mutable domains. Their repeated forwarding implementations are
-deliberately explicit compile-time proofs of which lanes a wrapper consumes or
-forwards. A macro or registry would reduce lines while making those proofs less
-inspectable.
+The event-lane traits and wrapper event enums are static event-algebra
+composition, not public protocols or hidden mutable domains. Their repeated
+forwarding implementations are deliberately explicit compile-time proofs of
+which lanes a wrapper consumes or forwards. A macro or registry would reduce
+lines while making those proofs less inspectable.

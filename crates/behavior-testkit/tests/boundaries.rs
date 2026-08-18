@@ -549,6 +549,31 @@ async fn nested_at_identical_schedules_are_distinguished_by_identity() {
     assert_eq!(first.become_, Step::Stop(behavior::Stopped));
 }
 
+/// Reusing the complete timer identity denotes one event lane. The outermost
+/// matching owner consumes it, so two reactions are never run for one fact.
+#[tokio::test]
+async fn duplicate_nested_timer_identity_has_one_outermost_owner() {
+    let due = Instant::now() + Duration::from_secs(1);
+    let outer = behavior::Deadline::new(
+        behavior::Deadline::new(Recorder::default(), TimerId(0), Some(due), |_| {
+            Ok(Step::Stop(behavior::Stopped))
+        }),
+        TimerId(0),
+        Some(due),
+        |_| Ok(Step::Continue),
+    );
+    let mut outer = outer.initialize().unwrap().behavior;
+
+    let actions = outer
+        .transition(DeadlineEvent::Elapsed(TimerElapsed {
+            id: TimerId(0),
+            generation: TimerGeneration(0),
+        }))
+        .unwrap();
+
+    assert_eq!(actions.become_, Step::Continue);
+}
+
 /// One explicit restart configuration applies its strategy, eligibility, and
 /// budget as a correlated product: a second abnormal death inside the window
 /// is denied and a normal exit is ineligible under `Transient` policy.

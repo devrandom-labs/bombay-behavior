@@ -133,6 +133,7 @@ impl behavior::Protocol for U8Sink {
 }
 
 impl Behavior for U8Sink {
+    type Protocol = Self;
     type Event = User<MailAddr, u8>;
     type Sends = Vec<Never>;
     type Ph = Never;
@@ -158,7 +159,7 @@ fn requires_no_births<B: Behavior<Birth = NoBirths>>(_behavior: &B) {}
 fn ordinary_and_service_send_algebras_have_disjoint_static_dispatch() {
     trait RouteSends<A: behavior::Address> {}
 
-    impl<B: Behavior<Addr = MailAddr>> RouteSends<MailAddr> for Vec<Delivery<B>> {}
+    impl<P> RouteSends<MailAddr> for Vec<Delivery<P>> where P: behavior::Protocol<Addr = MailAddr> {}
     impl<A: behavior::Address> RouteSends<A> for ServiceSends<ObserveChild<A::Nonce>> {}
 
     fn requires_route_sends<A: behavior::Address, S: RouteSends<A>>() {}
@@ -745,6 +746,7 @@ impl behavior::Protocol for TimerAware {
 }
 
 impl Behavior for TimerAware {
+    type Protocol = Self;
     type Event = TimerAwareEvent;
     type Sends = Vec<Never>;
     type Ph = Never;
@@ -797,7 +799,7 @@ async fn a_proxy_ignores_a_stale_child_stop_nonce() {
     let proxy = Proxy::new(child(0));
     let initialized = proxy.initialize().unwrap();
     let mut proxy = initialized.behavior;
-    proxy.on(CreationResolved::birth(0)).unwrap();
+    proxy.on(CreationResolved::birth(0, MailAddr(0))).unwrap();
     let stale = proxy
         .transition(ProxyEvent::ChildStopped(ChildStopped {
             nonce: 99,
@@ -822,7 +824,7 @@ async fn a_proxy_ignores_a_stale_child_stop_nonce() {
 async fn a_proxy_shuts_down_its_exact_worker_before_stopping() {
     let initialized = Proxy::new(child(0)).initialize().unwrap();
     let mut proxy = initialized.behavior;
-    proxy.on(CreationResolved::birth(0)).unwrap();
+    proxy.on(CreationResolved::birth(0, MailAddr(0))).unwrap();
 
     let requested = proxy.on(ShutdownRequested).unwrap();
     assert_eq!(
@@ -851,7 +853,9 @@ async fn proxy_shutdown_waits_for_in_flight_creation_resolution() {
     assert!(waiting.sends.shutdowns.is_empty());
     assert!(matches!(waiting.become_, Step::Continue));
 
-    let resolved = accepted.on(CreationResolved::birth(0)).unwrap();
+    let resolved = accepted
+        .on(CreationResolved::birth(0, MailAddr(0)))
+        .unwrap();
     assert_eq!(resolved.sends.shutdowns.as_slice(), [ShutdownChild::new(0)]);
     assert!(matches!(resolved.become_, Step::Continue));
 
@@ -873,7 +877,7 @@ async fn proxy_shutdown_waits_for_in_flight_creation_resolution() {
 async fn proxy_shutdown_rejection_is_correlated_to_the_requested_worker() {
     let initialized = Proxy::new(child(0)).initialize().unwrap();
     let mut proxy = initialized.behavior;
-    proxy.on(CreationResolved::birth(0)).unwrap();
+    proxy.on(CreationResolved::birth(0, MailAddr(0))).unwrap();
     proxy.on(ShutdownRequested).unwrap();
 
     let stale = proxy
@@ -1047,7 +1051,7 @@ async fn proxy_replacement_creates_a_fresh_incarnation() {
     let mut proxy = initialized.behavior;
     assert_eq!(first.creates[0].nonce, 0);
     assert_eq!(first.creates[0].kind, CreationKind::Birth);
-    proxy.on(CreationResolved::birth(0)).unwrap();
+    proxy.on(CreationResolved::birth(0, MailAddr(0))).unwrap();
     let second = proxy
         .transition(ProxyEvent::Command(User::user(
             MailAddr(0),
@@ -1071,7 +1075,7 @@ async fn proxy_replacement_creates_a_fresh_incarnation() {
     assert_eq!(second.sends.child_observations[0].nonce, 1);
     assert_eq!(second.sends.stopped_reports[0].outcome, Err(Crash::Failed));
     proxy
-        .on(CreationResolved::replacement_incarnation(1, 0))
+        .on(CreationResolved::replacement_incarnation(1, 0, MailAddr(1)))
         .unwrap();
 
     let forwarded = proxy
@@ -1101,7 +1105,7 @@ async fn proxy_routes_only_after_matching_installation_and_rejection_stays_vacan
         .unwrap();
     assert!(pending.sends.deliveries.is_empty());
 
-    let stale = proxy.on(CreationResolved::birth(1)).unwrap();
+    let stale = proxy.on(CreationResolved::birth(1, MailAddr(1))).unwrap();
     assert!(stale.sends.creation_reports.is_empty());
 
     let rejected = proxy
@@ -1130,7 +1134,7 @@ async fn proxy_serializes_attempts_and_rejection_preserves_last_installed_incarn
     let proxy = Proxy::new(child(0));
     let initialized = proxy.initialize().unwrap();
     let mut proxy = initialized.behavior;
-    proxy.on(CreationResolved::birth(0)).unwrap();
+    proxy.on(CreationResolved::birth(0, MailAddr(0))).unwrap();
     proxy
         .transition(ProxyEvent::Command(User::user(
             MailAddr(0),
@@ -1184,7 +1188,7 @@ async fn idle_proxy_marks_an_immediate_successor_as_a_replacement_incarnation() 
     let initial = initialized.actions;
     let mut proxy = initialized.behavior;
     assert_eq!(initial.creates[0].kind, CreationKind::Birth);
-    proxy.on(CreationResolved::birth(0)).unwrap();
+    proxy.on(CreationResolved::birth(0, MailAddr(0))).unwrap();
 
     let stopped = proxy
         .transition(ProxyEvent::ChildStopped(ChildStopped {
@@ -1239,7 +1243,7 @@ async fn stable_proxy_reports_worker_stop_and_creates_fresh_replacement() {
     assert_eq!(worker_birth.creates[0].nonce, 0);
     assert_eq!(worker_birth.creates[0].kind, CreationKind::Birth);
     assert_eq!(worker_birth.sends.child_observations[0].nonce, 0);
-    proxy.on(CreationResolved::birth(0)).unwrap();
+    proxy.on(CreationResolved::birth(0, MailAddr(0))).unwrap();
 
     let worker_stop = proxy
         .transition(ProxyEvent::ChildStopped(ChildStopped {

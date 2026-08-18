@@ -5,7 +5,7 @@ use behavior::{Actions, Address, Behavior, BehaviorActed, BirthMode, SendAlgebra
 
 /// Pure fold applied to the exact matching terminal fact.
 pub type TerminationReaction<B> =
-    fn(&mut B, PeerStopped<<B as crate::Protocol>::Addr>) -> BehaviorActed<B>;
+    fn(&mut B, PeerStopped<crate::BehaviorAddr<B>>) -> BehaviorActed<B>;
 
 /// Cleanup specialization of an action-producing terminal reaction.
 pub type CleanupReaction<B> = TerminationReaction<B>;
@@ -31,7 +31,7 @@ pub enum TerminationObservation {
 /// authoritative [`PeerStopped`] fact.
 pub struct TerminationMonitor<B: Behavior> {
     inner: B,
-    peer: B::Addr,
+    peer: crate::BehaviorAddr<B>,
     on_stopped: TerminationReaction<B>,
     observation: TerminationObservation,
 }
@@ -49,16 +49,20 @@ pub type Reaper<B> = TerminationMonitor<B>;
 /// topic; no ambient lifecycle side channel is introduced.
 pub type LifecyclePublisher<B> = TerminationMonitor<B>;
 type TerminationMonitorActions<B> = Actions<
-    <B as crate::Protocol>::Addr,
+    crate::BehaviorAddr<B>,
     <B as Behavior>::Ph,
-    WatchSends<<B as crate::Protocol>::Addr, <B as Behavior>::Sends>,
+    WatchSends<crate::BehaviorAddr<B>, <B as Behavior>::Sends>,
     <B as Behavior>::Birth,
 >;
 
 impl<B: Behavior> TerminationMonitor<B> {
     /// Construct an action-producing observation definition.
     #[must_use]
-    pub const fn new(inner: B, peer: B::Addr, on_stopped: TerminationReaction<B>) -> Self {
+    pub const fn new(
+        inner: B,
+        peer: crate::BehaviorAddr<B>,
+        on_stopped: TerminationReaction<B>,
+    ) -> Self {
         Self {
             inner,
             peer,
@@ -74,8 +78,8 @@ impl<B: Behavior> TerminationMonitor<B> {
     }
 
     fn wrap(
-        actions: Actions<B::Addr, B::Ph, B::Sends, B::Birth>,
-        observations: ServiceSends<crate::ObservePeer<B::Addr>>,
+        actions: Actions<crate::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>,
+        observations: ServiceSends<crate::ObservePeer<crate::BehaviorAddr<B>>>,
     ) -> TerminationMonitorActions<B> {
         actions.map_sends(|behavior| WatchSends {
             behavior,
@@ -98,26 +102,16 @@ impl<B: Behavior + crate::StashStatus> crate::StashStatus for TerminationMonitor
     }
 }
 
-impl<B, A, Ph, Sends, Br> behavior::Protocol for TerminationMonitor<B>
-where
-    A: Address,
-    Sends: SendAlgebra,
-    Br: BirthMode,
-    B: Behavior<Addr = A, Ph = Ph, Sends = Sends, Birth = Br>,
-    B::Event: RouteInput<PeerStopped<A>>,
-{
-    type Addr = A;
-    type Msg = B::Msg;
-}
-
 impl<B, A, Ph, Sends, Br> Behavior for TerminationMonitor<B>
 where
     A: Address,
     Sends: SendAlgebra,
     Br: BirthMode,
-    B: Behavior<Addr = A, Ph = Ph, Sends = Sends, Birth = Br>,
+    B: Behavior<Ph = Ph, Sends = Sends, Birth = Br>,
+    B::Protocol: crate::Protocol<Addr = A>,
     B::Event: RouteInput<PeerStopped<A>>,
 {
+    type Protocol = B::Protocol;
     type Event = WatchEvent<B::Event>;
     type Sends = WatchSends<A, Sends>;
     type Ph = Ph;
@@ -177,6 +171,7 @@ mod tests {
     }
 
     impl Behavior for Probe {
+        type Protocol = Self;
         type Event = User<MailAddr, u8>;
         type Sends = Vec<u8>;
         type Ph = Never;
@@ -263,6 +258,7 @@ mod tests {
     }
 
     impl Behavior for Fallible {
+        type Protocol = Self;
         type Event = User<MailAddr, ()>;
         type Sends = Vec<Never>;
         type Ph = Never;

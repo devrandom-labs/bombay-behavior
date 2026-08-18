@@ -13,7 +13,7 @@ wrap, or recreate a competing framework.
 | Repository or published crate | Architectural ownership |
 |---|---|
 | `bombay-behavior` | Foundational pure `Behavior -> Actions` algebra: send, fresh create, and next behavior or termination |
-| `bombay-behavior-actors` | Reusable passive behavior templates and concrete typed protocol transformations |
+| `bombay-behavior-actors` | Reusable passive actor templates, internal event/effect transformations, and concrete public protocols |
 | `bombay-engine` | One universal generic Driver over a behavior and a statically sufficient environment |
 | `bombay-rs` and `bombay-framework` | Tokio-backed `System`, incarnation construction, capability interpretation, handles, and application composition |
 | `bombay-communication` | Typed mailbox mechanics, bounded user admission, control priority, fairness, backpressure, and draining |

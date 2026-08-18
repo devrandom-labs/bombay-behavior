@@ -10,6 +10,7 @@ impl Protocol for Target {
 }
 
 impl Behavior for Target {
+    type Protocol = Self;
     type Event = User<MailAddr, u8>;
     type Sends = Vec<Never>;
     type Ph = Never;
@@ -27,7 +28,7 @@ macro_rules! recursive_reply_case {
             use super::*;
 
             struct Root;
-            type Reply = MessageAdapter<$input, Guardian<Root>>;
+            type Reply = MessageAdapter<$input, Root>;
             type Subject = $subject;
 
             impl Protocol for Root {
@@ -36,6 +37,7 @@ macro_rules! recursive_reply_case {
             }
 
             impl Behavior for Root {
+                type Protocol = Self;
                 type Event = User<MailAddr, ()>;
                 type Sends = Vec<Delivery<Subject>>;
                 type Ph = Never;
@@ -54,7 +56,7 @@ macro_rules! recursive_reply_case {
                 fn assert_behavior<B: Behavior>() {}
                 assert_behavior::<Guardian<Root>>();
                 assert_behavior::<Subject>();
-                let root = Recipient::<Guardian<Root>>::global(MailAddr(1));
+                let root = Recipient::<Root>::global(MailAddr(1));
                 let _: Reply = MessageAdapter::new(root, adapt);
             }
         }
@@ -69,12 +71,12 @@ recursive_reply_case!(
 recursive_reply_case!(
     buffer,
     BufferOutcome<u8>,
-    Buffer<MailAddr, u8, Target, Reply>
+    Buffer<MailAddr, u8>
 );
 recursive_reply_case!(
     cache,
     CacheResult<u8, u16>,
-    Cache<MailAddr, u8, u16, Reply>
+    Cache<MailAddr, u8, u16>
 );
 recursive_reply_case!(
     circuit_breaker,
@@ -149,3 +151,119 @@ recursive_reply_case!(
     WorkflowOutcome<u8>,
     Workflow<MailAddr, u8, Reply>
 );
+
+#[test]
+fn every_reply_template_accepts_a_pure_message_protocol() {
+    fn assert_behavior<B: Behavior>() {}
+
+    type AckReply = MessageProtocol<MailAddr, AcknowledgementOutcome<u8, u16>>;
+    type BreakerReply = MessageProtocol<MailAddr, BreakerOutcome>;
+    type ConfigurationReply = MessageProtocol<MailAddr, ConfigurationState<u8>>;
+    type CorrelatorReply = MessageProtocol<MailAddr, CorrelationResult<u8, u16>>;
+    type DeduplicatorReply = MessageProtocol<MailAddr, DeduplicatorOutcome<u8, u8>>;
+    type HealthReply = MessageProtocol<MailAddr, HealthReport<u8>>;
+    type LeaseReply = MessageProtocol<MailAddr, LeaseOutcome<u8>>;
+    type GateReply = MessageProtocol<MailAddr, OrderGateOutcome<u8, u8>>;
+    type PresenceReplyProtocol = MessageProtocol<MailAddr, PresenceReply<u8>>;
+    type PriorityReply = MessageProtocol<MailAddr, PriorityQueueOutcome<u8>>;
+    type RateReply = MessageProtocol<MailAddr, RateLimiterOutcome<u8>>;
+    type ReadinessReply = MessageProtocol<MailAddr, ReadinessReport<u8>>;
+    type RegistryReply = MessageProtocol<MailAddr, RegistryResult<u8, Target>>;
+    type ResolverReply = MessageProtocol<MailAddr, Resolution<u8, Target>>;
+    type SequencerReply = MessageProtocol<MailAddr, SequencerOutcome<u8>>;
+    type TaskReply = MessageProtocol<MailAddr, TaskResult<u8>>;
+    type QueueReply = MessageProtocol<MailAddr, WorkQueueOutcome<u8>>;
+    type WorkflowReply = MessageProtocol<MailAddr, WorkflowOutcome<u8>>;
+
+    assert_behavior::<Acknowledgements<MailAddr, u8, u16, AckReply>>();
+    assert_behavior::<Buffer<MailAddr, u8>>();
+    assert_behavior::<Cache<MailAddr, u8, u16>>();
+    assert_behavior::<CircuitBreaker<MailAddr, BreakerReply>>();
+    assert_behavior::<Configuration<MailAddr, u8, ConfigurationReply>>();
+    assert_behavior::<Correlator<MailAddr, u8, u16, CorrelatorReply>>();
+    assert_behavior::<Deduplicator<MailAddr, u8, u8, Target, DeduplicatorReply>>();
+    assert_behavior::<Health<MailAddr, u8, HealthReply>>();
+    assert_behavior::<Lease<MailAddr, u8, LeaseReply>>();
+    assert_behavior::<OrderGate<MailAddr, u8, u8, Target, GateReply>>();
+    assert_behavior::<Presence<MailAddr, u8, PresenceReplyProtocol>>();
+    assert_behavior::<PriorityQueue<MailAddr, u8, u8, Target, PriorityReply>>();
+    assert_behavior::<RateLimiter<MailAddr, u8, Target, RateReply>>();
+    assert_behavior::<Readiness<MailAddr, u8, ReadinessReply>>();
+    assert_behavior::<Registry<MailAddr, u8, Target, RegistryReply>>();
+    assert_behavior::<Resolver<MailAddr, u8, Target, ResolverReply>>();
+    assert_behavior::<Sequencer<MailAddr, u8, Target, SequencerReply>>();
+    assert_behavior::<Task<MailAddr, u8, TaskReply>>();
+    assert_behavior::<WorkQueue<MailAddr, u8, Target, QueueReply>>();
+    assert_behavior::<Workflow<MailAddr, u8, WorkflowReply>>();
+}
+
+#[test]
+fn every_send_only_destination_accepts_a_protocol_without_a_behavior() {
+    fn assert_behavior<B: Behavior>() {}
+
+    type Bytes = MessageProtocol<MailAddr, u8>;
+    type GateReply = MessageProtocol<MailAddr, OrderGateOutcome<u8, u8>>;
+    type PriorityReply = MessageProtocol<MailAddr, PriorityQueueOutcome<u8>>;
+    type QueueReply = MessageProtocol<MailAddr, WorkQueueOutcome<u8>>;
+    type RateReply = MessageProtocol<MailAddr, RateLimiterOutcome<u8>>;
+    type SequenceReply = MessageProtocol<MailAddr, SequencerOutcome<u8>>;
+    type DedupReply = MessageProtocol<MailAddr, DeduplicatorOutcome<u8, u8>>;
+    type RegistryReply = MessageProtocol<MailAddr, RegistryResult<u8, Bytes>>;
+    type ResolverReply = MessageProtocol<MailAddr, Resolution<u8, Bytes>>;
+
+    assert_behavior::<Buffer<MailAddr, u8>>();
+    assert_behavior::<OrderGate<MailAddr, u8, u8, Bytes, GateReply>>();
+    assert_behavior::<PriorityQueue<MailAddr, u8, u8, Bytes, PriorityReply>>();
+    assert_behavior::<WorkQueue<MailAddr, u8, Bytes, QueueReply>>();
+    assert_behavior::<RateLimiter<MailAddr, u8, Bytes, RateReply>>();
+    assert_behavior::<Sequencer<MailAddr, u8, Bytes, SequenceReply>>();
+    assert_behavior::<Deduplicator<MailAddr, u8, u8, Bytes, DedupReply>>();
+    assert_behavior::<Router<MailAddr, Bytes, RoundRobin>>();
+    assert_behavior::<Topic<MailAddr, u8>>();
+    assert_behavior::<PubSub<MailAddr, u8, u8, Bytes>>();
+    assert_behavior::<Registry<MailAddr, u8, Bytes, RegistryReply>>();
+    assert_behavior::<Resolver<MailAddr, u8, Bytes, ResolverReply>>();
+    assert_behavior::<Barrier<MailAddr, u8>>();
+    assert_behavior::<Latch<MailAddr>>();
+}
+
+#[test]
+fn protocol_preserving_wrappers_keep_one_public_identity() {
+    fn preserves<B, W>()
+    where
+        B: Behavior,
+        W: Behavior<Protocol = B::Protocol>,
+    {
+    }
+
+    preserves::<RootProtocolProbe, Guardian<RootProtocolProbe>>();
+    preserves::<RootProtocolProbe, Stash<RootProtocolProbe>>();
+    preserves::<RootProtocolProbe, Watch<RootProtocolProbe>>();
+    preserves::<RootProtocolProbe, ReceiveTimeout<RootProtocolProbe>>();
+    preserves::<RootProtocolProbe, Deadline<RootProtocolProbe>>();
+    preserves::<RootProtocolProbe, Periodic<RootProtocolProbe>>();
+    preserves::<RootProtocolProbe, OneShot<RootProtocolProbe>>();
+    preserves::<RootProtocolProbe, TerminationMonitor<RootProtocolProbe>>();
+    preserves::<RootProtocolProbe, StopOnShutdown<RootProtocolProbe>>();
+    preserves::<RootProtocolProbe, FinalizeOnShutdown<RootProtocolProbe>>();
+}
+
+struct RootProtocolProbe;
+
+impl Protocol for RootProtocolProbe {
+    type Addr = MailAddr;
+    type Msg = ();
+}
+
+impl Behavior for RootProtocolProbe {
+    type Protocol = MessageProtocol<MailAddr, ()>;
+    type Event = User<MailAddr, ()>;
+    type Sends = Vec<Never>;
+    type Ph = Never;
+    type Error = Never;
+    type Birth = NoBirths;
+
+    fn transition(&mut self, _: ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
+        Ok(Actions::cont())
+    }
+}

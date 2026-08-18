@@ -1,7 +1,7 @@
 //! Application-root lifecycle composition.
 
-use crate::{ShutdownProtocol, ShutdownRequested};
-use behavior::{Actions, Address, Behavior, BehaviorActed, BirthMode, SendAlgebra};
+use crate::{ShutdownEvent, ShutdownRequested};
+use behavior::{Actions, Address, Behavior, BehaviorActed, BirthMode, RouteInput, SendAlgebra};
 
 /// The application or subtree lifecycle boundary around one concrete behavior.
 ///
@@ -28,6 +28,14 @@ use behavior::{Actions, Address, Behavior, BehaviorActed, BirthMode, SendAlgebra
 ///     |_, _, _| Ok(Move::Stay),
 /// ));
 /// definition.receive(MailAddr(0), ());
+/// ```
+///
+/// The boundary is not a second recipient identity; callers retain the
+/// wrapped actor's protocol instead:
+///
+/// ```compile_fail
+/// use behavior_actors::{Guardian, MailAddr, Machine, Never, Recipient};
+/// let _ = Recipient::<Guardian<Machine<MailAddr, (), (), (), Never>>>::global(MailAddr(0));
 /// ```
 pub struct Guardian<B> {
     inner: B,
@@ -61,19 +69,17 @@ impl<B: crate::StashStatus> crate::StashStatus for Guardian<B> {
     }
 }
 
-impl<B: behavior::Protocol> behavior::Protocol for Guardian<B> {
-    type Addr = B::Addr;
-    type Msg = B::Msg;
-}
-
 impl<B, A, Ph, Sends, Br> Behavior for Guardian<B>
 where
     A: Address,
     Sends: SendAlgebra,
     Br: BirthMode,
-    B: Behavior<Addr = A, Ph = Ph, Sends = Sends, Birth = Br>,
+    B: Behavior<Ph = Ph, Sends = Sends, Birth = Br>,
+    B::Protocol: crate::Protocol<Addr = A>,
+    B::Event: RouteInput<ShutdownRequested>,
 {
-    type Event = ShutdownProtocol<B::Event>;
+    type Protocol = B::Protocol;
+    type Event = ShutdownEvent<B::Event>;
     type Sends = Sends;
     type Ph = Ph;
     type Error = B::Error;
@@ -85,10 +91,11 @@ where
 
     fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
         match event {
-            ShutdownProtocol::Behavior(event) => {
-                behavior::delegate_transition(&mut self.inner, event)
-            }
-            ShutdownProtocol::ShutdownRequested(ShutdownRequested) => Ok(Actions::stop()),
+            ShutdownEvent::Behavior(event) => behavior::delegate_transition(&mut self.inner, event),
+            ShutdownEvent::ShutdownRequested(request) => match B::Event::route(request) {
+                Ok(event) => behavior::delegate_transition(&mut self.inner, event),
+                Err(ShutdownRequested) => Ok(Actions::stop()),
+            },
         }
     }
 }
@@ -116,6 +123,7 @@ mod tests {
     }
 
     impl Behavior for Application {
+        type Protocol = Self;
         type Event = User<MailAddr, u8>;
         type Sends = Vec<u8>;
         type Ph = Never;
@@ -265,6 +273,7 @@ mod tests {
     }
 
     impl Behavior for Rejecting {
+        type Protocol = Self;
         type Event = User<MailAddr, ()>;
         type Sends = Vec<Never>;
         type Ph = Never;

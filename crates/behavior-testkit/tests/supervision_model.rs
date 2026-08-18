@@ -90,7 +90,8 @@ fn supervisor<B>(
     count: usize,
 ) -> Supervisor<B, Child>
 where
-    B: Behavior<Birth = behavior::Births<Child>, Addr = MailAddr>,
+    B: Behavior<Birth = behavior::Births<Child>>,
+    B::Protocol: behavior::Protocol<Addr = MailAddr>,
 {
     Supervisor::new(
         inner,
@@ -131,7 +132,7 @@ async fn creation_provenance_matches_the_independent_incarnation_model() {
         .transition(ProxyEvent::CreationResolved(CreationResolved {
             nonce: 0,
             kind: CreationKind::Birth,
-            result: Ok(()),
+            result: Ok(MailAddr(999)),
         }))
         .unwrap();
 
@@ -172,7 +173,7 @@ async fn immediate_and_denied_replacements_match_the_independent_models() {
         .transition(ProxyEvent::CreationResolved(CreationResolved {
             nonce: 0,
             kind: CreationKind::Birth,
-            result: Ok(()),
+            result: Ok(MailAddr(999)),
         }))
         .unwrap();
     proxy

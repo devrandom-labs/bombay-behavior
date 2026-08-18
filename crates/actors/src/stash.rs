@@ -20,8 +20,8 @@ pub trait StashStatus {
 
 pub struct Stash<B: Behavior> {
     inner: B,
-    route: fn(&B::Msg) -> StashRoute,
-    held: VecDeque<User<B::Addr, B::Msg>>,
+    route: fn(&crate::BehaviorMessage<B>) -> StashRoute,
+    held: VecDeque<User<crate::BehaviorAddr<B>, crate::BehaviorMessage<B>>>,
 }
 
 impl<B: Behavior<Ph = Never>> Stash<B> {
@@ -31,7 +31,7 @@ impl<B: Behavior<Ph = Never>> Stash<B> {
     /// [`StashRoute::Release`]. Construction performs no transition or runtime
     /// operation.
     #[must_use]
-    pub fn new(inner: B, route: fn(&B::Msg) -> StashRoute) -> Self {
+    pub fn new(inner: B, route: fn(&crate::BehaviorMessage<B>) -> StashRoute) -> Self {
         Self {
             inner,
             route,
@@ -67,11 +67,12 @@ where
     A: Address,
     Sends: SendAlgebra,
     Br: BirthMode,
-    B: Behavior<Addr = A, Ph = Never, Sends = Sends, Birth = Br>,
+    B: Behavior<Ph = Never, Sends = Sends, Birth = Br>,
+    B::Protocol: crate::Protocol<Addr = A>,
 {
     fn drain_into(
         &mut self,
-        acc: &mut Actions<B::Addr, Never, B::Sends, B::Birth>,
+        acc: &mut Actions<crate::BehaviorAddr<B>, Never, B::Sends, B::Birth>,
     ) -> Result<(), B::Error> {
         let mut batch = core::mem::take(&mut self.held);
         while let Some(user) = batch.pop_front() {
@@ -96,24 +97,15 @@ where
     }
 }
 
-impl<B, A, Sends, Br> behavior::Protocol for Stash<B>
-where
-    A: Address,
-    Sends: SendAlgebra,
-    Br: BirthMode,
-    B: Behavior<Addr = A, Ph = Never, Sends = Sends, Birth = Br>,
-{
-    type Addr = A;
-    type Msg = B::Msg;
-}
-
 impl<B, A, Sends, Br> Behavior for Stash<B>
 where
     A: Address,
     Sends: SendAlgebra,
     Br: BirthMode,
-    B: Behavior<Addr = A, Ph = Never, Sends = Sends, Birth = Br>,
+    B: Behavior<Ph = Never, Sends = Sends, Birth = Br>,
+    B::Protocol: crate::Protocol<Addr = A>,
 {
+    type Protocol = B::Protocol;
     type Event = B::Event;
     type Sends = Sends;
     type Ph = Never;

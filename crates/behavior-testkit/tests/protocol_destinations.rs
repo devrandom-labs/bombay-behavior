@@ -1,4 +1,6 @@
-use behavior::{Actions, Behavior, Delivery, MailAddr, Never, NoBirths, Recipient, User};
+use behavior::{
+    Actions, Behavior, Delivery, MailAddr, MessageProtocol, Never, NoBirths, Recipient, User,
+};
 
 struct Queue;
 struct Worker;
@@ -11,6 +13,7 @@ macro_rules! inert {
         }
 
         impl Behavior for $actor {
+            type Protocol = Self;
             type Event = User<MailAddr, u8>;
             type Sends = Vec<Never>;
             type Ph = Never;
@@ -55,6 +58,7 @@ impl behavior::Protocol for SelfSending {
 }
 
 impl Behavior for SelfSending {
+    type Protocol = Self;
     type Event = User<MailAddr, u8>;
     type Sends = Vec<Delivery<Self>>;
     type Ph = Never;
@@ -125,6 +129,7 @@ impl behavior::Protocol for Remote {
 }
 
 impl Behavior for Remote {
+    type Protocol = Self;
     type Event = User<RemoteAddr, u8>;
     type Sends = Vec<Never>;
     type Ph = Never;
@@ -152,6 +157,7 @@ impl behavior::Protocol for CrossNamespaceSender {
 }
 
 impl Behavior for CrossNamespaceSender {
+    type Protocol = Self;
     type Event = User<MailAddr, ()>;
     type Sends = Vec<Delivery<Remote>>;
     type Ph = Never;
@@ -193,5 +199,17 @@ fn protocol_markers_need_no_clone_or_equality_implementation() {
     let cloned = delivery.clone();
 
     assert!(cloned == delivery);
+}
+
+#[test]
+fn reusable_message_protocol_retains_one_established_identity_across_emitters() {
+    type RootProtocol = MessageProtocol<MailAddr, u8>;
+
+    let root = Recipient::<RootProtocol>::global(MailAddr(0));
+    let first = Delivery::new(root, 1);
+    let second = Delivery::new(root, 2);
+
+    assert_eq!(first.to.resolve(MailAddr(11)), MailAddr(0));
+    assert_eq!(second.to.resolve(MailAddr(99)), MailAddr(0));
 }
 use behavior_testkit::InitializeTest;

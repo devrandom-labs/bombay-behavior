@@ -1,6 +1,6 @@
 //! Pure lifecycle domain for one stable proxy's worker incarnation.
 
-use crate::{ChildShutdownRejection, CreationKind, CreationRejection, CreationResolved};
+use crate::{Address, ChildShutdownRejection, CreationKind, CreationRejection, CreationResolved};
 
 /// The complete lifecycle state of the worker behind one stable proxy.
 enum IncarnationState<N, C> {
@@ -79,19 +79,22 @@ impl<N, C> IncarnationCreation<N, C> {
 /// [`IncarnationStopEffects`], so stop provenance and a queued replacement are
 /// never reconstructed from unrelated optional fields.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum IncarnationEffects<N, C, M> {
+pub(crate) enum IncarnationEffects<N, C, M, A>
+where
+    A: Address<Nonce = N>,
+{
     None,
     Create(IncarnationCreation<N, C>),
     Deliver {
         incarnation: N,
         message: M,
     },
-    Report(CreationResolved<N>),
+    Report(CreationResolved<A>),
     ReportAndShutdown {
-        resolved: CreationResolved<N>,
+        resolved: CreationResolved<A>,
         incarnation: N,
     },
-    ReportAndStop(CreationResolved<N>),
+    ReportAndStop(CreationResolved<A>),
     Shutdown(N),
     Stop,
 }
@@ -165,9 +168,9 @@ impl<N: Copy + From<u64> + PartialEq, C> Incarnation<N, C> {
     /// # Errors
     /// Returns [`IncarnationError::AlreadyInitialized`] after leaving
     /// `Dormant`.
-    pub(crate) fn initialize<M>(
+    pub(crate) fn initialize<M, A: Address<Nonce = N>>(
         &mut self,
-    ) -> Result<IncarnationEffects<N, C, M>, IncarnationError> {
+    ) -> Result<IncarnationEffects<N, C, M, A>, IncarnationError> {
         let previous = core::mem::replace(
             &mut self.state,
             IncarnationState::Vacant {
@@ -199,12 +202,12 @@ impl<N: Copy + From<u64> + PartialEq, C> Incarnation<N, C> {
         Ok(IncarnationCreation::new(attempt, kind, child))
     }
 
-    pub(crate) fn creation_resolved<M>(
+    pub(crate) fn creation_resolved<M, A: Address<Nonce = N>>(
         &mut self,
         attempt: N,
         kind: CreationKind<N>,
-        result: Result<(), CreationRejection>,
-    ) -> IncarnationEffects<N, C, M> {
+        result: Result<A, CreationRejection>,
+    ) -> IncarnationEffects<N, C, M, A> {
         let (pending, pending_kind, shutting_down) = match self.state {
             IncarnationState::Installing { attempt, kind } => (attempt, kind, false),
             IncarnationState::InstallingDuringShutdown { attempt, kind } => (attempt, kind, true),
@@ -214,10 +217,10 @@ impl<N: Copy + From<u64> + PartialEq, C> Incarnation<N, C> {
             return IncarnationEffects::None;
         }
         self.state = match result {
-            Ok(()) if shutting_down => IncarnationState::ShuttingDown {
+            Ok(_) if shutting_down => IncarnationState::ShuttingDown {
                 incarnation: attempt,
             },
-            Ok(()) => IncarnationState::Running {
+            Ok(_) => IncarnationState::Running {
                 incarnation: attempt,
                 queued_replacement: None,
             },
@@ -230,7 +233,7 @@ impl<N: Copy + From<u64> + PartialEq, C> Incarnation<N, C> {
         };
         let resolved = CreationResolved::new(attempt, kind, result);
         match (shutting_down, result) {
-            (true, Ok(())) => IncarnationEffects::ReportAndShutdown {
+            (true, Ok(_)) => IncarnationEffects::ReportAndShutdown {
                 resolved,
                 incarnation: attempt,
             },
@@ -302,7 +305,10 @@ impl<N: Copy + From<u64> + PartialEq, C> Incarnation<N, C> {
         })
     }
 
-    pub(crate) fn forward<M>(&self, message: M) -> IncarnationEffects<N, C, M> {
+    pub(crate) fn forward<M, A: Address<Nonce = N>>(
+        &self,
+        message: M,
+    ) -> IncarnationEffects<N, C, M, A> {
         match self.state {
             IncarnationState::Running { incarnation, .. } => IncarnationEffects::Deliver {
                 incarnation,
@@ -316,10 +322,10 @@ impl<N: Copy + From<u64> + PartialEq, C> Incarnation<N, C> {
         }
     }
 
-    pub(crate) fn replace<M>(
+    pub(crate) fn replace<M, A: Address<Nonce = N>>(
         &mut self,
         child: C,
-    ) -> Result<IncarnationEffects<N, C, M>, IncarnationError> {
+    ) -> Result<IncarnationEffects<N, C, M, A>, IncarnationError> {
         Ok(match &mut self.state {
             IncarnationState::Running {
                 queued_replacement: queued_replacement @ None,
@@ -350,7 +356,7 @@ impl<N: Copy + From<u64> + PartialEq, C> Incarnation<N, C> {
     /// Begin orderly shutdown without inferring whether an in-flight creation
     /// has been committed. A pending creation is resolved before the proxy
     /// decides whether a child must be shut down.
-    pub(crate) fn shutdown<M>(&mut self) -> IncarnationEffects<N, C, M> {
+    pub(crate) fn shutdown<M, A: Address<Nonce = N>>(&mut self) -> IncarnationEffects<N, C, M, A> {
         let previous = core::mem::replace(
             &mut self.state,
             IncarnationState::Vacant {
@@ -393,11 +399,11 @@ impl<N: Copy + From<u64> + PartialEq, C> Incarnation<N, C> {
     /// lifecycle requested. `NotEstablished` proves that no owned child
     /// remains at that nonce; `AlreadyStopping` still requires the terminal
     /// observation.
-    pub(crate) fn shutdown_rejected<M>(
+    pub(crate) fn shutdown_rejected<M, A: Address<Nonce = N>>(
         &mut self,
         nonce: N,
         reason: ChildShutdownRejection,
-    ) -> Result<IncarnationEffects<N, C, M>, IncarnationError> {
+    ) -> Result<IncarnationEffects<N, C, M, A>, IncarnationError> {
         let IncarnationState::ShuttingDown { incarnation } = self.state else {
             return Ok(IncarnationEffects::None);
         };
@@ -420,11 +426,15 @@ mod tests {
     #[test]
     fn rejected_attempt_preserves_successful_provenance() {
         let mut machine = Incarnation::<u64, &'static str>::new("first");
-        machine.initialize::<()>().unwrap();
-        machine.creation_resolved::<()>(0, CreationKind::Birth, Ok(()));
-        machine.replace::<()>("second").unwrap();
+        machine.initialize::<(), crate::MailAddr>().unwrap();
+        machine.creation_resolved::<(), crate::MailAddr>(
+            0,
+            CreationKind::Birth,
+            Ok(crate::MailAddr(10)),
+        );
+        machine.replace::<(), crate::MailAddr>("second").unwrap();
         machine.child_stopped(0).unwrap();
-        machine.creation_resolved::<()>(
+        machine.creation_resolved::<(), crate::MailAddr>(
             1,
             CreationKind::ReplacementIncarnation { replaces: 0 },
             Err(CreationRejection::EnvironmentFailed),
@@ -436,7 +446,7 @@ mod tests {
                 last_installed: Some(0)
             }
         );
-        let effects = machine.replace::<()>("third").unwrap();
+        let effects = machine.replace::<(), crate::MailAddr>("third").unwrap();
         let IncarnationEffects::Create(creation) = effects else {
             panic!("replace on a vacant slot must begin a creation");
         };
@@ -450,8 +460,12 @@ mod tests {
     #[test]
     fn stale_inputs_are_inert() {
         let mut machine = Incarnation::<u64, ()>::new(());
-        machine.initialize::<()>().unwrap();
-        let effects = machine.creation_resolved::<()>(9, CreationKind::Birth, Ok(()));
+        machine.initialize::<(), crate::MailAddr>().unwrap();
+        let effects = machine.creation_resolved::<(), crate::MailAddr>(
+            9,
+            CreationKind::Birth,
+            Ok(crate::MailAddr(90)),
+        );
         assert_eq!(effects, IncarnationEffects::None);
         assert_eq!(
             machine.phase(),

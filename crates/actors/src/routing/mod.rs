@@ -21,8 +21,8 @@ pub use acknowledgements::{
     AcknowledgementState, Acknowledgements,
 };
 pub use buffer::{
-    Buffer, BufferConfigError, BufferMessage, BufferOutcome, BufferRejection, BufferSends,
-    BufferState, Buffered, OverflowPolicy,
+    Buffer, BufferConfigError, BufferConfiguration, BufferMessage, BufferOutcome, BufferRejection,
+    BufferSends, BufferState, Buffered, OverflowPolicy,
 };
 pub use circuit_breaker::{
     BreakerAttempt, BreakerConfigError, BreakerMessage, BreakerOutcome, BreakerPhase,

@@ -2,9 +2,9 @@ use std::time::Duration;
 
 use behavior::{
     Actions, AffinitySelector, AssignmentId, Behavior, CreationKind, Delivery, InterruptionPolicy,
-    JobId, KeyedPoolMessage, KeyedWorkerPool, MailAddr, Never, NoBirths, PoolAssignment,
-    PoolBehaviorSends, PoolError, PoolResponse, Proxy, ProxyCommand, Recipient, RestartPolicy,
-    SendAlgebra, User, WorkerCreationResolved, WorkerPhase, WorkerStopped,
+    JobId, KeyedPoolMessage, KeyedWorkerPool, KeyedWorkerPoolProtocol, MailAddr, Never, NoBirths,
+    PoolAssignment, PoolBehaviorSends, PoolError, PoolResponse, Proxy, ProxyCommand, Recipient,
+    RestartPolicy, SendAlgebra, User, WorkerCreationResolved, WorkerPhase, WorkerStopped,
 };
 use proptest::prelude::*;
 use std::time::Instant;
@@ -14,11 +14,12 @@ struct Worker;
 
 impl behavior::Protocol for Worker {
     type Addr = MailAddr;
-    type Msg = PoolAssignment<u8>;
+    type Msg = PoolAssignment<KeyedWorkerPoolProtocol<MailAddr, Reply, u8, u8, u16>>;
 }
 
 impl Behavior for Worker {
-    type Event = User<MailAddr, PoolAssignment<u8>>;
+    type Protocol = Self;
+    type Event = User<MailAddr, behavior::BehaviorMessage<Self>>;
     type Sends = Vec<Never>;
     type Ph = Never;
     type Error = Never;
@@ -41,10 +42,6 @@ fn nonce(index: usize) -> u64 {
     u64::try_from(index).unwrap()
 }
 
-fn worker(_: usize) -> Worker {
-    Worker
-}
-
 #[derive(Clone, Copy)]
 enum Selector {
     Parity,
@@ -65,8 +62,8 @@ type PoolDefinition = KeyedWorkerPool<MailAddr, Reply, u8, u8, u16, Worker, Sele
 type Pool = behavior::Active<PoolDefinition>;
 
 fn pool_definition(selector: Selector) -> PoolDefinition {
-    KeyedWorkerPool::<MailAddr, Reply, u8, u8, u16, Worker, _>::new(
-        behavior::ChildTopology::indexed(nonce, 2, |index| Some(worker(index))),
+    KeyedWorkerPool::new(
+        behavior::ChildTopology::indexed(nonce, 2, |_| Some(Worker)),
         behavior::PoolConfiguration::new(
             8,
             InterruptionPolicy::Retry,
@@ -75,6 +72,7 @@ fn pool_definition(selector: Selector) -> PoolDefinition {
             Duration::from_secs(60),
         ),
         selector,
+        Recipient::global(MailAddr(9)),
     )
     .unwrap()
 }
@@ -120,8 +118,8 @@ fn assignments(
 
 #[test]
 fn targeted_submission_rejects_when_its_busy_workers_backlog_is_full() {
-    let pool = KeyedWorkerPool::<MailAddr, Reply, u8, u8, u16, Worker, _>::new(
-        behavior::ChildTopology::indexed(nonce, 1, |index| Some(worker(index))),
+    let pool = KeyedWorkerPool::new(
+        behavior::ChildTopology::indexed(nonce, 1, |_| Some(Worker)),
         behavior::PoolConfiguration::new(
             1,
             InterruptionPolicy::Retry,
@@ -130,6 +128,7 @@ fn targeted_submission_rejects_when_its_busy_workers_backlog_is_full() {
             Duration::from_secs(60),
         ),
         Selector::Parity,
+        Recipient::global(MailAddr(9)),
     )
     .unwrap();
     let initialized = pool.initialize().unwrap();
@@ -381,8 +380,8 @@ fn unbound_rebalance_explicitly_establishes_affinity() {
 #[test]
 fn captured_selector_state_is_statically_dispatched() {
     let selected = 1_u64;
-    let pool = KeyedWorkerPool::<MailAddr, Reply, u8, u8, u16, Worker, _>::new(
-        behavior::ChildTopology::indexed(nonce, 2, |index| Some(worker(index))),
+    let pool = KeyedWorkerPool::new(
+        behavior::ChildTopology::indexed(nonce, 2, |_| Some(Worker)),
         behavior::PoolConfiguration::new(
             1,
             InterruptionPolicy::Fail,
@@ -391,6 +390,7 @@ fn captured_selector_state_is_statically_dispatched() {
             Duration::from_secs(1),
         ),
         move |_: &u8| selected,
+        Recipient::global(MailAddr(9)),
     )
     .unwrap();
     let initialized = pool.initialize().unwrap();
@@ -522,12 +522,14 @@ fn named_pool_send_product_appends_each_lane_once_in_order() {
         Recipient::global(MailAddr(2)),
         PoolResponse::Accepted { job: JobId(2) },
     ));
-    later.assignments.push(Delivery::new(
-        Recipient::child(0),
+    later.assignments.push(Delivery::local_child(
+        behavior::ChildRecipient::new(0),
         ProxyCommand::Forward(PoolAssignment {
             assignment: AssignmentId(0),
             job: JobId(1),
             payload: 7,
+            worker: 0,
+            complete_to: Recipient::global(MailAddr(9)),
         }),
     ));
 

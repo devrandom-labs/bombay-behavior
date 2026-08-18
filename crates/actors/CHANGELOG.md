@@ -10,12 +10,12 @@ All notable changes to `bombay-behavior-actors` are documented here.
   `ShutdownChild<C>` for the exact installed incarnation and stops only after
   its matching `ChildStopped`. Shutdown during installation waits for creation
   resolution, and rejection remains a typed `ProxyError`.
-- Make every runtime callback lane part of its concrete template protocol:
+- Make every runtime callback lane part of its concrete behavior event algebra:
   `CircuitBreaker`, `Lease`, and `Presence` now receive `TimerElapsed` through
   `TimedEvent`; `DynamicSupervisor` installs a shutdown-capable `DynamicProxy`
   and accepts `WorkerStopped`; and `ShutdownCoordinator` requires its concrete
   child protocol to accept `ShutdownRequested`.
-- Preserve the concrete child behavior protocol in `ShutdownChild<C>` and in
+- Preserve the concrete child's declared public protocol in `ShutdownChild<C>` and in
   the homogeneous `ShutdownCoordinator<B, C>` effect lane, allowing runtimes
   to select the hosted namespace without ambient lookup or type erasure.
 - Make every semantic wrapper constructor public and remove the parallel
@@ -24,6 +24,13 @@ All notable changes to `bombay-behavior-actors` are documented here.
   together through `RestartConfiguration`; remove the split policy setters.
 
 ### Added
+
+- Separate stable public `Protocol` identity from `Behavior` state/fold,
+  internal event sums, and effect products. Transparent wrappers preserve the
+  inner protocol and cannot become alternative recipient identities.
+- Add concrete `WorkerPoolProtocol` and `KeyedWorkerPoolProtocol` products for
+  recursive assignment/completion seams without exposing pool state or worker
+  topology.
 
 - Extract Bombay's reusable actors, protocols, and composition API from
   `bombay-behavior`.

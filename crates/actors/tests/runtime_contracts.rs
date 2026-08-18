@@ -23,6 +23,7 @@ impl behavior::Protocol for Inert {
 }
 
 impl Behavior for Inert {
+    type Protocol = Self;
     type Event = User<MailAddr, ()>;
     type Sends = Vec<Never>;
     type Ph = Never;
@@ -45,6 +46,7 @@ impl behavior::Protocol for BreakerReply {
 }
 
 impl Behavior for BreakerReply {
+    type Protocol = Self;
     type Event = User<MailAddr, BreakerOutcome>;
     type Sends = Vec<Never>;
     type Ph = Never;
@@ -67,7 +69,8 @@ impl behavior::Protocol for LeaseReply {
 }
 
 impl Behavior for LeaseReply {
-    type Event = User<MailAddr, Self::Msg>;
+    type Protocol = Self;
+    type Event = User<MailAddr, behavior::BehaviorMessage<Self>>;
     type Sends = Vec<Never>;
     type Ph = Never;
     type Error = Never;
@@ -89,7 +92,8 @@ impl behavior::Protocol for PresenceReplyBehavior {
 }
 
 impl Behavior for PresenceReplyBehavior {
-    type Event = User<MailAddr, Self::Msg>;
+    type Protocol = Self;
+    type Event = User<MailAddr, behavior::BehaviorMessage<Self>>;
     type Sends = Vec<Never>;
     type Ph = Never;
     type Error = Never;
@@ -107,11 +111,12 @@ impl Behavior for PresenceReplyBehavior {
 struct DynamicReply;
 impl behavior::Protocol for DynamicReply {
     type Addr = MailAddr;
-    type Msg = DynamicSupervisorOutcome<u64, Inert>;
+    type Msg = DynamicSupervisorOutcome<MailAddr, Inert>;
 }
 
 impl Behavior for DynamicReply {
-    type Event = User<MailAddr, Self::Msg>;
+    type Protocol = Self;
+    type Event = User<MailAddr, behavior::BehaviorMessage<Self>>;
     type Sends = Vec<Never>;
     type Ph = Never;
     type Error = Never;
@@ -133,6 +138,7 @@ impl behavior::Protocol for Parent {
 }
 
 impl Behavior for Parent {
+    type Protocol = Self;
     type Event = User<MailAddr, ()>;
     type Sends = Vec<Never>;
     type Ph = Never;
@@ -178,26 +184,26 @@ fn every_observation_and_parent_report_has_an_exact_fact_input() {
     accepts::<Watch<Inert>, PeerStopped<MailAddr>>();
     accepts::<TerminationMonitor<Inert>, PeerStopped<MailAddr>>();
     accepts::<Proxy<Inert>, ChildStopped<MailAddr>>();
-    accepts::<Proxy<Inert>, CreationResolved<u64>>();
+    accepts::<Proxy<Inert>, CreationResolved<MailAddr>>();
     accepts::<Proxy<Inert>, ShutdownRequested>();
     accepts::<Proxy<Inert>, ChildShutdownRejected<u64>>();
 
     type Dynamic = DynamicSupervisor<MailAddr, Inert, DynamicReply>;
     accepts::<Dynamic, ChildStopped<MailAddr>>();
-    accepts::<Dynamic, CreationResolved<u64>>();
+    accepts::<Dynamic, CreationResolved<MailAddr>>();
     accepts::<Dynamic, WorkerStopped<MailAddr>>();
     accepts::<Dynamic, WorkerCreationResolved<u64>>();
     accepts::<Dynamic, ChildShutdownRejected<u64>>();
 
     type ProxyProtocol = ProxyEvent<User<MailAddr, ProxyCommand<Inert>>>;
     event_accepts::<ProxyProtocol, ChildStopped<MailAddr>>();
-    event_accepts::<ProxyProtocol, CreationResolved<u64>>();
+    event_accepts::<ProxyProtocol, CreationResolved<MailAddr>>();
     event_accepts::<ProxyProtocol, ShutdownRequested>();
     event_accepts::<ProxyProtocol, ChildShutdownRejected<u64>>();
 
     type SupervisorProtocol = SupervisionEvent<User<MailAddr, ()>>;
     event_accepts::<SupervisorProtocol, ChildStopped<MailAddr>>();
-    event_accepts::<SupervisorProtocol, CreationResolved<u64>>();
+    event_accepts::<SupervisorProtocol, CreationResolved<MailAddr>>();
     event_accepts::<SupervisorProtocol, WorkerStopped<MailAddr>>();
     event_accepts::<SupervisorProtocol, WorkerCreationResolved<u64>>();
 

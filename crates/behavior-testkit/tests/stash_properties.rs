@@ -21,6 +21,7 @@ impl behavior::Protocol for Sink {
 }
 
 impl Behavior for Sink {
+    type Protocol = Self;
     type Event = User<MailAddr, u8>;
     type Sends = Vec<Never>;
     type Ph = Never;

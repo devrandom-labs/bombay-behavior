@@ -1,13 +1,13 @@
 //! Read-only typed name resolution capability.
 
 use behavior::{
-    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, Never, NoBirths, Recipient,
-    User,
+    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, Never, NoBirths, Protocol,
+    Recipient, User,
 };
 use thiserror::Error;
 
 /// Complete factual result returned by [`Resolver`].
-pub enum Resolution<K, D: Behavior> {
+pub enum Resolution<K, D: Protocol> {
     /// The key resolved to this typed recipient.
     Found {
         /// Queried key.
@@ -60,7 +60,7 @@ pub enum ResolverConfigError<K> {
 pub struct Resolver<
     A: Address,
     K,
-    D: Behavior<Addr = A>,
+    D: Protocol<Addr = A>,
     Reply: behavior::Protocol<Addr = A, Msg = Resolution<K, D>>,
 > {
     bindings: Vec<(K, Recipient<D>)>,
@@ -71,7 +71,7 @@ impl<A, K, D, Reply> Resolver<A, K, D, Reply>
 where
     A: Address,
     K: Clone + Eq,
-    D: Behavior<Addr = A>,
+    D: Protocol<Addr = A>,
     Reply: behavior::Protocol<Addr = A, Msg = Resolution<K, D>>,
 {
     /// Copy one borrowed immutable binding definition.
@@ -108,7 +108,7 @@ impl<A, K, D, Reply> BehaviorBase for Resolver<A, K, D, Reply>
 where
     A: Address,
     K: Clone + Eq,
-    D: Behavior<Addr = A>,
+    D: Protocol<Addr = A>,
     Reply: behavior::Protocol<Addr = A, Msg = Resolution<K, D>>,
 {
     type Base = Self;
@@ -121,7 +121,7 @@ impl<A, K, D, Reply> behavior::Protocol for Resolver<A, K, D, Reply>
 where
     A: Address,
     K: Clone + Eq,
-    D: Behavior<Addr = A>,
+    D: Protocol<Addr = A>,
     Reply: behavior::Protocol<Addr = A, Msg = Resolution<K, D>>,
 {
     type Addr = A;
@@ -132,10 +132,11 @@ impl<A, K, D, Reply> Behavior for Resolver<A, K, D, Reply>
 where
     A: Address,
     K: Clone + Eq,
-    D: Behavior<Addr = A>,
+    D: Protocol<Addr = A>,
     Reply: behavior::Protocol<Addr = A, Msg = Resolution<K, D>>,
 {
-    type Event = User<A, Self::Msg>;
+    type Protocol = Self;
+    type Event = User<A, crate::BehaviorMessage<Self>>;
     type Sends = Vec<Delivery<Reply>>;
     type Ph = Never;
     type Error = Never;
@@ -171,6 +172,7 @@ mod tests {
     }
 
     impl Behavior for Destination {
+        type Protocol = Self;
         type Event = User<MailAddr, u8>;
         type Sends = Vec<Never>;
         type Ph = Never;
@@ -186,7 +188,8 @@ mod tests {
     }
 
     impl Behavior for Reply {
-        type Event = User<MailAddr, Self::Msg>;
+        type Protocol = Self;
+        type Event = User<MailAddr, crate::BehaviorMessage<Self>>;
         type Sends = Vec<Never>;
         type Ph = Never;
         type Error = Never;

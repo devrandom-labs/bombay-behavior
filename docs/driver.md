@@ -1,5 +1,10 @@
 # Universal behavior driver
 
+The Driver owns a concrete `Behavior`, not a public `Protocol`. Protocols name
+ordinary delivery destinations; the Driver obtains the behavior's complete
+internal event algebra and interprets its explicit effects. See
+[Protocol, event, behavior, and effect algebras](protocol-algebra.md).
+
 This document defines the execution boundary shared by every Bombay
 actor-behavior template. It is a design contract for `bombay-engine::Driver`
 and the Bombay `System`; it does not place runtime code in Bombay Behavior.

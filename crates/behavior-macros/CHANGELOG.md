@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Generate the actor template's nominal `Protocol` and bind
+  `Behavior::Protocol = Self`, keeping public identity distinct from generated
+  event/effect wiring.
+
 - Add Behavior-owned `#[actor]` inference for synchronous methods returning
   the narrow `Effect<Send>` algebra, replacing the misplaced Bombay-runtime
   implementation without weakening the complete `#[behavior]` path.

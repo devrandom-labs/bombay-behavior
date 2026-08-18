@@ -9,7 +9,7 @@ use behavior::{
     DeadlineSends, Delivery, Exit, MailAddr, Never, ObserveChild, ObserveCreation, ObservePeer,
     PeerStopped, ProxyCommand, ProxyEvent, ProxySends, ReceiveTimeoutEvent, ReceiveTimeoutSends,
     Recipient, ReportWorkerCreationResolved, ReportWorkerStopped, RouteInput, ScheduleAfter,
-    ScheduleAt, SendAlgebra, ServiceSends, ShutdownProtocol, ShutdownRequested, SupervisionEvent,
+    ScheduleAt, SendAlgebra, ServiceSends, ShutdownEvent, ShutdownRequested, SupervisionEvent,
     SupervisorSends, TimerElapsed, TimerGeneration, TimerId, UnwatchPeer, User, UserEvent,
     WatchEvent, WatchSends, WorkerCreationResolved, WorkerStopped,
 };
@@ -23,7 +23,7 @@ enum Lane {
     Peer(PeerStopped<MailAddr>),
     Child(ChildStopped<MailAddr>),
     Worker(WorkerStopped<MailAddr>),
-    Creation(CreationResolved<u64>),
+    Creation(CreationResolved<MailAddr>),
     WorkerCreation(WorkerCreationResolved<u64>),
     Shutdown,
 }
@@ -60,8 +60,8 @@ impl RouteInput<WorkerStopped<MailAddr>> for Lane {
         Ok(Self::Worker(event))
     }
 }
-impl RouteInput<CreationResolved<u64>> for Lane {
-    fn route(event: CreationResolved<u64>) -> Result<Self, CreationResolved<u64>> {
+impl RouteInput<CreationResolved<MailAddr>> for Lane {
+    fn route(event: CreationResolved<MailAddr>) -> Result<Self, CreationResolved<MailAddr>> {
         Ok(Self::Creation(event))
     }
 }
@@ -122,11 +122,11 @@ fn worker() -> WorkerStopped<MailAddr> {
         at: Instant::now(),
     }
 }
-fn creation() -> CreationResolved<u64> {
+fn creation() -> CreationResolved<MailAddr> {
     CreationResolved {
         nonce: 17,
         kind: CreationKind::ReplacementIncarnation { replaces: 16 },
-        result: Ok(()),
+        result: Ok(MailAddr(17)),
     }
 }
 fn worker_creation() -> WorkerCreationResolved<u64> {
@@ -217,24 +217,24 @@ fn composed_protocols_forward_every_supported_environment_lane() {
     ));
 
     assert!(matches!(
-        ShutdownProtocol::<Lane>::route(elapsed()),
-        Ok(ShutdownProtocol::Behavior(Lane::Time(_)))
+        ShutdownEvent::<Lane>::route(elapsed()),
+        Ok(ShutdownEvent::Behavior(Lane::Time(_)))
     ));
     assert!(matches!(
-        ShutdownProtocol::<Lane>::route(peer()),
-        Ok(ShutdownProtocol::Behavior(Lane::Peer(_)))
+        ShutdownEvent::<Lane>::route(peer()),
+        Ok(ShutdownEvent::Behavior(Lane::Peer(_)))
     ));
     assert!(matches!(
-        ShutdownProtocol::<Lane>::route(child()),
-        Ok(ShutdownProtocol::Behavior(Lane::Child(_)))
+        ShutdownEvent::<Lane>::route(child()),
+        Ok(ShutdownEvent::Behavior(Lane::Child(_)))
     ));
     assert!(matches!(
-        ShutdownProtocol::<Lane>::route(worker()),
-        Ok(ShutdownProtocol::Behavior(Lane::Worker(_)))
+        ShutdownEvent::<Lane>::route(worker()),
+        Ok(ShutdownEvent::Behavior(Lane::Worker(_)))
     ));
     assert!(matches!(
-        ShutdownProtocol::<Lane>::route(creation()),
-        Ok(ShutdownProtocol::Behavior(Lane::Creation(_)))
+        ShutdownEvent::<Lane>::route(creation()),
+        Ok(ShutdownEvent::Behavior(Lane::Creation(_)))
     ));
 
     assert!(matches!(
@@ -280,11 +280,11 @@ fn addressing_operations_preserve_their_exact_routes() {
     let one = Recipient::<Child>::global(MailAddr(1));
     let same = Recipient::<Child>::global(MailAddr(1));
     let other = Recipient::<Child>::global(MailAddr(2));
-    let child = Recipient::<Child>::child(1);
+    let child = behavior::DeliveryTarget::<Child>::LocalChild(behavior::ChildRecipient::new(1));
     assert_eq!(one, same);
     assert_ne!(one, other);
-    assert_ne!(one, child);
-    assert_eq!(format!("{one:?}"), "Global(MailAddr(1))");
+    assert_ne!(child, one);
+    assert_eq!(format!("{one:?}"), "MailAddr(1)");
 }
 
 #[test]
@@ -345,7 +345,7 @@ fn typed_send_accumulation_routes_every_named_lane_once() {
     assert_eq!(timeout.behavior, [6]);
 
     let mut proxy = ProxySends::<Child>::empty();
-    proxy.send(Delivery::new(Recipient::child(1), 7));
+    proxy.send(Delivery::local_child(behavior::ChildRecipient::new(1), 7));
     proxy.send(ObserveCreation::new(2));
     proxy.send(ReportWorkerStopped::from(child()));
     proxy.send(ReportWorkerCreationResolved::from(creation()));
@@ -357,8 +357,8 @@ fn typed_send_accumulation_routes_every_named_lane_once() {
     let mut supervisor = SupervisorSends::<MailAddr, Vec<u8>, Child>::empty();
     supervisor.send(ObserveChild::new(8));
     supervisor.send(ObserveCreation::new(8));
-    supervisor.send(Delivery::new(
-        Recipient::child(8),
+    supervisor.send(Delivery::local_child(
+        behavior::ChildRecipient::new(8),
         ProxyCommand::Replace(Quiet),
     ));
     supervisor.behavior.send(9_u8);

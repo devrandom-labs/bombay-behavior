@@ -28,8 +28,9 @@
 //! Messages have direction: `Configure` comes FROM supervisor, `Work` comes
 //! FROM clients, `Result` goes TO clients. In a typed protocol, sending a
 //! `Result` where a `Work` is expected would be a type error. The existing
-//! `Recipient<B>` names the receiving behavior protocol, so outbound
-//! destination identity is distinct even when protocols share a message type.
+//! `Recipient<P>` names only the receiving actor's stable public protocol, so
+//! outbound destination identity is distinct even when protocols share a
+//! message type or their current behaviors use different wrappers.
 //! Phase-indexed direction within one behavior remains a separate question.
 //!
 //! # Actor relevance

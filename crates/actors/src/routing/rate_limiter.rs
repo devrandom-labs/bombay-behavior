@@ -3,8 +3,8 @@
 use core::num::NonZeroU64;
 
 use behavior::{
-    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, Never, NoBirths, Recipient,
-    SendAlgebra, User,
+    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, Never, NoBirths, Protocol,
+    Recipient, SendAlgebra, User,
 };
 use thiserror::Error;
 
@@ -67,7 +67,7 @@ pub enum RateLimiterOutcome<T> {
 }
 
 /// Inputs accepted by [`RateLimiter`].
-pub enum RateLimiterMessage<T, Target: Behavior, Reply: behavior::Protocol> {
+pub enum RateLimiterMessage<T, Target: Protocol, Reply: behavior::Protocol> {
     /// Attempt to consume tokens and deliver one value.
     Acquire {
         /// Required positive token cost.
@@ -87,13 +87,13 @@ pub enum RateLimiterMessage<T, Target: Behavior, Reply: behavior::Protocol> {
 }
 
 /// Named effect lanes emitted by [`RateLimiter`].
-pub struct RateLimiterSends<Target: Behavior, Reply: behavior::Protocol> {
+pub struct RateLimiterSends<Target: Protocol, Reply: behavior::Protocol> {
     /// Admitted values.
     pub deliveries: Vec<Delivery<Target>>,
     /// Admission facts.
     pub outcomes: Vec<Delivery<Reply>>,
 }
-impl<Target: Behavior, Reply: behavior::Protocol> SendAlgebra for RateLimiterSends<Target, Reply> {
+impl<Target: Protocol, Reply: behavior::Protocol> SendAlgebra for RateLimiterSends<Target, Reply> {
     fn empty() -> Self {
         Self {
             deliveries: Vec::new(),
@@ -134,7 +134,7 @@ type RateLimiterMarker<A, Target, Reply> = core::marker::PhantomData<fn() -> (A,
 pub struct RateLimiter<
     A: Address,
     T,
-    Target: Behavior<Addr = A, Msg = T>,
+    Target: Protocol<Addr = A, Msg = T>,
     Reply: behavior::Protocol<Addr = A, Msg = RateLimiterOutcome<T>>,
 > {
     capacity: TokenCount,
@@ -145,7 +145,7 @@ type RateActions<A, Target, Reply> = Actions<A, Never, RateLimiterSends<Target, 
 impl<A, T, Target, Reply> RateLimiter<A, T, Target, Reply>
 where
     A: Address,
-    Target: Behavior<Addr = A, Msg = T>,
+    Target: Protocol<Addr = A, Msg = T>,
     Reply: behavior::Protocol<Addr = A, Msg = RateLimiterOutcome<T>>,
 {
     /// Construct one explicit positive-capacity bucket.
@@ -220,7 +220,7 @@ where
 impl<A, T, Target, Reply> BehaviorBase for RateLimiter<A, T, Target, Reply>
 where
     A: Address,
-    Target: Behavior<Addr = A, Msg = T>,
+    Target: Protocol<Addr = A, Msg = T>,
     Reply: behavior::Protocol<Addr = A, Msg = RateLimiterOutcome<T>>,
 {
     type Base = Self;
@@ -231,7 +231,7 @@ where
 impl<A, T, Target, Reply> behavior::Protocol for RateLimiter<A, T, Target, Reply>
 where
     A: Address,
-    Target: Behavior<Addr = A, Msg = T>,
+    Target: Protocol<Addr = A, Msg = T>,
     Reply: behavior::Protocol<Addr = A, Msg = RateLimiterOutcome<T>>,
 {
     type Addr = A;
@@ -241,10 +241,11 @@ where
 impl<A, T, Target, Reply> Behavior for RateLimiter<A, T, Target, Reply>
 where
     A: Address,
-    Target: Behavior<Addr = A, Msg = T>,
+    Target: Protocol<Addr = A, Msg = T>,
     Reply: behavior::Protocol<Addr = A, Msg = RateLimiterOutcome<T>>,
 {
-    type Event = User<A, Self::Msg>;
+    type Protocol = Self;
+    type Event = User<A, crate::BehaviorMessage<Self>>;
     type Sends = RateLimiterSends<Target, Reply>;
     type Ph = Never;
     type Error = Never;
@@ -281,6 +282,7 @@ mod tests {
     }
 
     impl Behavior for Target {
+        type Protocol = Self;
         type Event = User<MailAddr, u8>;
         type Sends = Vec<Never>;
         type Ph = Never;
@@ -296,7 +298,8 @@ mod tests {
     }
 
     impl Behavior for Reply {
-        type Event = User<MailAddr, Self::Msg>;
+        type Protocol = Self;
+        type Event = User<MailAddr, crate::BehaviorMessage<Self>>;
         type Sends = Vec<Never>;
         type Ph = Never;
         type Error = Never;

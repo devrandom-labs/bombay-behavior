@@ -3,19 +3,19 @@
 use std::collections::VecDeque;
 
 use behavior::{
-    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, Never, NoBirths, Recipient,
-    SendAlgebra, User,
+    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, Never, NoBirths, Protocol,
+    Recipient, SendAlgebra, User,
 };
 
 /// Complete observable [`WorkQueue`] state.
-pub struct WorkQueueState<W: Behavior> {
+pub struct WorkQueueState<W: Protocol> {
     /// Maximum values that may wait; zero permits only immediate dispatch.
     pub capacity: usize,
     available: Vec<Recipient<W>>,
     queued: usize,
 }
 
-impl<W: Behavior> WorkQueueState<W> {
+impl<W: Protocol> WorkQueueState<W> {
     /// Workers eligible for one dispatch, in availability order.
     #[must_use]
     pub fn available(&self) -> &[Recipient<W>] {
@@ -59,7 +59,7 @@ pub enum WorkQueueOutcome<T> {
 }
 
 /// Operations accepted by [`WorkQueue`].
-pub enum WorkQueueMessage<T, W: Behavior, Reply: behavior::Protocol> {
+pub enum WorkQueueMessage<T, W: Protocol, Reply: behavior::Protocol> {
     /// Submit one value and its typed outcome recipient.
     Submit {
         /// Work value.
@@ -80,14 +80,14 @@ pub enum WorkQueueMessage<T, W: Behavior, Reply: behavior::Protocol> {
 }
 
 /// Named effect lanes emitted by [`WorkQueue`].
-pub struct WorkQueueSends<W: Behavior, Reply: behavior::Protocol> {
+pub struct WorkQueueSends<W: Protocol, Reply: behavior::Protocol> {
     /// Work assigned to workers.
     pub assignments: Vec<Delivery<W>>,
     /// Submission admission and dispatch facts.
     pub outcomes: Vec<Delivery<Reply>>,
 }
 
-impl<W: Behavior, Reply: behavior::Protocol> SendAlgebra for WorkQueueSends<W, Reply> {
+impl<W: Protocol, Reply: behavior::Protocol> SendAlgebra for WorkQueueSends<W, Reply> {
     fn empty() -> Self {
         Self {
             assignments: Vec::new(),
@@ -118,7 +118,7 @@ struct Waiting<T, Reply: behavior::Protocol> {
 pub struct WorkQueue<
     A: Address,
     T,
-    W: Behavior<Addr = A, Msg = T>,
+    W: Protocol<Addr = A, Msg = T>,
     Reply: behavior::Protocol<Addr = A, Msg = WorkQueueOutcome<T>>,
 > {
     capacity: usize,
@@ -132,7 +132,7 @@ type QueueActions<A, W, Reply> = Actions<A, Never, WorkQueueSends<W, Reply>, NoB
 impl<A, T, W, Reply> WorkQueue<A, T, W, Reply>
 where
     A: Address,
-    W: Behavior<Addr = A, Msg = T>,
+    W: Protocol<Addr = A, Msg = T>,
     Reply: behavior::Protocol<Addr = A, Msg = WorkQueueOutcome<T>>,
 {
     /// Construct an empty queue with explicit waiting capacity.
@@ -220,7 +220,7 @@ where
 impl<A, T, W, Reply> BehaviorBase for WorkQueue<A, T, W, Reply>
 where
     A: Address,
-    W: Behavior<Addr = A, Msg = T>,
+    W: Protocol<Addr = A, Msg = T>,
     Reply: behavior::Protocol<Addr = A, Msg = WorkQueueOutcome<T>>,
 {
     type Base = Self;
@@ -231,7 +231,7 @@ where
 impl<A, T, W, Reply> behavior::Protocol for WorkQueue<A, T, W, Reply>
 where
     A: Address,
-    W: Behavior<Addr = A, Msg = T>,
+    W: Protocol<Addr = A, Msg = T>,
     Reply: behavior::Protocol<Addr = A, Msg = WorkQueueOutcome<T>>,
 {
     type Addr = A;
@@ -241,10 +241,11 @@ where
 impl<A, T, W, Reply> Behavior for WorkQueue<A, T, W, Reply>
 where
     A: Address,
-    W: Behavior<Addr = A, Msg = T>,
+    W: Protocol<Addr = A, Msg = T>,
     Reply: behavior::Protocol<Addr = A, Msg = WorkQueueOutcome<T>>,
 {
-    type Event = User<A, Self::Msg>;
+    type Protocol = Self;
+    type Event = User<A, crate::BehaviorMessage<Self>>;
     type Sends = WorkQueueSends<W, Reply>;
     type Ph = Never;
     type Error = Never;
@@ -280,6 +281,7 @@ mod tests {
     }
 
     impl Behavior for Worker {
+        type Protocol = Self;
         type Event = User<MailAddr, u8>;
         type Sends = Vec<Never>;
         type Ph = Never;
@@ -295,7 +297,8 @@ mod tests {
     }
 
     impl Behavior for Reply {
-        type Event = User<MailAddr, Self::Msg>;
+        type Protocol = Self;
+        type Event = User<MailAddr, crate::BehaviorMessage<Self>>;
         type Sends = Vec<Never>;
         type Ph = Never;
         type Error = Never;

@@ -336,7 +336,8 @@ impl<A: Address, Reply: behavior::Protocol<Addr = A, Msg = BreakerOutcome>> beha
 impl<A: Address, Reply: behavior::Protocol<Addr = A, Msg = BreakerOutcome>> Behavior
     for CircuitBreaker<A, Reply>
 {
-    type Event = TimedEvent<User<A, Self::Msg>>;
+    type Protocol = Self;
+    type Event = TimedEvent<User<A, crate::BehaviorMessage<Self>>>;
     type Sends = BreakerSends<Reply>;
     type Ph = Never;
     type Error = Never;
@@ -377,7 +378,8 @@ mod tests {
     }
 
     impl Behavior for Reply {
-        type Event = User<MailAddr, Self::Msg>;
+        type Protocol = Self;
+        type Event = User<MailAddr, crate::BehaviorMessage<Self>>;
         type Sends = Vec<Never>;
         type Ph = Never;
         type Error = Never;

@@ -129,7 +129,8 @@ mod tests {
         }
 
         impl Behavior for Reply {
-            type Event = behavior::User<Self::Addr, Self::Msg>;
+            type Protocol = Self;
+            type Event = behavior::User<crate::BehaviorAddr<Self>, crate::BehaviorMessage<Self>>;
             type Sends = Vec<behavior::Never>;
             type Ph = behavior::Never;
             type Error = behavior::Never;

@@ -1,8 +1,10 @@
 use behavior_actors::{
-    Actions, Behavior, BehaviorActed, Delivery, DynamicSupervisor, DynamicSupervisorMessage,
-    DynamicSupervisorOutcome, Guardian, JobId, MailAddr, MessageAdapter, Never, NoBirths,
-    PoolAssignment, PoolMessage, PoolResponse, Recipient, User, WorkerPool,
+    Actions, Activate, Behavior, BehaviorActed, Delivery, DynamicSupervisor,
+    DynamicSupervisorMessage, DynamicSupervisorOutcome, Guardian, JobId, MailAddr, MessageAdapter,
+    Never, NoBirths, PoolAssignment, PoolAssignmentProtocol, PoolMessage, PoolResponse, Recipient,
+    User, WorkerPool, WorkerPoolProtocol,
 };
+use core::marker::PhantomData;
 
 struct Device;
 
@@ -12,6 +14,7 @@ impl behavior::Protocol for Device {
 }
 
 impl Behavior for Device {
+    type Protocol = Self;
     type Event = User<MailAddr, Never>;
     type Sends = Vec<Never>;
     type Ph = Never;
@@ -27,15 +30,16 @@ impl Behavior for Device {
     }
 }
 
-struct Worker;
+struct Worker<P>(PhantomData<P>);
 
-impl behavior::Protocol for Worker {
+impl<P: PoolAssignmentProtocol<Addr = MailAddr>> behavior::Protocol for Worker<P> {
     type Addr = MailAddr;
-    type Msg = PoolAssignment<u8>;
+    type Msg = PoolAssignment<P>;
 }
 
-impl Behavior for Worker {
-    type Event = User<MailAddr, Self::Msg>;
+impl<P: PoolAssignmentProtocol<Addr = MailAddr>> Behavior for Worker<P> {
+    type Protocol = Self;
+    type Event = User<MailAddr, behavior::BehaviorMessage<Self>>;
     type Sends = Vec<Never>;
     type Ph = Never;
     type Error = Never;
@@ -51,7 +55,7 @@ impl Behavior for Worker {
 }
 
 enum SystemMessage {
-    DeviceSupervisor(DynamicSupervisorOutcome<u64, Device>),
+    DeviceSupervisor(DynamicSupervisorOutcome<MailAddr, Device>),
     Pool(PoolResponse<u8, u16, MailAddr>),
 }
 
@@ -63,7 +67,8 @@ impl behavior::Protocol for Root {
 }
 
 impl Behavior for Root {
-    type Event = User<MailAddr, Self::Msg>;
+    type Protocol = Self;
+    type Event = User<MailAddr, behavior::BehaviorMessage<Self>>;
     type Sends = Vec<Never>;
     type Ph = Never;
     type Error = Never;
@@ -82,7 +87,7 @@ impl Behavior for Root {
     }
 }
 
-fn adapt_supervisor(outcome: DynamicSupervisorOutcome<u64, Device>) -> SystemMessage {
+fn adapt_supervisor(outcome: DynamicSupervisorOutcome<MailAddr, Device>) -> SystemMessage {
     SystemMessage::DeviceSupervisor(outcome)
 }
 
@@ -90,7 +95,7 @@ fn adapt_pool(response: PoolResponse<u8, u16, MailAddr>) -> SystemMessage {
     SystemMessage::Pool(response)
 }
 
-type SupervisorReply = MessageAdapter<DynamicSupervisorOutcome<u64, Device>, Root>;
+type SupervisorReply = MessageAdapter<DynamicSupervisorOutcome<MailAddr, Device>, Root>;
 type PoolReply = MessageAdapter<PoolResponse<u8, u16, MailAddr>, Root>;
 
 fn assert_behavior<B: Behavior>() {}
@@ -98,7 +103,15 @@ fn assert_behavior<B: Behavior>() {}
 #[test]
 fn adapter_is_a_concrete_reply_protocol_for_supervisors_and_pools() {
     assert_behavior::<DynamicSupervisor<MailAddr, Device, SupervisorReply>>();
-    assert_behavior::<WorkerPool<MailAddr, PoolReply, u8, u16, Worker>>();
+    assert_behavior::<
+        WorkerPool<
+            MailAddr,
+            PoolReply,
+            u8,
+            u16,
+            Worker<WorkerPoolProtocol<MailAddr, PoolReply, u8, u16>>,
+        >,
+    >();
 
     let root = Recipient::<Root>::global(MailAddr(1));
     let _: SupervisorReply = MessageAdapter::new(root, adapt_supervisor);
@@ -107,7 +120,7 @@ fn adapter_is_a_concrete_reply_protocol_for_supervisors_and_pools() {
 
 struct ActualRoot;
 
-type ActualReply = MessageAdapter<DynamicSupervisorOutcome<u64, Device>, Guardian<ActualRoot>>;
+type ActualReply = MessageAdapter<DynamicSupervisorOutcome<MailAddr, Device>, ActualRoot>;
 type ActualSupervisor = DynamicSupervisor<MailAddr, Device, ActualReply>;
 
 impl behavior::Protocol for ActualRoot {
@@ -116,6 +129,7 @@ impl behavior::Protocol for ActualRoot {
 }
 
 impl Behavior for ActualRoot {
+    type Protocol = Self;
     type Event = User<MailAddr, ()>;
     type Sends = Vec<Delivery<ActualSupervisor>>;
     type Ph = Never;
@@ -137,21 +151,41 @@ impl Behavior for ActualRoot {
 }
 
 fn adapt_actual_root(
-    _: DynamicSupervisorOutcome<u64, Device>,
-) -> <Guardian<ActualRoot> as behavior_actors::Protocol>::Msg {
+    _: DynamicSupervisorOutcome<MailAddr, Device>,
+) -> <ActualRoot as behavior_actors::Protocol>::Msg {
 }
 
 #[test]
 fn adapter_can_target_the_root_that_sends_to_its_dynamic_supervisor() {
     assert_behavior::<Guardian<ActualRoot>>();
-    let root = Recipient::<Guardian<ActualRoot>>::global(MailAddr(1));
-    let _: ActualReply = MessageAdapter::new(root, adapt_actual_root);
+    let root = Recipient::<ActualRoot>::global(MailAddr(1));
+    let mut adapter = MessageAdapter::new(root, adapt_actual_root)
+        .initialize()
+        .unwrap()
+        .behavior;
+    let actions = adapter
+        .receive(
+            MailAddr(99),
+            DynamicSupervisorOutcome::State {
+                nonce: 7,
+                phase: None,
+            },
+        )
+        .unwrap();
+    assert_eq!(actions.sends[0].to.resolve(MailAddr(2)), MailAddr(1));
+    assert_eq!(actions.sends[0].to.resolve(MailAddr(3)), MailAddr(1));
 }
 
 struct PoolRoot;
 
-type ActualPoolReply = MessageAdapter<PoolResponse<u8, u16, MailAddr>, Guardian<PoolRoot>>;
-type ActualPool = WorkerPool<MailAddr, ActualPoolReply, u8, u16, Worker>;
+type ActualPoolReply = MessageAdapter<PoolResponse<u8, u16, MailAddr>, PoolRoot>;
+type ActualPool = WorkerPool<
+    MailAddr,
+    ActualPoolReply,
+    u8,
+    u16,
+    Worker<WorkerPoolProtocol<MailAddr, ActualPoolReply, u8, u16>>,
+>;
 
 impl behavior::Protocol for PoolRoot {
     type Addr = MailAddr;
@@ -159,8 +193,9 @@ impl behavior::Protocol for PoolRoot {
 }
 
 impl Behavior for PoolRoot {
+    type Protocol = Self;
     type Event = User<MailAddr, ()>;
-    type Sends = Vec<Delivery<ActualPool>>;
+    type Sends = Vec<Delivery<WorkerPoolProtocol<MailAddr, ActualPoolReply, u8, u16>>>;
     type Ph = Never;
     type Error = Never;
     type Birth = NoBirths;
@@ -170,7 +205,7 @@ impl Behavior for PoolRoot {
         _: behavior_actors::ActiveTurn,
         _: Self::Event,
     ) -> BehaviorActed<Self> {
-        let pool = Recipient::<ActualPool>::global(MailAddr(2));
+        let pool = Recipient::global(MailAddr(2));
         let reply_to = Recipient::<ActualPoolReply>::global(MailAddr(3));
         Ok(Actions::send(vec![Delivery::new(
             pool,
@@ -188,6 +223,7 @@ fn adapt_actual_pool(_: PoolResponse<u8, u16, MailAddr>) {}
 #[test]
 fn adapter_can_target_the_root_that_sends_to_its_worker_pool() {
     assert_behavior::<Guardian<PoolRoot>>();
-    let root = Recipient::<Guardian<PoolRoot>>::global(MailAddr(1));
+    assert_behavior::<ActualPool>();
+    let root = Recipient::<PoolRoot>::global(MailAddr(1));
     let _: ActualPoolReply = MessageAdapter::new(root, adapt_actual_pool);
 }

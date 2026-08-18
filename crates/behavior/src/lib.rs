@@ -1,7 +1,11 @@
-//! Pure, typed actor-behavior primitives. A [`Behavior`] folds its associated
-//! event protocol into exactly [`Actions`]: sends, fresh creations, and its
-//! next behavior or termination. Higher capabilities are composed from these
-//! explicit transition parts.
+//! Pure, typed actor-behavior primitives.
+//!
+//! [`Protocol`] is stable public destination identity (`Addr` plus `Msg`). A
+//! [`Behavior`] separately owns state and folds its complete [`Behavior::Event`]
+//! algebra into exactly [`Actions`]: sends, fresh creations, and its next
+//! behavior or termination. A protocol is not a behavior, and `Behavior` is not
+//! a `Protocol` supertrait. Higher capabilities extend internal event and
+//! effect algebras while transparent wrappers preserve [`Behavior::Protocol`].
 
 // The `#[behavior]` expansion emits `::behavior::…` paths; this alias lets the
 // expansion resolve inside this crate too.
@@ -16,17 +20,17 @@ mod transition;
 mod user_event;
 
 pub use actor::{
-    Address, BirthMode, Births, ChildChoice, ChildCons, ChildProduct, Children, ChildrenError,
-    Create, CreationKind, Delivery, DispatchBirth, InstallBirth, MailAddr, NoBirths, NoChildren,
-    Recipient,
+    Address, BirthMode, Births, ChildChoice, ChildCons, ChildProduct, ChildRecipient, Children,
+    ChildrenError, Create, CreationKind, Delivery, DeliveryTarget, DispatchBirth, InstallBirth,
+    MailAddr, NoBirths, NoChildren, Recipient,
 };
 pub use effect::Effect;
 pub use effects::{Acted, Actions, Become, Own, SendAlgebra, SendInput, ServiceSends};
 pub use next::{Never, Step, Stopped};
 pub use reducer::{ActionReducer, Effects, FoldFailure, Folded, fold_events};
 pub use transition::{
-    ActiveTurn, Behavior, BehaviorActed, BehaviorBase, InitializationTurn, Protocol,
-    delegate_transition, initialize,
+    ActiveTurn, Behavior, BehaviorActed, BehaviorAddr, BehaviorBase, BehaviorMessage,
+    InitializationTurn, MessageProtocol, Protocol, delegate_transition, initialize,
 };
 pub use user_event::{EventInput, RouteInput, User, UserEvent};
 

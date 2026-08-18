@@ -27,11 +27,36 @@ pub struct JobId(pub u64);
 pub struct AssignmentId(pub u64);
 
 /// One assignment accepted by a worker behavior.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PoolAssignment<J> {
+#[derive(Clone, PartialEq, Eq)]
+pub struct PoolAssignment<Pool>
+where
+    Pool: crate::PoolAssignmentProtocol,
+{
     pub assignment: AssignmentId,
     pub job: JobId,
-    pub payload: J,
+    pub payload: Pool::Job,
+    /// Stable worker slot completing this assignment.
+    pub worker: <Pool::Addr as Address>::Nonce,
+    /// Established destination for the completion protocol.
+    pub complete_to: Recipient<Pool>,
+}
+
+impl<Pool> core::fmt::Debug for PoolAssignment<Pool>
+where
+    Pool: crate::PoolAssignmentProtocol,
+    Pool::Job: core::fmt::Debug,
+    <Pool::Addr as Address>::Nonce: core::fmt::Debug,
+    Pool::Addr: core::fmt::Debug,
+{
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("PoolAssignment")
+            .field("assignment", &self.assignment)
+            .field("job", &self.job)
+            .field("payload", &self.payload)
+            .field("worker", &self.worker)
+            .field("complete_to", &self.complete_to)
+            .finish()
+    }
 }
 
 /// Messages accepted by a pool coordinator.
@@ -316,7 +341,8 @@ where
     A: Address,
     A::Nonce: From<u64>,
     D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
-    C: Behavior<Addr = A, Ph = Never>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = A>,
 {
     /// Admission and terminal responses addressed to submitters.
     pub responses: Vec<Delivery<D>>,
@@ -329,7 +355,8 @@ where
     A: Address,
     A::Nonce: From<u64>,
     D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
-    C: Behavior<Addr = A, Ph = Never>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = A>,
 {
     fn empty() -> Self {
         Self {
@@ -349,7 +376,8 @@ where
     A: Address,
     A::Nonce: From<u64>,
     D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
-    C: Behavior<Addr = A, Ph = Never>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = A>,
 {
     fn emit(&mut self, input: Delivery<D>) {
         self.responses.push(input);
@@ -361,7 +389,8 @@ where
     A: Address,
     A::Nonce: From<u64>,
     D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
-    C: Behavior<Addr = A, Ph = Never>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = A>,
 {
     fn emit(&mut self, input: Delivery<Proxy<C>>) {
         self.assignments.push(input);
@@ -384,32 +413,37 @@ type PoolTransition<A, D, J, R, C> =
     clippy::type_complexity,
     reason = "the marker retains the complete pool topology signature"
 )]
-struct PoolKernel<A: Address, D, J, R, C>(PhantomData<fn(A, D, J, R, C)>);
+struct PoolKernel<A: Address, D, J, R, C, P>(PhantomData<fn(A, D, J, R, C, P)>);
 
-impl<A: Address, D, J, R, C> PoolKernel<A, D, J, R, C> {
+impl<A: Address, D, J, R, C, P> PoolKernel<A, D, J, R, C, P> {
     const fn new() -> Self {
         Self(PhantomData)
     }
 }
 
-impl<A, D, J, R, C> behavior::Protocol for PoolKernel<A, D, J, R, C>
+impl<A, D, J, R, C, P> behavior::Protocol for PoolKernel<A, D, J, R, C, P>
 where
     A: Address,
     A::Nonce: From<u64>,
     D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
-    C: Behavior<Addr = A, Msg = PoolAssignment<J>, Ph = Never>,
+    P: crate::PoolAssignmentProtocol<Addr = A, Job = J>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = A, Msg = PoolAssignment<P>>,
 {
     type Addr = A;
     type Msg = PoolMessage<A, D, J, R>;
 }
 
-impl<A, D, J, R, C> Behavior for PoolKernel<A, D, J, R, C>
+impl<A, D, J, R, C, P> Behavior for PoolKernel<A, D, J, R, C, P>
 where
     A: Address,
     A::Nonce: From<u64>,
     D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
-    C: Behavior<Addr = A, Msg = PoolAssignment<J>, Ph = Never>,
+    P: crate::PoolAssignmentProtocol<Addr = A, Job = J>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = A, Msg = PoolAssignment<P>>,
 {
+    type Protocol = Self;
     type Event = User<A, PoolMessage<A, D, J, R>>;
     type Sends = KernelSends<A, D, J, R, C>;
     type Ph = Never;
@@ -429,7 +463,7 @@ where
     }
 }
 
-type PoolSupervisor<A, D, J, R, C> = Supervisor<PoolKernel<A, D, J, R, C>, C>;
+type PoolSupervisor<A, D, J, R, C, P> = Supervisor<PoolKernel<A, D, J, R, C, P>, C>;
 
 /// A fixed, homogeneous, bounded FIFO worker pool.
 ///
@@ -446,7 +480,7 @@ type PoolSupervisor<A, D, J, R, C> = Supervisor<PoolKernel<A, D, J, R, C>, C>;
 /// A worker with any other message protocol cannot form a pool:
 ///
 /// ```compile_fail
-/// use behavior::{Actions, Behavior, MailAddr, Never, NoBirths, PoolResponse, Protocol, User, WorkerPool};
+/// use behavior::{Actions, Behavior, MailAddr, Never, NoBirths, PoolResponse, Protocol, User, WorkerPool, WorkerPoolProtocol};
 ///
 /// struct Reply;
 /// struct WrongWorker;
@@ -455,7 +489,7 @@ type PoolSupervisor<A, D, J, R, C> = Supervisor<PoolKernel<A, D, J, R, C>, C>;
 ///     type Msg = PoolResponse<String, (), MailAddr>;
 /// }
 /// impl Behavior for Reply {
-///     type Event = User<MailAddr, Self::Msg>;
+///     type Event = User<MailAddr, crate::BehaviorMessage<Self>>;
 ///     type Sends = Vec<Never>;
 ///     type Ph = Never;
 ///     type Error = Never;
@@ -477,16 +511,20 @@ type PoolSupervisor<A, D, J, R, C> = Supervisor<PoolKernel<A, D, J, R, C>, C>;
 ///     fn transition(&mut self, _: crate::ActiveTurn, _: Self::Event) -> behavior::BehaviorActed<Self> { Ok(Actions::cont()) }
 /// }
 ///
-/// // `WrongWorker::Msg` is not `PoolAssignment<String>`.
+/// type PoolProtocol = WorkerPoolProtocol<MailAddr, Reply, String, ()>;
+/// // `WrongWorker::Protocol::Msg` is not `PoolAssignment<PoolProtocol>`.
 /// let _: Option<WorkerPool<MailAddr, Reply, String, (), WrongWorker>> = None;
 /// ```
-pub struct WorkerPool<A: Address, D, J, R, C>
+struct PoolCore<A: Address, D, J, R, C, P>
 where
     D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
+    P: crate::PoolAssignmentProtocol<Addr = A, Job = J>,
     A::Nonce: From<u64>,
-    C: Behavior<Addr = A, Msg = PoolAssignment<J>, Ph = Never>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = A, Msg = PoolAssignment<P>>,
 {
-    supervisor: PoolSupervisor<A, D, J, R, C>,
+    supervisor: PoolSupervisor<A, D, J, R, C, P>,
+    complete_to: Recipient<P>,
     slots: Vec<Slot<A, D, J, R>>,
     backlog: VecDeque<QueuedJob<A, D, J, R>>,
     backlog_capacity: usize,
@@ -494,12 +532,14 @@ where
     interruption: InterruptionPolicy,
 }
 
-impl<A, D, J, R, C> WorkerPool<A, D, J, R, C>
+impl<A, D, J, R, C, P> PoolCore<A, D, J, R, C, P>
 where
     A: Address,
     A::Nonce: From<u64>,
     D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
-    C: Behavior<Addr = A, Msg = PoolAssignment<J>, Ph = Never>,
+    P: crate::PoolAssignmentProtocol<Addr = A, Job = J>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = A, Msg = PoolAssignment<P>>,
 {
     /// Construct a pool after proving that every configured child route is
     /// unique.
@@ -512,6 +552,7 @@ where
     pub fn new(
         topology: ChildTopology<A::Nonce, C>,
         configuration: PoolConfiguration,
+        complete_to: Recipient<P>,
     ) -> Result<Self, PoolConfigError<A::Nonce>> {
         let ChildTopology { nonces, build } = topology;
         let count = nonces.len();
@@ -533,7 +574,7 @@ where
         }
         Ok(Self {
             supervisor: Supervisor::new(
-                PoolKernel::new(),
+                PoolKernel::<A, D, J, R, C, P>::new(),
                 ChildTopology::new(nonces, build),
                 RestartConfiguration::new(
                     Strategy::OneForOne,
@@ -548,6 +589,7 @@ where
                 }
                 FleetError::SequenceExhausted => PoolConfigError::SequenceExhausted,
             })?,
+            complete_to,
             slots,
             backlog: VecDeque::new(),
             backlog_capacity: configuration.backlog_capacity,
@@ -577,13 +619,15 @@ where
     }
 }
 
-impl<A, D, J, R, C> WorkerPool<A, D, J, R, C>
+impl<A, D, J, R, C, P> PoolCore<A, D, J, R, C, P>
 where
     A: Address,
     A::Nonce: From<u64>,
     D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
+    P: crate::PoolAssignmentProtocol<Addr = A, Job = J>,
     J: Clone,
-    C: Behavior<Addr = A, Msg = PoolAssignment<J>, Ph = Never>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = A, Msg = PoolAssignment<P>>,
 {
     fn supervisor_transition(
         &mut self,
@@ -951,12 +995,14 @@ where
             actions
                 .sends
                 .behavior
-                .send::<Delivery<Proxy<C>>, Own>(Delivery::new(
-                    Recipient::child(nonce),
+                .send::<Delivery<Proxy<C>>, Own>(Delivery::local_child(
+                    behavior::ChildRecipient::new(nonce),
                     ProxyCommand::Forward(PoolAssignment {
                         assignment,
                         job: job_id,
                         payload,
+                        worker: nonce,
+                        complete_to: self.complete_to,
                     }),
                 ));
         }
@@ -965,26 +1011,31 @@ where
     }
 }
 
-impl<A, D, J, R, C> behavior::Protocol for WorkerPool<A, D, J, R, C>
+impl<A, D, J, R, C, P> behavior::Protocol for PoolCore<A, D, J, R, C, P>
 where
     A: Address,
     A::Nonce: From<u64>,
     D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
+    P: crate::PoolAssignmentProtocol<Addr = A, Job = J>,
     J: Clone,
-    C: Behavior<Addr = A, Msg = PoolAssignment<J>, Ph = Never>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = A, Msg = PoolAssignment<P>>,
 {
     type Addr = A;
     type Msg = PoolMessage<A, D, J, R>;
 }
 
-impl<A, D, J, R, C> Behavior for WorkerPool<A, D, J, R, C>
+impl<A, D, J, R, C, P> Behavior for PoolCore<A, D, J, R, C, P>
 where
     A: Address,
     A::Nonce: From<u64>,
     D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
+    P: crate::PoolAssignmentProtocol<Addr = A, Job = J>,
     J: Clone,
-    C: Behavior<Addr = A, Msg = PoolAssignment<J>, Ph = Never>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = A, Msg = PoolAssignment<P>>,
 {
+    type Protocol = Self;
     type Event = PoolEvent<A, D, J, R>;
     type Sends = PoolSends<A, D, J, R, C>;
     type Ph = Never;
@@ -1050,7 +1101,7 @@ where
                     .sends
                     .replacement_commands
                     .iter()
-                    .any(|delivery| delivery.to.is_child(proxy));
+                    .any(|delivery| delivery.to.is_local_child(proxy));
                 if !replacement_requested {
                     let position = self.slot_position(proxy)?;
                     let reason = WorkerRetirement::ReplacementUnavailable;
@@ -1083,6 +1134,79 @@ where
     }
 }
 
+/// Public FIFO worker-pool behavior with its completion protocol fixed by the
+/// pool's own message signature.
+pub struct WorkerPool<A: Address, D, J, R, C>
+where
+    A::Nonce: From<u64>,
+    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
+    C: Behavior<Ph = Never>,
+    C::Protocol:
+        crate::Protocol<Addr = A, Msg = PoolAssignment<crate::WorkerPoolProtocol<A, D, J, R>>>,
+{
+    core: PoolCore<A, D, J, R, C, crate::WorkerPoolProtocol<A, D, J, R>>,
+}
+
+impl<A, D, J, R, C> WorkerPool<A, D, J, R, C>
+where
+    A: Address,
+    A::Nonce: From<u64>,
+    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
+    C: Behavior<Ph = Never>,
+    C::Protocol:
+        crate::Protocol<Addr = A, Msg = PoolAssignment<crate::WorkerPoolProtocol<A, D, J, R>>>,
+{
+    /// Construct a pool whose completion destination implements this exact
+    /// pool protocol.
+    pub fn new(
+        topology: ChildTopology<A::Nonce, C>,
+        configuration: PoolConfiguration,
+        complete_to: Recipient<crate::WorkerPoolProtocol<A, D, J, R>>,
+    ) -> Result<Self, PoolConfigError<A::Nonce>> {
+        PoolCore::new(topology, configuration, complete_to).map(|core| Self { core })
+    }
+
+    #[must_use]
+    pub fn backlog_len(&self) -> usize {
+        self.core.backlog_len()
+    }
+
+    #[must_use]
+    pub fn worker_phase(&self, worker: A::Nonce) -> Option<WorkerPhase> {
+        self.core.worker_phase(worker)
+    }
+}
+
+impl<A, D, J, R, C> Behavior for WorkerPool<A, D, J, R, C>
+where
+    A: Address,
+    A::Nonce: From<u64>,
+    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
+    J: Clone,
+    C: Behavior<Ph = Never>,
+    C::Protocol:
+        crate::Protocol<Addr = A, Msg = PoolAssignment<crate::WorkerPoolProtocol<A, D, J, R>>>,
+{
+    type Protocol = crate::WorkerPoolProtocol<A, D, J, R>;
+    type Event = PoolEvent<A, D, J, R>;
+    type Sends = PoolSends<A, D, J, R, C>;
+    type Ph = Never;
+    type Error = PoolError<A::Nonce>;
+    type Birth = Births<Proxy<C>>;
+
+    fn init(&mut self, turn: crate::InitializationTurn) -> crate::BehaviorActed<Self> {
+        self.core.init(turn)
+    }
+
+    fn transition(
+        &mut self,
+        turn: crate::ActiveTurn,
+        event: Self::Event,
+    ) -> crate::BehaviorActed<Self> {
+        self.core.transition(turn, event)
+    }
+}
+
 #[cfg(test)]
 #[allow(
     clippy::items_after_test_module,
@@ -1090,7 +1214,7 @@ where
 )]
 mod tests {
     use super::*;
-    use crate::{MailAddr, NoBirths};
+    use crate::{MailAddr, NoBirths, WorkerPoolProtocol};
 
     struct TestReply;
 
@@ -1100,7 +1224,8 @@ mod tests {
     }
 
     impl Behavior for TestReply {
-        type Event = User<MailAddr, Self::Msg>;
+        type Protocol = Self;
+        type Event = User<MailAddr, crate::BehaviorMessage<Self>>;
         type Sends = Vec<Never>;
         type Ph = Never;
         type Error = Never;
@@ -1124,11 +1249,12 @@ mod tests {
 
     impl behavior::Protocol for TestWorker {
         type Addr = MailAddr;
-        type Msg = PoolAssignment<u8>;
+        type Msg = PoolAssignment<WorkerPoolProtocol<MailAddr, TestReply, u8, ()>>;
     }
 
     impl Behavior for TestWorker {
-        type Event = User<MailAddr, PoolAssignment<u8>>;
+        type Protocol = Self;
+        type Event = User<MailAddr, crate::BehaviorMessage<Self>>;
         type Sends = Vec<Never>;
         type Ph = Never;
         type Error = Never;
@@ -1153,7 +1279,7 @@ mod tests {
 
     #[test]
     fn one_dispatch_batch_preserves_fifo_jobs_across_index_removal() {
-        let mut pool = WorkerPool::new(
+        let mut pool = PoolCore::new(
             ChildTopology::indexed(
                 |index| u64::try_from(index).unwrap(),
                 2,
@@ -1166,6 +1292,7 @@ mod tests {
                 1,
                 Duration::from_secs(1),
             ),
+            Recipient::global(MailAddr(92)),
         )
         .unwrap();
         behavior::initialize(&mut pool).unwrap();
@@ -1196,7 +1323,7 @@ mod tests {
             assert!(
                 assignments[index]
                     .to
-                    .is_child(u64::try_from(index).unwrap())
+                    .is_local_child(u64::try_from(index).unwrap())
             );
             let ProxyCommand::Forward(assignment) = &assignments[index].message else {
                 panic!("pool dispatches with Forward");
@@ -1224,7 +1351,7 @@ mod tests {
 /// form an affinity table:
 ///
 /// ```compile_fail
-/// use behavior::{Actions, Behavior, KeyedWorkerPool, MailAddr, Never, NoBirths, PoolResponse, Protocol, User};
+/// use behavior::{Actions, Behavior, KeyedWorkerPool, KeyedWorkerPoolProtocol, MailAddr, Never, NoBirths, PoolResponse, Protocol, User};
 /// struct NonKey(f64);
 /// struct Reply;
 /// struct Worker;
@@ -1233,7 +1360,7 @@ mod tests {
 ///     type Msg = PoolResponse<u8, (), MailAddr>;
 /// }
 /// impl Behavior for Reply {
-///     type Event = User<MailAddr, Self::Msg>;
+///     type Event = User<MailAddr, crate::BehaviorMessage<Self>>;
 ///     type Sends = Vec<Never>;
 ///     type Ph = Never;
 ///     type Error = Never;
@@ -1241,9 +1368,10 @@ mod tests {
 ///     fn init(&mut self, _: crate::InitializationTurn) -> behavior::BehaviorActed<Self> { Ok(Actions::cont()) }
 ///     fn transition(&mut self, _: crate::ActiveTurn, _: Self::Event) -> behavior::BehaviorActed<Self> { Ok(Actions::cont()) }
 /// }
+/// type PoolProtocol = KeyedWorkerPoolProtocol<MailAddr, Reply, NonKey, u8, ()>;
 /// #[behavior::behavior(
 ///     addr = MailAddr,
-///     message = behavior::PoolAssignment<u8>,
+///     message = behavior::PoolAssignment<PoolProtocol>,
 ///     sends = Vec<Never>,
 ///     births = NoBirths,
 ///     error = Never,
@@ -1252,7 +1380,7 @@ mod tests {
 ///     fn init(&mut self, _: crate::InitializationTurn) -> behavior::Acted<MailAddr, Never, Vec<Never>, NoBirths, Never> {
 ///         Ok(Actions::cont())
 ///     }
-///     fn receive(&mut self, _: MailAddr, _: behavior::PoolAssignment<u8>) -> behavior::Acted<MailAddr, Never, Vec<Never>, NoBirths, Never> {
+///     fn receive(&mut self, _: MailAddr, _: behavior::PoolAssignment<PoolProtocol>) -> behavior::Acted<MailAddr, Never, Vec<Never>, NoBirths, Never> {
 ///         Ok(Actions::cont())
 ///     }
 /// }
@@ -1263,10 +1391,14 @@ where
     A::Nonce: From<u64>,
     D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
     K: Eq,
-    C: Behavior<Addr = A, Msg = PoolAssignment<J>, Ph = Never>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<
+            Addr = A,
+            Msg = PoolAssignment<crate::KeyedWorkerPoolProtocol<A, D, K, J, R>>,
+        >,
     S: AffinitySelector<K, A::Nonce>,
 {
-    pool: WorkerPool<A, D, J, R, C>,
+    pool: PoolCore<A, D, J, R, C, crate::KeyedWorkerPoolProtocol<A, D, K, J, R>>,
     bindings: Vec<(K, A::Nonce)>,
     selector: S,
 }
@@ -1277,7 +1409,11 @@ where
     A::Nonce: From<u64>,
     D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
     K: Eq,
-    C: Behavior<Addr = A, Msg = PoolAssignment<J>, Ph = Never>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<
+            Addr = A,
+            Msg = PoolAssignment<crate::KeyedWorkerPoolProtocol<A, D, K, J, R>>,
+        >,
     S: AffinitySelector<K, A::Nonce>,
 {
     /// Construct a key-persistent pool over the same fixed supervised slots as
@@ -1293,9 +1429,10 @@ where
         topology: ChildTopology<A::Nonce, C>,
         configuration: PoolConfiguration,
         selector: S,
+        complete_to: Recipient<crate::KeyedWorkerPoolProtocol<A, D, K, J, R>>,
     ) -> Result<Self, PoolConfigError<A::Nonce>> {
         Ok(Self {
-            pool: WorkerPool::new(topology, configuration)?,
+            pool: PoolCore::new(topology, configuration, complete_to)?,
             bindings: Vec::new(),
             selector,
         })
@@ -1333,20 +1470,6 @@ where
     }
 }
 
-impl<A, D, K, J, R, C, S> behavior::Protocol for KeyedWorkerPool<A, D, K, J, R, C, S>
-where
-    A: Address,
-    A::Nonce: From<u64>,
-    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
-    K: Eq,
-    J: Clone,
-    C: Behavior<Addr = A, Msg = PoolAssignment<J>, Ph = Never>,
-    S: AffinitySelector<K, A::Nonce>,
-{
-    type Addr = A;
-    type Msg = KeyedPoolMessage<A, D, K, J, R>;
-}
-
 impl<A, D, K, J, R, C, S> Behavior for KeyedWorkerPool<A, D, K, J, R, C, S>
 where
     A: Address,
@@ -1354,9 +1477,14 @@ where
     D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
     K: Eq,
     J: Clone,
-    C: Behavior<Addr = A, Msg = PoolAssignment<J>, Ph = Never>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<
+            Addr = A,
+            Msg = PoolAssignment<crate::KeyedWorkerPoolProtocol<A, D, K, J, R>>,
+        >,
     S: AffinitySelector<K, A::Nonce>,
 {
+    type Protocol = crate::KeyedWorkerPoolProtocol<A, D, K, J, R>;
     type Event = KeyedPoolEvent<A, D, K, J, R>;
     type Sends = PoolSends<A, D, J, R, C>;
     type Ph = Never;

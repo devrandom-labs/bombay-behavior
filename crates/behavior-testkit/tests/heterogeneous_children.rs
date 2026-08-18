@@ -15,6 +15,7 @@ impl behavior::Protocol for Devices {
 }
 
 impl Behavior for Devices {
+    type Protocol = Self;
     type Event = User<MailAddr, Never>;
     type Sends = Vec<Never>;
     type Ph = Never;
@@ -35,6 +36,7 @@ impl behavior::Protocol for Queries {
 }
 
 impl Behavior for Queries {
+    type Protocol = Self;
     type Event = User<MailAddr, Never>;
     type Sends = Vec<Never>;
     type Ph = Never;
@@ -50,11 +52,12 @@ struct SupervisorReply;
 
 impl behavior::Protocol for SupervisorReply {
     type Addr = MailAddr;
-    type Msg = DynamicSupervisorOutcome<u64, Devices>;
+    type Msg = DynamicSupervisorOutcome<MailAddr, Devices>;
 }
 
 impl Behavior for SupervisorReply {
-    type Event = User<MailAddr, Self::Msg>;
+    type Protocol = Self;
+    type Event = User<MailAddr, behavior::BehaviorMessage<Self>>;
     type Sends = Vec<Never>;
     type Ph = Never;
     type Error = Never;
@@ -84,6 +87,7 @@ impl behavior::Protocol for Root {
 }
 
 impl Behavior for Root {
+    type Protocol = Self;
     type Event = User<MailAddr, Never>;
     type Sends = Vec<Never>;
     type Ph = Never;

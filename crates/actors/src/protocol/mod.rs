@@ -5,6 +5,9 @@
 //! dependencies between otherwise independent transformations.
 
 pub(crate) mod forward;
+mod pool;
+
+pub use pool::{KeyedWorkerPoolProtocol, PoolAssignmentProtocol, WorkerPoolProtocol};
 
 use std::time::Duration;
 
@@ -178,6 +181,12 @@ impl<A: Address> PeerStopped<A> {
     }
 }
 
+impl<A: Address> From<(A, Result<Exit<A>, Crash>)> for PeerStopped<A> {
+    fn from((peer, outcome): (A, Result<Exit<A>, Crash>)) -> Self {
+        Self { peer, outcome }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ChildStopped<A: Address> {
     pub nonce: A::Nonce,
@@ -188,6 +197,12 @@ pub struct ChildStopped<A: Address> {
 impl<A: Address> ChildStopped<A> {
     #[must_use]
     pub fn new(nonce: A::Nonce, outcome: Result<Exit<A>, Crash>, at: Instant) -> Self {
+        Self { nonce, outcome, at }
+    }
+}
+
+impl<A: Address> From<(A::Nonce, Result<Exit<A>, Crash>, Instant)> for ChildStopped<A> {
+    fn from((nonce, outcome, at): (A::Nonce, Result<Exit<A>, Crash>, Instant)) -> Self {
         Self { nonce, outcome, at }
     }
 }
@@ -212,6 +227,12 @@ impl<N> ObserveChild<N> {
     }
 }
 
+impl<N> From<N> for ObserveChild<N> {
+    fn from(nonce: N) -> Self {
+        Self { nonce }
+    }
+}
+
 /// A proxy's request for its interpreter to report a worker termination to
 /// the proxy's parent. The interpreter supplies the emitting proxy's child
 /// nonce when constructing [`WorkerStopped`].
@@ -225,6 +246,16 @@ pub struct ReportWorkerStopped<A: Address> {
 impl<A: Address> ReportWorkerStopped<A> {
     #[must_use]
     pub fn new(worker: A::Nonce, outcome: Result<Exit<A>, Crash>, at: Instant) -> Self {
+        Self {
+            worker,
+            outcome,
+            at,
+        }
+    }
+}
+
+impl<A: Address> From<(A::Nonce, Result<Exit<A>, Crash>, Instant)> for ReportWorkerStopped<A> {
+    fn from((worker, outcome, at): (A::Nonce, Result<Exit<A>, Crash>, Instant)) -> Self {
         Self {
             worker,
             outcome,
@@ -293,18 +324,18 @@ pub enum CreationRejection {
 /// provenance supplied by Behavior; an interpreter must never infer it from
 /// address reuse or creation order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct CreationResolved<N> {
-    pub nonce: N,
-    pub kind: CreationKind<N>,
-    pub result: Result<(), CreationRejection>,
+pub struct CreationResolved<A: behavior::Address> {
+    pub nonce: A::Nonce,
+    pub kind: CreationKind<A::Nonce>,
+    pub result: Result<A, CreationRejection>,
 }
 
-impl<N> CreationResolved<N> {
+impl<A: behavior::Address> CreationResolved<A> {
     #[must_use]
     pub const fn new(
-        nonce: N,
-        kind: CreationKind<N>,
-        result: Result<(), CreationRejection>,
+        nonce: A::Nonce,
+        kind: CreationKind<A::Nonce>,
+        result: Result<A, CreationRejection>,
     ) -> Self {
         Self {
             nonce,
@@ -314,25 +345,55 @@ impl<N> CreationResolved<N> {
     }
 
     #[must_use]
-    pub const fn installed(nonce: N, kind: CreationKind<N>) -> Self {
-        Self::new(nonce, kind, Ok(()))
+    pub const fn installed(nonce: A::Nonce, kind: CreationKind<A::Nonce>, address: A) -> Self {
+        Self::new(nonce, kind, Ok(address))
     }
 
     /// A successfully committed ordinary birth.
     #[must_use]
-    pub const fn birth(nonce: N) -> Self {
-        Self::installed(nonce, CreationKind::Birth)
+    pub const fn birth(nonce: A::Nonce, address: A) -> Self {
+        Self::installed(nonce, CreationKind::Birth, address)
     }
 
     /// A successfully committed replacement incarnation.
     #[must_use]
-    pub const fn replacement_incarnation(nonce: N, replaces: N) -> Self {
-        Self::installed(nonce, CreationKind::ReplacementIncarnation { replaces })
+    pub const fn replacement_incarnation(nonce: A::Nonce, replaces: A::Nonce, address: A) -> Self {
+        Self::installed(
+            nonce,
+            CreationKind::ReplacementIncarnation { replaces },
+            address,
+        )
     }
 
     #[must_use]
-    pub const fn rejected(nonce: N, kind: CreationKind<N>, rejection: CreationRejection) -> Self {
+    pub const fn rejected(
+        nonce: A::Nonce,
+        kind: CreationKind<A::Nonce>,
+        rejection: CreationRejection,
+    ) -> Self {
         Self::new(nonce, kind, Err(rejection))
+    }
+}
+
+impl<A: behavior::Address>
+    From<(
+        A::Nonce,
+        CreationKind<A::Nonce>,
+        Result<A, CreationRejection>,
+    )> for CreationResolved<A>
+{
+    fn from(
+        (nonce, kind, result): (
+            A::Nonce,
+            CreationKind<A::Nonce>,
+            Result<A, CreationRejection>,
+        ),
+    ) -> Self {
+        Self {
+            nonce,
+            kind,
+            result,
+        }
     }
 }
 
@@ -346,6 +407,12 @@ pub struct ObserveCreation<N> {
 impl<N> ObserveCreation<N> {
     #[must_use]
     pub const fn new(nonce: N) -> Self {
+        Self { nonce }
+    }
+}
+
+impl<N> From<N> for ObserveCreation<N> {
+    fn from(nonce: N) -> Self {
         Self { nonce }
     }
 }
@@ -374,9 +441,21 @@ impl<N> ReportWorkerCreationResolved<N> {
     }
 }
 
-impl<N> From<CreationResolved<N>> for ReportWorkerCreationResolved<N> {
-    fn from(resolved: CreationResolved<N>) -> Self {
-        Self::new(resolved.nonce, resolved.kind, resolved.result)
+impl<N> From<(N, CreationKind<N>, Result<(), CreationRejection>)>
+    for ReportWorkerCreationResolved<N>
+{
+    fn from((worker, kind, result): (N, CreationKind<N>, Result<(), CreationRejection>)) -> Self {
+        Self {
+            worker,
+            kind,
+            result,
+        }
+    }
+}
+
+impl<A: behavior::Address> From<CreationResolved<A>> for ReportWorkerCreationResolved<A::Nonce> {
+    fn from(resolved: CreationResolved<A>) -> Self {
+        Self::new(resolved.nonce, resolved.kind, resolved.result.map(|_| ()))
     }
 }
 
@@ -451,6 +530,19 @@ impl<N> WorkerCreationResolved<N> {
     }
 }
 
+impl<N> From<(N, N, CreationKind<N>, Result<(), CreationRejection>)> for WorkerCreationResolved<N> {
+    fn from(
+        (proxy, worker, kind, result): (N, N, CreationKind<N>, Result<(), CreationRejection>),
+    ) -> Self {
+        Self {
+            proxy,
+            worker,
+            kind,
+            result,
+        }
+    }
+}
+
 impl<N> From<(N, ReportWorkerCreationResolved<N>)> for WorkerCreationResolved<N> {
     fn from((proxy, resolved): (N, ReportWorkerCreationResolved<N>)) -> Self {
         Self::new(proxy, resolved.worker, resolved.kind, resolved.result)
@@ -505,13 +597,13 @@ pub struct ShutdownRequested;
 /// let _: ShutdownChild<Worker> = queue;
 /// ```
 pub struct ShutdownChild<C: behavior::Behavior> {
-    pub nonce: <C::Addr as behavior::Address>::Nonce,
+    pub nonce: <crate::BehaviorAddr<C> as behavior::Address>::Nonce,
     protocol: core::marker::PhantomData<fn() -> C>,
 }
 
 impl<C: behavior::Behavior> ShutdownChild<C> {
     #[must_use]
-    pub const fn new(nonce: <C::Addr as behavior::Address>::Nonce) -> Self {
+    pub const fn new(nonce: <crate::BehaviorAddr<C> as behavior::Address>::Nonce) -> Self {
         Self {
             nonce,
             protocol: core::marker::PhantomData,
@@ -537,7 +629,7 @@ impl<C: behavior::Behavior> Eq for ShutdownChild<C> {}
 
 impl<C: behavior::Behavior> core::fmt::Debug for ShutdownChild<C>
 where
-    <C::Addr as behavior::Address>::Nonce: core::fmt::Debug,
+    <crate::BehaviorAddr<C> as behavior::Address>::Nonce: core::fmt::Debug,
 {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("ShutdownChild")
@@ -571,6 +663,12 @@ impl<N> ChildShutdownRejected<N> {
     }
 }
 
+impl<N> From<(N, ChildShutdownRejection)> for ChildShutdownRejected<N> {
+    fn from((nonce, reason): (N, ChildShutdownRejection)) -> Self {
+        Self { nonce, reason }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -579,7 +677,7 @@ mod tests {
     #[test]
     fn lifecycle_conversions_preserve_every_semantic_field() {
         let at = Instant::now();
-        let child = ChildStopped::<MailAddr>::new(3, Err(Crash::Failed), at);
+        let child: ChildStopped<MailAddr> = (3, Err(Crash::Failed), at).into();
         let report = ReportWorkerStopped::from(child);
         let worker = WorkerStopped::from((7, report));
         assert_eq!(worker.proxy, 7);
@@ -587,7 +685,7 @@ mod tests {
         assert_eq!(worker.outcome, Err(Crash::Failed));
         assert_eq!(worker.at, at);
 
-        let creation = CreationResolved::<u64>::rejected(
+        let creation = CreationResolved::<behavior::MailAddr>::rejected(
             4,
             CreationKind::replacement_of(3),
             CreationRejection::EnvironmentFailed,
@@ -631,6 +729,20 @@ mod tests {
             .into_replacement(),
             None
         );
+    }
+
+    #[test]
+    fn expected_lane_types_infer_lossless_protocol_products() {
+        let peer: ObservePeer<MailAddr> = MailAddr(7).into();
+        let child: ObserveChild<u64> = 9.into();
+        let creation: ObserveCreation<u64> = 11.into();
+        let rejected: ChildShutdownRejected<u64> =
+            (13, ChildShutdownRejection::NotEstablished).into();
+
+        assert_eq!(peer.peer, MailAddr(7));
+        assert_eq!(child.nonce, 9);
+        assert_eq!(creation.nonce, 11);
+        assert_eq!(rejected.nonce, 13);
     }
 
     #[test]

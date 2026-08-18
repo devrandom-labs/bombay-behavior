@@ -86,9 +86,9 @@ impl<B: Behavior> Periodic<B> {
     }
 
     fn wrap(
-        actions: Actions<B::Addr, B::Ph, B::Sends, B::Birth>,
+        actions: Actions<crate::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>,
         schedules: ServiceSends<ScheduleAfter>,
-    ) -> Actions<B::Addr, B::Ph, PeriodicSends<B::Sends>, B::Birth> {
+    ) -> Actions<crate::BehaviorAddr<B>, B::Ph, PeriodicSends<B::Sends>, B::Birth> {
         actions.map_sends(|behavior| PeriodicSends {
             behavior,
             schedules,
@@ -97,8 +97,8 @@ impl<B: Behavior> Periodic<B> {
 
     fn wrap_and_rearm(
         &mut self,
-        actions: Actions<B::Addr, B::Ph, B::Sends, B::Birth>,
-    ) -> Actions<B::Addr, B::Ph, PeriodicSends<B::Sends>, B::Birth> {
+        actions: Actions<crate::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>,
+    ) -> Actions<crate::BehaviorAddr<B>, B::Ph, PeriodicSends<B::Sends>, B::Birth> {
         let schedules = if matches!(actions.become_, Step::Stop(_)) {
             self.lease.disarm();
             ServiceSends::empty()
@@ -117,26 +117,16 @@ impl<B: Behavior + crate::BehaviorBase> crate::BehaviorBase for Periodic<B> {
     }
 }
 
-impl<B, A, Ph, Sends, Br> behavior::Protocol for Periodic<B>
-where
-    A: Address,
-    Sends: SendAlgebra,
-    Br: BirthMode,
-    B: Behavior<Addr = A, Ph = Ph, Sends = Sends, Birth = Br>,
-    B::Event: RouteInput<TimerElapsed>,
-{
-    type Addr = A;
-    type Msg = B::Msg;
-}
-
 impl<B, A, Ph, Sends, Br> Behavior for Periodic<B>
 where
     A: Address,
     Sends: SendAlgebra,
     Br: BirthMode,
-    B: Behavior<Addr = A, Ph = Ph, Sends = Sends, Birth = Br>,
+    B: Behavior<Ph = Ph, Sends = Sends, Birth = Br>,
+    B::Protocol: crate::Protocol<Addr = A>,
     B::Event: RouteInput<TimerElapsed>,
 {
+    type Protocol = B::Protocol;
     type Event = PeriodicEvent<B::Event>;
     type Sends = PeriodicSends<Sends>;
     type Ph = Ph;
@@ -196,6 +186,7 @@ mod tests {
     }
 
     impl Behavior for Probe {
+        type Protocol = Self;
         type Event = User<MailAddr, ()>;
         type Sends = Vec<Never>;
         type Ph = Never;

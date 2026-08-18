@@ -421,7 +421,8 @@ where
     K: Clone + Eq,
     Reply: behavior::Protocol<Addr = A, Msg = PresenceReply<K>>,
 {
-    type Event = TimedEvent<User<A, Self::Msg>>;
+    type Protocol = Self;
+    type Event = TimedEvent<User<A, crate::BehaviorMessage<Self>>>;
     type Sends = PresenceSends<Reply>;
     type Ph = Never;
     type Error = Never;
@@ -482,7 +483,8 @@ mod tests {
     }
 
     impl Behavior for Reply {
-        type Event = User<MailAddr, Self::Msg>;
+        type Protocol = Self;
+        type Event = User<MailAddr, crate::BehaviorMessage<Self>>;
         type Sends = Vec<Never>;
         type Ph = Never;
         type Error = Never;

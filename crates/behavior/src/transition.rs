@@ -4,6 +4,18 @@ use crate::actor::{Address, BirthMode};
 use crate::effects::{Acted, Actions, SendAlgebra};
 use crate::user_event::UserEvent;
 
+/// Reusable zero-state protocol identity for messages `M` addressed by `A`.
+///
+/// This value has no runtime operations. It lets an actor template publish its
+/// communication signature independently of the concrete state/fold type that
+/// currently implements that signature.
+pub struct MessageProtocol<A: Address, M>(core::marker::PhantomData<fn(A, M)>);
+
+impl<A: Address, M> Protocol for MessageProtocol<A, M> {
+    type Addr = A;
+    type Msg = M;
+}
+
 /// The statically known address and message signature of an actor protocol.
 ///
 /// This signature is deliberately independent of [`Behavior`]'s transition
@@ -20,12 +32,18 @@ pub trait Protocol {
 
 /// The only successful effect shape admitted by a [`Behavior`] implementation.
 pub type BehaviorActed<B> = Acted<
-    <B as Protocol>::Addr,
+    BehaviorAddr<B>,
     <B as Behavior>::Ph,
     <B as Behavior>::Sends,
     <B as Behavior>::Birth,
     <B as Behavior>::Error,
 >;
+
+/// Address namespace projected from a behavior's stable public protocol.
+pub type BehaviorAddr<B> = <<B as Behavior>::Protocol as Protocol>::Addr;
+
+/// Public message algebra projected from a behavior's stable protocol.
+pub type BehaviorMessage<B> = <<B as Behavior>::Protocol as Protocol>::Msg;
 
 /// Capability for defining one initialization fold.
 ///
@@ -56,10 +74,47 @@ impl ActiveTurn {
     }
 }
 
-/// A composed pure behavior. `Event` is the complete accepted protocol;
-/// every successful transition returns the declared [`Actions`] value.
-pub trait Behavior: Protocol {
-    type Event: UserEvent<Addr = Self::Addr, Message = Self::Msg>;
+/// A composed pure behavior. `Event` is the complete accepted input algebra;
+/// the separately declared [`Protocol`] is stable public destination identity,
+/// and every successful transition returns the declared [`Actions`] value.
+///
+/// The public protocol must exactly match the address and user-message lane:
+///
+/// ```compile_fail
+/// use behavior::{Actions, ActiveTurn, Behavior, BehaviorActed, MailAddr, MessageProtocol,
+///     Never, NoBirths, Protocol, User};
+/// struct Wrong;
+/// impl Protocol for Wrong {
+///     type Addr = MailAddr;
+///     type Msg = String;
+/// }
+/// struct Counter;
+/// impl Protocol for Counter {
+///     type Addr = MailAddr;
+///     type Msg = u8;
+/// }
+/// impl Behavior for Counter {
+///     type Protocol = Wrong;
+///     type Event = User<MailAddr, u8>;
+///     type Sends = Vec<Never>;
+///     type Ph = Never;
+///     type Error = Never;
+///     type Birth = NoBirths;
+///     fn transition(&mut self, _: ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
+///         Ok(Actions::cont())
+///     }
+/// }
+/// ```
+pub trait Behavior {
+    /// Stable public communication identity owned by this actor template.
+    ///
+    /// Behavior wrappers must preserve this type unless their documented
+    /// purpose is to adapt the public message protocol. The equality bound
+    /// prevents a behavior from consuming a different address or user-message
+    /// signature than the protocol established for its actor identity.
+    type Protocol: Protocol;
+
+    type Event: UserEvent<Addr = BehaviorAddr<Self>, Message = BehaviorMessage<Self>>;
     type Sends: SendAlgebra;
     type Ph;
     type Error;
