@@ -4,7 +4,6 @@
 //! these lanes. Keeping their values and construction capabilities here avoids
 //! dependencies between otherwise independent transformations.
 
-pub(crate) mod forward;
 mod pool;
 
 pub use pool::{KeyedWorkerPoolProtocol, PoolAssignmentProtocol, WorkerPoolProtocol};
@@ -51,12 +50,19 @@ pub struct ScheduleAt {
     pub id: TimerId,
     pub generation: TimerGeneration,
     pub at: Instant,
+    /// Exact local timer-fact owner, relative to this named effect lane.
+    pub ingress: behavior::Ingress<TimerElapsed, behavior::Here>,
 }
 
 impl ScheduleAt {
     #[must_use]
     pub const fn new(id: TimerId, generation: TimerGeneration, at: Instant) -> Self {
-        Self { id, generation, at }
+        Self {
+            id,
+            generation,
+            at,
+            ingress: behavior::Ingress::new(),
+        }
     }
 }
 
@@ -76,6 +82,8 @@ pub struct ScheduleAfter {
     pub id: TimerId,
     pub generation: TimerGeneration,
     pub after: Duration,
+    /// Exact local timer-fact owner, relative to this named effect lane.
+    pub ingress: behavior::Ingress<TimerElapsed, behavior::Here>,
 }
 
 impl ScheduleAfter {
@@ -85,6 +93,7 @@ impl ScheduleAfter {
             id,
             generation,
             after,
+            ingress: behavior::Ingress::new(),
         }
     }
 }
@@ -125,20 +134,25 @@ impl From<(TimerId, TimerGeneration)> for TimerElapsed {
 /// terminal history must return an interpreter error rather than fabricate a
 /// stop result.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ObservePeer<A> {
+pub struct ObservePeer<A: Address> {
     pub peer: A,
+    /// Exact peer-stopped owner, relative to this observation effect lane.
+    pub ingress: behavior::Ingress<PeerStopped<A>, behavior::Here>,
 }
 
-impl<A> From<A> for ObservePeer<A> {
+impl<A: Address> From<A> for ObservePeer<A> {
     fn from(peer: A) -> Self {
-        Self { peer }
+        Self::new(peer)
     }
 }
 
-impl<A> ObservePeer<A> {
+impl<A: Address> ObservePeer<A> {
     #[must_use]
     pub const fn new(peer: A) -> Self {
-        Self { peer }
+        Self {
+            peer,
+            ingress: behavior::Ingress::new(),
+        }
     }
 }
 
@@ -216,20 +230,19 @@ impl<A: Address> From<(A::Nonce, Result<Exit<A>, Crash>, Instant)> for ChildStop
 /// rejection remains observable through [`ObserveCreation`], and a later
 /// creation cannot inherit the consumed observation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ObserveChild<N> {
-    pub nonce: N,
+pub struct ObserveChild<A: Address> {
+    pub nonce: A::Nonce,
+    /// Exact child-stopped owner, relative to this observation effect lane.
+    pub ingress: behavior::Ingress<ChildStopped<A>, behavior::Here>,
 }
 
-impl<N> ObserveChild<N> {
+impl<A: Address> ObserveChild<A> {
     #[must_use]
-    pub const fn new(nonce: N) -> Self {
-        Self { nonce }
-    }
-}
-
-impl<N> From<N> for ObserveChild<N> {
-    fn from(nonce: N) -> Self {
-        Self { nonce }
+    pub const fn new(nonce: A::Nonce) -> Self {
+        Self {
+            nonce,
+            ingress: behavior::Ingress::new(),
+        }
     }
 }
 
@@ -241,6 +254,8 @@ pub struct ReportWorkerStopped<A: Address> {
     pub worker: A::Nonce,
     pub outcome: Result<Exit<A>, Crash>,
     pub at: Instant,
+    /// Exact parent worker-stop owner, relative to this report lane.
+    pub ingress: behavior::Ingress<WorkerStopped<A>, behavior::Here>,
 }
 
 impl<A: Address> ReportWorkerStopped<A> {
@@ -250,17 +265,14 @@ impl<A: Address> ReportWorkerStopped<A> {
             worker,
             outcome,
             at,
+            ingress: behavior::Ingress::new(),
         }
     }
 }
 
 impl<A: Address> From<(A::Nonce, Result<Exit<A>, Crash>, Instant)> for ReportWorkerStopped<A> {
     fn from((worker, outcome, at): (A::Nonce, Result<Exit<A>, Crash>, Instant)) -> Self {
-        Self {
-            worker,
-            outcome,
-            at,
-        }
+        Self::new(worker, outcome, at)
     }
 }
 
@@ -400,20 +412,19 @@ impl<A: behavior::Address>
 /// Ask the local interpreter to return the committed result of the same-action
 /// creation at `nonce` through the behavior's typed creation-result lane.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ObserveCreation<N> {
-    pub nonce: N,
+pub struct ObserveCreation<A: Address> {
+    pub nonce: A::Nonce,
+    /// Exact creation-resolution owner, relative to this observation lane.
+    pub ingress: behavior::Ingress<CreationResolved<A>, behavior::Here>,
 }
 
-impl<N> ObserveCreation<N> {
+impl<A: Address> ObserveCreation<A> {
     #[must_use]
-    pub const fn new(nonce: N) -> Self {
-        Self { nonce }
-    }
-}
-
-impl<N> From<N> for ObserveCreation<N> {
-    fn from(nonce: N) -> Self {
-        Self { nonce }
+    pub const fn new(nonce: A::Nonce) -> Self {
+        Self {
+            nonce,
+            ingress: behavior::Ingress::new(),
+        }
     }
 }
 
@@ -424,6 +435,8 @@ pub struct ReportWorkerCreationResolved<N> {
     pub worker: N,
     pub kind: CreationKind<N>,
     pub result: Result<(), CreationRejection>,
+    /// Exact parent creation-result owner, relative to this report lane.
+    pub ingress: behavior::Ingress<WorkerCreationResolved<N>, behavior::Here>,
 }
 
 impl<N> ReportWorkerCreationResolved<N> {
@@ -437,6 +450,7 @@ impl<N> ReportWorkerCreationResolved<N> {
             worker,
             kind,
             result,
+            ingress: behavior::Ingress::new(),
         }
     }
 }
@@ -445,11 +459,7 @@ impl<N> From<(N, CreationKind<N>, Result<(), CreationRejection>)>
     for ReportWorkerCreationResolved<N>
 {
     fn from((worker, kind, result): (N, CreationKind<N>, Result<(), CreationRejection>)) -> Self {
-        Self {
-            worker,
-            kind,
-            result,
-        }
+        Self::new(worker, kind, result)
     }
 }
 
@@ -598,6 +608,13 @@ pub struct ShutdownRequested;
 /// ```
 pub struct ShutdownChild<C: behavior::Behavior> {
     pub nonce: <crate::BehaviorAddr<C> as behavior::Address>::Nonce,
+    /// Exact shutdown owner in the selected child behavior.
+    pub ingress: behavior::Ingress<ShutdownRequested, behavior::Here>,
+    /// Exact rejection owner in the emitting parent's local event algebra.
+    pub rejection: behavior::Ingress<
+        ChildShutdownRejected<<crate::BehaviorAddr<C> as behavior::Address>::Nonce>,
+        behavior::Here,
+    >,
     protocol: core::marker::PhantomData<fn() -> C>,
 }
 
@@ -606,6 +623,8 @@ impl<C: behavior::Behavior> ShutdownChild<C> {
     pub const fn new(nonce: <crate::BehaviorAddr<C> as behavior::Address>::Nonce) -> Self {
         Self {
             nonce,
+            ingress: behavior::Ingress::new(),
+            rejection: behavior::Ingress::new(),
             protocol: core::marker::PhantomData,
         }
     }
@@ -734,8 +753,8 @@ mod tests {
     #[test]
     fn expected_lane_types_infer_lossless_protocol_products() {
         let peer: ObservePeer<MailAddr> = MailAddr(7).into();
-        let child: ObserveChild<u64> = 9.into();
-        let creation: ObserveCreation<u64> = 11.into();
+        let child: ObserveChild<MailAddr> = ObserveChild::new(9);
+        let creation: ObserveCreation<MailAddr> = ObserveCreation::new(11);
         let rejected: ChildShutdownRejected<u64> =
             (13, ChildShutdownRejection::NotEstablished).into();
 

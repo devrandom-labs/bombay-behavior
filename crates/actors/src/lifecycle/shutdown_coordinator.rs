@@ -1,11 +1,12 @@
 //! Phased child-topology shutdown.
 
-use crate::protocol::forward::forward_event_lane;
 use crate::{
-    ChildShutdownRejected, ChildShutdownRejection, ChildStopped, Own, RouteInput, SendInput,
-    ShutdownChild,
+    ChildShutdownRejected, ChildShutdownRejection, ChildStopped, Own, SendInput, ShutdownChild,
 };
-use behavior::{Actions, Address, Behavior, BehaviorActed, BirthMode, SendAlgebra, ServiceSends};
+use behavior::{
+    Actions, Address, Behavior, BehaviorActed, BirthMode, Here, InjectEvent, Inside, SendAlgebra,
+    ServiceSends,
+};
 use behavior::{User, UserEvent};
 
 /// Validated ordered shutdown phases.
@@ -155,50 +156,32 @@ impl<E: UserEvent> UserEvent for ShutdownCoordinatorEvent<E> {
     }
 }
 
-impl<E: UserEvent> crate::EventInput<crate::ShutdownRequested> for ShutdownCoordinatorEvent<E> {
-    fn inject(value: crate::ShutdownRequested) -> Self {
+impl<E: UserEvent> InjectEvent<crate::ShutdownRequested, Here> for ShutdownCoordinatorEvent<E> {
+    fn inject_at(value: crate::ShutdownRequested) -> Self {
         Self::Requested(value)
     }
 }
-impl<E: UserEvent> crate::RouteInput<crate::ShutdownRequested> for ShutdownCoordinatorEvent<E> {
-    fn route(value: crate::ShutdownRequested) -> Result<Self, crate::ShutdownRequested> {
-        Ok(Self::Requested(value))
-    }
-}
-impl<E: UserEvent> crate::EventInput<ChildStopped<E::Addr>> for ShutdownCoordinatorEvent<E> {
-    fn inject(value: ChildStopped<E::Addr>) -> Self {
+impl<E: UserEvent> InjectEvent<ChildStopped<E::Addr>, Here> for ShutdownCoordinatorEvent<E> {
+    fn inject_at(value: ChildStopped<E::Addr>) -> Self {
         Self::ChildStopped(value)
     }
 }
-impl<E: UserEvent> crate::RouteInput<ChildStopped<E::Addr>> for ShutdownCoordinatorEvent<E> {
-    fn route(value: ChildStopped<E::Addr>) -> Result<Self, ChildStopped<E::Addr>> {
-        Ok(Self::ChildStopped(value))
-    }
-}
-impl<E: UserEvent> crate::EventInput<ChildShutdownRejected<<E::Addr as Address>::Nonce>>
+impl<E: UserEvent> InjectEvent<ChildShutdownRejected<<E::Addr as Address>::Nonce>, Here>
     for ShutdownCoordinatorEvent<E>
 {
-    fn inject(value: ChildShutdownRejected<<E::Addr as Address>::Nonce>) -> Self {
+    fn inject_at(value: ChildShutdownRejected<<E::Addr as Address>::Nonce>) -> Self {
         Self::ChildRejected(value)
     }
 }
-impl<E: UserEvent> crate::RouteInput<ChildShutdownRejected<<E::Addr as Address>::Nonce>>
-    for ShutdownCoordinatorEvent<E>
+
+impl<E, Input, Path> InjectEvent<Input, Inside<Path>> for ShutdownCoordinatorEvent<E>
+where
+    E: UserEvent + InjectEvent<Input, Path>,
 {
-    fn route(
-        value: ChildShutdownRejected<<E::Addr as Address>::Nonce>,
-    ) -> Result<Self, ChildShutdownRejected<<E::Addr as Address>::Nonce>> {
-        Ok(Self::ChildRejected(value))
+    fn inject_at(input: Input) -> Self {
+        Self::Behavior(E::inject_at(input))
     }
 }
-forward_event_lane!(ShutdownCoordinatorEvent, crate::TimerElapsed);
-forward_event_lane!(ShutdownCoordinatorEvent, crate::PeerStopped<E::Addr>);
-forward_event_lane!(ShutdownCoordinatorEvent, crate::WorkerStopped<E::Addr>);
-forward_event_lane!(ShutdownCoordinatorEvent, crate::CreationResolved<E::Addr>);
-forward_event_lane!(
-    ShutdownCoordinatorEvent,
-    crate::WorkerCreationResolved<<E::Addr as Address>::Nonce>
-);
 
 /// Named effects added by homogeneous coordinated shutdown.
 ///
@@ -408,9 +391,7 @@ where
     B::Protocol: crate::Protocol<Addr = A>,
     C: Behavior,
     C::Protocol: crate::Protocol<Addr = A>,
-    C::Event: crate::EventInput<crate::ShutdownRequested>,
-    B::Event:
-        crate::RouteInput<ChildStopped<A>> + crate::RouteInput<ChildShutdownRejected<A::Nonce>>,
+    C::Event: InjectEvent<crate::ShutdownRequested, Here>,
 {
     type Protocol = B::Protocol;
     type Event = ShutdownCoordinatorEvent<B::Event>;
@@ -442,12 +423,7 @@ where
             ShutdownCoordinatorEvent::ChildStopped(stopped) => {
                 let matching = matches!(&self.state, ShutdownState::Stopping { awaiting, .. } if awaiting.contains(&stopped.nonce));
                 if !matching {
-                    return match B::Event::route(stopped) {
-                        Ok(inner) => behavior::delegate_transition(&mut self.inner, inner)
-                            .map(Self::wrap)
-                            .map_err(ShutdownCoordinatorError::Behavior),
-                        Err(_) => Ok(Actions::cont()),
-                    };
+                    return Ok(Actions::cont());
                 }
                 let ShutdownState::Stopping { phase, awaiting } = &mut self.state else {
                     return Ok(Actions::cont());
@@ -479,12 +455,7 @@ where
                         reason: rejected.reason,
                     })
                 } else {
-                    match B::Event::route(rejected) {
-                        Ok(inner) => behavior::delegate_transition(&mut self.inner, inner)
-                            .map(Self::wrap)
-                            .map_err(ShutdownCoordinatorError::Behavior),
-                        Err(_) => Ok(Actions::cont()),
-                    }
+                    Ok(Actions::cont())
                 }
             }
             ShutdownCoordinatorEvent::Behavior(inner) => {
@@ -582,7 +553,7 @@ mod tests {
         assert!(initialized.actions.sends.shutdowns.is_empty());
         let mut active = initialized.behavior;
 
-        let first = active.on(ShutdownRequested).unwrap();
+        let first = active.on_path(ShutdownRequested).unwrap();
         assert_eq!(
             first.sends.shutdowns.as_slice(),
             [ShutdownChild::new(1), ShutdownChild::new(2)]
@@ -595,7 +566,7 @@ mod tests {
             }
         );
 
-        let one = active.on(stopped(2)).unwrap();
+        let one = active.on_path(stopped(2)).unwrap();
         assert_eq!(one.sends, ShutdownCoordinatorSends::empty());
         assert_eq!(
             active.state(),
@@ -605,7 +576,7 @@ mod tests {
             }
         );
 
-        let second = active.on(stopped(1)).unwrap();
+        let second = active.on_path(stopped(1)).unwrap();
         assert_eq!(second.sends.shutdowns.as_slice(), [ShutdownChild::new(3)]);
         assert_eq!(
             active.state(),
@@ -615,7 +586,7 @@ mod tests {
             }
         );
 
-        let done = active.on(stopped(3)).unwrap();
+        let done = active.on_path(stopped(3)).unwrap();
         assert!(matches!(done.become_, Step::Stop(_)));
         assert_eq!(active.state(), &ShutdownState::Completed);
     }
@@ -623,7 +594,7 @@ mod tests {
     #[test]
     fn guardian_routes_shutdown_to_the_coordinator_before_applying_root_stop() {
         let plan = ShutdownPlan::new([vec![7]]).unwrap();
-        let initialized = crate::Guardian::new(ShutdownCoordinator::<
+        let initialized = crate::Guardian::coordinated(ShutdownCoordinator::<
             Probe,
             crate::StopOnShutdown<Probe>,
         >::new(Probe, plan))
@@ -645,15 +616,15 @@ mod tests {
                 .initialize()
                 .unwrap()
                 .behavior;
-        active.on(stopped(9)).unwrap();
-        active.on(ShutdownRequested).unwrap();
+        active.on_path(stopped(9)).unwrap();
+        active.on_path(ShutdownRequested).unwrap();
         assert_eq!(
-            active.on(ShutdownRequested).unwrap().sends,
+            active.on_path(ShutdownRequested).unwrap().sends,
             ShutdownCoordinatorSends::empty()
         );
-        active.on(stopped(1)).unwrap();
+        active.on_path(stopped(1)).unwrap();
         assert_eq!(
-            active.on(stopped(1)).unwrap().sends,
+            active.on_path(stopped(1)).unwrap().sends,
             ShutdownCoordinatorSends::empty()
         );
         assert_eq!(
@@ -673,10 +644,10 @@ mod tests {
                 .initialize()
                 .unwrap()
                 .behavior;
-        active.on(ShutdownRequested).unwrap();
+        active.on_path(ShutdownRequested).unwrap();
         let before = active.state().clone();
         assert_eq!(
-            active.on(ChildShutdownRejected::new(
+            active.on_path(ChildShutdownRejected::new(
                 1,
                 ChildShutdownRejection::NotEstablished
             )),
@@ -700,7 +671,7 @@ mod tests {
         assert_eq!(user.sends.behavior, [7]);
         assert!(user.sends.shutdowns.is_empty());
         assert!(matches!(
-            active.on(ShutdownRequested).unwrap().become_,
+            active.on_path(ShutdownRequested).unwrap().become_,
             Step::Stop(_)
         ));
     }

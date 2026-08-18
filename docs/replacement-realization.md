@@ -2,7 +2,7 @@
 
 Fresh incarnations may change behavior state or implementation without
 changing a stable proxy's public protocol. This depends on the separation in
-[Protocol, event, behavior, and effect algebras](protocol-algebra.md).
+[Protocol, ingress, behavior, and effect algebras](protocol-algebra.md).
 
 ## Semantic classification
 

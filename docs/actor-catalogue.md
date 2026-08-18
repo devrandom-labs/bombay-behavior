@@ -14,7 +14,7 @@ one Driver law; a template is not admitted if it requires a private execution
 loop.
 Public destination identity, internal events, behavior state/fold, and effects
 follow the orthogonal model in
-[Protocol, event, behavior, and effect algebras](protocol-algebra.md). Catalogue
+[Protocol, ingress, behavior, and effect algebras](protocol-algebra.md). Catalogue
 wrappers may extend events and effects but must preserve the wrapped public
 protocol unless their stated purpose is message adaptation.
 Actor roles requiring clocks, tasks, address authority, durability, transport,

@@ -6,9 +6,11 @@ use std::time::Instant;
 use super::domain::OneShotSchedule;
 use super::event::TimedEvent;
 use crate::Step;
-use crate::protocol::{ScheduleAt, TimerElapsed, TimerId};
-use crate::{Own, RouteInput, SendInput};
-use behavior::{Actions, Address, Become, Behavior, BirthMode, SendAlgebra, ServiceSends};
+use crate::protocol::{ScheduleAt, TimerId};
+use crate::{Own, SendInput};
+use behavior::{
+    Actions, Address, Become, Behavior, BirthMode, EventLayer, SendAlgebra, ServiceSends,
+};
 
 pub type DeadlineEvent<E> = TimedEvent<E>;
 
@@ -61,10 +63,9 @@ impl<B: Behavior> Deadline<B> {
     ///
     /// Initialization stages the schedule when `at` is present. Clock access
     /// and timer delivery remain interpreter capabilities.
-    /// Nested timers that deliberately reuse the same `(id, generation)` are
-    /// one lane: the outermost matching wrapper owns that fact. Use distinct
-    /// timer identities when both reactions must remain independently
-    /// addressable.
+    /// Nested timers remain independently addressable even when they reuse the
+    /// same `(id, generation)`: each emitted schedule selects this wrapper's
+    /// structural ingress destination.
     #[must_use]
     pub fn new(
         inner: B,
@@ -104,7 +105,6 @@ where
     Br: BirthMode,
     B: Behavior<Ph = Ph, Sends = Sends, Birth = Br>,
     B::Protocol: crate::Protocol<Addr = A>,
-    B::Event: crate::RouteInput<TimerElapsed>,
 {
     type Protocol = B::Protocol;
     type Event = DeadlineEvent<B::Event>;
@@ -134,7 +134,7 @@ where
         event: Self::Event,
     ) -> Result<DeadlineActions<B>, B::Error> {
         match event {
-            DeadlineEvent::Elapsed(event) if self.schedule.accept(event.id, event.generation) => {
+            EventLayer::Owned(event) if self.schedule.accept(event.id, event.generation) => {
                 let become_ = match (self.on_reached)(&mut self.inner)? {
                     Step::Continue => Step::Continue,
                     Step::Goto(never) => match never {},
@@ -142,17 +142,8 @@ where
                 };
                 Ok(Actions::just(become_))
             }
-            DeadlineEvent::Elapsed(event) => match B::Event::route(event) {
-                Ok(inner) => {
-                    let actions = behavior::delegate_transition(&mut self.inner, inner)?;
-                    if matches!(actions.become_, Step::Stop(_)) {
-                        self.schedule.cancel();
-                    }
-                    Ok(Self::wrap(actions, ServiceSends::empty()))
-                }
-                Err(_) => Ok(Actions::cont()),
-            },
-            DeadlineEvent::Behavior(event) => {
+            EventLayer::Owned(_) => Ok(Actions::cont()),
+            EventLayer::Inner(event) => {
                 let actions = behavior::delegate_transition(&mut self.inner, event)?;
                 if matches!(actions.become_, Step::Stop(_)) {
                     self.schedule.cancel();

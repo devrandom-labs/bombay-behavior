@@ -3,7 +3,7 @@
 Observation facts belong to `Behavior::Event`, not `Protocol::Msg`. A
 transparent watch/monitor preserves the wrapped public protocol while adding
 typed observation requests and facts to its effect/event algebras. See
-[Protocol, event, behavior, and effect algebras](protocol-algebra.md).
+[Protocol, ingress, behavior, and effect algebras](protocol-algebra.md).
 
 Peer observation is a derived Bombay protocol, not one of the actor-model
 transition primitives. Agha's actor semantics supplies communication to known

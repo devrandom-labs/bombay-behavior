@@ -18,10 +18,9 @@ pub struct ProxySends<C: Behavior> {
     /// User payloads forwarded to the currently installed worker incarnation.
     pub deliveries: Vec<Delivery<C::Protocol>>,
     /// Requests to observe installed child incarnations.
-    pub child_observations: ServiceSends<ObserveChild<<crate::BehaviorAddr<C> as Address>::Nonce>>,
+    pub child_observations: ServiceSends<ObserveChild<crate::BehaviorAddr<C>>>,
     /// Requests for exact creation acceptance or rejection facts.
-    pub creation_observations:
-        ServiceSends<ObserveCreation<<crate::BehaviorAddr<C> as Address>::Nonce>>,
+    pub creation_observations: ServiceSends<ObserveCreation<crate::BehaviorAddr<C>>>,
     /// Worker-stop facts reported to the owning supervisor.
     pub stopped_reports: ServiceSends<ReportWorkerStopped<crate::BehaviorAddr<C>>>,
     /// Creation-resolution facts reported to the owning supervisor.
@@ -62,18 +61,14 @@ impl<C: Behavior> SendInput<Delivery<C::Protocol>, Own> for ProxySends<C> {
     }
 }
 
-impl<C: Behavior> SendInput<ObserveChild<<crate::BehaviorAddr<C> as Address>::Nonce>, Own>
-    for ProxySends<C>
-{
-    fn emit(&mut self, input: ObserveChild<<crate::BehaviorAddr<C> as Address>::Nonce>) {
+impl<C: Behavior> SendInput<ObserveChild<crate::BehaviorAddr<C>>, Own> for ProxySends<C> {
+    fn emit(&mut self, input: ObserveChild<crate::BehaviorAddr<C>>) {
         self.child_observations.send(input);
     }
 }
 
-impl<C: Behavior> SendInput<ObserveCreation<<crate::BehaviorAddr<C> as Address>::Nonce>, Own>
-    for ProxySends<C>
-{
-    fn emit(&mut self, input: ObserveCreation<<crate::BehaviorAddr<C> as Address>::Nonce>) {
+impl<C: Behavior> SendInput<ObserveCreation<crate::BehaviorAddr<C>>, Own> for ProxySends<C> {
+    fn emit(&mut self, input: ObserveCreation<crate::BehaviorAddr<C>>) {
         self.creation_observations.send(input);
     }
 }

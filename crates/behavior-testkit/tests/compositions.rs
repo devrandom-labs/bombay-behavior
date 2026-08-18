@@ -5,11 +5,11 @@
 
 use std::time::Duration;
 
+use behavior::EventLayer;
 use behavior::{
-    Acted, Actions, Activate, Behavior, Crash, DeadlineEvent, Delivery, Exit, MailAddr, Never,
-    PeerStopped, Recipient, StashRoute, Step, SupervisionEvent, TimerElapsed, TimerGeneration,
-    TimerId, User, UserEvent, WatchEvent, WorkerStopped, stop_on_abnormal_death,
-    stop_on_supervision_failure,
+    Acted, Actions, Activate, Behavior, Crash, Delivery, Exit, MailAddr, Never, PeerStopped,
+    Recipient, StashRoute, Step, SupervisionEvent, TimerElapsed, TimerGeneration, TimerId, User,
+    UserEvent, WorkerStopped, stop_on_abnormal_death, stop_on_supervision_failure,
 };
 use std::time::Instant;
 
@@ -234,7 +234,7 @@ async fn environment_lanes_bypass_stash_while_user_lane_is_intercepted() {
     let mut behavior = initialized.behavior;
 
     // Time lane: fires through the stash layer, nothing stashed.
-    let reached = DeadlineEvent::Elapsed(TimerElapsed {
+    let reached = EventLayer::Owned(TimerElapsed {
         id: TimerId(0),
         generation: TimerGeneration(0),
     });
@@ -243,18 +243,18 @@ async fn environment_lanes_bypass_stash_while_user_lane_is_intercepted() {
     assert_eq!(behavior.stashed(), 0);
 
     // Peer lane: matching peer death stops the fold through the stash layer.
-    let peer = WatchEvent::PeerStopped(PeerStopped {
+    let peer = EventLayer::Owned(PeerStopped {
         peer: PEER,
         outcome: Err(Crash::Failed),
     });
-    let died = behavior.transition(DeadlineEvent::Behavior(peer)).unwrap();
+    let died = behavior.transition(EventLayer::Inner(peer)).unwrap();
     assert!(matches!(died.become_, Step::Stop(behavior::Stopped)));
     assert_eq!(behavior.stashed(), 0);
 
     // User lane: intercepted by the stash buffer.
     let user = User::user(MailAddr(7), 3);
     behavior
-        .transition(DeadlineEvent::Behavior(WatchEvent::Behavior(user)))
+        .transition(EventLayer::Inner(EventLayer::Inner(user)))
         .unwrap();
     assert_eq!(behavior.stashed(), 1);
     assert!(behavior.base().seen.is_empty());
@@ -268,7 +268,7 @@ async fn watch_reaction_reinvokes_on_each_death_and_fold_continues() {
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
 
-    let death = WatchEvent::PeerStopped(PeerStopped {
+    let death = EventLayer::Owned(PeerStopped {
         peer: PEER,
         outcome: Err(Crash::Failed),
     });
@@ -286,8 +286,7 @@ async fn watch_reaction_reinvokes_on_each_death_and_fold_continues() {
     assert_eq!(behavior.base().seen, [(MailAddr(2), 9)]);
 }
 
-/// An unrelated peer's death routed through a watch-of-watch reaches the
-/// inner watcher, not the outer reaction; both layers keep their own peer.
+/// A watch-of-watch exposes distinct structural destinations for both owners.
 #[tokio::test]
 async fn watch_of_watch_routes_each_peer_to_its_own_layer() {
     let inner_peer = MailAddr(1);
@@ -301,18 +300,18 @@ async fn watch_of_watch_routes_each_peer_to_its_own_layer() {
     let mut behavior = initialized.behavior;
 
     // Outer peer death: outer layer stops.
-    let outer_death = WatchEvent::PeerStopped(PeerStopped {
+    let outer_death = EventLayer::Owned(PeerStopped {
         peer: outer_peer,
         outcome: Err(Crash::Failed),
     });
     let outer = behavior.transition(outer_death).unwrap();
     assert!(matches!(outer.become_, Step::Stop(behavior::Stopped)));
 
-    // Inner peer death: forwarded to the inner watcher.
-    let inner_death = WatchEvent::PeerStopped(PeerStopped {
+    // The inner observation request selects the inner watcher directly.
+    let inner_death = EventLayer::Inner(EventLayer::Owned(PeerStopped {
         peer: inner_peer,
         outcome: Err(Crash::Failed),
-    });
+    }));
     let inner = behavior.transition(inner_death).unwrap();
     assert!(matches!(inner.become_, Step::Stop(behavior::Stopped)));
 }
@@ -321,12 +320,12 @@ fn continue_after_death<B: Behavior>(
     _: &mut B,
     _: MailAddr,
     _: &Result<Exit<MailAddr>, Crash>,
-) -> Result<Step<Never>, B::Error> {
+) -> Result<behavior::Become, B::Error> {
     Ok(Step::Continue)
 }
 
 #[tokio::test]
-async fn duplicate_nested_watch_peer_has_one_outermost_owner() {
+async fn duplicate_nested_watch_peer_remains_addressable_at_both_paths() {
     let behavior = behavior::Watch::new(
         behavior::Watch::new(Recorder::default(), PEER, stop_on_abnormal_death),
         PEER,
@@ -334,14 +333,21 @@ async fn duplicate_nested_watch_peer_has_one_outermost_owner() {
     );
     let mut behavior = behavior.initialize().unwrap().behavior;
 
-    let actions = behavior
-        .transition(WatchEvent::PeerStopped(PeerStopped {
+    let outer = behavior
+        .transition(EventLayer::Owned(PeerStopped {
             peer: PEER,
             outcome: Err(Crash::Failed),
         }))
         .unwrap();
+    assert_eq!(outer.become_, Step::Continue);
 
-    assert_eq!(actions.become_, Step::Continue);
+    let inner = behavior
+        .transition(EventLayer::Inner(EventLayer::Owned(PeerStopped {
+            peer: PEER,
+            outcome: Err(Crash::Failed),
+        })))
+        .unwrap();
+    assert!(matches!(inner.become_, Step::Stop(behavior::Stopped)));
 }
 
 /// An `Deadline` constructed with `None` schedules nothing and is inert to every
@@ -358,7 +364,7 @@ async fn unscheduled_at_is_inert_to_reached_events() {
 
     for id in [TimerId(0), TimerId(1)] {
         let actions = behavior
-            .transition(DeadlineEvent::Elapsed(TimerElapsed {
+            .transition(EventLayer::Owned(TimerElapsed {
                 id,
                 generation: TimerGeneration(0),
             }))
@@ -376,7 +382,7 @@ async fn abnormal_death_reaction_outcome_classes() {
     let mut behavior = initialized.behavior;
 
     let outcome = |outcome| {
-        WatchEvent::PeerStopped(PeerStopped {
+        EventLayer::Owned(PeerStopped {
             peer: PEER,
             outcome,
         })
@@ -444,7 +450,7 @@ async fn supervision_preserves_inner_watch_routing() {
 
     // Peer lane: the watch reaction stops the supervised fold.
     let died = behavior
-        .on(PeerStopped {
+        .on_path(PeerStopped {
             peer: PEER,
             outcome: Err(Crash::Failed),
         })

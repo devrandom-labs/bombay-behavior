@@ -3,7 +3,7 @@
 The fold described here is orthogonal to public actor identity. `Protocol`
 names only an established `Addr`/`Msg` destination; `Behavior::Event` is the
 larger internal input algebra, and `Actions` is the explicit output algebra.
-See [Protocol, event, behavior, and effect algebras](protocol-algebra.md).
+See [Protocol, ingress, behavior, and effect algebras](protocol-algebra.md).
 
 Bombay models a behavior as a typed, deterministic transition:
 

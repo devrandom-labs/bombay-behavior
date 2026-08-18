@@ -1,7 +1,10 @@
 //! Application-root lifecycle composition.
 
 use crate::{ShutdownEvent, ShutdownRequested};
-use behavior::{Actions, Address, Behavior, BehaviorActed, BirthMode, RouteInput, SendAlgebra};
+use behavior::{
+    Actions, Address, Behavior, BehaviorActed, BirthMode, EventLayer, Here, InjectEvent,
+    SendAlgebra,
+};
 
 /// The application or subtree lifecycle boundary around one concrete behavior.
 ///
@@ -37,15 +40,41 @@ use behavior::{Actions, Address, Behavior, BehaviorActed, BirthMode, RouteInput,
 /// use behavior_actors::{Guardian, MailAddr, Machine, Never, Recipient};
 /// let _ = Recipient::<Guardian<Machine<MailAddr, (), (), (), Never>>>::global(MailAddr(0));
 /// ```
-pub struct Guardian<B> {
+pub struct GuardianRoot<B, Policy> {
     inner: B,
+    policy: core::marker::PhantomData<fn() -> Policy>,
 }
 
-impl<B> Guardian<B> {
+/// Root policy that terminates directly on shutdown.
+pub enum DirectShutdown {}
+
+/// Root policy that delegates shutdown to the inner layer selected at `Here`.
+pub enum CoordinatedShutdown {}
+
+/// Ordinary application root with direct-stop shutdown policy.
+pub type Guardian<B> = GuardianRoot<B, DirectShutdown>;
+
+/// Application root whose shutdown is owned by its coordinated inner layer.
+pub type CoordinatedGuardian<B> = GuardianRoot<B, CoordinatedShutdown>;
+
+impl<B> GuardianRoot<B, DirectShutdown> {
     /// Establish `inner` as an application or subtree lifecycle root.
     #[must_use]
     pub const fn new(inner: B) -> Self {
-        Self { inner }
+        Self {
+            inner,
+            policy: core::marker::PhantomData,
+        }
+    }
+
+    /// Establish a root whose shutdown request is delegated to the exact
+    /// shutdown owner at the inner layer's `Here` path.
+    #[must_use]
+    pub const fn coordinated(inner: B) -> GuardianRoot<B, CoordinatedShutdown> {
+        GuardianRoot {
+            inner,
+            policy: core::marker::PhantomData,
+        }
     }
 
     /// Consume the boundary and return its wrapped behavior definition.
@@ -55,7 +84,7 @@ impl<B> Guardian<B> {
     }
 }
 
-impl<B: Behavior + crate::BehaviorBase> crate::BehaviorBase for Guardian<B> {
+impl<B: Behavior + crate::BehaviorBase, Policy> crate::BehaviorBase for GuardianRoot<B, Policy> {
     type Base = B::Base;
 
     fn base(&self) -> &Self::Base {
@@ -63,20 +92,19 @@ impl<B: Behavior + crate::BehaviorBase> crate::BehaviorBase for Guardian<B> {
     }
 }
 
-impl<B: crate::StashStatus> crate::StashStatus for Guardian<B> {
+impl<B: crate::StashStatus, Policy> crate::StashStatus for GuardianRoot<B, Policy> {
     fn stashed_messages(&self) -> usize {
         self.inner.stashed_messages()
     }
 }
 
-impl<B, A, Ph, Sends, Br> Behavior for Guardian<B>
+impl<B, A, Ph, Sends, Br> Behavior for GuardianRoot<B, DirectShutdown>
 where
     A: Address,
     Sends: SendAlgebra,
     Br: BirthMode,
     B: Behavior<Ph = Ph, Sends = Sends, Birth = Br>,
     B::Protocol: crate::Protocol<Addr = A>,
-    B::Event: RouteInput<ShutdownRequested>,
 {
     type Protocol = B::Protocol;
     type Event = ShutdownEvent<B::Event>;
@@ -91,12 +119,38 @@ where
 
     fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
         match event {
-            ShutdownEvent::Behavior(event) => behavior::delegate_transition(&mut self.inner, event),
-            ShutdownEvent::ShutdownRequested(request) => match B::Event::route(request) {
-                Ok(event) => behavior::delegate_transition(&mut self.inner, event),
-                Err(ShutdownRequested) => Ok(Actions::stop()),
-            },
+            EventLayer::Inner(event) => behavior::delegate_transition(&mut self.inner, event),
+            EventLayer::Owned(ShutdownRequested) => Ok(Actions::stop()),
         }
+    }
+}
+
+impl<B, A, Ph, Sends, Br> Behavior for GuardianRoot<B, CoordinatedShutdown>
+where
+    A: Address,
+    Sends: SendAlgebra,
+    Br: BirthMode,
+    B: Behavior<Ph = Ph, Sends = Sends, Birth = Br>,
+    B::Protocol: crate::Protocol<Addr = A>,
+    B::Event: InjectEvent<ShutdownRequested, Here>,
+{
+    type Protocol = B::Protocol;
+    type Event = ShutdownEvent<B::Event>;
+    type Sends = Sends;
+    type Ph = Ph;
+    type Error = B::Error;
+    type Birth = Br;
+
+    fn init(&mut self, _: crate::InitializationTurn) -> BehaviorActed<Self> {
+        behavior::initialize(&mut self.inner)
+    }
+
+    fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+        let inner = match event {
+            EventLayer::Inner(event) => event,
+            EventLayer::Owned(request) => B::Event::inject_at(request),
+        };
+        behavior::delegate_transition(&mut self.inner, inner)
     }
 }
 
@@ -104,7 +158,7 @@ where
 mod tests {
     use super::*;
     use crate::Activate as _;
-    use crate::{Crash, Exit, PeerStopped, WatchEvent, WatchSends};
+    use crate::{Crash, Exit, PeerStopped, WatchSends};
     use behavior::{Births, Create, MailAddr, Never, ServiceSends, Step, User};
 
     struct Application;
@@ -159,7 +213,7 @@ mod tests {
         assert_eq!(user.sends, [3]);
         assert!(user.creates.is_empty());
 
-        let stopped = active.on(ShutdownRequested).unwrap();
+        let stopped = active.on_path(ShutdownRequested).unwrap();
         assert!(stopped.sends.is_empty());
         assert!(stopped.creates.is_empty());
         assert!(matches!(stopped.become_, Step::Stop(_)));
@@ -235,7 +289,7 @@ mod tests {
         .unwrap()
         .behavior;
 
-        let stopped = active.on(ShutdownRequested).unwrap();
+        let stopped = active.on_path(ShutdownRequested).unwrap();
         assert_eq!(stopped.sends, WatchSends::empty());
         assert!(stopped.creates.is_empty());
         assert!(matches!(stopped.become_, Step::Stop(_)));
@@ -249,7 +303,7 @@ mod tests {
         .unwrap()
         .behavior;
         let peer = peer_active
-            .transition(WatchEvent::PeerStopped(PeerStopped::new(
+            .transition(EventLayer::Owned(PeerStopped::new(
                 MailAddr(4),
                 Ok(Exit::Normal),
             )))

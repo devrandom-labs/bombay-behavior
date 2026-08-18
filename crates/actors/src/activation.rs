@@ -3,7 +3,7 @@
 use crate::Actions;
 use crate::BehaviorBase;
 use behavior::Behavior;
-use behavior::{BehaviorActed, EventInput, UserEvent, delegate_transition};
+use behavior::{BehaviorActed, Here, InjectEvent, UserEvent, delegate_transition};
 
 /// An initialized behavior and the effects that must be interpreted before
 /// its first mailbox turn.
@@ -83,9 +83,17 @@ impl<B: Behavior> Active<B> {
     /// Returns the behavior's declared controlled transition failure.
     pub fn on<Input>(&mut self, input: Input) -> BehaviorActed<B>
     where
-        B::Event: EventInput<Input>,
+        B::Event: InjectEvent<Input, Here>,
     {
-        self.transition(B::Event::inject(input))
+        self.transition(B::Event::inject_at(input))
+    }
+
+    /// Fold one semantic input through an explicitly proven structural path.
+    pub fn on_path<Input, Path>(&mut self, input: Input) -> BehaviorActed<B>
+    where
+        B::Event: InjectEvent<Input, Path>,
+    {
+        self.transition(B::Event::inject_at(input))
     }
 }
 

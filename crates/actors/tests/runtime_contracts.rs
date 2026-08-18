@@ -7,13 +7,16 @@
 
 use behavior_actors::{
     Actions, BackoffSupervisor, Behavior, BehaviorActed, Births, BreakerOutcome,
-    ChildShutdownRejected, ChildStopped, CircuitBreaker, CreationResolved, Deadline, DynamicProxy,
-    DynamicSupervisor, DynamicSupervisorOutcome, EventInput, Lease, LeaseOutcome, MailAddr, Never,
-    NoBirths, OneShot, PeerStopped, Periodic, Presence, PresenceReply, Proxy, ProxyCommand,
-    ProxyEvent, ReceiveTimeout, ShutdownCoordinator, ShutdownCoordinatorEvent, ShutdownRequested,
-    StopOnShutdown, SupervisionEvent, TerminationMonitor, TimerElapsed, User, Watch, WatchEvent,
-    WorkerCreationResolved, WorkerStopped,
+    ChildShutdownRejected, ChildStopped, CircuitBreaker, CreationKind, CreationResolved, Deadline,
+    DynamicProxy, DynamicSupervisor, DynamicSupervisorOutcome, Here, Ingress, InjectEvent, Lease,
+    LeaseOutcome, MailAddr, Never, NoBirths, ObserveChild, ObserveCreation, ObservePeer, OneShot,
+    PeerStopped, Periodic, Presence, PresenceReply, Proxy, ProxyCommand, ProxyEvent,
+    ReceiveTimeout, ReportWorkerCreationResolved, ReportWorkerStopped, ScheduleAfter, ScheduleAt,
+    ShutdownChild, ShutdownCoordinator, ShutdownCoordinatorEvent, ShutdownRequested,
+    StopOnShutdown, SupervisionEvent, TerminationMonitor, TimerElapsed, TimerGeneration, TimerId,
+    User, Watch, WatchEvent, WorkerCreationResolved, WorkerStopped,
 };
+use std::time::{Duration, Instant};
 
 struct Inert;
 
@@ -157,13 +160,13 @@ impl Behavior for Parent {
 fn accepts<B, Input>()
 where
     B: Behavior,
-    B::Event: EventInput<Input>,
+    B::Event: InjectEvent<Input, Here>,
 {
 }
 
 fn event_accepts<E, Input>()
 where
-    E: EventInput<Input>,
+    E: InjectEvent<Input, Here>,
 {
 }
 
@@ -216,6 +219,11 @@ fn every_shutdown_request_names_a_shutdown_capable_child_protocol() {
     accepts::<DynamicProxy<Inert>, ShutdownRequested>();
     accepts::<StopOnShutdown<Inert>, ShutdownRequested>();
 
+    // The wrapper owns the added lane, so the inner dynamic supervisor does
+    // not need to pretend that it implements coordinated shutdown.
+    type Dynamic = DynamicSupervisor<MailAddr, Inert, DynamicReply>;
+    accepts::<StopOnShutdown<Dynamic>, ShutdownRequested>();
+
     type CoordinatorProtocol = ShutdownCoordinatorEvent<User<MailAddr, ()>>;
     event_accepts::<CoordinatorProtocol, ShutdownRequested>();
     event_accepts::<CoordinatorProtocol, ChildStopped<MailAddr>>();
@@ -223,4 +231,38 @@ fn every_shutdown_request_names_a_shutdown_capable_child_protocol() {
 
     fn coordinator_is_closed<B: Behavior>() {}
     coordinator_is_closed::<ShutdownCoordinator<Parent, StopOnShutdown<Inert>>>();
+}
+
+#[test]
+fn shutdown_wrapper_owns_dynamic_supervisor_shutdown_end_to_end() {
+    use behavior_actors::Activate as _;
+
+    type Dynamic = DynamicSupervisor<MailAddr, Inert, DynamicReply>;
+    let mut active = StopOnShutdown::new(Dynamic::new())
+        .initialize()
+        .unwrap()
+        .behavior;
+
+    let actions = active.on(ShutdownRequested).unwrap();
+    assert!(matches!(actions.become_, behavior_actors::Step::Stop(_)));
+}
+
+#[test]
+fn every_deferred_local_fact_request_carries_its_here_destination() {
+    fn here<Input>(_: Ingress<Input, Here>) {}
+
+    here(ScheduleAt::new(TimerId(1), TimerGeneration(2), Instant::now()).ingress);
+    here(ScheduleAfter::new(TimerId(1), TimerGeneration(2), Duration::from_secs(1)).ingress);
+    here(ObservePeer::new(MailAddr(3)).ingress);
+    here(ObserveChild::<MailAddr>::new(4).ingress);
+    here(ObserveCreation::<MailAddr>::new(5).ingress);
+    here(
+        ReportWorkerStopped::<MailAddr>::new(6, Ok(behavior_actors::Exit::Normal), Instant::now())
+            .ingress,
+    );
+    here(ReportWorkerCreationResolved::new(7_u64, CreationKind::Birth, Ok(())).ingress);
+
+    let shutdown = ShutdownChild::<StopOnShutdown<Inert>>::new(8);
+    here(shutdown.ingress);
+    here(shutdown.rejection);
 }

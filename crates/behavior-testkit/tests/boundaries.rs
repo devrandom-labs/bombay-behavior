@@ -5,9 +5,10 @@
 
 use std::time::Duration;
 
+use behavior::EventLayer;
 use behavior::{
-    Acted, Actions, Crash, Create, DeadlineEvent, Delivery, Exit, Machine, MailAddr, Move, Never,
-    Proxy, Recipient, RestartPolicy, StashRoute, Step, Strategy, SupervisionEvent, Supervisor,
+    Acted, Actions, Crash, Create, Delivery, Exit, Machine, MailAddr, Move, Never, Proxy,
+    Recipient, RestartPolicy, StashRoute, Step, Strategy, SupervisionEvent, Supervisor,
     TimerElapsed, TimerGeneration, TimerId, User, UserEvent, WorkerStopped,
 };
 use std::time::Instant;
@@ -180,7 +181,7 @@ async fn empty_fleet_supervisor_initializes_and_steps_cleanly() {
 }
 
 #[tokio::test]
-async fn child_stopped_for_unknown_nonce_is_typed() {
+async fn stale_child_stopped_is_inert_at_its_selected_supervisor_owner() {
     let supervisor = behavior::Supervisor::new(
         Parent,
         behavior::ChildTopology::new((0..1).map(|index| u64::try_from(index).unwrap()), |index| {
@@ -196,12 +197,15 @@ async fn child_stopped_for_unknown_nonce_is_typed() {
     .unwrap();
     let initialized = supervisor.initialize().unwrap();
     let mut supervisor = initialized.behavior;
-    assert!(matches!(
-        supervisor.transition(stopped(42, Err(Crash::Failed), Instant::now())),
-        Err(behavior::SupervisorError::Fleet(
-            behavior::FleetError::UnknownChild(42)
-        ))
-    ));
+    let actions = supervisor
+        .transition(stopped(42, Err(Crash::Failed), Instant::now()))
+        .unwrap();
+
+    assert!(actions.sends.replacement_commands.is_empty());
+    assert!(actions.sends.failure_reports.is_empty());
+    assert!(actions.creates.is_empty());
+    assert_eq!(actions.become_, Step::Continue);
+    assert_eq!(supervisor.child_count(), 1);
 }
 
 /// A redelivered `ChildStopped` (duplicate environmental event) triggers a
@@ -525,8 +529,8 @@ async fn fsm_mid_drain_deferral_reorders_relative_to_fifo() {
     assert_eq!(machine.held(), 0);
 }
 
-/// Two Deadline layers at the same instant retain distinct identities, so an event
-/// reaches exactly the layer that scheduled it.
+/// Two Deadline layers at the same instant retain distinct structural owners,
+/// so a fact reaches exactly the layer selected by its schedule request.
 #[tokio::test]
 async fn nested_at_identical_schedules_are_distinguished_by_identity() {
     let due = Instant::now() + Duration::from_secs(1);
@@ -541,18 +545,17 @@ async fn nested_at_identical_schedules_are_distinguished_by_identity() {
     let initialized = outer.initialize().unwrap();
     let mut outer = initialized.behavior;
 
-    let event = DeadlineEvent::Elapsed(TimerElapsed {
+    let event = EventLayer::Inner(EventLayer::Owned(TimerElapsed {
         id: TimerId(0),
         generation: TimerGeneration(0),
-    });
+    }));
     let first = outer.transition(event).unwrap();
     assert_eq!(first.become_, Step::Stop(behavior::Stopped));
 }
 
-/// Reusing the complete timer identity denotes one event lane. The outermost
-/// matching owner consumes it, so two reactions are never run for one fact.
+/// Equal timer identities at nested layers remain distinct destinations.
 #[tokio::test]
-async fn duplicate_nested_timer_identity_has_one_outermost_owner() {
+async fn duplicate_nested_timer_identity_remains_addressable_at_both_paths() {
     let due = Instant::now() + Duration::from_secs(1);
     let outer = behavior::Deadline::new(
         behavior::Deadline::new(Recorder::default(), TimerId(0), Some(due), |_| {
@@ -564,14 +567,21 @@ async fn duplicate_nested_timer_identity_has_one_outermost_owner() {
     );
     let mut outer = outer.initialize().unwrap().behavior;
 
-    let actions = outer
-        .transition(DeadlineEvent::Elapsed(TimerElapsed {
+    let outer_actions = outer
+        .transition(EventLayer::Owned(TimerElapsed {
             id: TimerId(0),
             generation: TimerGeneration(0),
         }))
         .unwrap();
+    assert_eq!(outer_actions.become_, Step::Continue);
 
-    assert_eq!(actions.become_, Step::Continue);
+    let inner_actions = outer
+        .transition(EventLayer::Inner(EventLayer::Owned(TimerElapsed {
+            id: TimerId(0),
+            generation: TimerGeneration(0),
+        })))
+        .unwrap();
+    assert_eq!(inner_actions.become_, Step::Stop(behavior::Stopped));
 }
 
 /// One explicit restart configuration applies its strategy, eligibility, and

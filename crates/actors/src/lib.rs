@@ -52,8 +52,8 @@ pub use discovery::{
     ResolverConfigError, ResolverMessage, Topic, TopicError, TopicMembership, TopicMessage,
 };
 pub use lifecycle::{
-    CleanupReaction, Guardian, LifecyclePublication, LifecyclePublisher, Reaper,
-    ShutdownCoordinator, ShutdownCoordinatorError, ShutdownCoordinatorEvent,
+    CleanupReaction, CoordinatedGuardian, Guardian, LifecyclePublication, LifecyclePublisher,
+    Reaper, ShutdownCoordinator, ShutdownCoordinatorError, ShutdownCoordinatorEvent,
     ShutdownCoordinatorSends, ShutdownPlan, ShutdownPlanError, ShutdownState, ShutdownTree,
     ShutdownTreeError, Task, TaskError, TaskMessage, TaskResult, TaskState, TerminationMonitor,
     TerminationObservation, TerminationReaction, TreeShutdown,

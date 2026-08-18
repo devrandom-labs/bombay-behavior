@@ -7,53 +7,10 @@
 
 use crate::Step;
 use crate::protocol::ShutdownRequested;
-use crate::protocol::forward::forward_event_lane;
-use behavior::{Actions, Address, Behavior, BirthMode, RouteInput, SendAlgebra, User, UserEvent};
+use behavior::{Actions, Address, Behavior, BirthMode, EventLayer, SendAlgebra};
 
 /// Internal event sum of a behavior that supports graceful shutdown.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ShutdownEvent<E> {
-    Behavior(E),
-    ShutdownRequested(ShutdownRequested),
-}
-
-impl<E: UserEvent> crate::RouteInput<ShutdownRequested> for ShutdownEvent<E> {
-    fn route(event: ShutdownRequested) -> Result<Self, ShutdownRequested> {
-        Ok(Self::ShutdownRequested(event))
-    }
-}
-
-impl<E: UserEvent> crate::EventInput<ShutdownRequested> for ShutdownEvent<E> {
-    fn inject(event: ShutdownRequested) -> Self {
-        Self::ShutdownRequested(event)
-    }
-}
-
-impl<E: UserEvent> UserEvent for ShutdownEvent<E> {
-    type Addr = E::Addr;
-    type Message = E::Message;
-
-    fn user(from: Self::Addr, message: Self::Message) -> Self {
-        Self::Behavior(E::user(from, message))
-    }
-
-    fn into_user(self) -> Result<User<Self::Addr, Self::Message>, Self> {
-        match self {
-            Self::Behavior(event) => event.into_user().map_err(Self::Behavior),
-            shutdown @ Self::ShutdownRequested(_) => Err(shutdown),
-        }
-    }
-}
-
-forward_event_lane!(ShutdownEvent, crate::TimerElapsed);
-forward_event_lane!(ShutdownEvent, crate::PeerStopped<E::Addr>);
-forward_event_lane!(ShutdownEvent, crate::ChildStopped<E::Addr>);
-forward_event_lane!(ShutdownEvent, crate::WorkerStopped<E::Addr>);
-forward_event_lane!(ShutdownEvent, crate::CreationResolved<E::Addr>);
-forward_event_lane!(
-    ShutdownEvent,
-    crate::WorkerCreationResolved<<E::Addr as crate::Address>::Nonce>
-);
+pub type ShutdownEvent<E> = EventLayer<ShutdownRequested, E>;
 
 /// Stop normally when the shutdown lane is received.
 pub struct StopOnShutdown<B> {
@@ -62,9 +19,10 @@ pub struct StopOnShutdown<B> {
 
 impl<B> StopOnShutdown<B> {
     /// Wrap `inner` so the first typed shutdown request stops it normally.
-    /// If `inner` already accepts the shutdown lane, the request is routed to
-    /// that inner owner instead. Consequently nested shutdown policies have
-    /// one deterministic owner: the innermost wrapper that declares the lane.
+    /// This wrapper owns every shutdown request it adds. It therefore composes
+    /// over any behavior without requiring the inner event algebra to already
+    /// accept shutdown. When shutdown wrappers are nested, the outermost
+    /// wrapper owns the request.
     #[must_use]
     pub const fn new(inner: B) -> Self {
         Self { inner }
@@ -111,8 +69,8 @@ impl<B: Behavior> FinalizeOnShutdown<B> {
     ///
     /// The final fold's sends and creations are preserved and the wrapper then
     /// stops normally regardless of the fold's continuation verdict.
-    /// An inner shutdown owner takes precedence, matching
-    /// [`StopOnShutdown`]'s composition law.
+    /// Like [`StopOnShutdown`], this wrapper owns the lane it adds; an outer
+    /// shutdown wrapper therefore takes precedence over this reaction.
     #[must_use]
     pub const fn new(inner: B, finalize: ShutdownReaction<B>) -> Self {
         Self { inner, finalize }
@@ -145,7 +103,6 @@ macro_rules! impl_shutdown_behavior {
             Br: BirthMode,
             B: Behavior<Ph = Ph, Sends = Sends, Birth = Br>,
             B::Protocol: crate::Protocol<Addr = A>,
-            B::Event: RouteInput<ShutdownRequested>,
         {
             type Protocol = B::Protocol;
             type Event = ShutdownEvent<B::Event>;
@@ -167,13 +124,10 @@ macro_rules! impl_shutdown_behavior {
                 event: Self::Event,
             ) -> Result<Actions<A, Ph, Sends, Br>, B::Error> {
                 match event {
-                    ShutdownEvent::Behavior(event) => {
+                    EventLayer::Inner(event) => {
                         behavior::delegate_transition(&mut self.inner, event)
                     }
-                    ShutdownEvent::ShutdownRequested(request) => match B::Event::route(request) {
-                        Ok(event) => behavior::delegate_transition(&mut self.inner, event),
-                        Err(request) => $shutdown(self, request),
-                    },
+                    EventLayer::Owned(request) => $shutdown(self, request),
                 }
             }
         }

@@ -118,7 +118,7 @@ fn measure_supervise(fleet: usize) -> f64 {
     for index in 0..SHORT_ITERATIONS {
         let nonce = u64::try_from(index % fleet).unwrap();
         let actions = behavior
-            .on(WorkerStopped {
+            .on_path(WorkerStopped {
                 proxy: nonce,
                 worker: nonce,
                 outcome: Err(Crash::Failed),

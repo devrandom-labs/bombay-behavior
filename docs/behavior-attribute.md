@@ -2,7 +2,7 @@
 
 The generated public `Protocol` and pure `Behavior` implementation have
 different semantic roles even though the nominal actor type witnesses both.
-See [Protocol, event, behavior, and effect algebras](protocol-algebra.md).
+See [Protocol, ingress, behavior, and effect algebras](protocol-algebra.md).
 
 `#[behavior::behavior(...)]` removes only the mechanical implementation that
 adapts an ordinary user-message method to `Behavior`. It is an attribute on a

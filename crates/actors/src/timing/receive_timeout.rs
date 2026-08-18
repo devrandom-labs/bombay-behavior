@@ -6,9 +6,11 @@ use std::time::Duration;
 use super::domain::TimerLease;
 use super::event::TimedEvent;
 use crate::Step;
-use crate::protocol::{ScheduleAfter, TimerElapsed, TimerId};
-use crate::{Own, RouteInput, SendInput};
-use behavior::{Actions, Address, Behavior, BirthMode, SendAlgebra, ServiceSends, UserEvent};
+use crate::protocol::{ScheduleAfter, TimerId};
+use crate::{Own, SendInput};
+use behavior::{
+    Actions, Address, Behavior, BirthMode, EventLayer, SendAlgebra, ServiceSends, UserEvent,
+};
 
 pub type ReceiveTimeoutEvent<E> = TimedEvent<E>;
 
@@ -141,7 +143,6 @@ where
     Br: BirthMode,
     B: Behavior<Ph = Ph, Sends = Sends, Birth = Br>,
     B::Protocol: crate::Protocol<Addr = A>,
-    B::Event: crate::RouteInput<TimerElapsed>,
 {
     type Protocol = B::Protocol;
     type Event = ReceiveTimeoutEvent<B::Event>;
@@ -170,24 +171,14 @@ where
         event: Self::Event,
     ) -> Result<ReceiveTimeoutActions<B>, Self::Error> {
         match event {
-            ReceiveTimeoutEvent::Elapsed(elapsed)
+            EventLayer::Owned(elapsed)
                 if elapsed.id == self.id && self.timer.accept(elapsed.generation) =>
             {
                 let actions = (self.on_elapsed)(&mut self.inner)?;
                 Ok(Self::wrap(actions, ServiceSends::empty()))
             }
-            ReceiveTimeoutEvent::Elapsed(elapsed) if elapsed.id == self.id => Ok(Actions::cont()),
-            ReceiveTimeoutEvent::Elapsed(elapsed) => {
-                let Ok(inner) = B::Event::route(elapsed) else {
-                    return Ok(Actions::cont());
-                };
-                let actions = behavior::delegate_transition(&mut self.inner, inner)?;
-                if Self::terminal(&actions) {
-                    self.timer.disarm();
-                }
-                Ok(Self::wrap(actions, ServiceSends::empty()))
-            }
-            ReceiveTimeoutEvent::Behavior(event) => match event.into_user() {
+            EventLayer::Owned(_) => Ok(Actions::cont()),
+            EventLayer::Inner(event) => match event.into_user() {
                 Ok(user) => {
                     let event = B::Event::user(user.from, user.message);
                     let actions = behavior::delegate_transition(&mut self.inner, event)?;
@@ -268,7 +259,7 @@ mod tests {
 
         let actions = behavior::delegate_transition(
             &mut timeout,
-            ReceiveTimeoutEvent::Behavior(User::user(MailAddr(1), ())),
+            EventLayer::Inner(User::user(MailAddr(1), ())),
         )
         .unwrap();
 

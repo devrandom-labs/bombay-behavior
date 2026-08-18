@@ -4,11 +4,11 @@ use std::time::Duration;
 
 use super::{Backoff, BackoffError, Proxy, Supervisor, SupervisorError, SupervisorSends};
 use crate::{
-    Own, ScheduleAfter, SendInput, SupervisionEvent, TimedEvent, TimerElapsed, TimerGeneration,
-    TimerId,
+    Own, ScheduleAfter, SendInput, SupervisionEvent, TimedEvent, TimerGeneration, TimerId,
 };
 use behavior::{
-    Actions, Address, Behavior, Births, Delivery, Never, SendAlgebra, ServiceSends, Step,
+    Actions, Address, Behavior, Births, Delivery, EventLayer, Never, SendAlgebra, ServiceSends,
+    Step,
 };
 
 struct Pending<A, C>
@@ -220,11 +220,6 @@ where
     Sends: SendAlgebra,
     B: Behavior<Ph = Ph, Sends = Sends, Birth = Births<C>>,
     B::Protocol: crate::Protocol<Addr = A>,
-    B::Event: crate::RouteInput<crate::ChildStopped<A>>
-        + crate::RouteInput<crate::WorkerStopped<A>>
-        + crate::RouteInput<crate::CreationResolved<A>>
-        + crate::RouteInput<crate::WorkerCreationResolved<A::Nonce>>
-        + crate::RouteInput<TimerElapsed>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
 {
@@ -252,16 +247,11 @@ where
         event: Self::Event,
     ) -> behavior::BehaviorActed<Self> {
         match event {
-            TimedEvent::Elapsed(elapsed) => {
+            EventLayer::Owned(elapsed) => {
                 let Some(position) = self.pending.iter().position(|pending| {
                     pending.id == elapsed.id && pending.generation == elapsed.generation
                 }) else {
-                    return match <SupervisionEvent<B::Event> as crate::RouteInput<TimerElapsed>>::route(elapsed) {
-                        Ok(inner) => behavior::delegate_transition(&mut self.inner, inner)
-                            .map(|actions| actions.map_sends(|supervision| BackoffSupervisorSends { supervision, schedules: ServiceSends::empty() }))
-                            .map_err(BackoffSupervisorError::Supervisor),
-                        Err(_) => Ok(Actions::cont()),
-                    };
+                    return Ok(Actions::cont());
                 };
                 let pending = self.pending.remove(position);
                 let mut supervision = SupervisorSends::empty();
@@ -275,7 +265,7 @@ where
                     Step::Continue,
                 ))
             }
-            TimedEvent::Behavior(inner) => {
+            EventLayer::Inner(inner) => {
                 let trigger = match &inner {
                     SupervisionEvent::WorkerStopped(stopped) => Some(stopped.proxy),
                     _ => None,
@@ -343,7 +333,7 @@ mod tests {
     use super::*;
     use crate::{
         Activate as _, ChildTopology, Crash, RestartConfiguration, RestartPolicy, Strategy,
-        WorkerStopped,
+        TimerElapsed, WorkerStopped,
     };
     use behavior::{Actions, MailAddr, NoBirths, User};
 
@@ -446,7 +436,7 @@ mod tests {
         }
         assert!(initialized.actions.sends.schedules.is_empty());
         let mut active = initialized.behavior;
-        let delayed = active.on(stopped(1)).unwrap();
+        let delayed = active.on_path(stopped(1)).unwrap();
         assert!(delayed.sends.supervision.replacement_commands.is_empty());
         assert_eq!(
             delayed.sends.schedules.as_slice(),
@@ -459,14 +449,14 @@ mod tests {
         assert_eq!(active.pending_restarts(), 1);
 
         let stale = active
-            .on(TimerElapsed::new(TimerId(11), TimerGeneration(9)))
+            .on_path(TimerElapsed::new(TimerId(11), TimerGeneration(9)))
             .unwrap();
         assert!(stale.sends.supervision.replacement_commands.is_empty());
         assert!(stale.sends.schedules.is_empty());
         assert_eq!(active.pending_restarts(), 1);
 
         let released = active
-            .on(TimerElapsed::new(TimerId(11), TimerGeneration(0)))
+            .on_path(TimerElapsed::new(TimerId(11), TimerGeneration(0)))
             .unwrap();
         assert_eq!(released.sends.supervision.replacement_commands.len(), 1);
         assert!(released.sends.schedules.is_empty());
@@ -476,14 +466,14 @@ mod tests {
     #[test]
     fn repeated_failure_uses_next_generation_and_attempt_delay() {
         let mut active = subject(timer).initialize().unwrap().behavior;
-        active.on(stopped(1)).unwrap();
-        let duplicate = active.on(stopped(1)).unwrap();
+        active.on_path(stopped(1)).unwrap();
+        let duplicate = active.on_path(stopped(1)).unwrap();
         assert!(duplicate.sends.supervision.replacement_commands.is_empty());
         assert!(duplicate.sends.schedules.is_empty());
         active
-            .on(TimerElapsed::new(TimerId(11), TimerGeneration(0)))
+            .on_path(TimerElapsed::new(TimerId(11), TimerGeneration(0)))
             .unwrap();
-        let second = active.on(stopped(1)).unwrap();
+        let second = active.on_path(stopped(1)).unwrap();
         assert_eq!(
             second.sends.schedules.as_slice(),
             [ScheduleAfter::new(
@@ -497,9 +487,9 @@ mod tests {
     #[test]
     fn timer_collision_is_typed_before_second_supervisor_transition() {
         let mut active = subject(same_timer).initialize().unwrap().behavior;
-        active.on(stopped(1)).unwrap();
+        active.on_path(stopped(1)).unwrap();
         assert!(matches!(
-            active.on(stopped(2)),
+            active.on_path(stopped(2)),
             Err(BackoffSupervisorError::TimerCollision { id: TimerId(1) })
         ));
         assert_eq!(active.pending_restarts(), 1);

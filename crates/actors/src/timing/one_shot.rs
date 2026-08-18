@@ -4,9 +4,11 @@ use std::time::Duration;
 
 use super::domain::TimerLease;
 use super::event::TimedEvent;
-use crate::protocol::{ScheduleAfter, TimerElapsed, TimerId};
-use crate::{Own, RouteInput, SendInput, Step};
-use behavior::{Actions, Address, Behavior, BehaviorActed, BirthMode, SendAlgebra, ServiceSends};
+use crate::protocol::{ScheduleAfter, TimerId};
+use crate::{Own, SendInput, Step};
+use behavior::{
+    Actions, Address, Behavior, BehaviorActed, BirthMode, EventLayer, SendAlgebra, ServiceSends,
+};
 
 /// Complete event sum accepted by [`OneShot`].
 pub type OneShotEvent<E> = TimedEvent<E>;
@@ -108,7 +110,6 @@ where
     Br: BirthMode,
     B: Behavior<Ph = Ph, Sends = Sends, Birth = Br>,
     B::Protocol: crate::Protocol<Addr = A>,
-    B::Event: RouteInput<TimerElapsed>,
 {
     type Protocol = B::Protocol;
     type Event = OneShotEvent<B::Event>;
@@ -130,18 +131,14 @@ where
 
     fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
         match event {
-            TimedEvent::Elapsed(elapsed)
+            EventLayer::Owned(elapsed)
                 if elapsed.id == self.id && self.lease.accept(elapsed.generation) =>
             {
                 let actions = (self.on_elapsed)(&mut self.inner)?;
                 Ok(Self::wrap(actions, ServiceSends::empty()))
             }
-            TimedEvent::Elapsed(elapsed) => match B::Event::route(elapsed) {
-                Ok(inner) => behavior::delegate_transition(&mut self.inner, inner)
-                    .map(|actions| Self::wrap(actions, ServiceSends::empty())),
-                Err(_) => Ok(Actions::cont()),
-            },
-            TimedEvent::Behavior(event) => behavior::delegate_transition(&mut self.inner, event)
+            EventLayer::Owned(_) => Ok(Actions::cont()),
+            EventLayer::Inner(event) => behavior::delegate_transition(&mut self.inner, event)
                 .map(|actions| Self::wrap(actions, ServiceSends::empty())),
         }
     }
@@ -150,7 +147,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Activate as _;
+    use crate::{Activate as _, TimerElapsed};
     use behavior::{MailAddr, Never, NoBirths, Step, User};
 
     struct Probe {
@@ -212,19 +209,19 @@ mod tests {
 
         let mut active = initialized.behavior;
         let wrong_id = active
-            .on(TimerElapsed::new(TimerId(8), crate::TimerGeneration(0)))
+            .on_path(TimerElapsed::new(TimerId(8), crate::TimerGeneration(0)))
             .unwrap();
         assert!(wrong_id.sends == OneShotSends::empty());
         assert_eq!(active.base().elapsed, 0);
 
         let fired = active
-            .on(TimerElapsed::new(TimerId(7), crate::TimerGeneration(0)))
+            .on_path(TimerElapsed::new(TimerId(7), crate::TimerGeneration(0)))
             .unwrap();
         assert!(fired.sends == OneShotSends::empty());
         assert_eq!(active.base().elapsed, 1);
 
         active
-            .on(TimerElapsed::new(TimerId(7), crate::TimerGeneration(0)))
+            .on_path(TimerElapsed::new(TimerId(7), crate::TimerGeneration(0)))
             .unwrap();
         assert_eq!(active.base().elapsed, 1);
     }

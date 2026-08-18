@@ -191,12 +191,12 @@ fn supervisor_products_are_named_and_creation_order_is_adapter_visible() {
     assert_eq!(created, [9, 1, 2]);
     let observed: Vec<_> = child_observations
         .iter()
-        .map(|ObserveChild { nonce }| *nonce)
+        .map(|ObserveChild { nonce, .. }| *nonce)
         .collect();
     assert_eq!(observed, [9, 1, 2]);
     let creation_observed: Vec<_> = creation_observations
         .iter()
-        .map(|behavior::ObserveCreation { nonce }| *nonce)
+        .map(|behavior::ObserveCreation { nonce, .. }| *nonce)
         .collect();
     assert_eq!(creation_observed, [9, 1, 2]);
     assert!(behavior.is_empty());
@@ -271,8 +271,8 @@ fn pool_configuration_separates_topology_from_runtime_neutral_policy() {
             .len(),
         2
     );
-    let _: ServiceSends<ObserveChild<u64>> = initialized.actions.sends.child_observations;
-    let _: ServiceSends<behavior::ObserveCreation<u64>> =
+    let _: ServiceSends<ObserveChild<MailAddr>> = initialized.actions.sends.child_observations;
+    let _: ServiceSends<behavior::ObserveCreation<MailAddr>> =
         initialized.actions.sends.creation_observations;
     let _: Vec<Delivery<Proxy<Worker>>> = initialized.actions.sends.replacement_commands;
 }

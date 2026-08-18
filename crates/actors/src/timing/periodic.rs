@@ -4,9 +4,11 @@ use std::time::Duration;
 
 use super::domain::TimerLease;
 use super::event::TimedEvent;
-use crate::protocol::{ScheduleAfter, TimerElapsed, TimerId};
-use crate::{Own, RouteInput, SendInput, Step};
-use behavior::{Actions, Address, Behavior, BehaviorActed, BirthMode, SendAlgebra, ServiceSends};
+use crate::protocol::{ScheduleAfter, TimerId};
+use crate::{Own, SendInput, Step};
+use behavior::{
+    Actions, Address, Behavior, BehaviorActed, BirthMode, EventLayer, SendAlgebra, ServiceSends,
+};
 
 /// Complete event sum accepted by [`Periodic`].
 pub type PeriodicEvent<E> = TimedEvent<E>;
@@ -124,7 +126,6 @@ where
     Br: BirthMode,
     B: Behavior<Ph = Ph, Sends = Sends, Birth = Br>,
     B::Protocol: crate::Protocol<Addr = A>,
-    B::Event: RouteInput<TimerElapsed>,
 {
     type Protocol = B::Protocol;
     type Event = PeriodicEvent<B::Event>;
@@ -140,20 +141,14 @@ where
 
     fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
         match event {
-            TimedEvent::Elapsed(elapsed)
+            EventLayer::Owned(elapsed)
                 if elapsed.id == self.id && self.lease.accept(elapsed.generation) =>
             {
                 let actions = (self.on_elapsed)(&mut self.inner)?;
                 Ok(self.wrap_and_rearm(actions))
             }
-            TimedEvent::Elapsed(elapsed) => match B::Event::route(elapsed) {
-                Ok(inner) => {
-                    let actions = behavior::delegate_transition(&mut self.inner, inner)?;
-                    Ok(Self::wrap(actions, ServiceSends::empty()))
-                }
-                Err(_) => Ok(Actions::cont()),
-            },
-            TimedEvent::Behavior(event) => {
+            EventLayer::Owned(_) => Ok(Actions::cont()),
+            EventLayer::Inner(event) => {
                 let actions = behavior::delegate_transition(&mut self.inner, event)?;
                 if matches!(actions.become_, Step::Stop(_)) {
                     self.lease.disarm();
@@ -167,7 +162,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Activate as _;
+    use crate::{Activate as _, TimerElapsed};
     use behavior::{MailAddr, Never, NoBirths, Step, User};
 
     struct Probe(usize);
@@ -228,7 +223,7 @@ mod tests {
         let mut active = initialized.behavior;
 
         let first = active
-            .on(TimerElapsed::new(TimerId(2), crate::TimerGeneration(0)))
+            .on_path(TimerElapsed::new(TimerId(2), crate::TimerGeneration(0)))
             .unwrap();
         assert_eq!(
             first.sends.schedules.as_slice(),
@@ -242,13 +237,13 @@ mod tests {
         assert_eq!(active.base().0, 1);
 
         let duplicate = active
-            .on(TimerElapsed::new(TimerId(2), crate::TimerGeneration(0)))
+            .on_path(TimerElapsed::new(TimerId(2), crate::TimerGeneration(0)))
             .unwrap();
         assert!(duplicate.sends.schedules.is_empty());
         assert_eq!(active.base().0, 1);
 
         let stopped = active
-            .on(TimerElapsed::new(TimerId(2), crate::TimerGeneration(1)))
+            .on_path(TimerElapsed::new(TimerId(2), crate::TimerGeneration(1)))
             .unwrap();
         assert!(stopped.sends.schedules.is_empty());
         assert!(matches!(stopped.become_, Step::Stop(_)));

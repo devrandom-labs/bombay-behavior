@@ -7,6 +7,7 @@
 
 use std::time::Duration;
 
+use behavior::EventLayer;
 use behavior::{
     Acted, Actions, Crash, Create, Delivery, MailAddr, Never, Recipient, RestartPolicy,
     SendAlgebra, Step, Strategy, SupervisionEvent, User, UserEvent, WorkerStopped,
@@ -250,8 +251,7 @@ async fn empty_fleet_dynamic_birth_then_death_restarts() {
 #[tokio::test]
 async fn driver_full_stack_mixed_lanes_stop_on_peer_death() {
     use behavior::{
-        DeadlineEvent, PeerStopped, StashRoute, TimerElapsed, TimerGeneration, TimerId, WatchEvent,
-        stop_on_abnormal_death,
+        PeerStopped, StashRoute, TimerElapsed, TimerGeneration, TimerId, stop_on_abnormal_death,
     };
 
     let due = Instant::now() + Duration::from_secs(1);
@@ -285,25 +285,23 @@ async fn driver_full_stack_mixed_lanes_stop_on_peer_death() {
     )
     .unwrap();
     let mut mailbox = Mailbox::new([
-        SupervisionEvent::Behavior(DeadlineEvent::Behavior(WatchEvent::Behavior(User::user(
+        SupervisionEvent::Behavior(EventLayer::Inner(EventLayer::Inner(User::user(
             MailAddr(9),
             1,
         )))),
-        SupervisionEvent::Behavior(DeadlineEvent::Behavior(WatchEvent::Behavior(User::user(
+        SupervisionEvent::Behavior(EventLayer::Inner(EventLayer::Inner(User::user(
             MailAddr(9),
             5,
         )))),
-        SupervisionEvent::Behavior(DeadlineEvent::Elapsed(TimerElapsed {
+        SupervisionEvent::Behavior(EventLayer::Owned(TimerElapsed {
             id: TimerId(0),
             generation: TimerGeneration(0),
         })),
-        SupervisionEvent::Behavior(DeadlineEvent::Behavior(WatchEvent::PeerStopped(
-            PeerStopped {
-                peer,
-                outcome: Err(Crash::Failed),
-            },
-        ))),
-        SupervisionEvent::Behavior(DeadlineEvent::Behavior(WatchEvent::Behavior(User::user(
+        SupervisionEvent::Behavior(EventLayer::Inner(EventLayer::Owned(PeerStopped {
+            peer,
+            outcome: Err(Crash::Failed),
+        }))),
+        SupervisionEvent::Behavior(EventLayer::Inner(EventLayer::Inner(User::user(
             MailAddr(9),
             7,
         )))),

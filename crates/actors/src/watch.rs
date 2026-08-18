@@ -1,56 +1,13 @@
 //! Pure peer-observation composition over an ordinary monitor actor protocol.
 
-use crate::protocol::forward::forward_event_lane;
 use crate::protocol::{ObservePeer, PeerStopped};
 use crate::{Crash, Exit, Step};
-use crate::{Own, RouteInput, SendInput};
+use crate::{Own, SendInput};
 use behavior::{
-    Actions, Address, Become, Behavior, BirthMode, SendAlgebra, ServiceSends, User, UserEvent,
+    Actions, Address, Become, Behavior, BirthMode, EventLayer, SendAlgebra, ServiceSends, UserEvent,
 };
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum WatchEvent<E: UserEvent> {
-    Behavior(E),
-    PeerStopped(PeerStopped<E::Addr>),
-}
-
-impl<E: UserEvent> crate::RouteInput<PeerStopped<E::Addr>> for WatchEvent<E> {
-    fn route(event: PeerStopped<E::Addr>) -> Result<Self, PeerStopped<E::Addr>> {
-        Ok(Self::PeerStopped(event))
-    }
-}
-
-impl<E: UserEvent> crate::EventInput<PeerStopped<E::Addr>> for WatchEvent<E> {
-    fn inject(event: PeerStopped<E::Addr>) -> Self {
-        Self::PeerStopped(event)
-    }
-}
-
-impl<E: UserEvent> UserEvent for WatchEvent<E> {
-    type Addr = E::Addr;
-    type Message = E::Message;
-
-    fn user(from: Self::Addr, message: Self::Message) -> Self {
-        Self::Behavior(E::user(from, message))
-    }
-
-    fn into_user(self) -> Result<User<Self::Addr, Self::Message>, Self> {
-        match self {
-            Self::Behavior(event) => event.into_user().map_err(Self::Behavior),
-            stopped @ Self::PeerStopped(_) => Err(stopped),
-        }
-    }
-}
-
-forward_event_lane!(WatchEvent, crate::TimerElapsed);
-forward_event_lane!(WatchEvent, crate::ChildStopped<E::Addr>);
-forward_event_lane!(WatchEvent, crate::WorkerStopped<E::Addr>);
-forward_event_lane!(WatchEvent, crate::CreationResolved<E::Addr>);
-forward_event_lane!(
-    WatchEvent,
-    crate::WorkerCreationResolved<<E::Addr as crate::Address>::Nonce>
-);
-forward_event_lane!(WatchEvent, crate::ShutdownRequested);
+pub type WatchEvent<E> = EventLayer<PeerStopped<<E as UserEvent>::Addr>, E>;
 
 pub type LinkReaction<B> = fn(
     &mut B,
@@ -119,8 +76,9 @@ impl<B: Behavior> Watch<B> {
     /// Initialization emits the observation request after preserving the
     /// wrapped behavior's initialization effects. A matching terminal fact is
     /// folded exactly once through `on_stopped`.
-    /// When nested watchers name the same peer, the outermost watcher owns the
-    /// fact; distinct peers continue to route to their matching layer.
+    /// Nested watchers remain independently addressable even when they name
+    /// the same peer: each observation request selects this wrapper's exact
+    /// structural ingress destination.
     #[must_use]
     pub fn new(inner: B, peer: crate::BehaviorAddr<B>, on_stopped: LinkReaction<B>) -> Self {
         Self {
@@ -155,7 +113,6 @@ where
     Br: BirthMode,
     B: Behavior<Ph = Ph, Sends = Sends, Birth = Br>,
     B::Protocol: crate::Protocol<Addr = A>,
-    B::Event: crate::RouteInput<PeerStopped<A>>,
 {
     type Protocol = B::Protocol;
     type Event = WatchEvent<B::Event>;
@@ -175,7 +132,7 @@ where
         event: Self::Event,
     ) -> Result<WatchActions<B>, B::Error> {
         match event {
-            WatchEvent::PeerStopped(event) if event.peer == self.peer => {
+            EventLayer::Owned(event) if event.peer == self.peer => {
                 let become_ = match (self.on_stopped)(&mut self.inner, event.peer, &event.outcome)?
                 {
                     Step::Continue => Step::Continue,
@@ -184,12 +141,8 @@ where
                 };
                 Ok(Actions::new(Self::Sends::empty(), Vec::new(), become_))
             }
-            WatchEvent::PeerStopped(event) => match B::Event::route(event) {
-                Ok(inner) => behavior::delegate_transition(&mut self.inner, inner)
-                    .map(|actions| Self::wrap(actions, ServiceSends::empty())),
-                Err(_) => Ok(Actions::cont()),
-            },
-            WatchEvent::Behavior(event) => behavior::delegate_transition(&mut self.inner, event)
+            EventLayer::Owned(_) => Ok(Actions::cont()),
+            EventLayer::Inner(event) => behavior::delegate_transition(&mut self.inner, event)
                 .map(|actions| Self::wrap(actions, ServiceSends::empty())),
         }
     }

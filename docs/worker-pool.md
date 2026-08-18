@@ -1,7 +1,7 @@
 # Worker Pool Semantics
 
 Pool wiring follows the orthogonal protocol model described in
-[Protocol, event, behavior, and effect algebras](protocol-algebra.md).
+[Protocol, ingress, behavior, and effect algebras](protocol-algebra.md).
 `WorkerPoolProtocol` is stable public pool identity; `PoolEvent` includes
 internal supervision facts; `WorkerPool` owns state and the fold; `PoolSends`
 is its explicit effect product. A worker assignment carries the established

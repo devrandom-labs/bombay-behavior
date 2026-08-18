@@ -6,12 +6,12 @@
 
 use behavior::{
     Acted, Actions, Address, ChildStopped, CreationKind, CreationResolved, DeadlineEvent,
-    DeadlineSends, Delivery, Exit, MailAddr, Never, ObserveChild, ObserveCreation, ObservePeer,
-    PeerStopped, ProxyCommand, ProxyEvent, ProxySends, ReceiveTimeoutEvent, ReceiveTimeoutSends,
-    Recipient, ReportWorkerCreationResolved, ReportWorkerStopped, RouteInput, ScheduleAfter,
-    ScheduleAt, SendAlgebra, ServiceSends, ShutdownEvent, ShutdownRequested, SupervisionEvent,
-    SupervisorSends, TimerElapsed, TimerGeneration, TimerId, UnwatchPeer, User, UserEvent,
-    WatchEvent, WatchSends, WorkerCreationResolved, WorkerStopped,
+    DeadlineSends, Delivery, EventLayer, Exit, Here, InjectEvent, Inside, MailAddr, Never,
+    ObserveChild, ObserveCreation, ObservePeer, PeerStopped, ProxyCommand, ProxyEvent, ProxySends,
+    ReceiveTimeoutEvent, ReceiveTimeoutSends, Recipient, ReportWorkerCreationResolved,
+    ReportWorkerStopped, ScheduleAfter, ScheduleAt, SendAlgebra, ServiceSends, ShutdownEvent,
+    ShutdownRequested, SupervisionEvent, SupervisorSends, TimerElapsed, TimerGeneration, TimerId,
+    UnwatchPeer, User, UserEvent, WatchEvent, WatchSends, WorkerCreationResolved, WorkerStopped,
 };
 use behavior_actors as behavior;
 use std::time::Duration;
@@ -28,9 +28,9 @@ enum Lane {
     Shutdown,
 }
 
-impl RouteInput<TimerElapsed> for Lane {
-    fn route(event: TimerElapsed) -> Result<Self, TimerElapsed> {
-        Ok(Self::Time(event))
+impl InjectEvent<TimerElapsed, Here> for Lane {
+    fn inject_at(event: TimerElapsed) -> Self {
+        Self::Time(event)
     }
 }
 impl UserEvent for Lane {
@@ -45,34 +45,34 @@ impl UserEvent for Lane {
         Err(self)
     }
 }
-impl RouteInput<PeerStopped<MailAddr>> for Lane {
-    fn route(event: PeerStopped<MailAddr>) -> Result<Self, PeerStopped<MailAddr>> {
-        Ok(Self::Peer(event))
+impl InjectEvent<PeerStopped<MailAddr>, Here> for Lane {
+    fn inject_at(event: PeerStopped<MailAddr>) -> Self {
+        Self::Peer(event)
     }
 }
-impl RouteInput<ChildStopped<MailAddr>> for Lane {
-    fn route(event: ChildStopped<MailAddr>) -> Result<Self, ChildStopped<MailAddr>> {
-        Ok(Self::Child(event))
+impl InjectEvent<ChildStopped<MailAddr>, Here> for Lane {
+    fn inject_at(event: ChildStopped<MailAddr>) -> Self {
+        Self::Child(event)
     }
 }
-impl RouteInput<WorkerStopped<MailAddr>> for Lane {
-    fn route(event: WorkerStopped<MailAddr>) -> Result<Self, WorkerStopped<MailAddr>> {
-        Ok(Self::Worker(event))
+impl InjectEvent<WorkerStopped<MailAddr>, Here> for Lane {
+    fn inject_at(event: WorkerStopped<MailAddr>) -> Self {
+        Self::Worker(event)
     }
 }
-impl RouteInput<CreationResolved<MailAddr>> for Lane {
-    fn route(event: CreationResolved<MailAddr>) -> Result<Self, CreationResolved<MailAddr>> {
-        Ok(Self::Creation(event))
+impl InjectEvent<CreationResolved<MailAddr>, Here> for Lane {
+    fn inject_at(event: CreationResolved<MailAddr>) -> Self {
+        Self::Creation(event)
     }
 }
-impl RouteInput<WorkerCreationResolved<u64>> for Lane {
-    fn route(event: WorkerCreationResolved<u64>) -> Result<Self, WorkerCreationResolved<u64>> {
-        Ok(Self::WorkerCreation(event))
+impl InjectEvent<WorkerCreationResolved<u64>, Here> for Lane {
+    fn inject_at(event: WorkerCreationResolved<u64>) -> Self {
+        Self::WorkerCreation(event)
     }
 }
-impl RouteInput<ShutdownRequested> for Lane {
-    fn route(_: ShutdownRequested) -> Result<Self, ShutdownRequested> {
-        Ok(Self::Shutdown)
+impl InjectEvent<ShutdownRequested, Here> for Lane {
+    fn inject_at(_: ShutdownRequested) -> Self {
+        Self::Shutdown
     }
 }
 
@@ -129,142 +129,39 @@ fn creation() -> CreationResolved<MailAddr> {
         result: Ok(MailAddr(17)),
     }
 }
-fn worker_creation() -> WorkerCreationResolved<u64> {
-    WorkerCreationResolved {
-        proxy: 13,
-        worker: 17,
-        kind: CreationKind::ReplacementIncarnation { replaces: 16 },
-        result: Ok(()),
-    }
-}
-
 #[test]
 #[allow(
     clippy::too_many_lines,
     reason = "one mutation contract exhaustively checks every environment lane"
 )]
-fn composed_protocols_forward_every_supported_environment_lane() {
+fn structural_paths_select_owners_without_forwarding_lists() {
+    let proxy = <ProxyEvent<Lane> as InjectEvent<_, Here>>::inject_at(creation());
+    assert!(matches!(proxy, ProxyEvent::CreationResolved(_)));
+
+    let deadline = <DeadlineEvent<Lane> as InjectEvent<_, Inside<Here>>>::inject_at(peer());
+    assert!(matches!(deadline, EventLayer::Inner(Lane::Peer(_))));
+
+    let timeout = <ReceiveTimeoutEvent<Lane> as InjectEvent<_, Here>>::inject_at(elapsed());
+    assert!(matches!(timeout, EventLayer::Owned(_)));
+    let nested_timeout =
+        <ReceiveTimeoutEvent<Lane> as InjectEvent<_, Inside<Here>>>::inject_at(peer());
+    assert!(matches!(nested_timeout, EventLayer::Inner(Lane::Peer(_))));
+
+    let shutdown = <ShutdownEvent<Lane> as InjectEvent<_, Here>>::inject_at(ShutdownRequested);
+    assert!(matches!(shutdown, EventLayer::Owned(_)));
+    let nested_timer = <ShutdownEvent<Lane> as InjectEvent<_, Inside<Here>>>::inject_at(elapsed());
+    assert!(matches!(nested_timer, EventLayer::Inner(Lane::Time(_))));
+
+    let supervised = <SupervisionEvent<Lane> as InjectEvent<_, Here>>::inject_at(worker());
+    assert!(matches!(supervised, SupervisionEvent::WorkerStopped(_)));
+    let nested_peer = <SupervisionEvent<Lane> as InjectEvent<_, Inside<Here>>>::inject_at(peer());
     assert!(matches!(
-        ProxyEvent::<Lane>::route(creation()),
-        Ok(ProxyEvent::CreationResolved(_))
-    ));
-    assert!(matches!(
-        ProxyEvent::<Lane>::route(child()),
-        Ok(ProxyEvent::ChildStopped(_))
+        nested_peer,
+        SupervisionEvent::Behavior(Lane::Peer(_))
     ));
 
-    assert!(matches!(
-        DeadlineEvent::<Lane>::route(peer()),
-        Ok(DeadlineEvent::Behavior(Lane::Peer(_)))
-    ));
-    assert!(matches!(
-        DeadlineEvent::<Lane>::route(child()),
-        Ok(DeadlineEvent::Behavior(Lane::Child(_)))
-    ));
-    assert!(matches!(
-        DeadlineEvent::<Lane>::route(worker()),
-        Ok(DeadlineEvent::Behavior(Lane::Worker(_)))
-    ));
-    assert!(matches!(
-        DeadlineEvent::<Lane>::route(creation()),
-        Ok(DeadlineEvent::Behavior(Lane::Creation(_)))
-    ));
-    assert!(matches!(
-        DeadlineEvent::<Lane>::route(worker_creation()),
-        Ok(DeadlineEvent::Behavior(Lane::WorkerCreation(_)))
-    ));
-
-    assert!(matches!(
-        WatchEvent::<Lane>::route(elapsed()),
-        Ok(WatchEvent::Behavior(Lane::Time(_)))
-    ));
-    assert!(matches!(
-        WatchEvent::<Lane>::route(child()),
-        Ok(WatchEvent::Behavior(Lane::Child(_)))
-    ));
-    assert!(matches!(
-        WatchEvent::<Lane>::route(worker()),
-        Ok(WatchEvent::Behavior(Lane::Worker(_)))
-    ));
-    assert!(matches!(
-        WatchEvent::<Lane>::route(creation()),
-        Ok(WatchEvent::Behavior(Lane::Creation(_)))
-    ));
-
-    assert!(matches!(
-        ReceiveTimeoutEvent::<Lane>::route(elapsed()),
-        Ok(ReceiveTimeoutEvent::Elapsed(_))
-    ));
-    assert!(matches!(
-        ReceiveTimeoutEvent::<Lane>::route(peer()),
-        Ok(ReceiveTimeoutEvent::Behavior(Lane::Peer(_)))
-    ));
-    assert!(matches!(
-        ReceiveTimeoutEvent::<Lane>::route(child()),
-        Ok(ReceiveTimeoutEvent::Behavior(Lane::Child(_)))
-    ));
-    assert!(matches!(
-        ReceiveTimeoutEvent::<Lane>::route(worker()),
-        Ok(ReceiveTimeoutEvent::Behavior(Lane::Worker(_)))
-    ));
-    assert!(matches!(
-        ReceiveTimeoutEvent::<Lane>::route(creation()),
-        Ok(ReceiveTimeoutEvent::Behavior(Lane::Creation(_)))
-    ));
-    assert!(matches!(
-        ReceiveTimeoutEvent::<Lane>::route(ShutdownRequested),
-        Ok(ReceiveTimeoutEvent::Behavior(Lane::Shutdown))
-    ));
-
-    assert!(matches!(
-        ShutdownEvent::<Lane>::route(elapsed()),
-        Ok(ShutdownEvent::Behavior(Lane::Time(_)))
-    ));
-    assert!(matches!(
-        ShutdownEvent::<Lane>::route(peer()),
-        Ok(ShutdownEvent::Behavior(Lane::Peer(_)))
-    ));
-    assert!(matches!(
-        ShutdownEvent::<Lane>::route(child()),
-        Ok(ShutdownEvent::Behavior(Lane::Child(_)))
-    ));
-    assert!(matches!(
-        ShutdownEvent::<Lane>::route(worker()),
-        Ok(ShutdownEvent::Behavior(Lane::Worker(_)))
-    ));
-    assert!(matches!(
-        ShutdownEvent::<Lane>::route(creation()),
-        Ok(ShutdownEvent::Behavior(Lane::Creation(_)))
-    ));
-
-    assert!(matches!(
-        SupervisionEvent::<Lane>::route(child()),
-        Ok(SupervisionEvent::ChildStopped(_))
-    ));
-    assert!(matches!(
-        SupervisionEvent::<Lane>::route(worker()),
-        Ok(SupervisionEvent::WorkerStopped(_))
-    ));
-    assert!(matches!(
-        SupervisionEvent::<Lane>::route(creation()),
-        Ok(SupervisionEvent::CreationResolved(_))
-    ));
-    assert!(matches!(
-        SupervisionEvent::<Lane>::route(worker_creation()),
-        Ok(SupervisionEvent::WorkerCreationResolved(_))
-    ));
-    assert!(matches!(
-        SupervisionEvent::<Lane>::route(elapsed()),
-        Ok(SupervisionEvent::Behavior(Lane::Time(_)))
-    ));
-    assert!(matches!(
-        SupervisionEvent::<Lane>::route(peer()),
-        Ok(SupervisionEvent::Behavior(Lane::Peer(_)))
-    ));
-    assert!(matches!(
-        SupervisionEvent::<Lane>::route(ShutdownRequested),
-        Ok(SupervisionEvent::Behavior(Lane::Shutdown))
-    ));
+    let watched = <WatchEvent<Lane> as InjectEvent<_, Inside<Here>>>::inject_at(child());
+    assert!(matches!(watched, EventLayer::Inner(Lane::Child(_))));
 }
 
 #[test]

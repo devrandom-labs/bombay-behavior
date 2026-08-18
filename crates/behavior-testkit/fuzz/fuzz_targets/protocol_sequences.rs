@@ -44,7 +44,7 @@ fuzz_target!(|bytes: &[u8]| {
             .transition(ProxyEvent::CreationResolved(CreationResolved {
                 nonce: 0,
                 kind: CreationKind::Birth,
-                result: Ok(()),
+                result: Ok(MailAddr(999)),
             }))
             .unwrap();
         let mut generation = 0_u64;
@@ -95,7 +95,7 @@ fuzz_target!(|bytes: &[u8]| {
                         kind: CreationKind::ReplacementIncarnation {
                             replaces: generation - 1,
                         },
-                        result: Ok(()),
+                        result: Ok(MailAddr(999)),
                     }))
                     .unwrap();
             }

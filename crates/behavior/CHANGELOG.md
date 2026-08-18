@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Add `EventLayer`, `InjectEvent`, `Here`, `Inside`, and `Ingress` as the
+  structural, statically selected algebra for interpreter-originated inputs.
+  Equal payload types at nested layers remain distinct capabilities and
+  unsupported paths fail to compile.
 - Add `Behavior::Protocol`, `BehaviorAddr`, and `BehaviorMessage` so public
   destination identity is orthogonal to the current behavior implementation,
   internal event algebra, and explicit effects.
@@ -29,6 +33,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Remove payload-driven `EventInput`/`RouteInput` routing. Event ownership is
+  now selected by a concrete compile-time path and never discovered by
+  searching nested behavior types.
 - Remove `Protocol` as a `Behavior` supertrait. `Recipient<P>` and
   `Delivery<P>` now require only the stable public protocol, while activation,
   creation, wrapping, and interpretation project it through

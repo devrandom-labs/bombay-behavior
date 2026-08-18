@@ -9,12 +9,9 @@ use super::super::policy::{
 };
 use super::super::protocol::{ProxyCommand, SupervisionEvent};
 use super::proxy::Proxy;
-use crate::protocol::{
-    ChildStopped, CreationResolved, ObserveChild, ObserveCreation, WorkerCreationResolved,
-    WorkerStopped,
-};
+use crate::protocol::{ObserveChild, ObserveCreation, WorkerStopped};
 use crate::{Become, Exit, SupervisionFailureReason};
-use crate::{Own, RouteInput, SendInput};
+use crate::{Own, SendInput};
 use behavior::{Actions, Address, Behavior, Births, Create, Delivery, SendAlgebra, ServiceSends};
 use behavior::{Never, Step};
 
@@ -105,9 +102,9 @@ where
     /// Sends emitted by the supervised domain behavior.
     pub behavior: Sends,
     /// Requests to observe every accepted stable proxy creation.
-    pub child_observations: ServiceSends<ObserveChild<A::Nonce>>,
+    pub child_observations: ServiceSends<ObserveChild<A>>,
     /// Requests for the committed result of every staged stable proxy creation.
-    pub creation_observations: ServiceSends<ObserveCreation<A::Nonce>>,
+    pub creation_observations: ServiceSends<ObserveCreation<A>>,
     /// Commands asking stable proxies to install fresh worker incarnations.
     pub replacement_commands: Vec<Delivery<Proxy<C>>>,
     /// Typed terminal supervision failures for the local runtime observer.
@@ -142,26 +139,26 @@ where
     }
 }
 
-impl<A, Sends, C> SendInput<ObserveCreation<A::Nonce>, Own> for SupervisorSends<A, Sends, C>
+impl<A, Sends, C> SendInput<ObserveCreation<A>, Own> for SupervisorSends<A, Sends, C>
 where
     A: Address,
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
 {
-    fn emit(&mut self, input: ObserveCreation<A::Nonce>) {
+    fn emit(&mut self, input: ObserveCreation<A>) {
         self.creation_observations.send(input);
     }
 }
 
-impl<A, Sends, C> SendInput<ObserveChild<A::Nonce>, Own> for SupervisorSends<A, Sends, C>
+impl<A, Sends, C> SendInput<ObserveChild<A>, Own> for SupervisorSends<A, Sends, C>
 where
     A: Address,
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
 {
-    fn emit(&mut self, input: ObserveChild<A::Nonce>) {
+    fn emit(&mut self, input: ObserveChild<A>) {
         self.child_observations.send(input);
     }
 }
@@ -442,10 +439,6 @@ where
     Sends: SendAlgebra,
     B: Behavior<Ph = Ph, Sends = Sends, Birth = Births<C>>,
     B::Protocol: crate::Protocol<Addr = A>,
-    B::Event: crate::RouteInput<ChildStopped<A>>
-        + crate::RouteInput<WorkerStopped<A>>
-        + crate::RouteInput<CreationResolved<A>>
-        + crate::RouteInput<WorkerCreationResolved<A::Nonce>>,
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = crate::BehaviorAddr<B>>,
@@ -498,14 +491,7 @@ where
         match event {
             SupervisionEvent::WorkerStopped(event) => {
                 if !self.fleet.contains(event.proxy) {
-                    return match B::Event::route(event) {
-                        Ok(event) => {
-                            let actions = behavior::delegate_transition(&mut self.inner, event)
-                                .map_err(SupervisorError::Behavior)?;
-                            self.wrap(actions)
-                        }
-                        Err(_) => Ok(Actions::cont()),
-                    };
+                    return Ok(Actions::cont());
                 }
                 let decision = self.replacement_decision(&event)?;
                 match decision {
@@ -539,14 +525,7 @@ where
             }
             SupervisionEvent::ChildStopped(event) => {
                 if !self.fleet.contains(event.nonce) {
-                    return match B::Event::route(event) {
-                        Ok(event) => {
-                            let actions = behavior::delegate_transition(&mut self.inner, event)
-                                .map_err(SupervisorError::Behavior)?;
-                            self.wrap(actions)
-                        }
-                        Err(_) => Ok(Actions::cont()),
-                    };
+                    return Ok(Actions::cont());
                 }
                 self.fleet.retire(event.nonce)?;
                 let failure = SupervisionFailure::new(
@@ -570,25 +549,14 @@ where
             SupervisionEvent::CreationResolved(event) => {
                 self.fleet
                     .resolve_creation(event.nonce, event.result.map(|_| ()));
-                if let Ok(event) = B::Event::route(event) {
-                    let actions = behavior::delegate_transition(&mut self.inner, event)
-                        .map_err(SupervisorError::Behavior)?;
-                    self.wrap(actions)
-                } else {
-                    Ok(Actions::cont())
-                }
+                Ok(Actions::cont())
             }
             SupervisionEvent::WorkerCreationResolved(event) => {
                 // Worker realization does not change the stable proxy's
                 // liveness. The typed result remains distinct from a proxy
                 // terminal observation.
-                if let Ok(event) = B::Event::route(event) {
-                    let actions = behavior::delegate_transition(&mut self.inner, event)
-                        .map_err(SupervisorError::Behavior)?;
-                    self.wrap(actions)
-                } else {
-                    Ok(Actions::cont())
-                }
+                let _ = event;
+                Ok(Actions::cont())
             }
             SupervisionEvent::Behavior(event) => {
                 let actions = behavior::delegate_transition(&mut self.inner, event)
@@ -604,7 +572,9 @@ mod ownership_tests {
     use std::time::{Duration, Instant};
 
     use super::*;
-    use crate::{Activate as _, Crash, Exit, MailAddr, User};
+    use crate::{
+        Activate as _, BehaviorActed, ChildStopped, ChildTopology, Crash, Exit, MailAddr, User,
+    };
 
     struct Child;
 
@@ -668,10 +638,10 @@ mod ownership_tests {
     }
 
     #[test]
-    fn unrelated_stop_facts_route_to_the_nested_owner() {
+    fn ownership_path_distinguishes_stale_outer_facts_from_inner_facts() {
         let definition = Supervisor::new(
             Parent::default(),
-            behavior::ChildTopology::indexed(|_| 1, 1, child),
+            ChildTopology::indexed(|_| 1, 1, child),
             RestartConfiguration::new(
                 Strategy::OneForOne,
                 RestartPolicy::Permanent,
@@ -683,18 +653,29 @@ mod ownership_tests {
         let mut active = definition.initialize().unwrap().behavior;
 
         active
-            .on(ChildStopped::new(9, Ok(Exit::Normal), Instant::now()))
+            .transition(SupervisionEvent::ChildStopped(ChildStopped::new(
+                9,
+                Ok(Exit::Normal),
+                Instant::now(),
+            )))
             .unwrap();
         active
-            .on(WorkerStopped::new(
+            .transition(SupervisionEvent::WorkerStopped(WorkerStopped::new(
                 9,
                 10,
                 Err(Crash::Failed),
                 Instant::now(),
-            ))
+            )))
             .unwrap();
 
-        assert_eq!(active.base().forwarded, 2);
+        assert_eq!(active.base().forwarded, 0);
+
+        active
+            .transition(SupervisionEvent::Behavior(SupervisionEvent::ChildStopped(
+                ChildStopped::new(9, Ok(Exit::Normal), Instant::now()),
+            )))
+            .unwrap();
+        assert_eq!(active.base().forwarded, 1);
         assert_eq!(active.child_count(), 1);
     }
 }

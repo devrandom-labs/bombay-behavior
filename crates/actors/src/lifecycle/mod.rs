@@ -7,7 +7,7 @@ mod termination_monitor;
 
 pub use crate::shutdown::{FinalizeOnShutdown, ShutdownEvent, ShutdownReaction, StopOnShutdown};
 pub use crate::watch::{LinkReaction, Watch, WatchEvent, WatchSends, stop_on_abnormal_death};
-pub use guardian::Guardian;
+pub use guardian::{CoordinatedGuardian, Guardian};
 pub use shutdown_coordinator::{
     ShutdownCoordinator, ShutdownCoordinatorError, ShutdownCoordinatorEvent,
     ShutdownCoordinatorSends, ShutdownPlan, ShutdownPlanError, ShutdownState, ShutdownTree,

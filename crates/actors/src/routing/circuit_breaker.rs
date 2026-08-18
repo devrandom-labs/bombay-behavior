@@ -3,8 +3,8 @@
 use std::{num::NonZeroU32, time::Duration};
 
 use behavior::{
-    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, Never, NoBirths, Recipient,
-    SendAlgebra, ServiceSends, User,
+    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, EventLayer, Never, NoBirths,
+    Recipient, SendAlgebra, ServiceSends, User,
 };
 use thiserror::Error;
 
@@ -128,6 +128,9 @@ impl<Reply: behavior::Protocol> SendAlgebra for BreakerSends<Reply> {
     }
 }
 
+type BreakerEvent<A, Reply> = TimedEvent<User<A, BreakerMessage<Reply>>>;
+type BreakerActions<A, Reply> = Actions<A, Never, BreakerSends<Reply>, NoBirths>;
+
 /// Pure single-flight closed/open/probing circuit-breaker fold.
 ///
 /// Admission and completion are distinct typed events. Closed and probing
@@ -183,20 +186,14 @@ impl<A: Address, Reply: behavior::Protocol<Addr = A, Msg = BreakerOutcome>>
         &self.phase
     }
 
-    fn reply(
-        reply_to: Recipient<Reply>,
-        outcome: BreakerOutcome,
-    ) -> Actions<A, Never, BreakerSends<Reply>, NoBirths> {
+    fn reply(reply_to: Recipient<Reply>, outcome: BreakerOutcome) -> BreakerActions<A, Reply> {
         Actions::send(BreakerSends {
             replies: vec![Delivery::new(reply_to, outcome)],
             schedules: ServiceSends::empty(),
         })
     }
 
-    fn admit(
-        &mut self,
-        reply_to: Recipient<Reply>,
-    ) -> Actions<A, Never, BreakerSends<Reply>, NoBirths> {
+    fn admit(&mut self, reply_to: Recipient<Reply>) -> BreakerActions<A, Reply> {
         let attempt = BreakerAttempt(self.next_attempt);
         let next = self.next_attempt.checked_add(1);
         match &self.phase {
@@ -245,11 +242,7 @@ impl<A: Address, Reply: behavior::Protocol<Addr = A, Msg = BreakerOutcome>>
         }
     }
 
-    fn complete(
-        &mut self,
-        attempt: BreakerAttempt,
-        succeeded: bool,
-    ) -> Actions<A, Never, BreakerSends<Reply>, NoBirths> {
+    fn complete(&mut self, attempt: BreakerAttempt, succeeded: bool) -> BreakerActions<A, Reply> {
         let ownership = match &self.phase {
             BreakerPhase::Closed(ClosedPhase::Awaiting {
                 consecutive_failures,
@@ -337,19 +330,19 @@ impl<A: Address, Reply: behavior::Protocol<Addr = A, Msg = BreakerOutcome>> Beha
     for CircuitBreaker<A, Reply>
 {
     type Protocol = Self;
-    type Event = TimedEvent<User<A, crate::BehaviorMessage<Self>>>;
+    type Event = BreakerEvent<A, Reply>;
     type Sends = BreakerSends<Reply>;
     type Ph = Never;
     type Error = Never;
     type Birth = NoBirths;
     fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
         Ok(match event {
-            TimedEvent::Behavior(event) => match event.message {
+            EventLayer::Inner(event) => match event.message {
                 BreakerMessage::Admit { reply_to } => self.admit(reply_to),
                 BreakerMessage::Succeeded { attempt } => self.complete(attempt, true),
                 BreakerMessage::Failed { attempt } => self.complete(attempt, false),
             },
-            TimedEvent::Elapsed(elapsed) => {
+            EventLayer::Owned(elapsed) => {
                 if let BreakerPhase::Open { generation } = self.phase
                     && elapsed.id == self.timer_id
                     && elapsed.generation == generation
@@ -438,7 +431,7 @@ mod tests {
             BreakerOutcome::Rejected(BreakerRejection::Open { .. })
         ));
         subject
-            .on(TimerElapsed::new(TimerId(8), TimerGeneration(0)))
+            .on_path(TimerElapsed::new(TimerId(8), TimerGeneration(0)))
             .unwrap();
         let probe = admit(&mut subject);
         assert_eq!(probe, BreakerAttempt(2));
@@ -470,7 +463,7 @@ mod tests {
         );
         assert!(
             subject
-                .on(TimerElapsed::new(TimerId(8), TimerGeneration(7)))
+                .on_path(TimerElapsed::new(TimerId(8), TimerGeneration(7)))
                 .unwrap()
                 .sends
                 .replies

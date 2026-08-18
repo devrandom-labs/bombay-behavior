@@ -14,12 +14,12 @@ use std::time::Duration;
 use behavior::{
     Acted, Actions, Activate, Become, Behavior, BehaviorBase, Births, ChildShutdownRejected,
     ChildShutdownRejection, ChildStopped, Crash, Create, CreationKind, CreationRejection,
-    CreationResolved, DeadlineEvent, Delivery, Exit, Machine, MailAddr, Move, Never, NoBirths,
-    ObserveChild, PeerStopped, Proxy, ProxyCommand, ProxyEvent, Recipient, RestartDenial,
-    RestartPolicy, RouteInput, SendAlgebra, ServiceSends, ShutdownChild, ShutdownRequested,
+    CreationResolved, Delivery, EventLayer, Exit, Here, InjectEvent, Inside, Machine, MailAddr,
+    Move, Never, NoBirths, ObserveChild, PeerStopped, Proxy, ProxyCommand, ProxyEvent, Recipient,
+    RestartDenial, RestartPolicy, SendAlgebra, ServiceSends, ShutdownChild, ShutdownRequested,
     StashRoute, Step, Strategy, SupervisionEvent, SupervisionFailure, SupervisionFailureReason,
-    Supervisor, TimerElapsed, TimerGeneration, TimerId, User, UserEvent, Watch, WatchEvent,
-    WorkerStopped, stop_on_abnormal_death, stop_on_supervision_failure,
+    Supervisor, TimerElapsed, TimerGeneration, TimerId, User, UserEvent, Watch, WorkerStopped,
+    stop_on_abnormal_death, stop_on_supervision_failure,
 };
 use proptest::prelude::*;
 use std::time::Instant;
@@ -29,7 +29,7 @@ struct Quiet;
 
 struct BehaviorSends {
     deliveries: Vec<Delivery<Quiet>>,
-    child_observations: ServiceSends<ObserveChild<u64>>,
+    child_observations: ServiceSends<ObserveChild<MailAddr>>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -63,7 +63,7 @@ impl ExplicitInitialization {
     fn init(&mut self) -> Acted<MailAddr, Never, BehaviorSends, Births<Quiet>, Never> {
         self.0.push(1);
         let mut sends = BehaviorSends::empty();
-        sends.child_observations.extend([ObserveChild { nonce: 7 }]);
+        sends.child_observations.extend([ObserveChild::new(7)]);
         Ok(Actions::new(
             sends,
             vec![Create::birth(7, Quiet)],
@@ -160,12 +160,12 @@ fn ordinary_and_service_send_algebras_have_disjoint_static_dispatch() {
     trait RouteSends<A: behavior::Address> {}
 
     impl<P> RouteSends<MailAddr> for Vec<Delivery<P>> where P: behavior::Protocol<Addr = MailAddr> {}
-    impl<A: behavior::Address> RouteSends<A> for ServiceSends<ObserveChild<A::Nonce>> {}
+    impl<A: behavior::Address> RouteSends<A> for ServiceSends<ObserveChild<A>> {}
 
     fn requires_route_sends<A: behavior::Address, S: RouteSends<A>>() {}
 
     requires_route_sends::<MailAddr, Vec<Delivery<Quiet>>>();
-    requires_route_sends::<MailAddr, ServiceSends<ObserveChild<u64>>>();
+    requires_route_sends::<MailAddr, ServiceSends<ObserveChild<MailAddr>>>();
 }
 
 fn requires_births<B, C>(_behavior: &B)
@@ -174,10 +174,10 @@ where
 {
 }
 
-fn requires_worker_events<B>(_behavior: &B)
+fn requires_worker_events<B, Path>(_behavior: &B)
 where
     B: Behavior,
-    B::Event: RouteInput<WorkerStopped<MailAddr>>,
+    B::Event: InjectEvent<WorkerStopped<MailAddr>, Path>,
 {
 }
 
@@ -268,7 +268,7 @@ fn direct_behavior_preserves_explicit_initialization_and_transition_actions() {
     let mut behavior = initialized.behavior;
     assert_eq!(
         initial.sends.child_observations.as_slice(),
-        &[ObserveChild { nonce: 7 }]
+        &[ObserveChild::new(7)]
     );
     assert_eq!(initial.creates.len(), 1);
     assert!(matches!(initial.become_, Step::Continue));
@@ -308,7 +308,7 @@ async fn typed_shutdown_stops_normally_without_running_the_inner_fold() {
     let behavior = behavior_actors::StopOnShutdown::new(Quiet);
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
-    let event = <_ as RouteInput<ShutdownRequested>>::route(ShutdownRequested).unwrap();
+    let event = <_ as InjectEvent<ShutdownRequested, Here>>::inject_at(ShutdownRequested);
     let actions = behavior.transition(event).unwrap();
 
     assert!(actions.sends.is_empty());
@@ -321,7 +321,7 @@ async fn final_shutdown_fold_preserves_effects_and_forces_normal_stop() {
     let behavior = behavior_actors::FinalizeOnShutdown::new(ShutdownParent, finalize_parent);
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
-    let event = <_ as RouteInput<ShutdownRequested>>::route(ShutdownRequested).unwrap();
+    let event = <_ as InjectEvent<ShutdownRequested, Here>>::inject_at(ShutdownRequested);
     let actions = behavior.transition(event).unwrap();
 
     assert_eq!(actions.sends.len(), 1);
@@ -345,7 +345,8 @@ async fn outer_combinators_preserve_the_shutdown_lane() {
     );
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
-    let event = <_ as RouteInput<ShutdownRequested>>::route(ShutdownRequested).unwrap();
+    let event =
+        <_ as InjectEvent<ShutdownRequested, Inside<Inside<Here>>>>::inject_at(ShutdownRequested);
     let actions = behavior.transition(event).unwrap();
 
     assert!(matches!(actions.become_, Step::Stop(behavior::Stopped)));
@@ -383,7 +384,7 @@ async fn at_is_a_typed_clock_actor_protocol() {
     assert_eq!(initial.sends.schedules[0].at, now);
 
     let fired = behavior
-        .on(TimerElapsed {
+        .on_path(TimerElapsed {
             id: TimerId(0),
             generation: TimerGeneration(0),
         })
@@ -410,7 +411,7 @@ async fn nested_at_composition_routes_stale_and_matching_events() {
     assert_eq!(initial.sends.behavior.schedules[0].at, early);
     assert_eq!(initial.sends.schedules[0].at, late);
 
-    let early_event = DeadlineEvent::Elapsed(TimerElapsed {
+    let early_event = EventLayer::Owned(TimerElapsed {
         id: TimerId(0),
         generation: TimerGeneration(0),
     });
@@ -437,7 +438,7 @@ async fn spec_hides_composed_protocols_without_losing_their_effects() {
     assert_eq!(initial.sends.behavior.schedules[0].at, due);
     assert_eq!(initial.sends.observations[0].peer, peer);
 
-    let time = WatchEvent::Behavior(DeadlineEvent::Elapsed(TimerElapsed {
+    let time = EventLayer::Inner(EventLayer::Owned(TimerElapsed {
         id: TimerId(0),
         generation: TimerGeneration(0),
     }));
@@ -454,7 +455,7 @@ async fn watching_registers_and_reacts_through_messages() {
     let mut behavior = initialized.behavior;
     assert_eq!(initial.sends.observations[0].peer, peer);
 
-    let stopped = WatchEvent::PeerStopped(PeerStopped {
+    let stopped = EventLayer::Owned(PeerStopped {
         peer,
         outcome: Err(Crash::Failed),
     });
@@ -610,7 +611,7 @@ fn continue_on_death(
 }
 
 #[tokio::test]
-async fn an_outer_watcher_forwards_a_different_peer_to_the_inner_watcher() {
+async fn a_structural_path_delivers_a_peer_fact_to_the_inner_watcher() {
     let behavior = behavior_actors::Watch::new(
         behavior_actors::Watch::new(Quiet, MailAddr(1), stop_on_abnormal_death),
         MailAddr(2),
@@ -619,10 +620,10 @@ async fn an_outer_watcher_forwards_a_different_peer_to_the_inner_watcher() {
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
     let actions = behavior
-        .transition(WatchEvent::PeerStopped(PeerStopped {
+        .transition(EventLayer::Inner(EventLayer::Owned(PeerStopped {
             peer: MailAddr(1),
             outcome: Err(Crash::Failed),
-        }))
+        })))
         .unwrap();
     assert!(matches!(actions.become_, Step::Stop(behavior::Stopped)));
 }
@@ -683,13 +684,18 @@ async fn receive_timeout_reacts_only_to_its_own_live_timer_id() {
     );
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
-    let wrong = behavior
-        .transition(behavior::ReceiveTimeoutEvent::Elapsed(TimerElapsed {
-            id: TimerId(0),
-            generation: TimerGeneration(0),
-        }))
+    let inner_deadline = behavior
+        .transition(behavior::EventLayer::Inner(behavior::EventLayer::Owned(
+            TimerElapsed {
+                id: TimerId(0),
+                generation: TimerGeneration(0),
+            },
+        )))
         .unwrap();
-    assert!(matches!(wrong.become_, Step::Stop(behavior::Stopped)));
+    assert!(matches!(
+        inner_deadline.become_,
+        Step::Stop(behavior::Stopped)
+    ));
     let matching_behavior = behavior_actors::ReceiveTimeout::new(
         behavior_actors::Deadline::new(Quiet, TimerId(0), Some(Instant::now()), |_| {
             Ok(Step::Stop(behavior::Stopped))
@@ -702,7 +708,7 @@ async fn receive_timeout_reacts_only_to_its_own_live_timer_id() {
     let matching_generation = initialized.actions.sends.schedules[0].generation;
     let mut matching_behavior = initialized.behavior;
     let matching = matching_behavior
-        .transition(behavior::ReceiveTimeoutEvent::Elapsed(TimerElapsed {
+        .transition(behavior::EventLayer::Owned(TimerElapsed {
             id: TimerId(1),
             generation: matching_generation,
         }))
@@ -732,9 +738,9 @@ impl UserEvent for TimerAwareEvent {
     }
 }
 
-impl RouteInput<TimerElapsed> for TimerAwareEvent {
-    fn route(event: TimerElapsed) -> Result<Self, TimerElapsed> {
-        Ok(Self::Time(event))
+impl InjectEvent<TimerElapsed, Here> for TimerAwareEvent {
+    fn inject_at(event: TimerElapsed) -> Self {
+        Self::Time(event)
     }
 }
 
@@ -786,7 +792,7 @@ async fn a_stale_local_receive_timeout_is_consumed_not_forwarded() {
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
     let stale = behavior
-        .transition(behavior::ReceiveTimeoutEvent::Elapsed(TimerElapsed {
+        .transition(behavior::EventLayer::Owned(TimerElapsed {
             id: TimerId(0),
             generation: TimerGeneration(99),
         }))
@@ -799,7 +805,9 @@ async fn a_proxy_ignores_a_stale_child_stop_nonce() {
     let proxy = Proxy::new(child(0));
     let initialized = proxy.initialize().unwrap();
     let mut proxy = initialized.behavior;
-    proxy.on(CreationResolved::birth(0, MailAddr(0))).unwrap();
+    proxy
+        .on_path(CreationResolved::birth(0, MailAddr(0)))
+        .unwrap();
     let stale = proxy
         .transition(ProxyEvent::ChildStopped(ChildStopped {
             nonce: 99,
@@ -824,9 +832,11 @@ async fn a_proxy_ignores_a_stale_child_stop_nonce() {
 async fn a_proxy_shuts_down_its_exact_worker_before_stopping() {
     let initialized = Proxy::new(child(0)).initialize().unwrap();
     let mut proxy = initialized.behavior;
-    proxy.on(CreationResolved::birth(0, MailAddr(0))).unwrap();
+    proxy
+        .on_path(CreationResolved::birth(0, MailAddr(0)))
+        .unwrap();
 
-    let requested = proxy.on(ShutdownRequested).unwrap();
+    let requested = proxy.on_path(ShutdownRequested).unwrap();
     assert_eq!(
         requested.sends.shutdowns.as_slice(),
         [ShutdownChild::new(0)]
@@ -834,12 +844,12 @@ async fn a_proxy_shuts_down_its_exact_worker_before_stopping() {
     assert!(matches!(requested.become_, Step::Continue));
 
     let stale = proxy
-        .on(ChildStopped::new(9, Ok(Exit::Normal), Instant::now()))
+        .on_path(ChildStopped::new(9, Ok(Exit::Normal), Instant::now()))
         .unwrap();
     assert!(matches!(stale.become_, Step::Continue));
 
     let stopped = proxy
-        .on(ChildStopped::new(0, Ok(Exit::Normal), Instant::now()))
+        .on_path(ChildStopped::new(0, Ok(Exit::Normal), Instant::now()))
         .unwrap();
     assert!(matches!(stopped.become_, Step::Stop(_)));
     assert_eq!(stopped.sends.stopped_reports.len(), 1);
@@ -849,21 +859,21 @@ async fn a_proxy_shuts_down_its_exact_worker_before_stopping() {
 async fn proxy_shutdown_waits_for_in_flight_creation_resolution() {
     let initialized = Proxy::new(child(0)).initialize().unwrap();
     let mut accepted = initialized.behavior;
-    let waiting = accepted.on(ShutdownRequested).unwrap();
+    let waiting = accepted.on_path(ShutdownRequested).unwrap();
     assert!(waiting.sends.shutdowns.is_empty());
     assert!(matches!(waiting.become_, Step::Continue));
 
     let resolved = accepted
-        .on(CreationResolved::birth(0, MailAddr(0)))
+        .on_path(CreationResolved::birth(0, MailAddr(0)))
         .unwrap();
     assert_eq!(resolved.sends.shutdowns.as_slice(), [ShutdownChild::new(0)]);
     assert!(matches!(resolved.become_, Step::Continue));
 
     let initialized = Proxy::new(child(0)).initialize().unwrap();
     let mut rejected = initialized.behavior;
-    rejected.on(ShutdownRequested).unwrap();
+    rejected.on_path(ShutdownRequested).unwrap();
     let resolved = rejected
-        .on(CreationResolved::new(
+        .on_path(CreationResolved::new(
             0,
             CreationKind::Birth,
             Err(CreationRejection::EnvironmentFailed),
@@ -877,11 +887,13 @@ async fn proxy_shutdown_waits_for_in_flight_creation_resolution() {
 async fn proxy_shutdown_rejection_is_correlated_to_the_requested_worker() {
     let initialized = Proxy::new(child(0)).initialize().unwrap();
     let mut proxy = initialized.behavior;
-    proxy.on(CreationResolved::birth(0, MailAddr(0))).unwrap();
-    proxy.on(ShutdownRequested).unwrap();
+    proxy
+        .on_path(CreationResolved::birth(0, MailAddr(0)))
+        .unwrap();
+    proxy.on_path(ShutdownRequested).unwrap();
 
     let stale = proxy
-        .on(ChildShutdownRejected::new(
+        .on_path(ChildShutdownRejected::new(
             9,
             ChildShutdownRejection::NotEstablished,
         ))
@@ -889,14 +901,14 @@ async fn proxy_shutdown_rejection_is_correlated_to_the_requested_worker() {
     assert!(matches!(stale.become_, Step::Continue));
 
     let already = proxy
-        .on(ChildShutdownRejected::new(
+        .on_path(ChildShutdownRejected::new(
             0,
             ChildShutdownRejection::AlreadyStopping,
         ))
         .unwrap();
     assert!(matches!(already.become_, Step::Continue));
 
-    let rejected = proxy.on(ChildShutdownRejected::new(
+    let rejected = proxy.on_path(ChildShutdownRejected::new(
         0,
         ChildShutdownRejection::NotEstablished,
     ));
@@ -1051,7 +1063,9 @@ async fn proxy_replacement_creates_a_fresh_incarnation() {
     let mut proxy = initialized.behavior;
     assert_eq!(first.creates[0].nonce, 0);
     assert_eq!(first.creates[0].kind, CreationKind::Birth);
-    proxy.on(CreationResolved::birth(0, MailAddr(0))).unwrap();
+    proxy
+        .on_path(CreationResolved::birth(0, MailAddr(0)))
+        .unwrap();
     let second = proxy
         .transition(ProxyEvent::Command(User::user(
             MailAddr(0),
@@ -1075,7 +1089,7 @@ async fn proxy_replacement_creates_a_fresh_incarnation() {
     assert_eq!(second.sends.child_observations[0].nonce, 1);
     assert_eq!(second.sends.stopped_reports[0].outcome, Err(Crash::Failed));
     proxy
-        .on(CreationResolved::replacement_incarnation(1, 0, MailAddr(1)))
+        .on_path(CreationResolved::replacement_incarnation(1, 0, MailAddr(1)))
         .unwrap();
 
     let forwarded = proxy
@@ -1105,11 +1119,13 @@ async fn proxy_routes_only_after_matching_installation_and_rejection_stays_vacan
         .unwrap();
     assert!(pending.sends.deliveries.is_empty());
 
-    let stale = proxy.on(CreationResolved::birth(1, MailAddr(1))).unwrap();
+    let stale = proxy
+        .on_path(CreationResolved::birth(1, MailAddr(1)))
+        .unwrap();
     assert!(stale.sends.creation_reports.is_empty());
 
     let rejected = proxy
-        .on(CreationResolved::rejected(
+        .on_path(CreationResolved::rejected(
             0,
             CreationKind::Birth,
             CreationRejection::InitializationFailed,
@@ -1134,7 +1150,9 @@ async fn proxy_serializes_attempts_and_rejection_preserves_last_installed_incarn
     let proxy = Proxy::new(child(0));
     let initialized = proxy.initialize().unwrap();
     let mut proxy = initialized.behavior;
-    proxy.on(CreationResolved::birth(0, MailAddr(0))).unwrap();
+    proxy
+        .on_path(CreationResolved::birth(0, MailAddr(0)))
+        .unwrap();
     proxy
         .transition(ProxyEvent::Command(User::user(
             MailAddr(0),
@@ -1162,7 +1180,7 @@ async fn proxy_serializes_attempts_and_rejection_preserves_last_installed_incarn
     assert!(overlapping.creates.is_empty());
 
     proxy
-        .on(CreationResolved::rejected(
+        .on_path(CreationResolved::rejected(
             1,
             CreationKind::ReplacementIncarnation { replaces: 0 },
             CreationRejection::EnvironmentFailed,
@@ -1188,7 +1206,9 @@ async fn idle_proxy_marks_an_immediate_successor_as_a_replacement_incarnation() 
     let initial = initialized.actions;
     let mut proxy = initialized.behavior;
     assert_eq!(initial.creates[0].kind, CreationKind::Birth);
-    proxy.on(CreationResolved::birth(0, MailAddr(0))).unwrap();
+    proxy
+        .on_path(CreationResolved::birth(0, MailAddr(0)))
+        .unwrap();
 
     let stopped = proxy
         .transition(ProxyEvent::ChildStopped(ChildStopped {
@@ -1243,7 +1263,9 @@ async fn stable_proxy_reports_worker_stop_and_creates_fresh_replacement() {
     assert_eq!(worker_birth.creates[0].nonce, 0);
     assert_eq!(worker_birth.creates[0].kind, CreationKind::Birth);
     assert_eq!(worker_birth.sends.child_observations[0].nonce, 0);
-    proxy.on(CreationResolved::birth(0, MailAddr(0))).unwrap();
+    proxy
+        .on_path(CreationResolved::birth(0, MailAddr(0)))
+        .unwrap();
 
     let worker_stop = proxy
         .transition(ProxyEvent::ChildStopped(ChildStopped {
@@ -1657,7 +1679,7 @@ async fn stale_time_events_do_not_fire_or_reschedule() {
     });
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
-    let stale = DeadlineEvent::Elapsed(TimerElapsed {
+    let stale = EventLayer::Owned(TimerElapsed {
         id: TimerId(0),
         generation: TimerGeneration(1),
     });
@@ -1665,7 +1687,7 @@ async fn stale_time_events_do_not_fire_or_reschedule() {
     assert!(matches!(ignored.become_, Step::Continue));
 
     let fired = behavior
-        .transition(DeadlineEvent::Elapsed(TimerElapsed {
+        .transition(EventLayer::Owned(TimerElapsed {
             id: TimerId(0),
             generation: TimerGeneration(0),
         }))
@@ -1673,7 +1695,7 @@ async fn stale_time_events_do_not_fire_or_reschedule() {
     assert!(matches!(fired.become_, Step::Stop(behavior::Stopped)));
 
     let duplicate = behavior
-        .transition(DeadlineEvent::Elapsed(TimerElapsed {
+        .transition(EventLayer::Owned(TimerElapsed {
             id: TimerId(0),
             generation: TimerGeneration(0),
         }))

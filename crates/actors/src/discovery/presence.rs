@@ -3,8 +3,8 @@
 use std::time::Duration;
 
 use behavior::{
-    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, Never, NoBirths, Recipient,
-    SendAlgebra, ServiceSends, User,
+    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, EventLayer, Never, NoBirths,
+    Recipient, SendAlgebra, ServiceSends, User,
 };
 use thiserror::Error;
 
@@ -171,7 +171,10 @@ pub struct PresenceSends<Reply: behavior::Protocol> {
     /// Relative expiry requests.
     pub schedules: ServiceSends<ScheduleAfter>,
 }
-impl<Reply: behavior::Protocol> SendAlgebra for PresenceSends<Reply> {
+impl<Reply> SendAlgebra for PresenceSends<Reply>
+where
+    Reply: behavior::Protocol,
+{
     fn empty() -> Self {
         Self {
             replies: Vec::new(),
@@ -429,7 +432,7 @@ where
     type Birth = NoBirths;
     fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
         Ok(match event {
-            TimedEvent::Behavior(event) => match event.message {
+            EventLayer::Inner(event) => match event.message {
                 PresenceMessage::Announce {
                     participant,
                     version,
@@ -440,7 +443,7 @@ where
                     Self::reply(reply_to, PresenceReply::Report(self.report()))
                 }
             },
-            TimedEvent::Elapsed(elapsed) => {
+            EventLayer::Owned(elapsed) => {
                 let Some(index)=self.records.iter().position(|record|record.entry.timer_id==elapsed.id&&matches!(record.entry.phase,PresencePhase::Present{generation,..}if generation==elapsed.generation))else{return Ok(Actions::cont());};
                 let (version, generation) = match self.records[index].entry.phase {
                     PresencePhase::Present {
@@ -532,14 +535,14 @@ mod tests {
             TimerGeneration(1)
         );
         assert!(
-            s.on(TimerElapsed::new(TimerId(1), TimerGeneration(0)))
+            s.on_path(TimerElapsed::new(TimerId(1), TimerGeneration(0)))
                 .unwrap()
                 .sends
                 .replies
                 .is_empty()
         );
         let expired = s
-            .on(TimerElapsed::new(TimerId(1), TimerGeneration(1)))
+            .on_path(TimerElapsed::new(TimerId(1), TimerGeneration(1)))
             .unwrap();
         assert!(matches!(
             expired.sends.replies[0].message,

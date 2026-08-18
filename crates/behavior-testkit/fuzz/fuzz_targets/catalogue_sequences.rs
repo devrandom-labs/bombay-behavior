@@ -54,14 +54,14 @@ fuzz_target!(|bytes: &[u8]| {
                 .receive(MailAddr(0), BreakerMessage::Admit { reply_to: breaker_reply }),
             1 => breaker.receive(MailAddr(0), BreakerMessage::Succeeded { attempt }),
             2 => breaker.receive(MailAddr(0), BreakerMessage::Failed { attempt }),
-            _ => breaker.on(TimerElapsed::new(TimerId(1), generation)),
+            _ => breaker.on_path(TimerElapsed::new(TimerId(1), generation)),
         }
         .expect("breaker fold is infallible");
 
         let participant = vec![b];
         if a % 3 == 0 {
             presence
-                .on(TimerElapsed::new(TimerId(u64::from(b)), generation))
+                .on_path(TimerElapsed::new(TimerId(u64::from(b)), generation))
         } else {
             presence.receive(
                 MailAddr(0),

@@ -1,4 +1,4 @@
-# Protocol, event, behavior, and effect algebras
+# Identity, ingress, behavior, and effect algebras
 
 Bombay keeps four semantic roles orthogonal even when one nominal Rust actor
 template implements more than one of their traits.
@@ -23,7 +23,7 @@ Actions ── explicit output of one successful fold
     └── become or stop
 ```
 
-The public protocol and the behavior event are deliberately different:
+Protocol identity and behavior ingress are deliberately different:
 
 ```text
 Protocol::Msg                       ordinary actor communication
@@ -33,6 +33,24 @@ Behavior::Event = Msg + timer + observation + lifecycle + supervision + ...
 Only `Protocol::Msg` may arrive through an ordinary `Recipient<P>`. Runtime
 facts enter through the concrete `Behavior::Event` sum. Service requests leave
 through named `Behavior::Sends` lanes. Neither direction is an ambient effect.
+
+## Structural ingress
+
+A wrapper adds ownership structurally:
+
+```text
+EventLayer<Owned, Inner>
+├── Owned  selected by Here
+└── Inner  selected by Inside<Path>
+```
+
+`InjectEvent<Input, Path>` is construction evidence, not a runtime router.
+Adding a new input never requires modifying unrelated wrappers. If two nested
+layers accept the same input type, `Here` and `Inside<Here>` remain different
+capabilities; Rust does not guess from the payload. A request returning a later
+fact selects the corresponding named effect lane and ingress owner when it is
+emitted. Stale facts are consumed according to that owner's policy and never
+search inward.
 
 ## Why a protocol is not a behavior
 
@@ -119,13 +137,18 @@ The separation preserves these laws:
   delivery;
 - wrapping, supervising, timing, or observing an actor does not change its
   public identity;
-- event routing preserves an unowned input unchanged until a nested owner
-  accepts it;
+- structural ingress delivers an input to exactly the owner selected by its
+  compile-time path, without payload-based fallback;
 - named effect products cannot silently reinterpret an inner lane;
 - a behavior fold performs no delivery, creation, clock access, observation,
   or scheduling itself; and
 - the interpreter receives the complete `Actions` value and realizes only
   those explicit effects.
+
+At an application root, `Guardian::new(inner)` selects direct normal stop.
+`Guardian::coordinated(coordinator)` selects delegation to the coordinator's
+inner `Here` owner. The constructor therefore resolves root shutdown policy;
+application callers do not spell a nesting path.
 
 Fresh allocation and the actor's ability to send, create, and designate its
 next behavior are actor-model laws. The Rust protocol projection, typed event

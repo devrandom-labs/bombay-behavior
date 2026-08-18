@@ -169,7 +169,7 @@ fn install(
     pool: &mut behavior::Active<PoolDefinition>,
     slot: u64,
 ) -> behavior::PoolActions<MailAddr, Reply, u8, u16, Worker> {
-    pool.on(WorkerCreationResolved::new(
+    pool.on_path(WorkerCreationResolved::new(
         slot,
         0,
         CreationKind::Birth,
@@ -359,7 +359,7 @@ fn interruption_policy_distinguishes_failure_from_at_least_once_retry() {
         install(&mut pool, 0);
         submit(&mut pool, 1, 10);
         let actions = pool
-            .on(WorkerStopped::new(
+            .on_path(WorkerStopped::new(
                 0,
                 0,
                 Err(behavior::Crash::Panicked),
@@ -397,7 +397,7 @@ fn rejected_worker_creation_never_dispatches() {
     let mut pool = initialized.behavior;
     submit(&mut pool, 1, 10);
     let actions = pool
-        .on(WorkerCreationResolved::new(
+        .on_path(WorkerCreationResolved::new(
             0,
             0,
             CreationKind::Birth,
@@ -475,7 +475,7 @@ fn panicking_payload_clone_occurs_before_admission_state_is_committed() {
     .unwrap();
     let initialized = pool.initialize().unwrap();
     let mut pool = initialized.behavior;
-    pool.on(WorkerCreationResolved::new(
+    pool.on_path(WorkerCreationResolved::new(
         0,
         0,
         CreationKind::Birth,
@@ -536,7 +536,7 @@ fn panicking_retry_clone_preserves_the_exact_assigned_state() {
     .unwrap();
     let initialized = pool.initialize().unwrap();
     let mut pool = initialized.behavior;
-    pool.on(WorkerCreationResolved::new(
+    pool.on_path(WorkerCreationResolved::new(
         0,
         0,
         CreationKind::Birth,
@@ -558,7 +558,7 @@ fn panicking_retry_clone_preserves_the_exact_assigned_state() {
     panic_on_clone.store(true, Ordering::SeqCst);
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let _ = pool.on(WorkerStopped::new(
+        let _ = pool.on_path(WorkerStopped::new(
             0,
             0,
             Err(behavior::Crash::Panicked),
@@ -595,7 +595,7 @@ fn denied_replacement_retires_slot_instead_of_stranding_installation() {
     install(&mut pool, 0);
     submit(&mut pool, 1, 10);
     let actions = pool
-        .on(WorkerStopped::new(
+        .on_path(WorkerStopped::new(
             0,
             0,
             Err(behavior::Crash::Panicked),
@@ -617,7 +617,7 @@ fn duplicate_creation_resolution_cannot_revive_or_overwrite_an_available_slot() 
     let initialized = pool.initialize().unwrap();
     let mut pool = initialized.behavior;
     install(&mut pool, 0);
-    let result = pool.on(WorkerCreationResolved::new(
+    let result = pool.on_path(WorkerCreationResolved::new(
         0,
         0,
         CreationKind::Birth,
@@ -718,7 +718,7 @@ fn assignment_and_response_lanes_survive_shutdown_composition() {
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
     behavior
-        .on(WorkerCreationResolved::new(
+        .on_path(WorkerCreationResolved::new(
             0,
             0,
             CreationKind::Birth,

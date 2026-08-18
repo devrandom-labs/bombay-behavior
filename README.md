@@ -45,12 +45,12 @@ The packages preserve these guarantees:
 ## The orthogonal actor algebras
 
 Bombay does not use “protocol” as another name for an actor, its mailbox, or
-its complete behavior. Four roles remain distinct:
+its complete behavior. The foundational roles remain distinct:
 
 | Role | Meaning |
 |---|---|
 | `Protocol` | Stable public destination identity: exactly `Addr` plus `Msg` |
-| `Behavior::Event` | Complete input algebra: public messages plus typed timer, observation, creation, lifecycle, and supervision facts |
+| `Behavior::Event` | Complete structural ingress algebra: public messages plus typed timer, observation, creation, lifecycle, and supervision facts |
 | `Behavior` | Current state and the pure fold from one event to explicit actions |
 | `Actions` | Named sends, staged fresh creations, and the next behavior or termination verdict |
 
@@ -63,6 +63,12 @@ Behavior<B>  ── projects B::Protocol, folds B::Event
                          ▼
 Actions { sends, creates, become }
 ```
+
+Ingress ownership is structural. `EventLayer<Owned, Inner>` adds one layer;
+`InjectEvent<Input, Here>` selects its owner and
+`InjectEvent<Input, Inside<Path>>` selects a nested owner. No wrapper maintains
+a list of other templates' event types, and stale facts never search inward by
+payload type.
 
 A protocol can never serve as the behavior algebra: it has no state,
 initialization, service-event lanes, effects, errors, birth capability, or
@@ -80,6 +86,10 @@ code can observe only `Addr` and `Msg`. Transparent wrappers such as
 recipient's identity remains usable regardless of which actor later emits its
 delivery.
 
+`Guardian::new(inner)` owns direct root shutdown;
+`Guardian::coordinated(coordinator)` delegates root shutdown to the typed
+coordinator owner. Both forms infer the concrete policy and composed ingress.
+
 An actor template owns the protocol, state, and behavior wiring it can know.
 Users supply only irreducible domain policy such as destinations, initial
 state, topology, configuration, or pure reactions. `MessageProtocol<A, M>` is
@@ -88,7 +98,9 @@ recursive seams with additional laws use concrete products such as
 `WorkerPoolProtocol`.
 
 The complete rationale and wrapper laws are in
-[Protocol, event, behavior, and effect algebras](docs/protocol-algebra.md).
+[Protocol, ingress, behavior, and effect algebras](docs/protocol-algebra.md).
+The repository-wide template and composition review is recorded in the
+[Foundational Actor-Template Algebra Audit](docs/foundational-algebra-audit.md).
 
 ## Component installation
 

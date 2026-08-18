@@ -1,7 +1,7 @@
 # Behavior Adapter Contract
 
 This contract uses the orthogonal roles defined in
-[Protocol, event, behavior, and effect algebras](protocol-algebra.md). An
+[Protocol, ingress, behavior, and effect algebras](protocol-algebra.md). An
 adapter drives a `Behavior`; ordinary delivery addresses its projected
 `Behavior::Protocol`.
 
@@ -121,11 +121,24 @@ implementations require neither tuple positions nor wrapper inspection.
 
 ## Event injection
 
-Runtime facts return as later typed events. `EventInput<Input>` and
-`RouteInput<Input>` prove that the concrete closed event sum accepts a given
-input. Timer callbacks, creation callbacks, lifecycle callbacks, and
-observation callbacks must enqueue their typed input; they must not synchronously
-re-enter the behavior fold.
+Runtime facts return as later typed events. `InjectEvent<Input, Path>` proves
+both that the concrete closed event algebra accepts an input and which layer
+owns it. `Here` selects the current layer; `Inside<Path>` selects the same
+capability below exactly one outer layer. `EventLayer<Owned, Inner>` is the
+canonical structural coproduct for a wrapper with one owned lane. Templates
+with several related owned facts use a named exhaustive event sum and obey the
+same path law.
+
+There is no payload search or fallthrough. The request selects its owner when
+emitted. A stale result is inert at that owner; it is never offered to an inner
+layer merely because that layer accepts the same Rust payload type. Named
+effect products preserve the dual structure: a wrapper's own service lane
+returns through `Here`, while a request in its `behavior` product remains
+owned by the inner layer and returns through `Inside<_>`.
+
+Timer, creation, lifecycle, and observation callbacks must enqueue their
+structurally selected typed input; they must not synchronously re-enter the
+behavior fold.
 
 ## Error and cancellation law
 

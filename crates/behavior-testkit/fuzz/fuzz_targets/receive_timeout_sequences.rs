@@ -3,9 +3,10 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, Activate, MailAddr, Never, NoBirths, ReceiveTimeoutEvent, Step,
-    TimerElapsed, TimerGeneration, TimerId, User, UserEvent,
+    Acted, Actions, Activate, MailAddr, Never, NoBirths, Step, TimerElapsed, TimerGeneration,
+    TimerId, User, UserEvent,
 };
+use behavior::EventLayer;
 use libfuzzer_sys::fuzz_target;
 use tokio::runtime::Builder;
 
@@ -51,7 +52,7 @@ fuzz_target!(|bytes: &[u8]| {
                         break;
                     };
                     let actions = behavior
-                        .transition(ReceiveTimeoutEvent::Behavior(User::user(MailAddr(1), byte)))
+                        .transition(EventLayer::Inner(User::user(MailAddr(1), byte)))
                         .unwrap();
                     issued = next;
                     live = Some(next);
@@ -61,7 +62,7 @@ fuzz_target!(|bytes: &[u8]| {
                     let delivered = u64::from(byte / 3);
                     let matched = live == Some(delivered);
                     let actions = behavior
-                        .transition(ReceiveTimeoutEvent::Elapsed(TimerElapsed {
+                        .transition(EventLayer::Owned(TimerElapsed {
                             id: TimerId(0),
                             generation: TimerGeneration(delivered),
                         }))
@@ -75,7 +76,7 @@ fuzz_target!(|bytes: &[u8]| {
                 _ => {
                     let before = live;
                     let actions = behavior
-                        .transition(ReceiveTimeoutEvent::Elapsed(TimerElapsed {
+                        .transition(EventLayer::Owned(TimerElapsed {
                             id: TimerId(1),
                             generation: TimerGeneration(u64::from(byte)),
                         }))

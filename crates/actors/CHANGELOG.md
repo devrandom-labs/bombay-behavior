@@ -6,6 +6,14 @@ All notable changes to `bombay-behavior-actors` are documented here.
 
 ### Changed
 
+- Replace template-specific event forwarding lists with structural ingress.
+  Timer, watch, lifecycle, supervision, creation, parent-report, and shutdown
+  requests now carry their exact relative fact destination; stale facts are
+  inert at the selected owner instead of falling through by payload type.
+- Make shutdown wrappers own the lane they add, so compositions such as
+  `StopOnShutdown<DynamicSupervisor<...>>` require no fabricated shutdown
+  variant in the inner actor. Guardian construction now selects either direct
+  root stop or coordinated inner shutdown as an explicit policy.
 - Make `Proxy<C>` an orderly subtree owner: shutdown now emits a typed
   `ShutdownChild<C>` for the exact installed incarnation and stops only after
   its matching `ChildStopped`. Shutdown during installation waits for creation

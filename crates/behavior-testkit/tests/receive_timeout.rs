@@ -1,9 +1,9 @@
 use std::time::Duration;
 
+use behavior::EventLayer;
 use behavior::{
-    Acted, Actions, Activate, Behavior, Births, Create, DeadlineEvent, Delivery, MailAddr, Never,
-    NoBirths, ReceiveTimeoutEvent, Recipient, Step, TimerElapsed, TimerGeneration, TimerId, User,
-    UserEvent,
+    Acted, Actions, Activate, Behavior, Births, Create, Delivery, MailAddr, Never, NoBirths,
+    Recipient, Step, TimerElapsed, TimerGeneration, TimerId, User, UserEvent,
 };
 use behavior_testkit::model::InactivityModel;
 
@@ -102,7 +102,7 @@ async fn initialization_and_successful_user_folds_arm_after_preserving_actions()
     assert_eq!(initial.sends.schedules[0].after, after);
 
     let first = behavior
-        .transition(ReceiveTimeoutEvent::Behavior(User::user(MailAddr(1), 1)))
+        .transition(EventLayer::Inner(User::user(MailAddr(1), 1)))
         .unwrap();
     assert_eq!(first.sends.behavior.len(), 1);
     assert_eq!(first.sends.behavior[0].message, 1);
@@ -112,7 +112,7 @@ async fn initialization_and_successful_user_folds_arm_after_preserving_actions()
     assert_eq!(first.sends.schedules[0].generation, TimerGeneration(1));
 
     let second = behavior
-        .transition(ReceiveTimeoutEvent::Behavior(User::user(MailAddr(1), 2)))
+        .transition(EventLayer::Inner(User::user(MailAddr(1), 2)))
         .unwrap();
     assert_eq!(second.sends.schedules[0].generation, TimerGeneration(2));
 }
@@ -129,7 +129,7 @@ async fn matching_delivery_consumes_once_and_reaction_preserves_full_actions() {
     let mut behavior = initialized.behavior;
 
     let stale = behavior
-        .transition(ReceiveTimeoutEvent::Elapsed(TimerElapsed {
+        .transition(EventLayer::Owned(TimerElapsed {
             id: TimerId(0),
             generation: TimerGeneration(1),
         }))
@@ -138,7 +138,7 @@ async fn matching_delivery_consumes_once_and_reaction_preserves_full_actions() {
     assert!(stale.sends.schedules.is_empty());
 
     let fired = behavior
-        .transition(ReceiveTimeoutEvent::Elapsed(TimerElapsed {
+        .transition(EventLayer::Owned(TimerElapsed {
             id: TimerId(0),
             generation: TimerGeneration(0),
         }))
@@ -149,7 +149,7 @@ async fn matching_delivery_consumes_once_and_reaction_preserves_full_actions() {
     assert!(fired.sends.schedules.is_empty());
 
     let duplicate = behavior
-        .transition(ReceiveTimeoutEvent::Elapsed(TimerElapsed {
+        .transition(EventLayer::Owned(TimerElapsed {
             id: TimerId(0),
             generation: TimerGeneration(0),
         }))
@@ -158,7 +158,7 @@ async fn matching_delivery_consumes_once_and_reaction_preserves_full_actions() {
     assert!(duplicate.sends.schedules.is_empty());
 
     let rearmed = behavior
-        .transition(ReceiveTimeoutEvent::Behavior(User::user(MailAddr(1), 3)))
+        .transition(EventLayer::Inner(User::user(MailAddr(1), 3)))
         .unwrap();
     assert_eq!(rearmed.sends.schedules[0].generation, TimerGeneration(1));
 }
@@ -173,10 +173,10 @@ async fn errors_and_terminal_user_folds_do_not_rearm() {
     );
     let initialized = failing.initialize().unwrap();
     let mut failing = initialized.behavior;
-    let failed = failing.transition(ReceiveTimeoutEvent::Behavior(User::user(MailAddr(1), 7)));
+    let failed = failing.transition(EventLayer::Inner(User::user(MailAddr(1), 7)));
     assert!(matches!(failed, Err(Failed)));
     let still_live = failing
-        .transition(ReceiveTimeoutEvent::Elapsed(TimerElapsed {
+        .transition(EventLayer::Owned(TimerElapsed {
             id: TimerId(0),
             generation: TimerGeneration(0),
         }))
@@ -192,7 +192,7 @@ async fn errors_and_terminal_user_folds_do_not_rearm() {
     let initialized = terminal.initialize().unwrap();
     let mut terminal = initialized.behavior;
     let stopped = terminal
-        .transition(ReceiveTimeoutEvent::Behavior(User::user(MailAddr(1), 0)))
+        .transition(EventLayer::Inner(User::user(MailAddr(1), 0)))
         .unwrap();
     assert_eq!(stopped.become_, Step::Stop(behavior::Stopped));
     assert!(stopped.sends.schedules.is_empty());
@@ -200,7 +200,7 @@ async fn errors_and_terminal_user_folds_do_not_rearm() {
     assert_eq!(stopped.creates[0].nonce, 0);
 
     let formerly_live = terminal
-        .transition(ReceiveTimeoutEvent::Elapsed(TimerElapsed {
+        .transition(EventLayer::Owned(TimerElapsed {
             id: TimerId(0),
             generation: TimerGeneration(0),
         }))
@@ -248,7 +248,7 @@ async fn nested_timer_service_events_never_reset_receive_inactivity() {
     assert_eq!(initial.sends.schedules[0].id, TimerId(1));
 
     let accepted = behavior
-        .transition(ReceiveTimeoutEvent::Elapsed(TimerElapsed {
+        .transition(EventLayer::Owned(TimerElapsed {
             id: TimerId(0),
             generation: TimerGeneration(0),
         }))
@@ -256,7 +256,7 @@ async fn nested_timer_service_events_never_reset_receive_inactivity() {
     assert!(accepted.sends.schedules.is_empty());
 
     let stale = behavior
-        .transition(ReceiveTimeoutEvent::Elapsed(TimerElapsed {
+        .transition(EventLayer::Owned(TimerElapsed {
             id: TimerId(0),
             generation: TimerGeneration(0),
         }))
@@ -264,7 +264,7 @@ async fn nested_timer_service_events_never_reset_receive_inactivity() {
     assert!(stale.sends.schedules.is_empty());
 
     let outer = behavior
-        .transition(ReceiveTimeoutEvent::Elapsed(TimerElapsed {
+        .transition(EventLayer::Owned(TimerElapsed {
             id: TimerId(1),
             generation: TimerGeneration(0),
         }))
@@ -291,7 +291,7 @@ async fn accepted_stale_timeout_error_and_terminal_turns_match_independent_model
     );
 
     let accepted = behavior
-        .transition(ReceiveTimeoutEvent::Behavior(User::user(MailAddr(1), 1)))
+        .transition(EventLayer::Inner(User::user(MailAddr(1), 1)))
         .unwrap();
     assert_eq!(
         accepted.sends.schedules[0].generation,
@@ -300,7 +300,7 @@ async fn accepted_stale_timeout_error_and_terminal_turns_match_independent_model
 
     assert!(!model.notification(0));
     let stale = behavior
-        .transition(ReceiveTimeoutEvent::Elapsed(TimerElapsed {
+        .transition(EventLayer::Owned(TimerElapsed {
             id: TimerId(0),
             generation: TimerGeneration(0),
         }))
@@ -309,7 +309,7 @@ async fn accepted_stale_timeout_error_and_terminal_turns_match_independent_model
 
     assert!(model.notification(1));
     let timeout = behavior
-        .transition(ReceiveTimeoutEvent::Elapsed(TimerElapsed {
+        .transition(EventLayer::Owned(TimerElapsed {
             id: TimerId(0),
             generation: TimerGeneration(1),
         }))
@@ -319,7 +319,7 @@ async fn accepted_stale_timeout_error_and_terminal_turns_match_independent_model
 
     assert!(!model.notification(1));
     let duplicate = behavior
-        .transition(ReceiveTimeoutEvent::Elapsed(TimerElapsed {
+        .transition(EventLayer::Owned(TimerElapsed {
             id: TimerId(0),
             generation: TimerGeneration(1),
         }))
@@ -327,11 +327,11 @@ async fn accepted_stale_timeout_error_and_terminal_turns_match_independent_model
     assert!(duplicate.sends.behavior.is_empty());
 
     assert_eq!(model.no_activity(), None);
-    let failed = behavior.transition(ReceiveTimeoutEvent::Behavior(User::user(MailAddr(1), 7)));
+    let failed = behavior.transition(EventLayer::Inner(User::user(MailAddr(1), 7)));
     assert!(matches!(failed, Err(Failed)));
 
     let accepted = behavior
-        .transition(ReceiveTimeoutEvent::Behavior(User::user(MailAddr(1), 2)))
+        .transition(EventLayer::Inner(User::user(MailAddr(1), 2)))
         .unwrap();
     assert_eq!(
         accepted.sends.schedules[0].generation,
@@ -339,7 +339,7 @@ async fn accepted_stale_timeout_error_and_terminal_turns_match_independent_model
     );
 
     let terminal = behavior
-        .transition(ReceiveTimeoutEvent::Behavior(User::user(MailAddr(1), 0)))
+        .transition(EventLayer::Inner(User::user(MailAddr(1), 0)))
         .unwrap();
     assert_eq!(terminal.become_, Step::Stop(behavior::Stopped));
     assert!(terminal.sends.schedules.is_empty());
@@ -397,7 +397,7 @@ async fn terminal_initialization_consumes_absolute_timer_state() {
     assert!(initial.sends.schedules.is_empty());
 
     let after_stop = behavior
-        .transition(DeadlineEvent::Elapsed(TimerElapsed {
+        .transition(EventLayer::Owned(TimerElapsed {
             id: TimerId(0),
             generation: TimerGeneration(0),
         }))

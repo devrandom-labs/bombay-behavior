@@ -9,10 +9,11 @@
 //! product lane and never leak across.
 
 use behavior::{
-    Acted, Actions, Activate, Crash, DeadlineEvent, Delivery, MailAddr, Never, PeerStopped,
-    Recipient, RestartPolicy, StashRoute, Step, Strategy, SupervisionEvent, TimerElapsed,
-    TimerGeneration, TimerId, UserEvent, WatchEvent, WorkerStopped, stop_on_abnormal_death,
+    Acted, Actions, Activate, Crash, Delivery, MailAddr, Never, PeerStopped, Recipient,
+    RestartPolicy, StashRoute, Step, Strategy, SupervisionEvent, TimerElapsed, TimerGeneration,
+    TimerId, UserEvent, WorkerStopped, stop_on_abnormal_death,
 };
+use behavior::EventLayer;
 use libfuzzer_sys::fuzz_target;
 use std::time::Instant;
 use tokio::runtime::Builder;
@@ -113,8 +114,8 @@ fuzz_target!(|bytes: &[u8]| {
                     // User lane: stash filter — echo iff not Stash-routed.
                     let arg = u64::try_from(index).unwrap();
                     let actions = behavior
-                        .transition(SupervisionEvent::Behavior(DeadlineEvent::Behavior(
-                            WatchEvent::Behavior(UserEvent::user(MailAddr(9), arg)),
+                        .transition(SupervisionEvent::Behavior(EventLayer::Inner(
+                            EventLayer::Inner(UserEvent::user(MailAddr(9), arg)),
                         )))
                         .unwrap();
                     let echo_step: Vec<u64> = actions
@@ -137,8 +138,8 @@ fuzz_target!(|bytes: &[u8]| {
                 1 => {
                     // Peer lane: watched abnormal death stops the fold.
                     let actions = behavior
-                        .transition(SupervisionEvent::Behavior(DeadlineEvent::Behavior(
-                            WatchEvent::PeerStopped(PeerStopped {
+                        .transition(SupervisionEvent::Behavior(EventLayer::Inner(
+                            EventLayer::Owned(PeerStopped {
                                 peer,
                                 outcome: Err(Crash::Failed),
                             }),
@@ -154,7 +155,7 @@ fuzz_target!(|bytes: &[u8]| {
                 2 => {
                     // Time lane: matching Reached fires once, then inert.
                     let actions = behavior
-                        .transition(SupervisionEvent::Behavior(DeadlineEvent::Elapsed(
+                        .transition(SupervisionEvent::Behavior(EventLayer::Owned(
                             TimerElapsed {
                                 id: TimerId(0),
                                 generation: TimerGeneration(0),

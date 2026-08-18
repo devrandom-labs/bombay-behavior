@@ -39,9 +39,9 @@ proptest! {
         let _runtime = Builder::new_current_thread().enable_all().build().unwrap();
         let events = inputs.iter().enumerate().map(|(index, (shutdown, message))| {
             if *shutdown {
-                ShutdownEvent::ShutdownRequested(ShutdownRequested)
+                ShutdownEvent::Owned(ShutdownRequested)
             } else {
-                ShutdownEvent::Behavior(User {
+                ShutdownEvent::Inner(User {
                     from: MailAddr(u64::try_from(index).unwrap()),
                     message: *message,
                 })

@@ -82,7 +82,7 @@ fn pool(selector: Selector) -> Pool {
     let initialized = pool.initialize().unwrap();
     let mut pool = initialized.behavior;
     for slot in 0..2 {
-        pool.on(WorkerCreationResolved::new(
+        pool.on_path(WorkerCreationResolved::new(
             slot,
             slot,
             CreationKind::Birth,
@@ -133,7 +133,7 @@ fn targeted_submission_rejects_when_its_busy_workers_backlog_is_full() {
     .unwrap();
     let initialized = pool.initialize().unwrap();
     let mut pool = initialized.behavior;
-    pool.on(WorkerCreationResolved::new(
+    pool.on_path(WorkerCreationResolved::new(
         0,
         0,
         CreationKind::Birth,
@@ -165,7 +165,7 @@ fn affinity_survives_fresh_worker_incarnation_replacement() {
     assert_eq!(pool.affinity(&4), Some(0));
 
     let stopped = pool
-        .on(WorkerStopped::new(
+        .on_path(WorkerStopped::new(
             0,
             0,
             Err(behavior::Crash::Panicked),
@@ -177,7 +177,7 @@ fn affinity_survives_fresh_worker_incarnation_replacement() {
     assert_eq!(pool.worker_phase(0), Some(WorkerPhase::Installing));
 
     let installed = pool
-        .on(WorkerCreationResolved::new(
+        .on_path(WorkerCreationResolved::new(
             0,
             2,
             CreationKind::replacement_of(0),
@@ -273,14 +273,14 @@ fn retired_affinity_refuses_new_work_until_explicit_valid_rebalance() {
         },
     )
     .unwrap();
-    pool.on(WorkerStopped::new(
+    pool.on_path(WorkerStopped::new(
         0,
         0,
         Err(behavior::Crash::Panicked),
         Instant::now(),
     ))
     .unwrap();
-    pool.on(WorkerCreationResolved::new(
+    pool.on_path(WorkerCreationResolved::new(
         0,
         2,
         CreationKind::replacement_of(0),
@@ -323,7 +323,7 @@ fn retiring_one_affinity_slot_terminates_its_queue_while_other_slots_live() {
     submit(&mut pool, 2, 2);
     assert_eq!(pool.backlog_len(), 1);
 
-    pool.on(WorkerStopped::new(
+    pool.on_path(WorkerStopped::new(
         0,
         0,
         Err(behavior::Crash::Panicked),
@@ -332,7 +332,7 @@ fn retiring_one_affinity_slot_terminates_its_queue_while_other_slots_live() {
     .unwrap();
     assert_eq!(pool.backlog_len(), 2);
     let rejected = pool
-        .on(WorkerCreationResolved::new(
+        .on_path(WorkerCreationResolved::new(
             0,
             2,
             CreationKind::replacement_of(0),
@@ -396,7 +396,7 @@ fn captured_selector_state_is_statically_dispatched() {
     let initialized = pool.initialize().unwrap();
     let mut pool = initialized.behavior;
     for slot in 0..2 {
-        pool.on(WorkerCreationResolved::new(
+        pool.on_path(WorkerCreationResolved::new(
             slot,
             slot,
             CreationKind::Birth,
@@ -480,7 +480,7 @@ fn keyed_assignment_lanes_survive_shutdown_composition() {
     let mut behavior = behavior.behavior;
     for slot in 0..2 {
         behavior
-            .on(WorkerCreationResolved::new(
+            .on_path(WorkerCreationResolved::new(
                 slot,
                 slot,
                 CreationKind::Birth,

@@ -1,10 +1,11 @@
 use std::time::Duration;
 
+use behavior::EventLayer;
 use behavior::{
-    Acted, Actions, ChildStopped, Crash, Create, CreationKind, CreationResolved, DeadlineEvent,
-    Delivery, Exit, Machine, MailAddr, Move, Never, PeerStopped, Proxy, ProxyCommand, ProxyEvent,
-    Recipient, RestartPolicy, StashRoute, Step, SupervisionEvent, TimerElapsed, TimerGeneration,
-    TimerId, User, UserEvent, WatchEvent, WorkerStopped, stop_on_abnormal_death,
+    Acted, Actions, ChildStopped, Crash, Create, CreationKind, CreationResolved, Delivery, Exit,
+    Machine, MailAddr, Move, Never, PeerStopped, Proxy, ProxyCommand, ProxyEvent, Recipient,
+    RestartPolicy, StashRoute, Step, SupervisionEvent, TimerElapsed, TimerGeneration, TimerId,
+    User, UserEvent, WorkerStopped, stop_on_abnormal_death,
 };
 use behavior_testkit::{Mailbox, drive};
 use std::time::Instant;
@@ -81,15 +82,15 @@ async fn stale_and_duplicate_time_observations_are_inert() {
             Ok(Step::Stop(behavior::Stopped))
         });
     let mut mailbox = Mailbox::new([
-        DeadlineEvent::Elapsed(TimerElapsed {
+        EventLayer::Owned(TimerElapsed {
             id: TimerId(0),
             generation: TimerGeneration(1),
         }),
-        DeadlineEvent::Elapsed(TimerElapsed {
+        EventLayer::Owned(TimerElapsed {
             id: TimerId(0),
             generation: TimerGeneration(0),
         }),
-        DeadlineEvent::Elapsed(TimerElapsed {
+        EventLayer::Owned(TimerElapsed {
             id: TimerId(0),
             generation: TimerGeneration(0),
         }),
@@ -132,7 +133,7 @@ async fn wrapper_orderings_preserve_both_initial_protocols() {
 }
 
 #[tokio::test]
-async fn unrelated_peer_event_passes_to_the_inner_watcher() {
+async fn peer_fact_reaches_only_its_structurally_selected_watcher() {
     let inner_peer = MailAddr(1);
     let outer_peer = MailAddr(2);
     let behavior = behavior::Watch::new(
@@ -142,12 +143,18 @@ async fn unrelated_peer_event_passes_to_the_inner_watcher() {
     );
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
-    let event = WatchEvent::PeerStopped(PeerStopped {
+    let stale_outer = EventLayer::Owned(PeerStopped {
         peer: inner_peer,
         outcome: Err(Crash::Failed),
     });
-    let actions = behavior.transition(event).unwrap();
+    let ignored = behavior.transition(stale_outer).unwrap();
+    assert_eq!(ignored.become_, Step::Continue);
 
+    let selected_inner = EventLayer::Inner(EventLayer::Owned(PeerStopped {
+        peer: inner_peer,
+        outcome: Err(Crash::Failed),
+    }));
+    let actions = behavior.transition(selected_inner).unwrap();
     assert_eq!(actions.become_, Step::Stop(behavior::Stopped));
 }
 

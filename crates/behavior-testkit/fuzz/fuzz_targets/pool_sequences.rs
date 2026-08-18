@@ -103,7 +103,7 @@ fuzz_target!(|bytes: &[u8]| {
     let initialized = (pool).initialize().unwrap();
     let mut pool = initialized.behavior;
     for slot in 0..2 {
-        pool.on(WorkerCreationResolved::new(
+        pool.on_path(WorkerCreationResolved::new(
             slot,
             0,
             CreationKind::Birth,
@@ -147,7 +147,7 @@ fuzz_target!(|bytes: &[u8]| {
                     Some(WorkerPhase::Idle | WorkerPhase::Assigned { .. })
                 ) {
                     let actions = pool
-                        .on(WorkerStopped::new(
+                        .on_path(WorkerStopped::new(
                             slot,
                             0,
                             Err(behavior::Crash::Panicked),
@@ -155,7 +155,7 @@ fuzz_target!(|bytes: &[u8]| {
                         ))
                         .unwrap();
                     if !actions.sends.replacement_commands.is_empty() {
-                        pool.on(WorkerCreationResolved::new(
+                        pool.on_path(WorkerCreationResolved::new(
                             slot,
                             1,
                             CreationKind::replacement_of(0),
@@ -186,7 +186,7 @@ fuzz_target!(|bytes: &[u8]| {
     let mut keyed = initialized.behavior;
     for slot in 0..2 {
         keyed
-            .on(WorkerCreationResolved::new(
+            .on_path(WorkerCreationResolved::new(
                 slot,
                 slot,
                 CreationKind::Birth,
@@ -243,7 +243,7 @@ fuzz_target!(|bytes: &[u8]| {
                 ) {
                     let stopped = incarnations[slot];
                     let actions = keyed
-                        .on(WorkerStopped::new(
+                        .on_path(WorkerStopped::new(
                             nonce,
                             stopped,
                             Err(behavior::Crash::Panicked),
@@ -258,7 +258,7 @@ fuzz_target!(|bytes: &[u8]| {
                             Err(behavior::CreationRejection::EnvironmentFailed)
                         };
                         keyed
-                            .on(WorkerCreationResolved::new(
+                            .on_path(WorkerCreationResolved::new(
                                 nonce,
                                 replacement,
                                 CreationKind::replacement_of(stopped),

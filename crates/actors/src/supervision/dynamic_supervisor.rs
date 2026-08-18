@@ -6,8 +6,8 @@ use crate::{
     WorkerStopped,
 };
 use behavior::{
-    Actions, Address, Behavior, BehaviorActed, Births, Create, Delivery, Never, Protocol,
-    Recipient, SendAlgebra, ServiceSends, User, UserEvent,
+    Actions, Address, Behavior, BehaviorActed, Births, Create, Delivery, Here, InjectEvent, Never,
+    Protocol, Recipient, SendAlgebra, ServiceSends, User, UserEvent,
 };
 
 /// One dynamically managed stable-child phase.
@@ -177,39 +177,68 @@ where
     }
 }
 
-macro_rules! event_lane {
-    ($ty:ty, $variant:ident) => {
-        impl<A, C, Reply> crate::RouteInput<$ty> for DynamicSupervisorEvent<A, C, Reply>
-        where
-            A: Address,
-            A::Nonce: From<u64>,
-            C: Behavior<Ph = Never>,
-            C::Protocol: crate::Protocol<Addr = A>,
-            Reply: behavior::Protocol<Addr = A>,
-        {
-            fn route(value: $ty) -> Result<Self, $ty> {
-                Ok(Self::$variant(value))
-            }
-        }
-        impl<A, C, Reply> crate::EventInput<$ty> for DynamicSupervisorEvent<A, C, Reply>
-        where
-            A: Address,
-            A::Nonce: From<u64>,
-            C: Behavior<Ph = Never>,
-            C::Protocol: crate::Protocol<Addr = A>,
-            Reply: behavior::Protocol<Addr = A>,
-        {
-            fn inject(value: $ty) -> Self {
-                Self::$variant(value)
-            }
-        }
-    };
+impl<A, C, Reply> InjectEvent<ChildStopped<A>, Here> for DynamicSupervisorEvent<A, C, Reply>
+where
+    A: Address,
+    A::Nonce: From<u64>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = A>,
+    Reply: behavior::Protocol<Addr = A>,
+{
+    fn inject_at(value: ChildStopped<A>) -> Self {
+        Self::ChildStopped(value)
+    }
 }
-event_lane!(ChildStopped<A>, ChildStopped);
-event_lane!(CreationResolved<A>, CreationResolved);
-event_lane!(WorkerCreationResolved<A::Nonce>, WorkerCreationResolved);
-event_lane!(WorkerStopped<A>, WorkerStopped);
-event_lane!(ChildShutdownRejected<A::Nonce>, ChildShutdownRejected);
+impl<A, C, Reply> InjectEvent<CreationResolved<A>, Here> for DynamicSupervisorEvent<A, C, Reply>
+where
+    A: Address,
+    A::Nonce: From<u64>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = A>,
+    Reply: behavior::Protocol<Addr = A>,
+{
+    fn inject_at(value: CreationResolved<A>) -> Self {
+        Self::CreationResolved(value)
+    }
+}
+impl<A, C, Reply> InjectEvent<WorkerCreationResolved<A::Nonce>, Here>
+    for DynamicSupervisorEvent<A, C, Reply>
+where
+    A: Address,
+    A::Nonce: From<u64>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = A>,
+    Reply: behavior::Protocol<Addr = A>,
+{
+    fn inject_at(value: WorkerCreationResolved<A::Nonce>) -> Self {
+        Self::WorkerCreationResolved(value)
+    }
+}
+impl<A, C, Reply> InjectEvent<WorkerStopped<A>, Here> for DynamicSupervisorEvent<A, C, Reply>
+where
+    A: Address,
+    A::Nonce: From<u64>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = A>,
+    Reply: behavior::Protocol<Addr = A>,
+{
+    fn inject_at(value: WorkerStopped<A>) -> Self {
+        Self::WorkerStopped(value)
+    }
+}
+impl<A, C, Reply> InjectEvent<ChildShutdownRejected<A::Nonce>, Here>
+    for DynamicSupervisorEvent<A, C, Reply>
+where
+    A: Address,
+    A::Nonce: From<u64>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = A>,
+    Reply: behavior::Protocol<Addr = A>,
+{
+    fn inject_at(value: ChildShutdownRejected<A::Nonce>) -> Self {
+        Self::ChildShutdownRejected(value)
+    }
+}
 
 /// Shutdown-capable stable proxy protocol installed by [`DynamicSupervisor`].
 ///
@@ -227,8 +256,8 @@ where
     Reply: behavior::Protocol<Addr = A>,
 {
     pub outcomes: Vec<Delivery<Reply>>,
-    pub child_observations: ServiceSends<ObserveChild<A::Nonce>>,
-    pub creation_observations: ServiceSends<ObserveCreation<A::Nonce>>,
+    pub child_observations: ServiceSends<ObserveChild<A>>,
+    pub creation_observations: ServiceSends<ObserveCreation<A>>,
     pub shutdowns: ServiceSends<ShutdownChild<DynamicProxy<C>>>,
     pub replacements: Vec<Delivery<DynamicProxy<C>>>,
 }
@@ -259,7 +288,7 @@ where
         self.replacements.extend(other.replacements);
     }
 }
-impl<A, C, Reply> SendInput<ObserveChild<A::Nonce>, Own> for DynamicSupervisorSends<A, C, Reply>
+impl<A, C, Reply> SendInput<ObserveChild<A>, Own> for DynamicSupervisorSends<A, C, Reply>
 where
     A: Address,
     A::Nonce: From<u64>,
@@ -267,11 +296,11 @@ where
     C::Protocol: crate::Protocol<Addr = A>,
     Reply: behavior::Protocol<Addr = A>,
 {
-    fn emit(&mut self, value: ObserveChild<A::Nonce>) {
+    fn emit(&mut self, value: ObserveChild<A>) {
         self.child_observations.send(value);
     }
 }
-impl<A, C, Reply> SendInput<ObserveCreation<A::Nonce>, Own> for DynamicSupervisorSends<A, C, Reply>
+impl<A, C, Reply> SendInput<ObserveCreation<A>, Own> for DynamicSupervisorSends<A, C, Reply>
 where
     A: Address,
     A::Nonce: From<u64>,
@@ -279,7 +308,7 @@ where
     C::Protocol: crate::Protocol<Addr = A>,
     Reply: behavior::Protocol<Addr = A>,
 {
-    fn emit(&mut self, value: ObserveCreation<A::Nonce>) {
+    fn emit(&mut self, value: ObserveCreation<A>) {
         self.creation_observations.send(value);
     }
 }
@@ -709,7 +738,7 @@ mod tests {
         ));
 
         let installed = active
-            .on(CreationResolved::installed(
+            .on_path(CreationResolved::installed(
                 7,
                 CreationKind::Birth,
                 MailAddr(70),
@@ -749,7 +778,7 @@ mod tests {
         );
 
         let rejected = active
-            .on(CreationResolved::rejected(
+            .on_path(CreationResolved::rejected(
                 5,
                 CreationKind::Birth,
                 CreationRejection::EnvironmentFailed,
@@ -781,7 +810,9 @@ mod tests {
                 },
             )
             .unwrap();
-        active.on(CreationResolved::birth(3, MailAddr(30))).unwrap();
+        active
+            .on_path(CreationResolved::birth(3, MailAddr(30)))
+            .unwrap();
 
         let replacing = active
             .receive(
@@ -796,7 +827,7 @@ mod tests {
         assert_eq!(replacing.sends.replacements.len(), 1);
         assert_eq!(active.phase(3), Some(DynamicChildPhase::Replacing));
         active
-            .on(WorkerCreationResolved::new(
+            .on_path(WorkerCreationResolved::new(
                 3,
                 4,
                 CreationKind::replacement_of(2),
@@ -817,7 +848,7 @@ mod tests {
         assert_eq!(stopping.sends.shutdowns.as_slice(), [ShutdownChild::new(3)]);
         assert_eq!(active.phase(3), Some(DynamicChildPhase::Stopping));
         active
-            .on(ChildStopped::new(3, Ok(Exit::Normal), Instant::now()))
+            .on_path(ChildStopped::new(3, Ok(Exit::Normal), Instant::now()))
             .unwrap();
         assert_eq!(active.phase(3), Some(DynamicChildPhase::Retired));
     }
@@ -838,9 +869,11 @@ mod tests {
                 },
             )
             .unwrap();
-        active.on(CreationResolved::birth(3, MailAddr(30))).unwrap();
+        active
+            .on_path(CreationResolved::birth(3, MailAddr(30)))
+            .unwrap();
         let actions = active
-            .on(WorkerStopped::new(3, 0, Ok(Exit::Normal), Instant::now()))
+            .on_path(WorkerStopped::new(3, 0, Ok(Exit::Normal), Instant::now()))
             .unwrap();
 
         assert!(actions.sends.outcomes.is_empty());

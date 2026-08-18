@@ -7,10 +7,11 @@
 
 use std::time::Duration;
 
+use behavior::EventLayer;
 use behavior::{
-    Acted, Actions, Crash, DeadlineEvent, Delivery, Machine, MailAddr, Move, Never, PeerStopped,
-    RestartPolicy, Step, Strategy, SupervisionEvent, Supervisor, TimerElapsed, TimerGeneration,
-    TimerId, User, UserEvent, WatchEvent, restart_all, restart_one, restart_rest,
+    Acted, Actions, Crash, Delivery, Machine, MailAddr, Move, Never, PeerStopped, RestartPolicy,
+    Step, Strategy, SupervisionEvent, Supervisor, TimerElapsed, TimerGeneration, TimerId, User,
+    UserEvent, restart_all, restart_one, restart_rest,
 };
 use behavior_testkit::{Mailbox, drive};
 use std::time::Instant;
@@ -183,7 +184,7 @@ async fn at_reaction_error_consumes_the_timer() {
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
 
-    let first = behavior.transition(DeadlineEvent::Elapsed(TimerElapsed {
+    let first = behavior.transition(EventLayer::Owned(TimerElapsed {
         id: TimerId(0),
         generation: TimerGeneration(0),
     }));
@@ -191,7 +192,7 @@ async fn at_reaction_error_consumes_the_timer() {
 
     // The duplicate delivery cannot re-fire the consumed timer.
     let second = behavior
-        .transition(DeadlineEvent::Elapsed(TimerElapsed {
+        .transition(EventLayer::Owned(TimerElapsed {
             id: TimerId(0),
             generation: TimerGeneration(0),
         }))
@@ -207,7 +208,7 @@ async fn watch_reaction_error_propagates() {
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
 
-    let death = WatchEvent::PeerStopped(PeerStopped {
+    let death = EventLayer::Owned(PeerStopped {
         peer,
         outcome: Err(Crash::Failed),
     });

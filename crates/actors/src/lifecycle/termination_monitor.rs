@@ -1,7 +1,9 @@
 //! Action-producing peer termination observation.
 
-use crate::{PeerStopped, RouteInput, WatchEvent, WatchSends};
-use behavior::{Actions, Address, Behavior, BehaviorActed, BirthMode, SendAlgebra, ServiceSends};
+use crate::{PeerStopped, WatchEvent, WatchSends};
+use behavior::{
+    Actions, Address, Behavior, BehaviorActed, BirthMode, EventLayer, SendAlgebra, ServiceSends,
+};
 
 /// Pure fold applied to the exact matching terminal fact.
 pub type TerminationReaction<B> =
@@ -109,7 +111,6 @@ where
     Br: BirthMode,
     B: Behavior<Ph = Ph, Sends = Sends, Birth = Br>,
     B::Protocol: crate::Protocol<Addr = A>,
-    B::Event: RouteInput<PeerStopped<A>>,
 {
     type Protocol = B::Protocol;
     type Event = WatchEvent<B::Event>;
@@ -128,7 +129,7 @@ where
 
     fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
         match event {
-            WatchEvent::PeerStopped(stopped)
+            EventLayer::Owned(stopped)
                 if stopped.peer == self.peer
                     && self.observation == TerminationObservation::Observing =>
             {
@@ -136,13 +137,8 @@ where
                 self.observation = TerminationObservation::Observed;
                 Ok(Self::wrap(actions, ServiceSends::empty()))
             }
-            WatchEvent::PeerStopped(stopped) if stopped.peer == self.peer => Ok(Actions::cont()),
-            WatchEvent::PeerStopped(stopped) => match B::Event::route(stopped) {
-                Ok(event) => behavior::delegate_transition(&mut self.inner, event)
-                    .map(|actions| Self::wrap(actions, ServiceSends::empty())),
-                Err(_) => Ok(Actions::cont()),
-            },
-            WatchEvent::Behavior(event) => behavior::delegate_transition(&mut self.inner, event)
+            EventLayer::Owned(_) => Ok(Actions::cont()),
+            EventLayer::Inner(event) => behavior::delegate_transition(&mut self.inner, event)
                 .map(|actions| Self::wrap(actions, ServiceSends::empty())),
         }
     }
@@ -215,7 +211,7 @@ mod tests {
 
         let mut active = initialized.behavior;
         let actions = active
-            .on(PeerStopped::new(MailAddr(4), Err(Crash::Panicked)))
+            .on_path(PeerStopped::new(MailAddr(4), Err(Crash::Panicked)))
             .unwrap();
         assert_eq!(actions.sends.behavior, [9]);
         assert!(actions.sends.observations.is_empty());
@@ -224,7 +220,7 @@ mod tests {
         assert_eq!(active.observation(), TerminationObservation::Observed);
 
         let duplicate = active
-            .on(PeerStopped::new(MailAddr(4), Err(Crash::Panicked)))
+            .on_path(PeerStopped::new(MailAddr(4), Err(Crash::Panicked)))
             .unwrap();
         assert_eq!(duplicate.sends, WatchSends::empty());
         assert!(duplicate.creates.is_empty());
@@ -237,7 +233,7 @@ mod tests {
             .unwrap()
             .behavior;
         let unmatched = active
-            .on(PeerStopped::new(MailAddr(5), Ok(Exit::Normal)))
+            .on_path(PeerStopped::new(MailAddr(5), Ok(Exit::Normal)))
             .unwrap();
         assert_eq!(unmatched.sends, WatchSends::empty());
         assert!(unmatched.creates.is_empty());
@@ -281,7 +277,7 @@ mod tests {
             .unwrap()
             .behavior;
         assert_eq!(
-            active.on(PeerStopped::new(MailAddr(4), Err(Crash::Failed))),
+            active.on_path(PeerStopped::new(MailAddr(4), Err(Crash::Failed))),
             Err(Rejected)
         );
         assert_eq!(active.observation(), TerminationObservation::Observing);

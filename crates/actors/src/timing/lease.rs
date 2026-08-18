@@ -3,8 +3,8 @@
 use std::time::Duration;
 
 use behavior::{
-    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, Never, NoBirths, Recipient,
-    SendAlgebra, ServiceSends, User,
+    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, EventLayer, Never, NoBirths,
+    Recipient, SendAlgebra, ServiceSends, User,
 };
 use thiserror::Error;
 
@@ -133,7 +133,10 @@ pub struct LeaseSends<Reply: behavior::Protocol> {
     /// Relative expiry requests.
     pub schedules: ServiceSends<ScheduleAfter>,
 }
-impl<Reply: behavior::Protocol> SendAlgebra for LeaseSends<Reply> {
+impl<Reply> SendAlgebra for LeaseSends<Reply>
+where
+    Reply: behavior::Protocol,
+{
     fn empty() -> Self {
         Self {
             outcomes: Vec::new(),
@@ -295,7 +298,7 @@ where
     type Birth = NoBirths;
     fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
         Ok(match event {
-            TimedEvent::Behavior(event) => match event.message {
+            EventLayer::Inner(event) => match event.message {
                 LeaseMessage::Acquire {
                     holder,
                     duration,
@@ -350,7 +353,7 @@ where
                     Self::result(reply_to, LeaseOutcome::Released { holder, generation })
                 }
             },
-            TimedEvent::Elapsed(elapsed) => {
+            EventLayer::Owned(elapsed) => {
                 if elapsed.id != self.id {
                     return Ok(Actions::cont());
                 }
@@ -443,7 +446,7 @@ mod tests {
             TimerGeneration(1)
         );
         assert!(
-            s.on(TimerElapsed::new(TimerId(7), TimerGeneration(0)))
+            s.on_path(TimerElapsed::new(TimerId(7), TimerGeneration(0)))
                 .unwrap()
                 .sends
                 .outcomes
@@ -487,7 +490,7 @@ mod tests {
             LeaseOutcome::Rejected(LeaseRejection::WrongHolder { requested: 2 })
         ));
         let expired = s
-            .on(TimerElapsed::new(TimerId(7), TimerGeneration(0)))
+            .on_path(TimerElapsed::new(TimerId(7), TimerGeneration(0)))
             .unwrap();
         assert!(matches!(
             expired.sends.outcomes[0].message,
@@ -512,7 +515,7 @@ mod tests {
             )
             .unwrap();
         subject
-            .on(TimerElapsed::new(TimerId(7), TimerGeneration(u64::MAX)))
+            .on_path(TimerElapsed::new(TimerId(7), TimerGeneration(u64::MAX)))
             .unwrap();
         assert!(matches!(subject.state(), LeaseState::Exhausted));
         let rejected = subject

@@ -6,6 +6,7 @@
 
 use std::time::Duration;
 
+use behavior::EventLayer;
 use behavior::{
     Acted, Actions, Activate, Crash, Delivery, MailAddr, Never, Recipient, RestartPolicy,
     StashRoute, Step, Strategy, SupervisionEvent, TimerElapsed, TimerGeneration, TimerId,
@@ -201,7 +202,7 @@ async fn supervision_preserves_inner_at_routing() {
     assert_eq!(initial.creates.len(), 1);
 
     let fired = behavior
-        .on(TimerElapsed {
+        .on_path(TimerElapsed {
             id: TimerId(0),
             generation: TimerGeneration(0),
         })
@@ -216,7 +217,7 @@ async fn supervision_preserves_inner_at_routing() {
 /// without cross-lane leakage.
 #[tokio::test]
 async fn full_stack_all_four_layers_keep_their_own_lanes() {
-    use behavior::{DeadlineEvent, PeerStopped, TimerElapsed, WatchEvent, stop_on_abnormal_death};
+    use behavior::{PeerStopped, TimerElapsed, stop_on_abnormal_death};
 
     let due = Instant::now() + Duration::from_secs(1);
     let peer = MailAddr(44);
@@ -254,8 +255,8 @@ async fn full_stack_all_four_layers_keep_their_own_lanes() {
 
     // User lane: Deliver routes through every layer to the parent echo.
     let actions = behavior
-        .transition(SupervisionEvent::Behavior(DeadlineEvent::Behavior(
-            WatchEvent::Behavior(UserEvent::user(MailAddr(9), 1)),
+        .transition(SupervisionEvent::Behavior(EventLayer::Inner(
+            EventLayer::Inner(UserEvent::user(MailAddr(9), 1)),
         )))
         .unwrap();
     assert_eq!(actions.sends.behavior.behavior.behavior[0].message, 1);
@@ -263,7 +264,7 @@ async fn full_stack_all_four_layers_keep_their_own_lanes() {
 
     // Time lane: fires the inner Deadline.
     let fired = behavior
-        .transition(SupervisionEvent::Behavior(DeadlineEvent::Elapsed(
+        .transition(SupervisionEvent::Behavior(EventLayer::Owned(
             TimerElapsed {
                 id: TimerId(0),
                 generation: TimerGeneration(0),
@@ -274,8 +275,8 @@ async fn full_stack_all_four_layers_keep_their_own_lanes() {
 
     // Peer lane: matching peer death stops the fold.
     let died = behavior
-        .transition(SupervisionEvent::Behavior(DeadlineEvent::Behavior(
-            WatchEvent::PeerStopped(PeerStopped {
+        .transition(SupervisionEvent::Behavior(EventLayer::Inner(
+            EventLayer::Owned(PeerStopped {
                 peer,
                 outcome: Err(Crash::Failed),
             }),
@@ -341,7 +342,7 @@ proptest! {
     fn full_stack_random_lane_routing_never_leaks(
         events in vec((0_u8..4, 0_u8..8, 0_u64..100), 0..80),
     ) {
-        use behavior::{DeadlineEvent, TimerGeneration, TimerId, PeerStopped, TimerElapsed, WatchEvent, stop_on_abnormal_death};
+        use behavior::{TimerGeneration, TimerId, PeerStopped, TimerElapsed, stop_on_abnormal_death};
 
         let due = Instant::now() + Duration::from_secs(1);
         let peer = MailAddr(44);
@@ -380,8 +381,8 @@ proptest! {
                 0 => {
                     // User lane: routed by the stash filter.
                     let actions = runtime
-                        .block_on(async { behavior.transition(SupervisionEvent::Behavior(DeadlineEvent::Behavior(
-                            WatchEvent::Behavior(UserEvent::user(MailAddr(9), u64::from(arg))),
+                        .block_on(async { behavior.transition(SupervisionEvent::Behavior(EventLayer::Inner(
+                            EventLayer::Inner(UserEvent::user(MailAddr(9), u64::from(arg))),
                         ))) })
                         .unwrap();
                     if u64::from(arg) % 3 != 2 {
@@ -392,8 +393,8 @@ proptest! {
                 1 => {
                     // Peer lane: watched peer's abnormal death stops the fold.
                     runtime
-                        .block_on(async { behavior.transition(SupervisionEvent::Behavior(DeadlineEvent::Behavior(
-                            WatchEvent::PeerStopped(PeerStopped {
+                        .block_on(async { behavior.transition(SupervisionEvent::Behavior(EventLayer::Inner(
+                            EventLayer::Owned(PeerStopped {
                                 peer,
                                 outcome: Err(Crash::Failed),
                             }),
@@ -404,7 +405,7 @@ proptest! {
                     // Time lane: matching Reached fires (Continue) once, then
                     // duplicates are inert.
                     runtime
-                        .block_on(async { behavior.transition(SupervisionEvent::Behavior(DeadlineEvent::Elapsed(
+                        .block_on(async { behavior.transition(SupervisionEvent::Behavior(EventLayer::Owned(
                             TimerElapsed { id: TimerId(0), generation: TimerGeneration(0) },
                         ))) })
                         .unwrap()

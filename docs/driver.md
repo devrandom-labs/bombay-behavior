@@ -3,7 +3,7 @@
 The Driver owns a concrete `Behavior`, not a public `Protocol`. Protocols name
 ordinary delivery destinations; the Driver obtains the behavior's complete
 internal event algebra and interprets its explicit effects. See
-[Protocol, event, behavior, and effect algebras](protocol-algebra.md).
+[Protocol, ingress, behavior, and effect algebras](protocol-algebra.md).
 
 This document defines the execution boundary shared by every Bombay
 actor-behavior template. It is a design contract for `bombay-engine::Driver`

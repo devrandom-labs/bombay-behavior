@@ -228,7 +228,7 @@ fn generated_behavior_is_nominal_in_pool_and_supervision_positions() {
     let initial = initialized.actions;
     let mut pool = initialized.behavior;
     assert_eq!(initial.creates.len(), 1);
-    pool.on(WorkerCreationResolved::new(
+    pool.on_path(WorkerCreationResolved::new(
         0,
         0,
         CreationKind::Birth,

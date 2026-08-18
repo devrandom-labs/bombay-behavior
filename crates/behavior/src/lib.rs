@@ -32,7 +32,7 @@ pub use transition::{
     ActiveTurn, Behavior, BehaviorActed, BehaviorAddr, BehaviorBase, BehaviorMessage,
     InitializationTurn, MessageProtocol, Protocol, delegate_transition, initialize,
 };
-pub use user_event::{EventInput, RouteInput, User, UserEvent};
+pub use user_event::{EventLayer, Here, Ingress, InjectEvent, Inside, User, UserEvent};
 
 /// Generate `Behavior` wiring for an inherent impl with an exact `receive`
 /// method and an optional exact `init` method. When omitted, initialization is

@@ -2,7 +2,7 @@
 
 Runtime capabilities extend a behavior's internal event and effect algebras;
 they are not public actor protocols. The distinction is defined in
-[Protocol, event, behavior, and effect algebras](protocol-algebra.md).
+[Protocol, ingress, behavior, and effect algebras](protocol-algebra.md).
 
 This record identifies actor-system roles that cannot be completed by a
 deterministic `bombay-behavior-actors` fold alone. It complements the
