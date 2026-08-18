@@ -8,12 +8,14 @@
 use behavior_actors::{
     Actions, BackoffSupervisor, Behavior, BehaviorActed, Births, BreakerOutcome,
     ChildShutdownRejected, ChildStopped, CircuitBreaker, CreationResolved, Deadline, DynamicProxy,
-    DynamicSupervisor, DynamicSupervisorOutcome, Here, Ingress, InjectEvent, Lease, LeaseOutcome,
-    MailAddr, Never, NoBirths, ObserveChild, ObserveCreation, ObservePeer, OneShot, PeerStopped,
-    Periodic, Presence, PresenceReply, Proxy, ProxyCommand, ProxyEvent, ReceiveTimeout,
-    ScheduleAfter, ScheduleAt, ShutdownChild, ShutdownCoordinator, ShutdownCoordinatorEvent,
-    ShutdownRequested, StopOnShutdown, SupervisionEvent, TerminationMonitor, TimerElapsed, User,
-    Watch, WatchEvent, WorkerCreationResolved, WorkerStopped,
+    DynamicProxyWithParent, DynamicSupervisor, DynamicSupervisorOutcome,
+    DynamicSupervisorWithParent, Here, Ingress, InjectEvent, Inside, Lease, LeaseOutcome, MailAddr,
+    Never, NoBirths, ObserveChild, ObserveCreation, ObservePeer, OneShot, PeerStopped, Periodic,
+    Presence, PresenceReply, Proxy, ProxyCommand, ProxyEvent, ProxyParentIngress, ProxyWithParent,
+    ReceiveTimeout, ScheduleAfter, ScheduleAt, ShutdownChild, ShutdownCoordinator,
+    ShutdownCoordinatorEvent, ShutdownRequested, StopOnShutdown, SupervisionEvent,
+    TerminationMonitor, TimerElapsed, User, Watch, WatchEvent, WorkerCreationResolved,
+    WorkerStopped,
 };
 
 struct Inert;
@@ -243,6 +245,49 @@ fn shutdown_wrapper_owns_dynamic_supervisor_shutdown_end_to_end() {
 
     let actions = active.on(ShutdownRequested).unwrap();
     assert!(matches!(actions.become_, behavior_actors::Step::Stop(_)));
+}
+
+#[test]
+fn wrapped_dynamic_supervisor_gives_proxies_the_inner_parent_ingress() {
+    use behavior_actors::Activate as _;
+    use std::time::Instant;
+
+    type ParentPath = Inside<Here>;
+    type Inner = DynamicSupervisorWithParent<MailAddr, Inert, DynamicReply, ParentPath>;
+    type Wrapped = StopOnShutdown<Inner>;
+
+    let direct = ProxyParentIngress::<MailAddr, Here>::new();
+    let wrapped: Wrapped = StopOnShutdown::new(Inner::with_parent(direct.inside()));
+
+    fn exact_birth<B>()
+    where
+        B: Behavior<Birth = Births<DynamicProxyWithParent<Inert, Inside<Here>>>>,
+    {
+    }
+    exact_birth::<Wrapped>();
+    let _ = wrapped;
+
+    fn stopped(_: Ingress<WorkerStopped<MailAddr>, Inside<Here>>) {}
+    fn creation(_: Ingress<WorkerCreationResolved<u64>, Inside<Here>>) {}
+    stopped(direct.inside().stopped);
+    creation(direct.inside().creation);
+
+    let initialized = ProxyWithParent::with_parent(Inert, direct.inside())
+        .initialize()
+        .unwrap();
+    let mut proxy = initialized.behavior;
+    let created = proxy
+        .on_path(CreationResolved::birth(0, MailAddr(1)))
+        .unwrap();
+    creation(created.sends.creation_reports[0].ingress);
+    let stopped_actions = proxy
+        .on_path(ChildStopped::new(
+            0,
+            Ok(behavior_actors::Exit::Normal),
+            Instant::now(),
+        ))
+        .unwrap();
+    stopped(stopped_actions.sends.stopped_reports[0].ingress);
 }
 
 #[test]

@@ -6,6 +6,11 @@ All notable changes to `bombay-behavior-actors` are documented here.
 
 ### Changed
 
+- Give stable proxies an explicit two-lane `ProxyParentIngress` acquaintance.
+  `WorkerStopped` and `WorkerCreationResolved` reports now retain the exact
+  parent event path chosen when the proxy is created; wrapped dynamic
+  supervisors can therefore select `Inside<Here>` without runtime parent or
+  payload-lane discovery.
 - Replace template-specific event forwarding lists with structural ingress.
   Timer, watch, lifecycle, supervision, creation, parent-report, and shutdown
   requests now carry their exact relative fact destination; stale facts are

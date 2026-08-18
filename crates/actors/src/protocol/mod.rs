@@ -246,16 +246,24 @@ impl<A: Address> behavior::InterpreterRequest for ObserveChild<A> {
 /// the proxy's parent. The interpreter supplies the emitting proxy's child
 /// nonce when constructing [`WorkerStopped`].
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ReportWorkerStopped<A: Address> {
+pub struct ReportWorkerStopped<A: Address, Path> {
+    /// Exact worker-stop owner in the proxy's parent event algebra.
+    pub ingress: behavior::Ingress<WorkerStopped<A>, Path>,
     pub worker: A::Nonce,
     pub outcome: Result<Exit<A>, Crash>,
     pub at: Instant,
 }
 
-impl<A: Address> ReportWorkerStopped<A> {
+impl<A: Address, Path> ReportWorkerStopped<A, Path> {
     #[must_use]
-    pub fn new(worker: A::Nonce, outcome: Result<Exit<A>, Crash>, at: Instant) -> Self {
+    pub fn new(
+        ingress: behavior::Ingress<WorkerStopped<A>, Path>,
+        worker: A::Nonce,
+        outcome: Result<Exit<A>, Crash>,
+        at: Instant,
+    ) -> Self {
         Self {
+            ingress,
             worker,
             outcome,
             at,
@@ -263,20 +271,8 @@ impl<A: Address> ReportWorkerStopped<A> {
     }
 }
 
-impl<A: Address> behavior::InterpreterRequest for ReportWorkerStopped<A> {
+impl<A: Address, Path> behavior::InterpreterRequest for ReportWorkerStopped<A, Path> {
     type ReturnToEmitter = behavior::NoReturnToEmitter;
-}
-
-impl<A: Address> From<(A::Nonce, Result<Exit<A>, Crash>, Instant)> for ReportWorkerStopped<A> {
-    fn from((worker, outcome, at): (A::Nonce, Result<Exit<A>, Crash>, Instant)) -> Self {
-        Self::new(worker, outcome, at)
-    }
-}
-
-impl<A: Address> From<ChildStopped<A>> for ReportWorkerStopped<A> {
-    fn from(stopped: ChildStopped<A>) -> Self {
-        Self::new(stopped.nonce, stopped.outcome, stopped.at)
-    }
 }
 
 /// A worker termination reported by a still-live supervised proxy.
@@ -305,8 +301,8 @@ impl<A: Address> WorkerStopped<A> {
     }
 }
 
-impl<A: Address> From<(A::Nonce, ReportWorkerStopped<A>)> for WorkerStopped<A> {
-    fn from((proxy, stopped): (A::Nonce, ReportWorkerStopped<A>)) -> Self {
+impl<A: Address, Path> From<(A::Nonce, ReportWorkerStopped<A, Path>)> for WorkerStopped<A> {
+    fn from((proxy, stopped): (A::Nonce, ReportWorkerStopped<A, Path>)) -> Self {
         Self::new(proxy, stopped.worker, stopped.outcome, stopped.at)
     }
 }
@@ -427,20 +423,24 @@ impl<A: Address> behavior::InterpreterRequest for ObserveCreation<A> {
 /// Ask a proxy's interpreter to report a worker creation result to its parent.
 /// The interpreter supplies the emitting proxy's nonce.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ReportWorkerCreationResolved<N> {
+pub struct ReportWorkerCreationResolved<N, Path> {
+    /// Exact creation-result owner in the proxy's parent event algebra.
+    pub ingress: behavior::Ingress<WorkerCreationResolved<N>, Path>,
     pub worker: N,
     pub kind: CreationKind<N>,
     pub result: Result<(), CreationRejection>,
 }
 
-impl<N> ReportWorkerCreationResolved<N> {
+impl<N, Path> ReportWorkerCreationResolved<N, Path> {
     #[must_use]
     pub const fn new(
+        ingress: behavior::Ingress<WorkerCreationResolved<N>, Path>,
         worker: N,
         kind: CreationKind<N>,
         result: Result<(), CreationRejection>,
     ) -> Self {
         Self {
+            ingress,
             worker,
             kind,
             result,
@@ -448,22 +448,8 @@ impl<N> ReportWorkerCreationResolved<N> {
     }
 }
 
-impl<N> behavior::InterpreterRequest for ReportWorkerCreationResolved<N> {
+impl<N, Path> behavior::InterpreterRequest for ReportWorkerCreationResolved<N, Path> {
     type ReturnToEmitter = behavior::NoReturnToEmitter;
-}
-
-impl<N> From<(N, CreationKind<N>, Result<(), CreationRejection>)>
-    for ReportWorkerCreationResolved<N>
-{
-    fn from((worker, kind, result): (N, CreationKind<N>, Result<(), CreationRejection>)) -> Self {
-        Self::new(worker, kind, result)
-    }
-}
-
-impl<A: behavior::Address> From<CreationResolved<A>> for ReportWorkerCreationResolved<A::Nonce> {
-    fn from(resolved: CreationResolved<A>) -> Self {
-        Self::new(resolved.nonce, resolved.kind, resolved.result.map(|_| ()))
-    }
 }
 
 /// A worker creation result reported by a still-live supervised proxy.
@@ -473,6 +459,65 @@ pub struct WorkerCreationResolved<N> {
     pub worker: N,
     pub kind: CreationKind<N>,
     pub result: Result<(), CreationRejection>,
+}
+
+/// The complete, statically selected return capability given to a stable
+/// proxy when its parent stages the proxy's fresh creation.
+///
+/// Actor acquaintance locality requires the proxy to receive this capability;
+/// the `Path` is Bombay's derived proof of the exact owners in the parent's
+/// composed event algebra. Neither the proxy nor its interpreter may discover
+/// a parent lane from runtime topology or payload type.
+pub struct ProxyParentIngress<A: Address, Path> {
+    pub stopped: behavior::Ingress<WorkerStopped<A>, Path>,
+    pub creation: behavior::Ingress<WorkerCreationResolved<A::Nonce>, Path>,
+}
+
+impl<A: Address, Path> Copy for ProxyParentIngress<A, Path> {}
+
+impl<A: Address, Path> Clone for ProxyParentIngress<A, Path> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<A: Address, Path> core::fmt::Debug for ProxyParentIngress<A, Path> {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        formatter.write_str("ProxyParentIngress")
+    }
+}
+
+impl<A: Address, Path> PartialEq for ProxyParentIngress<A, Path> {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
+}
+
+impl<A: Address, Path> Eq for ProxyParentIngress<A, Path> {}
+
+impl<A: Address, Path> ProxyParentIngress<A, Path> {
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
+            stopped: behavior::Ingress::new(),
+            creation: behavior::Ingress::new(),
+        }
+    }
+
+    /// Lift both correlated report lanes through one structural parent layer.
+    #[must_use]
+    pub const fn inside(self) -> ProxyParentIngress<A, behavior::Inside<Path>> {
+        ProxyParentIngress {
+            stopped: self.stopped.inside(),
+            creation: self.creation.inside(),
+        }
+    }
+}
+
+impl<A: Address, Path> Default for ProxyParentIngress<A, Path> {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// Consumer-facing resolution of one explicitly designated replacement.
@@ -550,8 +595,8 @@ impl<N> From<(N, N, CreationKind<N>, Result<(), CreationRejection>)> for WorkerC
     }
 }
 
-impl<N> From<(N, ReportWorkerCreationResolved<N>)> for WorkerCreationResolved<N> {
-    fn from((proxy, resolved): (N, ReportWorkerCreationResolved<N>)) -> Self {
+impl<N, Path> From<(N, ReportWorkerCreationResolved<N, Path>)> for WorkerCreationResolved<N> {
+    fn from((proxy, resolved): (N, ReportWorkerCreationResolved<N, Path>)) -> Self {
         Self::new(proxy, resolved.worker, resolved.kind, resolved.result)
     }
 }
@@ -695,7 +740,12 @@ mod tests {
     fn lifecycle_conversions_preserve_every_semantic_field() {
         let at = Instant::now();
         let child: ChildStopped<MailAddr> = (3, Err(Crash::Failed), at).into();
-        let report = ReportWorkerStopped::from(child);
+        let report = ReportWorkerStopped::new(
+            behavior::Ingress::<WorkerStopped<MailAddr>, behavior::Here>::new(),
+            child.nonce,
+            child.outcome,
+            child.at,
+        );
         let worker = WorkerStopped::from((7, report));
         assert_eq!(worker.proxy, 7);
         assert_eq!(worker.worker, 3);
@@ -707,7 +757,12 @@ mod tests {
             CreationKind::replacement_of(3),
             CreationRejection::EnvironmentFailed,
         );
-        let report = ReportWorkerCreationResolved::from(creation);
+        let report = ReportWorkerCreationResolved::new(
+            behavior::Ingress::<WorkerCreationResolved<u64>, behavior::Here>::new(),
+            creation.nonce,
+            creation.kind,
+            creation.result.map(|_| ()),
+        );
         let worker = WorkerCreationResolved::from((7, report));
         assert_eq!(worker.proxy, 7);
         assert_eq!(worker.worker, 4);

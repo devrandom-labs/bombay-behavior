@@ -331,6 +331,16 @@ Structural ingress is not presented as a primitive from Agha; it is Bombay's
 typed realization of interpreter-originated communication into a composed
 behavior.
 
+Stable proxy reports are parent-directed communications rather than returns to
+the emitting proxy. The parent therefore supplies a `ProxyParentIngress` when
+constructing the proxy. Its two fields preserve the correlated
+`WorkerStopped` and `WorkerCreationResolved` owners as one capability product.
+Wrapping a parent lifts both fields together (`Here` to `Inside<Here>`), while
+the proxy's public protocol identity remains unchanged. This is a Bombay
+derived realization of acquaintance passing: the actor-model locality law
+requires the proxy to know its reporting destination, but does not prescribe
+Rust event paths or a distinguished parent relationship.
+
 ## Status of the reported shutdown gap
 
 `StopOnShutdown<DynamicSupervisor<...>>` and

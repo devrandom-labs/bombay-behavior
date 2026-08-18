@@ -78,10 +78,10 @@ pub use pool::{
 pub use protocol::{
     ChildShutdownRejected, ChildShutdownRejection, ChildStopped, CreationRejection,
     CreationResolved, KeyedWorkerPoolProtocol, ObserveChild, ObserveCreation, ObservePeer,
-    PeerStopped, PoolAssignmentProtocol, ReplacementResolution, ReportWorkerCreationResolved,
-    ReportWorkerStopped, ScheduleAfter, ScheduleAt, ShutdownChild, ShutdownRequested, TimerElapsed,
-    TimerGeneration, TimerId, UnwatchPeer, WorkerCreationResolved, WorkerPoolProtocol,
-    WorkerStopped,
+    PeerStopped, PoolAssignmentProtocol, ProxyParentIngress, ReplacementResolution,
+    ReportWorkerCreationResolved, ReportWorkerStopped, ScheduleAfter, ScheduleAt, ShutdownChild,
+    ShutdownRequested, TimerElapsed, TimerGeneration, TimerId, UnwatchPeer, WorkerCreationResolved,
+    WorkerPoolProtocol, WorkerStopped,
 };
 pub use routing::{
     AcknowledgementError, AcknowledgementMessage, AcknowledgementOutcome, AcknowledgementRecord,
@@ -106,12 +106,13 @@ pub use shutdown::{FinalizeOnShutdown, ShutdownEvent, ShutdownReaction, StopOnSh
 pub use stash::{Stash, StashRoute, StashStatus};
 pub use supervision::{
     Backoff, BackoffConfigError, BackoffError, BackoffSupervisor, BackoffSupervisorError,
-    ChildTopology, DynamicChildPhase, DynamicProxy, DynamicSupervisor, DynamicSupervisorEvent,
-    DynamicSupervisorMessage, DynamicSupervisorOutcome, DynamicSupervisorRejection,
-    DynamicSupervisorSends, FleetError, IncarnationPhase, Proxy, ProxyCommand, ProxyError,
-    ProxyEvent, ProxySends, ReportSupervisionFailure, RestartConfiguration, RestartPolicy,
-    Strategy, SupervisionEvent, SupervisionFailure, SupervisionFailureReaction, Supervisor,
-    SupervisorError, SupervisorSends, restart_all, restart_one, restart_rest,
+    ChildTopology, DynamicChildPhase, DynamicProxy, DynamicProxyWithParent, DynamicSupervisor,
+    DynamicSupervisorEvent, DynamicSupervisorMessage, DynamicSupervisorOutcome,
+    DynamicSupervisorRejection, DynamicSupervisorSends, DynamicSupervisorWithParent, FleetError,
+    IncarnationPhase, Proxy, ProxyCommand, ProxyError, ProxyEvent, ProxySends,
+    ProxySendsWithParent, ProxyWithParent, ReportSupervisionFailure, RestartConfiguration,
+    RestartPolicy, Strategy, SupervisionEvent, SupervisionFailure, SupervisionFailureReaction,
+    Supervisor, SupervisorError, SupervisorSends, restart_all, restart_one, restart_rest,
     retire_on_supervision_failure, stop_on_supervision_failure,
 };
 pub use termination::{Crash, Exit, RestartDenial, SupervisionFailureReason};

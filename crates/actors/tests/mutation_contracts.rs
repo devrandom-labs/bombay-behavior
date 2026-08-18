@@ -6,7 +6,7 @@
 
 use behavior::{
     Acted, Actions, Address, ChildStopped, CreationKind, CreationResolved, DeadlineEvent, Delivery,
-    EventLayer, Exit, Here, InjectEvent, Inside, InterpreterRequests, MailAddr, Never,
+    EventLayer, Exit, Here, Ingress, InjectEvent, Inside, InterpreterRequests, MailAddr, Never,
     ObserveChild, ObserveCreation, ObservePeer, PeerStopped, ProxyCommand, ProxyEvent, ProxySends,
     ReceiveTimeoutEvent, Recipient, ReportWorkerCreationResolved, ReportWorkerStopped,
     ScheduleAfter, ScheduleAt, SendEffects, SendLayer, ShutdownEvent, ShutdownRequested,
@@ -251,8 +251,20 @@ fn typed_send_accumulation_routes_every_named_lane_once() {
     let mut proxy = ProxySends::<Child>::empty();
     proxy.send(Delivery::local_child(behavior::ChildRecipient::new(1), 7));
     proxy.send(ObserveCreation::new(2));
-    proxy.send(ReportWorkerStopped::from(child()));
-    proxy.send(ReportWorkerCreationResolved::from(creation()));
+    let stopped = child();
+    proxy.send(ReportWorkerStopped::new(
+        Ingress::new(),
+        stopped.nonce,
+        stopped.outcome,
+        stopped.at,
+    ));
+    let resolved = creation();
+    proxy.send(ReportWorkerCreationResolved::new(
+        Ingress::new(),
+        resolved.nonce,
+        resolved.kind,
+        resolved.result.map(|_| ()),
+    ));
     assert_eq!(proxy.deliveries[0].message, 7);
     assert_eq!(proxy.creation_observations[0].nonce, 2);
     assert_eq!(proxy.stopped_reports[0].worker, 11);

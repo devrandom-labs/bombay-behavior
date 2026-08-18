@@ -5,7 +5,8 @@ use super::super::domain::{
 };
 use super::super::protocol::{ProxyCommand, ProxyEvent};
 use crate::protocol::{
-    ObserveChild, ObserveCreation, ReportWorkerCreationResolved, ReportWorkerStopped, ShutdownChild,
+    ObserveChild, ObserveCreation, ProxyParentIngress, ReportWorkerCreationResolved,
+    ReportWorkerStopped, ShutdownChild,
 };
 use crate::{Own, SendInput};
 use behavior::{
@@ -14,7 +15,7 @@ use behavior::{
 use behavior::{Never, Step};
 
 /// The concrete, statically dispatched effect lanes emitted by a [`Proxy`].
-pub struct ProxySends<C: Behavior> {
+pub struct ProxySendsWithParent<C: Behavior, ParentPath> {
     /// User payloads forwarded to the currently installed worker incarnation.
     pub deliveries: Vec<Delivery<C::Protocol>>,
     /// Requests to observe installed child incarnations.
@@ -22,18 +23,22 @@ pub struct ProxySends<C: Behavior> {
     /// Requests for exact creation acceptance or rejection facts.
     pub creation_observations: InterpreterRequests<ObserveCreation<crate::BehaviorAddr<C>>>,
     /// Worker-stop facts reported to the owning supervisor.
-    pub stopped_reports: InterpreterRequests<ReportWorkerStopped<crate::BehaviorAddr<C>>>,
+    pub stopped_reports:
+        InterpreterRequests<ReportWorkerStopped<crate::BehaviorAddr<C>, ParentPath>>,
     /// Creation-resolution facts reported to the owning supervisor.
     pub creation_reports: InterpreterRequests<
-        ReportWorkerCreationResolved<<crate::BehaviorAddr<C> as Address>::Nonce>,
+        ReportWorkerCreationResolved<<crate::BehaviorAddr<C> as Address>::Nonce, ParentPath>,
     >,
     /// Requests orderly termination of the exact installed worker incarnation.
     pub shutdowns: InterpreterRequests<ShutdownChild<C>>,
 }
 
-pub(crate) type ProxyActions<C> = Actions<crate::BehaviorAddr<C>, Never, ProxySends<C>, Births<C>>;
+pub(crate) type ProxyActions<C, ParentPath> =
+    Actions<crate::BehaviorAddr<C>, Never, ProxySendsWithParent<C, ParentPath>, Births<C>>;
 
-impl<C: Behavior> SendEffects for ProxySends<C> {
+pub type ProxySends<C> = ProxySendsWithParent<C, behavior::Here>;
+
+impl<C: Behavior, ParentPath> SendEffects for ProxySendsWithParent<C, ParentPath> {
     fn empty() -> Self {
         Self {
             deliveries: Vec::new(),
@@ -56,7 +61,7 @@ impl<C: Behavior> SendEffects for ProxySends<C> {
     }
 }
 
-impl<C, Event> behavior::SendsFor<Event> for ProxySends<C>
+impl<C, Event, ParentPath> behavior::SendsFor<Event> for ProxySendsWithParent<C, ParentPath>
 where
     C: Behavior<Ph = Never>,
     InterpreterRequests<ObserveChild<crate::BehaviorAddr<C>>>: behavior::SendsFor<Event>,
@@ -65,7 +70,8 @@ where
 {
 }
 
-impl<I, RootEvent, Path, C> behavior::InterpretSends<I, RootEvent, Path> for ProxySends<C>
+impl<I, RootEvent, Path, C, ParentPath> behavior::InterpretSends<I, RootEvent, Path>
+    for ProxySendsWithParent<C, ParentPath>
 where
     I: behavior::SendInterpreter,
     C: Behavior<Ph = Never>,
@@ -74,12 +80,13 @@ where
         behavior::InterpretSends<I, RootEvent, Path>,
     InterpreterRequests<ObserveCreation<crate::BehaviorAddr<C>>>:
         behavior::InterpretSends<I, RootEvent, Path>,
-    InterpreterRequests<ReportWorkerStopped<crate::BehaviorAddr<C>>>:
+    InterpreterRequests<ReportWorkerStopped<crate::BehaviorAddr<C>, ParentPath>>:
         behavior::InterpretSends<I, RootEvent, Path>,
-    InterpreterRequests<ReportWorkerCreationResolved<<crate::BehaviorAddr<C> as Address>::Nonce>>:
-        behavior::InterpretSends<I, RootEvent, Path>,
+    InterpreterRequests<
+        ReportWorkerCreationResolved<<crate::BehaviorAddr<C> as Address>::Nonce, ParentPath>,
+    >: behavior::InterpretSends<I, RootEvent, Path>,
     InterpreterRequests<ShutdownChild<C>>: behavior::InterpretSends<I, RootEvent, Path>,
-    ProxySends<C>: Send,
+    ProxySendsWithParent<C, ParentPath>: Send,
 {
     fn interpret(
         self,
@@ -96,43 +103,56 @@ where
     }
 }
 
-impl<C: Behavior> SendInput<Delivery<C::Protocol>, Own> for ProxySends<C> {
+impl<C: Behavior, ParentPath> SendInput<Delivery<C::Protocol>, Own>
+    for ProxySendsWithParent<C, ParentPath>
+{
     fn emit(&mut self, input: Delivery<C::Protocol>) {
         self.deliveries.push(input);
     }
 }
 
-impl<C: Behavior> SendInput<ObserveChild<crate::BehaviorAddr<C>>, Own> for ProxySends<C> {
+impl<C: Behavior, ParentPath> SendInput<ObserveChild<crate::BehaviorAddr<C>>, Own>
+    for ProxySendsWithParent<C, ParentPath>
+{
     fn emit(&mut self, input: ObserveChild<crate::BehaviorAddr<C>>) {
         self.child_observations.send(input);
     }
 }
 
-impl<C: Behavior> SendInput<ObserveCreation<crate::BehaviorAddr<C>>, Own> for ProxySends<C> {
+impl<C: Behavior, ParentPath> SendInput<ObserveCreation<crate::BehaviorAddr<C>>, Own>
+    for ProxySendsWithParent<C, ParentPath>
+{
     fn emit(&mut self, input: ObserveCreation<crate::BehaviorAddr<C>>) {
         self.creation_observations.send(input);
     }
 }
 
-impl<C: Behavior> SendInput<ReportWorkerStopped<crate::BehaviorAddr<C>>, Own> for ProxySends<C> {
-    fn emit(&mut self, input: ReportWorkerStopped<crate::BehaviorAddr<C>>) {
+impl<C: Behavior, ParentPath>
+    SendInput<ReportWorkerStopped<crate::BehaviorAddr<C>, ParentPath>, Own>
+    for ProxySendsWithParent<C, ParentPath>
+{
+    fn emit(&mut self, input: ReportWorkerStopped<crate::BehaviorAddr<C>, ParentPath>) {
         self.stopped_reports.send(input);
     }
 }
 
-impl<C: Behavior>
-    SendInput<ReportWorkerCreationResolved<<crate::BehaviorAddr<C> as Address>::Nonce>, Own>
-    for ProxySends<C>
+impl<C: Behavior, ParentPath>
+    SendInput<
+        ReportWorkerCreationResolved<<crate::BehaviorAddr<C> as Address>::Nonce, ParentPath>,
+        Own,
+    > for ProxySendsWithParent<C, ParentPath>
 {
     fn emit(
         &mut self,
-        input: ReportWorkerCreationResolved<<crate::BehaviorAddr<C> as Address>::Nonce>,
+        input: ReportWorkerCreationResolved<<crate::BehaviorAddr<C> as Address>::Nonce, ParentPath>,
     ) {
         self.creation_reports.send(input);
     }
 }
 
-impl<C: Behavior> SendInput<ShutdownChild<C>, Own> for ProxySends<C> {
+impl<C: Behavior, ParentPath> SendInput<ShutdownChild<C>, Own>
+    for ProxySendsWithParent<C, ParentPath>
+{
     fn emit(&mut self, input: ShutdownChild<C>) {
         self.shutdowns.send(input);
     }
@@ -151,15 +171,30 @@ impl<C: Behavior> SendInput<ShutdownChild<C>, Own> for ProxySends<C> {
 /// creation is unresolved, the proxy first waits for its exact resolution.
 /// Shutdown rejection is a typed [`IncarnationError`] and never fabricates a
 /// successful child termination.
-pub struct Proxy<C: Behavior<Ph = Never>> {
+pub struct ProxyWithParent<C: Behavior<Ph = Never>, ParentPath> {
     incarnation: Incarnation<<crate::BehaviorAddr<C> as Address>::Nonce, C>,
+    parent: ProxyParentIngress<crate::BehaviorAddr<C>, ParentPath>,
 }
 
-impl<C: Behavior<Ph = Never>> Proxy<C> {
+/// A proxy whose parent owns both report lanes directly.
+pub type Proxy<C> = ProxyWithParent<C, behavior::Here>;
+
+impl<C: Behavior<Ph = Never>> ProxyWithParent<C, behavior::Here> {
     #[must_use]
     pub fn new(worker: C) -> Self {
+        Self::with_parent(worker, ProxyParentIngress::new())
+    }
+}
+
+impl<C: Behavior<Ph = Never>, ParentPath> ProxyWithParent<C, ParentPath> {
+    #[must_use]
+    pub fn with_parent(
+        worker: C,
+        parent: ProxyParentIngress<crate::BehaviorAddr<C>, ParentPath>,
+    ) -> Self {
         Self {
             incarnation: Incarnation::new(worker),
+            parent,
         }
     }
 
@@ -169,7 +204,7 @@ impl<C: Behavior<Ph = Never>> Proxy<C> {
     }
 }
 
-impl<C> Proxy<C>
+impl<C, ParentPath> ProxyWithParent<C, ParentPath>
 where
     C: Behavior<Ph = Never>,
     crate::BehaviorAddr<C>: Address,
@@ -182,8 +217,9 @@ where
             crate::BehaviorMessage<C>,
             crate::BehaviorAddr<C>,
         >,
-    ) -> ProxyActions<C> {
-        let mut sends = ProxySends::empty();
+        parent: ProxyParentIngress<crate::BehaviorAddr<C>, ParentPath>,
+    ) -> ProxyActions<C, ParentPath> {
+        let mut sends = ProxySendsWithParent::<C, ParentPath>::empty();
         let creates = match effects {
             IncarnationEffects::None => Vec::new(),
             IncarnationEffects::Create(creation) => {
@@ -206,19 +242,40 @@ where
                 Vec::new()
             }
             IncarnationEffects::Report(resolved) => {
-                sends.creation_reports.extend([resolved.into()]);
+                sends
+                    .creation_reports
+                    .extend([ReportWorkerCreationResolved::new(
+                        parent.creation,
+                        resolved.nonce,
+                        resolved.kind,
+                        resolved.result.map(|_| ()),
+                    )]);
                 Vec::new()
             }
             IncarnationEffects::ReportAndShutdown {
                 resolved,
                 incarnation,
             } => {
-                sends.creation_reports.extend([resolved.into()]);
+                sends
+                    .creation_reports
+                    .extend([ReportWorkerCreationResolved::new(
+                        parent.creation,
+                        resolved.nonce,
+                        resolved.kind,
+                        resolved.result.map(|_| ()),
+                    )]);
                 sends.shutdowns.send(ShutdownChild::new(incarnation));
                 Vec::new()
             }
             IncarnationEffects::ReportAndStop(resolved) => {
-                sends.creation_reports.extend([resolved.into()]);
+                sends
+                    .creation_reports
+                    .extend([ReportWorkerCreationResolved::new(
+                        parent.creation,
+                        resolved.nonce,
+                        resolved.kind,
+                        resolved.result.map(|_| ()),
+                    )]);
                 return Actions::new(sends, Vec::new(), Step::Stop(behavior::Stopped));
             }
             IncarnationEffects::Shutdown(incarnation) => {
@@ -235,21 +292,24 @@ where
     fn stopped_actions(
         effects: IncarnationStopEffects<<crate::BehaviorAddr<C> as Address>::Nonce, C>,
         event: crate::ChildStopped<crate::BehaviorAddr<C>>,
-    ) -> ProxyActions<C> {
+        parent: ProxyParentIngress<crate::BehaviorAddr<C>, ParentPath>,
+    ) -> ProxyActions<C, ParentPath> {
         let mut actions = Self::actions(
             effects
                 .creation
                 .map_or(IncarnationEffects::None, IncarnationEffects::Create),
+            parent,
         );
         if let Some(incarnation) = effects.stopped {
             actions
                 .sends
                 .stopped_reports
-                .extend([ReportWorkerStopped::from(crate::ChildStopped::new(
+                .extend([ReportWorkerStopped::new(
+                    parent.stopped,
                     incarnation,
                     event.outcome,
                     event.at,
-                ))]);
+                )]);
         }
         actions
     }
@@ -264,14 +324,14 @@ where
     type Msg = ProxyCommand<C>;
 }
 
-impl<C> Behavior for Proxy<C>
+impl<C, ParentPath> Behavior for ProxyWithParent<C, ParentPath>
 where
     C: Behavior<Ph = Never>,
     <crate::BehaviorAddr<C> as Address>::Nonce: From<u64>,
 {
-    type Protocol = Self;
+    type Protocol = Proxy<C>;
     type Event = ProxyEvent<User<crate::BehaviorAddr<C>, ProxyCommand<C>>>;
-    type Sends = ProxySends<C>;
+    type Sends = ProxySendsWithParent<C, ParentPath>;
     type Ph = Never;
     type Error = IncarnationError;
     type Birth = Births<C>;
@@ -282,7 +342,7 @@ where
     ) -> Result<Actions<crate::BehaviorAddr<C>, Never, Self::Sends, Births<C>>, IncarnationError>
     {
         let effects = self.incarnation.initialize()?;
-        Ok(Self::actions(effects))
+        Ok(Self::actions(effects, self.parent))
     }
 
     fn transition(
@@ -295,29 +355,33 @@ where
             ProxyEvent::CreationResolved(resolved) => Self::actions(
                 self.incarnation
                     .creation_resolved(resolved.nonce, resolved.kind, resolved.result),
+                self.parent,
             ),
             ProxyEvent::ChildStopped(event) => {
                 let completes_shutdown = self.incarnation.shutdown_complete_after(event.nonce);
                 let effects = self.incarnation.child_stopped(event.nonce)?;
-                let mut actions = Self::stopped_actions(effects, event);
+                let mut actions = Self::stopped_actions(effects, event, self.parent);
                 if completes_shutdown {
                     actions.become_ = Step::Stop(behavior::Stopped);
                 }
                 actions
             }
-            ProxyEvent::ShutdownRequested(_) => Self::actions(self.incarnation.shutdown()),
+            ProxyEvent::ShutdownRequested(_) => {
+                Self::actions(self.incarnation.shutdown(), self.parent)
+            }
             ProxyEvent::ChildShutdownRejected(rejected) => Self::actions(
                 self.incarnation
                     .shutdown_rejected(rejected.nonce, rejected.reason)?,
+                self.parent,
             ),
             ProxyEvent::Command(event) => match event.message {
                 ProxyCommand::Forward(message) => {
                     let effects = self.incarnation.forward(message);
-                    Self::actions(effects)
+                    Self::actions(effects, self.parent)
                 }
                 ProxyCommand::Replace(child) => {
                     let effects = self.incarnation.replace(child)?;
-                    Self::actions(effects)
+                    Self::actions(effects, self.parent)
                 }
             },
         })
