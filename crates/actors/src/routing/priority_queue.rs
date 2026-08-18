@@ -3,9 +3,11 @@
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 
+use super::DeliveryOutcomes;
+
 use behavior::{
     Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, Never, NoBirths, Protocol,
-    Recipient, SendEffects, User,
+    Recipient, User,
 };
 use thiserror::Error;
 
@@ -79,48 +81,6 @@ pub enum PriorityQueueMessage<T, P, Target: Protocol, Reply: behavior::Protocol>
     },
 }
 
-/// Named effect lanes emitted by [`PriorityQueue`].
-pub struct PriorityQueueSends<Target: Protocol, Reply: behavior::Protocol> {
-    /// Released values.
-    pub deliveries: Vec<Delivery<Target>>,
-    /// Operation results.
-    pub outcomes: Vec<Delivery<Reply>>,
-}
-impl<Target: Protocol, Reply: behavior::Protocol> SendEffects
-    for PriorityQueueSends<Target, Reply>
-{
-    fn empty() -> Self {
-        Self {
-            deliveries: Vec::new(),
-            outcomes: Vec::new(),
-        }
-    }
-    fn append(&mut self, mut other: Self) {
-        self.deliveries.append(&mut other.deliveries);
-        self.outcomes.append(&mut other.outcomes);
-    }
-}
-
-impl<Event, Target: Protocol, Reply: behavior::Protocol> behavior::SendsFor<Event>
-    for PriorityQueueSends<Target, Reply>
-{
-}
-
-impl<I, RootEvent, Path, Target, Reply> behavior::InterpretSends<I, RootEvent, Path>
-    for PriorityQueueSends<Target, Reply>
-where
-    I: behavior::SendInterpreter,
-    Target: Protocol,
-    Reply: behavior::Protocol,
-    Vec<Delivery<Target>>: behavior::InterpretSends<I, RootEvent, Path>,
-    Vec<Delivery<Reply>>: behavior::InterpretSends<I, RootEvent, Path>,
-{
-    fn interpret(self, interpreter: &mut I) -> Result<(), I::Error> {
-        behavior::InterpretSends::interpret(self.deliveries, interpreter)?;
-        behavior::InterpretSends::interpret(self.outcomes, interpreter)
-    }
-}
-
 /// Invalid priority-queue definition.
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
 pub enum PriorityQueueConfigError {
@@ -180,7 +140,7 @@ pub struct PriorityQueue<
     marker: PriorityQueueMarker<A, Target, Reply>,
 }
 type PriorityActions<A, Target, Reply> =
-    Actions<A, Never, PriorityQueueSends<Target, Reply>, NoBirths>;
+    Actions<A, Never, DeliveryOutcomes<Target, Reply>, NoBirths>;
 impl<A, T, P, Target, Reply> PriorityQueue<A, T, P, Target, Reply>
 where
     A: Address,
@@ -219,7 +179,7 @@ where
         deliveries: Vec<Delivery<Target>>,
         outcomes: Vec<Delivery<Reply>>,
     ) -> PriorityActions<A, Target, Reply> {
-        Actions::send(PriorityQueueSends {
+        Actions::send(DeliveryOutcomes {
             deliveries,
             outcomes,
         })
@@ -303,7 +263,7 @@ where
 {
     type Protocol = Self;
     type Event = User<A, crate::BehaviorMessage<Self>>;
-    type Sends = PriorityQueueSends<Target, Reply>;
+    type Sends = DeliveryOutcomes<Target, Reply>;
     type Ph = Never;
     type Error = Never;
     type Birth = NoBirths;

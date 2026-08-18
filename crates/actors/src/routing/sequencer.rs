@@ -2,9 +2,11 @@
 
 use std::collections::BTreeMap;
 
+use super::DeliveryOutcomes;
+
 use behavior::{
     Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, Never, NoBirths, Protocol,
-    Recipient, SendEffects, User,
+    Recipient, User,
 };
 
 /// A position in a [`Sequencer`] stream.
@@ -72,48 +74,6 @@ pub enum SequencerMessage<T, Target: Protocol, Reply: behavior::Protocol> {
     },
 }
 
-/// Named effect lanes emitted by [`Sequencer`].
-pub struct SequencerSends<Target: Protocol, Reply: behavior::Protocol> {
-    /// Values released in increasing contiguous sequence order.
-    pub deliveries: Vec<Delivery<Target>>,
-    /// Exactly one factual result for the triggering offer.
-    pub outcomes: Vec<Delivery<Reply>>,
-}
-
-impl<Target: Protocol, Reply: behavior::Protocol> SendEffects for SequencerSends<Target, Reply> {
-    fn empty() -> Self {
-        Self {
-            deliveries: Vec::new(),
-            outcomes: Vec::new(),
-        }
-    }
-
-    fn append(&mut self, mut other: Self) {
-        self.deliveries.append(&mut other.deliveries);
-        self.outcomes.append(&mut other.outcomes);
-    }
-}
-
-impl<Event, Target: Protocol, Reply: behavior::Protocol> behavior::SendsFor<Event>
-    for SequencerSends<Target, Reply>
-{
-}
-
-impl<I, RootEvent, Path, Target, Reply> behavior::InterpretSends<I, RootEvent, Path>
-    for SequencerSends<Target, Reply>
-where
-    I: behavior::SendInterpreter,
-    Target: Protocol,
-    Reply: behavior::Protocol,
-    Vec<Delivery<Target>>: behavior::InterpretSends<I, RootEvent, Path>,
-    Vec<Delivery<Reply>>: behavior::InterpretSends<I, RootEvent, Path>,
-{
-    fn interpret(self, interpreter: &mut I) -> Result<(), I::Error> {
-        behavior::InterpretSends::interpret(self.deliveries, interpreter)?;
-        behavior::InterpretSends::interpret(self.outcomes, interpreter)
-    }
-}
-
 struct Pending<T, Target: Protocol> {
     value: T,
     to: Recipient<Target>,
@@ -174,8 +134,8 @@ where
     fn actions(
         deliveries: Vec<Delivery<Target>>,
         outcome: Delivery<Reply>,
-    ) -> Actions<A, Never, SequencerSends<Target, Reply>, NoBirths> {
-        Actions::send(SequencerSends {
+    ) -> Actions<A, Never, DeliveryOutcomes<Target, Reply>, NoBirths> {
+        Actions::send(DeliveryOutcomes {
             deliveries,
             outcomes: vec![outcome],
         })
@@ -213,7 +173,7 @@ where
 {
     type Protocol = Self;
     type Event = User<A, crate::BehaviorMessage<Self>>;
-    type Sends = SequencerSends<Target, Reply>;
+    type Sends = DeliveryOutcomes<Target, Reply>;
     type Ph = Never;
     type Error = Never;
     type Birth = NoBirths;
@@ -311,7 +271,7 @@ mod tests {
     ) -> behavior::Actions<
         MailAddr,
         behavior::Never,
-        SequencerSends<Target, Reply>,
+        DeliveryOutcomes<Target, Reply>,
         behavior::NoBirths,
     > {
         subject

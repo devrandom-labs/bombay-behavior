@@ -2,9 +2,11 @@
 
 use std::collections::VecDeque;
 
+use super::DeliveryOutcomes;
+
 use behavior::{
     Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, Never, NoBirths, Protocol,
-    Recipient, SendEffects, User,
+    Recipient, User,
 };
 use thiserror::Error;
 
@@ -56,48 +58,6 @@ pub enum DeduplicatorMessage<K, T, Target: Protocol, Reply: behavior::Protocol> 
         /// Typed recipient for the complete result.
         reply_to: Recipient<Reply>,
     },
-}
-
-/// Named send lanes emitted by [`Deduplicator`].
-pub struct DeduplicatorSends<Target: Protocol, Reply: behavior::Protocol> {
-    /// At most one accepted value.
-    pub deliveries: Vec<Delivery<Target>>,
-    /// Exactly one factual result.
-    pub outcomes: Vec<Delivery<Reply>>,
-}
-
-impl<Target: Protocol, Reply: behavior::Protocol> SendEffects for DeduplicatorSends<Target, Reply> {
-    fn empty() -> Self {
-        Self {
-            deliveries: Vec::new(),
-            outcomes: Vec::new(),
-        }
-    }
-
-    fn append(&mut self, mut other: Self) {
-        self.deliveries.append(&mut other.deliveries);
-        self.outcomes.append(&mut other.outcomes);
-    }
-}
-
-impl<Event, Target: Protocol, Reply: behavior::Protocol> behavior::SendsFor<Event>
-    for DeduplicatorSends<Target, Reply>
-{
-}
-
-impl<I, RootEvent, Path, Target, Reply> behavior::InterpretSends<I, RootEvent, Path>
-    for DeduplicatorSends<Target, Reply>
-where
-    I: behavior::SendInterpreter,
-    Target: Protocol,
-    Reply: behavior::Protocol,
-    Vec<Delivery<Target>>: behavior::InterpretSends<I, RootEvent, Path>,
-    Vec<Delivery<Reply>>: behavior::InterpretSends<I, RootEvent, Path>,
-{
-    fn interpret(self, interpreter: &mut I) -> Result<(), I::Error> {
-        behavior::InterpretSends::interpret(self.deliveries, interpreter)?;
-        behavior::InterpretSends::interpret(self.outcomes, interpreter)
-    }
 }
 
 /// Invalid deduplication-retention definition.
@@ -201,7 +161,7 @@ where
 {
     type Protocol = Self;
     type Event = User<A, crate::BehaviorMessage<Self>>;
-    type Sends = DeduplicatorSends<Target, Reply>;
+    type Sends = DeliveryOutcomes<Target, Reply>;
     type Ph = Never;
     type Error = Never;
     type Birth = NoBirths;
@@ -214,7 +174,7 @@ where
             reply_to,
         } = event.message;
         if self.retained.contains(&key) {
-            return Ok(Actions::send(DeduplicatorSends {
+            return Ok(Actions::send(DeliveryOutcomes {
                 deliveries: Vec::new(),
                 outcomes: vec![Delivery::new(
                     reply_to,
@@ -229,7 +189,7 @@ where
             None
         };
         self.retained.push_back(key.clone());
-        Ok(Actions::send(DeduplicatorSends {
+        Ok(Actions::send(DeliveryOutcomes {
             deliveries: vec![Delivery::new(to, value)],
             outcomes: vec![Delivery::new(
                 reply_to,
@@ -283,7 +243,7 @@ mod tests {
         subject: &mut crate::Active<Subject>,
         key: u8,
         value: u8,
-    ) -> Actions<MailAddr, Never, DeduplicatorSends<Target, Reply>, NoBirths> {
+    ) -> Actions<MailAddr, Never, DeliveryOutcomes<Target, Reply>, NoBirths> {
         subject
             .receive(
                 MailAddr(9),

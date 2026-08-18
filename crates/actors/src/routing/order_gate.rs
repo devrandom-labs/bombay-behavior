@@ -2,9 +2,11 @@
 
 use std::collections::BTreeMap;
 
+use super::DeliveryOutcomes;
+
 use behavior::{
     Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, Never, NoBirths, Protocol,
-    Recipient, SendEffects, User,
+    Recipient, User,
 };
 
 /// Complete observable state of an [`OrderGate`].
@@ -85,47 +87,6 @@ pub enum OrderGateMessage<K, T, Target: Protocol, Reply: behavior::Protocol> {
     },
 }
 
-/// Named effect lanes emitted by [`OrderGate`].
-pub struct OrderGateSends<Target: Protocol, Reply: behavior::Protocol> {
-    /// Values emitted in increasing key order for an opening.
-    pub deliveries: Vec<Delivery<Target>>,
-    /// Exactly one factual operation result.
-    pub outcomes: Vec<Delivery<Reply>>,
-}
-
-impl<Target: Protocol, Reply: behavior::Protocol> SendEffects for OrderGateSends<Target, Reply> {
-    fn empty() -> Self {
-        Self {
-            deliveries: Vec::new(),
-            outcomes: Vec::new(),
-        }
-    }
-    fn append(&mut self, mut other: Self) {
-        self.deliveries.append(&mut other.deliveries);
-        self.outcomes.append(&mut other.outcomes);
-    }
-}
-
-impl<Event, Target: Protocol, Reply: behavior::Protocol> behavior::SendsFor<Event>
-    for OrderGateSends<Target, Reply>
-{
-}
-
-impl<I, RootEvent, Path, Target, Reply> behavior::InterpretSends<I, RootEvent, Path>
-    for OrderGateSends<Target, Reply>
-where
-    I: behavior::SendInterpreter,
-    Target: Protocol,
-    Reply: behavior::Protocol,
-    Vec<Delivery<Target>>: behavior::InterpretSends<I, RootEvent, Path>,
-    Vec<Delivery<Reply>>: behavior::InterpretSends<I, RootEvent, Path>,
-{
-    fn interpret(self, interpreter: &mut I) -> Result<(), I::Error> {
-        behavior::InterpretSends::interpret(self.deliveries, interpreter)?;
-        behavior::InterpretSends::interpret(self.outcomes, interpreter)
-    }
-}
-
 struct Held<T, Target: Protocol> {
     value: T,
     to: Recipient<Target>,
@@ -183,8 +144,8 @@ where
         deliveries: Vec<Delivery<Target>>,
         reply_to: Recipient<Reply>,
         outcome: OrderGateOutcome<K, T>,
-    ) -> Actions<A, Never, OrderGateSends<Target, Reply>, NoBirths> {
-        Actions::send(OrderGateSends {
+    ) -> Actions<A, Never, DeliveryOutcomes<Target, Reply>, NoBirths> {
+        Actions::send(DeliveryOutcomes {
             deliveries,
             outcomes: vec![Delivery::new(reply_to, outcome)],
         })
@@ -196,7 +157,7 @@ where
         value: T,
         to: Recipient<Target>,
         reply_to: Recipient<Reply>,
-    ) -> Actions<A, Never, OrderGateSends<Target, Reply>, NoBirths> {
+    ) -> Actions<A, Never, DeliveryOutcomes<Target, Reply>, NoBirths> {
         if self
             .watermark
             .as_ref()
@@ -230,7 +191,7 @@ where
         &mut self,
         through: K,
         reply_to: Recipient<Reply>,
-    ) -> Actions<A, Never, OrderGateSends<Target, Reply>, NoBirths> {
+    ) -> Actions<A, Never, DeliveryOutcomes<Target, Reply>, NoBirths> {
         if let Some(current) = &self.watermark
             && through <= *current
         {
@@ -313,7 +274,7 @@ where
 {
     type Protocol = Self;
     type Event = User<A, crate::BehaviorMessage<Self>>;
-    type Sends = OrderGateSends<Target, Reply>;
+    type Sends = DeliveryOutcomes<Target, Reply>;
     type Ph = Never;
     type Error = Never;
     type Birth = NoBirths;
@@ -368,7 +329,7 @@ mod tests {
         s: &mut crate::Active<Subject>,
         key: u8,
         value: u8,
-    ) -> Actions<MailAddr, Never, OrderGateSends<Target, Reply>, NoBirths> {
+    ) -> Actions<MailAddr, Never, DeliveryOutcomes<Target, Reply>, NoBirths> {
         s.receive(
             MailAddr(9),
             OrderGateMessage::Hold {
@@ -383,7 +344,7 @@ mod tests {
     fn open(
         s: &mut crate::Active<Subject>,
         through: u8,
-    ) -> Actions<MailAddr, Never, OrderGateSends<Target, Reply>, NoBirths> {
+    ) -> Actions<MailAddr, Never, DeliveryOutcomes<Target, Reply>, NoBirths> {
         s.receive(
             MailAddr(9),
             OrderGateMessage::OpenThrough {

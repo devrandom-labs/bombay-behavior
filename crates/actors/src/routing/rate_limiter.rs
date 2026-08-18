@@ -2,9 +2,11 @@
 
 use core::num::NonZeroU64;
 
+use super::DeliveryOutcomes;
+
 use behavior::{
     Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, Never, NoBirths, Protocol,
-    Recipient, SendEffects, User,
+    Recipient, User,
 };
 use thiserror::Error;
 
@@ -86,46 +88,6 @@ pub enum RateLimiterMessage<T, Target: Protocol, Reply: behavior::Protocol> {
     },
 }
 
-/// Named effect lanes emitted by [`RateLimiter`].
-pub struct RateLimiterSends<Target: Protocol, Reply: behavior::Protocol> {
-    /// Admitted values.
-    pub deliveries: Vec<Delivery<Target>>,
-    /// Admission facts.
-    pub outcomes: Vec<Delivery<Reply>>,
-}
-impl<Target: Protocol, Reply: behavior::Protocol> SendEffects for RateLimiterSends<Target, Reply> {
-    fn empty() -> Self {
-        Self {
-            deliveries: Vec::new(),
-            outcomes: Vec::new(),
-        }
-    }
-    fn append(&mut self, mut other: Self) {
-        self.deliveries.append(&mut other.deliveries);
-        self.outcomes.append(&mut other.outcomes);
-    }
-}
-
-impl<Event, Target: Protocol, Reply: behavior::Protocol> behavior::SendsFor<Event>
-    for RateLimiterSends<Target, Reply>
-{
-}
-
-impl<I, RootEvent, Path, Target, Reply> behavior::InterpretSends<I, RootEvent, Path>
-    for RateLimiterSends<Target, Reply>
-where
-    I: behavior::SendInterpreter,
-    Target: Protocol,
-    Reply: behavior::Protocol,
-    Vec<Delivery<Target>>: behavior::InterpretSends<I, RootEvent, Path>,
-    Vec<Delivery<Reply>>: behavior::InterpretSends<I, RootEvent, Path>,
-{
-    fn interpret(self, interpreter: &mut I) -> Result<(), I::Error> {
-        behavior::InterpretSends::interpret(self.deliveries, interpreter)?;
-        behavior::InterpretSends::interpret(self.outcomes, interpreter)
-    }
-}
-
 /// Invalid rate-limiter definition.
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
 pub enum RateLimiterConfigError {
@@ -161,7 +123,7 @@ pub struct RateLimiter<
     available: u64,
     marker: RateLimiterMarker<A, Target, Reply>,
 }
-type RateActions<A, Target, Reply> = Actions<A, Never, RateLimiterSends<Target, Reply>, NoBirths>;
+type RateActions<A, Target, Reply> = Actions<A, Never, DeliveryOutcomes<Target, Reply>, NoBirths>;
 impl<A, T, Target, Reply> RateLimiter<A, T, Target, Reply>
 where
     A: Address,
@@ -194,7 +156,7 @@ where
         reply_to: Recipient<Reply>,
         outcome: RateLimiterOutcome<T>,
     ) -> RateActions<A, Target, Reply> {
-        Actions::send(RateLimiterSends {
+        Actions::send(DeliveryOutcomes {
             deliveries,
             outcomes: vec![Delivery::new(reply_to, outcome)],
         })
@@ -266,7 +228,7 @@ where
 {
     type Protocol = Self;
     type Event = User<A, crate::BehaviorMessage<Self>>;
-    type Sends = RateLimiterSends<Target, Reply>;
+    type Sends = DeliveryOutcomes<Target, Reply>;
     type Ph = Never;
     type Error = Never;
     type Birth = NoBirths;
