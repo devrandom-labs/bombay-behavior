@@ -88,7 +88,7 @@ lookup, or erased capability is introduced. `propagate_all` and
 | `ReportSupervisionFailure` | Bombay interpreter | Publishes the supervisor's typed terminal classification before a same-action stop; it is not a general parent-escalation request. |
 | `ReportTerminalOutcome` | Bombay interpreter | Publishes the complete supplied terminal sum unchanged before a same-action stop. |
 
-## Audit status and open obligations
+## Audit status and proof ledger
 
 The first audit repaired peer/child observation multiplicity, exact
 fixed/backoff creation-rejection reporting, stable-proxy and worker-
@@ -96,10 +96,23 @@ incarnation creation-provenance validation, and active shutdown of live
 OneForAll/RestForOne replacement candidates. These remain subject to the full
 repository gates.
 
-The remaining obligations are not completion claims:
+The conservation obligation is closed by evidence at each owning layer:
 
-- prove the law through independent model, exhaustive, property, compile-fail,
-  interpreter multiplicity, and end-to-end reference-application tests.
+| Proof obligation | Owning layer and evidence |
+|---|---|
+| Independent model | `behavior-testkit/tests/terminal_fact_model.rs` uses an independent waiting/quiet/published oracle over arbitrary mixed selected, unrelated, and domain-event sequences. It compares state, exact publication, stop coupling, and transparent inner sends after every operation. |
+| Exhaustive outcomes | `lifecycle::termination_propagation::tests::every_terminal_variant_is_propagated_without_reclassification` enumerates every `Exit` and `Crash` variant, including every nested supervision failure and creation-rejection reason. |
+| Property sequences | `terminal_fact_model::arbitrary_fact_sequences_match_an_independent_single_consumption_model` covers both public policies and arbitrary terminal payload fields; the focused in-module property independently checks exact once-only payload retention. |
+| Compile-time target identity | The `PropagateTermination` compile-fail rustdoc rejects a child selector whose nonce does not belong to the selected address family. |
+| Composition and initialization | The focused initialization/delegation tests preserve inner sends, births, verdicts, and the exact structural observation lane. The workspace algebra and cross-lane suites cover the surrounding wrapper products. |
+| Interpreter multiplicity | Bombay's `observation::tests::structural_observations_of_one_peer_are_multiplicity_preserving` proves two structural paths receive the same exact peer terminal fact. `actor_system::shutdown_and_terminal_propagation_consume_the_same_child_fact_independently` proves the shutdown and propagation consumers independently receive one child fact. |
+| Report interpretation | Bombay's report tests publish every `TerminalOutcome` unchanged, and the application capability interprets the report lane before the Driver applies the same action's stop verdict. |
+| End-to-end reference application | Bombay's `supervision` example runs the same heterogeneous topology through graceful coordinated shutdown and restart-budget exhaustion. It accepts only the exact expected terminal classification and uses the public `App` boundary. |
+
+The cross-repository runtime evidence belongs to Bombay rather than this
+template crate. It is cited here as an end-to-end contract proof; no runtime,
+observation registry, address mechanism, mailbox, or executor implementation
+is copied into Actors.
 
 The workspace-wide public outcome review covered these complete families:
 

@@ -332,7 +332,9 @@ mod tests {
     use std::time::Instant;
 
     use super::*;
-    use crate::{Activate as _, Crash, Exit, RestartDenial, SupervisionFailureReason};
+    use crate::{
+        Activate as _, Crash, CreationRejection, Exit, RestartDenial, SupervisionFailureReason,
+    };
     use behavior::{Births, Create, MailAddr, Never, Step, User};
     use proptest::prelude::*;
 
@@ -407,6 +409,36 @@ mod tests {
                     replacements_requested: 3,
                     maximum_restarts: 4,
                 }),
+            )),
+            Ok(Exit::SupervisionFailed(
+                SupervisionFailureReason::StableChildCreationRejected(
+                    CreationRejection::NonceAlreadyBound,
+                ),
+            )),
+            Ok(Exit::SupervisionFailed(
+                SupervisionFailureReason::StableChildCreationRejected(
+                    CreationRejection::InitializationFailed,
+                ),
+            )),
+            Ok(Exit::SupervisionFailed(
+                SupervisionFailureReason::StableChildCreationRejected(
+                    CreationRejection::EnvironmentFailed,
+                ),
+            )),
+            Ok(Exit::SupervisionFailed(
+                SupervisionFailureReason::WorkerCreationRejected(
+                    CreationRejection::NonceAlreadyBound,
+                ),
+            )),
+            Ok(Exit::SupervisionFailed(
+                SupervisionFailureReason::WorkerCreationRejected(
+                    CreationRejection::InitializationFailed,
+                ),
+            )),
+            Ok(Exit::SupervisionFailed(
+                SupervisionFailureReason::WorkerCreationRejected(
+                    CreationRejection::EnvironmentFailed,
+                ),
             )),
             Err(Crash::Failed),
             Err(Crash::EnvironmentFailed),
@@ -509,7 +541,7 @@ mod tests {
     proptest! {
         #[test]
         fn arbitrary_terminal_payload_is_conserved_once(
-            tag in 0_u8..9,
+            tag in 0_u8..15,
             peer in any::<u64>(),
             admitted in any::<usize>(),
             requested in any::<usize>(),
@@ -529,9 +561,15 @@ mod tests {
                         maximum_restarts: maximum,
                     }),
                 )),
-                5 => Err(Crash::Failed),
-                6 => Err(Crash::EnvironmentFailed),
-                7 => Err(Crash::Panicked),
+                5 => Ok(Exit::SupervisionFailed(SupervisionFailureReason::StableChildCreationRejected(CreationRejection::NonceAlreadyBound))),
+                6 => Ok(Exit::SupervisionFailed(SupervisionFailureReason::StableChildCreationRejected(CreationRejection::InitializationFailed))),
+                7 => Ok(Exit::SupervisionFailed(SupervisionFailureReason::StableChildCreationRejected(CreationRejection::EnvironmentFailed))),
+                8 => Ok(Exit::SupervisionFailed(SupervisionFailureReason::WorkerCreationRejected(CreationRejection::NonceAlreadyBound))),
+                9 => Ok(Exit::SupervisionFailed(SupervisionFailureReason::WorkerCreationRejected(CreationRejection::InitializationFailed))),
+                10 => Ok(Exit::SupervisionFailed(SupervisionFailureReason::WorkerCreationRejected(CreationRejection::EnvironmentFailed))),
+                11 => Err(Crash::Failed),
+                12 => Err(Crash::EnvironmentFailed),
+                13 => Err(Crash::Panicked),
                 _ => Err(Crash::Cancelled),
             };
             let mut active = child(propagate_all).initialize().unwrap().behavior;
