@@ -18,6 +18,10 @@
 //! into its one initialized [`Active`] state. Rust can infer wrapper stacks at
 //! construction and spawn call sites; applications do not need to name types
 //! such as `Deadline<Stash<Machine<...>>>`.
+//! Correctness-sensitive cross-family orders use the ordinary
+//! [`supervised_backoff`] and [`coordinated_terminal_application`] functions;
+//! the repository's composition-recipe guide records their construction,
+//! error, initialization, and trace-equivalence laws.
 //!
 //! The top-level Bombay package is the ordinary application façade. Direct use
 //! of this component crate is intended for interpreter implementation,
@@ -44,7 +48,10 @@ mod watch;
 pub mod workflow;
 
 pub use activation::{Activate, Active, Initialized};
-pub use composition::MessageAdapter;
+pub use composition::{
+    CoordinatedTerminalApplication, MessageAdapter, coordinated_terminal_application,
+    supervised_backoff,
+};
 pub use discovery::{
     Presence, PresenceEntry, PresenceError, PresenceMessage, PresenceOutcome, PresencePhase,
     PresenceReply, PresenceReport, PresenceSends, PresenceVersion, PubSub, PubSubError,

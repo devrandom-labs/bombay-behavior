@@ -45,6 +45,12 @@ The packages preserve these guarantees:
 - timers, observation, stashing, and state transitions compose without hidden
   runtime side channels.
 
+Two correctness-sensitive wrapper orders have canonical ordinary Rust
+constructors: `supervised_backoff` and `coordinated_terminal_application`.
+They keep every policy input explicit and return existing concrete template
+stacks. See [Proven composition recipes](docs/composition-recipes.md) for exact
+types, error boundaries, initialization order, and direct-constructor guidance.
+
 ## The orthogonal actor algebras
 
 Bombay does not use “protocol” as another name for an actor, its mailbox, or
@@ -197,7 +203,9 @@ before using its `Active<B>` behavior. `Active<B>` can process events but cannot
 be initialized again. The call order is enforced by types rather than
 `NotInitialized` or `AlreadyInitialized` runtime branches. Typed wrappers are
 constructed explicitly through their owning types, for example
-`Deadline::new(Stash::new(behavior, route), timer, when, on_elapsed)`.
+`Deadline::new(Stash::new(behavior, route), timer, when, on_elapsed)`. Where
+wrapper placement itself carries a proven semantic law, use the owning library
+recipe rather than respelling the stack manually.
 
 For a nominal user-message behavior, `#[behavior::behavior(...)]` may annotate
 an ordinary inherent impl containing `receive(&mut self, from, message)` and an
@@ -212,6 +220,11 @@ boundaries are generic over `B: Behavior`; the library does not add a second
 macro for naming compositions. Supervisor and pool construction uses the named
 `ChildTopology`, `RestartConfiguration`, and `PoolConfiguration` products
 instead of positional argument lists.
+
+The cross-family recipes are re-exported from both `composition` and the crate
+root. They add no defaults, runtime lookup, or erased policy. Pool construction
+remains `WorkerPool::new` because it already owns one truthful product boundary
+without correctness-sensitive wrapper order.
 
 ## Development and testing
 

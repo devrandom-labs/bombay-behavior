@@ -6,8 +6,11 @@
 //! a dumping ground.
 
 mod message_adapter;
+mod recipes;
 
 pub use crate::activation::{Activate, Active, Initialized};
+pub use crate::lifecycle::{CoordinatedTerminalApplication, coordinated_terminal_application};
 pub use crate::machine::{Machine, Move};
 pub use crate::stash::{Stash, StashRoute, StashStatus};
 pub use message_adapter::MessageAdapter;
+pub use recipes::supervised_backoff;

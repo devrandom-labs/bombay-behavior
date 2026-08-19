@@ -32,6 +32,8 @@ prescribe this Rust ownership decomposition.
 | `Supervisor<A, C>` | `Births<Proxy<C>>` | Sound: the standalone template owns fixed topology, proxy creation, observation, replacement and draining directly. |
 | `Supervise<B, C>` | `Births<Proxy<C>>` plus a real inner `Births<C>` lane | Sound as a composition: the shared ownership core owns configured topology while `B` is required only for additional child creations that a real inner transition may emit. Use `Supervisor` when no such application behavior exists. |
 | `BackoffSupervisor<A, C>` / `BackoffSupervise<B, C>` | The corresponding supervisor birth lane plus timer schedules | Sound: both adapters share one pending-delay state machine; standalone use has no inner capability witness. |
+| `supervised_backoff` | No new capability; fixes `Supervisor` inside `BackoffSupervisor` | Sound derived construction: topology/restart govern supervision, while validated backoff/timer selection govern only the outer delay fold. Construction preserves `FleetError`; later delay failures remain `BackoffError`. |
+| `coordinated_terminal_application` | No new capability; combines shutdown requests, one timer schedule, and one exact child observation | Sound derived construction: validated heterogeneous coordination sits inside `OneShot`, with `PropagateTermination` outside. Every capability remains in its existing named lane. |
 | `WorkerPool` and `KeyedWorkerPool` | Supervised proxy births | Sound: both compose the shared ownership core directly; the former inert `PoolKernel` has been removed. |
 
 ## Required construction

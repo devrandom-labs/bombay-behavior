@@ -1,5 +1,10 @@
 # Changelog
 
+- Add owner-defined `supervised_backoff` and
+  `coordinated_terminal_application` construction recipes. They return the
+  existing concrete stacks, preserve existing construction-error phases, and
+  are differentially tested against manual composition.
+
 All notable changes to `bombay-behavior-actors` are documented here.
 
 ## [Unreleased]

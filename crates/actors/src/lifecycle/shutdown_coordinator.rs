@@ -6,6 +6,7 @@ use behavior::{
     InterpreterRequests, SendEffects, SendLayer,
 };
 use behavior::{User, UserEvent};
+use std::time::Duration;
 
 /// Validated ordered shutdown phases.
 pub struct ShutdownPlan<N> {
@@ -278,6 +279,47 @@ mod heterogeneous {
             }
         }
     }
+}
+
+/// The concrete coordinated application-terminal stack fixed by
+/// [`coordinated_terminal_application`].
+pub type CoordinatedTerminalApplication<B, S> = crate::PropagateTermination<
+    crate::OneShot<HeterogeneousShutdownCoordinator<B, S>>,
+    crate::ChildTermination<crate::BehaviorAddr<B>>,
+>;
+
+/// Construct coordinated heterogeneous shutdown inside a one-shot trigger,
+/// observed by exact child-terminal propagation.
+///
+/// This is a derived Bombay construction policy, not an actor-model law. It
+/// fixes only wrapper order. The validated plan, timer identity and duration,
+/// pure timeout reaction, observed child nonce, and terminal policy govern
+/// their designated existing templates without inference or reclassification.
+#[must_use]
+pub fn coordinated_terminal_application<B, S>(
+    behavior: B,
+    shutdown_plan: HeterogeneousShutdownPlan<S>,
+    timer_id: crate::TimerId,
+    shutdown_after: Duration,
+    request_shutdown: crate::OneShotReaction<HeterogeneousShutdownCoordinator<B, S>>,
+    observed_child: <crate::BehaviorAddr<B> as Address>::Nonce,
+    terminal_policy: crate::TerminalPropagationPolicy<crate::BehaviorAddr<B>>,
+) -> CoordinatedTerminalApplication<B, S>
+where
+    B: Behavior,
+    S: heterogeneous::Selection<Addr = crate::BehaviorAddr<B>> + Copy,
+    <crate::BehaviorAddr<B> as Address>::Nonce: Copy + Eq,
+{
+    crate::PropagateTermination::new(
+        crate::OneShot::new(
+            HeterogeneousShutdownCoordinator::new(behavior, shutdown_plan),
+            timer_id,
+            shutdown_after,
+            request_shutdown,
+        ),
+        crate::ChildTermination::new(observed_child),
+        terminal_policy,
+    )
 }
 
 /// Validated shutdown phases over an arbitrary closed child-protocol sum.
@@ -856,6 +898,148 @@ mod tests {
 
     fn stopped(nonce: u64) -> ChildStopped<MailAddr> {
         ChildStopped::new(nonce, Ok(Exit::Normal), Instant::now())
+    }
+
+    type RecipeTargets = ShutdownChoice<crate::StopOnShutdown<Probe>, NoShutdownTargets<MailAddr>>;
+
+    fn request_recipe_shutdown(
+        coordinator: &mut HeterogeneousShutdownCoordinator<Probe, RecipeTargets>,
+    ) -> BehaviorActed<HeterogeneousShutdownCoordinator<Probe, RecipeTargets>> {
+        behavior::delegate_transition(
+            coordinator,
+            ShutdownCoordinatorEvent::Requested(ShutdownRequested),
+        )
+    }
+
+    fn recipe_plan() -> HeterogeneousShutdownPlan<RecipeTargets> {
+        HeterogeneousShutdownPlan::new([vec![RecipeTargets::child(1)]]).unwrap()
+    }
+
+    #[test]
+    fn coordinated_terminal_recipe_has_exact_type_and_manual_initialization_trace() {
+        type Expected = CoordinatedTerminalApplication<Probe, RecipeTargets>;
+        fn exact(_: Expected) {}
+
+        exact(coordinated_terminal_application(
+            Probe,
+            recipe_plan(),
+            crate::TimerId(17),
+            Duration::from_secs(5),
+            request_recipe_shutdown,
+            9,
+            crate::propagate_abnormal,
+        ));
+
+        let recipe = coordinated_terminal_application(
+            Probe,
+            recipe_plan(),
+            crate::TimerId(17),
+            Duration::from_secs(5),
+            request_recipe_shutdown,
+            9,
+            crate::propagate_abnormal,
+        )
+        .initialize()
+        .unwrap();
+        let manual = crate::PropagateTermination::new(
+            crate::OneShot::new(
+                HeterogeneousShutdownCoordinator::new(Probe, recipe_plan()),
+                crate::TimerId(17),
+                Duration::from_secs(5),
+                request_recipe_shutdown,
+            ),
+            crate::ChildTermination::new(9),
+            crate::propagate_abnormal,
+        )
+        .initialize()
+        .unwrap();
+
+        assert_eq!(
+            recipe.actions.sends.owned.observations.as_slice(),
+            manual.actions.sends.owned.observations.as_slice()
+        );
+        assert_eq!(
+            recipe.actions.sends.inner.owned.as_slice(),
+            manual.actions.sends.inner.owned.as_slice()
+        );
+        assert_eq!(
+            recipe.actions.sends.inner.inner.inner,
+            manual.actions.sends.inner.inner.inner
+        );
+    }
+
+    #[test]
+    fn coordinated_terminal_recipe_preserves_shutdown_and_exact_terminal_facts() {
+        let mut active = coordinated_terminal_application(
+            Probe,
+            recipe_plan(),
+            crate::TimerId(17),
+            Duration::from_secs(5),
+            request_recipe_shutdown,
+            9,
+            crate::propagate_abnormal,
+        )
+        .initialize()
+        .unwrap()
+        .behavior;
+
+        let wrong = active.on(stopped(8)).unwrap();
+        assert!(wrong.sends.owned.reports.is_empty());
+
+        let shutdown = active.on_path(ShutdownRequested).unwrap();
+        assert_eq!(
+            shutdown
+                .sends
+                .inner
+                .inner
+                .owned
+                .requests
+                .iter()
+                .map(heterogeneous::Selection::nonce)
+                .collect::<Vec<_>>(),
+            [1]
+        );
+        let completed = active
+            .on_path::<_, behavior::Inside<behavior::Inside<behavior::Here>>>(stopped(1))
+            .unwrap();
+        assert!(matches!(completed.become_, Step::Stop(_)));
+
+        let mut abnormal = coordinated_terminal_application(
+            Probe,
+            recipe_plan(),
+            crate::TimerId(17),
+            Duration::from_secs(5),
+            request_recipe_shutdown,
+            9,
+            crate::propagate_abnormal,
+        )
+        .initialize()
+        .unwrap()
+        .behavior;
+        let outcome = Err(crate::Crash::Panicked);
+        let propagated = abnormal
+            .on(ChildStopped::new(9, outcome, Instant::now()))
+            .unwrap();
+        assert_eq!(
+            propagated.sends.owned.reports.as_slice(),
+            [crate::ReportTerminalOutcome::new(outcome)]
+        );
+
+        let mut normal = coordinated_terminal_application(
+            Probe,
+            recipe_plan(),
+            crate::TimerId(17),
+            Duration::from_secs(5),
+            request_recipe_shutdown,
+            9,
+            crate::propagate_abnormal,
+        )
+        .initialize()
+        .unwrap()
+        .behavior;
+        let discharged = normal.on(stopped(9)).unwrap();
+        assert!(discharged.sends.owned.reports.is_empty());
+        assert!(matches!(discharged.become_, Step::Continue));
     }
 
     #[test]

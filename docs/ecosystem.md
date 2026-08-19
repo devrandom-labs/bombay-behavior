@@ -66,7 +66,8 @@ At the user-facing boundary, concrete templates from
 `System`. `Activate` expresses the one initialization typestate transition;
 public owning-type constructors build concrete wrapper types. Neither API asks
 users to select, initialize, or wire the owned runtime components in this
-table. Bombay's top-level façade may add fluent construction sugar, while the
+table. Bombay's top-level façade may re-export owner-defined construction
+recipes, while the
 component crates retain one explicit construction path and interpreter
 functions remain framework-extension surface.
 
