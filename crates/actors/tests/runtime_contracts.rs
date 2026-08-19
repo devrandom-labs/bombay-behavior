@@ -9,14 +9,16 @@ use behavior_actors::{
     Actions, BackoffSupervisor, Behavior, BehaviorActed, Births, BreakerOutcome,
     ChildShutdownRejected, ChildStopped, CircuitBreaker, CreationResolved, Deadline, DynamicProxy,
     DynamicProxyWithParent, DynamicSupervisor, DynamicSupervisorOutcome,
-    DynamicSupervisorWithParent, Here, Ingress, InjectEvent, Inside, Lease, LeaseOutcome, MailAddr,
-    Never, NoBirths, ObserveChild, ObserveCreation, ObservePeer, OneShot, PeerStopped, Periodic,
-    Presence, PresenceReply, Proxy, ProxyCommand, ProxyEvent, ProxyParentIngress, ProxyWithParent,
-    ReceiveTimeout, ScheduleAfter, ScheduleAt, ShutdownChild, ShutdownCoordinator,
-    ShutdownCoordinatorEvent, ShutdownRequested, StopOnShutdown, SupervisionEvent,
-    TerminationMonitor, TimerElapsed, User, Watch, WatchEvent, WorkerCreationResolved,
-    WorkerStopped,
+    DynamicSupervisorWithParent, Here, Ingress, InjectEvent, Inside, KeyedPoolEvent, Lease,
+    LeaseOutcome, MailAddr, Never, NoBirths, ObserveChild, ObserveCreation, ObservePeer, OneShot,
+    PeerStopped, Periodic, PoolAssignment, PoolBehaviorSends, PoolResponse, Presence,
+    PresenceReply, Proxy, ProxyCommand, ProxyEvent, ProxyParentIngress, ProxyWithParent,
+    ReceiveTimeout, ReportSupervisionFailure, ScheduleAfter, ScheduleAt, SendLayer, ShutdownChild,
+    ShutdownCoordinator, ShutdownCoordinatorEvent, ShutdownRequested, StopOnShutdown,
+    SupervisionEvent, TerminationMonitor, TimerElapsed, User, Watch, WatchEvent,
+    WorkerCreationResolved, WorkerPoolEvent, WorkerPoolProtocol, WorkerPoolSends, WorkerStopped,
 };
+use core::future::Future;
 
 struct Inert;
 
@@ -170,6 +172,12 @@ where
 {
 }
 
+fn event_accepts_at<E, Input, Path>()
+where
+    E: InjectEvent<Input, Path>,
+{
+}
+
 #[test]
 fn every_timer_request_has_an_exact_timer_fact_input() {
     accepts::<CircuitBreaker<MailAddr, BreakerReply>, TimerElapsed>();
@@ -196,6 +204,7 @@ fn every_observation_and_parent_report_has_an_exact_fact_input() {
     accepts::<Dynamic, CreationResolved<MailAddr>>();
     accepts::<Dynamic, WorkerStopped<MailAddr>>();
     accepts::<Dynamic, WorkerCreationResolved<u64>>();
+    accepts::<Dynamic, ShutdownRequested>();
     accepts::<Dynamic, ChildShutdownRejected<u64>>();
 
     type ProxyProtocol = ProxyEvent<User<MailAddr, ProxyCommand<Inert>>>;
@@ -209,6 +218,8 @@ fn every_observation_and_parent_report_has_an_exact_fact_input() {
     event_accepts::<SupervisorProtocol, CreationResolved<MailAddr>>();
     event_accepts::<SupervisorProtocol, WorkerStopped<MailAddr>>();
     event_accepts::<SupervisorProtocol, WorkerCreationResolved<u64>>();
+    event_accepts::<SupervisorProtocol, ShutdownRequested>();
+    event_accepts::<SupervisorProtocol, ChildShutdownRejected<u64>>();
 
     type WatchProtocol = WatchEvent<User<MailAddr, ()>>;
     event_accepts::<WatchProtocol, PeerStopped<MailAddr>>();
@@ -219,8 +230,8 @@ fn every_shutdown_request_names_a_shutdown_capable_child_protocol() {
     accepts::<DynamicProxy<Inert>, ShutdownRequested>();
     accepts::<StopOnShutdown<Inert>, ShutdownRequested>();
 
-    // The wrapper owns the added lane, so the inner dynamic supervisor does
-    // not need to pretend that it implements coordinated shutdown.
+    // An explicit outer direct-stop policy still takes precedence over the
+    // dynamic supervisor's own coordinated subtree shutdown.
     type Dynamic = DynamicSupervisor<MailAddr, Inert, DynamicReply>;
     accepts::<StopOnShutdown<Dynamic>, ShutdownRequested>();
 
@@ -231,6 +242,22 @@ fn every_shutdown_request_names_a_shutdown_capable_child_protocol() {
 
     fn coordinator_is_closed<B: Behavior>() {}
     coordinator_is_closed::<ShutdownCoordinator<Parent, StopOnShutdown<Inert>>>();
+
+    type Fixed = SupervisionEvent<User<MailAddr, ()>>;
+    event_accepts_at::<Fixed, ShutdownRequested, Here>();
+    event_accepts_at::<Fixed, ChildShutdownRejected<u64>, Here>();
+
+    type Delayed = behavior_actors::TimedEvent<Fixed>;
+    event_accepts_at::<Delayed, ShutdownRequested, Inside<Here>>();
+    event_accepts_at::<Delayed, ChildShutdownRejected<u64>, Inside<Here>>();
+
+    type Pool = WorkerPoolEvent<MailAddr, PoolReply, u8, u16>;
+    event_accepts_at::<Pool, ShutdownRequested, Here>();
+    event_accepts_at::<Pool, ChildShutdownRejected<u64>, Here>();
+
+    type KeyedPool = KeyedPoolEvent<MailAddr, PoolReply, u8, u8, u16>;
+    event_accepts_at::<KeyedPool, ShutdownRequested, Here>();
+    event_accepts_at::<KeyedPool, ChildShutdownRejected<u64>, Here>();
 }
 
 #[test]
@@ -309,4 +336,201 @@ fn every_deferred_local_fact_request_declares_its_relative_destination() {
     fn here<Input>(_: Ingress<Input, Here>) {}
     here(shutdown.ingress);
     returns_here::<ShutdownChild<StopOnShutdown<Inert>>, ChildShutdownRejected<u64>>();
+}
+
+struct PoolReply;
+impl behavior::Protocol for PoolReply {
+    type Addr = MailAddr;
+    type Msg = PoolResponse<u8, u16, MailAddr>;
+}
+
+struct PoolWorker;
+impl behavior::Protocol for PoolWorker {
+    type Addr = MailAddr;
+    type Msg = PoolAssignment<WorkerPoolProtocol<MailAddr, PoolReply, u8, u16>>;
+}
+impl Behavior for PoolWorker {
+    type Protocol = Self;
+    type Event = User<MailAddr, behavior::BehaviorMessage<Self>>;
+    type Sends = Vec<Never>;
+    type Ph = Never;
+    type Error = Never;
+    type Birth = NoBirths;
+    fn transition(
+        &mut self,
+        _: behavior_actors::ActiveTurn,
+        _: Self::Event,
+    ) -> BehaviorActed<Self> {
+        Ok(Actions::cont())
+    }
+}
+
+#[tokio::test]
+async fn worker_pool_event_and_sends_interpret_every_lane_at_the_same_structural_path() {
+    use behavior_actors::{
+        Delivery, InterpretDelivery, InterpretRequest, InterpretSends, InterpreterRequests,
+        Recipient, SendInterpreter, SupervisorSends,
+    };
+
+    type PoolEvent = WorkerPoolEvent<MailAddr, PoolReply, u8, u16>;
+    type RootEvent = WatchEvent<PoolEvent>;
+    type Path = Inside<Here>;
+
+    fn structural_proofs()
+    where
+        RootEvent: InjectEvent<ChildStopped<MailAddr>, Path>
+            + InjectEvent<CreationResolved<MailAddr>, Path>
+            + InjectEvent<WorkerStopped<MailAddr>, Path>
+            + InjectEvent<WorkerCreationResolved<u64>, Path>
+            + InjectEvent<ShutdownRequested, Path>
+            + InjectEvent<ChildShutdownRejected<u64>, Path>,
+    {
+    }
+    structural_proofs();
+
+    #[derive(Debug, PartialEq, Eq)]
+    enum Seen {
+        Response,
+        Assignment,
+        ChildObservation,
+        CreationObservation,
+        Failure,
+        Shutdown,
+    }
+    struct Recording(Vec<Seen>);
+    impl SendInterpreter for Recording {
+        type Error = Never;
+    }
+    impl InterpretDelivery<PoolReply> for Recording {
+        fn interpret_delivery(
+            &mut self,
+            _: Delivery<PoolReply>,
+        ) -> impl Future<Output = Result<(), Self::Error>> + Send {
+            async move {
+                self.0.push(Seen::Response);
+                Ok(())
+            }
+        }
+    }
+    impl InterpretDelivery<Proxy<PoolWorker>> for Recording {
+        fn interpret_delivery(
+            &mut self,
+            _: Delivery<Proxy<PoolWorker>>,
+        ) -> impl Future<Output = Result<(), Self::Error>> + Send {
+            async move {
+                self.0.push(Seen::Assignment);
+                Ok(())
+            }
+        }
+    }
+    impl InterpretRequest<ObserveChild<MailAddr>, RootEvent, Path> for Recording {
+        fn interpret_request(
+            &mut self,
+            _: ObserveChild<MailAddr>,
+        ) -> impl Future<Output = Result<(), Self::Error>> + Send {
+            async move {
+                self.0.push(Seen::ChildObservation);
+                Ok(())
+            }
+        }
+    }
+    impl InterpretRequest<ObserveCreation<MailAddr>, RootEvent, Path> for Recording {
+        fn interpret_request(
+            &mut self,
+            _: ObserveCreation<MailAddr>,
+        ) -> impl Future<Output = Result<(), Self::Error>> + Send {
+            async move {
+                self.0.push(Seen::CreationObservation);
+                Ok(())
+            }
+        }
+    }
+    impl InterpretRequest<ReportSupervisionFailure<MailAddr>, RootEvent, Path> for Recording {
+        fn interpret_request(
+            &mut self,
+            _: ReportSupervisionFailure<MailAddr>,
+        ) -> impl Future<Output = Result<(), Self::Error>> + Send {
+            async move {
+                self.0.push(Seen::Failure);
+                Ok(())
+            }
+        }
+    }
+    impl InterpretRequest<ShutdownChild<ProxyWithParent<PoolWorker, Here>>, RootEvent, Path>
+        for Recording
+    {
+        fn interpret_request(
+            &mut self,
+            request: ShutdownChild<ProxyWithParent<PoolWorker, Here>>,
+        ) -> impl Future<Output = Result<(), Self::Error>> + Send {
+            let _: RootEvent =
+                <RootEvent as InjectEvent<_, Path>>::inject_at(ChildShutdownRejected::new(
+                    request.nonce,
+                    behavior_actors::ChildShutdownRejection::NotEstablished,
+                ));
+            async move {
+                self.0.push(Seen::Shutdown);
+                Ok(())
+            }
+        }
+    }
+
+    let sends: WorkerPoolSends<MailAddr, PoolReply, u8, u16, PoolWorker> = SendLayer::new(
+        SupervisorSends {
+            child_observations: InterpreterRequests::one(ObserveChild::new(1)),
+            creation_observations: InterpreterRequests::one(ObserveCreation::new(1)),
+            replacement_commands: vec![Delivery::local_child(
+                behavior::ChildRecipient::new(1),
+                ProxyCommand::Forward(PoolAssignment {
+                    assignment: behavior_actors::AssignmentId(1),
+                    job: behavior_actors::JobId(1),
+                    payload: 7,
+                    worker: 1,
+                    complete_to: Recipient::global(MailAddr(9)),
+                }),
+            )],
+            failure_reports: InterpreterRequests::one(ReportSupervisionFailure::new(
+                behavior_actors::SupervisionFailure::new(
+                    1,
+                    Ok(behavior_actors::Exit::Normal),
+                    behavior_actors::SupervisionFailureReason::StableChildStopped,
+                ),
+            )),
+            shutdowns: InterpreterRequests::one(ShutdownChild::new(1)),
+        },
+        PoolBehaviorSends {
+            responses: vec![Delivery::new(
+                Recipient::global(MailAddr(8)),
+                PoolResponse::Accepted {
+                    job: behavior_actors::JobId(2),
+                },
+            )],
+            assignments: vec![Delivery::local_child(
+                behavior::ChildRecipient::new(1),
+                ProxyCommand::Forward(PoolAssignment {
+                    assignment: behavior_actors::AssignmentId(2),
+                    job: behavior_actors::JobId(2),
+                    payload: 8,
+                    worker: 1,
+                    complete_to: Recipient::global(MailAddr(9)),
+                }),
+            )],
+        },
+    );
+    let mut recording = Recording(Vec::new());
+    <_ as InterpretSends<_, RootEvent, Path>>::interpret(sends, &mut recording)
+        .await
+        .unwrap();
+    assert_eq!(
+        recording.0,
+        [
+            Seen::Response,
+            Seen::Assignment,
+            Seen::ChildObservation,
+            Seen::CreationObservation,
+            Seen::Assignment,
+            Seen::Failure,
+            Seen::Shutdown,
+        ]
+    );
 }

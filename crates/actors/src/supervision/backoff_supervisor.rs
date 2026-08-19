@@ -215,6 +215,9 @@ where
                 ))
             }
             EventLayer::Inner(inner) => {
+                if matches!(inner, SupervisionEvent::ShutdownRequested(_)) {
+                    self.pending.clear();
+                }
                 let trigger = match &inner {
                     SupervisionEvent::WorkerStopped(stopped) => Some(stopped.proxy),
                     _ => None,
@@ -272,8 +275,8 @@ mod tests {
 
     use super::*;
     use crate::{
-        Activate as _, ChildTopology, Crash, RestartConfiguration, RestartPolicy, Strategy,
-        TimerElapsed, WorkerStopped,
+        Activate as _, ChildTopology, Crash, CreationResolved, RestartConfiguration, RestartPolicy,
+        ShutdownRequested, Strategy, TimerElapsed, WorkerStopped,
     };
     use behavior::{Actions, MailAddr, NoBirths, User};
 
@@ -435,5 +438,22 @@ mod tests {
             Err(BackoffSupervisorError::TimerCollision { id: TimerId(1) })
         ));
         assert_eq!(active.pending_restarts(), 1);
+    }
+
+    #[test]
+    fn shutdown_cancels_delayed_restarts_and_drains_the_fixed_proxy_fleet() {
+        let mut active = subject(timer).initialize().unwrap().behavior;
+        for nonce in [1, 2] {
+            active
+                .on_path(CreationResolved::birth(nonce, MailAddr(20 + nonce)))
+                .unwrap();
+        }
+        active.on_path(stopped(1)).unwrap();
+        assert_eq!(active.pending_restarts(), 1);
+
+        let shutdown = active.on_path(ShutdownRequested).unwrap();
+        assert_eq!(active.pending_restarts(), 0);
+        assert_eq!(shutdown.sends.inner.owned.shutdowns.len(), 2);
+        assert!(shutdown.sends.owned.is_empty());
     }
 }

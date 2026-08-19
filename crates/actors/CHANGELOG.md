@@ -6,12 +6,13 @@ All notable changes to `bombay-behavior-actors` are documented here.
 
 ### Changed
 
-- Make `DynamicSupervisor` and `WorkerPool` orderly subtree owners. Typed
-  shutdown now drains every owned stable proxy, waits through proxy-installation
-  races, stops only after the final matching `ChildStopped`, and reports child
-  shutdown rejection as a typed error. `WorkerPool` also returns every accepted
-  queued or assigned job with the distinct `PoolShutdown` interruption before
-  draining its proxies.
+- Make `Supervisor`, `BackoffSupervisor`, `DynamicSupervisor`, `WorkerPool`, and
+  `KeyedWorkerPool` orderly subtree owners. Typed shutdown now drains every
+  owned stable proxy, waits through proxy-installation races, stops only after
+  the final matching `ChildStopped`, and reports child shutdown rejection as a
+  typed error. Delayed supervision cancels pending restart batches; both pool
+  forms return every accepted queued or assigned job with the distinct
+  `PoolShutdown` interruption before draining their proxies.
 - Give stable proxies an explicit two-lane `ProxyParentIngress` acquaintance.
   `WorkerStopped` and `WorkerCreationResolved` reports now retain the exact
   parent event path chosen when the proxy is created; wrapped dynamic

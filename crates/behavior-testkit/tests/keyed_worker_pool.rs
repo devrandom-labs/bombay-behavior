@@ -1,10 +1,11 @@
 use std::time::Duration;
 
 use behavior::{
-    Actions, AffinitySelector, AssignmentId, Behavior, CreationKind, Delivery, InterruptionPolicy,
-    JobId, KeyedPoolMessage, KeyedWorkerPool, KeyedWorkerPoolProtocol, MailAddr, Never, NoBirths,
-    PoolAssignment, PoolBehaviorSends, PoolError, PoolResponse, Proxy, ProxyCommand, Recipient,
-    RestartPolicy, SendEffects, User, WorkerCreationResolved, WorkerPhase, WorkerStopped,
+    Actions, AffinitySelector, AssignmentId, Behavior, ChildStopped, CreationKind,
+    CreationResolved, Delivery, Exit, InterruptionPolicy, JobId, KeyedPoolMessage, KeyedWorkerPool,
+    KeyedWorkerPoolProtocol, MailAddr, Never, NoBirths, PoolAssignment, PoolBehaviorSends,
+    PoolError, PoolInterruption, PoolResponse, Proxy, ProxyCommand, Recipient, RestartPolicy,
+    SendEffects, ShutdownRequested, Step, User, WorkerCreationResolved, WorkerPhase, WorkerStopped,
 };
 use proptest::prelude::*;
 use std::time::Instant;
@@ -541,5 +542,60 @@ fn named_pool_send_product_appends_each_lane_once_in_order() {
         PoolResponse::Accepted { job: JobId(2) }
     ));
     assert_eq!(sends.assignments.len(), 1);
+}
+
+#[test]
+fn keyed_pool_returns_owned_jobs_and_drains_all_stable_proxies() {
+    let mut pool = pool_definition(Selector::Parity)
+        .initialize()
+        .unwrap()
+        .behavior;
+    for slot in 0..2 {
+        pool.on_path(CreationResolved::birth(slot, MailAddr(20 + slot)))
+            .unwrap();
+        pool.on_path(WorkerCreationResolved::new(
+            slot,
+            slot,
+            CreationKind::Birth,
+            Ok(()),
+        ))
+        .unwrap();
+    }
+    pool.receive(
+        MailAddr(90),
+        KeyedPoolMessage::Submit {
+            key: 0,
+            job: JobId(1),
+            payload: 7,
+            reply_to: Recipient::global(MailAddr(91)),
+        },
+    )
+    .unwrap();
+
+    let shutdown = pool.on_path(ShutdownRequested).unwrap();
+    assert_eq!(shutdown.sends.owned.shutdowns.len(), 2);
+    assert!(
+        shutdown
+            .sends
+            .inner
+            .responses
+            .iter()
+            .any(|delivery| matches!(
+                delivery.message,
+                PoolResponse::Interrupted {
+                    reason: PoolInterruption::PoolShutdown,
+                    ..
+                }
+            ))
+    );
+    assert!(matches!(shutdown.become_, Step::Continue));
+    pool.on_path(ChildStopped::new(0, Ok(Exit::Normal), Instant::now()))
+        .unwrap();
+    assert!(matches!(
+        pool.on_path(ChildStopped::new(1, Ok(Exit::Normal), Instant::now()))
+            .unwrap()
+            .become_,
+        Step::Stop(behavior::Stopped)
+    ));
 }
 use behavior_testkit::InitializeTest;

@@ -245,7 +245,7 @@ fn generated_behavior_is_nominal_in_pool_and_supervision_positions() {
             },
         )
         .unwrap();
-    assert_eq!(actions.sends.inner.inner.assignments.len(), 1);
+    assert_eq!(actions.sends.inner.assignments.len(), 1);
 }
 
 #[test]

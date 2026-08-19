@@ -198,13 +198,13 @@ fn submit(
 fn assignments(
     actions: &behavior::WorkerPoolActions<MailAddr, Reply, u8, u16, Worker>,
 ) -> &[Delivery<Proxy<Worker>>] {
-    &actions.sends.inner.inner.assignments
+    &actions.sends.inner.assignments
 }
 
 fn responses(
     actions: &behavior::WorkerPoolActions<MailAddr, Reply, u8, u16, Worker>,
 ) -> &[Delivery<Reply>] {
-    &actions.sends.inner.inner.responses
+    &actions.sends.inner.responses
 }
 
 #[test]
@@ -214,12 +214,12 @@ fn initialization_stages_and_observes_every_stable_proxy_before_dispatch() {
     let actions = initialized.actions;
     let pool = initialized.behavior;
     assert_eq!(actions.creates.len(), 2);
-    assert_eq!(actions.sends.inner.owned.child_observations.len(), 2);
-    assert_eq!(actions.sends.inner.owned.creation_observations.len(), 2);
+    assert_eq!(actions.sends.owned.child_observations.len(), 2);
+    assert_eq!(actions.sends.owned.creation_observations.len(), 2);
     for (creation, observation) in actions
         .creates
         .iter()
-        .zip(actions.sends.inner.owned.creation_observations.iter())
+        .zip(actions.sends.owned.creation_observations.iter())
     {
         assert_eq!(creation.nonce, observation.nonce);
     }
@@ -244,7 +244,7 @@ fn shutdown_returns_all_jobs_and_waits_for_every_owned_proxy() {
     submit(&mut pool, 3, 33);
 
     let shutdown = pool.on_path(ShutdownRequested).unwrap();
-    assert_eq!(shutdown.sends.owned.len(), 2);
+    assert_eq!(shutdown.sends.owned.shutdowns.len(), 2);
     assert_eq!(responses(&shutdown).len(), 3);
     assert!(responses(&shutdown).iter().all(|delivery| matches!(
         delivery.message,
@@ -275,8 +275,8 @@ fn shutdown_resolves_pending_proxy_installation_without_duplicate_requests() {
         .unwrap();
 
     let shutdown = pool.on_path(ShutdownRequested).unwrap();
-    assert_eq!(shutdown.sends.owned.as_slice().len(), 1);
-    assert_eq!(shutdown.sends.owned.as_slice()[0].nonce, 0);
+    assert_eq!(shutdown.sends.owned.shutdowns.as_slice().len(), 1);
+    assert_eq!(shutdown.sends.owned.shutdowns.as_slice()[0].nonce, 0);
 
     let pending_rejected = pool
         .on_path(CreationResolved::rejected(
@@ -285,13 +285,13 @@ fn shutdown_resolves_pending_proxy_installation_without_duplicate_requests() {
             CreationRejection::EnvironmentFailed,
         ))
         .unwrap();
-    assert!(pending_rejected.sends.owned.is_empty());
+    assert!(pending_rejected.sends.owned.shutdowns.is_empty());
     assert!(matches!(pending_rejected.become_, Step::Continue));
 
     let stale_resolution = pool
         .on_path(CreationResolved::birth(0, MailAddr(99)))
         .unwrap();
-    assert!(stale_resolution.sends.owned.is_empty());
+    assert!(stale_resolution.sends.owned.shutdowns.is_empty());
     let stopped = pool
         .on_path(ChildStopped::new(0, Ok(Exit::Normal), Instant::now()))
         .unwrap();
@@ -581,7 +581,7 @@ fn panicking_payload_clone_occurs_before_admission_state_is_committed() {
             },
         )
         .unwrap();
-    assert_eq!(actions.sends.inner.inner.assignments.len(), 1);
+    assert_eq!(actions.sends.inner.assignments.len(), 1);
     assert_eq!(
         pool.worker_phase(0),
         Some(WorkerPhase::Assigned {
@@ -673,7 +673,7 @@ fn denied_replacement_retires_slot_instead_of_stranding_installation() {
             Instant::now(),
         ))
         .unwrap();
-    assert!(actions.sends.inner.owned.replacement_commands.is_empty());
+    assert!(actions.sends.owned.replacement_commands.is_empty());
     assert_eq!(
         pool.worker_phase(0),
         Some(WorkerPhase::Retired {
@@ -806,8 +806,8 @@ fn assignment_and_response_lanes_survive_shutdown_composition() {
             },
         )
         .unwrap();
-    assert_eq!(actions.sends.inner.inner.inner.responses.len(), 1);
-    assert_eq!(actions.sends.inner.inner.inner.assignments.len(), 1);
+    assert_eq!(actions.sends.inner.inner.responses.len(), 1);
+    assert_eq!(actions.sends.inner.inner.assignments.len(), 1);
     assert!(matches!(actions.become_, Step::Continue));
 }
 use behavior_testkit::InitializeTest;

@@ -71,6 +71,8 @@ pub enum SupervisionEvent<E: UserEvent> {
     WorkerStopped(WorkerStopped<E::Addr>),
     CreationResolved(CreationResolved<E::Addr>),
     WorkerCreationResolved(WorkerCreationResolved<<E::Addr as Address>::Nonce>),
+    ShutdownRequested(ShutdownRequested),
+    ChildShutdownRejected(ChildShutdownRejected<<E::Addr as Address>::Nonce>),
 }
 
 impl<E: UserEvent> UserEvent for SupervisionEvent<E> {
@@ -117,6 +119,18 @@ impl<E: UserEvent> InjectEvent<WorkerCreationResolved<<E::Addr as Address>::Nonc
 {
     fn inject_at(value: WorkerCreationResolved<<E::Addr as Address>::Nonce>) -> Self {
         Self::WorkerCreationResolved(value)
+    }
+}
+impl<E: UserEvent> InjectEvent<ShutdownRequested, Here> for SupervisionEvent<E> {
+    fn inject_at(value: ShutdownRequested) -> Self {
+        Self::ShutdownRequested(value)
+    }
+}
+impl<E: UserEvent> InjectEvent<ChildShutdownRejected<<E::Addr as Address>::Nonce>, Here>
+    for SupervisionEvent<E>
+{
+    fn inject_at(value: ChildShutdownRejected<<E::Addr as Address>::Nonce>) -> Self {
+        Self::ChildShutdownRejected(value)
     }
 }
 

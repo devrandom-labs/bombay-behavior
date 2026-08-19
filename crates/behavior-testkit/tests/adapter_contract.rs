@@ -185,6 +185,7 @@ fn supervisor_products_are_named_and_creation_order_is_adapter_visible() {
                         creation_observations,
                         replacement_commands,
                         failure_reports,
+                        shutdowns,
                     },
                 inner: behavior,
             },
@@ -207,6 +208,7 @@ fn supervisor_products_are_named_and_creation_order_is_adapter_visible() {
     assert!(behavior.is_empty());
     assert!(replacement_commands.is_empty());
     assert!(failure_reports.is_empty());
+    assert!(shutdowns.is_empty());
     assert!(matches!(become_, Step::Continue));
 }
 
@@ -265,13 +267,12 @@ fn pool_configuration_separates_topology_from_runtime_neutral_policy() {
     .unwrap();
     let initialized = pool.initialize().unwrap();
     assert_eq!(initialized.actions.creates.len(), 2);
-    assert!(initialized.actions.sends.inner.inner.responses.is_empty());
-    assert!(initialized.actions.sends.inner.inner.assignments.is_empty());
+    assert!(initialized.actions.sends.inner.responses.is_empty());
+    assert!(initialized.actions.sends.inner.assignments.is_empty());
     assert_eq!(
         initialized
             .actions
             .sends
-            .inner
             .owned
             .child_observations
             .as_slice()
@@ -279,9 +280,8 @@ fn pool_configuration_separates_topology_from_runtime_neutral_policy() {
         2
     );
     let _: InterpreterRequests<ObserveChild<MailAddr>> =
-        initialized.actions.sends.inner.owned.child_observations;
+        initialized.actions.sends.owned.child_observations;
     let _: InterpreterRequests<behavior::ObserveCreation<MailAddr>> =
-        initialized.actions.sends.inner.owned.creation_observations;
-    let _: Vec<Delivery<Proxy<Worker>>> =
-        initialized.actions.sends.inner.owned.replacement_commands;
+        initialized.actions.sends.owned.creation_observations;
+    let _: Vec<Delivery<Proxy<Worker>>> = initialized.actions.sends.owned.replacement_commands;
 }
