@@ -256,4 +256,15 @@ mod structural_tests {
         let event: Outer = outer.event(12);
         assert_eq!(event, EventLayer::Inner(EventLayer::Owned(12)));
     }
+
+    #[test]
+    fn ingress_is_a_copyable_equal_capability_with_stable_debug_identity() {
+        let ingress = Ingress::<u16, Here>::new();
+        let copied = ingress;
+        let cloned = ingress.clone();
+
+        assert_eq!(ingress, copied);
+        assert_eq!(ingress, cloned);
+        assert_eq!(format!("{ingress:?}"), "Ingress");
+    }
 }
