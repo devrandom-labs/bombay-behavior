@@ -11,9 +11,10 @@ use std::time::Duration;
 
 use crate::{
     Actions, Address, Behavior, Births, ChildTopology, Crash, CreationRejection, Delivery, Exit,
-    FleetError, Never, Own, Protocol, Proxy, ProxyCommand, Recipient, RestartConfiguration,
-    RestartPolicy, SendEffects, SendInput, SendLayer, Strategy, SupervisionEvent, Supervisor,
-    SupervisorError, SupervisorSends, User, WorkerCreationResolved, WorkerStopped,
+    FleetError, Never, Own, Protocol, Proxy, ProxyCommand, ProxyParentIngress, ProxyWithParent,
+    Recipient, RestartConfiguration, RestartPolicy, SendEffects, SendInput, SendLayer, Strategy,
+    SupervisionEvent, SupervisorError, SupervisorSends, SupervisorWithParent, User,
+    WorkerCreationResolved, WorkerStopped,
 };
 
 /// Caller-chosen identity used to correlate pool responses.
@@ -438,10 +439,11 @@ type KernelSends<A, D, J, R, C> = PoolBehaviorSends<A, D, J, R, C>;
 pub type PoolSends<A, D, J, R, C> = SendLayer<SupervisorSends<A, C>, KernelSends<A, D, J, R, C>>;
 
 /// Complete action type returned by a [`WorkerPool`] transition.
-pub type PoolActions<A, D, J, R, C> = Actions<A, Never, PoolSends<A, D, J, R, C>, Births<Proxy<C>>>;
+pub type PoolActions<A, D, J, R, C, ParentPath = behavior::Here> =
+    Actions<A, Never, PoolSends<A, D, J, R, C>, Births<ProxyWithParent<C, ParentPath>>>;
 
-type PoolTransition<A, D, J, R, C> =
-    Result<PoolActions<A, D, J, R, C>, PoolError<<A as Address>::Nonce>>;
+type PoolTransition<A, D, J, R, C, ParentPath = behavior::Here> =
+    Result<PoolActions<A, D, J, R, C, ParentPath>, PoolError<<A as Address>::Nonce>>;
 
 #[allow(
     clippy::type_complexity,
@@ -497,7 +499,8 @@ where
     }
 }
 
-type PoolSupervisor<A, D, J, R, C, P> = Supervisor<PoolKernel<A, D, J, R, C, P>, C>;
+type PoolSupervisor<A, D, J, R, C, P, ParentPath> =
+    SupervisorWithParent<PoolKernel<A, D, J, R, C, P>, C, ParentPath>;
 
 /// A fixed, homogeneous, bounded FIFO worker pool.
 ///
@@ -549,7 +552,7 @@ type PoolSupervisor<A, D, J, R, C, P> = Supervisor<PoolKernel<A, D, J, R, C, P>,
 /// // `WrongWorker::Protocol::Msg` is not `PoolAssignment<PoolProtocol>`.
 /// let _: Option<WorkerPool<MailAddr, Reply, String, (), WrongWorker>> = None;
 /// ```
-struct PoolCore<A: Address, D, J, R, C, P>
+struct PoolCore<A: Address, D, J, R, C, P, ParentPath = behavior::Here>
 where
     D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
     P: crate::PoolAssignmentProtocol<Addr = A, Job = J>,
@@ -557,7 +560,7 @@ where
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A, Msg = PoolAssignment<P>>,
 {
-    supervisor: PoolSupervisor<A, D, J, R, C, P>,
+    supervisor: PoolSupervisor<A, D, J, R, C, P, ParentPath>,
     complete_to: Recipient<P>,
     slots: Vec<Slot<A, D, J, R>>,
     backlog: VecDeque<QueuedJob<A, D, J, R>>,
@@ -566,7 +569,7 @@ where
     interruption: InterruptionPolicy,
 }
 
-impl<A, D, J, R, C, P> PoolCore<A, D, J, R, C, P>
+impl<A, D, J, R, C, P, ParentPath> PoolCore<A, D, J, R, C, P, ParentPath>
 where
     A: Address,
     A::Nonce: From<u64>,
@@ -583,10 +586,11 @@ where
     /// Returns [`PoolConfigError::NoWorkers`] for an empty topology or
     /// [`PoolConfigError::DuplicateWorker`] for the first repeated
     /// creator-local nonce. No behavior or creation request is produced.
-    pub fn new(
+    pub fn with_parent(
         topology: ChildTopology<A::Nonce, C>,
         configuration: PoolConfiguration,
         complete_to: Recipient<P>,
+        proxy_parent: ProxyParentIngress<A, ParentPath>,
     ) -> Result<Self, PoolConfigError<A::Nonce>> {
         let ChildTopology { nonces, build } = topology;
         let count = nonces.len();
@@ -607,7 +611,7 @@ where
             });
         }
         Ok(Self {
-            supervisor: Supervisor::new(
+            supervisor: SupervisorWithParent::with_parent(
                 PoolKernel::<A, D, J, R, C, P>::new(),
                 ChildTopology::new(nonces, build),
                 RestartConfiguration::new(
@@ -616,6 +620,7 @@ where
                     configuration.maximum_restarts,
                     configuration.restart_window,
                 ),
+                proxy_parent,
             )
             .map_err(|error| match error {
                 FleetError::UnknownChild(nonce) | FleetError::DuplicateChild(nonce) => {
@@ -653,7 +658,30 @@ where
     }
 }
 
-impl<A, D, J, R, C, P> PoolCore<A, D, J, R, C, P>
+impl<A, D, J, R, C, P> PoolCore<A, D, J, R, C, P, behavior::Here>
+where
+    A: Address,
+    A::Nonce: From<u64>,
+    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
+    P: crate::PoolAssignmentProtocol<Addr = A, Job = J>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = A, Msg = PoolAssignment<P>>,
+{
+    fn new(
+        topology: ChildTopology<A::Nonce, C>,
+        configuration: PoolConfiguration,
+        complete_to: Recipient<P>,
+    ) -> Result<Self, PoolConfigError<A::Nonce>> {
+        Self::with_parent(
+            topology,
+            configuration,
+            complete_to,
+            ProxyParentIngress::new(),
+        )
+    }
+}
+
+impl<A, D, J, R, C, P, ParentPath> PoolCore<A, D, J, R, C, P, ParentPath>
 where
     A: Address,
     A::Nonce: From<u64>,
@@ -666,7 +694,7 @@ where
     fn supervisor_transition(
         &mut self,
         event: PoolEvent<A, D, J, R>,
-    ) -> PoolTransition<A, D, J, R, C> {
+    ) -> PoolTransition<A, D, J, R, C, ParentPath> {
         behavior::delegate_transition(&mut self.supervisor, event).map_err(|error| match error {
             SupervisorError::Behavior(never) => match never {},
             SupervisorError::Fleet(FleetError::UnknownChild(nonce)) => {
@@ -685,7 +713,7 @@ where
         job: JobId,
         payload: J,
         reply_to: Recipient<D>,
-        actions: &mut PoolActions<A, D, J, R, C>,
+        actions: &mut PoolActions<A, D, J, R, C, ParentPath>,
     ) {
         let can_dispatch = self
             .slots
@@ -725,7 +753,7 @@ where
         job: JobId,
         payload: J,
         reply_to: Recipient<D>,
-        actions: &mut PoolActions<A, D, J, R, C>,
+        actions: &mut PoolActions<A, D, J, R, C, ParentPath>,
     ) -> Admission {
         let Some(slot) = self.slots.iter().find(|slot| slot.nonce == target) else {
             actions.sends.inner.send::<Delivery<D>, Own>(Delivery::new(
@@ -784,7 +812,7 @@ where
         worker: A::Nonce,
         assignment: AssignmentId,
         result: R,
-        actions: &mut PoolActions<A, D, J, R, C>,
+        actions: &mut PoolActions<A, D, J, R, C, ParentPath>,
     ) -> Result<(), PoolError<A::Nonce>> {
         let position = self.slot_position(worker)?;
         let previous = core::mem::replace(&mut self.slots[position].state, SlotState::Idle);
@@ -887,7 +915,10 @@ where
         Ok(())
     }
 
-    fn fail_backlog_if_irrecoverable(&mut self, actions: &mut PoolActions<A, D, J, R, C>) {
+    fn fail_backlog_if_irrecoverable(
+        &mut self,
+        actions: &mut PoolActions<A, D, J, R, C, ParentPath>,
+    ) {
         if self
             .slots
             .iter()
@@ -914,7 +945,7 @@ where
         &mut self,
         worker: A::Nonce,
         reason: WorkerRetirement,
-        actions: &mut PoolActions<A, D, J, R, C>,
+        actions: &mut PoolActions<A, D, J, R, C, ParentPath>,
     ) {
         let mut retained = VecDeque::with_capacity(self.backlog.len());
         while let Some(queued) = self.backlog.pop_front() {
@@ -960,7 +991,7 @@ where
 
     fn dispatch(
         &mut self,
-        actions: &mut PoolActions<A, D, J, R, C>,
+        actions: &mut PoolActions<A, D, J, R, C, ParentPath>,
     ) -> Result<(), PoolError<A::Nonce>> {
         let mut selected_jobs = Vec::new();
         let mut plan = Vec::new();
@@ -1039,7 +1070,7 @@ where
     }
 }
 
-impl<A, D, J, R, C, P> behavior::Protocol for PoolCore<A, D, J, R, C, P>
+impl<A, D, J, R, C, P, ParentPath> behavior::Protocol for PoolCore<A, D, J, R, C, P, ParentPath>
 where
     A: Address,
     A::Nonce: From<u64>,
@@ -1053,7 +1084,7 @@ where
     type Msg = PoolMessage<A, D, J, R>;
 }
 
-impl<A, D, J, R, C, P> Behavior for PoolCore<A, D, J, R, C, P>
+impl<A, D, J, R, C, P, ParentPath> Behavior for PoolCore<A, D, J, R, C, P, ParentPath>
 where
     A: Address,
     A::Nonce: From<u64>,
@@ -1068,7 +1099,7 @@ where
     type Sends = PoolSends<A, D, J, R, C>;
     type Ph = Never;
     type Error = PoolError<A::Nonce>;
-    type Birth = Births<Proxy<C>>;
+    type Birth = Births<ProxyWithParent<C, ParentPath>>;
 
     fn init(&mut self, _: crate::InitializationTurn) -> crate::BehaviorActed<Self> {
         behavior::initialize(&mut self.supervisor).map_err(|error| match error {
@@ -1165,7 +1196,7 @@ where
 
 /// Public FIFO worker-pool behavior with its completion protocol fixed by the
 /// pool's own message signature.
-pub struct WorkerPool<A: Address, D, J, R, C>
+pub struct WorkerPoolWithParent<A: Address, D, J, R, C, ParentPath>
 where
     A::Nonce: From<u64>,
     D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
@@ -1173,10 +1204,13 @@ where
     C::Protocol:
         crate::Protocol<Addr = A, Msg = PoolAssignment<crate::WorkerPoolProtocol<A, D, J, R>>>,
 {
-    core: PoolCore<A, D, J, R, C, crate::WorkerPoolProtocol<A, D, J, R>>,
+    core: PoolCore<A, D, J, R, C, crate::WorkerPoolProtocol<A, D, J, R>, ParentPath>,
 }
 
-impl<A, D, J, R, C> WorkerPool<A, D, J, R, C>
+/// A FIFO worker pool whose proxy reports target its direct event layer.
+pub type WorkerPool<A, D, J, R, C> = WorkerPoolWithParent<A, D, J, R, C, behavior::Here>;
+
+impl<A, D, J, R, C, ParentPath> WorkerPoolWithParent<A, D, J, R, C, ParentPath>
 where
     A: Address,
     A::Nonce: From<u64>,
@@ -1187,12 +1221,14 @@ where
 {
     /// Construct a pool whose completion destination implements this exact
     /// pool protocol.
-    pub fn new(
+    pub fn with_parent(
         topology: ChildTopology<A::Nonce, C>,
         configuration: PoolConfiguration,
         complete_to: Recipient<crate::WorkerPoolProtocol<A, D, J, R>>,
+        proxy_parent: ProxyParentIngress<A, ParentPath>,
     ) -> Result<Self, PoolConfigError<A::Nonce>> {
-        PoolCore::new(topology, configuration, complete_to).map(|core| Self { core })
+        PoolCore::with_parent(topology, configuration, complete_to, proxy_parent)
+            .map(|core| Self { core })
     }
 
     #[must_use]
@@ -1206,7 +1242,31 @@ where
     }
 }
 
-impl<A, D, J, R, C> Behavior for WorkerPool<A, D, J, R, C>
+impl<A, D, J, R, C> WorkerPoolWithParent<A, D, J, R, C, behavior::Here>
+where
+    A: Address,
+    A::Nonce: From<u64>,
+    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
+    C: Behavior<Ph = Never>,
+    C::Protocol:
+        crate::Protocol<Addr = A, Msg = PoolAssignment<crate::WorkerPoolProtocol<A, D, J, R>>>,
+{
+    /// Construct a pool whose proxy reports target the pool's direct event layer.
+    pub fn new(
+        topology: ChildTopology<A::Nonce, C>,
+        configuration: PoolConfiguration,
+        complete_to: Recipient<crate::WorkerPoolProtocol<A, D, J, R>>,
+    ) -> Result<Self, PoolConfigError<A::Nonce>> {
+        Self::with_parent(
+            topology,
+            configuration,
+            complete_to,
+            ProxyParentIngress::new(),
+        )
+    }
+}
+
+impl<A, D, J, R, C, ParentPath> Behavior for WorkerPoolWithParent<A, D, J, R, C, ParentPath>
 where
     A: Address,
     A::Nonce: From<u64>,
@@ -1221,7 +1281,7 @@ where
     type Sends = PoolSends<A, D, J, R, C>;
     type Ph = Never;
     type Error = PoolError<A::Nonce>;
-    type Birth = Births<Proxy<C>>;
+    type Birth = Births<ProxyWithParent<C, ParentPath>>;
 
     fn init(&mut self, turn: crate::InitializationTurn) -> crate::BehaviorActed<Self> {
         self.core.init(turn)
@@ -1304,6 +1364,54 @@ mod tests {
 
     fn test_worker(_: usize) -> TestWorker {
         TestWorker
+    }
+
+    #[test]
+    fn path_aware_pool_binds_both_proxy_reports_to_the_supplied_parent_ingress() {
+        type ParentPath = behavior::Inside<behavior::Here>;
+        let parent = ProxyParentIngress::<MailAddr, behavior::Here>::new().inside();
+        let mut pool = WorkerPoolWithParent::<
+            MailAddr,
+            TestReply,
+            u8,
+            (),
+            TestWorker,
+            ParentPath,
+        >::with_parent(
+            ChildTopology::indexed(|_| 1, 1, |_| Some(TestWorker)),
+            PoolConfiguration::new(
+                0,
+                InterruptionPolicy::Fail,
+                RestartPolicy::Permanent,
+                1,
+                Duration::from_secs(1),
+            ),
+            Recipient::global(MailAddr(92)),
+            parent,
+        )
+        .unwrap();
+
+        let initialized = behavior::initialize(&mut pool).unwrap();
+        let mut proxy = initialized.creates.into_iter().next().unwrap().child;
+        let proxy_initialized = behavior::initialize(&mut proxy).unwrap();
+        let report = behavior::delegate_transition(
+            &mut proxy,
+            crate::ProxyEvent::CreationResolved(crate::CreationResolved::birth(0, MailAddr(10))),
+        )
+        .unwrap();
+
+        assert_eq!(proxy_initialized.sends.stopped_reports.len(), 0);
+        assert_eq!(report.sends.creation_reports[0].ingress, parent.creation);
+        let stopped = behavior::delegate_transition(
+            &mut proxy,
+            crate::ProxyEvent::ChildStopped(crate::ChildStopped::new(
+                0,
+                Ok(Exit::Normal),
+                std::time::Instant::now(),
+            )),
+        )
+        .unwrap();
+        assert_eq!(stopped.sends.stopped_reports[0].ingress, parent.stopped);
     }
 
     #[test]

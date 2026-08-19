@@ -123,6 +123,110 @@ pub enum ShutdownTreeError<N> {
     Cycle,
 }
 
+/// One concrete child-protocol lane in a heterogeneous root shutdown plan.
+///
+/// The variants are semantic roles owned by Bombay's application-root
+/// construction. They are not discovered from an address or runtime registry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HeterogeneousShutdownTarget<N> {
+    Supervisor(N),
+    WorkerPool(N),
+}
+
+impl<N: Copy> HeterogeneousShutdownTarget<N> {
+    const fn nonce(self) -> N {
+        match self {
+            Self::Supervisor(nonce) | Self::WorkerPool(nonce) => nonce,
+        }
+    }
+}
+
+/// Validated shutdown phases spanning the root's supervisor and worker-pool
+/// child protocols.
+pub struct HeterogeneousShutdownPlan<N> {
+    phases: Vec<Vec<HeterogeneousShutdownTarget<N>>>,
+}
+
+impl<N: Copy + Eq> HeterogeneousShutdownPlan<N> {
+    /// Validate non-empty phases and global uniqueness in the creator's one
+    /// child namespace, including collisions across protocol lanes.
+    pub fn new(
+        phases: impl IntoIterator<Item = Vec<HeterogeneousShutdownTarget<N>>>,
+    ) -> Result<Self, ShutdownPlanError<N>> {
+        let phases: Vec<_> = phases.into_iter().collect();
+        let mut seen = Vec::new();
+        for (phase, children) in phases.iter().enumerate() {
+            if children.is_empty() {
+                return Err(ShutdownPlanError::EmptyPhase { phase });
+            }
+            for child in children {
+                let nonce = child.nonce();
+                if seen.contains(&nonce) {
+                    return Err(ShutdownPlanError::DuplicateChild(nonce));
+                }
+                seen.push(nonce);
+            }
+        }
+        Ok(Self { phases })
+    }
+
+    #[must_use]
+    pub fn phases(&self) -> &[Vec<HeterogeneousShutdownTarget<N>>] {
+        &self.phases
+    }
+}
+
+/// Named protocol lanes emitted by heterogeneous coordinated shutdown.
+pub struct HeterogeneousShutdownSends<S: Behavior, P: Behavior> {
+    pub supervisors: InterpreterRequests<ShutdownChild<S>>,
+    pub worker_pools: InterpreterRequests<ShutdownChild<P>>,
+}
+
+impl<S: Behavior, P: Behavior> SendEffects for HeterogeneousShutdownSends<S, P> {
+    fn empty() -> Self {
+        Self {
+            supervisors: InterpreterRequests::empty(),
+            worker_pools: InterpreterRequests::empty(),
+        }
+    }
+
+    fn append(&mut self, other: Self) {
+        self.supervisors.append(other.supervisors);
+        self.worker_pools.append(other.worker_pools);
+    }
+}
+
+impl<E, S, P> behavior::SendsFor<E> for HeterogeneousShutdownSends<S, P>
+where
+    E: UserEvent,
+    S: Behavior,
+    P: Behavior,
+    InterpreterRequests<ShutdownChild<S>>: behavior::SendsFor<E>,
+    InterpreterRequests<ShutdownChild<P>>: behavior::SendsFor<E>,
+{
+}
+
+impl<I, E, Path, S, P> behavior::InterpretSends<I, E, Path> for HeterogeneousShutdownSends<S, P>
+where
+    I: behavior::SendInterpreter,
+    E: UserEvent,
+    S: Behavior,
+    P: Behavior,
+    InterpreterRequests<ShutdownChild<S>>: behavior::InterpretSends<I, E, Path>,
+    InterpreterRequests<ShutdownChild<P>>: behavior::InterpretSends<I, E, Path>,
+    Self: Send,
+{
+    fn interpret(
+        self,
+        interpreter: &mut I,
+    ) -> impl core::future::Future<Output = Result<(), I::Error>> + Send {
+        async move {
+            behavior::InterpretSends::interpret(self.supervisors, interpreter).await?;
+            behavior::InterpretSends::interpret(self.worker_pools, interpreter).await
+        }
+    }
+}
+
 /// Complete phase of coordinated shutdown.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ShutdownState<N> {
@@ -410,6 +514,204 @@ where
     }
 }
 
+/// Pure phased shutdown over the two concrete child protocols owned by an
+/// application root.
+///
+/// A plan member selects its protocol lane explicitly. Starting a phase emits
+/// requests in declaration order within each named lane; both lanes are
+/// interpreted in the stable order `supervisors`, then `worker_pools`. Phase
+/// completion still consumes the shared creator-local nonce because that child
+/// namespace is globally unique. This lane ordering and role vocabulary are a
+/// Bombay policy, not an actor-model guarantee.
+pub struct HeterogeneousShutdownCoordinator<B: Behavior, S: Behavior, P: Behavior>
+where
+    S::Protocol: crate::Protocol<Addr = crate::BehaviorAddr<B>>,
+    P::Protocol: crate::Protocol<Addr = crate::BehaviorAddr<B>>,
+{
+    inner: B,
+    plan: HeterogeneousShutdownPlan<<crate::BehaviorAddr<B> as Address>::Nonce>,
+    state: ShutdownState<<crate::BehaviorAddr<B> as Address>::Nonce>,
+    children: core::marker::PhantomData<fn() -> (S, P)>,
+}
+
+type HeterogeneousShutdownActions<B, S, P> = Actions<
+    crate::BehaviorAddr<B>,
+    <B as Behavior>::Ph,
+    SendLayer<HeterogeneousShutdownSends<S, P>, <B as Behavior>::Sends>,
+    <B as Behavior>::Birth,
+>;
+
+impl<B: Behavior, S: Behavior, P: Behavior> HeterogeneousShutdownCoordinator<B, S, P>
+where
+    S::Protocol: crate::Protocol<Addr = crate::BehaviorAddr<B>>,
+    P::Protocol: crate::Protocol<Addr = crate::BehaviorAddr<B>>,
+    <crate::BehaviorAddr<B> as Address>::Nonce: Copy + Eq,
+{
+    #[must_use]
+    pub const fn new(
+        inner: B,
+        plan: HeterogeneousShutdownPlan<<crate::BehaviorAddr<B> as Address>::Nonce>,
+    ) -> Self {
+        Self {
+            inner,
+            plan,
+            state: ShutdownState::Running,
+            children: core::marker::PhantomData,
+        }
+    }
+
+    #[must_use]
+    pub fn state(&self) -> &ShutdownState<<crate::BehaviorAddr<B> as Address>::Nonce> {
+        &self.state
+    }
+
+    fn wrap(
+        actions: Actions<crate::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>,
+    ) -> HeterogeneousShutdownActions<B, S, P> {
+        actions.map_sends(|inner| SendLayer::new(HeterogeneousShutdownSends::empty(), inner))
+    }
+
+    fn phase_actions(&self, phase: usize) -> HeterogeneousShutdownActions<B, S, P> {
+        let mut sends = HeterogeneousShutdownSends::empty();
+        for target in &self.plan.phases[phase] {
+            match *target {
+                HeterogeneousShutdownTarget::Supervisor(nonce) => {
+                    sends.supervisors.send(ShutdownChild::<S>::new(nonce));
+                }
+                HeterogeneousShutdownTarget::WorkerPool(nonce) => {
+                    sends.worker_pools.send(ShutdownChild::<P>::new(nonce));
+                }
+            }
+        }
+        Actions::send(SendLayer::new(sends, B::Sends::empty()))
+    }
+}
+
+impl<B, S, P> crate::BehaviorBase for HeterogeneousShutdownCoordinator<B, S, P>
+where
+    B: Behavior + crate::BehaviorBase,
+    S: Behavior,
+    P: Behavior,
+    S::Protocol: crate::Protocol<Addr = crate::BehaviorAddr<B>>,
+    P::Protocol: crate::Protocol<Addr = crate::BehaviorAddr<B>>,
+    <crate::BehaviorAddr<B> as Address>::Nonce: Copy + Eq,
+{
+    type Base = B::Base;
+    fn base(&self) -> &Self::Base {
+        self.inner.base()
+    }
+}
+
+impl<B, S, P> crate::StashStatus for HeterogeneousShutdownCoordinator<B, S, P>
+where
+    B: Behavior + crate::StashStatus,
+    S: Behavior,
+    P: Behavior,
+    S::Protocol: crate::Protocol<Addr = crate::BehaviorAddr<B>>,
+    P::Protocol: crate::Protocol<Addr = crate::BehaviorAddr<B>>,
+    <crate::BehaviorAddr<B> as Address>::Nonce: Copy + Eq,
+{
+    fn stashed_messages(&self) -> usize {
+        self.inner.stashed_messages()
+    }
+}
+
+impl<B, S, P, A, Ph, Sends, Br> Behavior for HeterogeneousShutdownCoordinator<B, S, P>
+where
+    A: Address,
+    A::Nonce: Copy + Eq,
+    Sends: SendEffects + behavior::SendsFor<B::Event>,
+    Br: BirthMode,
+    B: Behavior<Ph = Ph, Sends = Sends, Birth = Br>,
+    B::Protocol: crate::Protocol<Addr = A>,
+    S: Behavior,
+    P: Behavior,
+    S::Protocol: crate::Protocol<Addr = A>,
+    P::Protocol: crate::Protocol<Addr = A>,
+    S::Event: InjectEvent<crate::ShutdownRequested, Here>,
+    P::Event: InjectEvent<crate::ShutdownRequested, Here>,
+{
+    type Protocol = B::Protocol;
+    type Event = ShutdownCoordinatorEvent<B::Event>;
+    type Sends = SendLayer<HeterogeneousShutdownSends<S, P>, Sends>;
+    type Ph = Ph;
+    type Error = ShutdownCoordinatorError<B::Error, A::Nonce>;
+    type Birth = Br;
+
+    fn init(&mut self, _: crate::InitializationTurn) -> BehaviorActed<Self> {
+        behavior::initialize(&mut self.inner)
+            .map(Self::wrap)
+            .map_err(ShutdownCoordinatorError::Behavior)
+    }
+
+    fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+        match event {
+            ShutdownCoordinatorEvent::Requested(_)
+                if matches!(self.state, ShutdownState::Running) =>
+            {
+                if self.plan.phases.is_empty() {
+                    self.state = ShutdownState::Completed;
+                    return Ok(Actions::stop());
+                }
+                self.state = ShutdownState::Stopping {
+                    phase: 0,
+                    awaiting: self.plan.phases[0]
+                        .iter()
+                        .copied()
+                        .map(HeterogeneousShutdownTarget::nonce)
+                        .collect(),
+                };
+                Ok(self.phase_actions(0))
+            }
+            ShutdownCoordinatorEvent::Requested(_) => Ok(Actions::cont()),
+            ShutdownCoordinatorEvent::ChildStopped(stopped) => {
+                let ShutdownState::Stopping { phase, awaiting } = &mut self.state else {
+                    return Ok(Actions::cont());
+                };
+                let Some(position) = awaiting.iter().position(|nonce| *nonce == stopped.nonce)
+                else {
+                    return Ok(Actions::cont());
+                };
+                awaiting.remove(position);
+                if !awaiting.is_empty() {
+                    return Ok(Actions::cont());
+                }
+                let next = *phase + 1;
+                if next == self.plan.phases.len() {
+                    self.state = ShutdownState::Completed;
+                    Ok(Actions::stop())
+                } else {
+                    self.state = ShutdownState::Stopping {
+                        phase: next,
+                        awaiting: self.plan.phases[next]
+                            .iter()
+                            .copied()
+                            .map(HeterogeneousShutdownTarget::nonce)
+                            .collect(),
+                    };
+                    Ok(self.phase_actions(next))
+                }
+            }
+            ShutdownCoordinatorEvent::ChildRejected(rejected) => {
+                let matching = matches!(&self.state, ShutdownState::Stopping { awaiting, .. } if awaiting.contains(&rejected.nonce));
+                if matching {
+                    Err(ShutdownCoordinatorError::ChildRejected {
+                        nonce: rejected.nonce,
+                        reason: rejected.reason,
+                    })
+                } else {
+                    Ok(Actions::cont())
+                }
+            }
+            ShutdownCoordinatorEvent::Behavior(inner) => {
+                behavior::delegate_transition(&mut self.inner, inner)
+                    .map(Self::wrap)
+                    .map_err(ShutdownCoordinatorError::Behavior)
+            }
+        }
+    }
+}
+
 /// Homogeneous dependency-ordered shutdown uses the same validated phase machine.
 pub type TreeShutdown<B, C> = ShutdownCoordinator<B, C>;
 
@@ -532,6 +834,57 @@ mod tests {
         let done = active.on_path(stopped(3)).unwrap();
         assert!(matches!(done.become_, Step::Stop(_)));
         assert_eq!(active.state(), &ShutdownState::Completed);
+    }
+
+    #[test]
+    fn heterogeneous_phases_emit_named_protocol_lanes_and_await_the_union() {
+        type SupervisorChild = crate::StopOnShutdown<Probe>;
+        type PoolChild = crate::StopOnShutdown<Probe>;
+        let plan = HeterogeneousShutdownPlan::new([
+            vec![
+                HeterogeneousShutdownTarget::Supervisor(1),
+                HeterogeneousShutdownTarget::WorkerPool(2),
+            ],
+            vec![HeterogeneousShutdownTarget::Supervisor(3)],
+        ])
+        .unwrap();
+        let mut active =
+            HeterogeneousShutdownCoordinator::<Probe, SupervisorChild, PoolChild>::new(Probe, plan)
+                .initialize()
+                .unwrap()
+                .behavior;
+
+        let first = active.on_path(ShutdownRequested).unwrap();
+        assert_eq!(
+            first.sends.owned.supervisors.as_slice(),
+            [ShutdownChild::new(1)]
+        );
+        assert_eq!(
+            first.sends.owned.worker_pools.as_slice(),
+            [ShutdownChild::new(2)]
+        );
+        active.on_path(stopped(2)).unwrap();
+        let second = active.on_path(stopped(1)).unwrap();
+        assert_eq!(
+            second.sends.owned.supervisors.as_slice(),
+            [ShutdownChild::new(3)]
+        );
+        assert!(second.sends.owned.worker_pools.is_empty());
+        assert!(matches!(
+            active.on_path(stopped(3)).unwrap().become_,
+            Step::Stop(_)
+        ));
+    }
+
+    #[test]
+    fn heterogeneous_plan_rejects_cross_protocol_nonce_collisions() {
+        assert!(matches!(
+            HeterogeneousShutdownPlan::new([vec![
+                HeterogeneousShutdownTarget::Supervisor(1),
+                HeterogeneousShutdownTarget::WorkerPool(1),
+            ]]),
+            Err(ShutdownPlanError::DuplicateChild(1))
+        ));
     }
 
     #[test]

@@ -52,11 +52,12 @@ pub use discovery::{
     ResolverConfigError, ResolverMessage, Topic, TopicError, TopicMembership, TopicMessage,
 };
 pub use lifecycle::{
-    CleanupReaction, CoordinatedGuardian, Guardian, LifecyclePublication, LifecyclePublisher,
-    Reaper, ShutdownCoordinator, ShutdownCoordinatorError, ShutdownCoordinatorEvent, ShutdownPlan,
-    ShutdownPlanError, ShutdownState, ShutdownTree, ShutdownTreeError, Task, TaskError,
-    TaskMessage, TaskResult, TaskState, TerminationMonitor, TerminationObservation,
-    TerminationReaction, TreeShutdown,
+    CleanupReaction, CoordinatedGuardian, Guardian, HeterogeneousShutdownCoordinator,
+    HeterogeneousShutdownPlan, HeterogeneousShutdownSends, HeterogeneousShutdownTarget,
+    LifecyclePublication, LifecyclePublisher, Reaper, ShutdownCoordinator,
+    ShutdownCoordinatorError, ShutdownCoordinatorEvent, ShutdownPlan, ShutdownPlanError,
+    ShutdownState, ShutdownTree, ShutdownTreeError, Task, TaskError, TaskMessage, TaskResult,
+    TaskState, TerminationMonitor, TerminationObservation, TerminationReaction, TreeShutdown,
 };
 pub use machine::{Machine, Move};
 pub use operations::{
@@ -73,7 +74,7 @@ pub use pool::{
     AffinitySelector, AssignmentId, InterruptionPolicy, JobId, KeyedPoolEvent, KeyedPoolMessage,
     KeyedWorkerPool, PoolActions, PoolAssignment, PoolBehaviorSends, PoolConfigError,
     PoolConfiguration, PoolError, PoolEvent, PoolInterruption, PoolMessage, PoolRejection,
-    PoolResponse, PoolSends, WorkerPhase, WorkerPool, WorkerRetirement,
+    PoolResponse, PoolSends, WorkerPhase, WorkerPool, WorkerPoolWithParent, WorkerRetirement,
 };
 pub use protocol::{
     ChildShutdownRejected, ChildShutdownRejection, ChildStopped, CreationRejection,
@@ -112,8 +113,8 @@ pub use supervision::{
     IncarnationPhase, Proxy, ProxyCommand, ProxyError, ProxyEvent, ProxySends,
     ProxySendsWithParent, ProxyWithParent, ReportSupervisionFailure, RestartConfiguration,
     RestartPolicy, Strategy, SupervisionEvent, SupervisionFailure, SupervisionFailureReaction,
-    Supervisor, SupervisorError, SupervisorSends, restart_all, restart_one, restart_rest,
-    retire_on_supervision_failure, stop_on_supervision_failure,
+    Supervisor, SupervisorError, SupervisorSends, SupervisorWithParent, restart_all, restart_one,
+    restart_rest, retire_on_supervision_failure, stop_on_supervision_failure,
 };
 pub use termination::{Crash, Exit, RestartDenial, SupervisionFailureReason};
 pub use time::{

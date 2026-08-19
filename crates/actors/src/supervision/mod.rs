@@ -8,7 +8,7 @@ mod protocol;
 
 pub use adapter::{
     ChildTopology, Proxy, ProxySends, ProxySendsWithParent, ProxyWithParent, RestartConfiguration,
-    Supervisor, SupervisorError, SupervisorSends,
+    Supervisor, SupervisorError, SupervisorSends, SupervisorWithParent,
 };
 pub use backoff::{Backoff, BackoffConfigError, BackoffError};
 pub use backoff_supervisor::{BackoffSupervisor, BackoffSupervisorError};

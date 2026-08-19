@@ -8,7 +8,7 @@ use super::super::policy::{
     SupervisionFailureReaction, retire_on_supervision_failure,
 };
 use super::super::protocol::{ProxyCommand, SupervisionEvent};
-use super::proxy::Proxy;
+use super::proxy::{Proxy, ProxyWithParent};
 use crate::protocol::{ObserveChild, ObserveCreation, WorkerStopped};
 use crate::{Become, Exit, SupervisionFailureReason};
 use crate::{Own, SendInput};
@@ -225,11 +225,11 @@ where
     }
 }
 
-pub(crate) type SupervisorActions<B, C> = Actions<
+pub(crate) type SupervisorActions<B, C, ParentPath = behavior::Here> = Actions<
     crate::BehaviorAddr<B>,
     <B as Behavior>::Ph,
     SendLayer<SupervisorSends<crate::BehaviorAddr<B>, C>, <B as Behavior>::Sends>,
-    Births<Proxy<C>>,
+    Births<ProxyWithParent<C, ParentPath>>,
 >;
 
 /// A controlled supervisor-fold failure.
@@ -263,12 +263,7 @@ type ReplacementResult<B, C> = Result<
     SupervisorError<<B as Behavior>::Error, <crate::BehaviorAddr<B> as Address>::Nonce>,
 >;
 
-type WrappedSupervisorResult<B, C> = Result<
-    SupervisorActions<B, C>,
-    SupervisorError<<B as Behavior>::Error, <crate::BehaviorAddr<B> as Address>::Nonce>,
->;
-
-pub struct Supervisor<B: Behavior, C: Behavior<Ph = Never>>
+pub struct SupervisorWithParent<B: Behavior, C: Behavior<Ph = Never>, ParentPath>
 where
     C::Protocol: crate::Protocol<Addr = crate::BehaviorAddr<B>>,
 {
@@ -279,9 +274,31 @@ where
     policy: RestartPolicy,
     budget: RestartBudget,
     on_failure: SupervisionFailureReaction<B>,
+    proxy_parent: crate::ProxyParentIngress<crate::BehaviorAddr<B>, ParentPath>,
 }
 
-impl<B, C> crate::BehaviorBase for Supervisor<B, C>
+/// A fixed supervisor whose proxy reports target its direct event layer.
+pub type Supervisor<B, C> = SupervisorWithParent<B, C, behavior::Here>;
+
+impl<B, C> SupervisorWithParent<B, C, behavior::Here>
+where
+    B: Behavior<Birth = Births<C>>,
+    <crate::BehaviorAddr<B> as Address>::Nonce: From<u64>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = crate::BehaviorAddr<B>>,
+{
+    /// Construct a fixed supervisor whose proxy reports target this behavior's
+    /// direct supervision event layer.
+    pub fn new(
+        inner: B,
+        topology: ChildTopology<<crate::BehaviorAddr<B> as Address>::Nonce, C>,
+        restart: RestartConfiguration,
+    ) -> Result<Self, FleetError<<crate::BehaviorAddr<B> as Address>::Nonce>> {
+        Self::with_parent(inner, topology, restart, crate::ProxyParentIngress::new())
+    }
+}
+
+impl<B, C, ParentPath> crate::BehaviorBase for SupervisorWithParent<B, C, ParentPath>
 where
     B: Behavior<Birth = Births<C>> + crate::BehaviorBase,
     <crate::BehaviorAddr<B> as Address>::Nonce: From<u64>,
@@ -295,7 +312,7 @@ where
     }
 }
 
-impl<B, C> crate::StashStatus for Supervisor<B, C>
+impl<B, C, ParentPath> crate::StashStatus for SupervisorWithParent<B, C, ParentPath>
 where
     B: Behavior<Birth = Births<C>> + crate::StashStatus,
     <crate::BehaviorAddr<B> as Address>::Nonce: From<u64>,
@@ -307,7 +324,7 @@ where
     }
 }
 
-impl<B, C> Supervisor<B, C>
+impl<B, C, ParentPath> SupervisorWithParent<B, C, ParentPath>
 where
     B: Behavior<Birth = Births<C>>,
     <crate::BehaviorAddr<B> as Address>::Nonce: From<u64>,
@@ -322,10 +339,11 @@ where
     ///
     /// # Errors
     /// Returns the first typed topology rejection.
-    pub fn new(
+    pub fn with_parent(
         inner: B,
         topology: ChildTopology<<crate::BehaviorAddr<B> as Address>::Nonce, C>,
         restart: RestartConfiguration,
+        proxy_parent: crate::ProxyParentIngress<crate::BehaviorAddr<B>, ParentPath>,
     ) -> Result<Self, FleetError<<crate::BehaviorAddr<B> as Address>::Nonce>> {
         let fleet = Fleet::configured(topology.nonces)?;
         Ok(Self {
@@ -336,6 +354,7 @@ where
             policy: restart.policy,
             budget: RestartBudget::new(restart.maximum, restart.window),
             on_failure: retire_on_supervision_failure::<B>,
+            proxy_parent,
         })
     }
 
@@ -436,7 +455,10 @@ where
     fn wrap(
         &mut self,
         actions: Actions<crate::BehaviorAddr<B>, B::Ph, B::Sends, Births<C>>,
-    ) -> WrappedSupervisorResult<B, C> {
+    ) -> Result<
+        SupervisorActions<B, C, ParentPath>,
+        SupervisorError<B::Error, <crate::BehaviorAddr<B> as Address>::Nonce>,
+    > {
         let fleet = &mut self.fleet;
         for create in &actions.creates {
             fleet.register(create.nonce)?;
@@ -466,14 +488,20 @@ where
             actions
                 .creates
                 .into_iter()
-                .map(|create| Create::new(create.nonce, Proxy::new(create.child), create.kind))
+                .map(|create| {
+                    Create::new(
+                        create.nonce,
+                        ProxyWithParent::with_parent(create.child, self.proxy_parent),
+                        create.kind,
+                    )
+                })
                 .collect(),
             actions.become_,
         ))
     }
 }
 
-impl<B, C, A, Ph, Sends> Behavior for Supervisor<B, C>
+impl<B, C, A, Ph, Sends, ParentPath> Behavior for SupervisorWithParent<B, C, ParentPath>
 where
     A: Address,
     Sends: SendEffects + behavior::SendsFor<B::Event>,
@@ -488,12 +516,12 @@ where
     type Sends = SendLayer<SupervisorSends<A, C>, Sends>;
     type Ph = Ph;
     type Error = SupervisorError<B::Error, A::Nonce>;
-    type Birth = Births<Proxy<C>>;
+    type Birth = Births<ProxyWithParent<C, ParentPath>>;
 
     fn init(
         &mut self,
         _: crate::InitializationTurn,
-    ) -> Result<SupervisorActions<B, C>, Self::Error> {
+    ) -> Result<SupervisorActions<B, C, ParentPath>, Self::Error> {
         let configured: Vec<_> = self.fleet.configured_nonces().collect();
         let workers = configured
             .iter()
@@ -507,11 +535,14 @@ where
             .collect::<Result<Vec<_>, _>>()?;
         let actions = behavior::initialize(&mut self.inner).map_err(SupervisorError::Behavior)?;
         let mut actions = self.wrap(actions)?;
-        actions.creates.extend(
-            workers
-                .into_iter()
-                .map(|(nonce, worker)| Create::birth(nonce, Proxy::new(worker))),
-        );
+        actions
+            .creates
+            .extend(workers.into_iter().map(|(nonce, worker)| {
+                Create::birth(
+                    nonce,
+                    ProxyWithParent::with_parent(worker, self.proxy_parent),
+                )
+            }));
         actions
             .sends
             .owned
@@ -529,7 +560,7 @@ where
         &mut self,
         _: crate::ActiveTurn,
         event: Self::Event,
-    ) -> Result<SupervisorActions<B, C>, Self::Error> {
+    ) -> Result<SupervisorActions<B, C, ParentPath>, Self::Error> {
         match event {
             SupervisionEvent::WorkerStopped(event) => {
                 if !self.fleet.contains(event.proxy) {
