@@ -1,25 +1,18 @@
 //! `behavior-macros` — proc-macros for the behavior algebra.
 //!
-//! `#[actor]` wires the ordinary infallible/no-birth subset and `#[behavior]`
-//! wires a fully declared inherent user-message fold.
+//! `#[behavior]` wires a fully declared inherent user-message fold and may
+//! generate its nominal send and closed birth products.
 
 use proc_macro::TokenStream;
 use proc_macro_crate::{FoundCrate, crate_name};
 use proc_macro2::{Span, TokenStream as TokenStream2};
-use quote::quote;
+use quote::{format_ident, quote};
 use syn::parse::{Parse, ParseStream};
+use syn::visit::Visit;
 use syn::{
-    Error, FnArg, GenericArgument, ImplItem, ItemImpl, PathArguments, Result, ReturnType, Token,
-    Type, parse_macro_input,
+    Error, FnArg, GenericParam, Generics, Ident, ImplItem, ItemImpl, Result, ReturnType, Token,
+    Type, braced, parse_macro_input, parse_quote,
 };
-
-mod behavior_kw {
-    syn::custom_keyword!(addr);
-    syn::custom_keyword!(message);
-    syn::custom_keyword!(sends);
-    syn::custom_keyword!(births);
-    syn::custom_keyword!(error);
-}
 
 fn crate_path(found: FoundCrate) -> TokenStream2 {
     match found {
@@ -51,45 +44,102 @@ fn behavior_crate() -> Result<TokenStream2> {
     ))
 }
 
+struct NamedField {
+    name: Ident,
+    ty: Type,
+}
+
+struct NamedProduct {
+    fields: Vec<NamedField>,
+}
+
+enum SendsSpec {
+    Existing(Type),
+    Generated(NamedProduct),
+}
+
+enum BirthsSpec {
+    Existing(Type),
+    Generated(NamedProduct),
+}
+
+fn parse_product(input: ParseStream) -> Result<NamedProduct> {
+    let content;
+    braced!(content in input);
+    let mut fields = Vec::new();
+    let mut names = std::collections::BTreeSet::new();
+    while !content.is_empty() {
+        let name: Ident = content.parse()?;
+        if !names.insert(name.to_string()) {
+            return Err(Error::new_spanned(name, "duplicate product lane"));
+        }
+        content.parse::<Token![:]>()?;
+        fields.push(NamedField {
+            name,
+            ty: content.parse()?,
+        });
+        if content.peek(Token![,]) {
+            content.parse::<Token![,]>()?;
+        } else if !content.is_empty() {
+            return Err(content.error("expected `,` between product lanes"));
+        }
+    }
+    if fields.is_empty() {
+        return Err(input.error("empty products must be omitted"));
+    }
+    Ok(NamedProduct { fields })
+}
+
 struct BehaviorArgs {
     addr: Type,
     message: Type,
-    sends: Type,
-    births: Type,
-    error: Type,
+    sends: Option<SendsSpec>,
+    births: Option<BirthsSpec>,
+    error: Option<Type>,
 }
 
 impl Parse for BehaviorArgs {
     fn parse(input: ParseStream) -> Result<Self> {
-        input.parse::<behavior_kw::addr>()?;
-        input.parse::<Token![=]>()?;
-        let addr = input.parse()?;
-        input.parse::<Token![,]>()?;
-        input.parse::<behavior_kw::message>()?;
-        input.parse::<Token![=]>()?;
-        let message = input.parse()?;
-        input.parse::<Token![,]>()?;
-        input.parse::<behavior_kw::sends>()?;
-        input.parse::<Token![=]>()?;
-        let sends = input.parse()?;
-        input.parse::<Token![,]>()?;
-        input.parse::<behavior_kw::births>()?;
-        input.parse::<Token![=]>()?;
-        let births = input.parse()?;
-        input.parse::<Token![,]>()?;
-        input.parse::<behavior_kw::error>()?;
-        input.parse::<Token![=]>()?;
-        let error = input.parse()?;
-        if input.peek(Token![,]) {
-            input.parse::<Token![,]>()?;
-        }
-        if !input.is_empty() {
-            return Err(input
-                .error("expected exactly addr, message, sends, births, and error in that order"));
+        let mut addr = None;
+        let mut message = None;
+        let mut sends = None;
+        let mut births = None;
+        let mut error = None;
+        while !input.is_empty() {
+            let key: Ident = input.parse()?;
+            input.parse::<Token![=]>()?;
+            match key.to_string().as_str() {
+                "addr" if addr.is_none() => addr = Some(input.parse()?),
+                "message" if message.is_none() => message = Some(input.parse()?),
+                "sends" if sends.is_none() => {
+                    sends = Some(if input.peek(syn::token::Brace) {
+                        SendsSpec::Generated(parse_product(input)?)
+                    } else {
+                        SendsSpec::Existing(input.parse()?)
+                    });
+                }
+                "births" if births.is_none() => {
+                    births = Some(if input.peek(syn::token::Brace) {
+                        BirthsSpec::Generated(parse_product(input)?)
+                    } else {
+                        BirthsSpec::Existing(input.parse()?)
+                    });
+                }
+                "error" if error.is_none() => error = Some(input.parse()?),
+                "addr" | "message" | "sends" | "births" | "error" => {
+                    return Err(Error::new_spanned(key, "duplicate behavior argument"));
+                }
+                _ => return Err(Error::new_spanned(key, "unknown behavior argument")),
+            }
+            if input.peek(Token![,]) {
+                input.parse::<Token![,]>()?;
+            } else if !input.is_empty() {
+                return Err(input.error("expected `,` between behavior arguments"));
+            }
         }
         Ok(Self {
-            addr,
-            message,
+            addr: addr.ok_or_else(|| input.error("missing `addr`"))?,
+            message: message.ok_or_else(|| input.error("missing `message`"))?,
             sends,
             births,
             error,
@@ -129,135 +179,244 @@ fn validate_receiver(method: &syn::ImplItemFn) -> Result<()> {
     Ok(())
 }
 
-/// Define the common synchronous, infallible, no-birth behavior subset.
-#[proc_macro_attribute]
-pub fn actor(args: TokenStream, item: TokenStream) -> TokenStream {
-    if !args.is_empty() {
-        return Error::new(Span::call_site(), "#[actor] accepts no arguments")
-            .to_compile_error()
-            .into();
-    }
-    let item = parse_macro_input!(item as ItemImpl);
-    if item.trait_.is_some() {
-        return Error::new_spanned(&item, "#[actor] applies to an inherent impl")
-            .to_compile_error()
-            .into();
-    }
-    let Some(receive) = item.items.iter().find_map(|item| match item {
-        ImplItem::Fn(method) if method.sig.ident == "receive" => Some(method),
-        _ => None,
-    }) else {
-        return Error::new_spanned(
-            &item.self_ty,
-            "#[actor] requires receive(&mut self, from, message)",
-        )
-        .to_compile_error()
-        .into();
-    };
-    if let Err(error) = validate_receiver(receive) {
-        return error.to_compile_error().into();
-    }
-    if receive.sig.inputs.len() != 3 {
-        return Error::new_spanned(
-            &receive.sig,
-            "receive must accept exactly &mut self, from, and message",
-        )
-        .to_compile_error()
-        .into();
-    }
-    let mut parameters = receive.sig.inputs.iter().skip(1);
-    let Some(FnArg::Typed(from)) = parameters.next() else {
-        return Error::new_spanned(&receive.sig, "from requires an explicit address type")
-            .to_compile_error()
-            .into();
-    };
-    let Some(FnArg::Typed(message)) = parameters.next() else {
-        return Error::new_spanned(&receive.sig, "message requires an explicit type")
-            .to_compile_error()
-            .into();
-    };
-    let ReturnType::Type(_, result) = &receive.sig.output else {
-        return Error::new_spanned(&receive.sig, "receive must return Effect<Send>")
-            .to_compile_error()
-            .into();
-    };
-    let Type::Path(result_path) = result.as_ref() else {
-        return Error::new_spanned(result, "receive must return Effect<Send>")
-            .to_compile_error()
-            .into();
-    };
-    let Some(effect) = result_path.path.segments.last() else {
-        return Error::new_spanned(result, "receive must return Effect<Send>")
-            .to_compile_error()
-            .into();
-    };
-    if effect.ident != "Effect" {
-        return Error::new_spanned(result, "receive must return Effect<Send>")
-            .to_compile_error()
-            .into();
-    }
-    let PathArguments::AngleBracketed(arguments) = &effect.arguments else {
-        return Error::new_spanned(result, "Effect requires its send value type")
-            .to_compile_error()
-            .into();
-    };
-    let Some(GenericArgument::Type(send)) = arguments.args.first() else {
-        return Error::new_spanned(result, "Effect requires its send value type")
-            .to_compile_error()
-            .into();
-    };
-    let behavior = match behavior_crate() {
-        Ok(behavior) => behavior,
-        Err(error) => return error.to_compile_error().into(),
-    };
-    let self_ty = &item.self_ty;
-    let address = &from.ty;
-    let message = &message.ty;
-    let (impl_generics, _, where_clause) = item.generics.split_for_impl();
+fn lane_name(product: &Ident, field: &Ident) -> Ident {
+    let lane = field
+        .to_string()
+        .split('_')
+        .filter(|part| !part.is_empty())
+        .map(|part| {
+            let mut chars = part.chars();
+            chars.next().map_or_else(String::new, |first| {
+                first.to_uppercase().chain(chars).collect()
+            })
+        })
+        .collect::<String>();
+    format_ident!("{}{}", product, lane)
+}
 
-    quote! {
-        #item
+#[derive(Default)]
+struct GenericUses {
+    identifiers: std::collections::BTreeSet<String>,
+    lifetimes: std::collections::BTreeSet<String>,
+}
 
-        impl #impl_generics #behavior::Protocol for #self_ty #where_clause {
-            type Addr = #address;
-            type Msg = #message;
+impl<'ast> Visit<'ast> for GenericUses {
+    fn visit_ident(&mut self, ident: &'ast Ident) {
+        self.identifiers.insert(ident.to_string());
+    }
+
+    fn visit_lifetime(&mut self, lifetime: &'ast syn::Lifetime) {
+        self.lifetimes.insert(lifetime.ident.to_string());
+    }
+}
+
+fn product_generics(item: &ItemImpl, fields: &[NamedField]) -> Generics {
+    let mut uses = GenericUses::default();
+    for field in fields {
+        uses.visit_type(&field.ty);
+    }
+    let mut generics = item.generics.clone();
+    generics.params = generics
+        .params
+        .into_iter()
+        .filter(|parameter| match parameter {
+            GenericParam::Lifetime(parameter) => uses
+                .lifetimes
+                .contains(&parameter.lifetime.ident.to_string()),
+            GenericParam::Type(parameter) => {
+                uses.identifiers.contains(&parameter.ident.to_string())
+            }
+            GenericParam::Const(parameter) => {
+                uses.identifiers.contains(&parameter.ident.to_string())
+            }
+        })
+        .collect();
+    generics.where_clause = None;
+    generics
+}
+
+#[allow(
+    clippy::too_many_lines,
+    reason = "the generated nominal product keeps every structural trait implementation adjacent"
+)]
+fn generate_sends(
+    product: Option<SendsSpec>,
+    actor: &Ident,
+    item: &ItemImpl,
+    behavior: &TokenStream2,
+) -> (TokenStream2, TokenStream2) {
+    let product = match product {
+        None => return (quote!(#behavior::NoSends), quote!()),
+        Some(SendsSpec::Existing(ty)) => return (quote!(#ty), quote!()),
+        Some(SendsSpec::Generated(product)) => product,
+    };
+    let name = format_ident!("{}Sends", actor);
+    let field_names: Vec<_> = product.fields.iter().map(|field| &field.name).collect();
+    let field_types: Vec<_> = product.fields.iter().map(|field| &field.ty).collect();
+    let lane_names: Vec<_> = field_names
+        .iter()
+        .map(|field| lane_name(&name, field))
+        .collect();
+    let product_generics = product_generics(item, &product.fields);
+    let (_, type_generics, _) = product_generics.split_for_impl();
+    let generics = &product_generics;
+
+    let send_impls = lane_names
+        .iter()
+        .zip(field_names.iter())
+        .zip(field_types.iter())
+        .map(|((lane, field), field_ty)| {
+            let mut generics = product_generics.clone();
+            generics.params.push(parse_quote!(__BombayInput));
+            generics.make_where_clause().predicates.push(parse_quote!(
+                #field_ty: #behavior::SendInput<__BombayInput, #behavior::Own>
+            ));
+            let (impl_generics, _, where_clause) = generics.split_for_impl();
+            quote! {
+                impl #impl_generics #behavior::SendInput<__BombayInput, #lane>
+                    for #name #type_generics #where_clause
+                {
+                    fn emit(&mut self, input: __BombayInput) {
+                        <#field_ty as #behavior::SendInput<
+                            __BombayInput,
+                            #behavior::Own,
+                        >>::emit(&mut self.#field, input);
+                    }
+                }
+            }
+        });
+
+    let mut effects_generics = product_generics.clone();
+    for field_ty in &field_types {
+        effects_generics
+            .make_where_clause()
+            .predicates
+            .push(parse_quote!(#field_ty: #behavior::SendEffects));
+    }
+    let (effects_impl_generics, _, effects_where_clause) = effects_generics.split_for_impl();
+
+    let mut lawful_generics = product_generics.clone();
+    lawful_generics.params.push(parse_quote!(__BombayEvent));
+    for field_ty in &field_types {
+        lawful_generics
+            .make_where_clause()
+            .predicates
+            .push(parse_quote!(#field_ty: #behavior::SendsFor<__BombayEvent>));
+    }
+    let (lawful_impl_generics, _, lawful_where_clause) = lawful_generics.split_for_impl();
+
+    let mut interpret_generics = product_generics.clone();
+    interpret_generics
+        .params
+        .push(parse_quote!(__BombayInterpreter));
+    interpret_generics
+        .params
+        .push(parse_quote!(__BombayRootEvent));
+    interpret_generics.params.push(parse_quote!(__BombayPath));
+    interpret_generics
+        .make_where_clause()
+        .predicates
+        .push(parse_quote!(__BombayInterpreter: #behavior::SendInterpreter));
+    for field_ty in &field_types {
+        interpret_generics
+            .make_where_clause()
+            .predicates
+            .push(parse_quote!(
+                #field_ty: #behavior::InterpretSends<
+                    __BombayInterpreter,
+                    __BombayRootEvent,
+                    __BombayPath,
+                >
+            ));
+    }
+    interpret_generics
+        .make_where_clause()
+        .predicates
+        .push(parse_quote!(#name #type_generics: ::core::marker::Send));
+    let (interpret_impl_generics, _, interpret_where_clause) = interpret_generics.split_for_impl();
+
+    let items = quote! {
+        #(pub enum #lane_names {})*
+
+        pub struct #name #generics {
+            #(pub #field_names: #field_types,)*
         }
 
-        impl #impl_generics #behavior::Behavior for #self_ty #where_clause {
-            type Protocol = Self;
-            type Event = #behavior::User<#address, #message>;
-            type Sends = ::std::vec::Vec<#send>;
-            type Ph = #behavior::Never;
-            type Error = #behavior::Never;
-            type Birth = #behavior::NoBirths;
-
-            fn init(
-                &mut self,
-                _: #behavior::InitializationTurn,
-            ) -> #behavior::BehaviorActed<Self> {
-                ::core::result::Result::Ok(#behavior::Actions::cont())
+        impl #effects_impl_generics #behavior::SendEffects for #name #type_generics
+            #effects_where_clause
+        {
+            fn empty() -> Self {
+                Self {
+                    #(#field_names: <#field_types as #behavior::SendEffects>::empty(),)*
+                }
             }
 
-            fn transition(
-                &mut self,
-                _: #behavior::ActiveTurn,
-                event: Self::Event,
-            ) -> #behavior::BehaviorActed<Self> {
-                ::core::result::Result::Ok(::core::convert::Into::into(
-                    <#self_ty>::receive(self, event.from, event.message)
-                ))
+            fn append(&mut self, other: Self) {
+                #(
+                    <#field_types as #behavior::SendEffects>::append(
+                        &mut self.#field_names,
+                        other.#field_names,
+                    );
+                )*
             }
         }
 
-        impl #impl_generics #behavior::BehaviorBase for #self_ty #where_clause {
-            type Base = Self;
+        impl #lawful_impl_generics #behavior::SendsFor<__BombayEvent>
+            for #name #type_generics #lawful_where_clause
+        {}
 
-            fn base(&self) -> &Self {
-                self
+        #(#send_impls)*
+
+        impl #interpret_impl_generics
+            #behavior::InterpretSends<__BombayInterpreter, __BombayRootEvent, __BombayPath>
+            for #name #type_generics #interpret_where_clause
+        {
+            fn interpret(
+                self,
+                interpreter: &mut __BombayInterpreter,
+            ) -> impl ::core::future::Future<
+                Output = ::core::result::Result<(), __BombayInterpreter::Error>,
+            > + ::core::marker::Send {
+                async move {
+                    #(
+                        <#field_types as #behavior::InterpretSends<
+                            __BombayInterpreter,
+                            __BombayRootEvent,
+                            __BombayPath,
+                        >>::interpret(self.#field_names, interpreter).await?;
+                    )*
+                    ::core::result::Result::Ok(())
+                }
             }
         }
-    }
-    .into()
+    };
+    (quote!(#name #type_generics), items)
+}
+
+fn generate_births(
+    product: Option<BirthsSpec>,
+    actor: &Ident,
+    item: &ItemImpl,
+    behavior: &TokenStream2,
+) -> (TokenStream2, TokenStream2) {
+    let product = match product {
+        None => return (quote!(#behavior::NoBirths), quote!()),
+        Some(BirthsSpec::Existing(ty)) => return (quote!(#ty), quote!()),
+        Some(BirthsSpec::Generated(product)) => product,
+    };
+    let name = format_ident!("{}Children", actor);
+    let child_types = product.fields.iter().map(|field| &field.ty);
+    let product_generics = product_generics(item, &product.fields);
+    let (_, type_generics, _) = product_generics.split_for_impl();
+    let generics = &product_generics;
+    let choice = child_types.fold(
+        quote!(#behavior::Never),
+        |tail, child| quote!(#behavior::ChildChoice<#child, #tail>),
+    );
+    (
+        quote!(#behavior::Births<#name #type_generics>),
+        quote!(pub type #name #generics = #choice;),
+    )
 }
 
 /// Generate the mechanical `Behavior` implementation for a normal inherent
@@ -266,6 +425,10 @@ pub fn actor(args: TokenStream, item: TokenStream) -> TokenStream {
 /// initialization transition. The original impl and methods are preserved
 /// unchanged.
 #[proc_macro_attribute]
+#[allow(
+    clippy::too_many_lines,
+    reason = "validation and the one coherent Behavior expansion remain in one entry point"
+)]
 pub fn behavior(args: TokenStream, item: TokenStream) -> TokenStream {
     let args = parse_macro_input!(args as BehaviorArgs);
     let item = parse_macro_input!(item as ItemImpl);
@@ -325,17 +488,33 @@ pub fn behavior(args: TokenStream, item: TokenStream) -> TokenStream {
         error,
     } = args;
     let self_ty = &item.self_ty;
+    let Type::Path(self_path) = self_ty.as_ref() else {
+        return Error::new_spanned(self_ty, "#[behavior] requires a nominal actor type")
+            .to_compile_error()
+            .into();
+    };
+    let Some(self_name) = self_path.path.segments.last().map(|segment| &segment.ident) else {
+        return Error::new_spanned(self_ty, "#[behavior] requires a nominal actor type")
+            .to_compile_error()
+            .into();
+    };
     let (impl_generics, _, where_clause) = item.generics.split_for_impl();
     let behavior = match behavior_crate() {
         Ok(behavior) => behavior,
         Err(error) => return error.to_compile_error().into(),
     };
+    let error = error.map_or_else(|| quote!(#behavior::Never), |error| quote!(#error));
     let initialize = init.map_or_else(
         || quote!(::core::result::Result::Ok(#behavior::Actions::cont())),
         |_| quote!(<#self_ty>::init(self)),
     );
 
+    let (sends_ty, sends_items) = generate_sends(sends, self_name, &item, &behavior);
+    let (births_ty, births_items) = generate_births(births, self_name, &item, &behavior);
+
     quote! {
+        #sends_items
+        #births_items
         #item
 
         impl #impl_generics #behavior::Protocol for #self_ty #where_clause {
@@ -346,10 +525,10 @@ pub fn behavior(args: TokenStream, item: TokenStream) -> TokenStream {
         impl #impl_generics #behavior::Behavior for #self_ty #where_clause {
             type Protocol = Self;
             type Event = #behavior::User<#addr, #message>;
-            type Sends = #sends;
+            type Sends = #sends_ty;
             type Ph = #behavior::Never;
             type Error = #error;
-            type Birth = #births;
+            type Birth = #births_ty;
 
             fn init(
                 &mut self,
@@ -376,4 +555,64 @@ pub fn behavior(args: TokenStream, item: TokenStream) -> TokenStream {
         }
     }
     .into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn permutations(values: &mut [&str], at: usize, output: &mut Vec<String>) {
+        if at == values.len() {
+            output.push(values.join(", "));
+            return;
+        }
+        for index in at..values.len() {
+            values.swap(at, index);
+            permutations(values, at + 1, output);
+            values.swap(at, index);
+        }
+    }
+
+    #[test]
+    fn every_argument_order_parses() {
+        let mut declarations = [
+            "addr = u64",
+            "message = String",
+            "sends = { first: Vec<u8>, second: Vec<u16> }",
+            "births = { first: u8, second: u16 }",
+            "error = String",
+        ];
+        let mut cases = Vec::new();
+        permutations(&mut declarations, 0, &mut cases);
+        assert_eq!(cases.len(), 120);
+        for case in cases {
+            syn::parse_str::<BehaviorArgs>(&case)
+                .unwrap_or_else(|error| panic!("failed to parse `{case}`: {error}"));
+        }
+    }
+
+    #[test]
+    fn capability_omission_and_trailing_comma_parse() {
+        syn::parse_str::<BehaviorArgs>("message = (), addr = u8,")
+            .expect("only required protocol declarations are sufficient");
+    }
+
+    #[test]
+    fn invalid_declaration_states_are_rejected() {
+        for case in [
+            "message = ()",
+            "addr = u8",
+            "addr = u8, message = (), addr = u16",
+            "addr = u8, message = (), unknown = u8",
+            "addr = u8, message = (), sends = {}",
+            "addr = u8, message = (), births = {}",
+            "addr = u8, message = (), sends = { same: Vec<u8>, same: Vec<u8> }",
+            "addr = u8, message = (), births = { same: u8, same: u16 }",
+        ] {
+            assert!(
+                syn::parse_str::<BehaviorArgs>(case).is_err(),
+                "invalid declaration parsed: `{case}`"
+            );
+        }
+    }
 }

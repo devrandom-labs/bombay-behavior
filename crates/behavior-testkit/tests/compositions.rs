@@ -8,8 +8,8 @@ use std::time::Duration;
 use behavior::EventLayer;
 use behavior::{
     Acted, Actions, Activate, Behavior, Crash, Delivery, Exit, MailAddr, Never, PeerStopped,
-    Recipient, StashRoute, Step, SupervisionEvent, TimerElapsed, TimerGeneration, TimerId, User,
-    UserEvent, WorkerStopped, stop_on_abnormal_death, stop_on_supervision_failure,
+    Recipient, SendEffects, StashRoute, Step, SupervisionEvent, TimerElapsed, TimerGeneration,
+    TimerId, User, UserEvent, WorkerStopped, stop_on_abnormal_death, stop_on_supervision_failure,
 };
 use std::time::Instant;
 
@@ -74,6 +74,118 @@ fn at<T: Behavior>(behavior: T, when: Instant) -> behavior::Deadline<T> {
     behavior::Deadline::new(behavior, behavior::TimerId(0), Some(when), |_| {
         Ok(Step::Continue)
     })
+}
+
+struct GeneratedBase;
+
+#[behavior::behavior(
+    addr = MailAddr,
+    message = u8,
+    sends = {
+        replies: Vec<Delivery<Sink>>,
+    },
+    births = {
+        recorder: Recorder,
+    },
+)]
+impl GeneratedBase {
+    fn init(&mut self) -> behavior::BehaviorActed<Self> {
+        let mut sends = GeneratedBaseSends::empty();
+        sends
+            .send::<_, GeneratedBaseSendsReplies>(Delivery::new(Recipient::global(MailAddr(9)), 7));
+        let creates = behavior::Children::<MailAddr>::new()
+            .child(4, Recorder::default())
+            .into_creates()
+            .expect("one child nonce is unique");
+        Ok(Actions::new(sends, creates, Step::Continue))
+    }
+
+    fn receive(&mut self, _: MailAddr, _: u8) -> behavior::BehaviorActed<Self> {
+        Ok(Actions::cont())
+    }
+}
+
+fn assert_generated_base_effects(sends: &GeneratedBaseSends, creates: usize) {
+    assert_eq!(sends.replies.len(), 1);
+    assert_eq!(sends.replies[0].message, 7);
+    assert_eq!(creates, 1);
+}
+
+/// Every ordering of the three transparent wrapper families accepts the
+/// generated nominal send and birth products. Stash contributes no product;
+/// Deadline and Watch each wrap it once without consuming either base leg.
+#[tokio::test]
+async fn generated_products_compose_through_every_three_wrapper_order() {
+    let due = Instant::now() + Duration::from_secs(1);
+
+    let first = at(
+        behavior::Watch::new(
+            behavior::Stash::new(GeneratedBase, |_| StashRoute::Deliver),
+            PEER,
+            stop_on_abnormal_death,
+        ),
+        due,
+    )
+    .initialize()
+    .unwrap()
+    .actions;
+    assert_generated_base_effects(&first.sends.inner.inner, first.creates.len());
+
+    let second = at(
+        behavior::Stash::new(
+            behavior::Watch::new(GeneratedBase, PEER, stop_on_abnormal_death),
+            |_| StashRoute::Deliver,
+        ),
+        due,
+    )
+    .initialize()
+    .unwrap()
+    .actions;
+    assert_generated_base_effects(&second.sends.inner.inner, second.creates.len());
+
+    let third = behavior::Stash::new(
+        at(
+            behavior::Watch::new(GeneratedBase, PEER, stop_on_abnormal_death),
+            due,
+        ),
+        |_| StashRoute::Deliver,
+    )
+    .initialize()
+    .unwrap()
+    .actions;
+    assert_generated_base_effects(&third.sends.inner.inner, third.creates.len());
+
+    let fourth = behavior::Watch::new(
+        at(
+            behavior::Stash::new(GeneratedBase, |_| StashRoute::Deliver),
+            due,
+        ),
+        PEER,
+        stop_on_abnormal_death,
+    )
+    .initialize()
+    .unwrap()
+    .actions;
+    assert_generated_base_effects(&fourth.sends.inner.inner, fourth.creates.len());
+
+    let fifth = behavior::Watch::new(
+        behavior::Stash::new(at(GeneratedBase, due), |_| StashRoute::Deliver),
+        PEER,
+        stop_on_abnormal_death,
+    )
+    .initialize()
+    .unwrap()
+    .actions;
+    assert_generated_base_effects(&fifth.sends.inner.inner, fifth.creates.len());
+
+    let sixth = behavior::Stash::new(
+        behavior::Watch::new(at(GeneratedBase, due), PEER, stop_on_abnormal_death),
+        |_| StashRoute::Deliver,
+    )
+    .initialize()
+    .unwrap()
+    .actions;
+    assert_generated_base_effects(&sixth.sends.inner.inner, sixth.creates.len());
 }
 
 /// Every ordering of {at, watch, at} preserves each layer's own initial

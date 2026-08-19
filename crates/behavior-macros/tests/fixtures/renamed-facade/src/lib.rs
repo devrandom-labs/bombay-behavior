@@ -1,4 +1,4 @@
-use runtime::behavior::{Actions, BehaviorActed, Effect, MailAddr, Never, NoBirths};
+use runtime::behavior::{Actions, BehaviorActed, MailAddr};
 
 struct First;
 struct Second;
@@ -6,22 +6,22 @@ struct Second;
 #[runtime::behavior::behavior(
     addr = MailAddr,
     message = u8,
-    sends = Vec<Never>,
-    births = NoBirths,
-    error = Never,
+    sends = {
+        values: Vec<u8>,
+    },
 )]
 impl First {
     fn receive(&mut self, _: MailAddr, _: u8) -> BehaviorActed<Self> {
-        Ok(Actions::cont())
+        Ok(Actions::send(FirstSends { values: vec![1] }))
     }
 }
 
 #[runtime::behavior::behavior(
     addr = MailAddr,
     message = u16,
-    sends = Vec<Never>,
-    births = NoBirths,
-    error = Never,
+    births = {
+        first: First,
+    },
 )]
 impl Second {
     fn receive(&mut self, _: MailAddr, _: u16) -> BehaviorActed<Self> {
@@ -31,9 +31,9 @@ impl Second {
 
 struct Inferred;
 
-#[runtime::behavior::actor]
+#[runtime::behavior::behavior(addr = MailAddr, message = u32)]
 impl Inferred {
-    fn receive(&mut self, _: MailAddr, _: u32) -> Effect<Never> {
-        Effect::none()
+    fn receive(&mut self, _: MailAddr, _: u32) -> BehaviorActed<Self> {
+        Ok(Actions::cont())
     }
 }

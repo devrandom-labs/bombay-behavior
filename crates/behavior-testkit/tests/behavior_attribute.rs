@@ -1,22 +1,26 @@
 use std::time::Duration;
 
 use behavior::{
-    Actions, Behavior, Births, CreationKind, Delivery, Effect, InterruptionPolicy, JobId, MailAddr,
-    Never, NoBirths, PoolAssignment, PoolMessage, Recipient, RestartPolicy, Step,
+    Actions, Behavior, Births, CreationKind, Delivery, InterruptionPolicy, JobId, MailAddr, Never,
+    NoBirths, PoolAssignment, PoolMessage, Recipient, RestartPolicy, SendEffects, Step,
     WorkerCreationResolved, WorkerPool, WorkerPoolProtocol,
 };
 
 struct Printer(u64);
 
-#[behavior::actor]
+#[behavior::behavior(
+    addr = MailAddr,
+    message = u64,
+    sends = {
+        replies: Vec<Delivery<behavior_testkit::TestRecipient<u64>>>,
+    },
+)]
 impl Printer {
-    fn receive(
-        &mut self,
-        from: MailAddr,
-        message: u64,
-    ) -> Effect<Delivery<behavior_testkit::TestRecipient<u64>>> {
+    fn receive(&mut self, from: MailAddr, message: u64) -> behavior::BehaviorActed<Self> {
         self.0 += message;
-        Effect::send(Delivery::new(Recipient::global(from), self.0))
+        let mut sends = PrinterSends::empty();
+        sends.send::<_, PrinterSendsReplies>(Delivery::new(Recipient::global(from), self.0));
+        Ok(Actions::send(sends))
     }
 }
 
@@ -120,7 +124,7 @@ fn omitted_initialization_is_the_explicit_empty_transition() {
 }
 
 #[test]
-fn actor_attribute_infers_the_honest_infallible_no_birth_subset() {
+fn capability_defaults_cover_the_infallible_no_birth_subset() {
     fn assert_protocol<B>(_: &B)
     where
         B: Behavior<Error = Never, Birth = NoBirths>,
@@ -131,11 +135,11 @@ fn actor_attribute_infers_the_honest_infallible_no_birth_subset() {
     let printer = Printer(1);
     assert_protocol(&printer);
     let initialized = printer.initialize().unwrap();
-    assert!(initialized.actions.sends.is_empty());
+    assert!(initialized.actions.sends.replies.is_empty());
     let mut printer = initialized.behavior;
     let actions = printer.receive(MailAddr(7), 4).unwrap();
-    assert_eq!(actions.sends[0].message, 5);
-    assert_eq!(actions.sends[0].to, Recipient::global(MailAddr(7)));
+    assert_eq!(actions.sends.replies[0].message, 5);
+    assert_eq!(actions.sends.replies[0].to, Recipient::global(MailAddr(7)));
 }
 
 #[test]

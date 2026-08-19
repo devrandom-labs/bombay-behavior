@@ -1,24 +1,17 @@
-use behavior::{Acted, Actions, MailAddr, Never, NoBirths};
+use behavior::{Actions, MailAddr};
 
 struct Counter(u64);
 
 #[behavior::behavior(
     addr = MailAddr,
     message = u64,
-    sends = Vec<Never>,
-    births = NoBirths,
-    error = Never,
 )]
 impl Counter {
     #[allow(
         clippy::unnecessary_wraps,
         reason = "the behavior macro requires the declared typed error result"
     )]
-    fn receive(
-        &mut self,
-        _from: MailAddr,
-        message: u64,
-    ) -> Acted<MailAddr, Never, Vec<Never>, NoBirths, Never> {
+    fn receive(&mut self, _from: MailAddr, message: u64) -> behavior::BehaviorActed<Self> {
         self.0 += message;
         Ok(Actions::cont())
     }

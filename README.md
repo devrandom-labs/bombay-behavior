@@ -178,11 +178,11 @@ same payload and address namespace still produce different communication
 types. Recipients are pure route intent; endpoint tables, registration,
 lookup, and mailbox delivery belong to the runtime interpreter.
 
-There are three deliberately nested behavior-definition paths: use
-`#[behavior::actor]` for the inferred synchronous, infallible, no-birth
-`Effect<Send>` subset; use `#[behavior::behavior(...)]` for a fully declared
-nominal user-message actor; and implement `Behavior` directly for a type that
-owns service-event variants, phases, or wrapper semantics. Complete
+There are two deliberately nested behavior-definition paths: use the single
+`#[behavior::behavior(...)]` attribute for a nominal user-message actor, with
+capability-denying defaults and optional named send and birth products; and
+implement `Behavior` directly for a type that owns service-event variants,
+phases, or wrapper semantics. Complete
 event streams can be evaluated with `fold_events`; it uses the same
 `ActionReducer` as the deterministic test/model path and stops at the first
 controlled failure or termination verdict. Production mailbox execution uses

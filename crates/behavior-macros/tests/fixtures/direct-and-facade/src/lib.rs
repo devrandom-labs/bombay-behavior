@@ -1,17 +1,17 @@
-use core_behavior::{Actions, BehaviorActed, MailAddr, Never, NoBirths};
+use core_behavior::{Actions, BehaviorActed, MailAddr};
 
 struct Direct;
 
 #[core_behavior::behavior(
     addr = MailAddr,
     message = u8,
-    sends = Vec<Never>,
-    births = NoBirths,
-    error = Never,
+    sends = {
+        values: Vec<u8>,
+    },
 )]
 impl Direct {
     fn receive(&mut self, _: MailAddr, _: u8) -> BehaviorActed<Self> {
-        Ok(Actions::cont())
+        Ok(Actions::send(DirectSends { values: vec![1] }))
     }
 }
 

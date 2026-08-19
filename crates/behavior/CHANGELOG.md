@@ -19,8 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add `MessageProtocol<A, M>` as the zero-state structural endpoint for public
   message signatures that have no nominal actor template.
 
-- Add the runtime-free `Effect` shorthand and `#[actor]` macro for the honest
-  synchronous, infallible, no-birth subset of the Behavior algebra.
+- Extend the single `#[behavior]` authoring macro with nominal heterogeneous
+  send products, typed lane selectors, closed `Children`/`ChildChoice` birth
+  products, and capability-denying defaults.
 
 - Add `InstallBirth` and `DispatchBirth` as the statically dispatched
   interpreter contract for closed heterogeneous creation products.
@@ -32,6 +33,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   recursive runtime drivers can remain eligible for thread-safe spawning.
 
 ### Changed
+
+- Remove the redundant `#[actor]` authoring macro; the capability-free
+  `#[behavior]` form now covers that subset without a second generated path.
 
 - Remove payload-driven `EventInput`/`RouteInput` routing. Event ownership is
   now selected by a concrete compile-time path and never discovered by

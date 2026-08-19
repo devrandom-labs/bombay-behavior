@@ -1,134 +1,117 @@
 # Nominal Behavior Attribute
 
-The generated public `Protocol` and pure `Behavior` implementation have
-different semantic roles even though the nominal actor type witnesses both.
-See [Protocol, ingress, behavior, and effect algebras](protocol-algebra.md).
+`#[behavior::behavior(...)]` is the single generated authoring path. It
+preserves an ordinary inherent impl and emits the adjacent nominal `Protocol`,
+pure `Behavior`, optional named send product, and optional closed child product
+that a careful user could write by hand.
 
-`#[behavior::behavior(...)]` removes only the mechanical implementation that
-adapts an ordinary user-message method to `Behavior`. It is an attribute on a
-normal inherent impl, so state, constructors, helper methods, generics,
-where-clauses, visibility, documentation, and `&mut self` behavior methods
-remain ordinary Rust:
+```rust,ignore
+use behavior::{Actions, BehaviorActed, Delivery, MailAddr};
 
-```rust
-use behavior::{Actions, MailAddr, Never, NoBirths};
-
-struct Counter(u64);
+struct QueryPoolProtocol;
+struct QueryStarter;
 
 #[behavior::behavior(
     addr = MailAddr,
-    message = u64,
-    sends = Vec<Never>,
-    births = NoBirths,
-    error = Never,
+    message = behavior::Never,
+    sends = {
+        query_pool: Vec<Delivery<QueryPoolProtocol>>,
+    },
 )]
-impl Counter {
-    fn receive(
-        &mut self,
-        _from: MailAddr,
-        value: u64,
-    ) -> behavior::Acted<MailAddr, Never, Vec<Never>, NoBirths, Never> {
-        self.0 += value;
-        Ok(Actions::cont())
+impl QueryStarter {
+    fn init(&mut self) -> BehaviorActed<Self> {
+        let mut sends = QueryStarterSends::empty();
+        sends.send::<_, QueryStarterSendsQueryPool>(/* typed delivery */);
+        Ok(Actions::send(sends))
+    }
+
+    fn receive(&mut self, _: MailAddr, message: behavior::Never) -> BehaviorActed<Self> {
+        match message {}
     }
 }
 ```
 
-The expansion preserves that inherent impl unchanged, implements the nominal
-public `Protocol` for the actor type, and adds an ordinary `Behavior`
-implementation with these exact associated types:
+`addr` and `message` are required because they establish public protocol
+identity. The other declarations are capability-denying defaults:
 
-```text
-Protocol::Addr = declared addr     Protocol::Msg = declared message
-Behavior::Protocol = Self          Event = User<Addr, Msg>
-Sends = declared sends             Ph = Never
-Error = declared error             Birth = declared births
-```
+- omitted `sends` means `NoSends`;
+- omitted `births` means `NoBirths`; and
+- omitted `error` means `Never`.
 
-When present, `Behavior::init` calls the inherent `init` method during the
-single consuming `initialize` transition.
-When omitted, it returns the explicit empty initialization transition.
-`Behavior::transition` destructures the concrete `User` event and calls the
-inherent `receive` method exactly once. Rust checks both returned values against
-`BehaviorActed<Self>`; the macro does not parse or infer semantic types from a
-return-type alias.
+Those defaults do not infer or grant an effect. Code that tries to send, create,
+or return an error absent from the declaration fails to type-check.
+An advanced author may still supply an existing concrete sends or birth type
+instead of a generated `{ ... }` product; this preserves handwritten catalogue
+products without adding another macro path.
 
-The protocol signature and six behavior associated types are deliberately
-explicit and ordered. The macro
-does not provide defaults, accept unknown options, infer capabilities, create
-constructors, add state, generate messages, register protocols, erase types,
-box futures, interpret effects, or introduce another transition path.
+## Named send products
 
-The attribute is intentionally limited to `User`/`Never` behaviors. A behavior
-that owns service-event variants, phases, routing transformations, or wrapper
-semantics implements `Behavior` explicitly so its complete sum and product
-types remain visible. This boundary keeps the attribute an authoring aid rather
-than a second behavior language.
+For an actor `System`, `sends = { workers: Vec<Delivery<Workers>> }` generates:
 
-The construction is Bombay policy, not an actor-model primitive. Its generated
-implementation is the same pure fold a user could write manually.
+- the nominal `SystemSends` product with a named `workers` field;
+- the uninhabited lane selector `SystemSendsWorkers`;
+- `SendEffects`, preserving each field independently in declaration order;
+- `SendInput<_, SystemSendsWorkers>`, used through `SendEffects::send`;
+- `SendsFor<Event>`, requiring every field to be lawful for the complete event;
+  and
+- `InterpretSends`, requiring and visiting every field in declaration order.
 
-## Why an attribute macro
+Two fields with identical product and payload types still have different lane
+selector types. No recursive position, type-name search, runtime registry, or
+catch-all effect value is generated. An interpreter missing any constituent
+delivery or request implementation fails its `InterpretSends` bound.
 
-Rust defines attribute macros as transformations of an attributed item: they
-receive the attribute input and the item, then replace that item with generated
-items. That shape fits this API precisely—the inherent impl remains ordinary
-Rust input and the generated `Behavior` impl is an adjacent item. See the
-[Rust Reference on attribute macros][attribute-macros].
+## Closed birth products
 
-A derive macro cannot implement this contract because derives receive only the
-annotated item and add generated items; they have no syntax for supplying the
-`init` and `receive` method bodies. A function-like macro would instead require
-a separate invocation and a new mini-language around code that Rust already
-expresses. The Rust Book distinguishes these three procedural-macro forms in
-its [procedural macros overview][procedural-macros].
-
-This rationale concerns Rust authoring syntax. It does not change the actor
-transition law or grant the macro any interpreter capability.
-
-## Separate macro boundaries
-
-`#[behavior::actor]` is the inferred shorthand for the common synchronous,
-infallible, no-birth subset:
+For an actor `System`, this declaration:
 
 ```rust,ignore
-#[behavior::actor]
-impl Printer {
-    fn receive(&mut self, from: MailAddr, message: String) -> Effect<Delivery<Sink>> {
-        Effect::send(Delivery::new(Recipient::global(from), message))
-    }
+births = {
+    workers: Workers,
+    query_reply: ManagedQueryReply,
+    query_starter: ManagedQueryStarter,
 }
 ```
 
-It infers `Addr` and `Msg` from the explicit parameters and the vector send
-element from `Effect<Send>`. Its remaining associated types are truthfully
-fixed to `Never` phase/error and `NoBirths`. `Effect` is only a pure shorthand
-for `Actions<A, Never, Vec<Send>, NoBirths>`; it has no runtime dependency or
-interpretation authority. Any behavior requiring initialization effects,
-named send products, controlled errors, births, phases, or service-event sums
-uses the complete `#[behavior(...)]` contract.
+generates `SystemChildren` as the exact recursive `ChildChoice` produced by
+calling `Children::child` in that declaration order. The generated behavior's
+birth capability is `Births<SystemChildren>`. The field labels record semantic
+roles, while values and nonces remain explicitly authored with `Children`.
 
-`#[behavior]` generates only nominal user-message fold wiring. Heterogeneous
-direct-child creation is authored with the foundational `Children` product.
-Each fluent `child` or `create` call extends its closed recursive `ChildChoice`
-type and conversion emits ordinary ordered `Create` requests; it does not
-require another authoring macro or create another actor boundary.
+This is Bombay's staged creation policy: `Children` builds typed `Create`
+requests, and the interpreter must commit them before dependent same-action
+sends. The macro does not allocate, install, replace, choose nonces, or infer
+lifecycle provenance. `DispatchBirth` still requires one concrete
+`InstallBirth` implementation for every alternative.
 
-The selected interpreter must implement `InstallBirth` for every concrete
-choice. Recursive exhaustive dispatch forwards the original nonce and
-`CreationKind` and never installs `ChildChoice` as an actor. Each installed
-child retains its declared `Behavior::Protocol`, and incomplete runtime support
-is a compile-time error.
+## Exact initialization and transition results
 
-The attributes are governed by the [Universal Behavior Driver](driver.md).
-They generate only concrete nominal behavior implementations a user could
-write manually.
+An optional inherent `init(&mut self) -> BehaviorActed<Self>` becomes the
+initialization fold. If it is absent, initialization returns the explicit empty
+`Actions::cont()`. The required
+`receive(&mut self, from, message) -> BehaviorActed<Self>` becomes the user
+transition fold. Rust checks both method results against the generated complete
+`Actions<Addr, Never, Sends, Birth>` and declared error type.
 
-Applications may depend on `bombay-behavior` directly or use its re-export
-through the `bombay-rs` façade. Generated paths first select the direct package
-when present, then fall back to `bombay-rs::behavior`; Cargo dependency aliases
-are preserved in both cases. If neither package is a direct dependency, macro
-expansion fails with a compile-time resolution error.
+The macro generates no runtime context, constructor, scheduler, mailbox,
+executor, interpreter, or template policy. Initialization and receive bodies
+remain application-authored pure folds.
 
-[attribute-macros]: https://doc.rust-lang.org/reference/procedural-macros.html#attribute-macros
-[procedural-macros]: https://doc.rust-lang.org/book/ch20-05-macros.html
+## Why one attribute
+
+Rust attribute macros transform an attributed item and their output is
+unhygienic. The implementation therefore resolves absolute paths through the
+direct `bombay-behavior` dependency or the `bombay-rs` facade, including Cargo
+renames. See the [Rust Reference on procedural macros][procedural-macros].
+
+Serde-style stacked helper attributes are formally supported for derive
+macros, which can register inert helpers. An impl-level attribute macro has no
+equivalent helper-registration mechanism. Keeping sends, births, and errors as
+named sections of the one owning `#[behavior]` invocation avoids expansion
+order as an API constraint and keeps one coherent generated fold.
+
+This construction is Bombay policy, not an actor-model primitive. `Actions`
+remains Bombay's typed realization of communications, fresh actor creation,
+and the next behavior or termination.
+
+[procedural-macros]: https://doc.rust-lang.org/reference/procedural-macros.html
