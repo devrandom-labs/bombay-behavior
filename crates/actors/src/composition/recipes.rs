@@ -42,7 +42,8 @@ mod tests {
 
     use super::*;
     use crate::{
-        Activate as _, Crash, RestartPolicy, ScheduleAfter, Strategy, TimerGeneration,
+        Activate as _, BackoffSupervisorSends, Crash, CreationKind, CreationResolved, Proxy,
+        RestartPolicy, Strategy, TimerElapsed, TimerGeneration, WorkerCreationResolved,
         WorkerStopped,
     };
 
@@ -91,6 +92,86 @@ mod tests {
         Backoff::linear(Duration::from_secs(3), Duration::from_secs(9)).unwrap()
     }
 
+    type Subject = BackoffSupervisor<MailAddr, Child>;
+
+    fn assert_actions_equal(
+        recipe: &Actions<
+            MailAddr,
+            Never,
+            BackoffSupervisorSends<MailAddr, Child>,
+            behavior::Births<Proxy<Child>>,
+        >,
+        manual: &Actions<
+            MailAddr,
+            Never,
+            BackoffSupervisorSends<MailAddr, Child>,
+            behavior::Births<Proxy<Child>>,
+        >,
+    ) {
+        assert_eq!(recipe.creates.len(), manual.creates.len());
+        for (recipe, manual) in recipe.creates.iter().zip(&manual.creates) {
+            assert_eq!(recipe.nonce, manual.nonce);
+            assert_eq!(recipe.kind, manual.kind);
+        }
+        assert!(recipe.sends.schedules.as_slice() == manual.sends.schedules.as_slice());
+        assert!(
+            recipe.sends.supervision.child_observations.as_slice()
+                == manual.sends.supervision.child_observations.as_slice()
+        );
+        assert!(
+            recipe.sends.supervision.creation_observations.as_slice()
+                == manual.sends.supervision.creation_observations.as_slice()
+        );
+        assert_eq!(
+            recipe.sends.supervision.replacement_commands.len(),
+            manual.sends.supervision.replacement_commands.len()
+        );
+        for (recipe, manual) in recipe
+            .sends
+            .supervision
+            .replacement_commands
+            .iter()
+            .zip(&manual.sends.supervision.replacement_commands)
+        {
+            assert!(recipe.to == manual.to);
+            assert!(matches!(recipe.message, crate::ProxyCommand::Replace(_)));
+            assert!(matches!(manual.message, crate::ProxyCommand::Replace(_)));
+        }
+        assert_eq!(
+            recipe.sends.supervision.failure_reports.len(),
+            manual.sends.supervision.failure_reports.len()
+        );
+        for (recipe, manual) in recipe
+            .sends
+            .supervision
+            .failure_reports
+            .iter()
+            .zip(&manual.sends.supervision.failure_reports)
+        {
+            assert!(recipe.failure == manual.failure);
+        }
+        assert!(
+            recipe.sends.supervision.shutdowns.as_slice()
+                == manual.sends.supervision.shutdowns.as_slice()
+        );
+        assert_eq!(
+            matches!(recipe.become_, behavior::Step::Stop(_)),
+            matches!(manual.become_, behavior::Step::Stop(_))
+        );
+    }
+
+    fn assert_turn_equal(
+        recipe: crate::BehaviorActed<Subject>,
+        manual: crate::BehaviorActed<Subject>,
+    ) {
+        match (recipe, manual) {
+            (Ok(recipe), Ok(manual)) => assert_actions_equal(&recipe, &manual),
+            (Err(recipe), Err(manual)) => assert_eq!(recipe, manual),
+            (Ok(_), Err(error)) => panic!("manual stack alone rejected the turn: {error:?}"),
+            (Err(error), Ok(_)) => panic!("recipe stack alone rejected the turn: {error:?}"),
+        }
+    }
+
     #[test]
     fn exact_type_and_topology_error_are_preserved() {
         fn exact(_: BackoffSupervisor<MailAddr, Child>) {}
@@ -110,7 +191,7 @@ mod tests {
     }
 
     #[test]
-    fn recipe_and_manual_stack_have_identical_initialization_and_backoff_trace() {
+    fn recipe_and_manual_stack_have_identical_complete_backoff_trace() {
         let recipe = supervised_backoff(
             ChildTopology::new([1, 2], child),
             restart(),
@@ -128,30 +209,95 @@ mod tests {
         .initialize()
         .unwrap();
 
-        assert_eq!(recipe.actions.creates.len(), manual.actions.creates.len());
-        assert_eq!(
-            recipe.actions.sends.supervision.creation_observations.len(),
-            manual.actions.sends.supervision.creation_observations.len()
-        );
-        assert_eq!(
-            recipe.actions.sends.supervision.child_observations.len(),
-            manual.actions.sends.supervision.child_observations.len()
-        );
-        assert!(recipe.actions.sends.schedules.is_empty());
-        assert!(manual.actions.sends.schedules.is_empty());
-
-        let stopped_at = Instant::now();
+        assert_actions_equal(&recipe.actions, &manual.actions);
         let mut recipe = recipe.behavior;
         let mut manual = manual.behavior;
-        let recipe_actions = recipe
-            .on_path(WorkerStopped::new(1, 101, Err(Crash::Panicked), stopped_at))
-            .unwrap();
-        let manual_actions = manual
-            .on_path(WorkerStopped::new(1, 101, Err(Crash::Panicked), stopped_at))
-            .unwrap();
-        let expected = ScheduleAfter::new(TimerId(41), TimerGeneration(0), Duration::from_secs(3));
-        assert_eq!(recipe_actions.sends.schedules.as_slice(), [expected]);
-        assert_eq!(manual_actions.sends.schedules.as_slice(), [expected]);
+
+        assert_turn_equal(
+            recipe.on_path(CreationResolved::birth(1, MailAddr(21))),
+            manual.on_path(CreationResolved::birth(1, MailAddr(21))),
+        );
+
+        let first_failure = Instant::now();
+        assert_turn_equal(
+            recipe.on_path(WorkerStopped::new(
+                1,
+                101,
+                Err(Crash::Panicked),
+                first_failure,
+            )),
+            manual.on_path(WorkerStopped::new(
+                1,
+                101,
+                Err(Crash::Panicked),
+                first_failure,
+            )),
+        );
+        assert_eq!(recipe.pending_restarts(), manual.pending_restarts());
+        assert_turn_equal(
+            recipe.on_path(TimerElapsed::new(TimerId(41), TimerGeneration(9))),
+            manual.on_path(TimerElapsed::new(TimerId(41), TimerGeneration(9))),
+        );
+        assert_eq!(recipe.pending_restarts(), manual.pending_restarts());
+        assert_turn_equal(
+            recipe.on_path(TimerElapsed::new(TimerId(41), TimerGeneration(0))),
+            manual.on_path(TimerElapsed::new(TimerId(41), TimerGeneration(0))),
+        );
+        assert_eq!(recipe.pending_restarts(), manual.pending_restarts());
+        assert_turn_equal(
+            recipe.on_path(WorkerCreationResolved::new(
+                1,
+                201,
+                CreationKind::replacement_of(101),
+                Ok(()),
+            )),
+            manual.on_path(WorkerCreationResolved::new(
+                1,
+                201,
+                CreationKind::replacement_of(101),
+                Ok(()),
+            )),
+        );
+
+        let second_failure = first_failure + Duration::from_secs(1);
+        assert_turn_equal(
+            recipe.on_path(WorkerStopped::new(
+                1,
+                201,
+                Err(Crash::Failed),
+                second_failure,
+            )),
+            manual.on_path(WorkerStopped::new(
+                1,
+                201,
+                Err(Crash::Failed),
+                second_failure,
+            )),
+        );
+        assert_turn_equal(
+            recipe.on_path(TimerElapsed::new(TimerId(41), TimerGeneration(1))),
+            manual.on_path(TimerElapsed::new(TimerId(41), TimerGeneration(1))),
+        );
+        assert_turn_equal(
+            recipe.on_path(WorkerCreationResolved::new(
+                1,
+                301,
+                CreationKind::replacement_of(201),
+                Ok(()),
+            )),
+            manual.on_path(WorkerCreationResolved::new(
+                1,
+                301,
+                CreationKind::replacement_of(201),
+                Ok(()),
+            )),
+        );
+
+        let exhausted = first_failure + Duration::from_secs(2);
+        assert_turn_equal(
+            recipe.on_path(WorkerStopped::new(1, 301, Err(Crash::Cancelled), exhausted)),
+            manual.on_path(WorkerStopped::new(1, 301, Err(Crash::Cancelled), exhausted)),
+        );
         assert_eq!(recipe.pending_restarts(), manual.pending_restarts());
     }
 }

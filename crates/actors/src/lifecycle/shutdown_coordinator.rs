@@ -901,6 +901,7 @@ mod tests {
     }
 
     type RecipeTargets = ShutdownChoice<crate::StopOnShutdown<Probe>, NoShutdownTargets<MailAddr>>;
+    type RecipeSubject = CoordinatedTerminalApplication<Probe, RecipeTargets>;
 
     fn request_recipe_shutdown(
         coordinator: &mut HeterogeneousShutdownCoordinator<Probe, RecipeTargets>,
@@ -912,7 +913,99 @@ mod tests {
     }
 
     fn recipe_plan() -> HeterogeneousShutdownPlan<RecipeTargets> {
-        HeterogeneousShutdownPlan::new([vec![RecipeTargets::child(1)]]).unwrap()
+        HeterogeneousShutdownPlan::new([
+            vec![RecipeTargets::child(1)],
+            vec![RecipeTargets::child(2)],
+        ])
+        .unwrap()
+    }
+
+    fn recipe_subject(policy: crate::TerminalPropagationPolicy<MailAddr>) -> RecipeSubject {
+        coordinated_terminal_application(
+            Probe,
+            recipe_plan(),
+            crate::TimerId(17),
+            Duration::from_secs(5),
+            request_recipe_shutdown,
+            9,
+            policy,
+        )
+    }
+
+    fn manual_subject(policy: crate::TerminalPropagationPolicy<MailAddr>) -> RecipeSubject {
+        crate::PropagateTermination::new(
+            crate::OneShot::new(
+                HeterogeneousShutdownCoordinator::new(Probe, recipe_plan()),
+                crate::TimerId(17),
+                Duration::from_secs(5),
+                request_recipe_shutdown,
+            ),
+            crate::ChildTermination::new(9),
+            policy,
+        )
+    }
+
+    fn assert_coordinated_turn_equal(
+        recipe: crate::BehaviorActed<RecipeSubject>,
+        manual: crate::BehaviorActed<RecipeSubject>,
+    ) {
+        match (recipe, manual) {
+            (Ok(recipe), Ok(manual)) => {
+                assert!(
+                    recipe.sends.owned.observations.as_slice()
+                        == manual.sends.owned.observations.as_slice()
+                );
+                assert_eq!(
+                    recipe.sends.owned.reports.len(),
+                    manual.sends.owned.reports.len()
+                );
+                for (recipe, manual) in recipe
+                    .sends
+                    .owned
+                    .reports
+                    .iter()
+                    .zip(&manual.sends.owned.reports)
+                {
+                    assert!(recipe.outcome == manual.outcome);
+                }
+                assert!(recipe.sends.inner.owned.as_slice() == manual.sends.inner.owned.as_slice());
+                assert_eq!(
+                    recipe.sends.inner.inner.owned.requests.len(),
+                    manual.sends.inner.inner.owned.requests.len()
+                );
+                let recipe_requests = recipe
+                    .sends
+                    .inner
+                    .inner
+                    .owned
+                    .requests
+                    .iter()
+                    .map(heterogeneous::Selection::nonce)
+                    .collect::<Vec<_>>();
+                let manual_requests = manual
+                    .sends
+                    .inner
+                    .inner
+                    .owned
+                    .requests
+                    .iter()
+                    .map(heterogeneous::Selection::nonce)
+                    .collect::<Vec<_>>();
+                assert_eq!(recipe_requests, manual_requests);
+                assert_eq!(
+                    recipe.sends.inner.inner.inner,
+                    manual.sends.inner.inner.inner
+                );
+                assert_eq!(recipe.creates.len(), manual.creates.len());
+                assert_eq!(
+                    matches!(recipe.become_, Step::Stop(_)),
+                    matches!(manual.become_, Step::Stop(_))
+                );
+            }
+            (Err(recipe), Err(manual)) => assert_eq!(recipe, manual),
+            (Ok(_), Err(error)) => panic!("manual stack alone rejected the turn: {error:?}"),
+            (Err(error), Ok(_)) => panic!("recipe stack alone rejected the turn: {error:?}"),
+        }
     }
 
     #[test]
@@ -930,101 +1023,117 @@ mod tests {
             crate::propagate_abnormal,
         ));
 
-        let recipe = coordinated_terminal_application(
-            Probe,
-            recipe_plan(),
-            crate::TimerId(17),
-            Duration::from_secs(5),
-            request_recipe_shutdown,
-            9,
-            crate::propagate_abnormal,
-        )
-        .initialize()
-        .unwrap();
-        let manual = crate::PropagateTermination::new(
-            crate::OneShot::new(
-                HeterogeneousShutdownCoordinator::new(Probe, recipe_plan()),
-                crate::TimerId(17),
-                Duration::from_secs(5),
-                request_recipe_shutdown,
-            ),
-            crate::ChildTermination::new(9),
-            crate::propagate_abnormal,
-        )
-        .initialize()
-        .unwrap();
+        let recipe = recipe_subject(crate::propagate_abnormal)
+            .initialize()
+            .unwrap();
+        let manual = manual_subject(crate::propagate_abnormal)
+            .initialize()
+            .unwrap();
+        assert_coordinated_turn_equal(Ok(recipe.actions), Ok(manual.actions));
+    }
 
-        assert_eq!(
-            recipe.actions.sends.owned.observations.as_slice(),
-            manual.actions.sends.owned.observations.as_slice()
+    #[test]
+    fn coordinated_terminal_recipe_and_manual_stack_have_identical_complete_traces() {
+        let recipe = recipe_subject(crate::propagate_abnormal)
+            .initialize()
+            .unwrap();
+        let manual = manual_subject(crate::propagate_abnormal)
+            .initialize()
+            .unwrap();
+        let mut recipe = recipe.behavior;
+        let mut manual = manual.behavior;
+
+        let wrong_at = Instant::now();
+        assert_coordinated_turn_equal(
+            recipe.on(ChildStopped::new(8, Ok(Exit::Normal), wrong_at)),
+            manual.on(ChildStopped::new(8, Ok(Exit::Normal), wrong_at)),
         );
-        assert_eq!(
-            recipe.actions.sends.inner.owned.as_slice(),
-            manual.actions.sends.inner.owned.as_slice()
+        assert_coordinated_turn_equal(
+            recipe.on_path(ShutdownRequested),
+            manual.on_path(ShutdownRequested),
         );
-        assert_eq!(
-            recipe.actions.sends.inner.inner.inner,
-            manual.actions.sends.inner.inner.inner
+        let phase_at = Instant::now();
+        assert_coordinated_turn_equal(
+            recipe.on_path::<_, behavior::Inside<behavior::Inside<behavior::Here>>>(
+                ChildStopped::new(1, Ok(Exit::Normal), phase_at),
+            ),
+            manual.on_path::<_, behavior::Inside<behavior::Inside<behavior::Here>>>(
+                ChildStopped::new(1, Ok(Exit::Normal), phase_at),
+            ),
+        );
+        let final_phase_at = Instant::now();
+        assert_coordinated_turn_equal(
+            recipe.on_path::<_, behavior::Inside<behavior::Inside<behavior::Here>>>(
+                ChildStopped::new(2, Ok(Exit::Normal), final_phase_at),
+            ),
+            manual.on_path::<_, behavior::Inside<behavior::Inside<behavior::Here>>>(
+                ChildStopped::new(2, Ok(Exit::Normal), final_phase_at),
+            ),
+        );
+
+        let recipe = recipe_subject(crate::propagate_abnormal)
+            .initialize()
+            .unwrap();
+        let manual = manual_subject(crate::propagate_abnormal)
+            .initialize()
+            .unwrap();
+        let mut recipe = recipe.behavior;
+        let mut manual = manual.behavior;
+        let outcome = Err(crate::Crash::Panicked);
+        let abnormal_at = Instant::now();
+        assert_coordinated_turn_equal(
+            recipe.on(ChildStopped::new(9, outcome, abnormal_at)),
+            manual.on(ChildStopped::new(9, outcome, abnormal_at)),
+        );
+
+        let recipe = recipe_subject(crate::propagate_abnormal)
+            .initialize()
+            .unwrap();
+        let manual = manual_subject(crate::propagate_abnormal)
+            .initialize()
+            .unwrap();
+        let mut recipe = recipe.behavior;
+        let mut manual = manual.behavior;
+        let normal_at = Instant::now();
+        assert_coordinated_turn_equal(
+            recipe.on(ChildStopped::new(9, Ok(Exit::Normal), normal_at)),
+            manual.on(ChildStopped::new(9, Ok(Exit::Normal), normal_at)),
         );
     }
 
     #[test]
-    fn coordinated_terminal_recipe_preserves_shutdown_and_exact_terminal_facts() {
-        let mut active = coordinated_terminal_application(
-            Probe,
-            recipe_plan(),
+    fn omitting_terminal_propagation_has_a_distinct_type_and_initialization_trace() {
+        type Incomplete = crate::OneShot<HeterogeneousShutdownCoordinator<Probe, RecipeTargets>>;
+        assert_ne!(
+            core::any::type_name::<RecipeSubject>(),
+            core::any::type_name::<Incomplete>()
+        );
+
+        let recipe = recipe_subject(crate::propagate_abnormal)
+            .initialize()
+            .unwrap();
+        let incomplete = crate::OneShot::new(
+            HeterogeneousShutdownCoordinator::new(Probe, recipe_plan()),
             crate::TimerId(17),
             Duration::from_secs(5),
             request_recipe_shutdown,
-            9,
-            crate::propagate_abnormal,
         )
         .initialize()
-        .unwrap()
-        .behavior;
+        .unwrap();
 
-        let wrong = active.on(stopped(8)).unwrap();
-        assert!(wrong.sends.owned.reports.is_empty());
-
-        let shutdown = active.on_path(ShutdownRequested).unwrap();
+        assert_eq!(recipe.actions.sends.owned.observations.len(), 1);
         assert_eq!(
-            shutdown
-                .sends
-                .inner
-                .inner
-                .owned
-                .requests
-                .iter()
-                .map(heterogeneous::Selection::nonce)
-                .collect::<Vec<_>>(),
-            [1]
+            recipe.actions.sends.inner.owned.as_slice(),
+            incomplete.actions.sends.owned.as_slice()
         );
-        let completed = active
-            .on_path::<_, behavior::Inside<behavior::Inside<behavior::Here>>>(stopped(1))
-            .unwrap();
-        assert!(matches!(completed.become_, Step::Stop(_)));
-
-        let mut abnormal = coordinated_terminal_application(
-            Probe,
-            recipe_plan(),
-            crate::TimerId(17),
-            Duration::from_secs(5),
-            request_recipe_shutdown,
-            9,
-            crate::propagate_abnormal,
-        )
-        .initialize()
-        .unwrap()
-        .behavior;
-        let outcome = Err(crate::Crash::Panicked);
-        let propagated = abnormal
-            .on(ChildStopped::new(9, outcome, Instant::now()))
-            .unwrap();
         assert_eq!(
-            propagated.sends.owned.reports.as_slice(),
-            [crate::ReportTerminalOutcome::new(outcome)]
+            recipe.actions.sends.inner.inner.inner,
+            incomplete.actions.sends.inner.inner
         );
+    }
 
+    #[test]
+    fn coordinated_terminal_recipe_preserves_normal_discharge_policy() {
         let mut normal = coordinated_terminal_application(
             Probe,
             recipe_plan(),
