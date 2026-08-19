@@ -13,6 +13,11 @@ All notable changes to `bombay-behavior-actors` are documented here.
   typed error. Delayed supervision cancels pending restart batches; both pool
   forms return every accepted queued or assigned job with the distinct
   `PoolShutdown` interruption before draining their proxies.
+- Give `BackoffSupervisor` a concrete event coproduct dual to its layered send
+  product: timer and coordinated-shutdown inputs are direct, supervisor return
+  facts retain the inner supervisor path, and wrapped behavior inputs remain
+  one path deeper. It can therefore be named as a coordinated shutdown child
+  without reindexing its timer or supervision capabilities.
 - Give stable proxies an explicit two-lane `ProxyParentIngress` acquaintance.
   `WorkerStopped` and `WorkerCreationResolved` reports now retain the exact
   parent event path chosen when the proxy is created; wrapped dynamic

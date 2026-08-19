@@ -207,6 +207,13 @@ to compile when a concrete template emits a request whose returned fact cannot
 enter the owning event sum, or when `ShutdownChild<C>` names a child protocol
 that cannot accept `ShutdownRequested`.
 
+The manifest must prove the associated `Behavior::Event` of each concrete
+template, never a hand-written approximation of that event type. For a named
+effect product, one interpretation test must populate every lane and prove all
+returning requests inject at the product's actual structural path. This guards
+against a template implementing a transition while leaving its capability
+unreachable through the adapter boundary.
+
 An adapter is conforming only when tests kill each of these inversions:
 
 | Law | Required negative proof |
