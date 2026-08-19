@@ -317,6 +317,7 @@ must not import a second implementation of those semantics.
 | `TerminationMonitor<T>` | Watch plus termination classification | Actors | None |
 | `Reaper<T>` | Monitor plus cleanup communications | Actors | None |
 | `ShutdownCoordinator<B, C>` | Homogeneous typed-child shutdown phases plus acknowledgements | Actors | None |
+| `HeterogeneousShutdownCoordinator<B, T>` | Arbitrary closed typed-child shutdown phases with ordered static request dispatch | Actors | None |
 | `TreeShutdown<B, C>` | Homogeneous typed-child topology plus ordered shutdown | Actors | `petgraph` only for a dependency graph |
 
 Backoff is small and semantically observable, so Bombay should define its own

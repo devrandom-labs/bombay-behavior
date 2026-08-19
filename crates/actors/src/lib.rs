@@ -53,8 +53,8 @@ pub use discovery::{
 };
 pub use lifecycle::{
     CleanupReaction, CoordinatedGuardian, Guardian, HeterogeneousShutdownCoordinator,
-    HeterogeneousShutdownPlan, HeterogeneousShutdownSends, HeterogeneousShutdownTarget,
-    LifecyclePublication, LifecyclePublisher, Reaper, ShutdownCoordinator,
+    HeterogeneousShutdownPlan, HeterogeneousShutdownSends, LifecyclePublication,
+    LifecyclePublisher, NoShutdownTargets, Reaper, ShutdownChoice, ShutdownCoordinator,
     ShutdownCoordinatorError, ShutdownCoordinatorEvent, ShutdownPlan, ShutdownPlanError,
     ShutdownState, ShutdownTree, ShutdownTreeError, Task, TaskError, TaskMessage, TaskResult,
     TaskState, TerminationMonitor, TerminationObservation, TerminationReaction, TreeShutdown,

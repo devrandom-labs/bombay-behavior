@@ -41,9 +41,10 @@ All notable changes to `bombay-behavior-actors` are documented here.
 - Add `WorkerPoolWithParent`, backed by `SupervisorWithParent`, so every stable
   pool proxy reports worker termination and creation resolution through one
   caller-supplied `ProxyParentIngress` path.
-- Add heterogeneous coordinated shutdown for application roots that own both
-  supervisor and worker-pool child protocols. Plans select a concrete semantic
-  lane per child and effects preserve those lanes in a named product.
+- Add arbitrary heterogeneous coordinated shutdown through the closed recursive
+  `ShutdownChoice<C, Tail>` sum. Each root names its complete direct-child
+  topology, and interpretation preserves phase declaration order while
+  dispatching every `ShutdownChild<C>` request statically.
 
 - Separate stable public `Protocol` identity from `Behavior` state/fold,
   internal event sums, and effect products. Transparent wrappers preserve the

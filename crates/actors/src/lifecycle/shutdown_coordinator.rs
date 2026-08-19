@@ -123,36 +123,178 @@ pub enum ShutdownTreeError<N> {
     Cycle,
 }
 
-/// One concrete child-protocol lane in a heterogeneous root shutdown plan.
+/// One member of a closed heterogeneous child-protocol sum.
 ///
-/// The variants are semantic roles owned by Bombay's application-root
-/// construction. They are not discovered from an address or runtime registry.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum HeterogeneousShutdownTarget<N> {
-    Supervisor(N),
-    WorkerPool(N),
+/// A root gives the recursive sum a topology-specific alias. `Child` selects
+/// the protocol at this position; `Other` selects one of the remaining
+/// protocols. The value carries only the creator-local nonce, never an erased
+/// actor, address, request, or runtime protocol key.
+///
+/// A child whose event algebra has no direct shutdown owner cannot enter a
+/// validated heterogeneous plan:
+///
+/// ```compile_fail
+/// use behavior::{Actions, Behavior, MailAddr, Never, NoBirths, User};
+/// use behavior_actors::{HeterogeneousShutdownPlan, NoShutdownTargets, ShutdownChoice};
+/// struct Plain;
+/// impl behavior::Protocol for Plain { type Addr = MailAddr; type Msg = (); }
+/// impl Behavior for Plain {
+///     type Protocol = Self;
+///     type Event = User<MailAddr, ()>;
+///     type Sends = Vec<Never>;
+///     type Ph = Never;
+///     type Error = Never;
+///     type Birth = NoBirths;
+///     fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> behavior::BehaviorActed<Self> {
+///         Ok(Actions::cont())
+///     }
+/// }
+/// type Targets = ShutdownChoice<Plain, NoShutdownTargets<MailAddr>>;
+/// let _ = HeterogeneousShutdownPlan::new([vec![Targets::child(1)]]);
+/// ```
+pub enum ShutdownChoice<C: Behavior, Tail> {
+    Child {
+        nonce: <crate::BehaviorAddr<C> as Address>::Nonce,
+        child: core::marker::PhantomData<fn() -> C>,
+    },
+    Other(Tail),
 }
 
-impl<N: Copy> HeterogeneousShutdownTarget<N> {
-    const fn nonce(self) -> N {
-        match self {
-            Self::Supervisor(nonce) | Self::WorkerPool(nonce) => nonce,
+/// Uninhabited end of a heterogeneous shutdown choice.
+pub struct NoShutdownTargets<A: Address> {
+    never: behavior::Never,
+    address: core::marker::PhantomData<fn() -> A>,
+}
+
+impl<A: Address> Copy for NoShutdownTargets<A> {}
+impl<A: Address> Clone for NoShutdownTargets<A> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<C: Behavior, Tail> ShutdownChoice<C, Tail> {
+    #[must_use]
+    pub const fn child(nonce: <crate::BehaviorAddr<C> as Address>::Nonce) -> Self {
+        Self::Child {
+            nonce,
+            child: core::marker::PhantomData,
+        }
+    }
+
+    #[must_use]
+    pub const fn other(target: Tail) -> Self {
+        Self::Other(target)
+    }
+}
+
+impl<C, Tail> Copy for ShutdownChoice<C, Tail>
+where
+    C: Behavior,
+    <crate::BehaviorAddr<C> as Address>::Nonce: Copy,
+    Tail: Copy,
+{
+}
+
+impl<C, Tail> Clone for ShutdownChoice<C, Tail>
+where
+    C: Behavior,
+    <crate::BehaviorAddr<C> as Address>::Nonce: Copy,
+    Tail: Copy,
+{
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+mod heterogeneous {
+    use super::*;
+
+    pub trait Selection: Sized + Send {
+        type Addr: Address;
+        fn nonce(&self) -> <Self::Addr as Address>::Nonce;
+    }
+
+    pub trait Interpret<I, E, Path>: Send
+    where
+        I: behavior::SendInterpreter,
+    {
+        fn interpret(
+            self,
+            interpreter: &mut I,
+        ) -> impl core::future::Future<Output = Result<(), I::Error>> + Send;
+    }
+
+    impl<A: Address> Selection for NoShutdownTargets<A> {
+        type Addr = A;
+        fn nonce(&self) -> A::Nonce {
+            match self.never {}
+        }
+    }
+
+    impl<I, E, Path, A> Interpret<I, E, Path> for NoShutdownTargets<A>
+    where
+        I: behavior::SendInterpreter,
+        A: Address,
+    {
+        async fn interpret(self, _: &mut I) -> Result<(), I::Error> {
+            match self.never {}
+        }
+    }
+
+    impl<C, Tail> Selection for ShutdownChoice<C, Tail>
+    where
+        C: Behavior,
+        C::Event: InjectEvent<crate::ShutdownRequested, Here>,
+        <crate::BehaviorAddr<C> as Address>::Nonce: Send,
+        Tail: Selection<Addr = crate::BehaviorAddr<C>>,
+    {
+        type Addr = crate::BehaviorAddr<C>;
+        fn nonce(&self) -> <Self::Addr as Address>::Nonce {
+            match self {
+                Self::Child { nonce, .. } => *nonce,
+                Self::Other(target) => target.nonce(),
+            }
+        }
+    }
+
+    impl<I, E, Path, C, Tail> Interpret<I, E, Path> for ShutdownChoice<C, Tail>
+    where
+        I: behavior::SendInterpreter + behavior::InterpretRequest<ShutdownChild<C>, E, Path>,
+        C: Behavior,
+        <crate::BehaviorAddr<C> as Address>::Nonce: Send,
+        Tail: Interpret<I, E, Path>,
+    {
+        async fn interpret(self, interpreter: &mut I) -> Result<(), I::Error> {
+            match self {
+                Self::Child { nonce, .. } => {
+                    <I as behavior::InterpretRequest<ShutdownChild<C>, E, Path>>::interpret_request(
+                        interpreter,
+                        ShutdownChild::new(nonce),
+                    )
+                    .await
+                }
+                Self::Other(target) => target.interpret(interpreter).await,
+            }
         }
     }
 }
 
-/// Validated shutdown phases spanning the root's supervisor and worker-pool
-/// child protocols.
-pub struct HeterogeneousShutdownPlan<N> {
-    phases: Vec<Vec<HeterogeneousShutdownTarget<N>>>,
+/// Validated shutdown phases over an arbitrary closed child-protocol sum.
+pub struct HeterogeneousShutdownPlan<T: heterogeneous::Selection> {
+    phases: Vec<Vec<T>>,
 }
 
-impl<N: Copy + Eq> HeterogeneousShutdownPlan<N> {
+impl<T> HeterogeneousShutdownPlan<T>
+where
+    T: heterogeneous::Selection,
+    <T::Addr as Address>::Nonce: Copy + Eq,
+{
     /// Validate non-empty phases and global uniqueness in the creator's one
     /// child namespace, including collisions across protocol lanes.
     pub fn new(
-        phases: impl IntoIterator<Item = Vec<HeterogeneousShutdownTarget<N>>>,
-    ) -> Result<Self, ShutdownPlanError<N>> {
+        phases: impl IntoIterator<Item = Vec<T>>,
+    ) -> Result<Self, ShutdownPlanError<<T::Addr as Address>::Nonce>> {
         let phases: Vec<_> = phases.into_iter().collect();
         let mut seen = Vec::new();
         for (phase, children) in phases.iter().enumerate() {
@@ -160,7 +302,7 @@ impl<N: Copy + Eq> HeterogeneousShutdownPlan<N> {
                 return Err(ShutdownPlanError::EmptyPhase { phase });
             }
             for child in children {
-                let nonce = child.nonce();
+                let nonce = heterogeneous::Selection::nonce(child);
                 if seen.contains(&nonce) {
                     return Err(ShutdownPlanError::DuplicateChild(nonce));
                 }
@@ -171,58 +313,45 @@ impl<N: Copy + Eq> HeterogeneousShutdownPlan<N> {
     }
 
     #[must_use]
-    pub fn phases(&self) -> &[Vec<HeterogeneousShutdownTarget<N>>] {
+    pub fn phases(&self) -> &[Vec<T>] {
         &self.phases
     }
 }
 
-/// Named protocol lanes emitted by heterogeneous coordinated shutdown.
-pub struct HeterogeneousShutdownSends<S: Behavior, P: Behavior> {
-    pub supervisors: InterpreterRequests<ShutdownChild<S>>,
-    pub worker_pools: InterpreterRequests<ShutdownChild<P>>,
+/// Ordered heterogeneous shutdown requests. Static dispatch occurs per item,
+/// preserving phase declaration order across protocol alternatives.
+pub struct HeterogeneousShutdownSends<T> {
+    requests: Vec<T>,
 }
 
-impl<S: Behavior, P: Behavior> SendEffects for HeterogeneousShutdownSends<S, P> {
+impl<T> SendEffects for HeterogeneousShutdownSends<T> {
     fn empty() -> Self {
         Self {
-            supervisors: InterpreterRequests::empty(),
-            worker_pools: InterpreterRequests::empty(),
+            requests: Vec::new(),
         }
     }
 
     fn append(&mut self, other: Self) {
-        self.supervisors.append(other.supervisors);
-        self.worker_pools.append(other.worker_pools);
+        self.requests.extend(other.requests);
     }
 }
 
-impl<E, S, P> behavior::SendsFor<E> for HeterogeneousShutdownSends<S, P>
-where
-    E: UserEvent,
-    S: Behavior,
-    P: Behavior,
-    InterpreterRequests<ShutdownChild<S>>: behavior::SendsFor<E>,
-    InterpreterRequests<ShutdownChild<P>>: behavior::SendsFor<E>,
-{
-}
+impl<E, T: Send> behavior::SendsFor<E> for HeterogeneousShutdownSends<T> {}
 
-impl<I, E, Path, S, P> behavior::InterpretSends<I, E, Path> for HeterogeneousShutdownSends<S, P>
+impl<I, E, Path, T> behavior::InterpretSends<I, E, Path> for HeterogeneousShutdownSends<T>
 where
     I: behavior::SendInterpreter,
-    E: UserEvent,
-    S: Behavior,
-    P: Behavior,
-    InterpreterRequests<ShutdownChild<S>>: behavior::InterpretSends<I, E, Path>,
-    InterpreterRequests<ShutdownChild<P>>: behavior::InterpretSends<I, E, Path>,
-    Self: Send,
+    T: heterogeneous::Interpret<I, E, Path>,
 {
     fn interpret(
         self,
         interpreter: &mut I,
     ) -> impl core::future::Future<Output = Result<(), I::Error>> + Send {
         async move {
-            behavior::InterpretSends::interpret(self.supervisors, interpreter).await?;
-            behavior::InterpretSends::interpret(self.worker_pools, interpreter).await
+            for request in self.requests {
+                request.interpret(interpreter).await?;
+            }
+            Ok(())
         }
     }
 }
@@ -514,49 +643,39 @@ where
     }
 }
 
-/// Pure phased shutdown over the two concrete child protocols owned by an
-/// application root.
+/// Pure phased shutdown over an arbitrary closed child-protocol sum.
 ///
-/// A plan member selects its protocol lane explicitly. Starting a phase emits
-/// requests in declaration order within each named lane; both lanes are
-/// interpreted in the stable order `supervisors`, then `worker_pools`. Phase
-/// completion still consumes the shared creator-local nonce because that child
-/// namespace is globally unique. This lane ordering and role vocabulary are a
-/// Bombay policy, not an actor-model guarantee.
-pub struct HeterogeneousShutdownCoordinator<B: Behavior, S: Behavior, P: Behavior>
+/// Each choice is interpreted in plan order through its exact concrete
+/// `ShutdownChild<C>` request. Phase completion consumes the shared
+/// creator-local nonce because the child namespace is globally unique. This
+/// phased ordering is Bombay policy, not an actor-model guarantee.
+pub struct HeterogeneousShutdownCoordinator<B: Behavior, T>
 where
-    S::Protocol: crate::Protocol<Addr = crate::BehaviorAddr<B>>,
-    P::Protocol: crate::Protocol<Addr = crate::BehaviorAddr<B>>,
+    T: heterogeneous::Selection<Addr = crate::BehaviorAddr<B>>,
 {
     inner: B,
-    plan: HeterogeneousShutdownPlan<<crate::BehaviorAddr<B> as Address>::Nonce>,
+    plan: HeterogeneousShutdownPlan<T>,
     state: ShutdownState<<crate::BehaviorAddr<B> as Address>::Nonce>,
-    children: core::marker::PhantomData<fn() -> (S, P)>,
 }
 
-type HeterogeneousShutdownActions<B, S, P> = Actions<
+type HeterogeneousShutdownActions<B, T> = Actions<
     crate::BehaviorAddr<B>,
     <B as Behavior>::Ph,
-    SendLayer<HeterogeneousShutdownSends<S, P>, <B as Behavior>::Sends>,
+    SendLayer<HeterogeneousShutdownSends<T>, <B as Behavior>::Sends>,
     <B as Behavior>::Birth,
 >;
 
-impl<B: Behavior, S: Behavior, P: Behavior> HeterogeneousShutdownCoordinator<B, S, P>
+impl<B: Behavior, T> HeterogeneousShutdownCoordinator<B, T>
 where
-    S::Protocol: crate::Protocol<Addr = crate::BehaviorAddr<B>>,
-    P::Protocol: crate::Protocol<Addr = crate::BehaviorAddr<B>>,
+    T: heterogeneous::Selection<Addr = crate::BehaviorAddr<B>> + Copy,
     <crate::BehaviorAddr<B> as Address>::Nonce: Copy + Eq,
 {
     #[must_use]
-    pub const fn new(
-        inner: B,
-        plan: HeterogeneousShutdownPlan<<crate::BehaviorAddr<B> as Address>::Nonce>,
-    ) -> Self {
+    pub const fn new(inner: B, plan: HeterogeneousShutdownPlan<T>) -> Self {
         Self {
             inner,
             plan,
             state: ShutdownState::Running,
-            children: core::marker::PhantomData,
         }
     }
 
@@ -567,33 +686,22 @@ where
 
     fn wrap(
         actions: Actions<crate::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>,
-    ) -> HeterogeneousShutdownActions<B, S, P> {
+    ) -> HeterogeneousShutdownActions<B, T> {
         actions.map_sends(|inner| SendLayer::new(HeterogeneousShutdownSends::empty(), inner))
     }
 
-    fn phase_actions(&self, phase: usize) -> HeterogeneousShutdownActions<B, S, P> {
-        let mut sends = HeterogeneousShutdownSends::empty();
-        for target in &self.plan.phases[phase] {
-            match *target {
-                HeterogeneousShutdownTarget::Supervisor(nonce) => {
-                    sends.supervisors.send(ShutdownChild::<S>::new(nonce));
-                }
-                HeterogeneousShutdownTarget::WorkerPool(nonce) => {
-                    sends.worker_pools.send(ShutdownChild::<P>::new(nonce));
-                }
-            }
-        }
+    fn phase_actions(&self, phase: usize) -> HeterogeneousShutdownActions<B, T> {
+        let sends = HeterogeneousShutdownSends {
+            requests: self.plan.phases[phase].clone(),
+        };
         Actions::send(SendLayer::new(sends, B::Sends::empty()))
     }
 }
 
-impl<B, S, P> crate::BehaviorBase for HeterogeneousShutdownCoordinator<B, S, P>
+impl<B, T> crate::BehaviorBase for HeterogeneousShutdownCoordinator<B, T>
 where
     B: Behavior + crate::BehaviorBase,
-    S: Behavior,
-    P: Behavior,
-    S::Protocol: crate::Protocol<Addr = crate::BehaviorAddr<B>>,
-    P::Protocol: crate::Protocol<Addr = crate::BehaviorAddr<B>>,
+    T: heterogeneous::Selection<Addr = crate::BehaviorAddr<B>>,
     <crate::BehaviorAddr<B> as Address>::Nonce: Copy + Eq,
 {
     type Base = B::Base;
@@ -602,13 +710,10 @@ where
     }
 }
 
-impl<B, S, P> crate::StashStatus for HeterogeneousShutdownCoordinator<B, S, P>
+impl<B, T> crate::StashStatus for HeterogeneousShutdownCoordinator<B, T>
 where
     B: Behavior + crate::StashStatus,
-    S: Behavior,
-    P: Behavior,
-    S::Protocol: crate::Protocol<Addr = crate::BehaviorAddr<B>>,
-    P::Protocol: crate::Protocol<Addr = crate::BehaviorAddr<B>>,
+    T: heterogeneous::Selection<Addr = crate::BehaviorAddr<B>>,
     <crate::BehaviorAddr<B> as Address>::Nonce: Copy + Eq,
 {
     fn stashed_messages(&self) -> usize {
@@ -616,7 +721,7 @@ where
     }
 }
 
-impl<B, S, P, A, Ph, Sends, Br> Behavior for HeterogeneousShutdownCoordinator<B, S, P>
+impl<B, T, A, Ph, Sends, Br> Behavior for HeterogeneousShutdownCoordinator<B, T>
 where
     A: Address,
     A::Nonce: Copy + Eq,
@@ -624,16 +729,11 @@ where
     Br: BirthMode,
     B: Behavior<Ph = Ph, Sends = Sends, Birth = Br>,
     B::Protocol: crate::Protocol<Addr = A>,
-    S: Behavior,
-    P: Behavior,
-    S::Protocol: crate::Protocol<Addr = A>,
-    P::Protocol: crate::Protocol<Addr = A>,
-    S::Event: InjectEvent<crate::ShutdownRequested, Here>,
-    P::Event: InjectEvent<crate::ShutdownRequested, Here>,
+    T: heterogeneous::Selection<Addr = A> + Copy,
 {
     type Protocol = B::Protocol;
     type Event = ShutdownCoordinatorEvent<B::Event>;
-    type Sends = SendLayer<HeterogeneousShutdownSends<S, P>, Sends>;
+    type Sends = SendLayer<HeterogeneousShutdownSends<T>, Sends>;
     type Ph = Ph;
     type Error = ShutdownCoordinatorError<B::Error, A::Nonce>;
     type Birth = Br;
@@ -658,7 +758,7 @@ where
                     awaiting: self.plan.phases[0]
                         .iter()
                         .copied()
-                        .map(HeterogeneousShutdownTarget::nonce)
+                        .map(|target| heterogeneous::Selection::nonce(&target))
                         .collect(),
                 };
                 Ok(self.phase_actions(0))
@@ -686,7 +786,7 @@ where
                         awaiting: self.plan.phases[next]
                             .iter()
                             .copied()
-                            .map(HeterogeneousShutdownTarget::nonce)
+                            .map(|target| heterogeneous::Selection::nonce(&target))
                             .collect(),
                     };
                     Ok(self.phase_actions(next))
@@ -717,6 +817,7 @@ pub type TreeShutdown<B, C> = ShutdownCoordinator<B, C>;
 
 #[cfg(test)]
 mod tests {
+    use core::future::Future;
     use std::time::Instant;
 
     use super::*;
@@ -837,39 +938,41 @@ mod tests {
     }
 
     #[test]
-    fn heterogeneous_phases_emit_named_protocol_lanes_and_await_the_union() {
+    fn heterogeneous_phases_preserve_cross_protocol_order_and_await_the_union() {
         type SupervisorChild = crate::StopOnShutdown<Probe>;
-        type PoolChild = crate::StopOnShutdown<Probe>;
+        type PoolChild = crate::Guardian<Probe>;
+        type RootTargets =
+            ShutdownChoice<SupervisorChild, ShutdownChoice<PoolChild, NoShutdownTargets<MailAddr>>>;
         let plan = HeterogeneousShutdownPlan::new([
             vec![
-                HeterogeneousShutdownTarget::Supervisor(1),
-                HeterogeneousShutdownTarget::WorkerPool(2),
+                RootTargets::child(1),
+                RootTargets::other(ShutdownChoice::child(2)),
             ],
-            vec![HeterogeneousShutdownTarget::Supervisor(3)],
+            vec![RootTargets::child(3)],
         ])
         .unwrap();
-        let mut active =
-            HeterogeneousShutdownCoordinator::<Probe, SupervisorChild, PoolChild>::new(Probe, plan)
-                .initialize()
-                .unwrap()
-                .behavior;
+        let mut active = HeterogeneousShutdownCoordinator::<Probe, RootTargets>::new(Probe, plan)
+            .initialize()
+            .unwrap()
+            .behavior;
 
         let first = active.on_path(ShutdownRequested).unwrap();
         assert_eq!(
-            first.sends.owned.supervisors.as_slice(),
-            [ShutdownChild::new(1)]
-        );
-        assert_eq!(
-            first.sends.owned.worker_pools.as_slice(),
-            [ShutdownChild::new(2)]
+            first
+                .sends
+                .owned
+                .requests
+                .iter()
+                .map(heterogeneous::Selection::nonce)
+                .collect::<Vec<_>>(),
+            [1, 2]
         );
         active.on_path(stopped(2)).unwrap();
         let second = active.on_path(stopped(1)).unwrap();
         assert_eq!(
-            second.sends.owned.supervisors.as_slice(),
-            [ShutdownChild::new(3)]
+            heterogeneous::Selection::nonce(&second.sends.owned.requests[0]),
+            3
         );
-        assert!(second.sends.owned.worker_pools.is_empty());
         assert!(matches!(
             active.on_path(stopped(3)).unwrap().become_,
             Step::Stop(_)
@@ -878,13 +981,65 @@ mod tests {
 
     #[test]
     fn heterogeneous_plan_rejects_cross_protocol_nonce_collisions() {
+        type RootTargets = ShutdownChoice<
+            crate::StopOnShutdown<Probe>,
+            ShutdownChoice<crate::Guardian<Probe>, NoShutdownTargets<MailAddr>>,
+        >;
         assert!(matches!(
             HeterogeneousShutdownPlan::new([vec![
-                HeterogeneousShutdownTarget::Supervisor(1),
-                HeterogeneousShutdownTarget::WorkerPool(1),
+                RootTargets::child(1),
+                RootTargets::other(ShutdownChoice::child(1)),
             ]]),
             Err(ShutdownPlanError::DuplicateChild(1))
         ));
+    }
+
+    #[tokio::test]
+    async fn heterogeneous_requests_interpret_once_each_in_cross_protocol_plan_order() {
+        type First = crate::StopOnShutdown<Probe>;
+        type Second = crate::Guardian<Probe>;
+        type Targets = ShutdownChoice<First, ShutdownChoice<Second, NoShutdownTargets<MailAddr>>>;
+        type Event = ShutdownCoordinatorEvent<User<MailAddr, u8>>;
+
+        struct Recording(Vec<u64>);
+        impl behavior::SendInterpreter for Recording {
+            type Error = Never;
+        }
+        impl behavior::InterpretRequest<ShutdownChild<First>, Event, Here> for Recording {
+            fn interpret_request(
+                &mut self,
+                request: ShutdownChild<First>,
+            ) -> impl Future<Output = Result<(), Never>> + Send {
+                async move {
+                    self.0.push(request.nonce);
+                    Ok(())
+                }
+            }
+        }
+        impl behavior::InterpretRequest<ShutdownChild<Second>, Event, Here> for Recording {
+            fn interpret_request(
+                &mut self,
+                request: ShutdownChild<Second>,
+            ) -> impl Future<Output = Result<(), Never>> + Send {
+                async move {
+                    self.0.push(request.nonce);
+                    Ok(())
+                }
+            }
+        }
+
+        let sends = HeterogeneousShutdownSends::<Targets> {
+            requests: vec![
+                Targets::other(ShutdownChoice::child(2)),
+                Targets::child(1),
+                Targets::other(ShutdownChoice::child(3)),
+            ],
+        };
+        let mut interpreter = Recording(Vec::new());
+        <_ as behavior::InterpretSends<_, Event, Here>>::interpret(sends, &mut interpreter)
+            .await
+            .unwrap();
+        assert_eq!(interpreter.0, [2, 1, 3]);
     }
 
     #[test]

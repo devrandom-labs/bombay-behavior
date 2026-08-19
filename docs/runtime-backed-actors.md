@@ -91,7 +91,7 @@ when an application-selected adapter must supply the mechanism.
 | Configuration / features | Versioning, conflict and rollout policy | Source watching, authenticated updates and optional persistence | Application/Bombay adapters | external boundary |
 | Resource manager | Acquisition/release phases and reactions | Files, sockets, devices, processes, blocking work and cleanup | Capability-specific adapter | external boundary |
 | Security / identity gateway | Authorization policy over verified evidence | Secret custody, verification and authenticated transport | Application adapter; CESR/KERI where selected | external boundary |
-| Coordinated shutdown | Validated dependency graph, ordered phases and exact child acknowledgements | Interpret `ShutdownChild`, stop ingress, optional deadlines, task cancellation and resource retirement | Bombay `System`, Timers and adapters | pure `ShutdownCoordinator`/`TreeShutdown` contract requires a shutdown-capable concrete child; system-wide integration remains external |
+| Coordinated shutdown | Validated dependency graph, ordered phases, exact child acknowledgements, and arbitrary closed heterogeneous direct-child protocol sums | Interpret `ShutdownChild`, stop ingress, optional deadlines, task cancellation and resource retirement | Bombay `System`, Timers and adapters | pure homogeneous and heterogeneous coordinator contracts are realized; system-wide integration remains external |
 
 ## Runtime capability backlog by dependency order
 
