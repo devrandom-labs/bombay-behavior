@@ -3,7 +3,7 @@
 use crate::{
     ChildShutdownRejected, ChildStopped, CreationRejection, CreationResolved, ObserveChild,
     ObserveCreation, Own, Proxy, ProxyCommand, ProxyParentIngress, ProxyWithParent, SendInput,
-    ShutdownChild, WorkerCreationResolved, WorkerStopped,
+    ShutdownChild, ShutdownRequested, WorkerCreationResolved, WorkerStopped,
 };
 use behavior::{
     Actions, Address, Behavior, BehaviorActed, Births, Create, Delivery, Here, InjectEvent,
@@ -33,6 +33,19 @@ pub enum DynamicSupervisorRejection {
     AlreadyExists,
     NotAvailable,
     NotFound,
+    /// The supervisor has begun terminal subtree shutdown.
+    ShuttingDown,
+}
+
+/// A terminal failure while draining the dynamic supervisor's owned proxies.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum DynamicSupervisorError<N> {
+    /// The runtime rejected orderly shutdown of an owned stable proxy.
+    #[error("owned proxy shutdown was rejected")]
+    ChildShutdownRejected {
+        nonce: N,
+        reason: crate::ChildShutdownRejection,
+    },
 }
 
 /// Commands for an explicitly managed dynamic child set.
@@ -153,6 +166,7 @@ where
     CreationResolved(CreationResolved<A>),
     WorkerCreationResolved(WorkerCreationResolved<A::Nonce>),
     WorkerStopped(WorkerStopped<A>),
+    ShutdownRequested(ShutdownRequested),
     ChildShutdownRejected(ChildShutdownRejected<A::Nonce>),
 }
 
@@ -238,6 +252,24 @@ where
     fn inject_at(value: ChildShutdownRejected<A::Nonce>) -> Self {
         Self::ChildShutdownRejected(value)
     }
+}
+
+impl<A, C, Reply> InjectEvent<ShutdownRequested, Here> for DynamicSupervisorEvent<A, C, Reply>
+where
+    A: Address,
+    A::Nonce: From<u64>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = A>,
+    Reply: behavior::Protocol<Addr = A>,
+{
+    fn inject_at(value: ShutdownRequested) -> Self {
+        Self::ShutdownRequested(value)
+    }
+}
+
+enum DynamicSupervisorState<N> {
+    Running,
+    Draining { awaiting: Vec<N> },
 }
 
 /// Shutdown-capable stable proxy protocol installed by [`DynamicSupervisor`].
@@ -386,6 +418,7 @@ where
     Reply: Protocol<Addr = A>,
 {
     children: Vec<(A::Nonce, DynamicChild<Reply>)>,
+    state: DynamicSupervisorState<A::Nonce>,
     proxy_parent: ProxyParentIngress<A, ParentPath>,
     marker: core::marker::PhantomData<fn() -> C>,
 }
@@ -404,6 +437,7 @@ where
     pub const fn with_parent(proxy_parent: ProxyParentIngress<A, ParentPath>) -> Self {
         Self {
             children: vec![],
+            state: DynamicSupervisorState::Running,
             proxy_parent,
             marker: core::marker::PhantomData,
         }
@@ -481,7 +515,7 @@ where
     type Event = DynamicSupervisorEvent<A, C, Reply>;
     type Sends = DynamicSupervisorSends<A, C, Reply, ParentPath>;
     type Ph = Never;
-    type Error = Never;
+    type Error = DynamicSupervisorError<A::Nonce>;
     type Birth = Births<DynamicProxyWithParent<C, ParentPath>>;
 
     #[allow(clippy::too_many_lines)]
@@ -494,6 +528,17 @@ where
                     child,
                     reply_to,
                 } => {
+                    if matches!(self.state, DynamicSupervisorState::Draining { .. }) {
+                        sends.outcomes.push(Delivery::new(
+                            reply_to,
+                            DynamicSupervisorOutcome::StartRejected {
+                                nonce,
+                                child,
+                                reason: DynamicSupervisorRejection::ShuttingDown,
+                            },
+                        ));
+                        return Ok(Actions::send(sends));
+                    }
                     if self
                         .children
                         .iter()
@@ -533,6 +578,16 @@ where
                     ))
                 }
                 DynamicSupervisorMessage::Stop { nonce, reply_to } => {
+                    if matches!(self.state, DynamicSupervisorState::Draining { .. }) {
+                        sends.outcomes.push(Delivery::new(
+                            reply_to,
+                            DynamicSupervisorOutcome::StopRejected {
+                                nonce,
+                                reason: DynamicSupervisorRejection::ShuttingDown,
+                            },
+                        ));
+                        return Ok(Actions::send(sends));
+                    }
                     match self.children.iter_mut().find(|(n, _)| *n == nonce) {
                         Some((_, state @ DynamicChild::Available)) => {
                             *state = DynamicChild::Stopping { reply_to };
@@ -566,6 +621,17 @@ where
                     child,
                     reply_to,
                 } => {
+                    if matches!(self.state, DynamicSupervisorState::Draining { .. }) {
+                        sends.outcomes.push(Delivery::new(
+                            reply_to,
+                            DynamicSupervisorOutcome::ReplaceRejected {
+                                nonce,
+                                child,
+                                reason: DynamicSupervisorRejection::ShuttingDown,
+                            },
+                        ));
+                        return Ok(Actions::send(sends));
+                    }
                     match self.children.iter_mut().find(|(n, _)| *n == nonce) {
                         Some((_, state @ DynamicChild::Available)) => {
                             *state = DynamicChild::Replacing { reply_to };
@@ -627,6 +693,11 @@ where
                                 child: Recipient::global(address),
                             },
                         ));
+                        if matches!(self.state, DynamicSupervisorState::Draining { .. }) {
+                            sends.shutdowns.send(ShutdownChild::<
+                                DynamicProxyWithParent<C, ParentPath>,
+                            >::new(resolved.nonce));
+                        }
                     }
                     Err(reason) => {
                         *state = DynamicChild::Retired;
@@ -637,6 +708,16 @@ where
                                 reason,
                             },
                         ));
+                        if let DynamicSupervisorState::Draining { awaiting } = &mut self.state {
+                            awaiting.retain(|nonce| *nonce != resolved.nonce);
+                            if awaiting.is_empty() {
+                                return Ok(Actions::new(
+                                    sends,
+                                    Vec::new(),
+                                    crate::Step::Stop(behavior::Stopped),
+                                ));
+                            }
+                        }
                     }
                 }
                 Ok(Actions::send(sends))
@@ -646,17 +727,30 @@ where
                 else {
                     return Ok(Actions::cont());
                 };
-                let DynamicChild::Stopping { reply_to } = state else {
-                    return Ok(Actions::cont());
+                let reply = match state {
+                    DynamicChild::Stopping { reply_to } => Some(*reply_to),
+                    _ if matches!(self.state, DynamicSupervisorState::Draining { .. }) => None,
+                    _ => return Ok(Actions::cont()),
                 };
-                let reply = *reply_to;
                 *state = DynamicChild::Retired;
-                sends.outcomes.push(Delivery::new(
-                    reply,
-                    DynamicSupervisorOutcome::Stopped {
-                        nonce: stopped.nonce,
-                    },
-                ));
+                if let Some(reply) = reply {
+                    sends.outcomes.push(Delivery::new(
+                        reply,
+                        DynamicSupervisorOutcome::Stopped {
+                            nonce: stopped.nonce,
+                        },
+                    ));
+                }
+                if let DynamicSupervisorState::Draining { awaiting } = &mut self.state {
+                    awaiting.retain(|nonce| *nonce != stopped.nonce);
+                    if awaiting.is_empty() {
+                        return Ok(Actions::new(
+                            sends,
+                            Vec::new(),
+                            crate::Step::Stop(behavior::Stopped),
+                        ));
+                    }
+                }
                 Ok(Actions::send(sends))
             }
             DynamicSupervisorEvent::WorkerCreationResolved(resolved) => {
@@ -685,7 +779,41 @@ where
             // liveness of one worker incarnation behind it. Replacement
             // realization remains the separate `WorkerCreationResolved` fact.
             DynamicSupervisorEvent::WorkerStopped(_) => Ok(Actions::cont()),
+            DynamicSupervisorEvent::ShutdownRequested(_) => {
+                if matches!(self.state, DynamicSupervisorState::Draining { .. }) {
+                    return Ok(Actions::cont());
+                }
+                let awaiting = self
+                    .children
+                    .iter()
+                    .filter_map(|(nonce, state)| {
+                        (!matches!(state, DynamicChild::Retired)).then_some(*nonce)
+                    })
+                    .collect::<Vec<_>>();
+                if awaiting.is_empty() {
+                    return Ok(Actions::stop());
+                }
+                for (nonce, state) in &self.children {
+                    if matches!(
+                        state,
+                        DynamicChild::Available | DynamicChild::Replacing { .. }
+                    ) {
+                        sends.shutdowns.send(
+                            ShutdownChild::<DynamicProxyWithParent<C, ParentPath>>::new(*nonce),
+                        );
+                    }
+                }
+                self.state = DynamicSupervisorState::Draining { awaiting };
+                Ok(Actions::send(sends))
+            }
             DynamicSupervisorEvent::ChildShutdownRejected(rejected) => {
+                if matches!(&self.state, DynamicSupervisorState::Draining { awaiting } if awaiting.contains(&rejected.nonce))
+                {
+                    return Err(DynamicSupervisorError::ChildShutdownRejected {
+                        nonce: rejected.nonce,
+                        reason: rejected.reason,
+                    });
+                }
                 let Some((_, state)) = self.children.iter_mut().find(|(n, _)| *n == rejected.nonce)
                 else {
                     return Ok(Actions::cont());
@@ -952,5 +1080,57 @@ mod tests {
         assert!(actions.creates.is_empty());
         assert!(matches!(actions.become_, crate::Step::Continue));
         assert_eq!(active.phase(3), Some(DynamicChildPhase::Available));
+    }
+
+    #[test]
+    fn shutdown_drains_established_and_installing_proxies_before_stopping() {
+        let mut active = DynamicSupervisor::<MailAddr, Worker, Reply>::new()
+            .initialize()
+            .unwrap()
+            .behavior;
+        for nonce in [3, 4] {
+            active
+                .receive(
+                    MailAddr(1),
+                    DynamicSupervisorMessage::Start {
+                        nonce,
+                        child: Worker,
+                        reply_to: reply(),
+                    },
+                )
+                .unwrap();
+        }
+        active
+            .on_path(CreationResolved::birth(3, MailAddr(30)))
+            .unwrap();
+
+        let requested = active.on_path(ShutdownRequested).unwrap();
+        assert_eq!(
+            requested.sends.shutdowns.as_slice(),
+            [ShutdownChild::new(3)]
+        );
+        assert!(matches!(requested.become_, crate::Step::Continue));
+
+        let installed_during_drain = active
+            .on_path(CreationResolved::birth(4, MailAddr(40)))
+            .unwrap();
+        assert_eq!(
+            installed_during_drain.sends.shutdowns.as_slice(),
+            [ShutdownChild::new(4)]
+        );
+        assert!(matches!(
+            active
+                .on_path(ChildStopped::new(3, Ok(Exit::Normal), Instant::now(),))
+                .unwrap()
+                .become_,
+            crate::Step::Continue
+        ));
+        assert!(matches!(
+            active
+                .on_path(ChildStopped::new(4, Ok(Exit::Normal), Instant::now(),))
+                .unwrap()
+                .become_,
+            crate::Step::Stop(behavior::Stopped)
+        ));
     }
 }

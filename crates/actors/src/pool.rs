@@ -10,12 +10,14 @@ use std::collections::{BTreeMap, VecDeque};
 use std::time::Duration;
 
 use crate::{
-    Actions, Address, Behavior, Births, ChildTopology, Crash, CreationRejection, Delivery, Exit,
-    FleetError, Never, Own, Protocol, Proxy, ProxyCommand, ProxyParentIngress, ProxyWithParent,
-    Recipient, RestartConfiguration, RestartPolicy, SendEffects, SendInput, SendLayer, Strategy,
+    Actions, Address, Behavior, Births, ChildShutdownRejected, ChildStopped, ChildTopology, Crash,
+    CreationRejection, CreationResolved, Delivery, Exit, FleetError, Never, Own, Protocol, Proxy,
+    ProxyCommand, ProxyParentIngress, ProxyWithParent, Recipient, RestartConfiguration,
+    RestartPolicy, SendEffects, SendInput, SendLayer, ShutdownChild, ShutdownRequested, Strategy,
     SupervisionEvent, SupervisorError, SupervisorSends, SupervisorWithParent, User,
     WorkerCreationResolved, WorkerStopped,
 };
+use behavior::{Here, InjectEvent, InterpreterRequests, UserEvent};
 
 /// Caller-chosen identity used to correlate pool responses.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -113,6 +115,8 @@ pub enum PoolRejection {
     BacklogFull,
     /// The key's selected stable slot is unknown or permanently retired.
     AffinityUnavailable,
+    /// The pool has begun terminal shutdown and cannot accept ownership.
+    ShuttingDown,
 }
 
 /// Why an accepted assignment ended without a worker completion.
@@ -128,6 +132,8 @@ pub enum PoolInterruption<A: Address> {
         worker: A::Nonce,
         reason: WorkerRetirement,
     },
+    /// The pool returned accepted ownership before draining its worker proxies.
+    PoolShutdown,
 }
 
 /// Complete response protocol for one submitted job.
@@ -270,6 +276,13 @@ pub enum PoolError<N> {
     CreationResolvedWhileUnavailable { worker: N, phase: WorkerPhase },
     #[error("an affinity rebalance targeted a retired worker")]
     RebalanceToRetiredWorker { worker: N, reason: WorkerRetirement },
+    #[error("the pool is draining its owned worker proxies")]
+    ShuttingDown,
+    #[error("owned worker proxy shutdown was rejected")]
+    ChildShutdownRejected {
+        nonce: N,
+        reason: crate::ChildShutdownRejection,
+    },
 }
 
 struct AcceptedJob<A: Address, D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>, J, R> {
@@ -332,6 +345,106 @@ enum Admission {
 
 /// The pool's concrete event sum, including existing supervision facts.
 pub type PoolEvent<A, D, J, R> = SupervisionEvent<User<A, PoolMessage<A, D, J, R>>>;
+
+/// Complete event algebra of a shutdown-owning [`WorkerPool`].
+pub enum WorkerPoolEvent<A, D, J, R>
+where
+    A: Address,
+    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
+{
+    Pool(PoolEvent<A, D, J, R>),
+    ChildStopped(ChildStopped<A>),
+    CreationResolved(CreationResolved<A>),
+    ShutdownRequested(ShutdownRequested),
+    ChildShutdownRejected(ChildShutdownRejected<A::Nonce>),
+}
+
+impl<A, D, J, R> UserEvent for WorkerPoolEvent<A, D, J, R>
+where
+    A: Address,
+    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
+{
+    type Addr = A;
+    type Message = PoolMessage<A, D, J, R>;
+
+    fn user(from: A, message: Self::Message) -> Self {
+        Self::Pool(SupervisionEvent::Behavior(User::new(from, message)))
+    }
+
+    fn into_user(self) -> Result<User<A, Self::Message>, Self> {
+        match self {
+            Self::Pool(event) => event.into_user().map_err(Self::Pool),
+            other => Err(other),
+        }
+    }
+}
+
+impl<A, D, J, R> behavior::ComposedEvent for WorkerPoolEvent<A, D, J, R>
+where
+    A: Address,
+    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
+{
+    type Inner = PoolEvent<A, D, J, R>;
+
+    fn from_inner(event: Self::Inner) -> Self {
+        Self::Pool(event)
+    }
+}
+
+impl<A, D, J, R> InjectEvent<ShutdownRequested, Here> for WorkerPoolEvent<A, D, J, R>
+where
+    A: Address,
+    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
+{
+    fn inject_at(value: ShutdownRequested) -> Self {
+        Self::ShutdownRequested(value)
+    }
+}
+impl<A, D, J, R> InjectEvent<ChildStopped<A>, Here> for WorkerPoolEvent<A, D, J, R>
+where
+    A: Address,
+    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
+{
+    fn inject_at(value: ChildStopped<A>) -> Self {
+        Self::ChildStopped(value)
+    }
+}
+impl<A, D, J, R> InjectEvent<CreationResolved<A>, Here> for WorkerPoolEvent<A, D, J, R>
+where
+    A: Address,
+    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
+{
+    fn inject_at(value: CreationResolved<A>) -> Self {
+        Self::CreationResolved(value)
+    }
+}
+impl<A, D, J, R> InjectEvent<ChildShutdownRejected<A::Nonce>, Here> for WorkerPoolEvent<A, D, J, R>
+where
+    A: Address,
+    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
+{
+    fn inject_at(value: ChildShutdownRejected<A::Nonce>) -> Self {
+        Self::ChildShutdownRejected(value)
+    }
+}
+impl<A, D, J, R> InjectEvent<WorkerStopped<A>, Here> for WorkerPoolEvent<A, D, J, R>
+where
+    A: Address,
+    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
+{
+    fn inject_at(value: WorkerStopped<A>) -> Self {
+        Self::Pool(SupervisionEvent::WorkerStopped(value))
+    }
+}
+impl<A, D, J, R> InjectEvent<WorkerCreationResolved<A::Nonce>, Here> for WorkerPoolEvent<A, D, J, R>
+where
+    A: Address,
+    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
+{
+    fn inject_at(value: WorkerCreationResolved<A::Nonce>) -> Self {
+        Self::Pool(SupervisionEvent::WorkerCreationResolved(value))
+    }
+}
 
 /// Concrete event sum for a [`KeyedWorkerPool`].
 pub type KeyedPoolEvent<A, D, K, J, R> = SupervisionEvent<User<A, KeyedPoolMessage<A, D, K, J, R>>>;
@@ -437,6 +550,20 @@ type KernelSends<A, D, J, R, C> = PoolBehaviorSends<A, D, J, R, C>;
 /// Pool effects keep responses and assignments in named, independently
 /// appendable lanes within the supervised behavior send product.
 pub type PoolSends<A, D, J, R, C> = SendLayer<SupervisorSends<A, C>, KernelSends<A, D, J, R, C>>;
+
+/// Named effect product for a worker pool that owns orderly proxy shutdown.
+pub type WorkerPoolSends<A, D, J, R, C, ParentPath = Here> = SendLayer<
+    InterpreterRequests<ShutdownChild<ProxyWithParent<C, ParentPath>>>,
+    PoolSends<A, D, J, R, C>,
+>;
+
+/// Complete action type returned by a shutdown-owning [`WorkerPool`].
+pub type WorkerPoolActions<A, D, J, R, C, ParentPath = Here> = Actions<
+    A,
+    Never,
+    WorkerPoolSends<A, D, J, R, C, ParentPath>,
+    Births<ProxyWithParent<C, ParentPath>>,
+>;
 
 /// Complete action type returned by a [`WorkerPool`] transition.
 pub type PoolActions<A, D, J, R, C, ParentPath = behavior::Here> =
@@ -968,6 +1095,35 @@ where
         self.backlog = retained;
     }
 
+    fn interrupt_all_for_shutdown(&mut self) -> Vec<Delivery<D>> {
+        let mut responses = Vec::new();
+        for slot in &mut self.slots {
+            let previous = core::mem::replace(&mut slot.state, SlotState::Installing);
+            if let SlotState::Assigned { job, .. } = previous {
+                responses.push(Delivery::new(
+                    job.reply_to,
+                    PoolResponse::Interrupted {
+                        job: job.id,
+                        payload: job.payload,
+                        reason: PoolInterruption::PoolShutdown,
+                    },
+                ));
+            }
+        }
+        for queued in self.backlog.drain(..) {
+            let job = queued.accepted;
+            responses.push(Delivery::new(
+                job.reply_to,
+                PoolResponse::Interrupted {
+                    job: job.id,
+                    payload: job.payload,
+                    reason: PoolInterruption::PoolShutdown,
+                },
+            ));
+        }
+        responses
+    }
+
     fn creation_resolved(
         &mut self,
         resolved: &WorkerCreationResolved<A::Nonce>,
@@ -1205,6 +1361,21 @@ where
         crate::Protocol<Addr = A, Msg = PoolAssignment<crate::WorkerPoolProtocol<A, D, J, R>>>,
 {
     core: PoolCore<A, D, J, R, C, crate::WorkerPoolProtocol<A, D, J, R>, ParentPath>,
+    proxies: Vec<(A::Nonce, ProxyInstallation)>,
+    shutdown: PoolShutdown<A::Nonce>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ProxyInstallation {
+    Pending,
+    Established,
+    ShutdownRequested,
+    Rejected,
+}
+
+enum PoolShutdown<N> {
+    Running,
+    Draining { awaiting: Vec<N> },
 }
 
 /// A FIFO worker pool whose proxy reports target its direct event layer.
@@ -1227,8 +1398,17 @@ where
         complete_to: Recipient<crate::WorkerPoolProtocol<A, D, J, R>>,
         proxy_parent: ProxyParentIngress<A, ParentPath>,
     ) -> Result<Self, PoolConfigError<A::Nonce>> {
-        PoolCore::with_parent(topology, configuration, complete_to, proxy_parent)
-            .map(|core| Self { core })
+        let proxies = topology
+            .nonces()
+            .iter()
+            .copied()
+            .map(|nonce| (nonce, ProxyInstallation::Pending))
+            .collect();
+        PoolCore::with_parent(topology, configuration, complete_to, proxy_parent).map(|core| Self {
+            core,
+            proxies,
+            shutdown: PoolShutdown::Running,
+        })
     }
 
     #[must_use]
@@ -1277,14 +1457,16 @@ where
         crate::Protocol<Addr = A, Msg = PoolAssignment<crate::WorkerPoolProtocol<A, D, J, R>>>,
 {
     type Protocol = crate::WorkerPoolProtocol<A, D, J, R>;
-    type Event = PoolEvent<A, D, J, R>;
-    type Sends = PoolSends<A, D, J, R, C>;
+    type Event = WorkerPoolEvent<A, D, J, R>;
+    type Sends = WorkerPoolSends<A, D, J, R, C, ParentPath>;
     type Ph = Never;
     type Error = PoolError<A::Nonce>;
     type Birth = Births<ProxyWithParent<C, ParentPath>>;
 
     fn init(&mut self, turn: crate::InitializationTurn) -> crate::BehaviorActed<Self> {
-        self.core.init(turn)
+        self.core.init(turn).map(|actions| {
+            actions.map_sends(|inner| SendLayer::new(InterpreterRequests::empty(), inner))
+        })
     }
 
     fn transition(
@@ -1292,7 +1474,146 @@ where
         turn: crate::ActiveTurn,
         event: Self::Event,
     ) -> crate::BehaviorActed<Self> {
-        self.core.transition(turn, event)
+        let wrap = |actions: PoolActions<A, D, J, R, C, ParentPath>| {
+            actions.map_sends(|inner| SendLayer::new(InterpreterRequests::empty(), inner))
+        };
+        match event {
+            WorkerPoolEvent::ShutdownRequested(_) => {
+                if matches!(self.shutdown, PoolShutdown::Draining { .. }) {
+                    return Ok(Actions::cont());
+                }
+                let awaiting = self
+                    .proxies
+                    .iter()
+                    .filter_map(|(nonce, state)| {
+                        (*state != ProxyInstallation::Rejected).then_some(*nonce)
+                    })
+                    .collect::<Vec<_>>();
+                if awaiting.is_empty() {
+                    return Ok(Actions::stop());
+                }
+                let shutdowns = InterpreterRequests::new(
+                    self.proxies
+                        .iter_mut()
+                        .filter_map(|(nonce, state)| {
+                            if *state != ProxyInstallation::Established {
+                                return None;
+                            }
+                            *state = ProxyInstallation::ShutdownRequested;
+                            Some(ShutdownChild::<ProxyWithParent<C, ParentPath>>::new(*nonce))
+                        })
+                        .collect(),
+                );
+                let responses = self.core.interrupt_all_for_shutdown();
+                self.shutdown = PoolShutdown::Draining { awaiting };
+                let inner = SendLayer::new(
+                    SupervisorSends::empty(),
+                    PoolBehaviorSends {
+                        responses,
+                        assignments: Vec::new(),
+                    },
+                );
+                Ok(Actions::send(SendLayer::new(shutdowns, inner)))
+            }
+            WorkerPoolEvent::CreationResolved(resolved) => {
+                let Some((_, installation)) = self
+                    .proxies
+                    .iter_mut()
+                    .find(|(nonce, _)| *nonce == resolved.nonce)
+                else {
+                    return Ok(Actions::cont());
+                };
+                if matches!(self.shutdown, PoolShutdown::Draining { .. })
+                    && *installation != ProxyInstallation::Pending
+                {
+                    return Ok(Actions::cont());
+                }
+                *installation = if resolved.result.is_ok() {
+                    ProxyInstallation::Established
+                } else {
+                    ProxyInstallation::Rejected
+                };
+                if let PoolShutdown::Draining { awaiting } = &mut self.shutdown {
+                    if resolved.result.is_err() {
+                        awaiting.retain(|nonce| *nonce != resolved.nonce);
+                        return if awaiting.is_empty() {
+                            Ok(Actions::stop())
+                        } else {
+                            Ok(Actions::cont())
+                        };
+                    }
+                    *installation = ProxyInstallation::ShutdownRequested;
+                    return Ok(Actions::send(SendLayer::new(
+                        InterpreterRequests::one(
+                            ShutdownChild::<ProxyWithParent<C, ParentPath>>::new(resolved.nonce),
+                        ),
+                        PoolSends::empty(),
+                    )));
+                }
+                self.core
+                    .transition(turn, SupervisionEvent::CreationResolved(resolved))
+                    .map(wrap)
+            }
+            WorkerPoolEvent::ChildStopped(stopped) => {
+                if let PoolShutdown::Draining { awaiting } = &mut self.shutdown {
+                    if awaiting.contains(&stopped.nonce) {
+                        awaiting.retain(|nonce| *nonce != stopped.nonce);
+                        return if awaiting.is_empty() {
+                            Ok(Actions::stop())
+                        } else {
+                            Ok(Actions::cont())
+                        };
+                    }
+                    return Ok(Actions::cont());
+                }
+                self.core
+                    .transition(turn, SupervisionEvent::ChildStopped(stopped))
+                    .map(wrap)
+            }
+            WorkerPoolEvent::ChildShutdownRejected(rejected) => {
+                if matches!(&self.shutdown, PoolShutdown::Draining { awaiting } if awaiting.contains(&rejected.nonce))
+                {
+                    Err(PoolError::ChildShutdownRejected {
+                        nonce: rejected.nonce,
+                        reason: rejected.reason,
+                    })
+                } else {
+                    Ok(Actions::cont())
+                }
+            }
+            WorkerPoolEvent::Pool(SupervisionEvent::Behavior(User {
+                message:
+                    PoolMessage::Submit {
+                        job,
+                        payload,
+                        reply_to,
+                    },
+                ..
+            })) if matches!(self.shutdown, PoolShutdown::Draining { .. }) => {
+                let inner = SendLayer::new(
+                    SupervisorSends::empty(),
+                    PoolBehaviorSends {
+                        responses: vec![Delivery::new(
+                            reply_to,
+                            PoolResponse::Rejected {
+                                job,
+                                payload,
+                                reason: PoolRejection::ShuttingDown,
+                            },
+                        )],
+                        assignments: Vec::new(),
+                    },
+                );
+                Ok(Actions::send(SendLayer::new(
+                    InterpreterRequests::empty(),
+                    inner,
+                )))
+            }
+            WorkerPoolEvent::Pool(_) if matches!(self.shutdown, PoolShutdown::Draining { .. }) => {
+                Err(PoolError::ShuttingDown)
+            }
+            WorkerPoolEvent::Pool(event) => self.core.transition(turn, event).map(wrap),
+        }
     }
 }
 

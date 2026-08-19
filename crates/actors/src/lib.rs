@@ -74,7 +74,8 @@ pub use pool::{
     AffinitySelector, AssignmentId, InterruptionPolicy, JobId, KeyedPoolEvent, KeyedPoolMessage,
     KeyedWorkerPool, PoolActions, PoolAssignment, PoolBehaviorSends, PoolConfigError,
     PoolConfiguration, PoolError, PoolEvent, PoolInterruption, PoolMessage, PoolRejection,
-    PoolResponse, PoolSends, WorkerPhase, WorkerPool, WorkerPoolWithParent, WorkerRetirement,
+    PoolResponse, PoolSends, WorkerPhase, WorkerPool, WorkerPoolActions, WorkerPoolEvent,
+    WorkerPoolSends, WorkerPoolWithParent, WorkerRetirement,
 };
 pub use protocol::{
     ChildShutdownRejected, ChildShutdownRejection, ChildStopped, CreationRejection,
@@ -108,13 +109,14 @@ pub use stash::{Stash, StashRoute, StashStatus};
 pub use supervision::{
     Backoff, BackoffConfigError, BackoffError, BackoffSupervisor, BackoffSupervisorError,
     ChildTopology, DynamicChildPhase, DynamicProxy, DynamicProxyWithParent, DynamicSupervisor,
-    DynamicSupervisorEvent, DynamicSupervisorMessage, DynamicSupervisorOutcome,
-    DynamicSupervisorRejection, DynamicSupervisorSends, DynamicSupervisorWithParent, FleetError,
-    IncarnationPhase, Proxy, ProxyCommand, ProxyError, ProxyEvent, ProxySends,
-    ProxySendsWithParent, ProxyWithParent, ReportSupervisionFailure, RestartConfiguration,
-    RestartPolicy, Strategy, SupervisionEvent, SupervisionFailure, SupervisionFailureReaction,
-    Supervisor, SupervisorError, SupervisorSends, SupervisorWithParent, restart_all, restart_one,
-    restart_rest, retire_on_supervision_failure, stop_on_supervision_failure,
+    DynamicSupervisorError, DynamicSupervisorEvent, DynamicSupervisorMessage,
+    DynamicSupervisorOutcome, DynamicSupervisorRejection, DynamicSupervisorSends,
+    DynamicSupervisorWithParent, FleetError, IncarnationPhase, Proxy, ProxyCommand, ProxyError,
+    ProxyEvent, ProxySends, ProxySendsWithParent, ProxyWithParent, ReportSupervisionFailure,
+    RestartConfiguration, RestartPolicy, Strategy, SupervisionEvent, SupervisionFailure,
+    SupervisionFailureReaction, Supervisor, SupervisorError, SupervisorSends, SupervisorWithParent,
+    restart_all, restart_one, restart_rest, retire_on_supervision_failure,
+    stop_on_supervision_failure,
 };
 pub use termination::{Crash, Exit, RestartDenial, SupervisionFailureReason};
 pub use time::{
