@@ -414,11 +414,13 @@ mod tests {
         let same_global = Recipient::<Inbox>::global(MailAddr(7));
         let other_global = Recipient::<Inbox>::global(MailAddr(8));
         let child = DeliveryTarget::<Inbox>::LocalChild(ChildRecipient::new(3));
+        let same_child = DeliveryTarget::<Inbox>::LocalChild(ChildRecipient::new(3));
         let other_child = DeliveryTarget::<Inbox>::LocalChild(ChildRecipient::new(4));
 
         assert_eq!(global, same_global);
         assert_ne!(global, other_global);
         assert_ne!(child, global);
+        assert_eq!(child, same_child);
         assert_ne!(child, other_child);
         assert!(child.is_local_child(3));
         assert!(!child.is_local_child(4));

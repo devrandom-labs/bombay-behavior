@@ -457,16 +457,21 @@ mod tests {
 
     #[test]
     fn vector_and_service_lanes_emit_and_iterate_in_order() {
+        assert!(<Vec<u8> as SendEffects>::empty().is_empty());
         let mut vector = Vec::new();
         <Vec<u8> as SendInput<u8, Own>>::emit(&mut vector, 1);
         assert_eq!(vector, [1]);
 
         let mut services = InterpreterRequests::one(2);
+        services.extend([4, 5]);
         <InterpreterRequests<u8> as SendInput<u8, Own>>::emit(&mut services, 3);
         assert!(!services.is_empty());
-        assert_eq!(services.as_slice(), [2, 3]);
-        assert_eq!((&services).into_iter().copied().collect::<Vec<_>>(), [2, 3]);
-        assert_eq!(services.into_iter().collect::<Vec<_>>(), [2, 3]);
+        assert_eq!(services.as_slice(), [2, 4, 5, 3]);
+        assert_eq!(
+            (&services).into_iter().copied().collect::<Vec<_>>(),
+            [2, 4, 5, 3]
+        );
+        assert_eq!(services.into_iter().collect::<Vec<_>>(), [2, 4, 5, 3]);
 
         let requests = InterpreterRequests::new(vec![4, 5]).into_requests();
         assert_eq!(requests, [4, 5]);
@@ -487,6 +492,14 @@ mod tests {
 
         lawful::<Inner, InterpreterRequests<Returning>>();
         lawful::<Outer, SendLayer<NoSends, InterpreterRequests<Returning>>>();
+    }
+
+    #[test]
+    fn send_layer_emits_into_its_designated_owned_lane() {
+        let mut effects = SendLayer::new(Vec::<u8>::new(), Vec::<u16>::new());
+        <SendLayer<Vec<u8>, Vec<u16>> as SendInput<u8, Own>>::emit(&mut effects, 7);
+        assert_eq!(effects.owned, [7]);
+        assert!(effects.inner.is_empty());
     }
 
     #[derive(Debug, PartialEq, Eq)]

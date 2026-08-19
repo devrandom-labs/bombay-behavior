@@ -464,6 +464,14 @@ mod tests {
 
     fn assert_send<T: Send>(_: &T) {}
 
+    #[test]
+    fn empty_child_product_stages_no_creations_or_nonces() {
+        let (creations, nonces) = <NoChildren as ChildProduct<MailAddr>>::stage(NoChildren)
+            .expect("an empty child product is valid");
+        assert!(creations.is_empty());
+        assert!(nonces.is_empty());
+    }
+
     #[tokio::test]
     async fn concrete_child_dispatches_once_with_exact_nonce_provenance_and_output() {
         let mut installer = installer(Ok(91));
