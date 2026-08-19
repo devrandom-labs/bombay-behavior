@@ -1,8 +1,11 @@
-//! Timer-delayed supervision as a lossless wrapper over [`Supervisor`].
+//! Timer-delayed supervision as a lossless wrapper over [`Supervise`].
 
 use std::time::Duration;
 
-use super::{Backoff, BackoffError, Proxy, Supervisor, SupervisorError, SupervisorSends};
+use super::{
+    Backoff, BackoffError, Proxy, Supervise, SuperviseError, Supervisor, SupervisorError,
+    SupervisorSends,
+};
 use crate::{
     ChildShutdownRejected, ChildStopped, CreationResolved, ScheduleAfter, ShutdownRequested,
     SupervisionEvent, TimerElapsed, TimerGeneration, TimerId, WorkerCreationResolved,
@@ -13,7 +16,7 @@ use behavior::{
     InterpreterRequests, Never, SendEffects, SendLayer, Step, User, UserEvent,
 };
 
-/// Complete event algebra accepted by [`BackoffSupervisor`].
+/// Complete event algebra accepted by [`BackoffSupervise`].
 ///
 /// Timer observations, coordinated shutdown, and supervisor return facts are
 /// direct members. Shutdown is therefore accepted at [`Here`], so a backoff
@@ -95,7 +98,7 @@ where
     }
 }
 
-/// Named effects co-owned by [`BackoffSupervisor`].
+/// Named effects co-owned by [`BackoffSupervise`].
 ///
 /// Both fields are interpreted at the same structural path, matching the
 /// direct timer and supervision members of [`BackoffSupervisorEvent`].
@@ -203,16 +206,11 @@ struct Prepared<N> {
     delay: Duration,
 }
 
-type PreparedResult<B> = Result<
-    Option<Prepared<<crate::BehaviorAddr<B> as Address>::Nonce>>,
-    BackoffSupervisorError<<B as Behavior>::Error, <crate::BehaviorAddr<B> as Address>::Nonce>,
->;
-
 /// Controlled delayed-supervision failure.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum BackoffSupervisorError<E, N> {
-    #[error(transparent)]
-    Supervisor(#[from] SupervisorError<E, N>),
+    #[error("supervised ownership fold rejected the transition")]
+    Supervision(#[source] E),
     #[error(transparent)]
     Backoff(#[from] BackoffError),
     #[error("restart attempt sequence exhausted")]
@@ -223,39 +221,28 @@ pub enum BackoffSupervisorError<E, N> {
     TimerCollision { id: TimerId },
 }
 
-/// A supervisor whose accepted replacement commands are released only after
-/// a matching generation-tagged timer fact.
-pub struct BackoffSupervisor<B, C>
+struct BackoffState<A, C>
 where
-    B: Behavior,
-    crate::BehaviorAddr<B>: Address,
-    <crate::BehaviorAddr<B> as Address>::Nonce: From<u64>,
+    A: Address,
+    A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
-    C::Protocol: crate::Protocol<Addr = crate::BehaviorAddr<B>>,
+    C::Protocol: crate::Protocol<Addr = A>,
 {
-    inner: Supervisor<B, C>,
     policy: Backoff,
-    timer: fn(<crate::BehaviorAddr<B> as Address>::Nonce) -> TimerId,
-    counters: Vec<Counter<<crate::BehaviorAddr<B> as Address>::Nonce>>,
-    pending: Vec<Pending<crate::BehaviorAddr<B>, C>>,
+    timer: fn(A::Nonce) -> TimerId,
+    counters: Vec<Counter<A::Nonce>>,
+    pending: Vec<Pending<A, C>>,
 }
 
-impl<B, C> BackoffSupervisor<B, C>
+impl<A, C> BackoffState<A, C>
 where
-    B: Behavior,
-    crate::BehaviorAddr<B>: Address,
-    <crate::BehaviorAddr<B> as Address>::Nonce: Copy + Eq + From<u64>,
+    A: Address,
+    A::Nonce: Copy + Eq + From<u64>,
     C: Behavior<Ph = Never>,
-    C::Protocol: crate::Protocol<Addr = crate::BehaviorAddr<B>>,
+    C::Protocol: crate::Protocol<Addr = A>,
 {
-    #[must_use]
-    pub const fn new(
-        inner: Supervisor<B, C>,
-        policy: Backoff,
-        timer: fn(<crate::BehaviorAddr<B> as Address>::Nonce) -> TimerId,
-    ) -> Self {
+    const fn new(policy: Backoff, timer: fn(A::Nonce) -> TimerId) -> Self {
         Self {
-            inner,
             policy,
             timer,
             counters: Vec::new(),
@@ -263,12 +250,10 @@ where
         }
     }
 
-    #[must_use]
-    pub fn pending_restarts(&self) -> usize {
-        self.pending.len()
-    }
-
-    fn prepare(&self, trigger: <crate::BehaviorAddr<B> as Address>::Nonce) -> PreparedResult<B> {
+    fn prepare<E>(
+        &self,
+        trigger: A::Nonce,
+    ) -> Result<Option<Prepared<A::Nonce>>, BackoffSupervisorError<E, A::Nonce>> {
         if self
             .pending
             .iter()
@@ -300,7 +285,7 @@ where
         }))
     }
 
-    fn commit_counter(&mut self, prepared: &Prepared<<crate::BehaviorAddr<B> as Address>::Nonce>) {
+    fn commit(&mut self, prepared: &Prepared<A::Nonce>) {
         if let Some(counter) = self
             .counters
             .iter_mut()
@@ -318,7 +303,47 @@ where
     }
 }
 
-impl<B, C> crate::BehaviorBase for BackoffSupervisor<B, C>
+/// A supervisor whose accepted replacement commands are released only after
+/// a matching generation-tagged timer fact.
+pub struct BackoffSupervise<B, C>
+where
+    B: Behavior,
+    crate::BehaviorAddr<B>: Address,
+    <crate::BehaviorAddr<B> as Address>::Nonce: From<u64>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = crate::BehaviorAddr<B>>,
+{
+    inner: Supervise<B, C>,
+    backoff: BackoffState<crate::BehaviorAddr<B>, C>,
+}
+
+impl<B, C> BackoffSupervise<B, C>
+where
+    B: Behavior,
+    crate::BehaviorAddr<B>: Address,
+    <crate::BehaviorAddr<B> as Address>::Nonce: Copy + Eq + From<u64>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = crate::BehaviorAddr<B>>,
+{
+    #[must_use]
+    pub const fn new(
+        inner: Supervise<B, C>,
+        policy: Backoff,
+        timer: fn(<crate::BehaviorAddr<B> as Address>::Nonce) -> TimerId,
+    ) -> Self {
+        Self {
+            inner,
+            backoff: BackoffState::new(policy, timer),
+        }
+    }
+
+    #[must_use]
+    pub fn pending_restarts(&self) -> usize {
+        self.backoff.pending.len()
+    }
+}
+
+impl<B, C> crate::BehaviorBase for BackoffSupervise<B, C>
 where
     B: Behavior<Birth = Births<C>> + crate::BehaviorBase,
     crate::BehaviorAddr<B>: Address,
@@ -332,7 +357,7 @@ where
     }
 }
 
-impl<B, C, A, Ph, Sends> Behavior for BackoffSupervisor<B, C>
+impl<B, C, A, Ph, Sends> Behavior for BackoffSupervise<B, C>
 where
     A: Address,
     A::Nonce: Copy + Eq + From<u64>,
@@ -346,7 +371,7 @@ where
     type Event = BackoffSupervisorEvent<B::Event>;
     type Sends = SendLayer<BackoffSupervisorSends<A, C>, Sends>;
     type Ph = Ph;
-    type Error = BackoffSupervisorError<B::Error, A::Nonce>;
+    type Error = BackoffSupervisorError<SuperviseError<B::Error, A::Nonce>, A::Nonce>;
     type Birth = Births<Proxy<C>>;
 
     fn init(&mut self, _: crate::InitializationTurn) -> behavior::BehaviorActed<Self> {
@@ -362,7 +387,7 @@ where
                     )
                 })
             })
-            .map_err(BackoffSupervisorError::Supervisor)
+            .map_err(BackoffSupervisorError::Supervision)
     }
 
     fn transition(
@@ -372,12 +397,12 @@ where
     ) -> behavior::BehaviorActed<Self> {
         match event {
             BackoffSupervisorEvent::TimerElapsed(elapsed) => {
-                let Some(position) = self.pending.iter().position(|pending| {
+                let Some(position) = self.backoff.pending.iter().position(|pending| {
                     pending.id == elapsed.id && pending.generation == elapsed.generation
                 }) else {
                     return Ok(Actions::cont());
                 };
-                let pending = self.pending.remove(position);
+                let pending = self.backoff.pending.remove(position);
                 let mut supervision = SupervisorSends::empty();
                 supervision.replacement_commands = pending.commands;
                 Ok(Actions::new(
@@ -393,7 +418,7 @@ where
                 ))
             }
             BackoffSupervisorEvent::ShutdownRequested(requested) => {
-                self.pending.clear();
+                self.backoff.pending.clear();
                 behavior::delegate_transition(
                     &mut self.inner,
                     SupervisionEvent::ShutdownRequested(requested),
@@ -409,25 +434,25 @@ where
                         )
                     })
                 })
-                .map_err(BackoffSupervisorError::Supervisor)
+                .map_err(BackoffSupervisorError::Supervision)
             }
             BackoffSupervisorEvent::Supervision(inner) => {
                 if matches!(inner, SupervisionEvent::ShutdownRequested(_)) {
-                    self.pending.clear();
+                    self.backoff.pending.clear();
                 }
                 let trigger = match &inner {
                     SupervisionEvent::WorkerStopped(stopped) => Some(stopped.proxy),
                     _ => None,
                 };
                 let prepared = match trigger {
-                    Some(trigger) => self.prepare(trigger)?,
+                    Some(trigger) => self.backoff.prepare(trigger)?,
                     None => None,
                 };
                 if trigger.is_some() && prepared.is_none() {
                     return Ok(Actions::cont());
                 }
                 let actions = behavior::delegate_transition(&mut self.inner, inner)
-                    .map_err(BackoffSupervisorError::Supervisor)?;
+                    .map_err(BackoffSupervisorError::Supervision)?;
                 let Actions {
                     sends: mut supervision,
                     creates,
@@ -461,8 +486,8 @@ where
                 };
                 let commands = core::mem::take(&mut supervision.owned.replacement_commands);
                 let schedule = ScheduleAfter::new(prepared.id, prepared.generation, prepared.delay);
-                self.commit_counter(&prepared);
-                self.pending.push(Pending {
+                self.backoff.commit(&prepared);
+                self.backoff.pending.push(Pending {
                     trigger: prepared.trigger,
                     id: prepared.id,
                     generation: prepared.generation,
@@ -476,6 +501,186 @@ where
                         },
                         supervision.inner,
                     ),
+                    creates,
+                    become_,
+                ))
+            }
+        }
+    }
+}
+
+/// Standalone fixed-fleet supervisor with generation-safe delayed replacement.
+///
+/// Fixed-fleet ownership remains in [`Supervisor`]; this adapter owns only
+/// checked delay attempts, timer generations, pending replacement batches, and
+/// stale-timer rejection. No application behavior is required to witness child
+/// creation authority.
+pub struct BackoffSupervisor<A, C>
+where
+    A: Address,
+    A::Nonce: From<u64>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = A>,
+{
+    inner: Supervisor<A, C>,
+    backoff: BackoffState<A, C>,
+}
+
+impl<A, C> BackoffSupervisor<A, C>
+where
+    A: Address,
+    A::Nonce: Copy + Eq + From<u64>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = A>,
+{
+    #[must_use]
+    pub const fn new(
+        inner: Supervisor<A, C>,
+        policy: Backoff,
+        timer: fn(A::Nonce) -> TimerId,
+    ) -> Self {
+        Self {
+            inner,
+            backoff: BackoffState::new(policy, timer),
+        }
+    }
+
+    #[must_use]
+    pub fn pending_restarts(&self) -> usize {
+        self.backoff.pending.len()
+    }
+}
+
+impl<A, C> crate::BehaviorBase for BackoffSupervisor<A, C>
+where
+    A: Address,
+    A::Nonce: Copy + Eq + From<u64>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = A>,
+{
+    type Base = <Supervisor<A, C> as crate::BehaviorBase>::Base;
+    fn base(&self) -> &Self::Base {
+        self.inner.base()
+    }
+}
+
+impl<A, C> Behavior for BackoffSupervisor<A, C>
+where
+    A: Address,
+    A::Nonce: Copy + Eq + From<u64>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = A>,
+    SupervisorSends<A, C>: behavior::SendsFor<SupervisionEvent<User<A, Never>>>,
+    BackoffSupervisorSends<A, C>: behavior::SendsFor<BackoffSupervisorEvent<User<A, Never>>>,
+{
+    type Protocol = <Supervisor<A, C> as Behavior>::Protocol;
+    type Event = BackoffSupervisorEvent<User<A, Never>>;
+    type Sends = BackoffSupervisorSends<A, C>;
+    type Ph = Never;
+    type Error = BackoffSupervisorError<SupervisorError<A::Nonce>, A::Nonce>;
+    type Birth = Births<Proxy<C>>;
+
+    fn init(&mut self, _: crate::InitializationTurn) -> behavior::BehaviorActed<Self> {
+        behavior::initialize(&mut self.inner)
+            .map(|actions| {
+                actions.map_sends(|supervision| BackoffSupervisorSends {
+                    schedules: InterpreterRequests::empty(),
+                    supervision,
+                })
+            })
+            .map_err(BackoffSupervisorError::Supervision)
+    }
+
+    fn transition(
+        &mut self,
+        _: crate::ActiveTurn,
+        event: Self::Event,
+    ) -> behavior::BehaviorActed<Self> {
+        match event {
+            BackoffSupervisorEvent::TimerElapsed(elapsed) => {
+                let Some(position) = self.backoff.pending.iter().position(|pending| {
+                    pending.id == elapsed.id && pending.generation == elapsed.generation
+                }) else {
+                    return Ok(Actions::cont());
+                };
+                let pending = self.backoff.pending.remove(position);
+                let mut supervision = SupervisorSends::empty();
+                supervision.replacement_commands = pending.commands;
+                Ok(Actions::send(BackoffSupervisorSends {
+                    schedules: InterpreterRequests::empty(),
+                    supervision,
+                }))
+            }
+            BackoffSupervisorEvent::ShutdownRequested(requested) => {
+                self.backoff.pending.clear();
+                behavior::delegate_transition(
+                    &mut self.inner,
+                    SupervisionEvent::ShutdownRequested(requested),
+                )
+                .map(|actions| {
+                    actions.map_sends(|supervision| BackoffSupervisorSends {
+                        schedules: InterpreterRequests::empty(),
+                        supervision,
+                    })
+                })
+                .map_err(BackoffSupervisorError::Supervision)
+            }
+            BackoffSupervisorEvent::Supervision(inner) => {
+                if matches!(inner, SupervisionEvent::ShutdownRequested(_)) {
+                    self.backoff.pending.clear();
+                }
+                let trigger = match &inner {
+                    SupervisionEvent::WorkerStopped(stopped) => Some(stopped.proxy),
+                    _ => None,
+                };
+                let prepared = match trigger {
+                    Some(trigger) => self.backoff.prepare(trigger)?,
+                    None => None,
+                };
+                if trigger.is_some() && prepared.is_none() {
+                    return Ok(Actions::cont());
+                }
+                let actions = behavior::delegate_transition(&mut self.inner, inner)
+                    .map_err(BackoffSupervisorError::Supervision)?;
+                let Actions {
+                    sends: mut supervision,
+                    creates,
+                    become_,
+                } = actions;
+                if supervision.replacement_commands.is_empty() {
+                    return Ok(Actions::new(
+                        BackoffSupervisorSends {
+                            schedules: InterpreterRequests::empty(),
+                            supervision,
+                        },
+                        creates,
+                        become_,
+                    ));
+                }
+                let Some(prepared) = prepared else {
+                    return Ok(Actions::new(
+                        BackoffSupervisorSends {
+                            schedules: InterpreterRequests::empty(),
+                            supervision,
+                        },
+                        creates,
+                        become_,
+                    ));
+                };
+                let commands = core::mem::take(&mut supervision.replacement_commands);
+                let schedule = ScheduleAfter::new(prepared.id, prepared.generation, prepared.delay);
+                self.backoff.commit(&prepared);
+                self.backoff.pending.push(Pending {
+                    trigger: prepared.trigger,
+                    id: prepared.id,
+                    generation: prepared.generation,
+                    commands,
+                });
+                Ok(Actions::new(
+                    BackoffSupervisorSends {
+                        schedules: InterpreterRequests::one(schedule),
+                        supervision,
+                    },
                     creates,
                     become_,
                 ))
@@ -534,7 +739,7 @@ mod tests {
             _: crate::ActiveTurn,
             _: Self::Event,
         ) -> behavior::BehaviorActed<Self> {
-            Ok(Actions::cont())
+            Ok(Actions::create(vec![behavior::Create::birth(99, Child)]))
         }
     }
     #[allow(clippy::unnecessary_wraps)]
@@ -547,9 +752,26 @@ mod tests {
     fn same_timer(_: u64) -> TimerId {
         TimerId(1)
     }
-    fn subject(timer: fn(u64) -> TimerId) -> BackoffSupervisor<Parent, Child> {
-        let supervisor = Supervisor::new(
+    fn subject(timer: fn(u64) -> TimerId) -> BackoffSupervise<Parent, Child> {
+        let supervisor = Supervise::new(
             Parent,
+            ChildTopology::new([1, 2], child),
+            RestartConfiguration::new(
+                Strategy::OneForOne,
+                RestartPolicy::Permanent,
+                10,
+                Duration::MAX,
+            ),
+        )
+        .unwrap();
+        BackoffSupervise::new(
+            supervisor,
+            Backoff::exponential(Duration::from_secs(2), Duration::from_secs(10)).unwrap(),
+            timer,
+        )
+    }
+    fn standalone(timer: fn(u64) -> TimerId) -> BackoffSupervisor<MailAddr, Child> {
+        let supervisor = Supervisor::new(
             ChildTopology::new([1, 2], child),
             RestartConfiguration::new(
                 Strategy::OneForOne,
@@ -694,5 +916,47 @@ mod tests {
         assert_eq!(active.pending_restarts(), 0);
         assert_eq!(shutdown.sends.owned.supervision.shutdowns.len(), 2);
         assert!(shutdown.sends.owned.schedules.is_empty());
+    }
+
+    #[test]
+    fn standalone_backoff_preserves_generation_and_shutdown_laws_without_carrier() {
+        let initialized = standalone(timer).initialize().unwrap();
+        assert_eq!(initialized.actions.creates.len(), 2);
+        assert_eq!(
+            initialized
+                .actions
+                .sends
+                .supervision
+                .creation_observations
+                .len(),
+            2
+        );
+        let mut active = initialized.behavior;
+
+        let delayed = active.on_path(stopped(1)).unwrap();
+        assert!(delayed.sends.supervision.replacement_commands.is_empty());
+        assert_eq!(
+            delayed.sends.schedules.as_slice(),
+            [ScheduleAfter::new(
+                TimerId(11),
+                TimerGeneration(0),
+                Duration::from_secs(2)
+            )]
+        );
+        let stale = active
+            .on_path(TimerElapsed::new(TimerId(11), TimerGeneration(9)))
+            .unwrap();
+        assert!(stale.sends.supervision.replacement_commands.is_empty());
+        assert_eq!(active.pending_restarts(), 1);
+
+        let released = active
+            .on_path(TimerElapsed::new(TimerId(11), TimerGeneration(0)))
+            .unwrap();
+        assert_eq!(released.sends.supervision.replacement_commands.len(), 1);
+        active.on_path(stopped(2)).unwrap();
+        assert_eq!(active.pending_restarts(), 1);
+        let shutdown = active.on_path(ShutdownRequested).unwrap();
+        assert_eq!(active.pending_restarts(), 0);
+        assert!(shutdown.sends.schedules.is_empty());
     }
 }

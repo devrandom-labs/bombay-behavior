@@ -36,6 +36,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Remove payload-driven `EventInput`/`RouteInput` routing. Event ownership is
   now selected by a concrete compile-time path and never discovered by
   searching nested behavior types.
+- Remove recursive `SendInput` forwarding into structurally nested send
+  products. `SendLayer` exposes emission only through its owned lane; products
+  with several application effects must provide nominal, semantically named
+  lanes instead of making callers select effects by an `Inner<Path>` nesting
+  position. The recursive forwarding recorded for 0.9.2 is historical and is
+  not part of the current API.
 - Remove `Protocol` as a `Behavior` supertrait. `Recipient<P>` and
   `Delivery<P>` now require only the stable public protocol, while activation,
   creation, wrapping, and interpretation project it through

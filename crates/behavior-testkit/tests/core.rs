@@ -325,7 +325,7 @@ async fn proxy_forwards_only_to_the_current_fresh_generation() {
 #[tokio::test]
 async fn restart_window_boundary_is_inclusive() {
     let start = Instant::now();
-    let supervisor = behavior::Supervisor::new(
+    let supervisor = behavior::Supervise::new(
         Parent(true),
         behavior::ChildTopology::new((0..1).map(|index| u64::try_from(index).unwrap()), |index| {
             Some(child(index))
@@ -377,7 +377,7 @@ async fn restart_window_boundary_is_inclusive() {
 
 #[tokio::test]
 async fn duplicate_dynamic_birth_is_rejected() {
-    let supervisor = behavior::Supervisor::new(
+    let supervisor = behavior::Supervise::new(
         Parent(false),
         behavior::ChildTopology::new((0..1).map(|index| u64::try_from(index).unwrap()), |index| {
             Some(child(index))
@@ -394,7 +394,7 @@ async fn duplicate_dynamic_birth_is_rejected() {
     let mut supervisor = initialized.behavior;
     assert!(matches!(
         supervisor.transition(UserEvent::user(MailAddr(0), 0)),
-        Err(behavior::SupervisorError::Fleet(
+        Err(behavior::SuperviseError::Fleet(
             behavior::FleetError::DuplicateChild(0)
         ))
     ));

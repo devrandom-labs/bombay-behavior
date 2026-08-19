@@ -371,7 +371,7 @@ trait PhaseBehavior {
 //    dynamically. Static duality requires both endpoints to be known at
 //    compile time.
 //
-// 5. Wrapper composition: Wrappers (Supervisor, Watch, etc.) expect
+// 5. Wrapper composition: Wrappers (Supervise, Watch, etc.) expect
 //    Behavior with a single Event type. A phase-varying event type would
 //    break every wrapper's composition contract.
 

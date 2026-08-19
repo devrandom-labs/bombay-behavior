@@ -6,16 +6,16 @@
 //! must accept `ShutdownRequested` through its concrete event sum.
 
 use behavior_actors::{
-    Actions, BackoffSupervisor, BackoffSupervisorEvent, BackoffSupervisorSends, Behavior,
+    Actions, BackoffSupervise, BackoffSupervisorEvent, BackoffSupervisorSends, Behavior,
     BehaviorActed, Births, BreakerOutcome, ChildShutdownRejected, ChildStopped, CircuitBreaker,
-    CreationResolved, Deadline, DynamicProxy, DynamicProxyWithParent, DynamicSupervisor,
+    Create, CreationResolved, Deadline, DynamicProxy, DynamicProxyWithParent, DynamicSupervisor,
     DynamicSupervisorOutcome, DynamicSupervisorWithParent, Here, Ingress, InjectEvent, Inside,
     KeyedPoolEvent, KeyedWorkerPool, KeyedWorkerPoolProtocol, Lease, LeaseOutcome, MailAddr, Never,
     NoBirths, ObserveChild, ObserveCreation, ObservePeer, OneShot, PeerStopped, Periodic,
     PoolAssignment, PoolBehaviorSends, PoolResponse, Presence, PresenceReply, Proxy, ProxyCommand,
     ProxyEvent, ProxyParentIngress, ProxyWithParent, ReceiveTimeout, ReportSupervisionFailure,
     ScheduleAfter, ScheduleAt, SendLayer, ShutdownChild, ShutdownCoordinator,
-    ShutdownCoordinatorEvent, ShutdownRequested, StopOnShutdown, SupervisionEvent, Supervisor,
+    ShutdownCoordinatorEvent, ShutdownRequested, StopOnShutdown, Supervise, SupervisionEvent,
     TerminationMonitor, TimerElapsed, User, Watch, WatchEvent, WorkerCreationResolved, WorkerPool,
     WorkerPoolEvent, WorkerPoolProtocol, WorkerPoolSends, WorkerStopped,
 };
@@ -156,7 +156,10 @@ impl Behavior for Parent {
         _: behavior_actors::ActiveTurn,
         _: Self::Event,
     ) -> BehaviorActed<Self> {
-        Ok(Actions::cont())
+        Ok(Actions::create(vec![Create::birth(
+            99,
+            StopOnShutdown::new(Inert),
+        )]))
     }
 }
 
@@ -195,7 +198,7 @@ fn every_timer_request_has_an_exact_timer_fact_input() {
     accepts::<OneShot<Inert>, TimerElapsed>();
     accepts::<Periodic<Inert>, TimerElapsed>();
     accepts::<ReceiveTimeout<Inert>, TimerElapsed>();
-    accepts::<BackoffSupervisor<Parent, StopOnShutdown<Inert>>, TimerElapsed>();
+    accepts::<BackoffSupervise<Parent, StopOnShutdown<Inert>>, TimerElapsed>();
 }
 
 #[test]
@@ -251,11 +254,11 @@ fn every_shutdown_request_names_a_shutdown_capable_child_protocol() {
     fn coordinator_is_closed<B: Behavior>() {}
     coordinator_is_closed::<ShutdownCoordinator<Parent, StopOnShutdown<Inert>>>();
 
-    type Fixed = Supervisor<Parent, StopOnShutdown<Inert>>;
+    type Fixed = Supervise<Parent, StopOnShutdown<Inert>>;
     behavior_accepts_at::<Fixed, ShutdownRequested, Here>();
     behavior_accepts_at::<Fixed, ChildShutdownRejected<u64>, Here>();
 
-    type Delayed = BackoffSupervisor<Parent, StopOnShutdown<Inert>>;
+    type Delayed = BackoffSupervise<Parent, StopOnShutdown<Inert>>;
     behavior_accepts_at::<Delayed, TimerElapsed, Here>();
     behavior_accepts_at::<Delayed, ShutdownRequested, Here>();
     behavior_accepts_at::<Delayed, ChildStopped<MailAddr>, Here>();

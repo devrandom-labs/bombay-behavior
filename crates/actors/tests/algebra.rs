@@ -19,7 +19,7 @@ use behavior::{
     InterpretSends, InterpreterRequests, Machine, MailAddr, Move, Never, NoBirths, ObserveChild,
     PeerStopped, Proxy, ProxyCommand, ProxyEvent, Recipient, RestartDenial, RestartPolicy,
     ScheduleAt, SendEffects, SendInterpreter, ShutdownChild, ShutdownRequested, StashRoute, Step,
-    Strategy, SupervisionEvent, SupervisionFailure, SupervisionFailureReason, Supervisor,
+    Strategy, Supervise, SupervisionEvent, SupervisionFailure, SupervisionFailureReason,
     TimerElapsed, TimerGeneration, TimerId, User, UserEvent, Watch, WorkerStopped,
     stop_on_abnormal_death, stop_on_supervision_failure,
 };
@@ -203,9 +203,9 @@ impl ShutdownParent {
     fn receive(
         &mut self,
         _from: MailAddr,
-        _message: u64,
+        message: u64,
     ) -> Acted<MailAddr, Never, Vec<Delivery<Quiet>>, Births<Quiet>, Never> {
-        Ok(Actions::cont())
+        Ok(Actions::create(vec![Create::birth(message, Quiet)]))
     }
 }
 
@@ -620,9 +620,9 @@ impl Parent {
     fn receive(
         &mut self,
         _from: MailAddr,
-        _message: u64,
+        message: u64,
     ) -> Acted<MailAddr, Never, Vec<Never>, Births<Child>, Never> {
-        Ok(Actions::cont())
+        Ok(Actions::create(vec![Create::birth(message, child(0))]))
     }
 }
 
@@ -1019,7 +1019,7 @@ fn birth_modes_are_disjoint_and_wrappers_forward_them() {
     );
     requires_births::<_, Child>(&creator);
 
-    let supervisor = behavior_actors::Supervisor::new(
+    let supervisor = behavior_actors::Supervise::new(
         Parent,
         behavior_actors::ChildTopology::new(
             (0..1).map(|index| u64::try_from(index).unwrap()),
@@ -1036,7 +1036,7 @@ fn birth_modes_are_disjoint_and_wrappers_forward_them() {
     requires_births::<_, Proxy<Child>>(&supervisor);
     requires_worker_events(&supervisor);
     let timed_supervisor = behavior_actors::Deadline::new(
-        behavior_actors::Supervisor::new(
+        behavior_actors::Supervise::new(
             Parent,
             behavior_actors::ChildTopology::new(
                 (0..1).map(|index| u64::try_from(index).unwrap()),
@@ -1058,8 +1058,8 @@ fn birth_modes_are_disjoint_and_wrappers_forward_them() {
     requires_births::<_, Child>(&Proxy::new(child(0)));
 }
 
-fn supervisor(strategy: Strategy, policy: RestartPolicy, budget: u32) -> Supervisor<Parent, Child> {
-    Supervisor::new(
+fn supervisor(strategy: Strategy, policy: RestartPolicy, budget: u32) -> Supervise<Parent, Child> {
+    Supervise::new(
         Parent,
         behavior::ChildTopology::indexed(
             |index| u64::try_from(index).unwrap(),
@@ -1095,7 +1095,7 @@ fn verify_budget_failure_and_stop(
 
 #[tokio::test]
 async fn supervisor_creates_proxies_and_replacement_is_a_send() {
-    let supervisor = behavior_actors::Supervisor::new(
+    let supervisor = behavior_actors::Supervise::new(
         Parent,
         behavior_actors::ChildTopology::new(
             (0..2).map(|index| u64::try_from(index).unwrap()),
@@ -1320,7 +1320,7 @@ async fn idle_proxy_marks_an_immediate_successor_as_a_replacement_incarnation() 
 #[tokio::test]
 async fn stable_proxy_reports_worker_stop_and_creates_fresh_replacement() {
     let at = Instant::now();
-    let supervisor = behavior_actors::Supervisor::new(
+    let supervisor = behavior_actors::Supervise::new(
         Parent,
         behavior_actors::ChildTopology::new(
             (0..1).map(|index| u64::try_from(index).unwrap()),
@@ -1427,7 +1427,7 @@ async fn stopped_proxy_is_retired_without_sending_to_its_dead_address() {
 
 #[tokio::test]
 async fn configured_supervision_failure_reaction_stops_on_budget_denial() {
-    let supervisor = behavior_actors::Supervisor::new(
+    let supervisor = behavior_actors::Supervise::new(
         Parent,
         behavior_actors::ChildTopology::new(
             (0..3).map(|index| u64::try_from(index).unwrap()),
@@ -1471,7 +1471,7 @@ async fn configured_supervision_failure_reaction_stops_on_budget_denial() {
 
 #[tokio::test]
 async fn configured_supervision_failure_reaction_stops_when_stable_proxy_stops() {
-    let supervisor = behavior_actors::Supervisor::new(
+    let supervisor = behavior_actors::Supervise::new(
         Parent,
         behavior_actors::ChildTopology::new(
             (0..1).map(|index| u64::try_from(index).unwrap()),
@@ -1507,7 +1507,7 @@ async fn configured_supervision_failure_reaction_stops_when_stable_proxy_stops()
 
 #[tokio::test]
 async fn restart_policy_ineligibility_is_not_a_supervision_failure() {
-    let supervisor = behavior_actors::Supervisor::new(
+    let supervisor = behavior_actors::Supervise::new(
         Parent,
         behavior_actors::ChildTopology::new(
             (0..1).map(|index| u64::try_from(index).unwrap()),
@@ -1603,7 +1603,7 @@ impl ReplacingParent {
 
 #[tokio::test]
 async fn supervisor_preserves_and_observes_dynamic_births_once() {
-    let supervisor = behavior_actors::Supervisor::new(
+    let supervisor = behavior_actors::Supervise::new(
         BirthingParent(false),
         behavior_actors::ChildTopology::new(
             (0..0).map(|index| u64::try_from(index).unwrap()),
@@ -1650,7 +1650,7 @@ async fn supervisor_preserves_and_observes_dynamic_births_once() {
 
 #[tokio::test]
 async fn supervisor_preserves_dynamic_replacement_provenance_when_wrapping_the_child() {
-    let supervisor = behavior_actors::Supervisor::new(
+    let supervisor = behavior_actors::Supervise::new(
         ReplacingParent,
         behavior_actors::ChildTopology::new(
             (0..0).map(|index| u64::try_from(index).unwrap()),

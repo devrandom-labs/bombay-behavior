@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use behavior::EventLayer;
 use behavior::{
-    Acted, Actions, Activate, Crash, Delivery, MailAddr, Never, Recipient, RestartPolicy,
+    Acted, Actions, Activate, Crash, Create, Delivery, MailAddr, Never, Recipient, RestartPolicy,
     StashRoute, Step, Strategy, SupervisionEvent, TimerElapsed, TimerGeneration, TimerId,
     UserEvent, WorkerStopped,
 };
@@ -66,7 +66,11 @@ impl EchoingParent {
         self.seen.push(message);
         Ok(Actions {
             sends: vec![Delivery::new(Recipient::global(MailAddr(0)), message)],
-            creates: Vec::new(),
+            creates: if message == u64::MAX {
+                vec![Create::birth(message, child(0))]
+            } else {
+                Vec::new()
+            },
             become_: Step::Continue,
         })
     }
@@ -84,7 +88,7 @@ fn route(message: &u64) -> StashRoute {
     }
 }
 
-type Stack = behavior::Active<behavior::Supervisor<behavior::Stash<EchoingParent>, Child>>;
+type Stack = behavior::Active<behavior::Supervise<behavior::Stash<EchoingParent>, Child>>;
 
 async fn user(behavior: &mut Stack, message: u64) -> Vec<u64> {
     let actions = behavior
@@ -101,7 +105,7 @@ async fn user(behavior: &mut Stack, message: u64) -> Vec<u64> {
 /// no user step ever emits a supervision send.
 #[tokio::test]
 async fn supervised_stash_routes_user_lane_without_cross_lane_effects() {
-    let behavior = behavior::Supervisor::new(
+    let behavior = behavior::Supervise::new(
         behavior::Stash::new(EchoingParent { seen: Vec::new() }, route),
         behavior::ChildTopology::new((0..2).map(|index| u64::try_from(index).unwrap()), |index| {
             Some(child(index))
@@ -131,7 +135,7 @@ async fn supervised_stash_routes_user_lane_without_cross_lane_effects() {
 /// and the stash buffer stay untouched.
 #[tokio::test]
 async fn child_death_never_leaks_into_the_user_lane() {
-    let behavior = behavior::Supervisor::new(
+    let behavior = behavior::Supervise::new(
         behavior::Stash::new(EchoingParent { seen: Vec::new() }, route),
         behavior::ChildTopology::new((0..2).map(|index| u64::try_from(index).unwrap()), |index| {
             Some(child(index))
@@ -175,7 +179,7 @@ async fn child_death_never_leaks_into_the_user_lane() {
 #[tokio::test]
 async fn supervision_preserves_inner_at_routing() {
     let due = Instant::now() + Duration::from_secs(1);
-    let behavior = behavior::Supervisor::new(
+    let behavior = behavior::Supervise::new(
         behavior::Deadline::new(
             EchoingParent { seen: Vec::new() },
             behavior::TimerId(0),
@@ -221,7 +225,7 @@ async fn full_stack_all_four_layers_keep_their_own_lanes() {
 
     let due = Instant::now() + Duration::from_secs(1);
     let peer = MailAddr(44);
-    let behavior = behavior::Supervisor::new(
+    let behavior = behavior::Supervise::new(
         behavior::Deadline::new(
             behavior::Watch::new(
                 behavior::Stash::new(EchoingParent { seen: Vec::new() }, route),
@@ -285,7 +289,7 @@ async fn full_stack_all_four_layers_keep_their_own_lanes() {
     assert!(matches!(died.become_, Step::Stop(behavior::Stopped)));
 
     // Child lane on a fresh stack: replacement send only.
-    let fresh = behavior::Supervisor::new(
+    let fresh = behavior::Supervise::new(
         behavior::Deadline::new(
             behavior::Watch::new(
                 behavior::Stash::new(EchoingParent { seen: Vec::new() }, route),
@@ -346,7 +350,7 @@ proptest! {
 
         let due = Instant::now() + Duration::from_secs(1);
         let peer = MailAddr(44);
-        let behavior = behavior::Supervisor::new(
+        let behavior = behavior::Supervise::new(
             behavior::Deadline::new(
                 behavior::Watch::new(
                     behavior::Stash::new(EchoingParent { seen: Vec::new() }, route),

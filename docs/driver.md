@@ -95,8 +95,9 @@ ordinary concrete `Behavior`:
 ```text
 Order
 Proxy<Order>
-Supervisor<Proxy<Order>>
-Task<Supervisor<Proxy<Order>>>
+Supervisor<MailAddr, Worker>
+Supervise<Root, Worker>
+Task<Supervise<Root, Worker>>
 ```
 
 Each wrapper transforms the complete event sum, action product, state, and
@@ -107,9 +108,10 @@ the exact stack can use an ordinary Rust alias or newtype. Runtime entry points
 should remain generic over `B: Behavior`, so ordinary users do not need one.
 
 Concrete catalogue templates and wrappers are constructed and configured
-through their owning types. Supervision uses `Supervisor::new` with explicit
-`ChildTopology` and `RestartConfiguration`; no wrapper constructor supplies
-hidden topology or restart defaults.
+through their owning types. Standalone supervision uses `Supervisor::new`, and
+application composition uses `Supervise::new`; both take explicit
+`ChildTopology` and `RestartConfiguration`. No constructor supplies hidden
+topology or restart defaults.
 
 The `System` integration should take the fully composed value generically and
 allow Rust to infer `B`; application code must not spell the nested wrapper

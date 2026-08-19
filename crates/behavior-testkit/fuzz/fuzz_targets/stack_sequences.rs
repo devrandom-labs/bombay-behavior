@@ -9,7 +9,7 @@
 //! product lane and never leak across.
 
 use behavior::{
-    Acted, Actions, Activate, Crash, Delivery, MailAddr, Never, PeerStopped, Recipient,
+    Acted, Actions, Activate, Crash, Create, Delivery, MailAddr, Never, PeerStopped, Recipient,
     RestartPolicy, StashRoute, Step, Strategy, SupervisionEvent, TimerElapsed, TimerGeneration,
     TimerId, UserEvent, WorkerStopped, stop_on_abnormal_death,
 };
@@ -39,7 +39,11 @@ impl EchoingParent {
         self.seen.push(message);
         Ok(Actions {
             sends: vec![Delivery::new(Recipient::global(MailAddr(0)), message)],
-            creates: Vec::new(),
+            creates: if message == u64::MAX {
+                vec![Create::birth(message, child(0))]
+            } else {
+                Vec::new()
+            },
             become_: Step::Continue,
         })
     }
@@ -82,7 +86,7 @@ fuzz_target!(|bytes: &[u8]| {
     runtime.block_on(async {
         let due = Instant::now() + std::time::Duration::from_secs(1);
         let peer = MailAddr(44);
-        let behavior = behavior::Supervisor::new(
+        let behavior = behavior::Supervise::new(
             behavior::Deadline::new(
                 behavior::Watch::new(
                     behavior::Stash::new(EchoingParent::default(), route),

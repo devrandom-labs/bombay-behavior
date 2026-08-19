@@ -78,8 +78,10 @@ The audit identifies these genuine component families:
   circuit reset, and restart backoff all use generation-safe timer ownership;
 - watch, termination monitoring, child supervision, creation observation, and
   coordinated shutdown all use request-selected lifecycle observation;
-- `Supervisor`, `BackoffSupervisor`, `WorkerPool`, and `KeyedWorkerPool` share
-  stable-proxy incarnation and fleet transitions;
+- standalone `Supervisor`, composed `Supervise`, `BackoffSupervisor`,
+  `BackoffSupervise`, `WorkerPool`, and `KeyedWorkerPool` share one
+  stable-proxy fleet-ownership transition component; backoff forms additionally
+  share one generation-safe pending-delay component;
 - routing actors share typed destination/evidence components while retaining
   different admission, ordering, capacity, and rejection laws;
 - request/reply catalogue actors share typed reply delivery but not necessarily
@@ -178,7 +180,8 @@ These preserve `B::Protocol` and must preserve all inner ingress/effect lanes:
   inner `Here` owner.
 - `Supervisor` owns lifecycle facts for its configured child namespace and
   preserves facts it does not own.
-- `BackoffSupervisor` adds a keyed timer lane around `Supervisor`.
+- `BackoffSupervisor` and `BackoffSupervise` add the same keyed timer fold
+  around standalone and composed supervision respectively.
 - `ShutdownCoordinator` owns shutdown progress facts for its current plan and
   preserves stale or unrelated facts.
 
@@ -222,11 +225,13 @@ wrapper: `Machine`, `MessageAdapter`, `Task`, `Buffer`, `Router`,
 | timing | `ReceiveTimeout` | preserves inner | owns one inactivity timer destination | adds relative schedules |
 | timing | `Lease` | concrete nominal template | user plus private timer | replies plus schedule |
 | supervision | `Proxy` | stable proxy identity | commands plus exact worker lifecycle | worker observations/reports/births |
-| supervision | `Supervisor` | preserves parent identity | exact configured-child lifecycle | proxy commands/observations/births |
-| supervision | `BackoffSupervisor` | preserves parent identity | supervisor ingress plus private timer | supervisor effects plus schedule |
+| supervision | `FixedFleetOwnership` | private transition component, no identity | exact configured-child lifecycle | proxy commands/observations/births |
+| supervision | `Supervisor` | concrete nominal ownership-only protocol | exact configured-child lifecycle | shared fixed-fleet effects/births |
+| supervision | `Supervise` | preserves inner application identity | inner ingress plus exact configured-child lifecycle | shared fixed-fleet effects/births plus inner effects |
+| supervision | `BackoffSupervisor` | preserves standalone supervisor identity | supervisor ingress plus private timer | supervisor effects plus schedule |
+| supervision | `BackoffSupervise` | preserves inner application identity | composed-supervision ingress plus private timer | composed-supervision effects plus schedule |
 | supervision | `DynamicSupervisor` | concrete nominal template | commands plus exact dynamic-child lifecycle | proxy effects/births/outcomes |
-| pool | `PoolKernel` | private implementation identity | user only | assignments/outcomes/direct births |
-| pool | `PoolCore` | private composed identity | user plus exact worker lifecycle | supervised pool effects/births |
+| pool | `PoolCore` | private transition component, no fabricated behavior identity | user plus exact worker lifecycle | shared fixed-fleet effects/births plus assignments/outcomes |
 | pool | `WorkerPool` | public nominal pool protocol | user plus exact worker lifecycle | supervised pool effects/births |
 | pool | `KeyedWorkerPool` | public nominal keyed-pool protocol | user plus exact worker lifecycle | supervised pool effects/births |
 | routing | `Buffer` | concrete nominal template | user only | released values and outcomes |

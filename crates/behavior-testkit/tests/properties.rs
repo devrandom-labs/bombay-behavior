@@ -41,26 +41,12 @@ impl Echo {
 
 type Child = Echo;
 
-struct Parent;
-
-#[behavior::behavior(addr = MailAddr, message = u8, sends = Vec<Never>, births = behavior::Births<Child>, error = Never)]
-impl Parent {
-    fn receive(
-        &mut self,
-        _from: MailAddr,
-        _message: u8,
-    ) -> Acted<MailAddr, Never, Vec<Never>, behavior::Births<Child>, Never> {
-        Ok(Actions::cont())
-    }
-}
-
 fn child(_index: usize) -> Child {
     Echo
 }
 
-fn supervisor(strategy: Strategy, count: usize) -> Supervisor<Parent, Child> {
+fn supervisor(strategy: Strategy, count: usize) -> Supervisor<MailAddr, Child> {
     Supervisor::new(
-        Parent,
         behavior::ChildTopology::indexed(
             |index| u64::try_from(index).unwrap(),
             count,
@@ -232,9 +218,9 @@ proptest! {
         });
         let actions = behavior.transition(event).unwrap();
 
-        prop_assert_eq!(actions.sends.owned.replacement_commands.len(), expected);
+        prop_assert_eq!(actions.sends.replacement_commands.len(), expected);
         prop_assert!(actions.creates.is_empty());
-        for delivery in actions.sends.owned.replacement_commands {
+        for delivery in actions.sends.replacement_commands {
             prop_assert_ne!(
                 delivery.to.resolve(MailAddr(17)),
                 delivery.to.resolve(MailAddr(18))

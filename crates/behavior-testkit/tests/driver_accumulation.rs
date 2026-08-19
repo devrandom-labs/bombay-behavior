@@ -65,7 +65,11 @@ impl EchoingParent {
         self.seen.push(message);
         Ok(Actions {
             sends: vec![Delivery::new(Recipient::global(MailAddr(0)), message)],
-            creates: Vec::new(),
+            creates: if message == u64::MAX {
+                vec![Create::birth(message, child(0))]
+            } else {
+                Vec::new()
+            },
             become_: Step::Continue,
         })
     }
@@ -94,7 +98,7 @@ impl BirthingParent {
     }
 }
 
-type TestSupervisor = behavior::Supervisor<EchoingParent, Child>;
+type TestSupervisor = behavior::Supervise<EchoingParent, Child>;
 
 /// A driven supervised trace: user echoes accumulate in the inner lane,
 /// replacement sends in the supervisor's own lane, observe-child sends stay
@@ -102,7 +106,7 @@ type TestSupervisor = behavior::Supervisor<EchoingParent, Child>;
 #[tokio::test]
 async fn driver_accumulates_supervising_send_products_losslessly() {
     let at = Instant::now();
-    let supervisor: TestSupervisor = behavior::Supervisor::new(
+    let supervisor: TestSupervisor = behavior::Supervise::new(
         EchoingParent { seen: Vec::new() },
         behavior::ChildTopology::indexed(
             |index| u64::try_from(index).unwrap(),
@@ -142,7 +146,7 @@ async fn driver_accumulates_supervising_send_products_losslessly() {
     // Inner lane: user echoes, in order, exactly the delivered messages.
     let echoes: Vec<u64> = trace.sends.inner.iter().map(|d| d.message).collect();
     assert_eq!(echoes, [3, 5]);
-    // Supervisor's own replacement lane: one per death, in order.
+    // Supervise's own replacement lane: one per death, in order.
     let replacements: Vec<MailAddr> = trace
         .sends
         .owned
@@ -204,7 +208,7 @@ proptest! {
 #[tokio::test]
 async fn empty_fleet_dynamic_birth_then_death_restarts() {
     let at = Instant::now();
-    let supervisor = behavior::Supervisor::new(
+    let supervisor = behavior::Supervise::new(
         BirthingParent { born: false },
         behavior::ChildTopology::indexed(
             |index| u64::try_from(index).unwrap(),
@@ -257,7 +261,7 @@ async fn driver_full_stack_mixed_lanes_stop_on_peer_death() {
 
     let due = Instant::now() + Duration::from_secs(1);
     let peer = MailAddr(44);
-    let behavior = behavior::Supervisor::new(
+    let behavior = behavior::Supervise::new(
         behavior::Deadline::new(
             behavior::Watch::new(
                 behavior::Stash::new(EchoingParent { seen: Vec::new() }, |m| {

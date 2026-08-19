@@ -96,7 +96,7 @@ become recursive type proofs.
 A nominal actor template may implement both traits and set
 `Behavior::Protocol = Self`; the roles remain separate because protocol-generic
 code can observe only `Addr` and `Msg`. Transparent wrappers such as
-`Guardian<B>`, `Watch<B>`, `Deadline<B>`, and `Supervisor<B, C>` preserve
+`Guardian<B>`, `Watch<B>`, `Deadline<B>`, and `Supervise<B, C>` preserve
 `B::Protocol` and do not implement `Protocol` themselves. Thus a typed
 recipient's identity remains usable regardless of which actor later emits its
 delivery.

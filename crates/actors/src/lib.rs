@@ -107,15 +107,17 @@ pub use routing::{
 pub use shutdown::{FinalizeOnShutdown, ShutdownEvent, ShutdownReaction, StopOnShutdown};
 pub use stash::{Stash, StashRoute, StashStatus};
 pub use supervision::{
-    Backoff, BackoffConfigError, BackoffError, BackoffSupervisor, BackoffSupervisorError,
-    BackoffSupervisorEvent, BackoffSupervisorSends, ChildTopology, DynamicChildPhase, DynamicProxy,
-    DynamicProxyWithParent, DynamicSupervisor, DynamicSupervisorError, DynamicSupervisorEvent,
-    DynamicSupervisorMessage, DynamicSupervisorOutcome, DynamicSupervisorRejection,
-    DynamicSupervisorSends, DynamicSupervisorWithParent, FleetError, IncarnationPhase, Proxy,
-    ProxyCommand, ProxyError, ProxyEvent, ProxySends, ProxySendsWithParent, ProxyWithParent,
-    ReportSupervisionFailure, RestartConfiguration, RestartPolicy, Strategy, SupervisionEvent,
-    SupervisionFailure, SupervisionFailureReaction, Supervisor, SupervisorError, SupervisorSends,
-    SupervisorWithParent, restart_all, restart_one, restart_rest, retire_on_supervision_failure,
+    Backoff, BackoffConfigError, BackoffError, BackoffSupervise, BackoffSupervisor,
+    BackoffSupervisorError, BackoffSupervisorEvent, BackoffSupervisorSends, ChildTopology,
+    DynamicChildPhase, DynamicProxy, DynamicProxyWithParent, DynamicSupervisor,
+    DynamicSupervisorError, DynamicSupervisorEvent, DynamicSupervisorMessage,
+    DynamicSupervisorOutcome, DynamicSupervisorRejection, DynamicSupervisorSends,
+    DynamicSupervisorWithParent, FleetError, IncarnationPhase, Proxy, ProxyCommand, ProxyError,
+    ProxyEvent, ProxySends, ProxySendsWithParent, ProxyWithParent, ReportSupervisionFailure,
+    RestartConfiguration, RestartPolicy, Strategy, Supervise, SuperviseError, SuperviseWithParent,
+    SupervisionEvent, SupervisionFailure, SupervisionFailureReaction, Supervisor, SupervisorError,
+    SupervisorEvent, SupervisorProtocol, SupervisorSends, SupervisorWithParent,
+    TopologyFailurePolicy, restart_all, restart_one, restart_rest, retire_on_supervision_failure,
     stop_on_supervision_failure,
 };
 pub use termination::{Crash, Exit, RestartDenial, SupervisionFailureReason};

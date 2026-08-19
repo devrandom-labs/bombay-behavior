@@ -10,7 +10,7 @@ use std::time::Duration;
 use behavior::EventLayer;
 use behavior::{
     Acted, Actions, Crash, Delivery, Machine, MailAddr, Move, Never, PeerStopped, RestartPolicy,
-    Step, Strategy, SupervisionEvent, Supervisor, TimerElapsed, TimerGeneration, TimerId, User,
+    Step, Strategy, Supervise, SupervisionEvent, TimerElapsed, TimerGeneration, TimerId, User,
     UserEvent, restart_all, restart_one, restart_rest,
 };
 use behavior_testkit::{Mailbox, drive};
@@ -56,13 +56,16 @@ impl FailingParent {
     fn receive(
         &mut self,
         _from: MailAddr,
-        _message: u64,
+        message: u64,
     ) -> Acted<MailAddr, Never, Vec<Never>, behavior::Births<Child>, Boom> {
         if self.fail {
             self.fail = false;
             return Err(Boom);
         }
-        Ok(Actions::cont())
+        Ok(Actions::create(vec![behavior::Create::birth(
+            message,
+            child(0),
+        )]))
     }
 }
 
@@ -136,7 +139,7 @@ async fn fsm_direct_step_error_keeps_held_intact() {
 /// slot table: no slot is born, killed, or replaced by a failed step.
 #[tokio::test]
 async fn supervision_propagates_inner_errors_without_touching_slots() {
-    let supervisor = Supervisor::new(
+    let supervisor = Supervise::new(
         FailingParent { fail: true },
         behavior::ChildTopology::indexed(
             |index| u64::try_from(index).unwrap(),
@@ -158,7 +161,7 @@ async fn supervision_propagates_inner_errors_without_touching_slots() {
     let result = supervisor.transition(SupervisionEvent::Behavior(UserEvent::user(MailAddr(0), 7)));
     assert!(matches!(
         result,
-        Err(behavior::SupervisorError::Behavior(Boom))
+        Err(behavior::SuperviseError::Behavior(Boom))
     ));
     assert_eq!(supervisor.child_count(), before);
     for nonce in 0..2 {
@@ -253,7 +256,7 @@ async fn stash_deliver_arm_error_keeps_held_intact() {
 /// unconsumed mailbox tail intact.
 #[tokio::test]
 async fn driver_propagates_errors_and_preserves_the_tail() {
-    let supervisor = Supervisor::new(
+    let supervisor = Supervise::new(
         FailingParent { fail: true },
         behavior::ChildTopology::indexed(
             |index| u64::try_from(index).unwrap(),
@@ -275,7 +278,7 @@ async fn driver_propagates_errors_and_preserves_the_tail() {
     let result = drive(supervisor, &mut mailbox);
     assert!(matches!(
         result,
-        Err(behavior::SupervisorError::Behavior(Boom))
+        Err(behavior::SuperviseError::Behavior(Boom))
     ));
     assert_eq!(mailbox.pending(), 1);
 }

@@ -2,21 +2,18 @@
 
 use std::time::Duration;
 
-use super::super::domain::{Fleet, FleetError, RestartBudget};
+use super::super::domain::{FixedFleetOwnership, FleetError, OwnershipError, OwnershipFold};
 use super::super::policy::{
     ReportSupervisionFailure, RestartPolicy, Strategy, SupervisionFailure,
     SupervisionFailureReaction, retire_on_supervision_failure,
 };
-use super::super::protocol::{ProxyCommand, SupervisionEvent};
+use super::super::protocol::SupervisionEvent;
 use super::proxy::{Proxy, ProxyWithParent};
-use crate::protocol::{
-    ChildShutdownRejected, ObserveChild, ObserveCreation, ShutdownChild, WorkerStopped,
-};
-use crate::{Become, Exit, SupervisionFailureReason};
+use crate::Become;
+use crate::protocol::{ObserveChild, ObserveCreation, ShutdownChild};
 use crate::{Own, SendInput};
 use behavior::{
-    Actions, Address, Behavior, Births, Create, Delivery, InterpreterRequests, SendEffects,
-    SendLayer,
+    Actions, Address, Behavior, Births, Delivery, InterpreterRequests, SendEffects, SendLayer,
 };
 use behavior::{Never, Step};
 
@@ -260,7 +257,7 @@ pub(crate) type SupervisorActions<B, C, ParentPath = behavior::Here> = Actions<
 
 /// A controlled supervisor-fold failure.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub enum SupervisorError<E, N> {
+pub enum SuperviseError<E, N> {
     /// The supervised behavior rejected its fold.
     #[error("supervised behavior rejected the transition")]
     Behavior(#[source] E),
@@ -278,65 +275,41 @@ pub enum SupervisorError<E, N> {
     },
 }
 
-enum ReplacementDecision<A, C>
-where
-    A: Address,
-    A::Nonce: From<u64>,
-    C: Behavior<Ph = Never>,
-    C::Protocol: crate::Protocol<Addr = A>,
-{
-    Retire,
-    Replace(Vec<Delivery<Proxy<C>>>),
-    Failed(SupervisionFailure<A>),
+fn map_ownership_error<E, N>(error: OwnershipError<N>) -> SuperviseError<E, N> {
+    match error {
+        OwnershipError::Fleet(error) => SuperviseError::Fleet(error),
+        OwnershipError::FactoryIndex { index } => SuperviseError::FactoryIndex { index },
+        OwnershipError::ChildShutdownRejected { nonce, reason } => {
+            SuperviseError::ChildShutdownRejected { nonce, reason }
+        }
+    }
 }
 
-type ReplacementResult<B, C> = Result<
-    ReplacementDecision<crate::BehaviorAddr<B>, C>,
-    SupervisorError<<B as Behavior>::Error, <crate::BehaviorAddr<B> as Address>::Nonce>,
->;
-
-/// Fixed stable-proxy owner with typed supervision and orderly subtree shutdown.
+/// Application behavior composed with fixed stable-proxy ownership.
 ///
 /// Shutdown cancels replacement decisions, waits for pending proxy installation
 /// to resolve, requests each established proxy exactly once, and stops only
 /// after every matching [`crate::ChildStopped`] fact. New inner creations that
 /// were already accepted during the drain join the same awaiting set.
-pub struct SupervisorWithParent<B: Behavior, C: Behavior<Ph = Never>, ParentPath>
+///
+/// `B::Birth = Births<C>` is the application's real additional-child lane:
+/// every creation emitted by `B` is adopted into this ownership domain. When
+/// no application transition creates `C`, use standalone [`crate::Supervisor`]
+/// instead of manufacturing an inert `B`.
+pub struct SuperviseWithParent<B: Behavior, C: Behavior<Ph = Never>, ParentPath>
 where
     C::Protocol: crate::Protocol<Addr = crate::BehaviorAddr<B>>,
+    <crate::BehaviorAddr<B> as Address>::Nonce: From<u64>,
 {
     inner: B,
-    fleet: Fleet<<crate::BehaviorAddr<B> as Address>::Nonce>,
-    build: fn(usize) -> Option<C>,
-    strategy: Strategy,
-    policy: RestartPolicy,
-    budget: RestartBudget,
+    ownership: FixedFleetOwnership<crate::BehaviorAddr<B>, C, ParentPath>,
     on_failure: SupervisionFailureReaction<B>,
-    proxy_parent: crate::ProxyParentIngress<crate::BehaviorAddr<B>, ParentPath>,
-    proxies: Vec<(
-        <crate::BehaviorAddr<B> as Address>::Nonce,
-        SupervisedProxyInstallation,
-    )>,
-    shutdown: SupervisorShutdown<<crate::BehaviorAddr<B> as Address>::Nonce>,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum SupervisedProxyInstallation {
-    Pending,
-    Established,
-    ShutdownRequested,
-    Rejected,
-}
-
-enum SupervisorShutdown<N> {
-    Running,
-    Draining { awaiting: Vec<N> },
 }
 
 /// A fixed supervisor whose proxy reports target its direct event layer.
-pub type Supervisor<B, C> = SupervisorWithParent<B, C, behavior::Here>;
+pub type Supervise<B, C> = SuperviseWithParent<B, C, behavior::Here>;
 
-impl<B, C> SupervisorWithParent<B, C, behavior::Here>
+impl<B, C> SuperviseWithParent<B, C, behavior::Here>
 where
     B: Behavior<Birth = Births<C>>,
     <crate::BehaviorAddr<B> as Address>::Nonce: From<u64>,
@@ -354,7 +327,7 @@ where
     }
 }
 
-impl<B, C, ParentPath> crate::BehaviorBase for SupervisorWithParent<B, C, ParentPath>
+impl<B, C, ParentPath> crate::BehaviorBase for SuperviseWithParent<B, C, ParentPath>
 where
     B: Behavior<Birth = Births<C>> + crate::BehaviorBase,
     <crate::BehaviorAddr<B> as Address>::Nonce: From<u64>,
@@ -368,7 +341,7 @@ where
     }
 }
 
-impl<B, C, ParentPath> crate::StashStatus for SupervisorWithParent<B, C, ParentPath>
+impl<B, C, ParentPath> crate::StashStatus for SuperviseWithParent<B, C, ParentPath>
 where
     B: Behavior<Birth = Births<C>> + crate::StashStatus,
     <crate::BehaviorAddr<B> as Address>::Nonce: From<u64>,
@@ -380,7 +353,7 @@ where
     }
 }
 
-impl<B, C, ParentPath> SupervisorWithParent<B, C, ParentPath>
+impl<B, C, ParentPath> SuperviseWithParent<B, C, ParentPath>
 where
     B: Behavior<Birth = Births<C>>,
     <crate::BehaviorAddr<B> as Address>::Nonce: From<u64>,
@@ -401,24 +374,10 @@ where
         restart: RestartConfiguration,
         proxy_parent: crate::ProxyParentIngress<crate::BehaviorAddr<B>, ParentPath>,
     ) -> Result<Self, FleetError<<crate::BehaviorAddr<B> as Address>::Nonce>> {
-        let proxies = topology
-            .nonces
-            .iter()
-            .copied()
-            .map(|nonce| (nonce, SupervisedProxyInstallation::Pending))
-            .collect();
-        let fleet = Fleet::configured(topology.nonces)?;
         Ok(Self {
             inner,
-            fleet,
-            build: topology.build,
-            strategy: restart.strategy,
-            policy: restart.policy,
-            budget: RestartBudget::new(restart.maximum, restart.window),
+            ownership: FixedFleetOwnership::new(topology, restart, proxy_parent)?,
             on_failure: retire_on_supervision_failure::<B>,
-            proxy_parent,
-            proxies,
-            shutdown: SupervisorShutdown::Running,
         })
     }
 
@@ -438,76 +397,24 @@ where
         nonce: <crate::BehaviorAddr<B> as Address>::Nonce,
     ) -> Result<
         bool,
-        SupervisorError<core::convert::Infallible, <crate::BehaviorAddr<B> as Address>::Nonce>,
+        SuperviseError<core::convert::Infallible, <crate::BehaviorAddr<B> as Address>::Nonce>,
     > {
-        Ok(self.fleet.is_available(nonce)?)
+        Ok(self.ownership.is_alive(nonce)?)
     }
 
     #[must_use]
     pub fn child_count(&self) -> usize {
-        self.fleet.len()
+        self.ownership.child_count()
     }
 
     #[must_use]
     pub fn restarts_in_window(&self) -> usize {
-        self.budget.admitted()
+        self.ownership.restarts_in_window()
     }
 
     #[must_use]
     pub fn is_shutting_down(&self) -> bool {
-        matches!(self.shutdown, SupervisorShutdown::Draining { .. })
-    }
-
-    fn replacement_decision(
-        &mut self,
-        event: &WorkerStopped<crate::BehaviorAddr<B>>,
-    ) -> ReplacementResult<B, C> {
-        let policy = self.policy;
-        let strategy = self.strategy;
-        let eligible = match policy {
-            RestartPolicy::Permanent => true,
-            RestartPolicy::Transient => {
-                !matches!(&event.outcome, Ok(Exit::Normal | Exit::Collected))
-            }
-            RestartPolicy::Temporary => false,
-        };
-        if !eligible {
-            self.fleet.retire(event.proxy)?;
-            return Ok(ReplacementDecision::Retire);
-        }
-        let candidates = self.fleet.replacements(event.proxy, strategy)?;
-        let replacements = candidates
-            .iter()
-            .map(|candidate| {
-                (self.build)(candidate.index)
-                    .map(|child| (candidate.nonce, child))
-                    .ok_or(SupervisorError::FactoryIndex {
-                        index: candidate.index,
-                    })
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-        if let Err(reason) = self.budget.admit(event.at, candidates.len()) {
-            self.fleet.retire(event.proxy)?;
-            return Ok(ReplacementDecision::Failed(SupervisionFailure::new(
-                event.proxy,
-                event.outcome,
-                SupervisionFailureReason::RestartDenied(reason),
-            )));
-        }
-        for candidate in &candidates {
-            self.fleet.replacement_requested(candidate.nonce)?;
-        }
-        Ok(ReplacementDecision::Replace(
-            replacements
-                .into_iter()
-                .map(|(nonce, child)| {
-                    Delivery::local_child(
-                        behavior::ChildRecipient::new(nonce),
-                        ProxyCommand::Replace(child),
-                    )
-                })
-                .collect(),
-        ))
+        self.ownership.is_shutting_down()
     }
 
     fn react_to_failure(
@@ -526,62 +433,50 @@ where
         actions: Actions<crate::BehaviorAddr<B>, B::Ph, B::Sends, Births<C>>,
     ) -> Result<
         SupervisorActions<B, C, ParentPath>,
-        SupervisorError<B::Error, <crate::BehaviorAddr<B> as Address>::Nonce>,
+        SuperviseError<B::Error, <crate::BehaviorAddr<B> as Address>::Nonce>,
     > {
-        let fleet = &mut self.fleet;
-        for create in &actions.creates {
-            fleet.register(create.nonce)?;
-            self.proxies
-                .push((create.nonce, SupervisedProxyInstallation::Pending));
-            if let SupervisorShutdown::Draining { awaiting } = &mut self.shutdown {
-                awaiting.push(create.nonce);
-            }
-        }
         let become_ = if self.is_shutting_down() {
             Step::Continue
         } else {
             actions.become_
         };
+        let owned = self
+            .ownership
+            .adopt(actions.creates)
+            .map_err(map_ownership_error)?;
         Ok(Actions::new(
-            SendLayer::new(
-                SupervisorSends {
-                    child_observations: InterpreterRequests::new(
-                        actions
-                            .creates
-                            .iter()
-                            .map(|create| ObserveChild::new(create.nonce))
-                            .collect(),
-                    ),
-                    creation_observations: InterpreterRequests::new(
-                        actions
-                            .creates
-                            .iter()
-                            .map(|create| ObserveCreation::new(create.nonce))
-                            .collect(),
-                    ),
-                    replacement_commands: Vec::new(),
-                    failure_reports: InterpreterRequests::empty(),
-                    shutdowns: InterpreterRequests::empty(),
-                },
-                actions.sends,
-            ),
-            actions
-                .creates
-                .into_iter()
-                .map(|create| {
-                    Create::new(
-                        create.nonce,
-                        ProxyWithParent::with_parent(create.child, self.proxy_parent),
-                        create.kind,
-                    )
-                })
-                .collect(),
+            SendLayer::new(owned.sends, actions.sends),
+            owned.creates,
+            become_,
+        ))
+    }
+
+    fn wrap_ownership(
+        &mut self,
+        fold: OwnershipFold<crate::BehaviorAddr<B>, C, ParentPath>,
+    ) -> Result<
+        SupervisorActions<B, C, ParentPath>,
+        SuperviseError<B::Error, <crate::BehaviorAddr<B> as Address>::Nonce>,
+    > {
+        let become_ = match fold.failure {
+            Some(failure) => self
+                .react_to_failure(&failure)
+                .map_err(SuperviseError::Behavior)?,
+            None => match fold.actions.become_ {
+                Step::Continue => Step::Continue,
+                Step::Goto(never) => match never {},
+                Step::Stop(exit) => Step::Stop(exit),
+            },
+        };
+        Ok(Actions::new(
+            SendLayer::new(fold.actions.sends, B::Sends::empty()),
+            fold.actions.creates,
             become_,
         ))
     }
 }
 
-impl<B, C, A, Ph, Sends, ParentPath> Behavior for SupervisorWithParent<B, C, ParentPath>
+impl<B, C, A, Ph, Sends, ParentPath> Behavior for SuperviseWithParent<B, C, ParentPath>
 where
     A: Address,
     Sends: SendEffects + behavior::SendsFor<B::Event>,
@@ -595,44 +490,18 @@ where
     type Event = SupervisionEvent<B::Event>;
     type Sends = SendLayer<SupervisorSends<A, C, ParentPath>, Sends>;
     type Ph = Ph;
-    type Error = SupervisorError<B::Error, A::Nonce>;
+    type Error = SuperviseError<B::Error, A::Nonce>;
     type Birth = Births<ProxyWithParent<C, ParentPath>>;
 
     fn init(
         &mut self,
         _: crate::InitializationTurn,
     ) -> Result<SupervisorActions<B, C, ParentPath>, Self::Error> {
-        let configured: Vec<_> = self.fleet.configured_nonces().collect();
-        let workers = configured
-            .iter()
-            .copied()
-            .enumerate()
-            .map(|(index, nonce)| {
-                (self.build)(index)
-                    .map(|worker| (nonce, worker))
-                    .ok_or(SupervisorError::FactoryIndex { index })
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-        let actions = behavior::initialize(&mut self.inner).map_err(SupervisorError::Behavior)?;
+        let actions = behavior::initialize(&mut self.inner).map_err(SuperviseError::Behavior)?;
         let mut actions = self.wrap(actions)?;
-        actions
-            .creates
-            .extend(workers.into_iter().map(|(nonce, worker)| {
-                Create::birth(
-                    nonce,
-                    ProxyWithParent::with_parent(worker, self.proxy_parent),
-                )
-            }));
-        actions
-            .sends
-            .owned
-            .child_observations
-            .extend(configured.iter().copied().map(ObserveChild::new));
-        actions
-            .sends
-            .owned
-            .creation_observations
-            .extend(configured.into_iter().map(ObserveCreation::new));
+        let configured = self.ownership.initialize().map_err(map_ownership_error)?;
+        actions.sends.owned.append(configured.sends);
+        actions.creates.extend(configured.creates);
         Ok(actions)
     }
 
@@ -642,174 +511,38 @@ where
         event: Self::Event,
     ) -> Result<SupervisorActions<B, C, ParentPath>, Self::Error> {
         match event {
-            SupervisionEvent::WorkerStopped(event) => {
-                if self.is_shutting_down() {
-                    return Ok(Actions::cont());
-                }
-                if !self.fleet.contains(event.proxy) {
-                    return Ok(Actions::cont());
-                }
-                let decision = self.replacement_decision(&event)?;
-                match decision {
-                    ReplacementDecision::Retire => Ok(Actions::cont()),
-                    ReplacementDecision::Replace(replacements) => Ok(Actions::new(
-                        SendLayer::new(
-                            SupervisorSends {
-                                child_observations: InterpreterRequests::empty(),
-                                creation_observations: InterpreterRequests::empty(),
-                                replacement_commands: replacements,
-                                failure_reports: InterpreterRequests::empty(),
-                                shutdowns: InterpreterRequests::empty(),
-                            },
-                            B::Sends::empty(),
-                        ),
-                        Vec::new(),
-                        Step::Continue,
-                    )),
-                    ReplacementDecision::Failed(failure) => Ok(Actions::new(
-                        SendLayer::new(
-                            SupervisorSends {
-                                child_observations: InterpreterRequests::empty(),
-                                creation_observations: InterpreterRequests::empty(),
-                                replacement_commands: Vec::new(),
-                                failure_reports: InterpreterRequests::one(
-                                    ReportSupervisionFailure::new(failure),
-                                ),
-                                shutdowns: InterpreterRequests::empty(),
-                            },
-                            B::Sends::empty(),
-                        ),
-                        Vec::new(),
-                        self.react_to_failure(&failure)
-                            .map_err(SupervisorError::Behavior)?,
-                    )),
-                }
-            }
-            SupervisionEvent::ChildStopped(event) => {
-                if let SupervisorShutdown::Draining { awaiting } = &mut self.shutdown {
-                    if awaiting.contains(&event.nonce) {
-                        awaiting.retain(|nonce| *nonce != event.nonce);
-                        self.fleet.retire(event.nonce)?;
-                        return if awaiting.is_empty() {
-                            Ok(Actions::stop())
-                        } else {
-                            Ok(Actions::cont())
-                        };
-                    }
-                    return Ok(Actions::cont());
-                }
-                if !self.fleet.contains(event.nonce) {
-                    return Ok(Actions::cont());
-                }
-                self.fleet.retire(event.nonce)?;
-                let failure = SupervisionFailure::new(
-                    event.nonce,
-                    event.outcome,
-                    SupervisionFailureReason::StableChildStopped,
-                );
-                Ok(Actions::new(
-                    SendLayer::new(
-                        SupervisorSends {
-                            child_observations: InterpreterRequests::empty(),
-                            creation_observations: InterpreterRequests::empty(),
-                            replacement_commands: Vec::new(),
-                            failure_reports: InterpreterRequests::one(
-                                ReportSupervisionFailure::new(failure),
-                            ),
-                            shutdowns: InterpreterRequests::empty(),
-                        },
-                        B::Sends::empty(),
-                    ),
-                    Vec::new(),
-                    self.react_to_failure(&failure)
-                        .map_err(SupervisorError::Behavior)?,
-                ))
-            }
+            SupervisionEvent::WorkerStopped(event) => self
+                .ownership
+                .worker_stopped(event)
+                .map_err(map_ownership_error)
+                .and_then(|fold| self.wrap_ownership(fold)),
+            SupervisionEvent::ChildStopped(event) => self
+                .ownership
+                .child_stopped(event)
+                .map_err(map_ownership_error)
+                .and_then(|fold| self.wrap_ownership(fold)),
             SupervisionEvent::CreationResolved(event) => {
-                let shutting_down = self.is_shutting_down();
-                let Some((_, installation)) = self
-                    .proxies
-                    .iter_mut()
-                    .find(|(nonce, _)| *nonce == event.nonce)
-                else {
-                    return Ok(Actions::cont());
-                };
-                if shutting_down && *installation != SupervisedProxyInstallation::Pending {
-                    return Ok(Actions::cont());
-                }
-                *installation = if event.result.is_ok() {
-                    SupervisedProxyInstallation::Established
-                } else {
-                    SupervisedProxyInstallation::Rejected
-                };
-                self.fleet
-                    .resolve_creation(event.nonce, event.result.map(|_| ()));
-                if let SupervisorShutdown::Draining { awaiting } = &mut self.shutdown {
-                    if event.result.is_err() {
-                        awaiting.retain(|nonce| *nonce != event.nonce);
-                        return if awaiting.is_empty() {
-                            Ok(Actions::stop())
-                        } else {
-                            Ok(Actions::cont())
-                        };
-                    }
-                    *installation = SupervisedProxyInstallation::ShutdownRequested;
-                    let mut sends = SupervisorSends::empty();
-                    sends
-                        .shutdowns
-                        .send(ShutdownChild::<ProxyWithParent<C, ParentPath>>::new(
-                            event.nonce,
-                        ));
-                    return Ok(Actions::send(SendLayer::new(sends, B::Sends::empty())));
-                }
-                Ok(Actions::cont())
+                let fold = self.ownership.creation_resolved(event);
+                self.wrap_ownership(fold)
             }
             SupervisionEvent::WorkerCreationResolved(event) => {
-                // Worker realization does not change the stable proxy's
-                // liveness. The typed result remains distinct from a proxy
-                // terminal observation.
-                let _ = event;
-                Ok(Actions::cont())
+                let fold = self.ownership.worker_creation_resolved(event);
+                self.wrap_ownership(fold)
             }
             SupervisionEvent::Behavior(event) => {
                 let actions = behavior::delegate_transition(&mut self.inner, event)
-                    .map_err(SupervisorError::Behavior)?;
+                    .map_err(SuperviseError::Behavior)?;
                 self.wrap(actions)
             }
             SupervisionEvent::ShutdownRequested(_) => {
-                if self.is_shutting_down() {
-                    return Ok(Actions::cont());
-                }
-                let awaiting = self
-                    .proxies
-                    .iter()
-                    .filter_map(|(nonce, state)| {
-                        (*state != SupervisedProxyInstallation::Rejected).then_some(*nonce)
-                    })
-                    .collect::<Vec<_>>();
-                if awaiting.is_empty() {
-                    return Ok(Actions::stop());
-                }
-                let mut sends = SupervisorSends::empty();
-                for (nonce, state) in &mut self.proxies {
-                    if *state == SupervisedProxyInstallation::Established {
-                        *state = SupervisedProxyInstallation::ShutdownRequested;
-                        sends
-                            .shutdowns
-                            .send(ShutdownChild::<ProxyWithParent<C, ParentPath>>::new(*nonce));
-                    }
-                }
-                self.shutdown = SupervisorShutdown::Draining { awaiting };
-                Ok(Actions::send(SendLayer::new(sends, B::Sends::empty())))
+                let fold = self.ownership.shutdown();
+                self.wrap_ownership(fold)
             }
-            SupervisionEvent::ChildShutdownRejected(ChildShutdownRejected { nonce, reason }) => {
-                if matches!(&self.shutdown, SupervisorShutdown::Draining { awaiting } if awaiting.contains(&nonce))
-                {
-                    Err(SupervisorError::ChildShutdownRejected { nonce, reason })
-                } else {
-                    Ok(Actions::cont())
-                }
-            }
+            SupervisionEvent::ChildShutdownRejected(event) => self
+                .ownership
+                .child_shutdown_rejected(event)
+                .map_err(map_ownership_error)
+                .and_then(|fold| self.wrap_ownership(fold)),
         }
     }
 }
@@ -821,7 +554,9 @@ mod ownership_tests {
     use super::*;
     use crate::{
         Activate as _, BehaviorActed, ChildStopped, ChildTopology, Crash, Exit, MailAddr, User,
+        WorkerStopped,
     };
+    use behavior::Create;
 
     struct Child;
 
@@ -893,7 +628,7 @@ mod ownership_tests {
 
     #[test]
     fn ownership_path_distinguishes_stale_outer_facts_from_inner_facts() {
-        let definition = Supervisor::new(
+        let definition = Supervise::new(
             Parent::default(),
             ChildTopology::indexed(|_| 1, 1, child),
             RestartConfiguration::new(
@@ -935,7 +670,7 @@ mod ownership_tests {
 
     #[test]
     fn fixed_supervisor_drains_installed_and_pending_proxies_before_stopping() {
-        let definition = Supervisor::new(
+        let definition = Supervise::new(
             Parent::default(),
             ChildTopology::indexed(|index| u64::try_from(index).unwrap(), 2, child),
             RestartConfiguration::new(
@@ -970,7 +705,7 @@ mod ownership_tests {
                 0,
                 crate::ChildShutdownRejection::AlreadyStopping,
             )),
-            Err(SupervisorError::ChildShutdownRejected {
+            Err(SuperviseError::ChildShutdownRejected {
                 nonce: 0,
                 reason: crate::ChildShutdownRejection::AlreadyStopping,
             })

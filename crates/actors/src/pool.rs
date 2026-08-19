@@ -4,17 +4,15 @@
 //! primitive. Runtime installation, delivery, and observation remain effects
 //! for an interpreter; this module owns only their typed protocol and fold.
 
-use core::convert::Infallible;
-use core::marker::PhantomData;
 use std::collections::{BTreeMap, VecDeque};
 use std::time::Duration;
 
+use crate::supervision::{FixedFleetOwnership, OwnershipError};
 use crate::{
     Actions, Address, Behavior, Births, ChildTopology, Crash, CreationRejection, Delivery, Exit,
     FleetError, Never, Own, Protocol, Proxy, ProxyCommand, ProxyParentIngress, ProxyWithParent,
     Recipient, RestartConfiguration, RestartPolicy, SendEffects, SendInput, SendLayer, Strategy,
-    SupervisionEvent, SupervisorError, SupervisorSends, SupervisorWithParent, User,
-    WorkerCreationResolved, WorkerStopped,
+    SupervisionEvent, SupervisorSends, User, WorkerCreationResolved, WorkerStopped,
 };
 use behavior::Here;
 
@@ -451,12 +449,10 @@ where
     }
 }
 
-type KernelSends<A, D, J, R, C> = PoolBehaviorSends<A, D, J, R, C>;
-
 /// Pool effects keep responses and assignments in named, independently
 /// appendable lanes within the supervised behavior send product.
 pub type PoolSends<A, D, J, R, C, ParentPath = Here> =
-    SendLayer<SupervisorSends<A, C, ParentPath>, KernelSends<A, D, J, R, C>>;
+    SendLayer<SupervisorSends<A, C, ParentPath>, PoolBehaviorSends<A, D, J, R, C>>;
 
 /// Named effect product for a worker pool that owns orderly proxy shutdown.
 pub type WorkerPoolSends<A, D, J, R, C, ParentPath = Here> = PoolSends<A, D, J, R, C, ParentPath>;
@@ -476,62 +472,14 @@ pub type PoolActions<A, D, J, R, C, ParentPath = behavior::Here> =
 type PoolTransition<A, D, J, R, C, ParentPath = behavior::Here> =
     Result<PoolActions<A, D, J, R, C, ParentPath>, PoolError<<A as Address>::Nonce>>;
 
-#[allow(
-    clippy::type_complexity,
-    reason = "the marker retains the complete pool topology signature"
-)]
-struct PoolKernel<A: Address, D, J, R, C, P>(PhantomData<fn(A, D, J, R, C, P)>);
-
-impl<A: Address, D, J, R, C, P> PoolKernel<A, D, J, R, C, P> {
-    const fn new() -> Self {
-        Self(PhantomData)
-    }
+enum PoolOwnershipEvent<A: Address> {
+    WorkerStopped(WorkerStopped<A>),
+    WorkerCreationResolved(WorkerCreationResolved<A::Nonce>),
+    ChildStopped(crate::ChildStopped<A>),
+    CreationResolved(crate::CreationResolved<A>),
+    ShutdownRequested,
+    ChildShutdownRejected(crate::ChildShutdownRejected<A::Nonce>),
 }
-
-impl<A, D, J, R, C, P> behavior::Protocol for PoolKernel<A, D, J, R, C, P>
-where
-    A: Address,
-    A::Nonce: From<u64>,
-    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
-    P: crate::PoolAssignmentProtocol<Addr = A, Job = J>,
-    C: Behavior<Ph = Never>,
-    C::Protocol: crate::Protocol<Addr = A, Msg = PoolAssignment<P>>,
-{
-    type Addr = A;
-    type Msg = PoolMessage<A, D, J, R>;
-}
-
-impl<A, D, J, R, C, P> Behavior for PoolKernel<A, D, J, R, C, P>
-where
-    A: Address,
-    A::Nonce: From<u64>,
-    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
-    P: crate::PoolAssignmentProtocol<Addr = A, Job = J>,
-    C: Behavior<Ph = Never>,
-    C::Protocol: crate::Protocol<Addr = A, Msg = PoolAssignment<P>>,
-{
-    type Protocol = Self;
-    type Event = User<A, PoolMessage<A, D, J, R>>;
-    type Sends = KernelSends<A, D, J, R, C>;
-    type Ph = Never;
-    type Error = Infallible;
-    type Birth = Births<C>;
-
-    fn init(&mut self, _: crate::InitializationTurn) -> crate::BehaviorActed<Self> {
-        Ok(Actions::cont())
-    }
-
-    fn transition(
-        &mut self,
-        _: crate::ActiveTurn,
-        _event: Self::Event,
-    ) -> crate::BehaviorActed<Self> {
-        Ok(Actions::cont())
-    }
-}
-
-type PoolSupervisor<A, D, J, R, C, P, ParentPath> =
-    SupervisorWithParent<PoolKernel<A, D, J, R, C, P>, C, ParentPath>;
 
 /// A fixed, homogeneous, bounded FIFO worker pool.
 ///
@@ -591,7 +539,7 @@ where
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A, Msg = PoolAssignment<P>>,
 {
-    supervisor: PoolSupervisor<A, D, J, R, C, P, ParentPath>,
+    supervisor: FixedFleetOwnership<A, C, ParentPath>,
     complete_to: Recipient<P>,
     slots: Vec<Slot<A, D, J, R>>,
     backlog: VecDeque<QueuedJob<A, D, J, R>>,
@@ -642,8 +590,7 @@ where
             });
         }
         Ok(Self {
-            supervisor: SupervisorWithParent::with_parent(
-                PoolKernel::<A, D, J, R, C, P>::new(),
+            supervisor: FixedFleetOwnership::new(
                 ChildTopology::new(nonces, build),
                 RestartConfiguration::new(
                     Strategy::OneForOne,
@@ -724,22 +671,40 @@ where
 {
     fn supervisor_transition(
         &mut self,
-        event: PoolEvent<A, D, J, R>,
+        event: PoolOwnershipEvent<A>,
     ) -> PoolTransition<A, D, J, R, C, ParentPath> {
-        behavior::delegate_transition(&mut self.supervisor, event).map_err(|error| match error {
-            SupervisorError::Behavior(never) => match never {},
-            SupervisorError::Fleet(FleetError::UnknownChild(nonce)) => {
+        let fold = match event {
+            PoolOwnershipEvent::WorkerStopped(event) => self.supervisor.worker_stopped(event),
+            PoolOwnershipEvent::WorkerCreationResolved(event) => {
+                Ok(self.supervisor.worker_creation_resolved(event))
+            }
+            PoolOwnershipEvent::ChildStopped(event) => self.supervisor.child_stopped(event),
+            PoolOwnershipEvent::CreationResolved(event) => {
+                Ok(self.supervisor.creation_resolved(event))
+            }
+            PoolOwnershipEvent::ShutdownRequested => Ok(self.supervisor.shutdown()),
+            PoolOwnershipEvent::ChildShutdownRejected(event) => {
+                self.supervisor.child_shutdown_rejected(event)
+            }
+        }
+        .map_err(|error| match error {
+            OwnershipError::Fleet(FleetError::UnknownChild(nonce)) => {
                 PoolError::UnknownWorker(nonce)
             }
-            SupervisorError::Fleet(FleetError::DuplicateChild(nonce)) => {
+            OwnershipError::Fleet(FleetError::DuplicateChild(nonce)) => {
                 PoolError::DuplicateWorker(nonce)
             }
-            SupervisorError::Fleet(FleetError::SequenceExhausted) => PoolError::SequenceExhausted,
-            SupervisorError::FactoryIndex { index } => PoolError::WorkerFactoryIndex { index },
-            SupervisorError::ChildShutdownRejected { nonce, reason } => {
+            OwnershipError::Fleet(FleetError::SequenceExhausted) => PoolError::SequenceExhausted,
+            OwnershipError::FactoryIndex { index } => PoolError::WorkerFactoryIndex { index },
+            OwnershipError::ChildShutdownRejected { nonce, reason } => {
                 PoolError::ChildShutdownRejected { nonce, reason }
             }
-        })
+        })?;
+        Ok(Actions::new(
+            SendLayer::new(fold.actions.sends, PoolBehaviorSends::empty()),
+            fold.actions.creates,
+            fold.actions.become_,
+        ))
     }
 
     fn submit(
@@ -1173,20 +1138,24 @@ where
     type Birth = Births<ProxyWithParent<C, ParentPath>>;
 
     fn init(&mut self, _: crate::InitializationTurn) -> crate::BehaviorActed<Self> {
-        behavior::initialize(&mut self.supervisor).map_err(|error| match error {
-            SupervisorError::Behavior(never) => match never {},
-            SupervisorError::Fleet(FleetError::UnknownChild(nonce)) => {
+        let actions = self.supervisor.initialize().map_err(|error| match error {
+            OwnershipError::Fleet(FleetError::UnknownChild(nonce)) => {
                 PoolError::UnknownWorker(nonce)
             }
-            SupervisorError::Fleet(FleetError::DuplicateChild(nonce)) => {
+            OwnershipError::Fleet(FleetError::DuplicateChild(nonce)) => {
                 PoolError::DuplicateWorker(nonce)
             }
-            SupervisorError::Fleet(FleetError::SequenceExhausted) => PoolError::SequenceExhausted,
-            SupervisorError::FactoryIndex { index } => PoolError::WorkerFactoryIndex { index },
-            SupervisorError::ChildShutdownRejected { nonce, reason } => {
+            OwnershipError::Fleet(FleetError::SequenceExhausted) => PoolError::SequenceExhausted,
+            OwnershipError::FactoryIndex { index } => PoolError::WorkerFactoryIndex { index },
+            OwnershipError::ChildShutdownRejected { nonce, reason } => {
                 PoolError::ChildShutdownRejected { nonce, reason }
             }
-        })
+        })?;
+        Ok(Actions::new(
+            SendLayer::new(actions.sends, PoolBehaviorSends::empty()),
+            actions.creates,
+            actions.become_,
+        ))
     }
 
     fn transition(
@@ -1240,13 +1209,13 @@ where
             }
             SupervisionEvent::WorkerStopped(stopped) => {
                 if self.supervisor.is_shutting_down() {
-                    return self.supervisor_transition(SupervisionEvent::WorkerStopped(stopped));
+                    return self.supervisor_transition(PoolOwnershipEvent::WorkerStopped(stopped));
                 }
                 let proxy = stopped.proxy;
                 let mut responses = Vec::new();
                 self.worker_stopped(&stopped, &mut responses)?;
                 let mut actions =
-                    self.supervisor_transition(SupervisionEvent::WorkerStopped(stopped))?;
+                    self.supervisor_transition(PoolOwnershipEvent::WorkerStopped(stopped))?;
                 actions.sends.inner.responses.extend(responses);
                 let replacement_requested = actions
                     .sends
@@ -1266,13 +1235,14 @@ where
             }
             SupervisionEvent::WorkerCreationResolved(resolved) => {
                 if self.supervisor.is_shutting_down() {
-                    return self
-                        .supervisor_transition(SupervisionEvent::WorkerCreationResolved(resolved));
+                    return self.supervisor_transition(PoolOwnershipEvent::WorkerCreationResolved(
+                        resolved,
+                    ));
                 }
                 let proxy = resolved.proxy;
                 self.creation_resolved(&resolved)?;
-                let mut actions =
-                    self.supervisor_transition(SupervisionEvent::WorkerCreationResolved(resolved))?;
+                let mut actions = self
+                    .supervisor_transition(PoolOwnershipEvent::WorkerCreationResolved(resolved))?;
                 if let Some(WorkerPhase::Retired { reason }) = self.worker_phase(proxy) {
                     self.fail_jobs_for_retired_slot(proxy, reason, &mut actions);
                 }
@@ -1281,20 +1251,20 @@ where
                 Ok(actions)
             }
             SupervisionEvent::ChildStopped(stopped) => {
-                self.supervisor_transition(SupervisionEvent::ChildStopped(stopped))
+                self.supervisor_transition(PoolOwnershipEvent::ChildStopped(stopped))
             }
             SupervisionEvent::CreationResolved(resolved) => {
-                self.supervisor_transition(SupervisionEvent::CreationResolved(resolved))
+                self.supervisor_transition(PoolOwnershipEvent::CreationResolved(resolved))
             }
-            SupervisionEvent::ShutdownRequested(requested) => {
+            SupervisionEvent::ShutdownRequested(_) => {
                 let responses = self.interrupt_all_for_shutdown();
                 let mut actions =
-                    self.supervisor_transition(SupervisionEvent::ShutdownRequested(requested))?;
+                    self.supervisor_transition(PoolOwnershipEvent::ShutdownRequested)?;
                 actions.sends.inner.responses.extend(responses);
                 Ok(actions)
             }
             SupervisionEvent::ChildShutdownRejected(rejected) => {
-                self.supervisor_transition(SupervisionEvent::ChildShutdownRejected(rejected))
+                self.supervisor_transition(PoolOwnershipEvent::ChildShutdownRejected(rejected))
             }
         }
     }

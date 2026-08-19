@@ -9,7 +9,7 @@ use std::time::Duration;
 use behavior::{
     Acted, Actions, Behavior, ChildStopped, Crash, Create, CreationKind, CreationResolved,
     Delivery, MailAddr, Never, Proxy, ProxyCommand, ProxyEvent, RestartPolicy, Step, Strategy,
-    SupervisionEvent, Supervisor, User, UserEvent, WorkerStopped, stop_on_supervision_failure,
+    Supervise, SupervisionEvent, Supervisor, TopologyFailurePolicy, User, UserEvent, WorkerStopped,
 };
 use behavior_testkit::model::{
     ExpectedCreation, ExpectedIncarnation, IncarnationModel, Model, Outcome,
@@ -41,20 +41,6 @@ impl Echo {
 
 type Child = Echo;
 
-/// Quiet parent for the static-fleet property.
-struct Parent;
-
-#[behavior::behavior(addr = MailAddr, message = u64, sends = Vec<Never>, births = behavior::Births<Child>, error = Never)]
-impl Parent {
-    fn receive(
-        &mut self,
-        _from: MailAddr,
-        _message: u64,
-    ) -> Acted<MailAddr, Never, Vec<Never>, behavior::Births<Child>, Never> {
-        Ok(Actions::cont())
-    }
-}
-
 /// Parent that creates one dynamic child (nonce = message value) per user
 /// message; the generator guarantees distinct nonces.
 struct BirthingParent {
@@ -81,20 +67,38 @@ fn child(_index: usize) -> Child {
     Echo
 }
 
-fn supervisor<B>(
+fn supervise<B>(
     inner: B,
     strategy: Strategy,
     policy: RestartPolicy,
     maximum: u32,
     window: Duration,
     count: usize,
-) -> Supervisor<B, Child>
+) -> Supervise<B, Child>
 where
     B: Behavior<Birth = behavior::Births<Child>>,
     B::Protocol: behavior::Protocol<Addr = MailAddr>,
 {
-    Supervisor::new(
+    Supervise::new(
         inner,
+        behavior::ChildTopology::indexed(
+            |index| u64::try_from(index).unwrap(),
+            count,
+            |index| Some(child(index)),
+        ),
+        behavior::RestartConfiguration::new(strategy, policy, maximum, window),
+    )
+    .unwrap()
+}
+
+fn supervisor(
+    strategy: Strategy,
+    policy: RestartPolicy,
+    maximum: u32,
+    window: Duration,
+    count: usize,
+) -> Supervisor<MailAddr, Child> {
+    Supervisor::new(
         behavior::ChildTopology::indexed(
             |index| u64::try_from(index).unwrap(),
             count,
@@ -205,7 +209,6 @@ async fn immediate_and_denied_replacements_match_the_independent_models() {
     assert!(denied.is_empty());
 
     let behavior = supervisor(
-        Parent,
         Strategy::OneForOne,
         RestartPolicy::Permanent,
         0,
@@ -223,7 +226,7 @@ async fn immediate_and_denied_replacements_match_the_independent_models() {
         }))
         .unwrap();
     assert!(denied.creates.is_empty());
-    assert!(denied.sends.owned.replacement_commands.is_empty());
+    assert!(denied.sends.replacement_commands.is_empty());
 }
 
 proptest! {
@@ -261,8 +264,8 @@ proptest! {
         let window_duration = window.map_or(Duration::MAX, Duration::from_nanos);
 
         let mut model = Model::new(count);
-        let behavior = supervisor(Parent, strategy, policy, maximum, window_duration, count)
-            .with_failure_reaction(stop_on_supervision_failure);
+        let behavior = supervisor(strategy, policy, maximum, window_duration, count)
+            .with_failure_policy(TopologyFailurePolicy::Stop);
         let base = Instant::now();
         let runtime = Builder::new_current_thread().enable_all().build().unwrap();
         let initialized = behavior.initialize().unwrap();
@@ -282,7 +285,7 @@ proptest! {
                 .unwrap();
 
             let sends: Vec<MailAddr> = actions
-                .sends.owned.replacement_commands
+                .sends.replacement_commands
                 .iter()
                 .map(|delivery| delivery.to.resolve(MailAddr(17)))
                 .collect();
@@ -330,7 +333,7 @@ proptest! {
         // window pruning — the cross product the static-fleet property and
         // the MAX-window mixed property each cover only partially.
         let mut model = Model::new(count);
-        let behavior = supervisor(
+        let behavior = supervise(
             BirthingParent { births: Vec::new() },
             strategy,
             RestartPolicy::Permanent,
@@ -416,7 +419,6 @@ proptest! {
 async fn budget_recovers_after_stamps_age_out_of_the_window() {
     let base = Instant::now();
     let behavior = supervisor(
-        Parent,
         Strategy::OneForOne,
         RestartPolicy::Permanent,
         3,
@@ -447,7 +449,7 @@ async fn budget_recovers_after_stamps_age_out_of_the_window() {
             at: base + Duration::from_nanos(3),
         }))
         .unwrap();
-    assert!(denied.sends.owned.replacement_commands.is_empty());
+    assert!(denied.sends.replacement_commands.is_empty());
     assert!(!behavior.is_alive(0).unwrap());
 
     // Deadline 100ns: all three stamps still inside the inclusive window; denied.
@@ -459,7 +461,7 @@ async fn budget_recovers_after_stamps_age_out_of_the_window() {
             at: base + Duration::from_nanos(100),
         }))
         .unwrap();
-    assert!(edge.sends.owned.replacement_commands.is_empty());
+    assert!(edge.sends.replacement_commands.is_empty());
 
     // Deadline 101ns: the stamp at 0ns aged out (age 101 > 100); budget recovers.
     let recovered = behavior
@@ -470,7 +472,7 @@ async fn budget_recovers_after_stamps_age_out_of_the_window() {
             at: base + Duration::from_nanos(101),
         }))
         .unwrap();
-    assert_eq!(recovered.sends.owned.replacement_commands.len(), 1);
+    assert_eq!(recovered.sends.replacement_commands.len(), 1);
     assert!(behavior.is_alive(0).unwrap());
 }
 
@@ -482,7 +484,6 @@ async fn budget_recovers_after_stamps_age_out_of_the_window() {
 async fn restart_stamps_stay_bounded_by_the_window() {
     let base = Instant::now();
     let behavior = supervisor(
-        Parent,
         Strategy::OneForOne,
         RestartPolicy::Permanent,
         u32::MAX,

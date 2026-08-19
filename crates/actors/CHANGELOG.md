@@ -6,14 +6,23 @@ All notable changes to `bombay-behavior-actors` are documented here.
 
 ### Changed
 
-- Make `Supervisor`, `BackoffSupervisor`, `DynamicSupervisor`, `WorkerPool`, and
+- Extract fixed stable-proxy topology, installation, restart, failure, and
+  shutdown-drain transitions into one `FixedFleetOwnership` domain fold used
+  by composed supervision, standalone supervision, `WorkerPool`, and
+  `KeyedWorkerPool`. Remove the inert internal `PoolKernel` behavior and its
+  fabricated `Births<C>` capability witness.
+- Rename the application-behavior composition to `BackoffSupervise<B, C>` and
+  reserve `BackoffSupervisor<A, C>` for the standalone fixed-fleet template.
+  Both forms share the same checked attempt, timer-generation, pending-batch,
+  collision, cancellation, and stale-timer state machine.
+- Make `Supervise`, `BackoffSupervise`, `DynamicSupervisor`, `WorkerPool`, and
   `KeyedWorkerPool` orderly subtree owners. Typed shutdown now drains every
   owned stable proxy, waits through proxy-installation races, stops only after
   the final matching `ChildStopped`, and reports child shutdown rejection as a
   typed error. Delayed supervision cancels pending restart batches; both pool
   forms return every accepted queued or assigned job with the distinct
   `PoolShutdown` interruption before draining their proxies.
-- Give `BackoffSupervisor` a concrete event coproduct dual to its layered send
+- Give `BackoffSupervise` a concrete event coproduct dual to its layered send
   product: timer and coordinated-shutdown inputs are direct, supervisor return
   facts retain the inner supervisor path, and wrapped behavior inputs remain
   one path deeper. It can therefore be named as a coordinated shutdown child
@@ -50,7 +59,11 @@ All notable changes to `bombay-behavior-actors` are documented here.
 
 ### Added
 
-- Add `WorkerPoolWithParent`, backed by `SupervisorWithParent`, so every stable
+- Add `Supervisor<A, C>` and `BackoffSupervisor<A, C>` as nominal,
+  standalone actor templates that own their proxy creation capability without
+  requiring an unrelated inner behavior. `TopologyFailurePolicy`
+  selects the exhaustive retire-or-stop reaction to an unpreservable topology.
+- Add `WorkerPoolWithParent`, backed by the shared fixed-fleet ownership fold, so every stable
   pool proxy reports worker termination and creation resolution through one
   caller-supplied `ProxyParentIngress` path.
 - Add arbitrary heterogeneous coordinated shutdown through the closed recursive
@@ -87,7 +100,7 @@ All notable changes to `bombay-behavior-actors` are documented here.
 - Add validated phased and dependency-ordered `ShutdownCoordinator` /
   `TreeShutdown` folds with explicit child-shutdown rejection.
 - Add checked constant, linear, and exponential `Backoff` plus
-  `BackoffSupervisor`, which withholds replacement commands until the exact
+  `BackoffSupervise`, which withholds replacement commands until the exact
   scheduled timer generation is observed.
 - Add `DynamicSupervisor` with typed start, stop, replace, and query commands;
   command acceptance remains distinct from committed creation, replacement,

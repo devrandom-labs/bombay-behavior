@@ -8,7 +8,7 @@ use std::time::Duration;
 use behavior::EventLayer;
 use behavior::{
     Acted, Actions, Crash, Create, Delivery, Exit, Machine, MailAddr, Move, Never, Proxy,
-    Recipient, RestartPolicy, StashRoute, Step, Strategy, SupervisionEvent, Supervisor,
+    Recipient, RestartPolicy, StashRoute, Step, Strategy, Supervise, SupervisionEvent,
     TimerElapsed, TimerGeneration, TimerId, User, UserEvent, WorkerStopped,
 };
 use std::time::Instant;
@@ -81,9 +81,13 @@ impl Parent {
     fn receive(
         &mut self,
         _from: MailAddr,
-        _message: u64,
+        message: u64,
     ) -> Acted<MailAddr, Never, Vec<Never>, behavior::Births<Child>, Never> {
-        Ok(Actions::cont())
+        if message == u64::MAX {
+            Ok(Actions::create(vec![Create::birth(message, child(0))]))
+        } else {
+            Ok(Actions::cont())
+        }
     }
 }
 
@@ -121,8 +125,8 @@ fn supervisor(
     maximum: u32,
     window: Duration,
     count: usize,
-) -> Supervisor<Parent, Child> {
-    Supervisor::new(
+) -> Supervise<Parent, Child> {
+    Supervise::new(
         Parent,
         behavior::ChildTopology::indexed(
             |index| u64::try_from(index).unwrap(),
@@ -153,7 +157,7 @@ async fn proxy_initialization_is_explicit() {
 
 #[tokio::test]
 async fn empty_fleet_supervisor_initializes_and_steps_cleanly() {
-    let supervisor = behavior::Supervisor::new(
+    let supervisor = behavior::Supervise::new(
         Parent,
         behavior::ChildTopology::new((0..0).map(|index| u64::try_from(index).unwrap()), |index| {
             Some(child(index))
@@ -182,7 +186,7 @@ async fn empty_fleet_supervisor_initializes_and_steps_cleanly() {
 
 #[tokio::test]
 async fn stale_child_stopped_is_inert_at_its_selected_supervisor_owner() {
-    let supervisor = behavior::Supervisor::new(
+    let supervisor = behavior::Supervise::new(
         Parent,
         behavior::ChildTopology::new((0..1).map(|index| u64::try_from(index).unwrap()), |index| {
             Some(child(index))
@@ -241,7 +245,7 @@ async fn duplicate_child_stopped_triggers_a_second_restart() {
 /// births; an ambiguous topology is rejected before it can emit creations.
 #[test]
 fn duplicate_configured_nonces_are_rejected() {
-    let result = Supervisor::new(
+    let result = Supervise::new(
         Parent,
         behavior::ChildTopology::indexed(|_| 7, 2, |index| Some(child(index))),
         behavior::RestartConfiguration::new(
@@ -356,7 +360,7 @@ async fn one_for_all_skips_dead_slots_and_respects_budget() {
 #[tokio::test]
 async fn rest_for_one_uses_birth_sequence_not_index() {
     let at = Instant::now();
-    let supervisor = Supervisor::new(
+    let supervisor = Supervise::new(
         BirthingParent { born: false },
         behavior::ChildTopology::indexed(
             |index| u64::try_from(index).unwrap(),
@@ -592,7 +596,7 @@ async fn duplicate_nested_timer_identity_remains_addressable_at_both_paths() {
 #[tokio::test]
 async fn restart_configuration_controls_eligibility_and_budget_together() {
     let at = Instant::now();
-    let supervisor = behavior::Supervisor::new(
+    let supervisor = behavior::Supervise::new(
         Parent,
         behavior::ChildTopology::new((0..1).map(|index| u64::try_from(index).unwrap()), |index| {
             Some(child(index))

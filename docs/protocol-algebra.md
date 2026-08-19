@@ -123,7 +123,10 @@ public identity:
 Guardian<B>::Protocol            = B::Protocol
 Watch<B>::Protocol               = B::Protocol
 Deadline<B>::Protocol            = B::Protocol
-Supervisor<B, C>::Protocol       = B::Protocol
+Supervise<B, C>::Protocol       = B::Protocol
+Supervisor<A, C>::Protocol = SupervisorProtocol<A>
+BackoffSupervise<B, C>::Protocol = B::Protocol
+BackoffSupervisor<A, C>::Protocol = SupervisorProtocol<A>
 ShutdownCoordinator<B, C>::Protocol = B::Protocol
 ```
 
@@ -131,6 +134,14 @@ The wrapper itself does not implement `Protocol`. Consequently
 `Recipient<Guardian<B>>` is invalid: callers retain `Recipient<B::Protocol>`.
 An adapter whose purpose is to change the public message algebra is a new actor
 template and declares a new nominal protocol explicitly.
+
+`Supervise<B, C>` and `BackoffSupervise<B, C>` are compositions around a
+real application behavior whose own transitions may emit `Births<C>`.
+`Supervisor<A, C>` and `BackoffSupervisor<A, C>` are standalone
+templates: their uninhabited public message protocol makes application commands
+impossible, while their concrete lifecycle event sums and proxy-birth products
+are owned directly. No inert behavior is needed to manufacture creation
+authority.
 
 ## Purity and composition laws
 

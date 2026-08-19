@@ -39,20 +39,6 @@ fn child(_index: usize) -> Child {
     Recorder::default()
 }
 
-/// A quiet parent that births nothing at init.
-struct Parent;
-
-#[behavior::behavior(addr = MailAddr, message = u64, sends = Vec<Never>, births = behavior::Births<Child>, error = Never)]
-impl Parent {
-    fn receive(
-        &mut self,
-        _from: MailAddr,
-        _message: u64,
-    ) -> Acted<MailAddr, Never, Vec<Never>, behavior::Births<Child>, Never> {
-        Ok(Actions::cont())
-    }
-}
-
 #[tokio::test]
 async fn deadline_initialization_emits_exactly_one_schedule() {
     let due = Instant::now() + Duration::from_secs(1);
@@ -76,7 +62,6 @@ async fn initialized_behavior_processes_mailbox_events() {
 #[tokio::test]
 async fn supervisor_initialization_emits_the_configured_fleet_once() {
     let behavior = behavior::Supervisor::new(
-        Parent,
         behavior::ChildTopology::new((0..2).map(|index| u64::try_from(index).unwrap()), |index| {
             Some(child(index))
         }),
@@ -90,5 +75,5 @@ async fn supervisor_initialization_emits_the_configured_fleet_once() {
     .unwrap();
     let initialized = behavior.initialize().unwrap();
     assert_eq!(initialized.actions.creates.len(), 2);
-    assert_eq!(initialized.actions.sends.owned.child_observations.len(), 2);
+    assert_eq!(initialized.actions.sends.child_observations.len(), 2);
 }

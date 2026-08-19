@@ -10,7 +10,7 @@
 
 use behavior::{
     Acted, Actions, Activate, Crash, Create, CreationKind, Delivery, MailAddr, Never,
-    RestartPolicy, Step, Strategy, SupervisionEvent, Supervisor, UserEvent, WorkerStopped,
+    RestartPolicy, Step, Strategy, SupervisionEvent, Supervise, UserEvent, WorkerStopped,
 };
 use libfuzzer_sys::fuzz_target;
 use std::time::Instant;
@@ -68,7 +68,7 @@ struct Slot {
 fuzz_target!(|bytes: &[u8]| {
     let runtime = Builder::new_current_thread().enable_time().build().unwrap();
     runtime.block_on(async {
-        let behavior = Supervisor::new(
+        let behavior = Supervise::new(
             BirthingParent,
             behavior::ChildTopology::indexed(
                 |index| u64::try_from(index).unwrap(),

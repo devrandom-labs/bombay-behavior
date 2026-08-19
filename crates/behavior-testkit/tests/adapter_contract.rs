@@ -4,7 +4,7 @@ use behavior::{
     Actions, Activate, Behavior, BehaviorActed, Births, ChildTopology, Create, Delivery,
     InterpreterRequests, MailAddr, Never, NoBirths, ObserveChild, PoolAssignment,
     PoolConfiguration, PoolResponse, Proxy, Recipient, RestartConfiguration, RestartPolicy,
-    StashRoute, Step, Strategy, Supervisor, SupervisorSends, TimerId, User, WorkerPool,
+    StashRoute, Step, Strategy, Supervise, SupervisorSends, TimerId, User, WorkerPool,
     WorkerPoolProtocol,
 };
 
@@ -164,7 +164,7 @@ fn child(_: usize) -> Option<Child> {
 
 #[test]
 fn supervisor_products_are_named_and_creation_order_is_adapter_visible() {
-    let supervisor = Supervisor::new(
+    let supervisor = Supervise::new(
         Parent,
         ChildTopology::new([1, 2], child),
         RestartConfiguration::new(

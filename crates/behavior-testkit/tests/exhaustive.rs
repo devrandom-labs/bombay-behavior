@@ -36,19 +36,6 @@ impl Echo {
 
 type Child = Echo;
 
-struct Parent;
-
-#[behavior::behavior(addr = MailAddr, message = u64, sends = Vec<Never>, births = behavior::Births<Child>, error = Never)]
-impl Parent {
-    fn receive(
-        &mut self,
-        _from: MailAddr,
-        _message: u64,
-    ) -> Acted<MailAddr, Never, Vec<Never>, behavior::Births<Child>, Never> {
-        Ok(Actions::cont())
-    }
-}
-
 fn child(_index: usize) -> Child {
     Echo
 }
@@ -111,7 +98,6 @@ fn exhaustive_supervision_sequences_match_the_reference_model() {
 
                             let mut model = Model::new(FLEET);
                             let behavior = Supervisor::new(
-                                Parent,
                                 behavior::ChildTopology::indexed(
                                     |index| u64::try_from(index).unwrap(),
                                     FLEET,
@@ -145,7 +131,6 @@ fn exhaustive_supervision_sequences_match_the_reference_model() {
                                     .unwrap();
                                 let sends: Vec<MailAddr> = actions
                                     .sends
-                                    .owned
                                     .replacement_commands
                                     .iter()
                                     .map(|delivery| delivery.to.resolve(MailAddr(17)))

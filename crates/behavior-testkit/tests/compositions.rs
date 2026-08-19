@@ -418,13 +418,16 @@ async fn supervision_preserves_inner_watch_routing() {
         fn receive(
             &mut self,
             _from: MailAddr,
-            _message: u64,
+            message: u64,
         ) -> Acted<MailAddr, Never, Vec<Never>, behavior::Births<Child>, Never> {
-            Ok(Actions::cont())
+            Ok(Actions::create(vec![behavior::Create::birth(
+                message,
+                child(0),
+            )]))
         }
     }
 
-    let behavior = behavior::Supervisor::new(
+    let behavior = behavior::Supervise::new(
         behavior::Watch::new(Parent, PEER, stop_on_abnormal_death),
         behavior::ChildTopology::new((0..2).map(|index| u64::try_from(index).unwrap()), |index| {
             Some(child(index))
@@ -458,7 +461,7 @@ async fn supervision_preserves_inner_watch_routing() {
     assert!(matches!(died.become_, Step::Stop(behavior::Stopped)));
 
     // Child lane: a death still yields a replacement send on a fresh stack.
-    let replacement = behavior::Supervisor::new(
+    let replacement = behavior::Supervise::new(
         behavior::Watch::new(Parent, PEER, stop_on_abnormal_death),
         behavior::ChildTopology::new((0..2).map(|index| u64::try_from(index).unwrap()), |index| {
             Some(child(index))
@@ -501,13 +504,16 @@ async fn supervision_failure_reaction_preserves_composed_send_lanes() {
         fn receive(
             &mut self,
             _from: MailAddr,
-            _message: u64,
+            message: u64,
         ) -> Acted<MailAddr, Never, Vec<Never>, behavior::Births<Child>, Never> {
-            Ok(Actions::cont())
+            Ok(Actions::create(vec![behavior::Create::birth(
+                message,
+                child(0),
+            )]))
         }
     }
 
-    let behavior = behavior::Supervisor::new(
+    let behavior = behavior::Supervise::new(
         behavior::Watch::new(Parent, PEER, stop_on_abnormal_death),
         behavior::ChildTopology::new((0..1).map(|index| u64::try_from(index).unwrap()), |index| {
             Some(child(index))

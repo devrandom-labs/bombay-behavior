@@ -29,21 +29,6 @@ fn child(_index: usize) -> Sink {
     Sink(0)
 }
 
-/// The supervising parent: quiet, with the supervised child as its offspring
-/// type (a fleet parent must produce the fleet, not `Never`).
-struct FleetParent;
-
-#[behavior::behavior(addr = MailAddr, message = u64, sends = Vec<Never>, births = behavior::Births<Sink>, error = Never)]
-impl FleetParent {
-    fn receive(
-        &mut self,
-        _from: MailAddr,
-        _message: u64,
-    ) -> Acted<MailAddr, Never, Vec<Never>, behavior::Births<Sink>, Never> {
-        Ok(Actions::cont())
-    }
-}
-
 fn main() {
     let base_rate = measure_base();
     let proxy_rate = measure_proxy();
@@ -97,7 +82,6 @@ fn measure_proxy() -> f64 {
 /// (linear memory growth in emitted events).
 fn measure_supervise(fleet: usize) -> f64 {
     let behavior = Supervisor::new(
-        FleetParent,
         behavior::ChildTopology::indexed(
             |index| u64::try_from(index).unwrap(),
             fleet,
@@ -128,9 +112,9 @@ fn measure_supervise(fleet: usize) -> f64 {
         // Asserting stress workload: every death yields exactly one
         // replacement routed to the dead slot (OneForOne, Permanent,
         // unbounded budget) — correctness checked while measuring.
-        assert_eq!(actions.sends.owned.replacement_commands.len(), 1);
+        assert_eq!(actions.sends.replacement_commands.len(), 1);
         assert_eq!(
-            actions.sends.owned.replacement_commands[0]
+            actions.sends.replacement_commands[0]
                 .to
                 .resolve(MailAddr(17)),
             behavior::Address::birth(MailAddr(17), nonce)
