@@ -8,9 +8,9 @@ use std::time::Duration;
 
 use behavior::EventLayer;
 use behavior::{
-    Acted, Actions, Activate, Crash, Create, Delivery, MailAddr, Never, Recipient, RestartPolicy,
-    StashRoute, Step, Strategy, SupervisionEvent, TimerElapsed, TimerGeneration, TimerId,
-    UserEvent, WorkerStopped,
+    Acted, Actions, Activate, Crash, Create, CreationKind, Delivery, MailAddr, Never, Recipient,
+    RestartPolicy, StashRoute, Step, Strategy, SupervisionEvent, TimerElapsed, TimerGeneration,
+    TimerId, UserEvent, WorkerCreationResolved, WorkerStopped,
 };
 use proptest::collection::vec;
 use proptest::prelude::*;
@@ -379,6 +379,8 @@ proptest! {
 
         let mut model_echo: Vec<u64> = Vec::new();
         let mut impl_echo: Vec<u64> = Vec::new();
+        let mut workers = [0_u64, 1];
+        let mut next_worker = 2_u64;
 
         for (tag, arg, at) in events {
             let actions = match tag {
@@ -419,7 +421,7 @@ proptest! {
                     runtime
                         .block_on(async { behavior.transition(SupervisionEvent::WorkerStopped(WorkerStopped {
                             proxy: u64::from(arg % 2),
-                            worker: u64::from(arg % 2),
+                            worker: workers[usize::from(arg % 2)],
             outcome: Err(Crash::Failed),
                             at: base + Duration::from_nanos(at),
                         })) })
@@ -451,6 +453,19 @@ proptest! {
                     behavior::Address::birth(MailAddr(17), u64::from(arg % 2))
                 );
                 prop_assert!(echo_step.is_empty());
+                let proxy = u64::from(arg % 2);
+                let index = usize::from(arg % 2);
+                let previous = workers[index];
+                runtime.block_on(async { behavior.transition(
+                    SupervisionEvent::WorkerCreationResolved(WorkerCreationResolved::new(
+                        proxy,
+                        next_worker,
+                        CreationKind::ReplacementIncarnation { replaces: previous },
+                        Ok(()),
+                    )),
+                ) }).unwrap();
+                workers[index] = next_worker;
+                next_worker += 1;
             } else {
                 prop_assert!(actions.sends.owned.replacement_commands.is_empty());
             }

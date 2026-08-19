@@ -370,7 +370,7 @@ fn every_deferred_local_fact_request_declares_its_relative_destination() {
 async fn backoff_event_and_sends_are_exact_sum_product_duals() {
     use behavior_actors::{
         Delivery, InterpretDelivery, InterpretRequest, InterpretSends, InterpreterRequests,
-        SendInterpreter, SupervisionFailure, SupervisionFailureReason, SupervisorSends,
+        SendInterpreter, SupervisionFailure, SupervisorSends,
     };
 
     type Child = StopOnShutdown<Inert>;
@@ -491,11 +491,7 @@ async fn backoff_event_and_sends_are_exact_sum_product_duals() {
                     ProxyCommand::Forward(()),
                 )],
                 failure_reports: InterpreterRequests::one(ReportSupervisionFailure::new(
-                    SupervisionFailure::new(
-                        1,
-                        Ok(behavior_actors::Exit::Normal),
-                        SupervisionFailureReason::StableChildStopped,
-                    ),
+                    SupervisionFailure::stable_child_stopped(1, Ok(behavior_actors::Exit::Normal)),
                 )),
                 shutdowns: InterpreterRequests::one(ShutdownChild::new(1)),
             },
@@ -692,10 +688,9 @@ async fn worker_pool_event_and_sends_interpret_every_lane_at_the_same_structural
                 }),
             )],
             failure_reports: InterpreterRequests::one(ReportSupervisionFailure::new(
-                behavior_actors::SupervisionFailure::new(
+                behavior_actors::SupervisionFailure::stable_child_stopped(
                     1,
                     Ok(behavior_actors::Exit::Normal),
-                    behavior_actors::SupervisionFailureReason::StableChildStopped,
                 ),
             )),
             shutdowns: InterpreterRequests::one(ShutdownChild::new(1)),

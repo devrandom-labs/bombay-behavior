@@ -2,6 +2,14 @@
 
 use crate::Address;
 
+/// The authoritative terminal fact for one exact actor incarnation.
+///
+/// Successful lifecycle classification and execution failure are disjoint
+/// outcomes.  Keeping the complete sum intact prevents compositions from
+/// reconstructing provenance from a stop verdict, address reuse, or an
+/// adjacent diagnostic.
+pub type TerminalOutcome<A> = Result<Exit<A>, Crash>;
+
 /// A successfully observed actor termination.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Exit<A: Address> {
@@ -20,6 +28,8 @@ pub enum Exit<A: Address> {
 pub enum SupervisionFailureReason {
     RestartDenied(RestartDenial),
     StableChildStopped,
+    StableChildCreationRejected(crate::CreationRejection),
+    WorkerCreationRejected(crate::CreationRejection),
 }
 
 /// Why an otherwise eligible replacement set was denied.
@@ -39,4 +49,28 @@ pub enum Crash {
     EnvironmentFailed,
     Panicked,
     Cancelled,
+}
+
+/// Ask the interpreter to publish one exact terminal outcome for the
+/// emitting incarnation before interpreting the same action's terminal
+/// verdict.
+///
+/// This is a Bombay lifecycle-publication policy, not an actor-model
+/// primitive.  It is an explicit effect so a pure composition can propagate
+/// an authoritative child or peer fact without placing lifecycle provenance
+/// in [`behavior::Step`] or using an ambient runtime side channel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ReportTerminalOutcome<A: Address> {
+    pub outcome: TerminalOutcome<A>,
+}
+
+impl<A: Address> ReportTerminalOutcome<A> {
+    #[must_use]
+    pub const fn new(outcome: TerminalOutcome<A>) -> Self {
+        Self { outcome }
+    }
+}
+
+impl<A: Address> behavior::InterpreterRequest for ReportTerminalOutcome<A> {
+    type ReturnToEmitter = behavior::NoReturnToEmitter;
 }

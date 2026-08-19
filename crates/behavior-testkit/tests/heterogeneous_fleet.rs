@@ -5,8 +5,9 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, Behavior, Crash, Delivery, MailAddr, Never, Recipient, RestartPolicy, Step,
-    Strategy, SupervisionEvent, Supervisor, User, UserEvent, WorkerStopped,
+    Acted, Actions, Behavior, Crash, CreationKind, Delivery, MailAddr, Never, Recipient,
+    RestartPolicy, Step, Strategy, SupervisionEvent, Supervisor, User, UserEvent,
+    WorkerCreationResolved, WorkerStopped,
 };
 use std::time::Instant;
 
@@ -185,10 +186,31 @@ async fn supervised_mixed_fleet_routes_replacements_by_birth_sequence() {
     assert!(routes.contains(&behavior::Address::birth(MailAddr(17), 1)));
     assert!(routes.contains(&behavior::Address::birth(MailAddr(17), 2)));
 
-    let narrow = supervisor
+    supervisor
         .transition(SupervisionEvent::WorkerStopped(WorkerStopped {
             proxy: 2,
             worker: 2,
+            outcome: Err(Crash::Cancelled),
+            at,
+        }))
+        .unwrap();
+    for proxy in [1, 2] {
+        supervisor
+            .transition(SupervisionEvent::WorkerCreationResolved(
+                WorkerCreationResolved::new(
+                    proxy,
+                    proxy + 10,
+                    CreationKind::ReplacementIncarnation { replaces: proxy },
+                    Ok(()),
+                ),
+            ))
+            .unwrap();
+    }
+
+    let narrow = supervisor
+        .transition(SupervisionEvent::WorkerStopped(WorkerStopped {
+            proxy: 2,
+            worker: 12,
             outcome: Err(Crash::Failed),
             at,
         }))

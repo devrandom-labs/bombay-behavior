@@ -37,6 +37,19 @@ pub enum SupervisorError<N> {
         nonce: N,
         reason: crate::ChildShutdownRejection,
     },
+    #[error("stable-child creation provenance did not match the pending request")]
+    CreationProvenanceMismatch {
+        nonce: N,
+        expected: crate::CreationKind<N>,
+        observed: crate::CreationKind<N>,
+    },
+    #[error("worker-incarnation creation provenance did not match the pending request")]
+    WorkerCreationProvenanceMismatch {
+        proxy: N,
+        worker: N,
+        expected: crate::CreationKind<N>,
+        observed: crate::CreationKind<N>,
+    },
 }
 
 impl<N> From<OwnershipError<N>> for SupervisorError<N> {
@@ -47,6 +60,26 @@ impl<N> From<OwnershipError<N>> for SupervisorError<N> {
             OwnershipError::ChildShutdownRejected { nonce, reason } => {
                 Self::ChildShutdownRejected { nonce, reason }
             }
+            OwnershipError::CreationProvenanceMismatch {
+                nonce,
+                expected,
+                observed,
+            } => Self::CreationProvenanceMismatch {
+                nonce,
+                expected,
+                observed,
+            },
+            OwnershipError::WorkerCreationProvenanceMismatch {
+                proxy,
+                worker,
+                expected,
+                observed,
+            } => Self::WorkerCreationProvenanceMismatch {
+                proxy,
+                worker,
+                expected,
+                observed,
+            },
         }
     }
 }
@@ -219,11 +252,17 @@ where
                 self.finish(fold)
             }
             SupervisionEvent::CreationResolved(event) => {
-                let fold = self.ownership.creation_resolved(event);
+                let fold = self
+                    .ownership
+                    .creation_resolved(event)
+                    .map_err(SupervisorError::from)?;
                 self.finish(fold)
             }
             SupervisionEvent::WorkerCreationResolved(event) => {
-                let fold = self.ownership.worker_creation_resolved(event);
+                let fold = self
+                    .ownership
+                    .worker_creation_resolved(event)
+                    .map_err(SupervisorError::from)?;
                 self.finish(fold)
             }
             SupervisionEvent::ShutdownRequested(_) => {
@@ -247,8 +286,8 @@ mod tests {
 
     use super::*;
     use crate::{
-        Activate as _, Crash, CreationResolved, RestartPolicy, ShutdownRequested, Strategy,
-        WorkerStopped,
+        Activate as _, Crash, CreationKind, CreationRejection, CreationResolved, RestartPolicy,
+        ShutdownRequested, Strategy, SupervisionFailure, WorkerCreationResolved, WorkerStopped,
     };
     use behavior::{Actions, MailAddr, NoBirths};
 
@@ -360,5 +399,65 @@ mod tests {
             .unwrap();
         assert_eq!(denied.sends.failure_reports.len(), 1);
         assert!(matches!(denied.become_, Step::Stop(_)));
+    }
+
+    #[test]
+    fn worker_creation_rejection_is_an_exact_topology_failure() {
+        let initialized =
+            Supervisor::<MailAddr, Child>::new(ChildTopology::new([7], child), restart())
+                .unwrap()
+                .initialize()
+                .unwrap();
+        let mut active = initialized.behavior;
+        let rejected = active
+            .on(WorkerCreationResolved::new(
+                7,
+                70,
+                CreationKind::Birth,
+                Err(CreationRejection::NonceAlreadyBound),
+            ))
+            .unwrap();
+
+        assert_eq!(rejected.sends.failure_reports.len(), 1);
+        assert_eq!(
+            rejected.sends.failure_reports[0].failure,
+            SupervisionFailure::WorkerCreationRejected {
+                proxy: 7,
+                worker: 70,
+                kind: CreationKind::Birth,
+                rejection: CreationRejection::NonceAlreadyBound,
+            }
+        );
+        assert!(!active.is_alive(7).unwrap());
+    }
+
+    #[test]
+    fn worker_creation_provenance_mismatch_is_typed_and_atomic() {
+        let initialized =
+            Supervisor::<MailAddr, Child>::new(ChildTopology::new([7], child), restart())
+                .unwrap()
+                .initialize()
+                .unwrap();
+        let mut active = initialized.behavior;
+        let result = active.on(WorkerCreationResolved::new(
+            7,
+            70,
+            CreationKind::ReplacementIncarnation { replaces: 69 },
+            Ok(()),
+        ));
+        let Err(error) = result else {
+            panic!("mismatched worker provenance must be rejected");
+        };
+
+        assert_eq!(
+            error,
+            SupervisorError::WorkerCreationProvenanceMismatch {
+                proxy: 7,
+                worker: 70,
+                expected: CreationKind::Birth,
+                observed: CreationKind::ReplacementIncarnation { replaces: 69 },
+            }
+        );
+        assert!(active.is_alive(7).unwrap());
     }
 }

@@ -282,6 +282,19 @@ pub enum PoolError<N> {
         nonce: N,
         reason: crate::ChildShutdownRejection,
     },
+    #[error("worker-proxy creation provenance did not match the pending request")]
+    ProxyCreationProvenanceMismatch {
+        nonce: N,
+        expected: crate::CreationKind<N>,
+        observed: crate::CreationKind<N>,
+    },
+    #[error("worker-incarnation creation provenance did not match the pending request")]
+    WorkerCreationProvenanceMismatch {
+        proxy: N,
+        worker: N,
+        expected: crate::CreationKind<N>,
+        observed: crate::CreationKind<N>,
+    },
 }
 
 struct AcceptedJob<A: Address, D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>, J, R> {
@@ -676,12 +689,10 @@ where
         let fold = match event {
             PoolOwnershipEvent::WorkerStopped(event) => self.supervisor.worker_stopped(event),
             PoolOwnershipEvent::WorkerCreationResolved(event) => {
-                Ok(self.supervisor.worker_creation_resolved(event))
+                self.supervisor.worker_creation_resolved(event)
             }
             PoolOwnershipEvent::ChildStopped(event) => self.supervisor.child_stopped(event),
-            PoolOwnershipEvent::CreationResolved(event) => {
-                Ok(self.supervisor.creation_resolved(event))
-            }
+            PoolOwnershipEvent::CreationResolved(event) => self.supervisor.creation_resolved(event),
             PoolOwnershipEvent::ShutdownRequested => Ok(self.supervisor.shutdown()),
             PoolOwnershipEvent::ChildShutdownRejected(event) => {
                 self.supervisor.child_shutdown_rejected(event)
@@ -699,6 +710,26 @@ where
             OwnershipError::ChildShutdownRejected { nonce, reason } => {
                 PoolError::ChildShutdownRejected { nonce, reason }
             }
+            OwnershipError::CreationProvenanceMismatch {
+                nonce,
+                expected,
+                observed,
+            } => PoolError::ProxyCreationProvenanceMismatch {
+                nonce,
+                expected,
+                observed,
+            },
+            OwnershipError::WorkerCreationProvenanceMismatch {
+                proxy,
+                worker,
+                expected,
+                observed,
+            } => PoolError::WorkerCreationProvenanceMismatch {
+                proxy,
+                worker,
+                expected,
+                observed,
+            },
         })?;
         Ok(Actions::new(
             SendLayer::new(fold.actions.sends, PoolBehaviorSends::empty()),
@@ -1150,6 +1181,26 @@ where
             OwnershipError::ChildShutdownRejected { nonce, reason } => {
                 PoolError::ChildShutdownRejected { nonce, reason }
             }
+            OwnershipError::CreationProvenanceMismatch {
+                nonce,
+                expected,
+                observed,
+            } => PoolError::ProxyCreationProvenanceMismatch {
+                nonce,
+                expected,
+                observed,
+            },
+            OwnershipError::WorkerCreationProvenanceMismatch {
+                proxy,
+                worker,
+                expected,
+                observed,
+            } => PoolError::WorkerCreationProvenanceMismatch {
+                proxy,
+                worker,
+                expected,
+                observed,
+            },
         })?;
         Ok(Actions::new(
             SendLayer::new(actions.sends, PoolBehaviorSends::empty()),

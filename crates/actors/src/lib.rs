@@ -52,12 +52,15 @@ pub use discovery::{
     ResolverConfigError, ResolverMessage, Topic, TopicError, TopicMembership, TopicMessage,
 };
 pub use lifecycle::{
-    CleanupReaction, CoordinatedGuardian, Guardian, HeterogeneousShutdownCoordinator,
-    HeterogeneousShutdownPlan, HeterogeneousShutdownSends, LifecyclePublication,
-    LifecyclePublisher, NoShutdownTargets, Reaper, ShutdownChoice, ShutdownCoordinator,
-    ShutdownCoordinatorError, ShutdownCoordinatorEvent, ShutdownPlan, ShutdownPlanError,
-    ShutdownState, ShutdownTree, ShutdownTreeError, Task, TaskError, TaskMessage, TaskResult,
-    TaskState, TerminationMonitor, TerminationObservation, TerminationReaction, TreeShutdown,
+    ChildTermination, CleanupReaction, CoordinatedGuardian, Guardian,
+    HeterogeneousShutdownCoordinator, HeterogeneousShutdownPlan, HeterogeneousShutdownSends,
+    LifecyclePublication, LifecyclePublisher, NoShutdownTargets, PeerTermination,
+    PropagateTermination, Reaper, ShutdownChoice, ShutdownCoordinator, ShutdownCoordinatorError,
+    ShutdownCoordinatorEvent, ShutdownPlan, ShutdownPlanError, ShutdownState, ShutdownTree,
+    ShutdownTreeError, Task, TaskError, TaskMessage, TaskResult, TaskState, TerminalDisposition,
+    TerminalPropagationPolicy, TerminalPropagationSends, TerminalPropagationState,
+    TerminationMonitor, TerminationObservation, TerminationReaction, TerminationTarget,
+    TreeShutdown, propagate_abnormal, propagate_all,
 };
 pub use machine::{Machine, Move};
 pub use operations::{
@@ -120,7 +123,9 @@ pub use supervision::{
     TopologyFailurePolicy, restart_all, restart_one, restart_rest, retire_on_supervision_failure,
     stop_on_supervision_failure,
 };
-pub use termination::{Crash, Exit, RestartDenial, SupervisionFailureReason};
+pub use termination::{
+    Crash, Exit, ReportTerminalOutcome, RestartDenial, SupervisionFailureReason, TerminalOutcome,
+};
 pub use time::{
     Deadline, DeadlineEvent, DeadlineReaction, Lease, LeaseMessage, LeaseOutcome, LeaseRejection,
     LeaseSends, LeaseState, OneShot, OneShotEvent, OneShotReaction, Periodic, PeriodicEvent,

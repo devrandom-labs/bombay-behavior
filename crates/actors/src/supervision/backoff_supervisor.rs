@@ -879,7 +879,22 @@ mod tests {
         active
             .on_path(TimerElapsed::new(TimerId(11), TimerGeneration(0)))
             .unwrap();
-        let second = active.on_path(stopped(1)).unwrap();
+        active
+            .on_path(WorkerCreationResolved::new(
+                1,
+                201,
+                behavior::CreationKind::replacement_of(101),
+                Ok(()),
+            ))
+            .unwrap();
+        let second = active
+            .on_path(WorkerStopped::new(
+                1,
+                201,
+                Err(Crash::Panicked),
+                Instant::now(),
+            ))
+            .unwrap();
         assert_eq!(
             second.sends.owned.schedules.as_slice(),
             [ScheduleAfter::new(

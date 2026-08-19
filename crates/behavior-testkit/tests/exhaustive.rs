@@ -7,8 +7,8 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, Delivery, MailAddr, Never, RestartPolicy, Strategy, SupervisionEvent,
-    Supervisor, WorkerStopped,
+    Acted, Actions, CreationKind, Delivery, MailAddr, Never, RestartPolicy, Strategy,
+    SupervisionEvent, Supervisor, WorkerCreationResolved, WorkerStopped,
 };
 use behavior_testkit::model::{Model, Outcome};
 use std::time::Instant;
@@ -113,6 +113,8 @@ fn exhaustive_supervision_sequences_match_the_reference_model() {
                             .unwrap();
                             let initialized = behavior.initialize().unwrap();
                             let mut behavior = initialized.behavior;
+                            let mut workers = [0_u64, 1];
+                            let mut next_worker = 2_u64;
 
                             for (nonce, outcome, at) in events {
                                 let expected = model
@@ -122,7 +124,7 @@ fn exhaustive_supervision_sequences_match_the_reference_model() {
                                         behavior.transition(SupervisionEvent::WorkerStopped(
                                             WorkerStopped {
                                                 proxy: nonce,
-                                                worker: nonce,
+                                                worker: workers[usize::try_from(nonce).unwrap()],
                                                 outcome: outcome.into_result(),
                                                 at: base + Duration::from_nanos(at),
                                             },
@@ -135,14 +137,55 @@ fn exhaustive_supervision_sequences_match_the_reference_model() {
                                     .iter()
                                     .map(|delivery| delivery.to.resolve(MailAddr(17)))
                                     .collect();
-                                let expected: Vec<MailAddr> = expected
-                                    .into_iter()
+                                let expected_routes: Vec<MailAddr> = expected
+                                    .iter()
+                                    .copied()
                                     .map(|nonce| behavior::Address::birth(MailAddr(17), nonce))
                                     .collect();
                                 assert_eq!(
-                                    sends, expected,
+                                    sends, expected_routes,
                                     "strategy={strategy:?} policy={policy:?} maximum={maximum} window={window:?}"
                                 );
+                                for proxy in expected {
+                                    let index = usize::try_from(proxy).unwrap();
+                                    let previous = workers[index];
+                                    if proxy != nonce {
+                                        runtime
+                                            .block_on(async {
+                                                behavior.transition(
+                                                    SupervisionEvent::WorkerStopped(
+                                                        WorkerStopped {
+                                                            proxy,
+                                                            worker: previous,
+                                                            outcome: Err(
+                                                                behavior::Crash::Cancelled,
+                                                            ),
+                                                            at: base + Duration::from_nanos(at),
+                                                        },
+                                                    ),
+                                                )
+                                            })
+                                            .unwrap();
+                                    }
+                                    runtime
+                                        .block_on(async {
+                                            behavior.transition(
+                                                SupervisionEvent::WorkerCreationResolved(
+                                                    WorkerCreationResolved::new(
+                                                        proxy,
+                                                        next_worker,
+                                                        CreationKind::ReplacementIncarnation {
+                                                            replaces: previous,
+                                                        },
+                                                        Ok(()),
+                                                    ),
+                                                ),
+                                            )
+                                        })
+                                        .unwrap();
+                                    workers[index] = next_worker;
+                                    next_worker += 1;
+                                }
                                 for slot in model.slots() {
                                     assert_eq!(
                                         behavior.is_alive(slot.nonce).unwrap(),

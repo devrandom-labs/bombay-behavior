@@ -4,6 +4,7 @@ mod guardian;
 mod shutdown_coordinator;
 mod task;
 mod termination_monitor;
+mod termination_propagation;
 
 pub use crate::shutdown::{FinalizeOnShutdown, ShutdownEvent, ShutdownReaction, StopOnShutdown};
 pub use crate::watch::{LinkReaction, Watch, WatchEvent, stop_on_abnormal_death};
@@ -18,4 +19,9 @@ pub use task::{Task, TaskError, TaskMessage, TaskResult, TaskState};
 pub use termination_monitor::{
     CleanupReaction, LifecyclePublication, LifecyclePublisher, Reaper, TerminationMonitor,
     TerminationObservation, TerminationReaction,
+};
+pub use termination_propagation::{
+    ChildTermination, PeerTermination, PropagateTermination, TerminalDisposition,
+    TerminalPropagationPolicy, TerminalPropagationSends, TerminalPropagationState,
+    TerminationTarget, propagate_abnormal, propagate_all,
 };

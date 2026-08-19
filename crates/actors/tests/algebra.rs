@@ -20,8 +20,8 @@ use behavior::{
     PeerStopped, Proxy, ProxyCommand, ProxyEvent, Recipient, RestartDenial, RestartPolicy,
     ScheduleAt, SendEffects, SendInterpreter, ShutdownChild, ShutdownRequested, StashRoute, Step,
     Strategy, Supervise, SupervisionEvent, SupervisionFailure, SupervisionFailureReason,
-    TimerElapsed, TimerGeneration, TimerId, User, UserEvent, Watch, WorkerStopped,
-    stop_on_abnormal_death, stop_on_supervision_failure,
+    TimerElapsed, TimerGeneration, TimerId, User, UserEvent, Watch, WorkerCreationResolved,
+    WorkerStopped, stop_on_abnormal_death, stop_on_supervision_failure,
 };
 use proptest::prelude::*;
 use std::time::Instant;
@@ -1079,15 +1079,17 @@ fn verify_budget_failure_and_stop(
     _parent: &mut Parent,
     failure: &SupervisionFailure<MailAddr>,
 ) -> Result<Become, Never> {
-    assert_eq!(failure.child, 1);
-    assert_eq!(failure.outcome, Err(Crash::Panicked));
     assert_eq!(
-        failure.reason,
-        SupervisionFailureReason::RestartDenied(RestartDenial::BudgetExceeded {
-            restarts_in_window: 0,
-            replacements_requested: 3,
-            maximum_restarts: 2,
-        })
+        *failure,
+        SupervisionFailure::RestartDenied {
+            child: 1,
+            outcome: Err(Crash::Panicked),
+            denial: RestartDenial::BudgetExceeded {
+                restarts_in_window: 0,
+                replacements_requested: 3,
+                maximum_restarts: 2,
+            },
+        }
     );
     let _ = failure;
     Ok(Step::Stop(behavior::Stopped))
@@ -1444,6 +1446,16 @@ async fn configured_supervision_failure_reaction_stops_on_budget_denial() {
     .with_failure_reaction(verify_budget_failure_and_stop);
     let initialized = supervisor.initialize().unwrap();
     let mut supervisor = initialized.behavior;
+    for proxy in 0..3 {
+        supervisor
+            .on_path(WorkerCreationResolved::new(
+                proxy,
+                proxy,
+                CreationKind::Birth,
+                Ok(()),
+            ))
+            .unwrap();
+    }
 
     let actions = supervisor
         .transition(SupervisionEvent::WorkerStopped(WorkerStopped {
@@ -1457,7 +1469,7 @@ async fn configured_supervision_failure_reaction_stops_on_budget_denial() {
     assert!(actions.sends.owned.replacement_commands.is_empty());
     assert_eq!(actions.sends.owned.failure_reports.len(), 1);
     assert_eq!(
-        actions.sends.owned.failure_reports[0].failure.reason,
+        actions.sends.owned.failure_reports[0].failure.reason(),
         SupervisionFailureReason::RestartDenied(RestartDenial::BudgetExceeded {
             restarts_in_window: 0,
             replacements_requested: 3,
@@ -1499,7 +1511,7 @@ async fn configured_supervision_failure_reaction_stops_when_stable_proxy_stops()
     assert_eq!(actions.become_, Step::Stop(behavior::Stopped));
     assert_eq!(actions.sends.owned.failure_reports.len(), 1);
     assert_eq!(
-        actions.sends.owned.failure_reports[0].failure.reason,
+        actions.sends.owned.failure_reports[0].failure.reason(),
         SupervisionFailureReason::StableChildStopped
     );
     assert!(!supervisor.is_alive(0).unwrap());
@@ -1694,6 +1706,15 @@ async fn supervision_strategy_policy_and_budget_are_pure_send_decisions() {
         .initialize()
         .unwrap()
         .behavior;
+    for proxy in 0..3 {
+        one.on_path(WorkerCreationResolved::new(
+            proxy,
+            proxy,
+            CreationKind::Birth,
+            Ok(()),
+        ))
+        .unwrap();
+    }
     assert_eq!(
         one.transition(stopped(1))
             .unwrap()
@@ -1708,6 +1729,15 @@ async fn supervision_strategy_policy_and_budget_are_pure_send_decisions() {
         .initialize()
         .unwrap()
         .behavior;
+    for proxy in 0..3 {
+        all.on_path(WorkerCreationResolved::new(
+            proxy,
+            proxy,
+            CreationKind::Birth,
+            Ok(()),
+        ))
+        .unwrap();
+    }
     assert_eq!(
         all.transition(stopped(1))
             .unwrap()
@@ -1722,6 +1752,15 @@ async fn supervision_strategy_policy_and_budget_are_pure_send_decisions() {
         .initialize()
         .unwrap()
         .behavior;
+    for proxy in 0..3 {
+        rest.on_path(WorkerCreationResolved::new(
+            proxy,
+            proxy,
+            CreationKind::Birth,
+            Ok(()),
+        ))
+        .unwrap();
+    }
     assert_eq!(
         rest.transition(stopped(1))
             .unwrap()
@@ -1832,6 +1871,14 @@ proptest! {
             .initialize()
             .unwrap()
             .behavior;
+        for proxy in 0..3 {
+            behavior.on_path(WorkerCreationResolved::new(
+                proxy,
+                proxy,
+                CreationKind::Birth,
+                Ok(()),
+            )).unwrap();
+        }
         let event = SupervisionEvent::WorkerStopped(WorkerStopped {
             proxy: u64::try_from(dead).unwrap(),
             worker: u64::try_from(dead).unwrap(),

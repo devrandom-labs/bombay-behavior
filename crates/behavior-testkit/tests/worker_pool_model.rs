@@ -450,7 +450,14 @@ fn interruption_policy_distinguishes_failure_from_at_least_once_retry() {
             InterruptionPolicy::Retry => {
                 assert!(responses(&actions).is_empty());
                 assert_eq!(pool.backlog_len(), 1);
-                let replacement = install(&mut pool, 0);
+                let replacement = pool
+                    .on_path(WorkerCreationResolved::new(
+                        0,
+                        1,
+                        CreationKind::ReplacementIncarnation { replaces: 0 },
+                        Ok(()),
+                    ))
+                    .unwrap();
                 let ProxyCommand::Forward(retried) = &assignments(&replacement)[0].message else {
                     panic!("retry is forwarded after installation");
                 };

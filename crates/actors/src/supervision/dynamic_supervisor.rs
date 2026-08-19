@@ -35,6 +35,10 @@ pub enum DynamicSupervisorRejection {
     NotFound,
     /// The supervisor has begun terminal subtree shutdown.
     ShuttingDown,
+    /// The interpreter rejected orderly shutdown of the selected established
+    /// proxy.  The exact capability rejection is preserved rather than
+    /// collapsed into an admission-state guess.
+    ShutdownRejected(crate::ChildShutdownRejection),
 }
 
 /// A terminal failure while draining the dynamic supervisor's owned proxies.
@@ -110,6 +114,7 @@ where
     },
     Stopped {
         nonce: A::Nonce,
+        outcome: crate::TerminalOutcome<A>,
     },
     ReplaceAccepted {
         nonce: A::Nonce,
@@ -738,6 +743,7 @@ where
                         reply,
                         DynamicSupervisorOutcome::Stopped {
                             nonce: stopped.nonce,
+                            outcome: stopped.outcome,
                         },
                     ));
                 }
@@ -827,7 +833,7 @@ where
                     reply,
                     DynamicSupervisorOutcome::StopRejected {
                         nonce: rejected.nonce,
-                        reason: DynamicSupervisorRejection::NotAvailable,
+                        reason: DynamicSupervisorRejection::ShutdownRejected(rejected.reason),
                     },
                 ));
                 Ok(Actions::send(sends))
@@ -1047,10 +1053,65 @@ mod tests {
             .unwrap();
         assert_eq!(stopping.sends.shutdowns.as_slice(), [ShutdownChild::new(3)]);
         assert_eq!(active.phase(3), Some(DynamicChildPhase::Stopping));
-        active
-            .on_path(ChildStopped::new(3, Ok(Exit::Normal), Instant::now()))
+        let outcome = Err(crate::Crash::Panicked);
+        let stopped = active
+            .on_path(ChildStopped::new(3, outcome, Instant::now()))
             .unwrap();
+        assert!(matches!(
+            stopped.sends.outcomes[0].message,
+            DynamicSupervisorOutcome::Stopped {
+                nonce: 3,
+                outcome: reported,
+            } if reported == outcome
+        ));
         assert_eq!(active.phase(3), Some(DynamicChildPhase::Retired));
+    }
+
+    #[test]
+    fn explicit_stop_rejection_preserves_the_capability_reason() {
+        let mut active = DynamicSupervisor::<MailAddr, Worker, Reply>::new()
+            .initialize()
+            .unwrap()
+            .behavior;
+        active
+            .receive(
+                MailAddr(1),
+                DynamicSupervisorMessage::Start {
+                    nonce: 3,
+                    child: Worker,
+                    reply_to: reply(),
+                },
+            )
+            .unwrap();
+        active
+            .on_path(CreationResolved::birth(3, MailAddr(30)))
+            .unwrap();
+        active
+            .receive(
+                MailAddr(1),
+                DynamicSupervisorMessage::Stop {
+                    nonce: 3,
+                    reply_to: reply(),
+                },
+            )
+            .unwrap();
+
+        let rejected = active
+            .on_path(ChildShutdownRejected::new(
+                3,
+                crate::ChildShutdownRejection::AlreadyStopping,
+            ))
+            .unwrap();
+        assert!(matches!(
+            rejected.sends.outcomes[0].message,
+            DynamicSupervisorOutcome::StopRejected {
+                nonce: 3,
+                reason: DynamicSupervisorRejection::ShutdownRejected(
+                    crate::ChildShutdownRejection::AlreadyStopping
+                ),
+            }
+        ));
+        assert_eq!(active.phase(3), Some(DynamicChildPhase::Available));
     }
 
     #[test]

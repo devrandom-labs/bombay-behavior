@@ -218,6 +218,7 @@ wrapper: `Machine`, `MessageAdapter`, `Task`, `Buffer`, `Router`,
 | lifecycle | `FinalizeOnShutdown` | preserves inner | owns shutdown | preserves final sends/births, forces stop |
 | lifecycle | `ShutdownCoordinator` | preserves inner | owns planned shutdown progress | adds typed child-shutdown requests |
 | lifecycle | `TerminationMonitor` | preserves inner | owns one peer observation | adds peer observation |
+| lifecycle | `PropagateTermination` | preserves inner protocol | owns one statically selected child or peer terminal fact and an explicit discharge/propagate policy | adds observation plus exact terminal-publication request |
 | lifecycle | `Task` | concrete nominal template | user only | typed terminal reply, stop |
 | timing | `Deadline` | preserves inner | owns one timer destination | adds absolute schedule |
 | timing | `OneShot` | preserves inner | owns one timer destination | adds relative schedule |

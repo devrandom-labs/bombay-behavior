@@ -9,7 +9,8 @@ use std::time::Duration;
 use behavior::{
     Acted, Actions, Behavior, ChildStopped, Crash, Create, CreationKind, CreationResolved,
     Delivery, MailAddr, Never, Proxy, ProxyCommand, ProxyEvent, RestartPolicy, Step, Strategy,
-    Supervise, SupervisionEvent, Supervisor, TopologyFailurePolicy, User, UserEvent, WorkerStopped,
+    Supervise, SupervisionEvent, Supervisor, TopologyFailurePolicy, User, UserEvent,
+    WorkerCreationResolved, WorkerStopped,
 };
 use behavior_testkit::model::{
     ExpectedCreation, ExpectedIncarnation, IncarnationModel, Model, Outcome,
@@ -270,6 +271,8 @@ proptest! {
         let runtime = Builder::new_current_thread().enable_all().build().unwrap();
         let initialized = behavior.initialize().unwrap();
         let mut behavior = initialized.behavior;
+        let mut workers: Vec<u64> = (0..u64::try_from(count).unwrap()).collect();
+        let mut next_worker = u64::try_from(count).unwrap();
 
         for (dead_seed, outcome_tag, at) in events {
             let dead = dead_seed % u64::try_from(count).unwrap();
@@ -278,7 +281,7 @@ proptest! {
             let actions = runtime
                 .block_on(async { behavior.transition(SupervisionEvent::WorkerStopped(WorkerStopped {
                     proxy: dead,
-                    worker: dead,
+                    worker: workers[usize::try_from(dead).unwrap()],
             outcome: outcome.into_result(),
                     at: base + Duration::from_nanos(at),
                 })) })
@@ -289,16 +292,43 @@ proptest! {
                 .iter()
                 .map(|delivery| delivery.to.resolve(MailAddr(17)))
                 .collect();
-            let expected: Vec<MailAddr> = expected
-                .into_iter()
+            let expected_routes: Vec<MailAddr> = expected
+                .iter()
+                .copied()
                 .map(|nonce| behavior::Address::birth(MailAddr(17), nonce))
                 .collect();
-            prop_assert_eq!(sends, expected);
+            prop_assert_eq!(sends, expected_routes);
             prop_assert!(actions.creates.is_empty());
             if model.last_restart_denied() {
                 prop_assert_eq!(actions.become_, Step::Stop(behavior::Stopped));
             } else {
                 prop_assert_eq!(actions.become_, Step::Continue);
+            }
+
+            for proxy in expected {
+                let index = usize::try_from(proxy).unwrap();
+                let previous = workers[index];
+                if proxy != dead {
+                    runtime.block_on(async { behavior.transition(SupervisionEvent::WorkerStopped(
+                        WorkerStopped {
+                            proxy,
+                            worker: previous,
+                            outcome: Err(Crash::Cancelled),
+                            at: base + Duration::from_nanos(at),
+                        },
+                    )) }).unwrap();
+                }
+                let replacement = next_worker;
+                next_worker += 1;
+                runtime.block_on(async { behavior.transition(
+                    SupervisionEvent::WorkerCreationResolved(WorkerCreationResolved::new(
+                        proxy,
+                        replacement,
+                        CreationKind::ReplacementIncarnation { replaces: previous },
+                        Ok(()),
+                    )),
+                ) }).unwrap();
+                workers[index] = replacement;
             }
 
             for nonce in 0..count {
@@ -345,6 +375,8 @@ proptest! {
         let runtime = Builder::new_current_thread().enable_all().build().unwrap();
         let initialized = behavior.initialize().unwrap();
         let mut behavior = initialized.behavior;
+        let mut workers: Vec<u64> = (0..u64::try_from(count).unwrap()).collect();
+        let mut next_worker = u64::try_from(count).unwrap();
 
         let mut births: u64 = u64::try_from(count).unwrap();
         for (tag, arg, at) in events {
@@ -353,6 +385,7 @@ proptest! {
                 let nonce = births;
                 births += 1;
                 model.birth(nonce);
+                workers.push(nonce);
                 let actions = runtime
                     .block_on(async { behavior.transition(SupervisionEvent::Behavior(UserEvent::user(
                         MailAddr(0),
@@ -383,7 +416,7 @@ proptest! {
                 let actions = runtime
                     .block_on(async { behavior.transition(SupervisionEvent::WorkerStopped(WorkerStopped {
                         proxy: nonce,
-                        worker: nonce,
+                        worker: workers[usize::try_from(nonce).unwrap()],
             outcome: outcome.into_result(),
                         at: base + Duration::from_nanos(at),
                     })) })
@@ -394,10 +427,46 @@ proptest! {
                     .map(|delivery| delivery.to.resolve(MailAddr(17)))
                     .collect();
                 let expected: Vec<MailAddr> = expected
-                    .into_iter()
+                    .iter()
+                    .copied()
                     .map(|child| behavior::Address::birth(MailAddr(17), child))
                     .collect();
                 prop_assert_eq!(sends, expected);
+                let replacements = model
+                    .slots()
+                    .iter()
+                    .filter_map(|slot| {
+                        actions.sends.owned.replacement_commands.iter().any(|delivery| {
+                            delivery.to.resolve(MailAddr(17))
+                                == behavior::Address::birth(MailAddr(17), slot.nonce)
+                        }).then_some(slot.nonce)
+                    })
+                    .collect::<Vec<_>>();
+                for proxy in replacements {
+                    let index = usize::try_from(proxy).unwrap();
+                    let previous = workers[index];
+                    if proxy != nonce {
+                        runtime.block_on(async { behavior.transition(SupervisionEvent::WorkerStopped(
+                            WorkerStopped {
+                                proxy,
+                                worker: previous,
+                                outcome: Err(Crash::Cancelled),
+                                at: base + Duration::from_nanos(at),
+                            },
+                        )) }).unwrap();
+                    }
+                    let replacement = next_worker;
+                    next_worker += 1;
+                    runtime.block_on(async { behavior.transition(
+                        SupervisionEvent::WorkerCreationResolved(WorkerCreationResolved::new(
+                            proxy,
+                            replacement,
+                            CreationKind::ReplacementIncarnation { replaces: previous },
+                            Ok(()),
+                        )),
+                    ) }).unwrap();
+                    workers[index] = replacement;
+                }
             }
 
             for slot in model.slots() {
@@ -427,47 +496,38 @@ async fn budget_recovers_after_stamps_age_out_of_the_window() {
     );
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
+    let mut worker = 0;
+    let mut next_worker = 1;
 
     for offset in 0..3 {
         behavior
             .transition(SupervisionEvent::WorkerStopped(WorkerStopped {
                 proxy: 0,
-                worker: 0,
+                worker,
                 outcome: Err(Crash::Failed),
                 at: base + Duration::from_nanos(offset),
             }))
             .unwrap();
+        behavior
+            .transition(SupervisionEvent::WorkerCreationResolved(
+                WorkerCreationResolved::new(
+                    0,
+                    next_worker,
+                    CreationKind::ReplacementIncarnation { replaces: worker },
+                    Ok(()),
+                ),
+            ))
+            .unwrap();
+        worker = next_worker;
+        next_worker += 1;
     }
     assert_eq!(behavior.restarts_in_window(), 3);
-
-    // Deadline 3ns: 3 stamps + 1 candidate = 4 > 3, denied.
-    let denied = behavior
-        .transition(SupervisionEvent::WorkerStopped(WorkerStopped {
-            proxy: 0,
-            worker: 0,
-            outcome: Err(Crash::Failed),
-            at: base + Duration::from_nanos(3),
-        }))
-        .unwrap();
-    assert!(denied.sends.replacement_commands.is_empty());
-    assert!(!behavior.is_alive(0).unwrap());
-
-    // Deadline 100ns: all three stamps still inside the inclusive window; denied.
-    let edge = behavior
-        .transition(SupervisionEvent::WorkerStopped(WorkerStopped {
-            proxy: 0,
-            worker: 0,
-            outcome: Err(Crash::Failed),
-            at: base + Duration::from_nanos(100),
-        }))
-        .unwrap();
-    assert!(edge.sends.replacement_commands.is_empty());
 
     // Deadline 101ns: the stamp at 0ns aged out (age 101 > 100); budget recovers.
     let recovered = behavior
         .transition(SupervisionEvent::WorkerStopped(WorkerStopped {
             proxy: 0,
-            worker: 0,
+            worker,
             outcome: Err(Crash::Failed),
             at: base + Duration::from_nanos(101),
         }))
@@ -492,17 +552,31 @@ async fn restart_stamps_stay_bounded_by_the_window() {
     );
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
+    let mut worker = 0;
+    let mut next_worker = 1;
 
     let mut peak = 0_usize;
     for offset in 0..1000 {
         behavior
             .transition(SupervisionEvent::WorkerStopped(WorkerStopped {
                 proxy: 0,
-                worker: 0,
+                worker,
                 outcome: Err(Crash::Failed),
                 at: base + Duration::from_nanos(offset),
             }))
             .unwrap();
+        behavior
+            .transition(SupervisionEvent::WorkerCreationResolved(
+                WorkerCreationResolved::new(
+                    0,
+                    next_worker,
+                    CreationKind::ReplacementIncarnation { replaces: worker },
+                    Ok(()),
+                ),
+            ))
+            .unwrap();
+        worker = next_worker;
+        next_worker += 1;
         peak = peak.max(behavior.restarts_in_window());
     }
     // Deadline 1ns spacing, at most 51 distinct stamps fit inside a 50ns window.

@@ -273,6 +273,21 @@ pub enum SuperviseError<E, N> {
         nonce: N,
         reason: crate::ChildShutdownRejection,
     },
+    /// A creation result carried provenance different from the pending request.
+    #[error("stable-child creation provenance did not match the pending request")]
+    CreationProvenanceMismatch {
+        nonce: N,
+        expected: crate::CreationKind<N>,
+        observed: crate::CreationKind<N>,
+    },
+    /// A worker-incarnation result carried provenance different from the pending request.
+    #[error("worker-incarnation creation provenance did not match the pending request")]
+    WorkerCreationProvenanceMismatch {
+        proxy: N,
+        worker: N,
+        expected: crate::CreationKind<N>,
+        observed: crate::CreationKind<N>,
+    },
 }
 
 fn map_ownership_error<E, N>(error: OwnershipError<N>) -> SuperviseError<E, N> {
@@ -282,6 +297,26 @@ fn map_ownership_error<E, N>(error: OwnershipError<N>) -> SuperviseError<E, N> {
         OwnershipError::ChildShutdownRejected { nonce, reason } => {
             SuperviseError::ChildShutdownRejected { nonce, reason }
         }
+        OwnershipError::CreationProvenanceMismatch {
+            nonce,
+            expected,
+            observed,
+        } => SuperviseError::CreationProvenanceMismatch {
+            nonce,
+            expected,
+            observed,
+        },
+        OwnershipError::WorkerCreationProvenanceMismatch {
+            proxy,
+            worker,
+            expected,
+            observed,
+        } => SuperviseError::WorkerCreationProvenanceMismatch {
+            proxy,
+            worker,
+            expected,
+            observed,
+        },
     }
 }
 
@@ -521,14 +556,16 @@ where
                 .child_stopped(event)
                 .map_err(map_ownership_error)
                 .and_then(|fold| self.wrap_ownership(fold)),
-            SupervisionEvent::CreationResolved(event) => {
-                let fold = self.ownership.creation_resolved(event);
-                self.wrap_ownership(fold)
-            }
-            SupervisionEvent::WorkerCreationResolved(event) => {
-                let fold = self.ownership.worker_creation_resolved(event);
-                self.wrap_ownership(fold)
-            }
+            SupervisionEvent::CreationResolved(event) => self
+                .ownership
+                .creation_resolved(event)
+                .map_err(map_ownership_error)
+                .and_then(|fold| self.wrap_ownership(fold)),
+            SupervisionEvent::WorkerCreationResolved(event) => self
+                .ownership
+                .worker_creation_resolved(event)
+                .map_err(map_ownership_error)
+                .and_then(|fold| self.wrap_ownership(fold)),
             SupervisionEvent::Behavior(event) => {
                 let actions = behavior::delegate_transition(&mut self.inner, event)
                     .map_err(SuperviseError::Behavior)?;

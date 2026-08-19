@@ -329,10 +329,10 @@ impl<N: Copy + From<u64> + PartialEq, C> Incarnation<N, C> {
         Ok(match &mut self.state {
             IncarnationState::Running {
                 queued_replacement: queued_replacement @ None,
-                ..
+                incarnation,
             } => {
                 *queued_replacement = Some(child);
-                IncarnationEffects::None
+                IncarnationEffects::Shutdown(*incarnation)
             }
             IncarnationState::Vacant {
                 last_installed: Some(last),

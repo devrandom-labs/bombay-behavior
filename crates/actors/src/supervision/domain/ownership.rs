@@ -9,7 +9,7 @@ use crate::supervision::adapter::{
     ChildTopology, Proxy, ProxyWithParent, RestartConfiguration, SupervisorSends,
 };
 use crate::supervision::{RestartPolicy, SupervisionFailure};
-use crate::{Exit, ReportSupervisionFailure, SupervisionFailureReason};
+use crate::{CreationKind, Exit, ReportSupervisionFailure};
 use behavior::{
     Actions, Address, Behavior, Births, Create, Delivery, InterpreterRequests, Never, SendEffects,
     Step,
@@ -61,14 +61,42 @@ pub(crate) enum OwnershipError<N> {
         nonce: N,
         reason: crate::ChildShutdownRejection,
     },
+    #[error("stable-child creation provenance did not match the pending request")]
+    CreationProvenanceMismatch {
+        nonce: N,
+        expected: CreationKind<N>,
+        observed: CreationKind<N>,
+    },
+    #[error("worker-incarnation creation provenance did not match the pending request")]
+    WorkerCreationProvenanceMismatch {
+        proxy: N,
+        worker: N,
+        expected: CreationKind<N>,
+        observed: CreationKind<N>,
+    },
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Installation {
-    Pending,
+enum Installation<N> {
+    Pending {
+        kind: CreationKind<N>,
+    },
     Established,
     ShutdownRequested,
-    Rejected,
+    Rejected {
+        kind: CreationKind<N>,
+        rejection: crate::CreationRejection,
+    },
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum WorkerInstallation<N> {
+    AwaitingInitial,
+    Running { worker: N },
+    ReplacementQueuedUnknown,
+    ReplacementQueued { worker: N },
+    AwaitingReplacement { replaces: N },
+    Retired,
 }
 enum Shutdown<N> {
     Running,
@@ -100,7 +128,8 @@ where
     restart: RestartConfiguration,
     budget: RestartBudget,
     parent: crate::ProxyParentIngress<A, P>,
-    installations: Vec<(A::Nonce, Installation)>,
+    installations: Vec<(A::Nonce, Installation<A::Nonce>)>,
+    workers: Vec<(A::Nonce, WorkerInstallation<A::Nonce>)>,
     shutdown: Shutdown<A::Nonce>,
 }
 
@@ -120,7 +149,20 @@ where
             .nonces
             .iter()
             .copied()
-            .map(|n| (n, Installation::Pending))
+            .map(|n| {
+                (
+                    n,
+                    Installation::Pending {
+                        kind: CreationKind::Birth,
+                    },
+                )
+            })
+            .collect();
+        let workers = topology
+            .nonces
+            .iter()
+            .copied()
+            .map(|n| (n, WorkerInstallation::AwaitingInitial))
             .collect();
         Ok(Self {
             fleet: Fleet::configured(topology.nonces)?,
@@ -129,6 +171,7 @@ where
             restart,
             parent,
             installations,
+            workers,
             shutdown: Shutdown::Running,
         })
     }
@@ -144,6 +187,18 @@ where
     }
     pub fn is_shutting_down(&self) -> bool {
         matches!(self.shutdown, Shutdown::Draining { .. })
+    }
+
+    fn worker(&self, proxy: A::Nonce) -> Option<WorkerInstallation<A::Nonce>> {
+        self.workers
+            .iter()
+            .find_map(|(nonce, state)| (*nonce == proxy).then_some(*state))
+    }
+
+    fn set_worker(&mut self, proxy: A::Nonce, next: WorkerInstallation<A::Nonce>) {
+        if let Some((_, state)) = self.workers.iter_mut().find(|(nonce, _)| *nonce == proxy) {
+            *state = next;
+        }
     }
 
     pub fn initialize(&mut self) -> Result<OwnedActions<A, C, P>, OwnershipError<A::Nonce>> {
@@ -182,7 +237,9 @@ where
         for create in &creates {
             self.fleet.register(create.nonce)?;
             self.installations
-                .push((create.nonce, Installation::Pending));
+                .push((create.nonce, Installation::Pending { kind: create.kind }));
+            self.workers
+                .push((create.nonce, WorkerInstallation::AwaitingInitial));
             if let Shutdown::Draining { awaiting } = &mut self.shutdown {
                 awaiting.push(create.nonce);
             }
@@ -229,7 +286,19 @@ where
         }
         let candidates = self
             .fleet
-            .replacements(event.proxy, self.restart.strategy)?;
+            .replacements(event.proxy, self.restart.strategy)?
+            .into_iter()
+            .filter(|candidate| {
+                candidate.nonce == event.proxy
+                    || matches!(
+                        self.worker(candidate.nonce),
+                        Some(
+                            WorkerInstallation::AwaitingInitial
+                                | WorkerInstallation::Running { .. }
+                        )
+                    )
+            })
+            .collect::<Vec<_>>();
         let replacements = candidates
             .iter()
             .map(|candidate| {
@@ -242,14 +311,31 @@ where
             .collect::<Result<Vec<_>, _>>()?;
         if let Err(reason) = self.budget.admit(event.at, candidates.len()) {
             self.fleet.retire(event.proxy)?;
-            return Ok(Replacement::Failed(SupervisionFailure::new(
+            self.set_worker(event.proxy, WorkerInstallation::Retired);
+            return Ok(Replacement::Failed(SupervisionFailure::restart_denied(
                 event.proxy,
                 event.outcome,
-                SupervisionFailureReason::RestartDenied(reason),
+                reason,
             )));
         }
         for candidate in &candidates {
             self.fleet.replacement_requested(candidate.nonce)?;
+            let next = if candidate.nonce == event.proxy {
+                WorkerInstallation::AwaitingReplacement {
+                    replaces: event.worker,
+                }
+            } else {
+                match self.worker(candidate.nonce) {
+                    Some(WorkerInstallation::AwaitingInitial) => {
+                        WorkerInstallation::ReplacementQueuedUnknown
+                    }
+                    Some(WorkerInstallation::Running { worker }) => {
+                        WorkerInstallation::ReplacementQueued { worker }
+                    }
+                    _ => continue,
+                }
+            };
+            self.set_worker(candidate.nonce, next);
         }
         Ok(Replacement::Replace(
             replacements
@@ -271,8 +357,44 @@ where
         if self.is_shutting_down() || !self.fleet.contains(event.proxy) {
             return Ok(OwnershipFold::actions(Actions::cont()));
         }
+        match self.worker(event.proxy) {
+            Some(WorkerInstallation::ReplacementQueuedUnknown) => {
+                self.set_worker(
+                    event.proxy,
+                    WorkerInstallation::AwaitingReplacement {
+                        replaces: event.worker,
+                    },
+                );
+                return Ok(OwnershipFold::actions(Actions::cont()));
+            }
+            Some(WorkerInstallation::ReplacementQueued { worker }) if worker == event.worker => {
+                self.set_worker(
+                    event.proxy,
+                    WorkerInstallation::AwaitingReplacement {
+                        replaces: event.worker,
+                    },
+                );
+                return Ok(OwnershipFold::actions(Actions::cont()));
+            }
+            Some(WorkerInstallation::Running { worker }) if worker == event.worker => {}
+            Some(WorkerInstallation::AwaitingInitial) => {
+                // An exact worker-stop report proves that this incarnation was
+                // installed even if its earlier creation report has not yet
+                // been folded. No identity or provenance is inferred.
+                self.set_worker(
+                    event.proxy,
+                    WorkerInstallation::Running {
+                        worker: event.worker,
+                    },
+                );
+            }
+            _ => return Ok(OwnershipFold::actions(Actions::cont())),
+        }
         match self.replacement(&event)? {
-            Replacement::Retire => Ok(OwnershipFold::actions(Actions::cont())),
+            Replacement::Retire => {
+                self.set_worker(event.proxy, WorkerInstallation::Retired);
+                Ok(OwnershipFold::actions(Actions::cont()))
+            }
             Replacement::Replace(commands) => {
                 let mut sends = SupervisorSends::empty();
                 sends.replacement_commands = commands;
@@ -308,11 +430,7 @@ where
             return Ok(OwnershipFold::actions(Actions::cont()));
         }
         self.fleet.retire(event.nonce)?;
-        let failure = SupervisionFailure::new(
-            event.nonce,
-            event.outcome,
-            SupervisionFailureReason::StableChildStopped,
-        );
+        let failure = SupervisionFailure::stable_child_stopped(event.nonce, event.outcome);
         let mut sends = SupervisorSends::empty();
         sends
             .failure_reports
@@ -320,49 +438,116 @@ where
         Ok(OwnershipFold::failed(Actions::send(sends), failure))
     }
 
-    pub fn creation_resolved(&mut self, event: CreationResolved<A>) -> OwnershipFold<A, C, P> {
-        let draining = self.is_shutting_down();
-        let Some((_, state)) = self
+    pub fn creation_resolved(
+        &mut self,
+        event: CreationResolved<A>,
+    ) -> Result<OwnershipFold<A, C, P>, OwnershipError<A::Nonce>> {
+        let Some(position) = self
             .installations
-            .iter_mut()
-            .find(|(n, _)| *n == event.nonce)
+            .iter()
+            .position(|(n, _)| *n == event.nonce)
         else {
-            return OwnershipFold::actions(Actions::cont());
+            return Ok(OwnershipFold::actions(Actions::cont()));
         };
-        if draining && *state != Installation::Pending {
-            return OwnershipFold::actions(Actions::cont());
+        let Installation::Pending { kind: expected } = self.installations[position].1 else {
+            return Ok(OwnershipFold::actions(Actions::cont()));
+        };
+        if event.kind != expected {
+            return Err(OwnershipError::CreationProvenanceMismatch {
+                nonce: event.nonce,
+                expected,
+                observed: event.kind,
+            });
         }
-        *state = if event.result.is_ok() {
-            Installation::Established
-        } else {
-            Installation::Rejected
+        self.installations[position].1 = match event.result {
+            Ok(_) => Installation::Established,
+            Err(rejection) => Installation::Rejected {
+                kind: event.kind,
+                rejection,
+            },
         };
         self.fleet
             .resolve_creation(event.nonce, event.result.map(|_| ()));
+        let failure = event.result.err().map(|rejection| {
+            self.set_worker(event.nonce, WorkerInstallation::Retired);
+            SupervisionFailure::stable_child_creation_rejected(event.nonce, event.kind, rejection)
+        });
+        let mut sends = SupervisorSends::empty();
+        if let Some(failure) = failure {
+            sends
+                .failure_reports
+                .send(ReportSupervisionFailure::new(failure));
+        }
         if let Shutdown::Draining { awaiting } = &mut self.shutdown {
-            if event.result.is_err() {
+            if let Some(failure) = failure {
                 awaiting.retain(|n| *n != event.nonce);
-                return OwnershipFold::actions(if awaiting.is_empty() {
-                    Actions::stop()
+                let actions = if awaiting.is_empty() {
+                    Actions::new(sends, Vec::new(), Step::Stop(behavior::Stopped))
                 } else {
-                    Actions::cont()
-                });
+                    Actions::send(sends)
+                };
+                return Ok(OwnershipFold::failed(actions, failure));
             }
-            *state = Installation::ShutdownRequested;
-            let mut sends = SupervisorSends::empty();
+            self.installations[position].1 = Installation::ShutdownRequested;
             sends
                 .shutdowns
                 .send(ShutdownChild::<ProxyWithParent<C, P>>::new(event.nonce));
-            return OwnershipFold::actions(Actions::send(sends));
+            return Ok(OwnershipFold::actions(Actions::send(sends)));
         }
-        OwnershipFold::actions(Actions::cont())
+        Ok(match failure {
+            Some(failure) => OwnershipFold::failed(Actions::send(sends), failure),
+            None => OwnershipFold::actions(Actions::cont()),
+        })
     }
 
     pub fn worker_creation_resolved(
-        &self,
-        _: WorkerCreationResolved<A::Nonce>,
-    ) -> OwnershipFold<A, C, P> {
-        OwnershipFold::actions(Actions::cont())
+        &mut self,
+        event: WorkerCreationResolved<A::Nonce>,
+    ) -> Result<OwnershipFold<A, C, P>, OwnershipError<A::Nonce>> {
+        if self.is_shutting_down() || !self.fleet.contains(event.proxy) {
+            return Ok(OwnershipFold::actions(Actions::cont()));
+        }
+        let expected = match self.worker(event.proxy) {
+            Some(WorkerInstallation::AwaitingInitial) => CreationKind::Birth,
+            Some(WorkerInstallation::AwaitingReplacement { replaces }) => {
+                CreationKind::ReplacementIncarnation { replaces }
+            }
+            _ => return Ok(OwnershipFold::actions(Actions::cont())),
+        };
+        if event.kind != expected {
+            return Err(OwnershipError::WorkerCreationProvenanceMismatch {
+                proxy: event.proxy,
+                worker: event.worker,
+                expected,
+                observed: event.kind,
+            });
+        }
+        Ok(match event.result {
+            Ok(()) => {
+                self.set_worker(
+                    event.proxy,
+                    WorkerInstallation::Running {
+                        worker: event.worker,
+                    },
+                );
+                OwnershipFold::actions(Actions::cont())
+            }
+            Err(rejection) => {
+                let _ = self.fleet.retire(event.proxy);
+                self.set_worker(event.proxy, WorkerInstallation::Retired);
+                let failure = SupervisionFailure::worker_creation_rejected(
+                    event.proxy,
+                    event.worker,
+                    event.kind,
+                    rejection,
+                );
+                let mut sends = SupervisorSends::empty();
+                sends
+                    .failure_reports
+                    .send(ReportSupervisionFailure::new(failure));
+                OwnershipFold::failed(Actions::send(sends), failure)
+            }
+        })
     }
 
     pub fn shutdown(&mut self) -> OwnershipFold<A, C, P> {
@@ -372,7 +557,7 @@ where
         let awaiting = self
             .installations
             .iter()
-            .filter_map(|(n, s)| (*s != Installation::Rejected).then_some(*n))
+            .filter_map(|(n, s)| (!matches!(s, Installation::Rejected { .. })).then_some(*n))
             .collect::<Vec<_>>();
         if awaiting.is_empty() {
             return OwnershipFold::actions(Actions::stop());

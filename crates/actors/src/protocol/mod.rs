@@ -156,11 +156,13 @@ impl<A: Address> behavior::InterpreterRequest for ObservePeer<A> {
 /// Ask the local interpreter to cancel this actor's observation of `peer`.
 ///
 /// Peer observation is a derived Bombay protocol, not an actor-model
-/// primitive. The address names the same observer-local relationship created
-/// by [`ObservePeer`]; exact-incarnation capture and cancellation belong to the
-/// interpreter. Cancellation does not retract a [`PeerStopped`] event already
-/// admitted to the actor's mailbox, and an interpreter treats a request for a
-/// relationship that is no longer present as inert.
+/// primitive. The address selects every observer-local definition for that
+/// peer created by [`ObservePeer`]. Exact-incarnation capture and cancellation
+/// belong to the interpreter. Cancellation does not retract a [`PeerStopped`]
+/// event already admitted to the actor's mailbox, and an interpreter treats a
+/// request for relationships that are no longer present as inert. Distinct
+/// structural observations remain independent until this explicit
+/// address-wide cancellation policy is selected.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct UnwatchPeer<A> {
     pub peer: A,
