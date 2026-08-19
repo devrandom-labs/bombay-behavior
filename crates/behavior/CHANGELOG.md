@@ -58,6 +58,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   lifecycle, supervision, collection, and runtime-failure provenance no longer
   appears in the foundational behavior API.
 
+## [0.12.1](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.12.0...bombay-behavior-v0.12.1) - 2026-08-15
+
+### Other
+
+- Test foundational behavior value contracts ([#48](https://github.com/devrandom-labs/bombay-behavior/pull/48))
+
 ## [0.11.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.10.0...bombay-behavior-v0.11.0) - 2026-08-15
 
 ### Other
