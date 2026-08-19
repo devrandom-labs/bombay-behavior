@@ -8,4 +8,4 @@ publish = false
 name = "bombay"
 
 [dependencies]
-behavior = { package = "bombay-behavior", path = "../../../../behavior" }
+foundation = { package = "bombay-behavior", path = "../../../../behavior" }

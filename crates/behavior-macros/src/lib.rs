@@ -31,6 +31,17 @@ fn behavior_crate() -> Result<TokenStream2> {
         // works in its unit, integration, and rustdoc crates.
         return Ok(quote!(::behavior));
     }
+    if std::env::var("CARGO_PKG_NAME").as_deref() == Ok("bombay-rs") {
+        // `FoundCrate::Itself` identifies a package, but `crate` identifies
+        // the target currently being compiled. The facade's library target is
+        // `bombay`; sibling binaries and examples therefore reach its exports
+        // through `::bombay`, not through their own `crate` root.
+        return if std::env::var("CARGO_CRATE_NAME").as_deref() == Ok("bombay") {
+            Ok(quote!(crate::behavior))
+        } else {
+            Ok(quote!(::bombay::behavior))
+        };
+    }
     if let Ok(found) = crate_name("bombay-behavior") {
         return Ok(crate_path(found));
     }

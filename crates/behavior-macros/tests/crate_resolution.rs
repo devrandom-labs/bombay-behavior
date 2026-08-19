@@ -33,6 +33,16 @@ fn direct_and_facade_dependency_paths_resolve_with_renames() {
 }
 
 #[test]
+fn facade_package_sibling_targets_resolve_the_library_crate() {
+    let output = cargo_check(&["bombay-rs"]);
+    assert!(
+        output.status.success(),
+        "facade sibling-target compilation failed:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
 fn missing_behavior_and_facade_dependencies_report_the_contract_error() {
     let output = cargo_check(&["missing-dependency"]);
     assert!(!output.status.success());
