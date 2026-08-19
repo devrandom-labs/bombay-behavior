@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.2](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-macros-v0.11.1...bombay-behavior-macros-v0.11.2) - 2026-08-19
+
+### Added
+
+- *(actors)* add lifecycle topology templates ([#49](https://github.com/devrandom-labs/bombay-behavior/pull/49))
+
 ### Added
 
 - Extend the single `#[behavior]` attribute with named `sends = { ... }` and
