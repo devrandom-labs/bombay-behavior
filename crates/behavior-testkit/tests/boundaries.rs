@@ -5,10 +5,11 @@
 
 use std::time::Duration;
 
+use behavior::EventLayer;
 use behavior::{
-    Acted, Actions, Compose, Crash, Create, DeadlineEvent, Delivery, Exit, Machine, MailAddr, Move,
-    Never, Proxy, Recipient, RestartPolicy, StashRoute, Step, Strategy, SupervisionEvent,
-    Supervisor, TimerElapsed, TimerGeneration, TimerId, User, UserEvent, WorkerStopped,
+    Acted, Actions, Crash, Create, CreationKind, Delivery, Exit, Machine, MailAddr, Move, Never,
+    Proxy, Recipient, RestartPolicy, StashRoute, Step, Strategy, Supervise, SupervisionEvent,
+    TimerElapsed, TimerGeneration, TimerId, User, UserEvent, WorkerCreationResolved, WorkerStopped,
 };
 use std::time::Instant;
 
@@ -80,9 +81,13 @@ impl Parent {
     fn receive(
         &mut self,
         _from: MailAddr,
-        _message: u64,
+        message: u64,
     ) -> Acted<MailAddr, Never, Vec<Never>, behavior::Births<Child>, Never> {
-        Ok(Actions::cont())
+        if message == u64::MAX {
+            Ok(Actions::create(vec![Create::birth(message, child(0))]))
+        } else {
+            Ok(Actions::cont())
+        }
     }
 }
 
@@ -120,8 +125,8 @@ fn supervisor(
     maximum: u32,
     window: Duration,
     count: usize,
-) -> Supervisor<Parent, Child> {
-    Supervisor::new(
+) -> Supervise<Parent, Child> {
+    Supervise::new(
         Parent,
         behavior::ChildTopology::indexed(
             |index| u64::try_from(index).unwrap(),
@@ -136,12 +141,30 @@ fn supervisor(
 type SupervisorEvent = SupervisionEvent<User<MailAddr, u64>>;
 
 fn stopped(nonce: u64, outcome: Result<Exit<MailAddr>, Crash>, at: Instant) -> SupervisorEvent {
+    stopped_worker(nonce, nonce, outcome, at)
+}
+
+fn stopped_worker(
+    proxy: u64,
+    worker: u64,
+    outcome: Result<Exit<MailAddr>, Crash>,
+    at: Instant,
+) -> SupervisorEvent {
     SupervisionEvent::WorkerStopped(WorkerStopped {
-        proxy: nonce,
-        worker: nonce,
+        proxy,
+        worker,
         outcome,
         at,
     })
+}
+
+fn worker_created(proxy: u64, worker: u64, kind: CreationKind<u64>) -> SupervisorEvent {
+    SupervisionEvent::WorkerCreationResolved(WorkerCreationResolved::new(
+        proxy,
+        worker,
+        kind,
+        Ok(()),
+    ))
 }
 
 #[tokio::test]
@@ -152,51 +175,65 @@ async fn proxy_initialization_is_explicit() {
 
 #[tokio::test]
 async fn empty_fleet_supervisor_initializes_and_steps_cleanly() {
-    let supervisor = (Parent)
-        .children(
-            |index| u64::try_from(index).unwrap(),
-            0,
-            |index| Some(child(index)),
-        )
-        .unwrap();
+    let supervisor = behavior::Supervise::new(
+        Parent,
+        behavior::ChildTopology::new((0..0).map(|index| u64::try_from(index).unwrap()), |index| {
+            Some(child(index))
+        }),
+        behavior::RestartConfiguration::new(
+            behavior::Strategy::OneForOne,
+            behavior::RestartPolicy::Transient,
+            1,
+            std::time::Duration::from_secs(5),
+        ),
+    )
+    .unwrap();
     let initialized = supervisor.initialize().unwrap();
     let initial = initialized.actions;
     let mut supervisor = initialized.behavior;
     assert!(initial.creates.is_empty());
-    assert!(initial.sends.child_observations.is_empty());
+    assert!(initial.sends.owned.child_observations.is_empty());
 
     let actions = supervisor
         .transition(UserEvent::user(MailAddr(0), 3))
         .unwrap();
     assert!(actions.creates.is_empty());
-    assert!(actions.sends.child_observations.is_empty());
+    assert!(actions.sends.owned.child_observations.is_empty());
     assert_eq!(supervisor.child_count(), 0);
 }
 
 #[tokio::test]
-async fn child_stopped_for_unknown_nonce_is_typed() {
-    let supervisor = (Parent)
-        .children(
-            |index| u64::try_from(index).unwrap(),
+async fn stale_child_stopped_is_inert_at_its_selected_supervisor_owner() {
+    let supervisor = behavior::Supervise::new(
+        Parent,
+        behavior::ChildTopology::new((0..1).map(|index| u64::try_from(index).unwrap()), |index| {
+            Some(child(index))
+        }),
+        behavior::RestartConfiguration::new(
+            behavior::Strategy::OneForOne,
+            behavior::RestartPolicy::Transient,
             1,
-            |index| Some(child(index)),
-        )
-        .unwrap();
+            std::time::Duration::from_secs(5),
+        ),
+    )
+    .unwrap();
     let initialized = supervisor.initialize().unwrap();
     let mut supervisor = initialized.behavior;
-    assert!(matches!(
-        supervisor.transition(stopped(42, Err(Crash::Failed), Instant::now())),
-        Err(behavior::SupervisorError::Fleet(
-            behavior::FleetError::UnknownChild(42)
-        ))
-    ));
+    let actions = supervisor
+        .transition(stopped(42, Err(Crash::Failed), Instant::now()))
+        .unwrap();
+
+    assert!(actions.sends.owned.replacement_commands.is_empty());
+    assert!(actions.sends.owned.failure_reports.is_empty());
+    assert!(actions.creates.is_empty());
+    assert_eq!(actions.become_, Step::Continue);
+    assert_eq!(supervisor.child_count(), 1);
 }
 
-/// A redelivered `ChildStopped` (duplicate environmental event) triggers a
-/// second replacement: supervision does NOT deduplicate death notices. Each
-/// duplicate consumes budget and emits a fresh replacement send.
+/// A redelivered worker termination fact is stale after replacement begins;
+/// it cannot consume budget or emit a second replacement.
 #[tokio::test]
-async fn duplicate_child_stopped_triggers_a_second_restart() {
+async fn duplicate_worker_stopped_is_inert_during_replacement() {
     let at = Instant::now();
     let supervisor = supervisor(
         Strategy::OneForOne,
@@ -211,21 +248,21 @@ async fn duplicate_child_stopped_triggers_a_second_restart() {
     let first = supervisor
         .transition(stopped(0, Err(Crash::Failed), at))
         .unwrap();
-    assert_eq!(first.sends.replacement_commands.len(), 1);
+    assert_eq!(first.sends.owned.replacement_commands.len(), 1);
     assert_eq!(supervisor.restarts_in_window(), 1);
 
     let duplicate = supervisor
         .transition(stopped(0, Err(Crash::Failed), at))
         .unwrap();
-    assert_eq!(duplicate.sends.replacement_commands.len(), 1);
-    assert_eq!(supervisor.restarts_in_window(), 2);
+    assert!(duplicate.sends.owned.replacement_commands.is_empty());
+    assert_eq!(supervisor.restarts_in_window(), 1);
 }
 
 /// Configured nonces obey the same creator-local uniqueness law as dynamic
 /// births; an ambiguous topology is rejected before it can emit creations.
 #[test]
 fn duplicate_configured_nonces_are_rejected() {
-    let result = Supervisor::new(
+    let result = Supervise::new(
         Parent,
         behavior::ChildTopology::indexed(|_| 7, 2, |index| Some(child(index))),
         behavior::RestartConfiguration::new(
@@ -253,33 +290,53 @@ async fn transient_policy_restarts_only_abnormal_outcomes() {
     );
     let initialized = supervisor.initialize().unwrap();
     let mut supervisor = initialized.behavior;
+    for proxy in 0..3 {
+        supervisor
+            .transition(worker_created(proxy, proxy, CreationKind::Birth))
+            .unwrap();
+    }
 
     let normal = supervisor
         .transition(stopped(0, Ok(Exit::Normal), at))
         .unwrap();
-    assert!(normal.sends.replacement_commands.is_empty());
+    assert!(normal.sends.owned.replacement_commands.is_empty());
     assert!(!supervisor.is_alive(0).unwrap());
 
     let collected = supervisor
         .transition(stopped(0, Ok(Exit::Collected), at))
         .unwrap();
-    assert!(collected.sends.replacement_commands.is_empty());
+    assert!(collected.sends.owned.replacement_commands.is_empty());
 
     let link = supervisor
         .transition(stopped(1, Ok(Exit::LinkDied(MailAddr(9))), at))
         .unwrap();
-    assert_eq!(link.sends.replacement_commands.len(), 1);
+    assert_eq!(link.sends.owned.replacement_commands.len(), 1);
     assert!(supervisor.is_alive(1).unwrap());
 
-    for crash in [
+    let mut worker = 2;
+    for (generation, crash) in [
         Crash::Failed,
         Crash::EnvironmentFailed,
         Crash::Panicked,
         Crash::Cancelled,
-    ] {
-        let crashed = supervisor.transition(stopped(2, Err(crash), at)).unwrap();
-        assert_eq!(crashed.sends.replacement_commands.len(), 1);
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let crashed = supervisor
+            .transition(stopped_worker(2, worker, Err(crash), at))
+            .unwrap();
+        assert_eq!(crashed.sends.owned.replacement_commands.len(), 1);
         assert!(supervisor.is_alive(2).unwrap());
+        let replacement = 102 + u64::try_from(generation).unwrap() * 100;
+        supervisor
+            .transition(worker_created(
+                2,
+                replacement,
+                CreationKind::ReplacementIncarnation { replaces: worker },
+            ))
+            .unwrap();
+        worker = replacement;
     }
 }
 
@@ -299,17 +356,37 @@ async fn one_for_all_skips_dead_slots_and_respects_budget() {
     );
     let initialized = supervisor.initialize().unwrap();
     let mut supervisor = initialized.behavior;
+    for proxy in 0..3 {
+        supervisor
+            .transition(worker_created(proxy, proxy, CreationKind::Birth))
+            .unwrap();
+    }
 
     let first = supervisor
         .transition(stopped(0, Err(Crash::Failed), at))
         .unwrap();
-    assert_eq!(first.sends.replacement_commands.len(), 3);
+    assert_eq!(first.sends.owned.replacement_commands.len(), 3);
+
+    for proxy in 1..3 {
+        supervisor
+            .transition(stopped(proxy, Err(Crash::Cancelled), at))
+            .unwrap();
+    }
+    for proxy in 0..3 {
+        supervisor
+            .transition(worker_created(
+                proxy,
+                proxy + 100,
+                CreationKind::ReplacementIncarnation { replaces: proxy },
+            ))
+            .unwrap();
+    }
 
     // Second death: 3 alive candidates + 3 prior stamps = 6 > budget 5.
     let denied = supervisor
-        .transition(stopped(1, Err(Crash::Failed), at))
+        .transition(stopped_worker(1, 101, Err(Crash::Failed), at))
         .unwrap();
-    assert!(denied.sends.replacement_commands.is_empty());
+    assert!(denied.sends.owned.replacement_commands.is_empty());
     assert!(!supervisor.is_alive(1).unwrap());
 
     // Third death: candidates are now only {0, 2} — the dead slot 1 is
@@ -317,11 +394,12 @@ async fn one_for_all_skips_dead_slots_and_respects_budget() {
     // dead slot 1 is not resurrected. (Had slot 1 been included, 3 + 3 = 6
     // > 5 would have denied everything.)
     let third = supervisor
-        .transition(stopped(2, Err(Crash::Failed), at))
+        .transition(stopped_worker(2, 102, Err(Crash::Failed), at))
         .unwrap();
-    assert_eq!(third.sends.replacement_commands.len(), 2);
+    assert_eq!(third.sends.owned.replacement_commands.len(), 2);
     let routes: Vec<_> = third
         .sends
+        .owned
         .replacement_commands
         .iter()
         .map(|d| d.to.resolve(MailAddr(17)))
@@ -339,7 +417,7 @@ async fn one_for_all_skips_dead_slots_and_respects_budget() {
 #[tokio::test]
 async fn rest_for_one_uses_birth_sequence_not_index() {
     let at = Instant::now();
-    let supervisor = Supervisor::new(
+    let supervisor = Supervise::new(
         BirthingParent { born: false },
         behavior::ChildTopology::indexed(
             |index| u64::try_from(index).unwrap(),
@@ -360,14 +438,20 @@ async fn rest_for_one_uses_birth_sequence_not_index() {
         .transition(UserEvent::user(MailAddr(0), 9))
         .unwrap();
     assert_eq!(supervisor.child_count(), 4);
+    for proxy in [0, 1, 2, 9] {
+        supervisor
+            .transition(worker_created(proxy, proxy, CreationKind::Birth))
+            .unwrap();
+    }
 
     // Death of configured slot 0 (sequence 0): every alive slot restarts.
     let wide = supervisor
         .transition(stopped(0, Err(Crash::Failed), at))
         .unwrap();
-    assert_eq!(wide.sends.replacement_commands.len(), 4);
+    assert_eq!(wide.sends.owned.replacement_commands.len(), 4);
     let routes: Vec<_> = wide
         .sends
+        .owned
         .replacement_commands
         .iter()
         .map(|d| d.to.resolve(MailAddr(17)))
@@ -377,15 +461,30 @@ async fn rest_for_one_uses_birth_sequence_not_index() {
     }
     assert!(routes.contains(&behavior::Address::birth(MailAddr(17), 9)));
 
+    for proxy in [1, 2, 9] {
+        supervisor
+            .transition(stopped(proxy, Err(Crash::Cancelled), at))
+            .unwrap();
+    }
+    for proxy in [0, 1, 2, 9] {
+        supervisor
+            .transition(worker_created(
+                proxy,
+                proxy + 100,
+                CreationKind::ReplacementIncarnation { replaces: proxy },
+            ))
+            .unwrap();
+    }
+
     // Death of dynamic slot 9 (sequence 3): only later-born slots restart —
     // the configured slots (sequences 0..3) are untouched even though they
     // sit at lower indexes.
     let narrow = supervisor
-        .transition(stopped(9, Err(Crash::Failed), at))
+        .transition(stopped_worker(9, 109, Err(Crash::Failed), at))
         .unwrap();
-    assert_eq!(narrow.sends.replacement_commands.len(), 1);
+    assert_eq!(narrow.sends.owned.replacement_commands.len(), 1);
     assert_eq!(
-        narrow.sends.replacement_commands[0]
+        narrow.sends.owned.replacement_commands[0]
             .to
             .resolve(MailAddr(17)),
         behavior::Address::birth(MailAddr(17), 9)
@@ -407,27 +506,46 @@ async fn restart_window_prunes_aged_stamps_but_keeps_future_ones() {
     );
     let initialized = supervisor.initialize().unwrap();
     let mut supervisor = initialized.behavior;
+    supervisor
+        .transition(worker_created(0, 0, CreationKind::Birth))
+        .unwrap();
 
     supervisor
         .transition(stopped(0, Err(Crash::Failed), start))
         .unwrap();
     assert_eq!(supervisor.restarts_in_window(), 1);
+    supervisor
+        .transition(worker_created(
+            0,
+            100,
+            CreationKind::ReplacementIncarnation { replaces: 0 },
+        ))
+        .unwrap();
 
     // 100ns later: the earlier stamp aged out before the budget check.
     supervisor
-        .transition(stopped(
+        .transition(stopped_worker(
             0,
+            100,
             Err(Crash::Failed),
             start + Duration::from_nanos(100),
         ))
         .unwrap();
     assert_eq!(supervisor.restarts_in_window(), 1);
+    supervisor
+        .transition(worker_created(
+            0,
+            200,
+            CreationKind::ReplacementIncarnation { replaces: 100 },
+        ))
+        .unwrap();
 
     // A death stamped BEFORE the previous one keeps the future stamp (age
     // computation underflows to "keep") and adds a new one.
     supervisor
-        .transition(stopped(
+        .transition(stopped_worker(
             0,
+            200,
             Err(Crash::Failed),
             start + Duration::from_nanos(60),
         ))
@@ -439,7 +557,7 @@ async fn restart_window_prunes_aged_stamps_but_keeps_future_ones() {
 /// stops the fold, the drain is skipped, and held messages survive the stop.
 #[tokio::test]
 async fn stash_stop_skips_drain_and_preserves_held_messages() {
-    let behavior = (StopOnZero::default()).stash(|message| match message {
+    let behavior = behavior::Stash::new(StopOnZero::default(), |message| match message {
         0 => StashRoute::Release,
         _ => StashRoute::Stash,
     });
@@ -513,95 +631,113 @@ async fn fsm_mid_drain_deferral_reorders_relative_to_fifo() {
     assert_eq!(machine.held(), 0);
 }
 
-/// Two Deadline layers at the same instant retain distinct identities, so an event
-/// reaches exactly the layer that scheduled it.
+/// Two Deadline layers at the same instant retain distinct structural owners,
+/// so a fact reaches exactly the layer selected by its schedule request.
 #[tokio::test]
 async fn nested_at_identical_schedules_are_distinguished_by_identity() {
     let due = Instant::now() + Duration::from_secs(1);
-    let outer = (Recorder::default())
-        .deadline(TimerId(0), Some(due), |_| Ok(Step::Stop(behavior::Stopped)))
-        .deadline(TimerId(1), Some(due), |_| Ok(Step::Continue));
+    let outer = behavior::Deadline::new(
+        behavior::Deadline::new(Recorder::default(), TimerId(0), Some(due), |_| {
+            Ok(Step::Stop(behavior::Stopped))
+        }),
+        TimerId(1),
+        Some(due),
+        |_| Ok(Step::Continue),
+    );
     let initialized = outer.initialize().unwrap();
     let mut outer = initialized.behavior;
 
-    let event = DeadlineEvent::Elapsed(TimerElapsed {
+    let event = EventLayer::Inner(EventLayer::Owned(TimerElapsed {
         id: TimerId(0),
         generation: TimerGeneration(0),
-    });
+    }));
     let first = outer.transition(event).unwrap();
     assert_eq!(first.become_, Step::Stop(behavior::Stopped));
 }
 
-/// `Compose::children` defaults are Transient policy with a budget of one
-/// restart per 5-second window: a second abnormal death inside the window
-/// is denied, even under a strategy that would otherwise restart. The
-/// builder's explicit `when`/`within` calls are required for unbounded
-/// restart semantics.
+/// Equal timer identities at nested layers remain distinct destinations.
 #[tokio::test]
-async fn spec_children_defaults_to_transient_with_budget_one() {
-    let at = Instant::now();
-    let supervisor = (Parent)
-        .children(
-            |index| u64::try_from(index).unwrap(),
-            1,
-            |index| Some(child(index)),
-        )
-        .unwrap();
-    let initialized = supervisor.initialize().unwrap();
-    let mut supervisor = initialized.behavior;
+async fn duplicate_nested_timer_identity_remains_addressable_at_both_paths() {
+    let due = Instant::now() + Duration::from_secs(1);
+    let outer = behavior::Deadline::new(
+        behavior::Deadline::new(Recorder::default(), TimerId(0), Some(due), |_| {
+            Ok(Step::Stop(behavior::Stopped))
+        }),
+        TimerId(0),
+        Some(due),
+        |_| Ok(Step::Continue),
+    );
+    let mut outer = outer.initialize().unwrap().behavior;
 
-    let first = supervisor
-        .transition(stopped(0, Err(Crash::Failed), at))
+    let outer_actions = outer
+        .transition(EventLayer::Owned(TimerElapsed {
+            id: TimerId(0),
+            generation: TimerGeneration(0),
+        }))
         .unwrap();
-    assert_eq!(first.sends.replacement_commands.len(), 1);
+    assert_eq!(outer_actions.become_, Step::Continue);
 
-    let second = supervisor
-        .transition(stopped(0, Err(Crash::Failed), at + Duration::from_secs(1)))
+    let inner_actions = outer
+        .transition(EventLayer::Inner(EventLayer::Owned(TimerElapsed {
+            id: TimerId(0),
+            generation: TimerGeneration(0),
+        })))
         .unwrap();
-    assert!(second.sends.replacement_commands.is_empty());
-    assert!(!supervisor.is_alive(0).unwrap());
-
-    // A normal exit is never restarted under the default Transient policy.
-    let normal = supervisor
-        .transition(stopped(0, Ok(Exit::Normal), at))
-        .unwrap();
-    assert!(normal.sends.replacement_commands.is_empty());
+    assert_eq!(inner_actions.become_, Step::Stop(behavior::Stopped));
 }
 
-/// The `Supervisor` inherent builders (`with_strategy`, `with_policy`,
-/// `with_budget`) are exactly what `Compose::restart`/`when`/`within` call:
-/// a directly built supervisor configured identically to the `Compose`
-/// defaults behaves identically (Transient + budget 1/5s).
+/// One explicit restart configuration applies its strategy, eligibility, and
+/// budget as a correlated product: a second abnormal death inside the window
+/// is denied and a normal exit is ineligible under `Transient` policy.
 #[tokio::test]
-async fn supervising_inherent_builders_match_the_spec_defaults() {
+async fn restart_configuration_controls_eligibility_and_budget_together() {
     let at = Instant::now();
-    let supervisor = Supervisor::new(
+    let supervisor = behavior::Supervise::new(
         Parent,
-        behavior::ChildTopology::indexed(
-            |index| u64::try_from(index).unwrap(),
-            1,
-            |index| Some(child(index)),
-        ),
+        behavior::ChildTopology::new((0..1).map(|index| u64::try_from(index).unwrap()), |index| {
+            Some(child(index))
+        }),
         behavior::RestartConfiguration::new(
-            Strategy::OneForOne,
-            RestartPolicy::Transient,
+            behavior::Strategy::OneForOne,
+            behavior::RestartPolicy::Transient,
             1,
-            Duration::from_secs(5),
+            std::time::Duration::from_secs(5),
         ),
     )
     .unwrap();
     let initialized = supervisor.initialize().unwrap();
     let mut supervisor = initialized.behavior;
+    supervisor
+        .transition(worker_created(0, 0, CreationKind::Birth))
+        .unwrap();
 
     let first = supervisor
         .transition(stopped(0, Err(Crash::Failed), at))
         .unwrap();
-    assert_eq!(first.sends.replacement_commands.len(), 1);
+    assert_eq!(first.sends.owned.replacement_commands.len(), 1);
+    supervisor
+        .transition(worker_created(
+            0,
+            100,
+            CreationKind::ReplacementIncarnation { replaces: 0 },
+        ))
+        .unwrap();
 
     let second = supervisor
-        .transition(stopped(0, Err(Crash::Failed), at + Duration::from_secs(1)))
+        .transition(stopped_worker(
+            0,
+            100,
+            Err(Crash::Failed),
+            at + Duration::from_secs(1),
+        ))
         .unwrap();
-    assert!(second.sends.replacement_commands.is_empty());
+    assert!(second.sends.owned.replacement_commands.is_empty());
     assert!(!supervisor.is_alive(0).unwrap());
+
+    // A normal exit is never restarted under the selected Transient policy.
+    let normal = supervisor
+        .transition(stopped(0, Ok(Exit::Normal), at))
+        .unwrap();
+    assert!(normal.sends.owned.replacement_commands.is_empty());
 }
 use behavior_testkit::InitializeTest;

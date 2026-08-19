@@ -10,7 +10,7 @@
 
 use behavior::{
     Acted, Actions, Activate, Crash, Create, CreationKind, Delivery, MailAddr, Never,
-    RestartPolicy, Step, Strategy, SupervisionEvent, Supervisor, UserEvent, WorkerStopped,
+    RestartPolicy, Step, Strategy, SupervisionEvent, Supervise, UserEvent, WorkerStopped,
 };
 use libfuzzer_sys::fuzz_target;
 use std::time::Instant;
@@ -68,7 +68,7 @@ struct Slot {
 fuzz_target!(|bytes: &[u8]| {
     let runtime = Builder::new_current_thread().enable_time().build().unwrap();
     runtime.block_on(async {
-        let behavior = Supervisor::new(
+        let behavior = Supervise::new(
             BirthingParent,
             behavior::ChildTopology::indexed(
                 |index| u64::try_from(index).unwrap(),
@@ -113,11 +113,11 @@ fuzz_target!(|bytes: &[u8]| {
                 assert_eq!(actions.creates[0].nonce, nonce);
                 assert_eq!(actions.creates[0].kind, CreationKind::Birth);
                 assert_eq!(
-                    actions.sends.child_observations.len(),
+                    actions.sends.owned.child_observations.len(),
                     1,
                     "observe request at byte {index}"
                 );
-                assert_eq!(actions.sends.child_observations[0].nonce, nonce);
+                assert_eq!(actions.sends.owned.child_observations[0].nonce, nonce);
             } else {
                 // Death of the slot selected by the byte.
                 let dead = slots[usize::from(byte) % slots.len()];
@@ -138,7 +138,7 @@ fuzz_target!(|bytes: &[u8]| {
                     }))
                     .unwrap();
                 assert_eq!(
-                    actions.sends.replacement_commands.len(),
+                    actions.sends.owned.replacement_commands.len(),
                     usize::from(expected_restart),
                     "replacement count at byte {index}"
                 );

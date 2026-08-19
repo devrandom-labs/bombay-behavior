@@ -1,96 +1,117 @@
 # Nominal Behavior Attribute
 
-`#[behavior::behavior(...)]` removes only the mechanical implementation that
-adapts an ordinary user-message method to `Behavior`. It is an attribute on a
-normal inherent impl, so state, constructors, helper methods, generics,
-where-clauses, visibility, documentation, and `&mut self` behavior methods
-remain ordinary Rust:
+`#[behavior::behavior(...)]` is the single generated authoring path. It
+preserves an ordinary inherent impl and emits the adjacent nominal `Protocol`,
+pure `Behavior`, optional named send product, and optional closed child product
+that a careful user could write by hand.
 
-```rust
-use behavior::{Actions, MailAddr, Never, NoBirths};
+```rust,ignore
+use behavior::{Actions, BehaviorActed, Delivery, MailAddr};
 
-struct Counter(u64);
+struct QueryPoolProtocol;
+struct QueryStarter;
 
 #[behavior::behavior(
     addr = MailAddr,
-    message = u64,
-    sends = Vec<Never>,
-    births = NoBirths,
-    error = Never,
+    message = behavior::Never,
+    sends = {
+        query_pool: Vec<Delivery<QueryPoolProtocol>>,
+    },
 )]
-impl Counter {
-    fn receive(
-        &mut self,
-        _from: MailAddr,
-        value: u64,
-    ) -> behavior::Acted<MailAddr, Never, Vec<Never>, NoBirths, Never> {
-        self.0 += value;
-        Ok(Actions::cont())
+impl QueryStarter {
+    fn init(&mut self) -> BehaviorActed<Self> {
+        let mut sends = QueryStarterSends::empty();
+        sends.send::<_, QueryStarterSendsQueryPool>(/* typed delivery */);
+        Ok(Actions::send(sends))
+    }
+
+    fn receive(&mut self, _: MailAddr, message: behavior::Never) -> BehaviorActed<Self> {
+        match message {}
     }
 }
 ```
 
-The expansion preserves that inherent impl unchanged and adds an ordinary
-`Behavior` implementation with these exact associated types:
+`addr` and `message` are required because they establish public protocol
+identity. The other declarations are capability-denying defaults:
 
-```text
-Addr  = declared addr       Msg   = declared message
-Event = User<Addr, Msg>     Sends = declared sends
-Ph    = Never               Error = declared error
-Birth = declared births
+- omitted `sends` means `NoSends`;
+- omitted `births` means `NoBirths`; and
+- omitted `error` means `Never`.
+
+Those defaults do not infer or grant an effect. Code that tries to send, create,
+or return an error absent from the declaration fails to type-check.
+An advanced author may still supply an existing concrete sends or birth type
+instead of a generated `{ ... }` product; this preserves handwritten catalogue
+products without adding another macro path.
+
+## Named send products
+
+For an actor `System`, `sends = { workers: Vec<Delivery<Workers>> }` generates:
+
+- the nominal `SystemSends` product with a named `workers` field;
+- the uninhabited lane selector `SystemSendsWorkers`;
+- `SendEffects`, preserving each field independently in declaration order;
+- `SendInput<_, SystemSendsWorkers>`, used through `SendEffects::send`;
+- `SendsFor<Event>`, requiring every field to be lawful for the complete event;
+  and
+- `InterpretSends`, requiring and visiting every field in declaration order.
+
+Two fields with identical product and payload types still have different lane
+selector types. No recursive position, type-name search, runtime registry, or
+catch-all effect value is generated. An interpreter missing any constituent
+delivery or request implementation fails its `InterpretSends` bound.
+
+## Closed birth products
+
+For an actor `System`, this declaration:
+
+```rust,ignore
+births = {
+    workers: Workers,
+    query_reply: ManagedQueryReply,
+    query_starter: ManagedQueryStarter,
+}
 ```
 
-When present, `Behavior::init` calls the inherent `init` method during the
-single consuming `initialize` transition.
-When omitted, it returns the explicit empty initialization transition.
-`Behavior::transition` destructures the concrete `User` event and calls the
-inherent `receive` method exactly once. Rust checks both returned values against
-`BehaviorActed<Self>`; the macro does not parse or infer semantic types from a
-return-type alias.
+generates `SystemChildren` as the exact recursive `ChildChoice` produced by
+calling `Children::child` in that declaration order. The generated behavior's
+birth capability is `Births<SystemChildren>`. The field labels record semantic
+roles, while values and nonces remain explicitly authored with `Children`.
 
-The seven associated types are deliberately explicit and ordered. The macro
-does not provide defaults, accept unknown options, infer capabilities, create
-constructors, add state, generate messages, register protocols, erase types,
-box futures, interpret effects, or introduce another transition path.
+This is Bombay's staged creation policy: `Children` builds typed `Create`
+requests, and the interpreter must commit them before dependent same-action
+sends. The macro does not allocate, install, replace, choose nonces, or infer
+lifecycle provenance. `DispatchBirth` still requires one concrete
+`InstallBirth` implementation for every alternative.
 
-The attribute is intentionally limited to `User`/`Never` behaviors. A behavior
-that owns service-event variants, phases, routing transformations, or wrapper
-semantics implements `Behavior` explicitly so its complete sum and product
-types remain visible. This boundary keeps the attribute an authoring aid rather
-than a second behavior language.
+## Exact initialization and transition results
 
-The construction is Bombay policy, not an actor-model primitive. Its generated
-implementation is the same pure fold a user could write manually.
+An optional inherent `init(&mut self) -> BehaviorActed<Self>` becomes the
+initialization fold. If it is absent, initialization returns the explicit empty
+`Actions::cont()`. The required
+`receive(&mut self, from, message) -> BehaviorActed<Self>` becomes the user
+transition fold. Rust checks both method results against the generated complete
+`Actions<Addr, Never, Sends, Birth>` and declared error type.
 
-## Why an attribute macro
+The macro generates no runtime context, constructor, scheduler, mailbox,
+executor, interpreter, or template policy. Initialization and receive bodies
+remain application-authored pure folds.
 
-Rust defines attribute macros as transformations of an attributed item: they
-receive the attribute input and the item, then replace that item with generated
-items. That shape fits this API precisely—the inherent impl remains ordinary
-Rust input and the generated `Behavior` impl is an adjacent item. See the
-[Rust Reference on attribute macros][attribute-macros].
+## Why one attribute
 
-A derive macro cannot implement this contract because derives receive only the
-annotated item and add generated items; they have no syntax for supplying the
-`init` and `receive` method bodies. A function-like macro would instead require
-a separate invocation and a new mini-language around code that Rust already
-expresses. The Rust Book distinguishes these three procedural-macro forms in
-its [procedural macros overview][procedural-macros].
+Rust attribute macros transform an attributed item and their output is
+unhygienic. The implementation therefore resolves absolute paths through the
+direct `bombay-behavior` dependency or the `bombay-rs` facade, including Cargo
+renames. See the [Rust Reference on procedural macros][procedural-macros].
 
-This rationale concerns Rust authoring syntax. It does not change the actor
-transition law or grant the macro any interpreter capability.
+Serde-style stacked helper attributes are formally supported for derive
+macros, which can register inert helpers. An impl-level attribute macro has no
+equivalent helper-registration mechanism. Keeping sends, births, and errors as
+named sections of the one owning `#[behavior]` invocation avoids expansion
+order as an API constraint and keeps one coherent generated fold.
 
-## One macro boundary
+This construction is Bombay policy, not an actor-model primitive. `Actions`
+remains Bombay's typed realization of communications, fresh actor creation,
+and the next behavior or termination.
 
-`#[behavior]` is the only public behavior macro. Wrapper stacks are ordinary
-Rust values built with `Compose` and inferred at local, generic spawn, and
-adapter boundaries. A framework extension that truly stores one exact stack
-may use an ordinary Rust type alias or newtype and write the same static
-delegation explicitly; the component API does not create another authoring
-language for that uncommon case.
-
-The attribute is governed by the [Universal Behavior Driver](driver.md). It
-generates only the concrete implementation a user could write manually.
-
-[attribute-macros]: https://doc.rust-lang.org/reference/procedural-macros.html#attribute-macros
-[procedural-macros]: https://doc.rust-lang.org/book/ch20-05-macros.html
+[procedural-macros]: https://doc.rust-lang.org/reference/procedural-macros.html

@@ -28,8 +28,9 @@
 //! Messages have direction: `Configure` comes FROM supervisor, `Work` comes
 //! FROM clients, `Result` goes TO clients. In a typed protocol, sending a
 //! `Result` where a `Work` is expected would be a type error. The existing
-//! `Recipient<B>` names the receiving behavior protocol, so outbound
-//! destination identity is distinct even when protocols share a message type.
+//! `Recipient<P>` names only the receiving actor's stable public protocol, so
+//! outbound destination identity is distinct even when protocols share a
+//! message type or their current behaviors use different wrappers.
 //! Phase-indexed direction within one behavior remains a separate question.
 //!
 //! # Actor relevance
@@ -43,7 +44,7 @@
 // dead-code warnings are expected and suppressed.
 #![allow(dead_code)]
 
-use behavior::{Exit, Machine, MailAddr, Move, Never, SendAlgebra, Step, User, UserEvent};
+use behavior::{Exit, Machine, MailAddr, Move, Never, SendEffects, Step, User, UserEvent};
 
 // ---------------------------------------------------------------------------
 // Phase and message vocabulary (used by all derivation attempts)
@@ -326,7 +327,7 @@ impl WorkerApp {
 trait PhaseBehavior {
     type Event: UserEvent<Addr = MailAddr, Message = Self::Msg>;
     type Msg;
-    type Sends: SendAlgebra;
+    type Sends: SendEffects;
     type Error;
     type NextPhase;
 
@@ -370,7 +371,7 @@ trait PhaseBehavior {
 //    dynamically. Static duality requires both endpoints to be known at
 //    compile time.
 //
-// 5. Wrapper composition: Wrappers (Supervisor, Watch, etc.) expect
+// 5. Wrapper composition: Wrappers (Supervise, Watch, etc.) expect
 //    Behavior with a single Event type. A phase-varying event type would
 //    break every wrapper's composition contract.
 

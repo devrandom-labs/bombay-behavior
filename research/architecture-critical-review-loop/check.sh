@@ -195,7 +195,7 @@ for obligation, key, current in (
 
 declarations = {
     "Behavior": ("trait","Behavior"), "Actions": ("struct","Actions"),
-    "Create": ("struct","Create"), "Compose": ("trait","Compose"),
+    "Create": ("struct","Create"),
     "Initialized": ("struct","Initialized"), "Active": ("struct","Active"),
     "Deadline": ("struct","Deadline"), "Watch": ("struct","Watch"),
     "Supervisor": ("struct","Supervisor"), "Proxy": ("struct","Proxy"),
@@ -532,7 +532,8 @@ if [ "$artifact_status" -ne 0 ]; then exit "$artifact_status"; fi
 
 unexpected_bombay_dependencies=$(rg --pcre2 -n \
   'package = "bombay-(?!behavior(?:-actors|-macros|-testkit)?")|name = "bombay-(?!behavior(?:-actors|-macros|-testkit|-fuzz)?")' \
-  --glob 'Cargo.toml' --glob 'Cargo.lock' . || true)
+  --glob 'Cargo.toml' --glob 'Cargo.lock' \
+  --glob '!crates/behavior-macros/tests/fixtures/**' . || true)
 if [ -n "$unexpected_bombay_dependencies" ]; then
   echo "CHECK: behavior workspace must not depend on other Bombay crates"
   echo "$unexpected_bombay_dependencies"

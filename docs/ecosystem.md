@@ -13,7 +13,7 @@ wrap, or recreate a competing framework.
 | Repository or published crate | Architectural ownership |
 |---|---|
 | `bombay-behavior` | Foundational pure `Behavior -> Actions` algebra: send, fresh create, and next behavior or termination |
-| `bombay-behavior-actors` | Reusable passive behavior templates and concrete typed protocol transformations |
+| `bombay-behavior-actors` | Reusable passive actor templates, internal event/effect transformations, and concrete public protocols |
 | `bombay-engine` | One universal generic Driver over a behavior and a statically sufficient environment |
 | `bombay-rs` and `bombay-framework` | Tokio-backed `System`, incarnation construction, capability interpretation, handles, and application composition |
 | `bombay-communication` | Typed mailbox mechanics, bounded user admission, control priority, fairness, backpressure, and draining |
@@ -64,11 +64,12 @@ transfer. In particular:
 At the user-facing boundary, concrete templates from
 `bombay-behavior-actors` are constructed directly and consumed by Bombay's
 `System`. `Activate` expresses the one initialization typestate transition;
-the optional `Compose` extension trait only builds concrete wrapper types.
-Neither API asks users to select, initialize, or wire the owned runtime
-components in this table. Bombay's top-level façade should re-export both
-traits beside `Behavior` and `Actions`, while component interpreter functions
-remain framework-extension surface.
+public owning-type constructors build concrete wrapper types. Neither API asks
+users to select, initialize, or wire the owned runtime components in this
+table. Bombay's top-level façade may re-export owner-defined construction
+recipes, while the
+component crates retain one explicit construction path and interpreter
+functions remain framework-extension surface.
 
 Exact wrapper stacks remain inferred across generic `B: Behavior` boundaries.
 Supervisor and pool topology and policy cross the construction boundary through `ChildTopology`,

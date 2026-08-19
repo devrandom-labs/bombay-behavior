@@ -1,19 +1,24 @@
 //! Typed subscription membership and publication.
 
 use behavior::{
-    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, Never, NoBirths, Recipient,
-    User,
+    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, MessageProtocol, Never,
+    NoBirths, Recipient, User,
 };
 use thiserror::Error;
 
 /// Commands accepted by a [`Topic`].
-pub enum TopicMessage<P, Subscriber: Behavior> {
+pub enum TopicMessage<A: Address, P> {
     /// Add a subscriber if absent.
-    Subscribe(Recipient<Subscriber>),
+    Subscribe(Recipient<MessageProtocol<A, P>>),
     /// Remove a subscriber if present.
-    Unsubscribe(Recipient<Subscriber>),
+    Unsubscribe(Recipient<MessageProtocol<A, P>>),
     /// Publish one owned value to the current membership snapshot.
     Publish(P),
+}
+
+impl<A: Address, P> behavior::Protocol for TopicMessage<A, P> {
+    type Addr = A;
+    type Msg = TopicMessage<A, P>;
 }
 
 /// Publication rejection preserving the unaccepted value.
@@ -34,37 +39,33 @@ pub enum TopicError<P> {
 /// itself. Membership order and empty-publication rejection are Bombay policy;
 /// endpoint resolution and delivery are Address/Communication capabilities.
 /// No method has a semantic panic condition.
-pub struct Topic<A: Address, P, Subscriber: Behavior<Addr = A, Msg = P>> {
-    subscribers: Vec<Recipient<Subscriber>>,
-    address: core::marker::PhantomData<fn() -> (A, P)>,
+pub struct Topic<A: Address, P> {
+    subscribers: Vec<Recipient<MessageProtocol<A, P>>>,
 }
 
-impl<A: Address, P, Subscriber: Behavior<Addr = A, Msg = P>> Topic<A, P, Subscriber> {
+impl<A: Address, P> Topic<A, P> {
     /// Construct an empty topic definition.
     #[must_use]
     pub const fn new() -> Self {
         Self {
             subscribers: Vec::new(),
-            address: core::marker::PhantomData,
         }
     }
 
     /// Borrow subscribers in publication order.
     #[must_use]
-    pub fn subscribers(&self) -> &[Recipient<Subscriber>] {
+    pub fn subscribers(&self) -> &[Recipient<MessageProtocol<A, P>>] {
         &self.subscribers
     }
 }
 
-impl<A: Address, P, Subscriber: Behavior<Addr = A, Msg = P>> Default for Topic<A, P, Subscriber> {
+impl<A: Address, P> Default for Topic<A, P> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<A: Address, P, Subscriber: Behavior<Addr = A, Msg = P>> BehaviorBase
-    for Topic<A, P, Subscriber>
-{
+impl<A: Address, P> BehaviorBase for Topic<A, P> {
     type Base = Self;
 
     fn base(&self) -> &Self {
@@ -72,16 +73,23 @@ impl<A: Address, P, Subscriber: Behavior<Addr = A, Msg = P>> BehaviorBase
     }
 }
 
-impl<A, P, Subscriber> Behavior for Topic<A, P, Subscriber>
+impl<A, P> behavior::Protocol for Topic<A, P>
 where
     A: Address,
     P: Clone,
-    Subscriber: Behavior<Addr = A, Msg = P>,
 {
     type Addr = A;
-    type Msg = TopicMessage<P, Subscriber>;
-    type Event = User<A, Self::Msg>;
-    type Sends = Vec<Delivery<Subscriber>>;
+    type Msg = TopicMessage<A, P>;
+}
+
+impl<A, P> Behavior for Topic<A, P>
+where
+    A: Address,
+    P: Clone,
+{
+    type Protocol = TopicMessage<A, P>;
+    type Event = User<A, crate::BehaviorMessage<Self>>;
+    type Sends = Vec<Delivery<MessageProtocol<A, P>>>;
     type Ph = Never;
     type Error = TopicError<P>;
     type Birth = NoBirths;
@@ -126,30 +134,11 @@ mod tests {
     use crate::Activate as _;
     use behavior::MailAddr;
 
-    struct Subscriber;
-
-    impl Behavior for Subscriber {
-        type Addr = MailAddr;
-        type Msg = u8;
-        type Event = User<MailAddr, u8>;
-        type Sends = Vec<Never>;
-        type Ph = Never;
-        type Error = Never;
-        type Birth = NoBirths;
-
-        fn transition(&mut self, _: crate::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
-            Ok(Actions::cont())
-        }
-    }
-
     #[test]
     fn membership_is_idempotent_and_publication_ordered() {
-        let one = Recipient::<Subscriber>::global(MailAddr(1));
-        let two = Recipient::<Subscriber>::global(MailAddr(2));
-        let mut topic = (Topic::<MailAddr, u8, Subscriber>::new())
-            .initialize()
-            .unwrap()
-            .behavior;
+        let one = Recipient::from(MailAddr(1));
+        let two = Recipient::from(MailAddr(2));
+        let mut topic = Topic::new().initialize().unwrap().behavior;
         for subscriber in [one, two, one] {
             topic
                 .receive(MailAddr(9), TopicMessage::Subscribe(subscriber))
@@ -168,10 +157,7 @@ mod tests {
 
     #[test]
     fn empty_publication_returns_owned_value() {
-        let mut topic = (Topic::<MailAddr, u8, Subscriber>::new())
-            .initialize()
-            .unwrap()
-            .behavior;
+        let mut topic = Topic::new().initialize().unwrap().behavior;
         assert!(matches!(
             topic.receive(MailAddr(9), TopicMessage::Publish(7)),
             Err(TopicError::NoSubscribers(7))

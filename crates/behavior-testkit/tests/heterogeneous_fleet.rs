@@ -2,12 +2,12 @@
 //! its declared concrete variant, and supervision routes replacements by birth
 //! sequence without crossing variants.
 
-use std::marker::PhantomData;
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, Behavior, Crash, Delivery, MailAddr, Never, Recipient, RestartPolicy, Step,
-    Strategy, SupervisionEvent, Supervisor, User, UserEvent, WorkerStopped,
+    Acted, Actions, Behavior, Crash, CreationKind, Delivery, MailAddr, Never, Recipient,
+    RestartPolicy, Step, Strategy, SupervisionEvent, Supervisor, User, UserEvent,
+    WorkerCreationResolved, WorkerStopped,
 };
 use std::time::Instant;
 
@@ -70,9 +70,13 @@ enum Worker {
     B(WorkerB),
 }
 
-impl Behavior for Worker {
+impl behavior::Protocol for Worker {
     type Addr = MailAddr;
     type Msg = u8;
+}
+
+impl Behavior for Worker {
+    type Protocol = Self;
     type Event = User<MailAddr, u8>;
     type Sends = Vec<Delivery<behavior_testkit::TestRecipient<u8>>>;
     type Ph = Never;
@@ -106,34 +110,16 @@ fn build_worker(index: usize) -> Option<Worker> {
     }
 }
 
-/// The supervising parent is generic over its offspring; instantiating it
-/// with the concrete `Worker` type happens at each `build` call site.
-struct GenericParent<C>(PhantomData<C>);
-
-#[behavior::behavior(addr = MailAddr, message = u64, sends = Vec<Never>, births = behavior::Births<C>, error = Never)]
-impl<C> GenericParent<C>
-where
-    C: Behavior<Ph = Never, Addr = MailAddr>,
-{
-    fn receive(
-        &mut self,
-        _from: MailAddr,
-        _message: u64,
-    ) -> Acted<MailAddr, Never, Vec<Never>, behavior::Births<C>, Never> {
-        Ok(Actions::cont())
-    }
-}
-
 fn supervise_with<C>(
     count: usize,
     build: fn(usize) -> Option<C>,
     strategy: Strategy,
-) -> Supervisor<GenericParent<C>, C>
+) -> Supervisor<MailAddr, C>
 where
-    C: Behavior<Ph = Never, Addr = MailAddr> + Send,
+    C: Behavior<Ph = Never> + Send,
+    C::Protocol: behavior::Protocol<Addr = MailAddr>,
 {
     Supervisor::new(
-        GenericParent(PhantomData),
         behavior::ChildTopology::indexed(|index| u64::try_from(index).unwrap(), count, build),
         behavior::RestartConfiguration::new(
             strategy,
@@ -200,10 +186,31 @@ async fn supervised_mixed_fleet_routes_replacements_by_birth_sequence() {
     assert!(routes.contains(&behavior::Address::birth(MailAddr(17), 1)));
     assert!(routes.contains(&behavior::Address::birth(MailAddr(17), 2)));
 
-    let narrow = supervisor
+    supervisor
         .transition(SupervisionEvent::WorkerStopped(WorkerStopped {
             proxy: 2,
             worker: 2,
+            outcome: Err(Crash::Cancelled),
+            at,
+        }))
+        .unwrap();
+    for proxy in [1, 2] {
+        supervisor
+            .transition(SupervisionEvent::WorkerCreationResolved(
+                WorkerCreationResolved::new(
+                    proxy,
+                    proxy + 10,
+                    CreationKind::ReplacementIncarnation { replaces: proxy },
+                    Ok(()),
+                ),
+            ))
+            .unwrap();
+    }
+
+    let narrow = supervisor
+        .transition(SupervisionEvent::WorkerStopped(WorkerStopped {
+            proxy: 2,
+            worker: 12,
             outcome: Err(Crash::Failed),
             at,
         }))

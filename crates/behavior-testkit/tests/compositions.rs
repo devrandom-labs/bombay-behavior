@@ -5,19 +5,23 @@
 
 use std::time::Duration;
 
+use behavior::EventLayer;
 use behavior::{
-    Acted, Actions, Activate, Behavior, Compose, Crash, DeadlineEvent, Delivery, Exit, MailAddr,
-    Never, PeerStopped, Recipient, StashRoute, Step, SupervisionEvent, TimerElapsed,
-    TimerGeneration, TimerId, User, UserEvent, WatchEvent, WorkerStopped, stop_on_abnormal_death,
-    stop_on_supervision_failure,
+    Acted, Actions, Activate, Behavior, Crash, Delivery, Exit, MailAddr, Never, PeerStopped,
+    Recipient, SendEffects, StashRoute, Step, SupervisionEvent, TimerElapsed, TimerGeneration,
+    TimerId, User, UserEvent, WorkerStopped, stop_on_abnormal_death, stop_on_supervision_failure,
 };
 use std::time::Instant;
 
 struct Sink;
 
-impl Behavior for Sink {
+impl behavior::Protocol for Sink {
     type Addr = MailAddr;
     type Msg = u8;
+}
+
+impl Behavior for Sink {
+    type Protocol = Self;
     type Event = User<MailAddr, u8>;
     type Sends = Vec<Never>;
     type Ph = Never;
@@ -67,7 +71,121 @@ fn child(_index: usize) -> Child {
 const PEER: MailAddr = MailAddr(44);
 
 fn at<T: Behavior>(behavior: T, when: Instant) -> behavior::Deadline<T> {
-    behavior.deadline(behavior::TimerId(0), Some(when), |_| Ok(Step::Continue))
+    behavior::Deadline::new(behavior, behavior::TimerId(0), Some(when), |_| {
+        Ok(Step::Continue)
+    })
+}
+
+struct GeneratedBase;
+
+#[behavior::behavior(
+    addr = MailAddr,
+    message = u8,
+    sends = {
+        replies: Vec<Delivery<Sink>>,
+    },
+    births = {
+        recorder: Recorder,
+    },
+)]
+impl GeneratedBase {
+    fn init(&mut self) -> behavior::BehaviorActed<Self> {
+        let mut sends = GeneratedBaseSends::empty();
+        sends
+            .send::<_, GeneratedBaseSendsReplies>(Delivery::new(Recipient::global(MailAddr(9)), 7));
+        let creates = behavior::Children::<MailAddr>::new()
+            .child(4, Recorder::default())
+            .into_creates()
+            .expect("one child nonce is unique");
+        Ok(Actions::new(sends, creates, Step::Continue))
+    }
+
+    fn receive(&mut self, _: MailAddr, _: u8) -> behavior::BehaviorActed<Self> {
+        Ok(Actions::cont())
+    }
+}
+
+fn assert_generated_base_effects(sends: &GeneratedBaseSends, creates: usize) {
+    assert_eq!(sends.replies.len(), 1);
+    assert_eq!(sends.replies[0].message, 7);
+    assert_eq!(creates, 1);
+}
+
+/// Every ordering of the three transparent wrapper families accepts the
+/// generated nominal send and birth products. Stash contributes no product;
+/// Deadline and Watch each wrap it once without consuming either base leg.
+#[tokio::test]
+async fn generated_products_compose_through_every_three_wrapper_order() {
+    let due = Instant::now() + Duration::from_secs(1);
+
+    let first = at(
+        behavior::Watch::new(
+            behavior::Stash::new(GeneratedBase, |_| StashRoute::Deliver),
+            PEER,
+            stop_on_abnormal_death,
+        ),
+        due,
+    )
+    .initialize()
+    .unwrap()
+    .actions;
+    assert_generated_base_effects(&first.sends.inner.inner, first.creates.len());
+
+    let second = at(
+        behavior::Stash::new(
+            behavior::Watch::new(GeneratedBase, PEER, stop_on_abnormal_death),
+            |_| StashRoute::Deliver,
+        ),
+        due,
+    )
+    .initialize()
+    .unwrap()
+    .actions;
+    assert_generated_base_effects(&second.sends.inner.inner, second.creates.len());
+
+    let third = behavior::Stash::new(
+        at(
+            behavior::Watch::new(GeneratedBase, PEER, stop_on_abnormal_death),
+            due,
+        ),
+        |_| StashRoute::Deliver,
+    )
+    .initialize()
+    .unwrap()
+    .actions;
+    assert_generated_base_effects(&third.sends.inner.inner, third.creates.len());
+
+    let fourth = behavior::Watch::new(
+        at(
+            behavior::Stash::new(GeneratedBase, |_| StashRoute::Deliver),
+            due,
+        ),
+        PEER,
+        stop_on_abnormal_death,
+    )
+    .initialize()
+    .unwrap()
+    .actions;
+    assert_generated_base_effects(&fourth.sends.inner.inner, fourth.creates.len());
+
+    let fifth = behavior::Watch::new(
+        behavior::Stash::new(at(GeneratedBase, due), |_| StashRoute::Deliver),
+        PEER,
+        stop_on_abnormal_death,
+    )
+    .initialize()
+    .unwrap()
+    .actions;
+    assert_generated_base_effects(&fifth.sends.inner.inner, fifth.creates.len());
+
+    let sixth = behavior::Stash::new(
+        behavior::Watch::new(at(GeneratedBase, due), PEER, stop_on_abnormal_death),
+        |_| StashRoute::Deliver,
+    )
+    .initialize()
+    .unwrap()
+    .actions;
+    assert_generated_base_effects(&sixth.sends.inner.inner, sixth.creates.len());
 }
 
 /// Every ordering of {at, watch, at} preserves each layer's own initial
@@ -78,74 +196,112 @@ async fn all_wrapper_permutations_preserve_init_protocol_nesting() {
     let first = Instant::now() + Duration::from_secs(1);
     let second = first + Duration::from_secs(1);
 
-    // Chain .deadline(behavior::TimerId(0), T1).watch(p).deadline(behavior::TimerId(0), T2): outermost Deadline owns T2, Watch owns p,
+    // Deadline::new(Watch::new(Deadline::new(inner, T1), p), T2): outermost Deadline owns T2, Watch owns p.
     // innermost Deadline owns T1.
-    let c1 = at(Recorder::default(), first)
-        .watch(PEER, stop_on_abnormal_death)
-        .deadline(behavior::TimerId(0), Some(second), |_| Ok(Step::Continue));
+    let c1 = behavior::Deadline::new(
+        behavior::Watch::new(at(Recorder::default(), first), PEER, stop_on_abnormal_death),
+        behavior::TimerId(0),
+        Some(second),
+        |_| Ok(Step::Continue),
+    );
     let initialized = c1.initialize().unwrap();
     let i1 = initialized.actions;
     let _c1 = initialized.behavior;
-    assert_eq!(i1.sends.schedules[0].at, second);
-    assert_eq!(i1.sends.behavior.observations[0].peer, PEER);
-    assert_eq!(i1.sends.behavior.behavior.schedules[0].at, first);
+    assert_eq!(i1.sends.owned[0].at, second);
+    assert_eq!(i1.sends.inner.owned[0].peer, PEER);
+    assert_eq!(i1.sends.inner.inner.owned[0].at, first);
 
-    // Chain .deadline(behavior::TimerId(0), T1).deadline(behavior::TimerId(0), T2).watch(p): Watch owns the outer product.
-    let c2 = at(Recorder::default(), first)
-        .deadline(behavior::TimerId(0), Some(second), |_| Ok(Step::Continue))
-        .watch(PEER, stop_on_abnormal_death);
+    // Watch::new(Deadline::new(Deadline::new(inner, T1), T2), p): Watch owns the outer product.
+    let c2 = behavior::Watch::new(
+        behavior::Deadline::new(
+            at(Recorder::default(), first),
+            behavior::TimerId(0),
+            Some(second),
+            |_| Ok(Step::Continue),
+        ),
+        PEER,
+        stop_on_abnormal_death,
+    );
     let initialized = c2.initialize().unwrap();
     let i2 = initialized.actions;
     let _c2 = initialized.behavior;
-    assert_eq!(i2.sends.observations[0].peer, PEER);
-    assert_eq!(i2.sends.behavior.schedules[0].at, second);
-    assert_eq!(i2.sends.behavior.behavior.schedules[0].at, first);
+    assert_eq!(i2.sends.owned[0].peer, PEER);
+    assert_eq!(i2.sends.inner.owned[0].at, second);
+    assert_eq!(i2.sends.inner.inner.owned[0].at, first);
 
-    // Chain .watch(p).deadline(behavior::TimerId(0), T1).deadline(behavior::TimerId(0), T2).
-    let c3 = (Recorder::default())
-        .watch(PEER, stop_on_abnormal_death)
-        .deadline(behavior::TimerId(0), Some(first), |_| Ok(Step::Continue))
-        .deadline(behavior::TimerId(0), Some(second), |_| Ok(Step::Continue));
+    // Deadline::new(Deadline::new(Watch::new(inner, p), T1), T2).
+    let c3 = behavior::Deadline::new(
+        behavior::Deadline::new(
+            behavior::Watch::new(Recorder::default(), PEER, stop_on_abnormal_death),
+            behavior::TimerId(0),
+            Some(first),
+            |_| Ok(Step::Continue),
+        ),
+        behavior::TimerId(0),
+        Some(second),
+        |_| Ok(Step::Continue),
+    );
     let initialized = c3.initialize().unwrap();
     let i3 = initialized.actions;
     let _c3 = initialized.behavior;
-    assert_eq!(i3.sends.schedules[0].at, second);
-    assert_eq!(i3.sends.behavior.schedules[0].at, first);
-    assert_eq!(i3.sends.behavior.behavior.observations[0].peer, PEER);
+    assert_eq!(i3.sends.owned[0].at, second);
+    assert_eq!(i3.sends.inner.owned[0].at, first);
+    assert_eq!(i3.sends.inner.inner.owned[0].peer, PEER);
 
-    // Chain .deadline(behavior::TimerId(0), T2).deadline(behavior::TimerId(0), T1).watch(p).
-    let c4 = at(Recorder::default(), second)
-        .deadline(behavior::TimerId(0), Some(first), |_| Ok(Step::Continue))
-        .watch(PEER, stop_on_abnormal_death);
+    // Watch::new(Deadline::new(Deadline::new(inner, T2), T1), p).
+    let c4 = behavior::Watch::new(
+        behavior::Deadline::new(
+            at(Recorder::default(), second),
+            behavior::TimerId(0),
+            Some(first),
+            |_| Ok(Step::Continue),
+        ),
+        PEER,
+        stop_on_abnormal_death,
+    );
     let initialized = c4.initialize().unwrap();
     let i4 = initialized.actions;
     let _c4 = initialized.behavior;
-    assert_eq!(i4.sends.observations[0].peer, PEER);
-    assert_eq!(i4.sends.behavior.schedules[0].at, first);
-    assert_eq!(i4.sends.behavior.behavior.schedules[0].at, second);
+    assert_eq!(i4.sends.owned[0].peer, PEER);
+    assert_eq!(i4.sends.inner.owned[0].at, first);
+    assert_eq!(i4.sends.inner.inner.owned[0].at, second);
 
-    // Chain .deadline(behavior::TimerId(0), T2).watch(p).deadline(behavior::TimerId(0), T1).
-    let c5 = at(Recorder::default(), second)
-        .watch(PEER, stop_on_abnormal_death)
-        .deadline(behavior::TimerId(0), Some(first), |_| Ok(Step::Continue));
+    // Deadline::new(Watch::new(Deadline::new(inner, T2), p), T1).
+    let c5 = behavior::Deadline::new(
+        behavior::Watch::new(
+            at(Recorder::default(), second),
+            PEER,
+            stop_on_abnormal_death,
+        ),
+        behavior::TimerId(0),
+        Some(first),
+        |_| Ok(Step::Continue),
+    );
     let initialized = c5.initialize().unwrap();
     let i5 = initialized.actions;
     let _c5 = initialized.behavior;
-    assert_eq!(i5.sends.schedules[0].at, first);
-    assert_eq!(i5.sends.behavior.observations[0].peer, PEER);
-    assert_eq!(i5.sends.behavior.behavior.schedules[0].at, second);
+    assert_eq!(i5.sends.owned[0].at, first);
+    assert_eq!(i5.sends.inner.owned[0].peer, PEER);
+    assert_eq!(i5.sends.inner.inner.owned[0].at, second);
 
-    // Chain .watch(p).deadline(behavior::TimerId(0), T2).deadline(behavior::TimerId(0), T1).
-    let c6 = (Recorder::default())
-        .watch(PEER, stop_on_abnormal_death)
-        .deadline(behavior::TimerId(0), Some(second), |_| Ok(Step::Continue))
-        .deadline(behavior::TimerId(0), Some(first), |_| Ok(Step::Continue));
+    // Deadline::new(Deadline::new(Watch::new(inner, p), T2), T1).
+    let c6 = behavior::Deadline::new(
+        behavior::Deadline::new(
+            behavior::Watch::new(Recorder::default(), PEER, stop_on_abnormal_death),
+            behavior::TimerId(0),
+            Some(second),
+            |_| Ok(Step::Continue),
+        ),
+        behavior::TimerId(0),
+        Some(first),
+        |_| Ok(Step::Continue),
+    );
     let initialized = c6.initialize().unwrap();
     let i6 = initialized.actions;
     let _c6 = initialized.behavior;
-    assert_eq!(i6.sends.schedules[0].at, first);
-    assert_eq!(i6.sends.behavior.schedules[0].at, second);
-    assert_eq!(i6.sends.behavior.behavior.observations[0].peer, PEER);
+    assert_eq!(i6.sends.owned[0].at, first);
+    assert_eq!(i6.sends.inner.owned[0].at, second);
+    assert_eq!(i6.sends.inner.inner.owned[0].peer, PEER);
 }
 
 /// A stash layer contributes no initialization sends and shifts nothing:
@@ -153,16 +309,22 @@ async fn all_wrapper_permutations_preserve_init_protocol_nesting() {
 #[tokio::test]
 async fn stash_layer_contributes_no_init_sends() {
     let due = Instant::now() + Duration::from_secs(1);
-    let behavior = (Recorder::default())
-        .stash(|_| StashRoute::Deliver)
-        .watch(PEER, stop_on_abnormal_death)
-        .deadline(behavior::TimerId(0), Some(due), |_| Ok(Step::Continue));
+    let behavior = behavior::Deadline::new(
+        behavior::Watch::new(
+            behavior::Stash::new(Recorder::default(), |_| StashRoute::Deliver),
+            PEER,
+            stop_on_abnormal_death,
+        ),
+        behavior::TimerId(0),
+        Some(due),
+        |_| Ok(Step::Continue),
+    );
     let initialized = behavior.initialize().unwrap();
     let initial = initialized.actions;
     let _behavior = initialized.behavior;
-    assert_eq!(initial.sends.schedules[0].at, due);
-    assert_eq!(initial.sends.behavior.observations[0].peer, PEER);
-    assert!(initial.sends.behavior.behavior.is_empty());
+    assert_eq!(initial.sends.owned[0].at, due);
+    assert_eq!(initial.sends.inner.owned[0].peer, PEER);
+    assert!(initial.sends.inner.inner.is_empty());
 }
 
 /// In an Deadline∘Watch∘Stash stack, only the user lane enters the stash buffer:
@@ -170,15 +332,21 @@ async fn stash_layer_contributes_no_init_sends() {
 #[tokio::test]
 async fn environment_lanes_bypass_stash_while_user_lane_is_intercepted() {
     let due = Instant::now() + Duration::from_secs(1);
-    let behavior = (Recorder::default())
-        .stash(|_| StashRoute::Stash)
-        .watch(PEER, stop_on_abnormal_death)
-        .deadline(behavior::TimerId(0), Some(due), |_| Ok(Step::Continue));
+    let behavior = behavior::Deadline::new(
+        behavior::Watch::new(
+            behavior::Stash::new(Recorder::default(), |_| StashRoute::Stash),
+            PEER,
+            stop_on_abnormal_death,
+        ),
+        behavior::TimerId(0),
+        Some(due),
+        |_| Ok(Step::Continue),
+    );
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
 
     // Time lane: fires through the stash layer, nothing stashed.
-    let reached = DeadlineEvent::Elapsed(TimerElapsed {
+    let reached = EventLayer::Owned(TimerElapsed {
         id: TimerId(0),
         generation: TimerGeneration(0),
     });
@@ -187,18 +355,18 @@ async fn environment_lanes_bypass_stash_while_user_lane_is_intercepted() {
     assert_eq!(behavior.stashed(), 0);
 
     // Peer lane: matching peer death stops the fold through the stash layer.
-    let peer = WatchEvent::PeerStopped(PeerStopped {
+    let peer = EventLayer::Owned(PeerStopped {
         peer: PEER,
         outcome: Err(Crash::Failed),
     });
-    let died = behavior.transition(DeadlineEvent::Behavior(peer)).unwrap();
+    let died = behavior.transition(EventLayer::Inner(peer)).unwrap();
     assert!(matches!(died.become_, Step::Stop(behavior::Stopped)));
     assert_eq!(behavior.stashed(), 0);
 
     // User lane: intercepted by the stash buffer.
     let user = User::user(MailAddr(7), 3);
     behavior
-        .transition(DeadlineEvent::Behavior(WatchEvent::Behavior(user)))
+        .transition(EventLayer::Inner(EventLayer::Inner(user)))
         .unwrap();
     assert_eq!(behavior.stashed(), 1);
     assert!(behavior.base().seen.is_empty());
@@ -208,11 +376,11 @@ async fn environment_lanes_bypass_stash_while_user_lane_is_intercepted() {
 /// the reaction on each matching death; ordinary user messages still fold.
 #[tokio::test]
 async fn watch_reaction_reinvokes_on_each_death_and_fold_continues() {
-    let behavior = (Recorder::default()).watch(PEER, stop_on_abnormal_death);
+    let behavior = behavior::Watch::new(Recorder::default(), PEER, stop_on_abnormal_death);
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
 
-    let death = WatchEvent::PeerStopped(PeerStopped {
+    let death = EventLayer::Owned(PeerStopped {
         peer: PEER,
         outcome: Err(Crash::Failed),
     });
@@ -230,32 +398,67 @@ async fn watch_reaction_reinvokes_on_each_death_and_fold_continues() {
     assert_eq!(behavior.base().seen, [(MailAddr(2), 9)]);
 }
 
-/// An unrelated peer's death routed through a watch-of-watch reaches the
-/// inner watcher, not the outer reaction; both layers keep their own peer.
+/// A watch-of-watch exposes distinct structural destinations for both owners.
 #[tokio::test]
 async fn watch_of_watch_routes_each_peer_to_its_own_layer() {
     let inner_peer = MailAddr(1);
     let outer_peer = MailAddr(2);
-    let behavior = (Recorder::default())
-        .watch(inner_peer, stop_on_abnormal_death)
-        .watch(outer_peer, stop_on_abnormal_death);
+    let behavior = behavior::Watch::new(
+        behavior::Watch::new(Recorder::default(), inner_peer, stop_on_abnormal_death),
+        outer_peer,
+        stop_on_abnormal_death,
+    );
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
 
     // Outer peer death: outer layer stops.
-    let outer_death = WatchEvent::PeerStopped(PeerStopped {
+    let outer_death = EventLayer::Owned(PeerStopped {
         peer: outer_peer,
         outcome: Err(Crash::Failed),
     });
     let outer = behavior.transition(outer_death).unwrap();
     assert!(matches!(outer.become_, Step::Stop(behavior::Stopped)));
 
-    // Inner peer death: forwarded to the inner watcher.
-    let inner_death = WatchEvent::PeerStopped(PeerStopped {
+    // The inner observation request selects the inner watcher directly.
+    let inner_death = EventLayer::Inner(EventLayer::Owned(PeerStopped {
         peer: inner_peer,
         outcome: Err(Crash::Failed),
-    });
+    }));
     let inner = behavior.transition(inner_death).unwrap();
+    assert!(matches!(inner.become_, Step::Stop(behavior::Stopped)));
+}
+
+fn continue_after_death<B: Behavior>(
+    _: &mut B,
+    _: MailAddr,
+    _: &Result<Exit<MailAddr>, Crash>,
+) -> Result<behavior::Become, B::Error> {
+    Ok(Step::Continue)
+}
+
+#[tokio::test]
+async fn duplicate_nested_watch_peer_remains_addressable_at_both_paths() {
+    let behavior = behavior::Watch::new(
+        behavior::Watch::new(Recorder::default(), PEER, stop_on_abnormal_death),
+        PEER,
+        continue_after_death,
+    );
+    let mut behavior = behavior.initialize().unwrap().behavior;
+
+    let outer = behavior
+        .transition(EventLayer::Owned(PeerStopped {
+            peer: PEER,
+            outcome: Err(Crash::Failed),
+        }))
+        .unwrap();
+    assert_eq!(outer.become_, Step::Continue);
+
+    let inner = behavior
+        .transition(EventLayer::Inner(EventLayer::Owned(PeerStopped {
+            peer: PEER,
+            outcome: Err(Crash::Failed),
+        })))
+        .unwrap();
     assert!(matches!(inner.become_, Step::Stop(behavior::Stopped)));
 }
 
@@ -263,17 +466,17 @@ async fn watch_of_watch_routes_each_peer_to_its_own_layer() {
 /// Reached event: the reaction never fires.
 #[tokio::test]
 async fn unscheduled_at_is_inert_to_reached_events() {
-    let behavior = (Recorder::default()).deadline(behavior::TimerId(0), None, |_| {
+    let behavior = behavior::Deadline::new(Recorder::default(), behavior::TimerId(0), None, |_| {
         Ok(Step::Stop(behavior::Stopped))
     });
     let initialized = behavior.initialize().unwrap();
     let initial = initialized.actions;
     let mut behavior = initialized.behavior;
-    assert!(initial.sends.schedules.is_empty());
+    assert!(initial.sends.owned.is_empty());
 
     for id in [TimerId(0), TimerId(1)] {
         let actions = behavior
-            .transition(DeadlineEvent::Elapsed(TimerElapsed {
+            .transition(EventLayer::Owned(TimerElapsed {
                 id,
                 generation: TimerGeneration(0),
             }))
@@ -286,12 +489,12 @@ async fn unscheduled_at_is_inert_to_reached_events() {
 /// the fold alive; `LinkDied` and crashes stop it carrying the peer address.
 #[tokio::test]
 async fn abnormal_death_reaction_outcome_classes() {
-    let behavior = (Recorder::default()).watch(PEER, stop_on_abnormal_death);
+    let behavior = behavior::Watch::new(Recorder::default(), PEER, stop_on_abnormal_death);
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
 
     let outcome = |outcome| {
-        WatchEvent::PeerStopped(PeerStopped {
+        EventLayer::Owned(PeerStopped {
             peer: PEER,
             outcome,
         })
@@ -327,32 +530,42 @@ async fn supervision_preserves_inner_watch_routing() {
         fn receive(
             &mut self,
             _from: MailAddr,
-            _message: u64,
+            message: u64,
         ) -> Acted<MailAddr, Never, Vec<Never>, behavior::Births<Child>, Never> {
-            Ok(Actions::cont())
+            Ok(Actions::create(vec![behavior::Create::birth(
+                message,
+                child(0),
+            )]))
         }
     }
 
-    let behavior = (Parent)
-        .watch(PEER, stop_on_abnormal_death)
-        .children(
-            |index| u64::try_from(index).unwrap(),
-            2,
-            |index| Some(child(index)),
-        )
-        .unwrap();
+    let behavior = behavior::Supervise::new(
+        behavior::Watch::new(Parent, PEER, stop_on_abnormal_death),
+        behavior::ChildTopology::new((0..2).map(|index| u64::try_from(index).unwrap()), |index| {
+            Some(child(index))
+        }),
+        behavior::RestartConfiguration::new(
+            behavior::Strategy::OneForOne,
+            behavior::RestartPolicy::Transient,
+            1,
+            std::time::Duration::from_secs(5),
+        ),
+    )
+    .unwrap();
     let initialized = behavior.initialize().unwrap();
     let initial = initialized.actions;
     let mut behavior = initialized.behavior;
     assert_eq!(initial.creates.len(), 2);
-    assert_eq!(initial.sends.child_observations.len(), 2); // observe-child x2
-    assert_eq!(initial.sends.child_observations[0].nonce, 0);
-    assert_eq!(initial.sends.behavior.observations.len(), 1); // observe-peer
-    assert_eq!(initial.sends.behavior.observations[0].peer, PEER);
+    assert_eq!(initial.sends.owned.child_observations.len(), 2); // observe-child x2
+    assert_eq!(initial.sends.owned.child_observations[0].nonce, 0);
+    assert_eq!(initial.sends.owned.creation_observations.len(), 2);
+    assert_eq!(initial.sends.owned.creation_observations[0].nonce, 0);
+    assert_eq!(initial.sends.inner.owned.len(), 1); // observe-peer
+    assert_eq!(initial.sends.inner.owned[0].peer, PEER);
 
     // Peer lane: the watch reaction stops the supervised fold.
     let died = behavior
-        .on(PeerStopped {
+        .on_path(PeerStopped {
             peer: PEER,
             outcome: Err(Crash::Failed),
         })
@@ -360,14 +573,19 @@ async fn supervision_preserves_inner_watch_routing() {
     assert!(matches!(died.become_, Step::Stop(behavior::Stopped)));
 
     // Child lane: a death still yields a replacement send on a fresh stack.
-    let replacement = (Parent)
-        .watch(PEER, stop_on_abnormal_death)
-        .children(
-            |index| u64::try_from(index).unwrap(),
-            2,
-            |index| Some(child(index)),
-        )
-        .unwrap();
+    let replacement = behavior::Supervise::new(
+        behavior::Watch::new(Parent, PEER, stop_on_abnormal_death),
+        behavior::ChildTopology::new((0..2).map(|index| u64::try_from(index).unwrap()), |index| {
+            Some(child(index))
+        }),
+        behavior::RestartConfiguration::new(
+            behavior::Strategy::OneForOne,
+            behavior::RestartPolicy::Transient,
+            1,
+            std::time::Duration::from_secs(5),
+        ),
+    )
+    .unwrap();
     let initialized = replacement.initialize().unwrap();
     let mut replacement = initialized.behavior;
     let actions = replacement
@@ -378,9 +596,9 @@ async fn supervision_preserves_inner_watch_routing() {
             at: Instant::now(),
         }))
         .unwrap();
-    assert_eq!(actions.sends.replacement_commands.len(), 1);
+    assert_eq!(actions.sends.owned.replacement_commands.len(), 1);
     assert_eq!(
-        actions.sends.replacement_commands[0]
+        actions.sends.owned.replacement_commands[0]
             .to
             .resolve(MailAddr(17)),
         behavior::Address::birth(MailAddr(17), 0)
@@ -398,22 +616,29 @@ async fn supervision_failure_reaction_preserves_composed_send_lanes() {
         fn receive(
             &mut self,
             _from: MailAddr,
-            _message: u64,
+            message: u64,
         ) -> Acted<MailAddr, Never, Vec<Never>, behavior::Births<Child>, Never> {
-            Ok(Actions::cont())
+            Ok(Actions::create(vec![behavior::Create::birth(
+                message,
+                child(0),
+            )]))
         }
     }
 
-    let behavior = (Parent)
-        .watch(PEER, stop_on_abnormal_death)
-        .children(
-            |index| u64::try_from(index).unwrap(),
-            1,
-            |index| Some(child(index)),
-        )
-        .unwrap()
-        .with_budget(0, Duration::MAX)
-        .with_failure_reaction(stop_on_supervision_failure);
+    let behavior = behavior::Supervise::new(
+        behavior::Watch::new(Parent, PEER, stop_on_abnormal_death),
+        behavior::ChildTopology::new((0..1).map(|index| u64::try_from(index).unwrap()), |index| {
+            Some(child(index))
+        }),
+        behavior::RestartConfiguration::new(
+            behavior::Strategy::OneForOne,
+            behavior::RestartPolicy::Transient,
+            0,
+            Duration::MAX,
+        ),
+    )
+    .unwrap()
+    .with_failure_reaction(stop_on_supervision_failure);
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
 
@@ -426,9 +651,9 @@ async fn supervision_failure_reaction_preserves_composed_send_lanes() {
         }))
         .unwrap();
 
-    assert!(actions.sends.behavior.behavior.is_empty());
-    assert!(actions.sends.behavior.observations.is_empty());
-    assert!(actions.sends.child_observations.is_empty());
-    assert!(actions.sends.replacement_commands.is_empty());
+    assert!(actions.sends.inner.inner.is_empty());
+    assert!(actions.sends.inner.owned.is_empty());
+    assert!(actions.sends.owned.child_observations.is_empty());
+    assert!(actions.sends.owned.replacement_commands.is_empty());
     assert_eq!(actions.become_, Step::Stop(behavior::Stopped));
 }

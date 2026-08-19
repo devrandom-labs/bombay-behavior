@@ -1,15 +1,16 @@
 //! Driver-level lossless accumulation: `drive` folds every transition's
-//! effect into the trace via `SendAlgebra::append`. For composed behaviors
+//! effect into the trace via `SendEffects::append`. For composed behaviors
 //! the sends use named products; this is where "send/create order and wrapper
 //! preservation are lossless under composition" (contract #3) is enforced at
-//! the trace level. Also: the `SendAlgebra` monoid law itself, and the
+//! the trace level. Also: the `SendEffects` monoid law itself, and the
 //! empty-fleet birth→death restart path.
 
 use std::time::Duration;
 
+use behavior::EventLayer;
 use behavior::{
-    Acted, Actions, Compose, Crash, Create, Delivery, MailAddr, Never, Recipient, RestartPolicy,
-    SendAlgebra, Step, Strategy, SupervisionEvent, User, UserEvent, WorkerStopped,
+    Acted, Actions, Crash, Create, Delivery, MailAddr, Never, Recipient, RestartPolicy,
+    SendEffects, Step, Strategy, SupervisionEvent, User, UserEvent, WorkerStopped,
 };
 use behavior_testkit::{Mailbox, drive};
 use proptest::collection::vec;
@@ -64,7 +65,11 @@ impl EchoingParent {
         self.seen.push(message);
         Ok(Actions {
             sends: vec![Delivery::new(Recipient::global(MailAddr(0)), message)],
-            creates: Vec::new(),
+            creates: if message == u64::MAX {
+                vec![Create::birth(message, child(0))]
+            } else {
+                Vec::new()
+            },
             become_: Step::Continue,
         })
     }
@@ -93,7 +98,7 @@ impl BirthingParent {
     }
 }
 
-type TestSupervisor = behavior::Supervisor<EchoingParent, Child>;
+type TestSupervisor = behavior::Supervise<EchoingParent, Child>;
 
 /// A driven supervised trace: user echoes accumulate in the inner lane,
 /// replacement sends in the supervisor's own lane, observe-child sends stay
@@ -101,7 +106,7 @@ type TestSupervisor = behavior::Supervisor<EchoingParent, Child>;
 #[tokio::test]
 async fn driver_accumulates_supervising_send_products_losslessly() {
     let at = Instant::now();
-    let supervisor: TestSupervisor = behavior::Supervisor::new(
+    let supervisor: TestSupervisor = behavior::Supervise::new(
         EchoingParent { seen: Vec::new() },
         behavior::ChildTopology::indexed(
             |index| u64::try_from(index).unwrap(),
@@ -139,11 +144,12 @@ async fn driver_accumulates_supervising_send_products_losslessly() {
     assert!(!trace.stopped);
 
     // Inner lane: user echoes, in order, exactly the delivered messages.
-    let echoes: Vec<u64> = trace.sends.behavior.iter().map(|d| d.message).collect();
+    let echoes: Vec<u64> = trace.sends.inner.iter().map(|d| d.message).collect();
     assert_eq!(echoes, [3, 5]);
-    // Supervisor's own replacement lane: one per death, in order.
+    // Supervise's own replacement lane: one per death, in order.
     let replacements: Vec<MailAddr> = trace
         .sends
+        .owned
         .replacement_commands
         .iter()
         .map(|d| d.to.resolve(MailAddr(17)))
@@ -156,12 +162,12 @@ async fn driver_accumulates_supervising_send_products_losslessly() {
         ]
     );
     // Observe-child sends: emitted once at init, never again.
-    assert_eq!(trace.sends.child_observations.len(), 2);
+    assert_eq!(trace.sends.owned.child_observations.len(), 2);
     // Creates: exactly the two init proxies; the driver never re-creates.
     assert_eq!(trace.creates.len(), 2);
 }
 
-// The `SendAlgebra` monoid law that the driver's accumulation depends on:
+// The `SendEffects` monoid law that the driver's accumulation depends on:
 // `empty` is a two-sided identity and `append` is associative, at both the
 // `Vec` level. Named wrapper products have composition-specific tests below.
 proptest! {
@@ -171,27 +177,27 @@ proptest! {
     })]
 
     #[test]
-    fn send_algebra_is_a_monoid(
+    fn send_effect_accumulation_has_identity_and_associativity(
         a in vec(any::<u8>(), 0..32),
         b in vec(any::<u8>(), 0..32),
         c in vec(any::<u8>(), 0..32),
     ) {
         // Vec: empty is a two-sided identity.
         let mut left_id = Vec::empty();
-        SendAlgebra::append(&mut left_id, a.clone());
+        SendEffects::append(&mut left_id, a.clone());
         prop_assert_eq!(&left_id, &a);
         let mut right_id = a.clone();
-        SendAlgebra::append(&mut right_id, Vec::empty());
+        SendEffects::append(&mut right_id, Vec::empty());
         prop_assert_eq!(&right_id, &a);
 
         // Vec: append is associative.
         let mut left_assoc = a.clone();
-        SendAlgebra::append(&mut left_assoc, b.clone());
-        SendAlgebra::append(&mut left_assoc, c.clone());
+        SendEffects::append(&mut left_assoc, b.clone());
+        SendEffects::append(&mut left_assoc, c.clone());
         let mut mid = b.clone();
-        SendAlgebra::append(&mut mid, c.clone());
+        SendEffects::append(&mut mid, c.clone());
         let mut right_assoc = a.clone();
-        SendAlgebra::append(&mut right_assoc, mid);
+        SendEffects::append(&mut right_assoc, mid);
         prop_assert_eq!(&left_assoc, &right_assoc);
 
     }
@@ -202,7 +208,7 @@ proptest! {
 #[tokio::test]
 async fn empty_fleet_dynamic_birth_then_death_restarts() {
     let at = Instant::now();
-    let supervisor = behavior::Supervisor::new(
+    let supervisor = behavior::Supervise::new(
         BirthingParent { born: false },
         behavior::ChildTopology::indexed(
             |index| u64::try_from(index).unwrap(),
@@ -233,9 +239,9 @@ async fn empty_fleet_dynamic_birth_then_death_restarts() {
             at,
         }))
         .unwrap();
-    assert_eq!(actions.sends.replacement_commands.len(), 1);
+    assert_eq!(actions.sends.owned.replacement_commands.len(), 1);
     assert_eq!(
-        actions.sends.replacement_commands[0]
+        actions.sends.owned.replacement_commands[0]
             .to
             .resolve(MailAddr(17)),
         behavior::Address::birth(MailAddr(17), 9)
@@ -250,51 +256,57 @@ async fn empty_fleet_dynamic_birth_then_death_restarts() {
 #[tokio::test]
 async fn driver_full_stack_mixed_lanes_stop_on_peer_death() {
     use behavior::{
-        Compose, DeadlineEvent, PeerStopped, StashRoute, TimerElapsed, TimerGeneration, TimerId,
-        WatchEvent, stop_on_abnormal_death,
+        PeerStopped, StashRoute, TimerElapsed, TimerGeneration, TimerId, stop_on_abnormal_death,
     };
 
     let due = Instant::now() + Duration::from_secs(1);
     let peer = MailAddr(44);
-    let behavior = (EchoingParent { seen: Vec::new() })
-        .stash(|m| {
-            if m % 3 == 2 {
-                StashRoute::Stash
-            } else {
-                StashRoute::Deliver
-            }
-        })
-        .watch(peer, stop_on_abnormal_death)
-        .deadline(behavior::TimerId(0), Some(due), |_| Ok(Step::Continue))
-        .children(
-            |index| u64::try_from(index).unwrap(),
-            2,
-            |index| Some(child(index)),
-        )
-        .unwrap()
-        .with_strategy(Strategy::OneForOne)
-        .with_policy(RestartPolicy::Permanent)
-        .with_budget(u32::MAX, Duration::MAX);
+    let behavior = behavior::Supervise::new(
+        behavior::Deadline::new(
+            behavior::Watch::new(
+                behavior::Stash::new(EchoingParent { seen: Vec::new() }, |m| {
+                    if m % 3 == 2 {
+                        StashRoute::Stash
+                    } else {
+                        StashRoute::Deliver
+                    }
+                }),
+                peer,
+                stop_on_abnormal_death,
+            ),
+            behavior::TimerId(0),
+            Some(due),
+            |_| Ok(Step::Continue),
+        ),
+        behavior::ChildTopology::new((0..2).map(|index| u64::try_from(index).unwrap()), |index| {
+            Some(child(index))
+        }),
+        behavior::RestartConfiguration::new(
+            behavior::Strategy::OneForOne,
+            RestartPolicy::Permanent,
+            u32::MAX,
+            Duration::MAX,
+        ),
+    )
+    .unwrap();
     let mut mailbox = Mailbox::new([
-        SupervisionEvent::Behavior(DeadlineEvent::Behavior(WatchEvent::Behavior(User::user(
+        SupervisionEvent::Behavior(EventLayer::Inner(EventLayer::Inner(User::user(
             MailAddr(9),
             1,
         )))),
-        SupervisionEvent::Behavior(DeadlineEvent::Behavior(WatchEvent::Behavior(User::user(
+        SupervisionEvent::Behavior(EventLayer::Inner(EventLayer::Inner(User::user(
             MailAddr(9),
             5,
         )))),
-        SupervisionEvent::Behavior(DeadlineEvent::Elapsed(TimerElapsed {
+        SupervisionEvent::Behavior(EventLayer::Owned(TimerElapsed {
             id: TimerId(0),
             generation: TimerGeneration(0),
         })),
-        SupervisionEvent::Behavior(DeadlineEvent::Behavior(WatchEvent::PeerStopped(
-            PeerStopped {
-                peer,
-                outcome: Err(Crash::Failed),
-            },
-        ))),
-        SupervisionEvent::Behavior(DeadlineEvent::Behavior(WatchEvent::Behavior(User::user(
+        SupervisionEvent::Behavior(EventLayer::Inner(EventLayer::Owned(PeerStopped {
+            peer,
+            outcome: Err(Crash::Failed),
+        }))),
+        SupervisionEvent::Behavior(EventLayer::Inner(EventLayer::Inner(User::user(
             MailAddr(9),
             7,
         )))),
@@ -311,19 +323,19 @@ async fn driver_full_stack_mixed_lanes_stop_on_peer_death() {
     // never reached the parent.
     let echoes: Vec<u64> = trace
         .sends
-        .behavior
-        .behavior
-        .behavior
+        .inner
+        .inner
+        .inner
         .iter()
         .map(|d| d.message)
         .collect();
     assert_eq!(echoes, [1]);
     // Schedule send emitted once at init.
-    assert_eq!(trace.sends.behavior.schedules.len(), 1);
+    assert_eq!(trace.sends.inner.owned.len(), 1);
     // Observe-peer emitted once at init.
-    assert_eq!(trace.sends.behavior.behavior.observations.len(), 1);
+    assert_eq!(trace.sends.inner.inner.owned.len(), 1);
     // Observe-child sends emitted once at init.
-    assert_eq!(trace.sends.child_observations.len(), 2);
+    assert_eq!(trace.sends.owned.child_observations.len(), 2);
 }
 
 /// A macro-defined behavior folds through the same driver boundary as a
@@ -415,7 +427,7 @@ async fn driver_stash_stop_preserves_held_and_stops() {
         }
     }
 
-    let behavior = (StopOnZero { seen: Vec::new() }).stash(|m: &u64| {
+    let behavior = behavior::Stash::new(StopOnZero { seen: Vec::new() }, |m: &u64| {
         if *m == 0 {
             StashRoute::Release
         } else {

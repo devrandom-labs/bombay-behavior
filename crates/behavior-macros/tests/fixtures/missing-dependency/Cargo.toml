@@ -1,0 +1,8 @@
+[package]
+name = "missing-dependency"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+behavior-macros = { package = "bombay-behavior-macros", path = "../../.." }

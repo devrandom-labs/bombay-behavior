@@ -320,6 +320,12 @@ impl Model {
             .iter()
             .position(|slot| slot.nonce == dead)
             .expect("model: unknown supervised nonce");
+        // A second observation for an incarnation already retired or being
+        // replaced is stale. It cannot spend budget or create another
+        // successor.
+        if !self.slots[dead].alive {
+            return Vec::new();
+        }
         let eligible = match policy {
             RestartPolicy::Permanent => true,
             RestartPolicy::Transient => outcome.eligible_transient(),

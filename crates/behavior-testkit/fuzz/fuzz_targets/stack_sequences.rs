@@ -9,10 +9,11 @@
 //! product lane and never leak across.
 
 use behavior::{
-    Acted, Actions, Activate, Compose, Crash, DeadlineEvent, Delivery, MailAddr, Never, PeerStopped,
-    Recipient, RestartPolicy, StashRoute, Step, Strategy, SupervisionEvent, TimerElapsed,
-    TimerGeneration, TimerId, UserEvent, WatchEvent, WorkerStopped, stop_on_abnormal_death,
+    Acted, Actions, Activate, Crash, Create, Delivery, MailAddr, Never, PeerStopped, Recipient,
+    RestartPolicy, StashRoute, Step, Strategy, SupervisionEvent, TimerElapsed, TimerGeneration,
+    TimerId, UserEvent, WorkerStopped, stop_on_abnormal_death,
 };
+use behavior::EventLayer;
 use libfuzzer_sys::fuzz_target;
 use std::time::Instant;
 use tokio::runtime::Builder;
@@ -38,7 +39,11 @@ impl EchoingParent {
         self.seen.push(message);
         Ok(Actions {
             sends: vec![Delivery::new(Recipient::global(MailAddr(0)), message)],
-            creates: Vec::new(),
+            creates: if message == u64::MAX {
+                vec![Create::birth(message, child(0))]
+            } else {
+                Vec::new()
+            },
             become_: Step::Continue,
         })
     }
@@ -81,19 +86,28 @@ fuzz_target!(|bytes: &[u8]| {
     runtime.block_on(async {
         let due = Instant::now() + std::time::Duration::from_secs(1);
         let peer = MailAddr(44);
-        let behavior = (EchoingParent::default())
-            .stash(route)
-            .watch(peer, stop_on_abnormal_death)
-            .deadline(behavior::TimerId(0), Some(due), |_| Ok(Step::Continue))
-            .children(
-                |index| u64::try_from(index).unwrap(),
-                2,
+        let behavior = behavior::Supervise::new(
+            behavior::Deadline::new(
+                behavior::Watch::new(
+                    behavior::Stash::new(EchoingParent::default(), route),
+                    peer,
+                    stop_on_abnormal_death,
+                ),
+                behavior::TimerId(0),
+                Some(due),
+                |_| Ok(Step::Continue),
+            ),
+            behavior::ChildTopology::new(
+                (0..2).map(|index| u64::try_from(index).unwrap()),
                 |index| Some(child(index)),
-            )
-            .unwrap()
-            .with_strategy(Strategy::OneForOne)
-            .with_policy(RestartPolicy::Permanent)
-            .with_budget(u32::MAX, std::time::Duration::MAX);
+            ),
+            behavior::RestartConfiguration::new(
+                Strategy::OneForOne,
+                RestartPolicy::Permanent,
+                u32::MAX,
+                std::time::Duration::MAX,
+            ),
+        ).unwrap();
         let initialized = behavior.initialize().unwrap();
         let mut behavior = initialized.behavior;
         let base = Instant::now();
@@ -104,22 +118,22 @@ fuzz_target!(|bytes: &[u8]| {
                     // User lane: stash filter — echo iff not Stash-routed.
                     let arg = u64::try_from(index).unwrap();
                     let actions = behavior
-                        .transition(SupervisionEvent::Behavior(DeadlineEvent::Behavior(
-                            WatchEvent::Behavior(UserEvent::user(MailAddr(9), arg)),
+                        .transition(SupervisionEvent::Behavior(EventLayer::Inner(
+                            EventLayer::Inner(UserEvent::user(MailAddr(9), arg)),
                         )))
                         .unwrap();
                     let echo_step: Vec<u64> = actions
                         .sends
-                        .behavior
-                        .behavior
-                        .behavior
+                        .inner
+                        .inner
+                        .inner
                         .iter()
                         .map(|d| d.message)
                         .collect();
                     let expected = if arg % 3 != 2 { vec![arg] } else { vec![] };
                     assert_eq!(echo_step, expected, "echo lane mismatch at byte {index}");
                     assert!(
-                        actions.sends.replacement_commands.is_empty(),
+                        actions.sends.owned.replacement_commands.is_empty(),
                         "user leaked to child lane"
                     );
                     assert_eq!(actions.become_, Step::Continue);
@@ -128,8 +142,8 @@ fuzz_target!(|bytes: &[u8]| {
                 1 => {
                     // Peer lane: watched abnormal death stops the fold.
                     let actions = behavior
-                        .transition(SupervisionEvent::Behavior(DeadlineEvent::Behavior(
-                            WatchEvent::PeerStopped(PeerStopped {
+                        .transition(SupervisionEvent::Behavior(EventLayer::Inner(
+                            EventLayer::Owned(PeerStopped {
                                 peer,
                                 outcome: Err(Crash::Failed),
                             }),
@@ -139,13 +153,13 @@ fuzz_target!(|bytes: &[u8]| {
                         matches!(actions.become_, Step::Stop(behavior::Stopped)),
                         "peer death verdict at byte {index}"
                     );
-                    assert!(actions.sends.replacement_commands.is_empty());
+                    assert!(actions.sends.owned.replacement_commands.is_empty());
                     actions
                 }
                 2 => {
                     // Time lane: matching Reached fires once, then inert.
                     let actions = behavior
-                        .transition(SupervisionEvent::Behavior(DeadlineEvent::Elapsed(
+                        .transition(SupervisionEvent::Behavior(EventLayer::Owned(
                             TimerElapsed {
                                 id: TimerId(0),
                                 generation: TimerGeneration(0),
@@ -172,19 +186,19 @@ fuzz_target!(|bytes: &[u8]| {
                         }))
                         .unwrap();
                     assert_eq!(
-                        actions.sends.replacement_commands.len(),
+                        actions.sends.owned.replacement_commands.len(),
                         1,
                         "replacement at byte {index}"
                     );
                     assert_eq!(
-                        actions.sends.replacement_commands[0]
+                        actions.sends.owned.replacement_commands[0]
                             .to
                             .resolve(MailAddr(17)),
                         behavior::Address::birth(MailAddr(17), nonce),
                         "replacement route at byte {index}"
                     );
                     assert!(
-                        actions.sends.behavior.behavior.behavior.is_empty(),
+                        actions.sends.inner.inner.inner.is_empty(),
                         "child event leaked into the echo lane at byte {index}"
                     );
                     assert_eq!(actions.become_, Step::Continue);

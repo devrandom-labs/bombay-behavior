@@ -1,5 +1,5 @@
 use behavior::{
-    Acted, Actions, Compose, Delivery, MailAddr, Never, NoBirths, Recipient, ShutdownProtocol,
+    Acted, Actions, Delivery, MailAddr, Never, NoBirths, Recipient, ShutdownEvent,
     ShutdownRequested, User,
 };
 use behavior_testkit::{Mailbox, drive};
@@ -39,16 +39,16 @@ proptest! {
         let _runtime = Builder::new_current_thread().enable_all().build().unwrap();
         let events = inputs.iter().enumerate().map(|(index, (shutdown, message))| {
             if *shutdown {
-                ShutdownProtocol::ShutdownRequested(ShutdownRequested)
+                ShutdownEvent::Owned(ShutdownRequested)
             } else {
-                ShutdownProtocol::Behavior(User {
+                ShutdownEvent::Inner(User {
                     from: MailAddr(u64::try_from(index).unwrap()),
                     message: *message,
                 })
             }
         });
         let mut mailbox = Mailbox::new(events);
-        let behavior = (Echo).stop_on_shutdown();
+        let behavior = behavior::StopOnShutdown::new(Echo);
         let trace = drive(behavior, &mut mailbox).unwrap();
         let stop = inputs.iter().position(|(shutdown, _)| *shutdown);
         let consumed = stop.map_or(inputs.len(), |index| index + 1);
@@ -60,9 +60,14 @@ proptest! {
 
         prop_assert_eq!(trace.pending, inputs.len() - consumed);
         prop_assert_eq!(trace.transitions, consumed + 1);
-        prop_assert_eq!(trace.sends.len(), expected_messages.len());
+        prop_assert_eq!(trace.sends.inner.len(), expected_messages.len());
         prop_assert_eq!(
-            trace.sends.iter().map(|delivery| delivery.message).collect::<Vec<_>>(),
+            trace
+                .sends
+                .inner
+                .iter()
+                .map(|delivery| delivery.message)
+                .collect::<Vec<_>>(),
             expected_messages
         );
         prop_assert_eq!(trace.stopped, stop.is_some());

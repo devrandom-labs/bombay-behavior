@@ -3,12 +3,12 @@
 use std::time::Duration;
 
 use behavior::{
-    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, Never, NoBirths, Recipient,
-    SendAlgebra, ServiceSends, User,
+    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, EventLayer,
+    InterpreterRequests, Never, NoBirths, Recipient, SendEffects, User,
 };
 use thiserror::Error;
 
-use crate::{ScheduleAfter, TimerElapsed, TimerGeneration, TimerId};
+use crate::{ScheduleAfter, TimedEvent, TimerGeneration, TimerId};
 
 /// Version within one participant's presence-evidence stream.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -144,8 +144,8 @@ pub enum PresenceReply<K> {
     Report(PresenceReport<K>),
 }
 
-/// Commands and timer evidence accepted by [`Presence`].
-pub enum PresenceMessage<K, Reply: Behavior> {
+/// User commands accepted by [`Presence`].
+pub enum PresenceMessage<K, Reply: behavior::Protocol> {
     /// Announce versioned presence for a relative lifetime.
     Announce {
         /// Participant.
@@ -157,8 +157,6 @@ pub enum PresenceMessage<K, Reply: Behavior> {
         /// Outcome and later-expiry recipient.
         reply_to: Recipient<Reply>,
     },
-    /// Timer evidence supplied by Bombay Timers.
-    Elapsed(TimerElapsed),
     /// Return every retained present or expired state.
     Query {
         /// Typed report recipient.
@@ -167,17 +165,20 @@ pub enum PresenceMessage<K, Reply: Behavior> {
 }
 
 /// Named effect lanes emitted by [`Presence`].
-pub struct PresenceSends<Reply: Behavior> {
+pub struct PresenceSends<Reply: behavior::Protocol> {
     /// Transition and query facts.
     pub replies: Vec<Delivery<Reply>>,
     /// Relative expiry requests.
-    pub schedules: ServiceSends<ScheduleAfter>,
+    pub schedules: InterpreterRequests<ScheduleAfter>,
 }
-impl<Reply: Behavior> SendAlgebra for PresenceSends<Reply> {
+impl<Reply> SendEffects for PresenceSends<Reply>
+where
+    Reply: behavior::Protocol,
+{
     fn empty() -> Self {
         Self {
             replies: Vec::new(),
-            schedules: ServiceSends::empty(),
+            schedules: InterpreterRequests::empty(),
         }
     }
     fn append(&mut self, mut other: Self) {
@@ -186,7 +187,34 @@ impl<Reply: Behavior> SendAlgebra for PresenceSends<Reply> {
     }
 }
 
-struct Record<K, Reply: Behavior> {
+impl<Event, Reply> behavior::SendsFor<Event> for PresenceSends<Reply>
+where
+    Reply: behavior::Protocol,
+    InterpreterRequests<ScheduleAfter>: behavior::SendsFor<Event>,
+{
+}
+
+impl<I, RootEvent, Path, Reply> behavior::InterpretSends<I, RootEvent, Path>
+    for PresenceSends<Reply>
+where
+    I: behavior::SendInterpreter,
+    Reply: behavior::Protocol,
+    Vec<Delivery<Reply>>: behavior::InterpretSends<I, RootEvent, Path>,
+    InterpreterRequests<ScheduleAfter>: behavior::InterpretSends<I, RootEvent, Path>,
+    PresenceSends<Reply>: Send,
+{
+    fn interpret(
+        self,
+        interpreter: &mut I,
+    ) -> impl core::future::Future<Output = Result<(), I::Error>> + Send {
+        async move {
+            behavior::InterpretSends::interpret(self.replies, interpreter).await?;
+            behavior::InterpretSends::interpret(self.schedules, interpreter).await
+        }
+    }
+}
+
+struct Record<K, Reply: behavior::Protocol> {
     entry: PresenceEntry<K>,
     notify: Recipient<Reply>,
 }
@@ -204,7 +232,11 @@ struct Record<K, Reply: Behavior> {
 /// timer mapping, and tombstone retention are Bombay policy. Scheduling belongs
 /// to Timers; release/cancellation is not part of this announcement protocol.
 /// No transition has a semantic panic condition.
-pub struct Presence<A: Address, K: Clone + Eq, Reply: Behavior<Addr = A, Msg = PresenceReply<K>>> {
+pub struct Presence<
+    A: Address,
+    K: Clone + Eq,
+    Reply: behavior::Protocol<Addr = A, Msg = PresenceReply<K>>,
+> {
     timer_id: fn(&K) -> TimerId,
     records: Vec<Record<K, Reply>>,
     marker: core::marker::PhantomData<fn() -> A>,
@@ -214,7 +246,7 @@ impl<A, K, Reply> Presence<A, K, Reply>
 where
     A: Address,
     K: Clone + Eq,
-    Reply: Behavior<Addr = A, Msg = PresenceReply<K>>,
+    Reply: behavior::Protocol<Addr = A, Msg = PresenceReply<K>>,
 {
     /// Construct an empty presence table with a pure actor-local timer mapping.
     #[must_use]
@@ -239,7 +271,7 @@ where
     fn reply(reply_to: Recipient<Reply>, reply: PresenceReply<K>) -> PresenceActions<A, Reply> {
         Actions::send(PresenceSends {
             replies: vec![Delivery::new(reply_to, reply)],
-            schedules: ServiceSends::empty(),
+            schedules: InterpreterRequests::empty(),
         })
     }
     fn announce(
@@ -304,7 +336,7 @@ where
                     generation,
                 }),
             )],
-            schedules: ServiceSends::one(ScheduleAfter::new(timer_id, generation, lifetime)),
+            schedules: InterpreterRequests::one(ScheduleAfter::new(timer_id, generation, lifetime)),
         })
     }
 
@@ -388,7 +420,7 @@ where
                     generation,
                 }),
             )],
-            schedules: ServiceSends::one(ScheduleAfter::new(timer_id, generation, lifetime)),
+            schedules: InterpreterRequests::one(ScheduleAfter::new(timer_id, generation, lifetime)),
         })
     }
 }
@@ -396,38 +428,49 @@ impl<A, K, Reply> BehaviorBase for Presence<A, K, Reply>
 where
     A: Address,
     K: Clone + Eq,
-    Reply: Behavior<Addr = A, Msg = PresenceReply<K>>,
+    Reply: behavior::Protocol<Addr = A, Msg = PresenceReply<K>>,
 {
     type Base = Self;
     fn base(&self) -> &Self {
         self
     }
 }
+impl<A, K, Reply> behavior::Protocol for Presence<A, K, Reply>
+where
+    A: Address,
+    K: Clone + Eq,
+    Reply: behavior::Protocol<Addr = A, Msg = PresenceReply<K>>,
+{
+    type Addr = A;
+    type Msg = PresenceMessage<K, Reply>;
+}
+
 impl<A, K, Reply> Behavior for Presence<A, K, Reply>
 where
     A: Address,
     K: Clone + Eq,
-    Reply: Behavior<Addr = A, Msg = PresenceReply<K>>,
+    Reply: behavior::Protocol<Addr = A, Msg = PresenceReply<K>>,
 {
-    type Addr = A;
-    type Msg = PresenceMessage<K, Reply>;
-    type Event = User<A, Self::Msg>;
+    type Protocol = Self;
+    type Event = TimedEvent<User<A, crate::BehaviorMessage<Self>>>;
     type Sends = PresenceSends<Reply>;
     type Ph = Never;
     type Error = Never;
     type Birth = NoBirths;
     fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
-        Ok(match event.message {
-            PresenceMessage::Announce {
-                participant,
-                version,
-                lifetime,
-                reply_to,
-            } => self.announce(participant, version, lifetime, reply_to),
-            PresenceMessage::Query { reply_to } => {
-                Self::reply(reply_to, PresenceReply::Report(self.report()))
-            }
-            PresenceMessage::Elapsed(elapsed) => {
+        Ok(match event {
+            EventLayer::Inner(event) => match event.message {
+                PresenceMessage::Announce {
+                    participant,
+                    version,
+                    lifetime,
+                    reply_to,
+                } => self.announce(participant, version, lifetime, reply_to),
+                PresenceMessage::Query { reply_to } => {
+                    Self::reply(reply_to, PresenceReply::Report(self.report()))
+                }
+            },
+            EventLayer::Owned(elapsed) => {
                 let Some(index)=self.records.iter().position(|record|record.entry.timer_id==elapsed.id&&matches!(record.entry.phase,PresencePhase::Present{generation,..}if generation==elapsed.generation))else{return Ok(Actions::cont());};
                 let (version, generation) = match self.records[index].entry.phase {
                     PresencePhase::Present {
@@ -459,15 +502,19 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Activate as _;
+    use crate::{Activate as _, TimerElapsed};
     use behavior::MailAddr;
     #[derive(Debug, Clone, PartialEq, Eq)]
     struct Participant(u8);
     struct Reply;
-    impl Behavior for Reply {
+    impl behavior::Protocol for Reply {
         type Addr = MailAddr;
         type Msg = PresenceReply<Participant>;
-        type Event = User<MailAddr, Self::Msg>;
+    }
+
+    impl Behavior for Reply {
+        type Protocol = Self;
+        type Event = User<MailAddr, crate::BehaviorMessage<Self>>;
         type Sends = Vec<Never>;
         type Ph = Never;
         type Error = Never;
@@ -515,20 +562,14 @@ mod tests {
             TimerGeneration(1)
         );
         assert!(
-            s.receive(
-                MailAddr(0),
-                PresenceMessage::Elapsed(TimerElapsed::new(TimerId(1), TimerGeneration(0)))
-            )
-            .unwrap()
-            .sends
-            .replies
-            .is_empty()
+            s.on_path(TimerElapsed::new(TimerId(1), TimerGeneration(0)))
+                .unwrap()
+                .sends
+                .replies
+                .is_empty()
         );
         let expired = s
-            .receive(
-                MailAddr(0),
-                PresenceMessage::Elapsed(TimerElapsed::new(TimerId(1), TimerGeneration(1))),
-            )
+            .on_path(TimerElapsed::new(TimerId(1), TimerGeneration(1)))
             .unwrap();
         assert!(matches!(
             expired.sends.replies[0].message,

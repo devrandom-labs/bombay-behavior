@@ -3,8 +3,8 @@
 ## 2026-08-15 — behavior-owned wart and adapter ergonomics pass complete
 
 - Replaced runtime initialization guards with the consuming
-  `Activate: B -> Initialized<B> -> Active<B>` typestate boundary; `Compose`
-  is a wrapper-only extension trait.
+  `Activate: B -> Initialized<B> -> Active<B>` typestate boundary; wrappers
+  now use public owning-type constructors exclusively.
 - Removed the alternate state/function behavior-definition hierarchy and kept
   only direct `Behavior` implementations plus `#[behavior]` authoring syntax.
 - Replaced positional nested send products with named semantic products.

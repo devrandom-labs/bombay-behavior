@@ -3,19 +3,19 @@
 use std::{num::NonZeroU32, time::Duration};
 
 use behavior::{
-    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, Never, NoBirths, Recipient,
-    SendAlgebra, ServiceSends, User,
+    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, EventLayer,
+    InterpreterRequests, Never, NoBirths, Recipient, SendEffects, User,
 };
 use thiserror::Error;
 
-use crate::{ScheduleAfter, TimerElapsed, TimerGeneration, TimerId};
+use crate::{ScheduleAfter, TimedEvent, TimerGeneration, TimerId};
 
 /// Identity of one admitted operation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct BreakerAttempt(pub u64);
 
 /// Closed-state subphase; only one operation may own the breaker at a time.
-pub enum ClosedPhase<Reply: Behavior> {
+pub enum ClosedPhase<Reply: behavior::Protocol> {
     /// The breaker may admit one operation.
     Idle { consecutive_failures: u32 },
     /// One admitted operation owns its terminal report capability.
@@ -27,7 +27,7 @@ pub enum ClosedPhase<Reply: Behavior> {
 }
 
 /// Half-open probe subphase.
-pub enum ProbePhase<Reply: Behavior> {
+pub enum ProbePhase<Reply: behavior::Protocol> {
     /// Exactly one probe may be admitted.
     Available,
     /// The admitted probe owns its terminal report capability.
@@ -38,7 +38,7 @@ pub enum ProbePhase<Reply: Behavior> {
 }
 
 /// Complete circuit-breaker phase sum.
-pub enum BreakerPhase<Reply: Behavior> {
+pub enum BreakerPhase<Reply: behavior::Protocol> {
     /// Ordinary admission with a consecutive-failure count.
     Closed(ClosedPhase<Reply>),
     /// Admission is denied until matching timer evidence arrives.
@@ -97,31 +97,29 @@ pub enum BreakerOutcome {
     },
 }
 
-/// Closed command and timer-evidence protocol.
-pub enum BreakerMessage<Reply: Behavior> {
+/// Closed user-command protocol.
+pub enum BreakerMessage<Reply: behavior::Protocol> {
     /// Request one operation admission.
     Admit { reply_to: Recipient<Reply> },
     /// Report successful completion of an admitted operation.
     Succeeded { attempt: BreakerAttempt },
     /// Report failed completion of an admitted operation.
     Failed { attempt: BreakerAttempt },
-    /// Reset timer evidence from Bombay Timers.
-    Elapsed(TimerElapsed),
 }
 
 /// Named output lanes for circuit facts and reset scheduling.
-pub struct BreakerSends<Reply: Behavior> {
+pub struct BreakerSends<Reply: behavior::Protocol> {
     /// Admission and completion facts.
     pub replies: Vec<Delivery<Reply>>,
     /// Relative reset requests interpreted by Bombay Timers.
-    pub schedules: ServiceSends<ScheduleAfter>,
+    pub schedules: InterpreterRequests<ScheduleAfter>,
 }
 
-impl<Reply: Behavior> SendAlgebra for BreakerSends<Reply> {
+impl<Reply: behavior::Protocol> SendEffects for BreakerSends<Reply> {
     fn empty() -> Self {
         Self {
             replies: Vec::new(),
-            schedules: ServiceSends::empty(),
+            schedules: InterpreterRequests::empty(),
         }
     }
     fn append(&mut self, mut other: Self) {
@@ -129,6 +127,35 @@ impl<Reply: Behavior> SendAlgebra for BreakerSends<Reply> {
         self.schedules.append(other.schedules);
     }
 }
+
+impl<Event, Reply> behavior::SendsFor<Event> for BreakerSends<Reply>
+where
+    Reply: behavior::Protocol,
+    InterpreterRequests<ScheduleAfter>: behavior::SendsFor<Event>,
+{
+}
+
+impl<I, RootEvent, Path, Reply> behavior::InterpretSends<I, RootEvent, Path> for BreakerSends<Reply>
+where
+    I: behavior::SendInterpreter,
+    Reply: behavior::Protocol,
+    Vec<Delivery<Reply>>: behavior::InterpretSends<I, RootEvent, Path>,
+    InterpreterRequests<ScheduleAfter>: behavior::InterpretSends<I, RootEvent, Path>,
+    BreakerSends<Reply>: Send,
+{
+    fn interpret(
+        self,
+        interpreter: &mut I,
+    ) -> impl core::future::Future<Output = Result<(), I::Error>> + Send {
+        async move {
+            behavior::InterpretSends::interpret(self.replies, interpreter).await?;
+            behavior::InterpretSends::interpret(self.schedules, interpreter).await
+        }
+    }
+}
+
+type BreakerEvent<A, Reply> = TimedEvent<User<A, BreakerMessage<Reply>>>;
+type BreakerActions<A, Reply> = Actions<A, Never, BreakerSends<Reply>, NoBirths>;
 
 /// Pure single-flight closed/open/probing circuit-breaker fold.
 ///
@@ -141,7 +168,7 @@ impl<Reply: Behavior> SendAlgebra for BreakerSends<Reply> {
 /// initialization, single-flight policy, failure counting, and reset ordering
 /// are Bombay policy. Timer scheduling is interpreted by Bombay Timers; the
 /// protected operation remains ordinary domain behavior. No transition panics.
-pub struct CircuitBreaker<A: Address, Reply: Behavior<Addr = A, Msg = BreakerOutcome>> {
+pub struct CircuitBreaker<A: Address, Reply: behavior::Protocol<Addr = A, Msg = BreakerOutcome>> {
     threshold: NonZeroU32,
     reset_after: Duration,
     timer_id: TimerId,
@@ -150,7 +177,9 @@ pub struct CircuitBreaker<A: Address, Reply: Behavior<Addr = A, Msg = BreakerOut
     marker: core::marker::PhantomData<fn() -> A>,
 }
 
-impl<A: Address, Reply: Behavior<Addr = A, Msg = BreakerOutcome>> CircuitBreaker<A, Reply> {
+impl<A: Address, Reply: behavior::Protocol<Addr = A, Msg = BreakerOutcome>>
+    CircuitBreaker<A, Reply>
+{
     /// Construct a closed breaker.
     ///
     /// # Errors
@@ -183,20 +212,14 @@ impl<A: Address, Reply: Behavior<Addr = A, Msg = BreakerOutcome>> CircuitBreaker
         &self.phase
     }
 
-    fn reply(
-        reply_to: Recipient<Reply>,
-        outcome: BreakerOutcome,
-    ) -> Actions<A, Never, BreakerSends<Reply>, NoBirths> {
+    fn reply(reply_to: Recipient<Reply>, outcome: BreakerOutcome) -> BreakerActions<A, Reply> {
         Actions::send(BreakerSends {
             replies: vec![Delivery::new(reply_to, outcome)],
-            schedules: ServiceSends::empty(),
+            schedules: InterpreterRequests::empty(),
         })
     }
 
-    fn admit(
-        &mut self,
-        reply_to: Recipient<Reply>,
-    ) -> Actions<A, Never, BreakerSends<Reply>, NoBirths> {
+    fn admit(&mut self, reply_to: Recipient<Reply>) -> BreakerActions<A, Reply> {
         let attempt = BreakerAttempt(self.next_attempt);
         let next = self.next_attempt.checked_add(1);
         match &self.phase {
@@ -245,11 +268,7 @@ impl<A: Address, Reply: Behavior<Addr = A, Msg = BreakerOutcome>> CircuitBreaker
         }
     }
 
-    fn complete(
-        &mut self,
-        attempt: BreakerAttempt,
-        succeeded: bool,
-    ) -> Actions<A, Never, BreakerSends<Reply>, NoBirths> {
+    fn complete(&mut self, attempt: BreakerAttempt, succeeded: bool) -> BreakerActions<A, Reply> {
         let ownership = match &self.phase {
             BreakerPhase::Closed(ClosedPhase::Awaiting {
                 consecutive_failures,
@@ -308,7 +327,7 @@ impl<A: Address, Reply: Behavior<Addr = A, Msg = BreakerOutcome>> CircuitBreaker
                     generation,
                 },
             )],
-            schedules: ServiceSends::one(ScheduleAfter::new(
+            schedules: InterpreterRequests::one(ScheduleAfter::new(
                 self.timer_id,
                 generation,
                 self.reset_after,
@@ -317,7 +336,7 @@ impl<A: Address, Reply: Behavior<Addr = A, Msg = BreakerOutcome>> CircuitBreaker
     }
 }
 
-impl<A: Address, Reply: Behavior<Addr = A, Msg = BreakerOutcome>> BehaviorBase
+impl<A: Address, Reply: behavior::Protocol<Addr = A, Msg = BreakerOutcome>> BehaviorBase
     for CircuitBreaker<A, Reply>
 {
     type Base = Self;
@@ -326,22 +345,30 @@ impl<A: Address, Reply: Behavior<Addr = A, Msg = BreakerOutcome>> BehaviorBase
     }
 }
 
-impl<A: Address, Reply: Behavior<Addr = A, Msg = BreakerOutcome>> Behavior
+impl<A: Address, Reply: behavior::Protocol<Addr = A, Msg = BreakerOutcome>> behavior::Protocol
     for CircuitBreaker<A, Reply>
 {
     type Addr = A;
     type Msg = BreakerMessage<Reply>;
-    type Event = User<A, Self::Msg>;
+}
+
+impl<A: Address, Reply: behavior::Protocol<Addr = A, Msg = BreakerOutcome>> Behavior
+    for CircuitBreaker<A, Reply>
+{
+    type Protocol = Self;
+    type Event = BreakerEvent<A, Reply>;
     type Sends = BreakerSends<Reply>;
     type Ph = Never;
     type Error = Never;
     type Birth = NoBirths;
     fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
-        Ok(match event.message {
-            BreakerMessage::Admit { reply_to } => self.admit(reply_to),
-            BreakerMessage::Succeeded { attempt } => self.complete(attempt, true),
-            BreakerMessage::Failed { attempt } => self.complete(attempt, false),
-            BreakerMessage::Elapsed(elapsed) => {
+        Ok(match event {
+            EventLayer::Inner(event) => match event.message {
+                BreakerMessage::Admit { reply_to } => self.admit(reply_to),
+                BreakerMessage::Succeeded { attempt } => self.complete(attempt, true),
+                BreakerMessage::Failed { attempt } => self.complete(attempt, false),
+            },
+            EventLayer::Owned(elapsed) => {
                 if let BreakerPhase::Open { generation } = self.phase
                     && elapsed.id == self.timer_id
                     && elapsed.generation == generation
@@ -360,14 +387,18 @@ impl<A: Address, Reply: Behavior<Addr = A, Msg = BreakerOutcome>> Behavior
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Activate as _;
+    use crate::{Activate as _, TimerElapsed};
     use behavior::MailAddr;
 
     struct Reply;
-    impl Behavior for Reply {
+    impl behavior::Protocol for Reply {
         type Addr = MailAddr;
         type Msg = BreakerOutcome;
-        type Event = User<MailAddr, Self::Msg>;
+    }
+
+    impl Behavior for Reply {
+        type Protocol = Self;
+        type Event = User<MailAddr, crate::BehaviorMessage<Self>>;
         type Sends = Vec<Never>;
         type Ph = Never;
         type Error = Never;
@@ -426,10 +457,7 @@ mod tests {
             BreakerOutcome::Rejected(BreakerRejection::Open { .. })
         ));
         subject
-            .receive(
-                MailAddr(0),
-                BreakerMessage::Elapsed(TimerElapsed::new(TimerId(8), TimerGeneration(0))),
-            )
+            .on_path(TimerElapsed::new(TimerId(8), TimerGeneration(0)))
             .unwrap();
         let probe = admit(&mut subject);
         assert_eq!(probe, BreakerAttempt(2));
@@ -461,10 +489,7 @@ mod tests {
         );
         assert!(
             subject
-                .receive(
-                    MailAddr(0),
-                    BreakerMessage::Elapsed(TimerElapsed::new(TimerId(8), TimerGeneration(7)))
-                )
+                .on_path(TimerElapsed::new(TimerId(8), TimerGeneration(7)))
                 .unwrap()
                 .sends
                 .replies

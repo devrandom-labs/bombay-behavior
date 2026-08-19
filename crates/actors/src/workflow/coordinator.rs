@@ -50,7 +50,7 @@ pub enum WorkflowStepState {
 }
 
 /// Complete workflow phase sum.
-pub enum WorkflowState<K, Reply: Behavior> {
+pub enum WorkflowState<K, Reply: behavior::Protocol> {
     /// Validated definition has not started.
     Ready,
     /// At least one step remains incomplete.
@@ -101,7 +101,7 @@ pub enum WorkflowOutcome<K> {
 }
 
 /// Closed workflow protocol.
-pub enum WorkflowMessage<K, Reply: Behavior> {
+pub enum WorkflowMessage<K, Reply: behavior::Protocol> {
     /// Begin the single workflow run.
     Start { reply_to: Recipient<Reply> },
     /// Report successful completion of an active step.
@@ -124,8 +124,11 @@ pub enum WorkflowMessage<K, Reply: Behavior> {
 /// policy are Bombay choices. The actor model requires only that each event be
 /// processed as one transition; participant execution and durable saga state
 /// belong to the Driver/Mnesis boundaries. No transition panics.
-pub struct Workflow<A: Address, K: Clone + Eq, Reply: Behavior<Addr = A, Msg = WorkflowOutcome<K>>>
-{
+pub struct Workflow<
+    A: Address,
+    K: Clone + Eq,
+    Reply: behavior::Protocol<Addr = A, Msg = WorkflowOutcome<K>>,
+> {
     definition: WorkflowDefinition<K>,
     state: WorkflowState<K, Reply>,
     marker: core::marker::PhantomData<fn() -> A>,
@@ -135,7 +138,7 @@ impl<A, K, Reply> Workflow<A, K, Reply>
 where
     A: Address,
     K: Clone + Eq,
-    Reply: Behavior<Addr = A, Msg = WorkflowOutcome<K>>,
+    Reply: behavior::Protocol<Addr = A, Msg = WorkflowOutcome<K>>,
 {
     /// Validate and retain one dependency graph.
     ///
@@ -348,7 +351,7 @@ impl<A, K, Reply> BehaviorBase for Workflow<A, K, Reply>
 where
     A: Address,
     K: Clone + Eq,
-    Reply: Behavior<Addr = A, Msg = WorkflowOutcome<K>>,
+    Reply: behavior::Protocol<Addr = A, Msg = WorkflowOutcome<K>>,
 {
     type Base = Self;
     fn base(&self) -> &Self {
@@ -356,15 +359,24 @@ where
     }
 }
 
+impl<A, K, Reply> behavior::Protocol for Workflow<A, K, Reply>
+where
+    A: Address,
+    K: Clone + Eq,
+    Reply: behavior::Protocol<Addr = A, Msg = WorkflowOutcome<K>>,
+{
+    type Addr = A;
+    type Msg = WorkflowMessage<K, Reply>;
+}
+
 impl<A, K, Reply> Behavior for Workflow<A, K, Reply>
 where
     A: Address,
     K: Clone + Eq,
-    Reply: Behavior<Addr = A, Msg = WorkflowOutcome<K>>,
+    Reply: behavior::Protocol<Addr = A, Msg = WorkflowOutcome<K>>,
 {
-    type Addr = A;
-    type Msg = WorkflowMessage<K, Reply>;
-    type Event = User<A, Self::Msg>;
+    type Protocol = Self;
+    type Event = User<A, crate::BehaviorMessage<Self>>;
     type Sends = Vec<Delivery<Reply>>;
     type Ph = Never;
     type Error = Never;
@@ -395,10 +407,14 @@ mod tests {
     use behavior::MailAddr;
 
     struct Reply;
-    impl Behavior for Reply {
+    impl behavior::Protocol for Reply {
         type Addr = MailAddr;
         type Msg = WorkflowOutcome<&'static str>;
-        type Event = User<MailAddr, Self::Msg>;
+    }
+
+    impl Behavior for Reply {
+        type Protocol = Self;
+        type Event = User<MailAddr, crate::BehaviorMessage<Self>>;
         type Sends = Vec<Never>;
         type Ph = Never;
         type Error = Never;

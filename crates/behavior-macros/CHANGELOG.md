@@ -7,16 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Extend the single `#[behavior]` attribute with named `sends = { ... }` and
+  `births = { ... }` declarations. It generates nominal send products, unique
+  typed lane selectors, structural interpretation, and closed `ChildChoice`
+  products while leaving exact `Actions` construction in authored methods.
+- Generate the actor template's nominal `Protocol` and bind
+  `Behavior::Protocol = Self`, keeping public identity distinct from generated
+  event/effect wiring.
+
+- Resolve generated paths through either a direct `bombay-behavior` dependency
+  or the `bombay-rs` façade, including Cargo dependency renames; a direct
+  dependency takes precedence when both are present.
+
+### Removed
+
+- Remove the narrower `#[actor]` attribute. Capability-free behaviors use the
+  safe `#[behavior(addr = ..., message = ...)]` defaults instead.
+- Remove the unreleased `#[births]` attribute. The foundational `Children`
+  product and generic `ChildChoice` dispatch provide heterogeneous creation
+  without per-application procedural generation.
+- Remove `workers!` and the unreleased `#[behavior_stack]` experiment. The
+  remaining attributes generate only nominal behavior wiring.
+
 ## [0.11.1](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-macros-v0.11.0...bombay-behavior-macros-v0.11.1) - 2026-08-15
 
 ### Other
 
 - Split and complete the reusable behavior actor catalogue ([#45](https://github.com/devrandom-labs/bombay-behavior/pull/45))
-
-### Removed
-
-- Remove `workers!` and the unreleased `#[behavior_stack]` experiment. The
-  crate now exposes only the `#[behavior]` authoring attribute.
 
 ## [0.11.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-macros-v0.10.0...bombay-behavior-macros-v0.11.0) - 2026-08-15
 

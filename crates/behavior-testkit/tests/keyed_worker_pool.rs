@@ -1,10 +1,11 @@
 use std::time::Duration;
 
 use behavior::{
-    Actions, AffinitySelector, AssignmentId, Behavior, Compose, CreationKind, Delivery,
-    InterruptionPolicy, JobId, KeyedPoolMessage, KeyedWorkerPool, MailAddr, Never, NoBirths,
-    PoolAssignment, PoolBehaviorSends, PoolError, PoolResponse, Proxy, ProxyCommand, Recipient,
-    RestartPolicy, SendAlgebra, User, WorkerCreationResolved, WorkerPhase, WorkerStopped,
+    Actions, AffinitySelector, AssignmentId, Behavior, ChildStopped, CreationKind,
+    CreationResolved, Delivery, Exit, InterruptionPolicy, JobId, KeyedPoolMessage, KeyedWorkerPool,
+    KeyedWorkerPoolProtocol, MailAddr, Never, NoBirths, PoolAssignment, PoolBehaviorSends,
+    PoolError, PoolInterruption, PoolResponse, Proxy, ProxyCommand, Recipient, RestartPolicy,
+    SendEffects, ShutdownRequested, Step, User, WorkerCreationResolved, WorkerPhase, WorkerStopped,
 };
 use proptest::prelude::*;
 use std::time::Instant;
@@ -12,10 +13,14 @@ use std::time::Instant;
 #[derive(Clone, Copy)]
 struct Worker;
 
-impl Behavior for Worker {
+impl behavior::Protocol for Worker {
     type Addr = MailAddr;
-    type Msg = PoolAssignment<u8>;
-    type Event = User<MailAddr, PoolAssignment<u8>>;
+    type Msg = PoolAssignment<KeyedWorkerPoolProtocol<MailAddr, Reply, u8, u8, u16>>;
+}
+
+impl Behavior for Worker {
+    type Protocol = Self;
+    type Event = User<MailAddr, behavior::BehaviorMessage<Self>>;
     type Sends = Vec<Never>;
     type Ph = Never;
     type Error = Never;
@@ -38,10 +43,6 @@ fn nonce(index: usize) -> u64 {
     u64::try_from(index).unwrap()
 }
 
-fn worker(_: usize) -> Worker {
-    Worker
-}
-
 #[derive(Clone, Copy)]
 enum Selector {
     Parity,
@@ -62,8 +63,8 @@ type PoolDefinition = KeyedWorkerPool<MailAddr, Reply, u8, u8, u16, Worker, Sele
 type Pool = behavior::Active<PoolDefinition>;
 
 fn pool_definition(selector: Selector) -> PoolDefinition {
-    KeyedWorkerPool::<MailAddr, Reply, u8, u8, u16, Worker, _>::new(
-        behavior::ChildTopology::indexed(nonce, 2, |index| Some(worker(index))),
+    KeyedWorkerPool::new(
+        behavior::ChildTopology::indexed(nonce, 2, |_| Some(Worker)),
         behavior::PoolConfiguration::new(
             8,
             InterruptionPolicy::Retry,
@@ -72,6 +73,7 @@ fn pool_definition(selector: Selector) -> PoolDefinition {
             Duration::from_secs(60),
         ),
         selector,
+        Recipient::global(MailAddr(9)),
     )
     .unwrap()
 }
@@ -81,7 +83,7 @@ fn pool(selector: Selector) -> Pool {
     let initialized = pool.initialize().unwrap();
     let mut pool = initialized.behavior;
     for slot in 0..2 {
-        pool.on(WorkerCreationResolved::new(
+        pool.on_path(WorkerCreationResolved::new(
             slot,
             slot,
             CreationKind::Birth,
@@ -112,13 +114,13 @@ fn submit(
 fn assignments(
     actions: &behavior::PoolActions<MailAddr, Reply, u8, u16, Worker>,
 ) -> &[Delivery<Proxy<Worker>>] {
-    &actions.sends.behavior.assignments
+    &actions.sends.inner.assignments
 }
 
 #[test]
 fn targeted_submission_rejects_when_its_busy_workers_backlog_is_full() {
-    let pool = KeyedWorkerPool::<MailAddr, Reply, u8, u8, u16, Worker, _>::new(
-        behavior::ChildTopology::indexed(nonce, 1, |index| Some(worker(index))),
+    let pool = KeyedWorkerPool::new(
+        behavior::ChildTopology::indexed(nonce, 1, |_| Some(Worker)),
         behavior::PoolConfiguration::new(
             1,
             InterruptionPolicy::Retry,
@@ -127,11 +129,12 @@ fn targeted_submission_rejects_when_its_busy_workers_backlog_is_full() {
             Duration::from_secs(60),
         ),
         Selector::Parity,
+        Recipient::global(MailAddr(9)),
     )
     .unwrap();
     let initialized = pool.initialize().unwrap();
     let mut pool = initialized.behavior;
-    pool.on(WorkerCreationResolved::new(
+    pool.on_path(WorkerCreationResolved::new(
         0,
         0,
         CreationKind::Birth,
@@ -146,7 +149,7 @@ fn targeted_submission_rejects_when_its_busy_workers_backlog_is_full() {
     let rejected = submit(&mut pool, 0, 3);
     assert!(assignments(&rejected).is_empty());
     assert!(matches!(
-        rejected.sends.behavior.responses[0].message,
+        rejected.sends.inner.responses[0].message,
         PoolResponse::Rejected {
             job: JobId(3),
             payload: 0,
@@ -163,19 +166,19 @@ fn affinity_survives_fresh_worker_incarnation_replacement() {
     assert_eq!(pool.affinity(&4), Some(0));
 
     let stopped = pool
-        .on(WorkerStopped::new(
+        .on_path(WorkerStopped::new(
             0,
             0,
             Err(behavior::Crash::Panicked),
             Instant::now(),
         ))
         .unwrap();
-    assert!(!stopped.sends.replacement_commands.is_empty());
+    assert!(!stopped.sends.owned.replacement_commands.is_empty());
     assert_eq!(pool.affinity(&4), Some(0));
     assert_eq!(pool.worker_phase(0), Some(WorkerPhase::Installing));
 
     let installed = pool
-        .on(WorkerCreationResolved::new(
+        .on_path(WorkerCreationResolved::new(
             0,
             2,
             CreationKind::replacement_of(0),
@@ -237,7 +240,7 @@ fn unavailable_route_refuses_owned_payload_without_creating_a_binding() {
     assert_eq!(pool.affinity(&7), None);
     assert!(assignments(&actions).is_empty());
     assert!(matches!(
-        actions.sends.behavior.responses[0].message,
+        actions.sends.inner.responses[0].message,
         PoolResponse::Rejected {
             job: JobId(1),
             payload: 7,
@@ -271,14 +274,14 @@ fn retired_affinity_refuses_new_work_until_explicit_valid_rebalance() {
         },
     )
     .unwrap();
-    pool.on(WorkerStopped::new(
+    pool.on_path(WorkerStopped::new(
         0,
         0,
         Err(behavior::Crash::Panicked),
         Instant::now(),
     ))
     .unwrap();
-    pool.on(WorkerCreationResolved::new(
+    pool.on_path(WorkerCreationResolved::new(
         0,
         2,
         CreationKind::replacement_of(0),
@@ -288,7 +291,7 @@ fn retired_affinity_refuses_new_work_until_explicit_valid_rebalance() {
 
     let refused = submit(&mut pool, 2, 2);
     assert!(matches!(
-        refused.sends.behavior.responses[0].message,
+        refused.sends.inner.responses[0].message,
         PoolResponse::Rejected {
             reason: behavior::PoolRejection::AffinityUnavailable,
             ..
@@ -321,7 +324,7 @@ fn retiring_one_affinity_slot_terminates_its_queue_while_other_slots_live() {
     submit(&mut pool, 2, 2);
     assert_eq!(pool.backlog_len(), 1);
 
-    pool.on(WorkerStopped::new(
+    pool.on_path(WorkerStopped::new(
         0,
         0,
         Err(behavior::Crash::Panicked),
@@ -330,7 +333,7 @@ fn retiring_one_affinity_slot_terminates_its_queue_while_other_slots_live() {
     .unwrap();
     assert_eq!(pool.backlog_len(), 2);
     let rejected = pool
-        .on(WorkerCreationResolved::new(
+        .on_path(WorkerCreationResolved::new(
             0,
             2,
             CreationKind::replacement_of(0),
@@ -339,11 +342,11 @@ fn retiring_one_affinity_slot_terminates_its_queue_while_other_slots_live() {
         .unwrap();
 
     assert_eq!(pool.backlog_len(), 0);
-    assert_eq!(rejected.sends.behavior.responses.len(), 2);
+    assert_eq!(rejected.sends.inner.responses.len(), 2);
     assert!(
         rejected
             .sends
-            .behavior
+            .inner
             .responses
             .iter()
             .any(|delivery| matches!(
@@ -378,8 +381,8 @@ fn unbound_rebalance_explicitly_establishes_affinity() {
 #[test]
 fn captured_selector_state_is_statically_dispatched() {
     let selected = 1_u64;
-    let pool = KeyedWorkerPool::<MailAddr, Reply, u8, u8, u16, Worker, _>::new(
-        behavior::ChildTopology::indexed(nonce, 2, |index| Some(worker(index))),
+    let pool = KeyedWorkerPool::new(
+        behavior::ChildTopology::indexed(nonce, 2, |_| Some(Worker)),
         behavior::PoolConfiguration::new(
             1,
             InterruptionPolicy::Fail,
@@ -388,12 +391,13 @@ fn captured_selector_state_is_statically_dispatched() {
             Duration::from_secs(1),
         ),
         move |_: &u8| selected,
+        Recipient::global(MailAddr(9)),
     )
     .unwrap();
     let initialized = pool.initialize().unwrap();
     let mut pool = initialized.behavior;
     for slot in 0..2 {
-        pool.on(WorkerCreationResolved::new(
+        pool.on_path(WorkerCreationResolved::new(
             slot,
             slot,
             CreationKind::Birth,
@@ -413,9 +417,7 @@ fn captured_selector_state_is_statically_dispatched() {
         )
         .unwrap();
     assert_eq!(
-        actions.sends.behavior.assignments[0]
-            .to
-            .resolve(MailAddr(17)),
+        actions.sends.inner.assignments[0].to.resolve(MailAddr(17)),
         behavior::Address::birth(MailAddr(17), 1)
     );
 }
@@ -471,14 +473,13 @@ fn short_rebalance_sequences_exhaustively_match_the_binding_model() {
 
 #[test]
 fn keyed_assignment_lanes_survive_shutdown_composition() {
-    let behavior = (pool_definition(Selector::Parity))
-        .stop_on_shutdown()
+    let behavior = behavior::StopOnShutdown::new(pool_definition(Selector::Parity))
         .initialize()
         .unwrap();
     let mut behavior = behavior.behavior;
     for slot in 0..2 {
         behavior
-            .on(WorkerCreationResolved::new(
+            .on_path(WorkerCreationResolved::new(
                 slot,
                 slot,
                 CreationKind::Birth,
@@ -497,10 +498,10 @@ fn keyed_assignment_lanes_survive_shutdown_composition() {
             },
         )
         .unwrap();
-    assert_eq!(actions.sends.behavior.responses.len(), 1);
-    assert_eq!(actions.sends.behavior.assignments.len(), 1);
+    assert_eq!(actions.sends.inner.inner.responses.len(), 1);
+    assert_eq!(actions.sends.inner.inner.assignments.len(), 1);
     assert_eq!(
-        actions.sends.behavior.assignments[0]
+        actions.sends.inner.inner.assignments[0]
             .to
             .resolve(MailAddr(17)),
         behavior::Address::birth(MailAddr(17), 1)
@@ -520,12 +521,14 @@ fn named_pool_send_product_appends_each_lane_once_in_order() {
         Recipient::global(MailAddr(2)),
         PoolResponse::Accepted { job: JobId(2) },
     ));
-    later.assignments.push(Delivery::new(
-        Recipient::child(0),
+    later.assignments.push(Delivery::local_child(
+        behavior::ChildRecipient::new(0),
         ProxyCommand::Forward(PoolAssignment {
             assignment: AssignmentId(0),
             job: JobId(1),
             payload: 7,
+            worker: 0,
+            complete_to: Recipient::global(MailAddr(9)),
         }),
     ));
 
@@ -539,5 +542,60 @@ fn named_pool_send_product_appends_each_lane_once_in_order() {
         PoolResponse::Accepted { job: JobId(2) }
     ));
     assert_eq!(sends.assignments.len(), 1);
+}
+
+#[test]
+fn keyed_pool_returns_owned_jobs_and_drains_all_stable_proxies() {
+    let mut pool = pool_definition(Selector::Parity)
+        .initialize()
+        .unwrap()
+        .behavior;
+    for slot in 0..2 {
+        pool.on_path(CreationResolved::birth(slot, MailAddr(20 + slot)))
+            .unwrap();
+        pool.on_path(WorkerCreationResolved::new(
+            slot,
+            slot,
+            CreationKind::Birth,
+            Ok(()),
+        ))
+        .unwrap();
+    }
+    pool.receive(
+        MailAddr(90),
+        KeyedPoolMessage::Submit {
+            key: 0,
+            job: JobId(1),
+            payload: 7,
+            reply_to: Recipient::global(MailAddr(91)),
+        },
+    )
+    .unwrap();
+
+    let shutdown = pool.on_path(ShutdownRequested).unwrap();
+    assert_eq!(shutdown.sends.owned.shutdowns.len(), 2);
+    assert!(
+        shutdown
+            .sends
+            .inner
+            .responses
+            .iter()
+            .any(|delivery| matches!(
+                delivery.message,
+                PoolResponse::Interrupted {
+                    reason: PoolInterruption::PoolShutdown,
+                    ..
+                }
+            ))
+    );
+    assert!(matches!(shutdown.become_, Step::Continue));
+    pool.on_path(ChildStopped::new(0, Ok(Exit::Normal), Instant::now()))
+        .unwrap();
+    assert!(matches!(
+        pool.on_path(ChildStopped::new(1, Ok(Exit::Normal), Instant::now()))
+            .unwrap()
+            .become_,
+        Step::Stop(behavior::Stopped)
+    ));
 }
 use behavior_testkit::InitializeTest;

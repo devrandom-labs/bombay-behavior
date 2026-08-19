@@ -2,9 +2,9 @@
 
 use core::ops::ControlFlow;
 
-use super::{Behavior, delegate_transition, initialize};
+use super::{Behavior, BehaviorAddr, delegate_transition, initialize};
 use crate::actor::{Address, BirthMode, Create};
-use crate::effects::{Actions, SendAlgebra};
+use crate::effects::{Actions, SendEffects};
 use crate::next::{Never, Step, Stopped};
 
 /// The accumulated observable effects of a transition prefix.
@@ -45,7 +45,7 @@ pub struct ActionReducer<A: Address, Sends, New> {
     transitions: usize,
 }
 
-impl<A: Address, Sends: SendAlgebra, New> Default for ActionReducer<A, Sends, New> {
+impl<A: Address, Sends: SendEffects, New> Default for ActionReducer<A, Sends, New> {
     fn default() -> Self {
         Self {
             effects: Effects {
@@ -57,7 +57,7 @@ impl<A: Address, Sends: SendAlgebra, New> Default for ActionReducer<A, Sends, Ne
     }
 }
 
-impl<A: Address, Sends: SendAlgebra, New> ActionReducer<A, Sends, New> {
+impl<A: Address, Sends: SendEffects, New> ActionReducer<A, Sends, New> {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
@@ -102,8 +102,8 @@ pub fn fold_events<B>(
     mut behavior: B,
     events: impl IntoIterator<Item = B::Event>,
 ) -> Result<
-    Folded<B::Addr, B::Sends, <B::Birth as BirthMode>::Child>,
-    FoldFailure<B::Addr, B::Sends, <B::Birth as BirthMode>::Child, B::Error>,
+    Folded<BehaviorAddr<B>, B::Sends, <B::Birth as BirthMode>::Child>,
+    FoldFailure<BehaviorAddr<B>, B::Sends, <B::Birth as BirthMode>::Child, B::Error>,
 >
 where
     B: Behavior<Ph = Never>,
@@ -178,9 +178,13 @@ mod tests {
         );
     }
 
-    impl Behavior for Accumulator {
+    impl behavior::Protocol for Accumulator {
         type Addr = MailAddr;
         type Msg = u8;
+    }
+
+    impl Behavior for Accumulator {
+        type Protocol = Self;
         type Event = User<MailAddr, u8>;
         type Sends = Vec<Delivery<Sink>>;
         type Ph = Never;
@@ -206,9 +210,13 @@ mod tests {
         }
     }
 
-    impl Behavior for Sink {
+    impl behavior::Protocol for Sink {
         type Addr = MailAddr;
         type Msg = u8;
+    }
+
+    impl Behavior for Sink {
+        type Protocol = Self;
         type Event = User<MailAddr, u8>;
         type Sends = Vec<Never>;
         type Ph = Never;

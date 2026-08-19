@@ -15,10 +15,14 @@ struct GateReply;
 
 macro_rules! leaf {
     ($name:ident, $message:ty) => {
-        impl Behavior for $name {
+        impl behavior::Protocol for $name {
             type Addr = MailAddr;
             type Msg = $message;
-            type Event = User<MailAddr, Self::Msg>;
+        }
+
+        impl Behavior for $name {
+            type Protocol = Self;
+            type Event = User<MailAddr, behavior::BehaviorMessage<Self>>;
             type Sends = Vec<Never>;
             type Ph = Never;
             type Error = Never;

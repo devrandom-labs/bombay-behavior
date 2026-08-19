@@ -115,7 +115,7 @@ mod tests {
     where
         A: Address,
         F: Clone + Eq,
-        Reply: Behavior<Addr = A, Msg = FeaturesState<F>>,
+        Reply: behavior::Protocol<Addr = A, Msg = FeaturesState<F>>,
         Features<A, F, Reply>: Behavior,
     {
     }
@@ -123,10 +123,14 @@ mod tests {
     #[test]
     fn specialization_has_the_universal_behavior_contract() {
         struct Reply;
-        impl Behavior for Reply {
+        impl behavior::Protocol for Reply {
             type Addr = behavior::MailAddr;
             type Msg = FeaturesState<u8>;
-            type Event = behavior::User<Self::Addr, Self::Msg>;
+        }
+
+        impl Behavior for Reply {
+            type Protocol = Self;
+            type Event = behavior::User<crate::BehaviorAddr<Self>, crate::BehaviorMessage<Self>>;
             type Sends = Vec<behavior::Never>;
             type Ph = behavior::Never;
             type Error = behavior::Never;

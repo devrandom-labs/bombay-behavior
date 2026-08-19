@@ -1,5 +1,9 @@
 # Replacement realization
 
+Fresh incarnations may change behavior state or implementation without
+changing a stable proxy's public protocol. This depends on the separation in
+[Protocol, ingress, behavior, and effect algebras](protocol-algebra.md).
+
 ## Semantic classification
 
 The actor-model law used here is fresh allocation. In Agha's actor semantics,

@@ -2,9 +2,11 @@
 
 use std::collections::BTreeMap;
 
+use super::DeliveryOutcomes;
+
 use behavior::{
-    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, Never, NoBirths, Recipient,
-    SendAlgebra, User,
+    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, Never, NoBirths, Protocol,
+    Recipient, User,
 };
 
 /// Complete observable state of an [`OrderGate`].
@@ -64,7 +66,7 @@ pub enum OrderGateOutcome<K, T> {
 }
 
 /// Commands accepted by [`OrderGate`].
-pub enum OrderGateMessage<K, T, Target: Behavior, Reply: Behavior> {
+pub enum OrderGateMessage<K, T, Target: Protocol, Reply: behavior::Protocol> {
     /// Submit one keyed value.
     Hold {
         /// Ordered release key.
@@ -85,28 +87,7 @@ pub enum OrderGateMessage<K, T, Target: Behavior, Reply: Behavior> {
     },
 }
 
-/// Named effect lanes emitted by [`OrderGate`].
-pub struct OrderGateSends<Target: Behavior, Reply: Behavior> {
-    /// Values emitted in increasing key order for an opening.
-    pub deliveries: Vec<Delivery<Target>>,
-    /// Exactly one factual operation result.
-    pub outcomes: Vec<Delivery<Reply>>,
-}
-
-impl<Target: Behavior, Reply: Behavior> SendAlgebra for OrderGateSends<Target, Reply> {
-    fn empty() -> Self {
-        Self {
-            deliveries: Vec::new(),
-            outcomes: Vec::new(),
-        }
-    }
-    fn append(&mut self, mut other: Self) {
-        self.deliveries.append(&mut other.deliveries);
-        self.outcomes.append(&mut other.outcomes);
-    }
-}
-
-struct Held<T, Target: Behavior> {
+struct Held<T, Target: Protocol> {
     value: T,
     to: Recipient<Target>,
 }
@@ -125,8 +106,8 @@ pub struct OrderGate<
     A: Address,
     K,
     T,
-    Target: Behavior<Addr = A, Msg = T>,
-    Reply: Behavior<Addr = A, Msg = OrderGateOutcome<K, T>>,
+    Target: Protocol<Addr = A, Msg = T>,
+    Reply: behavior::Protocol<Addr = A, Msg = OrderGateOutcome<K, T>>,
 > {
     watermark: Option<K>,
     held: BTreeMap<K, Held<T, Target>>,
@@ -137,8 +118,8 @@ impl<A, K, T, Target, Reply> OrderGate<A, K, T, Target, Reply>
 where
     A: Address,
     K: Clone + Ord,
-    Target: Behavior<Addr = A, Msg = T>,
-    Reply: Behavior<Addr = A, Msg = OrderGateOutcome<K, T>>,
+    Target: Protocol<Addr = A, Msg = T>,
+    Reply: behavior::Protocol<Addr = A, Msg = OrderGateOutcome<K, T>>,
 {
     /// Construct a closed gate with no retained values.
     #[must_use]
@@ -163,8 +144,8 @@ where
         deliveries: Vec<Delivery<Target>>,
         reply_to: Recipient<Reply>,
         outcome: OrderGateOutcome<K, T>,
-    ) -> Actions<A, Never, OrderGateSends<Target, Reply>, NoBirths> {
-        Actions::send(OrderGateSends {
+    ) -> Actions<A, Never, DeliveryOutcomes<Target, Reply>, NoBirths> {
+        Actions::send(DeliveryOutcomes {
             deliveries,
             outcomes: vec![Delivery::new(reply_to, outcome)],
         })
@@ -176,7 +157,7 @@ where
         value: T,
         to: Recipient<Target>,
         reply_to: Recipient<Reply>,
-    ) -> Actions<A, Never, OrderGateSends<Target, Reply>, NoBirths> {
+    ) -> Actions<A, Never, DeliveryOutcomes<Target, Reply>, NoBirths> {
         if self
             .watermark
             .as_ref()
@@ -210,7 +191,7 @@ where
         &mut self,
         through: K,
         reply_to: Recipient<Reply>,
-    ) -> Actions<A, Never, OrderGateSends<Target, Reply>, NoBirths> {
+    ) -> Actions<A, Never, DeliveryOutcomes<Target, Reply>, NoBirths> {
         if let Some(current) = &self.watermark
             && through <= *current
         {
@@ -252,8 +233,8 @@ impl<A, K, T, Target, Reply> Default for OrderGate<A, K, T, Target, Reply>
 where
     A: Address,
     K: Clone + Ord,
-    Target: Behavior<Addr = A, Msg = T>,
-    Reply: Behavior<Addr = A, Msg = OrderGateOutcome<K, T>>,
+    Target: Protocol<Addr = A, Msg = T>,
+    Reply: behavior::Protocol<Addr = A, Msg = OrderGateOutcome<K, T>>,
 {
     fn default() -> Self {
         Self::new()
@@ -264,8 +245,8 @@ impl<A, K, T, Target, Reply> BehaviorBase for OrderGate<A, K, T, Target, Reply>
 where
     A: Address,
     K: Clone + Ord,
-    Target: Behavior<Addr = A, Msg = T>,
-    Reply: Behavior<Addr = A, Msg = OrderGateOutcome<K, T>>,
+    Target: Protocol<Addr = A, Msg = T>,
+    Reply: behavior::Protocol<Addr = A, Msg = OrderGateOutcome<K, T>>,
 {
     type Base = Self;
     fn base(&self) -> &Self {
@@ -273,17 +254,27 @@ where
     }
 }
 
+impl<A, K, T, Target, Reply> behavior::Protocol for OrderGate<A, K, T, Target, Reply>
+where
+    A: Address,
+    K: Clone + Ord,
+    Target: Protocol<Addr = A, Msg = T>,
+    Reply: behavior::Protocol<Addr = A, Msg = OrderGateOutcome<K, T>>,
+{
+    type Addr = A;
+    type Msg = OrderGateMessage<K, T, Target, Reply>;
+}
+
 impl<A, K, T, Target, Reply> Behavior for OrderGate<A, K, T, Target, Reply>
 where
     A: Address,
     K: Clone + Ord,
-    Target: Behavior<Addr = A, Msg = T>,
-    Reply: Behavior<Addr = A, Msg = OrderGateOutcome<K, T>>,
+    Target: Protocol<Addr = A, Msg = T>,
+    Reply: behavior::Protocol<Addr = A, Msg = OrderGateOutcome<K, T>>,
 {
-    type Addr = A;
-    type Msg = OrderGateMessage<K, T, Target, Reply>;
-    type Event = User<A, Self::Msg>;
-    type Sends = OrderGateSends<Target, Reply>;
+    type Protocol = Self;
+    type Event = User<A, crate::BehaviorMessage<Self>>;
+    type Sends = DeliveryOutcomes<Target, Reply>;
     type Ph = Never;
     type Error = Never;
     type Birth = NoBirths;
@@ -309,9 +300,13 @@ mod tests {
     struct Reply;
     macro_rules! leaf {
         ($n:ident,$m:ty) => {
-            impl Behavior for $n {
+            impl behavior::Protocol for $n {
                 type Addr = MailAddr;
                 type Msg = $m;
+            }
+
+            impl Behavior for $n {
+                type Protocol = Self;
                 type Event = User<MailAddr, $m>;
                 type Sends = Vec<Never>;
                 type Ph = Never;
@@ -334,7 +329,7 @@ mod tests {
         s: &mut crate::Active<Subject>,
         key: u8,
         value: u8,
-    ) -> Actions<MailAddr, Never, OrderGateSends<Target, Reply>, NoBirths> {
+    ) -> Actions<MailAddr, Never, DeliveryOutcomes<Target, Reply>, NoBirths> {
         s.receive(
             MailAddr(9),
             OrderGateMessage::Hold {
@@ -349,7 +344,7 @@ mod tests {
     fn open(
         s: &mut crate::Active<Subject>,
         through: u8,
-    ) -> Actions<MailAddr, Never, OrderGateSends<Target, Reply>, NoBirths> {
+    ) -> Actions<MailAddr, Never, DeliveryOutcomes<Target, Reply>, NoBirths> {
         s.receive(
             MailAddr(9),
             OrderGateMessage::OpenThrough {

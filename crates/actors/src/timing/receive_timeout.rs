@@ -6,9 +6,11 @@ use std::time::Duration;
 use super::domain::TimerLease;
 use super::event::TimedEvent;
 use crate::Step;
-use crate::protocol::{ScheduleAfter, TimerElapsed, TimerId};
-use crate::{Own, RouteInput, SendInput};
-use behavior::{Actions, Address, Behavior, BirthMode, SendAlgebra, ServiceSends, UserEvent};
+use crate::protocol::{ScheduleAfter, TimerId};
+use behavior::{
+    Actions, Address, Behavior, BirthMode, EventLayer, InterpreterRequests, SendEffects, SendLayer,
+    UserEvent,
+};
 
 pub type ReceiveTimeoutEvent<E> = TimedEvent<E>;
 
@@ -16,7 +18,7 @@ pub type ReceiveTimeoutReaction<B> = fn(
     &mut B,
 ) -> Result<
     Actions<
-        <B as Behavior>::Addr,
+        crate::BehaviorAddr<B>,
         <B as Behavior>::Ph,
         <B as Behavior>::Sends,
         <B as Behavior>::Birth,
@@ -24,44 +26,17 @@ pub type ReceiveTimeoutReaction<B> = fn(
     <B as Behavior>::Error,
 >;
 
-/// Named effect lanes added by [`ReceiveTimeout`].
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ReceiveTimeoutSends<Sends> {
-    pub behavior: Sends,
-    pub schedules: ServiceSends<ScheduleAfter>,
-}
-
-impl<Sends: SendAlgebra> SendAlgebra for ReceiveTimeoutSends<Sends> {
-    fn empty() -> Self {
-        Self {
-            behavior: Sends::empty(),
-            schedules: ServiceSends::empty(),
-        }
-    }
-
-    fn append(&mut self, other: Self) {
-        self.behavior.append(other.behavior);
-        self.schedules.append(other.schedules);
-    }
-}
-
-impl<Sends> SendInput<ScheduleAfter, Own> for ReceiveTimeoutSends<Sends> {
-    fn emit(&mut self, input: ScheduleAfter) {
-        self.schedules.send(input);
-    }
-}
-
 pub(crate) type ReceiveTimeoutActions<B> = Actions<
-    <B as Behavior>::Addr,
+    crate::BehaviorAddr<B>,
     <B as Behavior>::Ph,
-    ReceiveTimeoutSends<<B as Behavior>::Sends>,
+    SendLayer<InterpreterRequests<ScheduleAfter>, <B as Behavior>::Sends>,
     <B as Behavior>::Birth,
 >;
 
 /// A pure one-notification-per-idle-period receive timeout.
 ///
 /// Only successful user communications are activity. Timer, peer, child,
-/// worker, and shutdown service events compose through this wrapper but never
+/// worker, and shutdown interpreter events compose through this wrapper but never
 /// rearm it. A matching timeout consumes the live generation before invoking
 /// the reaction; if that reaction continues, the timeout remains unarmed until
 /// another successful continuing user communication.
@@ -74,8 +49,12 @@ pub struct ReceiveTimeout<B: Behavior> {
 }
 
 impl<B: Behavior> ReceiveTimeout<B> {
+    /// Wrap `inner` with a relative inactivity timeout.
+    ///
+    /// Initialization and each successful continuing user fold stage a fresh
+    /// timer generation. Interpreter events do not reset inactivity.
     #[must_use]
-    pub(crate) fn new(
+    pub fn new(
         inner: B,
         id: TimerId,
         after: Duration,
@@ -90,25 +69,22 @@ impl<B: Behavior> ReceiveTimeout<B> {
         }
     }
 
-    fn schedule(&mut self) -> ServiceSends<ScheduleAfter> {
+    fn schedule(&mut self) -> InterpreterRequests<ScheduleAfter> {
         self.timer
             .arm()
-            .map_or_else(ServiceSends::empty, |generation| {
-                ServiceSends::one(ScheduleAfter::new(self.id, generation, self.after))
+            .map_or_else(InterpreterRequests::empty, |generation| {
+                InterpreterRequests::one(ScheduleAfter::new(self.id, generation, self.after))
             })
     }
 
     fn wrap(
-        actions: Actions<B::Addr, B::Ph, B::Sends, B::Birth>,
-        own: ServiceSends<ScheduleAfter>,
+        actions: Actions<crate::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>,
+        own: InterpreterRequests<ScheduleAfter>,
     ) -> ReceiveTimeoutActions<B> {
-        actions.map_sends(|behavior| ReceiveTimeoutSends {
-            behavior,
-            schedules: own,
-        })
+        actions.map_sends(|inner| SendLayer::new(own, inner))
     }
 
-    fn terminal(actions: &Actions<B::Addr, B::Ph, B::Sends, B::Birth>) -> bool {
+    fn terminal(actions: &Actions<crate::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>) -> bool {
         matches!(actions.become_, Step::Stop(_))
     }
 }
@@ -133,15 +109,14 @@ where
 impl<B, A, Ph, Sends, Br> Behavior for ReceiveTimeout<B>
 where
     A: Address,
-    Sends: SendAlgebra,
+    Sends: SendEffects + behavior::SendsFor<B::Event>,
     Br: BirthMode,
-    B: Behavior<Addr = A, Ph = Ph, Sends = Sends, Birth = Br>,
-    B::Event: crate::RouteInput<TimerElapsed>,
+    B: Behavior<Ph = Ph, Sends = Sends, Birth = Br>,
+    B::Protocol: crate::Protocol<Addr = A>,
 {
-    type Addr = A;
-    type Msg = B::Msg;
+    type Protocol = B::Protocol;
     type Event = ReceiveTimeoutEvent<B::Event>;
-    type Sends = ReceiveTimeoutSends<Sends>;
+    type Sends = SendLayer<InterpreterRequests<ScheduleAfter>, Sends>;
     type Ph = Ph;
     type Error = B::Error;
     type Birth = Br;
@@ -153,7 +128,7 @@ where
         let actions = behavior::initialize(&mut self.inner)?;
         let own = if Self::terminal(&actions) {
             self.timer.disarm();
-            ServiceSends::empty()
+            InterpreterRequests::empty()
         } else {
             self.schedule()
         };
@@ -166,30 +141,20 @@ where
         event: Self::Event,
     ) -> Result<ReceiveTimeoutActions<B>, Self::Error> {
         match event {
-            ReceiveTimeoutEvent::Elapsed(elapsed)
+            EventLayer::Owned(elapsed)
                 if elapsed.id == self.id && self.timer.accept(elapsed.generation) =>
             {
                 let actions = (self.on_elapsed)(&mut self.inner)?;
-                Ok(Self::wrap(actions, ServiceSends::empty()))
+                Ok(Self::wrap(actions, InterpreterRequests::empty()))
             }
-            ReceiveTimeoutEvent::Elapsed(elapsed) if elapsed.id == self.id => Ok(Actions::cont()),
-            ReceiveTimeoutEvent::Elapsed(elapsed) => {
-                let Ok(inner) = B::Event::route(elapsed) else {
-                    return Ok(Actions::cont());
-                };
-                let actions = behavior::delegate_transition(&mut self.inner, inner)?;
-                if Self::terminal(&actions) {
-                    self.timer.disarm();
-                }
-                Ok(Self::wrap(actions, ServiceSends::empty()))
-            }
-            ReceiveTimeoutEvent::Behavior(event) => match event.into_user() {
+            EventLayer::Owned(_) => Ok(Actions::cont()),
+            EventLayer::Inner(event) => match event.into_user() {
                 Ok(user) => {
                     let event = B::Event::user(user.from, user.message);
                     let actions = behavior::delegate_transition(&mut self.inner, event)?;
                     let own = if Self::terminal(&actions) {
                         self.timer.disarm();
-                        ServiceSends::empty()
+                        InterpreterRequests::empty()
                     } else {
                         self.schedule()
                     };
@@ -200,7 +165,7 @@ where
                     if Self::terminal(&actions) {
                         self.timer.disarm();
                     }
-                    Ok(Self::wrap(actions, ServiceSends::empty()))
+                    Ok(Self::wrap(actions, InterpreterRequests::empty()))
                 }
             },
         }
@@ -214,9 +179,13 @@ mod tests {
 
     struct Count(u8);
 
-    impl Behavior for Count {
+    impl behavior::Protocol for Count {
         type Addr = MailAddr;
         type Msg = ();
+    }
+
+    impl Behavior for Count {
+        type Protocol = Self;
         type Event = User<MailAddr, ()>;
         type Sends = Vec<Never>;
         type Ph = Never;
@@ -260,11 +229,11 @@ mod tests {
 
         let actions = behavior::delegate_transition(
             &mut timeout,
-            ReceiveTimeoutEvent::Behavior(User::user(MailAddr(1), ())),
+            EventLayer::Inner(User::user(MailAddr(1), ())),
         )
         .unwrap();
 
-        assert!(actions.sends.schedules.is_empty());
+        assert!(actions.sends.owned.is_empty());
         assert!(actions.creates.is_empty());
         assert!(matches!(actions.become_, Step::Continue));
         assert_eq!(crate::BehaviorBase::base(&timeout).0, 1);

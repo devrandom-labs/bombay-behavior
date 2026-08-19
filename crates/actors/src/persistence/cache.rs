@@ -1,8 +1,8 @@
 //! Bounded least-recently-used value policy.
 
 use behavior::{
-    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, Never, NoBirths, Recipient,
-    User,
+    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, MessageProtocol, Never,
+    NoBirths, Recipient, User,
 };
 use thiserror::Error;
 
@@ -66,7 +66,7 @@ pub enum CacheResult<K, V> {
 }
 
 /// Commands accepted by [`Cache`].
-pub enum CacheMessage<K, V, Reply: Behavior> {
+pub enum CacheMessage<A: Address, K, V> {
     /// Insert or replace one value.
     Put {
         /// Key to store.
@@ -74,22 +74,27 @@ pub enum CacheMessage<K, V, Reply: Behavior> {
         /// Owned value to store.
         value: V,
         /// Typed result recipient.
-        reply_to: Recipient<Reply>,
+        reply_to: Recipient<MessageProtocol<A, CacheResult<K, V>>>,
     },
     /// Lookup and refresh one key.
     Get {
         /// Key to lookup.
         key: K,
         /// Typed result recipient.
-        reply_to: Recipient<Reply>,
+        reply_to: Recipient<MessageProtocol<A, CacheResult<K, V>>>,
     },
     /// Remove one key without refreshing another entry.
     Remove {
         /// Key to remove.
         key: K,
         /// Typed result recipient.
-        reply_to: Recipient<Reply>,
+        reply_to: Recipient<MessageProtocol<A, CacheResult<K, V>>>,
     },
+}
+
+impl<A: Address, K, V> behavior::Protocol for CacheMessage<A, K, V> {
+    type Addr = A;
+    type Msg = CacheMessage<A, K, V>;
 }
 
 /// Invalid cache definition.
@@ -98,6 +103,26 @@ pub enum CacheConfigError {
     /// Zero capacity could never retain accepted ownership.
     #[error("cache capacity must be positive")]
     ZeroCapacity,
+}
+
+/// Validated, protocol-independent cache capacity.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CacheConfiguration {
+    capacity: usize,
+}
+
+impl CacheConfiguration {
+    /// Validate capacity before binding it to key, value, or address types.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CacheConfigError::ZeroCapacity`] for zero capacity.
+    pub fn new(capacity: usize) -> Result<Self, CacheConfigError> {
+        if capacity == 0 {
+            return Err(CacheConfigError::ZeroCapacity);
+        }
+        Ok(Self { capacity })
+    }
 }
 
 /// Bounded deterministic recency cache behavior.
@@ -112,32 +137,22 @@ pub enum CacheConfigError {
 /// authority. The standard-library vector is intentional for this initial
 /// deterministic policy; an `lru` dependency requires a demonstrated scale
 /// need and must remain private. No method has a semantic panic condition.
-pub struct Cache<A: Address, K, V, Reply: Behavior<Addr = A, Msg = CacheResult<K, V>>> {
+pub struct Cache<A: Address, K, V> {
     state: CacheState<K, V>,
-    address: core::marker::PhantomData<fn() -> (A, Reply)>,
+    address: core::marker::PhantomData<fn() -> A>,
 }
 
-impl<A, K, V, Reply> Cache<A, K, V, Reply>
-where
-    A: Address,
-    Reply: Behavior<Addr = A, Msg = CacheResult<K, V>>,
-{
-    /// Construct an empty bounded cache.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`CacheConfigError::ZeroCapacity`] for zero capacity.
-    pub fn new(capacity: usize) -> Result<Self, CacheConfigError> {
-        if capacity == 0 {
-            return Err(CacheConfigError::ZeroCapacity);
-        }
-        Ok(Self {
+impl<A: Address, K, V> Cache<A, K, V> {
+    /// Bind validated capacity to an empty cache actor.
+    #[must_use]
+    pub fn new(configuration: CacheConfiguration) -> Self {
+        Self {
             state: CacheState {
-                capacity,
-                entries: Vec::with_capacity(capacity),
+                capacity: configuration.capacity,
+                entries: Vec::with_capacity(configuration.capacity),
             },
             address: core::marker::PhantomData,
-        })
+        }
     }
 
     /// Borrow the complete current recency state.
@@ -147,11 +162,7 @@ where
     }
 }
 
-impl<A, K, V, Reply> BehaviorBase for Cache<A, K, V, Reply>
-where
-    A: Address,
-    Reply: Behavior<Addr = A, Msg = CacheResult<K, V>>,
-{
+impl<A: Address, K, V> BehaviorBase for Cache<A, K, V> {
     type Base = Self;
 
     fn base(&self) -> &Self {
@@ -159,17 +170,25 @@ where
     }
 }
 
-impl<A, K, V, Reply> Behavior for Cache<A, K, V, Reply>
+impl<A, K, V> behavior::Protocol for Cache<A, K, V>
 where
     A: Address,
     K: Clone + Eq,
     V: Clone,
-    Reply: Behavior<Addr = A, Msg = CacheResult<K, V>>,
 {
     type Addr = A;
-    type Msg = CacheMessage<K, V, Reply>;
-    type Event = User<A, Self::Msg>;
-    type Sends = Vec<Delivery<Reply>>;
+    type Msg = CacheMessage<A, K, V>;
+}
+
+impl<A, K, V> Behavior for Cache<A, K, V>
+where
+    A: Address,
+    K: Clone + Eq,
+    V: Clone,
+{
+    type Protocol = CacheMessage<A, K, V>;
+    type Event = User<A, crate::BehaviorMessage<Self>>;
+    type Sends = Vec<Delivery<MessageProtocol<A, CacheResult<K, V>>>>;
     type Ph = Never;
     type Error = Never;
     type Birth = NoBirths;
@@ -255,27 +274,9 @@ mod tests {
     use crate::Activate as _;
     use behavior::MailAddr;
 
-    struct Reply;
-
-    impl Behavior for Reply {
-        type Addr = MailAddr;
-        type Msg = CacheResult<u8, u16>;
-        type Event = User<MailAddr, Self::Msg>;
-        type Sends = Vec<Never>;
-        type Ph = Never;
-        type Error = Never;
-        type Birth = NoBirths;
-
-        fn transition(&mut self, _: crate::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
-            Ok(Actions::cont())
-        }
-    }
-
-    type TestCache = Cache<MailAddr, u8, u16, Reply>;
-
     fn put(
-        cache: &mut crate::Active<TestCache>,
-        reply: Recipient<Reply>,
+        cache: &mut crate::Active<Cache<MailAddr, u8, u16>>,
+        reply: Recipient<MessageProtocol<MailAddr, CacheResult<u8, u16>>>,
         key: u8,
         value: u16,
     ) -> CacheResult<u8, u16> {
@@ -298,15 +299,18 @@ mod tests {
     #[test]
     fn zero_capacity_is_rejected_before_values_can_be_owned() {
         assert!(matches!(
-            TestCache::new(0),
+            CacheConfiguration::new(0),
             Err(CacheConfigError::ZeroCapacity)
         ));
     }
 
     #[test]
     fn hits_refresh_recency_and_capacity_returns_eviction() {
-        let reply = Recipient::<Reply>::global(MailAddr(8));
-        let mut cache = (TestCache::new(2).unwrap()).initialize().unwrap().behavior;
+        let reply = Recipient::from(MailAddr(8));
+        let mut cache = Cache::new(CacheConfiguration::new(2).unwrap())
+            .initialize()
+            .unwrap()
+            .behavior;
         assert!(matches!(
             put(&mut cache, reply, 1, 10),
             CacheResult::Stored {
@@ -358,8 +362,11 @@ mod tests {
 
     #[test]
     fn replacement_and_remove_return_every_displaced_value() {
-        let reply = Recipient::<Reply>::global(MailAddr(8));
-        let mut cache = (TestCache::new(2).unwrap()).initialize().unwrap().behavior;
+        let reply = Recipient::from(MailAddr(8));
+        let mut cache = Cache::new(CacheConfiguration::new(2).unwrap())
+            .initialize()
+            .unwrap()
+            .behavior;
         put(&mut cache, reply, 1, 10);
         assert_eq!(
             put(&mut cache, reply, 1, 11),

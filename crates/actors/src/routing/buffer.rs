@@ -3,8 +3,8 @@
 use std::collections::VecDeque;
 
 use behavior::{
-    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, Never, NoBirths, Recipient,
-    SendAlgebra, User,
+    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, MessageProtocol, Never,
+    NoBirths, Recipient, SendEffects, User,
 };
 use thiserror::Error;
 
@@ -58,23 +58,23 @@ pub enum BufferOutcome<T> {
 }
 
 /// One accepted value and the recipient that must receive an eviction fact.
-pub struct Buffered<T, Reply: Behavior> {
+pub struct Buffered<A: Address, T> {
     /// Value owned by the buffer.
     pub value: T,
     /// Typed outcome recipient supplied with the original offer.
-    pub reply_to: Recipient<Reply>,
+    pub reply_to: Recipient<MessageProtocol<A, BufferOutcome<T>>>,
 }
 
 /// Complete valid state product of a [`Buffer`].
-pub struct BufferState<T, Reply: Behavior> {
+pub struct BufferState<A: Address, T> {
     /// Positive maximum accepted queue length.
     pub capacity: usize,
     /// Exhaustive policy used at capacity.
     pub overflow: OverflowPolicy,
-    queued: VecDeque<Buffered<T, Reply>>,
+    queued: VecDeque<Buffered<A, T>>,
 }
 
-impl<T, Reply: Behavior> BufferState<T, Reply> {
+impl<A: Address, T> BufferState<A, T> {
     /// Number of accepted values currently owned.
     #[must_use]
     pub fn len(&self) -> usize {
@@ -89,38 +89,43 @@ impl<T, Reply: Behavior> BufferState<T, Reply> {
 
     /// Iterate accepted values in release order.
     #[must_use]
-    pub fn queued(&self) -> impl ExactSizeIterator<Item = &Buffered<T, Reply>> {
+    pub fn queued(&self) -> impl ExactSizeIterator<Item = &Buffered<A, T>> {
         self.queued.iter()
     }
 }
 
 /// Commands accepted by [`Buffer`].
-pub enum BufferMessage<T, Target: Behavior, Reply: Behavior> {
+pub enum BufferMessage<A: Address, T> {
     /// Offer ownership of one value under the configured overflow policy.
     Offer {
         /// Offered value.
         value: T,
         /// Recipient for acceptance, rejection, or later eviction.
-        reply_to: Recipient<Reply>,
+        reply_to: Recipient<MessageProtocol<A, BufferOutcome<T>>>,
     },
     /// Release the oldest accepted value to a concrete typed destination.
     Release {
         /// Destination for the released value.
-        to: Recipient<Target>,
+        to: Recipient<MessageProtocol<A, T>>,
         /// Recipient for the release or empty result.
-        reply_to: Recipient<Reply>,
+        reply_to: Recipient<MessageProtocol<A, BufferOutcome<T>>>,
     },
 }
 
-/// Named delivery products emitted by [`Buffer`].
-pub struct BufferSends<Target: Behavior, Reply: Behavior> {
-    /// Released values in FIFO order.
-    pub deliveries: Vec<Delivery<Target>>,
-    /// Acceptance, rejection, eviction, release, and empty facts.
-    pub outcomes: Vec<Delivery<Reply>>,
+impl<A: Address, T> behavior::Protocol for BufferMessage<A, T> {
+    type Addr = A;
+    type Msg = BufferMessage<A, T>;
 }
 
-impl<Target: Behavior, Reply: Behavior> SendAlgebra for BufferSends<Target, Reply> {
+/// Named delivery products emitted by [`Buffer`].
+pub struct BufferSends<A: Address, T> {
+    /// Released values in FIFO order.
+    pub deliveries: Vec<Delivery<MessageProtocol<A, T>>>,
+    /// Acceptance, rejection, eviction, release, and empty facts.
+    pub outcomes: Vec<Delivery<MessageProtocol<A, BufferOutcome<T>>>>,
+}
+
+impl<A: Address, T> SendEffects for BufferSends<A, T> {
     fn empty() -> Self {
         Self {
             deliveries: Vec::new(),
@@ -134,12 +139,55 @@ impl<Target: Behavior, Reply: Behavior> SendAlgebra for BufferSends<Target, Repl
     }
 }
 
+impl<Event, A: Address, T> behavior::SendsFor<Event> for BufferSends<A, T> {}
+
+impl<I, RootEvent, Path, A, T> behavior::InterpretSends<I, RootEvent, Path> for BufferSends<A, T>
+where
+    I: behavior::SendInterpreter,
+    A: Address,
+    Vec<Delivery<MessageProtocol<A, T>>>: behavior::InterpretSends<I, RootEvent, Path>,
+    Vec<Delivery<MessageProtocol<A, BufferOutcome<T>>>>:
+        behavior::InterpretSends<I, RootEvent, Path>,
+    BufferSends<A, T>: Send,
+{
+    fn interpret(
+        self,
+        interpreter: &mut I,
+    ) -> impl core::future::Future<Output = Result<(), I::Error>> + Send {
+        async move {
+            behavior::InterpretSends::interpret(self.deliveries, interpreter).await?;
+            behavior::InterpretSends::interpret(self.outcomes, interpreter).await
+        }
+    }
+}
+
 /// Invalid buffer definition.
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
 pub enum BufferConfigError {
     /// A zero-capacity buffer could never accept ownership.
     #[error("buffer capacity must be positive")]
     ZeroCapacity,
+}
+
+/// Validated, protocol-independent buffer policy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BufferConfiguration {
+    capacity: usize,
+    overflow: OverflowPolicy,
+}
+
+impl BufferConfiguration {
+    /// Validate policy before it is bound to any actor protocol.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BufferConfigError::ZeroCapacity`] when `capacity` is zero.
+    pub fn new(capacity: usize, overflow: OverflowPolicy) -> Result<Self, BufferConfigError> {
+        if capacity == 0 {
+            return Err(BufferConfigError::ZeroCapacity);
+        }
+        Ok(Self { capacity, overflow })
+    }
 }
 
 /// Bounded FIFO policy behavior over typed actor deliveries.
@@ -157,51 +205,33 @@ pub enum BufferConfigError {
 /// internal full-queue eviction uses the proven invariant that positive
 /// capacity plus the full-offer branch implies a non-empty queue; callers
 /// cannot violate that invariant through the public API.
-pub struct Buffer<
-    A: Address,
-    T,
-    Target: Behavior<Addr = A, Msg = T>,
-    Reply: Behavior<Addr = A, Msg = BufferOutcome<T>>,
-> {
-    state: BufferState<T, Reply>,
-    address: core::marker::PhantomData<fn() -> (A, Target)>,
+pub struct Buffer<A: Address, T> {
+    state: BufferState<A, T>,
 }
 
-impl<A, T, Target, Reply> Buffer<A, T, Target, Reply>
-where
-    A: Address,
-    Target: Behavior<Addr = A, Msg = T>,
-    Reply: Behavior<Addr = A, Msg = BufferOutcome<T>>,
-{
-    /// Construct an empty bounded buffer.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`BufferConfigError::ZeroCapacity`] when `capacity` is zero.
-    pub fn new(capacity: usize, overflow: OverflowPolicy) -> Result<Self, BufferConfigError> {
-        if capacity == 0 {
-            return Err(BufferConfigError::ZeroCapacity);
-        }
-        Ok(Self {
+impl<A: Address, T> Buffer<A, T> {
+    /// Bind validated policy to an empty buffer actor.
+    #[must_use]
+    pub fn new(configuration: BufferConfiguration) -> Self {
+        Self {
             state: BufferState {
-                capacity,
-                overflow,
-                queued: VecDeque::with_capacity(capacity),
+                capacity: configuration.capacity,
+                overflow: configuration.overflow,
+                queued: VecDeque::with_capacity(configuration.capacity),
             },
-            address: core::marker::PhantomData,
-        })
+        }
     }
 
     /// Borrow the complete current buffer state.
     #[must_use]
-    pub const fn state(&self) -> &BufferState<T, Reply> {
+    pub const fn state(&self) -> &BufferState<A, T> {
         &self.state
     }
 
     fn actions(
-        deliveries: Vec<Delivery<Target>>,
-        outcomes: Vec<Delivery<Reply>>,
-    ) -> Actions<A, Never, BufferSends<Target, Reply>, NoBirths> {
+        deliveries: Vec<Delivery<MessageProtocol<A, T>>>,
+        outcomes: Vec<Delivery<MessageProtocol<A, BufferOutcome<T>>>>,
+    ) -> Actions<A, Never, BufferSends<A, T>, NoBirths> {
         Actions::send(BufferSends {
             deliveries,
             outcomes,
@@ -209,12 +239,7 @@ where
     }
 }
 
-impl<A, T, Target, Reply> BehaviorBase for Buffer<A, T, Target, Reply>
-where
-    A: Address,
-    Target: Behavior<Addr = A, Msg = T>,
-    Reply: Behavior<Addr = A, Msg = BufferOutcome<T>>,
-{
+impl<A: Address, T> BehaviorBase for Buffer<A, T> {
     type Base = Self;
 
     fn base(&self) -> &Self {
@@ -222,16 +247,15 @@ where
     }
 }
 
-impl<A, T, Target, Reply> Behavior for Buffer<A, T, Target, Reply>
-where
-    A: Address,
-    Target: Behavior<Addr = A, Msg = T>,
-    Reply: Behavior<Addr = A, Msg = BufferOutcome<T>>,
-{
+impl<A: Address, T> behavior::Protocol for Buffer<A, T> {
     type Addr = A;
-    type Msg = BufferMessage<T, Target, Reply>;
-    type Event = User<A, Self::Msg>;
-    type Sends = BufferSends<Target, Reply>;
+    type Msg = BufferMessage<A, T>;
+}
+
+impl<A: Address, T> Behavior for Buffer<A, T> {
+    type Protocol = BufferMessage<A, T>;
+    type Event = User<A, crate::BehaviorMessage<Self>>;
+    type Sends = BufferSends<A, T>;
     type Ph = Never;
     type Error = Never;
     type Birth = NoBirths;
@@ -329,41 +353,8 @@ mod tests {
     use crate::Activate as _;
     use behavior::MailAddr;
 
-    struct Target;
-    struct Reply;
-
-    impl Behavior for Target {
-        type Addr = MailAddr;
-        type Msg = u8;
-        type Event = User<MailAddr, u8>;
-        type Sends = Vec<Never>;
-        type Ph = Never;
-        type Error = Never;
-        type Birth = NoBirths;
-
-        fn transition(&mut self, _: crate::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
-            Ok(Actions::cont())
-        }
-    }
-
-    impl Behavior for Reply {
-        type Addr = MailAddr;
-        type Msg = BufferOutcome<u8>;
-        type Event = User<MailAddr, Self::Msg>;
-        type Sends = Vec<Never>;
-        type Ph = Never;
-        type Error = Never;
-        type Birth = NoBirths;
-
-        fn transition(&mut self, _: crate::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
-            Ok(Actions::cont())
-        }
-    }
-
-    type TestBuffer = Buffer<MailAddr, u8, Target, Reply>;
-
-    fn active(policy: OverflowPolicy) -> crate::Active<TestBuffer> {
-        (TestBuffer::new(2, policy).unwrap())
+    fn active(policy: OverflowPolicy) -> crate::Active<Buffer<MailAddr, u8>> {
+        Buffer::new(BufferConfiguration::new(2, policy).unwrap())
             .initialize()
             .unwrap()
             .behavior
@@ -372,15 +363,15 @@ mod tests {
     #[test]
     fn zero_capacity_is_rejected_before_ownership_is_possible() {
         assert!(matches!(
-            TestBuffer::new(0, OverflowPolicy::Reject),
+            BufferConfiguration::new(0, OverflowPolicy::Reject),
             Err(BufferConfigError::ZeroCapacity)
         ));
     }
 
     #[test]
     fn fifo_release_and_empty_result_use_disjoint_named_lanes() {
-        let reply = Recipient::<Reply>::global(MailAddr(8));
-        let target = Recipient::<Target>::global(MailAddr(7));
+        let reply = Recipient::from(MailAddr(8));
+        let target = Recipient::from(MailAddr(7));
         let mut buffer = active(OverflowPolicy::Reject);
         for value in [1, 2] {
             let accepted = buffer
@@ -436,8 +427,8 @@ mod tests {
 
     #[test]
     fn every_overflow_policy_preserves_or_returns_all_owned_values() {
-        let first_reply = Recipient::<Reply>::global(MailAddr(1));
-        let newest_reply = Recipient::<Reply>::global(MailAddr(2));
+        let first_reply = Recipient::from(MailAddr(1));
+        let newest_reply = Recipient::from(MailAddr(2));
         for policy in [
             OverflowPolicy::Reject,
             OverflowPolicy::DropNewest,

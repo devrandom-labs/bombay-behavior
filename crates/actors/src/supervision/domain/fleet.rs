@@ -55,6 +55,12 @@ impl<N: Copy + PartialEq> Fleet<N> {
         self.slots[..self.configured].iter().map(|slot| slot.nonce)
     }
 
+    /// Whether this fleet owns the stable child slot named by `nonce`.
+    #[must_use]
+    pub fn contains(&self, nonce: N) -> bool {
+        self.position(nonce).is_some()
+    }
+
     #[must_use]
     pub fn len(&self) -> usize {
         self.slots.len()

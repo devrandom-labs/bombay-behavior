@@ -1,0 +1,105 @@
+# Proven composition recipes
+
+`bombay-behavior-actors` exposes two ordinary construction functions for
+wrapper orders whose placement changes ownership of lifecycle or timer facts.
+They return existing concrete stacks: recipes are not builders, macros,
+runtime actors, or new behavior implementations.
+
+These orders are derived Bombay API policy, not laws of the actor model. The
+recipes only make two reusable, correctness-sensitive compositions easy to
+select without hiding any policy input.
+
+## Supervised restart backoff
+
+Use `supervised_backoff` when a standalone fixed fleet needs delayed,
+generation-safe replacement:
+
+```rust,ignore
+let behavior: BackoffSupervisor<MailAddr, Worker> = supervised_backoff(
+    ChildTopology::new([1, 2], worker_factory),
+    RestartConfiguration::new(
+        Strategy::OneForOne,
+        RestartPolicy::Permanent,
+        3,
+        Duration::from_secs(30),
+    ),
+    Backoff::exponential(Duration::from_millis(100), Duration::from_secs(5))?,
+    restart_timer,
+)?;
+```
+
+This is exactly equivalent to:
+
+```rust,ignore
+BackoffSupervisor::new(
+    Supervisor::new(topology, restart)?,
+    backoff,
+    timer,
+)
+```
+
+Its only construction error is `FleetError<A::Nonce>` from `Supervisor::new`.
+`BackoffConfigError` belongs to prior `Backoff` validation. `BackoffError`
+belongs to later transition-time delay calculation. The recipe does not merge
+these distinct phases into a builder error.
+
+Use `BackoffSupervise<B, C>` directly when a real inner application behavior
+has an additional `Births<C>` lane. The standalone recipe must not fabricate
+that capability.
+
+## Coordinated terminal application
+
+Use `coordinated_terminal_application` when an application must coordinate a
+validated heterogeneous shutdown plan, trigger it once after a timeout, and
+publish the exact terminal outcome of one selected child:
+
+```rust,ignore
+let behavior: CoordinatedTerminalApplication<Application, ShutdownTargets> =
+    coordinated_terminal_application(
+        application,
+        validated_shutdown_plan,
+        TimerId(7),
+        Duration::from_secs(20),
+        request_shutdown,
+        supervised_pool_nonce,
+        propagate_abnormal,
+    );
+```
+
+The returned concrete type is:
+
+```text
+PropagateTermination<
+    OneShot<HeterogeneousShutdownCoordinator<B, S>>,
+    ChildTermination<BehaviorAddr<B>>,
+>
+```
+
+The outer terminal observer and shutdown coordinator may both observe child
+lifecycle facts. They remain independent structural observation requests; one
+consumer must not steal the other's fact. An unmatched child fact is inert at
+the propagation layer. The terminal policy either discharges or publishes the
+original outcome without reclassification.
+
+The function is infallible because `HeterogeneousShutdownPlan::new` validates
+non-empty phases and global child-nonce uniqueness before construction. Timer
+identity, duration, the pure `OneShotReaction`, observed nonce, and terminal
+policy are all explicit.
+
+## Initialization and testing
+
+Wrapper initialization is inside-out and accumulates effects without dropping
+or reordering them. For the coordinated recipe, application initialization is
+preserved, the one-shot schedule is added, and the outer exact-child
+observation is added to its own named lane. These effects must be interpreted
+before the first mailbox event.
+
+Owner tests compare recipe-produced stacks with equivalent manual stacks over
+initialization and transition traces. Type assertions verify exact return
+types; error tests retain existing variants and nonces. Alternative wrapper
+orders are different concrete constructions and must be named and tested
+independently rather than presented as equivalent spellings.
+
+`WorkerPool::new(topology, configuration, complete_to)` remains the canonical
+pool construction boundary. It has no sensitive wrapper order, so a second
+recipe would only hide already explicit policy.

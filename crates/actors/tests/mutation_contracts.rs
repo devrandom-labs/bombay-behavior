@@ -5,15 +5,16 @@
 )]
 
 use behavior::{
-    Acted, Actions, Address, ChildStopped, CreationKind, CreationResolved, DeadlineEvent,
-    DeadlineSends, Delivery, Exit, MailAddr, Never, ObserveChild, ObserveCreation, ObservePeer,
-    PeerStopped, ProxyCommand, ProxyEvent, ProxySends, ReceiveTimeoutEvent, ReceiveTimeoutSends,
-    Recipient, ReportWorkerCreationResolved, ReportWorkerStopped, RouteInput, ScheduleAfter,
-    ScheduleAt, SendAlgebra, ServiceSends, ShutdownProtocol, ShutdownRequested, SupervisionEvent,
-    SupervisorSends, TimerElapsed, TimerGeneration, TimerId, UnwatchPeer, User, UserEvent,
-    WatchEvent, WatchSends, WorkerCreationResolved, WorkerStopped,
+    Acted, Actions, Address, ChildStopped, CreationKind, CreationResolved, DeadlineEvent, Delivery,
+    EventLayer, Exit, Here, Ingress, InjectEvent, Inside, InterpreterRequests, MailAddr, Never,
+    ObserveChild, ObserveCreation, ObservePeer, PeerStopped, ProxyCommand, ProxyEvent, ProxySends,
+    ReceiveTimeoutEvent, Recipient, ReportWorkerCreationResolved, ReportWorkerStopped,
+    ScheduleAfter, ScheduleAt, SendEffects, SendLayer, ShutdownEvent, ShutdownRequested,
+    SupervisionEvent, SupervisorSends, TimerElapsed, TimerGeneration, TimerId, UnwatchPeer, User,
+    UserEvent, WatchEvent, WorkerCreationResolved, WorkerStopped,
 };
 use behavior_actors as behavior;
+use core::future::Future;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -23,14 +24,14 @@ enum Lane {
     Peer(PeerStopped<MailAddr>),
     Child(ChildStopped<MailAddr>),
     Worker(WorkerStopped<MailAddr>),
-    Creation(CreationResolved<u64>),
+    Creation(CreationResolved<MailAddr>),
     WorkerCreation(WorkerCreationResolved<u64>),
     Shutdown,
 }
 
-impl RouteInput<TimerElapsed> for Lane {
-    fn route(event: TimerElapsed) -> Result<Self, TimerElapsed> {
-        Ok(Self::Time(event))
+impl InjectEvent<TimerElapsed, Here> for Lane {
+    fn inject_at(event: TimerElapsed) -> Self {
+        Self::Time(event)
     }
 }
 impl UserEvent for Lane {
@@ -45,34 +46,34 @@ impl UserEvent for Lane {
         Err(self)
     }
 }
-impl RouteInput<PeerStopped<MailAddr>> for Lane {
-    fn route(event: PeerStopped<MailAddr>) -> Result<Self, PeerStopped<MailAddr>> {
-        Ok(Self::Peer(event))
+impl InjectEvent<PeerStopped<MailAddr>, Here> for Lane {
+    fn inject_at(event: PeerStopped<MailAddr>) -> Self {
+        Self::Peer(event)
     }
 }
-impl RouteInput<ChildStopped<MailAddr>> for Lane {
-    fn route(event: ChildStopped<MailAddr>) -> Result<Self, ChildStopped<MailAddr>> {
-        Ok(Self::Child(event))
+impl InjectEvent<ChildStopped<MailAddr>, Here> for Lane {
+    fn inject_at(event: ChildStopped<MailAddr>) -> Self {
+        Self::Child(event)
     }
 }
-impl RouteInput<WorkerStopped<MailAddr>> for Lane {
-    fn route(event: WorkerStopped<MailAddr>) -> Result<Self, WorkerStopped<MailAddr>> {
-        Ok(Self::Worker(event))
+impl InjectEvent<WorkerStopped<MailAddr>, Here> for Lane {
+    fn inject_at(event: WorkerStopped<MailAddr>) -> Self {
+        Self::Worker(event)
     }
 }
-impl RouteInput<CreationResolved<u64>> for Lane {
-    fn route(event: CreationResolved<u64>) -> Result<Self, CreationResolved<u64>> {
-        Ok(Self::Creation(event))
+impl InjectEvent<CreationResolved<MailAddr>, Here> for Lane {
+    fn inject_at(event: CreationResolved<MailAddr>) -> Self {
+        Self::Creation(event)
     }
 }
-impl RouteInput<WorkerCreationResolved<u64>> for Lane {
-    fn route(event: WorkerCreationResolved<u64>) -> Result<Self, WorkerCreationResolved<u64>> {
-        Ok(Self::WorkerCreation(event))
+impl InjectEvent<WorkerCreationResolved<u64>, Here> for Lane {
+    fn inject_at(event: WorkerCreationResolved<u64>) -> Self {
+        Self::WorkerCreation(event)
     }
 }
-impl RouteInput<ShutdownRequested> for Lane {
-    fn route(_: ShutdownRequested) -> Result<Self, ShutdownRequested> {
-        Ok(Self::Shutdown)
+impl InjectEvent<ShutdownRequested, Here> for Lane {
+    fn inject_at(_: ShutdownRequested) -> Self {
+        Self::Shutdown
     }
 }
 
@@ -122,149 +123,46 @@ fn worker() -> WorkerStopped<MailAddr> {
         at: Instant::now(),
     }
 }
-fn creation() -> CreationResolved<u64> {
+fn creation() -> CreationResolved<MailAddr> {
     CreationResolved {
         nonce: 17,
         kind: CreationKind::ReplacementIncarnation { replaces: 16 },
-        result: Ok(()),
+        result: Ok(MailAddr(17)),
     }
 }
-fn worker_creation() -> WorkerCreationResolved<u64> {
-    WorkerCreationResolved {
-        proxy: 13,
-        worker: 17,
-        kind: CreationKind::ReplacementIncarnation { replaces: 16 },
-        result: Ok(()),
-    }
-}
-
 #[test]
 #[allow(
     clippy::too_many_lines,
     reason = "one mutation contract exhaustively checks every environment lane"
 )]
-fn composed_protocols_forward_every_supported_environment_lane() {
+fn structural_paths_select_owners_without_forwarding_lists() {
+    let proxy = <ProxyEvent<Lane> as InjectEvent<_, Here>>::inject_at(creation());
+    assert!(matches!(proxy, ProxyEvent::CreationResolved(_)));
+
+    let deadline = <DeadlineEvent<Lane> as InjectEvent<_, Inside<Here>>>::inject_at(peer());
+    assert!(matches!(deadline, EventLayer::Inner(Lane::Peer(_))));
+
+    let timeout = <ReceiveTimeoutEvent<Lane> as InjectEvent<_, Here>>::inject_at(elapsed());
+    assert!(matches!(timeout, EventLayer::Owned(_)));
+    let nested_timeout =
+        <ReceiveTimeoutEvent<Lane> as InjectEvent<_, Inside<Here>>>::inject_at(peer());
+    assert!(matches!(nested_timeout, EventLayer::Inner(Lane::Peer(_))));
+
+    let shutdown = <ShutdownEvent<Lane> as InjectEvent<_, Here>>::inject_at(ShutdownRequested);
+    assert!(matches!(shutdown, EventLayer::Owned(_)));
+    let nested_timer = <ShutdownEvent<Lane> as InjectEvent<_, Inside<Here>>>::inject_at(elapsed());
+    assert!(matches!(nested_timer, EventLayer::Inner(Lane::Time(_))));
+
+    let supervised = <SupervisionEvent<Lane> as InjectEvent<_, Here>>::inject_at(worker());
+    assert!(matches!(supervised, SupervisionEvent::WorkerStopped(_)));
+    let nested_peer = <SupervisionEvent<Lane> as InjectEvent<_, Inside<Here>>>::inject_at(peer());
     assert!(matches!(
-        ProxyEvent::<Lane>::route(creation()),
-        Ok(ProxyEvent::CreationResolved(_))
-    ));
-    assert!(matches!(
-        ProxyEvent::<Lane>::route(child()),
-        Ok(ProxyEvent::ChildStopped(_))
+        nested_peer,
+        SupervisionEvent::Behavior(Lane::Peer(_))
     ));
 
-    assert!(matches!(
-        DeadlineEvent::<Lane>::route(peer()),
-        Ok(DeadlineEvent::Behavior(Lane::Peer(_)))
-    ));
-    assert!(matches!(
-        DeadlineEvent::<Lane>::route(child()),
-        Ok(DeadlineEvent::Behavior(Lane::Child(_)))
-    ));
-    assert!(matches!(
-        DeadlineEvent::<Lane>::route(worker()),
-        Ok(DeadlineEvent::Behavior(Lane::Worker(_)))
-    ));
-    assert!(matches!(
-        DeadlineEvent::<Lane>::route(creation()),
-        Ok(DeadlineEvent::Behavior(Lane::Creation(_)))
-    ));
-    assert!(matches!(
-        DeadlineEvent::<Lane>::route(worker_creation()),
-        Ok(DeadlineEvent::Behavior(Lane::WorkerCreation(_)))
-    ));
-
-    assert!(matches!(
-        WatchEvent::<Lane>::route(elapsed()),
-        Ok(WatchEvent::Behavior(Lane::Time(_)))
-    ));
-    assert!(matches!(
-        WatchEvent::<Lane>::route(child()),
-        Ok(WatchEvent::Behavior(Lane::Child(_)))
-    ));
-    assert!(matches!(
-        WatchEvent::<Lane>::route(worker()),
-        Ok(WatchEvent::Behavior(Lane::Worker(_)))
-    ));
-    assert!(matches!(
-        WatchEvent::<Lane>::route(creation()),
-        Ok(WatchEvent::Behavior(Lane::Creation(_)))
-    ));
-
-    assert!(matches!(
-        ReceiveTimeoutEvent::<Lane>::route(elapsed()),
-        Ok(ReceiveTimeoutEvent::Elapsed(_))
-    ));
-    assert!(matches!(
-        ReceiveTimeoutEvent::<Lane>::route(peer()),
-        Ok(ReceiveTimeoutEvent::Behavior(Lane::Peer(_)))
-    ));
-    assert!(matches!(
-        ReceiveTimeoutEvent::<Lane>::route(child()),
-        Ok(ReceiveTimeoutEvent::Behavior(Lane::Child(_)))
-    ));
-    assert!(matches!(
-        ReceiveTimeoutEvent::<Lane>::route(worker()),
-        Ok(ReceiveTimeoutEvent::Behavior(Lane::Worker(_)))
-    ));
-    assert!(matches!(
-        ReceiveTimeoutEvent::<Lane>::route(creation()),
-        Ok(ReceiveTimeoutEvent::Behavior(Lane::Creation(_)))
-    ));
-    assert!(matches!(
-        ReceiveTimeoutEvent::<Lane>::route(ShutdownRequested),
-        Ok(ReceiveTimeoutEvent::Behavior(Lane::Shutdown))
-    ));
-
-    assert!(matches!(
-        ShutdownProtocol::<Lane>::route(elapsed()),
-        Ok(ShutdownProtocol::Behavior(Lane::Time(_)))
-    ));
-    assert!(matches!(
-        ShutdownProtocol::<Lane>::route(peer()),
-        Ok(ShutdownProtocol::Behavior(Lane::Peer(_)))
-    ));
-    assert!(matches!(
-        ShutdownProtocol::<Lane>::route(child()),
-        Ok(ShutdownProtocol::Behavior(Lane::Child(_)))
-    ));
-    assert!(matches!(
-        ShutdownProtocol::<Lane>::route(worker()),
-        Ok(ShutdownProtocol::Behavior(Lane::Worker(_)))
-    ));
-    assert!(matches!(
-        ShutdownProtocol::<Lane>::route(creation()),
-        Ok(ShutdownProtocol::Behavior(Lane::Creation(_)))
-    ));
-
-    assert!(matches!(
-        SupervisionEvent::<Lane>::route(child()),
-        Ok(SupervisionEvent::ChildStopped(_))
-    ));
-    assert!(matches!(
-        SupervisionEvent::<Lane>::route(worker()),
-        Ok(SupervisionEvent::WorkerStopped(_))
-    ));
-    assert!(matches!(
-        SupervisionEvent::<Lane>::route(creation()),
-        Ok(SupervisionEvent::CreationResolved(_))
-    ));
-    assert!(matches!(
-        SupervisionEvent::<Lane>::route(worker_creation()),
-        Ok(SupervisionEvent::WorkerCreationResolved(_))
-    ));
-    assert!(matches!(
-        SupervisionEvent::<Lane>::route(elapsed()),
-        Ok(SupervisionEvent::Behavior(Lane::Time(_)))
-    ));
-    assert!(matches!(
-        SupervisionEvent::<Lane>::route(peer()),
-        Ok(SupervisionEvent::Behavior(Lane::Peer(_)))
-    ));
-    assert!(matches!(
-        SupervisionEvent::<Lane>::route(ShutdownRequested),
-        Ok(SupervisionEvent::Behavior(Lane::Shutdown))
-    ));
+    let watched = <WatchEvent<Lane> as InjectEvent<_, Inside<Here>>>::inject_at(child());
+    assert!(matches!(watched, EventLayer::Inner(Lane::Child(_))));
 }
 
 #[test]
@@ -280,22 +178,22 @@ fn addressing_operations_preserve_their_exact_routes() {
     let one = Recipient::<Child>::global(MailAddr(1));
     let same = Recipient::<Child>::global(MailAddr(1));
     let other = Recipient::<Child>::global(MailAddr(2));
-    let child = Recipient::<Child>::child(1);
+    let child = behavior::DeliveryTarget::<Child>::LocalChild(behavior::ChildRecipient::new(1));
     assert_eq!(one, same);
     assert_ne!(one, other);
-    assert_ne!(one, child);
-    assert_eq!(format!("{one:?}"), "Global(MailAddr(1))");
+    assert_ne!(child, one);
+    assert_eq!(format!("{one:?}"), "MailAddr(1)");
 }
 
 #[test]
 fn named_wrapper_products_append_their_owned_lanes() {
-    let mut timeout = ReceiveTimeoutSends::<Vec<u8>>::empty();
-    timeout.append(ReceiveTimeoutSends::sending(ScheduleAfter::new(
+    let mut timeout = SendLayer::<InterpreterRequests<ScheduleAfter>, Vec<u8>>::empty();
+    timeout.append(SendLayer::sending(ScheduleAfter::new(
         TimerId(4),
         TimerGeneration(5),
         Duration::from_secs(6),
     )));
-    assert_eq!(timeout.schedules.len(), 1);
+    assert_eq!(timeout.owned.len(), 1);
 
     let mut proxy = ProxySends::<Quiet>::empty();
     proxy.append(ProxySends::sending(ObserveChild::new(7)));
@@ -305,19 +203,25 @@ fn named_wrapper_products_append_their_owned_lanes() {
 #[test]
 fn named_behavior_fields_reach_composed_lanes() {
     let at = Instant::now();
-    let mut sends = WatchSends::<MailAddr, DeadlineSends<Vec<u8>>>::empty();
+    let mut sends = SendLayer::<
+        InterpreterRequests<ObservePeer<MailAddr>>,
+        SendLayer<InterpreterRequests<ScheduleAt>, Vec<u8>>,
+    >::empty();
     sends
-        .behavior
+        .inner
         .send(ScheduleAt::new(TimerId(8), TimerGeneration(9), at));
 
-    assert!(sends.observations.is_empty());
-    assert!(sends.behavior.behavior.is_empty());
-    assert_eq!(sends.behavior.schedules[0].at, at);
+    assert!(sends.owned.is_empty());
+    assert!(sends.inner.inner.is_empty());
+    assert_eq!(sends.inner.owned[0].at, at);
 
-    let mut watching = WatchSends::<MailAddr, ServiceSends<UnwatchPeer<MailAddr>>>::empty();
-    watching.behavior.send(UnwatchPeer::new(MailAddr(12)));
-    assert!(watching.observations.is_empty());
-    assert_eq!(watching.behavior[0].peer, MailAddr(12));
+    let mut watching = SendLayer::<
+        InterpreterRequests<ObservePeer<MailAddr>>,
+        InterpreterRequests<UnwatchPeer<MailAddr>>,
+    >::empty();
+    watching.inner.send(UnwatchPeer::new(MailAddr(12)));
+    assert!(watching.owned.is_empty());
+    assert_eq!(watching.inner[0].peer, MailAddr(12));
 }
 
 #[test]
@@ -328,51 +232,63 @@ fn typed_send_accumulation_routes_every_named_lane_once() {
     values.send(3);
     assert_eq!(values, [3]);
 
-    let mut watch = WatchSends::<MailAddr, Vec<u8>>::empty();
+    let mut watch = SendLayer::<InterpreterRequests<ObservePeer<MailAddr>>, Vec<u8>>::empty();
     watch.send(ObservePeer::new(MailAddr(4)));
-    assert_eq!(watch.observations[0].peer, MailAddr(4));
+    assert_eq!(watch.owned[0].peer, MailAddr(4));
 
-    let mut cancellations = ServiceSends::<UnwatchPeer<MailAddr>>::empty();
+    let mut cancellations = InterpreterRequests::<UnwatchPeer<MailAddr>>::empty();
     cancellations.send(UnwatchPeer::new(MailAddr(4)));
     assert_eq!(cancellations[0].peer, MailAddr(4));
 
-    let mut deadline = DeadlineSends::<Vec<u8>>::empty();
-    deadline.behavior.send(5_u8);
-    assert_eq!(deadline.behavior, [5]);
+    let mut deadline = SendLayer::<InterpreterRequests<ScheduleAt>, Vec<u8>>::empty();
+    deadline.inner.send(5_u8);
+    assert_eq!(deadline.inner, [5]);
 
-    let mut timeout = ReceiveTimeoutSends::<Vec<u8>>::empty();
-    timeout.behavior.send(6_u8);
-    assert_eq!(timeout.behavior, [6]);
+    let mut timeout = SendLayer::<InterpreterRequests<ScheduleAfter>, Vec<u8>>::empty();
+    timeout.inner.send(6_u8);
+    assert_eq!(timeout.inner, [6]);
 
     let mut proxy = ProxySends::<Child>::empty();
-    proxy.send(Delivery::new(Recipient::child(1), 7));
+    proxy.send(Delivery::local_child(behavior::ChildRecipient::new(1), 7));
     proxy.send(ObserveCreation::new(2));
-    proxy.send(ReportWorkerStopped::from(child()));
-    proxy.send(ReportWorkerCreationResolved::from(creation()));
+    let stopped = child();
+    proxy.send(ReportWorkerStopped::new(
+        Ingress::new(),
+        stopped.nonce,
+        stopped.outcome,
+        stopped.at,
+    ));
+    let resolved = creation();
+    proxy.send(ReportWorkerCreationResolved::new(
+        Ingress::new(),
+        resolved.nonce,
+        resolved.kind,
+        resolved.result.map(|_| ()),
+    ));
     assert_eq!(proxy.deliveries[0].message, 7);
     assert_eq!(proxy.creation_observations[0].nonce, 2);
     assert_eq!(proxy.stopped_reports[0].worker, 11);
     assert_eq!(proxy.creation_reports[0].worker, 17);
 
-    let mut supervisor = SupervisorSends::<MailAddr, Vec<u8>, Child>::empty();
+    let mut supervisor = SupervisorSends::<MailAddr, Child>::empty();
     supervisor.send(ObserveChild::new(8));
-    supervisor.send(Delivery::new(
-        Recipient::child(8),
+    supervisor.send(ObserveCreation::new(8));
+    supervisor.send(Delivery::local_child(
+        behavior::ChildRecipient::new(8),
         ProxyCommand::Replace(Quiet),
     ));
-    supervisor.behavior.send(9_u8);
     assert_eq!(supervisor.child_observations[0].nonce, 8);
+    assert_eq!(supervisor.creation_observations[0].nonce, 8);
     assert_eq!(
         supervisor.replacement_commands[0].to.resolve(MailAddr(17)),
         behavior::Address::birth(MailAddr(17), 8)
     );
-    assert_eq!(supervisor.behavior, [9]);
     assert!(supervisor.failure_reports.is_empty());
 }
 
 #[test]
 fn service_send_views_and_iterators_preserve_every_request() {
-    let sends = ServiceSends::new(vec![3, 5, 8]);
+    let sends = InterpreterRequests::new(vec![3, 5, 8]);
     assert_eq!(sends.as_slice(), &[3, 5, 8]);
     assert!(!sends.is_empty());
     assert_eq!(sends.clone().into_requests(), vec![3, 5, 8]);
@@ -380,5 +296,100 @@ fn service_send_views_and_iterators_preserve_every_request() {
     assert_eq!(
         (&sends).into_iter().copied().collect::<Vec<_>>(),
         vec![3, 5, 8]
+    );
+}
+
+#[tokio::test]
+async fn nested_actor_send_effects_traverse_every_lane_once_in_structural_order() {
+    type Reply = behavior::MessageProtocol<MailAddr, behavior::BreakerOutcome>;
+    type RootEvent = EventLayer<
+        TimerElapsed,
+        EventLayer<TimerElapsed, User<MailAddr, behavior::BreakerMessage<Reply>>>,
+    >;
+
+    #[derive(Debug, PartialEq, Eq)]
+    enum Seen {
+        Reply,
+        Reset(TimerId),
+        Deadline(TimerId),
+    }
+
+    struct RecordingInterpreter(Vec<Seen>);
+
+    impl behavior::SendInterpreter for RecordingInterpreter {
+        type Error = Never;
+    }
+
+    impl behavior::InterpretDelivery<Reply> for RecordingInterpreter {
+        fn interpret_delivery(
+            &mut self,
+            _: Delivery<Reply>,
+        ) -> impl Future<Output = Result<(), Self::Error>> + Send {
+            async move {
+                self.0.push(Seen::Reply);
+                Ok(())
+            }
+        }
+    }
+
+    impl behavior::InterpretRequest<ScheduleAfter, RootEvent, Inside<Here>> for RecordingInterpreter {
+        fn interpret_request(
+            &mut self,
+            request: ScheduleAfter,
+        ) -> impl Future<Output = Result<(), Self::Error>> + Send {
+            async move {
+                self.0.push(Seen::Reset(request.id));
+                Ok(())
+            }
+        }
+    }
+
+    impl behavior::InterpretRequest<ScheduleAt, RootEvent, Here> for RecordingInterpreter {
+        fn interpret_request(
+            &mut self,
+            request: ScheduleAt,
+        ) -> impl Future<Output = Result<(), Self::Error>> + Send {
+            async move {
+                self.0.push(Seen::Deadline(request.id));
+                Ok(())
+            }
+        }
+    }
+
+    let reply = Delivery::new(
+        Recipient::global(MailAddr(9)),
+        behavior::BreakerOutcome::Rejected(behavior::BreakerRejection::Open {
+            generation: TimerGeneration(0),
+        }),
+    );
+    let breaker = behavior::BreakerSends {
+        replies: vec![reply],
+        schedules: InterpreterRequests::one(ScheduleAfter::new(
+            TimerId(2),
+            TimerGeneration(0),
+            Duration::from_secs(1),
+        )),
+    };
+    let sends = SendLayer::new(
+        InterpreterRequests::one(ScheduleAt::new(
+            TimerId(3),
+            TimerGeneration(0),
+            Instant::now(),
+        )),
+        breaker,
+    );
+
+    let mut interpreter = RecordingInterpreter(Vec::new());
+    <_ as behavior::InterpretSends<_, RootEvent, Here>>::interpret(sends, &mut interpreter)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        interpreter.0,
+        [
+            Seen::Reply,
+            Seen::Reset(TimerId(2)),
+            Seen::Deadline(TimerId(3))
+        ]
     );
 }

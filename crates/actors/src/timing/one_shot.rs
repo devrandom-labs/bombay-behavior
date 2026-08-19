@@ -4,44 +4,18 @@ use std::time::Duration;
 
 use super::domain::TimerLease;
 use super::event::TimedEvent;
-use crate::protocol::{ScheduleAfter, TimerElapsed, TimerId};
-use crate::{Own, RouteInput, SendInput, Step};
-use behavior::{Actions, Address, Behavior, BehaviorActed, BirthMode, SendAlgebra, ServiceSends};
+use crate::Step;
+use crate::protocol::{ScheduleAfter, TimerId};
+use behavior::{
+    Actions, Address, Behavior, BehaviorActed, BirthMode, EventLayer, InterpreterRequests,
+    SendEffects, SendLayer,
+};
 
 /// Complete event sum accepted by [`OneShot`].
 pub type OneShotEvent<E> = TimedEvent<E>;
 
 /// Pure fold invoked for the one accepted timer generation.
 pub type OneShotReaction<B> = fn(&mut B) -> BehaviorActed<B>;
-
-/// Named send product contributed by [`OneShot`].
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct OneShotSends<Sends> {
-    /// Sends emitted by the wrapped behavior or timer reaction.
-    pub behavior: Sends,
-    /// Relative schedule requests interpreted by Bombay Timers.
-    pub schedules: ServiceSends<ScheduleAfter>,
-}
-
-impl<Sends: SendAlgebra> SendAlgebra for OneShotSends<Sends> {
-    fn empty() -> Self {
-        Self {
-            behavior: Sends::empty(),
-            schedules: ServiceSends::empty(),
-        }
-    }
-
-    fn append(&mut self, other: Self) {
-        self.behavior.append(other.behavior);
-        self.schedules.append(other.schedules);
-    }
-}
-
-impl<Sends> SendInput<ScheduleAfter, Own> for OneShotSends<Sends> {
-    fn emit(&mut self, input: ScheduleAfter) {
-        self.schedules.send(input);
-    }
-}
 
 /// Notify a wrapped behavior once after a relative delay.
 ///
@@ -64,12 +38,7 @@ pub struct OneShot<B: Behavior> {
 impl<B: Behavior> OneShot<B> {
     /// Construct a relative one-shot wrapper definition.
     #[must_use]
-    pub(crate) fn new(
-        inner: B,
-        id: TimerId,
-        after: Duration,
-        on_elapsed: OneShotReaction<B>,
-    ) -> Self {
+    pub fn new(inner: B, id: TimerId, after: Duration, on_elapsed: OneShotReaction<B>) -> Self {
         Self {
             inner,
             id,
@@ -79,22 +48,24 @@ impl<B: Behavior> OneShot<B> {
         }
     }
 
-    fn schedule(&mut self) -> ServiceSends<ScheduleAfter> {
+    fn schedule(&mut self) -> InterpreterRequests<ScheduleAfter> {
         self.lease
             .arm()
-            .map_or_else(ServiceSends::empty, |generation| {
-                ServiceSends::one(ScheduleAfter::new(self.id, generation, self.after))
+            .map_or_else(InterpreterRequests::empty, |generation| {
+                InterpreterRequests::one(ScheduleAfter::new(self.id, generation, self.after))
             })
     }
 
     fn wrap(
-        actions: Actions<B::Addr, B::Ph, B::Sends, B::Birth>,
-        schedules: ServiceSends<ScheduleAfter>,
-    ) -> Actions<B::Addr, B::Ph, OneShotSends<B::Sends>, B::Birth> {
-        actions.map_sends(|behavior| OneShotSends {
-            behavior,
-            schedules,
-        })
+        actions: Actions<crate::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>,
+        schedules: InterpreterRequests<ScheduleAfter>,
+    ) -> Actions<
+        crate::BehaviorAddr<B>,
+        B::Ph,
+        SendLayer<InterpreterRequests<ScheduleAfter>, B::Sends>,
+        B::Birth,
+    > {
+        actions.map_sends(|inner| SendLayer::new(schedules, inner))
     }
 }
 
@@ -109,15 +80,14 @@ impl<B: Behavior + crate::BehaviorBase> crate::BehaviorBase for OneShot<B> {
 impl<B, A, Ph, Sends, Br> Behavior for OneShot<B>
 where
     A: Address,
-    Sends: SendAlgebra,
+    Sends: SendEffects + behavior::SendsFor<B::Event>,
     Br: BirthMode,
-    B: Behavior<Addr = A, Ph = Ph, Sends = Sends, Birth = Br>,
-    B::Event: RouteInput<TimerElapsed>,
+    B: Behavior<Ph = Ph, Sends = Sends, Birth = Br>,
+    B::Protocol: crate::Protocol<Addr = A>,
 {
-    type Addr = A;
-    type Msg = B::Msg;
+    type Protocol = B::Protocol;
     type Event = OneShotEvent<B::Event>;
-    type Sends = OneShotSends<Sends>;
+    type Sends = SendLayer<InterpreterRequests<ScheduleAfter>, Sends>;
     type Ph = Ph;
     type Error = B::Error;
     type Birth = Br;
@@ -126,7 +96,7 @@ where
         let actions = behavior::initialize(&mut self.inner)?;
         let schedules = if matches!(actions.become_, Step::Stop(_)) {
             self.lease.disarm();
-            ServiceSends::empty()
+            InterpreterRequests::empty()
         } else {
             self.schedule()
         };
@@ -135,19 +105,15 @@ where
 
     fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
         match event {
-            TimedEvent::Elapsed(elapsed)
+            EventLayer::Owned(elapsed)
                 if elapsed.id == self.id && self.lease.accept(elapsed.generation) =>
             {
                 let actions = (self.on_elapsed)(&mut self.inner)?;
-                Ok(Self::wrap(actions, ServiceSends::empty()))
+                Ok(Self::wrap(actions, InterpreterRequests::empty()))
             }
-            TimedEvent::Elapsed(elapsed) => match B::Event::route(elapsed) {
-                Ok(inner) => behavior::delegate_transition(&mut self.inner, inner)
-                    .map(|actions| Self::wrap(actions, ServiceSends::empty())),
-                Err(_) => Ok(Actions::cont()),
-            },
-            TimedEvent::Behavior(event) => behavior::delegate_transition(&mut self.inner, event)
-                .map(|actions| Self::wrap(actions, ServiceSends::empty())),
+            EventLayer::Owned(_) => Ok(Actions::cont()),
+            EventLayer::Inner(event) => behavior::delegate_transition(&mut self.inner, event)
+                .map(|actions| Self::wrap(actions, InterpreterRequests::empty())),
         }
     }
 }
@@ -155,8 +121,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Activate as _;
-    use crate::Compose as _;
+    use crate::{Activate as _, TimerElapsed};
     use behavior::{MailAddr, Never, NoBirths, Step, User};
 
     struct Probe {
@@ -171,9 +136,13 @@ mod tests {
         }
     }
 
-    impl Behavior for Probe {
+    impl behavior::Protocol for Probe {
         type Addr = MailAddr;
         type Msg = ();
+    }
+
+    impl Behavior for Probe {
+        type Protocol = Self;
         type Event = User<MailAddr, ()>;
         type Sends = Vec<Never>;
         type Ph = Never;
@@ -197,13 +166,12 @@ mod tests {
     #[test]
     fn initialization_schedules_then_matching_generation_fires_once() {
         let delay = Duration::from_millis(20);
-        let initialized = (Probe { elapsed: 0 })
-            .one_shot(TimerId(7), delay, mark)
+        let initialized = crate::OneShot::new(Probe { elapsed: 0 }, TimerId(7), delay, mark)
             .initialize()
             .unwrap();
-        assert!(initialized.actions.sends.behavior.is_empty());
+        assert!(initialized.actions.sends.inner.is_empty());
         assert_eq!(
-            initialized.actions.sends.schedules.as_slice(),
+            initialized.actions.sends.owned.as_slice(),
             [ScheduleAfter::new(
                 TimerId(7),
                 crate::TimerGeneration(0),
@@ -215,19 +183,19 @@ mod tests {
 
         let mut active = initialized.behavior;
         let wrong_id = active
-            .on(TimerElapsed::new(TimerId(8), crate::TimerGeneration(0)))
+            .on_path(TimerElapsed::new(TimerId(8), crate::TimerGeneration(0)))
             .unwrap();
-        assert!(wrong_id.sends == OneShotSends::empty());
+        assert!(wrong_id.sends == SendLayer::empty());
         assert_eq!(active.base().elapsed, 0);
 
         let fired = active
-            .on(TimerElapsed::new(TimerId(7), crate::TimerGeneration(0)))
+            .on_path(TimerElapsed::new(TimerId(7), crate::TimerGeneration(0)))
             .unwrap();
-        assert!(fired.sends == OneShotSends::empty());
+        assert!(fired.sends == SendLayer::empty());
         assert_eq!(active.base().elapsed, 1);
 
         active
-            .on(TimerElapsed::new(TimerId(7), crate::TimerGeneration(0)))
+            .on_path(TimerElapsed::new(TimerId(7), crate::TimerGeneration(0)))
             .unwrap();
         assert_eq!(active.base().elapsed, 1);
     }

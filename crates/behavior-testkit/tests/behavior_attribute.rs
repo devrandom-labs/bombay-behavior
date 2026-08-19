@@ -2,9 +2,27 @@ use std::time::Duration;
 
 use behavior::{
     Actions, Behavior, Births, CreationKind, Delivery, InterruptionPolicy, JobId, MailAddr, Never,
-    NoBirths, PoolAssignment, PoolMessage, Recipient, RestartPolicy, Step, WorkerCreationResolved,
-    WorkerPool,
+    NoBirths, PoolAssignment, PoolMessage, Recipient, RestartPolicy, SendEffects, Step,
+    WorkerCreationResolved, WorkerPool, WorkerPoolProtocol,
 };
+
+struct Printer(u64);
+
+#[behavior::behavior(
+    addr = MailAddr,
+    message = u64,
+    sends = {
+        replies: Vec<Delivery<behavior_testkit::TestRecipient<u64>>>,
+    },
+)]
+impl Printer {
+    fn receive(&mut self, from: MailAddr, message: u64) -> behavior::BehaviorActed<Self> {
+        self.0 += message;
+        let mut sends = PrinterSends::empty();
+        sends.send::<_, PrinterSendsReplies>(Delivery::new(Recipient::global(from), self.0));
+        Ok(Actions::send(sends))
+    }
+}
 
 struct Counter {
     total: u64,
@@ -53,9 +71,10 @@ impl Counter {
 
 struct Worker;
 
+type PoolReply = behavior_testkit::TestRecipient<behavior::PoolResponse<u8, (), MailAddr>>;
 #[behavior::behavior(
     addr = MailAddr,
-    message = PoolAssignment<u8>,
+    message = PoolAssignment<WorkerPoolProtocol<MailAddr, PoolReply, u8, ()>>,
     sends = Vec<Never>,
     births = NoBirths,
     error = Never,
@@ -64,7 +83,7 @@ impl Worker {
     fn receive(
         &mut self,
         _from: MailAddr,
-        _assignment: PoolAssignment<u8>,
+        _assignment: PoolAssignment<WorkerPoolProtocol<MailAddr, PoolReply, u8, ()>>,
     ) -> behavior::Acted<MailAddr, Never, Vec<Never>, NoBirths, Never> {
         Ok(Actions::cont())
     }
@@ -72,9 +91,13 @@ impl Worker {
 
 struct Manual;
 
-impl Behavior for Manual {
+impl behavior::Protocol for Manual {
     type Addr = MailAddr;
     type Msg = ();
+}
+
+impl Behavior for Manual {
+    type Protocol = Self;
     type Event = behavior::User<MailAddr, ()>;
     type Sends = Vec<Never>;
     type Ph = Never;
@@ -98,6 +121,25 @@ fn omitted_initialization_is_the_explicit_empty_transition() {
     assert!(actions.sends.is_empty());
     assert!(actions.creates.is_empty());
     assert!(matches!(actions.become_, Step::Continue));
+}
+
+#[test]
+fn capability_defaults_cover_the_infallible_no_birth_subset() {
+    fn assert_protocol<B>(_: &B)
+    where
+        B: Behavior<Error = Never, Birth = NoBirths>,
+        B::Protocol: behavior::Protocol<Addr = MailAddr, Msg = u64>,
+    {
+    }
+
+    let printer = Printer(1);
+    assert_protocol(&printer);
+    let initialized = printer.initialize().unwrap();
+    assert!(initialized.actions.sends.replies.is_empty());
+    let mut printer = initialized.behavior;
+    let actions = printer.receive(MailAddr(7), 4).unwrap();
+    assert_eq!(actions.sends.replies[0].message, 5);
+    assert_eq!(actions.sends.replies[0].to, Recipient::global(MailAddr(7)));
 }
 
 #[test]
@@ -161,10 +203,6 @@ fn nonce(index: usize) -> u64 {
     u64::try_from(index).unwrap()
 }
 
-fn worker(_index: usize) -> Worker {
-    Worker
-}
-
 #[test]
 fn attribute_preserves_normal_methods_and_exact_actions() {
     let counter = Counter { total: 0 };
@@ -178,14 +216,8 @@ fn attribute_preserves_normal_methods_and_exact_actions() {
 
 #[test]
 fn generated_behavior_is_nominal_in_pool_and_supervision_positions() {
-    let pool: WorkerPool<
-        MailAddr,
-        behavior_testkit::TestRecipient<behavior::PoolResponse<u8, (), MailAddr>>,
-        u8,
-        (),
-        Worker,
-    > = WorkerPool::new(
-        behavior::ChildTopology::indexed(nonce, 1, |index| Some(worker(index))),
+    let pool = WorkerPool::new(
+        behavior::ChildTopology::indexed(nonce, 1, |_| Some(Worker)),
         behavior::PoolConfiguration::new(
             0,
             InterruptionPolicy::Fail,
@@ -193,13 +225,14 @@ fn generated_behavior_is_nominal_in_pool_and_supervision_positions() {
             1,
             Duration::from_secs(1),
         ),
+        Recipient::global(MailAddr(9)),
     )
     .unwrap();
     let initialized = pool.initialize().unwrap();
     let initial = initialized.actions;
     let mut pool = initialized.behavior;
     assert_eq!(initial.creates.len(), 1);
-    pool.on(WorkerCreationResolved::new(
+    pool.on_path(WorkerCreationResolved::new(
         0,
         0,
         CreationKind::Birth,
@@ -216,7 +249,7 @@ fn generated_behavior_is_nominal_in_pool_and_supervision_positions() {
             },
         )
         .unwrap();
-    assert_eq!(actions.sends.behavior.assignments.len(), 1);
+    assert_eq!(actions.sends.inner.assignments.len(), 1);
 }
 
 #[test]

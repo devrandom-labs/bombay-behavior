@@ -29,7 +29,7 @@ pub enum TaskResult<R> {
 }
 
 /// Commands accepted by a [`Task`].
-pub enum TaskMessage<R, Reply: Behavior> {
+pub enum TaskMessage<R, Reply: behavior::Protocol> {
     /// Complete with one owned result and its typed recipient.
     Complete {
         /// Owned terminal result.
@@ -75,12 +75,12 @@ pub enum TaskError<R> {
 /// not a new actor-model primitive. Typed delivery and terminal publication
 /// are interpreted by Bombay Communication and Observe. No method has a
 /// semantic panic condition.
-pub struct Task<A: Address, R, Reply: Behavior<Addr = A, Msg = TaskResult<R>>> {
+pub struct Task<A: Address, R, Reply: behavior::Protocol<Addr = A, Msg = TaskResult<R>>> {
     state: TaskState,
     protocol: TaskProtocol<A, R, Reply>,
 }
 
-impl<A: Address, R, Reply: Behavior<Addr = A, Msg = TaskResult<R>>> Task<A, R, Reply> {
+impl<A: Address, R, Reply: behavior::Protocol<Addr = A, Msg = TaskResult<R>>> Task<A, R, Reply> {
     /// Construct a pending task definition.
     #[must_use]
     pub const fn new() -> Self {
@@ -97,13 +97,15 @@ impl<A: Address, R, Reply: Behavior<Addr = A, Msg = TaskResult<R>>> Task<A, R, R
     }
 }
 
-impl<A: Address, R, Reply: Behavior<Addr = A, Msg = TaskResult<R>>> Default for Task<A, R, Reply> {
+impl<A: Address, R, Reply: behavior::Protocol<Addr = A, Msg = TaskResult<R>>> Default
+    for Task<A, R, Reply>
+{
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<A: Address, R, Reply: Behavior<Addr = A, Msg = TaskResult<R>>> BehaviorBase
+impl<A: Address, R, Reply: behavior::Protocol<Addr = A, Msg = TaskResult<R>>> BehaviorBase
     for Task<A, R, Reply>
 {
     type Base = Self;
@@ -113,14 +115,22 @@ impl<A: Address, R, Reply: Behavior<Addr = A, Msg = TaskResult<R>>> BehaviorBase
     }
 }
 
-impl<A, R, Reply> Behavior for Task<A, R, Reply>
+impl<A, R, Reply> behavior::Protocol for Task<A, R, Reply>
 where
     A: Address,
-    Reply: Behavior<Addr = A, Msg = TaskResult<R>>,
+    Reply: behavior::Protocol<Addr = A, Msg = TaskResult<R>>,
 {
     type Addr = A;
     type Msg = TaskMessage<R, Reply>;
-    type Event = User<A, Self::Msg>;
+}
+
+impl<A, R, Reply> Behavior for Task<A, R, Reply>
+where
+    A: Address,
+    Reply: behavior::Protocol<Addr = A, Msg = TaskResult<R>>,
+{
+    type Protocol = Self;
+    type Event = User<A, crate::BehaviorMessage<Self>>;
     type Sends = Vec<Delivery<Reply>>;
     type Ph = Never;
     type Error = TaskError<R>;
@@ -168,10 +178,14 @@ mod tests {
 
     struct Reply;
 
-    impl Behavior for Reply {
+    impl behavior::Protocol for Reply {
         type Addr = MailAddr;
         type Msg = TaskResult<u8>;
-        type Event = User<MailAddr, Self::Msg>;
+    }
+
+    impl Behavior for Reply {
+        type Protocol = Self;
+        type Event = User<MailAddr, crate::BehaviorMessage<Self>>;
         type Sends = Vec<Never>;
         type Ph = Never;
         type Error = Never;

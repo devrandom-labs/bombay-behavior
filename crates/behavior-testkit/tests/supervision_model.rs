@@ -9,7 +9,8 @@ use std::time::Duration;
 use behavior::{
     Acted, Actions, Behavior, ChildStopped, Crash, Create, CreationKind, CreationResolved,
     Delivery, MailAddr, Never, Proxy, ProxyCommand, ProxyEvent, RestartPolicy, Step, Strategy,
-    SupervisionEvent, Supervisor, User, UserEvent, WorkerStopped, stop_on_supervision_failure,
+    Supervise, SupervisionEvent, Supervisor, TopologyFailurePolicy, User, UserEvent,
+    WorkerCreationResolved, WorkerStopped,
 };
 use behavior_testkit::model::{
     ExpectedCreation, ExpectedIncarnation, IncarnationModel, Model, Outcome,
@@ -41,20 +42,6 @@ impl Echo {
 
 type Child = Echo;
 
-/// Quiet parent for the static-fleet property.
-struct Parent;
-
-#[behavior::behavior(addr = MailAddr, message = u64, sends = Vec<Never>, births = behavior::Births<Child>, error = Never)]
-impl Parent {
-    fn receive(
-        &mut self,
-        _from: MailAddr,
-        _message: u64,
-    ) -> Acted<MailAddr, Never, Vec<Never>, behavior::Births<Child>, Never> {
-        Ok(Actions::cont())
-    }
-}
-
 /// Parent that creates one dynamic child (nonce = message value) per user
 /// message; the generator guarantees distinct nonces.
 struct BirthingParent {
@@ -81,19 +68,38 @@ fn child(_index: usize) -> Child {
     Echo
 }
 
-fn supervisor<B>(
+fn supervise<B>(
     inner: B,
     strategy: Strategy,
     policy: RestartPolicy,
     maximum: u32,
     window: Duration,
     count: usize,
-) -> Supervisor<B, Child>
+) -> Supervise<B, Child>
 where
-    B: Behavior<Birth = behavior::Births<Child>, Addr = MailAddr>,
+    B: Behavior<Birth = behavior::Births<Child>>,
+    B::Protocol: behavior::Protocol<Addr = MailAddr>,
 {
-    Supervisor::new(
+    Supervise::new(
         inner,
+        behavior::ChildTopology::indexed(
+            |index| u64::try_from(index).unwrap(),
+            count,
+            |index| Some(child(index)),
+        ),
+        behavior::RestartConfiguration::new(strategy, policy, maximum, window),
+    )
+    .unwrap()
+}
+
+fn supervisor(
+    strategy: Strategy,
+    policy: RestartPolicy,
+    maximum: u32,
+    window: Duration,
+    count: usize,
+) -> Supervisor<MailAddr, Child> {
+    Supervisor::new(
         behavior::ChildTopology::indexed(
             |index| u64::try_from(index).unwrap(),
             count,
@@ -131,7 +137,7 @@ async fn creation_provenance_matches_the_independent_incarnation_model() {
         .transition(ProxyEvent::CreationResolved(CreationResolved {
             nonce: 0,
             kind: CreationKind::Birth,
-            result: Ok(()),
+            result: Ok(MailAddr(999)),
         }))
         .unwrap();
 
@@ -172,7 +178,7 @@ async fn immediate_and_denied_replacements_match_the_independent_models() {
         .transition(ProxyEvent::CreationResolved(CreationResolved {
             nonce: 0,
             kind: CreationKind::Birth,
-            result: Ok(()),
+            result: Ok(MailAddr(999)),
         }))
         .unwrap();
     proxy
@@ -204,7 +210,6 @@ async fn immediate_and_denied_replacements_match_the_independent_models() {
     assert!(denied.is_empty());
 
     let behavior = supervisor(
-        Parent,
         Strategy::OneForOne,
         RestartPolicy::Permanent,
         0,
@@ -260,12 +265,14 @@ proptest! {
         let window_duration = window.map_or(Duration::MAX, Duration::from_nanos);
 
         let mut model = Model::new(count);
-        let behavior = supervisor(Parent, strategy, policy, maximum, window_duration, count)
-            .with_failure_reaction(stop_on_supervision_failure);
+        let behavior = supervisor(strategy, policy, maximum, window_duration, count)
+            .with_failure_policy(TopologyFailurePolicy::Stop);
         let base = Instant::now();
         let runtime = Builder::new_current_thread().enable_all().build().unwrap();
         let initialized = behavior.initialize().unwrap();
         let mut behavior = initialized.behavior;
+        let mut workers: Vec<u64> = (0..u64::try_from(count).unwrap()).collect();
+        let mut next_worker = u64::try_from(count).unwrap();
 
         for (dead_seed, outcome_tag, at) in events {
             let dead = dead_seed % u64::try_from(count).unwrap();
@@ -274,7 +281,7 @@ proptest! {
             let actions = runtime
                 .block_on(async { behavior.transition(SupervisionEvent::WorkerStopped(WorkerStopped {
                     proxy: dead,
-                    worker: dead,
+                    worker: workers[usize::try_from(dead).unwrap()],
             outcome: outcome.into_result(),
                     at: base + Duration::from_nanos(at),
                 })) })
@@ -285,16 +292,43 @@ proptest! {
                 .iter()
                 .map(|delivery| delivery.to.resolve(MailAddr(17)))
                 .collect();
-            let expected: Vec<MailAddr> = expected
-                .into_iter()
+            let expected_routes: Vec<MailAddr> = expected
+                .iter()
+                .copied()
                 .map(|nonce| behavior::Address::birth(MailAddr(17), nonce))
                 .collect();
-            prop_assert_eq!(sends, expected);
+            prop_assert_eq!(sends, expected_routes);
             prop_assert!(actions.creates.is_empty());
             if model.last_restart_denied() {
                 prop_assert_eq!(actions.become_, Step::Stop(behavior::Stopped));
             } else {
                 prop_assert_eq!(actions.become_, Step::Continue);
+            }
+
+            for proxy in expected {
+                let index = usize::try_from(proxy).unwrap();
+                let previous = workers[index];
+                if proxy != dead {
+                    runtime.block_on(async { behavior.transition(SupervisionEvent::WorkerStopped(
+                        WorkerStopped {
+                            proxy,
+                            worker: previous,
+                            outcome: Err(Crash::Cancelled),
+                            at: base + Duration::from_nanos(at),
+                        },
+                    )) }).unwrap();
+                }
+                let replacement = next_worker;
+                next_worker += 1;
+                runtime.block_on(async { behavior.transition(
+                    SupervisionEvent::WorkerCreationResolved(WorkerCreationResolved::new(
+                        proxy,
+                        replacement,
+                        CreationKind::ReplacementIncarnation { replaces: previous },
+                        Ok(()),
+                    )),
+                ) }).unwrap();
+                workers[index] = replacement;
             }
 
             for nonce in 0..count {
@@ -329,7 +363,7 @@ proptest! {
         // window pruning — the cross product the static-fleet property and
         // the MAX-window mixed property each cover only partially.
         let mut model = Model::new(count);
-        let behavior = supervisor(
+        let behavior = supervise(
             BirthingParent { births: Vec::new() },
             strategy,
             RestartPolicy::Permanent,
@@ -341,6 +375,8 @@ proptest! {
         let runtime = Builder::new_current_thread().enable_all().build().unwrap();
         let initialized = behavior.initialize().unwrap();
         let mut behavior = initialized.behavior;
+        let mut workers: Vec<u64> = (0..u64::try_from(count).unwrap()).collect();
+        let mut next_worker = u64::try_from(count).unwrap();
 
         let mut births: u64 = u64::try_from(count).unwrap();
         for (tag, arg, at) in events {
@@ -349,6 +385,7 @@ proptest! {
                 let nonce = births;
                 births += 1;
                 model.birth(nonce);
+                workers.push(nonce);
                 let actions = runtime
                     .block_on(async { behavior.transition(SupervisionEvent::Behavior(UserEvent::user(
                         MailAddr(0),
@@ -358,8 +395,10 @@ proptest! {
                 prop_assert_eq!(actions.creates.len(), 1);
                 prop_assert_eq!(actions.creates[0].nonce, nonce);
                 // The born child is observed exactly once.
-                prop_assert_eq!(actions.sends.child_observations.len(), 1);
-                prop_assert_eq!(actions.sends.child_observations[0].nonce, nonce);
+                prop_assert_eq!(actions.sends.owned.child_observations.len(), 1);
+                prop_assert_eq!(actions.sends.owned.child_observations[0].nonce, nonce);
+                prop_assert_eq!(actions.sends.owned.creation_observations.len(), 1);
+                prop_assert_eq!(actions.sends.owned.creation_observations[0].nonce, nonce);
             } else {
                 // Child-stopped for an existing slot.
                 let known = model.slot_count();
@@ -377,21 +416,57 @@ proptest! {
                 let actions = runtime
                     .block_on(async { behavior.transition(SupervisionEvent::WorkerStopped(WorkerStopped {
                         proxy: nonce,
-                        worker: nonce,
+                        worker: workers[usize::try_from(nonce).unwrap()],
             outcome: outcome.into_result(),
                         at: base + Duration::from_nanos(at),
                     })) })
                     .unwrap();
                 let sends: Vec<MailAddr> = actions
-                    .sends.replacement_commands
+                    .sends.owned.replacement_commands
                     .iter()
                     .map(|delivery| delivery.to.resolve(MailAddr(17)))
                     .collect();
                 let expected: Vec<MailAddr> = expected
-                    .into_iter()
+                    .iter()
+                    .copied()
                     .map(|child| behavior::Address::birth(MailAddr(17), child))
                     .collect();
                 prop_assert_eq!(sends, expected);
+                let replacements = model
+                    .slots()
+                    .iter()
+                    .filter_map(|slot| {
+                        actions.sends.owned.replacement_commands.iter().any(|delivery| {
+                            delivery.to.resolve(MailAddr(17))
+                                == behavior::Address::birth(MailAddr(17), slot.nonce)
+                        }).then_some(slot.nonce)
+                    })
+                    .collect::<Vec<_>>();
+                for proxy in replacements {
+                    let index = usize::try_from(proxy).unwrap();
+                    let previous = workers[index];
+                    if proxy != nonce {
+                        runtime.block_on(async { behavior.transition(SupervisionEvent::WorkerStopped(
+                            WorkerStopped {
+                                proxy,
+                                worker: previous,
+                                outcome: Err(Crash::Cancelled),
+                                at: base + Duration::from_nanos(at),
+                            },
+                        )) }).unwrap();
+                    }
+                    let replacement = next_worker;
+                    next_worker += 1;
+                    runtime.block_on(async { behavior.transition(
+                        SupervisionEvent::WorkerCreationResolved(WorkerCreationResolved::new(
+                            proxy,
+                            replacement,
+                            CreationKind::ReplacementIncarnation { replaces: previous },
+                            Ok(()),
+                        )),
+                    ) }).unwrap();
+                    workers[index] = replacement;
+                }
             }
 
             for slot in model.slots() {
@@ -413,7 +488,6 @@ proptest! {
 async fn budget_recovers_after_stamps_age_out_of_the_window() {
     let base = Instant::now();
     let behavior = supervisor(
-        Parent,
         Strategy::OneForOne,
         RestartPolicy::Permanent,
         3,
@@ -422,47 +496,38 @@ async fn budget_recovers_after_stamps_age_out_of_the_window() {
     );
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
+    let mut worker = 0;
+    let mut next_worker = 1;
 
     for offset in 0..3 {
         behavior
             .transition(SupervisionEvent::WorkerStopped(WorkerStopped {
                 proxy: 0,
-                worker: 0,
+                worker,
                 outcome: Err(Crash::Failed),
                 at: base + Duration::from_nanos(offset),
             }))
             .unwrap();
+        behavior
+            .transition(SupervisionEvent::WorkerCreationResolved(
+                WorkerCreationResolved::new(
+                    0,
+                    next_worker,
+                    CreationKind::ReplacementIncarnation { replaces: worker },
+                    Ok(()),
+                ),
+            ))
+            .unwrap();
+        worker = next_worker;
+        next_worker += 1;
     }
     assert_eq!(behavior.restarts_in_window(), 3);
-
-    // Deadline 3ns: 3 stamps + 1 candidate = 4 > 3, denied.
-    let denied = behavior
-        .transition(SupervisionEvent::WorkerStopped(WorkerStopped {
-            proxy: 0,
-            worker: 0,
-            outcome: Err(Crash::Failed),
-            at: base + Duration::from_nanos(3),
-        }))
-        .unwrap();
-    assert!(denied.sends.replacement_commands.is_empty());
-    assert!(!behavior.is_alive(0).unwrap());
-
-    // Deadline 100ns: all three stamps still inside the inclusive window; denied.
-    let edge = behavior
-        .transition(SupervisionEvent::WorkerStopped(WorkerStopped {
-            proxy: 0,
-            worker: 0,
-            outcome: Err(Crash::Failed),
-            at: base + Duration::from_nanos(100),
-        }))
-        .unwrap();
-    assert!(edge.sends.replacement_commands.is_empty());
 
     // Deadline 101ns: the stamp at 0ns aged out (age 101 > 100); budget recovers.
     let recovered = behavior
         .transition(SupervisionEvent::WorkerStopped(WorkerStopped {
             proxy: 0,
-            worker: 0,
+            worker,
             outcome: Err(Crash::Failed),
             at: base + Duration::from_nanos(101),
         }))
@@ -479,7 +544,6 @@ async fn budget_recovers_after_stamps_age_out_of_the_window() {
 async fn restart_stamps_stay_bounded_by_the_window() {
     let base = Instant::now();
     let behavior = supervisor(
-        Parent,
         Strategy::OneForOne,
         RestartPolicy::Permanent,
         u32::MAX,
@@ -488,17 +552,31 @@ async fn restart_stamps_stay_bounded_by_the_window() {
     );
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
+    let mut worker = 0;
+    let mut next_worker = 1;
 
     let mut peak = 0_usize;
     for offset in 0..1000 {
         behavior
             .transition(SupervisionEvent::WorkerStopped(WorkerStopped {
                 proxy: 0,
-                worker: 0,
+                worker,
                 outcome: Err(Crash::Failed),
                 at: base + Duration::from_nanos(offset),
             }))
             .unwrap();
+        behavior
+            .transition(SupervisionEvent::WorkerCreationResolved(
+                WorkerCreationResolved::new(
+                    0,
+                    next_worker,
+                    CreationKind::ReplacementIncarnation { replaces: worker },
+                    Ok(()),
+                ),
+            ))
+            .unwrap();
+        worker = next_worker;
+        next_worker += 1;
         peak = peak.max(behavior.restarts_in_window());
     }
     // Deadline 1ns spacing, at most 51 distinct stamps fit inside a 50ns window.

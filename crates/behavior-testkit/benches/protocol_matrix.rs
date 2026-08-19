@@ -2,8 +2,8 @@ use std::hint::black_box;
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, Compose, Crash, Machine, MailAddr, Move, Never, Proxy, ProxyCommand,
-    RestartPolicy, StashRoute, Step, Strategy, Supervisor, WorkerStopped, stop_on_abnormal_death,
+    Acted, Actions, Crash, Machine, MailAddr, Move, Never, Proxy, ProxyCommand, RestartPolicy,
+    StashRoute, Step, Strategy, Supervisor, WorkerStopped, stop_on_abnormal_death,
 };
 use behavior_testkit::InitializeTest;
 use std::time::Instant;
@@ -27,21 +27,6 @@ impl Sink {
 
 fn child(_index: usize) -> Sink {
     Sink(0)
-}
-
-/// The supervising parent: quiet, with the supervised child as its offspring
-/// type (a fleet parent must produce the fleet, not `Never`).
-struct FleetParent;
-
-#[behavior::behavior(addr = MailAddr, message = u64, sends = Vec<Never>, births = behavior::Births<Sink>, error = Never)]
-impl FleetParent {
-    fn receive(
-        &mut self,
-        _from: MailAddr,
-        _message: u64,
-    ) -> Acted<MailAddr, Never, Vec<Never>, behavior::Births<Sink>, Never> {
-        Ok(Actions::cont())
-    }
 }
 
 fn main() {
@@ -97,7 +82,6 @@ fn measure_proxy() -> f64 {
 /// (linear memory growth in emitted events).
 fn measure_supervise(fleet: usize) -> f64 {
     let behavior = Supervisor::new(
-        FleetParent,
         behavior::ChildTopology::indexed(
             |index| u64::try_from(index).unwrap(),
             fleet,
@@ -118,7 +102,7 @@ fn measure_supervise(fleet: usize) -> f64 {
     for index in 0..SHORT_ITERATIONS {
         let nonce = u64::try_from(index % fleet).unwrap();
         let actions = behavior
-            .on(WorkerStopped {
+            .on_path(WorkerStopped {
                 proxy: nonce,
                 worker: nonce,
                 outcome: Err(Crash::Failed),
@@ -173,7 +157,7 @@ fn measure_fsm() -> f64 {
 /// Stash passthrough (every message routes Deliver): buffer machinery on
 /// the hot path without holding.
 fn measure_stash() -> f64 {
-    let behavior = (Sink(0)).stash(|_| StashRoute::Deliver);
+    let behavior = behavior::Stash::new(Sink(0), |_| StashRoute::Deliver);
     let mut behavior = behavior.initialize().unwrap().behavior;
     let started = Instant::now();
     for index in 0..SHORT_ITERATIONS {
@@ -191,10 +175,16 @@ fn measure_stash() -> f64 {
 /// stack.
 fn measure_nested() -> f64 {
     let due = Instant::now() + Duration::from_mins(1);
-    let behavior = (Sink(0))
-        .stash(|_| StashRoute::Deliver)
-        .watch(MailAddr(7), stop_on_abnormal_death)
-        .deadline(behavior::TimerId(0), Some(due), |_| Ok(Step::Continue));
+    let behavior = behavior::Deadline::new(
+        behavior::Watch::new(
+            behavior::Stash::new(Sink(0), |_| StashRoute::Deliver),
+            MailAddr(7),
+            stop_on_abnormal_death,
+        ),
+        behavior::TimerId(0),
+        Some(due),
+        |_| Ok(Step::Continue),
+    );
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
     let started = Instant::now();

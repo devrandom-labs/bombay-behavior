@@ -5,8 +5,8 @@
 //! across any number of release events.
 
 use behavior::{
-    Acted, Actions, Activate, Behavior, Compose, Delivery, MailAddr, Never, Recipient, StashRoute,
-    Step, User, UserEvent,
+    Acted, Actions, Activate, Behavior, Delivery, MailAddr, Never, Recipient, StashRoute, Step,
+    User, UserEvent,
 };
 use behavior_testkit::Mailbox;
 use proptest::collection::vec;
@@ -15,9 +15,13 @@ use tokio::runtime::Builder;
 
 struct Sink;
 
-impl Behavior for Sink {
+impl behavior::Protocol for Sink {
     type Addr = MailAddr;
     type Msg = u8;
+}
+
+impl Behavior for Sink {
+    type Protocol = Self;
     type Event = User<MailAddr, u8>;
     type Sends = Vec<Never>;
     type Ph = Never;
@@ -83,7 +87,7 @@ proptest! {
         releases in vec(any::<u8>(), 0..32),
     ) {
         let _runtime = Builder::new_current_thread().enable_all().build().unwrap();
-        let behavior = (Recorder::default()).stash(route);
+        let behavior = behavior::Stash::new(Recorder::default(), route);
         let initialized = behavior.initialize().unwrap();
         let mut behavior = initialized.behavior;
 
@@ -131,7 +135,7 @@ async fn stash_filter_holds_through_the_driver() {
         User::user(MailAddr(4), 4), // Stash
     ];
     let mut mailbox = Mailbox::new(events);
-    let behavior = (Recorder::default()).stash(route);
+    let behavior = behavior::Stash::new(Recorder::default(), route);
     let trace = behavior_testkit::drive(behavior, &mut mailbox).unwrap();
 
     assert_eq!(
@@ -171,7 +175,7 @@ fn stash_exhaustive_sequences_match_the_filter_model() {
     while length <= MAX_LENGTH {
         let total = ALPHABET.pow(u32::try_from(length).unwrap());
         for code in 0..total {
-            let behavior = (Recorder::default()).stash(residue_route);
+            let behavior = behavior::Stash::new(Recorder::default(), residue_route);
             let initialized = behavior.initialize().unwrap();
             let mut behavior = initialized.behavior;
             let mut residues = Vec::with_capacity(length);
@@ -240,7 +244,7 @@ impl StopRecorder {
 #[test]
 fn stash_filter_with_a_stopping_inner_matches_the_prefix_model() {
     let runtime = Builder::new_current_thread().enable_all().build().unwrap();
-    let behavior = (StopRecorder::default()).stash(route);
+    let behavior = behavior::Stash::new(StopRecorder::default(), route);
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
     let mut stopped = false;

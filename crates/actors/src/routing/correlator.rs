@@ -16,7 +16,7 @@ pub enum CorrelationResult<K, V> {
 }
 
 /// Complete retained lifecycle of one correlation key.
-pub enum CorrelationState<K, Reply: Behavior> {
+pub enum CorrelationState<K, Reply: behavior::Protocol> {
     /// The key owns one reply recipient and may accept resolution or cancel.
     Pending {
         /// Correlation key.
@@ -30,7 +30,7 @@ pub enum CorrelationState<K, Reply: Behavior> {
     Cancelled { key: K },
 }
 
-impl<K, Reply: Behavior> CorrelationState<K, Reply> {
+impl<K, Reply: behavior::Protocol> CorrelationState<K, Reply> {
     fn key(&self) -> &K {
         match self {
             Self::Pending { key, .. } | Self::Completed { key } | Self::Cancelled { key } => key,
@@ -39,7 +39,7 @@ impl<K, Reply: Behavior> CorrelationState<K, Reply> {
 }
 
 /// Commands accepted by [`Correlator`].
-pub enum CorrelatorMessage<K, V, Reply: Behavior> {
+pub enum CorrelatorMessage<K, V, Reply: behavior::Protocol> {
     /// Establish a unique pending key and its terminal reply recipient.
     Begin { key: K, reply_to: Recipient<Reply> },
     /// Resolve one pending key with an owned value.
@@ -86,12 +86,17 @@ pub enum CorrelatorError<K, V> {
 /// terminate itself. These lifecycle and retention choices are Bombay policy;
 /// delivery remains an Address/Communication capability. No method has a
 /// semantic panic condition.
-pub struct Correlator<A: Address, K, V, Reply: Behavior<Addr = A, Msg = CorrelationResult<K, V>>> {
+pub struct Correlator<
+    A: Address,
+    K,
+    V,
+    Reply: behavior::Protocol<Addr = A, Msg = CorrelationResult<K, V>>,
+> {
     states: Vec<CorrelationState<K, Reply>>,
     address: core::marker::PhantomData<A>,
 }
 
-impl<A: Address, K, V, Reply: Behavior<Addr = A, Msg = CorrelationResult<K, V>>>
+impl<A: Address, K, V, Reply: behavior::Protocol<Addr = A, Msg = CorrelationResult<K, V>>>
     Correlator<A, K, V, Reply>
 {
     /// Construct an empty correlator definition.
@@ -110,7 +115,7 @@ impl<A: Address, K, V, Reply: Behavior<Addr = A, Msg = CorrelationResult<K, V>>>
     }
 }
 
-impl<A: Address, K, V, Reply: Behavior<Addr = A, Msg = CorrelationResult<K, V>>> Default
+impl<A: Address, K, V, Reply: behavior::Protocol<Addr = A, Msg = CorrelationResult<K, V>>> Default
     for Correlator<A, K, V, Reply>
 {
     fn default() -> Self {
@@ -118,8 +123,8 @@ impl<A: Address, K, V, Reply: Behavior<Addr = A, Msg = CorrelationResult<K, V>>>
     }
 }
 
-impl<A: Address, K, V, Reply: Behavior<Addr = A, Msg = CorrelationResult<K, V>>> BehaviorBase
-    for Correlator<A, K, V, Reply>
+impl<A: Address, K, V, Reply: behavior::Protocol<Addr = A, Msg = CorrelationResult<K, V>>>
+    BehaviorBase for Correlator<A, K, V, Reply>
 {
     type Base = Self;
 
@@ -128,15 +133,24 @@ impl<A: Address, K, V, Reply: Behavior<Addr = A, Msg = CorrelationResult<K, V>>>
     }
 }
 
+impl<A, K, V, Reply> behavior::Protocol for Correlator<A, K, V, Reply>
+where
+    A: Address,
+    K: Clone + Eq,
+    Reply: behavior::Protocol<Addr = A, Msg = CorrelationResult<K, V>>,
+{
+    type Addr = A;
+    type Msg = CorrelatorMessage<K, V, Reply>;
+}
+
 impl<A, K, V, Reply> Behavior for Correlator<A, K, V, Reply>
 where
     A: Address,
     K: Clone + Eq,
-    Reply: Behavior<Addr = A, Msg = CorrelationResult<K, V>>,
+    Reply: behavior::Protocol<Addr = A, Msg = CorrelationResult<K, V>>,
 {
-    type Addr = A;
-    type Msg = CorrelatorMessage<K, V, Reply>;
-    type Event = User<A, Self::Msg>;
+    type Protocol = Self;
+    type Event = User<A, crate::BehaviorMessage<Self>>;
     type Sends = Vec<Delivery<Reply>>;
     type Ph = Never;
     type Error = CorrelatorError<K, V>;
@@ -210,10 +224,14 @@ mod tests {
 
     struct Reply;
 
-    impl Behavior for Reply {
+    impl behavior::Protocol for Reply {
         type Addr = MailAddr;
         type Msg = CorrelationResult<u8, u16>;
-        type Event = User<MailAddr, Self::Msg>;
+    }
+
+    impl Behavior for Reply {
+        type Protocol = Self;
+        type Event = User<MailAddr, crate::BehaviorMessage<Self>>;
         type Sends = Vec<Never>;
         type Ph = Never;
         type Error = Never;

@@ -1,5 +1,10 @@
 # Behavior Adapter Contract
 
+This contract uses the orthogonal roles defined in
+[Protocol, ingress, behavior, and effect algebras](protocol-algebra.md). An
+adapter drives a `Behavior`; ordinary delivery addresses its projected
+`Behavior::Protocol`.
+
 This document defines the complete runtime-neutral contract for driving a
 concrete Bombay behavior. It does not define a runtime, executor, mailbox,
 transport, or capability registry. Bombay's Driver and an independent adapter
@@ -33,7 +38,12 @@ For a concrete `B: Behavior<Ph = Never>`, the adapter must statically supply:
 
 - an ordered source of the exact closed `B::Event` sum;
 - an interpreter for every named lane in `B::Sends`;
-- fresh creation for `<B::Birth as BirthMode>::Child`;
+- fresh creation for `<B::Birth as BirthMode>::Child`; a child may be one
+  concrete behavior or a closed recursive `ChildChoice` whose exhaustive
+  `DispatchBirth` implementation requires one concrete `InstallBirth` adapter
+  per alternative;
+- `Send` futures from concrete installation and exhaustive dispatch, preserving
+  the recursive driver's eligibility for a thread-safe executor spawn;
 - exact behavior and capability errors;
 - incarnation-local retirement.
 
@@ -48,7 +58,7 @@ not valid adapter mechanisms.
 ```rust,ignore
 Initialized {
     behavior: Active<B>,
-    actions: Actions<B::Addr, B::Ph, B::Sends, B::Birth>,
+    actions: Actions<BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>,
 }
 ```
 
@@ -75,38 +85,82 @@ Commitment obeys these laws:
 8. final actions are committed before terminal retirement;
 9. delivery admission does not claim recipient processing or business success.
 
-## Named products
+For a heterogeneous creation sum, alternative dispatch occurs inside the same ordered
+creation loop. It does not create another nonce namespace: collision checks,
+`ObserveCreation`, and `ObserveChild` correlation all use the original
+creator-local nonce and provenance. A successful arm installs the contained
+concrete behavior and binds its declared `Behavior::Protocol`; the creation
+choice sum is neither an actor nor a public protocol.
 
-Behavior Actors products expose semantic fields specifically so adapters can
-compose interpreters without positional nesting knowledge. For example:
+## Effect products
+
+One owned lane uses the common layer algebra directly:
 
 ```rust,ignore
-let DeadlineSends { behavior, schedules } = sends;
-interpret_behavior(behavior)?;
-interpret_schedules(schedules)?;
+let SendLayer { owned: schedules, inner } = effects;
 ```
 
+Static `InterpretSends` traversal normally removes the need to destructure
+that layer. Named products remain appropriate when several domain lanes
+coexist, for example supervision observations, replacement communications,
+and failure reports:
+
 ```rust,ignore
-let SupervisorSends {
-    behavior,
-    child_observations,
-    replacement_commands,
-    failure_reports,
+let SendLayer {
+    owned: SupervisorSends {
+        child_observations,
+        creation_observations,
+        replacement_commands,
+        failure_reports,
+    },
+    inner,
 } = sends;
 ```
 
-An adapter may define its own local, statically dispatched interpretation
-traits for these public products. The behavior crates do not prescribe one
-runtime trait or error sum. Public products must retain named owned fields so
-such implementations require neither tuple positions nor wrapper inspection.
+`InterpretSends<Interpreter, RootEvent, Path>` recursively traverses structural
+layers. A layer's owned effects retain `Path`; its inner effects receive
+`Inside<Path>`. Concrete interpreters therefore see the exact root event and
+absolute structural destination for every request. Public multi-lane products
+retain named fields and propagate the same path through each field.
 
 ## Event injection
 
-Runtime facts return as later typed events. `EventInput<Input>` and
-`RouteInput<Input>` prove that the concrete closed event sum accepts a given
-input. Timer callbacks, creation callbacks, lifecycle callbacks, and
-observation callbacks must enqueue their typed input; they must not synchronously
-re-enter the behavior fold.
+Runtime facts return as later typed events. `InjectEvent<Input, Path>` proves
+both that the concrete closed event algebra accepts an input and which layer
+owns it. `Here` selects the current layer; `Inside<Path>` selects the same
+capability below exactly one outer layer. `EventLayer<Owned, Inner>` is the
+canonical structural coproduct for a wrapper with one owned lane. Templates
+with several related owned facts use a named exhaustive event sum and obey the
+same path law.
+
+There is no payload search or fallthrough. The request selects its owner when
+emitted. A stale result is inert at that owner; it is never offered to an inner
+layer merely because that layer accepts the same Rust payload type. Named
+send effects preserve the dual structure: traversal begins at `Here`, a
+wrapper's own request retains the current path, and a request in its `inner`
+effects moves through `Inside<_>`.
+
+Request values do not carry a duplicate emitter-local `Ingress<_, Here>`.
+`InterpreterRequest::ReturnToEmitter` declares the relative continuation and
+path-indexed traversal supplies its absolute root path. A request targeting a
+different actor may still carry that separate actor's ingress capability; for
+example `ShutdownChild<C>` names shutdown inside the selected child while its
+typed rejection returns to the emitting parent.
+
+This duality applies only to emitter-return to the emitters. `SendsFor<Event>` and
+`InterpreterRequest::ReturnToEmitter` expose that scope statically. An adapter must not
+reindex an established recipient, child destination, or report targeting an
+already established parent/child relationship merely because the emitter has
+another behavior wrapper.
+
+If `k: Result -> InnerEvent` is local and `i` is the wrapper's inner event
+injection, the composed continuation is `i . k`. Identity and associativity
+follow from function composition. A non-local destination `d` instead obeys
+wrapper invariance: `W(d) = d`.
+
+Timer, creation, lifecycle, and observation callbacks must enqueue their
+structurally selected typed input; they must not synchronously re-enter the
+behavior fold.
 
 ## Error and cancellation law
 
@@ -123,7 +177,7 @@ or cancellation must not permit later polling of the consumed execution.
 Local construction relies on inference:
 
 ```rust,ignore
-let behavior = worker.stash(route).deadline(timer, when, react);
+let behavior = Deadline::new(Stash::new(worker, route), timer, when, react);
 run(behavior, environment);
 ```
 
@@ -145,6 +199,20 @@ component-internal storage boundary may use an ordinary Rust alias or newtype;
 the catalogue does not define another macro or erased adapter type for it.
 
 ## Conformance checklist
+
+`crates/actors/tests/runtime_contracts.rs` is the compile-time template
+manifest for interpreter-originated lanes. It enumerates every timer,
+observation, creation, parent-report, and shutdown request/fact pair and fails
+to compile when a concrete template emits a request whose returned fact cannot
+enter the owning event sum, or when `ShutdownChild<C>` names a child protocol
+that cannot accept `ShutdownRequested`.
+
+The manifest must prove the associated `Behavior::Event` of each concrete
+template, never a hand-written approximation of that event type. For a named
+effect product, one interpretation test must populate every lane and prove all
+returning requests inject at the product's actual structural path. This guards
+against a template implementing a transition while leaving its capability
+unreachable through the adapter boundary.
 
 An adapter is conforming only when tests kill each of these inversions:
 

@@ -49,26 +49,31 @@ fuzz_target!(|bytes: &[u8]| {
         let b = chunk.get(1).copied().unwrap_or(0);
         let generation = TimerGeneration(u64::from(chunk.get(2).copied().unwrap_or(0)));
         let attempt = behavior::BreakerAttempt(u64::from(b));
-        let breaker_message = match a % 4 {
-            0 => BreakerMessage::Admit { reply_to: breaker_reply },
-            1 => BreakerMessage::Succeeded { attempt },
-            2 => BreakerMessage::Failed { attempt },
-            _ => BreakerMessage::Elapsed(TimerElapsed::new(TimerId(1), generation)),
-        };
-        breaker.receive(MailAddr(0), breaker_message).expect("breaker fold is infallible");
+        match a % 4 {
+            0 => breaker
+                .receive(MailAddr(0), BreakerMessage::Admit { reply_to: breaker_reply }),
+            1 => breaker.receive(MailAddr(0), BreakerMessage::Succeeded { attempt }),
+            2 => breaker.receive(MailAddr(0), BreakerMessage::Failed { attempt }),
+            _ => breaker.on_path(TimerElapsed::new(TimerId(1), generation)),
+        }
+        .expect("breaker fold is infallible");
 
         let participant = vec![b];
-        let presence_message = if a % 3 == 0 {
-            PresenceMessage::Elapsed(TimerElapsed::new(TimerId(u64::from(b)), generation))
+        if a % 3 == 0 {
+            presence
+                .on_path(TimerElapsed::new(TimerId(u64::from(b)), generation))
         } else {
-            PresenceMessage::Announce {
-                participant,
-                version: PresenceVersion(u64::from(generation.0 as u8)),
-                lifetime: Duration::from_nanos(1),
-                reply_to: presence_reply,
-            }
-        };
-        presence.receive(MailAddr(0), presence_message).expect("presence fold is infallible");
+            presence.receive(
+                MailAddr(0),
+                PresenceMessage::Announce {
+                    participant,
+                    version: PresenceVersion(u64::from(generation.0 as u8)),
+                    lifetime: Duration::from_nanos(1),
+                    reply_to: presence_reply,
+                },
+            )
+        }
+        .expect("presence fold is infallible");
 
         let workflow_message = match a % 4 {
             0 => WorkflowMessage::Start { reply_to: workflow_reply },

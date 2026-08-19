@@ -11,6 +11,7 @@ references map to the current `Machine` construction where the report is
 discussing implementation rather than a cited formalism.
 
 The current production architecture is documented in
+[`docs/protocol-algebra.md`](../docs/protocol-algebra.md),
 [`docs/ecosystem.md`](../docs/ecosystem.md),
 [`docs/driver.md`](../docs/driver.md), and
 [`docs/actor-catalogue.md`](../docs/actor-catalogue.md). Mnesis/Nexus owns the

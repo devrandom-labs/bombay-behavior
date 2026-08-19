@@ -1,5 +1,9 @@
 # Runtime-backed actor capability record
 
+Runtime capabilities extend a behavior's internal event and effect algebras;
+they are not public actor protocols. The distinction is defined in
+[Protocol, ingress, behavior, and effect algebras](protocol-algebra.md).
+
 This record identifies actor-system roles that cannot be completed by a
 deterministic `bombay-behavior-actors` fold alone. It complements the
 [behavior-template catalogue](actor-catalogue.md): the catalogue names the
@@ -51,11 +55,12 @@ when an application-selected adapter must supply the mechanism.
 | Actor role or family | Pure Actors responsibility | Required runtime responsibility | Owner / current mechanism | Status |
 |---|---|---|---|---|
 | Ordinary actor / state machine | Domain fold, phase, typed messages, sends, creations, termination | Serialized mailbox turns, task ownership, failure classification, effect interpretation | Engine, Bombay, Communication | realized at component level; façade remains separate |
-| Guardian / application root | Typed child topology and bootstrap policy | Transactional activation, address publication, child retention and retirement | Bombay `System` and incarnation lifecycle | partial as a reusable application actor |
-| Watch / link | Peer selection and reaction to an exact terminal fact | Exact-incarnation observation, cancellation, retained terminal publication | Observe and Bombay | watch realized; general link topology partial |
-| Task / lifecycle monitor / reaper | Typed task request, result and reaction policy | Async execution, cancellation, panic capture, completion publication, external child ownership | Tokio and Observe through Bombay | `Task` realized; general external-task roles partial |
-| Supervisor / stable proxy | Strategy, restart eligibility, budget, fleet state, replacement provenance | Child installation, exact terminal observation, creation results, retirement | Bombay, Address, Observe | realized for current local paths |
-| Backoff supervisor / retrying child | Restart decision and checked delay policy | Timers, child installation and terminal observation | Timers, Observe, Bombay | partial |
+| Guardian / application root | Preserve wrapped bootstrap creations and define normal root shutdown without recovery policy; heterogeneous direct-child creation is an ordered `Children` product consumed by the authored behavior | Transactional activation, exhaustive concrete `InstallBirth`, address publication, child retention and retirement | Bombay Driver, `System` and incarnation lifecycle | pure `Guardian` and heterogeneous creation contract realized; Bombay installer/façade integration remains partial |
+| Watch / link | Peer selection and reaction to an exact terminal fact; `Link` is the same typed policy installed at both endpoints | Exact-incarnation observation, cancellation, retained terminal publication | Observe and Bombay | pure watch/link policy realized; Bombay must install both endpoint definitions when reciprocity is desired |
+| Task / lifecycle monitor / reaper | Typed task request, result and action-producing terminal reaction policy | Async execution, cancellation, panic capture, completion publication, external child ownership | Tokio and Observe through Bombay | `Task` and one-peer `TerminationMonitor` realized; external-task ownership remains partial |
+| Supervisor / stable proxy | Strategy, restart eligibility, budget, fleet state, replacement provenance; standalone `Supervisor` and application composition `Supervise` share one ownership fold | Child installation, exact terminal observation, creation results, retirement | Bombay, Address, Observe | realized for current local paths without carrier behaviors |
+| Backoff supervisor / retrying child | Restart decision, checked delay, pending replacement batch and exact timer generation; standalone `BackoffSupervisor` and `BackoffSupervise` share one delay fold | Timers, child installation and terminal observation | Timers, Observe, Bombay | pure templates realized; façade/runtime integration partial |
+| Dynamic supervisor | Typed start/stop/replace/query admission and explicit installing/available/stopping/replacing/retired slots | Fresh shutdown-capable proxy installation, creation resolution, child shutdown and exact terminal publication | Bombay, Address, Observe | pure `DynamicSupervisor` contract is statically closed; runtime integration remains external |
 | Worker pool | Admission, assignment, affinity and interruption policy | Worker creation, delivery, observation, shutdown and draining | Bombay, Communication, Observe | realized locally |
 | Addressed router | Membership and deterministic selection policy | Endpoint resolution and physical delivery with payload recovery | Address, Communication, Bombay | realized locally |
 | Random router | Selection from supplied entropy | Entropy acquisition | Future Bombay RNG capability | gap |
@@ -86,7 +91,7 @@ when an application-selected adapter must supply the mechanism.
 | Configuration / features | Versioning, conflict and rollout policy | Source watching, authenticated updates and optional persistence | Application/Bombay adapters | external boundary |
 | Resource manager | Acquisition/release phases and reactions | Files, sockets, devices, processes, blocking work and cleanup | Capability-specific adapter | external boundary |
 | Security / identity gateway | Authorization policy over verified evidence | Secret custody, verification and authenticated transport | Application adapter; CESR/KERI where selected | external boundary |
-| Coordinated shutdown | Dependency graph and acknowledgement policy | Stop ingress, phases, deadlines, task cancellation and resource retirement | Bombay `System`, Timers and adapters | per-actor shutdown exists; system-wide partial |
+| Coordinated shutdown | Validated dependency graph, ordered phases, exact child acknowledgements, and arbitrary closed heterogeneous direct-child protocol sums | Interpret `ShutdownChild`, stop ingress, optional deadlines, task cancellation and resource retirement | Bombay `System`, Timers and adapters | pure homogeneous and heterogeneous coordinator contracts are realized; system-wide integration remains external |
 
 ## Runtime capability backlog by dependency order
 

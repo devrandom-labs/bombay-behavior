@@ -6,10 +6,11 @@ use std::sync::{
 use std::time::Duration;
 
 use behavior::{
-    Actions, AssignmentId, Behavior, Compose, CreationKind, CreationRejection, Delivery,
-    InterruptionPolicy, JobId, MailAddr, Never, NoBirths, PoolAssignment, PoolConfigError,
-    PoolError, PoolMessage, PoolResponse, Proxy, ProxyCommand, Recipient, RestartPolicy, Step,
-    User, WorkerCreationResolved, WorkerPhase, WorkerPool, WorkerStopped,
+    Actions, AssignmentId, Behavior, ChildStopped, CreationKind, CreationRejection,
+    CreationResolved, Delivery, Exit, InterruptionPolicy, JobId, MailAddr, Never, NoBirths,
+    PoolAssignment, PoolConfigError, PoolError, PoolInterruption, PoolMessage, PoolResponse, Proxy,
+    ProxyCommand, Recipient, RestartPolicy, ShutdownRequested, Step, User, WorkerCreationResolved,
+    WorkerPhase, WorkerPool, WorkerPoolProtocol, WorkerStopped,
 };
 use proptest::collection::vec;
 use proptest::prelude::*;
@@ -20,10 +21,16 @@ struct Worker;
 
 struct Reply;
 
-impl Behavior for Reply {
+type PoolDefinition = WorkerPool<MailAddr, Reply, u8, u16, Worker>;
+
+impl behavior::Protocol for Reply {
     type Addr = MailAddr;
     type Msg = PoolResponse<u8, u16, MailAddr>;
-    type Event = User<MailAddr, Self::Msg>;
+}
+
+impl Behavior for Reply {
+    type Protocol = Self;
+    type Event = User<MailAddr, behavior::BehaviorMessage<Self>>;
     type Sends = Vec<Never>;
     type Ph = Never;
     type Error = Never;
@@ -42,10 +49,14 @@ impl Behavior for Reply {
     }
 }
 
-impl Behavior for Worker {
+impl behavior::Protocol for Worker {
     type Addr = MailAddr;
-    type Msg = PoolAssignment<u8>;
-    type Event = User<MailAddr, PoolAssignment<u8>>;
+    type Msg = PoolAssignment<WorkerPoolProtocol<MailAddr, Reply, u8, u16>>;
+}
+
+impl Behavior for Worker {
+    type Protocol = Self;
+    type Event = User<MailAddr, behavior::BehaviorMessage<Self>>;
     type Sends = Vec<Never>;
     type Ph = Never;
     type Error = Never;
@@ -84,10 +95,14 @@ struct PanicWorker;
 
 struct PanicReply;
 
-impl Behavior for PanicReply {
+impl behavior::Protocol for PanicReply {
     type Addr = MailAddr;
     type Msg = PoolResponse<PanicPayload, (), MailAddr>;
-    type Event = User<MailAddr, Self::Msg>;
+}
+
+impl Behavior for PanicReply {
+    type Protocol = Self;
+    type Event = User<MailAddr, behavior::BehaviorMessage<Self>>;
     type Sends = Vec<Never>;
     type Ph = Never;
     type Error = Never;
@@ -104,12 +119,16 @@ impl Behavior for PanicReply {
     ) -> behavior::BehaviorActed<Self> {
         Ok(Actions::cont())
     }
+}
+
+impl behavior::Protocol for PanicWorker {
+    type Addr = MailAddr;
+    type Msg = PoolAssignment<WorkerPoolProtocol<MailAddr, PanicReply, PanicPayload, ()>>;
 }
 
 impl Behavior for PanicWorker {
-    type Addr = MailAddr;
-    type Msg = PoolAssignment<PanicPayload>;
-    type Event = User<MailAddr, PoolAssignment<PanicPayload>>;
+    type Protocol = Self;
+    type Event = User<MailAddr, behavior::BehaviorMessage<Self>>;
     type Sends = Vec<Never>;
     type Ph = Never;
     type Error = Never;
@@ -126,27 +145,15 @@ impl Behavior for PanicWorker {
     ) -> behavior::BehaviorActed<Self> {
         Ok(Actions::cont())
     }
-}
-
-fn panic_worker(_: usize) -> PanicWorker {
-    PanicWorker
 }
 
 fn nonce(index: usize) -> u64 {
     u64::try_from(index).unwrap()
 }
 
-fn worker(_index: usize) -> Worker {
-    Worker
-}
-
-fn pool(
-    workers: usize,
-    capacity: usize,
-    interruption: InterruptionPolicy,
-) -> WorkerPool<MailAddr, Reply, u8, u16, Worker> {
+fn pool(workers: usize, capacity: usize, interruption: InterruptionPolicy) -> PoolDefinition {
     WorkerPool::new(
-        behavior::ChildTopology::indexed(nonce, workers, |index| Some(worker(index))),
+        behavior::ChildTopology::indexed(nonce, workers, |_| Some(Worker)),
         behavior::PoolConfiguration::new(
             capacity,
             interruption,
@@ -154,15 +161,16 @@ fn pool(
             64,
             Duration::from_secs(60),
         ),
+        Recipient::global(MailAddr(9)),
     )
     .unwrap()
 }
 
 fn install(
-    pool: &mut behavior::Active<WorkerPool<MailAddr, Reply, u8, u16, Worker>>,
+    pool: &mut behavior::Active<PoolDefinition>,
     slot: u64,
-) -> behavior::PoolActions<MailAddr, Reply, u8, u16, Worker> {
-    pool.on(WorkerCreationResolved::new(
+) -> behavior::WorkerPoolActions<MailAddr, Reply, u8, u16, Worker> {
+    pool.on_path(WorkerCreationResolved::new(
         slot,
         0,
         CreationKind::Birth,
@@ -172,10 +180,10 @@ fn install(
 }
 
 fn submit(
-    pool: &mut behavior::Active<WorkerPool<MailAddr, Reply, u8, u16, Worker>>,
+    pool: &mut behavior::Active<PoolDefinition>,
     id: u64,
     payload: u8,
-) -> behavior::PoolActions<MailAddr, Reply, u8, u16, Worker> {
+) -> behavior::WorkerPoolActions<MailAddr, Reply, u8, u16, Worker> {
     pool.receive(
         MailAddr(90),
         PoolMessage::Submit {
@@ -188,15 +196,15 @@ fn submit(
 }
 
 fn assignments(
-    actions: &behavior::PoolActions<MailAddr, Reply, u8, u16, Worker>,
+    actions: &behavior::WorkerPoolActions<MailAddr, Reply, u8, u16, Worker>,
 ) -> &[Delivery<Proxy<Worker>>] {
-    &actions.sends.behavior.assignments
+    &actions.sends.inner.assignments
 }
 
 fn responses(
-    actions: &behavior::PoolActions<MailAddr, Reply, u8, u16, Worker>,
+    actions: &behavior::WorkerPoolActions<MailAddr, Reply, u8, u16, Worker>,
 ) -> &[Delivery<Reply>] {
-    &actions.sends.behavior.responses
+    &actions.sends.inner.responses
 }
 
 #[test]
@@ -206,10 +214,88 @@ fn initialization_stages_and_observes_every_stable_proxy_before_dispatch() {
     let actions = initialized.actions;
     let pool = initialized.behavior;
     assert_eq!(actions.creates.len(), 2);
-    assert_eq!(actions.sends.child_observations.len(), 2);
+    assert_eq!(actions.sends.owned.child_observations.len(), 2);
+    assert_eq!(actions.sends.owned.creation_observations.len(), 2);
+    for (creation, observation) in actions
+        .creates
+        .iter()
+        .zip(actions.sends.owned.creation_observations.iter())
+    {
+        assert_eq!(creation.nonce, observation.nonce);
+    }
     assert!(assignments(&actions).is_empty());
     assert_eq!(pool.worker_phase(0), Some(WorkerPhase::Installing));
     assert_eq!(pool.worker_phase(1), Some(WorkerPhase::Installing));
+}
+
+#[test]
+fn shutdown_returns_all_jobs_and_waits_for_every_owned_proxy() {
+    let mut pool = pool(2, 2, InterruptionPolicy::Retry)
+        .initialize()
+        .unwrap()
+        .behavior;
+    for nonce in [0, 1] {
+        pool.on_path(CreationResolved::birth(nonce, MailAddr(10 + nonce)))
+            .unwrap();
+        install(&mut pool, nonce);
+    }
+    submit(&mut pool, 1, 11);
+    submit(&mut pool, 2, 22);
+    submit(&mut pool, 3, 33);
+
+    let shutdown = pool.on_path(ShutdownRequested).unwrap();
+    assert_eq!(shutdown.sends.owned.shutdowns.len(), 2);
+    assert_eq!(responses(&shutdown).len(), 3);
+    assert!(responses(&shutdown).iter().all(|delivery| matches!(
+        delivery.message,
+        PoolResponse::Interrupted {
+            reason: PoolInterruption::PoolShutdown,
+            ..
+        }
+    )));
+    assert!(matches!(shutdown.become_, Step::Continue));
+
+    let first = pool
+        .on_path(ChildStopped::new(0, Ok(Exit::Normal), Instant::now()))
+        .unwrap();
+    assert!(matches!(first.become_, Step::Continue));
+    let last = pool
+        .on_path(ChildStopped::new(1, Ok(Exit::Normal), Instant::now()))
+        .unwrap();
+    assert!(matches!(last.become_, Step::Stop(behavior::Stopped)));
+}
+
+#[test]
+fn shutdown_resolves_pending_proxy_installation_without_duplicate_requests() {
+    let mut pool = pool(2, 0, InterruptionPolicy::Fail)
+        .initialize()
+        .unwrap()
+        .behavior;
+    pool.on_path(CreationResolved::birth(0, MailAddr(10)))
+        .unwrap();
+
+    let shutdown = pool.on_path(ShutdownRequested).unwrap();
+    assert_eq!(shutdown.sends.owned.shutdowns.as_slice().len(), 1);
+    assert_eq!(shutdown.sends.owned.shutdowns.as_slice()[0].nonce, 0);
+
+    let pending_rejected = pool
+        .on_path(CreationResolved::rejected(
+            1,
+            CreationKind::Birth,
+            CreationRejection::EnvironmentFailed,
+        ))
+        .unwrap();
+    assert!(pending_rejected.sends.owned.shutdowns.is_empty());
+    assert!(matches!(pending_rejected.become_, Step::Continue));
+
+    let stale_resolution = pool
+        .on_path(CreationResolved::birth(0, MailAddr(99)))
+        .unwrap();
+    assert!(stale_resolution.sends.owned.shutdowns.is_empty());
+    let stopped = pool
+        .on_path(ChildStopped::new(0, Ok(Exit::Normal), Instant::now()))
+        .unwrap();
+    assert!(matches!(stopped.become_, Step::Stop(behavior::Stopped)));
 }
 
 #[test]
@@ -230,6 +316,8 @@ fn accepted_job_is_recorded_before_one_exact_dispatch() {
     assert_eq!(assignment.assignment, AssignmentId(0));
     assert_eq!(assignment.job, JobId(7));
     assert_eq!(assignment.payload, 42);
+    assert_eq!(assignment.worker, 0);
+    assert_eq!(assignment.complete_to.address(), MailAddr(9));
     assert_eq!(
         assignments(&actions)[0].to.resolve(MailAddr(17)),
         behavior::Address::birth(MailAddr(17), 0)
@@ -342,7 +430,7 @@ fn interruption_policy_distinguishes_failure_from_at_least_once_retry() {
         install(&mut pool, 0);
         submit(&mut pool, 1, 10);
         let actions = pool
-            .on(WorkerStopped::new(
+            .on_path(WorkerStopped::new(
                 0,
                 0,
                 Err(behavior::Crash::Panicked),
@@ -362,7 +450,14 @@ fn interruption_policy_distinguishes_failure_from_at_least_once_retry() {
             InterruptionPolicy::Retry => {
                 assert!(responses(&actions).is_empty());
                 assert_eq!(pool.backlog_len(), 1);
-                let replacement = install(&mut pool, 0);
+                let replacement = pool
+                    .on_path(WorkerCreationResolved::new(
+                        0,
+                        1,
+                        CreationKind::ReplacementIncarnation { replaces: 0 },
+                        Ok(()),
+                    ))
+                    .unwrap();
                 let ProxyCommand::Forward(retried) = &assignments(&replacement)[0].message else {
                     panic!("retry is forwarded after installation");
                 };
@@ -380,7 +475,7 @@ fn rejected_worker_creation_never_dispatches() {
     let mut pool = initialized.behavior;
     submit(&mut pool, 1, 10);
     let actions = pool
-        .on(WorkerCreationResolved::new(
+        .on_path(WorkerCreationResolved::new(
             0,
             0,
             CreationKind::Birth,
@@ -412,8 +507,8 @@ fn duplicate_configured_routes_are_rejected_before_initialization() {
     fn duplicate(_index: usize) -> u64 {
         7
     }
-    let result = WorkerPool::<MailAddr, Reply, u8, u16, Worker>::new(
-        behavior::ChildTopology::indexed(duplicate, 2, |index| Some(worker(index))),
+    let result = PoolDefinition::new(
+        behavior::ChildTopology::indexed(duplicate, 2, |_| Some(Worker)),
         behavior::PoolConfiguration::new(
             1,
             InterruptionPolicy::Fail,
@@ -421,14 +516,15 @@ fn duplicate_configured_routes_are_rejected_before_initialization() {
             1,
             Duration::from_secs(1),
         ),
+        Recipient::global(MailAddr(9)),
     );
     assert!(matches!(result, Err(PoolConfigError::DuplicateWorker(7))));
 }
 
 #[test]
 fn zero_worker_pool_is_rejected_before_it_can_accept_owned_work() {
-    let result = WorkerPool::<MailAddr, Reply, u8, u16, Worker>::new(
-        behavior::ChildTopology::indexed(nonce, 0, |index| Some(worker(index))),
+    let result = PoolDefinition::new(
+        behavior::ChildTopology::indexed(nonce, 0, |_| Some(Worker)),
         behavior::PoolConfiguration::new(
             8,
             InterruptionPolicy::Fail,
@@ -436,14 +532,15 @@ fn zero_worker_pool_is_rejected_before_it_can_accept_owned_work() {
             1,
             Duration::from_secs(1),
         ),
+        Recipient::global(MailAddr(9)),
     );
     assert!(matches!(result, Err(PoolConfigError::NoWorkers)));
 }
 
 #[test]
 fn panicking_payload_clone_occurs_before_admission_state_is_committed() {
-    let pool = WorkerPool::<MailAddr, PanicReply, PanicPayload, (), PanicWorker>::new(
-        behavior::ChildTopology::indexed(nonce, 1, |index| Some(panic_worker(index))),
+    let pool = WorkerPool::new(
+        behavior::ChildTopology::indexed(nonce, 1, |_| Some(PanicWorker)),
         behavior::PoolConfiguration::new(
             1,
             InterruptionPolicy::Retry,
@@ -451,11 +548,12 @@ fn panicking_payload_clone_occurs_before_admission_state_is_committed() {
             1,
             Duration::from_secs(1),
         ),
+        Recipient::global(MailAddr(9)),
     )
     .unwrap();
     let initialized = pool.initialize().unwrap();
     let mut pool = initialized.behavior;
-    pool.on(WorkerCreationResolved::new(
+    pool.on_path(WorkerCreationResolved::new(
         0,
         0,
         CreationKind::Birth,
@@ -490,7 +588,7 @@ fn panicking_payload_clone_occurs_before_admission_state_is_committed() {
             },
         )
         .unwrap();
-    assert_eq!(actions.sends.behavior.assignments.len(), 1);
+    assert_eq!(actions.sends.inner.assignments.len(), 1);
     assert_eq!(
         pool.worker_phase(0),
         Some(WorkerPhase::Assigned {
@@ -502,8 +600,8 @@ fn panicking_payload_clone_occurs_before_admission_state_is_committed() {
 
 #[test]
 fn panicking_retry_clone_preserves_the_exact_assigned_state() {
-    let pool = WorkerPool::<MailAddr, PanicReply, PanicPayload, (), PanicWorker>::new(
-        behavior::ChildTopology::indexed(nonce, 1, |index| Some(panic_worker(index))),
+    let pool = WorkerPool::new(
+        behavior::ChildTopology::indexed(nonce, 1, |_| Some(PanicWorker)),
         behavior::PoolConfiguration::new(
             1,
             InterruptionPolicy::Retry,
@@ -511,11 +609,12 @@ fn panicking_retry_clone_preserves_the_exact_assigned_state() {
             1,
             Duration::from_secs(1),
         ),
+        Recipient::global(MailAddr(9)),
     )
     .unwrap();
     let initialized = pool.initialize().unwrap();
     let mut pool = initialized.behavior;
-    pool.on(WorkerCreationResolved::new(
+    pool.on_path(WorkerCreationResolved::new(
         0,
         0,
         CreationKind::Birth,
@@ -537,7 +636,7 @@ fn panicking_retry_clone_preserves_the_exact_assigned_state() {
     panic_on_clone.store(true, Ordering::SeqCst);
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let _ = pool.on(WorkerStopped::new(
+        let _ = pool.on_path(WorkerStopped::new(
             0,
             0,
             Err(behavior::Crash::Panicked),
@@ -558,7 +657,7 @@ fn panicking_retry_clone_preserves_the_exact_assigned_state() {
 #[test]
 fn denied_replacement_retires_slot_instead_of_stranding_installation() {
     let pool = WorkerPool::new(
-        behavior::ChildTopology::indexed(nonce, 1, |index| Some(worker(index))),
+        behavior::ChildTopology::indexed(nonce, 1, |_| Some(Worker)),
         behavior::PoolConfiguration::new(
             1,
             InterruptionPolicy::Fail,
@@ -566,6 +665,7 @@ fn denied_replacement_retires_slot_instead_of_stranding_installation() {
             0,
             Duration::from_secs(1),
         ),
+        Recipient::global(MailAddr(9)),
     )
     .unwrap();
     let initialized = pool.initialize().unwrap();
@@ -573,14 +673,14 @@ fn denied_replacement_retires_slot_instead_of_stranding_installation() {
     install(&mut pool, 0);
     submit(&mut pool, 1, 10);
     let actions = pool
-        .on(WorkerStopped::new(
+        .on_path(WorkerStopped::new(
             0,
             0,
             Err(behavior::Crash::Panicked),
             Instant::now(),
         ))
         .unwrap();
-    assert!(actions.sends.replacement_commands.is_empty());
+    assert!(actions.sends.owned.replacement_commands.is_empty());
     assert_eq!(
         pool.worker_phase(0),
         Some(WorkerPhase::Retired {
@@ -595,7 +695,7 @@ fn duplicate_creation_resolution_cannot_revive_or_overwrite_an_available_slot() 
     let initialized = pool.initialize().unwrap();
     let mut pool = initialized.behavior;
     install(&mut pool, 0);
-    let result = pool.on(WorkerCreationResolved::new(
+    let result = pool.on_path(WorkerCreationResolved::new(
         0,
         0,
         CreationKind::Birth,
@@ -692,11 +792,11 @@ proptest! {
 
 #[test]
 fn assignment_and_response_lanes_survive_shutdown_composition() {
-    let behavior = (pool(1, 0, InterruptionPolicy::Fail)).stop_on_shutdown();
+    let behavior = behavior::StopOnShutdown::new(pool(1, 0, InterruptionPolicy::Fail));
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
     behavior
-        .on(WorkerCreationResolved::new(
+        .on_path(WorkerCreationResolved::new(
             0,
             0,
             CreationKind::Birth,
@@ -713,8 +813,8 @@ fn assignment_and_response_lanes_survive_shutdown_composition() {
             },
         )
         .unwrap();
-    assert_eq!(actions.sends.behavior.responses.len(), 1);
-    assert_eq!(actions.sends.behavior.assignments.len(), 1);
+    assert_eq!(actions.sends.inner.inner.responses.len(), 1);
+    assert_eq!(actions.sends.inner.inner.assignments.len(), 1);
     assert!(matches!(actions.become_, Step::Continue));
 }
 use behavior_testkit::InitializeTest;

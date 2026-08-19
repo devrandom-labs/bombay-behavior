@@ -7,18 +7,21 @@
 )]
 
 use behavior_actors as behavior;
+use core::future::Future;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, Activate, Become, Behavior, BehaviorBase, Births, ChildStopped, Compose, Crash,
-    Create, CreationKind, CreationRejection, CreationResolved, DeadlineEvent, Delivery, Exit,
-    Machine, MailAddr, Move, Never, NoBirths, ObserveChild, PeerStopped, Proxy, ProxyCommand,
-    ProxyEvent, Recipient, RestartDenial, RestartPolicy, RouteInput, SendAlgebra, ServiceSends,
-    ShutdownRequested, StashRoute, Step, Strategy, SupervisionEvent, SupervisionFailure,
-    SupervisionFailureReason, Supervisor, TimerElapsed, TimerGeneration, TimerId, User, UserEvent,
-    Watch, WatchEvent, WorkerStopped, stop_on_abnormal_death, stop_on_supervision_failure,
+    Acted, Actions, Activate, Become, Behavior, BehaviorBase, Births, ChildShutdownRejected,
+    ChildShutdownRejection, ChildStopped, Crash, Create, CreationKind, CreationRejection,
+    CreationResolved, Delivery, EventLayer, Exit, Here, InjectEvent, Inside, InterpretRequest,
+    InterpretSends, InterpreterRequests, Machine, MailAddr, Move, Never, NoBirths, ObserveChild,
+    PeerStopped, Proxy, ProxyCommand, ProxyEvent, Recipient, RestartDenial, RestartPolicy,
+    ScheduleAt, SendEffects, SendInterpreter, ShutdownChild, ShutdownRequested, StashRoute, Step,
+    Strategy, Supervise, SupervisionEvent, SupervisionFailure, SupervisionFailureReason,
+    TimerElapsed, TimerGeneration, TimerId, User, UserEvent, Watch, WorkerCreationResolved,
+    WorkerStopped, stop_on_abnormal_death, stop_on_supervision_failure,
 };
 use proptest::prelude::*;
 use std::time::Instant;
@@ -28,7 +31,7 @@ struct Quiet;
 
 struct BehaviorSends {
     deliveries: Vec<Delivery<Quiet>>,
-    child_observations: ServiceSends<ObserveChild<u64>>,
+    markers: Vec<u8>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -62,7 +65,7 @@ impl ExplicitInitialization {
     fn init(&mut self) -> Acted<MailAddr, Never, BehaviorSends, Births<Quiet>, Never> {
         self.0.push(1);
         let mut sends = BehaviorSends::empty();
-        sends.child_observations.extend([ObserveChild { nonce: 7 }]);
+        sends.markers.push(7);
         Ok(Actions::new(
             sends,
             vec![Create::birth(7, Quiet)],
@@ -79,7 +82,7 @@ impl ExplicitInitialization {
         Ok(Actions::new(
             BehaviorSends {
                 deliveries: vec![Delivery::new(Recipient::global(MailAddr(9)), message)],
-                child_observations: ServiceSends::empty(),
+                markers: Vec::new(),
             },
             Vec::new(),
             Step::Stop(behavior::Stopped),
@@ -110,25 +113,31 @@ impl InitializationCounter {
     }
 }
 
-impl SendAlgebra for BehaviorSends {
+impl SendEffects for BehaviorSends {
     fn empty() -> Self {
         Self {
             deliveries: Vec::new(),
-            child_observations: ServiceSends::empty(),
+            markers: Vec::new(),
         }
     }
 
     fn append(&mut self, mut other: Self) {
         self.deliveries.append(&mut other.deliveries);
-        self.child_observations.append(other.child_observations);
+        self.markers.append(&mut other.markers);
     }
 }
 
+impl<Event> behavior::SendsFor<Event> for BehaviorSends {}
+
 struct U8Sink;
 
-impl Behavior for U8Sink {
+impl behavior::Protocol for U8Sink {
     type Addr = MailAddr;
     type Msg = u8;
+}
+
+impl Behavior for U8Sink {
+    type Protocol = Self;
     type Event = User<MailAddr, u8>;
     type Sends = Vec<Never>;
     type Ph = Never;
@@ -151,16 +160,16 @@ impl Behavior for U8Sink {
 fn requires_no_births<B: Behavior<Birth = NoBirths>>(_behavior: &B) {}
 
 #[test]
-fn ordinary_and_service_send_algebras_have_disjoint_static_dispatch() {
+fn deliveries_and_interpreter_requests_have_disjoint_static_dispatch() {
     trait RouteSends<A: behavior::Address> {}
 
-    impl<B: Behavior<Addr = MailAddr>> RouteSends<MailAddr> for Vec<Delivery<B>> {}
-    impl<A: behavior::Address> RouteSends<A> for ServiceSends<ObserveChild<A::Nonce>> {}
+    impl<P> RouteSends<MailAddr> for Vec<Delivery<P>> where P: behavior::Protocol<Addr = MailAddr> {}
+    impl<A: behavior::Address> RouteSends<A> for InterpreterRequests<ObserveChild<A>> {}
 
     fn requires_route_sends<A: behavior::Address, S: RouteSends<A>>() {}
 
     requires_route_sends::<MailAddr, Vec<Delivery<Quiet>>>();
-    requires_route_sends::<MailAddr, ServiceSends<ObserveChild<u64>>>();
+    requires_route_sends::<MailAddr, InterpreterRequests<ObserveChild<MailAddr>>>();
 }
 
 fn requires_births<B, C>(_behavior: &B)
@@ -169,10 +178,10 @@ where
 {
 }
 
-fn requires_worker_events<B>(_behavior: &B)
+fn requires_worker_events<B, Path>(_behavior: &B)
 where
     B: Behavior,
-    B::Event: RouteInput<WorkerStopped<MailAddr>>,
+    B::Event: InjectEvent<WorkerStopped<MailAddr>, Path>,
 {
 }
 
@@ -194,9 +203,9 @@ impl ShutdownParent {
     fn receive(
         &mut self,
         _from: MailAddr,
-        _message: u64,
+        message: u64,
     ) -> Acted<MailAddr, Never, Vec<Delivery<Quiet>>, Births<Quiet>, Never> {
-        Ok(Actions::cont())
+        Ok(Actions::create(vec![Create::birth(message, Quiet)]))
     }
 }
 
@@ -261,10 +270,7 @@ fn direct_behavior_preserves_explicit_initialization_and_transition_actions() {
     let initialized = behavior.initialize().unwrap();
     let initial = initialized.actions;
     let mut behavior = initialized.behavior;
-    assert_eq!(
-        initial.sends.child_observations.as_slice(),
-        &[ObserveChild { nonce: 7 }]
-    );
+    assert_eq!(initial.sends.markers, [7]);
     assert_eq!(initial.creates.len(), 1);
     assert!(matches!(initial.become_, Step::Continue));
 
@@ -281,15 +287,18 @@ fn direct_behavior_preserves_explicit_initialization_and_transition_actions() {
 #[test]
 fn direct_behavior_composes_with_existing_wrappers_and_init_order() {
     let due = Instant::now();
-    let behavior = (InitializationCounter(0))
-        .deadline(TimerId(0), Some(due), |_| Ok(Step::Continue))
-        .stop_on_shutdown();
+    let behavior = behavior_actors::StopOnShutdown::new(behavior_actors::Deadline::new(
+        InitializationCounter(0),
+        TimerId(0),
+        Some(due),
+        |_| Ok(Step::Continue),
+    ));
 
     let initialized = behavior.initialize().unwrap();
     let initial = initialized.actions;
     let mut behavior = initialized.behavior;
-    assert_eq!(initial.sends.behavior[0].message, 1);
-    assert_eq!(initial.sends.schedules.len(), 1);
+    assert_eq!(initial.sends.inner.inner[0].message, 1);
+    assert_eq!(initial.sends.inner.owned.len(), 1);
 
     behavior.receive(MailAddr(2), 4).unwrap();
     assert_eq!(behavior.base().0, 5);
@@ -297,27 +306,27 @@ fn direct_behavior_composes_with_existing_wrappers_and_init_order() {
 
 #[tokio::test]
 async fn typed_shutdown_stops_normally_without_running_the_inner_fold() {
-    let behavior = (Quiet).stop_on_shutdown();
+    let behavior = behavior_actors::StopOnShutdown::new(Quiet);
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
-    let event = <_ as RouteInput<ShutdownRequested>>::route(ShutdownRequested).unwrap();
+    let event = <_ as InjectEvent<ShutdownRequested, Here>>::inject_at(ShutdownRequested);
     let actions = behavior.transition(event).unwrap();
 
-    assert!(actions.sends.is_empty());
+    assert!(actions.sends.inner.is_empty());
     assert!(actions.creates.is_empty());
     assert!(matches!(actions.become_, Step::Stop(behavior::Stopped)));
 }
 
 #[tokio::test]
 async fn final_shutdown_fold_preserves_effects_and_forces_normal_stop() {
-    let behavior = (ShutdownParent).finalize_on_shutdown(finalize_parent);
+    let behavior = behavior_actors::FinalizeOnShutdown::new(ShutdownParent, finalize_parent);
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
-    let event = <_ as RouteInput<ShutdownRequested>>::route(ShutdownRequested).unwrap();
+    let event = <_ as InjectEvent<ShutdownRequested, Here>>::inject_at(ShutdownRequested);
     let actions = behavior.transition(event).unwrap();
 
-    assert_eq!(actions.sends.len(), 1);
-    assert_eq!(actions.sends[0].message, 42);
+    assert_eq!(actions.sends.inner.len(), 1);
+    assert_eq!(actions.sends.inner[0].message, 42);
     assert_eq!(actions.creates.len(), 1);
     assert_eq!(actions.creates[0].nonce, 7);
     assert!(matches!(actions.become_, Step::Stop(behavior::Stopped)));
@@ -325,13 +334,20 @@ async fn final_shutdown_fold_preserves_effects_and_forces_normal_stop() {
 
 #[tokio::test]
 async fn outer_combinators_preserve_the_shutdown_lane() {
-    let behavior = (Quiet)
-        .stop_on_shutdown()
-        .deadline(TimerId(0), None, |_| Ok(Step::Continue))
-        .watch(MailAddr(8), stop_on_abnormal_death);
+    let behavior = behavior_actors::Watch::new(
+        behavior_actors::Deadline::new(
+            behavior_actors::StopOnShutdown::new(Quiet),
+            TimerId(0),
+            None,
+            |_| Ok(Step::Continue),
+        ),
+        MailAddr(8),
+        stop_on_abnormal_death,
+    );
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
-    let event = <_ as RouteInput<ShutdownRequested>>::route(ShutdownRequested).unwrap();
+    let event =
+        <_ as InjectEvent<ShutdownRequested, Inside<Inside<Here>>>>::inject_at(ShutdownRequested);
     let actions = behavior.transition(event).unwrap();
 
     assert!(matches!(actions.become_, Step::Stop(behavior::Stopped)));
@@ -340,79 +356,174 @@ async fn outer_combinators_preserve_the_shutdown_lane() {
 #[tokio::test]
 async fn shutdown_composition_preserves_inner_initialization_effects() {
     let due = Instant::now() + Duration::from_secs(1);
-    let behavior = (Quiet)
-        .deadline(TimerId(0), Some(due), |_| Ok(Step::Continue))
-        .stop_on_shutdown();
+    let behavior = behavior_actors::StopOnShutdown::new(behavior_actors::Deadline::new(
+        Quiet,
+        TimerId(0),
+        Some(due),
+        |_| Ok(Step::Continue),
+    ));
     let initialized = behavior.initialize().unwrap();
     let initial = initialized.actions;
     let _behavior = initialized.behavior;
 
-    assert_eq!(initial.sends.schedules.len(), 1);
-    assert_eq!(initial.sends.schedules[0].at, due);
+    assert_eq!(initial.sends.inner.owned.len(), 1);
+    assert_eq!(initial.sends.inner.owned[0].at, due);
     assert!(matches!(initial.become_, Step::Continue));
+}
+
+#[tokio::test]
+async fn shutdown_over_two_deadlines_preserves_both_exact_local_continuations() {
+    type RootEvent = behavior::ShutdownEvent<
+        behavior::DeadlineEvent<behavior::DeadlineEvent<User<MailAddr, u64>>>,
+    >;
+
+    struct TimerInterpreter {
+        pending: Vec<RootEvent>,
+    }
+
+    impl SendInterpreter for TimerInterpreter {
+        type Error = Never;
+    }
+
+    impl InterpretRequest<ScheduleAt, RootEvent, Inside<Here>> for TimerInterpreter {
+        fn interpret_request(
+            &mut self,
+            request: ScheduleAt,
+        ) -> impl Future<Output = Result<(), Self::Error>> + Send {
+            async move {
+                self.pending.push(
+                    <RootEvent as InjectEvent<TimerElapsed, Inside<Here>>>::inject_at(
+                        TimerElapsed {
+                            id: request.id,
+                            generation: request.generation,
+                        },
+                    ),
+                );
+                Ok(())
+            }
+        }
+    }
+
+    impl InterpretRequest<ScheduleAt, RootEvent, Inside<Inside<Here>>> for TimerInterpreter {
+        fn interpret_request(
+            &mut self,
+            request: ScheduleAt,
+        ) -> impl Future<Output = Result<(), Self::Error>> + Send {
+            async move {
+                self.pending.push(<RootEvent as InjectEvent<
+                    TimerElapsed,
+                    Inside<Inside<Here>>,
+                >>::inject_at(TimerElapsed {
+                    id: request.id,
+                    generation: request.generation,
+                }));
+                Ok(())
+            }
+        }
+    }
+
+    let due = Instant::now() + Duration::from_secs(1);
+    let initialized = behavior_actors::StopOnShutdown::new(behavior_actors::Deadline::new(
+        behavior_actors::Deadline::new(Quiet, TimerId(0), Some(due), |_| {
+            Ok(Step::Stop(behavior::Stopped))
+        }),
+        TimerId(0),
+        Some(due),
+        |_| Ok(Step::Continue),
+    ))
+    .initialize()
+    .unwrap();
+
+    let mut timers = TimerInterpreter {
+        pending: Vec::new(),
+    };
+    <_ as InterpretSends<_, RootEvent, Here>>::interpret(initialized.actions.sends, &mut timers)
+        .await
+        .unwrap();
+    assert_eq!(timers.pending.len(), 2);
+
+    let mut active = initialized.behavior;
+    // Traversal records the inner deadline first. Popping completes the two
+    // identical requests in reverse order: outer, then inner.
+    let outer = timers.pending.pop().unwrap();
+    assert_eq!(active.transition(outer).unwrap().become_, Step::Continue);
+
+    let inner = timers.pending.pop().unwrap();
+    assert_eq!(
+        active.transition(inner).unwrap().become_,
+        Step::Stop(behavior::Stopped)
+    );
 }
 
 #[tokio::test]
 async fn at_is_a_typed_clock_actor_protocol() {
     let now = Instant::now();
-    let behavior = (Quiet).deadline(TimerId(0), Some(now), |_| Ok(Step::Continue));
+    let behavior =
+        behavior_actors::Deadline::new(Quiet, TimerId(0), Some(now), |_| Ok(Step::Continue));
 
     let initialized = behavior.initialize().unwrap();
     let initial = initialized.actions;
     let mut behavior = initialized.behavior;
-    assert!(initial.sends.behavior.is_empty());
-    assert_eq!(initial.sends.schedules.len(), 1);
-    assert_eq!(initial.sends.schedules[0].at, now);
+    assert!(initial.sends.inner.is_empty());
+    assert_eq!(initial.sends.owned.len(), 1);
+    assert_eq!(initial.sends.owned[0].at, now);
 
     let fired = behavior
-        .on(TimerElapsed {
+        .on_path(TimerElapsed {
             id: TimerId(0),
             generation: TimerGeneration(0),
         })
         .unwrap();
-    assert!(fired.sends.schedules.is_empty());
+    assert!(fired.sends.owned.is_empty());
 }
 
 #[tokio::test]
 async fn nested_at_composition_routes_stale_and_matching_events() {
     let early = Instant::now() + Duration::from_secs(1);
     let late = early + Duration::from_secs(1);
-    let outer = (Quiet)
-        .deadline(TimerId(0), Some(early), |_| Ok(Step::Continue))
-        .deadline(TimerId(1), Some(late), |_| Ok(Step::Continue));
+    let outer = behavior_actors::Deadline::new(
+        behavior_actors::Deadline::new(Quiet, TimerId(0), Some(early), |_| Ok(Step::Continue)),
+        TimerId(1),
+        Some(late),
+        |_| Ok(Step::Continue),
+    );
 
     let initialized = outer.initialize().unwrap();
     let initial = initialized.actions;
     let mut outer = initialized.behavior;
-    assert_eq!(initial.sends.behavior.schedules[0].id, TimerId(0));
-    assert_eq!(initial.sends.schedules[0].id, TimerId(1));
-    assert_eq!(initial.sends.behavior.schedules[0].at, early);
-    assert_eq!(initial.sends.schedules[0].at, late);
+    assert_eq!(initial.sends.inner.owned[0].id, TimerId(0));
+    assert_eq!(initial.sends.owned[0].id, TimerId(1));
+    assert_eq!(initial.sends.inner.owned[0].at, early);
+    assert_eq!(initial.sends.owned[0].at, late);
 
-    let early_event = DeadlineEvent::Elapsed(TimerElapsed {
+    let early_event = EventLayer::Owned(TimerElapsed {
         id: TimerId(0),
         generation: TimerGeneration(0),
     });
     let actions = outer.transition(early_event).unwrap();
-    assert!(actions.sends.behavior.schedules.is_empty());
+    assert!(actions.sends.inner.owned.is_empty());
 }
 
 #[tokio::test]
 async fn spec_hides_composed_protocols_without_losing_their_effects() {
     let due = Instant::now() + Duration::from_secs(1);
     let peer = MailAddr(8);
-    let behavior = (Quiet)
-        .deadline(TimerId(0), Some(due), |_| Ok(Step::Continue))
-        .watch(peer, stop_on_abnormal_death)
-        .stash(|_| StashRoute::Deliver);
+    let behavior = behavior_actors::Stash::new(
+        behavior_actors::Watch::new(
+            behavior_actors::Deadline::new(Quiet, TimerId(0), Some(due), |_| Ok(Step::Continue)),
+            peer,
+            stop_on_abnormal_death,
+        ),
+        |_| StashRoute::Deliver,
+    );
 
     let initialized = behavior.initialize().unwrap();
     let initial = initialized.actions;
     let mut behavior = initialized.behavior;
-    assert_eq!(initial.sends.behavior.schedules[0].at, due);
-    assert_eq!(initial.sends.observations[0].peer, peer);
+    assert_eq!(initial.sends.inner.owned[0].at, due);
+    assert_eq!(initial.sends.owned[0].peer, peer);
 
-    let time = WatchEvent::Behavior(DeadlineEvent::Elapsed(TimerElapsed {
+    let time = EventLayer::Inner(EventLayer::Owned(TimerElapsed {
         id: TimerId(0),
         generation: TimerGeneration(0),
     }));
@@ -423,13 +534,13 @@ async fn spec_hides_composed_protocols_without_losing_their_effects() {
 #[tokio::test]
 async fn watching_registers_and_reacts_through_messages() {
     let peer = MailAddr(7);
-    let behavior = (Quiet).watch(peer, stop_on_abnormal_death);
+    let behavior = behavior_actors::Watch::new(Quiet, peer, stop_on_abnormal_death);
     let initialized = behavior.initialize().unwrap();
     let initial = initialized.actions;
     let mut behavior = initialized.behavior;
-    assert_eq!(initial.sends.observations[0].peer, peer);
+    assert_eq!(initial.sends.owned[0].peer, peer);
 
-    let stopped = WatchEvent::PeerStopped(PeerStopped {
+    let stopped = EventLayer::Owned(PeerStopped {
         peer,
         outcome: Err(Crash::Failed),
     });
@@ -451,7 +562,7 @@ async fn stashing_is_local_state_and_replay() {
             Ok(Actions::cont())
         }
     }
-    let behavior = (Seen(Vec::new())).stash(|message| match message {
+    let behavior = behavior_actors::Stash::new(Seen(Vec::new()), |message| match message {
         0 => StashRoute::Release,
         1 => StashRoute::Stash,
         _ => StashRoute::Deliver,
@@ -509,9 +620,9 @@ impl Parent {
     fn receive(
         &mut self,
         _from: MailAddr,
-        _message: u64,
+        message: u64,
     ) -> Acted<MailAddr, Never, Vec<Never>, Births<Child>, Never> {
-        Ok(Actions::cont())
+        Ok(Actions::create(vec![Create::birth(message, child(0))]))
     }
 }
 
@@ -553,7 +664,7 @@ impl StashRecording {
 #[tokio::test]
 async fn stash_release_delivers_the_trigger_then_drains_the_held_fifo() {
     let release = Arc::new(AtomicBool::new(false));
-    let behavior = (StashRecording(Vec::new())).stash(mutation_stash_route);
+    let behavior = behavior_actors::Stash::new(StashRecording(Vec::new()), mutation_stash_route);
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
     behavior
@@ -585,17 +696,19 @@ fn continue_on_death(
 }
 
 #[tokio::test]
-async fn an_outer_watcher_forwards_a_different_peer_to_the_inner_watcher() {
-    let behavior = (Quiet)
-        .watch(MailAddr(1), stop_on_abnormal_death)
-        .watch(MailAddr(2), continue_on_death);
+async fn a_structural_path_delivers_a_peer_fact_to_the_inner_watcher() {
+    let behavior = behavior_actors::Watch::new(
+        behavior_actors::Watch::new(Quiet, MailAddr(1), stop_on_abnormal_death),
+        MailAddr(2),
+        continue_on_death,
+    );
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
     let actions = behavior
-        .transition(WatchEvent::PeerStopped(PeerStopped {
+        .transition(EventLayer::Inner(EventLayer::Owned(PeerStopped {
             peer: MailAddr(1),
             outcome: Err(Crash::Failed),
-        }))
+        })))
         .unwrap();
     assert!(matches!(actions.become_, Step::Stop(behavior::Stopped)));
 }
@@ -646,30 +759,41 @@ async fn fsm_preserves_direct_stop_and_does_not_drain_on_stay() {
 
 #[tokio::test]
 async fn receive_timeout_reacts_only_to_its_own_live_timer_id() {
-    let behavior = (Quiet)
-        .deadline(TimerId(0), Some(Instant::now()), |_| {
+    let behavior = behavior_actors::ReceiveTimeout::new(
+        behavior_actors::Deadline::new(Quiet, TimerId(0), Some(Instant::now()), |_| {
             Ok(Step::Stop(behavior::Stopped))
-        })
-        .receive_timeout(TimerId(1), Duration::from_secs(1), |_| Ok(Actions::stop()));
+        }),
+        TimerId(1),
+        Duration::from_secs(1),
+        |_| Ok(Actions::stop()),
+    );
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
-    let wrong = behavior
-        .transition(behavior::ReceiveTimeoutEvent::Elapsed(TimerElapsed {
-            id: TimerId(0),
-            generation: TimerGeneration(0),
-        }))
+    let inner_deadline = behavior
+        .transition(behavior::EventLayer::Inner(behavior::EventLayer::Owned(
+            TimerElapsed {
+                id: TimerId(0),
+                generation: TimerGeneration(0),
+            },
+        )))
         .unwrap();
-    assert!(matches!(wrong.become_, Step::Stop(behavior::Stopped)));
-    let matching_behavior = (Quiet)
-        .deadline(TimerId(0), Some(Instant::now()), |_| {
+    assert!(matches!(
+        inner_deadline.become_,
+        Step::Stop(behavior::Stopped)
+    ));
+    let matching_behavior = behavior_actors::ReceiveTimeout::new(
+        behavior_actors::Deadline::new(Quiet, TimerId(0), Some(Instant::now()), |_| {
             Ok(Step::Stop(behavior::Stopped))
-        })
-        .receive_timeout(TimerId(1), Duration::from_secs(1), |_| Ok(Actions::stop()));
+        }),
+        TimerId(1),
+        Duration::from_secs(1),
+        |_| Ok(Actions::stop()),
+    );
     let initialized = matching_behavior.initialize().unwrap();
-    let matching_generation = initialized.actions.sends.schedules[0].generation;
+    let matching_generation = initialized.actions.sends.owned[0].generation;
     let mut matching_behavior = initialized.behavior;
     let matching = matching_behavior
-        .transition(behavior::ReceiveTimeoutEvent::Elapsed(TimerElapsed {
+        .transition(behavior::EventLayer::Owned(TimerElapsed {
             id: TimerId(1),
             generation: matching_generation,
         }))
@@ -699,17 +823,21 @@ impl UserEvent for TimerAwareEvent {
     }
 }
 
-impl RouteInput<TimerElapsed> for TimerAwareEvent {
-    fn route(event: TimerElapsed) -> Result<Self, TimerElapsed> {
-        Ok(Self::Time(event))
+impl InjectEvent<TimerElapsed, Here> for TimerAwareEvent {
+    fn inject_at(event: TimerElapsed) -> Self {
+        Self::Time(event)
     }
 }
 
 struct TimerAware;
 
-impl Behavior for TimerAware {
+impl behavior::Protocol for TimerAware {
     type Addr = MailAddr;
     type Msg = u64;
+}
+
+impl Behavior for TimerAware {
+    type Protocol = Self;
     type Event = TimerAwareEvent;
     type Sends = Vec<Never>;
     type Ph = Never;
@@ -740,12 +868,16 @@ impl Behavior for TimerAware {
 
 #[tokio::test]
 async fn a_stale_local_receive_timeout_is_consumed_not_forwarded() {
-    let behavior =
-        (TimerAware).receive_timeout(TimerId(0), Duration::from_secs(1), |_| Ok(Actions::stop()));
+    let behavior = behavior_actors::ReceiveTimeout::new(
+        TimerAware,
+        TimerId(0),
+        Duration::from_secs(1),
+        |_| Ok(Actions::stop()),
+    );
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
     let stale = behavior
-        .transition(behavior::ReceiveTimeoutEvent::Elapsed(TimerElapsed {
+        .transition(behavior::EventLayer::Owned(TimerElapsed {
             id: TimerId(0),
             generation: TimerGeneration(99),
         }))
@@ -758,7 +890,9 @@ async fn a_proxy_ignores_a_stale_child_stop_nonce() {
     let proxy = Proxy::new(child(0));
     let initialized = proxy.initialize().unwrap();
     let mut proxy = initialized.behavior;
-    proxy.on(CreationResolved::birth(0)).unwrap();
+    proxy
+        .on_path(CreationResolved::birth(0, MailAddr(0)))
+        .unwrap();
     let stale = proxy
         .transition(ProxyEvent::ChildStopped(ChildStopped {
             nonce: 99,
@@ -779,39 +913,153 @@ async fn a_proxy_ignores_a_stale_child_stop_nonce() {
     );
 }
 
+#[tokio::test]
+async fn a_proxy_shuts_down_its_exact_worker_before_stopping() {
+    let initialized = Proxy::new(child(0)).initialize().unwrap();
+    let mut proxy = initialized.behavior;
+    proxy
+        .on_path(CreationResolved::birth(0, MailAddr(0)))
+        .unwrap();
+
+    let requested = proxy.on_path(ShutdownRequested).unwrap();
+    assert_eq!(
+        requested.sends.shutdowns.as_slice(),
+        [ShutdownChild::new(0)]
+    );
+    assert!(matches!(requested.become_, Step::Continue));
+
+    let stale = proxy
+        .on_path(ChildStopped::new(9, Ok(Exit::Normal), Instant::now()))
+        .unwrap();
+    assert!(matches!(stale.become_, Step::Continue));
+
+    let stopped = proxy
+        .on_path(ChildStopped::new(0, Ok(Exit::Normal), Instant::now()))
+        .unwrap();
+    assert!(matches!(stopped.become_, Step::Stop(_)));
+    assert_eq!(stopped.sends.stopped_reports.len(), 1);
+}
+
+#[tokio::test]
+async fn proxy_shutdown_waits_for_in_flight_creation_resolution() {
+    let initialized = Proxy::new(child(0)).initialize().unwrap();
+    let mut accepted = initialized.behavior;
+    let waiting = accepted.on_path(ShutdownRequested).unwrap();
+    assert!(waiting.sends.shutdowns.is_empty());
+    assert!(matches!(waiting.become_, Step::Continue));
+
+    let resolved = accepted
+        .on_path(CreationResolved::birth(0, MailAddr(0)))
+        .unwrap();
+    assert_eq!(resolved.sends.shutdowns.as_slice(), [ShutdownChild::new(0)]);
+    assert!(matches!(resolved.become_, Step::Continue));
+
+    let initialized = Proxy::new(child(0)).initialize().unwrap();
+    let mut rejected = initialized.behavior;
+    rejected.on_path(ShutdownRequested).unwrap();
+    let resolved = rejected
+        .on_path(CreationResolved::new(
+            0,
+            CreationKind::Birth,
+            Err(CreationRejection::EnvironmentFailed),
+        ))
+        .unwrap();
+    assert!(resolved.sends.shutdowns.is_empty());
+    assert!(matches!(resolved.become_, Step::Stop(_)));
+}
+
+#[tokio::test]
+async fn proxy_shutdown_rejection_is_correlated_to_the_requested_worker() {
+    let initialized = Proxy::new(child(0)).initialize().unwrap();
+    let mut proxy = initialized.behavior;
+    proxy
+        .on_path(CreationResolved::birth(0, MailAddr(0)))
+        .unwrap();
+    proxy.on_path(ShutdownRequested).unwrap();
+
+    let stale = proxy
+        .on_path(ChildShutdownRejected::new(
+            9,
+            ChildShutdownRejection::NotEstablished,
+        ))
+        .unwrap();
+    assert!(matches!(stale.become_, Step::Continue));
+
+    let already = proxy
+        .on_path(ChildShutdownRejected::new(
+            0,
+            ChildShutdownRejection::AlreadyStopping,
+        ))
+        .unwrap();
+    assert!(matches!(already.become_, Step::Continue));
+
+    let rejected = proxy.on_path(ChildShutdownRejected::new(
+        0,
+        ChildShutdownRejection::NotEstablished,
+    ));
+    assert!(matches!(
+        rejected,
+        Err(behavior::ProxyError::ShutdownRejected(
+            ChildShutdownRejection::NotEstablished
+        ))
+    ));
+}
+
 #[test]
 fn birth_modes_are_disjoint_and_wrappers_forward_them() {
     requires_no_births((Quiet).base());
 
-    let creator = (Parent)
-        .deadline(TimerId(0), None, |_| Ok(Step::Continue))
-        .watch(MailAddr(4), stop_on_abnormal_death)
-        .stash(|_| StashRoute::Deliver);
+    let creator = behavior_actors::Stash::new(
+        behavior_actors::Watch::new(
+            behavior_actors::Deadline::new(Parent, TimerId(0), None, |_| Ok(Step::Continue)),
+            MailAddr(4),
+            stop_on_abnormal_death,
+        ),
+        |_| StashRoute::Deliver,
+    );
     requires_births::<_, Child>(&creator);
 
-    let supervisor = (Parent)
-        .children(
-            |index| u64::try_from(index).unwrap(),
-            1,
+    let supervisor = behavior_actors::Supervise::new(
+        Parent,
+        behavior_actors::ChildTopology::new(
+            (0..1).map(|index| u64::try_from(index).unwrap()),
             |index| Some(child(index)),
-        )
-        .unwrap();
+        ),
+        behavior_actors::RestartConfiguration::new(
+            behavior_actors::Strategy::OneForOne,
+            RestartPolicy::Transient,
+            1,
+            std::time::Duration::from_secs(5),
+        ),
+    )
+    .unwrap();
     requires_births::<_, Proxy<Child>>(&supervisor);
     requires_worker_events(&supervisor);
-    let timed_supervisor = (Parent)
-        .children(
-            |index| u64::try_from(index).unwrap(),
-            1,
-            |index| Some(child(index)),
+    let timed_supervisor = behavior_actors::Deadline::new(
+        behavior_actors::Supervise::new(
+            Parent,
+            behavior_actors::ChildTopology::new(
+                (0..1).map(|index| u64::try_from(index).unwrap()),
+                |index| Some(child(index)),
+            ),
+            behavior_actors::RestartConfiguration::new(
+                behavior_actors::Strategy::OneForOne,
+                behavior_actors::RestartPolicy::Transient,
+                1,
+                std::time::Duration::from_secs(5),
+            ),
         )
-        .unwrap()
-        .deadline(TimerId(0), None, |_| Ok(Step::Continue));
+        .unwrap(),
+        TimerId(0),
+        None,
+        |_| Ok(Step::Continue),
+    );
     requires_worker_events(&timed_supervisor);
     requires_births::<_, Child>(&Proxy::new(child(0)));
 }
 
-fn supervisor(strategy: Strategy, policy: RestartPolicy, budget: u32) -> Supervisor<Parent, Child> {
-    Supervisor::new(
+fn supervisor(strategy: Strategy, policy: RestartPolicy, budget: u32) -> Supervise<Parent, Child> {
+    Supervise::new(
         Parent,
         behavior::ChildTopology::indexed(
             |index| u64::try_from(index).unwrap(),
@@ -831,15 +1079,17 @@ fn verify_budget_failure_and_stop(
     _parent: &mut Parent,
     failure: &SupervisionFailure<MailAddr>,
 ) -> Result<Become, Never> {
-    assert_eq!(failure.child, 1);
-    assert_eq!(failure.outcome, Err(Crash::Panicked));
     assert_eq!(
-        failure.reason,
-        SupervisionFailureReason::RestartDenied(RestartDenial::BudgetExceeded {
-            restarts_in_window: 0,
-            replacements_requested: 3,
-            maximum_restarts: 2,
-        })
+        *failure,
+        SupervisionFailure::RestartDenied {
+            child: 1,
+            outcome: Err(Crash::Panicked),
+            denial: RestartDenial::BudgetExceeded {
+                restarts_in_window: 0,
+                replacements_requested: 3,
+                maximum_restarts: 2,
+            },
+        }
     );
     let _ = failure;
     Ok(Step::Stop(behavior::Stopped))
@@ -847,16 +1097,20 @@ fn verify_budget_failure_and_stop(
 
 #[tokio::test]
 async fn supervisor_creates_proxies_and_replacement_is_a_send() {
-    let supervisor = (Parent)
-        .children(
-            |index| u64::try_from(index).unwrap(),
-            2,
+    let supervisor = behavior_actors::Supervise::new(
+        Parent,
+        behavior_actors::ChildTopology::new(
+            (0..2).map(|index| u64::try_from(index).unwrap()),
             |index| Some(child(index)),
-        )
-        .unwrap()
-        .with_strategy(Strategy::OneForOne)
-        .with_policy(RestartPolicy::Transient)
-        .with_budget(2, Duration::MAX);
+        ),
+        behavior_actors::RestartConfiguration::new(
+            behavior_actors::Strategy::OneForOne,
+            behavior_actors::RestartPolicy::Transient,
+            2,
+            Duration::MAX,
+        ),
+    )
+    .unwrap();
     let initialized = supervisor.initialize().unwrap();
     let initial = initialized.actions;
     let mut supervisor = initialized.behavior;
@@ -867,9 +1121,9 @@ async fn supervisor_creates_proxies_and_replacement_is_a_send() {
             .iter()
             .all(|create| create.kind == CreationKind::Birth)
     );
-    assert_eq!(initial.sends.child_observations.len(), 2);
-    assert_eq!(initial.sends.child_observations[0].nonce, 0);
-    assert_eq!(initial.sends.child_observations[1].nonce, 1);
+    assert_eq!(initial.sends.owned.child_observations.len(), 2);
+    assert_eq!(initial.sends.owned.child_observations[0].nonce, 0);
+    assert_eq!(initial.sends.owned.child_observations[1].nonce, 1);
 
     let event = SupervisionEvent::WorkerStopped(WorkerStopped {
         proxy: 0,
@@ -879,9 +1133,9 @@ async fn supervisor_creates_proxies_and_replacement_is_a_send() {
     });
     let actions = supervisor.transition(event).unwrap();
     assert!(actions.creates.is_empty());
-    assert_eq!(actions.sends.replacement_commands.len(), 1);
+    assert_eq!(actions.sends.owned.replacement_commands.len(), 1);
     assert_eq!(
-        actions.sends.replacement_commands[0]
+        actions.sends.owned.replacement_commands[0]
             .to
             .resolve(MailAddr(17)),
         behavior::Address::birth(MailAddr(17), 0)
@@ -896,7 +1150,9 @@ async fn proxy_replacement_creates_a_fresh_incarnation() {
     let mut proxy = initialized.behavior;
     assert_eq!(first.creates[0].nonce, 0);
     assert_eq!(first.creates[0].kind, CreationKind::Birth);
-    proxy.on(CreationResolved::birth(0)).unwrap();
+    proxy
+        .on_path(CreationResolved::birth(0, MailAddr(0)))
+        .unwrap();
     let second = proxy
         .transition(ProxyEvent::Command(User::user(
             MailAddr(0),
@@ -920,7 +1176,7 @@ async fn proxy_replacement_creates_a_fresh_incarnation() {
     assert_eq!(second.sends.child_observations[0].nonce, 1);
     assert_eq!(second.sends.stopped_reports[0].outcome, Err(Crash::Failed));
     proxy
-        .on(CreationResolved::replacement_incarnation(1, 0))
+        .on_path(CreationResolved::replacement_incarnation(1, 0, MailAddr(1)))
         .unwrap();
 
     let forwarded = proxy
@@ -950,11 +1206,13 @@ async fn proxy_routes_only_after_matching_installation_and_rejection_stays_vacan
         .unwrap();
     assert!(pending.sends.deliveries.is_empty());
 
-    let stale = proxy.on(CreationResolved::birth(1)).unwrap();
+    let stale = proxy
+        .on_path(CreationResolved::birth(1, MailAddr(1)))
+        .unwrap();
     assert!(stale.sends.creation_reports.is_empty());
 
     let rejected = proxy
-        .on(CreationResolved::rejected(
+        .on_path(CreationResolved::rejected(
             0,
             CreationKind::Birth,
             CreationRejection::InitializationFailed,
@@ -979,7 +1237,9 @@ async fn proxy_serializes_attempts_and_rejection_preserves_last_installed_incarn
     let proxy = Proxy::new(child(0));
     let initialized = proxy.initialize().unwrap();
     let mut proxy = initialized.behavior;
-    proxy.on(CreationResolved::birth(0)).unwrap();
+    proxy
+        .on_path(CreationResolved::birth(0, MailAddr(0)))
+        .unwrap();
     proxy
         .transition(ProxyEvent::Command(User::user(
             MailAddr(0),
@@ -1007,7 +1267,7 @@ async fn proxy_serializes_attempts_and_rejection_preserves_last_installed_incarn
     assert!(overlapping.creates.is_empty());
 
     proxy
-        .on(CreationResolved::rejected(
+        .on_path(CreationResolved::rejected(
             1,
             CreationKind::ReplacementIncarnation { replaces: 0 },
             CreationRejection::EnvironmentFailed,
@@ -1033,7 +1293,9 @@ async fn idle_proxy_marks_an_immediate_successor_as_a_replacement_incarnation() 
     let initial = initialized.actions;
     let mut proxy = initialized.behavior;
     assert_eq!(initial.creates[0].kind, CreationKind::Birth);
-    proxy.on(CreationResolved::birth(0)).unwrap();
+    proxy
+        .on_path(CreationResolved::birth(0, MailAddr(0)))
+        .unwrap();
 
     let stopped = proxy
         .transition(ProxyEvent::ChildStopped(ChildStopped {
@@ -1060,22 +1322,26 @@ async fn idle_proxy_marks_an_immediate_successor_as_a_replacement_incarnation() 
 #[tokio::test]
 async fn stable_proxy_reports_worker_stop_and_creates_fresh_replacement() {
     let at = Instant::now();
-    let supervisor = (Parent)
-        .children(
-            |index| u64::try_from(index).unwrap(),
-            1,
+    let supervisor = behavior_actors::Supervise::new(
+        Parent,
+        behavior_actors::ChildTopology::new(
+            (0..1).map(|index| u64::try_from(index).unwrap()),
             |index| Some(child(index)),
-        )
-        .unwrap()
-        .with_strategy(Strategy::OneForOne)
-        .with_policy(RestartPolicy::Transient)
-        .with_budget(1, Duration::MAX);
+        ),
+        behavior_actors::RestartConfiguration::new(
+            behavior_actors::Strategy::OneForOne,
+            behavior_actors::RestartPolicy::Transient,
+            1,
+            Duration::MAX,
+        ),
+    )
+    .unwrap();
 
     let initialized = supervisor.initialize().unwrap();
     let mut initial = initialized.actions;
     let mut supervisor = initialized.behavior;
     assert_eq!(initial.creates[0].nonce, 0);
-    assert_eq!(initial.sends.child_observations[0].nonce, 0);
+    assert_eq!(initial.sends.owned.child_observations[0].nonce, 0);
     let proxy = initial.creates.remove(0).child;
 
     let initialized = proxy.initialize().unwrap();
@@ -1084,7 +1350,9 @@ async fn stable_proxy_reports_worker_stop_and_creates_fresh_replacement() {
     assert_eq!(worker_birth.creates[0].nonce, 0);
     assert_eq!(worker_birth.creates[0].kind, CreationKind::Birth);
     assert_eq!(worker_birth.sends.child_observations[0].nonce, 0);
-    proxy.on(CreationResolved::birth(0)).unwrap();
+    proxy
+        .on_path(CreationResolved::birth(0, MailAddr(0)))
+        .unwrap();
 
     let worker_stop = proxy
         .transition(ProxyEvent::ChildStopped(ChildStopped {
@@ -1109,9 +1377,9 @@ async fn stable_proxy_reports_worker_stop_and_creates_fresh_replacement() {
         }))
         .unwrap();
     assert!(restart.creates.is_empty());
-    assert_eq!(restart.sends.replacement_commands.len(), 1);
+    assert_eq!(restart.sends.owned.replacement_commands.len(), 1);
     assert_eq!(
-        restart.sends.replacement_commands[0]
+        restart.sends.owned.replacement_commands[0]
             .to
             .resolve(MailAddr(17)),
         behavior::Address::birth(MailAddr(17), 0)
@@ -1119,6 +1387,7 @@ async fn stable_proxy_reports_worker_stop_and_creates_fresh_replacement() {
 
     let command = restart
         .sends
+        .owned
         .replacement_commands
         .into_iter()
         .next()
@@ -1153,26 +1422,40 @@ async fn stopped_proxy_is_retired_without_sending_to_its_dead_address() {
         .unwrap();
 
     assert!(stopped.creates.is_empty());
-    assert!(stopped.sends.replacement_commands.is_empty());
+    assert!(stopped.sends.owned.replacement_commands.is_empty());
     assert!(!supervisor.is_alive(1).unwrap());
     assert_eq!(stopped.become_, Step::Continue);
 }
 
 #[tokio::test]
 async fn configured_supervision_failure_reaction_stops_on_budget_denial() {
-    let supervisor = (Parent)
-        .children(
-            |index| u64::try_from(index).unwrap(),
-            3,
+    let supervisor = behavior_actors::Supervise::new(
+        Parent,
+        behavior_actors::ChildTopology::new(
+            (0..3).map(|index| u64::try_from(index).unwrap()),
             |index| Some(child(index)),
-        )
-        .unwrap()
-        .with_strategy(Strategy::OneForAll)
-        .with_policy(RestartPolicy::Permanent)
-        .with_budget(2, Duration::MAX)
-        .with_failure_reaction(verify_budget_failure_and_stop);
+        ),
+        behavior_actors::RestartConfiguration::new(
+            Strategy::OneForAll,
+            RestartPolicy::Permanent,
+            2,
+            Duration::MAX,
+        ),
+    )
+    .unwrap()
+    .with_failure_reaction(verify_budget_failure_and_stop);
     let initialized = supervisor.initialize().unwrap();
     let mut supervisor = initialized.behavior;
+    for proxy in 0..3 {
+        supervisor
+            .on_path(WorkerCreationResolved::new(
+                proxy,
+                proxy,
+                CreationKind::Birth,
+                Ok(()),
+            ))
+            .unwrap();
+    }
 
     let actions = supervisor
         .transition(SupervisionEvent::WorkerStopped(WorkerStopped {
@@ -1183,10 +1466,10 @@ async fn configured_supervision_failure_reaction_stops_on_budget_denial() {
         }))
         .unwrap();
 
-    assert!(actions.sends.replacement_commands.is_empty());
-    assert_eq!(actions.sends.failure_reports.len(), 1);
+    assert!(actions.sends.owned.replacement_commands.is_empty());
+    assert_eq!(actions.sends.owned.failure_reports.len(), 1);
     assert_eq!(
-        actions.sends.failure_reports[0].failure.reason,
+        actions.sends.owned.failure_reports[0].failure.reason(),
         SupervisionFailureReason::RestartDenied(RestartDenial::BudgetExceeded {
             restarts_in_window: 0,
             replacements_requested: 3,
@@ -1200,14 +1483,21 @@ async fn configured_supervision_failure_reaction_stops_on_budget_denial() {
 
 #[tokio::test]
 async fn configured_supervision_failure_reaction_stops_when_stable_proxy_stops() {
-    let supervisor = (Parent)
-        .children(
-            |index| u64::try_from(index).unwrap(),
-            1,
+    let supervisor = behavior_actors::Supervise::new(
+        Parent,
+        behavior_actors::ChildTopology::new(
+            (0..1).map(|index| u64::try_from(index).unwrap()),
             |index| Some(child(index)),
-        )
-        .unwrap()
-        .with_failure_reaction(stop_on_supervision_failure);
+        ),
+        behavior_actors::RestartConfiguration::new(
+            behavior_actors::Strategy::OneForOne,
+            RestartPolicy::Transient,
+            1,
+            std::time::Duration::from_secs(5),
+        ),
+    )
+    .unwrap()
+    .with_failure_reaction(stop_on_supervision_failure);
     let initialized = supervisor.initialize().unwrap();
     let mut supervisor = initialized.behavior;
     let actions = supervisor
@@ -1219,9 +1509,9 @@ async fn configured_supervision_failure_reaction_stops_when_stable_proxy_stops()
         .unwrap();
 
     assert_eq!(actions.become_, Step::Stop(behavior::Stopped));
-    assert_eq!(actions.sends.failure_reports.len(), 1);
+    assert_eq!(actions.sends.owned.failure_reports.len(), 1);
     assert_eq!(
-        actions.sends.failure_reports[0].failure.reason,
+        actions.sends.owned.failure_reports[0].failure.reason(),
         SupervisionFailureReason::StableChildStopped
     );
     assert!(!supervisor.is_alive(0).unwrap());
@@ -1229,15 +1519,21 @@ async fn configured_supervision_failure_reaction_stops_when_stable_proxy_stops()
 
 #[tokio::test]
 async fn restart_policy_ineligibility_is_not_a_supervision_failure() {
-    let supervisor = (Parent)
-        .children(
-            |index| u64::try_from(index).unwrap(),
-            1,
+    let supervisor = behavior_actors::Supervise::new(
+        Parent,
+        behavior_actors::ChildTopology::new(
+            (0..1).map(|index| u64::try_from(index).unwrap()),
             |index| Some(child(index)),
-        )
-        .unwrap()
-        .with_policy(RestartPolicy::Temporary)
-        .with_failure_reaction(stop_on_supervision_failure);
+        ),
+        behavior_actors::RestartConfiguration::new(
+            behavior_actors::Strategy::OneForOne,
+            RestartPolicy::Temporary,
+            1,
+            std::time::Duration::from_secs(5),
+        ),
+    )
+    .unwrap()
+    .with_failure_reaction(stop_on_supervision_failure);
     let initialized = supervisor.initialize().unwrap();
     let mut supervisor = initialized.behavior;
     let actions = supervisor
@@ -1270,9 +1566,9 @@ async fn supervision_failure_exit_is_an_abnormal_transient_worker_outcome() {
         }))
         .unwrap();
 
-    assert_eq!(actions.sends.replacement_commands.len(), 1);
+    assert_eq!(actions.sends.owned.replacement_commands.len(), 1);
     assert_eq!(
-        actions.sends.replacement_commands[0]
+        actions.sends.owned.replacement_commands[0]
             .to
             .resolve(MailAddr(17)),
         behavior::Address::birth(MailAddr(17), 0)
@@ -1319,14 +1615,20 @@ impl ReplacingParent {
 
 #[tokio::test]
 async fn supervisor_preserves_and_observes_dynamic_births_once() {
-    let supervisor = (BirthingParent(false))
-        .children(
-            |index| u64::try_from(index).unwrap(),
-            0,
+    let supervisor = behavior_actors::Supervise::new(
+        BirthingParent(false),
+        behavior_actors::ChildTopology::new(
+            (0..0).map(|index| u64::try_from(index).unwrap()),
             |index| Some(child(index)),
-        )
-        .unwrap()
-        .with_budget(1, Duration::MAX);
+        ),
+        behavior_actors::RestartConfiguration::new(
+            behavior_actors::Strategy::OneForOne,
+            behavior_actors::RestartPolicy::Transient,
+            1,
+            Duration::MAX,
+        ),
+    )
+    .unwrap();
     let initialized = supervisor.initialize().unwrap();
     let initial = initialized.actions;
     let mut supervisor = initialized.behavior;
@@ -1338,8 +1640,8 @@ async fn supervisor_preserves_and_observes_dynamic_births_once() {
     assert_eq!(born.creates.len(), 1);
     assert_eq!(born.creates[0].nonce, 9);
     assert_eq!(born.creates[0].kind, CreationKind::Birth);
-    assert_eq!(born.sends.child_observations.len(), 1);
-    assert_eq!(born.sends.child_observations[0].nonce, 9);
+    assert_eq!(born.sends.owned.child_observations.len(), 1);
+    assert_eq!(born.sends.owned.child_observations[0].nonce, 9);
     assert_eq!(supervisor.child_count(), 1);
 
     let stopped = SupervisionEvent::WorkerStopped(WorkerStopped {
@@ -1349,9 +1651,9 @@ async fn supervisor_preserves_and_observes_dynamic_births_once() {
         at: Instant::now(),
     });
     let replacement = supervisor.transition(stopped).unwrap();
-    assert_eq!(replacement.sends.replacement_commands.len(), 1);
+    assert_eq!(replacement.sends.owned.replacement_commands.len(), 1);
     assert_eq!(
-        replacement.sends.replacement_commands[0]
+        replacement.sends.owned.replacement_commands[0]
             .to
             .resolve(MailAddr(17)),
         behavior::Address::birth(MailAddr(17), 9)
@@ -1360,14 +1662,20 @@ async fn supervisor_preserves_and_observes_dynamic_births_once() {
 
 #[tokio::test]
 async fn supervisor_preserves_dynamic_replacement_provenance_when_wrapping_the_child() {
-    let supervisor = (ReplacingParent)
-        .children(
-            |index| u64::try_from(index).unwrap(),
-            0,
+    let supervisor = behavior_actors::Supervise::new(
+        ReplacingParent,
+        behavior_actors::ChildTopology::new(
+            (0..0).map(|index| u64::try_from(index).unwrap()),
             |index| Some(child(index)),
-        )
-        .unwrap()
-        .with_budget(1, Duration::MAX);
+        ),
+        behavior_actors::RestartConfiguration::new(
+            behavior_actors::Strategy::OneForOne,
+            behavior_actors::RestartPolicy::Transient,
+            1,
+            Duration::MAX,
+        ),
+    )
+    .unwrap();
     let initialized = supervisor.initialize().unwrap();
     let mut supervisor = initialized.behavior;
 
@@ -1398,10 +1706,20 @@ async fn supervision_strategy_policy_and_budget_are_pure_send_decisions() {
         .initialize()
         .unwrap()
         .behavior;
+    for proxy in 0..3 {
+        one.on_path(WorkerCreationResolved::new(
+            proxy,
+            proxy,
+            CreationKind::Birth,
+            Ok(()),
+        ))
+        .unwrap();
+    }
     assert_eq!(
         one.transition(stopped(1))
             .unwrap()
             .sends
+            .owned
             .replacement_commands
             .len(),
         1
@@ -1411,10 +1729,20 @@ async fn supervision_strategy_policy_and_budget_are_pure_send_decisions() {
         .initialize()
         .unwrap()
         .behavior;
+    for proxy in 0..3 {
+        all.on_path(WorkerCreationResolved::new(
+            proxy,
+            proxy,
+            CreationKind::Birth,
+            Ok(()),
+        ))
+        .unwrap();
+    }
     assert_eq!(
         all.transition(stopped(1))
             .unwrap()
             .sends
+            .owned
             .replacement_commands
             .len(),
         3
@@ -1424,10 +1752,20 @@ async fn supervision_strategy_policy_and_budget_are_pure_send_decisions() {
         .initialize()
         .unwrap()
         .behavior;
+    for proxy in 0..3 {
+        rest.on_path(WorkerCreationResolved::new(
+            proxy,
+            proxy,
+            CreationKind::Birth,
+            Ok(()),
+        ))
+        .unwrap();
+    }
     assert_eq!(
         rest.transition(stopped(1))
             .unwrap()
             .sends
+            .owned
             .replacement_commands
             .len(),
         2
@@ -1442,6 +1780,7 @@ async fn supervision_strategy_policy_and_budget_are_pure_send_decisions() {
             .transition(stopped(1))
             .unwrap()
             .sends
+            .owned
             .replacement_commands
             .is_empty()
     );
@@ -1456,6 +1795,7 @@ async fn supervision_strategy_policy_and_budget_are_pure_send_decisions() {
             .transition(stopped(1))
             .unwrap()
             .sends
+            .owned
             .replacement_commands
             .is_empty()
     );
@@ -1464,10 +1804,12 @@ async fn supervision_strategy_policy_and_budget_are_pure_send_decisions() {
 #[tokio::test]
 async fn stale_time_events_do_not_fire_or_reschedule() {
     let due = Instant::now() + Duration::from_secs(2);
-    let behavior = (Quiet).deadline(TimerId(0), Some(due), |_| Ok(Step::Stop(behavior::Stopped)));
+    let behavior = behavior_actors::Deadline::new(Quiet, TimerId(0), Some(due), |_| {
+        Ok(Step::Stop(behavior::Stopped))
+    });
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
-    let stale = DeadlineEvent::Elapsed(TimerElapsed {
+    let stale = EventLayer::Owned(TimerElapsed {
         id: TimerId(0),
         generation: TimerGeneration(1),
     });
@@ -1475,7 +1817,7 @@ async fn stale_time_events_do_not_fire_or_reschedule() {
     assert!(matches!(ignored.become_, Step::Continue));
 
     let fired = behavior
-        .transition(DeadlineEvent::Elapsed(TimerElapsed {
+        .transition(EventLayer::Owned(TimerElapsed {
             id: TimerId(0),
             generation: TimerGeneration(0),
         }))
@@ -1483,7 +1825,7 @@ async fn stale_time_events_do_not_fire_or_reschedule() {
     assert!(matches!(fired.become_, Step::Stop(behavior::Stopped)));
 
     let duplicate = behavior
-        .transition(DeadlineEvent::Elapsed(TimerElapsed {
+        .transition(EventLayer::Owned(TimerElapsed {
             id: TimerId(0),
             generation: TimerGeneration(0),
         }))
@@ -1499,15 +1841,18 @@ proptest! {
         let origin = Instant::now();
         let first = origin + Duration::from_nanos(first);
         let second = origin + Duration::from_nanos(second);
-        let outer = (Quiet)
-            .deadline(TimerId(0), Some(first), |_| Ok(Step::Continue))
-            .deadline(TimerId(1), Some(second), |_| Ok(Step::Continue));
+        let outer = behavior_actors::Deadline::new(
+            behavior_actors::Deadline::new(Quiet, TimerId(0), Some(first), |_| Ok(Step::Continue)),
+            TimerId(1),
+            Some(second),
+            |_| Ok(Step::Continue),
+        );
         let _runtime = Builder::new_current_thread().enable_all().build().unwrap();
         let initialized = outer.initialize().unwrap();
     let actions = initialized.actions;
     let _outer = initialized.behavior;
-        prop_assert_eq!(actions.sends.behavior.schedules[0].at, first);
-        prop_assert_eq!(actions.sends.schedules[0].at, second);
+        prop_assert_eq!(actions.sends.inner.owned[0].at, first);
+        prop_assert_eq!(actions.sends.owned[0].at, second);
     }
 
     #[test]
@@ -1526,6 +1871,14 @@ proptest! {
             .initialize()
             .unwrap()
             .behavior;
+        for proxy in 0..3 {
+            behavior.on_path(WorkerCreationResolved::new(
+                proxy,
+                proxy,
+                CreationKind::Birth,
+                Ok(()),
+            )).unwrap();
+        }
         let event = SupervisionEvent::WorkerStopped(WorkerStopped {
             proxy: u64::try_from(dead).unwrap(),
             worker: u64::try_from(dead).unwrap(),
@@ -1534,7 +1887,7 @@ proptest! {
         });
         let _runtime = Builder::new_current_thread().enable_all().build().unwrap();
         let actions = behavior.transition(event).unwrap();
-        prop_assert_eq!(actions.sends.replacement_commands.len(), expected);
+        prop_assert_eq!(actions.sends.owned.replacement_commands.len(), expected);
         prop_assert!(actions.creates.is_empty());
     }
 }

@@ -1,11 +1,11 @@
 use std::time::Duration;
 
+use behavior::EventLayer;
 use behavior::{
-    Acted, Actions, ChildStopped, Compose, Crash, Create, CreationKind, CreationResolved,
-    DeadlineEvent, Delivery, Exit, Machine, MailAddr, Move, Never, PeerStopped, Proxy,
-    ProxyCommand, ProxyEvent, Recipient, RestartPolicy, StashRoute, Step, Strategy,
-    SupervisionEvent, TimerElapsed, TimerGeneration, TimerId, User, UserEvent, WatchEvent,
-    WorkerStopped, stop_on_abnormal_death,
+    Acted, Actions, ChildStopped, Crash, Create, CreationKind, CreationResolved, Delivery, Exit,
+    Machine, MailAddr, Move, Never, PeerStopped, Proxy, ProxyCommand, ProxyEvent, Recipient,
+    RestartPolicy, StashRoute, Step, SupervisionEvent, TimerElapsed, TimerGeneration, TimerId,
+    User, UserEvent, WorkerStopped, stop_on_abnormal_death,
 };
 use behavior_testkit::{Mailbox, drive};
 use std::time::Instant;
@@ -63,31 +63,34 @@ async fn owned_mailbox_is_fifo_and_stops_without_consuming_tail() {
 async fn empty_mailbox_still_observes_initialization_exactly_once() {
     let due = Instant::now() + Duration::from_secs(1);
     let behavior =
-        (Recorder::default()).deadline(behavior::TimerId(0), Some(due), |_| Ok(Step::Continue));
+        behavior::Deadline::new(Recorder::default(), behavior::TimerId(0), Some(due), |_| {
+            Ok(Step::Continue)
+        });
     let mut mailbox = Mailbox::new([]);
     let trace = drive(behavior, &mut mailbox).unwrap();
 
     assert_eq!(trace.transitions, 1);
-    assert_eq!(trace.sends.schedules.len(), 1);
-    assert_eq!(trace.sends.schedules[0].at, due);
+    assert_eq!(trace.sends.owned.len(), 1);
+    assert_eq!(trace.sends.owned[0].at, due);
 }
 
 #[tokio::test]
 async fn stale_and_duplicate_time_observations_are_inert() {
     let due = Instant::now() + Duration::from_secs(2);
-    let behavior = (Recorder::default()).deadline(behavior::TimerId(0), Some(due), |_| {
-        Ok(Step::Stop(behavior::Stopped))
-    });
+    let behavior =
+        behavior::Deadline::new(Recorder::default(), behavior::TimerId(0), Some(due), |_| {
+            Ok(Step::Stop(behavior::Stopped))
+        });
     let mut mailbox = Mailbox::new([
-        DeadlineEvent::Elapsed(TimerElapsed {
+        EventLayer::Owned(TimerElapsed {
             id: TimerId(0),
             generation: TimerGeneration(1),
         }),
-        DeadlineEvent::Elapsed(TimerElapsed {
+        EventLayer::Owned(TimerElapsed {
             id: TimerId(0),
             generation: TimerGeneration(0),
         }),
-        DeadlineEvent::Elapsed(TimerElapsed {
+        EventLayer::Owned(TimerElapsed {
             id: TimerId(0),
             generation: TimerGeneration(0),
         }),
@@ -103,40 +106,55 @@ async fn stale_and_duplicate_time_observations_are_inert() {
 async fn wrapper_orderings_preserve_both_initial_protocols() {
     let due = Instant::now() + Duration::from_secs(1);
     let peer = MailAddr(44);
-    let at_then_watch = (Recorder::default())
-        .deadline(behavior::TimerId(0), Some(due), |_| Ok(Step::Continue))
-        .watch(peer, stop_on_abnormal_death);
+    let at_then_watch = behavior::Watch::new(
+        behavior::Deadline::new(Recorder::default(), behavior::TimerId(0), Some(due), |_| {
+            Ok(Step::Continue)
+        }),
+        peer,
+        stop_on_abnormal_death,
+    );
     let initialized = at_then_watch.initialize().unwrap();
     let first = initialized.actions;
     let _at_then_watch = initialized.behavior;
-    assert_eq!(first.sends.behavior.schedules[0].at, due);
-    assert_eq!(first.sends.observations[0].peer, peer);
+    assert_eq!(first.sends.inner.owned[0].at, due);
+    assert_eq!(first.sends.owned[0].peer, peer);
 
-    let watch_then_at = (Recorder::default())
-        .watch(peer, stop_on_abnormal_death)
-        .deadline(behavior::TimerId(0), Some(due), |_| Ok(Step::Continue));
+    let watch_then_at = behavior::Deadline::new(
+        behavior::Watch::new(Recorder::default(), peer, stop_on_abnormal_death),
+        behavior::TimerId(0),
+        Some(due),
+        |_| Ok(Step::Continue),
+    );
     let initialized = watch_then_at.initialize().unwrap();
     let second = initialized.actions;
     let _watch_then_at = initialized.behavior;
-    assert_eq!(second.sends.behavior.observations[0].peer, peer);
-    assert_eq!(second.sends.schedules[0].at, due);
+    assert_eq!(second.sends.inner.owned[0].peer, peer);
+    assert_eq!(second.sends.owned[0].at, due);
 }
 
 #[tokio::test]
-async fn unrelated_peer_event_passes_to_the_inner_watcher() {
+async fn peer_fact_reaches_only_its_structurally_selected_watcher() {
     let inner_peer = MailAddr(1);
     let outer_peer = MailAddr(2);
-    let behavior = (Recorder::default())
-        .watch(inner_peer, stop_on_abnormal_death)
-        .watch(outer_peer, stop_on_abnormal_death);
+    let behavior = behavior::Watch::new(
+        behavior::Watch::new(Recorder::default(), inner_peer, stop_on_abnormal_death),
+        outer_peer,
+        stop_on_abnormal_death,
+    );
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
-    let event = WatchEvent::PeerStopped(PeerStopped {
+    let stale_outer = EventLayer::Owned(PeerStopped {
         peer: inner_peer,
         outcome: Err(Crash::Failed),
     });
-    let actions = behavior.transition(event).unwrap();
+    let ignored = behavior.transition(stale_outer).unwrap();
+    assert_eq!(ignored.become_, Step::Continue);
 
+    let selected_inner = EventLayer::Inner(EventLayer::Owned(PeerStopped {
+        peer: inner_peer,
+        outcome: Err(Crash::Failed),
+    }));
+    let actions = behavior.transition(selected_inner).unwrap();
     assert_eq!(actions.become_, Step::Stop(behavior::Stopped));
 }
 
@@ -150,7 +168,7 @@ async fn unrelated_peer_event_passes_to_the_inner_watcher() {
 // `Deliver`-routed messages pass straight through with their origin intact.
 #[tokio::test]
 async fn stash_holds_in_fifo_order_without_loss_or_duplication_across_releases() {
-    let behavior = (Recorder::default()).stash(|message| match message {
+    let behavior = behavior::Stash::new(Recorder::default(), |message| match message {
         0 => StashRoute::Release,
         1..=9 => StashRoute::Stash,
         _ => StashRoute::Deliver,
@@ -253,7 +271,7 @@ async fn proxy_forwards_only_to_the_current_fresh_generation() {
         .transition(ProxyEvent::CreationResolved(CreationResolved {
             nonce: 0,
             kind: CreationKind::Birth,
-            result: Ok(()),
+            result: Ok(MailAddr(999)),
         }))
         .unwrap();
 
@@ -288,7 +306,7 @@ async fn proxy_forwards_only_to_the_current_fresh_generation() {
         .transition(ProxyEvent::CreationResolved(CreationResolved {
             nonce: 1,
             kind: CreationKind::ReplacementIncarnation { replaces: 0 },
-            result: Ok(()),
+            result: Ok(MailAddr(999)),
         }))
         .unwrap();
 
@@ -307,16 +325,19 @@ async fn proxy_forwards_only_to_the_current_fresh_generation() {
 #[tokio::test]
 async fn restart_window_boundary_is_inclusive() {
     let start = Instant::now();
-    let supervisor = (Parent(true))
-        .children(
-            |index| u64::try_from(index).unwrap(),
+    let supervisor = behavior::Supervise::new(
+        Parent(true),
+        behavior::ChildTopology::new((0..1).map(|index| u64::try_from(index).unwrap()), |index| {
+            Some(child(index))
+        }),
+        behavior::RestartConfiguration::new(
+            behavior::Strategy::OneForOne,
+            RestartPolicy::Permanent,
             1,
-            |index| Some(child(index)),
-        )
-        .unwrap()
-        .with_strategy(Strategy::OneForOne)
-        .with_policy(RestartPolicy::Permanent)
-        .with_budget(1, Duration::from_secs(5));
+            Duration::from_secs(5),
+        ),
+    )
+    .unwrap();
     let initialized = supervisor.initialize().unwrap();
     let mut supervisor = initialized.behavior;
 
@@ -331,6 +352,7 @@ async fn restart_window_boundary_is_inclusive() {
             .transition(first)
             .unwrap()
             .sends
+            .owned
             .replacement_commands
             .len(),
         1
@@ -347,6 +369,7 @@ async fn restart_window_boundary_is_inclusive() {
             .transition(edge)
             .unwrap()
             .sends
+            .owned
             .replacement_commands
             .is_empty()
     );
@@ -354,18 +377,24 @@ async fn restart_window_boundary_is_inclusive() {
 
 #[tokio::test]
 async fn duplicate_dynamic_birth_is_rejected() {
-    let supervisor = (Parent(false))
-        .children(
-            |index| u64::try_from(index).unwrap(),
+    let supervisor = behavior::Supervise::new(
+        Parent(false),
+        behavior::ChildTopology::new((0..1).map(|index| u64::try_from(index).unwrap()), |index| {
+            Some(child(index))
+        }),
+        behavior::RestartConfiguration::new(
+            behavior::Strategy::OneForOne,
+            behavior::RestartPolicy::Transient,
             1,
-            |index| Some(child(index)),
-        )
-        .unwrap();
+            std::time::Duration::from_secs(5),
+        ),
+    )
+    .unwrap();
     let initialized = supervisor.initialize().unwrap();
     let mut supervisor = initialized.behavior;
     assert!(matches!(
         supervisor.transition(UserEvent::user(MailAddr(0), 0)),
-        Err(behavior::SupervisorError::Fleet(
+        Err(behavior::SuperviseError::Fleet(
             behavior::FleetError::DuplicateChild(0)
         ))
     ));

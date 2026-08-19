@@ -1,13 +1,19 @@
-use behavior::{Actions, Behavior, Delivery, MailAddr, Never, NoBirths, Recipient, User};
+use behavior::{
+    Actions, Behavior, Delivery, MailAddr, MessageProtocol, Never, NoBirths, Recipient, User,
+};
 
 struct Queue;
 struct Worker;
 
 macro_rules! inert {
     ($actor:ty) => {
-        impl Behavior for $actor {
+        impl behavior::Protocol for $actor {
             type Addr = MailAddr;
             type Msg = u8;
+        }
+
+        impl Behavior for $actor {
+            type Protocol = Self;
             type Event = User<MailAddr, u8>;
             type Sends = Vec<Never>;
             type Ph = Never;
@@ -46,9 +52,13 @@ fn identical_address_and_message_types_keep_distinct_protocol_lanes() {
 
 struct SelfSending;
 
-impl Behavior for SelfSending {
+impl behavior::Protocol for SelfSending {
     type Addr = MailAddr;
     type Msg = u8;
+}
+
+impl Behavior for SelfSending {
+    type Protocol = Self;
     type Event = User<MailAddr, u8>;
     type Sends = Vec<Delivery<Self>>;
     type Ph = Never;
@@ -113,9 +123,13 @@ impl behavior::Address for RemoteAddr {
 
 struct Remote;
 
-impl Behavior for Remote {
+impl behavior::Protocol for Remote {
     type Addr = RemoteAddr;
     type Msg = u8;
+}
+
+impl Behavior for Remote {
+    type Protocol = Self;
     type Event = User<RemoteAddr, u8>;
     type Sends = Vec<Never>;
     type Ph = Never;
@@ -137,9 +151,13 @@ impl Behavior for Remote {
 
 struct CrossNamespaceSender;
 
-impl Behavior for CrossNamespaceSender {
+impl behavior::Protocol for CrossNamespaceSender {
     type Addr = MailAddr;
     type Msg = ();
+}
+
+impl Behavior for CrossNamespaceSender {
+    type Protocol = Self;
     type Event = User<MailAddr, ()>;
     type Sends = Vec<Delivery<Remote>>;
     type Ph = Never;
@@ -181,5 +199,17 @@ fn protocol_markers_need_no_clone_or_equality_implementation() {
     let cloned = delivery.clone();
 
     assert!(cloned == delivery);
+}
+
+#[test]
+fn reusable_message_protocol_retains_one_established_identity_across_emitters() {
+    type RootProtocol = MessageProtocol<MailAddr, u8>;
+
+    let root = Recipient::<RootProtocol>::global(MailAddr(0));
+    let first = Delivery::new(root, 1);
+    let second = Delivery::new(root, 2);
+
+    assert_eq!(first.to.resolve(MailAddr(11)), MailAddr(0));
+    assert_eq!(second.to.resolve(MailAddr(99)), MailAddr(0));
 }
 use behavior_testkit::InitializeTest;

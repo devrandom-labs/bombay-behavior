@@ -3,9 +3,10 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, Activate, Compose, MailAddr, Never, NoBirths, ReceiveTimeoutEvent, Step,
-    TimerElapsed, TimerGeneration, TimerId, User, UserEvent,
+    Acted, Actions, Activate, MailAddr, Never, NoBirths, Step, TimerElapsed, TimerGeneration,
+    TimerId, User, UserEvent,
 };
+use behavior::EventLayer;
 use libfuzzer_sys::fuzz_target;
 use tokio::runtime::Builder;
 
@@ -31,12 +32,16 @@ fn elapsed(_inner: &mut SinkBehavior) -> Acted<MailAddr, Never, Vec<Never>, NoBi
 fuzz_target!(|bytes: &[u8]| {
     let runtime = Builder::new_current_thread().build().unwrap();
     runtime.block_on(async {
-        let behavior =
-            (Sink).receive_timeout(TimerId(0), Duration::from_nanos(1), elapsed);
+        let behavior = behavior::ReceiveTimeout::new(
+            Sink,
+            TimerId(0),
+            Duration::from_nanos(1),
+            elapsed,
+        );
         let initialized = behavior.initialize().unwrap();
         let initial = initialized.actions;
         let mut behavior = initialized.behavior;
-        assert_eq!(initial.sends.schedules[0].generation, TimerGeneration(0));
+        assert_eq!(initial.sends.owned[0].generation, TimerGeneration(0));
         let mut issued = 0_u64;
         let mut live = Some(0_u64);
 
@@ -47,17 +52,17 @@ fuzz_target!(|bytes: &[u8]| {
                         break;
                     };
                     let actions = behavior
-                        .transition(ReceiveTimeoutEvent::Behavior(User::user(MailAddr(1), byte)))
+                        .transition(EventLayer::Inner(User::user(MailAddr(1), byte)))
                         .unwrap();
                     issued = next;
                     live = Some(next);
-                    assert_eq!(actions.sends.schedules[0].generation, TimerGeneration(next));
+                    assert_eq!(actions.sends.owned[0].generation, TimerGeneration(next));
                 }
                 1 => {
                     let delivered = u64::from(byte / 3);
                     let matched = live == Some(delivered);
                     let actions = behavior
-                        .transition(ReceiveTimeoutEvent::Elapsed(TimerElapsed {
+                        .transition(EventLayer::Owned(TimerElapsed {
                             id: TimerId(0),
                             generation: TimerGeneration(delivered),
                         }))
@@ -65,19 +70,19 @@ fuzz_target!(|bytes: &[u8]| {
                     if matched {
                         live = None;
                     }
-                    assert!(actions.sends.behavior.is_empty());
+                    assert!(actions.sends.inner.is_empty());
                     assert!(matches!(actions.become_, Step::Continue));
                 }
                 _ => {
                     let before = live;
                     let actions = behavior
-                        .transition(ReceiveTimeoutEvent::Elapsed(TimerElapsed {
+                        .transition(EventLayer::Owned(TimerElapsed {
                             id: TimerId(1),
                             generation: TimerGeneration(u64::from(byte)),
                         }))
                         .unwrap();
                     assert_eq!(live, before);
-                    assert!(actions.sends.behavior.is_empty());
+                    assert!(actions.sends.inner.is_empty());
                 }
             }
         }

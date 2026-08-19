@@ -1,5 +1,10 @@
 # Universal behavior driver
 
+The Driver owns a concrete `Behavior`, not a public `Protocol`. Protocols name
+ordinary delivery destinations; the Driver obtains the behavior's complete
+internal event algebra and interprets its explicit effects. See
+[Protocol, ingress, behavior, and effect algebras](protocol-algebra.md).
+
 This document defines the execution boundary shared by every Bombay
 actor-behavior template. It is a design contract for `bombay-engine::Driver`
 and the Bombay `System`; it does not place runtime code in Bombay Behavior.
@@ -76,11 +81,10 @@ There is no supervisor Driver, proxy Driver, task Driver, or persistence
 Driver. Adding a template must never add another execution loop.
 
 Catalogue construction does not introduce a driver-facing definition wrapper.
-A standalone concrete behavior is consumed directly through
-`Activate::initialize`; applying the `Compose` extension trait returns another
-concrete behavior type. Both paths therefore deliver the same `Initialized<B>`
-product to the universal Driver. `Compose` owns no state, initialization loop,
-runtime capability, or alternate interpretation path.
+A standalone or explicitly wrapped concrete behavior is consumed directly
+through `Activate::initialize`. Public owning-type constructors return ordinary
+concrete behavior types, so every topology delivers the same `Initialized<B>`
+product to the universal Driver without an alternate authoring abstraction.
 
 ## Domain injection and templates
 
@@ -91,8 +95,9 @@ ordinary concrete `Behavior`:
 ```text
 Order
 Proxy<Order>
-Supervisor<Proxy<Order>>
-Task<Supervisor<Proxy<Order>>>
+Supervisor<MailAddr, Worker>
+Supervise<Root, Worker>
+Task<Supervise<Root, Worker>>
 ```
 
 Each wrapper transforms the complete event sum, action product, state, and
@@ -102,11 +107,11 @@ Local construction relies on inference. A boundary that must store or expose
 the exact stack can use an ordinary Rust alias or newtype. Runtime entry points
 should remain generic over `B: Behavior`, so ordinary users do not need one.
 
-Concrete catalogue templates are constructed and configured through their
-owning types. The `Compose` trait is imported only to apply a wrapper
-transformation such as watching, timing, stashing, shutdown, or supervised
-children; it is not a mandatory container around `Router`, `Task`, `Buffer`, or
-any other standalone template.
+Concrete catalogue templates and wrappers are constructed and configured
+through their owning types. Standalone supervision uses `Supervisor::new`, and
+application composition uses `Supervise::new`; both take explicit
+`ChildTopology` and `RestartConfiguration`. No constructor supplies hidden
+topology or restart defaults.
 
 The `System` integration should take the fully composed value generically and
 allow Rust to infer `B`; application code must not spell the nested wrapper
@@ -117,9 +122,12 @@ static protocol boundary rather than ordinary actor startup ceremony.
 Normal construction and adapter integration use inference:
 
 ```rust,ignore
-let behavior = machine
-    .stash(route)
-    .deadline(timer, when, on_elapsed);
+let behavior = Deadline::new(
+    Stash::new(machine, route),
+    timer,
+    when,
+    on_elapsed,
+);
 
 system.spawn(behavior)?;
 ```
@@ -320,6 +328,23 @@ modifies the Driver loop.
 
 There is no dynamic fallback. A missing interpreter is a compile-time
 integration gap, not a runtime capability lookup.
+
+When `B::Birth::Child` is a recursive `ChildChoice`, `realize B::Birth` means
+proving `InstallBirth` for every contained concrete behavior. Exhaustive
+recursive dispatch runs inside the existing ordered creation leg; it neither
+changes the Driver algorithm nor turns the sum into an installed actor
+protocol.
+For ordinary `Births<C>`, the blanket `DispatchBirth` implementation invokes
+the one concrete `InstallBirth<A, C, ...>` exactly once with the original nonce
+and creation provenance. Both shapes therefore use the same Driver bound and
+ordered interpretation path.
+
+Both installation and dispatch return `Send` futures. This is an
+interpreter-facing concurrency guarantee, not a new behavior effect: it lets a
+recursive Driver remain eligible for a thread-safe executor spawn while the
+pure creation request and concrete child protocol stay unchanged. Recursive
+heterogeneous dispatch holds its selected sum across the await, so every child
+alternative, the creator-local nonce, and the installer must be `Send`.
 
 ## Backpressure and liveness policy
 

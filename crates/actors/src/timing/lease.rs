@@ -3,15 +3,15 @@
 use std::time::Duration;
 
 use behavior::{
-    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, Never, NoBirths, Recipient,
-    SendAlgebra, ServiceSends, User,
+    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, EventLayer,
+    InterpreterRequests, Never, NoBirths, Recipient, SendEffects, User,
 };
 use thiserror::Error;
 
-use crate::{ScheduleAfter, TimerElapsed, TimerGeneration, TimerId};
+use crate::{ScheduleAfter, TimedEvent, TimerGeneration, TimerId};
 
 /// Complete exclusive lease phase.
-pub enum LeaseState<K, Reply: Behavior> {
+pub enum LeaseState<K, Reply: behavior::Protocol> {
     /// No holder owns the lease.
     Vacant,
     /// One holder owns exactly this timer generation.
@@ -93,8 +93,8 @@ pub enum LeaseOutcome<K> {
     Rejected(LeaseRejection<K>),
 }
 
-/// Commands and timer evidence accepted by [`Lease`].
-pub enum LeaseMessage<K, Reply: Behavior> {
+/// User commands accepted by [`Lease`].
+pub enum LeaseMessage<K, Reply: behavior::Protocol> {
     /// Acquire a vacant lease for a relative duration.
     Acquire {
         /// Requested holder.
@@ -124,27 +124,54 @@ pub enum LeaseMessage<K, Reply: Behavior> {
         /// Outcome recipient.
         reply_to: Recipient<Reply>,
     },
-    /// Timer evidence supplied by Bombay Timers.
-    Elapsed(TimerElapsed),
 }
 
 /// Named effect lanes emitted by [`Lease`].
-pub struct LeaseSends<Reply: Behavior> {
+pub struct LeaseSends<Reply: behavior::Protocol> {
     /// Lease facts.
     pub outcomes: Vec<Delivery<Reply>>,
     /// Relative expiry requests.
-    pub schedules: ServiceSends<ScheduleAfter>,
+    pub schedules: InterpreterRequests<ScheduleAfter>,
 }
-impl<Reply: Behavior> SendAlgebra for LeaseSends<Reply> {
+impl<Reply> SendEffects for LeaseSends<Reply>
+where
+    Reply: behavior::Protocol,
+{
     fn empty() -> Self {
         Self {
             outcomes: Vec::new(),
-            schedules: ServiceSends::empty(),
+            schedules: InterpreterRequests::empty(),
         }
     }
     fn append(&mut self, mut other: Self) {
         self.outcomes.append(&mut other.outcomes);
         self.schedules.append(other.schedules);
+    }
+}
+
+impl<Event, Reply> behavior::SendsFor<Event> for LeaseSends<Reply>
+where
+    Reply: behavior::Protocol,
+    InterpreterRequests<ScheduleAfter>: behavior::SendsFor<Event>,
+{
+}
+
+impl<I, RootEvent, Path, Reply> behavior::InterpretSends<I, RootEvent, Path> for LeaseSends<Reply>
+where
+    I: behavior::SendInterpreter,
+    Reply: behavior::Protocol,
+    Vec<Delivery<Reply>>: behavior::InterpretSends<I, RootEvent, Path>,
+    InterpreterRequests<ScheduleAfter>: behavior::InterpretSends<I, RootEvent, Path>,
+    LeaseSends<Reply>: Send,
+{
+    fn interpret(
+        self,
+        interpreter: &mut I,
+    ) -> impl core::future::Future<Output = Result<(), I::Error>> + Send {
+        async move {
+            behavior::InterpretSends::interpret(self.outcomes, interpreter).await?;
+            behavior::InterpretSends::interpret(self.schedules, interpreter).await
+        }
     }
 }
 
@@ -162,7 +189,11 @@ impl<Reply: Behavior> SendAlgebra for LeaseSends<Reply> {
 /// policy. Scheduling and sleeping belong to Timers. The current Bombay timer
 /// adapter has no cancellation effect lane; release is semantically immediate
 /// while the stale queue entry may remain until due. No transition panics.
-pub struct Lease<A: Address, K: Clone + Eq, Reply: Behavior<Addr = A, Msg = LeaseOutcome<K>>> {
+pub struct Lease<
+    A: Address,
+    K: Clone + Eq,
+    Reply: behavior::Protocol<Addr = A, Msg = LeaseOutcome<K>>,
+> {
     id: TimerId,
     state: LeaseState<K, Reply>,
     next: Option<u64>,
@@ -173,7 +204,7 @@ impl<A, K, Reply> Lease<A, K, Reply>
 where
     A: Address,
     K: Clone + Eq,
-    Reply: Behavior<Addr = A, Msg = LeaseOutcome<K>>,
+    Reply: behavior::Protocol<Addr = A, Msg = LeaseOutcome<K>>,
 {
     /// Construct a vacant lease using one actor-local timer key.
     #[must_use]
@@ -193,7 +224,7 @@ where
     fn result(reply_to: Recipient<Reply>, outcome: LeaseOutcome<K>) -> LeaseActions<A, Reply> {
         Actions::send(LeaseSends {
             outcomes: vec![Delivery::new(reply_to, outcome)],
-            schedules: ServiceSends::empty(),
+            schedules: InterpreterRequests::empty(),
         })
     }
     fn acquire(
@@ -236,7 +267,7 @@ where
                 reply_to,
                 LeaseOutcome::Acquired { holder, generation },
             )],
-            schedules: ServiceSends::one(ScheduleAfter::new(self.id, generation, duration)),
+            schedules: InterpreterRequests::one(ScheduleAfter::new(self.id, generation, duration)),
         })
     }
     fn validate(&self, holder: &K, generation: TimerGeneration) -> Result<(), LeaseRejection<K>> {
@@ -262,82 +293,95 @@ impl<A, K, Reply> BehaviorBase for Lease<A, K, Reply>
 where
     A: Address,
     K: Clone + Eq,
-    Reply: Behavior<Addr = A, Msg = LeaseOutcome<K>>,
+    Reply: behavior::Protocol<Addr = A, Msg = LeaseOutcome<K>>,
 {
     type Base = Self;
     fn base(&self) -> &Self {
         self
     }
 }
+impl<A, K, Reply> behavior::Protocol for Lease<A, K, Reply>
+where
+    A: Address,
+    K: Clone + Eq,
+    Reply: behavior::Protocol<Addr = A, Msg = LeaseOutcome<K>>,
+{
+    type Addr = A;
+    type Msg = LeaseMessage<K, Reply>;
+}
+
 impl<A, K, Reply> Behavior for Lease<A, K, Reply>
 where
     A: Address,
     K: Clone + Eq,
-    Reply: Behavior<Addr = A, Msg = LeaseOutcome<K>>,
+    Reply: behavior::Protocol<Addr = A, Msg = LeaseOutcome<K>>,
 {
-    type Addr = A;
-    type Msg = LeaseMessage<K, Reply>;
-    type Event = User<A, Self::Msg>;
+    type Protocol = Self;
+    type Event = TimedEvent<User<A, crate::BehaviorMessage<Self>>>;
     type Sends = LeaseSends<Reply>;
     type Ph = Never;
     type Error = Never;
     type Birth = NoBirths;
     fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
-        Ok(match event.message {
-            LeaseMessage::Acquire {
-                holder,
-                duration,
-                reply_to,
-            } => self.acquire(holder, duration, reply_to),
-            LeaseMessage::Renew {
-                holder,
-                generation,
-                duration,
-                reply_to,
-            } => {
-                if let Err(rejection) = self.validate(&holder, generation) {
-                    return Ok(Self::result(reply_to, LeaseOutcome::Rejected(rejection)));
+        Ok(match event {
+            EventLayer::Inner(event) => match event.message {
+                LeaseMessage::Acquire {
+                    holder,
+                    duration,
+                    reply_to,
+                } => self.acquire(holder, duration, reply_to),
+                LeaseMessage::Renew {
+                    holder,
+                    generation,
+                    duration,
+                    reply_to,
+                } => {
+                    if let Err(rejection) = self.validate(&holder, generation) {
+                        return Ok(Self::result(reply_to, LeaseOutcome::Rejected(rejection)));
+                    }
+                    let Some(raw) = self.next else {
+                        return Ok(Self::result(
+                            reply_to,
+                            LeaseOutcome::Rejected(LeaseRejection::GenerationExhausted),
+                        ));
+                    };
+                    let fresh = TimerGeneration(raw);
+                    self.next = raw.checked_add(1);
+                    self.state = LeaseState::Held {
+                        holder: holder.clone(),
+                        generation: fresh,
+                        notify: reply_to,
+                    };
+                    Actions::send(LeaseSends {
+                        outcomes: vec![Delivery::new(
+                            reply_to,
+                            LeaseOutcome::Renewed {
+                                holder,
+                                generation: fresh,
+                            },
+                        )],
+                        schedules: InterpreterRequests::one(ScheduleAfter::new(
+                            self.id, fresh, duration,
+                        )),
+                    })
                 }
-                let Some(raw) = self.next else {
-                    return Ok(Self::result(
-                        reply_to,
-                        LeaseOutcome::Rejected(LeaseRejection::GenerationExhausted),
-                    ));
-                };
-                let fresh = TimerGeneration(raw);
-                self.next = raw.checked_add(1);
-                self.state = LeaseState::Held {
-                    holder: holder.clone(),
-                    generation: fresh,
-                    notify: reply_to,
-                };
-                Actions::send(LeaseSends {
-                    outcomes: vec![Delivery::new(
-                        reply_to,
-                        LeaseOutcome::Renewed {
-                            holder,
-                            generation: fresh,
-                        },
-                    )],
-                    schedules: ServiceSends::one(ScheduleAfter::new(self.id, fresh, duration)),
-                })
-            }
-            LeaseMessage::Release {
-                holder,
-                generation,
-                reply_to,
-            } => {
-                if let Err(rejection) = self.validate(&holder, generation) {
-                    return Ok(Self::result(reply_to, LeaseOutcome::Rejected(rejection)));
+                LeaseMessage::Release {
+                    holder,
+                    generation,
+                    reply_to,
+                } => {
+                    if let Err(rejection) = self.validate(&holder, generation) {
+                        return Ok(Self::result(reply_to, LeaseOutcome::Rejected(rejection)));
+                    }
+                    self.state = if self.next.is_some() {
+                        LeaseState::Vacant
+                    } else {
+                        LeaseState::Exhausted
+                    };
+                    Self::result(reply_to, LeaseOutcome::Released { holder, generation })
                 }
-                self.state = if self.next.is_some() {
-                    LeaseState::Vacant
-                } else {
-                    LeaseState::Exhausted
-                };
-                Self::result(reply_to, LeaseOutcome::Released { holder, generation })
-            }
-            LeaseMessage::Elapsed(elapsed) => {
+            },
+            EventLayer::Owned(elapsed) => {
                 if elapsed.id != self.id {
                     return Ok(Actions::cont());
                 }
@@ -371,13 +415,17 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Activate as _;
+    use crate::{Activate as _, TimerElapsed};
     use behavior::MailAddr;
     struct Reply;
-    impl Behavior for Reply {
+    impl behavior::Protocol for Reply {
         type Addr = MailAddr;
         type Msg = LeaseOutcome<u8>;
-        type Event = User<MailAddr, Self::Msg>;
+    }
+
+    impl Behavior for Reply {
+        type Protocol = Self;
+        type Event = User<MailAddr, crate::BehaviorMessage<Self>>;
         type Sends = Vec<Never>;
         type Ph = Never;
         type Error = Never;
@@ -426,14 +474,11 @@ mod tests {
             TimerGeneration(1)
         );
         assert!(
-            s.receive(
-                MailAddr(0),
-                LeaseMessage::Elapsed(TimerElapsed::new(TimerId(7), TimerGeneration(0)))
-            )
-            .unwrap()
-            .sends
-            .outcomes
-            .is_empty()
+            s.on_path(TimerElapsed::new(TimerId(7), TimerGeneration(0)))
+                .unwrap()
+                .sends
+                .outcomes
+                .is_empty()
         );
         s.receive(
             MailAddr(0),
@@ -473,10 +518,7 @@ mod tests {
             LeaseOutcome::Rejected(LeaseRejection::WrongHolder { requested: 2 })
         ));
         let expired = s
-            .receive(
-                MailAddr(0),
-                LeaseMessage::Elapsed(TimerElapsed::new(TimerId(7), TimerGeneration(0))),
-            )
+            .on_path(TimerElapsed::new(TimerId(7), TimerGeneration(0)))
             .unwrap();
         assert!(matches!(
             expired.sends.outcomes[0].message,
@@ -501,10 +543,7 @@ mod tests {
             )
             .unwrap();
         subject
-            .receive(
-                MailAddr(0),
-                LeaseMessage::Elapsed(TimerElapsed::new(TimerId(7), TimerGeneration(u64::MAX))),
-            )
+            .on_path(TimerElapsed::new(TimerId(7), TimerGeneration(u64::MAX)))
             .unwrap();
         assert!(matches!(subject.state(), LeaseState::Exhausted));
         let rejected = subject

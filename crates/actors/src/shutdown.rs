@@ -7,56 +7,12 @@
 
 use crate::Step;
 use crate::protocol::ShutdownRequested;
-use crate::protocol::forward::forward_event_lane;
-use behavior::{Actions, Address, Behavior, BirthMode, SendAlgebra, User, UserEvent};
+use behavior::{
+    Actions, Address, Behavior, BirthMode, EventLayer, NoSends, SendEffects, SendLayer,
+};
 
-/// The complete protocol of a behavior that supports graceful shutdown.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ShutdownProtocol<E> {
-    Behavior(E),
-    ShutdownRequested(ShutdownRequested),
-}
-
-impl<E: UserEvent> crate::RouteInput<ShutdownRequested> for ShutdownProtocol<E> {
-    fn route(event: ShutdownRequested) -> Result<Self, ShutdownRequested> {
-        Ok(Self::ShutdownRequested(event))
-    }
-}
-
-impl<E: UserEvent> crate::EventInput<ShutdownRequested> for ShutdownProtocol<E> {
-    fn inject(event: ShutdownRequested) -> Self {
-        Self::ShutdownRequested(event)
-    }
-}
-
-impl<E: UserEvent> UserEvent for ShutdownProtocol<E> {
-    type Addr = E::Addr;
-    type Message = E::Message;
-
-    fn user(from: Self::Addr, message: Self::Message) -> Self {
-        Self::Behavior(E::user(from, message))
-    }
-
-    fn into_user(self) -> Result<User<Self::Addr, Self::Message>, Self> {
-        match self {
-            Self::Behavior(event) => event.into_user().map_err(Self::Behavior),
-            shutdown @ Self::ShutdownRequested(_) => Err(shutdown),
-        }
-    }
-}
-
-forward_event_lane!(ShutdownProtocol, crate::TimerElapsed);
-forward_event_lane!(ShutdownProtocol, crate::PeerStopped<E::Addr>);
-forward_event_lane!(ShutdownProtocol, crate::ChildStopped<E::Addr>);
-forward_event_lane!(ShutdownProtocol, crate::WorkerStopped<E::Addr>);
-forward_event_lane!(
-    ShutdownProtocol,
-    crate::CreationResolved<<E::Addr as crate::Address>::Nonce>
-);
-forward_event_lane!(
-    ShutdownProtocol,
-    crate::WorkerCreationResolved<<E::Addr as crate::Address>::Nonce>
-);
+/// Internal event sum of a behavior that supports graceful shutdown.
+pub type ShutdownEvent<E> = EventLayer<ShutdownRequested, E>;
 
 /// Stop normally when the shutdown lane is received.
 pub struct StopOnShutdown<B> {
@@ -64,8 +20,13 @@ pub struct StopOnShutdown<B> {
 }
 
 impl<B> StopOnShutdown<B> {
+    /// Wrap `inner` so the first typed shutdown request stops it normally.
+    /// This wrapper owns every shutdown request it adds. It therefore composes
+    /// over any behavior without requiring the inner event algebra to already
+    /// accept shutdown. When shutdown wrappers are nested, the outermost
+    /// wrapper owns the request.
     #[must_use]
-    pub(crate) fn new(inner: B) -> Self {
+    pub const fn new(inner: B) -> Self {
         Self { inner }
     }
 }
@@ -91,7 +52,7 @@ pub type ShutdownReaction<B> = fn(
     ShutdownRequested,
 ) -> Result<
     Actions<
-        <B as Behavior>::Addr,
+        crate::BehaviorAddr<B>,
         <B as Behavior>::Ph,
         <B as Behavior>::Sends,
         <B as Behavior>::Birth,
@@ -106,8 +67,14 @@ pub struct FinalizeOnShutdown<B: Behavior> {
 }
 
 impl<B: Behavior> FinalizeOnShutdown<B> {
+    /// Wrap `inner` with one pure finalization fold on typed shutdown.
+    ///
+    /// The final fold's sends and creations are preserved and the wrapper then
+    /// stops normally regardless of the fold's continuation verdict.
+    /// Like [`StopOnShutdown`], this wrapper owns the lane it adds; an outer
+    /// shutdown wrapper therefore takes precedence over this reaction.
     #[must_use]
-    pub(crate) fn new(inner: B, finalize: ShutdownReaction<B>) -> Self {
+    pub const fn new(inner: B, finalize: ShutdownReaction<B>) -> Self {
         Self { inner, finalize }
     }
 }
@@ -134,14 +101,14 @@ macro_rules! impl_shutdown_behavior {
         impl<B, A, Ph, Sends, Br> Behavior for $wrapper<B>
         where
             A: Address,
-            Sends: SendAlgebra,
+            Sends: SendEffects + behavior::SendsFor<B::Event>,
             Br: BirthMode,
-            B: Behavior<Addr = A, Ph = Ph, Sends = Sends, Birth = Br>,
+            B: Behavior<Ph = Ph, Sends = Sends, Birth = Br>,
+            B::Protocol: crate::Protocol<Addr = A>,
         {
-            type Addr = A;
-            type Msg = B::Msg;
-            type Event = ShutdownProtocol<B::Event>;
-            type Sends = Sends;
+            type Protocol = B::Protocol;
+            type Event = ShutdownEvent<B::Event>;
+            type Sends = SendLayer<NoSends, Sends>;
             type Ph = Ph;
             type Error = B::Error;
             type Birth = Br;
@@ -149,20 +116,23 @@ macro_rules! impl_shutdown_behavior {
             fn init(
                 &mut self,
                 _: crate::InitializationTurn,
-            ) -> Result<Actions<A, Ph, Sends, Br>, B::Error> {
+            ) -> Result<Actions<A, Ph, Self::Sends, Br>, B::Error> {
                 behavior::initialize(&mut self.inner)
+                    .map(|actions| actions.map_sends(|inner| SendLayer::new(NoSends, inner)))
             }
 
             fn transition(
                 &mut self,
                 _: crate::ActiveTurn,
                 event: Self::Event,
-            ) -> Result<Actions<A, Ph, Sends, Br>, B::Error> {
+            ) -> Result<Actions<A, Ph, Self::Sends, Br>, B::Error> {
                 match event {
-                    ShutdownProtocol::Behavior(event) => {
-                        behavior::delegate_transition(&mut self.inner, event)
+                    EventLayer::Inner(event) => {
+                        behavior::delegate_transition(&mut self.inner, event).map(|actions| {
+                            actions.map_sends(|inner| SendLayer::new(NoSends, inner))
+                        })
                     }
-                    ShutdownProtocol::ShutdownRequested(request) => $shutdown(self, request),
+                    EventLayer::Owned(request) => $shutdown(self, request),
                 }
             }
         }
@@ -177,6 +147,8 @@ impl_shutdown_behavior!(
     FinalizeOnShutdown,
     |this: &mut FinalizeOnShutdown<B>, request| {
         let actions = (this.finalize)(&mut this.inner, request)?;
-        Ok(actions.map_become(|_| Step::Stop(behavior::Stopped)))
+        Ok(actions
+            .map_become(|_| Step::Stop(behavior::Stopped))
+            .map_sends(|inner| SendLayer::new(NoSends, inner)))
     }
 );

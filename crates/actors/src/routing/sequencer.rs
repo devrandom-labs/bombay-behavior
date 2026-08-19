@@ -2,9 +2,11 @@
 
 use std::collections::BTreeMap;
 
+use super::DeliveryOutcomes;
+
 use behavior::{
-    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, Never, NoBirths, Recipient,
-    SendAlgebra, User,
+    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, Never, NoBirths, Protocol,
+    Recipient, User,
 };
 
 /// A position in a [`Sequencer`] stream.
@@ -58,7 +60,7 @@ pub enum SequencerOutcome<T> {
 }
 
 /// Commands accepted by [`Sequencer`].
-pub enum SequencerMessage<T, Target: Behavior, Reply: Behavior> {
+pub enum SequencerMessage<T, Target: Protocol, Reply: behavior::Protocol> {
     /// Offer one value for delivery after all preceding positions.
     Offer {
         /// Explicit sequence position.
@@ -72,29 +74,7 @@ pub enum SequencerMessage<T, Target: Behavior, Reply: Behavior> {
     },
 }
 
-/// Named effect lanes emitted by [`Sequencer`].
-pub struct SequencerSends<Target: Behavior, Reply: Behavior> {
-    /// Values released in increasing contiguous sequence order.
-    pub deliveries: Vec<Delivery<Target>>,
-    /// Exactly one factual result for the triggering offer.
-    pub outcomes: Vec<Delivery<Reply>>,
-}
-
-impl<Target: Behavior, Reply: Behavior> SendAlgebra for SequencerSends<Target, Reply> {
-    fn empty() -> Self {
-        Self {
-            deliveries: Vec::new(),
-            outcomes: Vec::new(),
-        }
-    }
-
-    fn append(&mut self, mut other: Self) {
-        self.deliveries.append(&mut other.deliveries);
-        self.outcomes.append(&mut other.outcomes);
-    }
-}
-
-struct Pending<T, Target: Behavior> {
+struct Pending<T, Target: Protocol> {
     value: T,
     to: Recipient<Target>,
 }
@@ -115,8 +95,8 @@ struct Pending<T, Target: Behavior> {
 pub struct Sequencer<
     A: Address,
     T,
-    Target: Behavior<Addr = A, Msg = T>,
-    Reply: Behavior<Addr = A, Msg = SequencerOutcome<T>>,
+    Target: Protocol<Addr = A, Msg = T>,
+    Reply: behavior::Protocol<Addr = A, Msg = SequencerOutcome<T>>,
 > {
     expected: Option<Sequence>,
     pending: BTreeMap<Sequence, Pending<T, Target>>,
@@ -126,8 +106,8 @@ pub struct Sequencer<
 impl<A, T, Target, Reply> Sequencer<A, T, Target, Reply>
 where
     A: Address,
-    Target: Behavior<Addr = A, Msg = T>,
-    Reply: Behavior<Addr = A, Msg = SequencerOutcome<T>>,
+    Target: Protocol<Addr = A, Msg = T>,
+    Reply: behavior::Protocol<Addr = A, Msg = SequencerOutcome<T>>,
 {
     /// Construct an empty sequencer beginning at `first`.
     #[must_use]
@@ -154,8 +134,8 @@ where
     fn actions(
         deliveries: Vec<Delivery<Target>>,
         outcome: Delivery<Reply>,
-    ) -> Actions<A, Never, SequencerSends<Target, Reply>, NoBirths> {
-        Actions::send(SequencerSends {
+    ) -> Actions<A, Never, DeliveryOutcomes<Target, Reply>, NoBirths> {
+        Actions::send(DeliveryOutcomes {
             deliveries,
             outcomes: vec![outcome],
         })
@@ -165,8 +145,8 @@ where
 impl<A, T, Target, Reply> BehaviorBase for Sequencer<A, T, Target, Reply>
 where
     A: Address,
-    Target: Behavior<Addr = A, Msg = T>,
-    Reply: Behavior<Addr = A, Msg = SequencerOutcome<T>>,
+    Target: Protocol<Addr = A, Msg = T>,
+    Reply: behavior::Protocol<Addr = A, Msg = SequencerOutcome<T>>,
 {
     type Base = Self;
 
@@ -175,16 +155,25 @@ where
     }
 }
 
-impl<A, T, Target, Reply> Behavior for Sequencer<A, T, Target, Reply>
+impl<A, T, Target, Reply> behavior::Protocol for Sequencer<A, T, Target, Reply>
 where
     A: Address,
-    Target: Behavior<Addr = A, Msg = T>,
-    Reply: Behavior<Addr = A, Msg = SequencerOutcome<T>>,
+    Target: Protocol<Addr = A, Msg = T>,
+    Reply: behavior::Protocol<Addr = A, Msg = SequencerOutcome<T>>,
 {
     type Addr = A;
     type Msg = SequencerMessage<T, Target, Reply>;
-    type Event = User<A, Self::Msg>;
-    type Sends = SequencerSends<Target, Reply>;
+}
+
+impl<A, T, Target, Reply> Behavior for Sequencer<A, T, Target, Reply>
+where
+    A: Address,
+    Target: Protocol<Addr = A, Msg = T>,
+    Reply: behavior::Protocol<Addr = A, Msg = SequencerOutcome<T>>,
+{
+    type Protocol = Self;
+    type Event = User<A, crate::BehaviorMessage<Self>>;
+    type Sends = DeliveryOutcomes<Target, Reply>;
     type Ph = Never;
     type Error = Never;
     type Birth = NoBirths;
@@ -247,10 +236,14 @@ mod tests {
 
     macro_rules! leaf {
         ($name:ident, $msg:ty) => {
-            impl Behavior for $name {
+            impl behavior::Protocol for $name {
                 type Addr = MailAddr;
                 type Msg = $msg;
-                type Event = behavior::User<MailAddr, Self::Msg>;
+            }
+
+            impl Behavior for $name {
+                type Protocol = Self;
+                type Event = behavior::User<MailAddr, crate::BehaviorMessage<Self>>;
                 type Sends = Vec<behavior::Never>;
                 type Ph = behavior::Never;
                 type Error = behavior::Never;
@@ -278,7 +271,7 @@ mod tests {
     ) -> behavior::Actions<
         MailAddr,
         behavior::Never,
-        SequencerSends<Target, Reply>,
+        DeliveryOutcomes<Target, Reply>,
         behavior::NoBirths,
     > {
         subject

@@ -1,8 +1,8 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, ChildStopped, Compose, Crash, CreationKind, CreationResolved, Delivery, Exit,
-    MailAddr, Never, Proxy, ProxyCommand, ProxyEvent, Recipient, RestartPolicy, Step, Strategy,
+    Acted, Actions, ChildStopped, Crash, CreationKind, CreationResolved, Delivery, Exit, MailAddr,
+    Never, Proxy, ProxyCommand, ProxyEvent, Recipient, RestartPolicy, Step, Strategy,
     SupervisionEvent, Supervisor, TimerId, User, UserEvent, WorkerStopped,
 };
 use behavior_testkit::{Mailbox, drive};
@@ -41,26 +41,12 @@ impl Echo {
 
 type Child = Echo;
 
-struct Parent;
-
-#[behavior::behavior(addr = MailAddr, message = u8, sends = Vec<Never>, births = behavior::Births<Child>, error = Never)]
-impl Parent {
-    fn receive(
-        &mut self,
-        _from: MailAddr,
-        _message: u8,
-    ) -> Acted<MailAddr, Never, Vec<Never>, behavior::Births<Child>, Never> {
-        Ok(Actions::cont())
-    }
-}
-
 fn child(_index: usize) -> Child {
     Echo
 }
 
-fn supervisor(strategy: Strategy, count: usize) -> Supervisor<Parent, Child> {
+fn supervisor(strategy: Strategy, count: usize) -> Supervisor<MailAddr, Child> {
     Supervisor::new(
-        Parent,
         behavior::ChildTopology::indexed(
             |index| u64::try_from(index).unwrap(),
             count,
@@ -113,20 +99,20 @@ proptest! {
         let _runtime = Builder::new_current_thread().enable_all().build().unwrap();
         let origin = Instant::now();
         let first = origin + Duration::from_nanos(offsets[0]);
-        let one = (Echo).deadline(TimerId(0), Some(first), |_| Ok(Step::Continue));
+        let one = behavior::Deadline::new(Echo, TimerId(0), Some(first), |_| Ok(Step::Continue));
         let initialized = one.initialize().unwrap();
     let initial = initialized.actions;
     let _one = initialized.behavior;
-        prop_assert_eq!(initial.sends.schedules.len(), 1);
-        prop_assert_eq!(initial.sends.schedules[0].at, first);
+        prop_assert_eq!(initial.sends.owned.len(), 1);
+        prop_assert_eq!(initial.sends.owned[0].at, first);
 
         for offset in &offsets {
             let due = origin + Duration::from_nanos(*offset);
-            let composed = (Echo).deadline(TimerId(0), Some(due), |_| Ok(Step::Continue));
+            let composed = behavior::Deadline::new(Echo, TimerId(0), Some(due), |_| Ok(Step::Continue));
             let initialized = composed.initialize().unwrap();
     let actions = initialized.actions;
     let _composed = initialized.behavior;
-            prop_assert_eq!(actions.sends.schedules[0].at, due);
+            prop_assert_eq!(actions.sends.owned[0].at, due);
         }
     }
 
@@ -145,7 +131,7 @@ proptest! {
             .transition(ProxyEvent::CreationResolved(CreationResolved {
                 nonce: 0,
                 kind: CreationKind::Birth,
-                result: Ok(()),
+                result: Ok(MailAddr(999)),
             }))
             .unwrap();
         let mut generation = 0_u64;
@@ -183,7 +169,7 @@ proptest! {
                         kind: CreationKind::ReplacementIncarnation {
                             replaces: generation - 1,
                         },
-                        result: Ok(()),
+                        result: Ok(MailAddr(999)),
                     }))
                     .unwrap();
             } else {

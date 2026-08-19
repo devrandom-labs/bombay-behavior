@@ -25,7 +25,7 @@ pub enum ConfigurationState<C> {
 }
 
 /// Commands accepted by [`Configuration`].
-pub enum ConfigurationMessage<C, Reply: Behavior> {
+pub enum ConfigurationMessage<C, Reply: behavior::Protocol> {
     /// Attempt to atomically replace the current configuration.
     Apply {
         /// Candidate version.
@@ -74,7 +74,11 @@ pub enum ConfigurationError<C> {
 /// ordering and idempotence are Bombay policy; acquiring, decoding, validating,
 /// or exporting external configuration remains an application/System adapter
 /// responsibility. No method has a semantic panic condition.
-pub struct Configuration<A: Address, C, Reply: Behavior<Addr = A, Msg = ConfigurationState<C>>> {
+pub struct Configuration<
+    A: Address,
+    C,
+    Reply: behavior::Protocol<Addr = A, Msg = ConfigurationState<C>>,
+> {
     state: ConfigurationState<C>,
     marker: core::marker::PhantomData<fn() -> (A, Reply)>,
 }
@@ -83,7 +87,7 @@ impl<A, C, Reply> Configuration<A, C, Reply>
 where
     A: Address,
     C: Clone + Eq,
-    Reply: Behavior<Addr = A, Msg = ConfigurationState<C>>,
+    Reply: behavior::Protocol<Addr = A, Msg = ConfigurationState<C>>,
 {
     /// Construct an explicitly unconfigured policy.
     #[must_use]
@@ -135,7 +139,7 @@ impl<A, C, Reply> Default for Configuration<A, C, Reply>
 where
     A: Address,
     C: Clone + Eq,
-    Reply: Behavior<Addr = A, Msg = ConfigurationState<C>>,
+    Reply: behavior::Protocol<Addr = A, Msg = ConfigurationState<C>>,
 {
     fn default() -> Self {
         Self::new()
@@ -146,7 +150,7 @@ impl<A, C, Reply> BehaviorBase for Configuration<A, C, Reply>
 where
     A: Address,
     C: Clone + Eq,
-    Reply: Behavior<Addr = A, Msg = ConfigurationState<C>>,
+    Reply: behavior::Protocol<Addr = A, Msg = ConfigurationState<C>>,
 {
     type Base = Self;
     fn base(&self) -> &Self {
@@ -154,15 +158,24 @@ where
     }
 }
 
+impl<A, C, Reply> behavior::Protocol for Configuration<A, C, Reply>
+where
+    A: Address,
+    C: Clone + Eq,
+    Reply: behavior::Protocol<Addr = A, Msg = ConfigurationState<C>>,
+{
+    type Addr = A;
+    type Msg = ConfigurationMessage<C, Reply>;
+}
+
 impl<A, C, Reply> Behavior for Configuration<A, C, Reply>
 where
     A: Address,
     C: Clone + Eq,
-    Reply: Behavior<Addr = A, Msg = ConfigurationState<C>>,
+    Reply: behavior::Protocol<Addr = A, Msg = ConfigurationState<C>>,
 {
-    type Addr = A;
-    type Msg = ConfigurationMessage<C, Reply>;
-    type Event = User<A, Self::Msg>;
+    type Protocol = Self;
+    type Event = User<A, crate::BehaviorMessage<Self>>;
     type Sends = Vec<Delivery<Reply>>;
     type Ph = Never;
     type Error = ConfigurationError<C>;
@@ -190,10 +203,14 @@ mod tests {
     use super::*;
 
     struct Reply;
-    impl Behavior for Reply {
+    impl behavior::Protocol for Reply {
         type Addr = MailAddr;
         type Msg = ConfigurationState<u8>;
-        type Event = User<MailAddr, Self::Msg>;
+    }
+
+    impl Behavior for Reply {
+        type Protocol = Self;
+        type Event = User<MailAddr, crate::BehaviorMessage<Self>>;
         type Sends = Vec<Never>;
         type Ph = Never;
         type Error = Never;

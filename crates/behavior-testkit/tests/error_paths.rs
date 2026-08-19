@@ -7,10 +7,11 @@
 
 use std::time::Duration;
 
+use behavior::EventLayer;
 use behavior::{
-    Acted, Actions, Compose, Crash, DeadlineEvent, Delivery, Machine, MailAddr, Move, Never,
-    PeerStopped, RestartPolicy, Step, Strategy, SupervisionEvent, Supervisor, TimerElapsed,
-    TimerGeneration, TimerId, User, UserEvent, WatchEvent, restart_all, restart_one, restart_rest,
+    Acted, Actions, Crash, Delivery, Machine, MailAddr, Move, Never, PeerStopped, RestartPolicy,
+    Step, Strategy, Supervise, SupervisionEvent, TimerElapsed, TimerGeneration, TimerId, User,
+    UserEvent, restart_all, restart_one, restart_rest,
 };
 use behavior_testkit::{Mailbox, drive};
 use std::time::Instant;
@@ -55,13 +56,16 @@ impl FailingParent {
     fn receive(
         &mut self,
         _from: MailAddr,
-        _message: u64,
+        message: u64,
     ) -> Acted<MailAddr, Never, Vec<Never>, behavior::Births<Child>, Boom> {
         if self.fail {
             self.fail = false;
             return Err(Boom);
         }
-        Ok(Actions::cont())
+        Ok(Actions::create(vec![behavior::Create::birth(
+            message,
+            child(0),
+        )]))
     }
 }
 
@@ -135,7 +139,7 @@ async fn fsm_direct_step_error_keeps_held_intact() {
 /// slot table: no slot is born, killed, or replaced by a failed step.
 #[tokio::test]
 async fn supervision_propagates_inner_errors_without_touching_slots() {
-    let supervisor = Supervisor::new(
+    let supervisor = Supervise::new(
         FailingParent { fail: true },
         behavior::ChildTopology::indexed(
             |index| u64::try_from(index).unwrap(),
@@ -157,7 +161,7 @@ async fn supervision_propagates_inner_errors_without_touching_slots() {
     let result = supervisor.transition(SupervisionEvent::Behavior(UserEvent::user(MailAddr(0), 7)));
     assert!(matches!(
         result,
-        Err(behavior::SupervisorError::Behavior(Boom))
+        Err(behavior::SuperviseError::Behavior(Boom))
     ));
     assert_eq!(supervisor.child_count(), before);
     for nonce in 0..2 {
@@ -174,12 +178,16 @@ async fn supervision_propagates_inner_errors_without_touching_slots() {
 #[tokio::test]
 async fn at_reaction_error_consumes_the_timer() {
     let due = Instant::now() + Duration::from_secs(1);
-    let behavior =
-        (FailingParent { fail: true }).deadline(behavior::TimerId(0), Some(due), |_| Err(Boom));
+    let behavior = behavior::Deadline::new(
+        FailingParent { fail: true },
+        behavior::TimerId(0),
+        Some(due),
+        |_| Err(Boom),
+    );
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
 
-    let first = behavior.transition(DeadlineEvent::Elapsed(TimerElapsed {
+    let first = behavior.transition(EventLayer::Owned(TimerElapsed {
         id: TimerId(0),
         generation: TimerGeneration(0),
     }));
@@ -187,7 +195,7 @@ async fn at_reaction_error_consumes_the_timer() {
 
     // The duplicate delivery cannot re-fire the consumed timer.
     let second = behavior
-        .transition(DeadlineEvent::Elapsed(TimerElapsed {
+        .transition(EventLayer::Owned(TimerElapsed {
             id: TimerId(0),
             generation: TimerGeneration(0),
         }))
@@ -199,11 +207,11 @@ async fn at_reaction_error_consumes_the_timer() {
 #[tokio::test]
 async fn watch_reaction_error_propagates() {
     let peer = MailAddr(44);
-    let behavior = (FailingParent { fail: true }).watch(peer, |_b, _p, _o| Err(Boom));
+    let behavior = behavior::Watch::new(FailingParent { fail: true }, peer, |_b, _p, _o| Err(Boom));
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
 
-    let death = WatchEvent::PeerStopped(PeerStopped {
+    let death = EventLayer::Owned(PeerStopped {
         peer,
         outcome: Err(Crash::Failed),
     });
@@ -223,9 +231,9 @@ fn restart_helpers_expose_the_documented_strategies() {
 /// untouched (the errored message was the fresh one, not a replayed one).
 #[tokio::test]
 async fn stash_deliver_arm_error_keeps_held_intact() {
-    use behavior::{Compose, StashRoute};
+    use behavior::StashRoute;
 
-    let behavior = (FailingParent { fail: true }).stash(|message| match *message {
+    let behavior = behavior::Stash::new(FailingParent { fail: true }, |message| match *message {
         0 => StashRoute::Release,
         1 => StashRoute::Stash,
         _ => StashRoute::Deliver,
@@ -248,7 +256,7 @@ async fn stash_deliver_arm_error_keeps_held_intact() {
 /// unconsumed mailbox tail intact.
 #[tokio::test]
 async fn driver_propagates_errors_and_preserves_the_tail() {
-    let supervisor = Supervisor::new(
+    let supervisor = Supervise::new(
         FailingParent { fail: true },
         behavior::ChildTopology::indexed(
             |index| u64::try_from(index).unwrap(),
@@ -270,7 +278,7 @@ async fn driver_propagates_errors_and_preserves_the_tail() {
     let result = drive(supervisor, &mut mailbox);
     assert!(matches!(
         result,
-        Err(behavior::SupervisorError::Behavior(Boom))
+        Err(behavior::SuperviseError::Behavior(Boom))
     ));
     assert_eq!(mailbox.pending(), 1);
 }

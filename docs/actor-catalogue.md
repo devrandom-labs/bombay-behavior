@@ -12,6 +12,11 @@ The common execution contract is defined in the
 [Universal Behavior Driver](driver.md). Every catalogue entry must use that
 one Driver law; a template is not admitted if it requires a private execution
 loop.
+Public destination identity, internal events, behavior state/fold, and effects
+follow the orthogonal model in
+[Protocol, ingress, behavior, and effect algebras](protocol-algebra.md). Catalogue
+wrappers may extend events and effects but must preserve the wrapped public
+protocol unless their stated purpose is message adaptation.
 Actor roles requiring clocks, tasks, address authority, durability, transport,
 operating-system resources, or other interpreted effects are tracked in the
 [Runtime-backed actor capability record](runtime-backed-actors.md). That record
@@ -20,6 +25,9 @@ not a usable framework actor merely because its pure policy can be written.
 The sibling repositories are one owned architecture; their boundaries and
 dependency direction are summarized in
 [Bombay ecosystem ownership](ecosystem.md).
+The two implemented cross-family wrapper orders and their exact public
+construction/error laws are documented in
+[Proven composition recipes](composition-recipes.md).
 
 The catalogue is prospective. An entry says that a reusable behavior template
 can be derived from the existing algebra; it does not mean that the template is
@@ -131,7 +139,7 @@ service used by the fold.
 
 | Catalogue family | Actors module | Owned templates and compositions | Owned state, protocol, products, and errors | Shared construction dependencies | Runtime capability dependencies | Bombay façade |
 |---|---|---|---|---|---|---|
-| Fundamental composition | `composition` | direct `Activate`, wrapper-only `Compose`, `Active`, `Machine`, protocol forwarding, stash | initialization typestates, machine moves, stash route/status | event injection, named-lane forwarding | none beyond the universal Driver | `bombay::behavior::{Behavior, Actions, Activate, Compose, Machine, Stash}` |
+| Fundamental composition | `composition` | direct `Activate`, `Active`, public concrete wrapper constructors, `Machine`, protocol forwarding, stash | initialization typestates, machine moves, stash route/status, ordered heterogeneous creation products | event injection, named-lane forwarding, exhaustive `DispatchBirth` | none beyond the universal Driver and concrete `InstallBirth` implementations | `bombay::behavior::{Behavior, Actions, Children, Births, Activate, Machine}` and `bombay::actors` wrapper types |
 | Lifecycle | `lifecycle` | watch/link policy, shutdown, lifecycle monitor compositions | observation and shutdown events, reactions, terminal classifications | initialization accumulation, observation forwarding | Observe, child installation, terminal publication | `bombay::actors::{Watch, Task, Guardian, ShutdownCoordinator}` as each concrete template ships |
 | Supervision | `supervision` | `Proxy`, `Supervisor`, worker pools, restart policies | incarnation/fleet/budget sums, replacement protocol, `ChildTopology`, `RestartConfiguration`, `PoolConfiguration`, named supervision and pool products, typed errors | creation-result correlation, recipient membership | fresh installation, Observe, Timers for backoff | `bombay::actors::{Proxy, Supervisor, Pool, KeyedPool}` plus semantic configurations |
 | Routing and delivery | `routing` | routers and strategies, work admission, correlation, ordering, retention and delivery-policy compositions | recipient membership, pending/attempt/order states, delivery outcomes and named delivery products | bounded FIFO, keyed pending correlation, bounded retention | Address and Communication; Timers for timed policies | `bombay::actors::routing::*` selected collision-free role exports |
@@ -174,7 +182,7 @@ shipped API.
 | Required category | Catalogue entries | Consequence |
 |---|---|---|
 | **1. Concrete reusable behavior template** | `Machine`, `Proxy`, `Supervisor`, `Pool`, `KeyedPool`, `Task`, `Watch`, `Router`, `RoundRobin`, `Broadcast`, `LeastLoaded`, `ConsistentHash`, `RendezvousHash`, `WorkQueue`, `PriorityQueue`, `Correlator`, `Acknowledgements`, `Deduplicator`, `Sequencer`, `OrderGate`, `Stash`, `Buffer`, `CircuitBreaker`, `RateLimiter`, `Registry`, `Resolver`, `Topic`, `PubSub`, `Presence`, `Deadline`, `ReceiveTimeout`, `OneShot`, `Periodic`, `Lease`, `Cache`, `Workflow`, `Barrier`, `Latch`, `Health`, `Readiness`, `Configuration` | Implement here only as passive folds with complete concrete sums and named products. Runtime mechanisms named by a fold remain outside it. |
-| **2. Composition or named specialization** | `Stateful`, `Server`, `Protocol`, `Handler`, `Forwarder`, `Adapter`, `Spawner`, `Guardian`, `DynamicSupervisor`, `BackoffSupervisor`, `RestartLimiter`, `Link`, `LifecyclePublisher`, `TerminationMonitor`, `Reaper`, `ShutdownCoordinator`, `TreeShutdown`, `ScatterGather`, `Dispatcher`, `LoadBalancer`, `Broker`, `Aggregator`, `DeadLetters`, `Retry`, `Debouncer`, `Throttler`, `Bulkhead`, `Receptionist`, `Directory`, `EventBus`, `ObserverHub`, `RetrySchedule`, `Heartbeat`, `IdlePassivation`, `Process`, `Batch`, `Rendezvous`, `Source`, `Processor`, `Sink`, `FanOut`, `FanIn`, `Saga`, `Orchestrator`, `Diagnostics`, `Features`, `NodeGuardian`, `Downing`, `SplitBrain`, `Shards`, `ShardRegion`, `Placement`, `Rebalance`, `Activation`, `EntityPassivation`, `Replicator` | Represent the formula over concrete templates and expose a distinct name only when it preserves every lane and adds a demonstrated semantic contract; a catalogue noun is not sufficient reason for a wrapper type. |
+| **2. Composition or named specialization** | `Stateful`, `Server`, `Protocol`, `Handler`, `Forwarder`, `Adapter`, `Spawner`, `Guardian`, `DynamicSupervisor`, `BackoffSupervise`, `RestartLimiter`, `Link`, `LifecyclePublisher`, `TerminationMonitor`, `Reaper`, `ShutdownCoordinator`, `TreeShutdown`, `ScatterGather`, `Dispatcher`, `LoadBalancer`, `Broker`, `Aggregator`, `DeadLetters`, `Retry`, `Debouncer`, `Throttler`, `Bulkhead`, `Receptionist`, `Directory`, `EventBus`, `ObserverHub`, `RetrySchedule`, `Heartbeat`, `IdlePassivation`, `Process`, `Batch`, `Rendezvous`, `Source`, `Processor`, `Sink`, `FanOut`, `FanIn`, `Saga`, `Orchestrator`, `Diagnostics`, `Features`, `NodeGuardian`, `Downing`, `SplitBrain`, `Shards`, `ShardRegion`, `Placement`, `Rebalance`, `Activation`, `EntityPassivation`, `Replicator` | Represent the formula over concrete templates and expose a distinct name only when it preserves every lane and adds a demonstrated semantic contract; a catalogue noun is not sufficient reason for a wrapper type. |
 | **3. Runtime capability supplied by an owned Bombay component** | `Journal`, `Snapshots`, `Checkpoint`, `DiscoveryBridge`, `Metrics`, `Trace`, `Audit`, `Resources`, `Ingress`, `Egress` | Reuse Mnesis or a Bombay Environment adapter. A host-side policy may later get a distinct template name, but these capability nouns are not copied into Actors. |
 | **4. Environment interpreter or Bombay System responsibility** | `Random`, `Reminder`, `EventSourced`, `DurableState`, `Recovery`, `Outbox`, `Inbox`, `Projection`, `Replicated`, `Membership`, `FailureDetector`, `Singleton`, `ShardProxy`, `Gateway` | No shipped template until the typed capability and end-to-end Driver path exist. |
 | **5. Domain-specific behavior, not a catalogue implementation** | `Worker`, `Authorizer` | Bombay supplies composition slots and typed boundaries; the application owns these decisions and protocols. |
@@ -189,33 +197,41 @@ from this ledger remain prospective even when named in the catalogue.
 
 | Family / owning module | Implemented role | State and protocol owner | Named effects / errors | Runtime capability | Current verification | Proposed Bombay exposure |
 |---|---|---|---|---|---|---|
-| `composition` | `Activate` / `Compose` / `Active` | direct consuming initialization and wrapper-only composition over routed concrete event sums | `Initialized`, `ChildrenResult`; concrete nested errors | universal Driver only | unit, composition, compile-fail, properties, adapter-contract tests | `bombay::behavior::{Activate, Compose, Active}` |
+| `composition` | `Activate` / `Active` / concrete wrapper constructors | direct consuming initialization and explicit construction over routed concrete event sums | `Initialized`; concrete nested errors | universal Driver only | unit, composition, compile-fail, properties, adapter-contract tests | `bombay::behavior::{Activate, Active}` and `bombay::actors` wrapper types |
+| `composition` | `MessageAdapter` | one function-pointer mapping from an input protocol to a concrete destination protocol | exactly one ordinary typed delivery; no custom effect lane | universal Driver and Communication | unit, concrete recursive supervisor/pool roots, recursive compile-time matrix for all reply templates | `bombay::actors::MessageAdapter` |
+| `composition` | `supervised_backoff` / `coordinated_terminal_application` | exact existing concrete stacks with one owner-defined wrapper order and every policy input explicit | existing named lanes and errors only; no recipe behavior or aggregate error | existing supervision, lifecycle, and timer templates | exact-type assertions and differential initialization/transition traces | `bombay::actors::{supervised_backoff, coordinated_terminal_application}` |
 | `composition` | `Machine` | `Move` and user state/event types | domain behavior actions/errors unchanged | universal Driver only | unit, exhaustive FSM, properties, fuzz | `bombay::behavior::{Machine, Move}` |
 | `composition` | `Stash` | `StashRoute`, retained FIFO | `StashStatus`; inner products preserved | universal Driver only | unit, model, exhaustive, properties, fuzz | `bombay::actors::Stash` |
-| `lifecycle` | `Watch` / link reaction | `WatchEvent`, peer lifecycle protocol | `WatchSends`, `LinkReaction` | Observe | unit, composition, lifecycle model | `bombay::actors::{Watch, LinkReaction}` |
-| `lifecycle` | shutdown policies | `ShutdownProtocol`, request phase | `ShutdownReaction`; inner lanes preserved | System shutdown delivery | unit, independent model, composition | `bombay::actors::{StopOnShutdown, FinalizeOnShutdown}` |
+| `lifecycle` | `Guardian` | application/subtree boundary over the wrapped initialization and event contract | inner products preserved; normal shutdown adds no effects | universal Driver activation, shutdown delivery and retirement | unit, error-path, composition-order, compile-fail | `bombay::actors::Guardian` |
+| `lifecycle` | `TerminationMonitor` | one exact peer observation with explicit awaiting-or-consumed phase | `SendLayer<InterpreterRequests<ObservePeer<_>>, _>`; complete reaction actions preserved | Observe | unit over matching, unrelated, duplicate and rejected reactions | `bombay::actors::{TerminationMonitor, TerminationObservation}` |
+| `lifecycle` | `PropagateTermination` | one statically selected child or peer terminal fact with explicit discharge-or-propagate phase | named observation and exact `ReportTerminalOutcome` lanes; inner products preserved | Observe plus terminal publication | exhaustive terminal variants, independent sequence model/property, duplicate/unmatched facts, initialization, peer/child targets, compile-fail target identity, interpreter multiplicity and reference application | `bombay::actors::{PropagateTermination, ChildTermination, PeerTermination}` |
+| `lifecycle` | `Watch` / `Link` specialization | `WatchEvent`, exact peer lifecycle protocol; reciprocity is two endpoint compositions | one structural observation lane, `LinkReaction` | Observe | unit, composition, lifecycle model | `bombay::actors::{Watch, Link, LinkReaction}` |
+| `lifecycle` | `ShutdownCoordinator` / `TreeShutdown` | validated phases or acyclic dependency topology and exhaustive running/stopping/completed state | structural child-shutdown request lane, typed plan/tree/rejection errors | child shutdown request and exact `ChildStopped` facts | unit over validation, all phases, duplicates, stale facts, empty topology and atomic rejection | `bombay::actors::{ShutdownCoordinator, TreeShutdown, ShutdownTree}` |
+| `lifecycle` | shutdown policies | internal `ShutdownEvent`, request ownership | `ShutdownReaction`; public protocol and inner lanes preserved | System shutdown delivery | unit, independent model, composition | `bombay::actors::{StopOnShutdown, FinalizeOnShutdown}` |
 | `lifecycle::task` | `Task` | `TaskState`, `TaskMessage`, `TaskResult` | typed `TaskError`, terminal result delivery | Observe terminal publication | unit including completion/cancellation/post-terminal input | `bombay::actors::Task` |
 | `supervision` | `Proxy` | explicit incarnation and replacement provenance | `ProxySends`, `ProxyError` | fresh installation, Observe | unit, model, exhaustive, properties, fuzz | `bombay::actors::Proxy` |
-| `supervision` | `Supervisor` | fleet/incarnation/restart-budget sums, `ChildTopology`, `RestartConfiguration`, and `SupervisionEvent` | `SupervisorSends`, `SupervisorError`, `SupervisionFailure` | fresh installation, Observe | unit, model, exhaustive, properties, fuzz, adapter contract | `bombay::actors::{Supervisor, ChildTopology, RestartConfiguration}` |
+| `supervision` | `Supervisor` / `Supervise` | one shared fleet/incarnation/restart-budget ownership sum; standalone nominal protocol or composition around a genuinely child-creating application behavior | `SupervisorSends`, `SupervisorError` / `SuperviseError`, `SupervisionFailure` | fresh installation, Observe | unit, model, exhaustive, properties, fuzz, adapter contract, standalone/composed parity | `bombay::actors::{Supervisor, Supervise, ChildTopology, RestartConfiguration}` |
+| `supervision` | `BackoffSupervisor` / `BackoffSupervise` | one shared checked-attempt, timer-generation and pending-replacement-batch fold over standalone or composed fixed supervision | `BackoffSupervisorSends`, typed configuration/overflow/collision errors | Timers, fresh installation, Observe | unit over policy bounds, delayed release, stale/colliding timers, repeated failures and standalone parity | `bombay::actors::{BackoffSupervisor, BackoffSupervise, Backoff}` |
+| `supervision` | `DynamicSupervisor` | explicit installing/available/stopping/replacing/retired stable-proxy slots and typed management protocol | `DynamicSupervisorSends`, ownership-preserving admission and realization outcomes | fresh installation, child shutdown, Observe | unit over admission, duplicate ownership, committed creation, replacement and terminal facts | `bombay::actors::{DynamicSupervisor, DynamicChildPhase}` |
 | `supervision` | `WorkerPool` / `KeyedWorkerPool` | assignment, worker phase, interruption policy, keyed events, `PoolConfiguration` | `PoolActions`, `PoolSends`, `PoolError`, `PoolRejection` | fresh installation, Observe | unit, independent ownership model, properties, fuzz, adapter contract | `bombay::actors::{Pool, KeyedPool, PoolConfiguration}` |
 | `routing::router` | `Router<RoundRobin>` / `Router<Broadcast>` / `Router<LeastLoaded<_>>` / keyed consistent and rendezvous hash policies | ordered recipient membership; strategy-indexed observations; versioned load or stable-token evidence | ordinary typed deliveries; `RouterError` returns unroutable payload or typed policy rejection | Address and Communication; System supplies load/token evidence | unit over rotation, broadcast, load boundaries, stable hash determinism, evidence rejection, and removal remapping law | `bombay::actors::{Router, RoundRobin, Broadcast, LeastLoaded, ConsistentHash, RendezvousHash}` |
 | `routing::correlator` | `Correlator` | `CorrelationState`, `CorrelatorMessage` | `CorrelationResult`, `CorrelatorError` | ordinary typed delivery | unit over resolve/cancel/unknown/stale paths | `bombay::actors::Correlator` |
 | `routing::acknowledgements` | `Acknowledgements` | `AcknowledgementState`, record and operation sums | `AcknowledgementOutcome`, `AcknowledgementError` | ordinary typed delivery | unit over normalization, completion, cancellation, stale input | `bombay::actors::Acknowledgements` |
 | `routing::buffer` | `Buffer` | `BufferState`, `OverflowPolicy`, `BufferMessage` | `BufferSends`, `BufferOutcome`, `BufferConfigError` | Communication for physical delivery/backpressure | exhaustive overflow and FIFO unit cases | `bombay::actors::Buffer` |
-| `routing::sequencer` | `Sequencer` | `Sequence`, `SequencerState`, offer protocol | `SequencerSends`, ownership-preserving outcomes | ordinary typed delivery | unit, independent model/property sequences | `bombay::actors::Sequencer` |
-| `routing::order_gate` | `OrderGate` | monotonic watermark plus `BTreeMap` holds | `OrderGateSends`, ownership-preserving outcomes | ordinary typed delivery | unit, independent model/property sequences | `bombay::actors::OrderGate` |
-| `routing::deduplicator` | `Deduplicator` | bounded FIFO retained-key window | `DeduplicatorSends`, outcomes, config error | ordinary typed delivery | unit, independent model/property sequences | `bombay::actors::Deduplicator` |
+| `routing::sequencer` | `Sequencer` | `Sequence`, `SequencerState`, offer protocol | `DeliveryOutcomes`, ownership-preserving outcomes | ordinary typed delivery | unit, independent model/property sequences | `bombay::actors::Sequencer` |
+| `routing::order_gate` | `OrderGate` | monotonic watermark plus `BTreeMap` holds | `DeliveryOutcomes`, ownership-preserving outcomes | ordinary typed delivery | unit, independent model/property sequences | `bombay::actors::OrderGate` |
+| `routing::deduplicator` | `Deduplicator` | bounded FIFO retained-key window | `DeliveryOutcomes`, outcomes, config error | ordinary typed delivery | unit, independent model/property sequences | `bombay::actors::Deduplicator` |
 | `routing::work_queue` | `WorkQueue` | bounded FIFO waiting values and one-use available-worker capabilities | `WorkQueueSends`, ownership-preserving admission outcomes | Communication for physical delivery/backpressure | unit over worker/value FIFO and zero-capacity rejection | `bombay::actors::WorkQueue` |
-| `routing::priority_queue` | `PriorityQueue` | positive capacity and explicit active-or-exhausted stable-order phase | `PriorityQueueSends`, ownership-preserving full/exhaustion outcomes, config error | Communication for physical delivery/backpressure | unit over priority order, FIFO ties, full/empty and token exhaustion | `bombay::actors::PriorityQueue` |
+| `routing::priority_queue` | `PriorityQueue` | positive capacity and explicit active-or-exhausted stable-order phase | `DeliveryOutcomes`, ownership-preserving full/exhaustion outcomes, config error | Communication for physical delivery/backpressure | unit over priority order, FIFO ties, full/empty and token exhaustion | `bombay::actors::PriorityQueue` |
 | `routing::circuit_breaker` | `CircuitBreaker` | exhaustive closed idle/awaiting, open, probing available/awaiting, and exhausted sums with explicit attempt and timer generations | `BreakerSends`, `BreakerOutcome`, typed configuration and admission rejection sums | Timers for reset evidence; protected operations remain domain behavior | unit over threshold opening, denial, matching reset, single probe, stale attempts and stale timers | `bombay::actors::CircuitBreaker` |
-| `routing::rate_limiter` | `RateLimiter` | positive capacity and explicit available-token product | `RateLimiterSends`, ownership-preserving capacity/availability outcomes, config error | typed refill events from Timers/System | unit over admission, both rejection classes, saturating refill/overflow | `bombay::actors::RateLimiter` |
+| `routing::rate_limiter` | `RateLimiter` | positive capacity and explicit available-token product | `DeliveryOutcomes`, ownership-preserving capacity/availability outcomes, config error | typed refill events from Timers/System | unit over admission, both rejection classes, saturating refill/overflow | `bombay::actors::RateLimiter` |
 | `discovery::registry` | `Registry` | ordered typed bindings and mutation/lookup protocol | `RegistryResult`, `RegistryError` | Address for endpoint realization | unit over conflicts, stale unbind, found/missing | `bombay::actors::Registry` |
 | `discovery::resolver` | `Resolver` | immutable unique typed bindings and read-only lookup protocol | `Resolution`, borrowed-definition `ResolverConfigError` | Address for endpoint realization | unit over duplicate definition, found/missing, immutable protocol | `bombay::actors::Resolver` |
 | `discovery::topic` | `Topic` | ordered subscription membership and publication protocol | publication deliveries, `TopicError` returns undelivered value | Communication | unit over idempotence/order/empty publication | `bombay::actors::Topic` |
 | `discovery::pub_sub` | `PubSub` | keyed retained topic membership and publication protocol | ordered publication deliveries; `PubSubError` returns undelivered value | Communication | unit over idempotence/order/known-empty/unknown publication | `bombay::actors::PubSub` |
 | `discovery::presence` | `Presence` | versioned present-or-expired participant sum with explicit timer generation and retained tombstones | `PresenceSends`, `PresenceOutcome`, typed stale/conflict/collision/exhaustion errors | Timers for expiry evidence | unit over refresh, idempotence, expiry, stale evidence, live timer collision and generation exhaustion | `bombay::actors::Presence` |
-| `time` | `Deadline` / `ReceiveTimeout` | explicit timer generations and closed timed event sums | `DeadlineSends`, `ReceiveTimeoutSends`; inner errors | Timers | unit, composition, independent model, properties, fuzz | `bombay::actors::time::{Deadline, ReceiveTimeout}` |
-| `time` | `OneShot` / `Periodic` | generation-safe timer leases and timed event sums | `OneShotSends`, `PeriodicSends`; inner errors | Timers | unit over initialization, wrong/stale generation, rearming | `bombay::actors::time::{OneShot, Periodic}` |
+| `time` | `Deadline` / `ReceiveTimeout` | explicit timer generations and closed timed event sums | structural timer-request lane; inner errors | Timers | unit, composition, independent model, properties, fuzz | `bombay::actors::time::{Deadline, ReceiveTimeout}` |
+| `time` | `OneShot` / `Periodic` | generation-safe timer leases and timed event sums | structural timer-request lane; inner errors | Timers | unit over initialization, wrong/stale generation, rearming | `bombay::actors::time::{OneShot, Periodic}` |
 | `time::lease` | `Lease` | explicit vacant, held-with-provenance, or exhausted ownership sum | `LeaseSends`, concrete acquisition/renewal/release/expiry outcomes and rejections | Timers schedule lane; cancellation adapter gap documented | unit over acquire/renew/release, wrong holder, stale expiry, matching expiry, generation exhaustion | `bombay::actors::time::Lease` |
 | `persistence::cache` | `Cache` | positive capacity and deterministic recency state | ownership-returning `CacheResult`, `CacheConfigError` | none; not a durability subsystem | unit over hit/replacement/eviction/removal/zero capacity | `bombay::actors::Cache` |
 | `workflow::latch` | `Latch` | `LatchState::{Counting, Released}` | typed `LatchReleased` delivery | ordinary typed delivery | unit over zero, countdown, duplicate terminal input | `bombay::actors::Latch` |
@@ -279,7 +295,7 @@ shipped.
 | `Protocol<P>` | Typestate protocol phases | Actors | None |
 | `Handler<E>` | Event lane plus behavior | Actors | None |
 | `Forwarder<P>` | Recipient plus forwarding behavior | Actors | None |
-| `Adapter<In, Out>` | Statically typed protocol transformation | Actors | None |
+| `MessageAdapter<In, Destination>` | A nominal actor protocol that maps one public input message algebra to one destination protocol and emits one ordinary typed delivery | Actors | None |
 | `Spawner<C>` | Behavior plus staged fresh child creation | Actors | None |
 | `Proxy<P>` | Stable endpoint plus current recipient | Actors | None |
 
@@ -292,21 +308,23 @@ must not import a second implementation of those semantics.
 | Canonical type | Composition | Owner | External dependency |
 |---|---|---|---|
 | `Guardian<C>` | Child ownership plus shutdown policy | Actors | None |
-| `Supervisor<C, P>` | Observation plus recovery policy plus stable proxy | Actors | None |
-| `DynamicSupervisor<C, P>` | Supervisor plus typed dynamic child set | Actors | Optional `indexmap` |
-| `BackoffSupervisor<C, B>` | Supervisor plus timer effects plus backoff policy | Actors | None; define policy locally |
+| `Supervisor<A, C>` | Standalone observation, recovery policy and stable-proxy fleet ownership | Actors | None |
+| `Supervise<B, C>` | The same ownership fold composed with a genuinely child-creating application behavior | Actors | None |
+| `DynamicSupervisor<A, C, Reply>` | Explicit typed dynamic stable-child set with command admission separated from runtime realization | Actors | None |
+| `BackoffSupervisor<A, C>` / `BackoffSupervise<B, C>` | Standalone or composed fixed supervision plus the same timer/backoff fold | Actors | None; define policy locally |
 | `RestartLimiter<W>` | Restart history plus a typed observation window | Actors | None |
 | `Worker<P>` | Concrete application protocol implementation | Application | None |
 | `Pool<W, R>` | Workers plus routing policy | Actors | Optional `indexmap` |
 | `KeyedPool<K, W>` | Keyed children plus routing | Actors | Optional `indexmap` |
 | `Task<R>` | One-result child lifecycle | Actors | None |
 | `Watch<T>` | Observation request plus lifecycle events | Actors | None |
-| `Link<T>` | Mutual typed observation policy | Actors | None |
+| `Link<T>` | Named `Watch<T>` specialization; mutual policy is the same composition installed at both endpoints | Actors | None |
 | `LifecyclePublisher<T>` | Lifecycle events plus subscribers | Actors | None |
 | `TerminationMonitor<T>` | Watch plus termination classification | Actors | None |
 | `Reaper<T>` | Monitor plus cleanup communications | Actors | None |
-| `ShutdownCoordinator<T>` | Shutdown phases plus acknowledgements | Actors | None |
-| `TreeShutdown<T>` | Child topology plus ordered shutdown | Actors | `petgraph` only for a dependency graph |
+| `ShutdownCoordinator<B, C>` | Homogeneous typed-child shutdown phases plus acknowledgements | Actors | None |
+| `HeterogeneousShutdownCoordinator<B, T>` | Arbitrary closed typed-child shutdown phases with ordered static request dispatch | Actors | None |
+| `TreeShutdown<B, C>` | Homogeneous typed-child topology plus ordered shutdown | Actors | `petgraph` only for a dependency graph |
 
 Backoff is small and semantically observable, so Bombay should define its own
 exhaustive policy instead of importing the assumptions of an asynchronous
@@ -520,7 +538,7 @@ systems that produce or consume those observations stay in the Bombay runtime.
 | `Features<F>` | Closed feature-state protocol | Actors | None |
 | `Resources<R>` | Resource ownership states plus interpreter results | Actors / Bombay runtime | Capability-specific |
 | `Authorizer<P>` | Concrete authorization protocol and decisions | Application | Security adapter |
-| `Gateway<In, Out>` | External protocol adapter plus application recipient | Bombay runtime | `tower`, `tonic`, or HTTP stack |
+| `Gateway<In, Out>` | External boundary translation plus an application public-protocol recipient | Bombay runtime | `tower`, `tonic`, or HTTP stack |
 | `Ingress<P>` | Decoded external input plus typed delivery | Bombay runtime | Codec and transport adapter |
 | `Egress<P>` | Typed communication plus external encoding | Bombay runtime | Codec and transport adapter |
 
@@ -534,7 +552,7 @@ evaluating another implementation crate:
 | Interpreter capability | Existing Bombay realization / candidate adapter | Constraint |
 |---|---|---|
 | Behavior driving and action interpretation | `bombay-engine::Driver` | One event invokes one fold; effects remain explicit and are interpreted at the boundary. |
-| Mailboxes, lane priority, fairness, and physical backpressure | `bombay-communication` | Never expose the channel as the behavior protocol or reproduce mailbox mechanics in a policy template. |
+| Mailboxes, lane priority, fairness, and physical backpressure | `bombay-communication` | Never expose the channel as a public actor protocol or reproduce mailbox mechanics in a policy template. |
 | Endpoint registration and resolution | `bombay-address` | Registration authority and generation safety remain runtime facts. |
 | Completion and lifecycle observation | `bombay-observe` | Translate publications into concrete typed observation events. |
 | Monotonic keyed timers | `bombay-timers` | Runtime owns clocks and sleeping; behavior owns timeout policy. |
@@ -593,7 +611,7 @@ fold.
 
 | Family | Implemented templates | Partly supplied by a sibling subsystem or primitive | Still absent as reusable templates |
 |---|---|---|---|
-| Fundamental and lifecycle | Machine composition, stash, watch, one-result `Task`, shutdown, proxy, supervisor, worker pools, deadlines, receive timeouts | Task terminal publication and lifecycle publication through Observe and Bombay; restart budgeting within `Supervisor`; local entity activation and passivation | Separate guardian and backoff-supervisor behaviors where a concrete use requires them |
+| Fundamental and lifecycle | Machine composition, stash, `Guardian`, watch/`Link`, one-result `Task`, `TerminationMonitor` and terminal-propagation specializations, phased/tree shutdown, proxy, fixed and dynamic supervision, backoff supervision, worker pools, deadlines, receive timeouts | Task terminal publication, lifecycle publication, child shutdown, and independent structural observation through Observe and Bombay; restart budgeting within `Supervisor`; local entity activation and passivation | None within the implemented ledger; prospective lifecycle catalogue roles remain subject to their own capability audits |
 | Routing and delivery | Round-robin, broadcast, versioned-load, stable-ring, and rendezvous router policies; bounded FIFO `WorkQueue`; stable bounded `PriorityQueue`; single-flight `CircuitBreaker`; `Correlator`; terminal-retaining `Acknowledgements`; bounded `Buffer`; `Sequencer`; `OrderGate`; `Deduplicator`; stash and pool dispatch | Address routing, generation-safe endpoint resolution, mailbox priority/fairness/backpressure, and the Bombay job-queue example | Scatter-gather, broker, aggregation, retrying delivery, and dead-letter compositions |
 | Discovery and messaging fabric | Typed `Registry` with conflict and stale-unbind outcomes; immutable capability-separated `Resolver`; ordered typed `Topic`; keyed retained-membership `PubSub`; versioned generation-safe `Presence` | Local endpoint registration/resolution and local entity directory | Registry subscriptions, receptionist, groups, and sessions |
 | Time derived | Deadline, receive timeout, one-shot, periodic, exclusive expiring `Lease`; typed-refill `RateLimiter` and reset-timed `CircuitBreaker` policies | The shared Bombay timer queue; its cancellation mechanism lacks a current Bombay effect lane | Retry schedule, heartbeat, idle passivation, and debounce/throttle compositions |
@@ -732,8 +750,9 @@ public law needs it and after the exact release passes repository policy.
 | Every template | `bombay-engine`, `bombay-transition`, `bombay-machine-executor` | Bombay engine/runtime | Reuse the universal Driver and exclusive turn machinery; never add a template-specific loop |
 | `EventSourced`, `Recovery`, durable projection, checkpoint, saga/process manager, relay, inbox/outbox | Mnesis and `mnesis-bombay` | `mnesis-bombay`, not Actors | Bombay hosts, typed adapter protocols, receipts, and composition root; never another persistence abstraction |
 
-“Compose” in this table means protocol composition across crate boundaries. It
-does not mean adding these runtime crates as dependencies of
+“Composition” in this table means composition of public protocols and internal
+event/effect algebras across crate boundaries. It does not mean adding these
+runtime crates as dependencies of
 `bombay-behavior-actors`. A template declares typed requirements; the System's
 environment supplies the implementation and the compiler rejects an
 insufficient environment.

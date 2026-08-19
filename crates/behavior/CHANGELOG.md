@@ -7,13 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.12.1](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.12.0...bombay-behavior-v0.12.1) - 2026-08-15
+### Added
 
-### Other
+- Add `EventLayer`, `InjectEvent`, `Here`, `Inside`, and `Ingress` as the
+  structural, statically selected algebra for interpreter-originated inputs.
+  Equal payload types at nested layers remain distinct capabilities and
+  unsupported paths fail to compile.
+- Add `Behavior::Protocol`, `BehaviorAddr`, and `BehaviorMessage` so public
+  destination identity is orthogonal to the current behavior implementation,
+  internal event algebra, and explicit effects.
+- Add `MessageProtocol<A, M>` as the zero-state structural endpoint for public
+  message signatures that have no nominal actor template.
 
-- Test foundational behavior value contracts ([#48](https://github.com/devrandom-labs/bombay-behavior/pull/48))
+- Extend the single `#[behavior]` authoring macro with nominal heterogeneous
+  send products, typed lane selectors, closed `Children`/`ChildChoice` birth
+  products, and capability-denying defaults.
+
+- Add `InstallBirth` and `DispatchBirth` as the statically dispatched
+  interpreter contract for closed heterogeneous creation products.
+- Implement `DispatchBirth` for every concrete `Behavior`, so homogeneous
+  `Births<C>` and recursive `ChildChoice` sums share the same interpreter leg.
+- Add `Children` and `ChildChoice` as the ordered heterogeneous creation
+  product and its closed, generic child sum, without procedural generation.
+- Require `InstallBirth` and `DispatchBirth` to return `Send` futures so
+  recursive runtime drivers can remain eligible for thread-safe spawning.
 
 ### Changed
+
+- Remove the redundant `#[actor]` authoring macro; the capability-free
+  `#[behavior]` form now covers that subset without a second generated path.
+
+- Remove payload-driven `EventInput`/`RouteInput` routing. Event ownership is
+  now selected by a concrete compile-time path and never discovered by
+  searching nested behavior types.
+- Remove recursive `SendInput` forwarding into structurally nested send
+  products. `SendLayer` exposes emission only through its owned lane; products
+  with several application effects must provide nominal, semantically named
+  lanes instead of making callers select effects by an `Inner<Path>` nesting
+  position. The recursive forwarding recorded for 0.9.2 is historical and is
+  not part of the current API.
+- Remove `Protocol` as a `Behavior` supertrait. `Recipient<P>` and
+  `Delivery<P>` now require only the stable public protocol, while activation,
+  creation, wrapping, and interpretation project it through
+  `Behavior::Protocol`.
 
 - Move reusable actors, protocols, composition, and worker pools to the new
   `bombay-behavior-actors` package, leaving this package focused on the typed
@@ -21,6 +57,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Make the terminal alternative of `become` a payload-free `Stopped` marker;
   lifecycle, supervision, collection, and runtime-failure provenance no longer
   appears in the foundational behavior API.
+
+## [0.12.1](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.12.0...bombay-behavior-v0.12.1) - 2026-08-15
+
+### Other
+
+- Test foundational behavior value contracts ([#48](https://github.com/devrandom-labs/bombay-behavior/pull/48))
 
 ## [0.11.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.10.0...bombay-behavior-v0.11.0) - 2026-08-15
 
@@ -51,7 +93,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   protocols sharing an address namespace and payload remain statically
   distinct and runtimes can derive topology without endpoint aliases or
   dynamic registries
-- make `Handler`/`Pure` carry their complete send algebra instead of deriving
+- make `Handler`/`Pure` carry their complete send effects instead of deriving
   an ambiguous delivery lane from an outbound payload type
 
 - add a pure typed bounded FIFO worker pool with stable supervised workers,
@@ -96,7 +138,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- add recursive typed `SendInput` forwarding through `SendProduct`, allowing
+- add recursive typed `SendInput` forwarding through `SendEffects`, allowing
   callers to select arbitrarily nested send lanes with `Own` and `Inner<Path>`
   without positional field mutation
 
@@ -137,7 +179,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - replacement creation provenance now names the exact prior incarnation, and
   supervised proxies remain unroutable until installation is committed
 - supervision effect lanes are named by meaning instead of exposed through
-  positional `SendProduct` nesting
+  positional `SendEffects` nesting
 
 ## [0.8.2](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.8.1...bombay-behavior-v0.8.2) - 2026-08-09
 
@@ -209,7 +251,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - separate interpreter-local service requests from ordinary address-routed
-  deliveries with the `ServiceSends` algebra
+  deliveries with the `InterpreterRequests` algebra
 
 ## [0.3.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.2.1...bombay-behavior-v0.3.0) - 2026-08-07
 

@@ -108,13 +108,21 @@ impl<A: Address, S, M, P: Copy + PartialEq, E> Machine<A, S, M, P, E> {
     }
 }
 
-impl<A, S, M, P, E> Behavior for Machine<A, S, M, P, E>
+impl<A, S, M, P, E> behavior::Protocol for Machine<A, S, M, P, E>
 where
     A: Address,
     P: Copy + PartialEq,
 {
     type Addr = A;
     type Msg = M;
+}
+
+impl<A, S, M, P, E> Behavior for Machine<A, S, M, P, E>
+where
+    A: Address,
+    P: Copy + PartialEq,
+{
+    type Protocol = Self;
     type Event = User<A, M>;
     type Sends = Vec<Never>;
     type Ph = Never;

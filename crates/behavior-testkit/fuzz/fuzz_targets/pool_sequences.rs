@@ -4,20 +4,51 @@ use std::time::Duration;
 
 use behavior::{
     Actions, Activate, Behavior, CreationKind, InterruptionPolicy, JobId, KeyedPoolMessage,
-    KeyedWorkerPool, MailAddr, Never, NoBirths, PoolAssignment, PoolMessage, PoolResponse,
-    Recipient, RestartPolicy, User, WorkerCreationResolved, WorkerPhase, WorkerPool, WorkerStopped,
+    KeyedWorkerPool, KeyedWorkerPoolProtocol, MailAddr, Never, NoBirths, PoolAssignment,
+    PoolMessage, PoolResponse, Recipient, RestartPolicy, User, WorkerCreationResolved, WorkerPhase,
+    WorkerPool, WorkerPoolProtocol, WorkerStopped,
 };
 use libfuzzer_sys::fuzz_target;
 use std::time::Instant;
 
 type Reply = bombay_behavior_fuzz::TestRecipient<PoolResponse<u8, u8, MailAddr>>;
-
 struct Worker;
+struct KeyedWorker;
+
+impl behavior::Protocol for Worker {
+    type Addr = MailAddr;
+    type Msg = PoolAssignment<WorkerPoolProtocol<MailAddr, Reply, u8, u8>>;
+}
 
 impl Behavior for Worker {
+    type Protocol = Self;
+    type Event = User<MailAddr, behavior::BehaviorMessage<Self>>;
+    type Sends = Vec<Never>;
+    type Ph = Never;
+    type Error = Never;
+    type Birth = NoBirths;
+
+    fn init(&mut self, _: behavior::InitializationTurn) -> behavior::BehaviorActed<Self> {
+        Ok(Actions::cont())
+    }
+
+    fn transition(
+        &mut self,
+        _: behavior::ActiveTurn,
+        _event: Self::Event,
+    ) -> behavior::BehaviorActed<Self> {
+        Ok(Actions::cont())
+    }
+}
+
+impl behavior::Protocol for KeyedWorker {
     type Addr = MailAddr;
-    type Msg = PoolAssignment<u8>;
-    type Event = User<MailAddr, PoolAssignment<u8>>;
+    type Msg = PoolAssignment<KeyedWorkerPoolProtocol<MailAddr, Reply, u8, u8, u8>>;
+}
+
+impl Behavior for KeyedWorker {
+    type Protocol = Self;
+    type Event = User<MailAddr, behavior::BehaviorMessage<Self>>;
     type Sends = Vec<Never>;
     type Ph = Never;
     type Error = Never;
@@ -44,6 +75,10 @@ fn worker(_index: usize) -> Worker {
     Worker
 }
 
+fn keyed_worker(_index: usize) -> KeyedWorker {
+    KeyedWorker
+}
+
 fn affinity(key: &u8) -> u64 {
     u64::from(key & 1)
 }
@@ -62,12 +97,13 @@ fuzz_target!(|bytes: &[u8]| {
             u32::MAX,
             Duration::from_secs(1),
         ),
+        Recipient::global(MailAddr(9)),
     )
     .unwrap();
     let initialized = (pool).initialize().unwrap();
     let mut pool = initialized.behavior;
     for slot in 0..2 {
-        pool.on(WorkerCreationResolved::new(
+        pool.on_path(WorkerCreationResolved::new(
             slot,
             0,
             CreationKind::Birth,
@@ -111,15 +147,15 @@ fuzz_target!(|bytes: &[u8]| {
                     Some(WorkerPhase::Idle | WorkerPhase::Assigned { .. })
                 ) {
                     let actions = pool
-                        .on(WorkerStopped::new(
+                        .on_path(WorkerStopped::new(
                             slot,
                             0,
                             Err(behavior::Crash::Panicked),
                             Instant::now(),
                         ))
                         .unwrap();
-                    if !actions.sends.replacement_commands.is_empty() {
-                        pool.on(WorkerCreationResolved::new(
+                    if !actions.sends.owned.replacement_commands.is_empty() {
+                        pool.on_path(WorkerCreationResolved::new(
                             slot,
                             1,
                             CreationKind::replacement_of(0),
@@ -134,7 +170,7 @@ fuzz_target!(|bytes: &[u8]| {
     }
 
     let keyed = KeyedWorkerPool::new(
-        behavior::ChildTopology::indexed(nonce, 2, |index| Some(worker(index))),
+        behavior::ChildTopology::indexed(nonce, 2, |index| Some(keyed_worker(index))),
         behavior::PoolConfiguration::new(
             4,
             InterruptionPolicy::Retry,
@@ -143,13 +179,14 @@ fuzz_target!(|bytes: &[u8]| {
             Duration::from_secs(1),
         ),
         affinity,
+        Recipient::global(MailAddr(9)),
     )
     .unwrap();
     let initialized = (keyed).initialize().unwrap();
     let mut keyed = initialized.behavior;
     for slot in 0..2 {
         keyed
-            .on(WorkerCreationResolved::new(
+            .on_path(WorkerCreationResolved::new(
                 slot,
                 slot,
                 CreationKind::Birth,
@@ -206,14 +243,14 @@ fuzz_target!(|bytes: &[u8]| {
                 ) {
                     let stopped = incarnations[slot];
                     let actions = keyed
-                        .on(WorkerStopped::new(
+                        .on_path(WorkerStopped::new(
                             nonce,
                             stopped,
                             Err(behavior::Crash::Panicked),
                             Instant::now(),
                         ))
                         .unwrap();
-                    if !actions.sends.replacement_commands.is_empty() {
+                    if !actions.sends.owned.replacement_commands.is_empty() {
                         let replacement = stopped.wrapping_add(2);
                         let result = if byte & 0x80 == 0 {
                             Ok(())
@@ -221,7 +258,7 @@ fuzz_target!(|bytes: &[u8]| {
                             Err(behavior::CreationRejection::EnvironmentFailed)
                         };
                         keyed
-                            .on(WorkerCreationResolved::new(
+                            .on_path(WorkerCreationResolved::new(
                                 nonce,
                                 replacement,
                                 CreationKind::replacement_of(stopped),

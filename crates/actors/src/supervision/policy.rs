@@ -1,6 +1,9 @@
 //! Concrete supervision strategies, restart policy, and failure reactions.
 
-use crate::{Address, Become, Behavior, Crash, Exit, Step, Stopped, SupervisionFailureReason};
+use crate::{
+    Address, Become, Behavior, Crash, CreationKind, CreationRejection, Exit, RestartDenial, Step,
+    Stopped, SupervisionFailureReason,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Strategy {
@@ -32,11 +35,33 @@ pub const fn restart_rest() -> Strategy {
 }
 
 /// A typed failure of the supervisor's child-topology contract.
+///
+/// Termination and creation failures are distinct variants because a rejected
+/// fresh installation has no truthful child-terminal outcome. Each variant
+/// owns exactly the identity, provenance, and failure data supplied by its
+/// authoritative fact.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct SupervisionFailure<A: Address> {
-    pub child: A::Nonce,
-    pub outcome: Result<Exit<A>, Crash>,
-    pub reason: SupervisionFailureReason,
+pub enum SupervisionFailure<A: Address> {
+    RestartDenied {
+        child: A::Nonce,
+        outcome: Result<Exit<A>, Crash>,
+        denial: RestartDenial,
+    },
+    StableChildStopped {
+        child: A::Nonce,
+        outcome: Result<Exit<A>, Crash>,
+    },
+    StableChildCreationRejected {
+        child: A::Nonce,
+        kind: CreationKind<A::Nonce>,
+        rejection: CreationRejection,
+    },
+    WorkerCreationRejected {
+        proxy: A::Nonce,
+        worker: A::Nonce,
+        kind: CreationKind<A::Nonce>,
+        rejection: CreationRejection,
+    },
 }
 
 /// A supervisor's request for the Bombay runtime to publish one exact typed
@@ -53,17 +78,71 @@ impl<A: Address> ReportSupervisionFailure<A> {
     }
 }
 
+impl<A: Address> behavior::InterpreterRequest for ReportSupervisionFailure<A> {
+    type ReturnToEmitter = behavior::NoReturnToEmitter;
+}
+
 impl<A: Address> SupervisionFailure<A> {
     #[must_use]
-    pub const fn new(
+    pub const fn restart_denied(
         child: A::Nonce,
         outcome: Result<Exit<A>, Crash>,
-        reason: SupervisionFailureReason,
+        denial: RestartDenial,
     ) -> Self {
-        Self {
+        Self::RestartDenied {
             child,
             outcome,
-            reason,
+            denial,
+        }
+    }
+
+    #[must_use]
+    pub const fn stable_child_stopped(child: A::Nonce, outcome: Result<Exit<A>, Crash>) -> Self {
+        Self::StableChildStopped { child, outcome }
+    }
+
+    #[must_use]
+    pub const fn stable_child_creation_rejected(
+        child: A::Nonce,
+        kind: CreationKind<A::Nonce>,
+        rejection: CreationRejection,
+    ) -> Self {
+        Self::StableChildCreationRejected {
+            child,
+            kind,
+            rejection,
+        }
+    }
+
+    #[must_use]
+    pub const fn worker_creation_rejected(
+        proxy: A::Nonce,
+        worker: A::Nonce,
+        kind: CreationKind<A::Nonce>,
+        rejection: CreationRejection,
+    ) -> Self {
+        Self::WorkerCreationRejected {
+            proxy,
+            worker,
+            kind,
+            rejection,
+        }
+    }
+
+    /// Terminal classification published for the supervisor incarnation.
+    /// The complete diagnostic remains in this value and is not reconstructed
+    /// from the terminal classification.
+    #[must_use]
+    pub const fn reason(self) -> SupervisionFailureReason {
+        match self {
+            Self::RestartDenied { denial, .. } => SupervisionFailureReason::RestartDenied(denial),
+            Self::StableChildStopped { .. } => SupervisionFailureReason::StableChildStopped,
+            Self::StableChildCreationRejected { rejection, .. } => {
+                SupervisionFailureReason::StableChildCreationRejected(rejection)
+            }
+            Self::WorkerCreationRejected { rejection, .. } => {
+                SupervisionFailureReason::WorkerCreationRejected(rejection)
+            }
         }
     }
 }
@@ -71,7 +150,7 @@ impl<A: Address> SupervisionFailure<A> {
 /// Pure policy applied when a supervisor cannot preserve its child topology.
 pub type SupervisionFailureReaction<B> = fn(
     &mut B,
-    &SupervisionFailure<<B as Behavior>::Addr>,
+    &SupervisionFailure<crate::BehaviorAddr<B>>,
 ) -> Result<Become, <B as Behavior>::Error>;
 
 /// Retire the failed slot and keep the supervisor alive.
@@ -80,7 +159,7 @@ pub type SupervisionFailureReaction<B> = fn(
 /// This supplied policy never returns a controlled behavior error.
 pub fn retire_on_supervision_failure<B: Behavior>(
     _behavior: &mut B,
-    _failure: &SupervisionFailure<B::Addr>,
+    _failure: &SupervisionFailure<crate::BehaviorAddr<B>>,
 ) -> Result<Become, B::Error> {
     Ok(Step::Continue)
 }
@@ -91,7 +170,7 @@ pub fn retire_on_supervision_failure<B: Behavior>(
 /// This supplied policy never returns a controlled behavior error.
 pub fn stop_on_supervision_failure<B: Behavior>(
     _behavior: &mut B,
-    _failure: &SupervisionFailure<B::Addr>,
+    _failure: &SupervisionFailure<crate::BehaviorAddr<B>>,
 ) -> Result<Become, B::Error> {
     Ok(Step::Stop(Stopped))
 }
