@@ -138,16 +138,6 @@ where
     type Msg = RegistryMessage<K, D, Reply>;
 }
 
-impl<A, K, D, Reply> behavior::KeyedProtocol for Registry<A, K, D, Reply>
-where
-    A: Address,
-    K: Clone + Eq,
-    D: Protocol<Addr = A>,
-    Reply: behavior::Protocol<Addr = A, Msg = RegistryResult<K, D>>,
-{
-    type Key = behavior::NominalProtocolKey<Self>;
-}
-
 impl<A, K, D, Reply> Behavior for Registry<A, K, D, Reply>
 where
     A: Address,

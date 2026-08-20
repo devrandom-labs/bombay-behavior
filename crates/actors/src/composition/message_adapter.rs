@@ -70,13 +70,6 @@ where
     type Msg = Input;
 }
 
-impl<Input, Destination> behavior::KeyedProtocol for MessageAdapter<Input, Destination>
-where
-    Destination: behavior::Protocol,
-{
-    type Key = behavior::NominalProtocolKey<Self>;
-}
-
 impl<Input, Destination> Behavior for MessageAdapter<Input, Destination>
 where
     Destination: behavior::Protocol,

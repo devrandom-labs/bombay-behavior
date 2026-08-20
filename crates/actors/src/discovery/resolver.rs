@@ -128,16 +128,6 @@ where
     type Msg = ResolverMessage<K, Reply>;
 }
 
-impl<A, K, D, Reply> behavior::KeyedProtocol for Resolver<A, K, D, Reply>
-where
-    A: Address,
-    K: Clone + Eq,
-    D: Protocol<Addr = A>,
-    Reply: behavior::Protocol<Addr = A, Msg = Resolution<K, D>>,
-{
-    type Key = behavior::NominalProtocolKey<Self>;
-}
-
 impl<A, K, D, Reply> Behavior for Resolver<A, K, D, Reply>
 where
     A: Address,

@@ -445,15 +445,6 @@ where
     type Msg = PresenceMessage<K, Reply>;
 }
 
-impl<A, K, Reply> behavior::KeyedProtocol for Presence<A, K, Reply>
-where
-    A: Address,
-    K: Clone + Eq,
-    Reply: behavior::Protocol<Addr = A, Msg = PresenceReply<K>>,
-{
-    type Key = behavior::NominalProtocolKey<Self>;
-}
-
 impl<A, K, Reply> Behavior for Presence<A, K, Reply>
 where
     A: Address,

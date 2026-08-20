@@ -310,15 +310,6 @@ where
     type Msg = LeaseMessage<K, Reply>;
 }
 
-impl<A, K, Reply> behavior::KeyedProtocol for Lease<A, K, Reply>
-where
-    A: Address,
-    K: Clone + Eq,
-    Reply: behavior::Protocol<Addr = A, Msg = LeaseOutcome<K>>,
-{
-    type Key = behavior::NominalProtocolKey<Self>;
-}
-
 impl<A, K, Reply> Behavior for Lease<A, K, Reply>
 where
     A: Address,

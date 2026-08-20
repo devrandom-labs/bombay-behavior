@@ -699,16 +699,6 @@ where
     type Msg = RouterMessage<D, R>;
 }
 
-impl<A, D, R> behavior::KeyedProtocol for Router<A, D, R>
-where
-    A: Address,
-    D: Protocol<Addr = A>,
-    D::Msg: Clone,
-    R: RoutingStrategy<D>,
-{
-    type Key = behavior::NominalProtocolKey<Self>;
-}
-
 impl<A, D, R> Behavior for Router<A, D, R>
 where
     A: Address,

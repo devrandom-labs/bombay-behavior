@@ -265,16 +265,6 @@ where
     type Msg = OrderGateMessage<K, T, Target, Reply>;
 }
 
-impl<A, K, T, Target, Reply> behavior::KeyedProtocol for OrderGate<A, K, T, Target, Reply>
-where
-    A: Address,
-    K: Clone + Ord,
-    Target: Protocol<Addr = A, Msg = T>,
-    Reply: behavior::Protocol<Addr = A, Msg = OrderGateOutcome<K, T>>,
-{
-    type Key = behavior::NominalProtocolKey<Self>;
-}
-
 impl<A, K, T, Target, Reply> Behavior for OrderGate<A, K, T, Target, Reply>
 where
     A: Address,

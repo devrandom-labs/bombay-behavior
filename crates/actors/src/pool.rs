@@ -1153,20 +1153,6 @@ where
     type Msg = PoolMessage<A, D, J, R>;
 }
 
-impl<A, D, J, R, C, P, ParentPath> behavior::KeyedProtocol
-    for PoolCore<A, D, J, R, C, P, ParentPath>
-where
-    A: Address,
-    A::Nonce: From<u64>,
-    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
-    P: crate::PoolAssignmentProtocol<Addr = A, Job = J>,
-    J: Clone,
-    C: Behavior<Ph = Never>,
-    C::Protocol: crate::Protocol<Addr = A, Msg = PoolAssignment<P>>,
-{
-    type Key = behavior::NominalProtocolKey<Self>;
-}
-
 impl<A, D, J, R, C, P, ParentPath> Behavior for PoolCore<A, D, J, R, C, P, ParentPath>
 where
     A: Address,

@@ -329,14 +329,6 @@ where
     type Msg = ProxyCommand<C>;
 }
 
-impl<C> behavior::KeyedProtocol for Proxy<C>
-where
-    C: Behavior<Ph = Never>,
-    <crate::BehaviorAddr<C> as Address>::Nonce: From<u64>,
-{
-    type Key = behavior::NominalProtocolKey<Self>;
-}
-
 impl<C, ParentPath> Behavior for ProxyWithParent<C, ParentPath>
 where
     C: Behavior<Ph = Never>,

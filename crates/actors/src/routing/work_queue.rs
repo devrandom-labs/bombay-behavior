@@ -264,15 +264,6 @@ where
     type Msg = WorkQueueMessage<T, W, Reply>;
 }
 
-impl<A, T, W, Reply> behavior::KeyedProtocol for WorkQueue<A, T, W, Reply>
-where
-    A: Address,
-    W: Protocol<Addr = A, Msg = T>,
-    Reply: behavior::Protocol<Addr = A, Msg = WorkQueueOutcome<T>>,
-{
-    type Key = behavior::NominalProtocolKey<Self>;
-}
-
 impl<A, T, W, Reply> Behavior for WorkQueue<A, T, W, Reply>
 where
     A: Address,

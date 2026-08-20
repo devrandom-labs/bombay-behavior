@@ -369,15 +369,6 @@ where
     type Msg = WorkflowMessage<K, Reply>;
 }
 
-impl<A, K, Reply> behavior::KeyedProtocol for Workflow<A, K, Reply>
-where
-    A: Address,
-    K: Clone + Eq,
-    Reply: behavior::Protocol<Addr = A, Msg = WorkflowOutcome<K>>,
-{
-    type Key = behavior::NominalProtocolKey<Self>;
-}
-
 impl<A, K, Reply> Behavior for Workflow<A, K, Reply>
 where
     A: Address,

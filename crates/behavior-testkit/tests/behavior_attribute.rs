@@ -96,16 +96,6 @@ impl behavior::Protocol for Manual {
     type Msg = ();
 }
 
-struct ManualKey;
-
-impl behavior::ProtocolKey for ManualKey {
-    type Protocol = Manual;
-}
-
-impl behavior::KeyedProtocol for Manual {
-    type Key = ManualKey;
-}
-
 impl Behavior for Manual {
     type Protocol = Self;
     type Event = behavior::User<MailAddr, ()>;
@@ -270,19 +260,6 @@ fn attribute_preserves_impl_generics_and_where_clause() {
     let actions = generic.receive(MailAddr(3), 11).unwrap();
     assert_eq!(generic.last, Some(11));
     assert_eq!(actions.sends[0].message, 11);
-}
-
-#[test]
-fn attribute_keys_the_exact_generic_instantiation() {
-    fn has_key<P, K>()
-    where
-        P: behavior::KeyedProtocol<Key = K>,
-        K: behavior::ProtocolKey<Protocol = P>,
-    {
-    }
-
-    has_key::<Generic<u8>, behavior::NominalProtocolKey<Generic<u8>>>();
-    has_key::<Generic<u16>, behavior::NominalProtocolKey<Generic<u16>>>();
 }
 
 #[allow(dead_code)]

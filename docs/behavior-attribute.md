@@ -2,9 +2,8 @@
 
 `#[behavior::behavior(...)]` is the single generated authoring path. It
 preserves an ordinary inherent impl and emits the adjacent nominal `Protocol`,
-its canonical zero-sized `KeyedProtocol` navigation witness, pure `Behavior`,
-optional named send product, and optional closed child product that a careful
-user could write by hand.
+pure `Behavior`, optional named send product, and optional closed child product
+that a careful user could write by hand.
 
 ```rust,ignore
 use behavior::{Actions, BehaviorActed, Delivery, MailAddr};
@@ -39,13 +38,6 @@ identity. The other declarations are capability-denying defaults:
 
 Those defaults do not infer or grant an effect. Code that tries to send, create,
 or return an error absent from the declaration fails to type-check.
-The generated key is `NominalProtocolKey<Self>`: it retains the exact concrete
-protocol, including all generic arguments, entirely in the type system. It has
-no runtime value, hash, registry, erased representation, or alternate identity.
-The reverse `ProtocolKey::Protocol = Self` relation prevents a key from silently
-aliasing another protocol. Handwritten protocols implement `KeyedProtocol`
-explicitly and may use either `NominalProtocolKey<Self>` or their own nominal
-`ProtocolKey` witness.
 An advanced author may still supply an existing concrete sends or birth type
 instead of a generated `{ ... }` product; this preserves handwritten catalogue
 products without adding another macro path.

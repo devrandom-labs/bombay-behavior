@@ -21,10 +21,6 @@ impl<A: Address, P> behavior::Protocol for TopicMessage<A, P> {
     type Msg = TopicMessage<A, P>;
 }
 
-impl<A: Address, P> behavior::KeyedProtocol for TopicMessage<A, P> {
-    type Key = behavior::NominalProtocolKey<Self>;
-}
-
 /// Publication rejection preserving the unaccepted value.
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum TopicError<P> {

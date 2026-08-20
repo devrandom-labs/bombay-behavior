@@ -1,13 +1,11 @@
 //! Pure, typed actor-behavior primitives.
 //!
-//! [`Protocol`] is stable public destination identity (`Addr` plus `Msg`).
-//! [`KeyedProtocol`] adds injective compile-time navigation evidence without
-//! becoming another identity. A [`Behavior`] separately owns state and folds
-//! its complete [`Behavior::Event`] algebra into exactly [`Actions`]: sends,
-//! fresh creations, and its next behavior or termination. A protocol is not a
-//! behavior, and `Behavior` is not a `Protocol` supertrait. Higher capabilities
-//! extend internal event and effect algebras while transparent wrappers
-//! preserve [`Behavior::Protocol`].
+//! [`Protocol`] is stable public destination identity (`Addr` plus `Msg`). A
+//! [`Behavior`] separately owns state and folds its complete [`Behavior::Event`]
+//! algebra into exactly [`Actions`]: sends, fresh creations, and its next
+//! behavior or termination. A protocol is not a behavior, and `Behavior` is not
+//! a `Protocol` supertrait. Higher capabilities extend internal event and
+//! effect algebras while transparent wrappers preserve [`Behavior::Protocol`].
 
 // The `#[behavior]` expansion emits `::behavior::…` paths; this alias lets the
 // expansion resolve inside this crate too.
@@ -38,19 +36,16 @@ pub use next::{Never, Step, Stopped};
 pub use reducer::{ActionReducer, Effects, FoldFailure, Folded, fold_events};
 pub use transition::{
     ActiveTurn, Behavior, BehaviorActed, BehaviorAddr, BehaviorBase, BehaviorMessage,
-    InitializationTurn, KeyedProtocol, MessageProtocol, NominalProtocolKey, Protocol, ProtocolKey,
-    delegate_transition, initialize,
+    InitializationTurn, MessageProtocol, Protocol, delegate_transition, initialize,
 };
 pub use user_event::{
     ComposedEvent, EventLayer, Here, Ingress, InjectEvent, Inside, User, UserEvent,
 };
 
-/// Generate the nominal keyed protocol, closed effect products, and exact
-/// `Behavior` wiring for an inherent impl. The generated [`KeyedProtocol`]
-/// retains the exact concrete `Self`, including generic arguments, in a
-/// [`NominalProtocolKey`]. `addr` and `message` are required. Omitting `sends`,
-/// `births`, or `error` selects the capability-free `NoSends`, `NoBirths`, or
-/// `Never` type respectively.
+/// Generate the nominal protocol, closed effect products, and exact `Behavior`
+/// wiring for an inherent impl. `addr` and `message` are required. Omitting
+/// `sends`, `births`, or `error` selects the capability-free `NoSends`,
+/// `NoBirths`, or `Never` type respectively.
 ///
 /// A `sends = { lane: Product }` declaration generates `ActorSends`, one
 /// distinct `ActorSendsLane` selector per field, and structural `SendEffects`,

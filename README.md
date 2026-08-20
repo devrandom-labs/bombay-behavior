@@ -59,7 +59,6 @@ its complete behavior. The foundational roles remain distinct:
 | Role | Meaning |
 |---|---|
 | `Protocol` | Stable public destination identity: exactly `Addr` plus `Msg` |
-| `KeyedProtocol` | Injective compile-time navigation evidence derived from one exact concrete `Protocol`; never a second identity |
 | `Behavior::Event` | Complete structural ingress algebra: public messages plus typed timer, observation, creation, lifecycle, and supervision facts |
 | `Behavior` | Current state and the pure fold from one event to explicit actions |
 | `Actions` | Named sends, staged fresh creations, and the next behavior or termination verdict |

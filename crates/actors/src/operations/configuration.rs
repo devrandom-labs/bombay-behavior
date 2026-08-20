@@ -168,15 +168,6 @@ where
     type Msg = ConfigurationMessage<C, Reply>;
 }
 
-impl<A, C, Reply> behavior::KeyedProtocol for Configuration<A, C, Reply>
-where
-    A: Address,
-    C: Clone + Eq,
-    Reply: behavior::Protocol<Addr = A, Msg = ConfigurationState<C>>,
-{
-    type Key = behavior::NominalProtocolKey<Self>;
-}
-
 impl<A, C, Reply> Behavior for Configuration<A, C, Reply>
 where
     A: Address,

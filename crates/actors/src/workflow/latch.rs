@@ -24,10 +24,6 @@ impl<A: Address> behavior::Protocol for LatchMessage<A> {
     type Msg = LatchMessage<A>;
 }
 
-impl<A: Address> behavior::KeyedProtocol for LatchMessage<A> {
-    type Key = behavior::NominalProtocolKey<Self>;
-}
-
 impl<A: Address> LatchMessage<A> {
     /// Construct one owned arrival.
     #[must_use]

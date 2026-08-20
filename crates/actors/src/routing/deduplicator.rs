@@ -152,16 +152,6 @@ where
     type Msg = DeduplicatorMessage<K, T, Target, Reply>;
 }
 
-impl<A, K, T, Target, Reply> behavior::KeyedProtocol for Deduplicator<A, K, T, Target, Reply>
-where
-    A: Address,
-    K: Clone + Eq,
-    Target: Protocol<Addr = A, Msg = T>,
-    Reply: behavior::Protocol<Addr = A, Msg = DeduplicatorOutcome<K, T>>,
-{
-    type Key = behavior::NominalProtocolKey<Self>;
-}
-
 impl<A, K, T, Target, Reply> Behavior for Deduplicator<A, K, T, Target, Reply>
 where
     A: Address,
