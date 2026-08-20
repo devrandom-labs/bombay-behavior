@@ -9,6 +9,12 @@ All notable changes to `bombay-behavior-actors` are documented here.
 
 ## [Unreleased]
 
+## [0.13.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-actors-v0.12.1...bombay-behavior-actors-v0.13.0) - 2026-08-19
+
+### Added
+
+- *(actors)* add lifecycle topology templates ([#49](https://github.com/devrandom-labs/bombay-behavior/pull/49))
+
 ### Changed
 
 - Extract fixed stable-proxy topology, installation, restart, failure, and
