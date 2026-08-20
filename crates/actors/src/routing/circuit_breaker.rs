@@ -352,6 +352,12 @@ impl<A: Address, Reply: behavior::Protocol<Addr = A, Msg = BreakerOutcome>> beha
     type Msg = BreakerMessage<Reply>;
 }
 
+impl<A: Address, Reply: behavior::Protocol<Addr = A, Msg = BreakerOutcome>> behavior::KeyedProtocol
+    for CircuitBreaker<A, Reply>
+{
+    type Key = behavior::NominalProtocolKey<Self>;
+}
+
 impl<A: Address, Reply: behavior::Protocol<Addr = A, Msg = BreakerOutcome>> Behavior
     for CircuitBreaker<A, Reply>
 {

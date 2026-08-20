@@ -167,6 +167,16 @@ where
     type Msg = PubSubMessage<K, P, D>;
 }
 
+impl<A, K, P, D> behavior::KeyedProtocol for PubSub<A, K, P, D>
+where
+    A: Address,
+    K: Clone + Eq,
+    P: Clone,
+    D: Protocol<Addr = A, Msg = P>,
+{
+    type Key = behavior::NominalProtocolKey<Self>;
+}
+
 impl<A, K, P, D> Behavior for PubSub<A, K, P, D>
 where
     A: Address,

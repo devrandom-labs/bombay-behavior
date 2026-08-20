@@ -254,6 +254,16 @@ where
     type Msg = PriorityQueueMessage<T, P, Target, Reply>;
 }
 
+impl<A, T, P, Target, Reply> behavior::KeyedProtocol for PriorityQueue<A, T, P, Target, Reply>
+where
+    A: Address,
+    P: Ord,
+    Target: Protocol<Addr = A, Msg = T>,
+    Reply: behavior::Protocol<Addr = A, Msg = PriorityQueueOutcome<T>>,
+{
+    type Key = behavior::NominalProtocolKey<Self>;
+}
+
 impl<A, T, P, Target, Reply> Behavior for PriorityQueue<A, T, P, Target, Reply>
 where
     A: Address,

@@ -117,6 +117,10 @@ impl<A: Address, T> behavior::Protocol for BufferMessage<A, T> {
     type Msg = BufferMessage<A, T>;
 }
 
+impl<A: Address, T> behavior::KeyedProtocol for BufferMessage<A, T> {
+    type Key = behavior::NominalProtocolKey<Self>;
+}
+
 /// Named delivery products emitted by [`Buffer`].
 pub struct BufferSends<A: Address, T> {
     /// Released values in FIFO order.

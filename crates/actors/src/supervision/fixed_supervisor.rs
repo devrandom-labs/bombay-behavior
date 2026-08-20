@@ -13,6 +13,10 @@ impl<A: Address> behavior::Protocol for SupervisorProtocol<A> {
     type Msg = Never;
 }
 
+impl<A: Address> behavior::KeyedProtocol for SupervisorProtocol<A> {
+    type Key = behavior::NominalProtocolKey<Self>;
+}
+
 /// Complete lifecycle input sum of a standalone fixed supervisor.
 pub type SupervisorEvent<A> = SupervisionEvent<User<A, Never>>;
 

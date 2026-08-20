@@ -509,6 +509,18 @@ where
     type Msg = DynamicSupervisorMessage<A, C, Reply>;
 }
 
+impl<A, C, Reply, ParentPath> behavior::KeyedProtocol
+    for DynamicSupervisorWithParent<A, C, Reply, ParentPath>
+where
+    A: Address,
+    A::Nonce: From<u64>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = A>,
+    Reply: Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
+{
+    type Key = behavior::NominalProtocolKey<Self>;
+}
+
 impl<A, C, Reply, ParentPath> Behavior for DynamicSupervisorWithParent<A, C, Reply, ParentPath>
 where
     A: Address,

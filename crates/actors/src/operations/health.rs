@@ -260,6 +260,15 @@ where
     type Msg = HealthMessage<K, Reply>;
 }
 
+impl<A, K, Reply> behavior::KeyedProtocol for Health<A, K, Reply>
+where
+    A: Address,
+    K: Clone + Eq,
+    Reply: behavior::Protocol<Addr = A, Msg = HealthReport<K>>,
+{
+    type Key = behavior::NominalProtocolKey<Self>;
+}
+
 impl<A, K, Reply> Behavior for Health<A, K, Reply>
 where
     A: Address,

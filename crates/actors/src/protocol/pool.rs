@@ -28,6 +28,14 @@ where
     type Msg = PoolMessage<A, D, J, R>;
 }
 
+impl<A, D, J, R> behavior::KeyedProtocol for WorkerPoolProtocol<A, D, J, R>
+where
+    A: Address,
+    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
+{
+    type Key = behavior::NominalProtocolKey<Self>;
+}
+
 impl<A, D, J, R> PoolAssignmentProtocol for WorkerPoolProtocol<A, D, J, R>
 where
     A: Address,
@@ -48,6 +56,14 @@ where
 {
     type Addr = A;
     type Msg = KeyedPoolMessage<A, D, K, J, R>;
+}
+
+impl<A, D, K, J, R> behavior::KeyedProtocol for KeyedWorkerPoolProtocol<A, D, K, J, R>
+where
+    A: Address,
+    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
+{
+    type Key = behavior::NominalProtocolKey<Self>;
 }
 
 impl<A, D, K, J, R> PoolAssignmentProtocol for KeyedWorkerPoolProtocol<A, D, K, J, R>

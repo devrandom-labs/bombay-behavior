@@ -361,6 +361,16 @@ where
     type Msg = AcknowledgementMessage<K, P, Reply>;
 }
 
+impl<A, K, P, Reply> behavior::KeyedProtocol for Acknowledgements<A, K, P, Reply>
+where
+    A: Address,
+    K: Clone + Eq,
+    P: Clone + Eq,
+    Reply: behavior::Protocol<Addr = A, Msg = AcknowledgementOutcome<K, P>>,
+{
+    type Key = behavior::NominalProtocolKey<Self>;
+}
+
 impl<A, K, P, Reply> Behavior for Acknowledgements<A, K, P, Reply>
 where
     A: Address,

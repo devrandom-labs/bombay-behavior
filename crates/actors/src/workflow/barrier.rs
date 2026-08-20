@@ -32,6 +32,10 @@ impl<A: Address, K> behavior::Protocol for BarrierMessage<A, K> {
     type Msg = BarrierMessage<A, K>;
 }
 
+impl<A: Address, K> behavior::KeyedProtocol for BarrierMessage<A, K> {
+    type Key = behavior::NominalProtocolKey<Self>;
+}
+
 /// One accepted arrival retained until its generation releases.
 pub struct BarrierArrival<A: Address, K> {
     /// Fixed-membership key.

@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Add injective `ProtocolKey` / `KeyedProtocol` navigation evidence and
+  automatic exact-concrete keys for `#[behavior]` protocols without runtime
+  hashing, type inspection, or erased storage.
 - Add `ChildRoute` and generated `ActorChildrenRoutes` products so one
   nominal child-role route stages creation and addresses the same
   creator-local child without repeated nonce correlation.

@@ -9,6 +9,9 @@ Protocol ── names an established communication destination
     ├── Addr: address namespace
     └── Msg:  public message algebra
 
+KeyedProtocol ── derives compile-time navigation from one exact Protocol
+    └── Key: zero-sized evidence whose reverse owner is that Protocol
+
 Behavior ── owns current state and the pure transition fold
     │
     ├── Protocol: stable public identity
@@ -94,6 +97,15 @@ impl Behavior for Counter {
 This does not merge the concepts. In the protocol role, `Counter` proves only
 the `Addr`/`Msg` signature. In the behavior role, it owns state and a fold.
 Generic APIs retain the distinction through their bounds.
+
+`KeyedProtocol` is an optional structural refinement used by static consumers
+that must canonicalize concrete protocols. Its `ProtocolKey` maps back to one
+exact protocol, making silent cross-protocol aliasing ill-typed. The generated
+`NominalProtocolKey<Self>` retains generic instantiations in the key type and
+has no runtime value, hash, lookup, `TypeId`, or erased representation. This is
+Bombay navigation evidence derived from `Protocol`, not another destination or
+actor identity. `#[behavior]` supplies it automatically; handwritten protocols
+may provide an explicit nominal key.
 
 When no state-owning actor type is an appropriate nominal identity,
 `MessageProtocol<A, M>` supplies a zero-state structural endpoint. Recursive

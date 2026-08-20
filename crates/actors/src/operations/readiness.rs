@@ -230,6 +230,15 @@ where
     type Msg = ReadinessMessage<K, Reply>;
 }
 
+impl<A, K, Reply> behavior::KeyedProtocol for Readiness<A, K, Reply>
+where
+    A: Address,
+    K: Clone + Eq,
+    Reply: behavior::Protocol<Addr = A, Msg = ReadinessReport<K>>,
+{
+    type Key = behavior::NominalProtocolKey<Self>;
+}
+
 impl<A, K, Reply> Behavior for Readiness<A, K, Reply>
 where
     A: Address,

@@ -117,6 +117,14 @@ where
     type Msg = M;
 }
 
+impl<A, S, M, P, E> behavior::KeyedProtocol for Machine<A, S, M, P, E>
+where
+    A: Address,
+    P: Copy + PartialEq,
+{
+    type Key = behavior::NominalProtocolKey<Self>;
+}
+
 impl<A, S, M, P, E> Behavior for Machine<A, S, M, P, E>
 where
     A: Address,

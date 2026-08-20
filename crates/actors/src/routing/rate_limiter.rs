@@ -220,6 +220,15 @@ where
     type Msg = RateLimiterMessage<T, Target, Reply>;
 }
 
+impl<A, T, Target, Reply> behavior::KeyedProtocol for RateLimiter<A, T, Target, Reply>
+where
+    A: Address,
+    Target: Protocol<Addr = A, Msg = T>,
+    Reply: behavior::Protocol<Addr = A, Msg = RateLimiterOutcome<T>>,
+{
+    type Key = behavior::NominalProtocolKey<Self>;
+}
+
 impl<A, T, Target, Reply> Behavior for RateLimiter<A, T, Target, Reply>
 where
     A: Address,

@@ -97,6 +97,10 @@ impl<A: Address, K, V> behavior::Protocol for CacheMessage<A, K, V> {
     type Msg = CacheMessage<A, K, V>;
 }
 
+impl<A: Address, K, V> behavior::KeyedProtocol for CacheMessage<A, K, V> {
+    type Key = behavior::NominalProtocolKey<Self>;
+}
+
 /// Invalid cache definition.
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
 pub enum CacheConfigError {

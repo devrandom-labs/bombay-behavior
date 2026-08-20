@@ -11,6 +11,9 @@ All notable changes to `bombay-behavior-actors` are documented here.
 
 ### Changed
 
+- Give every reusable locally installable actor protocol its explicit nominal
+  `KeyedProtocol` witness while leaving delivery-only protocols independent of
+  local hosting requirements.
 - Route stable-proxy and worker-incarnation creation, delivery, observation,
   and shutdown through the same typed `ChildRoute` correlation source. Existing
   nonce constructors remain available for independently authored lifecycle

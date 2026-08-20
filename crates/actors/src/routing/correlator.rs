@@ -143,6 +143,15 @@ where
     type Msg = CorrelatorMessage<K, V, Reply>;
 }
 
+impl<A, K, V, Reply> behavior::KeyedProtocol for Correlator<A, K, V, Reply>
+where
+    A: Address,
+    K: Clone + Eq,
+    Reply: behavior::Protocol<Addr = A, Msg = CorrelationResult<K, V>>,
+{
+    type Key = behavior::NominalProtocolKey<Self>;
+}
+
 impl<A, K, V, Reply> Behavior for Correlator<A, K, V, Reply>
 where
     A: Address,

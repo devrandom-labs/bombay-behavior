@@ -732,6 +732,10 @@ pub fn behavior(args: TokenStream, item: TokenStream) -> TokenStream {
             type Msg = #message;
         }
 
+        impl #impl_generics #behavior::KeyedProtocol for #self_ty #where_clause {
+            type Key = #behavior::NominalProtocolKey<Self>;
+        }
+
         impl #impl_generics #behavior::Behavior for #self_ty #where_clause {
             type Protocol = Self;
             type Event = #behavior::User<#addr, #message>;

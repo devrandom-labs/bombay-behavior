@@ -165,6 +165,15 @@ where
     type Msg = SequencerMessage<T, Target, Reply>;
 }
 
+impl<A, T, Target, Reply> behavior::KeyedProtocol for Sequencer<A, T, Target, Reply>
+where
+    A: Address,
+    Target: Protocol<Addr = A, Msg = T>,
+    Reply: behavior::Protocol<Addr = A, Msg = SequencerOutcome<T>>,
+{
+    type Key = behavior::NominalProtocolKey<Self>;
+}
+
 impl<A, T, Target, Reply> Behavior for Sequencer<A, T, Target, Reply>
 where
     A: Address,

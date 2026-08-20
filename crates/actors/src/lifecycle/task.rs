@@ -124,6 +124,14 @@ where
     type Msg = TaskMessage<R, Reply>;
 }
 
+impl<A, R, Reply> behavior::KeyedProtocol for Task<A, R, Reply>
+where
+    A: Address,
+    Reply: behavior::Protocol<Addr = A, Msg = TaskResult<R>>,
+{
+    type Key = behavior::NominalProtocolKey<Self>;
+}
+
 impl<A, R, Reply> Behavior for Task<A, R, Reply>
 where
     A: Address,
