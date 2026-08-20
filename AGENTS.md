@@ -185,6 +185,17 @@ implement the fold and update callers explicitly.
 
 ## Change method
 
+Every change must be holistic. Never introduce a one-off or ad hoc addition
+that solves only the immediate call site. Before editing, trace the concept
+through the complete repository contract: public algebra and names, macros and
+handwritten equivalents, wrapper composition in every relevant order,
+interpreter realization, lifecycle and error semantics, examples and
+documentation, source compatibility, and every applicable test layer. Reuse
+existing semantic types and naming patterns wherever they remain truthful. If
+the concept cannot be integrated coherently across those surfaces, stop and
+redesign it instead of adding a local exception, compatibility shim, parallel
+abstraction, or template-specific shortcut.
+
 For every semantic change:
 
 1. Write down the invariant or transition law before editing code.

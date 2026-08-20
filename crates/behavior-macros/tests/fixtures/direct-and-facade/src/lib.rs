@@ -11,7 +11,7 @@ struct Direct;
 )]
 impl Direct {
     fn receive(&mut self, _: MailAddr, _: u8) -> BehaviorActed<Self> {
-        Ok(Actions::send(DirectSends { values: vec![1] }))
+        Ok(Actions::cont().send_values(1))
     }
 }
 

@@ -6,13 +6,14 @@ use crate::protocol::{
     ShutdownChild, WorkerCreationResolved, WorkerStopped,
 };
 use crate::supervision::adapter::{
-    ChildTopology, Proxy, ProxyWithParent, RestartConfiguration, SupervisorSends,
+    ChildTopology, Proxy, ProxyWithParent, RestartConfiguration, StableProxyChildRole,
+    SupervisorSends,
 };
 use crate::supervision::{RestartPolicy, SupervisionFailure};
 use crate::{CreationKind, Exit, ReportSupervisionFailure};
 use behavior::{
-    Actions, Address, Behavior, Births, Create, Delivery, InterpreterRequests, Never, SendEffects,
-    Step,
+    Actions, Address, Behavior, Births, ChildRoute, Create, Delivery, InterpreterRequests, Never,
+    SendEffects, Step,
 };
 
 type OwnedActions<A, C, P> =
@@ -214,16 +215,35 @@ where
             })
             .collect::<Result<Vec<_>, _>>()?;
         let mut sends = SupervisorSends::empty();
-        sends.child_observations =
-            InterpreterRequests::new(nonces.iter().copied().map(ObserveChild::new).collect());
-        sends.creation_observations =
-            InterpreterRequests::new(nonces.iter().copied().map(ObserveCreation::new).collect());
+        sends.child_observations = InterpreterRequests::new(
+            nonces
+                .iter()
+                .copied()
+                .map(|nonce| {
+                    ObserveChild::at(
+                        ChildRoute::<ProxyWithParent<C, P>, StableProxyChildRole>::new(nonce),
+                    )
+                })
+                .collect(),
+        );
+        sends.creation_observations = InterpreterRequests::new(
+            nonces
+                .iter()
+                .copied()
+                .map(|nonce| {
+                    ObserveCreation::at(
+                        ChildRoute::<ProxyWithParent<C, P>, StableProxyChildRole>::new(nonce),
+                    )
+                })
+                .collect(),
+        );
         Ok(Actions::new(
             sends,
             children
                 .into_iter()
                 .map(|(nonce, child)| {
-                    Create::birth(nonce, ProxyWithParent::with_parent(child, self.parent))
+                    ChildRoute::<ProxyWithParent<C, P>, StableProxyChildRole>::new(nonce)
+                        .birth(ProxyWithParent::with_parent(child, self.parent))
                 })
                 .collect(),
             Step::Continue,
@@ -245,24 +265,40 @@ where
             }
         }
         let mut sends = SupervisorSends::empty();
-        sends.child_observations =
-            InterpreterRequests::new(creates.iter().map(|c| ObserveChild::new(c.nonce)).collect());
+        sends.child_observations = InterpreterRequests::new(
+            creates
+                .iter()
+                .map(|creation| {
+                    ObserveChild::at(
+                        ChildRoute::<ProxyWithParent<C, P>, StableProxyChildRole>::new(
+                            creation.nonce,
+                        ),
+                    )
+                })
+                .collect(),
+        );
         sends.creation_observations = InterpreterRequests::new(
             creates
                 .iter()
-                .map(|c| ObserveCreation::new(c.nonce))
+                .map(|creation| {
+                    ObserveCreation::at(
+                        ChildRoute::<ProxyWithParent<C, P>, StableProxyChildRole>::new(
+                            creation.nonce,
+                        ),
+                    )
+                })
                 .collect(),
         );
         Ok(Actions::new(
             sends,
             creates
                 .into_iter()
-                .map(|c| {
-                    Create::new(
-                        c.nonce,
-                        ProxyWithParent::with_parent(c.child, self.parent),
-                        c.kind,
-                    )
+                .map(|creation| {
+                    ChildRoute::<ProxyWithParent<C, P>, StableProxyChildRole>::new(creation.nonce)
+                        .stage(
+                            ProxyWithParent::with_parent(creation.child, self.parent),
+                            creation.kind,
+                        )
                 })
                 .collect(),
             Step::Continue,
@@ -341,10 +377,8 @@ where
             replacements
                 .into_iter()
                 .map(|(nonce, child)| {
-                    Delivery::local_child(
-                        behavior::ChildRecipient::new(nonce),
-                        crate::ProxyCommand::Replace(child),
-                    )
+                    let route = ChildRoute::<Proxy<C>, StableProxyChildRole>::new(nonce);
+                    Delivery::local_child(route.recipient(), crate::ProxyCommand::Replace(child))
                 })
                 .collect(),
         ))
@@ -489,9 +523,10 @@ where
                 return Ok(OwnershipFold::failed(actions, failure));
             }
             self.installations[position].1 = Installation::ShutdownRequested;
-            sends
-                .shutdowns
-                .send(ShutdownChild::<ProxyWithParent<C, P>>::new(event.nonce));
+            sends.shutdowns.send(ShutdownChild::at(ChildRoute::<
+                ProxyWithParent<C, P>,
+                StableProxyChildRole,
+            >::new(event.nonce)));
             return Ok(OwnershipFold::actions(Actions::send(sends)));
         }
         Ok(match failure {
@@ -566,9 +601,10 @@ where
         for (nonce, state) in &mut self.installations {
             if *state == Installation::Established {
                 *state = Installation::ShutdownRequested;
-                sends
-                    .shutdowns
-                    .send(ShutdownChild::<ProxyWithParent<C, P>>::new(*nonce));
+                sends.shutdowns.send(ShutdownChild::at(ChildRoute::<
+                    ProxyWithParent<C, P>,
+                    StableProxyChildRole,
+                >::new(*nonce)));
             }
         }
         self.shutdown = Shutdown::Draining { awaiting };

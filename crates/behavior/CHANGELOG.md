@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Add `ChildRoute` and generated `ActorChildrenRoutes` products so one
+  nominal child-role route stages creation and addresses the same
+  creator-local child without repeated nonce correlation.
+- Add `ChildRole` proofs and generated `ActorChild::Role` selectors for static
+  application topology builders, including sealed structural positions in the
+  existing closed child sum and reusing the same nominal roles as child routes.
+- Add `AppendSend` and generated `ActorActions::send_lane` methods so authored
+  folds can fluently append to named send lanes while preserving creations and
+  the exact next-behavior verdict.
+- Add the closed `BirthProtocols` projection over the existing staged-birth
+  algebra so consumers can traverse concrete behavior leaves,
+  `ChildChoice` alternatives, and transitive births without reclassifying
+  upstream types or inspecting send destinations.
+
+### Changed
+
+- Clarify and test that `Behavior::Protocol` remains the sole canonical hosting
+  identity through typed delivery and birth installation. Distinct semantic
+  child roles or concrete behaviors may share that protocol without creating
+  role-keyed storage identities.
+
 ## [0.13.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.12.1...bombay-behavior-v0.13.0) - 2026-08-19
 
 ### Added

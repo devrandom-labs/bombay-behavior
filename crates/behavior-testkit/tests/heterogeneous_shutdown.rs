@@ -3,10 +3,10 @@
 use std::time::Instant;
 
 use behavior::{
-    Actions, Activate as _, Behavior, BehaviorActed, ChildStopped, Exit,
+    Actions, Activate as _, Behavior, BehaviorActed, ChildRoute, ChildStopped, Exit,
     HeterogeneousShutdownCoordinator, HeterogeneousShutdownPlan, MailAddr, Never, NoBirths,
     NoShutdownTargets, ShutdownChoice, ShutdownPlanError, ShutdownRequested, ShutdownState, Step,
-    StopOnShutdown, User,
+    StopOnShutdown, User, shutdown_target,
 };
 use proptest::prelude::*;
 
@@ -30,15 +30,34 @@ impl<const KIND: u8> Behavior for Inert<KIND> {
     }
 }
 
+struct ShutdownTopology;
+
+#[behavior::behavior(
+    addr = MailAddr,
+    message = Never,
+    births = {
+        zero: StopOnShutdown<Inert<0>>,
+        one: StopOnShutdown<Inert<1>>,
+        two: StopOnShutdown<Inert<2>>,
+        three: StopOnShutdown<Inert<3>>,
+        four: StopOnShutdown<Inert<4>>,
+    },
+)]
+impl ShutdownTopology {
+    fn receive(&mut self, _: MailAddr, message: Never) -> BehaviorActed<Self> {
+        match message {}
+    }
+}
+
 type RootTargets = ShutdownChoice<
-    StopOnShutdown<Inert<0>>,
+    StopOnShutdown<Inert<4>>,
     ShutdownChoice<
-        StopOnShutdown<Inert<1>>,
+        StopOnShutdown<Inert<3>>,
         ShutdownChoice<
             StopOnShutdown<Inert<2>>,
             ShutdownChoice<
-                StopOnShutdown<Inert<3>>,
-                ShutdownChoice<StopOnShutdown<Inert<4>>, NoShutdownTargets<MailAddr>>,
+                StopOnShutdown<Inert<1>>,
+                ShutdownChoice<StopOnShutdown<Inert<0>>, NoShutdownTargets<MailAddr>>,
             >,
         >,
     >,
@@ -46,15 +65,26 @@ type RootTargets = ShutdownChoice<
 
 fn target(kind: u8, nonce: u64) -> RootTargets {
     match kind % 5 {
-        0 => RootTargets::child(nonce),
-        1 => RootTargets::other(ShutdownChoice::child(nonce)),
-        2 => RootTargets::other(ShutdownChoice::other(ShutdownChoice::child(nonce))),
-        3 => RootTargets::other(ShutdownChoice::other(ShutdownChoice::other(
-            ShutdownChoice::child(nonce),
-        ))),
-        _ => RootTargets::other(ShutdownChoice::other(ShutdownChoice::other(
-            ShutdownChoice::other(ShutdownChoice::child(nonce)),
-        ))),
+        0 => shutdown_target::<ShutdownTopology, _, RootTargets>(
+            ShutdownTopologyChild::Zero,
+            ChildRoute::new(nonce),
+        ),
+        1 => shutdown_target::<ShutdownTopology, _, RootTargets>(
+            ShutdownTopologyChild::One,
+            ChildRoute::new(nonce),
+        ),
+        2 => shutdown_target::<ShutdownTopology, _, RootTargets>(
+            ShutdownTopologyChild::Two,
+            ChildRoute::new(nonce),
+        ),
+        3 => shutdown_target::<ShutdownTopology, _, RootTargets>(
+            ShutdownTopologyChild::Three,
+            ChildRoute::new(nonce),
+        ),
+        _ => shutdown_target::<ShutdownTopology, _, RootTargets>(
+            ShutdownTopologyChild::Four,
+            ChildRoute::new(nonce),
+        ),
     }
 }
 
@@ -69,10 +99,13 @@ fn five_unrelated_protocols_share_one_phase_machine() {
         vec![target(2, 20), target(1, 11)],
     ])
     .unwrap();
-    let mut active = HeterogeneousShutdownCoordinator::<Inert<9>, RootTargets>::new(Inert, plan)
-        .initialize()
-        .unwrap()
-        .behavior;
+    let mut active = HeterogeneousShutdownCoordinator::<ShutdownTopology, RootTargets>::new(
+        ShutdownTopology,
+        plan,
+    )
+    .initialize()
+    .unwrap()
+    .behavior;
 
     active.on_path(ShutdownRequested).unwrap();
     for nonce in [10, 40] {

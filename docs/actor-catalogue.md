@@ -323,8 +323,16 @@ must not import a second implementation of those semantics.
 | `TerminationMonitor<T>` | Watch plus termination classification | Actors | None |
 | `Reaper<T>` | Monitor plus cleanup communications | Actors | None |
 | `ShutdownCoordinator<B, C>` | Homogeneous typed-child shutdown phases plus acknowledgements | Actors | None |
-| `HeterogeneousShutdownCoordinator<B, T>` | Arbitrary closed typed-child shutdown phases with ordered static request dispatch | Actors | None |
+| `HeterogeneousShutdownCoordinator<B, T>` | Arbitrary closed typed-child shutdown phases with ordered static request dispatch; named `ChildRole` routes lower structurally into the existing target sum | Actors | None |
 | `TreeShutdown<B, C>` | Homogeneous typed-child topology plus ordered shutdown | Actors | `petgraph` only for a dependency graph |
+
+Every catalogue behavior exposes `InstallationRequirements`: its canonical
+protocol followed by every protocol reachable through its complete transitive
+staged-birth algebra. For example, a worker pool projects the pool, proxy, and
+worker protocols without listing them separately. Repeated protocol
+occurrences retain distinct structural membership paths for later static
+canonicalization; protocols mentioned only as external delivery destinations
+are absent.
 
 Backoff is small and semantically observable, so Bombay should define its own
 exhaustive policy instead of importing the assumptions of an asynchronous

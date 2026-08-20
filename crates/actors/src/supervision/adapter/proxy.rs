@@ -4,13 +4,15 @@ use super::super::domain::{
     Incarnation, IncarnationEffects, IncarnationError, IncarnationPhase, IncarnationStopEffects,
 };
 use super::super::protocol::{ProxyCommand, ProxyEvent};
+use super::WorkerIncarnationChildRole;
 use crate::protocol::{
     ObserveChild, ObserveCreation, ProxyParentIngress, ReportWorkerCreationResolved,
     ReportWorkerStopped, ShutdownChild,
 };
 use crate::{Own, SendInput};
 use behavior::{
-    Actions, Address, Behavior, Births, Create, Delivery, InterpreterRequests, SendEffects, User,
+    Actions, Address, Behavior, Births, ChildRoute, Delivery, InterpreterRequests, SendEffects,
+    User,
 };
 use behavior::{Never, Step};
 
@@ -223,22 +225,21 @@ where
         let creates = match effects {
             IncarnationEffects::None => Vec::new(),
             IncarnationEffects::Create(creation) => {
-                sends
-                    .child_observations
-                    .extend([ObserveChild::new(creation.attempt)]);
+                let route = ChildRoute::<C, WorkerIncarnationChildRole>::new(creation.attempt);
+                sends.child_observations.extend([ObserveChild::at(route)]);
                 sends
                     .creation_observations
-                    .extend([ObserveCreation::new(creation.attempt)]);
-                vec![Create::new(creation.attempt, creation.child, creation.kind)]
+                    .extend([ObserveCreation::at(route)]);
+                vec![route.stage(creation.child, creation.kind)]
             }
             IncarnationEffects::Deliver {
                 incarnation,
                 message,
             } => {
-                sends.deliveries.push(Delivery::local_child(
-                    behavior::ChildRecipient::new(incarnation),
-                    message,
-                ));
+                let route = ChildRoute::<C, WorkerIncarnationChildRole>::new(incarnation);
+                sends
+                    .deliveries
+                    .push(Delivery::local_child(route.recipient(), message));
                 Vec::new()
             }
             IncarnationEffects::Report(resolved) => {
@@ -264,7 +265,9 @@ where
                         resolved.kind,
                         resolved.result.map(|_| ()),
                     )]);
-                sends.shutdowns.send(ShutdownChild::new(incarnation));
+                sends.shutdowns.send(ShutdownChild::at(
+                    ChildRoute::<C, WorkerIncarnationChildRole>::new(incarnation),
+                ));
                 Vec::new()
             }
             IncarnationEffects::ReportAndStop(resolved) => {
@@ -279,7 +282,9 @@ where
                 return Actions::new(sends, Vec::new(), Step::Stop(behavior::Stopped));
             }
             IncarnationEffects::Shutdown(incarnation) => {
-                sends.shutdowns.send(ShutdownChild::new(incarnation));
+                sends.shutdowns.send(ShutdownChild::at(
+                    ChildRoute::<C, WorkerIncarnationChildRole>::new(incarnation),
+                ));
                 Vec::new()
             }
             IncarnationEffects::Stop => {

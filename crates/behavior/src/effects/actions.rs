@@ -1,10 +1,18 @@
 //! The explicit result of one actor behavior transition.
 
-use super::sending::SendEffects;
+use super::sending::{SendEffects, SendInput};
 use crate::actor::{Address, BirthMode, Create};
 use crate::next::{Never, Step, Stopped};
 
 pub type Become<Ph = Never> = Step<Ph, Stopped>;
+
+/// Capability to append one communication at a statically selected lane while
+/// preserving every other actor-transition effect.
+pub trait AppendSend<Input, Path>: Sized {
+    /// Append `input` exactly once and preserve creations and the next verdict.
+    #[must_use]
+    fn append_send(self, input: Input) -> Self;
+}
 
 /// Bombay's typed realization of the actor transition effects: communications,
 /// fresh actor creation, and next behavior or termination.
@@ -100,6 +108,31 @@ impl<A: Address, Ph, Sends, Birth: BirthMode> Actions<A, Ph, Sends, Birth> {
             become_: map(self.become_),
         }
     }
+
+    /// Append one communication to its statically selected send lane.
+    ///
+    /// This is a pure transformation of the send leg. It preserves creation
+    /// order and the exact continue, phase-change, or termination verdict.
+    /// `Path` is compile-time lane evidence; no runtime lookup is performed.
+    #[must_use]
+    pub fn with_send<Input, Path>(mut self, input: Input) -> Self
+    where
+        Sends: SendInput<Input, Path>,
+    {
+        <Sends as SendInput<Input, Path>>::emit(&mut self.sends, input);
+        self
+    }
+}
+
+impl<A, Ph, Sends, Birth, Input, Path> AppendSend<Input, Path> for Actions<A, Ph, Sends, Birth>
+where
+    A: Address,
+    Birth: BirthMode,
+    Sends: SendInput<Input, Path>,
+{
+    fn append_send(self, input: Input) -> Self {
+        self.with_send::<Input, Path>(input)
+    }
 }
 
 impl<A: Address, Ph, Sends: SendEffects, Birth: BirthMode> Actions<A, Ph, Sends, Birth> {
@@ -168,7 +201,7 @@ pub type Acted<A, Ph, Sends, Birth, E> = Result<Actions<A, Ph, Sends, Birth>, E>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Births, CreationKind, MailAddr, NoBirths};
+    use crate::{Births, CreationKind, MailAddr, NoBirths, Own};
 
     #[test]
     fn equality_and_debug_cover_every_named_effect_leg() {
@@ -235,5 +268,35 @@ mod tests {
         assert_eq!(mapped.sends, [1, 2]);
         assert_eq!(mapped.creates[0].nonce, 3);
         assert!(matches!(mapped.become_, Step::Stop(Stopped)));
+    }
+
+    #[test]
+    fn fluent_send_changes_only_the_selected_effect_leg() {
+        let actions: Actions<MailAddr, u8, Vec<u8>, Births<()>> = Actions::new(
+            vec![1],
+            vec![
+                Create::new(3, (), CreationKind::Birth),
+                Create::new(4, (), CreationKind::replacement_of(3)),
+            ],
+            Step::Goto(7),
+        )
+        .with_send::<_, Own>(2)
+        .with_send::<_, Own>(3);
+
+        assert_eq!(actions.sends, [1, 2, 3]);
+        assert_eq!(
+            actions
+                .creates
+                .iter()
+                .map(|creation| creation.nonce)
+                .collect::<Vec<_>>(),
+            [3, 4]
+        );
+        assert!(matches!(actions.become_, Step::Goto(7)));
+
+        let stopped: Actions<MailAddr, Never, Vec<u8>, NoBirths> =
+            Actions::stop().with_send::<_, Own>(5);
+        assert_eq!(stopped.sends, [5]);
+        assert!(matches!(stopped.become_, Step::Stop(Stopped)));
     }
 }

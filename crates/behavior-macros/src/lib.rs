@@ -24,6 +24,26 @@ fn crate_path(found: FoundCrate) -> TokenStream2 {
     }
 }
 
+fn facade_crate_path(found: FoundCrate) -> TokenStream2 {
+    match found {
+        FoundCrate::Itself => quote!(crate),
+        FoundCrate::Name(name) => {
+            // Cargo names the package `bombay-rs`, while its public library
+            // target is `bombay`. `proc_macro_crate` reports the normalized
+            // package name for an unrenamed dependency, but generated Rust
+            // must address the library target. An explicit dependency rename
+            // remains the caller's actual extern-crate name.
+            let name = if name == "bombay_rs" {
+                "bombay".to_owned()
+            } else {
+                name
+            };
+            let name = syn::Ident::new(&name, Span::call_site());
+            quote!(::#name)
+        }
+    }
+}
+
 fn behavior_crate() -> Result<TokenStream2> {
     if std::env::var("CARGO_PKG_NAME").as_deref() == Ok("bombay-behavior") {
         // This package deliberately exposes the library target as `behavior`,
@@ -46,13 +66,30 @@ fn behavior_crate() -> Result<TokenStream2> {
         return Ok(crate_path(found));
     }
     if let Ok(found) = crate_name("bombay-rs") {
-        let bombay = crate_path(found);
+        let bombay = facade_crate_path(found);
         return Ok(quote!(#bombay::behavior));
     }
     Err(Error::new(
         Span::call_site(),
         "could not resolve `bombay-behavior` directly or through `bombay-rs`",
     ))
+}
+
+#[cfg(test)]
+mod crate_resolution_tests {
+    use super::*;
+
+    #[test]
+    fn facade_default_library_name_and_explicit_rename_resolve_distinctly() {
+        assert_eq!(
+            facade_crate_path(FoundCrate::Name("bombay_rs".to_owned())).to_string(),
+            ":: bombay"
+        );
+        assert_eq!(
+            facade_crate_path(FoundCrate::Name("runtime".to_owned())).to_string(),
+            ":: runtime"
+        );
+    }
 }
 
 struct NamedField {
@@ -190,8 +227,8 @@ fn validate_receiver(method: &syn::ImplItemFn) -> Result<()> {
     Ok(())
 }
 
-fn lane_name(product: &Ident, field: &Ident) -> Ident {
-    let lane = field
+fn pascal_name(field: &Ident) -> String {
+    field
         .to_string()
         .split('_')
         .filter(|part| !part.is_empty())
@@ -201,7 +238,11 @@ fn lane_name(product: &Ident, field: &Ident) -> Ident {
                 first.to_uppercase().chain(chars).collect()
             })
         })
-        .collect::<String>();
+        .collect::<String>()
+}
+
+fn lane_name(product: &Ident, field: &Ident) -> Ident {
+    let lane = pascal_name(field);
     format_ident!("{}{}", product, lane)
 }
 
@@ -268,9 +309,76 @@ fn generate_sends(
         .iter()
         .map(|field| lane_name(&name, field))
         .collect();
+    let actions_name = format_ident!("{}Actions", actor);
+    let action_methods: Vec<_> = field_names
+        .iter()
+        .map(|field| {
+            let field = field.to_string();
+            format_ident!("send_{}", field.trim_start_matches("r#"))
+        })
+        .collect();
     let product_generics = product_generics(item, &product.fields);
     let (_, type_generics, _) = product_generics.split_for_impl();
     let generics = &product_generics;
+    let actor_type = &item.self_ty;
+    let mut action_trait_generics = product_generics.clone();
+    action_trait_generics
+        .make_where_clause()
+        .predicates
+        .push(parse_quote!(#actor_type: ::core::marker::Sized));
+
+    let action_trait_methods =
+        action_methods
+            .iter()
+            .zip(lane_names.iter())
+            .map(|(method, lane)| {
+                quote! {
+                    /// Append one value to this generated semantic send lane.
+                    #[must_use]
+                    fn #method<__BombayInput>(self, input: __BombayInput) -> Self
+                    where
+                        Self: #behavior::AppendSend<__BombayInput, #lane>;
+                }
+            });
+
+    let action_impl_methods = action_methods
+        .iter()
+        .zip(lane_names.iter())
+        .map(|(method, lane)| {
+            quote! {
+                fn #method<__BombayInput>(self, input: __BombayInput) -> Self
+                where
+                    Self: #behavior::AppendSend<__BombayInput, #lane>,
+                {
+                    <Self as #behavior::AppendSend<__BombayInput, #lane>>::append_send(
+                        self,
+                        input,
+                    )
+                }
+            }
+        });
+
+    let mut actions_impl_generics = product_generics.clone();
+    actions_impl_generics
+        .params
+        .push(parse_quote!(__BombayAddress));
+    actions_impl_generics.params.push(parse_quote!(__BombayPh));
+    actions_impl_generics
+        .params
+        .push(parse_quote!(__BombayBirth));
+    actions_impl_generics
+        .make_where_clause()
+        .predicates
+        .push(parse_quote!(__BombayAddress: #behavior::Address));
+    actions_impl_generics
+        .make_where_clause()
+        .predicates
+        .push(parse_quote!(__BombayBirth: #behavior::BirthMode));
+    actions_impl_generics
+        .make_where_clause()
+        .predicates
+        .push(parse_quote!(#actor_type: ::core::marker::Sized));
+    let (actions_impl_generics, _, actions_where_clause) = actions_impl_generics.split_for_impl();
 
     let send_impls = lane_names
         .iter()
@@ -353,6 +461,24 @@ fn generate_sends(
             #(pub #field_names: #field_types,)*
         }
 
+        /// Fluent, statically routed send-lane methods for this behavior's
+        /// generated action product.
+        pub trait #actions_name #action_trait_generics: ::core::marker::Sized {
+            #(#action_trait_methods)*
+        }
+
+        impl #actions_impl_generics #actions_name #type_generics
+            for #behavior::Actions<
+                __BombayAddress,
+                __BombayPh,
+                #name #type_generics,
+                __BombayBirth,
+            >
+            #actions_where_clause
+        {
+            #(#action_impl_methods)*
+        }
+
         impl #effects_impl_generics #behavior::SendEffects for #name #type_generics
             #effects_where_clause
         {
@@ -407,6 +533,7 @@ fn generate_sends(
 fn generate_births(
     product: Option<BirthsSpec>,
     actor: &Ident,
+    addr: &Type,
     item: &ItemImpl,
     behavior: &TokenStream2,
 ) -> (TokenStream2, TokenStream2) {
@@ -416,17 +543,89 @@ fn generate_births(
         Some(BirthsSpec::Generated(product)) => product,
     };
     let name = format_ident!("{}Children", actor);
+    let roles_name = format_ident!("{}Child", actor);
+    let routes_name = format_ident!("{}ChildrenRoutes", actor);
+    let field_names = product
+        .fields
+        .iter()
+        .map(|field| &field.name)
+        .collect::<Vec<_>>();
+    let role_names = product
+        .fields
+        .iter()
+        .map(|field| lane_name(&name, &field.name))
+        .collect::<Vec<_>>();
+    let role_values = product
+        .fields
+        .iter()
+        .map(|field| format_ident!("{}", pascal_name(&field.name)))
+        .collect::<Vec<_>>();
+    let declared_child_types = product
+        .fields
+        .iter()
+        .map(|field| &field.ty)
+        .collect::<Vec<_>>();
+    let role_positions = (0..product.fields.len())
+        .map(|index| {
+            (0..(product.fields.len() - index - 1)).fold(
+                quote!(#behavior::ChildHead),
+                |position, _| quote!(#behavior::ChildTail<#position>),
+            )
+        })
+        .collect::<Vec<_>>();
     let child_types = product.fields.iter().map(|field| &field.ty);
     let product_generics = product_generics(item, &product.fields);
-    let (_, type_generics, _) = product_generics.split_for_impl();
+    let (impl_generics, type_generics, where_clause) = product_generics.split_for_impl();
     let generics = &product_generics;
+    let parent = &item.self_ty;
+    let (parent_impl_generics, _, parent_where_clause) = item.generics.split_for_impl();
     let choice = child_types.fold(
         quote!(#behavior::Never),
         |tail, child| quote!(#behavior::ChildChoice<#child, #tail>),
     );
     (
         quote!(#behavior::Births<#name #type_generics>),
-        quote!(pub type #name #generics = #choice;),
+        quote! {
+            pub type #name #generics = #choice;
+
+            #(
+                #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+                pub struct #role_names;
+
+                impl #parent_impl_generics #behavior::ChildRole<#parent> for #role_names
+                    #parent_where_clause
+                {
+                    type Child = #declared_child_types;
+                    type Position = #role_positions;
+                }
+            )*
+
+            pub struct #roles_name;
+
+            #[allow(non_upper_case_globals)]
+            impl #roles_name {
+                #(pub const #role_values: #role_names = #role_names;)*
+            }
+
+            pub struct #routes_name #generics {
+                #(
+                    pub #field_names: #behavior::ChildRoute<#declared_child_types, #role_names>,
+                )*
+            }
+
+            impl #impl_generics #routes_name #type_generics #where_clause {
+                #[must_use]
+                pub fn new(
+                    #(#field_names: <#addr as #behavior::Address>::Nonce,)*
+                ) -> Self {
+                    Self {
+                        #(
+                            #field_names: #behavior::ChildRoute::new(#field_names),
+                        )*
+                    }
+                }
+            }
+        },
     )
 }
 
@@ -521,7 +720,7 @@ pub fn behavior(args: TokenStream, item: TokenStream) -> TokenStream {
     );
 
     let (sends_ty, sends_items) = generate_sends(sends, self_name, &item, &behavior);
-    let (births_ty, births_items) = generate_births(births, self_name, &item, &behavior);
+    let (births_ty, births_items) = generate_births(births, self_name, &addr, &item, &behavior);
 
     quote! {
         #sends_items

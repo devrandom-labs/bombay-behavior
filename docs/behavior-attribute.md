@@ -20,9 +20,7 @@ struct QueryStarter;
 )]
 impl QueryStarter {
     fn init(&mut self) -> BehaviorActed<Self> {
-        let mut sends = QueryStarterSends::empty();
-        sends.send::<_, QueryStarterSendsQueryPool>(/* typed delivery */);
-        Ok(Actions::send(sends))
+        Ok(Actions::cont().send_query_pool(/* typed delivery */))
     }
 
     fn receive(&mut self, _: MailAddr, message: behavior::Never) -> BehaviorActed<Self> {
@@ -50,6 +48,7 @@ For an actor `System`, `sends = { workers: Vec<Delivery<Workers>> }` generates:
 
 - the nominal `SystemSends` product with a named `workers` field;
 - the uninhabited lane selector `SystemSendsWorkers`;
+- the `SystemActions` extension trait, with a fluent `send_workers` method;
 - `SendEffects`, preserving each field independently in declaration order;
 - `SendInput<_, SystemSendsWorkers>`, used through `SendEffects::send`;
 - `SendsFor<Event>`, requiring every field to be lawful for the complete event;
@@ -60,6 +59,12 @@ Two fields with identical product and payload types still have different lane
 selector types. No recursive position, type-name search, runtime registry, or
 catch-all effect value is generated. An interpreter missing any constituent
 delivery or request implementation fails its `InterpretSends` bound.
+
+Generated fluent methods reuse the same `Actions` value and `SendInput` proof:
+they append exactly once to their named lane while preserving existing sends,
+creation order, and `Continue`, `Goto`, or `Stop`. They do not interpret an
+effect or introduce a second effect representation. Existing concrete send
+products remain directly constructible for advanced composition code.
 
 ## Closed birth products
 
@@ -76,7 +81,38 @@ births = {
 generates `SystemChildren` as the exact recursive `ChildChoice` produced by
 calling `Children::child` in that declaration order. The generated behavior's
 birth capability is `Births<SystemChildren>`. The field labels record semantic
-roles, while values and nonces remain explicitly authored with `Children`.
+roles. It also generates `SystemChildrenRoutes`, with one nominally distinct
+typed route per role. The same route stages that role's creation and
+produces its creator-local `ChildRecipient`, so creation and routing do not
+repeat a raw nonce. Values and nonces remain explicitly authored.
+
+These names extend the macro's existing generated namespace: `SystemChild`,
+`SystemChildren`, `SystemChildrenRoutes`, and one `SystemChildrenRole` marker
+for each field (for example, `SystemChildrenWorkers`). As with `SystemSends`
+and its lane selectors, callers must leave those actor-prefixed names to the
+macro. Using the same child behavior in two fields still produces two
+incompatible role types; sharing a protocol cannot accidentally exchange their
+routes.
+
+The same declaration also generates the `SystemChild` selector namespace. Its
+inhabited values, such as `SystemChild::Workers`, implement
+`ChildRole<System, Child = Workers>`. Each role also carries a sealed
+`ChildHead`/`ChildTail<_>` position proving where that exact behavior occurs in
+`SystemChildren`. This is the Behavior-owned proof consumed by static
+application topology and existing heterogeneous effect products:
+
+```rust,ignore
+Application::new(System::new())
+    .child(SystemChild::Workers, workers)
+    .child(SystemChild::Queries, queries)
+```
+
+The selector contains no nonce and performs no creation. `SystemChildrenRoutes`
+remains the separate creator-local routing product used when the parent stages
+and addresses actual child creations.
+
+A route is routing intent only. It is not an actor identity, proof of
+freshness, or successful installation fact.
 
 This is Bombay's staged creation policy: `Children` builds typed `Create`
 requests, and the interpreter must commit them before dependent same-action

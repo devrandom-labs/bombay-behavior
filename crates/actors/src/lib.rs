@@ -12,6 +12,9 @@
 //! Public [`Protocol`] identity remains orthogonal to those internal event and
 //! effect algebras. Concrete actor templates declare their protocol; transparent
 //! wrappers preserve `B::Protocol` and do not become new recipient identities.
+//! [`InstallationRequirements`] projects each template's own protocol and
+//! complete transitive staged-birth protocols into one closed structural
+//! product. Delivery-only external protocols do not enter that product.
 //!
 //! Catalogue values and wrappers are constructed directly through their public
 //! owning-type constructors. [`Activate`] consumes any concrete definition
@@ -37,6 +40,7 @@ pub mod operations;
 pub mod persistence;
 mod pool;
 mod protocol;
+mod requirements;
 pub mod routing;
 mod shutdown;
 mod stash;
@@ -63,11 +67,11 @@ pub use lifecycle::{
     HeterogeneousShutdownCoordinator, HeterogeneousShutdownPlan, HeterogeneousShutdownSends,
     LifecyclePublication, LifecyclePublisher, NoShutdownTargets, PeerTermination,
     PropagateTermination, Reaper, ShutdownChoice, ShutdownCoordinator, ShutdownCoordinatorError,
-    ShutdownCoordinatorEvent, ShutdownPlan, ShutdownPlanError, ShutdownState, ShutdownTree,
-    ShutdownTreeError, Task, TaskError, TaskMessage, TaskResult, TaskState, TerminalDisposition,
-    TerminalPropagationPolicy, TerminalPropagationSends, TerminalPropagationState,
-    TerminationMonitor, TerminationObservation, TerminationReaction, TerminationTarget,
-    TreeShutdown, propagate_abnormal, propagate_all,
+    ShutdownCoordinatorEvent, ShutdownPlan, ShutdownPlanError, ShutdownState, ShutdownTargetAt,
+    ShutdownTree, ShutdownTreeError, Task, TaskError, TaskMessage, TaskResult, TaskState,
+    TerminalDisposition, TerminalPropagationPolicy, TerminalPropagationSends,
+    TerminalPropagationState, TerminationMonitor, TerminationObservation, TerminationReaction,
+    TerminationTarget, TreeShutdown, propagate_abnormal, propagate_all, shutdown_target,
 };
 pub use machine::{Machine, Move};
 pub use operations::{
@@ -94,6 +98,10 @@ pub use protocol::{
     ReportWorkerCreationResolved, ReportWorkerStopped, ScheduleAfter, ScheduleAt, ShutdownChild,
     ShutdownRequested, TimerElapsed, TimerGeneration, TimerId, UnwatchPeer, WorkerCreationResolved,
     WorkerPoolProtocol, WorkerStopped,
+};
+pub use requirements::{
+    InstallationRequirements, NoInstallationRequirements, RequiredProtocol, RequirementAt,
+    RequirementHead, RequirementTail,
 };
 pub use routing::{
     AcknowledgementError, AcknowledgementMessage, AcknowledgementOutcome, AcknowledgementRecord,

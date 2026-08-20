@@ -3,7 +3,7 @@
 use core::future::Future;
 use core::marker::PhantomData;
 
-use super::addressing::Address;
+use super::addressing::{Address, ChildRecipient};
 use crate::next::Never;
 use crate::{Behavior, Protocol};
 
@@ -57,14 +57,120 @@ impl<A: Address, New> Create<A, New> {
     }
 }
 
+/// A named creator-local route for one statically declared child role.
+///
+/// The route carries routing intent only. Its nonce is not an actor identity,
+/// proof of freshness, or evidence that creation succeeded. `Child` fixes the
+/// exact behavior accepted by [`ChildRoute::birth`], while `Role` keeps two
+/// declarations of the same child behavior nominally distinct.
+pub struct ChildRoute<Child: Behavior, Role> {
+    recipient: ChildRecipient<Child::Protocol>,
+    child: PhantomData<fn() -> Child>,
+    role: PhantomData<fn() -> Role>,
+}
+
+/// Static proof that `Role` names one exact direct child of `Parent`.
+///
+/// Behavior authoring owns this relationship. A runtime may use the proof to
+/// build application topology, but the role itself allocates nothing and is
+/// not evidence that the child was created or installed.
+pub trait ChildRole<Parent: Behavior> {
+    /// The only child behavior accepted at this role.
+    type Child: Behavior;
+
+    /// Structural position of this role in `Parent`'s closed child sum.
+    type Position: ChildPosition<<Parent::Birth as BirthMode>::Child, Self::Child>;
+}
+
+impl<Child: Behavior, Role> Copy for ChildRoute<Child, Role> {}
+
+impl<Child: Behavior, Role> Clone for ChildRoute<Child, Role> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<Child: Behavior, Role> PartialEq for ChildRoute<Child, Role> {
+    fn eq(&self, other: &Self) -> bool {
+        self.recipient == other.recipient
+    }
+}
+
+impl<Child: Behavior, Role> Eq for ChildRoute<Child, Role> {}
+
+impl<Child: Behavior, Role> core::fmt::Debug for ChildRoute<Child, Role>
+where
+    <<Child::Protocol as Protocol>::Addr as Address>::Nonce: core::fmt::Debug,
+{
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("ChildRoute")
+            .field("nonce", &self.nonce())
+            .finish()
+    }
+}
+
+impl<Child: Behavior, Role> ChildRoute<Child, Role> {
+    /// Name this declared role at a creator-local route.
+    #[must_use]
+    pub const fn new(nonce: <<Child::Protocol as Protocol>::Addr as Address>::Nonce) -> Self {
+        Self {
+            recipient: ChildRecipient::new(nonce),
+            child: PhantomData,
+            role: PhantomData,
+        }
+    }
+
+    /// Return the creator-local recipient for this declared child role.
+    #[must_use]
+    pub const fn recipient(self) -> ChildRecipient<Child::Protocol> {
+        self.recipient
+    }
+
+    /// Return the creator-local nonce used by creation and lifecycle facts.
+    #[must_use]
+    pub const fn nonce(self) -> <<Child::Protocol as Protocol>::Addr as Address>::Nonce {
+        self.recipient.nonce()
+    }
+
+    /// Stage one creation request with explicit Behavior-owned provenance.
+    #[must_use]
+    pub const fn stage(
+        self,
+        child: Child,
+        kind: CreationKind<<<Child::Protocol as Protocol>::Addr as Address>::Nonce>,
+    ) -> Create<<Child::Protocol as Protocol>::Addr, Child> {
+        Create::new(self.nonce(), child, kind)
+    }
+
+    /// Stage an ordinary fresh-birth request for this declared child role.
+    #[must_use]
+    pub const fn birth(self, child: Child) -> Create<<Child::Protocol as Protocol>::Addr, Child> {
+        self.stage(child, CreationKind::Birth)
+    }
+
+    /// Stage a replacement incarnation for this declared child role.
+    #[must_use]
+    pub const fn replacement_incarnation(
+        self,
+        replaces: <<Child::Protocol as Protocol>::Addr as Address>::Nonce,
+        child: Child,
+    ) -> Create<<Child::Protocol as Protocol>::Addr, Child> {
+        self.stage(child, CreationKind::replacement_of(replaces))
+    }
+}
+
 /// Static interpreter capability for installing one concrete child behavior.
 ///
 /// An interpreter implements this trait separately for every concrete child
-/// protocol it can install. Heterogeneous child sums require all applicable
-/// implementations through recursive static bounds, so unsupported alternatives
-/// fail to compile instead of falling through to a registry or erased path. The
-/// returned future is sendable so an interpreter may remain inside a
-/// thread-safe recursive driver future.
+/// behavior it can install. `C::Protocol` remains the canonical hosting
+/// identity at this boundary: distinct child behaviors may select the same
+/// protocol and therefore share one runtime-owned protocol space while still
+/// receiving distinct installation calls. Semantic child roles and routes are
+/// deliberately not storage identities. Heterogeneous child sums require all
+/// applicable implementations through recursive static bounds, so unsupported
+/// alternatives fail to compile instead of falling through to a registry or
+/// erased path. The returned future is sendable so an interpreter may remain
+/// inside a thread-safe recursive driver future.
 pub trait InstallBirth<A: Address, C: Behavior, Output, Error>
 where
     C::Protocol: Protocol<Addr = A>,
@@ -167,7 +273,88 @@ pub enum ChildChoice<Head, Tail> {
     Tail(Tail),
 }
 
+/// Position selecting the head of a closed [`ChildChoice`] sum.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ChildHead;
+
+/// Position selecting inside the tail of a closed [`ChildChoice`] sum.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ChildTail<Position>(PhantomData<fn() -> Position>);
+
+/// Static proof that `Child` occupies `Position` in a closed child sum.
+///
+/// This trait provides structural evidence only. It does not construct a
+/// choice, perform creation, or select a child through runtime inspection.
+/// A role cannot claim a position occupied by a different child:
+///
+/// ```compile_fail
+/// use behavior::{
+///     Actions, Behavior, BehaviorActed, Births, ChildChoice, ChildHead,
+///     ChildRole, MailAddr, Never, NoBirths, User,
+/// };
+/// struct First;
+/// struct Second;
+/// struct Parent;
+/// macro_rules! inert {
+///     ($actor:ty) => {
+///         impl behavior::Protocol for $actor {
+///             type Addr = MailAddr;
+///             type Msg = Never;
+///         }
+///         impl Behavior for $actor {
+///             type Protocol = Self;
+///             type Event = User<MailAddr, Never>;
+///             type Sends = Vec<Never>;
+///             type Ph = Never;
+///             type Error = Never;
+///             type Birth = NoBirths;
+///             fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+///                 match event.message {}
+///             }
+///         }
+///     };
+/// }
+/// inert!(First);
+/// inert!(Second);
+/// impl behavior::Protocol for Parent {
+///     type Addr = MailAddr;
+///     type Msg = Never;
+/// }
+/// impl Behavior for Parent {
+///     type Protocol = Self;
+///     type Event = User<MailAddr, Never>;
+///     type Sends = Vec<Never>;
+///     type Ph = Never;
+///     type Error = Never;
+///     type Birth = Births<ChildChoice<Second, ChildChoice<First, Never>>>;
+///     fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+///         match event.message {}
+///     }
+/// }
+/// struct ForgedFirst;
+/// impl ChildRole<Parent> for ForgedFirst {
+///     type Child = First;
+///     type Position = ChildHead;
+/// }
+/// ```
+pub trait ChildPosition<Children, Child: Behavior>: sealed::ChildPosition {}
+
+impl sealed::ChildPosition for ChildHead {}
+
+impl<Head: Behavior, Tail> ChildPosition<ChildChoice<Head, Tail>, Head> for ChildHead {}
+
+impl<Position> sealed::ChildPosition for ChildTail<Position> {}
+
+impl<Head, Tail, Position, Child> ChildPosition<ChildChoice<Head, Tail>, Child>
+    for ChildTail<Position>
+where
+    Child: Behavior,
+    Position: ChildPosition<Tail, Child>,
+{
+}
+
 mod sealed {
+    pub trait ChildPosition {}
     pub trait ChildProduct {}
 }
 
@@ -309,6 +496,20 @@ impl<A: Address, Product> Children<A, Product> {
     {
         self.create(Create::birth(nonce, child))
     }
+
+    /// Append an ordinary birth through one named child-role binding.
+    #[must_use]
+    pub fn child_at<C, Role>(
+        self,
+        route: ChildRoute<C, Role>,
+        child: C,
+    ) -> Children<A, ChildCons<A, C, Product>>
+    where
+        C: Behavior,
+        C::Protocol: Protocol<Addr = A>,
+    {
+        self.create(route.birth(child))
+    }
 }
 
 impl<A, Product> Children<A, Product>
@@ -391,6 +592,107 @@ pub trait BirthMode {
     type Child;
 }
 
+/// Empty protocol projection of a closed behavior-birth algebra.
+pub struct NoBirthProtocols;
+
+/// One behavior protocol followed by the remaining closed birth projection.
+pub struct BirthProtocol<P: Protocol, Tail> {
+    protocol: PhantomData<fn() -> P>,
+    tail: PhantomData<fn() -> Tail>,
+}
+
+/// Structural position selecting the current projected birth protocol.
+pub struct BirthProtocolHead;
+
+/// Structural position selecting inside the remaining protocol projection.
+pub struct BirthProtocolTail<Position>(PhantomData<fn() -> Position>);
+
+/// Static membership evidence for one occurrence in a birth-protocol product.
+pub trait BirthProtocolAt<P: Protocol, Position> {}
+
+impl<P: Protocol, Tail> BirthProtocolAt<P, BirthProtocolHead> for BirthProtocol<P, Tail> {}
+
+impl<Head, Tail, P, Position> BirthProtocolAt<P, BirthProtocolTail<Position>>
+    for BirthProtocol<Head, Tail>
+where
+    Head: Protocol,
+    P: Protocol,
+    Tail: BirthProtocolAt<P, Position>,
+{
+}
+
+/// Closed product operation used by the structural birth projection.
+#[doc(hidden)]
+pub trait BirthProtocolProduct {
+    type Append<Tail: BirthProtocolProduct>: BirthProtocolProduct;
+}
+
+impl BirthProtocolProduct for NoBirthProtocols {
+    type Append<Tail: BirthProtocolProduct> = Tail;
+}
+
+impl<P, Rest> BirthProtocolProduct for BirthProtocol<P, Rest>
+where
+    P: Protocol,
+    Rest: BirthProtocolProduct,
+{
+    type Append<Tail: BirthProtocolProduct> = BirthProtocol<P, Rest::Append<Tail>>;
+}
+
+/// Closed static projection of a behavior's own protocol and every protocol
+/// reachable through its transitive staged-birth algebra.
+///
+/// This is structural information derived from [`Behavior::Birth`]. It makes
+/// no hosting or allocation decision and does not inspect send destinations.
+pub trait BirthProtocols: Behavior {
+    type Protocols: BirthProtocolProduct;
+}
+
+impl<B> BirthProtocols for B
+where
+    B: Behavior,
+    B::Birth: BirthModeProtocols,
+{
+    type Protocols = BirthProtocol<B::Protocol, <B::Birth as BirthModeProtocols>::Protocols>;
+}
+
+#[doc(hidden)]
+pub trait BirthModeProtocols {
+    type Protocols: BirthProtocolProduct;
+}
+
+impl<M> BirthModeProtocols for M
+where
+    M: BirthMode,
+    M::Child: BirthNodeProtocols,
+{
+    type Protocols = <M::Child as BirthNodeProtocols>::Protocols;
+}
+
+#[doc(hidden)]
+pub trait BirthNodeProtocols {
+    type Protocols: BirthProtocolProduct;
+}
+
+impl<B> BirthNodeProtocols for B
+where
+    B: BirthProtocols,
+{
+    type Protocols = B::Protocols;
+}
+
+impl<Head, Tail> BirthNodeProtocols for ChildChoice<Head, Tail>
+where
+    Head: BirthNodeProtocols,
+    Tail: BirthNodeProtocols,
+{
+    type Protocols = <Head::Protocols as BirthProtocolProduct>::Append<Tail::Protocols>;
+}
+
+impl BirthNodeProtocols for Never {
+    type Protocols = NoBirthProtocols;
+}
+
 /// This behavior cannot emit child births.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct NoBirths;
@@ -413,6 +715,40 @@ mod tests {
     use crate::{Actions, BehaviorActed, MailAddr, NoBirths, User};
 
     struct Child;
+
+    struct SharedProtocol;
+
+    impl behavior::Protocol for SharedProtocol {
+        type Addr = MailAddr;
+        type Msg = u8;
+    }
+
+    struct Primary;
+    struct Fallback;
+
+    macro_rules! shared_protocol_behavior {
+        ($behavior:ty, $birth:ty) => {
+            impl Behavior for $behavior {
+                type Protocol = SharedProtocol;
+                type Event = User<MailAddr, u8>;
+                type Sends = Vec<Never>;
+                type Ph = Never;
+                type Error = Never;
+                type Birth = $birth;
+
+                fn transition(
+                    &mut self,
+                    _: crate::ActiveTurn,
+                    _: Self::Event,
+                ) -> BehaviorActed<Self> {
+                    Ok(Actions::cont())
+                }
+            }
+        };
+    }
+
+    shared_protocol_behavior!(Primary, Births<Child>);
+    shared_protocol_behavior!(Fallback, NoBirths);
 
     impl behavior::Protocol for Child {
         type Addr = MailAddr;
@@ -443,6 +779,35 @@ mod tests {
         result: Result<u32, InstallError>,
     }
 
+    #[derive(Debug, PartialEq, Eq)]
+    enum SharedInstallation {
+        Primary(u64),
+        Fallback(u64),
+    }
+
+    #[derive(Default)]
+    struct SharedProtocolInstaller(Vec<SharedInstallation>);
+
+    impl InstallBirth<MailAddr, Primary, (), Never> for SharedProtocolInstaller {
+        async fn install_birth(
+            &mut self,
+            creation: Create<MailAddr, Primary>,
+        ) -> Result<(), Never> {
+            self.0.push(SharedInstallation::Primary(creation.nonce));
+            Ok(())
+        }
+    }
+
+    impl InstallBirth<MailAddr, Fallback, (), Never> for SharedProtocolInstaller {
+        async fn install_birth(
+            &mut self,
+            creation: Create<MailAddr, Fallback>,
+        ) -> Result<(), Never> {
+            self.0.push(SharedInstallation::Fallback(creation.nonce));
+            Ok(())
+        }
+    }
+
     impl InstallBirth<MailAddr, Child, u32, InstallError> for RecordingInstaller {
         async fn install_birth(
             &mut self,
@@ -463,6 +828,27 @@ mod tests {
     }
 
     fn assert_send<T: Send>(_: &T) {}
+
+    enum WorkerRole {}
+
+    #[test]
+    fn child_route_preserves_one_nonce_across_routing_and_creation_provenance() {
+        let route = ChildRoute::<Child, WorkerRole>::new(17);
+
+        assert_eq!(route.nonce(), 17);
+        assert_eq!(route.recipient().nonce(), 17);
+        assert_eq!(route, ChildRoute::new(17));
+        assert_ne!(route, ChildRoute::new(19));
+        assert_eq!(format!("{route:?}"), "ChildRoute { nonce: 17 }");
+
+        let birth = route.birth(Child);
+        assert_eq!(birth.nonce, 17);
+        assert_eq!(birth.kind, CreationKind::Birth);
+
+        let replacement = route.replacement_incarnation(11, Child);
+        assert_eq!(replacement.nonce, 17);
+        assert_eq!(replacement.kind, CreationKind::replacement_of(11));
+    }
 
     #[test]
     fn empty_child_product_stages_no_creations_or_nonces() {
@@ -501,5 +887,43 @@ mod tests {
         assert_eq!(result, Err(InstallError::Refused));
         assert_eq!(installer.calls, 1);
         assert_eq!(installer.observed, [(23, CreationKind::replacement_of(19))]);
+    }
+
+    #[tokio::test]
+    async fn distinct_child_alternatives_preserve_one_canonical_protocol_identity() {
+        type Alternatives = ChildChoice<Primary, ChildChoice<Fallback, Never>>;
+
+        fn requires_shared_protocol<C: Behavior<Protocol = SharedProtocol>>() {}
+        requires_shared_protocol::<Primary>();
+        requires_shared_protocol::<Fallback>();
+
+        let mut installer = SharedProtocolInstaller::default();
+        Alternatives::Head(Primary)
+            .dispatch_birth(11, CreationKind::Birth, &mut installer)
+            .await
+            .unwrap();
+        Alternatives::Tail(ChildChoice::Head(Fallback))
+            .dispatch_birth(17, CreationKind::Birth, &mut installer)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            installer.0,
+            [
+                SharedInstallation::Primary(11),
+                SharedInstallation::Fallback(17),
+            ]
+        );
+    }
+
+    #[test]
+    fn birth_protocol_projection_recurses_without_inspecting_send_lanes() {
+        type Protocols = <Primary as BirthProtocols>::Protocols;
+        type Expected = BirthProtocol<SharedProtocol, BirthProtocol<Child, NoBirthProtocols>>;
+
+        trait Same<T> {}
+        impl<T> Same<T> for T {}
+        fn exact<T: Same<Expected>>() {}
+        exact::<Protocols>();
     }
 }
