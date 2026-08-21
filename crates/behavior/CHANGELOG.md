@@ -30,6 +30,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   without making the parent behavior or role another protocol identity.
 - Keep `Recipient<P>` as logical addressed intent and separate its resolver
   path from exact endpoint and creator-local child delivery.
+- Require established endpoints to be cloneable but not unconditionally
+  `Send`. Sendability is enforced on concrete asynchronous delivery and
+  interpreter-request paths, allowing sound closure-owned local endpoints
+  without imposing `P::Msg: Send` on every exact capability value.
 
 ### Removed
 

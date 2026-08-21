@@ -31,7 +31,10 @@ B::Birth::Child: DispatchBirth<B::Protocol::Addr, Installer, Output, Error>
 The concrete bounds vary with the host design, but every lane and child
 alternative must have a compile-time implementation. A universal driver may
 be generic; it may not erase events, effects, endpoints, futures, or child
-types to achieve universality.
+types to achieve universality. `EndpointAddress` itself does not require every
+endpoint to be `Send`. A thread-safe driver instead requires `Send` on the
+concrete `Actions`, request, event, endpoint, or future that it actually moves
+across its asynchronous boundary.
 
 ## Actions commitment
 

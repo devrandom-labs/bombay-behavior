@@ -77,7 +77,9 @@ The runtime owns the endpoint family once per address namespace by
 implementing `EndpointAddress`. Ordinary protocols declare no keys and domain
 types acquire no endpoint boilerplate. Public interpretation traits are an
 intentional power-user transfer boundary; endpoint values have no direct
-accessor or ambient send operation.
+accessor or ambient send operation. Exact endpoints are cloneable but not
+intrinsically `Send`; concrete asynchronous interpretation requires `Send`
+only for the values it actually transports.
 
 The full capability and lifecycle contract is in
 [Established capabilities](docs/established-capabilities.md).

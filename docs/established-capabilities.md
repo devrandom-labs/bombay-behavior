@@ -75,9 +75,21 @@ impl EndpointAddress for RuntimeAddr {
 
 This preserves static dispatch without imposing an associated endpoint or key
 on every domain protocol. Each concrete `P`, including a generic
-instantiation, produces a distinct monomorphized endpoint type. There is no
+instantiation, produces a distinct `EstablishedRecipient<P>` capability type.
+The runtime may reuse the same underlying endpoint representation across
+projections without allowing those capability types to mix. There is no
 hashing, `TypeId`, dynamic dispatch, erased storage, or manually authored
 protocol key.
+
+The associated endpoint must be `Clone`, because an established recipient is
+transferable acquaintance evidence. It is deliberately not unconditionally
+`Send`. Local interpreters may use closure-owned or otherwise thread-local
+endpoints. `InterpretSends` requires the complete concrete delivery or request
+to be `Send` when an asynchronous interpreter moves it, which naturally
+requires both the endpoint and `P::Msg` to be sendable on that path. This keeps
+executor policy out of inert capability construction and avoids propagating a
+false `P::Msg: Send` obligation through local creation, observation, and
+shutdown facts.
 
 `MailAddr` intentionally implements only `Address`. It is a neutral logical
 address used by pure examples and tests, not a commitment to a runtime endpoint

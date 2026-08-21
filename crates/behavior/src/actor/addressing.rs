@@ -36,12 +36,65 @@ impl Address for MailAddr {
 /// Runtime-owned exact endpoint family for one logical address namespace.
 ///
 /// A runtime implements this trait on its own address newtype, selecting one
-/// monomorphized endpoint type for each concrete protocol. Ordinary protocols
-/// continue to declare only their canonical [`Protocol::Addr`] and
+/// statically projected endpoint representation for each concrete protocol.
+/// The projection may reuse a representation; [`EstablishedRecipient<P>`]
+/// still preserves `P` and prevents cross-protocol substitution. Ordinary
+/// protocols continue to declare only their canonical [`Protocol::Addr`] and
 /// [`Protocol::Msg`]; they never author endpoint keys or endpoint associated
-/// types.
+/// types. An endpoint is cloneable acquaintance evidence, but it is not
+/// intrinsically `Send`: thread transfer is required only by the concrete
+/// asynchronous interpretation boundary that performs it.
+///
+/// A local endpoint remains valid, but cannot enter the sendable
+/// [`crate::InterpretSends`] path:
+///
+/// ```compile_fail
+/// use behavior::{
+///     Address, EndpointAddress, EstablishedDelivery, EstablishedRecipient,
+///     Here, InterpretEstablishedDelivery, InterpretSends, Protocol,
+///     SendInterpreter, User,
+/// };
+/// use core::marker::PhantomData;
+/// use std::rc::Rc;
+/// #[derive(Clone, Copy, PartialEq, Eq)]
+/// struct LocalAddr(u8);
+/// impl Address for LocalAddr { type Nonce = u8; }
+/// struct LocalEndpoint<P>(Rc<()>, PhantomData<fn() -> P>);
+/// impl<P> Clone for LocalEndpoint<P> {
+///     fn clone(&self) -> Self { Self(self.0.clone(), PhantomData) }
+/// }
+/// impl EndpointAddress for LocalAddr {
+///     type Established<P> = LocalEndpoint<P> where P: Protocol<Addr = Self>;
+/// }
+/// struct LocalProtocol;
+/// impl Protocol for LocalProtocol {
+///     type Addr = LocalAddr;
+///     type Msg = Rc<()>;
+/// }
+/// struct Runtime;
+/// impl SendInterpreter for Runtime { type Error = (); }
+/// impl InterpretEstablishedDelivery<LocalProtocol> for Runtime {
+///     fn interpret_established_delivery(
+///         &mut self,
+///         endpoint: LocalEndpoint<LocalProtocol>,
+///         message: Rc<()>,
+///     ) -> impl core::future::Future<Output = Result<(), Self::Error>> + Send {
+///         drop(endpoint);
+///         drop(message);
+///         async { Ok(()) }
+///     }
+/// }
+/// fn require_async<T>()
+/// where
+///     T: InterpretSends<Runtime, User<LocalAddr, Rc<()>>, Here>,
+/// {}
+/// let endpoint = LocalEndpoint(Rc::new(()), PhantomData);
+/// let recipient = EstablishedRecipient::<LocalProtocol>::issued(endpoint);
+/// let _delivery = EstablishedDelivery::new(recipient, Rc::new(()));
+/// require_async::<Vec<EstablishedDelivery<LocalProtocol>>>();
+/// ```
 pub trait EndpointAddress: Address + Sized {
-    type Established<P>: Clone + Send
+    type Established<P>: Clone
     where
         P: Protocol<Addr = Self>;
 }
@@ -567,10 +620,59 @@ where
 mod tests {
     use super::*;
     use crate::{Actions, Never, NoBirths, User};
+    use std::rc::Rc;
 
     struct Inbox;
 
     struct SignatureOnly;
+
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    struct LocalAddr(u8);
+
+    impl Address for LocalAddr {
+        type Nonce = u8;
+    }
+
+    struct LocalProtocol;
+
+    impl Protocol for LocalProtocol {
+        type Addr = LocalAddr;
+        type Msg = Rc<()>;
+    }
+
+    struct LocalEndpoint<P> {
+        token: Rc<()>,
+        protocol: PhantomData<fn() -> P>,
+    }
+
+    impl<P> Clone for LocalEndpoint<P> {
+        fn clone(&self) -> Self {
+            Self {
+                token: self.token.clone(),
+                protocol: PhantomData,
+            }
+        }
+    }
+
+    impl EndpointAddress for LocalAddr {
+        type Established<P>
+            = LocalEndpoint<P>
+        where
+            P: Protocol<Addr = Self>;
+    }
+
+    struct LocalTransfer;
+
+    impl InterpretEstablished<LocalProtocol> for LocalTransfer {
+        type Output = Rc<()>;
+
+        fn interpret_established(
+            &mut self,
+            endpoint: LocalEndpoint<LocalProtocol>,
+        ) -> Self::Output {
+            endpoint.token
+        }
+    }
 
     impl crate::Protocol for SignatureOnly {
         type Addr = MailAddr;
@@ -627,6 +729,20 @@ mod tests {
         assert_ne!(global, other_global);
         assert_eq!(global.address(), MailAddr(7));
         assert_eq!(format!("{global:?}"), "MailAddr(7)");
+    }
+
+    #[test]
+    fn established_capability_can_remain_local_until_an_async_boundary_requires_send() {
+        let token = Rc::new(());
+        let recipient = EstablishedRecipient::<LocalProtocol>::issued(LocalEndpoint {
+            token: token.clone(),
+            protocol: PhantomData,
+        });
+        let retained = recipient.clone();
+        let extracted = retained.interpret(&mut LocalTransfer);
+
+        assert!(Rc::ptr_eq(&token, &extracted));
+        drop(recipient);
     }
 
     #[test]

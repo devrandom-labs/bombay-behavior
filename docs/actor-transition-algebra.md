@@ -62,7 +62,10 @@ address, or second identity.
 The runtime selects the endpoint representation through
 `EndpointAddress::Established<P>`. This makes the endpoint family a property
 of the runtime-owned address namespace. Generic application types and protocol
-owners do not implement key traits or carry runtime types.
+owners do not implement key traits or carry runtime types. The inert endpoint
+family requires `Clone`, not `Send`. `InterpretSends` and concrete request
+interpretation require `Send` when an effect actually crosses an asynchronous
+executor boundary.
 
 ## Fresh creation
 
