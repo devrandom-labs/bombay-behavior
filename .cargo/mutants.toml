@@ -1,6 +1,12 @@
 # Only mutations proven unable to represent an observable behavior law belong
 # here. Keep this list empty until such an equivalent mutant is demonstrated.
 exclude_re = [
+    # EQUIVALENT: Ingress is a PhantomData-only capability, so copying it and
+    # constructing its Default value produce the same unique value.
+    'replace <impl Clone for Ingress<Input, Path>>::clone -> Self with Default::default\(\)',
+    # EQUIVALENT: the empty child product's successful staging result is
+    # definitionally the same pair of empty Vec values.
+    'replace <impl ChildProduct<A> for NoChildren>::stage -> .* with Ok\(\(vec!\[\], vec!\[\]\)\)',
     # EQUIVALENT: Vec's Default value is exactly Vec::new().
-    'replace <impl SendAlgebra for Vec<T>>::empty -> Self with Default::default\(\)',
+    'replace <impl SendEffects for Vec<T>>::empty -> Self with Default::default\(\)',
 ]
