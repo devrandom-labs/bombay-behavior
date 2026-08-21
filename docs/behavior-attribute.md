@@ -115,6 +115,12 @@ creation and local dependent effects.
 A route is routing intent only. It is not an actor identity, proof of
 freshness, or successful installation fact.
 
+Generated and handwritten child products share the same sealed structural
+fold. A static runtime may implement `BirthNodeMapper` once to project any
+`SystemChildren` into its own occurrence-preserving direct-child storage.
+The macro emits no runtime storage or mapper implementation, and equal child
+types at two named roles still receive distinct structural positions.
+
 This is Bombay's staged creation policy: `Children` builds typed `Create`
 requests, and the interpreter must commit them before dependent same-action
 sends and interpreter requests. The macro does not allocate, install, replace,

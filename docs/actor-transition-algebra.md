@@ -128,6 +128,16 @@ monomorphized capabilities. Closed child sums use `DispatchBirth` and one
 `InstallBirth<Position, Child, ...>` implementation per concrete occurrence.
 Missing support fails to compile.
 
+`FoldBirthNode` is the structural dual needed by runtimes that retain
+creator-local state per direct child occurrence. Behavior owns the closed
+`Behavior` leaf / `ChildChoice` / `Never` recursion and supplies the same
+`ChildHead` / `ChildTail<_>` navigation evidence used by installation. A
+runtime-owned `BirthNodeMapper` supplies only the mapped storage constructor.
+This is a type-level derived construction, not an actor operation: it performs
+no fold transition, allocation, binding, lookup, or effect interpretation.
+Transitive descendants remain owned by the concrete child actors that may
+create them.
+
 No core path uses trait objects, runtime protocol registries, reflection,
 downcasting, type-name dispatch, serialization, or unsafe type escape hatches.
 

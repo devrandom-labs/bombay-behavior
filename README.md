@@ -142,6 +142,14 @@ alternative. The structural position prevents duplicate child alternatives
 from silently sharing an installer obligation while avoiding false `Behavior`
 bounds on unrelated wrapper and domain types.
 
+`FoldBirthNode` exposes that same closed direct-child structure to static
+runtimes. A runtime implements `BirthNodeMapper` to choose its own empty and
+per-child storage types; Behavior supplies every concrete leaf and its existing
+`ChildHead`/`ChildTail<_>` position. The fold creates no values and adds no
+creation semantics, registry, protocol key, or runtime dependency. Nested
+children are folded in the namespace of the concrete actor that creates them,
+not flattened into root-owned storage.
+
 Initialization is a consuming typestate transition. Wrapper initialization
 effects compose in defined order and must be interpreted before mailbox
 events. Send products likewise retain named lanes and structural ordering;

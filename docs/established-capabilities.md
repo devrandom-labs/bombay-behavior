@@ -122,6 +122,13 @@ The allocator's fresh address is independent of the nonce. `Address` has no
 derivation operation. Stable identity and replacement are higher-level
 constructions; replacement never means overwriting an address.
 
+A static runtime can derive its creator-local binding product with
+`FoldBirthNode` and a runtime-owned `BirthNodeMapper`. The sealed fold maps each
+direct behavior leaf together with its existing structural position; the
+runtime decides what endpoint and nonce storage that leaf contains. It adds no
+runtime value or capability to `Behavior`, and it deliberately does not flatten
+descendant actors into the current creator's namespace.
+
 `EstablishedCreation<P, O>` deliberately excludes the parent behavior and
 concrete child behavior from its identity. Ordinary consumers need only the
 canonical protocol and occurrence. `into_actor::<Parent>()` reintroduces the
@@ -187,7 +194,8 @@ drives:
 
 - one concrete endpoint family for its address namespace;
 - fresh allocation independent of creator-local nonces;
-- creator-instance occurrence/nonce bindings for local child effects;
+- creator-instance occurrence/nonce bindings for local child effects, which
+  may be derived statically from the sealed direct-child fold;
 - exact endpoint delivery, observation, and typed shutdown interpretation;
 - logical-address resolution only for retained `Recipient<P>` paths; and
 - creation-before-dependent-effects ordering.

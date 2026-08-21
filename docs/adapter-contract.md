@@ -84,6 +84,14 @@ provenance but still requires fresh allocation.
 occurrence. `Position` is interpreter navigation evidence, not hosting
 identity.
 
+When the adapter retains exact child bindings, it may derive their complete
+direct-child product through `FoldBirthNode`. Behavior owns and seals the leaf,
+`ChildChoice`, and `Never` recursion; the adapter's `BirthNodeMapper` chooses
+only its storage constructor. The fold is compile-time structure and performs
+none of the creation transaction above. Each installed child derives its own
+product from its own `Behavior::Birth`, so creator namespaces are not flattened
+or shared.
+
 ## Destination interpretation
 
 The three delivery paths have different obligations:

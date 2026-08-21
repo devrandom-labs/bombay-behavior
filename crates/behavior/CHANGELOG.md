@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rejection reasons. Rejected facts carry no endpoint capability.
 - Add `ChildDelivery<P, Occurrence>` for same-action local communication
   through a committed creator-instance binding.
+- Add the sealed `FoldBirthNode` projection and downstream `BirthNodeMapper`
+  type constructor. Static runtimes can derive occurrence-preserving storage
+  from concrete behavior leaves, `ChildChoice`, and `Never` without
+  reclassifying Behavior-owned nodes or adding bounds to domain generics.
 
 ### Changed
 

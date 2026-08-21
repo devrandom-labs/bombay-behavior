@@ -601,7 +601,143 @@ where
 {
 }
 
+/// Downstream type constructor for a structural fold of one direct-child sum.
+///
+/// Behavior owns the closed node algebra: a concrete [`Behavior`] leaf,
+/// [`ChildChoice`], or [`Never`]. A runtime owns the representation associated
+/// with each leaf. `Empty` supplies its terminal representation and `Mapped`
+/// receives one concrete child, its structural position, and the recursively
+/// folded tail.
+///
+/// This is a type-level derived construction. It creates no value, allocates
+/// no actor, interprets no effect, and introduces no protocol identity or
+/// runtime key. A mapper that builds a heterogeneous product should retain
+/// `Tail`; the fold itself visits every declared leaf exactly once.
+///
+/// ```
+/// use core::marker::PhantomData;
+/// use behavior::{Behavior, BirthNodeMapper, FoldedBirthNode};
+///
+/// struct NoChildBindings;
+/// struct ChildBinding<Position, Child, Tail>(PhantomData<fn() -> (Position, Child, Tail)>);
+/// struct RuntimeStorage;
+///
+/// impl BirthNodeMapper for RuntimeStorage {
+///     type Empty = NoChildBindings;
+///     type Mapped<Position, Child: Behavior, Tail> = ChildBinding<Position, Child, Tail>;
+/// }
+///
+/// type ChildBindings<Node> = FoldedBirthNode<Node, RuntimeStorage>;
+/// ```
+pub trait BirthNodeMapper {
+    /// Representation of the empty [`Never`] node.
+    type Empty;
+
+    /// Representation of one concrete child followed by the folded tail.
+    type Mapped<Position, Child: Behavior, Tail>;
+}
+
+/// Sealed structural fold of a closed direct-child birth node.
+///
+/// The fold starts at [`ChildHead`] and advances through
+/// [`ChildTail<Position>`] in exactly the same way as [`DispatchBirth`] and
+/// [`ChildPosition`]. A downstream runtime selects only the result type
+/// constructor through [`BirthNodeMapper`]; it cannot reclassify a foreign
+/// type as a birth node or replace the recursion.
+///
+/// This fold is intentionally direct rather than transitive. Each installed
+/// actor owns the bindings for its own `Behavior::Birth`; when a concrete child
+/// is installed, the same fold applies to that child's birth algebra.
+///
+/// Foreign types cannot extend the closed node algebra:
+///
+/// ```compile_fail
+/// use behavior::{BirthNodeMapper, FoldBirthNode};
+///
+/// struct RuntimeShape;
+/// impl BirthNodeMapper for RuntimeShape {
+///     type Empty = ();
+///     type Mapped<Position, Child: behavior::Behavior, Tail> = ();
+/// }
+///
+/// struct ForeignNode;
+/// impl FoldBirthNode<RuntimeShape> for ForeignNode {
+///     type Folded = ();
+/// }
+/// ```
+pub trait FoldBirthNode<Mapper>: sealed::BirthNode
+where
+    Mapper: BirthNodeMapper,
+{
+    /// Complete mapper-owned representation of this closed birth node.
+    type Folded;
+}
+
+/// Position-carrying recursion for [`FoldBirthNode`]. Consumers should name
+/// [`FoldBirthNode`] or [`FoldedBirthNode`] instead.
+#[doc(hidden)]
+pub trait FoldBirthNodeAt<Position, Mapper>: sealed::BirthNode
+where
+    Mapper: BirthNodeMapper,
+{
+    type Folded;
+}
+
+impl<Node, Mapper> FoldBirthNode<Mapper> for Node
+where
+    Node: FoldBirthNodeAt<ChildHead, Mapper>,
+    Mapper: BirthNodeMapper,
+{
+    type Folded = <Node as FoldBirthNodeAt<ChildHead, Mapper>>::Folded;
+}
+
+impl<Position, Mapper, Child> FoldBirthNodeAt<Position, Mapper> for Child
+where
+    Mapper: BirthNodeMapper,
+    Child: Behavior,
+{
+    type Folded = Mapper::Mapped<Position, Child, Mapper::Empty>;
+}
+
+impl<Position, Mapper, Head, Tail> FoldBirthNodeAt<Position, Mapper> for ChildChoice<Head, Tail>
+where
+    Mapper: BirthNodeMapper,
+    Head: Behavior,
+    Tail: FoldBirthNodeAt<ChildTail<Position>, Mapper>,
+{
+    type Folded = Mapper::Mapped<
+        Position,
+        Head,
+        <Tail as FoldBirthNodeAt<ChildTail<Position>, Mapper>>::Folded,
+    >;
+}
+
+impl<Position, Mapper> FoldBirthNodeAt<Position, Mapper> for Never
+where
+    Mapper: BirthNodeMapper,
+{
+    type Folded = Mapper::Empty;
+}
+
+/// Result of folding `Node` with one downstream [`BirthNodeMapper`].
+pub type FoldedBirthNode<Node, Mapper> = <Node as FoldBirthNode<Mapper>>::Folded;
+
 mod sealed {
+    use super::{Behavior, ChildChoice, Never};
+
+    pub trait BirthNode {}
+
+    impl<Child: Behavior> BirthNode for Child {}
+
+    impl<Head, Tail> BirthNode for ChildChoice<Head, Tail>
+    where
+        Head: Behavior,
+        Tail: BirthNode,
+    {
+    }
+
+    impl BirthNode for Never {}
+
     pub trait ChildPosition {}
     pub trait ChildProduct {}
 }

@@ -20,14 +20,14 @@ mod transition;
 mod user_event;
 
 pub use actor::{
-    Address, AllocationRejection, BirthMode, BirthNodeProtocols, BirthProtocol, BirthProtocolAt,
-    BirthProtocolHead, BirthProtocolProduct, BirthProtocolTail, BirthProtocols, Births,
-    ChildChoice, ChildCons, ChildDelivery, ChildHead, ChildPosition, ChildProduct, ChildRole,
-    ChildRoute, ChildTail, Children, ChildrenError, Create, CreationKind, CreationRejection,
-    Delivery, DispatchBirth, DispatchBirthAt, EndpointAddress, EstablishedActor,
-    EstablishedCreation, EstablishedDelivery, EstablishedRecipient, InstallBirth,
-    InterpretEstablished, MailAddr, NoBirthProtocols, NoBirths, NoChildren, Recipient, RoleChild,
-    RoleProtocol,
+    Address, AllocationRejection, BirthMode, BirthNodeMapper, BirthNodeProtocols, BirthProtocol,
+    BirthProtocolAt, BirthProtocolHead, BirthProtocolProduct, BirthProtocolTail, BirthProtocols,
+    Births, ChildChoice, ChildCons, ChildDelivery, ChildHead, ChildPosition, ChildProduct,
+    ChildRole, ChildRoute, ChildTail, Children, ChildrenError, Create, CreationKind,
+    CreationRejection, Delivery, DispatchBirth, DispatchBirthAt, EndpointAddress, EstablishedActor,
+    EstablishedCreation, EstablishedDelivery, EstablishedRecipient, FoldBirthNode, FoldedBirthNode,
+    InstallBirth, InterpretEstablished, MailAddr, NoBirthProtocols, NoBirths, NoChildren,
+    Recipient, RoleChild, RoleProtocol,
 };
 pub use effect::Effect;
 pub use effects::{
