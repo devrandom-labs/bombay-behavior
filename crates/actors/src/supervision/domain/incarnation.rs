@@ -26,7 +26,6 @@ enum IncarnationState<N, C> {
         last_installed: Option<N>,
     },
 }
-
 /// A copyable observation of the lifecycle without owned child specifications.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IncarnationPhase<N> {

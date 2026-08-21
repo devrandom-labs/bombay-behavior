@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.13.1...bombay-behavior-v0.14.0) - 2026-08-21
+
+### Added
+
+- Add runtime-owned `EndpointAddress` families and inert
+  `EstablishedRecipient<P>`, `EstablishedActor<B>`, and
+  `EstablishedDelivery<P>` capabilities for exact installed incarnations.
+- Add protocol-and-occurrence-indexed `EstablishedCreation<P, Occurrence>`
+  facts with exhaustive allocation, initialization, installation, and binding
+  rejection reasons. Rejected facts carry no endpoint capability.
+- Add `ChildDelivery<P, Occurrence>` for same-action local communication
+  through a committed creator-instance binding.
+
+### Changed
+
+- Make fresh address allocation wholly interpreter-owned. `Address` now
+  declares only its creator-local nonce type; a nonce is no longer convertible
+  into an address.
+- Index concrete birth installers by structural child position with
+  `InstallBirth<Position, Child, ...>`. Duplicate occurrences remain distinct
+  without making the parent behavior or role another protocol identity.
+- Keep `Recipient<P>` as logical addressed intent and separate its resolver
+  path from exact endpoint and creator-local child delivery.
+
+### Removed
+
+- Remove deterministic `Address::birth`, `ChildRecipient`, `DeliveryTarget`,
+  and local-child construction on ordinary `Delivery`.
+- Remove research probes and superseded architecture/audit documents now that
+  the established-capability contract is part of the production API.
+
 ## [0.13.1](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.13.0...bombay-behavior-v0.13.1) - 2026-08-21
 
 ### Other

@@ -1,8 +1,8 @@
 use std::time::{Duration, Instant};
 
 use behavior::{
-    Actions, Activate, Behavior, BehaviorActed, Births, ChildTopology, Create, Delivery,
-    InterpreterRequests, MailAddr, Never, NoBirths, ObserveChild, PoolAssignment,
+    Actions, Activate, Behavior, BehaviorActed, Births, ChildDelivery, ChildHead, ChildTopology,
+    Create, Delivery, InterpreterRequests, MailAddr, Never, NoBirths, ObserveChild, PoolAssignment,
     PoolConfiguration, PoolResponse, Proxy, Recipient, RestartConfiguration, RestartPolicy,
     StashRoute, Step, Strategy, Supervise, SupervisorSends, TimerId, User, WorkerPool,
     WorkerPoolProtocol,
@@ -283,5 +283,6 @@ fn pool_configuration_separates_topology_from_runtime_neutral_policy() {
         initialized.actions.sends.owned.child_observations;
     let _: InterpreterRequests<behavior::ObserveCreation<MailAddr>> =
         initialized.actions.sends.owned.creation_observations;
-    let _: Vec<Delivery<Proxy<Worker>>> = initialized.actions.sends.owned.replacement_commands;
+    let _: Vec<ChildDelivery<Proxy<Worker>, ChildHead>> =
+        initialized.actions.sends.owned.replacement_commands;
 }

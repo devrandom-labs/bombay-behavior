@@ -18,17 +18,17 @@ pub trait AppendSend<Input, Path>: Sized {
 /// fresh actor creation, and next behavior or termination.
 ///
 /// An interpreter resolves every fresh creation in `creates` before
-/// interpreting any ordinary delivery or [`crate::InterpreterRequests`] request in
-/// `sends` from this value. A successful resolution installs and binds the
-/// child; a rejected resolution binds nothing. This ordering lets a same-action
-/// typed creation-observation request return the committed result rather than
-/// the behavior's intent. When creation is rejected, a same-action
-/// child-observation request for its nonce is consumed without installing an
-/// observation or emitting a child-stopped fact, while the creation-observation
-/// request reports the rejection. A later creation cannot
-/// inherit that consumed observation. Creation order is vector order, and each
-/// concrete named send lane retains its own order; this contract does not
-/// impose an order between independent lanes. Constructing a value remains
+/// interpreting any ordinary delivery or [`crate::InterpreterRequests`]
+/// request in `sends` from this value. A successful resolution installs and
+/// binds the child; a rejected resolution binds nothing. This ordering lets a
+/// same-action [`crate::ChildDelivery`] or typed creation-observation request
+/// use the committed result rather than Behavior's intent. When creation is
+/// rejected, an exact creation-observation request reports the rejection when
+/// its lane is interpreted, while a dependent local delivery fails through the
+/// interpreter's typed error and short-circuits later effects. No later
+/// creation may inherit the failed binding. Creation order is vector order,
+/// and each concrete named send lane retains its own order; this contract does
+/// not impose an order between independent lanes. Constructing a value remains
 /// pure.
 pub struct Actions<A: Address, Ph, Sends, Birth: BirthMode> {
     pub sends: Sends,

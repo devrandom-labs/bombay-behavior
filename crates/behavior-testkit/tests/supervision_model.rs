@@ -287,16 +287,12 @@ proptest! {
                 })) })
                 .unwrap();
 
-            let sends: Vec<MailAddr> = actions
+            let sends: Vec<u64> = actions
                 .sends.replacement_commands
                 .iter()
-                .map(|delivery| delivery.to.resolve(MailAddr(17)))
+                .map(|delivery| delivery.nonce)
                 .collect();
-            let expected_routes: Vec<MailAddr> = expected
-                .iter()
-                .copied()
-                .map(|nonce| behavior::Address::birth(MailAddr(17), nonce))
-                .collect();
+            let expected_routes: Vec<u64> = expected.clone();
             prop_assert_eq!(sends, expected_routes);
             prop_assert!(actions.creates.is_empty());
             if model.last_restart_denied() {
@@ -421,15 +417,10 @@ proptest! {
                         at: base + Duration::from_nanos(at),
                     })) })
                     .unwrap();
-                let sends: Vec<MailAddr> = actions
+                let sends: Vec<u64> = actions
                     .sends.owned.replacement_commands
                     .iter()
-                    .map(|delivery| delivery.to.resolve(MailAddr(17)))
-                    .collect();
-                let expected: Vec<MailAddr> = expected
-                    .iter()
-                    .copied()
-                    .map(|child| behavior::Address::birth(MailAddr(17), child))
+                    .map(|delivery| delivery.nonce)
                     .collect();
                 prop_assert_eq!(sends, expected);
                 let replacements = model
@@ -437,8 +428,7 @@ proptest! {
                     .iter()
                     .filter_map(|slot| {
                         actions.sends.owned.replacement_commands.iter().any(|delivery| {
-                            delivery.to.resolve(MailAddr(17))
-                                == behavior::Address::birth(MailAddr(17), slot.nonce)
+                            delivery.nonce == slot.nonce
                         }).then_some(slot.nonce)
                     })
                     .collect::<Vec<_>>();

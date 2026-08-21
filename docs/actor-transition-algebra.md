@@ -1,111 +1,138 @@
 # Actor transition algebra
 
-This is the canonical map of Bombay's foundational types and composition laws.
+This is the canonical semantic map for Bombay Behavior.
 
-## Semantic boundary
+## Laws and project constructions
 
-A Bombay actor definition has the typed algebra
+The actor-model laws preserved here are:
 
-```text
-A = (P, State, Event, Effects[Event], Birth, Next, Error)
-```
+1. an actor processes one accepted communication at a time;
+2. a transition may communicate with known recipients, create fresh actors,
+   and designate the behavior used for the next communication; and
+3. a newly allocated actor address is fresh with respect to the actor
+   configuration.
 
-and one pure active transition:
-
-```text
-State × Event
-    -> Result(State × Effects[Event] × Birth × Next, Error)
-```
-
-Rust represents retained `State` by `&mut self`. `Actions` contains the three
-explicit actor-transition legs: effects, staged fresh creations, and the next
-behavior or termination verdict.
-
-The actor-model law is the ability to communicate to known actors, create
-fresh actors, and designate subsequent behavior. Typed products,
-initialization, termination, local interpreter services, creator-local routing,
-and interpretation ordering are Bombay constructions and policies rather than
-literal Agha syntax.
-
-## Orthogonal, but not independent
+Bombay derives a concrete typed construction from those laws:
 
 ```text
-Protocol<P>       transferable established destination identity
-Event<E>          closed inputs accepted by this behavior composition
-SendsFor<E>      proof that send effects returning to their emitter are valid for E
+Behavior::transition(ActiveTurn, Behavior::Event)
+    -> Result<Actions<Addr, Phase, Sends, Birth>, Error>
 ```
 
-Protocol identity is invariant under transparent wrappers. Event and effects
-are coupled: an interpreter request returning a later fact to its emitter
-contains a continuation into that actor's event algebra.
+`Actions` is the only effect boundary. Typed send products, closed creation
+products, initialization effects, phases, explicit termination, structural
+event paths, creator-local child routing, and interpretation order are Bombay
+constructions and policies, not claims about the surface syntax of Agha's
+formal calculus.
 
-Write `k: R -> E` for that continuation. A wrapper adding owner `O` constructs
-`E' = O + E` with inner injection `i: E -> E'`. Its inner local continuations
-must be pushed forward: `k' = i . k`.
+## Four orthogonal roles
 
-`SendsFor<E>` is the Rust proof of this relationship. The paired structural
-constructor is:
+| Role | Owns |
+|---|---|
+| `Protocol` | canonical destination identity, address namespace, message type |
+| `Behavior::Event` | every public and interpreter-originated event accepted by a concrete behavior |
+| `Behavior` | state, initialization, and the pure event fold |
+| `Actions` | all communications, staged fresh creations, and the next-state verdict |
 
-```text
-EventLayer<OwnedEvent, InnerEvent>
-SendLayer<OwnedEffects, InnerEffects>
-```
+A protocol is not a behavior. It has no state, initialization, internal event
+lanes, effects, errors, phases, or birth capabilities. A behavior is not a
+protocol supertrait: senders need only the destination's public signature, not
+proof of its current implementation.
 
-`NoSends` is the owned-effect identity. One owned interpreter-request lane
-uses `InterpreterRequests<R>` directly. A named product is introduced only
-when several semantic effect lanes coexist.
+A nominal actor may implement both traits and use `Behavior::Protocol = Self`.
+Transparent wrappers preserve the inner protocol while changing the concrete
+behavior and event/effect algebra.
 
-## Destination ownership
+## Destination evidence
 
-Reindexing applies only to a continuation returning to the actor that emitted
-the effect:
-
-| Destination | Meaning | Changed when emitter is wrapped? |
+| Type | Evidence | Requires address lookup? |
 |---|---|---|
-| `Recipient<P>` | established transferable identity | no |
-| `ChildRecipient<P>` | emitter-local child route | no |
-| emitter `Ingress<Input, Path>` | later fact for the emitter | yes |
-| child ingress in `ShutdownChild<C>` | input to selected child `C` | no |
-| worker lifecycle report | report through an established parent/child relationship | no |
+| `Recipient<P>` | logical address with canonical protocol `P` | yes |
+| `Delivery<P>` | logical recipient plus `P::Msg` | yes |
+| `ChildRoute<C, O>` | staged route for concrete child `C` at occurrence `O` | no address exists yet |
+| `ChildDelivery<P, O>` | message to a committed local occurrence/nonce binding | no protocol-wide lookup |
+| `EstablishedRecipient<P>` | exact installed endpoint for `P` | no |
+| `EstablishedDelivery<P>` | exact endpoint plus `P::Msg` | no |
+| `EstablishedActor<B>` | exact endpoint plus proof of installed concrete behavior `B` | no |
 
-`InterpreterRequest::ReturnToEmitter` declares only the return-to-emitter
-component. It is `ReturnsToEmitter<Input, Path>` or `NoReturnToEmitter`.
-Parent, child, ancestor, and established destinations must not be represented
-as returns to the emitter.
+`P` is always canonical protocol identity. `O` is structural occurrence
+evidence used to navigate duplicate child declarations. It is not a key,
+address, or second identity.
 
-## Composition laws
+The runtime selects the endpoint representation through
+`EndpointAddress::Established<P>`. This makes the endpoint family a property
+of the runtime-owned address namespace. Generic application types and protocol
+owners do not implement key traits or carry runtime types.
 
-Every behavior wrapper must satisfy all applicable laws:
+## Fresh creation
 
-1. **Protocol invariance:** a transparent wrapper preserves `B::Protocol`.
-2. **Event completeness:** events are the exhaustive sum of owned and inner inputs.
-3. **Effect validity:** `Sends: SendsFor<Event>`.
-4. **Emitter naturality:** inner returns to the emitter follow the same injection as inner events.
-5. **Remote invariance:** established, child, and ancestor destinations do not change.
-6. **Identity:** a wrapper changing neither side preserves both types literally.
-7. **Associativity:** nested reindexing equals composed event injection.
-8. **Monoid preservation:** empty, append, lane order, and multiplicity are preserved.
-9. **Initialization naturality:** initialization uses the same effect mapping.
-10. **Creation preservation:** mapping does not alter order, nonce, child, or provenance.
-11. **Next preservation:** delegation retains its verdict unless documented policy changes it.
-12. **Error preservation:** inner controlled failures remain unchanged unless explicitly mapped.
+`Create<A, C>` stages a concrete child behavior, creator-local nonce, and
+`CreationKind`. Staging allocates nothing. The nonce cannot be converted to an
+address and proves neither identity nor freshness.
 
-These are Bombay composition laws. Agha supplies the actor nucleus and
-configuration composability; it does not prescribe `SendsFor`, `Ingress`, or
-Rust wrapper products.
+The interpreter performs, in order:
 
-## Finding the code
+1. fresh address allocation;
+2. child initialization;
+3. initialization-effect interpretation;
+4. endpoint installation; and
+5. creator-local binding commit.
 
-```text
-crates/behavior/src/transition.rs       Behavior and pure turns
-crates/behavior/src/user_event.rs       EventLayer, InjectEvent, Ingress
-crates/behavior/src/effects/actions.rs  Actions and effect-preserving maps
-crates/behavior/src/effects/sending.rs  effect layers, interpreter requests, and traversal
-crates/behavior/src/actor/              protocols, recipients, and creation
-crates/actors/src/                      concrete templates and compositions
-crates/behavior-testkit/                independent laws, models, and fuzzing
-```
+Only the committed path may produce
+`EstablishedCreation<P, Occurrence>::Installed`. Every failure produces
+`Rejected` with `CreationRejection`; rejection contains no endpoint and binds
+nothing. A nonce collision is rejection, never replacement or overwrite.
 
-Application code constructs templates directly. It does not manually create
-`SendsFor` or `ReturnsToEmitter`; those proofs belong to template
-implementations and wrapper constructors retain type inference.
+`CreationKind::ReplacementIncarnation` records Behavior-authored provenance.
+It is still fresh allocation. A runtime may report a restart only after the
+corresponding replacement creation commits successfully.
+
+Creation facts are indexed by canonical child protocol and structural
+occurrence—not by an entire parent behavior. A fact can be strengthened to
+`EstablishedActor<RoleChild<Parent, Occurrence>>` only at the topology boundary
+where `ChildRole<Parent>` genuinely proves the concrete installed behavior.
+This avoids forcing arbitrary consumers or wrappers to pretend to be actors.
+
+## Event and effect composition
+
+`EventLayer<Owned, Inner>` forms a closed event sum. `Here` identifies the
+current owner and `Inside<Path>` identifies an inner owner. `InjectEvent`
+constructs exactly the selected lane; it never searches by payload type.
+
+`SendLayer<Owned, Inner>` is the corresponding named effect product.
+`SendsFor<Event>` proves that every interpreter request returning to its
+emitter has a valid structural ingress. `InterpretSends` visits inner effects
+before wrapper-owned effects, preserving initialization and delegated
+transition order. Independent named lanes retain their own order; no global
+order is invented between unrelated lanes.
+
+Composition must preserve these invariants:
+
+- every accepted event produces one result;
+- mapping sends preserves creations and the exact next verdict;
+- mapping the next verdict preserves sends and creation order;
+- wrapping cannot drop, duplicate, reinterpret, or consume an inner lane;
+- duplicate structural occurrences remain distinct;
+- established, child, and external destinations are not reindexed merely
+  because the emitting behavior is wrapped; and
+- controlled failure emits no partial effects.
+
+## Static interpretation
+
+`InterpretSends`, `InterpretRequest`, `InterpretDelivery`,
+`InterpretChildDelivery`, and `InterpretEstablishedDelivery` are
+monomorphized capabilities. Closed child sums use `DispatchBirth` and one
+`InstallBirth<Position, Child, ...>` implementation per concrete occurrence.
+Missing support fails to compile.
+
+No core path uses trait objects, runtime protocol registries, reflection,
+downcasting, type-name dispatch, serialization, or unsafe type escape hatches.
+
+## Code map
+
+- `crates/behavior/src/transition.rs`: protocol and behavior contracts
+- `crates/behavior/src/effects/`: actions and static send interpretation
+- `crates/behavior/src/actor/addressing.rs`: logical and established recipients
+- `crates/behavior/src/actor/creation.rs`: staged creation and structural dispatch
+- `crates/actors/src/protocol/established.rs`: exact creation, observation, and shutdown protocols
+- `crates/actors/src/requirements.rs`: occurrence-preserving installation requirements

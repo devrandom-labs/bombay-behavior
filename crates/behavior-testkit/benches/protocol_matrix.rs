@@ -113,12 +113,7 @@ fn measure_supervise(fleet: usize) -> f64 {
         // replacement routed to the dead slot (OneForOne, Permanent,
         // unbounded budget) — correctness checked while measuring.
         assert_eq!(actions.sends.replacement_commands.len(), 1);
-        assert_eq!(
-            actions.sends.replacement_commands[0]
-                .to
-                .resolve(MailAddr(17)),
-            behavior::Address::birth(MailAddr(17), nonce)
-        );
+        assert_eq!(actions.sends.replacement_commands[0].nonce, nonce);
         black_box(actions);
     }
     println!(

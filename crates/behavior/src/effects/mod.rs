@@ -3,7 +3,7 @@ mod sending;
 
 pub use actions::{Acted, Actions, AppendSend, Become};
 pub use sending::{
-    InterpretDelivery, InterpretRequest, InterpretSends, InterpreterRequest, InterpreterRequests,
-    NoReturnToEmitter, NoSends, Own, ReturnsToEmitter, SendEffects, SendInput, SendInterpreter,
-    SendLayer, SendsFor,
+    InterpretChildDelivery, InterpretDelivery, InterpretEstablishedDelivery, InterpretRequest,
+    InterpretSends, InterpreterRequest, InterpreterRequests, NoReturnToEmitter, NoSends, Own,
+    ReturnsToEmitter, SendEffects, SendInput, SendInterpreter, SendLayer, SendsFor,
 };

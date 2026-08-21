@@ -59,10 +59,7 @@ fuzz_target!(|bytes: &[u8]| {
                     .unwrap();
                 assert!(actions.creates.is_empty());
                 assert_eq!(actions.sends.deliveries.len(), 1);
-                assert_eq!(
-                    actions.sends.deliveries[0].to.resolve(MailAddr(17)),
-                    behavior::Address::birth(MailAddr(17), generation)
-                );
+                assert_eq!(actions.sends.deliveries[0].nonce, generation);
                 assert_eq!(actions.sends.deliveries[0].message, byte);
             } else {
                 generation = generation.checked_add(1).unwrap();

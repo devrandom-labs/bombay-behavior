@@ -1,13 +1,31 @@
 # Changelog
 
-- Add owner-defined `supervised_backoff` and
-  `coordinated_terminal_application` construction recipes. They return the
-  existing concrete stacks, preserve existing construction-error phases, and
-  are differentially tested against manual composition.
-
 All notable changes to `bombay-behavior-actors` are documented here.
 
 ## [Unreleased]
+
+## [0.14.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-actors-v0.13.1...bombay-behavior-actors-v0.14.0) - 2026-08-21
+
+### Added
+
+- Add `ObserveEstablishedCreation`, `ObserveEstablished`, and
+  `CancelObservation` with explicit relationship IDs and complete
+  started/cancelled/rejected/stopped fact variants.
+- Add `ShutdownEstablished` and `EstablishedShutdownResolved`, preserving the
+  exact concrete behavior and typed shutdown ingress without an ambient
+  lifecycle side channel.
+
+### Changed
+
+- Route built-in same-action proxy and worker communication through
+  occurrence-indexed `ChildDelivery` rather than nonce-derived logical
+  addresses.
+- Reuse the foundational `CreationRejection` domain and remove false parent or
+  wrapper `Behavior` bounds from creation facts, pool send products, and
+  replacement bookkeeping.
+- Retain legacy address-based observation and lifecycle requests as distinct
+  logical-name operations; they are not aliases for exact endpoint
+  capabilities.
 
 ## [0.13.1](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-actors-v0.13.0...bombay-behavior-actors-v0.13.1) - 2026-08-21
 

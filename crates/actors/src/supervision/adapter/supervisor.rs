@@ -8,12 +8,12 @@ use super::super::policy::{
     SupervisionFailureReaction, retire_on_supervision_failure,
 };
 use super::super::protocol::SupervisionEvent;
-use super::proxy::{Proxy, ProxyWithParent};
+use super::proxy::ProxyWithParent;
 use crate::Become;
 use crate::protocol::{ObserveChild, ObserveCreation, ShutdownChild};
 use crate::{Own, SendInput};
 use behavior::{
-    Actions, Address, Behavior, Births, Delivery, InterpreterRequests, SendEffects, SendLayer,
+    Actions, Address, Behavior, Births, ChildDelivery, InterpreterRequests, SendEffects, SendLayer,
 };
 use behavior::{Never, Step};
 
@@ -106,7 +106,7 @@ where
     /// Requests for the committed result of every staged stable proxy creation.
     pub creation_observations: InterpreterRequests<ObserveCreation<A>>,
     /// Commands asking stable proxies to install fresh worker incarnations.
-    pub replacement_commands: Vec<Delivery<Proxy<C>>>,
+    pub replacement_commands: Vec<ChildDelivery<crate::Proxy<C>, behavior::ChildHead>>,
     /// Typed terminal supervision failures for the local runtime observer.
     pub failure_reports: InterpreterRequests<ReportSupervisionFailure<A>>,
     /// Orderly shutdown requests for stable proxies owned by this supervisor.
@@ -165,7 +165,8 @@ where
     C::Protocol: crate::Protocol<Addr = A>,
     InterpreterRequests<ObserveChild<A>>: behavior::InterpretSends<Interpreter, RootEvent, Path>,
     InterpreterRequests<ObserveCreation<A>>: behavior::InterpretSends<Interpreter, RootEvent, Path>,
-    Vec<Delivery<Proxy<C>>>: behavior::InterpretSends<Interpreter, RootEvent, Path>,
+    Vec<ChildDelivery<crate::Proxy<C>, behavior::ChildHead>>:
+        behavior::InterpretSends<Interpreter, RootEvent, Path>,
     InterpreterRequests<ReportSupervisionFailure<A>>:
         behavior::InterpretSends<Interpreter, RootEvent, Path>,
     InterpreterRequests<ShutdownChild<ProxyWithParent<C, ParentPath>>>:
@@ -210,14 +211,15 @@ where
     }
 }
 
-impl<A, C, ParentPath> SendInput<Delivery<Proxy<C>>, Own> for SupervisorSends<A, C, ParentPath>
+impl<A, C, ParentPath> SendInput<ChildDelivery<crate::Proxy<C>, behavior::ChildHead>, Own>
+    for SupervisorSends<A, C, ParentPath>
 where
     A: Address,
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
 {
-    fn emit(&mut self, input: Delivery<Proxy<C>>) {
+    fn emit(&mut self, input: ChildDelivery<crate::Proxy<C>, behavior::ChildHead>) {
         self.replacement_commands.push(input);
     }
 }

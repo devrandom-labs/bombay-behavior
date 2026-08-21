@@ -12,7 +12,7 @@ use crate::{
     WorkerStopped,
 };
 use behavior::{
-    Actions, Address, Behavior, Births, ComposedEvent, Delivery, Here, InjectEvent,
+    Actions, Address, Behavior, Births, ChildDelivery, ComposedEvent, Here, InjectEvent,
     InterpreterRequests, Never, SendEffects, SendLayer, Step, User, UserEvent,
 };
 
@@ -148,7 +148,8 @@ where
     InterpreterRequests<crate::ObserveChild<A>>: behavior::SendsFor<BackoffSupervisorEvent<Event>>,
     InterpreterRequests<crate::ObserveCreation<A>>:
         behavior::SendsFor<BackoffSupervisorEvent<Event>>,
-    Vec<Delivery<Proxy<C>>>: behavior::SendsFor<BackoffSupervisorEvent<Event>>,
+    Vec<ChildDelivery<Proxy<C>, behavior::ChildHead>>:
+        behavior::SendsFor<BackoffSupervisorEvent<Event>>,
     InterpreterRequests<crate::ReportSupervisionFailure<A>>:
         behavior::SendsFor<BackoffSupervisorEvent<Event>>,
     InterpreterRequests<crate::ShutdownChild<crate::ProxyWithParent<C, ParentPath>>>:
@@ -189,7 +190,7 @@ where
     trigger: A::Nonce,
     id: TimerId,
     generation: TimerGeneration,
-    commands: Vec<Delivery<Proxy<C>>>,
+    commands: Vec<ChildDelivery<Proxy<C>, behavior::ChildHead>>,
 }
 
 struct Counter<N> {

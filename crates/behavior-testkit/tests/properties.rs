@@ -88,7 +88,7 @@ proptest! {
         prop_assert_eq!(trace.pending, messages.len() - expected_len);
         for (index, delivery) in trace.sends.iter().enumerate() {
             prop_assert_eq!(delivery.message, messages[index]);
-            prop_assert_eq!(delivery.to.resolve(MailAddr(999)), MailAddr(u64::try_from(index).unwrap()));
+            prop_assert_eq!(delivery.to.address(), MailAddr(u64::try_from(index).unwrap()));
         }
     }
 
@@ -182,8 +182,8 @@ proptest! {
                     .unwrap();
                 prop_assert!(actions.creates.is_empty());
                 prop_assert_eq!(
-                    actions.sends.deliveries[0].to.resolve(MailAddr(17)),
-                    behavior::Address::birth(MailAddr(17), generation)
+                    actions.sends.deliveries[0].nonce,
+                    generation
                 );
                 prop_assert_eq!(actions.sends.deliveries[0].message, message);
             }
@@ -221,10 +221,7 @@ proptest! {
         prop_assert_eq!(actions.sends.replacement_commands.len(), expected);
         prop_assert!(actions.creates.is_empty());
         for delivery in actions.sends.replacement_commands {
-            prop_assert_ne!(
-                delivery.to.resolve(MailAddr(17)),
-                delivery.to.resolve(MailAddr(18))
-            );
+            prop_assert!(delivery.nonce < u64::try_from(count).unwrap());
         }
     }
 }

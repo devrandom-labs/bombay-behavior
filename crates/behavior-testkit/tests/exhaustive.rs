@@ -131,17 +131,13 @@ fn exhaustive_supervision_sequences_match_the_reference_model() {
                                         ))
                                     })
                                     .unwrap();
-                                let sends: Vec<MailAddr> = actions
+                                let sends: Vec<u64> = actions
                                     .sends
                                     .replacement_commands
                                     .iter()
-                                    .map(|delivery| delivery.to.resolve(MailAddr(17)))
+                                    .map(|delivery| delivery.nonce)
                                     .collect();
-                                let expected_routes: Vec<MailAddr> = expected
-                                    .iter()
-                                    .copied()
-                                    .map(|nonce| behavior::Address::birth(MailAddr(17), nonce))
-                                    .collect();
+                                let expected_routes: Vec<u64> = expected.clone();
                                 assert_eq!(
                                     sends, expected_routes,
                                     "strategy={strategy:?} policy={policy:?} maximum={maximum} window={window:?}"

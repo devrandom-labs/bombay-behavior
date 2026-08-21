@@ -597,12 +597,7 @@ async fn supervision_preserves_inner_watch_routing() {
         }))
         .unwrap();
     assert_eq!(actions.sends.owned.replacement_commands.len(), 1);
-    assert_eq!(
-        actions.sends.owned.replacement_commands[0]
-            .to
-            .resolve(MailAddr(17)),
-        behavior::Address::birth(MailAddr(17), 0)
-    );
+    assert_eq!(actions.sends.owned.replacement_commands[0].nonce, 0);
 }
 
 /// A supervision failure reaction composes above an inner watch without

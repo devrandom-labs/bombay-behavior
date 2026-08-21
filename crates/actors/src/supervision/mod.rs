@@ -7,7 +7,6 @@ mod fixed_supervisor;
 mod policy;
 mod protocol;
 
-pub(crate) use adapter::StableProxyChildRole;
 pub use adapter::{
     ChildTopology, Proxy, ProxySends, ProxySendsWithParent, ProxyWithParent, RestartConfiguration,
     Supervise, SuperviseError, SuperviseWithParent, SupervisorSends,

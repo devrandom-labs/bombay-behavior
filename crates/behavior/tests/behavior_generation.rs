@@ -255,8 +255,8 @@ fn generated_products_preserve_exact_initialization_actions() {
 fn generated_child_routes_share_one_named_creation_and_routing_source() {
     let children = BootstrapChildrenRoutes::new(11, 17);
 
-    let first: behavior::ChildRecipient<FirstChild> = children.first.recipient();
-    let second: behavior::ChildRecipient<SecondChild> = children.second.recipient();
+    let first = children.first;
+    let second = children.second;
     let creates = Children::<MailAddr>::new()
         .child_at(children.first, FirstChild)
         .child_at(children.second, SecondChild)
@@ -377,8 +377,8 @@ fn equal_payload_protocols_remain_distinct_named_lanes() {
         second: vec![Delivery::new(Recipient::global(MailAddr(4)), 7)],
     };
 
-    assert_eq!(sends.first[0].to.resolve(MailAddr(0)), MailAddr(3));
-    assert_eq!(sends.second[0].to.resolve(MailAddr(0)), MailAddr(4));
+    assert_eq!(sends.first[0].to.address(), MailAddr(3));
+    assert_eq!(sends.second[0].to.address(), MailAddr(4));
 }
 
 #[test]

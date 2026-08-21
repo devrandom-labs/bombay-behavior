@@ -3,9 +3,9 @@
 use std::time::{Duration, Instant};
 
 use behavior::{
-    Acted, Actions, Activate as _, ChildTopology, Crash, Create, CreationResolved, Delivery,
-    MailAddr, Never, RestartConfiguration, RestartPolicy, Strategy, Supervise, SupervisionEvent,
-    Supervisor, User, WorkerStopped,
+    Acted, Actions, Activate as _, ChildTopology, Crash, Create, CreationResolved, MailAddr, Never,
+    RestartConfiguration, RestartPolicy, Strategy, Supervise, SupervisionEvent, Supervisor, User,
+    WorkerStopped,
 };
 
 struct Child;
@@ -86,10 +86,13 @@ fn standalone_and_composed_adapters_preserve_the_same_fixed_fleet_trace() {
     let standalone_actions = standalone.on(stopped.clone()).unwrap();
     let composed_actions = composed.on(stopped).unwrap();
 
-    let destinations = |commands: &[Delivery<behavior::Proxy<Child>>]| {
+    let destinations = |commands: &[foundation::ChildDelivery<
+        behavior::Proxy<Child>,
+        foundation::ChildHead,
+    >]| {
         commands
             .iter()
-            .map(|delivery| delivery.to.resolve(MailAddr(9)))
+            .map(|delivery| delivery.nonce)
             .collect::<Vec<_>>()
     };
     assert_eq!(

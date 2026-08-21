@@ -15,7 +15,6 @@ pub enum ProxyEvent<E: UserEvent> {
     ShutdownRequested(ShutdownRequested),
     ChildShutdownRejected(ChildShutdownRejected<<E::Addr as Address>::Nonce>),
 }
-
 impl<E: UserEvent> UserEvent for ProxyEvent<E> {
     type Addr = E::Addr;
     type Message = E::Message;

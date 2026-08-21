@@ -7,9 +7,10 @@
 
 use behavior_actors::{
     Actions, BackoffSupervise, BackoffSupervisorEvent, BackoffSupervisorSends, Behavior,
-    BehaviorActed, Births, BreakerOutcome, ChildShutdownRejected, ChildStopped, CircuitBreaker,
-    Create, CreationResolved, Deadline, DynamicProxy, DynamicProxyWithParent, DynamicSupervisor,
-    DynamicSupervisorOutcome, DynamicSupervisorWithParent, Here, Ingress, InjectEvent, Inside,
+    BehaviorActed, Births, BreakerOutcome, ChildDelivery, ChildHead, ChildRoute,
+    ChildShutdownRejected, ChildStopped, CircuitBreaker, Create, CreationResolved, Deadline,
+    DynamicProxy, DynamicProxyWithParent, DynamicSupervisor, DynamicSupervisorOutcome,
+    DynamicSupervisorWithParent, Here, Ingress, InjectEvent, Inside, InterpretChildDelivery,
     KeyedPoolEvent, KeyedWorkerPool, KeyedWorkerPoolProtocol, Lease, LeaseOutcome, MailAddr, Never,
     NoBirths, ObserveChild, ObserveCreation, ObservePeer, OneShot, PeerStopped, Periodic,
     PoolAssignment, PoolBehaviorSends, PoolResponse, Presence, PresenceReply, Proxy, ProxyCommand,
@@ -369,8 +370,8 @@ fn every_deferred_local_fact_request_declares_its_relative_destination() {
 #[tokio::test]
 async fn backoff_event_and_sends_are_exact_sum_product_duals() {
     use behavior_actors::{
-        Delivery, InterpretDelivery, InterpretRequest, InterpretSends, InterpreterRequests,
-        SendInterpreter, SupervisionFailure, SupervisorSends,
+        InterpretRequest, InterpretSends, InterpreterRequests, SendInterpreter, SupervisionFailure,
+        SupervisorSends,
     };
 
     type Child = StopOnShutdown<Inert>;
@@ -437,10 +438,10 @@ async fn backoff_event_and_sends_are_exact_sum_product_duals() {
             }
         }
     }
-    impl InterpretDelivery<Proxy<Child>> for Recording {
-        fn interpret_delivery(
+    impl InterpretChildDelivery<Proxy<Child>, ChildHead> for Recording {
+        fn interpret_child_delivery(
             &mut self,
-            _: Delivery<Proxy<Child>>,
+            _: ChildDelivery<Proxy<Child>, ChildHead>,
         ) -> impl Future<Output = Result<(), Self::Error>> + Send {
             async move {
                 self.0.push(Seen::Replacement);
@@ -486,8 +487,8 @@ async fn backoff_event_and_sends_are_exact_sum_product_duals() {
             supervision: SupervisorSends {
                 child_observations: InterpreterRequests::one(ObserveChild::new(1)),
                 creation_observations: InterpreterRequests::one(ObserveCreation::new(1)),
-                replacement_commands: vec![Delivery::local_child(
-                    behavior::ChildRecipient::new(1),
+                replacement_commands: vec![ChildDelivery::at(
+                    ChildRoute::<Proxy<Child>, ChildHead>::new(1),
                     ProxyCommand::Forward(()),
                 )],
                 failure_reports: InterpreterRequests::one(ReportSupervisionFailure::new(
@@ -610,10 +611,10 @@ async fn worker_pool_event_and_sends_interpret_every_lane_at_the_same_structural
             }
         }
     }
-    impl InterpretDelivery<Proxy<PoolWorker>> for Recording {
-        fn interpret_delivery(
+    impl InterpretChildDelivery<Proxy<PoolWorker>, ChildHead> for Recording {
+        fn interpret_child_delivery(
             &mut self,
-            _: Delivery<Proxy<PoolWorker>>,
+            _: ChildDelivery<Proxy<PoolWorker>, ChildHead>,
         ) -> impl Future<Output = Result<(), Self::Error>> + Send {
             async move {
                 self.0.push(Seen::Assignment);
@@ -677,8 +678,8 @@ async fn worker_pool_event_and_sends_interpret_every_lane_at_the_same_structural
         SupervisorSends {
             child_observations: InterpreterRequests::one(ObserveChild::new(1)),
             creation_observations: InterpreterRequests::one(ObserveCreation::new(1)),
-            replacement_commands: vec![Delivery::local_child(
-                behavior::ChildRecipient::new(1),
+            replacement_commands: vec![ChildDelivery::at(
+                ChildRoute::<Proxy<PoolWorker>, ChildHead>::new(1),
                 ProxyCommand::Forward(PoolAssignment {
                     assignment: behavior_actors::AssignmentId(1),
                     job: behavior_actors::JobId(1),
@@ -702,8 +703,8 @@ async fn worker_pool_event_and_sends_interpret_every_lane_at_the_same_structural
                     job: behavior_actors::JobId(2),
                 },
             )],
-            assignments: vec![Delivery::local_child(
-                behavior::ChildRecipient::new(1),
+            assignments: vec![ChildDelivery::at(
+                ChildRoute::<Proxy<PoolWorker>, ChildHead>::new(1),
                 ProxyCommand::Forward(PoolAssignment {
                     assignment: behavior_actors::AssignmentId(2),
                     job: behavior_actors::JobId(2),

@@ -1,11 +1,12 @@
 use std::time::Duration;
 
 use behavior::{
-    Actions, AffinitySelector, AssignmentId, Behavior, ChildStopped, CreationKind,
-    CreationResolved, Delivery, Exit, InterruptionPolicy, JobId, KeyedPoolMessage, KeyedWorkerPool,
-    KeyedWorkerPoolProtocol, MailAddr, Never, NoBirths, PoolAssignment, PoolBehaviorSends,
-    PoolError, PoolInterruption, PoolResponse, Proxy, ProxyCommand, Recipient, RestartPolicy,
-    SendEffects, ShutdownRequested, Step, User, WorkerCreationResolved, WorkerPhase, WorkerStopped,
+    Actions, AffinitySelector, AssignmentId, Behavior, ChildDelivery, ChildHead, ChildRoute,
+    ChildStopped, CreationKind, CreationResolved, Delivery, Exit, InterruptionPolicy, JobId,
+    KeyedPoolMessage, KeyedWorkerPool, KeyedWorkerPoolProtocol, MailAddr, Never, NoBirths,
+    PoolAssignment, PoolBehaviorSends, PoolError, PoolInterruption, PoolResponse, Proxy,
+    ProxyCommand, Recipient, RestartPolicy, SendEffects, ShutdownRequested, Step, User,
+    WorkerCreationResolved, WorkerPhase, WorkerStopped,
 };
 use proptest::prelude::*;
 use std::time::Instant;
@@ -113,7 +114,7 @@ fn submit(
 
 fn assignments(
     actions: &behavior::PoolActions<MailAddr, Reply, u8, u16, Worker>,
-) -> &[Delivery<Proxy<Worker>>] {
+) -> &[ChildDelivery<Proxy<Worker>, ChildHead>] {
     &actions.sends.inner.assignments
 }
 
@@ -186,10 +187,7 @@ fn affinity_survives_fresh_worker_incarnation_replacement() {
         ))
         .unwrap();
     assert_eq!(assignments(&installed).len(), 1);
-    assert_eq!(
-        assignments(&installed)[0].to.resolve(MailAddr(17)),
-        behavior::Address::birth(MailAddr(17), 0)
-    );
+    assert_eq!(assignments(&installed)[0].nonce, 0);
     assert_eq!(pool.affinity(&4), Some(0));
 }
 
@@ -208,10 +206,7 @@ fn explicit_rebalance_changes_future_admission_but_not_accepted_jobs() {
     assert_eq!(pool.affinity(&2), Some(1));
 
     let future = submit(&mut pool, 2, 3);
-    assert_eq!(
-        assignments(&future)[0].to.resolve(MailAddr(17)),
-        behavior::Address::birth(MailAddr(17), 1)
-    );
+    assert_eq!(assignments(&future)[0].nonce, 1);
 
     let prior = pool
         .receive(
@@ -227,10 +222,7 @@ fn explicit_rebalance_changes_future_admission_but_not_accepted_jobs() {
         panic!("accepted job is forwarded");
     };
     assert_eq!(assignment.job, JobId(2));
-    assert_eq!(
-        assignments(&prior)[0].to.resolve(MailAddr(17)),
-        behavior::Address::birth(MailAddr(17), 0)
-    );
+    assert_eq!(assignments(&prior)[0].nonce, 0);
 }
 
 #[test]
@@ -311,10 +303,7 @@ fn retired_affinity_refuses_new_work_until_explicit_valid_rebalance() {
     .unwrap();
     assert_eq!(pool.affinity(&2), Some(1));
     let admitted = submit(&mut pool, 2, 3);
-    assert_eq!(
-        assignments(&admitted)[0].to.resolve(MailAddr(17)),
-        behavior::Address::birth(MailAddr(17), 1)
-    );
+    assert_eq!(assignments(&admitted)[0].nonce, 1);
 }
 
 #[test]
@@ -372,10 +361,7 @@ fn unbound_rebalance_explicitly_establishes_affinity() {
     .unwrap();
     assert_eq!(pool.affinity(&9), Some(0));
     let actions = submit(&mut pool, 9, 1);
-    assert_eq!(
-        assignments(&actions)[0].to.resolve(MailAddr(17)),
-        behavior::Address::birth(MailAddr(17), 0)
-    );
+    assert_eq!(assignments(&actions)[0].nonce, 0);
 }
 
 #[test]
@@ -416,10 +402,7 @@ fn captured_selector_state_is_statically_dispatched() {
             },
         )
         .unwrap();
-    assert_eq!(
-        actions.sends.inner.assignments[0].to.resolve(MailAddr(17)),
-        behavior::Address::birth(MailAddr(17), 1)
-    );
+    assert_eq!(actions.sends.inner.assignments[0].nonce, 1);
 }
 
 proptest! {
@@ -500,12 +483,7 @@ fn keyed_assignment_lanes_survive_shutdown_composition() {
         .unwrap();
     assert_eq!(actions.sends.inner.inner.responses.len(), 1);
     assert_eq!(actions.sends.inner.inner.assignments.len(), 1);
-    assert_eq!(
-        actions.sends.inner.inner.assignments[0]
-            .to
-            .resolve(MailAddr(17)),
-        behavior::Address::birth(MailAddr(17), 1)
-    );
+    assert_eq!(actions.sends.inner.inner.assignments[0].nonce, 1);
 }
 
 #[test]
@@ -521,8 +499,8 @@ fn named_pool_send_product_appends_each_lane_once_in_order() {
         Recipient::global(MailAddr(2)),
         PoolResponse::Accepted { job: JobId(2) },
     ));
-    later.assignments.push(Delivery::local_child(
-        behavior::ChildRecipient::new(0),
+    later.assignments.push(ChildDelivery::at(
+        ChildRoute::<Proxy<Worker>, ChildHead>::new(0),
         ProxyCommand::Forward(PoolAssignment {
             assignment: AssignmentId(0),
             job: JobId(1),

@@ -176,15 +176,15 @@ async fn supervised_mixed_fleet_routes_replacements_by_birth_sequence() {
             at,
         }))
         .unwrap();
-    let routes: Vec<MailAddr> = wide
+    let routes: Vec<u64> = wide
         .sends
         .replacement_commands
         .iter()
-        .map(|d| d.to.resolve(MailAddr(17)))
+        .map(|d| d.nonce)
         .collect();
     assert_eq!(routes.len(), 2);
-    assert!(routes.contains(&behavior::Address::birth(MailAddr(17), 1)));
-    assert!(routes.contains(&behavior::Address::birth(MailAddr(17), 2)));
+    assert!(routes.contains(&1));
+    assert!(routes.contains(&2));
 
     supervisor
         .transition(SupervisionEvent::WorkerStopped(WorkerStopped {
@@ -216,12 +216,7 @@ async fn supervised_mixed_fleet_routes_replacements_by_birth_sequence() {
         }))
         .unwrap();
     assert_eq!(narrow.sends.replacement_commands.len(), 1);
-    assert_eq!(
-        narrow.sends.replacement_commands[0]
-            .to
-            .resolve(MailAddr(17)),
-        behavior::Address::birth(MailAddr(17), 2)
-    );
+    assert_eq!(narrow.sends.replacement_commands[0].nonce, 2);
 }
 
 /// A heterogeneous fleet under `OneForAll`: one death replaces every alive slot,
@@ -240,15 +235,15 @@ async fn workers_one_for_all_replaces_every_slot() {
             at: Instant::now(),
         }))
         .unwrap();
-    let routes: Vec<MailAddr> = actions
+    let routes: Vec<u64> = actions
         .sends
         .replacement_commands
         .iter()
-        .map(|d| d.to.resolve(MailAddr(17)))
+        .map(|d| d.nonce)
         .collect();
     assert_eq!(routes.len(), 3);
     for nonce in 0..3 {
-        assert!(routes.contains(&behavior::Address::birth(MailAddr(17), nonce)));
+        assert!(routes.contains(&nonce));
     }
     assert!(supervisor.is_alive(0).unwrap());
     assert!(supervisor.is_alive(1).unwrap());

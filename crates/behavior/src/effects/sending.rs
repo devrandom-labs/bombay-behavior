@@ -1,6 +1,9 @@
 //! Typed send effects, their composition contract, and event ownership.
 
-use crate::{ComposedEvent, Delivery, InjectEvent, Inside, Protocol};
+use crate::{
+    ChildDelivery, ComposedEvent, Delivery, EndpointAddress, EstablishedDelivery, InjectEvent,
+    Inside, Protocol,
+};
 use core::future::Future;
 
 /// Error domain shared by one concrete effect interpreter.
@@ -49,8 +52,8 @@ pub trait InterpretRequest<Request, RootEvent, Path>: SendInterpreter {
 /// Interpreter capability for deliveries to one concrete actor protocol.
 ///
 /// `P` is preserved unchanged from [`Delivery<P>`] and is the destination's
-/// canonical hosting identity. A creator-local child route changes only how
-/// the address is resolved; it does not introduce a role-keyed delivery lane.
+/// canonical identity. This logical-address path is distinct from exact
+/// endpoint and creator-local child-delivery paths.
 pub trait InterpretDelivery<P: Protocol>: SendInterpreter {
     /// Interpret one typed delivery, awaiting bounded-mailbox capacity when
     /// required by the concrete communication transport.
@@ -60,6 +63,49 @@ pub trait InterpretDelivery<P: Protocol>: SendInterpreter {
     fn interpret_delivery(
         &mut self,
         delivery: Delivery<P>,
+    ) -> impl Future<Output = Result<(), Self::Error>> + Send;
+}
+
+/// Interpreter capability for delivery to one exact installed incarnation.
+///
+/// The endpoint crosses this explicit power-user boundary only. No address
+/// lookup, runtime protocol key, erasure, or downcast participates in
+/// selection.
+pub trait InterpretEstablishedDelivery<P>: SendInterpreter
+where
+    P: Protocol,
+    P::Addr: EndpointAddress,
+{
+    /// Interpret one exact typed delivery.
+    ///
+    /// # Errors
+    /// Returns the interpreter's concrete delivery failure.
+    fn interpret_established_delivery(
+        &mut self,
+        endpoint: <P::Addr as EndpointAddress>::Established<P>,
+        message: P::Msg,
+    ) -> impl Future<Output = Result<(), Self::Error>> + Send;
+}
+
+/// Interpreter capability for a same-action delivery to one creator-local
+/// named child role.
+///
+/// The interpreter must commit creations before invoking this capability and
+/// resolve the exact creator-instance `(Occurrence, Nonce)` binding. The
+/// parent instance is interpreter context rather than a generic carried by
+/// ordinary domain values. The route cannot be
+/// converted into an address by nonce arithmetic.
+pub trait InterpretChildDelivery<P, Occurrence>: SendInterpreter
+where
+    P: Protocol,
+{
+    /// Interpret one typed local-role delivery.
+    ///
+    /// # Errors
+    /// Returns the interpreter's concrete missing-binding or delivery failure.
+    fn interpret_child_delivery(
+        &mut self,
+        delivery: ChildDelivery<P, Occurrence>,
     ) -> impl Future<Output = Result<(), Self::Error>> + Send;
 }
 
@@ -303,6 +349,51 @@ where
         async move {
             for delivery in self {
                 interpreter.interpret_delivery(delivery).await?;
+            }
+            Ok(())
+        }
+    }
+}
+
+impl<Interpreter, RootEvent, Path, P, Occurrence> InterpretSends<Interpreter, RootEvent, Path>
+    for Vec<ChildDelivery<P, Occurrence>>
+where
+    Interpreter: InterpretChildDelivery<P, Occurrence>,
+    Interpreter: Send,
+    P: Protocol,
+    ChildDelivery<P, Occurrence>: Send,
+{
+    fn interpret(
+        self,
+        interpreter: &mut Interpreter,
+    ) -> impl Future<Output = Result<(), Interpreter::Error>> + Send {
+        async move {
+            for delivery in self {
+                interpreter.interpret_child_delivery(delivery).await?;
+            }
+            Ok(())
+        }
+    }
+}
+
+impl<Interpreter, RootEvent, Path, P> InterpretSends<Interpreter, RootEvent, Path>
+    for Vec<EstablishedDelivery<P>>
+where
+    Interpreter: InterpretEstablishedDelivery<P>,
+    Interpreter: Send,
+    P: Protocol,
+    P::Addr: EndpointAddress,
+    EstablishedDelivery<P>: Send,
+{
+    fn interpret(
+        self,
+        interpreter: &mut Interpreter,
+    ) -> impl Future<Output = Result<(), Interpreter::Error>> + Send {
+        async move {
+            for delivery in self {
+                interpreter
+                    .interpret_established_delivery(delivery.to.endpoint, delivery.message)
+                    .await?;
             }
             Ok(())
         }

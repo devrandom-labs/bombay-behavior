@@ -4,22 +4,21 @@ use super::super::domain::{
     Incarnation, IncarnationEffects, IncarnationError, IncarnationPhase, IncarnationStopEffects,
 };
 use super::super::protocol::{ProxyCommand, ProxyEvent};
-use super::WorkerIncarnationChildRole;
 use crate::protocol::{
     ObserveChild, ObserveCreation, ProxyParentIngress, ReportWorkerCreationResolved,
     ReportWorkerStopped, ShutdownChild,
 };
 use crate::{Own, SendInput};
 use behavior::{
-    Actions, Address, Behavior, Births, ChildRoute, Delivery, InterpreterRequests, SendEffects,
-    User,
+    Actions, Address, Behavior, Births, ChildDelivery, ChildRoute, InterpreterRequests,
+    SendEffects, User,
 };
 use behavior::{Never, Step};
 
 /// The concrete, statically dispatched effect lanes emitted by a [`Proxy`].
 pub struct ProxySendsWithParent<C: Behavior, ParentPath> {
     /// User payloads forwarded to the currently installed worker incarnation.
-    pub deliveries: Vec<Delivery<C::Protocol>>,
+    pub deliveries: Vec<ChildDelivery<C::Protocol, behavior::ChildHead>>,
     /// Requests to observe installed child incarnations.
     pub child_observations: InterpreterRequests<ObserveChild<crate::BehaviorAddr<C>>>,
     /// Requests for exact creation acceptance or rejection facts.
@@ -77,7 +76,8 @@ impl<I, RootEvent, Path, C, ParentPath> behavior::InterpretSends<I, RootEvent, P
 where
     I: behavior::SendInterpreter,
     C: Behavior<Ph = Never>,
-    Vec<Delivery<C::Protocol>>: behavior::InterpretSends<I, RootEvent, Path>,
+    Vec<ChildDelivery<C::Protocol, behavior::ChildHead>>:
+        behavior::InterpretSends<I, RootEvent, Path>,
     InterpreterRequests<ObserveChild<crate::BehaviorAddr<C>>>:
         behavior::InterpretSends<I, RootEvent, Path>,
     InterpreterRequests<ObserveCreation<crate::BehaviorAddr<C>>>:
@@ -105,10 +105,12 @@ where
     }
 }
 
-impl<C: Behavior, ParentPath> SendInput<Delivery<C::Protocol>, Own>
+impl<C, ParentPath> SendInput<ChildDelivery<C::Protocol, behavior::ChildHead>, Own>
     for ProxySendsWithParent<C, ParentPath>
+where
+    C: Behavior<Ph = Never>,
 {
-    fn emit(&mut self, input: Delivery<C::Protocol>) {
+    fn emit(&mut self, input: ChildDelivery<C::Protocol, behavior::ChildHead>) {
         self.deliveries.push(input);
     }
 }
@@ -225,7 +227,7 @@ where
         let creates = match effects {
             IncarnationEffects::None => Vec::new(),
             IncarnationEffects::Create(creation) => {
-                let route = ChildRoute::<C, WorkerIncarnationChildRole>::new(creation.attempt);
+                let route = ChildRoute::<C, behavior::ChildHead>::new(creation.attempt);
                 sends.child_observations.extend([ObserveChild::at(route)]);
                 sends
                     .creation_observations
@@ -236,10 +238,8 @@ where
                 incarnation,
                 message,
             } => {
-                let route = ChildRoute::<C, WorkerIncarnationChildRole>::new(incarnation);
-                sends
-                    .deliveries
-                    .push(Delivery::local_child(route.recipient(), message));
+                let route = ChildRoute::<C, behavior::ChildHead>::new(incarnation);
+                sends.deliveries.push(ChildDelivery::at(route, message));
                 Vec::new()
             }
             IncarnationEffects::Report(resolved) => {
@@ -266,7 +266,7 @@ where
                         resolved.result.map(|_| ()),
                     )]);
                 sends.shutdowns.send(ShutdownChild::at(
-                    ChildRoute::<C, WorkerIncarnationChildRole>::new(incarnation),
+                    ChildRoute::<C, behavior::ChildHead>::new(incarnation),
                 ));
                 Vec::new()
             }
@@ -283,7 +283,7 @@ where
             }
             IncarnationEffects::Shutdown(incarnation) => {
                 sends.shutdowns.send(ShutdownChild::at(
-                    ChildRoute::<C, WorkerIncarnationChildRole>::new(incarnation),
+                    ChildRoute::<C, behavior::ChildHead>::new(incarnation),
                 ));
                 Vec::new()
             }

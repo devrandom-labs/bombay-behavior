@@ -232,7 +232,7 @@ fn actions_expose_the_typed_actor_transition_effects() {
         .sends
         .push(Delivery::new(Recipient::global(MailAddr(9)), 42));
 
-    assert_eq!(actions.sends[0].to.resolve(MailAddr(0)), MailAddr(9));
+    assert_eq!(actions.sends[0].to.address(), MailAddr(9));
     assert_eq!(actions.sends[0].message, 42);
     assert!(actions.creates.is_empty());
     assert!(matches!(actions.become_, Step::Continue));
@@ -246,7 +246,7 @@ fn active_behavior_invokes_one_fold_and_preserves_actions() {
 
     assert_eq!(behavior.base().0, 1);
     assert_eq!(actions.sends.len(), 1);
-    assert_eq!(actions.sends[0].to.resolve(MailAddr(0)), MailAddr(7));
+    assert_eq!(actions.sends[0].to.address(), MailAddr(7));
     assert_eq!(actions.sends[0].message, 11);
     assert_eq!(actions.creates.len(), 1);
     assert_eq!(actions.creates[0].nonce, 5);
@@ -907,10 +907,7 @@ async fn a_proxy_ignores_a_stale_child_stop_nonce() {
             ProxyCommand::Forward(7),
         )))
         .unwrap();
-    assert_eq!(
-        forwarded.sends.deliveries[0].to.resolve(MailAddr(17)),
-        behavior::Address::birth(MailAddr(17), 0)
-    );
+    assert_eq!(forwarded.sends.deliveries[0].nonce, 0);
 }
 
 #[tokio::test]
@@ -1134,12 +1131,7 @@ async fn supervisor_creates_proxies_and_replacement_is_a_send() {
     let actions = supervisor.transition(event).unwrap();
     assert!(actions.creates.is_empty());
     assert_eq!(actions.sends.owned.replacement_commands.len(), 1);
-    assert_eq!(
-        actions.sends.owned.replacement_commands[0]
-            .to
-            .resolve(MailAddr(17)),
-        behavior::Address::birth(MailAddr(17), 0)
-    );
+    assert_eq!(actions.sends.owned.replacement_commands[0].nonce, 0);
 }
 
 #[tokio::test]
@@ -1185,10 +1177,7 @@ async fn proxy_replacement_creates_a_fresh_incarnation() {
             ProxyCommand::Forward(7),
         )))
         .unwrap();
-    assert_eq!(
-        forwarded.sends.deliveries[0].to.resolve(MailAddr(17)),
-        behavior::Address::birth(MailAddr(17), 1)
-    );
+    assert_eq!(forwarded.sends.deliveries[0].nonce, 1);
     assert_eq!(forwarded.sends.deliveries[0].message, 7);
 }
 
@@ -1378,12 +1367,7 @@ async fn stable_proxy_reports_worker_stop_and_creates_fresh_replacement() {
         .unwrap();
     assert!(restart.creates.is_empty());
     assert_eq!(restart.sends.owned.replacement_commands.len(), 1);
-    assert_eq!(
-        restart.sends.owned.replacement_commands[0]
-            .to
-            .resolve(MailAddr(17)),
-        behavior::Address::birth(MailAddr(17), 0)
-    );
+    assert_eq!(restart.sends.owned.replacement_commands[0].nonce, 0);
 
     let command = restart
         .sends
@@ -1567,12 +1551,7 @@ async fn supervision_failure_exit_is_an_abnormal_transient_worker_outcome() {
         .unwrap();
 
     assert_eq!(actions.sends.owned.replacement_commands.len(), 1);
-    assert_eq!(
-        actions.sends.owned.replacement_commands[0]
-            .to
-            .resolve(MailAddr(17)),
-        behavior::Address::birth(MailAddr(17), 0)
-    );
+    assert_eq!(actions.sends.owned.replacement_commands[0].nonce, 0);
 }
 
 struct BirthingParent(bool);
@@ -1652,12 +1631,7 @@ async fn supervisor_preserves_and_observes_dynamic_births_once() {
     });
     let replacement = supervisor.transition(stopped).unwrap();
     assert_eq!(replacement.sends.owned.replacement_commands.len(), 1);
-    assert_eq!(
-        replacement.sends.owned.replacement_commands[0]
-            .to
-            .resolve(MailAddr(17)),
-        behavior::Address::birth(MailAddr(17), 9)
-    );
+    assert_eq!(replacement.sends.owned.replacement_commands[0].nonce, 9);
 }
 
 #[tokio::test]

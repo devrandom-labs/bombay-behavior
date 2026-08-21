@@ -162,12 +162,7 @@ async fn child_death_never_leaks_into_the_user_lane() {
         }))
         .unwrap();
     assert_eq!(actions.sends.owned.replacement_commands.len(), 1);
-    assert_eq!(
-        actions.sends.owned.replacement_commands[0]
-            .to
-            .resolve(MailAddr(17)),
-        behavior::Address::birth(MailAddr(17), 0)
-    );
+    assert_eq!(actions.sends.owned.replacement_commands[0].nonce, 0);
     assert!(actions.sends.inner.is_empty());
     assert!(actions.sends.owned.child_observations.is_empty());
 }
@@ -322,12 +317,7 @@ async fn full_stack_all_four_layers_keep_their_own_lanes() {
         }))
         .unwrap();
     assert_eq!(replacement.sends.owned.replacement_commands.len(), 1);
-    assert_eq!(
-        replacement.sends.owned.replacement_commands[0]
-            .to
-            .resolve(MailAddr(17)),
-        behavior::Address::birth(MailAddr(17), 0)
-    );
+    assert_eq!(replacement.sends.owned.replacement_commands[0].nonce, 0);
     assert!(replacement.sends.inner.inner.inner.is_empty());
 }
 
@@ -449,8 +439,8 @@ proptest! {
             if tag == 3 {
                 prop_assert_eq!(actions.sends.owned.replacement_commands.len(), 1);
                 prop_assert_eq!(
-                    actions.sends.owned.replacement_commands[0].to.resolve(MailAddr(17)),
-                    behavior::Address::birth(MailAddr(17), u64::from(arg % 2))
+                    actions.sends.owned.replacement_commands[0].nonce,
+                    u64::from(arg % 2)
                 );
                 prop_assert!(echo_step.is_empty());
                 let proxy = u64::from(arg % 2);

@@ -4,7 +4,15 @@
 //! these lanes. Keeping their values and construction capabilities here avoids
 //! dependencies between otherwise independent transformations.
 
+mod established;
 mod pool;
+
+pub use established::{
+    CancelObservation, EstablishedObservation, EstablishedShutdownResolved,
+    InterpretEstablishedObservation, InterpretEstablishedShutdown, ObservationId,
+    ObservationOperation, ObservationRejection, ObserveEstablished, ObserveEstablishedCreation,
+    ShutdownEstablished, ShutdownId, ShutdownRejection,
+};
 
 pub use pool::{KeyedWorkerPoolProtocol, PoolAssignmentProtocol, WorkerPoolProtocol};
 
@@ -14,6 +22,7 @@ use std::time::Instant;
 
 use crate::{Crash, CreationKind, Exit};
 use behavior::Address;
+pub use behavior::CreationRejection;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TimerId(pub u64);
@@ -317,21 +326,6 @@ impl<A: Address, Path> From<(A::Nonce, ReportWorkerStopped<A, Path>)> for Worker
     fn from((proxy, stopped): (A::Nonce, ReportWorkerStopped<A, Path>)) -> Self {
         Self::new(proxy, stopped.worker, stopped.outcome, stopped.at)
     }
-}
-
-/// Why a staged fresh creation was not committed by an interpreter.
-///
-/// This is a closed semantic classification; interpreter-specific error
-/// values remain at the runtime boundary.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CreationRejection {
-    /// The creator-local nonce was already bound, so accepting the request
-    /// would overwrite rather than establish a fresh child.
-    NonceAlreadyBound,
-    /// The fresh child's initialization did not complete successfully.
-    InitializationFailed,
-    /// The interpreter could not allocate, install, or commit the fresh child.
-    EnvironmentFailed,
 }
 
 /// The committed result of one staged [`crate::Create`] request.

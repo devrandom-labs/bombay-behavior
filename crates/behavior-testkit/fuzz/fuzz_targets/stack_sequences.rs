@@ -191,10 +191,8 @@ fuzz_target!(|bytes: &[u8]| {
                         "replacement at byte {index}"
                     );
                     assert_eq!(
-                        actions.sends.owned.replacement_commands[0]
-                            .to
-                            .resolve(MailAddr(17)),
-                        behavior::Address::birth(MailAddr(17), nonce),
+                        actions.sends.owned.replacement_commands[0].nonce,
+                        nonce,
                         "replacement route at byte {index}"
                     );
                     assert!(

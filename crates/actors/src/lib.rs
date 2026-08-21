@@ -92,12 +92,16 @@ pub use pool::{
     WorkerPoolSends, WorkerPoolWithParent, WorkerRetirement,
 };
 pub use protocol::{
-    ChildShutdownRejected, ChildShutdownRejection, ChildStopped, CreationRejection,
-    CreationResolved, KeyedWorkerPoolProtocol, ObserveChild, ObserveCreation, ObservePeer,
-    PeerStopped, PoolAssignmentProtocol, ProxyParentIngress, ReplacementResolution,
+    CancelObservation, ChildShutdownRejected, ChildShutdownRejection, ChildStopped,
+    CreationResolved, EstablishedObservation, EstablishedShutdownResolved,
+    InterpretEstablishedObservation, InterpretEstablishedShutdown, KeyedWorkerPoolProtocol,
+    ObservationId, ObservationOperation, ObservationRejection, ObserveChild, ObserveCreation,
+    ObserveEstablished, ObserveEstablishedCreation, ObservePeer, PeerStopped,
+    PoolAssignmentProtocol, ProxyParentIngress, ReplacementResolution,
     ReportWorkerCreationResolved, ReportWorkerStopped, ScheduleAfter, ScheduleAt, ShutdownChild,
-    ShutdownRequested, TimerElapsed, TimerGeneration, TimerId, UnwatchPeer, WorkerCreationResolved,
-    WorkerPoolProtocol, WorkerStopped,
+    ShutdownEstablished, ShutdownId, ShutdownRejection, ShutdownRequested, TimerElapsed,
+    TimerGeneration, TimerId, UnwatchPeer, WorkerCreationResolved, WorkerPoolProtocol,
+    WorkerStopped,
 };
 pub use requirements::{
     InstallationRequirements, NoInstallationRequirements, RequiredProtocol, RequirementAt,

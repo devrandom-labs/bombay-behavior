@@ -281,10 +281,7 @@ async fn proxy_forwards_only_to_the_current_fresh_generation() {
             ProxyCommand::Forward(5),
         )))
         .unwrap();
-    assert_eq!(
-        before.sends.deliveries[0].to.resolve(MailAddr(17)),
-        behavior::Address::birth(MailAddr(17), 0)
-    );
+    assert_eq!(before.sends.deliveries[0].nonce, 0);
 
     let replacement = proxy
         .transition(ProxyEvent::Command(User::user(
@@ -316,10 +313,7 @@ async fn proxy_forwards_only_to_the_current_fresh_generation() {
             ProxyCommand::Forward(6),
         )))
         .unwrap();
-    assert_eq!(
-        after.sends.deliveries[0].to.resolve(MailAddr(17)),
-        behavior::Address::birth(MailAddr(17), 1)
-    );
+    assert_eq!(after.sends.deliveries[0].nonce, 1);
 }
 
 #[tokio::test]

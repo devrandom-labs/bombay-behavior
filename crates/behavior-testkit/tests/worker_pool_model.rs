@@ -197,7 +197,7 @@ fn submit(
 
 fn assignments(
     actions: &behavior::WorkerPoolActions<MailAddr, Reply, u8, u16, Worker>,
-) -> &[Delivery<Proxy<Worker>>] {
+) -> &[behavior::ChildDelivery<Proxy<Worker>, behavior::ChildHead>] {
     &actions.sends.inner.assignments
 }
 
@@ -318,10 +318,7 @@ fn accepted_job_is_recorded_before_one_exact_dispatch() {
     assert_eq!(assignment.payload, 42);
     assert_eq!(assignment.worker, 0);
     assert_eq!(assignment.complete_to.address(), MailAddr(9));
-    assert_eq!(
-        assignments(&actions)[0].to.resolve(MailAddr(17)),
-        behavior::Address::birth(MailAddr(17), 0)
-    );
+    assert_eq!(assignments(&actions)[0].nonce, 0);
     assert_eq!(
         pool.worker_phase(0),
         Some(WorkerPhase::Assigned {

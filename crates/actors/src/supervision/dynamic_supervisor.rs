@@ -1,14 +1,13 @@
 //! Explicitly managed dynamic stable-child topology.
 
-use super::adapter::StableProxyChildRole;
 use crate::{
     ChildShutdownRejected, ChildStopped, CreationRejection, CreationResolved, ObserveChild,
     ObserveCreation, Own, Proxy, ProxyCommand, ProxyParentIngress, ProxyWithParent, SendInput,
     ShutdownChild, ShutdownRequested, WorkerCreationResolved, WorkerStopped,
 };
 use behavior::{
-    Actions, Address, Behavior, BehaviorActed, Births, ChildRoute, Delivery, Here, InjectEvent,
-    InterpreterRequests, Never, Protocol, Recipient, SendEffects, User, UserEvent,
+    Actions, Address, Behavior, BehaviorActed, Births, ChildDelivery, ChildRoute, Delivery, Here,
+    InjectEvent, InterpreterRequests, Never, Protocol, Recipient, SendEffects, User, UserEvent,
 };
 
 /// One dynamically managed stable-child phase.
@@ -298,7 +297,7 @@ where
     pub child_observations: InterpreterRequests<ObserveChild<A>>,
     pub creation_observations: InterpreterRequests<ObserveCreation<A>>,
     pub shutdowns: InterpreterRequests<ShutdownChild<DynamicProxyWithParent<C, ParentPath>>>,
-    pub replacements: Vec<Delivery<Proxy<C>>>,
+    pub replacements: Vec<ChildDelivery<DynamicProxy<C>, behavior::ChildHead>>,
 }
 
 impl<A, C, Reply, ParentPath> SendEffects for DynamicSupervisorSends<A, C, Reply, ParentPath>
@@ -358,7 +357,8 @@ where
     InterpreterRequests<ObserveCreation<A>>: behavior::InterpretSends<I, RootEvent, Path>,
     InterpreterRequests<ShutdownChild<DynamicProxyWithParent<C, ParentPath>>>:
         behavior::InterpretSends<I, RootEvent, Path>,
-    Vec<Delivery<Proxy<C>>>: behavior::InterpretSends<I, RootEvent, Path>,
+    Vec<ChildDelivery<DynamicProxy<C>, behavior::ChildHead>>:
+        behavior::InterpretSends<I, RootEvent, Path>,
     DynamicSupervisorSends<A, C, Reply, ParentPath>: Send,
 {
     fn interpret(
@@ -572,7 +572,7 @@ where
                     ));
                     let route = ChildRoute::<
                         DynamicProxyWithParent<C, ParentPath>,
-                        StableProxyChildRole,
+                        behavior::ChildHead,
                     >::new(nonce);
                     sends.child_observations.send(ObserveChild::at(route));
                     sends.creation_observations.send(ObserveCreation::at(route));
@@ -598,7 +598,7 @@ where
                             *state = DynamicChild::Stopping { reply_to };
                             let route = ChildRoute::<
                                 DynamicProxyWithParent<C, ParentPath>,
-                                StableProxyChildRole,
+                                behavior::ChildHead,
                             >::new(nonce);
                             sends.shutdowns.send(ShutdownChild::<
                                 DynamicProxyWithParent<C, ParentPath>,
@@ -646,12 +646,11 @@ where
                             *state = DynamicChild::Replacing { reply_to };
                             let route = ChildRoute::<
                                 DynamicProxyWithParent<C, ParentPath>,
-                                StableProxyChildRole,
+                                behavior::ChildHead,
                             >::new(nonce);
-                            sends.replacements.push(Delivery::local_child(
-                                route.recipient(),
-                                ProxyCommand::Replace(child),
-                            ));
+                            sends
+                                .replacements
+                                .push(ChildDelivery::at(route, ProxyCommand::Replace(child)));
                             sends.outcomes.push(Delivery::new(
                                 reply_to,
                                 DynamicSupervisorOutcome::ReplaceAccepted { nonce },
@@ -814,7 +813,7 @@ where
                     ) {
                         sends.shutdowns.send(ShutdownChild::at(ChildRoute::<
                             DynamicProxyWithParent<C, ParentPath>,
-                            StableProxyChildRole,
+                            behavior::ChildHead,
                         >::new(
                             *nonce
                         )));

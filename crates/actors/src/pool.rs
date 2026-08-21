@@ -7,7 +7,7 @@
 use std::collections::{BTreeMap, VecDeque};
 use std::time::Duration;
 
-use crate::supervision::{FixedFleetOwnership, OwnershipError, StableProxyChildRole};
+use crate::supervision::{FixedFleetOwnership, OwnershipError};
 use crate::{
     Actions, Address, Behavior, Births, ChildTopology, Crash, CreationRejection, Delivery, Exit,
     FleetError, Never, Own, Protocol, Proxy, ProxyCommand, ProxyParentIngress, ProxyWithParent,
@@ -378,7 +378,7 @@ where
     /// Admission and terminal responses addressed to submitters.
     pub responses: Vec<Delivery<D>>,
     /// Assignments addressed to the selected stable worker proxies.
-    pub assignments: Vec<Delivery<Proxy<C>>>,
+    pub assignments: Vec<behavior::ChildDelivery<crate::Proxy<C>, behavior::ChildHead>>,
 }
 
 impl<A, D, J, R, C> SendEffects for PoolBehaviorSends<A, D, J, R, C>
@@ -422,7 +422,8 @@ where
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
     Vec<Delivery<D>>: behavior::InterpretSends<I, RootEvent, Path>,
-    Vec<Delivery<Proxy<C>>>: behavior::InterpretSends<I, RootEvent, Path>,
+    Vec<behavior::ChildDelivery<crate::Proxy<C>, behavior::ChildHead>>:
+        behavior::InterpretSends<I, RootEvent, Path>,
     PoolBehaviorSends<A, D, J, R, C>: Send,
 {
     fn interpret(
@@ -449,7 +450,8 @@ where
     }
 }
 
-impl<A, D, J, R, C> SendInput<Delivery<Proxy<C>>, Own> for PoolBehaviorSends<A, D, J, R, C>
+impl<A, D, J, R, C> SendInput<behavior::ChildDelivery<crate::Proxy<C>, behavior::ChildHead>, Own>
+    for PoolBehaviorSends<A, D, J, R, C>
 where
     A: Address,
     A::Nonce: From<u64>,
@@ -457,7 +459,7 @@ where
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
 {
-    fn emit(&mut self, input: Delivery<Proxy<C>>) {
+    fn emit(&mut self, input: behavior::ChildDelivery<crate::Proxy<C>, behavior::ChildHead>) {
         self.assignments.push(input);
     }
 }
@@ -1117,22 +1119,24 @@ where
             let assignment = AssignmentId(assignment);
             let nonce = self.slots[slot_position].nonce;
             let route =
-                ChildRoute::<ProxyWithParent<C, ParentPath>, StableProxyChildRole>::new(nonce);
+                ChildRoute::<ProxyWithParent<C, ParentPath>, behavior::ChildHead>::new(nonce);
             let job_id = job.id;
             self.slots[slot_position].state = SlotState::Assigned { assignment, job };
             actions
                 .sends
                 .inner
-                .send::<Delivery<Proxy<C>>, Own>(Delivery::local_child(
-                    route.recipient(),
-                    ProxyCommand::Forward(PoolAssignment {
-                        assignment,
-                        job: job_id,
-                        payload,
-                        worker: nonce,
-                        complete_to: self.complete_to,
-                    }),
-                ));
+                .send::<behavior::ChildDelivery<crate::Proxy<C>, behavior::ChildHead>, Own>(
+                    behavior::ChildDelivery::at(
+                        route,
+                        ProxyCommand::Forward(PoolAssignment {
+                            assignment,
+                            job: job_id,
+                            payload,
+                            worker: nonce,
+                            complete_to: self.complete_to,
+                        }),
+                    ),
+                );
         }
         self.next_assignment = next_assignment;
         Ok(())
@@ -1275,7 +1279,7 @@ where
                     .owned
                     .replacement_commands
                     .iter()
-                    .any(|delivery| delivery.to.is_local_child(proxy));
+                    .any(|delivery| delivery.nonce == proxy);
                 if !replacement_requested {
                     let position = self.slot_position(proxy)?;
                     let reason = WorkerRetirement::ReplacementUnavailable;
@@ -1586,11 +1590,7 @@ mod tests {
         let assignments = &actions.sends.inner.assignments;
         assert_eq!(assignments.len(), 2);
         for (index, expected_job) in [JobId(1), JobId(2)].into_iter().enumerate() {
-            assert!(
-                assignments[index]
-                    .to
-                    .is_local_child(u64::try_from(index).unwrap())
-            );
+            assert_eq!(assignments[index].nonce, u64::try_from(index).unwrap());
             let ProxyCommand::Forward(assignment) = &assignments[index].message else {
                 panic!("pool dispatches with Forward");
             };

@@ -147,20 +147,14 @@ async fn driver_accumulates_supervising_send_products_losslessly() {
     let echoes: Vec<u64> = trace.sends.inner.iter().map(|d| d.message).collect();
     assert_eq!(echoes, [3, 5]);
     // Supervise's own replacement lane: one per death, in order.
-    let replacements: Vec<MailAddr> = trace
+    let replacements: Vec<u64> = trace
         .sends
         .owned
         .replacement_commands
         .iter()
-        .map(|d| d.to.resolve(MailAddr(17)))
+        .map(|d| d.nonce)
         .collect();
-    assert_eq!(
-        replacements,
-        [
-            behavior::Address::birth(MailAddr(17), 0),
-            behavior::Address::birth(MailAddr(17), 1)
-        ]
-    );
+    assert_eq!(replacements, [0, 1]);
     // Observe-child sends: emitted once at init, never again.
     assert_eq!(trace.sends.owned.child_observations.len(), 2);
     // Creates: exactly the two init proxies; the driver never re-creates.
@@ -240,12 +234,7 @@ async fn empty_fleet_dynamic_birth_then_death_restarts() {
         }))
         .unwrap();
     assert_eq!(actions.sends.owned.replacement_commands.len(), 1);
-    assert_eq!(
-        actions.sends.owned.replacement_commands[0]
-            .to
-            .resolve(MailAddr(17)),
-        behavior::Address::birth(MailAddr(17), 9)
-    );
+    assert_eq!(actions.sends.owned.replacement_commands[0].nonce, 9);
     assert!(supervisor.is_alive(9).unwrap());
 }
 

@@ -133,7 +133,7 @@ mod tests {
             .iter()
             .zip(&manual.sends.supervision.replacement_commands)
         {
-            assert!(recipe.to == manual.to);
+            assert_eq!(recipe.nonce, manual.nonce);
             assert!(matches!(recipe.message, crate::ProxyCommand::Replace(_)));
             assert!(matches!(manual.message, crate::ProxyCommand::Replace(_)));
         }

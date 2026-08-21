@@ -402,11 +402,11 @@ async fn one_for_all_skips_dead_slots_and_respects_budget() {
         .owned
         .replacement_commands
         .iter()
-        .map(|d| d.to.resolve(MailAddr(17)))
+        .map(|d| d.nonce)
         .collect();
-    assert!(routes.contains(&behavior::Address::birth(MailAddr(17), 0)));
-    assert!(routes.contains(&behavior::Address::birth(MailAddr(17), 2)));
-    assert!(!routes.contains(&behavior::Address::birth(MailAddr(17), 1)));
+    assert!(routes.contains(&0));
+    assert!(routes.contains(&2));
+    assert!(!routes.contains(&1));
     assert!(supervisor.is_alive(2).unwrap());
     assert!(supervisor.is_alive(0).unwrap());
     assert!(!supervisor.is_alive(1).unwrap());
@@ -454,12 +454,12 @@ async fn rest_for_one_uses_birth_sequence_not_index() {
         .owned
         .replacement_commands
         .iter()
-        .map(|d| d.to.resolve(MailAddr(17)))
+        .map(|d| d.nonce)
         .collect();
     for nonce in 0..3 {
-        assert!(routes.contains(&behavior::Address::birth(MailAddr(17), nonce)));
+        assert!(routes.contains(&nonce));
     }
-    assert!(routes.contains(&behavior::Address::birth(MailAddr(17), 9)));
+    assert!(routes.contains(&9));
 
     for proxy in [1, 2, 9] {
         supervisor
@@ -483,12 +483,7 @@ async fn rest_for_one_uses_birth_sequence_not_index() {
         .transition(stopped_worker(9, 109, Err(Crash::Failed), at))
         .unwrap();
     assert_eq!(narrow.sends.owned.replacement_commands.len(), 1);
-    assert_eq!(
-        narrow.sends.owned.replacement_commands[0]
-            .to
-            .resolve(MailAddr(17)),
-        behavior::Address::birth(MailAddr(17), 9)
-    );
+    assert_eq!(narrow.sends.owned.replacement_commands[0].nonce, 9);
 }
 
 /// Window pruning is lazy (evaluated at each death) and inclusive at the

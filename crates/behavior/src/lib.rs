@@ -20,17 +20,21 @@ mod transition;
 mod user_event;
 
 pub use actor::{
-    Address, BirthMode, BirthNodeProtocols, BirthProtocol, BirthProtocolAt, BirthProtocolHead,
-    BirthProtocolProduct, BirthProtocolTail, BirthProtocols, Births, ChildChoice, ChildCons,
-    ChildHead, ChildPosition, ChildProduct, ChildRecipient, ChildRole, ChildRoute, ChildTail,
-    Children, ChildrenError, Create, CreationKind, Delivery, DeliveryTarget, DispatchBirth,
-    InstallBirth, MailAddr, NoBirthProtocols, NoBirths, NoChildren, Recipient,
+    Address, AllocationRejection, BirthMode, BirthNodeProtocols, BirthProtocol, BirthProtocolAt,
+    BirthProtocolHead, BirthProtocolProduct, BirthProtocolTail, BirthProtocols, Births,
+    ChildChoice, ChildCons, ChildDelivery, ChildHead, ChildPosition, ChildProduct, ChildRole,
+    ChildRoute, ChildTail, Children, ChildrenError, Create, CreationKind, CreationRejection,
+    Delivery, DispatchBirth, DispatchBirthAt, EndpointAddress, EstablishedActor,
+    EstablishedCreation, EstablishedDelivery, EstablishedRecipient, InstallBirth,
+    InterpretEstablished, MailAddr, NoBirthProtocols, NoBirths, NoChildren, Recipient, RoleChild,
+    RoleProtocol,
 };
 pub use effect::Effect;
 pub use effects::{
-    Acted, Actions, AppendSend, Become, InterpretDelivery, InterpretRequest, InterpretSends,
-    InterpreterRequest, InterpreterRequests, NoReturnToEmitter, NoSends, Own, ReturnsToEmitter,
-    SendEffects, SendInput, SendInterpreter, SendLayer, SendsFor,
+    Acted, Actions, AppendSend, Become, InterpretChildDelivery, InterpretDelivery,
+    InterpretEstablishedDelivery, InterpretRequest, InterpretSends, InterpreterRequest,
+    InterpreterRequests, NoReturnToEmitter, NoSends, Own, ReturnsToEmitter, SendEffects, SendInput,
+    SendInterpreter, SendLayer, SendsFor,
 };
 pub use next::{Never, Step, Stopped};
 pub use reducer::{ActionReducer, Effects, FoldFailure, Folded, fold_events};
@@ -57,9 +61,9 @@ pub use user_event::{
 /// exact recursive `ChildChoice` produced by `Children` calls in declaration
 /// order. It also generates `ActorChildrenRoutes`, containing one nominally
 /// distinct [`ChildRoute`] per declared role. A route is the single typed
-/// source for staging that role's creation and addressing its creator-local
-/// recipient. Creation remains an authored [`Children`] value and is never
-/// performed by the macro.
+/// source for staging that role's creation and constructing its
+/// creator-local [`ChildDelivery`]. Creation remains an authored [`Children`]
+/// value and is never performed by the macro.
 ///
 /// Invalid receivers are rejected at compile time.
 ///
@@ -213,7 +217,7 @@ pub use user_event::{
 ///     }
 /// }
 /// struct Incomplete;
-/// impl InstallBirth<MailAddr, First, (), Never> for Incomplete {
+/// impl InstallBirth<behavior::ChildHead, First, (), Never> for Incomplete {
 ///     async fn install_birth(&mut self, _: Create<MailAddr, First>) -> Result<(), Never> { Ok(()) }
 /// }
 /// fn require_complete<T: DispatchBirth<MailAddr, Incomplete, (), Never>>() {}
