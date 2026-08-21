@@ -9,6 +9,12 @@ All notable changes to `bombay-behavior-actors` are documented here.
 
 ## [Unreleased]
 
+## [0.13.1](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-actors-v0.13.0...bombay-behavior-actors-v0.13.1) - 2026-08-21
+
+### Other
+
+- add typed child topology roles and routes ([#52](https://github.com/devrandom-labs/bombay-behavior/pull/52))
+
 ### Changed
 
 - Route stable-proxy and worker-incarnation creation, delivery, observation,

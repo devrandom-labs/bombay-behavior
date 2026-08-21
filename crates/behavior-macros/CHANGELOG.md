@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.3](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-macros-v0.11.2...bombay-behavior-macros-v0.11.3) - 2026-08-21
+
+### Other
+
+- add typed child topology roles and routes ([#52](https://github.com/devrandom-labs/bombay-behavior/pull/52))
+
 ### Fixed
 
 - Resolve an unrenamed `bombay-rs` façade dependency through its actual
