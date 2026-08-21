@@ -1,40 +1,37 @@
+use behavior::CreationKind;
 use established_recipient_probe::{
-    ActorRef, ChildNamespace, EstablishedDelivery, EstablishedRecipient, InterpretEstablished,
-    Queue, RuntimeAddr, StagedChild, Target, Transfer, Worker,
+    ActorRef, ChildNamespace, CreationResolved, EstablishedDelivery, FreshAllocator, Installation,
+    InterpretEstablished, Parent, PrimaryRole, RoleHead, StagedChild, Transfer, Worker,
+    parent_bindings,
 };
 
 struct Trace(Option<(u64, u8)>);
 
-impl InterpretEstablished<Queue> for Trace {
+impl InterpretEstablished<Worker> for Trace {
     type Output = ();
 
-    fn interpret(&mut self, endpoint: ActorRef<Queue>, message: u8) {
+    fn interpret(&mut self, endpoint: ActorRef<Worker>, message: u8) {
         self.0 = Some((endpoint.slot(), message));
     }
 }
 
 fn main() {
-    let queue = EstablishedRecipient::<Queue>::issued(ActorRef::issued(3));
-    let delivery = EstablishedDelivery::new(queue, 11);
-    let mut trace = Trace(None);
-    delivery.interpret(&mut trace);
-    assert_eq!(trace.0, Some((3, 11)));
-
-    let staged = StagedChild::<Worker>::new(7);
-    let mut namespace = ChildNamespace::new();
-    let committed = namespace.commit(staged.nonce(), ActorRef::issued(41));
-    assert_eq!(
-        namespace.resolved_slot(Target::LocalChild(staged)),
-        Some(41)
+    let staged = StagedChild::<Parent, PrimaryRole>::new(7);
+    let mut allocator = FreshAllocator::new([established_recipient_probe::RuntimeAddr(9)]);
+    let mut namespace = ChildNamespace::new(parent_bindings());
+    let committed = namespace.realize::<PrimaryRole, RoleHead>(
+        staged,
+        CreationKind::Birth,
+        &mut allocator,
+        41,
+        Installation::Succeeds,
     );
+    assert!(matches!(committed, CreationResolved::Installed { .. }));
 
     let transfer = Transfer {
-        worker: committed.result.expect("fresh child committed"),
+        worker: committed.into_recipient().expect("fresh child committed"),
     };
-    assert_eq!(
-        namespace.resolved_slot(Target::Established(transfer.worker)),
-        Some(41)
-    );
-
-    let _address_type_remains_separate = RuntimeAddr(9);
+    let mut trace = Trace(None);
+    EstablishedDelivery::new(transfer.worker, 11).interpret(&mut trace);
+    assert_eq!(trace.0, Some((41, 11)));
 }

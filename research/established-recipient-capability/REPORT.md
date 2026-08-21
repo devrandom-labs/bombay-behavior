@@ -1,234 +1,297 @@
 # Established recipient capability report
 
-## Baseline
+## Result
 
-Current `Recipient<P>` contains `P::Addr` and explicitly proves no mailbox,
-endpoint, or interpreter-owned capability. `DeliveryTarget<P>` resolves a
-creator-local child by deriving an address from the emitter and nonce.
-`CreationResolved<A>` reports only the committed address. Consequently a
-runtime that uses live typed actor references must resolve an established
-address outside the `Delivery<P>` value.
+**The full Behavior-side representation is viable as research.** A stable-Rust
+GAT, a non-resolving fresh-address allocator, and creator-local structural role
+bindings cover every responsibility previously attributed to the proposed
+global protocol resolver. The probe does not require a runtime protocol key,
+endpoint erasure, or endpoint generics in ordinary domain types.
 
-## Representation candidates
+This is not a production contract. It has not been integrated into the public
+Behavior or Behavior Actors crates, and Bombay must not consume it as though it
+were released API.
 
-### Arbitrary endpoint type parameter
+## Governing semantics
 
-```rust,ignore
-Recipient<P, Endpoint>
+- **Actor-model law:** allocation chooses a fresh actor name. The 1997
+  operational semantics makes the `newadr` result fresh with respect to the
+  current configuration. A known actor name is first-class communication
+  information.
+- **Bombay derivation:** protocols index recipient and endpoint types; child
+  roles form a closed structural product.
+- **Bombay policy:** a creator-local nonce correlates staged effects;
+  installations commit before dependent same-action sends; committed results
+  return through typed event lanes.
+- **Interpreter responsibility:** claim a fresh address, initialize and commit
+  the actor, issue the exact endpoint, and realize delivery and lifecycle
+  requests.
+
+The experiment preserves the pure fold and `Actions`. It does not turn an
+endpoint into a direct behavior-side operation.
+
+The probe also implements an actual `Behavior` fold, rather than testing only
+standalone carrier types. A committed creation fact moves the behavior from
+`Awaiting` to `Active(EstablishedRecipient<P>)` and returns the first delivery
+through `Actions::sends`. A rejected fact moves it into the disjoint
+`Rejected(CreationRejection)` phase without effects. A later duplicate fact is
+a typed `StaleCreationFact` error and cannot replace the retained capability.
+Initialization remains the ordinary pure default and all three `Actions` legs
+remain visible and unchanged.
+
+## Complete creation state model
+
+The research separates three facts that the old deterministic child-address
+derivation could conflate:
+
+```text
+Staged(Parent, Role, Nonce, CreationKind)
+    -> AllocationRejected(reason)
+    -> InstallationRejected(reason)
+    -> Installed(EstablishedRecipient<Protocol>)
 ```
 
-This is mechanically static, but every state, message, reply protocol,
-delivery lane, wrapper, and application boundary retaining a recipient gains
-the runtime endpoint parameter. Attempting to hide that parameter only in a
-trait impl is rejected by E0207. This candidate fails the zero-domain-
-boilerplate requirement.
+`Nonce` is correlation in the creator's child namespace. It is neither the
+allocated address nor evidence of freshness. `FreshAllocator` stores claimed
+addresses but no endpoints. A repeated candidate produces the typed
+`AddressAlreadyClaimed` rejection; exhaustion is also explicit.
 
-### Core-owned opaque token
+Initialization or environment failure produces a rejected creation with no
+recipient and does not bind the nonce. The already allocated address remains a
+consumed fresh claim in the probe, so a retry receives a different address.
+Only successful initialization and commit add a creator-local binding and
+return the capability.
 
-A core token can remain one-parameter, but a runtime must map the token back to
-its live endpoint. That changes the lookup key without removing the resolver.
-It is not a direct-capability result.
+`CreationResolved<Parent, Role>` is an exhaustive sum:
 
-### Address-owned generic associated endpoint family
+- `Installed { nonce, kind, recipient }`; or
+- `Rejected { nonce, kind, reason }`.
+
+The rejected variant cannot expose a recipient. `CreationKind` is preserved
+unchanged, so replacement provenance is never inferred from allocation,
+sequence arithmetic, or address reuse.
+
+## GAT representation and authority
+
+The endpoint family is selected once by a runtime-owned address namespace:
 
 ```rust,ignore
 <P::Addr as EndpointAddress>::Established<P>
 ```
 
-This binds the endpoint family once to the runtime/address namespace and keeps
-`Recipient<P>` one-parameter. The probe tests this candidate against protocol
-separation, capability transfer, staged creation, committed creation, and
-same-action child delivery.
+`Behavior::Protocol` remains canonical identity. The projection is navigation
+evidence selected by `P`, not another protocol identity. Ordinary domain
+protocols do not author endpoint types or keys.
 
-## Probe result
+`EstablishedRecipient<P>` contains only the runtime endpoint. The fake
+`ActorRef<P>` binds its freshly claimed address internally, avoiding a second
+public address field that could disagree with the endpoint.
 
-The address-owned generic associated endpoint family compiles on the pinned
-Rust 1.95.0 toolchain.
+EstablishedRecipient<P> exposes no direct endpoint accessor. Endpoint transfer
+occurs only through the explicit interpretation boundary, which remains a
+power-user API boundary rather than exclusive Bombay authority.
 
-The positive probe establishes all of the following without an endpoint type
-parameter on domain state or messages:
+Because `InterpretEstablished<P>`, `InterpretObservation<P>`, and
+`InterpretShutdown<P>` are public, any downstream implementation receives the
+endpoint. The positive probe demonstrates that deliberately. Exclusive
+Bombay-only extraction would require a separate authority-inversion
+experiment.
 
-- two protocols with the same logical address and message type select distinct
-  `ActorRef<P>` endpoint types;
-- `EstablishedRecipient<P>` is cloneable even when the endpoint is not `Copy`
-  or `Eq`;
-- the recipient contains no direct send or endpoint-accessor operation;
-- `EstablishedDelivery<P>` crosses a statically selected interpreter boundary;
-- a child nonce exists before installation without containing an endpoint;
-- a successful commit returns `EstablishedRecipient<ChildProtocol>`;
-- a rejected duplicate commit returns no capability and preserves the first
-  binding;
-- a same-action local-child target resolves after the creation commits; and
-- the committed capability can be transferred in a domain message without an
-  endpoint generic appearing in that message's type.
+## Protocol and duplicate-role separation
 
-The compile-fail probes establish:
+Two protocols with identical address and message types still select different
+`EstablishedRecipient<P>` and `ActorRef<P>` types. A compile-fail probe rejects
+cross-protocol delivery.
 
-- an arbitrary endpoint parameter hidden only in an impl is rejected with
-  E0207;
-- `EstablishedRecipient<Worker>` cannot be supplied to a
-  `Delivery<Queue>`, even when both protocols use the same address and message
-  types; and
-- direct endpoint access through `EstablishedRecipient<P>` is unavailable.
+Two named roles may deliberately select the same concrete protocol. Their
+creation facts remain different types:
 
-`EstablishedRecipient<P>` exposes no direct endpoint accessor. Endpoint
-transfer occurs only through the explicit interpretation boundary, which
-remains a power-user API boundary rather than exclusive Bombay authority.
-Because `InterpretEstablished<P>` is public, any downstream implementation of
-that trait receives the endpoint; the positive binary intentionally
-demonstrates this. If exclusive Bombay-only extraction is required, the design
-needs another experiment and a corresponding authority inversion.
+```text
+CreationResolved<Parent, PrimaryRole>
+CreationResolved<Parent, SecondaryRole>
+```
 
-`check.sh` runs the positive tests, validates each negative failure reason, and
-rejects `dyn`, `Any`, `TypeId`, `unsafe`, or boxing in the probe source.
+A second compile-fail probe rejects exchanging them. The creator-local binding
+product is selected by sealed-style `RoleHead`/`RoleTail<Position>` structural
+evidence. A single nonce-claim set spans the complete product, so duplicate
+nonces across different roles reject rather than silently alias.
 
-## Read-only runtime validation
+This role position is topology navigation evidence. It is not a protocol key,
+runtime identity, or application-wide registry index.
 
-The sibling Bombay repositories were inspected without modification or build
-output.
+## Same-action ordering
 
-### Concrete endpoint
+The probe performs creation in this order:
 
-Bombay's `ActorRef<P>` is already the required exact-incarnation capability:
-it contains the protocol-indexed mailbox endpoint and the exact incarnation's
-termination observation. It is `Clone`, but deliberately not `Copy` or `Eq`.
-Sending to a closed exact incarnation returns the owned rejected message;
-resolving a later actor at the same logical address produces a different
-reference and observation.
+1. reject an already-bound creator-local nonce;
+2. claim a fresh address independently of the nonce;
+3. initialize the child;
+4. bind its exact endpoint at the selected role; and
+5. interpret dependent sends.
 
-Consequently, an established capability must be a separate clone-only type.
-Replacing the current address value inside `Recipient<P>` while preserving its
-unconditional `Copy + Eq` contract would lie about exact-incarnation identity.
+A local staged route resolves only through the creator's typed role product.
+After commit, the same exact capability is returned in the creation fact and
+may be transferred in an ordinary domain message. No endpoint type parameter
+appears in that message.
 
-### Current lookup consumers
+## Delivery, observation, and shutdown
 
-The current `ActorSpace<P>` combines two different responsibilities:
+Established delivery moves the exact endpoint and message through
+`InterpretEstablished<P>`; it performs no address lookup.
 
-1. exclusive address claim and generation-scoped lease; and
-2. address-to-`ActorRef<P>` resolution.
+Observation moves the exact endpoint through `InterpretObservation<P>` and
+uses a Behavior-issued `ObservationId` only to correlate the observer-local
+relationship and its cancellation. The ID is not actor identity. The terminal
+fact returns to its structurally owned event lane. Duplicate IDs,
+cancellation without a matching observation, and repeated/stale completion are
+explicit `ObservationRejection` outcomes; completion consumes the relationship
+exactly once.
 
-The current runtime resolves through it for ordinary delivery, peer
-observation, and child shutdown. Child termination observation is already
-retained in the creator's local capabilities. Entity activation already
-retains and returns a concrete `ActorRef<P>`.
+Shutdown moves the exact endpoint through `InterpretShutdown<P>`. A test creates
+two endpoint incarnations with the same logical address and proves that
+observing or stopping the old endpoint does not affect the newer one. Repeated
+shutdown is an explicit `AlreadyStopping` or `AlreadyStopped` result.
 
-The associated endpoint family can remove the resolution leg for established
-delivery and established peer observation. A creator-local child route still
-requires a binding after successful installation, and address freshness still
-requires exclusive ownership or an allocator. Neither remaining fact implies
-an application-wide lookup registry, but neither disappears merely because a
-direct capability exists.
+## Wrapper composition
 
-## End-to-end capability matrix
+The composition probe uses the real `Actions`, `SendLayer`, and
+`InterpretSends` implementations from `bombay-behavior`. Both wrapper orders
+preserve:
 
-| Path | Capability result | Remaining runtime responsibility |
-|---|---|---|
-| Established delivery | `EstablishedRecipient<P>` carries the exact endpoint | mailbox admission and closed-endpoint rejection |
-| Peer observation | request carries the same exact capability | subscribe to its retained termination observation |
-| External/root reference | runtime wraps the `ActorRef<P>` it already returns | issue capability only after activation commits |
-| Entity activation | directory already retains `ActorRef<P>` | return/wrap that exact activation capability |
-| Staged same-action child send | `ChildRecipient<P>` remains nonce-only | resolve against the just-committed creator-local binding |
-| Later child use | committed fact may return `EstablishedRecipient<P>` | retain local binding until Behavior accepts the committed fact |
-| Child shutdown/observation | direct endpoint after commit | retain termination and shutdown capabilities per exact child |
-| Fresh address ownership | no change | allocator or exclusive claim/lease, without endpoint lookup |
+- inner-to-outer initialization-effect order;
+- the complete creation vector;
+- the exact `Goto` verdict; and
+- each owned effect lane exactly once.
 
-## Required Behavior shape
+The traces are `Base -> Observe -> Timer` and `Base -> Timer -> Observe` for
+the two nesting orders. The established capability adds a normal typed effect
+lane; it requires no privileged composition rule.
 
-The smallest truthful Behavior-side construction is additive:
+## ActorSpaces disposition
 
-1. Keep the current address-only `Recipient<P>` and `ChildRecipient<P>` while
-   migration is evaluated.
-2. Add a runtime/address-owned endpoint-family subtrait rather than adding an
-   associated endpoint to every `Protocol`.
-3. Add an opaque clone-only `EstablishedRecipient<P>` whose endpoint field is
-   private.
-4. Add an established delivery effect whose explicit structural interpretation
-   boundary moves the endpoint into the selected runtime capability trait.
-5. Add protocol- or role-indexed committed-creation facts when Behavior needs
-   to retain or transfer the newly installed endpoint. Rejection variants own
-   no recipient.
-6. Make exact peer observation consume an established recipient instead of
-   asking the runtime to rediscover an incarnation from an address.
+The full probe replaces, rather than merely renames, each relevant
+responsibility:
 
-This preserves `Behavior::Protocol` as canonical identity. The associated
-endpoint projection is navigation evidence selected by `P`; it is neither a
-key nor a second protocol identity.
+| Existing responsibility | Research replacement |
+|---|---|
+| application-wide address-to-endpoint resolution | exact `EstablishedRecipient<P>` carried by the effect |
+| fresh address collision prevention | non-resolving allocator/claim set |
+| staged child correlation | creator-local `(Role, Nonce)` route |
+| heterogeneous child endpoint retention | closed structural role-binding product |
+| same-action child delivery | local binding populated before sends |
+| peer observation | exact endpoint plus observer-local correlation |
+| child/peer shutdown | exact endpoint request |
 
-## Important obstruction: `MailAddr` ownership
+Therefore an application-wide `ActorSpaces` lookup product is not required for
+established internal capabilities. A creator-local child-binding product still
+exists, but it is derived from the parent's authored birth roles and cannot
+resolve arbitrary addresses. It is not a second protocol identity.
+
+Address-only `Recipient<P>` remains a distinct capability. Any path that keeps
+only a raw address still requires an external transport/resolution boundary.
+Removing Bombay's local `ActorSpaces` therefore also requires migrating
+internal delivery, observation, and shutdown paths to established recipients;
+the GAT alone cannot reinterpret an address as a capability.
+
+## `MailAddr::birth` owner boundary
+
+The probe constructs two `(creator, nonce)` pairs for which deterministic
+`Address::birth` produces the same candidate, then proves the allocator issues
+two distinct claimed addresses. This makes the separation executable:
+
+```text
+nonce correlation != address derivation != fresh allocation
+```
+
+A production Behavior contract must stop presenting `MailAddr::birth` as the
+installed child address. It may retain deterministic derivation only as an
+explicit routing hint with no freshness meaning, or remove that operation from
+the installation contract. The runtime allocator is authoritative for the
+address bound into the endpoint.
+
+This is a stronger and more Agha-faithful boundary than the earlier
+representation-only probe.
+
+## Rust ownership obstruction
 
 A downstream runtime cannot implement a Behavior-owned endpoint-family trait
-for Behavior-owned `MailAddr`: Rust's orphan rule forbids implementing a
-foreign trait for a foreign type. Putting the family directly on the existing
-`Address` trait would instead force Behavior's `MailAddr` implementation to
-choose a concrete runtime endpoint it cannot depend on.
+for Behavior-owned `MailAddr`; the orphan rule forbids the foreign-trait/
+foreign-type implementation. Putting the endpoint family directly on every
+`Protocol` would reintroduce domain boilerplate.
 
-Therefore a direct-capability runtime needs a runtime-owned address namespace
-type that implements both `Address` and the endpoint-family subtrait. Domain
-protocols still write only their existing `type Addr = ...`; they do not write
-keys or endpoint types. For Bombay this would be a downstream migration from
-Behavior's `MailAddr` to a Bombay-owned address type, not a change made on this
-branch.
+The viable candidate therefore uses a runtime-owned address namespace that
+implements both `Address` and `EndpointAddress`. Bombay would need to own and
+re-export that address type for its protocols. No crate can bypass this
+coherence rule or make the E0207 hidden-host-index pattern sound.
 
-No crate can remove this coherence boundary or make the E0207 impl sound. The
-viable mechanism is stable Rust's generic associated types plus a runtime-owned
-implementing type.
+## What Bombay would need after a production contract exists
 
-## Why this does not yet prove ActorSpaces removable
+Bombay's later half would be:
 
-The probe proves that application-wide established-recipient lookup is not
-required by the actor model or by Rust. It does **not** prove that Bombay can
-delete its complete `ActorSpaces` product without further downstream design,
-because the current product also supplies:
+1. own the concrete address namespace and its `ActorRef<P>` endpoint family;
+2. replace deterministic child-address installation with a collision-free,
+   non-resolving allocator/claim capability;
+3. return role-indexed installed/rejected creation facts;
+4. retain creator-local role bindings for staged same-action effects;
+5. route established delivery directly through the carried `ActorRef<P>`;
+6. observe and shut down exact carried endpoints;
+7. return established references from root and entity activation; and
+8. keep raw-address resolution only at genuine external transport boundaries.
 
-- address claim/lease ownership;
-- persistent creator-local child resolution;
-- heterogeneous child endpoint storage; and
-- lifecycle operations that still accept raw addresses.
+Bombay must wait until Behavior and Behavior Actors publish and test that
+production contract. This research branch changes neither repository's
+released API.
 
-A downstream design can remove the public product only after replacing those
-responsibilities explicitly. Likely replacements are a non-resolving freshness
-allocator/claim capability plus creator-local typed child bindings. A single
-untyped map would violate the static-dispatch rule, and a core token mapped
-back to endpoints would merely recreate lookup.
+## Mechanical evidence
 
-## Exact-incarnation and stable-proxy semantics
+Positive tests cover:
 
-An established capability names the exact installed incarnation. It remains a
-valid value after termination but sends are rejected by that closed endpoint;
-it must never retarget to a later actor at the same logical address. Stable
-identity remains the existing proxy-derived construction. A proxy's
-established capability names the proxy incarnation, not whichever worker it
-currently forwards to.
+- deterministic address-hint collision versus distinct fresh allocation;
+- address-claim collision rejection with no capability;
+- initialization rejection and retry with a new address;
+- duplicate roles and cross-role nonce collision;
+- commit-before-dependent-send and later capability transfer;
+- a pure `Behavior` fold whose installed, rejected, and stale-fact paths keep
+  capability use inside explicit `Actions`;
+- exact observation, cancellation, and shutdown; and
+- both wrapper orders with complete `Actions` preservation.
 
-This is a Bombay policy choice supported by the current `ActorRef<P>` behavior,
-not an additional Agha law.
+An independent model exhaustively checks all 1,728 three-attempt creation
+sequences across both duplicate protocol roles, two nonces, and all three
+installation dispositions. After every attempt it compares the resolution
+class, claimed-address sequence, and every role/nonce binding.
+
+Compile-fail probes cover:
+
+- E0207 for an arbitrary hidden endpoint parameter;
+- cross-protocol established delivery;
+- absence of direct endpoint extraction;
+- cross-role creation-fact exchange;
+- absence of a recipient field on rejected creation; and
+- use of a staged child as an established delivery target.
+
+The checker also rejects dynamic dispatch, reflection, unchecked code, erased
+heap dispatch, and address-to-endpoint map machinery in the probe source.
 
 ## Decision
 
-**Viable minimal Behavior boundary; insufficient alone to delete
-ActorSpaces.**
+**Retain the full research result.** The experiment shows a coherent static
+Behavior-side design that can remove Bombay's application-wide local endpoint
+resolver while preserving the actor-model laws and the explicit `Actions`
+boundary.
 
-The established-recipient hypothesis succeeds at the type-representation
-level and identifies a lawful, zero-domain-endpoint-boilerplate core shape.
-It removes the cause of lookup for already-established recipients without
-erasure, hashing, macros, runtime protocol keys, or a second protocol identity.
-
-Production implementation should be a separate reviewed change. Before it is
-accepted, it must define the complete committed-creation sum, update peer
-observation to exact capabilities, prove every wrapper order, and obtain a
-downstream Bombay design for runtime-owned addresses, local child bindings,
-and non-resolving freshness claims. This research branch intentionally retains
-no production API change.
-
-## Production impact
-
-None. All retained changes are confined to this research campaign.
+Do not call this production-ready. Production still requires a separately
+reviewed public API change in Behavior and Behavior Actors, complete migration
+of their lifecycle types and wrappers, compile-fail coverage in the shipped
+crates, and a downstream Bombay implementation review.
 
 ## Verification
 
-Prepared from released `main` at `cabc047c61a7d824a3d6b5846ea967f7cc115774`.
-
-- `research/established-recipient-capability/check.sh`: passed; 2 positive
-  semantic tests and 3 compile-fail contracts.
-- `cargo nextest run --workspace`: passed; 450 tests.
-- `nix flake check -L`: passed all seven compatible-system checks.
+- `research/established-recipient-capability/check.sh`: 10 positive semantic
+  tests and 6 compile-fail contracts passed.
+- The probe uses pinned Rust 1.95.0-compatible dependencies.
+- `cargo clippy --manifest-path
+  research/established-recipient-capability/probe/Cargo.toml --all-targets --
+  -D warnings` passed.
+- `cargo nextest run --workspace`: 450 tests passed.
+- `nix flake check -L`: all 7 compatible checks passed.

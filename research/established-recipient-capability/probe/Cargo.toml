@@ -6,11 +6,15 @@ publish = false
 
 [dependencies]
 behavior = { package = "bombay-behavior", path = "../../../crates/behavior" }
+futures-lite = "2.6.1"
 
 [features]
 direct-use = []
 e0207 = []
 wrong-protocol = []
+wrong-role = []
+rejected-capability = []
+staged-delivery = []
 
 [[bin]]
 name = "positive"
@@ -30,5 +34,20 @@ required-features = ["e0207"]
 name = "wrong-protocol"
 path = "src/bin/wrong_protocol.rs"
 required-features = ["wrong-protocol"]
+
+[[bin]]
+name = "wrong-role"
+path = "src/bin/wrong_role.rs"
+required-features = ["wrong-role"]
+
+[[bin]]
+name = "rejected-capability"
+path = "src/bin/rejected_capability.rs"
+required-features = ["rejected-capability"]
+
+[[bin]]
+name = "staged-delivery"
+path = "src/bin/staged_delivery.rs"
+required-features = ["staged-delivery"]
 
 [workspace]

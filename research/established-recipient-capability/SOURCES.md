@@ -14,8 +14,9 @@
 - Gul Agha, Ian Mason, Scott Smith, and Carolyn Talcott, *A Foundation for
   Actor Computation*, JFP 7(1), 1997:
   <https://osl.cs.illinois.edu/media/papers/agha-1997-jfp-a_foundation_for_actor_computation.pdf>
-  — names, message packets, fresh allocation, and locality in the later
-  operational foundation.
+  — names, message packets, and locality in the later operational foundation;
+  the `<new>` rule on pp. 18–19 requires the allocated address to be fresh with
+  respect to the configuration.
 - Gul Agha and Christian Callsen, *ActorSpaces: An Open Distributed
   Programming Paradigm*, PPOPP 1993:
   <https://osl.cs.illinois.edu/media/papers/agha-1993-ppopp-actorspaces.pdf>
