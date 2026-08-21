@@ -22,12 +22,14 @@ mod user_event;
 pub use actor::{
     Address, AllocationRejection, BirthMode, BirthNodeMapper, BirthNodeProtocols, BirthProtocol,
     BirthProtocolAt, BirthProtocolHead, BirthProtocolProduct, BirthProtocolTail, BirthProtocols,
-    Births, ChildChoice, ChildCons, ChildDelivery, ChildHead, ChildPosition, ChildProduct,
-    ChildRole, ChildRoute, ChildTail, Children, ChildrenError, Create, CreationKind,
-    CreationRejection, Delivery, DispatchBirth, DispatchBirthAt, EndpointAddress, EstablishedActor,
+    Births, ChildChoice, ChildCons, ChildDelivery, ChildHead, ChildOccurrence,
+    ChildOccurrenceResolution, ChildPosition, ChildProduct, ChildRole, ChildRoute, ChildTail,
+    Children, ChildrenError, Create, CreationKind, CreationRejection, DeclaredChildOccurrence,
+    Delivery, DispatchBirth, DispatchBirthAt, EndpointAddress, EstablishedActor,
     EstablishedCreation, EstablishedDelivery, EstablishedRecipient, FoldBirthNode, FoldedBirthNode,
     InstallBirth, InterpretEstablished, MailAddr, NoBirthProtocols, NoBirths, NoChildren,
-    Recipient, RoleChild, RoleProtocol,
+    Recipient, ResolveChildOccurrence, ResolvedChild, ResolvedChildPosition, RoleChild,
+    RoleProtocol, StructuralChildOccurrence,
 };
 pub use effect::Effect;
 pub use effects::{
@@ -60,10 +62,12 @@ pub use user_event::{
 /// `births = { lane: Child }` declaration generates `ActorChildren` as the
 /// exact recursive `ChildChoice` produced by `Children` calls in declaration
 /// order. It also generates `ActorChildrenRoutes`, containing one nominally
-/// distinct [`ChildRoute`] per declared role. A route is the single typed
-/// source for staging that role's creation and constructing its
-/// creator-local [`ChildDelivery`]. Creation remains an authored [`Children`]
-/// value and is never performed by the macro.
+/// distinct [`ChildRoute`] per declared role. Every role implements both
+/// [`ChildRole`] for its authored parent and [`ChildOccurrence`] for sealed
+/// resolution against that parent or a topology-transparent wrapper. A route
+/// is the single typed source for staging that role's creation and constructing
+/// its creator-local [`ChildDelivery`]. Creation remains an authored
+/// [`Children`] value and is never performed by the macro.
 ///
 /// Invalid receivers are rejected at compile time.
 ///

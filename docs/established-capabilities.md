@@ -129,6 +129,14 @@ runtime decides what endpoint and nonce storage that leaf contains. It adds no
 runtime value or capability to `Behavior`, and it deliberately does not flatten
 descendant actors into the current creator's namespace.
 
+Effects retain their nominal occurrence rather than the running wrapper type.
+`ResolveChildOccurrence<O>` maps that occurrence back to the exact direct child
+and position for the concrete emitter. Generated roles pass transparently
+through wrappers only when `Behavior::Protocol` and `Behavior::Birth` are both
+unchanged. Raw structural positions always refer to the emitter's current
+birth node, including a topology-changing wrapper's proxy child. No endpoint,
+binding, or runtime lookup is performed by this type-level resolution.
+
 `EstablishedCreation<P, O>` deliberately excludes the parent behavior and
 concrete child behavior from its identity. Ordinary consumers need only the
 canonical protocol and occurrence. `into_actor::<Parent>()` reintroduces the

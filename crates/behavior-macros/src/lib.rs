@@ -598,6 +598,12 @@ fn generate_births(
                     type Child = #declared_child_types;
                     type Position = #role_positions;
                 }
+
+                impl #parent_impl_generics #behavior::ChildOccurrence<#parent> for #role_names
+                    #parent_where_clause
+                {
+                    type Resolution = #behavior::DeclaredChildOccurrence;
+                }
             )*
 
             pub struct #roles_name;

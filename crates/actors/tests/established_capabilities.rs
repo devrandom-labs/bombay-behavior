@@ -1,11 +1,13 @@
 use behavior_actors::{
-    Actions, Activate as _, Behavior, BehaviorActed, Births, CancelObservation, ChildHead,
-    ChildRole, ChildRoute, CreationKind, CreationRejection, EndpointAddress, EstablishedCreation,
-    EstablishedDelivery, EstablishedObservation, EstablishedRecipient, EventLayer, Here, Ingress,
+    Actions, Activate as _, Behavior, BehaviorActed, BehaviorBase, Births, CancelObservation,
+    ChildHead, ChildOccurrence, ChildRole, ChildRoute, CreationKind, CreationRejection,
+    DeclaredChildOccurrence, EndpointAddress, EstablishedCreation, EstablishedDelivery,
+    EstablishedObservation, EstablishedRecipient, EventLayer, Guardian, Here, Ingress,
     InterpretEstablishedDelivery, InterpretEstablishedObservation, InterpretEstablishedShutdown,
     InterpretSends, InterpreterRequests, Never, NoBirths, ObservationId, ObservationOperation,
-    ObservationRejection, ObserveEstablished, ObserveEstablishedCreation, Protocol,
-    SendInterpreter, SendLayer, ShutdownEstablished, ShutdownId, ShutdownRequested, User,
+    ObservationRejection, ObserveEstablished, ObserveEstablishedCreation, Protocol, Proxy,
+    ReceiveTimeout, ResolveChildOccurrence, SendInterpreter, SendLayer, ShutdownEstablished,
+    ShutdownId, ShutdownRequested, Stash, StopOnShutdown, Supervise, User, Watch,
 };
 use core::future::Future;
 use core::marker::PhantomData;
@@ -111,6 +113,10 @@ impl ChildRole<Parent> for PrimaryWorker {
     type Position = ChildHead;
 }
 
+impl ChildOccurrence<Parent> for PrimaryWorker {
+    type Resolution = DeclaredChildOccurrence;
+}
+
 type CreationFact = EstablishedCreation<WorkerProtocol, PrimaryWorker>;
 type ParentEvent = EventLayer<CreationFact, User<RuntimeAddr, ()>>;
 type ParentSends = SendLayer<
@@ -131,6 +137,14 @@ enum ParentError {
 
 struct Parent {
     state: ParentState,
+}
+
+impl BehaviorBase for Parent {
+    type Base = Self;
+
+    fn base(&self) -> &Self::Base {
+        self
+    }
 }
 
 impl Parent {
@@ -189,6 +203,55 @@ impl Behavior for Parent {
             }
         }
     }
+}
+
+struct GeneratedParent;
+
+#[behavior::behavior(
+    addr = RuntimeAddr,
+    message = (),
+    births = { worker: Worker },
+)]
+impl GeneratedParent {
+    fn receive(&mut self, _: RuntimeAddr, _: ()) -> BehaviorActed<Self> {
+        Ok(Actions::cont())
+    }
+}
+
+fn resolves_occurrence<Emitter, Occurrence, Child, Position>()
+where
+    Emitter: ResolveChildOccurrence<Occurrence, Child = Child, Position = Position>,
+    Child: Behavior,
+{
+}
+
+#[test]
+fn nominal_occurrences_cross_only_topology_transparent_wrappers() {
+    resolves_occurrence::<Parent, PrimaryWorker, Worker, ChildHead>();
+    resolves_occurrence::<StopOnShutdown<Parent>, PrimaryWorker, Worker, ChildHead>();
+    resolves_occurrence::<Guardian<StopOnShutdown<Parent>>, PrimaryWorker, Worker, ChildHead>();
+    resolves_occurrence::<
+        Guardian<StopOnShutdown<GeneratedParent>>,
+        GeneratedParentChildrenWorker,
+        Worker,
+        ChildHead,
+    >();
+    resolves_occurrence::<
+        Guardian<StopOnShutdown<ReceiveTimeout<Watch<Stash<GeneratedParent>>>>>,
+        GeneratedParentChildrenWorker,
+        Worker,
+        ChildHead,
+    >();
+    resolves_occurrence::<
+        Stash<Guardian<StopOnShutdown<GeneratedParent>>>,
+        GeneratedParentChildrenWorker,
+        Worker,
+        ChildHead,
+    >();
+
+    // Supervision owns a different direct child topology, so its raw position
+    // resolves the proxy rather than inheriting `PrimaryWorker`.
+    resolves_occurrence::<Supervise<Parent, Worker>, ChildHead, Proxy<Worker>, ChildHead>();
 }
 
 #[derive(Default)]

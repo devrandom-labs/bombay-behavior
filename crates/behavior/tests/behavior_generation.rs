@@ -283,6 +283,13 @@ where
 {
 }
 
+fn resolves_child_occurrence<Emitter, Occurrence, Child, Position>()
+where
+    Emitter: behavior::ResolveChildOccurrence<Occurrence, Child = Child, Position = Position>,
+    Child: behavior::Behavior,
+{
+}
+
 #[derive(Debug, PartialEq, Eq)]
 enum IndependentTarget<Head, Tail> {
     Selected(u64, core::marker::PhantomData<fn() -> Head>),
@@ -330,6 +337,21 @@ fn generated_child_selectors_prove_the_exact_parent_role_and_child() {
     has_child_position::<Bootstrap, BootstrapChildrenFirst, behavior::ChildTail<behavior::ChildHead>>(
     );
     has_child_position::<Bootstrap, BootstrapChildrenSecond, behavior::ChildHead>();
+    resolves_child_occurrence::<
+        Bootstrap,
+        BootstrapChildrenFirst,
+        FirstChild,
+        behavior::ChildTail<behavior::ChildHead>,
+    >();
+    resolves_child_occurrence::<Bootstrap, BootstrapChildrenSecond, SecondChild, behavior::ChildHead>(
+    );
+    resolves_child_occurrence::<Bootstrap, behavior::ChildHead, SecondChild, behavior::ChildHead>();
+    resolves_child_occurrence::<
+        Bootstrap,
+        behavior::ChildTail<behavior::ChildHead>,
+        FirstChild,
+        behavior::ChildTail<behavior::ChildHead>,
+    >();
 }
 
 #[test]
@@ -355,6 +377,19 @@ fn generated_positions_lower_named_roles_into_an_independent_sum() {
         IndependentTarget::Remaining(IndependentTarget::Selected(5, _))
     ));
     assert!(matches!(fallback, IndependentTarget::Selected(7, _)));
+
+    resolves_child_occurrence::<
+        Positioned,
+        PositionedChildrenPrimary,
+        FirstChild,
+        behavior::ChildTail<behavior::ChildTail<behavior::ChildHead>>,
+    >();
+    resolves_child_occurrence::<
+        Positioned,
+        PositionedChildrenFallback,
+        FirstChild,
+        behavior::ChildHead,
+    >();
 }
 
 #[test]
@@ -366,6 +401,12 @@ fn generated_child_routes_preserve_only_the_child_types_required_generics() {
         Generic(core::marker::PhantomData),
     );
     has_child_position::<Advanced<'static, u16, 3>, AdvancedChildrenGeneric, behavior::ChildHead>();
+    resolves_child_occurrence::<
+        Advanced<'static, u16, 3>,
+        AdvancedChildrenGeneric,
+        Generic<u16>,
+        behavior::ChildHead,
+    >();
 
     assert_eq!(route.nonce(), 23);
 }

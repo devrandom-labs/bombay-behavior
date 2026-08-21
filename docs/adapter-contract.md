@@ -92,6 +92,13 @@ none of the creation transaction above. Each installed child derives its own
 product from its own `Behavior::Birth`, so creator namespaces are not flattened
 or shared.
 
+When an effect carries a nominal occurrence, require
+`Emitter: ResolveChildOccurrence<Occurrence>` and select the mapper-owned slot
+with its associated `Position`. This sealed projection accepts generated roles,
+raw `ChildHead`/`ChildTail<_>` paths, and genuinely transparent wrappers. It
+rejects inherited roles when a wrapper changes protocol or birth topology; an
+adapter must not repair that mismatch with a registry or runtime search.
+
 ## Destination interpretation
 
 The three delivery paths have different obligations:

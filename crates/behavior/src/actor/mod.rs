@@ -8,8 +8,10 @@ pub use addressing::{
 pub use creation::{
     AllocationRejection, BirthMode, BirthNodeMapper, BirthNodeProtocols, BirthProtocol,
     BirthProtocolAt, BirthProtocolHead, BirthProtocolProduct, BirthProtocolTail, BirthProtocols,
-    Births, ChildChoice, ChildCons, ChildDelivery, ChildHead, ChildPosition, ChildProduct,
-    ChildRole, ChildRoute, ChildTail, Children, ChildrenError, Create, CreationKind,
-    CreationRejection, DispatchBirth, DispatchBirthAt, EstablishedCreation, FoldBirthNode,
-    FoldedBirthNode, InstallBirth, NoBirthProtocols, NoBirths, NoChildren, RoleChild, RoleProtocol,
+    Births, ChildChoice, ChildCons, ChildDelivery, ChildHead, ChildOccurrence,
+    ChildOccurrenceResolution, ChildPosition, ChildProduct, ChildRole, ChildRoute, ChildTail,
+    Children, ChildrenError, Create, CreationKind, CreationRejection, DeclaredChildOccurrence,
+    DispatchBirth, DispatchBirthAt, EstablishedCreation, FoldBirthNode, FoldedBirthNode,
+    InstallBirth, NoBirthProtocols, NoBirths, NoChildren, ResolveChildOccurrence, ResolvedChild,
+    ResolvedChildPosition, RoleChild, RoleProtocol, StructuralChildOccurrence,
 };

@@ -17,6 +17,9 @@ All notable changes to `bombay-behavior-actors` are documented here.
 
 ### Changed
 
+- Preserve generated child-role resolution through topology-transparent
+  lifecycle, timing, stash, and observation wrapper compositions, while
+  topology-changing supervision exposes its own proxy child position.
 - Route built-in same-action proxy and worker communication through
   occurrence-indexed `ChildDelivery` rather than nonce-derived logical
   addresses.

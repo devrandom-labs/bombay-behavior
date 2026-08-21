@@ -5,7 +5,7 @@ use core::marker::PhantomData;
 
 use super::addressing::{Address, EndpointAddress, EstablishedActor, EstablishedRecipient};
 use crate::next::Never;
-use crate::{Behavior, BehaviorAddr, Protocol};
+use crate::{Behavior, BehaviorAddr, BehaviorBase, Protocol};
 
 /// Behavior-owned provenance for a staged fresh actor creation request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -69,6 +69,147 @@ pub trait ChildRole<Parent: Behavior> {
     /// Structural position of this role in `Parent`'s closed child sum.
     type Position: ChildPosition<<Parent::Birth as BirthMode>::Child, Self::Child>;
 }
+
+/// Declares how one effect occurrence is resolved from an authored parent.
+///
+/// This is topology metadata, not actor identity or a runtime capability.
+/// Generated nominal roles implement it with their declared parent, child,
+/// and structural position. [`ChildHead`] and [`ChildTail`] implement it as
+/// raw structural positions. Consumers normally use
+/// [`ResolveChildOccurrence`] rather than inspecting `Resolution`.
+///
+/// Manually authored roles may implement this trait as the power-user path by
+/// selecting [`DeclaredChildOccurrence`] with the same relationship expressed
+/// by their [`ChildRole`] implementation. The actual resolution contract is
+/// sealed, so downstream code cannot redefine wrapper transparency or replace
+/// structural resolution with a runtime lookup.
+pub trait ChildOccurrence<Parent: Behavior>: Sized {
+    /// Sealed descriptor interpreted by [`ResolveChildOccurrence`].
+    #[doc(hidden)]
+    type Resolution: ChildOccurrenceResolution<Parent, Self>;
+}
+
+/// Sealed descriptor for one nominal child occurrence declared by `Parent`.
+///
+/// This type exists so generated and manually authored roles can carry their
+/// static declaration into the sealed resolver. It has no values or runtime
+/// behavior.
+#[doc(hidden)]
+pub struct DeclaredChildOccurrence;
+
+/// Sealed descriptor for a raw structural child position.
+///
+/// This type has no values or runtime behavior.
+#[doc(hidden)]
+pub struct StructuralChildOccurrence<Position>(PhantomData<fn() -> Position>);
+
+/// Resolve an effect's nominal or structural occurrence against the concrete
+/// behavior currently being interpreted.
+///
+/// This is a sealed, type-level derived construction. It performs no lookup,
+/// allocates no actor, and introduces no second identity: the resolved child's
+/// [`Behavior::Protocol`] remains canonical identity, while `Position` is only
+/// navigation evidence into the emitter's direct birth algebra.
+///
+/// A nominal role follows [`BehaviorBase`] through a transparent wrapper only
+/// when the wrapper preserves both the exact protocol and the exact birth
+/// algebra. A wrapper that changes child topology cannot inherit a role whose
+/// declaration no longer describes its direct births. Raw [`ChildHead`] and
+/// [`ChildTail`] positions instead resolve directly against the running
+/// emitter's own birth algebra.
+///
+/// A topology-changing wrapper cannot silently reuse its base role:
+///
+/// ```compile_fail
+/// use behavior::{
+///     Actions, Behavior, BehaviorActed, BehaviorBase, Births, ChildHead,
+///     ChildOccurrence, ChildRole, DeclaredChildOccurrence, MailAddr, Never,
+///     NoBirths, NoSends, Protocol, ResolveChildOccurrence,
+/// };
+///
+/// struct ActorProtocol;
+/// impl Protocol for ActorProtocol {
+///     type Addr = MailAddr;
+///     type Msg = Never;
+/// }
+///
+/// macro_rules! inert {
+///     ($actor:ident, $birth:ty) => {
+///         struct $actor;
+///         impl Behavior for $actor {
+///             type Protocol = ActorProtocol;
+///             type Event = Never;
+///             type Sends = NoSends;
+///             type Ph = Never;
+///             type Error = Never;
+///             type Birth = $birth;
+///             fn transition(
+///                 &mut self,
+///                 _: behavior::ActiveTurn,
+///                 event: Never,
+///             ) -> BehaviorActed<Self> {
+///                 match event {}
+///             }
+///         }
+///     };
+/// }
+/// inert!(Child, NoBirths);
+/// inert!(Proxy, NoBirths);
+/// inert!(Parent, Births<Child>);
+/// inert!(ChangedTopology, Births<Proxy>);
+///
+/// impl BehaviorBase for Parent {
+///     type Base = Self;
+///     fn base(&self) -> &Self { self }
+/// }
+/// impl BehaviorBase for ChangedTopology {
+///     type Base = Parent;
+///     fn base(&self) -> &Parent { unreachable!() }
+/// }
+///
+/// struct WorkerRole;
+/// impl ChildRole<Parent> for WorkerRole {
+///     type Child = Child;
+///     type Position = ChildHead;
+/// }
+/// impl ChildOccurrence<Parent> for WorkerRole {
+///     type Resolution = DeclaredChildOccurrence;
+/// }
+///
+/// fn require<T: ResolveChildOccurrence<WorkerRole>>() {}
+/// require::<ChangedTopology>();
+/// ```
+pub trait ResolveChildOccurrence<Occurrence>:
+    Behavior + sealed::ResolveChildOccurrence<Occurrence>
+{
+    /// Exact concrete child behavior at this occurrence.
+    type Child: Behavior;
+
+    /// Exact structural position in this emitter's direct birth algebra.
+    type Position: ChildPosition<<Self::Birth as BirthMode>::Child, Self::Child>;
+}
+
+impl<Emitter, Occurrence> ResolveChildOccurrence<Occurrence> for Emitter
+where
+    Emitter: Behavior + BehaviorBase + sealed::ResolveChildOccurrence<Occurrence>,
+    Emitter::Base: Behavior,
+    Occurrence: ChildOccurrence<Emitter::Base>,
+    Occurrence::Resolution: ResolveChildOccurrenceDescriptor<Emitter, Occurrence>,
+{
+    type Child =
+        <Occurrence::Resolution as ResolveChildOccurrenceDescriptor<Emitter, Occurrence>>::Child;
+    type Position =
+        <Occurrence::Resolution as ResolveChildOccurrenceDescriptor<Emitter, Occurrence>>::Position;
+}
+
+/// Child behavior resolved from `Occurrence` for the running `Emitter`.
+pub type ResolvedChild<Emitter, Occurrence> =
+    <Emitter as ResolveChildOccurrence<Occurrence>>::Child;
+
+/// Structural birth position resolved from `Occurrence` for the running
+/// `Emitter`.
+pub type ResolvedChildPosition<Emitter, Occurrence> =
+    <Emitter as ResolveChildOccurrence<Occurrence>>::Position;
 
 /// Child behavior selected by one named role.
 pub type RoleChild<Parent, Role> = <Role as ChildRole<Parent>>::Child;
@@ -601,6 +742,105 @@ where
 {
 }
 
+impl<Parent: Behavior> ChildOccurrence<Parent> for ChildHead {
+    type Resolution = StructuralChildOccurrence<Self>;
+}
+
+impl<Parent: Behavior, Position> ChildOccurrence<Parent> for ChildTail<Position> {
+    type Resolution = StructuralChildOccurrence<Self>;
+}
+
+/// Sealed proof that an occurrence may select one resolver descriptor.
+///
+/// Nominal occurrences can select [`DeclaredChildOccurrence`] only when their
+/// existing [`ChildRole`] implementation supplies the child and position. Raw
+/// structural descriptors are available only to the identical
+/// [`ChildHead`] or [`ChildTail`] occurrence.
+#[doc(hidden)]
+pub trait ChildOccurrenceResolution<Parent: Behavior, Occurrence>:
+    sealed::ChildOccurrenceDescriptor + sealed::OccurrenceResolution<Parent, Occurrence>
+{
+}
+
+impl<Parent, Occurrence> ChildOccurrenceResolution<Parent, Occurrence> for DeclaredChildOccurrence
+where
+    Parent: Behavior,
+    Occurrence: ChildRole<Parent>,
+{
+}
+
+impl<Parent: Behavior> ChildOccurrenceResolution<Parent, ChildHead>
+    for StructuralChildOccurrence<ChildHead>
+{
+}
+
+impl<Parent: Behavior, Position> ChildOccurrenceResolution<Parent, ChildTail<Position>>
+    for StructuralChildOccurrence<ChildTail<Position>>
+{
+}
+
+/// Sealed implementation detail for resolving occurrence descriptors.
+#[doc(hidden)]
+pub trait ResolveChildOccurrenceDescriptor<Emitter: Behavior, Occurrence>:
+    sealed::ChildOccurrenceDescriptor + sealed::ResolveDescriptor<Emitter, Occurrence>
+{
+    type Child: Behavior;
+    type Position: ChildPosition<<Emitter::Birth as BirthMode>::Child, Self::Child>;
+}
+
+impl<Emitter, Occurrence, Position> ResolveChildOccurrenceDescriptor<Emitter, Occurrence>
+    for StructuralChildOccurrence<Position>
+where
+    Emitter: Behavior,
+    <Emitter::Birth as BirthMode>::Child: BirthNodeAt<Position>,
+    Position: ChildPosition<
+            <Emitter::Birth as BirthMode>::Child,
+            <<Emitter::Birth as BirthMode>::Child as BirthNodeAt<Position>>::Child,
+        >,
+{
+    type Child = <<Emitter::Birth as BirthMode>::Child as BirthNodeAt<Position>>::Child;
+    type Position = Position;
+}
+
+impl<Emitter, Occurrence> ResolveChildOccurrenceDescriptor<Emitter, Occurrence>
+    for DeclaredChildOccurrence
+where
+    Emitter: Behavior<
+            Protocol = <<Emitter as BehaviorBase>::Base as Behavior>::Protocol,
+            Birth = <<Emitter as BehaviorBase>::Base as Behavior>::Birth,
+        > + BehaviorBase,
+    Emitter::Base: Behavior,
+    Occurrence: ChildRole<Emitter::Base>,
+{
+    type Child = Occurrence::Child;
+    type Position = Occurrence::Position;
+}
+
+/// Sealed inverse projection from one structural position to its child.
+#[doc(hidden)]
+pub trait BirthNodeAt<Position>: sealed::BirthNode {
+    type Child: Behavior;
+}
+
+impl<Child: Behavior> BirthNodeAt<ChildHead> for Child {
+    type Child = Child;
+}
+
+impl<Head: Behavior, Tail> BirthNodeAt<ChildHead> for ChildChoice<Head, Tail>
+where
+    Tail: sealed::BirthNode,
+{
+    type Child = Head;
+}
+
+impl<Head, Tail, Position> BirthNodeAt<ChildTail<Position>> for ChildChoice<Head, Tail>
+where
+    Head: Behavior,
+    Tail: BirthNodeAt<Position>,
+{
+    type Child = <Tail as BirthNodeAt<Position>>::Child;
+}
+
 /// Downstream type constructor for a structural fold of one direct-child sum.
 ///
 /// Behavior owns the closed node algebra: a concrete [`Behavior`] leaf,
@@ -723,7 +963,11 @@ where
 pub type FoldedBirthNode<Node, Mapper> = <Node as FoldBirthNode<Mapper>>::Folded;
 
 mod sealed {
-    use super::{Behavior, ChildChoice, Never};
+    use super::{
+        Behavior, BehaviorBase, BirthMode, BirthNodeAt, ChildChoice, ChildHead, ChildOccurrence,
+        ChildRole, ChildTail, DeclaredChildOccurrence, Never, ResolveChildOccurrenceDescriptor,
+        StructuralChildOccurrence,
+    };
 
     pub trait BirthNode {}
 
@@ -740,6 +984,63 @@ mod sealed {
 
     pub trait ChildPosition {}
     pub trait ChildProduct {}
+
+    pub trait ChildOccurrenceDescriptor {}
+
+    impl ChildOccurrenceDescriptor for DeclaredChildOccurrence {}
+
+    impl<Position> ChildOccurrenceDescriptor for StructuralChildOccurrence<Position> {}
+
+    pub trait OccurrenceResolution<Parent: Behavior, Occurrence> {}
+
+    impl<Parent, Occurrence> OccurrenceResolution<Parent, Occurrence> for DeclaredChildOccurrence
+    where
+        Parent: Behavior,
+        Occurrence: ChildRole<Parent>,
+    {
+    }
+
+    impl<Parent: Behavior> OccurrenceResolution<Parent, ChildHead>
+        for StructuralChildOccurrence<ChildHead>
+    {
+    }
+
+    impl<Parent: Behavior, Position> OccurrenceResolution<Parent, ChildTail<Position>>
+        for StructuralChildOccurrence<ChildTail<Position>>
+    {
+    }
+
+    pub trait ResolveDescriptor<Emitter: Behavior, Occurrence> {}
+
+    impl<Emitter, Occurrence, Position> ResolveDescriptor<Emitter, Occurrence>
+        for StructuralChildOccurrence<Position>
+    where
+        Emitter: Behavior,
+        <Emitter::Birth as BirthMode>::Child: BirthNodeAt<Position>,
+    {
+    }
+
+    impl<Emitter, Occurrence> ResolveDescriptor<Emitter, Occurrence> for DeclaredChildOccurrence
+    where
+        Emitter: Behavior<
+                Protocol = <<Emitter as BehaviorBase>::Base as Behavior>::Protocol,
+                Birth = <<Emitter as BehaviorBase>::Base as Behavior>::Birth,
+            > + BehaviorBase,
+        Emitter::Base: Behavior,
+        Occurrence: ChildRole<Emitter::Base>,
+    {
+    }
+
+    pub trait ResolveChildOccurrence<Occurrence> {}
+
+    impl<Emitter, Occurrence> ResolveChildOccurrence<Occurrence> for Emitter
+    where
+        Emitter: Behavior + BehaviorBase,
+        Emitter::Base: Behavior,
+        Occurrence: ChildOccurrence<Emitter::Base>,
+        Occurrence::Resolution: ResolveChildOccurrenceDescriptor<Emitter, Occurrence>,
+    {
+    }
 }
 
 /// The empty heterogeneous creation product.

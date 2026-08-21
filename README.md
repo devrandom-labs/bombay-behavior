@@ -150,6 +150,14 @@ creation semantics, registry, protocol key, or runtime dependency. Nested
 children are folded in the namespace of the concrete actor that creates them,
 not flattened into root-owned storage.
 
+`ResolveChildOccurrence<Occurrence>` statically joins an emitted effect back to
+that storage. Generated roles resolve through `BehaviorBase` only across
+wrappers that preserve the exact protocol and birth algebra. Raw `ChildHead`
+and `ChildTail<_>` positions resolve against the running emitter's own direct
+births. A topology-changing wrapper therefore exposes its new structural child
+instead of silently inheriting a stale base role. Resolution is type-only: it
+adds no registry, key, value, or runtime lookup.
+
 Initialization is a consuming typestate transition. Wrapper initialization
 effects compose in defined order and must be interpreted before mailbox
 events. Send products likewise retain named lanes and structural ordering;

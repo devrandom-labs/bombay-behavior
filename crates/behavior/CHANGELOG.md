@@ -23,6 +23,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   type constructor. Static runtimes can derive occurrence-preserving storage
   from concrete behavior leaves, `ChildChoice`, and `Never` without
   reclassifying Behavior-owned nodes or adding bounds to domain generics.
+- Add sealed `ResolveChildOccurrence<Occurrence>` projection from a running
+  emitter and nominal or structural occurrence to its exact direct child and
+  position. Generated roles cross only wrappers that preserve the canonical
+  protocol and complete birth topology; raw `ChildHead`/`ChildTail<_>` paths
+  resolve against topology-changing wrappers directly.
 
 ### Changed
 

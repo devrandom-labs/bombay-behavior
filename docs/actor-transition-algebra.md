@@ -138,6 +138,15 @@ no fold transition, allocation, binding, lookup, or effect interpretation.
 Transitive descendants remain owned by the concrete child actors that may
 create them.
 
+`ResolveChildOccurrence<O>` supplies the inverse static connection needed when
+an effect names `O`: the running emitter and occurrence determine one exact
+direct child behavior and structural position. Generated nominal roles are
+resolved through `BehaviorBase` only while protocol and birth topology remain
+identical; raw `ChildHead`/`ChildTail<_>` positions inspect the emitter's own
+closed birth node. Consequently a supervision wrapper that replaces a direct
+child with a proxy cannot silently reinterpret the base role. This is
+navigation evidence derived from `Behavior`, not a new identity or effect.
+
 No core path uses trait objects, runtime protocol registries, reflection,
 downcasting, type-name dispatch, serialization, or unsafe type escape hatches.
 

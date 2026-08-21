@@ -99,7 +99,8 @@ The same declaration also generates the `SystemChild` selector namespace. Its
 inhabited values, such as `SystemChild::Workers`, implement
 `ChildRole<System, Child = Workers>`. Each role also carries a structural
 `ChildHead`/`ChildTail<_>` position proving where that exact behavior occurs in
-`SystemChildren`. This is the Behavior-owned proof consumed by static
+`SystemChildren`, and implements `ChildOccurrence<System>` for the sealed
+running-emitter resolver. This is the Behavior-owned proof consumed by static
 application topology and existing heterogeneous effect products:
 
 ```rust,ignore
@@ -120,6 +121,13 @@ fold. A static runtime may implement `BirthNodeMapper` once to project any
 `SystemChildren` into its own occurrence-preserving direct-child storage.
 The macro emits no runtime storage or mapper implementation, and equal child
 types at two named roles still receive distinct structural positions.
+
+`ResolveChildOccurrence<Role>` maps such a generated role to the exact child
+and position of the concrete behavior currently being interpreted. It follows
+`BehaviorBase` through wrappers only when they preserve both the canonical
+protocol and complete birth algebra. Wrappers that rewrite child topology do
+not inherit the base role; their own `ChildHead`/`ChildTail<_>` positions remain
+available. The mapping is sealed and type-level, not generated runtime code.
 
 This is Bombay's staged creation policy: `Children` builds typed `Create`
 requests, and the interpreter must commit them before dependent same-action
