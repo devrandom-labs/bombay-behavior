@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.1](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.13.0...bombay-behavior-v0.13.1) - 2026-08-21
+
+### Other
+
+- add typed child topology roles and routes ([#52](https://github.com/devrandom-labs/bombay-behavior/pull/52))
+
 ### Added
 
 - Add `ChildRoute` and generated `ActorChildrenRoutes` products so one
