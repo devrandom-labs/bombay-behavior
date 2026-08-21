@@ -238,6 +238,16 @@ impl<A: Address> ObserveChild<A> {
     pub const fn new(nonce: A::Nonce) -> Self {
         Self { nonce }
     }
+
+    /// Observe the child selected by one typed creator-local route.
+    #[must_use]
+    pub const fn at<C, Role>(route: behavior::ChildRoute<C, Role>) -> Self
+    where
+        C: behavior::Behavior,
+        C::Protocol: behavior::Protocol<Addr = A>,
+    {
+        Self::new(route.nonce())
+    }
 }
 
 impl<A: Address> behavior::InterpreterRequest for ObserveChild<A> {
@@ -415,6 +425,16 @@ impl<A: Address> ObserveCreation<A> {
     #[must_use]
     pub const fn new(nonce: A::Nonce) -> Self {
         Self { nonce }
+    }
+
+    /// Observe the creation staged through one typed creator-local route.
+    #[must_use]
+    pub const fn at<C, Role>(route: behavior::ChildRoute<C, Role>) -> Self
+    where
+        C: behavior::Behavior,
+        C::Protocol: behavior::Protocol<Addr = A>,
+    {
+        Self::new(route.nonce())
     }
 }
 
@@ -666,6 +686,12 @@ impl<C: behavior::Behavior> ShutdownChild<C> {
             protocol: core::marker::PhantomData,
         }
     }
+
+    /// Request shutdown through one typed route to this exact child behavior.
+    #[must_use]
+    pub const fn at<Role>(route: behavior::ChildRoute<C, Role>) -> Self {
+        Self::new(route.nonce())
+    }
 }
 
 impl<C: behavior::Behavior> behavior::InterpreterRequest for ShutdownChild<C> {
@@ -803,6 +829,41 @@ mod tests {
             .into_replacement(),
             None
         );
+    }
+
+    #[test]
+    fn one_child_route_drives_observation_creation_and_shutdown_correlation() {
+        enum WorkerRole {}
+
+        struct Worker;
+
+        impl behavior::Protocol for Worker {
+            type Addr = MailAddr;
+            type Msg = behavior::Never;
+        }
+
+        impl behavior::Behavior for Worker {
+            type Protocol = Self;
+            type Event = behavior::User<MailAddr, behavior::Never>;
+            type Sends = Vec<behavior::Never>;
+            type Ph = behavior::Never;
+            type Error = behavior::Never;
+            type Birth = behavior::NoBirths;
+
+            fn transition(
+                &mut self,
+                _: behavior::ActiveTurn,
+                event: Self::Event,
+            ) -> behavior::BehaviorActed<Self> {
+                match event.message {}
+            }
+        }
+
+        let route = behavior::ChildRoute::<Worker, WorkerRole>::new(13);
+
+        assert_eq!(ObserveChild::at(route).nonce, 13);
+        assert_eq!(ObserveCreation::at(route).nonce, 13);
+        assert_eq!(ShutdownChild::at(route).nonce, 13);
     }
 
     #[test]

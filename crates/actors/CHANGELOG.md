@@ -9,6 +9,21 @@ All notable changes to `bombay-behavior-actors` are documented here.
 
 ## [Unreleased]
 
+### Changed
+
+- Route stable-proxy and worker-incarnation creation, delivery, observation,
+  and shutdown through the same typed `ChildRoute` correlation source. Existing
+  nonce constructors remain available for independently authored lifecycle
+  requests.
+- Lower generated named child roles and routes through their sealed structural
+  positions into the existing `ShutdownChoice` sum. Plan validation,
+  coordinator phase transitions, and terminal provenance remain owned by their
+  existing lifecycle components.
+- Expose `InstallationRequirements` as the closed ordered product of a
+  behavior's canonical protocol and every transitive staged-birth protocol.
+  Structural membership distinguishes repeated occurrences; external-only
+  delivery destinations are excluded.
+
 ## [0.13.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-actors-v0.12.1...bombay-behavior-actors-v0.13.0) - 2026-08-19
 
 ### Added

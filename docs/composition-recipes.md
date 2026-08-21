@@ -53,6 +53,30 @@ Use `coordinated_terminal_application` when an application must coordinate a
 validated heterogeneous shutdown plan, trigger it once after a timeout, and
 publish the exact terminal outcome of one selected child:
 
+Named child roles lower into the existing target sum without positional
+construction at the call site:
+
+```rust,ignore
+let routes = ApplicationChildrenRoutes::new(worker_nonce, query_nonce);
+let workers = shutdown_target::<Application, _, ShutdownTargets>(
+    ApplicationChild::Workers,
+    routes.workers,
+);
+let queries = shutdown_target::<Application, _, ShutdownTargets>(
+    ApplicationChild::Queries,
+    routes.queries,
+);
+let validated_shutdown_plan = HeterogeneousShutdownPlan::new([
+    vec![queries],
+    vec![workers],
+])?;
+```
+
+`shutdown_target` only selects the statically proven `ShutdownChoice` branch
+and copies the route nonce. Plan validation still owns empty-phase and global
+duplicate-nonce rejection; the coordinator still owns phase and terminal-fact
+transitions.
+
 ```rust,ignore
 let behavior: CoordinatedTerminalApplication<Application, ShutdownTargets> =
     coordinated_terminal_application(

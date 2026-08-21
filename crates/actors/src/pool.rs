@@ -7,14 +7,14 @@
 use std::collections::{BTreeMap, VecDeque};
 use std::time::Duration;
 
-use crate::supervision::{FixedFleetOwnership, OwnershipError};
+use crate::supervision::{FixedFleetOwnership, OwnershipError, StableProxyChildRole};
 use crate::{
     Actions, Address, Behavior, Births, ChildTopology, Crash, CreationRejection, Delivery, Exit,
     FleetError, Never, Own, Protocol, Proxy, ProxyCommand, ProxyParentIngress, ProxyWithParent,
     Recipient, RestartConfiguration, RestartPolicy, SendEffects, SendInput, SendLayer, Strategy,
     SupervisionEvent, SupervisorSends, User, WorkerCreationResolved, WorkerStopped,
 };
-use behavior::Here;
+use behavior::{ChildRoute, Here};
 
 /// Caller-chosen identity used to correlate pool responses.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -1116,13 +1116,15 @@ where
             let job = queued.accepted;
             let assignment = AssignmentId(assignment);
             let nonce = self.slots[slot_position].nonce;
+            let route =
+                ChildRoute::<ProxyWithParent<C, ParentPath>, StableProxyChildRole>::new(nonce);
             let job_id = job.id;
             self.slots[slot_position].state = SlotState::Assigned { assignment, job };
             actions
                 .sends
                 .inner
                 .send::<Delivery<Proxy<C>>, Own>(Delivery::local_child(
-                    behavior::ChildRecipient::new(nonce),
+                    route.recipient(),
                     ProxyCommand::Forward(PoolAssignment {
                         assignment,
                         job: job_id,

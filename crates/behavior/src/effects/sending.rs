@@ -47,6 +47,10 @@ pub trait InterpretRequest<Request, RootEvent, Path>: SendInterpreter {
 }
 
 /// Interpreter capability for deliveries to one concrete actor protocol.
+///
+/// `P` is preserved unchanged from [`Delivery<P>`] and is the destination's
+/// canonical hosting identity. A creator-local child route changes only how
+/// the address is resolved; it does not introduce a role-keyed delivery lane.
 pub trait InterpretDelivery<P: Protocol>: SendInterpreter {
     /// Interpret one typed delivery, awaiting bounded-mailbox capacity when
     /// required by the concrete communication transport.

@@ -1,12 +1,13 @@
 //! Explicitly managed dynamic stable-child topology.
 
+use super::adapter::StableProxyChildRole;
 use crate::{
     ChildShutdownRejected, ChildStopped, CreationRejection, CreationResolved, ObserveChild,
     ObserveCreation, Own, Proxy, ProxyCommand, ProxyParentIngress, ProxyWithParent, SendInput,
     ShutdownChild, ShutdownRequested, WorkerCreationResolved, WorkerStopped,
 };
 use behavior::{
-    Actions, Address, Behavior, BehaviorActed, Births, Create, Delivery, Here, InjectEvent,
+    Actions, Address, Behavior, BehaviorActed, Births, ChildRoute, Delivery, Here, InjectEvent,
     InterpreterRequests, Never, Protocol, Recipient, SendEffects, User, UserEvent,
 };
 
@@ -569,16 +570,15 @@ where
                         reply_to,
                         DynamicSupervisorOutcome::StartAccepted { nonce },
                     ));
-                    sends.child_observations.send(ObserveChild::new(nonce));
-                    sends
-                        .creation_observations
-                        .send(ObserveCreation::new(nonce));
+                    let route = ChildRoute::<
+                        DynamicProxyWithParent<C, ParentPath>,
+                        StableProxyChildRole,
+                    >::new(nonce);
+                    sends.child_observations.send(ObserveChild::at(route));
+                    sends.creation_observations.send(ObserveCreation::at(route));
                     Ok(Actions::new(
                         sends,
-                        vec![Create::birth(
-                            nonce,
-                            ProxyWithParent::with_parent(child, self.proxy_parent),
-                        )],
+                        vec![route.birth(ProxyWithParent::with_parent(child, self.proxy_parent))],
                         crate::Step::Continue,
                     ))
                 }
@@ -596,9 +596,13 @@ where
                     match self.children.iter_mut().find(|(n, _)| *n == nonce) {
                         Some((_, state @ DynamicChild::Available)) => {
                             *state = DynamicChild::Stopping { reply_to };
+                            let route = ChildRoute::<
+                                DynamicProxyWithParent<C, ParentPath>,
+                                StableProxyChildRole,
+                            >::new(nonce);
                             sends.shutdowns.send(ShutdownChild::<
                                 DynamicProxyWithParent<C, ParentPath>,
-                            >::new(nonce));
+                            >::at(route));
                             sends.outcomes.push(Delivery::new(
                                 reply_to,
                                 DynamicSupervisorOutcome::StopAccepted { nonce },
@@ -640,8 +644,12 @@ where
                     match self.children.iter_mut().find(|(n, _)| *n == nonce) {
                         Some((_, state @ DynamicChild::Available)) => {
                             *state = DynamicChild::Replacing { reply_to };
+                            let route = ChildRoute::<
+                                DynamicProxyWithParent<C, ParentPath>,
+                                StableProxyChildRole,
+                            >::new(nonce);
                             sends.replacements.push(Delivery::local_child(
-                                behavior::ChildRecipient::new(nonce),
+                                route.recipient(),
                                 ProxyCommand::Replace(child),
                             ));
                             sends.outcomes.push(Delivery::new(
@@ -804,9 +812,12 @@ where
                         state,
                         DynamicChild::Available | DynamicChild::Replacing { .. }
                     ) {
-                        sends.shutdowns.send(
-                            ShutdownChild::<DynamicProxyWithParent<C, ParentPath>>::new(*nonce),
-                        );
+                        sends.shutdowns.send(ShutdownChild::at(ChildRoute::<
+                            DynamicProxyWithParent<C, ParentPath>,
+                            StableProxyChildRole,
+                        >::new(
+                            *nonce
+                        )));
                     }
                 }
                 self.state = DynamicSupervisorState::Draining { awaiting };

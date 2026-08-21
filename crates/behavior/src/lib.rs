@@ -20,13 +20,15 @@ mod transition;
 mod user_event;
 
 pub use actor::{
-    Address, BirthMode, Births, ChildChoice, ChildCons, ChildProduct, ChildRecipient, Children,
-    ChildrenError, Create, CreationKind, Delivery, DeliveryTarget, DispatchBirth, InstallBirth,
-    MailAddr, NoBirths, NoChildren, Recipient,
+    Address, BirthMode, BirthNodeProtocols, BirthProtocol, BirthProtocolAt, BirthProtocolHead,
+    BirthProtocolProduct, BirthProtocolTail, BirthProtocols, Births, ChildChoice, ChildCons,
+    ChildHead, ChildPosition, ChildProduct, ChildRecipient, ChildRole, ChildRoute, ChildTail,
+    Children, ChildrenError, Create, CreationKind, Delivery, DeliveryTarget, DispatchBirth,
+    InstallBirth, MailAddr, NoBirthProtocols, NoBirths, NoChildren, Recipient,
 };
 pub use effect::Effect;
 pub use effects::{
-    Acted, Actions, Become, InterpretDelivery, InterpretRequest, InterpretSends,
+    Acted, Actions, AppendSend, Become, InterpretDelivery, InterpretRequest, InterpretSends,
     InterpreterRequest, InterpreterRequests, NoReturnToEmitter, NoSends, Own, ReturnsToEmitter,
     SendEffects, SendInput, SendInterpreter, SendLayer, SendsFor,
 };
@@ -47,11 +49,17 @@ pub use user_event::{
 ///
 /// A `sends = { lane: Product }` declaration generates `ActorSends`, one
 /// distinct `ActorSendsLane` selector per field, and structural `SendEffects`,
-/// `SendsFor`, and `InterpretSends` implementations. A
+/// `SendsFor`, and `InterpretSends` implementations. It also generates an
+/// `ActorActions` extension trait with one fluent `send_lane` method per named
+/// lane. Each method delegates to [`AppendSend`], changing only the send leg
+/// while preserving creations and the exact next-behavior verdict. A
 /// `births = { lane: Child }` declaration generates `ActorChildren` as the
 /// exact recursive `ChildChoice` produced by `Children` calls in declaration
-/// order. The lane labels document each child role; creation remains an
-/// authored `Children` value and is never performed by the macro.
+/// order. It also generates `ActorChildrenRoutes`, containing one nominally
+/// distinct [`ChildRoute`] per declared role. A route is the single typed
+/// source for staging that role's creation and addressing its creator-local
+/// recipient. Creation remains an authored [`Children`] value and is never
+/// performed by the macro.
 ///
 /// Invalid receivers are rejected at compile time.
 ///
@@ -117,6 +125,19 @@ pub use user_event::{
 ///         let mut sends = SenderSends::empty();
 ///         sends.send::<_, SenderSendsUndeclared>(1);
 ///         Ok(Actions::send(sends))
+///     }
+/// }
+/// ```
+///
+/// Generated lane methods accept only inputs supported by that lane:
+///
+/// ```compile_fail
+/// use behavior::{Actions, BehaviorActed, MailAddr};
+/// struct Sender;
+/// #[behavior::behavior(addr = MailAddr, message = (), sends = { replies: Vec<u8> })]
+/// impl Sender {
+///     fn receive(&mut self, _: MailAddr, _: ()) -> BehaviorActed<Self> {
+///         Ok(Actions::cont().send_replies("not a u8"))
 ///     }
 /// }
 /// ```
@@ -197,5 +218,94 @@ pub use user_event::{
 /// }
 /// fn require_complete<T: DispatchBirth<MailAddr, Incomplete, (), Never>>() {}
 /// require_complete::<RootChildren>();
+/// ```
+///
+/// A generated child route accepts only its declared behavior:
+///
+/// ```compile_fail
+/// use behavior::{BehaviorActed, Children, MailAddr, Never};
+/// struct Declared;
+/// #[behavior::behavior(addr = MailAddr, message = Never)]
+/// impl Declared {
+///     fn receive(&mut self, _: MailAddr, message: Never) -> BehaviorActed<Self> {
+///         match message {}
+///     }
+/// }
+/// struct Other;
+/// #[behavior::behavior(addr = MailAddr, message = Never)]
+/// impl Other {
+///     fn receive(&mut self, _: MailAddr, message: Never) -> BehaviorActed<Self> {
+///         match message {}
+///     }
+/// }
+/// struct Root;
+/// #[behavior::behavior(addr = MailAddr, message = Never, births = { worker: Declared })]
+/// impl Root {
+///     fn receive(&mut self, _: MailAddr, message: Never) -> BehaviorActed<Self> {
+///         match message {}
+///     }
+/// }
+/// let routes = RootChildrenRoutes::new(1);
+/// let _ = Children::<MailAddr>::new().child_at(routes.worker, Other);
+/// ```
+///
+/// Two declared roles remain distinct even when they use the same behavior:
+///
+/// ```compile_fail
+/// use behavior::{BehaviorActed, ChildRoute, MailAddr, Never};
+/// struct Worker;
+/// #[behavior::behavior(addr = MailAddr, message = Never)]
+/// impl Worker {
+///     fn receive(&mut self, _: MailAddr, message: Never) -> BehaviorActed<Self> {
+///         match message {}
+///     }
+/// }
+/// struct Root;
+/// #[behavior::behavior(addr = MailAddr, message = Never, births = {
+///     primary: Worker,
+///     backup: Worker,
+/// })]
+/// impl Root {
+///     fn receive(&mut self, _: MailAddr, message: Never) -> BehaviorActed<Self> {
+///         match message {}
+///     }
+/// }
+/// fn requires_primary(_: ChildRoute<Worker, RootChildrenPrimary>) {}
+/// let routes = RootChildrenRoutes::new(1, 2);
+/// requires_primary(routes.backup);
+/// ```
+///
+/// Named topology selectors accept only the child declared for that parent
+/// role, which lets an application builder remain entirely static:
+///
+/// ```compile_fail
+/// use behavior::{Behavior, BehaviorActed, ChildRole, MailAddr, Never};
+/// struct Worker;
+/// #[behavior::behavior(addr = MailAddr, message = Never)]
+/// impl Worker {
+///     fn receive(&mut self, _: MailAddr, message: Never) -> BehaviorActed<Self> {
+///         match message {}
+///     }
+/// }
+/// struct Query;
+/// #[behavior::behavior(addr = MailAddr, message = Never)]
+/// impl Query {
+///     fn receive(&mut self, _: MailAddr, message: Never) -> BehaviorActed<Self> {
+///         match message {}
+///     }
+/// }
+/// struct Root;
+/// #[behavior::behavior(addr = MailAddr, message = Never, births = { workers: Worker })]
+/// impl Root {
+///     fn receive(&mut self, _: MailAddr, message: Never) -> BehaviorActed<Self> {
+///         match message {}
+///     }
+/// }
+/// fn child<Parent, Role>(_: Role, _: Role::Child)
+/// where
+///     Parent: Behavior,
+///     Role: ChildRole<Parent>,
+/// {}
+/// child::<Root, _>(RootChild::Workers, Query);
 /// ```
 pub use behavior_macros::behavior;

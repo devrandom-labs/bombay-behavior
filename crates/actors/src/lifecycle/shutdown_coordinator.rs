@@ -2,8 +2,8 @@
 
 use crate::{ChildShutdownRejected, ChildShutdownRejection, ChildStopped, ShutdownChild};
 use behavior::{
-    Actions, Address, Behavior, BehaviorActed, BirthMode, Here, InjectEvent, Inside,
-    InterpreterRequests, SendEffects, SendLayer,
+    Actions, Address, Behavior, BehaviorActed, BirthMode, ChildHead, ChildRole, ChildRoute,
+    ChildTail, Here, InjectEvent, Inside, InterpreterRequests, SendEffects, SendLayer,
 };
 use behavior::{User, UserEvent};
 use std::time::Duration;
@@ -187,6 +187,87 @@ impl<C: Behavior, Tail> ShutdownChoice<C, Tail> {
     pub const fn other(target: Tail) -> Self {
         Self::Other(target)
     }
+}
+
+/// Structural construction of an existing [`ShutdownChoice`] at `Position`.
+///
+/// Implementations preserve the route nonce exactly. `ChildHead` selects the
+/// current branch; `ChildTail<P>` delegates to the existing tail. This trait
+/// introduces no alternate target product, runtime lookup, or shutdown effect.
+pub trait ShutdownTargetAt<Child: Behavior, Position>: named_shutdown::Target + Sized {
+    /// Lower one typed child route into its statically selected branch.
+    fn shutdown_target_at<Role>(route: ChildRoute<Child, Role>) -> Self;
+}
+
+mod named_shutdown {
+    pub trait Target {}
+}
+
+impl<Child: Behavior, Tail> named_shutdown::Target for ShutdownChoice<Child, Tail> {}
+
+impl<Child: Behavior, Tail> ShutdownTargetAt<Child, ChildHead> for ShutdownChoice<Child, Tail> {
+    fn shutdown_target_at<Role>(route: ChildRoute<Child, Role>) -> Self {
+        Self::child(route.nonce())
+    }
+}
+
+impl<Head, Tail, Child, Position> ShutdownTargetAt<Child, ChildTail<Position>>
+    for ShutdownChoice<Head, Tail>
+where
+    Head: Behavior,
+    Child: Behavior,
+    Tail: ShutdownTargetAt<Child, Position>,
+{
+    fn shutdown_target_at<Role>(route: ChildRoute<Child, Role>) -> Self {
+        Self::other(Tail::shutdown_target_at(route))
+    }
+}
+
+/// Lower one Behavior-owned named child route into an existing heterogeneous
+/// shutdown target sum.
+///
+/// `Parent` fixes the [`ChildRole`] implementation, allowing the compiler to
+/// select the exact structural position even when several roles share one
+/// child behavior type. The role value and route must carry the same nominal
+/// `Role`; exchanging either is rejected at compile time.
+///
+/// ```compile_fail
+/// use behavior_actors::{
+///     BehaviorActed, ChildRoute, MailAddr, Never, NoShutdownTargets,
+///     ShutdownChoice, shutdown_target,
+/// };
+/// struct Worker;
+/// #[behavior_actors::behavior(addr = MailAddr, message = Never)]
+/// impl Worker {
+///     fn receive(&mut self, _: MailAddr, message: Never) -> BehaviorActed<Self> {
+///         match message {}
+///     }
+/// }
+/// struct Parent;
+/// #[behavior_actors::behavior(addr = MailAddr, message = Never, births = {
+///     primary: Worker,
+///     fallback: Worker,
+/// })]
+/// impl Parent {
+///     fn receive(&mut self, _: MailAddr, message: Never) -> BehaviorActed<Self> {
+///         match message {}
+///     }
+/// }
+/// type Targets = ShutdownChoice<Worker, ShutdownChoice<Worker, NoShutdownTargets<MailAddr>>>;
+/// let routes = ParentChildrenRoutes::new(1, 2);
+/// let _: Targets = shutdown_target::<Parent, _, Targets>(ParentChild::Primary, routes.fallback);
+/// ```
+#[must_use]
+pub fn shutdown_target<Parent, Role, Targets>(
+    _: Role,
+    route: ChildRoute<Role::Child, Role>,
+) -> Targets
+where
+    Parent: Behavior,
+    Role: ChildRole<Parent>,
+    Targets: ShutdownTargetAt<Role::Child, Role::Position>,
+{
+    Targets::shutdown_target_at(route)
 }
 
 impl<C, Tail> Copy for ShutdownChoice<C, Tail>
@@ -896,6 +977,23 @@ mod tests {
         }
     }
 
+    struct NamedParent;
+
+    #[behavior::behavior(
+        addr = MailAddr,
+        message = Never,
+        births = {
+            primary: crate::StopOnShutdown<Probe>,
+            pool: crate::Guardian<Probe>,
+            fallback: crate::StopOnShutdown<Probe>,
+        },
+    )]
+    impl NamedParent {
+        fn receive(&mut self, _: MailAddr, message: Never) -> BehaviorActed<Self> {
+            match message {}
+        }
+    }
+
     fn stopped(nonce: u64) -> ChildStopped<MailAddr> {
         ChildStopped::new(nonce, Ok(Exit::Normal), Instant::now())
     }
@@ -1234,20 +1332,41 @@ mod tests {
     fn heterogeneous_phases_preserve_cross_protocol_order_and_await_the_union() {
         type SupervisorChild = crate::StopOnShutdown<Probe>;
         type PoolChild = crate::Guardian<Probe>;
-        type RootTargets =
-            ShutdownChoice<SupervisorChild, ShutdownChoice<PoolChild, NoShutdownTargets<MailAddr>>>;
-        let plan = HeterogeneousShutdownPlan::new([
-            vec![
-                RootTargets::child(1),
-                RootTargets::other(ShutdownChoice::child(2)),
-            ],
-            vec![RootTargets::child(3)],
-        ])
-        .unwrap();
-        let mut active = HeterogeneousShutdownCoordinator::<Probe, RootTargets>::new(Probe, plan)
-            .initialize()
-            .unwrap()
-            .behavior;
+        type RootTargets = ShutdownChoice<
+            SupervisorChild,
+            ShutdownChoice<PoolChild, ShutdownChoice<SupervisorChild, NoShutdownTargets<MailAddr>>>,
+        >;
+        let routes = NamedParentChildrenRoutes::new(1, 2, 3);
+        let primary = shutdown_target::<NamedParent, _, RootTargets>(
+            NamedParentChild::Primary,
+            routes.primary,
+        );
+        let pool =
+            shutdown_target::<NamedParent, _, RootTargets>(NamedParentChild::Pool, routes.pool);
+        let fallback = shutdown_target::<NamedParent, _, RootTargets>(
+            NamedParentChild::Fallback,
+            routes.fallback,
+        );
+
+        assert!(matches!(
+            primary,
+            ShutdownChoice::Other(ShutdownChoice::Other(ShutdownChoice::Child {
+                nonce: 1,
+                ..
+            }))
+        ));
+        assert!(matches!(
+            pool,
+            ShutdownChoice::Other(ShutdownChoice::Child { nonce: 2, .. })
+        ));
+        assert!(matches!(fallback, ShutdownChoice::Child { nonce: 3, .. }));
+
+        let plan = HeterogeneousShutdownPlan::new([vec![primary, pool], vec![fallback]]).unwrap();
+        let mut active =
+            HeterogeneousShutdownCoordinator::<NamedParent, RootTargets>::new(NamedParent, plan)
+                .initialize()
+                .unwrap()
+                .behavior;
 
         let first = active.on_path(ShutdownRequested).unwrap();
         assert_eq!(
@@ -1274,14 +1393,20 @@ mod tests {
 
     #[test]
     fn heterogeneous_plan_rejects_cross_protocol_nonce_collisions() {
+        type SupervisorChild = crate::StopOnShutdown<Probe>;
+        type PoolChild = crate::Guardian<Probe>;
         type RootTargets = ShutdownChoice<
-            crate::StopOnShutdown<Probe>,
-            ShutdownChoice<crate::Guardian<Probe>, NoShutdownTargets<MailAddr>>,
+            SupervisorChild,
+            ShutdownChoice<PoolChild, ShutdownChoice<SupervisorChild, NoShutdownTargets<MailAddr>>>,
         >;
+        let routes = NamedParentChildrenRoutes::new(1, 1, 3);
         assert!(matches!(
             HeterogeneousShutdownPlan::new([vec![
-                RootTargets::child(1),
-                RootTargets::other(ShutdownChoice::child(1)),
+                shutdown_target::<NamedParent, _, RootTargets>(
+                    NamedParentChild::Primary,
+                    routes.primary,
+                ),
+                shutdown_target::<NamedParent, _, RootTargets>(NamedParentChild::Pool, routes.pool,),
             ]]),
             Err(ShutdownPlanError::DuplicateChild(1))
         ));
@@ -1291,7 +1416,10 @@ mod tests {
     async fn heterogeneous_requests_interpret_once_each_in_cross_protocol_plan_order() {
         type First = crate::StopOnShutdown<Probe>;
         type Second = crate::Guardian<Probe>;
-        type Targets = ShutdownChoice<First, ShutdownChoice<Second, NoShutdownTargets<MailAddr>>>;
+        type Targets = ShutdownChoice<
+            First,
+            ShutdownChoice<Second, ShutdownChoice<First, NoShutdownTargets<MailAddr>>>,
+        >;
         type Event = ShutdownCoordinatorEvent<User<MailAddr, u8>>;
 
         struct Recording(Vec<u64>);
@@ -1321,18 +1449,25 @@ mod tests {
             }
         }
 
+        let routes = NamedParentChildrenRoutes::new(1, 2, 3);
         let sends = HeterogeneousShutdownSends::<Targets> {
             requests: vec![
-                Targets::other(ShutdownChoice::child(2)),
-                Targets::child(1),
-                Targets::other(ShutdownChoice::child(3)),
+                shutdown_target::<NamedParent, _, Targets>(NamedParentChild::Pool, routes.pool),
+                shutdown_target::<NamedParent, _, Targets>(
+                    NamedParentChild::Fallback,
+                    routes.fallback,
+                ),
+                shutdown_target::<NamedParent, _, Targets>(
+                    NamedParentChild::Primary,
+                    routes.primary,
+                ),
             ],
         };
         let mut interpreter = Recording(Vec::new());
         <_ as behavior::InterpretSends<_, Event, Here>>::interpret(sends, &mut interpreter)
             .await
             .unwrap();
-        assert_eq!(interpreter.0, [2, 1, 3]);
+        assert_eq!(interpreter.0, [2, 3, 1]);
     }
 
     #[test]

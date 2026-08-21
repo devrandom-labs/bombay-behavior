@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Resolve an unrenamed `bombay-rs` façade dependency through its actual
+  `bombay` library target while preserving explicit dependency renames.
+
+### Added
+
+- Generate nominal child routes for every named `births` declaration.
+- Generate inhabited `ActorChild::Role` selectors and exact parent/child role
+  proofs, including their structural closed-sum positions, from the same named
+  `births` declaration.
+- Generate one actor-specific actions extension trait whose `send_lane`
+  methods reuse Behavior's `AppendSend` capability and existing nominal lane
+  proofs.
+
 ## [0.11.2](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-macros-v0.11.1...bombay-behavior-macros-v0.11.2) - 2026-08-19
 
 ### Added

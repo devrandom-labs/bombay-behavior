@@ -13,7 +13,8 @@ pub use shutdown_coordinator::{
     CoordinatedTerminalApplication, HeterogeneousShutdownCoordinator, HeterogeneousShutdownPlan,
     HeterogeneousShutdownSends, NoShutdownTargets, ShutdownChoice, ShutdownCoordinator,
     ShutdownCoordinatorError, ShutdownCoordinatorEvent, ShutdownPlan, ShutdownPlanError,
-    ShutdownState, ShutdownTree, ShutdownTreeError, TreeShutdown, coordinated_terminal_application,
+    ShutdownState, ShutdownTargetAt, ShutdownTree, ShutdownTreeError, TreeShutdown,
+    coordinated_terminal_application, shutdown_target,
 };
 pub use task::{Task, TaskError, TaskMessage, TaskResult, TaskState};
 pub use termination_monitor::{

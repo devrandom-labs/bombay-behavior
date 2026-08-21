@@ -60,19 +60,36 @@ struct Bootstrap;
 )]
 impl Bootstrap {
     fn init(&mut self) -> BehaviorActed<Self> {
-        let mut sends = BootstrapSends::empty();
-        sends.send::<_, BootstrapSendsFirst>(Delivery::new(Recipient::global(MailAddr(10)), 1));
-        sends.send::<_, BootstrapSendsSecond>(Delivery::new(Recipient::global(MailAddr(20)), 2));
+        let children = BootstrapChildrenRoutes::new(1, 2);
         let creates = Children::<MailAddr>::new()
-            .child(1, FirstChild)
-            .child(2, SecondChild)
+            .child_at(children.first, FirstChild)
+            .child_at(children.second, SecondChild)
             .into_creates()
             .expect("distinct fixture nonces");
-        Ok(Actions::new(sends, creates, Step::Continue))
+        Ok(Actions::create(creates)
+            .send_first(Delivery::new(Recipient::global(MailAddr(10)), 1))
+            .send_second(Delivery::new(Recipient::global(MailAddr(20)), 2)))
     }
 
     fn receive(&mut self, _: MailAddr, _: ()) -> BehaviorActed<Self> {
         Ok(Actions::cont())
+    }
+}
+
+struct Positioned;
+
+#[behavior::behavior(
+    addr = MailAddr,
+    message = Never,
+    births = {
+        primary: FirstChild,
+        secondary: SecondChild,
+        fallback: FirstChild,
+    },
+)]
+impl Positioned {
+    fn receive(&mut self, _: MailAddr, message: Never) -> BehaviorActed<Self> {
+        match message {}
     }
 }
 
@@ -88,13 +105,9 @@ struct LaneFamilies;
 )]
 impl LaneFamilies {
     fn init(&mut self) -> BehaviorActed<Self> {
-        let mut sends = LaneFamiliesSends::empty();
-        sends.send::<_, LaneFamiliesSendsRequests>(LocalRequest);
-        sends.send::<_, LaneFamiliesSendsDeliveries>(Delivery::new(
-            Recipient::global(MailAddr(5)),
-            8,
-        ));
-        Ok(Actions::send(sends))
+        Ok(Actions::cont()
+            .send_requests(LocalRequest)
+            .send_deliveries(Delivery::new(Recipient::global(MailAddr(5)), 8)))
     }
 
     fn receive(&mut self, _: MailAddr, _: ()) -> BehaviorActed<Self> {
@@ -114,10 +127,7 @@ struct EqualProducts;
 )]
 impl EqualProducts {
     fn receive(&mut self, _: MailAddr, _: ()) -> BehaviorActed<Self> {
-        let mut sends = EqualProductsSends::empty();
-        sends.send::<_, EqualProductsSendsAudit>(1);
-        sends.send::<_, EqualProductsSendsMetrics>(2);
-        Ok(Actions::send(sends))
+        Ok(Actions::cont().send_audit(1).send_metrics(2))
     }
 }
 
@@ -144,9 +154,7 @@ struct Generic<T>(core::marker::PhantomData<T>);
 #[behavior::behavior(addr = MailAddr, message = T, sends = { values: Vec<T> })]
 impl<T> Generic<T> {
     fn receive(&mut self, _: MailAddr, message: T) -> BehaviorActed<Self> {
-        let mut sends = GenericSends::empty();
-        sends.send::<_, GenericSendsValues>(message);
-        Ok(Actions::send(sends))
+        Ok(Actions::cont().send_values(message))
     }
 }
 
@@ -170,10 +178,9 @@ where
     T: Sync,
 {
     fn receive(&mut self, _: MailAddr, message: [u8; N]) -> BehaviorActed<Self> {
-        let mut sends = AdvancedSends::empty();
-        sends.send::<_, AdvancedSendsArrays>(message);
-        sends.send::<_, AdvancedSendsReferences>(self.retained);
-        Ok(Actions::send(sends))
+        Ok(Actions::cont()
+            .send_arrays(message)
+            .send_references(self.retained))
     }
 }
 
@@ -245,6 +252,125 @@ fn generated_products_preserve_exact_initialization_actions() {
 }
 
 #[test]
+fn generated_child_routes_share_one_named_creation_and_routing_source() {
+    let children = BootstrapChildrenRoutes::new(11, 17);
+
+    let first: behavior::ChildRecipient<FirstChild> = children.first.recipient();
+    let second: behavior::ChildRecipient<SecondChild> = children.second.recipient();
+    let creates = Children::<MailAddr>::new()
+        .child_at(children.first, FirstChild)
+        .child_at(children.second, SecondChild)
+        .into_creates()
+        .expect("generated bindings use distinct fixture nonces");
+
+    assert_eq!(first.nonce(), 11);
+    assert_eq!(second.nonce(), 17);
+    assert_eq!(creates[0].nonce, 11);
+    assert_eq!(creates[1].nonce, 17);
+}
+
+fn accepts_named_child<Parent, Role>(_: Role, _: Role::Child)
+where
+    Parent: behavior::Behavior,
+    Role: behavior::ChildRole<Parent>,
+{
+}
+
+fn has_child_position<Parent, Role, Position>()
+where
+    Parent: behavior::Behavior,
+    Role: behavior::ChildRole<Parent, Position = Position>,
+{
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum IndependentTarget<Head, Tail> {
+    Selected(u64, core::marker::PhantomData<fn() -> Head>),
+    Remaining(Tail),
+}
+
+enum NoIndependentTargets {}
+
+trait LowerAt<Child, Position> {
+    fn lower(nonce: u64) -> Self;
+}
+
+impl<Child, Tail> LowerAt<Child, behavior::ChildHead> for IndependentTarget<Child, Tail> {
+    fn lower(nonce: u64) -> Self {
+        Self::Selected(nonce, core::marker::PhantomData)
+    }
+}
+
+impl<Head, Tail, Child, Position> LowerAt<Child, behavior::ChildTail<Position>>
+    for IndependentTarget<Head, Tail>
+where
+    Tail: LowerAt<Child, Position>,
+{
+    fn lower(nonce: u64) -> Self {
+        Self::Remaining(Tail::lower(nonce))
+    }
+}
+
+fn lower_named_child<Parent, Role, Targets>(_: Role, nonce: u64) -> Targets
+where
+    Parent: behavior::Behavior,
+    Role: behavior::ChildRole<Parent>,
+    Targets: LowerAt<Role::Child, Role::Position>,
+{
+    Targets::lower(nonce)
+}
+
+#[test]
+fn generated_child_selectors_prove_the_exact_parent_role_and_child() {
+    accepts_named_child::<Bootstrap, _>(BootstrapChild::First, FirstChild);
+    accepts_named_child::<Bootstrap, _>(BootstrapChild::Second, SecondChild);
+
+    let _: BootstrapChildrenFirst = BootstrapChild::First;
+    let _: BootstrapChildrenSecond = BootstrapChild::Second;
+    has_child_position::<Bootstrap, BootstrapChildrenFirst, behavior::ChildTail<behavior::ChildHead>>(
+    );
+    has_child_position::<Bootstrap, BootstrapChildrenSecond, behavior::ChildHead>();
+}
+
+#[test]
+fn generated_positions_lower_named_roles_into_an_independent_sum() {
+    type Targets = IndependentTarget<
+        FirstChild,
+        IndependentTarget<SecondChild, IndependentTarget<FirstChild, NoIndependentTargets>>,
+    >;
+
+    let primary: Targets = lower_named_child::<Positioned, _, _>(PositionedChild::Primary, 3);
+    let secondary: Targets = lower_named_child::<Positioned, _, _>(PositionedChild::Secondary, 5);
+    let fallback: Targets = lower_named_child::<Positioned, _, _>(PositionedChild::Fallback, 7);
+
+    assert!(matches!(
+        primary,
+        IndependentTarget::Remaining(IndependentTarget::Remaining(IndependentTarget::Selected(
+            3,
+            _
+        )))
+    ));
+    assert!(matches!(
+        secondary,
+        IndependentTarget::Remaining(IndependentTarget::Selected(5, _))
+    ));
+    assert!(matches!(fallback, IndependentTarget::Selected(7, _)));
+}
+
+#[test]
+fn generated_child_routes_preserve_only_the_child_types_required_generics() {
+    let routes = AdvancedChildrenRoutes::<u16>::new(23);
+    let route: behavior::ChildRoute<Generic<u16>, AdvancedChildrenGeneric> = routes.generic;
+    accepts_named_child::<Advanced<'static, u16, 3>, _>(
+        AdvancedChild::Generic,
+        Generic(core::marker::PhantomData),
+    );
+    has_child_position::<Advanced<'static, u16, 3>, AdvancedChildrenGeneric, behavior::ChildHead>();
+
+    assert_eq!(route.nonce(), 23);
+}
+
+#[test]
 fn equal_payload_protocols_remain_distinct_named_lanes() {
     let sends = BootstrapSends {
         first: vec![Delivery::new(Recipient::global(MailAddr(3)), 7)],
@@ -253,6 +379,35 @@ fn equal_payload_protocols_remain_distinct_named_lanes() {
 
     assert_eq!(sends.first[0].to.resolve(MailAddr(0)), MailAddr(3));
     assert_eq!(sends.second[0].to.resolve(MailAddr(0)), MailAddr(4));
+}
+
+#[test]
+fn generated_fluent_lanes_preserve_verdict_order_and_lane_identity() {
+    let actions: Actions<MailAddr, Never, BootstrapSends, behavior::NoBirths> = Actions::stop()
+        .send_first(Delivery::new(Recipient::global(MailAddr(1)), 1))
+        .send_second(Delivery::new(Recipient::global(MailAddr(2)), 2))
+        .send_first(Delivery::new(Recipient::global(MailAddr(3)), 3));
+
+    assert_eq!(
+        actions
+            .sends
+            .first
+            .iter()
+            .map(|delivery| delivery.message)
+            .collect::<Vec<_>>(),
+        [1, 3]
+    );
+    assert_eq!(
+        actions
+            .sends
+            .second
+            .iter()
+            .map(|delivery| delivery.message)
+            .collect::<Vec<_>>(),
+        [2]
+    );
+    assert!(actions.creates.is_empty());
+    assert!(matches!(actions.become_, Step::Stop(_)));
 }
 
 #[test]
