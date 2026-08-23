@@ -20,9 +20,11 @@ pub struct ProxySendsWithParent<C: Behavior, ParentPath> {
     /// User payloads forwarded to the currently installed worker incarnation.
     pub deliveries: Vec<ChildDelivery<C::Protocol, behavior::ChildHead>>,
     /// Requests to observe installed child incarnations.
-    pub child_observations: InterpreterRequests<ObserveChild<crate::BehaviorAddr<C>>>,
+    pub child_observations:
+        InterpreterRequests<ObserveChild<crate::BehaviorAddr<C>, behavior::ChildHead>>,
     /// Requests for exact creation acceptance or rejection facts.
-    pub creation_observations: InterpreterRequests<ObserveCreation<crate::BehaviorAddr<C>>>,
+    pub creation_observations:
+        InterpreterRequests<ObserveCreation<crate::BehaviorAddr<C>, behavior::ChildHead>>,
     /// Worker-stop facts reported to the owning supervisor.
     pub stopped_reports:
         InterpreterRequests<ReportWorkerStopped<crate::BehaviorAddr<C>, ParentPath>>,
@@ -31,7 +33,7 @@ pub struct ProxySendsWithParent<C: Behavior, ParentPath> {
         ReportWorkerCreationResolved<<crate::BehaviorAddr<C> as Address>::Nonce, ParentPath>,
     >,
     /// Requests orderly termination of the exact installed worker incarnation.
-    pub shutdowns: InterpreterRequests<ShutdownChild<C>>,
+    pub shutdowns: InterpreterRequests<ShutdownChild<C, behavior::ChildHead>>,
 }
 
 pub(crate) type ProxyActions<C, ParentPath> =
@@ -65,9 +67,11 @@ impl<C: Behavior, ParentPath> SendEffects for ProxySendsWithParent<C, ParentPath
 impl<C, Event, ParentPath> behavior::SendsFor<Event> for ProxySendsWithParent<C, ParentPath>
 where
     C: Behavior<Ph = Never>,
-    InterpreterRequests<ObserveChild<crate::BehaviorAddr<C>>>: behavior::SendsFor<Event>,
-    InterpreterRequests<ObserveCreation<crate::BehaviorAddr<C>>>: behavior::SendsFor<Event>,
-    InterpreterRequests<ShutdownChild<C>>: behavior::SendsFor<Event>,
+    InterpreterRequests<ObserveChild<crate::BehaviorAddr<C>, behavior::ChildHead>>:
+        behavior::SendsFor<Event>,
+    InterpreterRequests<ObserveCreation<crate::BehaviorAddr<C>, behavior::ChildHead>>:
+        behavior::SendsFor<Event>,
+    InterpreterRequests<ShutdownChild<C, behavior::ChildHead>>: behavior::SendsFor<Event>,
 {
 }
 
@@ -78,16 +82,17 @@ where
     C: Behavior<Ph = Never>,
     Vec<ChildDelivery<C::Protocol, behavior::ChildHead>>:
         behavior::InterpretSends<I, RootEvent, Path>,
-    InterpreterRequests<ObserveChild<crate::BehaviorAddr<C>>>:
+    InterpreterRequests<ObserveChild<crate::BehaviorAddr<C>, behavior::ChildHead>>:
         behavior::InterpretSends<I, RootEvent, Path>,
-    InterpreterRequests<ObserveCreation<crate::BehaviorAddr<C>>>:
+    InterpreterRequests<ObserveCreation<crate::BehaviorAddr<C>, behavior::ChildHead>>:
         behavior::InterpretSends<I, RootEvent, Path>,
     InterpreterRequests<ReportWorkerStopped<crate::BehaviorAddr<C>, ParentPath>>:
         behavior::InterpretSends<I, RootEvent, Path>,
     InterpreterRequests<
         ReportWorkerCreationResolved<<crate::BehaviorAddr<C> as Address>::Nonce, ParentPath>,
     >: behavior::InterpretSends<I, RootEvent, Path>,
-    InterpreterRequests<ShutdownChild<C>>: behavior::InterpretSends<I, RootEvent, Path>,
+    InterpreterRequests<ShutdownChild<C, behavior::ChildHead>>:
+        behavior::InterpretSends<I, RootEvent, Path>,
     ProxySendsWithParent<C, ParentPath>: Send,
 {
     fn interpret(
@@ -115,18 +120,20 @@ where
     }
 }
 
-impl<C: Behavior, ParentPath> SendInput<ObserveChild<crate::BehaviorAddr<C>>, Own>
+impl<C: Behavior, ParentPath>
+    SendInput<ObserveChild<crate::BehaviorAddr<C>, behavior::ChildHead>, Own>
     for ProxySendsWithParent<C, ParentPath>
 {
-    fn emit(&mut self, input: ObserveChild<crate::BehaviorAddr<C>>) {
+    fn emit(&mut self, input: ObserveChild<crate::BehaviorAddr<C>, behavior::ChildHead>) {
         self.child_observations.send(input);
     }
 }
 
-impl<C: Behavior, ParentPath> SendInput<ObserveCreation<crate::BehaviorAddr<C>>, Own>
+impl<C: Behavior, ParentPath>
+    SendInput<ObserveCreation<crate::BehaviorAddr<C>, behavior::ChildHead>, Own>
     for ProxySendsWithParent<C, ParentPath>
 {
-    fn emit(&mut self, input: ObserveCreation<crate::BehaviorAddr<C>>) {
+    fn emit(&mut self, input: ObserveCreation<crate::BehaviorAddr<C>, behavior::ChildHead>) {
         self.creation_observations.send(input);
     }
 }
@@ -154,10 +161,10 @@ impl<C: Behavior, ParentPath>
     }
 }
 
-impl<C: Behavior, ParentPath> SendInput<ShutdownChild<C>, Own>
+impl<C: Behavior, ParentPath> SendInput<ShutdownChild<C, behavior::ChildHead>, Own>
     for ProxySendsWithParent<C, ParentPath>
 {
-    fn emit(&mut self, input: ShutdownChild<C>) {
+    fn emit(&mut self, input: ShutdownChild<C, behavior::ChildHead>) {
         self.shutdowns.send(input);
     }
 }

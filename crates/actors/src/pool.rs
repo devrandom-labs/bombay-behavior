@@ -10,8 +10,8 @@ use std::time::Duration;
 use crate::supervision::{FixedFleetOwnership, OwnershipError};
 use crate::{
     Actions, Address, Behavior, Births, ChildTopology, Crash, CreationRejection, Delivery, Exit,
-    FleetError, Never, Own, Protocol, Proxy, ProxyCommand, ProxyParentIngress, ProxyWithParent,
-    Recipient, RestartConfiguration, RestartPolicy, SendEffects, SendInput, SendLayer, Strategy,
+    FleetError, Never, Own, Protocol, ProxyCommand, ProxyParentIngress, ProxyWithParent, Recipient,
+    RestartConfiguration, RestartPolicy, SendEffects, SendInput, SendLayer, Strategy,
     SupervisionEvent, SupervisorSends, User, WorkerCreationResolved, WorkerStopped,
 };
 use behavior::{ChildRoute, Here};
@@ -648,29 +648,6 @@ where
             .iter()
             .position(|slot| slot.nonce == worker)
             .ok_or(PoolError::UnknownWorker(worker))
-    }
-}
-
-impl<A, D, J, R, C, P> PoolCore<A, D, J, R, C, P, behavior::Here>
-where
-    A: Address,
-    A::Nonce: From<u64>,
-    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
-    P: crate::PoolAssignmentProtocol<Addr = A, Job = J>,
-    C: Behavior<Ph = Never>,
-    C::Protocol: crate::Protocol<Addr = A, Msg = PoolAssignment<P>>,
-{
-    fn new(
-        topology: ChildTopology<A::Nonce, C>,
-        configuration: PoolConfiguration,
-        complete_to: Recipient<P>,
-    ) -> Result<Self, PoolConfigError<A::Nonce>> {
-        Self::with_parent(
-            topology,
-            configuration,
-            complete_to,
-            ProxyParentIngress::new(),
-        )
     }
 }
 
@@ -1549,7 +1526,7 @@ mod tests {
 
     #[test]
     fn one_dispatch_batch_preserves_fifo_jobs_across_index_removal() {
-        let mut pool = PoolCore::new(
+        let mut pool = PoolCore::with_parent(
             ChildTopology::indexed(
                 |index| u64::try_from(index).unwrap(),
                 2,
@@ -1563,6 +1540,7 @@ mod tests {
                 Duration::from_secs(1),
             ),
             Recipient::global(MailAddr(92)),
+            ProxyParentIngress::new(),
         )
         .unwrap();
         behavior::initialize(&mut pool).unwrap();
@@ -1652,7 +1630,7 @@ mod tests {
 /// }
 /// let _: Option<KeyedWorkerPool<MailAddr, Reply, NonKey, u8, (), Worker, fn(&NonKey) -> u64>> = None;
 /// ```
-pub struct KeyedWorkerPool<A: Address, D, K, J, R, C, S>
+pub struct KeyedWorkerPoolWithParent<A: Address, D, K, J, R, C, S, ParentPath>
 where
     A::Nonce: From<u64>,
     D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
@@ -1664,12 +1642,16 @@ where
         >,
     S: AffinitySelector<K, A::Nonce>,
 {
-    pool: PoolCore<A, D, J, R, C, crate::KeyedWorkerPoolProtocol<A, D, K, J, R>>,
+    pool: PoolCore<A, D, J, R, C, crate::KeyedWorkerPoolProtocol<A, D, K, J, R>, ParentPath>,
     bindings: Vec<(K, A::Nonce)>,
     selector: S,
 }
 
-impl<A, D, K, J, R, C, S> KeyedWorkerPool<A, D, K, J, R, C, S>
+/// A keyed pool whose proxies report to the pool's direct event layer.
+pub type KeyedWorkerPool<A, D, K, J, R, C, S> =
+    KeyedWorkerPoolWithParent<A, D, K, J, R, C, S, behavior::Here>;
+
+impl<A, D, K, J, R, C, S, ParentPath> KeyedWorkerPoolWithParent<A, D, K, J, R, C, S, ParentPath>
 where
     A: Address,
     A::Nonce: From<u64>,
@@ -1691,14 +1673,15 @@ where
     ///
     /// Returns [`PoolConfigError::NoWorkers`] for an empty topology or
     /// [`PoolConfigError::DuplicateWorker`] for a repeated stable nonce.
-    pub fn new(
+    pub fn with_parent(
         topology: ChildTopology<A::Nonce, C>,
         configuration: PoolConfiguration,
         selector: S,
         complete_to: Recipient<crate::KeyedWorkerPoolProtocol<A, D, K, J, R>>,
+        proxy_parent: ProxyParentIngress<A, ParentPath>,
     ) -> Result<Self, PoolConfigError<A::Nonce>> {
         Ok(Self {
-            pool: PoolCore::new(topology, configuration, complete_to)?,
+            pool: PoolCore::with_parent(topology, configuration, complete_to, proxy_parent)?,
             bindings: Vec::new(),
             selector,
         })
@@ -1736,7 +1719,37 @@ where
     }
 }
 
-impl<A, D, K, J, R, C, S> Behavior for KeyedWorkerPool<A, D, K, J, R, C, S>
+impl<A, D, K, J, R, C, S> KeyedWorkerPoolWithParent<A, D, K, J, R, C, S, behavior::Here>
+where
+    A: Address,
+    A::Nonce: From<u64>,
+    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
+    K: Eq,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<
+            Addr = A,
+            Msg = PoolAssignment<crate::KeyedWorkerPoolProtocol<A, D, K, J, R>>,
+        >,
+    S: AffinitySelector<K, A::Nonce>,
+{
+    pub fn new(
+        topology: ChildTopology<A::Nonce, C>,
+        configuration: PoolConfiguration,
+        selector: S,
+        complete_to: Recipient<crate::KeyedWorkerPoolProtocol<A, D, K, J, R>>,
+    ) -> Result<Self, PoolConfigError<A::Nonce>> {
+        Self::with_parent(
+            topology,
+            configuration,
+            selector,
+            complete_to,
+            ProxyParentIngress::new(),
+        )
+    }
+}
+
+impl<A, D, K, J, R, C, S, ParentPath> Behavior
+    for KeyedWorkerPoolWithParent<A, D, K, J, R, C, S, ParentPath>
 where
     A: Address,
     A::Nonce: From<u64>,
@@ -1752,10 +1765,10 @@ where
 {
     type Protocol = crate::KeyedWorkerPoolProtocol<A, D, K, J, R>;
     type Event = KeyedPoolEvent<A, D, K, J, R>;
-    type Sends = PoolSends<A, D, J, R, C>;
+    type Sends = PoolSends<A, D, J, R, C, ParentPath>;
     type Ph = Never;
     type Error = PoolError<A::Nonce>;
-    type Birth = Births<Proxy<C>>;
+    type Birth = Births<ProxyWithParent<C, ParentPath>>;
 
     fn init(&mut self, _: crate::InitializationTurn) -> crate::BehaviorActed<Self> {
         behavior::initialize(&mut self.pool)
@@ -1778,7 +1791,7 @@ where
                 ..
             }) => {
                 if self.pool.supervisor.is_shutting_down() {
-                    let mut actions: PoolActions<A, D, J, R, C> = Actions::cont();
+                    let mut actions: PoolActions<A, D, J, R, C, ParentPath> = Actions::cont();
                     actions.sends.inner.responses.push(Delivery::new(
                         reply_to,
                         PoolResponse::Rejected {

@@ -294,9 +294,11 @@ where
     Reply: behavior::Protocol<Addr = A>,
 {
     pub outcomes: Vec<Delivery<Reply>>,
-    pub child_observations: InterpreterRequests<ObserveChild<A>>,
-    pub creation_observations: InterpreterRequests<ObserveCreation<A>>,
-    pub shutdowns: InterpreterRequests<ShutdownChild<DynamicProxyWithParent<C, ParentPath>>>,
+    pub child_observations: InterpreterRequests<ObserveChild<A, behavior::ChildHead>>,
+    pub creation_observations: InterpreterRequests<ObserveCreation<A, behavior::ChildHead>>,
+    pub shutdowns: InterpreterRequests<
+        ShutdownChild<DynamicProxyWithParent<C, ParentPath>, behavior::ChildHead>,
+    >,
     pub replacements: Vec<ChildDelivery<DynamicProxy<C>, behavior::ChildHead>>,
 }
 
@@ -335,10 +337,11 @@ where
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
     Reply: behavior::Protocol<Addr = A>,
-    InterpreterRequests<ObserveChild<A>>: behavior::SendsFor<DynamicSupervisorEvent<A, C, Reply>>,
-    InterpreterRequests<ObserveCreation<A>>:
+    InterpreterRequests<ObserveChild<A, behavior::ChildHead>>:
         behavior::SendsFor<DynamicSupervisorEvent<A, C, Reply>>,
-    InterpreterRequests<ShutdownChild<DynamicProxyWithParent<C, ParentPath>>>:
+    InterpreterRequests<ObserveCreation<A, behavior::ChildHead>>:
+        behavior::SendsFor<DynamicSupervisorEvent<A, C, Reply>>,
+    InterpreterRequests<ShutdownChild<DynamicProxyWithParent<C, ParentPath>, behavior::ChildHead>>:
         behavior::SendsFor<DynamicSupervisorEvent<A, C, Reply>>,
 {
 }
@@ -353,9 +356,11 @@ where
     C::Protocol: crate::Protocol<Addr = A>,
     Reply: behavior::Protocol<Addr = A>,
     Vec<Delivery<Reply>>: behavior::InterpretSends<I, RootEvent, Path>,
-    InterpreterRequests<ObserveChild<A>>: behavior::InterpretSends<I, RootEvent, Path>,
-    InterpreterRequests<ObserveCreation<A>>: behavior::InterpretSends<I, RootEvent, Path>,
-    InterpreterRequests<ShutdownChild<DynamicProxyWithParent<C, ParentPath>>>:
+    InterpreterRequests<ObserveChild<A, behavior::ChildHead>>:
+        behavior::InterpretSends<I, RootEvent, Path>,
+    InterpreterRequests<ObserveCreation<A, behavior::ChildHead>>:
+        behavior::InterpretSends<I, RootEvent, Path>,
+    InterpreterRequests<ShutdownChild<DynamicProxyWithParent<C, ParentPath>, behavior::ChildHead>>:
         behavior::InterpretSends<I, RootEvent, Path>,
     Vec<ChildDelivery<DynamicProxy<C>, behavior::ChildHead>>:
         behavior::InterpretSends<I, RootEvent, Path>,
@@ -374,7 +379,7 @@ where
         }
     }
 }
-impl<A, C, Reply, ParentPath> SendInput<ObserveChild<A>, Own>
+impl<A, C, Reply, ParentPath> SendInput<ObserveChild<A, behavior::ChildHead>, Own>
     for DynamicSupervisorSends<A, C, Reply, ParentPath>
 where
     A: Address,
@@ -383,11 +388,11 @@ where
     C::Protocol: crate::Protocol<Addr = A>,
     Reply: behavior::Protocol<Addr = A>,
 {
-    fn emit(&mut self, value: ObserveChild<A>) {
+    fn emit(&mut self, value: ObserveChild<A, behavior::ChildHead>) {
         self.child_observations.send(value);
     }
 }
-impl<A, C, Reply, ParentPath> SendInput<ObserveCreation<A>, Own>
+impl<A, C, Reply, ParentPath> SendInput<ObserveCreation<A, behavior::ChildHead>, Own>
     for DynamicSupervisorSends<A, C, Reply, ParentPath>
 where
     A: Address,
@@ -396,11 +401,12 @@ where
     C::Protocol: crate::Protocol<Addr = A>,
     Reply: behavior::Protocol<Addr = A>,
 {
-    fn emit(&mut self, value: ObserveCreation<A>) {
+    fn emit(&mut self, value: ObserveCreation<A, behavior::ChildHead>) {
         self.creation_observations.send(value);
     }
 }
-impl<A, C, Reply, ParentPath> SendInput<ShutdownChild<DynamicProxyWithParent<C, ParentPath>>, Own>
+impl<A, C, Reply, ParentPath>
+    SendInput<ShutdownChild<DynamicProxyWithParent<C, ParentPath>, behavior::ChildHead>, Own>
     for DynamicSupervisorSends<A, C, Reply, ParentPath>
 where
     A: Address,
@@ -409,7 +415,10 @@ where
     C::Protocol: crate::Protocol<Addr = A>,
     Reply: behavior::Protocol<Addr = A>,
 {
-    fn emit(&mut self, value: ShutdownChild<DynamicProxyWithParent<C, ParentPath>>) {
+    fn emit(
+        &mut self,
+        value: ShutdownChild<DynamicProxyWithParent<C, ParentPath>, behavior::ChildHead>,
+    ) {
         self.shutdowns.send(value);
     }
 }
@@ -602,6 +611,7 @@ where
                             >::new(nonce);
                             sends.shutdowns.send(ShutdownChild::<
                                 DynamicProxyWithParent<C, ParentPath>,
+                                behavior::ChildHead,
                             >::at(route));
                             sends.outcomes.push(Delivery::new(
                                 reply_to,
@@ -708,6 +718,7 @@ where
                         if matches!(self.state, DynamicSupervisorState::Draining { .. }) {
                             sends.shutdowns.send(ShutdownChild::<
                                 DynamicProxyWithParent<C, ParentPath>,
+                                behavior::ChildHead,
                             >::new(resolved.nonce));
                         }
                     }

@@ -84,6 +84,11 @@ only for the values it actually transports.
 The full capability and lifecycle contract is in
 [Established capabilities](docs/established-capabilities.md).
 
+The [Behavior Actors template law audit](docs/template-law-audit.md) records
+which reusable templates intentionally use logical names, exact installed
+capabilities, or creator-local child routes, and the hard-coding checks applied
+across the catalogue.
+
 ## Authoring a behavior
 
 Use `#[behavior::behavior(...)]` for a nominal user-message behavior. The

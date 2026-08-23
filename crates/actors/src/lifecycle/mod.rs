@@ -18,8 +18,10 @@ pub use shutdown_coordinator::{
 };
 pub use task::{Task, TaskError, TaskMessage, TaskResult, TaskState};
 pub use termination_monitor::{
-    CleanupReaction, LifecyclePublication, LifecyclePublisher, Reaper, TerminationMonitor,
-    TerminationObservation, TerminationReaction,
+    CleanupReaction, EstablishedTerminationMonitor, EstablishedTerminationReaction,
+    EstablishedTerminationTarget, LifecyclePublication, LifecyclePublisher,
+    LogicalTerminationTarget, Reaper, TerminationMonitor, TerminationMonitorWith,
+    TerminationObservation, TerminationObservationTarget, TerminationReaction,
 };
 pub use termination_propagation::{
     ChildTermination, PeerTermination, PropagateTermination, TerminalDisposition,

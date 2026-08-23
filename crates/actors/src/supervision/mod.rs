@@ -13,8 +13,8 @@ pub use adapter::{
 };
 pub use backoff::{Backoff, BackoffConfigError, BackoffError};
 pub use backoff_supervisor::{
-    BackoffSupervise, BackoffSupervisor, BackoffSupervisorError, BackoffSupervisorEvent,
-    BackoffSupervisorSends,
+    BackoffSupervise, BackoffSuperviseWithParent, BackoffSupervisor, BackoffSupervisorError,
+    BackoffSupervisorEvent, BackoffSupervisorSends, BackoffSupervisorWithParent,
 };
 pub(crate) use domain::{FixedFleetOwnership, OwnershipError};
 pub use domain::{FleetError, IncarnationError as ProxyError, IncarnationPhase};

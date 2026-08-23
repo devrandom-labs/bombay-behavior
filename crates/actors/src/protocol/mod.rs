@@ -237,20 +237,51 @@ impl<A: Address> From<(A::Nonce, Result<Exit<A>, Crash>, Instant)> for ChildStop
 /// without installing an observation or emitting [`ChildStopped`]. The
 /// rejection remains observable through [`ObserveCreation`], and a later
 /// creation cannot inherit the consumed observation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ObserveChild<A: Address> {
+pub struct ObserveChild<A: Address, Occurrence> {
     pub nonce: A::Nonce,
+    occurrence: core::marker::PhantomData<fn() -> Occurrence>,
 }
 
-impl<A: Address> ObserveChild<A> {
+impl<A: Address, Occurrence> Copy for ObserveChild<A, Occurrence> {}
+
+impl<A: Address, Occurrence> Clone for ObserveChild<A, Occurrence> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<A: Address, Occurrence> PartialEq for ObserveChild<A, Occurrence> {
+    fn eq(&self, other: &Self) -> bool {
+        self.nonce == other.nonce
+    }
+}
+
+impl<A: Address, Occurrence> Eq for ObserveChild<A, Occurrence> {}
+
+impl<A: Address, Occurrence> core::fmt::Debug for ObserveChild<A, Occurrence>
+where
+    A::Nonce: core::fmt::Debug,
+{
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        formatter
+            .debug_struct("ObserveChild")
+            .field("nonce", &self.nonce)
+            .finish()
+    }
+}
+
+impl<A: Address, Occurrence> ObserveChild<A, Occurrence> {
     #[must_use]
     pub const fn new(nonce: A::Nonce) -> Self {
-        Self { nonce }
+        Self {
+            nonce,
+            occurrence: core::marker::PhantomData,
+        }
     }
 
     /// Observe the child selected by one typed creator-local route.
     #[must_use]
-    pub const fn at<C, Role>(route: behavior::ChildRoute<C, Role>) -> Self
+    pub const fn at<C>(route: behavior::ChildRoute<C, Occurrence>) -> Self
     where
         C: behavior::Behavior,
         C::Protocol: behavior::Protocol<Addr = A>,
@@ -259,7 +290,7 @@ impl<A: Address> ObserveChild<A> {
     }
 }
 
-impl<A: Address> behavior::InterpreterRequest for ObserveChild<A> {
+impl<A: Address, Occurrence> behavior::InterpreterRequest for ObserveChild<A, Occurrence> {
     type ReturnToEmitter = behavior::ReturnsToEmitter<ChildStopped<A>, behavior::Here>;
 }
 
@@ -410,20 +441,51 @@ impl<A: behavior::Address>
 
 /// Ask the local interpreter to return the committed result of the same-action
 /// creation at `nonce` through the behavior's typed creation-result lane.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ObserveCreation<A: Address> {
+pub struct ObserveCreation<A: Address, Occurrence> {
     pub nonce: A::Nonce,
+    occurrence: core::marker::PhantomData<fn() -> Occurrence>,
 }
 
-impl<A: Address> ObserveCreation<A> {
+impl<A: Address, Occurrence> Copy for ObserveCreation<A, Occurrence> {}
+
+impl<A: Address, Occurrence> Clone for ObserveCreation<A, Occurrence> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<A: Address, Occurrence> PartialEq for ObserveCreation<A, Occurrence> {
+    fn eq(&self, other: &Self) -> bool {
+        self.nonce == other.nonce
+    }
+}
+
+impl<A: Address, Occurrence> Eq for ObserveCreation<A, Occurrence> {}
+
+impl<A: Address, Occurrence> core::fmt::Debug for ObserveCreation<A, Occurrence>
+where
+    A::Nonce: core::fmt::Debug,
+{
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        formatter
+            .debug_struct("ObserveCreation")
+            .field("nonce", &self.nonce)
+            .finish()
+    }
+}
+
+impl<A: Address, Occurrence> ObserveCreation<A, Occurrence> {
     #[must_use]
     pub const fn new(nonce: A::Nonce) -> Self {
-        Self { nonce }
+        Self {
+            nonce,
+            occurrence: core::marker::PhantomData,
+        }
     }
 
     /// Observe the creation staged through one typed creator-local route.
     #[must_use]
-    pub const fn at<C, Role>(route: behavior::ChildRoute<C, Role>) -> Self
+    pub const fn at<C>(route: behavior::ChildRoute<C, Occurrence>) -> Self
     where
         C: behavior::Behavior,
         C::Protocol: behavior::Protocol<Addr = A>,
@@ -432,7 +494,7 @@ impl<A: Address> ObserveCreation<A> {
     }
 }
 
-impl<A: Address> behavior::InterpreterRequest for ObserveCreation<A> {
+impl<A: Address, Occurrence> behavior::InterpreterRequest for ObserveCreation<A, Occurrence> {
     type ReturnToEmitter = behavior::ReturnsToEmitter<CreationResolved<A>, behavior::Here>;
 }
 
@@ -632,7 +694,7 @@ pub struct ShutdownRequested;
 /// the same address and nonce types:
 ///
 /// ```compile_fail
-/// use behavior::{Actions, Behavior, MailAddr, Never, NoBirths, Protocol, User};
+/// use behavior::{Actions, Behavior, ChildHead, MailAddr, Never, NoBirths, Protocol, User};
 /// use behavior_actors::ShutdownChild;
 ///
 /// struct Queue;
@@ -661,17 +723,47 @@ pub struct ShutdownRequested;
 /// inert!(Queue);
 /// inert!(Worker);
 ///
-/// let queue = ShutdownChild::<Queue>::new(1);
-/// let _: ShutdownChild<Worker> = queue;
+/// let queue = ShutdownChild::<Queue, ChildHead>::new(1);
+/// let _: ShutdownChild<Worker, ChildHead> = queue;
 /// ```
-pub struct ShutdownChild<C: behavior::Behavior> {
+///
+/// Repeated occurrences of the same behavior are also incompatible:
+///
+/// ```compile_fail
+/// use behavior::{
+///     Actions, Behavior, ChildHead, ChildTail, MailAddr, Never, NoBirths, Protocol, User,
+/// };
+/// use behavior_actors::ShutdownChild;
+/// struct Worker;
+/// impl Protocol for Worker {
+///     type Addr = MailAddr;
+///     type Msg = ();
+/// }
+/// impl Behavior for Worker {
+///     type Event = User<MailAddr, ()>;
+///     type Sends = Vec<Never>;
+///     type Ph = Never;
+///     type Error = Never;
+///     type Birth = NoBirths;
+///     fn transition(
+///         &mut self,
+///         _: behavior::ActiveTurn,
+///         _: Self::Event,
+///     ) -> behavior::BehaviorActed<Self> {
+///         Ok(Actions::cont())
+///     }
+/// }
+/// let first = ShutdownChild::<Worker, ChildHead>::new(1);
+/// let _: ShutdownChild<Worker, ChildTail<ChildHead>> = first;
+/// ```
+pub struct ShutdownChild<C: behavior::Behavior, Occurrence> {
     pub nonce: <crate::BehaviorAddr<C> as behavior::Address>::Nonce,
     /// Exact shutdown owner in the selected child behavior.
     pub ingress: behavior::Ingress<ShutdownRequested, behavior::Here>,
-    protocol: core::marker::PhantomData<fn() -> C>,
+    protocol: core::marker::PhantomData<fn() -> (C, Occurrence)>,
 }
 
-impl<C: behavior::Behavior> ShutdownChild<C> {
+impl<C: behavior::Behavior, Occurrence> ShutdownChild<C, Occurrence> {
     #[must_use]
     pub const fn new(nonce: <crate::BehaviorAddr<C> as behavior::Address>::Nonce) -> Self {
         Self {
@@ -683,35 +775,37 @@ impl<C: behavior::Behavior> ShutdownChild<C> {
 
     /// Request shutdown through one typed route to this exact child behavior.
     #[must_use]
-    pub const fn at<Role>(route: behavior::ChildRoute<C, Role>) -> Self {
+    pub const fn at(route: behavior::ChildRoute<C, Occurrence>) -> Self {
         Self::new(route.nonce())
     }
 }
 
-impl<C: behavior::Behavior> behavior::InterpreterRequest for ShutdownChild<C> {
+impl<C: behavior::Behavior, Occurrence> behavior::InterpreterRequest
+    for ShutdownChild<C, Occurrence>
+{
     type ReturnToEmitter = behavior::ReturnsToEmitter<
         ChildShutdownRejected<<crate::BehaviorAddr<C> as behavior::Address>::Nonce>,
         behavior::Here,
     >;
 }
 
-impl<C: behavior::Behavior> Copy for ShutdownChild<C> {}
+impl<C: behavior::Behavior, Occurrence> Copy for ShutdownChild<C, Occurrence> {}
 
-impl<C: behavior::Behavior> Clone for ShutdownChild<C> {
+impl<C: behavior::Behavior, Occurrence> Clone for ShutdownChild<C, Occurrence> {
     fn clone(&self) -> Self {
         *self
     }
 }
 
-impl<C: behavior::Behavior> PartialEq for ShutdownChild<C> {
+impl<C: behavior::Behavior, Occurrence> PartialEq for ShutdownChild<C, Occurrence> {
     fn eq(&self, other: &Self) -> bool {
         self.nonce == other.nonce
     }
 }
 
-impl<C: behavior::Behavior> Eq for ShutdownChild<C> {}
+impl<C: behavior::Behavior, Occurrence> Eq for ShutdownChild<C, Occurrence> {}
 
-impl<C: behavior::Behavior> core::fmt::Debug for ShutdownChild<C>
+impl<C: behavior::Behavior, Occurrence> core::fmt::Debug for ShutdownChild<C, Occurrence>
 where
     <crate::BehaviorAddr<C> as behavior::Address>::Nonce: core::fmt::Debug,
 {
@@ -855,6 +949,11 @@ mod tests {
 
         let route = behavior::ChildRoute::<Worker, WorkerRole>::new(13);
 
+        fn copy_without_occurrence_bounds<T: Copy>() {}
+        copy_without_occurrence_bounds::<ObserveChild<MailAddr, WorkerRole>>();
+        copy_without_occurrence_bounds::<ObserveCreation<MailAddr, WorkerRole>>();
+        copy_without_occurrence_bounds::<ShutdownChild<Worker, WorkerRole>>();
+
         assert_eq!(ObserveChild::at(route).nonce, 13);
         assert_eq!(ObserveCreation::at(route).nonce, 13);
         assert_eq!(ShutdownChild::at(route).nonce, 13);
@@ -863,8 +962,8 @@ mod tests {
     #[test]
     fn expected_lane_types_infer_lossless_protocol_products() {
         let peer: ObservePeer<MailAddr> = MailAddr(7).into();
-        let child: ObserveChild<MailAddr> = ObserveChild::new(9);
-        let creation: ObserveCreation<MailAddr> = ObserveCreation::new(11);
+        let child: ObserveChild<MailAddr, behavior::ChildHead> = ObserveChild::new(9);
+        let creation: ObserveCreation<MailAddr, behavior::ChildHead> = ObserveCreation::new(11);
         let rejected: ChildShutdownRejected<u64> =
             (13, ChildShutdownRejection::NotEstablished).into();
 

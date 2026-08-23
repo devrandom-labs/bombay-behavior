@@ -1,15 +1,17 @@
 //! Typed protocol adaptation through an ordinary actor hop.
 
-use behavior::{
-    Actions, Behavior, BehaviorActed, BehaviorBase, Delivery, Never, NoBirths, Recipient, User,
-};
+use behavior::{Actions, Behavior, BehaviorActed, BehaviorBase, Never, NoBirths, Recipient, User};
+
+use super::DeliveryRoute;
 
 /// A pure actor that maps one input protocol into one destination protocol.
 ///
 /// For every accepted `Input`, the adapter invokes its function pointer exactly
 /// once. If that invocation returns normally, the transition emits exactly one
-/// [`Delivery<Destination>`] to the configured recipient and continues with
-/// the same behavior. Initialization emits no effects; the adapter cannot
+/// effect selected by [`DeliveryRoute`] and continues with the same behavior.
+/// A logical recipient produces `Delivery`, an established recipient produces
+/// `EstablishedDelivery`, and a child route produces occurrence-aware
+/// `ChildDelivery`. Initialization emits no effects; the adapter cannot
 /// create actors, enter another phase, stop itself, or return a controlled
 /// error.
 ///
@@ -23,37 +25,41 @@ use behavior::{
 /// in birth products, child products, supervisors, and topology evidence. If
 /// the mapper panics, unwinding follows the same runtime policy as a panic from
 /// any other [`Behavior`] fold; no successful [`Actions`] value is returned.
-pub struct MessageAdapter<Input, Destination>
+pub struct MessageAdapterWithRoute<Input, Destination, Route>
 where
     Destination: behavior::Protocol,
+    Route: DeliveryRoute<Destination>,
 {
-    destination: Recipient<Destination>,
+    destination: Route,
     adapt: fn(Input) -> Destination::Msg,
 }
 
-impl<Input, Destination> MessageAdapter<Input, Destination>
+/// An adapter whose destination is a logical protocol name.
+pub type MessageAdapter<Input, Destination> =
+    MessageAdapterWithRoute<Input, Destination, Recipient<Destination>>;
+
+impl<Input, Destination, Route> MessageAdapterWithRoute<Input, Destination, Route>
 where
     Destination: behavior::Protocol,
+    Route: DeliveryRoute<Destination>,
 {
     /// Construct an adapter for one concrete destination protocol.
     #[must_use]
-    pub const fn new(
-        destination: Recipient<Destination>,
-        adapt: fn(Input) -> Destination::Msg,
-    ) -> Self {
+    pub const fn new(destination: Route, adapt: fn(Input) -> Destination::Msg) -> Self {
         Self { destination, adapt }
     }
 
     /// Return the destination routing intent.
     #[must_use]
-    pub const fn destination(&self) -> Recipient<Destination> {
-        self.destination
+    pub const fn destination(&self) -> &Route {
+        &self.destination
     }
 }
 
-impl<Input, Destination> BehaviorBase for MessageAdapter<Input, Destination>
+impl<Input, Destination, Route> BehaviorBase for MessageAdapterWithRoute<Input, Destination, Route>
 where
     Destination: behavior::Protocol,
+    Route: DeliveryRoute<Destination>,
 {
     type Base = Self;
 
@@ -62,31 +68,33 @@ where
     }
 }
 
-impl<Input, Destination> behavior::Protocol for MessageAdapter<Input, Destination>
+impl<Input, Destination, Route> behavior::Protocol
+    for MessageAdapterWithRoute<Input, Destination, Route>
 where
     Destination: behavior::Protocol,
+    Route: DeliveryRoute<Destination>,
 {
     type Addr = Destination::Addr;
     type Msg = Input;
 }
 
-impl<Input, Destination> Behavior for MessageAdapter<Input, Destination>
+impl<Input, Destination, Route> Behavior for MessageAdapterWithRoute<Input, Destination, Route>
 where
     Destination: behavior::Protocol,
+    Route: DeliveryRoute<Destination> + Clone,
 {
     type Protocol = Self;
     type Event = User<Destination::Addr, Input>;
-    type Sends = Vec<Delivery<Destination>>;
+    type Sends = Vec<Route::Effect>;
     type Ph = Never;
     type Error = Never;
     type Birth = NoBirths;
 
     fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
         let message = (self.adapt)(event.message);
-        Ok(Actions::send(vec![Delivery::new(
-            self.destination,
-            message,
-        )]))
+        Ok(Actions::send(vec![
+            self.destination.clone().deliver(message),
+        ]))
     }
 }
 
@@ -133,7 +141,7 @@ mod tests {
         assert!(initialized.actions.sends.is_empty());
         assert!(initialized.actions.creates.is_empty());
         assert_eq!(initialized.actions.become_, behavior::Step::Continue);
-        assert_eq!(initialized.behavior.destination(), destination);
+        assert_eq!(*initialized.behavior.destination(), destination);
     }
 
     #[test]

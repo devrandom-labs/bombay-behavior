@@ -3,8 +3,8 @@
 use behavior::{Address, Behavior};
 
 use crate::{
-    Backoff, BackoffSupervisor, ChildTopology, FleetError, RestartConfiguration, Supervisor,
-    TimerId,
+    Backoff, BackoffSupervisor, BackoffSupervisorWithParent, ChildTopology, FleetError,
+    ProxyParentIngress, RestartConfiguration, Supervisor, SupervisorWithParent, TimerId,
 };
 
 /// Construct fixed-fleet supervision inside generation-safe restart backoff.
@@ -32,6 +32,30 @@ where
 {
     Supervisor::new(topology, restart)
         .map(|supervisor| BackoffSupervisor::new(supervisor, backoff, timer))
+}
+
+/// Construct fixed-fleet supervision with an explicit final proxy-report
+/// ingress before applying generation-safe restart backoff.
+///
+/// `ParentPath` is authored against the complete behavior event algebra that
+/// will host the supervisor. Wrapping the result later does not rewrite this
+/// ancestor acquaintance; callers lift [`ProxyParentIngress`] once for every
+/// outer structural event layer.
+pub fn supervised_backoff_with_parent<A, C, ParentPath>(
+    topology: ChildTopology<A::Nonce, C>,
+    restart: RestartConfiguration,
+    backoff: Backoff,
+    timer: fn(A::Nonce) -> TimerId,
+    parent: ProxyParentIngress<A, ParentPath>,
+) -> Result<BackoffSupervisorWithParent<A, C, ParentPath>, FleetError<A::Nonce>>
+where
+    A: Address,
+    A::Nonce: Copy + Eq + From<u64>,
+    C: Behavior<Ph = behavior::Never>,
+    C::Protocol: crate::Protocol<Addr = A>,
+{
+    SupervisorWithParent::with_parent(topology, restart, parent)
+        .map(|supervisor| BackoffSupervisorWithParent::new(supervisor, backoff, timer))
 }
 
 #[cfg(test)]

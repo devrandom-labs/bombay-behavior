@@ -4,6 +4,24 @@ All notable changes to `bombay-behavior-actors` are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- Add exact-capability modes for `Watch` and `TerminationMonitor`, and a
+  statically selected logical, established, or child destination for
+  `MessageAdapter`.
+- Add explicit parent-path forms for delayed supervisors and keyed worker
+  pools so proxy reports remain correctly indexed through outer wrappers.
+
+### Changed
+
+- Preserve structural child occurrence in shutdown, observation, creation
+  observation, termination propagation, and homogeneous or heterogeneous
+  coordinated shutdown effects.
+- Prove that coordinated `Guardian` shutdown reaches root
+  `FinalizeOnShutdown`, and document the complete catalogue audit of logical,
+  exact, and creator-local routing choices.
+- Make circuit-breaker attempt exhaustion a panic-free typed transition.
+
 ## [0.14.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-actors-v0.13.1...bombay-behavior-actors-v0.14.0) - 2026-08-21
 
 ### Added

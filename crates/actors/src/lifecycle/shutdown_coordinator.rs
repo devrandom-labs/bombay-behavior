@@ -297,7 +297,7 @@ mod heterogeneous {
         fn nonce(&self) -> <Self::Addr as Address>::Nonce;
     }
 
-    pub trait Interpret<I, E, Path>: Send
+    pub trait Interpret<I, E, Path, Occurrence>: Send
     where
         I: behavior::SendInterpreter,
     {
@@ -314,7 +314,7 @@ mod heterogeneous {
         }
     }
 
-    impl<I, E, Path, A> Interpret<I, E, Path> for NoShutdownTargets<A>
+    impl<I, E, Path, A, Occurrence> Interpret<I, E, Path, Occurrence> for NoShutdownTargets<A>
     where
         I: behavior::SendInterpreter,
         A: Address,
@@ -340,22 +340,24 @@ mod heterogeneous {
         }
     }
 
-    impl<I, E, Path, C, Tail> Interpret<I, E, Path> for ShutdownChoice<C, Tail>
+    impl<I, E, Path, C, Tail, Occurrence> Interpret<I, E, Path, Occurrence> for ShutdownChoice<C, Tail>
     where
-        I: behavior::SendInterpreter + behavior::InterpretRequest<ShutdownChild<C>, E, Path>,
+        I: behavior::SendInterpreter
+            + behavior::InterpretRequest<ShutdownChild<C, Occurrence>, E, Path>,
         C: Behavior,
         <crate::BehaviorAddr<C> as Address>::Nonce: Send,
-        Tail: Interpret<I, E, Path>,
+        Tail: Interpret<I, E, Path, ChildTail<Occurrence>>,
     {
         async fn interpret(self, interpreter: &mut I) -> Result<(), I::Error> {
             match self {
-                Self::Child { nonce, .. } => {
-                    <I as behavior::InterpretRequest<ShutdownChild<C>, E, Path>>::interpret_request(
-                        interpreter,
-                        ShutdownChild::new(nonce),
-                    )
-                    .await
-                }
+                Self::Child { nonce, .. } => <I as behavior::InterpretRequest<
+                    ShutdownChild<C, Occurrence>,
+                    E,
+                    Path,
+                >>::interpret_request(
+                    interpreter, ShutdownChild::new(nonce)
+                )
+                .await,
                 Self::Other(target) => target.interpret(interpreter).await,
             }
         }
@@ -364,9 +366,9 @@ mod heterogeneous {
 
 /// The concrete coordinated application-terminal stack fixed by
 /// [`coordinated_terminal_application`].
-pub type CoordinatedTerminalApplication<B, S> = crate::PropagateTermination<
+pub type CoordinatedTerminalApplication<B, S, ObservedOccurrence> = crate::PropagateTermination<
     crate::OneShot<HeterogeneousShutdownCoordinator<B, S>>,
-    crate::ChildTermination<crate::BehaviorAddr<B>>,
+    crate::ChildTermination<crate::BehaviorAddr<B>, ObservedOccurrence>,
 >;
 
 /// Construct coordinated heterogeneous shutdown inside a one-shot trigger,
@@ -377,15 +379,15 @@ pub type CoordinatedTerminalApplication<B, S> = crate::PropagateTermination<
 /// pure timeout reaction, observed child nonce, and terminal policy govern
 /// their designated existing templates without inference or reclassification.
 #[must_use]
-pub fn coordinated_terminal_application<B, S>(
+pub fn coordinated_terminal_application<B, S, ObservedOccurrence>(
     behavior: B,
     shutdown_plan: HeterogeneousShutdownPlan<S>,
     timer_id: crate::TimerId,
     shutdown_after: Duration,
     request_shutdown: crate::OneShotReaction<HeterogeneousShutdownCoordinator<B, S>>,
-    observed_child: <crate::BehaviorAddr<B> as Address>::Nonce,
+    observed_child: crate::ChildTermination<crate::BehaviorAddr<B>, ObservedOccurrence>,
     terminal_policy: crate::TerminalPropagationPolicy<crate::BehaviorAddr<B>>,
-) -> CoordinatedTerminalApplication<B, S>
+) -> CoordinatedTerminalApplication<B, S, ObservedOccurrence>
 where
     B: Behavior,
     S: heterogeneous::Selection<Addr = crate::BehaviorAddr<B>> + Copy,
@@ -398,7 +400,7 @@ where
             shutdown_after,
             request_shutdown,
         ),
-        crate::ChildTermination::new(observed_child),
+        observed_child,
         terminal_policy,
     )
 }
@@ -464,7 +466,7 @@ impl<E, T: Send> behavior::SendsFor<E> for HeterogeneousShutdownSends<T> {}
 impl<I, E, Path, T> behavior::InterpretSends<I, E, Path> for HeterogeneousShutdownSends<T>
 where
     I: behavior::SendInterpreter,
-    T: heterogeneous::Interpret<I, E, Path>,
+    T: heterogeneous::Interpret<I, E, Path, ChildHead>,
 {
     fn interpret(
         self,
@@ -562,7 +564,7 @@ pub enum ShutdownCoordinatorError<E, N> {
 ///
 /// `B` is the wrapped coordinator behavior and `C` is the one concrete child
 /// protocol addressed by every nonce in the plan. Starting a phase emits one
-/// typed [`ShutdownChild<C>`] request per member in plan order. A phase advances
+/// typed [`ShutdownChild<C, Occurrence>`] request per member in plan order. A phase advances
 /// only after every matching [`ChildStopped`] fact arrives. An acceptance
 /// rejection returns [`ShutdownCoordinatorError::ChildRejected`] without
 /// changing the phase; stale facts are delegated when the inner protocol
@@ -575,7 +577,7 @@ pub enum ShutdownCoordinatorError<E, N> {
 /// coordinator:
 ///
 /// ```compile_fail
-/// use behavior::{Actions, Behavior, MailAddr, Never, NoBirths, Protocol, User};
+/// use behavior::{Actions, Behavior, ChildHead, MailAddr, Never, NoBirths, Protocol, User};
 /// use behavior_actors::{ShutdownCoordinator, ShutdownPlan};
 ///
 /// struct Plain;
@@ -596,26 +598,26 @@ pub enum ShutdownCoordinatorError<E, N> {
 ///
 /// fn require_behavior<B: Behavior>(_: B) {}
 /// let plan = ShutdownPlan::new([vec![1]]).unwrap();
-/// require_behavior(ShutdownCoordinator::<Plain, Plain>::new(Plain, plan));
+/// require_behavior(ShutdownCoordinator::<Plain, Plain, ChildHead>::new(Plain, plan));
 /// ```
-pub struct ShutdownCoordinator<B: Behavior, C: Behavior>
+pub struct ShutdownCoordinator<B: Behavior, C: Behavior, Occurrence>
 where
     C::Protocol: crate::Protocol<Addr = crate::BehaviorAddr<B>>,
 {
     inner: B,
     plan: ShutdownPlan<<crate::BehaviorAddr<B> as Address>::Nonce>,
     state: ShutdownState<<crate::BehaviorAddr<B> as Address>::Nonce>,
-    child: core::marker::PhantomData<fn() -> C>,
+    child: core::marker::PhantomData<fn() -> (C, Occurrence)>,
 }
 
-type ShutdownCoordinatorActions<B, C> = Actions<
+type ShutdownCoordinatorActions<B, C, Occurrence> = Actions<
     crate::BehaviorAddr<B>,
     <B as Behavior>::Ph,
-    SendLayer<InterpreterRequests<ShutdownChild<C>>, <B as Behavior>::Sends>,
+    SendLayer<InterpreterRequests<ShutdownChild<C, Occurrence>>, <B as Behavior>::Sends>,
     <B as Behavior>::Birth,
 >;
 
-impl<B: Behavior, C: Behavior> ShutdownCoordinator<B, C>
+impl<B: Behavior, C: Behavior, Occurrence> ShutdownCoordinator<B, C, Occurrence>
 where
     C::Protocol: crate::Protocol<Addr = crate::BehaviorAddr<B>>,
     <crate::BehaviorAddr<B> as Address>::Nonce: Copy + Eq,
@@ -639,23 +641,23 @@ where
 
     fn wrap(
         actions: Actions<crate::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>,
-    ) -> ShutdownCoordinatorActions<B, C> {
+    ) -> ShutdownCoordinatorActions<B, C, Occurrence> {
         actions.map_sends(|inner| SendLayer::new(InterpreterRequests::empty(), inner))
     }
 
-    fn phase_actions(&self, phase: usize) -> ShutdownCoordinatorActions<B, C> {
+    fn phase_actions(&self, phase: usize) -> ShutdownCoordinatorActions<B, C, Occurrence> {
         let shutdowns = InterpreterRequests::new(
             self.plan.phases[phase]
                 .iter()
                 .copied()
-                .map(ShutdownChild::<C>::new)
+                .map(ShutdownChild::<C, Occurrence>::new)
                 .collect(),
         );
         Actions::send(SendLayer::new(shutdowns, B::Sends::empty()))
     }
 }
 
-impl<B, C> crate::BehaviorBase for ShutdownCoordinator<B, C>
+impl<B, C, Occurrence> crate::BehaviorBase for ShutdownCoordinator<B, C, Occurrence>
 where
     B: Behavior + crate::BehaviorBase,
     C: Behavior,
@@ -668,7 +670,7 @@ where
     }
 }
 
-impl<B, C> crate::StashStatus for ShutdownCoordinator<B, C>
+impl<B, C, Occurrence> crate::StashStatus for ShutdownCoordinator<B, C, Occurrence>
 where
     B: Behavior + crate::StashStatus,
     C: Behavior,
@@ -680,7 +682,7 @@ where
     }
 }
 
-impl<B, C, A, Ph, S, Br> Behavior for ShutdownCoordinator<B, C>
+impl<B, C, Occurrence, A, Ph, S, Br> Behavior for ShutdownCoordinator<B, C, Occurrence>
 where
     A: Address,
     A::Nonce: Copy + Eq,
@@ -694,7 +696,7 @@ where
 {
     type Protocol = B::Protocol;
     type Event = ShutdownCoordinatorEvent<B::Event>;
-    type Sends = SendLayer<InterpreterRequests<ShutdownChild<C>>, S>;
+    type Sends = SendLayer<InterpreterRequests<ShutdownChild<C, Occurrence>>, S>;
     type Ph = Ph;
     type Error = ShutdownCoordinatorError<B::Error, A::Nonce>;
     type Birth = Br;
@@ -769,7 +771,7 @@ where
 /// Pure phased shutdown over an arbitrary closed child-protocol sum.
 ///
 /// Each choice is interpreted in plan order through its exact concrete
-/// `ShutdownChild<C>` request. Phase completion consumes the shared
+/// `ShutdownChild<C, Occurrence>` request. Phase completion consumes the shared
 /// creator-local nonce because the child namespace is globally unique. This
 /// phased ordering is Bombay policy, not an actor-model guarantee.
 pub struct HeterogeneousShutdownCoordinator<B: Behavior, T>
@@ -936,7 +938,7 @@ where
 }
 
 /// Homogeneous dependency-ordered shutdown uses the same validated phase machine.
-pub type TreeShutdown<B, C> = ShutdownCoordinator<B, C>;
+pub type TreeShutdown<B, C, Occurrence> = ShutdownCoordinator<B, C, Occurrence>;
 
 #[cfg(test)]
 mod tests {
@@ -999,7 +1001,7 @@ mod tests {
     }
 
     type RecipeTargets = ShutdownChoice<crate::StopOnShutdown<Probe>, NoShutdownTargets<MailAddr>>;
-    type RecipeSubject = CoordinatedTerminalApplication<Probe, RecipeTargets>;
+    type RecipeSubject = CoordinatedTerminalApplication<Probe, RecipeTargets, ChildHead>;
 
     fn request_recipe_shutdown(
         coordinator: &mut HeterogeneousShutdownCoordinator<Probe, RecipeTargets>,
@@ -1025,7 +1027,7 @@ mod tests {
             crate::TimerId(17),
             Duration::from_secs(5),
             request_recipe_shutdown,
-            9,
+            crate::ChildTermination::<MailAddr, ChildHead>::new(9),
             policy,
         )
     }
@@ -1038,7 +1040,7 @@ mod tests {
                 Duration::from_secs(5),
                 request_recipe_shutdown,
             ),
-            crate::ChildTermination::new(9),
+            crate::ChildTermination::<MailAddr, ChildHead>::new(9),
             policy,
         )
     }
@@ -1108,7 +1110,7 @@ mod tests {
 
     #[test]
     fn coordinated_terminal_recipe_has_exact_type_and_manual_initialization_trace() {
-        type Expected = CoordinatedTerminalApplication<Probe, RecipeTargets>;
+        type Expected = CoordinatedTerminalApplication<Probe, RecipeTargets, ChildHead>;
         fn exact(_: Expected) {}
 
         exact(coordinated_terminal_application(
@@ -1117,7 +1119,7 @@ mod tests {
             crate::TimerId(17),
             Duration::from_secs(5),
             request_recipe_shutdown,
-            9,
+            crate::ChildTermination::<MailAddr, ChildHead>::new(9),
             crate::propagate_abnormal,
         ));
 
@@ -1238,7 +1240,7 @@ mod tests {
             crate::TimerId(17),
             Duration::from_secs(5),
             request_recipe_shutdown,
-            9,
+            crate::ChildTermination::<MailAddr, ChildHead>::new(9),
             crate::propagate_abnormal,
         )
         .initialize()
@@ -1283,7 +1285,7 @@ mod tests {
     fn phases_advance_only_after_every_current_child_stops() {
         let plan = ShutdownPlan::new([vec![1, 2], vec![3]]).unwrap();
         let initialized =
-            ShutdownCoordinator::<Probe, crate::StopOnShutdown<Probe>>::new(Probe, plan)
+            ShutdownCoordinator::<Probe, crate::StopOnShutdown<Probe>, ChildHead>::new(Probe, plan)
                 .initialize()
                 .unwrap();
         assert_eq!(initialized.actions.sends.inner, [1]);
@@ -1426,10 +1428,10 @@ mod tests {
         impl behavior::SendInterpreter for Recording {
             type Error = Never;
         }
-        impl behavior::InterpretRequest<ShutdownChild<First>, Event, Here> for Recording {
+        impl behavior::InterpretRequest<ShutdownChild<First, ChildHead>, Event, Here> for Recording {
             fn interpret_request(
                 &mut self,
-                request: ShutdownChild<First>,
+                request: ShutdownChild<First, ChildHead>,
             ) -> impl Future<Output = Result<(), Never>> + Send {
                 async move {
                     self.0.push(request.nonce);
@@ -1437,10 +1439,29 @@ mod tests {
                 }
             }
         }
-        impl behavior::InterpretRequest<ShutdownChild<Second>, Event, Here> for Recording {
+        impl behavior::InterpretRequest<ShutdownChild<Second, ChildTail<ChildHead>>, Event, Here>
+            for Recording
+        {
             fn interpret_request(
                 &mut self,
-                request: ShutdownChild<Second>,
+                request: ShutdownChild<Second, ChildTail<ChildHead>>,
+            ) -> impl Future<Output = Result<(), Never>> + Send {
+                async move {
+                    self.0.push(request.nonce);
+                    Ok(())
+                }
+            }
+        }
+        impl
+            behavior::InterpretRequest<
+                ShutdownChild<First, ChildTail<ChildTail<ChildHead>>>,
+                Event,
+                Here,
+            > for Recording
+        {
+            fn interpret_request(
+                &mut self,
+                request: ShutdownChild<First, ChildTail<ChildTail<ChildHead>>>,
             ) -> impl Future<Output = Result<(), Never>> + Send {
                 async move {
                     self.0.push(request.nonce);
@@ -1476,6 +1497,7 @@ mod tests {
         let initialized = crate::Guardian::coordinated(ShutdownCoordinator::<
             Probe,
             crate::StopOnShutdown<Probe>,
+            ChildHead,
         >::new(Probe, plan))
         .initialize()
         .unwrap();
@@ -1494,7 +1516,7 @@ mod tests {
     fn duplicates_stale_children_and_repeated_shutdown_are_inert() {
         let plan = ShutdownPlan::new([vec![1, 2]]).unwrap();
         let mut active =
-            ShutdownCoordinator::<Probe, crate::StopOnShutdown<Probe>>::new(Probe, plan)
+            ShutdownCoordinator::<Probe, crate::StopOnShutdown<Probe>, ChildHead>::new(Probe, plan)
                 .initialize()
                 .unwrap()
                 .behavior;
@@ -1522,7 +1544,7 @@ mod tests {
     fn matching_rejection_is_typed_and_does_not_mutate_phase() {
         let plan = ShutdownPlan::new([vec![1]]).unwrap();
         let mut active =
-            ShutdownCoordinator::<Probe, crate::StopOnShutdown<Probe>>::new(Probe, plan)
+            ShutdownCoordinator::<Probe, crate::StopOnShutdown<Probe>, ChildHead>::new(Probe, plan)
                 .initialize()
                 .unwrap()
                 .behavior;
@@ -1545,7 +1567,7 @@ mod tests {
     fn empty_plan_stops_immediately_and_user_actions_preserve_named_lanes() {
         let plan = ShutdownPlan::<u64>::new([]).unwrap();
         let mut active =
-            ShutdownCoordinator::<Probe, crate::StopOnShutdown<Probe>>::new(Probe, plan)
+            ShutdownCoordinator::<Probe, crate::StopOnShutdown<Probe>, ChildHead>::new(Probe, plan)
                 .initialize()
                 .unwrap()
                 .behavior;

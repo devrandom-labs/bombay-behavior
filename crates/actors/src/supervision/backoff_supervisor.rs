@@ -3,8 +3,8 @@
 use std::time::Duration;
 
 use super::{
-    Backoff, BackoffError, Proxy, Supervise, SuperviseError, Supervisor, SupervisorError,
-    SupervisorSends,
+    Backoff, BackoffError, Proxy, ProxyWithParent, SuperviseError, SuperviseWithParent,
+    SupervisorError, SupervisorSends, SupervisorWithParent,
 };
 use crate::{
     ChildShutdownRejected, ChildStopped, CreationResolved, ScheduleAfter, ShutdownRequested,
@@ -145,15 +145,17 @@ where
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
     InterpreterRequests<ScheduleAfter>: behavior::SendsFor<BackoffSupervisorEvent<Event>>,
-    InterpreterRequests<crate::ObserveChild<A>>: behavior::SendsFor<BackoffSupervisorEvent<Event>>,
-    InterpreterRequests<crate::ObserveCreation<A>>:
+    InterpreterRequests<crate::ObserveChild<A, behavior::ChildHead>>:
+        behavior::SendsFor<BackoffSupervisorEvent<Event>>,
+    InterpreterRequests<crate::ObserveCreation<A, behavior::ChildHead>>:
         behavior::SendsFor<BackoffSupervisorEvent<Event>>,
     Vec<ChildDelivery<Proxy<C>, behavior::ChildHead>>:
         behavior::SendsFor<BackoffSupervisorEvent<Event>>,
     InterpreterRequests<crate::ReportSupervisionFailure<A>>:
         behavior::SendsFor<BackoffSupervisorEvent<Event>>,
-    InterpreterRequests<crate::ShutdownChild<crate::ProxyWithParent<C, ParentPath>>>:
-        behavior::SendsFor<BackoffSupervisorEvent<Event>>,
+    InterpreterRequests<
+        crate::ShutdownChild<crate::ProxyWithParent<C, ParentPath>, behavior::ChildHead>,
+    >: behavior::SendsFor<BackoffSupervisorEvent<Event>>,
 {
 }
 
@@ -306,7 +308,7 @@ where
 
 /// A supervisor whose accepted replacement commands are released only after
 /// a matching generation-tagged timer fact.
-pub struct BackoffSupervise<B, C>
+pub struct BackoffSuperviseWithParent<B, C, ParentPath>
 where
     B: Behavior,
     crate::BehaviorAddr<B>: Address,
@@ -314,11 +316,14 @@ where
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = crate::BehaviorAddr<B>>,
 {
-    inner: Supervise<B, C>,
+    inner: SuperviseWithParent<B, C, ParentPath>,
     backoff: BackoffState<crate::BehaviorAddr<B>, C>,
 }
 
-impl<B, C> BackoffSupervise<B, C>
+/// Delayed supervision whose proxies report to the direct supervisor layer.
+pub type BackoffSupervise<B, C> = BackoffSuperviseWithParent<B, C, Here>;
+
+impl<B, C, ParentPath> BackoffSuperviseWithParent<B, C, ParentPath>
 where
     B: Behavior,
     crate::BehaviorAddr<B>: Address,
@@ -328,7 +333,7 @@ where
 {
     #[must_use]
     pub const fn new(
-        inner: Supervise<B, C>,
+        inner: SuperviseWithParent<B, C, ParentPath>,
         policy: Backoff,
         timer: fn(<crate::BehaviorAddr<B> as Address>::Nonce) -> TimerId,
     ) -> Self {
@@ -344,7 +349,7 @@ where
     }
 }
 
-impl<B, C> crate::BehaviorBase for BackoffSupervise<B, C>
+impl<B, C, ParentPath> crate::BehaviorBase for BackoffSuperviseWithParent<B, C, ParentPath>
 where
     B: Behavior<Birth = Births<C>> + crate::BehaviorBase,
     crate::BehaviorAddr<B>: Address,
@@ -358,7 +363,7 @@ where
     }
 }
 
-impl<B, C, A, Ph, Sends> Behavior for BackoffSupervise<B, C>
+impl<B, C, ParentPath, A, Ph, Sends> Behavior for BackoffSuperviseWithParent<B, C, ParentPath>
 where
     A: Address,
     A::Nonce: Copy + Eq + From<u64>,
@@ -370,10 +375,10 @@ where
 {
     type Protocol = B::Protocol;
     type Event = BackoffSupervisorEvent<B::Event>;
-    type Sends = SendLayer<BackoffSupervisorSends<A, C>, Sends>;
+    type Sends = SendLayer<BackoffSupervisorSends<A, C, ParentPath>, Sends>;
     type Ph = Ph;
     type Error = BackoffSupervisorError<SuperviseError<B::Error, A::Nonce>, A::Nonce>;
-    type Birth = Births<Proxy<C>>;
+    type Birth = Births<ProxyWithParent<C, ParentPath>>;
 
     fn init(&mut self, _: crate::InitializationTurn) -> behavior::BehaviorActed<Self> {
         behavior::initialize(&mut self.inner)
@@ -516,18 +521,21 @@ where
 /// checked delay attempts, timer generations, pending replacement batches, and
 /// stale-timer rejection. No application behavior is required to witness child
 /// creation authority.
-pub struct BackoffSupervisor<A, C>
+pub struct BackoffSupervisorWithParent<A, C, ParentPath>
 where
     A: Address,
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
 {
-    inner: Supervisor<A, C>,
+    inner: SupervisorWithParent<A, C, ParentPath>,
     backoff: BackoffState<A, C>,
 }
 
-impl<A, C> BackoffSupervisor<A, C>
+/// Standalone delayed supervisor whose proxies report to its direct layer.
+pub type BackoffSupervisor<A, C> = BackoffSupervisorWithParent<A, C, Here>;
+
+impl<A, C, ParentPath> BackoffSupervisorWithParent<A, C, ParentPath>
 where
     A: Address,
     A::Nonce: Copy + Eq + From<u64>,
@@ -536,7 +544,7 @@ where
 {
     #[must_use]
     pub const fn new(
-        inner: Supervisor<A, C>,
+        inner: SupervisorWithParent<A, C, ParentPath>,
         policy: Backoff,
         timer: fn(A::Nonce) -> TimerId,
     ) -> Self {
@@ -552,34 +560,35 @@ where
     }
 }
 
-impl<A, C> crate::BehaviorBase for BackoffSupervisor<A, C>
+impl<A, C, ParentPath> crate::BehaviorBase for BackoffSupervisorWithParent<A, C, ParentPath>
 where
     A: Address,
     A::Nonce: Copy + Eq + From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
 {
-    type Base = <Supervisor<A, C> as crate::BehaviorBase>::Base;
+    type Base = <SupervisorWithParent<A, C, ParentPath> as crate::BehaviorBase>::Base;
     fn base(&self) -> &Self::Base {
         self.inner.base()
     }
 }
 
-impl<A, C> Behavior for BackoffSupervisor<A, C>
+impl<A, C, ParentPath> Behavior for BackoffSupervisorWithParent<A, C, ParentPath>
 where
     A: Address,
     A::Nonce: Copy + Eq + From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
-    SupervisorSends<A, C>: behavior::SendsFor<SupervisionEvent<User<A, Never>>>,
-    BackoffSupervisorSends<A, C>: behavior::SendsFor<BackoffSupervisorEvent<User<A, Never>>>,
+    SupervisorSends<A, C, ParentPath>: behavior::SendsFor<SupervisionEvent<User<A, Never>>>,
+    BackoffSupervisorSends<A, C, ParentPath>:
+        behavior::SendsFor<BackoffSupervisorEvent<User<A, Never>>>,
 {
-    type Protocol = <Supervisor<A, C> as Behavior>::Protocol;
+    type Protocol = <SupervisorWithParent<A, C, ParentPath> as Behavior>::Protocol;
     type Event = BackoffSupervisorEvent<User<A, Never>>;
-    type Sends = BackoffSupervisorSends<A, C>;
+    type Sends = BackoffSupervisorSends<A, C, ParentPath>;
     type Ph = Never;
     type Error = BackoffSupervisorError<SupervisorError<A::Nonce>, A::Nonce>;
-    type Birth = Births<Proxy<C>>;
+    type Birth = Births<ProxyWithParent<C, ParentPath>>;
 
     fn init(&mut self, _: crate::InitializationTurn) -> behavior::BehaviorActed<Self> {
         behavior::initialize(&mut self.inner)
@@ -697,7 +706,7 @@ mod tests {
     use super::*;
     use crate::{
         Activate as _, ChildTopology, Crash, CreationResolved, RestartConfiguration, RestartPolicy,
-        ShutdownRequested, Strategy, TimerElapsed, WorkerStopped,
+        ShutdownRequested, Strategy, Supervise, Supervisor, TimerElapsed, WorkerStopped,
     };
     use behavior::{Actions, MailAddr, NoBirths, User};
 

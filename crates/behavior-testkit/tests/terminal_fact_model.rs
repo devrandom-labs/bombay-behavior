@@ -110,7 +110,7 @@ proptest! {
         let policy = if every { propagate_all } else { propagate_abnormal };
         let mut subject = PropagateTermination::new(
             Domain,
-            behavior::ChildTermination::new(7),
+            behavior::ChildTermination::<MailAddr, behavior::ChildHead>::new(7),
             policy,
         )
         .initialize()

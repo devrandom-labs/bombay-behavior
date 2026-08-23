@@ -102,15 +102,16 @@ where
     C::Protocol: crate::Protocol<Addr = A>,
 {
     /// Requests to observe every accepted stable proxy creation.
-    pub child_observations: InterpreterRequests<ObserveChild<A>>,
+    pub child_observations: InterpreterRequests<ObserveChild<A, behavior::ChildHead>>,
     /// Requests for the committed result of every staged stable proxy creation.
-    pub creation_observations: InterpreterRequests<ObserveCreation<A>>,
+    pub creation_observations: InterpreterRequests<ObserveCreation<A, behavior::ChildHead>>,
     /// Commands asking stable proxies to install fresh worker incarnations.
     pub replacement_commands: Vec<ChildDelivery<crate::Proxy<C>, behavior::ChildHead>>,
     /// Typed terminal supervision failures for the local runtime observer.
     pub failure_reports: InterpreterRequests<ReportSupervisionFailure<A>>,
     /// Orderly shutdown requests for stable proxies owned by this supervisor.
-    pub shutdowns: InterpreterRequests<ShutdownChild<ProxyWithParent<C, ParentPath>>>,
+    pub shutdowns:
+        InterpreterRequests<ShutdownChild<ProxyWithParent<C, ParentPath>, behavior::ChildHead>>,
 }
 
 impl<A, C, ParentPath> SendEffects for SupervisorSends<A, C, ParentPath>
@@ -148,9 +149,11 @@ where
     Event: behavior::UserEvent<Addr = A>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
-    InterpreterRequests<ObserveChild<A>>: behavior::SendsFor<SupervisionEvent<Event>>,
-    InterpreterRequests<ObserveCreation<A>>: behavior::SendsFor<SupervisionEvent<Event>>,
-    InterpreterRequests<ShutdownChild<ProxyWithParent<C, ParentPath>>>:
+    InterpreterRequests<ObserveChild<A, behavior::ChildHead>>:
+        behavior::SendsFor<SupervisionEvent<Event>>,
+    InterpreterRequests<ObserveCreation<A, behavior::ChildHead>>:
+        behavior::SendsFor<SupervisionEvent<Event>>,
+    InterpreterRequests<ShutdownChild<ProxyWithParent<C, ParentPath>, behavior::ChildHead>>:
         behavior::SendsFor<SupervisionEvent<Event>>,
 {
 }
@@ -163,13 +166,15 @@ where
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
-    InterpreterRequests<ObserveChild<A>>: behavior::InterpretSends<Interpreter, RootEvent, Path>,
-    InterpreterRequests<ObserveCreation<A>>: behavior::InterpretSends<Interpreter, RootEvent, Path>,
+    InterpreterRequests<ObserveChild<A, behavior::ChildHead>>:
+        behavior::InterpretSends<Interpreter, RootEvent, Path>,
+    InterpreterRequests<ObserveCreation<A, behavior::ChildHead>>:
+        behavior::InterpretSends<Interpreter, RootEvent, Path>,
     Vec<ChildDelivery<crate::Proxy<C>, behavior::ChildHead>>:
         behavior::InterpretSends<Interpreter, RootEvent, Path>,
     InterpreterRequests<ReportSupervisionFailure<A>>:
         behavior::InterpretSends<Interpreter, RootEvent, Path>,
-    InterpreterRequests<ShutdownChild<ProxyWithParent<C, ParentPath>>>:
+    InterpreterRequests<ShutdownChild<ProxyWithParent<C, ParentPath>, behavior::ChildHead>>:
         behavior::InterpretSends<Interpreter, RootEvent, Path>,
     SupervisorSends<A, C, ParentPath>: Send,
 {
@@ -187,26 +192,28 @@ where
     }
 }
 
-impl<A, C, ParentPath> SendInput<ObserveCreation<A>, Own> for SupervisorSends<A, C, ParentPath>
+impl<A, C, ParentPath> SendInput<ObserveCreation<A, behavior::ChildHead>, Own>
+    for SupervisorSends<A, C, ParentPath>
 where
     A: Address,
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
 {
-    fn emit(&mut self, input: ObserveCreation<A>) {
+    fn emit(&mut self, input: ObserveCreation<A, behavior::ChildHead>) {
         self.creation_observations.send(input);
     }
 }
 
-impl<A, C, ParentPath> SendInput<ObserveChild<A>, Own> for SupervisorSends<A, C, ParentPath>
+impl<A, C, ParentPath> SendInput<ObserveChild<A, behavior::ChildHead>, Own>
+    for SupervisorSends<A, C, ParentPath>
 where
     A: Address,
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
 {
-    fn emit(&mut self, input: ObserveChild<A>) {
+    fn emit(&mut self, input: ObserveChild<A, behavior::ChildHead>) {
         self.child_observations.send(input);
     }
 }
@@ -237,7 +244,8 @@ where
     }
 }
 
-impl<A, C, ParentPath> SendInput<ShutdownChild<ProxyWithParent<C, ParentPath>>, Own>
+impl<A, C, ParentPath>
+    SendInput<ShutdownChild<ProxyWithParent<C, ParentPath>, behavior::ChildHead>, Own>
     for SupervisorSends<A, C, ParentPath>
 where
     A: Address,
@@ -245,7 +253,7 @@ where
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
 {
-    fn emit(&mut self, input: ShutdownChild<ProxyWithParent<C, ParentPath>>) {
+    fn emit(&mut self, input: ShutdownChild<ProxyWithParent<C, ParentPath>, behavior::ChildHead>) {
         self.shutdowns.send(input);
     }
 }

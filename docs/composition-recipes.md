@@ -78,14 +78,18 @@ duplicate-nonce rejection; the coordinator still owns phase and terminal-fact
 transitions.
 
 ```rust,ignore
-let behavior: CoordinatedTerminalApplication<Application, ShutdownTargets> =
+let behavior: CoordinatedTerminalApplication<
+    Application,
+    ShutdownTargets,
+    ApplicationChildrenWorkers,
+> =
     coordinated_terminal_application(
         application,
         validated_shutdown_plan,
         TimerId(7),
         Duration::from_secs(20),
         request_shutdown,
-        supervised_pool_nonce,
+        ChildTermination::<_, ApplicationChildrenWorkers>::new(supervised_pool_nonce),
         propagate_abnormal,
     );
 ```
@@ -95,7 +99,7 @@ The returned concrete type is:
 ```text
 PropagateTermination<
     OneShot<HeterogeneousShutdownCoordinator<B, S>>,
-    ChildTermination<BehaviorAddr<B>>,
+    ChildTermination<BehaviorAddr<B>, ObservedOccurrence>,
 >
 ```
 
@@ -107,8 +111,8 @@ original outcome without reclassification.
 
 The function is infallible because `HeterogeneousShutdownPlan::new` validates
 non-empty phases and global child-nonce uniqueness before construction. Timer
-identity, duration, the pure `OneShotReaction`, observed nonce, and terminal
-policy are all explicit.
+identity, duration, the pure `OneShotReaction`, occurrence-indexed observed
+child, and terminal policy are all explicit.
 
 ## Initialization and testing
 

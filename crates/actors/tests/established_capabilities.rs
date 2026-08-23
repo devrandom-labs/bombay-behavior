@@ -2,15 +2,18 @@ use behavior_actors::{
     Actions, Activate as _, Behavior, BehaviorActed, BehaviorBase, Births, CancelObservation,
     ChildHead, ChildOccurrence, ChildRole, ChildRoute, CreationKind, CreationRejection,
     DeclaredChildOccurrence, EndpointAddress, EstablishedCreation, EstablishedDelivery,
-    EstablishedObservation, EstablishedRecipient, EventLayer, Guardian, Here, Ingress,
-    InterpretEstablishedDelivery, InterpretEstablishedObservation, InterpretEstablishedShutdown,
-    InterpretSends, InterpreterRequests, Never, NoBirths, ObservationId, ObservationOperation,
-    ObservationRejection, ObserveEstablished, ObserveEstablishedCreation, Protocol, Proxy,
-    ReceiveTimeout, ResolveChildOccurrence, SendInterpreter, SendLayer, ShutdownEstablished,
-    ShutdownId, ShutdownRequested, Stash, StopOnShutdown, Supervise, User, Watch,
+    EstablishedObservation, EstablishedRecipient, EstablishedTerminationMonitor, EstablishedWatch,
+    EventLayer, Exit, Guardian, Here, Ingress, InterpretEstablishedDelivery,
+    InterpretEstablishedObservation, InterpretEstablishedShutdown, InterpretSends,
+    InterpreterRequests, MessageAdapterWithRoute, Never, NoBirths, ObservationId,
+    ObservationOperation, ObservationRejection, ObserveEstablished, ObserveEstablishedCreation,
+    Protocol, Proxy, ReceiveTimeout, ResolveChildOccurrence, SendInterpreter, SendLayer,
+    ShutdownEstablished, ShutdownId, ShutdownRequested, Stash, StopOnShutdown, Supervise, User,
+    Watch,
 };
 use core::future::Future;
 use core::marker::PhantomData;
+use std::time::Instant;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct RuntimeAddr(u64);
@@ -395,6 +398,243 @@ fn observation_uses_exact_endpoint_and_separate_relationship_correlation() {
             ..
         }
     ));
+}
+
+struct Observer {
+    facts: Vec<&'static str>,
+}
+
+impl BehaviorBase for Observer {
+    type Base = Self;
+
+    fn base(&self) -> &Self::Base {
+        self
+    }
+}
+
+impl Behavior for Observer {
+    type Protocol = ParentProtocol;
+    type Event = User<RuntimeAddr, ()>;
+    type Sends = Vec<Never>;
+    type Ph = Never;
+    type Error = Never;
+    type Birth = NoBirths;
+
+    fn transition(
+        &mut self,
+        _: behavior_actors::ActiveTurn,
+        _: Self::Event,
+    ) -> BehaviorActed<Self> {
+        Ok(Actions::cont())
+    }
+}
+
+fn watch_exact_fact(
+    observer: &mut Observer,
+    fact: EstablishedObservation<WorkerProtocol>,
+) -> Result<behavior_actors::Become, Never> {
+    observer.facts.push(match fact {
+        EstablishedObservation::Started { .. } => "started",
+        EstablishedObservation::Cancelled { .. } => "cancelled",
+        EstablishedObservation::Rejected { .. } => "rejected",
+        EstablishedObservation::Stopped { .. } => "stopped",
+    });
+    Ok(behavior_actors::Step::Continue)
+}
+
+fn monitor_exact_fact(
+    observer: &mut Observer,
+    fact: EstablishedObservation<WorkerProtocol>,
+) -> BehaviorActed<Observer> {
+    watch_exact_fact(observer, fact).map(|_| Actions::cont())
+}
+
+#[test]
+fn outer_guardian_reindexes_exact_observation_return_ingress_only() {
+    fn accepts_inside<B, Input>()
+    where
+        B: Behavior,
+        B::Event: behavior_actors::InjectEvent<Input, behavior_actors::Inside<Here>>,
+    {
+    }
+
+    accepts_inside::<
+        Guardian<EstablishedWatch<Observer, WorkerProtocol>>,
+        EstablishedObservation<WorkerProtocol>,
+    >();
+    accepts_inside::<
+        Guardian<EstablishedTerminationMonitor<Observer, WorkerProtocol>>,
+        EstablishedObservation<WorkerProtocol>,
+    >();
+}
+
+#[test]
+fn exact_watch_exposes_the_complete_observation_fact_algebra() {
+    let recipient = EstablishedRecipient::issued(Endpoint::new(RuntimeAddr(44), 8));
+    let initialized = EstablishedWatch::established(
+        Observer { facts: Vec::new() },
+        ObservationId(5),
+        recipient,
+        watch_exact_fact,
+    )
+    .initialize()
+    .unwrap();
+    assert_eq!(initialized.actions.sends.owned.len(), 1);
+
+    let mut active = initialized.behavior;
+    active
+        .on_path(EstablishedObservation::<WorkerProtocol>::started(
+            ObservationId(99),
+        ))
+        .unwrap();
+    active
+        .on_path(EstablishedObservation::<WorkerProtocol>::started(
+            ObservationId(5),
+        ))
+        .unwrap();
+    active
+        .on_path(EstablishedObservation::<WorkerProtocol>::rejected(
+            ObservationId(5),
+            ObservationOperation::Cancel,
+            ObservationRejection::NotObserved,
+        ))
+        .unwrap();
+
+    assert_eq!(active.base().facts, ["started", "rejected"]);
+}
+
+#[test]
+fn exact_termination_monitor_commits_each_complete_relationship_phase() {
+    let recipient = EstablishedRecipient::issued(Endpoint::new(RuntimeAddr(45), 9));
+    let mut active = EstablishedTerminationMonitor::established(
+        Observer { facts: Vec::new() },
+        ObservationId(6),
+        recipient,
+        monitor_exact_fact,
+    )
+    .initialize()
+    .unwrap()
+    .behavior;
+
+    assert_eq!(
+        active.observation(),
+        behavior_actors::TerminationObservation::Requested
+    );
+    active
+        .on_path(EstablishedObservation::<WorkerProtocol>::started(
+            ObservationId(6),
+        ))
+        .unwrap();
+    assert_eq!(
+        active.observation(),
+        behavior_actors::TerminationObservation::Observing
+    );
+    active
+        .on_path(EstablishedObservation::<WorkerProtocol>::cancelled(
+            ObservationId(6),
+        ))
+        .unwrap();
+    assert_eq!(
+        active.observation(),
+        behavior_actors::TerminationObservation::Cancelled
+    );
+    active
+        .on_path(EstablishedObservation::<WorkerProtocol>::stopped(
+            ObservationId(6),
+            Ok(Exit::Normal),
+            Instant::now(),
+        ))
+        .unwrap();
+    active
+        .on_path(EstablishedObservation::<WorkerProtocol>::started(
+            ObservationId(99),
+        ))
+        .unwrap();
+    assert!(active.base().facts.is_empty());
+    assert_eq!(
+        active.observation(),
+        behavior_actors::TerminationObservation::Cancelled
+    );
+}
+
+#[test]
+fn exact_termination_monitor_reacts_once_to_the_matching_stopped_fact() {
+    let recipient = EstablishedRecipient::issued(Endpoint::new(RuntimeAddr(45), 10));
+    let mut active = EstablishedTerminationMonitor::established(
+        Observer { facts: Vec::new() },
+        ObservationId(7),
+        recipient,
+        monitor_exact_fact,
+    )
+    .initialize()
+    .unwrap()
+    .behavior;
+
+    active
+        .on_path(EstablishedObservation::<WorkerProtocol>::started(
+            ObservationId(7),
+        ))
+        .unwrap();
+    active
+        .on_path(EstablishedObservation::<WorkerProtocol>::stopped(
+            ObservationId(7),
+            Ok(Exit::Normal),
+            Instant::now(),
+        ))
+        .unwrap();
+    active
+        .on_path(EstablishedObservation::<WorkerProtocol>::stopped(
+            ObservationId(7),
+            Ok(Exit::Normal),
+            Instant::now(),
+        ))
+        .unwrap();
+
+    assert_eq!(active.base().facts, ["stopped"]);
+    assert_eq!(
+        active.observation(),
+        behavior_actors::TerminationObservation::Observed
+    );
+}
+
+fn adapt_exact(value: u16) -> u8 {
+    u8::try_from(value).unwrap()
+}
+
+#[tokio::test]
+async fn message_adapter_selects_exact_delivery_without_logical_resolution() {
+    type ExactAdapter =
+        MessageAdapterWithRoute<u16, WorkerProtocol, EstablishedRecipient<WorkerProtocol>>;
+    let recipient = EstablishedRecipient::issued(Endpoint::new(RuntimeAddr(46), 10));
+    let mut active = MessageAdapterWithRoute::new(recipient, adapt_exact)
+        .initialize()
+        .unwrap()
+        .behavior;
+    let actions = active.receive(RuntimeAddr(1), 7).unwrap();
+
+    let mut runtime = DeliveryRuntime::default();
+    <_ as InterpretSends<_, <ExactAdapter as Behavior>::Event, Here>>::interpret(
+        actions.sends,
+        &mut runtime,
+    )
+    .await
+    .unwrap();
+    assert_eq!(runtime.delivered, [(RuntimeAddr(46), 10, 7)]);
+}
+
+#[test]
+fn message_adapter_preserves_creator_local_child_occurrence() {
+    type ChildAdapter =
+        MessageAdapterWithRoute<u16, WorkerProtocol, ChildRoute<Worker, PrimaryWorker>>;
+    let mut active: behavior_actors::Active<ChildAdapter> =
+        MessageAdapterWithRoute::new(Parent::ROUTE, adapt_exact)
+            .initialize()
+            .unwrap()
+            .behavior;
+    let actions = active.receive(RuntimeAddr(1), 11).unwrap();
+
+    assert_eq!(actions.sends[0].nonce, 7);
+    assert_eq!(actions.sends[0].message, 11);
 }
 
 #[derive(Default)]

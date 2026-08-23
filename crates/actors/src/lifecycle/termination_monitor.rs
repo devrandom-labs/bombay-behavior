@@ -1,9 +1,12 @@
 //! Action-producing peer termination observation.
 
-use crate::{ObservePeer, PeerStopped, WatchEvent};
+use crate::{
+    EstablishedObservation, ObservationId, ObservationOperation, ObservationRejection,
+    ObserveEstablished, ObservePeer, PeerStopped, WatchEvent,
+};
 use behavior::{
-    Actions, Address, Behavior, BehaviorActed, BirthMode, EventLayer, InterpreterRequests,
-    SendEffects, SendLayer,
+    Actions, Address, Behavior, BehaviorActed, BirthMode, EndpointAddress, EstablishedRecipient,
+    EventLayer, InterpreterRequest, InterpreterRequests, ReturnsToEmitter, SendEffects, SendLayer,
 };
 
 /// Pure fold applied to the exact matching terminal fact.
@@ -19,10 +22,165 @@ pub type LifecyclePublication<B> = TerminationReaction<B>;
 /// Complete consumption phase of one exact terminal observation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TerminationObservation {
+    /// An exact observation request was emitted but not yet accepted.
+    Requested,
     /// The configured peer's terminal fact has not been accepted.
     Observing,
     /// One matching terminal fact was accepted and cannot be folded again.
     Observed,
+    /// The exact observation relationship was cancelled before termination.
+    Cancelled,
+    /// The exact observation operation was rejected.
+    Rejected {
+        operation: ObservationOperation,
+        reason: ObservationRejection,
+    },
+}
+
+mod sealed {
+    pub trait TerminationObservationTarget<B: behavior::Behavior> {}
+}
+
+/// Static observation and reaction policy for [`TerminationMonitorWith`].
+pub trait TerminationObservationTarget<B: Behavior>:
+    sealed::TerminationObservationTarget<B>
+{
+    type Fact;
+    type Request: InterpreterRequest<ReturnToEmitter = ReturnsToEmitter<Self::Fact, behavior::Here>>;
+
+    fn request(&self) -> Self::Request;
+    fn react(
+        &mut self,
+        inner: &mut B,
+        observation: TerminationObservation,
+        fact: Self::Fact,
+    ) -> Result<
+        (
+            Actions<crate::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>,
+            TerminationObservation,
+        ),
+        B::Error,
+    >;
+}
+
+/// Address-selected legacy termination observation.
+pub struct LogicalTerminationTarget<B: Behavior> {
+    peer: crate::BehaviorAddr<B>,
+    react: TerminationReaction<B>,
+}
+
+impl<B: Behavior> sealed::TerminationObservationTarget<B> for LogicalTerminationTarget<B> {}
+
+impl<B: Behavior> TerminationObservationTarget<B> for LogicalTerminationTarget<B> {
+    type Fact = PeerStopped<crate::BehaviorAddr<B>>;
+    type Request = ObservePeer<crate::BehaviorAddr<B>>;
+
+    fn request(&self) -> Self::Request {
+        ObservePeer::new(self.peer)
+    }
+
+    fn react(
+        &mut self,
+        inner: &mut B,
+        observation: TerminationObservation,
+        fact: Self::Fact,
+    ) -> Result<
+        (
+            Actions<crate::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>,
+            TerminationObservation,
+        ),
+        B::Error,
+    > {
+        if observation != TerminationObservation::Observing || fact.peer != self.peer {
+            return Ok((Actions::cont(), observation));
+        }
+        Ok(((self.react)(inner, fact)?, TerminationObservation::Observed))
+    }
+}
+
+/// Action-producing reaction to the matching exact terminal fact.
+///
+/// The value is always [`EstablishedObservation::Stopped`]. The complete enum
+/// keeps the protocol and correlation visible in the callback type without
+/// introducing a parallel terminal payload.
+pub type EstablishedTerminationReaction<B, P> =
+    fn(&mut B, EstablishedObservation<P>) -> BehaviorActed<B>;
+
+/// Exact-incarnation termination observation policy.
+pub struct EstablishedTerminationTarget<B: Behavior, P>
+where
+    P: behavior::Protocol<Addr = crate::BehaviorAddr<B>>,
+    crate::BehaviorAddr<B>: EndpointAddress,
+{
+    id: ObservationId,
+    peer: EstablishedRecipient<P>,
+    react: EstablishedTerminationReaction<B, P>,
+}
+
+impl<B, P> sealed::TerminationObservationTarget<B> for EstablishedTerminationTarget<B, P>
+where
+    B: Behavior,
+    P: behavior::Protocol<Addr = crate::BehaviorAddr<B>>,
+    crate::BehaviorAddr<B>: EndpointAddress,
+{
+}
+
+impl<B, P> TerminationObservationTarget<B> for EstablishedTerminationTarget<B, P>
+where
+    B: Behavior,
+    P: behavior::Protocol<Addr = crate::BehaviorAddr<B>>,
+    crate::BehaviorAddr<B>: EndpointAddress,
+{
+    type Fact = EstablishedObservation<P>;
+    type Request = ObserveEstablished<P>;
+
+    fn request(&self) -> Self::Request {
+        ObserveEstablished::new(self.id, self.peer.clone())
+    }
+
+    fn react(
+        &mut self,
+        inner: &mut B,
+        observation: TerminationObservation,
+        fact: Self::Fact,
+    ) -> Result<
+        (
+            Actions<crate::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>,
+            TerminationObservation,
+        ),
+        B::Error,
+    > {
+        if fact.id() != self.id
+            || matches!(
+                observation,
+                TerminationObservation::Observed
+                    | TerminationObservation::Cancelled
+                    | TerminationObservation::Rejected { .. }
+            )
+        {
+            return Ok((Actions::cont(), observation));
+        }
+        match &fact {
+            EstablishedObservation::Started { .. } => {
+                Ok((Actions::cont(), TerminationObservation::Observing))
+            }
+            EstablishedObservation::Cancelled { .. } => {
+                Ok((Actions::cont(), TerminationObservation::Cancelled))
+            }
+            EstablishedObservation::Rejected {
+                operation, reason, ..
+            } => Ok((
+                Actions::cont(),
+                TerminationObservation::Rejected {
+                    operation: *operation,
+                    reason: *reason,
+                },
+            )),
+            EstablishedObservation::Stopped { .. } => {
+                Ok(((self.react)(inner, fact)?, TerminationObservation::Observed))
+            }
+        }
+    }
 }
 
 /// Observe one peer and fold its terminal fact into complete behavior actions.
@@ -30,14 +188,21 @@ pub enum TerminationObservation {
 /// Unlike [`crate::Watch`], the reaction returns the wrapped behavior's full
 /// [`Actions`]. Cleanup communications, lifecycle publication, fresh
 /// creations, and termination therefore remain explicit behavior decisions.
-/// The runtime owns only exact-incarnation observation and delivery of the
-/// authoritative [`PeerStopped`] fact.
-pub struct TerminationMonitor<B: Behavior> {
+/// The selected target owns either late-bound logical-name observation or
+/// exact-incarnation observation; the runtime delivers the target's declared
+/// typed fact through the interpreter-request return path.
+pub struct TerminationMonitorWith<B: Behavior, Target: TerminationObservationTarget<B>> {
     inner: B,
-    peer: crate::BehaviorAddr<B>,
-    on_stopped: TerminationReaction<B>,
+    target: Target,
     observation: TerminationObservation,
 }
+
+/// Address-selected action-producing termination monitor.
+pub type TerminationMonitor<B> = TerminationMonitorWith<B, LogicalTerminationTarget<B>>;
+
+/// Exact-incarnation action-producing termination monitor.
+pub type EstablishedTerminationMonitor<B, P> =
+    TerminationMonitorWith<B, EstablishedTerminationTarget<B, P>>;
 
 /// A termination monitor configured to emit explicit cleanup actions.
 ///
@@ -51,14 +216,17 @@ pub type Reaper<B> = TerminationMonitor<B>;
 /// Subscriber membership remains in the wrapped behavior or a composed typed
 /// topic; no ambient lifecycle side channel is introduced.
 pub type LifecyclePublisher<B> = TerminationMonitor<B>;
-type TerminationMonitorActions<B> = Actions<
+type TerminationMonitorActions<B, Target> = Actions<
     crate::BehaviorAddr<B>,
     <B as Behavior>::Ph,
-    SendLayer<InterpreterRequests<ObservePeer<crate::BehaviorAddr<B>>>, <B as Behavior>::Sends>,
+    SendLayer<
+        InterpreterRequests<<Target as TerminationObservationTarget<B>>::Request>,
+        <B as Behavior>::Sends,
+    >,
     <B as Behavior>::Birth,
 >;
 
-impl<B: Behavior> TerminationMonitor<B> {
+impl<B: Behavior> TerminationMonitorWith<B, LogicalTerminationTarget<B>> {
     /// Construct an action-producing observation definition.
     #[must_use]
     pub const fn new(
@@ -68,12 +236,37 @@ impl<B: Behavior> TerminationMonitor<B> {
     ) -> Self {
         Self {
             inner,
-            peer,
-            on_stopped,
+            target: LogicalTerminationTarget {
+                peer,
+                react: on_stopped,
+            },
             observation: TerminationObservation::Observing,
         }
     }
+}
 
+impl<B, P> TerminationMonitorWith<B, EstablishedTerminationTarget<B, P>>
+where
+    B: Behavior,
+    P: behavior::Protocol<Addr = crate::BehaviorAddr<B>>,
+    crate::BehaviorAddr<B>: EndpointAddress,
+{
+    #[must_use]
+    pub fn established(
+        inner: B,
+        id: ObservationId,
+        peer: EstablishedRecipient<P>,
+        react: EstablishedTerminationReaction<B, P>,
+    ) -> Self {
+        Self {
+            inner,
+            target: EstablishedTerminationTarget { id, peer, react },
+            observation: TerminationObservation::Requested,
+        }
+    }
+}
+
+impl<B: Behavior, Target: TerminationObservationTarget<B>> TerminationMonitorWith<B, Target> {
     /// Return whether this monitor awaits or has consumed its terminal fact.
     #[must_use]
     pub const fn observation(&self) -> TerminationObservation {
@@ -82,13 +275,17 @@ impl<B: Behavior> TerminationMonitor<B> {
 
     fn wrap(
         actions: Actions<crate::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>,
-        observations: InterpreterRequests<crate::ObservePeer<crate::BehaviorAddr<B>>>,
-    ) -> TerminationMonitorActions<B> {
+        observations: InterpreterRequests<Target::Request>,
+    ) -> TerminationMonitorActions<B, Target> {
         actions.map_sends(|inner| SendLayer::new(observations, inner))
     }
 }
 
-impl<B: Behavior + crate::BehaviorBase> crate::BehaviorBase for TerminationMonitor<B> {
+impl<B, Target> crate::BehaviorBase for TerminationMonitorWith<B, Target>
+where
+    B: Behavior + crate::BehaviorBase,
+    Target: TerminationObservationTarget<B>,
+{
     type Base = B::Base;
 
     fn base(&self) -> &Self::Base {
@@ -96,23 +293,28 @@ impl<B: Behavior + crate::BehaviorBase> crate::BehaviorBase for TerminationMonit
     }
 }
 
-impl<B: Behavior + crate::StashStatus> crate::StashStatus for TerminationMonitor<B> {
+impl<B, Target> crate::StashStatus for TerminationMonitorWith<B, Target>
+where
+    B: Behavior + crate::StashStatus,
+    Target: TerminationObservationTarget<B>,
+{
     fn stashed_messages(&self) -> usize {
         self.inner.stashed_messages()
     }
 }
 
-impl<B, A, Ph, Sends, Br> Behavior for TerminationMonitor<B>
+impl<B, Target, A, Ph, Sends, Br> Behavior for TerminationMonitorWith<B, Target>
 where
     A: Address,
     Sends: SendEffects + behavior::SendsFor<B::Event>,
     Br: BirthMode,
     B: Behavior<Ph = Ph, Sends = Sends, Birth = Br>,
     B::Protocol: crate::Protocol<Addr = A>,
+    Target: TerminationObservationTarget<B>,
 {
     type Protocol = B::Protocol;
-    type Event = WatchEvent<B::Event>;
-    type Sends = SendLayer<InterpreterRequests<ObservePeer<A>>, Sends>;
+    type Event = WatchEvent<B::Event, Target::Fact>;
+    type Sends = SendLayer<InterpreterRequests<Target::Request>, Sends>;
     type Ph = Ph;
     type Error = B::Error;
     type Birth = Br;
@@ -121,21 +323,17 @@ where
         let actions = behavior::initialize(&mut self.inner)?;
         Ok(Self::wrap(
             actions,
-            InterpreterRequests::one(crate::ObservePeer::new(self.peer)),
+            InterpreterRequests::one(self.target.request()),
         ))
     }
 
     fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
         match event {
-            EventLayer::Owned(stopped)
-                if stopped.peer == self.peer
-                    && self.observation == TerminationObservation::Observing =>
-            {
-                let actions = (self.on_stopped)(&mut self.inner, stopped)?;
-                self.observation = TerminationObservation::Observed;
+            EventLayer::Owned(fact) => {
+                let (actions, next) = self.target.react(&mut self.inner, self.observation, fact)?;
+                self.observation = next;
                 Ok(Self::wrap(actions, InterpreterRequests::empty()))
             }
-            EventLayer::Owned(_) => Ok(Actions::cont()),
             EventLayer::Inner(event) => behavior::delegate_transition(&mut self.inner, event)
                 .map(|actions| Self::wrap(actions, InterpreterRequests::empty())),
         }

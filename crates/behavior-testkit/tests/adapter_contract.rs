@@ -279,9 +279,9 @@ fn pool_configuration_separates_topology_from_runtime_neutral_policy() {
             .len(),
         2
     );
-    let _: InterpreterRequests<ObserveChild<MailAddr>> =
+    let _: InterpreterRequests<ObserveChild<MailAddr, behavior::ChildHead>> =
         initialized.actions.sends.owned.child_observations;
-    let _: InterpreterRequests<behavior::ObserveCreation<MailAddr>> =
+    let _: InterpreterRequests<behavior::ObserveCreation<MailAddr, behavior::ChildHead>> =
         initialized.actions.sends.owned.creation_observations;
     let _: Vec<ChildDelivery<Proxy<Worker>, ChildHead>> =
         initialized.actions.sends.owned.replacement_commands;

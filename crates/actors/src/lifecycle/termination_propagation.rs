@@ -24,25 +24,56 @@ pub trait TerminationTarget<A: Address>: Copy {
 }
 
 /// Select one exact generation from the emitting actor's child namespace.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ChildTermination<A: Address> {
+pub struct ChildTermination<A: Address, Occurrence> {
     pub nonce: A::Nonce,
+    occurrence: core::marker::PhantomData<fn() -> Occurrence>,
 }
 
-impl<A: Address> ChildTermination<A> {
-    #[must_use]
-    pub const fn new(nonce: A::Nonce) -> Self {
-        Self { nonce }
+impl<A: Address, Occurrence> Copy for ChildTermination<A, Occurrence> {}
+
+impl<A: Address, Occurrence> Clone for ChildTermination<A, Occurrence> {
+    fn clone(&self) -> Self {
+        *self
     }
 }
 
-impl<A> TerminationTarget<A> for ChildTermination<A>
+impl<A: Address, Occurrence> PartialEq for ChildTermination<A, Occurrence> {
+    fn eq(&self, other: &Self) -> bool {
+        self.nonce == other.nonce
+    }
+}
+
+impl<A: Address, Occurrence> Eq for ChildTermination<A, Occurrence> {}
+
+impl<A: Address, Occurrence> core::fmt::Debug for ChildTermination<A, Occurrence>
+where
+    A::Nonce: core::fmt::Debug,
+{
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        formatter
+            .debug_struct("ChildTermination")
+            .field("nonce", &self.nonce)
+            .finish()
+    }
+}
+
+impl<A: Address, Occurrence> ChildTermination<A, Occurrence> {
+    #[must_use]
+    pub const fn new(nonce: A::Nonce) -> Self {
+        Self {
+            nonce,
+            occurrence: core::marker::PhantomData,
+        }
+    }
+}
+
+impl<A, Occurrence> TerminationTarget<A> for ChildTermination<A, Occurrence>
 where
     A: Address,
     A::Nonce: Copy + Eq,
 {
     type Fact = ChildStopped<A>;
-    type Request = ObserveChild<A>;
+    type Request = ObserveChild<A, Occurrence>;
 
     fn request(self) -> Self::Request {
         ObserveChild::new(self.nonce)
@@ -195,7 +226,7 @@ where
 ///
 /// ```compile_fail
 /// use bombay_behavior_actors::{ChildTermination, MailAddr};
-/// let _ = ChildTermination::<MailAddr>::new("not a MailAddr child nonce");
+/// let _ = ChildTermination::<MailAddr, behavior::ChildHead>::new("not a MailAddr child nonce");
 /// ```
 pub struct PropagateTermination<B: Behavior, Target> {
     inner: B,
@@ -376,7 +407,7 @@ mod tests {
 
     fn child(
         policy: TerminalPropagationPolicy<MailAddr>,
-    ) -> PropagateTermination<Probe, ChildTermination<MailAddr>> {
+    ) -> PropagateTermination<Probe, ChildTermination<MailAddr, behavior::ChildHead>> {
         PropagateTermination::new(Probe, ChildTermination::new(7), policy)
     }
 

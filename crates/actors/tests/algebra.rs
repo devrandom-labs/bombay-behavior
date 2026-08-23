@@ -164,12 +164,18 @@ fn deliveries_and_interpreter_requests_have_disjoint_static_dispatch() {
     trait RouteSends<A: behavior::Address> {}
 
     impl<P> RouteSends<MailAddr> for Vec<Delivery<P>> where P: behavior::Protocol<Addr = MailAddr> {}
-    impl<A: behavior::Address> RouteSends<A> for InterpreterRequests<ObserveChild<A>> {}
+    impl<A: behavior::Address> RouteSends<A>
+        for InterpreterRequests<ObserveChild<A, behavior::ChildHead>>
+    {
+    }
 
     fn requires_route_sends<A: behavior::Address, S: RouteSends<A>>() {}
 
     requires_route_sends::<MailAddr, Vec<Delivery<Quiet>>>();
-    requires_route_sends::<MailAddr, InterpreterRequests<ObserveChild<MailAddr>>>();
+    requires_route_sends::<
+        MailAddr,
+        InterpreterRequests<ObserveChild<MailAddr, behavior::ChildHead>>,
+    >();
 }
 
 fn requires_births<B, C>(_behavior: &B)

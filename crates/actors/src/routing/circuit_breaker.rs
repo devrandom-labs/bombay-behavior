@@ -221,13 +221,19 @@ impl<A: Address, Reply: behavior::Protocol<Addr = A, Msg = BreakerOutcome>>
 
     fn admit(&mut self, reply_to: Recipient<Reply>) -> BreakerActions<A, Reply> {
         let attempt = BreakerAttempt(self.next_attempt);
-        let next = self.next_attempt.checked_add(1);
         match &self.phase {
             BreakerPhase::Closed(ClosedPhase::Idle {
                 consecutive_failures,
-            }) if next.is_some() => {
+            }) => {
+                let Some(next) = self.next_attempt.checked_add(1) else {
+                    self.phase = BreakerPhase::Exhausted;
+                    return Self::reply(
+                        reply_to,
+                        BreakerOutcome::Rejected(BreakerRejection::Exhausted),
+                    );
+                };
                 let failures = *consecutive_failures;
-                self.next_attempt = next.expect("the is_some guard proves the counter advanced");
+                self.next_attempt = next;
                 self.phase = BreakerPhase::Closed(ClosedPhase::Awaiting {
                     consecutive_failures: failures,
                     attempt,
@@ -238,9 +244,16 @@ impl<A: Address, Reply: behavior::Protocol<Addr = A, Msg = BreakerOutcome>>
             BreakerPhase::Probing {
                 generation,
                 phase: ProbePhase::Available,
-            } if next.is_some() => {
+            } => {
+                let Some(next) = self.next_attempt.checked_add(1) else {
+                    self.phase = BreakerPhase::Exhausted;
+                    return Self::reply(
+                        reply_to,
+                        BreakerOutcome::Rejected(BreakerRejection::Exhausted),
+                    );
+                };
                 let generation = *generation;
-                self.next_attempt = next.expect("the is_some guard proves the counter advanced");
+                self.next_attempt = next;
                 self.phase = BreakerPhase::Probing {
                     generation,
                     phase: ProbePhase::Awaiting { attempt, reply_to },
@@ -257,13 +270,6 @@ impl<A: Address, Reply: behavior::Protocol<Addr = A, Msg = BreakerOutcome>>
                 reply_to,
                 BreakerOutcome::Rejected(BreakerRejection::Exhausted),
             ),
-            _ if next.is_none() => {
-                self.phase = BreakerPhase::Exhausted;
-                Self::reply(
-                    reply_to,
-                    BreakerOutcome::Rejected(BreakerRejection::Exhausted),
-                )
-            }
             _ => Self::reply(reply_to, BreakerOutcome::Rejected(BreakerRejection::Busy)),
         }
     }

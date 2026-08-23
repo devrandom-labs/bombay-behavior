@@ -225,6 +225,38 @@ mod tests {
 
     #[allow(
         clippy::unnecessary_wraps,
+        reason = "finalization preserves the wrapped behavior's fallible signature"
+    )]
+    fn finalize_application(
+        _: &mut Application,
+        _: ShutdownRequested,
+    ) -> BehaviorActed<Application> {
+        Ok(Actions::new(
+            vec![9],
+            vec![Create::birth(8, ())],
+            Step::Continue,
+        ))
+    }
+
+    #[test]
+    fn coordinated_guardian_delivers_root_shutdown_to_finalize_on_shutdown() {
+        let mut active = Guardian::coordinated(crate::FinalizeOnShutdown::new(
+            Application,
+            finalize_application,
+        ))
+        .initialize()
+        .unwrap()
+        .behavior;
+
+        let finalized = active.on(ShutdownRequested).unwrap();
+
+        assert_eq!(finalized.sends.inner.inner, [9]);
+        assert_eq!(finalized.creates, [Create::birth(8, ())]);
+        assert!(matches!(finalized.become_, Step::Stop(_)));
+    }
+
+    #[allow(
+        clippy::unnecessary_wraps,
         reason = "watch reactions have the wrapped behavior's fallible signature"
     )]
     fn continue_after_stop(

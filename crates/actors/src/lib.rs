@@ -53,8 +53,8 @@ pub mod workflow;
 
 pub use activation::{Activate, Active, Initialized};
 pub use composition::{
-    CoordinatedTerminalApplication, MessageAdapter, coordinated_terminal_application,
-    supervised_backoff,
+    CoordinatedTerminalApplication, DeliveryRoute, MessageAdapter, MessageAdapterWithRoute,
+    coordinated_terminal_application, supervised_backoff, supervised_backoff_with_parent,
 };
 pub use discovery::{
     Presence, PresenceEntry, PresenceError, PresenceMessage, PresenceOutcome, PresencePhase,
@@ -63,15 +63,17 @@ pub use discovery::{
     ResolverConfigError, ResolverMessage, Topic, TopicError, TopicMembership, TopicMessage,
 };
 pub use lifecycle::{
-    ChildTermination, CleanupReaction, CoordinatedGuardian, Guardian,
+    ChildTermination, CleanupReaction, CoordinatedGuardian, EstablishedTerminationMonitor,
+    EstablishedTerminationReaction, EstablishedTerminationTarget, Guardian,
     HeterogeneousShutdownCoordinator, HeterogeneousShutdownPlan, HeterogeneousShutdownSends,
-    LifecyclePublication, LifecyclePublisher, NoShutdownTargets, PeerTermination,
-    PropagateTermination, Reaper, ShutdownChoice, ShutdownCoordinator, ShutdownCoordinatorError,
-    ShutdownCoordinatorEvent, ShutdownPlan, ShutdownPlanError, ShutdownState, ShutdownTargetAt,
-    ShutdownTree, ShutdownTreeError, Task, TaskError, TaskMessage, TaskResult, TaskState,
-    TerminalDisposition, TerminalPropagationPolicy, TerminalPropagationSends,
-    TerminalPropagationState, TerminationMonitor, TerminationObservation, TerminationReaction,
-    TerminationTarget, TreeShutdown, propagate_abnormal, propagate_all, shutdown_target,
+    LifecyclePublication, LifecyclePublisher, LogicalTerminationTarget, NoShutdownTargets,
+    PeerTermination, PropagateTermination, Reaper, ShutdownChoice, ShutdownCoordinator,
+    ShutdownCoordinatorError, ShutdownCoordinatorEvent, ShutdownPlan, ShutdownPlanError,
+    ShutdownState, ShutdownTargetAt, ShutdownTree, ShutdownTreeError, Task, TaskError, TaskMessage,
+    TaskResult, TaskState, TerminalDisposition, TerminalPropagationPolicy,
+    TerminalPropagationSends, TerminalPropagationState, TerminationMonitor, TerminationMonitorWith,
+    TerminationObservation, TerminationObservationTarget, TerminationReaction, TerminationTarget,
+    TreeShutdown, propagate_abnormal, propagate_all, shutdown_target,
 };
 pub use machine::{Machine, Move};
 pub use operations::{
@@ -86,10 +88,10 @@ pub use persistence::{
 };
 pub use pool::{
     AffinitySelector, AssignmentId, InterruptionPolicy, JobId, KeyedPoolEvent, KeyedPoolMessage,
-    KeyedWorkerPool, PoolActions, PoolAssignment, PoolBehaviorSends, PoolConfigError,
-    PoolConfiguration, PoolError, PoolEvent, PoolInterruption, PoolMessage, PoolRejection,
-    PoolResponse, PoolSends, WorkerPhase, WorkerPool, WorkerPoolActions, WorkerPoolEvent,
-    WorkerPoolSends, WorkerPoolWithParent, WorkerRetirement,
+    KeyedWorkerPool, KeyedWorkerPoolWithParent, PoolActions, PoolAssignment, PoolBehaviorSends,
+    PoolConfigError, PoolConfiguration, PoolError, PoolEvent, PoolInterruption, PoolMessage,
+    PoolRejection, PoolResponse, PoolSends, WorkerPhase, WorkerPool, WorkerPoolActions,
+    WorkerPoolEvent, WorkerPoolSends, WorkerPoolWithParent, WorkerRetirement,
 };
 pub use protocol::{
     CancelObservation, ChildShutdownRejected, ChildShutdownRejection, ChildStopped,
@@ -129,18 +131,18 @@ pub use routing::{
 pub use shutdown::{FinalizeOnShutdown, ShutdownEvent, ShutdownReaction, StopOnShutdown};
 pub use stash::{Stash, StashRoute, StashStatus};
 pub use supervision::{
-    Backoff, BackoffConfigError, BackoffError, BackoffSupervise, BackoffSupervisor,
-    BackoffSupervisorError, BackoffSupervisorEvent, BackoffSupervisorSends, ChildTopology,
-    DynamicChildPhase, DynamicProxy, DynamicProxyWithParent, DynamicSupervisor,
-    DynamicSupervisorError, DynamicSupervisorEvent, DynamicSupervisorMessage,
-    DynamicSupervisorOutcome, DynamicSupervisorRejection, DynamicSupervisorSends,
-    DynamicSupervisorWithParent, FleetError, IncarnationPhase, Proxy, ProxyCommand, ProxyError,
-    ProxyEvent, ProxySends, ProxySendsWithParent, ProxyWithParent, ReportSupervisionFailure,
-    RestartConfiguration, RestartPolicy, Strategy, Supervise, SuperviseError, SuperviseWithParent,
-    SupervisionEvent, SupervisionFailure, SupervisionFailureReaction, Supervisor, SupervisorError,
-    SupervisorEvent, SupervisorProtocol, SupervisorSends, SupervisorWithParent,
-    TopologyFailurePolicy, restart_all, restart_one, restart_rest, retire_on_supervision_failure,
-    stop_on_supervision_failure,
+    Backoff, BackoffConfigError, BackoffError, BackoffSupervise, BackoffSuperviseWithParent,
+    BackoffSupervisor, BackoffSupervisorError, BackoffSupervisorEvent, BackoffSupervisorSends,
+    BackoffSupervisorWithParent, ChildTopology, DynamicChildPhase, DynamicProxy,
+    DynamicProxyWithParent, DynamicSupervisor, DynamicSupervisorError, DynamicSupervisorEvent,
+    DynamicSupervisorMessage, DynamicSupervisorOutcome, DynamicSupervisorRejection,
+    DynamicSupervisorSends, DynamicSupervisorWithParent, FleetError, IncarnationPhase, Proxy,
+    ProxyCommand, ProxyError, ProxyEvent, ProxySends, ProxySendsWithParent, ProxyWithParent,
+    ReportSupervisionFailure, RestartConfiguration, RestartPolicy, Strategy, Supervise,
+    SuperviseError, SuperviseWithParent, SupervisionEvent, SupervisionFailure,
+    SupervisionFailureReaction, Supervisor, SupervisorError, SupervisorEvent, SupervisorProtocol,
+    SupervisorSends, SupervisorWithParent, TopologyFailurePolicy, restart_all, restart_one,
+    restart_rest, retire_on_supervision_failure, stop_on_supervision_failure,
 };
 pub use termination::{
     Crash, Exit, ReportTerminalOutcome, RestartDenial, SupervisionFailureReason, TerminalOutcome,
@@ -150,7 +152,10 @@ pub use time::{
     LeaseSends, LeaseState, OneShot, OneShotEvent, OneShotReaction, Periodic, PeriodicEvent,
     PeriodicReaction, ReceiveTimeout, ReceiveTimeoutEvent, ReceiveTimeoutReaction, TimedEvent,
 };
-pub use watch::{Link, LinkReaction, Watch, WatchEvent, stop_on_abnormal_death};
+pub use watch::{
+    EstablishedWatch, EstablishedWatchReaction, EstablishedWatchTarget, Link, LinkReaction,
+    LogicalWatchTarget, Watch, WatchEvent, WatchTarget, WatchWith, stop_on_abnormal_death,
+};
 pub use workflow::{
     Barrier, BarrierArrival, BarrierConfigError, BarrierError, BarrierGeneration,
     BarrierMembership, BarrierMessage, BarrierReleased, BarrierState, Latch, LatchMessage,
