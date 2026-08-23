@@ -11,15 +11,15 @@ use behavior_actors::{
     ChildDelivery, ChildHead, ChildRoute, ChildShutdownRejected, ChildStopped, CircuitBreaker,
     Create, CreationResolved, Deadline, DynamicProxy, DynamicProxyWithParent, DynamicSupervisor,
     DynamicSupervisorOutcome, DynamicSupervisorWithParent, Guardian, Here, Ingress, InjectEvent,
-    Inside, InterpretChildDelivery, KeyedPoolEvent, KeyedWorkerPool, KeyedWorkerPoolProtocol,
-    KeyedWorkerPoolWithParent, Lease, LeaseOutcome, MailAddr, Never, NoBirths, ObserveChild,
-    ObserveCreation, ObservePeer, OneShot, PeerStopped, Periodic, PoolAssignment,
-    PoolBehaviorSends, PoolResponse, Presence, PresenceReply, Proxy, ProxyCommand, ProxyEvent,
-    ProxyParentIngress, ProxyWithParent, ReceiveTimeout, Recipient, ReportSupervisionFailure,
-    ScheduleAfter, ScheduleAt, SendLayer, ShutdownChild, ShutdownCoordinator,
-    ShutdownCoordinatorEvent, ShutdownPlan, ShutdownRequested, StopOnShutdown, Supervise,
-    SupervisionEvent, SupervisorWithParent, TerminationMonitor, TimerElapsed, User, Watch,
-    WatchEvent, WorkerCreationResolved, WorkerPool, WorkerPoolEvent, WorkerPoolProtocol,
+    Inside, InstallShutdownPlan, InterpretChildDelivery, KeyedPoolEvent, KeyedWorkerPool,
+    KeyedWorkerPoolProtocol, KeyedWorkerPoolWithParent, Lease, LeaseOutcome, MailAddr, Never,
+    NoBirths, ObserveChild, ObserveCreation, ObservePeer, OneShot, PeerStopped, Periodic,
+    PoolAssignment, PoolBehaviorSends, PoolResponse, Presence, PresenceReply, Proxy, ProxyCommand,
+    ProxyEvent, ProxyParentIngress, ProxyWithParent, ReceiveTimeout, Recipient,
+    ReportSupervisionFailure, ScheduleAfter, ScheduleAt, SendLayer, ShutdownChild,
+    ShutdownCoordinator, ShutdownCoordinatorEvent, ShutdownPlan, ShutdownRequested, StopOnShutdown,
+    Supervise, SupervisionEvent, SupervisorWithParent, TerminationMonitor, TimerElapsed, User,
+    Watch, WatchEvent, WorkerCreationResolved, WorkerPool, WorkerPoolEvent, WorkerPoolProtocol,
     WorkerPoolSends, WorkerPoolWithParent, WorkerStopped,
 };
 use core::future::Future;
@@ -283,6 +283,7 @@ fn every_shutdown_request_names_a_shutdown_capable_child_protocol() {
 
     type CoordinatorProtocol = ShutdownCoordinatorEvent<User<MailAddr, ()>, ShutdownPlan<u64>>;
     event_accepts::<CoordinatorProtocol, ShutdownRequested>();
+    event_accepts::<CoordinatorProtocol, InstallShutdownPlan<ShutdownPlan<u64>>>();
     event_accepts::<CoordinatorProtocol, ChildStopped<MailAddr>>();
     event_accepts::<CoordinatorProtocol, ChildShutdownRejected<u64>>();
 

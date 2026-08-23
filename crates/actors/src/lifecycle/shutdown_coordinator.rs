@@ -555,6 +555,148 @@ impl<P> InstallShutdownPlan<P> {
     }
 }
 
+/// Exact parent ingress for installing a creation-dependent shutdown plan.
+///
+/// A topology owner receives this capability from the composition that wraps
+/// it in a shutdown coordinator. After committed child-creation facts have
+/// supplied the required routes, the owner emits [`ReportShutdownPlan`] in its
+/// ordinary [`Actions`] sends product. `Path` selects the coordinator's plan
+/// lane in the final root event algebra; neither the behavior nor the
+/// interpreter searches by payload type.
+///
+/// This is a derived Bombay parent-report construction. It represents an
+/// explicit communication to a known ancestor ingress and introduces no
+/// ambient mutation, allocation, or Behavior Core effect.
+pub struct ShutdownPlanIngress<P, Path> {
+    install: behavior::Ingress<InstallShutdownPlan<P>, Path>,
+}
+
+impl<P, Path> Copy for ShutdownPlanIngress<P, Path> {}
+
+impl<P, Path> Clone for ShutdownPlanIngress<P, Path> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<P, Path> core::fmt::Debug for ShutdownPlanIngress<P, Path> {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        formatter.write_str("ShutdownPlanIngress")
+    }
+}
+
+impl<P, Path> PartialEq for ShutdownPlanIngress<P, Path> {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
+}
+
+impl<P, Path> Eq for ShutdownPlanIngress<P, Path> {}
+
+impl<P, Path> ShutdownPlanIngress<P, Path> {
+    /// Select the coordinator plan lane at this exact structural path.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
+            install: behavior::Ingress::new(),
+        }
+    }
+
+    /// Lift the selected coordinator lane through one new outer event layer.
+    #[must_use]
+    pub const fn inside(self) -> ShutdownPlanIngress<P, behavior::Inside<Path>> {
+        ShutdownPlanIngress {
+            install: self.install.inside(),
+        }
+    }
+
+    /// Consume a validated plan into one explicit parent-report request.
+    #[must_use]
+    pub fn report(self, plan: P) -> ReportShutdownPlan<P, Path> {
+        ReportShutdownPlan {
+            ingress: self.install,
+            installation: InstallShutdownPlan::new(plan),
+        }
+    }
+}
+
+impl<P, Path> Default for ShutdownPlanIngress<P, Path> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Interpreter request reporting one validated plan to its owning coordinator.
+///
+/// The request owns the plan and the exact ancestor ingress together. It is
+/// emitted through `Actions`; interpretation enqueues one ordinary event for
+/// the same actor incarnation. It has no return-to-emitter continuation because
+/// its destination is the explicitly selected ancestor layer.
+///
+/// A report cannot be interpreted against an event algebra whose coordinator
+/// lane is at another structural path:
+///
+/// ```compile_fail
+/// use behavior::{Here, Inside, MailAddr, User};
+/// use behavior_actors::{
+///     ReportShutdownPlan, ShutdownCoordinatorEvent, ShutdownPlan, ShutdownPlanIngress,
+/// };
+/// type Plan = ShutdownPlan<u64>;
+/// type Event = ShutdownCoordinatorEvent<User<MailAddr, ()>, Plan>;
+/// let report: ReportShutdownPlan<Plan, Inside<Here>> =
+///     ShutdownPlanIngress::<Plan, Here>::new()
+///         .inside()
+///         .report(ShutdownPlan::new([]).unwrap());
+/// let _: Event = report.into_event();
+/// ```
+pub struct ReportShutdownPlan<P, Path> {
+    ingress: behavior::Ingress<InstallShutdownPlan<P>, Path>,
+    installation: InstallShutdownPlan<P>,
+}
+
+impl<P: core::fmt::Debug, Path> core::fmt::Debug for ReportShutdownPlan<P, Path> {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        formatter
+            .debug_struct("ReportShutdownPlan")
+            .field("ingress", &self.ingress)
+            .field("plan", &self.installation.plan)
+            .finish()
+    }
+}
+
+impl<P: PartialEq, Path> PartialEq for ReportShutdownPlan<P, Path> {
+    fn eq(&self, other: &Self) -> bool {
+        self.ingress == other.ingress && self.installation.plan == other.installation.plan
+    }
+}
+
+impl<P: Eq, Path> Eq for ReportShutdownPlan<P, Path> {}
+
+impl<P, Path> ReportShutdownPlan<P, Path> {
+    /// Borrow the complete validated plan without changing the request.
+    #[must_use]
+    pub const fn plan(&self) -> &P {
+        &self.installation.plan
+    }
+
+    /// Build the exact root event selected by the supplied ancestor ingress.
+    ///
+    /// An interpreter uses this after accepting the request. The static
+    /// `InjectEvent` proof rejects a stale or incorrectly reindexed path at
+    /// compile time.
+    #[must_use]
+    pub fn into_event<Event>(self) -> Event
+    where
+        Event: InjectEvent<InstallShutdownPlan<P>, Path>,
+    {
+        self.ingress.event(self.installation)
+    }
+}
+
+impl<P, Path> behavior::InterpreterRequest for ReportShutdownPlan<P, Path> {
+    type ReturnToEmitter = behavior::NoReturnToEmitter;
+}
+
 /// Event sum accepted by [`ShutdownCoordinator`].
 pub enum ShutdownCoordinatorEvent<E: UserEvent, P> {
     Behavior(E),

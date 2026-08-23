@@ -11,10 +11,11 @@ pub use crate::watch::{LinkReaction, Watch, WatchEvent, stop_on_abnormal_death};
 pub use guardian::{CoordinatedGuardian, Guardian};
 pub use shutdown_coordinator::{
     CoordinatedTerminalApplication, HeterogeneousShutdownCoordinator, HeterogeneousShutdownPlan,
-    HeterogeneousShutdownSends, InstallShutdownPlan, NoShutdownTargets, ShutdownChoice,
-    ShutdownCoordinator, ShutdownCoordinatorError, ShutdownCoordinatorEvent, ShutdownPlan,
-    ShutdownPlanError, ShutdownState, ShutdownTargetAt, ShutdownTree, ShutdownTreeError,
-    TreeShutdown, coordinated_terminal_application, shutdown_target,
+    HeterogeneousShutdownSends, InstallShutdownPlan, NoShutdownTargets, ReportShutdownPlan,
+    ShutdownChoice, ShutdownCoordinator, ShutdownCoordinatorError, ShutdownCoordinatorEvent,
+    ShutdownPlan, ShutdownPlanError, ShutdownPlanIngress, ShutdownState, ShutdownTargetAt,
+    ShutdownTree, ShutdownTreeError, TreeShutdown, coordinated_terminal_application,
+    shutdown_target,
 };
 pub use task::{Task, TaskError, TaskMessage, TaskResult, TaskState};
 pub use termination_monitor::{

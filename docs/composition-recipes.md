@@ -91,12 +91,32 @@ let workers: ShutdownTargets =
 let exact_worker = child.actor();
 let validated_shutdown_plan =
     HeterogeneousShutdownPlan::new([vec![workers]])?;
+
+// `Application` stores this capability before it is wrapped. If a Guardian is
+// outside the coordinator, lift the coordinator's own lane through that one
+// outer event layer.
+let coordinator_ingress =
+    ShutdownPlanIngress::<HeterogeneousShutdownPlan<ShutdownTargets>, Here>::new()
+        .inside();
+
+// The transition that receives the last committed creation fact reports the
+// plan through its ordinary Actions sends product.
+let actions = Actions::send(InterpreterRequests::one(
+    coordinator_ingress.report(validated_shutdown_plan),
+));
 ```
 
 `EstablishedChild` is a named product of the existing `ChildRoute` and
 `EstablishedActor` capabilities. It performs no creation or interpretation;
 an `EstablishedCreation::Rejected` result returns its typed rejection and
 constructs neither capability.
+
+`ReportShutdownPlan` is an explicit interpreter request to the selected
+ancestor ingress. Its interpreter constructs one root event with
+`into_event`; the coordinator changes state only when that communication is
+later folded. This keeps plan construction and installation inside the normal
+`Actions` boundary instead of relying on driver mutation or a direct
+`Active::on_path` call.
 
 ```rust,ignore
 let behavior: CoordinatedTerminalApplication<

@@ -80,8 +80,9 @@ and
   customer capability retains its logical or exact form and emits the matching
   concrete effect without conversion.
 - **P8 — creation-dependent shutdown plans:** a coordinator may begin before
-  its committed children are known, but plan installation is one typed event,
-  happens at most once, and retains any earlier shutdown request.
+  its committed children are known. The topology owner reports its validated
+  plan through `Actions` to an explicit ancestor ingress; installation is one
+  typed event, happens at most once, and retains any earlier shutdown request.
 
 ## Hypotheses and verdicts
 
@@ -124,7 +125,7 @@ relevant fold/interpreter seam support the statement.
 | H31 | B7 | Invalid configuration, overlap, exhaustion, unknown targets, and interpreter rejection remain typed results rather than production panics. | Pass. Public constructors and folds expose concrete errors. The only production `expect` is Buffer's documented private invariant: validated positive capacity plus the full/drop-oldest branch proves a non-empty queue. |
 | H32 | A4, B6, P2 | Any ordering relied upon beyond actor-model law is declared as Bombay policy and tested at the interpreter boundary. | Pass. Create-before-dependent-send/request and wrapper initialization order are documented as policy; send products define their own deterministic interpretation order without claiming it as an Agha guarantee. |
 | H33 | B2, B3, P7 | Every genuine customer-passing template accepts logical, exact, or deliberately mixed reply capabilities without allowing the route protocol to disagree with the reply message. | **Failed → fixed.** All customer fields now carry a `Route: DeliveryRoute<P>`; dynamic supervision projects `P` from `DeliveryRouteProtocol`. A catalogue compile matrix instantiates every affected family with `EstablishedRecipient` and `ReplyRoute`, protocol mismatch is compile-fail, and logical-only recursive protocol tests remain finite. |
-| H34 | B2, B7, P8 | Homogeneous and heterogeneous shutdown coordinators can receive their validated plans after committed child creation without flags, plan substitution, lost early shutdown, or repeated installation. | **Failed → fixed.** `ShutdownState` is the complete lifecycle sum and `InstallShutdownPlan<P>` is part of the concrete event algebra. Unit, independent model/property, fuzz, composition, and compile-fail coverage exercise both plan families, duplicate installation, early shutdown, stale stops, ordered phases, and empty-plan termination. |
+| H34 | B1–B3, B7, P4, P8 | Homogeneous and heterogeneous shutdown coordinators can receive their validated plans after committed child creation without out-of-band mutation, flags, plan substitution, lost early shutdown, or repeated installation. | **Failed → fixed.** `ShutdownState` is the complete lifecycle sum. A topology owner receives `ShutdownPlanIngress<P, Path>` and emits `ReportShutdownPlan` through `Actions`; the interpreter constructs the exact outer `InstallShutdownPlan<P>` event from that carried ingress. The end-to-end composition test creates and observes two heterogeneous children, strengthens committed facts, constructs the plan, interprets the report through an outer `Guardian`, installs it, and begins the first shutdown phase. Unit, independent model/property, fuzz, and compile-fail coverage additionally exercise both plan families, duplicate installation, early shutdown, stale stops, ordered phases, and empty-plan termination. |
 
 Result: 28 hypotheses passed in the audited baseline and six failed. After
 the repairs recorded here, all 34 pass. No failure required a new actor

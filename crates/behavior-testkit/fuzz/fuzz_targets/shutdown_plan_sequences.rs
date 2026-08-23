@@ -3,9 +3,9 @@
 use std::time::Instant;
 
 use behavior::{
-    Actions, Activate, Behavior, ChildHead, ChildStopped, Exit, InstallShutdownPlan, MailAddr,
-    Never, NoBirths, ShutdownCoordinator, ShutdownPlan, ShutdownRequested, ShutdownState,
-    StopOnShutdown, User,
+    Actions, Activate, Behavior, ChildHead, ChildStopped, Exit, Here, MailAddr, Never, NoBirths,
+    ShutdownCoordinator, ShutdownCoordinatorEvent, ShutdownPlan, ShutdownPlanIngress,
+    ShutdownRequested, ShutdownState, StopOnShutdown, User,
 };
 use libfuzzer_sys::fuzz_target;
 
@@ -65,7 +65,11 @@ fuzz_target!(|bytes: &[u8]| {
                 subject.on_path(ShutdownRequested).unwrap();
             }
             1 => {
-                let _ = subject.on_path(InstallShutdownPlan::new(shutdown_plan.clone()));
+                let report = ShutdownPlanIngress::<ShutdownPlan<u64>, Here>::new()
+                    .report(shutdown_plan.clone());
+                let event: ShutdownCoordinatorEvent<User<MailAddr, ()>, ShutdownPlan<u64>> =
+                    report.into_event();
+                let _ = subject.transition(event);
             }
             _ => {
                 subject

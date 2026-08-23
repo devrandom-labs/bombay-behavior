@@ -68,13 +68,14 @@ pub use lifecycle::{
     EstablishedTerminationReaction, EstablishedTerminationTarget, Guardian,
     HeterogeneousShutdownCoordinator, HeterogeneousShutdownPlan, HeterogeneousShutdownSends,
     InstallShutdownPlan, LifecyclePublication, LifecyclePublisher, LogicalTerminationTarget,
-    NoShutdownTargets, PeerTermination, PropagateTermination, Reaper, ShutdownChoice,
-    ShutdownCoordinator, ShutdownCoordinatorError, ShutdownCoordinatorEvent, ShutdownPlan,
-    ShutdownPlanError, ShutdownState, ShutdownTargetAt, ShutdownTree, ShutdownTreeError, Task,
-    TaskError, TaskMessage, TaskResult, TaskState, TerminalDisposition, TerminalPropagationPolicy,
-    TerminalPropagationSends, TerminalPropagationState, TerminationMonitor, TerminationMonitorWith,
-    TerminationObservation, TerminationObservationTarget, TerminationReaction, TerminationTarget,
-    TreeShutdown, propagate_abnormal, propagate_all, shutdown_target,
+    NoShutdownTargets, PeerTermination, PropagateTermination, Reaper, ReportShutdownPlan,
+    ShutdownChoice, ShutdownCoordinator, ShutdownCoordinatorError, ShutdownCoordinatorEvent,
+    ShutdownPlan, ShutdownPlanError, ShutdownPlanIngress, ShutdownState, ShutdownTargetAt,
+    ShutdownTree, ShutdownTreeError, Task, TaskError, TaskMessage, TaskResult, TaskState,
+    TerminalDisposition, TerminalPropagationPolicy, TerminalPropagationSends,
+    TerminalPropagationState, TerminationMonitor, TerminationMonitorWith, TerminationObservation,
+    TerminationObservationTarget, TerminationReaction, TerminationTarget, TreeShutdown,
+    propagate_abnormal, propagate_all, shutdown_target,
 };
 pub use machine::{Machine, Move};
 pub use operations::{

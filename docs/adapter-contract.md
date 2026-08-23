@@ -125,6 +125,12 @@ Interpreter-originated facts return through their declared
 `Ingress<Input, Path>` or equivalent static constructor and enqueues exactly
 the root `B::Event` it produces.
 
+Ancestor reports instead carry their destination ingress in the request and
+declare `NoReturnToEmitter`. For `ReportShutdownPlan<P, Path>`, the adapter
+calls `into_event` and enqueues that exact root event. It must not deliver the
+plan to the emitting inner lane, mutate the coordinator directly, or treat the
+request as successful installation before the coordinator consumes the event.
+
 It must not inspect payload types to find a lane. Repeated fact types at
 different wrapper depths are distinct because their structural paths are
 distinct.
@@ -174,6 +180,7 @@ not presented as laws of this crate.
 - static interpretation for every effect and child occurrence;
 - exact endpoints bypass logical-name resolution;
 - all returning facts use their declared structural ingress;
+- ancestor reports use only the explicit ingress capability carried by the request;
 - no erased envelopes, registries, downcasts, or hidden side effects; and
 - no success, restart, stop, or observation fact is inferred from failed
   mechanics.
