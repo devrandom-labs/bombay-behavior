@@ -67,7 +67,7 @@ impl<F: Eq> FeatureSet<F> {
 /// explicit status. External flag sources and evaluation remain application or
 /// System responsibilities; no runtime capability beyond ordinary typed sends
 /// is required and there is no semantic panic condition.
-pub type Features<A, F, Reply> = Configuration<A, FeatureSet<F>, Reply>;
+pub type Features<A, F, Reply, Route> = Configuration<A, FeatureSet<F>, Reply, Route>;
 
 /// Complete state returned by the [`Features`] query protocol.
 pub type FeaturesState<F> = ConfigurationState<FeatureSet<F>>;
@@ -116,7 +116,7 @@ mod tests {
         A: Address,
         F: Clone + Eq,
         Reply: behavior::Protocol<Addr = A, Msg = FeaturesState<F>>,
-        Features<A, F, Reply>: Behavior,
+        Features<A, F, Reply, behavior::Recipient<Reply>>: Behavior,
     {
     }
 

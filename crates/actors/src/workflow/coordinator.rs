@@ -1,10 +1,11 @@
 //! Dependency-ordered workflow activation as a pure fold.
 
-use behavior::{
-    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, Never, NoBirths, Recipient,
-    User,
-};
+#[cfg(test)]
+use behavior::Recipient;
+use behavior::{Actions, Address, Behavior, BehaviorActed, BehaviorBase, Never, NoBirths, User};
 use thiserror::Error;
+
+use crate::DeliveryRoute;
 
 /// Bombay-owned immutable dependency-graph product.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -50,7 +51,7 @@ pub enum WorkflowStepState {
 }
 
 /// Complete workflow phase sum.
-pub enum WorkflowState<K, Reply: behavior::Protocol> {
+pub enum WorkflowState<K, Route> {
     /// Validated definition has not started.
     Ready,
     /// At least one step remains incomplete.
@@ -58,7 +59,7 @@ pub enum WorkflowState<K, Reply: behavior::Protocol> {
         /// Per-step states in definition order.
         steps: Vec<(K, WorkflowStepState)>,
         /// Recipient for every activation and terminal fact.
-        reply_to: Recipient<Reply>,
+        reply_to: Route,
     },
     /// Every step completed successfully.
     Succeeded,
@@ -101,15 +102,15 @@ pub enum WorkflowOutcome<K> {
 }
 
 /// Closed workflow protocol.
-pub enum WorkflowMessage<K, Reply: behavior::Protocol> {
+pub enum WorkflowMessage<K, Route> {
     /// Begin the single workflow run.
-    Start { reply_to: Recipient<Reply> },
+    Start { reply_to: Route },
     /// Report successful completion of an active step.
     Complete { step: K },
     /// Report failure of an active step.
     Fail { step: K },
     /// Cancel a ready or running workflow.
-    Cancel { reply_to: Recipient<Reply> },
+    Cancel { reply_to: Route },
 }
 
 /// Deterministic dependency-ordered workflow coordinator.
@@ -128,17 +129,19 @@ pub struct Workflow<
     A: Address,
     K: Clone + Eq,
     Reply: behavior::Protocol<Addr = A, Msg = WorkflowOutcome<K>>,
+    Route: DeliveryRoute<Reply>,
 > {
     definition: WorkflowDefinition<K>,
-    state: WorkflowState<K, Reply>,
-    marker: core::marker::PhantomData<fn() -> A>,
+    state: WorkflowState<K, Route>,
+    marker: core::marker::PhantomData<fn() -> (A, Reply)>,
 }
 
-impl<A, K, Reply> Workflow<A, K, Reply>
+impl<A, K, Reply, Route> Workflow<A, K, Reply, Route>
 where
     A: Address,
     K: Clone + Eq,
     Reply: behavior::Protocol<Addr = A, Msg = WorkflowOutcome<K>>,
+    Route: DeliveryRoute<Reply> + Clone,
 {
     /// Validate and retain one dependency graph.
     ///
@@ -163,21 +166,18 @@ where
 
     /// Borrow the complete workflow phase.
     #[must_use]
-    pub const fn state(&self) -> &WorkflowState<K, Reply> {
+    pub const fn state(&self) -> &WorkflowState<K, Route> {
         &self.state
     }
 
     fn reply(
-        reply_to: Recipient<Reply>,
+        reply_to: Route,
         outcome: WorkflowOutcome<K>,
-    ) -> Actions<A, Never, Vec<Delivery<Reply>>, NoBirths> {
-        Actions::send(vec![Delivery::new(reply_to, outcome)])
+    ) -> Actions<A, Never, Route::Sends, NoBirths> {
+        Actions::send(reply_to.deliver(outcome))
     }
 
-    fn start(
-        &mut self,
-        reply_to: Recipient<Reply>,
-    ) -> Actions<A, Never, Vec<Delivery<Reply>>, NoBirths> {
+    fn start(&mut self, reply_to: Route) -> Actions<A, Never, Route::Sends, NoBirths> {
         if !matches!(self.state, WorkflowState::Ready) {
             return Self::reply(
                 reply_to,
@@ -203,15 +203,18 @@ where
                 activated.push(step.clone());
             }
         }
-        self.state = WorkflowState::Running { steps, reply_to };
+        self.state = WorkflowState::Running {
+            steps,
+            reply_to: reply_to.clone(),
+        };
         Self::reply(reply_to, WorkflowOutcome::Started { activated })
     }
 
-    fn complete(&mut self, step: K) -> Actions<A, Never, Vec<Delivery<Reply>>, NoBirths> {
+    fn complete(&mut self, step: K) -> Actions<A, Never, Route::Sends, NoBirths> {
         let WorkflowState::Running { steps, reply_to } = &mut self.state else {
             return Actions::cont();
         };
-        let reply_to = *reply_to;
+        let reply_to = reply_to.clone();
         let Some(index) = steps.iter().position(|(candidate, _)| candidate == &step) else {
             return Self::reply(
                 reply_to,
@@ -270,11 +273,11 @@ where
         )
     }
 
-    fn fail(&mut self, step: K) -> Actions<A, Never, Vec<Delivery<Reply>>, NoBirths> {
+    fn fail(&mut self, step: K) -> Actions<A, Never, Route::Sends, NoBirths> {
         let WorkflowState::Running { steps, reply_to } = &self.state else {
             return Actions::cont();
         };
-        let reply_to = *reply_to;
+        let reply_to = reply_to.clone();
         let Some((_, phase)) = steps.iter().find(|(candidate, _)| candidate == &step) else {
             return Self::reply(
                 reply_to,
@@ -347,11 +350,12 @@ fn validate<K: Clone + Eq>(
     Ok(())
 }
 
-impl<A, K, Reply> BehaviorBase for Workflow<A, K, Reply>
+impl<A, K, Reply, Route> BehaviorBase for Workflow<A, K, Reply, Route>
 where
     A: Address,
     K: Clone + Eq,
     Reply: behavior::Protocol<Addr = A, Msg = WorkflowOutcome<K>>,
+    Route: DeliveryRoute<Reply>,
 {
     type Base = Self;
     fn base(&self) -> &Self {
@@ -359,25 +363,28 @@ where
     }
 }
 
-impl<A, K, Reply> behavior::Protocol for Workflow<A, K, Reply>
+impl<A, K, Reply, Route> behavior::Protocol for Workflow<A, K, Reply, Route>
 where
     A: Address,
     K: Clone + Eq,
     Reply: behavior::Protocol<Addr = A, Msg = WorkflowOutcome<K>>,
+    Route: DeliveryRoute<Reply>,
 {
     type Addr = A;
-    type Msg = WorkflowMessage<K, Reply>;
+    type Msg = WorkflowMessage<K, Route>;
 }
 
-impl<A, K, Reply> Behavior for Workflow<A, K, Reply>
+impl<A, K, Reply, Route> Behavior for Workflow<A, K, Reply, Route>
 where
     A: Address,
     K: Clone + Eq,
     Reply: behavior::Protocol<Addr = A, Msg = WorkflowOutcome<K>>,
+    Route: DeliveryRoute<Reply> + Clone,
+    Route::Sends: behavior::SendsFor<User<A, WorkflowMessage<K, Route>>>,
 {
     type Protocol = Self;
     type Event = User<A, crate::BehaviorMessage<Self>>;
-    type Sends = Vec<Delivery<Reply>>;
+    type Sends = Route::Sends;
     type Ph = Never;
     type Error = Never;
     type Birth = NoBirths;
@@ -423,7 +430,7 @@ mod tests {
             Ok(Actions::cont())
         }
     }
-    type Subject = Workflow<MailAddr, &'static str, Reply>;
+    type Subject = Workflow<MailAddr, &'static str, Reply, Recipient<Reply>>;
     fn reply() -> Recipient<Reply> {
         Recipient::global(MailAddr(9))
     }

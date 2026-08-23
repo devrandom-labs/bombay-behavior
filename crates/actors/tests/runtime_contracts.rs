@@ -15,11 +15,12 @@ use behavior_actors::{
     KeyedWorkerPoolWithParent, Lease, LeaseOutcome, MailAddr, Never, NoBirths, ObserveChild,
     ObserveCreation, ObservePeer, OneShot, PeerStopped, Periodic, PoolAssignment,
     PoolBehaviorSends, PoolResponse, Presence, PresenceReply, Proxy, ProxyCommand, ProxyEvent,
-    ProxyParentIngress, ProxyWithParent, ReceiveTimeout, ReportSupervisionFailure, ScheduleAfter,
-    ScheduleAt, SendLayer, ShutdownChild, ShutdownCoordinator, ShutdownCoordinatorEvent,
-    ShutdownRequested, StopOnShutdown, Supervise, SupervisionEvent, SupervisorWithParent,
-    TerminationMonitor, TimerElapsed, User, Watch, WatchEvent, WorkerCreationResolved, WorkerPool,
-    WorkerPoolEvent, WorkerPoolProtocol, WorkerPoolSends, WorkerPoolWithParent, WorkerStopped,
+    ProxyParentIngress, ProxyWithParent, ReceiveTimeout, Recipient, ReportSupervisionFailure,
+    ScheduleAfter, ScheduleAt, SendLayer, ShutdownChild, ShutdownCoordinator,
+    ShutdownCoordinatorEvent, ShutdownPlan, ShutdownRequested, StopOnShutdown, Supervise,
+    SupervisionEvent, SupervisorWithParent, TerminationMonitor, TimerElapsed, User, Watch,
+    WatchEvent, WorkerCreationResolved, WorkerPool, WorkerPoolEvent, WorkerPoolProtocol,
+    WorkerPoolSends, WorkerPoolWithParent, WorkerStopped,
 };
 use core::future::Future;
 
@@ -202,8 +203,9 @@ fn every_topology_owner_exposes_itself_as_its_behavior_base() {
     type Child = StopOnShutdown<Inert>;
     owns_topology::<ProxyWithParent<Child, Here>>();
     owns_topology::<SupervisorWithParent<MailAddr, Child, Here>>();
-    owns_topology::<DynamicSupervisorWithParent<MailAddr, Inert, DynamicReply, Here>>();
-    owns_topology::<WorkerPoolWithParent<MailAddr, PoolReply, u8, u16, PoolWorker, Here>>();
+    owns_topology::<DynamicSupervisorWithParent<MailAddr, Inert, Recipient<DynamicReply>, Here>>();
+    owns_topology::<WorkerPoolWithParent<MailAddr, PoolReply, u8, u16, PoolWorker, PoolRoute, Here>>(
+    );
     owns_topology::<
         KeyedWorkerPoolWithParent<
             MailAddr,
@@ -212,6 +214,7 @@ fn every_topology_owner_exposes_itself_as_its_behavior_base() {
             u8,
             u16,
             KeyedPoolWorker,
+            PoolRoute,
             fn(&u8) -> u64,
             Here,
         >,
@@ -220,9 +223,12 @@ fn every_topology_owner_exposes_itself_as_its_behavior_base() {
 
 #[test]
 fn every_timer_request_has_an_exact_timer_fact_input() {
-    accepts::<CircuitBreaker<MailAddr, BreakerReply>, TimerElapsed>();
-    accepts::<Lease<MailAddr, u8, LeaseReply>, TimerElapsed>();
-    accepts::<Presence<MailAddr, u8, PresenceReplyBehavior>, TimerElapsed>();
+    accepts::<CircuitBreaker<MailAddr, BreakerReply, Recipient<BreakerReply>>, TimerElapsed>();
+    accepts::<Lease<MailAddr, u8, LeaseReply, Recipient<LeaseReply>>, TimerElapsed>();
+    accepts::<
+        Presence<MailAddr, u8, PresenceReplyBehavior, Recipient<PresenceReplyBehavior>>,
+        TimerElapsed,
+    >();
     accepts::<Deadline<Inert>, TimerElapsed>();
     accepts::<OneShot<Inert>, TimerElapsed>();
     accepts::<Periodic<Inert>, TimerElapsed>();
@@ -239,7 +245,7 @@ fn every_observation_and_parent_report_has_an_exact_fact_input() {
     accepts::<Proxy<Inert>, ShutdownRequested>();
     accepts::<Proxy<Inert>, ChildShutdownRejected<u64>>();
 
-    type Dynamic = DynamicSupervisor<MailAddr, Inert, DynamicReply>;
+    type Dynamic = DynamicSupervisor<MailAddr, Inert, Recipient<DynamicReply>>;
     accepts::<Dynamic, ChildStopped<MailAddr>>();
     accepts::<Dynamic, CreationResolved<MailAddr>>();
     accepts::<Dynamic, WorkerStopped<MailAddr>>();
@@ -272,10 +278,10 @@ fn every_shutdown_request_names_a_shutdown_capable_child_protocol() {
 
     // An explicit outer direct-stop policy still takes precedence over the
     // dynamic supervisor's own coordinated subtree shutdown.
-    type Dynamic = DynamicSupervisor<MailAddr, Inert, DynamicReply>;
+    type Dynamic = DynamicSupervisor<MailAddr, Inert, Recipient<DynamicReply>>;
     accepts::<StopOnShutdown<Dynamic>, ShutdownRequested>();
 
-    type CoordinatorProtocol = ShutdownCoordinatorEvent<User<MailAddr, ()>>;
+    type CoordinatorProtocol = ShutdownCoordinatorEvent<User<MailAddr, ()>, ShutdownPlan<u64>>;
     event_accepts::<CoordinatorProtocol, ShutdownRequested>();
     event_accepts::<CoordinatorProtocol, ChildStopped<MailAddr>>();
     event_accepts::<CoordinatorProtocol, ChildShutdownRejected<u64>>();
@@ -299,20 +305,28 @@ fn every_shutdown_request_names_a_shutdown_capable_child_protocol() {
     fn coordinated_child_is_closed<B: Behavior>() {}
     coordinated_child_is_closed::<ShutdownCoordinator<Parent, Delayed, ChildHead>>();
 
-    type Pool = WorkerPoolEvent<MailAddr, PoolReply, u8, u16>;
+    type Pool = WorkerPoolEvent<MailAddr, PoolReply, u8, u16, PoolRoute>;
     event_accepts_at::<Pool, ShutdownRequested, Here>();
     event_accepts_at::<Pool, ChildShutdownRejected<u64>, Here>();
 
-    type KeyedPool = KeyedPoolEvent<MailAddr, PoolReply, u8, u8, u16>;
+    type KeyedPool = KeyedPoolEvent<MailAddr, PoolReply, u8, u8, u16, PoolRoute>;
     event_accepts_at::<KeyedPool, ShutdownRequested, Here>();
     event_accepts_at::<KeyedPool, ChildShutdownRejected<u64>, Here>();
 
-    type ConcretePool = WorkerPool<MailAddr, PoolReply, u8, u16, PoolWorker>;
+    type ConcretePool = WorkerPool<MailAddr, PoolReply, u8, u16, PoolWorker, PoolRoute>;
     behavior_accepts_at::<ConcretePool, ShutdownRequested, Here>();
     behavior_accepts_at::<ConcretePool, ChildShutdownRejected<u64>, Here>();
 
-    type ConcreteKeyedPool =
-        KeyedWorkerPool<MailAddr, PoolReply, u8, u8, u16, KeyedPoolWorker, fn(&u8) -> u64>;
+    type ConcreteKeyedPool = KeyedWorkerPool<
+        MailAddr,
+        PoolReply,
+        u8,
+        u8,
+        u16,
+        KeyedPoolWorker,
+        PoolRoute,
+        fn(&u8) -> u64,
+    >;
     behavior_accepts_at::<ConcreteKeyedPool, ShutdownRequested, Here>();
     behavior_accepts_at::<ConcreteKeyedPool, ChildShutdownRejected<u64>, Here>();
 }
@@ -321,7 +335,7 @@ fn every_shutdown_request_names_a_shutdown_capable_child_protocol() {
 fn shutdown_wrapper_owns_dynamic_supervisor_shutdown_end_to_end() {
     use behavior_actors::Activate as _;
 
-    type Dynamic = DynamicSupervisor<MailAddr, Inert, DynamicReply>;
+    type Dynamic = DynamicSupervisor<MailAddr, Inert, Recipient<DynamicReply>>;
     let mut active = StopOnShutdown::new(Dynamic::new())
         .initialize()
         .unwrap()
@@ -337,7 +351,7 @@ fn wrapped_dynamic_supervisor_gives_proxies_the_inner_parent_ingress() {
     use std::time::Instant;
 
     type ParentPath = Inside<Here>;
-    type Inner = DynamicSupervisorWithParent<MailAddr, Inert, DynamicReply, ParentPath>;
+    type Inner = DynamicSupervisorWithParent<MailAddr, Inert, Recipient<DynamicReply>, ParentPath>;
     type Wrapped = StopOnShutdown<Inner>;
 
     let direct = ProxyParentIngress::<MailAddr, Here>::new();
@@ -380,9 +394,11 @@ fn every_proxy_owner_reindexes_parent_reports_through_an_outer_guardian() {
     type Child = StopOnShutdown<Inert>;
     type Fixed = Guardian<SupervisorWithParent<MailAddr, Child, ParentPath>>;
     type Delayed = Guardian<BackoffSupervisorWithParent<MailAddr, Child, ParentPath>>;
-    type Dynamic = Guardian<DynamicSupervisorWithParent<MailAddr, Inert, DynamicReply, ParentPath>>;
-    type Fifo =
-        Guardian<WorkerPoolWithParent<MailAddr, PoolReply, u8, u16, PoolWorker, ParentPath>>;
+    type Dynamic =
+        Guardian<DynamicSupervisorWithParent<MailAddr, Inert, Recipient<DynamicReply>, ParentPath>>;
+    type Fifo = Guardian<
+        WorkerPoolWithParent<MailAddr, PoolReply, u8, u16, PoolWorker, PoolRoute, ParentPath>,
+    >;
     type Keyed = Guardian<
         KeyedWorkerPoolWithParent<
             MailAddr,
@@ -391,6 +407,7 @@ fn every_proxy_owner_reindexes_parent_reports_through_an_outer_guardian() {
             u8,
             u16,
             KeyedPoolWorker,
+            PoolRoute,
             fn(&u8) -> u64,
             ParentPath,
         >,
@@ -613,16 +630,20 @@ impl behavior::Protocol for PoolReply {
     type Msg = PoolResponse<u8, u16, MailAddr>;
 }
 
+type PoolRoute = Recipient<PoolReply>;
+type PoolProtocol = WorkerPoolProtocol<MailAddr, PoolReply, u8, u16, PoolRoute>;
+type KeyedPoolProtocol = KeyedWorkerPoolProtocol<MailAddr, PoolReply, u8, u8, u16, PoolRoute>;
+
 struct PoolWorker;
 impl behavior::Protocol for PoolWorker {
     type Addr = MailAddr;
-    type Msg = PoolAssignment<WorkerPoolProtocol<MailAddr, PoolReply, u8, u16>>;
+    type Msg = PoolAssignment<PoolProtocol>;
 }
 
 struct KeyedPoolWorker;
 impl behavior::Protocol for KeyedPoolWorker {
     type Addr = MailAddr;
-    type Msg = PoolAssignment<KeyedWorkerPoolProtocol<MailAddr, PoolReply, u8, u8, u16>>;
+    type Msg = PoolAssignment<KeyedPoolProtocol>;
 }
 impl Behavior for KeyedPoolWorker {
     type Protocol = Self;
@@ -662,7 +683,7 @@ async fn worker_pool_event_and_sends_interpret_every_lane_at_the_same_structural
         Recipient, SendInterpreter, SupervisorSends,
     };
 
-    type PoolEvent = WorkerPoolEvent<MailAddr, PoolReply, u8, u16>;
+    type PoolEvent = WorkerPoolEvent<MailAddr, PoolReply, u8, u16, PoolRoute>;
     type RootEvent = WatchEvent<PoolEvent>;
     type Path = Inside<Here>;
 
@@ -769,7 +790,7 @@ async fn worker_pool_event_and_sends_interpret_every_lane_at_the_same_structural
         }
     }
 
-    let sends: WorkerPoolSends<MailAddr, PoolReply, u8, u16, PoolWorker> = SendLayer::new(
+    let sends: WorkerPoolSends<MailAddr, PoolWorker, PoolRoute> = SendLayer::new(
         SupervisorSends {
             child_observations: InterpreterRequests::one(ObserveChild::new(1)),
             creation_observations: InterpreterRequests::one(ObserveCreation::new(1)),

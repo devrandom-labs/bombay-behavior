@@ -1,10 +1,11 @@
 //! Keyed request/result lifecycle correlation.
 
-use behavior::{
-    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, Never, NoBirths, Recipient,
-    User,
-};
+use behavior::{Actions, Address, Behavior, BehaviorActed, BehaviorBase, Never, NoBirths, User};
+#[cfg(test)]
+use behavior::{Delivery, Recipient};
 use thiserror::Error;
+
+use crate::DeliveryRoute;
 
 /// Result delivered to the reply recipient retained by [`Correlator`].
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -16,13 +17,13 @@ pub enum CorrelationResult<K, V> {
 }
 
 /// Complete retained lifecycle of one correlation key.
-pub enum CorrelationState<K, Reply: behavior::Protocol> {
+pub enum CorrelationState<K, Route> {
     /// The key owns one reply recipient and may accept resolution or cancel.
     Pending {
         /// Correlation key.
         key: K,
         /// Typed recipient for the terminal result.
-        reply_to: Recipient<Reply>,
+        reply_to: Route,
     },
     /// The key resolved and later replies are stale.
     Completed { key: K },
@@ -30,7 +31,7 @@ pub enum CorrelationState<K, Reply: behavior::Protocol> {
     Cancelled { key: K },
 }
 
-impl<K, Reply: behavior::Protocol> CorrelationState<K, Reply> {
+impl<K, Route> CorrelationState<K, Route> {
     fn key(&self) -> &K {
         match self {
             Self::Pending { key, .. } | Self::Completed { key } | Self::Cancelled { key } => key,
@@ -39,9 +40,9 @@ impl<K, Reply: behavior::Protocol> CorrelationState<K, Reply> {
 }
 
 /// Commands accepted by [`Correlator`].
-pub enum CorrelatorMessage<K, V, Reply: behavior::Protocol> {
+pub enum CorrelatorMessage<K, V, Route> {
     /// Establish a unique pending key and its terminal reply recipient.
-    Begin { key: K, reply_to: Recipient<Reply> },
+    Begin { key: K, reply_to: Route },
     /// Resolve one pending key with an owned value.
     Resolve { key: K, value: V },
     /// Cancel one pending key.
@@ -91,13 +92,17 @@ pub struct Correlator<
     K,
     V,
     Reply: behavior::Protocol<Addr = A, Msg = CorrelationResult<K, V>>,
+    Route: DeliveryRoute<Reply>,
 > {
-    states: Vec<CorrelationState<K, Reply>>,
-    address: core::marker::PhantomData<A>,
+    states: Vec<CorrelationState<K, Route>>,
+    address: core::marker::PhantomData<fn() -> (A, Reply)>,
 }
 
-impl<A: Address, K, V, Reply: behavior::Protocol<Addr = A, Msg = CorrelationResult<K, V>>>
-    Correlator<A, K, V, Reply>
+impl<A, K, V, Reply, Route> Correlator<A, K, V, Reply, Route>
+where
+    A: Address,
+    Reply: behavior::Protocol<Addr = A, Msg = CorrelationResult<K, V>>,
+    Route: DeliveryRoute<Reply>,
 {
     /// Construct an empty correlator definition.
     #[must_use]
@@ -110,21 +115,27 @@ impl<A: Address, K, V, Reply: behavior::Protocol<Addr = A, Msg = CorrelationResu
 
     /// Borrow every retained lifecycle in first-begin order.
     #[must_use]
-    pub fn states(&self) -> &[CorrelationState<K, Reply>] {
+    pub fn states(&self) -> &[CorrelationState<K, Route>] {
         &self.states
     }
 }
 
-impl<A: Address, K, V, Reply: behavior::Protocol<Addr = A, Msg = CorrelationResult<K, V>>> Default
-    for Correlator<A, K, V, Reply>
+impl<A, K, V, Reply, Route> Default for Correlator<A, K, V, Reply, Route>
+where
+    A: Address,
+    Reply: behavior::Protocol<Addr = A, Msg = CorrelationResult<K, V>>,
+    Route: DeliveryRoute<Reply>,
 {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<A: Address, K, V, Reply: behavior::Protocol<Addr = A, Msg = CorrelationResult<K, V>>>
-    BehaviorBase for Correlator<A, K, V, Reply>
+impl<A, K, V, Reply, Route> BehaviorBase for Correlator<A, K, V, Reply, Route>
+where
+    A: Address,
+    Reply: behavior::Protocol<Addr = A, Msg = CorrelationResult<K, V>>,
+    Route: DeliveryRoute<Reply>,
 {
     type Base = Self;
 
@@ -133,25 +144,28 @@ impl<A: Address, K, V, Reply: behavior::Protocol<Addr = A, Msg = CorrelationResu
     }
 }
 
-impl<A, K, V, Reply> behavior::Protocol for Correlator<A, K, V, Reply>
+impl<A, K, V, Reply, Route> behavior::Protocol for Correlator<A, K, V, Reply, Route>
 where
     A: Address,
     K: Clone + Eq,
     Reply: behavior::Protocol<Addr = A, Msg = CorrelationResult<K, V>>,
+    Route: DeliveryRoute<Reply>,
 {
     type Addr = A;
-    type Msg = CorrelatorMessage<K, V, Reply>;
+    type Msg = CorrelatorMessage<K, V, Route>;
 }
 
-impl<A, K, V, Reply> Behavior for Correlator<A, K, V, Reply>
+impl<A, K, V, Reply, Route> Behavior for Correlator<A, K, V, Reply, Route>
 where
     A: Address,
     K: Clone + Eq,
     Reply: behavior::Protocol<Addr = A, Msg = CorrelationResult<K, V>>,
+    Route: DeliveryRoute<Reply> + Clone,
+    Route::Sends: behavior::SendsFor<User<A, CorrelatorMessage<K, V, Route>>>,
 {
     type Protocol = Self;
     type Event = User<A, crate::BehaviorMessage<Self>>;
-    type Sends = Vec<Delivery<Reply>>;
+    type Sends = Route::Sends;
     type Ph = Never;
     type Error = CorrelatorError<K, V>;
     type Birth = NoBirths;
@@ -179,7 +193,7 @@ where
                     return Err(CorrelatorError::UnknownReply { key, value });
                 };
                 let reply_to = match &self.states[index] {
-                    CorrelationState::Pending { reply_to, .. } => *reply_to,
+                    CorrelationState::Pending { reply_to, .. } => reply_to.clone(),
                     CorrelationState::Completed { .. } => {
                         return Err(CorrelatorError::StaleCompleted { key, value });
                     }
@@ -188,17 +202,16 @@ where
                     }
                 };
                 self.states[index] = CorrelationState::Completed { key: key.clone() };
-                Ok(Actions::send(vec![Delivery::new(
-                    reply_to,
-                    CorrelationResult::Resolved { key, value },
-                )]))
+                Ok(Actions::send(
+                    reply_to.deliver(CorrelationResult::Resolved { key, value }),
+                ))
             }
             CorrelatorMessage::Cancel { key } => {
                 let Some(index) = self.states.iter().position(|state| state.key() == &key) else {
                     return Err(CorrelatorError::Unknown(key));
                 };
                 let reply_to = match &self.states[index] {
-                    CorrelationState::Pending { reply_to, .. } => *reply_to,
+                    CorrelationState::Pending { reply_to, .. } => reply_to.clone(),
                     CorrelationState::Completed { .. } => {
                         return Err(CorrelatorError::AlreadyCompleted(key));
                     }
@@ -207,10 +220,9 @@ where
                     }
                 };
                 self.states[index] = CorrelationState::Cancelled { key: key.clone() };
-                Ok(Actions::send(vec![Delivery::new(
-                    reply_to,
-                    CorrelationResult::Cancelled { key },
-                )]))
+                Ok(Actions::send(
+                    reply_to.deliver(CorrelationResult::Cancelled { key }),
+                ))
             }
         }
     }
@@ -242,7 +254,7 @@ mod tests {
         }
     }
 
-    type TestCorrelator = Correlator<MailAddr, u8, u16, Reply>;
+    type TestCorrelator = Correlator<MailAddr, u8, u16, Reply, Recipient<Reply>>;
 
     #[test]
     fn resolve_commits_before_one_terminal_delivery_and_marks_duplicates_stale() {

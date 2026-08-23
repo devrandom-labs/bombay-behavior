@@ -10,6 +10,8 @@ use behavior::{
 };
 use thiserror::Error;
 
+use crate::DeliveryRoute;
+
 /// Semantic token quantity.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct TokenCount(pub NonZeroU64);
@@ -69,7 +71,7 @@ pub enum RateLimiterOutcome<T> {
 }
 
 /// Inputs accepted by [`RateLimiter`].
-pub enum RateLimiterMessage<T, Target: Protocol, Reply: behavior::Protocol> {
+pub enum RateLimiterMessage<T, Target: Protocol, Route> {
     /// Attempt to consume tokens and deliver one value.
     Acquire {
         /// Required positive token cost.
@@ -79,7 +81,7 @@ pub enum RateLimiterMessage<T, Target: Protocol, Reply: behavior::Protocol> {
         /// Typed destination.
         to: Recipient<Target>,
         /// Typed outcome recipient.
-        reply_to: Recipient<Reply>,
+        reply_to: Route,
     },
     /// Typed clock-derived refill observation.
     Refill {
@@ -111,24 +113,28 @@ pub enum RateLimiterConfigError {
 /// saturation, and rejection ordering are Bombay policy. Clock cadence is not
 /// observed here: a `Periodic` composition or Environment adapter supplies
 /// typed `Refill` events. No transition has a semantic panic condition.
-type RateLimiterMarker<A, Target, Reply> = core::marker::PhantomData<fn() -> (A, Target, Reply)>;
+type RateLimiterMarker<A, Target, Reply, Route> =
+    core::marker::PhantomData<fn() -> (A, Target, Reply, Route)>;
 
 pub struct RateLimiter<
     A: Address,
     T,
     Target: Protocol<Addr = A, Msg = T>,
     Reply: behavior::Protocol<Addr = A, Msg = RateLimiterOutcome<T>>,
+    Route: DeliveryRoute<Reply>,
 > {
     capacity: TokenCount,
     available: u64,
-    marker: RateLimiterMarker<A, Target, Reply>,
+    marker: RateLimiterMarker<A, Target, Reply, Route>,
 }
-type RateActions<A, Target, Reply> = Actions<A, Never, DeliveryOutcomes<Target, Reply>, NoBirths>;
-impl<A, T, Target, Reply> RateLimiter<A, T, Target, Reply>
+type RateActions<A, Target, OutcomeSends> =
+    Actions<A, Never, DeliveryOutcomes<Target, OutcomeSends>, NoBirths>;
+impl<A, T, Target, Reply, Route> RateLimiter<A, T, Target, Reply, Route>
 where
     A: Address,
     Target: Protocol<Addr = A, Msg = T>,
     Reply: behavior::Protocol<Addr = A, Msg = RateLimiterOutcome<T>>,
+    Route: DeliveryRoute<Reply>,
 {
     /// Construct one explicit positive-capacity bucket.
     /// # Errors
@@ -153,12 +159,12 @@ where
     }
     fn result(
         deliveries: Vec<Delivery<Target>>,
-        reply_to: Recipient<Reply>,
+        reply_to: Route,
         outcome: RateLimiterOutcome<T>,
-    ) -> RateActions<A, Target, Reply> {
+    ) -> RateActions<A, Target, Route::Sends> {
         Actions::send(DeliveryOutcomes {
             deliveries,
-            outcomes: vec![Delivery::new(reply_to, outcome)],
+            outcomes: reply_to.deliver(outcome),
         })
     }
     fn acquire(
@@ -166,8 +172,8 @@ where
         cost: TokenCount,
         value: T,
         to: Recipient<Target>,
-        reply_to: Recipient<Reply>,
-    ) -> RateActions<A, Target, Reply> {
+        reply_to: Route,
+    ) -> RateActions<A, Target, Route::Sends> {
         let required = cost.get();
         if required > self.capacity.get() {
             return Self::result(
@@ -199,36 +205,40 @@ where
         )
     }
 }
-impl<A, T, Target, Reply> BehaviorBase for RateLimiter<A, T, Target, Reply>
+impl<A, T, Target, Reply, Route> BehaviorBase for RateLimiter<A, T, Target, Reply, Route>
 where
     A: Address,
     Target: Protocol<Addr = A, Msg = T>,
     Reply: behavior::Protocol<Addr = A, Msg = RateLimiterOutcome<T>>,
+    Route: DeliveryRoute<Reply>,
 {
     type Base = Self;
     fn base(&self) -> &Self {
         self
     }
 }
-impl<A, T, Target, Reply> behavior::Protocol for RateLimiter<A, T, Target, Reply>
+impl<A, T, Target, Reply, Route> behavior::Protocol for RateLimiter<A, T, Target, Reply, Route>
 where
     A: Address,
     Target: Protocol<Addr = A, Msg = T>,
     Reply: behavior::Protocol<Addr = A, Msg = RateLimiterOutcome<T>>,
+    Route: DeliveryRoute<Reply>,
 {
     type Addr = A;
-    type Msg = RateLimiterMessage<T, Target, Reply>;
+    type Msg = RateLimiterMessage<T, Target, Route>;
 }
 
-impl<A, T, Target, Reply> Behavior for RateLimiter<A, T, Target, Reply>
+impl<A, T, Target, Reply, Route> Behavior for RateLimiter<A, T, Target, Reply, Route>
 where
     A: Address,
     Target: Protocol<Addr = A, Msg = T>,
     Reply: behavior::Protocol<Addr = A, Msg = RateLimiterOutcome<T>>,
+    Route: DeliveryRoute<Reply>,
+    Route::Sends: behavior::SendsFor<User<A, RateLimiterMessage<T, Target, Route>>>,
 {
     type Protocol = Self;
     type Event = User<A, crate::BehaviorMessage<Self>>;
-    type Sends = DeliveryOutcomes<Target, Reply>;
+    type Sends = DeliveryOutcomes<Target, Route::Sends>;
     type Ph = Never;
     type Error = Never;
     type Birth = NoBirths;
@@ -290,7 +300,7 @@ mod tests {
             Ok(Actions::cont())
         }
     }
-    type Subject = RateLimiter<MailAddr, u8, Target, Reply>;
+    type Subject = RateLimiter<MailAddr, u8, Target, Reply, Recipient<Reply>>;
     fn tokens(n: u64) -> TokenCount {
         TokenCount::new(NonZeroU64::new(n).unwrap())
     }
@@ -298,7 +308,7 @@ mod tests {
         s: &mut crate::Active<Subject>,
         cost: u64,
         value: u8,
-    ) -> RateActions<MailAddr, Target, Reply> {
+    ) -> RateActions<MailAddr, Target, Vec<Delivery<Reply>>> {
         s.receive(
             MailAddr(0),
             RateLimiterMessage::Acquire {

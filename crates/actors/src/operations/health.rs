@@ -1,10 +1,11 @@
 //! Versioned component-health aggregation.
 
-use behavior::{
-    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, Never, NoBirths, Recipient,
-    User,
-};
+#[cfg(test)]
+use behavior::Recipient;
+use behavior::{Actions, Address, Behavior, BehaviorActed, BehaviorBase, Never, NoBirths, User};
 use thiserror::Error;
+
+use crate::DeliveryRoute;
 
 /// Monotonic version of one component's health evidence.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -82,7 +83,7 @@ impl<K> HealthReport<K> {
 }
 
 /// Commands accepted by [`Health`].
-pub enum HealthMessage<K, Reply: behavior::Protocol> {
+pub enum HealthMessage<K, Route> {
     /// Commit versioned evidence for a present component.
     Observe {
         /// Component identity.
@@ -102,7 +103,7 @@ pub enum HealthMessage<K, Reply: behavior::Protocol> {
     /// Return a point-in-time report to a typed recipient.
     Query {
         /// Recipient whose protocol accepts [`HealthReport<K>`].
-        reply_to: Recipient<Reply>,
+        reply_to: Route,
     },
 }
 
@@ -141,13 +142,21 @@ pub enum HealthError<K> {
 /// policy, and it requires only ordinary typed delivery interpretation.
 /// Versioning, aggregate ordering, and empty-set health are Bombay policy, not
 /// actor-model laws. No method has a semantic panic condition.
-pub struct Health<A: Address, K, Reply: behavior::Protocol<Addr = A, Msg = HealthReport<K>>> {
+pub struct Health<A, K, Reply, Route>
+where
+    A: Address,
+    Reply: behavior::Protocol<Addr = A, Msg = HealthReport<K>>,
+    Route: DeliveryRoute<Reply>,
+{
     components: Vec<ComponentHealthState<K>>,
-    address: core::marker::PhantomData<fn() -> (A, Reply)>,
+    address: core::marker::PhantomData<fn() -> (A, Reply, Route)>,
 }
 
-impl<A: Address, K, Reply: behavior::Protocol<Addr = A, Msg = HealthReport<K>>>
-    Health<A, K, Reply>
+impl<A, K, Reply, Route> Health<A, K, Reply, Route>
+where
+    A: Address,
+    Reply: behavior::Protocol<Addr = A, Msg = HealthReport<K>>,
+    Route: DeliveryRoute<Reply>,
 {
     /// Construct an empty health definition.
     #[must_use]
@@ -165,16 +174,22 @@ impl<A: Address, K, Reply: behavior::Protocol<Addr = A, Msg = HealthReport<K>>>
     }
 }
 
-impl<A: Address, K, Reply: behavior::Protocol<Addr = A, Msg = HealthReport<K>>> Default
-    for Health<A, K, Reply>
+impl<A, K, Reply, Route> Default for Health<A, K, Reply, Route>
+where
+    A: Address,
+    Reply: behavior::Protocol<Addr = A, Msg = HealthReport<K>>,
+    Route: DeliveryRoute<Reply>,
 {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<A: Address, K, Reply: behavior::Protocol<Addr = A, Msg = HealthReport<K>>> BehaviorBase
-    for Health<A, K, Reply>
+impl<A, K, Reply, Route> BehaviorBase for Health<A, K, Reply, Route>
+where
+    A: Address,
+    Reply: behavior::Protocol<Addr = A, Msg = HealthReport<K>>,
+    Route: DeliveryRoute<Reply>,
 {
     type Base = Self;
 
@@ -189,11 +204,12 @@ enum Evidence {
     Removed,
 }
 
-impl<A, K, Reply> Health<A, K, Reply>
+impl<A, K, Reply, Route> Health<A, K, Reply, Route>
 where
     A: Address,
     K: Clone + Eq,
     Reply: behavior::Protocol<Addr = A, Msg = HealthReport<K>>,
+    Route: DeliveryRoute<Reply>,
 {
     fn commit(
         &mut self,
@@ -250,25 +266,28 @@ where
     }
 }
 
-impl<A, K, Reply> behavior::Protocol for Health<A, K, Reply>
+impl<A, K, Reply, Route> behavior::Protocol for Health<A, K, Reply, Route>
 where
     A: Address,
     K: Clone + Eq,
     Reply: behavior::Protocol<Addr = A, Msg = HealthReport<K>>,
+    Route: DeliveryRoute<Reply>,
 {
     type Addr = A;
-    type Msg = HealthMessage<K, Reply>;
+    type Msg = HealthMessage<K, Route>;
 }
 
-impl<A, K, Reply> Behavior for Health<A, K, Reply>
+impl<A, K, Reply, Route> Behavior for Health<A, K, Reply, Route>
 where
     A: Address,
     K: Clone + Eq,
     Reply: behavior::Protocol<Addr = A, Msg = HealthReport<K>>,
+    Route: DeliveryRoute<Reply>,
+    Route::Sends: behavior::SendsFor<User<A, HealthMessage<K, Route>>>,
 {
     type Protocol = Self;
     type Event = User<A, crate::BehaviorMessage<Self>>;
-    type Sends = Vec<Delivery<Reply>>;
+    type Sends = Route::Sends;
     type Ph = Never;
     type Error = HealthError<K>;
     type Birth = NoBirths;
@@ -287,9 +306,7 @@ where
                 self.commit(component, version, Evidence::Removed)?;
                 Ok(Actions::cont())
             }
-            HealthMessage::Query { reply_to } => {
-                Ok(Actions::send(vec![Delivery::new(reply_to, self.report())]))
-            }
+            HealthMessage::Query { reply_to } => Ok(Actions::send(reply_to.deliver(self.report()))),
         }
     }
 }
@@ -320,7 +337,7 @@ mod tests {
         }
     }
 
-    type TestHealth = Health<MailAddr, u8, Reply>;
+    type TestHealth = Health<MailAddr, u8, Reply, Recipient<Reply>>;
 
     #[test]
     fn stale_and_conflicting_evidence_preserve_committed_state() {

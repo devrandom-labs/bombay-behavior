@@ -90,4 +90,11 @@ test = false
 doc = false
 bench = false
 
+[[bin]]
+name = "shutdown_plan_sequences"
+path = "fuzz_targets/shutdown_plan_sequences.rs"
+test = false
+doc = false
+bench = false
+
 [workspace]

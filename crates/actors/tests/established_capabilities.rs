@@ -1,16 +1,17 @@
 use behavior_actors::{
     Actions, Activate as _, Behavior, BehaviorActed, BehaviorBase, Births, CancelObservation,
     ChildHead, ChildOccurrence, ChildRole, ChildRoute, CreationKind, CreationRejection,
-    DeclaredChildOccurrence, EndpointAddress, EstablishedCreation, EstablishedDelivery,
-    EstablishedObservation, EstablishedRecipient, EstablishedTerminationMonitor, EstablishedWatch,
-    EventLayer, Exit, Guardian, Here, HeterogeneousShutdownPlan, Ingress,
-    InterpretEstablishedDelivery, InterpretEstablishedObservation, InterpretEstablishedShutdown,
-    InterpretSends, InterpreterRequests, MessageAdapterWithRoute, Never, NoBirths,
-    NoShutdownTargets, ObservationId, ObservationOperation, ObservationRejection,
-    ObserveEstablished, ObserveEstablishedCreation, Protocol, Proxy, ReceiveTimeout,
-    ResolveChildOccurrence, SendInterpreter, SendLayer, ShutdownChoice, ShutdownEstablished,
-    ShutdownId, ShutdownRequested, Stash, StopOnShutdown, Supervise, User, Watch,
-    established_child,
+    DeclaredChildOccurrence, Delivery, DeliveryRouteProtocol, EndpointAddress, EstablishedCreation,
+    EstablishedDelivery, EstablishedObservation, EstablishedRecipient,
+    EstablishedTerminationMonitor, EstablishedWatch, EventLayer, Exit, Guardian, Here,
+    HeterogeneousShutdownPlan, Ingress, InterpretEstablishedDelivery,
+    InterpretEstablishedObservation, InterpretEstablishedShutdown, InterpretSends,
+    InterpreterRequests, MessageAdapterWithRoute, Never, NoBirths, NoShutdownTargets,
+    ObservationId, ObservationOperation, ObservationRejection, ObserveEstablished,
+    ObserveEstablishedCreation, Protocol, Proxy, ReceiveTimeout, Recipient, ReplyRoute,
+    ResolveChildOccurrence, SendEffects, SendInterpreter, SendLayer, ShutdownChoice,
+    ShutdownEstablished, ShutdownId, ShutdownRequested, Stash, StopOnShutdown, Supervise, User,
+    Watch, established_child,
 };
 use core::future::Future;
 use core::marker::PhantomData;
@@ -261,10 +262,30 @@ fn nominal_occurrences_cross_only_topology_transparent_wrappers() {
 #[derive(Default)]
 struct DeliveryRuntime {
     delivered: Vec<(RuntimeAddr, u64, u8)>,
+    order: Vec<DeliveryKind>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum DeliveryKind {
+    Logical(RuntimeAddr, u8),
+    Established(RuntimeAddr, u64, u8),
 }
 
 impl SendInterpreter for DeliveryRuntime {
     type Error = Never;
+}
+
+impl behavior_actors::InterpretDelivery<WorkerProtocol> for DeliveryRuntime {
+    fn interpret_delivery(
+        &mut self,
+        delivery: Delivery<WorkerProtocol>,
+    ) -> impl Future<Output = Result<(), Self::Error>> + Send {
+        self.order.push(DeliveryKind::Logical(
+            delivery.to.address(),
+            delivery.message,
+        ));
+        async { Ok(()) }
+    }
 }
 
 impl InterpretEstablishedDelivery<WorkerProtocol> for DeliveryRuntime {
@@ -275,6 +296,11 @@ impl InterpretEstablishedDelivery<WorkerProtocol> for DeliveryRuntime {
     ) -> impl Future<Output = Result<(), Self::Error>> + Send {
         self.delivered
             .push((endpoint.address, endpoint.slot, message));
+        self.order.push(DeliveryKind::Established(
+            endpoint.address,
+            endpoint.slot,
+            message,
+        ));
         async { Ok(()) }
     }
 }
@@ -661,6 +687,36 @@ async fn message_adapter_selects_exact_delivery_without_logical_resolution() {
     .await
     .unwrap();
     assert_eq!(runtime.delivered, [(RuntimeAddr(46), 10, 7)]);
+}
+
+#[tokio::test]
+async fn mixed_reply_routes_preserve_capability_and_interpretation_order() {
+    let mut sends =
+        ReplyRoute::<WorkerProtocol>::logical(Recipient::global(RuntimeAddr(1))).deliver(10);
+    sends.append(
+        ReplyRoute::established(EstablishedRecipient::issued(Endpoint::new(
+            RuntimeAddr(2),
+            7,
+        )))
+        .deliver(20),
+    );
+    sends.append(
+        ReplyRoute::<WorkerProtocol>::logical(Recipient::global(RuntimeAddr(3))).deliver(30),
+    );
+
+    let mut runtime = DeliveryRuntime::default();
+    <_ as InterpretSends<_, User<RuntimeAddr, ()>, Here>>::interpret(sends, &mut runtime)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        runtime.order,
+        [
+            DeliveryKind::Logical(RuntimeAddr(1), 10),
+            DeliveryKind::Established(RuntimeAddr(2), 7, 20),
+            DeliveryKind::Logical(RuntimeAddr(3), 30),
+        ]
+    );
 }
 
 #[derive(Default)]

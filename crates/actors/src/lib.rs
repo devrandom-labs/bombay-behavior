@@ -53,7 +53,8 @@ pub mod workflow;
 
 pub use activation::{Activate, Active, Initialized};
 pub use composition::{
-    CoordinatedTerminalApplication, DeliveryRoute, MessageAdapter, MessageAdapterWithRoute,
+    CoordinatedTerminalApplication, DeliveryRoute, DeliveryRouteProtocol, MessageAdapter,
+    MessageAdapterWithRoute, ReplyDeliveries, ReplyDelivery, ReplyRoute,
     coordinated_terminal_application, supervised_backoff, supervised_backoff_with_parent,
 };
 pub use discovery::{
@@ -66,11 +67,11 @@ pub use lifecycle::{
     ChildTermination, CleanupReaction, CoordinatedGuardian, EstablishedTerminationMonitor,
     EstablishedTerminationReaction, EstablishedTerminationTarget, Guardian,
     HeterogeneousShutdownCoordinator, HeterogeneousShutdownPlan, HeterogeneousShutdownSends,
-    LifecyclePublication, LifecyclePublisher, LogicalTerminationTarget, NoShutdownTargets,
-    PeerTermination, PropagateTermination, Reaper, ShutdownChoice, ShutdownCoordinator,
-    ShutdownCoordinatorError, ShutdownCoordinatorEvent, ShutdownPlan, ShutdownPlanError,
-    ShutdownState, ShutdownTargetAt, ShutdownTree, ShutdownTreeError, Task, TaskError, TaskMessage,
-    TaskResult, TaskState, TerminalDisposition, TerminalPropagationPolicy,
+    InstallShutdownPlan, LifecyclePublication, LifecyclePublisher, LogicalTerminationTarget,
+    NoShutdownTargets, PeerTermination, PropagateTermination, Reaper, ShutdownChoice,
+    ShutdownCoordinator, ShutdownCoordinatorError, ShutdownCoordinatorEvent, ShutdownPlan,
+    ShutdownPlanError, ShutdownState, ShutdownTargetAt, ShutdownTree, ShutdownTreeError, Task,
+    TaskError, TaskMessage, TaskResult, TaskState, TerminalDisposition, TerminalPropagationPolicy,
     TerminalPropagationSends, TerminalPropagationState, TerminationMonitor, TerminationMonitorWith,
     TerminationObservation, TerminationObservationTarget, TerminationReaction, TerminationTarget,
     TreeShutdown, propagate_abnormal, propagate_all, shutdown_target,

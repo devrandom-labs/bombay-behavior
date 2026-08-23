@@ -9,6 +9,7 @@ use behavior::{User, UserEvent};
 use std::time::Duration;
 
 /// Validated ordered shutdown phases.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ShutdownPlan<N> {
     phases: Vec<Vec<N>>,
 }
@@ -406,6 +407,7 @@ where
 }
 
 /// Validated shutdown phases over an arbitrary closed child-protocol sum.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HeterogeneousShutdownPlan<T: heterogeneous::Selection> {
     phases: Vec<Vec<T>>,
 }
@@ -481,24 +483,88 @@ where
     }
 }
 
-/// Complete phase of coordinated shutdown.
+/// Complete phase of coordinated shutdown, including plan installation.
+///
+/// The installed plan remains owned by the exact phase in which it is valid.
+/// A shutdown request received before installation has its own state and is
+/// discharged immediately when a plan later arrives. No correlated readiness
+/// flag or optional plan can describe a contradictory combination.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ShutdownState<N> {
-    Running,
-    Stopping { phase: usize, awaiting: Vec<N> },
+pub enum ShutdownState<P, N> {
+    /// Child establishment has not yet produced the plan.
+    AwaitingPlan,
+    /// Shutdown was requested while child establishment was incomplete.
+    AwaitingPlanAfterShutdown,
+    /// The validated plan is installed and shutdown has not been requested.
+    Ready { plan: P },
+    /// One plan phase is active and owns its outstanding child nonces.
+    Stopping {
+        plan: P,
+        phase: usize,
+        awaiting: Vec<N>,
+    },
+    /// Every configured phase completed, or the installed plan was empty.
     Completed,
 }
 
+/// Install one validated plan into a coordinator that was started without it.
+///
+/// The plan type is part of the coordinator's event sum. Homogeneous and
+/// heterogeneous plans therefore cannot be confused at installation:
+///
+/// ```compile_fail
+/// use behavior::{Actions, Activate, Behavior, ChildHead, MailAddr, Never, NoBirths, User};
+/// use behavior_actors::{
+///     HeterogeneousShutdownPlan, InstallShutdownPlan, NoShutdownTargets, ShutdownChoice,
+///     ShutdownCoordinator, StopOnShutdown,
+/// };
+/// struct Probe;
+/// impl behavior::Protocol for Probe { type Addr = MailAddr; type Msg = (); }
+/// impl Behavior for Probe {
+///     type Protocol = Self;
+///     type Event = User<MailAddr, ()>;
+///     type Sends = Vec<Never>;
+///     type Ph = Never;
+///     type Error = Never;
+///     type Birth = NoBirths;
+///     fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> behavior::BehaviorActed<Self> {
+///         Ok(Actions::cont())
+///     }
+/// }
+/// type Targets = ShutdownChoice<StopOnShutdown<Probe>, NoShutdownTargets<MailAddr>>;
+/// let mut coordinator = ShutdownCoordinator::<Probe, StopOnShutdown<Probe>, ChildHead>::awaiting_plan(Probe)
+///     .initialize().unwrap().behavior;
+/// let heterogeneous = HeterogeneousShutdownPlan::<Targets>::new([]).unwrap();
+/// coordinator.on_path(InstallShutdownPlan::new(heterogeneous)).unwrap();
+/// ```
+pub struct InstallShutdownPlan<P> {
+    plan: P,
+}
+
+impl<P> InstallShutdownPlan<P> {
+    /// Construct the explicit plan-installation input.
+    #[must_use]
+    pub const fn new(plan: P) -> Self {
+        Self { plan }
+    }
+
+    /// Consume the input into the validated plan it owns.
+    #[must_use]
+    pub fn into_plan(self) -> P {
+        self.plan
+    }
+}
+
 /// Event sum accepted by [`ShutdownCoordinator`].
-#[derive(Clone, PartialEq, Eq)]
-pub enum ShutdownCoordinatorEvent<E: UserEvent> {
+pub enum ShutdownCoordinatorEvent<E: UserEvent, P> {
     Behavior(E),
+    Plan(InstallShutdownPlan<P>),
     Requested(crate::ShutdownRequested),
     ChildStopped(ChildStopped<E::Addr>),
     ChildRejected(ChildShutdownRejected<<E::Addr as Address>::Nonce>),
 }
 
-impl<E: UserEvent> UserEvent for ShutdownCoordinatorEvent<E> {
+impl<E: UserEvent, P> UserEvent for ShutdownCoordinatorEvent<E, P> {
     type Addr = E::Addr;
     type Message = E::Message;
     fn user(from: Self::Addr, message: Self::Message) -> Self {
@@ -512,7 +578,7 @@ impl<E: UserEvent> UserEvent for ShutdownCoordinatorEvent<E> {
     }
 }
 
-impl<E: UserEvent> behavior::ComposedEvent for ShutdownCoordinatorEvent<E> {
+impl<E: UserEvent, P> behavior::ComposedEvent for ShutdownCoordinatorEvent<E, P> {
     type Inner = E;
 
     fn from_inner(event: E) -> Self {
@@ -520,25 +586,33 @@ impl<E: UserEvent> behavior::ComposedEvent for ShutdownCoordinatorEvent<E> {
     }
 }
 
-impl<E: UserEvent> InjectEvent<crate::ShutdownRequested, Here> for ShutdownCoordinatorEvent<E> {
+impl<E: UserEvent, P> InjectEvent<InstallShutdownPlan<P>, Here> for ShutdownCoordinatorEvent<E, P> {
+    fn inject_at(value: InstallShutdownPlan<P>) -> Self {
+        Self::Plan(value)
+    }
+}
+
+impl<E: UserEvent, P> InjectEvent<crate::ShutdownRequested, Here>
+    for ShutdownCoordinatorEvent<E, P>
+{
     fn inject_at(value: crate::ShutdownRequested) -> Self {
         Self::Requested(value)
     }
 }
-impl<E: UserEvent> InjectEvent<ChildStopped<E::Addr>, Here> for ShutdownCoordinatorEvent<E> {
+impl<E: UserEvent, P> InjectEvent<ChildStopped<E::Addr>, Here> for ShutdownCoordinatorEvent<E, P> {
     fn inject_at(value: ChildStopped<E::Addr>) -> Self {
         Self::ChildStopped(value)
     }
 }
-impl<E: UserEvent> InjectEvent<ChildShutdownRejected<<E::Addr as Address>::Nonce>, Here>
-    for ShutdownCoordinatorEvent<E>
+impl<E: UserEvent, P> InjectEvent<ChildShutdownRejected<<E::Addr as Address>::Nonce>, Here>
+    for ShutdownCoordinatorEvent<E, P>
 {
     fn inject_at(value: ChildShutdownRejected<<E::Addr as Address>::Nonce>) -> Self {
         Self::ChildRejected(value)
     }
 }
 
-impl<E, Input, Path> InjectEvent<Input, Inside<Path>> for ShutdownCoordinatorEvent<E>
+impl<E, P, Input, Path> InjectEvent<Input, Inside<Path>> for ShutdownCoordinatorEvent<E, P>
 where
     E: UserEvent + InjectEvent<Input, Path>,
 {
@@ -557,6 +631,9 @@ pub enum ShutdownCoordinatorError<E, N> {
         nonce: N,
         reason: ChildShutdownRejection,
     },
+    /// A plan was supplied after one had already been installed or completed.
+    #[error("shutdown plan was already installed")]
+    PlanAlreadyInstalled,
 }
 
 /// Pure phased shutdown wrapper over an explicitly validated homogeneous child
@@ -605,8 +682,10 @@ where
     C::Protocol: crate::Protocol<Addr = crate::BehaviorAddr<B>>,
 {
     inner: B,
-    plan: ShutdownPlan<<crate::BehaviorAddr<B> as Address>::Nonce>,
-    state: ShutdownState<<crate::BehaviorAddr<B> as Address>::Nonce>,
+    state: ShutdownState<
+        ShutdownPlan<<crate::BehaviorAddr<B> as Address>::Nonce>,
+        <crate::BehaviorAddr<B> as Address>::Nonce,
+    >,
     child: core::marker::PhantomData<fn() -> (C, Occurrence)>,
 }
 
@@ -629,13 +708,32 @@ where
     ) -> Self {
         Self {
             inner,
-            plan,
-            state: ShutdownState::Running,
+            state: ShutdownState::Ready { plan },
             child: core::marker::PhantomData,
         }
     }
+
+    /// Start the wrapper before committed child creation can supply its plan.
+    ///
+    /// [`InstallShutdownPlan`] later installs exactly one validated plan. A
+    /// shutdown request received first is retained by the state machine and
+    /// begins that plan immediately on installation.
     #[must_use]
-    pub fn state(&self) -> &ShutdownState<<crate::BehaviorAddr<B> as Address>::Nonce> {
+    pub const fn awaiting_plan(inner: B) -> Self {
+        Self {
+            inner,
+            state: ShutdownState::AwaitingPlan,
+            child: core::marker::PhantomData,
+        }
+    }
+
+    #[must_use]
+    pub fn state(
+        &self,
+    ) -> &ShutdownState<
+        ShutdownPlan<<crate::BehaviorAddr<B> as Address>::Nonce>,
+        <crate::BehaviorAddr<B> as Address>::Nonce,
+    > {
         &self.state
     }
 
@@ -645,15 +743,35 @@ where
         actions.map_sends(|inner| SendLayer::new(InterpreterRequests::empty(), inner))
     }
 
-    fn phase_actions(&self, phase: usize) -> ShutdownCoordinatorActions<B, C, Occurrence> {
+    fn phase_actions(
+        plan: &ShutdownPlan<<crate::BehaviorAddr<B> as Address>::Nonce>,
+        phase: usize,
+    ) -> ShutdownCoordinatorActions<B, C, Occurrence> {
         let shutdowns = InterpreterRequests::new(
-            self.plan.phases[phase]
+            plan.phases[phase]
                 .iter()
                 .copied()
                 .map(ShutdownChild::<C, Occurrence>::new)
                 .collect(),
         );
         Actions::send(SendLayer::new(shutdowns, B::Sends::empty()))
+    }
+
+    fn start_plan(
+        &mut self,
+        plan: ShutdownPlan<<crate::BehaviorAddr<B> as Address>::Nonce>,
+    ) -> ShutdownCoordinatorActions<B, C, Occurrence> {
+        if plan.phases.is_empty() {
+            self.state = ShutdownState::Completed;
+            return Actions::stop();
+        }
+        let actions = Self::phase_actions(&plan, 0);
+        self.state = ShutdownState::Stopping {
+            awaiting: plan.phases[0].clone(),
+            plan,
+            phase: 0,
+        };
+        actions
     }
 }
 
@@ -695,7 +813,10 @@ where
     C::Event: InjectEvent<crate::ShutdownRequested, Here>,
 {
     type Protocol = B::Protocol;
-    type Event = ShutdownCoordinatorEvent<B::Event>;
+    type Event = ShutdownCoordinatorEvent<
+        B::Event,
+        ShutdownPlan<<crate::BehaviorAddr<B> as Address>::Nonce>,
+    >;
     type Sends = SendLayer<InterpreterRequests<ShutdownChild<C, Occurrence>>, S>;
     type Ph = Ph;
     type Error = ShutdownCoordinatorError<B::Error, A::Nonce>;
@@ -707,26 +828,41 @@ where
     }
     fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
         match event {
-            ShutdownCoordinatorEvent::Requested(_)
-                if matches!(self.state, ShutdownState::Running) =>
-            {
-                if self.plan.phases.is_empty() {
-                    self.state = ShutdownState::Completed;
-                    return Ok(Actions::stop());
+            ShutdownCoordinatorEvent::Plan(installation) => match self.state {
+                ShutdownState::AwaitingPlan => {
+                    self.state = ShutdownState::Ready {
+                        plan: installation.into_plan(),
+                    };
+                    Ok(Actions::cont())
                 }
-                self.state = ShutdownState::Stopping {
-                    phase: 0,
-                    awaiting: self.plan.phases[0].clone(),
-                };
-                Ok(self.phase_actions(0))
-            }
-            ShutdownCoordinatorEvent::Requested(_) => Ok(Actions::cont()),
+                ShutdownState::AwaitingPlanAfterShutdown => {
+                    Ok(self.start_plan(installation.into_plan()))
+                }
+                ShutdownState::Ready { .. }
+                | ShutdownState::Stopping { .. }
+                | ShutdownState::Completed => Err(ShutdownCoordinatorError::PlanAlreadyInstalled),
+            },
+            ShutdownCoordinatorEvent::Requested(_) => match &self.state {
+                ShutdownState::AwaitingPlan => {
+                    self.state = ShutdownState::AwaitingPlanAfterShutdown;
+                    Ok(Actions::cont())
+                }
+                ShutdownState::Ready { plan } => Ok(self.start_plan(plan.clone())),
+                ShutdownState::AwaitingPlanAfterShutdown
+                | ShutdownState::Stopping { .. }
+                | ShutdownState::Completed => Ok(Actions::cont()),
+            },
             ShutdownCoordinatorEvent::ChildStopped(stopped) => {
                 let matching = matches!(&self.state, ShutdownState::Stopping { awaiting, .. } if awaiting.contains(&stopped.nonce));
                 if !matching {
                     return Ok(Actions::cont());
                 }
-                let ShutdownState::Stopping { phase, awaiting } = &mut self.state else {
+                let ShutdownState::Stopping {
+                    plan,
+                    phase,
+                    awaiting,
+                } = &mut self.state
+                else {
                     return Ok(Actions::cont());
                 };
                 let Some(position) = awaiting.iter().position(|n| *n == stopped.nonce) else {
@@ -737,15 +873,18 @@ where
                     return Ok(Actions::cont());
                 }
                 let next = *phase + 1;
-                if next == self.plan.phases.len() {
+                if next == plan.phases.len() {
                     self.state = ShutdownState::Completed;
                     Ok(Actions::stop())
                 } else {
+                    let actions = Self::phase_actions(plan, next);
+                    let plan = plan.clone();
                     self.state = ShutdownState::Stopping {
+                        awaiting: plan.phases[next].clone(),
+                        plan,
                         phase: next,
-                        awaiting: self.plan.phases[next].clone(),
                     };
-                    Ok(self.phase_actions(next))
+                    Ok(actions)
                 }
             }
             ShutdownCoordinatorEvent::ChildRejected(rejected) => {
@@ -779,8 +918,7 @@ where
     T: heterogeneous::Selection<Addr = crate::BehaviorAddr<B>>,
 {
     inner: B,
-    plan: HeterogeneousShutdownPlan<T>,
-    state: ShutdownState<<crate::BehaviorAddr<B> as Address>::Nonce>,
+    state: ShutdownState<HeterogeneousShutdownPlan<T>, <crate::BehaviorAddr<B> as Address>::Nonce>,
 }
 
 type HeterogeneousShutdownActions<B, T> = Actions<
@@ -799,13 +937,24 @@ where
     pub const fn new(inner: B, plan: HeterogeneousShutdownPlan<T>) -> Self {
         Self {
             inner,
-            plan,
-            state: ShutdownState::Running,
+            state: ShutdownState::Ready { plan },
+        }
+    }
+
+    /// Start the wrapper before committed heterogeneous children supply a plan.
+    #[must_use]
+    pub const fn awaiting_plan(inner: B) -> Self {
+        Self {
+            inner,
+            state: ShutdownState::AwaitingPlan,
         }
     }
 
     #[must_use]
-    pub fn state(&self) -> &ShutdownState<<crate::BehaviorAddr<B> as Address>::Nonce> {
+    pub fn state(
+        &self,
+    ) -> &ShutdownState<HeterogeneousShutdownPlan<T>, <crate::BehaviorAddr<B> as Address>::Nonce>
+    {
         &self.state
     }
 
@@ -815,11 +964,34 @@ where
         actions.map_sends(|inner| SendLayer::new(HeterogeneousShutdownSends::empty(), inner))
     }
 
-    fn phase_actions(&self, phase: usize) -> HeterogeneousShutdownActions<B, T> {
+    fn phase_actions(
+        plan: &HeterogeneousShutdownPlan<T>,
+        phase: usize,
+    ) -> HeterogeneousShutdownActions<B, T> {
         let sends = HeterogeneousShutdownSends {
-            requests: self.plan.phases[phase].clone(),
+            requests: plan.phases[phase].clone(),
         };
         Actions::send(SendLayer::new(sends, B::Sends::empty()))
+    }
+
+    fn start_plan(
+        &mut self,
+        plan: HeterogeneousShutdownPlan<T>,
+    ) -> HeterogeneousShutdownActions<B, T> {
+        if plan.phases.is_empty() {
+            self.state = ShutdownState::Completed;
+            return Actions::stop();
+        }
+        let actions = Self::phase_actions(&plan, 0);
+        self.state = ShutdownState::Stopping {
+            awaiting: plan.phases[0]
+                .iter()
+                .map(heterogeneous::Selection::nonce)
+                .collect(),
+            plan,
+            phase: 0,
+        };
+        actions
     }
 }
 
@@ -857,7 +1029,7 @@ where
     T: heterogeneous::Selection<Addr = A> + Copy,
 {
     type Protocol = B::Protocol;
-    type Event = ShutdownCoordinatorEvent<B::Event>;
+    type Event = ShutdownCoordinatorEvent<B::Event, HeterogeneousShutdownPlan<T>>;
     type Sends = SendLayer<HeterogeneousShutdownSends<T>, Sends>;
     type Ph = Ph;
     type Error = ShutdownCoordinatorError<B::Error, A::Nonce>;
@@ -871,26 +1043,37 @@ where
 
     fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
         match event {
-            ShutdownCoordinatorEvent::Requested(_)
-                if matches!(self.state, ShutdownState::Running) =>
-            {
-                if self.plan.phases.is_empty() {
-                    self.state = ShutdownState::Completed;
-                    return Ok(Actions::stop());
+            ShutdownCoordinatorEvent::Plan(installation) => match self.state {
+                ShutdownState::AwaitingPlan => {
+                    self.state = ShutdownState::Ready {
+                        plan: installation.into_plan(),
+                    };
+                    Ok(Actions::cont())
                 }
-                self.state = ShutdownState::Stopping {
-                    phase: 0,
-                    awaiting: self.plan.phases[0]
-                        .iter()
-                        .copied()
-                        .map(|target| heterogeneous::Selection::nonce(&target))
-                        .collect(),
-                };
-                Ok(self.phase_actions(0))
-            }
-            ShutdownCoordinatorEvent::Requested(_) => Ok(Actions::cont()),
+                ShutdownState::AwaitingPlanAfterShutdown => {
+                    Ok(self.start_plan(installation.into_plan()))
+                }
+                ShutdownState::Ready { .. }
+                | ShutdownState::Stopping { .. }
+                | ShutdownState::Completed => Err(ShutdownCoordinatorError::PlanAlreadyInstalled),
+            },
+            ShutdownCoordinatorEvent::Requested(_) => match &self.state {
+                ShutdownState::AwaitingPlan => {
+                    self.state = ShutdownState::AwaitingPlanAfterShutdown;
+                    Ok(Actions::cont())
+                }
+                ShutdownState::Ready { plan } => Ok(self.start_plan(plan.clone())),
+                ShutdownState::AwaitingPlanAfterShutdown
+                | ShutdownState::Stopping { .. }
+                | ShutdownState::Completed => Ok(Actions::cont()),
+            },
             ShutdownCoordinatorEvent::ChildStopped(stopped) => {
-                let ShutdownState::Stopping { phase, awaiting } = &mut self.state else {
+                let ShutdownState::Stopping {
+                    plan,
+                    phase,
+                    awaiting,
+                } = &mut self.state
+                else {
                     return Ok(Actions::cont());
                 };
                 let Some(position) = awaiting.iter().position(|nonce| *nonce == stopped.nonce)
@@ -902,19 +1085,21 @@ where
                     return Ok(Actions::cont());
                 }
                 let next = *phase + 1;
-                if next == self.plan.phases.len() {
+                if next == plan.phases.len() {
                     self.state = ShutdownState::Completed;
                     Ok(Actions::stop())
                 } else {
+                    let actions = Self::phase_actions(plan, next);
+                    let plan = plan.clone();
                     self.state = ShutdownState::Stopping {
-                        phase: next,
-                        awaiting: self.plan.phases[next]
+                        awaiting: plan.phases[next]
                             .iter()
-                            .copied()
-                            .map(|target| heterogeneous::Selection::nonce(&target))
+                            .map(heterogeneous::Selection::nonce)
                             .collect(),
+                        plan,
+                        phase: next,
                     };
-                    Ok(self.phase_actions(next))
+                    Ok(actions)
                 }
             }
             ShutdownCoordinatorEvent::ChildRejected(rejected) => {
@@ -1297,33 +1482,36 @@ mod tests {
             first.sends.owned.as_slice(),
             [ShutdownChild::new(1), ShutdownChild::new(2)]
         );
-        assert_eq!(
+        assert!(matches!(
             active.state(),
-            &ShutdownState::Stopping {
+            ShutdownState::Stopping {
                 phase: 0,
-                awaiting: vec![1, 2]
-            }
-        );
+                awaiting,
+                ..
+            } if awaiting == &[1, 2]
+        ));
 
         let one = active.on_path(stopped(2)).unwrap();
         assert_eq!(one.sends, SendLayer::empty());
-        assert_eq!(
+        assert!(matches!(
             active.state(),
-            &ShutdownState::Stopping {
+            ShutdownState::Stopping {
                 phase: 0,
-                awaiting: vec![1]
-            }
-        );
+                awaiting,
+                ..
+            } if awaiting == &[1]
+        ));
 
         let second = active.on_path(stopped(1)).unwrap();
         assert_eq!(second.sends.owned.as_slice(), [ShutdownChild::new(3)]);
-        assert_eq!(
+        assert!(matches!(
             active.state(),
-            &ShutdownState::Stopping {
+            ShutdownState::Stopping {
                 phase: 1,
-                awaiting: vec![3]
-            }
-        );
+                awaiting,
+                ..
+            } if awaiting == &[3]
+        ));
 
         let done = active.on_path(stopped(3)).unwrap();
         assert!(matches!(done.become_, Step::Stop(_)));
@@ -1422,7 +1610,8 @@ mod tests {
             First,
             ShutdownChoice<Second, ShutdownChoice<First, NoShutdownTargets<MailAddr>>>,
         >;
-        type Event = ShutdownCoordinatorEvent<User<MailAddr, u8>>;
+        type Event =
+            ShutdownCoordinatorEvent<User<MailAddr, u8>, HeterogeneousShutdownPlan<Targets>>;
 
         struct Recording(Vec<u64>);
         impl behavior::SendInterpreter for Recording {
@@ -1531,13 +1720,14 @@ mod tests {
             active.on_path(stopped(1)).unwrap().sends,
             SendLayer::empty()
         );
-        assert_eq!(
+        assert!(matches!(
             active.state(),
-            &ShutdownState::Stopping {
+            ShutdownState::Stopping {
                 phase: 0,
-                awaiting: vec![2]
-            }
-        );
+                awaiting,
+                ..
+            } if awaiting == &[2]
+        ));
     }
 
     #[test]
@@ -1577,6 +1767,116 @@ mod tests {
         assert!(matches!(
             active.on_path(ShutdownRequested).unwrap().become_,
             Step::Stop(_)
+        ));
+    }
+
+    #[test]
+    fn homogeneous_plan_installation_is_an_explicit_one_way_lifecycle() {
+        let mut active =
+            ShutdownCoordinator::<Probe, crate::StopOnShutdown<Probe>, ChildHead>::awaiting_plan(
+                Probe,
+            )
+            .initialize()
+            .unwrap()
+            .behavior;
+        assert!(matches!(active.state(), ShutdownState::AwaitingPlan));
+
+        let plan = ShutdownPlan::new([vec![1, 2], vec![3]]).unwrap();
+        let installed = active
+            .on_path(InstallShutdownPlan::new(plan.clone()))
+            .unwrap();
+        assert_eq!(installed.sends, SendLayer::empty());
+        assert!(matches!(
+            active.state(),
+            ShutdownState::Ready { plan: installed } if installed == &plan
+        ));
+        assert_eq!(
+            active.on_path(InstallShutdownPlan::new(plan)).unwrap_err(),
+            ShutdownCoordinatorError::PlanAlreadyInstalled
+        );
+    }
+
+    #[test]
+    fn shutdown_before_homogeneous_plan_is_retained_and_empty_plan_stops() {
+        let mut active =
+            ShutdownCoordinator::<Probe, crate::StopOnShutdown<Probe>, ChildHead>::awaiting_plan(
+                Probe,
+            )
+            .initialize()
+            .unwrap()
+            .behavior;
+        assert_eq!(
+            active.on_path(ShutdownRequested).unwrap().sends,
+            SendLayer::empty()
+        );
+        assert!(matches!(
+            active.state(),
+            ShutdownState::AwaitingPlanAfterShutdown
+        ));
+        let started = active
+            .on_path(InstallShutdownPlan::new(
+                ShutdownPlan::new([vec![4, 5]]).unwrap(),
+            ))
+            .unwrap();
+        assert_eq!(
+            started.sends.owned.as_slice(),
+            [ShutdownChild::new(4), ShutdownChild::new(5)]
+        );
+
+        let mut empty =
+            ShutdownCoordinator::<Probe, crate::StopOnShutdown<Probe>, ChildHead>::awaiting_plan(
+                Probe,
+            )
+            .initialize()
+            .unwrap()
+            .behavior;
+        empty.on_path(ShutdownRequested).unwrap();
+        let stopped = empty
+            .on_path(InstallShutdownPlan::new(ShutdownPlan::new([]).unwrap()))
+            .unwrap();
+        assert!(matches!(stopped.become_, Step::Stop(_)));
+        assert_eq!(empty.state(), &ShutdownState::Completed);
+    }
+
+    #[test]
+    fn heterogeneous_plan_can_be_installed_after_exact_child_routes_exist() {
+        type First = crate::StopOnShutdown<Probe>;
+        type Second = crate::Guardian<Probe>;
+        type Targets = ShutdownChoice<
+            First,
+            ShutdownChoice<Second, ShutdownChoice<First, NoShutdownTargets<MailAddr>>>,
+        >;
+
+        let mut active =
+            HeterogeneousShutdownCoordinator::<NamedParent, Targets>::awaiting_plan(NamedParent)
+                .initialize()
+                .unwrap()
+                .behavior;
+        active.on_path(ShutdownRequested).unwrap();
+        let routes = NamedParentChildrenRoutes::new(11, 12, 13);
+        let plan = HeterogeneousShutdownPlan::new([vec![
+            shutdown_target::<NamedParent, _, Targets>(NamedParentChild::Pool, routes.pool),
+            shutdown_target::<NamedParent, _, Targets>(NamedParentChild::Primary, routes.primary),
+        ]])
+        .unwrap();
+        let started = active.on_path(InstallShutdownPlan::new(plan)).unwrap();
+        assert_eq!(
+            started
+                .sends
+                .owned
+                .requests
+                .iter()
+                .map(heterogeneous::Selection::nonce)
+                .collect::<Vec<_>>(),
+            [12, 11]
+        );
+        assert!(matches!(
+            active.state(),
+            ShutdownState::Stopping {
+                phase: 0,
+                awaiting,
+                ..
+            } if awaiting == &[12, 11]
         ));
     }
 }

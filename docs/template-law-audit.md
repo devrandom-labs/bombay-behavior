@@ -73,9 +73,15 @@ and
   `Ingress` path selected by the owning wrapper.
 - **P5 — explicit root shutdown:** a `Guardian` chooses direct root stop or
   coordinated delegation; it does not discover a nested shutdown handler.
-- **P6 — stable logical domains:** discovery membership, stable proxy identity,
-  transport names, and caller-supplied reply addresses deliberately remain
+- **P6 — stable logical domains:** discovery membership, configured downstream
+  destinations, stable proxy identity, and transport names deliberately remain
   logical recipients.
+- **P7 — truthful customer routes:** a template that accepts an arbitrary
+  customer capability retains its logical or exact form and emits the matching
+  concrete effect without conversion.
+- **P8 — creation-dependent shutdown plans:** a coordinator may begin before
+  its committed children are known, but plan installation is one typed event,
+  happens at most once, and retains any earlier shutdown request.
 
 ## Hypotheses and verdicts
 
@@ -92,9 +98,9 @@ relevant fold/interpreter seam support the statement.
 | H05 | B4, B5 | Each standalone behavior that authors a direct topology exposes itself as `BehaviorBase<Base = Self>`. | **Failed → fixed.** `ProxyWithParent`, `WorkerPoolWithParent`, and `KeyedWorkerPoolWithParent` lacked the projection. `runtime_contracts::every_topology_owner_exposes_itself_as_its_behavior_base` now proves proxy, fixed, dynamic, FIFO, and keyed owners. |
 | H06 | B4, B5 | A topology-changing composition cannot inherit an inner nominal child role whose birth algebra it replaced. | Pass. `ResolveChildOccurrence` requires exact protocol and birth equality. `Supervise` may expose its application base for inspection, but its proxy birth rewrite prevents stale role resolution; raw structural positions resolve against the running wrapper. |
 | H07 | B4, P1 | Every production `ChildDelivery`, `ObserveChild`, `ObserveCreation`, `ShutdownChild`, or `ChildTermination` emitter owns the matching direct occurrence in its `Birth`. | Pass after H05. All such emissions are confined to proxy/supervision/pool/lifecycle owners with the corresponding child leaf; occurrence propagation is tested through nested wrappers. |
-| H08 | B3, B4 | A standalone `MessageAdapter` with `NoBirths` cannot emit creator-local child delivery. | **Failed → fixed.** `DeliveryRoute` no longer accepts `ChildRoute`; a compile-fail example rejects the foreign route before runtime. The adapter retains logical and established delivery modes only. |
-| H09 | A2, B3, P6 | Every logical `Delivery` destination is supplied by configuration, a received message, discovery membership, or the stable-proxy policy—not fabricated from child correlation. | Pass. Routing, workflow, operations, persistence, pool replies, and discovery retain their supplied `Recipient`; the sole production `Recipient::global(address)` constructs the deliberately stable dynamic-proxy identity from a committed proxy creation result. |
-| H10 | B3 | A received or configured exact endpoint is never weakened to a logical recipient before delivery, observation, or shutdown. | Pass. Exact modes retain `EstablishedRecipient`/`EstablishedActor` and emit `EstablishedDelivery`, `ObserveEstablished`, or `ShutdownEstablished`; no exact-to-logical conversion exists. |
+| H08 | B3, B4 | A standalone `MessageAdapter` with `NoBirths` cannot emit creator-local child delivery. | **Failed → fixed.** `DeliveryRoute` no longer accepts `ChildRoute`; a compile-fail example rejects the foreign route before runtime. The adapter retains logical, established, and closed mixed delivery modes only. |
+| H09 | A2, B3, P6, P7 | Every delivery destination is supplied by configuration, a received message, discovery membership, or stable-proxy policy—not fabricated from child correlation. | Pass. Customer-bearing routing, workflow, operations, persistence, pool, supervision, and discovery messages retain their supplied `DeliveryRoute`; stable internal destinations remain explicit `Recipient` values. The sole production `Recipient::global(address)` constructs the deliberately stable dynamic-proxy identity from a committed proxy creation result. |
+| H10 | B3, P7 | A received or configured exact endpoint is never weakened to a logical recipient before delivery, observation, or shutdown. | Pass. Exact modes retain `EstablishedRecipient`/`EstablishedActor` and emit `EstablishedDelivery`, `ObserveEstablished`, or `ShutdownEstablished`; `ReplyRoute` retains mixed alternatives and its interpreter visits them in original order. No exact-to-logical conversion exists. |
 | H11 | B7, P3 | A rejected `EstablishedCreation` cannot produce a recipient, actor, child route, birth, or restart-success fact. | Pass. The rejected variant owns only nonce, kind, and `CreationRejection`; independent established-creation models cover allocation through binding failure. |
 | H12 | B3, B4, P1 | After a named child commits, callers can retain both its exact incarnation and its creator-local role/nonce without reconstructing either. | **Failed → fixed.** `established_child` now returns `EstablishedChild<C, Role>`, a named product of `ChildRoute` and `EstablishedActor`; rejection yields neither. Its `shutdown_target` method selects a heterogeneous plan branch from the retained role. |
 | H13 | B4, P3 | Child observation and shutdown preserve the declared occurrence when equal child protocols appear more than once. | Pass. All local lifecycle request types carry `Occurrence`; compile-fail tests reject head/tail or nominal-role substitution. |
@@ -117,9 +123,11 @@ relevant fold/interpreter seam support the statement.
 | H30 | A3, P1 | No actor address or exact endpoint is derived from nonce arithmetic, sequence position, timing, or address reuse. | Pass. `From<u64>` in fleet code creates configured local nonces only; exact addresses enter exclusively through interpreter facts. |
 | H31 | B7 | Invalid configuration, overlap, exhaustion, unknown targets, and interpreter rejection remain typed results rather than production panics. | Pass. Public constructors and folds expose concrete errors. The only production `expect` is Buffer's documented private invariant: validated positive capacity plus the full/drop-oldest branch proves a non-empty queue. |
 | H32 | A4, B6, P2 | Any ordering relied upon beyond actor-model law is declared as Bombay policy and tested at the interpreter boundary. | Pass. Create-before-dependent-send/request and wrapper initialization order are documented as policy; send products define their own deterministic interpretation order without claiming it as an Agha guarantee. |
+| H33 | B2, B3, P7 | Every genuine customer-passing template accepts logical, exact, or deliberately mixed reply capabilities without allowing the route protocol to disagree with the reply message. | **Failed → fixed.** All customer fields now carry a `Route: DeliveryRoute<P>`; dynamic supervision projects `P` from `DeliveryRouteProtocol`. A catalogue compile matrix instantiates every affected family with `EstablishedRecipient` and `ReplyRoute`, protocol mismatch is compile-fail, and logical-only recursive protocol tests remain finite. |
+| H34 | B2, B7, P8 | Homogeneous and heterogeneous shutdown coordinators can receive their validated plans after committed child creation without flags, plan substitution, lost early shutdown, or repeated installation. | **Failed → fixed.** `ShutdownState` is the complete lifecycle sum and `InstallShutdownPlan<P>` is part of the concrete event algebra. Unit, independent model/property, fuzz, composition, and compile-fail coverage exercise both plan families, duplicate installation, early shutdown, stale stops, ordered phases, and empty-plan termination. |
 
-Result: 28 hypotheses passed in the initial revision and four failed. After
-the repairs in this change, all 32 pass. No failure required a new actor
+Result: 28 hypotheses passed in the audited baseline and six failed. After
+the repairs recorded here, all 34 pass. No failure required a new actor
 template or new Behavior Core algebra.
 
 ## Complete template coverage
@@ -131,15 +139,15 @@ the templates implicated by the initial blockers.
 |---|---|---|
 | Base composition | `Machine`, `MessageAdapter`, `MessageAdapterWithRoute` | H01–H03, H08–H10, H24, H27–H31 |
 | Transparent state/lifecycle wrappers | `Stash`, `StopOnShutdown`, `FinalizeOnShutdown`, `Guardian`, `WatchWith`, `TerminationMonitorWith`, `PropagateTermination` | H04, H06, H13, H16–H20, H23–H24, H29 |
-| Shutdown ownership | `ShutdownCoordinator`, `TreeShutdown`, `HeterogeneousShutdownCoordinator` | H07, H12–H17, H23–H24, H29–H32 |
-| Lifecycle task | `Task` | H01–H03, H09, H24, H27–H31 |
-| Supervision | `ProxyWithParent`, `SuperviseWithParent`, `SupervisorWithParent`, both backoff forms, `DynamicSupervisorWithParent` and their direct aliases | H05–H07, H13, H15–H16, H21–H25, H28–H32 |
-| Worker pools | `WorkerPoolWithParent`, `KeyedWorkerPoolWithParent` and direct aliases | H05, H07, H09, H13, H15–H16, H21–H24, H28–H31 |
-| Timing | `Deadline`, `OneShot`, `Periodic`, `ReceiveTimeout`, `Lease` | H01–H04, H16, H23–H24, H26, H28–H32 |
-| Routing | `Router` with all strategies, `WorkQueue`, `Buffer`, `PriorityQueue`, `OrderGate`, `Sequencer`, `Deduplicator`, `RateLimiter`, `CircuitBreaker`, `Correlator`, `Acknowledgements` | H01–H03, H09, H23–H24, H27–H31 |
-| Discovery | `Registry`, `Resolver`, `Topic`, `PubSub`, `Presence` | H01–H03, H09, H16, H23–H24, H26–H31 |
-| Workflow | `Latch`, `Barrier`, `Workflow` | H01–H03, H09, H23–H24, H27–H31 |
-| Operations/persistence | `Configuration`/`Features`, `Health`, `Readiness`, `Cache` | H01–H03, H09, H23–H24, H27–H31 |
+| Shutdown ownership | `ShutdownCoordinator`, `TreeShutdown`, `HeterogeneousShutdownCoordinator` | H07, H12–H17, H23–H24, H29–H32, H34 |
+| Lifecycle task | `Task` | H01–H03, H09–H10, H24, H27–H31, H33 |
+| Supervision | `ProxyWithParent`, `SuperviseWithParent`, `SupervisorWithParent`, both backoff forms, `DynamicSupervisorWithParent` and their direct aliases | H05–H07, H10, H13, H15–H16, H21–H25, H28–H33 |
+| Worker pools | `WorkerPoolWithParent`, `KeyedWorkerPoolWithParent` and direct aliases | H05, H07, H09–H10, H13, H15–H16, H21–H24, H28–H31, H33 |
+| Timing | `Deadline`, `OneShot`, `Periodic`, `ReceiveTimeout`, `Lease` | H01–H04, H10, H16, H23–H24, H26, H28–H33 |
+| Routing | `Router` with all strategies, `WorkQueue`, `Buffer`, `PriorityQueue`, `OrderGate`, `Sequencer`, `Deduplicator`, `RateLimiter`, `CircuitBreaker`, `Correlator`, `Acknowledgements` | H01–H03, H09–H10, H23–H24, H27–H31, H33 |
+| Discovery | `Registry`, `Resolver`, `Topic`, `PubSub`, `Presence` | H01–H03, H09–H10, H16, H23–H24, H26–H31, H33 |
+| Workflow | `Latch`, `Barrier`, `Workflow` | H01–H03, H09–H10, H23–H24, H27–H31, H33 |
+| Operations/persistence | `Configuration`/`Features`, `Health`, `Readiness`, `Cache` | H01–H03, H09–H10, H23–H24, H27–H31, H33 |
 
 Routing strategies are policy values owned by `Router`, not actors with their
 own effect boundary. Type aliases such as `Link`, `Reaper`, and
@@ -155,6 +163,7 @@ The three recipient forms have non-overlapping authority:
 | `Recipient<P>` | Logical protocol name | caller reply, discovery membership, transport name, or stable proxy identity |
 | `ChildRoute<C, O>` | One role and nonce in the current creator's namespace | only a topology owner whose direct `Birth` proves `O` |
 | `EstablishedRecipient<P>` / `EstablishedActor<C>` | One exact installed incarnation | exact delivery, observation, shutdown, or retained post-creation capability |
+| `ReplyRoute<P>` | Closed logical-or-exact customer capability | one running template intentionally accepts both forms without conversion |
 
 `EstablishedChild<C, O>` intentionally retains the latter two facts together.
 It is an Actors-level named product over existing capabilities. It neither

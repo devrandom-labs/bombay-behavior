@@ -114,7 +114,13 @@ mod tests {
         type Msg = crate::PoolResponse<Job, ResultValue, MailAddr>;
     }
 
-    type PoolProtocol = crate::WorkerPoolProtocol<MailAddr, PoolReplies, Job, ResultValue>;
+    type PoolProtocol = crate::WorkerPoolProtocol<
+        MailAddr,
+        PoolReplies,
+        Job,
+        ResultValue,
+        behavior::Recipient<PoolReplies>,
+    >;
 
     impl Protocol for PoolWorker {
         type Addr = MailAddr;
@@ -192,7 +198,14 @@ mod tests {
 
     #[test]
     fn worker_pool_requirements_include_pool_proxy_and_worker_protocols() {
-        type Pool = crate::WorkerPool<MailAddr, PoolReplies, Job, ResultValue, PoolWorker>;
+        type Pool = crate::WorkerPool<
+            MailAddr,
+            PoolReplies,
+            Job,
+            ResultValue,
+            PoolWorker,
+            behavior::Recipient<PoolReplies>,
+        >;
         type Requirements = <Pool as InstallationRequirements>::Requirements;
         type Expected = RequiredProtocol<
             PoolProtocol,
@@ -242,7 +255,8 @@ mod tests {
         >;
         type BackoffRequirements =
             <crate::BackoffSupervisor<MailAddr, PoolWorker> as InstallationRequirements>::Requirements;
-        type Dynamic = crate::DynamicSupervisor<MailAddr, PoolWorker, DynamicReplies>;
+        type Dynamic =
+            crate::DynamicSupervisor<MailAddr, PoolWorker, behavior::Recipient<DynamicReplies>>;
         type DynamicRequirements = <Dynamic as InstallationRequirements>::Requirements;
         type DynamicExpected = RequiredProtocol<
             Dynamic,

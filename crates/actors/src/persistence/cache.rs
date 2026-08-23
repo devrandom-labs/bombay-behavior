@@ -1,10 +1,11 @@
 //! Bounded least-recently-used value policy.
 
 use behavior::{
-    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, MessageProtocol, Never,
-    NoBirths, Recipient, User,
+    Actions, Address, Behavior, BehaviorActed, BehaviorBase, MessageProtocol, Never, NoBirths, User,
 };
 use thiserror::Error;
+
+use crate::DeliveryRoute;
 
 /// One cache entry.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -66,7 +67,7 @@ pub enum CacheResult<K, V> {
 }
 
 /// Commands accepted by [`Cache`].
-pub enum CacheMessage<A: Address, K, V> {
+pub enum CacheMessage<K, V, Route> {
     /// Insert or replace one value.
     Put {
         /// Key to store.
@@ -74,27 +75,22 @@ pub enum CacheMessage<A: Address, K, V> {
         /// Owned value to store.
         value: V,
         /// Typed result recipient.
-        reply_to: Recipient<MessageProtocol<A, CacheResult<K, V>>>,
+        reply_to: Route,
     },
     /// Lookup and refresh one key.
     Get {
         /// Key to lookup.
         key: K,
         /// Typed result recipient.
-        reply_to: Recipient<MessageProtocol<A, CacheResult<K, V>>>,
+        reply_to: Route,
     },
     /// Remove one key without refreshing another entry.
     Remove {
         /// Key to remove.
         key: K,
         /// Typed result recipient.
-        reply_to: Recipient<MessageProtocol<A, CacheResult<K, V>>>,
+        reply_to: Route,
     },
-}
-
-impl<A: Address, K, V> behavior::Protocol for CacheMessage<A, K, V> {
-    type Addr = A;
-    type Msg = CacheMessage<A, K, V>;
 }
 
 /// Invalid cache definition.
@@ -137,12 +133,20 @@ impl CacheConfiguration {
 /// authority. The standard-library vector is intentional for this initial
 /// deterministic policy; an `lru` dependency requires a demonstrated scale
 /// need and must remain private. No method has a semantic panic condition.
-pub struct Cache<A: Address, K, V> {
+pub struct Cache<A, K, V, Route>
+where
+    A: Address,
+    Route: DeliveryRoute<MessageProtocol<A, CacheResult<K, V>>>,
+{
     state: CacheState<K, V>,
-    address: core::marker::PhantomData<fn() -> A>,
+    address: core::marker::PhantomData<fn() -> (A, Route)>,
 }
 
-impl<A: Address, K, V> Cache<A, K, V> {
+impl<A, K, V, Route> Cache<A, K, V, Route>
+where
+    A: Address,
+    Route: DeliveryRoute<MessageProtocol<A, CacheResult<K, V>>>,
+{
     /// Bind validated capacity to an empty cache actor.
     #[must_use]
     pub fn new(configuration: CacheConfiguration) -> Self {
@@ -162,7 +166,11 @@ impl<A: Address, K, V> Cache<A, K, V> {
     }
 }
 
-impl<A: Address, K, V> BehaviorBase for Cache<A, K, V> {
+impl<A, K, V, Route> BehaviorBase for Cache<A, K, V, Route>
+where
+    A: Address,
+    Route: DeliveryRoute<MessageProtocol<A, CacheResult<K, V>>>,
+{
     type Base = Self;
 
     fn base(&self) -> &Self {
@@ -170,25 +178,28 @@ impl<A: Address, K, V> BehaviorBase for Cache<A, K, V> {
     }
 }
 
-impl<A, K, V> behavior::Protocol for Cache<A, K, V>
+impl<A, K, V, Route> behavior::Protocol for Cache<A, K, V, Route>
 where
     A: Address,
     K: Clone + Eq,
     V: Clone,
+    Route: DeliveryRoute<MessageProtocol<A, CacheResult<K, V>>>,
 {
     type Addr = A;
-    type Msg = CacheMessage<A, K, V>;
+    type Msg = CacheMessage<K, V, Route>;
 }
 
-impl<A, K, V> Behavior for Cache<A, K, V>
+impl<A, K, V, Route> Behavior for Cache<A, K, V, Route>
 where
     A: Address,
     K: Clone + Eq,
     V: Clone,
+    Route: DeliveryRoute<MessageProtocol<A, CacheResult<K, V>>>,
+    Route::Sends: behavior::SendsFor<User<A, CacheMessage<K, V, Route>>>,
 {
-    type Protocol = CacheMessage<A, K, V>;
+    type Protocol = MessageProtocol<A, CacheMessage<K, V, Route>>;
     type Event = User<A, crate::BehaviorMessage<Self>>;
-    type Sends = Vec<Delivery<MessageProtocol<A, CacheResult<K, V>>>>;
+    type Sends = Route::Sends;
     type Ph = Never;
     type Error = Never;
     type Birth = NoBirths;
@@ -264,7 +275,7 @@ where
                 (reply_to, result)
             }
         };
-        Ok(Actions::send(vec![Delivery::new(reply_to, result)]))
+        Ok(Actions::send(reply_to.deliver(result)))
     }
 }
 
@@ -272,10 +283,12 @@ where
 mod tests {
     use super::*;
     use crate::Activate as _;
-    use behavior::MailAddr;
+    use behavior::{MailAddr, Recipient};
 
     fn put(
-        cache: &mut crate::Active<Cache<MailAddr, u8, u16>>,
+        cache: &mut crate::Active<
+            Cache<MailAddr, u8, u16, Recipient<MessageProtocol<MailAddr, CacheResult<u8, u16>>>>,
+        >,
         reply: Recipient<MessageProtocol<MailAddr, CacheResult<u8, u16>>>,
         key: u8,
         value: u16,

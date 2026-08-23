@@ -2,12 +2,15 @@
 
 use std::time::Duration;
 
+#[cfg(test)]
+use behavior::Recipient;
 use behavior::{
-    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, EventLayer,
-    InterpreterRequests, Never, NoBirths, Recipient, SendEffects, User,
+    Actions, Address, Behavior, BehaviorActed, BehaviorBase, EventLayer, InterpreterRequests,
+    Never, NoBirths, SendEffects, User,
 };
 use thiserror::Error;
 
+use crate::DeliveryRoute;
 use crate::{ScheduleAfter, TimedEvent, TimerGeneration, TimerId};
 
 /// Version within one participant's presence-evidence stream.
@@ -145,7 +148,7 @@ pub enum PresenceReply<K> {
 }
 
 /// User commands accepted by [`Presence`].
-pub enum PresenceMessage<K, Reply: behavior::Protocol> {
+pub enum PresenceMessage<K, Route> {
     /// Announce versioned presence for a relative lifetime.
     Announce {
         /// Participant.
@@ -155,53 +158,49 @@ pub enum PresenceMessage<K, Reply: behavior::Protocol> {
         /// Relative lifetime.
         lifetime: Duration,
         /// Outcome and later-expiry recipient.
-        reply_to: Recipient<Reply>,
+        reply_to: Route,
     },
     /// Return every retained present or expired state.
     Query {
         /// Typed report recipient.
-        reply_to: Recipient<Reply>,
+        reply_to: Route,
     },
 }
 
 /// Named effect lanes emitted by [`Presence`].
-pub struct PresenceSends<Reply: behavior::Protocol> {
+pub struct PresenceSends<ReplySends: SendEffects> {
     /// Transition and query facts.
-    pub replies: Vec<Delivery<Reply>>,
+    pub replies: ReplySends,
     /// Relative expiry requests.
     pub schedules: InterpreterRequests<ScheduleAfter>,
 }
-impl<Reply> SendEffects for PresenceSends<Reply>
-where
-    Reply: behavior::Protocol,
-{
+impl<ReplySends: SendEffects> SendEffects for PresenceSends<ReplySends> {
     fn empty() -> Self {
         Self {
-            replies: Vec::new(),
+            replies: ReplySends::empty(),
             schedules: InterpreterRequests::empty(),
         }
     }
-    fn append(&mut self, mut other: Self) {
-        self.replies.append(&mut other.replies);
+    fn append(&mut self, other: Self) {
+        self.replies.append(other.replies);
         self.schedules.append(other.schedules);
     }
 }
 
-impl<Event, Reply> behavior::SendsFor<Event> for PresenceSends<Reply>
+impl<Event, ReplySends> behavior::SendsFor<Event> for PresenceSends<ReplySends>
 where
-    Reply: behavior::Protocol,
+    ReplySends: SendEffects + behavior::SendsFor<Event>,
     InterpreterRequests<ScheduleAfter>: behavior::SendsFor<Event>,
 {
 }
 
-impl<I, RootEvent, Path, Reply> behavior::InterpretSends<I, RootEvent, Path>
-    for PresenceSends<Reply>
+impl<I, RootEvent, Path, ReplySends> behavior::InterpretSends<I, RootEvent, Path>
+    for PresenceSends<ReplySends>
 where
     I: behavior::SendInterpreter,
-    Reply: behavior::Protocol,
-    Vec<Delivery<Reply>>: behavior::InterpretSends<I, RootEvent, Path>,
+    ReplySends: SendEffects + behavior::InterpretSends<I, RootEvent, Path>,
     InterpreterRequests<ScheduleAfter>: behavior::InterpretSends<I, RootEvent, Path>,
-    PresenceSends<Reply>: Send,
+    PresenceSends<ReplySends>: Send,
 {
     fn interpret(
         self,
@@ -214,9 +213,9 @@ where
     }
 }
 
-struct Record<K, Reply: behavior::Protocol> {
+struct Record<K, Route> {
     entry: PresenceEntry<K>,
-    notify: Recipient<Reply>,
+    notify: Route,
 }
 
 /// Versioned, generation-safe membership-presence behavior.
@@ -236,17 +235,19 @@ pub struct Presence<
     A: Address,
     K: Clone + Eq,
     Reply: behavior::Protocol<Addr = A, Msg = PresenceReply<K>>,
+    Route: DeliveryRoute<Reply>,
 > {
     timer_id: fn(&K) -> TimerId,
-    records: Vec<Record<K, Reply>>,
-    marker: core::marker::PhantomData<fn() -> A>,
+    records: Vec<Record<K, Route>>,
+    marker: core::marker::PhantomData<fn() -> (A, Reply)>,
 }
-type PresenceActions<A, Reply> = Actions<A, Never, PresenceSends<Reply>, NoBirths>;
-impl<A, K, Reply> Presence<A, K, Reply>
+type PresenceActions<A, ReplySends> = Actions<A, Never, PresenceSends<ReplySends>, NoBirths>;
+impl<A, K, Reply, Route> Presence<A, K, Reply, Route>
 where
     A: Address,
     K: Clone + Eq,
     Reply: behavior::Protocol<Addr = A, Msg = PresenceReply<K>>,
+    Route: DeliveryRoute<Reply> + Clone,
 {
     /// Construct an empty presence table with a pure actor-local timer mapping.
     #[must_use]
@@ -268,9 +269,9 @@ where
                 .collect(),
         }
     }
-    fn reply(reply_to: Recipient<Reply>, reply: PresenceReply<K>) -> PresenceActions<A, Reply> {
+    fn reply(reply_to: Route, reply: PresenceReply<K>) -> PresenceActions<A, Route::Sends> {
         Actions::send(PresenceSends {
-            replies: vec![Delivery::new(reply_to, reply)],
+            replies: reply_to.deliver(reply),
             schedules: InterpreterRequests::empty(),
         })
     }
@@ -279,8 +280,8 @@ where
         participant: K,
         version: PresenceVersion,
         lifetime: Duration,
-        reply_to: Recipient<Reply>,
-    ) -> PresenceActions<A, Reply> {
+        reply_to: Route,
+    ) -> PresenceActions<A, Route::Sends> {
         let timer_id = (self.timer_id)(&participant);
         if let Some(existing) = self.records.iter().find(|record| {
             record.entry.participant != participant
@@ -311,9 +312,9 @@ where
         participant: K,
         version: PresenceVersion,
         lifetime: Duration,
-        reply_to: Recipient<Reply>,
+        reply_to: Route,
         timer_id: TimerId,
-    ) -> PresenceActions<A, Reply> {
+    ) -> PresenceActions<A, Route::Sends> {
         let generation = TimerGeneration(0);
         self.records.push(Record {
             entry: PresenceEntry {
@@ -325,17 +326,14 @@ where
                     lifetime,
                 },
             },
-            notify: reply_to,
+            notify: reply_to.clone(),
         });
         Actions::send(PresenceSends {
-            replies: vec![Delivery::new(
-                reply_to,
-                PresenceReply::Outcome(PresenceOutcome::Announced {
-                    participant,
-                    version,
-                    generation,
-                }),
-            )],
+            replies: reply_to.deliver(PresenceReply::Outcome(PresenceOutcome::Announced {
+                participant,
+                version,
+                generation,
+            })),
             schedules: InterpreterRequests::one(ScheduleAfter::new(timer_id, generation, lifetime)),
         })
     }
@@ -346,9 +344,9 @@ where
         participant: K,
         version: PresenceVersion,
         lifetime: Duration,
-        reply_to: Recipient<Reply>,
+        reply_to: Route,
         timer_id: TimerId,
-    ) -> PresenceActions<A, Reply> {
+    ) -> PresenceActions<A, Route::Sends> {
         let current_version = match self.records[index].entry.phase {
             PresencePhase::Present { version, .. } | PresencePhase::Expired { version, .. } => {
                 version
@@ -410,50 +408,51 @@ where
             generation,
             lifetime,
         };
-        self.records[index].notify = reply_to;
+        self.records[index].notify = reply_to.clone();
         Actions::send(PresenceSends {
-            replies: vec![Delivery::new(
-                reply_to,
-                PresenceReply::Outcome(PresenceOutcome::Refreshed {
-                    participant,
-                    version,
-                    generation,
-                }),
-            )],
+            replies: reply_to.deliver(PresenceReply::Outcome(PresenceOutcome::Refreshed {
+                participant,
+                version,
+                generation,
+            })),
             schedules: InterpreterRequests::one(ScheduleAfter::new(timer_id, generation, lifetime)),
         })
     }
 }
-impl<A, K, Reply> BehaviorBase for Presence<A, K, Reply>
+impl<A, K, Reply, Route> BehaviorBase for Presence<A, K, Reply, Route>
 where
     A: Address,
     K: Clone + Eq,
     Reply: behavior::Protocol<Addr = A, Msg = PresenceReply<K>>,
+    Route: DeliveryRoute<Reply>,
 {
     type Base = Self;
     fn base(&self) -> &Self {
         self
     }
 }
-impl<A, K, Reply> behavior::Protocol for Presence<A, K, Reply>
+impl<A, K, Reply, Route> behavior::Protocol for Presence<A, K, Reply, Route>
 where
     A: Address,
     K: Clone + Eq,
     Reply: behavior::Protocol<Addr = A, Msg = PresenceReply<K>>,
+    Route: DeliveryRoute<Reply>,
 {
     type Addr = A;
-    type Msg = PresenceMessage<K, Reply>;
+    type Msg = PresenceMessage<K, Route>;
 }
 
-impl<A, K, Reply> Behavior for Presence<A, K, Reply>
+impl<A, K, Reply, Route> Behavior for Presence<A, K, Reply, Route>
 where
     A: Address,
     K: Clone + Eq,
     Reply: behavior::Protocol<Addr = A, Msg = PresenceReply<K>>,
+    Route: DeliveryRoute<Reply> + Clone,
+    Route::Sends: behavior::SendsFor<TimedEvent<User<A, PresenceMessage<K, Route>>>>,
 {
     type Protocol = Self;
     type Event = TimedEvent<User<A, crate::BehaviorMessage<Self>>>;
-    type Sends = PresenceSends<Reply>;
+    type Sends = PresenceSends<Route::Sends>;
     type Ph = Never;
     type Error = Never;
     type Birth = NoBirths;
@@ -481,7 +480,7 @@ where
                     PresencePhase::Expired { .. } => return Ok(Actions::cont()),
                 };
                 let participant = self.records[index].entry.participant.clone();
-                let notify = self.records[index].notify;
+                let notify = self.records[index].notify.clone();
                 self.records[index].entry.phase = PresencePhase::Expired {
                     version,
                     generation,
@@ -523,7 +522,7 @@ mod tests {
             Ok(Actions::cont())
         }
     }
-    type Subject = Presence<MailAddr, Participant, Reply>;
+    type Subject = Presence<MailAddr, Participant, Reply, Recipient<Reply>>;
     fn reply() -> Recipient<Reply> {
         Recipient::global(MailAddr(9))
     }

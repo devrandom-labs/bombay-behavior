@@ -9,6 +9,8 @@ use behavior::{
     Recipient, User,
 };
 
+use crate::DeliveryRoute;
+
 /// A position in a [`Sequencer`] stream.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Sequence(pub u64);
@@ -60,7 +62,7 @@ pub enum SequencerOutcome<T> {
 }
 
 /// Commands accepted by [`Sequencer`].
-pub enum SequencerMessage<T, Target: Protocol, Reply: behavior::Protocol> {
+pub enum SequencerMessage<T, Target: Protocol, Route> {
     /// Offer one value for delivery after all preceding positions.
     Offer {
         /// Explicit sequence position.
@@ -70,7 +72,7 @@ pub enum SequencerMessage<T, Target: Protocol, Reply: behavior::Protocol> {
         /// Destination used when this position becomes contiguous.
         to: Recipient<Target>,
         /// Recipient for the complete offer outcome.
-        reply_to: Recipient<Reply>,
+        reply_to: Route,
     },
 }
 
@@ -97,17 +99,19 @@ pub struct Sequencer<
     T,
     Target: Protocol<Addr = A, Msg = T>,
     Reply: behavior::Protocol<Addr = A, Msg = SequencerOutcome<T>>,
+    Route: DeliveryRoute<Reply>,
 > {
     expected: Option<Sequence>,
     pending: BTreeMap<Sequence, Pending<T, Target>>,
-    marker: core::marker::PhantomData<fn() -> (A, Reply)>,
+    marker: core::marker::PhantomData<fn() -> (A, Reply, Route)>,
 }
 
-impl<A, T, Target, Reply> Sequencer<A, T, Target, Reply>
+impl<A, T, Target, Reply, Route> Sequencer<A, T, Target, Reply, Route>
 where
     A: Address,
     Target: Protocol<Addr = A, Msg = T>,
     Reply: behavior::Protocol<Addr = A, Msg = SequencerOutcome<T>>,
+    Route: DeliveryRoute<Reply>,
 {
     /// Construct an empty sequencer beginning at `first`.
     #[must_use]
@@ -133,20 +137,21 @@ where
 
     fn actions(
         deliveries: Vec<Delivery<Target>>,
-        outcome: Delivery<Reply>,
-    ) -> Actions<A, Never, DeliveryOutcomes<Target, Reply>, NoBirths> {
+        outcomes: Route::Sends,
+    ) -> Actions<A, Never, DeliveryOutcomes<Target, Route::Sends>, NoBirths> {
         Actions::send(DeliveryOutcomes {
             deliveries,
-            outcomes: vec![outcome],
+            outcomes,
         })
     }
 }
 
-impl<A, T, Target, Reply> BehaviorBase for Sequencer<A, T, Target, Reply>
+impl<A, T, Target, Reply, Route> BehaviorBase for Sequencer<A, T, Target, Reply, Route>
 where
     A: Address,
     Target: Protocol<Addr = A, Msg = T>,
     Reply: behavior::Protocol<Addr = A, Msg = SequencerOutcome<T>>,
+    Route: DeliveryRoute<Reply>,
 {
     type Base = Self;
 
@@ -155,25 +160,28 @@ where
     }
 }
 
-impl<A, T, Target, Reply> behavior::Protocol for Sequencer<A, T, Target, Reply>
+impl<A, T, Target, Reply, Route> behavior::Protocol for Sequencer<A, T, Target, Reply, Route>
 where
     A: Address,
     Target: Protocol<Addr = A, Msg = T>,
     Reply: behavior::Protocol<Addr = A, Msg = SequencerOutcome<T>>,
+    Route: DeliveryRoute<Reply>,
 {
     type Addr = A;
-    type Msg = SequencerMessage<T, Target, Reply>;
+    type Msg = SequencerMessage<T, Target, Route>;
 }
 
-impl<A, T, Target, Reply> Behavior for Sequencer<A, T, Target, Reply>
+impl<A, T, Target, Reply, Route> Behavior for Sequencer<A, T, Target, Reply, Route>
 where
     A: Address,
     Target: Protocol<Addr = A, Msg = T>,
     Reply: behavior::Protocol<Addr = A, Msg = SequencerOutcome<T>>,
+    Route: DeliveryRoute<Reply>,
+    Route::Sends: behavior::SendsFor<User<A, SequencerMessage<T, Target, Route>>>,
 {
     type Protocol = Self;
     type Event = User<A, crate::BehaviorMessage<Self>>;
-    type Sends = DeliveryOutcomes<Target, Reply>;
+    type Sends = DeliveryOutcomes<Target, Route::Sends>;
     type Ph = Never;
     type Error = Never;
     type Birth = NoBirths;
@@ -188,19 +196,19 @@ where
         let Some(expected) = self.expected else {
             return Ok(Self::actions(
                 Vec::new(),
-                Delivery::new(reply_to, SequencerOutcome::Exhausted { value }),
+                reply_to.deliver(SequencerOutcome::Exhausted { value }),
             ));
         };
         if sequence < expected {
             return Ok(Self::actions(
                 Vec::new(),
-                Delivery::new(reply_to, SequencerOutcome::Stale { value, expected }),
+                reply_to.deliver(SequencerOutcome::Stale { value, expected }),
             ));
         }
         if self.pending.contains_key(&sequence) {
             return Ok(Self::actions(
                 Vec::new(),
-                Delivery::new(reply_to, SequencerOutcome::Duplicate { value, sequence }),
+                reply_to.deliver(SequencerOutcome::Duplicate { value, sequence }),
             ));
         }
 
@@ -220,7 +228,7 @@ where
             released: deliveries.len(),
             buffered: self.pending.len(),
         };
-        Ok(Self::actions(deliveries, Delivery::new(reply_to, outcome)))
+        Ok(Self::actions(deliveries, reply_to.deliver(outcome)))
     }
 }
 
@@ -262,7 +270,7 @@ mod tests {
     leaf!(Target, u8);
     leaf!(Reply, SequencerOutcome<u8>);
 
-    type Subject = Sequencer<MailAddr, u8, Target, Reply>;
+    type Subject = Sequencer<MailAddr, u8, Target, Reply, Recipient<Reply>>;
 
     fn offer(
         subject: &mut crate::Active<Subject>,
@@ -271,7 +279,7 @@ mod tests {
     ) -> behavior::Actions<
         MailAddr,
         behavior::Never,
-        DeliveryOutcomes<Target, Reply>,
+        DeliveryOutcomes<Target, Vec<Delivery<Reply>>>,
         behavior::NoBirths,
     > {
         subject

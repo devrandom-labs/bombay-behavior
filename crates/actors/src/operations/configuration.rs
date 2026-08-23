@@ -1,10 +1,11 @@
 //! Versioned configuration acceptance and query policy.
 
-use behavior::{
-    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, Never, NoBirths, Recipient,
-    User,
-};
+#[cfg(test)]
+use behavior::Recipient;
+use behavior::{Actions, Address, Behavior, BehaviorActed, BehaviorBase, Never, NoBirths, User};
 use thiserror::Error;
+
+use crate::DeliveryRoute;
 
 /// Monotonic version in one configuration stream.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -25,7 +26,7 @@ pub enum ConfigurationState<C> {
 }
 
 /// Commands accepted by [`Configuration`].
-pub enum ConfigurationMessage<C, Reply: behavior::Protocol> {
+pub enum ConfigurationMessage<C, Route> {
     /// Attempt to atomically replace the current configuration.
     Apply {
         /// Candidate version.
@@ -36,7 +37,7 @@ pub enum ConfigurationMessage<C, Reply: behavior::Protocol> {
     /// Return a snapshot of the complete current state.
     Query {
         /// Typed state recipient.
-        reply_to: Recipient<Reply>,
+        reply_to: Route,
     },
 }
 
@@ -78,16 +79,18 @@ pub struct Configuration<
     A: Address,
     C,
     Reply: behavior::Protocol<Addr = A, Msg = ConfigurationState<C>>,
+    Route: DeliveryRoute<Reply>,
 > {
     state: ConfigurationState<C>,
-    marker: core::marker::PhantomData<fn() -> (A, Reply)>,
+    marker: core::marker::PhantomData<fn() -> (A, Reply, Route)>,
 }
 
-impl<A, C, Reply> Configuration<A, C, Reply>
+impl<A, C, Reply, Route> Configuration<A, C, Reply, Route>
 where
     A: Address,
     C: Clone + Eq,
     Reply: behavior::Protocol<Addr = A, Msg = ConfigurationState<C>>,
+    Route: DeliveryRoute<Reply>,
 {
     /// Construct an explicitly unconfigured policy.
     #[must_use]
@@ -135,22 +138,24 @@ where
     }
 }
 
-impl<A, C, Reply> Default for Configuration<A, C, Reply>
+impl<A, C, Reply, Route> Default for Configuration<A, C, Reply, Route>
 where
     A: Address,
     C: Clone + Eq,
     Reply: behavior::Protocol<Addr = A, Msg = ConfigurationState<C>>,
+    Route: DeliveryRoute<Reply>,
 {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<A, C, Reply> BehaviorBase for Configuration<A, C, Reply>
+impl<A, C, Reply, Route> BehaviorBase for Configuration<A, C, Reply, Route>
 where
     A: Address,
     C: Clone + Eq,
     Reply: behavior::Protocol<Addr = A, Msg = ConfigurationState<C>>,
+    Route: DeliveryRoute<Reply>,
 {
     type Base = Self;
     fn base(&self) -> &Self {
@@ -158,25 +163,28 @@ where
     }
 }
 
-impl<A, C, Reply> behavior::Protocol for Configuration<A, C, Reply>
+impl<A, C, Reply, Route> behavior::Protocol for Configuration<A, C, Reply, Route>
 where
     A: Address,
     C: Clone + Eq,
     Reply: behavior::Protocol<Addr = A, Msg = ConfigurationState<C>>,
+    Route: DeliveryRoute<Reply>,
 {
     type Addr = A;
-    type Msg = ConfigurationMessage<C, Reply>;
+    type Msg = ConfigurationMessage<C, Route>;
 }
 
-impl<A, C, Reply> Behavior for Configuration<A, C, Reply>
+impl<A, C, Reply, Route> Behavior for Configuration<A, C, Reply, Route>
 where
     A: Address,
     C: Clone + Eq,
     Reply: behavior::Protocol<Addr = A, Msg = ConfigurationState<C>>,
+    Route: DeliveryRoute<Reply>,
+    Route::Sends: behavior::SendsFor<User<A, ConfigurationMessage<C, Route>>>,
 {
     type Protocol = Self;
     type Event = User<A, crate::BehaviorMessage<Self>>;
-    type Sends = Vec<Delivery<Reply>>;
+    type Sends = Route::Sends;
     type Ph = Never;
     type Error = ConfigurationError<C>;
     type Birth = NoBirths;
@@ -187,10 +195,9 @@ where
                 self.apply(version, value)?;
                 Ok(Actions::cont())
             }
-            ConfigurationMessage::Query { reply_to } => Ok(Actions::send(vec![Delivery::new(
-                reply_to,
-                self.state.clone(),
-            )])),
+            ConfigurationMessage::Query { reply_to } => {
+                Ok(Actions::send(reply_to.deliver(self.state.clone())))
+            }
         }
     }
 }
@@ -220,7 +227,7 @@ mod tests {
         }
     }
 
-    type Subject = Configuration<MailAddr, u8, Reply>;
+    type Subject = Configuration<MailAddr, u8, Reply, Recipient<Reply>>;
 
     #[test]
     fn stale_and_conflicting_candidates_return_ownership_atomically() {

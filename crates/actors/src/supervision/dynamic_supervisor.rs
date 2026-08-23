@@ -1,12 +1,13 @@
 //! Explicitly managed dynamic stable-child topology.
 
 use crate::{
-    ChildShutdownRejected, ChildStopped, CreationRejection, CreationResolved, ObserveChild,
-    ObserveCreation, Own, Proxy, ProxyCommand, ProxyParentIngress, ProxyWithParent, SendInput,
-    ShutdownChild, ShutdownRequested, WorkerCreationResolved, WorkerStopped,
+    ChildShutdownRejected, ChildStopped, CreationRejection, CreationResolved,
+    DeliveryRouteProtocol, ObserveChild, ObserveCreation, Own, Proxy, ProxyCommand,
+    ProxyParentIngress, ProxyWithParent, SendInput, ShutdownChild, ShutdownRequested,
+    WorkerCreationResolved, WorkerStopped,
 };
 use behavior::{
-    Actions, Address, Behavior, BehaviorActed, Births, ChildDelivery, ChildRoute, Delivery, Here,
+    Actions, Address, Behavior, BehaviorActed, Births, ChildDelivery, ChildRoute, Here,
     InjectEvent, InterpreterRequests, Never, Protocol, Recipient, SendEffects, User, UserEvent,
 };
 
@@ -53,31 +54,32 @@ pub enum DynamicSupervisorError<N> {
 }
 
 /// Commands for an explicitly managed dynamic child set.
-pub enum DynamicSupervisorMessage<A, C, Reply>
+pub enum DynamicSupervisorMessage<A, C, Route>
 where
     A: Address,
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
-    Reply: Protocol<Addr = A>,
+    Route: DeliveryRouteProtocol,
+    Route::Protocol: Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
 {
     Start {
         nonce: A::Nonce,
         child: C,
-        reply_to: Recipient<Reply>,
+        reply_to: Route,
     },
     Stop {
         nonce: A::Nonce,
-        reply_to: Recipient<Reply>,
+        reply_to: Route,
     },
     Replace {
         nonce: A::Nonce,
         child: C,
-        reply_to: Recipient<Reply>,
+        reply_to: Route,
     },
     Query {
         nonce: A::Nonce,
-        reply_to: Recipient<Reply>,
+        reply_to: Route,
     },
 }
 
@@ -137,15 +139,15 @@ where
     },
 }
 
-enum DynamicChild<R: Protocol> {
-    Installing { reply_to: Recipient<R> },
+enum DynamicChild<Route> {
+    Installing { reply_to: Route },
     Available,
-    Stopping { reply_to: Recipient<R> },
-    Replacing { reply_to: Recipient<R> },
+    Stopping { reply_to: Route },
+    Replacing { reply_to: Route },
     Retired,
 }
 
-impl<R: Protocol> DynamicChild<R> {
+impl<Route> DynamicChild<Route> {
     const fn phase(&self) -> DynamicChildPhase {
         match self {
             Self::Installing { .. } => DynamicChildPhase::Installing,
@@ -158,15 +160,16 @@ impl<R: Protocol> DynamicChild<R> {
 }
 
 /// Runtime facts and user commands accepted by [`DynamicSupervisor`].
-pub enum DynamicSupervisorEvent<A, C, Reply>
+pub enum DynamicSupervisorEvent<A, C, Route>
 where
     A: Address,
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
-    Reply: behavior::Protocol<Addr = A>,
+    Route: DeliveryRouteProtocol,
+    Route::Protocol: behavior::Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
 {
-    Command(User<A, DynamicSupervisorMessage<A, C, Reply>>),
+    Command(User<A, DynamicSupervisorMessage<A, C, Route>>),
     ChildStopped(ChildStopped<A>),
     CreationResolved(CreationResolved<A>),
     WorkerCreationResolved(WorkerCreationResolved<A::Nonce>),
@@ -175,16 +178,17 @@ where
     ChildShutdownRejected(ChildShutdownRejected<A::Nonce>),
 }
 
-impl<A, C, Reply> UserEvent for DynamicSupervisorEvent<A, C, Reply>
+impl<A, C, Route> UserEvent for DynamicSupervisorEvent<A, C, Route>
 where
     A: Address,
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
-    Reply: behavior::Protocol<Addr = A>,
+    Route: DeliveryRouteProtocol,
+    Route::Protocol: behavior::Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
 {
     type Addr = A;
-    type Message = DynamicSupervisorMessage<A, C, Reply>;
+    type Message = DynamicSupervisorMessage<A, C, Route>;
     fn user(from: A, message: Self::Message) -> Self {
         Self::Command(User::new(from, message))
     }
@@ -196,76 +200,82 @@ where
     }
 }
 
-impl<A, C, Reply> InjectEvent<ChildStopped<A>, Here> for DynamicSupervisorEvent<A, C, Reply>
+impl<A, C, Route> InjectEvent<ChildStopped<A>, Here> for DynamicSupervisorEvent<A, C, Route>
 where
     A: Address,
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
-    Reply: behavior::Protocol<Addr = A>,
+    Route: DeliveryRouteProtocol,
+    Route::Protocol: behavior::Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
 {
     fn inject_at(value: ChildStopped<A>) -> Self {
         Self::ChildStopped(value)
     }
 }
-impl<A, C, Reply> InjectEvent<CreationResolved<A>, Here> for DynamicSupervisorEvent<A, C, Reply>
+impl<A, C, Route> InjectEvent<CreationResolved<A>, Here> for DynamicSupervisorEvent<A, C, Route>
 where
     A: Address,
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
-    Reply: behavior::Protocol<Addr = A>,
+    Route: DeliveryRouteProtocol,
+    Route::Protocol: behavior::Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
 {
     fn inject_at(value: CreationResolved<A>) -> Self {
         Self::CreationResolved(value)
     }
 }
-impl<A, C, Reply> InjectEvent<WorkerCreationResolved<A::Nonce>, Here>
-    for DynamicSupervisorEvent<A, C, Reply>
+impl<A, C, Route> InjectEvent<WorkerCreationResolved<A::Nonce>, Here>
+    for DynamicSupervisorEvent<A, C, Route>
 where
     A: Address,
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
-    Reply: behavior::Protocol<Addr = A>,
+    Route: DeliveryRouteProtocol,
+    Route::Protocol: behavior::Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
 {
     fn inject_at(value: WorkerCreationResolved<A::Nonce>) -> Self {
         Self::WorkerCreationResolved(value)
     }
 }
-impl<A, C, Reply> InjectEvent<WorkerStopped<A>, Here> for DynamicSupervisorEvent<A, C, Reply>
+impl<A, C, Route> InjectEvent<WorkerStopped<A>, Here> for DynamicSupervisorEvent<A, C, Route>
 where
     A: Address,
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
-    Reply: behavior::Protocol<Addr = A>,
+    Route: DeliveryRouteProtocol,
+    Route::Protocol: behavior::Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
 {
     fn inject_at(value: WorkerStopped<A>) -> Self {
         Self::WorkerStopped(value)
     }
 }
-impl<A, C, Reply> InjectEvent<ChildShutdownRejected<A::Nonce>, Here>
-    for DynamicSupervisorEvent<A, C, Reply>
+impl<A, C, Route> InjectEvent<ChildShutdownRejected<A::Nonce>, Here>
+    for DynamicSupervisorEvent<A, C, Route>
 where
     A: Address,
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
-    Reply: behavior::Protocol<Addr = A>,
+    Route: DeliveryRouteProtocol,
+    Route::Protocol: behavior::Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
 {
     fn inject_at(value: ChildShutdownRejected<A::Nonce>) -> Self {
         Self::ChildShutdownRejected(value)
     }
 }
 
-impl<A, C, Reply> InjectEvent<ShutdownRequested, Here> for DynamicSupervisorEvent<A, C, Reply>
+impl<A, C, Route> InjectEvent<ShutdownRequested, Here> for DynamicSupervisorEvent<A, C, Route>
 where
     A: Address,
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
-    Reply: behavior::Protocol<Addr = A>,
+    Route: DeliveryRouteProtocol,
+    Route::Protocol: behavior::Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
 {
     fn inject_at(value: ShutdownRequested) -> Self {
         Self::ShutdownRequested(value)
@@ -285,15 +295,16 @@ pub type DynamicProxy<C> = Proxy<C>;
 pub type DynamicProxyWithParent<C, ParentPath> = ProxyWithParent<C, ParentPath>;
 
 /// Named effect product for dynamic topology management.
-pub struct DynamicSupervisorSends<A, C, Reply, ParentPath>
+pub struct DynamicSupervisorSends<A, C, Route, ParentPath>
 where
     A: Address,
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
-    Reply: behavior::Protocol<Addr = A>,
+    Route: DeliveryRouteProtocol,
+    Route::Protocol: behavior::Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
 {
-    pub outcomes: Vec<Delivery<Reply>>,
+    pub outcomes: Route::Sends,
     pub child_observations: InterpreterRequests<ObserveChild<A, behavior::ChildHead>>,
     pub creation_observations: InterpreterRequests<ObserveCreation<A, behavior::ChildHead>>,
     pub shutdowns: InterpreterRequests<
@@ -302,17 +313,18 @@ where
     pub replacements: Vec<ChildDelivery<DynamicProxy<C>, behavior::ChildHead>>,
 }
 
-impl<A, C, Reply, ParentPath> SendEffects for DynamicSupervisorSends<A, C, Reply, ParentPath>
+impl<A, C, Route, ParentPath> SendEffects for DynamicSupervisorSends<A, C, Route, ParentPath>
 where
     A: Address,
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
-    Reply: behavior::Protocol<Addr = A>,
+    Route: DeliveryRouteProtocol,
+    Route::Protocol: behavior::Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
 {
     fn empty() -> Self {
         Self {
-            outcomes: vec![],
+            outcomes: Route::Sends::empty(),
             child_observations: InterpreterRequests::empty(),
             creation_observations: InterpreterRequests::empty(),
             shutdowns: InterpreterRequests::empty(),
@@ -320,7 +332,7 @@ where
         }
     }
     fn append(&mut self, other: Self) {
-        self.outcomes.extend(other.outcomes);
+        self.outcomes.append(other.outcomes);
         self.child_observations.append(other.child_observations);
         self.creation_observations
             .append(other.creation_observations);
@@ -329,33 +341,35 @@ where
     }
 }
 
-impl<A, C, Reply, ParentPath> behavior::SendsFor<DynamicSupervisorEvent<A, C, Reply>>
-    for DynamicSupervisorSends<A, C, Reply, ParentPath>
+impl<A, C, Route, ParentPath> behavior::SendsFor<DynamicSupervisorEvent<A, C, Route>>
+    for DynamicSupervisorSends<A, C, Route, ParentPath>
 where
     A: Address,
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
-    Reply: behavior::Protocol<Addr = A>,
+    Route: DeliveryRouteProtocol,
+    Route::Protocol: behavior::Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
     InterpreterRequests<ObserveChild<A, behavior::ChildHead>>:
-        behavior::SendsFor<DynamicSupervisorEvent<A, C, Reply>>,
+        behavior::SendsFor<DynamicSupervisorEvent<A, C, Route>>,
     InterpreterRequests<ObserveCreation<A, behavior::ChildHead>>:
-        behavior::SendsFor<DynamicSupervisorEvent<A, C, Reply>>,
+        behavior::SendsFor<DynamicSupervisorEvent<A, C, Route>>,
     InterpreterRequests<ShutdownChild<DynamicProxyWithParent<C, ParentPath>, behavior::ChildHead>>:
-        behavior::SendsFor<DynamicSupervisorEvent<A, C, Reply>>,
+        behavior::SendsFor<DynamicSupervisorEvent<A, C, Route>>,
 {
 }
 
-impl<I, RootEvent, Path, A, C, Reply, ParentPath> behavior::InterpretSends<I, RootEvent, Path>
-    for DynamicSupervisorSends<A, C, Reply, ParentPath>
+impl<I, RootEvent, Path, A, C, Route, ParentPath> behavior::InterpretSends<I, RootEvent, Path>
+    for DynamicSupervisorSends<A, C, Route, ParentPath>
 where
     I: behavior::SendInterpreter,
     A: Address,
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
-    Reply: behavior::Protocol<Addr = A>,
-    Vec<Delivery<Reply>>: behavior::InterpretSends<I, RootEvent, Path>,
+    Route: DeliveryRouteProtocol,
+    Route::Protocol: behavior::Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
+    Route::Sends: behavior::InterpretSends<I, RootEvent, Path>,
     InterpreterRequests<ObserveChild<A, behavior::ChildHead>>:
         behavior::InterpretSends<I, RootEvent, Path>,
     InterpreterRequests<ObserveCreation<A, behavior::ChildHead>>:
@@ -364,7 +378,7 @@ where
         behavior::InterpretSends<I, RootEvent, Path>,
     Vec<ChildDelivery<DynamicProxy<C>, behavior::ChildHead>>:
         behavior::InterpretSends<I, RootEvent, Path>,
-    DynamicSupervisorSends<A, C, Reply, ParentPath>: Send,
+    DynamicSupervisorSends<A, C, Route, ParentPath>: Send,
 {
     fn interpret(
         self,
@@ -379,41 +393,44 @@ where
         }
     }
 }
-impl<A, C, Reply, ParentPath> SendInput<ObserveChild<A, behavior::ChildHead>, Own>
-    for DynamicSupervisorSends<A, C, Reply, ParentPath>
+impl<A, C, Route, ParentPath> SendInput<ObserveChild<A, behavior::ChildHead>, Own>
+    for DynamicSupervisorSends<A, C, Route, ParentPath>
 where
     A: Address,
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
-    Reply: behavior::Protocol<Addr = A>,
+    Route: DeliveryRouteProtocol,
+    Route::Protocol: behavior::Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
 {
     fn emit(&mut self, value: ObserveChild<A, behavior::ChildHead>) {
         self.child_observations.send(value);
     }
 }
-impl<A, C, Reply, ParentPath> SendInput<ObserveCreation<A, behavior::ChildHead>, Own>
-    for DynamicSupervisorSends<A, C, Reply, ParentPath>
+impl<A, C, Route, ParentPath> SendInput<ObserveCreation<A, behavior::ChildHead>, Own>
+    for DynamicSupervisorSends<A, C, Route, ParentPath>
 where
     A: Address,
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
-    Reply: behavior::Protocol<Addr = A>,
+    Route: DeliveryRouteProtocol,
+    Route::Protocol: behavior::Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
 {
     fn emit(&mut self, value: ObserveCreation<A, behavior::ChildHead>) {
         self.creation_observations.send(value);
     }
 }
-impl<A, C, Reply, ParentPath>
+impl<A, C, Route, ParentPath>
     SendInput<ShutdownChild<DynamicProxyWithParent<C, ParentPath>, behavior::ChildHead>, Own>
-    for DynamicSupervisorSends<A, C, Reply, ParentPath>
+    for DynamicSupervisorSends<A, C, Route, ParentPath>
 where
     A: Address,
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
-    Reply: behavior::Protocol<Addr = A>,
+    Route: DeliveryRouteProtocol,
+    Route::Protocol: behavior::Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
 {
     fn emit(
         &mut self,
@@ -425,28 +442,32 @@ where
 
 /// A pure dynamic supervisor whose stable proxy set changes only through its
 /// typed command protocol and committed runtime facts.
-pub struct DynamicSupervisorWithParent<A, C, Reply, ParentPath>
+pub struct DynamicSupervisorWithParent<A, C, Route, ParentPath>
 where
     A: Address,
-    C: Behavior,
+    A::Nonce: From<u64>,
+    C: Behavior<Ph = Never>,
     C::Protocol: Protocol<Addr = A>,
-    Reply: Protocol<Addr = A>,
+    Route: DeliveryRouteProtocol,
+    Route::Protocol: Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
 {
-    children: Vec<(A::Nonce, DynamicChild<Reply>)>,
+    children: Vec<(A::Nonce, DynamicChild<Route>)>,
     state: DynamicSupervisorState<A::Nonce>,
     proxy_parent: ProxyParentIngress<A, ParentPath>,
     marker: core::marker::PhantomData<fn() -> C>,
 }
 
 /// A dynamic supervisor whose proxy reports are owned by its direct event layer.
-pub type DynamicSupervisor<A, C, Reply> = DynamicSupervisorWithParent<A, C, Reply, Here>;
+pub type DynamicSupervisor<A, C, Route> = DynamicSupervisorWithParent<A, C, Route, Here>;
 
-impl<A, C, Reply, ParentPath> DynamicSupervisorWithParent<A, C, Reply, ParentPath>
+impl<A, C, Route, ParentPath> DynamicSupervisorWithParent<A, C, Route, ParentPath>
 where
     A: Address,
-    C: Behavior,
+    A::Nonce: From<u64>,
+    C: Behavior<Ph = Never>,
     C::Protocol: Protocol<Addr = A>,
-    Reply: Protocol<Addr = A>,
+    Route: DeliveryRouteProtocol,
+    Route::Protocol: Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
 {
     #[must_use]
     pub const fn with_parent(proxy_parent: ProxyParentIngress<A, ParentPath>) -> Self {
@@ -468,36 +489,42 @@ where
             .map(|(_, s)| s.phase())
     }
 }
-impl<A, C, Reply> DynamicSupervisorWithParent<A, C, Reply, Here>
+impl<A, C, Route> DynamicSupervisorWithParent<A, C, Route, Here>
 where
     A: Address,
-    C: Behavior,
+    A::Nonce: From<u64>,
+    C: Behavior<Ph = Never>,
     C::Protocol: Protocol<Addr = A>,
-    Reply: Protocol<Addr = A>,
+    Route: DeliveryRouteProtocol,
+    Route::Protocol: Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
 {
     #[must_use]
     pub const fn new() -> Self {
         Self::with_parent(ProxyParentIngress::new())
     }
 }
-impl<A, C, Reply> Default for DynamicSupervisor<A, C, Reply>
+impl<A, C, Route> Default for DynamicSupervisor<A, C, Route>
 where
     A: Address,
-    C: Behavior,
+    A::Nonce: From<u64>,
+    C: Behavior<Ph = Never>,
     C::Protocol: Protocol<Addr = A>,
-    Reply: Protocol<Addr = A>,
+    Route: DeliveryRouteProtocol,
+    Route::Protocol: Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
 {
     fn default() -> Self {
         Self::new()
     }
 }
-impl<A, C, Reply, ParentPath> crate::BehaviorBase
-    for DynamicSupervisorWithParent<A, C, Reply, ParentPath>
+impl<A, C, Route, ParentPath> crate::BehaviorBase
+    for DynamicSupervisorWithParent<A, C, Route, ParentPath>
 where
     A: Address,
-    C: Behavior,
+    A::Nonce: From<u64>,
+    C: Behavior<Ph = Never>,
     C::Protocol: Protocol<Addr = A>,
-    Reply: Protocol<Addr = A>,
+    Route: DeliveryRouteProtocol,
+    Route::Protocol: Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
 {
     type Base = Self;
     fn base(&self) -> &Self {
@@ -505,30 +532,32 @@ where
     }
 }
 
-impl<A, C, Reply, ParentPath> behavior::Protocol
-    for DynamicSupervisorWithParent<A, C, Reply, ParentPath>
+impl<A, C, Route, ParentPath> behavior::Protocol
+    for DynamicSupervisorWithParent<A, C, Route, ParentPath>
 where
     A: Address,
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
-    Reply: Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
+    Route: DeliveryRouteProtocol,
+    Route::Protocol: Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
 {
     type Addr = A;
-    type Msg = DynamicSupervisorMessage<A, C, Reply>;
+    type Msg = DynamicSupervisorMessage<A, C, Route>;
 }
 
-impl<A, C, Reply, ParentPath> Behavior for DynamicSupervisorWithParent<A, C, Reply, ParentPath>
+impl<A, C, Route, ParentPath> Behavior for DynamicSupervisorWithParent<A, C, Route, ParentPath>
 where
     A: Address,
     A::Nonce: Copy + Eq + From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
-    Reply: behavior::Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
+    Route: DeliveryRouteProtocol + Clone,
+    Route::Protocol: behavior::Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
 {
     type Protocol = Self;
-    type Event = DynamicSupervisorEvent<A, C, Reply>;
-    type Sends = DynamicSupervisorSends<A, C, Reply, ParentPath>;
+    type Event = DynamicSupervisorEvent<A, C, Route>;
+    type Sends = DynamicSupervisorSends<A, C, Route, ParentPath>;
     type Ph = Never;
     type Error = DynamicSupervisorError<A::Nonce>;
     type Birth = Births<DynamicProxyWithParent<C, ParentPath>>;
@@ -544,8 +573,7 @@ where
                     reply_to,
                 } => {
                     if matches!(self.state, DynamicSupervisorState::Draining { .. }) {
-                        sends.outcomes.push(Delivery::new(
-                            reply_to,
+                        sends.outcomes.append(reply_to.deliver(
                             DynamicSupervisorOutcome::StartRejected {
                                 nonce,
                                 child,
@@ -559,8 +587,7 @@ where
                         .iter()
                         .any(|(n, s)| *n == nonce && !matches!(s, DynamicChild::Retired))
                     {
-                        sends.outcomes.push(Delivery::new(
-                            reply_to,
+                        sends.outcomes.append(reply_to.deliver(
                             DynamicSupervisorOutcome::StartRejected {
                                 nonce,
                                 child,
@@ -570,15 +597,20 @@ where
                         return Ok(Actions::send(sends));
                     }
                     if let Some((_, state)) = self.children.iter_mut().find(|(n, _)| *n == nonce) {
-                        *state = DynamicChild::Installing { reply_to };
+                        *state = DynamicChild::Installing {
+                            reply_to: reply_to.clone(),
+                        };
                     } else {
-                        self.children
-                            .push((nonce, DynamicChild::Installing { reply_to }));
+                        self.children.push((
+                            nonce,
+                            DynamicChild::Installing {
+                                reply_to: reply_to.clone(),
+                            },
+                        ));
                     }
-                    sends.outcomes.push(Delivery::new(
-                        reply_to,
-                        DynamicSupervisorOutcome::StartAccepted { nonce },
-                    ));
+                    sends.outcomes.append(
+                        reply_to.deliver(DynamicSupervisorOutcome::StartAccepted { nonce }),
+                    );
                     let route = ChildRoute::<
                         DynamicProxyWithParent<C, ParentPath>,
                         behavior::ChildHead,
@@ -593,8 +625,7 @@ where
                 }
                 DynamicSupervisorMessage::Stop { nonce, reply_to } => {
                     if matches!(self.state, DynamicSupervisorState::Draining { .. }) {
-                        sends.outcomes.push(Delivery::new(
-                            reply_to,
+                        sends.outcomes.append(reply_to.deliver(
                             DynamicSupervisorOutcome::StopRejected {
                                 nonce,
                                 reason: DynamicSupervisorRejection::ShuttingDown,
@@ -604,7 +635,9 @@ where
                     }
                     match self.children.iter_mut().find(|(n, _)| *n == nonce) {
                         Some((_, state @ DynamicChild::Available)) => {
-                            *state = DynamicChild::Stopping { reply_to };
+                            *state = DynamicChild::Stopping {
+                                reply_to: reply_to.clone(),
+                            };
                             let route = ChildRoute::<
                                 DynamicProxyWithParent<C, ParentPath>,
                                 behavior::ChildHead,
@@ -613,20 +646,17 @@ where
                                 DynamicProxyWithParent<C, ParentPath>,
                                 behavior::ChildHead,
                             >::at(route));
-                            sends.outcomes.push(Delivery::new(
-                                reply_to,
-                                DynamicSupervisorOutcome::StopAccepted { nonce },
-                            ));
+                            sends.outcomes.append(
+                                reply_to.deliver(DynamicSupervisorOutcome::StopAccepted { nonce }),
+                            );
                         }
-                        Some(_) => sends.outcomes.push(Delivery::new(
-                            reply_to,
+                        Some(_) => sends.outcomes.append(reply_to.deliver(
                             DynamicSupervisorOutcome::StopRejected {
                                 nonce,
                                 reason: DynamicSupervisorRejection::NotAvailable,
                             },
                         )),
-                        None => sends.outcomes.push(Delivery::new(
-                            reply_to,
+                        None => sends.outcomes.append(reply_to.deliver(
                             DynamicSupervisorOutcome::StopRejected {
                                 nonce,
                                 reason: DynamicSupervisorRejection::NotFound,
@@ -641,8 +671,7 @@ where
                     reply_to,
                 } => {
                     if matches!(self.state, DynamicSupervisorState::Draining { .. }) {
-                        sends.outcomes.push(Delivery::new(
-                            reply_to,
+                        sends.outcomes.append(reply_to.deliver(
                             DynamicSupervisorOutcome::ReplaceRejected {
                                 nonce,
                                 child,
@@ -653,7 +682,9 @@ where
                     }
                     match self.children.iter_mut().find(|(n, _)| *n == nonce) {
                         Some((_, state @ DynamicChild::Available)) => {
-                            *state = DynamicChild::Replacing { reply_to };
+                            *state = DynamicChild::Replacing {
+                                reply_to: reply_to.clone(),
+                            };
                             let route = ChildRoute::<
                                 DynamicProxyWithParent<C, ParentPath>,
                                 behavior::ChildHead,
@@ -661,21 +692,19 @@ where
                             sends
                                 .replacements
                                 .push(ChildDelivery::at(route, ProxyCommand::Replace(child)));
-                            sends.outcomes.push(Delivery::new(
-                                reply_to,
-                                DynamicSupervisorOutcome::ReplaceAccepted { nonce },
-                            ));
+                            sends.outcomes.append(
+                                reply_to
+                                    .deliver(DynamicSupervisorOutcome::ReplaceAccepted { nonce }),
+                            );
                         }
-                        Some(_) => sends.outcomes.push(Delivery::new(
-                            reply_to,
+                        Some(_) => sends.outcomes.append(reply_to.deliver(
                             DynamicSupervisorOutcome::ReplaceRejected {
                                 nonce,
                                 child,
                                 reason: DynamicSupervisorRejection::NotAvailable,
                             },
                         )),
-                        None => sends.outcomes.push(Delivery::new(
-                            reply_to,
+                        None => sends.outcomes.append(reply_to.deliver(
                             DynamicSupervisorOutcome::ReplaceRejected {
                                 nonce,
                                 child,
@@ -686,13 +715,12 @@ where
                     Ok(Actions::send(sends))
                 }
                 DynamicSupervisorMessage::Query { nonce, reply_to } => {
-                    sends.outcomes.push(Delivery::new(
-                        reply_to,
-                        DynamicSupervisorOutcome::State {
+                    sends
+                        .outcomes
+                        .append(reply_to.deliver(DynamicSupervisorOutcome::State {
                             nonce,
                             phase: self.phase(nonce),
-                        },
-                    ));
+                        }));
                     Ok(Actions::send(sends))
                 }
             },
@@ -704,17 +732,16 @@ where
                 let DynamicChild::Installing { reply_to } = state else {
                     return Ok(Actions::cont());
                 };
-                let reply = *reply_to;
+                let reply = reply_to.clone();
                 match resolved.result {
                     Ok(address) => {
                         *state = DynamicChild::Available;
-                        sends.outcomes.push(Delivery::new(
-                            reply,
-                            DynamicSupervisorOutcome::Started {
+                        sends
+                            .outcomes
+                            .append(reply.deliver(DynamicSupervisorOutcome::Started {
                                 nonce: resolved.nonce,
                                 child: Recipient::global(address),
-                            },
-                        ));
+                            }));
                         if matches!(self.state, DynamicSupervisorState::Draining { .. }) {
                             sends.shutdowns.send(ShutdownChild::<
                                 DynamicProxyWithParent<C, ParentPath>,
@@ -724,8 +751,7 @@ where
                     }
                     Err(reason) => {
                         *state = DynamicChild::Retired;
-                        sends.outcomes.push(Delivery::new(
-                            reply,
+                        sends.outcomes.append(reply.deliver(
                             DynamicSupervisorOutcome::StartFailed {
                                 nonce: resolved.nonce,
                                 reason,
@@ -751,19 +777,18 @@ where
                     return Ok(Actions::cont());
                 };
                 let reply = match state {
-                    DynamicChild::Stopping { reply_to } => Some(*reply_to),
+                    DynamicChild::Stopping { reply_to } => Some(reply_to.clone()),
                     _ if matches!(self.state, DynamicSupervisorState::Draining { .. }) => None,
                     _ => return Ok(Actions::cont()),
                 };
                 *state = DynamicChild::Retired;
                 if let Some(reply) = reply {
-                    sends.outcomes.push(Delivery::new(
-                        reply,
-                        DynamicSupervisorOutcome::Stopped {
+                    sends
+                        .outcomes
+                        .append(reply.deliver(DynamicSupervisorOutcome::Stopped {
                             nonce: stopped.nonce,
                             outcome: stopped.outcome,
-                        },
-                    ));
+                        }));
                 }
                 if let DynamicSupervisorState::Draining { awaiting } = &mut self.state {
                     awaiting.retain(|nonce| *nonce != stopped.nonce);
@@ -785,7 +810,7 @@ where
                 let DynamicChild::Replacing { reply_to } = state else {
                     return Ok(Actions::cont());
                 };
-                let reply = *reply_to;
+                let reply = reply_to.clone();
                 *state = DynamicChild::Available;
                 let outcome = match resolved.result {
                     Ok(()) => DynamicSupervisorOutcome::Replaced {
@@ -796,7 +821,7 @@ where
                         reason,
                     },
                 };
-                sends.outcomes.push(Delivery::new(reply, outcome));
+                sends.outcomes.append(reply.deliver(outcome));
                 Ok(Actions::send(sends))
             }
             // The phase describes availability of the stable proxy slot, not
@@ -848,15 +873,14 @@ where
                 let DynamicChild::Stopping { reply_to } = state else {
                     return Ok(Actions::cont());
                 };
-                let reply = *reply_to;
+                let reply = reply_to.clone();
                 *state = DynamicChild::Available;
-                sends.outcomes.push(Delivery::new(
-                    reply,
-                    DynamicSupervisorOutcome::StopRejected {
+                sends
+                    .outcomes
+                    .append(reply.deliver(DynamicSupervisorOutcome::StopRejected {
                         nonce: rejected.nonce,
                         reason: DynamicSupervisorRejection::ShutdownRejected(rejected.reason),
-                    },
-                ));
+                    }));
                 Ok(Actions::send(sends))
             }
         }
@@ -913,7 +937,7 @@ mod tests {
 
     #[test]
     fn start_is_distinct_from_committed_installation_and_duplicate_returns_child() {
-        let initialized = DynamicSupervisor::<MailAddr, Worker, Reply>::new()
+        let initialized = DynamicSupervisor::<MailAddr, Worker, Recipient<Reply>>::new()
             .initialize()
             .unwrap();
         let mut active = initialized.behavior;
@@ -981,7 +1005,7 @@ mod tests {
 
     #[test]
     fn rejected_start_resolution_retires_the_slot_without_losing_the_observation_request() {
-        let mut active = DynamicSupervisor::<MailAddr, Worker, Reply>::new()
+        let mut active = DynamicSupervisor::<MailAddr, Worker, Recipient<Reply>>::new()
             .initialize()
             .unwrap()
             .behavior;
@@ -1023,7 +1047,7 @@ mod tests {
 
     #[test]
     fn stop_and_replace_wait_for_their_exact_runtime_fact() {
-        let mut active = DynamicSupervisor::<MailAddr, Worker, Reply>::new()
+        let mut active = DynamicSupervisor::<MailAddr, Worker, Recipient<Reply>>::new()
             .initialize()
             .unwrap()
             .behavior;
@@ -1090,7 +1114,7 @@ mod tests {
 
     #[test]
     fn explicit_stop_rejection_preserves_the_capability_reason() {
-        let mut active = DynamicSupervisor::<MailAddr, Worker, Reply>::new()
+        let mut active = DynamicSupervisor::<MailAddr, Worker, Recipient<Reply>>::new()
             .initialize()
             .unwrap()
             .behavior;
@@ -1137,7 +1161,7 @@ mod tests {
 
     #[test]
     fn worker_stop_is_accepted_without_reinterpreting_proxy_slot_state() {
-        let initialized = DynamicSupervisor::<MailAddr, Worker, Reply>::new()
+        let initialized = DynamicSupervisor::<MailAddr, Worker, Recipient<Reply>>::new()
             .initialize()
             .unwrap();
         let mut active = initialized.behavior;
@@ -1166,7 +1190,7 @@ mod tests {
 
     #[test]
     fn shutdown_drains_established_and_installing_proxies_before_stopping() {
-        let mut active = DynamicSupervisor::<MailAddr, Worker, Reply>::new()
+        let mut active = DynamicSupervisor::<MailAddr, Worker, Recipient<Reply>>::new()
             .initialize()
             .unwrap()
             .behavior;

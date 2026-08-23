@@ -1,12 +1,12 @@
 //! Versioned readiness policy over a fixed dependency set.
 
-use behavior::{
-    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, Never, NoBirths, Recipient,
-    User,
-};
+#[cfg(test)]
+use behavior::Recipient;
+use behavior::{Actions, Address, Behavior, BehaviorActed, BehaviorBase, Never, NoBirths, User};
 use thiserror::Error;
 
 use super::ObservationVersion;
+use crate::DeliveryRoute;
 
 /// Classification carried by committed readiness evidence.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -64,7 +64,7 @@ impl<K> ReadinessReport<K> {
 }
 
 /// Inputs accepted by [`Readiness`].
-pub enum ReadinessMessage<K, Reply: behavior::Protocol> {
+pub enum ReadinessMessage<K, Route> {
     /// Commit versioned readiness evidence for a configured dependency.
     Observe {
         /// Dependency identity.
@@ -77,7 +77,7 @@ pub enum ReadinessMessage<K, Reply: behavior::Protocol> {
     /// Return a complete point-in-time report.
     Query {
         /// Typed report recipient.
-        reply_to: Recipient<Reply>,
+        reply_to: Route,
     },
 }
 
@@ -122,16 +122,22 @@ pub enum ReadinessError<K> {
 /// membership, version ordering, and empty-set readiness are deliberate Bombay
 /// policy. Export through HTTP or orchestration remains a System adapter
 /// responsibility. No method has a semantic panic condition.
-pub struct Readiness<A: Address, K, Reply: behavior::Protocol<Addr = A, Msg = ReadinessReport<K>>> {
+pub struct Readiness<A, K, Reply, Route>
+where
+    A: Address,
+    Reply: behavior::Protocol<Addr = A, Msg = ReadinessReport<K>>,
+    Route: DeliveryRoute<Reply>,
+{
     dependencies: Vec<DependencyReadiness<K>>,
-    marker: core::marker::PhantomData<fn() -> (A, Reply)>,
+    marker: core::marker::PhantomData<fn() -> (A, Reply, Route)>,
 }
 
-impl<A, K, Reply> Readiness<A, K, Reply>
+impl<A, K, Reply, Route> Readiness<A, K, Reply, Route>
 where
     A: Address,
     K: Clone + Eq,
     Reply: behavior::Protocol<Addr = A, Msg = ReadinessReport<K>>,
+    Route: DeliveryRoute<Reply>,
 {
     /// Construct readiness policy for a fixed dependency set.
     #[must_use]
@@ -208,11 +214,12 @@ where
     }
 }
 
-impl<A, K, Reply> BehaviorBase for Readiness<A, K, Reply>
+impl<A, K, Reply, Route> BehaviorBase for Readiness<A, K, Reply, Route>
 where
     A: Address,
     K: Clone + Eq,
     Reply: behavior::Protocol<Addr = A, Msg = ReadinessReport<K>>,
+    Route: DeliveryRoute<Reply>,
 {
     type Base = Self;
     fn base(&self) -> &Self {
@@ -220,25 +227,28 @@ where
     }
 }
 
-impl<A, K, Reply> behavior::Protocol for Readiness<A, K, Reply>
+impl<A, K, Reply, Route> behavior::Protocol for Readiness<A, K, Reply, Route>
 where
     A: Address,
     K: Clone + Eq,
     Reply: behavior::Protocol<Addr = A, Msg = ReadinessReport<K>>,
+    Route: DeliveryRoute<Reply>,
 {
     type Addr = A;
-    type Msg = ReadinessMessage<K, Reply>;
+    type Msg = ReadinessMessage<K, Route>;
 }
 
-impl<A, K, Reply> Behavior for Readiness<A, K, Reply>
+impl<A, K, Reply, Route> Behavior for Readiness<A, K, Reply, Route>
 where
     A: Address,
     K: Clone + Eq,
     Reply: behavior::Protocol<Addr = A, Msg = ReadinessReport<K>>,
+    Route: DeliveryRoute<Reply>,
+    Route::Sends: behavior::SendsFor<User<A, ReadinessMessage<K, Route>>>,
 {
     type Protocol = Self;
     type Event = User<A, crate::BehaviorMessage<Self>>;
-    type Sends = Vec<Delivery<Reply>>;
+    type Sends = Route::Sends;
     type Ph = Never;
     type Error = ReadinessError<K>;
     type Birth = NoBirths;
@@ -254,7 +264,7 @@ where
                 Ok(Actions::cont())
             }
             ReadinessMessage::Query { reply_to } => {
-                Ok(Actions::send(vec![Delivery::new(reply_to, self.report())]))
+                Ok(Actions::send(reply_to.deliver(self.report())))
             }
         }
     }
@@ -284,7 +294,7 @@ mod tests {
         }
     }
 
-    type Subject = Readiness<MailAddr, u8, Reply>;
+    type Subject = Readiness<MailAddr, u8, Reply, Recipient<Reply>>;
 
     #[test]
     fn all_dependencies_must_have_ready_evidence() {

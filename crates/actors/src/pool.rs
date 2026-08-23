@@ -7,10 +7,11 @@
 use std::collections::{BTreeMap, VecDeque};
 use std::time::Duration;
 
+use crate::DeliveryRoute;
 use crate::supervision::{FixedFleetOwnership, OwnershipError};
 use crate::{
-    Actions, Address, Behavior, Births, ChildTopology, Crash, CreationRejection, Delivery, Exit,
-    FleetError, Never, Own, Protocol, ProxyCommand, ProxyParentIngress, ProxyWithParent, Recipient,
+    Actions, Address, Behavior, Births, ChildTopology, Crash, CreationRejection, Exit, FleetError,
+    Never, Own, Protocol, ProxyCommand, ProxyParentIngress, ProxyWithParent, Recipient,
     RestartConfiguration, RestartPolicy, SendEffects, SendInput, SendLayer, Strategy,
     SupervisionEvent, SupervisorSends, User, WorkerCreationResolved, WorkerStopped,
 };
@@ -61,15 +62,16 @@ where
 
 /// Messages accepted by a pool coordinator.
 #[derive(Clone, PartialEq, Eq)]
-pub enum PoolMessage<A, D, J, R>
+pub enum PoolMessage<A, D, J, R, Route>
 where
     A: Address,
     D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
+    Route: DeliveryRoute<D>,
 {
     Submit {
         job: JobId,
         payload: J,
-        reply_to: Recipient<D>,
+        reply_to: Route,
     },
     Completed {
         worker: <D::Addr as Address>::Nonce,
@@ -84,16 +86,17 @@ where
 /// It affects later submissions; jobs already accepted retain their selected
 /// stable worker slot.
 #[derive(Clone, PartialEq, Eq)]
-pub enum KeyedPoolMessage<A, D, K, J, R>
+pub enum KeyedPoolMessage<A, D, K, J, R, Route>
 where
     A: Address,
     D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
+    Route: DeliveryRoute<D>,
 {
     Submit {
         key: K,
         job: JobId,
         payload: J,
-        reply_to: Recipient<D>,
+        reply_to: Route,
     },
     Completed {
         worker: <D::Addr as Address>::Nonce,
@@ -297,42 +300,38 @@ pub enum PoolError<N> {
     },
 }
 
-struct AcceptedJob<A: Address, D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>, J, R> {
+struct AcceptedJob<A: Address, J, Route> {
     id: JobId,
     payload: J,
-    reply_to: Recipient<D>,
+    reply_to: Route,
     interruption: Option<PoolInterruption<A>>,
     target: Option<A::Nonce>,
 }
 
-struct QueuedJob<A: Address, D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>, J, R> {
-    accepted: AcceptedJob<A, D, J, R>,
+struct QueuedJob<A: Address, J, Route> {
+    accepted: AcceptedJob<A, J, Route>,
     dispatch_payload: J,
 }
 
-enum SlotState<A: Address, D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>, J, R> {
+enum SlotState<A: Address, J, Route> {
     Installing,
     Idle,
     Stopping,
     Assigned {
         assignment: AssignmentId,
-        job: AcceptedJob<A, D, J, R>,
+        job: AcceptedJob<A, J, Route>,
     },
     Retired {
         reason: WorkerRetirement,
     },
 }
 
-struct Slot<A: Address, D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>, J, R> {
+struct Slot<A: Address, J, Route> {
     nonce: A::Nonce,
-    state: SlotState<A, D, J, R>,
+    state: SlotState<A, J, Route>,
 }
 
-impl<A, D, J, R> Slot<A, D, J, R>
-where
-    A: Address,
-    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
-{
+impl<A: Address, J, Route> Slot<A, J, Route> {
     fn phase(&self) -> WorkerPhase {
         match &self.state {
             SlotState::Installing => WorkerPhase::Installing,
@@ -358,73 +357,74 @@ enum Admission {
 }
 
 /// The pool's concrete event sum, including existing supervision facts.
-pub type PoolEvent<A, D, J, R> = SupervisionEvent<User<A, PoolMessage<A, D, J, R>>>;
+pub type PoolEvent<A, D, J, R, Route> = SupervisionEvent<User<A, PoolMessage<A, D, J, R, Route>>>;
 
 /// Complete event algebra of a shutdown-owning [`WorkerPool`].
-pub type WorkerPoolEvent<A, D, J, R> = PoolEvent<A, D, J, R>;
+pub type WorkerPoolEvent<A, D, J, R, Route> = PoolEvent<A, D, J, R, Route>;
 
 /// Concrete event sum for a [`KeyedWorkerPool`].
-pub type KeyedPoolEvent<A, D, K, J, R> = SupervisionEvent<User<A, KeyedPoolMessage<A, D, K, J, R>>>;
+pub type KeyedPoolEvent<A, D, K, J, R, Route> =
+    SupervisionEvent<User<A, KeyedPoolMessage<A, D, K, J, R, Route>>>;
 
 /// Named pool-owned delivery lanes.
-pub struct PoolBehaviorSends<A, D, J, R, C>
+pub struct PoolBehaviorSends<A, C, ResponseSends>
 where
     A: Address,
     A::Nonce: From<u64>,
-    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
+    ResponseSends: SendEffects,
 {
     /// Admission and terminal responses addressed to submitters.
-    pub responses: Vec<Delivery<D>>,
+    pub responses: ResponseSends,
     /// Assignments addressed to the selected stable worker proxies.
     pub assignments: Vec<behavior::ChildDelivery<crate::Proxy<C>, behavior::ChildHead>>,
 }
 
-impl<A, D, J, R, C> SendEffects for PoolBehaviorSends<A, D, J, R, C>
+impl<A, C, ResponseSends> SendEffects for PoolBehaviorSends<A, C, ResponseSends>
 where
     A: Address,
     A::Nonce: From<u64>,
-    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
+    ResponseSends: SendEffects,
 {
     fn empty() -> Self {
         Self {
-            responses: Vec::new(),
+            responses: ResponseSends::empty(),
             assignments: Vec::new(),
         }
     }
 
     fn append(&mut self, mut other: Self) {
-        self.responses.append(&mut other.responses);
+        self.responses.append(other.responses);
         self.assignments.append(&mut other.assignments);
     }
 }
 
-impl<Event, A, D, J, R, C> behavior::SendsFor<Event> for PoolBehaviorSends<A, D, J, R, C>
+impl<Event, A, C, ResponseSends> behavior::SendsFor<Event>
+    for PoolBehaviorSends<A, C, ResponseSends>
 where
     A: Address,
     A::Nonce: From<u64>,
-    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
+    ResponseSends: SendEffects,
 {
 }
 
-impl<I, RootEvent, Path, A, D, J, R, C> behavior::InterpretSends<I, RootEvent, Path>
-    for PoolBehaviorSends<A, D, J, R, C>
+impl<I, RootEvent, Path, A, C, ResponseSends> behavior::InterpretSends<I, RootEvent, Path>
+    for PoolBehaviorSends<A, C, ResponseSends>
 where
     I: behavior::SendInterpreter,
     A: Address,
     A::Nonce: From<u64>,
-    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
-    Vec<Delivery<D>>: behavior::InterpretSends<I, RootEvent, Path>,
+    ResponseSends: SendEffects + behavior::InterpretSends<I, RootEvent, Path>,
     Vec<behavior::ChildDelivery<crate::Proxy<C>, behavior::ChildHead>>:
         behavior::InterpretSends<I, RootEvent, Path>,
-    PoolBehaviorSends<A, D, J, R, C>: Send,
+    PoolBehaviorSends<A, C, ResponseSends>: Send,
 {
     fn interpret(
         self,
@@ -437,27 +437,15 @@ where
     }
 }
 
-impl<A, D, J, R, C> SendInput<Delivery<D>, Own> for PoolBehaviorSends<A, D, J, R, C>
+impl<A, C, ResponseSends>
+    SendInput<behavior::ChildDelivery<crate::Proxy<C>, behavior::ChildHead>, Own>
+    for PoolBehaviorSends<A, C, ResponseSends>
 where
     A: Address,
     A::Nonce: From<u64>,
-    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
-{
-    fn emit(&mut self, input: Delivery<D>) {
-        self.responses.push(input);
-    }
-}
-
-impl<A, D, J, R, C> SendInput<behavior::ChildDelivery<crate::Proxy<C>, behavior::ChildHead>, Own>
-    for PoolBehaviorSends<A, D, J, R, C>
-where
-    A: Address,
-    A::Nonce: From<u64>,
-    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
-    C: Behavior<Ph = Never>,
-    C::Protocol: crate::Protocol<Addr = A>,
+    ResponseSends: SendEffects,
 {
     fn emit(&mut self, input: behavior::ChildDelivery<crate::Proxy<C>, behavior::ChildHead>) {
         self.assignments.push(input);
@@ -466,26 +454,28 @@ where
 
 /// Pool effects keep responses and assignments in named, independently
 /// appendable lanes within the supervised behavior send product.
-pub type PoolSends<A, D, J, R, C, ParentPath = Here> =
-    SendLayer<SupervisorSends<A, C, ParentPath>, PoolBehaviorSends<A, D, J, R, C>>;
+pub type PoolSends<A, C, Route, ParentPath = Here> = SendLayer<
+    SupervisorSends<A, C, ParentPath>,
+    PoolBehaviorSends<A, C, <Route as crate::DeliveryRouteProtocol>::Sends>,
+>;
 
 /// Named effect product for a worker pool that owns orderly proxy shutdown.
-pub type WorkerPoolSends<A, D, J, R, C, ParentPath = Here> = PoolSends<A, D, J, R, C, ParentPath>;
+pub type WorkerPoolSends<A, C, Route, ParentPath = Here> = PoolSends<A, C, Route, ParentPath>;
 
 /// Complete action type returned by a shutdown-owning [`WorkerPool`].
-pub type WorkerPoolActions<A, D, J, R, C, ParentPath = Here> = Actions<
+pub type WorkerPoolActions<A, C, Route, ParentPath = Here> = Actions<
     A,
     Never,
-    WorkerPoolSends<A, D, J, R, C, ParentPath>,
+    WorkerPoolSends<A, C, Route, ParentPath>,
     Births<ProxyWithParent<C, ParentPath>>,
 >;
 
 /// Complete action type returned by a [`WorkerPool`] transition.
-pub type PoolActions<A, D, J, R, C, ParentPath = behavior::Here> =
-    Actions<A, Never, PoolSends<A, D, J, R, C, ParentPath>, Births<ProxyWithParent<C, ParentPath>>>;
+pub type PoolActions<A, C, Route, ParentPath = behavior::Here> =
+    Actions<A, Never, PoolSends<A, C, Route, ParentPath>, Births<ProxyWithParent<C, ParentPath>>>;
 
-type PoolTransition<A, D, J, R, C, ParentPath = behavior::Here> =
-    Result<PoolActions<A, D, J, R, C, ParentPath>, PoolError<<A as Address>::Nonce>>;
+type PoolTransition<A, C, Route, ParentPath = behavior::Here> =
+    Result<PoolActions<A, C, Route, ParentPath>, PoolError<<A as Address>::Nonce>>;
 
 enum PoolOwnershipEvent<A: Address> {
     WorkerStopped(WorkerStopped<A>),
@@ -546,24 +536,26 @@ enum PoolOwnershipEvent<A: Address> {
 /// // `WrongWorker::Protocol::Msg` is not `PoolAssignment<PoolProtocol>`.
 /// let _: Option<WorkerPool<MailAddr, Reply, String, (), WrongWorker>> = None;
 /// ```
-struct PoolCore<A: Address, D, J, R, C, P, ParentPath = behavior::Here>
+struct PoolCore<A: Address, D, J, R, C, Route, P, ParentPath = behavior::Here>
 where
     D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
     P: crate::PoolAssignmentProtocol<Addr = A, Job = J>,
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A, Msg = PoolAssignment<P>>,
+    Route: DeliveryRoute<D>,
 {
     supervisor: FixedFleetOwnership<A, C, ParentPath>,
     complete_to: Recipient<P>,
-    slots: Vec<Slot<A, D, J, R>>,
-    backlog: VecDeque<QueuedJob<A, D, J, R>>,
+    slots: Vec<Slot<A, J, Route>>,
+    backlog: VecDeque<QueuedJob<A, J, Route>>,
     backlog_capacity: usize,
     next_assignment: u64,
     interruption: InterruptionPolicy,
+    response_contract: core::marker::PhantomData<fn(D, R)>,
 }
 
-impl<A, D, J, R, C, P, ParentPath> PoolCore<A, D, J, R, C, P, ParentPath>
+impl<A, D, J, R, C, Route, P, ParentPath> PoolCore<A, D, J, R, C, Route, P, ParentPath>
 where
     A: Address,
     A::Nonce: From<u64>,
@@ -571,6 +563,7 @@ where
     P: crate::PoolAssignmentProtocol<Addr = A, Job = J>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A, Msg = PoolAssignment<P>>,
+    Route: DeliveryRoute<D>,
 {
     /// Construct a pool after proving that every configured child route is
     /// unique.
@@ -595,7 +588,7 @@ where
         for &nonce in &nonces {
             if slots
                 .iter()
-                .any(|slot: &Slot<A, D, J, R>| slot.nonce == nonce)
+                .any(|slot: &Slot<A, J, Route>| slot.nonce == nonce)
             {
                 return Err(PoolConfigError::DuplicateWorker(nonce));
             }
@@ -627,6 +620,7 @@ where
             backlog_capacity: configuration.backlog_capacity,
             next_assignment: 0,
             interruption: configuration.interruption,
+            response_contract: core::marker::PhantomData,
         })
     }
 
@@ -651,7 +645,7 @@ where
     }
 }
 
-impl<A, D, J, R, C, P, ParentPath> PoolCore<A, D, J, R, C, P, ParentPath>
+impl<A, D, J, R, C, Route, P, ParentPath> PoolCore<A, D, J, R, C, Route, P, ParentPath>
 where
     A: Address,
     A::Nonce: From<u64>,
@@ -660,11 +654,12 @@ where
     J: Clone,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A, Msg = PoolAssignment<P>>,
+    Route: DeliveryRoute<D> + Clone,
 {
     fn supervisor_transition(
         &mut self,
         event: PoolOwnershipEvent<A>,
-    ) -> PoolTransition<A, D, J, R, C, ParentPath> {
+    ) -> PoolTransition<A, C, Route, ParentPath> {
         let fold = match event {
             PoolOwnershipEvent::WorkerStopped(event) => self.supervisor.worker_stopped(event),
             PoolOwnershipEvent::WorkerCreationResolved(event) => {
@@ -721,22 +716,23 @@ where
         &mut self,
         job: JobId,
         payload: J,
-        reply_to: Recipient<D>,
-        actions: &mut PoolActions<A, D, J, R, C, ParentPath>,
+        reply_to: Route,
+        actions: &mut PoolActions<A, C, Route, ParentPath>,
     ) {
         let can_dispatch = self
             .slots
             .iter()
             .any(|slot| matches!(slot.state, SlotState::Idle));
         if !can_dispatch && self.backlog.len() == self.backlog_capacity {
-            actions.sends.inner.send::<Delivery<D>, Own>(Delivery::new(
-                reply_to,
-                PoolResponse::Rejected {
+            actions
+                .sends
+                .inner
+                .responses
+                .append(reply_to.deliver(PoolResponse::Rejected {
                     job,
                     payload,
                     reason: PoolRejection::BacklogFull,
-                },
-            ));
+                }));
             return;
         }
         let dispatch_payload = payload.clone();
@@ -744,7 +740,7 @@ where
             accepted: AcceptedJob {
                 id: job,
                 payload,
-                reply_to,
+                reply_to: reply_to.clone(),
                 interruption: None,
                 target: None,
             },
@@ -753,7 +749,8 @@ where
         actions
             .sends
             .inner
-            .send::<_, Own>(Delivery::new(reply_to, PoolResponse::Accepted { job }));
+            .responses
+            .append(reply_to.deliver(PoolResponse::Accepted { job }));
     }
 
     fn submit_to(
@@ -761,41 +758,44 @@ where
         target: A::Nonce,
         job: JobId,
         payload: J,
-        reply_to: Recipient<D>,
-        actions: &mut PoolActions<A, D, J, R, C, ParentPath>,
+        reply_to: Route,
+        actions: &mut PoolActions<A, C, Route, ParentPath>,
     ) -> Admission {
         let Some(slot) = self.slots.iter().find(|slot| slot.nonce == target) else {
-            actions.sends.inner.send::<Delivery<D>, Own>(Delivery::new(
-                reply_to,
-                PoolResponse::Rejected {
+            actions
+                .sends
+                .inner
+                .responses
+                .append(reply_to.deliver(PoolResponse::Rejected {
                     job,
                     payload,
                     reason: PoolRejection::AffinityUnavailable,
-                },
-            ));
+                }));
             return Admission::Rejected;
         };
         if matches!(slot.state, SlotState::Retired { .. }) {
-            actions.sends.inner.send::<_, Own>(Delivery::new(
-                reply_to,
-                PoolResponse::Rejected {
+            actions
+                .sends
+                .inner
+                .responses
+                .append(reply_to.deliver(PoolResponse::Rejected {
                     job,
                     payload,
                     reason: PoolRejection::AffinityUnavailable,
-                },
-            ));
+                }));
             return Admission::Rejected;
         }
         let can_dispatch = matches!(slot.state, SlotState::Idle);
         if !can_dispatch && self.backlog.len() == self.backlog_capacity {
-            actions.sends.inner.send::<_, Own>(Delivery::new(
-                reply_to,
-                PoolResponse::Rejected {
+            actions
+                .sends
+                .inner
+                .responses
+                .append(reply_to.deliver(PoolResponse::Rejected {
                     job,
                     payload,
                     reason: PoolRejection::BacklogFull,
-                },
-            ));
+                }));
             return Admission::Rejected;
         }
         let dispatch_payload = payload.clone();
@@ -803,7 +803,7 @@ where
             accepted: AcceptedJob {
                 id: job,
                 payload,
-                reply_to,
+                reply_to: reply_to.clone(),
                 interruption: None,
                 target: Some(target),
             },
@@ -812,7 +812,8 @@ where
         actions
             .sends
             .inner
-            .send::<_, Own>(Delivery::new(reply_to, PoolResponse::Accepted { job }));
+            .responses
+            .append(reply_to.deliver(PoolResponse::Accepted { job }));
         Admission::Accepted
     }
 
@@ -821,7 +822,7 @@ where
         worker: A::Nonce,
         assignment: AssignmentId,
         result: R,
-        actions: &mut PoolActions<A, D, J, R, C, ParentPath>,
+        actions: &mut PoolActions<A, C, Route, ParentPath>,
     ) -> Result<(), PoolError<A::Nonce>> {
         let position = self.slot_position(worker)?;
         let previous = core::mem::replace(&mut self.slots[position].state, SlotState::Idle);
@@ -859,20 +860,21 @@ where
                 return Err(PoolError::CompletionForUnavailableWorker { worker, phase });
             }
         };
-        actions.sends.inner.send::<_, Own>(Delivery::new(
-            job.reply_to,
-            PoolResponse::Completed {
+        actions
+            .sends
+            .inner
+            .responses
+            .append(job.reply_to.deliver(PoolResponse::Completed {
                 job: job.id,
                 result,
-            },
-        ));
+            }));
         Ok(())
     }
 
     fn worker_stopped(
         &mut self,
         stopped: &WorkerStopped<A>,
-        responses: &mut Vec<Delivery<D>>,
+        responses: &mut Route::Sends,
     ) -> Result<(), PoolError<A::Nonce>> {
         let position = self.slot_position(stopped.proxy)?;
         let phase = self.slots[position].phase();
@@ -915,24 +917,21 @@ where
 
         let previous = core::mem::replace(&mut self.slots[position].state, SlotState::Installing);
         if let SlotState::Assigned { job, .. } = previous {
-            responses.push(Delivery::new(
-                job.reply_to,
-                PoolResponse::Interrupted {
-                    job: job.id,
-                    payload: job.payload,
-                    reason: PoolInterruption::WorkerStopped {
-                        worker: stopped.proxy,
-                        outcome: stopped.outcome,
-                    },
+            responses.append(job.reply_to.deliver(PoolResponse::Interrupted {
+                job: job.id,
+                payload: job.payload,
+                reason: PoolInterruption::WorkerStopped {
+                    worker: stopped.proxy,
+                    outcome: stopped.outcome,
                 },
-            ));
+            }));
         }
         Ok(())
     }
 
     fn fail_backlog_if_irrecoverable(
         &mut self,
-        actions: &mut PoolActions<A, D, J, R, C, ParentPath>,
+        actions: &mut PoolActions<A, C, Route, ParentPath>,
     ) {
         if self
             .slots
@@ -943,16 +942,15 @@ where
         }
         for queued in self.backlog.drain(..) {
             let job = queued.accepted;
-            actions.sends.inner.send::<_, Own>(Delivery::new(
-                job.reply_to,
-                PoolResponse::Interrupted {
+            actions.sends.inner.responses.append(
+                job.reply_to.deliver(PoolResponse::Interrupted {
                     job: job.id,
                     payload: job.payload,
                     reason: job
                         .interruption
                         .unwrap_or(PoolInterruption::NoRecoverableWorkers),
-                },
-            ));
+                }),
+            );
         }
     }
 
@@ -960,22 +958,21 @@ where
         &mut self,
         worker: A::Nonce,
         reason: WorkerRetirement,
-        actions: &mut PoolActions<A, D, J, R, C, ParentPath>,
+        actions: &mut PoolActions<A, C, Route, ParentPath>,
     ) {
         let mut retained = VecDeque::with_capacity(self.backlog.len());
         while let Some(queued) = self.backlog.pop_front() {
             if queued.accepted.target == Some(worker) {
                 let job = queued.accepted;
-                actions.sends.inner.send::<_, Own>(Delivery::new(
-                    job.reply_to,
-                    PoolResponse::Interrupted {
+                actions.sends.inner.responses.append(
+                    job.reply_to.deliver(PoolResponse::Interrupted {
                         job: job.id,
                         payload: job.payload,
                         reason: job
                             .interruption
                             .unwrap_or(PoolInterruption::AffinityRetired { worker, reason }),
-                    },
-                ));
+                    }),
+                );
             } else {
                 retained.push_back(queued);
             }
@@ -983,33 +980,29 @@ where
         self.backlog = retained;
     }
 
-    fn interrupt_all_for_shutdown(&mut self) -> Vec<Delivery<D>> {
-        let mut responses = Vec::new();
+    fn interrupt_all_for_shutdown(&mut self) -> Route::Sends {
+        let mut responses = Route::Sends::empty();
         for slot in &mut self.slots {
             let previous = core::mem::replace(&mut slot.state, SlotState::Stopping);
             match previous {
-                SlotState::Assigned { job, .. } => responses.push(Delivery::new(
-                    job.reply_to,
-                    PoolResponse::Interrupted {
+                SlotState::Assigned { job, .. } => {
+                    responses.append(job.reply_to.deliver(PoolResponse::Interrupted {
                         job: job.id,
                         payload: job.payload,
                         reason: PoolInterruption::PoolShutdown,
-                    },
-                )),
+                    }))
+                }
                 retired @ SlotState::Retired { .. } => slot.state = retired,
                 SlotState::Installing | SlotState::Idle | SlotState::Stopping => {}
             }
         }
         for queued in self.backlog.drain(..) {
             let job = queued.accepted;
-            responses.push(Delivery::new(
-                job.reply_to,
-                PoolResponse::Interrupted {
-                    job: job.id,
-                    payload: job.payload,
-                    reason: PoolInterruption::PoolShutdown,
-                },
-            ));
+            responses.append(job.reply_to.deliver(PoolResponse::Interrupted {
+                job: job.id,
+                payload: job.payload,
+                reason: PoolInterruption::PoolShutdown,
+            }));
         }
         responses
     }
@@ -1037,7 +1030,7 @@ where
 
     fn dispatch(
         &mut self,
-        actions: &mut PoolActions<A, D, J, R, C, ParentPath>,
+        actions: &mut PoolActions<A, C, Route, ParentPath>,
     ) -> Result<(), PoolError<A::Nonce>> {
         let mut selected_jobs = Vec::new();
         let mut plan = Vec::new();
@@ -1071,7 +1064,7 @@ where
         for planned in plan {
             selected_by_position.insert(planned.job_position, planned.slot_position);
         }
-        let mut selected_by_slot: Vec<Option<QueuedJob<A, D, J, R>>> =
+        let mut selected_by_slot: Vec<Option<QueuedJob<A, J, Route>>> =
             std::iter::repeat_with(|| None)
                 .take(self.slots.len())
                 .collect();
@@ -1120,7 +1113,8 @@ where
     }
 }
 
-impl<A, D, J, R, C, P, ParentPath> behavior::Protocol for PoolCore<A, D, J, R, C, P, ParentPath>
+impl<A, D, J, R, C, Route, P, ParentPath> behavior::Protocol
+    for PoolCore<A, D, J, R, C, Route, P, ParentPath>
 where
     A: Address,
     A::Nonce: From<u64>,
@@ -1129,12 +1123,13 @@ where
     J: Clone,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A, Msg = PoolAssignment<P>>,
+    Route: DeliveryRoute<D> + Clone,
 {
     type Addr = A;
-    type Msg = PoolMessage<A, D, J, R>;
+    type Msg = PoolMessage<A, D, J, R, Route>;
 }
 
-impl<A, D, J, R, C, P, ParentPath> Behavior for PoolCore<A, D, J, R, C, P, ParentPath>
+impl<A, D, J, R, C, Route, P, ParentPath> Behavior for PoolCore<A, D, J, R, C, Route, P, ParentPath>
 where
     A: Address,
     A::Nonce: From<u64>,
@@ -1143,10 +1138,11 @@ where
     J: Clone,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A, Msg = PoolAssignment<P>>,
+    Route: DeliveryRoute<D> + Clone,
 {
     type Protocol = Self;
-    type Event = PoolEvent<A, D, J, R>;
-    type Sends = PoolSends<A, D, J, R, C, ParentPath>;
+    type Event = PoolEvent<A, D, J, R, Route>;
+    type Sends = PoolSends<A, C, Route, ParentPath>;
     type Ph = Never;
     type Error = PoolError<A::Nonce>;
     type Birth = Births<ProxyWithParent<C, ParentPath>>;
@@ -1208,9 +1204,8 @@ where
                 ..
             }) => {
                 if self.supervisor.is_shutting_down() {
-                    let mut actions: PoolActions<A, D, J, R, C, ParentPath> = Actions::cont();
-                    actions.sends.inner.responses.push(Delivery::new(
-                        reply_to,
+                    let mut actions: PoolActions<A, C, Route, ParentPath> = Actions::cont();
+                    actions.sends.inner.responses.append(reply_to.deliver(
                         PoolResponse::Rejected {
                             job,
                             payload,
@@ -1246,11 +1241,11 @@ where
                     return self.supervisor_transition(PoolOwnershipEvent::WorkerStopped(stopped));
                 }
                 let proxy = stopped.proxy;
-                let mut responses = Vec::new();
+                let mut responses = Route::Sends::empty();
                 self.worker_stopped(&stopped, &mut responses)?;
                 let mut actions =
                     self.supervisor_transition(PoolOwnershipEvent::WorkerStopped(stopped))?;
-                actions.sends.inner.responses.extend(responses);
+                actions.sends.inner.responses.append(responses);
                 let replacement_requested = actions
                     .sends
                     .owned
@@ -1294,7 +1289,7 @@ where
                 let responses = self.interrupt_all_for_shutdown();
                 let mut actions =
                     self.supervisor_transition(PoolOwnershipEvent::ShutdownRequested)?;
-                actions.sends.inner.responses.extend(responses);
+                actions.sends.inner.responses.append(responses);
                 Ok(actions)
             }
             SupervisionEvent::ChildShutdownRejected(rejected) => {
@@ -1306,29 +1301,36 @@ where
 
 /// Public FIFO worker-pool behavior with its completion protocol fixed by the
 /// pool's own message signature.
-pub struct WorkerPoolWithParent<A: Address, D, J, R, C, ParentPath>
+pub struct WorkerPoolWithParent<A: Address, D, J, R, C, Route, ParentPath>
 where
     A::Nonce: From<u64>,
     D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
+    Route: DeliveryRoute<D> + Clone,
     C: Behavior<Ph = Never>,
-    C::Protocol:
-        crate::Protocol<Addr = A, Msg = PoolAssignment<crate::WorkerPoolProtocol<A, D, J, R>>>,
+    C::Protocol: crate::Protocol<
+            Addr = A,
+            Msg = PoolAssignment<crate::WorkerPoolProtocol<A, D, J, R, Route>>,
+        >,
 {
-    core: PoolCore<A, D, J, R, C, crate::WorkerPoolProtocol<A, D, J, R>, ParentPath>,
+    core: PoolCore<A, D, J, R, C, Route, crate::WorkerPoolProtocol<A, D, J, R, Route>, ParentPath>,
 }
 
 /// A FIFO worker pool whose proxy reports target its direct event layer.
-pub type WorkerPool<A, D, J, R, C> = WorkerPoolWithParent<A, D, J, R, C, behavior::Here>;
+pub type WorkerPool<A, D, J, R, C, Route> =
+    WorkerPoolWithParent<A, D, J, R, C, Route, behavior::Here>;
 
-impl<A, D, J, R, C, ParentPath> crate::BehaviorBase
-    for WorkerPoolWithParent<A, D, J, R, C, ParentPath>
+impl<A, D, J, R, C, Route, ParentPath> crate::BehaviorBase
+    for WorkerPoolWithParent<A, D, J, R, C, Route, ParentPath>
 where
     A: Address,
     A::Nonce: From<u64>,
     D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
+    Route: DeliveryRoute<D> + Clone,
     C: Behavior<Ph = Never>,
-    C::Protocol:
-        crate::Protocol<Addr = A, Msg = PoolAssignment<crate::WorkerPoolProtocol<A, D, J, R>>>,
+    C::Protocol: crate::Protocol<
+            Addr = A,
+            Msg = PoolAssignment<crate::WorkerPoolProtocol<A, D, J, R, Route>>,
+        >,
 {
     type Base = Self;
 
@@ -1337,21 +1339,24 @@ where
     }
 }
 
-impl<A, D, J, R, C, ParentPath> WorkerPoolWithParent<A, D, J, R, C, ParentPath>
+impl<A, D, J, R, C, Route, ParentPath> WorkerPoolWithParent<A, D, J, R, C, Route, ParentPath>
 where
     A: Address,
     A::Nonce: From<u64>,
     D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
+    Route: DeliveryRoute<D> + Clone,
     C: Behavior<Ph = Never>,
-    C::Protocol:
-        crate::Protocol<Addr = A, Msg = PoolAssignment<crate::WorkerPoolProtocol<A, D, J, R>>>,
+    C::Protocol: crate::Protocol<
+            Addr = A,
+            Msg = PoolAssignment<crate::WorkerPoolProtocol<A, D, J, R, Route>>,
+        >,
 {
     /// Construct a pool whose completion destination implements this exact
     /// pool protocol.
     pub fn with_parent(
         topology: ChildTopology<A::Nonce, C>,
         configuration: PoolConfiguration,
-        complete_to: Recipient<crate::WorkerPoolProtocol<A, D, J, R>>,
+        complete_to: Recipient<crate::WorkerPoolProtocol<A, D, J, R, Route>>,
         proxy_parent: ProxyParentIngress<A, ParentPath>,
     ) -> Result<Self, PoolConfigError<A::Nonce>> {
         PoolCore::with_parent(topology, configuration, complete_to, proxy_parent)
@@ -1369,20 +1374,23 @@ where
     }
 }
 
-impl<A, D, J, R, C> WorkerPoolWithParent<A, D, J, R, C, behavior::Here>
+impl<A, D, J, R, C, Route> WorkerPoolWithParent<A, D, J, R, C, Route, behavior::Here>
 where
     A: Address,
     A::Nonce: From<u64>,
     D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
+    Route: DeliveryRoute<D> + Clone,
     C: Behavior<Ph = Never>,
-    C::Protocol:
-        crate::Protocol<Addr = A, Msg = PoolAssignment<crate::WorkerPoolProtocol<A, D, J, R>>>,
+    C::Protocol: crate::Protocol<
+            Addr = A,
+            Msg = PoolAssignment<crate::WorkerPoolProtocol<A, D, J, R, Route>>,
+        >,
 {
     /// Construct a pool whose proxy reports target the pool's direct event layer.
     pub fn new(
         topology: ChildTopology<A::Nonce, C>,
         configuration: PoolConfiguration,
-        complete_to: Recipient<crate::WorkerPoolProtocol<A, D, J, R>>,
+        complete_to: Recipient<crate::WorkerPoolProtocol<A, D, J, R, Route>>,
     ) -> Result<Self, PoolConfigError<A::Nonce>> {
         Self::with_parent(
             topology,
@@ -1393,19 +1401,23 @@ where
     }
 }
 
-impl<A, D, J, R, C, ParentPath> Behavior for WorkerPoolWithParent<A, D, J, R, C, ParentPath>
+impl<A, D, J, R, C, Route, ParentPath> Behavior
+    for WorkerPoolWithParent<A, D, J, R, C, Route, ParentPath>
 where
     A: Address,
     A::Nonce: From<u64>,
     D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
+    Route: DeliveryRoute<D> + Clone,
     J: Clone,
     C: Behavior<Ph = Never>,
-    C::Protocol:
-        crate::Protocol<Addr = A, Msg = PoolAssignment<crate::WorkerPoolProtocol<A, D, J, R>>>,
+    C::Protocol: crate::Protocol<
+            Addr = A,
+            Msg = PoolAssignment<crate::WorkerPoolProtocol<A, D, J, R, Route>>,
+        >,
 {
-    type Protocol = crate::WorkerPoolProtocol<A, D, J, R>;
-    type Event = WorkerPoolEvent<A, D, J, R>;
-    type Sends = WorkerPoolSends<A, D, J, R, C, ParentPath>;
+    type Protocol = crate::WorkerPoolProtocol<A, D, J, R, Route>;
+    type Event = WorkerPoolEvent<A, D, J, R, Route>;
+    type Sends = WorkerPoolSends<A, C, Route, ParentPath>;
     type Ph = Never;
     type Error = PoolError<A::Nonce>;
     type Birth = Births<ProxyWithParent<C, ParentPath>>;
@@ -1465,7 +1477,8 @@ mod tests {
 
     impl behavior::Protocol for TestWorker {
         type Addr = MailAddr;
-        type Msg = PoolAssignment<WorkerPoolProtocol<MailAddr, TestReply, u8, ()>>;
+        type Msg =
+            PoolAssignment<WorkerPoolProtocol<MailAddr, TestReply, u8, (), Recipient<TestReply>>>;
     }
 
     impl Behavior for TestWorker {
@@ -1503,6 +1516,7 @@ mod tests {
             u8,
             (),
             TestWorker,
+            Recipient<TestReply>,
             ParentPath,
         >::with_parent(
             ChildTopology::indexed(|_| 1, 1, |_| Some(TestWorker)),
@@ -1579,7 +1593,7 @@ mod tests {
         pool.slots[0].state = SlotState::Idle;
         pool.slots[1].state = SlotState::Idle;
 
-        let mut actions: PoolActions<MailAddr, TestReply, u8, (), TestWorker> = Actions::cont();
+        let mut actions: PoolActions<MailAddr, TestWorker, Recipient<TestReply>> = Actions::cont();
         pool.dispatch(&mut actions).unwrap();
 
         let assignments = &actions.sends.inner.assignments;
@@ -1647,38 +1661,49 @@ mod tests {
 /// }
 /// let _: Option<KeyedWorkerPool<MailAddr, Reply, NonKey, u8, (), Worker, fn(&NonKey) -> u64>> = None;
 /// ```
-pub struct KeyedWorkerPoolWithParent<A: Address, D, K, J, R, C, S, ParentPath>
+pub struct KeyedWorkerPoolWithParent<A: Address, D, K, J, R, C, Route, S, ParentPath>
 where
     A::Nonce: From<u64>,
     D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
+    Route: DeliveryRoute<D> + Clone,
     K: Eq,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<
             Addr = A,
-            Msg = PoolAssignment<crate::KeyedWorkerPoolProtocol<A, D, K, J, R>>,
+            Msg = PoolAssignment<crate::KeyedWorkerPoolProtocol<A, D, K, J, R, Route>>,
         >,
     S: AffinitySelector<K, A::Nonce>,
 {
-    pool: PoolCore<A, D, J, R, C, crate::KeyedWorkerPoolProtocol<A, D, K, J, R>, ParentPath>,
+    pool: PoolCore<
+        A,
+        D,
+        J,
+        R,
+        C,
+        Route,
+        crate::KeyedWorkerPoolProtocol<A, D, K, J, R, Route>,
+        ParentPath,
+    >,
     bindings: Vec<(K, A::Nonce)>,
     selector: S,
 }
 
 /// A keyed pool whose proxies report to the pool's direct event layer.
-pub type KeyedWorkerPool<A, D, K, J, R, C, S> =
-    KeyedWorkerPoolWithParent<A, D, K, J, R, C, S, behavior::Here>;
+pub type KeyedWorkerPool<A, D, K, J, R, C, Route, S> =
+    KeyedWorkerPoolWithParent<A, D, K, J, R, C, Route, S, behavior::Here>;
 
-impl<A, D, K, J, R, C, S, ParentPath> crate::BehaviorBase
-    for KeyedWorkerPoolWithParent<A, D, K, J, R, C, S, ParentPath>
+impl<A, D, K, J, R, C, Route, S, ParentPath> crate::BehaviorBase
+    for KeyedWorkerPoolWithParent<A, D, K, J, R, C, Route, S, ParentPath>
 where
     A: Address,
     A::Nonce: From<u64>,
     D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
+    Route: DeliveryRoute<D> + Clone,
     K: Eq,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<
             Addr = A,
-            Msg = PoolAssignment<crate::KeyedWorkerPoolProtocol<A, D, K, J, R>>,
+            Msg = PoolAssignment<crate::KeyedWorkerPoolProtocol<A, D, K, J, R, Route>>,
         >,
     S: AffinitySelector<K, A::Nonce>,
 {
@@ -1689,16 +1714,18 @@ where
     }
 }
 
-impl<A, D, K, J, R, C, S, ParentPath> KeyedWorkerPoolWithParent<A, D, K, J, R, C, S, ParentPath>
+impl<A, D, K, J, R, C, Route, S, ParentPath>
+    KeyedWorkerPoolWithParent<A, D, K, J, R, C, Route, S, ParentPath>
 where
     A: Address,
     A::Nonce: From<u64>,
     D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
+    Route: DeliveryRoute<D> + Clone,
     K: Eq,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<
             Addr = A,
-            Msg = PoolAssignment<crate::KeyedWorkerPoolProtocol<A, D, K, J, R>>,
+            Msg = PoolAssignment<crate::KeyedWorkerPoolProtocol<A, D, K, J, R, Route>>,
         >,
     S: AffinitySelector<K, A::Nonce>,
 {
@@ -1715,7 +1742,7 @@ where
         topology: ChildTopology<A::Nonce, C>,
         configuration: PoolConfiguration,
         selector: S,
-        complete_to: Recipient<crate::KeyedWorkerPoolProtocol<A, D, K, J, R>>,
+        complete_to: Recipient<crate::KeyedWorkerPoolProtocol<A, D, K, J, R, Route>>,
         proxy_parent: ProxyParentIngress<A, ParentPath>,
     ) -> Result<Self, PoolConfigError<A::Nonce>> {
         Ok(Self {
@@ -1757,16 +1784,18 @@ where
     }
 }
 
-impl<A, D, K, J, R, C, S> KeyedWorkerPoolWithParent<A, D, K, J, R, C, S, behavior::Here>
+impl<A, D, K, J, R, C, Route, S>
+    KeyedWorkerPoolWithParent<A, D, K, J, R, C, Route, S, behavior::Here>
 where
     A: Address,
     A::Nonce: From<u64>,
     D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
+    Route: DeliveryRoute<D> + Clone,
     K: Eq,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<
             Addr = A,
-            Msg = PoolAssignment<crate::KeyedWorkerPoolProtocol<A, D, K, J, R>>,
+            Msg = PoolAssignment<crate::KeyedWorkerPoolProtocol<A, D, K, J, R, Route>>,
         >,
     S: AffinitySelector<K, A::Nonce>,
 {
@@ -1774,7 +1803,7 @@ where
         topology: ChildTopology<A::Nonce, C>,
         configuration: PoolConfiguration,
         selector: S,
-        complete_to: Recipient<crate::KeyedWorkerPoolProtocol<A, D, K, J, R>>,
+        complete_to: Recipient<crate::KeyedWorkerPoolProtocol<A, D, K, J, R, Route>>,
     ) -> Result<Self, PoolConfigError<A::Nonce>> {
         Self::with_parent(
             topology,
@@ -1786,24 +1815,25 @@ where
     }
 }
 
-impl<A, D, K, J, R, C, S, ParentPath> Behavior
-    for KeyedWorkerPoolWithParent<A, D, K, J, R, C, S, ParentPath>
+impl<A, D, K, J, R, C, Route, S, ParentPath> Behavior
+    for KeyedWorkerPoolWithParent<A, D, K, J, R, C, Route, S, ParentPath>
 where
     A: Address,
     A::Nonce: From<u64>,
     D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
+    Route: DeliveryRoute<D> + Clone,
     K: Eq,
     J: Clone,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<
             Addr = A,
-            Msg = PoolAssignment<crate::KeyedWorkerPoolProtocol<A, D, K, J, R>>,
+            Msg = PoolAssignment<crate::KeyedWorkerPoolProtocol<A, D, K, J, R, Route>>,
         >,
     S: AffinitySelector<K, A::Nonce>,
 {
-    type Protocol = crate::KeyedWorkerPoolProtocol<A, D, K, J, R>;
-    type Event = KeyedPoolEvent<A, D, K, J, R>;
-    type Sends = PoolSends<A, D, J, R, C, ParentPath>;
+    type Protocol = crate::KeyedWorkerPoolProtocol<A, D, K, J, R, Route>;
+    type Event = KeyedPoolEvent<A, D, K, J, R, Route>;
+    type Sends = PoolSends<A, C, Route, ParentPath>;
     type Ph = Never;
     type Error = PoolError<A::Nonce>;
     type Birth = Births<ProxyWithParent<C, ParentPath>>;
@@ -1829,9 +1859,8 @@ where
                 ..
             }) => {
                 if self.pool.supervisor.is_shutting_down() {
-                    let mut actions: PoolActions<A, D, J, R, C, ParentPath> = Actions::cont();
-                    actions.sends.inner.responses.push(Delivery::new(
-                        reply_to,
+                    let mut actions: PoolActions<A, C, Route, ParentPath> = Actions::cont();
+                    actions.sends.inner.responses.append(reply_to.deliver(
                         PoolResponse::Rejected {
                             job,
                             payload,

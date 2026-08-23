@@ -1,10 +1,14 @@
 //! Fixed-membership cyclic barrier coordination.
 
 use behavior::{
-    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, MessageProtocol, Never,
-    NoBirths, Recipient, User,
+    Actions, Address, Behavior, BehaviorActed, BehaviorBase, MessageProtocol, Never, NoBirths,
+    SendEffects, User,
 };
+#[cfg(test)]
+use behavior::{Delivery, Recipient};
 use thiserror::Error;
+
+use crate::DeliveryRoute;
 
 /// Explicit barrier generation carried by every arrival and release.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -18,36 +22,31 @@ pub struct BarrierReleased {
 }
 
 /// One keyed arrival at a [`Barrier`].
-pub struct BarrierMessage<A: Address, K> {
+pub struct BarrierMessage<K, Route> {
     /// Generation the participant intends to join.
     pub generation: BarrierGeneration,
     /// Participant key from the barrier's fixed membership.
     pub participant: K,
     /// Typed recipient for this generation's release.
-    pub reply_to: Recipient<MessageProtocol<A, BarrierReleased>>,
-}
-
-impl<A: Address, K> behavior::Protocol for BarrierMessage<A, K> {
-    type Addr = A;
-    type Msg = BarrierMessage<A, K>;
+    pub reply_to: Route,
 }
 
 /// One accepted arrival retained until its generation releases.
-pub struct BarrierArrival<A: Address, K> {
+pub struct BarrierArrival<K, Route> {
     /// Fixed-membership key.
     pub participant: K,
     /// Typed release recipient.
-    pub reply_to: Recipient<MessageProtocol<A, BarrierReleased>>,
+    pub reply_to: Route,
 }
 
 /// Complete semantic state of a cyclic [`Barrier`].
-pub enum BarrierState<A: Address, K> {
+pub enum BarrierState<K, Route> {
     /// The current generation is accepting its fixed membership once each.
     Gathering {
         /// Exact accepted generation.
         generation: BarrierGeneration,
         /// Accepted arrivals in arrival order.
-        arrivals: Vec<BarrierArrival<A, K>>,
+        arrivals: Vec<BarrierArrival<K, Route>>,
     },
     /// The final representable generation released; no later generation exists.
     Exhausted {
@@ -149,15 +148,21 @@ pub enum BarrierError<K> {
 /// and release ordering are Bombay workflow policy; delivery is interpreted
 /// by Address and Communication. Construction rejects empty or duplicate
 /// membership. No method has a semantic panic condition.
-pub struct Barrier<A: Address, K> {
+pub struct Barrier<A, K, Route>
+where
+    A: Address,
+    Route: DeliveryRoute<MessageProtocol<A, BarrierReleased>>,
+{
     members: Vec<K>,
-    state: BarrierState<A, K>,
+    state: BarrierState<K, Route>,
+    marker: core::marker::PhantomData<fn() -> A>,
 }
 
-impl<A, K> Barrier<A, K>
+impl<A, K, Route> Barrier<A, K, Route>
 where
     A: Address,
     K: Clone + Eq,
+    Route: DeliveryRoute<MessageProtocol<A, BarrierReleased>>,
 {
     /// Bind validated membership to generation zero of a barrier actor.
     #[must_use]
@@ -168,6 +173,7 @@ where
                 generation: BarrierGeneration(0),
                 arrivals: Vec::new(),
             },
+            marker: core::marker::PhantomData,
         }
     }
 
@@ -179,15 +185,16 @@ where
 
     /// Borrow the complete current generation state.
     #[must_use]
-    pub const fn state(&self) -> &BarrierState<A, K> {
+    pub const fn state(&self) -> &BarrierState<K, Route> {
         &self.state
     }
 }
 
-impl<A, K> BehaviorBase for Barrier<A, K>
+impl<A, K, Route> BehaviorBase for Barrier<A, K, Route>
 where
     A: Address,
     K: Clone + Eq,
+    Route: DeliveryRoute<MessageProtocol<A, BarrierReleased>>,
 {
     type Base = Self;
 
@@ -196,23 +203,26 @@ where
     }
 }
 
-impl<A, K> behavior::Protocol for Barrier<A, K>
+impl<A, K, Route> behavior::Protocol for Barrier<A, K, Route>
 where
     A: Address,
     K: Clone + Eq,
+    Route: DeliveryRoute<MessageProtocol<A, BarrierReleased>>,
 {
     type Addr = A;
-    type Msg = BarrierMessage<A, K>;
+    type Msg = BarrierMessage<K, Route>;
 }
 
-impl<A, K> Behavior for Barrier<A, K>
+impl<A, K, Route> Behavior for Barrier<A, K, Route>
 where
     A: Address,
     K: Clone + Eq,
+    Route: DeliveryRoute<MessageProtocol<A, BarrierReleased>>,
+    Route::Sends: behavior::SendsFor<User<A, BarrierMessage<K, Route>>>,
 {
-    type Protocol = BarrierMessage<A, K>;
+    type Protocol = MessageProtocol<A, BarrierMessage<K, Route>>;
     type Event = User<A, crate::BehaviorMessage<Self>>;
-    type Sends = Vec<Delivery<MessageProtocol<A, BarrierReleased>>>;
+    type Sends = Route::Sends;
     type Ph = Never;
     type Error = BarrierError<K>;
     type Birth = NoBirths;
@@ -280,12 +290,11 @@ where
                         arrivals: Vec::with_capacity(self.members.len()),
                     }
                 });
-        Ok(Actions::send(
-            completed
-                .into_iter()
-                .map(|arrival| Delivery::new(arrival.reply_to, BarrierReleased { generation }))
-                .collect(),
-        ))
+        let mut sends = Route::Sends::empty();
+        for arrival in completed {
+            sends.append(arrival.reply_to.deliver(BarrierReleased { generation }));
+        }
+        Ok(Actions::send(sends))
     }
 }
 

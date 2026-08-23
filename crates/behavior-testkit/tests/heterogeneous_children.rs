@@ -3,7 +3,7 @@
 use behavior::{Activate as _, DynamicSupervisor, DynamicSupervisorOutcome, Guardian};
 use foundation::{
     Actions, Behavior, BehaviorActed, ChildChoice, Children, ChildrenError, Create, CreationKind,
-    MailAddr, Never, NoBirths, User,
+    MailAddr, Never, NoBirths, Recipient, User,
 };
 
 #[derive(Debug, PartialEq, Eq)]
@@ -68,7 +68,7 @@ impl Behavior for SupervisorReply {
     }
 }
 
-type DeviceSupervisor = DynamicSupervisor<MailAddr, Devices, SupervisorReply>;
+type DeviceSupervisor = DynamicSupervisor<MailAddr, Devices, Recipient<SupervisorReply>>;
 type RootChildren = ChildChoice<Queries, ChildChoice<DeviceSupervisor, Never>>;
 
 struct Root;

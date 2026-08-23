@@ -235,7 +235,7 @@ impl Behavior for Reply {
 struct Worker;
 impl behavior::Protocol for Worker {
     type Addr = MailAddr;
-    type Msg = PoolAssignment<WorkerPoolProtocol<MailAddr, Reply, u8, ()>>;
+    type Msg = PoolAssignment<WorkerPoolProtocol<MailAddr, Reply, u8, (), Recipient<Reply>>>;
 }
 
 impl Behavior for Worker {

@@ -94,7 +94,8 @@ fn terminal(
 }
 
 fuzz_target!(|bytes: &[u8]| {
-    let mut breaker = CircuitBreaker::<MailAddr, BreakerReply>::new(
+    let mut breaker =
+        CircuitBreaker::<MailAddr, BreakerReply, Recipient<BreakerReply>>::new(
         NonZeroU32::new(2).expect("constant is non-zero"),
         Duration::from_nanos(1),
         TimerId(1),
@@ -103,11 +104,21 @@ fuzz_target!(|bytes: &[u8]| {
     .initialize()
     .expect("breaker initialization is infallible")
     .behavior;
-    let mut presence = (Presence::<MailAddr, Vec<u8>, PresenceReplyTarget>::new(timer))
+    let mut presence = (Presence::<
+        MailAddr,
+        Vec<u8>,
+        PresenceReplyTarget,
+        Recipient<PresenceReplyTarget>,
+    >::new(timer))
         .initialize()
         .expect("presence initialization is infallible")
         .behavior;
-    let mut workflow = Workflow::<MailAddr, u8, WorkflowReply>::new(WorkflowDefinition {
+    let mut workflow = Workflow::<
+        MailAddr,
+        u8,
+        WorkflowReply,
+        Recipient<WorkflowReply>,
+    >::new(WorkflowDefinition {
         steps: vec![0, 1, 2],
         dependencies: vec![(0, 2), (1, 2)],
     })

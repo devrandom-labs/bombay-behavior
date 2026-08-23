@@ -1,9 +1,13 @@
 //! Countdown latch coordination.
 
 use behavior::{
-    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, MessageProtocol, Never,
-    NoBirths, Recipient, User,
+    Actions, Address, Behavior, BehaviorActed, BehaviorBase, MessageProtocol, Never, NoBirths,
+    SendEffects, User,
 };
+#[cfg(test)]
+use behavior::{Delivery, Recipient};
+
+use crate::DeliveryRoute;
 
 /// Release fact delivered to every accepted arrival.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
@@ -14,32 +18,27 @@ pub struct LatchReleased;
 /// The reply recipient is retained until release. An arrival after release is
 /// answered immediately and does not reopen the latch.
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub struct LatchMessage<A: Address> {
+pub struct LatchMessage<Route> {
     /// Typed participant recipient awaiting the release fact.
-    pub reply_to: Recipient<MessageProtocol<A, LatchReleased>>,
+    pub reply_to: Route,
 }
 
-impl<A: Address> behavior::Protocol for LatchMessage<A> {
-    type Addr = A;
-    type Msg = LatchMessage<A>;
-}
-
-impl<A: Address> LatchMessage<A> {
+impl<Route> LatchMessage<Route> {
     /// Construct one owned arrival.
     #[must_use]
-    pub const fn arrive(reply_to: Recipient<MessageProtocol<A, LatchReleased>>) -> Self {
+    pub const fn arrive(reply_to: Route) -> Self {
         Self { reply_to }
     }
 }
 
 /// Complete semantic state of a [`Latch`].
-pub enum LatchState<A: Address> {
+pub enum LatchState<Route> {
     /// More arrivals are required; every listed participant is waiting.
     Counting {
         /// Number of additional arrivals needed, including the next one.
         remaining: usize,
         /// Accepted participants in arrival order.
-        waiting: Vec<Recipient<MessageProtocol<A, LatchReleased>>>,
+        waiting: Vec<Route>,
     },
     /// The threshold was reached and cannot be reset by this incarnation.
     Released,
@@ -55,11 +54,20 @@ pub enum LatchState<A: Address> {
 /// There are no rejection, retry, cancellation, or timer paths. The latch
 /// never terminates itself. Countdown and ordering are Bombay workflow policy,
 /// while typed delivery is interpreted by Address and Communication.
-pub struct Latch<A: Address> {
-    state: LatchState<A>,
+pub struct Latch<A, Route>
+where
+    A: Address,
+    Route: DeliveryRoute<MessageProtocol<A, LatchReleased>>,
+{
+    state: LatchState<Route>,
+    marker: core::marker::PhantomData<fn() -> A>,
 }
 
-impl<A: Address> Latch<A> {
+impl<A, Route> Latch<A, Route>
+where
+    A: Address,
+    Route: DeliveryRoute<MessageProtocol<A, LatchReleased>>,
+{
     /// Construct a latch requiring `count` arrivals.
     #[must_use]
     pub fn new(count: usize) -> Self {
@@ -72,17 +80,22 @@ impl<A: Address> Latch<A> {
                     waiting: Vec::with_capacity(count),
                 }
             },
+            marker: core::marker::PhantomData,
         }
     }
 
     /// Borrow the complete current semantic state.
     #[must_use]
-    pub const fn state(&self) -> &LatchState<A> {
+    pub const fn state(&self) -> &LatchState<Route> {
         &self.state
     }
 }
 
-impl<A: Address> BehaviorBase for Latch<A> {
+impl<A, Route> BehaviorBase for Latch<A, Route>
+where
+    A: Address,
+    Route: DeliveryRoute<MessageProtocol<A, LatchReleased>>,
+{
     type Base = Self;
 
     fn base(&self) -> &Self {
@@ -90,15 +103,24 @@ impl<A: Address> BehaviorBase for Latch<A> {
     }
 }
 
-impl<A: Address> behavior::Protocol for Latch<A> {
+impl<A, Route> behavior::Protocol for Latch<A, Route>
+where
+    A: Address,
+    Route: DeliveryRoute<MessageProtocol<A, LatchReleased>>,
+{
     type Addr = A;
-    type Msg = LatchMessage<A>;
+    type Msg = LatchMessage<Route>;
 }
 
-impl<A: Address> Behavior for Latch<A> {
-    type Protocol = LatchMessage<A>;
+impl<A, Route> Behavior for Latch<A, Route>
+where
+    A: Address,
+    Route: DeliveryRoute<MessageProtocol<A, LatchReleased>>,
+    Route::Sends: behavior::SendsFor<User<A, LatchMessage<Route>>>,
+{
+    type Protocol = MessageProtocol<A, LatchMessage<Route>>;
     type Event = User<A, crate::BehaviorMessage<Self>>;
-    type Sends = Vec<Delivery<MessageProtocol<A, LatchReleased>>>;
+    type Sends = Route::Sends;
     type Ph = Never;
     type Error = Never;
     type Birth = NoBirths;
@@ -108,7 +130,7 @@ impl<A: Address> Behavior for Latch<A> {
         let (next, sends) = match current {
             LatchState::Released => (
                 LatchState::Released,
-                vec![Delivery::new(event.message.reply_to, LatchReleased)],
+                event.message.reply_to.deliver(LatchReleased),
             ),
             LatchState::Counting {
                 remaining,
@@ -120,18 +142,16 @@ impl<A: Address> Behavior for Latch<A> {
                         remaining: remaining - 1,
                         waiting,
                     },
-                    Vec::new(),
+                    Route::Sends::empty(),
                 )
             }
             LatchState::Counting { mut waiting, .. } => {
                 waiting.push(event.message.reply_to);
-                (
-                    LatchState::Released,
-                    waiting
-                        .into_iter()
-                        .map(|participant| Delivery::new(participant, LatchReleased))
-                        .collect(),
-                )
+                let mut sends = Route::Sends::empty();
+                for participant in waiting {
+                    sends.append(participant.deliver(LatchReleased));
+                }
+                (LatchState::Released, sends)
             }
         };
         self.state = next;

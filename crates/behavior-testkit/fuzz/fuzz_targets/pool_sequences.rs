@@ -17,7 +17,9 @@ struct KeyedWorker;
 
 impl behavior::Protocol for Worker {
     type Addr = MailAddr;
-    type Msg = PoolAssignment<WorkerPoolProtocol<MailAddr, Reply, u8, u8>>;
+    type Msg = PoolAssignment<
+        WorkerPoolProtocol<MailAddr, Reply, u8, u8, Recipient<Reply>>,
+    >;
 }
 
 impl Behavior for Worker {
@@ -43,7 +45,9 @@ impl Behavior for Worker {
 
 impl behavior::Protocol for KeyedWorker {
     type Addr = MailAddr;
-    type Msg = PoolAssignment<KeyedWorkerPoolProtocol<MailAddr, Reply, u8, u8, u8>>;
+    type Msg = PoolAssignment<
+        KeyedWorkerPoolProtocol<MailAddr, Reply, u8, u8, u8, Recipient<Reply>>,
+    >;
 }
 
 impl Behavior for KeyedWorker {

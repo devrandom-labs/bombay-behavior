@@ -21,7 +21,8 @@ struct Worker;
 
 struct Reply;
 
-type PoolDefinition = WorkerPool<MailAddr, Reply, u8, u16, Worker>;
+type ReplyRoute = Recipient<Reply>;
+type PoolDefinition = WorkerPool<MailAddr, Reply, u8, u16, Worker, ReplyRoute>;
 
 impl behavior::Protocol for Reply {
     type Addr = MailAddr;
@@ -51,7 +52,7 @@ impl Behavior for Reply {
 
 impl behavior::Protocol for Worker {
     type Addr = MailAddr;
-    type Msg = PoolAssignment<WorkerPoolProtocol<MailAddr, Reply, u8, u16>>;
+    type Msg = PoolAssignment<WorkerPoolProtocol<MailAddr, Reply, u8, u16, ReplyRoute>>;
 }
 
 impl Behavior for Worker {
@@ -123,7 +124,9 @@ impl Behavior for PanicReply {
 
 impl behavior::Protocol for PanicWorker {
     type Addr = MailAddr;
-    type Msg = PoolAssignment<WorkerPoolProtocol<MailAddr, PanicReply, PanicPayload, ()>>;
+    type Msg = PoolAssignment<
+        WorkerPoolProtocol<MailAddr, PanicReply, PanicPayload, (), Recipient<PanicReply>>,
+    >;
 }
 
 impl Behavior for PanicWorker {
@@ -169,7 +172,7 @@ fn pool(workers: usize, capacity: usize, interruption: InterruptionPolicy) -> Po
 fn install(
     pool: &mut behavior::Active<PoolDefinition>,
     slot: u64,
-) -> behavior::WorkerPoolActions<MailAddr, Reply, u8, u16, Worker> {
+) -> behavior::WorkerPoolActions<MailAddr, Worker, ReplyRoute> {
     pool.on_path(WorkerCreationResolved::new(
         slot,
         0,
@@ -183,7 +186,7 @@ fn submit(
     pool: &mut behavior::Active<PoolDefinition>,
     id: u64,
     payload: u8,
-) -> behavior::WorkerPoolActions<MailAddr, Reply, u8, u16, Worker> {
+) -> behavior::WorkerPoolActions<MailAddr, Worker, ReplyRoute> {
     pool.receive(
         MailAddr(90),
         PoolMessage::Submit {
@@ -196,13 +199,13 @@ fn submit(
 }
 
 fn assignments(
-    actions: &behavior::WorkerPoolActions<MailAddr, Reply, u8, u16, Worker>,
+    actions: &behavior::WorkerPoolActions<MailAddr, Worker, ReplyRoute>,
 ) -> &[behavior::ChildDelivery<Proxy<Worker>, behavior::ChildHead>] {
     &actions.sends.inner.assignments
 }
 
 fn responses(
-    actions: &behavior::WorkerPoolActions<MailAddr, Reply, u8, u16, Worker>,
+    actions: &behavior::WorkerPoolActions<MailAddr, Worker, ReplyRoute>,
 ) -> &[Delivery<Reply>] {
     &actions.sends.inner.responses
 }

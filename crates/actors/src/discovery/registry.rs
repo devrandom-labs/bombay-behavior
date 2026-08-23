@@ -1,10 +1,14 @@
 //! Typed recipient bindings and lookup replies.
 
+#[cfg(test)]
+use behavior::Delivery;
 use behavior::{
-    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, Never, NoBirths, Protocol,
-    Recipient, User,
+    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Never, NoBirths, Protocol, Recipient,
+    User,
 };
 use thiserror::Error;
+
+use crate::DeliveryRoute;
 
 /// The complete lookup result returned by [`Registry`].
 pub enum RegistryResult<K, D: Protocol> {
@@ -52,13 +56,13 @@ impl<K: Eq, D: Protocol> Eq for RegistryResult<K, D> {}
 ///
 /// A lookup owns a typed reply recipient; no runtime registry or reply-channel
 /// discovery is performed.
-pub enum RegistryMessage<K, D: Protocol, Reply: behavior::Protocol> {
+pub enum RegistryMessage<K, D: Protocol, Route> {
     /// Establish a previously absent binding.
     Bind { key: K, recipient: Recipient<D> },
     /// Remove a binding only if it still names the supplied recipient.
     Unbind { key: K, recipient: Recipient<D> },
     /// Return the exact current result to `reply_to`.
-    Lookup { key: K, reply_to: Recipient<Reply> },
+    Lookup { key: K, reply_to: Route },
 }
 
 /// A rejected registry mutation.
@@ -85,13 +89,23 @@ pub enum RegistryError<K> {
 /// actor does not terminate by policy. Ordering and conflict behavior are
 /// deliberate Bombay policy; endpoint generation and delivery are interpreted
 /// by Bombay Address and Communication.
-pub struct Registry<A: Address, K, D: Protocol<Addr = A>, Reply: behavior::Protocol<Addr = A>> {
+pub struct Registry<A, K, D, Reply, Route>
+where
+    A: Address,
+    D: Protocol<Addr = A>,
+    Reply: behavior::Protocol<Addr = A>,
+    Route: DeliveryRoute<Reply>,
+{
     bindings: Vec<(K, Recipient<D>)>,
-    address: core::marker::PhantomData<fn() -> (A, Reply)>,
+    address: core::marker::PhantomData<fn() -> (A, Reply, Route)>,
 }
 
-impl<A: Address, K, D: Protocol<Addr = A>, Reply: behavior::Protocol<Addr = A>>
-    Registry<A, K, D, Reply>
+impl<A, K, D, Reply, Route> Registry<A, K, D, Reply, Route>
+where
+    A: Address,
+    D: Protocol<Addr = A>,
+    Reply: behavior::Protocol<Addr = A>,
+    Route: DeliveryRoute<Reply>,
 {
     /// Construct an empty registry definition.
     #[must_use]
@@ -109,16 +123,24 @@ impl<A: Address, K, D: Protocol<Addr = A>, Reply: behavior::Protocol<Addr = A>>
     }
 }
 
-impl<A: Address, K, D: Protocol<Addr = A>, Reply: behavior::Protocol<Addr = A>> Default
-    for Registry<A, K, D, Reply>
+impl<A, K, D, Reply, Route> Default for Registry<A, K, D, Reply, Route>
+where
+    A: Address,
+    D: Protocol<Addr = A>,
+    Reply: behavior::Protocol<Addr = A>,
+    Route: DeliveryRoute<Reply>,
 {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<A: Address, K, D: Protocol<Addr = A>, Reply: behavior::Protocol<Addr = A>> BehaviorBase
-    for Registry<A, K, D, Reply>
+impl<A, K, D, Reply, Route> BehaviorBase for Registry<A, K, D, Reply, Route>
+where
+    A: Address,
+    D: Protocol<Addr = A>,
+    Reply: behavior::Protocol<Addr = A>,
+    Route: DeliveryRoute<Reply>,
 {
     type Base = Self;
 
@@ -127,27 +149,30 @@ impl<A: Address, K, D: Protocol<Addr = A>, Reply: behavior::Protocol<Addr = A>> 
     }
 }
 
-impl<A, K, D, Reply> behavior::Protocol for Registry<A, K, D, Reply>
+impl<A, K, D, Reply, Route> behavior::Protocol for Registry<A, K, D, Reply, Route>
 where
     A: Address,
     K: Clone + Eq,
     D: Protocol<Addr = A>,
     Reply: behavior::Protocol<Addr = A, Msg = RegistryResult<K, D>>,
+    Route: DeliveryRoute<Reply>,
 {
     type Addr = A;
-    type Msg = RegistryMessage<K, D, Reply>;
+    type Msg = RegistryMessage<K, D, Route>;
 }
 
-impl<A, K, D, Reply> Behavior for Registry<A, K, D, Reply>
+impl<A, K, D, Reply, Route> Behavior for Registry<A, K, D, Reply, Route>
 where
     A: Address,
     K: Clone + Eq,
     D: Protocol<Addr = A>,
     Reply: behavior::Protocol<Addr = A, Msg = RegistryResult<K, D>>,
+    Route: DeliveryRoute<Reply>,
+    Route::Sends: behavior::SendsFor<User<A, RegistryMessage<K, D, Route>>>,
 {
     type Protocol = Self;
     type Event = User<A, crate::BehaviorMessage<Self>>;
-    type Sends = Vec<Delivery<Reply>>;
+    type Sends = Route::Sends;
     type Ph = Never;
     type Error = RegistryError<K>;
     type Birth = NoBirths;
@@ -183,7 +208,7 @@ where
                             recipient: *recipient,
                         },
                     );
-                Ok(Actions::send(vec![Delivery::new(reply_to, result)]))
+                Ok(Actions::send(reply_to.deliver(result)))
             }
         }
     }
@@ -235,7 +260,7 @@ mod tests {
         }
     }
 
-    type TestRegistry = Registry<MailAddr, u8, Destination, Reply>;
+    type TestRegistry = Registry<MailAddr, u8, Destination, Reply, Recipient<Reply>>;
 
     #[test]
     fn mutations_are_atomic_and_stale_unbind_is_typed() {

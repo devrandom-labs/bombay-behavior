@@ -89,6 +89,12 @@ which reusable templates intentionally use logical names, exact installed
 capabilities, or creator-local child routes, and the hard-coding checks applied
 across the catalogue.
 
+The [external actor-system interface](docs/external-actor-interface.md) records
+the intended common boundary for HTTP, CLI, tests, embedded clients, and future
+transports: a statically typed receptionist product plus real external actor
+endpoints, with discovery remaining an optional actor protocol rather than a
+global runtime service.
+
 ## Authoring a behavior
 
 Use `#[behavior::behavior(...)]` for a nominal user-message behavior. The

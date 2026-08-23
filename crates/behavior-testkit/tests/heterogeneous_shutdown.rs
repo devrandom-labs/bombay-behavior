@@ -3,10 +3,11 @@
 use std::time::Instant;
 
 use behavior::{
-    Actions, Activate as _, Behavior, BehaviorActed, ChildRoute, ChildStopped, Exit,
-    HeterogeneousShutdownCoordinator, HeterogeneousShutdownPlan, MailAddr, Never, NoBirths,
-    NoShutdownTargets, ShutdownChoice, ShutdownPlanError, ShutdownRequested, ShutdownState, Step,
-    StopOnShutdown, User, shutdown_target,
+    Actions, Activate as _, Behavior, BehaviorActed, ChildHead, ChildRoute, ChildStopped, Exit,
+    HeterogeneousShutdownCoordinator, HeterogeneousShutdownPlan, InstallShutdownPlan, MailAddr,
+    Never, NoBirths, NoShutdownTargets, ShutdownChoice, ShutdownCoordinator,
+    ShutdownCoordinatorError, ShutdownPlan, ShutdownPlanError, ShutdownRequested, ShutdownState,
+    Step, StopOnShutdown, User, shutdown_target,
 };
 use proptest::prelude::*;
 
@@ -123,7 +124,7 @@ fn five_unrelated_protocols_share_one_phase_machine() {
     active.on_path(stopped(11)).unwrap();
     let completed = active.on_path(stopped(20)).unwrap();
     assert!(matches!(completed.become_, Step::Stop(_)));
-    assert_eq!(active.state(), &ShutdownState::Completed);
+    assert!(matches!(active.state(), ShutdownState::Completed));
 }
 
 proptest! {
@@ -145,6 +146,191 @@ proptest! {
         );
         if let Err(error) = plan {
             prop_assert!(matches!(error, ShutdownPlanError::DuplicateChild(_)));
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum LatePlanModel {
+    Waiting { shutdown_requested: bool },
+    Ready,
+    Stopping { phase: usize, awaiting: Vec<u64> },
+    Completed,
+}
+
+fn assert_late_plan_state(
+    actual: &ShutdownState<ShutdownPlan<u64>, u64>,
+    expected: &LatePlanModel,
+) {
+    match (actual, expected) {
+        (
+            ShutdownState::AwaitingPlan,
+            LatePlanModel::Waiting {
+                shutdown_requested: false,
+            },
+        )
+        | (
+            ShutdownState::AwaitingPlanAfterShutdown,
+            LatePlanModel::Waiting {
+                shutdown_requested: true,
+            },
+        )
+        | (ShutdownState::Ready { .. }, LatePlanModel::Ready)
+        | (ShutdownState::Completed, LatePlanModel::Completed) => {}
+        (
+            ShutdownState::Stopping {
+                phase, awaiting, ..
+            },
+            LatePlanModel::Stopping {
+                phase: expected_phase,
+                awaiting: expected_awaiting,
+            },
+        ) => {
+            assert_eq!(phase, expected_phase);
+            assert_eq!(awaiting, expected_awaiting);
+        }
+        (actual, expected) => panic!("state mismatch: actual {actual:?}, model {expected:?}"),
+    }
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig {
+        cases: 512,
+        max_shrink_iters: 100_000,
+        ..ProptestConfig::default()
+    })]
+
+    #[test]
+    fn late_plan_coordinator_matches_an_independent_phase_model(
+        operations in prop::collection::vec(any::<u8>(), 0..128)
+    ) {
+        type Subject = ShutdownCoordinator<
+            ShutdownTopology,
+            StopOnShutdown<Inert<0>>,
+            ChildHead,
+        >;
+        let mut actual = Subject::awaiting_plan(ShutdownTopology)
+            .initialize()
+            .unwrap()
+            .behavior;
+        let phases = [vec![0, 1], vec![2]];
+        let mut model = LatePlanModel::Waiting {
+            shutdown_requested: false,
+        };
+
+        for operation in operations {
+            match operation % 5 {
+                0 => {
+                    let actions = actual.on_path(ShutdownRequested).unwrap();
+                    match model {
+                        LatePlanModel::Waiting {
+                            shutdown_requested: false,
+                        } => {
+                            model = LatePlanModel::Waiting {
+                                shutdown_requested: true,
+                            };
+                            prop_assert!(actions.sends.owned.is_empty());
+                        }
+                        LatePlanModel::Ready => {
+                            model = LatePlanModel::Stopping {
+                                phase: 0,
+                                awaiting: phases[0].clone(),
+                            };
+                            prop_assert_eq!(
+                                actions
+                                    .sends
+                                    .owned
+                                    .iter()
+                                    .map(|request| request.nonce)
+                                    .collect::<Vec<_>>(),
+                                phases[0].clone()
+                            );
+                        }
+                        LatePlanModel::Waiting {
+                            shutdown_requested: true,
+                        }
+                        | LatePlanModel::Stopping { .. }
+                        | LatePlanModel::Completed => {
+                            prop_assert!(actions.sends.owned.is_empty());
+                        }
+                    }
+                }
+                1 => {
+                    let result = actual.on_path(InstallShutdownPlan::new(
+                        ShutdownPlan::new(phases.clone()).unwrap(),
+                    ));
+                    match model {
+                        LatePlanModel::Waiting {
+                            shutdown_requested: false,
+                        } => {
+                            prop_assert!(result.unwrap().sends.owned.is_empty());
+                            model = LatePlanModel::Ready;
+                        }
+                        LatePlanModel::Waiting {
+                            shutdown_requested: true,
+                        } => {
+                            let actions = result.unwrap();
+                            prop_assert_eq!(
+                                actions
+                                    .sends
+                                    .owned
+                                    .iter()
+                                    .map(|request| request.nonce)
+                                    .collect::<Vec<_>>(),
+                                phases[0].clone()
+                            );
+                            model = LatePlanModel::Stopping {
+                                phase: 0,
+                                awaiting: phases[0].clone(),
+                            };
+                        }
+                        LatePlanModel::Ready
+                        | LatePlanModel::Stopping { .. }
+                        | LatePlanModel::Completed => match result {
+                            Err(error) => prop_assert_eq!(
+                                error,
+                                ShutdownCoordinatorError::PlanAlreadyInstalled
+                            ),
+                            Ok(_) => prop_assert!(false, "a shutdown plan may only be installed once"),
+                        },
+                    }
+                }
+                _ => {
+                    let nonce = u64::from((operation % 5) - 2);
+                    let actions = actual.on_path(stopped(nonce)).unwrap();
+                    if let LatePlanModel::Stopping { phase, awaiting } = &mut model {
+                        if let Some(position) = awaiting.iter().position(|candidate| *candidate == nonce) {
+                            awaiting.remove(position);
+                            if awaiting.is_empty() {
+                                let next = *phase + 1;
+                                if next == phases.len() {
+                                    model = LatePlanModel::Completed;
+                                    prop_assert!(matches!(actions.become_, Step::Stop(_)));
+                                } else {
+                                    *phase = next;
+                                    *awaiting = phases[next].clone();
+                                    prop_assert_eq!(
+                                        actions
+                                            .sends
+                                            .owned
+                                            .iter()
+                                            .map(|request| request.nonce)
+                                            .collect::<Vec<_>>(),
+                                        phases[next].clone()
+                                    );
+                                }
+                            } else {
+                                prop_assert!(actions.sends.owned.is_empty());
+                            }
+                        } else {
+                            prop_assert!(actions.sends.owned.is_empty());
+                        }
+                    } else {
+                        prop_assert!(actions.sends.owned.is_empty());
+                    }
+                }
+            }
+            assert_late_plan_state(actual.state(), &model);
         }
     }
 }

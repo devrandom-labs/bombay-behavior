@@ -74,7 +74,9 @@ struct Worker;
 type PoolReply = behavior_testkit::TestRecipient<behavior::PoolResponse<u8, (), MailAddr>>;
 #[behavior::behavior(
     addr = MailAddr,
-    message = PoolAssignment<WorkerPoolProtocol<MailAddr, PoolReply, u8, ()>>,
+    message = PoolAssignment<
+        WorkerPoolProtocol<MailAddr, PoolReply, u8, (), Recipient<PoolReply>>
+    >,
     sends = Vec<Never>,
     births = NoBirths,
     error = Never,
@@ -83,7 +85,9 @@ impl Worker {
     fn receive(
         &mut self,
         _from: MailAddr,
-        _assignment: PoolAssignment<WorkerPoolProtocol<MailAddr, PoolReply, u8, ()>>,
+        _assignment: PoolAssignment<
+            WorkerPoolProtocol<MailAddr, PoolReply, u8, (), Recipient<PoolReply>>,
+        >,
     ) -> behavior::Acted<MailAddr, Never, Vec<Never>, NoBirths, Never> {
         Ok(Actions::cont())
     }

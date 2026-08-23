@@ -11,39 +11,44 @@ use behavior::{Delivery, InterpretSends, Protocol, SendEffects, SendInterpreter}
 /// Routing templates use this product when these are their complete and
 /// semantically distinct effect lanes. Interpretation always exhausts
 /// `deliveries` before beginning `outcomes`.
-pub struct DeliveryOutcomes<Target: Protocol, Reply: Protocol> {
+pub struct DeliveryOutcomes<Target: Protocol, OutcomeSends: SendEffects> {
     pub deliveries: Vec<Delivery<Target>>,
-    pub outcomes: Vec<Delivery<Reply>>,
+    pub outcomes: OutcomeSends,
 }
 
-impl<Target: Protocol, Reply: Protocol> SendEffects for DeliveryOutcomes<Target, Reply> {
+impl<Target: Protocol, OutcomeSends: SendEffects> SendEffects
+    for DeliveryOutcomes<Target, OutcomeSends>
+{
     fn empty() -> Self {
         Self {
             deliveries: Vec::new(),
-            outcomes: Vec::new(),
+            outcomes: OutcomeSends::empty(),
         }
     }
 
     fn append(&mut self, mut other: Self) {
         self.deliveries.append(&mut other.deliveries);
-        self.outcomes.append(&mut other.outcomes);
+        self.outcomes.append(other.outcomes);
     }
 }
 
-impl<Event, Target: Protocol, Reply: Protocol> behavior::SendsFor<Event>
-    for DeliveryOutcomes<Target, Reply>
+impl<Event, Target, OutcomeSends> behavior::SendsFor<Event>
+    for DeliveryOutcomes<Target, OutcomeSends>
+where
+    Target: Protocol,
+    OutcomeSends: SendEffects + behavior::SendsFor<Event>,
 {
 }
 
-impl<I, RootEvent, Path, Target, Reply> InterpretSends<I, RootEvent, Path>
-    for DeliveryOutcomes<Target, Reply>
+impl<I, RootEvent, Path, Target, OutcomeSends> InterpretSends<I, RootEvent, Path>
+    for DeliveryOutcomes<Target, OutcomeSends>
 where
     I: SendInterpreter,
     Target: Protocol,
-    Reply: Protocol,
+    OutcomeSends: SendEffects,
     Vec<Delivery<Target>>: InterpretSends<I, RootEvent, Path>,
-    Vec<Delivery<Reply>>: InterpretSends<I, RootEvent, Path>,
-    DeliveryOutcomes<Target, Reply>: Send,
+    OutcomeSends: InterpretSends<I, RootEvent, Path>,
+    DeliveryOutcomes<Target, OutcomeSends>: Send,
 {
     fn interpret(
         self,

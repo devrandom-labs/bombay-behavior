@@ -2,16 +2,18 @@
 
 use std::time::Duration;
 
+#[cfg(test)]
+use behavior::Recipient;
 use behavior::{
-    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, EventLayer,
-    InterpreterRequests, Never, NoBirths, Recipient, SendEffects, User,
+    Actions, Address, Behavior, BehaviorActed, BehaviorBase, EventLayer, InterpreterRequests,
+    Never, NoBirths, SendEffects, User,
 };
 use thiserror::Error;
 
-use crate::{ScheduleAfter, TimedEvent, TimerGeneration, TimerId};
+use crate::{DeliveryRoute, ScheduleAfter, TimedEvent, TimerGeneration, TimerId};
 
 /// Complete exclusive lease phase.
-pub enum LeaseState<K, Reply: behavior::Protocol> {
+pub enum LeaseState<K, Route> {
     /// No holder owns the lease.
     Vacant,
     /// One holder owns exactly this timer generation.
@@ -21,7 +23,7 @@ pub enum LeaseState<K, Reply: behavior::Protocol> {
         /// Current expiry generation.
         generation: TimerGeneration,
         /// Recipient notified of expiry.
-        notify: Recipient<Reply>,
+        notify: Route,
     },
     /// No fresh expiry generation is representable and no holder exists.
     Exhausted,
@@ -94,7 +96,7 @@ pub enum LeaseOutcome<K> {
 }
 
 /// User commands accepted by [`Lease`].
-pub enum LeaseMessage<K, Reply: behavior::Protocol> {
+pub enum LeaseMessage<K, Route> {
     /// Acquire a vacant lease for a relative duration.
     Acquire {
         /// Requested holder.
@@ -102,7 +104,7 @@ pub enum LeaseMessage<K, Reply: behavior::Protocol> {
         /// Relative duration interpreted by Timers.
         duration: Duration,
         /// Outcome and expiry recipient.
-        reply_to: Recipient<Reply>,
+        reply_to: Route,
     },
     /// Renew the exact current incarnation.
     Renew {
@@ -113,7 +115,7 @@ pub enum LeaseMessage<K, Reply: behavior::Protocol> {
         /// New relative duration.
         duration: Duration,
         /// Outcome and expiry recipient.
-        reply_to: Recipient<Reply>,
+        reply_to: Route,
     },
     /// Explicitly release the exact current incarnation.
     Release {
@@ -122,47 +124,44 @@ pub enum LeaseMessage<K, Reply: behavior::Protocol> {
         /// Claimed current generation.
         generation: TimerGeneration,
         /// Outcome recipient.
-        reply_to: Recipient<Reply>,
+        reply_to: Route,
     },
 }
 
 /// Named effect lanes emitted by [`Lease`].
-pub struct LeaseSends<Reply: behavior::Protocol> {
+pub struct LeaseSends<OutcomeSends: SendEffects> {
     /// Lease facts.
-    pub outcomes: Vec<Delivery<Reply>>,
+    pub outcomes: OutcomeSends,
     /// Relative expiry requests.
     pub schedules: InterpreterRequests<ScheduleAfter>,
 }
-impl<Reply> SendEffects for LeaseSends<Reply>
-where
-    Reply: behavior::Protocol,
-{
+impl<OutcomeSends: SendEffects> SendEffects for LeaseSends<OutcomeSends> {
     fn empty() -> Self {
         Self {
-            outcomes: Vec::new(),
+            outcomes: OutcomeSends::empty(),
             schedules: InterpreterRequests::empty(),
         }
     }
-    fn append(&mut self, mut other: Self) {
-        self.outcomes.append(&mut other.outcomes);
+    fn append(&mut self, other: Self) {
+        self.outcomes.append(other.outcomes);
         self.schedules.append(other.schedules);
     }
 }
 
-impl<Event, Reply> behavior::SendsFor<Event> for LeaseSends<Reply>
+impl<Event, OutcomeSends> behavior::SendsFor<Event> for LeaseSends<OutcomeSends>
 where
-    Reply: behavior::Protocol,
+    OutcomeSends: SendEffects + behavior::SendsFor<Event>,
     InterpreterRequests<ScheduleAfter>: behavior::SendsFor<Event>,
 {
 }
 
-impl<I, RootEvent, Path, Reply> behavior::InterpretSends<I, RootEvent, Path> for LeaseSends<Reply>
+impl<I, RootEvent, Path, OutcomeSends> behavior::InterpretSends<I, RootEvent, Path>
+    for LeaseSends<OutcomeSends>
 where
     I: behavior::SendInterpreter,
-    Reply: behavior::Protocol,
-    Vec<Delivery<Reply>>: behavior::InterpretSends<I, RootEvent, Path>,
+    OutcomeSends: SendEffects + behavior::InterpretSends<I, RootEvent, Path>,
     InterpreterRequests<ScheduleAfter>: behavior::InterpretSends<I, RootEvent, Path>,
-    LeaseSends<Reply>: Send,
+    LeaseSends<OutcomeSends>: Send,
 {
     fn interpret(
         self,
@@ -193,18 +192,20 @@ pub struct Lease<
     A: Address,
     K: Clone + Eq,
     Reply: behavior::Protocol<Addr = A, Msg = LeaseOutcome<K>>,
+    Route: DeliveryRoute<Reply>,
 > {
     id: TimerId,
-    state: LeaseState<K, Reply>,
+    state: LeaseState<K, Route>,
     next: Option<u64>,
-    marker: core::marker::PhantomData<fn() -> A>,
+    marker: core::marker::PhantomData<fn() -> (A, Reply)>,
 }
-type LeaseActions<A, Reply> = Actions<A, Never, LeaseSends<Reply>, NoBirths>;
-impl<A, K, Reply> Lease<A, K, Reply>
+type LeaseActions<A, OutcomeSends> = Actions<A, Never, LeaseSends<OutcomeSends>, NoBirths>;
+impl<A, K, Reply, Route> Lease<A, K, Reply, Route>
 where
     A: Address,
     K: Clone + Eq,
     Reply: behavior::Protocol<Addr = A, Msg = LeaseOutcome<K>>,
+    Route: DeliveryRoute<Reply> + Clone,
 {
     /// Construct a vacant lease using one actor-local timer key.
     #[must_use]
@@ -218,12 +219,12 @@ where
     }
     /// Borrow the complete ownership phase.
     #[must_use]
-    pub const fn state(&self) -> &LeaseState<K, Reply> {
+    pub const fn state(&self) -> &LeaseState<K, Route> {
         &self.state
     }
-    fn result(reply_to: Recipient<Reply>, outcome: LeaseOutcome<K>) -> LeaseActions<A, Reply> {
+    fn result(reply_to: Route, outcome: LeaseOutcome<K>) -> LeaseActions<A, Route::Sends> {
         Actions::send(LeaseSends {
-            outcomes: vec![Delivery::new(reply_to, outcome)],
+            outcomes: reply_to.deliver(outcome),
             schedules: InterpreterRequests::empty(),
         })
     }
@@ -231,8 +232,8 @@ where
         &mut self,
         holder: K,
         duration: Duration,
-        reply_to: Recipient<Reply>,
-    ) -> LeaseActions<A, Reply> {
+        reply_to: Route,
+    ) -> LeaseActions<A, Route::Sends> {
         match &self.state {
             LeaseState::Held { .. } => {
                 return Self::result(
@@ -260,13 +261,10 @@ where
         self.state = LeaseState::Held {
             holder: holder.clone(),
             generation,
-            notify: reply_to,
+            notify: reply_to.clone(),
         };
         Actions::send(LeaseSends {
-            outcomes: vec![Delivery::new(
-                reply_to,
-                LeaseOutcome::Acquired { holder, generation },
-            )],
+            outcomes: reply_to.deliver(LeaseOutcome::Acquired { holder, generation }),
             schedules: InterpreterRequests::one(ScheduleAfter::new(self.id, generation, duration)),
         })
     }
@@ -289,36 +287,40 @@ where
         }
     }
 }
-impl<A, K, Reply> BehaviorBase for Lease<A, K, Reply>
+impl<A, K, Reply, Route> BehaviorBase for Lease<A, K, Reply, Route>
 where
     A: Address,
     K: Clone + Eq,
     Reply: behavior::Protocol<Addr = A, Msg = LeaseOutcome<K>>,
+    Route: DeliveryRoute<Reply>,
 {
     type Base = Self;
     fn base(&self) -> &Self {
         self
     }
 }
-impl<A, K, Reply> behavior::Protocol for Lease<A, K, Reply>
+impl<A, K, Reply, Route> behavior::Protocol for Lease<A, K, Reply, Route>
 where
     A: Address,
     K: Clone + Eq,
     Reply: behavior::Protocol<Addr = A, Msg = LeaseOutcome<K>>,
+    Route: DeliveryRoute<Reply>,
 {
     type Addr = A;
-    type Msg = LeaseMessage<K, Reply>;
+    type Msg = LeaseMessage<K, Route>;
 }
 
-impl<A, K, Reply> Behavior for Lease<A, K, Reply>
+impl<A, K, Reply, Route> Behavior for Lease<A, K, Reply, Route>
 where
     A: Address,
     K: Clone + Eq,
     Reply: behavior::Protocol<Addr = A, Msg = LeaseOutcome<K>>,
+    Route: DeliveryRoute<Reply> + Clone,
+    Route::Sends: behavior::SendsFor<TimedEvent<User<A, LeaseMessage<K, Route>>>>,
 {
     type Protocol = Self;
     type Event = TimedEvent<User<A, crate::BehaviorMessage<Self>>>;
-    type Sends = LeaseSends<Reply>;
+    type Sends = LeaseSends<Route::Sends>;
     type Ph = Never;
     type Error = Never;
     type Birth = NoBirths;
@@ -350,16 +352,13 @@ where
                     self.state = LeaseState::Held {
                         holder: holder.clone(),
                         generation: fresh,
-                        notify: reply_to,
+                        notify: reply_to.clone(),
                     };
                     Actions::send(LeaseSends {
-                        outcomes: vec![Delivery::new(
-                            reply_to,
-                            LeaseOutcome::Renewed {
-                                holder,
-                                generation: fresh,
-                            },
-                        )],
+                        outcomes: reply_to.deliver(LeaseOutcome::Renewed {
+                            holder,
+                            generation: fresh,
+                        }),
                         schedules: InterpreterRequests::one(ScheduleAfter::new(
                             self.id, fresh, duration,
                         )),
@@ -400,7 +399,7 @@ where
                     holder: holder.clone(),
                     generation: *generation,
                 };
-                let recipient = *notify;
+                let recipient = notify.clone();
                 self.state = if self.next.is_some() {
                     LeaseState::Vacant
                 } else {
@@ -434,7 +433,7 @@ mod tests {
             Ok(Actions::cont())
         }
     }
-    type Subject = Lease<MailAddr, u8, Reply>;
+    type Subject = Lease<MailAddr, u8, Reply, Recipient<Reply>>;
     fn reply() -> Recipient<Reply> {
         Recipient::global(MailAddr(1))
     }

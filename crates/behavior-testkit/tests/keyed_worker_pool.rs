@@ -16,7 +16,7 @@ struct Worker;
 
 impl behavior::Protocol for Worker {
     type Addr = MailAddr;
-    type Msg = PoolAssignment<KeyedWorkerPoolProtocol<MailAddr, Reply, u8, u8, u16>>;
+    type Msg = PoolAssignment<KeyedWorkerPoolProtocol<MailAddr, Reply, u8, u8, u16, ReplyRoute>>;
 }
 
 impl Behavior for Worker {
@@ -60,7 +60,8 @@ impl AffinitySelector<u8, u64> for Selector {
 }
 
 type Reply = behavior_testkit::TestRecipient<PoolResponse<u8, u16, MailAddr>>;
-type PoolDefinition = KeyedWorkerPool<MailAddr, Reply, u8, u8, u16, Worker, Selector>;
+type ReplyRoute = Recipient<Reply>;
+type PoolDefinition = KeyedWorkerPool<MailAddr, Reply, u8, u8, u16, Worker, ReplyRoute, Selector>;
 type Pool = behavior::Active<PoolDefinition>;
 
 fn pool_definition(selector: Selector) -> PoolDefinition {
@@ -99,7 +100,7 @@ fn submit(
     pool: &mut Pool,
     key: u8,
     job: u64,
-) -> behavior::PoolActions<MailAddr, Reply, u8, u16, Worker> {
+) -> behavior::PoolActions<MailAddr, Worker, ReplyRoute> {
     pool.receive(
         MailAddr(90),
         KeyedPoolMessage::Submit {
@@ -113,7 +114,7 @@ fn submit(
 }
 
 fn assignments(
-    actions: &behavior::PoolActions<MailAddr, Reply, u8, u16, Worker>,
+    actions: &behavior::PoolActions<MailAddr, Worker, ReplyRoute>,
 ) -> &[ChildDelivery<Proxy<Worker>, ChildHead>] {
     &actions.sends.inner.assignments
 }
@@ -488,7 +489,7 @@ fn keyed_assignment_lanes_survive_shutdown_composition() {
 
 #[test]
 fn named_pool_send_product_appends_each_lane_once_in_order() {
-    type Sends = PoolBehaviorSends<MailAddr, Reply, u8, u16, Worker>;
+    type Sends = PoolBehaviorSends<MailAddr, Worker, Vec<Delivery<Reply>>>;
     let mut sends = Sends::empty();
     sends.responses.push(Delivery::new(
         Recipient::global(MailAddr(1)),

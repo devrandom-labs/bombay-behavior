@@ -10,6 +10,8 @@ use behavior::{
 };
 use thiserror::Error;
 
+use crate::DeliveryRoute;
+
 /// Complete observable retention state of a [`Deduplicator`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeduplicatorState<K> {
@@ -46,7 +48,7 @@ pub enum DeduplicatorOutcome<K, T> {
 }
 
 /// Commands accepted by [`Deduplicator`].
-pub enum DeduplicatorMessage<K, T, Target: Protocol, Reply: behavior::Protocol> {
+pub enum DeduplicatorMessage<K, T, Target: Protocol, Route> {
     /// Deliver `value` only if `key` is absent from bounded retention.
     Deliver {
         /// Application-defined idempotency key.
@@ -56,7 +58,7 @@ pub enum DeduplicatorMessage<K, T, Target: Protocol, Reply: behavior::Protocol> 
         /// Typed destination for a first-seen value.
         to: Recipient<Target>,
         /// Typed recipient for the complete result.
-        reply_to: Recipient<Reply>,
+        reply_to: Route,
     },
 }
 
@@ -68,8 +70,8 @@ pub enum DeduplicatorConfigError {
     ZeroCapacity,
 }
 
-type DeduplicatorMarker<A, T, Target, Reply> =
-    core::marker::PhantomData<fn() -> (A, T, Target, Reply)>;
+type DeduplicatorMarker<A, T, Target, Reply, Route> =
+    core::marker::PhantomData<fn() -> (A, T, Target, Reply, Route)>;
 
 /// Bounded, deterministic first-seen delivery behavior.
 ///
@@ -88,18 +90,20 @@ pub struct Deduplicator<
     T,
     Target: Protocol<Addr = A, Msg = T>,
     Reply: behavior::Protocol<Addr = A, Msg = DeduplicatorOutcome<K, T>>,
+    Route: DeliveryRoute<Reply>,
 > {
     capacity: usize,
     retained: VecDeque<K>,
-    marker: DeduplicatorMarker<A, T, Target, Reply>,
+    marker: DeduplicatorMarker<A, T, Target, Reply, Route>,
 }
 
-impl<A, K, T, Target, Reply> Deduplicator<A, K, T, Target, Reply>
+impl<A, K, T, Target, Reply, Route> Deduplicator<A, K, T, Target, Reply, Route>
 where
     A: Address,
     K: Clone + Eq,
     Target: Protocol<Addr = A, Msg = T>,
     Reply: behavior::Protocol<Addr = A, Msg = DeduplicatorOutcome<K, T>>,
+    Route: DeliveryRoute<Reply>,
 {
     /// Construct empty positive bounded retention.
     ///
@@ -127,12 +131,13 @@ where
     }
 }
 
-impl<A, K, T, Target, Reply> BehaviorBase for Deduplicator<A, K, T, Target, Reply>
+impl<A, K, T, Target, Reply, Route> BehaviorBase for Deduplicator<A, K, T, Target, Reply, Route>
 where
     A: Address,
     K: Clone + Eq,
     Target: Protocol<Addr = A, Msg = T>,
     Reply: behavior::Protocol<Addr = A, Msg = DeduplicatorOutcome<K, T>>,
+    Route: DeliveryRoute<Reply>,
 {
     type Base = Self;
 
@@ -141,27 +146,31 @@ where
     }
 }
 
-impl<A, K, T, Target, Reply> behavior::Protocol for Deduplicator<A, K, T, Target, Reply>
+impl<A, K, T, Target, Reply, Route> behavior::Protocol
+    for Deduplicator<A, K, T, Target, Reply, Route>
 where
     A: Address,
     K: Clone + Eq,
     Target: Protocol<Addr = A, Msg = T>,
     Reply: behavior::Protocol<Addr = A, Msg = DeduplicatorOutcome<K, T>>,
+    Route: DeliveryRoute<Reply>,
 {
     type Addr = A;
-    type Msg = DeduplicatorMessage<K, T, Target, Reply>;
+    type Msg = DeduplicatorMessage<K, T, Target, Route>;
 }
 
-impl<A, K, T, Target, Reply> Behavior for Deduplicator<A, K, T, Target, Reply>
+impl<A, K, T, Target, Reply, Route> Behavior for Deduplicator<A, K, T, Target, Reply, Route>
 where
     A: Address,
     K: Clone + Eq,
     Target: Protocol<Addr = A, Msg = T>,
     Reply: behavior::Protocol<Addr = A, Msg = DeduplicatorOutcome<K, T>>,
+    Route: DeliveryRoute<Reply>,
+    Route::Sends: behavior::SendsFor<User<A, DeduplicatorMessage<K, T, Target, Route>>>,
 {
     type Protocol = Self;
     type Event = User<A, crate::BehaviorMessage<Self>>;
-    type Sends = DeliveryOutcomes<Target, Reply>;
+    type Sends = DeliveryOutcomes<Target, Route::Sends>;
     type Ph = Never;
     type Error = Never;
     type Birth = NoBirths;
@@ -176,10 +185,7 @@ where
         if self.retained.contains(&key) {
             return Ok(Actions::send(DeliveryOutcomes {
                 deliveries: Vec::new(),
-                outcomes: vec![Delivery::new(
-                    reply_to,
-                    DeduplicatorOutcome::Duplicate { key, value },
-                )],
+                outcomes: reply_to.deliver(DeduplicatorOutcome::Duplicate { key, value }),
             }));
         }
 
@@ -191,10 +197,7 @@ where
         self.retained.push_back(key.clone());
         Ok(Actions::send(DeliveryOutcomes {
             deliveries: vec![Delivery::new(to, value)],
-            outcomes: vec![Delivery::new(
-                reply_to,
-                DeduplicatorOutcome::Delivered { key, evicted },
-            )],
+            outcomes: reply_to.deliver(DeduplicatorOutcome::Delivered { key, evicted }),
         }))
     }
 }
@@ -237,13 +240,13 @@ mod tests {
     leaf!(Target, u8);
     leaf!(Reply, DeduplicatorOutcome<u8, u8>);
 
-    type Subject = Deduplicator<MailAddr, u8, u8, Target, Reply>;
+    type Subject = Deduplicator<MailAddr, u8, u8, Target, Reply, Recipient<Reply>>;
 
     fn deliver(
         subject: &mut crate::Active<Subject>,
         key: u8,
         value: u8,
-    ) -> Actions<MailAddr, Never, DeliveryOutcomes<Target, Reply>, NoBirths> {
+    ) -> Actions<MailAddr, Never, DeliveryOutcomes<Target, Vec<Delivery<Reply>>>, NoBirths> {
         subject
             .receive(
                 MailAddr(9),

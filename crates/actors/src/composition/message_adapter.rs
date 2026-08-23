@@ -116,19 +116,18 @@ impl<Input, Destination, Route> Behavior for MessageAdapterWithRoute<Input, Dest
 where
     Destination: behavior::Protocol,
     Route: DeliveryRoute<Destination> + Clone,
+    Route::Sends: behavior::SendsFor<User<Destination::Addr, Input>>,
 {
     type Protocol = Self;
     type Event = User<Destination::Addr, Input>;
-    type Sends = Vec<Route::Effect>;
+    type Sends = Route::Sends;
     type Ph = Never;
     type Error = Never;
     type Birth = NoBirths;
 
     fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
         let message = (self.adapt)(event.message);
-        Ok(Actions::send(vec![
-            self.destination.clone().deliver(message),
-        ]))
+        Ok(Actions::send(self.destination.clone().deliver(message)))
     }
 }
 

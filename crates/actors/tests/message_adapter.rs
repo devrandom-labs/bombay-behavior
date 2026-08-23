@@ -102,14 +102,15 @@ fn assert_behavior<B: Behavior>() {}
 
 #[test]
 fn adapter_is_a_concrete_reply_protocol_for_supervisors_and_pools() {
-    assert_behavior::<DynamicSupervisor<MailAddr, Device, SupervisorReply>>();
+    assert_behavior::<DynamicSupervisor<MailAddr, Device, Recipient<SupervisorReply>>>();
     assert_behavior::<
         WorkerPool<
             MailAddr,
             PoolReply,
             u8,
             u16,
-            Worker<WorkerPoolProtocol<MailAddr, PoolReply, u8, u16>>,
+            Worker<WorkerPoolProtocol<MailAddr, PoolReply, u8, u16, Recipient<PoolReply>>>,
+            Recipient<PoolReply>,
         >,
     >();
 
@@ -121,7 +122,7 @@ fn adapter_is_a_concrete_reply_protocol_for_supervisors_and_pools() {
 struct ActualRoot;
 
 type ActualReply = MessageAdapter<DynamicSupervisorOutcome<MailAddr, Device>, ActualRoot>;
-type ActualSupervisor = DynamicSupervisor<MailAddr, Device, ActualReply>;
+type ActualSupervisor = DynamicSupervisor<MailAddr, Device, Recipient<ActualReply>>;
 
 impl behavior::Protocol for ActualRoot {
     type Addr = MailAddr;
@@ -184,7 +185,8 @@ type ActualPool = WorkerPool<
     ActualPoolReply,
     u8,
     u16,
-    Worker<WorkerPoolProtocol<MailAddr, ActualPoolReply, u8, u16>>,
+    Worker<WorkerPoolProtocol<MailAddr, ActualPoolReply, u8, u16, Recipient<ActualPoolReply>>>,
+    Recipient<ActualPoolReply>,
 >;
 
 impl behavior::Protocol for PoolRoot {
@@ -195,7 +197,11 @@ impl behavior::Protocol for PoolRoot {
 impl Behavior for PoolRoot {
     type Protocol = Self;
     type Event = User<MailAddr, ()>;
-    type Sends = Vec<Delivery<WorkerPoolProtocol<MailAddr, ActualPoolReply, u8, u16>>>;
+    type Sends = Vec<
+        Delivery<
+            WorkerPoolProtocol<MailAddr, ActualPoolReply, u8, u16, Recipient<ActualPoolReply>>,
+        >,
+    >;
     type Ph = Never;
     type Error = Never;
     type Birth = NoBirths;
