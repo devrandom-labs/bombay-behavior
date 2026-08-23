@@ -8,10 +8,10 @@ mod established;
 mod pool;
 
 pub use established::{
-    CancelObservation, EstablishedObservation, EstablishedShutdownResolved,
+    CancelObservation, EstablishedChild, EstablishedObservation, EstablishedShutdownResolved,
     InterpretEstablishedObservation, InterpretEstablishedShutdown, ObservationId,
     ObservationOperation, ObservationRejection, ObserveEstablished, ObserveEstablishedCreation,
-    ShutdownEstablished, ShutdownId, ShutdownRejection,
+    ShutdownEstablished, ShutdownId, ShutdownRejection, established_child,
 };
 
 pub use pool::{KeyedWorkerPoolProtocol, PoolAssignmentProtocol, WorkerPoolProtocol};

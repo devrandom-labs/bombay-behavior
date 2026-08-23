@@ -3,13 +3,14 @@ use behavior_actors::{
     ChildHead, ChildOccurrence, ChildRole, ChildRoute, CreationKind, CreationRejection,
     DeclaredChildOccurrence, EndpointAddress, EstablishedCreation, EstablishedDelivery,
     EstablishedObservation, EstablishedRecipient, EstablishedTerminationMonitor, EstablishedWatch,
-    EventLayer, Exit, Guardian, Here, Ingress, InterpretEstablishedDelivery,
-    InterpretEstablishedObservation, InterpretEstablishedShutdown, InterpretSends,
-    InterpreterRequests, MessageAdapterWithRoute, Never, NoBirths, ObservationId,
-    ObservationOperation, ObservationRejection, ObserveEstablished, ObserveEstablishedCreation,
-    Protocol, Proxy, ReceiveTimeout, ResolveChildOccurrence, SendInterpreter, SendLayer,
-    ShutdownEstablished, ShutdownId, ShutdownRequested, Stash, StopOnShutdown, Supervise, User,
-    Watch,
+    EventLayer, Exit, Guardian, Here, HeterogeneousShutdownPlan, Ingress,
+    InterpretEstablishedDelivery, InterpretEstablishedObservation, InterpretEstablishedShutdown,
+    InterpretSends, InterpreterRequests, MessageAdapterWithRoute, Never, NoBirths,
+    NoShutdownTargets, ObservationId, ObservationOperation, ObservationRejection,
+    ObserveEstablished, ObserveEstablishedCreation, Protocol, Proxy, ReceiveTimeout,
+    ResolveChildOccurrence, SendInterpreter, SendLayer, ShutdownChoice, ShutdownEstablished,
+    ShutdownId, ShutdownRequested, Stash, StopOnShutdown, Supervise, User, Watch,
+    established_child,
 };
 use core::future::Future;
 use core::marker::PhantomData;
@@ -109,7 +110,7 @@ impl Protocol for ParentProtocol {
     type Msg = ();
 }
 
-enum PrimaryWorker {}
+struct PrimaryWorker;
 
 impl ChildRole<Parent> for PrimaryWorker {
     type Child = Worker;
@@ -286,6 +287,46 @@ fn creation_fact_is_protocol_and_occurrence_indexed_without_parent_state_in_its_
         7,
         CreationKind::Birth,
         EstablishedRecipient::issued(Endpoint::new(RuntimeAddr(91), 3)),
+    ));
+}
+
+#[test]
+fn committed_named_child_preserves_local_route_and_exact_actor_together() {
+    let fact = EstablishedCreation::<WorkerProtocol, PrimaryWorker>::installed(
+        7,
+        CreationKind::Birth,
+        EstablishedRecipient::issued(Endpoint::new(RuntimeAddr(41), 3)),
+    );
+
+    let child = established_child::<Parent, PrimaryWorker>(fact).unwrap();
+    assert_eq!(child.route(), Parent::ROUTE);
+
+    type Targets = ShutdownChoice<Worker, NoShutdownTargets<RuntimeAddr>>;
+    let target: Targets = child.shutdown_target::<Parent, Targets>();
+    let plan = HeterogeneousShutdownPlan::new([vec![target]]).unwrap();
+    assert_eq!(plan.phases().len(), 1);
+
+    let exact_actor = child.actor();
+    let exact_delivery = EstablishedDelivery::new(exact_actor.into_recipient(), 18);
+    assert_eq!(exact_delivery.message, 18);
+
+    let (route, actor) = child.into_parts();
+    assert_eq!(route.nonce(), 7);
+    let delivery = EstablishedDelivery::new(actor.into_recipient(), 19);
+    assert_eq!(delivery.message, 19);
+}
+
+#[test]
+fn rejected_named_child_produces_neither_local_nor_exact_capability() {
+    let fact = EstablishedCreation::<WorkerProtocol, PrimaryWorker>::rejected(
+        7,
+        CreationKind::Birth,
+        CreationRejection::NonceAlreadyBound,
+    );
+
+    assert!(matches!(
+        established_child::<Parent, PrimaryWorker>(fact),
+        Err(CreationRejection::NonceAlreadyBound)
     ));
 }
 
@@ -620,21 +661,6 @@ async fn message_adapter_selects_exact_delivery_without_logical_resolution() {
     .await
     .unwrap();
     assert_eq!(runtime.delivered, [(RuntimeAddr(46), 10, 7)]);
-}
-
-#[test]
-fn message_adapter_preserves_creator_local_child_occurrence() {
-    type ChildAdapter =
-        MessageAdapterWithRoute<u16, WorkerProtocol, ChildRoute<Worker, PrimaryWorker>>;
-    let mut active: behavior_actors::Active<ChildAdapter> =
-        MessageAdapterWithRoute::new(Parent::ROUTE, adapt_exact)
-            .initialize()
-            .unwrap()
-            .behavior;
-    let actions = active.receive(RuntimeAddr(1), 11).unwrap();
-
-    assert_eq!(actions.sends[0].nonce, 7);
-    assert_eq!(actions.sends[0].message, 11);
 }
 
 #[derive(Default)]

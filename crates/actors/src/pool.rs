@@ -1320,6 +1320,23 @@ where
 /// A FIFO worker pool whose proxy reports target its direct event layer.
 pub type WorkerPool<A, D, J, R, C> = WorkerPoolWithParent<A, D, J, R, C, behavior::Here>;
 
+impl<A, D, J, R, C, ParentPath> crate::BehaviorBase
+    for WorkerPoolWithParent<A, D, J, R, C, ParentPath>
+where
+    A: Address,
+    A::Nonce: From<u64>,
+    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
+    C: Behavior<Ph = Never>,
+    C::Protocol:
+        crate::Protocol<Addr = A, Msg = PoolAssignment<crate::WorkerPoolProtocol<A, D, J, R>>>,
+{
+    type Base = Self;
+
+    fn base(&self) -> &Self::Base {
+        self
+    }
+}
+
 impl<A, D, J, R, C, ParentPath> WorkerPoolWithParent<A, D, J, R, C, ParentPath>
 where
     A: Address,
@@ -1650,6 +1667,27 @@ where
 /// A keyed pool whose proxies report to the pool's direct event layer.
 pub type KeyedWorkerPool<A, D, K, J, R, C, S> =
     KeyedWorkerPoolWithParent<A, D, K, J, R, C, S, behavior::Here>;
+
+impl<A, D, K, J, R, C, S, ParentPath> crate::BehaviorBase
+    for KeyedWorkerPoolWithParent<A, D, K, J, R, C, S, ParentPath>
+where
+    A: Address,
+    A::Nonce: From<u64>,
+    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
+    K: Eq,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<
+            Addr = A,
+            Msg = PoolAssignment<crate::KeyedWorkerPoolProtocol<A, D, K, J, R>>,
+        >,
+    S: AffinitySelector<K, A::Nonce>,
+{
+    type Base = Self;
+
+    fn base(&self) -> &Self::Base {
+        self
+    }
+}
 
 impl<A, D, K, J, R, C, S, ParentPath> KeyedWorkerPoolWithParent<A, D, K, J, R, C, S, ParentPath>
 where

@@ -77,6 +77,27 @@ and copies the route nonce. Plan validation still owns empty-phase and global
 duplicate-nonce rejection; the coordinator still owns phase and terminal-fact
 transitions.
 
+When the plan is assembled only after the interpreter reports a committed
+named creation, retain both available capabilities instead of weakening the
+exact endpoint or reconstructing a route from its address:
+
+```rust,ignore
+let child = established_child::<Application, ApplicationChildrenWorkers>(fact)?;
+let workers: ShutdownTargets =
+    child.shutdown_target::<Application, ShutdownTargets>();
+
+// The creator-local role enters the plan while the exact incarnation remains
+// available for EstablishedDelivery, ObserveEstablished, or ShutdownEstablished.
+let exact_worker = child.actor();
+let validated_shutdown_plan =
+    HeterogeneousShutdownPlan::new([vec![workers]])?;
+```
+
+`EstablishedChild` is a named product of the existing `ChildRoute` and
+`EstablishedActor` capabilities. It performs no creation or interpretation;
+an `EstablishedCreation::Rejected` result returns its typed rejection and
+constructs neither capability.
+
 ```rust,ignore
 let behavior: CoordinatedTerminalApplication<
     Application,

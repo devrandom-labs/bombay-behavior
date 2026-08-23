@@ -97,6 +97,12 @@ pub enum BreakerOutcome {
     },
 }
 
+#[derive(Clone, Copy)]
+enum Completion {
+    Succeeded,
+    Failed,
+}
+
 /// Closed user-command protocol.
 pub enum BreakerMessage<Reply: behavior::Protocol> {
     /// Request one operation admission.
@@ -274,7 +280,11 @@ impl<A: Address, Reply: behavior::Protocol<Addr = A, Msg = BreakerOutcome>>
         }
     }
 
-    fn complete(&mut self, attempt: BreakerAttempt, succeeded: bool) -> BreakerActions<A, Reply> {
+    fn complete(
+        &mut self,
+        attempt: BreakerAttempt,
+        completion: Completion,
+    ) -> BreakerActions<A, Reply> {
         let ownership = match &self.phase {
             BreakerPhase::Closed(ClosedPhase::Awaiting {
                 consecutive_failures,
@@ -294,7 +304,7 @@ impl<A: Address, Reply: behavior::Protocol<Addr = A, Msg = BreakerOutcome>>
         let Some((reply_to, failures, probe_generation)) = ownership else {
             return Actions::cont();
         };
-        if succeeded {
+        if matches!(completion, Completion::Succeeded) {
             self.phase = BreakerPhase::Closed(ClosedPhase::Idle {
                 consecutive_failures: 0,
             });
@@ -371,8 +381,10 @@ impl<A: Address, Reply: behavior::Protocol<Addr = A, Msg = BreakerOutcome>> Beha
         Ok(match event {
             EventLayer::Inner(event) => match event.message {
                 BreakerMessage::Admit { reply_to } => self.admit(reply_to),
-                BreakerMessage::Succeeded { attempt } => self.complete(attempt, true),
-                BreakerMessage::Failed { attempt } => self.complete(attempt, false),
+                BreakerMessage::Succeeded { attempt } => {
+                    self.complete(attempt, Completion::Succeeded)
+                }
+                BreakerMessage::Failed { attempt } => self.complete(attempt, Completion::Failed),
             },
             EventLayer::Owned(elapsed) => {
                 if let BreakerPhase::Open { generation } = self.phase

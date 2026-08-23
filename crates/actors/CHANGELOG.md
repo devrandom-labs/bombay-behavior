@@ -7,10 +7,12 @@ All notable changes to `bombay-behavior-actors` are documented here.
 ### Added
 
 - Add exact-capability modes for `Watch` and `TerminationMonitor`, and a
-  statically selected logical, established, or child destination for
-  `MessageAdapter`.
+  statically selected logical or established destination for `MessageAdapter`.
 - Add explicit parent-path forms for delayed supervisors and keyed worker
   pools so proxy reports remain correctly indexed through outer wrappers.
+- Add `EstablishedChild` and `established_child`, preserving an exact
+  installed-actor capability together with its occurrence-aware creator-local
+  route so committed children can enter typed heterogeneous shutdown plans.
 
 ### Changed
 
@@ -21,6 +23,11 @@ All notable changes to `bombay-behavior-actors` are documented here.
   `FinalizeOnShutdown`, and document the complete catalogue audit of logical,
   exact, and creator-local routing choices.
 - Make circuit-breaker attempt exhaustion a panic-free typed transition.
+- Make every standalone proxy and pool topology owner expose
+  `BehaviorBase<Base = Self>`, and reject creator-local `MessageAdapter`
+  destinations whose `NoBirths` algebra cannot resolve a child binding.
+- Preserve the circuit breaker's successful and failed completion alternatives
+  as a private sum instead of collapsing them to a boolean helper argument.
 
 ## [0.14.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-actors-v0.13.1...bombay-behavior-actors-v0.14.0) - 2026-08-21
 

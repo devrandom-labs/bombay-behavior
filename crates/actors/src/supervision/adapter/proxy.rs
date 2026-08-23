@@ -190,6 +190,17 @@ pub struct ProxyWithParent<C: Behavior<Ph = Never>, ParentPath> {
 /// A proxy whose parent owns both report lanes directly.
 pub type Proxy<C> = ProxyWithParent<C, behavior::Here>;
 
+impl<C, ParentPath> crate::BehaviorBase for ProxyWithParent<C, ParentPath>
+where
+    C: Behavior<Ph = Never>,
+{
+    type Base = Self;
+
+    fn base(&self) -> &Self::Base {
+        self
+    }
+}
+
 impl<C: Behavior<Ph = Never>> ProxyWithParent<C, behavior::Here> {
     #[must_use]
     pub fn new(worker: C) -> Self {

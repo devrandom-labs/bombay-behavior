@@ -95,7 +95,7 @@ pub use pool::{
 };
 pub use protocol::{
     CancelObservation, ChildShutdownRejected, ChildShutdownRejection, ChildStopped,
-    CreationResolved, EstablishedObservation, EstablishedShutdownResolved,
+    CreationResolved, EstablishedChild, EstablishedObservation, EstablishedShutdownResolved,
     InterpretEstablishedObservation, InterpretEstablishedShutdown, KeyedWorkerPoolProtocol,
     ObservationId, ObservationOperation, ObservationRejection, ObserveChild, ObserveCreation,
     ObserveEstablished, ObserveEstablishedCreation, ObservePeer, PeerStopped,
@@ -103,7 +103,7 @@ pub use protocol::{
     ReportWorkerCreationResolved, ReportWorkerStopped, ScheduleAfter, ScheduleAt, ShutdownChild,
     ShutdownEstablished, ShutdownId, ShutdownRejection, ShutdownRequested, TimerElapsed,
     TimerGeneration, TimerId, UnwatchPeer, WorkerCreationResolved, WorkerPoolProtocol,
-    WorkerStopped,
+    WorkerStopped, established_child,
 };
 pub use requirements::{
     InstallationRequirements, NoInstallationRequirements, RequiredProtocol, RequirementAt,

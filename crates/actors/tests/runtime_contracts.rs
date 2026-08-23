@@ -7,9 +7,9 @@
 
 use behavior_actors::{
     Actions, BackoffSupervise, BackoffSupervisorEvent, BackoffSupervisorSends,
-    BackoffSupervisorWithParent, Behavior, BehaviorActed, Births, BreakerOutcome, ChildDelivery,
-    ChildHead, ChildRoute, ChildShutdownRejected, ChildStopped, CircuitBreaker, Create,
-    CreationResolved, Deadline, DynamicProxy, DynamicProxyWithParent, DynamicSupervisor,
+    BackoffSupervisorWithParent, Behavior, BehaviorActed, BehaviorBase, Births, BreakerOutcome,
+    ChildDelivery, ChildHead, ChildRoute, ChildShutdownRejected, ChildStopped, CircuitBreaker,
+    Create, CreationResolved, Deadline, DynamicProxy, DynamicProxyWithParent, DynamicSupervisor,
     DynamicSupervisorOutcome, DynamicSupervisorWithParent, Guardian, Here, Ingress, InjectEvent,
     Inside, InterpretChildDelivery, KeyedPoolEvent, KeyedWorkerPool, KeyedWorkerPoolProtocol,
     KeyedWorkerPoolWithParent, Lease, LeaseOutcome, MailAddr, Never, NoBirths, ObserveChild,
@@ -189,6 +189,33 @@ where
     B: Behavior,
     B::Event: InjectEvent<Input, Path>,
 {
+}
+
+#[test]
+fn every_topology_owner_exposes_itself_as_its_behavior_base() {
+    fn owns_topology<B>()
+    where
+        B: Behavior + BehaviorBase<Base = B>,
+    {
+    }
+
+    type Child = StopOnShutdown<Inert>;
+    owns_topology::<ProxyWithParent<Child, Here>>();
+    owns_topology::<SupervisorWithParent<MailAddr, Child, Here>>();
+    owns_topology::<DynamicSupervisorWithParent<MailAddr, Inert, DynamicReply, Here>>();
+    owns_topology::<WorkerPoolWithParent<MailAddr, PoolReply, u8, u16, PoolWorker, Here>>();
+    owns_topology::<
+        KeyedWorkerPoolWithParent<
+            MailAddr,
+            PoolReply,
+            u8,
+            u8,
+            u16,
+            KeyedPoolWorker,
+            fn(&u8) -> u64,
+            Here,
+        >,
+    >();
 }
 
 #[test]

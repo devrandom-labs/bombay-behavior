@@ -9,11 +9,12 @@ use super::DeliveryRoute;
 /// For every accepted `Input`, the adapter invokes its function pointer exactly
 /// once. If that invocation returns normally, the transition emits exactly one
 /// effect selected by [`DeliveryRoute`] and continues with the same behavior.
-/// A logical recipient produces `Delivery`, an established recipient produces
-/// `EstablishedDelivery`, and a child route produces occurrence-aware
-/// `ChildDelivery`. Initialization emits no effects; the adapter cannot
-/// create actors, enter another phase, stop itself, or return a controlled
-/// error.
+/// A logical recipient produces `Delivery` and an established recipient
+/// produces `EstablishedDelivery`. Initialization emits no effects; the
+/// adapter cannot create actors, enter another phase, stop itself, or return a
+/// controlled error. In particular, it cannot address a creator-local child:
+/// its [`behavior::NoBirths`] algebra supplies no local binding for an
+/// interpreter to resolve.
 ///
 /// This is a derived Bombay protocol composition, not an additional actor-model
 /// primitive. Delivery is interpreted as an ordinary actor communication, so
@@ -25,6 +26,39 @@ use super::DeliveryRoute;
 /// in birth products, child products, supervisors, and topology evidence. If
 /// the mapper panics, unwinding follows the same runtime policy as a panic from
 /// any other [`Behavior`] fold; no successful [`Actions`] value is returned.
+///
+/// A creator-local child route is not a valid standalone adapter destination:
+///
+/// ```compile_fail
+/// use behavior::{
+///     Actions, Behavior, BehaviorActed, ChildHead, ChildRoute, MailAddr, Never,
+///     NoBirths, NoSends, Protocol, User,
+/// };
+/// use behavior_actors::MessageAdapterWithRoute;
+/// struct Destination;
+/// impl Protocol for Destination {
+///     type Addr = MailAddr;
+///     type Msg = u16;
+/// }
+/// impl Behavior for Destination {
+///     type Protocol = Self;
+///     type Event = User<MailAddr, u16>;
+///     type Sends = NoSends;
+///     type Ph = Never;
+///     type Error = Never;
+///     type Birth = NoBirths;
+///     fn transition(
+///         &mut self,
+///         _: behavior::ActiveTurn,
+///         _: Self::Event,
+///     ) -> BehaviorActed<Self> {
+///         Ok(Actions::cont())
+///     }
+/// }
+/// fn adapt(value: u8) -> u16 { u16::from(value) }
+/// let foreign = ChildRoute::<Destination, ChildHead>::new(1);
+/// let _ = MessageAdapterWithRoute::new(foreign, adapt);
+/// ```
 pub struct MessageAdapterWithRoute<Input, Destination, Route>
 where
     Destination: behavior::Protocol,

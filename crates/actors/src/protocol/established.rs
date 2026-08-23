@@ -71,6 +71,93 @@ where
         ReturnsToEmitter<behavior::EstablishedCreation<P, Occurrence>, behavior::Here>;
 }
 
+/// Both capabilities established by one committed named-child creation.
+///
+/// `route` remains relative to the creating actor's child namespace and is the
+/// capability used by occurrence-aware local delivery, observation, and
+/// heterogeneous shutdown planning. `actor` names the exact installed
+/// incarnation and is the stronger capability used by exact delivery,
+/// observation, or [`ShutdownEstablished`]. Keeping both in one product avoids
+/// reconstructing a route from an address or discarding the exact endpoint
+/// merely because a later local operation needs the creator-local binding.
+pub struct EstablishedChild<C, Occurrence>
+where
+    C: Behavior,
+    crate::BehaviorAddr<C>: EndpointAddress,
+{
+    route: behavior::ChildRoute<C, Occurrence>,
+    actor: EstablishedActor<C>,
+}
+
+impl<C, Occurrence> EstablishedChild<C, Occurrence>
+where
+    C: Behavior,
+    crate::BehaviorAddr<C>: EndpointAddress,
+{
+    /// Return the occurrence-aware route in the creating actor's namespace.
+    #[must_use]
+    pub const fn route(&self) -> behavior::ChildRoute<C, Occurrence> {
+        self.route
+    }
+
+    /// Clone the exact installed-actor capability.
+    #[must_use]
+    pub fn actor(&self) -> EstablishedActor<C> {
+        self.actor.clone()
+    }
+
+    /// Select this child in an existing heterogeneous shutdown target sum.
+    ///
+    /// `Parent` restores the namespace in which `Occurrence` was declared;
+    /// the compiler then selects the role's exact structural position. No
+    /// role value, address reconstruction, or runtime protocol choice is
+    /// required after creation has committed.
+    #[must_use]
+    pub fn shutdown_target<Parent, Targets>(&self) -> Targets
+    where
+        Parent: Behavior,
+        Occurrence: behavior::ChildRole<Parent, Child = C>,
+        Targets: crate::ShutdownTargetAt<C, <Occurrence as behavior::ChildRole<Parent>>::Position>,
+    {
+        Targets::shutdown_target_at(self.route)
+    }
+
+    /// Consume the product into its local and exact capabilities.
+    #[must_use]
+    pub fn into_parts(self) -> (behavior::ChildRoute<C, Occurrence>, EstablishedActor<C>) {
+        (self.route, self.actor)
+    }
+}
+
+/// Strengthen one successful named-child creation fact without losing either
+/// of its routing capabilities.
+///
+/// `Role` must be the occurrence declared by `Parent`, so the returned exact
+/// actor proves the concrete child behavior while the returned route retains
+/// the same creator-local nonce and occurrence. This is an Actors-level
+/// construction over existing Behavior capabilities, not another creation
+/// operation or an allocation shortcut.
+///
+/// # Errors
+///
+/// Returns the creation's typed [`behavior::CreationRejection`] and produces
+/// no route or actor capability when installation did not commit.
+pub fn established_child<Parent, Role>(
+    fact: behavior::EstablishedCreation<behavior::RoleProtocol<Parent, Role>, Role>,
+) -> Result<EstablishedChild<behavior::RoleChild<Parent, Role>, Role>, behavior::CreationRejection>
+where
+    Parent: Behavior,
+    Role: behavior::ChildRole<Parent>,
+    crate::BehaviorAddr<behavior::RoleChild<Parent, Role>>: EndpointAddress,
+{
+    let nonce = fact.nonce();
+    let actor = fact.into_actor::<Parent>()?;
+    Ok(EstablishedChild {
+        route: behavior::ChildRoute::new(nonce),
+        actor,
+    })
+}
+
 /// Behavior-owned correlation for one observation relationship.
 ///
 /// This value is local relationship evidence, not actor identity, endpoint
