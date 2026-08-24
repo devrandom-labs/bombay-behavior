@@ -230,20 +230,18 @@ where
 pub struct Lease<
     A: Address,
     K: Clone + Eq,
-    Reply: behavior::Protocol<Addr = A, Msg = LeaseOutcome<K>>,
-    Route: DeliveryRoute<Reply>,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = LeaseOutcome<K>>>,
 > {
     id: TimerId,
     state: LeaseState<K, Route>,
-    marker: core::marker::PhantomData<fn() -> (A, Reply)>,
+    marker: core::marker::PhantomData<fn() -> A>,
 }
 type LeaseActions<A, OutcomeSends> = Actions<A, Never, LeaseSends<OutcomeSends>, NoBirths>;
-impl<A, K, Reply, Route> Lease<A, K, Reply, Route>
+impl<A, K, Route> Lease<A, K, Route>
 where
     A: Address,
     K: Clone + Eq,
-    Reply: behavior::Protocol<Addr = A, Msg = LeaseOutcome<K>>,
-    Route: DeliveryRoute<Reply> + Clone,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = LeaseOutcome<K>>> + Clone,
 {
     /// Construct a vacant lease using one actor-local timer key.
     #[must_use]
@@ -336,35 +334,32 @@ where
         }
     }
 }
-impl<A, K, Reply, Route> BehaviorBase for Lease<A, K, Reply, Route>
+impl<A, K, Route> BehaviorBase for Lease<A, K, Route>
 where
     A: Address,
     K: Clone + Eq,
-    Reply: behavior::Protocol<Addr = A, Msg = LeaseOutcome<K>>,
-    Route: DeliveryRoute<Reply>,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = LeaseOutcome<K>>>,
 {
     type Base = Self;
     fn base(&self) -> &Self {
         self
     }
 }
-impl<A, K, Reply, Route> behavior::Protocol for Lease<A, K, Reply, Route>
+impl<A, K, Route> behavior::Protocol for Lease<A, K, Route>
 where
     A: Address,
     K: Clone + Eq,
-    Reply: behavior::Protocol<Addr = A, Msg = LeaseOutcome<K>>,
-    Route: DeliveryRoute<Reply>,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = LeaseOutcome<K>>>,
 {
     type Addr = A;
     type Msg = LeaseMessage<K, Route>;
 }
 
-impl<A, K, Reply, Route> Behavior for Lease<A, K, Reply, Route>
+impl<A, K, Route> Behavior for Lease<A, K, Route>
 where
     A: Address,
     K: Clone + Eq,
-    Reply: behavior::Protocol<Addr = A, Msg = LeaseOutcome<K>>,
-    Route: DeliveryRoute<Reply> + Clone,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = LeaseOutcome<K>>> + Clone,
     Route::Sends: behavior::SendsFor<TimedEvent<User<A, LeaseMessage<K, Route>>>>,
 {
     type Protocol = Self;
@@ -507,7 +502,7 @@ mod tests {
             Ok(Actions::cont())
         }
     }
-    type Subject = Lease<MailAddr, u8, Reply, Recipient<Reply>>;
+    type Subject = Lease<MailAddr, u8, Recipient<Reply>>;
     fn reply() -> Recipient<Reply> {
         Recipient::global(MailAddr(1))
     }

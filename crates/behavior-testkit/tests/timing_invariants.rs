@@ -27,7 +27,7 @@ impl Behavior for Reply {
     }
 }
 
-type Subject = Lease<MailAddr, u8, Reply, Recipient<Reply>>;
+type Subject = Lease<MailAddr, u8, Recipient<Reply>>;
 
 proptest! {
     #![proptest_config(ProptestConfig { cases: 512, max_shrink_iters: 100_000, ..ProptestConfig::default() })]

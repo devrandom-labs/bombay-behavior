@@ -45,13 +45,11 @@ protocol!(HealthReply, behavior::HealthReport<u8>);
 protocol!(RegistryDestination, u8);
 protocol!(RegistryReply, RegistryResult<u8, RegistryDestination>);
 
-type TestConfiguration =
-    Configuration<MailAddr, u8, ConfigurationReply, Recipient<ConfigurationReply>>;
-type TestReadiness = Readiness<MailAddr, u8, ReadinessReply, Recipient<ReadinessReply>>;
-type TestHealth = Health<MailAddr, u8, HealthReply, Recipient<HealthReply>>;
+type TestConfiguration = Configuration<MailAddr, u8, Recipient<ConfigurationReply>>;
+type TestReadiness = Readiness<MailAddr, u8, Recipient<ReadinessReply>>;
+type TestHealth = Health<MailAddr, u8, Recipient<HealthReply>>;
 type TestCache = Cache<MailAddr, u8, u8, Recipient<MessageProtocol<MailAddr, CacheResult<u8, u8>>>>;
-type TestRegistry =
-    Registry<MailAddr, u8, RegistryDestination, RegistryReply, Recipient<RegistryReply>>;
+type TestRegistry = Registry<MailAddr, u8, RegistryDestination, Recipient<RegistryReply>>;
 
 proptest! {
     #![proptest_config(ProptestConfig {
@@ -336,7 +334,14 @@ proptest! {
     fn topic_is_an_ordered_idempotent_membership_snapshot(
         operations in vec((0_u8..3, 0_u8..8, any::<u8>()), 0..160),
     ) {
-        let mut actual = Topic::<MailAddr, u8>::new().initialize().unwrap().behavior;
+        let mut actual = Topic::<
+            MailAddr,
+            u8,
+            Recipient<MessageProtocol<MailAddr, u8>>,
+        >::new()
+        .initialize()
+        .unwrap()
+        .behavior;
         let mut expected: Vec<Recipient<MessageProtocol<MailAddr, u8>>> = Vec::new();
 
         for (operation, address, value) in operations {

@@ -130,22 +130,20 @@ pub enum ReadinessError<K> {
 /// membership, version ordering, and empty-set readiness are deliberate Bombay
 /// policy. Export through HTTP or orchestration remains a System adapter
 /// responsibility. No method has a semantic panic condition.
-pub struct Readiness<A, K, Reply, Route>
+pub struct Readiness<A, K, Route>
 where
     A: Address,
-    Reply: behavior::Protocol<Addr = A, Msg = ReadinessReport<K>>,
-    Route: DeliveryRoute<Reply>,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = ReadinessReport<K>>>,
 {
     dependencies: Vec<DependencyReadiness<K>>,
-    marker: core::marker::PhantomData<fn() -> (A, Reply, Route)>,
+    marker: core::marker::PhantomData<fn() -> (A, Route)>,
 }
 
-impl<A, K, Reply, Route> Readiness<A, K, Reply, Route>
+impl<A, K, Route> Readiness<A, K, Route>
 where
     A: Address,
     K: Clone + Eq,
-    Reply: behavior::Protocol<Addr = A, Msg = ReadinessReport<K>>,
-    Route: DeliveryRoute<Reply>,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = ReadinessReport<K>>>,
 {
     /// Construct readiness policy for a fixed dependency set.
     #[must_use]
@@ -228,12 +226,11 @@ where
     }
 }
 
-impl<A, K, Reply, Route> BehaviorBase for Readiness<A, K, Reply, Route>
+impl<A, K, Route> BehaviorBase for Readiness<A, K, Route>
 where
     A: Address,
     K: Clone + Eq,
-    Reply: behavior::Protocol<Addr = A, Msg = ReadinessReport<K>>,
-    Route: DeliveryRoute<Reply>,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = ReadinessReport<K>>>,
 {
     type Base = Self;
     fn base(&self) -> &Self {
@@ -241,23 +238,21 @@ where
     }
 }
 
-impl<A, K, Reply, Route> behavior::Protocol for Readiness<A, K, Reply, Route>
+impl<A, K, Route> behavior::Protocol for Readiness<A, K, Route>
 where
     A: Address,
     K: Clone + Eq,
-    Reply: behavior::Protocol<Addr = A, Msg = ReadinessReport<K>>,
-    Route: DeliveryRoute<Reply>,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = ReadinessReport<K>>>,
 {
     type Addr = A;
     type Msg = ReadinessMessage<K, Route>;
 }
 
-impl<A, K, Reply, Route> Behavior for Readiness<A, K, Reply, Route>
+impl<A, K, Route> Behavior for Readiness<A, K, Route>
 where
     A: Address,
     K: Clone + Eq,
-    Reply: behavior::Protocol<Addr = A, Msg = ReadinessReport<K>>,
-    Route: DeliveryRoute<Reply>,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = ReadinessReport<K>>>,
     Route::Sends: behavior::SendsFor<User<A, ReadinessMessage<K, Route>>>,
 {
     type Protocol = Self;
@@ -308,7 +303,7 @@ mod tests {
         }
     }
 
-    type Subject = Readiness<MailAddr, u8, Reply, Recipient<Reply>>;
+    type Subject = Readiness<MailAddr, u8, Recipient<Reply>>;
 
     #[test]
     fn all_dependencies_must_have_ready_evidence() {

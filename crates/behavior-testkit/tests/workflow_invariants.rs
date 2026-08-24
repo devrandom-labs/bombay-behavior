@@ -29,7 +29,7 @@ impl Behavior for WorkflowReply {
 
 type TestBarrier = Barrier<MailAddr, u8, Recipient<MessageProtocol<MailAddr, BarrierReleased>>>;
 type TestLatch = Latch<MailAddr, Recipient<MessageProtocol<MailAddr, behavior::LatchReleased>>>;
-type TestWorkflow = Workflow<MailAddr, u8, WorkflowReply, Recipient<WorkflowReply>>;
+type TestWorkflow = Workflow<MailAddr, u8, Recipient<WorkflowReply>>;
 
 proptest! {
     #![proptest_config(ProptestConfig {

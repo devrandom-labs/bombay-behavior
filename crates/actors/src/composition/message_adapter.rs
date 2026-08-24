@@ -59,27 +59,28 @@ use super::DeliveryRoute;
 /// let foreign = ChildRoute::<Destination, ChildHead>::new(1);
 /// let _ = MessageAdapterWithRoute::new(foreign, adapt);
 /// ```
-pub struct MessageAdapterWithRoute<Input, Destination, Route>
+pub struct MessageAdapterWithRoute<Input, Route>
 where
-    Destination: behavior::Protocol,
-    Route: DeliveryRoute<Destination>,
+    Route: DeliveryRoute,
 {
     destination: Route,
-    adapt: fn(Input) -> Destination::Msg,
+    adapt: fn(Input) -> <Route::Protocol as behavior::Protocol>::Msg,
 }
 
 /// An adapter whose destination is a logical protocol name.
 pub type MessageAdapter<Input, Destination> =
-    MessageAdapterWithRoute<Input, Destination, Recipient<Destination>>;
+    MessageAdapterWithRoute<Input, Recipient<Destination>>;
 
-impl<Input, Destination, Route> MessageAdapterWithRoute<Input, Destination, Route>
+impl<Input, Route> MessageAdapterWithRoute<Input, Route>
 where
-    Destination: behavior::Protocol,
-    Route: DeliveryRoute<Destination>,
+    Route: DeliveryRoute,
 {
     /// Construct an adapter for one concrete destination protocol.
     #[must_use]
-    pub const fn new(destination: Route, adapt: fn(Input) -> Destination::Msg) -> Self {
+    pub const fn new(
+        destination: Route,
+        adapt: fn(Input) -> <Route::Protocol as behavior::Protocol>::Msg,
+    ) -> Self {
         Self { destination, adapt }
     }
 
@@ -90,10 +91,9 @@ where
     }
 }
 
-impl<Input, Destination, Route> BehaviorBase for MessageAdapterWithRoute<Input, Destination, Route>
+impl<Input, Route> BehaviorBase for MessageAdapterWithRoute<Input, Route>
 where
-    Destination: behavior::Protocol,
-    Route: DeliveryRoute<Destination>,
+    Route: DeliveryRoute,
 {
     type Base = Self;
 
@@ -102,24 +102,21 @@ where
     }
 }
 
-impl<Input, Destination, Route> behavior::Protocol
-    for MessageAdapterWithRoute<Input, Destination, Route>
+impl<Input, Route> behavior::Protocol for MessageAdapterWithRoute<Input, Route>
 where
-    Destination: behavior::Protocol,
-    Route: DeliveryRoute<Destination>,
+    Route: DeliveryRoute,
 {
-    type Addr = Destination::Addr;
+    type Addr = <Route::Protocol as behavior::Protocol>::Addr;
     type Msg = Input;
 }
 
-impl<Input, Destination, Route> Behavior for MessageAdapterWithRoute<Input, Destination, Route>
+impl<Input, Route> Behavior for MessageAdapterWithRoute<Input, Route>
 where
-    Destination: behavior::Protocol,
-    Route: DeliveryRoute<Destination> + Clone,
-    Route::Sends: behavior::SendsFor<User<Destination::Addr, Input>>,
+    Route: DeliveryRoute + Clone,
+    Route::Sends: behavior::SendsFor<User<<Route::Protocol as behavior::Protocol>::Addr, Input>>,
 {
     type Protocol = Self;
-    type Event = User<Destination::Addr, Input>;
+    type Event = User<<Route::Protocol as behavior::Protocol>::Addr, Input>;
     type Sends = Route::Sends;
     type Ph = Never;
     type Error = Never;

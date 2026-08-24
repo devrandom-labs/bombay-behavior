@@ -181,7 +181,7 @@ impl Protocol for PoolReplies {
 }
 
 type PoolRoute = Recipient<PoolReplies>;
-type PoolProtocol = WorkerPoolProtocol<MailAddr, PoolReplies, u8, (), PoolRoute>;
+type PoolProtocol = WorkerPoolProtocol<MailAddr, u8, (), PoolRoute>;
 
 struct PoolWorker;
 

@@ -135,13 +135,8 @@ mod tests {
         type Msg = crate::PoolResponse<Job, ResultValue, MailAddr>;
     }
 
-    type PoolProtocol = crate::WorkerPoolProtocol<
-        MailAddr,
-        PoolReplies,
-        Job,
-        ResultValue,
-        behavior::Recipient<PoolReplies>,
-    >;
+    type PoolProtocol =
+        crate::WorkerPoolProtocol<MailAddr, Job, ResultValue, behavior::Recipient<PoolReplies>>;
 
     impl Protocol for PoolWorker {
         type Addr = MailAddr;
@@ -221,7 +216,6 @@ mod tests {
     fn worker_pool_requirements_include_pool_proxy_and_worker_protocols() {
         type Pool = crate::WorkerPool<
             MailAddr,
-            PoolReplies,
             Job,
             ResultValue,
             PoolWorker,

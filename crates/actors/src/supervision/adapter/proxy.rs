@@ -353,7 +353,11 @@ where
                 message,
             } => {
                 let route = ChildRoute::<C, behavior::ChildHead>::new(incarnation);
-                sends.deliveries.push(ChildDelivery::at(route, message));
+                sends.deliveries.extend(
+                    <ChildRoute<C, behavior::ChildHead> as crate::DeliveryRouteFor<Self>>::deliver_for(
+                        route, message,
+                    ),
+                );
                 Vec::new()
             }
             IncarnationEffects::Report(resolved) => {

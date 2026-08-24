@@ -6,8 +6,8 @@ use std::collections::BinaryHeap;
 use super::DeliveryOutcomes;
 
 use behavior::{
-    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, Never, NoBirths, Protocol,
-    Recipient, User,
+    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Never, NoBirths, Protocol,
+    SendEffects, User,
 };
 use thiserror::Error;
 
@@ -66,7 +66,7 @@ pub enum PriorityQueueOutcome<T, P> {
 }
 
 /// Operations accepted by [`PriorityQueue`].
-pub enum PriorityQueueMessage<T, P, Target: Protocol, Route> {
+pub enum PriorityQueueMessage<T, P, TargetRoute, ReplyRoute> {
     /// Offer one owned value at an immutable priority.
     Offer {
         /// Owned value.
@@ -74,14 +74,14 @@ pub enum PriorityQueueMessage<T, P, Target: Protocol, Route> {
         /// Comparable priority; greater values release first.
         priority: P,
         /// Typed admission-result recipient.
-        reply_to: Route,
+        reply_to: ReplyRoute,
     },
     /// Release one value to a typed destination.
     Release {
         /// Destination.
-        to: Recipient<Target>,
+        to: TargetRoute,
         /// Typed release-result recipient.
-        reply_to: Route,
+        reply_to: ReplyRoute,
     },
 }
 
@@ -129,31 +129,26 @@ impl<T, P: Ord> Ord for Entry<T, P> {
 /// Communication concerns. The implementation uses `BinaryHeap` because
 /// accepted priorities are immutable; it does not need `priority-queue`.
 /// No transition has a semantic panic condition.
-type PriorityQueueMarker<A, Target, Reply, Route> =
-    core::marker::PhantomData<fn() -> (A, Target, Reply, Route)>;
-
 pub struct PriorityQueue<
     A: Address,
     T,
     P: Ord,
-    Target: Protocol<Addr = A, Msg = T>,
-    Reply: behavior::Protocol<Addr = A, Msg = PriorityQueueOutcome<T, P>>,
-    Route: DeliveryRoute<Reply>,
+    TargetRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = T>>,
+    ReplyRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = PriorityQueueOutcome<T, P>>>,
 > {
     capacity: usize,
     next: Option<u64>,
     queued: BinaryHeap<Entry<T, P>>,
-    marker: PriorityQueueMarker<A, Target, Reply, Route>,
+    marker: core::marker::PhantomData<fn() -> (A, TargetRoute, ReplyRoute)>,
 }
-type PriorityActions<A, Target, OutcomeSends> =
-    Actions<A, Never, DeliveryOutcomes<Target, OutcomeSends>, NoBirths>;
-impl<A, T, P, Target, Reply, Route> PriorityQueue<A, T, P, Target, Reply, Route>
+type PriorityActions<A, TargetSends, OutcomeSends> =
+    Actions<A, Never, DeliveryOutcomes<TargetSends, OutcomeSends>, NoBirths>;
+impl<A, T, P, TargetRoute, ReplyRoute> PriorityQueue<A, T, P, TargetRoute, ReplyRoute>
 where
     A: Address,
     P: Ord,
-    Target: Protocol<Addr = A, Msg = T>,
-    Reply: behavior::Protocol<Addr = A, Msg = PriorityQueueOutcome<T, P>>,
-    Route: DeliveryRoute<Reply>,
+    TargetRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = T>>,
+    ReplyRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = PriorityQueueOutcome<T, P>>>,
 {
     /// Construct an empty positive-capacity queue.
     /// # Errors
@@ -183,9 +178,9 @@ where
         )
     }
     fn sends(
-        deliveries: Vec<Delivery<Target>>,
-        outcomes: Route::Sends,
-    ) -> PriorityActions<A, Target, Route::Sends> {
+        deliveries: TargetRoute::Sends,
+        outcomes: ReplyRoute::Sends,
+    ) -> PriorityActions<A, TargetRoute::Sends, ReplyRoute::Sends> {
         Actions::send(DeliveryOutcomes {
             deliveries,
             outcomes,
@@ -195,11 +190,11 @@ where
         &mut self,
         value: T,
         priority: P,
-        reply_to: Route,
-    ) -> PriorityActions<A, Target, Route::Sends> {
+        reply_to: ReplyRoute,
+    ) -> PriorityActions<A, TargetRoute::Sends, ReplyRoute::Sends> {
         if self.queued.len() == self.capacity {
             return Self::sends(
-                Vec::new(),
+                TargetRoute::Sends::empty(),
                 reply_to.deliver(PriorityQueueOutcome::Rejected {
                     value,
                     priority,
@@ -209,7 +204,7 @@ where
         }
         let Some(order) = self.next else {
             return Self::sends(
-                Vec::new(),
+                TargetRoute::Sends::empty(),
                 reply_to.deliver(PriorityQueueOutcome::Rejected {
                     value,
                     priority,
@@ -224,51 +219,52 @@ where
             order,
         });
         Self::sends(
-            Vec::new(),
+            TargetRoute::Sends::empty(),
             reply_to.deliver(PriorityQueueOutcome::Accepted {
                 depth: self.queued.len(),
             }),
         )
     }
 }
-impl<A, T, P, Target, Reply, Route> BehaviorBase for PriorityQueue<A, T, P, Target, Reply, Route>
+impl<A, T, P, TargetRoute, ReplyRoute> BehaviorBase
+    for PriorityQueue<A, T, P, TargetRoute, ReplyRoute>
 where
     A: Address,
     P: Ord,
-    Target: Protocol<Addr = A, Msg = T>,
-    Reply: behavior::Protocol<Addr = A, Msg = PriorityQueueOutcome<T, P>>,
-    Route: DeliveryRoute<Reply>,
+    TargetRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = T>>,
+    ReplyRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = PriorityQueueOutcome<T, P>>>,
 {
     type Base = Self;
     fn base(&self) -> &Self {
         self
     }
 }
-impl<A, T, P, Target, Reply, Route> behavior::Protocol
-    for PriorityQueue<A, T, P, Target, Reply, Route>
+impl<A, T, P, TargetRoute, ReplyRoute> behavior::Protocol
+    for PriorityQueue<A, T, P, TargetRoute, ReplyRoute>
 where
     A: Address,
     P: Ord,
-    Target: Protocol<Addr = A, Msg = T>,
-    Reply: behavior::Protocol<Addr = A, Msg = PriorityQueueOutcome<T, P>>,
-    Route: DeliveryRoute<Reply>,
+    TargetRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = T>>,
+    ReplyRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = PriorityQueueOutcome<T, P>>>,
 {
     type Addr = A;
-    type Msg = PriorityQueueMessage<T, P, Target, Route>;
+    type Msg = PriorityQueueMessage<T, P, TargetRoute, ReplyRoute>;
 }
 
-impl<A, T, P, Target, Reply, Route> Behavior for PriorityQueue<A, T, P, Target, Reply, Route>
+impl<A, T, P, TargetRoute, ReplyRoute> Behavior for PriorityQueue<A, T, P, TargetRoute, ReplyRoute>
 where
     A: Address,
     P: Ord,
-    Target: Protocol<Addr = A, Msg = T>,
-    Reply: behavior::Protocol<Addr = A, Msg = PriorityQueueOutcome<T, P>>,
-    Route: DeliveryRoute<Reply>,
-    Route::Sends: behavior::SendsFor<User<A, PriorityQueueMessage<T, P, Target, Route>>>,
+    TargetRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = T>>,
+    ReplyRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = PriorityQueueOutcome<T, P>>>,
+    TargetRoute::Sends:
+        behavior::SendsFor<User<A, PriorityQueueMessage<T, P, TargetRoute, ReplyRoute>>>,
+    ReplyRoute::Sends:
+        behavior::SendsFor<User<A, PriorityQueueMessage<T, P, TargetRoute, ReplyRoute>>>,
 {
     type Protocol = Self;
     type Event = User<A, crate::BehaviorMessage<Self>>;
-    type Sends = DeliveryOutcomes<Target, Route::Sends>;
+    type Sends = DeliveryOutcomes<TargetRoute::Sends, ReplyRoute::Sends>;
     type Ph = Never;
     type Error = Never;
     type Birth = NoBirths;
@@ -280,9 +276,12 @@ where
                 reply_to,
             } => self.offer(value, priority, reply_to),
             PriorityQueueMessage::Release { to, reply_to } => match self.queued.pop() {
-                None => Self::sends(Vec::new(), reply_to.deliver(PriorityQueueOutcome::Empty)),
+                None => Self::sends(
+                    TargetRoute::Sends::empty(),
+                    reply_to.deliver(PriorityQueueOutcome::Empty),
+                ),
                 Some(entry) => Self::sends(
-                    vec![Delivery::new(to, entry.value)],
+                    to.deliver(entry.value),
                     reply_to.deliver(PriorityQueueOutcome::Released {
                         remaining: self.queued.len(),
                     }),
@@ -296,7 +295,7 @@ where
 mod tests {
     use super::*;
     use crate::Activate as _;
-    use behavior::MailAddr;
+    use behavior::{Delivery, MailAddr, Recipient};
     struct Target;
     struct Reply;
     impl behavior::Protocol for Target {
@@ -331,7 +330,7 @@ mod tests {
             Ok(Actions::cont())
         }
     }
-    type Subject = PriorityQueue<MailAddr, u8, u8, Target, Reply, Recipient<Reply>>;
+    type Subject = PriorityQueue<MailAddr, u8, u8, Recipient<Target>, Recipient<Reply>>;
     fn reply() -> Recipient<Reply> {
         Recipient::global(MailAddr(2))
     }
@@ -348,7 +347,7 @@ mod tests {
     }
     fn release(
         s: &mut crate::Active<Subject>,
-    ) -> PriorityActions<MailAddr, Target, Vec<Delivery<Reply>>> {
+    ) -> PriorityActions<MailAddr, Vec<Delivery<Target>>, Vec<Delivery<Reply>>> {
         s.receive(
             MailAddr(0),
             PriorityQueueMessage::Release {

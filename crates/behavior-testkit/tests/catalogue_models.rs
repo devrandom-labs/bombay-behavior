@@ -93,7 +93,7 @@ proptest! {
         offers in vec((0_u64..24, any::<u8>()), 0..128)
     ) {
         type Subject =
-            Sequencer<MailAddr, u8, ByteTarget, SequenceReply, Recipient<SequenceReply>>;
+            Sequencer<MailAddr, u8, Recipient<ByteTarget>, Recipient<SequenceReply>>;
         let mut actual = (Subject::new(Sequence(0))).initialize().unwrap().behavior;
         let mut oracle = SequenceOracle::default();
 
@@ -126,8 +126,7 @@ proptest! {
             MailAddr,
             u8,
             u8,
-            ByteTarget,
-            DedupReply,
+            Recipient<ByteTarget>,
             Recipient<DedupReply>,
         >;
         let mut actual = (Subject::new(capacity).unwrap()).initialize().unwrap().behavior;
@@ -171,7 +170,7 @@ proptest! {
         operations in gate_operations()
     ) {
         type Subject =
-            OrderGate<MailAddr, u8, u8, ByteTarget, GateReply, Recipient<GateReply>>;
+            OrderGate<MailAddr, u8, u8, Recipient<ByteTarget>, Recipient<GateReply>>;
         let mut actual = (Subject::new()).initialize().unwrap().behavior;
         let mut watermark = None;
         let mut held = BTreeMap::new();

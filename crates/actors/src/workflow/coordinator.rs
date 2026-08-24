@@ -158,20 +158,18 @@ pub enum WorkflowMessage<K, Route> {
 pub struct Workflow<
     A: Address,
     K: Clone + Eq,
-    Reply: behavior::Protocol<Addr = A, Msg = WorkflowOutcome<K>>,
-    Route: DeliveryRoute<Reply>,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = WorkflowOutcome<K>>>,
 > {
     definition: WorkflowDefinition<K>,
     state: WorkflowState<K, Route>,
-    marker: core::marker::PhantomData<fn() -> (A, Reply)>,
+    marker: core::marker::PhantomData<fn() -> A>,
 }
 
-impl<A, K, Reply, Route> Workflow<A, K, Reply, Route>
+impl<A, K, Route> Workflow<A, K, Route>
 where
     A: Address,
     K: Clone + Eq,
-    Reply: behavior::Protocol<Addr = A, Msg = WorkflowOutcome<K>>,
-    Route: DeliveryRoute<Reply> + Clone,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = WorkflowOutcome<K>>> + Clone,
 {
     /// Validate and retain one dependency graph.
     ///
@@ -407,12 +405,11 @@ fn validate<K: Clone + Eq>(
     Ok(())
 }
 
-impl<A, K, Reply, Route> BehaviorBase for Workflow<A, K, Reply, Route>
+impl<A, K, Route> BehaviorBase for Workflow<A, K, Route>
 where
     A: Address,
     K: Clone + Eq,
-    Reply: behavior::Protocol<Addr = A, Msg = WorkflowOutcome<K>>,
-    Route: DeliveryRoute<Reply>,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = WorkflowOutcome<K>>>,
 {
     type Base = Self;
     fn base(&self) -> &Self {
@@ -420,23 +417,21 @@ where
     }
 }
 
-impl<A, K, Reply, Route> behavior::Protocol for Workflow<A, K, Reply, Route>
+impl<A, K, Route> behavior::Protocol for Workflow<A, K, Route>
 where
     A: Address,
     K: Clone + Eq,
-    Reply: behavior::Protocol<Addr = A, Msg = WorkflowOutcome<K>>,
-    Route: DeliveryRoute<Reply>,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = WorkflowOutcome<K>>>,
 {
     type Addr = A;
     type Msg = WorkflowMessage<K, Route>;
 }
 
-impl<A, K, Reply, Route> Behavior for Workflow<A, K, Reply, Route>
+impl<A, K, Route> Behavior for Workflow<A, K, Route>
 where
     A: Address,
     K: Clone + Eq,
-    Reply: behavior::Protocol<Addr = A, Msg = WorkflowOutcome<K>>,
-    Route: DeliveryRoute<Reply> + Clone,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = WorkflowOutcome<K>>> + Clone,
     Route::Sends: behavior::SendsFor<User<A, WorkflowMessage<K, Route>>>,
 {
     type Protocol = Self;
@@ -499,7 +494,7 @@ mod tests {
             Ok(Actions::cont())
         }
     }
-    type Subject = Workflow<MailAddr, &'static str, Reply, Recipient<Reply>>;
+    type Subject = Workflow<MailAddr, &'static str, Recipient<Reply>>;
     fn reply() -> Recipient<Reply> {
         Recipient::global(MailAddr(9))
     }

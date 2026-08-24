@@ -158,20 +158,19 @@ pub struct Acknowledgements<
     A: Address,
     K,
     P,
-    Reply: behavior::Protocol<Addr = A, Msg = AcknowledgementOutcome<K, P>>,
-    Route: DeliveryRoute<Reply>,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = AcknowledgementOutcome<K, P>>>,
 > {
     records: Vec<AcknowledgementRecord<K, P>>,
-    marker: core::marker::PhantomData<fn() -> (A, Reply, Route)>,
+    marker: core::marker::PhantomData<fn() -> (A, Route)>,
 }
 
-impl<A, K, P, Reply, Route> Acknowledgements<A, K, P, Reply, Route>
+impl<A, K, P, Route> Acknowledgements<A, K, P, Route>
 where
     A: Address,
     K: Clone + Eq,
     P: Clone + Eq,
-    Reply: behavior::Protocol<Addr = A, Msg = AcknowledgementOutcome<K, P>>,
-    Route: DeliveryRoute<Reply>,
+    Route:
+        DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = AcknowledgementOutcome<K, P>>>,
 {
     /// Construct an empty acknowledgement table.
     #[must_use]
@@ -341,26 +340,26 @@ where
     }
 }
 
-impl<A, K, P, Reply, Route> Default for Acknowledgements<A, K, P, Reply, Route>
+impl<A, K, P, Route> Default for Acknowledgements<A, K, P, Route>
 where
     A: Address,
     K: Clone + Eq,
     P: Clone + Eq,
-    Reply: behavior::Protocol<Addr = A, Msg = AcknowledgementOutcome<K, P>>,
-    Route: DeliveryRoute<Reply>,
+    Route:
+        DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = AcknowledgementOutcome<K, P>>>,
 {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<A, K, P, Reply, Route> BehaviorBase for Acknowledgements<A, K, P, Reply, Route>
+impl<A, K, P, Route> BehaviorBase for Acknowledgements<A, K, P, Route>
 where
     A: Address,
     K: Clone + Eq,
     P: Clone + Eq,
-    Reply: behavior::Protocol<Addr = A, Msg = AcknowledgementOutcome<K, P>>,
-    Route: DeliveryRoute<Reply>,
+    Route:
+        DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = AcknowledgementOutcome<K, P>>>,
 {
     type Base = Self;
     fn base(&self) -> &Self {
@@ -368,25 +367,25 @@ where
     }
 }
 
-impl<A, K, P, Reply, Route> behavior::Protocol for Acknowledgements<A, K, P, Reply, Route>
+impl<A, K, P, Route> behavior::Protocol for Acknowledgements<A, K, P, Route>
 where
     A: Address,
     K: Clone + Eq,
     P: Clone + Eq,
-    Reply: behavior::Protocol<Addr = A, Msg = AcknowledgementOutcome<K, P>>,
-    Route: DeliveryRoute<Reply>,
+    Route:
+        DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = AcknowledgementOutcome<K, P>>>,
 {
     type Addr = A;
     type Msg = AcknowledgementMessage<K, P, Route>;
 }
 
-impl<A, K, P, Reply, Route> Behavior for Acknowledgements<A, K, P, Reply, Route>
+impl<A, K, P, Route> Behavior for Acknowledgements<A, K, P, Route>
 where
     A: Address,
     K: Clone + Eq,
     P: Clone + Eq,
-    Reply: behavior::Protocol<Addr = A, Msg = AcknowledgementOutcome<K, P>>,
-    Route: DeliveryRoute<Reply>,
+    Route:
+        DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = AcknowledgementOutcome<K, P>>>,
     Route::Sends: behavior::SendsFor<User<A, AcknowledgementMessage<K, P, Route>>>,
 {
     type Protocol = Self;
@@ -437,7 +436,7 @@ mod tests {
         }
     }
 
-    type Subject = Acknowledgements<MailAddr, u8, u8, Reply, Recipient<Reply>>;
+    type Subject = Acknowledgements<MailAddr, u8, u8, Recipient<Reply>>;
     fn reply() -> Recipient<Reply> {
         Recipient::global(MailAddr(1))
     }

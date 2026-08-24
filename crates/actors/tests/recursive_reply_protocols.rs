@@ -66,12 +66,17 @@ macro_rules! recursive_reply_case {
 recursive_reply_case!(
     acknowledgements,
     AcknowledgementOutcome<u8, u16>,
-    Acknowledgements<MailAddr, u8, u16, Reply, Recipient<Reply>>
+    Acknowledgements<MailAddr, u8, u16, Recipient<Reply>>
 );
 recursive_reply_case!(
     buffer,
     BufferOutcome<u8>,
-    Buffer<MailAddr, u8, Recipient<MessageProtocol<MailAddr, BufferOutcome<u8>>>>
+    Buffer<
+        MailAddr,
+        u8,
+        Recipient<MessageProtocol<MailAddr, u8>>,
+        Recipient<MessageProtocol<MailAddr, BufferOutcome<u8>>>
+    >
 );
 recursive_reply_case!(
     cache,
@@ -86,75 +91,75 @@ recursive_reply_case!(
 recursive_reply_case!(
     circuit_breaker,
     BreakerOutcome,
-    CircuitBreaker<MailAddr, Reply, Recipient<Reply>>
+    CircuitBreaker<MailAddr, Recipient<Reply>>
 );
 recursive_reply_case!(
     configuration,
     ConfigurationState<u8>,
-    Configuration<MailAddr, u8, Reply, Recipient<Reply>>
+    Configuration<MailAddr, u8, Recipient<Reply>>
 );
 recursive_reply_case!(
     correlator,
     CorrelationResult<u8, u16>,
-    Correlator<MailAddr, u8, u16, Reply, Recipient<Reply>>
+    Correlator<MailAddr, u8, u16, Recipient<Reply>>
 );
 recursive_reply_case!(
     deduplicator,
     DeduplicatorOutcome<u8, u8>,
-    Deduplicator<MailAddr, u8, u8, Target, Reply, Recipient<Reply>>
+    Deduplicator<MailAddr, u8, u8, Recipient<Target>, Recipient<Reply>>
 );
-recursive_reply_case!(health, HealthReport<u8>, Health<MailAddr, u8, Reply, Recipient<Reply>>);
-recursive_reply_case!(lease, LeaseOutcome<u8>, Lease<MailAddr, u8, Reply, Recipient<Reply>>);
+recursive_reply_case!(health, HealthReport<u8>, Health<MailAddr, u8, Recipient<Reply>>);
+recursive_reply_case!(lease, LeaseOutcome<u8>, Lease<MailAddr, u8, Recipient<Reply>>);
 recursive_reply_case!(
     order_gate,
     OrderGateOutcome<u8, u8>,
-    OrderGate<MailAddr, u8, u8, Target, Reply, Recipient<Reply>>
+    OrderGate<MailAddr, u8, u8, Recipient<Target>, Recipient<Reply>>
 );
 recursive_reply_case!(
     presence,
     PresenceReply<u8>,
-    Presence<MailAddr, u8, Reply, Recipient<Reply>>
+    Presence<MailAddr, u8, Recipient<Reply>>
 );
 recursive_reply_case!(
     priority_queue,
     PriorityQueueOutcome<u8, u8>,
-    PriorityQueue<MailAddr, u8, u8, Target, Reply, Recipient<Reply>>
+    PriorityQueue<MailAddr, u8, u8, Recipient<Target>, Recipient<Reply>>
 );
 recursive_reply_case!(
     rate_limiter,
     RateLimiterOutcome<u8>,
-    RateLimiter<MailAddr, u8, Target, Reply, Recipient<Reply>>
+    RateLimiter<MailAddr, u8, Recipient<Target>, Recipient<Reply>>
 );
 recursive_reply_case!(
     readiness,
     ReadinessReport<u8>,
-    Readiness<MailAddr, u8, Reply, Recipient<Reply>>
+    Readiness<MailAddr, u8, Recipient<Reply>>
 );
 recursive_reply_case!(
     registry,
     RegistryResult<u8, Target>,
-    Registry<MailAddr, u8, Target, Reply, Recipient<Reply>>
+    Registry<MailAddr, u8, Target, Recipient<Reply>>
 );
 recursive_reply_case!(
     resolver,
     Resolution<u8, Target>,
-    Resolver<MailAddr, u8, Target, Reply, Recipient<Reply>>
+    Resolver<MailAddr, u8, Target, Recipient<Reply>>
 );
 recursive_reply_case!(
     sequencer,
     SequencerOutcome<u8>,
-    Sequencer<MailAddr, u8, Target, Reply, Recipient<Reply>>
+    Sequencer<MailAddr, u8, Recipient<Target>, Recipient<Reply>>
 );
-recursive_reply_case!(task, TaskResult<u8>, Task<MailAddr, u8, Reply, Recipient<Reply>>);
+recursive_reply_case!(task, TaskResult<u8>, Task<MailAddr, u8, Recipient<Reply>>);
 recursive_reply_case!(
     work_queue,
     WorkQueueOutcome<u8>,
-    WorkQueue<MailAddr, u8, Target, Reply, Recipient<Reply>>
+    WorkQueue<MailAddr, u8, Recipient<Target>, Recipient<Reply>>
 );
 recursive_reply_case!(
     workflow,
     WorkflowOutcome<u8>,
-    Workflow<MailAddr, u8, Reply, Recipient<Reply>>
+    Workflow<MailAddr, u8, Recipient<Reply>>
 );
 
 #[test]
@@ -182,33 +187,31 @@ fn every_reply_template_accepts_a_pure_message_protocol() {
     type QueueReply = MessageProtocol<MailAddr, WorkQueueOutcome<u8>>;
     type WorkflowReply = MessageProtocol<MailAddr, WorkflowOutcome<u8>>;
 
-    assert_behavior::<Acknowledgements<MailAddr, u8, u16, AckReply, Recipient<AckReply>>>();
-    assert_behavior::<Buffer<MailAddr, u8, Recipient<BufferReply>>>();
+    assert_behavior::<Acknowledgements<MailAddr, u8, u16, Recipient<AckReply>>>();
+    assert_behavior::<
+        Buffer<MailAddr, u8, Recipient<MessageProtocol<MailAddr, u8>>, Recipient<BufferReply>>,
+    >();
     assert_behavior::<Cache<MailAddr, u8, u16, Recipient<CacheReply>>>();
-    assert_behavior::<CircuitBreaker<MailAddr, BreakerReply, Recipient<BreakerReply>>>();
-    assert_behavior::<Configuration<MailAddr, u8, ConfigurationReply, Recipient<ConfigurationReply>>>(
+    assert_behavior::<CircuitBreaker<MailAddr, Recipient<BreakerReply>>>();
+    assert_behavior::<Configuration<MailAddr, u8, Recipient<ConfigurationReply>>>();
+    assert_behavior::<Correlator<MailAddr, u8, u16, Recipient<CorrelatorReply>>>();
+    assert_behavior::<
+        Deduplicator<MailAddr, u8, u8, Recipient<Target>, Recipient<DeduplicatorReply>>,
+    >();
+    assert_behavior::<Health<MailAddr, u8, Recipient<HealthReply>>>();
+    assert_behavior::<Lease<MailAddr, u8, Recipient<LeaseReply>>>();
+    assert_behavior::<OrderGate<MailAddr, u8, u8, Recipient<Target>, Recipient<GateReply>>>();
+    assert_behavior::<Presence<MailAddr, u8, Recipient<PresenceReplyProtocol>>>();
+    assert_behavior::<PriorityQueue<MailAddr, u8, u8, Recipient<Target>, Recipient<PriorityReply>>>(
     );
-    assert_behavior::<Correlator<MailAddr, u8, u16, CorrelatorReply, Recipient<CorrelatorReply>>>();
-    assert_behavior::<
-        Deduplicator<MailAddr, u8, u8, Target, DeduplicatorReply, Recipient<DeduplicatorReply>>,
-    >();
-    assert_behavior::<Health<MailAddr, u8, HealthReply, Recipient<HealthReply>>>();
-    assert_behavior::<Lease<MailAddr, u8, LeaseReply, Recipient<LeaseReply>>>();
-    assert_behavior::<OrderGate<MailAddr, u8, u8, Target, GateReply, Recipient<GateReply>>>();
-    assert_behavior::<
-        Presence<MailAddr, u8, PresenceReplyProtocol, Recipient<PresenceReplyProtocol>>,
-    >();
-    assert_behavior::<
-        PriorityQueue<MailAddr, u8, u8, Target, PriorityReply, Recipient<PriorityReply>>,
-    >();
-    assert_behavior::<RateLimiter<MailAddr, u8, Target, RateReply, Recipient<RateReply>>>();
-    assert_behavior::<Readiness<MailAddr, u8, ReadinessReply, Recipient<ReadinessReply>>>();
-    assert_behavior::<Registry<MailAddr, u8, Target, RegistryReply, Recipient<RegistryReply>>>();
-    assert_behavior::<Resolver<MailAddr, u8, Target, ResolverReply, Recipient<ResolverReply>>>();
-    assert_behavior::<Sequencer<MailAddr, u8, Target, SequencerReply, Recipient<SequencerReply>>>();
-    assert_behavior::<Task<MailAddr, u8, TaskReply, Recipient<TaskReply>>>();
-    assert_behavior::<WorkQueue<MailAddr, u8, Target, QueueReply, Recipient<QueueReply>>>();
-    assert_behavior::<Workflow<MailAddr, u8, WorkflowReply, Recipient<WorkflowReply>>>();
+    assert_behavior::<RateLimiter<MailAddr, u8, Recipient<Target>, Recipient<RateReply>>>();
+    assert_behavior::<Readiness<MailAddr, u8, Recipient<ReadinessReply>>>();
+    assert_behavior::<Registry<MailAddr, u8, Target, Recipient<RegistryReply>>>();
+    assert_behavior::<Resolver<MailAddr, u8, Target, Recipient<ResolverReply>>>();
+    assert_behavior::<Sequencer<MailAddr, u8, Recipient<Target>, Recipient<SequencerReply>>>();
+    assert_behavior::<Task<MailAddr, u8, Recipient<TaskReply>>>();
+    assert_behavior::<WorkQueue<MailAddr, u8, Recipient<Target>, Recipient<QueueReply>>>();
+    assert_behavior::<Workflow<MailAddr, u8, Recipient<WorkflowReply>>>();
 }
 
 #[test]
@@ -228,20 +231,19 @@ fn every_send_only_destination_accepts_a_protocol_without_a_behavior() {
     type BarrierReply = MessageProtocol<MailAddr, BarrierReleased>;
     type LatchReply = MessageProtocol<MailAddr, LatchReleased>;
 
-    assert_behavior::<Buffer<MailAddr, u8, Recipient<BufferReply>>>();
-    assert_behavior::<OrderGate<MailAddr, u8, u8, Bytes, GateReply, Recipient<GateReply>>>();
-    assert_behavior::<
-        PriorityQueue<MailAddr, u8, u8, Bytes, PriorityReply, Recipient<PriorityReply>>,
-    >();
-    assert_behavior::<WorkQueue<MailAddr, u8, Bytes, QueueReply, Recipient<QueueReply>>>();
-    assert_behavior::<RateLimiter<MailAddr, u8, Bytes, RateReply, Recipient<RateReply>>>();
-    assert_behavior::<Sequencer<MailAddr, u8, Bytes, SequenceReply, Recipient<SequenceReply>>>();
-    assert_behavior::<Deduplicator<MailAddr, u8, u8, Bytes, DedupReply, Recipient<DedupReply>>>();
-    assert_behavior::<Router<MailAddr, Bytes, RoundRobin>>();
-    assert_behavior::<Topic<MailAddr, u8>>();
-    assert_behavior::<PubSub<MailAddr, u8, u8, Bytes>>();
-    assert_behavior::<Registry<MailAddr, u8, Bytes, RegistryReply, Recipient<RegistryReply>>>();
-    assert_behavior::<Resolver<MailAddr, u8, Bytes, ResolverReply, Recipient<ResolverReply>>>();
+    assert_behavior::<Buffer<MailAddr, u8, Recipient<Bytes>, Recipient<BufferReply>>>();
+    assert_behavior::<OrderGate<MailAddr, u8, u8, Recipient<Bytes>, Recipient<GateReply>>>();
+    assert_behavior::<PriorityQueue<MailAddr, u8, u8, Recipient<Bytes>, Recipient<PriorityReply>>>(
+    );
+    assert_behavior::<WorkQueue<MailAddr, u8, Recipient<Bytes>, Recipient<QueueReply>>>();
+    assert_behavior::<RateLimiter<MailAddr, u8, Recipient<Bytes>, Recipient<RateReply>>>();
+    assert_behavior::<Sequencer<MailAddr, u8, Recipient<Bytes>, Recipient<SequenceReply>>>();
+    assert_behavior::<Deduplicator<MailAddr, u8, u8, Recipient<Bytes>, Recipient<DedupReply>>>();
+    assert_behavior::<Router<MailAddr, Recipient<Bytes>, RoundRobin>>();
+    assert_behavior::<Topic<MailAddr, u8, Recipient<Bytes>>>();
+    assert_behavior::<PubSub<MailAddr, u8, u8, Recipient<Bytes>>>();
+    assert_behavior::<Registry<MailAddr, u8, Bytes, Recipient<RegistryReply>>>();
+    assert_behavior::<Resolver<MailAddr, u8, Bytes, Recipient<ResolverReply>>>();
     assert_behavior::<Barrier<MailAddr, u8, Recipient<BarrierReply>>>();
     assert_behavior::<Latch<MailAddr, Recipient<LatchReply>>>();
 }

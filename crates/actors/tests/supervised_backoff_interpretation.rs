@@ -352,7 +352,7 @@ impl Protocol for PoolReply {
 }
 
 type PoolRoute = Recipient<PoolReply>;
-type PoolProtocol = WorkerPoolProtocol<MailAddr, PoolReply, u8, u16, PoolRoute>;
+type PoolProtocol = WorkerPoolProtocol<MailAddr, u8, u16, PoolRoute>;
 
 struct PoolWorker;
 
@@ -401,7 +401,7 @@ async fn outer_shutdown_wrapper_interprets_worker_pool_proxy_reports() {
     interpret_proxy_report(&mut parent, creation).await;
 }
 
-type KeyedPoolProtocol = KeyedWorkerPoolProtocol<MailAddr, PoolReply, u8, u8, u16, PoolRoute>;
+type KeyedPoolProtocol = KeyedWorkerPoolProtocol<MailAddr, u8, u8, u16, PoolRoute>;
 
 struct KeyedPoolWorker;
 

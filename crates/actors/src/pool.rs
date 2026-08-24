@@ -62,11 +62,10 @@ where
 
 /// Messages accepted by a pool coordinator.
 #[derive(Clone, PartialEq, Eq)]
-pub enum PoolMessage<A, D, J, R, Route>
+pub enum PoolMessage<A, J, R, Route>
 where
     A: Address,
-    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
-    Route: DeliveryRoute<D>,
+    Route: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>>,
 {
     Submit {
         job: JobId,
@@ -74,7 +73,7 @@ where
         reply_to: Route,
     },
     Completed {
-        worker: <D::Addr as Address>::Nonce,
+        worker: A::Nonce,
         assignment: AssignmentId,
         result: R,
     },
@@ -86,11 +85,10 @@ where
 /// It affects later submissions; jobs already accepted retain their selected
 /// stable worker slot.
 #[derive(Clone, PartialEq, Eq)]
-pub enum KeyedPoolMessage<A, D, K, J, R, Route>
+pub enum KeyedPoolMessage<A, K, J, R, Route>
 where
     A: Address,
-    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
-    Route: DeliveryRoute<D>,
+    Route: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>>,
 {
     Submit {
         key: K,
@@ -99,13 +97,13 @@ where
         reply_to: Route,
     },
     Completed {
-        worker: <D::Addr as Address>::Nonce,
+        worker: A::Nonce,
         assignment: AssignmentId,
         result: R,
     },
     Rebalance {
         key: K,
-        worker: <D::Addr as Address>::Nonce,
+        worker: A::Nonce,
     },
 }
 
@@ -459,15 +457,15 @@ enum Admission {
 }
 
 /// Complete event algebra of a shutdown-owning [`WorkerPool`].
-pub type WorkerPoolEvent<A, D, J, R, Route> = CommandSupervisionEvent<
-    User<A, PoolMessage<A, D, J, R, Route>>,
-    PoolAssignment<crate::WorkerPoolProtocol<A, D, J, R, Route>>,
+pub type WorkerPoolEvent<A, J, R, Route> = CommandSupervisionEvent<
+    User<A, PoolMessage<A, J, R, Route>>,
+    PoolAssignment<crate::WorkerPoolProtocol<A, J, R, Route>>,
 >;
 
 /// Concrete event sum for a [`KeyedWorkerPool`].
-pub type KeyedWorkerPoolEvent<A, D, K, J, R, Route> = CommandSupervisionEvent<
-    User<A, KeyedPoolMessage<A, D, K, J, R, Route>>,
-    PoolAssignment<crate::KeyedWorkerPoolProtocol<A, D, K, J, R, Route>>,
+pub type KeyedWorkerPoolEvent<A, K, J, R, Route> = CommandSupervisionEvent<
+    User<A, KeyedPoolMessage<A, K, J, R, Route>>,
+    PoolAssignment<crate::KeyedWorkerPoolProtocol<A, K, J, R, Route>>,
 >;
 
 /// Named pool-owned delivery lanes.
@@ -560,7 +558,7 @@ where
 /// appendable lanes within the supervised behavior send product.
 pub type PoolSends<A, C, Route, ParentPath> = SendLayer<
     SupervisorSends<A, C, ParentPath>,
-    PoolBehaviorSends<A, C, <Route as crate::DeliveryRouteProtocol>::Sends>,
+    PoolBehaviorSends<A, C, <Route as crate::DeliveryRoute>::Sends>,
 >;
 
 /// Complete action type shared by FIFO and keyed worker pools.
@@ -622,18 +620,17 @@ enum PoolOwnershipEvent<A: Address> {
 ///     fn transition(&mut self, _: crate::ActiveTurn, _: Self::Event) -> behavior::BehaviorActed<Self> { Ok(Actions::cont()) }
 /// }
 ///
-/// type PoolProtocol = WorkerPoolProtocol<MailAddr, Reply, String, ()>;
+/// type PoolProtocol = WorkerPoolProtocol<MailAddr, String, ()>;
 /// // `WrongWorker::Protocol::Msg` is not `PoolAssignment<PoolProtocol>`.
-/// let _: Option<WorkerPool<MailAddr, Reply, String, (), WrongWorker>> = None;
+/// let _: Option<WorkerPool<MailAddr, String, (), WrongWorker>> = None;
 /// ```
-struct PoolState<A: Address, D, J, R, C, Route, P, ParentPath>
+struct PoolState<A: Address, J, R, C, Route, P, ParentPath>
 where
-    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
     P: crate::PoolAssignmentProtocol<Addr = A, Job = J>,
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A, Msg = PoolAssignment<P>>,
-    Route: DeliveryRoute<D>,
+    Route: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>>,
 {
     supervisor: FixedFleetOwnership<A, C, ParentPath>,
     complete_to: Recipient<P>,
@@ -642,18 +639,17 @@ where
     backlog_capacity: usize,
     next_assignment: u64,
     interruption: InterruptionPolicy,
-    response_contract: core::marker::PhantomData<fn(D, R)>,
+    response_contract: core::marker::PhantomData<fn() -> R>,
 }
 
-impl<A, D, J, R, C, Route, P, ParentPath> PoolState<A, D, J, R, C, Route, P, ParentPath>
+impl<A, J, R, C, Route, P, ParentPath> PoolState<A, J, R, C, Route, P, ParentPath>
 where
     A: Address,
     A::Nonce: From<u64>,
-    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
     P: crate::PoolAssignmentProtocol<Addr = A, Job = J>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A, Msg = PoolAssignment<P>>,
-    Route: DeliveryRoute<D>,
+    Route: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>>,
 {
     /// Construct a pool after proving that every configured child route is
     /// unique.
@@ -749,16 +745,15 @@ where
     }
 }
 
-impl<A, D, J, R, C, Route, P, ParentPath> PoolState<A, D, J, R, C, Route, P, ParentPath>
+impl<A, J, R, C, Route, P, ParentPath> PoolState<A, J, R, C, Route, P, ParentPath>
 where
     A: Address,
     A::Nonce: From<u64>,
-    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
     P: crate::PoolAssignmentProtocol<Addr = A, Job = J>,
     J: Clone,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A, Msg = PoolAssignment<P>>,
-    Route: DeliveryRoute<D> + Clone,
+    Route: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>> + Clone,
 {
     fn supervisor_transition(
         &mut self,
@@ -1297,36 +1292,29 @@ where
 
 /// Public FIFO worker-pool behavior with its completion protocol fixed by the
 /// pool's own message signature.
-pub struct WorkerPoolWithParent<A: Address, D, J, R, C, Route, ParentPath>
+pub struct WorkerPoolWithParent<A: Address, J, R, C, Route, ParentPath>
 where
     A::Nonce: From<u64>,
-    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
-    Route: DeliveryRoute<D> + Clone,
+    Route: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>> + Clone,
     C: Behavior<Ph = Never>,
-    C::Protocol: crate::Protocol<
-            Addr = A,
-            Msg = PoolAssignment<crate::WorkerPoolProtocol<A, D, J, R, Route>>,
-        >,
+    C::Protocol:
+        crate::Protocol<Addr = A, Msg = PoolAssignment<crate::WorkerPoolProtocol<A, J, R, Route>>>,
 {
-    core: PoolState<A, D, J, R, C, Route, crate::WorkerPoolProtocol<A, D, J, R, Route>, ParentPath>,
+    core: PoolState<A, J, R, C, Route, crate::WorkerPoolProtocol<A, J, R, Route>, ParentPath>,
 }
 
 /// A FIFO worker pool whose proxy reports target its direct event layer.
-pub type WorkerPool<A, D, J, R, C, Route> =
-    WorkerPoolWithParent<A, D, J, R, C, Route, behavior::Here>;
+pub type WorkerPool<A, J, R, C, Route> = WorkerPoolWithParent<A, J, R, C, Route, behavior::Here>;
 
-impl<A, D, J, R, C, Route, ParentPath> crate::BehaviorBase
-    for WorkerPoolWithParent<A, D, J, R, C, Route, ParentPath>
+impl<A, J, R, C, Route, ParentPath> crate::BehaviorBase
+    for WorkerPoolWithParent<A, J, R, C, Route, ParentPath>
 where
     A: Address,
     A::Nonce: From<u64>,
-    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
-    Route: DeliveryRoute<D> + Clone,
+    Route: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>> + Clone,
     C: Behavior<Ph = Never>,
-    C::Protocol: crate::Protocol<
-            Addr = A,
-            Msg = PoolAssignment<crate::WorkerPoolProtocol<A, D, J, R, Route>>,
-        >,
+    C::Protocol:
+        crate::Protocol<Addr = A, Msg = PoolAssignment<crate::WorkerPoolProtocol<A, J, R, Route>>>,
 {
     type Base = Self;
 
@@ -1335,24 +1323,21 @@ where
     }
 }
 
-impl<A, D, J, R, C, Route, ParentPath> WorkerPoolWithParent<A, D, J, R, C, Route, ParentPath>
+impl<A, J, R, C, Route, ParentPath> WorkerPoolWithParent<A, J, R, C, Route, ParentPath>
 where
     A: Address,
     A::Nonce: From<u64>,
-    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
-    Route: DeliveryRoute<D> + Clone,
+    Route: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>> + Clone,
     C: Behavior<Ph = Never>,
-    C::Protocol: crate::Protocol<
-            Addr = A,
-            Msg = PoolAssignment<crate::WorkerPoolProtocol<A, D, J, R, Route>>,
-        >,
+    C::Protocol:
+        crate::Protocol<Addr = A, Msg = PoolAssignment<crate::WorkerPoolProtocol<A, J, R, Route>>>,
 {
     /// Construct a pool whose completion destination implements this exact
     /// pool protocol.
     pub fn with_parent(
         topology: ChildTopology<A::Nonce, C>,
         configuration: PoolConfiguration,
-        complete_to: Recipient<crate::WorkerPoolProtocol<A, D, J, R, Route>>,
+        complete_to: Recipient<crate::WorkerPoolProtocol<A, J, R, Route>>,
         proxy_parent: ProxyParentIngress<A, ParentPath>,
     ) -> Result<Self, PoolConfigError<A::Nonce>> {
         PoolState::with_parent(topology, configuration, complete_to, proxy_parent)
@@ -1370,23 +1355,20 @@ where
     }
 }
 
-impl<A, D, J, R, C, Route> WorkerPoolWithParent<A, D, J, R, C, Route, behavior::Here>
+impl<A, J, R, C, Route> WorkerPoolWithParent<A, J, R, C, Route, behavior::Here>
 where
     A: Address,
     A::Nonce: From<u64>,
-    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
-    Route: DeliveryRoute<D> + Clone,
+    Route: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>> + Clone,
     C: Behavior<Ph = Never>,
-    C::Protocol: crate::Protocol<
-            Addr = A,
-            Msg = PoolAssignment<crate::WorkerPoolProtocol<A, D, J, R, Route>>,
-        >,
+    C::Protocol:
+        crate::Protocol<Addr = A, Msg = PoolAssignment<crate::WorkerPoolProtocol<A, J, R, Route>>>,
 {
     /// Construct a pool whose proxy reports target the pool's direct event layer.
     pub fn new(
         topology: ChildTopology<A::Nonce, C>,
         configuration: PoolConfiguration,
-        complete_to: Recipient<crate::WorkerPoolProtocol<A, D, J, R, Route>>,
+        complete_to: Recipient<crate::WorkerPoolProtocol<A, J, R, Route>>,
     ) -> Result<Self, PoolConfigError<A::Nonce>> {
         Self::with_parent(
             topology,
@@ -1397,22 +1379,18 @@ where
     }
 }
 
-impl<A, D, J, R, C, Route, ParentPath> Behavior
-    for WorkerPoolWithParent<A, D, J, R, C, Route, ParentPath>
+impl<A, J, R, C, Route, ParentPath> Behavior for WorkerPoolWithParent<A, J, R, C, Route, ParentPath>
 where
     A: Address,
     A::Nonce: From<u64>,
-    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
-    Route: DeliveryRoute<D> + Clone,
+    Route: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>> + Clone,
     J: Clone,
     C: Behavior<Ph = Never>,
-    C::Protocol: crate::Protocol<
-            Addr = A,
-            Msg = PoolAssignment<crate::WorkerPoolProtocol<A, D, J, R, Route>>,
-        >,
+    C::Protocol:
+        crate::Protocol<Addr = A, Msg = PoolAssignment<crate::WorkerPoolProtocol<A, J, R, Route>>>,
 {
-    type Protocol = crate::WorkerPoolProtocol<A, D, J, R, Route>;
-    type Event = WorkerPoolEvent<A, D, J, R, Route>;
+    type Protocol = crate::WorkerPoolProtocol<A, J, R, Route>;
+    type Event = WorkerPoolEvent<A, J, R, Route>;
     type Sends = PoolSends<A, C, Route, ParentPath>;
     type Ph = Never;
     type Error = PoolFailure<A, R, Never>;
@@ -1607,8 +1585,7 @@ mod tests {
 
     impl behavior::Protocol for TestWorker {
         type Addr = MailAddr;
-        type Msg =
-            PoolAssignment<WorkerPoolProtocol<MailAddr, TestReply, u8, (), Recipient<TestReply>>>;
+        type Msg = PoolAssignment<WorkerPoolProtocol<MailAddr, u8, (), Recipient<TestReply>>>;
     }
 
     impl Behavior for TestWorker {
@@ -1642,7 +1619,6 @@ mod tests {
         let parent = ProxyParentIngress::<MailAddr, behavior::Here>::new().inside();
         let mut pool = WorkerPoolWithParent::<
             MailAddr,
-            TestReply,
             u8,
             (),
             TestWorker,
@@ -1778,7 +1754,7 @@ mod tests {
 ///     fn init(&mut self, _: crate::InitializationTurn) -> behavior::BehaviorActed<Self> { Ok(Actions::cont()) }
 ///     fn transition(&mut self, _: crate::ActiveTurn, _: Self::Event) -> behavior::BehaviorActed<Self> { Ok(Actions::cont()) }
 /// }
-/// type PoolProtocol = KeyedWorkerPoolProtocol<MailAddr, Reply, NonKey, u8, ()>;
+/// type PoolProtocol = KeyedWorkerPoolProtocol<MailAddr, NonKey, u8, ()>;
 /// #[behavior::behavior(
 ///     addr = MailAddr,
 ///     message = behavior::PoolAssignment<PoolProtocol>,
@@ -1794,51 +1770,41 @@ mod tests {
 ///         Ok(Actions::cont())
 ///     }
 /// }
-/// let _: Option<KeyedWorkerPool<MailAddr, Reply, NonKey, u8, (), Worker, fn(&NonKey) -> u64>> = None;
+/// let _: Option<KeyedWorkerPool<MailAddr, NonKey, u8, (), Worker, fn(&NonKey) -> u64>> = None;
 /// ```
-pub struct KeyedWorkerPoolWithParent<A: Address, D, K, J, R, C, Route, S, ParentPath>
+pub struct KeyedWorkerPoolWithParent<A: Address, K, J, R, C, Route, S, ParentPath>
 where
     A::Nonce: From<u64>,
-    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
-    Route: DeliveryRoute<D> + Clone,
+    Route: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>> + Clone,
     K: Eq,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<
             Addr = A,
-            Msg = PoolAssignment<crate::KeyedWorkerPoolProtocol<A, D, K, J, R, Route>>,
+            Msg = PoolAssignment<crate::KeyedWorkerPoolProtocol<A, K, J, R, Route>>,
         >,
     S: AffinitySelector<K, A::Nonce>,
 {
-    pool: PoolState<
-        A,
-        D,
-        J,
-        R,
-        C,
-        Route,
-        crate::KeyedWorkerPoolProtocol<A, D, K, J, R, Route>,
-        ParentPath,
-    >,
+    pool:
+        PoolState<A, J, R, C, Route, crate::KeyedWorkerPoolProtocol<A, K, J, R, Route>, ParentPath>,
     bindings: Vec<(K, A::Nonce)>,
     selector: S,
 }
 
 /// A keyed pool whose proxies report to the pool's direct event layer.
-pub type KeyedWorkerPool<A, D, K, J, R, C, Route, S> =
-    KeyedWorkerPoolWithParent<A, D, K, J, R, C, Route, S, behavior::Here>;
+pub type KeyedWorkerPool<A, K, J, R, C, Route, S> =
+    KeyedWorkerPoolWithParent<A, K, J, R, C, Route, S, behavior::Here>;
 
-impl<A, D, K, J, R, C, Route, S, ParentPath> crate::BehaviorBase
-    for KeyedWorkerPoolWithParent<A, D, K, J, R, C, Route, S, ParentPath>
+impl<A, K, J, R, C, Route, S, ParentPath> crate::BehaviorBase
+    for KeyedWorkerPoolWithParent<A, K, J, R, C, Route, S, ParentPath>
 where
     A: Address,
     A::Nonce: From<u64>,
-    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
-    Route: DeliveryRoute<D> + Clone,
+    Route: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>> + Clone,
     K: Eq,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<
             Addr = A,
-            Msg = PoolAssignment<crate::KeyedWorkerPoolProtocol<A, D, K, J, R, Route>>,
+            Msg = PoolAssignment<crate::KeyedWorkerPoolProtocol<A, K, J, R, Route>>,
         >,
     S: AffinitySelector<K, A::Nonce>,
 {
@@ -1849,18 +1815,17 @@ where
     }
 }
 
-impl<A, D, K, J, R, C, Route, S, ParentPath>
-    KeyedWorkerPoolWithParent<A, D, K, J, R, C, Route, S, ParentPath>
+impl<A, K, J, R, C, Route, S, ParentPath>
+    KeyedWorkerPoolWithParent<A, K, J, R, C, Route, S, ParentPath>
 where
     A: Address,
     A::Nonce: From<u64>,
-    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
-    Route: DeliveryRoute<D> + Clone,
+    Route: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>> + Clone,
     K: Eq,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<
             Addr = A,
-            Msg = PoolAssignment<crate::KeyedWorkerPoolProtocol<A, D, K, J, R, Route>>,
+            Msg = PoolAssignment<crate::KeyedWorkerPoolProtocol<A, K, J, R, Route>>,
         >,
     S: AffinitySelector<K, A::Nonce>,
 {
@@ -1877,7 +1842,7 @@ where
         topology: ChildTopology<A::Nonce, C>,
         configuration: PoolConfiguration,
         selector: S,
-        complete_to: Recipient<crate::KeyedWorkerPoolProtocol<A, D, K, J, R, Route>>,
+        complete_to: Recipient<crate::KeyedWorkerPoolProtocol<A, K, J, R, Route>>,
         proxy_parent: ProxyParentIngress<A, ParentPath>,
     ) -> Result<Self, PoolConfigError<A::Nonce>> {
         Ok(Self {
@@ -1929,18 +1894,16 @@ where
     }
 }
 
-impl<A, D, K, J, R, C, Route, S>
-    KeyedWorkerPoolWithParent<A, D, K, J, R, C, Route, S, behavior::Here>
+impl<A, K, J, R, C, Route, S> KeyedWorkerPoolWithParent<A, K, J, R, C, Route, S, behavior::Here>
 where
     A: Address,
     A::Nonce: From<u64>,
-    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
-    Route: DeliveryRoute<D> + Clone,
+    Route: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>> + Clone,
     K: Eq,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<
             Addr = A,
-            Msg = PoolAssignment<crate::KeyedWorkerPoolProtocol<A, D, K, J, R, Route>>,
+            Msg = PoolAssignment<crate::KeyedWorkerPoolProtocol<A, K, J, R, Route>>,
         >,
     S: AffinitySelector<K, A::Nonce>,
 {
@@ -1948,7 +1911,7 @@ where
         topology: ChildTopology<A::Nonce, C>,
         configuration: PoolConfiguration,
         selector: S,
-        complete_to: Recipient<crate::KeyedWorkerPoolProtocol<A, D, K, J, R, Route>>,
+        complete_to: Recipient<crate::KeyedWorkerPoolProtocol<A, K, J, R, Route>>,
     ) -> Result<Self, PoolConfigError<A::Nonce>> {
         Self::with_parent(
             topology,
@@ -1960,24 +1923,23 @@ where
     }
 }
 
-impl<A, D, K, J, R, C, Route, S, ParentPath> Behavior
-    for KeyedWorkerPoolWithParent<A, D, K, J, R, C, Route, S, ParentPath>
+impl<A, K, J, R, C, Route, S, ParentPath> Behavior
+    for KeyedWorkerPoolWithParent<A, K, J, R, C, Route, S, ParentPath>
 where
     A: Address,
     A::Nonce: From<u64>,
-    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
-    Route: DeliveryRoute<D> + Clone,
+    Route: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>> + Clone,
     K: Eq,
     J: Clone,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<
             Addr = A,
-            Msg = PoolAssignment<crate::KeyedWorkerPoolProtocol<A, D, K, J, R, Route>>,
+            Msg = PoolAssignment<crate::KeyedWorkerPoolProtocol<A, K, J, R, Route>>,
         >,
     S: AffinitySelector<K, A::Nonce>,
 {
-    type Protocol = crate::KeyedWorkerPoolProtocol<A, D, K, J, R, Route>;
-    type Event = KeyedWorkerPoolEvent<A, D, K, J, R, Route>;
+    type Protocol = crate::KeyedWorkerPoolProtocol<A, K, J, R, Route>;
+    type Event = KeyedWorkerPoolEvent<A, K, J, R, Route>;
     type Sends = PoolSends<A, C, Route, ParentPath>;
     type Ph = Never;
     type Error = PoolFailure<A, R, K>;

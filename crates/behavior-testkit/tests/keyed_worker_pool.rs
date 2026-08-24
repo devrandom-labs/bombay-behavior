@@ -16,7 +16,7 @@ struct Worker;
 
 impl behavior::Protocol for Worker {
     type Addr = MailAddr;
-    type Msg = PoolAssignment<KeyedWorkerPoolProtocol<MailAddr, Reply, u8, u8, u16, ReplyRoute>>;
+    type Msg = PoolAssignment<KeyedWorkerPoolProtocol<MailAddr, u8, u8, u16, ReplyRoute>>;
 }
 
 impl Behavior for Worker {
@@ -61,7 +61,7 @@ impl AffinitySelector<u8, u64> for Selector {
 
 type Reply = behavior_testkit::TestRecipient<PoolResponse<u8, u16, MailAddr>>;
 type ReplyRoute = Recipient<Reply>;
-type PoolDefinition = KeyedWorkerPool<MailAddr, Reply, u8, u8, u16, Worker, ReplyRoute, Selector>;
+type PoolDefinition = KeyedWorkerPool<MailAddr, u8, u8, u16, Worker, ReplyRoute, Selector>;
 type Pool = behavior::Active<PoolDefinition>;
 
 fn pool_definition(selector: Selector) -> PoolDefinition {

@@ -9,8 +9,6 @@ use thiserror::Error;
 
 use crate::DeliveryRoute;
 
-type TaskProtocol<A, R, Reply, Route> = core::marker::PhantomData<fn() -> (A, R, Reply, Route)>;
-
 /// Complete semantic state of a [`Task`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TaskState {
@@ -78,21 +76,19 @@ pub enum TaskError<R, Route> {
 /// not a new actor-model primitive. Typed delivery and terminal publication
 /// are interpreted by Bombay Communication and Observe. No method has a
 /// semantic panic condition.
-pub struct Task<A, R, Reply, Route>
+pub struct Task<A, R, Route>
 where
     A: Address,
-    Reply: behavior::Protocol<Addr = A, Msg = TaskResult<R>>,
-    Route: DeliveryRoute<Reply>,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = TaskResult<R>>>,
 {
     state: TaskState,
-    protocol: TaskProtocol<A, R, Reply, Route>,
+    protocol: core::marker::PhantomData<fn() -> (A, R, Route)>,
 }
 
-impl<A, R, Reply, Route> Task<A, R, Reply, Route>
+impl<A, R, Route> Task<A, R, Route>
 where
     A: Address,
-    Reply: behavior::Protocol<Addr = A, Msg = TaskResult<R>>,
-    Route: DeliveryRoute<Reply>,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = TaskResult<R>>>,
 {
     /// Construct a pending task definition.
     #[must_use]
@@ -110,22 +106,20 @@ where
     }
 }
 
-impl<A, R, Reply, Route> Default for Task<A, R, Reply, Route>
+impl<A, R, Route> Default for Task<A, R, Route>
 where
     A: Address,
-    Reply: behavior::Protocol<Addr = A, Msg = TaskResult<R>>,
-    Route: DeliveryRoute<Reply>,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = TaskResult<R>>>,
 {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<A, R, Reply, Route> BehaviorBase for Task<A, R, Reply, Route>
+impl<A, R, Route> BehaviorBase for Task<A, R, Route>
 where
     A: Address,
-    Reply: behavior::Protocol<Addr = A, Msg = TaskResult<R>>,
-    Route: DeliveryRoute<Reply>,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = TaskResult<R>>>,
 {
     type Base = Self;
 
@@ -134,21 +128,19 @@ where
     }
 }
 
-impl<A, R, Reply, Route> behavior::Protocol for Task<A, R, Reply, Route>
+impl<A, R, Route> behavior::Protocol for Task<A, R, Route>
 where
     A: Address,
-    Reply: behavior::Protocol<Addr = A, Msg = TaskResult<R>>,
-    Route: DeliveryRoute<Reply>,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = TaskResult<R>>>,
 {
     type Addr = A;
     type Msg = TaskMessage<R, Route>;
 }
 
-impl<A, R, Reply, Route> Behavior for Task<A, R, Reply, Route>
+impl<A, R, Route> Behavior for Task<A, R, Route>
 where
     A: Address,
-    Reply: behavior::Protocol<Addr = A, Msg = TaskResult<R>>,
-    Route: DeliveryRoute<Reply>,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = TaskResult<R>>>,
     Route::Sends: behavior::SendsFor<User<A, TaskMessage<R, Route>>>,
 {
     type Protocol = Self;
@@ -218,7 +210,7 @@ mod tests {
         }
     }
 
-    type TestTask = Task<MailAddr, u8, Reply, Recipient<Reply>>;
+    type TestTask = Task<MailAddr, u8, Recipient<Reply>>;
 
     #[test]
     fn completion_reports_owned_result_and_stops_atomically() {

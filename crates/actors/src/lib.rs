@@ -56,7 +56,7 @@ pub mod workflow;
 
 pub use activation::{Activate, Active, Initialized};
 pub use composition::{
-    DeliveryRoute, DeliveryRouteProtocol, MessageAdapter, MessageAdapterWithRoute, ReplyDeliveries,
+    DeliveryRoute, DeliveryRouteFor, MessageAdapter, MessageAdapterWithRoute, ReplyDeliveries,
     ReplyDelivery, ReplyRoute,
 };
 pub use discovery::{

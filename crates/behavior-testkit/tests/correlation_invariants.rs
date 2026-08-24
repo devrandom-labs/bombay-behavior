@@ -37,8 +37,8 @@ macro_rules! reply {
 reply!(AckReply, AcknowledgementOutcome<u8, u8>);
 reply!(CorrelationReply, CorrelationResult<u8, u8>);
 
-type Acks = Acknowledgements<MailAddr, u8, u8, AckReply, Recipient<AckReply>>;
-type Correlations = Correlator<MailAddr, u8, u8, CorrelationReply, Recipient<CorrelationReply>>;
+type Acks = Acknowledgements<MailAddr, u8, u8, Recipient<AckReply>>;
+type Correlations = Correlator<MailAddr, u8, u8, Recipient<CorrelationReply>>;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum CorrelationPhase {

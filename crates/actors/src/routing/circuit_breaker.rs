@@ -194,25 +194,23 @@ type BreakerActions<A, ReplySends> = Actions<A, Never, BreakerSends<ReplySends>,
 /// initialization, single-flight policy, failure counting, and reset ordering
 /// are Bombay policy. Timer scheduling is interpreted by Bombay Timers; the
 /// protected operation remains ordinary domain behavior. No transition panics.
-pub struct CircuitBreaker<A, Reply, Route>
+pub struct CircuitBreaker<A, Route>
 where
     A: Address,
-    Reply: behavior::Protocol<Addr = A, Msg = BreakerOutcome>,
-    Route: DeliveryRoute<Reply>,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = BreakerOutcome>>,
 {
     threshold: NonZeroU32,
     reset_after: Duration,
     timer_id: TimerId,
     next_attempt: u64,
     phase: BreakerPhase<Route>,
-    marker: core::marker::PhantomData<fn() -> (A, Reply)>,
+    marker: core::marker::PhantomData<fn() -> A>,
 }
 
-impl<A, Reply, Route> CircuitBreaker<A, Reply, Route>
+impl<A, Route> CircuitBreaker<A, Route>
 where
     A: Address,
-    Reply: behavior::Protocol<Addr = A, Msg = BreakerOutcome>,
-    Route: DeliveryRoute<Reply> + Clone,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = BreakerOutcome>> + Clone,
 {
     /// Construct a closed breaker.
     ///
@@ -380,11 +378,10 @@ where
     }
 }
 
-impl<A, Reply, Route> BehaviorBase for CircuitBreaker<A, Reply, Route>
+impl<A, Route> BehaviorBase for CircuitBreaker<A, Route>
 where
     A: Address,
-    Reply: behavior::Protocol<Addr = A, Msg = BreakerOutcome>,
-    Route: DeliveryRoute<Reply>,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = BreakerOutcome>>,
 {
     type Base = Self;
     fn base(&self) -> &Self {
@@ -392,21 +389,19 @@ where
     }
 }
 
-impl<A, Reply, Route> behavior::Protocol for CircuitBreaker<A, Reply, Route>
+impl<A, Route> behavior::Protocol for CircuitBreaker<A, Route>
 where
     A: Address,
-    Reply: behavior::Protocol<Addr = A, Msg = BreakerOutcome>,
-    Route: DeliveryRoute<Reply>,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = BreakerOutcome>>,
 {
     type Addr = A;
     type Msg = BreakerMessage<Route>;
 }
 
-impl<A, Reply, Route> Behavior for CircuitBreaker<A, Reply, Route>
+impl<A, Route> Behavior for CircuitBreaker<A, Route>
 where
     A: Address,
-    Reply: behavior::Protocol<Addr = A, Msg = BreakerOutcome>,
-    Route: DeliveryRoute<Reply> + Clone,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = BreakerOutcome>> + Clone,
     Route::Sends: behavior::SendsFor<BreakerEvent<A, Route>>,
 {
     type Protocol = Self;
@@ -466,7 +461,7 @@ mod tests {
         }
     }
 
-    fn subject() -> crate::Active<CircuitBreaker<MailAddr, Reply, Recipient<Reply>>> {
+    fn subject() -> crate::Active<CircuitBreaker<MailAddr, Recipient<Reply>>> {
         (CircuitBreaker::new(
             NonZeroU32::new(2).unwrap(),
             Duration::from_secs(1),
@@ -481,7 +476,7 @@ mod tests {
         Recipient::global(MailAddr(9))
     }
     fn admit(
-        subject: &mut crate::Active<CircuitBreaker<MailAddr, Reply, Recipient<Reply>>>,
+        subject: &mut crate::Active<CircuitBreaker<MailAddr, Recipient<Reply>>>,
     ) -> BreakerAttempt {
         let actions = subject
             .receive(MailAddr(0), BreakerMessage::Admit { reply_to: reply() })
@@ -563,7 +558,7 @@ mod tests {
         ));
     }
 
-    fn breaker() -> CircuitBreaker<MailAddr, Reply, Recipient<Reply>> {
+    fn breaker() -> CircuitBreaker<MailAddr, Recipient<Reply>> {
         CircuitBreaker::new(
             NonZeroU32::new(2).unwrap(),
             Duration::from_secs(1),

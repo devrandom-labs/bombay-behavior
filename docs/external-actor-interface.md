@@ -158,7 +158,7 @@ rather than silently adopting dead letters or dropping the message.
 
 The catalogue audit classified every stored or received recipient by semantic
 role. All arbitrary customer/reply destinations are now parameterized by the
-sealed `DeliveryRoute<P>` construction instead of being hard-coded as
+sealed `DeliveryRoute` construction, which projects `Protocol` and `Sends`, instead of being hard-coded as
 `Recipient<Reply>`:
 
 | Route capability | Produced effect |
@@ -167,13 +167,13 @@ sealed `DeliveryRoute<P>` construction instead of being hard-coded as
 | `EstablishedRecipient<P>` | `EstablishedDelivery<P>` |
 | `ReplyRoute<P>` | ordered `ReplyDelivery<P>` values retaining each logical/exact alternative |
 
-`DeliveryRouteProtocol` projects the protocol and concrete sends product from
-the route itself. Stateful templates such as dynamic supervision therefore
-cannot pair a retained route with an unrelated nominal reply protocol.
+`DeliveryRoute` projects the protocol and concrete sends product from the route
+itself. Stateful templates such as dynamic supervision therefore cannot pair a
+retained route with an unrelated nominal reply protocol.
 
-`ChildRoute` must remain excluded from a standalone reply or adapter route.
-Creator-local delivery is lawful only when the emitting behavior owns the
-matching direct child occurrence in its birth algebra.
+`ChildRoute` remains excluded from the transferable `DeliveryRoute` contract.
+It implements `DeliveryRouteFor<Owner>` only when the emitting owner resolves
+the matching direct child occurrence in its birth algebra.
 
 Registry membership, configured downstream destinations, worker completion
 targets, stable proxy identity, and transport names remain logical where that

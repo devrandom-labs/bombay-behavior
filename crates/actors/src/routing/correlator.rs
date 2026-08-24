@@ -97,18 +97,16 @@ pub struct Correlator<
     A: Address,
     K,
     V,
-    Reply: behavior::Protocol<Addr = A, Msg = CorrelationResult<K, V>>,
-    Route: DeliveryRoute<Reply>,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = CorrelationResult<K, V>>>,
 > {
     states: Vec<CorrelationState<K, Route>>,
-    address: core::marker::PhantomData<fn() -> (A, Reply)>,
+    address: core::marker::PhantomData<fn() -> A>,
 }
 
-impl<A, K, V, Reply, Route> Correlator<A, K, V, Reply, Route>
+impl<A, K, V, Route> Correlator<A, K, V, Route>
 where
     A: Address,
-    Reply: behavior::Protocol<Addr = A, Msg = CorrelationResult<K, V>>,
-    Route: DeliveryRoute<Reply>,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = CorrelationResult<K, V>>>,
 {
     /// Construct an empty correlator definition.
     #[must_use]
@@ -126,22 +124,20 @@ where
     }
 }
 
-impl<A, K, V, Reply, Route> Default for Correlator<A, K, V, Reply, Route>
+impl<A, K, V, Route> Default for Correlator<A, K, V, Route>
 where
     A: Address,
-    Reply: behavior::Protocol<Addr = A, Msg = CorrelationResult<K, V>>,
-    Route: DeliveryRoute<Reply>,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = CorrelationResult<K, V>>>,
 {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<A, K, V, Reply, Route> BehaviorBase for Correlator<A, K, V, Reply, Route>
+impl<A, K, V, Route> BehaviorBase for Correlator<A, K, V, Route>
 where
     A: Address,
-    Reply: behavior::Protocol<Addr = A, Msg = CorrelationResult<K, V>>,
-    Route: DeliveryRoute<Reply>,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = CorrelationResult<K, V>>>,
 {
     type Base = Self;
 
@@ -150,23 +146,22 @@ where
     }
 }
 
-impl<A, K, V, Reply, Route> behavior::Protocol for Correlator<A, K, V, Reply, Route>
+impl<A, K, V, Route> behavior::Protocol for Correlator<A, K, V, Route>
 where
     A: Address,
     K: Clone + Eq,
-    Reply: behavior::Protocol<Addr = A, Msg = CorrelationResult<K, V>>,
-    Route: DeliveryRoute<Reply>,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = CorrelationResult<K, V>>>,
 {
     type Addr = A;
     type Msg = CorrelatorMessage<K, V, Route>;
 }
 
-impl<A, K, V, Reply, Route> Behavior for Correlator<A, K, V, Reply, Route>
+impl<A, K, V, Route> Behavior for Correlator<A, K, V, Route>
 where
     A: Address,
     K: Clone + Eq,
-    Reply: behavior::Protocol<Addr = A, Msg = CorrelationResult<K, V>>,
-    Route: DeliveryRoute<Reply> + Clone,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = CorrelationResult<K, V>>>
+        + Clone,
     Route::Sends: behavior::SendsFor<User<A, CorrelatorMessage<K, V, Route>>>,
 {
     type Protocol = Self;
@@ -262,7 +257,7 @@ mod tests {
         }
     }
 
-    type TestCorrelator = Correlator<MailAddr, u8, u16, Reply, Recipient<Reply>>;
+    type TestCorrelator = Correlator<MailAddr, u8, u16, Recipient<Reply>>;
 
     #[test]
     fn resolve_commits_before_one_terminal_delivery_and_marks_duplicates_stale() {

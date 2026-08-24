@@ -248,20 +248,18 @@ struct Record<K, Route> {
 pub struct Presence<
     A: Address,
     K: Clone + Eq,
-    Reply: behavior::Protocol<Addr = A, Msg = PresenceReply<K>>,
-    Route: DeliveryRoute<Reply>,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = PresenceReply<K>>>,
 > {
     timer_id: fn(&K) -> TimerId,
     records: Vec<Record<K, Route>>,
-    marker: core::marker::PhantomData<fn() -> (A, Reply)>,
+    marker: core::marker::PhantomData<fn() -> A>,
 }
 type PresenceActions<A, ReplySends> = Actions<A, Never, PresenceSends<ReplySends>, NoBirths>;
-impl<A, K, Reply, Route> Presence<A, K, Reply, Route>
+impl<A, K, Route> Presence<A, K, Route>
 where
     A: Address,
     K: Clone + Eq,
-    Reply: behavior::Protocol<Addr = A, Msg = PresenceReply<K>>,
-    Route: DeliveryRoute<Reply> + Clone,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = PresenceReply<K>>> + Clone,
 {
     /// Construct an empty presence table with a pure actor-local timer mapping.
     #[must_use]
@@ -460,35 +458,32 @@ where
         })
     }
 }
-impl<A, K, Reply, Route> BehaviorBase for Presence<A, K, Reply, Route>
+impl<A, K, Route> BehaviorBase for Presence<A, K, Route>
 where
     A: Address,
     K: Clone + Eq,
-    Reply: behavior::Protocol<Addr = A, Msg = PresenceReply<K>>,
-    Route: DeliveryRoute<Reply>,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = PresenceReply<K>>>,
 {
     type Base = Self;
     fn base(&self) -> &Self {
         self
     }
 }
-impl<A, K, Reply, Route> behavior::Protocol for Presence<A, K, Reply, Route>
+impl<A, K, Route> behavior::Protocol for Presence<A, K, Route>
 where
     A: Address,
     K: Clone + Eq,
-    Reply: behavior::Protocol<Addr = A, Msg = PresenceReply<K>>,
-    Route: DeliveryRoute<Reply>,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = PresenceReply<K>>>,
 {
     type Addr = A;
     type Msg = PresenceMessage<K, Route>;
 }
 
-impl<A, K, Reply, Route> Behavior for Presence<A, K, Reply, Route>
+impl<A, K, Route> Behavior for Presence<A, K, Route>
 where
     A: Address,
     K: Clone + Eq,
-    Reply: behavior::Protocol<Addr = A, Msg = PresenceReply<K>>,
-    Route: DeliveryRoute<Reply> + Clone,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = PresenceReply<K>>> + Clone,
     Route::Sends: behavior::SendsFor<TimedEvent<User<A, PresenceMessage<K, Route>>>>,
 {
     type Protocol = Self;
@@ -563,7 +558,7 @@ mod tests {
             Ok(Actions::cont())
         }
     }
-    type Subject = Presence<MailAddr, Participant, Reply, Recipient<Reply>>;
+    type Subject = Presence<MailAddr, Participant, Recipient<Reply>>;
     fn reply() -> Recipient<Reply> {
         Recipient::global(MailAddr(9))
     }

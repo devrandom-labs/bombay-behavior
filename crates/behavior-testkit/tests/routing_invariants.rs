@@ -46,12 +46,17 @@ protocol!(RateReply, RateLimiterOutcome<u8>);
 protocol!(QueueWorker, u8);
 protocol!(QueueReply, WorkQueueOutcome<u8>);
 
-type TestBuffer = Buffer<MailAddr, u8, Recipient<MessageProtocol<MailAddr, BufferOutcome<u8>>>>;
+type TestBuffer = Buffer<
+    MailAddr,
+    u8,
+    Recipient<MessageProtocol<MailAddr, u8>>,
+    Recipient<MessageProtocol<MailAddr, BufferOutcome<u8>>>,
+>;
 type TestPriority =
-    PriorityQueue<MailAddr, u8, u8, PriorityTarget, PriorityReply, Recipient<PriorityReply>>;
-type TestRate = RateLimiter<MailAddr, u8, RateTarget, RateReply, Recipient<RateReply>>;
-type TestQueue = WorkQueue<MailAddr, u8, QueueWorker, QueueReply, Recipient<QueueReply>>;
-type TestRouter = Router<MailAddr, PriorityTarget, RoundRobin>;
+    PriorityQueue<MailAddr, u8, u8, Recipient<PriorityTarget>, Recipient<PriorityReply>>;
+type TestRate = RateLimiter<MailAddr, u8, Recipient<RateTarget>, Recipient<RateReply>>;
+type TestQueue = WorkQueue<MailAddr, u8, Recipient<QueueWorker>, Recipient<QueueReply>>;
+type TestRouter = Router<MailAddr, Recipient<PriorityTarget>, RoundRobin>;
 
 fn overflow(tag: u8) -> OverflowPolicy {
     match tag % 3 {

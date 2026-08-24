@@ -1,10 +1,9 @@
 //! Explicitly managed dynamic stable-child topology.
 
 use crate::{
-    ChildShutdownRejected, ChildStopped, CreationRejection, CreationResolved,
-    DeliveryRouteProtocol, ObserveChild, ObserveCreation, Own, Proxy, ProxyCommand,
-    ProxyParentIngress, ProxyWithParent, SendInput, ShutdownChild, ShutdownRequested,
-    WorkerCreationResolved, WorkerStopped,
+    ChildShutdownRejected, ChildStopped, CreationRejection, CreationResolved, DeliveryRoute,
+    ObserveChild, ObserveCreation, Own, Proxy, ProxyCommand, ProxyParentIngress, ProxyWithParent,
+    SendInput, ShutdownChild, ShutdownRequested, WorkerCreationResolved, WorkerStopped,
 };
 use behavior::{
     Actions, Address, Behavior, BehaviorActed, Births, ChildDelivery, ChildRoute, Here,
@@ -81,7 +80,7 @@ where
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
-    Route: DeliveryRouteProtocol,
+    Route: DeliveryRoute,
     Route::Protocol: Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
 {
     Start {
@@ -222,7 +221,7 @@ where
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
-    Route: DeliveryRouteProtocol,
+    Route: DeliveryRoute,
     Route::Protocol: behavior::Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
 {
     Command(User<A, DynamicSupervisorMessage<A, C, Route>>),
@@ -240,7 +239,7 @@ where
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
-    Route: DeliveryRouteProtocol,
+    Route: DeliveryRoute,
     Route::Protocol: behavior::Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
 {
     type Addr = A;
@@ -262,7 +261,7 @@ where
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
-    Route: DeliveryRouteProtocol,
+    Route: DeliveryRoute,
     Route::Protocol: behavior::Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
 {
     fn inject_at(value: ChildStopped<A>) -> Self {
@@ -275,7 +274,7 @@ where
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
-    Route: DeliveryRouteProtocol,
+    Route: DeliveryRoute,
     Route::Protocol: behavior::Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
 {
     fn inject_at(value: CreationResolved<A>) -> Self {
@@ -289,7 +288,7 @@ where
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
-    Route: DeliveryRouteProtocol,
+    Route: DeliveryRoute,
     Route::Protocol: behavior::Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
 {
     fn inject_at(value: WorkerCreationResolved<A::Nonce>) -> Self {
@@ -302,7 +301,7 @@ where
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
-    Route: DeliveryRouteProtocol,
+    Route: DeliveryRoute,
     Route::Protocol: behavior::Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
 {
     fn inject_at(value: WorkerStopped<A>) -> Self {
@@ -316,7 +315,7 @@ where
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
-    Route: DeliveryRouteProtocol,
+    Route: DeliveryRoute,
     Route::Protocol: behavior::Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
 {
     fn inject_at(value: ChildShutdownRejected<A::Nonce>) -> Self {
@@ -330,7 +329,7 @@ where
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
-    Route: DeliveryRouteProtocol,
+    Route: DeliveryRoute,
     Route::Protocol: behavior::Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
 {
     fn inject_at(value: ShutdownRequested) -> Self {
@@ -350,7 +349,7 @@ where
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
-    Route: DeliveryRouteProtocol,
+    Route: DeliveryRoute,
     Route::Protocol: behavior::Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
 {
     pub outcomes: Route::Sends,
@@ -367,7 +366,7 @@ where
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
-    Route: DeliveryRouteProtocol,
+    Route: DeliveryRoute,
     Route::Protocol: behavior::Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
 {
     fn empty() -> Self {
@@ -396,7 +395,7 @@ where
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
-    Route: DeliveryRouteProtocol,
+    Route: DeliveryRoute,
     Route::Protocol: behavior::Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
     InterpreterRequests<ObserveChild<A, behavior::ChildHead>>:
         behavior::SendsFor<DynamicSupervisorEvent<A, C, Route>>,
@@ -415,7 +414,7 @@ where
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
-    Route: DeliveryRouteProtocol,
+    Route: DeliveryRoute,
     Route::Protocol: behavior::Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
     Route::Sends: behavior::InterpretSends<I, RootEvent, Path>,
     InterpreterRequests<ObserveChild<A, behavior::ChildHead>>:
@@ -447,7 +446,7 @@ where
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
-    Route: DeliveryRouteProtocol,
+    Route: DeliveryRoute,
     Route::Protocol: behavior::Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
 {
     fn emit(&mut self, value: ObserveChild<A, behavior::ChildHead>) {
@@ -461,7 +460,7 @@ where
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
-    Route: DeliveryRouteProtocol,
+    Route: DeliveryRoute,
     Route::Protocol: behavior::Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
 {
     fn emit(&mut self, value: ObserveCreation<A, behavior::ChildHead>) {
@@ -476,7 +475,7 @@ where
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
-    Route: DeliveryRouteProtocol,
+    Route: DeliveryRoute,
     Route::Protocol: behavior::Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
 {
     fn emit(&mut self, value: ShutdownChild<ProxyWithParent<C, ParentPath>, behavior::ChildHead>) {
@@ -492,7 +491,7 @@ where
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: Protocol<Addr = A>,
-    Route: DeliveryRouteProtocol,
+    Route: DeliveryRoute,
     Route::Protocol: Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
 {
     children: Vec<(A::Nonce, DynamicChild<A, Route>)>,
@@ -510,7 +509,7 @@ where
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: Protocol<Addr = A>,
-    Route: DeliveryRouteProtocol,
+    Route: DeliveryRoute,
     Route::Protocol: Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
 {
     #[must_use]
@@ -539,7 +538,7 @@ where
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: Protocol<Addr = A>,
-    Route: DeliveryRouteProtocol,
+    Route: DeliveryRoute,
     Route::Protocol: Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
 {
     #[must_use]
@@ -553,7 +552,7 @@ where
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: Protocol<Addr = A>,
-    Route: DeliveryRouteProtocol,
+    Route: DeliveryRoute,
     Route::Protocol: Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
 {
     fn default() -> Self {
@@ -567,7 +566,7 @@ where
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: Protocol<Addr = A>,
-    Route: DeliveryRouteProtocol,
+    Route: DeliveryRoute,
     Route::Protocol: Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
 {
     type Base = Self;
@@ -583,7 +582,7 @@ where
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
-    Route: DeliveryRouteProtocol,
+    Route: DeliveryRoute,
     Route::Protocol: Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
 {
     type Addr = A;
@@ -596,7 +595,7 @@ where
     A::Nonce: Copy + Eq + From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
-    Route: DeliveryRouteProtocol + Clone,
+    Route: DeliveryRoute + Clone,
     Route::Protocol: behavior::Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
 {
     type Protocol = Self;

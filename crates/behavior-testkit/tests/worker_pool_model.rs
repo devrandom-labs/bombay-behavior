@@ -22,7 +22,7 @@ struct Worker;
 struct Reply;
 
 type ReplyRoute = Recipient<Reply>;
-type PoolDefinition = WorkerPool<MailAddr, Reply, u8, u16, Worker, ReplyRoute>;
+type PoolDefinition = WorkerPool<MailAddr, u8, u16, Worker, ReplyRoute>;
 
 impl behavior::Protocol for Reply {
     type Addr = MailAddr;
@@ -52,7 +52,7 @@ impl Behavior for Reply {
 
 impl behavior::Protocol for Worker {
     type Addr = MailAddr;
-    type Msg = PoolAssignment<WorkerPoolProtocol<MailAddr, Reply, u8, u16, ReplyRoute>>;
+    type Msg = PoolAssignment<WorkerPoolProtocol<MailAddr, u8, u16, ReplyRoute>>;
 }
 
 impl Behavior for Worker {
@@ -124,9 +124,8 @@ impl Behavior for PanicReply {
 
 impl behavior::Protocol for PanicWorker {
     type Addr = MailAddr;
-    type Msg = PoolAssignment<
-        WorkerPoolProtocol<MailAddr, PanicReply, PanicPayload, (), Recipient<PanicReply>>,
-    >;
+    type Msg =
+        PoolAssignment<WorkerPoolProtocol<MailAddr, PanicPayload, (), Recipient<PanicReply>>>;
 }
 
 impl Behavior for PanicWorker {

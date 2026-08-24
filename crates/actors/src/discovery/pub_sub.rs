@@ -1,34 +1,36 @@
 //! Keyed typed publication and subscription membership.
 
 use behavior::{
-    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, Never, NoBirths, Protocol,
-    Recipient, User,
+    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Never, NoBirths, Protocol,
+    SendEffects, User,
 };
 use thiserror::Error;
 
+use crate::DeliveryRoute;
+
 /// One topic and its subscribers in delivery order.
-pub struct TopicMembership<K, D: Protocol> {
+pub struct TopicMembership<K, Route> {
     /// Application-defined topic identity.
     pub topic: K,
     /// Unique subscribers in subscription order.
-    pub subscribers: Vec<Recipient<D>>,
+    pub subscribers: Vec<Route>,
 }
 
 /// Operations accepted by [`PubSub`].
-pub enum PubSubMessage<K, P, D: Protocol> {
+pub enum PubSubMessage<K, P, Route> {
     /// Idempotently subscribe one typed recipient.
     Subscribe {
         /// Topic identity.
         topic: K,
         /// Subscriber.
-        subscriber: Recipient<D>,
+        subscriber: Route,
     },
     /// Remove one existing subscription.
     Unsubscribe {
         /// Topic identity.
         topic: K,
         /// Subscriber.
-        subscriber: Recipient<D>,
+        subscriber: Route,
     },
     /// Publish one value to a point-in-time membership snapshot.
     Publish {
@@ -41,14 +43,14 @@ pub enum PubSubMessage<K, P, D: Protocol> {
 
 /// Typed keyed-publication rejection.
 #[derive(Error, PartialEq, Eq)]
-pub enum PubSubError<K, P, D: Protocol> {
+pub enum PubSubError<K, P, Route> {
     /// Unsubscription named an unknown topic.
     #[error("pub-sub topic is unknown")]
     UnknownTopic {
         /// Rejected topic.
         topic: K,
         /// Exact subscriber from the rejected command.
-        subscriber: Recipient<D>,
+        subscriber: Route,
     },
     /// Recipient is not subscribed to the named topic.
     #[error("recipient is not subscribed to the pub-sub topic")]
@@ -56,7 +58,7 @@ pub enum PubSubError<K, P, D: Protocol> {
         /// Rejected topic.
         topic: K,
         /// Exact subscriber from the rejected command.
-        subscriber: Recipient<D>,
+        subscriber: Route,
     },
     /// Publication had no recipients; ownership is returned.
     #[error("pub-sub topic has no subscribers")]
@@ -68,8 +70,8 @@ pub enum PubSubError<K, P, D: Protocol> {
     },
 }
 
-impl<K: core::fmt::Debug, P: core::fmt::Debug, D: Protocol> core::fmt::Debug
-    for PubSubError<K, P, D>
+impl<K: core::fmt::Debug, P: core::fmt::Debug, Route> core::fmt::Debug
+    for PubSubError<K, P, Route>
 {
     fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
@@ -105,16 +107,16 @@ impl<K: core::fmt::Debug, P: core::fmt::Debug, D: Protocol> core::fmt::Debug
 /// are Bombay policy; physical delivery remains a Communication capability.
 /// Cloning a publication can panic only if the application-provided `Clone`
 /// implementation panics, before any template state is changed.
-pub struct PubSub<A: Address, K, P, D: Protocol<Addr = A, Msg = P>> {
-    topics: Vec<TopicMembership<K, D>>,
+pub struct PubSub<A: Address, K, P, Route> {
+    topics: Vec<TopicMembership<K, Route>>,
     marker: core::marker::PhantomData<fn() -> (A, P)>,
 }
 
-impl<A, K, P, D> PubSub<A, K, P, D>
+impl<A, K, P, Route> PubSub<A, K, P, Route>
 where
     A: Address,
     K: Eq,
-    D: Protocol<Addr = A, Msg = P>,
+    Route: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = P>> + PartialEq,
 {
     /// Construct an empty keyed fabric.
     #[must_use]
@@ -127,11 +129,11 @@ where
 
     /// Borrow complete topic membership in introduction order.
     #[must_use]
-    pub fn topics(&self) -> &[TopicMembership<K, D>] {
+    pub fn topics(&self) -> &[TopicMembership<K, Route>] {
         &self.topics
     }
 
-    fn subscribe(&mut self, topic: K, subscriber: Recipient<D>) {
+    fn subscribe(&mut self, topic: K, subscriber: Route) {
         if let Some(membership) = self.topics.iter_mut().find(|entry| entry.topic == topic) {
             if !membership.subscribers.contains(&subscriber) {
                 membership.subscribers.push(subscriber);
@@ -144,18 +146,14 @@ where
         }
     }
 
-    fn unsubscribe(
-        &mut self,
-        topic: K,
-        subscriber: Recipient<D>,
-    ) -> Result<(), PubSubError<K, P, D>> {
+    fn unsubscribe(&mut self, topic: K, subscriber: Route) -> Result<(), PubSubError<K, P, Route>> {
         let Some(membership) = self.topics.iter_mut().find(|entry| entry.topic == topic) else {
             return Err(PubSubError::UnknownTopic { topic, subscriber });
         };
         let Some(index) = membership
             .subscribers
             .iter()
-            .position(|member| *member == subscriber)
+            .position(|member| member == &subscriber)
         else {
             return Err(PubSubError::NotSubscribed { topic, subscriber });
         };
@@ -164,23 +162,23 @@ where
     }
 }
 
-impl<A, K, P, D> Default for PubSub<A, K, P, D>
+impl<A, K, P, Route> Default for PubSub<A, K, P, Route>
 where
     A: Address,
     K: Eq,
-    D: Protocol<Addr = A, Msg = P>,
+    Route: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = P>> + PartialEq,
 {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<A, K, P, D> BehaviorBase for PubSub<A, K, P, D>
+impl<A, K, P, Route> BehaviorBase for PubSub<A, K, P, Route>
 where
     A: Address,
     K: Clone + Eq,
     P: Clone,
-    D: Protocol<Addr = A, Msg = P>,
+    Route: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = P>> + Clone + PartialEq,
 {
     type Base = Self;
     fn base(&self) -> &Self {
@@ -188,29 +186,30 @@ where
     }
 }
 
-impl<A, K, P, D> behavior::Protocol for PubSub<A, K, P, D>
+impl<A, K, P, Route> behavior::Protocol for PubSub<A, K, P, Route>
 where
     A: Address,
     K: Clone + Eq,
     P: Clone,
-    D: Protocol<Addr = A, Msg = P>,
+    Route: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = P>> + Clone + PartialEq,
 {
     type Addr = A;
-    type Msg = PubSubMessage<K, P, D>;
+    type Msg = PubSubMessage<K, P, Route>;
 }
 
-impl<A, K, P, D> Behavior for PubSub<A, K, P, D>
+impl<A, K, P, Route> Behavior for PubSub<A, K, P, Route>
 where
     A: Address,
     K: Clone + Eq,
     P: Clone,
-    D: Protocol<Addr = A, Msg = P>,
+    Route: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = P>> + Clone + PartialEq,
+    Route::Sends: behavior::SendsFor<User<A, PubSubMessage<K, P, Route>>>,
 {
     type Protocol = Self;
     type Event = User<A, crate::BehaviorMessage<Self>>;
-    type Sends = Vec<Delivery<D>>;
+    type Sends = Route::Sends;
     type Ph = Never;
-    type Error = PubSubError<K, P, D>;
+    type Error = PubSubError<K, P, Route>;
     type Birth = NoBirths;
     fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
         match event.message {
@@ -229,13 +228,11 @@ where
                 if membership.subscribers.is_empty() {
                     return Err(PubSubError::NoSubscribers { topic, value });
                 }
-                Ok(Actions::send(
-                    membership
-                        .subscribers
-                        .iter()
-                        .map(|subscriber| Delivery::new(*subscriber, value.clone()))
-                        .collect(),
-                ))
+                let mut sends = Route::Sends::empty();
+                for subscriber in &membership.subscribers {
+                    sends.append(subscriber.clone().deliver(value.clone()));
+                }
+                Ok(Actions::send(sends))
             }
         }
     }
@@ -244,8 +241,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Activate as _;
-    use behavior::MailAddr;
+    use crate::{Activate as _, Recipient};
+    use behavior::{Delivery, MailAddr};
     struct Destination;
     impl behavior::Protocol for Destination {
         type Addr = MailAddr;
@@ -263,7 +260,7 @@ mod tests {
             Ok(Actions::cont())
         }
     }
-    type Subject = PubSub<MailAddr, u8, u8, Destination>;
+    type Subject = PubSub<MailAddr, u8, u8, Recipient<Destination>>;
     #[test]
     fn topics_and_subscribers_preserve_first_order() {
         let one = Recipient::global(MailAddr(1));

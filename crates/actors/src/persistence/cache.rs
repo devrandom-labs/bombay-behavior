@@ -136,7 +136,7 @@ impl CacheConfiguration {
 pub struct Cache<A, K, V, Route>
 where
     A: Address,
-    Route: DeliveryRoute<MessageProtocol<A, CacheResult<K, V>>>,
+    Route: DeliveryRoute<Protocol = MessageProtocol<A, CacheResult<K, V>>>,
 {
     state: CacheState<K, V>,
     address: core::marker::PhantomData<fn() -> (A, Route)>,
@@ -145,7 +145,7 @@ where
 impl<A, K, V, Route> Cache<A, K, V, Route>
 where
     A: Address,
-    Route: DeliveryRoute<MessageProtocol<A, CacheResult<K, V>>>,
+    Route: DeliveryRoute<Protocol = MessageProtocol<A, CacheResult<K, V>>>,
 {
     /// Bind validated capacity to an empty cache actor.
     #[must_use]
@@ -169,7 +169,7 @@ where
 impl<A, K, V, Route> BehaviorBase for Cache<A, K, V, Route>
 where
     A: Address,
-    Route: DeliveryRoute<MessageProtocol<A, CacheResult<K, V>>>,
+    Route: DeliveryRoute<Protocol = MessageProtocol<A, CacheResult<K, V>>>,
 {
     type Base = Self;
 
@@ -183,7 +183,7 @@ where
     A: Address,
     K: Clone + Eq,
     V: Clone,
-    Route: DeliveryRoute<MessageProtocol<A, CacheResult<K, V>>>,
+    Route: DeliveryRoute<Protocol = MessageProtocol<A, CacheResult<K, V>>>,
 {
     type Addr = A;
     type Msg = CacheMessage<K, V, Route>;
@@ -194,7 +194,7 @@ where
     A: Address,
     K: Clone + Eq,
     V: Clone,
-    Route: DeliveryRoute<MessageProtocol<A, CacheResult<K, V>>>,
+    Route: DeliveryRoute<Protocol = MessageProtocol<A, CacheResult<K, V>>>,
     Route::Sends: behavior::SendsFor<User<A, CacheMessage<K, V, Route>>>,
 {
     type Protocol = MessageProtocol<A, CacheMessage<K, V, Route>>;

@@ -3,24 +3,24 @@
 use std::collections::VecDeque;
 
 use behavior::{
-    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, Never, NoBirths, Protocol,
-    Recipient, SendEffects, User,
+    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Never, NoBirths, Protocol,
+    SendEffects, User,
 };
 
 use crate::DeliveryRoute;
 
 /// Complete observable [`WorkQueue`] state.
-pub struct WorkQueueState<W: Protocol> {
+pub struct WorkQueueState<WorkerRoute> {
     /// Maximum values that may wait; zero permits only immediate dispatch.
     pub capacity: usize,
-    available: Vec<Recipient<W>>,
+    available: Vec<WorkerRoute>,
     queued: usize,
 }
 
-impl<W: Protocol> WorkQueueState<W> {
+impl<WorkerRoute> WorkQueueState<WorkerRoute> {
     /// Workers eligible for one dispatch, in availability order.
     #[must_use]
-    pub fn available(&self) -> &[Recipient<W>] {
+    pub fn available(&self) -> &[WorkerRoute] {
         &self.available
     }
 
@@ -61,63 +61,65 @@ pub enum WorkQueueOutcome<T> {
 }
 
 /// Operations accepted by [`WorkQueue`].
-pub enum WorkQueueMessage<T, W: Protocol, Route> {
+pub enum WorkQueueMessage<T, WorkerRoute, ReplyRoute> {
     /// Submit one value and its typed outcome recipient.
     Submit {
         /// Work value.
         value: T,
         /// Outcome recipient retained with queued work.
-        reply_to: Route,
+        reply_to: ReplyRoute,
     },
     /// Announce one worker as eligible for exactly one dispatch.
     Available {
         /// Worker recipient.
-        worker: Recipient<W>,
+        worker: WorkerRoute,
     },
     /// Withdraw one currently available worker, idempotently.
     Withdraw {
         /// Worker recipient.
-        worker: Recipient<W>,
+        worker: WorkerRoute,
     },
 }
 
 /// Named effect lanes emitted by [`WorkQueue`].
-pub struct WorkQueueSends<W: Protocol, OutcomeSends: SendEffects> {
+pub struct WorkQueueSends<Assignments: SendEffects, OutcomeSends: SendEffects> {
     /// Work assigned to workers.
-    pub assignments: Vec<Delivery<W>>,
+    pub assignments: Assignments,
     /// Submission admission and dispatch facts.
     pub outcomes: OutcomeSends,
 }
 
-impl<W: Protocol, OutcomeSends: SendEffects> SendEffects for WorkQueueSends<W, OutcomeSends> {
+impl<Assignments: SendEffects, OutcomeSends: SendEffects> SendEffects
+    for WorkQueueSends<Assignments, OutcomeSends>
+{
     fn empty() -> Self {
         Self {
-            assignments: Vec::new(),
+            assignments: Assignments::empty(),
             outcomes: OutcomeSends::empty(),
         }
     }
-    fn append(&mut self, mut other: Self) {
-        self.assignments.append(&mut other.assignments);
+    fn append(&mut self, other: Self) {
+        self.assignments.append(other.assignments);
         self.outcomes.append(other.outcomes);
     }
 }
 
-impl<Event, W, OutcomeSends> behavior::SendsFor<Event> for WorkQueueSends<W, OutcomeSends>
+impl<Event, Assignments, OutcomeSends> behavior::SendsFor<Event>
+    for WorkQueueSends<Assignments, OutcomeSends>
 where
-    W: Protocol,
+    Assignments: SendEffects + behavior::SendsFor<Event>,
     OutcomeSends: SendEffects + behavior::SendsFor<Event>,
 {
 }
 
-impl<I, RootEvent, Path, W, OutcomeSends> behavior::InterpretSends<I, RootEvent, Path>
-    for WorkQueueSends<W, OutcomeSends>
+impl<I, RootEvent, Path, Assignments, OutcomeSends> behavior::InterpretSends<I, RootEvent, Path>
+    for WorkQueueSends<Assignments, OutcomeSends>
 where
     I: behavior::SendInterpreter,
-    W: Protocol,
+    Assignments: SendEffects + behavior::InterpretSends<I, RootEvent, Path>,
     OutcomeSends: SendEffects,
-    Vec<Delivery<W>>: behavior::InterpretSends<I, RootEvent, Path>,
-    OutcomeSends: behavior::InterpretSends<I, RootEvent, Path>,
-    WorkQueueSends<W, OutcomeSends>: Send,
+    OutcomeSends: SendEffects + behavior::InterpretSends<I, RootEvent, Path>,
+    WorkQueueSends<Assignments, OutcomeSends>: Send,
 {
     fn interpret(
         self,
@@ -148,25 +150,23 @@ struct Waiting<T, Route> {
 pub struct WorkQueue<
     A: Address,
     T,
-    W: Protocol<Addr = A, Msg = T>,
-    Reply: behavior::Protocol<Addr = A, Msg = WorkQueueOutcome<T>>,
-    Route: DeliveryRoute<Reply>,
+    WorkerRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = T>> + Clone + PartialEq,
+    ReplyRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = WorkQueueOutcome<T>>>,
 > {
     capacity: usize,
-    available: VecDeque<Recipient<W>>,
-    waiting: VecDeque<Waiting<T, Route>>,
-    marker: core::marker::PhantomData<fn() -> (A, Reply)>,
+    available: VecDeque<WorkerRoute>,
+    waiting: VecDeque<Waiting<T, ReplyRoute>>,
+    marker: core::marker::PhantomData<fn() -> A>,
 }
 
-type QueueActions<A, W, OutcomeSends> =
-    Actions<A, Never, WorkQueueSends<W, OutcomeSends>, NoBirths>;
+type QueueActions<A, Assignments, OutcomeSends> =
+    Actions<A, Never, WorkQueueSends<Assignments, OutcomeSends>, NoBirths>;
 
-impl<A, T, W, Reply, Route> WorkQueue<A, T, W, Reply, Route>
+impl<A, T, WorkerRoute, ReplyRoute> WorkQueue<A, T, WorkerRoute, ReplyRoute>
 where
     A: Address,
-    W: Protocol<Addr = A, Msg = T>,
-    Reply: behavior::Protocol<Addr = A, Msg = WorkQueueOutcome<T>>,
-    Route: DeliveryRoute<Reply> + Clone,
+    WorkerRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = T>> + Clone + PartialEq,
+    ReplyRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = WorkQueueOutcome<T>>> + Clone,
 {
     /// Construct an empty queue with explicit waiting capacity.
     #[must_use]
@@ -180,26 +180,30 @@ where
     }
     /// Return complete observable queue state.
     #[must_use]
-    pub fn state(&self) -> WorkQueueState<W> {
+    pub fn state(&self) -> WorkQueueState<WorkerRoute> {
         WorkQueueState {
             capacity: self.capacity,
-            available: self.available.iter().copied().collect(),
+            available: self.available.iter().cloned().collect(),
             queued: self.waiting.len(),
         }
     }
     fn sends(
-        assignments: Vec<Delivery<W>>,
-        outcomes: Route::Sends,
-    ) -> QueueActions<A, W, Route::Sends> {
+        assignments: WorkerRoute::Sends,
+        outcomes: ReplyRoute::Sends,
+    ) -> QueueActions<A, WorkerRoute::Sends, ReplyRoute::Sends> {
         Actions::send(WorkQueueSends {
             assignments,
             outcomes,
         })
     }
-    fn submit(&mut self, value: T, reply_to: Route) -> QueueActions<A, W, Route::Sends> {
+    fn submit(
+        &mut self,
+        value: T,
+        reply_to: ReplyRoute,
+    ) -> QueueActions<A, WorkerRoute::Sends, ReplyRoute::Sends> {
         if let Some(worker) = self.available.pop_front() {
             return Self::sends(
-                vec![Delivery::new(worker, value)],
+                worker.deliver(value),
                 reply_to.deliver(WorkQueueOutcome::Dispatched {
                     queued: self.waiting.len(),
                 }),
@@ -207,7 +211,7 @@ where
         }
         if self.waiting.len() == self.capacity {
             return Self::sends(
-                Vec::new(),
+                WorkerRoute::Sends::empty(),
                 reply_to.deliver(WorkQueueOutcome::Rejected {
                     value,
                     reason: WorkQueueRejection::Full,
@@ -219,16 +223,19 @@ where
             reply_to: reply_to.clone(),
         });
         Self::sends(
-            Vec::new(),
+            WorkerRoute::Sends::empty(),
             reply_to.deliver(WorkQueueOutcome::Queued {
                 depth: self.waiting.len(),
             }),
         )
     }
-    fn announce(&mut self, worker: Recipient<W>) -> QueueActions<A, W, Route::Sends> {
+    fn announce(
+        &mut self,
+        worker: WorkerRoute,
+    ) -> QueueActions<A, WorkerRoute::Sends, ReplyRoute::Sends> {
         if let Some(waiting) = self.waiting.pop_front() {
             return Self::sends(
-                vec![Delivery::new(worker, waiting.value)],
+                worker.deliver(waiting.value),
                 waiting.reply_to.deliver(WorkQueueOutcome::Dispatched {
                     queued: self.waiting.len(),
                 }),
@@ -241,40 +248,38 @@ where
     }
 }
 
-impl<A, T, W, Reply, Route> BehaviorBase for WorkQueue<A, T, W, Reply, Route>
+impl<A, T, WorkerRoute, ReplyRoute> BehaviorBase for WorkQueue<A, T, WorkerRoute, ReplyRoute>
 where
     A: Address,
-    W: Protocol<Addr = A, Msg = T>,
-    Reply: behavior::Protocol<Addr = A, Msg = WorkQueueOutcome<T>>,
-    Route: DeliveryRoute<Reply>,
+    WorkerRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = T>> + Clone + PartialEq,
+    ReplyRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = WorkQueueOutcome<T>>>,
 {
     type Base = Self;
     fn base(&self) -> &Self {
         self
     }
 }
-impl<A, T, W, Reply, Route> behavior::Protocol for WorkQueue<A, T, W, Reply, Route>
+impl<A, T, WorkerRoute, ReplyRoute> behavior::Protocol for WorkQueue<A, T, WorkerRoute, ReplyRoute>
 where
     A: Address,
-    W: Protocol<Addr = A, Msg = T>,
-    Reply: behavior::Protocol<Addr = A, Msg = WorkQueueOutcome<T>>,
-    Route: DeliveryRoute<Reply>,
+    WorkerRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = T>> + Clone + PartialEq,
+    ReplyRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = WorkQueueOutcome<T>>>,
 {
     type Addr = A;
-    type Msg = WorkQueueMessage<T, W, Route>;
+    type Msg = WorkQueueMessage<T, WorkerRoute, ReplyRoute>;
 }
 
-impl<A, T, W, Reply, Route> Behavior for WorkQueue<A, T, W, Reply, Route>
+impl<A, T, WorkerRoute, ReplyRoute> Behavior for WorkQueue<A, T, WorkerRoute, ReplyRoute>
 where
     A: Address,
-    W: Protocol<Addr = A, Msg = T>,
-    Reply: behavior::Protocol<Addr = A, Msg = WorkQueueOutcome<T>>,
-    Route: DeliveryRoute<Reply> + Clone,
-    Route::Sends: behavior::SendsFor<User<A, WorkQueueMessage<T, W, Route>>>,
+    WorkerRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = T>> + Clone + PartialEq,
+    ReplyRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = WorkQueueOutcome<T>>> + Clone,
+    WorkerRoute::Sends: behavior::SendsFor<User<A, WorkQueueMessage<T, WorkerRoute, ReplyRoute>>>,
+    ReplyRoute::Sends: behavior::SendsFor<User<A, WorkQueueMessage<T, WorkerRoute, ReplyRoute>>>,
 {
     type Protocol = Self;
     type Event = User<A, crate::BehaviorMessage<Self>>;
-    type Sends = WorkQueueSends<W, Route::Sends>;
+    type Sends = WorkQueueSends<WorkerRoute::Sends, ReplyRoute::Sends>;
     type Ph = Never;
     type Error = Never;
     type Birth = NoBirths;
@@ -286,7 +291,7 @@ where
                 if let Some(index) = self
                     .available
                     .iter()
-                    .position(|candidate| *candidate == worker)
+                    .position(|candidate| candidate == &worker)
                 {
                     self.available.remove(index);
                 }
@@ -299,7 +304,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Activate as _;
+    use crate::{Activate as _, Recipient};
     use behavior::MailAddr;
     struct Worker;
     struct Reply;
@@ -335,7 +340,7 @@ mod tests {
             Ok(Actions::cont())
         }
     }
-    type Subject = WorkQueue<MailAddr, u8, Worker, Reply, Recipient<Reply>>;
+    type Subject = WorkQueue<MailAddr, u8, Recipient<Worker>, Recipient<Reply>>;
     fn worker(n: u64) -> Recipient<Worker> {
         Recipient::global(MailAddr(n))
     }

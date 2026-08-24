@@ -41,8 +41,9 @@ pub use effects::{
 pub use next::{Never, Step, Stopped};
 pub use reducer::{ActionReducer, Effects, FoldFailure, Folded, fold_events};
 pub use transition::{
-    ActiveTurn, Behavior, BehaviorActed, BehaviorAddr, BehaviorBase, BehaviorMessage,
-    InitializationTurn, MessageProtocol, Protocol, delegate_transition, initialize,
+    ActiveTurn, Behavior, BehaviorActed, BehaviorAddr, BehaviorBase, BehaviorLayer,
+    BehaviorMessage, InitializationTurn, MessageProtocol, Protocol, delegate_transition,
+    initialize,
 };
 pub use user_event::{
     ComposedEvent, EventLayer, Here, Ingress, InjectEvent, Inside, User, UserEvent,

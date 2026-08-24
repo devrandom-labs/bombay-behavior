@@ -57,7 +57,7 @@ pub enum LatchState<Route> {
 pub struct Latch<A, Route>
 where
     A: Address,
-    Route: DeliveryRoute<MessageProtocol<A, LatchReleased>>,
+    Route: DeliveryRoute<Protocol = MessageProtocol<A, LatchReleased>>,
 {
     state: LatchState<Route>,
     marker: core::marker::PhantomData<fn() -> A>,
@@ -66,7 +66,7 @@ where
 impl<A, Route> Latch<A, Route>
 where
     A: Address,
-    Route: DeliveryRoute<MessageProtocol<A, LatchReleased>>,
+    Route: DeliveryRoute<Protocol = MessageProtocol<A, LatchReleased>>,
 {
     /// Construct a latch requiring `count` arrivals.
     #[must_use]
@@ -94,7 +94,7 @@ where
 impl<A, Route> BehaviorBase for Latch<A, Route>
 where
     A: Address,
-    Route: DeliveryRoute<MessageProtocol<A, LatchReleased>>,
+    Route: DeliveryRoute<Protocol = MessageProtocol<A, LatchReleased>>,
 {
     type Base = Self;
 
@@ -106,7 +106,7 @@ where
 impl<A, Route> behavior::Protocol for Latch<A, Route>
 where
     A: Address,
-    Route: DeliveryRoute<MessageProtocol<A, LatchReleased>>,
+    Route: DeliveryRoute<Protocol = MessageProtocol<A, LatchReleased>>,
 {
     type Addr = A;
     type Msg = LatchMessage<Route>;
@@ -115,7 +115,7 @@ where
 impl<A, Route> Behavior for Latch<A, Route>
 where
     A: Address,
-    Route: DeliveryRoute<MessageProtocol<A, LatchReleased>>,
+    Route: DeliveryRoute<Protocol = MessageProtocol<A, LatchReleased>>,
     Route::Sends: behavior::SendsFor<User<A, LatchMessage<Route>>>,
 {
     type Protocol = MessageProtocol<A, LatchMessage<Route>>;

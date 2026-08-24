@@ -1,7 +1,7 @@
 use behavior_actors::{
     Actions, Activate as _, Behavior, BehaviorActed, BehaviorBase, Births, CancelObservation,
     ChildHead, ChildOccurrence, ChildRole, ChildRoute, CreationKind, CreationRejection,
-    DeclaredChildOccurrence, Delivery, DeliveryRouteProtocol, EndpointAddress, EstablishedCreation,
+    DeclaredChildOccurrence, Delivery, DeliveryRoute, EndpointAddress, EstablishedCreation,
     EstablishedDelivery, EstablishedObservation, EstablishedRecipient,
     EstablishedTerminationMonitor, EventLayer, Exit, Here, HeterogeneousShutdownPlan, Ingress,
     InterpretEstablishedDelivery, InterpretEstablishedObservation, InterpretEstablishedShutdown,
@@ -634,8 +634,7 @@ fn adapt_exact(value: u16) -> u8 {
 
 #[tokio::test]
 async fn message_adapter_selects_exact_delivery_without_logical_resolution() {
-    type ExactAdapter =
-        MessageAdapterWithRoute<u16, WorkerProtocol, EstablishedRecipient<WorkerProtocol>>;
+    type ExactAdapter = MessageAdapterWithRoute<u16, EstablishedRecipient<WorkerProtocol>>;
     let recipient = EstablishedRecipient::issued(Endpoint::new(RuntimeAddr(46), 10));
     let mut active = MessageAdapterWithRoute::new(recipient, adapt_exact)
         .initialize()

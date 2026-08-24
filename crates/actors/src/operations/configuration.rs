@@ -78,19 +78,17 @@ pub enum ConfigurationError<C> {
 pub struct Configuration<
     A: Address,
     C,
-    Reply: behavior::Protocol<Addr = A, Msg = ConfigurationState<C>>,
-    Route: DeliveryRoute<Reply>,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = ConfigurationState<C>>>,
 > {
     state: ConfigurationState<C>,
-    marker: core::marker::PhantomData<fn() -> (A, Reply, Route)>,
+    marker: core::marker::PhantomData<fn() -> (A, Route)>,
 }
 
-impl<A, C, Reply, Route> Configuration<A, C, Reply, Route>
+impl<A, C, Route> Configuration<A, C, Route>
 where
     A: Address,
     C: Clone + Eq,
-    Reply: behavior::Protocol<Addr = A, Msg = ConfigurationState<C>>,
-    Route: DeliveryRoute<Reply>,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = ConfigurationState<C>>>,
 {
     /// Construct an explicitly unconfigured policy.
     #[must_use]
@@ -138,24 +136,22 @@ where
     }
 }
 
-impl<A, C, Reply, Route> Default for Configuration<A, C, Reply, Route>
+impl<A, C, Route> Default for Configuration<A, C, Route>
 where
     A: Address,
     C: Clone + Eq,
-    Reply: behavior::Protocol<Addr = A, Msg = ConfigurationState<C>>,
-    Route: DeliveryRoute<Reply>,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = ConfigurationState<C>>>,
 {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<A, C, Reply, Route> BehaviorBase for Configuration<A, C, Reply, Route>
+impl<A, C, Route> BehaviorBase for Configuration<A, C, Route>
 where
     A: Address,
     C: Clone + Eq,
-    Reply: behavior::Protocol<Addr = A, Msg = ConfigurationState<C>>,
-    Route: DeliveryRoute<Reply>,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = ConfigurationState<C>>>,
 {
     type Base = Self;
     fn base(&self) -> &Self {
@@ -163,23 +159,21 @@ where
     }
 }
 
-impl<A, C, Reply, Route> behavior::Protocol for Configuration<A, C, Reply, Route>
+impl<A, C, Route> behavior::Protocol for Configuration<A, C, Route>
 where
     A: Address,
     C: Clone + Eq,
-    Reply: behavior::Protocol<Addr = A, Msg = ConfigurationState<C>>,
-    Route: DeliveryRoute<Reply>,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = ConfigurationState<C>>>,
 {
     type Addr = A;
     type Msg = ConfigurationMessage<C, Route>;
 }
 
-impl<A, C, Reply, Route> Behavior for Configuration<A, C, Reply, Route>
+impl<A, C, Route> Behavior for Configuration<A, C, Route>
 where
     A: Address,
     C: Clone + Eq,
-    Reply: behavior::Protocol<Addr = A, Msg = ConfigurationState<C>>,
-    Route: DeliveryRoute<Reply>,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = ConfigurationState<C>>>,
     Route::Sends: behavior::SendsFor<User<A, ConfigurationMessage<C, Route>>>,
 {
     type Protocol = Self;
@@ -227,7 +221,7 @@ mod tests {
         }
     }
 
-    type Subject = Configuration<MailAddr, u8, Reply, Recipient<Reply>>;
+    type Subject = Configuration<MailAddr, u8, Recipient<Reply>>;
 
     #[test]
     fn stale_and_conflicting_candidates_return_ownership_atomically() {

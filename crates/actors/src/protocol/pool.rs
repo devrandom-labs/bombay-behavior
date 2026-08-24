@@ -17,49 +17,45 @@ pub trait PoolAssignmentProtocol: Protocol {
 }
 
 /// Nominal protocol implemented at a FIFO worker pool's established address.
-pub struct WorkerPoolProtocol<A: Address, D, J, R, Route>(
-    core::marker::PhantomData<fn(A, D, J, R, Route)>,
+pub struct WorkerPoolProtocol<A: Address, J, R, Route>(
+    core::marker::PhantomData<fn(A, J, R, Route)>,
 );
 
-impl<A, D, J, R, Route> Protocol for WorkerPoolProtocol<A, D, J, R, Route>
+impl<A, J, R, Route> Protocol for WorkerPoolProtocol<A, J, R, Route>
 where
     A: Address,
-    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
-    Route: DeliveryRoute<D>,
+    Route: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>>,
 {
     type Addr = A;
-    type Msg = PoolMessage<A, D, J, R, Route>;
+    type Msg = PoolMessage<A, J, R, Route>;
 }
 
-impl<A, D, J, R, Route> PoolAssignmentProtocol for WorkerPoolProtocol<A, D, J, R, Route>
+impl<A, J, R, Route> PoolAssignmentProtocol for WorkerPoolProtocol<A, J, R, Route>
 where
     A: Address,
-    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
-    Route: DeliveryRoute<D>,
+    Route: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>>,
 {
     type Job = J;
 }
 
 /// Nominal protocol implemented at a keyed worker pool's established address.
-pub struct KeyedWorkerPoolProtocol<A: Address, D, K, J, R, Route>(
-    core::marker::PhantomData<fn(A, D, K, J, R, Route)>,
+pub struct KeyedWorkerPoolProtocol<A: Address, K, J, R, Route>(
+    core::marker::PhantomData<fn(A, K, J, R, Route)>,
 );
 
-impl<A, D, K, J, R, Route> Protocol for KeyedWorkerPoolProtocol<A, D, K, J, R, Route>
+impl<A, K, J, R, Route> Protocol for KeyedWorkerPoolProtocol<A, K, J, R, Route>
 where
     A: Address,
-    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
-    Route: DeliveryRoute<D>,
+    Route: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>>,
 {
     type Addr = A;
-    type Msg = KeyedPoolMessage<A, D, K, J, R, Route>;
+    type Msg = KeyedPoolMessage<A, K, J, R, Route>;
 }
 
-impl<A, D, K, J, R, Route> PoolAssignmentProtocol for KeyedWorkerPoolProtocol<A, D, K, J, R, Route>
+impl<A, K, J, R, Route> PoolAssignmentProtocol for KeyedWorkerPoolProtocol<A, K, J, R, Route>
 where
     A: Address,
-    D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
-    Route: DeliveryRoute<D>,
+    Route: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>>,
 {
     type Job = J;
 }

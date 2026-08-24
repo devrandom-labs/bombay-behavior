@@ -3,8 +3,8 @@
 use std::collections::VecDeque;
 
 use behavior::{
-    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, MessageProtocol, Never,
-    NoBirths, Recipient, SendEffects, User,
+    Actions, Address, Behavior, BehaviorActed, BehaviorBase, MessageProtocol, Never, NoBirths,
+    SendEffects, User,
 };
 use thiserror::Error;
 
@@ -97,65 +97,62 @@ impl<T, Route> BufferState<T, Route> {
 }
 
 /// Commands accepted by [`Buffer`].
-pub enum BufferMessage<A: Address, T, Route> {
+pub enum BufferMessage<T, TargetRoute, ReplyRoute> {
     /// Offer ownership of one value under the configured overflow policy.
     Offer {
         /// Offered value.
         value: T,
         /// Recipient for acceptance, rejection, or later eviction.
-        reply_to: Route,
+        reply_to: ReplyRoute,
     },
     /// Release the oldest accepted value to a concrete typed destination.
     Release {
         /// Destination for the released value.
-        to: Recipient<MessageProtocol<A, T>>,
+        to: TargetRoute,
         /// Recipient for the release or empty result.
-        reply_to: Route,
+        reply_to: ReplyRoute,
     },
 }
 
-impl<A: Address, T, Route> behavior::Protocol for BufferMessage<A, T, Route> {
-    type Addr = A;
-    type Msg = BufferMessage<A, T, Route>;
-}
-
 /// Named delivery products emitted by [`Buffer`].
-pub struct BufferSends<A: Address, T, OutcomeSends: SendEffects> {
+pub struct BufferSends<Deliveries: SendEffects, OutcomeSends: SendEffects> {
     /// Released values in FIFO order.
-    pub deliveries: Vec<Delivery<MessageProtocol<A, T>>>,
+    pub deliveries: Deliveries,
     /// Acceptance, rejection, eviction, release, and empty facts.
     pub outcomes: OutcomeSends,
 }
 
-impl<A: Address, T, OutcomeSends: SendEffects> SendEffects for BufferSends<A, T, OutcomeSends> {
+impl<Deliveries: SendEffects, OutcomeSends: SendEffects> SendEffects
+    for BufferSends<Deliveries, OutcomeSends>
+{
     fn empty() -> Self {
         Self {
-            deliveries: Vec::new(),
+            deliveries: Deliveries::empty(),
             outcomes: OutcomeSends::empty(),
         }
     }
 
-    fn append(&mut self, mut other: Self) {
-        self.deliveries.append(&mut other.deliveries);
+    fn append(&mut self, other: Self) {
+        self.deliveries.append(other.deliveries);
         self.outcomes.append(other.outcomes);
     }
 }
 
-impl<Event, A, T, OutcomeSends> behavior::SendsFor<Event> for BufferSends<A, T, OutcomeSends>
+impl<Event, Deliveries, OutcomeSends> behavior::SendsFor<Event>
+    for BufferSends<Deliveries, OutcomeSends>
 where
-    A: Address,
+    Deliveries: SendEffects + behavior::SendsFor<Event>,
     OutcomeSends: SendEffects + behavior::SendsFor<Event>,
 {
 }
 
-impl<I, RootEvent, Path, A, T, OutcomeSends> behavior::InterpretSends<I, RootEvent, Path>
-    for BufferSends<A, T, OutcomeSends>
+impl<I, RootEvent, Path, Deliveries, OutcomeSends> behavior::InterpretSends<I, RootEvent, Path>
+    for BufferSends<Deliveries, OutcomeSends>
 where
     I: behavior::SendInterpreter,
-    A: Address,
-    Vec<Delivery<MessageProtocol<A, T>>>: behavior::InterpretSends<I, RootEvent, Path>,
+    Deliveries: SendEffects + behavior::InterpretSends<I, RootEvent, Path>,
     OutcomeSends: SendEffects + behavior::InterpretSends<I, RootEvent, Path>,
-    BufferSends<A, T, OutcomeSends>: Send,
+    BufferSends<Deliveries, OutcomeSends>: Send,
 {
     fn interpret(
         self,
@@ -212,19 +209,21 @@ impl BufferConfiguration {
 /// internal full-queue eviction uses the proven invariant that positive
 /// capacity plus the full-offer branch implies a non-empty queue; callers
 /// cannot violate that invariant through the public API.
-pub struct Buffer<A, T, Route>
+pub struct Buffer<A, T, TargetRoute, ReplyRoute>
 where
     A: Address,
-    Route: DeliveryRoute<MessageProtocol<A, BufferOutcome<T>>>,
+    TargetRoute: DeliveryRoute<Protocol = MessageProtocol<A, T>>,
+    ReplyRoute: DeliveryRoute<Protocol = MessageProtocol<A, BufferOutcome<T>>>,
 {
-    state: BufferState<T, Route>,
-    marker: core::marker::PhantomData<fn() -> A>,
+    state: BufferState<T, ReplyRoute>,
+    marker: core::marker::PhantomData<fn() -> (A, TargetRoute)>,
 }
 
-impl<A, T, Route> Buffer<A, T, Route>
+impl<A, T, TargetRoute, ReplyRoute> Buffer<A, T, TargetRoute, ReplyRoute>
 where
     A: Address,
-    Route: DeliveryRoute<MessageProtocol<A, BufferOutcome<T>>>,
+    TargetRoute: DeliveryRoute<Protocol = MessageProtocol<A, T>>,
+    ReplyRoute: DeliveryRoute<Protocol = MessageProtocol<A, BufferOutcome<T>>>,
 {
     /// Bind validated policy to an empty buffer actor.
     #[must_use]
@@ -241,14 +240,14 @@ where
 
     /// Borrow the complete current buffer state.
     #[must_use]
-    pub const fn state(&self) -> &BufferState<T, Route> {
+    pub const fn state(&self) -> &BufferState<T, ReplyRoute> {
         &self.state
     }
 
     fn actions(
-        deliveries: Vec<Delivery<MessageProtocol<A, T>>>,
-        outcomes: Route::Sends,
-    ) -> Actions<A, Never, BufferSends<A, T, Route::Sends>, NoBirths> {
+        deliveries: TargetRoute::Sends,
+        outcomes: ReplyRoute::Sends,
+    ) -> Actions<A, Never, BufferSends<TargetRoute::Sends, ReplyRoute::Sends>, NoBirths> {
         Actions::send(BufferSends {
             deliveries,
             outcomes,
@@ -256,10 +255,11 @@ where
     }
 }
 
-impl<A, T, Route> BehaviorBase for Buffer<A, T, Route>
+impl<A, T, TargetRoute, ReplyRoute> BehaviorBase for Buffer<A, T, TargetRoute, ReplyRoute>
 where
     A: Address,
-    Route: DeliveryRoute<MessageProtocol<A, BufferOutcome<T>>>,
+    TargetRoute: DeliveryRoute<Protocol = MessageProtocol<A, T>>,
+    ReplyRoute: DeliveryRoute<Protocol = MessageProtocol<A, BufferOutcome<T>>>,
 {
     type Base = Self;
 
@@ -268,24 +268,27 @@ where
     }
 }
 
-impl<A, T, Route> behavior::Protocol for Buffer<A, T, Route>
+impl<A, T, TargetRoute, ReplyRoute> behavior::Protocol for Buffer<A, T, TargetRoute, ReplyRoute>
 where
     A: Address,
-    Route: DeliveryRoute<MessageProtocol<A, BufferOutcome<T>>>,
+    TargetRoute: DeliveryRoute<Protocol = MessageProtocol<A, T>>,
+    ReplyRoute: DeliveryRoute<Protocol = MessageProtocol<A, BufferOutcome<T>>>,
 {
     type Addr = A;
-    type Msg = BufferMessage<A, T, Route>;
+    type Msg = BufferMessage<T, TargetRoute, ReplyRoute>;
 }
 
-impl<A, T, Route> Behavior for Buffer<A, T, Route>
+impl<A, T, TargetRoute, ReplyRoute> Behavior for Buffer<A, T, TargetRoute, ReplyRoute>
 where
     A: Address,
-    Route: DeliveryRoute<MessageProtocol<A, BufferOutcome<T>>> + Clone,
-    Route::Sends: behavior::SendsFor<User<A, BufferMessage<A, T, Route>>>,
+    TargetRoute: DeliveryRoute<Protocol = MessageProtocol<A, T>>,
+    ReplyRoute: DeliveryRoute<Protocol = MessageProtocol<A, BufferOutcome<T>>> + Clone,
+    TargetRoute::Sends: behavior::SendsFor<User<A, BufferMessage<T, TargetRoute, ReplyRoute>>>,
+    ReplyRoute::Sends: behavior::SendsFor<User<A, BufferMessage<T, TargetRoute, ReplyRoute>>>,
 {
-    type Protocol = BufferMessage<A, T, Route>;
+    type Protocol = Self;
     type Event = User<A, crate::BehaviorMessage<Self>>;
-    type Sends = BufferSends<A, T, Route::Sends>;
+    type Sends = BufferSends<TargetRoute::Sends, ReplyRoute::Sends>;
     type Ph = Never;
     type Error = Never;
     type Birth = NoBirths;
@@ -300,7 +303,7 @@ where
                     reply_to: reply_to.clone(),
                 });
                 Ok(Self::actions(
-                    Vec::new(),
+                    TargetRoute::Sends::empty(),
                     reply_to.deliver(BufferOutcome::Accepted {
                         depth: self.state.queued.len(),
                     }),
@@ -308,14 +311,14 @@ where
             }
             BufferMessage::Offer { value, reply_to } => match self.state.overflow {
                 OverflowPolicy::Reject => Ok(Self::actions(
-                    Vec::new(),
+                    TargetRoute::Sends::empty(),
                     reply_to.deliver(BufferOutcome::Rejected {
                         value,
                         reason: BufferRejection::Full,
                     }),
                 )),
                 OverflowPolicy::DropNewest => Ok(Self::actions(
-                    Vec::new(),
+                    TargetRoute::Sends::empty(),
                     reply_to.deliver(BufferOutcome::Rejected {
                         value,
                         reason: BufferRejection::DroppedNewest,
@@ -339,18 +342,18 @@ where
                     outcomes.append(reply_to.deliver(BufferOutcome::Accepted {
                         depth: self.state.queued.len(),
                     }));
-                    Ok(Self::actions(Vec::new(), outcomes))
+                    Ok(Self::actions(TargetRoute::Sends::empty(), outcomes))
                 }
             },
             BufferMessage::Release { to, reply_to } => {
                 let Some(buffered) = self.state.queued.pop_front() else {
                     return Ok(Self::actions(
-                        Vec::new(),
+                        TargetRoute::Sends::empty(),
                         reply_to.deliver(BufferOutcome::Empty),
                     ));
                 };
                 Ok(Self::actions(
-                    vec![Delivery::new(to, buffered.value)],
+                    to.deliver(buffered.value),
                     reply_to.deliver(BufferOutcome::Released {
                         remaining: self.state.queued.len(),
                     }),
@@ -364,12 +367,18 @@ where
 mod tests {
     use super::*;
     use crate::Activate as _;
-    use behavior::MailAddr;
+    use behavior::{Delivery, MailAddr, Recipient};
 
     fn active(
         policy: OverflowPolicy,
-    ) -> crate::Active<Buffer<MailAddr, u8, Recipient<MessageProtocol<MailAddr, BufferOutcome<u8>>>>>
-    {
+    ) -> crate::Active<
+        Buffer<
+            MailAddr,
+            u8,
+            Recipient<MessageProtocol<MailAddr, u8>>,
+            Recipient<MessageProtocol<MailAddr, BufferOutcome<u8>>>,
+        >,
+    > {
         Buffer::new(BufferConfiguration::new(2, policy).unwrap())
             .initialize()
             .unwrap()
