@@ -1,143 +1,104 @@
-# Actor compositions
+# Actor composition
 
-`bombay-behavior-actors` provides reusable actor arrangements where several
-existing laws have to be connected in one exact order. They remain pure
-behaviors: receiving one typed event produces typed `Actions` and the next
-behavior decision. Scheduling, child creation, observation, and delivery are
-still performed only by an interpreter.
+`bombay-behavior-actors` exposes concrete actor folds and typed event/effect
+transformations. Applications connect those actors with ordinary typed
+composition. A constructor recipe is not a separate actor template when it
+only selects policy values, forwards to another constructor, or hides a nested
+type.
 
-These arrangements are derived Bombay policy, not laws of the actor model.
-Their policies are explicit at construction and their failures remain typed.
+These compositions are derived Bombay constructions. They preserve the pure
+behavior boundary: one typed input produces complete `Actions` and a next
+behavior decision, while the interpreter alone realizes delivery, creation,
+observation, scheduling, and shutdown effects.
 
-## Supervised workers with restart delay
+## Application routing and fixed supervision
 
-Use `supervised_backoff` when callers should send a worker command without
-knowing about the stable proxy used to keep a worker slot constant:
+`Supervisor<A, C>` owns one fixed stable-proxy fleet. Its public protocol is
+the ownership protocol: worker lifecycle facts, replacement decisions, and
+coordinated shutdown. It does not also pretend to be an application command
+router.
 
-```rust,ignore
-let payments = supervised_backoff(
-    ChildTopology::new([CARD_PAYMENTS, BANK_PAYMENTS], payment_worker),
-    RestartConfiguration::new(
-        Strategy::OneForOne,
-        RestartPolicy::Permanent,
-        3,
-        Duration::from_secs(30),
-    ),
-    Backoff::exponential(Duration::from_millis(100), Duration::from_secs(5))?,
-    |command: &PaymentCommand| command.payment_worker(),
-)?;
-```
+When an application command selects a worker, that selection is application
+state-transition policy. Keep it in the application behavior and emit a typed
+delivery to the chosen stable proxy, or place a concrete routing actor in
+front of the supervisor. The supervisor remains responsible for fresh worker
+incarnations and stable slot ownership; the router remains responsible for
+command admission and destination selection. This composition makes both
+protocols and both rejection laws visible to Rust.
 
-The public message is `PaymentCommand`. The selector is the application policy
-that chooses a configured worker nonce; the library does not invent round
-robin or any other default. A successful command is delivered through the
-creator-owned stable child route. Worker replacement changes the incarnation
-behind that route, not the route selected by the command.
+Use `BackoffSupervisor<A, C>` when the standalone fleet must delay accepted
+replacement requests. Use `BackoffSupervise<B, C>` when an existing behavior
+creates and adopts its own workers. These are separate transformations because
+their input folds and typed effect products differ. Backoff remains explicit
+policy supplied with `Backoff`; it is not another actor template.
 
-An unavailable command returns
-`SupervisedWorkersError::CommandNotAccepted`. That value owns the selected
-worker, the availability reason, and the complete original command together
-with its sender. The supervisor does not drop, stash, redirect, or rebuild the
-command. Unknown, starting, restarting, retired, and shutting-down workers use
-the same law. Restart decisions, budget failure reports, replacement delay,
-and coordinated shutdown use the same ownership and backoff folds as the
-ownership-only supervisor. Restart delay applies only to replacement commands.
+## Root shutdown
 
-Topology construction can return `FleetError<A::Nonce>`. Backoff validation
-returns `BackoffConfigError` before composition, while delay calculation can
-return `BackoffError` during a transition. Keeping those stages separate makes
-their recovery choices explicit.
+Use `StopOnShutdown<B>` when a shutdown request means that this actor stops
+directly. Use `FinalizeOnShutdown<B>` when shutdown must run one typed finalizer
+and preserve all of its sends, creations, and terminal decision. If shutdown
+must first be delegated to a coordinator, place that coordinator at the root;
+no guardian alias or builder is required.
 
-`Supervise<B, C>` remains the right form when an existing application behavior
-creates and adopts children through its own `Births<C>` lane. It already keeps
-the application's public protocol. The fixed composition above owns the whole
-configured worker set and therefore can safely expose direct worker commands.
-
-## Shutdown phases from committed children
-
-Use `shutdown_after_children` when an application's direct child roles define
-its shutdown order:
+These transformations compose like every other wrapper:
 
 ```rust,ignore
-let application = shutdown_after_children(Application::new(root))
-    .shutdown_phase(ApplicationChild::Store)
-    .shutdown_phase(ApplicationChild::Gateway)
-    .finish();
+let direct = StopOnShutdown::new(application);
+let finalizing = FinalizeOnShutdown::new(application, finalize);
+let coordinated = ShutdownCoordinator::new(application, plan);
 ```
 
-Each phase names a role already declared by the application's child product.
-The compiler rejects a duplicate role, a role from another application, a
-value of the wrong type, or `finish` while a role is missing. Reversing the two
-calls reverses the observable child termination order.
+The choice is deliberate Bombay policy. It is not automatic discovery of a
+nested shutdown handler.
 
-The composition observes every configured direct child created by application
-initialization. Later application-created children remain ordinary application
-effects and are not silently added to the declared shutdown plan. It records a
-route only after that configured creation commits, preserves a rejected creation
-as `ChildShutdownPlanError::CreationRejected`, and reports the completed
-heterogeneous plan through ordinary `Actions`. The existing
-`HeterogeneousShutdownCoordinator` installs and executes that plan. A shutdown
-request received first is retained by the coordinator and starts immediately
-when the plan arrives; a plan received first waits for shutdown. Both cases run
-the same declared phases.
+## Plans derived from committed children
 
-The report destination is inferred from the final composed actor type. It is
-not fixed when `finish()` is called. The same spelling therefore remains valid
-when a coordinated guardian or another statically typed outer composition is
-added later. Framework and application code do not supply a structural path.
-Unexpected, mismatched, rejected, duplicate, and post-plan creation facts are
-never silently consumed; typed failures retain the complete authoritative
-fact.
+`ShutdownCoordinator` and `HeterogeneousShutdownCoordinator` own the distinct
+homogeneous and heterogeneous ordered-shutdown folds. A topology-owning
+application that cannot construct its plan until children commit records those
+committed `EstablishedChild` capabilities in its own state. Once complete, it
+emits `ReportShutdownPlan::new(plan)` in its ordinary `Actions` send product.
+The interpreter returns the corresponding typed `InstallShutdownPlan<P>` event
+to the coordinator.
 
-Application code does not construct event products, send products, structural
-paths, child occurrences, or predicted addresses. The composition does not
-reconstruct an address from a nonce and does not add a registry, callback,
-runtime type, or another shutdown machine.
+The topology owner must preserve the following policy:
 
-The lower-level `HeterogeneousShutdownPlan`, `shutdown_target`, and
-`ReportShutdownPlan` APIs remain available for framework code that builds a
-plan from a different statically known source. They are not needed for the
-ordinary direct-child case.
+- only a successfully committed creation contributes a child target;
+- rejection remains a typed application transition failure;
+- every declared role contributes exactly once;
+- an early shutdown request remains pending until installation; and
+- a plan installs at most once.
 
-## Actor-template audit
+This is ordinary actor communication between two concrete folds. A generic
+child-plan wrapper cannot own these laws because it does not own the
+application's topology or role state.
 
-The two additions prompted a full pass over the reusable actor templates. Four
-duplicated implementations were collapsed:
+## Observation
 
-- `Guardian<B>` is now the existing direct `StopOnShutdown<B>` composition;
-  only coordinated guardians retain a distinct behavior because they delegate
-  shutdown instead of stopping themselves.
-- Ownership-only fixed supervision and application-facing fixed supervision
-  share one fleet state machine. A static command policy changes only the
-  public protocol and command transition.
-- Ownership-only and application-facing fixed restart delay share one backoff
-  implementation. Their timer source differs, while delay, generation,
-  cancellation, and release laws are identical.
-- Homogeneous and heterogeneous shutdown coordinators share one ordered-phase
-  state transition. Their concrete request products remain different because
-  static child protocols differ.
+`Watch<B>` is the recurring logical-name observation transformation. It
+continues observing later incarnations of the same logical peer.
+`TerminationMonitor` owns a correlated, exact-once observation lifecycle and
+consumes its terminal relationship. Exact-incarnation monitoring uses that
+same monitor law with an established target and an ordinary typed reaction.
 
-The remaining actor compositions were checked against their state and effect
-laws. They are intentionally distinct:
+Those recurrence laws are different, so they remain separate folds. Target
+aliases and established-watch wrappers add no law and are unnecessary.
 
-- `Deadline` owns an absolute optional deadline and may only change the next
-  behavior decision; `OneShot` owns a relative one-time reaction with full
-  actions; `Periodic` rearms after each matching generation; and
-  `ReceiveTimeout` rearms only after successful application activity.
-- `Watch` exposes a typed reaction for watched lifecycle facts, while
-  `TerminationMonitor` owns exact-once terminal observation state.
-  `PropagateTermination` additionally publishes or discharges a terminal
-  result, so merging these would combine different capabilities.
-- `Stash` owns FIFO replay state and is not a generic event wrapper.
-- `Supervise<B, C>` adopts births produced by an inner behavior, fixed
-  supervision owns a configured topology, dynamic supervision owns management
-  commands, and worker pools additionally own job assignment. Those ownership
-  laws are not interchangeable.
+## Pools and shutdown products
 
-Observation and shutdown use their concrete compositions directly. Redundant
-aliases for identical state machines were removed. Catalogue actors are
-concrete protocols and were not treated as wrappers.
+`WorkerPool` and `KeyedWorkerPool` each implement their public transition law
+directly. They may reuse private data helpers, but neither delegates its
+`Behavior` fold to a hidden generic actor engine. FIFO assignment and
+persistent key affinity have different state transitions.
 
-This is the stopping rule for the cleanup: share an implementation when the
-state transition and effect order are the same; keep separate types when
-combining them would weaken a protocol, mix ownership, or add a runtime choice.
+Likewise, homogeneous and heterogeneous shutdown coordinators retain separate
+folds. Their phase products select different concrete child effect lanes, so a
+generic execution engine would hide the very distinction the public types are
+meant to prove.
+
+## Audit record
+
+The complete catalogue classification and change ledger are in
+[Actor-template composition audit](template-composition-audit.md). The broader
+capability and adversarial-test record remains in
+[Behavior Actors template-law audit](template-law-audit.md).

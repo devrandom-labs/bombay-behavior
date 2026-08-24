@@ -899,7 +899,10 @@ async fn a_proxy_ignores_a_stale_child_stop_nonce() {
     let forwarded = proxy
         .transition(ProxyEvent::Command(User::user(
             MailAddr(0),
-            ProxyCommand::Forward(7),
+            ProxyCommand::Forward {
+                command: 7,
+                unavailable_to: Recipient::global(MailAddr(77)),
+            },
         )))
         .unwrap();
     assert_eq!(forwarded.sends.deliveries[0].nonce, 0);
@@ -1165,7 +1168,10 @@ async fn proxy_replacement_creates_a_fresh_incarnation() {
     let forwarded = proxy
         .transition(ProxyEvent::Command(User::user(
             MailAddr(0),
-            ProxyCommand::Forward(7),
+            ProxyCommand::Forward {
+                command: 7,
+                unavailable_to: Recipient::global(MailAddr(77)),
+            },
         )))
         .unwrap();
     assert_eq!(forwarded.sends.deliveries[0].nonce, 1);
@@ -1178,19 +1184,25 @@ async fn proxy_routes_only_after_matching_installation_and_rejection_stays_vacan
     let initialized = proxy.initialize().unwrap();
     let mut proxy = initialized.behavior;
 
-    let pending = proxy.transition(ProxyEvent::Command(User::user(
-        MailAddr(0),
-        ProxyCommand::Forward(1),
-    )));
+    let pending = proxy
+        .transition(ProxyEvent::Command(User::user(
+            MailAddr(0),
+            ProxyCommand::Forward {
+                command: 1,
+                unavailable_to: Recipient::global(MailAddr(77)),
+            },
+        )))
+        .unwrap();
+    assert!(pending.sends.deliveries.is_empty());
     assert!(matches!(
-        pending,
-        Err(ProxyError::CommandNotAccepted {
+        &pending.sends.unavailable[..],
+        [Delivery { to, message: behavior::ProxyUnavailable {
             phase: behavior::IncarnationPhase::Installing {
                 attempt: 0,
                 kind: CreationKind::Birth,
             },
             command: 1,
-        })
+        }}] if *to == Recipient::global(MailAddr(77))
     ));
 
     let stale = CreationResolved::birth(1, MailAddr(1));
@@ -1211,18 +1223,24 @@ async fn proxy_routes_only_after_matching_installation_and_rejection_stays_vacan
         Err(CreationRejection::InitializationFailed)
     );
 
-    let vacant = proxy.transition(ProxyEvent::Command(User::user(
-        MailAddr(0),
-        ProxyCommand::Forward(2),
-    )));
+    let vacant = proxy
+        .transition(ProxyEvent::Command(User::user(
+            MailAddr(0),
+            ProxyCommand::Forward {
+                command: 2,
+                unavailable_to: Recipient::global(MailAddr(78)),
+            },
+        )))
+        .unwrap();
+    assert!(vacant.sends.deliveries.is_empty());
     assert!(matches!(
-        vacant,
-        Err(ProxyError::CommandNotAccepted {
+        &vacant.sends.unavailable[..],
+        [Delivery { to, message: behavior::ProxyUnavailable {
             phase: behavior::IncarnationPhase::Vacant {
                 last_installed: None,
             },
             command: 2,
-        })
+        }}] if *to == Recipient::global(MailAddr(78))
     ));
 }
 

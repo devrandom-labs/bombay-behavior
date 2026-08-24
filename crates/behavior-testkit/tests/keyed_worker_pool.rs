@@ -219,7 +219,11 @@ fn explicit_rebalance_changes_future_admission_but_not_accepted_jobs() {
             },
         )
         .unwrap();
-    let ProxyCommand::Forward(assignment) = &assignments(&prior)[0].message else {
+    let ProxyCommand::Forward {
+        command: assignment,
+        ..
+    } = &assignments(&prior)[0].message
+    else {
         panic!("accepted job is forwarded");
     };
     assert_eq!(assignment.job, JobId(2));
@@ -519,13 +523,16 @@ fn named_pool_send_product_appends_each_lane_once_in_order() {
     ));
     later.assignments.push(ChildDelivery::at(
         ChildRoute::<Proxy<Worker>, ChildHead>::new(0),
-        ProxyCommand::Forward(PoolAssignment {
-            assignment: AssignmentId(0),
-            job: JobId(1),
-            payload: 7,
-            worker: 0,
-            complete_to: Recipient::global(MailAddr(9)),
-        }),
+        ProxyCommand::Forward {
+            command: PoolAssignment {
+                assignment: AssignmentId(0),
+                job: JobId(1),
+                payload: 7,
+                worker: 0,
+                complete_to: Recipient::global(MailAddr(9)),
+            },
+            unavailable_to: Recipient::global(MailAddr(9)),
+        },
     ));
 
     sends.append(later);

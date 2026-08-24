@@ -504,6 +504,31 @@ pub struct ChildShutdownPhases<B, Available, Phases> {
     phases: PhantomData<fn() -> Phases>,
 }
 
+/// Generic consumer operation for appending one statically valid shutdown phase.
+///
+/// Framework code can carry [`Output`](Self::Output) without naming the
+/// builder's private availability proof. Implementations do not plan or store
+/// phases independently; they delegate to [`ChildShutdownPhases::shutdown_phase`].
+pub trait DeclareShutdownPhase<Role>: Sized {
+    type Output;
+
+    #[must_use]
+    fn shutdown_phase(self, role: Role) -> Self::Output;
+}
+
+/// Generic consumer operation for finishing a complete shutdown declaration.
+///
+/// This trait is implemented only after every declared direct child has been
+/// assigned exactly once. Its associated output preserves the complete
+/// heterogeneous coordinator type without asking a framework to reproduce the
+/// builder's typestate vocabulary.
+pub trait FinishShutdownPhases<ParentPath>: Sized {
+    type Output;
+
+    #[must_use]
+    fn finish(self) -> Self::Output;
+}
+
 #[allow(
     private_bounds,
     reason = "the public inferred builder hides its closed type-level phase proof"
@@ -624,6 +649,27 @@ where
 
 #[allow(
     private_bounds,
+    reason = "the public consumer operation preserves the builder's closed availability proof"
+)]
+impl<B, Available, Phases, Role> DeclareShutdownPhase<Role>
+    for ChildShutdownPhases<B, Available, Phases>
+where
+    B: Behavior + ResolveChildOccurrence<Role>,
+    Available: AssignAt<<B as ResolveChildOccurrence<Role>>::Position>,
+{
+    type Output = ChildShutdownPhases<
+        B,
+        <Available as AssignAt<<B as ResolveChildOccurrence<Role>>::Position>>::Assigned,
+        Phase<Role, Phases>,
+    >;
+
+    fn shutdown_phase(self, role: Role) -> Self::Output {
+        ChildShutdownPhases::shutdown_phase(self, role)
+    }
+}
+
+#[allow(
+    private_bounds,
     reason = "the public inferred builder hides its closed plan-construction proof"
 )]
 impl<B, Available, Phases> ChildShutdownPhases<B, Available, Phases>
@@ -680,6 +726,31 @@ where
         ChildShutdownPlan<B, Phases, ParentPath>: Behavior<Protocol = B::Protocol>,
     {
         HeterogeneousShutdownCoordinator::awaiting_plan(ChildShutdownPlan::new(self.application))
+    }
+}
+
+#[allow(
+    private_bounds,
+    reason = "the public consumer operation preserves the builder's closed finishing proof"
+)]
+impl<B, Available, Phases, ParentPath> FinishShutdownPhases<ParentPath>
+    for ChildShutdownPhases<B, Available, Phases>
+where
+    B: Behavior,
+    B::Birth: BirthMode,
+    Available: AllAssigned,
+    <B::Birth as BirthMode>::Child: FoldBirthNode<ShutdownTargets<B>>,
+    Phases: BuildShutdownPlan<B, TargetsFor<B>>,
+    TargetsFor<B>:
+        super::shutdown_coordinator::heterogeneous::Selection<Addr = crate::BehaviorAddr<B>> + Copy,
+    <crate::BehaviorAddr<B> as Address>::Nonce: Copy + Eq,
+    ChildShutdownPlan<B, Phases, ParentPath>: Behavior<Protocol = B::Protocol>,
+{
+    type Output =
+        HeterogeneousShutdownCoordinator<ChildShutdownPlan<B, Phases, ParentPath>, TargetsFor<B>>;
+
+    fn finish(self) -> Self::Output {
+        ChildShutdownPhases::finish::<ParentPath>(self)
     }
 }
 

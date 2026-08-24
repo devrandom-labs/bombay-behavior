@@ -84,8 +84,10 @@ only for the values it actually transports.
 The full capability and lifecycle contract is in
 [Established capabilities](docs/established-capabilities.md).
 
-The [Behavior Actors template law audit](docs/template-law-audit.md) records
-which reusable templates intentionally use logical names, exact installed
+The [actor-template composition audit](docs/template-composition-audit.md)
+classifies the complete current catalogue by distinct transition law. The
+[Behavior Actors template law audit](docs/template-law-audit.md) records which
+retained templates intentionally use logical names, exact installed
 capabilities, or creator-local child routes, and the hard-coding checks applied
 across the catalogue.
 
@@ -147,6 +149,18 @@ an occurrence-preserving protocol product. It excludes protocols mentioned
 only by delivery lanes. Duplicate protocol occurrences remain distinct; the
 product is structural installation evidence, not a protocol registry.
 
+`LogicalHostRequirements` is the corresponding owner-authored contract for
+intentional logical delivery destinations. Its closed product includes
+transitive occurrences and preserves duplicates, while exact-only endpoints
+remain excluded. A framework consumes that product through ordinary recursive
+generic implementations; no protocol registry or erased envelope is involved.
+
+`shutdown_after_children(app)` remains the single child-derived shutdown-plan
+builder. Direct callers declare phases and finish normally. Generic frameworks
+use `DeclareShutdownPhase` and `FinishShutdownPhases`; their associated output
+types carry the hidden availability and phase proofs without copying the
+builder typestate.
+
 `Children` stages heterogeneous creations. `DispatchBirth` recursively proves
 that an interpreter implements `InstallBirth<Position, Child, ...>` for every
 alternative. The structural position prevents duplicate child alternatives
@@ -176,9 +190,10 @@ they are never flattened into a dynamic envelope.
 
 The reusable worker-pool contract is documented in
 [Worker pool semantics](docs/worker-pool.md). Correctness-sensitive actor
-arrangements and the template-deduplication verdict are documented in
-[Actor compositions](docs/composition-recipes.md). The repository-wide law and
-adversarial-test audit is recorded in
+arrangements are documented in [Actor composition](docs/composition-recipes.md).
+The catalogue classification is recorded in the
+[actor-template composition audit](docs/template-composition-audit.md), and the
+repository-wide law and adversarial-test audit is recorded in
 [Behavior Actors template-law audit](docs/template-law-audit.md).
 
 ## Development

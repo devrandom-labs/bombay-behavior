@@ -13,7 +13,7 @@ pub use configuration::{
     Configuration, ConfigurationError, ConfigurationMessage, ConfigurationState,
     ConfigurationVersion,
 };
-pub use features::{Feature, FeatureSet, FeatureStatus, Features, FeaturesState};
+pub use features::{Feature, FeatureSet, FeatureStatus};
 pub use health::{
     ComponentHealth, ComponentHealthState, Health, HealthError, HealthEvidence, HealthMessage,
     HealthReport, HealthStatus, ObservationVersion,

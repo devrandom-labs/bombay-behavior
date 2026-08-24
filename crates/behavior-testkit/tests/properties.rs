@@ -177,7 +177,10 @@ proptest! {
                 let actions = proxy
                     .transition(ProxyEvent::Command(User::user(
                         MailAddr(0),
-                        ProxyCommand::Forward(message),
+                        ProxyCommand::Forward {
+                            command: message,
+                            unavailable_to: Recipient::global(MailAddr(0)),
+                        },
                     )))
                     .unwrap();
                 prop_assert!(actions.creates.is_empty());

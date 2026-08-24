@@ -14,8 +14,7 @@ pub use adapter::{
 pub use backoff::{Backoff, BackoffConfigError, BackoffError};
 pub use backoff_supervisor::{
     BackoffSupervise, BackoffSuperviseWithParent, BackoffSupervisor, BackoffSupervisorError,
-    BackoffSupervisorEvent, BackoffSupervisorSends, BackoffSupervisorWithParent, BackoffWorkers,
-    BackoffWorkersWithParent,
+    BackoffSupervisorEvent, BackoffSupervisorSends, BackoffSupervisorWithParent,
 };
 pub(crate) use domain::{FixedFleetOwnership, OwnershipError};
 pub use domain::{FleetError, IncarnationError as ProxyLifecycleError, IncarnationPhase};
@@ -25,13 +24,14 @@ pub use dynamic_supervisor::{
     DynamicSupervisorSends, DynamicSupervisorWithParent,
 };
 pub use fixed_supervisor::{
-    SupervisedWorkers, SupervisedWorkersError, SupervisedWorkersWithParent, Supervisor,
-    SupervisorError, SupervisorEvent, SupervisorProtocol, SupervisorWithParent,
-    TopologyFailurePolicy, WorkerUnavailable,
+    Supervisor, SupervisorError, SupervisorEvent, SupervisorProtocol, SupervisorWithParent,
+    TopologyFailurePolicy,
 };
 pub use policy::{
     ReportSupervisionFailure, RestartPolicy, Strategy, SupervisionFailure,
     SupervisionFailureReaction, restart_all, restart_one, restart_rest,
     retire_on_supervision_failure, stop_on_supervision_failure,
 };
-pub use protocol::{ProxyCommand, ProxyEvent, SupervisionEvent};
+pub use protocol::{
+    CommandSupervisionEvent, ProxyCommand, ProxyEvent, ProxyUnavailable, SupervisionEvent,
+};

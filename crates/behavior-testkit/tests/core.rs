@@ -284,7 +284,10 @@ async fn proxy_forwards_only_to_the_current_fresh_generation() {
     let before = proxy
         .transition(ProxyEvent::Command(User::user(
             MailAddr(0),
-            ProxyCommand::Forward(5),
+            ProxyCommand::Forward {
+                command: 5,
+                unavailable_to: Recipient::global(MailAddr(0)),
+            },
         )))
         .unwrap();
     assert_eq!(before.sends.deliveries[0].nonce, 0);
@@ -316,7 +319,10 @@ async fn proxy_forwards_only_to_the_current_fresh_generation() {
     let after = proxy
         .transition(ProxyEvent::Command(User::user(
             MailAddr(0),
-            ProxyCommand::Forward(6),
+            ProxyCommand::Forward {
+                command: 6,
+                unavailable_to: Recipient::global(MailAddr(0)),
+            },
         )))
         .unwrap();
     assert_eq!(after.sends.deliveries[0].nonce, 1);

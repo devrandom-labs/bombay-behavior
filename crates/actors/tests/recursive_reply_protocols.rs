@@ -54,7 +54,7 @@ macro_rules! recursive_reply_case {
             #[test]
             fn root_and_reply_template_form_a_finite_trait_proof() {
                 fn assert_behavior<B: Behavior>() {}
-                assert_behavior::<Guardian<Root>>();
+                assert_behavior::<StopOnShutdown<Root>>();
                 assert_behavior::<Subject>();
                 let root = Recipient::<Root>::global(MailAddr(1));
                 let _: Reply = MessageAdapter::new(root, adapt);
@@ -255,7 +255,7 @@ fn protocol_preserving_wrappers_keep_one_public_identity() {
     {
     }
 
-    preserves::<RootProtocolProbe, Guardian<RootProtocolProbe>>();
+    preserves::<RootProtocolProbe, StopOnShutdown<RootProtocolProbe>>();
     preserves::<RootProtocolProbe, Stash<RootProtocolProbe>>();
     preserves::<RootProtocolProbe, Watch<RootProtocolProbe>>();
     preserves::<RootProtocolProbe, ReceiveTimeout<RootProtocolProbe>>();

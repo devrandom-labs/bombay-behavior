@@ -12,7 +12,7 @@ use crate::supervision::{RestartPolicy, SupervisionFailure};
 use crate::{CreationKind, Exit, ReportSupervisionFailure, StableSlotRejection};
 use behavior::{
     Actions, Address, Behavior, Births, ChildDelivery, ChildRoute, Create, InterpreterRequests,
-    Never, SendEffects, Step, User,
+    Never, SendEffects, Step,
 };
 
 type OwnedActions<A, C, P> =
@@ -107,20 +107,6 @@ enum WorkerInstallation<N> {
     Retired,
 }
 
-/// Why a command cannot currently be accepted by one configured worker slot.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum WorkerCommandRejection<N> {
-    /// The selected nonce is not part of this fixed topology.
-    UnknownWorker(N),
-    /// The stable proxy or its initial worker has not committed yet.
-    Starting(N),
-    /// A replacement incarnation has not committed yet.
-    Restarting(N),
-    /// Policy permanently retired the selected slot.
-    Retired(N),
-    /// The supervisor has begun terminal coordinated shutdown.
-    ShuttingDown(N),
-}
 enum Shutdown<N> {
     Running,
     Draining { awaiting: Vec<N> },
@@ -210,57 +196,6 @@ where
     }
     pub fn is_shutting_down(&self) -> bool {
         matches!(self.shutdown, Shutdown::Draining { .. })
-    }
-
-    /// Address one application command through the configured stable slot.
-    ///
-    /// The command is accepted only while both the stable proxy and its
-    /// current worker incarnation are established. The returned delivery
-    /// retains the configured proxy nonce across later worker replacement.
-    pub fn command(
-        &self,
-        worker: A::Nonce,
-        command: User<A, <C::Protocol as crate::Protocol>::Msg>,
-    ) -> Result<
-        OwnedActions<A, C, P>,
-        (
-            WorkerCommandRejection<A::Nonce>,
-            User<A, <C::Protocol as crate::Protocol>::Msg>,
-        ),
-    > {
-        let Some((_, installation)) = self
-            .installations
-            .iter()
-            .find(|(nonce, _)| *nonce == worker)
-        else {
-            return Err((WorkerCommandRejection::UnknownWorker(worker), command));
-        };
-        if self.is_shutting_down() {
-            return Err((WorkerCommandRejection::ShuttingDown(worker), command));
-        }
-        match (installation, self.worker(worker)) {
-            (Installation::Established, Some(WorkerInstallation::Running { .. })) => {
-                let route = ChildRoute::<ProxyWithParent<C, P>, behavior::ChildHead>::new(worker);
-                let mut sends = SupervisorSends::empty();
-                sends.worker_commands.push(ChildDelivery::at(
-                    route,
-                    crate::ProxyCommand::Forward(command.message),
-                ));
-                Ok(Actions::send(sends))
-            }
-            (_, Some(WorkerInstallation::Retired)) | (Installation::Rejected { .. }, _) => {
-                Err((WorkerCommandRejection::Retired(worker), command))
-            }
-            (
-                _,
-                Some(
-                    WorkerInstallation::ReplacementQueuedUnknown
-                    | WorkerInstallation::ReplacementQueued { .. }
-                    | WorkerInstallation::AwaitingReplacement { .. },
-                ),
-            ) => Err((WorkerCommandRejection::Restarting(worker), command)),
-            _ => Err((WorkerCommandRejection::Starting(worker), command)),
-        }
     }
 
     fn worker(&self, proxy: A::Nonce) -> Option<WorkerInstallation<A::Nonce>> {

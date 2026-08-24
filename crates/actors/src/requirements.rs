@@ -52,6 +52,27 @@ where
     type Requirements = B::Protocols;
 }
 
+/// Owner-authored, complete product of protocols requiring logical hosting.
+///
+/// This metadata covers every intentional [`behavior::Recipient`] destination
+/// reachable through the owner's composed behavior, including transitive
+/// child and inner-behavior destinations. Exact established recipients are not
+/// logical hosts and must not be listed merely because they share a protocol.
+/// Repeated occurrences remain repeated when they represent distinct
+/// composition requirements.
+///
+/// Completeness is a Bombay owner contract rather than an actor-model law or
+/// an inference from `Sends`: generic Rust cannot recover every protocol from
+/// arbitrary nested effect products without unconstrained type parameters.
+/// A framework can recursively implement its hosting operation for
+/// [`behavior::BirthProtocol`] and [`behavior::NoBirthProtocols`], then consume
+/// [`LogicalHosts`](Self::LogicalHosts) without a registry, erased envelope, or
+/// runtime protocol lookup.
+pub trait LogicalHostRequirements: Behavior {
+    /// Ordered, duplicate-preserving logical protocol occurrences.
+    type LogicalHosts: behavior::BirthProtocolProduct;
+}
+
 /// Empty local-installation requirement product.
 pub type NoInstallationRequirements = behavior::NoBirthProtocols;
 

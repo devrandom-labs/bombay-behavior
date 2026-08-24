@@ -474,128 +474,10 @@ pub enum ShutdownState<P, N> {
     Completed,
 }
 
-trait OrderedShutdownPlan<N>: Clone {
-    fn phase_count(&self) -> usize;
-    fn phase_nonces(&self, phase: usize) -> Vec<N>;
-}
-
-impl<N: Copy> OrderedShutdownPlan<N> for ShutdownPlan<N> {
-    fn phase_count(&self) -> usize {
-        self.phases.len()
-    }
-
-    fn phase_nonces(&self, phase: usize) -> Vec<N> {
-        self.phases[phase].clone()
-    }
-}
-
-impl<T, N> OrderedShutdownPlan<N> for HeterogeneousShutdownPlan<T>
-where
-    T: heterogeneous::Selection,
-    T::Addr: Address<Nonce = N>,
-    T: Copy,
-    N: Copy,
-{
-    fn phase_count(&self) -> usize {
-        self.phases.len()
-    }
-
-    fn phase_nonces(&self, phase: usize) -> Vec<N> {
-        self.phases[phase]
-            .iter()
-            .map(heterogeneous::Selection::nonce)
-            .collect()
-    }
-}
-
 enum ShutdownMove<P> {
     None,
     StartPhase { plan: P, phase: usize },
     Stop,
-}
-
-#[allow(
-    private_bounds,
-    reason = "the public state exposes no methods from its one private execution law"
-)]
-impl<P, N> ShutdownState<P, N>
-where
-    P: OrderedShutdownPlan<N>,
-    N: Copy + Eq,
-{
-    fn start(&mut self, plan: P) -> ShutdownMove<P> {
-        if plan.phase_count() == 0 {
-            *self = Self::Completed;
-            return ShutdownMove::Stop;
-        }
-        let awaiting = plan.phase_nonces(0);
-        let selected = plan.clone();
-        *self = Self::Stopping {
-            plan,
-            phase: 0,
-            awaiting,
-        };
-        ShutdownMove::StartPhase {
-            plan: selected,
-            phase: 0,
-        }
-    }
-
-    fn install(&mut self, plan: P) -> Result<ShutdownMove<P>, P> {
-        match self {
-            Self::AwaitingPlan => {
-                *self = Self::Ready { plan };
-                Ok(ShutdownMove::None)
-            }
-            Self::AwaitingPlanAfterShutdown => Ok(self.start(plan)),
-            Self::Ready { .. } | Self::Stopping { .. } | Self::Completed => Err(plan),
-        }
-    }
-
-    fn request(&mut self) -> ShutdownMove<P> {
-        let ready = match self {
-            Self::AwaitingPlan => {
-                *self = Self::AwaitingPlanAfterShutdown;
-                None
-            }
-            Self::Ready { plan } => Some(plan.clone()),
-            Self::AwaitingPlanAfterShutdown | Self::Stopping { .. } | Self::Completed => None,
-        };
-        match ready {
-            Some(plan) => self.start(plan),
-            None => ShutdownMove::None,
-        }
-    }
-
-    fn child_stopped(&mut self, nonce: N) -> ShutdownMove<P> {
-        let Self::Stopping {
-            plan,
-            phase,
-            awaiting,
-        } = self
-        else {
-            return ShutdownMove::None;
-        };
-        let Some(position) = awaiting.iter().position(|candidate| *candidate == nonce) else {
-            return ShutdownMove::None;
-        };
-        awaiting.remove(position);
-        if !awaiting.is_empty() {
-            return ShutdownMove::None;
-        }
-        let next = *phase + 1;
-        if next == plan.phase_count() {
-            *self = Self::Completed;
-            ShutdownMove::Stop
-        } else {
-            *phase = next;
-            *awaiting = plan.phase_nonces(next);
-            ShutdownMove::StartPhase {
-                plan: plan.clone(),
-                phase: next,
-            }
-        }
-    }
 }
 
 /// Install one validated plan into a coordinator that was started without it.
@@ -934,8 +816,96 @@ where
         Actions::send(SendLayer::new(shutdowns, B::Sends::empty()))
     }
 
+    fn start_plan(
+        &mut self,
+        plan: ShutdownPlan<<crate::BehaviorAddr<B> as Address>::Nonce>,
+    ) -> ShutdownMove<ShutdownPlan<<crate::BehaviorAddr<B> as Address>::Nonce>> {
+        if plan.phases.is_empty() {
+            self.state = ShutdownState::Completed;
+            return ShutdownMove::Stop;
+        }
+        let awaiting = plan.phases[0].clone();
+        let selected = plan.clone();
+        self.state = ShutdownState::Stopping {
+            plan,
+            phase: 0,
+            awaiting,
+        };
+        ShutdownMove::StartPhase {
+            plan: selected,
+            phase: 0,
+        }
+    }
+
+    fn install_plan(
+        &mut self,
+        plan: ShutdownPlan<<crate::BehaviorAddr<B> as Address>::Nonce>,
+    ) -> Result<
+        ShutdownMove<ShutdownPlan<<crate::BehaviorAddr<B> as Address>::Nonce>>,
+        ShutdownPlan<<crate::BehaviorAddr<B> as Address>::Nonce>,
+    > {
+        match self.state {
+            ShutdownState::AwaitingPlan => {
+                self.state = ShutdownState::Ready { plan };
+                Ok(ShutdownMove::None)
+            }
+            ShutdownState::AwaitingPlanAfterShutdown => Ok(self.start_plan(plan)),
+            ShutdownState::Ready { .. }
+            | ShutdownState::Stopping { .. }
+            | ShutdownState::Completed => Err(plan),
+        }
+    }
+
+    fn request_shutdown(
+        &mut self,
+    ) -> ShutdownMove<ShutdownPlan<<crate::BehaviorAddr<B> as Address>::Nonce>> {
+        let ready = match &self.state {
+            ShutdownState::AwaitingPlan => {
+                self.state = ShutdownState::AwaitingPlanAfterShutdown;
+                None
+            }
+            ShutdownState::Ready { plan } => Some(plan.clone()),
+            ShutdownState::AwaitingPlanAfterShutdown
+            | ShutdownState::Stopping { .. }
+            | ShutdownState::Completed => None,
+        };
+        ready.map_or(ShutdownMove::None, |plan| self.start_plan(plan))
+    }
+
+    fn child_stopped(
+        &mut self,
+        nonce: <crate::BehaviorAddr<B> as Address>::Nonce,
+    ) -> ShutdownMove<ShutdownPlan<<crate::BehaviorAddr<B> as Address>::Nonce>> {
+        let ShutdownState::Stopping {
+            plan,
+            phase,
+            awaiting,
+        } = &mut self.state
+        else {
+            return ShutdownMove::None;
+        };
+        let Some(position) = awaiting.iter().position(|candidate| *candidate == nonce) else {
+            return ShutdownMove::None;
+        };
+        awaiting.remove(position);
+        if !awaiting.is_empty() {
+            return ShutdownMove::None;
+        }
+        let next = *phase + 1;
+        if next == plan.phases.len() {
+            self.state = ShutdownState::Completed;
+            ShutdownMove::Stop
+        } else {
+            *phase = next;
+            *awaiting = plan.phases[next].clone();
+            ShutdownMove::StartPhase {
+                plan: plan.clone(),
+                phase: next,
+            }
+        }
+    }
+
     fn move_actions(
-        &self,
         next: ShutdownMove<ShutdownPlan<<crate::BehaviorAddr<B> as Address>::Nonce>>,
     ) -> ShutdownCoordinatorActions<B, C, Occurrence> {
         match next {
@@ -1001,22 +971,21 @@ where
         match event {
             ShutdownCoordinatorEvent::Plan(installation) => {
                 let next = self
-                    .state
-                    .install(installation.into_plan())
+                    .install_plan(installation.into_plan())
                     .map_err(ShutdownCoordinatorError::PlanAlreadyInstalled)?;
-                Ok(self.move_actions(next))
+                Ok(Self::move_actions(next))
             }
             ShutdownCoordinatorEvent::Requested(_) => {
-                let next = self.state.request();
-                Ok(self.move_actions(next))
+                let next = self.request_shutdown();
+                Ok(Self::move_actions(next))
             }
             ShutdownCoordinatorEvent::ChildStopped(stopped) => {
                 let matching = matches!(&self.state, ShutdownState::Stopping { awaiting, .. } if awaiting.contains(&stopped.nonce));
                 if !matching {
                     return Err(ShutdownCoordinatorError::UnexpectedChildStopped(stopped));
                 }
-                let next = self.state.child_stopped(stopped.nonce);
-                Ok(self.move_actions(next))
+                let next = self.child_stopped(stopped.nonce);
+                Ok(Self::move_actions(next))
             }
             ShutdownCoordinatorEvent::ChildRejected(rejected) => {
                 let matching = matches!(&self.state, ShutdownState::Stopping { awaiting, .. } if awaiting.contains(&rejected.nonce));
@@ -1108,8 +1077,101 @@ where
         Actions::send(SendLayer::new(sends, B::Sends::empty()))
     }
 
+    fn phase_nonces(
+        plan: &HeterogeneousShutdownPlan<T>,
+        phase: usize,
+    ) -> Vec<<crate::BehaviorAddr<B> as Address>::Nonce> {
+        plan.phases[phase]
+            .iter()
+            .map(heterogeneous::Selection::nonce)
+            .collect()
+    }
+
+    fn start_plan(
+        &mut self,
+        plan: HeterogeneousShutdownPlan<T>,
+    ) -> ShutdownMove<HeterogeneousShutdownPlan<T>> {
+        if plan.phases.is_empty() {
+            self.state = ShutdownState::Completed;
+            return ShutdownMove::Stop;
+        }
+        let awaiting = Self::phase_nonces(&plan, 0);
+        let selected = plan.clone();
+        self.state = ShutdownState::Stopping {
+            plan,
+            phase: 0,
+            awaiting,
+        };
+        ShutdownMove::StartPhase {
+            plan: selected,
+            phase: 0,
+        }
+    }
+
+    fn install_plan(
+        &mut self,
+        plan: HeterogeneousShutdownPlan<T>,
+    ) -> Result<ShutdownMove<HeterogeneousShutdownPlan<T>>, HeterogeneousShutdownPlan<T>> {
+        match self.state {
+            ShutdownState::AwaitingPlan => {
+                self.state = ShutdownState::Ready { plan };
+                Ok(ShutdownMove::None)
+            }
+            ShutdownState::AwaitingPlanAfterShutdown => Ok(self.start_plan(plan)),
+            ShutdownState::Ready { .. }
+            | ShutdownState::Stopping { .. }
+            | ShutdownState::Completed => Err(plan),
+        }
+    }
+
+    fn request_shutdown(&mut self) -> ShutdownMove<HeterogeneousShutdownPlan<T>> {
+        let ready = match &self.state {
+            ShutdownState::AwaitingPlan => {
+                self.state = ShutdownState::AwaitingPlanAfterShutdown;
+                None
+            }
+            ShutdownState::Ready { plan } => Some(plan.clone()),
+            ShutdownState::AwaitingPlanAfterShutdown
+            | ShutdownState::Stopping { .. }
+            | ShutdownState::Completed => None,
+        };
+        ready.map_or(ShutdownMove::None, |plan| self.start_plan(plan))
+    }
+
+    fn child_stopped(
+        &mut self,
+        nonce: <crate::BehaviorAddr<B> as Address>::Nonce,
+    ) -> ShutdownMove<HeterogeneousShutdownPlan<T>> {
+        let ShutdownState::Stopping {
+            plan,
+            phase,
+            awaiting,
+        } = &mut self.state
+        else {
+            return ShutdownMove::None;
+        };
+        let Some(position) = awaiting.iter().position(|candidate| *candidate == nonce) else {
+            return ShutdownMove::None;
+        };
+        awaiting.remove(position);
+        if !awaiting.is_empty() {
+            return ShutdownMove::None;
+        }
+        let next = *phase + 1;
+        if next == plan.phases.len() {
+            self.state = ShutdownState::Completed;
+            ShutdownMove::Stop
+        } else {
+            *phase = next;
+            *awaiting = Self::phase_nonces(plan, next);
+            ShutdownMove::StartPhase {
+                plan: plan.clone(),
+                phase: next,
+            }
+        }
+    }
+
     fn move_actions(
-        &self,
         next: ShutdownMove<HeterogeneousShutdownPlan<T>>,
     ) -> HeterogeneousShutdownActions<B, T> {
         match next {
@@ -1170,22 +1232,21 @@ where
         match event {
             ShutdownCoordinatorEvent::Plan(installation) => {
                 let next = self
-                    .state
-                    .install(installation.into_plan())
+                    .install_plan(installation.into_plan())
                     .map_err(ShutdownCoordinatorError::PlanAlreadyInstalled)?;
-                Ok(self.move_actions(next))
+                Ok(Self::move_actions(next))
             }
             ShutdownCoordinatorEvent::Requested(_) => {
-                let next = self.state.request();
-                Ok(self.move_actions(next))
+                let next = self.request_shutdown();
+                Ok(Self::move_actions(next))
             }
             ShutdownCoordinatorEvent::ChildStopped(stopped) => {
                 let matching = matches!(&self.state, ShutdownState::Stopping { awaiting, .. } if awaiting.contains(&stopped.nonce));
                 if !matching {
                     return Err(ShutdownCoordinatorError::UnexpectedChildStopped(stopped));
                 }
-                let next = self.state.child_stopped(stopped.nonce);
-                Ok(self.move_actions(next))
+                let next = self.child_stopped(stopped.nonce);
+                Ok(Self::move_actions(next))
             }
             ShutdownCoordinatorEvent::ChildRejected(rejected) => {
                 let matching = matches!(&self.state, ShutdownState::Stopping { awaiting, .. } if awaiting.contains(&rejected.nonce));
@@ -1210,7 +1271,7 @@ where
     }
 }
 
-/// Homogeneous dependency-ordered shutdown uses the same validated phase machine.
+/// Homogeneous dependency-ordered shutdown over one concrete child protocol.
 #[cfg(test)]
 mod tests {
     use core::future::Future;
@@ -1257,7 +1318,7 @@ mod tests {
         message = Never,
         births = {
             primary: crate::StopOnShutdown<Probe>,
-            pool: crate::Guardian<Probe>,
+            pool: crate::StopOnShutdown<Probe>,
             fallback: crate::StopOnShutdown<Probe>,
         },
     )]
@@ -1356,7 +1417,7 @@ mod tests {
     #[test]
     fn heterogeneous_phases_preserve_cross_protocol_order_and_await_the_union() {
         type SupervisorChild = crate::StopOnShutdown<Probe>;
-        type PoolChild = crate::Guardian<Probe>;
+        type PoolChild = crate::StopOnShutdown<Probe>;
         type RootTargets = ShutdownChoice<
             SupervisorChild,
             ShutdownChoice<PoolChild, ShutdownChoice<SupervisorChild, NoShutdownTargets<MailAddr>>>,
@@ -1419,7 +1480,7 @@ mod tests {
     #[test]
     fn heterogeneous_plan_rejects_cross_protocol_nonce_collisions() {
         type SupervisorChild = crate::StopOnShutdown<Probe>;
-        type PoolChild = crate::Guardian<Probe>;
+        type PoolChild = crate::StopOnShutdown<Probe>;
         type RootTargets = ShutdownChoice<
             SupervisorChild,
             ShutdownChoice<PoolChild, ShutdownChoice<SupervisorChild, NoShutdownTargets<MailAddr>>>,
@@ -1440,7 +1501,7 @@ mod tests {
     #[tokio::test]
     async fn heterogeneous_requests_interpret_once_each_in_cross_protocol_plan_order() {
         type First = crate::StopOnShutdown<Probe>;
-        type Second = crate::Guardian<Probe>;
+        type Second = crate::StopOnShutdown<Probe>;
         type Targets = ShutdownChoice<
             First,
             ShutdownChoice<Second, ShutdownChoice<First, NoShutdownTargets<MailAddr>>>,
@@ -1516,23 +1577,17 @@ mod tests {
     }
 
     #[test]
-    fn guardian_routes_shutdown_to_the_coordinator_before_applying_root_stop() {
+    fn coordinator_routes_shutdown_to_children_before_root_stop() {
         let plan = ShutdownPlan::new([vec![7]]).unwrap();
-        let initialized = crate::Guardian::coordinated(ShutdownCoordinator::<
-            Probe,
-            crate::StopOnShutdown<Probe>,
-            ChildHead,
-        >::new(Probe, plan))
-        .initialize()
-        .unwrap();
+        let initialized =
+            ShutdownCoordinator::<Probe, crate::StopOnShutdown<Probe>, ChildHead>::new(Probe, plan)
+                .initialize()
+                .unwrap();
         let mut active = initialized.behavior;
 
         let actions = active.on(ShutdownRequested).unwrap();
 
-        assert_eq!(
-            actions.sends.inner.owned.as_slice(),
-            [ShutdownChild::new(7)]
-        );
+        assert_eq!(actions.sends.owned.as_slice(), [ShutdownChild::new(7)]);
         assert!(matches!(actions.become_, Step::Continue));
     }
 
@@ -1641,6 +1696,30 @@ mod tests {
     }
 
     #[test]
+    fn topology_owner_reports_a_plan_as_an_ordinary_typed_event() {
+        type Event = ShutdownCoordinatorEvent<User<MailAddr, u8>, ShutdownPlan<u64>>;
+
+        let mut active =
+            ShutdownCoordinator::<Probe, crate::StopOnShutdown<Probe>, ChildHead>::awaiting_plan(
+                Probe,
+            )
+            .initialize()
+            .unwrap()
+            .behavior;
+        let plan = ShutdownPlan::new([vec![4, 5]]).unwrap();
+        let report: ReportShutdownPlan<_, Here> = ReportShutdownPlan::new(plan.clone());
+        let event: Event = report.into_event();
+
+        let installed = active.transition(event).unwrap();
+
+        assert_eq!(installed.sends, SendLayer::empty());
+        assert!(matches!(
+            active.state(),
+            ShutdownState::Ready { plan: installed } if installed == &plan
+        ));
+    }
+
+    #[test]
     fn shutdown_before_homogeneous_plan_is_retained_and_empty_plan_stops() {
         let mut active =
             ShutdownCoordinator::<Probe, crate::StopOnShutdown<Probe>, ChildHead>::awaiting_plan(
@@ -1685,7 +1764,7 @@ mod tests {
     #[test]
     fn heterogeneous_plan_can_be_installed_after_exact_child_routes_exist() {
         type First = crate::StopOnShutdown<Probe>;
-        type Second = crate::Guardian<Probe>;
+        type Second = crate::StopOnShutdown<Probe>;
         type Targets = ShutdownChoice<
             First,
             ShutdownChoice<Second, ShutdownChoice<First, NoShutdownTargets<MailAddr>>>,

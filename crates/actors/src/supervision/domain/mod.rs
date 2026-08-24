@@ -13,7 +13,5 @@ pub(super) use incarnation::{
     Incarnation, IncarnationEffects, IncarnationShutdownError, IncarnationStopEffects,
     IncarnationStopError,
 };
-pub(crate) use ownership::{
-    FixedFleetOwnership, OwnershipError, OwnershipFold, WorkerCommandRejection,
-};
+pub(crate) use ownership::{FixedFleetOwnership, OwnershipError, OwnershipFold};
 pub(super) use restart_budget::RestartBudget;

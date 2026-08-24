@@ -1,6 +1,4 @@
-//! Feature policy as a named specialization of versioned configuration.
-
-use super::{Configuration, ConfigurationState};
+//! Feature-policy products for use with versioned configuration.
 
 /// Exhaustive state of one feature.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -57,25 +55,8 @@ impl<F: Eq> FeatureSet<F> {
     }
 }
 
-/// Versioned closed feature-state protocol.
-///
-/// `Features` is the demonstrated named specialization
-/// `Configuration<FeatureSet<F>>`: it inherits atomic version ordering,
-/// idempotence, stale/conflict ownership return, empty initialization, typed
-/// query delivery, and non-termination from [`Configuration`]. The product
-/// type adds the feature-specific invariant that each identity has exactly one
-/// explicit status. External flag sources and evaluation remain application or
-/// System responsibilities; no runtime capability beyond ordinary typed sends
-/// is required and there is no semantic panic condition.
-pub type Features<A, F, Reply, Route> = Configuration<A, FeatureSet<F>, Reply, Route>;
-
-/// Complete state returned by the [`Features`] query protocol.
-pub type FeaturesState<F> = ConfigurationState<FeatureSet<F>>;
-
 #[cfg(test)]
 mod tests {
-    use behavior::{Address, Behavior};
-
     use super::*;
 
     #[test]
@@ -107,42 +88,5 @@ mod tests {
                 }
             ]
         );
-    }
-
-    // This signature proves the specialization remains directly driveable by
-    // the same concrete Behavior contract; it introduces no private loop.
-    fn assert_behavior<A, F, Reply>()
-    where
-        A: Address,
-        F: Clone + Eq,
-        Reply: behavior::Protocol<Addr = A, Msg = FeaturesState<F>>,
-        Features<A, F, Reply, behavior::Recipient<Reply>>: Behavior,
-    {
-    }
-
-    #[test]
-    fn specialization_has_the_universal_behavior_contract() {
-        struct Reply;
-        impl behavior::Protocol for Reply {
-            type Addr = behavior::MailAddr;
-            type Msg = FeaturesState<u8>;
-        }
-
-        impl Behavior for Reply {
-            type Protocol = Self;
-            type Event = behavior::User<crate::BehaviorAddr<Self>, crate::BehaviorMessage<Self>>;
-            type Sends = Vec<behavior::Never>;
-            type Ph = behavior::Never;
-            type Error = behavior::Never;
-            type Birth = behavior::NoBirths;
-            fn transition(
-                &mut self,
-                _: crate::ActiveTurn,
-                _: Self::Event,
-            ) -> behavior::BehaviorActed<Self> {
-                Ok(behavior::Actions::cont())
-            }
-        }
-        assert_behavior::<behavior::MailAddr, u8, Reply>();
     }
 }

@@ -3,13 +3,12 @@ use behavior_actors::{
     ChildHead, ChildOccurrence, ChildRole, ChildRoute, CreationKind, CreationRejection,
     DeclaredChildOccurrence, Delivery, DeliveryRouteProtocol, EndpointAddress, EstablishedCreation,
     EstablishedDelivery, EstablishedObservation, EstablishedRecipient,
-    EstablishedTerminationMonitor, EstablishedWatch, EventLayer, Exit, Guardian, Here,
-    HeterogeneousShutdownPlan, Ingress, InterpretEstablishedDelivery,
-    InterpretEstablishedObservation, InterpretEstablishedShutdown, InterpretSends,
-    InterpreterRequests, MessageAdapterWithRoute, Never, NoBirths, NoShutdownTargets,
-    ObservationId, ObservationOperation, ObservationRejection, ObserveEstablished,
-    ObserveEstablishedCreation, Protocol, Proxy, ReceiveTimeout, Recipient, ReplyRoute,
-    ResolveChildOccurrence, SendEffects, SendInterpreter, SendLayer, ShutdownChoice,
+    EstablishedTerminationMonitor, EventLayer, Exit, Here, HeterogeneousShutdownPlan, Ingress,
+    InterpretEstablishedDelivery, InterpretEstablishedObservation, InterpretEstablishedShutdown,
+    InterpretSends, InterpreterRequests, MessageAdapterWithRoute, Never, NoBirths,
+    NoShutdownTargets, ObservationId, ObservationOperation, ObservationRejection,
+    ObserveEstablished, ObserveEstablishedCreation, Protocol, Proxy, ReceiveTimeout, Recipient,
+    ReplyRoute, ResolveChildOccurrence, SendEffects, SendInterpreter, SendLayer, ShutdownChoice,
     ShutdownEstablished, ShutdownId, ShutdownRequested, Stash, StopOnShutdown, Supervise,
     TerminationMonitorError, TerminationObservation, User, Watch, established_child,
 };
@@ -234,21 +233,20 @@ where
 fn nominal_occurrences_cross_only_topology_transparent_wrappers() {
     resolves_occurrence::<Parent, PrimaryWorker, Worker, ChildHead>();
     resolves_occurrence::<StopOnShutdown<Parent>, PrimaryWorker, Worker, ChildHead>();
-    resolves_occurrence::<Guardian<StopOnShutdown<Parent>>, PrimaryWorker, Worker, ChildHead>();
     resolves_occurrence::<
-        Guardian<StopOnShutdown<GeneratedParent>>,
+        StopOnShutdown<GeneratedParent>,
         GeneratedParentChildrenWorker,
         Worker,
         ChildHead,
     >();
     resolves_occurrence::<
-        Guardian<StopOnShutdown<ReceiveTimeout<Watch<Stash<GeneratedParent>>>>>,
+        StopOnShutdown<ReceiveTimeout<Watch<Stash<GeneratedParent>>>>,
         GeneratedParentChildrenWorker,
         Worker,
         ChildHead,
     >();
     resolves_occurrence::<
-        Stash<Guardian<StopOnShutdown<GeneratedParent>>>,
+        Stash<StopOnShutdown<GeneratedParent>>,
         GeneratedParentChildrenWorker,
         Worker,
         ChildHead,
@@ -496,32 +494,21 @@ impl Behavior for Observer {
     }
 }
 
-fn watch_exact_fact(
+fn monitor_exact_fact(
     observer: &mut Observer,
     fact: EstablishedObservation<WorkerProtocol>,
-) -> behavior_actors::Become {
+) -> Actions<RuntimeAddr, Never, Vec<Never>, NoBirths> {
     observer.facts.push(match fact {
         EstablishedObservation::Started { .. } => "started",
         EstablishedObservation::Cancelled { .. } => "cancelled",
         EstablishedObservation::Rejected { .. } => "rejected",
         EstablishedObservation::Stopped { .. } => "stopped",
     });
-    behavior_actors::Step::Continue
-}
-
-fn monitor_exact_fact(
-    observer: &mut Observer,
-    fact: EstablishedObservation<WorkerProtocol>,
-) -> Actions<RuntimeAddr, Never, Vec<Never>, NoBirths> {
-    assert_eq!(
-        watch_exact_fact(observer, fact),
-        behavior_actors::Step::Continue
-    );
     Actions::cont()
 }
 
 #[test]
-fn outer_guardian_reindexes_exact_observation_return_ingress_only() {
+fn outer_shutdown_wrapper_reindexes_exact_observation_return_ingress_only() {
     fn accepts_inside<B, Input>()
     where
         B: Behavior,
@@ -530,52 +517,9 @@ fn outer_guardian_reindexes_exact_observation_return_ingress_only() {
     }
 
     accepts_inside::<
-        Guardian<EstablishedWatch<Observer, WorkerProtocol>>,
+        StopOnShutdown<EstablishedTerminationMonitor<Observer, WorkerProtocol>>,
         EstablishedObservation<WorkerProtocol>,
     >();
-    accepts_inside::<
-        Guardian<EstablishedTerminationMonitor<Observer, WorkerProtocol>>,
-        EstablishedObservation<WorkerProtocol>,
-    >();
-}
-
-#[test]
-fn exact_watch_exposes_the_complete_observation_fact_algebra() {
-    let recipient = EstablishedRecipient::issued(Endpoint::new(RuntimeAddr(44), 8));
-    let initialized = EstablishedWatch::established(
-        Observer { facts: Vec::new() },
-        ObservationId(5),
-        recipient,
-        watch_exact_fact,
-    )
-    .initialize()
-    .unwrap();
-    assert_eq!(initialized.actions.sends.owned.len(), 1);
-
-    let mut active = initialized.behavior;
-    assert!(matches!(
-        active.on_path(EstablishedObservation::<WorkerProtocol>::started(
-            ObservationId(99),
-        )),
-        Err(TerminationMonitorError::UnexpectedFact {
-            observation: TerminationObservation::Requested,
-            fact,
-        }) if fact.id() == ObservationId(99)
-    ));
-    active
-        .on_path(EstablishedObservation::<WorkerProtocol>::started(
-            ObservationId(5),
-        ))
-        .unwrap();
-    active
-        .on_path(EstablishedObservation::<WorkerProtocol>::rejected(
-            ObservationId(5),
-            ObservationOperation::Cancel,
-            ObservationRejection::NotObserved,
-        ))
-        .unwrap();
-
-    assert_eq!(active.base().facts, ["started", "rejected"]);
 }
 
 #[test]

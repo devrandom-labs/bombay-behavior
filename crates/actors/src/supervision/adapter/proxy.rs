@@ -4,22 +4,31 @@ use super::super::domain::{
     Incarnation, IncarnationEffects, IncarnationError, IncarnationPhase, IncarnationShutdownError,
     IncarnationStopEffects, IncarnationStopError,
 };
-use super::super::protocol::{ProxyCommand, ProxyEvent};
+use super::super::protocol::{ProxyCommand, ProxyEvent, ProxyUnavailable};
 use crate::protocol::{
     ObserveChild, ObserveCreation, ProxyParentIngress, ReportWorkerCreationResolved,
     ReportWorkerStopped, ShutdownChild,
 };
 use crate::{Own, SendInput};
 use behavior::{
-    Actions, Address, Behavior, Births, ChildDelivery, ChildRoute, InterpreterRequests,
-    SendEffects, User,
+    Actions, Address, Behavior, Births, ChildDelivery, ChildRoute, Delivery, InterpreterRequests,
+    MessageProtocol, SendEffects, User,
 };
 use behavior::{Never, Step};
 
 /// The concrete, statically dispatched effect lanes emitted by a [`Proxy`].
-pub struct ProxySendsWithParent<C: Behavior, ParentPath> {
+pub struct ProxySendsWithParent<C: Behavior<Ph = Never>, ParentPath> {
     /// User payloads forwarded to the currently installed worker incarnation.
     pub deliveries: Vec<ChildDelivery<C::Protocol, behavior::ChildHead>>,
+    /// Expected command rejections returned to the command owner's route.
+    pub unavailable: Vec<
+        Delivery<
+            MessageProtocol<
+                crate::BehaviorAddr<C>,
+                ProxyUnavailable<crate::BehaviorAddr<C>, crate::BehaviorMessage<C>>,
+            >,
+        >,
+    >,
     /// Requests to observe installed child incarnations.
     pub child_observations:
         InterpreterRequests<ObserveChild<crate::BehaviorAddr<C>, behavior::ChildHead>>,
@@ -44,16 +53,10 @@ pub type ProxySends<C> = ProxySendsWithParent<C, behavior::Here>;
 
 /// Controlled failure of one stable-proxy transition.
 #[derive(Clone, PartialEq, Eq, thiserror::Error)]
-pub enum ProxyError<A: Address, M, C> {
+pub enum ProxyError<A: Address, C> {
     /// The worker-incarnation lifecycle rejected the transition.
     #[error(transparent)]
     Lifecycle(#[from] IncarnationError),
-    /// No current worker could accept this exact domain command.
-    #[error("the stable proxy has no worker that can accept the command")]
-    CommandNotAccepted {
-        phase: IncarnationPhase<A::Nonce>,
-        command: M,
-    },
     /// A creation fact does not match the one pending worker attempt.
     #[error("the worker creation fact does not match the pending incarnation")]
     UnexpectedCreation {
@@ -85,20 +88,14 @@ pub enum ProxyError<A: Address, M, C> {
     },
 }
 
-impl<A: Address, M, C> core::fmt::Debug for ProxyError<A, M, C>
+impl<A: Address, C> core::fmt::Debug for ProxyError<A, C>
 where
     A: core::fmt::Debug,
     A::Nonce: core::fmt::Debug,
-    M: core::fmt::Debug,
 {
     fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Self::Lifecycle(error) => formatter.debug_tuple("Lifecycle").field(error).finish(),
-            Self::CommandNotAccepted { phase, command } => formatter
-                .debug_struct("CommandNotAccepted")
-                .field("phase", phase)
-                .field("command", command)
-                .finish(),
             Self::UnexpectedCreation { phase, observed } => formatter
                 .debug_struct("UnexpectedCreation")
                 .field("phase", phase)
@@ -128,10 +125,11 @@ where
     }
 }
 
-impl<C: Behavior, ParentPath> SendEffects for ProxySendsWithParent<C, ParentPath> {
+impl<C: Behavior<Ph = Never>, ParentPath> SendEffects for ProxySendsWithParent<C, ParentPath> {
     fn empty() -> Self {
         Self {
             deliveries: Vec::new(),
+            unavailable: Vec::new(),
             child_observations: InterpreterRequests::empty(),
             creation_observations: InterpreterRequests::empty(),
             stopped_reports: InterpreterRequests::empty(),
@@ -142,6 +140,7 @@ impl<C: Behavior, ParentPath> SendEffects for ProxySendsWithParent<C, ParentPath
 
     fn append(&mut self, mut other: Self) {
         self.deliveries.append(&mut other.deliveries);
+        self.unavailable.append(&mut other.unavailable);
         self.child_observations.append(other.child_observations);
         self.creation_observations
             .append(other.creation_observations);
@@ -169,6 +168,14 @@ where
     C: Behavior<Ph = Never>,
     Vec<ChildDelivery<C::Protocol, behavior::ChildHead>>:
         behavior::InterpretSends<I, RootEvent, Path>,
+    Vec<
+        Delivery<
+            MessageProtocol<
+                crate::BehaviorAddr<C>,
+                ProxyUnavailable<crate::BehaviorAddr<C>, crate::BehaviorMessage<C>>,
+            >,
+        >,
+    >: behavior::InterpretSends<I, RootEvent, Path>,
     InterpreterRequests<ObserveChild<crate::BehaviorAddr<C>, behavior::ChildHead>>:
         behavior::InterpretSends<I, RootEvent, Path>,
     InterpreterRequests<ObserveCreation<crate::BehaviorAddr<C>, behavior::ChildHead>>:
@@ -188,6 +195,7 @@ where
     ) -> impl core::future::Future<Output = Result<(), I::Error>> + Send {
         async move {
             behavior::InterpretSends::interpret(self.deliveries, interpreter).await?;
+            behavior::InterpretSends::interpret(self.unavailable, interpreter).await?;
             behavior::InterpretSends::interpret(self.child_observations, interpreter).await?;
             behavior::InterpretSends::interpret(self.creation_observations, interpreter).await?;
             behavior::InterpretSends::interpret(self.stopped_reports, interpreter).await?;
@@ -207,7 +215,7 @@ where
     }
 }
 
-impl<C: Behavior, ParentPath>
+impl<C: Behavior<Ph = Never>, ParentPath>
     SendInput<ObserveChild<crate::BehaviorAddr<C>, behavior::ChildHead>, Own>
     for ProxySendsWithParent<C, ParentPath>
 {
@@ -216,7 +224,7 @@ impl<C: Behavior, ParentPath>
     }
 }
 
-impl<C: Behavior, ParentPath>
+impl<C: Behavior<Ph = Never>, ParentPath>
     SendInput<ObserveCreation<crate::BehaviorAddr<C>, behavior::ChildHead>, Own>
     for ProxySendsWithParent<C, ParentPath>
 {
@@ -225,7 +233,7 @@ impl<C: Behavior, ParentPath>
     }
 }
 
-impl<C: Behavior, ParentPath>
+impl<C: Behavior<Ph = Never>, ParentPath>
     SendInput<ReportWorkerStopped<crate::BehaviorAddr<C>, ParentPath>, Own>
     for ProxySendsWithParent<C, ParentPath>
 {
@@ -234,7 +242,7 @@ impl<C: Behavior, ParentPath>
     }
 }
 
-impl<C: Behavior, ParentPath>
+impl<C: Behavior<Ph = Never>, ParentPath>
     SendInput<
         ReportWorkerCreationResolved<<crate::BehaviorAddr<C> as Address>::Nonce, ParentPath>,
         Own,
@@ -248,7 +256,7 @@ impl<C: Behavior, ParentPath>
     }
 }
 
-impl<C: Behavior, ParentPath> SendInput<ShutdownChild<C, behavior::ChildHead>, Own>
+impl<C: Behavior<Ph = Never>, ParentPath> SendInput<ShutdownChild<C, behavior::ChildHead>, Own>
     for ProxySendsWithParent<C, ParentPath>
 {
     fn emit(&mut self, input: ShutdownChild<C, behavior::ChildHead>) {
@@ -464,7 +472,7 @@ where
     type Event = ProxyEvent<User<crate::BehaviorAddr<C>, ProxyCommand<C>>>;
     type Sends = ProxySendsWithParent<C, ParentPath>;
     type Ph = Never;
-    type Error = ProxyError<crate::BehaviorAddr<C>, crate::BehaviorMessage<C>, C>;
+    type Error = ProxyError<crate::BehaviorAddr<C>, C>;
     type Birth = Births<C>;
 
     fn init(&mut self, _: crate::InitializationTurn) -> crate::BehaviorActed<Self> {
@@ -527,16 +535,20 @@ where
                 Self::actions(effects, self.parent)
             }
             ProxyEvent::Command(event) => match event.message {
-                ProxyCommand::Forward(message) => {
-                    let effects =
-                        self.incarnation
-                            .forward(message)
-                            .map_err(|(phase, command)| ProxyError::CommandNotAccepted {
-                                phase,
-                                command,
-                            })?;
-                    Self::actions(effects, self.parent)
-                }
+                ProxyCommand::Forward {
+                    command,
+                    unavailable_to,
+                } => match self.incarnation.forward(command) {
+                    Ok(effects) => Self::actions(effects, self.parent),
+                    Err((phase, command)) => {
+                        let mut actions = Self::actions(IncarnationEffects::None, self.parent);
+                        actions.sends.unavailable.push(Delivery::new(
+                            unavailable_to,
+                            ProxyUnavailable { phase, command },
+                        ));
+                        actions
+                    }
+                },
                 ProxyCommand::Replace(child) => {
                     let phase = self.incarnation.phase();
                     let effects =

@@ -60,6 +60,12 @@ pub enum DynamicSupervisorError<A: Address> {
     /// A worker-creation fact did not match an explicit replacement.
     #[error("worker-creation fact does not match a replacing child")]
     UnexpectedWorkerCreation(WorkerCreationResolved<A::Nonce>),
+    /// A worker fact exists for a proxy creation the interpreter rejected.
+    #[error("worker creation was reported for a rejected stable-proxy creation")]
+    ContradictoryInitialCreation {
+        proxy: CreationResolved<A>,
+        worker: WorkerCreationResolved<A::Nonce>,
+    },
     /// A worker-stop fact named no stable proxy owned by this supervisor.
     #[error("worker-stop fact names an unknown stable proxy")]
     UnexpectedWorkerStopped(WorkerStopped<A>),
@@ -160,13 +166,21 @@ enum DynamicWorker<N> {
     Vacant { last: N },
 }
 
-enum DynamicChild<A: Address, Route> {
-    InstallingProxy {
-        reply_to: Route,
-    },
-    InstallingWorker {
-        reply_to: Route,
+#[derive(Clone, Copy)]
+enum InitialCreation<A: Address> {
+    AwaitingBoth,
+    ProxyCommitted {
         address: A,
+    },
+    WorkerResolved {
+        resolved: WorkerCreationResolved<A::Nonce>,
+    },
+}
+
+enum DynamicChild<A: Address, Route> {
+    Installing {
+        reply_to: Route,
+        progress: InitialCreation<A>,
     },
     Available {
         worker: DynamicWorker<A::Nonce>,
@@ -190,9 +204,7 @@ enum DynamicChild<A: Address, Route> {
 impl<A: Address, Route> DynamicChild<A, Route> {
     const fn phase(&self) -> DynamicChildPhase {
         match self {
-            Self::InstallingProxy { .. } | Self::InstallingWorker { .. } => {
-                DynamicChildPhase::Installing
-            }
+            Self::Installing { .. } => DynamicChildPhase::Installing,
             Self::Available { .. } => DynamicChildPhase::Available,
             Self::Stopping { .. } | Self::RetiringAfterStartFailure => DynamicChildPhase::Stopping,
             Self::StoppingWorkerForReplacement { .. } | Self::CreatingReplacement { .. } => {
@@ -629,14 +641,16 @@ where
                         return Ok(Actions::send(sends));
                     }
                     if let Some((_, state)) = self.children.iter_mut().find(|(n, _)| *n == nonce) {
-                        *state = DynamicChild::InstallingProxy {
+                        *state = DynamicChild::Installing {
                             reply_to: reply_to.clone(),
+                            progress: InitialCreation::AwaitingBoth,
                         };
                     } else {
                         self.children.push((
                             nonce,
-                            DynamicChild::InstallingProxy {
+                            DynamicChild::Installing {
                                 reply_to: reply_to.clone(),
+                                progress: InitialCreation::AwaitingBoth,
                             },
                         ));
                     }
@@ -784,16 +798,13 @@ where
                 if resolved.kind != behavior::CreationKind::Birth {
                     return Err(DynamicSupervisorError::UnexpectedCreation(resolved));
                 }
-                let DynamicChild::InstallingProxy { reply_to } = state else {
+                let DynamicChild::Installing { reply_to, progress } = state else {
                     return Err(DynamicSupervisorError::UnexpectedCreation(resolved));
                 };
                 let reply = reply_to.clone();
-                match resolved.result {
-                    Ok(address) => {
-                        *state = DynamicChild::InstallingWorker {
-                            reply_to: reply,
-                            address,
-                        };
+                match (*progress, resolved.result) {
+                    (InitialCreation::AwaitingBoth, Ok(address)) => {
+                        *progress = InitialCreation::ProxyCommitted { address };
                         if matches!(self.state, DynamicSupervisorState::Draining { .. }) {
                             sends.shutdowns.send(ShutdownChild::<
                                 ProxyWithParent<C, ParentPath>,
@@ -801,7 +812,7 @@ where
                             >::new(resolved.nonce));
                         }
                     }
-                    Err(reason) => {
+                    (InitialCreation::AwaitingBoth, Err(reason)) => {
                         *state = DynamicChild::Retired;
                         sends.outcomes.append(reply.deliver(
                             DynamicSupervisorOutcome::StartFailed {
@@ -819,6 +830,55 @@ where
                                 ));
                             }
                         }
+                    }
+                    (InitialCreation::WorkerResolved { resolved: worker }, Ok(address)) => {
+                        if matches!(self.state, DynamicSupervisorState::Draining { .. }) {
+                            sends.shutdowns.send(ShutdownChild::<
+                                ProxyWithParent<C, ParentPath>,
+                                behavior::ChildHead,
+                            >::new(resolved.nonce));
+                        }
+                        match worker.result {
+                            Ok(()) => {
+                                *state = DynamicChild::Available {
+                                    worker: DynamicWorker::Running {
+                                        incarnation: worker.worker,
+                                    },
+                                };
+                                sends.outcomes.append(reply.deliver(
+                                    DynamicSupervisorOutcome::Started {
+                                        nonce: resolved.nonce,
+                                        child: Recipient::global(address),
+                                    },
+                                ));
+                            }
+                            Err(reason) => {
+                                *state = DynamicChild::RetiringAfterStartFailure;
+                                sends.outcomes.append(reply.deliver(
+                                    DynamicSupervisorOutcome::StartFailed {
+                                        nonce: resolved.nonce,
+                                        reason,
+                                    },
+                                ));
+                                if !matches!(self.state, DynamicSupervisorState::Draining { .. }) {
+                                    sends.shutdowns.send(ShutdownChild::<
+                                        ProxyWithParent<C, ParentPath>,
+                                        behavior::ChildHead,
+                                    >::new(
+                                        resolved.nonce
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                    (InitialCreation::WorkerResolved { resolved: worker }, Err(_)) => {
+                        return Err(DynamicSupervisorError::ContradictoryInitialCreation {
+                            proxy: resolved,
+                            worker,
+                        });
+                    }
+                    (InitialCreation::ProxyCommitted { .. }, _) => {
+                        return Err(DynamicSupervisorError::UnexpectedCreation(resolved));
                     }
                 }
                 Ok(Actions::send(sends))
@@ -860,45 +920,58 @@ where
                 else {
                     return Err(DynamicSupervisorError::UnexpectedWorkerCreation(resolved));
                 };
-                match state {
-                    DynamicChild::InstallingWorker { reply_to, address }
-                        if resolved.kind == behavior::CreationKind::Birth =>
-                    {
+                if resolved.kind == behavior::CreationKind::Birth {
+                    if let DynamicChild::Installing { reply_to, progress } = state {
                         let reply = reply_to.clone();
-                        let address = *address;
-                        match resolved.result {
-                            Ok(()) => {
-                                *state = DynamicChild::Available {
-                                    worker: DynamicWorker::Running {
-                                        incarnation: resolved.worker,
-                                    },
-                                };
-                                sends.outcomes.append(reply.deliver(
-                                    DynamicSupervisorOutcome::Started {
-                                        nonce: resolved.proxy,
-                                        child: Recipient::global(address),
-                                    },
-                                ));
+                        match *progress {
+                            InitialCreation::AwaitingBoth => {
+                                *progress = InitialCreation::WorkerResolved { resolved };
                             }
-                            Err(reason) => {
-                                *state = DynamicChild::RetiringAfterStartFailure;
-                                sends.outcomes.append(reply.deliver(
-                                    DynamicSupervisorOutcome::StartFailed {
-                                        nonce: resolved.proxy,
-                                        reason,
-                                    },
-                                ));
-                                if !matches!(self.state, DynamicSupervisorState::Draining { .. }) {
-                                    sends.shutdowns.send(ShutdownChild::<
-                                        ProxyWithParent<C, ParentPath>,
-                                        behavior::ChildHead,
-                                    >::new(
-                                        resolved.proxy
+                            InitialCreation::ProxyCommitted { address } => match resolved.result {
+                                Ok(()) => {
+                                    *state = DynamicChild::Available {
+                                        worker: DynamicWorker::Running {
+                                            incarnation: resolved.worker,
+                                        },
+                                    };
+                                    sends.outcomes.append(reply.deliver(
+                                        DynamicSupervisorOutcome::Started {
+                                            nonce: resolved.proxy,
+                                            child: Recipient::global(address),
+                                        },
                                     ));
                                 }
+                                Err(reason) => {
+                                    *state = DynamicChild::RetiringAfterStartFailure;
+                                    sends.outcomes.append(reply.deliver(
+                                        DynamicSupervisorOutcome::StartFailed {
+                                            nonce: resolved.proxy,
+                                            reason,
+                                        },
+                                    ));
+                                    if !matches!(
+                                        self.state,
+                                        DynamicSupervisorState::Draining { .. }
+                                    ) {
+                                        sends.shutdowns.send(ShutdownChild::<
+                                            ProxyWithParent<C, ParentPath>,
+                                            behavior::ChildHead,
+                                        >::new(
+                                            resolved.proxy
+                                        ));
+                                    }
+                                }
+                            },
+                            InitialCreation::WorkerResolved { .. } => {
+                                return Err(DynamicSupervisorError::UnexpectedWorkerCreation(
+                                    resolved,
+                                ));
                             }
                         }
+                        return Ok(Actions::send(sends));
                     }
+                }
+                match state {
                     DynamicChild::CreatingReplacement { reply_to, replaces }
                         if resolved.kind == behavior::CreationKind::replacement_of(*replaces) =>
                     {
@@ -984,8 +1057,10 @@ where
                 for (nonce, state) in &self.children {
                     if matches!(
                         state,
-                        DynamicChild::InstallingWorker { .. }
-                            | DynamicChild::Available { .. }
+                        DynamicChild::Installing {
+                            progress: InitialCreation::ProxyCommitted { .. },
+                            ..
+                        } | DynamicChild::Available { .. }
                             | DynamicChild::StoppingWorkerForReplacement { .. }
                             | DynamicChild::CreatingReplacement { .. }
                     ) {

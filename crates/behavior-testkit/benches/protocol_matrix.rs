@@ -2,8 +2,8 @@ use std::hint::black_box;
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, Crash, Machine, MailAddr, Move, Never, Proxy, ProxyCommand, RestartPolicy,
-    StashRoute, Step, Strategy, Supervisor, WorkerStopped, stop_on_abnormal_death,
+    Acted, Actions, Crash, Machine, MailAddr, Move, Never, Proxy, ProxyCommand, Recipient,
+    RestartPolicy, StashRoute, Step, Strategy, Supervisor, WorkerStopped, stop_on_abnormal_death,
 };
 use behavior_testkit::InitializeTest;
 use std::time::Instant;
@@ -69,7 +69,10 @@ fn measure_proxy() -> f64 {
         let command = if index % 64 == 0 {
             ProxyCommand::Replace(child(index))
         } else {
-            ProxyCommand::Forward(u64::try_from(index).unwrap())
+            ProxyCommand::Forward {
+                command: u64::try_from(index).unwrap(),
+                unavailable_to: Recipient::global(MailAddr(0)),
+            }
         };
         black_box(proxy.receive(MailAddr(0), black_box(command)).unwrap());
     }

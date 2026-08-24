@@ -6,9 +6,7 @@ use std::fmt::Debug;
 use std::time::Duration;
 
 #[derive(Debug, Clone)]
-struct Payment {
-    id: u64,
-}
+struct Payment;
 
 struct PaymentWorker;
 
@@ -32,10 +30,6 @@ impl Behavior for PaymentWorker {
 
 fn worker(_: usize) -> Option<PaymentWorker> {
     Some(PaymentWorker)
-}
-
-fn payment_slot(payment: &Payment) -> u64 {
-    payment.id
 }
 
 struct PaymentApp;
@@ -77,6 +71,20 @@ struct Recording<Event> {
 
 impl<Event: Send> SendInterpreter for Recording<Event> {
     type Error = Never;
+}
+
+impl<Event, M> InterpretDelivery<MessageProtocol<MailAddr, ProxyUnavailable<MailAddr, M>>>
+    for Recording<Event>
+where
+    Event: Send,
+    M: Send,
+{
+    fn interpret_delivery(
+        &mut self,
+        _: Delivery<MessageProtocol<MailAddr, ProxyUnavailable<MailAddr, M>>>,
+    ) -> impl Future<Output = Result<(), Self::Error>> + Send {
+        async { Ok(()) }
+    }
 }
 
 impl<Event, C> InterpretChildDelivery<C, ChildHead> for Recording<Event>
@@ -228,78 +236,44 @@ async fn interpret_proxy_report<B, C>(
 }
 
 #[tokio::test]
-async fn outer_guardian_interprets_the_proxy_report_without_a_path_at_the_recipe_call() {
+async fn outer_shutdown_wrapper_interprets_application_owned_supervision_reports() {
     let restart = RestartConfiguration::new(
         Strategy::OneForOne,
         RestartPolicy::Permanent,
         2,
         Duration::from_secs(30),
     );
-    let backoff = Backoff::constant(Duration::from_secs(1)).unwrap();
-
-    run(Guardian::new(
-        supervised_backoff(
-            ChildTopology::new([7], worker),
-            restart,
-            backoff,
-            payment_slot as fn(&Payment) -> u64,
-        )
-        .unwrap(),
-    ))
-    .await;
-}
-
-#[tokio::test]
-async fn outer_guardian_interprets_fixed_supervised_worker_reports() {
-    let restart = RestartConfiguration::new(
-        Strategy::OneForOne,
-        RestartPolicy::Permanent,
-        2,
-        Duration::from_secs(30),
-    );
-    run(Guardian::new(
-        supervised(
-            ChildTopology::new([7], worker),
-            restart,
-            payment_slot as fn(&Payment) -> u64,
-        )
-        .unwrap(),
-    ))
-    .await;
-}
-
-#[tokio::test]
-async fn outer_guardian_interprets_application_owned_supervision_reports() {
-    let restart = RestartConfiguration::new(
-        Strategy::OneForOne,
-        RestartPolicy::Permanent,
-        2,
-        Duration::from_secs(30),
-    );
-    run(Guardian::new(
-        supervise(PaymentApp, ChildTopology::new([7], worker), restart).unwrap(),
-    ))
-    .await;
-}
-
-#[tokio::test]
-async fn outer_guardian_interprets_application_owned_backoff_reports() {
-    let restart = RestartConfiguration::new(
-        Strategy::OneForOne,
-        RestartPolicy::Permanent,
-        2,
-        Duration::from_secs(30),
-    );
-    run(Guardian::new(
-        supervise_backoff(
+    run(StopOnShutdown::new(
+        SuperviseWithParent::with_parent(
             PaymentApp,
             ChildTopology::new([7], worker),
             restart,
-            Backoff::constant(Duration::from_secs(1)).unwrap(),
-            worker_timer,
+            ProxyParentIngress::new(),
         )
         .unwrap(),
     ))
+    .await;
+}
+
+#[tokio::test]
+async fn outer_shutdown_wrapper_interprets_application_owned_backoff_reports() {
+    let restart = RestartConfiguration::new(
+        Strategy::OneForOne,
+        RestartPolicy::Permanent,
+        2,
+        Duration::from_secs(30),
+    );
+    run(StopOnShutdown::new(BackoffSuperviseWithParent::new(
+        SuperviseWithParent::with_parent(
+            PaymentApp,
+            ChildTopology::new([7], worker),
+            restart,
+            ProxyParentIngress::new(),
+        )
+        .unwrap(),
+        Backoff::constant(Duration::from_secs(1)).unwrap(),
+        worker_timer,
+    )))
     .await;
 }
 
@@ -311,27 +285,63 @@ impl Protocol for DynamicReply {
 }
 
 #[tokio::test]
-async fn outer_guardian_interprets_dynamic_supervisor_proxy_reports() {
-    let definition = Guardian::new(dynamic_supervisor::<
-        MailAddr,
-        PaymentWorker,
-        Recipient<DynamicReply>,
-        _,
-    >());
-    let initialized = definition.initialize().unwrap();
-    let mut parent = initialized.behavior;
-    let started = parent
-        .receive(
-            MailAddr(9),
-            DynamicSupervisorMessage::Start {
-                nonce: 7,
-                child: PaymentWorker,
-                reply_to: Recipient::global(MailAddr(8)),
-            },
-        )
-        .unwrap();
-    let creation = started.creates.into_iter().next().unwrap();
-    interpret_proxy_report(&mut parent, creation).await;
+async fn outer_shutdown_wrapper_joins_dynamic_supervisor_reports_in_both_orders() {
+    for worker_first in [false, true] {
+        let definition = StopOnShutdown::new(DynamicSupervisorWithParent::<
+            MailAddr,
+            PaymentWorker,
+            Recipient<DynamicReply>,
+            _,
+        >::with_parent(ProxyParentIngress::new()));
+        let initialized = definition.initialize().unwrap();
+        let mut parent = initialized.behavior;
+        let accepted = parent
+            .receive(
+                MailAddr(9),
+                DynamicSupervisorMessage::Start {
+                    nonce: 7,
+                    child: PaymentWorker,
+                    reply_to: Recipient::global(MailAddr(8)),
+                },
+            )
+            .unwrap();
+        let creation = accepted.creates.into_iter().next().unwrap();
+
+        let mut proxy = creation.child.initialize().unwrap().behavior;
+        let report = proxy
+            .on_path(CreationResolved::birth(0, MailAddr(100)))
+            .unwrap();
+        let mut interpreter = Recording {
+            proxy: creation.nonce,
+            events: Vec::new(),
+        };
+        <_ as InterpretSends<_, _, Here>>::interpret(report.sends, &mut interpreter)
+            .await
+            .unwrap();
+        assert_eq!(interpreter.events.len(), 1);
+        let worker = interpreter.events.pop().unwrap();
+        let proxy = CreationResolved::birth(creation.nonce, MailAddr(70));
+
+        let (first, joined) = if worker_first {
+            (
+                parent.transition(worker).unwrap(),
+                parent.on_path::<_, Inside<Here>>(proxy).unwrap(),
+            )
+        } else {
+            (
+                parent.on_path::<_, Inside<Here>>(proxy).unwrap(),
+                parent.transition(worker).unwrap(),
+            )
+        };
+
+        assert!(first.sends.inner.outcomes.is_empty());
+        assert_eq!(joined.sends.inner.outcomes.len(), 1);
+        assert!(matches!(
+            joined.sends.inner.outcomes[0].message,
+            DynamicSupervisorOutcome::Started { nonce: 7, child }
+                if child.address() == MailAddr(70)
+        ));
+    }
 }
 
 struct PoolReply;
@@ -369,9 +379,9 @@ fn pool_worker(_: usize) -> Option<PoolWorker> {
 }
 
 #[tokio::test]
-async fn outer_guardian_interprets_worker_pool_proxy_reports() {
-    let definition = Guardian::new(
-        worker_pool(
+async fn outer_shutdown_wrapper_interprets_worker_pool_proxy_reports() {
+    let definition = StopOnShutdown::new(
+        WorkerPoolWithParent::with_parent(
             ChildTopology::new([7], pool_worker),
             PoolConfiguration::new(
                 4,
@@ -381,6 +391,7 @@ async fn outer_guardian_interprets_worker_pool_proxy_reports() {
                 Duration::from_secs(30),
             ),
             Recipient::global(MailAddr(6)),
+            ProxyParentIngress::new(),
         )
         .unwrap(),
     );
@@ -421,9 +432,9 @@ fn parity(key: &u8) -> u64 {
 }
 
 #[tokio::test]
-async fn outer_guardian_interprets_keyed_worker_pool_proxy_reports() {
-    let definition = Guardian::new(
-        keyed_worker_pool(
+async fn outer_shutdown_wrapper_interprets_keyed_worker_pool_proxy_reports() {
+    let definition = StopOnShutdown::new(
+        KeyedWorkerPoolWithParent::with_parent(
             ChildTopology::new([7], keyed_pool_worker),
             PoolConfiguration::new(
                 4,
@@ -434,6 +445,7 @@ async fn outer_guardian_interprets_keyed_worker_pool_proxy_reports() {
             ),
             parity,
             Recipient::global(MailAddr(6)),
+            ProxyParentIngress::new(),
         )
         .unwrap(),
     );

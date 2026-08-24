@@ -331,7 +331,11 @@ fn accepted_job_is_recorded_before_one_exact_dispatch() {
         responses(&actions)[0].message,
         PoolResponse::Accepted { job: JobId(7) }
     ));
-    let ProxyCommand::Forward(assignment) = &assignments(&actions)[0].message else {
+    let ProxyCommand::Forward {
+        command: assignment,
+        ..
+    } = &assignments(&actions)[0].message
+    else {
         panic!("pool dispatches with Forward");
     };
     assert_eq!(assignment.assignment, AssignmentId(0));
@@ -397,7 +401,7 @@ fn matching_completion_releases_slot_and_dispatches_fifo_successor() {
             result: 99,
         }
     ));
-    let ProxyCommand::Forward(next) = &assignments(&actions)[0].message else {
+    let ProxyCommand::Forward { command: next, .. } = &assignments(&actions)[0].message else {
         panic!("queued successor is forwarded");
     };
     assert_eq!(next.job, JobId(2));
@@ -502,7 +506,10 @@ fn interruption_policy_distinguishes_failure_from_at_least_once_retry() {
                         Ok(()),
                     ))
                     .unwrap();
-                let ProxyCommand::Forward(retried) = &assignments(&replacement)[0].message else {
+                let ProxyCommand::Forward {
+                    command: retried, ..
+                } = &assignments(&replacement)[0].message
+                else {
                     panic!("retry is forwarded after installation");
                 };
                 assert_eq!(retried.job, JobId(1));

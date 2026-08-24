@@ -107,11 +107,6 @@ where
     pub creation_observations: InterpreterRequests<ObserveCreation<A, behavior::ChildHead>>,
     /// Commands asking stable proxies to install fresh worker incarnations.
     pub replacement_commands: Vec<ChildDelivery<crate::Proxy<C>, behavior::ChildHead>>,
-    /// Application commands addressed to configured stable worker slots.
-    ///
-    /// These deliveries use the same creator-owned proxy routes as
-    /// replacement commands, but restart backoff never delays them.
-    pub worker_commands: Vec<ChildDelivery<crate::Proxy<C>, behavior::ChildHead>>,
     /// Typed terminal supervision failures for the local runtime observer.
     pub failure_reports: InterpreterRequests<ReportSupervisionFailure<A>>,
     /// Orderly shutdown requests for stable proxies owned by this supervisor.
@@ -131,7 +126,6 @@ where
             child_observations: InterpreterRequests::empty(),
             creation_observations: InterpreterRequests::empty(),
             replacement_commands: Vec::new(),
-            worker_commands: Vec::new(),
             failure_reports: InterpreterRequests::empty(),
             shutdowns: InterpreterRequests::empty(),
         }
@@ -142,26 +136,21 @@ where
         self.creation_observations
             .append(other.creation_observations);
         self.replacement_commands.extend(other.replacement_commands);
-        self.worker_commands.extend(other.worker_commands);
         self.failure_reports.append(other.failure_reports);
         self.shutdowns.append(other.shutdowns);
     }
 }
 
-impl<A, Event, C, ParentPath> behavior::SendsFor<SupervisionEvent<Event>>
-    for SupervisorSends<A, C, ParentPath>
+impl<A, Event, C, ParentPath> behavior::SendsFor<Event> for SupervisorSends<A, C, ParentPath>
 where
     A: Address,
     A::Nonce: From<u64>,
-    Event: behavior::UserEvent<Addr = A>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
-    InterpreterRequests<ObserveChild<A, behavior::ChildHead>>:
-        behavior::SendsFor<SupervisionEvent<Event>>,
-    InterpreterRequests<ObserveCreation<A, behavior::ChildHead>>:
-        behavior::SendsFor<SupervisionEvent<Event>>,
+    InterpreterRequests<ObserveChild<A, behavior::ChildHead>>: behavior::SendsFor<Event>,
+    InterpreterRequests<ObserveCreation<A, behavior::ChildHead>>: behavior::SendsFor<Event>,
     InterpreterRequests<ShutdownChild<ProxyWithParent<C, ParentPath>, behavior::ChildHead>>:
-        behavior::SendsFor<SupervisionEvent<Event>>,
+        behavior::SendsFor<Event>,
 {
 }
 
@@ -193,7 +182,6 @@ where
             self.child_observations.interpret(interpreter).await?;
             self.creation_observations.interpret(interpreter).await?;
             self.replacement_commands.interpret(interpreter).await?;
-            self.worker_commands.interpret(interpreter).await?;
             self.failure_reports.interpret(interpreter).await?;
             self.shutdowns.interpret(interpreter).await
         }

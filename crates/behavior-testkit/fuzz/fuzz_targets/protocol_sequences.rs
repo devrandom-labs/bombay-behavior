@@ -2,7 +2,7 @@
 
 use behavior::{
     Acted, Actions, Activate, ChildStopped, CreationKind, CreationResolved, Delivery, Exit,
-    MailAddr, Never, Proxy, ProxyCommand, ProxyEvent, User, UserEvent,
+    MailAddr, Never, Proxy, ProxyCommand, ProxyEvent, Recipient, User, UserEvent,
 };
 use libfuzzer_sys::fuzz_target;
 use tokio::runtime::Builder;
@@ -54,7 +54,10 @@ fuzz_target!(|bytes: &[u8]| {
                 let actions = proxy
                     .transition(ProxyEvent::Command(User::user(
                         MailAddr(0),
-                        ProxyCommand::Forward(byte),
+                        ProxyCommand::Forward {
+                            command: byte,
+                            unavailable_to: Recipient::global(MailAddr(0)),
+                        },
                     )))
                     .unwrap();
                 assert!(actions.creates.is_empty());

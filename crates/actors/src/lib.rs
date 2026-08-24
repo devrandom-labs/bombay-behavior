@@ -15,16 +15,19 @@
 //! [`InstallationRequirements`] projects each template's own protocol and
 //! complete transitive staged-birth protocols into one closed structural
 //! product. Delivery-only external protocols do not enter that product.
+//! [`LogicalHostRequirements`] separately lets a composition owner declare the
+//! complete ordered product of intentional logical destinations. Exact-only
+//! endpoints remain excluded, and generic runtime consumers recurse over the
+//! concrete product without lookup or type erasure.
 //!
 //! Catalogue values and wrappers are constructed directly through their public
 //! owning-type constructors. [`Activate`] consumes any concrete definition
 //! into its one initialized [`Active`] state. Rust can infer wrapper stacks at
 //! construction and spawn call sites; applications do not need to name types
 //! such as `Deadline<Stash<Machine<...>>>`.
-//! Correctness-sensitive cross-family orders use ordinary functions such as
-//! [`supervised_backoff`] and [`shutdown_after_children`]. The repository's composition guide
-//! records their construction, error, initialization, and trace-equivalence
-//! laws.
+//! Correctness-sensitive cross-family orders use ordinary typed nesting and
+//! actor communication. The repository's composition guide records their
+//! construction, error, initialization, and effect-preservation laws.
 //!
 //! The top-level Bombay package is the ordinary application façade. Direct use
 //! of this component crate is intended for interpreter implementation,
@@ -54,8 +57,7 @@ pub mod workflow;
 pub use activation::{Activate, Active, Initialized};
 pub use composition::{
     DeliveryRoute, DeliveryRouteProtocol, MessageAdapter, MessageAdapterWithRoute, ReplyDeliveries,
-    ReplyDelivery, ReplyRoute, dynamic_supervisor, keyed_worker_pool, supervise, supervise_backoff,
-    supervised, supervised_backoff, worker_pool,
+    ReplyDelivery, ReplyRoute,
 };
 pub use discovery::{
     Presence, PresenceEntry, PresenceError, PresenceMessage, PresenceOutcome, PresencePhase,
@@ -65,8 +67,8 @@ pub use discovery::{
 };
 pub use lifecycle::{
     ChildCreationExpectation, ChildShutdownPhases, ChildShutdownPlanError, ChildTermination,
-    CoordinatedGuardian, EstablishedTerminationMonitor, EstablishedTerminationReaction,
-    EstablishedTerminationTarget, Guardian, HeterogeneousShutdownCoordinator,
+    DeclareShutdownPhase, EstablishedTerminationMonitor, EstablishedTerminationReaction,
+    EstablishedTerminationTarget, FinishShutdownPhases, HeterogeneousShutdownCoordinator,
     HeterogeneousShutdownPlan, HeterogeneousShutdownSends, InstallShutdownPlan,
     LogicalTerminationTarget, NoShutdownTargets, PeerTermination, PropagateTermination,
     ReportShutdownPlan, ShutdownChoice, ShutdownCoordinator, ShutdownCoordinatorError,
@@ -82,9 +84,9 @@ pub use machine::{Machine, MachineError, Move};
 pub use operations::{
     ComponentHealth, ComponentHealthState, Configuration, ConfigurationError, ConfigurationMessage,
     ConfigurationState, ConfigurationVersion, DependencyReadiness, Feature, FeatureSet,
-    FeatureStatus, Features, FeaturesState, Health, HealthError, HealthEvidence, HealthMessage,
-    HealthReport, HealthStatus, ObservationVersion, Readiness, ReadinessError, ReadinessEvidence,
-    ReadinessMessage, ReadinessReport, ReadinessStatus,
+    FeatureStatus, Health, HealthError, HealthEvidence, HealthMessage, HealthReport, HealthStatus,
+    ObservationVersion, Readiness, ReadinessError, ReadinessEvidence, ReadinessMessage,
+    ReadinessReport, ReadinessStatus,
 };
 pub use persistence::{
     Cache, CacheConfigError, CacheConfiguration, CacheEntry, CacheMessage, CacheResult, CacheState,
@@ -110,8 +112,8 @@ pub use protocol::{
     WorkerStopped, established_child,
 };
 pub use requirements::{
-    InstallationRequirements, NoInstallationRequirements, RequiredProtocol, RequirementAt,
-    RequirementHead, RequirementTail,
+    InstallationRequirements, LogicalHostRequirements, NoInstallationRequirements,
+    RequiredProtocol, RequirementAt, RequirementHead, RequirementTail,
 };
 pub use routing::{
     AcknowledgementError, AcknowledgementInput, AcknowledgementMessage, AcknowledgementOutcome,
@@ -137,16 +139,15 @@ pub use stash::{Stash, StashRoute, StashStatus, StaticallyInfallible};
 pub use supervision::{
     Backoff, BackoffConfigError, BackoffError, BackoffSupervise, BackoffSuperviseWithParent,
     BackoffSupervisor, BackoffSupervisorError, BackoffSupervisorEvent, BackoffSupervisorSends,
-    BackoffSupervisorWithParent, BackoffWorkers, BackoffWorkersWithParent, ChildTopology,
-    DynamicChildPhase, DynamicSupervisor, DynamicSupervisorError, DynamicSupervisorEvent,
-    DynamicSupervisorMessage, DynamicSupervisorOutcome, DynamicSupervisorRejection,
-    DynamicSupervisorSends, DynamicSupervisorWithParent, FleetError, IncarnationPhase, Proxy,
-    ProxyCommand, ProxyError, ProxyEvent, ProxyLifecycleError, ProxySends, ProxySendsWithParent,
+    BackoffSupervisorWithParent, ChildTopology, CommandSupervisionEvent, DynamicChildPhase,
+    DynamicSupervisor, DynamicSupervisorError, DynamicSupervisorEvent, DynamicSupervisorMessage,
+    DynamicSupervisorOutcome, DynamicSupervisorRejection, DynamicSupervisorSends,
+    DynamicSupervisorWithParent, FleetError, IncarnationPhase, Proxy, ProxyCommand, ProxyError,
+    ProxyEvent, ProxyLifecycleError, ProxySends, ProxySendsWithParent, ProxyUnavailable,
     ProxyWithParent, ReportSupervisionFailure, RestartConfiguration, RestartPolicy, Strategy,
-    Supervise, SuperviseError, SuperviseWithParent, SupervisedWorkers, SupervisedWorkersError,
-    SupervisedWorkersWithParent, SupervisionEvent, SupervisionFailure, SupervisionFailureReaction,
-    Supervisor, SupervisorError, SupervisorEvent, SupervisorProtocol, SupervisorSends,
-    SupervisorWithParent, TopologyFailurePolicy, WorkerUnavailable, restart_all, restart_one,
+    Supervise, SuperviseError, SuperviseWithParent, SupervisionEvent, SupervisionFailure,
+    SupervisionFailureReaction, Supervisor, SupervisorError, SupervisorEvent, SupervisorProtocol,
+    SupervisorSends, SupervisorWithParent, TopologyFailurePolicy, restart_all, restart_one,
     restart_rest, retire_on_supervision_failure, stop_on_supervision_failure,
 };
 pub use termination::{
@@ -159,10 +160,7 @@ pub use time::{
     PeriodicEvent, PeriodicReaction, ReceiveTimeout, ReceiveTimeoutEvent, ReceiveTimeoutReaction,
     TimedEvent,
 };
-pub use watch::{
-    EstablishedWatch, EstablishedWatchReaction, EstablishedWatchTarget, LinkReaction,
-    LogicalWatchTarget, Watch, WatchEvent, stop_on_abnormal_death,
-};
+pub use watch::{LinkReaction, Watch, WatchEvent, stop_on_abnormal_death};
 pub use workflow::{
     Barrier, BarrierArrival, BarrierConfigError, BarrierError, BarrierGeneration,
     BarrierMembership, BarrierMessage, BarrierReleased, BarrierState, Latch, LatchMessage,

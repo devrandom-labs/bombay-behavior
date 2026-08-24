@@ -10,7 +10,7 @@ use behavior_actors::{
     BackoffSupervisorWithParent, Behavior, BehaviorActed, BehaviorBase, Births, BreakerOutcome,
     ChildDelivery, ChildHead, ChildRoute, ChildShutdownRejected, ChildStopped, CircuitBreaker,
     Create, CreationResolved, Deadline, DynamicSupervisor, DynamicSupervisorOutcome,
-    DynamicSupervisorWithParent, Guardian, Here, Ingress, InjectEvent, Inside, InstallShutdownPlan,
+    DynamicSupervisorWithParent, Here, Ingress, InjectEvent, Inside, InstallShutdownPlan,
     InterpretChildDelivery, KeyedWorkerPool, KeyedWorkerPoolEvent, KeyedWorkerPoolProtocol,
     KeyedWorkerPoolWithParent, Lease, LeaseOutcome, MailAddr, Never, NoBirths, ObserveChild,
     ObserveCreation, ObservePeer, OneShot, PeerStopped, Periodic, PoolAssignment,
@@ -390,17 +390,18 @@ fn wrapped_dynamic_supervisor_gives_proxies_the_inner_parent_ingress() {
 }
 
 #[test]
-fn every_proxy_owner_reindexes_parent_reports_through_an_outer_guardian() {
+fn every_proxy_owner_reindexes_parent_reports_through_an_outer_shutdown_wrapper() {
     type ParentPath = Inside<Here>;
     type Child = StopOnShutdown<Inert>;
-    type Fixed = Guardian<SupervisorWithParent<MailAddr, Child, ParentPath>>;
-    type Delayed = Guardian<BackoffSupervisorWithParent<MailAddr, Child, ParentPath>>;
-    type Dynamic =
-        Guardian<DynamicSupervisorWithParent<MailAddr, Inert, Recipient<DynamicReply>, ParentPath>>;
-    type Fifo = Guardian<
+    type Fixed = StopOnShutdown<SupervisorWithParent<MailAddr, Child, ParentPath>>;
+    type Delayed = StopOnShutdown<BackoffSupervisorWithParent<MailAddr, Child, ParentPath>>;
+    type Dynamic = StopOnShutdown<
+        DynamicSupervisorWithParent<MailAddr, Inert, Recipient<DynamicReply>, ParentPath>,
+    >;
+    type Fifo = StopOnShutdown<
         WorkerPoolWithParent<MailAddr, PoolReply, u8, u16, PoolWorker, PoolRoute, ParentPath>,
     >;
-    type Keyed = Guardian<
+    type Keyed = StopOnShutdown<
         KeyedWorkerPoolWithParent<
             MailAddr,
             PoolReply,
@@ -598,9 +599,11 @@ async fn backoff_event_and_sends_are_exact_sum_product_duals() {
                 creation_observations: InterpreterRequests::one(ObserveCreation::new(1)),
                 replacement_commands: vec![ChildDelivery::at(
                     ChildRoute::<Proxy<Child>, ChildHead>::new(1),
-                    ProxyCommand::Forward(()),
+                    ProxyCommand::Forward {
+                        command: (),
+                        unavailable_to: Recipient::global(MailAddr(90)),
+                    },
                 )],
-                worker_commands: Vec::new(),
                 failure_reports: InterpreterRequests::one(ReportSupervisionFailure::new(
                     SupervisionFailure::stable_child_stopped(1, Ok(behavior_actors::Exit::Normal)),
                 )),
@@ -798,15 +801,17 @@ async fn worker_pool_event_and_sends_interpret_every_lane_at_the_same_structural
             creation_observations: InterpreterRequests::one(ObserveCreation::new(1)),
             replacement_commands: vec![ChildDelivery::at(
                 ChildRoute::<Proxy<PoolWorker>, ChildHead>::new(1),
-                ProxyCommand::Forward(PoolAssignment {
-                    assignment: behavior_actors::AssignmentId(1),
-                    job: behavior_actors::JobId(1),
-                    payload: 7,
-                    worker: 1,
-                    complete_to: Recipient::global(MailAddr(9)),
-                }),
+                ProxyCommand::Forward {
+                    command: PoolAssignment {
+                        assignment: behavior_actors::AssignmentId(1),
+                        job: behavior_actors::JobId(1),
+                        payload: 7,
+                        worker: 1,
+                        complete_to: Recipient::global(MailAddr(9)),
+                    },
+                    unavailable_to: Recipient::global(MailAddr(9)),
+                },
             )],
-            worker_commands: Vec::new(),
             failure_reports: InterpreterRequests::one(ReportSupervisionFailure::new(
                 behavior_actors::SupervisionFailure::stable_child_stopped(
                     1,
@@ -824,13 +829,16 @@ async fn worker_pool_event_and_sends_interpret_every_lane_at_the_same_structural
             )],
             assignments: vec![ChildDelivery::at(
                 ChildRoute::<Proxy<PoolWorker>, ChildHead>::new(1),
-                ProxyCommand::Forward(PoolAssignment {
-                    assignment: behavior_actors::AssignmentId(2),
-                    job: behavior_actors::JobId(2),
-                    payload: 8,
-                    worker: 1,
-                    complete_to: Recipient::global(MailAddr(9)),
-                }),
+                ProxyCommand::Forward {
+                    command: PoolAssignment {
+                        assignment: behavior_actors::AssignmentId(2),
+                        job: behavior_actors::JobId(2),
+                        payload: 8,
+                        worker: 1,
+                        complete_to: Recipient::global(MailAddr(9)),
+                    },
+                    unavailable_to: Recipient::global(MailAddr(9)),
+                },
             )],
         },
     );

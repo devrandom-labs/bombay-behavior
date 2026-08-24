@@ -3,11 +3,11 @@
 use std::time::Duration;
 
 use behavior::{
-    Actions, Activate, Behavior, CreationKind, InterruptionPolicy, JobId, KeyedPoolMessage,
-    KeyedWorkerPool, KeyedWorkerPoolProtocol, MailAddr, Never, NoBirths, PoolAssignment,
-    PoolError, PoolFailure, PoolMessage, PoolResponse, RebalanceRejection, Recipient,
-    RestartPolicy, User, WorkerCreationResolved, WorkerPhase, WorkerPool, WorkerPoolProtocol,
-    WorkerStopped,
+    Actions, Activate, Behavior, CreationKind, Delivery, IncarnationPhase, InterruptionPolicy,
+    JobId, KeyedPoolMessage, KeyedWorkerPool, KeyedWorkerPoolProtocol, MailAddr, Never, NoBirths,
+    PoolAssignment, PoolError, PoolFailure, PoolMessage, PoolResponse, ProxyCommand,
+    ProxyUnavailable, RebalanceRejection, Recipient, RestartPolicy, User,
+    WorkerCreationResolved, WorkerPhase, WorkerPool, WorkerPoolProtocol, WorkerStopped,
 };
 use libfuzzer_sys::fuzz_target;
 use std::time::Instant;
@@ -88,7 +88,148 @@ fn affinity(key: &u8) -> u64 {
     u64::from(key & 1)
 }
 
+fn terminal_responses(responses: &[Delivery<Reply>]) -> usize {
+    responses
+        .iter()
+        .filter(|delivery| {
+            matches!(
+                delivery.message,
+                PoolResponse::Completed { .. } | PoolResponse::Interrupted { .. }
+            )
+        })
+        .count()
+}
+
+fn fuzz_unavailability_join(control: u8) {
+    let interruption = if control & 1 == 0 {
+        InterruptionPolicy::Fail
+    } else {
+        InterruptionPolicy::Retry
+    };
+    let replacement_expected = control & 2 == 0;
+    let initialized = WorkerPool::new(
+        behavior::ChildTopology::new([0], |_| Some(Worker)),
+        behavior::PoolConfiguration::new(
+            1,
+            interruption,
+            RestartPolicy::Permanent,
+            u32::from(replacement_expected),
+            Duration::from_secs(1),
+        ),
+        Recipient::global(MailAddr(9)),
+    )
+    .unwrap()
+    .initialize()
+    .unwrap();
+    let mut pool = initialized.behavior;
+    pool.on_path(WorkerCreationResolved::new(
+        0,
+        0,
+        CreationKind::Birth,
+        Ok(()),
+    ))
+    .unwrap();
+    let submitted = pool
+        .receive(
+            MailAddr(9),
+            PoolMessage::Submit {
+                job: JobId(1),
+                payload: control,
+                reply_to: Recipient::global(MailAddr(10)),
+            },
+        )
+        .unwrap();
+    let assignment = submitted
+        .sends
+        .inner
+        .assignments
+        .into_iter()
+        .next()
+        .unwrap();
+    let ProxyCommand::Forward { command, .. } = assignment.message else {
+        panic!("pool dispatch did not use the proxy forwarding protocol");
+    };
+    let returned = ProxyUnavailable {
+        phase: IncarnationPhase::Vacant {
+            last_installed: Some(0),
+        },
+        command,
+    };
+    let stopped = WorkerStopped::new(
+        0,
+        0,
+        Err(behavior::Crash::Failed),
+        Instant::now(),
+    );
+
+    let mut terminal = 0;
+    let mut redispatched = 0;
+    if control & 4 == 0 {
+        let first = pool.on_path(User::new(MailAddr(0), returned)).unwrap();
+        terminal += terminal_responses(&first.sends.inner.responses);
+        redispatched += first.sends.inner.assignments.len();
+        let second = pool.on_path(stopped).unwrap();
+        terminal += terminal_responses(&second.sends.inner.responses);
+        redispatched += second.sends.inner.assignments.len();
+        if replacement_expected {
+            let ready = pool
+                .on_path(WorkerCreationResolved::new(
+                    0,
+                    1,
+                    CreationKind::replacement_of(0),
+                    Ok(()),
+                ))
+                .unwrap();
+            terminal += terminal_responses(&ready.sends.inner.responses);
+            redispatched += ready.sends.inner.assignments.len();
+        }
+    } else {
+        let first = pool.on_path(stopped).unwrap();
+        terminal += terminal_responses(&first.sends.inner.responses);
+        redispatched += first.sends.inner.assignments.len();
+        if replacement_expected && control & 8 != 0 {
+            let ready = pool
+                .on_path(WorkerCreationResolved::new(
+                    0,
+                    1,
+                    CreationKind::replacement_of(0),
+                    Ok(()),
+                ))
+                .unwrap();
+            terminal += terminal_responses(&ready.sends.inner.responses);
+            redispatched += ready.sends.inner.assignments.len();
+        }
+        let second = pool.on_path(User::new(MailAddr(0), returned)).unwrap();
+        terminal += terminal_responses(&second.sends.inner.responses);
+        redispatched += second.sends.inner.assignments.len();
+        if replacement_expected && control & 8 == 0 {
+            let ready = pool
+                .on_path(WorkerCreationResolved::new(
+                    0,
+                    1,
+                    CreationKind::replacement_of(0),
+                    Ok(()),
+                ))
+                .unwrap();
+            terminal += terminal_responses(&ready.sends.inner.responses);
+            redispatched += ready.sends.inner.assignments.len();
+        }
+    }
+
+    match (interruption, replacement_expected) {
+        (InterruptionPolicy::Fail, _) | (InterruptionPolicy::Retry, false) => {
+            assert_eq!(terminal, 1);
+            assert_eq!(redispatched, 0);
+        }
+        (InterruptionPolicy::Retry, true) => {
+            assert_eq!(terminal, 0);
+            assert_eq!(redispatched, 1);
+        }
+    }
+}
+
 fuzz_target!(|bytes: &[u8]| {
+    fuzz_unavailability_join(bytes.first().copied().unwrap_or(0));
     let pool = WorkerPool::new(
         behavior::ChildTopology::indexed(nonce, 2, |index| Some(worker(index))),
         behavior::PoolConfiguration::new(

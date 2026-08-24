@@ -1,6 +1,6 @@
 //! Independent checks for the pure heterogeneous child creation product.
 
-use behavior::{Activate as _, DynamicSupervisor, DynamicSupervisorOutcome, Guardian};
+use behavior::{Activate as _, DynamicSupervisor, DynamicSupervisorOutcome, StopOnShutdown};
 use foundation::{
     Actions, Behavior, BehaviorActed, ChildChoice, Children, ChildrenError, Create, CreationKind,
     MailAddr, Never, NoBirths, Recipient, User,
@@ -166,8 +166,8 @@ fn product_is_pure_input_to_the_existing_actions_creation_leg() {
 }
 
 #[test]
-fn address_constrained_template_flows_through_root_initialization_and_guardian() {
-    let initialized = Guardian::new(Root).initialize().unwrap();
+fn address_constrained_template_flows_through_root_shutdown_initialization() {
+    let initialized = StopOnShutdown::new(Root).initialize().unwrap();
     let creates = initialized.actions.creates;
 
     assert_eq!(creates.len(), 2);

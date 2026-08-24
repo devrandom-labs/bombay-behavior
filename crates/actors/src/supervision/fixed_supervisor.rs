@@ -1,16 +1,9 @@
 //! Standalone fixed-fleet supervision over the shared ownership fold.
 
-#![allow(
-    private_interfaces,
-    reason = "public inferred aliases use a closed policy trait over crate-private fleet ownership"
-)]
-
 use super::SupervisionEvent;
 use super::adapter::{ChildTopology, ProxyWithParent, RestartConfiguration, SupervisorSends};
-use super::domain::{
-    FixedFleetOwnership, FleetError, OwnershipError, OwnershipFold, WorkerCommandRejection,
-};
-use behavior::{Actions, Address, Behavior, Births, Never, Step, User};
+use super::domain::{FixedFleetOwnership, FleetError, OwnershipError, OwnershipFold};
+use behavior::{Address, Behavior, Births, Never, Step, User};
 
 /// Nominal protocol of a standalone fixed supervisor.
 pub struct SupervisorProtocol<A: Address>(core::marker::PhantomData<fn() -> A>);
@@ -88,56 +81,6 @@ impl<A: Address> From<OwnershipError<A>> for SupervisorError<A> {
     }
 }
 
-/// Why one selected stable worker cannot currently accept a command.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum WorkerUnavailable {
-    /// The selector named no configured stable worker.
-    Unknown,
-    /// The stable proxy or its first worker has not committed yet.
-    Starting,
-    /// The stable proxy is waiting for a replacement worker to commit.
-    Restarting,
-    /// Supervision policy permanently retired the stable worker.
-    Retired,
-    /// Coordinated shutdown has closed command admission.
-    ShuttingDown,
-}
-
-impl<N> From<WorkerCommandRejection<N>> for (N, WorkerUnavailable) {
-    fn from(rejection: WorkerCommandRejection<N>) -> Self {
-        match rejection {
-            WorkerCommandRejection::UnknownWorker(worker) => (worker, WorkerUnavailable::Unknown),
-            WorkerCommandRejection::Starting(worker) => (worker, WorkerUnavailable::Starting),
-            WorkerCommandRejection::Restarting(worker) => (worker, WorkerUnavailable::Restarting),
-            WorkerCommandRejection::Retired(worker) => (worker, WorkerUnavailable::Retired),
-            WorkerCommandRejection::ShuttingDown(worker) => {
-                (worker, WorkerUnavailable::ShuttingDown)
-            }
-        }
-    }
-}
-
-/// Controlled failure of application-facing fixed supervision.
-///
-/// Command admission is all-or-nothing. An available command produces exactly
-/// one send through its selected stable route. Every unavailable outcome
-/// rejects the transition without changing supervisor state and returns the
-/// complete original [`User`] value. Commands are never dropped, stashed,
-/// redirected, or partially reconstructed.
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub enum SupervisedWorkersError<A: Address, M> {
-    /// The underlying ownership or lifecycle fold rejected the transition.
-    #[error("supervised ownership fold rejected the transition")]
-    Supervision(#[source] SupervisorError<A>),
-    /// The selected stable worker could not accept this exact command.
-    #[error("the selected stable worker could not accept the command")]
-    CommandNotAccepted {
-        worker: A::Nonce,
-        reason: WorkerUnavailable,
-        command: User<A, M>,
-    },
-}
-
 /// Standalone owner of a fixed stable-proxy fleet.
 ///
 /// Its public message is uninhabited; lifecycle facts enter through the
@@ -166,181 +109,18 @@ pub enum SupervisedWorkersError<A: Address, M> {
 /// ).unwrap().initialize().unwrap().behavior;
 /// active.receive(MailAddr(9), ());
 /// ```
-type FixedSupervisorActions<A, C, ParentPath> =
-    Actions<A, Never, SupervisorSends<A, C, ParentPath>, Births<ProxyWithParent<C, ParentPath>>>;
-
-/// Static application-command policy for one fixed supervisor.
-#[doc(hidden)]
-pub trait FixedSupervisorCommands<A, C, ParentPath>
+pub struct SupervisorWithParent<A, C, ParentPath>
 where
     A: Address,
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
-{
-    type Message;
-    type Protocol: crate::Protocol<Addr = A, Msg = Self::Message>;
-    type Error;
-
-    fn command(
-        &self,
-        ownership: &FixedFleetOwnership<A, C, ParentPath>,
-        command: User<A, Self::Message>,
-    ) -> Result<FixedSupervisorActions<A, C, ParentPath>, Self::Error>;
-
-    fn supervision_error(error: SupervisorError<A>) -> Self::Error;
-}
-
-/// Compiler representation of an ownership-only fixed supervisor.
-#[doc(hidden)]
-pub struct OwnershipOnly;
-
-impl<A, C, ParentPath> FixedSupervisorCommands<A, C, ParentPath> for OwnershipOnly
-where
-    A: Address,
-    A::Nonce: Copy + Eq + From<u64>,
-    C: Behavior<Ph = Never>,
-    C::Protocol: crate::Protocol<Addr = A>,
-{
-    type Message = Never;
-    type Protocol = SupervisorProtocol<A>;
-    type Error = SupervisorError<A>;
-
-    fn command(
-        &self,
-        _: &FixedFleetOwnership<A, C, ParentPath>,
-        command: User<A, Never>,
-    ) -> Result<FixedSupervisorActions<A, C, ParentPath>, SupervisorError<A>> {
-        match command.message {}
-    }
-
-    fn supervision_error(error: SupervisorError<A>) -> Self::Error {
-        error
-    }
-}
-
-/// Compiler representation of an explicit application worker selector.
-#[doc(hidden)]
-pub struct SelectWorker<Select>(Select);
-
-impl<A, C, Select, ParentPath> FixedSupervisorCommands<A, C, ParentPath> for SelectWorker<Select>
-where
-    A: Address,
-    A::Nonce: Copy + Eq + From<u64>,
-    C: Behavior<Ph = Never>,
-    C::Protocol: crate::Protocol<Addr = A>,
-    Select: Fn(&<C::Protocol as crate::Protocol>::Msg) -> A::Nonce,
-{
-    type Message = <C::Protocol as crate::Protocol>::Msg;
-    type Protocol = C::Protocol;
-    type Error = SupervisedWorkersError<A, Self::Message>;
-
-    fn command(
-        &self,
-        ownership: &FixedFleetOwnership<A, C, ParentPath>,
-        command: User<A, Self::Message>,
-    ) -> Result<FixedSupervisorActions<A, C, ParentPath>, Self::Error> {
-        let worker = (self.0)(&command.message);
-        match ownership.command(worker, command) {
-            Ok(actions) => Ok(actions),
-            Err((rejection, command)) => {
-                let (worker, reason) = rejection.into();
-                Err(SupervisedWorkersError::CommandNotAccepted {
-                    worker,
-                    reason,
-                    command,
-                })
-            }
-        }
-    }
-
-    fn supervision_error(error: SupervisorError<A>) -> Self::Error {
-        SupervisedWorkersError::Supervision(error)
-    }
-}
-
-/// One fixed stable-worker ownership actor parameterized only by its public
-/// application-command policy.
-#[doc(hidden)]
-pub struct FixedSupervisor<A, C, Commands, ParentPath>
-where
-    A: Address,
-    A::Nonce: From<u64>,
-    C: Behavior<Ph = Never>,
-    C::Protocol: crate::Protocol<Addr = A>,
-    Commands: FixedSupervisorCommands<A, C, ParentPath>,
 {
     ownership: FixedFleetOwnership<A, C, ParentPath>,
-    commands: Commands,
     failure: TopologyFailurePolicy,
 }
 
-/// A standalone fixed supervisor whose proxy reports return directly.
-pub type SupervisorWithParent<A, C, ParentPath> = FixedSupervisor<A, C, OwnershipOnly, ParentPath>;
-
 pub type Supervisor<A, C> = SupervisorWithParent<A, C, behavior::Here>;
-
-/// A fixed supervised worker set that accepts the workers' application
-/// command directly.
-///
-/// `Select` is the application policy that chooses one configured stable
-/// worker nonce for each command. Successful commands are sent through the
-/// supervisor-owned proxy route. Proxy commands and routes are not part of
-/// this actor's public protocol.
-pub type SupervisedWorkersWithParent<A, C, Select, ParentPath> =
-    FixedSupervisor<A, C, SelectWorker<Select>, ParentPath>;
-
-/// Supervised application workers whose proxy reports return directly.
-pub type SupervisedWorkers<A, C, Select> =
-    SupervisedWorkersWithParent<A, C, Select, behavior::Here>;
-
-impl<A, C, Select> SupervisedWorkers<A, C, Select>
-where
-    A: Address,
-    A::Nonce: Copy + Eq + From<u64>,
-    C: Behavior<Ph = Never>,
-    C::Protocol: crate::Protocol<Addr = A>,
-    Select: Fn(&<C::Protocol as crate::Protocol>::Msg) -> A::Nonce,
-{
-    /// Configure fixed workers and the application policy that selects one
-    /// stable worker for every command.
-    ///
-    /// # Errors
-    /// Returns the first typed topology rejection.
-    pub fn new(
-        topology: ChildTopology<A::Nonce, C>,
-        restart: RestartConfiguration,
-        select: Select,
-    ) -> Result<Self, FleetError<A::Nonce>> {
-        Self::with_parent(topology, restart, select, crate::ProxyParentIngress::new())
-    }
-}
-
-impl<A, C, Select, ParentPath> SupervisedWorkersWithParent<A, C, Select, ParentPath>
-where
-    A: Address,
-    A::Nonce: Copy + Eq + From<u64>,
-    C: Behavior<Ph = Never>,
-    C::Protocol: crate::Protocol<Addr = A>,
-    Select: Fn(&<C::Protocol as crate::Protocol>::Msg) -> A::Nonce,
-{
-    /// Configure fixed workers whose proxy reports target `parent`.
-    ///
-    /// # Errors
-    /// Returns the first typed topology rejection.
-    pub fn with_parent(
-        topology: ChildTopology<A::Nonce, C>,
-        restart: RestartConfiguration,
-        select: Select,
-        parent: crate::ProxyParentIngress<A, ParentPath>,
-    ) -> Result<Self, FleetError<A::Nonce>> {
-        Ok(Self {
-            ownership: FixedFleetOwnership::new(topology, restart, parent)?,
-            commands: SelectWorker(select),
-            failure: TopologyFailurePolicy::Retire,
-        })
-    }
-}
 
 impl<A, C> Supervisor<A, C>
 where
@@ -379,19 +159,17 @@ where
     ) -> Result<Self, FleetError<A::Nonce>> {
         Ok(Self {
             ownership: FixedFleetOwnership::new(topology, restart, parent)?,
-            commands: OwnershipOnly,
             failure: TopologyFailurePolicy::Retire,
         })
     }
 }
 
-impl<A, C, Commands, ParentPath> FixedSupervisor<A, C, Commands, ParentPath>
+impl<A, C, ParentPath> SupervisorWithParent<A, C, ParentPath>
 where
     A: Address,
     A::Nonce: Copy + Eq + From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
-    Commands: FixedSupervisorCommands<A, C, ParentPath>,
 {
     /// Select the terminal reaction to an exhausted topology policy.
     #[must_use]
@@ -416,21 +194,28 @@ where
         self.ownership.is_alive(nonce)
     }
 
-    fn finish(&self, mut fold: OwnershipFold<A, C, ParentPath>) -> crate::BehaviorActed<Self> {
+    fn finish(
+        &self,
+        mut fold: OwnershipFold<A, C, ParentPath>,
+    ) -> behavior::Actions<
+        A,
+        Never,
+        SupervisorSends<A, C, ParentPath>,
+        Births<ProxyWithParent<C, ParentPath>>,
+    > {
         if !fold.failures.is_empty() && self.failure == TopologyFailurePolicy::Stop {
             fold.actions.become_ = Step::Stop(crate::Stopped);
         }
-        Ok(fold.actions)
+        fold.actions
     }
 }
 
-impl<A, C, Commands, ParentPath> crate::BehaviorBase for FixedSupervisor<A, C, Commands, ParentPath>
+impl<A, C, ParentPath> crate::BehaviorBase for SupervisorWithParent<A, C, ParentPath>
 where
     A: Address,
     A::Nonce: Copy + Eq + From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
-    Commands: FixedSupervisorCommands<A, C, ParentPath>,
 {
     type Base = Self;
     fn base(&self) -> &Self::Base {
@@ -438,28 +223,23 @@ where
     }
 }
 
-impl<A, C, Commands, ParentPath> Behavior for FixedSupervisor<A, C, Commands, ParentPath>
+impl<A, C, ParentPath> Behavior for SupervisorWithParent<A, C, ParentPath>
 where
     A: Address,
     A::Nonce: Copy + Eq + From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
-    Commands: FixedSupervisorCommands<A, C, ParentPath>,
-    SupervisorSends<A, C, ParentPath>:
-        behavior::SendsFor<SupervisionEvent<User<A, Commands::Message>>>,
+    SupervisorSends<A, C, ParentPath>: behavior::SendsFor<SupervisionEvent<User<A, Never>>>,
 {
-    type Protocol = Commands::Protocol;
-    type Event = SupervisionEvent<User<A, Commands::Message>>;
+    type Protocol = SupervisorProtocol<A>;
+    type Event = SupervisorEvent<A>;
     type Sends = SupervisorSends<A, C, ParentPath>;
     type Ph = Never;
-    type Error = Commands::Error;
+    type Error = SupervisorError<A>;
     type Birth = Births<ProxyWithParent<C, ParentPath>>;
 
     fn init(&mut self, _: crate::InitializationTurn) -> crate::BehaviorActed<Self> {
-        self.ownership
-            .initialize()
-            .map_err(SupervisorError::from)
-            .map_err(Commands::supervision_error)
+        self.ownership.initialize().map_err(SupervisorError::from)
     }
 
     fn transition(
@@ -468,50 +248,45 @@ where
         event: Self::Event,
     ) -> crate::BehaviorActed<Self> {
         match event {
-            SupervisionEvent::Behavior(user) => self.commands.command(&self.ownership, user),
+            SupervisionEvent::Behavior(user) => match user.message {},
             SupervisionEvent::WorkerStopped(event) => {
                 let fold = self
                     .ownership
                     .worker_stopped(event)
-                    .map_err(SupervisorError::from)
-                    .map_err(Commands::supervision_error)?;
-                self.finish(fold)
+                    .map_err(SupervisorError::from)?;
+                Ok(self.finish(fold))
             }
             SupervisionEvent::ChildStopped(event) => {
                 let fold = self
                     .ownership
                     .child_stopped(event)
-                    .map_err(SupervisorError::from)
-                    .map_err(Commands::supervision_error)?;
-                self.finish(fold)
+                    .map_err(SupervisorError::from)?;
+                Ok(self.finish(fold))
             }
             SupervisionEvent::CreationResolved(event) => {
                 let fold = self
                     .ownership
                     .creation_resolved(event)
-                    .map_err(SupervisorError::from)
-                    .map_err(Commands::supervision_error)?;
-                self.finish(fold)
+                    .map_err(SupervisorError::from)?;
+                Ok(self.finish(fold))
             }
             SupervisionEvent::WorkerCreationResolved(event) => {
                 let fold = self
                     .ownership
                     .worker_creation_resolved(event)
-                    .map_err(SupervisorError::from)
-                    .map_err(Commands::supervision_error)?;
-                self.finish(fold)
+                    .map_err(SupervisorError::from)?;
+                Ok(self.finish(fold))
             }
             SupervisionEvent::ShutdownRequested(_) => {
                 let fold = self.ownership.shutdown();
-                self.finish(fold)
+                Ok(self.finish(fold))
             }
             SupervisionEvent::ChildShutdownRejected(event) => {
                 let fold = self
                     .ownership
                     .child_shutdown_rejected(event)
-                    .map_err(SupervisorError::from)
-                    .map_err(Commands::supervision_error)?;
-                self.finish(fold)
+                    .map_err(SupervisorError::from)?;
+                Ok(self.finish(fold))
             }
         }
     }

@@ -1,8 +1,8 @@
 use behavior_actors::{
     Actions, Activate, Behavior, BehaviorActed, Delivery, DynamicSupervisor,
-    DynamicSupervisorMessage, DynamicSupervisorOutcome, Guardian, JobId, MailAddr, MessageAdapter,
-    Never, NoBirths, PoolAssignment, PoolAssignmentProtocol, PoolMessage, PoolResponse, Recipient,
-    User, WorkerPool, WorkerPoolProtocol,
+    DynamicSupervisorMessage, DynamicSupervisorOutcome, JobId, MailAddr, MessageAdapter, Never,
+    NoBirths, PoolAssignment, PoolAssignmentProtocol, PoolMessage, PoolResponse, Recipient,
+    StopOnShutdown, User, WorkerPool, WorkerPoolProtocol,
 };
 use core::marker::PhantomData;
 
@@ -158,7 +158,7 @@ fn adapt_actual_root(
 
 #[test]
 fn adapter_can_target_the_root_that_sends_to_its_dynamic_supervisor() {
-    assert_behavior::<Guardian<ActualRoot>>();
+    assert_behavior::<StopOnShutdown<ActualRoot>>();
     let root = Recipient::<ActualRoot>::global(MailAddr(1));
     let mut adapter = MessageAdapter::new(root, adapt_actual_root)
         .initialize()
@@ -229,7 +229,7 @@ fn adapt_actual_pool(_: PoolResponse<u8, u16, MailAddr>) {}
 
 #[test]
 fn adapter_can_target_the_root_that_sends_to_its_worker_pool() {
-    assert_behavior::<Guardian<PoolRoot>>();
+    assert_behavior::<StopOnShutdown<PoolRoot>>();
     assert_behavior::<ActualPool>();
     let root = Recipient::<PoolRoot>::global(MailAddr(1));
     let _: ActualPoolReply = MessageAdapter::new(root, adapt_actual_pool);

@@ -9,12 +9,12 @@
 //! agree on every byte.
 
 use behavior::{
-    Acted, Actions, Activate, Backoff, BackoffSupervisor, Crash, CreationKind, Delivery, MailAddr,
-    Never, RestartDenial, RestartPolicy, ShutdownRequested, Step, Strategy, SupervisedWorkers,
-    SupervisedWorkersError, SupervisionEvent, SupervisionFailureReason, Supervisor,
-    SupervisorError,
-    TimerElapsed, TimerGeneration, TimerId, TopologyFailurePolicy, User, WorkerCreationResolved,
-    WorkerStopped, WorkerUnavailable,
+    Acted, Actions, Activate, Backoff, BackoffSupervisor, Crash, CreationKind, CreationRejection,
+    CreationResolved, Delivery, DynamicSupervisor, DynamicSupervisorMessage,
+    DynamicSupervisorOutcome, MailAddr, Never, Recipient, RestartDenial, RestartPolicy,
+    ShutdownRequested, Step, Strategy, SupervisionEvent, SupervisionFailureReason, Supervisor,
+    SupervisorError, TimerElapsed, TimerGeneration, TimerId, TopologyFailurePolicy,
+    WorkerCreationResolved, WorkerStopped,
 };
 use libfuzzer_sys::fuzz_target;
 use std::time::Instant;
@@ -51,19 +51,100 @@ fn timer(nonce: u64) -> TimerId {
     TimerId(nonce)
 }
 
-fn select_worker(command: &u8) -> u64 {
-    u64::from(*command)
-}
+type DynamicReply = bombay_behavior_fuzz::TestRecipient<DynamicSupervisorOutcome<MailAddr, Worker>>;
 
-#[derive(Clone, Copy)]
-enum CommandSlot {
-    Running { worker: u64 },
-    Replacing { worker: u64 },
+fn fuzz_dynamic_initial_join(bytes: &[u8]) {
+    for byte in bytes.iter().copied() {
+        let worker_first = byte & 1 != 0;
+        let worker_rejected = byte & 2 != 0;
+        let shutdown_point = (byte >> 2) & 3;
+        let mut subject =
+            DynamicSupervisor::<MailAddr, Worker, Recipient<DynamicReply>>::new()
+                .initialize()
+                .unwrap()
+                .behavior;
+        subject
+            .receive(
+                MailAddr(1),
+                DynamicSupervisorMessage::Start {
+                    nonce: 7,
+                    child: Worker,
+                    reply_to: Recipient::global(MailAddr(99)),
+                },
+            )
+            .unwrap();
+
+        let proxy = CreationResolved::birth(7, MailAddr(70));
+        let worker = WorkerCreationResolved::new(
+            7,
+            0,
+            CreationKind::Birth,
+            if worker_rejected {
+                Err(CreationRejection::EnvironmentFailed)
+            } else {
+                Ok(())
+            },
+        );
+        let mut outcomes = 0;
+        let mut shutdowns = 0;
+
+        if shutdown_point == 0 {
+            let actions = subject.on_path(ShutdownRequested).unwrap();
+            outcomes += actions.sends.outcomes.len();
+            shutdowns += actions.sends.shutdowns.len();
+        }
+        let first = if worker_first {
+            subject.on_path(worker).unwrap()
+        } else {
+            subject.on_path(proxy).unwrap()
+        };
+        outcomes += first.sends.outcomes.len();
+        shutdowns += first.sends.shutdowns.len();
+
+        if shutdown_point == 1 {
+            let actions = subject.on_path(ShutdownRequested).unwrap();
+            outcomes += actions.sends.outcomes.len();
+            shutdowns += actions.sends.shutdowns.len();
+        }
+        let second = if worker_first {
+            subject.on_path(proxy).unwrap()
+        } else {
+            subject.on_path(worker).unwrap()
+        };
+        outcomes += second.sends.outcomes.len();
+        shutdowns += second.sends.shutdowns.len();
+
+        if shutdown_point >= 2 {
+            let actions = subject.on_path(ShutdownRequested).unwrap();
+            outcomes += actions.sends.outcomes.len();
+            shutdowns += actions.sends.shutdowns.len();
+        }
+
+        assert_eq!(outcomes, 1);
+        assert_eq!(shutdowns, 1);
+        assert_eq!(second.sends.outcomes.len(), 1);
+        if worker_rejected {
+            assert!(matches!(
+                second.sends.outcomes[0].message,
+                DynamicSupervisorOutcome::StartFailed {
+                    nonce: 7,
+                    reason: CreationRejection::EnvironmentFailed,
+                }
+            ));
+        } else {
+            assert!(matches!(
+                second.sends.outcomes[0].message,
+                DynamicSupervisorOutcome::Started { nonce: 7, child }
+                    if child.address() == MailAddr(70)
+            ));
+        }
+    }
 }
 
 fuzz_target!(|bytes: &[u8]| {
     let runtime = Builder::new_current_thread().enable_time().build().unwrap();
     runtime.block_on(async {
+        fuzz_dynamic_initial_join(bytes);
         let behavior = Supervisor::new(
             behavior::ChildTopology::indexed(
                 |index| u64::try_from(index).unwrap(),
@@ -297,143 +378,6 @@ fuzz_target!(|bytes: &[u8]| {
                 backoff.pending_restarts(),
                 pending.iter().filter(|generation| generation.is_some()).count()
             );
-        }
-
-        // The application-facing fixed form shares the ownership fold above.
-        // This independent slot model attacks commands before, during, and
-        // after replacement and after shutdown. A successful command must
-        // always retain the configured proxy nonce, never the incarnation.
-        let initialized = SupervisedWorkers::new(
-            behavior::ChildTopology::indexed(
-                |index| u64::try_from(index).unwrap(),
-                FLEET,
-                |index| Some(worker(index)),
-            ),
-            behavior::RestartConfiguration::new(
-                Strategy::OneForOne,
-                RestartPolicy::Permanent,
-                u32::MAX,
-                std::time::Duration::MAX,
-            ),
-            select_worker as fn(&u8) -> u64,
-        )
-        .unwrap()
-        .initialize()
-        .unwrap();
-        let mut commands = initialized.behavior;
-        let mut command_slots = [CommandSlot::Running { worker: 0 }; FLEET];
-        let mut next_command_worker = 50_000_u64;
-        for (slot, state) in command_slots.iter_mut().enumerate() {
-            let nonce = u64::try_from(slot).unwrap();
-            let worker = next_command_worker;
-            next_command_worker = next_command_worker.checked_add(1).unwrap();
-            commands
-                .on(behavior::CreationResolved::birth(
-                    nonce,
-                    MailAddr(20_000 + nonce),
-                ))
-                .unwrap();
-            commands
-                .on(WorkerCreationResolved::new(
-                    nonce,
-                    worker,
-                    CreationKind::Birth,
-                    Ok(()),
-                ))
-                .unwrap();
-            *state = CommandSlot::Running { worker };
-        }
-        let mut command_shutdown = false;
-
-        for (index, byte) in bytes.iter().copied().enumerate() {
-            let slot = (usize::from(byte) / 4) % FLEET;
-            let nonce = u64::try_from(slot).unwrap();
-            match byte % 4 {
-                0 => {
-                    let selected = (byte / 4) % u8::try_from(FLEET + 1).unwrap();
-                    let result = commands.receive(MailAddr(9), selected);
-                    if usize::from(selected) == FLEET {
-                        assert!(matches!(
-                            result,
-                            Err(SupervisedWorkersError::CommandNotAccepted {
-                                worker,
-                                reason: WorkerUnavailable::Unknown,
-                                command,
-                            }) if worker == u64::from(selected)
-                                && command == User::new(MailAddr(9), selected)
-                        ));
-                    } else if command_shutdown {
-                        assert!(matches!(
-                            result,
-                            Err(SupervisedWorkersError::CommandNotAccepted {
-                                worker,
-                                reason: WorkerUnavailable::ShuttingDown,
-                                command,
-                            }) if worker == u64::from(selected)
-                                && command == User::new(MailAddr(9), selected)
-                        ));
-                    } else {
-                        match command_slots[usize::from(selected)] {
-                            CommandSlot::Running { .. } => {
-                                let actions = result.unwrap();
-                                assert_eq!(actions.sends.worker_commands.len(), 1);
-                                assert_eq!(
-                                    actions.sends.worker_commands[0].nonce,
-                                    u64::from(selected)
-                                );
-                                assert!(actions.sends.replacement_commands.is_empty());
-                            }
-                            CommandSlot::Replacing { .. } => assert!(matches!(
-                                result,
-                                Err(SupervisedWorkersError::CommandNotAccepted {
-                                    worker,
-                                    reason: WorkerUnavailable::Restarting,
-                                    command,
-                                }) if worker == u64::from(selected)
-                                    && command == User::new(MailAddr(9), selected)
-                            )),
-                        }
-                    }
-                }
-                1 if !command_shutdown => {
-                    if let CommandSlot::Running { worker } = command_slots[slot] {
-                        let actions = commands
-                            .on(WorkerStopped::new(
-                                nonce,
-                                worker,
-                                Err(Crash::Failed),
-                                base + std::time::Duration::from_nanos(
-                                    u64::try_from(index).unwrap(),
-                                ),
-                            ))
-                            .unwrap();
-                        assert_eq!(actions.sends.replacement_commands.len(), 1);
-                        command_slots[slot] = CommandSlot::Replacing { worker };
-                    }
-                }
-                2 if !command_shutdown => {
-                    if let CommandSlot::Replacing { worker } = command_slots[slot] {
-                        let replacement = next_command_worker;
-                        next_command_worker = next_command_worker.checked_add(1).unwrap();
-                        commands
-                            .on(WorkerCreationResolved::new(
-                                nonce,
-                                replacement,
-                                CreationKind::replacement_of(worker),
-                                Ok(()),
-                            ))
-                            .unwrap();
-                        command_slots[slot] = CommandSlot::Running {
-                            worker: replacement,
-                        };
-                    }
-                }
-                3 => {
-                    commands.on(ShutdownRequested).unwrap();
-                    command_shutdown = true;
-                }
-                _ => {}
-            }
         }
     });
 });

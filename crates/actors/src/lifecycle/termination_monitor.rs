@@ -328,18 +328,6 @@ where
 }
 
 impl<B: Behavior, Target: TerminationObservationTarget<B>> TerminationMonitorWith<B, Target> {
-    pub(crate) const fn with_target(
-        inner: B,
-        target: Target,
-        observation: TerminationObservation,
-    ) -> Self {
-        Self {
-            inner,
-            target,
-            observation,
-        }
-    }
-
     /// Return whether this monitor awaits or has consumed its terminal fact.
     #[must_use]
     pub const fn observation(&self) -> TerminationObservation {

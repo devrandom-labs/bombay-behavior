@@ -83,8 +83,8 @@ fn every_non_owning_customer_seam_accepts_exact_and_mixed_capabilities() {
     type FeaturesReply = MessageProtocol<RuntimeAddr, ConfigurationState<FeatureSet<u8>>>;
     assert_both_routes!(
         FeaturesReply,
-        Features<RuntimeAddr, u8, FeaturesReply, EstablishedRecipient<FeaturesReply>>,
-        Features<RuntimeAddr, u8, FeaturesReply, ReplyRoute<FeaturesReply>>
+        Configuration<RuntimeAddr, FeatureSet<u8>, FeaturesReply, EstablishedRecipient<FeaturesReply>>,
+        Configuration<RuntimeAddr, FeatureSet<u8>, FeaturesReply, ReplyRoute<FeaturesReply>>
     );
 
     type CorrelatorReply = MessageProtocol<RuntimeAddr, CorrelationResult<u8, u16>>;

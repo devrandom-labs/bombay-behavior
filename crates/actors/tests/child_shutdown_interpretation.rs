@@ -232,39 +232,57 @@ where
     interpreter.shutdowns
 }
 
+fn framework_phase<Builder, Role>(builder: Builder, role: Role) -> Builder::Output
+where
+    Builder: DeclareShutdownPhase<Role>,
+{
+    builder.shutdown_phase(role)
+}
+
+fn framework_finish<Builder>(builder: Builder) -> Builder::Output
+where
+    Builder: FinishShutdownPhases<Here>,
+{
+    builder.finish()
+}
+
 #[tokio::test]
-async fn outer_guardian_preserves_phase_order_for_both_arrival_orders() {
-    let plan_first = Guardian::coordinated(
-        shutdown_after_children(Application)
-            .shutdown_phase(StoreRole)
-            .shutdown_phase(GatewayRole)
-            .finish(),
-    )
-    .initialize()
-    .unwrap();
+async fn generic_framework_carries_hidden_phase_states_without_copying_the_typestate() {
+    let builder = shutdown_after_children(Application);
+    let builder = framework_phase(builder, StoreRole);
+    let builder = framework_phase(builder, GatewayRole);
+    let initialized = framework_finish(builder).initialize().unwrap();
+
+    assert_eq!(shutdown_trace(initialized, false).await, [11, 12]);
+}
+
+#[tokio::test]
+async fn coordinator_preserves_phase_order_for_both_arrival_orders() {
+    let plan_first = shutdown_after_children(Application)
+        .shutdown_phase(StoreRole)
+        .shutdown_phase(GatewayRole)
+        .finish::<Here>()
+        .initialize()
+        .unwrap();
     assert_eq!(shutdown_trace(plan_first, false).await, [11, 12]);
 
-    let shutdown_first = Guardian::coordinated(
-        shutdown_after_children(Application)
-            .shutdown_phase(StoreRole)
-            .shutdown_phase(GatewayRole)
-            .finish(),
-    )
-    .initialize()
-    .unwrap();
+    let shutdown_first = shutdown_after_children(Application)
+        .shutdown_phase(StoreRole)
+        .shutdown_phase(GatewayRole)
+        .finish::<Here>()
+        .initialize()
+        .unwrap();
     assert_eq!(shutdown_trace(shutdown_first, true).await, [11, 12]);
 }
 
 #[tokio::test]
 async fn reversing_phases_reverses_interpreted_child_shutdown_order() {
-    let reversed = Guardian::coordinated(
-        shutdown_after_children(Application)
-            .shutdown_phase(GatewayRole)
-            .shutdown_phase(StoreRole)
-            .finish(),
-    )
-    .initialize()
-    .unwrap();
+    let reversed = shutdown_after_children(Application)
+        .shutdown_phase(GatewayRole)
+        .shutdown_phase(StoreRole)
+        .finish::<Here>()
+        .initialize()
+        .unwrap();
 
     assert_eq!(shutdown_trace(reversed, false).await, [12, 11]);
 }

@@ -8,10 +8,9 @@ use std::time::Duration;
 
 use behavior::{
     Acted, Actions, Behavior, ChildStopped, Crash, Create, CreationKind, CreationResolved,
-    Delivery, MailAddr, Never, Proxy, ProxyCommand, ProxyEvent, RestartPolicy, ShutdownRequested,
-    Step, Strategy, Supervise, SupervisedWorkers, SupervisedWorkersError, SupervisionEvent,
-    Supervisor, SupervisorError, TopologyFailurePolicy, User, UserEvent, WorkerCreationResolved,
-    WorkerStopped, WorkerUnavailable,
+    Delivery, MailAddr, Never, Proxy, ProxyCommand, ProxyEvent, RestartPolicy, Step, Strategy,
+    Supervise, SupervisionEvent, Supervisor, SupervisorError, TopologyFailurePolicy, User,
+    UserEvent, WorkerCreationResolved, WorkerStopped,
 };
 use behavior_testkit::model::{
     ExpectedCreation, ExpectedIncarnation, IncarnationModel, Model, Outcome, SupervisionModelError,
@@ -67,10 +66,6 @@ impl BirthingParent {
 
 fn child(_index: usize) -> Child {
     Echo
-}
-
-fn select_worker(command: &u8) -> u64 {
-    u64::from(*command)
 }
 
 fn supervise<B>(
@@ -361,176 +356,6 @@ proptest! {
         }
     }
 
-    #[test]
-    fn application_commands_match_an_independent_slot_model(
-        count in 1_usize..6,
-        permanent in any::<bool>(),
-        operations in vec((0_u8..4, 0_u64..8), 0..80),
-    ) {
-        #[derive(Clone, Copy)]
-        enum Slot {
-            Running { worker: u64 },
-            Replacing { worker: u64 },
-            Retired,
-        }
-
-        let policy = if permanent {
-            RestartPolicy::Permanent
-        } else {
-            RestartPolicy::Temporary
-        };
-        let topology = behavior::ChildTopology::indexed(
-            |index| u64::try_from(index).unwrap(),
-            count,
-            |index| Some(child(index)),
-        );
-        let initialized = SupervisedWorkers::new(
-            topology,
-            behavior::RestartConfiguration::new(
-                Strategy::OneForOne,
-                policy,
-                u32::MAX,
-                Duration::MAX,
-            ),
-            select_worker as fn(&u8) -> u64,
-        )
-        .unwrap()
-        .initialize()
-        .unwrap();
-        let mut actual = initialized.behavior;
-        let mut slots = Vec::with_capacity(count);
-        let mut next_worker = 10_000_u64;
-        for index in 0..count {
-            let nonce = u64::try_from(index).unwrap();
-            let worker = next_worker;
-            next_worker += 1;
-            actual
-                .on(CreationResolved::birth(nonce, MailAddr(1_000 + nonce)))
-                .unwrap();
-            actual
-                .on(WorkerCreationResolved::new(
-                    nonce,
-                    worker,
-                    CreationKind::Birth,
-                    Ok(()),
-                ))
-                .unwrap();
-            slots.push(Slot::Running { worker });
-        }
-        let mut shutting_down = false;
-        let base = Instant::now();
-
-        for (step, (operation, seed)) in operations.into_iter().enumerate() {
-            let known = seed % u64::try_from(count).unwrap();
-            match operation {
-                0 => {
-                    // One value beyond the configured range attacks unknown
-                    // selection without introducing a separate registry model.
-                    let selected = seed % (u64::try_from(count).unwrap() + 1);
-                    let result = actual.receive(MailAddr(9), u8::try_from(selected).unwrap());
-                    if selected >= u64::try_from(count).unwrap() {
-                        let matched = matches!(
-                            result,
-                            Err(SupervisedWorkersError::CommandNotAccepted {
-                                worker,
-                                reason: WorkerUnavailable::Unknown,
-                                command,
-                            }) if worker == selected
-                                && command == User::new(MailAddr(9), u8::try_from(selected).unwrap())
-                        );
-                        prop_assert!(matched);
-                    } else if shutting_down {
-                        let matched = matches!(
-                            result,
-                            Err(SupervisedWorkersError::CommandNotAccepted {
-                                worker,
-                                reason: WorkerUnavailable::ShuttingDown,
-                                command,
-                            }) if worker == selected
-                                && command == User::new(MailAddr(9), u8::try_from(selected).unwrap())
-                        );
-                        prop_assert!(matched);
-                    } else {
-                        match slots[usize::try_from(selected).unwrap()] {
-                            Slot::Running { .. } => {
-                                let actions = result.unwrap();
-                                prop_assert_eq!(actions.sends.worker_commands.len(), 1);
-                                prop_assert_eq!(actions.sends.worker_commands[0].nonce, selected);
-                                prop_assert!(actions.sends.replacement_commands.is_empty());
-                            }
-                            Slot::Replacing { .. } => {
-                                let matched = matches!(
-                                    result,
-                                    Err(SupervisedWorkersError::CommandNotAccepted {
-                                        worker,
-                                        reason: WorkerUnavailable::Restarting,
-                                        command,
-                                    }) if worker == selected
-                                        && command == User::new(MailAddr(9), u8::try_from(selected).unwrap())
-                                );
-                                prop_assert!(matched);
-                            }
-                            Slot::Retired => {
-                                let matched = matches!(
-                                    result,
-                                    Err(SupervisedWorkersError::CommandNotAccepted {
-                                        worker,
-                                        reason: WorkerUnavailable::Retired,
-                                        command,
-                                    }) if worker == selected
-                                        && command == User::new(MailAddr(9), u8::try_from(selected).unwrap())
-                                );
-                                prop_assert!(matched);
-                            }
-                        }
-                    }
-                }
-                1 if !shutting_down => {
-                    let index = usize::try_from(known).unwrap();
-                    if let Slot::Running { worker } = slots[index] {
-                        let actions = actual
-                            .on(WorkerStopped::new(
-                                known,
-                                worker,
-                                Err(Crash::Failed),
-                                base + Duration::from_nanos(u64::try_from(step).unwrap()),
-                            ))
-                            .unwrap();
-                        if permanent {
-                            prop_assert_eq!(actions.sends.replacement_commands.len(), 1);
-                            slots[index] = Slot::Replacing { worker };
-                        } else {
-                            prop_assert!(actions.sends.replacement_commands.is_empty());
-                            slots[index] = Slot::Retired;
-                        }
-                    }
-                }
-                2 if !shutting_down => {
-                    let index = usize::try_from(known).unwrap();
-                    if let Slot::Replacing { worker } = slots[index] {
-                        let replacement = next_worker;
-                        next_worker += 1;
-                        actual
-                            .on(WorkerCreationResolved::new(
-                                known,
-                                replacement,
-                                CreationKind::replacement_of(worker),
-                                Ok(()),
-                            ))
-                            .unwrap();
-                        slots[index] = Slot::Running {
-                            worker: replacement,
-                        };
-                    }
-                }
-                3 => {
-                    actual.on(ShutdownRequested).unwrap();
-                    shutting_down = true;
-                }
-                _ => {}
-            }
-        }
-    }
 
     #[test]
     fn mixed_dynamic_births_and_deaths_match_the_reference_model(
