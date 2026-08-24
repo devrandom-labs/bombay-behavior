@@ -8,25 +8,26 @@ mod policy;
 mod protocol;
 
 pub use adapter::{
-    ChildTopology, Proxy, ProxySends, ProxySendsWithParent, ProxyWithParent, RestartConfiguration,
-    Supervise, SuperviseError, SuperviseWithParent, SupervisorSends,
+    ChildTopology, Proxy, ProxyError, ProxySends, ProxySendsWithParent, ProxyWithParent,
+    RestartConfiguration, Supervise, SuperviseError, SuperviseWithParent, SupervisorSends,
 };
 pub use backoff::{Backoff, BackoffConfigError, BackoffError};
 pub use backoff_supervisor::{
     BackoffSupervise, BackoffSuperviseWithParent, BackoffSupervisor, BackoffSupervisorError,
-    BackoffSupervisorEvent, BackoffSupervisorSends, BackoffSupervisorWithParent,
+    BackoffSupervisorEvent, BackoffSupervisorSends, BackoffSupervisorWithParent, BackoffWorkers,
+    BackoffWorkersWithParent,
 };
 pub(crate) use domain::{FixedFleetOwnership, OwnershipError};
-pub use domain::{FleetError, IncarnationError as ProxyError, IncarnationPhase};
+pub use domain::{FleetError, IncarnationError as ProxyLifecycleError, IncarnationPhase};
 pub use dynamic_supervisor::{
-    DynamicChildPhase, DynamicProxy, DynamicProxyWithParent, DynamicSupervisor,
-    DynamicSupervisorError, DynamicSupervisorEvent, DynamicSupervisorMessage,
-    DynamicSupervisorOutcome, DynamicSupervisorRejection, DynamicSupervisorSends,
-    DynamicSupervisorWithParent,
+    DynamicChildPhase, DynamicSupervisor, DynamicSupervisorError, DynamicSupervisorEvent,
+    DynamicSupervisorMessage, DynamicSupervisorOutcome, DynamicSupervisorRejection,
+    DynamicSupervisorSends, DynamicSupervisorWithParent,
 };
 pub use fixed_supervisor::{
-    Supervisor, SupervisorError, SupervisorEvent, SupervisorProtocol, SupervisorWithParent,
-    TopologyFailurePolicy,
+    SupervisedWorkers, SupervisedWorkersError, SupervisedWorkersWithParent, Supervisor,
+    SupervisorError, SupervisorEvent, SupervisorProtocol, SupervisorWithParent,
+    TopologyFailurePolicy, WorkerUnavailable,
 };
 pub use policy::{
     ReportSupervisionFailure, RestartPolicy, Strategy, SupervisionFailure,

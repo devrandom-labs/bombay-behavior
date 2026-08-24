@@ -263,7 +263,15 @@ mod tests {
     #[test]
     fn duplicate_returns_value_without_refreshing_retention() {
         let mut subject = (Subject::new(2).unwrap()).initialize().unwrap().behavior;
-        let _ = deliver(&mut subject, 1, 10);
+        let first = deliver(&mut subject, 1, 10);
+        assert_eq!(first.sends.deliveries.len(), 1);
+        assert!(matches!(
+            first.sends.outcomes[0].message,
+            DeduplicatorOutcome::Delivered {
+                key: 1,
+                evicted: None
+            }
+        ));
         let duplicate = deliver(&mut subject, 1, 11);
         assert!(duplicate.sends.deliveries.is_empty());
         assert!(matches!(
@@ -276,8 +284,20 @@ mod tests {
     #[test]
     fn eviction_is_explicit_and_allows_later_readmission() {
         let mut subject = (Subject::new(2).unwrap()).initialize().unwrap().behavior;
-        let _ = deliver(&mut subject, 1, 10);
-        let _ = deliver(&mut subject, 2, 20);
+        assert!(matches!(
+            deliver(&mut subject, 1, 10).sends.outcomes[0].message,
+            DeduplicatorOutcome::Delivered {
+                key: 1,
+                evicted: None
+            }
+        ));
+        assert!(matches!(
+            deliver(&mut subject, 2, 20).sends.outcomes[0].message,
+            DeduplicatorOutcome::Delivered {
+                key: 2,
+                evicted: None
+            }
+        ));
         let third = deliver(&mut subject, 3, 30);
         assert!(matches!(
             third.sends.outcomes[0].message,

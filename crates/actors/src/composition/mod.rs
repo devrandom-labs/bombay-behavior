@@ -10,11 +10,13 @@ mod message_adapter;
 mod recipes;
 
 pub use crate::activation::{Activate, Active, Initialized};
-pub use crate::lifecycle::{CoordinatedTerminalApplication, coordinated_terminal_application};
 pub use crate::machine::{Machine, Move};
 pub use crate::stash::{Stash, StashRoute, StashStatus};
 pub use delivery_route::{
     DeliveryRoute, DeliveryRouteProtocol, ReplyDeliveries, ReplyDelivery, ReplyRoute,
 };
 pub use message_adapter::{MessageAdapter, MessageAdapterWithRoute};
-pub use recipes::{supervised_backoff, supervised_backoff_with_parent};
+pub use recipes::{
+    dynamic_supervisor, keyed_worker_pool, supervise, supervise_backoff, supervised,
+    supervised_backoff, worker_pool,
+};

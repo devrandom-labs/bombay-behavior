@@ -74,16 +74,17 @@ mod sequencer;
 mod work_queue;
 
 pub use acknowledgements::{
-    AcknowledgementError, AcknowledgementMessage, AcknowledgementOutcome, AcknowledgementRecord,
-    AcknowledgementState, Acknowledgements,
+    AcknowledgementError, AcknowledgementInput, AcknowledgementMessage, AcknowledgementOutcome,
+    AcknowledgementRecord, AcknowledgementState, Acknowledgements,
 };
 pub use buffer::{
     Buffer, BufferConfigError, BufferConfiguration, BufferMessage, BufferOutcome, BufferRejection,
     BufferSends, BufferState, Buffered, OverflowPolicy,
 };
 pub use circuit_breaker::{
-    BreakerAttempt, BreakerConfigError, BreakerMessage, BreakerOutcome, BreakerPhase,
-    BreakerRejection, BreakerSends, CircuitBreaker, ClosedPhase, ProbePhase,
+    BreakerAttempt, BreakerCompletion, BreakerConfigError, BreakerError, BreakerMessage,
+    BreakerOutcome, BreakerPhase, BreakerRejection, BreakerSends, CircuitBreaker, ClosedPhase,
+    ProbePhase,
 };
 pub use correlator::{
     CorrelationResult, CorrelationState, Correlator, CorrelatorError, CorrelatorMessage,

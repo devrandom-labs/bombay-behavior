@@ -2,11 +2,12 @@
 
 use crate::{ShutdownEvent, ShutdownRequested};
 use behavior::{
-    Actions, Address, Behavior, BehaviorActed, BirthMode, EventLayer, Here, InjectEvent, NoSends,
+    Address, Behavior, BehaviorActed, BirthMode, EventLayer, Here, InjectEvent, NoSends,
     SendEffects, SendLayer,
 };
 
-/// The application or subtree lifecycle boundary around one concrete behavior.
+/// An application root whose shutdown is delegated to an existing inner
+/// shutdown owner.
 ///
 /// `Guardian` preserves the wrapped behavior's initialization, event, send,
 /// creation, error, phase, and termination contracts. In particular, children
@@ -40,43 +41,24 @@ use behavior::{
 /// use behavior_actors::{Guardian, MailAddr, Machine, Never, Recipient};
 /// let _ = Recipient::<Guardian<Machine<MailAddr, (), (), (), Never>>>::global(MailAddr(0));
 /// ```
-pub struct GuardianRoot<B, Policy> {
+pub struct CoordinatedGuardian<B> {
     inner: B,
-    policy: core::marker::PhantomData<fn() -> Policy>,
 }
 
-/// Root policy that terminates directly on shutdown.
-pub enum DirectShutdown {}
+/// Ordinary application root. Direct shutdown is exactly
+/// [`crate::StopOnShutdown`], so no second wrapper implementation exists.
+pub type Guardian<B> = crate::StopOnShutdown<B>;
 
-/// Root policy that delegates shutdown to the inner layer selected at `Here`.
-pub enum CoordinatedShutdown {}
-
-/// Ordinary application root with direct-stop shutdown policy.
-pub type Guardian<B> = GuardianRoot<B, DirectShutdown>;
-
-/// Application root whose shutdown is owned by its coordinated inner layer.
-pub type CoordinatedGuardian<B> = GuardianRoot<B, CoordinatedShutdown>;
-
-impl<B> GuardianRoot<B, DirectShutdown> {
-    /// Establish `inner` as an application or subtree lifecycle root.
-    #[must_use]
-    pub const fn new(inner: B) -> Self {
-        Self {
-            inner,
-            policy: core::marker::PhantomData,
-        }
-    }
-
+impl<B> crate::StopOnShutdown<B> {
     /// Establish a root whose shutdown request is delegated to the exact
     /// shutdown owner at the inner layer's `Here` path.
     #[must_use]
-    pub const fn coordinated(inner: B) -> GuardianRoot<B, CoordinatedShutdown> {
-        GuardianRoot {
-            inner,
-            policy: core::marker::PhantomData,
-        }
+    pub const fn coordinated(inner: B) -> CoordinatedGuardian<B> {
+        CoordinatedGuardian { inner }
     }
+}
 
+impl<B> CoordinatedGuardian<B> {
     /// Consume the boundary and return its wrapped behavior definition.
     #[must_use]
     pub fn into_inner(self) -> B {
@@ -84,7 +66,7 @@ impl<B> GuardianRoot<B, DirectShutdown> {
     }
 }
 
-impl<B: Behavior + crate::BehaviorBase, Policy> crate::BehaviorBase for GuardianRoot<B, Policy> {
+impl<B: Behavior + crate::BehaviorBase> crate::BehaviorBase for CoordinatedGuardian<B> {
     type Base = B::Base;
 
     fn base(&self) -> &Self::Base {
@@ -92,42 +74,13 @@ impl<B: Behavior + crate::BehaviorBase, Policy> crate::BehaviorBase for Guardian
     }
 }
 
-impl<B: crate::StashStatus, Policy> crate::StashStatus for GuardianRoot<B, Policy> {
+impl<B: crate::StashStatus> crate::StashStatus for CoordinatedGuardian<B> {
     fn stashed_messages(&self) -> usize {
         self.inner.stashed_messages()
     }
 }
 
-impl<B, A, Ph, Sends, Br> Behavior for GuardianRoot<B, DirectShutdown>
-where
-    A: Address,
-    Sends: SendEffects + behavior::SendsFor<B::Event>,
-    Br: BirthMode,
-    B: Behavior<Ph = Ph, Sends = Sends, Birth = Br>,
-    B::Protocol: crate::Protocol<Addr = A>,
-{
-    type Protocol = B::Protocol;
-    type Event = ShutdownEvent<B::Event>;
-    type Sends = SendLayer<NoSends, Sends>;
-    type Ph = Ph;
-    type Error = B::Error;
-    type Birth = Br;
-
-    fn init(&mut self, _: crate::InitializationTurn) -> BehaviorActed<Self> {
-        behavior::initialize(&mut self.inner)
-            .map(|actions| actions.map_sends(|inner| SendLayer::new(NoSends, inner)))
-    }
-
-    fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
-        match event {
-            EventLayer::Inner(event) => behavior::delegate_transition(&mut self.inner, event)
-                .map(|actions| actions.map_sends(|inner| SendLayer::new(NoSends, inner))),
-            EventLayer::Owned(ShutdownRequested) => Ok(Actions::stop()),
-        }
-    }
-}
-
-impl<B, A, Ph, Sends, Br> Behavior for GuardianRoot<B, CoordinatedShutdown>
+impl<B, A, Ph, Sends, Br> Behavior for CoordinatedGuardian<B>
 where
     A: Address,
     Sends: SendEffects + behavior::SendsFor<B::Event>,
@@ -163,7 +116,7 @@ mod tests {
     use super::*;
     use crate::Activate as _;
     use crate::{Crash, Exit, PeerStopped};
-    use behavior::{Births, Create, InterpreterRequests, MailAddr, Never, Step, User};
+    use behavior::{Actions, Births, Create, InterpreterRequests, MailAddr, Never, Step, User};
 
     struct Application;
 
@@ -223,19 +176,11 @@ mod tests {
         assert!(matches!(stopped.become_, Step::Stop(_)));
     }
 
-    #[allow(
-        clippy::unnecessary_wraps,
-        reason = "finalization preserves the wrapped behavior's fallible signature"
-    )]
     fn finalize_application(
         _: &mut Application,
         _: ShutdownRequested,
-    ) -> BehaviorActed<Application> {
-        Ok(Actions::new(
-            vec![9],
-            vec![Create::birth(8, ())],
-            Step::Continue,
-        ))
+    ) -> Actions<MailAddr, Never, Vec<u8>, Births<()>> {
+        Actions::new(vec![9], vec![Create::birth(8, ())], Step::Continue)
     }
 
     #[test]
@@ -255,28 +200,20 @@ mod tests {
         assert!(matches!(finalized.become_, Step::Stop(_)));
     }
 
-    #[allow(
-        clippy::unnecessary_wraps,
-        reason = "watch reactions have the wrapped behavior's fallible signature"
-    )]
     fn continue_after_stop(
         _: &mut Application,
         _: MailAddr,
         _: &Result<Exit<MailAddr>, Crash>,
-    ) -> Result<behavior::Become, Never> {
-        Ok(Step::Continue)
+    ) -> behavior::Become {
+        Step::Continue
     }
 
-    #[allow(
-        clippy::unnecessary_wraps,
-        reason = "watch reactions have the wrapped behavior's fallible signature"
-    )]
     fn continue_guardian_after_stop(
         _: &mut Guardian<Application>,
         _: MailAddr,
         _: &Result<Exit<MailAddr>, Crash>,
-    ) -> Result<behavior::Become, Never> {
-        Ok(Step::Continue)
+    ) -> behavior::Become {
+        Step::Continue
     }
 
     #[test]

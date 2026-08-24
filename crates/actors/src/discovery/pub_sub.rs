@@ -40,19 +40,23 @@ pub enum PubSubMessage<K, P, D: Protocol> {
 }
 
 /// Typed keyed-publication rejection.
-#[derive(Debug, Error, PartialEq, Eq)]
-pub enum PubSubError<K, P> {
+#[derive(Error, PartialEq, Eq)]
+pub enum PubSubError<K, P, D: Protocol> {
     /// Unsubscription named an unknown topic.
     #[error("pub-sub topic is unknown")]
     UnknownTopic {
         /// Rejected topic.
         topic: K,
+        /// Exact subscriber from the rejected command.
+        subscriber: Recipient<D>,
     },
     /// Recipient is not subscribed to the named topic.
     #[error("recipient is not subscribed to the pub-sub topic")]
     NotSubscribed {
         /// Rejected topic.
         topic: K,
+        /// Exact subscriber from the rejected command.
+        subscriber: Recipient<D>,
     },
     /// Publication had no recipients; ownership is returned.
     #[error("pub-sub topic has no subscribers")]
@@ -62,6 +66,30 @@ pub enum PubSubError<K, P> {
         /// Undelivered owned publication.
         value: P,
     },
+}
+
+impl<K: core::fmt::Debug, P: core::fmt::Debug, D: Protocol> core::fmt::Debug
+    for PubSubError<K, P, D>
+{
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::UnknownTopic { topic, .. } => formatter
+                .debug_struct("UnknownTopic")
+                .field("topic", topic)
+                .field("subscriber", &"<typed recipient>")
+                .finish(),
+            Self::NotSubscribed { topic, .. } => formatter
+                .debug_struct("NotSubscribed")
+                .field("topic", topic)
+                .field("subscriber", &"<typed recipient>")
+                .finish(),
+            Self::NoSubscribers { topic, value } => formatter
+                .debug_struct("NoSubscribers")
+                .field("topic", topic)
+                .field("value", value)
+                .finish(),
+        }
+    }
 }
 
 /// Deterministic keyed typed publish/subscribe behavior.
@@ -116,16 +144,20 @@ where
         }
     }
 
-    fn unsubscribe(&mut self, topic: K, subscriber: Recipient<D>) -> Result<(), PubSubError<K, P>> {
+    fn unsubscribe(
+        &mut self,
+        topic: K,
+        subscriber: Recipient<D>,
+    ) -> Result<(), PubSubError<K, P, D>> {
         let Some(membership) = self.topics.iter_mut().find(|entry| entry.topic == topic) else {
-            return Err(PubSubError::UnknownTopic { topic });
+            return Err(PubSubError::UnknownTopic { topic, subscriber });
         };
         let Some(index) = membership
             .subscribers
             .iter()
             .position(|member| *member == subscriber)
         else {
-            return Err(PubSubError::NotSubscribed { topic });
+            return Err(PubSubError::NotSubscribed { topic, subscriber });
         };
         membership.subscribers.remove(index);
         Ok(())
@@ -178,7 +210,7 @@ where
     type Event = User<A, crate::BehaviorMessage<Self>>;
     type Sends = Vec<Delivery<D>>;
     type Ph = Never;
-    type Error = PubSubError<K, P>;
+    type Error = PubSubError<K, P, D>;
     type Birth = NoBirths;
     fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
         match event.message {

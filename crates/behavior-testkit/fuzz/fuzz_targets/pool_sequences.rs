@@ -5,8 +5,9 @@ use std::time::Duration;
 use behavior::{
     Actions, Activate, Behavior, CreationKind, InterruptionPolicy, JobId, KeyedPoolMessage,
     KeyedWorkerPool, KeyedWorkerPoolProtocol, MailAddr, Never, NoBirths, PoolAssignment,
-    PoolMessage, PoolResponse, Recipient, RestartPolicy, User, WorkerCreationResolved, WorkerPhase,
-    WorkerPool, WorkerPoolProtocol, WorkerStopped,
+    PoolError, PoolFailure, PoolMessage, PoolResponse, RebalanceRejection, Recipient,
+    RestartPolicy, User, WorkerCreationResolved, WorkerPhase, WorkerPool, WorkerPoolProtocol,
+    WorkerStopped,
 };
 use libfuzzer_sys::fuzz_target;
 use std::time::Instant;
@@ -117,6 +118,8 @@ fuzz_target!(|bytes: &[u8]| {
     }
 
     let mut next_job = 0_u64;
+    let mut incarnations = [0_u64; 2];
+    let mut next_incarnations = [1_u64; 2];
     for byte in bytes.iter().copied().take(512) {
         let slot = u64::from((byte >> 2) & 1);
         match byte & 3 {
@@ -150,22 +153,34 @@ fuzz_target!(|bytes: &[u8]| {
                     pool.worker_phase(slot),
                     Some(WorkerPhase::Idle | WorkerPhase::Assigned { .. })
                 ) {
-                    let actions = pool
-                        .on_path(WorkerStopped::new(
-                            slot,
-                            0,
-                            Err(behavior::Crash::Panicked),
-                            Instant::now(),
-                        ))
-                        .unwrap();
+                    let position = usize::try_from(slot).unwrap();
+                    let stopped = WorkerStopped::new(
+                        slot,
+                        incarnations[position],
+                        Err(behavior::Crash::Panicked),
+                        Instant::now(),
+                    );
+                    let actions = pool.on_path(stopped.clone()).unwrap();
                     if !actions.sends.owned.replacement_commands.is_empty() {
+                        let replacement = next_incarnations[position];
                         pool.on_path(WorkerCreationResolved::new(
                             slot,
-                            1,
-                            CreationKind::replacement_of(0),
+                            replacement,
+                            CreationKind::replacement_of(incarnations[position]),
                             Ok(()),
                         ))
                         .unwrap();
+                        incarnations[position] = replacement;
+                        next_incarnations[position] = replacement.checked_add(1).unwrap();
+                        if byte & 0x80 != 0 {
+                            let duplicate = pool.on_path(stopped.clone());
+                            assert!(matches!(
+                                duplicate,
+                                Err(PoolFailure::Infrastructure(
+                                    PoolError::UnexpectedWorkerStopped(returned)
+                                )) if returned == stopped
+                            ));
+                        }
                     }
                 }
             }
@@ -215,13 +230,33 @@ fuzz_target!(|bytes: &[u8]| {
                     .unwrap();
             }
             1 => {
-                let _ = keyed.receive(
+                let key = byte >> 2;
+                let worker = u64::from((byte >> 1) & 1);
+                match keyed.receive(
                     MailAddr(9),
-                    KeyedPoolMessage::Rebalance {
-                        key: byte >> 2,
-                        worker: u64::from((byte >> 1) & 1),
-                    },
-                );
+                    KeyedPoolMessage::Rebalance { key, worker },
+                ) {
+                    Ok(_) => {}
+                    Err(PoolFailure::Rebalance(
+                        RebalanceRejection::UnknownWorker {
+                            key: returned_key,
+                            worker: returned_worker,
+                        }
+                        | RebalanceRejection::RetiredWorker {
+                            key: returned_key,
+                            worker: returned_worker,
+                            ..
+                        }
+                        | RebalanceRejection::ShuttingDown {
+                            key: returned_key,
+                            worker: returned_worker,
+                        },
+                    )) => {
+                        assert_eq!(returned_key, key);
+                        assert_eq!(returned_worker, worker);
+                    }
+                    Err(other) => panic!("rebalance produced the wrong rejection: {other:?}"),
+                }
             }
             2 => {
                 let slot = u64::from((byte >> 1) & 1);
@@ -246,14 +281,13 @@ fuzz_target!(|bytes: &[u8]| {
                     Some(WorkerPhase::Idle | WorkerPhase::Assigned { .. })
                 ) {
                     let stopped = incarnations[slot];
-                    let actions = keyed
-                        .on_path(WorkerStopped::new(
-                            nonce,
-                            stopped,
-                            Err(behavior::Crash::Panicked),
-                            Instant::now(),
-                        ))
-                        .unwrap();
+                    let stopped_fact = WorkerStopped::new(
+                        nonce,
+                        stopped,
+                        Err(behavior::Crash::Panicked),
+                        Instant::now(),
+                    );
+                    let actions = keyed.on_path(stopped_fact.clone()).unwrap();
                     if !actions.sends.owned.replacement_commands.is_empty() {
                         let replacement = stopped.wrapping_add(2);
                         let result = if byte & 0x80 == 0 {
@@ -271,6 +305,15 @@ fuzz_target!(|bytes: &[u8]| {
                             .unwrap();
                         if result.is_ok() {
                             incarnations[slot] = replacement;
+                            if byte & 0x40 != 0 {
+                                let duplicate = keyed.on_path(stopped_fact.clone());
+                                assert!(matches!(
+                                    duplicate,
+                                    Err(PoolFailure::Infrastructure(
+                                        PoolError::UnexpectedWorkerStopped(returned)
+                                    )) if returned == stopped_fact
+                                ));
+                            }
                         }
                     }
                 }

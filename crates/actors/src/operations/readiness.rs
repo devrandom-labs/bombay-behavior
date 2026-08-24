@@ -89,6 +89,10 @@ pub enum ReadinessError<K> {
     UnknownDependency {
         /// Rejected dependency.
         dependency: K,
+        /// Rejected evidence version.
+        observed: ObservationVersion,
+        /// Exact rejected classification.
+        status: ReadinessStatus,
     },
     /// Evidence predates the latest committed version.
     #[error("readiness evidence is stale")]
@@ -99,6 +103,8 @@ pub enum ReadinessError<K> {
         observed: ObservationVersion,
         /// Latest committed version.
         current: ObservationVersion,
+        /// Exact rejected classification.
+        status: ReadinessStatus,
     },
     /// Evidence reuses one version with a different classification.
     #[error("readiness evidence conflicts at the committed version")]
@@ -107,6 +113,8 @@ pub enum ReadinessError<K> {
         dependency: K,
         /// Reused version.
         version: ObservationVersion,
+        /// Exact rejected classification.
+        status: ReadinessStatus,
     },
 }
 
@@ -177,7 +185,11 @@ where
             .iter_mut()
             .find(|state| state.dependency == dependency)
         else {
-            return Err(ReadinessError::UnknownDependency { dependency });
+            return Err(ReadinessError::UnknownDependency {
+                dependency,
+                observed: version,
+                status,
+            });
         };
         let ReadinessEvidence::Observed {
             version: committed,
@@ -192,6 +204,7 @@ where
                 dependency,
                 observed: version,
                 current: committed,
+                status,
             });
         }
         if version == committed {
@@ -201,6 +214,7 @@ where
             return Err(ReadinessError::ConflictingVersion {
                 dependency,
                 version,
+                status,
             });
         }
         current.evidence = ReadinessEvidence::Observed { version, status };
@@ -310,7 +324,7 @@ mod tests {
                 .unwrap()
         };
         assert!(!query(&mut subject).sends[0].message.ready());
-        let _ = subject
+        let observed = subject
             .receive(
                 MailAddr(9),
                 ReadinessMessage::Observe {
@@ -320,8 +334,11 @@ mod tests {
                 },
             )
             .unwrap();
+        assert!(observed.sends.is_empty());
+        assert!(observed.creates.is_empty());
+        assert_eq!(observed.become_, behavior::Step::Continue);
         assert!(!query(&mut subject).sends[0].message.ready());
-        let _ = subject
+        let observed = subject
             .receive(
                 MailAddr(9),
                 ReadinessMessage::Observe {
@@ -331,13 +348,16 @@ mod tests {
                 },
             )
             .unwrap();
+        assert!(observed.sends.is_empty());
+        assert!(observed.creates.is_empty());
+        assert_eq!(observed.become_, behavior::Step::Continue);
         assert!(query(&mut subject).sends[0].message.ready());
     }
 
     #[test]
     fn stale_conflicting_and_unknown_evidence_are_atomic() {
         let mut subject = (Subject::new([1])).initialize().unwrap().behavior;
-        let _ = subject
+        let observed = subject
             .receive(
                 MailAddr(9),
                 ReadinessMessage::Observe {
@@ -347,6 +367,9 @@ mod tests {
                 },
             )
             .unwrap();
+        assert!(observed.sends.is_empty());
+        assert!(observed.creates.is_empty());
+        assert_eq!(observed.become_, behavior::Step::Continue);
         assert!(matches!(
             subject.receive(
                 MailAddr(9),
@@ -378,7 +401,11 @@ mod tests {
                     status: ReadinessStatus::Ready
                 }
             ),
-            Err(ReadinessError::UnknownDependency { dependency: 9 })
+            Err(ReadinessError::UnknownDependency {
+                dependency: 9,
+                observed: ObservationVersion(1),
+                status: ReadinessStatus::Ready,
+            })
         ));
         assert!(matches!(
             subject.dependencies()[0].evidence,

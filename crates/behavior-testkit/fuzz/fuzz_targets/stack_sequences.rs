@@ -9,9 +9,10 @@
 //! product lane and never leak across.
 
 use behavior::{
-    Acted, Actions, Activate, Crash, Create, Delivery, MailAddr, Never, PeerStopped, Recipient,
-    RestartPolicy, StashRoute, Step, Strategy, SupervisionEvent, TimerElapsed, TimerGeneration,
-    TimerId, UserEvent, WorkerStopped, stop_on_abnormal_death,
+    Acted, Actions, Activate, Crash, Create, CreationKind, Delivery, MailAddr, Never, PeerStopped,
+    Recipient, RestartPolicy, StashRoute, Step, Strategy, SupervisionEvent, TimerElapsed,
+    TimerGeneration, TimerId, UserEvent, WorkerCreationResolved, WorkerStopped,
+    stop_on_abnormal_death,
 };
 use behavior::EventLayer;
 use libfuzzer_sys::fuzz_target;
@@ -95,7 +96,7 @@ fuzz_target!(|bytes: &[u8]| {
                 ),
                 behavior::TimerId(0),
                 Some(due),
-                |_| Ok(Step::Continue),
+                |_| Step::Continue,
             ),
             behavior::ChildTopology::new(
                 (0..2).map(|index| u64::try_from(index).unwrap()),
@@ -111,6 +112,8 @@ fuzz_target!(|bytes: &[u8]| {
         let initialized = behavior.initialize().unwrap();
         let mut behavior = initialized.behavior;
         let base = Instant::now();
+        let mut workers = [0_u64, 1];
+        let mut next_worker = 2_u64;
 
         for (index, byte) in bytes.iter().copied().enumerate() {
             let actions = match byte % 4 {
@@ -176,10 +179,12 @@ fuzz_target!(|bytes: &[u8]| {
                 _ => {
                     // Child lane: exactly one replacement to the dead slot.
                     let nonce = u64::from(byte % 2);
+                    let position = usize::try_from(nonce).unwrap();
+                    let worker = workers[position];
                     let actions = behavior
                         .transition(SupervisionEvent::WorkerStopped(WorkerStopped {
                             proxy: nonce,
-                            worker: nonce,
+                            worker,
                             outcome: Err(Crash::Failed),
                             at: base
                                 + std::time::Duration::from_nanos(u64::try_from(index).unwrap()),
@@ -200,10 +205,26 @@ fuzz_target!(|bytes: &[u8]| {
                         "child event leaked into the echo lane at byte {index}"
                     );
                     assert_eq!(actions.become_, Step::Continue);
+                    let replacement = next_worker;
+                    next_worker = next_worker.checked_add(1).unwrap();
+                    let resolved = behavior
+                        .transition(SupervisionEvent::WorkerCreationResolved(
+                            WorkerCreationResolved::new(
+                                nonce,
+                                replacement,
+                                CreationKind::replacement_of(worker),
+                                Ok(()),
+                            ),
+                        ))
+                        .unwrap();
+                    assert!(resolved.sends.owned.replacement_commands.is_empty());
+                    assert!(resolved.sends.inner.inner.inner.is_empty());
+                    assert_eq!(resolved.become_, Step::Continue);
+                    workers[position] = replacement;
                     actions
                 }
             };
-            let _ = actions;
+            drop(actions);
         }
     });
 });

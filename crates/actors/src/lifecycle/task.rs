@@ -50,19 +50,19 @@ pub enum TaskMessage<R, Route> {
 /// Rejected terminal transition when a test or nonconforming interpreter
 /// invokes a task after its stopping action.
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
-pub enum TaskError<R> {
+pub enum TaskError<R, Route> {
     /// A second result followed successful completion; ownership is returned.
     #[error("task result arrived after completion")]
-    ResultAfterCompletion(R),
+    ResultAfterCompletion { result: R, reply_to: Route },
     /// A result followed cancellation; ownership is returned.
     #[error("task result arrived after cancellation")]
-    ResultAfterCancellation(R),
+    ResultAfterCancellation { result: R, reply_to: Route },
     /// Cancellation followed successful completion.
     #[error("task cancellation arrived after completion")]
-    CancellationAfterCompletion,
+    CancellationAfterCompletion { reply_to: Route },
     /// Cancellation was repeated.
     #[error("task cancellation arrived after cancellation")]
-    CancellationAfterCancellation,
+    CancellationAfterCancellation { reply_to: Route },
 }
 
 /// One-result terminal behavior template.
@@ -155,7 +155,7 @@ where
     type Event = User<A, crate::BehaviorMessage<Self>>;
     type Sends = Route::Sends;
     type Ph = Never;
-    type Error = TaskError<R>;
+    type Error = TaskError<R, Route>;
     type Birth = NoBirths;
 
     fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
@@ -176,17 +176,17 @@ where
                     Step::Stop(behavior::Stopped),
                 ))
             }
-            (TaskState::Completed, TaskMessage::Complete { result, .. }) => {
-                Err(TaskError::ResultAfterCompletion(result))
+            (TaskState::Completed, TaskMessage::Complete { result, reply_to }) => {
+                Err(TaskError::ResultAfterCompletion { result, reply_to })
             }
-            (TaskState::Cancelled, TaskMessage::Complete { result, .. }) => {
-                Err(TaskError::ResultAfterCancellation(result))
+            (TaskState::Cancelled, TaskMessage::Complete { result, reply_to }) => {
+                Err(TaskError::ResultAfterCancellation { result, reply_to })
             }
-            (TaskState::Completed, TaskMessage::Cancel { .. }) => {
-                Err(TaskError::CancellationAfterCompletion)
+            (TaskState::Completed, TaskMessage::Cancel { reply_to }) => {
+                Err(TaskError::CancellationAfterCompletion { reply_to })
             }
-            (TaskState::Cancelled, TaskMessage::Cancel { .. }) => {
-                Err(TaskError::CancellationAfterCancellation)
+            (TaskState::Cancelled, TaskMessage::Cancel { reply_to }) => {
+                Err(TaskError::CancellationAfterCancellation { reply_to })
             }
         }
     }
@@ -245,7 +245,7 @@ mod tests {
                     reply_to: reply,
                 },
             ),
-            Err(TaskError::ResultAfterCompletion(8))
+            Err(TaskError::ResultAfterCompletion { result: 8, reply_to }) if reply_to == reply
         ));
     }
 
@@ -267,7 +267,7 @@ mod tests {
                     reply_to: reply,
                 },
             ),
-            Err(TaskError::ResultAfterCancellation(9))
+            Err(TaskError::ResultAfterCancellation { result: 9, reply_to }) if reply_to == reply
         ));
     }
 }

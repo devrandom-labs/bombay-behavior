@@ -14,16 +14,29 @@ use behavior::{
 
 pub type ReceiveTimeoutEvent<E> = TimedEvent<E>;
 
+/// Infallible fold invoked for the accepted inactivity generation.
+///
+/// ```compile_fail,E0308
+/// # use std::time::Duration;
+/// # use behavior::{Actions, Behavior, MailAddr, Never, NoBirths, User};
+/// # use behavior_actors::{ReceiveTimeout, TimerId};
+/// # struct App;
+/// # impl behavior::Protocol for App { type Addr = MailAddr; type Msg = (); }
+/// # impl Behavior for App {
+/// #   type Protocol = Self; type Event = User<MailAddr, ()>; type Sends = Vec<Never>;
+/// #   type Ph = Never; type Error = Never; type Birth = NoBirths;
+/// #   fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> behavior::BehaviorActed<Self> { Ok(Actions::cont()) }
+/// # }
+/// fn fallible(_: &mut App) -> behavior::BehaviorActed<App> { Ok(Actions::cont()) }
+/// let _ = ReceiveTimeout::new(App, TimerId(1), Duration::from_secs(1), fallible);
+/// ```
 pub type ReceiveTimeoutReaction<B> = fn(
     &mut B,
-) -> Result<
-    Actions<
-        crate::BehaviorAddr<B>,
-        <B as Behavior>::Ph,
-        <B as Behavior>::Sends,
-        <B as Behavior>::Birth,
-    >,
-    <B as Behavior>::Error,
+) -> Actions<
+    crate::BehaviorAddr<B>,
+    <B as Behavior>::Ph,
+    <B as Behavior>::Sends,
+    <B as Behavior>::Birth,
 >;
 
 pub(crate) type ReceiveTimeoutActions<B> = Actions<
@@ -37,9 +50,10 @@ pub(crate) type ReceiveTimeoutActions<B> = Actions<
 ///
 /// Only successful user communications are activity. Timer, peer, child,
 /// worker, and shutdown interpreter events compose through this wrapper but never
-/// rearm it. A matching timeout consumes the live generation before invoking
-/// the reaction; if that reaction continues, the timeout remains unarmed until
-/// another successful continuing user communication.
+/// rearm it. A matching timeout invokes the infallible reaction and consumes
+/// the live generation. If that reaction continues, the timeout remains
+/// unarmed until another successful continuing user communication. Ordinary
+/// delegated transitions retain the wrapped error type.
 pub struct ReceiveTimeout<B: Behavior> {
     inner: B,
     id: TimerId,
@@ -144,7 +158,7 @@ where
             EventLayer::Owned(elapsed)
                 if elapsed.id == self.id && self.timer.accept(elapsed.generation) =>
             {
-                let actions = (self.on_elapsed)(&mut self.inner)?;
+                let actions = (self.on_elapsed)(&mut self.inner);
                 Ok(Self::wrap(actions, InterpreterRequests::empty()))
             }
             EventLayer::Owned(_) => Ok(Actions::cont()),
@@ -175,7 +189,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Acted, MailAddr, Never, NoBirths, TimerGeneration, User};
+    use crate::{MailAddr, Never, NoBirths, TimerGeneration, User};
 
     struct Count(u8);
 
@@ -212,12 +226,8 @@ mod tests {
         }
     }
 
-    #[allow(
-        clippy::unnecessary_wraps,
-        reason = "the reaction fixture must implement the fallible reaction signature"
-    )]
-    fn elapsed(_inner: &mut CountBehavior) -> Acted<MailAddr, Never, Vec<Never>, NoBirths, Never> {
-        Ok(Actions::cont())
+    fn elapsed(_inner: &mut CountBehavior) -> Actions<MailAddr, Never, Vec<Never>, NoBirths> {
+        Actions::cont()
     }
 
     #[tokio::test]

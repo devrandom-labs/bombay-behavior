@@ -42,6 +42,8 @@ pub enum SequencerOutcome<T> {
     },
     /// The position precedes the current expected position.
     Stale {
+        /// Rejected sequence position.
+        sequence: Sequence,
         /// Rejected value, returned without cloning or loss.
         value: T,
         /// Current expected position.
@@ -56,6 +58,8 @@ pub enum SequencerOutcome<T> {
     },
     /// The sequence domain has no representable successor.
     Exhausted {
+        /// Rejected sequence position.
+        sequence: Sequence,
         /// Rejected value.
         value: T,
     },
@@ -196,13 +200,17 @@ where
         let Some(expected) = self.expected else {
             return Ok(Self::actions(
                 Vec::new(),
-                reply_to.deliver(SequencerOutcome::Exhausted { value }),
+                reply_to.deliver(SequencerOutcome::Exhausted { sequence, value }),
             ));
         };
         if sequence < expected {
             return Ok(Self::actions(
                 Vec::new(),
-                reply_to.deliver(SequencerOutcome::Stale { value, expected }),
+                reply_to.deliver(SequencerOutcome::Stale {
+                    sequence,
+                    value,
+                    expected,
+                }),
             ));
         }
         if self.pending.contains_key(&sequence) {
@@ -330,7 +338,13 @@ mod tests {
     #[test]
     fn stale_and_duplicate_offers_return_the_rejected_value() {
         let mut subject = (Subject::new(Sequence(1))).initialize().unwrap().behavior;
-        let _ = offer(&mut subject, 2, 20);
+        assert!(matches!(
+            offer(&mut subject, 2, 20).sends.outcomes[0].message,
+            SequencerOutcome::Accepted {
+                released: 0,
+                buffered: 1
+            }
+        ));
         let duplicate = offer(&mut subject, 2, 21);
         assert!(matches!(
             duplicate.sends.outcomes[0].message,
@@ -339,11 +353,18 @@ mod tests {
                 sequence: Sequence(2)
             }
         ));
-        let _ = offer(&mut subject, 1, 10);
+        assert!(matches!(
+            offer(&mut subject, 1, 10).sends.outcomes[0].message,
+            SequencerOutcome::Accepted {
+                released: 2,
+                buffered: 0
+            }
+        ));
         let stale = offer(&mut subject, 1, 11);
         assert!(matches!(
             stale.sends.outcomes[0].message,
             SequencerOutcome::Stale {
+                sequence: Sequence(1),
                 value: 11,
                 expected: Sequence(3)
             }
@@ -363,7 +384,10 @@ mod tests {
         let rejected = offer(&mut subject, u64::MAX, 2);
         assert!(matches!(
             rejected.sends.outcomes[0].message,
-            SequencerOutcome::Exhausted { value: 2 }
+            SequencerOutcome::Exhausted {
+                sequence: Sequence(u64::MAX),
+                value: 2,
+            }
         ));
     }
 }

@@ -14,8 +14,30 @@ use behavior::{
 /// Complete event sum accepted by [`Periodic`].
 pub type PeriodicEvent<E> = TimedEvent<E>;
 
-/// Pure fold invoked for each accepted periodic generation.
-pub type PeriodicReaction<B> = fn(&mut B) -> BehaviorActed<B>;
+/// Infallible fold invoked for each accepted periodic generation.
+///
+/// ```compile_fail,E0308
+/// # use std::time::Duration;
+/// # use behavior::{Actions, Behavior, MailAddr, Never, NoBirths, User};
+/// # use behavior_actors::{Periodic, TimerId};
+/// # struct App;
+/// # impl behavior::Protocol for App { type Addr = MailAddr; type Msg = (); }
+/// # impl Behavior for App {
+/// #   type Protocol = Self; type Event = User<MailAddr, ()>; type Sends = Vec<Never>;
+/// #   type Ph = Never; type Error = Never; type Birth = NoBirths;
+/// #   fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> behavior::BehaviorActed<Self> { Ok(Actions::cont()) }
+/// # }
+/// fn fallible(_: &mut App) -> behavior::BehaviorActed<App> { Ok(Actions::cont()) }
+/// let _ = Periodic::new(App, TimerId(1), Duration::from_secs(1), fallible);
+/// ```
+pub type PeriodicReaction<B> = fn(
+    &mut B,
+) -> Actions<
+    crate::BehaviorAddr<B>,
+    <B as Behavior>::Ph,
+    <B as Behavior>::Sends,
+    <B as Behavior>::Birth,
+>;
 
 /// Repeatedly notify a wrapped behavior at a relative interval.
 ///
@@ -23,10 +45,11 @@ pub type PeriodicReaction<B> = fn(&mut B) -> BehaviorActed<B>;
 /// matching timer event is consumed once, folds `on_elapsed`, and—only when
 /// that fold continues—appends the next generation. Stale, duplicate, and
 /// wrong-ID observations are inert unless the inner protocol accepts them.
-/// Errors consume the delivered generation and emit no replacement schedule;
-/// termination also emits no replacement. Generation exhaustion leaves the
+/// Termination emits no replacement. Generation exhaustion leaves the
 /// timer retired while preserving the inner continuation. These are Bombay
 /// policies; clock access and sleeping remain `bombay-timers` capabilities.
+/// Reactions are infallible because they receive mutable access to the wrapped
+/// behavior; ordinary delegated transitions retain the wrapped error type.
 pub struct Periodic<B: Behavior> {
     inner: B,
     id: TimerId,
@@ -123,7 +146,7 @@ where
             EventLayer::Owned(elapsed)
                 if elapsed.id == self.id && self.lease.accept(elapsed.generation) =>
             {
-                let actions = (self.on_elapsed)(&mut self.inner)?;
+                let actions = (self.on_elapsed)(&mut self.inner);
                 Ok(self.wrap_and_rearm(actions))
             }
             EventLayer::Owned(_) => Ok(Actions::cont()),
@@ -172,17 +195,13 @@ mod tests {
         }
     }
 
-    #[allow(
-        clippy::unnecessary_wraps,
-        reason = "reaction type is deliberately fallible"
-    )]
-    fn tick(probe: &mut Probe) -> BehaviorActed<Probe> {
+    fn tick(probe: &mut Probe) -> Actions<MailAddr, Never, Vec<Never>, NoBirths> {
         probe.0 += 1;
-        Ok(if probe.0 == 2 {
+        if probe.0 == 2 {
             Actions::stop()
         } else {
             Actions::cont()
-        })
+        }
     }
 
     #[test]

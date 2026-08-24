@@ -15,7 +15,7 @@ use crate::{
     RestartConfiguration, RestartPolicy, SendEffects, SendInput, SendLayer, Strategy,
     SupervisionEvent, SupervisorSends, User, WorkerCreationResolved, WorkerStopped,
 };
-use behavior::{ChildRoute, Here};
+use behavior::ChildRoute;
 
 /// Caller-chosen identity used to correlate pool responses.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -254,50 +254,147 @@ where
 }
 
 /// Typed rejection of an event that cannot apply to the current pool state.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
-pub enum PoolError<N> {
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum PoolError<A: Address> {
     #[error("the event names an unknown worker")]
-    UnknownWorker(N),
+    UnknownWorker(A::Nonce),
     #[error("the worker nonce is already configured")]
-    DuplicateWorker(N),
+    DuplicateWorker(A::Nonce),
     #[error("a pool-owned sequence is exhausted")]
     SequenceExhausted,
     #[error("the worker factory rejected a configured index")]
     WorkerFactoryIndex { index: usize },
-    #[error("a completion targeted a worker that cannot complete work")]
-    CompletionForUnavailableWorker { worker: N, phase: WorkerPhase },
-    #[error("the completion carries a stale assignment identifier")]
-    StaleCompletion {
-        worker: N,
-        expected: AssignmentId,
-        received: AssignmentId,
-    },
     #[error("a stop observation targeted an unavailable worker")]
-    WorkerStoppedWhileUnavailable { worker: N, phase: WorkerPhase },
-    #[error("a creation result targeted a worker that is not installing")]
-    CreationResolvedWhileUnavailable { worker: N, phase: WorkerPhase },
-    #[error("an affinity rebalance targeted a retired worker")]
-    RebalanceToRetiredWorker { worker: N, reason: WorkerRetirement },
-    #[error("the pool is draining its owned worker proxies")]
-    ShuttingDown,
-    #[error("owned worker proxy shutdown was rejected")]
-    ChildShutdownRejected {
-        nonce: N,
-        reason: crate::ChildShutdownRejection,
+    WorkerStoppedWhileUnavailable {
+        observed: WorkerStopped<A>,
+        phase: WorkerPhase,
     },
+    #[error("a creation result targeted a worker that is not installing")]
+    CreationResolvedWhileUnavailable {
+        observed: WorkerCreationResolved<A::Nonce>,
+        phase: WorkerPhase,
+    },
+    #[error("owned worker proxy shutdown was rejected")]
+    ChildShutdownRejected(crate::ChildShutdownRejected<A::Nonce>),
+    #[error("a creation result does not belong to a pending stable-child creation")]
+    UnexpectedCreation(crate::CreationResolved<A>),
+    #[error("a stable-child stop does not belong to the current ownership state")]
+    UnexpectedChildStopped(crate::ChildStopped<A>),
+    #[error("a worker stop does not belong to the current worker incarnation")]
+    UnexpectedWorkerStopped(crate::WorkerStopped<A>),
+    #[error("a worker creation result does not belong to a pending worker creation")]
+    UnexpectedWorkerCreation(crate::WorkerCreationResolved<A::Nonce>),
+    #[error("a child-shutdown rejection does not belong to an outstanding shutdown request")]
+    UnexpectedChildShutdownRejection(crate::ChildShutdownRejected<A::Nonce>),
     #[error("worker-proxy creation provenance did not match the pending request")]
     ProxyCreationProvenanceMismatch {
-        nonce: N,
-        expected: crate::CreationKind<N>,
-        observed: crate::CreationKind<N>,
+        expected: crate::CreationKind<A::Nonce>,
+        observed: crate::CreationResolved<A>,
     },
     #[error("worker-incarnation creation provenance did not match the pending request")]
     WorkerCreationProvenanceMismatch {
-        proxy: N,
-        worker: N,
-        expected: crate::CreationKind<N>,
-        observed: crate::CreationKind<N>,
+        expected: crate::CreationKind<A::Nonce>,
+        observed: crate::WorkerCreationResolved<A::Nonce>,
     },
+}
+
+/// Rejected worker completion preserving the exact owned result.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum CompletionRejection<N, R> {
+    #[error("a completion named an unknown worker")]
+    UnknownWorker {
+        worker: N,
+        assignment: AssignmentId,
+        result: R,
+    },
+    #[error("a completion targeted a worker that cannot complete work")]
+    WorkerUnavailable {
+        worker: N,
+        assignment: AssignmentId,
+        phase: WorkerPhase,
+        result: R,
+    },
+    #[error("the completion carries a stale assignment identifier")]
+    StaleAssignment {
+        worker: N,
+        expected: AssignmentId,
+        received: AssignmentId,
+        result: R,
+    },
+    #[error("the pool is draining its owned worker proxies")]
+    ShuttingDown {
+        worker: N,
+        assignment: AssignmentId,
+        result: R,
+    },
+}
+
+/// Rejected affinity change preserving the exact owned key.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum RebalanceRejection<N, K> {
+    #[error("an affinity rebalance named an unknown worker")]
+    UnknownWorker { key: K, worker: N },
+    #[error("an affinity rebalance targeted a retired worker")]
+    RetiredWorker {
+        key: K,
+        worker: N,
+        reason: WorkerRetirement,
+    },
+    #[error("the pool is draining its owned worker proxies")]
+    ShuttingDown { key: K, worker: N },
+}
+
+/// Complete worker-pool rejection surface.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum PoolFailure<A: Address, R, K> {
+    /// A lifecycle or ownership fact was rejected.
+    #[error(transparent)]
+    Infrastructure(#[from] PoolError<A>),
+    /// A completion command was not accepted.
+    #[error(transparent)]
+    Completion(CompletionRejection<A::Nonce, R>),
+    /// A keyed affinity change was not accepted.
+    #[error(transparent)]
+    Rebalance(RebalanceRejection<A::Nonce, K>),
+}
+
+fn widen_pool_failure<A: Address, R, K>(failure: PoolFailure<A, R, Never>) -> PoolFailure<A, R, K> {
+    match failure {
+        PoolFailure::Infrastructure(error) => PoolFailure::Infrastructure(error),
+        PoolFailure::Completion(error) => PoolFailure::Completion(error),
+        PoolFailure::Rebalance(rejection) => match rejection {
+            RebalanceRejection::UnknownWorker { key, .. }
+            | RebalanceRejection::RetiredWorker { key, .. }
+            | RebalanceRejection::ShuttingDown { key, .. } => match key {},
+        },
+    }
+}
+
+fn map_pool_ownership_error<A: Address>(error: OwnershipError<A>) -> PoolError<A> {
+    match error {
+        OwnershipError::Fleet(FleetError::UnknownChild(nonce)) => PoolError::UnknownWorker(nonce),
+        OwnershipError::Fleet(FleetError::DuplicateChild(nonce)) => {
+            PoolError::DuplicateWorker(nonce)
+        }
+        OwnershipError::Fleet(FleetError::SequenceExhausted) => PoolError::SequenceExhausted,
+        OwnershipError::FactoryIndex { index } => PoolError::WorkerFactoryIndex { index },
+        OwnershipError::ChildShutdownRejected(event) => PoolError::ChildShutdownRejected(event),
+        OwnershipError::UnexpectedCreation(event) => PoolError::UnexpectedCreation(event),
+        OwnershipError::UnexpectedChildStopped(event) => PoolError::UnexpectedChildStopped(event),
+        OwnershipError::UnexpectedWorkerStopped(event) => PoolError::UnexpectedWorkerStopped(event),
+        OwnershipError::UnexpectedWorkerCreation(event) => {
+            PoolError::UnexpectedWorkerCreation(event)
+        }
+        OwnershipError::UnexpectedChildShutdownRejection(event) => {
+            PoolError::UnexpectedChildShutdownRejection(event)
+        }
+        OwnershipError::CreationProvenanceMismatch { expected, observed } => {
+            PoolError::ProxyCreationProvenanceMismatch { expected, observed }
+        }
+        OwnershipError::WorkerCreationProvenanceMismatch { expected, observed } => {
+            PoolError::WorkerCreationProvenanceMismatch { expected, observed }
+        }
+    }
 }
 
 struct AcceptedJob<A: Address, J, Route> {
@@ -356,14 +453,12 @@ enum Admission {
     Rejected,
 }
 
-/// The pool's concrete event sum, including existing supervision facts.
-pub type PoolEvent<A, D, J, R, Route> = SupervisionEvent<User<A, PoolMessage<A, D, J, R, Route>>>;
-
 /// Complete event algebra of a shutdown-owning [`WorkerPool`].
-pub type WorkerPoolEvent<A, D, J, R, Route> = PoolEvent<A, D, J, R, Route>;
+pub type WorkerPoolEvent<A, D, J, R, Route> =
+    SupervisionEvent<User<A, PoolMessage<A, D, J, R, Route>>>;
 
 /// Concrete event sum for a [`KeyedWorkerPool`].
-pub type KeyedPoolEvent<A, D, K, J, R, Route> =
+pub type KeyedWorkerPoolEvent<A, D, K, J, R, Route> =
     SupervisionEvent<User<A, KeyedPoolMessage<A, D, K, J, R, Route>>>;
 
 /// Named pool-owned delivery lanes.
@@ -454,28 +549,14 @@ where
 
 /// Pool effects keep responses and assignments in named, independently
 /// appendable lanes within the supervised behavior send product.
-pub type PoolSends<A, C, Route, ParentPath = Here> = SendLayer<
+pub type PoolSends<A, C, Route, ParentPath> = SendLayer<
     SupervisorSends<A, C, ParentPath>,
     PoolBehaviorSends<A, C, <Route as crate::DeliveryRouteProtocol>::Sends>,
 >;
 
-/// Named effect product for a worker pool that owns orderly proxy shutdown.
-pub type WorkerPoolSends<A, C, Route, ParentPath = Here> = PoolSends<A, C, Route, ParentPath>;
-
-/// Complete action type returned by a shutdown-owning [`WorkerPool`].
-pub type WorkerPoolActions<A, C, Route, ParentPath = Here> = Actions<
-    A,
-    Never,
-    WorkerPoolSends<A, C, Route, ParentPath>,
-    Births<ProxyWithParent<C, ParentPath>>,
->;
-
-/// Complete action type returned by a [`WorkerPool`] transition.
-pub type PoolActions<A, C, Route, ParentPath = behavior::Here> =
+/// Complete action type shared by FIFO and keyed worker pools.
+pub type PoolActions<A, C, Route, ParentPath> =
     Actions<A, Never, PoolSends<A, C, Route, ParentPath>, Births<ProxyWithParent<C, ParentPath>>>;
-
-type PoolTransition<A, C, Route, ParentPath = behavior::Here> =
-    Result<PoolActions<A, C, Route, ParentPath>, PoolError<<A as Address>::Nonce>>;
 
 enum PoolOwnershipEvent<A: Address> {
     WorkerStopped(WorkerStopped<A>),
@@ -536,7 +617,7 @@ enum PoolOwnershipEvent<A: Address> {
 /// // `WrongWorker::Protocol::Msg` is not `PoolAssignment<PoolProtocol>`.
 /// let _: Option<WorkerPool<MailAddr, Reply, String, (), WrongWorker>> = None;
 /// ```
-struct PoolCore<A: Address, D, J, R, C, Route, P, ParentPath = behavior::Here>
+struct PoolCore<A: Address, D, J, R, C, Route, P, ParentPath>
 where
     D: Protocol<Addr = A, Msg = PoolResponse<J, R, A>>,
     P: crate::PoolAssignmentProtocol<Addr = A, Job = J>,
@@ -637,7 +718,7 @@ where
             .map(Slot::phase)
     }
 
-    fn slot_position(&self, worker: A::Nonce) -> Result<usize, PoolError<A::Nonce>> {
+    fn slot_position(&self, worker: A::Nonce) -> Result<usize, PoolError<A>> {
         self.slots
             .iter()
             .position(|slot| slot.nonce == worker)
@@ -659,7 +740,7 @@ where
     fn supervisor_transition(
         &mut self,
         event: PoolOwnershipEvent<A>,
-    ) -> PoolTransition<A, C, Route, ParentPath> {
+    ) -> Result<PoolActions<A, C, Route, ParentPath>, PoolError<A>> {
         let fold = match event {
             PoolOwnershipEvent::WorkerStopped(event) => self.supervisor.worker_stopped(event),
             PoolOwnershipEvent::WorkerCreationResolved(event) => {
@@ -672,39 +753,7 @@ where
                 self.supervisor.child_shutdown_rejected(event)
             }
         }
-        .map_err(|error| match error {
-            OwnershipError::Fleet(FleetError::UnknownChild(nonce)) => {
-                PoolError::UnknownWorker(nonce)
-            }
-            OwnershipError::Fleet(FleetError::DuplicateChild(nonce)) => {
-                PoolError::DuplicateWorker(nonce)
-            }
-            OwnershipError::Fleet(FleetError::SequenceExhausted) => PoolError::SequenceExhausted,
-            OwnershipError::FactoryIndex { index } => PoolError::WorkerFactoryIndex { index },
-            OwnershipError::ChildShutdownRejected { nonce, reason } => {
-                PoolError::ChildShutdownRejected { nonce, reason }
-            }
-            OwnershipError::CreationProvenanceMismatch {
-                nonce,
-                expected,
-                observed,
-            } => PoolError::ProxyCreationProvenanceMismatch {
-                nonce,
-                expected,
-                observed,
-            },
-            OwnershipError::WorkerCreationProvenanceMismatch {
-                proxy,
-                worker,
-                expected,
-                observed,
-            } => PoolError::WorkerCreationProvenanceMismatch {
-                proxy,
-                worker,
-                expected,
-                observed,
-            },
-        })?;
+        .map_err(map_pool_ownership_error)?;
         Ok(Actions::new(
             SendLayer::new(fold.actions.sends, PoolBehaviorSends::empty()),
             fold.actions.creates,
@@ -823,8 +872,14 @@ where
         assignment: AssignmentId,
         result: R,
         actions: &mut PoolActions<A, C, Route, ParentPath>,
-    ) -> Result<(), PoolError<A::Nonce>> {
-        let position = self.slot_position(worker)?;
+    ) -> Result<(), CompletionRejection<A::Nonce, R>> {
+        let Some(position) = self.slots.iter().position(|slot| slot.nonce == worker) else {
+            return Err(CompletionRejection::UnknownWorker {
+                worker,
+                assignment,
+                result,
+            });
+        };
         let previous = core::mem::replace(&mut self.slots[position].state, SlotState::Idle);
         let job = match previous {
             SlotState::Assigned {
@@ -839,10 +894,11 @@ where
                     assignment: expected,
                     job,
                 };
-                return Err(PoolError::StaleCompletion {
+                return Err(CompletionRejection::StaleAssignment {
                     worker,
                     expected,
                     received: assignment,
+                    result,
                 });
             }
             state => {
@@ -857,7 +913,12 @@ where
                     SlotState::Retired { reason } => WorkerPhase::Retired { reason: *reason },
                 };
                 self.slots[position].state = state;
-                return Err(PoolError::CompletionForUnavailableWorker { worker, phase });
+                return Err(CompletionRejection::WorkerUnavailable {
+                    worker,
+                    assignment,
+                    phase,
+                    result,
+                });
             }
         };
         actions
@@ -875,18 +936,9 @@ where
         &mut self,
         stopped: &WorkerStopped<A>,
         responses: &mut Route::Sends,
-    ) -> Result<(), PoolError<A::Nonce>> {
+    ) -> Result<(), PoolError<A>> {
+        self.validate_worker_stopped(stopped)?;
         let position = self.slot_position(stopped.proxy)?;
-        let phase = self.slots[position].phase();
-        if matches!(
-            phase,
-            WorkerPhase::Installing | WorkerPhase::Stopping | WorkerPhase::Retired { .. }
-        ) {
-            return Err(PoolError::WorkerStoppedWhileUnavailable {
-                worker: stopped.proxy,
-                phase,
-            });
-        }
         if self.interruption == InterruptionPolicy::Retry {
             // Cloning a user payload can execute arbitrary `Clone` code. Prepare it
             // before committing the slot transition so unwinding cannot leave the
@@ -927,6 +979,22 @@ where
             }));
         }
         Ok(())
+    }
+
+    fn validate_worker_stopped(&self, stopped: &WorkerStopped<A>) -> Result<(), PoolError<A>> {
+        let position = self.slot_position(stopped.proxy)?;
+        let phase = self.slots[position].phase();
+        if matches!(
+            phase,
+            WorkerPhase::Installing | WorkerPhase::Stopping | WorkerPhase::Retired { .. }
+        ) {
+            Err(PoolError::WorkerStoppedWhileUnavailable {
+                observed: stopped.clone(),
+                phase,
+            })
+        } else {
+            Ok(())
+        }
     }
 
     fn fail_backlog_if_irrecoverable(
@@ -1010,15 +1078,9 @@ where
     fn creation_resolved(
         &mut self,
         resolved: &WorkerCreationResolved<A::Nonce>,
-    ) -> Result<(), PoolError<A::Nonce>> {
+    ) -> Result<(), PoolError<A>> {
+        self.validate_creation_resolved(resolved)?;
         let position = self.slot_position(resolved.proxy)?;
-        let phase = self.slots[position].phase();
-        if !matches!(phase, WorkerPhase::Installing) {
-            return Err(PoolError::CreationResolvedWhileUnavailable {
-                worker: resolved.proxy,
-                phase,
-            });
-        }
         self.slots[position].state = match resolved.result {
             Ok(()) => SlotState::Idle,
             Err(rejection) => SlotState::Retired {
@@ -1028,10 +1090,26 @@ where
         Ok(())
     }
 
+    fn validate_creation_resolved(
+        &self,
+        resolved: &WorkerCreationResolved<A::Nonce>,
+    ) -> Result<(), PoolError<A>> {
+        let position = self.slot_position(resolved.proxy)?;
+        let phase = self.slots[position].phase();
+        if matches!(phase, WorkerPhase::Installing) {
+            Ok(())
+        } else {
+            Err(PoolError::CreationResolvedWhileUnavailable {
+                observed: *resolved,
+                phase,
+            })
+        }
+    }
+
     fn dispatch(
         &mut self,
         actions: &mut PoolActions<A, C, Route, ParentPath>,
-    ) -> Result<(), PoolError<A::Nonce>> {
+    ) -> Result<(), PoolError<A>> {
         let mut selected_jobs = Vec::new();
         let mut plan = Vec::new();
         for (slot_position, slot) in self.slots.iter().enumerate() {
@@ -1141,46 +1219,17 @@ where
     Route: DeliveryRoute<D> + Clone,
 {
     type Protocol = Self;
-    type Event = PoolEvent<A, D, J, R, Route>;
+    type Event = WorkerPoolEvent<A, D, J, R, Route>;
     type Sends = PoolSends<A, C, Route, ParentPath>;
     type Ph = Never;
-    type Error = PoolError<A::Nonce>;
+    type Error = PoolFailure<A, R, Never>;
     type Birth = Births<ProxyWithParent<C, ParentPath>>;
 
     fn init(&mut self, _: crate::InitializationTurn) -> crate::BehaviorActed<Self> {
-        let actions = self.supervisor.initialize().map_err(|error| match error {
-            OwnershipError::Fleet(FleetError::UnknownChild(nonce)) => {
-                PoolError::UnknownWorker(nonce)
-            }
-            OwnershipError::Fleet(FleetError::DuplicateChild(nonce)) => {
-                PoolError::DuplicateWorker(nonce)
-            }
-            OwnershipError::Fleet(FleetError::SequenceExhausted) => PoolError::SequenceExhausted,
-            OwnershipError::FactoryIndex { index } => PoolError::WorkerFactoryIndex { index },
-            OwnershipError::ChildShutdownRejected { nonce, reason } => {
-                PoolError::ChildShutdownRejected { nonce, reason }
-            }
-            OwnershipError::CreationProvenanceMismatch {
-                nonce,
-                expected,
-                observed,
-            } => PoolError::ProxyCreationProvenanceMismatch {
-                nonce,
-                expected,
-                observed,
-            },
-            OwnershipError::WorkerCreationProvenanceMismatch {
-                proxy,
-                worker,
-                expected,
-                observed,
-            } => PoolError::WorkerCreationProvenanceMismatch {
-                proxy,
-                worker,
-                expected,
-                observed,
-            },
-        })?;
+        let actions = self
+            .supervisor
+            .initialize()
+            .map_err(map_pool_ownership_error)?;
         Ok(Actions::new(
             SendLayer::new(actions.sends, PoolBehaviorSends::empty()),
             actions.creates,
@@ -1229,17 +1278,28 @@ where
                 ..
             }) => {
                 if self.supervisor.is_shutting_down() {
-                    return Err(PoolError::ShuttingDown);
+                    return Err(PoolFailure::Completion(CompletionRejection::ShuttingDown {
+                        worker,
+                        assignment,
+                        result,
+                    }));
                 }
                 let mut actions = Actions::cont();
-                self.complete(worker, assignment, result, &mut actions)?;
+                self.complete(worker, assignment, result, &mut actions)
+                    .map_err(PoolFailure::Completion)?;
                 self.dispatch(&mut actions)?;
                 Ok(actions)
             }
             SupervisionEvent::WorkerStopped(stopped) => {
                 if self.supervisor.is_shutting_down() {
-                    return self.supervisor_transition(PoolOwnershipEvent::WorkerStopped(stopped));
+                    return Ok(
+                        self.supervisor_transition(PoolOwnershipEvent::WorkerStopped(stopped))?
+                    );
                 }
+                self.supervisor
+                    .validate_worker_stopped(&stopped)
+                    .map_err(map_pool_ownership_error)?;
+                self.validate_worker_stopped(&stopped)?;
                 let proxy = stopped.proxy;
                 let mut responses = Route::Sends::empty();
                 self.worker_stopped(&stopped, &mut responses)?;
@@ -1264,10 +1324,14 @@ where
             }
             SupervisionEvent::WorkerCreationResolved(resolved) => {
                 if self.supervisor.is_shutting_down() {
-                    return self.supervisor_transition(PoolOwnershipEvent::WorkerCreationResolved(
-                        resolved,
-                    ));
+                    return Ok(self.supervisor_transition(
+                        PoolOwnershipEvent::WorkerCreationResolved(resolved),
+                    )?);
                 }
+                self.supervisor
+                    .validate_worker_creation_resolved(&resolved)
+                    .map_err(map_pool_ownership_error)?;
+                self.validate_creation_resolved(&resolved)?;
                 let proxy = resolved.proxy;
                 self.creation_resolved(&resolved)?;
                 let mut actions = self
@@ -1280,10 +1344,10 @@ where
                 Ok(actions)
             }
             SupervisionEvent::ChildStopped(stopped) => {
-                self.supervisor_transition(PoolOwnershipEvent::ChildStopped(stopped))
+                Ok(self.supervisor_transition(PoolOwnershipEvent::ChildStopped(stopped))?)
             }
             SupervisionEvent::CreationResolved(resolved) => {
-                self.supervisor_transition(PoolOwnershipEvent::CreationResolved(resolved))
+                Ok(self.supervisor_transition(PoolOwnershipEvent::CreationResolved(resolved))?)
             }
             SupervisionEvent::ShutdownRequested(_) => {
                 let responses = self.interrupt_all_for_shutdown();
@@ -1293,7 +1357,8 @@ where
                 Ok(actions)
             }
             SupervisionEvent::ChildShutdownRejected(rejected) => {
-                self.supervisor_transition(PoolOwnershipEvent::ChildShutdownRejected(rejected))
+                Ok(self
+                    .supervisor_transition(PoolOwnershipEvent::ChildShutdownRejected(rejected))?)
             }
         }
     }
@@ -1417,9 +1482,9 @@ where
 {
     type Protocol = crate::WorkerPoolProtocol<A, D, J, R, Route>;
     type Event = WorkerPoolEvent<A, D, J, R, Route>;
-    type Sends = WorkerPoolSends<A, C, Route, ParentPath>;
+    type Sends = PoolSends<A, C, Route, ParentPath>;
     type Ph = Never;
-    type Error = PoolError<A::Nonce>;
+    type Error = PoolFailure<A, R, Never>;
     type Birth = Births<ProxyWithParent<C, ParentPath>>;
 
     fn init(&mut self, turn: crate::InitializationTurn) -> crate::BehaviorActed<Self> {
@@ -1593,7 +1658,8 @@ mod tests {
         pool.slots[0].state = SlotState::Idle;
         pool.slots[1].state = SlotState::Idle;
 
-        let mut actions: PoolActions<MailAddr, TestWorker, Recipient<TestReply>> = Actions::cont();
+        let mut actions: PoolActions<MailAddr, TestWorker, Recipient<TestReply>, behavior::Here> =
+            Actions::cont();
         pool.dispatch(&mut actions).unwrap();
 
         let assignments = &actions.sends.inner.assignments;
@@ -1770,10 +1836,20 @@ where
         self.pool.worker_phase(worker)
     }
 
-    fn rebalance(&mut self, key: K, worker: A::Nonce) -> Result<(), PoolError<A::Nonce>> {
-        let position = self.pool.slot_position(worker)?;
+    fn rebalance(
+        &mut self,
+        key: K,
+        worker: A::Nonce,
+    ) -> Result<(), RebalanceRejection<A::Nonce, K>> {
+        let Some(position) = self.pool.slots.iter().position(|slot| slot.nonce == worker) else {
+            return Err(RebalanceRejection::UnknownWorker { key, worker });
+        };
         if let SlotState::Retired { reason } = self.pool.slots[position].state {
-            return Err(PoolError::RebalanceToRetiredWorker { worker, reason });
+            return Err(RebalanceRejection::RetiredWorker {
+                key,
+                worker,
+                reason,
+            });
         }
         if let Some((_, bound)) = self.bindings.iter_mut().find(|(bound, _)| *bound == key) {
             *bound = worker;
@@ -1832,14 +1908,14 @@ where
     S: AffinitySelector<K, A::Nonce>,
 {
     type Protocol = crate::KeyedWorkerPoolProtocol<A, D, K, J, R, Route>;
-    type Event = KeyedPoolEvent<A, D, K, J, R, Route>;
+    type Event = KeyedWorkerPoolEvent<A, D, K, J, R, Route>;
     type Sends = PoolSends<A, C, Route, ParentPath>;
     type Ph = Never;
-    type Error = PoolError<A::Nonce>;
+    type Error = PoolFailure<A, R, K>;
     type Birth = Births<ProxyWithParent<C, ParentPath>>;
 
     fn init(&mut self, _: crate::InitializationTurn) -> crate::BehaviorActed<Self> {
-        behavior::initialize(&mut self.pool)
+        behavior::initialize(&mut self.pool).map_err(widen_pool_failure)
     }
 
     fn transition(
@@ -1893,11 +1969,16 @@ where
                 ..
             }) => {
                 if self.pool.supervisor.is_shutting_down() {
-                    return Err(PoolError::ShuttingDown);
+                    return Err(PoolFailure::Completion(CompletionRejection::ShuttingDown {
+                        worker,
+                        assignment,
+                        result,
+                    }));
                 }
                 let mut actions = Actions::cont();
                 self.pool
-                    .complete(worker, assignment, result, &mut actions)?;
+                    .complete(worker, assignment, result, &mut actions)
+                    .map_err(PoolFailure::Completion)?;
                 self.pool.dispatch(&mut actions)?;
                 Ok(actions)
             }
@@ -1906,35 +1987,45 @@ where
                 ..
             }) => {
                 if self.pool.supervisor.is_shutting_down() {
-                    return Err(PoolError::ShuttingDown);
+                    return Err(PoolFailure::Rebalance(RebalanceRejection::ShuttingDown {
+                        key,
+                        worker,
+                    }));
                 }
-                self.rebalance(key, worker)?;
+                self.rebalance(key, worker)
+                    .map_err(PoolFailure::Rebalance)?;
                 Ok(Actions::cont())
             }
             SupervisionEvent::WorkerStopped(stopped) => behavior::delegate_transition(
                 &mut self.pool,
                 SupervisionEvent::WorkerStopped(stopped),
-            ),
+            )
+            .map_err(widen_pool_failure),
             SupervisionEvent::WorkerCreationResolved(resolved) => behavior::delegate_transition(
                 &mut self.pool,
                 SupervisionEvent::WorkerCreationResolved(resolved),
-            ),
+            )
+            .map_err(widen_pool_failure),
             SupervisionEvent::ChildStopped(stopped) => behavior::delegate_transition(
                 &mut self.pool,
                 SupervisionEvent::ChildStopped(stopped),
-            ),
+            )
+            .map_err(widen_pool_failure),
             SupervisionEvent::CreationResolved(resolved) => behavior::delegate_transition(
                 &mut self.pool,
                 SupervisionEvent::CreationResolved(resolved),
-            ),
+            )
+            .map_err(widen_pool_failure),
             SupervisionEvent::ShutdownRequested(requested) => behavior::delegate_transition(
                 &mut self.pool,
                 SupervisionEvent::ShutdownRequested(requested),
-            ),
+            )
+            .map_err(widen_pool_failure),
             SupervisionEvent::ChildShutdownRejected(rejected) => behavior::delegate_transition(
                 &mut self.pool,
                 SupervisionEvent::ChildShutdownRejected(rejected),
-            ),
+            )
+            .map_err(widen_pool_failure),
         }
     }
 }

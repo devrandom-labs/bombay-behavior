@@ -15,7 +15,10 @@ use crate::{DeliveryRoute, ScheduleAfter, TimedEvent, TimerGeneration, TimerId};
 /// Complete exclusive lease phase.
 pub enum LeaseState<K, Route> {
     /// No holder owns the lease.
-    Vacant,
+    Vacant {
+        /// Generation committed by the next successful acquisition.
+        next: TimerGeneration,
+    },
     /// One holder owns exactly this timer generation.
     Held {
         /// Application-defined holder identity.
@@ -24,6 +27,9 @@ pub enum LeaseState<K, Route> {
         generation: TimerGeneration,
         /// Recipient notified of expiry.
         notify: Route,
+        /// Generation available to a renewal or later acquisition. `None`
+        /// means this held generation is the final representable one.
+        next: Option<TimerGeneration>,
     },
     /// No fresh expiry generation is representable and no holder exists.
     Exhausted,
@@ -35,14 +41,14 @@ pub enum LeaseRejection<K> {
     /// Another holder currently owns the lease.
     #[error("lease is occupied")]
     Occupied {
-        /// Rejected requested holder.
-        requested: K,
+        /// Holder that currently owns the lease.
+        current: K,
     },
     /// Operation named a holder other than the current holder.
     #[error("lease holder does not match")]
     WrongHolder {
-        /// Rejected holder.
-        requested: K,
+        /// Holder that currently owns the lease.
+        current: K,
     },
     /// Operation names an old or future generation.
     #[error("lease generation is stale")]
@@ -58,6 +64,34 @@ pub enum LeaseRejection<K> {
     /// The finite generation domain has been consumed.
     #[error("lease generation domain is exhausted")]
     GenerationExhausted,
+}
+
+/// Complete lease operation retained when admission is rejected.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LeaseRequest<K> {
+    /// Attempt to acquire a vacant lease.
+    Acquire {
+        /// Requested holder.
+        holder: K,
+        /// Requested lease lifetime.
+        duration: Duration,
+    },
+    /// Attempt to renew one exact held generation.
+    Renew {
+        /// Claimed holder.
+        holder: K,
+        /// Claimed current generation.
+        generation: TimerGeneration,
+        /// Requested renewed lifetime.
+        duration: Duration,
+    },
+    /// Attempt to release one exact held generation.
+    Release {
+        /// Claimed holder.
+        holder: K,
+        /// Claimed current generation.
+        generation: TimerGeneration,
+    },
 }
 
 /// Factual lease operation result.
@@ -92,7 +126,12 @@ pub enum LeaseOutcome<K> {
         generation: TimerGeneration,
     },
     /// Operation was rejected without changing state.
-    Rejected(LeaseRejection<K>),
+    Rejected {
+        /// Complete operation that was not admitted.
+        request: LeaseRequest<K>,
+        /// Exhaustive reason derived from current lease state.
+        reason: LeaseRejection<K>,
+    },
 }
 
 /// User commands accepted by [`Lease`].
@@ -196,7 +235,6 @@ pub struct Lease<
 > {
     id: TimerId,
     state: LeaseState<K, Route>,
-    next: Option<u64>,
     marker: core::marker::PhantomData<fn() -> (A, Reply)>,
 }
 type LeaseActions<A, OutcomeSends> = Actions<A, Never, LeaseSends<OutcomeSends>, NoBirths>;
@@ -212,8 +250,9 @@ where
     pub const fn new(id: TimerId) -> Self {
         Self {
             id,
-            state: LeaseState::Vacant,
-            next: Some(0),
+            state: LeaseState::Vacant {
+                next: TimerGeneration(0),
+            },
             marker: core::marker::PhantomData,
         }
     }
@@ -234,48 +273,58 @@ where
         duration: Duration,
         reply_to: Route,
     ) -> LeaseActions<A, Route::Sends> {
-        match &self.state {
-            LeaseState::Held { .. } => {
+        let next = match &self.state {
+            LeaseState::Held {
+                holder: current, ..
+            } => {
                 return Self::result(
                     reply_to,
-                    LeaseOutcome::Rejected(LeaseRejection::Occupied { requested: holder }),
+                    LeaseOutcome::Rejected {
+                        request: LeaseRequest::Acquire { holder, duration },
+                        reason: LeaseRejection::Occupied {
+                            current: current.clone(),
+                        },
+                    },
                 );
             }
             LeaseState::Exhausted => {
                 return Self::result(
                     reply_to,
-                    LeaseOutcome::Rejected(LeaseRejection::GenerationExhausted),
+                    LeaseOutcome::Rejected {
+                        request: LeaseRequest::Acquire { holder, duration },
+                        reason: LeaseRejection::GenerationExhausted,
+                    },
                 );
             }
-            LeaseState::Vacant => {}
-        }
-        let Some(raw) = self.next else {
-            self.state = LeaseState::Exhausted;
-            return Self::result(
-                reply_to,
-                LeaseOutcome::Rejected(LeaseRejection::GenerationExhausted),
-            );
+            LeaseState::Vacant { next } => *next,
         };
-        let generation = TimerGeneration(raw);
-        self.next = raw.checked_add(1);
+        let successor = next.0.checked_add(1).map(TimerGeneration);
         self.state = LeaseState::Held {
             holder: holder.clone(),
-            generation,
+            generation: next,
             notify: reply_to.clone(),
+            next: successor,
         };
         Actions::send(LeaseSends {
-            outcomes: reply_to.deliver(LeaseOutcome::Acquired { holder, generation }),
-            schedules: InterpreterRequests::one(ScheduleAfter::new(self.id, generation, duration)),
+            outcomes: reply_to.deliver(LeaseOutcome::Acquired {
+                holder,
+                generation: next,
+            }),
+            schedules: InterpreterRequests::one(ScheduleAfter::new(self.id, next, duration)),
         })
     }
-    fn validate(&self, holder: &K, generation: TimerGeneration) -> Result<(), LeaseRejection<K>> {
+    fn successor(
+        &self,
+        holder: &K,
+        generation: TimerGeneration,
+    ) -> Result<Option<TimerGeneration>, LeaseRejection<K>> {
         match &self.state {
-            LeaseState::Vacant => Err(LeaseRejection::Vacant),
+            LeaseState::Vacant { .. } => Err(LeaseRejection::Vacant),
             LeaseState::Exhausted => Err(LeaseRejection::GenerationExhausted),
             LeaseState::Held {
                 holder: current, ..
             } if current != holder => Err(LeaseRejection::WrongHolder {
-                requested: holder.clone(),
+                current: current.clone(),
             }),
             LeaseState::Held {
                 generation: active, ..
@@ -283,7 +332,7 @@ where
                 observed: generation,
                 current: *active,
             }),
-            LeaseState::Held { .. } => Ok(()),
+            LeaseState::Held { next, .. } => Ok(*next),
         }
     }
 }
@@ -338,21 +387,38 @@ where
                     duration,
                     reply_to,
                 } => {
-                    if let Err(rejection) = self.validate(&holder, generation) {
-                        return Ok(Self::result(reply_to, LeaseOutcome::Rejected(rejection)));
-                    }
-                    let Some(raw) = self.next else {
+                    let request = LeaseRequest::Renew {
+                        holder: holder.clone(),
+                        generation,
+                        duration,
+                    };
+                    let successor = match self.successor(&holder, generation) {
+                        Ok(successor) => successor,
+                        Err(rejection) => {
+                            return Ok(Self::result(
+                                reply_to,
+                                LeaseOutcome::Rejected {
+                                    request,
+                                    reason: rejection,
+                                },
+                            ));
+                        }
+                    };
+                    let Some(fresh) = successor else {
                         return Ok(Self::result(
                             reply_to,
-                            LeaseOutcome::Rejected(LeaseRejection::GenerationExhausted),
+                            LeaseOutcome::Rejected {
+                                request,
+                                reason: LeaseRejection::GenerationExhausted,
+                            },
                         ));
                     };
-                    let fresh = TimerGeneration(raw);
-                    self.next = raw.checked_add(1);
+                    let next = fresh.0.checked_add(1).map(TimerGeneration);
                     self.state = LeaseState::Held {
                         holder: holder.clone(),
                         generation: fresh,
                         notify: reply_to.clone(),
+                        next,
                     };
                     Actions::send(LeaseSends {
                         outcomes: reply_to.deliver(LeaseOutcome::Renewed {
@@ -369,14 +435,24 @@ where
                     generation,
                     reply_to,
                 } => {
-                    if let Err(rejection) = self.validate(&holder, generation) {
-                        return Ok(Self::result(reply_to, LeaseOutcome::Rejected(rejection)));
-                    }
-                    self.state = if self.next.is_some() {
-                        LeaseState::Vacant
-                    } else {
-                        LeaseState::Exhausted
+                    let request = LeaseRequest::Release {
+                        holder: holder.clone(),
+                        generation,
                     };
+                    let next = match self.successor(&holder, generation) {
+                        Ok(next) => next,
+                        Err(rejection) => {
+                            return Ok(Self::result(
+                                reply_to,
+                                LeaseOutcome::Rejected {
+                                    request,
+                                    reason: rejection,
+                                },
+                            ));
+                        }
+                    };
+                    self.state =
+                        next.map_or(LeaseState::Exhausted, |next| LeaseState::Vacant { next });
                     Self::result(reply_to, LeaseOutcome::Released { holder, generation })
                 }
             },
@@ -388,6 +464,7 @@ where
                     holder,
                     generation,
                     notify,
+                    next,
                 } = &self.state
                 else {
                     return Ok(Actions::cont());
@@ -400,11 +477,8 @@ where
                     generation: *generation,
                 };
                 let recipient = notify.clone();
-                self.state = if self.next.is_some() {
-                    LeaseState::Vacant
-                } else {
-                    LeaseState::Exhausted
-                };
+                let next = *next;
+                self.state = next.map_or(LeaseState::Exhausted, |next| LeaseState::Vacant { next });
                 Self::result(recipient, outcome)
             }
         })
@@ -488,7 +562,7 @@ mod tests {
             },
         )
         .unwrap();
-        assert!(matches!(s.state(), LeaseState::Vacant));
+        assert!(matches!(s.state(), LeaseState::Vacant { .. }));
     }
     #[test]
     fn wrong_holder_and_matching_expiry_are_distinct() {
@@ -514,7 +588,13 @@ mod tests {
             .unwrap();
         assert!(matches!(
             wrong.sends.outcomes[0].message,
-            LeaseOutcome::Rejected(LeaseRejection::WrongHolder { requested: 2 })
+            LeaseOutcome::Rejected {
+                request: LeaseRequest::Release {
+                    holder: 2,
+                    generation: TimerGeneration(0),
+                },
+                reason: LeaseRejection::WrongHolder { current: 1 },
+            }
         ));
         let expired = s
             .on_path(TimerElapsed::new(TimerId(7), TimerGeneration(0)))
@@ -523,13 +603,15 @@ mod tests {
             expired.sends.outcomes[0].message,
             LeaseOutcome::Expired { holder: 1, .. }
         ));
-        assert!(matches!(s.state(), LeaseState::Vacant));
+        assert!(matches!(s.state(), LeaseState::Vacant { .. }));
     }
 
     #[test]
     fn generation_exhaustion_is_terminal_and_never_wraps() {
         let mut definition = Subject::new(TimerId(7));
-        definition.next = Some(u64::MAX);
+        definition.state = LeaseState::Vacant {
+            next: TimerGeneration(u64::MAX),
+        };
         let mut subject = (definition).initialize().unwrap().behavior;
         subject
             .receive(
@@ -557,7 +639,13 @@ mod tests {
             .unwrap();
         assert!(matches!(
             rejected.sends.outcomes[0].message,
-            LeaseOutcome::Rejected(LeaseRejection::GenerationExhausted)
+            LeaseOutcome::Rejected {
+                request: LeaseRequest::Acquire {
+                    holder: 2,
+                    duration: requested_duration,
+                },
+                reason: LeaseRejection::GenerationExhausted,
+            } if requested_duration == duration()
         ));
     }
 }

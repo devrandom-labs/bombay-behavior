@@ -7,7 +7,7 @@ use behavior::{
     Actions, Activate as _, Address, Behavior, BehaviorActed, BehaviorBase, EndpointAddress,
     EstablishedObservation, EstablishedRecipient, EstablishedTerminationMonitor, Exit, Never,
     NoBirths, ObservationId, ObservationOperation, ObservationRejection, Protocol,
-    TerminationObservation, User,
+    TerminationMonitorError, TerminationObservation, User,
 };
 use proptest::prelude::*;
 
@@ -77,10 +77,10 @@ impl Behavior for Subject {
 fn record_terminal(
     subject: &mut Subject,
     fact: EstablishedObservation<Peer>,
-) -> BehaviorActed<Subject> {
+) -> Actions<RuntimeAddr, Never, Vec<Never>, NoBirths> {
     assert!(matches!(fact, EstablishedObservation::Stopped { .. }));
     subject.terminal_reactions += 1;
-    Ok(Actions::cont())
+    Actions::cont()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -137,9 +137,23 @@ proptest! {
                 _ => EstablishedObservation::stopped(id, Ok(Exit::Normal), timestamp),
             };
 
-            subject.on_path(fact).unwrap();
+            let accepted = matching && matches!(
+                (model, operation),
+                (ModelPhase::Requested, 0 | 2)
+                    | (ModelPhase::Observing, 1 | 2 | 3)
+            );
+            let before = subject.observation();
+            match subject.on_path(fact) {
+                Ok(_) => prop_assert!(accepted),
+                Err(TerminationMonitorError::UnexpectedFact { observation, fact }) => {
+                    prop_assert!(!accepted);
+                    prop_assert_eq!(observation, before);
+                    prop_assert_eq!(fact.id(), id);
+                }
+                Err(TerminationMonitorError::Inner(never)) => match never {},
+            }
 
-            if matching && matches!(model, ModelPhase::Requested | ModelPhase::Observing) {
+            if accepted {
                 model = match operation {
                     0 => ModelPhase::Observing,
                     1 => ModelPhase::Cancelled,

@@ -94,10 +94,10 @@ impl<K: Clone + Eq> BarrierMembership<K> {
 
 /// Rejected barrier arrival.
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
-pub enum BarrierError<K> {
+pub enum BarrierError<K, Route> {
     /// The participant is not in fixed membership.
     #[error("barrier participant is unknown")]
-    UnknownParticipant(K),
+    UnknownParticipant { participant: K, reply_to: Route },
     /// The participant already arrived in this generation.
     #[error("barrier participant already arrived in this generation")]
     DuplicateArrival {
@@ -105,6 +105,8 @@ pub enum BarrierError<K> {
         participant: K,
         /// Current barrier generation.
         generation: BarrierGeneration,
+        /// Exact release recipient from the rejected arrival.
+        reply_to: Route,
     },
     /// Arrival belongs to a generation already released.
     #[error("barrier arrival is stale")]
@@ -115,6 +117,8 @@ pub enum BarrierError<K> {
         observed: BarrierGeneration,
         /// Current accepted generation.
         current: BarrierGeneration,
+        /// Exact release recipient from the rejected arrival.
+        reply_to: Route,
     },
     /// Arrival attempts to skip the current generation.
     #[error("barrier arrival is for a future generation")]
@@ -125,6 +129,8 @@ pub enum BarrierError<K> {
         observed: BarrierGeneration,
         /// Current accepted generation.
         current: BarrierGeneration,
+        /// Exact release recipient from the rejected arrival.
+        reply_to: Route,
     },
     /// No representable successor generation remains.
     #[error("barrier generations are exhausted")]
@@ -133,6 +139,8 @@ pub enum BarrierError<K> {
         participant: K,
         /// Final released generation.
         generation: BarrierGeneration,
+        /// Exact release recipient from the rejected arrival.
+        reply_to: Route,
     },
 }
 
@@ -224,7 +232,7 @@ where
     type Event = User<A, crate::BehaviorMessage<Self>>;
     type Sends = Route::Sends;
     type Ph = Never;
-    type Error = BarrierError<K>;
+    type Error = BarrierError<K, Route>;
     type Birth = NoBirths;
 
     fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
@@ -234,7 +242,10 @@ where
             reply_to,
         } = event.message;
         if !self.members.contains(&participant) {
-            return Err(BarrierError::UnknownParticipant(participant));
+            return Err(BarrierError::UnknownParticipant {
+                participant,
+                reply_to,
+            });
         }
         let (current, arrivals) = match &mut self.state {
             BarrierState::Gathering {
@@ -245,6 +256,7 @@ where
                 return Err(BarrierError::Exhausted {
                     participant,
                     generation: *generation,
+                    reply_to,
                 });
             }
         };
@@ -253,6 +265,7 @@ where
                 participant,
                 observed,
                 current: *current,
+                reply_to,
             });
         }
         if observed > *current {
@@ -260,6 +273,7 @@ where
                 participant,
                 observed,
                 current: *current,
+                reply_to,
             });
         }
         if arrivals
@@ -269,6 +283,7 @@ where
             return Err(BarrierError::DuplicateArrival {
                 participant,
                 generation: *current,
+                reply_to,
             });
         }
         arrivals.push(BarrierArrival {
@@ -347,7 +362,8 @@ mod tests {
             Err(BarrierError::DuplicateArrival {
                 participant: 2,
                 generation: BarrierGeneration(0),
-            })
+                reply_to,
+            }) if reply_to == two
         ));
         let released = barrier
             .receive(
@@ -394,8 +410,9 @@ mod tests {
             ),
             Err(BarrierError::StaleGeneration {
                 current: BarrierGeneration(1),
+                reply_to,
                 ..
-            })
+            }) if reply_to == one
         ));
     }
 

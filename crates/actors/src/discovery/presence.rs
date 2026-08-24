@@ -61,6 +61,8 @@ pub enum PresenceError<K> {
         observed: PresenceVersion,
         /// Current version.
         current: PresenceVersion,
+        /// Exact rejected lifetime.
+        lifetime: Duration,
     },
     /// Evidence reuses a version with a different lifetime or phase.
     #[error("presence evidence conflicts at the committed version")]
@@ -69,6 +71,8 @@ pub enum PresenceError<K> {
         participant: K,
         /// Reused version.
         version: PresenceVersion,
+        /// Exact rejected lifetime.
+        lifetime: Duration,
     },
     /// A currently present different participant owns the mapped timer key.
     #[error("presence timer key collides with a live participant")]
@@ -79,12 +83,20 @@ pub enum PresenceError<K> {
         existing: K,
         /// Colliding timer key.
         timer_id: TimerId,
+        /// Exact rejected evidence version.
+        version: PresenceVersion,
+        /// Exact rejected lifetime.
+        lifetime: Duration,
     },
     /// No fresh timer generation is representable.
     #[error("presence timer generation is exhausted")]
     GenerationExhausted {
         /// Participant whose refresh was rejected.
         participant: K,
+        /// Exact rejected evidence version.
+        version: PresenceVersion,
+        /// Exact rejected lifetime.
+        lifetime: Duration,
     },
 }
 
@@ -225,8 +237,10 @@ struct Record<K, Route> {
 /// evidence is idempotent and does not reschedule. Lower or contradictory
 /// evidence is rejected atomically. A timer-key collision with another live
 /// participant is rejection, never replacement. Matching elapsed evidence
-/// commits an explicit tombstone and reports expiry; stale and unknown timer
-/// evidence is inert. Initialization is empty, no actors are created, and the
+/// commits an explicit tombstone and reports expiry. Generations advance per
+/// timer key across every retained participant tombstone, so reuse by a later
+/// participant cannot reinterpret delayed evidence from an earlier owner;
+/// stale and unknown timer evidence is inert. Initialization is empty, no actors are created, and the
 /// host never terminates by policy. Versioning, first-observation ordering,
 /// timer mapping, and tombstone retention are Bombay policy. Scheduling belongs
 /// to Timers; release/cancellation is not part of this announcement protocol.
@@ -275,6 +289,20 @@ where
             schedules: InterpreterRequests::empty(),
         })
     }
+
+    fn next_generation(&self, timer_id: TimerId) -> Option<TimerGeneration> {
+        self.records
+            .iter()
+            .filter(|record| record.entry.timer_id == timer_id)
+            .map(|record| match record.entry.phase {
+                PresencePhase::Present { generation, .. }
+                | PresencePhase::Expired { generation, .. } => generation,
+            })
+            .max_by_key(|generation| generation.0)
+            .map_or(Some(TimerGeneration(0)), |generation| {
+                generation.0.checked_add(1).map(TimerGeneration)
+            })
+    }
     fn announce(
         &mut self,
         participant: K,
@@ -294,6 +322,8 @@ where
                     participant,
                     existing: existing.entry.participant.clone(),
                     timer_id,
+                    version,
+                    lifetime,
                 })),
             );
         }
@@ -315,7 +345,18 @@ where
         reply_to: Route,
         timer_id: TimerId,
     ) -> PresenceActions<A, Route::Sends> {
-        let generation = TimerGeneration(0);
+        let Some(generation) = self.next_generation(timer_id) else {
+            return Self::reply(
+                reply_to,
+                PresenceReply::Outcome(PresenceOutcome::Rejected(
+                    PresenceError::GenerationExhausted {
+                        participant,
+                        version,
+                        lifetime,
+                    },
+                )),
+            );
+        };
         self.records.push(Record {
             entry: PresenceEntry {
                 participant: participant.clone(),
@@ -359,6 +400,7 @@ where
                     participant,
                     observed: version,
                     current: current_version,
+                    lifetime,
                 })),
             );
         }
@@ -385,23 +427,22 @@ where
                     PresenceError::ConflictingVersion {
                         participant,
                         version,
+                        lifetime,
                     },
                 )),
             );
         }
-        let generation = match self.records[index].entry.phase {
-            PresencePhase::Present { generation, .. }
-            | PresencePhase::Expired { generation, .. } => match generation.0.checked_add(1) {
-                Some(next) => TimerGeneration(next),
-                None => {
-                    return Self::reply(
-                        reply_to,
-                        PresenceReply::Outcome(PresenceOutcome::Rejected(
-                            PresenceError::GenerationExhausted { participant },
-                        )),
-                    );
-                }
-            },
+        let Some(generation) = self.next_generation(timer_id) else {
+            return Self::reply(
+                reply_to,
+                PresenceReply::Outcome(PresenceOutcome::Rejected(
+                    PresenceError::GenerationExhausted {
+                        participant,
+                        version,
+                        lifetime,
+                    },
+                )),
+            );
         };
         self.records[index].entry.phase = PresencePhase::Present {
             version,
@@ -629,6 +670,50 @@ mod tests {
             PresenceReply::Outcome(PresenceOutcome::Rejected(PresenceError::Stale { .. }))
         ));
         assert_eq!(s.report().entries.len(), 1);
+    }
+
+    #[test]
+    fn timer_key_reuse_cannot_reinterpret_an_earlier_participants_expiry() {
+        fn shared(_: &Participant) -> TimerId {
+            TimerId(1)
+        }
+        let mut subject = (Subject::new(shared)).initialize().unwrap().behavior;
+        let announce = |participant| PresenceMessage::Announce {
+            participant,
+            version: PresenceVersion(1),
+            lifetime: duration(),
+            reply_to: reply(),
+        };
+
+        let first = subject
+            .receive(MailAddr(0), announce(Participant(1)))
+            .unwrap();
+        assert_eq!(
+            first.sends.schedules.as_slice()[0].generation,
+            TimerGeneration(0)
+        );
+        subject
+            .on_path(TimerElapsed::new(TimerId(1), TimerGeneration(0)))
+            .unwrap();
+
+        let second = subject
+            .receive(MailAddr(0), announce(Participant(2)))
+            .unwrap();
+        assert_eq!(
+            second.sends.schedules.as_slice()[0].generation,
+            TimerGeneration(1)
+        );
+        let delayed_duplicate = subject
+            .on_path(TimerElapsed::new(TimerId(1), TimerGeneration(0)))
+            .unwrap();
+        assert!(delayed_duplicate.sends.replies.is_empty());
+        assert!(matches!(
+            subject.report().entries[1].phase,
+            PresencePhase::Present {
+                generation: TimerGeneration(1),
+                ..
+            }
+        ));
     }
 
     #[test]

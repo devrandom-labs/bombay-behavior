@@ -17,11 +17,11 @@ use behavior::{
     ChildShutdownRejection, ChildStopped, Crash, Create, CreationKind, CreationRejection,
     CreationResolved, Delivery, EventLayer, Exit, Here, InjectEvent, Inside, InterpretRequest,
     InterpretSends, InterpreterRequests, Machine, MailAddr, Move, Never, NoBirths, ObserveChild,
-    PeerStopped, Proxy, ProxyCommand, ProxyEvent, Recipient, RestartDenial, RestartPolicy,
-    ScheduleAt, SendEffects, SendInterpreter, ShutdownChild, ShutdownRequested, StashRoute, Step,
-    Strategy, Supervise, SupervisionEvent, SupervisionFailure, SupervisionFailureReason,
-    TimerElapsed, TimerGeneration, TimerId, User, UserEvent, Watch, WorkerCreationResolved,
-    WorkerStopped, stop_on_abnormal_death, stop_on_supervision_failure,
+    PeerStopped, Proxy, ProxyCommand, ProxyError, ProxyEvent, Recipient, RestartDenial,
+    RestartPolicy, ScheduleAt, SendEffects, SendInterpreter, ShutdownChild, ShutdownRequested,
+    StashRoute, Step, Strategy, Supervise, SupervisionEvent, SupervisionFailure,
+    SupervisionFailureReason, TimerElapsed, TimerGeneration, TimerId, User, UserEvent, Watch,
+    WorkerCreationResolved, WorkerStopped, stop_on_abnormal_death, stop_on_supervision_failure,
 };
 use proptest::prelude::*;
 use std::time::Instant;
@@ -215,20 +215,15 @@ impl ShutdownParent {
     }
 }
 
-#[allow(
-    clippy::type_complexity,
-    clippy::unnecessary_wraps,
-    reason = "the shutdown reaction must expose the complete typed Actions and error seats"
-)]
 fn finalize_parent(
     _behavior: &mut ShutdownParent,
     _request: ShutdownRequested,
-) -> Acted<MailAddr, Never, Vec<Delivery<Quiet>>, Births<Quiet>, Never> {
-    Ok(Actions {
+) -> Actions<MailAddr, Never, Vec<Delivery<Quiet>>, Births<Quiet>> {
+    Actions {
         sends: vec![Delivery::new(Recipient::global(MailAddr(9)), 42)],
         creates: vec![Create::birth(7, Quiet)],
         become_: Step::Continue,
-    })
+    }
 }
 
 #[test]
@@ -297,7 +292,7 @@ fn direct_behavior_composes_with_existing_wrappers_and_init_order() {
         InitializationCounter(0),
         TimerId(0),
         Some(due),
-        |_| Ok(Step::Continue),
+        |_| Step::Continue,
     ));
 
     let initialized = behavior.initialize().unwrap();
@@ -345,7 +340,7 @@ async fn outer_combinators_preserve_the_shutdown_lane() {
             behavior_actors::StopOnShutdown::new(Quiet),
             TimerId(0),
             None,
-            |_| Ok(Step::Continue),
+            |_| Step::Continue,
         ),
         MailAddr(8),
         stop_on_abnormal_death,
@@ -366,7 +361,7 @@ async fn shutdown_composition_preserves_inner_initialization_effects() {
         Quiet,
         TimerId(0),
         Some(due),
-        |_| Ok(Step::Continue),
+        |_| Step::Continue,
     ));
     let initialized = behavior.initialize().unwrap();
     let initial = initialized.actions;
@@ -431,11 +426,11 @@ async fn shutdown_over_two_deadlines_preserves_both_exact_local_continuations() 
     let due = Instant::now() + Duration::from_secs(1);
     let initialized = behavior_actors::StopOnShutdown::new(behavior_actors::Deadline::new(
         behavior_actors::Deadline::new(Quiet, TimerId(0), Some(due), |_| {
-            Ok(Step::Stop(behavior::Stopped))
+            Step::Stop(behavior::Stopped)
         }),
         TimerId(0),
         Some(due),
-        |_| Ok(Step::Continue),
+        |_| Step::Continue,
     ))
     .initialize()
     .unwrap();
@@ -464,8 +459,7 @@ async fn shutdown_over_two_deadlines_preserves_both_exact_local_continuations() 
 #[tokio::test]
 async fn at_is_a_typed_clock_actor_protocol() {
     let now = Instant::now();
-    let behavior =
-        behavior_actors::Deadline::new(Quiet, TimerId(0), Some(now), |_| Ok(Step::Continue));
+    let behavior = behavior_actors::Deadline::new(Quiet, TimerId(0), Some(now), |_| Step::Continue);
 
     let initialized = behavior.initialize().unwrap();
     let initial = initialized.actions;
@@ -488,10 +482,10 @@ async fn nested_at_composition_routes_stale_and_matching_events() {
     let early = Instant::now() + Duration::from_secs(1);
     let late = early + Duration::from_secs(1);
     let outer = behavior_actors::Deadline::new(
-        behavior_actors::Deadline::new(Quiet, TimerId(0), Some(early), |_| Ok(Step::Continue)),
+        behavior_actors::Deadline::new(Quiet, TimerId(0), Some(early), |_| Step::Continue),
         TimerId(1),
         Some(late),
-        |_| Ok(Step::Continue),
+        |_| Step::Continue,
     );
 
     let initialized = outer.initialize().unwrap();
@@ -514,13 +508,13 @@ async fn nested_at_composition_routes_stale_and_matching_events() {
 async fn spec_hides_composed_protocols_without_losing_their_effects() {
     let due = Instant::now() + Duration::from_secs(1);
     let peer = MailAddr(8);
-    let behavior = behavior_actors::Stash::new(
-        behavior_actors::Watch::new(
-            behavior_actors::Deadline::new(Quiet, TimerId(0), Some(due), |_| Ok(Step::Continue)),
-            peer,
-            stop_on_abnormal_death,
+    let behavior = behavior_actors::Watch::new(
+        behavior_actors::Stash::new(
+            behavior_actors::Deadline::new(Quiet, TimerId(0), Some(due), |_| Step::Continue),
+            |_| StashRoute::Deliver,
         ),
-        |_| StashRoute::Deliver,
+        peer,
+        stop_on_abnormal_death,
     );
 
     let initialized = behavior.initialize().unwrap();
@@ -588,6 +582,7 @@ async fn fsm_is_receive_plus_become_policy() {
         Loading,
         Ready,
     }
+    #[derive(Clone)]
     enum Message {
         Work(u64),
         Ready,
@@ -689,16 +684,12 @@ async fn stash_release_delivers_the_trigger_then_drains_the_held_fifo() {
     assert_eq!(behavior.held(), 0);
 }
 
-#[allow(
-    clippy::unnecessary_wraps,
-    reason = "the fixture implements the fallible watch-reaction signature"
-)]
 fn continue_on_death(
     _behavior: &mut Watch<Quiet>,
     _peer: MailAddr,
     _outcome: &Result<Exit<MailAddr>, Crash>,
-) -> Result<Become, Never> {
-    Ok(Step::Continue)
+) -> Become {
+    Step::Continue
 }
 
 #[tokio::test]
@@ -767,11 +758,11 @@ async fn fsm_preserves_direct_stop_and_does_not_drain_on_stay() {
 async fn receive_timeout_reacts_only_to_its_own_live_timer_id() {
     let behavior = behavior_actors::ReceiveTimeout::new(
         behavior_actors::Deadline::new(Quiet, TimerId(0), Some(Instant::now()), |_| {
-            Ok(Step::Stop(behavior::Stopped))
+            Step::Stop(behavior::Stopped)
         }),
         TimerId(1),
         Duration::from_secs(1),
-        |_| Ok(Actions::stop()),
+        |_| Actions::stop(),
     );
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
@@ -789,11 +780,11 @@ async fn receive_timeout_reacts_only_to_its_own_live_timer_id() {
     ));
     let matching_behavior = behavior_actors::ReceiveTimeout::new(
         behavior_actors::Deadline::new(Quiet, TimerId(0), Some(Instant::now()), |_| {
-            Ok(Step::Stop(behavior::Stopped))
+            Step::Stop(behavior::Stopped)
         }),
         TimerId(1),
         Duration::from_secs(1),
-        |_| Ok(Actions::stop()),
+        |_| Actions::stop(),
     );
     let initialized = matching_behavior.initialize().unwrap();
     let matching_generation = initialized.actions.sends.owned[0].generation;
@@ -863,10 +854,7 @@ impl Behavior for TimerAware {
         event: Self::Event,
     ) -> Result<Actions<MailAddr, Never, Self::Sends, NoBirths>, Never> {
         match event {
-            TimerAwareEvent::Time(elapsed) => {
-                let _ = elapsed;
-                Ok(Actions::stop())
-            }
+            TimerAwareEvent::Time(_elapsed) => Ok(Actions::stop()),
             TimerAwareEvent::User(_) => Ok(Actions::cont()),
         }
     }
@@ -878,7 +866,7 @@ async fn a_stale_local_receive_timeout_is_consumed_not_forwarded() {
         TimerAware,
         TimerId(0),
         Duration::from_secs(1),
-        |_| Ok(Actions::stop()),
+        |_| Actions::stop(),
     );
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
@@ -899,14 +887,15 @@ async fn a_proxy_ignores_a_stale_child_stop_nonce() {
     proxy
         .on_path(CreationResolved::birth(0, MailAddr(0)))
         .unwrap();
-    let stale = proxy
-        .transition(ProxyEvent::ChildStopped(ChildStopped {
-            nonce: 99,
-            outcome: Err(Crash::Failed),
-            at: Instant::now(),
-        }))
-        .unwrap();
-    assert!(stale.sends.stopped_reports.is_empty());
+    let stale = ChildStopped {
+        nonce: 99,
+        outcome: Err(Crash::Failed),
+        at: Instant::now(),
+    };
+    assert!(matches!(
+        proxy.transition(ProxyEvent::ChildStopped(stale)),
+        Err(ProxyError::UnexpectedChildStopped { observed, .. }) if observed == stale
+    ));
     let forwarded = proxy
         .transition(ProxyEvent::Command(User::user(
             MailAddr(0),
@@ -931,10 +920,11 @@ async fn a_proxy_shuts_down_its_exact_worker_before_stopping() {
     );
     assert!(matches!(requested.become_, Step::Continue));
 
-    let stale = proxy
-        .on_path(ChildStopped::new(9, Ok(Exit::Normal), Instant::now()))
-        .unwrap();
-    assert!(matches!(stale.become_, Step::Continue));
+    let stale = ChildStopped::new(9, Ok(Exit::Normal), Instant::now());
+    assert!(matches!(
+        proxy.on_path(stale),
+        Err(ProxyError::UnexpectedChildStopped { observed, .. }) if observed == stale
+    ));
 
     let stopped = proxy
         .on_path(ChildStopped::new(0, Ok(Exit::Normal), Instant::now()))
@@ -980,13 +970,11 @@ async fn proxy_shutdown_rejection_is_correlated_to_the_requested_worker() {
         .unwrap();
     proxy.on_path(ShutdownRequested).unwrap();
 
-    let stale = proxy
-        .on_path(ChildShutdownRejected::new(
-            9,
-            ChildShutdownRejection::NotEstablished,
-        ))
-        .unwrap();
-    assert!(matches!(stale.become_, Step::Continue));
+    let stale = ChildShutdownRejected::new(9, ChildShutdownRejection::NotEstablished);
+    assert!(matches!(
+        proxy.on_path(stale),
+        Err(ProxyError::UnexpectedChildShutdownRejection { observed, .. }) if observed == stale
+    ));
 
     let already = proxy
         .on_path(ChildShutdownRejected::new(
@@ -1002,9 +990,11 @@ async fn proxy_shutdown_rejection_is_correlated_to_the_requested_worker() {
     ));
     assert!(matches!(
         rejected,
-        Err(behavior::ProxyError::ShutdownRejected(
-            ChildShutdownRejection::NotEstablished
-        ))
+        Err(behavior::ProxyError::ChildShutdownRejected(observed))
+            if observed == ChildShutdownRejected::new(
+                0,
+                ChildShutdownRejection::NotEstablished,
+            )
     ));
 }
 
@@ -1012,13 +1002,13 @@ async fn proxy_shutdown_rejection_is_correlated_to_the_requested_worker() {
 fn birth_modes_are_disjoint_and_wrappers_forward_them() {
     requires_no_births((Quiet).base());
 
-    let creator = behavior_actors::Stash::new(
-        behavior_actors::Watch::new(
-            behavior_actors::Deadline::new(Parent, TimerId(0), None, |_| Ok(Step::Continue)),
-            MailAddr(4),
-            stop_on_abnormal_death,
+    let creator = behavior_actors::Watch::new(
+        behavior_actors::Stash::new(
+            behavior_actors::Deadline::new(Parent, TimerId(0), None, |_| Step::Continue),
+            |_| StashRoute::Deliver,
         ),
-        |_| StashRoute::Deliver,
+        MailAddr(4),
+        stop_on_abnormal_death,
     );
     requires_births::<_, Child>(&creator);
 
@@ -1055,7 +1045,7 @@ fn birth_modes_are_disjoint_and_wrappers_forward_them() {
         .unwrap(),
         TimerId(0),
         None,
-        |_| Ok(Step::Continue),
+        |_| Step::Continue,
     );
     requires_worker_events(&timed_supervisor);
     requires_births::<_, Child>(&Proxy::new(child(0)));
@@ -1074,14 +1064,10 @@ fn supervisor(strategy: Strategy, policy: RestartPolicy, budget: u32) -> Supervi
     .unwrap()
 }
 
-#[allow(
-    clippy::unnecessary_wraps,
-    reason = "the supervision reaction shares its wrapped behavior's controlled-error seat"
-)]
 fn verify_budget_failure_and_stop(
-    _parent: &mut Parent,
+    _parent: &Parent,
     failure: &SupervisionFailure<MailAddr>,
-) -> Result<Become, Never> {
+) -> Become {
     assert_eq!(
         *failure,
         SupervisionFailure::RestartDenied {
@@ -1094,8 +1080,7 @@ fn verify_budget_failure_and_stop(
             },
         }
     );
-    let _ = failure;
-    Ok(Step::Stop(behavior::Stopped))
+    Step::Stop(behavior::Stopped)
 }
 
 #[tokio::test]
@@ -1193,18 +1178,26 @@ async fn proxy_routes_only_after_matching_installation_and_rejection_stays_vacan
     let initialized = proxy.initialize().unwrap();
     let mut proxy = initialized.behavior;
 
-    let pending = proxy
-        .transition(ProxyEvent::Command(User::user(
-            MailAddr(0),
-            ProxyCommand::Forward(1),
-        )))
-        .unwrap();
-    assert!(pending.sends.deliveries.is_empty());
+    let pending = proxy.transition(ProxyEvent::Command(User::user(
+        MailAddr(0),
+        ProxyCommand::Forward(1),
+    )));
+    assert!(matches!(
+        pending,
+        Err(ProxyError::CommandNotAccepted {
+            phase: behavior::IncarnationPhase::Installing {
+                attempt: 0,
+                kind: CreationKind::Birth,
+            },
+            command: 1,
+        })
+    ));
 
-    let stale = proxy
-        .on_path(CreationResolved::birth(1, MailAddr(1)))
-        .unwrap();
-    assert!(stale.sends.creation_reports.is_empty());
+    let stale = CreationResolved::birth(1, MailAddr(1));
+    assert!(matches!(
+        proxy.on_path(stale),
+        Err(ProxyError::UnexpectedCreation { observed, .. }) if observed == stale
+    ));
 
     let rejected = proxy
         .on_path(CreationResolved::rejected(
@@ -1218,13 +1211,19 @@ async fn proxy_routes_only_after_matching_installation_and_rejection_stays_vacan
         Err(CreationRejection::InitializationFailed)
     );
 
-    let vacant = proxy
-        .transition(ProxyEvent::Command(User::user(
-            MailAddr(0),
-            ProxyCommand::Forward(2),
-        )))
-        .unwrap();
-    assert!(vacant.sends.deliveries.is_empty());
+    let vacant = proxy.transition(ProxyEvent::Command(User::user(
+        MailAddr(0),
+        ProxyCommand::Forward(2),
+    )));
+    assert!(matches!(
+        vacant,
+        Err(ProxyError::CommandNotAccepted {
+            phase: behavior::IncarnationPhase::Vacant {
+                last_installed: None,
+            },
+            command: 2,
+        })
+    ));
 }
 
 #[tokio::test]
@@ -1253,13 +1252,21 @@ async fn proxy_serializes_attempts_and_rejection_preserves_last_installed_incarn
         CreationKind::ReplacementIncarnation { replaces: 0 }
     );
 
-    let overlapping = proxy
-        .transition(ProxyEvent::Command(User::user(
-            MailAddr(0),
-            ProxyCommand::Replace(child(2)),
-        )))
-        .unwrap();
-    assert!(overlapping.creates.is_empty());
+    let overlapping = proxy.transition(ProxyEvent::Command(User::user(
+        MailAddr(0),
+        ProxyCommand::Replace(child(2)),
+    )));
+    assert!(matches!(
+        overlapping,
+        Err(ProxyError::ReplacementNotAccepted {
+            phase: behavior::IncarnationPhase::Installing {
+                attempt: 1,
+                kind: CreationKind::ReplacementIncarnation { replaces: 0 },
+            },
+            reason: behavior::ProxyLifecycleError::ReplacementUnavailable,
+            replacement: Quiet,
+        })
+    ));
 
     proxy
         .on_path(CreationResolved::rejected(
@@ -1785,7 +1792,7 @@ async fn supervision_strategy_policy_and_budget_are_pure_send_decisions() {
 async fn stale_time_events_do_not_fire_or_reschedule() {
     let due = Instant::now() + Duration::from_secs(2);
     let behavior = behavior_actors::Deadline::new(Quiet, TimerId(0), Some(due), |_| {
-        Ok(Step::Stop(behavior::Stopped))
+        Step::Stop(behavior::Stopped)
     });
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
@@ -1822,10 +1829,10 @@ proptest! {
         let first = origin + Duration::from_nanos(first);
         let second = origin + Duration::from_nanos(second);
         let outer = behavior_actors::Deadline::new(
-            behavior_actors::Deadline::new(Quiet, TimerId(0), Some(first), |_| Ok(Step::Continue)),
+            behavior_actors::Deadline::new(Quiet, TimerId(0), Some(first), |_| Step::Continue),
             TimerId(1),
             Some(second),
-            |_| Ok(Step::Continue),
+            |_| Step::Continue,
         );
         let _runtime = Builder::new_current_thread().enable_all().build().unwrap();
         let initialized = outer.initialize().unwrap();

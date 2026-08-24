@@ -63,6 +63,8 @@ pub enum RateLimiterOutcome<T> {
     },
     /// Value was not admitted; ownership is returned.
     Rejected {
+        /// Exact requested token cost.
+        cost: TokenCount,
         /// Unaccepted value.
         value: T,
         /// Rejection reason.
@@ -180,6 +182,7 @@ where
                 Vec::new(),
                 reply_to,
                 RateLimiterOutcome::Rejected {
+                    cost,
                     value,
                     reason: RateLimitRejection::ExceedsCapacity,
                 },
@@ -190,6 +193,7 @@ where
                 Vec::new(),
                 reply_to,
                 RateLimiterOutcome::Rejected {
+                    cost,
                     value,
                     reason: RateLimitRejection::InsufficientTokens,
                 },
@@ -330,16 +334,18 @@ mod tests {
         assert!(matches!(
             acquire(&mut s, 2, 8).sends.outcomes[0].message,
             RateLimiterOutcome::Rejected {
+                cost,
                 value: 8,
                 reason: RateLimitRejection::InsufficientTokens
-            }
+            } if cost == tokens(2)
         ));
         assert!(matches!(
             acquire(&mut s, 6, 9).sends.outcomes[0].message,
             RateLimiterOutcome::Rejected {
+                cost,
                 value: 9,
                 reason: RateLimitRejection::ExceedsCapacity
-            }
+            } if cost == tokens(6)
         ));
         assert_eq!(s.state().available(), 1);
     }

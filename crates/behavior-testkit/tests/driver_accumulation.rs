@@ -265,7 +265,7 @@ async fn driver_full_stack_mixed_lanes_stop_on_peer_death() {
             ),
             behavior::TimerId(0),
             Some(due),
-            |_| Ok(Step::Continue),
+            |_| Step::Continue,
         ),
         behavior::ChildTopology::new((0..2).map(|index| u64::try_from(index).unwrap()), |index| {
             Some(child(index))

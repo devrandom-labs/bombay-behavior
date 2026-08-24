@@ -8,9 +8,9 @@ use std::time::Duration;
 
 use behavior::{
     Acted, Actions, CreationKind, Delivery, MailAddr, Never, RestartPolicy, Strategy,
-    SupervisionEvent, Supervisor, WorkerCreationResolved, WorkerStopped,
+    SupervisionEvent, Supervisor, SupervisorError, WorkerCreationResolved, WorkerStopped,
 };
-use behavior_testkit::model::{Model, Outcome};
+use behavior_testkit::model::{Model, Outcome, SupervisionModelError};
 use std::time::Instant;
 use tokio::runtime::Builder;
 
@@ -117,20 +117,34 @@ fn exhaustive_supervision_sequences_match_the_reference_model() {
                             let mut next_worker = 2_u64;
 
                             for (nonce, outcome, at) in events {
+                                let stopped = WorkerStopped {
+                                    proxy: nonce,
+                                    worker: workers[usize::try_from(nonce).unwrap()],
+                                    outcome: outcome.into_result(),
+                                    at: base + Duration::from_nanos(at),
+                                };
                                 let expected = model
                                     .apply(nonce, outcome, at, strategy, policy, maximum, window);
-                                let actions = runtime
-                                    .block_on(async {
-                                        behavior.transition(SupervisionEvent::WorkerStopped(
-                                            WorkerStopped {
-                                                proxy: nonce,
-                                                worker: workers[usize::try_from(nonce).unwrap()],
-                                                outcome: outcome.into_result(),
-                                                at: base + Duration::from_nanos(at),
-                                            },
-                                        ))
-                                    })
-                                    .unwrap();
+                                let actual = runtime.block_on(async {
+                                    behavior.transition(SupervisionEvent::WorkerStopped(
+                                        stopped.clone(),
+                                    ))
+                                });
+                                let expected = match expected {
+                                    Ok(expected) => expected,
+                                    Err(SupervisionModelError::AlreadyStopped {
+                                        nonce: rejected,
+                                    }) => {
+                                        assert_eq!(rejected, nonce);
+                                        assert!(matches!(
+                                            actual,
+                                            Err(SupervisorError::UnexpectedWorkerStopped(returned))
+                                                if returned == stopped
+                                        ));
+                                        continue;
+                                    }
+                                };
+                                let actions = actual.unwrap();
                                 let sends: Vec<u64> = actions
                                     .sends
                                     .replacement_commands

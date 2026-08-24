@@ -5,7 +5,7 @@ use behavior::{
     Acted, Actions, ChildStopped, Crash, Create, CreationKind, CreationResolved, Delivery, Exit,
     Machine, MailAddr, Move, Never, PeerStopped, Proxy, ProxyCommand, ProxyEvent, Recipient,
     RestartPolicy, StashRoute, Step, SupervisionEvent, TimerElapsed, TimerGeneration, TimerId,
-    User, UserEvent, WorkerStopped, stop_on_abnormal_death,
+    User, UserEvent, WorkerCreationResolved, WorkerStopped, stop_on_abnormal_death,
 };
 use behavior_testkit::{Mailbox, drive};
 use std::time::Instant;
@@ -64,7 +64,7 @@ async fn empty_mailbox_still_observes_initialization_exactly_once() {
     let due = Instant::now() + Duration::from_secs(1);
     let behavior =
         behavior::Deadline::new(Recorder::default(), behavior::TimerId(0), Some(due), |_| {
-            Ok(Step::Continue)
+            Step::Continue
         });
     let mut mailbox = Mailbox::new([]);
     let trace = drive(behavior, &mut mailbox).unwrap();
@@ -79,7 +79,7 @@ async fn stale_and_duplicate_time_observations_are_inert() {
     let due = Instant::now() + Duration::from_secs(2);
     let behavior =
         behavior::Deadline::new(Recorder::default(), behavior::TimerId(0), Some(due), |_| {
-            Ok(Step::Stop(behavior::Stopped))
+            Step::Stop(behavior::Stopped)
         });
     let mut mailbox = Mailbox::new([
         EventLayer::Owned(TimerElapsed {
@@ -108,7 +108,7 @@ async fn wrapper_orderings_preserve_both_initial_protocols() {
     let peer = MailAddr(44);
     let at_then_watch = behavior::Watch::new(
         behavior::Deadline::new(Recorder::default(), behavior::TimerId(0), Some(due), |_| {
-            Ok(Step::Continue)
+            Step::Continue
         }),
         peer,
         stop_on_abnormal_death,
@@ -123,7 +123,7 @@ async fn wrapper_orderings_preserve_both_initial_protocols() {
         behavior::Watch::new(Recorder::default(), peer, stop_on_abnormal_death),
         behavior::TimerId(0),
         Some(due),
-        |_| Ok(Step::Continue),
+        |_| Step::Continue,
     );
     let initialized = watch_then_at.initialize().unwrap();
     let second = initialized.actions;
@@ -143,12 +143,18 @@ async fn peer_fact_reaches_only_its_structurally_selected_watcher() {
     );
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
-    let stale_outer = EventLayer::Owned(PeerStopped {
+    let stale_fact = PeerStopped {
         peer: inner_peer,
         outcome: Err(Crash::Failed),
-    });
-    let ignored = behavior.transition(stale_outer).unwrap();
-    assert_eq!(ignored.become_, Step::Continue);
+    };
+    let stale_outer = EventLayer::Owned(stale_fact.clone());
+    assert!(matches!(
+        behavior.transition(stale_outer),
+        Err(behavior::TerminationMonitorError::UnexpectedFact {
+            observation: behavior::TerminationObservation::Observing,
+            fact,
+        }) if fact == stale_fact
+    ));
 
     let selected_inner = EventLayer::Inner(EventLayer::Owned(PeerStopped {
         peer: inner_peer,
@@ -351,10 +357,20 @@ async fn restart_window_boundary_is_inclusive() {
             .len(),
         1
     );
+    supervisor
+        .transition(SupervisionEvent::WorkerCreationResolved(
+            WorkerCreationResolved::new(
+                0,
+                1,
+                CreationKind::ReplacementIncarnation { replaces: 0 },
+                Ok(()),
+            ),
+        ))
+        .unwrap();
 
     let edge = SupervisionEvent::WorkerStopped(WorkerStopped {
         proxy: 0,
-        worker: 0,
+        worker: 1,
         outcome: Err(Crash::Failed),
         at: start + Duration::from_secs(5),
     });
@@ -386,11 +402,21 @@ async fn duplicate_dynamic_birth_is_rejected() {
     .unwrap();
     let initialized = supervisor.initialize().unwrap();
     let mut supervisor = initialized.behavior;
+    let acted = supervisor
+        .transition(UserEvent::user(MailAddr(0), 0))
+        .unwrap();
+    assert!(acted.creates.is_empty());
+    assert!(acted.sends.owned.child_observations.is_empty());
+    assert!(acted.sends.owned.creation_observations.is_empty());
     assert!(matches!(
-        supervisor.transition(UserEvent::user(MailAddr(0), 0)),
-        Err(behavior::SuperviseError::Fleet(
-            behavior::FleetError::DuplicateChild(0)
-        ))
+        acted.sends.owned.failure_reports.as_slice(),
+        [report] if report.failure
+            == behavior::SupervisionFailure::stable_child_not_accepted(
+                0,
+                behavior::CreationKind::Birth,
+                behavior::StableSlotRejection::DuplicateNonce,
+            )
     ));
+    assert_eq!(supervisor.child_count(), 1);
 }
 use behavior_testkit::InitializeTest;

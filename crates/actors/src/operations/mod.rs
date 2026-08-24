@@ -15,8 +15,8 @@ pub use configuration::{
 };
 pub use features::{Feature, FeatureSet, FeatureStatus, Features, FeaturesState};
 pub use health::{
-    ComponentHealth, ComponentHealthState, Health, HealthError, HealthMessage, HealthReport,
-    HealthStatus, ObservationVersion,
+    ComponentHealth, ComponentHealthState, Health, HealthError, HealthEvidence, HealthMessage,
+    HealthReport, HealthStatus, ObservationVersion,
 };
 pub use readiness::{
     DependencyReadiness, Readiness, ReadinessError, ReadinessEvidence, ReadinessMessage,

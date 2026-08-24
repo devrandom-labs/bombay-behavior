@@ -44,7 +44,7 @@ async fn deadline_initialization_emits_exactly_one_schedule() {
     let due = Instant::now() + Duration::from_secs(1);
     let behavior =
         behavior::Deadline::new(Recorder::default(), behavior::TimerId(0), Some(due), |_| {
-            Ok(Step::Continue)
+            Step::Continue
         });
     let initialized = behavior.initialize().unwrap();
     assert_eq!(initialized.actions.sends.owned.len(), 1);

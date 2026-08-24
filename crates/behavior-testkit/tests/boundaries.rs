@@ -203,7 +203,7 @@ async fn empty_fleet_supervisor_initializes_and_steps_cleanly() {
 }
 
 #[tokio::test]
-async fn stale_child_stopped_is_inert_at_its_selected_supervisor_owner() {
+async fn foreign_worker_stop_is_returned_exactly_without_changing_the_fleet() {
     let supervisor = behavior::Supervise::new(
         Parent,
         behavior::ChildTopology::new((0..1).map(|index| u64::try_from(index).unwrap()), |index| {
@@ -219,21 +219,18 @@ async fn stale_child_stopped_is_inert_at_its_selected_supervisor_owner() {
     .unwrap();
     let initialized = supervisor.initialize().unwrap();
     let mut supervisor = initialized.behavior;
-    let actions = supervisor
-        .transition(stopped(42, Err(Crash::Failed), Instant::now()))
-        .unwrap();
-
-    assert!(actions.sends.owned.replacement_commands.is_empty());
-    assert!(actions.sends.owned.failure_reports.is_empty());
-    assert!(actions.creates.is_empty());
-    assert_eq!(actions.become_, Step::Continue);
+    let observed = WorkerStopped::new(42, 42, Err(Crash::Failed), Instant::now());
+    assert!(matches!(
+        supervisor.transition(SupervisionEvent::WorkerStopped(observed.clone())),
+        Err(behavior::SuperviseError::UnexpectedWorkerStopped(returned)) if returned == observed
+    ));
     assert_eq!(supervisor.child_count(), 1);
 }
 
 /// A redelivered worker termination fact is stale after replacement begins;
 /// it cannot consume budget or emit a second replacement.
 #[tokio::test]
-async fn duplicate_worker_stopped_is_inert_during_replacement() {
+async fn duplicate_worker_stopped_is_returned_during_replacement() {
     let at = Instant::now();
     let supervisor = supervisor(
         Strategy::OneForOne,
@@ -251,10 +248,12 @@ async fn duplicate_worker_stopped_is_inert_during_replacement() {
     assert_eq!(first.sends.owned.replacement_commands.len(), 1);
     assert_eq!(supervisor.restarts_in_window(), 1);
 
-    let duplicate = supervisor
-        .transition(stopped(0, Err(Crash::Failed), at))
-        .unwrap();
-    assert!(duplicate.sends.owned.replacement_commands.is_empty());
+    let duplicate = WorkerStopped::new(0, 0, Err(Crash::Failed), at);
+    assert!(matches!(
+        supervisor.transition(SupervisionEvent::WorkerStopped(duplicate.clone())),
+        Err(behavior::SuperviseError::UnexpectedWorkerStopped(returned))
+            if returned == duplicate
+    ));
     assert_eq!(supervisor.restarts_in_window(), 1);
 }
 
@@ -286,11 +285,11 @@ async fn transient_policy_restarts_only_abnormal_outcomes() {
         RestartPolicy::Transient,
         u32::MAX,
         Duration::MAX,
-        3,
+        4,
     );
     let initialized = supervisor.initialize().unwrap();
     let mut supervisor = initialized.behavior;
-    for proxy in 0..3 {
+    for proxy in 0..4 {
         supervisor
             .transition(worker_created(proxy, proxy, CreationKind::Birth))
             .unwrap();
@@ -303,17 +302,17 @@ async fn transient_policy_restarts_only_abnormal_outcomes() {
     assert!(!supervisor.is_alive(0).unwrap());
 
     let collected = supervisor
-        .transition(stopped(0, Ok(Exit::Collected), at))
+        .transition(stopped(1, Ok(Exit::Collected), at))
         .unwrap();
     assert!(collected.sends.owned.replacement_commands.is_empty());
 
     let link = supervisor
-        .transition(stopped(1, Ok(Exit::LinkDied(MailAddr(9))), at))
+        .transition(stopped(2, Ok(Exit::LinkDied(MailAddr(9))), at))
         .unwrap();
     assert_eq!(link.sends.owned.replacement_commands.len(), 1);
-    assert!(supervisor.is_alive(1).unwrap());
+    assert!(supervisor.is_alive(2).unwrap());
 
-    let mut worker = 2;
+    let mut worker = 3;
     for (generation, crash) in [
         Crash::Failed,
         Crash::EnvironmentFailed,
@@ -324,14 +323,14 @@ async fn transient_policy_restarts_only_abnormal_outcomes() {
     .enumerate()
     {
         let crashed = supervisor
-            .transition(stopped_worker(2, worker, Err(crash), at))
+            .transition(stopped_worker(3, worker, Err(crash), at))
             .unwrap();
         assert_eq!(crashed.sends.owned.replacement_commands.len(), 1);
-        assert!(supervisor.is_alive(2).unwrap());
+        assert!(supervisor.is_alive(3).unwrap());
         let replacement = 102 + u64::try_from(generation).unwrap() * 100;
         supervisor
             .transition(worker_created(
-                2,
+                3,
                 replacement,
                 CreationKind::ReplacementIncarnation { replaces: worker },
             ))
@@ -633,11 +632,11 @@ async fn nested_at_identical_schedules_are_distinguished_by_identity() {
     let due = Instant::now() + Duration::from_secs(1);
     let outer = behavior::Deadline::new(
         behavior::Deadline::new(Recorder::default(), TimerId(0), Some(due), |_| {
-            Ok(Step::Stop(behavior::Stopped))
+            Step::Stop(behavior::Stopped)
         }),
         TimerId(1),
         Some(due),
-        |_| Ok(Step::Continue),
+        |_| Step::Continue,
     );
     let initialized = outer.initialize().unwrap();
     let mut outer = initialized.behavior;
@@ -656,11 +655,11 @@ async fn duplicate_nested_timer_identity_remains_addressable_at_both_paths() {
     let due = Instant::now() + Duration::from_secs(1);
     let outer = behavior::Deadline::new(
         behavior::Deadline::new(Recorder::default(), TimerId(0), Some(due), |_| {
-            Ok(Step::Stop(behavior::Stopped))
+            Step::Stop(behavior::Stopped)
         }),
         TimerId(0),
         Some(due),
-        |_| Ok(Step::Continue),
+        |_| Step::Continue,
     );
     let mut outer = outer.initialize().unwrap().behavior;
 
@@ -689,7 +688,7 @@ async fn restart_configuration_controls_eligibility_and_budget_together() {
     let at = Instant::now();
     let supervisor = behavior::Supervise::new(
         Parent,
-        behavior::ChildTopology::new((0..1).map(|index| u64::try_from(index).unwrap()), |index| {
+        behavior::ChildTopology::new((0..2).map(|index| u64::try_from(index).unwrap()), |index| {
             Some(child(index))
         }),
         behavior::RestartConfiguration::new(
@@ -704,6 +703,9 @@ async fn restart_configuration_controls_eligibility_and_budget_together() {
     let mut supervisor = initialized.behavior;
     supervisor
         .transition(worker_created(0, 0, CreationKind::Birth))
+        .unwrap();
+    supervisor
+        .transition(worker_created(1, 1, CreationKind::Birth))
         .unwrap();
 
     let first = supervisor
@@ -731,7 +733,7 @@ async fn restart_configuration_controls_eligibility_and_budget_together() {
 
     // A normal exit is never restarted under the selected Transient policy.
     let normal = supervisor
-        .transition(stopped(0, Ok(Exit::Normal), at))
+        .transition(stopped(1, Ok(Exit::Normal), at))
         .unwrap();
     assert!(normal.sends.owned.replacement_commands.is_empty());
 }

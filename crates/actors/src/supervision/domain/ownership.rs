@@ -1,6 +1,6 @@
 //! Shared fixed-fleet ownership state machine.
 
-use super::{Fleet, FleetError, RestartBudget};
+use super::{Fleet, FleetError, RestartBudget, SlotRegistrationError};
 use crate::protocol::{
     ChildShutdownRejected, ChildStopped, CreationResolved, ObserveChild, ObserveCreation,
     ShutdownChild, WorkerCreationResolved, WorkerStopped,
@@ -9,10 +9,10 @@ use crate::supervision::adapter::{
     ChildTopology, ProxyWithParent, RestartConfiguration, SupervisorSends,
 };
 use crate::supervision::{RestartPolicy, SupervisionFailure};
-use crate::{CreationKind, Exit, ReportSupervisionFailure};
+use crate::{CreationKind, Exit, ReportSupervisionFailure, StableSlotRejection};
 use behavior::{
     Actions, Address, Behavior, Births, ChildDelivery, ChildRoute, Create, InterpreterRequests,
-    Never, SendEffects, Step,
+    Never, SendEffects, Step, User,
 };
 
 type OwnedActions<A, C, P> =
@@ -26,7 +26,7 @@ where
     C::Protocol: crate::Protocol<Addr = A>,
 {
     pub actions: OwnedActions<A, C, P>,
-    pub failure: Option<SupervisionFailure<A>>,
+    pub failures: Vec<SupervisionFailure<A>>,
 }
 
 impl<A, C, P> OwnershipFold<A, C, P>
@@ -39,40 +39,48 @@ where
     fn actions(actions: OwnedActions<A, C, P>) -> Self {
         Self {
             actions,
-            failure: None,
+            failures: Vec::new(),
         }
     }
     fn failed(actions: OwnedActions<A, C, P>, failure: SupervisionFailure<A>) -> Self {
         Self {
             actions,
-            failure: Some(failure),
+            failures: vec![failure],
         }
+    }
+
+    fn failed_many(actions: OwnedActions<A, C, P>, failures: Vec<SupervisionFailure<A>>) -> Self {
+        Self { actions, failures }
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub(crate) enum OwnershipError<N> {
+pub(crate) enum OwnershipError<A: Address> {
     #[error(transparent)]
-    Fleet(#[from] FleetError<N>),
+    Fleet(#[from] FleetError<A::Nonce>),
     #[error("worker factory rejected configured fleet index {index}")]
     FactoryIndex { index: usize },
     #[error("owned proxy shutdown was rejected")]
-    ChildShutdownRejected {
-        nonce: N,
-        reason: crate::ChildShutdownRejection,
-    },
+    ChildShutdownRejected(ChildShutdownRejected<A::Nonce>),
+    #[error("a creation result does not belong to a pending stable-child creation")]
+    UnexpectedCreation(CreationResolved<A>),
+    #[error("a stable-child stop does not belong to the current ownership state")]
+    UnexpectedChildStopped(ChildStopped<A>),
+    #[error("a worker stop does not belong to the current worker incarnation")]
+    UnexpectedWorkerStopped(WorkerStopped<A>),
+    #[error("a worker creation result does not belong to a pending worker creation")]
+    UnexpectedWorkerCreation(WorkerCreationResolved<A::Nonce>),
+    #[error("a child-shutdown rejection does not belong to an outstanding shutdown request")]
+    UnexpectedChildShutdownRejection(ChildShutdownRejected<A::Nonce>),
     #[error("stable-child creation provenance did not match the pending request")]
     CreationProvenanceMismatch {
-        nonce: N,
-        expected: CreationKind<N>,
-        observed: CreationKind<N>,
+        expected: CreationKind<A::Nonce>,
+        observed: CreationResolved<A>,
     },
     #[error("worker-incarnation creation provenance did not match the pending request")]
     WorkerCreationProvenanceMismatch {
-        proxy: N,
-        worker: N,
-        expected: CreationKind<N>,
-        observed: CreationKind<N>,
+        expected: CreationKind<A::Nonce>,
+        observed: WorkerCreationResolved<A::Nonce>,
     },
 }
 
@@ -97,6 +105,21 @@ enum WorkerInstallation<N> {
     ReplacementQueued { worker: N },
     AwaitingReplacement { replaces: N },
     Retired,
+}
+
+/// Why a command cannot currently be accepted by one configured worker slot.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum WorkerCommandRejection<N> {
+    /// The selected nonce is not part of this fixed topology.
+    UnknownWorker(N),
+    /// The stable proxy or its initial worker has not committed yet.
+    Starting(N),
+    /// A replacement incarnation has not committed yet.
+    Restarting(N),
+    /// Policy permanently retired the selected slot.
+    Retired(N),
+    /// The supervisor has begun terminal coordinated shutdown.
+    ShuttingDown(N),
 }
 enum Shutdown<N> {
     Running,
@@ -189,6 +212,57 @@ where
         matches!(self.shutdown, Shutdown::Draining { .. })
     }
 
+    /// Address one application command through the configured stable slot.
+    ///
+    /// The command is accepted only while both the stable proxy and its
+    /// current worker incarnation are established. The returned delivery
+    /// retains the configured proxy nonce across later worker replacement.
+    pub fn command(
+        &self,
+        worker: A::Nonce,
+        command: User<A, <C::Protocol as crate::Protocol>::Msg>,
+    ) -> Result<
+        OwnedActions<A, C, P>,
+        (
+            WorkerCommandRejection<A::Nonce>,
+            User<A, <C::Protocol as crate::Protocol>::Msg>,
+        ),
+    > {
+        let Some((_, installation)) = self
+            .installations
+            .iter()
+            .find(|(nonce, _)| *nonce == worker)
+        else {
+            return Err((WorkerCommandRejection::UnknownWorker(worker), command));
+        };
+        if self.is_shutting_down() {
+            return Err((WorkerCommandRejection::ShuttingDown(worker), command));
+        }
+        match (installation, self.worker(worker)) {
+            (Installation::Established, Some(WorkerInstallation::Running { .. })) => {
+                let route = ChildRoute::<ProxyWithParent<C, P>, behavior::ChildHead>::new(worker);
+                let mut sends = SupervisorSends::empty();
+                sends.worker_commands.push(ChildDelivery::at(
+                    route,
+                    crate::ProxyCommand::Forward(command.message),
+                ));
+                Ok(Actions::send(sends))
+            }
+            (_, Some(WorkerInstallation::Retired)) | (Installation::Rejected { .. }, _) => {
+                Err((WorkerCommandRejection::Retired(worker), command))
+            }
+            (
+                _,
+                Some(
+                    WorkerInstallation::ReplacementQueuedUnknown
+                    | WorkerInstallation::ReplacementQueued { .. }
+                    | WorkerInstallation::AwaitingReplacement { .. },
+                ),
+            ) => Err((WorkerCommandRejection::Restarting(worker), command)),
+            _ => Err((WorkerCommandRejection::Starting(worker), command)),
+        }
+    }
+
     fn worker(&self, proxy: A::Nonce) -> Option<WorkerInstallation<A::Nonce>> {
         self.workers
             .iter()
@@ -201,7 +275,7 @@ where
         }
     }
 
-    pub fn initialize(&mut self) -> Result<OwnedActions<A, C, P>, OwnershipError<A::Nonce>> {
+    pub fn initialize(&mut self) -> Result<OwnedActions<A, C, P>, OwnershipError<A>> {
         let nonces: Vec<_> = self.fleet.configured_nonces().collect();
         let children = nonces
             .iter()
@@ -249,12 +323,30 @@ where
         ))
     }
 
-    pub fn adopt(
-        &mut self,
-        creates: Vec<Create<A, C>>,
-    ) -> Result<OwnedActions<A, C, P>, OwnershipError<A::Nonce>> {
-        for create in &creates {
-            self.fleet.register(create.nonce)?;
+    pub fn adopt(&mut self, creates: Vec<Create<A, C>>) -> OwnershipFold<A, C, P> {
+        let mut accepted = Vec::new();
+        let mut failures = Vec::new();
+        for create in creates {
+            let rejection = match self.fleet.register(create.nonce) {
+                Ok(()) => None,
+                Err(SlotRegistrationError::DuplicateChild(_)) => {
+                    Some(StableSlotRejection::DuplicateNonce)
+                }
+                Err(SlotRegistrationError::SequenceExhausted) => {
+                    Some(StableSlotRejection::SequenceExhausted)
+                }
+            };
+            if let Some(rejection) = rejection {
+                failures.push(SupervisionFailure::stable_child_not_accepted(
+                    create.nonce,
+                    create.kind,
+                    rejection,
+                ));
+            } else {
+                accepted.push(create);
+            }
+        }
+        for create in &accepted {
             self.installations
                 .push((create.nonce, Installation::Pending { kind: create.kind }));
             self.workers
@@ -265,7 +357,7 @@ where
         }
         let mut sends = SupervisorSends::empty();
         sends.child_observations = InterpreterRequests::new(
-            creates
+            accepted
                 .iter()
                 .map(|creation| {
                     ObserveChild::at(
@@ -277,7 +369,7 @@ where
                 .collect(),
         );
         sends.creation_observations = InterpreterRequests::new(
-            creates
+            accepted
                 .iter()
                 .map(|creation| {
                     ObserveCreation::at(
@@ -288,26 +380,27 @@ where
                 })
                 .collect(),
         );
-        Ok(Actions::new(
-            sends,
-            creates
-                .into_iter()
-                .map(|creation| {
-                    ChildRoute::<ProxyWithParent<C, P>, behavior::ChildHead>::new(creation.nonce)
-                        .stage(
-                            ProxyWithParent::with_parent(creation.child, self.parent),
-                            creation.kind,
-                        )
-                })
-                .collect(),
-            Step::Continue,
-        ))
+        let births = accepted
+            .into_iter()
+            .map(|creation| {
+                ChildRoute::<ProxyWithParent<C, P>, behavior::ChildHead>::new(creation.nonce).stage(
+                    ProxyWithParent::with_parent(creation.child, self.parent),
+                    creation.kind,
+                )
+            })
+            .collect();
+        for failure in failures.iter().copied() {
+            sends
+                .failure_reports
+                .send(ReportSupervisionFailure::new(failure));
+        }
+        OwnershipFold::failed_many(Actions::new(sends, births, Step::Continue), failures)
     }
 
     fn replacement(
         &mut self,
         event: &WorkerStopped<A>,
-    ) -> Result<Replacement<A, C>, OwnershipError<A::Nonce>> {
+    ) -> Result<Replacement<A, C>, OwnershipError<A>> {
         let eligible = match self.restart.policy {
             RestartPolicy::Permanent => true,
             RestartPolicy::Transient => {
@@ -339,11 +432,19 @@ where
             .map(|candidate| {
                 (self.build)(candidate.index)
                     .map(|child| (candidate.nonce, child))
-                    .ok_or(OwnershipError::FactoryIndex {
-                        index: candidate.index,
-                    })
+                    .ok_or((candidate.nonce, candidate.index))
             })
-            .collect::<Result<Vec<_>, _>>()?;
+            .collect::<Result<Vec<_>, _>>();
+        let replacements = match replacements {
+            Ok(replacements) => replacements,
+            Err((child, index)) => {
+                self.fleet.retire(event.proxy)?;
+                self.set_worker(event.proxy, WorkerInstallation::Retired);
+                return Ok(Replacement::Failed(
+                    SupervisionFailure::worker_factory_rejected(child, index),
+                ));
+            }
+        };
         if let Err(reason) = self.budget.admit(event.at, candidates.len()) {
             self.fleet.retire(event.proxy)?;
             self.set_worker(event.proxy, WorkerInstallation::Retired);
@@ -384,11 +485,35 @@ where
         ))
     }
 
+    pub(crate) fn validate_worker_stopped(
+        &self,
+        event: &WorkerStopped<A>,
+    ) -> Result<(), OwnershipError<A>> {
+        if !self.fleet.contains(event.proxy) {
+            return Err(OwnershipError::UnexpectedWorkerStopped(event.clone()));
+        }
+        let belongs = match self.worker(event.proxy) {
+            Some(WorkerInstallation::AwaitingInitial)
+            | Some(WorkerInstallation::ReplacementQueuedUnknown) => true,
+            Some(WorkerInstallation::Running { worker })
+            | Some(WorkerInstallation::ReplacementQueued { worker }) => worker == event.worker,
+            Some(WorkerInstallation::AwaitingReplacement { .. } | WorkerInstallation::Retired)
+            | None => false,
+        };
+        if belongs {
+            Ok(())
+        } else {
+            Err(OwnershipError::UnexpectedWorkerStopped(event.clone()))
+        }
+    }
+
     pub fn worker_stopped(
         &mut self,
         event: WorkerStopped<A>,
-    ) -> Result<OwnershipFold<A, C, P>, OwnershipError<A::Nonce>> {
-        if self.is_shutting_down() || !self.fleet.contains(event.proxy) {
+    ) -> Result<OwnershipFold<A, C, P>, OwnershipError<A>> {
+        self.validate_worker_stopped(&event)?;
+        if self.is_shutting_down() {
+            self.set_worker(event.proxy, WorkerInstallation::Retired);
             return Ok(OwnershipFold::actions(Actions::cont()));
         }
         match self.worker(event.proxy) {
@@ -422,7 +547,7 @@ where
                     },
                 );
             }
-            _ => return Ok(OwnershipFold::actions(Actions::cont())),
+            _ => return Err(OwnershipError::UnexpectedWorkerStopped(event)),
         }
         match self.replacement(&event)? {
             Replacement::Retire => {
@@ -447,7 +572,7 @@ where
     pub fn child_stopped(
         &mut self,
         event: ChildStopped<A>,
-    ) -> Result<OwnershipFold<A, C, P>, OwnershipError<A::Nonce>> {
+    ) -> Result<OwnershipFold<A, C, P>, OwnershipError<A>> {
         if let Shutdown::Draining { awaiting } = &mut self.shutdown {
             if awaiting.contains(&event.nonce) {
                 awaiting.retain(|n| *n != event.nonce);
@@ -458,10 +583,10 @@ where
                     Actions::cont()
                 }));
             }
-            return Ok(OwnershipFold::actions(Actions::cont()));
+            return Err(OwnershipError::UnexpectedChildStopped(event));
         }
         if !self.fleet.contains(event.nonce) {
-            return Ok(OwnershipFold::actions(Actions::cont()));
+            return Err(OwnershipError::UnexpectedChildStopped(event));
         }
         self.fleet.retire(event.nonce)?;
         let failure = SupervisionFailure::stable_child_stopped(event.nonce, event.outcome);
@@ -475,22 +600,21 @@ where
     pub fn creation_resolved(
         &mut self,
         event: CreationResolved<A>,
-    ) -> Result<OwnershipFold<A, C, P>, OwnershipError<A::Nonce>> {
+    ) -> Result<OwnershipFold<A, C, P>, OwnershipError<A>> {
         let Some(position) = self
             .installations
             .iter()
             .position(|(n, _)| *n == event.nonce)
         else {
-            return Ok(OwnershipFold::actions(Actions::cont()));
+            return Err(OwnershipError::UnexpectedCreation(event));
         };
         let Installation::Pending { kind: expected } = self.installations[position].1 else {
-            return Ok(OwnershipFold::actions(Actions::cont()));
+            return Err(OwnershipError::UnexpectedCreation(event));
         };
         if event.kind != expected {
             return Err(OwnershipError::CreationProvenanceMismatch {
-                nonce: event.nonce,
                 expected,
-                observed: event.kind,
+                observed: event,
             });
         }
         self.installations[position].1 = match event.result {
@@ -538,25 +662,8 @@ where
     pub fn worker_creation_resolved(
         &mut self,
         event: WorkerCreationResolved<A::Nonce>,
-    ) -> Result<OwnershipFold<A, C, P>, OwnershipError<A::Nonce>> {
-        if self.is_shutting_down() || !self.fleet.contains(event.proxy) {
-            return Ok(OwnershipFold::actions(Actions::cont()));
-        }
-        let expected = match self.worker(event.proxy) {
-            Some(WorkerInstallation::AwaitingInitial) => CreationKind::Birth,
-            Some(WorkerInstallation::AwaitingReplacement { replaces }) => {
-                CreationKind::ReplacementIncarnation { replaces }
-            }
-            _ => return Ok(OwnershipFold::actions(Actions::cont())),
-        };
-        if event.kind != expected {
-            return Err(OwnershipError::WorkerCreationProvenanceMismatch {
-                proxy: event.proxy,
-                worker: event.worker,
-                expected,
-                observed: event.kind,
-            });
-        }
+    ) -> Result<OwnershipFold<A, C, P>, OwnershipError<A>> {
+        let expected = self.validate_worker_creation_resolved(&event)?;
         Ok(match event.result {
             Ok(()) => {
                 self.set_worker(
@@ -568,12 +675,12 @@ where
                 OwnershipFold::actions(Actions::cont())
             }
             Err(rejection) => {
-                let _ = self.fleet.retire(event.proxy);
+                self.fleet.retire(event.proxy)?;
                 self.set_worker(event.proxy, WorkerInstallation::Retired);
                 let failure = SupervisionFailure::worker_creation_rejected(
                     event.proxy,
                     event.worker,
-                    event.kind,
+                    expected,
                     rejection,
                 );
                 let mut sends = SupervisorSends::empty();
@@ -583,6 +690,29 @@ where
                 OwnershipFold::failed(Actions::send(sends), failure)
             }
         })
+    }
+
+    pub(crate) fn validate_worker_creation_resolved(
+        &self,
+        event: &WorkerCreationResolved<A::Nonce>,
+    ) -> Result<CreationKind<A::Nonce>, OwnershipError<A>> {
+        if !self.fleet.contains(event.proxy) {
+            return Err(OwnershipError::UnexpectedWorkerCreation(*event));
+        }
+        let expected = match self.worker(event.proxy) {
+            Some(WorkerInstallation::AwaitingInitial) => CreationKind::Birth,
+            Some(WorkerInstallation::AwaitingReplacement { replaces }) => {
+                CreationKind::ReplacementIncarnation { replaces }
+            }
+            _ => return Err(OwnershipError::UnexpectedWorkerCreation(*event)),
+        };
+        if event.kind != expected {
+            return Err(OwnershipError::WorkerCreationProvenanceMismatch {
+                expected,
+                observed: *event,
+            });
+        }
+        Ok(expected)
     }
 
     pub fn shutdown(&mut self) -> OwnershipFold<A, C, P> {
@@ -614,15 +744,12 @@ where
     pub fn child_shutdown_rejected(
         &self,
         event: ChildShutdownRejected<A::Nonce>,
-    ) -> Result<OwnershipFold<A, C, P>, OwnershipError<A::Nonce>> {
+    ) -> Result<OwnershipFold<A, C, P>, OwnershipError<A>> {
         if matches!(&self.shutdown, Shutdown::Draining { awaiting } if awaiting.contains(&event.nonce))
         {
-            Err(OwnershipError::ChildShutdownRejected {
-                nonce: event.nonce,
-                reason: event.reason,
-            })
+            Err(OwnershipError::ChildShutdownRejected(event))
         } else {
-            Ok(OwnershipFold::actions(Actions::cont()))
+            Err(OwnershipError::UnexpectedChildShutdownRejection(event))
         }
     }
 }

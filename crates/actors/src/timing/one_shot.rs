@@ -14,8 +14,30 @@ use behavior::{
 /// Complete event sum accepted by [`OneShot`].
 pub type OneShotEvent<E> = TimedEvent<E>;
 
-/// Pure fold invoked for the one accepted timer generation.
-pub type OneShotReaction<B> = fn(&mut B) -> BehaviorActed<B>;
+/// Infallible fold invoked for the one accepted timer generation.
+///
+/// ```compile_fail,E0308
+/// # use std::time::Duration;
+/// # use behavior::{Actions, Behavior, MailAddr, Never, NoBirths, User};
+/// # use behavior_actors::{OneShot, TimerId};
+/// # struct App;
+/// # impl behavior::Protocol for App { type Addr = MailAddr; type Msg = (); }
+/// # impl Behavior for App {
+/// #   type Protocol = Self; type Event = User<MailAddr, ()>; type Sends = Vec<Never>;
+/// #   type Ph = Never; type Error = Never; type Birth = NoBirths;
+/// #   fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> behavior::BehaviorActed<Self> { Ok(Actions::cont()) }
+/// # }
+/// fn fallible(_: &mut App) -> behavior::BehaviorActed<App> { Ok(Actions::cont()) }
+/// let _ = OneShot::new(App, TimerId(1), Duration::ZERO, fallible);
+/// ```
+pub type OneShotReaction<B> = fn(
+    &mut B,
+) -> Actions<
+    crate::BehaviorAddr<B>,
+    <B as Behavior>::Ph,
+    <B as Behavior>::Sends,
+    <B as Behavior>::Birth,
+>;
 
 /// Notify a wrapped behavior once after a relative delay.
 ///
@@ -23,7 +45,9 @@ pub type OneShotReaction<B> = fn(&mut B) -> BehaviorActed<B>;
 /// emits one generation-tagged `ScheduleAfter` request. A matching elapsed
 /// event is consumed exactly once and folds `on_elapsed`; stale and duplicate
 /// generations are inert unless the wrapped event sum independently accepts
-/// them. Reaction sends, creations, errors, and termination are preserved.
+/// them. Reaction sends, creations, and termination are preserved.
+/// Reactions are infallible because they receive mutable access to the wrapped
+/// behavior; ordinary delegated transitions retain the wrapped error type.
 /// The timer never rearms. Generation exhaustion disables scheduling without
 /// affecting the wrapped fold. These timer and ordering rules are Bombay
 /// policy; sleeping and clock interpretation belong to `bombay-timers`.
@@ -108,7 +132,7 @@ where
             EventLayer::Owned(elapsed)
                 if elapsed.id == self.id && self.lease.accept(elapsed.generation) =>
             {
-                let actions = (self.on_elapsed)(&mut self.inner)?;
+                let actions = (self.on_elapsed)(&mut self.inner);
                 Ok(Self::wrap(actions, InterpreterRequests::empty()))
             }
             EventLayer::Owned(_) => Ok(Actions::cont()),
@@ -154,13 +178,9 @@ mod tests {
         }
     }
 
-    #[allow(
-        clippy::unnecessary_wraps,
-        reason = "reaction type is deliberately fallible"
-    )]
-    fn mark(probe: &mut Probe) -> BehaviorActed<Probe> {
+    fn mark(probe: &mut Probe) -> Actions<MailAddr, Never, Vec<Never>, NoBirths> {
         probe.elapsed += 1;
-        Ok(Actions::cont())
+        Actions::cont()
     }
 
     #[test]

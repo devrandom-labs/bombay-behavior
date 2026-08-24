@@ -1,50 +1,39 @@
-//! Pure peer-observation composition over an ordinary monitor actor protocol.
+//! Peer observation as a specialized use of the action-producing termination
+//! monitor.
 
+use crate::lifecycle::termination_monitor::sealed;
 use crate::protocol::{
     EstablishedObservation, ObservationId, ObserveEstablished, ObservePeer, PeerStopped,
 };
-use crate::{Crash, Exit, Step};
+use crate::{Crash, Exit, Step, TerminationMonitorWith, TerminationObservation};
 use behavior::{
-    Actions, Address, Become, Behavior, BirthMode, EndpointAddress, EstablishedRecipient,
-    EventLayer, InterpreterRequest, InterpreterRequests, ReturnsToEmitter, SendEffects, SendLayer,
-    UserEvent,
+    Actions, Become, Behavior, EndpointAddress, EstablishedRecipient, EventLayer, UserEvent,
 };
 
+fn lift_become<Ph>(become_: Become) -> behavior::Step<Ph, behavior::Stopped> {
+    match become_ {
+        Step::Continue => Step::Continue,
+        Step::Goto(never) => match never {},
+        Step::Stop(stopped) => Step::Stop(stopped),
+    }
+}
+
+/// Complete event sum accepted by observation compositions.
 pub type WatchEvent<E, Fact = PeerStopped<<E as UserEvent>::Addr>> = EventLayer<Fact, E>;
 
-pub type LinkReaction<B> = fn(
-    &mut B,
-    crate::BehaviorAddr<B>,
-    &Result<Exit<crate::BehaviorAddr<B>>, Crash>,
-) -> Result<Become, <B as Behavior>::Error>;
+/// Infallible reaction to one matching logical peer stop.
+pub type LinkReaction<B> =
+    fn(&mut B, crate::BehaviorAddr<B>, &Result<Exit<crate::BehaviorAddr<B>>, Crash>) -> Become;
 
-/// A mutual-lifecycle-policy specialization uses the same typed observation
-/// algebra as [`Watch`]; reciprocity is established by applying it at both
-/// endpoints rather than by a privileged runtime link table.
-pub type Link<B> = Watch<B>;
-
-mod sealed {
-    pub trait WatchTarget<B: behavior::Behavior> {}
-}
-
-/// Static peer-observation policy owned by one [`WatchWith`] composition.
-pub trait WatchTarget<B: Behavior>: sealed::WatchTarget<B> {
-    type Fact;
-    type Request: InterpreterRequest<ReturnToEmitter = ReturnsToEmitter<Self::Fact, behavior::Here>>;
-
-    fn request(&self) -> Self::Request;
-    fn react(&mut self, inner: &mut B, fact: Self::Fact) -> Result<Become, B::Error>;
-}
-
-/// Address-selected legacy observation policy.
+/// Address-selected become-only observation policy.
 pub struct LogicalWatchTarget<B: Behavior> {
     peer: crate::BehaviorAddr<B>,
     on_stopped: LinkReaction<B>,
 }
 
-impl<B: Behavior> sealed::WatchTarget<B> for LogicalWatchTarget<B> {}
+impl<B: Behavior> sealed::TerminationObservationTarget<B> for LogicalWatchTarget<B> {}
 
-impl<B: Behavior> WatchTarget<B> for LogicalWatchTarget<B> {
+impl<B: Behavior> crate::TerminationObservationTarget<B> for LogicalWatchTarget<B> {
     type Fact = PeerStopped<crate::BehaviorAddr<B>>;
     type Request = ObservePeer<crate::BehaviorAddr<B>>;
 
@@ -52,20 +41,33 @@ impl<B: Behavior> WatchTarget<B> for LogicalWatchTarget<B> {
         ObservePeer::new(self.peer)
     }
 
-    fn react(&mut self, inner: &mut B, fact: Self::Fact) -> Result<Become, B::Error> {
-        if fact.peer == self.peer {
-            (self.on_stopped)(inner, fact.peer, &fact.outcome)
-        } else {
-            Ok(Step::Continue)
+    fn react(
+        &mut self,
+        inner: &mut B,
+        observation: TerminationObservation,
+        fact: Self::Fact,
+    ) -> Result<
+        (
+            Actions<crate::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>,
+            TerminationObservation,
+        ),
+        Self::Fact,
+    > {
+        if observation != TerminationObservation::Observing || fact.peer != self.peer {
+            return Err(fact);
         }
+        let become_ = lift_become((self.on_stopped)(inner, fact.peer, &fact.outcome));
+        // A logical address may denote a later incarnation. Unlike an exact
+        // one-shot termination relationship, a watch remains active after
+        // each matching stop fact.
+        Ok((Actions::just(become_), TerminationObservation::Observing))
     }
 }
 
-/// Complete reaction to one exact observation fact.
-pub type EstablishedWatchReaction<B, P> =
-    fn(&mut B, EstablishedObservation<P>) -> Result<Become, <B as Behavior>::Error>;
+/// Complete become-only reaction to one exact established observation fact.
+pub type EstablishedWatchReaction<B, P> = fn(&mut B, EstablishedObservation<P>) -> Become;
 
-/// Exact-incarnation observation policy.
+/// Exact-incarnation become-only observation policy.
 pub struct EstablishedWatchTarget<B: Behavior, P>
 where
     P: behavior::Protocol<Addr = crate::BehaviorAddr<B>>,
@@ -76,7 +78,7 @@ where
     react: EstablishedWatchReaction<B, P>,
 }
 
-impl<B, P> sealed::WatchTarget<B> for EstablishedWatchTarget<B, P>
+impl<B, P> sealed::TerminationObservationTarget<B> for EstablishedWatchTarget<B, P>
 where
     B: Behavior,
     P: behavior::Protocol<Addr = crate::BehaviorAddr<B>>,
@@ -84,7 +86,7 @@ where
 {
 }
 
-impl<B, P> WatchTarget<B> for EstablishedWatchTarget<B, P>
+impl<B, P> crate::TerminationObservationTarget<B> for EstablishedWatchTarget<B, P>
 where
     B: Behavior,
     P: behavior::Protocol<Addr = crate::BehaviorAddr<B>>,
@@ -97,66 +99,101 @@ where
         ObserveEstablished::new(self.id, self.peer.clone())
     }
 
-    fn react(&mut self, inner: &mut B, fact: Self::Fact) -> Result<Become, B::Error> {
-        if fact.id() == self.id {
-            (self.react)(inner, fact)
-        } else {
-            Ok(Step::Continue)
+    fn react(
+        &mut self,
+        inner: &mut B,
+        observation: TerminationObservation,
+        fact: Self::Fact,
+    ) -> Result<
+        (
+            Actions<crate::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>,
+            TerminationObservation,
+        ),
+        Self::Fact,
+    > {
+        if fact.id() != self.id {
+            return Err(fact);
+        }
+        match (observation, &fact) {
+            (TerminationObservation::Requested, EstablishedObservation::Started { .. }) => Ok((
+                Actions::just(lift_become((self.react)(inner, fact))),
+                TerminationObservation::Observing,
+            )),
+            (
+                TerminationObservation::Requested | TerminationObservation::Observing,
+                EstablishedObservation::Rejected {
+                    operation, reason, ..
+                },
+            ) => {
+                let operation = *operation;
+                let reason = *reason;
+                Ok((
+                    Actions::just(lift_become((self.react)(inner, fact))),
+                    TerminationObservation::Rejected { operation, reason },
+                ))
+            }
+            (TerminationObservation::Observing, EstablishedObservation::Cancelled { .. }) => Ok((
+                Actions::just(lift_become((self.react)(inner, fact))),
+                TerminationObservation::Cancelled,
+            )),
+            (TerminationObservation::Observing, EstablishedObservation::Stopped { .. }) => Ok((
+                Actions::just(lift_become((self.react)(inner, fact))),
+                TerminationObservation::Observed,
+            )),
+            _ => Err(fact),
         }
     }
 }
 
-pub(crate) type WatchActions<B, Target> = Actions<
-    crate::BehaviorAddr<B>,
-    <B as Behavior>::Ph,
-    SendLayer<InterpreterRequests<<Target as WatchTarget<B>>::Request>, <B as Behavior>::Sends>,
-    <B as Behavior>::Birth,
->;
-
-/// A pure peer-observation transformation.
+/// A logical-address peer watch using the shared termination-monitor fold.
 ///
-/// Initialization emits exactly one statically selected observation request
-/// after preserving the inner initialization effects. Logical mode accepts a
-/// matching [`PeerStopped`] fact; established mode accepts only facts carrying
-/// its exact [`ObservationId`] and capability protocol. The transformation
-/// retains no runtime observation handle or lifecycle flag.
-pub struct WatchWith<B: Behavior, Target: WatchTarget<B>> {
-    inner: B,
-    target: Target,
-}
+/// The reaction is deliberately infallible because it receives mutable access
+/// to the wrapped behavior. A fallible reaction could mutate the behavior and
+/// then reject the same fact, which cannot be represented as an atomic fold.
+///
+/// ```compile_fail,E0308
+/// # use behavior::{Actions, Behavior, MailAddr, Never, NoBirths, Step, User};
+/// # use behavior_actors::{Crash, Exit, Watch};
+/// # struct App;
+/// # impl behavior::Protocol for App { type Addr = MailAddr; type Msg = (); }
+/// # impl Behavior for App {
+/// #   type Protocol = Self; type Event = User<MailAddr, ()>; type Sends = Vec<Never>;
+/// #   type Ph = Never; type Error = Never; type Birth = NoBirths;
+/// #   fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> behavior::BehaviorActed<Self> { Ok(Actions::cont()) }
+/// # }
+/// fn fallible(
+///     _: &mut App,
+///     _: MailAddr,
+///     _: &Result<Exit<MailAddr>, Crash>,
+/// ) -> Result<behavior::Become, u8> {
+///     Ok(Step::Continue)
+/// }
+/// let _ = Watch::new(App, MailAddr(1), fallible);
+/// ```
+pub type Watch<B> = TerminationMonitorWith<B, LogicalWatchTarget<B>>;
 
-/// A watch that selects its peer by logical address.
-pub type Watch<B> = WatchWith<B, LogicalWatchTarget<B>>;
+/// An exact-incarnation peer watch.
+pub type EstablishedWatch<B, P> = TerminationMonitorWith<B, EstablishedWatchTarget<B, P>>;
 
-/// A watch over one exact installed protocol incarnation.
-pub type EstablishedWatch<B, P> = WatchWith<B, EstablishedWatchTarget<B, P>>;
-
-impl<B: Behavior> WatchWith<B, LogicalWatchTarget<B>> {
-    /// Wrap `inner` with one statically addressed peer observation.
-    ///
-    /// Initialization emits the observation request after preserving the
-    /// wrapped behavior's initialization effects. A matching terminal fact is
-    /// folded exactly once through `on_stopped`.
-    /// Nested watchers remain independently addressable even when they name
-    /// the same peer: each observation request selects this wrapper's exact
-    /// structural ingress destination.
+impl<B: Behavior> TerminationMonitorWith<B, LogicalWatchTarget<B>> {
+    /// Observe one logical peer and apply a become-only reaction once.
     #[must_use]
-    pub fn new(inner: B, peer: crate::BehaviorAddr<B>, on_stopped: LinkReaction<B>) -> Self {
-        Self {
+    pub const fn new(inner: B, peer: crate::BehaviorAddr<B>, on_stopped: LinkReaction<B>) -> Self {
+        Self::with_target(
             inner,
-            target: LogicalWatchTarget { peer, on_stopped },
-        }
+            LogicalWatchTarget { peer, on_stopped },
+            TerminationObservation::Observing,
+        )
     }
 }
 
-impl<B, P> WatchWith<B, EstablishedWatchTarget<B, P>>
+impl<B, P> TerminationMonitorWith<B, EstablishedWatchTarget<B, P>>
 where
     B: Behavior,
     P: behavior::Protocol<Addr = crate::BehaviorAddr<B>>,
     crate::BehaviorAddr<B>: EndpointAddress,
 {
-    /// Observe one exact installed peer and expose every relationship fact to
-    /// the supplied pure reaction.
+    /// Observe one exact installed peer and apply a become-only reaction once.
     #[must_use]
     pub fn established(
         inner: B,
@@ -164,101 +201,23 @@ where
         peer: EstablishedRecipient<P>,
         react: EstablishedWatchReaction<B, P>,
     ) -> Self {
-        Self {
+        Self::with_target(
             inner,
-            target: EstablishedWatchTarget { id, peer, react },
-        }
-    }
-}
-
-impl<B, Target> crate::BehaviorBase for WatchWith<B, Target>
-where
-    B: Behavior + crate::BehaviorBase,
-    Target: WatchTarget<B>,
-{
-    type Base = B::Base;
-
-    fn base(&self) -> &Self::Base {
-        self.inner.base()
-    }
-}
-
-impl<B, Target> crate::StashStatus for WatchWith<B, Target>
-where
-    B: Behavior + crate::StashStatus,
-    Target: WatchTarget<B>,
-{
-    fn stashed_messages(&self) -> usize {
-        self.inner.stashed_messages()
-    }
-}
-
-impl<B, Target, A, Ph, Sends, Br> Behavior for WatchWith<B, Target>
-where
-    A: Address,
-    Sends: SendEffects + behavior::SendsFor<B::Event>,
-    Br: BirthMode,
-    B: Behavior<Ph = Ph, Sends = Sends, Birth = Br>,
-    B::Protocol: crate::Protocol<Addr = A>,
-    Target: WatchTarget<B>,
-{
-    type Protocol = B::Protocol;
-    type Event = WatchEvent<B::Event, Target::Fact>;
-    type Sends = SendLayer<InterpreterRequests<Target::Request>, Sends>;
-    type Ph = Ph;
-    type Error = B::Error;
-    type Birth = Br;
-
-    fn init(&mut self, _: crate::InitializationTurn) -> Result<WatchActions<B, Target>, B::Error> {
-        let actions = behavior::initialize(&mut self.inner)?;
-        Ok(Self::wrap(
-            actions,
-            InterpreterRequests::one(self.target.request()),
-        ))
-    }
-
-    fn transition(
-        &mut self,
-        _: crate::ActiveTurn,
-        event: Self::Event,
-    ) -> Result<WatchActions<B, Target>, B::Error> {
-        match event {
-            EventLayer::Owned(event) => {
-                let become_ = match self.target.react(&mut self.inner, event)? {
-                    Step::Continue => Step::Continue,
-                    Step::Goto(never) => match never {},
-                    Step::Stop(exit) => Step::Stop(exit),
-                };
-                Ok(Actions::new(Self::Sends::empty(), Vec::new(), become_))
-            }
-            EventLayer::Inner(event) => behavior::delegate_transition(&mut self.inner, event)
-                .map(|actions| Self::wrap(actions, InterpreterRequests::empty())),
-        }
-    }
-}
-
-impl<B: Behavior, Target: WatchTarget<B>> WatchWith<B, Target> {
-    fn wrap(
-        actions: Actions<crate::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>,
-        own: InterpreterRequests<Target::Request>,
-    ) -> WatchActions<B, Target> {
-        actions.map_sends(|inner| SendLayer::new(own, inner))
+            EstablishedWatchTarget { id, peer, react },
+            TerminationObservation::Requested,
+        )
     }
 }
 
 /// Stop when the monitor reports an abnormal outcome.
-///
-/// # Errors
-/// This supplied policy never creates a controlled error.
 pub fn stop_on_abnormal_death<B: Behavior>(
     _behavior: &mut B,
-    peer: crate::BehaviorAddr<B>,
+    _peer: crate::BehaviorAddr<B>,
     outcome: &Result<Exit<crate::BehaviorAddr<B>>, Crash>,
-) -> Result<Become, B::Error> {
-    Ok(if let Ok(Exit::Normal | Exit::Collected) = outcome {
+) -> Become {
+    if let Ok(Exit::Normal | Exit::Collected) = outcome {
         Step::Continue
     } else {
-        let _ = peer;
         Step::Stop(crate::Stopped)
-    })
+    }
 }

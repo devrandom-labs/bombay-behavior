@@ -9,8 +9,9 @@
 //! state must agree.
 
 use behavior::{
-    Acted, Actions, Activate, Crash, Create, CreationKind, Delivery, MailAddr, Never,
-    RestartPolicy, Step, Strategy, SupervisionEvent, Supervise, UserEvent, WorkerStopped,
+    Acted, Actions, Activate, Crash, Create, CreationKind, CreationResolved, Delivery, MailAddr,
+    Never, RestartPolicy, Step, Strategy, Supervise, SuperviseError, SupervisionEvent, UserEvent,
+    WorkerCreationResolved, WorkerStopped,
 };
 use libfuzzer_sys::fuzz_target;
 use std::time::Instant;
@@ -63,6 +64,8 @@ impl BirthingParent {
 struct Slot {
     nonce: u64,
     alive: bool,
+    worker: u64,
+    next_worker: u64,
 }
 
 fuzz_target!(|bytes: &[u8]| {
@@ -92,8 +95,28 @@ fuzz_target!(|bytes: &[u8]| {
             .map(|index| Slot {
                 nonce: u64::try_from(index).unwrap(),
                 alive: true,
+                worker: 0,
+                next_worker: 1,
             })
             .collect();
+        for slot in &slots {
+            behavior
+                .transition(SupervisionEvent::CreationResolved(CreationResolved::birth(
+                    slot.nonce,
+                    MailAddr(slot.nonce + 100),
+                )))
+                .unwrap();
+            behavior
+                .transition(SupervisionEvent::WorkerCreationResolved(
+                    WorkerCreationResolved::new(
+                        slot.nonce,
+                        slot.worker,
+                        CreationKind::Birth,
+                        Ok(()),
+                    ),
+                ))
+                .unwrap();
+        }
         let mut births: u64 = u64::try_from(FLEET).unwrap();
         let mut restarts: Vec<u64> = Vec::new();
 
@@ -102,7 +125,12 @@ fuzz_target!(|bytes: &[u8]| {
                 // Dynamic birth with a fresh nonce.
                 let nonce = births;
                 births += 1;
-                slots.push(Slot { nonce, alive: true });
+                slots.push(Slot {
+                    nonce,
+                    alive: true,
+                    worker: 0,
+                    next_worker: 1,
+                });
                 let actions = behavior
                     .transition(SupervisionEvent::Behavior(UserEvent::user(
                         MailAddr(0),
@@ -118,6 +146,22 @@ fuzz_target!(|bytes: &[u8]| {
                     "observe request at byte {index}"
                 );
                 assert_eq!(actions.sends.owned.child_observations[0].nonce, nonce);
+                behavior
+                    .transition(SupervisionEvent::CreationResolved(CreationResolved::birth(
+                        nonce,
+                        MailAddr(nonce + 100),
+                    )))
+                    .unwrap();
+                behavior
+                    .transition(SupervisionEvent::WorkerCreationResolved(
+                        WorkerCreationResolved::new(
+                            nonce,
+                            0,
+                            CreationKind::Birth,
+                            Ok(()),
+                        ),
+                    ))
+                    .unwrap();
             } else {
                 // Death of the slot selected by the byte.
                 let dead = slots[usize::from(byte) % slots.len()];
@@ -129,13 +173,14 @@ fuzz_target!(|bytes: &[u8]| {
                         false
                     }
                 };
+                let stopped = WorkerStopped {
+                    proxy: dead.nonce,
+                    worker: dead.worker,
+                    outcome: Err(Crash::Failed),
+                    at: base + std::time::Duration::from_nanos(u64::try_from(index).unwrap()),
+                };
                 let actions = behavior
-                    .transition(SupervisionEvent::WorkerStopped(WorkerStopped {
-                        proxy: dead.nonce,
-                        worker: dead.nonce,
-                        outcome: Err(Crash::Failed),
-                        at: base + std::time::Duration::from_nanos(u64::try_from(index).unwrap()),
-                    }))
+                    .transition(SupervisionEvent::WorkerStopped(stopped.clone()))
                     .unwrap();
                 assert_eq!(
                     actions.sends.owned.replacement_commands.len(),
@@ -147,6 +192,31 @@ fuzz_target!(|bytes: &[u8]| {
                     .position(|slot| slot.nonce == dead.nonce)
                     .unwrap();
                 slots[idx].alive = expected_restart;
+                if expected_restart {
+                    let replacement = slots[idx].next_worker;
+                    behavior
+                        .transition(SupervisionEvent::WorkerCreationResolved(
+                            WorkerCreationResolved::new(
+                                dead.nonce,
+                                replacement,
+                                CreationKind::replacement_of(dead.worker),
+                                Ok(()),
+                            ),
+                        ))
+                        .unwrap();
+                    slots[idx].worker = replacement;
+                    slots[idx].next_worker = replacement.checked_add(1).unwrap();
+
+                    if byte & 2 != 0 {
+                        let duplicate = behavior
+                            .transition(SupervisionEvent::WorkerStopped(stopped.clone()));
+                        assert!(matches!(
+                            duplicate,
+                            Err(SuperviseError::UnexpectedWorkerStopped(returned))
+                                if returned == stopped
+                        ));
+                    }
+                }
             }
 
             for slot in &slots {
@@ -167,6 +237,12 @@ fuzz_target!(|bytes: &[u8]| {
                 restarts.len(),
                 "restart stamps at byte {index}"
             );
+            if !behavior
+                .is_alive(slots[usize::from(byte) % slots.len()].nonce)
+                .unwrap()
+            {
+                break;
+            }
         }
     });
 });

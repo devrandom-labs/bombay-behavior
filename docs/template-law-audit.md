@@ -1,10 +1,16 @@
 # Behavior Actors template-law audit
 
-This is a proof-driven audit of every reusable `Behavior` implementation
+This is the working record of a proof-driven audit of every reusable `Behavior` implementation
 exported by `bombay-behavior-actors`. It replaces the earlier routing-only
 review, which incorrectly accepted creator-local delivery from a standalone
 `MessageAdapter` and did not test `BehaviorBase` at the runtime resolution
 boundary.
+
+This file is not a completion certificate. A verdict is final only after its
+negative cases have an independent oracle and the full repository gates pass
+on the recorded revision. Earlier versions of this file incorrectly declared
+the catalogue complete while several action-loss and hard-coded-path cases
+were still untested; those declarations are not evidence.
 
 The audit question is not merely whether a template's fold compiles. For every
 capability or lifecycle fact, the review traces:
@@ -70,7 +76,7 @@ and
   relationship, timer generation, and shutdown request provenance travel as
   typed data.
 - **P4 — structural return paths:** interpreter facts return through the exact
-  `Ingress` path selected by the owning wrapper.
+  typed path selected by the owning composition.
 - **P5 — explicit root shutdown:** a `Guardian` chooses direct root stop or
   coordinated delegation; it does not discover a nested shutdown handler.
 - **P6 — stable logical domains:** discovery membership, configured downstream
@@ -81,7 +87,7 @@ and
   concrete effect without conversion.
 - **P8 — creation-dependent shutdown plans:** a coordinator may begin before
   its committed children are known. The topology owner reports its validated
-  plan through `Actions` to an explicit ancestor ingress; installation is one
+  plan through `Actions` to an explicit parent return path; installation is one
   typed event, happens at most once, and retains any earlier shutdown request.
 
 ## Hypotheses and verdicts
@@ -92,7 +98,7 @@ relevant fold/interpreter seam support the statement.
 
 | ID | Source | Falsifiable hypothesis | Verdict and evidence |
 |---|---|---|---|
-| H01 | A1, B1 | Every template transition is a deterministic fold returning all effects in `Actions`. | Pass. Production scans find no runtime handle, task spawn, I/O, or direct interpreter call in a fold; catalogue and algebra tests assert complete actions. |
+| H01 | A1, B1 | Every template transition is a deterministic fold returning all effects in `Actions`. | **Failed → fixed.** `Machine` committed a prefix of a failed drain, `Stash` could replay a fallible inner fold after earlier actions became unreturnable, and `Supervise` could reject child adoption after the application fold succeeded. `Machine` now stages the complete drain, `Stash` statically requires an infallible inner fold, and adoption is an explicit reported outcome that preserves the rest of the application's `Actions`. Independent models compare state and complete outputs after every generated step. |
 | H02 | B2 | Every exported behavior has concrete event, send, phase, error, and birth types. | Pass. All `Behavior` implementations use associated concrete types; no catch-all envelope or registry exists. |
 | H03 | B2 | No template uses `dyn`, `Any`, `TypeId`, downcasting, `unsafe`, serialization, or type-name dispatch for protocol composition. | Pass. Static source scan is clean; the only `type_name` use is a test assertion. |
 | H04 | B5, B6 | A topology-transparent wrapper preserves its inner `BehaviorBase`, protocol, birth algebra, initialization effects, and order. | Pass. `Stash`, timing wrappers, watch/monitor, shutdown wrappers, guardian, and termination/shutdown compositions project the inner base; equality constraints guard nominal role resolution. Composition and initialization tests exercise nested orders. |
@@ -106,7 +112,7 @@ relevant fold/interpreter seam support the statement.
 | H12 | B3, B4, P1 | After a named child commits, callers can retain both its exact incarnation and its creator-local role/nonce without reconstructing either. | **Failed → fixed.** `established_child` now returns `EstablishedChild<C, Role>`, a named product of `ChildRoute` and `EstablishedActor`; rejection yields neither. Its `shutdown_target` method selects a heterogeneous plan branch from the retained role. |
 | H13 | B4, P3 | Child observation and shutdown preserve the declared occurrence when equal child protocols appear more than once. | Pass. All local lifecycle request types carry `Occurrence`; compile-fail tests reject head/tail or nominal-role substitution. |
 | H14 | B2, B4 | A shutdown plan accepts only child behaviors whose exact event algebra owns `ShutdownRequested`. | Pass. Homogeneous and heterogeneous coordinator compile-fail tests reject non-shutdown-capable children; request interpretation uses the resolved concrete child. |
-| H15 | B4, P4 | Proxy reports retain the final parent event path through an outer `Guardian` for every proxy-owning template. | Pass. `ProxyParentIngress<A, ParentPath>` is stored in every proxy birth; runtime-contract tests cover fixed, delayed, dynamic, FIFO, and keyed owners under `Guardian`. |
+| H15 | B4, P4 | Proxy reports retain the final parent event path through an outer `Guardian` for every proxy-owning template. | **Failed → fixed.** The reporting path is generic. Action-interpreted outer-`Guardian` tests execute creation and stop reports for application-owned supervision, fixed supervised workers, both delayed forms, dynamic supervision, FIFO pools, and keyed pools. None supplies a structural path at the composition call. |
 | H16 | B2, P4 | Every timer, observation, creation, shutdown, and parent-report request names the exact structural return path accepted by the enclosing event sum. | Pass. `runtime_contracts` proves request/fact duals and nested path injection; send-product interpretation tests exercise each lane at the same path exactly once. |
 | H17 | B6, P5 | Root shutdown can reach an inner `FinalizeOnShutdown`, retaining its final sends, creations, and stop result. | Pass. `Guardian::coordinated` is the explicit composition; algebra tests prove delivery to the finalizer and full action preservation. |
 | H18 | B3, P3 | Watch supports a deliberate late-bound logical peer and a separate exact-incarnation mode with explicit relationship correlation. | Pass. `Watch` emits `ObservePeer`; `EstablishedWatch` emits `ObserveEstablished` and filters the complete fact algebra by `ObservationId`. |
@@ -114,22 +120,25 @@ relevant fold/interpreter seam support the statement.
 | H20 | B3, B4 | Termination propagation chooses either an occurrence-aware local child or an explicitly late-bound logical peer, never an inferred destination. | Pass. `ChildTermination<A, O>` and `PeerTermination<A>` are distinct target types with distinct request effects. |
 | H21 | A3, B7, P3 | Supervision distinguishes replacement request, installation attempt, committed incarnation, rejection, stale result, and retirement. | Pass. `Incarnation` and ownership folds use exhaustive phase enums and explicit creation kinds; independent supervision models and exhaustive/property suites compare the full sequence behavior. |
 | H22 | A3, P3 | `Restarted` or replacement success is reported only after a replacement-designated creation commits. | Pass. Proxy reports a request separately, checks `CreationKind::Replacement`, and emits committed resolution only after installation success; failure remains typed. |
-| H23 | B7, P3 | Stale and duplicate lifecycle/timer facts cannot be reinterpreted as fresh success or consume another relationship. | Pass. Exact IDs, nonces, incarnation numbers, and timer generations gate transitions; boundary, cross-lane, receive-timeout, and supervision properties cover redelivery and stale inputs. |
+| H23 | B7, P3 | Stale and duplicate lifecycle/timer facts cannot be reinterpreted as fresh success or consume another relationship. | **Failed → fixed.** Timer reactions are now statically infallible, so a matching generation has one total consume-and-react transition. A later audit found consumption hidden inside `debug_assert!`, which made deadline, one-shot, periodic, and receive-timeout accept duplicates in optimized builds. Acceptance now validates and consumes in the production guard; the redundant preflight helpers were removed. Duplicate lifecycle facts are returned through exact typed errors; stale timer facts remain inert. Debug and optimized regressions, wrapper-order properties, and stack fuzzing exercise these cases. |
 | H24 | B1, B2 | Named multi-lane send products preserve every lane exactly once and in their documented structural order. | Pass. Each product has explicit `SendEffects`, `SendsFor`, and `InterpretSends`; runtime-contract and cross-lane tests record complete traces. |
-| H25 | A2, B3, P6 | A dynamic supervisor exposes the stable proxy as the returned logical child identity, never the replaceable worker incarnation. | Pass. `Started` is produced only from committed proxy creation and returns `Recipient<Proxy<C>>`; worker replacement stays local to that proxy. |
+| H25 | A2, B3, P6 | A dynamic supervisor exposes the stable proxy as the returned logical child identity, never the replaceable worker incarnation. | **Failed → fixed.** `Started` is produced only after both the stable proxy and its initial worker have committed. It returns `Recipient<Proxy<C>>`; later worker replacement stays local to that proxy. |
 | H26 | B1, P3 | Time is always a typed input or schedule request; no fold reads wall-clock time or sleeps. | Pass. Production transitions consume `Instant` carried by lifecycle facts or `TimerElapsed`, and emit `ScheduleAt`/`ScheduleAfter`; `Instant::now` occurrences are test setup. |
 | H27 | B2 | Semantic alternatives entering transition logic are sums, not booleans. | **Failed → fixed.** Circuit-breaker `Succeeded`/`Failed` messages were collapsed into `succeeded: bool`; the private `Completion::{Succeeded, Failed}` sum now preserves the domain through the helper boundary. Query predicates remain ordinary booleans. |
 | H28 | B2, B7 | `Option<T>` denotes one value or absence, not overlapping lifecycle phases or correlated capabilities. | Pass after targeted inspection. Dynamic child, proxy incarnation, pool slot, breaker, lease, workflow, watch, and monitor phases use enums. Remaining options are exact absence queries, optional independent metadata, or optional one-effect outputs. |
 | H29 | B1, B6 | Wrapper reactions cannot drop inner sends or creations when selecting `Goto` or `Stop`. | Pass. Wrappers transform the complete action product with `map_sends`/named reconstruction; terminal and initialization tests assert retained creates, sends, and verdicts. |
 | H30 | A3, P1 | No actor address or exact endpoint is derived from nonce arithmetic, sequence position, timing, or address reuse. | Pass. `From<u64>` in fleet code creates configured local nonces only; exact addresses enter exclusively through interpreter facts. |
-| H31 | B7 | Invalid configuration, overlap, exhaustion, unknown targets, and interpreter rejection remain typed results rather than production panics. | Pass. Public constructors and folds expose concrete errors. The only production `expect` is Buffer's documented private invariant: validated positive capacity plus the full/drop-oldest branch proves a non-empty queue. |
+| H31 | B7 | Invalid configuration, overlap, exhaustion, unknown targets, and interpreter rejection remain typed results rather than production panics. | **Failed → fixed.** The conservation pass found errors that named only a key, nonce, or reason while consuming the remaining owned input. Machine, router policies, circuit breaker, rate limiter, priority queue, sequencer, lease, acknowledgements, correlation, task, barrier, workflow, health, readiness, presence, registry, pub-sub, supervision, and pools now return the complete rejected command or lifecycle fact. The only production `expect` is the proved `positive capacity + full buffer => oldest value exists` invariant. |
 | H32 | A4, B6, P2 | Any ordering relied upon beyond actor-model law is declared as Bombay policy and tested at the interpreter boundary. | Pass. Create-before-dependent-send/request and wrapper initialization order are documented as policy; send products define their own deterministic interpretation order without claiming it as an Agha guarantee. |
 | H33 | B2, B3, P7 | Every genuine customer-passing template accepts logical, exact, or deliberately mixed reply capabilities without allowing the route protocol to disagree with the reply message. | **Failed → fixed.** All customer fields now carry a `Route: DeliveryRoute<P>`; dynamic supervision projects `P` from `DeliveryRouteProtocol`. A catalogue compile matrix instantiates every affected family with `EstablishedRecipient` and `ReplyRoute`, protocol mismatch is compile-fail, and logical-only recursive protocol tests remain finite. |
-| H34 | B1–B3, B7, P4, P8 | Homogeneous and heterogeneous shutdown coordinators can receive their validated plans after committed child creation without out-of-band mutation, flags, plan substitution, lost early shutdown, or repeated installation. | **Failed → fixed.** `ShutdownState` is the complete lifecycle sum. A topology owner receives `ShutdownPlanIngress<P, Path>` and emits `ReportShutdownPlan` through `Actions`; the interpreter constructs the exact outer `InstallShutdownPlan<P>` event from that carried ingress. The end-to-end composition test creates and observes two heterogeneous children, strengthens committed facts, constructs the plan, interprets the report through an outer `Guardian`, installs it, and begins the first shutdown phase. Unit, independent model/property, fuzz, and compile-fail coverage additionally exercise both plan families, duplicate installation, early shutdown, stale stops, ordered phases, and empty-plan termination. |
+| H34 | B1–B3, B7, P4, P8 | Homogeneous and heterogeneous shutdown coordinators can receive their validated plans after committed child creation without out-of-band mutation, flags, plan substitution, lost early shutdown, or repeated installation. | **Failed → fixed.** `ShutdownState` is the complete lifecycle sum. A topology owner emits `ReportShutdownPlan` through `Actions`; the interpreter constructs the exact outer `InstallShutdownPlan<P>` event from the carried typed return path. End-to-end tests create and observe heterogeneous children, install the report through an outer `Guardian`, and begin the first shutdown phase. Unit, independent model/property, fuzz, and compile-fail coverage additionally exercise both plan families, duplicate installation, early shutdown, stale stops, ordered phases, and empty-plan termination. |
+| H35 | B2–B4, B7, P1, P3 | A fixed supervised worker set can accept its worker's domain command without exposing proxy protocol, route, occurrence, or incarnation data. | **Failed → fixed.** `SupervisedWorkers` shares the fixed ownership fold and adds only a static selector from the worker command to one configured nonce. The fold sends through its retained stable proxy route. Every unknown, starting, restarting, retired, or shutting-down outcome returns `CommandNotAccepted` with the complete original `User` value, selected worker, and reason; the fold neither mutates state nor drops, stashes, or redirects the command. Independent generated histories assert payload conservation after every unavailable outcome, and the supervision fuzz target mixes commands, replacements, stale facts, and shutdown. |
+| H36 | B1–B4, B6–B7, P1–P4, P8 | Direct child roles can declare shutdown order without applications constructing structural event/send products or predicting creation results. | **Failed → fixed.** `shutdown_after_children` derives the child product, statically consumes every role exactly once, observes each staged creation, retains only committed creator-owned routes, and reports the existing heterogeneous plan through `Actions`. The report path remains generic until the complete actor type and real interpreter constrain it; an outer-Guardian regression interprets initialization observations, the report, plan installation, and first shutdown request without a path at the composition call. Unexpected facts retain the complete `CreationResolved` value. The existing coordinator remains the only shutdown executor. Compile-fail tests cover duplicate, foreign, wrongly typed, and missing roles; sequence tests cover both plan/shutdown arrival orders, reversed phases, rejection, and empty child products. |
+| H37 | B1–B2, B6–B7 | Reusable actor templates with the same state/effect law share one implementation, while genuinely different laws remain separate. | **Failed → fixed.** `Guardian` is the direct-stop alias while `CoordinatedGuardian` has the distinct delegate-shutdown law. Logical watch and exact termination monitoring share one observation engine with target-specific recurrence. Fixed ownership and application-command admission share one supervisor fold; both delayed forms share one delay implementation; FIFO and keyed pools share `PoolCore`; homogeneous and heterogeneous plans share the ordered phase transition. Timing actors share `TimerLease` but remain separate because absolute deadline, one-shot, periodic rearm, and activity-rearm laws differ. Redundant watch, dynamic-proxy, and pool aliases were removed rather than retained as compatibility wrappers. |
 
-Result: 28 hypotheses passed in the audited baseline and six failed. After
-the repairs recorded here, all 34 pass. No failure required a new actor
-template or new Behavior Core algebra.
+The repairs require no new Behavior Core algebra, runtime registry, dynamic
+type, forwarding actor, or address reconstruction. The verification record
+below is authoritative only when every listed gate is green on the same tree.
 
 ## Complete template coverage
 
@@ -139,10 +148,10 @@ the templates implicated by the initial blockers.
 | Family | Behavior templates audited | Principal hypotheses |
 |---|---|---|
 | Base composition | `Machine`, `MessageAdapter`, `MessageAdapterWithRoute` | H01–H03, H08–H10, H24, H27–H31 |
-| Transparent state/lifecycle wrappers | `Stash`, `StopOnShutdown`, `FinalizeOnShutdown`, `Guardian`, `WatchWith`, `TerminationMonitorWith`, `PropagateTermination` | H04, H06, H13, H16–H20, H23–H24, H29 |
-| Shutdown ownership | `ShutdownCoordinator`, `TreeShutdown`, `HeterogeneousShutdownCoordinator` | H07, H12–H17, H23–H24, H29–H32, H34 |
+| Transparent state/lifecycle wrappers | `Stash`, `StopOnShutdown`, `FinalizeOnShutdown`, `Guardian`, `Watch`, `EstablishedWatch`, `TerminationMonitorWith`, `PropagateTermination` | H04, H06, H13, H16–H20, H23–H24, H29 |
+| Shutdown ownership | `ShutdownCoordinator`, `HeterogeneousShutdownCoordinator`, `shutdown_after_children` | H07, H12–H17, H23–H24, H29–H32, H34, H36 |
 | Lifecycle task | `Task` | H01–H03, H09–H10, H24, H27–H31, H33 |
-| Supervision | `ProxyWithParent`, `SuperviseWithParent`, `SupervisorWithParent`, both backoff forms, `DynamicSupervisorWithParent` and their direct aliases | H05–H07, H10, H13, H15–H16, H21–H25, H28–H33 |
+| Supervision | `ProxyWithParent`, `SuperviseWithParent`, `SupervisorWithParent`, `SupervisedWorkersWithParent`, both backoff forms, `DynamicSupervisorWithParent` and their direct aliases | H05–H07, H10, H13, H15–H16, H21–H25, H28–H33, H35, H37 |
 | Worker pools | `WorkerPoolWithParent`, `KeyedWorkerPoolWithParent` and direct aliases | H05, H07, H09–H10, H13, H15–H16, H21–H24, H28–H31, H33 |
 | Timing | `Deadline`, `OneShot`, `Periodic`, `ReceiveTimeout`, `Lease` | H01–H04, H10, H16, H23–H24, H26, H28–H33 |
 | Routing | `Router` with all strategies, `WorkQueue`, `Buffer`, `PriorityQueue`, `OrderGate`, `Sequencer`, `Deduplicator`, `RateLimiter`, `CircuitBreaker`, `Correlator`, `Acknowledgements` | H01–H03, H09–H10, H23–H24, H27–H31, H33 |
@@ -151,9 +160,53 @@ the templates implicated by the initial blockers.
 | Operations/persistence | `Configuration`/`Features`, `Health`, `Readiness`, `Cache` | H01–H03, H09–H10, H23–H24, H27–H31, H33 |
 
 Routing strategies are policy values owned by `Router`, not actors with their
-own effect boundary. Type aliases such as `Link`, `Reaper`, and
-`LifecyclePublisher` were audited through their concrete `WatchWith` or
-`TerminationMonitorWith` implementation.
+own effect boundary. Redundant aliases for the same observation and shutdown
+state machines were removed rather than counted as separate templates.
+
+## Adversarial law coverage
+
+The audit does not count a constructor smoke test as proof of a state-machine
+law. The following independent suites model state after every generated step:
+
+| Surface | Independent or adversarial evidence |
+|---|---|
+| Creation and exact capabilities | `established_creation_model`, `heterogeneous_births`, `birth_sequences` |
+| Machine and replay | `fsm_properties`, `exhaustive`, `fsm_sequences` |
+| Stash and wrapper lane isolation | `stash_properties`, `two_buffer`, `cross_lane`, `stack_sequences` |
+| Watch, monitoring, and terminal propagation | `exact_termination_model`, `terminal_fact_model`, `catalogue_sequences` |
+| Fixed, application-facing, delayed, and composed supervision | `supervision_model`, `supervision_ownership`, `exhaustive`, `supervision_sequences` |
+| FIFO and keyed worker pools | `worker_pool_model`, `keyed_worker_pool`, `pool_sequences` |
+| Homogeneous and heterogeneous shutdown | `shutdown_model`, `heterogeneous_shutdown`, `shutdown_plan_sequences`, plus the child-plan compile-fail and ordering tests |
+| Versioned operations and cache | `catalogue_invariants` models configuration, readiness, health tombstones, and LRU ownership; `Features` inherits the configuration law |
+| Routing and correlation | `catalogue_models`, `routing_invariants`, and `correlation_invariants` model stable priority, bounded ownership, token arithmetic, round robin, FIFO worker availability, sequencing, deduplication, ordering, correlation, and acknowledgements |
+| Time | `receive_timeout`, `timing_invariants`, `receive_timeout_sequences`; timer-wrapper composition and initialization are attacked by `properties`, `cross_lane`, and `stack_sequences` |
+| Workflow | `workflow_invariants` models barrier generations, latch single release, dependency activation, and terminal rejection; `catalogue_sequences` fuzzes workflow inputs |
+| Discovery | registry and topic generated models live in `catalogue_invariants`; presence is generation-fuzzed by `catalogue_sequences`; resolver and keyed publication retain focused atomic owner tests because their immutable/snapshot state spaces are already exhaustively covered there |
+
+Each model uses different vocabulary and ordinary collections. It compares
+observable state and complete owned outputs after every operation, including
+rejection and stale input. Fuzz targets are retained as a separate layer; they
+do not replace the reference models.
+
+## Verification record — 2026-08-24 working tree
+
+- `cargo fmt --all -- --check`: pass.
+- `cargo check --workspace --all-targets`: pass without warnings.
+- Actors rustdoc and compile-fail suite: 31 passed, none ignored.
+- `cargo nextest run --workspace --no-fail-fast`: 511 passed, none skipped.
+- The timer duplicate-consumption regressions pass in both debug and optimized
+  builds.
+- All 12 fuzz targets completed 5,000 executions. After the optimized-build
+  timer defect was repaired, `receive_timeout_sequences`, `stack_sequences`,
+  and `two_buffer_sequences` each completed another 5,000 executions.
+- `nix flake check 'path:.'`: all seven checks pass, including optimized
+  nextest, documentation, Rust and TOML formatting, dependency audit, and
+  dependency policy.
+
+The explicit `path:` source is necessary only because this recorded working
+tree contains new untracked modules. Plain `nix flake check` correctly omitted
+those files from its Git-derived source snapshot and therefore could not
+resolve the new module; no Git index mutation was used to hide that condition.
 
 ## Capability conclusions
 

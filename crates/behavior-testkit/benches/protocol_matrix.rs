@@ -178,7 +178,7 @@ fn measure_nested() -> f64 {
         ),
         behavior::TimerId(0),
         Some(due),
-        |_| Ok(Step::Continue),
+        |_| Step::Continue,
     );
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;

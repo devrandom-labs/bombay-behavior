@@ -1,20 +1,15 @@
 //! Controlled-error attacks: every composition's error path was previously
 //! unprobed. `Machine::drain` preserves the unprocessed deferred suffix on a
 //! controlled error, just as it does on a controlled stop. Also pinned:
-//! supervision behavior-error propagation, the
-//! one-shot Deadline timer consumed by a failing reaction, watch reaction errors,
-//! and the `restart_*` helper constants.
+//! supervision behavior-error propagation and the `restart_*` helper constants.
 
 use std::time::Duration;
 
-use behavior::EventLayer;
 use behavior::{
-    Acted, Actions, Crash, Delivery, Machine, MailAddr, Move, Never, PeerStopped, RestartPolicy,
-    Step, Strategy, Supervise, SupervisionEvent, TimerElapsed, TimerGeneration, TimerId, User,
-    UserEvent, restart_all, restart_one, restart_rest,
+    Acted, Actions, Delivery, Machine, MailAddr, Move, Never, RestartPolicy, Strategy, Supervise,
+    SupervisionEvent, User, UserEvent, restart_all, restart_one, restart_rest,
 };
 use behavior_testkit::{Mailbox, drive};
-use std::time::Instant;
 
 /// A controlled failure type: unit-like, `Send`, no display machinery.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -69,8 +64,8 @@ impl FailingParent {
     }
 }
 
-/// A controlled error consumes the rejected message but preserves the
-/// unprocessed held suffix, matching the controlled-stop prefix law.
+/// A controlled error during a deferred drain rejects the complete mailbox
+/// turn. State, phase, and the accepted held queue remain exactly unchanged.
 #[tokio::test]
 async fn fsm_error_mid_drain_preserves_the_unprocessed_batch() {
     #[derive(Clone, Copy, PartialEq)]
@@ -95,12 +90,23 @@ async fn fsm_error_mid_drain_preserves_the_unprocessed_batch() {
     assert_eq!(machine.held(), 2);
 
     let result = machine.transition(User::user(MailAddr(0), 0));
-    assert!(matches!(result, Err(Boom)));
-    assert_eq!(machine.held(), 1);
+    assert!(matches!(
+        result,
+        Err(behavior::MachineError {
+            event: User {
+                from: MailAddr(0),
+                message: 0
+            },
+            cause: Boom,
+        })
+    ));
+    assert_eq!(machine.held(), 2);
+    assert!(machine.phase() == Phase::P0);
+    assert!(machine.state().is_empty());
 
-    // The fold remains usable without disturbing that suffix.
+    // The fold remains usable and the next P0 communication joins the same queue.
     machine.transition(User::user(MailAddr(0), 2)).unwrap();
-    assert_eq!(machine.held(), 1);
+    assert_eq!(machine.held(), 3);
 }
 
 /// A direct-step error consumes only the errored message: held stays intact
@@ -118,7 +124,10 @@ async fn fsm_direct_step_error_keeps_held_intact() {
         |phase, _seen: &mut Vec<u64>, id: &u64| match (phase, id % 4) {
             (Phase::P0, 0) => Ok(Move::Goto(Phase::P1)),
             (Phase::P0, _) => Ok(Move::Defer),
-            (Phase::P1, 1) => Err(Boom),
+            (Phase::P1, 1) => {
+                _seen.push(99);
+                Err(Boom)
+            }
             (Phase::P1, _) => Ok(Move::Stay),
         },
     );
@@ -129,8 +138,18 @@ async fn fsm_direct_step_error_keeps_held_intact() {
 
     // In P1 now: a direct id-1 message errors, held untouched.
     let result = machine.transition(User::user(MailAddr(0), 1));
-    assert!(matches!(result, Err(Boom)));
+    assert!(matches!(
+        result,
+        Err(behavior::MachineError {
+            event: User {
+                from: MailAddr(0),
+                message: 1
+            },
+            cause: Boom,
+        })
+    ));
     assert_eq!(machine.held(), 0);
+    assert!(machine.state().is_empty());
     // The fold is still live for a non-failing message.
     machine.transition(User::user(MailAddr(0), 3)).unwrap();
 }
@@ -173,83 +192,12 @@ async fn supervision_propagates_inner_errors_without_touching_slots() {
         .unwrap();
 }
 
-/// A failing `Deadline` reaction consumes the one-shot timer: the error propagates
-/// and the same Reached event can never fire again.
-#[tokio::test]
-async fn at_reaction_error_consumes_the_timer() {
-    let due = Instant::now() + Duration::from_secs(1);
-    let behavior = behavior::Deadline::new(
-        FailingParent { fail: true },
-        behavior::TimerId(0),
-        Some(due),
-        |_| Err(Boom),
-    );
-    let initialized = behavior.initialize().unwrap();
-    let mut behavior = initialized.behavior;
-
-    let first = behavior.transition(EventLayer::Owned(TimerElapsed {
-        id: TimerId(0),
-        generation: TimerGeneration(0),
-    }));
-    assert!(matches!(first, Err(Boom)));
-
-    // The duplicate delivery cannot re-fire the consumed timer.
-    let second = behavior
-        .transition(EventLayer::Owned(TimerElapsed {
-            id: TimerId(0),
-            generation: TimerGeneration(0),
-        }))
-        .unwrap();
-    assert_eq!(second.become_, Step::Continue);
-}
-
-/// A failing watch reaction propagates the error; the fold keeps working.
-#[tokio::test]
-async fn watch_reaction_error_propagates() {
-    let peer = MailAddr(44);
-    let behavior = behavior::Watch::new(FailingParent { fail: true }, peer, |_b, _p, _o| Err(Boom));
-    let initialized = behavior.initialize().unwrap();
-    let mut behavior = initialized.behavior;
-
-    let death = EventLayer::Owned(PeerStopped {
-        peer,
-        outcome: Err(Crash::Failed),
-    });
-    let result = behavior.transition(death);
-    assert!(matches!(result, Err(Boom)));
-}
-
 /// The `restart_*` helpers expose exactly the documented strategies.
 #[test]
 fn restart_helpers_expose_the_documented_strategies() {
     assert_eq!(restart_one(), Strategy::OneForOne);
     assert_eq!(restart_all(), Strategy::OneForAll);
     assert_eq!(restart_rest(), Strategy::RestForOne);
-}
-
-/// A `Stash` Deliver-arm error propagates and leaves the held buffer
-/// untouched (the errored message was the fresh one, not a replayed one).
-#[tokio::test]
-async fn stash_deliver_arm_error_keeps_held_intact() {
-    use behavior::StashRoute;
-
-    let behavior = behavior::Stash::new(FailingParent { fail: true }, |message| match *message {
-        0 => StashRoute::Release,
-        1 => StashRoute::Stash,
-        _ => StashRoute::Deliver,
-    });
-    let initialized = behavior.initialize().unwrap();
-    let mut behavior = initialized.behavior;
-    behavior
-        .transition(UserEvent::user(MailAddr(1), 1))
-        .unwrap();
-    assert_eq!(behavior.held(), 1);
-
-    // Message 2 routes Deliver; the parent fails on the first handled
-    // message. The held message survives.
-    let result = behavior.transition(UserEvent::user(MailAddr(2), 2));
-    assert!(matches!(result, Err(Boom)));
-    assert_eq!(behavior.held(), 1);
 }
 
 /// The driver propagates the first controlled failure and leaves the
@@ -283,11 +231,10 @@ async fn driver_propagates_errors_and_preserves_the_tail() {
     assert_eq!(mailbox.pending(), 1);
 }
 
-/// Messages processed before the mid-drain error keep their effects: the
-/// fold's state retains partial drain progress, the erroring message and
-/// the unprocessed batch are gone from the buffer.
+/// A later deferred-message error cannot commit the successful prefix of the
+/// staged drain or consume any accepted held communication.
 #[tokio::test]
-async fn fsm_error_mid_drain_keeps_prior_drain_effects() {
+async fn fsm_error_mid_drain_rolls_back_the_complete_staged_drain() {
     #[derive(Clone, Copy, PartialEq)]
     enum Phase {
         P0,
@@ -312,8 +259,18 @@ async fn fsm_error_mid_drain_keeps_prior_drain_effects() {
     machine.transition(User::user(MailAddr(0), 3)).unwrap();
     machine.transition(User::user(MailAddr(0), 1)).unwrap();
     let result = machine.transition(User::user(MailAddr(0), 0));
-    assert!(matches!(result, Err(Boom)));
-    assert_eq!(machine.state().as_slice(), &[2, 3]);
-    assert_eq!(machine.held(), 0);
+    assert!(matches!(
+        result,
+        Err(behavior::MachineError {
+            event: User {
+                from: MailAddr(0),
+                message: 0
+            },
+            cause: Boom,
+        })
+    ));
+    assert!(machine.state().is_empty());
+    assert!(machine.phase() == Phase::P0);
+    assert_eq!(machine.held(), 3);
 }
 use behavior_testkit::InitializeTest;

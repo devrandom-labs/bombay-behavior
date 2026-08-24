@@ -99,10 +99,26 @@ pub enum BreakerOutcome {
     },
 }
 
-#[derive(Clone, Copy)]
-enum Completion {
-    Succeeded,
-    Failed,
+/// Complete terminal fact submitted for one admitted operation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BreakerCompletion {
+    Succeeded { attempt: BreakerAttempt },
+    Failed { attempt: BreakerAttempt },
+}
+
+impl BreakerCompletion {
+    const fn attempt(self) -> BreakerAttempt {
+        match self {
+            Self::Succeeded { attempt } | Self::Failed { attempt } => attempt,
+        }
+    }
+}
+
+/// Typed transition failure that retains an unowned completion command.
+#[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
+pub enum BreakerError {
+    #[error("completion does not belong to the operation currently admitted")]
+    UnexpectedCompletion(BreakerCompletion),
 }
 
 /// Closed user-command protocol.
@@ -172,7 +188,9 @@ type BreakerActions<A, ReplySends> = Actions<A, Never, BreakerSends<ReplySends>,
 /// timing or adjacency. Consecutive closed failures open the circuit at the
 /// configured threshold; matching reset evidence makes exactly one probe
 /// available. Probe success closes the breaker and probe failure reopens it
-/// with a fresh generation. Stale attempts and timer evidence are inert. Empty
+/// with a fresh generation. A stale or duplicate application completion is
+/// returned as [`BreakerError::UnexpectedCompletion`]; stale timer evidence is
+/// consumed as correlation evidence without changing state. Empty
 /// initialization, single-flight policy, failure counting, and reset ordering
 /// are Bombay policy. Timer scheduling is interpreted by Bombay Timers; the
 /// protected operation remains ordinary domain behavior. No transition panics.
@@ -295,9 +313,9 @@ where
 
     fn complete(
         &mut self,
-        attempt: BreakerAttempt,
-        completion: Completion,
-    ) -> BreakerActions<A, Route::Sends> {
+        completion: BreakerCompletion,
+    ) -> Result<BreakerActions<A, Route::Sends>, BreakerError> {
+        let attempt = completion.attempt();
         let ownership = match &self.phase {
             BreakerPhase::Closed(ClosedPhase::Awaiting {
                 consecutive_failures,
@@ -315,26 +333,26 @@ where
             _ => None,
         };
         let Some((reply_to, failures, probe_generation)) = ownership else {
-            return Actions::cont();
+            return Err(BreakerError::UnexpectedCompletion(completion));
         };
-        if matches!(completion, Completion::Succeeded) {
+        if matches!(completion, BreakerCompletion::Succeeded { .. }) {
             self.phase = BreakerPhase::Closed(ClosedPhase::Idle {
                 consecutive_failures: 0,
             });
-            return Self::reply(reply_to, BreakerOutcome::Succeeded { attempt });
+            return Ok(Self::reply(reply_to, BreakerOutcome::Succeeded { attempt }));
         }
         let failures = failures.saturating_add(1);
         if probe_generation.is_none() && failures < self.threshold.get() {
             self.phase = BreakerPhase::Closed(ClosedPhase::Idle {
                 consecutive_failures: failures,
             });
-            return Self::reply(
+            return Ok(Self::reply(
                 reply_to,
                 BreakerOutcome::FailureRecorded {
                     attempt,
                     consecutive_failures: failures,
                 },
-            );
+            ));
         }
         let next_generation = match probe_generation {
             Some(generation) => generation.0.checked_add(1).map(TimerGeneration),
@@ -342,13 +360,13 @@ where
         };
         let Some(generation) = next_generation else {
             self.phase = BreakerPhase::Exhausted;
-            return Self::reply(
+            return Ok(Self::reply(
                 reply_to,
                 BreakerOutcome::Rejected(BreakerRejection::Exhausted),
-            );
+            ));
         };
         self.phase = BreakerPhase::Open { generation };
-        Actions::send(BreakerSends {
+        Ok(Actions::send(BreakerSends {
             replies: reply_to.deliver(BreakerOutcome::Opened {
                 attempt,
                 generation,
@@ -358,7 +376,7 @@ where
                 generation,
                 self.reset_after,
             )),
-        })
+        }))
     }
 }
 
@@ -395,16 +413,18 @@ where
     type Event = BreakerEvent<A, Route>;
     type Sends = BreakerSends<Route::Sends>;
     type Ph = Never;
-    type Error = Never;
+    type Error = BreakerError;
     type Birth = NoBirths;
     fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
-        Ok(match event {
+        match event {
             EventLayer::Inner(event) => match event.message {
-                BreakerMessage::Admit { reply_to } => self.admit(reply_to),
+                BreakerMessage::Admit { reply_to } => Ok(self.admit(reply_to)),
                 BreakerMessage::Succeeded { attempt } => {
-                    self.complete(attempt, Completion::Succeeded)
+                    self.complete(BreakerCompletion::Succeeded { attempt })
                 }
-                BreakerMessage::Failed { attempt } => self.complete(attempt, Completion::Failed),
+                BreakerMessage::Failed { attempt } => {
+                    self.complete(BreakerCompletion::Failed { attempt })
+                }
             },
             EventLayer::Owned(elapsed) => {
                 if let BreakerPhase::Open { generation } = self.phase
@@ -416,9 +436,9 @@ where
                         phase: ProbePhase::Available,
                     };
                 }
-                Actions::cont()
+                Ok(Actions::cont())
             }
-        })
+        }
     }
 }
 
@@ -511,22 +531,21 @@ mod tests {
     }
 
     #[test]
-    fn stale_attempt_and_timer_evidence_are_inert() {
+    fn stale_completion_is_returned_while_stale_timer_evidence_is_consumed() {
         let mut subject = subject();
         let attempt = admit(&mut subject);
-        assert!(
-            subject
-                .receive(
-                    MailAddr(0),
-                    BreakerMessage::Succeeded {
-                        attempt: BreakerAttempt(99)
-                    }
-                )
-                .unwrap()
-                .sends
-                .replies
-                .is_empty()
-        );
+        let stale = BreakerCompletion::Succeeded {
+            attempt: BreakerAttempt(99),
+        };
+        assert!(matches!(
+            subject.receive(
+                MailAddr(0),
+                BreakerMessage::Succeeded {
+                    attempt: BreakerAttempt(99)
+                }
+            ),
+            Err(BreakerError::UnexpectedCompletion(returned)) if returned == stale
+        ));
         assert!(
             subject
                 .on_path(TimerElapsed::new(TimerId(8), TimerGeneration(7)))

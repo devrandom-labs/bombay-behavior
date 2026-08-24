@@ -366,8 +366,14 @@ mod tests {
     #[test]
     fn opening_releases_in_key_order_and_future_open_keys_deliver_immediately() {
         let mut s = (Subject::new()).initialize().unwrap().behavior;
-        let _ = hold(&mut s, 3, 30);
-        let _ = hold(&mut s, 1, 10);
+        assert!(matches!(
+            hold(&mut s, 3, 30).sends.outcomes[0].message,
+            OrderGateOutcome::Held { key: 3, held: 1 }
+        ));
+        assert!(matches!(
+            hold(&mut s, 1, 10).sends.outcomes[0].message,
+            OrderGateOutcome::Held { key: 1, held: 2 }
+        ));
         let a = open(&mut s, 2);
         assert_eq!(
             a.sends
@@ -384,12 +390,22 @@ mod tests {
     #[test]
     fn duplicate_and_stale_opening_are_atomic() {
         let mut s = (Subject::new()).initialize().unwrap().behavior;
-        let _ = hold(&mut s, 2, 20);
+        assert!(matches!(
+            hold(&mut s, 2, 20).sends.outcomes[0].message,
+            OrderGateOutcome::Held { key: 2, held: 1 }
+        ));
         assert!(matches!(
             hold(&mut s, 2, 21).sends.outcomes[0].message,
             OrderGateOutcome::Duplicate { value: 21, .. }
         ));
-        let _ = open(&mut s, 1);
+        assert!(matches!(
+            open(&mut s, 1).sends.outcomes[0].message,
+            OrderGateOutcome::Opened {
+                through: 1,
+                released: 0,
+                held: 1
+            }
+        ));
         assert!(matches!(
             open(&mut s, 1).sends.outcomes[0].message,
             OrderGateOutcome::StaleOpening { .. }

@@ -7,12 +7,13 @@ use std::{
 };
 
 use behavior::{
-    Actions, Activate, Address, Behavior, BehaviorActed, BehaviorBase, BreakerMessage,
-    BreakerOutcome, CircuitBreaker, EndpointAddress, EstablishedObservation, EstablishedRecipient,
-    EstablishedTerminationMonitor, Exit, MailAddr, Never, NoBirths, ObservationId,
-    ObservationOperation, ObservationRejection, Presence, PresenceMessage, PresenceReply,
-    PresenceVersion, Protocol, Recipient, TimerElapsed, TimerGeneration, TimerId, User, Workflow,
-    WorkflowDefinition, WorkflowMessage, WorkflowOutcome,
+    Actions, Activate, Address, Behavior, BehaviorActed, BehaviorBase, BreakerCompletion,
+    BreakerError, BreakerMessage, BreakerOutcome, CircuitBreaker, EndpointAddress,
+    EstablishedObservation, EstablishedRecipient, EstablishedTerminationMonitor, Exit, MailAddr,
+    Never, NoBirths, ObservationId, ObservationOperation, ObservationRejection, Presence,
+    PresenceMessage, PresenceReply, PresenceVersion, Protocol, Recipient, TerminationMonitorError,
+    TimerElapsed, TimerGeneration, TimerId, User, Workflow, WorkflowDefinition, WorkflowError,
+    WorkflowInput, WorkflowMessage, WorkflowOutcome,
 };
 use bombay_behavior_fuzz::TestRecipient;
 use libfuzzer_sys::fuzz_target;
@@ -87,10 +88,10 @@ impl Behavior for MonitorProbe {
 fn terminal(
     probe: &mut MonitorProbe,
     fact: EstablishedObservation<Peer>,
-) -> BehaviorActed<MonitorProbe> {
+) -> Actions<RuntimeAddr, Never, Vec<Never>, NoBirths> {
     assert!(matches!(fact, EstablishedObservation::Stopped { .. }));
     probe.terminals += 1;
-    Ok(Actions::cont())
+    Actions::cont()
 }
 
 fuzz_target!(|bytes: &[u8]| {
@@ -145,7 +146,12 @@ fuzz_target!(|bytes: &[u8]| {
         let b = chunk.get(1).copied().unwrap_or(0);
         let generation = TimerGeneration(u64::from(chunk.get(2).copied().unwrap_or(0)));
         let attempt = behavior::BreakerAttempt(u64::from(b));
-        match a % 4 {
+        let submitted_completion = match a % 4 {
+            1 => Some(BreakerCompletion::Succeeded { attempt }),
+            2 => Some(BreakerCompletion::Failed { attempt }),
+            _ => None,
+        };
+        let breaker_result = match a % 4 {
             0 => breaker.receive(
                 MailAddr(0),
                 BreakerMessage::Admit {
@@ -155,8 +161,13 @@ fuzz_target!(|bytes: &[u8]| {
             1 => breaker.receive(MailAddr(0), BreakerMessage::Succeeded { attempt }),
             2 => breaker.receive(MailAddr(0), BreakerMessage::Failed { attempt }),
             _ => breaker.on_path(TimerElapsed::new(TimerId(1), generation)),
+        };
+        match breaker_result {
+            Ok(_) => {}
+            Err(BreakerError::UnexpectedCompletion(returned)) => {
+                assert_eq!(submitted_completion, Some(returned));
+            }
         }
-        .expect("breaker fold is infallible");
 
         let participant = vec![b];
         if a % 3 == 0 {
@@ -184,9 +195,12 @@ fuzz_target!(|bytes: &[u8]| {
                 reply_to: workflow_reply,
             },
         };
-        workflow
-            .receive(MailAddr(0), workflow_message)
-            .expect("workflow fold is infallible");
+        match workflow.receive(MailAddr(0), workflow_message) {
+            Ok(_) => {}
+            Err(WorkflowError::NotStarted(
+                WorkflowInput::Complete { .. } | WorkflowInput::Fail { .. },
+            )) => {}
+        }
 
         let observation = if b & 1 == 0 {
             selected_observation
@@ -203,7 +217,16 @@ fuzz_target!(|bytes: &[u8]| {
             ),
             _ => EstablishedObservation::stopped(observation, Ok(Exit::Normal), Instant::now()),
         };
-        monitor.on_path(fact).expect("monitor fold is infallible");
+        let fact_id = fact.id();
+        let observation_before = monitor.observation();
+        match monitor.on_path(fact) {
+            Ok(_) => {}
+            Err(TerminationMonitorError::UnexpectedFact { observation, fact }) => {
+                assert_eq!(observation, observation_before);
+                assert_eq!(fact.id(), fact_id);
+            }
+            Err(TerminationMonitorError::Inner(never)) => match never {},
+        }
         assert!(monitor.base().terminals <= 1);
     }
 });

@@ -43,7 +43,10 @@ fuzz_target!(|bytes: &[u8]| {
             let id = u64::try_from(index).unwrap();
             let result = machine.transition(User::user(MailAddr(0), id));
             let held_after = machine.held();
-            if result.is_err() {
+            if let Err(error) = result {
+                assert_eq!(error.event.from, MailAddr(0));
+                assert_eq!(error.event.message, id);
+                assert_eq!(error.cause, ());
                 assert!(
                     held_after <= held_before,
                     "error grew the buffer at byte {index}: {held_before} -> {held_after}"

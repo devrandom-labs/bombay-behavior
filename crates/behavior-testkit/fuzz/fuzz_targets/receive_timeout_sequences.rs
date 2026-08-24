@@ -25,8 +25,8 @@ impl Sink {
 
 type SinkBehavior = Sink;
 
-fn elapsed(_inner: &mut SinkBehavior) -> Acted<MailAddr, Never, Vec<Never>, NoBirths, Never> {
-    Ok(Actions::cont())
+fn elapsed(_inner: &mut SinkBehavior) -> Actions<MailAddr, Never, Vec<Never>, NoBirths> {
+    Actions::cont()
 }
 
 fuzz_target!(|bytes: &[u8]| {

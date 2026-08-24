@@ -51,14 +51,20 @@ pub enum CorrelatorMessage<K, V, Route> {
 
 /// A rejected correlation transition.
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
-pub enum CorrelatorError<K, V> {
+pub enum CorrelatorError<K, V, Route> {
     /// The key is already pending.
     #[error("correlation key is already pending")]
-    AlreadyPending(K),
+    AlreadyPending { key: K, reply_to: Route },
     /// A completed key cannot be opened again without an explicit retention policy.
     #[error("correlation key is already completed")]
-    AlreadyCompleted(K),
+    ReopenCompleted { key: K, reply_to: Route },
     /// A cancelled key cannot be opened again without an explicit retention policy.
+    #[error("correlation key is already cancelled")]
+    ReopenCancelled { key: K, reply_to: Route },
+    /// An operation targeted an already completed lifecycle.
+    #[error("correlation key is already completed")]
+    AlreadyCompleted(K),
+    /// An operation targeted an already cancelled lifecycle.
     #[error("correlation key is already cancelled")]
     AlreadyCancelled(K),
     /// No lifecycle fact exists for the supplied key.
@@ -167,7 +173,7 @@ where
     type Event = User<A, crate::BehaviorMessage<Self>>;
     type Sends = Route::Sends;
     type Ph = Never;
-    type Error = CorrelatorError<K, V>;
+    type Error = CorrelatorError<K, V, Route>;
     type Birth = NoBirths;
 
     fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
@@ -175,12 +181,14 @@ where
             CorrelatorMessage::Begin { key, reply_to } => {
                 if let Some(existing) = self.states.iter().find(|state| state.key() == &key) {
                     return Err(match existing {
-                        CorrelationState::Pending { .. } => CorrelatorError::AlreadyPending(key),
+                        CorrelationState::Pending { .. } => {
+                            CorrelatorError::AlreadyPending { key, reply_to }
+                        }
                         CorrelationState::Completed { .. } => {
-                            CorrelatorError::AlreadyCompleted(key)
+                            CorrelatorError::ReopenCompleted { key, reply_to }
                         }
                         CorrelationState::Cancelled { .. } => {
-                            CorrelatorError::AlreadyCancelled(key)
+                            CorrelatorError::ReopenCancelled { key, reply_to }
                         }
                     });
                 }

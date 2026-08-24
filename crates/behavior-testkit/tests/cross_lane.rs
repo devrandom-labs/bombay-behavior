@@ -179,7 +179,7 @@ async fn supervision_preserves_inner_at_routing() {
             EchoingParent { seen: Vec::new() },
             behavior::TimerId(0),
             Some(due),
-            |_| Ok(Step::Stop(behavior::Stopped)),
+            |_| Step::Stop(behavior::Stopped),
         ),
         behavior::ChildTopology::new((0..1).map(|index| u64::try_from(index).unwrap()), |index| {
             Some(child(index))
@@ -229,7 +229,7 @@ async fn full_stack_all_four_layers_keep_their_own_lanes() {
             ),
             behavior::TimerId(0),
             Some(due),
-            |_| Ok(Step::Continue),
+            |_| Step::Continue,
         ),
         behavior::ChildTopology::new((0..2).map(|index| u64::try_from(index).unwrap()), |index| {
             Some(child(index))
@@ -293,7 +293,7 @@ async fn full_stack_all_four_layers_keep_their_own_lanes() {
             ),
             behavior::TimerId(0),
             Some(due),
-            |_| Ok(Step::Continue),
+            |_| Step::Continue,
         ),
         behavior::ChildTopology::new((0..2).map(|index| u64::try_from(index).unwrap()), |index| {
             Some(child(index))
@@ -349,7 +349,7 @@ proptest! {
                 ),
                 behavior::TimerId(0),
                 Some(due),
-                |_| Ok(Step::Continue),
+                |_| Step::Continue,
             ),
             behavior::ChildTopology::new(
                 (0..2).map(|index| u64::try_from(index).unwrap()),

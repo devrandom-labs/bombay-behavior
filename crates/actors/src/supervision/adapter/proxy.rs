@@ -1,7 +1,8 @@
 //! Stable proxy lifecycle and fresh worker incarnation replacement.
 
 use super::super::domain::{
-    Incarnation, IncarnationEffects, IncarnationError, IncarnationPhase, IncarnationStopEffects,
+    Incarnation, IncarnationEffects, IncarnationError, IncarnationPhase, IncarnationShutdownError,
+    IncarnationStopEffects, IncarnationStopError,
 };
 use super::super::protocol::{ProxyCommand, ProxyEvent};
 use crate::protocol::{
@@ -40,6 +41,92 @@ pub(crate) type ProxyActions<C, ParentPath> =
     Actions<crate::BehaviorAddr<C>, Never, ProxySendsWithParent<C, ParentPath>, Births<C>>;
 
 pub type ProxySends<C> = ProxySendsWithParent<C, behavior::Here>;
+
+/// Controlled failure of one stable-proxy transition.
+#[derive(Clone, PartialEq, Eq, thiserror::Error)]
+pub enum ProxyError<A: Address, M, C> {
+    /// The worker-incarnation lifecycle rejected the transition.
+    #[error(transparent)]
+    Lifecycle(#[from] IncarnationError),
+    /// No current worker could accept this exact domain command.
+    #[error("the stable proxy has no worker that can accept the command")]
+    CommandNotAccepted {
+        phase: IncarnationPhase<A::Nonce>,
+        command: M,
+    },
+    /// A creation fact does not match the one pending worker attempt.
+    #[error("the worker creation fact does not match the pending incarnation")]
+    UnexpectedCreation {
+        phase: IncarnationPhase<A::Nonce>,
+        observed: crate::CreationResolved<A>,
+    },
+    /// A child-stop fact does not name the worker incarnation currently owned.
+    #[error("the worker stop fact does not match the current incarnation")]
+    UnexpectedChildStopped {
+        phase: IncarnationPhase<A::Nonce>,
+        observed: crate::ChildStopped<A>,
+    },
+    /// A shutdown rejection does not belong to the outstanding worker shutdown.
+    #[error("the child-shutdown rejection does not match an outstanding request")]
+    UnexpectedChildShutdownRejection {
+        phase: IncarnationPhase<A::Nonce>,
+        observed: crate::ChildShutdownRejected<A::Nonce>,
+    },
+    /// The exact outstanding worker-shutdown request was rejected.
+    #[error("the worker shutdown request was rejected")]
+    ChildShutdownRejected(crate::ChildShutdownRejected<A::Nonce>),
+    /// A replacement could not receive a fresh incarnation nonce; ownership
+    /// of the uninstalled behavior is returned.
+    #[error("the stable proxy could not start the replacement")]
+    ReplacementNotAccepted {
+        phase: IncarnationPhase<A::Nonce>,
+        reason: IncarnationError,
+        replacement: C,
+    },
+}
+
+impl<A: Address, M, C> core::fmt::Debug for ProxyError<A, M, C>
+where
+    A: core::fmt::Debug,
+    A::Nonce: core::fmt::Debug,
+    M: core::fmt::Debug,
+{
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::Lifecycle(error) => formatter.debug_tuple("Lifecycle").field(error).finish(),
+            Self::CommandNotAccepted { phase, command } => formatter
+                .debug_struct("CommandNotAccepted")
+                .field("phase", phase)
+                .field("command", command)
+                .finish(),
+            Self::UnexpectedCreation { phase, observed } => formatter
+                .debug_struct("UnexpectedCreation")
+                .field("phase", phase)
+                .field("observed", observed)
+                .finish(),
+            Self::UnexpectedChildStopped { phase, observed } => formatter
+                .debug_struct("UnexpectedChildStopped")
+                .field("phase", phase)
+                .field("observed", observed)
+                .finish(),
+            Self::UnexpectedChildShutdownRejection { phase, observed } => formatter
+                .debug_struct("UnexpectedChildShutdownRejection")
+                .field("phase", phase)
+                .field("observed", observed)
+                .finish(),
+            Self::ChildShutdownRejected(observed) => formatter
+                .debug_tuple("ChildShutdownRejected")
+                .field(observed)
+                .finish(),
+            Self::ReplacementNotAccepted { phase, reason, .. } => formatter
+                .debug_struct("ReplacementNotAccepted")
+                .field("phase", phase)
+                .field("reason", reason)
+                .field("replacement", &"<owned behavior>")
+                .finish(),
+        }
+    }
+}
 
 impl<C: Behavior, ParentPath> SendEffects for ProxySendsWithParent<C, ParentPath> {
     fn empty() -> Self {
@@ -173,7 +260,8 @@ impl<C: Behavior, ParentPath> SendInput<ShutdownChild<C, behavior::ChildHead>, O
 /// orderly termination of its owned worker subtree.
 ///
 /// A worker is routable only in `Running`. Deadline most one creation can be
-/// `Installing`; stale or provenance-mismatched results are inert. Rejection
+/// `Installing`; stale or provenance-mismatched results are returned intact as
+/// typed errors. Rejection
 /// leaves `last_installed` unchanged, so a later attempt still names the last
 /// incarnation that actually existed.
 ///
@@ -317,23 +405,43 @@ where
         event: crate::ChildStopped<crate::BehaviorAddr<C>>,
         parent: ProxyParentIngress<crate::BehaviorAddr<C>, ParentPath>,
     ) -> ProxyActions<C, ParentPath> {
-        let mut actions = Self::actions(
-            effects
-                .creation
-                .map_or(IncarnationEffects::None, IncarnationEffects::Create),
-            parent,
-        );
-        if let Some(incarnation) = effects.stopped {
-            actions
-                .sends
-                .stopped_reports
-                .extend([ReportWorkerStopped::new(
-                    parent.stopped,
-                    incarnation,
-                    event.outcome,
-                    event.at,
-                )]);
+        match effects {
+            IncarnationStopEffects::Stopped { incarnation } => {
+                Self::reported_stop_actions(IncarnationEffects::None, incarnation, event, parent)
+            }
+            IncarnationStopEffects::StoppedAndCreate {
+                incarnation,
+                creation,
+            } => Self::reported_stop_actions(
+                IncarnationEffects::Create(creation),
+                incarnation,
+                event,
+                parent,
+            ),
         }
+    }
+
+    fn reported_stop_actions(
+        effect: IncarnationEffects<
+            <crate::BehaviorAddr<C> as Address>::Nonce,
+            C,
+            crate::BehaviorMessage<C>,
+            crate::BehaviorAddr<C>,
+        >,
+        incarnation: <crate::BehaviorAddr<C> as Address>::Nonce,
+        event: crate::ChildStopped<crate::BehaviorAddr<C>>,
+        parent: ProxyParentIngress<crate::BehaviorAddr<C>, ParentPath>,
+    ) -> ProxyActions<C, ParentPath> {
+        let mut actions = Self::actions(effect, parent);
+        actions
+            .sends
+            .stopped_reports
+            .extend([ReportWorkerStopped::new(
+                parent.stopped,
+                incarnation,
+                event.outcome,
+                event.at,
+            )]);
         actions
     }
 }
@@ -356,14 +464,10 @@ where
     type Event = ProxyEvent<User<crate::BehaviorAddr<C>, ProxyCommand<C>>>;
     type Sends = ProxySendsWithParent<C, ParentPath>;
     type Ph = Never;
-    type Error = IncarnationError;
+    type Error = ProxyError<crate::BehaviorAddr<C>, crate::BehaviorMessage<C>, C>;
     type Birth = Births<C>;
 
-    fn init(
-        &mut self,
-        _: crate::InitializationTurn,
-    ) -> Result<Actions<crate::BehaviorAddr<C>, Never, Self::Sends, Births<C>>, IncarnationError>
-    {
+    fn init(&mut self, _: crate::InitializationTurn) -> crate::BehaviorActed<Self> {
         let effects = self.incarnation.initialize()?;
         Ok(Self::actions(effects, self.parent))
     }
@@ -372,17 +476,29 @@ where
         &mut self,
         _: crate::ActiveTurn,
         event: Self::Event,
-    ) -> Result<Actions<crate::BehaviorAddr<C>, Never, Self::Sends, Births<C>>, IncarnationError>
-    {
+    ) -> crate::BehaviorActed<Self> {
         Ok(match event {
-            ProxyEvent::CreationResolved(resolved) => Self::actions(
-                self.incarnation
-                    .creation_resolved(resolved.nonce, resolved.kind, resolved.result),
-                self.parent,
-            ),
+            ProxyEvent::CreationResolved(resolved) => {
+                let phase = self.incarnation.phase();
+                let effects = self
+                    .incarnation
+                    .creation_resolved(resolved.nonce, resolved.kind, resolved.result)
+                    .map_err(|observed| ProxyError::UnexpectedCreation { phase, observed })?;
+                Self::actions(effects, self.parent)
+            }
             ProxyEvent::ChildStopped(event) => {
+                let phase = self.incarnation.phase();
                 let completes_shutdown = self.incarnation.shutdown_complete_after(event.nonce);
-                let effects = self.incarnation.child_stopped(event.nonce)?;
+                let effects = self
+                    .incarnation
+                    .child_stopped(event.nonce)
+                    .map_err(|error| match error {
+                        IncarnationStopError::Unexpected(_) => ProxyError::UnexpectedChildStopped {
+                            phase,
+                            observed: event,
+                        },
+                        IncarnationStopError::Lifecycle(error) => ProxyError::Lifecycle(error),
+                    })?;
                 let mut actions = Self::stopped_actions(effects, event, self.parent);
                 if completes_shutdown {
                     actions.become_ = Step::Stop(behavior::Stopped);
@@ -392,18 +508,47 @@ where
             ProxyEvent::ShutdownRequested(_) => {
                 Self::actions(self.incarnation.shutdown(), self.parent)
             }
-            ProxyEvent::ChildShutdownRejected(rejected) => Self::actions(
-                self.incarnation
-                    .shutdown_rejected(rejected.nonce, rejected.reason)?,
-                self.parent,
-            ),
+            ProxyEvent::ChildShutdownRejected(rejected) => {
+                let phase = self.incarnation.phase();
+                let effects = self
+                    .incarnation
+                    .shutdown_rejected(rejected.nonce, rejected.reason)
+                    .map_err(|error| match error {
+                        IncarnationShutdownError::Unexpected { .. } => {
+                            ProxyError::UnexpectedChildShutdownRejection {
+                                phase,
+                                observed: rejected,
+                            }
+                        }
+                        IncarnationShutdownError::Rejected(_) => {
+                            ProxyError::ChildShutdownRejected(rejected)
+                        }
+                    })?;
+                Self::actions(effects, self.parent)
+            }
             ProxyEvent::Command(event) => match event.message {
                 ProxyCommand::Forward(message) => {
-                    let effects = self.incarnation.forward(message);
+                    let effects =
+                        self.incarnation
+                            .forward(message)
+                            .map_err(|(phase, command)| ProxyError::CommandNotAccepted {
+                                phase,
+                                command,
+                            })?;
                     Self::actions(effects, self.parent)
                 }
                 ProxyCommand::Replace(child) => {
-                    let effects = self.incarnation.replace(child)?;
+                    let phase = self.incarnation.phase();
+                    let effects =
+                        self.incarnation
+                            .replace(child)
+                            .map_err(|(reason, replacement)| {
+                                ProxyError::ReplacementNotAccepted {
+                                    phase,
+                                    reason,
+                                    replacement,
+                                }
+                            })?;
                     Self::actions(effects, self.parent)
                 }
             },

@@ -10,8 +10,8 @@ use behavior_actors::{
     ObservationId, ObservationOperation, ObservationRejection, ObserveEstablished,
     ObserveEstablishedCreation, Protocol, Proxy, ReceiveTimeout, Recipient, ReplyRoute,
     ResolveChildOccurrence, SendEffects, SendInterpreter, SendLayer, ShutdownChoice,
-    ShutdownEstablished, ShutdownId, ShutdownRequested, Stash, StopOnShutdown, Supervise, User,
-    Watch, established_child,
+    ShutdownEstablished, ShutdownId, ShutdownRequested, Stash, StopOnShutdown, Supervise,
+    TerminationMonitorError, TerminationObservation, User, Watch, established_child,
 };
 use core::future::Future;
 use core::marker::PhantomData;
@@ -499,21 +499,25 @@ impl Behavior for Observer {
 fn watch_exact_fact(
     observer: &mut Observer,
     fact: EstablishedObservation<WorkerProtocol>,
-) -> Result<behavior_actors::Become, Never> {
+) -> behavior_actors::Become {
     observer.facts.push(match fact {
         EstablishedObservation::Started { .. } => "started",
         EstablishedObservation::Cancelled { .. } => "cancelled",
         EstablishedObservation::Rejected { .. } => "rejected",
         EstablishedObservation::Stopped { .. } => "stopped",
     });
-    Ok(behavior_actors::Step::Continue)
+    behavior_actors::Step::Continue
 }
 
 fn monitor_exact_fact(
     observer: &mut Observer,
     fact: EstablishedObservation<WorkerProtocol>,
-) -> BehaviorActed<Observer> {
-    watch_exact_fact(observer, fact).map(|_| Actions::cont())
+) -> Actions<RuntimeAddr, Never, Vec<Never>, NoBirths> {
+    assert_eq!(
+        watch_exact_fact(observer, fact),
+        behavior_actors::Step::Continue
+    );
+    Actions::cont()
 }
 
 #[test]
@@ -549,11 +553,15 @@ fn exact_watch_exposes_the_complete_observation_fact_algebra() {
     assert_eq!(initialized.actions.sends.owned.len(), 1);
 
     let mut active = initialized.behavior;
-    active
-        .on_path(EstablishedObservation::<WorkerProtocol>::started(
+    assert!(matches!(
+        active.on_path(EstablishedObservation::<WorkerProtocol>::started(
             ObservationId(99),
-        ))
-        .unwrap();
+        )),
+        Err(TerminationMonitorError::UnexpectedFact {
+            observation: TerminationObservation::Requested,
+            fact,
+        }) if fact.id() == ObservationId(99)
+    ));
     active
         .on_path(EstablishedObservation::<WorkerProtocol>::started(
             ObservationId(5),
@@ -605,18 +613,26 @@ fn exact_termination_monitor_commits_each_complete_relationship_phase() {
         active.observation(),
         behavior_actors::TerminationObservation::Cancelled
     );
-    active
-        .on_path(EstablishedObservation::<WorkerProtocol>::stopped(
+    assert!(matches!(
+        active.on_path(EstablishedObservation::<WorkerProtocol>::stopped(
             ObservationId(6),
             Ok(Exit::Normal),
             Instant::now(),
-        ))
-        .unwrap();
-    active
-        .on_path(EstablishedObservation::<WorkerProtocol>::started(
+        )),
+        Err(TerminationMonitorError::UnexpectedFact {
+            observation: TerminationObservation::Cancelled,
+            fact,
+        }) if fact.id() == ObservationId(6)
+    ));
+    assert!(matches!(
+        active.on_path(EstablishedObservation::<WorkerProtocol>::started(
             ObservationId(99),
-        ))
-        .unwrap();
+        )),
+        Err(TerminationMonitorError::UnexpectedFact {
+            observation: TerminationObservation::Cancelled,
+            fact,
+        }) if fact.id() == ObservationId(99)
+    ));
     assert!(active.base().facts.is_empty());
     assert_eq!(
         active.observation(),
@@ -649,13 +665,17 @@ fn exact_termination_monitor_reacts_once_to_the_matching_stopped_fact() {
             Instant::now(),
         ))
         .unwrap();
-    active
-        .on_path(EstablishedObservation::<WorkerProtocol>::stopped(
+    assert!(matches!(
+        active.on_path(EstablishedObservation::<WorkerProtocol>::stopped(
             ObservationId(7),
             Ok(Exit::Normal),
             Instant::now(),
-        ))
-        .unwrap();
+        )),
+        Err(TerminationMonitorError::UnexpectedFact {
+            observation: TerminationObservation::Observed,
+            fact,
+        }) if fact.id() == ObservationId(7)
+    ));
 
     assert_eq!(active.base().facts, ["stopped"]);
     assert_eq!(

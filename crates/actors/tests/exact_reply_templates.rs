@@ -129,7 +129,7 @@ fn every_non_owning_customer_seam_accepts_exact_and_mixed_capabilities() {
         Presence<RuntimeAddr, u8, PresenceReplyProtocol, ReplyRoute<PresenceReplyProtocol>>
     );
 
-    type PriorityReply = MessageProtocol<RuntimeAddr, PriorityQueueOutcome<u8>>;
+    type PriorityReply = MessageProtocol<RuntimeAddr, PriorityQueueOutcome<u8, u8>>;
     assert_both_routes!(
         PriorityReply,
         PriorityQueue<RuntimeAddr, u8, u8, Target, PriorityReply, EstablishedRecipient<PriorityReply>>,

@@ -217,6 +217,14 @@ pub struct Slot {
     pub sequence: u64,
 }
 
+/// A supervision fact the independent model cannot admit.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SupervisionModelError {
+    /// The slot's current incarnation has already stopped. A repeated fact
+    /// cannot spend restart budget or request another replacement.
+    AlreadyStopped { nonce: u64 },
+}
+
 /// The independent supervision reference model.
 pub struct Model {
     slots: Vec<Slot>,
@@ -311,7 +319,7 @@ impl Model {
         policy: RestartPolicy,
         maximum: u32,
         window: Option<u64>,
-    ) -> Vec<u64> {
+    ) -> Result<Vec<u64>, SupervisionModelError> {
         self.last_restart_denied = false;
         self.last_replacements_requested = 0;
         // First slot with this nonce — identity nonces make this unique.
@@ -321,10 +329,12 @@ impl Model {
             .position(|slot| slot.nonce == dead)
             .expect("model: unknown supervised nonce");
         // A second observation for an incarnation already retired or being
-        // replaced is stale. It cannot spend budget or create another
-        // successor.
+        // replaced is rejected. It cannot spend budget or create another
+        // successor, and the caller retains the submitted fact.
         if !self.slots[dead].alive {
-            return Vec::new();
+            return Err(SupervisionModelError::AlreadyStopped {
+                nonce: self.slots[dead].nonce,
+            });
         }
         let eligible = match policy {
             RestartPolicy::Permanent => true,
@@ -333,7 +343,7 @@ impl Model {
         };
         if !eligible {
             self.slots[dead].alive = false;
-            return Vec::new();
+            return Ok(Vec::new());
         }
         if let Some(window) = window {
             self.restarts
@@ -361,16 +371,16 @@ impl Model {
         if self.restarts.len() + candidates.len() > maximum as usize {
             self.slots[dead].alive = false;
             self.last_restart_denied = true;
-            return Vec::new();
+            return Ok(Vec::new());
         }
         self.restarts
             .resize(self.restarts.len() + candidates.len(), at);
         for index in &candidates {
             self.slots[*index].alive = true;
         }
-        candidates
+        Ok(candidates
             .into_iter()
             .map(|index| self.slots[index].nonce)
-            .collect()
+            .collect())
     }
 }

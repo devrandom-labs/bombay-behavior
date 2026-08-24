@@ -7,7 +7,7 @@ FIFO scheduling, bounded admission, affinity, interruption, and replacement
 policy are Bombay choices.
 
 ```text
-(pool state, one PoolEvent) -> Result<Actions, PoolError>
+(pool state, one WorkerPoolEvent) -> Result<Actions, PoolError>
 ```
 
 The fold never reads a mailbox or clock, allocates an actor, looks up an
@@ -16,7 +16,7 @@ observation, and timing effects for an interpreter.
 
 ## Identity and effects
 
-`WorkerPoolProtocol` is canonical public pool identity. `PoolEvent` is the
+`WorkerPoolProtocol` is canonical public pool identity. `WorkerPoolEvent` is the
 larger internal event algebra. `PoolBehaviorSends` exposes two named ordinary
 delivery lanes:
 

@@ -232,7 +232,7 @@ mod tests {
     #[test]
     fn stale_and_conflicting_candidates_return_ownership_atomically() {
         let mut subject = (Subject::new()).initialize().unwrap().behavior;
-        let _ = subject
+        let applied = subject
             .receive(
                 MailAddr(9),
                 ConfigurationMessage::Apply {
@@ -241,6 +241,9 @@ mod tests {
                 },
             )
             .unwrap();
+        assert!(applied.sends.is_empty());
+        assert!(applied.creates.is_empty());
+        assert_eq!(applied.become_, behavior::Step::Continue);
         assert!(matches!(
             subject.receive(
                 MailAddr(9),

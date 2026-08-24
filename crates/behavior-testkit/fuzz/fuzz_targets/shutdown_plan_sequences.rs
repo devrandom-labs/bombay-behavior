@@ -4,8 +4,8 @@ use std::time::Instant;
 
 use behavior::{
     Actions, Activate, Behavior, ChildHead, ChildStopped, Exit, Here, MailAddr, Never, NoBirths,
-    ShutdownCoordinator, ShutdownCoordinatorEvent, ShutdownPlan, ShutdownPlanIngress,
-    ShutdownRequested, ShutdownState, StopOnShutdown, User,
+    ReportShutdownPlan, ShutdownCoordinator, ShutdownCoordinatorError, ShutdownCoordinatorEvent,
+    ShutdownPlan, ShutdownRequested, ShutdownState, StopOnShutdown, User,
 };
 use libfuzzer_sys::fuzz_target;
 
@@ -65,20 +65,31 @@ fuzz_target!(|bytes: &[u8]| {
                 subject.on_path(ShutdownRequested).unwrap();
             }
             1 => {
-                let report = ShutdownPlanIngress::<ShutdownPlan<u64>, Here>::new()
-                    .report(shutdown_plan.clone());
+                let report =
+                    ReportShutdownPlan::<ShutdownPlan<u64>, Here>::new(shutdown_plan.clone());
                 let event: ShutdownCoordinatorEvent<User<MailAddr, ()>, ShutdownPlan<u64>> =
                     report.into_event();
-                let _ = subject.transition(event);
+                match subject.transition(event) {
+                    Ok(_) => {}
+                    Err(ShutdownCoordinatorError::PlanAlreadyInstalled(returned)) => {
+                        assert_eq!(returned, shutdown_plan);
+                    }
+                    Err(other) => panic!("plan event produced the wrong rejection: {other:?}"),
+                }
             }
             _ => {
-                subject
-                    .on_path(ChildStopped::new(
-                        u64::from(byte),
-                        Ok(Exit::Normal),
-                        Instant::now(),
-                    ))
-                    .unwrap();
+                let observed = ChildStopped::new(
+                    u64::from(byte),
+                    Ok(Exit::Normal),
+                    Instant::now(),
+                );
+                match subject.on_path(observed.clone()) {
+                    Ok(_) => {}
+                    Err(ShutdownCoordinatorError::UnexpectedChildStopped(returned)) => {
+                        assert_eq!(returned, observed);
+                    }
+                    Err(other) => panic!("child fact produced the wrong rejection: {other:?}"),
+                }
             }
         }
 

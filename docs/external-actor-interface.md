@@ -183,19 +183,19 @@ mixed routes, while interpreter tests prove that a mixed lane neither converts
 capabilities nor reorders deliveries.
 
 The shutdown coordinators also support creation-dependent topology. They may
-start in `AwaitingPlan`. The topology owner receives a typed
-`ShutdownPlanIngress`, constructs the plan only after committed children return
-their exact and creator-local capabilities, and emits `ReportShutdownPlan`
-through its returned `Actions`. The interpreter uses the carried structural
-ingress to enqueue exactly one `InstallShutdownPlan` event for the outer
-coordinator. An earlier shutdown request remains retained until that event is
-folded. Homogeneous and heterogeneous plans are different event types and
-cannot be substituted. This is explicit Bombay lifecycle policy, not a new
-actor-model primitive.
+start in `AwaitingPlan`. The child composition constructs the plan only after
+every configured creation commits and emits `ReportShutdownPlan` through its
+returned `Actions`. The report's final destination is inferred from the
+complete static actor composition; application code supplies neither a path
+nor a route. Interpretation enqueues exactly one `InstallShutdownPlan` event
+for the owning coordinator. An earlier shutdown request remains retained until
+that event is folded. Homogeneous and heterogeneous plans are different event
+types and cannot be substituted. This is explicit Bombay lifecycle policy,
+not a new actor-model primitive.
 
 Both additions live wholly in Behavior Actors and use existing Core events,
 effect products, exact recipients, child routes, and composition paths. No new
-Behavior Core algebra or actor template is required.
+Behavior Core algebra is required.
 
 ## Rejected designs
 

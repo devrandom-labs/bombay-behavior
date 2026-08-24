@@ -62,11 +62,22 @@ pub enum WorkflowState<K, Route> {
         reply_to: Route,
     },
     /// Every step completed successfully.
-    Succeeded,
+    Succeeded {
+        /// Retained result route for typed rejection of later stale input.
+        reply_to: Route,
+    },
     /// One active step failed; no further activations are possible.
-    Failed { step: K },
+    Failed {
+        /// Step whose failure terminated the run.
+        step: K,
+        /// Retained result route for typed rejection of later stale input.
+        reply_to: Route,
+    },
     /// Explicit cancellation terminated the run.
-    Cancelled,
+    Cancelled {
+        /// Retained result route for typed rejection of later stale input.
+        reply_to: Route,
+    },
 }
 
 /// Rejected workflow input.
@@ -82,6 +93,23 @@ pub enum WorkflowRejection<K> {
     AlreadyCompleted { step: K },
     /// The workflow is terminal.
     Terminal { step: Option<K> },
+}
+
+/// A command that requires an established workflow run.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WorkflowInput<K> {
+    /// Successful completion evidence for one step.
+    Complete { step: K },
+    /// Failure evidence for one step.
+    Fail { step: K },
+}
+
+/// Typed refusal of a command for which no result route exists yet.
+#[derive(Debug, Error, Clone, PartialEq, Eq)]
+pub enum WorkflowError<K> {
+    /// `Start` has not established a run and its result route.
+    #[error("workflow input arrived before the run was started")]
+    NotStarted(WorkflowInput<K>),
 }
 
 /// Activation and terminal facts emitted by [`Workflow`].
@@ -118,8 +146,10 @@ pub enum WorkflowMessage<K, Route> {
 /// Construction validates a finite acyclic graph. `Start` activates every
 /// root in definition order. Completion activates a blocked step exactly once
 /// when all of its prerequisites are complete. Unknown, blocked, duplicate,
-/// and terminal input is explicitly rejected without mutation. Failure and
-/// cancellation are terminal and prevent later activation. Initialization is
+/// and post-start terminal input is explicitly rejected without mutation.
+/// Completion or failure input before `Start` is returned as a typed
+/// [`WorkflowError::NotStarted`] because no result route has been established.
+/// Failure and cancellation are terminal and prevent later activation. Initialization is
 /// empty and the actor itself remains available to report terminal rejection.
 /// Graph validation, one-run retention, activation ordering, and terminal
 /// policy are Bombay choices. The actor model requires only that each event be
@@ -211,8 +241,19 @@ where
     }
 
     fn complete(&mut self, step: K) -> Actions<A, Never, Route::Sends, NoBirths> {
+        let terminal_reply = match &self.state {
+            WorkflowState::Succeeded { reply_to }
+            | WorkflowState::Failed { reply_to, .. }
+            | WorkflowState::Cancelled { reply_to } => Some(reply_to.clone()),
+            WorkflowState::Ready | WorkflowState::Running { .. } => None,
+        };
         let WorkflowState::Running { steps, reply_to } = &mut self.state else {
-            return Actions::cont();
+            return terminal_reply.map_or_else(Actions::cont, |reply_to| {
+                Self::reply(
+                    reply_to,
+                    WorkflowOutcome::Rejected(WorkflowRejection::Terminal { step: Some(step) }),
+                )
+            });
         };
         let reply_to = reply_to.clone();
         let Some(index) = steps.iter().position(|(candidate, _)| candidate == &step) else {
@@ -240,7 +281,9 @@ where
             .iter()
             .all(|(_, state)| *state == WorkflowStepState::Completed)
         {
-            self.state = WorkflowState::Succeeded;
+            self.state = WorkflowState::Succeeded {
+                reply_to: reply_to.clone(),
+            };
             return Self::reply(reply_to, WorkflowOutcome::Succeeded { completed: step });
         }
         let completed: Vec<_> = steps
@@ -274,8 +317,19 @@ where
     }
 
     fn fail(&mut self, step: K) -> Actions<A, Never, Route::Sends, NoBirths> {
+        let terminal_reply = match &self.state {
+            WorkflowState::Succeeded { reply_to }
+            | WorkflowState::Failed { reply_to, .. }
+            | WorkflowState::Cancelled { reply_to } => Some(reply_to.clone()),
+            WorkflowState::Ready | WorkflowState::Running { .. } => None,
+        };
         let WorkflowState::Running { steps, reply_to } = &self.state else {
-            return Actions::cont();
+            return terminal_reply.map_or_else(Actions::cont, |reply_to| {
+                Self::reply(
+                    reply_to,
+                    WorkflowOutcome::Rejected(WorkflowRejection::Terminal { step: Some(step) }),
+                )
+            });
         };
         let reply_to = reply_to.clone();
         let Some((_, phase)) = steps.iter().find(|(candidate, _)| candidate == &step) else {
@@ -286,7 +340,10 @@ where
         };
         match phase {
             WorkflowStepState::Active => {
-                self.state = WorkflowState::Failed { step: step.clone() };
+                self.state = WorkflowState::Failed {
+                    step: step.clone(),
+                    reply_to: reply_to.clone(),
+                };
                 Self::reply(reply_to, WorkflowOutcome::Failed { step })
             }
             WorkflowStepState::Blocked => Self::reply(
@@ -386,16 +443,28 @@ where
     type Event = User<A, crate::BehaviorMessage<Self>>;
     type Sends = Route::Sends;
     type Ph = Never;
-    type Error = Never;
+    type Error = WorkflowError<K>;
     type Birth = NoBirths;
     fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
         Ok(match event.message {
             WorkflowMessage::Start { reply_to } => self.start(reply_to),
-            WorkflowMessage::Complete { step } => self.complete(step),
-            WorkflowMessage::Fail { step } => self.fail(step),
-            WorkflowMessage::Cancel { reply_to } => match self.state {
+            WorkflowMessage::Complete { step } => {
+                if matches!(self.state, WorkflowState::Ready) {
+                    return Err(WorkflowError::NotStarted(WorkflowInput::Complete { step }));
+                }
+                self.complete(step)
+            }
+            WorkflowMessage::Fail { step } => {
+                if matches!(self.state, WorkflowState::Ready) {
+                    return Err(WorkflowError::NotStarted(WorkflowInput::Fail { step }));
+                }
+                self.fail(step)
+            }
+            WorkflowMessage::Cancel { reply_to } => match &self.state {
                 WorkflowState::Ready | WorkflowState::Running { .. } => {
-                    self.state = WorkflowState::Cancelled;
+                    self.state = WorkflowState::Cancelled {
+                        reply_to: reply_to.clone(),
+                    };
                     Self::reply(reply_to, WorkflowOutcome::Cancelled)
                 }
                 _ => Self::reply(
@@ -476,6 +545,28 @@ mod tests {
             }),
             Err(WorkflowConfigError::Cycle)
         ));
+    }
+
+    #[test]
+    fn pre_start_step_facts_are_returned_with_their_operation_and_do_not_start_a_run() {
+        let mut subject = Subject::new(diamond())
+            .unwrap()
+            .initialize()
+            .unwrap()
+            .behavior;
+        assert!(matches!(
+            subject.receive(MailAddr(0), WorkflowMessage::Complete { step: "root" }),
+            Err(WorkflowError::NotStarted(WorkflowInput::Complete {
+                step: "root"
+            }))
+        ));
+        assert!(matches!(
+            subject.receive(MailAddr(0), WorkflowMessage::Fail { step: "left" }),
+            Err(WorkflowError::NotStarted(WorkflowInput::Fail {
+                step: "left"
+            }))
+        ));
+        assert!(matches!(subject.state(), WorkflowState::Ready));
     }
 
     #[test]

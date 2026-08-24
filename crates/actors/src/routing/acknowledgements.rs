@@ -32,6 +32,15 @@ pub struct AcknowledgementRecord<K, P> {
     pub state: AcknowledgementState<P>,
 }
 
+/// Exact operation submitted to an already terminal or unknown lifecycle.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AcknowledgementInput<K, P> {
+    /// One participant attempted to acknowledge.
+    Acknowledge { key: K, participant: P },
+    /// The lifecycle was asked to cancel.
+    Cancel { key: K },
+}
+
 /// Typed rejection of an acknowledgement operation.
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum AcknowledgementError<K, P> {
@@ -40,13 +49,12 @@ pub enum AcknowledgementError<K, P> {
     Existing {
         /// Rejected key.
         key: K,
+        /// Exact participant declaration from the rejected command.
+        participants: Vec<P>,
     },
     /// No lifecycle exists for this key.
     #[error("acknowledgement key is unknown")]
-    Unknown {
-        /// Rejected key.
-        key: K,
-    },
+    Unknown(AcknowledgementInput<K, P>),
     /// The participant was not declared for the pending lifecycle.
     #[error("participant is not required by this acknowledgement")]
     UnexpectedParticipant {
@@ -65,16 +73,10 @@ pub enum AcknowledgementError<K, P> {
     },
     /// An operation targeted a completed lifecycle.
     #[error("acknowledgement lifecycle is already complete")]
-    Completed {
-        /// Correlation key.
-        key: K,
-    },
+    Completed(AcknowledgementInput<K, P>),
     /// An operation targeted a cancelled lifecycle.
     #[error("acknowledgement lifecycle is cancelled")]
-    Cancelled {
-        /// Correlation key.
-        key: K,
-    },
+    Cancelled(AcknowledgementInput<K, P>),
 }
 
 /// Complete result of one acknowledgement operation.
@@ -202,7 +204,10 @@ where
         if self.records.iter().any(|record| record.key == key) {
             return Self::result(
                 reply_to,
-                AcknowledgementOutcome::Rejected(AcknowledgementError::Existing { key }),
+                AcknowledgementOutcome::Rejected(AcknowledgementError::Existing {
+                    key,
+                    participants,
+                }),
             );
         }
         let mut distinct = Vec::new();
@@ -241,7 +246,9 @@ where
         let Some(record) = self.records.iter_mut().find(|record| record.key == key) else {
             return Self::result(
                 reply_to,
-                AcknowledgementOutcome::Rejected(AcknowledgementError::Unknown { key }),
+                AcknowledgementOutcome::Rejected(AcknowledgementError::Unknown(
+                    AcknowledgementInput::Acknowledge { key, participant },
+                )),
             );
         };
         let (remaining, acknowledged) = match &mut record.state {
@@ -252,13 +259,17 @@ where
             AcknowledgementState::Completed => {
                 return Self::result(
                     reply_to,
-                    AcknowledgementOutcome::Rejected(AcknowledgementError::Completed { key }),
+                    AcknowledgementOutcome::Rejected(AcknowledgementError::Completed(
+                        AcknowledgementInput::Acknowledge { key, participant },
+                    )),
                 );
             }
             AcknowledgementState::Cancelled => {
                 return Self::result(
                     reply_to,
-                    AcknowledgementOutcome::Rejected(AcknowledgementError::Cancelled { key }),
+                    AcknowledgementOutcome::Rejected(AcknowledgementError::Cancelled(
+                        AcknowledgementInput::Acknowledge { key, participant },
+                    )),
                 );
             }
         };
@@ -304,7 +315,9 @@ where
         let Some(record) = self.records.iter_mut().find(|record| record.key == key) else {
             return Self::result(
                 reply_to,
-                AcknowledgementOutcome::Rejected(AcknowledgementError::Unknown { key }),
+                AcknowledgementOutcome::Rejected(AcknowledgementError::Unknown(
+                    AcknowledgementInput::Cancel { key },
+                )),
             );
         };
         match record.state {
@@ -314,11 +327,15 @@ where
             }
             AcknowledgementState::Completed => Self::result(
                 reply_to,
-                AcknowledgementOutcome::Rejected(AcknowledgementError::Completed { key }),
+                AcknowledgementOutcome::Rejected(AcknowledgementError::Completed(
+                    AcknowledgementInput::Cancel { key },
+                )),
             ),
             AcknowledgementState::Cancelled => Self::result(
                 reply_to,
-                AcknowledgementOutcome::Rejected(AcknowledgementError::Cancelled { key }),
+                AcknowledgementOutcome::Rejected(AcknowledgementError::Cancelled(
+                    AcknowledgementInput::Cancel { key },
+                )),
             ),
         }
     }
@@ -485,14 +502,19 @@ mod tests {
             .unwrap();
         assert!(matches!(
             stale.sends[0].message,
-            AcknowledgementOutcome::Rejected(AcknowledgementError::Completed { key: 7 })
+            AcknowledgementOutcome::Rejected(AcknowledgementError::Completed(
+                AcknowledgementInput::Acknowledge {
+                    key: 7,
+                    participant: 2,
+                }
+            ))
         ));
     }
 
     #[test]
     fn rejection_and_cancellation_do_not_conflate_phases() {
         let mut subject = (Subject::new()).initialize().unwrap().behavior;
-        let _ = subject
+        let started = subject
             .receive(
                 MailAddr(9),
                 AcknowledgementMessage::Begin {
@@ -502,6 +524,13 @@ mod tests {
                 },
             )
             .unwrap();
+        assert!(matches!(
+            started.sends[0].message,
+            AcknowledgementOutcome::Started {
+                key: 1,
+                remaining: 1
+            }
+        ));
         let unexpected = subject
             .receive(
                 MailAddr(9),

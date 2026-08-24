@@ -9,18 +9,18 @@ use behavior_actors::{
     Actions, BackoffSupervise, BackoffSupervisorEvent, BackoffSupervisorSends,
     BackoffSupervisorWithParent, Behavior, BehaviorActed, BehaviorBase, Births, BreakerOutcome,
     ChildDelivery, ChildHead, ChildRoute, ChildShutdownRejected, ChildStopped, CircuitBreaker,
-    Create, CreationResolved, Deadline, DynamicProxy, DynamicProxyWithParent, DynamicSupervisor,
-    DynamicSupervisorOutcome, DynamicSupervisorWithParent, Guardian, Here, Ingress, InjectEvent,
-    Inside, InstallShutdownPlan, InterpretChildDelivery, KeyedPoolEvent, KeyedWorkerPool,
-    KeyedWorkerPoolProtocol, KeyedWorkerPoolWithParent, Lease, LeaseOutcome, MailAddr, Never,
-    NoBirths, ObserveChild, ObserveCreation, ObservePeer, OneShot, PeerStopped, Periodic,
-    PoolAssignment, PoolBehaviorSends, PoolResponse, Presence, PresenceReply, Proxy, ProxyCommand,
+    Create, CreationResolved, Deadline, DynamicSupervisor, DynamicSupervisorOutcome,
+    DynamicSupervisorWithParent, Guardian, Here, Ingress, InjectEvent, Inside, InstallShutdownPlan,
+    InterpretChildDelivery, KeyedWorkerPool, KeyedWorkerPoolEvent, KeyedWorkerPoolProtocol,
+    KeyedWorkerPoolWithParent, Lease, LeaseOutcome, MailAddr, Never, NoBirths, ObserveChild,
+    ObserveCreation, ObservePeer, OneShot, PeerStopped, Periodic, PoolAssignment,
+    PoolBehaviorSends, PoolResponse, PoolSends, Presence, PresenceReply, Proxy, ProxyCommand,
     ProxyEvent, ProxyParentIngress, ProxyWithParent, ReceiveTimeout, Recipient,
     ReportSupervisionFailure, ScheduleAfter, ScheduleAt, SendLayer, ShutdownChild,
     ShutdownCoordinator, ShutdownCoordinatorEvent, ShutdownPlan, ShutdownRequested, StopOnShutdown,
     Supervise, SupervisionEvent, SupervisorWithParent, TerminationMonitor, TimerElapsed, User,
     Watch, WatchEvent, WorkerCreationResolved, WorkerPool, WorkerPoolEvent, WorkerPoolProtocol,
-    WorkerPoolSends, WorkerPoolWithParent, WorkerStopped,
+    WorkerPoolWithParent, WorkerStopped,
 };
 use core::future::Future;
 
@@ -273,7 +273,7 @@ fn every_observation_and_parent_report_has_an_exact_fact_input() {
 
 #[test]
 fn every_shutdown_request_names_a_shutdown_capable_child_protocol() {
-    accepts::<DynamicProxy<Inert>, ShutdownRequested>();
+    accepts::<Proxy<Inert>, ShutdownRequested>();
     accepts::<StopOnShutdown<Inert>, ShutdownRequested>();
 
     // An explicit outer direct-stop policy still takes precedence over the
@@ -310,7 +310,7 @@ fn every_shutdown_request_names_a_shutdown_capable_child_protocol() {
     event_accepts_at::<Pool, ShutdownRequested, Here>();
     event_accepts_at::<Pool, ChildShutdownRejected<u64>, Here>();
 
-    type KeyedPool = KeyedPoolEvent<MailAddr, PoolReply, u8, u8, u16, PoolRoute>;
+    type KeyedPool = KeyedWorkerPoolEvent<MailAddr, PoolReply, u8, u8, u16, PoolRoute>;
     event_accepts_at::<KeyedPool, ShutdownRequested, Here>();
     event_accepts_at::<KeyedPool, ChildShutdownRejected<u64>, Here>();
 
@@ -360,7 +360,7 @@ fn wrapped_dynamic_supervisor_gives_proxies_the_inner_parent_ingress() {
 
     fn exact_birth<B>()
     where
-        B: Behavior<Birth = Births<DynamicProxyWithParent<Inert, Inside<Here>>>>,
+        B: Behavior<Birth = Births<ProxyWithParent<Inert, Inside<Here>>>>,
     {
     }
     exact_birth::<Wrapped>();
@@ -424,7 +424,7 @@ fn every_proxy_owner_reindexes_parent_reports_through_an_outer_guardian() {
 
     fn dynamic_birth_is_reindexed<B>()
     where
-        B: Behavior<Birth = Births<DynamicProxyWithParent<Inert, ParentPath>>>,
+        B: Behavior<Birth = Births<ProxyWithParent<Inert, ParentPath>>>,
     {
     }
     dynamic_birth_is_reindexed::<Dynamic>();
@@ -600,6 +600,7 @@ async fn backoff_event_and_sends_are_exact_sum_product_duals() {
                     ChildRoute::<Proxy<Child>, ChildHead>::new(1),
                     ProxyCommand::Forward(()),
                 )],
+                worker_commands: Vec::new(),
                 failure_reports: InterpreterRequests::one(ReportSupervisionFailure::new(
                     SupervisionFailure::stable_child_stopped(1, Ok(behavior_actors::Exit::Normal)),
                 )),
@@ -684,8 +685,8 @@ async fn worker_pool_event_and_sends_interpret_every_lane_at_the_same_structural
         Recipient, SendInterpreter, SupervisorSends,
     };
 
-    type PoolEvent = WorkerPoolEvent<MailAddr, PoolReply, u8, u16, PoolRoute>;
-    type RootEvent = WatchEvent<PoolEvent>;
+    type PoolProtocolEvent = WorkerPoolEvent<MailAddr, PoolReply, u8, u16, PoolRoute>;
+    type RootEvent = WatchEvent<PoolProtocolEvent>;
     type Path = Inside<Here>;
 
     fn structural_proofs()
@@ -791,7 +792,7 @@ async fn worker_pool_event_and_sends_interpret_every_lane_at_the_same_structural
         }
     }
 
-    let sends: WorkerPoolSends<MailAddr, PoolWorker, PoolRoute> = SendLayer::new(
+    let sends: PoolSends<MailAddr, PoolWorker, PoolRoute, behavior::Here> = SendLayer::new(
         SupervisorSends {
             child_observations: InterpreterRequests::one(ObserveChild::new(1)),
             creation_observations: InterpreterRequests::one(ObserveCreation::new(1)),
@@ -805,6 +806,7 @@ async fn worker_pool_event_and_sends_interpret_every_lane_at_the_same_structural
                     complete_to: Recipient::global(MailAddr(9)),
                 }),
             )],
+            worker_commands: Vec::new(),
             failure_reports: InterpreterRequests::one(ReportSupervisionFailure::new(
                 behavior_actors::SupervisionFailure::stable_child_stopped(
                     1,

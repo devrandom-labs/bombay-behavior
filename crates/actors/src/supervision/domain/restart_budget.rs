@@ -28,10 +28,11 @@ impl RestartBudget {
         self.admitted.len()
     }
 
-    /// Admit an atomic replacement set or leave the budget unchanged.
+    /// Observe `at`, prune admissions no longer in that window, and then
+    /// admit the complete replacement set or none of it.
     pub fn admit(&mut self, at: Instant, requested: usize) -> Result<(), RestartDenial> {
-        self.prune(at);
-        if self.admitted.len() + requested > self.maximum as usize {
+        Self::prune(&mut self.admitted, self.window, at);
+        if requested > (self.maximum as usize).saturating_sub(self.admitted.len()) {
             return Err(RestartDenial::BudgetExceeded {
                 restarts_in_window: self.admitted.len(),
                 replacements_requested: requested,
@@ -42,13 +43,13 @@ impl RestartBudget {
         Ok(())
     }
 
-    fn prune(&mut self, now: Instant) {
-        if self.window == Duration::MAX {
+    fn prune(admitted: &mut Vec<Instant>, window: Duration, now: Instant) {
+        if window == Duration::MAX {
             return;
         }
-        self.admitted.retain(|stamp| {
+        admitted.retain(|stamp| {
             now.checked_duration_since(*stamp)
-                .is_none_or(|age| age <= self.window)
+                .is_none_or(|age| age <= window)
         });
     }
 }
@@ -63,6 +64,28 @@ mod tests {
         let mut budget = RestartBudget::new(2, Duration::MAX);
         budget.admit(now, 1).unwrap();
         assert!(budget.admit(now, 2).is_err());
+        assert_eq!(budget.admitted(), 1);
+    }
+
+    #[test]
+    fn rejection_prunes_aged_evidence_without_partially_charging_the_batch() {
+        let start = Instant::now();
+        let mut budget = RestartBudget::new(1, Duration::from_secs(1));
+        budget.admit(start, 1).unwrap();
+
+        let later = start + Duration::from_secs(2);
+        let rejection = budget.admit(later, 2).unwrap_err();
+        assert_eq!(
+            rejection,
+            RestartDenial::BudgetExceeded {
+                restarts_in_window: 0,
+                replacements_requested: 2,
+                maximum_restarts: 1,
+            }
+        );
+        assert_eq!(budget.admitted(), 0);
+
+        budget.admit(later, 1).unwrap();
         assert_eq!(budget.admitted(), 1);
     }
 }

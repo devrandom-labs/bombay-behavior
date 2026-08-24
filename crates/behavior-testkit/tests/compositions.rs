@@ -72,7 +72,7 @@ const PEER: MailAddr = MailAddr(44);
 
 fn at<T: Behavior>(behavior: T, when: Instant) -> behavior::Deadline<T> {
     behavior::Deadline::new(behavior, behavior::TimerId(0), Some(when), |_| {
-        Ok(Step::Continue)
+        Step::Continue
     })
 }
 
@@ -111,11 +111,13 @@ fn assert_generated_base_effects(sends: &GeneratedBaseSends, creates: usize) {
     assert_eq!(creates, 1);
 }
 
-/// Every ordering of the three transparent wrapper families accepts the
-/// generated nominal send and birth products. Stash contributes no product;
-/// Deadline and Watch each wrap it once without consuming either base leg.
+/// Every sound ordering of the three wrapper families accepts the generated
+/// nominal send and birth products. `Stash` must remain inside every fallible
+/// wrapper because replay cannot roll back actions from earlier messages if a
+/// later replayed transition is rejected. Its compile-fail contract covers
+/// the other three permutations.
 #[tokio::test]
-async fn generated_products_compose_through_every_three_wrapper_order() {
+async fn generated_products_compose_through_every_sound_three_wrapper_order() {
     let due = Instant::now() + Duration::from_secs(1);
 
     let first = at(
@@ -131,31 +133,7 @@ async fn generated_products_compose_through_every_three_wrapper_order() {
     .actions;
     assert_generated_base_effects(&first.sends.inner.inner, first.creates.len());
 
-    let second = at(
-        behavior::Stash::new(
-            behavior::Watch::new(GeneratedBase, PEER, stop_on_abnormal_death),
-            |_| StashRoute::Deliver,
-        ),
-        due,
-    )
-    .initialize()
-    .unwrap()
-    .actions;
-    assert_generated_base_effects(&second.sends.inner.inner, second.creates.len());
-
-    let third = behavior::Stash::new(
-        at(
-            behavior::Watch::new(GeneratedBase, PEER, stop_on_abnormal_death),
-            due,
-        ),
-        |_| StashRoute::Deliver,
-    )
-    .initialize()
-    .unwrap()
-    .actions;
-    assert_generated_base_effects(&third.sends.inner.inner, third.creates.len());
-
-    let fourth = behavior::Watch::new(
+    let second = behavior::Watch::new(
         at(
             behavior::Stash::new(GeneratedBase, |_| StashRoute::Deliver),
             due,
@@ -166,9 +144,9 @@ async fn generated_products_compose_through_every_three_wrapper_order() {
     .initialize()
     .unwrap()
     .actions;
-    assert_generated_base_effects(&fourth.sends.inner.inner, fourth.creates.len());
+    assert_generated_base_effects(&second.sends.inner.inner, second.creates.len());
 
-    let fifth = behavior::Watch::new(
+    let third = behavior::Watch::new(
         behavior::Stash::new(at(GeneratedBase, due), |_| StashRoute::Deliver),
         PEER,
         stop_on_abnormal_death,
@@ -176,16 +154,7 @@ async fn generated_products_compose_through_every_three_wrapper_order() {
     .initialize()
     .unwrap()
     .actions;
-    assert_generated_base_effects(&fifth.sends.inner.inner, fifth.creates.len());
-
-    let sixth = behavior::Stash::new(
-        behavior::Watch::new(at(GeneratedBase, due), PEER, stop_on_abnormal_death),
-        |_| StashRoute::Deliver,
-    )
-    .initialize()
-    .unwrap()
-    .actions;
-    assert_generated_base_effects(&sixth.sends.inner.inner, sixth.creates.len());
+    assert_generated_base_effects(&third.sends.inner.inner, third.creates.len());
 }
 
 /// Every ordering of {at, watch, at} preserves each layer's own initial
@@ -202,7 +171,7 @@ async fn all_wrapper_permutations_preserve_init_protocol_nesting() {
         behavior::Watch::new(at(Recorder::default(), first), PEER, stop_on_abnormal_death),
         behavior::TimerId(0),
         Some(second),
-        |_| Ok(Step::Continue),
+        |_| Step::Continue,
     );
     let initialized = c1.initialize().unwrap();
     let i1 = initialized.actions;
@@ -217,7 +186,7 @@ async fn all_wrapper_permutations_preserve_init_protocol_nesting() {
             at(Recorder::default(), first),
             behavior::TimerId(0),
             Some(second),
-            |_| Ok(Step::Continue),
+            |_| Step::Continue,
         ),
         PEER,
         stop_on_abnormal_death,
@@ -235,11 +204,11 @@ async fn all_wrapper_permutations_preserve_init_protocol_nesting() {
             behavior::Watch::new(Recorder::default(), PEER, stop_on_abnormal_death),
             behavior::TimerId(0),
             Some(first),
-            |_| Ok(Step::Continue),
+            |_| Step::Continue,
         ),
         behavior::TimerId(0),
         Some(second),
-        |_| Ok(Step::Continue),
+        |_| Step::Continue,
     );
     let initialized = c3.initialize().unwrap();
     let i3 = initialized.actions;
@@ -254,7 +223,7 @@ async fn all_wrapper_permutations_preserve_init_protocol_nesting() {
             at(Recorder::default(), second),
             behavior::TimerId(0),
             Some(first),
-            |_| Ok(Step::Continue),
+            |_| Step::Continue,
         ),
         PEER,
         stop_on_abnormal_death,
@@ -275,7 +244,7 @@ async fn all_wrapper_permutations_preserve_init_protocol_nesting() {
         ),
         behavior::TimerId(0),
         Some(first),
-        |_| Ok(Step::Continue),
+        |_| Step::Continue,
     );
     let initialized = c5.initialize().unwrap();
     let i5 = initialized.actions;
@@ -290,11 +259,11 @@ async fn all_wrapper_permutations_preserve_init_protocol_nesting() {
             behavior::Watch::new(Recorder::default(), PEER, stop_on_abnormal_death),
             behavior::TimerId(0),
             Some(second),
-            |_| Ok(Step::Continue),
+            |_| Step::Continue,
         ),
         behavior::TimerId(0),
         Some(first),
-        |_| Ok(Step::Continue),
+        |_| Step::Continue,
     );
     let initialized = c6.initialize().unwrap();
     let i6 = initialized.actions;
@@ -317,7 +286,7 @@ async fn stash_layer_contributes_no_init_sends() {
         ),
         behavior::TimerId(0),
         Some(due),
-        |_| Ok(Step::Continue),
+        |_| Step::Continue,
     );
     let initialized = behavior.initialize().unwrap();
     let initial = initialized.actions;
@@ -340,7 +309,7 @@ async fn environment_lanes_bypass_stash_while_user_lane_is_intercepted() {
         ),
         behavior::TimerId(0),
         Some(due),
-        |_| Ok(Step::Continue),
+        |_| Step::Continue,
     );
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
@@ -432,8 +401,8 @@ fn continue_after_death<B: Behavior>(
     _: &mut B,
     _: MailAddr,
     _: &Result<Exit<MailAddr>, Crash>,
-) -> Result<behavior::Become, B::Error> {
-    Ok(Step::Continue)
+) -> behavior::Become {
+    Step::Continue
 }
 
 #[tokio::test]
@@ -467,7 +436,7 @@ async fn duplicate_nested_watch_peer_remains_addressable_at_both_paths() {
 #[tokio::test]
 async fn unscheduled_at_is_inert_to_reached_events() {
     let behavior = behavior::Deadline::new(Recorder::default(), behavior::TimerId(0), None, |_| {
-        Ok(Step::Stop(behavior::Stopped))
+        Step::Stop(behavior::Stopped)
     });
     let initialized = behavior.initialize().unwrap();
     let initial = initialized.actions;

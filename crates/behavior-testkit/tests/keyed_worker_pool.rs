@@ -4,9 +4,9 @@ use behavior::{
     Actions, AffinitySelector, AssignmentId, Behavior, ChildDelivery, ChildHead, ChildRoute,
     ChildStopped, CreationKind, CreationResolved, Delivery, Exit, InterruptionPolicy, JobId,
     KeyedPoolMessage, KeyedWorkerPool, KeyedWorkerPoolProtocol, MailAddr, Never, NoBirths,
-    PoolAssignment, PoolBehaviorSends, PoolError, PoolInterruption, PoolResponse, Proxy,
-    ProxyCommand, Recipient, RestartPolicy, SendEffects, ShutdownRequested, Step, User,
-    WorkerCreationResolved, WorkerPhase, WorkerStopped,
+    PoolAssignment, PoolBehaviorSends, PoolFailure, PoolInterruption, PoolResponse, Proxy,
+    ProxyCommand, RebalanceRejection, Recipient, RestartPolicy, SendEffects, ShutdownRequested,
+    Step, User, WorkerCreationResolved, WorkerPhase, WorkerStopped,
 };
 use proptest::prelude::*;
 use std::time::Instant;
@@ -100,7 +100,7 @@ fn submit(
     pool: &mut Pool,
     key: u8,
     job: u64,
-) -> behavior::PoolActions<MailAddr, Worker, ReplyRoute> {
+) -> behavior::PoolActions<MailAddr, Worker, ReplyRoute, behavior::Here> {
     pool.receive(
         MailAddr(90),
         KeyedPoolMessage::Submit {
@@ -114,7 +114,7 @@ fn submit(
 }
 
 fn assignments(
-    actions: &behavior::PoolActions<MailAddr, Worker, ReplyRoute>,
+    actions: &behavior::PoolActions<MailAddr, Worker, ReplyRoute, behavior::Here>,
 ) -> &[ChildDelivery<Proxy<Worker>, ChildHead>] {
     &actions.sends.inner.assignments
 }
@@ -250,7 +250,13 @@ fn rebalance_rejects_unknown_worker_without_changing_the_binding() {
         MailAddr(90),
         KeyedPoolMessage::Rebalance { key: 2, worker: 9 },
     );
-    assert!(matches!(result, Err(PoolError::UnknownWorker(9))));
+    assert!(matches!(
+        result,
+        Err(PoolFailure::Rebalance(RebalanceRejection::UnknownWorker {
+            key: 2,
+            worker: 9,
+        }))
+    ));
     assert_eq!(pool.affinity(&2), Some(0));
 }
 
@@ -295,7 +301,11 @@ fn retired_affinity_refuses_new_work_until_explicit_valid_rebalance() {
             MailAddr(90),
             KeyedPoolMessage::Rebalance { key: 2, worker: 0 },
         ),
-        Err(PoolError::RebalanceToRetiredWorker { worker: 0, .. })
+        Err(PoolFailure::Rebalance(RebalanceRejection::RetiredWorker {
+            key: 2,
+            worker: 0,
+            ..
+        }))
     ));
     pool.receive(
         MailAddr(90),
@@ -426,7 +436,14 @@ proptest! {
                 result.unwrap();
                 model = worker;
             } else {
-                prop_assert!(matches!(result, Err(PoolError::UnknownWorker(2))));
+                let rejected_exactly = matches!(
+                    result,
+                    Err(PoolFailure::Rebalance(RebalanceRejection::UnknownWorker {
+                        key: rejected,
+                        worker: 2,
+                    })) if rejected == key
+                );
+                prop_assert!(rejected_exactly);
             }
             prop_assert_eq!(pool.affinity(&key), Some(model));
         }
@@ -568,6 +585,16 @@ fn keyed_pool_returns_owned_jobs_and_drains_all_stable_proxies() {
             ))
     );
     assert!(matches!(shutdown.become_, Step::Continue));
+    assert!(matches!(
+        pool.receive(
+            MailAddr(90),
+            KeyedPoolMessage::Rebalance { key: 7, worker: 1 },
+        ),
+        Err(PoolFailure::Rebalance(RebalanceRejection::ShuttingDown {
+            key: 7,
+            worker: 1
+        }))
+    ));
     pool.on_path(ChildStopped::new(0, Ok(Exit::Normal), Instant::now()))
         .unwrap();
     assert!(matches!(

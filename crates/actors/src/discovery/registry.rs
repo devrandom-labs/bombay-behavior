@@ -66,17 +66,52 @@ pub enum RegistryMessage<K, D: Protocol, Route> {
 }
 
 /// A rejected registry mutation.
-#[derive(Debug, Error, Clone, PartialEq, Eq)]
-pub enum RegistryError<K> {
+#[derive(Error, Clone, PartialEq, Eq)]
+pub enum RegistryError<K, D: Protocol> {
     /// A different recipient already owns the key.
     #[error("registry key is already bound")]
-    AlreadyBound(K),
+    AlreadyBound {
+        /// Rejected key.
+        key: K,
+        /// Exact recipient from the rejected bind command.
+        recipient: Recipient<D>,
+        /// Recipient that currently owns the key.
+        current: Recipient<D>,
+    },
     /// Unbinding named an absent key.
     #[error("registry key is not bound")]
-    NotBound(K),
+    NotBound { key: K, recipient: Recipient<D> },
     /// Unbinding named a recipient other than the current binding.
     #[error("registry unbind is stale")]
-    StaleBinding(K),
+    StaleBinding {
+        key: K,
+        recipient: Recipient<D>,
+        current: Recipient<D>,
+    },
+}
+
+impl<K: core::fmt::Debug, D: Protocol> core::fmt::Debug for RegistryError<K, D> {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::AlreadyBound { key, .. } => formatter
+                .debug_struct("AlreadyBound")
+                .field("key", key)
+                .field("recipient", &"<typed recipient>")
+                .field("current", &"<typed recipient>")
+                .finish(),
+            Self::NotBound { key, .. } => formatter
+                .debug_struct("NotBound")
+                .field("key", key)
+                .field("recipient", &"<typed recipient>")
+                .finish(),
+            Self::StaleBinding { key, .. } => formatter
+                .debug_struct("StaleBinding")
+                .field("key", key)
+                .field("recipient", &"<typed recipient>")
+                .field("current", &"<typed recipient>")
+                .finish(),
+        }
+    }
 }
 
 /// Insertion-ordered typed recipient registry.
@@ -174,24 +209,32 @@ where
     type Event = User<A, crate::BehaviorMessage<Self>>;
     type Sends = Route::Sends;
     type Ph = Never;
-    type Error = RegistryError<K>;
+    type Error = RegistryError<K, D>;
     type Birth = NoBirths;
 
     fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
         match event.message {
             RegistryMessage::Bind { key, recipient } => {
-                if self.bindings.iter().any(|(bound, _)| *bound == key) {
-                    return Err(RegistryError::AlreadyBound(key));
+                if let Some((_, current)) = self.bindings.iter().find(|(bound, _)| *bound == key) {
+                    return Err(RegistryError::AlreadyBound {
+                        key,
+                        recipient,
+                        current: *current,
+                    });
                 }
                 self.bindings.push((key, recipient));
                 Ok(Actions::cont())
             }
             RegistryMessage::Unbind { key, recipient } => {
                 let Some(index) = self.bindings.iter().position(|(bound, _)| *bound == key) else {
-                    return Err(RegistryError::NotBound(key));
+                    return Err(RegistryError::NotBound { key, recipient });
                 };
                 if self.bindings[index].1 != recipient {
-                    return Err(RegistryError::StaleBinding(key));
+                    return Err(RegistryError::StaleBinding {
+                        key,
+                        recipient,
+                        current: self.bindings[index].1,
+                    });
                 }
                 self.bindings.remove(index);
                 Ok(Actions::cont())
@@ -289,7 +332,8 @@ mod tests {
                     recipient: two,
                 },
             ),
-            Err(RegistryError::AlreadyBound(4))
+            Err(RegistryError::AlreadyBound { key: 4, recipient, current })
+                if recipient == two && current == one
         ));
         assert!(matches!(
             registry.receive(
@@ -299,7 +343,11 @@ mod tests {
                     recipient: two,
                 },
             ),
-            Err(RegistryError::StaleBinding(4))
+            Err(RegistryError::StaleBinding {
+                key: 4,
+                recipient,
+                current,
+            }) if recipient == two && current == one
         ));
         assert!(registry.bindings() == [(4, one)]);
 

@@ -25,6 +25,21 @@ pub enum FleetError<N> {
     SequenceExhausted,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SlotRegistrationError<N> {
+    DuplicateChild(N),
+    SequenceExhausted,
+}
+
+impl<N> From<SlotRegistrationError<N>> for FleetError<N> {
+    fn from(error: SlotRegistrationError<N>) -> Self {
+        match error {
+            SlotRegistrationError::DuplicateChild(nonce) => Self::DuplicateChild(nonce),
+            SlotRegistrationError::SequenceExhausted => Self::SequenceExhausted,
+        }
+    }
+}
+
 pub(crate) struct ReplacementCandidate<N> {
     pub index: usize,
     pub nonce: N,
@@ -70,20 +85,39 @@ impl<N: Copy + PartialEq> Fleet<N> {
         Ok(self.slot(nonce)?.state == SlotState::Available)
     }
 
-    pub fn register(&mut self, nonce: N) -> Result<(), FleetError<N>> {
-        if self.position(nonce).is_some() {
-            return Err(FleetError::DuplicateChild(nonce));
+    pub fn register(&mut self, nonce: N) -> Result<(), SlotRegistrationError<N>> {
+        self.register_all(core::iter::once(nonce))
+    }
+
+    /// Atomically register a batch of fresh stable slots.
+    ///
+    /// Duplicate detection and sequence allocation are completed against a
+    /// temporary batch before any fleet state changes. A rejected batch
+    /// therefore leaves both membership and the sequence cursor unchanged.
+    pub fn register_all(
+        &mut self,
+        nonces: impl IntoIterator<Item = N>,
+    ) -> Result<(), SlotRegistrationError<N>> {
+        let mut staged = Vec::new();
+        let mut sequence = self.next_sequence;
+        for nonce in nonces {
+            if self.position(nonce).is_some()
+                || staged.iter().any(|slot: &Slot<N>| slot.nonce == nonce)
+            {
+                return Err(SlotRegistrationError::DuplicateChild(nonce));
+            }
+            let next = sequence
+                .checked_add(1)
+                .ok_or(SlotRegistrationError::SequenceExhausted)?;
+            staged.push(Slot {
+                nonce,
+                sequence,
+                state: SlotState::Available,
+            });
+            sequence = next;
         }
-        let sequence = self.next_sequence;
-        self.next_sequence = self
-            .next_sequence
-            .checked_add(1)
-            .ok_or(FleetError::SequenceExhausted)?;
-        self.slots.push(Slot {
-            nonce,
-            sequence,
-            state: SlotState::Available,
-        });
+        self.slots.extend(staged);
+        self.next_sequence = sequence;
         Ok(())
     }
 
@@ -199,5 +233,28 @@ mod tests {
 
         fleet.resolve_creation(99, Err(CreationRejection::EnvironmentFailed));
         assert_eq!(fleet.len(), 2);
+    }
+
+    #[test]
+    fn rejected_batch_registration_changes_neither_membership_nor_sequence() {
+        let mut fleet = Fleet::configured([7]).unwrap();
+        let before_sequence = fleet.next_sequence;
+
+        assert_eq!(
+            fleet.register_all([8, 8]),
+            Err(SlotRegistrationError::DuplicateChild(8))
+        );
+        assert_eq!(fleet.len(), 1);
+        assert_eq!(fleet.next_sequence, before_sequence);
+        assert_eq!(fleet.is_available(8), Err(FleetError::UnknownChild(8)));
+
+        fleet.next_sequence = u64::MAX;
+        assert_eq!(
+            fleet.register_all([9]),
+            Err(SlotRegistrationError::SequenceExhausted)
+        );
+        assert_eq!(fleet.len(), 1);
+        assert_eq!(fleet.next_sequence, u64::MAX);
+        assert_eq!(fleet.is_available(9), Err(FleetError::UnknownChild(9)));
     }
 }

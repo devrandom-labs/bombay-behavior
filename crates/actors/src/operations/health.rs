@@ -119,6 +119,8 @@ pub enum HealthError<K> {
         observed: ObservationVersion,
         /// Latest committed version.
         current: ObservationVersion,
+        /// Exact rejected evidence.
+        evidence: HealthEvidence,
     },
     /// Evidence reuses a committed version with different meaning.
     #[error("health evidence contradicts the committed value at the same version")]
@@ -127,7 +129,18 @@ pub enum HealthError<K> {
         component: K,
         /// Reused version.
         version: ObservationVersion,
+        /// Exact rejected evidence.
+        evidence: HealthEvidence,
     },
+}
+
+/// Exact meaning of one submitted health fact.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HealthEvidence {
+    /// The component is present with this classification.
+    Present(HealthStatus),
+    /// The component is removed at the submitted version.
+    Removed,
 }
 
 /// Versioned typed health aggregation behavior.
@@ -198,12 +211,6 @@ where
     }
 }
 
-#[derive(Clone, Copy)]
-enum Evidence {
-    Present(HealthStatus),
-    Removed,
-}
-
 impl<A, K, Reply, Route> Health<A, K, Reply, Route>
 where
     A: Address,
@@ -215,15 +222,15 @@ where
         &mut self,
         component: K,
         version: ObservationVersion,
-        evidence: Evidence,
+        evidence: HealthEvidence,
     ) -> Result<(), HealthError<K>> {
         let replacement = match evidence {
-            Evidence::Present(status) => ComponentHealthState::Present(ComponentHealth {
+            HealthEvidence::Present(status) => ComponentHealthState::Present(ComponentHealth {
                 component: component.clone(),
                 version,
                 status,
             }),
-            Evidence::Removed => ComponentHealthState::Removed {
+            HealthEvidence::Removed => ComponentHealthState::Removed {
                 component: component.clone(),
                 version,
             },
@@ -242,13 +249,18 @@ where
                 component,
                 observed: version,
                 current,
+                evidence,
             });
         }
         if version == current {
             if self.components[index] == replacement {
                 return Ok(());
             }
-            return Err(HealthError::ConflictingVersion { component, version });
+            return Err(HealthError::ConflictingVersion {
+                component,
+                version,
+                evidence,
+            });
         }
         self.components[index] = replacement;
         Ok(())
@@ -299,11 +311,11 @@ where
                 version,
                 status,
             } => {
-                self.commit(component, version, Evidence::Present(status))?;
+                self.commit(component, version, HealthEvidence::Present(status))?;
                 Ok(Actions::cont())
             }
             HealthMessage::Remove { component, version } => {
-                self.commit(component, version, Evidence::Removed)?;
+                self.commit(component, version, HealthEvidence::Removed)?;
                 Ok(Actions::cont())
             }
             HealthMessage::Query { reply_to } => Ok(Actions::send(reply_to.deliver(self.report()))),
@@ -366,6 +378,7 @@ mod tests {
                 component: 1,
                 observed: ObservationVersion(2),
                 current: ObservationVersion(3),
+                evidence: HealthEvidence::Present(HealthStatus::Healthy),
             })
         ));
         assert!(matches!(
@@ -380,6 +393,7 @@ mod tests {
             Err(HealthError::ConflictingVersion {
                 component: 1,
                 version: ObservationVersion(3),
+                evidence: HealthEvidence::Present(HealthStatus::Unhealthy),
             })
         ));
         assert_eq!(

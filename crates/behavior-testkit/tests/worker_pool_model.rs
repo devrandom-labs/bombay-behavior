@@ -6,11 +6,11 @@ use std::sync::{
 use std::time::Duration;
 
 use behavior::{
-    Actions, AssignmentId, Behavior, ChildStopped, CreationKind, CreationRejection,
-    CreationResolved, Delivery, Exit, InterruptionPolicy, JobId, MailAddr, Never, NoBirths,
-    PoolAssignment, PoolConfigError, PoolError, PoolInterruption, PoolMessage, PoolResponse, Proxy,
-    ProxyCommand, Recipient, RestartPolicy, ShutdownRequested, Step, User, WorkerCreationResolved,
-    WorkerPhase, WorkerPool, WorkerPoolProtocol, WorkerStopped,
+    Actions, AssignmentId, Behavior, ChildStopped, CompletionRejection, Crash, CreationKind,
+    CreationRejection, CreationResolved, Delivery, Exit, InterruptionPolicy, JobId, MailAddr,
+    Never, NoBirths, PoolAssignment, PoolConfigError, PoolError, PoolFailure, PoolInterruption,
+    PoolMessage, PoolResponse, Proxy, ProxyCommand, Recipient, RestartPolicy, ShutdownRequested,
+    Step, User, WorkerCreationResolved, WorkerPhase, WorkerPool, WorkerPoolProtocol, WorkerStopped,
 };
 use proptest::collection::vec;
 use proptest::prelude::*;
@@ -172,7 +172,7 @@ fn pool(workers: usize, capacity: usize, interruption: InterruptionPolicy) -> Po
 fn install(
     pool: &mut behavior::Active<PoolDefinition>,
     slot: u64,
-) -> behavior::WorkerPoolActions<MailAddr, Worker, ReplyRoute> {
+) -> behavior::PoolActions<MailAddr, Worker, ReplyRoute, behavior::Here> {
     pool.on_path(WorkerCreationResolved::new(
         slot,
         0,
@@ -186,7 +186,7 @@ fn submit(
     pool: &mut behavior::Active<PoolDefinition>,
     id: u64,
     payload: u8,
-) -> behavior::WorkerPoolActions<MailAddr, Worker, ReplyRoute> {
+) -> behavior::PoolActions<MailAddr, Worker, ReplyRoute, behavior::Here> {
     pool.receive(
         MailAddr(90),
         PoolMessage::Submit {
@@ -199,13 +199,13 @@ fn submit(
 }
 
 fn assignments(
-    actions: &behavior::WorkerPoolActions<MailAddr, Worker, ReplyRoute>,
+    actions: &behavior::PoolActions<MailAddr, Worker, ReplyRoute, behavior::Here>,
 ) -> &[behavior::ChildDelivery<Proxy<Worker>, behavior::ChildHead>] {
     &actions.sends.inner.assignments
 }
 
 fn responses(
-    actions: &behavior::WorkerPoolActions<MailAddr, Worker, ReplyRoute>,
+    actions: &behavior::PoolActions<MailAddr, Worker, ReplyRoute, behavior::Here>,
 ) -> &[Delivery<Reply>] {
     &actions.sends.inner.responses
 }
@@ -258,6 +258,22 @@ fn shutdown_returns_all_jobs_and_waits_for_every_owned_proxy() {
     )));
     assert!(matches!(shutdown.become_, Step::Continue));
 
+    assert!(matches!(
+        pool.receive(
+            MailAddr(0),
+            PoolMessage::Completed {
+                worker: 1,
+                assignment: AssignmentId(77),
+                result: 909,
+            },
+        ),
+        Err(PoolFailure::Completion(CompletionRejection::ShuttingDown {
+            worker: 1,
+            assignment: AssignmentId(77),
+            result: 909,
+        }))
+    ));
+
     let first = pool
         .on_path(ChildStopped::new(0, Ok(Exit::Normal), Instant::now()))
         .unwrap();
@@ -291,10 +307,12 @@ fn shutdown_resolves_pending_proxy_installation_without_duplicate_requests() {
     assert!(pending_rejected.sends.owned.shutdowns.is_empty());
     assert!(matches!(pending_rejected.become_, Step::Continue));
 
-    let stale_resolution = pool
-        .on_path(CreationResolved::birth(0, MailAddr(99)))
-        .unwrap();
-    assert!(stale_resolution.sends.owned.shutdowns.is_empty());
+    let stale_resolution = CreationResolved::birth(0, MailAddr(99));
+    assert!(matches!(
+        pool.on_path(stale_resolution),
+        Err(PoolFailure::Infrastructure(PoolError::UnexpectedCreation(returned)))
+            if returned == stale_resolution
+    ));
     let stopped = pool
         .on_path(ChildStopped::new(0, Ok(Exit::Normal), Instant::now()))
         .unwrap();
@@ -406,11 +424,12 @@ fn stale_completion_is_typed_and_preserves_current_ownership() {
     };
     assert_eq!(
         error,
-        PoolError::StaleCompletion {
+        PoolFailure::Completion(CompletionRejection::StaleAssignment {
             worker: 0,
             expected: AssignmentId(0),
             received: AssignmentId(9),
-        }
+            result: 0,
+        })
     );
     assert!(matches!(
         pool.worker_phase(0),
@@ -419,6 +438,31 @@ fn stale_completion_is_typed_and_preserves_current_ownership() {
             ..
         })
     ));
+}
+
+#[test]
+fn stale_worker_stop_is_rejected_before_pool_or_supervisor_state_changes() {
+    let mut pool = pool(1, 1, InterruptionPolicy::Retry)
+        .initialize()
+        .unwrap()
+        .behavior;
+    install(&mut pool, 0);
+    submit(&mut pool, 1, 10);
+    let stopped = WorkerStopped::new(0, 99, Err(Crash::Failed), Instant::now());
+
+    assert!(matches!(
+        pool.on_path(stopped.clone()),
+        Err(PoolFailure::Infrastructure(PoolError::UnexpectedWorkerStopped(returned)))
+            if returned == stopped
+    ));
+    assert_eq!(pool.backlog_len(), 0);
+    assert_eq!(
+        pool.worker_phase(0),
+        Some(WorkerPhase::Assigned {
+            assignment: AssignmentId(0),
+            job: JobId(1),
+        })
+    );
 }
 
 #[test]
@@ -695,18 +739,12 @@ fn duplicate_creation_resolution_cannot_revive_or_overwrite_an_available_slot() 
     let initialized = pool.initialize().unwrap();
     let mut pool = initialized.behavior;
     install(&mut pool, 0);
-    let result = pool.on_path(WorkerCreationResolved::new(
-        0,
-        0,
-        CreationKind::Birth,
-        Ok(()),
-    ));
+    let observed = WorkerCreationResolved::new(0, 0, CreationKind::Birth, Ok(()));
+    let result = pool.on_path(observed);
     assert!(matches!(
         result,
-        Err(PoolError::CreationResolvedWhileUnavailable {
-            worker: 0,
-            phase: WorkerPhase::Idle,
-        })
+        Err(PoolFailure::Infrastructure(PoolError::UnexpectedWorkerCreation(returned)))
+            if returned == observed
     ));
     assert_eq!(pool.worker_phase(0), Some(WorkerPhase::Idle));
 }

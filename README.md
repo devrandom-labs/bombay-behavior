@@ -175,9 +175,11 @@ events. Send products likewise retain named lanes and structural ordering;
 they are never flattened into a dynamic envelope.
 
 The reusable worker-pool contract is documented in
-[Worker pool semantics](docs/worker-pool.md). The two correctness-sensitive
-wrapper constructors are documented in
-[Composition recipes](docs/composition-recipes.md).
+[Worker pool semantics](docs/worker-pool.md). Correctness-sensitive actor
+arrangements and the template-deduplication verdict are documented in
+[Actor compositions](docs/composition-recipes.md). The repository-wide law and
+adversarial-test audit is recorded in
+[Behavior Actors template-law audit](docs/template-law-audit.md).
 
 ## Development
 

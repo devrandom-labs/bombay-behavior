@@ -41,7 +41,7 @@ pub enum PriorityQueueRejection {
 
 /// Factual result of one priority-queue operation.
 #[derive(Debug, PartialEq, Eq)]
-pub enum PriorityQueueOutcome<T> {
+pub enum PriorityQueueOutcome<T, P> {
     /// Value was accepted.
     Accepted {
         /// Queue depth after admission.
@@ -51,6 +51,8 @@ pub enum PriorityQueueOutcome<T> {
     Rejected {
         /// Unaccepted value.
         value: T,
+        /// Exact priority from the rejected offer.
+        priority: P,
         /// Exhaustive reason.
         reason: PriorityQueueRejection,
     },
@@ -135,7 +137,7 @@ pub struct PriorityQueue<
     T,
     P: Ord,
     Target: Protocol<Addr = A, Msg = T>,
-    Reply: behavior::Protocol<Addr = A, Msg = PriorityQueueOutcome<T>>,
+    Reply: behavior::Protocol<Addr = A, Msg = PriorityQueueOutcome<T, P>>,
     Route: DeliveryRoute<Reply>,
 > {
     capacity: usize,
@@ -150,7 +152,7 @@ where
     A: Address,
     P: Ord,
     Target: Protocol<Addr = A, Msg = T>,
-    Reply: behavior::Protocol<Addr = A, Msg = PriorityQueueOutcome<T>>,
+    Reply: behavior::Protocol<Addr = A, Msg = PriorityQueueOutcome<T, P>>,
     Route: DeliveryRoute<Reply>,
 {
     /// Construct an empty positive-capacity queue.
@@ -200,6 +202,7 @@ where
                 Vec::new(),
                 reply_to.deliver(PriorityQueueOutcome::Rejected {
                     value,
+                    priority,
                     reason: PriorityQueueRejection::Full,
                 }),
             );
@@ -209,6 +212,7 @@ where
                 Vec::new(),
                 reply_to.deliver(PriorityQueueOutcome::Rejected {
                     value,
+                    priority,
                     reason: PriorityQueueRejection::SequenceExhausted,
                 }),
             );
@@ -232,7 +236,7 @@ where
     A: Address,
     P: Ord,
     Target: Protocol<Addr = A, Msg = T>,
-    Reply: behavior::Protocol<Addr = A, Msg = PriorityQueueOutcome<T>>,
+    Reply: behavior::Protocol<Addr = A, Msg = PriorityQueueOutcome<T, P>>,
     Route: DeliveryRoute<Reply>,
 {
     type Base = Self;
@@ -246,7 +250,7 @@ where
     A: Address,
     P: Ord,
     Target: Protocol<Addr = A, Msg = T>,
-    Reply: behavior::Protocol<Addr = A, Msg = PriorityQueueOutcome<T>>,
+    Reply: behavior::Protocol<Addr = A, Msg = PriorityQueueOutcome<T, P>>,
     Route: DeliveryRoute<Reply>,
 {
     type Addr = A;
@@ -258,7 +262,7 @@ where
     A: Address,
     P: Ord,
     Target: Protocol<Addr = A, Msg = T>,
-    Reply: behavior::Protocol<Addr = A, Msg = PriorityQueueOutcome<T>>,
+    Reply: behavior::Protocol<Addr = A, Msg = PriorityQueueOutcome<T, P>>,
     Route: DeliveryRoute<Reply>,
     Route::Sends: behavior::SendsFor<User<A, PriorityQueueMessage<T, P, Target, Route>>>,
 {
@@ -313,7 +317,7 @@ mod tests {
     }
     impl behavior::Protocol for Reply {
         type Addr = MailAddr;
-        type Msg = PriorityQueueOutcome<u8>;
+        type Msg = PriorityQueueOutcome<u8, u8>;
     }
 
     impl Behavior for Reply {
@@ -388,10 +392,16 @@ mod tests {
             rejected.sends.outcomes[0].message,
             PriorityQueueOutcome::Rejected {
                 value: 2,
+                priority: 9,
                 reason: PriorityQueueRejection::Full
             }
         ));
-        let _ = release(&mut s);
+        let released = release(&mut s);
+        assert_eq!(released.sends.deliveries[0].message, 1);
+        assert!(matches!(
+            released.sends.outcomes[0].message,
+            PriorityQueueOutcome::Released { remaining: 0 }
+        ));
         assert!(matches!(
             release(&mut s).sends.outcomes[0].message,
             PriorityQueueOutcome::Empty
@@ -419,6 +429,7 @@ mod tests {
             rejected.sends.outcomes[0].message,
             PriorityQueueOutcome::Rejected {
                 value: 2,
+                priority: 9,
                 reason: PriorityQueueRejection::SequenceExhausted
             }
         ));

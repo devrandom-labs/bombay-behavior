@@ -117,7 +117,7 @@ recursive_reply_case!(
 );
 recursive_reply_case!(
     priority_queue,
-    PriorityQueueOutcome<u8>,
+    PriorityQueueOutcome<u8, u8>,
     PriorityQueue<MailAddr, u8, u8, Target, Reply, Recipient<Reply>>
 );
 recursive_reply_case!(
@@ -172,7 +172,7 @@ fn every_reply_template_accepts_a_pure_message_protocol() {
     type LeaseReply = MessageProtocol<MailAddr, LeaseOutcome<u8>>;
     type GateReply = MessageProtocol<MailAddr, OrderGateOutcome<u8, u8>>;
     type PresenceReplyProtocol = MessageProtocol<MailAddr, PresenceReply<u8>>;
-    type PriorityReply = MessageProtocol<MailAddr, PriorityQueueOutcome<u8>>;
+    type PriorityReply = MessageProtocol<MailAddr, PriorityQueueOutcome<u8, u8>>;
     type RateReply = MessageProtocol<MailAddr, RateLimiterOutcome<u8>>;
     type ReadinessReply = MessageProtocol<MailAddr, ReadinessReport<u8>>;
     type RegistryReply = MessageProtocol<MailAddr, RegistryResult<u8, Target>>;
@@ -217,7 +217,7 @@ fn every_send_only_destination_accepts_a_protocol_without_a_behavior() {
 
     type Bytes = MessageProtocol<MailAddr, u8>;
     type GateReply = MessageProtocol<MailAddr, OrderGateOutcome<u8, u8>>;
-    type PriorityReply = MessageProtocol<MailAddr, PriorityQueueOutcome<u8>>;
+    type PriorityReply = MessageProtocol<MailAddr, PriorityQueueOutcome<u8, u8>>;
     type QueueReply = MessageProtocol<MailAddr, WorkQueueOutcome<u8>>;
     type RateReply = MessageProtocol<MailAddr, RateLimiterOutcome<u8>>;
     type SequenceReply = MessageProtocol<MailAddr, SequencerOutcome<u8>>;

@@ -21,10 +21,10 @@
 //! into its one initialized [`Active`] state. Rust can infer wrapper stacks at
 //! construction and spawn call sites; applications do not need to name types
 //! such as `Deadline<Stash<Machine<...>>>`.
-//! Correctness-sensitive cross-family orders use the ordinary
-//! [`supervised_backoff`] and [`coordinated_terminal_application`] functions;
-//! the repository's composition-recipe guide records their construction,
-//! error, initialization, and trace-equivalence laws.
+//! Correctness-sensitive cross-family orders use ordinary functions such as
+//! [`supervised_backoff`] and [`shutdown_after_children`]. The repository's composition guide
+//! records their construction, error, initialization, and trace-equivalence
+//! laws.
 //!
 //! The top-level Bombay package is the ordinary application façade. Direct use
 //! of this component crate is intended for interpreter implementation,
@@ -53,9 +53,9 @@ pub mod workflow;
 
 pub use activation::{Activate, Active, Initialized};
 pub use composition::{
-    CoordinatedTerminalApplication, DeliveryRoute, DeliveryRouteProtocol, MessageAdapter,
-    MessageAdapterWithRoute, ReplyDeliveries, ReplyDelivery, ReplyRoute,
-    coordinated_terminal_application, supervised_backoff, supervised_backoff_with_parent,
+    DeliveryRoute, DeliveryRouteProtocol, MessageAdapter, MessageAdapterWithRoute, ReplyDeliveries,
+    ReplyDelivery, ReplyRoute, dynamic_supervisor, keyed_worker_pool, supervise, supervise_backoff,
+    supervised, supervised_backoff, worker_pool,
 };
 pub use discovery::{
     Presence, PresenceEntry, PresenceError, PresenceMessage, PresenceOutcome, PresencePhase,
@@ -64,36 +64,38 @@ pub use discovery::{
     ResolverConfigError, ResolverMessage, Topic, TopicError, TopicMembership, TopicMessage,
 };
 pub use lifecycle::{
-    ChildTermination, CleanupReaction, CoordinatedGuardian, EstablishedTerminationMonitor,
-    EstablishedTerminationReaction, EstablishedTerminationTarget, Guardian,
-    HeterogeneousShutdownCoordinator, HeterogeneousShutdownPlan, HeterogeneousShutdownSends,
-    InstallShutdownPlan, LifecyclePublication, LifecyclePublisher, LogicalTerminationTarget,
-    NoShutdownTargets, PeerTermination, PropagateTermination, Reaper, ReportShutdownPlan,
-    ShutdownChoice, ShutdownCoordinator, ShutdownCoordinatorError, ShutdownCoordinatorEvent,
-    ShutdownPlan, ShutdownPlanError, ShutdownPlanIngress, ShutdownState, ShutdownTargetAt,
+    ChildCreationExpectation, ChildShutdownPhases, ChildShutdownPlanError, ChildTermination,
+    CoordinatedGuardian, EstablishedTerminationMonitor, EstablishedTerminationReaction,
+    EstablishedTerminationTarget, Guardian, HeterogeneousShutdownCoordinator,
+    HeterogeneousShutdownPlan, HeterogeneousShutdownSends, InstallShutdownPlan,
+    LogicalTerminationTarget, NoShutdownTargets, PeerTermination, PropagateTermination,
+    ReportShutdownPlan, ShutdownChoice, ShutdownCoordinator, ShutdownCoordinatorError,
+    ShutdownCoordinatorEvent, ShutdownPlan, ShutdownPlanError, ShutdownState, ShutdownTargetAt,
     ShutdownTree, ShutdownTreeError, Task, TaskError, TaskMessage, TaskResult, TaskState,
     TerminalDisposition, TerminalPropagationPolicy, TerminalPropagationSends,
-    TerminalPropagationState, TerminationMonitor, TerminationMonitorWith, TerminationObservation,
-    TerminationObservationTarget, TerminationReaction, TerminationTarget, TreeShutdown,
-    propagate_abnormal, propagate_all, shutdown_target,
+    TerminalPropagationState, TerminationMonitor, TerminationMonitorError, TerminationMonitorWith,
+    TerminationObservation, TerminationObservationTarget, TerminationPropagationError,
+    TerminationReaction, TerminationTarget, propagate_abnormal, propagate_all,
+    shutdown_after_children, shutdown_target,
 };
-pub use machine::{Machine, Move};
+pub use machine::{Machine, MachineError, Move};
 pub use operations::{
     ComponentHealth, ComponentHealthState, Configuration, ConfigurationError, ConfigurationMessage,
     ConfigurationState, ConfigurationVersion, DependencyReadiness, Feature, FeatureSet,
-    FeatureStatus, Features, FeaturesState, Health, HealthError, HealthMessage, HealthReport,
-    HealthStatus, ObservationVersion, Readiness, ReadinessError, ReadinessEvidence,
+    FeatureStatus, Features, FeaturesState, Health, HealthError, HealthEvidence, HealthMessage,
+    HealthReport, HealthStatus, ObservationVersion, Readiness, ReadinessError, ReadinessEvidence,
     ReadinessMessage, ReadinessReport, ReadinessStatus,
 };
 pub use persistence::{
     Cache, CacheConfigError, CacheConfiguration, CacheEntry, CacheMessage, CacheResult, CacheState,
 };
 pub use pool::{
-    AffinitySelector, AssignmentId, InterruptionPolicy, JobId, KeyedPoolEvent, KeyedPoolMessage,
-    KeyedWorkerPool, KeyedWorkerPoolWithParent, PoolActions, PoolAssignment, PoolBehaviorSends,
-    PoolConfigError, PoolConfiguration, PoolError, PoolEvent, PoolInterruption, PoolMessage,
-    PoolRejection, PoolResponse, PoolSends, WorkerPhase, WorkerPool, WorkerPoolActions,
-    WorkerPoolEvent, WorkerPoolSends, WorkerPoolWithParent, WorkerRetirement,
+    AffinitySelector, AssignmentId, CompletionRejection, InterruptionPolicy, JobId,
+    KeyedPoolMessage, KeyedWorkerPool, KeyedWorkerPoolEvent, KeyedWorkerPoolWithParent,
+    PoolActions, PoolAssignment, PoolBehaviorSends, PoolConfigError, PoolConfiguration, PoolError,
+    PoolFailure, PoolInterruption, PoolMessage, PoolRejection, PoolResponse, PoolSends,
+    RebalanceRejection, WorkerPhase, WorkerPool, WorkerPoolEvent, WorkerPoolWithParent,
+    WorkerRetirement,
 };
 pub use protocol::{
     CancelObservation, ChildShutdownRejected, ChildShutdownRejection, ChildStopped,
@@ -112,55 +114,59 @@ pub use requirements::{
     RequirementHead, RequirementTail,
 };
 pub use routing::{
-    AcknowledgementError, AcknowledgementMessage, AcknowledgementOutcome, AcknowledgementRecord,
-    AcknowledgementState, Acknowledgements, BreakerAttempt, BreakerConfigError, BreakerMessage,
-    BreakerOutcome, BreakerPhase, BreakerRejection, BreakerSends, Broadcast, Buffer,
-    BufferConfigError, BufferConfiguration, BufferMessage, BufferOutcome, BufferRejection,
-    BufferSends, BufferState, Buffered, CircuitBreaker, ClosedPhase, ConsistentHash,
-    CorrelationResult, CorrelationState, Correlator, CorrelatorError, CorrelatorMessage,
-    Deduplicator, DeduplicatorConfigError, DeduplicatorMessage, DeduplicatorOutcome,
-    DeduplicatorState, DeliveryOutcomes, HashPolicyError, LeastLoaded, LeastLoadedError, Load,
-    LoadEvidence, LoadObservation, LoadVersion, MemberToken, MemberTokenEvidence,
-    MemberTokenObservation, MemberTokenVersion, OrderGate, OrderGateMessage, OrderGateOutcome,
-    OrderGateState, OverflowPolicy, PriorityQueue, PriorityQueueConfigError, PriorityQueueMessage,
-    PriorityQueueOutcome, PriorityQueueRejection, PriorityQueueState, ProbePhase,
-    RateLimitRejection, RateLimiter, RateLimiterConfigError, RateLimiterMessage,
+    AcknowledgementError, AcknowledgementInput, AcknowledgementMessage, AcknowledgementOutcome,
+    AcknowledgementRecord, AcknowledgementState, Acknowledgements, BreakerAttempt,
+    BreakerCompletion, BreakerConfigError, BreakerError, BreakerMessage, BreakerOutcome,
+    BreakerPhase, BreakerRejection, BreakerSends, Broadcast, Buffer, BufferConfigError,
+    BufferConfiguration, BufferMessage, BufferOutcome, BufferRejection, BufferSends, BufferState,
+    Buffered, CircuitBreaker, ClosedPhase, ConsistentHash, CorrelationResult, CorrelationState,
+    Correlator, CorrelatorError, CorrelatorMessage, Deduplicator, DeduplicatorConfigError,
+    DeduplicatorMessage, DeduplicatorOutcome, DeduplicatorState, DeliveryOutcomes, HashPolicyError,
+    LeastLoaded, LeastLoadedError, Load, LoadEvidence, LoadObservation, LoadVersion, MemberToken,
+    MemberTokenEvidence, MemberTokenObservation, MemberTokenVersion, OrderGate, OrderGateMessage,
+    OrderGateOutcome, OrderGateState, OverflowPolicy, PriorityQueue, PriorityQueueConfigError,
+    PriorityQueueMessage, PriorityQueueOutcome, PriorityQueueRejection, PriorityQueueState,
+    ProbePhase, RateLimitRejection, RateLimiter, RateLimiterConfigError, RateLimiterMessage,
     RateLimiterOutcome, RateLimiterState, RendezvousHash, RoundRobin, RouteKey, Router,
     RouterError, RouterMessage, RoutingStrategy, Sequence, Sequencer, SequencerMessage,
     SequencerOutcome, SequencerState, TokenCount, WorkQueue, WorkQueueMessage, WorkQueueOutcome,
     WorkQueueRejection, WorkQueueSends, WorkQueueState,
 };
 pub use shutdown::{FinalizeOnShutdown, ShutdownEvent, ShutdownReaction, StopOnShutdown};
-pub use stash::{Stash, StashRoute, StashStatus};
+pub use stash::{Stash, StashRoute, StashStatus, StaticallyInfallible};
 pub use supervision::{
     Backoff, BackoffConfigError, BackoffError, BackoffSupervise, BackoffSuperviseWithParent,
     BackoffSupervisor, BackoffSupervisorError, BackoffSupervisorEvent, BackoffSupervisorSends,
-    BackoffSupervisorWithParent, ChildTopology, DynamicChildPhase, DynamicProxy,
-    DynamicProxyWithParent, DynamicSupervisor, DynamicSupervisorError, DynamicSupervisorEvent,
+    BackoffSupervisorWithParent, BackoffWorkers, BackoffWorkersWithParent, ChildTopology,
+    DynamicChildPhase, DynamicSupervisor, DynamicSupervisorError, DynamicSupervisorEvent,
     DynamicSupervisorMessage, DynamicSupervisorOutcome, DynamicSupervisorRejection,
     DynamicSupervisorSends, DynamicSupervisorWithParent, FleetError, IncarnationPhase, Proxy,
-    ProxyCommand, ProxyError, ProxyEvent, ProxySends, ProxySendsWithParent, ProxyWithParent,
-    ReportSupervisionFailure, RestartConfiguration, RestartPolicy, Strategy, Supervise,
-    SuperviseError, SuperviseWithParent, SupervisionEvent, SupervisionFailure,
-    SupervisionFailureReaction, Supervisor, SupervisorError, SupervisorEvent, SupervisorProtocol,
-    SupervisorSends, SupervisorWithParent, TopologyFailurePolicy, restart_all, restart_one,
+    ProxyCommand, ProxyError, ProxyEvent, ProxyLifecycleError, ProxySends, ProxySendsWithParent,
+    ProxyWithParent, ReportSupervisionFailure, RestartConfiguration, RestartPolicy, Strategy,
+    Supervise, SuperviseError, SuperviseWithParent, SupervisedWorkers, SupervisedWorkersError,
+    SupervisedWorkersWithParent, SupervisionEvent, SupervisionFailure, SupervisionFailureReaction,
+    Supervisor, SupervisorError, SupervisorEvent, SupervisorProtocol, SupervisorSends,
+    SupervisorWithParent, TopologyFailurePolicy, WorkerUnavailable, restart_all, restart_one,
     restart_rest, retire_on_supervision_failure, stop_on_supervision_failure,
 };
 pub use termination::{
-    Crash, Exit, ReportTerminalOutcome, RestartDenial, SupervisionFailureReason, TerminalOutcome,
+    Crash, Exit, ReportTerminalOutcome, RestartDenial, StableSlotRejection,
+    SupervisionFailureReason, TerminalOutcome,
 };
 pub use time::{
     Deadline, DeadlineEvent, DeadlineReaction, Lease, LeaseMessage, LeaseOutcome, LeaseRejection,
-    LeaseSends, LeaseState, OneShot, OneShotEvent, OneShotReaction, Periodic, PeriodicEvent,
-    PeriodicReaction, ReceiveTimeout, ReceiveTimeoutEvent, ReceiveTimeoutReaction, TimedEvent,
+    LeaseRequest, LeaseSends, LeaseState, OneShot, OneShotEvent, OneShotReaction, Periodic,
+    PeriodicEvent, PeriodicReaction, ReceiveTimeout, ReceiveTimeoutEvent, ReceiveTimeoutReaction,
+    TimedEvent,
 };
 pub use watch::{
-    EstablishedWatch, EstablishedWatchReaction, EstablishedWatchTarget, Link, LinkReaction,
-    LogicalWatchTarget, Watch, WatchEvent, WatchTarget, WatchWith, stop_on_abnormal_death,
+    EstablishedWatch, EstablishedWatchReaction, EstablishedWatchTarget, LinkReaction,
+    LogicalWatchTarget, Watch, WatchEvent, stop_on_abnormal_death,
 };
 pub use workflow::{
     Barrier, BarrierArrival, BarrierConfigError, BarrierError, BarrierGeneration,
     BarrierMembership, BarrierMessage, BarrierReleased, BarrierState, Latch, LatchMessage,
-    LatchReleased, LatchState, Workflow, WorkflowConfigError, WorkflowDefinition, WorkflowMessage,
-    WorkflowOutcome, WorkflowRejection, WorkflowState, WorkflowStepState,
+    LatchReleased, LatchState, Workflow, WorkflowConfigError, WorkflowDefinition, WorkflowError,
+    WorkflowInput, WorkflowMessage, WorkflowOutcome, WorkflowRejection, WorkflowState,
+    WorkflowStepState,
 };

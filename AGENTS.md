@@ -221,6 +221,69 @@ Do not add speculative abstractions. Add a trait or combinator only when its
 laws are clear, its composition is type-safe, and at least one concrete use
 demonstrates why it belongs at the algebraic boundary.
 
+## Change containment and abstraction budget
+
+Correct architecture does not justify unlimited code growth. Treat source
+size, public surface, and reviewability as design constraints. A typed wrapper
+that merely relocates complexity is not a successful composition.
+
+Keep the requested blocker separate from later cleanup. Complete and verify
+the blocker before editing production code for a broader audit or refactor. An
+audit may add independent tests and identify later work, but it must not grow
+the current production design unless a failing law independently proves that
+the additional machinery is necessary.
+
+Before the first production edit, record a change ledger containing:
+
+- the exact blocker and the smallest end-to-end failing regression;
+- expected files touched and expected production line delta;
+- public types expected to be added and removed; and
+- the existing folds, products, and compositions that will be reused or
+  deleted.
+
+The following are automatic stop thresholds for the cumulative task, not
+targets to evade by splitting commits:
+
+- more than 15 changed files;
+- more than 500 net new production lines; or
+- more than three new public types.
+
+When any threshold is reached, stop before further production edits. Report
+the current ledger and obtain explicit user authorization for the expanded
+surface. Prior instructions to “finish,” “audit everything,” or “do it
+holistically” do not waive this checkpoint.
+
+Every new wrapper, builder, trait, or public product must answer all of these
+questions before implementation:
+
+1. What unique semantic state does it own?
+2. What unique event or effect transformation does it implement?
+3. Why can the existing concrete composition not express the law?
+4. What existing production code or caller-side machinery does it delete?
+5. Which concrete use demonstrates that the abstraction belongs here?
+
+Reject an abstraction that only renames a nested type, forwards unchanged
+events or effects, stores another wrapper, hides a structural path, or makes a
+single example look shorter while increasing the total public surface. Start
+with a compile-only or pure-fold test that attempts the desired syntax using
+existing types. Add production machinery only after that test isolates the
+precise compositional gap.
+
+At each logical checkpoint, measure the complete working tree, including
+untracked files, and report:
+
+```text
+production: +A / -B / net C
+tests:      +A / -B / net C
+public API: +N types / -M types
+```
+
+Do not describe a change as cleanup, consolidation, or code reduction when its
+production delta is net-positive. Separate new capability code from deletion
+work so each can be judged honestly. Work in independently reviewable stages;
+do not combine the blocker, a catalogue-wide redesign, wrapper cleanup, and a
+test expansion into one undifferentiated patch.
+
 ## Testability standard
 
 Extreme testability is a design constraint. Behavior logic must be runnable as
@@ -250,6 +313,20 @@ Regression tests must fail for the original bug for the intended reason. When
 testing a model, use independent vocabulary and structure so the test cannot
 reproduce the same implementation error. Use paused or explicitly advanced
 time for timer semantics; do not write timing-sensitive sleeps.
+
+Before broadening a semantic change, run its focused regressions in both debug
+and optimized builds. Assertions must be observational only: never place a
+state transition, mutation, ownership transfer, or required function call
+inside `assert!`, `debug_assert!`, or their equality variants. Treat
+`clippy::debug_assert_with_mut_call` and `clippy::let_underscore_must_use` as
+denied. For lifecycle and generation laws, explicitly replay the same fact in
+an optimized test and prove that it cannot be accepted twice.
+
+A regression is not accepted merely because it passes after the fix. Restore
+or simulate the original defect and establish that the test fails for the
+intended law. Tests must assert complete `Actions` lanes or an independent
+trace; repeated assertions of the same field, discarded `Actions`, predicted
+nonces, or models copied from implementation branches are invalid evidence.
 
 Test-only `unwrap`/`expect` is acceptable when it asserts test setup or an
 expected successful transition. Production panics require a documented,
@@ -294,4 +371,5 @@ evaluating performance, since benchmarks are not nextest binaries.
 A change is not complete merely because happy-path runtime tests pass. It is
 complete when the type surface preserves the stated invariants, invalid uses
 fail to compile where appropriate, the transition laws are tested
-independently, and the full repository gates pass.
+independently, the final change ledger reports the complete tracked and
+untracked delta, and the full repository gates pass.

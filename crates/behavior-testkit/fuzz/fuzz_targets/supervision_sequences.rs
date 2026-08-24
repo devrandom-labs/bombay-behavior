@@ -10,9 +10,11 @@
 
 use behavior::{
     Acted, Actions, Activate, Backoff, BackoffSupervisor, Crash, CreationKind, Delivery, MailAddr,
-    Never, RestartDenial, RestartPolicy, ShutdownRequested, Step, Strategy, SupervisionEvent,
-    SupervisionFailureReason, Supervisor, TimerElapsed, TimerGeneration, TimerId,
-    TopologyFailurePolicy, WorkerCreationResolved, WorkerStopped,
+    Never, RestartDenial, RestartPolicy, ShutdownRequested, Step, Strategy, SupervisedWorkers,
+    SupervisedWorkersError, SupervisionEvent, SupervisionFailureReason, Supervisor,
+    SupervisorError,
+    TimerElapsed, TimerGeneration, TimerId, TopologyFailurePolicy, User, WorkerCreationResolved,
+    WorkerStopped, WorkerUnavailable,
 };
 use libfuzzer_sys::fuzz_target;
 use std::time::Instant;
@@ -47,6 +49,16 @@ fn worker(_index: usize) -> Worker {
 
 fn timer(nonce: u64) -> TimerId {
     TimerId(nonce)
+}
+
+fn select_worker(command: &u8) -> u64 {
+    u64::from(*command)
+}
+
+#[derive(Clone, Copy)]
+enum CommandSlot {
+    Running { worker: u64 },
+    Replacing { worker: u64 },
 }
 
 fuzz_target!(|bytes: &[u8]| {
@@ -96,14 +108,23 @@ fuzz_target!(|bytes: &[u8]| {
                 }
             };
 
-            let actions = behavior
-                .transition(SupervisionEvent::WorkerStopped(WorkerStopped {
-                    proxy: u64::try_from(nonce).unwrap(),
-                    worker: workers[nonce],
-                    outcome: Err(Crash::Failed),
-                    at: base + std::time::Duration::from_nanos(at),
-                }))
-                .unwrap();
+            let observed = WorkerStopped {
+                proxy: u64::try_from(nonce).unwrap(),
+                worker: workers[nonce],
+                outcome: Err(Crash::Failed),
+                at: base + std::time::Duration::from_nanos(at),
+            };
+            let result = behavior.transition(SupervisionEvent::WorkerStopped(observed.clone()));
+
+            if !was_alive {
+                assert!(matches!(
+                    result,
+                    Err(SupervisorError::UnexpectedWorkerStopped(returned))
+                        if returned == observed
+                ));
+                continue;
+            }
+            let actions = result.unwrap();
 
             assert_eq!(
                 actions.sends.replacement_commands.len(),
@@ -190,26 +211,38 @@ fuzz_target!(|bytes: &[u8]| {
         let mut backoff_workers = [0_u64, 1, 2, 3];
         let mut next_backoff_worker = u64::try_from(FLEET).unwrap();
         let mut shutting_down = false;
+        let mut backoff_stopped = [false; FLEET];
 
         for (index, byte) in bytes.iter().copied().enumerate() {
             let slot = (usize::from(byte) / 4) % FLEET;
             let nonce = u64::try_from(slot).unwrap();
             match byte % 4 {
                 0 => {
-                    let actions = backoff
-                        .on_path(WorkerStopped::new(
-                            nonce,
-                            backoff_workers[slot],
-                            Err(Crash::Failed),
-                            base + std::time::Duration::from_nanos(
-                                u64::try_from(index).unwrap(),
-                            ),
-                        ))
-                        .unwrap();
-                    let accepted = !shutting_down && pending[slot].is_none();
-                    assert_eq!(actions.sends.schedules.len(), usize::from(accepted));
+                    let observed = WorkerStopped::new(
+                        nonce,
+                        backoff_workers[slot],
+                        Err(Crash::Failed),
+                        base + std::time::Duration::from_nanos(
+                            u64::try_from(index).unwrap(),
+                        ),
+                    );
+                    let result = backoff.on_path(observed.clone());
+                    let accepts_fact = !backoff_stopped[slot];
+                    if !accepts_fact {
+                        assert!(matches!(
+                            result,
+                            Err(behavior::BackoffSupervisorError::Supervision(
+                                SupervisorError::UnexpectedWorkerStopped(returned)
+                            )) if returned == observed
+                        ));
+                        continue;
+                    }
+                    let actions = result.unwrap();
+                    backoff_stopped[slot] = true;
+                    let scheduled = !shutting_down && pending[slot].is_none();
+                    assert_eq!(actions.sends.schedules.len(), usize::from(scheduled));
                     assert!(actions.sends.supervision.replacement_commands.is_empty());
-                    if accepted {
+                    if scheduled {
                         let generation = next_generation[slot];
                         assert_eq!(
                             actions.sends.schedules.as_slice()[0].generation,
@@ -241,6 +274,7 @@ fuzz_target!(|bytes: &[u8]| {
                             ))
                             .unwrap();
                         backoff_workers[slot] = next_backoff_worker;
+                        backoff_stopped[slot] = false;
                         next_backoff_worker = next_backoff_worker.checked_add(1).unwrap();
                     }
                 }
@@ -263,6 +297,143 @@ fuzz_target!(|bytes: &[u8]| {
                 backoff.pending_restarts(),
                 pending.iter().filter(|generation| generation.is_some()).count()
             );
+        }
+
+        // The application-facing fixed form shares the ownership fold above.
+        // This independent slot model attacks commands before, during, and
+        // after replacement and after shutdown. A successful command must
+        // always retain the configured proxy nonce, never the incarnation.
+        let initialized = SupervisedWorkers::new(
+            behavior::ChildTopology::indexed(
+                |index| u64::try_from(index).unwrap(),
+                FLEET,
+                |index| Some(worker(index)),
+            ),
+            behavior::RestartConfiguration::new(
+                Strategy::OneForOne,
+                RestartPolicy::Permanent,
+                u32::MAX,
+                std::time::Duration::MAX,
+            ),
+            select_worker as fn(&u8) -> u64,
+        )
+        .unwrap()
+        .initialize()
+        .unwrap();
+        let mut commands = initialized.behavior;
+        let mut command_slots = [CommandSlot::Running { worker: 0 }; FLEET];
+        let mut next_command_worker = 50_000_u64;
+        for (slot, state) in command_slots.iter_mut().enumerate() {
+            let nonce = u64::try_from(slot).unwrap();
+            let worker = next_command_worker;
+            next_command_worker = next_command_worker.checked_add(1).unwrap();
+            commands
+                .on(behavior::CreationResolved::birth(
+                    nonce,
+                    MailAddr(20_000 + nonce),
+                ))
+                .unwrap();
+            commands
+                .on(WorkerCreationResolved::new(
+                    nonce,
+                    worker,
+                    CreationKind::Birth,
+                    Ok(()),
+                ))
+                .unwrap();
+            *state = CommandSlot::Running { worker };
+        }
+        let mut command_shutdown = false;
+
+        for (index, byte) in bytes.iter().copied().enumerate() {
+            let slot = (usize::from(byte) / 4) % FLEET;
+            let nonce = u64::try_from(slot).unwrap();
+            match byte % 4 {
+                0 => {
+                    let selected = (byte / 4) % u8::try_from(FLEET + 1).unwrap();
+                    let result = commands.receive(MailAddr(9), selected);
+                    if usize::from(selected) == FLEET {
+                        assert!(matches!(
+                            result,
+                            Err(SupervisedWorkersError::CommandNotAccepted {
+                                worker,
+                                reason: WorkerUnavailable::Unknown,
+                                command,
+                            }) if worker == u64::from(selected)
+                                && command == User::new(MailAddr(9), selected)
+                        ));
+                    } else if command_shutdown {
+                        assert!(matches!(
+                            result,
+                            Err(SupervisedWorkersError::CommandNotAccepted {
+                                worker,
+                                reason: WorkerUnavailable::ShuttingDown,
+                                command,
+                            }) if worker == u64::from(selected)
+                                && command == User::new(MailAddr(9), selected)
+                        ));
+                    } else {
+                        match command_slots[usize::from(selected)] {
+                            CommandSlot::Running { .. } => {
+                                let actions = result.unwrap();
+                                assert_eq!(actions.sends.worker_commands.len(), 1);
+                                assert_eq!(
+                                    actions.sends.worker_commands[0].nonce,
+                                    u64::from(selected)
+                                );
+                                assert!(actions.sends.replacement_commands.is_empty());
+                            }
+                            CommandSlot::Replacing { .. } => assert!(matches!(
+                                result,
+                                Err(SupervisedWorkersError::CommandNotAccepted {
+                                    worker,
+                                    reason: WorkerUnavailable::Restarting,
+                                    command,
+                                }) if worker == u64::from(selected)
+                                    && command == User::new(MailAddr(9), selected)
+                            )),
+                        }
+                    }
+                }
+                1 if !command_shutdown => {
+                    if let CommandSlot::Running { worker } = command_slots[slot] {
+                        let actions = commands
+                            .on(WorkerStopped::new(
+                                nonce,
+                                worker,
+                                Err(Crash::Failed),
+                                base + std::time::Duration::from_nanos(
+                                    u64::try_from(index).unwrap(),
+                                ),
+                            ))
+                            .unwrap();
+                        assert_eq!(actions.sends.replacement_commands.len(), 1);
+                        command_slots[slot] = CommandSlot::Replacing { worker };
+                    }
+                }
+                2 if !command_shutdown => {
+                    if let CommandSlot::Replacing { worker } = command_slots[slot] {
+                        let replacement = next_command_worker;
+                        next_command_worker = next_command_worker.checked_add(1).unwrap();
+                        commands
+                            .on(WorkerCreationResolved::new(
+                                nonce,
+                                replacement,
+                                CreationKind::replacement_of(worker),
+                                Ok(()),
+                            ))
+                            .unwrap();
+                        command_slots[slot] = CommandSlot::Running {
+                            worker: replacement,
+                        };
+                    }
+                }
+                3 => {
+                    commands.on(ShutdownRequested).unwrap();
+                    command_shutdown = true;
+                }
+                _ => {}
+            }
         }
     });
 });

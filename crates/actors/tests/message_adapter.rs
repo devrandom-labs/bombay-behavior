@@ -173,8 +173,9 @@ fn adapter_can_target_the_root_that_sends_to_its_dynamic_supervisor() {
             },
         )
         .unwrap();
+    assert_eq!(actions.sends.len(), 1);
     assert_eq!(actions.sends[0].to.address(), MailAddr(1));
-    assert_eq!(actions.sends[0].to.address(), MailAddr(1));
+    assert_eq!(actions.sends[0].message, ());
 }
 
 struct PoolRoot;

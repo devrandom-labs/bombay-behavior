@@ -10,14 +10,15 @@ use behavior::{
 };
 
 /// Pure fold applied to the exact matching terminal fact.
-pub type TerminationReaction<B> =
-    fn(&mut B, PeerStopped<crate::BehaviorAddr<B>>) -> BehaviorActed<B>;
-
-/// Cleanup specialization of an action-producing terminal reaction.
-pub type CleanupReaction<B> = TerminationReaction<B>;
-
-/// Lifecycle-publication specialization of an action-producing terminal reaction.
-pub type LifecyclePublication<B> = TerminationReaction<B>;
+pub type TerminationReaction<B> = fn(
+    &mut B,
+    PeerStopped<crate::BehaviorAddr<B>>,
+) -> Actions<
+    crate::BehaviorAddr<B>,
+    <B as Behavior>::Ph,
+    <B as Behavior>::Sends,
+    <B as Behavior>::Birth,
+>;
 
 /// Complete consumption phase of one exact terminal observation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -37,7 +38,50 @@ pub enum TerminationObservation {
     },
 }
 
-mod sealed {
+/// Exact rejection from the observation wrapper.
+pub enum TerminationMonitorError<E, Fact> {
+    /// The wrapped behavior rejected its own event.
+    Inner(E),
+    /// A returned observation fact does not belong to the current phase or
+    /// configured relationship.
+    UnexpectedFact {
+        observation: TerminationObservation,
+        fact: Fact,
+    },
+}
+
+impl<E: core::fmt::Debug, Fact> core::fmt::Debug for TerminationMonitorError<E, Fact> {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::Inner(error) => formatter.debug_tuple("Inner").field(error).finish(),
+            Self::UnexpectedFact { observation, .. } => formatter
+                .debug_struct("UnexpectedFact")
+                .field("observation", observation)
+                .field("fact", &"<retained>")
+                .finish(),
+        }
+    }
+}
+
+impl<E, Fact> core::fmt::Display for TerminationMonitorError<E, Fact> {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::Inner(_) => formatter.write_str("wrapped behavior rejected its event"),
+            Self::UnexpectedFact { .. } => {
+                formatter.write_str("observation fact does not match the active relationship phase")
+            }
+        }
+    }
+}
+
+impl<E, Fact> std::error::Error for TerminationMonitorError<E, Fact>
+where
+    E: std::error::Error + 'static,
+    Fact: 'static,
+{
+}
+
+pub(crate) mod sealed {
     pub trait TerminationObservationTarget<B: behavior::Behavior> {}
 }
 
@@ -59,7 +103,7 @@ pub trait TerminationObservationTarget<B: Behavior>:
             Actions<crate::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>,
             TerminationObservation,
         ),
-        B::Error,
+        Self::Fact,
     >;
 }
 
@@ -89,12 +133,12 @@ impl<B: Behavior> TerminationObservationTarget<B> for LogicalTerminationTarget<B
             Actions<crate::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>,
             TerminationObservation,
         ),
-        B::Error,
+        Self::Fact,
     > {
         if observation != TerminationObservation::Observing || fact.peer != self.peer {
-            return Ok((Actions::cont(), observation));
+            return Err(fact);
         }
-        Ok(((self.react)(inner, fact)?, TerminationObservation::Observed))
+        Ok(((self.react)(inner, fact), TerminationObservation::Observed))
     }
 }
 
@@ -103,8 +147,15 @@ impl<B: Behavior> TerminationObservationTarget<B> for LogicalTerminationTarget<B
 /// The value is always [`EstablishedObservation::Stopped`]. The complete enum
 /// keeps the protocol and correlation visible in the callback type without
 /// introducing a parallel terminal payload.
-pub type EstablishedTerminationReaction<B, P> =
-    fn(&mut B, EstablishedObservation<P>) -> BehaviorActed<B>;
+pub type EstablishedTerminationReaction<B, P> = fn(
+    &mut B,
+    EstablishedObservation<P>,
+) -> Actions<
+    crate::BehaviorAddr<B>,
+    <B as Behavior>::Ph,
+    <B as Behavior>::Sends,
+    <B as Behavior>::Birth,
+>;
 
 /// Exact-incarnation termination observation policy.
 pub struct EstablishedTerminationTarget<B: Behavior, P>
@@ -148,37 +199,40 @@ where
             Actions<crate::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>,
             TerminationObservation,
         ),
-        B::Error,
+        Self::Fact,
     > {
-        if fact.id() != self.id
-            || matches!(
-                observation,
-                TerminationObservation::Observed
-                    | TerminationObservation::Cancelled
-                    | TerminationObservation::Rejected { .. }
-            )
-        {
-            return Ok((Actions::cont(), observation));
+        if fact.id() != self.id {
+            return Err(fact);
         }
-        match &fact {
-            EstablishedObservation::Started { .. } => {
+        match (observation, &fact) {
+            (TerminationObservation::Requested, EstablishedObservation::Started { .. }) => {
                 Ok((Actions::cont(), TerminationObservation::Observing))
             }
-            EstablishedObservation::Cancelled { .. } => {
-                Ok((Actions::cont(), TerminationObservation::Cancelled))
-            }
-            EstablishedObservation::Rejected {
-                operation, reason, ..
-            } => Ok((
+            (
+                TerminationObservation::Requested,
+                EstablishedObservation::Rejected {
+                    operation, reason, ..
+                },
+            )
+            | (
+                TerminationObservation::Observing,
+                EstablishedObservation::Rejected {
+                    operation, reason, ..
+                },
+            ) => Ok((
                 Actions::cont(),
                 TerminationObservation::Rejected {
                     operation: *operation,
                     reason: *reason,
                 },
             )),
-            EstablishedObservation::Stopped { .. } => {
-                Ok(((self.react)(inner, fact)?, TerminationObservation::Observed))
+            (TerminationObservation::Observing, EstablishedObservation::Cancelled { .. }) => {
+                Ok((Actions::cont(), TerminationObservation::Cancelled))
             }
+            (TerminationObservation::Observing, EstablishedObservation::Stopped { .. }) => {
+                Ok(((self.react)(inner, fact), TerminationObservation::Observed))
+            }
+            _ => Err(fact),
         }
     }
 }
@@ -191,6 +245,25 @@ where
 /// The selected target owns either late-bound logical-name observation or
 /// exact-incarnation observation; the runtime delivers the target's declared
 /// typed fact through the interpreter-request return path.
+/// Reactions are infallible because they receive mutable access to `B`: a
+/// fallible callback could change `B` and then reject the same fact, violating
+/// transition atomicity. Ordinary delegated `B` transitions retain `B::Error`.
+///
+/// ```compile_fail,E0308
+/// # use behavior::{Actions, Behavior, MailAddr, Never, NoBirths, User};
+/// # use behavior_actors::{PeerStopped, TerminationMonitor};
+/// # struct App;
+/// # impl behavior::Protocol for App { type Addr = MailAddr; type Msg = (); }
+/// # impl Behavior for App {
+/// #   type Protocol = Self; type Event = User<MailAddr, ()>; type Sends = Vec<Never>;
+/// #   type Ph = Never; type Error = Never; type Birth = NoBirths;
+/// #   fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> behavior::BehaviorActed<Self> { Ok(Actions::cont()) }
+/// # }
+/// fn fallible(_: &mut App, _: PeerStopped<MailAddr>) -> behavior::BehaviorActed<App> {
+///     Ok(Actions::cont())
+/// }
+/// let _ = TerminationMonitor::new(App, MailAddr(1), fallible);
+/// ```
 pub struct TerminationMonitorWith<B: Behavior, Target: TerminationObservationTarget<B>> {
     inner: B,
     target: Target,
@@ -204,18 +277,6 @@ pub type TerminationMonitor<B> = TerminationMonitorWith<B, LogicalTerminationTar
 pub type EstablishedTerminationMonitor<B, P> =
     TerminationMonitorWith<B, EstablishedTerminationTarget<B, P>>;
 
-/// A termination monitor configured to emit explicit cleanup actions.
-///
-/// Cleanup uses the monitor's exact-once observation phase and differs only in
-/// the supplied action-producing policy, so it is a named specialization and
-/// not a second state machine.
-pub type Reaper<B> = TerminationMonitor<B>;
-
-/// A termination monitor configured to publish explicit lifecycle actions.
-///
-/// Subscriber membership remains in the wrapped behavior or a composed typed
-/// topic; no ambient lifecycle side channel is introduced.
-pub type LifecyclePublisher<B> = TerminationMonitor<B>;
 type TerminationMonitorActions<B, Target> = Actions<
     crate::BehaviorAddr<B>,
     <B as Behavior>::Ph,
@@ -267,6 +328,18 @@ where
 }
 
 impl<B: Behavior, Target: TerminationObservationTarget<B>> TerminationMonitorWith<B, Target> {
+    pub(crate) const fn with_target(
+        inner: B,
+        target: Target,
+        observation: TerminationObservation,
+    ) -> Self {
+        Self {
+            inner,
+            target,
+            observation,
+        }
+    }
+
     /// Return whether this monitor awaits or has consumed its terminal fact.
     #[must_use]
     pub const fn observation(&self) -> TerminationObservation {
@@ -316,11 +389,12 @@ where
     type Event = WatchEvent<B::Event, Target::Fact>;
     type Sends = SendLayer<InterpreterRequests<Target::Request>, Sends>;
     type Ph = Ph;
-    type Error = B::Error;
+    type Error = TerminationMonitorError<B::Error, Target::Fact>;
     type Birth = Br;
 
     fn init(&mut self, _: crate::InitializationTurn) -> BehaviorActed<Self> {
-        let actions = behavior::initialize(&mut self.inner)?;
+        let actions =
+            behavior::initialize(&mut self.inner).map_err(TerminationMonitorError::Inner)?;
         Ok(Self::wrap(
             actions,
             InterpreterRequests::one(self.target.request()),
@@ -330,12 +404,19 @@ where
     fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
         match event {
             EventLayer::Owned(fact) => {
-                let (actions, next) = self.target.react(&mut self.inner, self.observation, fact)?;
+                let (actions, next) = self
+                    .target
+                    .react(&mut self.inner, self.observation, fact)
+                    .map_err(|fact| TerminationMonitorError::UnexpectedFact {
+                        observation: self.observation,
+                        fact,
+                    })?;
                 self.observation = next;
                 Ok(Self::wrap(actions, InterpreterRequests::empty()))
             }
             EventLayer::Inner(event) => behavior::delegate_transition(&mut self.inner, event)
-                .map(|actions| Self::wrap(actions, InterpreterRequests::empty())),
+                .map(|actions| Self::wrap(actions, InterpreterRequests::empty()))
+                .map_err(TerminationMonitorError::Inner),
         }
     }
 }
@@ -379,19 +460,14 @@ mod tests {
         }
     }
 
-    #[allow(
-        clippy::unnecessary_wraps,
-        reason = "termination reactions preserve the behavior's fallible signature"
-    )]
     #[allow(clippy::needless_pass_by_value)]
-    fn reap(_: &mut Probe, stopped: PeerStopped<MailAddr>) -> BehaviorActed<Probe> {
+    fn reap(
+        _: &mut Probe,
+        stopped: PeerStopped<MailAddr>,
+    ) -> Actions<MailAddr, Never, Vec<u8>, Births<()>> {
         assert_eq!(stopped.peer, MailAddr(4));
         assert_eq!(stopped.outcome, Err(Crash::Panicked));
-        Ok(Actions::new(
-            vec![9],
-            vec![Create::birth(8, ())],
-            Step::Continue,
-        ))
+        Actions::new(vec![9], vec![Create::birth(8, ())], Step::Continue)
     }
 
     #[test]
@@ -415,67 +491,33 @@ mod tests {
         assert!(matches!(actions.become_, Step::Continue));
         assert_eq!(active.observation(), TerminationObservation::Observed);
 
-        let duplicate = active
-            .on_path(PeerStopped::new(MailAddr(4), Err(Crash::Panicked)))
-            .unwrap();
-        assert_eq!(duplicate.sends, SendLayer::empty());
-        assert!(duplicate.creates.is_empty());
+        let duplicate = PeerStopped::new(MailAddr(4), Err(Crash::Panicked));
+        assert!(matches!(
+            active.on_path(duplicate.clone()),
+            Err(TerminationMonitorError::UnexpectedFact {
+                observation: TerminationObservation::Observed,
+                fact,
+            }) if fact == duplicate
+        ));
     }
 
     #[test]
-    fn unmatched_terminal_fact_is_inert_and_user_actions_still_delegate() {
+    fn unmatched_terminal_fact_is_returned_complete_and_user_actions_still_delegate() {
         let mut active = crate::TerminationMonitor::new(Probe, MailAddr(4), reap)
             .initialize()
             .unwrap()
             .behavior;
-        let unmatched = active
-            .on_path(PeerStopped::new(MailAddr(5), Ok(Exit::Normal)))
-            .unwrap();
-        assert_eq!(unmatched.sends, SendLayer::empty());
-        assert!(unmatched.creates.is_empty());
+        let unmatched = PeerStopped::new(MailAddr(5), Ok(Exit::Normal));
+        assert!(matches!(
+            active.on_path(unmatched.clone()),
+            Err(TerminationMonitorError::UnexpectedFact {
+                observation: TerminationObservation::Observing,
+                fact,
+            }) if fact == unmatched
+        ));
 
         let delegated = active.receive(MailAddr(0), 7).unwrap();
         assert_eq!(delegated.sends.inner, [7]);
         assert!(delegated.sends.owned.is_empty());
-    }
-
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    struct Rejected;
-
-    struct Fallible;
-
-    impl behavior::Protocol for Fallible {
-        type Addr = MailAddr;
-        type Msg = ();
-    }
-
-    impl Behavior for Fallible {
-        type Protocol = Self;
-        type Event = User<MailAddr, ()>;
-        type Sends = Vec<Never>;
-        type Ph = Never;
-        type Error = Rejected;
-        type Birth = behavior::NoBirths;
-
-        fn transition(&mut self, _: crate::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
-            Ok(Actions::cont())
-        }
-    }
-
-    fn reject(_: &mut Fallible, _: PeerStopped<MailAddr>) -> BehaviorActed<Fallible> {
-        Err(Rejected)
-    }
-
-    #[test]
-    fn rejected_reaction_does_not_commit_observation_consumption() {
-        let mut active = TerminationMonitor::new(Fallible, MailAddr(4), reject)
-            .initialize()
-            .unwrap()
-            .behavior;
-        assert_eq!(
-            active.on_path(PeerStopped::new(MailAddr(4), Err(Crash::Failed))),
-            Err(Rejected)
-        );
-        assert_eq!(active.observation(), TerminationObservation::Observing);
     }
 }

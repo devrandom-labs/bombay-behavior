@@ -8,12 +8,13 @@ use std::time::Duration;
 
 use behavior::{
     Acted, Actions, Behavior, ChildStopped, Crash, Create, CreationKind, CreationResolved,
-    Delivery, MailAddr, Never, Proxy, ProxyCommand, ProxyEvent, RestartPolicy, Step, Strategy,
-    Supervise, SupervisionEvent, Supervisor, TopologyFailurePolicy, User, UserEvent,
-    WorkerCreationResolved, WorkerStopped,
+    Delivery, MailAddr, Never, Proxy, ProxyCommand, ProxyEvent, RestartPolicy, ShutdownRequested,
+    Step, Strategy, Supervise, SupervisedWorkers, SupervisedWorkersError, SupervisionEvent,
+    Supervisor, SupervisorError, TopologyFailurePolicy, User, UserEvent, WorkerCreationResolved,
+    WorkerStopped, WorkerUnavailable,
 };
 use behavior_testkit::model::{
-    ExpectedCreation, ExpectedIncarnation, IncarnationModel, Model, Outcome,
+    ExpectedCreation, ExpectedIncarnation, IncarnationModel, Model, Outcome, SupervisionModelError,
 };
 use proptest::collection::vec;
 use proptest::prelude::*;
@@ -66,6 +67,10 @@ impl BirthingParent {
 
 fn child(_index: usize) -> Child {
     Echo
+}
+
+fn select_worker(command: &u8) -> u64 {
+    u64::from(*command)
 }
 
 fn supervise<B>(
@@ -207,7 +212,7 @@ async fn immediate_and_denied_replacements_match_the_independent_models() {
         0,
         None,
     );
-    assert!(denied.is_empty());
+    assert!(denied.unwrap().is_empty());
 
     let behavior = supervisor(
         Strategy::OneForOne,
@@ -277,15 +282,29 @@ proptest! {
         for (dead_seed, outcome_tag, at) in events {
             let dead = dead_seed % u64::try_from(count).unwrap();
             let outcome = Outcome::from_tag(outcome_tag);
-            let expected = model.apply(dead, outcome, at, strategy, policy, maximum, window);
-            let actions = runtime
-                .block_on(async { behavior.transition(SupervisionEvent::WorkerStopped(WorkerStopped {
+            let stopped = WorkerStopped {
                     proxy: dead,
                     worker: workers[usize::try_from(dead).unwrap()],
-            outcome: outcome.into_result(),
+                    outcome: outcome.into_result(),
                     at: base + Duration::from_nanos(at),
-                })) })
-                .unwrap();
+                };
+            let expected = model.apply(dead, outcome, at, strategy, policy, maximum, window);
+            let actual = runtime.block_on(async {
+                behavior.transition(SupervisionEvent::WorkerStopped(stopped.clone()))
+            });
+            let expected = match expected {
+                Ok(expected) => expected,
+                Err(SupervisionModelError::AlreadyStopped { nonce }) => {
+                    prop_assert_eq!(nonce, dead);
+                    prop_assert!(matches!(
+                        actual,
+                        Err(SupervisorError::UnexpectedWorkerStopped(returned))
+                            if returned == stopped
+                    ));
+                    continue;
+                }
+            };
+            let actions = actual.unwrap();
 
             let sends: Vec<u64> = actions
                 .sends.replacement_commands
@@ -339,6 +358,177 @@ proptest! {
                 );
             }
             prop_assert_eq!(behavior.restarts_in_window(), model.restarts());
+        }
+    }
+
+    #[test]
+    fn application_commands_match_an_independent_slot_model(
+        count in 1_usize..6,
+        permanent in any::<bool>(),
+        operations in vec((0_u8..4, 0_u64..8), 0..80),
+    ) {
+        #[derive(Clone, Copy)]
+        enum Slot {
+            Running { worker: u64 },
+            Replacing { worker: u64 },
+            Retired,
+        }
+
+        let policy = if permanent {
+            RestartPolicy::Permanent
+        } else {
+            RestartPolicy::Temporary
+        };
+        let topology = behavior::ChildTopology::indexed(
+            |index| u64::try_from(index).unwrap(),
+            count,
+            |index| Some(child(index)),
+        );
+        let initialized = SupervisedWorkers::new(
+            topology,
+            behavior::RestartConfiguration::new(
+                Strategy::OneForOne,
+                policy,
+                u32::MAX,
+                Duration::MAX,
+            ),
+            select_worker as fn(&u8) -> u64,
+        )
+        .unwrap()
+        .initialize()
+        .unwrap();
+        let mut actual = initialized.behavior;
+        let mut slots = Vec::with_capacity(count);
+        let mut next_worker = 10_000_u64;
+        for index in 0..count {
+            let nonce = u64::try_from(index).unwrap();
+            let worker = next_worker;
+            next_worker += 1;
+            actual
+                .on(CreationResolved::birth(nonce, MailAddr(1_000 + nonce)))
+                .unwrap();
+            actual
+                .on(WorkerCreationResolved::new(
+                    nonce,
+                    worker,
+                    CreationKind::Birth,
+                    Ok(()),
+                ))
+                .unwrap();
+            slots.push(Slot::Running { worker });
+        }
+        let mut shutting_down = false;
+        let base = Instant::now();
+
+        for (step, (operation, seed)) in operations.into_iter().enumerate() {
+            let known = seed % u64::try_from(count).unwrap();
+            match operation {
+                0 => {
+                    // One value beyond the configured range attacks unknown
+                    // selection without introducing a separate registry model.
+                    let selected = seed % (u64::try_from(count).unwrap() + 1);
+                    let result = actual.receive(MailAddr(9), u8::try_from(selected).unwrap());
+                    if selected >= u64::try_from(count).unwrap() {
+                        let matched = matches!(
+                            result,
+                            Err(SupervisedWorkersError::CommandNotAccepted {
+                                worker,
+                                reason: WorkerUnavailable::Unknown,
+                                command,
+                            }) if worker == selected
+                                && command == User::new(MailAddr(9), u8::try_from(selected).unwrap())
+                        );
+                        prop_assert!(matched);
+                    } else if shutting_down {
+                        let matched = matches!(
+                            result,
+                            Err(SupervisedWorkersError::CommandNotAccepted {
+                                worker,
+                                reason: WorkerUnavailable::ShuttingDown,
+                                command,
+                            }) if worker == selected
+                                && command == User::new(MailAddr(9), u8::try_from(selected).unwrap())
+                        );
+                        prop_assert!(matched);
+                    } else {
+                        match slots[usize::try_from(selected).unwrap()] {
+                            Slot::Running { .. } => {
+                                let actions = result.unwrap();
+                                prop_assert_eq!(actions.sends.worker_commands.len(), 1);
+                                prop_assert_eq!(actions.sends.worker_commands[0].nonce, selected);
+                                prop_assert!(actions.sends.replacement_commands.is_empty());
+                            }
+                            Slot::Replacing { .. } => {
+                                let matched = matches!(
+                                    result,
+                                    Err(SupervisedWorkersError::CommandNotAccepted {
+                                        worker,
+                                        reason: WorkerUnavailable::Restarting,
+                                        command,
+                                    }) if worker == selected
+                                        && command == User::new(MailAddr(9), u8::try_from(selected).unwrap())
+                                );
+                                prop_assert!(matched);
+                            }
+                            Slot::Retired => {
+                                let matched = matches!(
+                                    result,
+                                    Err(SupervisedWorkersError::CommandNotAccepted {
+                                        worker,
+                                        reason: WorkerUnavailable::Retired,
+                                        command,
+                                    }) if worker == selected
+                                        && command == User::new(MailAddr(9), u8::try_from(selected).unwrap())
+                                );
+                                prop_assert!(matched);
+                            }
+                        }
+                    }
+                }
+                1 if !shutting_down => {
+                    let index = usize::try_from(known).unwrap();
+                    if let Slot::Running { worker } = slots[index] {
+                        let actions = actual
+                            .on(WorkerStopped::new(
+                                known,
+                                worker,
+                                Err(Crash::Failed),
+                                base + Duration::from_nanos(u64::try_from(step).unwrap()),
+                            ))
+                            .unwrap();
+                        if permanent {
+                            prop_assert_eq!(actions.sends.replacement_commands.len(), 1);
+                            slots[index] = Slot::Replacing { worker };
+                        } else {
+                            prop_assert!(actions.sends.replacement_commands.is_empty());
+                            slots[index] = Slot::Retired;
+                        }
+                    }
+                }
+                2 if !shutting_down => {
+                    let index = usize::try_from(known).unwrap();
+                    if let Slot::Replacing { worker } = slots[index] {
+                        let replacement = next_worker;
+                        next_worker += 1;
+                        actual
+                            .on(WorkerCreationResolved::new(
+                                known,
+                                replacement,
+                                CreationKind::replacement_of(worker),
+                                Ok(()),
+                            ))
+                            .unwrap();
+                        slots[index] = Slot::Running {
+                            worker: replacement,
+                        };
+                    }
+                }
+                3 => {
+                    actual.on(ShutdownRequested).unwrap();
+                    shutting_down = true;
+                }
+                _ => {}
+            }
         }
     }
 
@@ -400,6 +590,12 @@ proptest! {
                 let known = model.slot_count();
                 let nonce = u64::from(arg) % u64::try_from(known).unwrap();
                 let outcome = Outcome::from_tag(tag);
+                let stopped = WorkerStopped {
+                    proxy: nonce,
+                    worker: workers[usize::try_from(nonce).unwrap()],
+                    outcome: outcome.into_result(),
+                    at: base + Duration::from_nanos(at),
+                };
                 let expected = model.apply(
                     nonce,
                     outcome,
@@ -409,14 +605,22 @@ proptest! {
                     maximum,
                     Some(window_nanos),
                 );
-                let actions = runtime
-                    .block_on(async { behavior.transition(SupervisionEvent::WorkerStopped(WorkerStopped {
-                        proxy: nonce,
-                        worker: workers[usize::try_from(nonce).unwrap()],
-            outcome: outcome.into_result(),
-                        at: base + Duration::from_nanos(at),
-                    })) })
-                    .unwrap();
+                let actual = runtime.block_on(async {
+                    behavior.transition(SupervisionEvent::WorkerStopped(stopped.clone()))
+                });
+                let expected = match expected {
+                    Ok(expected) => expected,
+                    Err(SupervisionModelError::AlreadyStopped { nonce: rejected }) => {
+                        prop_assert_eq!(rejected, nonce);
+                        prop_assert!(matches!(
+                            actual,
+                            Err(behavior::SuperviseError::UnexpectedWorkerStopped(returned))
+                                if returned == stopped
+                        ));
+                        continue;
+                    }
+                };
+                let actions = actual.unwrap();
                 let sends: Vec<u64> = actions
                     .sends.owned.replacement_commands
                     .iter()

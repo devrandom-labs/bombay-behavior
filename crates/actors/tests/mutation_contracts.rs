@@ -267,7 +267,7 @@ fn typed_send_accumulation_routes_every_named_lane_once() {
     assert_eq!(proxy.stopped_reports[0].worker, 11);
     assert_eq!(proxy.creation_reports[0].worker, 17);
 
-    let mut supervisor = SupervisorSends::<MailAddr, Child>::empty();
+    let mut supervisor = SupervisorSends::<MailAddr, Child, behavior::Here>::empty();
     supervisor.send(ObserveChild::new(8));
     supervisor.send(ObserveCreation::new(8));
     supervisor.send(ChildDelivery::at(

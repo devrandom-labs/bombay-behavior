@@ -71,8 +71,8 @@ fn deliver(_: &u64) -> StashRoute {
     clippy::unnecessary_wraps,
     reason = "DeadlineReaction requires the behavior's exact controlled-failure result"
 )]
-fn deadline(_: &mut behavior::Stash<Domain>) -> Result<behavior::Become, Never> {
-    Ok(Step::Continue)
+fn deadline(_: &mut behavior::Stash<Domain>) -> behavior::Become {
+    Step::Continue
 }
 
 fn accepts_closed_behavior<B>(behavior: B) -> B
@@ -184,6 +184,7 @@ fn supervisor_products_are_named_and_creation_order_is_adapter_visible() {
                         child_observations,
                         creation_observations,
                         replacement_commands,
+                        worker_commands,
                         failure_reports,
                         shutdowns,
                     },
@@ -207,6 +208,7 @@ fn supervisor_products_are_named_and_creation_order_is_adapter_visible() {
     assert_eq!(creation_observed, [9, 1, 2]);
     assert!(behavior.is_empty());
     assert!(replacement_commands.is_empty());
+    assert!(worker_commands.is_empty());
     assert!(failure_reports.is_empty());
     assert!(shutdowns.is_empty());
     assert!(matches!(become_, Step::Continue));

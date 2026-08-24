@@ -256,9 +256,8 @@ proptest! {
                     }
                 }
                 1 => {
-                    let result = actual.on_path(InstallShutdownPlan::new(
-                        ShutdownPlan::new(phases.clone()).unwrap(),
-                    ));
+                    let proposed = ShutdownPlan::new(phases.clone()).unwrap();
+                    let result = actual.on_path(InstallShutdownPlan::new(proposed.clone()));
                     match model {
                         LatePlanModel::Waiting {
                             shutdown_requested: false,
@@ -289,7 +288,7 @@ proptest! {
                         | LatePlanModel::Completed => match result {
                             Err(error) => prop_assert_eq!(
                                 error,
-                                ShutdownCoordinatorError::PlanAlreadyInstalled
+                                ShutdownCoordinatorError::PlanAlreadyInstalled(proposed)
                             ),
                             Ok(_) => prop_assert!(false, "a shutdown plan may only be installed once"),
                         },
@@ -297,36 +296,51 @@ proptest! {
                 }
                 _ => {
                     let nonce = u64::from((operation % 5) - 2);
-                    let actions = actual.on_path(stopped(nonce)).unwrap();
+                    let fact = stopped(nonce);
+                    let accepted = matches!(
+                        &model,
+                        LatePlanModel::Stopping { awaiting, .. } if awaiting.contains(&nonce)
+                    );
+                    let result = actual.on_path(fact);
+                    if !accepted {
+                        match result {
+                            Err(ShutdownCoordinatorError::UnexpectedChildStopped(returned)) => {
+                                prop_assert_eq!(returned, fact);
+                            }
+                            Err(error) => prop_assert!(false, "wrong rejection: {error:?}"),
+                            Ok(_) => prop_assert!(false, "unexpected child fact was accepted"),
+                        }
+                        assert_late_plan_state(actual.state(), &model);
+                        continue;
+                    }
+                    let actions = result.unwrap();
                     if let LatePlanModel::Stopping { phase, awaiting } = &mut model {
-                        if let Some(position) = awaiting.iter().position(|candidate| *candidate == nonce) {
-                            awaiting.remove(position);
-                            if awaiting.is_empty() {
-                                let next = *phase + 1;
-                                if next == phases.len() {
-                                    model = LatePlanModel::Completed;
-                                    prop_assert!(matches!(actions.become_, Step::Stop(_)));
-                                } else {
-                                    *phase = next;
-                                    *awaiting = phases[next].clone();
-                                    prop_assert_eq!(
-                                        actions
-                                            .sends
-                                            .owned
-                                            .iter()
-                                            .map(|request| request.nonce)
-                                            .collect::<Vec<_>>(),
-                                        phases[next].clone()
-                                    );
-                                }
+                        let position = awaiting
+                            .iter()
+                            .position(|candidate| *candidate == nonce)
+                            .unwrap();
+                        awaiting.remove(position);
+                        if awaiting.is_empty() {
+                            let next = *phase + 1;
+                            if next == phases.len() {
+                                model = LatePlanModel::Completed;
+                                prop_assert!(matches!(actions.become_, Step::Stop(_)));
                             } else {
-                                prop_assert!(actions.sends.owned.is_empty());
+                                *phase = next;
+                                *awaiting = phases[next].clone();
+                                prop_assert_eq!(
+                                    actions
+                                        .sends
+                                        .owned
+                                        .iter()
+                                        .map(|request| request.nonce)
+                                        .collect::<Vec<_>>(),
+                                    phases[next].clone()
+                                );
                             }
                         } else {
                             prop_assert!(actions.sends.owned.is_empty());
                         }
-                    } else {
-                        prop_assert!(actions.sends.owned.is_empty());
                     }
                 }
             }

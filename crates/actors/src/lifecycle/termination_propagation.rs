@@ -160,6 +160,49 @@ pub enum TerminalPropagationState {
     Propagated,
 }
 
+/// Exact rejection from terminal propagation.
+pub enum TerminationPropagationError<E, Fact> {
+    /// The wrapped behavior rejected its own event.
+    Inner(E),
+    /// A returned terminal fact does not match the configured source or the
+    /// still-observing phase.
+    UnexpectedFact {
+        state: TerminalPropagationState,
+        fact: Fact,
+    },
+}
+
+impl<E: core::fmt::Debug, Fact> core::fmt::Debug for TerminationPropagationError<E, Fact> {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::Inner(error) => formatter.debug_tuple("Inner").field(error).finish(),
+            Self::UnexpectedFact { state, .. } => formatter
+                .debug_struct("UnexpectedFact")
+                .field("state", state)
+                .field("fact", &"<retained>")
+                .finish(),
+        }
+    }
+}
+
+impl<E, Fact> core::fmt::Display for TerminationPropagationError<E, Fact> {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::Inner(_) => formatter.write_str("wrapped behavior rejected its event"),
+            Self::UnexpectedFact { .. } => {
+                formatter.write_str("terminal fact does not match the active propagation source")
+            }
+        }
+    }
+}
+
+impl<E, Fact> std::error::Error for TerminationPropagationError<E, Fact>
+where
+    E: std::error::Error + 'static,
+    Fact: 'static,
+{
+}
+
 /// Named effects owned by [`PropagateTermination`].
 pub struct TerminalPropagationSends<A, Request>
 where
@@ -317,11 +360,12 @@ where
     type Event = EventLayer<Target::Fact, B::Event>;
     type Sends = SendLayer<TerminalPropagationSends<A, Target::Request>, Sends>;
     type Ph = Ph;
-    type Error = B::Error;
+    type Error = TerminationPropagationError<B::Error, Target::Fact>;
     type Birth = Br;
 
     fn init(&mut self, _: crate::InitializationTurn) -> BehaviorActed<Self> {
-        let actions = behavior::initialize(&mut self.inner)?;
+        let actions =
+            behavior::initialize(&mut self.inner).map_err(TerminationPropagationError::Inner)?;
         let mut owned = TerminalPropagationSends::empty();
         owned.observations.send(self.target.request());
         Ok(Self::wrap(actions, owned))
@@ -351,9 +395,13 @@ where
                     }
                 }
             }
-            EventLayer::Owned(_) => Ok(Actions::cont()),
+            EventLayer::Owned(fact) => Err(TerminationPropagationError::UnexpectedFact {
+                state: self.state,
+                fact,
+            }),
             EventLayer::Inner(event) => behavior::delegate_transition(&mut self.inner, event)
-                .map(|actions| Self::wrap(actions, TerminalPropagationSends::empty())),
+                .map(|actions| Self::wrap(actions, TerminalPropagationSends::empty()))
+                .map_err(TerminationPropagationError::Inner),
         }
     }
 }
@@ -435,6 +483,16 @@ mod tests {
                 SupervisionFailureReason::StableChildStopped,
             )),
             Ok(Exit::SupervisionFailed(
+                SupervisionFailureReason::StableChildNotAccepted(
+                    crate::StableSlotRejection::DuplicateNonce,
+                ),
+            )),
+            Ok(Exit::SupervisionFailed(
+                SupervisionFailureReason::StableChildNotAccepted(
+                    crate::StableSlotRejection::SequenceExhausted,
+                ),
+            )),
+            Ok(Exit::SupervisionFailed(
                 SupervisionFailureReason::RestartDenied(RestartDenial::BudgetExceeded {
                     restarts_in_window: 2,
                     replacements_requested: 3,
@@ -471,6 +529,9 @@ mod tests {
                     CreationRejection::EnvironmentFailed,
                 ),
             )),
+            Ok(Exit::SupervisionFailed(
+                SupervisionFailureReason::WorkerFactoryRejected,
+            )),
             Err(Crash::Failed),
             Err(Crash::EnvironmentFailed),
             Err(Crash::Panicked),
@@ -497,14 +558,14 @@ mod tests {
             assert!(matches!(actions.become_, Step::Stop(_)));
             assert_eq!(active.state(), TerminalPropagationState::Propagated);
 
-            let duplicate = active
-                .transition(EventLayer::Owned(ChildStopped::new(
-                    7,
-                    outcome,
-                    Instant::now(),
-                )))
-                .unwrap();
-            assert!(duplicate.sends.owned.reports.is_empty());
+            let duplicate = ChildStopped::new(7, outcome, Instant::now());
+            assert!(matches!(
+                active.transition(EventLayer::Owned(duplicate.clone())),
+                Err(TerminationPropagationError::UnexpectedFact {
+                    state: TerminalPropagationState::Propagated,
+                    fact,
+                }) if fact == duplicate
+            ));
         }
     }
 
@@ -527,16 +588,16 @@ mod tests {
     }
 
     #[test]
-    fn unmatched_facts_are_inert_and_inner_events_preserve_inner_actions() {
+    fn unmatched_facts_are_returned_and_inner_events_preserve_inner_actions() {
         let mut active = child(propagate_all).initialize().unwrap().behavior;
-        let unrelated = active
-            .transition(EventLayer::Owned(ChildStopped::new(
-                8,
-                Err(Crash::Failed),
-                Instant::now(),
-            )))
-            .unwrap();
-        assert!(unrelated.sends.owned.reports.is_empty());
+        let unrelated = ChildStopped::new(8, Err(Crash::Failed), Instant::now());
+        assert!(matches!(
+            active.transition(EventLayer::Owned(unrelated.clone())),
+            Err(TerminationPropagationError::UnexpectedFact {
+                state: TerminalPropagationState::Observing,
+                fact,
+            }) if fact == unrelated
+        ));
         assert_eq!(active.state(), TerminalPropagationState::Observing);
 
         let delegated = active
@@ -572,7 +633,7 @@ mod tests {
     proptest! {
         #[test]
         fn arbitrary_terminal_payload_is_conserved_once(
-            tag in 0_u8..15,
+            tag in 0_u8..18,
             peer in any::<u64>(),
             admitted in any::<usize>(),
             requested in any::<usize>(),
@@ -592,15 +653,18 @@ mod tests {
                         maximum_restarts: maximum,
                     }),
                 )),
-                5 => Ok(Exit::SupervisionFailed(SupervisionFailureReason::StableChildCreationRejected(CreationRejection::NonceAlreadyBound))),
-                6 => Ok(Exit::SupervisionFailed(SupervisionFailureReason::StableChildCreationRejected(CreationRejection::InitializationFailed))),
-                7 => Ok(Exit::SupervisionFailed(SupervisionFailureReason::StableChildCreationRejected(CreationRejection::EnvironmentFailed))),
-                8 => Ok(Exit::SupervisionFailed(SupervisionFailureReason::WorkerCreationRejected(CreationRejection::NonceAlreadyBound))),
-                9 => Ok(Exit::SupervisionFailed(SupervisionFailureReason::WorkerCreationRejected(CreationRejection::InitializationFailed))),
-                10 => Ok(Exit::SupervisionFailed(SupervisionFailureReason::WorkerCreationRejected(CreationRejection::EnvironmentFailed))),
-                11 => Err(Crash::Failed),
-                12 => Err(Crash::EnvironmentFailed),
-                13 => Err(Crash::Panicked),
+                5 => Ok(Exit::SupervisionFailed(SupervisionFailureReason::StableChildNotAccepted(crate::StableSlotRejection::DuplicateNonce))),
+                6 => Ok(Exit::SupervisionFailed(SupervisionFailureReason::StableChildNotAccepted(crate::StableSlotRejection::SequenceExhausted))),
+                7 => Ok(Exit::SupervisionFailed(SupervisionFailureReason::StableChildCreationRejected(CreationRejection::NonceAlreadyBound))),
+                8 => Ok(Exit::SupervisionFailed(SupervisionFailureReason::StableChildCreationRejected(CreationRejection::InitializationFailed))),
+                9 => Ok(Exit::SupervisionFailed(SupervisionFailureReason::StableChildCreationRejected(CreationRejection::EnvironmentFailed))),
+                10 => Ok(Exit::SupervisionFailed(SupervisionFailureReason::WorkerCreationRejected(CreationRejection::NonceAlreadyBound))),
+                11 => Ok(Exit::SupervisionFailed(SupervisionFailureReason::WorkerCreationRejected(CreationRejection::InitializationFailed))),
+                12 => Ok(Exit::SupervisionFailed(SupervisionFailureReason::WorkerCreationRejected(CreationRejection::EnvironmentFailed))),
+                13 => Ok(Exit::SupervisionFailed(SupervisionFailureReason::WorkerFactoryRejected)),
+                14 => Err(Crash::Failed),
+                15 => Err(Crash::EnvironmentFailed),
+                16 => Err(Crash::Panicked),
                 _ => Err(Crash::Cancelled),
             };
             let mut active = child(propagate_all).initialize().unwrap().behavior;
@@ -613,12 +677,19 @@ mod tests {
                 first.sends.owned.reports.as_slice(),
                 [ReportTerminalOutcome::new(outcome)]
             );
-            let duplicate = active.transition(EventLayer::Owned(ChildStopped::new(
+            let duplicate = ChildStopped::new(
                 7,
                 outcome,
                 Instant::now(),
-            ))).unwrap();
-            prop_assert!(duplicate.sends.owned.reports.is_empty());
+            );
+            let rejected = matches!(
+                active.transition(EventLayer::Owned(duplicate.clone())),
+                Err(TerminationPropagationError::UnexpectedFact {
+                    state: TerminalPropagationState::Propagated,
+                    fact,
+                }) if fact == duplicate
+            );
+            prop_assert!(rejected);
         }
     }
 }

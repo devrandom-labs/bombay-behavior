@@ -5,8 +5,8 @@ use std::time::Instant;
 use behavior::{
     Actions, Activate as _, Behavior, BehaviorActed, ChildStopped, Crash, CreationRejection,
     EventLayer, Exit, MailAddr, Never, NoBirths, PropagateTermination, ReportTerminalOutcome,
-    RestartDenial, Step, SupervisionFailureReason, TerminalOutcome, TerminalPropagationState, User,
-    propagate_abnormal, propagate_all,
+    RestartDenial, Step, SupervisionFailureReason, TerminalOutcome, TerminalPropagationState,
+    TerminationPropagationError, User, propagate_abnormal, propagate_all,
 };
 use proptest::prelude::*;
 
@@ -53,7 +53,7 @@ impl Rule {
 }
 
 fn outcome(tag: u8, detail: u64) -> TerminalOutcome<MailAddr> {
-    match tag % 15 {
+    match tag % 18 {
         0 => Ok(Exit::Normal),
         1 => Ok(Exit::Collected),
         2 => Ok(Exit::LinkDied(MailAddr(detail))),
@@ -68,34 +68,47 @@ fn outcome(tag: u8, detail: u64) -> TerminalOutcome<MailAddr> {
             }),
         )),
         5 => Ok(Exit::SupervisionFailed(
-            SupervisionFailureReason::StableChildCreationRejected(
-                CreationRejection::NonceAlreadyBound,
+            SupervisionFailureReason::StableChildNotAccepted(
+                behavior::StableSlotRejection::DuplicateNonce,
             ),
         )),
         6 => Ok(Exit::SupervisionFailed(
-            SupervisionFailureReason::StableChildCreationRejected(
-                CreationRejection::InitializationFailed,
+            SupervisionFailureReason::StableChildNotAccepted(
+                behavior::StableSlotRejection::SequenceExhausted,
             ),
         )),
         7 => Ok(Exit::SupervisionFailed(
             SupervisionFailureReason::StableChildCreationRejected(
-                CreationRejection::EnvironmentFailed,
+                CreationRejection::NonceAlreadyBound,
             ),
         )),
         8 => Ok(Exit::SupervisionFailed(
-            SupervisionFailureReason::WorkerCreationRejected(CreationRejection::NonceAlreadyBound),
+            SupervisionFailureReason::StableChildCreationRejected(
+                CreationRejection::InitializationFailed,
+            ),
         )),
         9 => Ok(Exit::SupervisionFailed(
+            SupervisionFailureReason::StableChildCreationRejected(
+                CreationRejection::EnvironmentFailed,
+            ),
+        )),
+        10 => Ok(Exit::SupervisionFailed(
+            SupervisionFailureReason::WorkerCreationRejected(CreationRejection::NonceAlreadyBound),
+        )),
+        11 => Ok(Exit::SupervisionFailed(
             SupervisionFailureReason::WorkerCreationRejected(
                 CreationRejection::InitializationFailed,
             ),
         )),
-        10 => Ok(Exit::SupervisionFailed(
+        12 => Ok(Exit::SupervisionFailed(
             SupervisionFailureReason::WorkerCreationRejected(CreationRejection::EnvironmentFailed),
         )),
-        11 => Err(Crash::Failed),
-        12 => Err(Crash::EnvironmentFailed),
-        13 => Err(Crash::Panicked),
+        13 => Ok(Exit::SupervisionFailed(
+            SupervisionFailureReason::WorkerFactoryRejected,
+        )),
+        14 => Err(Crash::Failed),
+        15 => Err(Crash::EnvironmentFailed),
+        16 => Err(Crash::Panicked),
         _ => Err(Crash::Cancelled),
     }
 }
@@ -120,21 +133,34 @@ proptest! {
 
         for (kind, tag, detail) in operations {
             let terminal = outcome(tag, detail);
-            let actions = match kind {
-                0 => subject.transition(EventLayer::Owned(ChildStopped::new(
-                    8,
+            let actions = if kind < 2 {
+                let fact = ChildStopped::new(
+                    if kind == 0 { 8 } else { 7 },
                     terminal,
                     Instant::now(),
-                ))).unwrap(),
-                1 => subject.transition(EventLayer::Owned(ChildStopped::new(
-                    7,
-                    terminal,
-                    Instant::now(),
-                ))).unwrap(),
-                _ => subject.transition(EventLayer::Inner(User::new(
+                );
+                let result = subject.transition(EventLayer::Owned(fact.clone()));
+                let accepted = kind == 1 && oracle == OraclePhase::Waiting;
+                if !accepted {
+                    let expected_state = match oracle {
+                        OraclePhase::Waiting => TerminalPropagationState::Observing,
+                        OraclePhase::Quiet => TerminalPropagationState::Discharged,
+                        OraclePhase::Published => TerminalPropagationState::Propagated,
+                    };
+                    let rejected = matches!(
+                        result,
+                        Err(TerminationPropagationError::UnexpectedFact { state, fact: returned })
+                            if state == expected_state && returned == fact
+                    );
+                    prop_assert!(rejected);
+                    continue;
+                }
+                result.unwrap()
+            } else {
+                subject.transition(EventLayer::Inner(User::new(
                     MailAddr(detail),
                     tag,
-                ))).unwrap(),
+                ))).unwrap()
             };
 
             let expected_report = kind == 1
