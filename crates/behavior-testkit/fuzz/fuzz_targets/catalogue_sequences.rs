@@ -11,9 +11,10 @@ use behavior::{
     BreakerError, BreakerMessage, BreakerOutcome, CircuitBreaker, EndpointAddress,
     EstablishedObservation, EstablishedRecipient, EstablishedTerminationMonitor, Exit, MailAddr,
     Never, NoBirths, ObservationId, ObservationOperation, ObservationRejection, Presence,
-    PresenceMessage, PresenceReply, PresenceVersion, Protocol, Recipient, TerminationMonitorError,
-    TimerElapsed, TimerGeneration, TimerId, User, Workflow, WorkflowDefinition, WorkflowError,
-    WorkflowInput, WorkflowMessage, WorkflowOutcome,
+    PresenceMessage, PresenceReply, PresenceVersion, Protocol, Recipient, RoundRobin, Router,
+    RouterError, RouterMessage, TerminationMonitorError, TimerElapsed, TimerGeneration, TimerId,
+    User, Workflow, WorkflowDefinition, WorkflowError, WorkflowInput, WorkflowMessage,
+    WorkflowOutcome,
 };
 use bombay_behavior_fuzz::TestRecipient;
 use libfuzzer_sys::fuzz_target;
@@ -53,6 +54,13 @@ struct Peer;
 impl Protocol for Peer {
     type Addr = RuntimeAddr;
     type Msg = ();
+}
+
+struct RouteTarget;
+
+impl Protocol for RouteTarget {
+    type Addr = MailAddr;
+    type Msg = u8;
 }
 
 struct MonitorProbe {
@@ -135,6 +143,13 @@ fuzz_target!(|bytes: &[u8]| {
     .initialize()
     .expect("monitor initialization is infallible")
     .behavior;
+    let mut router =
+        Router::<MailAddr, Recipient<RouteTarget>, _>::new(Vec::new(), RoundRobin::default())
+            .initialize()
+            .expect("router initialization is infallible")
+            .behavior;
+    let mut eligible = Vec::<MailAddr>::new();
+    let mut next = 0usize;
 
     let breaker_reply = Recipient::global(MailAddr(1));
     let presence_reply = Recipient::global(MailAddr(2));
@@ -226,5 +241,63 @@ fuzz_target!(|bytes: &[u8]| {
             Err(TerminationMonitorError::Inner(never)) => match never {},
         }
         assert!(monitor.base().terminals <= 1);
+
+        let member = MailAddr(u64::from(b % 8));
+        match a % 3 {
+            0 => {
+                router
+                    .receive(
+                        MailAddr(0),
+                        RouterMessage::Add(Recipient::global(member)),
+                    )
+                    .expect("membership addition is infallible");
+                if !eligible.contains(&member) {
+                    eligible.push(member);
+                }
+            }
+            1 => {
+                router
+                    .receive(
+                        MailAddr(0),
+                        RouterMessage::Remove(Recipient::global(member)),
+                    )
+                    .expect("membership removal is infallible");
+                if let Some(index) = eligible.iter().position(|candidate| *candidate == member) {
+                    eligible.remove(index);
+                    if eligible.is_empty() {
+                        next = 0;
+                    } else {
+                        if index < next {
+                            next -= 1;
+                        }
+                        next %= eligible.len();
+                    }
+                }
+            }
+            _ if eligible.is_empty() => {
+                assert!(matches!(
+                    router.receive(MailAddr(0), RouterMessage::Route(b)),
+                    Err(RouterError::NoEligibleRecipients(returned)) if returned == b
+                ));
+            }
+            _ => {
+                let expected = eligible[next % eligible.len()];
+                next = (next % eligible.len() + 1) % eligible.len();
+                let actions = router
+                    .receive(MailAddr(0), RouterMessage::Route(b))
+                    .expect("non-empty round-robin membership selects one route");
+                assert_eq!(actions.sends.len(), 1);
+                assert_eq!(actions.sends[0].to.address(), expected);
+                assert_eq!(actions.sends[0].message, b);
+            }
+        }
+        assert_eq!(
+            router
+                .recipients()
+                .iter()
+                .map(|recipient| recipient.address())
+                .collect::<Vec<_>>(),
+            eligible
+        );
     }
 });

@@ -101,7 +101,7 @@ pub use rate_limiter::{
     RateLimiterOutcome, RateLimiterState, TokenCount,
 };
 pub use router::{
-    Broadcast, ConsistentHash, HashPolicyError, LeastLoaded, LeastLoadedError, Load, LoadEvidence,
+    ConsistentHash, HashPolicyError, LeastLoaded, LeastLoadedError, Load, LoadEvidence,
     LoadObservation, LoadVersion, MemberToken, MemberTokenEvidence, MemberTokenObservation,
     MemberTokenVersion, RendezvousHash, RoundRobin, RouteKey, Router, RouterError, RouterMessage,
     RoutingStrategy,

@@ -3,8 +3,7 @@
 use core::num::NonZeroU16;
 
 use behavior::{
-    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Never, NoBirths, Protocol,
-    SendEffects, User,
+    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Never, NoBirths, Protocol, User,
 };
 use thiserror::Error;
 
@@ -84,23 +83,27 @@ impl<M: core::fmt::Debug, O, E: core::fmt::Debug> core::fmt::Debug for RouterErr
 
 /// Static recipient-selection policy used by [`Router`].
 ///
-/// Implementations receive only the current membership length and return
-/// indices into that exact snapshot. Returning an out-of-range index is a
-/// typed [`RouterError::InvalidSelection`]; the command and a cloned policy
-/// candidate are returned without committing policy state. Policies perform
-/// no effects and obtain no ambient entropy.
+/// Implementations receive the current membership snapshot and return at most
+/// one index into it. Returning an out-of-range index is a typed
+/// [`RouterError::InvalidSelection`]; the command is returned and the cloned
+/// policy candidate is discarded without committing policy state. Policies
+/// perform no effects and obtain no ambient entropy.
 pub trait RoutingStrategy<Route: DeliveryRoute + Clone + PartialEq>: Clone {
     /// Closed observation type accepted by this policy.
     type Observation;
     /// Concrete observation rejection.
     type Error;
 
-    /// Select zero or more indices from this exact typed membership snapshot.
+    /// Select at most one index from this exact typed membership snapshot.
+    ///
+    /// Returning `None` means no member is currently eligible. The selected
+    /// route receives ownership of the message, so unicast routing does not
+    /// require the destination protocol's message to implement [`Clone`].
     fn select(
         &mut self,
         members: &[Route],
         message: &<Route::Protocol as Protocol>::Msg,
-    ) -> Vec<usize>;
+    ) -> Option<usize>;
 
     /// Fold one typed observation against the same membership snapshot.
     ///
@@ -135,13 +138,17 @@ impl<Route: DeliveryRoute + Clone + PartialEq> RoutingStrategy<Route> for RoundR
     type Observation = Never;
     type Error = Never;
 
-    fn select(&mut self, members: &[Route], _: &<Route::Protocol as Protocol>::Msg) -> Vec<usize> {
+    fn select(
+        &mut self,
+        members: &[Route],
+        _: &<Route::Protocol as Protocol>::Msg,
+    ) -> Option<usize> {
         if members.is_empty() {
-            return Vec::new();
+            return None;
         }
         let selected = self.next % members.len();
         self.next = (selected + 1) % members.len();
-        vec![selected]
+        Some(selected)
     }
 
     fn observe(&mut self, _: &[Route], observation: Never) -> Result<(), Never> {
@@ -157,26 +164,6 @@ impl<Route: DeliveryRoute + Clone + PartialEq> RoutingStrategy<Route> for RoundR
             }
             self.next %= remaining;
         }
-    }
-}
-
-/// Deterministic selection of every current recipient in membership order.
-///
-/// Broadcasting clones the destination payload once per recipient. The
-/// application-visible clone cost is explicit in the [`Behavior`] bound.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct Broadcast;
-
-impl<Route: DeliveryRoute + Clone + PartialEq> RoutingStrategy<Route> for Broadcast {
-    type Observation = Never;
-    type Error = Never;
-
-    fn select(&mut self, members: &[Route], _: &<Route::Protocol as Protocol>::Msg) -> Vec<usize> {
-        (0..members.len()).collect()
-    }
-
-    fn observe(&mut self, _: &[Route], observation: Never) -> Result<(), Never> {
-        match observation {}
     }
 }
 
@@ -316,7 +303,11 @@ impl<Route: DeliveryRoute + Clone + PartialEq> RoutingStrategy<Route> for LeastL
     type Observation = LoadObservation<Route>;
     type Error = LeastLoadedError<Route>;
 
-    fn select(&mut self, members: &[Route], _: &<Route::Protocol as Protocol>::Msg) -> Vec<usize> {
+    fn select(
+        &mut self,
+        members: &[Route],
+        _: &<Route::Protocol as Protocol>::Msg,
+    ) -> Option<usize> {
         members
             .iter()
             .enumerate()
@@ -328,7 +319,7 @@ impl<Route: DeliveryRoute + Clone + PartialEq> RoutingStrategy<Route> for LeastL
                     })
             })
             .min_by_key(|(index, load)| (*load, *index))
-            .map_or_else(Vec::new, |(index, _)| vec![index])
+            .map(|(index, _)| index)
     }
 
     fn observe(
@@ -635,7 +626,7 @@ where
         &mut self,
         members: &[Route],
         message: &<Route::Protocol as Protocol>::Msg,
-    ) -> Vec<usize> {
+    ) -> Option<usize> {
         let key = (self.hash_key)(message.route_key());
         self.membership
             .tokens(members)
@@ -645,7 +636,7 @@ where
                     .map(move |replica| (mixed_hash(token.0, u64::from(replica)), index))
             })
             .min_by_key(|(point, index)| (*point < key, *point, *index))
-            .map_or_else(Vec::new, |(_, index)| vec![index])
+            .map(|(_, index)| index)
     }
 
     fn observe(
@@ -715,14 +706,14 @@ where
         &mut self,
         members: &[Route],
         message: &<Route::Protocol as Protocol>::Msg,
-    ) -> Vec<usize> {
+    ) -> Option<usize> {
         let key = (self.hash_key)(message.route_key());
         self.membership
             .tokens(members)
             .into_iter()
             .map(|(index, token)| (mixed_hash(key, token.0), index))
             .max_by(|left, right| left.0.cmp(&right.0).then_with(|| right.1.cmp(&left.1)))
-            .map_or_else(Vec::new, |(_, index)| vec![index])
+            .map(|(_, index)| index)
     }
 
     fn observe(
@@ -747,9 +738,11 @@ where
 /// State is the insertion-ordered recipient product plus a statically selected
 /// policy. Inputs are [`RouterMessage`]; outputs are the concrete send product
 /// selected by `Route`. Initialization is empty. Successful membership
-/// transitions emit no effects. A successful route emits deliveries in policy
-/// order and continues; an empty selection returns [`RouterError`] without
-/// changing membership. The router never terminates by policy and requires
+/// transitions emit no effects. A successful route transfers ownership to one
+/// selected member and continues; an empty selection returns [`RouterError`]
+/// without changing membership. Fan-out is the distinct [`crate::Topic`] or
+/// [`crate::PubSub`] law and therefore does not impose a message-cloning bound
+/// on this unicast actor. The router never terminates by policy and requires
 /// only Bombay Address and Communication interpretation for its send lane.
 pub struct Router<
     A: Address,
@@ -815,7 +808,6 @@ impl<A, Route, R> behavior::Protocol for Router<A, Route, R>
 where
     A: Address,
     Route: DeliveryRoute<Protocol: Protocol<Addr = A>> + Clone + PartialEq,
-    <Route::Protocol as Protocol>::Msg: Clone,
     R: RoutingStrategy<Route>,
     R::Observation: Clone,
 {
@@ -827,7 +819,6 @@ impl<A, Route, R> Behavior for Router<A, Route, R>
 where
     A: Address,
     Route: DeliveryRoute<Protocol: Protocol<Addr = A>> + Clone + PartialEq,
-    <Route::Protocol as Protocol>::Msg: Clone,
     R: RoutingStrategy<Route>,
     R::Observation: Clone,
     Route::Sends: behavior::SendsFor<User<A, RouterMessage<Route, R>>>,
@@ -857,25 +848,17 @@ where
             }
             RouterMessage::Route(message) => {
                 let mut strategy = self.strategy.clone();
-                let selected = strategy.select(&self.recipients, &message);
-                if let Some(index) = selected
-                    .iter()
-                    .copied()
-                    .find(|index| *index >= self.recipients.len())
-                {
+                let Some(index) = strategy.select(&self.recipients, &message) else {
+                    return Err(RouterError::NoEligibleRecipients(message));
+                };
+                if index >= self.recipients.len() {
                     return Err(RouterError::InvalidSelection {
                         message,
                         index,
                         members: self.recipients.len(),
                     });
                 }
-                if selected.is_empty() {
-                    return Err(RouterError::NoEligibleRecipients(message));
-                }
-                let mut sends = Route::Sends::empty();
-                for index in selected {
-                    sends.append(self.recipients[index].clone().deliver(message.clone()));
-                }
+                let sends = self.recipients[index].clone().deliver(message);
                 self.strategy = strategy;
                 Ok(Actions::send(sends))
             }
@@ -979,21 +962,6 @@ mod tests {
             .receive(MailAddr(9), RouterMessage::Route(8))
             .unwrap();
         assert!(second.sends == vec![Delivery::new(two, 8)]);
-    }
-
-    #[test]
-    fn broadcast_preserves_membership_order_and_deduplicates() {
-        let one = Recipient::<Destination>::global(MailAddr(1));
-        let two = Recipient::<Destination>::global(MailAddr(2));
-        let mut router = (Router::new(vec![one, two, one], Broadcast))
-            .initialize()
-            .unwrap()
-            .behavior;
-
-        let actions = router
-            .receive(MailAddr(9), RouterMessage::Route(4))
-            .unwrap();
-        assert!(actions.sends == vec![Delivery::new(one, 4), Delivery::new(two, 4)]);
     }
 
     #[test]
@@ -1270,9 +1238,9 @@ mod tests {
         type Observation = u8;
         type Error = u8;
 
-        fn select(&mut self, members: &[Recipient<Destination>], _: &u8) -> Vec<usize> {
+        fn select(&mut self, members: &[Recipient<Destination>], _: &u8) -> Option<usize> {
             self.selections += 1;
-            vec![members.len()]
+            Some(members.len())
         }
 
         fn observe(

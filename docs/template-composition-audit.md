@@ -432,6 +432,41 @@ generic consumers through associated outputs. `LogicalHostRequirements` is an
 owner-authored, duplicate-preserving closed product of all transitive logical
 destinations; exact-only endpoints remain absent.
 
+## Composition-hierarchy tightening
+
+The executable `Router → Supervisor-owned Proxy → PriorityQueue → Target`
+hierarchy exposed one remaining false coupling. `Router` required every
+destination message to implement `Clone` because its policy family also
+contained `Broadcast`. Consequently a round-robin router could not carry
+`ProxyCommand`: its `Replace` alternative truthfully owns a behavior and is not
+cloneable.
+
+This was not a proxy or priority-queue defect. The router combined two distinct
+laws. Bombay now defines `Router` as single-recipient ownership transfer;
+`RoundRobin`, `LeastLoaded`, `ConsistentHash`, and `RendezvousHash` each return
+at most one membership index. `Topic` and `PubSub` retain snapshot fan-out and
+its explicit payload-cloning bound. The `Broadcast` policy and the router's
+multi-index/clone path are deleted. No replacement type or compatibility layer
+was added.
+
+The black-box regression constructs the real supervisor-staged proxy and the
+real proxy-staged priority queue, commits the queue creation, then passes offer
+and release commands through router delivery, proxy child delivery, and queue
+target/outcome delivery. It asserts every creation, observation, rejection,
+delivery, and become lane at each boundary. The public composition guide now
+shows both same-mailbox layers and independent actor topology, including this
+executable hierarchy.
+
+This tightening stage changes no foundational effect algebra and adds no
+public type:
+
+```text
+production: +48 / -80 / net -32
+tests:      +252 / -11 / net +241
+docs:       +164 / -5 / net +159
+public API: +0 types / -1 type
+```
+
 ## Verification
 
 - `cargo check --workspace --all-targets`: pass without Rust warnings.

@@ -144,6 +144,18 @@ bombay-behavior = "0.14"
 bombay-behavior-actors = "0.14"
 ```
 
+Composition has two axes. `Behavior::layer` constructs same-mailbox event and
+effect transformations while preserving the fully concrete output type.
+`DeliveryRoute` connects independent actors through logical or established
+capabilities; `DeliveryRouteFor<Owner>` additionally admits only a direct
+`ChildRoute` proven by that owner's birth algebra. Topology owners such as
+`Supervisor` and `Proxy` retain lifecycle correlation, while `Router`, queues,
+workflows, and domain actors retain their own independent laws.
+
+The [Actor composition map](docs/composition-recipes.md#the-composition-map)
+shows the hierarchy, selection rules, and an executable
+`Router → Supervisor-owned Proxy → PriorityQueue → Target` trace.
+
 `InstallationRequirements` folds a behavior's transitive birth algebra into
 an occurrence-preserving protocol product. It excludes protocols mentioned
 only by delivery lanes. Duplicate protocol occurrences remain distinct; the

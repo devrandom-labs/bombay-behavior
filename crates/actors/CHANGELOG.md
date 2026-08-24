@@ -36,6 +36,9 @@ All notable changes to `bombay-behavior-actors` are documented here.
 - Join initial dynamic-supervisor proxy and worker creation facts in either
   arrival order, and keep pool assignments recoverable when worker-stop and
   proxy-unavailability facts race.
+- Make `Router` a single-recipient ownership transfer so round-robin,
+  least-loaded, consistent-hash, and rendezvous routing accept non-`Clone`
+  commands such as `ProxyCommand`.
 
 ### Removed
 
@@ -43,6 +46,8 @@ All notable changes to `bombay-behavior-actors` are documented here.
   selector-policy and backoff supervisor wrappers, and forwarding recipe
   functions that did not own distinct transition laws. Applications now use
   the retained concrete actors and ordinary typed composition.
+- Remove the `Broadcast` router policy. `Topic` and `PubSub` retain fan-out as
+  their distinct, explicitly clone-requiring membership-snapshot law.
 
 ## [0.14.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-actors-v0.13.1...bombay-behavior-actors-v0.14.0) - 2026-08-21
 
