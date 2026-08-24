@@ -111,14 +111,15 @@ pub struct StructuralChildOccurrence<Position>(PhantomData<fn() -> Position>);
 /// [`Behavior::Protocol`] remains canonical identity, while `Position` is only
 /// navigation evidence into the emitter's direct birth algebra.
 ///
-/// A nominal role follows [`BehaviorBase`] through a transparent wrapper only
-/// when the wrapper preserves both the exact protocol and the exact birth
-/// algebra. A wrapper that changes child topology cannot inherit a role whose
-/// declaration no longer describes its direct births. Raw [`ChildHead`] and
-/// [`ChildTail`] positions instead resolve directly against the running
-/// emitter's own birth algebra.
+/// A nominal role follows [`BehaviorBase`] through a wrapper only when the
+/// wrapper preserves the exact protocol and the role's declared child at its
+/// exact structural position. A wrapper may append births after that position,
+/// but it cannot replace, reorder, or insert births before it. Raw
+/// [`ChildHead`] and [`ChildTail`] positions instead resolve directly against
+/// the running emitter's own birth algebra.
 ///
-/// A topology-changing wrapper cannot silently reuse its base role:
+/// A wrapper that replaces its base role's child cannot silently reuse that
+/// role:
 ///
 /// ```compile_fail
 /// use behavior::{
@@ -742,6 +743,140 @@ where
 {
 }
 
+/// Append one closed direct-child algebra after another.
+///
+/// `Self` remains the structural prefix, so every child occurrence already
+/// valid in that prefix retains both its child type and its position. `Tail`
+/// begins only after the prefix's final position. The two injection functions
+/// change only the closed sum containing a child; [`append_creations`](Self::append_creations)
+/// additionally preserves every creation's nonce, provenance, and vector
+/// order while placing all prefix creations before all appended creations.
+///
+/// This is a static composition of Bombay's existing staged-creation
+/// capability, not another actor effect and not an allocation operation. The
+/// interpreter remains solely responsible for fresh installation and binding.
+///
+/// A generic topology owner can therefore retain an inner behavior's exact
+/// creation effects and append children whose concrete types were inferred
+/// from value construction:
+///
+/// ```
+/// use behavior::{BirthNodeAppend, Create, MailAddr, Never};
+///
+/// type Combined = <Never as BirthNodeAppend<Never>>::Output;
+/// let creations = <Never as BirthNodeAppend<Never>>::append_creations::<MailAddr>(
+///     Vec::new(),
+///     Vec::new(),
+/// );
+/// let _: Vec<Create<MailAddr, Combined>> = creations;
+/// ```
+pub trait BirthNodeAppend<Tail>: sealed::BirthNode + Sized
+where
+    Tail: sealed::BirthNode,
+{
+    /// Closed child algebra containing the complete prefix followed by the
+    /// complete appended tail.
+    type Output: sealed::BirthNode;
+
+    /// Inject one child from the existing prefix without changing its
+    /// structural occurrence.
+    fn append_prefix(self) -> Self::Output;
+
+    /// Inject one child from the appended tail after every prefix occurrence.
+    fn append_tail(tail: Tail) -> Self::Output;
+
+    /// Preserve and concatenate two ordered creation vectors.
+    #[must_use]
+    fn append_creations<A: Address>(
+        prefix: Vec<Create<A, Self>>,
+        tail: Vec<Create<A, Tail>>,
+    ) -> Vec<Create<A, Self::Output>> {
+        let mut combined = Vec::with_capacity(prefix.len() + tail.len());
+        combined.extend(prefix.into_iter().map(|creation| {
+            Create::new(
+                creation.nonce,
+                Self::append_prefix(creation.child),
+                creation.kind,
+            )
+        }));
+        combined.extend(tail.into_iter().map(|creation| {
+            Create::new(
+                creation.nonce,
+                Self::append_tail(creation.child),
+                creation.kind,
+            )
+        }));
+        combined
+    }
+}
+
+impl<Tail> BirthNodeAppend<Tail> for Never
+where
+    Tail: sealed::BirthNode,
+{
+    type Output = Tail;
+
+    fn append_prefix(self) -> Self::Output {
+        match self {}
+    }
+
+    fn append_tail(tail: Tail) -> Self::Output {
+        tail
+    }
+}
+
+impl<Node> BirthNodeAppend<Never> for Node
+where
+    Node: sealed::NonEmptyBirthNode,
+{
+    type Output = Node;
+
+    fn append_prefix(self) -> Self::Output {
+        self
+    }
+
+    fn append_tail(tail: Never) -> Self::Output {
+        match tail {}
+    }
+}
+
+impl<Child, Tail> BirthNodeAppend<Tail> for Child
+where
+    Child: Behavior,
+    Tail: sealed::NonEmptyBirthNode,
+{
+    type Output = ChildChoice<Child, Tail>;
+
+    fn append_prefix(self) -> Self::Output {
+        ChildChoice::Head(self)
+    }
+
+    fn append_tail(tail: Tail) -> Self::Output {
+        ChildChoice::Tail(tail)
+    }
+}
+
+impl<Head, Rest, Tail> BirthNodeAppend<Tail> for ChildChoice<Head, Rest>
+where
+    Head: Behavior,
+    Rest: sealed::BirthNode + BirthNodeAppend<Tail>,
+    Tail: sealed::NonEmptyBirthNode,
+    Rest::Output: sealed::BirthNode,
+{
+    type Output = ChildChoice<Head, Rest::Output>;
+
+    fn append_prefix(self) -> Self::Output {
+        match self {
+            ChildChoice::Head(head) => ChildChoice::Head(head),
+            ChildChoice::Tail(rest) => ChildChoice::Tail(rest.append_prefix()),
+        }
+    }
+
+    fn append_tail(tail: Tail) -> Self::Output {
+        ChildChoice::Tail(Rest::append_tail(tail))
+    }
+}
+
 impl<Parent: Behavior> ChildOccurrence<Parent> for ChildHead {
     type Resolution = StructuralChildOccurrence<Self>;
 }
@@ -805,12 +940,13 @@ where
 impl<Emitter, Occurrence> ResolveChildOccurrenceDescriptor<Emitter, Occurrence>
     for DeclaredChildOccurrence
 where
-    Emitter: Behavior<
-            Protocol = <<Emitter as BehaviorBase>::Base as Behavior>::Protocol,
-            Birth = <<Emitter as BehaviorBase>::Base as Behavior>::Birth,
-        > + BehaviorBase,
+    Emitter:
+        Behavior<Protocol = <<Emitter as BehaviorBase>::Base as Behavior>::Protocol> + BehaviorBase,
     Emitter::Base: Behavior,
     Occurrence: ChildRole<Emitter::Base>,
+    <Emitter::Birth as BirthMode>::Child:
+        BirthNodeAt<Occurrence::Position, Child = Occurrence::Child>,
+    Occurrence::Position: ChildPosition<<Emitter::Birth as BirthMode>::Child, Occurrence::Child>,
 {
     type Child = Occurrence::Child;
     type Position = Occurrence::Position;
@@ -971,9 +1107,19 @@ mod sealed {
 
     pub trait BirthNode {}
 
+    pub trait NonEmptyBirthNode: BirthNode {}
+
     impl<Child: Behavior> BirthNode for Child {}
+    impl<Child: Behavior> NonEmptyBirthNode for Child {}
 
     impl<Head, Tail> BirthNode for ChildChoice<Head, Tail>
+    where
+        Head: Behavior,
+        Tail: BirthNode,
+    {
+    }
+
+    impl<Head, Tail> NonEmptyBirthNode for ChildChoice<Head, Tail>
     where
         Head: Behavior,
         Tail: BirthNode,
@@ -1022,12 +1168,14 @@ mod sealed {
 
     impl<Emitter, Occurrence> ResolveDescriptor<Emitter, Occurrence> for DeclaredChildOccurrence
     where
-        Emitter: Behavior<
-                Protocol = <<Emitter as BehaviorBase>::Base as Behavior>::Protocol,
-                Birth = <<Emitter as BehaviorBase>::Base as Behavior>::Birth,
-            > + BehaviorBase,
+        Emitter: Behavior<Protocol = <<Emitter as BehaviorBase>::Base as Behavior>::Protocol>
+            + BehaviorBase,
         Emitter::Base: Behavior,
         Occurrence: ChildRole<Emitter::Base>,
+        <Emitter::Birth as BirthMode>::Child:
+            BirthNodeAt<Occurrence::Position, Child = Occurrence::Child>,
+        Occurrence::Position:
+            super::ChildPosition<<Emitter::Birth as BirthMode>::Child, Occurrence::Child>,
     {
     }
 
@@ -1082,7 +1230,7 @@ pub enum ChildrenError<N> {
 /// Closed recursive conversion implemented only by Bombay child products.
 pub trait ChildProduct<A: Address>: sealed::ChildProduct + Sized {
     /// Closed sum containing exactly the concrete child behavior types.
-    type Choice;
+    type Choice: BirthNodeAppend<Never>;
 
     #[doc(hidden)]
     fn stage(

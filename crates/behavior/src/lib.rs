@@ -20,9 +20,9 @@ mod transition;
 mod user_event;
 
 pub use actor::{
-    Address, AllocationRejection, BirthMode, BirthNodeMapper, BirthNodeProtocols, BirthProtocol,
-    BirthProtocolAt, BirthProtocolHead, BirthProtocolProduct, BirthProtocolTail, BirthProtocols,
-    Births, ChildChoice, ChildCons, ChildDelivery, ChildHead, ChildOccurrence,
+    Address, AllocationRejection, BirthMode, BirthNodeAppend, BirthNodeMapper, BirthNodeProtocols,
+    BirthProtocol, BirthProtocolAt, BirthProtocolHead, BirthProtocolProduct, BirthProtocolTail,
+    BirthProtocols, Births, ChildChoice, ChildCons, ChildDelivery, ChildHead, ChildOccurrence,
     ChildOccurrenceResolution, ChildPosition, ChildProduct, ChildRole, ChildRoute, ChildTail,
     Children, ChildrenError, Create, CreationKind, CreationRejection, DeclaredChildOccurrence,
     Delivery, DispatchBirth, DispatchBirthAt, EndpointAddress, EstablishedActor,

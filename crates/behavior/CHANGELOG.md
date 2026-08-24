@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Add `BirthNodeAppend`, a sealed static composition law that appends inferred
+  child products after an existing birth algebra while preserving creation
+  order, nonce, provenance, and every prefix occurrence.
+
+### Changed
+
+- Allow nominal child roles to cross a same-protocol wrapper whose birth
+  algebra retains the declared child at its exact position and only appends
+  later occurrences.
+
 ## [0.14.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.13.1...bombay-behavior-v0.14.0) - 2026-08-21
 
 ### Added

@@ -467,10 +467,73 @@ docs:       +164 / -5 / net +159
 public API: +0 types / -1 type
 ```
 
+## Alias-free application birth composition: pre-edit ledger
+
+The downstream Bombay audit found one remaining static-composition blocker.
+Bombay currently requires application-provisioned actors to occupy slots in the
+domain root's own `Behavior::Birth` algebra.  That makes an item-level root
+declaration name every fully composed child type before value inference can
+apply, producing mechanical aliases such as
+`ManagedHealth = StopOnShutdown<Health<...>>`.
+
+The actor-model law remains fresh creation.  Combining two already-declared
+creation capabilities is a derived Bombay construction: it must preserve every
+creator-local nonce, `CreationKind`, child value, creation-vector position, and
+pre-existing child occurrence.  Application policy—what is provisioned, nonce
+selection, and initialization order—remains downstream in Bombay.
+
+The smallest end-to-end regression is an inferred application value that adds
+two differently composed children to a root which already stages its own
+child.  The root creation must remain first, application creations must follow
+in declaration order, and the root's existing nominal child route must still
+resolve at its original position.  No alias may name either application child
+or the resulting application type.
+
+Expected stage surface:
+
+```text
+changed files: 6-8
+production:    approximately +150 / -10
+tests:         approximately +200 / -0
+docs:          approximately +100 / -0
+public API:    +1 trait / -0 types
+```
+
+The implementation must reuse `Actions`, `Create`, `BirthMode`, `ChildChoice`,
+`ChildProduct`, and `BirthNodeAt`.  It must not add a behavior wrapper, layer
+marker, alias generator, erased child value, runtime registry, or arbitrary
+creation callback capable of rewriting provenance.
+
+The initial black-box regression failed before the production edit because
+`BirthNodeAppend` did not exist.  With the static append law present, the same
+test proves an existing root child role across a lifecycle wrapper and the
+application composition, while two application child expressions and the
+complete application type remain inferred.  Deterministic tests cover empty
+left/right identity, associativity, repeated child types at every occurrence,
+and exact vector order.  A 256-case property test preserves every generated
+nonce, birth/replacement provenance value, lane, and position.
+
+Final stage ledger:
+
+```text
+changed files: 7
+production:    +170 / -22 / net +148
+tests:         +402 / -0 / net +402
+docs:          +171 / -0 / net +171
+public API:    +1 trait / -0 types
+```
+
+No behavior wrapper, builder, marker, alias, registry, or erased value was
+added.  The one public trait is the closed child-algebra operation needed by a
+generic composition owner.  The private non-empty-node proof only closes its
+recursive implementation and adds no public name.
+
 ## Verification
 
 - `cargo check --workspace --all-targets`: pass without Rust warnings.
-- `cargo nextest run --workspace --no-fail-fast`: 522 passed, none skipped.
+- Focused birth-composition regressions: 5 passed in debug and optimized
+  builds; the property test ran 256 cases in each build.
+- `cargo nextest run --workspace`: 527 passed, none skipped.
 - Actor rustdoc and compile-fail tests: 29 passed.
 - `supervision_sequences`, `pool_sequences`, and
   `catalogue_sequences`: 5,000 fuzz executions each under the locked Fenix

@@ -139,6 +139,128 @@ creates and adopts its own workers. These are separate transformations because
 their input folds and typed effect products differ. Backoff remains explicit
 policy supplied with `Backoff`; it is not another actor template.
 
+## Bombay application provisioning
+
+Bombay must distinguish two creation owners:
+
+- `Root::Birth` contains only children the root fold can itself create and
+  address with its nominal `ChildRoute`s.
+- `Application` contains peers provisioned by the application declaration.
+
+An application child must therefore stop appearing in the root's `births =
+{ ... }` declaration merely to make it runnable. That old arrangement forces
+the declaration to name the child's fully composed type before Rust can infer
+it. It is the source of aliases such as `ManagedTask =
+StopOnShutdown<Task<...>>`.
+
+The application declaration should instead store each semantic slot and child
+value in its own heterogeneous product. Its private staging fold may defer
+nonce selection until root initialization, declare the runtime route, and
+lower the resulting values through the existing `Children` product. The
+public spelling then contains values, not nested type declarations:
+
+```rust,ignore
+struct Tasks;
+struct Events;
+
+let application = Application::new(root)
+    .child(Tasks, WorkQueue::new(worker).stop_on_shutdown())
+    .child(
+        Events,
+        Topic::<MailAddr, Event, Recipient<EventSink>>::new()
+            .stop_on_shutdown(),
+    );
+```
+
+`Tasks` and `Events` are nominal application roles, not aliases for actor
+types. The expression passed to each `child` call determines the concrete
+child type. Each call returns the next inferred application-product type, so
+neither the composed child types nor the final `Application<...>` type is
+written by the caller. A zero-state generic actor such as an empty `Topic`
+still needs enough protocol arguments to determine its law; that is real
+protocol information, not a mechanical nesting alias.
+
+Internally, Bombay needs one private declaration fold with an associated
+`Product: ChildProduct<MailAddr>`. It should return
+`Children<MailAddr, Product>` after allocating collision-free creator-local
+nonces and declaring the corresponding role routes. The running application
+then uses exactly these Behavior projections:
+
+```rust,ignore
+type RootNode<R> = <<R as Behavior>::Birth as BirthMode>::Child;
+type AppNode<L> = <<L as StageApplicationChildren>::Product
+    as ChildProduct<MailAddr>>::Choice;
+type RunningNode<R, L> =
+    <RootNode<R> as BirthNodeAppend<AppNode<L>>>::Output;
+
+impl<R, L, Routes> Behavior for RunningApplication<R, L, Routes>
+where
+    R: Behavior<Protocol: Protocol<Addr = MailAddr>> + BehaviorBase,
+    L: StageApplicationChildren<Routes>,
+    RootNode<R>: BirthNodeAppend<AppNode<L>>,
+{
+    type Birth = Births<RunningNode<R, L>>;
+
+    // init:
+    // 1. initialize R;
+    // 2. select app nonces disjoint from R's initialization creations;
+    // 3. lower L through Children::into_creates;
+    // 4. call BirthNodeAppend::append_creations(root, application);
+    // 5. rebuild Actions with the original sends and become decision.
+
+    // transition:
+    // delegate to R, then call append_creations(root_creates, Vec::new()).
+}
+```
+
+`BirthNodeAppend` keeps `RootNode<R>` as an exact structural prefix. Existing
+root roles therefore retain the same child and position after application
+peers are appended. It also preserves every child value, nonce,
+`CreationKind`, and within-lane order, with root creations before application
+creations. It does not allocate, install, or validate freshness. Bombay still
+owns nonce selection and must surface initialization-twice or child-product
+rejection as a typed private running-application error rather than panic.
+
+This lets Bombay delete its root-shaped vacant-slot machinery:
+`RuntimeApplicationTopology`, `EmptyApplicationTopology`, `VacantChild`,
+`OccupiedChild`, `AvailableApplicationRole`, `FillApplicationRoleAt`, and
+`InjectApplicationChildAt`. A smaller role-indexed application product remains
+because it owns a genuine law absent from `Children`: semantic naming,
+deferred nonce allocation, and construction of runtime child handles.
+
+The runtime must derive installation storage from the running application's
+combined birth algebra, not from `Root::Birth`. Consequently
+`InstallationRequirements` automatically includes the root, genuine root
+children, application peers, and every transitive birth. Intentional logical
+destinations remain a separate owner contract: Bombay consumes
+`LogicalHostRequirements::LogicalHosts`; it must not infer them from arbitrary
+send products or add a protocol registry.
+
+### Unicast and broadcast in Bombay
+
+`Router` is only unicast. Use `RoundRobin`, `LeastLoaded`, `ConsistentHash`, or
+`RendezvousHash`; each successful route transfers one owned message to at most
+one member. Bombay must remove stale `Router<Broadcast>` examples and imports,
+not recreate a broadcast strategy or compatibility wrapper.
+
+Fan-out is the distinct `Topic`/`PubSub` state-transition law:
+
+- `Topic<A, P, Route>` owns one insertion-ordered membership snapshot;
+  `TopicMessage::Publish(P)` sends a clone to every member.
+- `PubSub<A, K, P, Route>` additionally owns keyed topic introduction,
+  known-empty retention, and per-topic membership;
+  `PubSubMessage::Publish { topic, value }` fans out within one key.
+
+Choose `Route` truthfully. `EstablishedRecipient<P>` broadcasts to exact
+installed incarnations and adds no logical-host requirement.
+`Recipient<P>` broadcasts to intentional logical identities and Bombay's
+application owner must include every such protocol occurrence in
+`LogicalHostRequirements`, including meaningful duplicates. For stable
+replaceable workers, subscribe the logical `Recipient<Proxy<C>>`, not a stale
+exact worker incarnation. Different destination protocols remain different
+actors and are connected with typed `MessageAdapter`s; `Topic` never erases
+them into a common envelope.
+
 ## Root shutdown
 
 Use `StopOnShutdown<B>` when a shutdown request means that this actor stops
