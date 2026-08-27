@@ -5,9 +5,9 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, Behavior, BehaviorActed, BehaviorBase, Crash, CreationKind, Delivery, MailAddr,
-    Never, Recipient, RestartPolicy, Step, Strategy, Supervise, SupervisionEvent, User, UserEvent,
-    WorkerCreationResolved, WorkerStopped,
+    Acted, Actions, Behavior, BehaviorActed, BehaviorBase, Crash, CreationKind, Delivery,
+    EventIngress, Here, MailAddr, Never, Recipient, RestartPolicy, Step, Strategy, Supervise,
+    SupervisionEvent, SupervisionLifecycle, User, UserEvent, WorkerCreationResolved, WorkerStopped,
 };
 use std::time::Instant;
 
@@ -112,6 +112,33 @@ fn build_worker(index: usize) -> Option<Worker> {
 
 struct FleetRoot;
 
+enum FleetEvent {
+    Lifecycle(SupervisionLifecycle<MailAddr>),
+    User(User<MailAddr, ()>),
+}
+
+impl UserEvent for FleetEvent {
+    type Addr = MailAddr;
+    type Message = ();
+
+    fn user(from: MailAddr, message: ()) -> Self {
+        Self::User(User::new(from, message))
+    }
+
+    fn into_user(self) -> Result<User<MailAddr, ()>, Self> {
+        match self {
+            Self::User(user) => Ok(user),
+            lifecycle => Err(lifecycle),
+        }
+    }
+}
+
+impl EventIngress<Here, SupervisionLifecycle<MailAddr>> for FleetEvent {
+    fn ingress(lifecycle: SupervisionLifecycle<MailAddr>) -> Self {
+        Self::Lifecycle(lifecycle)
+    }
+}
+
 impl behavior::Protocol for FleetRoot {
     type Addr = MailAddr;
     type Msg = ();
@@ -127,13 +154,17 @@ impl BehaviorBase for FleetRoot {
 
 impl Behavior for FleetRoot {
     type Protocol = Self;
-    type Event = User<MailAddr, ()>;
+    type Event = FleetEvent;
     type Sends = Vec<Never>;
     type Ph = Never;
     type Error = Never;
     type Birth = behavior::NoBirths;
 
-    fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
+    fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+        match event {
+            FleetEvent::Lifecycle(_lifecycle) => {}
+            FleetEvent::User(_user) => {}
+        }
         Ok(Actions::cont())
     }
 }

@@ -5,9 +5,10 @@ use std::time::{Duration, Instant};
 use behavior::{
     Acted, Actions, Activate as _, Backoff, Behavior, BehaviorActed, BehaviorBase, Births,
     ChildStopped, ChildTopology, Crash, Create, CreationKind, CreationRejection, CreationResolved,
-    Exit, MailAddr, Never, RestartConfiguration, RestartPolicy, ShutdownRequested, Step, Strategy,
-    Supervise, SuperviseError, SupervisionEvent, Supervisor, TimerElapsed, User,
-    WorkerCreationResolved, WorkerStopped,
+    EventIngress, Exit, Here, MailAddr, Never, RestartConfiguration, RestartPolicy,
+    ShutdownRequested, Step, Strategy, Supervise, SuperviseError, SupervisionEvent,
+    SupervisionLifecycle, Supervisor, TimerElapsed, User, UserEvent, WorkerCreationResolved,
+    WorkerStopped,
 };
 
 struct Child;
@@ -24,7 +25,37 @@ impl Child {
 }
 
 /// A real application composition: user input stages an additional child.
-struct Application;
+#[derive(Default)]
+struct Application {
+    lifecycle: Vec<SupervisionLifecycle<MailAddr>>,
+}
+
+enum ApplicationEvent {
+    Lifecycle(SupervisionLifecycle<MailAddr>),
+    User(User<MailAddr, u64>),
+}
+
+impl UserEvent for ApplicationEvent {
+    type Addr = MailAddr;
+    type Message = u64;
+
+    fn user(from: MailAddr, message: u64) -> Self {
+        Self::User(User::new(from, message))
+    }
+
+    fn into_user(self) -> Result<User<MailAddr, u64>, Self> {
+        match self {
+            Self::User(event) => Ok(event),
+            lifecycle => Err(lifecycle),
+        }
+    }
+}
+
+impl EventIngress<Here, SupervisionLifecycle<MailAddr>> for ApplicationEvent {
+    fn ingress(lifecycle: SupervisionLifecycle<MailAddr>) -> Self {
+        Self::Lifecycle(lifecycle)
+    }
+}
 
 impl foundation::Protocol for Application {
     type Addr = MailAddr;
@@ -40,14 +71,91 @@ impl BehaviorBase for Application {
 
 impl Behavior for Application {
     type Protocol = Self;
-    type Event = User<MailAddr, u64>;
+    type Event = ApplicationEvent;
     type Sends = Vec<Never>;
     type Ph = Never;
     type Error = Never;
     type Birth = Births<Child>;
 
     fn transition(&mut self, _: foundation::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
-        Ok(Actions::create(vec![Create::birth(event.message, Child)]))
+        match event {
+            ApplicationEvent::Lifecycle(lifecycle) => {
+                self.lifecycle.push(lifecycle);
+                Ok(Actions::cont())
+            }
+            ApplicationEvent::User(event) => {
+                Ok(Actions::create(vec![Create::birth(event.message, Child)]))
+            }
+        }
+    }
+}
+
+struct RejectingApplication {
+    reject: fn(&SupervisionLifecycle<MailAddr>) -> bool,
+    accepted: Vec<SupervisionLifecycle<MailAddr>>,
+}
+
+enum RejectingEvent {
+    Lifecycle(SupervisionLifecycle<MailAddr>),
+    #[allow(
+        dead_code,
+        reason = "the Never message makes this required UserEvent lane uninhabited"
+    )]
+    User(User<MailAddr, Never>),
+}
+
+impl UserEvent for RejectingEvent {
+    type Addr = MailAddr;
+    type Message = Never;
+
+    fn user(_: MailAddr, message: Never) -> Self {
+        match message {}
+    }
+
+    fn into_user(self) -> Result<User<MailAddr, Never>, Self> {
+        match self {
+            Self::User(event) => Ok(event),
+            lifecycle => Err(lifecycle),
+        }
+    }
+}
+
+impl EventIngress<Here, SupervisionLifecycle<MailAddr>> for RejectingEvent {
+    fn ingress(lifecycle: SupervisionLifecycle<MailAddr>) -> Self {
+        Self::Lifecycle(lifecycle)
+    }
+}
+
+impl foundation::Protocol for RejectingApplication {
+    type Addr = MailAddr;
+    type Msg = Never;
+}
+
+impl BehaviorBase for RejectingApplication {
+    type Base = Self;
+
+    fn base(&self) -> &Self::Base {
+        self
+    }
+}
+
+impl Behavior for RejectingApplication {
+    type Protocol = Self;
+    type Event = RejectingEvent;
+    type Sends = Vec<Never>;
+    type Ph = Never;
+    type Error = SupervisionLifecycle<MailAddr>;
+    type Birth = behavior::NoBirths;
+
+    fn transition(&mut self, _: foundation::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+        match event {
+            RejectingEvent::Lifecycle(lifecycle) if (self.reject)(&lifecycle) => Err(lifecycle),
+            RejectingEvent::Lifecycle(lifecycle) => {
+                self.accepted.push(lifecycle);
+                Ok(Actions::cont())
+            }
+            RejectingEvent::User(event) => match event.message {},
+        }
     }
 }
 
@@ -100,7 +208,7 @@ macro_rules! assert_quiet_standalone_owner {
 
 fn one() -> Supervise<Application, Child, fn(Child) -> behavior::Proxy<Child>> {
     Supervise::new(
-        Application,
+        Application::default(),
         ChildTopology::new([3], child),
         restart(),
         behavior::Proxy::new as fn(Child) -> behavior::Proxy<Child>,
@@ -112,7 +220,7 @@ fn fleet(
     configuration: RestartConfiguration,
 ) -> Supervise<Application, Child, fn(Child) -> behavior::Proxy<Child>> {
     Supervise::new(
-        Application,
+        Application::default(),
         ChildTopology::new([3, 5], child),
         configuration,
         behavior::Proxy::new as fn(Child) -> behavior::Proxy<Child>,
@@ -122,7 +230,7 @@ fn fleet(
 
 #[test]
 fn behavior_layer_owns_one_fixed_fleet_trace_without_a_parallel_supervisor_actor() {
-    let composed = Application.layer(|inner| {
+    let composed = Application::default().layer(|inner| {
         Supervise::new(
             inner,
             ChildTopology::new([3, 5], child),
@@ -169,7 +277,7 @@ fn behavior_layer_owns_one_fixed_fleet_trace_without_a_parallel_supervisor_actor
 
 #[test]
 fn composed_application_birth_remains_outside_the_fixed_ownership_occurrence() {
-    let initialized = Application
+    let initialized = Application::default()
         .layer(|inner| {
             Supervise::new(
                 inner,
@@ -183,7 +291,9 @@ fn composed_application_birth_remains_outside_the_fixed_ownership_occurrence() {
         .unwrap();
     let mut active = initialized.behavior;
     let actions = active
-        .transition(SupervisionEvent::Behavior(User::new(MailAddr(1), 11)))
+        .transition(SupervisionEvent::Behavior(ApplicationEvent::User(
+            User::new(MailAddr(1), 11),
+        )))
         .unwrap();
     assert_eq!(actions.creates.len(), 1);
     assert_eq!(actions.creates[0].nonce, 11);
@@ -217,6 +327,15 @@ fn stable_and_worker_creation_facts_join_in_both_orders() {
         }
 
         assert!(active.is_established(3).unwrap());
+        assert_eq!(active.base().lifecycle.len(), 1);
+        assert!(matches!(
+            active.base().lifecycle[0],
+            SupervisionLifecycle::Ready {
+                proxy: 3,
+                worker: 7,
+                kind: CreationKind::Birth,
+            }
+        ));
         assert!(matches!(
             active.on(worker),
             Err(SuperviseError::UnexpectedWorkerCreation(returned)) if returned == worker
@@ -523,7 +642,7 @@ fn standalone_and_application_owners_share_the_exact_delayed_replacement_law() {
         behavior::RestartTiming::Delayed(Backoff::constant(Duration::from_millis(4)).unwrap()),
     );
     let mut application = Supervise::new(
-        Application,
+        Application::default(),
         ChildTopology::new([3], child),
         configuration,
         behavior::Proxy::new,
@@ -684,4 +803,229 @@ fn shutdown_cancels_a_retained_delayed_batch() {
         .unwrap();
     assert!(stale.sends.owned.replacement_inputs.is_empty());
     assert_eq!(active.pending_restarts(), 0);
+}
+
+#[test]
+fn application_observes_replacement_start_then_exact_replacement_readiness() {
+    let mut active = one().initialize().unwrap().behavior;
+    let proxy_ready = active.on(CreationResolved::birth(3, MailAddr(30))).unwrap();
+    assert_quiet_application_owner!(proxy_ready);
+    let initially_ready = active
+        .on(WorkerCreationResolved::new(
+            3,
+            7,
+            CreationKind::Birth,
+            Ok(()),
+        ))
+        .unwrap();
+    assert_quiet_application_owner!(initially_ready);
+    let stopped = WorkerStopped::new(3, 7, Err(Crash::Failed), Instant::now());
+    let replacement_started = active.on(stopped.clone()).unwrap();
+    assert_eq!(replacement_started.sends.owned.replacement_inputs.len(), 1);
+    assert!(
+        replacement_started
+            .sends
+            .owned
+            .child_observations
+            .is_empty()
+    );
+    assert!(
+        replacement_started
+            .sends
+            .owned
+            .creation_observations
+            .is_empty()
+    );
+    assert!(replacement_started.sends.owned.schedules.is_empty());
+    assert!(replacement_started.sends.owned.failure_reports.is_empty());
+    assert!(replacement_started.sends.owned.shutdowns.is_empty());
+    assert!(replacement_started.sends.inner.is_empty());
+    assert!(replacement_started.creates.is_empty());
+    assert!(matches!(replacement_started.become_, Step::Continue));
+    let replacement_ready = active
+        .on(WorkerCreationResolved::new(
+            3,
+            8,
+            CreationKind::ReplacementIncarnation { replaces: 7 },
+            Ok(()),
+        ))
+        .unwrap();
+    assert_quiet_application_owner!(replacement_ready);
+
+    assert_eq!(active.base().lifecycle.len(), 3);
+    assert!(matches!(
+        &active.base().lifecycle[1],
+        SupervisionLifecycle::ReplacementStarted {
+            trigger,
+            replacing,
+            awaiting_initial,
+        } if trigger == &stopped && replacing.is_empty() && awaiting_initial.is_empty()
+    ));
+    assert!(matches!(
+        active.base().lifecycle[2],
+        SupervisionLifecycle::Ready {
+            proxy: 3,
+            worker: 8,
+            kind: CreationKind::ReplacementIncarnation { replaces: 7 },
+        }
+    ));
+}
+
+#[test]
+fn application_observes_permanent_retirement_when_restart_is_denied() {
+    let mut active = fleet(RestartConfiguration::new(
+        Strategy::OneForOne,
+        RestartPolicy::Permanent,
+        0,
+        Duration::MAX,
+        behavior::RestartTiming::Immediate,
+    ))
+    .initialize()
+    .unwrap()
+    .behavior;
+    let proxy_ready = active.on(CreationResolved::birth(3, MailAddr(30))).unwrap();
+    assert_quiet_application_owner!(proxy_ready);
+    let initially_ready = active
+        .on(WorkerCreationResolved::new(
+            3,
+            7,
+            CreationKind::Birth,
+            Ok(()),
+        ))
+        .unwrap();
+    assert_quiet_application_owner!(initially_ready);
+    let stopped = WorkerStopped::new(3, 7, Err(Crash::Failed), Instant::now());
+    let retired = active.on(stopped.clone()).unwrap();
+    assert!(retired.sends.owned.child_observations.is_empty());
+    assert!(retired.sends.owned.creation_observations.is_empty());
+    assert!(retired.sends.owned.schedules.is_empty());
+    assert!(retired.sends.owned.replacement_inputs.is_empty());
+    assert_eq!(retired.sends.owned.failure_reports.len(), 1);
+    assert!(retired.sends.owned.shutdowns.is_empty());
+    assert!(retired.sends.inner.is_empty());
+    assert!(retired.creates.is_empty());
+    assert!(matches!(retired.become_, Step::Continue));
+
+    assert_eq!(active.base().lifecycle.len(), 2);
+    assert!(matches!(
+        active.base().lifecycle[1],
+        SupervisionLifecycle::Retired {
+            failure: behavior::SupervisionFailure::RestartDenied { child: 3, .. },
+        }
+    ));
+    assert!(!active.is_restartable(3).unwrap());
+}
+
+#[test]
+fn application_observes_shutdown_once_while_installation_is_pending() {
+    let mut active = one().initialize().unwrap().behavior;
+    let shutdown = active.on(ShutdownRequested).unwrap();
+    assert_quiet_application_owner!(shutdown);
+    let duplicate = active.on(ShutdownRequested).unwrap();
+    assert_quiet_application_owner!(duplicate);
+
+    assert_eq!(active.base().lifecycle.len(), 1);
+    assert!(matches!(
+        active.base().lifecycle[0],
+        SupervisionLifecycle::ShuttingDown { ref proxies } if proxies == &[3]
+    ));
+}
+
+fn rejects_ready(lifecycle: &SupervisionLifecycle<MailAddr>) -> bool {
+    matches!(lifecycle, SupervisionLifecycle::Ready { .. })
+}
+
+fn rejects_replacement(lifecycle: &SupervisionLifecycle<MailAddr>) -> bool {
+    matches!(lifecycle, SupervisionLifecycle::ReplacementStarted { .. })
+}
+
+fn rejecting(
+    reject: fn(&SupervisionLifecycle<MailAddr>) -> bool,
+) -> Supervise<RejectingApplication, Child, fn(Child) -> behavior::Proxy<Child>> {
+    Supervise::new(
+        RejectingApplication {
+            reject,
+            accepted: Vec::new(),
+        },
+        ChildTopology::new([3], child),
+        restart(),
+        behavior::Proxy::new as fn(Child) -> behavior::Proxy<Child>,
+    )
+    .unwrap()
+}
+
+#[test]
+fn rejected_ready_event_does_not_commit_the_join_or_consume_the_worker_fact() {
+    let mut active = rejecting(rejects_ready).initialize().unwrap().behavior;
+    let proxy = active.on(CreationResolved::birth(3, MailAddr(30))).unwrap();
+    assert!(proxy.sends.owned.child_observations.is_empty());
+    assert!(proxy.sends.owned.creation_observations.is_empty());
+    assert!(proxy.sends.owned.schedules.is_empty());
+    assert!(proxy.sends.owned.replacement_inputs.is_empty());
+    assert!(proxy.sends.owned.failure_reports.is_empty());
+    assert!(proxy.sends.owned.shutdowns.is_empty());
+    assert!(proxy.sends.inner.is_empty());
+    assert!(proxy.creates.is_empty());
+    assert!(matches!(proxy.become_, Step::Continue));
+    let worker = WorkerCreationResolved::new(3, 7, CreationKind::Birth, Ok(()));
+
+    for _ in 0..2 {
+        assert!(matches!(
+            active.on(worker),
+            Err(SuperviseError::Behavior(SupervisionLifecycle::Ready {
+                proxy: 3,
+                worker: 7,
+                kind: CreationKind::Birth,
+            }))
+        ));
+        assert_eq!(active.base().accepted.len(), 0);
+        assert!(active.is_restartable(3).unwrap());
+    }
+}
+
+#[test]
+fn rejected_replacement_event_does_not_charge_budget_or_commit_unavailability() {
+    let mut active = rejecting(rejects_replacement)
+        .initialize()
+        .unwrap()
+        .behavior;
+    let proxy = active.on(CreationResolved::birth(3, MailAddr(30))).unwrap();
+    assert!(proxy.sends.owned.child_observations.is_empty());
+    assert!(proxy.sends.owned.creation_observations.is_empty());
+    assert!(proxy.sends.owned.schedules.is_empty());
+    assert!(proxy.sends.owned.replacement_inputs.is_empty());
+    assert!(proxy.sends.owned.failure_reports.is_empty());
+    assert!(proxy.sends.owned.shutdowns.is_empty());
+    assert!(proxy.sends.inner.is_empty());
+    assert!(proxy.creates.is_empty());
+    assert!(matches!(proxy.become_, Step::Continue));
+    let ready = active
+        .on(WorkerCreationResolved::new(
+            3,
+            7,
+            CreationKind::Birth,
+            Ok(()),
+        ))
+        .unwrap();
+    assert!(ready.sends.owned.child_observations.is_empty());
+    assert!(ready.sends.owned.creation_observations.is_empty());
+    assert!(ready.sends.owned.schedules.is_empty());
+    assert!(ready.sends.owned.replacement_inputs.is_empty());
+    assert!(ready.sends.owned.failure_reports.is_empty());
+    assert!(ready.sends.owned.shutdowns.is_empty());
+    assert!(ready.sends.inner.is_empty());
+    assert!(ready.creates.is_empty());
+    assert!(matches!(ready.become_, Step::Continue));
+    let stopped = WorkerStopped::new(3, 7, Err(Crash::Failed), Instant::now());
+
+    for _ in 0..2 {
+        assert!(matches!(
+            active.on(stopped.clone()),
+            Err(SuperviseError::Behavior(
+                SupervisionLifecycle::ReplacementStarted { trigger, .. }
+            )) if trigger == stopped
+        ));
+        assert_eq!(active.restarts_in_window(), 0);
+        assert!(active.is_restartable(3).unwrap());
+    }
 }

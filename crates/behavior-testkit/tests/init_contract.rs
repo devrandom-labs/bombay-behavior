@@ -4,8 +4,8 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, Activate, Behavior, BehaviorActed, BehaviorBase, Births, Delivery, MailAddr,
-    Never, Recipient, Step, User,
+    Acted, Actions, Activate, Behavior, BehaviorActed, BehaviorBase, Births, Delivery,
+    EventIngress, Here, MailAddr, Never, Recipient, Step, SupervisionLifecycle, User, UserEvent,
 };
 use std::time::Instant;
 
@@ -44,6 +44,33 @@ fn child(_index: usize) -> Child {
 
 struct FleetApplication;
 
+enum FleetEvent {
+    Lifecycle(SupervisionLifecycle<MailAddr>),
+    User(User<MailAddr, ()>),
+}
+
+impl UserEvent for FleetEvent {
+    type Addr = MailAddr;
+    type Message = ();
+
+    fn user(from: MailAddr, message: ()) -> Self {
+        Self::User(User::new(from, message))
+    }
+
+    fn into_user(self) -> Result<User<MailAddr, ()>, Self> {
+        match self {
+            Self::User(user) => Ok(user),
+            lifecycle => Err(lifecycle),
+        }
+    }
+}
+
+impl EventIngress<Here, SupervisionLifecycle<MailAddr>> for FleetEvent {
+    fn ingress(lifecycle: SupervisionLifecycle<MailAddr>) -> Self {
+        Self::Lifecycle(lifecycle)
+    }
+}
+
 impl behavior::Protocol for FleetApplication {
     type Addr = MailAddr;
     type Msg = ();
@@ -59,13 +86,17 @@ impl BehaviorBase for FleetApplication {
 
 impl Behavior for FleetApplication {
     type Protocol = Self;
-    type Event = User<MailAddr, ()>;
+    type Event = FleetEvent;
     type Sends = Vec<Never>;
     type Ph = Never;
     type Error = Never;
     type Birth = Births<Child>;
 
-    fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
+    fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+        match event {
+            FleetEvent::Lifecycle(_lifecycle) => {}
+            FleetEvent::User(_user) => {}
+        }
         Ok(Actions::cont())
     }
 }

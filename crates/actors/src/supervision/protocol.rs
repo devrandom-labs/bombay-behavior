@@ -83,6 +83,42 @@ impl<C: Behavior<Ph = behavior::Never>>
     }
 }
 
+/// Application-facing evidence of one committed supervised-slot lifecycle change.
+///
+/// This is Bombay policy derived from authoritative creation, termination,
+/// restart-admission, and shutdown facts. It is not an actor-model primitive.
+/// `Ready` identifies the exact worker incarnation by its creator-local nonce;
+/// domain commands still target the stable proxy rather than that replaceable
+/// worker directly.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SupervisionLifecycle<A: Address> {
+    /// Both the stable proxy and this exact worker incarnation have committed.
+    Ready {
+        proxy: A::Nonce,
+        worker: A::Nonce,
+        kind: behavior::CreationKind<A::Nonce>,
+    },
+    /// One atomic restart decision made these slots unavailable.
+    ///
+    /// `trigger` owns the stopped incarnation that caused the decision.
+    /// `replacing` retains exact creation facts for other running members
+    /// selected by one-for-all or rest-for-one. `awaiting_initial` names
+    /// selected slots whose first worker had not committed yet.
+    ReplacementStarted {
+        trigger: WorkerStopped<A>,
+        replacing: Vec<WorkerCreationResolved<A::Nonce>>,
+        awaiting_initial: Vec<A::Nonce>,
+    },
+    /// Restart policy deliberately declined replacement after this stop.
+    RetiredAfterStop { stopped: WorkerStopped<A> },
+    /// A typed topology failure permanently retired the affected slot.
+    Retired {
+        failure: crate::SupervisionFailure<A>,
+    },
+    /// The first accepted shutdown request ended availability for these slots.
+    ShuttingDown { proxies: Vec<A::Nonce> },
+}
+
 /// Application events plus the complete stable-proxy ownership facts.
 pub enum SupervisionEvent<E: UserEvent> {
     Behavior(E),

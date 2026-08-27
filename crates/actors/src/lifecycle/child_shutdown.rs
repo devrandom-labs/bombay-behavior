@@ -553,6 +553,31 @@ pub struct ChildShutdownPhases<B, Available, Phases> {
     phases: PhantomData<fn() -> Phases>,
 }
 
+/// Generic consumer operation for entering the one inferred shutdown-phase builder.
+///
+/// This operation is the associated-output form of [`shutdown_after_children`].
+/// It exists so framework code can carry the returned builder without naming
+/// its closed initial availability proof; it does not introduce another
+/// planner or phase representation.
+pub trait BeginShutdownPhases: Behavior + Sized {
+    type Output;
+
+    #[must_use]
+    fn begin_shutdown_phases(self) -> Self::Output;
+}
+
+impl<B> BeginShutdownPhases for B
+where
+    B: Behavior,
+    <B::Birth as BirthMode>::Child: FoldBirthNode<AvailableChildren>,
+{
+    type Output = ChildShutdownPhases<B, AvailableFor<B>, NoPhases>;
+
+    fn begin_shutdown_phases(self) -> Self::Output {
+        shutdown_after_children(self)
+    }
+}
+
 /// Generic consumer operation for appending one statically valid shutdown phase.
 ///
 /// Framework code can carry [`Output`](Self::Output) without naming the

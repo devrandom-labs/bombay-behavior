@@ -8,7 +8,7 @@ use super::super::policy::{
     ReportSupervisionFailure, RestartPolicy, Strategy, SupervisionFailure,
     SupervisionFailureReaction, retire_on_supervision_failure,
 };
-use super::super::protocol::SupervisionEvent;
+use super::super::protocol::{SupervisionEvent, SupervisionLifecycle};
 use crate::Become;
 use crate::protocol::{
     ObserveChild, ObserveCreation, ReplacementRequested, ScheduleAfter, ShutdownChild,
@@ -16,7 +16,7 @@ use crate::protocol::{
 use crate::{Own, SendInput};
 use behavior::{
     Actions, Address, Behavior, BehaviorLayer, BirthMode, BirthNodeAppend, Births, ChildInput,
-    ChildInputIngress, InterpreterRequests, SendEffects, SendLayer,
+    ChildInputIngress, EventIngress, Here, InterpreterRequests, SendEffects, SendLayer,
 };
 use behavior::{Never, Step};
 
@@ -390,6 +390,12 @@ pub(crate) fn map_ownership_error<E, A: Address>(error: OwnershipError<A>) -> Su
 /// The common supervision event then routes the parent report into `B` as an
 /// ordinary successful domain transition; expected unavailability is never a
 /// supervision-fold failure. A lifecycle-only use needs no such event lane.
+///
+/// The inner application's named domain/system event sum must own
+/// `EventIngress<Here, SupervisionLifecycle<A>>`. Authoritative ownership
+/// transitions fold exactly one lifecycle event through that ingress before
+/// committing the corresponding ownership change. Existing transparent event
+/// layers lift the source-indexed ingress without requiring a structural path.
 pub struct Supervise<B: Behavior, C: Behavior<Ph = Never>, L>
 where
     C::Protocol: crate::Protocol<Addr = crate::BehaviorAddr<B>>,
@@ -569,6 +575,39 @@ where
         )
     }
 
+    fn wrap_ownership_with_inner(
+        &mut self,
+        fold: OwnershipFold<crate::BehaviorAddr<B>, C, L::Output>,
+        inner: Option<Actions<crate::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>>,
+    ) -> Result<
+        Actions<
+            crate::BehaviorAddr<B>,
+            B::Ph,
+            SendLayer<SupervisorSends<crate::BehaviorAddr<B>, C, L::Output>, B::Sends>,
+            Births<<<B::Birth as BirthMode>::Child as BirthNodeAppend<L::Output>>::Output>,
+        >,
+        SuperviseError<B::Error, crate::BehaviorAddr<B>>,
+    > {
+        let inner = inner.unwrap_or_else(Actions::cont);
+        let accepted = match fold.actions.become_ {
+            Step::Continue if self.is_shutting_down() => Step::Continue,
+            Step::Continue => inner.become_,
+            Step::Goto(never) => match never {},
+            Step::Stop(exit) => Step::Stop(exit),
+        };
+        let become_ = self.combine_failure_reactions(fold.failure.as_ref(), accepted);
+        let creates =
+            <<B::Birth as BirthMode>::Child as BirthNodeAppend<L::Output>>::append_creations(
+                inner.creates,
+                fold.actions.creates,
+            );
+        Ok(Actions::new(
+            SendLayer::new(fold.actions.sends, inner.sends),
+            creates,
+            become_,
+        ))
+    }
+
     fn wrap_ownership(
         &mut self,
         fold: OwnershipFold<crate::BehaviorAddr<B>, C, L::Output>,
@@ -581,22 +620,21 @@ where
         >,
         SuperviseError<B::Error, crate::BehaviorAddr<B>>,
     > {
-        let accepted = match fold.actions.become_ {
-            Step::Continue => Step::Continue,
-            Step::Goto(never) => match never {},
-            Step::Stop(exit) => Step::Stop(exit),
-        };
-        let become_ = self.combine_failure_reactions(fold.failure.as_ref(), accepted);
-        let creates =
-            <<B::Birth as BirthMode>::Child as BirthNodeAppend<L::Output>>::append_creations(
-                Vec::new(),
-                fold.actions.creates,
-            );
-        Ok(Actions::new(
-            SendLayer::new(fold.actions.sends, B::Sends::empty()),
-            creates,
-            become_,
-        ))
+        self.wrap_ownership_with_inner(fold, None)
+    }
+
+    fn fold_lifecycle(
+        &mut self,
+        lifecycle: SupervisionLifecycle<crate::BehaviorAddr<B>>,
+    ) -> Result<
+        Actions<crate::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>,
+        SuperviseError<B::Error, crate::BehaviorAddr<B>>,
+    >
+    where
+        B::Event: EventIngress<Here, SupervisionLifecycle<crate::BehaviorAddr<B>>>,
+    {
+        behavior::delegate_transition(&mut self.inner, B::Event::ingress(lifecycle))
+            .map_err(SuperviseError::Behavior)
     }
 }
 
@@ -613,6 +651,7 @@ where
     L::Output: Behavior<Ph = Never, Protocol = C::Protocol>,
     <L::Output as Behavior>::Event: ChildInputIngress<C, ReplacementRequested<C>>,
     <B::Birth as BirthMode>::Child: BirthNodeAppend<L::Output>,
+    B::Event: EventIngress<Here, SupervisionLifecycle<A>>,
 {
     type Protocol = B::Protocol;
     type Event = SupervisionEvent<B::Event>;
@@ -648,26 +687,64 @@ where
         event: Self::Event,
     ) -> crate::BehaviorActed<Self> {
         match event {
-            SupervisionEvent::WorkerStopped(event) => self
-                .ownership
-                .worker_stopped(event)
-                .map_err(map_ownership_error)
-                .and_then(|fold| self.wrap_ownership(fold)),
-            SupervisionEvent::ChildStopped(event) => self
-                .ownership
-                .child_stopped(event)
-                .map_err(map_ownership_error)
-                .and_then(|fold| self.wrap_ownership(fold)),
-            SupervisionEvent::CreationResolved(event) => self
-                .ownership
-                .creation_resolved(event)
-                .map_err(map_ownership_error)
-                .and_then(|fold| self.wrap_ownership(fold)),
-            SupervisionEvent::WorkerCreationResolved(event) => self
-                .ownership
-                .worker_creation_resolved(event)
-                .map_err(map_ownership_error)
-                .and_then(|fold| self.wrap_ownership(fold)),
+            SupervisionEvent::WorkerStopped(event) => {
+                let prepared = self
+                    .ownership
+                    .prepare_worker_stopped(event.clone())
+                    .map_err(map_ownership_error)?;
+                let Some(prepared) = prepared else {
+                    let fold = self
+                        .ownership
+                        .worker_stopped(event)
+                        .map_err(map_ownership_error)?;
+                    return self.wrap_ownership(fold);
+                };
+                let inner = self.fold_lifecycle(prepared.lifecycle())?;
+                let fold = self.ownership.commit_worker_stopped(prepared);
+                self.wrap_ownership_with_inner(fold, Some(inner))
+            }
+            SupervisionEvent::ChildStopped(event) => {
+                let lifecycle = self
+                    .ownership
+                    .child_stopped_lifecycle(&event)
+                    .map_err(map_ownership_error)?;
+                let inner = lifecycle
+                    .map(|lifecycle| self.fold_lifecycle(lifecycle))
+                    .transpose()?;
+                let fold = self
+                    .ownership
+                    .child_stopped(event)
+                    .map_err(map_ownership_error)?;
+                self.wrap_ownership_with_inner(fold, inner)
+            }
+            SupervisionEvent::CreationResolved(event) => {
+                let lifecycle = self
+                    .ownership
+                    .creation_lifecycle(&event)
+                    .map_err(map_ownership_error)?;
+                let inner = lifecycle
+                    .map(|lifecycle| self.fold_lifecycle(lifecycle))
+                    .transpose()?;
+                let fold = self
+                    .ownership
+                    .creation_resolved(event)
+                    .map_err(map_ownership_error)?;
+                self.wrap_ownership_with_inner(fold, inner)
+            }
+            SupervisionEvent::WorkerCreationResolved(event) => {
+                let lifecycle = self
+                    .ownership
+                    .worker_creation_lifecycle(&event)
+                    .map_err(map_ownership_error)?;
+                let inner = lifecycle
+                    .map(|lifecycle| self.fold_lifecycle(lifecycle))
+                    .transpose()?;
+                let fold = self
+                    .ownership
+                    .worker_creation_resolved(event)
+                    .map_err(map_ownership_error)?;
+                self.wrap_ownership_with_inner(fold, inner)
+            }
             SupervisionEvent::TimerElapsed(event) => self
                 .ownership
                 .timer_elapsed(event)
@@ -679,8 +756,13 @@ where
                 Ok(self.wrap(actions))
             }
             SupervisionEvent::ShutdownRequested(_) => {
+                let inner = self
+                    .ownership
+                    .shutdown_lifecycle()
+                    .map(|lifecycle| self.fold_lifecycle(lifecycle))
+                    .transpose()?;
                 let fold = self.ownership.shutdown();
-                self.wrap_ownership(fold)
+                self.wrap_ownership_with_inner(fold, inner)
             }
             SupervisionEvent::ChildShutdownRejected(event) => self
                 .ownership
@@ -727,6 +809,33 @@ mod ownership_tests {
         forwarded: usize,
     }
 
+    enum ParentEvent {
+        Lifecycle(SupervisionLifecycle<MailAddr>),
+        Supervision(SupervisionEvent<User<MailAddr, ()>>),
+    }
+
+    impl behavior::UserEvent for ParentEvent {
+        type Addr = MailAddr;
+        type Message = ();
+
+        fn user(from: MailAddr, message: ()) -> Self {
+            Self::Supervision(SupervisionEvent::Behavior(User::new(from, message)))
+        }
+
+        fn into_user(self) -> Result<User<MailAddr, ()>, Self> {
+            match self {
+                Self::Supervision(event) => event.into_user().map_err(Self::Supervision),
+                lifecycle => Err(lifecycle),
+            }
+        }
+    }
+
+    impl EventIngress<Here, SupervisionLifecycle<MailAddr>> for ParentEvent {
+        fn ingress(lifecycle: SupervisionLifecycle<MailAddr>) -> Self {
+            Self::Lifecycle(lifecycle)
+        }
+    }
+
     impl crate::Protocol for Parent {
         type Addr = MailAddr;
         type Msg = ();
@@ -742,25 +851,26 @@ mod ownership_tests {
 
     impl Behavior for Parent {
         type Protocol = Self;
-        type Event = SupervisionEvent<User<MailAddr, ()>>;
+        type Event = ParentEvent;
         type Sends = Vec<Never>;
         type Ph = Never;
         type Error = Never;
         type Birth = Births<Child>;
 
         fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
-            if matches!(
-                &event,
-                SupervisionEvent::ChildStopped(_) | SupervisionEvent::WorkerStopped(_)
-            ) {
-                self.forwarded += 1;
-            }
-            if matches!(&event, SupervisionEvent::Behavior(_)) {
-                return Ok(Actions::new(
-                    Vec::new(),
-                    vec![Create::birth(2, Child)],
-                    Step::Stop(behavior::Stopped),
-                ));
+            match event {
+                ParentEvent::Lifecycle(_lifecycle) => {}
+                ParentEvent::Supervision(
+                    SupervisionEvent::ChildStopped(_) | SupervisionEvent::WorkerStopped(_),
+                ) => self.forwarded += 1,
+                ParentEvent::Supervision(SupervisionEvent::Behavior(_)) => {
+                    return Ok(Actions::new(
+                        Vec::new(),
+                        vec![Create::birth(2, Child)],
+                        Step::Stop(behavior::Stopped),
+                    ));
+                }
+                ParentEvent::Supervision(_) => {}
             }
             Ok(Actions::cont())
         }
@@ -801,8 +911,12 @@ mod ownership_tests {
         assert_eq!(active.base().forwarded, 0);
 
         let delegated = active
-            .transition(SupervisionEvent::Behavior(SupervisionEvent::ChildStopped(
-                ChildStopped::new(9, Ok(Exit::Normal), Instant::now()),
+            .transition(SupervisionEvent::Behavior(ParentEvent::Supervision(
+                SupervisionEvent::ChildStopped(ChildStopped::new(
+                    9,
+                    Ok(Exit::Normal),
+                    Instant::now(),
+                )),
             )))
             .unwrap();
         assert!(delegated.sends.owned.child_observations.is_empty());
@@ -836,8 +950,8 @@ mod ownership_tests {
         let mut active = definition.initialize().unwrap().behavior;
 
         let acted = active
-            .transition(SupervisionEvent::Behavior(SupervisionEvent::Behavior(
-                User::new(MailAddr(1), ()),
+            .transition(SupervisionEvent::Behavior(ParentEvent::Supervision(
+                SupervisionEvent::Behavior(User::new(MailAddr(1), ())),
             )))
             .unwrap();
 
@@ -972,17 +1086,16 @@ mod ownership_tests {
         assert!(pending_established.creates.is_empty());
         assert!(matches!(pending_established.become_, Step::Continue));
         let created_during_drain = active
-            .transition(SupervisionEvent::Behavior(SupervisionEvent::Behavior(
-                User::new(MailAddr(1), ()),
+            .transition(SupervisionEvent::Behavior(ParentEvent::Supervision(
+                SupervisionEvent::Behavior(User::new(MailAddr(1), ())),
             )))
             .unwrap();
         assert_eq!(created_during_drain.creates.len(), 1);
         assert!(matches!(created_during_drain.become_, Step::Continue));
         let inner_created_during_drain = active
-            .on_path::<_, behavior::Inside<behavior::Here>>(crate::CreationResolved::birth(
-                2,
-                MailAddr(12),
-            ))
+            .transition(SupervisionEvent::Behavior(ParentEvent::Supervision(
+                SupervisionEvent::CreationResolved(crate::CreationResolved::birth(2, MailAddr(12))),
+            )))
             .unwrap();
         assert!(inner_created_during_drain.sends.owned.shutdowns.is_empty());
         assert!(matches!(

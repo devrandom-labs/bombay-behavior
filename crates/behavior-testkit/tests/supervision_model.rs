@@ -8,9 +8,9 @@ use std::time::Duration;
 
 use behavior::{
     Acted, Actions, Behavior, BehaviorActed, BehaviorBase, Births, ChildStopped, Crash, Create,
-    CreationKind, CreationResolved, Delivery, MailAddr, Never, Proxy, ProxyEvent,
-    ReplacementRequested, RestartPolicy, Step, Strategy, Supervise, SuperviseError,
-    SupervisionEvent, User, UserEvent, WorkerCreationResolved, WorkerStopped,
+    CreationKind, CreationResolved, Delivery, EventIngress, Here, MailAddr, Never, Proxy,
+    ProxyEvent, ReplacementRequested, RestartPolicy, Step, Strategy, Supervise, SuperviseError,
+    SupervisionEvent, SupervisionLifecycle, User, UserEvent, WorkerCreationResolved, WorkerStopped,
     stop_on_supervision_failure,
 };
 use behavior_testkit::model::{
@@ -48,7 +48,32 @@ struct BirthingParent {
     births: Vec<u64>,
 }
 
-type ParentEvent = User<MailAddr, u64>;
+enum ParentEvent {
+    Lifecycle(SupervisionLifecycle<MailAddr>),
+    User(User<MailAddr, u64>),
+}
+
+impl UserEvent for ParentEvent {
+    type Addr = MailAddr;
+    type Message = u64;
+
+    fn user(from: MailAddr, message: u64) -> Self {
+        Self::User(User::new(from, message))
+    }
+
+    fn into_user(self) -> Result<User<MailAddr, u64>, Self> {
+        match self {
+            Self::User(user) => Ok(user),
+            lifecycle => Err(lifecycle),
+        }
+    }
+}
+
+impl EventIngress<Here, SupervisionLifecycle<MailAddr>> for ParentEvent {
+    fn ingress(lifecycle: SupervisionLifecycle<MailAddr>) -> Self {
+        Self::Lifecycle(lifecycle)
+    }
+}
 
 impl behavior::Protocol for BirthingParent {
     type Addr = MailAddr;
@@ -72,11 +97,16 @@ impl Behavior for BirthingParent {
     type Birth = Births<Child>;
 
     fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
-        self.births.push(event.message);
-        Ok(Actions::create(vec![Create::birth(
-            event.message,
-            child(0),
-        )]))
+        match event {
+            ParentEvent::Lifecycle(_lifecycle) => Ok(Actions::cont()),
+            ParentEvent::User(event) => {
+                self.births.push(event.message);
+                Ok(Actions::create(vec![Create::birth(
+                    event.message,
+                    child(0),
+                )]))
+            }
+        }
     }
 }
 

@@ -15,15 +15,15 @@ use std::time::Duration;
 use behavior::{
     Acted, Actions, Activate, Become, Behavior, BehaviorBase, BirthMode, BirthNodeAt, Births,
     ChildChoice, ChildHead, ChildShutdownRejected, ChildShutdownRejection, ChildStopped, ChildTail,
-    Crash, Create, CreationKind, CreationRejection, CreationResolved, Delivery, EventLayer, Exit,
-    Here, InjectEvent, Inside, InterpretRequest, InterpretSends, InterpreterRequests,
-    LogicalDeliveryProtocols, Machine, MailAddr, Move, Never, NoBirthProtocols, NoBirths,
-    ObserveChild, PeerStopped, Proxy, ProxyError, ProxyEvent, Recipient, ReplacementRequested,
-    ReportProxyUnavailable, RestartDenial, RestartPolicy, ScheduleAt, SendEffects, SendInterpreter,
-    ShutdownChild, ShutdownRequested, StashRoute, Step, Strategy, Supervise, SupervisionEvent,
-    SupervisionFailure, SupervisionFailureReason, TimerElapsed, TimerGeneration, TimerId, User,
-    UserEvent, Watch, WorkerCreationResolved, WorkerStopped, stop_on_abnormal_death,
-    stop_on_supervision_failure,
+    Crash, Create, CreationKind, CreationRejection, CreationResolved, Delivery, EventIngress,
+    EventLayer, Exit, Here, InjectEvent, Inside, InterpretRequest, InterpretSends,
+    InterpreterRequests, LogicalDeliveryProtocols, Machine, MailAddr, Move, Never,
+    NoBirthProtocols, NoBirths, ObserveChild, PeerStopped, Proxy, ProxyError, ProxyEvent,
+    Recipient, ReplacementRequested, ReportProxyUnavailable, RestartDenial, RestartPolicy,
+    ScheduleAt, SendEffects, SendInterpreter, ShutdownChild, ShutdownRequested, StashRoute, Step,
+    Strategy, Supervise, SupervisionEvent, SupervisionFailure, SupervisionFailureReason,
+    SupervisionLifecycle, TimerElapsed, TimerGeneration, TimerId, User, UserEvent, Watch,
+    WorkerCreationResolved, WorkerStopped, stop_on_abnormal_death, stop_on_supervision_failure,
 };
 use proptest::prelude::*;
 use std::time::Instant;
@@ -727,6 +727,33 @@ type Child = Quiet;
 
 struct Parent;
 
+enum SupervisedEvent {
+    Lifecycle(SupervisionLifecycle<MailAddr>),
+    User(User<MailAddr, u64>),
+}
+
+impl UserEvent for SupervisedEvent {
+    type Addr = MailAddr;
+    type Message = u64;
+
+    fn user(from: MailAddr, message: u64) -> Self {
+        Self::User(User::new(from, message))
+    }
+
+    fn into_user(self) -> Result<User<MailAddr, u64>, Self> {
+        match self {
+            Self::User(user) => Ok(user),
+            lifecycle => Err(lifecycle),
+        }
+    }
+}
+
+impl EventIngress<Here, SupervisionLifecycle<MailAddr>> for SupervisedEvent {
+    fn ingress(lifecycle: SupervisionLifecycle<MailAddr>) -> Self {
+        Self::Lifecycle(lifecycle)
+    }
+}
+
 impl behavior::Protocol for Parent {
     type Addr = MailAddr;
     type Msg = u64;
@@ -742,7 +769,7 @@ impl BehaviorBase for Parent {
 
 impl Behavior for Parent {
     type Protocol = Self;
-    type Event = User<MailAddr, u64>;
+    type Event = SupervisedEvent;
     type Sends = Vec<Never>;
     type Ph = Never;
     type Error = Never;
@@ -753,10 +780,13 @@ impl Behavior for Parent {
         _: behavior::ActiveTurn,
         event: Self::Event,
     ) -> behavior::BehaviorActed<Self> {
-        Ok(Actions::create(vec![Create::birth(
-            event.message,
-            child(0),
-        )]))
+        match event {
+            SupervisedEvent::User(event) => Ok(Actions::create(vec![Create::birth(
+                event.message,
+                child(0),
+            )])),
+            SupervisedEvent::Lifecycle(_lifecycle) => Ok(Actions::cont()),
+        }
     }
 }
 
@@ -1885,7 +1915,7 @@ impl BehaviorBase for BirthingParent {
 
 impl Behavior for BirthingParent {
     type Protocol = Self;
-    type Event = User<MailAddr, u64>;
+    type Event = SupervisedEvent;
     type Sends = Vec<Never>;
     type Ph = Never;
     type Error = Never;
@@ -1896,15 +1926,17 @@ impl Behavior for BirthingParent {
         _: behavior::ActiveTurn,
         event: Self::Event,
     ) -> behavior::BehaviorActed<Self> {
-        match self.0 {
-            false => {
+        match (self.0, event) {
+            (false, SupervisedEvent::User(event)) => {
                 self.0 = true;
                 Ok(Actions::create(vec![Create::birth(
                     event.message,
                     child(0),
                 )]))
             }
-            true => Ok(Actions::cont()),
+            (true, SupervisedEvent::User(_)) | (_, SupervisedEvent::Lifecycle(_)) => {
+                Ok(Actions::cont())
+            }
         }
     }
 }
@@ -1925,7 +1957,7 @@ impl BehaviorBase for ReplacingParent {
 
 impl Behavior for ReplacingParent {
     type Protocol = Self;
-    type Event = User<MailAddr, u64>;
+    type Event = SupervisedEvent;
     type Sends = Vec<Never>;
     type Ph = Never;
     type Error = Never;
@@ -1936,11 +1968,16 @@ impl Behavior for ReplacingParent {
         _: behavior::ActiveTurn,
         event: Self::Event,
     ) -> behavior::BehaviorActed<Self> {
-        Ok(Actions::create(vec![Create::replacement_incarnation(
-            event.message,
-            event.message - 1,
-            child(0),
-        )]))
+        match event {
+            SupervisedEvent::User(event) => {
+                Ok(Actions::create(vec![Create::replacement_incarnation(
+                    event.message,
+                    event.message - 1,
+                    child(0),
+                )]))
+            }
+            SupervisedEvent::Lifecycle(_lifecycle) => Ok(Actions::cont()),
+        }
     }
 }
 

@@ -12,6 +12,118 @@ on the recorded revision. Earlier versions of this file incorrectly declared
 the catalogue complete while several action-loss and hard-coded-path cases
 were still untested; those declarations are not evidence.
 
+## Active owner-contract follow-up ledger
+
+This checkpoint records the four independently reported gaps before any
+production edit. It is not evidence that any gap is closed.
+
+- **Exact blockers and smallest regressions:**
+  1. A generic framework can declare and finish shutdown phases through
+     associated outputs, but cannot begin the one existing inferred builder
+     without naming its hidden initial proof. A compile-only external-consumer
+     regression must call a generic begin operation, declare two roles, and
+     finish without spelling builder states.
+  2. `RelayChildReports` forwards nested ingress but drops root
+     `ShutdownRequested` ingress. Pure-fold regressions must cover the relay,
+     FIFO pool, keyed pool, and relay under another transparent composition;
+     the report lane must remain exactly once.
+  3. `Supervise` retains worker installation and replacement facts but exposes
+     no typed evidence to its inner application. An independent lifecycle trace
+     must observe initial readiness with the exact worker nonce, replacement
+     start/unavailability, replacement readiness, and permanent retirement or
+     restart denial without guessing elapsed time.
+  4. `WorkerPool::new` and `KeyedWorkerPool::new` cannot infer the customer
+     route because no input mentions it. External-user compile tests must
+     compare an associated construction operation, a route witness, and an
+     extension operation, rejecting any dummy value that the pool does not
+     semantically retain.
+- **Source classification:** serialized actor turns, fresh creation, and the
+  absence of a cross-producer arrival-order guarantee are actor-model laws.
+  Root-ingress preservation and the associated-output builder entry are
+  derived static compositions. Lifecycle evidence after a committed ownership
+  transition, its exact fact vocabulary, and restart timing are explicit Bombay
+  policy rather than Agha guarantees.
+- **Expected files:** shutdown builder/re-exports and its interpretation test;
+  report relay plus relay/pool composition tests; supervision protocol,
+  ownership fold, adapter and model/fuzz tests; pool constructors and one
+  external construction test; this audit record. Expected cumulative ceiling:
+  15 changed files.
+- **Expected production delta:** at most `+260 / -40 / net +220`. Tests and
+  documentation are measured separately at each checkpoint.
+- **Expected public API:** add at most three public items: one begin operation,
+  one exhaustive lifecycle fact sum (with data carried in its variants), and
+  one owner-defined pool construction operation only if existing inherent
+  syntax cannot express the inference law. Add no wrapper, alias, builder,
+  route marker, registry, or erased envelope. Remove any superseded public
+  machinery discovered in the same semantic path rather than retaining a
+  compatibility layer.
+- **Existing machinery to reuse:** `shutdown_after_children` and its sole
+  `ChildShutdownPhases` typestate; `InjectEvent`/`ComposedEvent` and the relay's
+  named `SendLayer`; `FixedFleetOwnership`, `OwnershipFold`, and
+  `SupervisionEvent`; `DeliveryRoute`, `Recipient`, `BehaviorLayer`, and the
+  existing FIFO/keyed pool folds. No parallel planner, lifecycle wrapper, or
+  pool factory object is permitted.
+- **Toolchain finding:** the repository pins Rust 1.95. General type-position
+  `!` remains unavailable on that toolchain and on stable 1.98; stabilizing it
+  remains an active Rust 2026 project goal. The existing uninhabited `Never` remains the
+  MSRV-compatible representation. Neither `Never` nor `!` can constrain a
+  customer route generic that occurs in no constructor input.
+
+### Supervision lifecycle design checkpoint
+
+The application-facing lifecycle is one exhaustive event sum, not a wrapper,
+callback, query API, or second supervisor. One authoritative runtime fact may
+produce at most one inner lifecycle event. Multi-slot restart policy is carried
+as one named batch variant so the inner application performs at most one fold
+per outer turn.
+
+| Lifecycle event | Data owned by the variant | Legal source transition |
+|---|---|---|
+| `Ready` | stable proxy nonce, exact worker-incarnation nonce, explicit `CreationKind` | the join becomes complete after either a successful proxy creation or a successful worker creation; a replacement kind identifies replacement readiness |
+| `ReplacementStarted` | complete triggering `WorkerStopped`, exact running-worker creation facts selected by one-for-all/rest-for-one, and stable nonces selected while still awaiting initial creation | one atomic restart admission succeeds; delayed admission is still unavailable and cannot become ready before its matching replacement creation commits |
+| `RetiredAfterStop` | complete `WorkerStopped` | restart policy deliberately declines replacement |
+| `Retired` | complete existing `SupervisionFailure` | restart admission, worker factory, worker creation, proxy creation, or stable-proxy continuity fails permanently |
+| `ShuttingDown` | all stable slot nonces whose availability is ending | the first accepted shutdown request; duplicate shutdown requests produce no second lifecycle event |
+
+The `Ready` join is symmetric: worker-first retains the worker fact without
+notifying, proxy-first retains the proxy fact without notifying, and the
+matching second success emits exactly one event. Duplicate, stale, wrong-kind,
+wrong-nonce, and contradictory facts remain the existing typed errors and emit
+no lifecycle event.
+
+Lifecycle delivery must be an ordinary variant in the inner application's
+named exhaustive domain/system event sum. That sum owns
+`EventIngress<Here, SupervisionLifecycle<A>>`; existing structural
+`EventLayer` compositions lift the source-indexed ingress to it without a
+caller naming or recounting wrapper depth. `Supervise` must not make the lane
+optional, silently discard it, invoke a callback, or queue an
+interpreter-private self-message. Applications needing no lifecycle evidence
+use the standalone `Supervisor` topology owner instead.
+
+Controlled-error atomicity requires a prepare/commit transition:
+
+1. validate the authoritative fact against the current ownership sum;
+2. prepare the next ownership state, effects, and one lifecycle event without
+   mutating ownership (restart admission is calculated on a staged budget and
+   newly built workers remain owned by the plan);
+3. fold the lifecycle event through the inner application;
+4. only after that fold succeeds, commit the prepared ownership state and
+   combine the complete inner and ownership `Actions` products once.
+
+If the inner fold rejects the lifecycle event, the prepared workers are
+dropped and neither the restart budget nor ownership state commits. This
+preserves B7 rather than relying on actor termination to hide partial mutation.
+For lifecycle-free authoritative facts, the existing ownership transition is
+unchanged.
+
+Making this lane truthful is intentionally source-breaking: every current
+`Supervise` inner event that lacks the lane must be migrated explicitly. A scan
+finds 20 source/test/fuzz call-site files in addition to the supervision
+protocol, ownership fold, and adapter. With the nine files already changed in
+this follow-up, the complete migration necessarily exceeds the 15-file review
+checkpoint; compatibility modes would only evade that checkpoint while
+preserving the broken contract.
+
 The audit question is not merely whether a template's fold compiles. For every
 capability or lifecycle fact, the review traces:
 

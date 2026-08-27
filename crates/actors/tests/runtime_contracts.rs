@@ -20,8 +20,8 @@ use behavior_actors::{
     ReportWorkerStopped, RestartConfiguration, RestartPolicy, RestartTiming, ScheduleAfter,
     ScheduleAt, SendLayer, ShutdownChild, ShutdownCoordinator, ShutdownCoordinatorEvent,
     ShutdownPlan, ShutdownRequested, StopOnShutdown, Strategy, Supervise, SupervisionEvent,
-    TerminationMonitor, TimerElapsed, User, Watch, WatchEvent, WorkerCreationResolved, WorkerPool,
-    WorkerStopped,
+    SupervisionLifecycle, TerminationMonitor, TimerElapsed, User, UserEvent, Watch, WatchEvent,
+    WorkerCreationResolved, WorkerPool, WorkerStopped,
 };
 use core::future::Future;
 use core::marker::PhantomData;
@@ -196,7 +196,32 @@ impl behavior::Protocol for Parent {
 
 struct ForwardingParent;
 
-type OwnerEvent = User<MailAddr, ()>;
+enum OwnerEvent {
+    Lifecycle(SupervisionLifecycle<MailAddr>),
+    User(User<MailAddr, ()>),
+}
+
+impl UserEvent for OwnerEvent {
+    type Addr = MailAddr;
+    type Message = ();
+
+    fn user(from: MailAddr, message: ()) -> Self {
+        Self::User(User::new(from, message))
+    }
+
+    fn into_user(self) -> Result<User<MailAddr, ()>, Self> {
+        match self {
+            Self::User(user) => Ok(user),
+            lifecycle => Err(lifecycle),
+        }
+    }
+}
+
+impl EventIngress<Here, SupervisionLifecycle<MailAddr>> for OwnerEvent {
+    fn ingress(lifecycle: SupervisionLifecycle<MailAddr>) -> Self {
+        Self::Lifecycle(lifecycle)
+    }
+}
 
 impl behavior::Protocol for ForwardingParent {
     type Addr = MailAddr;
@@ -224,7 +249,10 @@ impl Behavior for ForwardingParent {
         _: behavior_actors::ActiveTurn,
         event: Self::Event,
     ) -> BehaviorActed<Self> {
-        let _ = event;
+        match event {
+            OwnerEvent::Lifecycle(_lifecycle) => {}
+            OwnerEvent::User(_user) => {}
+        }
         Ok(Actions::send(vec![ChildDelivery::at(
             ChildRoute::<Inert, ChildHead>::new(7),
             (),
@@ -245,7 +273,10 @@ impl Behavior for Parent {
         _: behavior_actors::ActiveTurn,
         event: Self::Event,
     ) -> BehaviorActed<Self> {
-        let _ = event;
+        match event {
+            OwnerEvent::Lifecycle(_lifecycle) => {}
+            OwnerEvent::User(_user) => {}
+        }
         Ok(Actions::create(vec![Create::birth(
             99,
             StopOnShutdown::new(Inert),

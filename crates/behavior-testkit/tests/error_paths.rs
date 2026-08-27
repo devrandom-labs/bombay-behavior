@@ -6,9 +6,10 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, Behavior, BehaviorActed, BehaviorBase, Births, Delivery, Machine, MailAddr,
-    Move, Never, NoBirths, RestartPolicy, Step, Strategy, Supervise, SupervisionEvent, User,
-    UserEvent, restart_all, restart_one, restart_rest,
+    Acted, Actions, Behavior, BehaviorActed, BehaviorBase, Births, Delivery, EventIngress, Here,
+    Machine, MailAddr, Move, Never, NoBirths, RestartPolicy, Step, Strategy, Supervise,
+    SupervisionEvent, SupervisionLifecycle, User, UserEvent, restart_all, restart_one,
+    restart_rest,
 };
 use behavior_testkit::{Mailbox, drive};
 
@@ -53,7 +54,32 @@ struct FailingParent {
     fail: bool,
 }
 
-type ParentEvent = User<MailAddr, u64>;
+enum ParentEvent {
+    Lifecycle(SupervisionLifecycle<MailAddr>),
+    User(User<MailAddr, u64>),
+}
+
+impl UserEvent for ParentEvent {
+    type Addr = MailAddr;
+    type Message = u64;
+
+    fn user(from: MailAddr, message: u64) -> Self {
+        Self::User(User::new(from, message))
+    }
+
+    fn into_user(self) -> Result<User<MailAddr, u64>, Self> {
+        match self {
+            Self::User(user) => Ok(user),
+            lifecycle => Err(lifecycle),
+        }
+    }
+}
+
+impl EventIngress<Here, SupervisionLifecycle<MailAddr>> for ParentEvent {
+    fn ingress(lifecycle: SupervisionLifecycle<MailAddr>) -> Self {
+        Self::Lifecycle(lifecycle)
+    }
+}
 
 impl behavior::Protocol for FailingParent {
     type Addr = MailAddr;
@@ -77,14 +103,19 @@ impl Behavior for FailingParent {
     type Birth = Births<Child>;
 
     fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
-        if self.fail {
-            self.fail = false;
-            return Err(Boom);
+        match event {
+            ParentEvent::Lifecycle(_lifecycle) => Ok(Actions::cont()),
+            ParentEvent::User(event) => {
+                if self.fail {
+                    self.fail = false;
+                    return Err(Boom);
+                }
+                Ok(Actions::create(vec![behavior::Create::birth(
+                    event.message,
+                    child(0),
+                )]))
+            }
         }
-        Ok(Actions::create(vec![behavior::Create::birth(
-            event.message,
-            child(0),
-        )]))
     }
 }
 

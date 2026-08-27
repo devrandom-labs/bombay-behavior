@@ -2,9 +2,9 @@ use std::time::Duration;
 
 use behavior::{
     Acted, Actions, Behavior, BehaviorActed, BehaviorBase, Births, ChildStopped, Crash,
-    CreationKind, CreationResolved, Delivery, Exit, MailAddr, Never, Proxy, ProxyEvent, Recipient,
-    ReplacementRequested, RestartPolicy, Step, Strategy, Supervise, SupervisionEvent, TimerId,
-    User, UserEvent, WorkerStopped,
+    CreationKind, CreationResolved, Delivery, EventIngress, Exit, Here, MailAddr, Never, Proxy,
+    ProxyEvent, Recipient, ReplacementRequested, RestartPolicy, Step, Strategy, Supervise,
+    SupervisionEvent, SupervisionLifecycle, TimerId, User, UserEvent, WorkerStopped,
 };
 use behavior_testkit::{Mailbox, drive};
 use proptest::collection::vec;
@@ -48,6 +48,33 @@ fn child(_index: usize) -> Child {
 
 struct SupervisorHarness;
 
+enum HarnessEvent {
+    Lifecycle(SupervisionLifecycle<MailAddr>),
+    User(User<MailAddr, ()>),
+}
+
+impl UserEvent for HarnessEvent {
+    type Addr = MailAddr;
+    type Message = ();
+
+    fn user(from: MailAddr, message: ()) -> Self {
+        Self::User(User::new(from, message))
+    }
+
+    fn into_user(self) -> Result<User<MailAddr, ()>, Self> {
+        match self {
+            Self::User(user) => Ok(user),
+            lifecycle => Err(lifecycle),
+        }
+    }
+}
+
+impl EventIngress<Here, SupervisionLifecycle<MailAddr>> for HarnessEvent {
+    fn ingress(lifecycle: SupervisionLifecycle<MailAddr>) -> Self {
+        Self::Lifecycle(lifecycle)
+    }
+}
+
 impl behavior::Protocol for SupervisorHarness {
     type Addr = MailAddr;
     type Msg = ();
@@ -63,13 +90,17 @@ impl BehaviorBase for SupervisorHarness {
 
 impl Behavior for SupervisorHarness {
     type Protocol = Self;
-    type Event = User<MailAddr, ()>;
+    type Event = HarnessEvent;
     type Sends = Vec<Never>;
     type Ph = Never;
     type Error = Never;
     type Birth = Births<Child>;
 
-    fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
+    fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+        match event {
+            HarnessEvent::Lifecycle(_lifecycle) => {}
+            HarnessEvent::User(_user) => {}
+        }
         Ok(Actions::cont())
     }
 }

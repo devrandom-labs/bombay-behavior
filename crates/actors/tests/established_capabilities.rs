@@ -3,7 +3,7 @@ use behavior_actors::{
     ChildHead, ChildOccurrence, ChildRole, ChildRoute, ChildTail, ChildTopology, ComposedEvent,
     CreationKind, CreationRejection, DeclaredChildOccurrence, Delivery, DeliveryRoute,
     EndpointAddress, EstablishedCreation, EstablishedDelivery, EstablishedObservation,
-    EstablishedRecipient, EstablishedTerminationMonitor, EventLayer, Exit, Here,
+    EstablishedRecipient, EstablishedTerminationMonitor, EventIngress, EventLayer, Exit, Here,
     HeterogeneousShutdownPlan, Ingress, InjectEvent, InterpretEstablishedDelivery,
     InterpretEstablishedObservation, InterpretEstablishedShutdown, InterpretSends,
     InterpreterRequests, MessageAdapterWithRoute, Never, NoBirths, NoShutdownTargets,
@@ -11,8 +11,8 @@ use behavior_actors::{
     ObserveEstablishedCreation, Protocol, Proxy, ReceiveTimeout, Recipient, ReplyRoute,
     ResolveChildOccurrence, RestartConfiguration, RestartPolicy, SendEffects, SendInterpreter,
     SendLayer, ShutdownChoice, ShutdownEstablished, ShutdownId, ShutdownRequested, Stash,
-    StopOnShutdown, Strategy, Supervise, TerminationMonitorError, TerminationObservation, User,
-    UserEvent, Watch, established_child,
+    StopOnShutdown, Strategy, Supervise, SupervisionLifecycle, TerminationMonitorError,
+    TerminationObservation, User, UserEvent, Watch, established_child,
 };
 use core::future::Future;
 use core::marker::PhantomData;
@@ -126,6 +126,7 @@ impl ChildOccurrence<Parent> for PrimaryWorker {
 type CreationFact = EstablishedCreation<WorkerProtocol, PrimaryWorker>;
 enum ParentEvent {
     Creation(CreationFact),
+    Lifecycle(SupervisionLifecycle<RuntimeAddr>),
     Command(User<RuntimeAddr, ()>),
 }
 
@@ -156,6 +157,12 @@ impl ComposedEvent for ParentEvent {
 impl InjectEvent<CreationFact, Here> for ParentEvent {
     fn inject_at(value: CreationFact) -> Self {
         Self::Creation(value)
+    }
+}
+
+impl EventIngress<Here, SupervisionLifecycle<RuntimeAddr>> for ParentEvent {
+    fn ingress(lifecycle: SupervisionLifecycle<RuntimeAddr>) -> Self {
+        Self::Lifecycle(lifecycle)
     }
 }
 
@@ -223,6 +230,7 @@ impl Behavior for Parent {
     ) -> BehaviorActed<Self> {
         match event {
             ParentEvent::Command(_) => Ok(Actions::cont()),
+            ParentEvent::Lifecycle(_lifecycle) => Ok(Actions::cont()),
             ParentEvent::Creation(fact) => {
                 if !matches!(self.state, ParentState::Awaiting) {
                     return Err(ParentError::StaleCreationFact);

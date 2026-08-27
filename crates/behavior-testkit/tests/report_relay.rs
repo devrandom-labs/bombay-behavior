@@ -3,7 +3,8 @@
 use behavior::composition::{RelayChildReportEvent, RelayChildReports};
 use behavior::{
     Actions, Behavior, BehaviorActed, ChildHead, ChildInputIngress, ChildReport, ChildRoute,
-    EventIngress, MailAddr, Never, NoBirths, Protocol, Step, User, UserEvent,
+    EventIngress, Here, InjectEvent, MailAddr, Never, NoBirths, Protocol, ShutdownRequested, Stash,
+    StashRoute, Step, StopOnShutdown, User, UserEvent,
 };
 
 struct Child;
@@ -135,4 +136,42 @@ fn every_inner_private_child_input_is_preserved_without_naming_its_law() {
             panic!("the relay reinterpreted an inner private input")
         }
     }
+}
+
+#[test]
+fn shutdown_ingress_reaches_the_inner_behavior_at_the_relay_root() {
+    type Subject = RelayChildReports<StopOnShutdown<Domain>, Child, u16>;
+    type Event = <Subject as Behavior>::Event;
+
+    let mut subject = RelayChildReports::<_, Child, u16>::new(StopOnShutdown::new(Domain));
+    let event = <Event as InjectEvent<ShutdownRequested, Here>>::inject_at(ShutdownRequested);
+    let actions = behavior::delegate_transition(&mut subject, event).unwrap();
+
+    assert!(actions.sends.owned.is_empty());
+    assert_eq!(actions.sends.inner.owned, behavior::NoSends);
+    assert!(actions.sends.inner.inner.is_empty());
+    assert!(actions.creates.is_empty());
+    assert!(matches!(actions.become_, Step::Stop(_)));
+}
+
+fn deliver(_: &u8) -> StashRoute {
+    StashRoute::Deliver
+}
+
+#[test]
+fn shutdown_ingress_survives_a_transparent_outer_composition() {
+    type Relay = RelayChildReports<StopOnShutdown<Domain>, Child, u16>;
+    type Subject = Stash<Relay>;
+    type Event = <Subject as Behavior>::Event;
+
+    let relay = RelayChildReports::<_, Child, u16>::new(StopOnShutdown::new(Domain));
+    let mut subject = Stash::new(relay, deliver);
+    let event = <Event as InjectEvent<ShutdownRequested, Here>>::inject_at(ShutdownRequested);
+    let actions = behavior::delegate_transition(&mut subject, event).unwrap();
+
+    assert!(actions.sends.owned.is_empty());
+    assert_eq!(actions.sends.inner.owned, behavior::NoSends);
+    assert!(actions.sends.inner.inner.is_empty());
+    assert!(actions.creates.is_empty());
+    assert!(matches!(actions.become_, Step::Stop(_)));
 }

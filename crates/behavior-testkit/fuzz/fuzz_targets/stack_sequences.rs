@@ -10,9 +10,10 @@
 
 use behavior::EventLayer;
 use behavior::{
-    Acted, Actions, Activate, Crash, Create, CreationKind, Delivery, MailAddr, Never, PeerStopped,
-    Recipient, RestartPolicy, StashRoute, Step, Strategy, SupervisionEvent, TimerElapsed,
-    TimerGeneration, TimerId, UserEvent, WorkerCreationResolved, WorkerStopped,
+    Acted, Actions, Activate, Behavior, BehaviorActed, BehaviorBase, Births, Crash, Create,
+    CreationKind, Delivery, EventIngress, Here, MailAddr, Never, PeerStopped, Recipient,
+    RestartPolicy, StashRoute, Step, Strategy, SupervisionEvent, SupervisionLifecycle,
+    TimerElapsed, TimerGeneration, TimerId, User, UserEvent, WorkerCreationResolved, WorkerStopped,
     stop_on_abnormal_death,
 };
 use libfuzzer_sys::fuzz_target;
@@ -24,29 +25,70 @@ struct EchoingParent {
     seen: Vec<u64>,
 }
 
-#[behavior::behavior(addr = MailAddr, message = u64, sends = Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u64>>>, births = behavior::Births<Echo>, error = Never)]
-impl EchoingParent {
-    fn receive(
-        &mut self,
-        _from: MailAddr,
-        message: u64,
-    ) -> Acted<
-        MailAddr,
-        Never,
-        Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u64>>>,
-        behavior::Births<Echo>,
-        Never,
-    > {
-        self.seen.push(message);
-        Ok(Actions {
-            sends: vec![Delivery::new(Recipient::global(MailAddr(0)), message)],
-            creates: if message == u64::MAX {
-                vec![Create::birth(message, child(0))]
-            } else {
-                Vec::new()
-            },
-            become_: Step::Continue,
-        })
+enum ParentEvent {
+    Lifecycle(SupervisionLifecycle<MailAddr>),
+    User(User<MailAddr, u64>),
+}
+
+impl UserEvent for ParentEvent {
+    type Addr = MailAddr;
+    type Message = u64;
+
+    fn user(from: MailAddr, message: u64) -> Self {
+        Self::User(User::new(from, message))
+    }
+
+    fn into_user(self) -> Result<User<MailAddr, u64>, Self> {
+        match self {
+            Self::User(user) => Ok(user),
+            lifecycle => Err(lifecycle),
+        }
+    }
+}
+
+impl EventIngress<Here, SupervisionLifecycle<MailAddr>> for ParentEvent {
+    fn ingress(lifecycle: SupervisionLifecycle<MailAddr>) -> Self {
+        Self::Lifecycle(lifecycle)
+    }
+}
+
+impl behavior::Protocol for EchoingParent {
+    type Addr = MailAddr;
+    type Msg = u64;
+}
+
+impl BehaviorBase for EchoingParent {
+    type Base = Self;
+
+    fn base(&self) -> &Self::Base {
+        self
+    }
+}
+
+impl Behavior for EchoingParent {
+    type Protocol = Self;
+    type Event = ParentEvent;
+    type Sends = Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u64>>>;
+    type Ph = Never;
+    type Error = Never;
+    type Birth = Births<Echo>;
+
+    fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+        match event {
+            ParentEvent::Lifecycle(_lifecycle) => Ok(Actions::cont()),
+            ParentEvent::User(event) => {
+                self.seen.push(event.message);
+                Ok(Actions {
+                    sends: vec![Delivery::new(Recipient::global(MailAddr(0)), event.message)],
+                    creates: if event.message == u64::MAX {
+                        vec![Create::birth(event.message, child(0))]
+                    } else {
+                        Vec::new()
+                    },
+                    become_: Step::Continue,
+                })
+            }
+        }
     }
 }
 
@@ -106,7 +148,8 @@ fuzz_target!(|bytes: &[u8]| {
                 Strategy::OneForOne,
                 RestartPolicy::Permanent,
                 u32::MAX,
-                std::time::Duration::MAX, behavior::RestartTiming::Immediate
+                std::time::Duration::MAX,
+                behavior::RestartTiming::Immediate,
             ),
             behavior::Proxy::new,
         )

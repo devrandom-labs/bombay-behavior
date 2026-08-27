@@ -24,4 +24,4 @@ pub use policy::{
     SupervisionFailureReaction, restart_all, restart_one, restart_rest,
     retire_on_supervision_failure, stop_on_supervision_failure,
 };
-pub use protocol::{ProxyEvent, ProxyUnavailable, SupervisionEvent};
+pub use protocol::{ProxyEvent, ProxyUnavailable, SupervisionEvent, SupervisionLifecycle};

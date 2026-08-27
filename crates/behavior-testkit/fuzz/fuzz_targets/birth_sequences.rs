@@ -8,9 +8,10 @@
 //! agree.
 
 use behavior::{
-    Acted, Actions, Activate, Crash, Create, CreationKind, CreationResolved, Delivery, MailAddr,
-    Never, RestartDenial, RestartPolicy, Step, Strategy, Supervise, SuperviseError,
-    SupervisionEvent, SupervisionFailure, UserEvent, WorkerCreationResolved, WorkerStopped,
+    Acted, Actions, Activate, Behavior, BehaviorActed, BehaviorBase, Births, Crash, Create,
+    CreationKind, CreationResolved, Delivery, EventIngress, Here, MailAddr, Never, RestartDenial,
+    RestartPolicy, Step, Strategy, Supervise, SuperviseError, SupervisionEvent, SupervisionFailure,
+    SupervisionLifecycle, User, UserEvent, WorkerCreationResolved, WorkerStopped,
 };
 use libfuzzer_sys::fuzz_target;
 use std::time::Instant;
@@ -44,18 +45,63 @@ fn worker(_index: usize) -> Worker {
 
 struct BirthingParent;
 
-#[behavior::behavior(addr = MailAddr, message = u64, sends = Vec<Never>, births = behavior::Births<Worker>, error = Never)]
-impl BirthingParent {
-    fn receive(
-        &mut self,
-        _from: MailAddr,
-        nonce: u64,
-    ) -> Acted<MailAddr, Never, Vec<Never>, behavior::Births<Worker>, Never> {
-        Ok(Actions {
-            sends: Vec::new(),
-            creates: vec![Create::birth(nonce, worker(0))],
-            become_: Step::Continue,
-        })
+enum ParentEvent {
+    Lifecycle(SupervisionLifecycle<MailAddr>),
+    User(User<MailAddr, u64>),
+}
+
+impl UserEvent for ParentEvent {
+    type Addr = MailAddr;
+    type Message = u64;
+
+    fn user(from: MailAddr, message: u64) -> Self {
+        Self::User(User::new(from, message))
+    }
+
+    fn into_user(self) -> Result<User<MailAddr, u64>, Self> {
+        match self {
+            Self::User(user) => Ok(user),
+            lifecycle => Err(lifecycle),
+        }
+    }
+}
+
+impl EventIngress<Here, SupervisionLifecycle<MailAddr>> for ParentEvent {
+    fn ingress(lifecycle: SupervisionLifecycle<MailAddr>) -> Self {
+        Self::Lifecycle(lifecycle)
+    }
+}
+
+impl behavior::Protocol for BirthingParent {
+    type Addr = MailAddr;
+    type Msg = u64;
+}
+
+impl BehaviorBase for BirthingParent {
+    type Base = Self;
+
+    fn base(&self) -> &Self::Base {
+        self
+    }
+}
+
+impl Behavior for BirthingParent {
+    type Protocol = Self;
+    type Event = ParentEvent;
+    type Sends = Vec<Never>;
+    type Ph = Never;
+    type Error = Never;
+    type Birth = Births<Worker>;
+
+    fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+        match event {
+            ParentEvent::Lifecycle(_lifecycle) => Ok(Actions::cont()),
+            ParentEvent::User(event) => Ok(Actions {
+                sends: Vec::new(),
+                creates: vec![Create::birth(event.message, worker(0))],
+                become_: Step::Continue,
+            }),
+        }
     }
 }
 
@@ -81,7 +127,8 @@ fuzz_target!(|bytes: &[u8]| {
                 Strategy::OneForOne,
                 RestartPolicy::Permanent,
                 BUDGET,
-                std::time::Duration::MAX, behavior::RestartTiming::Immediate
+                std::time::Duration::MAX,
+                behavior::RestartTiming::Immediate,
             ),
             behavior::Proxy::new,
         )

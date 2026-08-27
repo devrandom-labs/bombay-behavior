@@ -9,7 +9,7 @@ use crate::protocol::{
 use crate::supervision::adapter::{
     ChildTopology, RestartConfiguration, RestartTiming, SupervisorSends,
 };
-use crate::supervision::{Backoff, RestartPolicy, SupervisionFailure};
+use crate::supervision::{Backoff, RestartPolicy, SupervisionFailure, SupervisionLifecycle};
 use crate::{CreationKind, Exit, ReportSupervisionFailure};
 use behavior::{
     Actions, Address, Behavior, BehaviorLayer, Births, ChildInput, ChildInputIngress, ChildRoute,
@@ -175,7 +175,7 @@ enum Shutdown<N> {
     Draining { awaiting: Vec<N> },
 }
 
-enum Replacement<A, C, Stable>
+pub(crate) struct PreparedWorkerStop<A, C, Stable>
 where
     A: Address,
     A::Nonce: From<u64>,
@@ -183,23 +183,79 @@ where
     C::Protocol: crate::Protocol<Addr = A>,
     Stable: Behavior<Ph = Never, Protocol: crate::Protocol<Addr = A>>,
 {
-    Retire,
+    decision: PreparedWorkerStopDecision<A, C, Stable>,
+}
+
+enum PreparedWorkerStopDecision<A, C, Stable>
+where
+    A: Address,
+    A::Nonce: From<u64>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = A>,
+    Stable: Behavior<Ph = Never, Protocol: crate::Protocol<Addr = A>>,
+{
+    Retire {
+        stopped: WorkerStopped<A>,
+    },
     Accepted {
+        trigger: WorkerStopped<A>,
+        replacing: Vec<WorkerCreationResolved<A::Nonce>>,
+        awaiting_initial: Vec<A::Nonce>,
+        restart: RestartAdmission<A::Nonce>,
+        updates: Vec<(A::Nonce, WorkerInstallation<A, ReplacementInput<C, Stable>>)>,
         inputs: Vec<ReplacementInput<C, Stable>>,
         schedule: Option<ScheduleAfter>,
     },
-    Failed(SupervisionFailure<A>),
+    Failed {
+        stopped: WorkerStopped<A>,
+        failure: SupervisionFailure<A>,
+        restart: Option<RestartAdmission<A::Nonce>>,
+    },
+}
+
+impl<A, C, Stable> PreparedWorkerStop<A, C, Stable>
+where
+    A: Address,
+    A::Nonce: From<u64>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = A>,
+    Stable: Behavior<Ph = Never, Protocol: crate::Protocol<Addr = A>>,
+{
+    pub(crate) fn lifecycle(&self) -> SupervisionLifecycle<A> {
+        match &self.decision {
+            PreparedWorkerStopDecision::Retire { stopped } => {
+                SupervisionLifecycle::RetiredAfterStop {
+                    stopped: stopped.clone(),
+                }
+            }
+            PreparedWorkerStopDecision::Accepted {
+                trigger,
+                replacing,
+                awaiting_initial,
+                ..
+            } => SupervisionLifecycle::ReplacementStarted {
+                trigger: trigger.clone(),
+                replacing: replacing.clone(),
+                awaiting_initial: awaiting_initial.clone(),
+            },
+            PreparedWorkerStopDecision::Failed { failure, .. } => {
+                SupervisionLifecycle::Retired { failure: *failure }
+            }
+        }
+    }
 }
 
 type ReplacementInput<C, Stable> =
     ChildInput<Stable, C, ReplacementRequested<C>, behavior::ChildHead>;
 
+#[derive(Clone)]
 struct DelayCounter<N> {
     trigger: N,
     attempt: u32,
     generation: u64,
 }
 
+#[derive(Clone)]
 struct PendingRestart<N> {
     elapsed: TimerElapsed,
     members: Vec<N>,
@@ -211,6 +267,7 @@ enum TimerSequence {
     Exhausted,
 }
 
+#[derive(Clone)]
 enum RestartAdmission<N> {
     Immediate {
         budget: RestartBudget,
@@ -613,10 +670,22 @@ where
         ))
     }
 
-    fn replacement(
-        &mut self,
-        event: &WorkerStopped<A>,
-    ) -> Result<Replacement<A, C, Stable>, OwnershipError<A>> {
+    pub(crate) fn prepare_worker_stopped(
+        &self,
+        event: WorkerStopped<A>,
+    ) -> Result<Option<PreparedWorkerStop<A, C, Stable>>, OwnershipError<A>> {
+        self.validate_worker_stopped(&event)?;
+        if self.is_shutting_down()
+            || matches!(
+                self.worker(event.proxy),
+                Some(
+                    WorkerInstallation::ReplacementAccepted { .. }
+                        | WorkerInstallation::ReplacementIssuedToRunning { .. }
+                )
+            )
+        {
+            return Ok(None);
+        }
         let eligible = match self.policy {
             RestartPolicy::Permanent => true,
             RestartPolicy::Transient => {
@@ -625,7 +694,9 @@ where
             RestartPolicy::Temporary => false,
         };
         if !eligible {
-            return Ok(Replacement::Retire);
+            return Ok(Some(PreparedWorkerStop {
+                decision: PreparedWorkerStopDecision::Retire { stopped: event },
+            }));
         }
         let failed = self
             .slots
@@ -664,36 +735,37 @@ where
         let replacements = match replacements {
             Ok(replacements) => replacements,
             Err((child, index)) => {
-                self.set_worker(
-                    event.proxy,
-                    WorkerInstallation::RetiredAfterStop {
-                        stopped: event.clone(),
+                let failure = SupervisionFailure::worker_factory_rejected(child, index);
+                return Ok(Some(PreparedWorkerStop {
+                    decision: PreparedWorkerStopDecision::Failed {
+                        stopped: event,
+                        failure,
+                        restart: None,
                     },
-                );
-                return Ok(Replacement::Failed(
-                    SupervisionFailure::worker_factory_rejected(child, index),
-                ));
+                }));
             }
         };
         let members = candidates.iter().map(|(_, nonce)| *nonce).collect();
-        let admitted = match self.restart.admit(event.proxy, event.at, members) {
+        let mut restart = self.restart.clone();
+        let admitted = match restart.admit(event.proxy, event.at, members) {
             Ok(admitted) => admitted,
             Err(reason) => {
-                self.set_worker(
-                    event.proxy,
-                    WorkerInstallation::RetiredAfterStop {
-                        stopped: event.clone(),
+                let failure =
+                    SupervisionFailure::restart_denied(event.proxy, event.outcome, reason);
+                return Ok(Some(PreparedWorkerStop {
+                    decision: PreparedWorkerStopDecision::Failed {
+                        stopped: event,
+                        failure,
+                        restart: Some(restart),
                     },
-                );
-                return Ok(Replacement::Failed(SupervisionFailure::restart_denied(
-                    event.proxy,
-                    event.outcome,
-                    reason,
-                )));
+                }));
             }
         };
         let gate = admitted.gate();
         let mut inputs = Vec::new();
+        let mut updates = Vec::new();
+        let mut replacing = Vec::new();
+        let mut awaiting_initial = Vec::new();
         for ((nonce, child), (_, candidate)) in replacements.into_iter().zip(candidates) {
             let subject = if candidate == event.proxy {
                 ReplacementSubject::Stopped {
@@ -701,10 +773,16 @@ where
                 }
             } else {
                 match self.worker(candidate) {
-                    Some(WorkerInstallation::AwaitingInitial) => ReplacementSubject::InitialPending,
-                    Some(WorkerInstallation::Running { resolved }) => ReplacementSubject::Running {
-                        resolved: *resolved,
-                    },
+                    Some(WorkerInstallation::AwaitingInitial) => {
+                        awaiting_initial.push(candidate);
+                        ReplacementSubject::InitialPending
+                    }
+                    Some(WorkerInstallation::Running { resolved }) => {
+                        replacing.push(*resolved);
+                        ReplacementSubject::Running {
+                            resolved: *resolved,
+                        }
+                    }
                     _ => continue,
                 }
             };
@@ -725,12 +803,19 @@ where
                     request,
                 },
             };
-            self.set_worker(candidate, next);
+            updates.push((candidate, next));
         }
-        Ok(Replacement::Accepted {
-            inputs,
-            schedule: admitted.schedule(),
-        })
+        Ok(Some(PreparedWorkerStop {
+            decision: PreparedWorkerStopDecision::Accepted {
+                trigger: event,
+                replacing,
+                awaiting_initial,
+                restart,
+                updates,
+                inputs,
+                schedule: admitted.schedule(),
+            },
+        }))
     }
 
     pub(crate) fn validate_worker_stopped(
@@ -766,11 +851,64 @@ where
         }
     }
 
+    pub(crate) fn commit_worker_stopped(
+        &mut self,
+        prepared: PreparedWorkerStop<A, C, Stable>,
+    ) -> OwnershipFold<A, C, Stable> {
+        match prepared.decision {
+            PreparedWorkerStopDecision::Retire { stopped } => {
+                self.set_worker(
+                    stopped.proxy,
+                    WorkerInstallation::RetiredAfterStop { stopped },
+                );
+                OwnershipFold::actions(Actions::cont())
+            }
+            PreparedWorkerStopDecision::Accepted {
+                restart,
+                updates,
+                inputs,
+                schedule,
+                ..
+            } => {
+                self.restart = restart;
+                for (proxy, next) in updates {
+                    self.set_worker(proxy, next);
+                }
+                let mut sends = SupervisorSends::empty();
+                sends.replacement_inputs.extend(inputs);
+                if let Some(schedule) = schedule {
+                    sends.schedules.send(schedule);
+                }
+                OwnershipFold::actions(Actions::send(sends))
+            }
+            PreparedWorkerStopDecision::Failed {
+                stopped,
+                failure,
+                restart,
+            } => {
+                if let Some(restart) = restart {
+                    self.restart = restart;
+                }
+                self.set_worker(
+                    stopped.proxy,
+                    WorkerInstallation::RetiredAfterStop { stopped },
+                );
+                let mut sends = SupervisorSends::empty();
+                sends
+                    .failure_reports
+                    .send(ReportSupervisionFailure::new(failure));
+                OwnershipFold::failed(Actions::send(sends), failure)
+            }
+        }
+    }
+
     pub fn worker_stopped(
         &mut self,
         event: WorkerStopped<A>,
     ) -> Result<OwnershipFold<A, C, Stable>, OwnershipError<A>> {
-        self.validate_worker_stopped(&event)?;
+        if let Some(prepared) = self.prepare_worker_stopped(event.clone())? {
+            return Ok(self.commit_worker_stopped(prepared));
+        }
         if self.is_shutting_down() {
             self.set_worker(
                 event.proxy,
@@ -827,30 +965,7 @@ where
             }
             return Ok(OwnershipFold::actions(Actions::send(sends)));
         }
-        match self.replacement(&event)? {
-            Replacement::Retire => {
-                self.set_worker(
-                    event.proxy,
-                    WorkerInstallation::RetiredAfterStop { stopped: event },
-                );
-                Ok(OwnershipFold::actions(Actions::cont()))
-            }
-            Replacement::Accepted { inputs, schedule } => {
-                let mut sends = SupervisorSends::empty();
-                sends.replacement_inputs.extend(inputs);
-                if let Some(schedule) = schedule {
-                    sends.schedules.send(schedule);
-                }
-                Ok(OwnershipFold::actions(Actions::send(sends)))
-            }
-            Replacement::Failed(failure) => {
-                let mut sends = SupervisorSends::empty();
-                sends
-                    .failure_reports
-                    .send(ReportSupervisionFailure::new(failure));
-                Ok(OwnershipFold::failed(Actions::send(sends), failure))
-            }
-        }
+        Err(OwnershipError::UnexpectedWorkerStopped(event))
     }
 
     pub fn child_stopped(
@@ -906,20 +1021,49 @@ where
         Ok(OwnershipFold::failed(Actions::send(sends), failure))
     }
 
-    pub fn creation_resolved(
-        &mut self,
-        event: CreationResolved<A>,
-    ) -> Result<OwnershipFold<A, C, Stable>, OwnershipError<A>> {
+    pub(crate) fn child_stopped_lifecycle(
+        &self,
+        event: &ChildStopped<A>,
+    ) -> Result<Option<SupervisionLifecycle<A>>, OwnershipError<A>> {
+        if let Shutdown::Draining { awaiting } = &self.shutdown {
+            return if awaiting.contains(&event.nonce) {
+                Ok(None)
+            } else {
+                Err(OwnershipError::UnexpectedChildStopped(event.clone()))
+            };
+        }
+        if self.worker(event.nonce).is_none() {
+            return Err(OwnershipError::UnexpectedChildStopped(event.clone()));
+        }
+        let accepts_stop = self.slots.iter().any(|(nonce, slot)| {
+            *nonce == event.nonce
+                && matches!(
+                    slot.installation,
+                    Installation::Pending { .. } | Installation::Established
+                )
+        });
+        if !accepts_stop {
+            return Err(OwnershipError::UnexpectedChildStopped(event.clone()));
+        }
+        Ok(Some(SupervisionLifecycle::Retired {
+            failure: SupervisionFailure::stable_child_stopped(event.nonce, event.outcome),
+        }))
+    }
+
+    fn validate_creation_resolved(
+        &self,
+        event: &CreationResolved<A>,
+    ) -> Result<usize, OwnershipError<A>> {
         let Some(position) = self.slots.iter().position(|(n, _)| *n == event.nonce) else {
-            return Err(OwnershipError::UnexpectedCreation(event));
+            return Err(OwnershipError::UnexpectedCreation(*event));
         };
         let Installation::Pending { kind: expected } = self.slots[position].1.installation else {
-            return Err(OwnershipError::UnexpectedCreation(event));
+            return Err(OwnershipError::UnexpectedCreation(*event));
         };
         if event.kind != expected {
             return Err(OwnershipError::CreationProvenanceMismatch {
                 expected,
-                observed: event,
+                observed: *event,
             });
         }
         if event.result.is_err() {
@@ -932,7 +1076,7 @@ where
                     ..
                 }) => {
                     return Err(OwnershipError::ContradictoryStableAndWorkerCreation {
-                        proxy: event,
+                        proxy: *event,
                         worker: *resolved,
                     });
                 }
@@ -943,13 +1087,51 @@ where
                     ..
                 }) => {
                     return Err(OwnershipError::ContradictoryStableCreationAndWorkerStop {
-                        proxy: event,
+                        proxy: *event,
                         worker: stopped.clone(),
                     });
                 }
                 _ => {}
             }
         }
+        Ok(position)
+    }
+
+    pub(crate) fn creation_lifecycle(
+        &self,
+        event: &CreationResolved<A>,
+    ) -> Result<Option<SupervisionLifecycle<A>>, OwnershipError<A>> {
+        self.validate_creation_resolved(event)?;
+        if self.is_shutting_down() {
+            return Ok(None);
+        }
+        match event.result {
+            Err(rejection) => {
+                let failure = SupervisionFailure::stable_child_creation_rejected(
+                    event.nonce,
+                    event.kind,
+                    rejection,
+                );
+                Ok(Some(SupervisionLifecycle::Retired { failure }))
+            }
+            Ok(_) => Ok(match self.worker(event.nonce) {
+                Some(WorkerInstallation::Running { resolved }) => {
+                    Some(SupervisionLifecycle::Ready {
+                        proxy: event.nonce,
+                        worker: resolved.worker,
+                        kind: resolved.kind,
+                    })
+                }
+                _ => None,
+            }),
+        }
+    }
+
+    pub fn creation_resolved(
+        &mut self,
+        event: CreationResolved<A>,
+    ) -> Result<OwnershipFold<A, C, Stable>, OwnershipError<A>> {
+        let position = self.validate_creation_resolved(&event)?;
         self.slots[position].1.installation = match event.result {
             Ok(_) => Installation::Established,
             Err(rejection) => Installation::Rejected {
@@ -987,6 +1169,45 @@ where
             Some(failure) => OwnershipFold::failed(Actions::send(sends), failure),
             None => OwnershipFold::actions(Actions::cont()),
         })
+    }
+
+    pub(crate) fn worker_creation_lifecycle(
+        &self,
+        event: &WorkerCreationResolved<A::Nonce>,
+    ) -> Result<Option<SupervisionLifecycle<A>>, OwnershipError<A>> {
+        let expected = self.validate_worker_creation_resolved(event)?;
+        if self.is_shutting_down() {
+            return Ok(None);
+        }
+        match event.result {
+            Err(rejection) => {
+                let failure = SupervisionFailure::worker_creation_rejected(
+                    event.proxy,
+                    event.worker,
+                    expected,
+                    rejection,
+                );
+                Ok(Some(SupervisionLifecycle::Retired { failure }))
+            }
+            Ok(()) => {
+                let established = self.slots.iter().any(|(proxy, slot)| {
+                    *proxy == event.proxy && slot.installation == Installation::Established
+                });
+                Ok((established
+                    && matches!(
+                        self.worker(event.proxy),
+                        Some(
+                            WorkerInstallation::AwaitingInitial
+                                | WorkerInstallation::AwaitingReplacement { .. }
+                        )
+                    ))
+                .then_some(SupervisionLifecycle::Ready {
+                    proxy: event.proxy,
+                    worker: event.worker,
+                    kind: event.kind,
+                }))
+            }
+        }
     }
 
     pub fn worker_creation_resolved(
@@ -1196,6 +1417,24 @@ where
         }
         self.shutdown = Shutdown::Draining { awaiting };
         OwnershipFold::actions(Actions::send(sends))
+    }
+
+    pub(crate) fn shutdown_lifecycle(&self) -> Option<SupervisionLifecycle<A>> {
+        if self.is_shutting_down() {
+            return None;
+        }
+        let proxies = self
+            .slots
+            .iter()
+            .filter_map(|(nonce, slot)| {
+                matches!(
+                    slot.installation,
+                    Installation::Pending { .. } | Installation::Established
+                )
+                .then_some(*nonce)
+            })
+            .collect();
+        Some(SupervisionLifecycle::ShuttingDown { proxies })
     }
 
     pub fn child_shutdown_rejected(

@@ -1,8 +1,9 @@
 //! Structural relaying of one direct-child report across one parent edge.
 
+use crate::ShutdownRequested;
 use behavior::{
     Actions, Address, Behavior, BehaviorActed, ChildInputIngress, ChildReport, ChildRoute,
-    ComposedEvent, EventIngress, InjectEvent, Inside, InterpreterRequests, ReportToParent,
+    ComposedEvent, EventIngress, Here, InjectEvent, Inside, InterpreterRequests, ReportToParent,
     SendEffects, SendLayer, User, UserEvent,
 };
 
@@ -76,6 +77,17 @@ where
     Inner: UserEvent<Addr = A> + InjectEvent<Input, Path>,
 {
     fn inject_at(input: Input) -> Self {
+        Self::Inner(Inner::inject_at(input))
+    }
+}
+
+impl<A, Child, Report, Inner> InjectEvent<ShutdownRequested, Here>
+    for RelayChildReportEvent<A, Child, Report, Inner>
+where
+    A: Address,
+    Inner: UserEvent<Addr = A> + InjectEvent<ShutdownRequested, Here>,
+{
+    fn inject_at(input: ShutdownRequested) -> Self {
         Self::Inner(Inner::inject_at(input))
     }
 }

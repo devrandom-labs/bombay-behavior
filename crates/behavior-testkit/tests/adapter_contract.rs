@@ -2,10 +2,11 @@ use std::time::{Duration, Instant};
 
 use behavior::{
     Actions, Activate, Behavior, BehaviorActed, BehaviorBase, Births, ChildChoice, ChildTopology,
-    Create, Delivery, InterpreterRequests, JobId, MailAddr, Never, NoBirths, ObserveChild,
-    PoolAssignment, PoolConfiguration, PoolMessage, PoolResponse, Proxy, Recipient,
-    RestartConfiguration, RestartPolicy, StashRoute, Step, Strategy, Supervise, SupervisorSends,
-    TimerId, User, WorkerPool, WorkerPoolProtocol,
+    Create, Delivery, EventIngress, Here, InterpreterRequests, JobId, MailAddr, Never, NoBirths,
+    ObserveChild, PoolAssignment, PoolConfiguration, PoolMessage, PoolResponse, Proxy, Recipient,
+    RestartConfiguration, RestartPolicy, StashRoute, Step, Strategy, Supervise,
+    SupervisionLifecycle, SupervisorSends, TimerId, User, UserEvent, WorkerPool,
+    WorkerPoolProtocol,
 };
 
 struct Sink;
@@ -132,6 +133,33 @@ impl Behavior for Child {
 
 struct Parent;
 
+enum ParentEvent {
+    Lifecycle(SupervisionLifecycle<MailAddr>),
+    User(User<MailAddr, ()>),
+}
+
+impl UserEvent for ParentEvent {
+    type Addr = MailAddr;
+    type Message = ();
+
+    fn user(from: MailAddr, message: ()) -> Self {
+        Self::User(User::new(from, message))
+    }
+
+    fn into_user(self) -> Result<User<MailAddr, ()>, Self> {
+        match self {
+            Self::User(user) => Ok(user),
+            lifecycle => Err(lifecycle),
+        }
+    }
+}
+
+impl EventIngress<Here, SupervisionLifecycle<MailAddr>> for ParentEvent {
+    fn ingress(lifecycle: SupervisionLifecycle<MailAddr>) -> Self {
+        Self::Lifecycle(lifecycle)
+    }
+}
+
 impl behavior::Protocol for Parent {
     type Addr = MailAddr;
     type Msg = ();
@@ -139,7 +167,7 @@ impl behavior::Protocol for Parent {
 
 impl Behavior for Parent {
     type Protocol = Self;
-    type Event = User<MailAddr, ()>;
+    type Event = ParentEvent;
     type Sends = Vec<Never>;
     type Ph = Never;
     type Error = Never;
@@ -149,7 +177,11 @@ impl Behavior for Parent {
         Ok(Actions::create(vec![Create::birth(9, Child)]))
     }
 
-    fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
+    fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+        match event {
+            ParentEvent::Lifecycle(_lifecycle) => {}
+            ParentEvent::User(_user) => {}
+        }
         Ok(Actions::cont())
     }
 }

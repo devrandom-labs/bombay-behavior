@@ -67,19 +67,19 @@ pub use discovery::{
     ResolverConfigError, ResolverMessage, Topic, TopicError, TopicMembership, TopicMessage,
 };
 pub use lifecycle::{
-    ChildCreationExpectation, ChildShutdownPhases, ChildShutdownPlanError, ChildTermination,
-    DeclareShutdownPhase, EstablishedTerminationMonitor, EstablishedTerminationReaction,
-    EstablishedTerminationTarget, FinishShutdownPhases, HeterogeneousShutdownCoordinator,
-    HeterogeneousShutdownPlan, HeterogeneousShutdownSends, InstallShutdownPlan,
-    LogicalTerminationTarget, NoShutdownTargets, PeerTermination, PropagateTermination,
-    ReportShutdownPlan, ShutdownChoice, ShutdownCoordinator, ShutdownCoordinatorError,
-    ShutdownCoordinatorEvent, ShutdownPlan, ShutdownPlanError, ShutdownState, ShutdownTargetAt,
-    ShutdownTree, ShutdownTreeError, Task, TaskError, TaskMessage, TaskResult, TaskState,
-    TerminalDisposition, TerminalPropagationPolicy, TerminalPropagationSends,
-    TerminalPropagationState, TerminationMonitor, TerminationMonitorError, TerminationMonitorWith,
-    TerminationObservation, TerminationObservationTarget, TerminationPropagationError,
-    TerminationReaction, TerminationTarget, propagate_abnormal, propagate_all,
-    shutdown_after_children, shutdown_target,
+    BeginShutdownPhases, ChildCreationExpectation, ChildShutdownPhases, ChildShutdownPlanError,
+    ChildTermination, DeclareShutdownPhase, EstablishedTerminationMonitor,
+    EstablishedTerminationReaction, EstablishedTerminationTarget, FinishShutdownPhases,
+    HeterogeneousShutdownCoordinator, HeterogeneousShutdownPlan, HeterogeneousShutdownSends,
+    InstallShutdownPlan, LogicalTerminationTarget, NoShutdownTargets, PeerTermination,
+    PropagateTermination, ReportShutdownPlan, ShutdownChoice, ShutdownCoordinator,
+    ShutdownCoordinatorError, ShutdownCoordinatorEvent, ShutdownPlan, ShutdownPlanError,
+    ShutdownState, ShutdownTargetAt, ShutdownTree, ShutdownTreeError, Task, TaskError, TaskMessage,
+    TaskResult, TaskState, TerminalDisposition, TerminalPropagationPolicy,
+    TerminalPropagationSends, TerminalPropagationState, TerminationMonitor,
+    TerminationMonitorError, TerminationMonitorWith, TerminationObservation,
+    TerminationObservationTarget, TerminationPropagationError, TerminationReaction,
+    TerminationTarget, propagate_abnormal, propagate_all, shutdown_after_children, shutdown_target,
 };
 pub use machine::{Machine, MachineError, Move};
 pub use operations::{
@@ -95,9 +95,9 @@ pub use persistence::{
 pub use pool::{
     AffinitySelector, AssignmentId, CompletionRejection, InterruptionPolicy, JobId,
     KeyedPoolMessage, KeyedWorkerPool, KeyedWorkerPoolEvent, PoolAssignment, PoolCompletion,
-    PoolConfigError, PoolConfiguration, PoolError, PoolFailure, PoolInterruption, PoolMessage,
-    PoolRejection, PoolResponse, PoolSends, RebalanceRejection, WorkerPhase, WorkerPool,
-    WorkerPoolEvent, WorkerRetirement,
+    PoolConfigError, PoolConfiguration, PoolCustomer, PoolError, PoolFailure, PoolInterruption,
+    PoolMessage, PoolRejection, PoolResponse, PoolSends, RebalanceRejection, WorkerPhase,
+    WorkerPool, WorkerPoolEvent, WorkerRetirement,
 };
 pub use protocol::{
     CancelObservation, ChildShutdownRejected, ChildShutdownRejection, ChildStopped,
@@ -138,9 +138,9 @@ pub use supervision::{
     DynamicSupervisorSends, FleetError, IncarnationPhase, Proxy, ProxyError, ProxyEvent,
     ProxyLifecycleError, ProxySends, ProxyUnavailable, ReportSupervisionFailure,
     RestartConfiguration, RestartPolicy, RestartTiming, Strategy, Supervise, SuperviseError,
-    SupervisionEvent, SupervisionFailure, SupervisionFailureReaction, Supervisor, SupervisorSends,
-    restart_all, restart_one, restart_rest, retire_on_supervision_failure,
-    stop_on_supervision_failure,
+    SupervisionEvent, SupervisionFailure, SupervisionFailureReaction, SupervisionLifecycle,
+    Supervisor, SupervisorSends, restart_all, restart_one, restart_rest,
+    retire_on_supervision_failure, stop_on_supervision_failure,
 };
 pub use termination::{
     Crash, Exit, ReportTerminalOutcome, RestartDenial, SupervisionFailureReason, TerminalOutcome,

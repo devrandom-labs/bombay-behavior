@@ -90,6 +90,77 @@ fn fifo_and_keyed_pool_construction_needs_no_composed_behavior_alias() {
         )
         .unwrap(),
     );
+
+    type Fifo = WorkerPool<MailAddr, u8, u16, Worker, Recipient<Replies>, StableLayer>;
+    type Keyed = KeyedWorkerPool<
+        MailAddr,
+        u8,
+        u8,
+        u16,
+        Worker,
+        Recipient<Replies>,
+        fn(&u8) -> u64,
+        StableLayer,
+    >;
+    type FifoStable = <<Fifo as Behavior>::Birth as BirthMode>::Child;
+    type KeyedStable = <<Keyed as Behavior>::Birth as BirthMode>::Child;
+
+    fn accepts_shutdown<B: Behavior>()
+    where
+        B::Event: InjectEvent<ShutdownRequested, Here>,
+    {
+    }
+
+    accepts_shutdown::<FifoStable>();
+    accepts_shutdown::<KeyedStable>();
+}
+
+#[test]
+fn customer_protocol_owns_the_inferred_logical_pool_construction() {
+    let configuration = || {
+        PoolConfiguration::new(
+            4,
+            InterruptionPolicy::Retry,
+            RestartPolicy::Permanent,
+            2,
+            Duration::from_secs(30),
+            behavior_actors::RestartTiming::Immediate,
+        )
+    };
+
+    let fifo = Replies::worker_pool(
+        ChildTopology::new([7], |_| Some(Worker)),
+        configuration(),
+        Proxy::new,
+    )
+    .unwrap();
+    let keyed = Replies::keyed_worker_pool(
+        ChildTopology::new([7], |_| Some(Worker)),
+        configuration(),
+        |_: &u8| 7,
+        Proxy::new,
+    )
+    .unwrap();
+
+    fn accepts_fifo<B>(_: B)
+    where
+        B: Behavior,
+        B::Protocol:
+            Protocol<Addr = MailAddr, Msg = PoolMessage<MailAddr, u8, u16, Recipient<Replies>>>,
+    {
+    }
+    fn accepts_keyed<B>(_: B)
+    where
+        B: Behavior,
+        B::Protocol: Protocol<
+                Addr = MailAddr,
+                Msg = KeyedPoolMessage<MailAddr, u8, u8, u16, Recipient<Replies>>,
+            >,
+    {
+    }
+
+    accepts_fifo(fifo);
+    accepts_keyed(keyed);
 }
 
 type StableLayer = fn(Worker) -> Proxy<Worker>;

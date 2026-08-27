@@ -9,8 +9,8 @@ mod termination_propagation;
 pub use crate::shutdown::{FinalizeOnShutdown, ShutdownEvent, ShutdownReaction, StopOnShutdown};
 pub use crate::watch::{LinkReaction, Watch, WatchEvent, stop_on_abnormal_death};
 pub use child_shutdown::{
-    ChildCreationExpectation, ChildShutdownPhases, ChildShutdownPlanError, DeclareShutdownPhase,
-    FinishShutdownPhases, shutdown_after_children,
+    BeginShutdownPhases, ChildCreationExpectation, ChildShutdownPhases, ChildShutdownPlanError,
+    DeclareShutdownPhase, FinishShutdownPhases, shutdown_after_children,
 };
 pub use shutdown_coordinator::{
     HeterogeneousShutdownCoordinator, HeterogeneousShutdownPlan, HeterogeneousShutdownSends,

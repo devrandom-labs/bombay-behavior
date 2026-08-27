@@ -7,8 +7,9 @@ use std::time::Duration;
 
 use behavior::EventLayer;
 use behavior::{
-    Acted, Actions, Crash, Create, CreationKind, Delivery, Exit, Machine, MailAddr, Move, Never,
-    Proxy, Recipient, RestartPolicy, StashRoute, Step, Strategy, Supervise, SupervisionEvent,
+    Acted, Actions, Behavior, BehaviorActed, BehaviorBase, Births, Crash, Create, CreationKind,
+    Delivery, EventIngress, Exit, Here, Machine, MailAddr, Move, Never, Proxy, Recipient,
+    RestartPolicy, StashRoute, Step, Strategy, Supervise, SupervisionEvent, SupervisionLifecycle,
     TimerElapsed, TimerGeneration, TimerId, User, UserEvent, WorkerCreationResolved, WorkerStopped,
 };
 use std::time::Instant;
@@ -94,17 +95,64 @@ type Child = Recorder;
 
 struct Parent;
 
-#[behavior::behavior(addr = MailAddr, message = u64, sends = Vec<Never>, births = behavior::Births<Child>, error = Never)]
-impl Parent {
-    fn receive(
-        &mut self,
-        _from: MailAddr,
-        message: u64,
-    ) -> Acted<MailAddr, Never, Vec<Never>, behavior::Births<Child>, Never> {
-        if message == u64::MAX {
-            Ok(Actions::create(vec![Create::birth(message, child(0))]))
-        } else {
-            Ok(Actions::cont())
+enum ParentEvent {
+    Lifecycle(SupervisionLifecycle<MailAddr>),
+    User(User<MailAddr, u64>),
+}
+
+impl UserEvent for ParentEvent {
+    type Addr = MailAddr;
+    type Message = u64;
+
+    fn user(from: MailAddr, message: u64) -> Self {
+        Self::User(User::new(from, message))
+    }
+
+    fn into_user(self) -> Result<User<MailAddr, u64>, Self> {
+        match self {
+            Self::User(user) => Ok(user),
+            lifecycle => Err(lifecycle),
+        }
+    }
+}
+
+impl EventIngress<Here, SupervisionLifecycle<MailAddr>> for ParentEvent {
+    fn ingress(lifecycle: SupervisionLifecycle<MailAddr>) -> Self {
+        Self::Lifecycle(lifecycle)
+    }
+}
+
+impl behavior::Protocol for Parent {
+    type Addr = MailAddr;
+    type Msg = u64;
+}
+
+impl BehaviorBase for Parent {
+    type Base = Self;
+
+    fn base(&self) -> &Self::Base {
+        self
+    }
+}
+
+impl Behavior for Parent {
+    type Protocol = Self;
+    type Event = ParentEvent;
+    type Sends = Vec<Never>;
+    type Ph = Never;
+    type Error = Never;
+    type Birth = Births<Child>;
+
+    fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+        match event {
+            ParentEvent::Lifecycle(_lifecycle) => Ok(Actions::cont()),
+            ParentEvent::User(event) if event.message == u64::MAX => {
+                Ok(Actions::create(vec![Create::birth(
+                    event.message,
+                    child(0),
+                )]))
+            }
+            ParentEvent::User(_) => Ok(Actions::cont()),
         }
     }
 }
@@ -114,22 +162,41 @@ struct BirthingParent {
     born: bool,
 }
 
-#[behavior::behavior(addr = MailAddr, message = u64, sends = Vec<Never>, births = behavior::Births<Child>, error = Never)]
-impl BirthingParent {
-    fn receive(
-        &mut self,
-        _from: MailAddr,
-        nonce: u64,
-    ) -> Acted<MailAddr, Never, Vec<Never>, behavior::Births<Child>, Never> {
-        if self.born {
+impl behavior::Protocol for BirthingParent {
+    type Addr = MailAddr;
+    type Msg = u64;
+}
+
+impl BehaviorBase for BirthingParent {
+    type Base = Self;
+
+    fn base(&self) -> &Self::Base {
+        self
+    }
+}
+
+impl Behavior for BirthingParent {
+    type Protocol = Self;
+    type Event = ParentEvent;
+    type Sends = Vec<Never>;
+    type Ph = Never;
+    type Error = Never;
+    type Birth = Births<Child>;
+
+    fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+        let ParentEvent::User(event) = event else {
             return Ok(Actions::cont());
+        };
+        if self.born {
+            Ok(Actions::cont())
+        } else {
+            self.born = true;
+            Ok(Actions {
+                sends: Vec::new(),
+                creates: vec![Create::birth(event.message, child(0))],
+                become_: Step::Continue,
+            })
         }
-        self.born = true;
-        Ok(Actions {
-            sends: Vec::new(),
-            creates: vec![Create::birth(nonce, child(0))],
-            become_: Step::Continue,
-        })
     }
 }
 
@@ -159,7 +226,7 @@ macro_rules! supervisor {
     };
 }
 
-type SupervisorEvent = SupervisionEvent<User<MailAddr, u64>>;
+type SupervisorEvent = SupervisionEvent<ParentEvent>;
 
 fn stopped(nonce: u64, outcome: Result<Exit<MailAddr>, Crash>, at: Instant) -> SupervisorEvent {
     stopped_worker(nonce, nonce, outcome, at)

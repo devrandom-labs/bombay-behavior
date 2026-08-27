@@ -7,6 +7,7 @@ use std::time::Instant;
 use crate::RestartDenial;
 
 /// A sliding-window restart budget.
+#[derive(Clone)]
 pub(crate) struct RestartBudget {
     maximum: u32,
     window: Duration,

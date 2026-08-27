@@ -4,11 +4,12 @@ use std::time::{Duration, Instant};
 
 use behavior::{
     Activate as _, Cache, CacheConfiguration, CacheMessage, CacheResult, ChildTopology,
-    CreationResolved, Deadline, FinalizeOnShutdown, OneShot, PeerTermination, Periodic,
-    PriorityQueue, PriorityQueueMessage, PriorityQueueOutcome, PropagateTermination, Proxy,
-    ReceiveTimeout, RestartConfiguration, RestartPolicy, RoundRobin, Router, RouterMessage,
-    ShutdownRequested, Stash, StashRoute, StopOnShutdown, Strategy, Supervise, TerminationMonitor,
-    TimerId, User, Watch, propagate_all, stop_on_abnormal_death,
+    CreationResolved, Deadline, EventIngress, FinalizeOnShutdown, Here, OneShot, PeerTermination,
+    Periodic, PriorityQueue, PriorityQueueMessage, PriorityQueueOutcome, PropagateTermination,
+    Proxy, ReceiveTimeout, RestartConfiguration, RestartPolicy, RoundRobin, Router, RouterMessage,
+    ShutdownRequested, Stash, StashRoute, StopOnShutdown, Strategy, Supervise,
+    SupervisionLifecycle, TerminationMonitor, TimerId, User, UserEvent, Watch, propagate_all,
+    stop_on_abnormal_death,
 };
 use foundation::{
     Actions, Behavior, BehaviorActed, BehaviorBase, BehaviorLayer, CreationKind, Delivery,
@@ -46,6 +47,33 @@ fn queue() -> Queue {
 
 struct QueueApplication;
 
+enum QueueApplicationEvent {
+    Lifecycle(SupervisionLifecycle<MailAddr>),
+    User(User<MailAddr, ()>),
+}
+
+impl UserEvent for QueueApplicationEvent {
+    type Addr = MailAddr;
+    type Message = ();
+
+    fn user(from: MailAddr, message: ()) -> Self {
+        Self::User(User::new(from, message))
+    }
+
+    fn into_user(self) -> Result<User<MailAddr, ()>, Self> {
+        match self {
+            Self::User(user) => Ok(user),
+            lifecycle => Err(lifecycle),
+        }
+    }
+}
+
+impl EventIngress<Here, SupervisionLifecycle<MailAddr>> for QueueApplicationEvent {
+    fn ingress(lifecycle: SupervisionLifecycle<MailAddr>) -> Self {
+        Self::Lifecycle(lifecycle)
+    }
+}
+
 impl Protocol for QueueApplication {
     type Addr = MailAddr;
     type Msg = ();
@@ -61,13 +89,17 @@ impl BehaviorBase for QueueApplication {
 
 impl Behavior for QueueApplication {
     type Protocol = Self;
-    type Event = User<MailAddr, ()>;
+    type Event = QueueApplicationEvent;
     type Sends = Vec<Never>;
     type Ph = Never;
     type Error = Never;
     type Birth = NoBirths;
 
-    fn transition(&mut self, _: foundation::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
+    fn transition(&mut self, _: foundation::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+        match event {
+            QueueApplicationEvent::Lifecycle(_lifecycle) => {}
+            QueueApplicationEvent::User(_user) => {}
+        }
         Ok(Actions::cont())
     }
 }

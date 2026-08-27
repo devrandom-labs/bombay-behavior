@@ -90,6 +90,7 @@ impl Protocol for PaymentApp {
 #[derive(Debug, PartialEq, Eq)]
 enum RecoveringEvent {
     Command(User<RuntimeAddr, Payment>),
+    Lifecycle(SupervisionLifecycle<RuntimeAddr>),
     Unavailable(ProxyUnavailable<RuntimeAddr, Payment>),
 }
 
@@ -117,6 +118,12 @@ impl
 {
     fn ingress(unavailable: ProxyUnavailable<RuntimeAddr, Payment>) -> Self {
         Self::Unavailable(unavailable)
+    }
+}
+
+impl EventIngress<Here, SupervisionLifecycle<RuntimeAddr>> for RecoveringEvent {
+    fn ingress(lifecycle: SupervisionLifecycle<RuntimeAddr>) -> Self {
+        Self::Lifecycle(lifecycle)
     }
 }
 
@@ -148,6 +155,7 @@ impl Behavior for RecoveringApp {
     fn transition(&mut self, _: ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
         match event {
             RecoveringEvent::Command(_) => {}
+            RecoveringEvent::Lifecycle(_lifecycle) => {}
             RecoveringEvent::Unavailable(unavailable) => self.returned.push(unavailable),
         }
         Ok(Actions::cont())
@@ -164,14 +172,18 @@ impl BehaviorBase for PaymentApp {
 
 impl Behavior for PaymentApp {
     type Protocol = Self;
-    type Event = User<RuntimeAddr, Payment>;
+    type Event = RecoveringEvent;
     type Sends = NoSends;
     type Ph = Never;
     type Error = Never;
     type Birth = Births<PaymentWorker>;
 
     fn transition(&mut self, _: ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
-        let _ = event;
+        match event {
+            RecoveringEvent::Command(_command) => {}
+            RecoveringEvent::Lifecycle(_lifecycle) => {}
+            RecoveringEvent::Unavailable(_unavailable) => {}
+        }
         Ok(Actions::cont())
     }
 }

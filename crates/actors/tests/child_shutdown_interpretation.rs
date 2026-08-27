@@ -242,6 +242,13 @@ where
     builder.shutdown_phase(role)
 }
 
+fn framework_begin<B>(application: B) -> B::Output
+where
+    B: BeginShutdownPhases,
+{
+    application.begin_shutdown_phases()
+}
+
 fn framework_finish<Builder>(builder: Builder) -> Builder::Output
 where
     Builder: FinishShutdownPhases,
@@ -251,7 +258,7 @@ where
 
 #[tokio::test]
 async fn generic_framework_carries_hidden_phase_states_without_copying_the_typestate() {
-    let builder = shutdown_after_children(Application);
+    let builder = framework_begin(Application);
     let builder = framework_phase(builder, StoreRole);
     let builder = framework_phase(builder, GatewayRole);
     let initialized = framework_finish(builder).initialize().unwrap();

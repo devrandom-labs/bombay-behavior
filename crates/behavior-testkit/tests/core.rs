@@ -3,10 +3,10 @@ use std::time::Duration;
 use behavior::EventLayer;
 use behavior::{
     Acted, Actions, Behavior, BehaviorActed, BehaviorBase, Births, ChildStopped, Crash, Create,
-    CreationKind, CreationResolved, Delivery, Exit, Machine, MailAddr, Move, Never, PeerStopped,
-    Proxy, ProxyEvent, Recipient, ReplacementRequested, RestartPolicy, StashRoute, Step,
-    SupervisionEvent, TimerElapsed, TimerGeneration, TimerId, User, UserEvent,
-    WorkerCreationResolved, WorkerStopped, stop_on_abnormal_death,
+    CreationKind, CreationResolved, Delivery, EventIngress, Exit, Here, Machine, MailAddr, Move,
+    Never, PeerStopped, Proxy, ProxyEvent, Recipient, ReplacementRequested, RestartPolicy,
+    StashRoute, Step, SupervisionEvent, SupervisionLifecycle, TimerElapsed, TimerGeneration,
+    TimerId, User, UserEvent, WorkerCreationResolved, WorkerStopped, stop_on_abnormal_death,
 };
 use behavior_testkit::{Mailbox, drive};
 use std::time::Instant;
@@ -266,7 +266,32 @@ type Child = Recorder;
 
 struct Parent(bool);
 
-type ParentEvent = User<MailAddr, u64>;
+enum ParentEvent {
+    Lifecycle(SupervisionLifecycle<MailAddr>),
+    User(User<MailAddr, u64>),
+}
+
+impl UserEvent for ParentEvent {
+    type Addr = MailAddr;
+    type Message = u64;
+
+    fn user(from: MailAddr, message: u64) -> Self {
+        Self::User(User::new(from, message))
+    }
+
+    fn into_user(self) -> Result<User<MailAddr, u64>, Self> {
+        match self {
+            Self::User(user) => Ok(user),
+            lifecycle => Err(lifecycle),
+        }
+    }
+}
+
+impl EventIngress<Here, SupervisionLifecycle<MailAddr>> for ParentEvent {
+    fn ingress(lifecycle: SupervisionLifecycle<MailAddr>) -> Self {
+        Self::Lifecycle(lifecycle)
+    }
+}
 
 impl behavior::Protocol for Parent {
     type Addr = MailAddr;
@@ -290,13 +315,18 @@ impl Behavior for Parent {
     type Birth = Births<Child>;
 
     fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
-        let creates = if self.0 {
-            Vec::new()
-        } else {
-            self.0 = true;
-            vec![Create::birth(event.message, child(0))]
-        };
-        Ok(Actions::new(Vec::new(), creates, Step::Continue))
+        match event {
+            ParentEvent::Lifecycle(_lifecycle) => Ok(Actions::cont()),
+            ParentEvent::User(event) => {
+                let creates = if self.0 {
+                    Vec::new()
+                } else {
+                    self.0 = true;
+                    vec![Create::birth(event.message, child(0))]
+                };
+                Ok(Actions::new(Vec::new(), creates, Step::Continue))
+            }
+        }
     }
 }
 

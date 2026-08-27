@@ -8,8 +8,8 @@ use std::time::Duration;
 
 use behavior::{
     Acted, Actions, Behavior, BehaviorActed, BehaviorBase, Births, CreationKind, Delivery,
-    MailAddr, Never, RestartPolicy, Strategy, Supervise, SuperviseError, SupervisionEvent, User,
-    WorkerCreationResolved, WorkerStopped,
+    EventIngress, Here, MailAddr, Never, RestartPolicy, Strategy, Supervise, SuperviseError,
+    SupervisionEvent, SupervisionLifecycle, User, UserEvent, WorkerCreationResolved, WorkerStopped,
 };
 use behavior_testkit::model::{Model, Outcome, SupervisionModelError};
 use std::time::Instant;
@@ -58,6 +58,33 @@ fn child(_index: usize) -> Child {
 
 struct ExhaustiveApplication;
 
+enum ExhaustiveEvent {
+    Lifecycle(SupervisionLifecycle<MailAddr>),
+    User(User<MailAddr, ()>),
+}
+
+impl UserEvent for ExhaustiveEvent {
+    type Addr = MailAddr;
+    type Message = ();
+
+    fn user(from: MailAddr, message: ()) -> Self {
+        Self::User(User::new(from, message))
+    }
+
+    fn into_user(self) -> Result<User<MailAddr, ()>, Self> {
+        match self {
+            Self::User(user) => Ok(user),
+            lifecycle => Err(lifecycle),
+        }
+    }
+}
+
+impl EventIngress<Here, SupervisionLifecycle<MailAddr>> for ExhaustiveEvent {
+    fn ingress(lifecycle: SupervisionLifecycle<MailAddr>) -> Self {
+        Self::Lifecycle(lifecycle)
+    }
+}
+
 impl behavior::Protocol for ExhaustiveApplication {
     type Addr = MailAddr;
     type Msg = ();
@@ -73,13 +100,17 @@ impl BehaviorBase for ExhaustiveApplication {
 
 impl Behavior for ExhaustiveApplication {
     type Protocol = Self;
-    type Event = User<MailAddr, ()>;
+    type Event = ExhaustiveEvent;
     type Sends = Vec<Never>;
     type Ph = Never;
     type Error = Never;
     type Birth = Births<Child>;
 
-    fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
+    fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+        match event {
+            ExhaustiveEvent::Lifecycle(_lifecycle) => {}
+            ExhaustiveEvent::User(_user) => {}
+        }
         Ok(Actions::cont())
     }
 }

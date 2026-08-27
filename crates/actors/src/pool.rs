@@ -2204,3 +2204,66 @@ where
         }
     }
 }
+
+/// Owner-defined construction of pools whose commands carry logical customer routes.
+///
+/// The customer protocol is the only type Rust cannot infer from a pool's
+/// configuration: it appears in each later `reply_to`, not in the constructor
+/// values. Calling `Customer::worker_pool(...)` or
+/// `Customer::keyed_worker_pool(...)` names that protocol once and fixes the
+/// truthful route law to [`behavior::Recipient<Customer>`]. Worker, job,
+/// result, selector, and behavior-layer types remain inferred. Exact or mixed
+/// customer routes continue to use the general pool constructors directly.
+///
+/// This trait constructs the existing [`WorkerPool`] and [`KeyedWorkerPool`]
+/// folds. It stores no witness and introduces no alternate pool behavior.
+pub trait PoolCustomer: Protocol + Sized {
+    /// Construct a FIFO pool using this protocol as its logical reply protocol.
+    fn worker_pool<J, R, C, L>(
+        topology: ChildTopology<<<Self as Protocol>::Addr as Address>::Nonce, C>,
+        configuration: PoolConfiguration,
+        layer: L,
+    ) -> Result<
+        WorkerPool<<Self as Protocol>::Addr, J, R, C, behavior::Recipient<Self>, L>,
+        PoolConfigError<<<Self as Protocol>::Addr as Address>::Nonce>,
+    >
+    where
+        Self: Protocol<Msg = PoolResponse<J, R, <Self as Protocol>::Addr>>,
+        <<Self as Protocol>::Addr as Address>::Nonce: From<u64>,
+        C: Behavior<Ph = Never>,
+        C::Protocol: crate::Protocol<Addr = <Self as Protocol>::Addr, Msg = PoolAssignment<J>>,
+        L: BehaviorLayer<C>,
+        L::Output: Behavior<Ph = Never, Protocol = C::Protocol>,
+        <PoolStable<C, L, R> as Behavior>::Event:
+            ChildInputIngress<C, crate::ReplacementRequested<C>>,
+    {
+        WorkerPool::new(topology, configuration, layer)
+    }
+
+    /// Construct a keyed pool using this protocol as its logical reply protocol.
+    fn keyed_worker_pool<K, J, R, C, S, L>(
+        topology: ChildTopology<<<Self as Protocol>::Addr as Address>::Nonce, C>,
+        configuration: PoolConfiguration,
+        selector: S,
+        layer: L,
+    ) -> Result<
+        KeyedWorkerPool<<Self as Protocol>::Addr, K, J, R, C, behavior::Recipient<Self>, S, L>,
+        PoolConfigError<<<Self as Protocol>::Addr as Address>::Nonce>,
+    >
+    where
+        Self: Protocol<Msg = PoolResponse<J, R, <Self as Protocol>::Addr>>,
+        <<Self as Protocol>::Addr as Address>::Nonce: From<u64>,
+        K: Eq,
+        C: Behavior<Ph = Never>,
+        C::Protocol: crate::Protocol<Addr = <Self as Protocol>::Addr, Msg = PoolAssignment<J>>,
+        S: AffinitySelector<K, <<Self as Protocol>::Addr as Address>::Nonce>,
+        L: BehaviorLayer<C>,
+        L::Output: Behavior<Ph = Never, Protocol = C::Protocol>,
+        <PoolStable<C, L, R> as Behavior>::Event:
+            ChildInputIngress<C, crate::ReplacementRequested<C>>,
+    {
+        KeyedWorkerPool::new(topology, configuration, selector, layer)
+    }
+}
+
+impl<P: Protocol> PoolCustomer for P {}

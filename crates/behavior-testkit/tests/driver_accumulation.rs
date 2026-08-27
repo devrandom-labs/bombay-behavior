@@ -9,8 +9,8 @@ use std::time::Duration;
 use behavior::EventLayer;
 use behavior::{
     Acted, Actions, Behavior, BehaviorActed, BehaviorBase, Births, Crash, Create, Delivery,
-    MailAddr, Never, Recipient, RestartPolicy, SendEffects, Step, Strategy, Supervise,
-    SupervisionEvent, User, UserEvent, WorkerStopped,
+    EventIngress, Here, MailAddr, Never, Recipient, RestartPolicy, SendEffects, Step, Strategy,
+    Supervise, SupervisionEvent, SupervisionLifecycle, User, UserEvent, WorkerStopped,
 };
 use behavior_testkit::{Mailbox, drive};
 use proptest::collection::vec;
@@ -49,7 +49,32 @@ struct EchoingParent {
     seen: Vec<u64>,
 }
 
-type ParentEvent = User<MailAddr, u64>;
+enum ParentEvent {
+    Lifecycle(SupervisionLifecycle<MailAddr>),
+    User(User<MailAddr, u64>),
+}
+
+impl UserEvent for ParentEvent {
+    type Addr = MailAddr;
+    type Message = u64;
+
+    fn user(from: MailAddr, message: u64) -> Self {
+        Self::User(User::new(from, message))
+    }
+
+    fn into_user(self) -> Result<User<MailAddr, u64>, Self> {
+        match self {
+            Self::User(user) => Ok(user),
+            lifecycle => Err(lifecycle),
+        }
+    }
+}
+
+impl EventIngress<Here, SupervisionLifecycle<MailAddr>> for ParentEvent {
+    fn ingress(lifecycle: SupervisionLifecycle<MailAddr>) -> Self {
+        Self::Lifecycle(lifecycle)
+    }
+}
 
 impl behavior::Protocol for EchoingParent {
     type Addr = MailAddr;
@@ -73,16 +98,21 @@ impl Behavior for EchoingParent {
     type Birth = Births<Child>;
 
     fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
-        self.seen.push(event.message);
-        Ok(Actions {
-            sends: vec![Delivery::new(Recipient::global(MailAddr(0)), event.message)],
-            creates: if event.message == u64::MAX {
-                vec![Create::birth(event.message, child(0))]
-            } else {
-                Vec::new()
-            },
-            become_: Step::Continue,
-        })
+        match event {
+            ParentEvent::Lifecycle(_lifecycle) => Ok(Actions::cont()),
+            ParentEvent::User(event) => {
+                self.seen.push(event.message);
+                Ok(Actions {
+                    sends: vec![Delivery::new(Recipient::global(MailAddr(0)), event.message)],
+                    creates: if event.message == u64::MAX {
+                        vec![Create::birth(event.message, child(0))]
+                    } else {
+                        Vec::new()
+                    },
+                    become_: Step::Continue,
+                })
+            }
+        }
     }
 }
 

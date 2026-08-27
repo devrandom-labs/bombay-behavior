@@ -1957,8 +1957,8 @@ paths, overlap, a new marker type, or a wrapper. Compiler coherence alone is
 not sufficient justification under the layer laws.
 
 The downstream Bombay tree confirms that no compatibility surface should be
-restored here: its current migration branch still names removed `WithParent`
-dynamic types and asserts that `Started.child` has a logical address. It
+restored here: its current migration branch still names removed parent-specific
+composition types and asserts that `Started.child` has a logical address. It
 already owns exact endpoint interpretation, so it must consume the strengthened
 established capability and update its application test rather than Behavior
 reintroducing a weaker alias or address reconstruction.

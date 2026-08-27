@@ -7,10 +7,10 @@ use std::time::Duration;
 
 use behavior::EventLayer;
 use behavior::{
-    Acted, Actions, Activate, Behavior, BehaviorActed, BehaviorBase, Births, Crash, Delivery, Exit,
-    MailAddr, Never, PeerStopped, Recipient, SendEffects, StashRoute, Step, Supervise,
-    SupervisionEvent, TimerElapsed, TimerGeneration, TimerId, User, UserEvent, WorkerStopped,
-    stop_on_abnormal_death, stop_on_supervision_failure,
+    Acted, Actions, Activate, Behavior, BehaviorActed, BehaviorBase, Births, Crash, Delivery,
+    EventIngress, Exit, Here, MailAddr, Never, PeerStopped, Recipient, SendEffects, StashRoute,
+    Step, Supervise, SupervisionEvent, SupervisionLifecycle, TimerElapsed, TimerGeneration,
+    TimerId, User, UserEvent, WorkerStopped, stop_on_abnormal_death, stop_on_supervision_failure,
 };
 use std::time::Instant;
 
@@ -71,7 +71,32 @@ fn child(_index: usize) -> Child {
 
 struct SupervisedParent;
 
-type SupervisedParentEvent = User<MailAddr, u64>;
+enum SupervisedParentEvent {
+    Lifecycle(SupervisionLifecycle<MailAddr>),
+    User(User<MailAddr, u64>),
+}
+
+impl UserEvent for SupervisedParentEvent {
+    type Addr = MailAddr;
+    type Message = u64;
+
+    fn user(from: MailAddr, message: u64) -> Self {
+        Self::User(User::new(from, message))
+    }
+
+    fn into_user(self) -> Result<User<MailAddr, u64>, Self> {
+        match self {
+            Self::User(user) => Ok(user),
+            lifecycle => Err(lifecycle),
+        }
+    }
+}
+
+impl EventIngress<Here, SupervisionLifecycle<MailAddr>> for SupervisedParentEvent {
+    fn ingress(lifecycle: SupervisionLifecycle<MailAddr>) -> Self {
+        Self::Lifecycle(lifecycle)
+    }
+}
 
 impl behavior::Protocol for SupervisedParent {
     type Addr = MailAddr;
@@ -95,10 +120,15 @@ impl Behavior for SupervisedParent {
     type Birth = Births<Child>;
 
     fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
-        Ok(Actions::create(vec![behavior::Create::birth(
-            event.message,
-            child(0),
-        )]))
+        match event {
+            SupervisedParentEvent::Lifecycle(_lifecycle) => Ok(Actions::cont()),
+            SupervisedParentEvent::User(event) => {
+                Ok(Actions::create(vec![behavior::Create::birth(
+                    event.message,
+                    child(0),
+                )]))
+            }
+        }
     }
 }
 
