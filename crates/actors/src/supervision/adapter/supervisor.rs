@@ -2,18 +2,21 @@
 
 use std::time::Duration;
 
+use super::super::Backoff;
 use super::super::domain::{FixedFleetOwnership, FleetError, OwnershipError, OwnershipFold};
 use super::super::policy::{
     ReportSupervisionFailure, RestartPolicy, Strategy, SupervisionFailure,
     SupervisionFailureReaction, retire_on_supervision_failure,
 };
 use super::super::protocol::SupervisionEvent;
-use super::proxy::ProxyWithParent;
 use crate::Become;
-use crate::protocol::{ObserveChild, ObserveCreation, ShutdownChild};
+use crate::protocol::{
+    ObserveChild, ObserveCreation, ReplacementRequested, ScheduleAfter, ShutdownChild,
+};
 use crate::{Own, SendInput};
 use behavior::{
-    Actions, Address, Behavior, Births, ChildDelivery, InterpreterRequests, SendEffects, SendLayer,
+    Actions, Address, Behavior, BehaviorLayer, BirthMode, BirthNodeAppend, Births, ChildInput,
+    ChildInputIngress, InterpreterRequests, SendEffects, SendLayer,
 };
 use behavior::{Never, Step};
 
@@ -62,7 +65,21 @@ impl<N, C> ChildTopology<N, C> {
     }
 }
 
-/// Supervision strategy, eligibility, and restart-budget policy.
+/// When an admitted replacement communication is emitted.
+///
+/// Restart delay is a Bombay supervision policy. It does not change replacement
+/// eligibility, budget admission, creation provenance, or stable identity.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RestartTiming {
+    /// Emit the accepted replacement communication in the stopping worker's
+    /// transition.
+    Immediate,
+    /// Retain the complete accepted replacement batch until its exact timer
+    /// generation is observed.
+    Delayed(Backoff),
+}
+
+/// Supervision strategy, eligibility, restart budget, and emission timing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RestartConfiguration {
     /// Candidate-selection strategy after an eligible stop.
@@ -73,6 +90,8 @@ pub struct RestartConfiguration {
     pub maximum: u32,
     /// Inclusive restart-budget window.
     pub window: Duration,
+    /// Timing of an admitted replacement batch.
+    pub timing: RestartTiming,
 }
 
 impl RestartConfiguration {
@@ -83,96 +102,94 @@ impl RestartConfiguration {
         policy: RestartPolicy,
         maximum: u32,
         window: Duration,
+        timing: RestartTiming,
     ) -> Self {
         Self {
             strategy,
             policy,
             maximum,
             window,
+            timing,
         }
     }
 }
 
 /// Named effect lanes emitted by a supervised behavior.
-pub struct SupervisorSends<A, C, ParentPath>
+pub struct SupervisorSends<A, C, Stable>
 where
     A: Address,
-    A::Nonce: From<u64>,
-    C: Behavior<Ph = Never>,
-    C::Protocol: crate::Protocol<Addr = A>,
+    C: Behavior<Ph = Never, Protocol: crate::Protocol<Addr = A>>,
+    Stable: Behavior<Ph = Never, Protocol: crate::Protocol<Addr = A>>,
 {
-    /// Requests to observe every accepted stable proxy creation.
     pub child_observations: InterpreterRequests<ObserveChild<A, behavior::ChildHead>>,
-    /// Requests for the committed result of every staged stable proxy creation.
     pub creation_observations: InterpreterRequests<ObserveCreation<A, behavior::ChildHead>>,
-    /// Commands asking stable proxies to install fresh worker incarnations.
-    pub replacement_commands: Vec<ChildDelivery<crate::Proxy<C>, behavior::ChildHead>>,
-    /// Typed terminal supervision failures for the local runtime observer.
+    pub schedules: InterpreterRequests<ScheduleAfter>,
+    pub replacement_inputs:
+        Vec<ChildInput<Stable, C, ReplacementRequested<C>, behavior::ChildHead>>,
     pub failure_reports: InterpreterRequests<ReportSupervisionFailure<A>>,
-    /// Orderly shutdown requests for stable proxies owned by this supervisor.
-    pub shutdowns:
-        InterpreterRequests<ShutdownChild<ProxyWithParent<C, ParentPath>, behavior::ChildHead>>,
+    pub shutdowns: InterpreterRequests<ShutdownChild<Stable, behavior::ChildHead>>,
 }
 
-impl<A, C, ParentPath> SendEffects for SupervisorSends<A, C, ParentPath>
+impl<A, C, Stable> SendEffects for SupervisorSends<A, C, Stable>
 where
     A: Address,
-    A::Nonce: From<u64>,
-    C: Behavior<Ph = Never>,
-    C::Protocol: crate::Protocol<Addr = A>,
+    C: Behavior<Ph = Never, Protocol: crate::Protocol<Addr = A>>,
+    Stable: Behavior<Ph = Never, Protocol: crate::Protocol<Addr = A>>,
 {
     fn empty() -> Self {
         Self {
             child_observations: InterpreterRequests::empty(),
             creation_observations: InterpreterRequests::empty(),
-            replacement_commands: Vec::new(),
+            schedules: InterpreterRequests::empty(),
+            replacement_inputs: Vec::new(),
             failure_reports: InterpreterRequests::empty(),
             shutdowns: InterpreterRequests::empty(),
         }
     }
 
-    fn append(&mut self, other: Self) {
+    fn append(&mut self, mut other: Self) {
         self.child_observations.append(other.child_observations);
         self.creation_observations
             .append(other.creation_observations);
-        self.replacement_commands.extend(other.replacement_commands);
+        self.schedules.append(other.schedules);
+        self.replacement_inputs
+            .append(&mut other.replacement_inputs);
         self.failure_reports.append(other.failure_reports);
         self.shutdowns.append(other.shutdowns);
     }
 }
 
-impl<A, Event, C, ParentPath> behavior::SendsFor<Event> for SupervisorSends<A, C, ParentPath>
+impl<A, Event, C, Stable> behavior::SendsFor<Event> for SupervisorSends<A, C, Stable>
 where
     A: Address,
-    A::Nonce: From<u64>,
-    C: Behavior<Ph = Never>,
-    C::Protocol: crate::Protocol<Addr = A>,
+    C: Behavior<Ph = Never, Protocol: crate::Protocol<Addr = A>>,
+    Stable: Behavior<Ph = Never, Protocol: crate::Protocol<Addr = A>>,
     InterpreterRequests<ObserveChild<A, behavior::ChildHead>>: behavior::SendsFor<Event>,
     InterpreterRequests<ObserveCreation<A, behavior::ChildHead>>: behavior::SendsFor<Event>,
-    InterpreterRequests<ShutdownChild<ProxyWithParent<C, ParentPath>, behavior::ChildHead>>:
-        behavior::SendsFor<Event>,
+    InterpreterRequests<ScheduleAfter>: behavior::SendsFor<Event>,
+    InterpreterRequests<ShutdownChild<Stable, behavior::ChildHead>>: behavior::SendsFor<Event>,
 {
 }
 
-impl<Interpreter, RootEvent, Path, A, C, ParentPath>
-    behavior::InterpretSends<Interpreter, RootEvent, Path> for SupervisorSends<A, C, ParentPath>
+impl<Interpreter, RootEvent, Path, A, C, Stable>
+    behavior::InterpretSends<Interpreter, RootEvent, Path> for SupervisorSends<A, C, Stable>
 where
     Interpreter: behavior::SendInterpreter,
     A: Address,
-    A::Nonce: From<u64>,
-    C: Behavior<Ph = Never>,
-    C::Protocol: crate::Protocol<Addr = A>,
+    C: Behavior<Ph = Never, Protocol: crate::Protocol<Addr = A>>,
+    Stable: Behavior<Ph = Never, Protocol: crate::Protocol<Addr = A>>,
     InterpreterRequests<ObserveChild<A, behavior::ChildHead>>:
         behavior::InterpretSends<Interpreter, RootEvent, Path>,
     InterpreterRequests<ObserveCreation<A, behavior::ChildHead>>:
         behavior::InterpretSends<Interpreter, RootEvent, Path>,
-    Vec<ChildDelivery<crate::Proxy<C>, behavior::ChildHead>>:
+    InterpreterRequests<ScheduleAfter>: behavior::InterpretSends<Interpreter, RootEvent, Path>,
+    Vec<ChildInput<Stable, C, ReplacementRequested<C>, behavior::ChildHead>>:
         behavior::InterpretSends<Interpreter, RootEvent, Path>,
     InterpreterRequests<ReportSupervisionFailure<A>>:
         behavior::InterpretSends<Interpreter, RootEvent, Path>,
-    InterpreterRequests<ShutdownChild<ProxyWithParent<C, ParentPath>, behavior::ChildHead>>:
+    InterpreterRequests<ShutdownChild<Stable, behavior::ChildHead>>:
         behavior::InterpretSends<Interpreter, RootEvent, Path>,
-    SupervisorSends<A, C, ParentPath>: Send,
+    SupervisorSends<A, C, Stable>: Send,
 {
     fn interpret(
         self,
@@ -181,85 +198,84 @@ where
         async move {
             self.child_observations.interpret(interpreter).await?;
             self.creation_observations.interpret(interpreter).await?;
-            self.replacement_commands.interpret(interpreter).await?;
+            self.schedules.interpret(interpreter).await?;
+            self.replacement_inputs.interpret(interpreter).await?;
             self.failure_reports.interpret(interpreter).await?;
             self.shutdowns.interpret(interpreter).await
         }
     }
 }
 
-impl<A, C, ParentPath> SendInput<ObserveCreation<A, behavior::ChildHead>, Own>
-    for SupervisorSends<A, C, ParentPath>
+impl<A, C, Stable> SendInput<ObserveCreation<A, behavior::ChildHead>, Own>
+    for SupervisorSends<A, C, Stable>
 where
     A: Address,
-    A::Nonce: From<u64>,
-    C: Behavior<Ph = Never>,
-    C::Protocol: crate::Protocol<Addr = A>,
+    C: Behavior<Ph = Never, Protocol: crate::Protocol<Addr = A>>,
+    Stable: Behavior<Ph = Never, Protocol: crate::Protocol<Addr = A>>,
 {
     fn emit(&mut self, input: ObserveCreation<A, behavior::ChildHead>) {
         self.creation_observations.send(input);
     }
 }
 
-impl<A, C, ParentPath> SendInput<ObserveChild<A, behavior::ChildHead>, Own>
-    for SupervisorSends<A, C, ParentPath>
+impl<A, C, Stable> SendInput<ObserveChild<A, behavior::ChildHead>, Own>
+    for SupervisorSends<A, C, Stable>
 where
     A: Address,
-    A::Nonce: From<u64>,
-    C: Behavior<Ph = Never>,
-    C::Protocol: crate::Protocol<Addr = A>,
+    C: Behavior<Ph = Never, Protocol: crate::Protocol<Addr = A>>,
+    Stable: Behavior<Ph = Never, Protocol: crate::Protocol<Addr = A>>,
 {
     fn emit(&mut self, input: ObserveChild<A, behavior::ChildHead>) {
         self.child_observations.send(input);
     }
 }
 
-impl<A, C, ParentPath> SendInput<ChildDelivery<crate::Proxy<C>, behavior::ChildHead>, Own>
-    for SupervisorSends<A, C, ParentPath>
+impl<A, C, Stable> SendInput<ScheduleAfter, Own> for SupervisorSends<A, C, Stable>
 where
     A: Address,
-    A::Nonce: From<u64>,
-    C: Behavior<Ph = Never>,
-    C::Protocol: crate::Protocol<Addr = A>,
+    C: Behavior<Ph = Never, Protocol: crate::Protocol<Addr = A>>,
+    Stable: Behavior<Ph = Never, Protocol: crate::Protocol<Addr = A>>,
 {
-    fn emit(&mut self, input: ChildDelivery<crate::Proxy<C>, behavior::ChildHead>) {
-        self.replacement_commands.push(input);
+    fn emit(&mut self, input: ScheduleAfter) {
+        self.schedules.send(input);
     }
 }
 
-impl<A, C, ParentPath> SendInput<ReportSupervisionFailure<A>, Own>
-    for SupervisorSends<A, C, ParentPath>
+impl<A, C, Stable>
+    SendInput<ChildInput<Stable, C, ReplacementRequested<C>, behavior::ChildHead>, Own>
+    for SupervisorSends<A, C, Stable>
 where
     A: Address,
-    A::Nonce: From<u64>,
-    C: Behavior<Ph = Never>,
-    C::Protocol: crate::Protocol<Addr = A>,
+    C: Behavior<Ph = Never, Protocol: crate::Protocol<Addr = A>>,
+    Stable: Behavior<Ph = Never, Protocol: crate::Protocol<Addr = A>>,
+{
+    fn emit(&mut self, input: ChildInput<Stable, C, ReplacementRequested<C>, behavior::ChildHead>) {
+        self.replacement_inputs.push(input);
+    }
+}
+
+impl<A, C, Stable> SendInput<ReportSupervisionFailure<A>, Own> for SupervisorSends<A, C, Stable>
+where
+    A: Address,
+    C: Behavior<Ph = Never, Protocol: crate::Protocol<Addr = A>>,
+    Stable: Behavior<Ph = Never, Protocol: crate::Protocol<Addr = A>>,
 {
     fn emit(&mut self, input: ReportSupervisionFailure<A>) {
         self.failure_reports.send(input);
     }
 }
 
-impl<A, C, ParentPath>
-    SendInput<ShutdownChild<ProxyWithParent<C, ParentPath>, behavior::ChildHead>, Own>
-    for SupervisorSends<A, C, ParentPath>
+impl<A, C, Stable> SendInput<ShutdownChild<Stable, behavior::ChildHead>, Own>
+    for SupervisorSends<A, C, Stable>
 where
     A: Address,
-    A::Nonce: From<u64>,
-    C: Behavior<Ph = Never>,
-    C::Protocol: crate::Protocol<Addr = A>,
+    C: Behavior<Ph = Never, Protocol: crate::Protocol<Addr = A>>,
+    Stable: Behavior<Ph = Never, Protocol: crate::Protocol<Addr = A>>,
 {
-    fn emit(&mut self, input: ShutdownChild<ProxyWithParent<C, ParentPath>, behavior::ChildHead>) {
+    fn emit(&mut self, input: ShutdownChild<Stable, behavior::ChildHead>) {
         self.shutdowns.send(input);
     }
 }
-
-pub(crate) type SupervisorActions<B, C, ParentPath> = Actions<
-    crate::BehaviorAddr<B>,
-    <B as Behavior>::Ph,
-    SendLayer<SupervisorSends<crate::BehaviorAddr<B>, C, ParentPath>, <B as Behavior>::Sends>,
-    Births<ProxyWithParent<C, ParentPath>>,
->;
 
 /// A controlled supervisor-fold failure.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -292,15 +308,34 @@ pub enum SuperviseError<E, A: Address> {
         expected: crate::CreationKind<A::Nonce>,
         observed: crate::CreationResolved<A>,
     },
+    /// A worker fact proves that a stable proxy creation reported as rejected
+    /// had nevertheless existed.
+    #[error("a rejected stable-proxy creation contradicts its worker-creation fact")]
+    ContradictoryStableAndWorkerCreation {
+        proxy: crate::CreationResolved<A>,
+        worker: crate::WorkerCreationResolved<A::Nonce>,
+    },
+    /// A worker stop proves that a stable proxy creation reported as rejected
+    /// had nevertheless existed.
+    #[error("a rejected stable-proxy creation contradicts its worker-stop fact")]
+    ContradictoryStableCreationAndWorkerStop {
+        proxy: crate::CreationResolved<A>,
+        worker: crate::WorkerStopped<A>,
+    },
     /// A worker-incarnation result carried provenance different from the pending request.
     #[error("worker-incarnation creation provenance did not match the pending request")]
     WorkerCreationProvenanceMismatch {
         expected: crate::CreationKind<A::Nonce>,
         observed: crate::WorkerCreationResolved<A::Nonce>,
     },
+    #[error("an exact delayed-restart timer contradicts the retained worker phase")]
+    DelayedReplacementStateMismatch {
+        event: crate::TimerElapsed,
+        child: A::Nonce,
+    },
 }
 
-fn map_ownership_error<E, A: Address>(error: OwnershipError<A>) -> SuperviseError<E, A> {
+pub(crate) fn map_ownership_error<E, A: Address>(error: OwnershipError<A>) -> SuperviseError<E, A> {
     match error {
         OwnershipError::Fleet(error) => SuperviseError::Fleet(error),
         OwnershipError::FactoryIndex { index } => SuperviseError::FactoryIndex { index },
@@ -323,8 +358,17 @@ fn map_ownership_error<E, A: Address>(error: OwnershipError<A>) -> SuperviseErro
         OwnershipError::CreationProvenanceMismatch { expected, observed } => {
             SuperviseError::CreationProvenanceMismatch { expected, observed }
         }
+        OwnershipError::ContradictoryStableAndWorkerCreation { proxy, worker } => {
+            SuperviseError::ContradictoryStableAndWorkerCreation { proxy, worker }
+        }
+        OwnershipError::ContradictoryStableCreationAndWorkerStop { proxy, worker } => {
+            SuperviseError::ContradictoryStableCreationAndWorkerStop { proxy, worker }
+        }
         OwnershipError::WorkerCreationProvenanceMismatch { expected, observed } => {
             SuperviseError::WorkerCreationProvenanceMismatch { expected, observed }
+        }
+        OwnershipError::DelayedReplacementStateMismatch { event, child } => {
+            SuperviseError::DelayedReplacementStateMismatch { event, child }
         }
     }
 }
@@ -333,50 +377,69 @@ fn map_ownership_error<E, A: Address>(error: OwnershipError<A>) -> SuperviseErro
 ///
 /// Shutdown cancels replacement decisions, waits for pending proxy installation
 /// to resolve, requests each established proxy exactly once, and stops only
-/// after every matching [`crate::ChildStopped`] fact. New inner creations that
-/// were already accepted during the drain join the same awaiting set.
+/// after every matching [`crate::ChildStopped`] fact.
 ///
-/// `B::Birth = Births<C>` is the application's real additional-child lane:
-/// every creation emitted by `B` is adopted into this ownership domain. When
-/// no application transition creates `C`, use standalone [`crate::Supervisor`]
-/// instead of manufacturing an inert `B`.
-pub struct SuperviseWithParent<B: Behavior, C: Behavior<Ph = Never>, ParentPath>
+/// The inner behavior's birth algebra is preserved unchanged. Fixed supervised
+/// children are appended as a distinct structural occurrence; an arbitrary
+/// inner birth is never reinterpreted as a member of the fixed topology.
+///
+/// This composition preserves `B`'s public protocol and does not itself issue
+/// a stable-child domain capability. If `B` owns a route to one of the
+/// configured stable children, its event algebra must explicitly accept the
+/// complete [`crate::ProxyUnavailable`] value at that exact child occurrence.
+/// The common supervision event then routes the parent report into `B` as an
+/// ordinary successful domain transition; expected unavailability is never a
+/// supervision-fold failure. A lifecycle-only use needs no such event lane.
+pub struct Supervise<B: Behavior, C: Behavior<Ph = Never>, L>
 where
     C::Protocol: crate::Protocol<Addr = crate::BehaviorAddr<B>>,
     <crate::BehaviorAddr<B> as Address>::Nonce: From<u64>,
+    L: BehaviorLayer<C>,
+    L::Output: Behavior<Ph = Never, Protocol = C::Protocol>,
+    <L::Output as Behavior>::Event: ChildInputIngress<C, ReplacementRequested<C>>,
 {
     inner: B,
-    ownership: FixedFleetOwnership<crate::BehaviorAddr<B>, C, ParentPath>,
+    ownership: FixedFleetOwnership<crate::BehaviorAddr<B>, C, L::Output>,
+    layer: L,
     on_failure: SupervisionFailureReaction<B>,
 }
 
-/// A fixed supervisor whose proxy reports target its direct event layer.
-pub type Supervise<B, C> = SuperviseWithParent<B, C, behavior::Here>;
-
-impl<B, C> SuperviseWithParent<B, C, behavior::Here>
+impl<B, C, L> Supervise<B, C, L>
 where
-    B: Behavior<Birth = Births<C>>,
+    B: Behavior,
     <crate::BehaviorAddr<B> as Address>::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = crate::BehaviorAddr<B>>,
+    L: BehaviorLayer<C>,
+    L::Output: Behavior<Ph = Never, Protocol = C::Protocol>,
+    <L::Output as Behavior>::Event: ChildInputIngress<C, ReplacementRequested<C>>,
 {
-    /// Construct a fixed supervisor whose proxy reports target this behavior's
-    /// direct supervision event layer.
+    /// Construct fixed stable-proxy ownership around `inner`.
+    ///
     pub fn new(
         inner: B,
         topology: ChildTopology<<crate::BehaviorAddr<B> as Address>::Nonce, C>,
         restart: RestartConfiguration,
+        layer: L,
     ) -> Result<Self, FleetError<<crate::BehaviorAddr<B> as Address>::Nonce>> {
-        Self::with_parent(inner, topology, restart, crate::ProxyParentIngress::new())
+        Ok(Self {
+            inner,
+            ownership: FixedFleetOwnership::new(topology, restart)?,
+            layer,
+            on_failure: retire_on_supervision_failure::<B>,
+        })
     }
 }
 
-impl<B, C, ParentPath> crate::BehaviorBase for SuperviseWithParent<B, C, ParentPath>
+impl<B, C, L> crate::BehaviorBase for Supervise<B, C, L>
 where
-    B: Behavior<Birth = Births<C>> + crate::BehaviorBase,
+    B: Behavior + crate::BehaviorBase,
     <crate::BehaviorAddr<B> as Address>::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = crate::BehaviorAddr<B>>,
+    L: BehaviorLayer<C>,
+    L::Output: Behavior<Ph = Never, Protocol = C::Protocol>,
+    <L::Output as Behavior>::Event: ChildInputIngress<C, ReplacementRequested<C>>,
 {
     type Base = B::Base;
 
@@ -385,46 +448,32 @@ where
     }
 }
 
-impl<B, C, ParentPath> crate::StashStatus for SuperviseWithParent<B, C, ParentPath>
+impl<B, C, L> crate::StashStatus for Supervise<B, C, L>
 where
-    B: Behavior<Birth = Births<C>> + crate::StashStatus,
+    B: Behavior + crate::StashStatus,
     <crate::BehaviorAddr<B> as Address>::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = crate::BehaviorAddr<B>>,
+    L: BehaviorLayer<C>,
+    L::Output: Behavior<Ph = Never, Protocol = C::Protocol>,
+    <L::Output as Behavior>::Event: ChildInputIngress<C, ReplacementRequested<C>>,
 {
     fn stashed_messages(&self) -> usize {
         self.inner.stashed_messages()
     }
 }
 
-impl<B, C, ParentPath> SuperviseWithParent<B, C, ParentPath>
+impl<B, C, L> Supervise<B, C, L>
 where
-    B: Behavior<Birth = Births<C>>,
+    B: Behavior,
     <crate::BehaviorAddr<B> as Address>::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = crate::BehaviorAddr<B>>,
+    L: BehaviorLayer<C>,
+    L::Output: Behavior<Ph = Never, Protocol = C::Protocol>,
+    <L::Output as Behavior>::Event: ChildInputIngress<C, ReplacementRequested<C>>,
+    <B::Birth as BirthMode>::Child: BirthNodeAppend<L::Output>,
 {
-    /// Construct the concrete supervisor behavior directly.
-    ///
-    /// [`ChildTopology`] owns stable child routes and their factory;
-    /// [`RestartConfiguration`] owns the complete restart policy. Construction
-    /// is therefore independent of wrapper nesting.
-    ///
-    /// # Errors
-    /// Returns the first typed topology rejection.
-    pub fn with_parent(
-        inner: B,
-        topology: ChildTopology<<crate::BehaviorAddr<B> as Address>::Nonce, C>,
-        restart: RestartConfiguration,
-        proxy_parent: crate::ProxyParentIngress<crate::BehaviorAddr<B>, ParentPath>,
-    ) -> Result<Self, FleetError<<crate::BehaviorAddr<B> as Address>::Nonce>> {
-        Ok(Self {
-            inner,
-            ownership: FixedFleetOwnership::new(topology, restart, proxy_parent)?,
-            on_failure: retire_on_supervision_failure::<B>,
-        })
-    }
-
     #[must_use]
     /// Replace the pure reaction used for typed supervision failures.
     pub fn with_failure_reaction(mut self, reaction: SupervisionFailureReaction<B>) -> Self {
@@ -432,15 +481,23 @@ where
         self
     }
 
-    /// Report whether a known supervised proxy is alive.
+    /// Report whether the interpreter has established the stable proxy.
     ///
     /// # Errors
     /// Returns the unknown nonce when it is not part of this topology.
-    pub fn is_alive(
+    pub fn is_established(
         &self,
         nonce: <crate::BehaviorAddr<B> as Address>::Nonce,
     ) -> Result<bool, SuperviseError<core::convert::Infallible, crate::BehaviorAddr<B>>> {
-        Ok(self.ownership.is_alive(nonce)?)
+        Ok(self.ownership.is_established(nonce)?)
+    }
+
+    /// Report whether the slot remains eligible for automatic replacement.
+    pub fn is_restartable(
+        &self,
+        nonce: <crate::BehaviorAddr<B> as Address>::Nonce,
+    ) -> Result<bool, SuperviseError<core::convert::Infallible, crate::BehaviorAddr<B>>> {
+        Ok(self.ownership.is_restartable(nonce)?)
     }
 
     #[must_use]
@@ -451,6 +508,11 @@ where
     #[must_use]
     pub fn restarts_in_window(&self) -> usize {
         self.ownership.restarts_in_window()
+    }
+
+    #[must_use]
+    pub fn pending_restarts(&self) -> usize {
+        self.ownership.pending_restarts()
     }
 
     #[must_use]
@@ -471,13 +533,10 @@ where
 
     fn combine_failure_reactions(
         &self,
-        failures: &[SupervisionFailure<crate::BehaviorAddr<B>>],
+        failure: Option<&SupervisionFailure<crate::BehaviorAddr<B>>>,
         accepted: Become<B::Ph>,
     ) -> Become<B::Ph> {
-        if failures
-            .iter()
-            .any(|failure| matches!(self.react_to_failure(failure), Step::Stop(_)))
-        {
+        if failure.is_some_and(|failure| matches!(self.react_to_failure(failure), Step::Stop(_))) {
             Step::Stop(behavior::Stopped)
         } else {
             accepted
@@ -486,79 +545,108 @@ where
 
     fn wrap(
         &mut self,
-        actions: Actions<crate::BehaviorAddr<B>, B::Ph, B::Sends, Births<C>>,
-    ) -> Result<SupervisorActions<B, C, ParentPath>, SuperviseError<B::Error, crate::BehaviorAddr<B>>>
-    {
-        let requested_become = if self.is_shutting_down() {
+        actions: Actions<crate::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>,
+    ) -> Actions<
+        crate::BehaviorAddr<B>,
+        B::Ph,
+        SendLayer<SupervisorSends<crate::BehaviorAddr<B>, C, L::Output>, B::Sends>,
+        Births<<<B::Birth as BirthMode>::Child as BirthNodeAppend<L::Output>>::Output>,
+    > {
+        let become_ = if self.is_shutting_down() {
             Step::Continue
         } else {
             actions.become_
         };
-        let owned = self.ownership.adopt(actions.creates);
-        let become_ = self.combine_failure_reactions(&owned.failures, requested_become);
-        Ok(Actions::new(
-            SendLayer::new(owned.actions.sends, actions.sends),
-            owned.actions.creates,
+        let creates =
+            <<B::Birth as BirthMode>::Child as BirthNodeAppend<L::Output>>::append_creations(
+                actions.creates,
+                Vec::new(),
+            );
+        Actions::new(
+            SendLayer::new(SupervisorSends::empty(), actions.sends),
+            creates,
             become_,
-        ))
+        )
     }
 
     fn wrap_ownership(
         &mut self,
-        fold: OwnershipFold<crate::BehaviorAddr<B>, C, ParentPath>,
-    ) -> Result<SupervisorActions<B, C, ParentPath>, SuperviseError<B::Error, crate::BehaviorAddr<B>>>
-    {
+        fold: OwnershipFold<crate::BehaviorAddr<B>, C, L::Output>,
+    ) -> Result<
+        Actions<
+            crate::BehaviorAddr<B>,
+            B::Ph,
+            SendLayer<SupervisorSends<crate::BehaviorAddr<B>, C, L::Output>, B::Sends>,
+            Births<<<B::Birth as BirthMode>::Child as BirthNodeAppend<L::Output>>::Output>,
+        >,
+        SuperviseError<B::Error, crate::BehaviorAddr<B>>,
+    > {
         let accepted = match fold.actions.become_ {
             Step::Continue => Step::Continue,
             Step::Goto(never) => match never {},
             Step::Stop(exit) => Step::Stop(exit),
         };
-        let become_ = self.combine_failure_reactions(&fold.failures, accepted);
+        let become_ = self.combine_failure_reactions(fold.failure.as_ref(), accepted);
+        let creates =
+            <<B::Birth as BirthMode>::Child as BirthNodeAppend<L::Output>>::append_creations(
+                Vec::new(),
+                fold.actions.creates,
+            );
         Ok(Actions::new(
             SendLayer::new(fold.actions.sends, B::Sends::empty()),
-            fold.actions.creates,
+            creates,
             become_,
         ))
     }
 }
 
-impl<B, C, A, Ph, Sends, ParentPath> Behavior for SuperviseWithParent<B, C, ParentPath>
+impl<B, C, L, A, Ph, Sends> Behavior for Supervise<B, C, L>
 where
     A: Address,
     Sends: SendEffects + behavior::SendsFor<B::Event>,
-    B: Behavior<Ph = Ph, Sends = Sends, Birth = Births<C>>,
+    B: Behavior<Ph = Ph, Sends = Sends>,
     B::Protocol: crate::Protocol<Addr = A>,
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = crate::BehaviorAddr<B>>,
+    L: BehaviorLayer<C>,
+    L::Output: Behavior<Ph = Never, Protocol = C::Protocol>,
+    <L::Output as Behavior>::Event: ChildInputIngress<C, ReplacementRequested<C>>,
+    <B::Birth as BirthMode>::Child: BirthNodeAppend<L::Output>,
 {
     type Protocol = B::Protocol;
     type Event = SupervisionEvent<B::Event>;
-    type Sends = SendLayer<SupervisorSends<A, C, ParentPath>, Sends>;
+    type Sends = SendLayer<SupervisorSends<A, C, L::Output>, Sends>;
     type Ph = Ph;
     type Error = SuperviseError<B::Error, A>;
-    type Birth = Births<ProxyWithParent<C, ParentPath>>;
+    type Birth = Births<<<B::Birth as BirthMode>::Child as BirthNodeAppend<L::Output>>::Output>;
 
-    fn init(
-        &mut self,
-        _: crate::InitializationTurn,
-    ) -> Result<SupervisorActions<B, C, ParentPath>, Self::Error> {
+    fn init(&mut self, _: crate::InitializationTurn) -> crate::BehaviorActed<Self> {
         // Validate and build the configured topology before running the
         // application's initialization fold. A rejected factory index must
         // not leave application state initialized with no Actions to commit.
-        let configured = self.ownership.initialize().map_err(map_ownership_error)?;
-        let actions = behavior::initialize(&mut self.inner).map_err(SuperviseError::Behavior)?;
-        let mut actions = self.wrap(actions)?;
-        actions.sends.owned.append(configured.sends);
-        actions.creates.extend(configured.creates);
-        Ok(actions)
+        let configured = self
+            .ownership
+            .initialize(&self.layer)
+            .map_err(map_ownership_error)?;
+        let inner = behavior::initialize(&mut self.inner).map_err(SuperviseError::Behavior)?;
+        let creates =
+            <<B::Birth as BirthMode>::Child as BirthNodeAppend<L::Output>>::append_creations(
+                inner.creates,
+                configured.creates,
+            );
+        Ok(Actions::new(
+            SendLayer::new(configured.sends, inner.sends),
+            creates,
+            inner.become_,
+        ))
     }
 
     fn transition(
         &mut self,
         _: crate::ActiveTurn,
         event: Self::Event,
-    ) -> Result<SupervisorActions<B, C, ParentPath>, Self::Error> {
+    ) -> crate::BehaviorActed<Self> {
         match event {
             SupervisionEvent::WorkerStopped(event) => self
                 .ownership
@@ -580,10 +668,15 @@ where
                 .worker_creation_resolved(event)
                 .map_err(map_ownership_error)
                 .and_then(|fold| self.wrap_ownership(fold)),
+            SupervisionEvent::TimerElapsed(event) => self
+                .ownership
+                .timer_elapsed(event)
+                .map_err(map_ownership_error)
+                .and_then(|fold| self.wrap_ownership(fold)),
             SupervisionEvent::Behavior(event) => {
                 let actions = behavior::delegate_transition(&mut self.inner, event)
                     .map_err(SuperviseError::Behavior)?;
-                self.wrap(actions)
+                Ok(self.wrap(actions))
             }
             SupervisionEvent::ShutdownRequested(_) => {
                 let fold = self.ownership.shutdown();
@@ -613,19 +706,19 @@ mod ownership_tests {
 
     impl crate::Protocol for Child {
         type Addr = MailAddr;
-        type Msg = ();
+        type Msg = Never;
     }
 
     impl Behavior for Child {
         type Protocol = Self;
-        type Event = User<MailAddr, ()>;
+        type Event = User<MailAddr, Never>;
         type Sends = Vec<Never>;
         type Ph = Never;
         type Error = Never;
         type Birth = behavior::NoBirths;
 
-        fn transition(&mut self, _: crate::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
-            Ok(Actions::cont())
+        fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+            match event.message {}
         }
     }
 
@@ -687,14 +780,16 @@ mod ownership_tests {
                 RestartPolicy::Permanent,
                 1,
                 Duration::from_secs(1),
+                crate::RestartTiming::Immediate,
             ),
+            crate::Proxy::new,
         )
         .unwrap();
         let mut active = definition.initialize().unwrap().behavior;
 
         let child_fact = ChildStopped::new(9, Ok(Exit::Normal), Instant::now());
         assert!(matches!(
-            active.transition(SupervisionEvent::ChildStopped(child_fact.clone())),
+            active.transition(SupervisionEvent::ChildStopped(child_fact)),
             Err(SuperviseError::UnexpectedChildStopped(returned)) if returned == child_fact
         ));
         let worker_fact = WorkerStopped::new(9, 10, Err(Crash::Failed), Instant::now());
@@ -705,17 +800,26 @@ mod ownership_tests {
 
         assert_eq!(active.base().forwarded, 0);
 
-        active
+        let delegated = active
             .transition(SupervisionEvent::Behavior(SupervisionEvent::ChildStopped(
                 ChildStopped::new(9, Ok(Exit::Normal), Instant::now()),
             )))
             .unwrap();
+        assert!(delegated.sends.owned.child_observations.is_empty());
+        assert!(delegated.sends.owned.creation_observations.is_empty());
+        assert!(delegated.sends.owned.replacement_inputs.is_empty());
+        assert!(delegated.sends.owned.failure_reports.is_empty());
+        assert!(delegated.sends.owned.schedules.is_empty());
+        assert!(delegated.sends.owned.shutdowns.is_empty());
+        assert!(delegated.sends.inner.is_empty());
+        assert!(delegated.creates.is_empty());
+        assert!(matches!(delegated.become_, Step::Continue));
         assert_eq!(active.base().forwarded, 1);
         assert_eq!(active.child_count(), 1);
     }
 
     #[test]
-    fn rejected_application_slot_preserves_the_inner_turn_and_reports_the_exact_proposal() {
+    fn application_birth_remains_an_independent_structural_occurrence() {
         let definition = Supervise::new(
             Parent::default(),
             ChildTopology::indexed(|_| 2, 1, child),
@@ -724,7 +828,9 @@ mod ownership_tests {
                 RestartPolicy::Permanent,
                 1,
                 Duration::from_secs(1),
+                crate::RestartTiming::Immediate,
             ),
+            crate::Proxy::new,
         )
         .unwrap();
         let mut active = definition.initialize().unwrap().behavior;
@@ -735,18 +841,10 @@ mod ownership_tests {
             )))
             .unwrap();
 
-        assert!(acted.creates.is_empty());
+        assert_eq!(acted.creates.len(), 1);
+        assert_eq!(acted.creates[0].nonce, 2);
         assert!(matches!(acted.become_, Step::Stop(behavior::Stopped)));
-        assert!(
-            acted.sends.owned.failure_reports.as_slice()
-                == [ReportSupervisionFailure::new(
-                    SupervisionFailure::stable_child_not_accepted(
-                        2,
-                        crate::CreationKind::Birth,
-                        crate::StableSlotRejection::DuplicateNonce,
-                    ),
-                )]
-        );
+        assert!(acted.sends.owned.failure_reports.is_empty());
         assert_eq!(active.child_count(), 1);
     }
 
@@ -760,14 +858,22 @@ mod ownership_tests {
                 RestartPolicy::Permanent,
                 1,
                 Duration::from_secs(1),
+                crate::RestartTiming::Immediate,
             ),
+            crate::Proxy::new,
         )
         .unwrap();
         let mut active = definition.initialize().unwrap().behavior;
-        assert!(matches!(
-            active.on(crate::ShutdownRequested).unwrap().become_,
-            Step::Continue
-        ));
+        let waiting = active.on(crate::ShutdownRequested).unwrap();
+        assert!(waiting.sends.owned.child_observations.is_empty());
+        assert!(waiting.sends.owned.creation_observations.is_empty());
+        assert!(waiting.sends.owned.replacement_inputs.is_empty());
+        assert!(waiting.sends.owned.failure_reports.is_empty());
+        assert!(waiting.sends.owned.schedules.is_empty());
+        assert!(waiting.sends.owned.shutdowns.is_empty());
+        assert!(waiting.sends.inner.is_empty());
+        assert!(waiting.creates.is_empty());
+        assert!(matches!(waiting.become_, Step::Continue));
 
         let acted = active
             .on(crate::CreationResolved::rejected(
@@ -781,7 +887,7 @@ mod ownership_tests {
     }
 
     #[test]
-    fn fixed_supervisor_drains_installed_and_pending_proxies_before_stopping() {
+    fn fixed_supervisor_drains_only_owned_proxies_and_preserves_inner_creation_facts() {
         let definition = Supervise::new(
             Parent::default(),
             ChildTopology::indexed(|index| u64::try_from(index).unwrap(), 2, child),
@@ -790,13 +896,24 @@ mod ownership_tests {
                 RestartPolicy::Permanent,
                 1,
                 Duration::from_secs(1),
+                crate::RestartTiming::Immediate,
             ),
+            crate::Proxy::new,
         )
         .unwrap();
         let mut active = definition.initialize().unwrap().behavior;
-        active
+        let established = active
             .on(crate::CreationResolved::birth(0, MailAddr(10)))
             .unwrap();
+        assert!(established.sends.owned.child_observations.is_empty());
+        assert!(established.sends.owned.creation_observations.is_empty());
+        assert!(established.sends.owned.replacement_inputs.is_empty());
+        assert!(established.sends.owned.failure_reports.is_empty());
+        assert!(established.sends.owned.schedules.is_empty());
+        assert!(established.sends.owned.shutdowns.is_empty());
+        assert!(established.sends.inner.is_empty());
+        assert!(established.creates.is_empty());
+        assert!(matches!(established.become_, Step::Continue));
 
         let requested = active.on(crate::ShutdownRequested).unwrap();
         assert_eq!(
@@ -823,9 +940,37 @@ mod ownership_tests {
                     crate::ChildShutdownRejection::AlreadyStopping,
                 )
         ));
-        active
+        let pending_established = active
             .on(crate::CreationResolved::birth(1, MailAddr(11)))
             .unwrap();
+        assert_eq!(pending_established.sends.owned.shutdowns.len(), 1);
+        assert_eq!(pending_established.sends.owned.shutdowns[0].nonce, 1);
+        assert!(
+            pending_established
+                .sends
+                .owned
+                .child_observations
+                .is_empty()
+        );
+        assert!(
+            pending_established
+                .sends
+                .owned
+                .creation_observations
+                .is_empty()
+        );
+        assert!(
+            pending_established
+                .sends
+                .owned
+                .replacement_inputs
+                .is_empty()
+        );
+        assert!(pending_established.sends.owned.failure_reports.is_empty());
+        assert!(pending_established.sends.owned.schedules.is_empty());
+        assert!(pending_established.sends.inner.is_empty());
+        assert!(pending_established.creates.is_empty());
+        assert!(matches!(pending_established.become_, Step::Continue));
         let created_during_drain = active
             .transition(SupervisionEvent::Behavior(SupervisionEvent::Behavior(
                 User::new(MailAddr(1), ()),
@@ -833,13 +978,13 @@ mod ownership_tests {
             .unwrap();
         assert_eq!(created_during_drain.creates.len(), 1);
         assert!(matches!(created_during_drain.become_, Step::Continue));
-        let installed_during_drain = active
-            .on(crate::CreationResolved::birth(2, MailAddr(12)))
+        let inner_created_during_drain = active
+            .on_path::<_, behavior::Inside<behavior::Here>>(crate::CreationResolved::birth(
+                2,
+                MailAddr(12),
+            ))
             .unwrap();
-        assert_eq!(
-            installed_during_drain.sends.owned.shutdowns.as_slice(),
-            [ShutdownChild::new(2)]
-        );
+        assert!(inner_created_during_drain.sends.owned.shutdowns.is_empty());
         assert!(matches!(
             active
                 .on(ChildStopped::new(0, Ok(Exit::Normal), Instant::now()))
@@ -850,13 +995,6 @@ mod ownership_tests {
         assert!(matches!(
             active
                 .on(ChildStopped::new(1, Ok(Exit::Normal), Instant::now()))
-                .unwrap()
-                .become_,
-            Step::Continue
-        ));
-        assert!(matches!(
-            active
-                .on(ChildStopped::new(2, Ok(Exit::Normal), Instant::now()))
                 .unwrap()
                 .become_,
             Step::Stop(behavior::Stopped)

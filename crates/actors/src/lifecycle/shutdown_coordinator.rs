@@ -3,7 +3,8 @@
 use crate::{ChildShutdownRejected, ChildShutdownRejection, ChildStopped, ShutdownChild};
 use behavior::{
     Actions, Address, Behavior, BehaviorActed, BirthMode, ChildHead, ChildRole, ChildRoute,
-    ChildTail, Here, InjectEvent, Inside, InterpreterRequests, SendEffects, SendLayer,
+    ChildTail, EventIngress, Here, InjectEvent, Inside, InterpreterRequests, SendEffects,
+    SendLayer,
 };
 use behavior::{User, UserEvent};
 
@@ -430,6 +431,17 @@ impl<T> SendEffects for HeterogeneousShutdownSends<T> {
     }
 }
 
+impl<T> HeterogeneousShutdownSends<T> {
+    /// Borrow the phase-ordered shutdown selections emitted by this turn.
+    ///
+    /// The order is the declaration order of the active phase. Retained
+    /// selections from later phases are not exposed until that phase starts.
+    #[must_use]
+    pub fn as_slice(&self) -> &[T] {
+        &self.requests
+    }
+}
+
 impl<E, T: Send> behavior::SendsFor<E> for HeterogeneousShutdownSends<T> {}
 
 impl<I, E, Path, T> behavior::InterpretSends<I, E, Path> for HeterogeneousShutdownSends<T>
@@ -530,53 +542,33 @@ impl<P> InstallShutdownPlan<P> {
 
 /// Interpreter request reporting one validated plan to its owning coordinator.
 ///
-/// The request owns the plan and the exact ancestor ingress together. It is
-/// emitted through `Actions`; interpretation enqueues one ordinary event for
-/// the same actor incarnation. It has no return-to-emitter continuation because
-/// its destination is the explicitly selected ancestor layer.
-///
-/// A report cannot be interpreted against an event algebra whose coordinator
-/// lane is at another structural path:
-///
-/// ```compile_fail
-/// use behavior::{Here, Inside, MailAddr, User};
-/// use behavior_actors::{ReportShutdownPlan, ShutdownCoordinatorEvent, ShutdownPlan};
-/// type Plan = ShutdownPlan<u64>;
-/// type Event = ShutdownCoordinatorEvent<User<MailAddr, ()>, Plan>;
-/// let report: ReportShutdownPlan<Plan, Inside<Here>> =
-///     ReportShutdownPlan::new(ShutdownPlan::new([]).unwrap());
-/// let _: Event = report.into_event();
-/// ```
-pub struct ReportShutdownPlan<P, Path> {
-    ingress: behavior::Ingress<InstallShutdownPlan<P>, Path>,
+/// The request owns the plan. Interpretation enqueues one ordinary event for
+/// the same actor incarnation through its source-indexed [`EventIngress`].
+pub struct ReportShutdownPlan<P> {
     installation: InstallShutdownPlan<P>,
 }
 
-impl<P: core::fmt::Debug, Path> core::fmt::Debug for ReportShutdownPlan<P, Path> {
+impl<P: core::fmt::Debug> core::fmt::Debug for ReportShutdownPlan<P> {
     fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         formatter
             .debug_struct("ReportShutdownPlan")
-            .field("ingress", &self.ingress)
             .field("plan", &self.installation.plan)
             .finish()
     }
 }
 
-impl<P: PartialEq, Path> PartialEq for ReportShutdownPlan<P, Path> {
+impl<P: PartialEq> PartialEq for ReportShutdownPlan<P> {
     fn eq(&self, other: &Self) -> bool {
-        self.ingress == other.ingress && self.installation.plan == other.installation.plan
+        self.installation.plan == other.installation.plan
     }
 }
 
-impl<P: Eq, Path> Eq for ReportShutdownPlan<P, Path> {}
+impl<P: Eq> Eq for ReportShutdownPlan<P> {}
 
-impl<P, Path> ReportShutdownPlan<P, Path> {
-    /// Build a plan report whose final structural destination is inferred from
-    /// the actor composition and its action interpreter.
+impl<P> ReportShutdownPlan<P> {
     #[must_use]
     pub fn new(plan: P) -> Self {
         Self {
-            ingress: behavior::Ingress::new(),
             installation: InstallShutdownPlan::new(plan),
         }
     }
@@ -587,21 +579,17 @@ impl<P, Path> ReportShutdownPlan<P, Path> {
         &self.installation.plan
     }
 
-    /// Build the exact root event selected by the supplied ancestor ingress.
-    ///
-    /// An interpreter uses this after accepting the request. The static
-    /// `InjectEvent` proof rejects a stale or incorrectly reindexed path at
-    /// compile time.
+    /// Build the exact root event selected for the current actor source.
     #[must_use]
     pub fn into_event<Event>(self) -> Event
     where
-        Event: InjectEvent<InstallShutdownPlan<P>, Path>,
+        Event: EventIngress<Here, InstallShutdownPlan<P>>,
     {
-        self.ingress.event(self.installation)
+        Event::ingress(self.installation)
     }
 }
 
-impl<P, Path> behavior::InterpreterRequest for ReportShutdownPlan<P, Path> {
+impl<P> behavior::InterpreterRequest for ReportShutdownPlan<P> {
     type ReturnToEmitter = behavior::NoReturnToEmitter;
 }
 
@@ -638,6 +626,14 @@ impl<E: UserEvent, P> behavior::ComposedEvent for ShutdownCoordinatorEvent<E, P>
 
 impl<E: UserEvent, P> InjectEvent<InstallShutdownPlan<P>, Here> for ShutdownCoordinatorEvent<E, P> {
     fn inject_at(value: InstallShutdownPlan<P>) -> Self {
+        Self::Plan(value)
+    }
+}
+
+impl<E: UserEvent, P> EventIngress<Here, InstallShutdownPlan<P>>
+    for ShutdownCoordinatorEvent<E, P>
+{
+    fn ingress(value: InstallShutdownPlan<P>) -> Self {
         Self::Plan(value)
     }
 }
@@ -1280,7 +1276,7 @@ mod tests {
     use super::*;
     use crate::Activate as _;
     use crate::{Exit, ShutdownRequested};
-    use behavior::{MailAddr, Never, NoBirths, Step};
+    use behavior::{MailAddr, Never, NoBirths, NoSends, Step};
 
     struct Probe;
 
@@ -1465,16 +1461,27 @@ mod tests {
                 .collect::<Vec<_>>(),
             [1, 2]
         );
-        active.on_path(stopped(2)).unwrap();
+        assert!(matches!(first.sends.inner, NoSends));
+        assert!(first.creates.is_empty());
+        assert!(matches!(first.become_, Step::Continue));
+        let retained = active.on_path(stopped(2)).unwrap();
+        assert!(retained.sends.owned.requests.is_empty());
+        assert!(matches!(retained.sends.inner, NoSends));
+        assert!(retained.creates.is_empty());
+        assert!(matches!(retained.become_, Step::Continue));
         let second = active.on_path(stopped(1)).unwrap();
         assert_eq!(
             heterogeneous::Selection::nonce(&second.sends.owned.requests[0]),
             3
         );
-        assert!(matches!(
-            active.on_path(stopped(3)).unwrap().become_,
-            Step::Stop(_)
-        ));
+        assert!(matches!(second.sends.inner, NoSends));
+        assert!(second.creates.is_empty());
+        assert!(matches!(second.become_, Step::Continue));
+        let completed = active.on_path(stopped(3)).unwrap();
+        assert!(completed.sends.owned.requests.is_empty());
+        assert!(matches!(completed.sends.inner, NoSends));
+        assert!(completed.creates.is_empty());
+        assert!(matches!(completed.become_, Step::Stop(_)));
     }
 
     #[test]
@@ -1588,6 +1595,8 @@ mod tests {
         let actions = active.on(ShutdownRequested).unwrap();
 
         assert_eq!(actions.sends.owned.as_slice(), [ShutdownChild::new(7)]);
+        assert!(actions.sends.inner.is_empty());
+        assert!(actions.creates.is_empty());
         assert!(matches!(actions.become_, Step::Continue));
     }
 
@@ -1606,12 +1615,19 @@ mod tests {
                 before_start
             ))
         );
-        active.on_path(ShutdownRequested).unwrap();
-        assert_eq!(
-            active.on_path(ShutdownRequested).unwrap().sends,
-            SendLayer::empty()
-        );
-        active.on_path(stopped(1)).unwrap();
+        let started = active.on_path(ShutdownRequested).unwrap();
+        assert_eq!(started.sends.owned.as_slice().len(), 2);
+        assert!(started.sends.inner.is_empty());
+        assert!(started.creates.is_empty());
+        assert!(matches!(started.become_, Step::Continue));
+        let repeated = active.on_path(ShutdownRequested).unwrap();
+        assert_eq!(repeated.sends, SendLayer::empty());
+        assert!(repeated.creates.is_empty());
+        assert!(matches!(repeated.become_, Step::Continue));
+        let retained = active.on_path(stopped(1)).unwrap();
+        assert_eq!(retained.sends, SendLayer::empty());
+        assert!(retained.creates.is_empty());
+        assert!(matches!(retained.become_, Step::Continue));
         let duplicate = stopped(1);
         assert_eq!(
             active.on_path(duplicate),
@@ -1635,7 +1651,11 @@ mod tests {
                 .initialize()
                 .unwrap()
                 .behavior;
-        active.on_path(ShutdownRequested).unwrap();
+        let started = active.on_path(ShutdownRequested).unwrap();
+        assert_eq!(started.sends.owned.as_slice(), [ShutdownChild::new(1)]);
+        assert!(started.sends.inner.is_empty());
+        assert!(started.creates.is_empty());
+        assert!(matches!(started.become_, Step::Continue));
         let before = active.state().clone();
         assert_eq!(
             active.on_path(ChildShutdownRejected::new(
@@ -1661,10 +1681,13 @@ mod tests {
         let user = active.receive(MailAddr(0), 7).unwrap();
         assert_eq!(user.sends.inner, [7]);
         assert!(user.sends.owned.is_empty());
-        assert!(matches!(
-            active.on_path(ShutdownRequested).unwrap().become_,
-            Step::Stop(_)
-        ));
+        assert!(user.creates.is_empty());
+        assert!(matches!(user.become_, Step::Continue));
+        let stopped = active.on_path(ShutdownRequested).unwrap();
+        assert!(stopped.sends.owned.is_empty());
+        assert!(stopped.sends.inner.is_empty());
+        assert!(stopped.creates.is_empty());
+        assert!(matches!(stopped.become_, Step::Stop(_)));
     }
 
     #[test]
@@ -1707,7 +1730,7 @@ mod tests {
             .unwrap()
             .behavior;
         let plan = ShutdownPlan::new([vec![4, 5]]).unwrap();
-        let report: ReportShutdownPlan<_, Here> = ReportShutdownPlan::new(plan.clone());
+        let report: ReportShutdownPlan<_> = ReportShutdownPlan::new(plan.clone());
         let event: Event = report.into_event();
 
         let installed = active.transition(event).unwrap();
@@ -1728,10 +1751,10 @@ mod tests {
             .initialize()
             .unwrap()
             .behavior;
-        assert_eq!(
-            active.on_path(ShutdownRequested).unwrap().sends,
-            SendLayer::empty()
-        );
+        let waiting = active.on_path(ShutdownRequested).unwrap();
+        assert_eq!(waiting.sends, SendLayer::empty());
+        assert!(waiting.creates.is_empty());
+        assert!(matches!(waiting.become_, Step::Continue));
         assert!(matches!(
             active.state(),
             ShutdownState::AwaitingPlanAfterShutdown
@@ -1745,6 +1768,9 @@ mod tests {
             started.sends.owned.as_slice(),
             [ShutdownChild::new(4), ShutdownChild::new(5)]
         );
+        assert!(started.sends.inner.is_empty());
+        assert!(started.creates.is_empty());
+        assert!(matches!(started.become_, Step::Continue));
 
         let mut empty =
             ShutdownCoordinator::<Probe, crate::StopOnShutdown<Probe>, ChildHead>::awaiting_plan(
@@ -1753,7 +1779,10 @@ mod tests {
             .initialize()
             .unwrap()
             .behavior;
-        empty.on_path(ShutdownRequested).unwrap();
+        let waiting = empty.on_path(ShutdownRequested).unwrap();
+        assert_eq!(waiting.sends, SendLayer::empty());
+        assert!(waiting.creates.is_empty());
+        assert!(matches!(waiting.become_, Step::Continue));
         let stopped = empty
             .on_path(InstallShutdownPlan::new(ShutdownPlan::new([]).unwrap()))
             .unwrap();
@@ -1775,7 +1804,11 @@ mod tests {
                 .initialize()
                 .unwrap()
                 .behavior;
-        active.on_path(ShutdownRequested).unwrap();
+        let waiting = active.on_path(ShutdownRequested).unwrap();
+        assert!(waiting.sends.owned.requests.is_empty());
+        assert!(matches!(waiting.sends.inner, NoSends));
+        assert!(waiting.creates.is_empty());
+        assert!(matches!(waiting.become_, Step::Continue));
         let routes = NamedParentChildrenRoutes::new(11, 12, 13);
         let plan = HeterogeneousShutdownPlan::new([vec![
             shutdown_target::<NamedParent, _, Targets>(NamedParentChild::Pool, routes.pool),
@@ -1793,6 +1826,9 @@ mod tests {
                 .collect::<Vec<_>>(),
             [12, 11]
         );
+        assert!(matches!(started.sends.inner, NoSends));
+        assert!(started.creates.is_empty());
+        assert!(matches!(started.become_, Step::Continue));
         assert!(matches!(
             active.state(),
             ShutdownState::Stopping {

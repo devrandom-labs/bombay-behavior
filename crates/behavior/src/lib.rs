@@ -20,33 +20,36 @@ mod transition;
 mod user_event;
 
 pub use actor::{
-    Address, AllocationRejection, BirthMode, BirthNodeAppend, BirthNodeMapper, BirthNodeProtocols,
-    BirthProtocol, BirthProtocolAt, BirthProtocolHead, BirthProtocolProduct, BirthProtocolTail,
-    BirthProtocols, Births, ChildChoice, ChildCons, ChildDelivery, ChildHead, ChildOccurrence,
-    ChildOccurrenceResolution, ChildPosition, ChildProduct, ChildRole, ChildRoute, ChildTail,
-    Children, ChildrenError, Create, CreationKind, CreationRejection, DeclaredChildOccurrence,
-    Delivery, DispatchBirth, DispatchBirthAt, EndpointAddress, EstablishedActor,
-    EstablishedCreation, EstablishedDelivery, EstablishedRecipient, FoldBirthNode, FoldedBirthNode,
-    InstallBirth, InterpretEstablished, MailAddr, NoBirthProtocols, NoBirths, NoChildren,
-    Recipient, ResolveChildOccurrence, ResolvedChild, ResolvedChildPosition, RoleChild,
-    RoleProtocol, StructuralChildOccurrence,
+    Address, AllocationRejection, BirthMode, BirthNodeAppend, BirthNodeAt, BirthNodeLogicalHosts,
+    BirthNodeMapper, BirthNodeProtocols, BirthProtocol, BirthProtocolAt, BirthProtocolHead,
+    BirthProtocolProduct, BirthProtocolTail, BirthProtocols, Births, ChildChoice, ChildCons,
+    ChildDelivery, ChildHead, ChildInput, ChildOccurrence, ChildOccurrenceResolution,
+    ChildPosition, ChildProduct, ChildReport, ChildRole, ChildRoute, ChildTail, Children,
+    ChildrenError, Create, CreationKind, CreationRejection, DeclaredChildOccurrence, Delivery,
+    DispatchBirth, DispatchBirthAt, EndpointAddress, EstablishedActor, EstablishedCreation,
+    EstablishedDelivery, EstablishedRecipient, FoldBirthNode, FoldedBirthNode, InstallBirth,
+    InterpretEstablished, MailAddr, NoBirthProtocols, NoBirths, NoChildren, Recipient,
+    ResolveChildOccurrence, ResolvedChild, ResolvedChildPosition, RoleChild, RoleProtocol,
+    StructuralChildOccurrence,
 };
 pub use effect::Effect;
 pub use effects::{
-    Acted, Actions, AppendSend, Become, InterpretChildDelivery, InterpretDelivery,
-    InterpretEstablishedDelivery, InterpretRequest, InterpretSends, InterpreterRequest,
-    InterpreterRequests, NoReturnToEmitter, NoSends, Own, ReturnsToEmitter, SendEffects, SendInput,
-    SendInterpreter, SendLayer, SendsFor,
+    Acted, Actions, AppendSend, Become, InterpretChildDelivery, InterpretChildInput,
+    InterpretDelivery, InterpretEstablishedDelivery, InterpretRequest, InterpretSends,
+    InterpreterRequest, InterpreterRequests, LogicalDeliveryProtocols, NoReturnToEmitter, NoSends,
+    Own, ReportToParent, ReturnsToEmitter, SendEffects, SendInput, SendInterpreter, SendLayer,
+    SendsFor,
 };
 pub use next::{Never, Step, Stopped};
 pub use reducer::{ActionReducer, Effects, FoldFailure, Folded, fold_events};
 pub use transition::{
     ActiveTurn, Behavior, BehaviorActed, BehaviorAddr, BehaviorBase, BehaviorLayer,
-    BehaviorMessage, InitializationTurn, MessageProtocol, Protocol, delegate_transition,
-    initialize,
+    BehaviorMessage, InitializationTurn, LogicalHostRequirements, MessageProtocol, Protocol,
+    delegate_transition, initialize,
 };
 pub use user_event::{
-    ComposedEvent, EventLayer, Here, Ingress, InjectEvent, Inside, User, UserEvent,
+    ChildInputIngress, ComposedEvent, EventIngress, EventLayer, Here, Ingress, InjectEvent, Inside,
+    User, UserEvent,
 };
 
 /// Generate the nominal protocol, closed effect products, and exact `Behavior`

@@ -8,14 +8,13 @@ All notable changes to `bombay-behavior-actors` are documented here.
 
 - Add exact-capability monitoring to `TerminationMonitor`, and a statically
   selected logical or established destination for `MessageAdapter`.
-- Add explicit parent-path forms for delayed supervisors and keyed worker
-  pools so proxy reports remain correctly indexed through outer wrappers.
+- Add structural parent reports and private child inputs so supervision and
+  pool facts remain correctly typed through outer behavior composition.
 - Add `EstablishedChild` and `established_child`, preserving an exact
   installed-actor capability together with its occurrence-aware creator-local
   route so committed children can enter typed heterogeneous shutdown plans.
-- Add typed proxy-command unavailability returns, generic operations for the
-  existing child-shutdown builder, and owner-authored transitive logical-host
-  metadata.
+- Add typed proxy-command unavailability returns and generic operations for
+  the existing child-shutdown builder.
 
 ### Changed
 
@@ -36,9 +35,11 @@ All notable changes to `bombay-behavior-actors` are documented here.
 - Join initial dynamic-supervisor proxy and worker creation facts in either
   arrival order, and keep pool assignments recoverable when worker-stop and
   proxy-unavailability facts race.
+- Require `RestartTiming` in both restart configuration constructors so
+  immediate and delayed replacement are always explicit policy choices.
 - Make `Router` a single-recipient ownership transfer so round-robin,
   least-loaded, consistent-hash, and rendezvous routing accept non-`Clone`
-  commands such as `ProxyCommand`.
+  domain commands routed through a proxy-preserved protocol.
 
 ### Removed
 
@@ -48,6 +49,8 @@ All notable changes to `bombay-behavior-actors` are documented here.
   the retained concrete actors and ordinary typed composition.
 - Remove the `Broadcast` router policy. `Topic` and `PubSub` retain fan-out as
   their distinct, explicitly clone-requiring membership-snapshot law.
+- Remove the duplicate delayed restart constructors and the crate-root relay
+  re-exports; the relay feature remains public in `actors::composition`.
 
 ## [0.14.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-actors-v0.13.1...bombay-behavior-actors-v0.14.0) - 2026-08-21
 
@@ -91,7 +94,7 @@ All notable changes to `bombay-behavior-actors` are documented here.
   positions into the existing `ShutdownChoice` sum. Plan validation,
   coordinator phase transitions, and terminal provenance remain owned by their
   existing lifecycle components.
-- Expose `InstallationRequirements` as the closed ordered product of a
+- Expose Behavior Core's `BirthProtocols` as the closed ordered product of a
   behavior's canonical protocol and every transitive staged-birth protocol.
   Structural membership distinguishes repeated occurrences; external-only
   delivery destinations are excluded.

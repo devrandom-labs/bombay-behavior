@@ -7,6 +7,7 @@
 
 mod delivery_route;
 mod message_adapter;
+mod report_relay;
 
 pub use crate::activation::{Activate, Active, Initialized};
 pub use crate::machine::{Machine, Move};
@@ -15,3 +16,4 @@ pub use delivery_route::{
     DeliveryRoute, DeliveryRouteFor, ReplyDeliveries, ReplyDelivery, ReplyRoute,
 };
 pub use message_adapter::{MessageAdapter, MessageAdapterWithRoute};
+pub use report_relay::{RelayChildReportEvent, RelayChildReports};

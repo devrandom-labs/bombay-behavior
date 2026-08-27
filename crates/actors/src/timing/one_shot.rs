@@ -214,9 +214,12 @@ mod tests {
         assert!(fired.sends == SendLayer::empty());
         assert_eq!(active.base().elapsed, 1);
 
-        active
+        let duplicate = active
             .on_path(TimerElapsed::new(TimerId(7), crate::TimerGeneration(0)))
             .unwrap();
+        assert_eq!(duplicate.sends, SendLayer::empty());
+        assert!(duplicate.creates.is_empty());
+        assert!(matches!(duplicate.become_, Step::Continue));
         assert_eq!(active.base().elapsed, 1);
     }
 }

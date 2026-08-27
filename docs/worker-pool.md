@@ -17,17 +17,24 @@ observation, and timing effects for an interpreter.
 ## Identity and effects
 
 `WorkerPoolProtocol` is canonical public pool identity. `WorkerPoolEvent` is the
-larger internal event algebra. `PoolBehaviorSends` exposes two named ordinary
-delivery lanes:
+larger internal event algebra. `PoolSends` exposes the complete named effect
+product:
 
 - `responses` to submitters; and
-- `assignments` to supervised worker proxies.
+- `assignments` to supervised worker proxies; and
+- `supervision` for observation, replacement, timing, failure reporting, and
+  shutdown.
+
+These are semantic fields, not positions in a nested `SendLayer`. Interpretation
+retains the authored response, assignment, then supervision order.
 
 The protocol, event, behavior, and sends types remain distinct. A pool
-assignment carries a typed logical `Recipient<PoolProtocol>` for completion;
-it does not require the pool's behavior type. That logical recipient is
-appropriate because completion crosses an ordinary address boundary and is
-resolved by the runtime.
+assignment carries only `AssignmentId`, `JobId`, and the job payload. The
+worker reports `PoolCompletion<R>` to its established parent. The pool-owned
+stable-child layer relays that exact report across the proxy's parent edge, so
+the pool receives a nested `ChildReport` containing both the stable slot nonce
+and fresh worker-incarnation nonce. No worker names the pool protocol, reply
+route, stable-child type, pool address, or a fabricated logical recipient.
 
 Assignments to the pool's own child proxies use
 `ChildDelivery<ProxyProtocol, ChildHead>`. The delivery retains the stable
@@ -59,17 +66,23 @@ application `Clone` cannot leave a partially changed semantic state.
 
 ## Worker phases
 
-Each fixed stable proxy slot is exactly one of:
+The pool retains only customer work ownership:
 
-- `Installing`;
-- `Idle`;
+- `Vacant`;
 - `Assigned { assignment, job }`;
-- `Stopping`; or
+- `CommandReturned { job, payload }`; or
 - `Retired { reason }`.
 
+`FixedFleetOwnership` separately owns stable installation, current worker
+incarnation, restart admission and delay, and fleet shutdown. The public
+`WorkerPhase` is derived from those two lawful sources: a vacant slot is idle
+only while ownership proves a current routable worker; otherwise it is
+installing. Fleet shutdown derives `Stopping`. The pool does not retain a
+second lifecycle phase to reconcile later.
+
 An installing or retired slot cannot receive work. A replacement request does
-not make a slot idle. Only its matching successful creation fact does so. A
-creation rejection retires the slot and cannot be reported as a restart.
+not make a slot idle. Only the matching successful worker-creation fact does
+so. A creation rejection retires the slot and cannot be reported as a restart.
 
 The stable proxy is a derived identity construction. Each worker incarnation
 is still freshly allocated. Affinity and queued work name the proxy slot nonce,
@@ -78,11 +91,12 @@ never infer identity from an incarnation address.
 ## Admission and ordering
 
 Idle slots are visited in configured order and the ordinary backlog is FIFO.
-For each event the pool:
-
-1. computes the ownership transition;
-2. folds the same event through supervision; and
-3. fills eligible idle slots from the backlog.
+For an event that changes both job ownership and worker lifecycle, the pool
+first validates the fact against both state machines. It then commits the
+customer-work transition and the shared ownership transition before filling
+eligible idle slots from the backlog. A controlled rejection from either
+validation leaves both states unchanged; restart denial is an accepted
+ownership outcome and returns every affected job according to pool policy.
 
 A successful installation may therefore dispatch work in the same transition.
 The interpreter's creation-before-sends policy ensures the corresponding local
@@ -149,12 +163,21 @@ let configuration = PoolConfiguration::new(
     RestartPolicy::Permanent,
     maximum_restarts,
     restart_window,
+    RestartTiming::Immediate,
 );
-let pool = WorkerPool::new(topology, configuration, complete_to)?;
+let pool = WorkerPool::new(
+    topology,
+    configuration,
+    |worker| worker.layer(Proxy::new),
+)?;
 ```
 
 `ChildTopology` owns ordered creator-local nonces and the pure slot factory.
-`PoolConfiguration` owns backlog, interruption, and restart policy.
+`PoolConfiguration` owns backlog, interruption, restart policy, and the
+explicit timing of an admitted replacement.
+The inferred `BehaviorLayer` constructs the stable child; the worker and layer
+output types do not appear in the pool's public protocol identity. The pool
+adds its completion-report relay internally without a stored adapter layer.
 Construction rejects empty topology, duplicate nonces, and exhausted nonce
 sequences before a behavior exists.
 

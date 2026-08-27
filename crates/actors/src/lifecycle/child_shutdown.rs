@@ -241,27 +241,48 @@ mod tests {
             .collect()
     }
 
+    macro_rules! assert_transition_effect_counts {
+        ($actions:expr, shutdowns = $shutdowns:expr, reports = $reports:expr) => {{
+            let actions = &$actions;
+            assert_eq!(actions.sends.owned.as_slice().len(), $shutdowns);
+            assert!(actions.sends.inner.owned.is_empty());
+            assert!(actions.sends.inner.inner.owned.is_empty());
+            assert_eq!(actions.sends.inner.inner.inner.owned.len(), $reports);
+            assert!(matches!(actions.sends.inner.inner.inner.inner, NoSends));
+            assert!(actions.creates.is_empty());
+            assert!(matches!(actions.become_, Step::Continue));
+        }};
+    }
+
     #[test]
     fn plan_before_and_after_shutdown_preserve_declared_phase_order() {
         let mut plan_first = shutdown_after_children(Application::complete())
             .shutdown_phase(StoreRole)
             .shutdown_phase(GatewayRole)
-            .finish::<Here>()
+            .finish()
             .initialize()
             .unwrap()
             .behavior;
-        plan_first
+        let first_creation = plan_first
             .on_path::<_, Inside<Inside<Here>>>(CreationResolved::birth(11, MailAddr(101)))
             .unwrap();
+        assert_transition_effect_counts!(first_creation, shutdowns = 0, reports = 0);
         let reported = plan_first
             .on_path::<_, Inside<Here>>(CreationResolved::birth(12, MailAddr(102)))
             .unwrap();
         let report = reported.sends.inner.inner.inner.owned.as_slice()[0]
             .plan()
             .clone();
+        assert_transition_effect_counts!(reported, shutdowns = 0, reports = 1);
         assert_eq!(phase_nonces(&report), [11, 12]);
-        plan_first.on(InstallShutdownPlan::new(report)).unwrap();
-        plan_first.on(ShutdownRequested).unwrap();
+        let installed = plan_first.on(InstallShutdownPlan::new(report)).unwrap();
+        assert_transition_effect_counts!(installed, shutdowns = 0, reports = 0);
+        let started = plan_first.on(ShutdownRequested).unwrap();
+        assert_transition_effect_counts!(started, shutdowns = 1, reports = 0);
+        assert_eq!(
+            heterogeneous::Selection::nonce(&started.sends.owned.as_slice()[0]),
+            11
+        );
         let ShutdownState::Stopping { plan, phase, .. } = plan_first.state() else {
             panic!("plan-first shutdown did not start");
         };
@@ -271,13 +292,18 @@ mod tests {
             unreachable!();
         };
         assert_eq!(awaiting, &[11]);
-        plan_first
+        let advanced = plan_first
             .on(ChildStopped::new(
                 11,
                 Ok(Exit::Normal),
                 std::time::Instant::now(),
             ))
             .unwrap();
+        assert_transition_effect_counts!(advanced, shutdowns = 1, reports = 0);
+        assert_eq!(
+            heterogeneous::Selection::nonce(&advanced.sends.owned.as_slice()[0]),
+            12
+        );
         let ShutdownState::Stopping { awaiting, .. } = plan_first.state() else {
             panic!("second declared phase did not start");
         };
@@ -286,25 +312,33 @@ mod tests {
         let mut shutdown_first = shutdown_after_children(Application::complete())
             .shutdown_phase(StoreRole)
             .shutdown_phase(GatewayRole)
-            .finish::<Here>()
+            .finish()
             .initialize()
             .unwrap()
             .behavior;
-        shutdown_first.on(ShutdownRequested).unwrap();
+        let waiting = shutdown_first.on(ShutdownRequested).unwrap();
+        assert_transition_effect_counts!(waiting, shutdowns = 0, reports = 0);
         assert!(matches!(
             shutdown_first.state(),
             ShutdownState::AwaitingPlanAfterShutdown
         ));
-        shutdown_first
+        let first_creation = shutdown_first
             .on_path::<_, Inside<Inside<Here>>>(CreationResolved::birth(11, MailAddr(101)))
             .unwrap();
+        assert_transition_effect_counts!(first_creation, shutdowns = 0, reports = 0);
         let reported = shutdown_first
             .on_path::<_, Inside<Here>>(CreationResolved::birth(12, MailAddr(102)))
             .unwrap();
         let report = reported.sends.inner.inner.inner.owned.as_slice()[0]
             .plan()
             .clone();
-        shutdown_first.on(InstallShutdownPlan::new(report)).unwrap();
+        assert_transition_effect_counts!(reported, shutdowns = 0, reports = 1);
+        let started = shutdown_first.on(InstallShutdownPlan::new(report)).unwrap();
+        assert_transition_effect_counts!(started, shutdowns = 1, reports = 0);
+        assert_eq!(
+            heterogeneous::Selection::nonce(&started.sends.owned.as_slice()[0]),
+            11
+        );
         let ShutdownState::Stopping { plan, phase, .. } = shutdown_first.state() else {
             panic!("shutdown-first plan did not start");
         };
@@ -317,33 +351,46 @@ mod tests {
         let initialized = shutdown_after_children(Application::complete())
             .shutdown_phase(GatewayRole)
             .shutdown_phase(StoreRole)
-            .finish::<Here>()
+            .finish()
             .initialize()
             .unwrap();
         let mut active = initialized.behavior;
-        active
+        let first_creation = active
             .on_path::<_, Inside<Inside<Here>>>(CreationResolved::birth(11, MailAddr(101)))
             .unwrap();
+        assert_transition_effect_counts!(first_creation, shutdowns = 0, reports = 0);
         let reported = active
             .on_path::<_, Inside<Here>>(CreationResolved::birth(12, MailAddr(102)))
             .unwrap();
         let plan = reported.sends.inner.inner.inner.owned.as_slice()[0]
             .plan()
             .clone();
+        assert_transition_effect_counts!(reported, shutdowns = 0, reports = 1);
         assert_eq!(phase_nonces(&plan), [12, 11]);
-        active.on(InstallShutdownPlan::new(plan)).unwrap();
-        active.on(ShutdownRequested).unwrap();
+        let installed = active.on(InstallShutdownPlan::new(plan)).unwrap();
+        assert_transition_effect_counts!(installed, shutdowns = 0, reports = 0);
+        let started = active.on(ShutdownRequested).unwrap();
+        assert_transition_effect_counts!(started, shutdowns = 1, reports = 0);
+        assert_eq!(
+            heterogeneous::Selection::nonce(&started.sends.owned.as_slice()[0]),
+            12
+        );
         let ShutdownState::Stopping { awaiting, .. } = active.state() else {
             panic!("reversed first phase did not start");
         };
         assert_eq!(awaiting, &[12]);
-        active
+        let advanced = active
             .on(ChildStopped::new(
                 12,
                 Ok(Exit::Normal),
                 std::time::Instant::now(),
             ))
             .unwrap();
+        assert_transition_effect_counts!(advanced, shutdowns = 1, reports = 0);
+        assert_eq!(
+            heterogeneous::Selection::nonce(&advanced.sends.owned.as_slice()[0]),
+            11
+        );
         let ShutdownState::Stopping { awaiting, .. } = active.state() else {
             panic!("reversed second phase did not start");
         };
@@ -355,7 +402,7 @@ mod tests {
         let mut active = shutdown_after_children(Application::complete())
             .shutdown_phase(StoreRole)
             .shutdown_phase(GatewayRole)
-            .finish::<Here>()
+            .finish()
             .initialize()
             .unwrap()
             .behavior;
@@ -385,7 +432,7 @@ mod tests {
         let missing = shutdown_after_children(Application::missing_store())
             .shutdown_phase(StoreRole)
             .shutdown_phase(GatewayRole)
-            .finish::<Here>()
+            .finish()
             .initialize();
         assert!(matches!(
             missing,
@@ -397,7 +444,7 @@ mod tests {
         let duplicate = shutdown_after_children(Application::duplicate_store())
             .shutdown_phase(StoreRole)
             .shutdown_phase(GatewayRole)
-            .finish::<Here>()
+            .finish()
             .initialize();
         assert!(matches!(
             duplicate,
@@ -412,7 +459,7 @@ mod tests {
         let mut mismatched = shutdown_after_children(Application::complete())
             .shutdown_phase(StoreRole)
             .shutdown_phase(GatewayRole)
-            .finish::<Here>()
+            .finish()
             .initialize()
             .unwrap()
             .behavior;
@@ -440,16 +487,18 @@ mod tests {
         let mut stale = shutdown_after_children(Application::complete())
             .shutdown_phase(StoreRole)
             .shutdown_phase(GatewayRole)
-            .finish::<Here>()
+            .finish()
             .initialize()
             .unwrap()
             .behavior;
-        stale
+        let first_creation = stale
             .on_path::<_, Inside<Inside<Here>>>(CreationResolved::birth(11, MailAddr(101)))
             .unwrap();
-        stale
+        assert_transition_effect_counts!(first_creation, shutdowns = 0, reports = 0);
+        let reported = stale
             .on_path::<_, Inside<Here>>(CreationResolved::birth(12, MailAddr(102)))
             .unwrap();
+        assert_transition_effect_counts!(reported, shutdowns = 0, reports = 1);
         let observed = CreationResolved::birth(12, MailAddr(202));
         let Err(ShutdownCoordinatorError::Behavior(
             ChildShutdownPlanError::UnexpectedCreationResult {
@@ -469,7 +518,7 @@ mod tests {
     #[test]
     fn an_application_without_children_reports_the_empty_plan_during_initialization() {
         let initialized = shutdown_after_children(EmptyApplication)
-            .finish::<Here>()
+            .finish()
             .initialize()
             .unwrap();
         let report = &initialized.actions.sends.inner.owned.as_slice()[0];
@@ -522,7 +571,7 @@ pub trait DeclareShutdownPhase<Role>: Sized {
 /// assigned exactly once. Its associated output preserves the complete
 /// heterogeneous coordinator type without asking a framework to reproduce the
 /// builder's typestate vocabulary.
-pub trait FinishShutdownPhases<ParentPath>: Sized {
+pub trait FinishShutdownPhases: Sized {
     type Output;
 
     #[must_use]
@@ -686,10 +735,8 @@ where
     /// Complete the application after proving that every child role occurs in
     /// exactly one declared phase.
     ///
-    /// `ParentPath` is inferred from the final actor and its action
-    /// interpreter. Calling code does not construct or pass a route. Adding an
-    /// outer statically composed actor therefore constrains the report to that
-    /// final event type instead of leaving a route fixed at this call site.
+    /// The final actor's source-indexed event ingress carries the plan through
+    /// arbitrary outer layers without exposing a structural path.
     ///
     /// ```compile_fail,E0599
     /// use behavior_actors::{
@@ -719,11 +766,11 @@ where
     ///     .finish();
     /// ```
     #[must_use]
-    pub fn finish<ParentPath>(
+    pub fn finish(
         self,
-    ) -> HeterogeneousShutdownCoordinator<ChildShutdownPlan<B, Phases, ParentPath>, TargetsFor<B>>
+    ) -> HeterogeneousShutdownCoordinator<ChildShutdownPlan<B, Phases>, TargetsFor<B>>
     where
-        ChildShutdownPlan<B, Phases, ParentPath>: Behavior<Protocol = B::Protocol>,
+        ChildShutdownPlan<B, Phases>: Behavior<Protocol = B::Protocol>,
     {
         HeterogeneousShutdownCoordinator::awaiting_plan(ChildShutdownPlan::new(self.application))
     }
@@ -733,8 +780,7 @@ where
     private_bounds,
     reason = "the public consumer operation preserves the builder's closed finishing proof"
 )]
-impl<B, Available, Phases, ParentPath> FinishShutdownPhases<ParentPath>
-    for ChildShutdownPhases<B, Available, Phases>
+impl<B, Available, Phases> FinishShutdownPhases for ChildShutdownPhases<B, Available, Phases>
 where
     B: Behavior,
     B::Birth: BirthMode,
@@ -744,13 +790,12 @@ where
     TargetsFor<B>:
         super::shutdown_coordinator::heterogeneous::Selection<Addr = crate::BehaviorAddr<B>> + Copy,
     <crate::BehaviorAddr<B> as Address>::Nonce: Copy + Eq,
-    ChildShutdownPlan<B, Phases, ParentPath>: Behavior<Protocol = B::Protocol>,
+    ChildShutdownPlan<B, Phases>: Behavior<Protocol = B::Protocol>,
 {
-    type Output =
-        HeterogeneousShutdownCoordinator<ChildShutdownPlan<B, Phases, ParentPath>, TargetsFor<B>>;
+    type Output = HeterogeneousShutdownCoordinator<ChildShutdownPlan<B, Phases>, TargetsFor<B>>;
 
     fn finish(self) -> Self::Output {
-        ChildShutdownPhases::finish::<ParentPath>(self)
+        ChildShutdownPhases::finish(self)
     }
 }
 
@@ -867,15 +912,13 @@ enum PlannedEvent<E, A: Address> {
 
 /// Internal application composition that observes child creations and reports
 /// one existing heterogeneous shutdown plan to its outer coordinator.
-/// `ParentPath` remains a compile-time parameter of the final composition; it
-/// is never chosen by this planner.
-pub struct ChildShutdownPlan<B: Behavior, Phases, ParentPath> {
+pub struct ChildShutdownPlan<B: Behavior, Phases> {
     application: B,
     planning: Planning<<crate::BehaviorAddr<B> as Address>::Nonce>,
-    phases: PhantomData<fn() -> (Phases, ParentPath)>,
+    phases: PhantomData<fn() -> Phases>,
 }
 
-impl<B: Behavior, Phases, ParentPath> ChildShutdownPlan<B, Phases, ParentPath> {
+impl<B: Behavior, Phases> ChildShutdownPlan<B, Phases> {
     fn new(application: B) -> Self {
         Self {
             application,
@@ -885,7 +928,7 @@ impl<B: Behavior, Phases, ParentPath> ChildShutdownPlan<B, Phases, ParentPath> {
     }
 }
 
-impl<B, Phases, ParentPath> crate::BehaviorBase for ChildShutdownPlan<B, Phases, ParentPath>
+impl<B, Phases> crate::BehaviorBase for ChildShutdownPlan<B, Phases>
 where
     B: Behavior + crate::BehaviorBase,
 {
@@ -896,7 +939,7 @@ where
     }
 }
 
-impl<B, Phases, ParentPath> crate::StashStatus for ChildShutdownPlan<B, Phases, ParentPath>
+impl<B, Phases> crate::StashStatus for ChildShutdownPlan<B, Phases>
 where
     B: Behavior + crate::StashStatus,
 {
@@ -906,9 +949,9 @@ where
 }
 
 type Plan<Targets> = HeterogeneousShutdownPlan<Targets>;
-type ReportPlan<Targets, ParentPath> = ReportShutdownPlan<Plan<Targets>, ParentPath>;
-type BaseSends<B, Targets, ParentPath> =
-    SendLayer<InterpreterRequests<ReportPlan<Targets, ParentPath>>, <B as Behavior>::Sends>;
+type ReportPlan<Targets> = ReportShutdownPlan<Plan<Targets>>;
+type BaseSends<B, Targets> =
+    SendLayer<InterpreterRequests<ReportPlan<Targets>>, <B as Behavior>::Sends>;
 
 struct PlanningChildren;
 struct PlannedEnd;
@@ -1102,8 +1145,8 @@ where
     }
 }
 
-impl<B, Phases, ParentPath, A, Ph, Sends, Br, Node, Shape, Targets, Events, Planned> Behavior
-    for ChildShutdownPlan<B, Phases, ParentPath>
+impl<B, Phases, A, Ph, Sends, Br, Node, Shape, Targets, Events, Planned> Behavior
+    for ChildShutdownPlan<B, Phases>
 where
     A: Address,
     A::Nonce: Copy + Eq,
@@ -1113,14 +1156,7 @@ where
     B::Protocol: Protocol<Addr = A>,
     Node: FoldBirthNode<ShutdownTargets<B>, Folded = Targets>
         + FoldBirthNode<PlanningChildren, Folded = Shape>,
-    Shape: PlanChildren<
-            Node,
-            A,
-            B::Event,
-            BaseSends<B, Targets, ParentPath>,
-            Events = Events,
-            Sends = Planned,
-        >,
+    Shape: PlanChildren<Node, A, B::Event, BaseSends<B, Targets>, Events = Events, Sends = Planned>,
     Targets: heterogeneous::Selection<Addr = A> + Copy,
     Phases: BuildShutdownPlan<B, Targets>,
     Events: behavior::UserEvent<Addr = A, Message = <B::Protocol as Protocol>::Msg>,
@@ -1159,8 +1195,8 @@ where
     private_bounds,
     reason = "the public compiler representation hides its closed planning fold"
 )]
-impl<B, Phases, ParentPath, A, Ph, Sends, Br, Node, Shape, Targets, Events, Planned>
-    ChildShutdownPlan<B, Phases, ParentPath>
+impl<B, Phases, A, Ph, Sends, Br, Node, Shape, Targets, Events, Planned>
+    ChildShutdownPlan<B, Phases>
 where
     A: Address,
     A::Nonce: Copy + Eq,
@@ -1170,14 +1206,7 @@ where
     B::Protocol: Protocol<Addr = A>,
     Node: FoldBirthNode<ShutdownTargets<B>, Folded = Targets>
         + FoldBirthNode<PlanningChildren, Folded = Shape>,
-    Shape: PlanChildren<
-            Node,
-            A,
-            B::Event,
-            BaseSends<B, Targets, ParentPath>,
-            Events = Events,
-            Sends = Planned,
-        >,
+    Shape: PlanChildren<Node, A, B::Event, BaseSends<B, Targets>, Events = Events, Sends = Planned>,
     Targets: heterogeneous::Selection<Addr = A> + Copy,
     Phases: BuildShutdownPlan<B, Targets>,
     Events: behavior::UserEvent<Addr = A, Message = <B::Protocol as Protocol>::Msg>,
@@ -1197,7 +1226,7 @@ where
             let plan = HeterogeneousShutdownPlan::new(phases)
                 .map_err(ChildShutdownPlanError::InvalidPlan)?;
             self.planning = Planning::Reported;
-            InterpreterRequests::one(crate::ReportShutdownPlan::<_, ParentPath>::new(plan))
+            InterpreterRequests::one(crate::ReportShutdownPlan::new(plan))
         } else {
             InterpreterRequests::empty()
         };
@@ -1300,7 +1329,7 @@ where
         let plan =
             HeterogeneousShutdownPlan::new(phases).map_err(ChildShutdownPlanError::InvalidPlan)?;
         let base = SendLayer::new(
-            InterpreterRequests::one(crate::ReportShutdownPlan::<_, ParentPath>::new(plan)),
+            InterpreterRequests::one(crate::ReportShutdownPlan::new(plan)),
             B::Sends::empty(),
         );
         let sends = Shape::empty_sends(base);

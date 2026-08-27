@@ -1,7 +1,7 @@
 //! Pure behavior folds from one typed event to explicit transition actions.
 
-use crate::actor::{Address, BirthMode};
-use crate::effects::{Acted, Actions, SendEffects};
+use crate::actor::{Address, BirthMode, BirthNodeLogicalHosts, BirthProtocolProduct};
+use crate::effects::{Acted, Actions, LogicalDeliveryProtocols, SendEffects};
 use crate::user_event::UserEvent;
 
 /// Reusable zero-state protocol identity for messages `M` addressed by `A`.
@@ -150,8 +150,38 @@ pub trait Behavior {
         Self: Sized,
         L: BehaviorLayer<Self>,
     {
-        BehaviorLayer::layer(layer, self)
+        BehaviorLayer::layer(&layer, self)
     }
+}
+
+/// Complete static logical-host requirement of one composed behavior.
+///
+/// The product is derived from the behavior's concrete sends algebra and from
+/// every behavior reachable through its transitive birth algebra. Only
+/// intentional logical [`Delivery`](crate::Delivery) lanes contribute a
+/// protocol. Exact established recipients, creator-local children and inputs,
+/// and interpreter requests do not require a logical host. Repeated protocol
+/// occurrences are retained in the existing structural birth-protocol
+/// product; this trait performs no normalization or runtime lookup.
+///
+/// A generic application owner can consume `LogicalHosts` recursively and
+/// require its own concrete `Hosts<P>` proof for every element. The product is
+/// evidence only: it creates no actor space and does not alter [`Actions`].
+pub trait LogicalHostRequirements: Behavior {
+    /// Ordered, duplicate-preserving protocols requiring logical hosting.
+    type LogicalHosts: BirthProtocolProduct;
+}
+
+impl<B> LogicalHostRequirements for B
+where
+    B: Behavior,
+    B::Sends: LogicalDeliveryProtocols,
+    <B::Birth as BirthMode>::Child: BirthNodeLogicalHosts,
+{
+    type LogicalHosts =
+        <<B::Sends as LogicalDeliveryProtocols>::Protocols as BirthProtocolProduct>::Append<
+            <<B::Birth as BirthMode>::Child as BirthNodeLogicalHosts>::LogicalHosts,
+        >;
 }
 
 /// Static construction from one concrete behavior to another.
@@ -208,21 +238,24 @@ where
     /// Fully concrete behavior constructed by this layer.
     type Output: Behavior;
 
-    /// Consume the layer and inner behavior into the concrete composition.
+    /// Construct one concrete composition from `inner`.
+    ///
+    /// The layer is borrowed so a topology owner can apply the same stateless
+    /// or configuration-bearing construction law to every child it owns.
     #[must_use]
-    fn layer(self, inner: B) -> Self::Output;
+    fn layer(&self, inner: B) -> Self::Output;
 }
 
 impl<B, F, Output> BehaviorLayer<B> for F
 where
     B: Behavior,
-    F: FnOnce(B) -> Output,
+    F: Fn(B) -> Output,
     Output: Behavior,
     Output::Protocol: Protocol<Addr = BehaviorAddr<B>>,
 {
     type Output = Output;
 
-    fn layer(self, inner: B) -> Self::Output {
+    fn layer(&self, inner: B) -> Self::Output {
         self(inner)
     }
 }

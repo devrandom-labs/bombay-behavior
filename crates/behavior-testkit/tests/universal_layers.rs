@@ -6,13 +6,13 @@ use behavior::{
     Activate as _, Cache, CacheConfiguration, CacheMessage, CacheResult, ChildTopology,
     CreationResolved, Deadline, FinalizeOnShutdown, OneShot, PeerTermination, Periodic,
     PriorityQueue, PriorityQueueMessage, PriorityQueueOutcome, PropagateTermination, Proxy,
-    ProxyCommand, ReceiveTimeout, RestartConfiguration, RestartPolicy, RoundRobin, Router,
-    RouterMessage, ShutdownRequested, Stash, StashRoute, StopOnShutdown, Strategy, Supervisor,
-    TerminationMonitor, TimerId, Watch, propagate_all, stop_on_abnormal_death,
+    ReceiveTimeout, RestartConfiguration, RestartPolicy, RoundRobin, Router, RouterMessage,
+    ShutdownRequested, Stash, StashRoute, StopOnShutdown, Strategy, Supervise, TerminationMonitor,
+    TimerId, User, Watch, propagate_all, stop_on_abnormal_death,
 };
 use foundation::{
-    Actions, Behavior, BehaviorLayer, CreationKind, Delivery, MailAddr, MessageProtocol, Never,
-    NoBirths, Recipient, Step,
+    Actions, Behavior, BehaviorActed, BehaviorBase, BehaviorLayer, CreationKind, Delivery,
+    MailAddr, MessageProtocol, Never, NoBirths, Protocol, Recipient, Step,
 };
 
 fn apply<B, L>(behavior: B, layer: L) -> L::Output
@@ -42,6 +42,34 @@ type Queue = PriorityQueue<MailAddr, u8, u8, Recipient<QueueTarget>, Recipient<Q
 
 fn queue() -> Queue {
     Queue::new(4).unwrap()
+}
+
+struct QueueApplication;
+
+impl Protocol for QueueApplication {
+    type Addr = MailAddr;
+    type Msg = ();
+}
+
+impl BehaviorBase for QueueApplication {
+    type Base = Self;
+
+    fn base(&self) -> &Self {
+        self
+    }
+}
+
+impl Behavior for QueueApplication {
+    type Protocol = Self;
+    type Event = User<MailAddr, ()>;
+    type Sends = Vec<Never>;
+    type Ph = Never;
+    type Error = Never;
+    type Birth = NoBirths;
+
+    fn transition(&mut self, _: foundation::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
+        Ok(Actions::cont())
+    }
 }
 
 type CacheReply = MessageProtocol<MailAddr, CacheResult<u8, u16>>;
@@ -83,31 +111,38 @@ fn generic_consumer_layers_routing_inside_supervision_without_naming_the_output(
 
 #[test]
 fn router_to_supervised_proxy_to_priority_queue_preserves_every_hierarchy_edge() {
-    type StableQueue = Proxy<Queue>;
-
-    let supervisor = Supervisor::<MailAddr, Queue>::new(
-        ChildTopology::new([7], |_| Some(queue())),
-        RestartConfiguration::new(
-            Strategy::OneForOne,
-            RestartPolicy::Permanent,
-            1,
-            Duration::from_secs(1),
-        ),
-    )
-    .unwrap()
-    .initialize()
-    .unwrap();
+    let supervisor = QueueApplication
+        .layer(|inner| {
+            Supervise::new(
+                inner,
+                ChildTopology::new([7], |_| Some(queue())),
+                RestartConfiguration::new(
+                    Strategy::OneForOne,
+                    RestartPolicy::Permanent,
+                    1,
+                    Duration::from_secs(1),
+                    behavior::RestartTiming::Immediate,
+                ),
+                |worker: Queue| worker.layer(Proxy::new),
+            )
+            .unwrap()
+        })
+        .initialize()
+        .unwrap();
     assert_eq!(supervisor.actions.creates.len(), 1);
     assert_eq!(supervisor.actions.creates[0].nonce, 7);
     assert!(matches!(
         supervisor.actions.creates[0].kind,
         CreationKind::Birth
     ));
-    assert_eq!(supervisor.actions.sends.child_observations.len(), 1);
-    assert_eq!(supervisor.actions.sends.creation_observations.len(), 1);
-    assert!(supervisor.actions.sends.replacement_commands.is_empty());
-    assert!(supervisor.actions.sends.shutdowns.is_empty());
-    assert!(supervisor.actions.sends.failure_reports.is_empty());
+    assert_eq!(supervisor.actions.sends.owned.child_observations.len(), 1);
+    assert_eq!(
+        supervisor.actions.sends.owned.creation_observations.len(),
+        1
+    );
+    assert!(supervisor.actions.sends.owned.replacement_inputs.is_empty());
+    assert!(supervisor.actions.sends.owned.shutdowns.is_empty());
+    assert!(supervisor.actions.sends.owned.failure_reports.is_empty());
     assert!(matches!(supervisor.actions.become_, Step::Continue));
 
     let proxy_creation = supervisor.actions.creates.into_iter().next().unwrap();
@@ -124,7 +159,13 @@ fn router_to_supervised_proxy_to_priority_queue_preserves_every_hierarchy_edge()
         1
     );
     assert!(initialized_proxy.actions.sends.deliveries.is_empty());
-    assert!(initialized_proxy.actions.sends.unavailable.is_empty());
+    assert!(
+        initialized_proxy
+            .actions
+            .sends
+            .unavailable_reports
+            .is_empty()
+    );
     assert!(initialized_proxy.actions.sends.shutdowns.is_empty());
     assert!(matches!(initialized_proxy.actions.become_, Step::Continue));
 
@@ -141,22 +182,19 @@ fn router_to_supervised_proxy_to_priority_queue_preserves_every_hierarchy_edge()
         .unwrap();
     assert!(installed.creates.is_empty());
     assert!(installed.sends.deliveries.is_empty());
-    assert!(installed.sends.unavailable.is_empty());
+    assert!(installed.sends.unavailable_reports.is_empty());
     assert_eq!(installed.sends.creation_reports.len(), 1);
     assert!(matches!(installed.become_, Step::Continue));
 
-    let stable = Recipient::<StableQueue>::global(MailAddr(80));
+    let stable = Recipient::<Queue>::global(MailAddr(80));
     let mut router =
         successful(Router::new(vec![stable], RoundRobin::default()).initialize()).behavior;
     let routed_offer = successful(router.receive(
         MailAddr(1),
-        RouterMessage::Route(ProxyCommand::Forward {
-            command: PriorityQueueMessage::Offer {
-                value: 41,
-                priority: 9,
-                reply_to: Recipient::global(MailAddr(81)),
-            },
-            unavailable_to: Recipient::global(MailAddr(82)),
+        RouterMessage::Route(PriorityQueueMessage::Offer {
+            value: 41,
+            priority: 9,
+            reply_to: Recipient::global(MailAddr(81)),
         }),
     ));
     assert_eq!(routed_offer.sends.len(), 1);
@@ -168,7 +206,7 @@ fn router_to_supervised_proxy_to_priority_queue_preserves_every_hierarchy_edge()
     let forwarded_offer = proxy.receive(MailAddr(1), offered_to_proxy).unwrap();
     assert_eq!(forwarded_offer.sends.deliveries.len(), 1);
     assert_eq!(forwarded_offer.sends.deliveries[0].nonce, 0);
-    assert!(forwarded_offer.sends.unavailable.is_empty());
+    assert!(forwarded_offer.sends.unavailable_reports.is_empty());
     assert!(forwarded_offer.sends.child_observations.is_empty());
     assert!(forwarded_offer.sends.creation_observations.is_empty());
     assert!(forwarded_offer.sends.shutdowns.is_empty());
@@ -194,12 +232,9 @@ fn router_to_supervised_proxy_to_priority_queue_preserves_every_hierarchy_edge()
 
     let routed_release = successful(router.receive(
         MailAddr(1),
-        RouterMessage::Route(ProxyCommand::Forward {
-            command: PriorityQueueMessage::Release {
-                to: Recipient::global(MailAddr(83)),
-                reply_to: Recipient::global(MailAddr(84)),
-            },
-            unavailable_to: Recipient::global(MailAddr(85)),
+        RouterMessage::Route(PriorityQueueMessage::Release {
+            to: Recipient::global(MailAddr(83)),
+            reply_to: Recipient::global(MailAddr(84)),
         }),
     ));
     assert_eq!(routed_release.sends.len(), 1);
@@ -210,7 +245,7 @@ fn router_to_supervised_proxy_to_priority_queue_preserves_every_hierarchy_edge()
     let forwarded_release = proxy.receive(MailAddr(1), released_to_proxy).unwrap();
     assert_eq!(forwarded_release.sends.deliveries.len(), 1);
     assert_eq!(forwarded_release.sends.deliveries[0].nonce, 0);
-    assert!(forwarded_release.sends.unavailable.is_empty());
+    assert!(forwarded_release.sends.unavailable_reports.is_empty());
     assert!(forwarded_release.sends.child_observations.is_empty());
     assert!(forwarded_release.sends.creation_observations.is_empty());
     assert!(forwarded_release.sends.shutdowns.is_empty());

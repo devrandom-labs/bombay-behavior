@@ -526,6 +526,9 @@ mod tests {
             acquired.sends.schedules.as_slice()[0].generation,
             TimerGeneration(0)
         );
+        assert_eq!(acquired.sends.outcomes.len(), 1);
+        assert!(acquired.creates.is_empty());
+        assert_eq!(acquired.become_, crate::Step::Continue);
         let renewed = s
             .receive(
                 MailAddr(0),
@@ -541,36 +544,53 @@ mod tests {
             renewed.sends.schedules.as_slice()[0].generation,
             TimerGeneration(1)
         );
-        assert!(
-            s.on_path(TimerElapsed::new(TimerId(7), TimerGeneration(0)))
-                .unwrap()
-                .sends
-                .outcomes
-                .is_empty()
-        );
-        s.receive(
-            MailAddr(0),
-            LeaseMessage::Release {
-                holder: 1,
-                generation: TimerGeneration(1),
-                reply_to: reply(),
-            },
-        )
-        .unwrap();
+        assert_eq!(renewed.sends.outcomes.len(), 1);
+        assert!(renewed.creates.is_empty());
+        assert_eq!(renewed.become_, crate::Step::Continue);
+        let stale = s
+            .on_path(TimerElapsed::new(TimerId(7), TimerGeneration(0)))
+            .unwrap();
+        assert!(stale.sends.outcomes.is_empty());
+        assert!(stale.sends.schedules.is_empty());
+        assert!(stale.creates.is_empty());
+        assert_eq!(stale.become_, crate::Step::Continue);
+        let released = s
+            .receive(
+                MailAddr(0),
+                LeaseMessage::Release {
+                    holder: 1,
+                    generation: TimerGeneration(1),
+                    reply_to: reply(),
+                },
+            )
+            .unwrap();
+        assert!(released.sends.schedules.is_empty());
+        assert_eq!(released.sends.outcomes.len(), 1);
+        assert!(matches!(
+            released.sends.outcomes[0].message,
+            LeaseOutcome::Released { holder: 1, .. }
+        ));
+        assert!(released.creates.is_empty());
+        assert_eq!(released.become_, crate::Step::Continue);
         assert!(matches!(s.state(), LeaseState::Vacant { .. }));
     }
     #[test]
     fn wrong_holder_and_matching_expiry_are_distinct() {
         let mut s = (Subject::new(TimerId(7))).initialize().unwrap().behavior;
-        s.receive(
-            MailAddr(0),
-            LeaseMessage::Acquire {
-                holder: 1,
-                duration: duration(),
-                reply_to: reply(),
-            },
-        )
-        .unwrap();
+        let acquired = s
+            .receive(
+                MailAddr(0),
+                LeaseMessage::Acquire {
+                    holder: 1,
+                    duration: duration(),
+                    reply_to: reply(),
+                },
+            )
+            .unwrap();
+        assert_eq!(acquired.sends.schedules.len(), 1);
+        assert_eq!(acquired.sends.outcomes.len(), 1);
+        assert!(acquired.creates.is_empty());
+        assert_eq!(acquired.become_, crate::Step::Continue);
         let wrong = s
             .receive(
                 MailAddr(0),
@@ -608,7 +628,7 @@ mod tests {
             next: TimerGeneration(u64::MAX),
         };
         let mut subject = (definition).initialize().unwrap().behavior;
-        subject
+        let acquired = subject
             .receive(
                 MailAddr(0),
                 LeaseMessage::Acquire {
@@ -618,9 +638,17 @@ mod tests {
                 },
             )
             .unwrap();
-        subject
+        assert_eq!(acquired.sends.schedules.len(), 1);
+        assert_eq!(acquired.sends.outcomes.len(), 1);
+        assert!(acquired.creates.is_empty());
+        assert_eq!(acquired.become_, crate::Step::Continue);
+        let expired = subject
             .on_path(TimerElapsed::new(TimerId(7), TimerGeneration(u64::MAX)))
             .unwrap();
+        assert!(expired.sends.schedules.is_empty());
+        assert_eq!(expired.sends.outcomes.len(), 1);
+        assert!(expired.creates.is_empty());
+        assert_eq!(expired.become_, crate::Step::Continue);
         assert!(matches!(subject.state(), LeaseState::Exhausted));
         let rejected = subject
             .receive(

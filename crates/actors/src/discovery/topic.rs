@@ -148,18 +148,24 @@ mod tests {
             .unwrap()
             .behavior;
         for subscriber in [one, two, one] {
-            topic
+            let subscribed = topic
                 .receive(MailAddr(9), TopicMessage::Subscribe(subscriber))
                 .unwrap();
+            assert!(subscribed.sends.is_empty());
+            assert!(subscribed.creates.is_empty());
+            assert_eq!(subscribed.become_, crate::Step::Continue);
         }
         assert!(topic.subscribers() == [one, two]);
         let published = topic
             .receive(MailAddr(9), TopicMessage::Publish(7))
             .unwrap();
         assert!(published.sends == vec![Delivery::new(one, 7), Delivery::new(two, 7)]);
-        topic
+        let unsubscribed = topic
             .receive(MailAddr(9), TopicMessage::Unsubscribe(one))
             .unwrap();
+        assert!(unsubscribed.sends.is_empty());
+        assert!(unsubscribed.creates.is_empty());
+        assert_eq!(unsubscribed.become_, crate::Step::Continue);
         assert!(topic.subscribers() == [two]);
     }
 

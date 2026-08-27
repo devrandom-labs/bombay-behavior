@@ -335,15 +335,23 @@ mod tests {
         Recipient::global(MailAddr(2))
     }
     fn offer(s: &mut crate::Active<Subject>, value: u8, priority: u8) {
-        s.receive(
-            MailAddr(0),
-            PriorityQueueMessage::Offer {
-                value,
-                priority,
-                reply_to: reply(),
-            },
-        )
-        .unwrap();
+        let offered = s
+            .receive(
+                MailAddr(0),
+                PriorityQueueMessage::Offer {
+                    value,
+                    priority,
+                    reply_to: reply(),
+                },
+            )
+            .unwrap();
+        assert!(offered.sends.deliveries.is_empty());
+        assert!(matches!(
+            offered.sends.outcomes.as_slice(),
+            [delivery] if matches!(delivery.message, PriorityQueueOutcome::Accepted { .. })
+        ));
+        assert!(offered.creates.is_empty());
+        assert_eq!(offered.become_, crate::Step::Continue);
     }
     fn release(
         s: &mut crate::Active<Subject>,

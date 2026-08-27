@@ -5,10 +5,10 @@
 )]
 
 use behavior::{
-    Acted, Actions, ChildDelivery, ChildHead, ChildRoute, ChildStopped, CreationKind,
-    CreationResolved, DeadlineEvent, Delivery, EventLayer, Exit, Here, Ingress, InjectEvent,
-    Inside, InterpreterRequests, MailAddr, Never, ObserveChild, ObserveCreation, ObservePeer,
-    PeerStopped, ProxyCommand, ProxyEvent, ProxySends, ReceiveTimeoutEvent, Recipient,
+    Acted, Actions, ChildDelivery, ChildHead, ChildInput, ChildRoute, ChildStopped, CreationKind,
+    CreationResolved, DeadlineEvent, Delivery, EventLayer, Exit, Here, InjectEvent, Inside,
+    InterpreterRequests, MailAddr, Never, ObserveChild, ObserveCreation, ObservePeer, PeerStopped,
+    ProxyEvent, ProxySends, ReceiveTimeoutEvent, Recipient, ReplacementRequested, ReportToParent,
     ReportWorkerCreationResolved, ReportWorkerStopped, ScheduleAfter, ScheduleAt, SendEffects,
     SendLayer, ShutdownEvent, ShutdownRequested, SupervisionEvent, SupervisorSends, TimerElapsed,
     TimerGeneration, TimerId, UnwatchPeer, User, UserEvent, WatchEvent, WorkerCreationResolved,
@@ -137,7 +137,7 @@ fn creation() -> CreationResolved<MailAddr> {
     reason = "one mutation contract exhaustively checks every environment lane"
 )]
 fn structural_paths_select_owners_without_forwarding_lists() {
-    let proxy = <ProxyEvent<Lane> as InjectEvent<_, Here>>::inject_at(creation());
+    let proxy = <ProxyEvent<Quiet> as InjectEvent<_, Here>>::inject_at(creation());
     assert!(matches!(proxy, ProxyEvent::CreationResolved(_)));
 
     let deadline = <DeadlineEvent<Lane> as InjectEvent<_, Inside<Here>>>::inject_at(peer());
@@ -249,34 +249,32 @@ fn typed_send_accumulation_routes_every_named_lane_once() {
     proxy.send(ChildDelivery::at(ChildRoute::<Child, ChildHead>::new(1), 7));
     proxy.send(ObserveCreation::new(2));
     let stopped = child();
-    proxy.send(ReportWorkerStopped::new(
-        Ingress::new(),
+    proxy.send(ReportToParent::new(ReportWorkerStopped::new(
         stopped.nonce,
         stopped.outcome,
         stopped.at,
-    ));
+    )));
     let resolved = creation();
-    proxy.send(ReportWorkerCreationResolved::new(
-        Ingress::new(),
+    proxy.send(ReportToParent::new(ReportWorkerCreationResolved::new(
         resolved.nonce,
         resolved.kind,
         resolved.result.map(|_| ()),
-    ));
+    )));
     assert_eq!(proxy.deliveries[0].message, 7);
     assert_eq!(proxy.creation_observations[0].nonce, 2);
-    assert_eq!(proxy.stopped_reports[0].worker, 11);
-    assert_eq!(proxy.creation_reports[0].worker, 17);
+    assert_eq!(proxy.stopped_reports[0].report.worker, 11);
+    assert_eq!(proxy.creation_reports[0].report.worker, 17);
 
-    let mut supervisor = SupervisorSends::<MailAddr, Child, behavior::Here>::empty();
+    let mut supervisor = SupervisorSends::<MailAddr, Child, behavior::Proxy<Child>>::empty();
     supervisor.send(ObserveChild::new(8));
     supervisor.send(ObserveCreation::new(8));
-    supervisor.send(ChildDelivery::at(
+    supervisor.send(ChildInput::at(
         ChildRoute::<behavior::Proxy<Child>, ChildHead>::new(8),
-        ProxyCommand::Replace(Quiet),
+        ReplacementRequested::new(Quiet),
     ));
     assert_eq!(supervisor.child_observations[0].nonce, 8);
     assert_eq!(supervisor.creation_observations[0].nonce, 8);
-    assert_eq!(supervisor.replacement_commands[0].nonce, 8);
+    assert_eq!(supervisor.replacement_inputs[0].nonce, 8);
     assert!(supervisor.failure_reports.is_empty());
 }
 

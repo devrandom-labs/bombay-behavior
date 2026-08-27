@@ -1,8 +1,9 @@
 //! Typed send effects, their composition contract, and event ownership.
 
 use crate::{
-    ChildDelivery, ComposedEvent, Delivery, EndpointAddress, EstablishedDelivery, InjectEvent,
-    Inside, Protocol,
+    Behavior, BirthProtocol, BirthProtocolProduct, ChildDelivery, ChildInput, ComposedEvent,
+    Delivery, EndpointAddress, EstablishedDelivery, InjectEvent, Inside, NoBirthProtocols,
+    Protocol,
 };
 use core::future::Future;
 
@@ -109,6 +110,29 @@ where
     ) -> impl Future<Output = Result<(), Self::Error>> + Send;
 }
 
+/// Interpreter capability for one private input to a concrete creator-local
+/// child.
+///
+/// `Source` statically selects the event member owned by the layer that
+/// understands `Input`. The interpreter resolves only the exact child binding
+/// and invokes that child's `EventIngress` implementation; it does not inspect
+/// event types, construct a template-specific event, or expose the input as a
+/// public protocol message.
+pub trait InterpretChildInput<Child, Source, Input, Occurrence>: SendInterpreter
+where
+    Child: Behavior,
+    Child::Event: crate::ChildInputIngress<Source, Input>,
+{
+    /// Interpret one typed private child communication.
+    ///
+    /// # Errors
+    /// Returns the concrete missing-binding or closed-child failure.
+    fn interpret_child_input(
+        &mut self,
+        input: ChildInput<Child, Source, Input, Occurrence>,
+    ) -> impl Future<Output = Result<(), Self::Error>> + Send;
+}
+
 /// The lane owned by the current named send product.
 pub enum Own {}
 
@@ -157,6 +181,50 @@ pub trait SendEffects: Sized {
         sends.send(input);
         sends
     }
+}
+
+/// Static projection of intentional logical destinations from one concrete
+/// sends product.
+///
+/// Implementations mirror the product's [`InterpretSends`] traversal without
+/// inspecting values. Only [`Delivery<P>`] contributes `P`; exact established
+/// deliveries, creator-local child deliveries and inputs, and interpreter
+/// requests contribute nothing. Named products append their field projections
+/// in interpretation order, preserving repeated protocol occurrences.
+///
+/// Custom named sends products must implement this trait explicitly. There is
+/// deliberately no blanket `Vec<T>` implementation that could silently treat
+/// an unknown delivery representation as having no logical destination.
+///
+/// ```compile_fail,E0277
+/// use behavior::{
+///     Actions, Behavior, BehaviorActed, LogicalHostRequirements, MailAddr,
+///     Never, NoBirths, Protocol, SendEffects, User,
+/// };
+/// struct OpaqueSends;
+/// impl SendEffects for OpaqueSends {
+///     fn empty() -> Self { Self }
+///     fn append(&mut self, _: Self) {}
+/// }
+/// impl<E> behavior::SendsFor<E> for OpaqueSends {}
+/// struct Actor;
+/// impl Protocol for Actor { type Addr = MailAddr; type Msg = (); }
+/// impl Behavior for Actor {
+///     type Protocol = Self;
+///     type Event = User<MailAddr, ()>;
+///     type Sends = OpaqueSends;
+///     type Ph = Never;
+///     type Error = Never;
+///     type Birth = NoBirths;
+///     fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event)
+///         -> BehaviorActed<Self> { Ok(Actions::cont()) }
+/// }
+/// fn require_complete<B: LogicalHostRequirements>() {}
+/// require_complete::<Actor>();
+/// ```
+pub trait LogicalDeliveryProtocols: SendEffects {
+    /// Ordered, duplicate-preserving logical protocol occurrences.
+    type Protocols: BirthProtocolProduct;
 }
 
 /// Proof that send effects are lawful for one complete event type.
@@ -209,6 +277,38 @@ pub trait InterpreterRequest {
     type ReturnToEmitter;
 }
 
+/// Transfer one owned report to the emitter's established parent.
+///
+/// The request is an ordinary typed send effect. Its interpreter uses the
+/// already-established creator/child relationship, attaches the emitter's
+/// exact creator-local nonce, and injects a [`crate::ChildReport`] into the
+/// parent's closed event algebra. It performs no address or protocol lookup.
+/// A root behavior has no parent capability and therefore cannot interpret
+/// this request.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ReportToParent<R> {
+    /// Complete report value transferred to the parent.
+    pub report: R,
+}
+
+impl<R> ReportToParent<R> {
+    /// Construct one structural parent report.
+    #[must_use]
+    pub const fn new(report: R) -> Self {
+        Self { report }
+    }
+
+    /// Recover ownership of the complete report value.
+    #[must_use]
+    pub fn into_inner(self) -> R {
+        self.report
+    }
+}
+
+impl<R> InterpreterRequest for ReportToParent<R> {
+    type ReturnToEmitter = NoReturnToEmitter;
+}
+
 /// Send effects containing no communications or interpreter requests.
 ///
 /// A behavior layer that adds an event lane but emits nothing of its own uses
@@ -222,6 +322,10 @@ impl SendEffects for NoSends {
     }
 
     fn append(&mut self, _: Self) {}
+}
+
+impl LogicalDeliveryProtocols for NoSends {
+    type Protocols = NoBirthProtocols;
 }
 
 impl<Event> SendsFor<Event> for NoSends {}
@@ -274,6 +378,15 @@ impl<Owned: SendEffects, Inner: SendEffects> SendEffects for SendLayer<Owned, In
         self.owned.append(other.owned);
         self.inner.append(other.inner);
     }
+}
+
+impl<Owned, Inner> LogicalDeliveryProtocols for SendLayer<Owned, Inner>
+where
+    Owned: LogicalDeliveryProtocols,
+    Inner: LogicalDeliveryProtocols,
+{
+    // Interpretation preserves authored inner-to-outer wrapper order.
+    type Protocols = <Inner::Protocols as BirthProtocolProduct>::Append<Owned::Protocols>;
 }
 
 impl<Event, OwnedEffects, InnerEffects> SendsFor<Event> for SendLayer<OwnedEffects, InnerEffects>
@@ -332,6 +445,34 @@ impl<T> SendEffects for Vec<T> {
     }
 }
 
+impl<P: Protocol> LogicalDeliveryProtocols for Vec<Delivery<P>> {
+    type Protocols = BirthProtocol<P, NoBirthProtocols>;
+}
+
+impl<P: Protocol, Occurrence> LogicalDeliveryProtocols for Vec<ChildDelivery<P, Occurrence>> {
+    type Protocols = NoBirthProtocols;
+}
+
+impl<Child, Source, Input, Occurrence> LogicalDeliveryProtocols
+    for Vec<ChildInput<Child, Source, Input, Occurrence>>
+where
+    Child: Behavior,
+{
+    type Protocols = NoBirthProtocols;
+}
+
+impl<P> LogicalDeliveryProtocols for Vec<EstablishedDelivery<P>>
+where
+    P: Protocol,
+    P::Addr: EndpointAddress,
+{
+    type Protocols = NoBirthProtocols;
+}
+
+impl LogicalDeliveryProtocols for Vec<crate::Never> {
+    type Protocols = NoBirthProtocols;
+}
+
 impl<Event, T> SendsFor<Event> for Vec<T> {}
 
 impl<Interpreter, RootEvent, Path, P> InterpretSends<Interpreter, RootEvent, Path>
@@ -376,6 +517,28 @@ where
     }
 }
 
+impl<Interpreter, RootEvent, Path, Child, Source, Input, Occurrence>
+    InterpretSends<Interpreter, RootEvent, Path>
+    for Vec<ChildInput<Child, Source, Input, Occurrence>>
+where
+    Interpreter: InterpretChildInput<Child, Source, Input, Occurrence> + Send,
+    Child: Behavior,
+    Child::Event: crate::ChildInputIngress<Source, Input>,
+    ChildInput<Child, Source, Input, Occurrence>: Send,
+{
+    fn interpret(
+        self,
+        interpreter: &mut Interpreter,
+    ) -> impl Future<Output = Result<(), Interpreter::Error>> + Send {
+        async move {
+            for input in self {
+                interpreter.interpret_child_input(input).await?;
+            }
+            Ok(())
+        }
+    }
+}
+
 impl<Interpreter, RootEvent, Path, P> InterpretSends<Interpreter, RootEvent, Path>
     for Vec<EstablishedDelivery<P>>
 where
@@ -403,6 +566,10 @@ where
 impl<Interpreter: SendInterpreter, RootEvent, Path> InterpretSends<Interpreter, RootEvent, Path>
     for Vec<crate::Never>
 {
+    #[allow(
+        clippy::never_loop,
+        reason = "exhaustive iteration proves every member of the uninhabited effect lane impossible"
+    )]
     fn interpret(
         self,
         _: &mut Interpreter,
@@ -496,6 +663,10 @@ impl<M> SendEffects for InterpreterRequests<M> {
     fn append(&mut self, mut other: Self) {
         self.requests.append(&mut other.requests);
     }
+}
+
+impl<M> LogicalDeliveryProtocols for InterpreterRequests<M> {
+    type Protocols = NoBirthProtocols;
 }
 
 impl<Event, M> SendsFor<Event> for InterpreterRequests<M>

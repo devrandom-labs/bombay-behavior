@@ -64,6 +64,8 @@ impl Protocol for Target {
 
 fn assert_behavior<B: Behavior>() {}
 
+fn assert_behavior_value<B: Behavior>(_: &B) {}
+
 macro_rules! assert_both_routes {
     ($reply:ty, $exact:ty, $mixed:ty) => {{
         fn assert_reply<P: Protocol<Addr = RuntimeAddr>>() {}
@@ -432,7 +434,7 @@ fn exact_capabilities_survive_every_payload_and_membership_fold() {
     .initialize()
     .unwrap()
     .behavior;
-    priority
+    let offered = priority
         .receive(
             sender,
             PriorityQueueMessage::Offer {
@@ -442,6 +444,14 @@ fn exact_capabilities_survive_every_payload_and_membership_fold() {
             },
         )
         .unwrap();
+    assert!(offered.sends.deliveries.is_empty());
+    assert!(matches!(
+        offered.sends.outcomes.as_slice(),
+        [delivery]
+            if matches!(delivery.message, PriorityQueueOutcome::Accepted { depth: 1 })
+    ));
+    assert!(offered.creates.is_empty());
+    assert_eq!(offered.become_, behavior_actors::Step::Continue);
     let released = priority
         .receive(
             sender,
@@ -469,7 +479,7 @@ fn exact_capabilities_survive_every_payload_and_membership_fold() {
         .initialize()
         .unwrap()
         .behavior;
-    buffer
+    let offered = buffer
         .receive(
             sender,
             BufferMessage::Offer {
@@ -478,6 +488,14 @@ fn exact_capabilities_survive_every_payload_and_membership_fold() {
             },
         )
         .unwrap();
+    assert!(offered.sends.deliveries.is_empty());
+    assert!(matches!(
+        offered.sends.outcomes.as_slice(),
+        [delivery]
+            if matches!(delivery.message, BufferOutcome::Accepted { depth: 1 })
+    ));
+    assert!(offered.creates.is_empty());
+    assert_eq!(offered.become_, behavior_actors::Step::Continue);
     let buffered = buffer
         .receive(
             sender,
@@ -512,13 +530,18 @@ fn exact_capabilities_survive_every_payload_and_membership_fold() {
             .initialize()
             .unwrap()
             .behavior;
-    work.receive(
-        sender,
-        WorkQueueMessage::Available {
-            worker: two.clone(),
-        },
-    )
-    .unwrap();
+    let available = work
+        .receive(
+            sender,
+            WorkQueueMessage::Available {
+                worker: two.clone(),
+            },
+        )
+        .unwrap();
+    assert!(available.sends.assignments.is_empty());
+    assert!(available.sends.outcomes.is_empty());
+    assert!(available.creates.is_empty());
+    assert_eq!(available.become_, behavior_actors::Step::Continue);
     let assigned = work
         .receive(
             sender,
@@ -541,9 +564,12 @@ fn exact_capabilities_survive_every_payload_and_membership_fold() {
         .initialize()
         .unwrap()
         .behavior;
-    topic
+    let subscribed = topic
         .receive(sender, TopicMessage::Subscribe(subscriber.clone()))
         .unwrap();
+    assert!(subscribed.sends.is_empty());
+    assert!(subscribed.creates.is_empty());
+    assert_eq!(subscribed.become_, behavior_actors::Step::Continue);
     let published = topic.receive(sender, TopicMessage::Publish(48)).unwrap();
     assert_eq!(published.sends.len(), 1);
     assert_eq!(published.sends[0].to, subscriber);
@@ -554,7 +580,7 @@ fn exact_capabilities_survive_every_payload_and_membership_fold() {
         .initialize()
         .unwrap()
         .behavior;
-    pub_sub
+    let subscribed = pub_sub
         .receive(
             sender,
             PubSubMessage::Subscribe {
@@ -563,6 +589,9 @@ fn exact_capabilities_survive_every_payload_and_membership_fold() {
             },
         )
         .unwrap();
+    assert!(subscribed.sends.is_empty());
+    assert!(subscribed.creates.is_empty());
+    assert_eq!(subscribed.become_, behavior_actors::Step::Continue);
     let published = pub_sub
         .receive(
             sender,
@@ -600,8 +629,11 @@ impl Behavior for Managed {
 #[test]
 fn dynamic_supervision_projects_its_reply_protocol_from_each_route() {
     type Reply = MessageProtocol<RuntimeAddr, DynamicSupervisorOutcome<RuntimeAddr, Managed>>;
-    assert_behavior::<DynamicSupervisor<RuntimeAddr, Managed, EstablishedRecipient<Reply>>>();
-    assert_behavior::<DynamicSupervisor<RuntimeAddr, Managed, ReplyRoute<Reply>>>();
+    let exact =
+        DynamicSupervisor::<RuntimeAddr, Managed, EstablishedRecipient<Reply>, _>::new(Proxy::new);
+    let mixed = DynamicSupervisor::<RuntimeAddr, Managed, ReplyRoute<Reply>, _>::new(Proxy::new);
+    assert_behavior_value(&exact);
+    assert_behavior_value(&mixed);
 }
 
 macro_rules! pool_route_case {
@@ -615,14 +647,11 @@ macro_rules! pool_route_case {
             struct Worker;
             impl Protocol for Worker {
                 type Addr = RuntimeAddr;
-                type Msg = PoolAssignment<WorkerPoolProtocol<RuntimeAddr, u8, u16, Route>>;
+                type Msg = PoolAssignment<u8>;
             }
             impl Behavior for Worker {
                 type Protocol = Self;
-                type Event = User<
-                    RuntimeAddr,
-                    PoolAssignment<WorkerPoolProtocol<RuntimeAddr, u8, u16, Route>>,
-                >;
+                type Event = User<RuntimeAddr, PoolAssignment<u8>>;
                 type Sends = Vec<Never>;
                 type Ph = Never;
                 type Error = Never;
@@ -635,14 +664,11 @@ macro_rules! pool_route_case {
             struct KeyedWorker;
             impl Protocol for KeyedWorker {
                 type Addr = RuntimeAddr;
-                type Msg = PoolAssignment<KeyedWorkerPoolProtocol<RuntimeAddr, u8, u8, u16, Route>>;
+                type Msg = PoolAssignment<u8>;
             }
             impl Behavior for KeyedWorker {
                 type Protocol = Self;
-                type Event = User<
-                    RuntimeAddr,
-                    PoolAssignment<KeyedWorkerPoolProtocol<RuntimeAddr, u8, u8, u16, Route>>,
-                >;
+                type Event = User<RuntimeAddr, PoolAssignment<u8>>;
                 type Sends = Vec<Never>;
                 type Ph = Never;
                 type Error = Never;
@@ -654,10 +680,30 @@ macro_rules! pool_route_case {
 
             #[test]
             fn pool_protocols_retain_the_selected_customer_capability() {
-                assert_behavior::<WorkerPool<RuntimeAddr, u8, u16, Worker, Route>>();
-                assert_behavior::<
-                    KeyedWorkerPool<RuntimeAddr, u8, u8, u16, KeyedWorker, Route, fn(&u8) -> u64>,
-                >();
+                let configuration = PoolConfiguration::new(
+                    4,
+                    InterruptionPolicy::Retry,
+                    RestartPolicy::Permanent,
+                    2,
+                    core::time::Duration::from_secs(30),
+                    behavior_actors::RestartTiming::Immediate,
+                );
+                let fifo = WorkerPool::<RuntimeAddr, u8, u16, Worker, Route, _>::new(
+                    ChildTopology::new([1], |_| Some(Worker)),
+                    configuration,
+                    Proxy::new,
+                )
+                .unwrap();
+                let keyed =
+                    KeyedWorkerPool::<RuntimeAddr, u8, u8, u16, KeyedWorker, Route, _, _>::new(
+                        ChildTopology::new([2], |_| Some(KeyedWorker)),
+                        configuration,
+                        |_: &u8| 2,
+                        Proxy::new,
+                    )
+                    .unwrap();
+                assert_behavior_value(&fifo);
+                assert_behavior_value(&keyed);
             }
         }
     };

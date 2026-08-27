@@ -2,10 +2,11 @@ use std::time::Duration;
 
 use behavior::EventLayer;
 use behavior::{
-    Acted, Actions, ChildStopped, Crash, Create, CreationKind, CreationResolved, Delivery, Exit,
-    Machine, MailAddr, Move, Never, PeerStopped, Proxy, ProxyCommand, ProxyEvent, Recipient,
-    RestartPolicy, StashRoute, Step, SupervisionEvent, TimerElapsed, TimerGeneration, TimerId,
-    User, UserEvent, WorkerCreationResolved, WorkerStopped, stop_on_abnormal_death,
+    Acted, Actions, Behavior, BehaviorActed, BehaviorBase, Births, ChildStopped, Crash, Create,
+    CreationKind, CreationResolved, Delivery, Exit, Machine, MailAddr, Move, Never, PeerStopped,
+    Proxy, ProxyEvent, Recipient, ReplacementRequested, RestartPolicy, StashRoute, Step,
+    SupervisionEvent, TimerElapsed, TimerGeneration, TimerId, User, UserEvent,
+    WorkerCreationResolved, WorkerStopped, stop_on_abnormal_death,
 };
 use behavior_testkit::{Mailbox, drive};
 use std::time::Instant;
@@ -181,23 +182,42 @@ async fn stash_holds_in_fifo_order_without_loss_or_duplication_across_releases()
     });
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
+    let mut effect_trace = Vec::new();
     for (from, message) in [
         (MailAddr(1), 3),  // Stash
         (MailAddr(2), 3),  // Stash
         (MailAddr(3), 42), // Deliver — passes straight through
         (MailAddr(9), 0),  // Release — trigger delivered, held pair re-routed
     ] {
-        behavior.transition(UserEvent::user(from, message)).unwrap();
+        let actions = behavior.transition(UserEvent::user(from, message)).unwrap();
+        effect_trace.extend(
+            actions
+                .sends
+                .iter()
+                .map(|delivery| (delivery.to.address(), delivery.message)),
+        );
+        assert!(actions.creates.is_empty());
+        assert!(matches!(actions.become_, Step::Continue));
     }
 
     assert_eq!(behavior.base().seen, [(MailAddr(3), 42), (MailAddr(9), 0)]);
+    assert_eq!(effect_trace, behavior.base().seen);
     assert_eq!(behavior.held(), 2);
 
     // A second release neither replays nor drops the held pair.
-    behavior
+    let released = behavior
         .transition(UserEvent::user(MailAddr(9), 0))
         .unwrap();
+    effect_trace.extend(
+        released
+            .sends
+            .iter()
+            .map(|delivery| (delivery.to.address(), delivery.message)),
+    );
+    assert!(released.creates.is_empty());
+    assert!(matches!(released.become_, Step::Continue));
     assert_eq!(behavior.base().seen.len(), 3);
+    assert_eq!(effect_trace, behavior.base().seen);
     assert_eq!(behavior.held(), 2);
 }
 
@@ -230,9 +250,12 @@ async fn fsm_replays_deferred_messages_once_after_phase_change() {
     let initialized = machine.initialize().unwrap();
     let mut machine = initialized.behavior;
     for message in [Message::Value(1), Message::Value(1), Message::Open] {
-        machine
+        let actions = machine
             .transition(User::user(MailAddr(0), message))
             .unwrap();
+        assert!(actions.sends.is_empty());
+        assert!(actions.creates.is_empty());
+        assert!(matches!(actions.become_, Step::Continue));
     }
 
     assert_eq!(machine.state(), &[1, 1]);
@@ -243,24 +266,37 @@ type Child = Recorder;
 
 struct Parent(bool);
 
-#[behavior::behavior(addr = MailAddr, message = u64, sends = Vec<Never>, births = behavior::Births<Child>, error = Never)]
-impl Parent {
-    fn receive(
-        &mut self,
-        _from: MailAddr,
-        nonce: u64,
-    ) -> Acted<MailAddr, Never, Vec<Never>, behavior::Births<Child>, Never> {
+type ParentEvent = User<MailAddr, u64>;
+
+impl behavior::Protocol for Parent {
+    type Addr = MailAddr;
+    type Msg = u64;
+}
+
+impl BehaviorBase for Parent {
+    type Base = Self;
+
+    fn base(&self) -> &Self {
+        self
+    }
+}
+
+impl Behavior for Parent {
+    type Protocol = Self;
+    type Event = ParentEvent;
+    type Sends = Vec<Never>;
+    type Ph = Never;
+    type Error = Never;
+    type Birth = Births<Child>;
+
+    fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
         let creates = if self.0 {
             Vec::new()
         } else {
             self.0 = true;
-            vec![Create::birth(nonce, child(0))]
+            vec![Create::birth(event.message, child(0))]
         };
-        Ok(Actions {
-            sends: Vec::new(),
-            creates,
-            become_: Step::Continue,
-        })
+        Ok(Actions::new(Vec::new(), creates, Step::Continue))
     }
 }
 
@@ -273,29 +309,31 @@ async fn proxy_forwards_only_to_the_current_fresh_generation() {
     let initialized = Proxy::new(child(0)).initialize().unwrap();
     assert_eq!(initialized.actions.creates[0].nonce, 0);
     let mut proxy = initialized.behavior;
-    proxy
+    let installed = proxy
         .transition(ProxyEvent::CreationResolved(CreationResolved {
             nonce: 0,
             kind: CreationKind::Birth,
             result: Ok(MailAddr(999)),
         }))
         .unwrap();
+    assert!(installed.sends.deliveries.is_empty());
+    assert!(installed.sends.unavailable_reports.is_empty());
+    assert!(installed.sends.child_observations.is_empty());
+    assert!(installed.sends.creation_observations.is_empty());
+    assert!(installed.sends.stopped_reports.is_empty());
+    assert_eq!(installed.sends.creation_reports.len(), 1);
+    assert!(installed.sends.shutdowns.is_empty());
+    assert!(installed.creates.is_empty());
+    assert!(matches!(installed.become_, Step::Continue));
 
     let before = proxy
-        .transition(ProxyEvent::Command(User::user(
-            MailAddr(0),
-            ProxyCommand::Forward {
-                command: 5,
-                unavailable_to: Recipient::global(MailAddr(0)),
-            },
-        )))
+        .transition(ProxyEvent::Command(User::user(MailAddr(0), 5)))
         .unwrap();
     assert_eq!(before.sends.deliveries[0].nonce, 0);
 
     let replacement = proxy
-        .transition(ProxyEvent::Command(User::user(
-            MailAddr(0),
-            ProxyCommand::Replace(child(0)),
+        .transition(ProxyEvent::WorkerRequested(ReplacementRequested::new(
+            child(0),
         )))
         .unwrap();
     assert!(replacement.creates.is_empty());
@@ -308,22 +346,25 @@ async fn proxy_forwards_only_to_the_current_fresh_generation() {
         }))
         .unwrap();
     assert_eq!(replacement.creates[0].nonce, 1);
-    proxy
+    let installed = proxy
         .transition(ProxyEvent::CreationResolved(CreationResolved {
             nonce: 1,
             kind: CreationKind::ReplacementIncarnation { replaces: 0 },
             result: Ok(MailAddr(999)),
         }))
         .unwrap();
+    assert!(installed.sends.deliveries.is_empty());
+    assert!(installed.sends.unavailable_reports.is_empty());
+    assert!(installed.sends.child_observations.is_empty());
+    assert!(installed.sends.creation_observations.is_empty());
+    assert!(installed.sends.stopped_reports.is_empty());
+    assert_eq!(installed.sends.creation_reports.len(), 1);
+    assert!(installed.sends.shutdowns.is_empty());
+    assert!(installed.creates.is_empty());
+    assert!(matches!(installed.become_, Step::Continue));
 
     let after = proxy
-        .transition(ProxyEvent::Command(User::user(
-            MailAddr(0),
-            ProxyCommand::Forward {
-                command: 6,
-                unavailable_to: Recipient::global(MailAddr(0)),
-            },
-        )))
+        .transition(ProxyEvent::Command(User::user(MailAddr(0), 6)))
         .unwrap();
     assert_eq!(after.sends.deliveries[0].nonce, 1);
 }
@@ -341,7 +382,9 @@ async fn restart_window_boundary_is_inclusive() {
             RestartPolicy::Permanent,
             1,
             Duration::from_secs(5),
+            behavior::RestartTiming::Immediate,
         ),
+        Proxy::new,
     )
     .unwrap();
     let initialized = supervisor.initialize().unwrap();
@@ -359,11 +402,11 @@ async fn restart_window_boundary_is_inclusive() {
             .unwrap()
             .sends
             .owned
-            .replacement_commands
+            .replacement_inputs
             .len(),
         1
     );
-    supervisor
+    let joined = supervisor
         .transition(SupervisionEvent::WorkerCreationResolved(
             WorkerCreationResolved::new(
                 0,
@@ -373,6 +416,15 @@ async fn restart_window_boundary_is_inclusive() {
             ),
         ))
         .unwrap();
+    assert!(joined.sends.owned.child_observations.is_empty());
+    assert!(joined.sends.owned.creation_observations.is_empty());
+    assert!(joined.sends.owned.schedules.is_empty());
+    assert!(joined.sends.owned.replacement_inputs.is_empty());
+    assert!(joined.sends.owned.failure_reports.is_empty());
+    assert!(joined.sends.owned.shutdowns.is_empty());
+    assert!(joined.sends.inner.is_empty());
+    assert!(joined.creates.is_empty());
+    assert!(matches!(joined.become_, Step::Continue));
 
     let edge = SupervisionEvent::WorkerStopped(WorkerStopped {
         proxy: 0,
@@ -386,13 +438,13 @@ async fn restart_window_boundary_is_inclusive() {
             .unwrap()
             .sends
             .owned
-            .replacement_commands
+            .replacement_inputs
             .is_empty()
     );
 }
 
 #[tokio::test]
-async fn duplicate_dynamic_birth_is_rejected() {
+async fn application_births_are_not_adopted_by_fixed_supervision() {
     let supervisor = behavior::Supervise::new(
         Parent(false),
         behavior::ChildTopology::new((0..1).map(|index| u64::try_from(index).unwrap()), |index| {
@@ -403,7 +455,9 @@ async fn duplicate_dynamic_birth_is_rejected() {
             behavior::RestartPolicy::Transient,
             1,
             std::time::Duration::from_secs(5),
+            behavior::RestartTiming::Immediate,
         ),
+        Proxy::new,
     )
     .unwrap();
     let initialized = supervisor.initialize().unwrap();
@@ -411,18 +465,10 @@ async fn duplicate_dynamic_birth_is_rejected() {
     let acted = supervisor
         .transition(UserEvent::user(MailAddr(0), 0))
         .unwrap();
-    assert!(acted.creates.is_empty());
+    assert_eq!(acted.creates.len(), 1);
     assert!(acted.sends.owned.child_observations.is_empty());
     assert!(acted.sends.owned.creation_observations.is_empty());
-    assert!(matches!(
-        acted.sends.owned.failure_reports.as_slice(),
-        [report] if report.failure
-            == behavior::SupervisionFailure::stable_child_not_accepted(
-                0,
-                behavior::CreationKind::Birth,
-                behavior::StableSlotRejection::DuplicateNonce,
-            )
-    ));
+    assert!(acted.sends.owned.failure_reports.is_empty());
     assert_eq!(supervisor.child_count(), 1);
 }
 use behavior_testkit::InitializeTest;

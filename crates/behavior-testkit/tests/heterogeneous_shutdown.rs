@@ -93,6 +93,27 @@ fn stopped(nonce: u64) -> ChildStopped<MailAddr> {
     ChildStopped::new(nonce, Ok(Exit::Normal), Instant::now())
 }
 
+fn selected_nonce(selection: &RootTargets) -> u64 {
+    match selection {
+        ShutdownChoice::Child { nonce, .. } => *nonce,
+        ShutdownChoice::Other(selection) => match selection {
+            ShutdownChoice::Child { nonce, .. } => *nonce,
+            ShutdownChoice::Other(selection) => match selection {
+                ShutdownChoice::Child { nonce, .. } => *nonce,
+                ShutdownChoice::Other(selection) => match selection {
+                    ShutdownChoice::Child { nonce, .. } => *nonce,
+                    ShutdownChoice::Other(selection) => match selection {
+                        ShutdownChoice::Child { nonce, .. } => *nonce,
+                        ShutdownChoice::Other(_) => {
+                            unreachable!("NoShutdownTargets has no inhabitant")
+                        }
+                    },
+                },
+            },
+        },
+    }
+}
+
 #[test]
 fn five_unrelated_protocols_share_one_phase_machine() {
     let plan = HeterogeneousShutdownPlan::new([
@@ -108,21 +129,58 @@ fn five_unrelated_protocols_share_one_phase_machine() {
     .unwrap()
     .behavior;
 
-    active.on_path(ShutdownRequested).unwrap();
+    let started = active.on_path(ShutdownRequested).unwrap();
+    assert_eq!(
+        started
+            .sends
+            .owned
+            .as_slice()
+            .iter()
+            .map(selected_nonce)
+            .collect::<Vec<_>>(),
+        [30, 10, 40]
+    );
+    assert!(matches!(started.sends.inner, behavior::NoSends));
+    assert!(started.creates.is_empty());
+    assert!(matches!(started.become_, Step::Continue));
     for nonce in [10, 40] {
-        active.on_path(stopped(nonce)).unwrap();
+        let retained = active.on_path(stopped(nonce)).unwrap();
+        assert!(retained.sends.owned.as_slice().is_empty());
+        assert!(matches!(retained.sends.inner, behavior::NoSends));
+        assert!(retained.creates.is_empty());
+        assert!(matches!(retained.become_, Step::Continue));
         assert!(matches!(
             active.state(),
             ShutdownState::Stopping { phase: 0, .. }
         ));
     }
-    active.on_path(stopped(30)).unwrap();
+    let next_phase = active.on_path(stopped(30)).unwrap();
+    assert_eq!(
+        next_phase
+            .sends
+            .owned
+            .as_slice()
+            .iter()
+            .map(selected_nonce)
+            .collect::<Vec<_>>(),
+        [20, 11]
+    );
+    assert!(matches!(next_phase.sends.inner, behavior::NoSends));
+    assert!(next_phase.creates.is_empty());
+    assert!(matches!(next_phase.become_, Step::Continue));
     assert!(matches!(
         active.state(),
         ShutdownState::Stopping { phase: 1, .. }
     ));
-    active.on_path(stopped(11)).unwrap();
+    let retained = active.on_path(stopped(11)).unwrap();
+    assert!(retained.sends.owned.as_slice().is_empty());
+    assert!(matches!(retained.sends.inner, behavior::NoSends));
+    assert!(retained.creates.is_empty());
+    assert!(matches!(retained.become_, Step::Continue));
     let completed = active.on_path(stopped(20)).unwrap();
+    assert!(completed.sends.owned.as_slice().is_empty());
+    assert!(matches!(completed.sends.inner, behavior::NoSends));
+    assert!(completed.creates.is_empty());
     assert!(matches!(completed.become_, Step::Stop(_)));
     assert!(matches!(active.state(), ShutdownState::Completed));
 }

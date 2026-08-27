@@ -28,23 +28,9 @@ pub enum Exit<A: Address> {
 pub enum SupervisionFailureReason {
     RestartDenied(RestartDenial),
     StableChildStopped,
-    StableChildNotAccepted(StableSlotRejection),
     StableChildCreationRejected(crate::CreationRejection),
     WorkerFactoryRejected,
     WorkerCreationRejected(crate::CreationRejection),
-}
-
-/// Why a proposed stable child slot was not added to an owned topology.
-///
-/// This is a composition-time admission result. It is distinct from
-/// [`crate::CreationRejection`], which is the interpreter's result after a
-/// fresh creation request has actually been staged.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum StableSlotRejection {
-    /// The creator-local nonce already names a stable slot in this topology.
-    DuplicateNonce,
-    /// The topology can no longer assign an ordering sequence to another slot.
-    SequenceExhausted,
 }
 
 /// Why an otherwise eligible replacement set was denied.
@@ -55,6 +41,14 @@ pub enum RestartDenial {
         replacements_requested: usize,
         maximum_restarts: u32,
     },
+    /// The configured delay policy could not represent the next delay.
+    BackoffExhausted(crate::BackoffError),
+    /// The per-trigger restart-attempt sequence could not advance.
+    AttemptSequenceExhausted,
+    /// The per-trigger timer generation could not advance.
+    TimerGenerationExhausted,
+    /// No fresh local restart-timer identity remained.
+    TimerIdentityExhausted,
 }
 
 /// Why execution terminated without a behavior-requested stop.

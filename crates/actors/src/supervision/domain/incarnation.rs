@@ -316,16 +316,14 @@ impl<N: Copy + From<u64> + PartialEq, C> Incarnation<N, C> {
         message: M,
     ) -> Result<IncarnationEffects<N, C, M, A>, (IncarnationPhase<N>, M)> {
         match self.state {
-            IncarnationState::Running { incarnation }
-            | IncarnationState::AwaitingStop { incarnation, .. } => {
-                Ok(IncarnationEffects::Deliver {
-                    incarnation,
-                    message,
-                })
-            }
+            IncarnationState::Running { incarnation } => Ok(IncarnationEffects::Deliver {
+                incarnation,
+                message,
+            }),
             IncarnationState::Dormant { .. }
             | IncarnationState::Installing { .. }
             | IncarnationState::InstallingDuringShutdown { .. }
+            | IncarnationState::AwaitingStop { .. }
             | IncarnationState::ShuttingDown { .. }
             | IncarnationState::Vacant { .. } => Err((self.phase(), message)),
         }

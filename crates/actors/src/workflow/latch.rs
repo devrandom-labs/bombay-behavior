@@ -1,7 +1,7 @@
 //! Countdown latch coordination.
 
 use behavior::{
-    Actions, Address, Behavior, BehaviorActed, BehaviorBase, MessageProtocol, Never, NoBirths,
+    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Never, NoBirths, Protocol,
     SendEffects, User,
 };
 #[cfg(test)]
@@ -57,7 +57,8 @@ pub enum LatchState<Route> {
 pub struct Latch<A, Route>
 where
     A: Address,
-    Route: DeliveryRoute<Protocol = MessageProtocol<A, LatchReleased>>,
+    Route: DeliveryRoute,
+    Route::Protocol: Protocol<Addr = A, Msg = LatchReleased>,
 {
     state: LatchState<Route>,
     marker: core::marker::PhantomData<fn() -> A>,
@@ -66,7 +67,8 @@ where
 impl<A, Route> Latch<A, Route>
 where
     A: Address,
-    Route: DeliveryRoute<Protocol = MessageProtocol<A, LatchReleased>>,
+    Route: DeliveryRoute,
+    Route::Protocol: Protocol<Addr = A, Msg = LatchReleased>,
 {
     /// Construct a latch requiring `count` arrivals.
     #[must_use]
@@ -94,7 +96,8 @@ where
 impl<A, Route> BehaviorBase for Latch<A, Route>
 where
     A: Address,
-    Route: DeliveryRoute<Protocol = MessageProtocol<A, LatchReleased>>,
+    Route: DeliveryRoute,
+    Route::Protocol: Protocol<Addr = A, Msg = LatchReleased>,
 {
     type Base = Self;
 
@@ -106,7 +109,8 @@ where
 impl<A, Route> behavior::Protocol for Latch<A, Route>
 where
     A: Address,
-    Route: DeliveryRoute<Protocol = MessageProtocol<A, LatchReleased>>,
+    Route: DeliveryRoute,
+    Route::Protocol: Protocol<Addr = A, Msg = LatchReleased>,
 {
     type Addr = A;
     type Msg = LatchMessage<Route>;
@@ -115,10 +119,11 @@ where
 impl<A, Route> Behavior for Latch<A, Route>
 where
     A: Address,
-    Route: DeliveryRoute<Protocol = MessageProtocol<A, LatchReleased>>,
+    Route: DeliveryRoute,
+    Route::Protocol: Protocol<Addr = A, Msg = LatchReleased>,
     Route::Sends: behavior::SendsFor<User<A, LatchMessage<Route>>>,
 {
-    type Protocol = MessageProtocol<A, LatchMessage<Route>>;
+    type Protocol = Self;
     type Event = User<A, crate::BehaviorMessage<Self>>;
     type Sends = Route::Sends;
     type Ph = Never;

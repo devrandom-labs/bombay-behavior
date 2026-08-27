@@ -1,10 +1,35 @@
-//! Public, owner-authored metadata for transitive logical destinations.
+//! Structural logical-host projection from real sends and birth algebras.
 
-use behavior::{
-    Actions, Behavior, BehaviorActed, BirthProtocol, BirthProtocolProduct, Births, ChildChoice,
-    Delivery, LogicalHostRequirements, MailAddr, Never, NoBirthProtocols, NoBirths, Protocol,
-    RequirementAt, RequirementHead, RequirementTail, User,
+use behavior::DeliveryOutcomes;
+use core::marker::PhantomData;
+use foundation::{
+    Actions, Address, Behavior, BehaviorActed, BirthProtocol, BirthProtocolAt, BirthProtocolHead,
+    BirthProtocolProduct, BirthProtocolTail, Births, ChildChoice, Delivery, EndpointAddress,
+    EstablishedDelivery, LogicalHostRequirements, Never, NoBirthProtocols, NoBirths, Protocol,
+    User,
 };
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct RuntimeAddr(u64);
+
+impl Address for RuntimeAddr {
+    type Nonce = u64;
+}
+
+struct Endpoint<P>(PhantomData<fn() -> P>);
+
+impl<P> Clone for Endpoint<P> {
+    fn clone(&self) -> Self {
+        Self(PhantomData)
+    }
+}
+
+impl EndpointAddress for RuntimeAddr {
+    type Established<P>
+        = Endpoint<P>
+    where
+        P: Protocol<Addr = Self>;
+}
 
 struct RootProtocol;
 struct PublicCommands;
@@ -14,7 +39,7 @@ struct ExactOnly;
 macro_rules! protocol {
     ($protocol:ty) => {
         impl Protocol for $protocol {
-            type Addr = MailAddr;
+            type Addr = RuntimeAddr;
             type Msg = ();
         }
     };
@@ -29,94 +54,86 @@ struct Leaf;
 
 impl Behavior for Leaf {
     type Protocol = StableDestination;
-    type Event = User<MailAddr, ()>;
+    type Event = User<RuntimeAddr, ()>;
     type Sends = Vec<Delivery<StableDestination>>;
     type Ph = Never;
     type Error = Never;
     type Birth = NoBirths;
 
-    fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
+    fn transition(&mut self, _: foundation::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
         Ok(Actions::cont())
     }
-}
-
-impl LogicalHostRequirements for Leaf {
-    type LogicalHosts = BirthProtocol<StableDestination, NoBirthProtocols>;
 }
 
 struct Application;
 
 impl Behavior for Application {
     type Protocol = RootProtocol;
-    type Event = User<MailAddr, ()>;
-    type Sends = Vec<Delivery<PublicCommands>>;
+    type Event = User<RuntimeAddr, ()>;
+    type Sends =
+        DeliveryOutcomes<Vec<EstablishedDelivery<ExactOnly>>, Vec<Delivery<PublicCommands>>>;
     type Ph = Never;
     type Error = Never;
     type Birth = Births<ChildChoice<Leaf, ChildChoice<Leaf, Never>>>;
 
-    fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
+    fn transition(&mut self, _: foundation::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
         Ok(Actions::cont())
     }
 }
 
-impl LogicalHostRequirements for Application {
-    type LogicalHosts = BirthProtocol<
-        PublicCommands,
-        BirthProtocol<StableDestination, BirthProtocol<StableDestination, NoBirthProtocols>>,
-    >;
+trait Same<T> {}
+impl<T> Same<T> for T {}
+
+type Expected = BirthProtocol<
+    PublicCommands,
+    BirthProtocol<StableDestination, BirthProtocol<StableDestination, NoBirthProtocols>>,
+>;
+
+#[test]
+fn complete_product_is_derived_without_owner_authored_metadata() {
+    type Actual = <Application as LogicalHostRequirements>::LogicalHosts;
+    fn exact<T: Same<Expected>>() {}
+    exact::<Actual>();
 }
 
-trait MaterializeHosts {
-    const COUNT: usize;
+#[test]
+fn duplicate_child_destinations_keep_distinct_structural_positions() {
+    type Hosts = <Application as LogicalHostRequirements>::LogicalHosts;
+
+    fn contains<P: Protocol, Position, Product: BirthProtocolAt<P, Position>>() {}
+
+    contains::<PublicCommands, BirthProtocolHead, Hosts>();
+    contains::<StableDestination, BirthProtocolTail<BirthProtocolHead>, Hosts>();
+    contains::<StableDestination, BirthProtocolTail<BirthProtocolTail<BirthProtocolHead>>, Hosts>();
 }
 
-impl MaterializeHosts for NoBirthProtocols {
-    const COUNT: usize = 0;
-}
+trait Hosts<P: Protocol> {}
 
-impl<P, Tail> MaterializeHosts for BirthProtocol<P, Tail>
+struct ApplicationSpaces;
+
+impl Hosts<PublicCommands> for ApplicationSpaces {}
+impl Hosts<StableDestination> for ApplicationSpaces {}
+
+trait HostsProduct<Product: BirthProtocolProduct> {}
+
+impl HostsProduct<NoBirthProtocols> for ApplicationSpaces {}
+
+impl<P, Tail> HostsProduct<BirthProtocol<P, Tail>> for ApplicationSpaces
 where
     P: Protocol,
-    Tail: BirthProtocolProduct + MaterializeHosts,
+    Tail: BirthProtocolProduct,
+    ApplicationSpaces: Hosts<P> + HostsProduct<Tail>,
 {
-    const COUNT: usize = 1 + Tail::COUNT;
-}
-
-fn framework_host_count<B>() -> usize
-where
-    B: LogicalHostRequirements,
-    B::LogicalHosts: MaterializeHosts,
-{
-    B::LogicalHosts::COUNT
 }
 
 #[test]
-fn generic_framework_materializes_the_complete_ordered_product() {
-    assert_eq!(framework_host_count::<Application>(), 3);
-}
+fn a_framework_consumes_repeated_requirements_without_normalizing_them() {
+    fn requires_every_host<B, Spaces>()
+    where
+        B: LogicalHostRequirements,
+        Spaces: HostsProduct<B::LogicalHosts>,
+    {
+    }
 
-#[test]
-fn duplicate_logical_protocol_occurrences_keep_distinct_positions() {
-    type Hosts = <Application as LogicalHostRequirements>::LogicalHosts;
-
-    fn contains<P: Protocol, Position, Product: RequirementAt<P, Position>>() {}
-
-    contains::<PublicCommands, RequirementHead, Hosts>();
-    contains::<StableDestination, RequirementTail<RequirementHead>, Hosts>();
-    contains::<StableDestination, RequirementTail<RequirementTail<RequirementHead>>, Hosts>();
-}
-
-#[test]
-fn exact_only_protocols_are_not_declared_as_logical_hosts() {
-    let _exact_only_protocol = ExactOnly;
-    type Hosts = <Application as LogicalHostRequirements>::LogicalHosts;
-    trait Exactly<T> {}
-    impl<T> Exactly<T> for T {}
-
-    type Expected = BirthProtocol<
-        PublicCommands,
-        BirthProtocol<StableDestination, BirthProtocol<StableDestination, NoBirthProtocols>>,
-    >;
-    fn exact<Product: Exactly<Expected>>() {}
-    exact::<Hosts>();
+    requires_every_host::<Application, ApplicationSpaces>();
 }

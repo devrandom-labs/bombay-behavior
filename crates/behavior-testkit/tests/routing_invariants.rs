@@ -227,7 +227,13 @@ proptest! {
                     prop_assert_eq!(&actions.sends.outcomes[0].message, &RateLimiterOutcome::Admitted { remaining: available });
                 }
             } else {
-                actual.receive(MailAddr(9), RateLimiterMessage::Refill { tokens }).unwrap();
+                let refilled = actual
+                    .receive(MailAddr(9), RateLimiterMessage::Refill { tokens })
+                    .unwrap();
+                prop_assert!(refilled.sends.deliveries.is_empty());
+                prop_assert!(refilled.sends.outcomes.is_empty());
+                prop_assert!(refilled.creates.is_empty());
+                prop_assert!(matches!(refilled.become_, behavior::Step::Continue));
                 available = available.saturating_add(amount).min(capacity);
             }
             prop_assert_eq!(actual.state().available(), available);
@@ -300,14 +306,24 @@ proptest! {
             let recipient = Recipient::global(MailAddr(u64::from(address)));
             match operation {
                 0 => {
-                    actual.receive(MailAddr(9), RouterMessage::Add(recipient)).unwrap();
+                    let added = actual
+                        .receive(MailAddr(9), RouterMessage::Add(recipient))
+                        .unwrap();
+                    prop_assert!(added.sends.is_empty());
+                    prop_assert!(added.creates.is_empty());
+                    prop_assert!(matches!(added.become_, behavior::Step::Continue));
                     if !members.contains(&recipient) {
                         members.push(recipient);
                         if next.is_none() { next = Some(recipient); }
                     }
                 }
                 1 => {
-                    actual.receive(MailAddr(9), RouterMessage::Remove(recipient)).unwrap();
+                    let removed = actual
+                        .receive(MailAddr(9), RouterMessage::Remove(recipient))
+                        .unwrap();
+                    prop_assert!(removed.sends.is_empty());
+                    prop_assert!(removed.creates.is_empty());
+                    prop_assert!(matches!(removed.become_, behavior::Step::Continue));
                     if let Some(index) = members.iter().position(|candidate| *candidate == recipient) {
                         let removed_was_next = next == Some(recipient);
                         members.remove(index);

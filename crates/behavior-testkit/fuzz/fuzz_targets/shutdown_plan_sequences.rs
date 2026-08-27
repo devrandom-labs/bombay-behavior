@@ -3,9 +3,9 @@
 use std::time::Instant;
 
 use behavior::{
-    Actions, Activate, Behavior, ChildHead, ChildStopped, Exit, Here, MailAddr, Never, NoBirths,
+    Actions, Activate, Behavior, ChildHead, ChildStopped, Exit, MailAddr, Never, NoBirths,
     ReportShutdownPlan, ShutdownCoordinator, ShutdownCoordinatorError, ShutdownCoordinatorEvent,
-    ShutdownPlan, ShutdownRequested, ShutdownState, StopOnShutdown, User,
+    ShutdownPlan, ShutdownRequested, ShutdownState, Step, StopOnShutdown, User,
 };
 use libfuzzer_sys::fuzz_target;
 
@@ -51,26 +51,37 @@ fn plan(bytes: &[u8]) -> ShutdownPlan<u64> {
 }
 
 fuzz_target!(|bytes: &[u8]| {
-    let mut subject = ShutdownCoordinator::<Probe, StopOnShutdown<Probe>, ChildHead>::awaiting_plan(
-        Probe,
-    )
-    .initialize()
-    .unwrap()
-    .behavior;
+    let initialized =
+        ShutdownCoordinator::<Probe, StopOnShutdown<Probe>, ChildHead>::awaiting_plan(Probe)
+            .initialize()
+            .unwrap();
+    assert!(initialized.actions.sends.owned.is_empty());
+    assert!(initialized.actions.sends.inner.is_empty());
+    assert!(initialized.actions.creates.is_empty());
+    assert!(matches!(initialized.actions.become_, Step::Continue));
+    let mut subject = initialized.behavior;
     let shutdown_plan = plan(bytes);
 
     for byte in bytes.iter().copied().take(512) {
         match byte % 4 {
             0 => {
-                subject.on_path(ShutdownRequested).unwrap();
+                let actions = subject.on_path(ShutdownRequested).unwrap();
+                assert!(actions.sends.owned.len() <= 2);
+                assert!(actions.sends.inner.is_empty());
+                assert!(actions.creates.is_empty());
+                assert!(matches!(actions.become_, Step::Continue | Step::Stop(_)));
             }
             1 => {
-                let report =
-                    ReportShutdownPlan::<ShutdownPlan<u64>, Here>::new(shutdown_plan.clone());
+                let report = ReportShutdownPlan::<ShutdownPlan<u64>>::new(shutdown_plan.clone());
                 let event: ShutdownCoordinatorEvent<User<MailAddr, ()>, ShutdownPlan<u64>> =
                     report.into_event();
                 match subject.transition(event) {
-                    Ok(_) => {}
+                    Ok(actions) => {
+                        assert!(actions.sends.owned.len() <= 2);
+                        assert!(actions.sends.inner.is_empty());
+                        assert!(actions.creates.is_empty());
+                        assert!(matches!(actions.become_, Step::Continue | Step::Stop(_)));
+                    }
                     Err(ShutdownCoordinatorError::PlanAlreadyInstalled(returned)) => {
                         assert_eq!(returned, shutdown_plan);
                     }
@@ -78,13 +89,14 @@ fuzz_target!(|bytes: &[u8]| {
                 }
             }
             _ => {
-                let observed = ChildStopped::new(
-                    u64::from(byte),
-                    Ok(Exit::Normal),
-                    Instant::now(),
-                );
+                let observed = ChildStopped::new(u64::from(byte), Ok(Exit::Normal), Instant::now());
                 match subject.on_path(observed.clone()) {
-                    Ok(_) => {}
+                    Ok(actions) => {
+                        assert!(actions.sends.owned.len() <= 2);
+                        assert!(actions.sends.inner.is_empty());
+                        assert!(actions.creates.is_empty());
+                        assert!(matches!(actions.become_, Step::Continue | Step::Stop(_)));
+                    }
                     Err(ShutdownCoordinatorError::UnexpectedChildStopped(returned)) => {
                         assert_eq!(returned, observed);
                     }
@@ -101,9 +113,11 @@ fuzz_target!(|bytes: &[u8]| {
         {
             assert!(*phase < plan.phases().len());
             assert!(!awaiting.is_empty());
-            assert!(awaiting
-                .iter()
-                .all(|nonce| plan.phases()[*phase].contains(nonce)));
+            assert!(
+                awaiting
+                    .iter()
+                    .all(|nonce| plan.phases()[*phase].contains(nonce))
+            );
         }
     }
 });

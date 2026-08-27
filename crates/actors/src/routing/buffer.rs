@@ -2,8 +2,10 @@
 
 use std::collections::VecDeque;
 
+#[cfg(test)]
+use behavior::MessageProtocol;
 use behavior::{
-    Actions, Address, Behavior, BehaviorActed, BehaviorBase, MessageProtocol, Never, NoBirths,
+    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Never, NoBirths, Protocol,
     SendEffects, User,
 };
 use thiserror::Error;
@@ -212,8 +214,10 @@ impl BufferConfiguration {
 pub struct Buffer<A, T, TargetRoute, ReplyRoute>
 where
     A: Address,
-    TargetRoute: DeliveryRoute<Protocol = MessageProtocol<A, T>>,
-    ReplyRoute: DeliveryRoute<Protocol = MessageProtocol<A, BufferOutcome<T>>>,
+    TargetRoute: DeliveryRoute,
+    TargetRoute::Protocol: Protocol<Addr = A, Msg = T>,
+    ReplyRoute: DeliveryRoute,
+    ReplyRoute::Protocol: Protocol<Addr = A, Msg = BufferOutcome<T>>,
 {
     state: BufferState<T, ReplyRoute>,
     marker: core::marker::PhantomData<fn() -> (A, TargetRoute)>,
@@ -222,8 +226,10 @@ where
 impl<A, T, TargetRoute, ReplyRoute> Buffer<A, T, TargetRoute, ReplyRoute>
 where
     A: Address,
-    TargetRoute: DeliveryRoute<Protocol = MessageProtocol<A, T>>,
-    ReplyRoute: DeliveryRoute<Protocol = MessageProtocol<A, BufferOutcome<T>>>,
+    TargetRoute: DeliveryRoute,
+    TargetRoute::Protocol: Protocol<Addr = A, Msg = T>,
+    ReplyRoute: DeliveryRoute,
+    ReplyRoute::Protocol: Protocol<Addr = A, Msg = BufferOutcome<T>>,
 {
     /// Bind validated policy to an empty buffer actor.
     #[must_use]
@@ -258,8 +264,10 @@ where
 impl<A, T, TargetRoute, ReplyRoute> BehaviorBase for Buffer<A, T, TargetRoute, ReplyRoute>
 where
     A: Address,
-    TargetRoute: DeliveryRoute<Protocol = MessageProtocol<A, T>>,
-    ReplyRoute: DeliveryRoute<Protocol = MessageProtocol<A, BufferOutcome<T>>>,
+    TargetRoute: DeliveryRoute,
+    TargetRoute::Protocol: Protocol<Addr = A, Msg = T>,
+    ReplyRoute: DeliveryRoute,
+    ReplyRoute::Protocol: Protocol<Addr = A, Msg = BufferOutcome<T>>,
 {
     type Base = Self;
 
@@ -271,8 +279,10 @@ where
 impl<A, T, TargetRoute, ReplyRoute> behavior::Protocol for Buffer<A, T, TargetRoute, ReplyRoute>
 where
     A: Address,
-    TargetRoute: DeliveryRoute<Protocol = MessageProtocol<A, T>>,
-    ReplyRoute: DeliveryRoute<Protocol = MessageProtocol<A, BufferOutcome<T>>>,
+    TargetRoute: DeliveryRoute,
+    TargetRoute::Protocol: Protocol<Addr = A, Msg = T>,
+    ReplyRoute: DeliveryRoute,
+    ReplyRoute::Protocol: Protocol<Addr = A, Msg = BufferOutcome<T>>,
 {
     type Addr = A;
     type Msg = BufferMessage<T, TargetRoute, ReplyRoute>;
@@ -281,8 +291,10 @@ where
 impl<A, T, TargetRoute, ReplyRoute> Behavior for Buffer<A, T, TargetRoute, ReplyRoute>
 where
     A: Address,
-    TargetRoute: DeliveryRoute<Protocol = MessageProtocol<A, T>>,
-    ReplyRoute: DeliveryRoute<Protocol = MessageProtocol<A, BufferOutcome<T>>> + Clone,
+    TargetRoute: DeliveryRoute,
+    TargetRoute::Protocol: Protocol<Addr = A, Msg = T>,
+    ReplyRoute: DeliveryRoute + Clone,
+    ReplyRoute::Protocol: Protocol<Addr = A, Msg = BufferOutcome<T>>,
     TargetRoute::Sends: behavior::SendsFor<User<A, BufferMessage<T, TargetRoute, ReplyRoute>>>,
     ReplyRoute::Sends: behavior::SendsFor<User<A, BufferMessage<T, TargetRoute, ReplyRoute>>>,
 {
@@ -461,7 +473,7 @@ mod tests {
         ] {
             let mut buffer = active(policy);
             for value in [10, 11] {
-                buffer
+                let offered = buffer
                     .receive(
                         MailAddr(9),
                         BufferMessage::Offer {
@@ -470,6 +482,17 @@ mod tests {
                         },
                     )
                     .unwrap();
+                assert!(offered.sends.deliveries.is_empty());
+                assert!(matches!(
+                    offered.sends.outcomes.as_slice(),
+                    [delivery]
+                        if delivery.message
+                            == (BufferOutcome::Accepted {
+                                depth: usize::from(value - 9),
+                            })
+                ));
+                assert!(offered.creates.is_empty());
+                assert_eq!(offered.become_, crate::Step::Continue);
             }
             let overflow = buffer
                 .receive(

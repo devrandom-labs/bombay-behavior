@@ -1,17 +1,16 @@
 #![no_main]
 
-//! Combined supervision attack surface: byte sequences interleave dynamic
-//! births (user messages that create a fresh child) with child-stopped
-//! deaths under a OneForOne/Permanent supervisor with a small restart
-//! budget and no window pruning. An inline reference model tracks the slot
-//! table (alive flags, birth order), the restart-stamp count, and the
-//! budget, and every step's creates/observe-sends/replacement-sends/alive
-//! state must agree.
+//! Combined supervision attack surface: byte sequences interleave inner
+//! application births with worker deaths in a fixed OneForOne/Permanent fleet.
+//! The independent model keeps application births outside the supervisor-owned
+//! topology and tracks the fixed slot table, incarnations, restart stamps, and
+//! budget. Every step's complete transition effects and ownership state must
+//! agree.
 
 use behavior::{
     Acted, Actions, Activate, Crash, Create, CreationKind, CreationResolved, Delivery, MailAddr,
-    Never, RestartPolicy, Step, Strategy, Supervise, SuperviseError, SupervisionEvent, UserEvent,
-    WorkerCreationResolved, WorkerStopped,
+    Never, RestartDenial, RestartPolicy, Step, Strategy, Supervise, SuperviseError,
+    SupervisionEvent, SupervisionFailure, UserEvent, WorkerCreationResolved, WorkerStopped,
 };
 use libfuzzer_sys::fuzz_target;
 use std::time::Instant;
@@ -82,11 +81,49 @@ fuzz_target!(|bytes: &[u8]| {
                 Strategy::OneForOne,
                 RestartPolicy::Permanent,
                 BUDGET,
-                std::time::Duration::MAX,
+                std::time::Duration::MAX, behavior::RestartTiming::Immediate
             ),
+            behavior::Proxy::new,
         )
         .unwrap();
         let initialized = (behavior).initialize().unwrap();
+        assert_eq!(
+            initialized
+                .actions
+                .creates
+                .iter()
+                .map(|create| create.nonce)
+                .collect::<Vec<_>>(),
+            [0, 1]
+        );
+        assert!(
+            initialized
+                .actions
+                .creates
+                .iter()
+                .all(|create| create.kind == CreationKind::Birth)
+        );
+        assert_eq!(
+            initialized.actions.sends.owned.child_observations.len(),
+            FLEET
+        );
+        assert_eq!(
+            initialized.actions.sends.owned.creation_observations.len(),
+            FLEET
+        );
+        assert!(initialized.actions.sends.owned.schedules.is_empty());
+        assert!(
+            initialized
+                .actions
+                .sends
+                .owned
+                .replacement_inputs
+                .is_empty()
+        );
+        assert!(initialized.actions.sends.owned.failure_reports.is_empty());
+        assert!(initialized.actions.sends.owned.shutdowns.is_empty());
+        assert!(initialized.actions.sends.inner.is_empty());
+        assert!(matches!(initialized.actions.become_, Step::Continue));
         let mut behavior = initialized.behavior;
         let base = Instant::now();
 
@@ -100,13 +137,22 @@ fuzz_target!(|bytes: &[u8]| {
             })
             .collect();
         for slot in &slots {
-            behavior
+            let stable = behavior
                 .transition(SupervisionEvent::CreationResolved(CreationResolved::birth(
                     slot.nonce,
                     MailAddr(slot.nonce + 100),
                 )))
                 .unwrap();
-            behavior
+            assert!(stable.sends.owned.child_observations.is_empty());
+            assert!(stable.sends.owned.creation_observations.is_empty());
+            assert!(stable.sends.owned.schedules.is_empty());
+            assert!(stable.sends.owned.replacement_inputs.is_empty());
+            assert!(stable.sends.owned.failure_reports.is_empty());
+            assert!(stable.sends.owned.shutdowns.is_empty());
+            assert!(stable.sends.inner.is_empty());
+            assert!(stable.creates.is_empty());
+            assert!(matches!(stable.become_, Step::Continue));
+            let worker = behavior
                 .transition(SupervisionEvent::WorkerCreationResolved(
                     WorkerCreationResolved::new(
                         slot.nonce,
@@ -116,6 +162,15 @@ fuzz_target!(|bytes: &[u8]| {
                     ),
                 ))
                 .unwrap();
+            assert!(worker.sends.owned.child_observations.is_empty());
+            assert!(worker.sends.owned.creation_observations.is_empty());
+            assert!(worker.sends.owned.schedules.is_empty());
+            assert!(worker.sends.owned.replacement_inputs.is_empty());
+            assert!(worker.sends.owned.failure_reports.is_empty());
+            assert!(worker.sends.owned.shutdowns.is_empty());
+            assert!(worker.sends.inner.is_empty());
+            assert!(worker.creates.is_empty());
+            assert!(matches!(worker.become_, Step::Continue));
         }
         let mut births: u64 = u64::try_from(FLEET).unwrap();
         let mut restarts: Vec<u64> = Vec::new();
@@ -125,12 +180,6 @@ fuzz_target!(|bytes: &[u8]| {
                 // Dynamic birth with a fresh nonce.
                 let nonce = births;
                 births += 1;
-                slots.push(Slot {
-                    nonce,
-                    alive: true,
-                    worker: 0,
-                    next_worker: 1,
-                });
                 let actions = behavior
                     .transition(SupervisionEvent::Behavior(UserEvent::user(
                         MailAddr(0),
@@ -140,28 +189,14 @@ fuzz_target!(|bytes: &[u8]| {
                 assert_eq!(actions.creates.len(), 1, "birth create at byte {index}");
                 assert_eq!(actions.creates[0].nonce, nonce);
                 assert_eq!(actions.creates[0].kind, CreationKind::Birth);
-                assert_eq!(
-                    actions.sends.owned.child_observations.len(),
-                    1,
-                    "observe request at byte {index}"
-                );
-                assert_eq!(actions.sends.owned.child_observations[0].nonce, nonce);
-                behavior
-                    .transition(SupervisionEvent::CreationResolved(CreationResolved::birth(
-                        nonce,
-                        MailAddr(nonce + 100),
-                    )))
-                    .unwrap();
-                behavior
-                    .transition(SupervisionEvent::WorkerCreationResolved(
-                        WorkerCreationResolved::new(
-                            nonce,
-                            0,
-                            CreationKind::Birth,
-                            Ok(()),
-                        ),
-                    ))
-                    .unwrap();
+                assert!(actions.sends.owned.child_observations.is_empty());
+                assert!(actions.sends.owned.creation_observations.is_empty());
+                assert!(actions.sends.owned.schedules.is_empty());
+                assert!(actions.sends.owned.replacement_inputs.is_empty());
+                assert!(actions.sends.owned.failure_reports.is_empty());
+                assert!(actions.sends.owned.shutdowns.is_empty());
+                assert!(actions.sends.inner.is_empty());
+                assert!(matches!(actions.become_, Step::Continue));
             } else {
                 // Death of the slot selected by the byte.
                 let dead = slots[usize::from(byte) % slots.len()];
@@ -183,10 +218,36 @@ fuzz_target!(|bytes: &[u8]| {
                     .transition(SupervisionEvent::WorkerStopped(stopped.clone()))
                     .unwrap();
                 assert_eq!(
-                    actions.sends.owned.replacement_commands.len(),
+                    actions.sends.owned.replacement_inputs.len(),
                     usize::from(expected_restart),
                     "replacement count at byte {index}"
                 );
+                assert!(actions.sends.owned.child_observations.is_empty());
+                assert!(actions.sends.owned.creation_observations.is_empty());
+                assert!(actions.sends.owned.schedules.is_empty());
+                assert_eq!(
+                    actions.sends.owned.failure_reports.len(),
+                    usize::from(!expected_restart),
+                    "failure report count at byte {index}"
+                );
+                if !expected_restart {
+                    assert_eq!(
+                        actions.sends.owned.failure_reports.as_slice()[0].failure,
+                        SupervisionFailure::restart_denied(
+                            dead.nonce,
+                            Err(Crash::Failed),
+                            RestartDenial::BudgetExceeded {
+                                restarts_in_window: BUDGET as usize,
+                                replacements_requested: 1,
+                                maximum_restarts: BUDGET,
+                            },
+                        )
+                    );
+                }
+                assert!(actions.sends.owned.shutdowns.is_empty());
+                assert!(actions.sends.inner.is_empty());
+                assert!(actions.creates.is_empty());
+                assert!(matches!(actions.become_, Step::Continue));
                 let idx = slots
                     .iter()
                     .position(|slot| slot.nonce == dead.nonce)
@@ -194,7 +255,7 @@ fuzz_target!(|bytes: &[u8]| {
                 slots[idx].alive = expected_restart;
                 if expected_restart {
                     let replacement = slots[idx].next_worker;
-                    behavior
+                    let installed = behavior
                         .transition(SupervisionEvent::WorkerCreationResolved(
                             WorkerCreationResolved::new(
                                 dead.nonce,
@@ -204,12 +265,21 @@ fuzz_target!(|bytes: &[u8]| {
                             ),
                         ))
                         .unwrap();
+                    assert!(installed.sends.owned.child_observations.is_empty());
+                    assert!(installed.sends.owned.creation_observations.is_empty());
+                    assert!(installed.sends.owned.schedules.is_empty());
+                    assert!(installed.sends.owned.replacement_inputs.is_empty());
+                    assert!(installed.sends.owned.failure_reports.is_empty());
+                    assert!(installed.sends.owned.shutdowns.is_empty());
+                    assert!(installed.sends.inner.is_empty());
+                    assert!(installed.creates.is_empty());
+                    assert!(matches!(installed.become_, Step::Continue));
                     slots[idx].worker = replacement;
                     slots[idx].next_worker = replacement.checked_add(1).unwrap();
 
                     if byte & 2 != 0 {
-                        let duplicate = behavior
-                            .transition(SupervisionEvent::WorkerStopped(stopped.clone()));
+                        let duplicate =
+                            behavior.transition(SupervisionEvent::WorkerStopped(stopped.clone()));
                         assert!(matches!(
                             duplicate,
                             Err(SuperviseError::UnexpectedWorkerStopped(returned))
@@ -221,7 +291,7 @@ fuzz_target!(|bytes: &[u8]| {
 
             for slot in &slots {
                 assert_eq!(
-                    behavior.is_alive(slot.nonce).unwrap(),
+                    behavior.is_restartable(slot.nonce).unwrap(),
                     slot.alive,
                     "alive mismatch at byte {index} for nonce {}",
                     slot.nonce
@@ -238,7 +308,7 @@ fuzz_target!(|bytes: &[u8]| {
                 "restart stamps at byte {index}"
             );
             if !behavior
-                .is_alive(slots[usize::from(byte) % slots.len()].nonce)
+                .is_restartable(slots[usize::from(byte) % slots.len()].nonce)
                 .unwrap()
             {
                 break;

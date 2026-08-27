@@ -1,8 +1,8 @@
 //! Concrete supervision strategies, restart policy, and failure reactions.
 
 use crate::{
-    Address, Become, Behavior, Crash, CreationKind, CreationRejection, Exit, RestartDenial,
-    StableSlotRejection, Step, Stopped, SupervisionFailureReason,
+    Address, Become, Behavior, Crash, CreationKind, CreationRejection, Exit, RestartDenial, Step,
+    Stopped, SupervisionFailureReason,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -50,11 +50,6 @@ pub enum SupervisionFailure<A: Address> {
     StableChildStopped {
         child: A::Nonce,
         outcome: Result<Exit<A>, Crash>,
-    },
-    StableChildNotAccepted {
-        child: A::Nonce,
-        kind: CreationKind<A::Nonce>,
-        rejection: StableSlotRejection,
     },
     StableChildCreationRejected {
         child: A::Nonce,
@@ -124,19 +119,6 @@ impl<A: Address> SupervisionFailure<A> {
     }
 
     #[must_use]
-    pub const fn stable_child_not_accepted(
-        child: A::Nonce,
-        kind: CreationKind<A::Nonce>,
-        rejection: StableSlotRejection,
-    ) -> Self {
-        Self::StableChildNotAccepted {
-            child,
-            kind,
-            rejection,
-        }
-    }
-
-    #[must_use]
     pub const fn worker_factory_rejected(child: A::Nonce, index: usize) -> Self {
         Self::WorkerFactoryRejected { child, index }
     }
@@ -164,9 +146,6 @@ impl<A: Address> SupervisionFailure<A> {
         match self {
             Self::RestartDenied { denial, .. } => SupervisionFailureReason::RestartDenied(denial),
             Self::StableChildStopped { .. } => SupervisionFailureReason::StableChildStopped,
-            Self::StableChildNotAccepted { rejection, .. } => {
-                SupervisionFailureReason::StableChildNotAccepted(rejection)
-            }
             Self::StableChildCreationRejected { rejection, .. } => {
                 SupervisionFailureReason::StableChildCreationRejected(rejection)
             }

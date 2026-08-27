@@ -13,6 +13,24 @@ use behavior::{
 };
 use std::time::Instant;
 
+macro_rules! assert_supervision_counts {
+    ($actions:expr, replacement_inputs = $replacement_inputs:expr) => {{
+        let actions = &$actions;
+        assert!(actions.sends.owned.child_observations.is_empty());
+        assert!(actions.sends.owned.creation_observations.is_empty());
+        assert!(actions.sends.owned.schedules.is_empty());
+        assert_eq!(
+            actions.sends.owned.replacement_inputs.len(),
+            $replacement_inputs
+        );
+        assert!(actions.sends.owned.failure_reports.is_empty());
+        assert!(actions.sends.owned.shutdowns.is_empty());
+        assert!(actions.sends.inner.is_empty());
+        assert!(actions.creates.is_empty());
+        assert!(matches!(actions.become_, Step::Continue));
+    }};
+}
+
 #[derive(Default)]
 struct Recorder {
     seen: Vec<(MailAddr, u8)>,
@@ -119,23 +137,26 @@ fn child(_index: usize) -> Child {
     Recorder::default()
 }
 
-fn supervisor(
-    strategy: Strategy,
-    policy: RestartPolicy,
-    maximum: u32,
-    window: Duration,
-    count: usize,
-) -> Supervise<Parent, Child> {
-    Supervise::new(
-        Parent,
-        behavior::ChildTopology::indexed(
-            |index| u64::try_from(index).unwrap(),
-            count,
-            |index| Some(child(index)),
-        ),
-        behavior::RestartConfiguration::new(strategy, policy, maximum, window),
-    )
-    .unwrap()
+macro_rules! supervisor {
+    ($strategy:expr, $policy:expr, $maximum:expr, $window:expr, $count:expr $(,)?) => {
+        Supervise::new(
+            Parent,
+            behavior::ChildTopology::indexed(
+                |index| u64::try_from(index).unwrap(),
+                $count,
+                |index| Some(child(index)),
+            ),
+            behavior::RestartConfiguration::new(
+                $strategy,
+                $policy,
+                $maximum,
+                $window,
+                behavior::RestartTiming::Immediate,
+            ),
+            Proxy::new,
+        )
+        .unwrap()
+    };
 }
 
 type SupervisorEvent = SupervisionEvent<User<MailAddr, u64>>;
@@ -185,7 +206,9 @@ async fn empty_fleet_supervisor_initializes_and_steps_cleanly() {
             behavior::RestartPolicy::Transient,
             1,
             std::time::Duration::from_secs(5),
+            behavior::RestartTiming::Immediate,
         ),
+        Proxy::new,
     )
     .unwrap();
     let initialized = supervisor.initialize().unwrap();
@@ -214,7 +237,9 @@ async fn foreign_worker_stop_is_returned_exactly_without_changing_the_fleet() {
             behavior::RestartPolicy::Transient,
             1,
             std::time::Duration::from_secs(5),
+            behavior::RestartTiming::Immediate,
         ),
+        Proxy::new,
     )
     .unwrap();
     let initialized = supervisor.initialize().unwrap();
@@ -232,7 +257,7 @@ async fn foreign_worker_stop_is_returned_exactly_without_changing_the_fleet() {
 #[tokio::test]
 async fn duplicate_worker_stopped_is_returned_during_replacement() {
     let at = Instant::now();
-    let supervisor = supervisor(
+    let supervisor = supervisor!(
         Strategy::OneForOne,
         RestartPolicy::Permanent,
         5,
@@ -245,7 +270,7 @@ async fn duplicate_worker_stopped_is_returned_during_replacement() {
     let first = supervisor
         .transition(stopped(0, Err(Crash::Failed), at))
         .unwrap();
-    assert_eq!(first.sends.owned.replacement_commands.len(), 1);
+    assert_eq!(first.sends.owned.replacement_inputs.len(), 1);
     assert_eq!(supervisor.restarts_in_window(), 1);
 
     let duplicate = WorkerStopped::new(0, 0, Err(Crash::Failed), at);
@@ -269,7 +294,9 @@ fn duplicate_configured_nonces_are_rejected() {
             RestartPolicy::Permanent,
             u32::MAX,
             Duration::MAX,
+            behavior::RestartTiming::Immediate,
         ),
+        Proxy::new,
     );
     assert!(matches!(
         result,
@@ -280,7 +307,7 @@ fn duplicate_configured_nonces_are_rejected() {
 #[tokio::test]
 async fn transient_policy_restarts_only_abnormal_outcomes() {
     let at = Instant::now();
-    let supervisor = supervisor(
+    let supervisor = supervisor!(
         Strategy::OneForOne,
         RestartPolicy::Transient,
         u32::MAX,
@@ -290,27 +317,28 @@ async fn transient_policy_restarts_only_abnormal_outcomes() {
     let initialized = supervisor.initialize().unwrap();
     let mut supervisor = initialized.behavior;
     for proxy in 0..4 {
-        supervisor
+        let joined = supervisor
             .transition(worker_created(proxy, proxy, CreationKind::Birth))
             .unwrap();
+        assert_supervision_counts!(joined, replacement_inputs = 0);
     }
 
     let normal = supervisor
         .transition(stopped(0, Ok(Exit::Normal), at))
         .unwrap();
-    assert!(normal.sends.owned.replacement_commands.is_empty());
-    assert!(!supervisor.is_alive(0).unwrap());
+    assert!(normal.sends.owned.replacement_inputs.is_empty());
+    assert!(!supervisor.is_restartable(0).unwrap());
 
     let collected = supervisor
         .transition(stopped(1, Ok(Exit::Collected), at))
         .unwrap();
-    assert!(collected.sends.owned.replacement_commands.is_empty());
+    assert!(collected.sends.owned.replacement_inputs.is_empty());
 
     let link = supervisor
         .transition(stopped(2, Ok(Exit::LinkDied(MailAddr(9))), at))
         .unwrap();
-    assert_eq!(link.sends.owned.replacement_commands.len(), 1);
-    assert!(supervisor.is_alive(2).unwrap());
+    assert_eq!(link.sends.owned.replacement_inputs.len(), 1);
+    assert!(supervisor.is_restartable(2).unwrap());
 
     let mut worker = 3;
     for (generation, crash) in [
@@ -325,16 +353,17 @@ async fn transient_policy_restarts_only_abnormal_outcomes() {
         let crashed = supervisor
             .transition(stopped_worker(3, worker, Err(crash), at))
             .unwrap();
-        assert_eq!(crashed.sends.owned.replacement_commands.len(), 1);
-        assert!(supervisor.is_alive(3).unwrap());
+        assert_eq!(crashed.sends.owned.replacement_inputs.len(), 1);
+        assert!(supervisor.is_restartable(3).unwrap());
         let replacement = 102 + u64::try_from(generation).unwrap() * 100;
-        supervisor
+        let joined = supervisor
             .transition(worker_created(
                 3,
                 replacement,
                 CreationKind::ReplacementIncarnation { replaces: worker },
             ))
             .unwrap();
+        assert_supervision_counts!(joined, replacement_inputs = 0);
         worker = replacement;
     }
 }
@@ -346,7 +375,7 @@ async fn transient_policy_restarts_only_abnormal_outcomes() {
 #[tokio::test]
 async fn one_for_all_skips_dead_slots_and_respects_budget() {
     let at = Instant::now();
-    let supervisor = supervisor(
+    let supervisor = supervisor!(
         Strategy::OneForAll,
         RestartPolicy::Permanent,
         5,
@@ -356,37 +385,40 @@ async fn one_for_all_skips_dead_slots_and_respects_budget() {
     let initialized = supervisor.initialize().unwrap();
     let mut supervisor = initialized.behavior;
     for proxy in 0..3 {
-        supervisor
+        let joined = supervisor
             .transition(worker_created(proxy, proxy, CreationKind::Birth))
             .unwrap();
+        assert_supervision_counts!(joined, replacement_inputs = 0);
     }
 
     let first = supervisor
         .transition(stopped(0, Err(Crash::Failed), at))
         .unwrap();
-    assert_eq!(first.sends.owned.replacement_commands.len(), 3);
+    assert_eq!(first.sends.owned.replacement_inputs.len(), 3);
 
     for proxy in 1..3 {
-        supervisor
+        let duplicate_stop = supervisor
             .transition(stopped(proxy, Err(Crash::Cancelled), at))
             .unwrap();
+        assert_supervision_counts!(duplicate_stop, replacement_inputs = 0);
     }
     for proxy in 0..3 {
-        supervisor
+        let joined = supervisor
             .transition(worker_created(
                 proxy,
                 proxy + 100,
                 CreationKind::ReplacementIncarnation { replaces: proxy },
             ))
             .unwrap();
+        assert_supervision_counts!(joined, replacement_inputs = 0);
     }
 
     // Second death: 3 alive candidates + 3 prior stamps = 6 > budget 5.
     let denied = supervisor
         .transition(stopped_worker(1, 101, Err(Crash::Failed), at))
         .unwrap();
-    assert!(denied.sends.owned.replacement_commands.is_empty());
-    assert!(!supervisor.is_alive(1).unwrap());
+    assert!(denied.sends.owned.replacement_inputs.is_empty());
+    assert!(!supervisor.is_restartable(1).unwrap());
 
     // Third death: candidates are now only {0, 2} — the dead slot 1 is
     // excluded — so 3 + 2 = 5 <= budget: BOTH alive slots restart, and the
@@ -395,94 +427,62 @@ async fn one_for_all_skips_dead_slots_and_respects_budget() {
     let third = supervisor
         .transition(stopped_worker(2, 102, Err(Crash::Failed), at))
         .unwrap();
-    assert_eq!(third.sends.owned.replacement_commands.len(), 2);
+    assert_eq!(third.sends.owned.replacement_inputs.len(), 2);
     let routes: Vec<_> = third
         .sends
         .owned
-        .replacement_commands
+        .replacement_inputs
         .iter()
         .map(|d| d.nonce)
         .collect();
     assert!(routes.contains(&0));
     assert!(routes.contains(&2));
     assert!(!routes.contains(&1));
-    assert!(supervisor.is_alive(2).unwrap());
-    assert!(supervisor.is_alive(0).unwrap());
-    assert!(!supervisor.is_alive(1).unwrap());
+    assert!(supervisor.is_restartable(2).unwrap());
+    assert!(supervisor.is_restartable(0).unwrap());
+    assert!(!supervisor.is_restartable(1).unwrap());
 }
 
-/// `RestForOne` candidates are birth-sequence ordered, not index ordered: a
-/// dynamic birth (sequence 3) is only ever replaced alongside later births.
+/// `RestForOne` follows declared topology order rather than sorting by nonce.
 #[tokio::test]
-async fn rest_for_one_uses_birth_sequence_not_index() {
+async fn rest_for_one_uses_declared_topology_order_not_nonce_order() {
     let at = Instant::now();
     let supervisor = Supervise::new(
         BirthingParent { born: false },
-        behavior::ChildTopology::indexed(
-            |index| u64::try_from(index).unwrap(),
-            3,
-            |index| Some(child(index)),
-        ),
+        behavior::ChildTopology::new([9, 0, 5], |index| Some(child(index))),
         behavior::RestartConfiguration::new(
             Strategy::RestForOne,
             RestartPolicy::Permanent,
             u32::MAX,
             Duration::MAX,
+            behavior::RestartTiming::Immediate,
         ),
+        Proxy::new,
     )
     .unwrap();
     let initialized = supervisor.initialize().unwrap();
     let mut supervisor = initialized.behavior;
-    supervisor
-        .transition(UserEvent::user(MailAddr(0), 9))
-        .unwrap();
-    assert_eq!(supervisor.child_count(), 4);
-    for proxy in [0, 1, 2, 9] {
-        supervisor
+    assert_eq!(supervisor.child_count(), 3);
+    for proxy in [9, 0, 5] {
+        let joined = supervisor
             .transition(worker_created(proxy, proxy, CreationKind::Birth))
             .unwrap();
+        assert_supervision_counts!(joined, replacement_inputs = 0);
     }
 
-    // Death of configured slot 0 (sequence 0): every alive slot restarts.
-    let wide = supervisor
+    // Nonce 0 is the second declared slot, so only it and later nonce 5 are
+    // selected. Numeric nonce ordering would select a different set.
+    let actions = supervisor
         .transition(stopped(0, Err(Crash::Failed), at))
         .unwrap();
-    assert_eq!(wide.sends.owned.replacement_commands.len(), 4);
-    let routes: Vec<_> = wide
+    let routes: Vec<_> = actions
         .sends
         .owned
-        .replacement_commands
+        .replacement_inputs
         .iter()
         .map(|d| d.nonce)
         .collect();
-    for nonce in 0..3 {
-        assert!(routes.contains(&nonce));
-    }
-    assert!(routes.contains(&9));
-
-    for proxy in [1, 2, 9] {
-        supervisor
-            .transition(stopped(proxy, Err(Crash::Cancelled), at))
-            .unwrap();
-    }
-    for proxy in [0, 1, 2, 9] {
-        supervisor
-            .transition(worker_created(
-                proxy,
-                proxy + 100,
-                CreationKind::ReplacementIncarnation { replaces: proxy },
-            ))
-            .unwrap();
-    }
-
-    // Death of dynamic slot 9 (sequence 3): only later-born slots restart —
-    // the configured slots (sequences 0..3) are untouched even though they
-    // sit at lower indexes.
-    let narrow = supervisor
-        .transition(stopped_worker(9, 109, Err(Crash::Failed), at))
-        .unwrap();
-    assert_eq!(narrow.sends.owned.replacement_commands.len(), 1);
-    assert_eq!(narrow.sends.owned.replacement_commands[0].nonce, 9);
+    assert_eq!(routes, [0, 5]);
 }
 
 /// Window pruning is lazy (evaluated at each death) and inclusive at the
@@ -491,7 +491,7 @@ async fn rest_for_one_uses_birth_sequence_not_index() {
 async fn restart_window_prunes_aged_stamps_but_keeps_future_ones() {
     let start = Instant::now();
     let window = Duration::from_nanos(50);
-    let supervisor = supervisor(
+    let supervisor = supervisor!(
         Strategy::OneForOne,
         RestartPolicy::Permanent,
         u32::MAX,
@@ -500,24 +500,27 @@ async fn restart_window_prunes_aged_stamps_but_keeps_future_ones() {
     );
     let initialized = supervisor.initialize().unwrap();
     let mut supervisor = initialized.behavior;
-    supervisor
+    let joined = supervisor
         .transition(worker_created(0, 0, CreationKind::Birth))
         .unwrap();
+    assert_supervision_counts!(joined, replacement_inputs = 0);
 
-    supervisor
+    let requested = supervisor
         .transition(stopped(0, Err(Crash::Failed), start))
         .unwrap();
+    assert_supervision_counts!(requested, replacement_inputs = 1);
     assert_eq!(supervisor.restarts_in_window(), 1);
-    supervisor
+    let joined = supervisor
         .transition(worker_created(
             0,
             100,
             CreationKind::ReplacementIncarnation { replaces: 0 },
         ))
         .unwrap();
+    assert_supervision_counts!(joined, replacement_inputs = 0);
 
     // 100ns later: the earlier stamp aged out before the budget check.
-    supervisor
+    let requested = supervisor
         .transition(stopped_worker(
             0,
             100,
@@ -525,18 +528,20 @@ async fn restart_window_prunes_aged_stamps_but_keeps_future_ones() {
             start + Duration::from_nanos(100),
         ))
         .unwrap();
+    assert_supervision_counts!(requested, replacement_inputs = 1);
     assert_eq!(supervisor.restarts_in_window(), 1);
-    supervisor
+    let joined = supervisor
         .transition(worker_created(
             0,
             200,
             CreationKind::ReplacementIncarnation { replaces: 100 },
         ))
         .unwrap();
+    assert_supervision_counts!(joined, replacement_inputs = 0);
 
     // A death stamped BEFORE the previous one keeps the future stamp (age
     // computation underflows to "keep") and adds a new one.
-    supervisor
+    let requested = supervisor
         .transition(stopped_worker(
             0,
             200,
@@ -544,6 +549,7 @@ async fn restart_window_prunes_aged_stamps_but_keeps_future_ones() {
             start + Duration::from_nanos(60),
         ))
         .unwrap();
+    assert_supervision_counts!(requested, replacement_inputs = 1);
     assert_eq!(supervisor.restarts_in_window(), 2);
 }
 
@@ -557,9 +563,12 @@ async fn stash_stop_skips_drain_and_preserves_held_messages() {
     });
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
-    behavior
+    let stashed = behavior
         .transition(UserEvent::user(MailAddr(1), 5))
         .unwrap();
+    assert!(stashed.sends.is_empty());
+    assert!(stashed.creates.is_empty());
+    assert!(matches!(stashed.become_, Step::Continue));
     assert_eq!(behavior.held(), 1);
 
     let actions = behavior
@@ -611,13 +620,19 @@ async fn fsm_mid_drain_deferral_reorders_relative_to_fifo() {
     );
     let mut machine = machine.initialize().unwrap().behavior;
     for message in [Message::A, Message::B, Message::C] {
-        machine
+        let deferred = machine
             .transition(User::user(MailAddr(0), message))
             .unwrap();
+        assert!(deferred.sends.is_empty());
+        assert!(deferred.creates.is_empty());
+        assert!(matches!(deferred.become_, Step::Continue));
     }
-    machine
+    let opened = machine
         .transition(User::user(MailAddr(0), Message::Open))
         .unwrap();
+    assert!(opened.sends.is_empty());
+    assert!(opened.creates.is_empty());
+    assert!(matches!(opened.become_, Step::Continue));
 
     // Original FIFO was A, B, C; B was the phase-changer (consumed in P1),
     // A deferred in P1 and replayed in P2 after C.
@@ -696,29 +711,34 @@ async fn restart_configuration_controls_eligibility_and_budget_together() {
             behavior::RestartPolicy::Transient,
             1,
             std::time::Duration::from_secs(5),
+            behavior::RestartTiming::Immediate,
         ),
+        Proxy::new,
     )
     .unwrap();
     let initialized = supervisor.initialize().unwrap();
     let mut supervisor = initialized.behavior;
-    supervisor
+    let first_joined = supervisor
         .transition(worker_created(0, 0, CreationKind::Birth))
         .unwrap();
-    supervisor
+    assert_supervision_counts!(first_joined, replacement_inputs = 0);
+    let second_joined = supervisor
         .transition(worker_created(1, 1, CreationKind::Birth))
         .unwrap();
+    assert_supervision_counts!(second_joined, replacement_inputs = 0);
 
     let first = supervisor
         .transition(stopped(0, Err(Crash::Failed), at))
         .unwrap();
-    assert_eq!(first.sends.owned.replacement_commands.len(), 1);
-    supervisor
+    assert_eq!(first.sends.owned.replacement_inputs.len(), 1);
+    let replacement_joined = supervisor
         .transition(worker_created(
             0,
             100,
             CreationKind::ReplacementIncarnation { replaces: 0 },
         ))
         .unwrap();
+    assert_supervision_counts!(replacement_joined, replacement_inputs = 0);
 
     let second = supervisor
         .transition(stopped_worker(
@@ -728,13 +748,13 @@ async fn restart_configuration_controls_eligibility_and_budget_together() {
             at + Duration::from_secs(1),
         ))
         .unwrap();
-    assert!(second.sends.owned.replacement_commands.is_empty());
-    assert!(!supervisor.is_alive(0).unwrap());
+    assert!(second.sends.owned.replacement_inputs.is_empty());
+    assert!(!supervisor.is_restartable(0).unwrap());
 
     // A normal exit is never restarted under the selected Transient policy.
     let normal = supervisor
         .transition(stopped(1, Ok(Exit::Normal), at))
         .unwrap();
-    assert!(normal.sends.owned.replacement_commands.is_empty());
+    assert!(normal.sends.owned.replacement_inputs.is_empty());
 }
 use behavior_testkit::InitializeTest;

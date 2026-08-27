@@ -6,7 +6,6 @@ mod ownership;
 mod restart_budget;
 
 pub use fleet::FleetError;
-pub(super) use fleet::{Fleet, SlotRegistrationError};
 pub use incarnation::IncarnationError;
 pub use incarnation::IncarnationPhase;
 pub(super) use incarnation::{

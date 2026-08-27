@@ -1,16 +1,17 @@
 use behavior::{
-    Actions, BehaviorActed, ChildChoice, Children, Delivery, MailAddr, Never, Recipient,
-    SendEffects, SendInterpreter, Step,
+    Actions, BehaviorActed, BirthProtocol, BirthProtocolProduct, ChildChoice, Children, Delivery,
+    LogicalDeliveryProtocols, MailAddr, Never, NoBirthProtocols, Recipient, SendEffects,
+    SendInterpreter, Step,
 };
 
-struct FirstDestination;
+pub struct FirstDestination;
 
 impl behavior::Protocol for FirstDestination {
     type Addr = MailAddr;
     type Msg = u8;
 }
 
-struct SecondDestination;
+pub struct SecondDestination;
 
 impl behavior::Protocol for SecondDestination {
     type Addr = MailAddr;
@@ -74,6 +75,26 @@ impl Bootstrap {
     fn receive(&mut self, _: MailAddr, _: ()) -> BehaviorActed<Self> {
         Ok(Actions::cont())
     }
+}
+
+impl LogicalDeliveryProtocols for BootstrapSends {
+    type Protocols =
+        <<Vec<Delivery<FirstDestination>> as LogicalDeliveryProtocols>::Protocols as BirthProtocolProduct>::Append<
+            <Vec<Delivery<SecondDestination>> as LogicalDeliveryProtocols>::Protocols,
+        >;
+}
+
+#[test]
+fn generated_send_product_owner_exposes_its_exact_logical_destinations() {
+    type Actual = <Bootstrap as behavior::LogicalHostRequirements>::LogicalHosts;
+    type Expected =
+        BirthProtocol<FirstDestination, BirthProtocol<SecondDestination, NoBirthProtocols>>;
+
+    trait Same<T> {}
+    impl<T> Same<T> for T {}
+    fn exact<T: Same<Expected>, Expected>() {}
+
+    exact::<Actual, Expected>();
 }
 
 struct Positioned;
@@ -455,7 +476,10 @@ fn generated_fluent_lanes_preserve_verdict_order_and_lane_identity() {
 fn omitted_capabilities_are_empty_and_uninhabited() {
     let mut child = FirstChild;
     let actions = behavior::initialize(&mut child).expect("default initialization succeeds");
-    let _: Actions<MailAddr, Never, behavior::NoSends, behavior::NoBirths> = actions;
+    let actions: Actions<MailAddr, Never, behavior::NoSends, behavior::NoBirths> = actions;
+    assert!(matches!(actions.sends, behavior::NoSends));
+    assert!(actions.creates.is_empty());
+    assert_eq!(actions.become_, Step::Continue);
 }
 
 #[test]

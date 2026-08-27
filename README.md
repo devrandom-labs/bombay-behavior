@@ -41,9 +41,10 @@ termination, initialization effects, creator-local child routes, and defined
 interpretation ordering—so it is not claimed to be a literal transcription of
 Agha's formal notation.
 
-See [Actor transition algebra](docs/actor-transition-algebra.md) for the laws
-and [Behavior adapter contract](docs/adapter-contract.md) for runtime
-obligations.
+See [Actor transition algebra](docs/actor-transition-algebra.md) for the core
+laws, [Behavior layer laws](docs/behavior-layer-laws.md) for same-actor
+composition, and [Behavior adapter contract](docs/adapter-contract.md) for
+runtime obligations.
 
 ## Destination capabilities
 
@@ -144,28 +145,41 @@ bombay-behavior = "0.14"
 bombay-behavior-actors = "0.14"
 ```
 
-Composition has two axes. `Behavior::layer` constructs same-mailbox event and
-effect transformations while preserving the fully concrete output type.
+Composition has two axes. `Behavior::layer` invokes a statically typed
+constructor while preserving the fully concrete output type. The constructor
+itself proves no operational law; its output `Behavior` must satisfy the
+[Behavior layer laws](docs/behavior-layer-laws.md) for same-mailbox event,
+effect, initialization, error, birth, and lifecycle composition.
 `DeliveryRoute` connects independent actors through logical or established
 capabilities; `DeliveryRouteFor<Owner>` additionally admits only a direct
 `ChildRoute` proven by that owner's birth algebra. Topology owners such as
 `Supervisor` and `Proxy` retain lifecycle correlation, while `Router`, queues,
 workflows, and domain actors retain their own independent laws.
 
+For supervised workers, construct the domain behavior and all of its
+same-mailbox layers first, pass those inferred values to `ChildTopology`, and
+give the topology owner the reusable stable-incarnation layer. The resulting
+hierarchy is `Supervisor → Proxy → worker layers → domain behavior`.
+Construction names no composed output type; only real protocol roles and
+destinations remain explicit.
+
 The [Actor composition map](docs/composition-recipes.md#the-composition-map)
 shows the hierarchy, selection rules, and an executable
 `Router → Supervisor-owned Proxy → PriorityQueue → Target` trace.
 
-`InstallationRequirements` folds a behavior's transitive birth algebra into
+`BirthProtocols` folds a behavior's transitive birth algebra into
 an occurrence-preserving protocol product. It excludes protocols mentioned
 only by delivery lanes. Duplicate protocol occurrences remain distinct; the
 product is structural installation evidence, not a protocol registry.
 
-`LogicalHostRequirements` is the corresponding owner-authored contract for
-intentional logical delivery destinations. Its closed product includes
-transitive occurrences and preserves duplicates, while exact-only endpoints
-remain excluded. A framework consumes that product through ordinary recursive
-generic implementations; no protocol registry or erased envelope is involved.
+`LogicalHostRequirements` structurally projects every intentional logical
+`Delivery<P>` in a behavior's concrete sends and in every transitive birth.
+Core structural and handwritten catalogue send products append their lane
+projections in interpretation order. Repeated occurrences remain repeated, while exact
+established deliveries, direct-child effects, and interpreter requests add no
+logical host. A framework consumes the resulting proof product using its own
+static `Hosts<P>` implementation; the projection performs no installation or
+runtime lookup.
 
 `shutdown_after_children(app)` remains the single child-derived shutdown-plan
 builder. Direct callers declare phases and finish normally. Generic frameworks

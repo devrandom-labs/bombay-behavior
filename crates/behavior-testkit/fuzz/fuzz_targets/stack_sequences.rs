@@ -8,13 +8,13 @@
 //! for child deaths — are asserted per byte: effects land in exactly their
 //! product lane and never leak across.
 
+use behavior::EventLayer;
 use behavior::{
     Acted, Actions, Activate, Crash, Create, CreationKind, Delivery, MailAddr, Never, PeerStopped,
     Recipient, RestartPolicy, StashRoute, Step, Strategy, SupervisionEvent, TimerElapsed,
     TimerGeneration, TimerId, UserEvent, WorkerCreationResolved, WorkerStopped,
     stop_on_abnormal_death,
 };
-use behavior::EventLayer;
 use libfuzzer_sys::fuzz_target;
 use std::time::Instant;
 use tokio::runtime::Builder;
@@ -106,9 +106,11 @@ fuzz_target!(|bytes: &[u8]| {
                 Strategy::OneForOne,
                 RestartPolicy::Permanent,
                 u32::MAX,
-                std::time::Duration::MAX,
+                std::time::Duration::MAX, behavior::RestartTiming::Immediate
             ),
-        ).unwrap();
+            behavior::Proxy::new,
+        )
+        .unwrap();
         let initialized = behavior.initialize().unwrap();
         let mut behavior = initialized.behavior;
         let base = Instant::now();
@@ -136,7 +138,7 @@ fuzz_target!(|bytes: &[u8]| {
                     let expected = if arg % 3 != 2 { vec![arg] } else { vec![] };
                     assert_eq!(echo_step, expected, "echo lane mismatch at byte {index}");
                     assert!(
-                        actions.sends.owned.replacement_commands.is_empty(),
+                        actions.sends.owned.replacement_inputs.is_empty(),
                         "user leaked to child lane"
                     );
                     assert_eq!(actions.become_, Step::Continue);
@@ -156,7 +158,7 @@ fuzz_target!(|bytes: &[u8]| {
                         matches!(actions.become_, Step::Stop(behavior::Stopped)),
                         "peer death verdict at byte {index}"
                     );
-                    assert!(actions.sends.owned.replacement_commands.is_empty());
+                    assert!(actions.sends.owned.replacement_inputs.is_empty());
                     actions
                 }
                 2 => {
@@ -191,13 +193,12 @@ fuzz_target!(|bytes: &[u8]| {
                         }))
                         .unwrap();
                     assert_eq!(
-                        actions.sends.owned.replacement_commands.len(),
+                        actions.sends.owned.replacement_inputs.len(),
                         1,
                         "replacement at byte {index}"
                     );
                     assert_eq!(
-                        actions.sends.owned.replacement_commands[0].nonce,
-                        nonce,
+                        actions.sends.owned.replacement_inputs[0].nonce, nonce,
                         "replacement route at byte {index}"
                     );
                     assert!(
@@ -217,7 +218,7 @@ fuzz_target!(|bytes: &[u8]| {
                             ),
                         ))
                         .unwrap();
-                    assert!(resolved.sends.owned.replacement_commands.is_empty());
+                    assert!(resolved.sends.owned.replacement_inputs.is_empty());
                     assert!(resolved.sends.inner.inner.inner.is_empty());
                     assert_eq!(resolved.become_, Step::Continue);
                     workers[position] = replacement;

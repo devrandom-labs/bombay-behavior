@@ -3,7 +3,7 @@ use std::time::Duration;
 use behavior::{
     Actions, Behavior, Births, CreationKind, Delivery, InterruptionPolicy, JobId, MailAddr, Never,
     NoBirths, PoolAssignment, PoolMessage, Recipient, RestartPolicy, SendEffects, Step,
-    WorkerCreationResolved, WorkerPool, WorkerPoolProtocol,
+    WorkerCreationResolved, WorkerPool,
 };
 
 struct Printer(u64);
@@ -74,9 +74,7 @@ struct Worker;
 type PoolReply = behavior_testkit::TestRecipient<behavior::PoolResponse<u8, (), MailAddr>>;
 #[behavior::behavior(
     addr = MailAddr,
-    message = PoolAssignment<
-        WorkerPoolProtocol<MailAddr, u8, (), Recipient<PoolReply>>
-    >,
+    message = PoolAssignment<u8>,
     sends = Vec<Never>,
     births = NoBirths,
     error = Never,
@@ -85,7 +83,7 @@ impl Worker {
     fn receive(
         &mut self,
         _from: MailAddr,
-        _assignment: PoolAssignment<WorkerPoolProtocol<MailAddr, u8, (), Recipient<PoolReply>>>,
+        _assignment: PoolAssignment<u8>,
     ) -> behavior::Acted<MailAddr, Never, Vec<Never>, NoBirths, Never> {
         Ok(Actions::cont())
     }
@@ -218,7 +216,7 @@ fn attribute_preserves_normal_methods_and_exact_actions() {
 
 #[test]
 fn generated_behavior_is_nominal_in_pool_and_supervision_positions() {
-    let pool = WorkerPool::new(
+    let pool = WorkerPool::<MailAddr, u8, (), Worker, Recipient<PoolReply>, _>::new(
         behavior::ChildTopology::indexed(nonce, 1, |_| Some(Worker)),
         behavior::PoolConfiguration::new(
             0,
@@ -226,21 +224,33 @@ fn generated_behavior_is_nominal_in_pool_and_supervision_positions() {
             RestartPolicy::Permanent,
             1,
             Duration::from_secs(1),
+            behavior::RestartTiming::Immediate,
         ),
-        Recipient::global(MailAddr(9)),
+        behavior::Proxy::new,
     )
     .unwrap();
     let initialized = pool.initialize().unwrap();
     let initial = initialized.actions;
     let mut pool = initialized.behavior;
     assert_eq!(initial.creates.len(), 1);
-    pool.on_path(WorkerCreationResolved::new(
-        0,
-        0,
-        CreationKind::Birth,
-        Ok(()),
-    ))
-    .unwrap();
+    let joined = pool
+        .on_path(WorkerCreationResolved::new(
+            0,
+            0,
+            CreationKind::Birth,
+            Ok(()),
+        ))
+        .unwrap();
+    assert!(joined.sends.responses.is_empty());
+    assert!(joined.sends.assignments.is_empty());
+    assert!(joined.sends.supervision.child_observations.is_empty());
+    assert!(joined.sends.supervision.creation_observations.is_empty());
+    assert!(joined.sends.supervision.schedules.is_empty());
+    assert!(joined.sends.supervision.replacement_inputs.is_empty());
+    assert!(joined.sends.supervision.failure_reports.is_empty());
+    assert!(joined.sends.supervision.shutdowns.is_empty());
+    assert!(joined.creates.is_empty());
+    assert!(matches!(joined.become_, Step::Continue));
     let actions = pool
         .receive(
             MailAddr(1),
@@ -251,7 +261,7 @@ fn generated_behavior_is_nominal_in_pool_and_supervision_positions() {
             },
         )
         .unwrap();
-    assert_eq!(actions.sends.inner.assignments.len(), 1);
+    assert_eq!(actions.sends.assignments.len(), 1);
 }
 
 #[test]
@@ -264,6 +274,9 @@ fn attribute_preserves_impl_generics_and_where_clause() {
     assert_eq!(actions.sends[0].message, 11);
 }
 
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "the compile-only alias proves the generated birth product remains nameable"
+)]
 type NameableBirth = Births<Counter>;
 use behavior_testkit::InitializeTest;

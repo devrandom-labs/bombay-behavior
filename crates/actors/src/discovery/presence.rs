@@ -571,16 +571,21 @@ mod tests {
     #[test]
     fn refresh_and_expiry_are_version_and_generation_safe() {
         let mut s = (Subject::new(timer)).initialize().unwrap().behavior;
-        s.receive(
-            MailAddr(0),
-            PresenceMessage::Announce {
-                participant: Participant(1),
-                version: PresenceVersion(1),
-                lifetime: duration(),
-                reply_to: reply(),
-            },
-        )
-        .unwrap();
+        let announced = s
+            .receive(
+                MailAddr(0),
+                PresenceMessage::Announce {
+                    participant: Participant(1),
+                    version: PresenceVersion(1),
+                    lifetime: duration(),
+                    reply_to: reply(),
+                },
+            )
+            .unwrap();
+        assert_eq!(announced.sends.schedules.len(), 1);
+        assert_eq!(announced.sends.replies.len(), 1);
+        assert!(announced.creates.is_empty());
+        assert_eq!(announced.become_, crate::Step::Continue);
         let refreshed = s
             .receive(
                 MailAddr(0),
@@ -596,6 +601,9 @@ mod tests {
             refreshed.sends.schedules.as_slice()[0].generation,
             TimerGeneration(1)
         );
+        assert_eq!(refreshed.sends.replies.len(), 1);
+        assert!(refreshed.creates.is_empty());
+        assert_eq!(refreshed.become_, crate::Step::Continue);
         assert!(
             s.on_path(TimerElapsed::new(TimerId(1), TimerGeneration(0)))
                 .unwrap()
@@ -613,6 +621,9 @@ mod tests {
                 ..
             })
         ));
+        assert!(expired.sends.schedules.is_empty());
+        assert!(expired.creates.is_empty());
+        assert_eq!(expired.become_, crate::Step::Continue);
     }
     #[test]
     fn collision_and_stale_evidence_are_atomic() {
@@ -620,16 +631,21 @@ mod tests {
             TimerId(1)
         }
         let mut s = (Subject::new(collision)).initialize().unwrap().behavior;
-        s.receive(
-            MailAddr(0),
-            PresenceMessage::Announce {
-                participant: Participant(1),
-                version: PresenceVersion(2),
-                lifetime: duration(),
-                reply_to: reply(),
-            },
-        )
-        .unwrap();
+        let announced = s
+            .receive(
+                MailAddr(0),
+                PresenceMessage::Announce {
+                    participant: Participant(1),
+                    version: PresenceVersion(2),
+                    lifetime: duration(),
+                    reply_to: reply(),
+                },
+            )
+            .unwrap();
+        assert_eq!(announced.sends.schedules.len(), 1);
+        assert_eq!(announced.sends.replies.len(), 1);
+        assert!(announced.creates.is_empty());
+        assert_eq!(announced.become_, crate::Step::Continue);
         let collision = s
             .receive(
                 MailAddr(0),
@@ -687,9 +703,13 @@ mod tests {
             first.sends.schedules.as_slice()[0].generation,
             TimerGeneration(0)
         );
-        subject
+        let expired = subject
             .on_path(TimerElapsed::new(TimerId(1), TimerGeneration(0)))
             .unwrap();
+        assert!(expired.sends.schedules.is_empty());
+        assert_eq!(expired.sends.replies.len(), 1);
+        assert!(expired.creates.is_empty());
+        assert_eq!(expired.become_, crate::Step::Continue);
 
         let second = subject
             .receive(MailAddr(0), announce(Participant(2)))
@@ -720,7 +740,11 @@ mod tests {
             lifetime: duration(),
             reply_to: reply(),
         };
-        s.receive(MailAddr(0), message()).unwrap();
+        let announced = s.receive(MailAddr(0), message()).unwrap();
+        assert_eq!(announced.sends.schedules.len(), 1);
+        assert_eq!(announced.sends.replies.len(), 1);
+        assert!(announced.creates.is_empty());
+        assert_eq!(announced.become_, crate::Step::Continue);
         let unchanged = s.receive(MailAddr(0), message()).unwrap();
         assert!(unchanged.sends.schedules.as_slice().is_empty());
         assert!(matches!(

@@ -412,7 +412,8 @@ mod tests {
 
     use super::*;
     use crate::{
-        Activate as _, Crash, CreationRejection, Exit, RestartDenial, SupervisionFailureReason,
+        Activate as _, BackoffError, Crash, CreationRejection, Exit, RestartDenial,
+        SupervisionFailureReason,
     };
     use behavior::{Births, Create, MailAddr, Never, Step, User};
     use proptest::prelude::*;
@@ -483,21 +484,30 @@ mod tests {
                 SupervisionFailureReason::StableChildStopped,
             )),
             Ok(Exit::SupervisionFailed(
-                SupervisionFailureReason::StableChildNotAccepted(
-                    crate::StableSlotRejection::DuplicateNonce,
-                ),
-            )),
-            Ok(Exit::SupervisionFailed(
-                SupervisionFailureReason::StableChildNotAccepted(
-                    crate::StableSlotRejection::SequenceExhausted,
-                ),
-            )),
-            Ok(Exit::SupervisionFailed(
                 SupervisionFailureReason::RestartDenied(RestartDenial::BudgetExceeded {
                     restarts_in_window: 2,
                     replacements_requested: 3,
                     maximum_restarts: 4,
                 }),
+            )),
+            Ok(Exit::SupervisionFailed(
+                SupervisionFailureReason::RestartDenied(RestartDenial::BackoffExhausted(
+                    BackoffError::ZeroAttempt,
+                )),
+            )),
+            Ok(Exit::SupervisionFailed(
+                SupervisionFailureReason::RestartDenied(RestartDenial::BackoffExhausted(
+                    BackoffError::DurationOverflow,
+                )),
+            )),
+            Ok(Exit::SupervisionFailed(
+                SupervisionFailureReason::RestartDenied(RestartDenial::AttemptSequenceExhausted),
+            )),
+            Ok(Exit::SupervisionFailed(
+                SupervisionFailureReason::RestartDenied(RestartDenial::TimerGenerationExhausted),
+            )),
+            Ok(Exit::SupervisionFailed(
+                SupervisionFailureReason::RestartDenied(RestartDenial::TimerIdentityExhausted),
             )),
             Ok(Exit::SupervisionFailed(
                 SupervisionFailureReason::StableChildCreationRejected(
@@ -560,7 +570,7 @@ mod tests {
 
             let duplicate = ChildStopped::new(7, outcome, Instant::now());
             assert!(matches!(
-                active.transition(EventLayer::Owned(duplicate.clone())),
+                active.transition(EventLayer::Owned(duplicate)),
                 Err(TerminationPropagationError::UnexpectedFact {
                     state: TerminalPropagationState::Propagated,
                     fact,
@@ -592,7 +602,7 @@ mod tests {
         let mut active = child(propagate_all).initialize().unwrap().behavior;
         let unrelated = ChildStopped::new(8, Err(Crash::Failed), Instant::now());
         assert!(matches!(
-            active.transition(EventLayer::Owned(unrelated.clone())),
+            active.transition(EventLayer::Owned(unrelated)),
             Err(TerminationPropagationError::UnexpectedFact {
                 state: TerminalPropagationState::Observing,
                 fact,
@@ -633,7 +643,7 @@ mod tests {
     proptest! {
         #[test]
         fn arbitrary_terminal_payload_is_conserved_once(
-            tag in 0_u8..18,
+            tag in 0_u8..21,
             peer in any::<u64>(),
             admitted in any::<usize>(),
             requested in any::<usize>(),
@@ -653,18 +663,21 @@ mod tests {
                         maximum_restarts: maximum,
                     }),
                 )),
-                5 => Ok(Exit::SupervisionFailed(SupervisionFailureReason::StableChildNotAccepted(crate::StableSlotRejection::DuplicateNonce))),
-                6 => Ok(Exit::SupervisionFailed(SupervisionFailureReason::StableChildNotAccepted(crate::StableSlotRejection::SequenceExhausted))),
-                7 => Ok(Exit::SupervisionFailed(SupervisionFailureReason::StableChildCreationRejected(CreationRejection::NonceAlreadyBound))),
-                8 => Ok(Exit::SupervisionFailed(SupervisionFailureReason::StableChildCreationRejected(CreationRejection::InitializationFailed))),
-                9 => Ok(Exit::SupervisionFailed(SupervisionFailureReason::StableChildCreationRejected(CreationRejection::EnvironmentFailed))),
-                10 => Ok(Exit::SupervisionFailed(SupervisionFailureReason::WorkerCreationRejected(CreationRejection::NonceAlreadyBound))),
-                11 => Ok(Exit::SupervisionFailed(SupervisionFailureReason::WorkerCreationRejected(CreationRejection::InitializationFailed))),
-                12 => Ok(Exit::SupervisionFailed(SupervisionFailureReason::WorkerCreationRejected(CreationRejection::EnvironmentFailed))),
-                13 => Ok(Exit::SupervisionFailed(SupervisionFailureReason::WorkerFactoryRejected)),
-                14 => Err(Crash::Failed),
-                15 => Err(Crash::EnvironmentFailed),
-                16 => Err(Crash::Panicked),
+                5 => Ok(Exit::SupervisionFailed(SupervisionFailureReason::RestartDenied(RestartDenial::BackoffExhausted(BackoffError::ZeroAttempt)))),
+                6 => Ok(Exit::SupervisionFailed(SupervisionFailureReason::RestartDenied(RestartDenial::BackoffExhausted(BackoffError::DurationOverflow)))),
+                7 => Ok(Exit::SupervisionFailed(SupervisionFailureReason::RestartDenied(RestartDenial::AttemptSequenceExhausted))),
+                8 => Ok(Exit::SupervisionFailed(SupervisionFailureReason::RestartDenied(RestartDenial::TimerGenerationExhausted))),
+                9 => Ok(Exit::SupervisionFailed(SupervisionFailureReason::RestartDenied(RestartDenial::TimerIdentityExhausted))),
+                10 => Ok(Exit::SupervisionFailed(SupervisionFailureReason::StableChildCreationRejected(CreationRejection::NonceAlreadyBound))),
+                11 => Ok(Exit::SupervisionFailed(SupervisionFailureReason::StableChildCreationRejected(CreationRejection::InitializationFailed))),
+                12 => Ok(Exit::SupervisionFailed(SupervisionFailureReason::StableChildCreationRejected(CreationRejection::EnvironmentFailed))),
+                13 => Ok(Exit::SupervisionFailed(SupervisionFailureReason::WorkerCreationRejected(CreationRejection::NonceAlreadyBound))),
+                14 => Ok(Exit::SupervisionFailed(SupervisionFailureReason::WorkerCreationRejected(CreationRejection::InitializationFailed))),
+                15 => Ok(Exit::SupervisionFailed(SupervisionFailureReason::WorkerCreationRejected(CreationRejection::EnvironmentFailed))),
+                16 => Ok(Exit::SupervisionFailed(SupervisionFailureReason::WorkerFactoryRejected)),
+                17 => Err(Crash::Failed),
+                18 => Err(Crash::EnvironmentFailed),
+                19 => Err(Crash::Panicked),
                 _ => Err(Crash::Cancelled),
             };
             let mut active = child(propagate_all).initialize().unwrap().behavior;
@@ -683,7 +696,7 @@ mod tests {
                 Instant::now(),
             );
             let rejected = matches!(
-                active.transition(EventLayer::Owned(duplicate.clone())),
+                active.transition(EventLayer::Owned(duplicate)),
                 Err(TerminationPropagationError::UnexpectedFact {
                     state: TerminalPropagationState::Propagated,
                     fact,

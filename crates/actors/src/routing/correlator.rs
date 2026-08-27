@@ -263,7 +263,7 @@ mod tests {
     fn resolve_commits_before_one_terminal_delivery_and_marks_duplicates_stale() {
         let reply = Recipient::<Reply>::global(MailAddr(8));
         let mut correlator = (TestCorrelator::new()).initialize().unwrap().behavior;
-        correlator
+        let begun = correlator
             .receive(
                 MailAddr(9),
                 CorrelatorMessage::Begin {
@@ -272,6 +272,9 @@ mod tests {
                 },
             )
             .unwrap();
+        assert!(begun.sends.is_empty());
+        assert!(begun.creates.is_empty());
+        assert_eq!(begun.become_, crate::Step::Continue);
         let resolved = correlator
             .receive(
                 MailAddr(9),
@@ -310,7 +313,7 @@ mod tests {
             ),
             Err(CorrelatorError::UnknownReply { key: 7, value: 99 })
         ));
-        correlator
+        let begun = correlator
             .receive(
                 MailAddr(9),
                 CorrelatorMessage::Begin {
@@ -319,6 +322,9 @@ mod tests {
                 },
             )
             .unwrap();
+        assert!(begun.sends.is_empty());
+        assert!(begun.creates.is_empty());
+        assert_eq!(begun.become_, crate::Step::Continue);
         let cancelled = correlator
             .receive(MailAddr(9), CorrelatorMessage::Cancel { key: 2 })
             .unwrap();

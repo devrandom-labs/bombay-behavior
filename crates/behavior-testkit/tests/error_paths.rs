@@ -6,14 +6,21 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, Delivery, Machine, MailAddr, Move, Never, RestartPolicy, Strategy, Supervise,
-    SupervisionEvent, User, UserEvent, restart_all, restart_one, restart_rest,
+    Acted, Actions, Behavior, BehaviorActed, BehaviorBase, Births, Delivery, Machine, MailAddr,
+    Move, Never, NoBirths, RestartPolicy, Step, Strategy, Supervise, SupervisionEvent, User,
+    UserEvent, restart_all, restart_one, restart_rest,
 };
 use behavior_testkit::{Mailbox, drive};
 
 /// A controlled failure type: unit-like, `Send`, no display machinery.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 struct Boom;
+
+fn assert_machine_continue(actions: &Actions<MailAddr, Never, Vec<Never>, NoBirths>) {
+    assert!(actions.sends.is_empty());
+    assert!(actions.creates.is_empty());
+    assert!(matches!(actions.become_, Step::Continue));
+}
 
 #[derive(Default)]
 struct Echo;
@@ -46,19 +53,36 @@ struct FailingParent {
     fail: bool,
 }
 
-#[behavior::behavior(addr = MailAddr, message = u64, sends = Vec<Never>, births = behavior::Births<Child>, error = Boom)]
-impl FailingParent {
-    fn receive(
-        &mut self,
-        _from: MailAddr,
-        message: u64,
-    ) -> Acted<MailAddr, Never, Vec<Never>, behavior::Births<Child>, Boom> {
+type ParentEvent = User<MailAddr, u64>;
+
+impl behavior::Protocol for FailingParent {
+    type Addr = MailAddr;
+    type Msg = u64;
+}
+
+impl BehaviorBase for FailingParent {
+    type Base = Self;
+
+    fn base(&self) -> &Self {
+        self
+    }
+}
+
+impl Behavior for FailingParent {
+    type Protocol = Self;
+    type Event = ParentEvent;
+    type Sends = Vec<Never>;
+    type Ph = Never;
+    type Error = Boom;
+    type Birth = Births<Child>;
+
+    fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
         if self.fail {
             self.fail = false;
             return Err(Boom);
         }
         Ok(Actions::create(vec![behavior::Create::birth(
-            message,
+            event.message,
             child(0),
         )]))
     }
@@ -85,8 +109,10 @@ async fn fsm_error_mid_drain_preserves_the_unprocessed_batch() {
     );
     let mut machine = machine.initialize().unwrap().behavior;
     // Defer ids 1 (would fail in P1) and 2; id 0 opens P1 and drains.
-    machine.transition(User::user(MailAddr(0), 1)).unwrap();
-    machine.transition(User::user(MailAddr(0), 2)).unwrap();
+    let deferred = machine.transition(User::user(MailAddr(0), 1)).unwrap();
+    assert_machine_continue(&deferred);
+    let deferred = machine.transition(User::user(MailAddr(0), 2)).unwrap();
+    assert_machine_continue(&deferred);
     assert_eq!(machine.held(), 2);
 
     let result = machine.transition(User::user(MailAddr(0), 0));
@@ -105,7 +131,8 @@ async fn fsm_error_mid_drain_preserves_the_unprocessed_batch() {
     assert!(machine.state().is_empty());
 
     // The fold remains usable and the next P0 communication joins the same queue.
-    machine.transition(User::user(MailAddr(0), 2)).unwrap();
+    let deferred = machine.transition(User::user(MailAddr(0), 2)).unwrap();
+    assert_machine_continue(&deferred);
     assert_eq!(machine.held(), 3);
 }
 
@@ -132,8 +159,10 @@ async fn fsm_direct_step_error_keeps_held_intact() {
         },
     );
     let mut machine = machine.initialize().unwrap().behavior;
-    machine.transition(User::user(MailAddr(0), 2)).unwrap(); // held
-    machine.transition(User::user(MailAddr(0), 0)).unwrap(); // P1, drain: id 2 stays (P1,2 -> Stay, not held)
+    let deferred = machine.transition(User::user(MailAddr(0), 2)).unwrap();
+    assert_machine_continue(&deferred);
+    let opened = machine.transition(User::user(MailAddr(0), 0)).unwrap();
+    assert_machine_continue(&opened);
     assert_eq!(machine.held(), 0);
 
     // In P1 now: a direct id-1 message errors, held untouched.
@@ -151,7 +180,8 @@ async fn fsm_direct_step_error_keeps_held_intact() {
     assert_eq!(machine.held(), 0);
     assert!(machine.state().is_empty());
     // The fold is still live for a non-failing message.
-    machine.transition(User::user(MailAddr(0), 3)).unwrap();
+    let continued = machine.transition(User::user(MailAddr(0), 3)).unwrap();
+    assert_machine_continue(&continued);
 }
 
 /// Supervision propagates the inner controlled error without touching the
@@ -170,7 +200,9 @@ async fn supervision_propagates_inner_errors_without_touching_slots() {
             RestartPolicy::Permanent,
             u32::MAX,
             Duration::MAX,
+            behavior::RestartTiming::Immediate,
         ),
+        behavior::Proxy::new,
     )
     .unwrap();
     let initialized = supervisor.initialize().unwrap();
@@ -184,12 +216,26 @@ async fn supervision_propagates_inner_errors_without_touching_slots() {
     ));
     assert_eq!(supervisor.child_count(), before);
     for nonce in 0..2 {
-        assert!(supervisor.is_alive(u64::try_from(nonce).unwrap()).unwrap());
+        assert!(
+            supervisor
+                .is_restartable(u64::try_from(nonce).unwrap())
+                .unwrap()
+        );
     }
     // The fold recovers on the next message.
-    supervisor
+    let recovered = supervisor
         .transition(SupervisionEvent::Behavior(UserEvent::user(MailAddr(0), 7)))
         .unwrap();
+    assert!(recovered.sends.owned.child_observations.is_empty());
+    assert!(recovered.sends.owned.creation_observations.is_empty());
+    assert!(recovered.sends.owned.schedules.is_empty());
+    assert!(recovered.sends.owned.replacement_inputs.is_empty());
+    assert!(recovered.sends.owned.failure_reports.is_empty());
+    assert!(recovered.sends.owned.shutdowns.is_empty());
+    assert!(recovered.sends.inner.is_empty());
+    assert_eq!(recovered.creates.len(), 1);
+    assert_eq!(recovered.creates[0].nonce, 7);
+    assert!(matches!(recovered.become_, Step::Continue));
 }
 
 /// The `restart_*` helpers expose exactly the documented strategies.
@@ -216,7 +262,9 @@ async fn driver_propagates_errors_and_preserves_the_tail() {
             RestartPolicy::Permanent,
             u32::MAX,
             Duration::MAX,
+            behavior::RestartTiming::Immediate,
         ),
+        behavior::Proxy::new,
     )
     .unwrap();
     let mut mailbox = Mailbox::new([
@@ -255,9 +303,12 @@ async fn fsm_error_mid_drain_rolls_back_the_complete_staged_drain() {
     );
     let mut machine = machine.initialize().unwrap().behavior;
     // Held order [2, 3, 1]: the drain records 2 and 3, then id 1 errors.
-    machine.transition(User::user(MailAddr(0), 2)).unwrap();
-    machine.transition(User::user(MailAddr(0), 3)).unwrap();
-    machine.transition(User::user(MailAddr(0), 1)).unwrap();
+    let deferred = machine.transition(User::user(MailAddr(0), 2)).unwrap();
+    assert_machine_continue(&deferred);
+    let deferred = machine.transition(User::user(MailAddr(0), 3)).unwrap();
+    assert_machine_continue(&deferred);
+    let deferred = machine.transition(User::user(MailAddr(0), 1)).unwrap();
+    assert_machine_continue(&deferred);
     let result = machine.transition(User::user(MailAddr(0), 0));
     assert!(matches!(
         result,

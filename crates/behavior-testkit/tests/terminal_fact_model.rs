@@ -53,7 +53,7 @@ impl Rule {
 }
 
 fn outcome(tag: u8, detail: u64) -> TerminalOutcome<MailAddr> {
-    match tag % 18 {
+    match tag % 21 {
         0 => Ok(Exit::Normal),
         1 => Ok(Exit::Collected),
         2 => Ok(Exit::LinkDied(MailAddr(detail))),
@@ -68,47 +68,56 @@ fn outcome(tag: u8, detail: u64) -> TerminalOutcome<MailAddr> {
             }),
         )),
         5 => Ok(Exit::SupervisionFailed(
-            SupervisionFailureReason::StableChildNotAccepted(
-                behavior::StableSlotRejection::DuplicateNonce,
-            ),
+            SupervisionFailureReason::RestartDenied(RestartDenial::BackoffExhausted(
+                behavior::BackoffError::ZeroAttempt,
+            )),
         )),
         6 => Ok(Exit::SupervisionFailed(
-            SupervisionFailureReason::StableChildNotAccepted(
-                behavior::StableSlotRejection::SequenceExhausted,
-            ),
+            SupervisionFailureReason::RestartDenied(RestartDenial::BackoffExhausted(
+                behavior::BackoffError::DurationOverflow,
+            )),
         )),
         7 => Ok(Exit::SupervisionFailed(
+            SupervisionFailureReason::RestartDenied(RestartDenial::AttemptSequenceExhausted),
+        )),
+        8 => Ok(Exit::SupervisionFailed(
+            SupervisionFailureReason::RestartDenied(RestartDenial::TimerGenerationExhausted),
+        )),
+        9 => Ok(Exit::SupervisionFailed(
+            SupervisionFailureReason::RestartDenied(RestartDenial::TimerIdentityExhausted),
+        )),
+        10 => Ok(Exit::SupervisionFailed(
             SupervisionFailureReason::StableChildCreationRejected(
                 CreationRejection::NonceAlreadyBound,
             ),
         )),
-        8 => Ok(Exit::SupervisionFailed(
-            SupervisionFailureReason::StableChildCreationRejected(
-                CreationRejection::InitializationFailed,
-            ),
-        )),
-        9 => Ok(Exit::SupervisionFailed(
-            SupervisionFailureReason::StableChildCreationRejected(
-                CreationRejection::EnvironmentFailed,
-            ),
-        )),
-        10 => Ok(Exit::SupervisionFailed(
-            SupervisionFailureReason::WorkerCreationRejected(CreationRejection::NonceAlreadyBound),
-        )),
         11 => Ok(Exit::SupervisionFailed(
-            SupervisionFailureReason::WorkerCreationRejected(
+            SupervisionFailureReason::StableChildCreationRejected(
                 CreationRejection::InitializationFailed,
             ),
         )),
         12 => Ok(Exit::SupervisionFailed(
-            SupervisionFailureReason::WorkerCreationRejected(CreationRejection::EnvironmentFailed),
+            SupervisionFailureReason::StableChildCreationRejected(
+                CreationRejection::EnvironmentFailed,
+            ),
         )),
         13 => Ok(Exit::SupervisionFailed(
+            SupervisionFailureReason::WorkerCreationRejected(CreationRejection::NonceAlreadyBound),
+        )),
+        14 => Ok(Exit::SupervisionFailed(
+            SupervisionFailureReason::WorkerCreationRejected(
+                CreationRejection::InitializationFailed,
+            ),
+        )),
+        15 => Ok(Exit::SupervisionFailed(
+            SupervisionFailureReason::WorkerCreationRejected(CreationRejection::EnvironmentFailed),
+        )),
+        16 => Ok(Exit::SupervisionFailed(
             SupervisionFailureReason::WorkerFactoryRejected,
         )),
-        14 => Err(Crash::Failed),
-        15 => Err(Crash::EnvironmentFailed),
-        16 => Err(Crash::Panicked),
+        17 => Err(Crash::Failed),
+        18 => Err(Crash::EnvironmentFailed),
+        19 => Err(Crash::Panicked),
         _ => Err(Crash::Cancelled),
     }
 }

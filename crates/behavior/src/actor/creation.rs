@@ -491,6 +491,87 @@ where
     occurrence: PhantomData<fn() -> Occurrence>,
 }
 
+/// Private typed communication to one declared creator-local child role.
+///
+/// `ChildDelivery` addresses the child's public protocol. `ChildInput`
+/// instead selects one owner-defined member of the concrete child's event
+/// algebra through `Source`. This is the static boundary used for lifecycle
+/// coordination between an owner and a composed child: it retains the exact
+/// child behavior, occurrence, input, and ingress owner without exposing the
+/// input through the child's public protocol or performing a runtime lookup.
+///
+/// This is a derived Bombay communication form. Like `ChildDelivery`, its
+/// creator-local route is interpreted only after same-action creations have
+/// committed; constructing it performs no delivery.
+pub struct ChildInput<Child, Source, Input, Occurrence>
+where
+    Child: Behavior,
+{
+    /// Creator-local nonce of the concrete child receiving the input.
+    pub nonce: <BehaviorAddr<Child> as Address>::Nonce,
+    /// Complete private input transferred to the child.
+    pub input: Input,
+    marker: PhantomData<fn() -> (Child, Source, Occurrence)>,
+}
+
+/// One report emitted through an established creator/child relationship.
+///
+/// The interpreter attaches `child` from its exact local binding; the
+/// emitting behavior supplies only `report`. `EventIngress` separately keeps
+/// the concrete child behavior and occurrence in the parent's event type, so
+/// equal nonce representations cannot confuse different child roles.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ChildReport<A: Address, R> {
+    /// Creator-local nonce of the child that emitted the report.
+    pub child: A::Nonce,
+    /// Complete report value transferred by that child.
+    pub report: R,
+}
+
+impl<A: Address, R> ChildReport<A, R> {
+    /// Attach an established creator-local child nonce to one report.
+    #[must_use]
+    pub const fn new(child: A::Nonce, report: R) -> Self {
+        Self { child, report }
+    }
+}
+
+impl<A: Address, R> From<(A::Nonce, crate::ReportToParent<R>)> for ChildReport<A, R> {
+    fn from((child, request): (A::Nonce, crate::ReportToParent<R>)) -> Self {
+        Self::new(child, request.into_inner())
+    }
+}
+
+impl<Child, Source, Input, Occurrence> ChildInput<Child, Source, Input, Occurrence>
+where
+    Child: Behavior,
+    Child::Event: crate::ChildInputIngress<Source, Input>,
+{
+    /// Construct a private input for one exact creator-local child route.
+    #[must_use]
+    pub const fn at(route: ChildRoute<Child, Occurrence>, input: Input) -> Self {
+        Self {
+            nonce: route.nonce(),
+            input,
+            marker: PhantomData,
+        }
+    }
+}
+
+impl<Child, Source, Input, Occurrence> Clone for ChildInput<Child, Source, Input, Occurrence>
+where
+    Child: Behavior,
+    Input: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            nonce: self.nonce,
+            input: self.input.clone(),
+            marker: PhantomData,
+        }
+    }
+}
+
 impl<P, Occurrence> ChildDelivery<P, Occurrence>
 where
     P: Protocol,
@@ -1526,6 +1607,34 @@ where
 
 impl BirthNodeProtocols for Never {
     type Protocols = NoBirthProtocols;
+}
+
+/// Structural logical-destination projection for one closed birth node.
+///
+/// This implementation detail is public only because its associated product
+/// participates in the blanket [`crate::LogicalHostRequirements`] interface.
+#[doc(hidden)]
+pub trait BirthNodeLogicalHosts {
+    type LogicalHosts: BirthProtocolProduct;
+}
+
+impl<B> BirthNodeLogicalHosts for B
+where
+    B: crate::LogicalHostRequirements,
+{
+    type LogicalHosts = B::LogicalHosts;
+}
+
+impl<Head, Tail> BirthNodeLogicalHosts for ChildChoice<Head, Tail>
+where
+    Head: BirthNodeLogicalHosts,
+    Tail: BirthNodeLogicalHosts,
+{
+    type LogicalHosts = <Head::LogicalHosts as BirthProtocolProduct>::Append<Tail::LogicalHosts>;
+}
+
+impl BirthNodeLogicalHosts for Never {
+    type LogicalHosts = NoBirthProtocols;
 }
 
 /// This behavior cannot emit child births.

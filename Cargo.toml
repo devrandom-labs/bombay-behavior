@@ -30,8 +30,30 @@ thiserror = { version = "2.0", default-features = false }
 tokio = { version = "1.47", default-features = false }
 
 [workspace.lints.clippy]
-all = { level = "deny", priority = -1 }
-pedantic = { level = "warn", priority = -1 }
+# Correctness and suspicious constructs are hard failures. Broad style,
+# complexity, and performance groups are not compiler gates: elevating them
+# rewards the exact aliases, wrappers, boxing, and branch reshaping that this
+# crate must review semantically instead of accepting mechanically.
+all = { level = "allow", priority = -2 }
+correctness = { level = "deny", priority = -1 }
+suspicious = { level = "deny", priority = -1 }
+pedantic = { level = "allow", priority = -1 }
+# Static actor products are intentionally concrete. Denying this lint rewards
+# aliases and wrapper types that merely hide the real protocol algebra.
+type_complexity = "allow"
+# Interpreter traits state `impl Future + Send` explicitly. Rewriting their
+# implementations as `async fn` hides the Send obligation the boundary owns.
+manual_async_fn = "allow"
+allow_attributes_without_reason = "deny"
+debug_assert_with_mut_call = "deny"
+let_underscore_must_use = "deny"
+dbg_macro = "deny"
+todo = "deny"
+unimplemented = "deny"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+unused_must_use = "deny"
 
 [workspace.metadata.crane]
 name = "bombay-behavior"

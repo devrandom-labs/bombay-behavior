@@ -221,6 +221,126 @@ Do not add speculative abstractions. Add a trait or combinator only when its
 laws are clear, its composition is type-safe, and at least one concrete use
 demonstrates why it belongs at the algebraic boundary.
 
+## Compiler-friction checkpoint
+
+The compiler is an invariant oracle and a veto, never a source of architecture
+or a work queue. Compiler output may reject a candidate model; it may not
+originate or justify a type, trait, bound, callback, wrapper, alias, marker,
+event variant, route, associated type, constructor parameter, default generic,
+visibility change, or structural path.
+
+### Design-provenance gate
+
+Every production edit that changes the static or semantic shape of the system
+must have all of the following provenance recorded before the edit exists:
+
+1. a stated actor-model, derived, or deliberate Bombay law;
+2. the user-level syntax and complete observable transition that law requires;
+3. a focused compile or pure-fold regression written in domain vocabulary,
+   before production code, which fails for that law on the prior design; and
+4. the existing lower-order behaviors, layers, event/effect products, and
+   interpreter capabilities that the implementation will compose or delete.
+
+“The compiler requires it,” “this bound makes the implementation type-check,”
+and “the callers can be migrated” are never valid provenance. If a compiler
+error appears to require new semantic surface not already named by the recorded
+law and regression, stop the implementation and return to the model. Do not
+edit around the error, even once.
+
+Separate design from fallout. A stage that invents or changes an abstraction
+may update only its focused law tests and the smallest end-to-end interpreter
+witness. It must not bulk-migrate the catalogue. Mechanical migration is a
+later, separately measured stage and may only apply the already-proven syntax;
+it may introduce no new semantic type, bound, wrapper, policy, route, or test
+fixture. If migration discovers one, the abstraction is unproven and the
+design stage reopens.
+
+At every checkpoint, audit the entire working-tree diff by provenance rather
+than asking whether it compiles. For each new or reshaped production symbol,
+point to its pre-edit law and regression. Remove any symbol or caller plumbing
+whose only explanation is a compiler diagnostic. A green build with an
+unproven symbol is a failed design; a temporarily failing build while an
+invalid candidate is being removed is not a reason to preserve that candidate.
+
+### No-op symptom prohibition
+
+A general behavior or template API must never require a caller to provide a
+no-op policy, callback, marker, route, alias, wrapper, event variant, or
+discarded transition merely because the template's signature demands one.
+This prohibition applies equally to production callers, examples, unit and
+compile tests, model tests, properties, fuzz targets, benchmarks, macros, and
+downstream interpreters.
+
+The first legitimate caller that can only satisfy a new abstraction with a
+no-op or placeholder invalidates that abstraction. Stop immediately: do not
+fix a second caller, do not add a default or convenience constructor, and do
+not hide the placeholder in a helper. Restore the user-level composition law
+first, beginning with ordinary `BehaviorLayer` composition and the existing
+event/effect products. A mandatory input is lawful only when absence is itself
+an illegal semantic state proven by the public type and exercised by every
+valid construction.
+
+Mechanical migration may begin only after a focused pure-fold test proves the
+new law, at least two unrelated real templates and two wrapper orders use it
+without placeholders, and the change deletes or subsumes the repeated
+machinery it replaces. A green compiler cannot waive this rule.
+
+The no-op rule is only a high-signal symptom check. Passing it does not satisfy
+the design-provenance gate: compiler-driven surface can still be invalid even
+when every caller performs non-empty work.
+
+Trigger this checkpoint before fixing the second call site when two failures
+share any of the following:
+
+- the same missing bound, ingress path, occurrence proof, or associated type;
+- the same template-specific constructor, alias, `With*` variant, builder, or
+  policy marker;
+- the need to count wrapper depth or spell `.inside()` differently because an
+  otherwise ordinary `BehaviorLayer` was added;
+- a new application event, type alias, or adapter whose only purpose is to
+  satisfy machinery internal to a reusable template; or
+- the same routing, lifecycle, availability, or hosting operation implemented
+  independently by two higher-order templates.
+
+When triggered, stop production and migration edits and perform this audit:
+
+1. Cluster every matching compiler error and locate every occurrence across
+   Behavior, actors, macros, testkit, interpreters, examples, and Bombay.
+2. State the user-level composition syntax that should work without naming the
+   resulting behavior type. Write the smallest compile-only or pure-fold test
+   for that syntax before changing production code.
+3. Identify the one semantic law and the existing lowest-order behavior or
+   layer that should own it. Treat repeated generic plumbing as evidence of a
+   missing composition law, not evidence that every caller needs an adapter.
+4. List the aliases, `With*` variants, constructors, wrappers, marker types,
+   and duplicated folds the design will delete. If it deletes none, presume
+   the proposed abstraction is relocating complexity and redesign it.
+5. Prove the same mechanism through at least two unrelated templates and two
+   wrapper orders. A mechanism demonstrated only by proxy/supervision, only by
+   pools, or only by one test fixture is still template-specific.
+6. Inspect the interpreter boundary before accepting the algebra. Static
+   metadata that no interpreter can consume is not an implemented feature.
+7. Only after the public algebra and interpreter path are coherent may bulk
+   call-site migration begin.
+
+During this checkpoint, making more tests compile is not progress. Do not add
+custom fixture events, aliases, explicit generic annotations, compatibility
+constructors, or path-counting calls to preserve the suspect API. If such
+edits have already begun, stop and separate or revert only those edits before
+continuing; never use unrelated user changes as rollback collateral.
+
+At the end of each compiler-fix batch, answer these questions explicitly:
+
+- Did this batch remove a repeated concept, or merely teach more callers its
+  current shape?
+- Would adding one unrelated `BehaviorLayer` require another caller edit?
+- Is any public name describing structural position (`WithParent`, `Inner`,
+  `AtPath`) rather than a distinct state-transition law?
+- Did test code gain more protocol/type plumbing than production code lost?
+
+Any “yes” to the last three questions reopens the design checkpoint and blocks
+further migration.
+
 ## Change containment and abstraction budget
 
 Correct architecture does not justify unlimited code growth. Treat source

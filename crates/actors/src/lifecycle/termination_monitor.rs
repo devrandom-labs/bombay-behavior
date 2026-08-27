@@ -448,7 +448,10 @@ mod tests {
         }
     }
 
-    #[allow(clippy::needless_pass_by_value)]
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "the reaction contract transfers ownership of the complete terminal fact"
+    )]
     fn reap(
         _: &mut Probe,
         stopped: PeerStopped<MailAddr>,

@@ -1,7 +1,7 @@
 //! Fixed-membership cyclic barrier coordination.
 
 use behavior::{
-    Actions, Address, Behavior, BehaviorActed, BehaviorBase, MessageProtocol, Never, NoBirths,
+    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Never, NoBirths, Protocol,
     SendEffects, User,
 };
 #[cfg(test)]
@@ -159,7 +159,8 @@ pub enum BarrierError<K, Route> {
 pub struct Barrier<A, K, Route>
 where
     A: Address,
-    Route: DeliveryRoute<Protocol = MessageProtocol<A, BarrierReleased>>,
+    Route: DeliveryRoute,
+    Route::Protocol: Protocol<Addr = A, Msg = BarrierReleased>,
 {
     members: Vec<K>,
     state: BarrierState<K, Route>,
@@ -170,7 +171,8 @@ impl<A, K, Route> Barrier<A, K, Route>
 where
     A: Address,
     K: Clone + Eq,
-    Route: DeliveryRoute<Protocol = MessageProtocol<A, BarrierReleased>>,
+    Route: DeliveryRoute,
+    Route::Protocol: Protocol<Addr = A, Msg = BarrierReleased>,
 {
     /// Bind validated membership to generation zero of a barrier actor.
     #[must_use]
@@ -202,7 +204,8 @@ impl<A, K, Route> BehaviorBase for Barrier<A, K, Route>
 where
     A: Address,
     K: Clone + Eq,
-    Route: DeliveryRoute<Protocol = MessageProtocol<A, BarrierReleased>>,
+    Route: DeliveryRoute,
+    Route::Protocol: Protocol<Addr = A, Msg = BarrierReleased>,
 {
     type Base = Self;
 
@@ -215,7 +218,8 @@ impl<A, K, Route> behavior::Protocol for Barrier<A, K, Route>
 where
     A: Address,
     K: Clone + Eq,
-    Route: DeliveryRoute<Protocol = MessageProtocol<A, BarrierReleased>>,
+    Route: DeliveryRoute,
+    Route::Protocol: Protocol<Addr = A, Msg = BarrierReleased>,
 {
     type Addr = A;
     type Msg = BarrierMessage<K, Route>;
@@ -225,10 +229,11 @@ impl<A, K, Route> Behavior for Barrier<A, K, Route>
 where
     A: Address,
     K: Clone + Eq,
-    Route: DeliveryRoute<Protocol = MessageProtocol<A, BarrierReleased>>,
+    Route: DeliveryRoute,
+    Route::Protocol: Protocol<Addr = A, Msg = BarrierReleased>,
     Route::Sends: behavior::SendsFor<User<A, BarrierMessage<K, Route>>>,
 {
-    type Protocol = MessageProtocol<A, BarrierMessage<K, Route>>;
+    type Protocol = Self;
     type Event = User<A, crate::BehaviorMessage<Self>>;
     type Sends = Route::Sends;
     type Ph = Never;

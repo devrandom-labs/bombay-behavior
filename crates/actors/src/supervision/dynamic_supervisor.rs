@@ -1,13 +1,16 @@
 //! Explicitly managed dynamic stable-child topology.
 
 use crate::{
-    ChildShutdownRejected, ChildStopped, CreationRejection, CreationResolved, DeliveryRoute,
-    ObserveChild, ObserveCreation, Own, Proxy, ProxyCommand, ProxyParentIngress, ProxyWithParent,
-    SendInput, ShutdownChild, ShutdownRequested, WorkerCreationResolved, WorkerStopped,
+    ChildShutdownRejected, ChildStopped, CreationRejection, DeliveryRoute, ObserveChild,
+    ObserveEstablishedCreation, Own, ProxyUnavailable, ReplacementRequested,
+    ReportProxyUnavailable, ReportWorkerCreationResolved, ReportWorkerStopped, SendInput,
+    ShutdownChild, ShutdownRequested, WorkerCreationResolved, WorkerStopped,
 };
 use behavior::{
-    Actions, Address, Behavior, BehaviorActed, Births, ChildDelivery, ChildRoute, Here,
-    InjectEvent, InterpreterRequests, Never, Protocol, Recipient, SendEffects, User, UserEvent,
+    Actions, Address, Behavior, BehaviorActed, BehaviorLayer, Births, ChildInput,
+    ChildInputIngress, ChildReport, ChildRoute, EndpointAddress, EstablishedCreation,
+    EstablishedRecipient, EventIngress, Here, InjectEvent, InterpreterRequests, Never, Protocol,
+    SendEffects, User, UserEvent,
 };
 
 /// One dynamically managed stable-child phase.
@@ -42,8 +45,12 @@ pub enum DynamicSupervisorRejection {
 }
 
 /// A terminal failure while draining the dynamic supervisor's owned proxies.
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub enum DynamicSupervisorError<A: Address> {
+#[derive(thiserror::Error)]
+pub enum DynamicSupervisorError<A, C>
+where
+    A: EndpointAddress,
+    C: Behavior<Protocol: Protocol<Addr = A>>,
+{
     /// The runtime rejected orderly shutdown of an owned stable proxy.
     #[error("owned proxy shutdown was rejected")]
     ChildShutdownRejected {
@@ -52,7 +59,7 @@ pub enum DynamicSupervisorError<A: Address> {
     },
     /// A stable-proxy creation fact did not match an installing slot.
     #[error("stable-proxy creation fact does not match an installing child")]
-    UnexpectedCreation(CreationResolved<A>),
+    UnexpectedCreation(EstablishedCreation<C::Protocol, behavior::ChildHead>),
     /// A stable-proxy stop fact did not match a stopping or draining slot.
     #[error("stable-proxy stop fact does not match a stopping child")]
     UnexpectedChildStopped(ChildStopped<A>),
@@ -62,21 +69,43 @@ pub enum DynamicSupervisorError<A: Address> {
     /// A worker fact exists for a proxy creation the interpreter rejected.
     #[error("worker creation was reported for a rejected stable-proxy creation")]
     ContradictoryInitialCreation {
-        proxy: CreationResolved<A>,
+        proxy: EstablishedCreation<C::Protocol, behavior::ChildHead>,
         worker: WorkerCreationResolved<A::Nonce>,
     },
     /// A worker-stop fact named no stable proxy owned by this supervisor.
     #[error("worker-stop fact names an unknown stable proxy")]
     UnexpectedWorkerStopped(WorkerStopped<A>),
+    /// An unavailable-command report named no established owned stable child.
+    #[error("unavailable-command report names no established owned stable child")]
+    UnexpectedCommandUnavailable(ProxyUnavailable<A, crate::BehaviorMessage<C>>),
     /// A shutdown rejection did not match a pending stop or drain.
     #[error("child-shutdown rejection does not match a pending shutdown")]
     UnexpectedChildShutdownRejection(ChildShutdownRejected<A::Nonce>),
 }
 
+impl<A, C> core::fmt::Debug for DynamicSupervisorError<A, C>
+where
+    A: EndpointAddress,
+    C: Behavior<Protocol: Protocol<Addr = A>>,
+{
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        formatter.write_str(match self {
+            Self::ChildShutdownRejected { .. } => "ChildShutdownRejected",
+            Self::UnexpectedCreation(_) => "UnexpectedCreation",
+            Self::UnexpectedChildStopped(_) => "UnexpectedChildStopped",
+            Self::UnexpectedWorkerCreation(_) => "UnexpectedWorkerCreation",
+            Self::ContradictoryInitialCreation { .. } => "ContradictoryInitialCreation",
+            Self::UnexpectedWorkerStopped(_) => "UnexpectedWorkerStopped",
+            Self::UnexpectedCommandUnavailable(_) => "UnexpectedCommandUnavailable",
+            Self::UnexpectedChildShutdownRejection(_) => "UnexpectedChildShutdownRejection",
+        })
+    }
+}
+
 /// Commands for an explicitly managed dynamic child set.
 pub enum DynamicSupervisorMessage<A, C, Route>
 where
-    A: Address,
+    A: EndpointAddress,
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
@@ -103,10 +132,30 @@ where
     },
 }
 
+/// Stable public identity of the dynamic-management command protocol.
+///
+/// The stable-child construction layer is deliberately absent: changing the
+/// internal incarnation composition cannot change capabilities held by
+/// management clients.
+pub struct DynamicSupervisorProtocol<A, C, Route>(core::marker::PhantomData<fn(A, C, Route)>);
+
+impl<A, C, Route> Protocol for DynamicSupervisorProtocol<A, C, Route>
+where
+    A: EndpointAddress,
+    A::Nonce: From<u64>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = A>,
+    Route: DeliveryRoute,
+    Route::Protocol: Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
+{
+    type Addr = A;
+    type Msg = DynamicSupervisorMessage<A, C, Route>;
+}
+
 /// Complete command or realization outcome returned to a typed recipient.
 pub enum DynamicSupervisorOutcome<A, C>
 where
-    A: Address,
+    A: EndpointAddress,
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
@@ -121,7 +170,7 @@ where
     },
     Started {
         nonce: A::Nonce,
-        child: Recipient<Proxy<C>>,
+        child: EstablishedRecipient<C::Protocol>,
     },
     StartFailed {
         nonce: A::Nonce,
@@ -153,6 +202,16 @@ where
         nonce: A::Nonce,
         reason: CreationRejection,
     },
+    /// A command admitted by an established stable child could not be
+    /// forwarded to a live incarnation. The start owner receives the exact
+    /// sender, command, and lifecycle phase and can retry or reject it without
+    /// reconstructing payload state.
+    CommandUnavailable {
+        nonce: A::Nonce,
+        from: A,
+        phase: crate::IncarnationPhase<A::Nonce>,
+        command: crate::BehaviorMessage<C>,
+    },
     State {
         nonce: A::Nonce,
         phase: Option<DynamicChildPhase>,
@@ -165,47 +224,66 @@ enum DynamicWorker<N> {
     Vacant { last: N },
 }
 
-#[derive(Clone, Copy)]
-enum InitialCreation<A: Address> {
+enum InitialCreation<P>
+where
+    P: Protocol,
+    P::Addr: EndpointAddress,
+{
     AwaitingBoth,
     ProxyCommitted {
-        address: A,
+        recipient: EstablishedRecipient<P>,
     },
     WorkerResolved {
-        resolved: WorkerCreationResolved<A::Nonce>,
+        resolved: WorkerCreationResolved<<P::Addr as Address>::Nonce>,
     },
 }
 
-enum DynamicChild<A: Address, Route> {
+enum DynamicChild<A, P, Route>
+where
+    A: EndpointAddress,
+    P: Protocol<Addr = A>,
+{
     Installing {
         reply_to: Route,
-        progress: InitialCreation<A>,
+        progress: InitialCreation<P>,
     },
     Available {
         worker: DynamicWorker<A::Nonce>,
+        events_to: Route,
     },
     Stopping {
         reply_to: Route,
+        events_to: Route,
         worker: DynamicWorker<A::Nonce>,
     },
-    RetiringAfterStartFailure,
+    RetiringAfterStartFailure {
+        events_to: Route,
+    },
     StoppingWorkerForReplacement {
         reply_to: Route,
+        events_to: Route,
         worker: A::Nonce,
     },
     CreatingReplacement {
         reply_to: Route,
+        events_to: Route,
         replaces: A::Nonce,
     },
     Retired,
 }
 
-impl<A: Address, Route> DynamicChild<A, Route> {
+impl<A, P, Route> DynamicChild<A, P, Route>
+where
+    A: EndpointAddress,
+    P: Protocol<Addr = A>,
+{
     const fn phase(&self) -> DynamicChildPhase {
         match self {
             Self::Installing { .. } => DynamicChildPhase::Installing,
             Self::Available { .. } => DynamicChildPhase::Available,
-            Self::Stopping { .. } | Self::RetiringAfterStartFailure => DynamicChildPhase::Stopping,
+            Self::Stopping { .. } | Self::RetiringAfterStartFailure { .. } => {
+                DynamicChildPhase::Stopping
+            }
             Self::StoppingWorkerForReplacement { .. } | Self::CreatingReplacement { .. } => {
                 DynamicChildPhase::Replacing
             }
@@ -217,7 +295,7 @@ impl<A: Address, Route> DynamicChild<A, Route> {
 /// Runtime facts and user commands accepted by [`DynamicSupervisor`].
 pub enum DynamicSupervisorEvent<A, C, Route>
 where
-    A: Address,
+    A: EndpointAddress,
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
@@ -226,16 +304,17 @@ where
 {
     Command(User<A, DynamicSupervisorMessage<A, C, Route>>),
     ChildStopped(ChildStopped<A>),
-    CreationResolved(CreationResolved<A>),
+    CreationResolved(EstablishedCreation<C::Protocol, behavior::ChildHead>),
     WorkerCreationResolved(WorkerCreationResolved<A::Nonce>),
     WorkerStopped(WorkerStopped<A>),
+    CommandUnavailable(ProxyUnavailable<A, crate::BehaviorMessage<C>>),
     ShutdownRequested(ShutdownRequested),
     ChildShutdownRejected(ChildShutdownRejected<A::Nonce>),
 }
 
 impl<A, C, Route> UserEvent for DynamicSupervisorEvent<A, C, Route>
 where
-    A: Address,
+    A: EndpointAddress,
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
@@ -257,7 +336,7 @@ where
 
 impl<A, C, Route> InjectEvent<ChildStopped<A>, Here> for DynamicSupervisorEvent<A, C, Route>
 where
-    A: Address,
+    A: EndpointAddress,
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
@@ -268,23 +347,24 @@ where
         Self::ChildStopped(value)
     }
 }
-impl<A, C, Route> InjectEvent<CreationResolved<A>, Here> for DynamicSupervisorEvent<A, C, Route>
+impl<A, C, Route> InjectEvent<EstablishedCreation<C::Protocol, behavior::ChildHead>, Here>
+    for DynamicSupervisorEvent<A, C, Route>
 where
-    A: Address,
+    A: EndpointAddress,
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
     Route: DeliveryRoute,
     Route::Protocol: behavior::Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
 {
-    fn inject_at(value: CreationResolved<A>) -> Self {
+    fn inject_at(value: EstablishedCreation<C::Protocol, behavior::ChildHead>) -> Self {
         Self::CreationResolved(value)
     }
 }
 impl<A, C, Route> InjectEvent<WorkerCreationResolved<A::Nonce>, Here>
     for DynamicSupervisorEvent<A, C, Route>
 where
-    A: Address,
+    A: EndpointAddress,
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
@@ -297,7 +377,7 @@ where
 }
 impl<A, C, Route> InjectEvent<WorkerStopped<A>, Here> for DynamicSupervisorEvent<A, C, Route>
 where
-    A: Address,
+    A: EndpointAddress,
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
@@ -311,7 +391,7 @@ where
 impl<A, C, Route> InjectEvent<ChildShutdownRejected<A::Nonce>, Here>
     for DynamicSupervisorEvent<A, C, Route>
 where
-    A: Address,
+    A: EndpointAddress,
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
@@ -325,7 +405,7 @@ where
 
 impl<A, C, Route> InjectEvent<ShutdownRequested, Here> for DynamicSupervisorEvent<A, C, Route>
 where
-    A: Address,
+    A: EndpointAddress,
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
@@ -337,37 +417,99 @@ where
     }
 }
 
+impl<A, C, Route, Stable>
+    behavior::EventIngress<
+        ChildRoute<Stable, behavior::ChildHead>,
+        ChildReport<A, ReportWorkerStopped<A>>,
+    > for DynamicSupervisorEvent<A, C, Route>
+where
+    A: EndpointAddress,
+    A::Nonce: From<u64>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = A>,
+    Route: DeliveryRoute,
+    Route::Protocol: behavior::Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
+    Stable: Behavior<Protocol = C::Protocol>,
+{
+    fn ingress(input: ChildReport<A, ReportWorkerStopped<A>>) -> Self {
+        Self::WorkerStopped(WorkerStopped::from((input.child, input.report)))
+    }
+}
+
+impl<A, C, Route, Stable>
+    behavior::EventIngress<
+        ChildRoute<Stable, behavior::ChildHead>,
+        ChildReport<A, ReportWorkerCreationResolved<A::Nonce>>,
+    > for DynamicSupervisorEvent<A, C, Route>
+where
+    A: EndpointAddress,
+    A::Nonce: From<u64>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = A>,
+    Route: DeliveryRoute,
+    Route::Protocol: behavior::Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
+    Stable: Behavior<Protocol = C::Protocol>,
+{
+    fn ingress(input: ChildReport<A, ReportWorkerCreationResolved<A::Nonce>>) -> Self {
+        Self::WorkerCreationResolved(WorkerCreationResolved::from((input.child, input.report)))
+    }
+}
+
+impl<A, C, Route, Stable>
+    EventIngress<
+        ChildRoute<Stable, behavior::ChildHead>,
+        ChildReport<A, ReportProxyUnavailable<A, crate::BehaviorMessage<C>>>,
+    > for DynamicSupervisorEvent<A, C, Route>
+where
+    A: EndpointAddress,
+    A::Nonce: From<u64>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = A>,
+    Route: DeliveryRoute,
+    Route::Protocol: behavior::Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
+    Stable: Behavior<Protocol = C::Protocol>,
+{
+    fn ingress(
+        input: ChildReport<A, ReportProxyUnavailable<A, crate::BehaviorMessage<C>>>,
+    ) -> Self {
+        Self::CommandUnavailable(ProxyUnavailable::from((input.child, input.report)))
+    }
+}
+
 enum DynamicSupervisorState<N> {
     Running,
     Draining { awaiting: Vec<N> },
 }
 
 /// Named effect product for dynamic topology management.
-pub struct DynamicSupervisorSends<A, C, Route, ParentPath>
+pub struct DynamicSupervisorSends<A, C, Route, Stable>
 where
-    A: Address,
+    A: EndpointAddress,
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
     Route: DeliveryRoute,
     Route::Protocol: behavior::Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
+    Stable: Behavior<Ph = Never, Protocol = C::Protocol>,
 {
     pub outcomes: Route::Sends,
     pub child_observations: InterpreterRequests<ObserveChild<A, behavior::ChildHead>>,
-    pub creation_observations: InterpreterRequests<ObserveCreation<A, behavior::ChildHead>>,
-    pub shutdowns:
-        InterpreterRequests<ShutdownChild<ProxyWithParent<C, ParentPath>, behavior::ChildHead>>,
-    pub replacements: Vec<ChildDelivery<Proxy<C>, behavior::ChildHead>>,
+    pub creation_observations:
+        InterpreterRequests<ObserveEstablishedCreation<C::Protocol, behavior::ChildHead>>,
+    pub shutdowns: InterpreterRequests<ShutdownChild<Stable, behavior::ChildHead>>,
+    pub replacement_inputs:
+        Vec<ChildInput<Stable, C, ReplacementRequested<C>, behavior::ChildHead>>,
 }
 
-impl<A, C, Route, ParentPath> SendEffects for DynamicSupervisorSends<A, C, Route, ParentPath>
+impl<A, C, Route, Stable> SendEffects for DynamicSupervisorSends<A, C, Route, Stable>
 where
-    A: Address,
+    A: EndpointAddress,
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
     Route: DeliveryRoute,
     Route::Protocol: behavior::Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
+    Stable: Behavior<Ph = Never, Protocol = C::Protocol>,
 {
     fn empty() -> Self {
         Self {
@@ -375,56 +517,62 @@ where
             child_observations: InterpreterRequests::empty(),
             creation_observations: InterpreterRequests::empty(),
             shutdowns: InterpreterRequests::empty(),
-            replacements: vec![],
+            replacement_inputs: Vec::new(),
         }
     }
-    fn append(&mut self, other: Self) {
+    fn append(&mut self, mut other: Self) {
         self.outcomes.append(other.outcomes);
         self.child_observations.append(other.child_observations);
         self.creation_observations
             .append(other.creation_observations);
         self.shutdowns.append(other.shutdowns);
-        self.replacements.extend(other.replacements);
+        self.replacement_inputs
+            .append(&mut other.replacement_inputs);
     }
 }
 
-impl<A, C, Route, ParentPath> behavior::SendsFor<DynamicSupervisorEvent<A, C, Route>>
-    for DynamicSupervisorSends<A, C, Route, ParentPath>
+impl<A, C, Route, Stable> behavior::SendsFor<DynamicSupervisorEvent<A, C, Route>>
+    for DynamicSupervisorSends<A, C, Route, Stable>
 where
-    A: Address,
+    A: EndpointAddress,
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
     Route: DeliveryRoute,
     Route::Protocol: behavior::Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
+    Stable: Behavior<Ph = Never, Protocol = C::Protocol>,
     InterpreterRequests<ObserveChild<A, behavior::ChildHead>>:
         behavior::SendsFor<DynamicSupervisorEvent<A, C, Route>>,
-    InterpreterRequests<ObserveCreation<A, behavior::ChildHead>>:
+    InterpreterRequests<ObserveEstablishedCreation<C::Protocol, behavior::ChildHead>>:
         behavior::SendsFor<DynamicSupervisorEvent<A, C, Route>>,
-    InterpreterRequests<ShutdownChild<ProxyWithParent<C, ParentPath>, behavior::ChildHead>>:
+    InterpreterRequests<ShutdownChild<Stable, behavior::ChildHead>>:
+        behavior::SendsFor<DynamicSupervisorEvent<A, C, Route>>,
+    Vec<ChildInput<Stable, C, ReplacementRequested<C>, behavior::ChildHead>>:
         behavior::SendsFor<DynamicSupervisorEvent<A, C, Route>>,
 {
 }
 
-impl<I, RootEvent, Path, A, C, Route, ParentPath> behavior::InterpretSends<I, RootEvent, Path>
-    for DynamicSupervisorSends<A, C, Route, ParentPath>
+impl<I, RootEvent, Path, A, C, Route, Stable> behavior::InterpretSends<I, RootEvent, Path>
+    for DynamicSupervisorSends<A, C, Route, Stable>
 where
     I: behavior::SendInterpreter,
-    A: Address,
+    A: EndpointAddress,
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
     Route: DeliveryRoute,
     Route::Protocol: behavior::Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
+    Stable: Behavior<Ph = Never, Protocol = C::Protocol>,
     Route::Sends: behavior::InterpretSends<I, RootEvent, Path>,
     InterpreterRequests<ObserveChild<A, behavior::ChildHead>>:
         behavior::InterpretSends<I, RootEvent, Path>,
-    InterpreterRequests<ObserveCreation<A, behavior::ChildHead>>:
+    InterpreterRequests<ObserveEstablishedCreation<C::Protocol, behavior::ChildHead>>:
         behavior::InterpretSends<I, RootEvent, Path>,
-    InterpreterRequests<ShutdownChild<ProxyWithParent<C, ParentPath>, behavior::ChildHead>>:
+    InterpreterRequests<ShutdownChild<Stable, behavior::ChildHead>>:
         behavior::InterpretSends<I, RootEvent, Path>,
-    Vec<ChildDelivery<Proxy<C>, behavior::ChildHead>>: behavior::InterpretSends<I, RootEvent, Path>,
-    DynamicSupervisorSends<A, C, Route, ParentPath>: Send,
+    Vec<ChildInput<Stable, C, ReplacementRequested<C>, behavior::ChildHead>>:
+        behavior::InterpretSends<I, RootEvent, Path>,
+    DynamicSupervisorSends<A, C, Route, Stable>: Send,
 {
     fn interpret(
         self,
@@ -435,90 +583,110 @@ where
             behavior::InterpretSends::interpret(self.child_observations, interpreter).await?;
             behavior::InterpretSends::interpret(self.creation_observations, interpreter).await?;
             behavior::InterpretSends::interpret(self.shutdowns, interpreter).await?;
-            behavior::InterpretSends::interpret(self.replacements, interpreter).await
+            behavior::InterpretSends::interpret(self.replacement_inputs, interpreter).await
         }
     }
 }
-impl<A, C, Route, ParentPath> SendInput<ObserveChild<A, behavior::ChildHead>, Own>
-    for DynamicSupervisorSends<A, C, Route, ParentPath>
+impl<A, C, Route, Stable> SendInput<ObserveChild<A, behavior::ChildHead>, Own>
+    for DynamicSupervisorSends<A, C, Route, Stable>
 where
-    A: Address,
+    A: EndpointAddress,
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
     Route: DeliveryRoute,
     Route::Protocol: behavior::Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
+    Stable: Behavior<Ph = Never, Protocol = C::Protocol>,
 {
     fn emit(&mut self, value: ObserveChild<A, behavior::ChildHead>) {
         self.child_observations.send(value);
     }
 }
-impl<A, C, Route, ParentPath> SendInput<ObserveCreation<A, behavior::ChildHead>, Own>
-    for DynamicSupervisorSends<A, C, Route, ParentPath>
+impl<A, C, Route, Stable>
+    SendInput<ObserveEstablishedCreation<C::Protocol, behavior::ChildHead>, Own>
+    for DynamicSupervisorSends<A, C, Route, Stable>
 where
-    A: Address,
+    A: EndpointAddress,
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
     Route: DeliveryRoute,
     Route::Protocol: behavior::Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
+    Stable: Behavior<Ph = Never, Protocol = C::Protocol>,
 {
-    fn emit(&mut self, value: ObserveCreation<A, behavior::ChildHead>) {
+    fn emit(&mut self, value: ObserveEstablishedCreation<C::Protocol, behavior::ChildHead>) {
         self.creation_observations.send(value);
     }
 }
-impl<A, C, Route, ParentPath>
-    SendInput<ShutdownChild<ProxyWithParent<C, ParentPath>, behavior::ChildHead>, Own>
-    for DynamicSupervisorSends<A, C, Route, ParentPath>
+impl<A, C, Route, Stable> SendInput<ShutdownChild<Stable, behavior::ChildHead>, Own>
+    for DynamicSupervisorSends<A, C, Route, Stable>
 where
-    A: Address,
+    A: EndpointAddress,
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
     Route: DeliveryRoute,
     Route::Protocol: behavior::Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
+    Stable: Behavior<Ph = Never, Protocol = C::Protocol>,
 {
-    fn emit(&mut self, value: ShutdownChild<ProxyWithParent<C, ParentPath>, behavior::ChildHead>) {
+    fn emit(&mut self, value: ShutdownChild<Stable, behavior::ChildHead>) {
         self.shutdowns.send(value);
+    }
+}
+impl<A, C, Route, Stable>
+    SendInput<ChildInput<Stable, C, ReplacementRequested<C>, behavior::ChildHead>, Own>
+    for DynamicSupervisorSends<A, C, Route, Stable>
+where
+    A: EndpointAddress,
+    A::Nonce: From<u64>,
+    C: Behavior<Ph = Never>,
+    C::Protocol: crate::Protocol<Addr = A>,
+    Route: DeliveryRoute,
+    Route::Protocol: behavior::Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
+    Stable: Behavior<Ph = Never, Protocol = C::Protocol>,
+{
+    fn emit(&mut self, value: ChildInput<Stable, C, ReplacementRequested<C>, behavior::ChildHead>) {
+        self.replacement_inputs.push(value);
     }
 }
 
 /// A pure dynamic supervisor whose stable proxy set changes only through its
 /// typed command protocol and committed runtime facts.
-pub struct DynamicSupervisorWithParent<A, C, Route, ParentPath>
+pub struct DynamicSupervisor<A, C, Route, L>
 where
-    A: Address,
+    A: EndpointAddress,
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: Protocol<Addr = A>,
     Route: DeliveryRoute,
     Route::Protocol: Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
+    L: BehaviorLayer<C>,
+    L::Output: Behavior<Ph = Never, Protocol = C::Protocol>,
+    <L::Output as Behavior>::Event: ChildInputIngress<C, ReplacementRequested<C>>,
 {
-    children: Vec<(A::Nonce, DynamicChild<A, Route>)>,
+    children: Vec<(A::Nonce, DynamicChild<A, C::Protocol, Route>)>,
     state: DynamicSupervisorState<A::Nonce>,
-    proxy_parent: ProxyParentIngress<A, ParentPath>,
-    marker: core::marker::PhantomData<fn() -> C>,
+    layer: L,
 }
 
-/// A dynamic supervisor whose proxy reports are owned by its direct event layer.
-pub type DynamicSupervisor<A, C, Route> = DynamicSupervisorWithParent<A, C, Route, Here>;
-
-impl<A, C, Route, ParentPath> DynamicSupervisorWithParent<A, C, Route, ParentPath>
+impl<A, C, Route, L> DynamicSupervisor<A, C, Route, L>
 where
-    A: Address,
+    A: EndpointAddress,
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: Protocol<Addr = A>,
     Route: DeliveryRoute,
     Route::Protocol: Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
+    L: BehaviorLayer<C>,
+    L::Output: Behavior<Ph = Never, Protocol = C::Protocol>,
+    <L::Output as Behavior>::Event: ChildInputIngress<C, ReplacementRequested<C>>,
 {
     #[must_use]
-    pub const fn with_parent(proxy_parent: ProxyParentIngress<A, ParentPath>) -> Self {
+    pub const fn new(layer: L) -> Self {
         Self {
             children: vec![],
             state: DynamicSupervisorState::Running,
-            proxy_parent,
-            marker: core::marker::PhantomData,
+            layer,
         }
     }
     #[must_use]
@@ -532,42 +700,17 @@ where
             .map(|(_, s)| s.phase())
     }
 }
-impl<A, C, Route> DynamicSupervisorWithParent<A, C, Route, Here>
+impl<A, C, Route, L> crate::BehaviorBase for DynamicSupervisor<A, C, Route, L>
 where
-    A: Address,
+    A: EndpointAddress,
     A::Nonce: From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: Protocol<Addr = A>,
     Route: DeliveryRoute,
     Route::Protocol: Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
-{
-    #[must_use]
-    pub const fn new() -> Self {
-        Self::with_parent(ProxyParentIngress::new())
-    }
-}
-impl<A, C, Route> Default for DynamicSupervisor<A, C, Route>
-where
-    A: Address,
-    A::Nonce: From<u64>,
-    C: Behavior<Ph = Never>,
-    C::Protocol: Protocol<Addr = A>,
-    Route: DeliveryRoute,
-    Route::Protocol: Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
-{
-    fn default() -> Self {
-        Self::new()
-    }
-}
-impl<A, C, Route, ParentPath> crate::BehaviorBase
-    for DynamicSupervisorWithParent<A, C, Route, ParentPath>
-where
-    A: Address,
-    A::Nonce: From<u64>,
-    C: Behavior<Ph = Never>,
-    C::Protocol: Protocol<Addr = A>,
-    Route: DeliveryRoute,
-    Route::Protocol: Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
+    L: BehaviorLayer<C>,
+    L::Output: Behavior<Ph = Never, Protocol = C::Protocol>,
+    <L::Output as Behavior>::Event: ChildInputIngress<C, ReplacementRequested<C>>,
 {
     type Base = Self;
     fn base(&self) -> &Self {
@@ -575,37 +718,30 @@ where
     }
 }
 
-impl<A, C, Route, ParentPath> behavior::Protocol
-    for DynamicSupervisorWithParent<A, C, Route, ParentPath>
+impl<A, C, Route, L> Behavior for DynamicSupervisor<A, C, Route, L>
 where
-    A: Address,
-    A::Nonce: From<u64>,
-    C: Behavior<Ph = Never>,
-    C::Protocol: crate::Protocol<Addr = A>,
-    Route: DeliveryRoute,
-    Route::Protocol: Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
-{
-    type Addr = A;
-    type Msg = DynamicSupervisorMessage<A, C, Route>;
-}
-
-impl<A, C, Route, ParentPath> Behavior for DynamicSupervisorWithParent<A, C, Route, ParentPath>
-where
-    A: Address,
+    A: EndpointAddress,
     A::Nonce: Copy + Eq + From<u64>,
     C: Behavior<Ph = Never>,
     C::Protocol: crate::Protocol<Addr = A>,
     Route: DeliveryRoute + Clone,
     Route::Protocol: behavior::Protocol<Addr = A, Msg = DynamicSupervisorOutcome<A, C>>,
+    L: BehaviorLayer<C>,
+    L::Output: Behavior<Ph = Never, Protocol = C::Protocol>,
+    <L::Output as Behavior>::Event: ChildInputIngress<C, ReplacementRequested<C>>,
 {
-    type Protocol = Self;
+    type Protocol = DynamicSupervisorProtocol<A, C, Route>;
     type Event = DynamicSupervisorEvent<A, C, Route>;
-    type Sends = DynamicSupervisorSends<A, C, Route, ParentPath>;
+    type Sends = DynamicSupervisorSends<A, C, Route, L::Output>;
     type Ph = Never;
-    type Error = DynamicSupervisorError<A>;
-    type Birth = Births<ProxyWithParent<C, ParentPath>>;
+    type Error = DynamicSupervisorError<A, C>;
+    type Birth = Births<L::Output>;
 
-    #[allow(clippy::too_many_lines)]
+    #[allow(
+        clippy::collapsible_if,
+        clippy::too_many_lines,
+        reason = "separate provenance and state guards keep the exhaustive dynamic-child fold inspectable"
+    )]
     fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
         let mut sends = Self::Sends::empty();
         match event {
@@ -656,15 +792,14 @@ where
                     sends.outcomes.append(
                         reply_to.deliver(DynamicSupervisorOutcome::StartAccepted { nonce }),
                     );
-                    let route =
-                        ChildRoute::<ProxyWithParent<C, ParentPath>, behavior::ChildHead>::new(
-                            nonce,
-                        );
+                    let route = ChildRoute::<L::Output, behavior::ChildHead>::new(nonce);
                     sends.child_observations.send(ObserveChild::at(route));
-                    sends.creation_observations.send(ObserveCreation::at(route));
+                    sends
+                        .creation_observations
+                        .send(ObserveEstablishedCreation::at(route));
                     Ok(Actions::new(
                         sends,
-                        vec![route.birth(ProxyWithParent::with_parent(child, self.proxy_parent))],
+                        vec![route.birth(self.layer.layer(child))],
                         crate::Step::Continue,
                     ))
                 }
@@ -680,20 +815,19 @@ where
                     }
                     match self.children.iter_mut().find(|(n, _)| *n == nonce) {
                         Some((_, state)) => match state {
-                            DynamicChild::Available { worker } => {
+                            DynamicChild::Available { worker, events_to } => {
                                 let worker = *worker;
+                                let events_to = events_to.clone();
                                 *state = DynamicChild::Stopping {
                                     reply_to: reply_to.clone(),
+                                    events_to,
                                     worker,
                                 };
-                                let route = ChildRoute::<
-                                    ProxyWithParent<C, ParentPath>,
-                                    behavior::ChildHead,
-                                >::new(nonce);
-                                sends.shutdowns.send(ShutdownChild::<
-                                    ProxyWithParent<C, ParentPath>,
-                                    behavior::ChildHead,
-                                >::at(route));
+                                let route =
+                                    ChildRoute::<L::Output, behavior::ChildHead>::new(nonce);
+                                sends.shutdowns.send(
+                                    ShutdownChild::<L::Output, behavior::ChildHead>::at(route),
+                                );
                                 sends.outcomes.append(
                                     reply_to
                                         .deliver(DynamicSupervisorOutcome::StopAccepted { nonce }),
@@ -732,29 +866,30 @@ where
                     }
                     match self.children.iter_mut().find(|(n, _)| *n == nonce) {
                         Some((_, state)) => match state {
-                            DynamicChild::Available { worker } => {
+                            DynamicChild::Available { worker, events_to } => {
                                 let worker = *worker;
+                                let events_to = events_to.clone();
                                 *state = match worker {
                                     DynamicWorker::Running { incarnation } => {
                                         DynamicChild::StoppingWorkerForReplacement {
                                             reply_to: reply_to.clone(),
+                                            events_to,
                                             worker: incarnation,
                                         }
                                     }
                                     DynamicWorker::Vacant { last } => {
                                         DynamicChild::CreatingReplacement {
                                             reply_to: reply_to.clone(),
+                                            events_to,
                                             replaces: last,
                                         }
                                     }
                                 };
-                                let route = ChildRoute::<
-                                    ProxyWithParent<C, ParentPath>,
-                                    behavior::ChildHead,
-                                >::new(nonce);
+                                let route =
+                                    ChildRoute::<L::Output, behavior::ChildHead>::new(nonce);
                                 sends
-                                    .replacements
-                                    .push(ChildDelivery::at(route, ProxyCommand::Replace(child)));
+                                    .replacement_inputs
+                                    .push(ChildInput::at(route, ReplacementRequested::new(child)));
                                 sends.outcomes.append(
                                     reply_to.deliver(DynamicSupervisorOutcome::ReplaceAccepted {
                                         nonce,
@@ -790,93 +925,99 @@ where
                 }
             },
             DynamicSupervisorEvent::CreationResolved(resolved) => {
-                let Some((_, state)) = self.children.iter_mut().find(|(n, _)| *n == resolved.nonce)
-                else {
+                let nonce = resolved.nonce();
+                let kind = resolved.kind();
+                let Some((_, state)) = self.children.iter_mut().find(|(n, _)| *n == nonce) else {
                     return Err(DynamicSupervisorError::UnexpectedCreation(resolved));
                 };
-                if resolved.kind != behavior::CreationKind::Birth {
+                if kind != behavior::CreationKind::Birth {
                     return Err(DynamicSupervisorError::UnexpectedCreation(resolved));
                 }
                 let DynamicChild::Installing { reply_to, progress } = state else {
                     return Err(DynamicSupervisorError::UnexpectedCreation(resolved));
                 };
                 let reply = reply_to.clone();
-                match (*progress, resolved.result) {
-                    (InitialCreation::AwaitingBoth, Ok(address)) => {
-                        *progress = InitialCreation::ProxyCommitted { address };
-                        if matches!(self.state, DynamicSupervisorState::Draining { .. }) {
-                            sends.shutdowns.send(ShutdownChild::<
-                                ProxyWithParent<C, ParentPath>,
-                                behavior::ChildHead,
-                            >::new(resolved.nonce));
-                        }
-                    }
-                    (InitialCreation::AwaitingBoth, Err(reason)) => {
-                        *state = DynamicChild::Retired;
-                        sends.outcomes.append(reply.deliver(
-                            DynamicSupervisorOutcome::StartFailed {
-                                nonce: resolved.nonce,
-                                reason,
-                            },
-                        ));
-                        if let DynamicSupervisorState::Draining { awaiting } = &mut self.state {
-                            awaiting.retain(|nonce| *nonce != resolved.nonce);
-                            if awaiting.is_empty() {
-                                return Ok(Actions::new(
-                                    sends,
-                                    Vec::new(),
-                                    crate::Step::Stop(behavior::Stopped),
-                                ));
+                match progress {
+                    InitialCreation::AwaitingBoth => match resolved {
+                        EstablishedCreation::Installed { recipient, .. } => {
+                            *progress = InitialCreation::ProxyCommitted { recipient };
+                            if matches!(self.state, DynamicSupervisorState::Draining { .. }) {
+                                sends.shutdowns.send(
+                                    ShutdownChild::<L::Output, behavior::ChildHead>::new(nonce),
+                                );
                             }
                         }
-                    }
-                    (InitialCreation::WorkerResolved { resolved: worker }, Ok(address)) => {
-                        if matches!(self.state, DynamicSupervisorState::Draining { .. }) {
-                            sends.shutdowns.send(ShutdownChild::<
-                                ProxyWithParent<C, ParentPath>,
-                                behavior::ChildHead,
-                            >::new(resolved.nonce));
-                        }
-                        match worker.result {
-                            Ok(()) => {
-                                *state = DynamicChild::Available {
-                                    worker: DynamicWorker::Running {
-                                        incarnation: worker.worker,
-                                    },
-                                };
-                                sends.outcomes.append(reply.deliver(
-                                    DynamicSupervisorOutcome::Started {
-                                        nonce: resolved.nonce,
-                                        child: Recipient::global(address),
-                                    },
-                                ));
-                            }
-                            Err(reason) => {
-                                *state = DynamicChild::RetiringAfterStartFailure;
-                                sends.outcomes.append(reply.deliver(
-                                    DynamicSupervisorOutcome::StartFailed {
-                                        nonce: resolved.nonce,
-                                        reason,
-                                    },
-                                ));
-                                if !matches!(self.state, DynamicSupervisorState::Draining { .. }) {
-                                    sends.shutdowns.send(ShutdownChild::<
-                                        ProxyWithParent<C, ParentPath>,
-                                        behavior::ChildHead,
-                                    >::new(
-                                        resolved.nonce
+                        EstablishedCreation::Rejected { reason, .. } => {
+                            *state = DynamicChild::Retired;
+                            sends.outcomes.append(
+                                reply.deliver(DynamicSupervisorOutcome::StartFailed {
+                                    nonce,
+                                    reason,
+                                }),
+                            );
+                            if let DynamicSupervisorState::Draining { awaiting } = &mut self.state {
+                                awaiting.retain(|awaiting_nonce| *awaiting_nonce != nonce);
+                                if awaiting.is_empty() {
+                                    return Ok(Actions::new(
+                                        sends,
+                                        Vec::new(),
+                                        crate::Step::Stop(behavior::Stopped),
                                     ));
                                 }
                             }
                         }
-                    }
-                    (InitialCreation::WorkerResolved { resolved: worker }, Err(_)) => {
-                        return Err(DynamicSupervisorError::ContradictoryInitialCreation {
-                            proxy: resolved,
-                            worker,
-                        });
-                    }
-                    (InitialCreation::ProxyCommitted { .. }, _) => {
+                    },
+                    InitialCreation::WorkerResolved { resolved: worker } => match resolved {
+                        EstablishedCreation::Installed { recipient, .. } => {
+                            if matches!(self.state, DynamicSupervisorState::Draining { .. }) {
+                                sends.shutdowns.send(
+                                    ShutdownChild::<L::Output, behavior::ChildHead>::new(nonce),
+                                );
+                            }
+                            match worker.result {
+                                Ok(()) => {
+                                    *state = DynamicChild::Available {
+                                        worker: DynamicWorker::Running {
+                                            incarnation: worker.worker,
+                                        },
+                                        events_to: reply.clone(),
+                                    };
+                                    sends.outcomes.append(reply.deliver(
+                                        DynamicSupervisorOutcome::Started {
+                                            nonce,
+                                            child: recipient,
+                                        },
+                                    ));
+                                }
+                                Err(reason) => {
+                                    *state = DynamicChild::RetiringAfterStartFailure {
+                                        events_to: reply.clone(),
+                                    };
+                                    sends.outcomes.append(reply.deliver(
+                                        DynamicSupervisorOutcome::StartFailed { nonce, reason },
+                                    ));
+                                    if !matches!(
+                                        self.state,
+                                        DynamicSupervisorState::Draining { .. }
+                                    ) {
+                                        sends.shutdowns.send(ShutdownChild::<
+                                            L::Output,
+                                            behavior::ChildHead,
+                                        >::new(
+                                            nonce
+                                        ));
+                                    }
+                                }
+                            }
+                        }
+                        EstablishedCreation::Rejected { reason, .. } => {
+                            return Err(DynamicSupervisorError::ContradictoryInitialCreation {
+                                proxy: EstablishedCreation::rejected(nonce, kind, reason),
+                                worker: *worker,
+                            });
+                        }
+                    },
+                    InitialCreation::ProxyCommitted { .. } => {
                         return Err(DynamicSupervisorError::UnexpectedCreation(resolved));
                     }
                 }
@@ -889,7 +1030,7 @@ where
                 };
                 let reply = match state {
                     DynamicChild::Stopping { reply_to, .. } => Some(reply_to.clone()),
-                    DynamicChild::RetiringAfterStartFailure => None,
+                    DynamicChild::RetiringAfterStartFailure { .. } => None,
                     _ if matches!(self.state, DynamicSupervisorState::Draining { .. }) => None,
                     _ => return Err(DynamicSupervisorError::UnexpectedChildStopped(stopped)),
                 };
@@ -922,45 +1063,51 @@ where
                 if resolved.kind == behavior::CreationKind::Birth {
                     if let DynamicChild::Installing { reply_to, progress } = state {
                         let reply = reply_to.clone();
-                        match *progress {
+                        match progress {
                             InitialCreation::AwaitingBoth => {
                                 *progress = InitialCreation::WorkerResolved { resolved };
                             }
-                            InitialCreation::ProxyCommitted { address } => match resolved.result {
-                                Ok(()) => {
-                                    *state = DynamicChild::Available {
-                                        worker: DynamicWorker::Running {
-                                            incarnation: resolved.worker,
-                                        },
-                                    };
-                                    sends.outcomes.append(reply.deliver(
-                                        DynamicSupervisorOutcome::Started {
-                                            nonce: resolved.proxy,
-                                            child: Recipient::global(address),
-                                        },
-                                    ));
-                                }
-                                Err(reason) => {
-                                    *state = DynamicChild::RetiringAfterStartFailure;
-                                    sends.outcomes.append(reply.deliver(
-                                        DynamicSupervisorOutcome::StartFailed {
-                                            nonce: resolved.proxy,
-                                            reason,
-                                        },
-                                    ));
-                                    if !matches!(
-                                        self.state,
-                                        DynamicSupervisorState::Draining { .. }
-                                    ) {
-                                        sends.shutdowns.send(ShutdownChild::<
-                                            ProxyWithParent<C, ParentPath>,
+                            InitialCreation::ProxyCommitted { recipient } => {
+                                match resolved.result {
+                                    Ok(()) => {
+                                        let recipient = recipient.clone();
+                                        *state = DynamicChild::Available {
+                                            worker: DynamicWorker::Running {
+                                                incarnation: resolved.worker,
+                                            },
+                                            events_to: reply.clone(),
+                                        };
+                                        sends.outcomes.append(reply.deliver(
+                                            DynamicSupervisorOutcome::Started {
+                                                nonce: resolved.proxy,
+                                                child: recipient,
+                                            },
+                                        ));
+                                    }
+                                    Err(reason) => {
+                                        *state = DynamicChild::RetiringAfterStartFailure {
+                                            events_to: reply.clone(),
+                                        };
+                                        sends.outcomes.append(reply.deliver(
+                                            DynamicSupervisorOutcome::StartFailed {
+                                                nonce: resolved.proxy,
+                                                reason,
+                                            },
+                                        ));
+                                        if !matches!(
+                                            self.state,
+                                            DynamicSupervisorState::Draining { .. }
+                                        ) {
+                                            sends.shutdowns.send(ShutdownChild::<
+                                            L::Output,
                                             behavior::ChildHead,
                                         >::new(
                                             resolved.proxy
                                         ));
+                                        }
                                     }
                                 }
-                            },
+                            }
                             InitialCreation::WorkerResolved { .. } => {
                                 return Err(DynamicSupervisorError::UnexpectedWorkerCreation(
                                     resolved,
@@ -971,16 +1118,20 @@ where
                     }
                 }
                 match state {
-                    DynamicChild::CreatingReplacement { reply_to, replaces }
-                        if resolved.kind == behavior::CreationKind::replacement_of(*replaces) =>
-                    {
+                    DynamicChild::CreatingReplacement {
+                        reply_to,
+                        events_to,
+                        replaces,
+                    } if resolved.kind == behavior::CreationKind::replacement_of(*replaces) => {
                         let reply = reply_to.clone();
+                        let events_to = events_to.clone();
                         let outcome = match resolved.result {
                             Ok(()) => {
                                 *state = DynamicChild::Available {
                                     worker: DynamicWorker::Running {
                                         incarnation: resolved.worker,
                                     },
+                                    events_to,
                                 };
                                 DynamicSupervisorOutcome::Replaced {
                                     nonce: resolved.proxy,
@@ -989,6 +1140,7 @@ where
                             Err(reason) => {
                                 *state = DynamicChild::Available {
                                     worker: DynamicWorker::Vacant { last: *replaces },
+                                    events_to,
                                 };
                                 DynamicSupervisorOutcome::ReplacementFailed {
                                     nonce: resolved.proxy,
@@ -1010,18 +1162,24 @@ where
                 match state {
                     DynamicChild::Available {
                         worker: DynamicWorker::Running { incarnation },
+                        events_to,
                     } if *incarnation == stopped.worker => {
+                        let events_to = events_to.clone();
                         *state = DynamicChild::Available {
                             worker: DynamicWorker::Vacant {
                                 last: stopped.worker,
                             },
+                            events_to,
                         };
                     }
-                    DynamicChild::StoppingWorkerForReplacement { reply_to, worker }
-                        if *worker == stopped.worker =>
-                    {
+                    DynamicChild::StoppingWorkerForReplacement {
+                        reply_to,
+                        events_to,
+                        worker,
+                    } if *worker == stopped.worker => {
                         *state = DynamicChild::CreatingReplacement {
                             reply_to: reply_to.clone(),
+                            events_to: events_to.clone(),
                             replaces: stopped.worker,
                         };
                     }
@@ -1038,6 +1196,42 @@ where
                     _ => return Err(DynamicSupervisorError::UnexpectedWorkerStopped(stopped)),
                 }
                 Ok(Actions::cont())
+            }
+            DynamicSupervisorEvent::CommandUnavailable(unavailable) => {
+                let Some((_, state)) = self
+                    .children
+                    .iter()
+                    .find(|(nonce, _)| *nonce == unavailable.proxy)
+                else {
+                    return Err(DynamicSupervisorError::UnexpectedCommandUnavailable(
+                        unavailable,
+                    ));
+                };
+                let events_to = match state {
+                    DynamicChild::Installing {
+                        reply_to: events_to,
+                        ..
+                    }
+                    | DynamicChild::Available { events_to, .. }
+                    | DynamicChild::Stopping { events_to, .. }
+                    | DynamicChild::RetiringAfterStartFailure { events_to }
+                    | DynamicChild::StoppingWorkerForReplacement { events_to, .. }
+                    | DynamicChild::CreatingReplacement { events_to, .. } => events_to,
+                    _ => {
+                        return Err(DynamicSupervisorError::UnexpectedCommandUnavailable(
+                            unavailable,
+                        ));
+                    }
+                };
+                sends.outcomes.append(events_to.clone().deliver(
+                    DynamicSupervisorOutcome::CommandUnavailable {
+                        nonce: unavailable.proxy,
+                        from: unavailable.from,
+                        phase: unavailable.phase,
+                        command: unavailable.command,
+                    },
+                ));
+                Ok(Actions::send(sends))
             }
             DynamicSupervisorEvent::ShutdownRequested(_) => {
                 if matches!(self.state, DynamicSupervisorState::Draining { .. }) {
@@ -1064,7 +1258,7 @@ where
                             | DynamicChild::CreatingReplacement { .. }
                     ) {
                         sends.shutdowns.send(ShutdownChild::at(ChildRoute::<
-                            ProxyWithParent<C, ParentPath>,
+                            L::Output,
                             behavior::ChildHead,
                         >::new(
                             *nonce
@@ -1088,20 +1282,26 @@ where
                         rejected,
                     ));
                 };
-                if matches!(state, DynamicChild::RetiringAfterStartFailure) {
+                if matches!(state, DynamicChild::RetiringAfterStartFailure { .. }) {
                     return Err(DynamicSupervisorError::ChildShutdownRejected {
                         nonce: rejected.nonce,
                         reason: rejected.reason,
                     });
                 }
-                let DynamicChild::Stopping { reply_to, worker } = state else {
+                let DynamicChild::Stopping {
+                    reply_to,
+                    events_to,
+                    worker,
+                } = state
+                else {
                     return Err(DynamicSupervisorError::UnexpectedChildShutdownRejection(
                         rejected,
                     ));
                 };
                 let reply = reply_to.clone();
+                let events_to = events_to.clone();
                 let worker = *worker;
-                *state = DynamicChild::Available { worker };
+                *state = DynamicChild::Available { worker, events_to };
                 sends
                     .outcomes
                     .append(reply.deliver(DynamicSupervisorOutcome::StopRejected {
@@ -1116,21 +1316,66 @@ where
 
 #[cfg(test)]
 mod tests {
+    use core::marker::PhantomData;
     use std::time::Instant;
 
     use super::*;
     use crate::{Activate as _, CreationKind, Exit};
-    use behavior::{MailAddr, NoBirths};
+    use behavior::{EstablishedRecipient, NoBirths, Recipient};
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    struct TestAddr(u64);
+
+    impl Address for TestAddr {
+        type Nonce = u64;
+    }
+
+    struct TestEndpoint<P>(u64, PhantomData<fn() -> P>);
+
+    impl<P> Clone for TestEndpoint<P> {
+        fn clone(&self) -> Self {
+            Self(self.0, PhantomData)
+        }
+    }
+
+    impl EndpointAddress for TestAddr {
+        type Established<P>
+            = TestEndpoint<P>
+        where
+            P: Protocol<Addr = Self>;
+    }
+
+    fn creation(
+        nonce: u64,
+        kind: CreationKind<u64>,
+        endpoint: u64,
+    ) -> EstablishedCreation<Worker, behavior::ChildHead> {
+        EstablishedCreation::installed(
+            nonce,
+            kind,
+            EstablishedRecipient::issued(TestEndpoint(endpoint, PhantomData)),
+        )
+    }
+
+    struct EndpointId;
+
+    impl behavior::InterpretEstablished<Worker> for EndpointId {
+        type Output = u64;
+
+        fn interpret_established(&mut self, endpoint: TestEndpoint<Worker>) -> Self::Output {
+            endpoint.0
+        }
+    }
 
     struct Worker;
     impl behavior::Protocol for Worker {
-        type Addr = MailAddr;
+        type Addr = TestAddr;
         type Msg = u8;
     }
 
     impl Behavior for Worker {
         type Protocol = Self;
-        type Event = User<MailAddr, u8>;
+        type Event = User<TestAddr, u8>;
         type Sends = Vec<Never>;
         type Ph = Never;
         type Error = Never;
@@ -1142,13 +1387,13 @@ mod tests {
 
     struct Reply;
     impl behavior::Protocol for Reply {
-        type Addr = MailAddr;
-        type Msg = DynamicSupervisorOutcome<MailAddr, Worker>;
+        type Addr = TestAddr;
+        type Msg = DynamicSupervisorOutcome<TestAddr, Worker>;
     }
 
     impl Behavior for Reply {
         type Protocol = Self;
-        type Event = User<MailAddr, crate::BehaviorMessage<Self>>;
+        type Event = User<TestAddr, crate::BehaviorMessage<Self>>;
         type Sends = Vec<Never>;
         type Ph = Never;
         type Error = Never;
@@ -1159,18 +1404,57 @@ mod tests {
     }
 
     fn reply() -> Recipient<Reply> {
-        Recipient::global(MailAddr(99))
+        Recipient::global(TestAddr(99))
+    }
+
+    fn dynamic_protocol<B>(behavior: B) -> B
+    where
+        B: Behavior,
+        B::Protocol: Protocol<
+                Addr = TestAddr,
+                Msg = DynamicSupervisorMessage<TestAddr, Worker, Recipient<Reply>>,
+            >,
+    {
+        behavior
+    }
+
+    macro_rules! assert_action_counts {
+        (
+            $actions:expr;
+            outcomes = $outcomes:expr,
+            child_observations = $child_observations:expr,
+            creation_observations = $creation_observations:expr,
+            shutdowns = $shutdowns:expr,
+            replacement_inputs = $replacement_inputs:expr,
+            creates = $creates:expr,
+            become = $become:pat_param
+        ) => {{
+            let actions = &$actions;
+            assert_eq!(actions.sends.outcomes.len(), $outcomes);
+            assert_eq!(
+                actions.sends.child_observations.as_slice().len(),
+                $child_observations
+            );
+            assert_eq!(
+                actions.sends.creation_observations.as_slice().len(),
+                $creation_observations
+            );
+            assert_eq!(actions.sends.shutdowns.as_slice().len(), $shutdowns);
+            assert_eq!(actions.sends.replacement_inputs.len(), $replacement_inputs);
+            assert_eq!(actions.creates.len(), $creates);
+            assert!(matches!(&actions.become_, $become));
+        }};
     }
 
     #[test]
     fn start_is_distinct_from_committed_installation_and_duplicate_returns_child() {
-        let initialized = DynamicSupervisor::<MailAddr, Worker, Recipient<Reply>>::new()
+        let initialized = DynamicSupervisor::new(|worker: Worker| crate::Proxy::new(worker))
             .initialize()
             .unwrap();
         let mut active = initialized.behavior;
         let accepted = active
             .receive(
-                MailAddr(1),
+                TestAddr(1),
                 DynamicSupervisorMessage::Start {
                     nonce: 7,
                     child: Worker,
@@ -1184,10 +1468,8 @@ mod tests {
             accepted.sends.child_observations.as_slice(),
             [ObserveChild::new(7)]
         );
-        assert_eq!(
-            accepted.sends.creation_observations.as_slice(),
-            [ObserveCreation::new(7)]
-        );
+        assert_eq!(accepted.sends.creation_observations.as_slice().len(), 1);
+        assert_eq!(accepted.sends.creation_observations.as_slice()[0].nonce, 7);
         assert!(matches!(
             accepted.sends.outcomes[0].message,
             DynamicSupervisorOutcome::StartAccepted { nonce: 7 }
@@ -1195,7 +1477,7 @@ mod tests {
 
         let duplicate = active
             .receive(
-                MailAddr(1),
+                TestAddr(1),
                 DynamicSupervisorMessage::Start {
                     nonce: 7,
                     child: Worker,
@@ -1216,11 +1498,7 @@ mod tests {
         ));
 
         let installed = active
-            .on_path(CreationResolved::installed(
-                7,
-                CreationKind::Birth,
-                MailAddr(70),
-            ))
+            .on_path(creation(7, CreationKind::Birth, 70))
             .unwrap();
         assert_eq!(active.phase(7), Some(DynamicChildPhase::Installing));
         assert!(installed.sends.outcomes.is_empty());
@@ -1234,22 +1512,30 @@ mod tests {
             ))
             .unwrap();
         assert_eq!(active.phase(7), Some(DynamicChildPhase::Available));
-        assert!(matches!(
-            worker_installed.sends.outcomes[0].message,
-            DynamicSupervisorOutcome::Started { nonce: 7, child }
-                if child.address() == MailAddr(70)
-        ));
+        match worker_installed
+            .sends
+            .outcomes
+            .into_iter()
+            .next()
+            .unwrap()
+            .message
+        {
+            DynamicSupervisorOutcome::Started { nonce: 7, child } => {
+                assert_eq!(child.interpret(&mut EndpointId), 70);
+            }
+            _ => panic!("the joined creation must emit Started"),
+        }
     }
 
     #[test]
     fn rejected_start_resolution_retires_the_slot_without_losing_the_observation_request() {
-        let mut active = DynamicSupervisor::<MailAddr, Worker, Recipient<Reply>>::new()
+        let mut active = DynamicSupervisor::new(|worker: Worker| crate::Proxy::new(worker))
             .initialize()
             .unwrap()
             .behavior;
         let start = active
             .receive(
-                MailAddr(1),
+                TestAddr(1),
                 DynamicSupervisorMessage::Start {
                     nonce: 5,
                     child: Worker,
@@ -1261,17 +1547,17 @@ mod tests {
             start.sends.child_observations.as_slice(),
             [ObserveChild::new(5)]
         );
-        assert_eq!(
-            start.sends.creation_observations.as_slice(),
-            [ObserveCreation::new(5)]
-        );
+        assert_eq!(start.sends.creation_observations.as_slice().len(), 1);
+        assert_eq!(start.sends.creation_observations.as_slice()[0].nonce, 5);
 
         let rejected = active
-            .on_path(CreationResolved::rejected(
-                5,
-                CreationKind::Birth,
-                CreationRejection::EnvironmentFailed,
-            ))
+            .on_path(
+                EstablishedCreation::<Worker, behavior::ChildHead>::rejected(
+                    5,
+                    CreationKind::Birth,
+                    CreationRejection::EnvironmentFailed,
+                ),
+            )
             .unwrap();
         assert_eq!(active.phase(5), Some(DynamicChildPhase::Retired));
         assert!(matches!(
@@ -1284,17 +1570,185 @@ mod tests {
     }
 
     #[test]
-    fn foreign_lifecycle_facts_are_returned_complete_without_creating_state() {
-        let mut active = DynamicSupervisor::<MailAddr, Worker, Recipient<Reply>>::new()
+    fn unavailable_commands_return_to_the_start_owner_in_every_live_slot_phase() {
+        let mut active = DynamicSupervisor::new(|worker: Worker| crate::Proxy::new(worker))
             .initialize()
             .unwrap()
             .behavior;
+        assert_action_counts!(active
+            .receive(
+                TestAddr(1),
+                DynamicSupervisorMessage::Start {
+                    nonce: 7,
+                    child: Worker,
+                    reply_to: reply(),
+                },
+            )
+            .unwrap();
+            outcomes = 1,
+            child_observations = 1,
+            creation_observations = 1,
+            shutdowns = 0,
+            replacement_inputs = 0,
+            creates = 1,
+            become = crate::Step::Continue
+        );
 
-        let creation = CreationResolved::birth(41, MailAddr(141));
+        let installing = ProxyUnavailable {
+            proxy: 7,
+            from: TestAddr(41),
+            phase: crate::IncarnationPhase::Installing {
+                attempt: 0,
+                kind: CreationKind::Birth,
+            },
+            command: 11,
+        };
+        let installing_actions = active
+            .transition(DynamicSupervisorEvent::CommandUnavailable(installing))
+            .unwrap();
+        assert!(installing_actions.creates.is_empty());
+        assert!(installing_actions.sends.child_observations.is_empty());
+        assert!(installing_actions.sends.creation_observations.is_empty());
+        assert!(installing_actions.sends.shutdowns.is_empty());
+        assert!(installing_actions.sends.replacement_inputs.is_empty());
         assert!(matches!(
-            active.on_path(creation),
-            Err(DynamicSupervisorError::UnexpectedCreation(returned)) if returned == creation
+            installing_actions.sends.outcomes.as_slice(),
+            [behavior::Delivery {
+                message: DynamicSupervisorOutcome::CommandUnavailable {
+                    nonce: 7,
+                    from: TestAddr(41),
+                    phase: crate::IncarnationPhase::Installing {
+                        attempt: 0,
+                        kind: CreationKind::Birth,
+                    },
+                    command: 11,
+                },
+                ..
+            }]
         ));
+
+        assert_action_counts!(active
+            .on_path(creation(7, CreationKind::Birth, 70))
+            .unwrap();
+            outcomes = 0,
+            child_observations = 0,
+            creation_observations = 0,
+            shutdowns = 0,
+            replacement_inputs = 0,
+            creates = 0,
+            become = crate::Step::Continue
+        );
+        assert_action_counts!(active
+            .on_path(WorkerCreationResolved::new(
+                7,
+                0,
+                CreationKind::Birth,
+                Ok(()),
+            ))
+            .unwrap();
+            outcomes = 1,
+            child_observations = 0,
+            creation_observations = 0,
+            shutdowns = 0,
+            replacement_inputs = 0,
+            creates = 0,
+            become = crate::Step::Continue
+        );
+        let running_actions = active
+            .transition(DynamicSupervisorEvent::CommandUnavailable(
+                ProxyUnavailable {
+                    proxy: 7,
+                    from: TestAddr(42),
+                    phase: crate::IncarnationPhase::Running { incarnation: 0 },
+                    command: 12,
+                },
+            ))
+            .unwrap();
+        assert!(matches!(
+            running_actions.sends.outcomes[0].message,
+            DynamicSupervisorOutcome::CommandUnavailable {
+                nonce: 7,
+                from: TestAddr(42),
+                phase: crate::IncarnationPhase::Running { incarnation: 0 },
+                command: 12,
+            }
+        ));
+
+        assert_action_counts!(active
+            .receive(
+                TestAddr(2),
+                DynamicSupervisorMessage::Replace {
+                    nonce: 7,
+                    child: Worker,
+                    reply_to: Recipient::global(TestAddr(98)),
+                },
+            )
+            .unwrap();
+            outcomes = 1,
+            child_observations = 0,
+            creation_observations = 0,
+            shutdowns = 0,
+            replacement_inputs = 1,
+            creates = 0,
+            become = crate::Step::Continue
+        );
+        let replacing_actions = active
+            .transition(DynamicSupervisorEvent::CommandUnavailable(
+                ProxyUnavailable {
+                    proxy: 7,
+                    from: TestAddr(43),
+                    phase: crate::IncarnationPhase::AwaitingStop { incarnation: 0 },
+                    command: 13,
+                },
+            ))
+            .unwrap();
+        assert_eq!(
+            replacing_actions.sends.outcomes[0].to.address(),
+            TestAddr(99)
+        );
+        assert!(matches!(
+            replacing_actions.sends.outcomes[0].message,
+            DynamicSupervisorOutcome::CommandUnavailable { command: 13, .. }
+        ));
+
+        let stale = ProxyUnavailable {
+            proxy: 99,
+            from: TestAddr(44),
+            phase: crate::IncarnationPhase::Vacant {
+                last_installed: None,
+            },
+            command: 14,
+        };
+        assert!(matches!(
+            active.transition(DynamicSupervisorEvent::CommandUnavailable(stale.clone())),
+            Err(DynamicSupervisorError::UnexpectedCommandUnavailable(returned))
+                if returned == stale
+        ));
+    }
+
+    #[test]
+    fn foreign_lifecycle_facts_are_returned_complete_without_creating_state() {
+        let mut active = dynamic_protocol(DynamicSupervisor::new(|worker: Worker| {
+            crate::Proxy::new(worker)
+        }))
+        .initialize()
+        .unwrap()
+        .behavior;
+
+        match active.on_path(creation(41, CreationKind::Birth, 141)) {
+            Err(DynamicSupervisorError::UnexpectedCreation(returned)) => {
+                assert_eq!(returned.nonce(), 41);
+                assert_eq!(returned.kind(), CreationKind::Birth);
+                assert_eq!(
+                    returned
+                        .into_recipient()
+                        .unwrap()
+                        .interpret(&mut EndpointId),
+                    141
+                );
+            }
+            _ => panic!("the foreign exact creation must be returned"),
+        }
 
         let stopped = ChildStopped::new(42, Ok(Exit::Normal), Instant::now());
         assert!(matches!(
@@ -1316,13 +1770,13 @@ mod tests {
 
     #[test]
     fn stop_and_replace_wait_for_their_exact_runtime_fact() {
-        let mut active = DynamicSupervisor::<MailAddr, Worker, Recipient<Reply>>::new()
+        let mut active = DynamicSupervisor::new(|worker: Worker| crate::Proxy::new(worker))
             .initialize()
             .unwrap()
             .behavior;
-        active
+        assert_action_counts!(active
             .receive(
-                MailAddr(1),
+                TestAddr(1),
                 DynamicSupervisorMessage::Start {
                     nonce: 3,
                     child: Worker,
@@ -1330,10 +1784,26 @@ mod tests {
                 },
             )
             .unwrap();
-        active
-            .on_path(CreationResolved::birth(3, MailAddr(30)))
+            outcomes = 1,
+            child_observations = 1,
+            creation_observations = 1,
+            shutdowns = 0,
+            replacement_inputs = 0,
+            creates = 1,
+            become = crate::Step::Continue
+        );
+        assert_action_counts!(active
+            .on_path(creation(3, CreationKind::Birth, 30))
             .unwrap();
-        active
+            outcomes = 0,
+            child_observations = 0,
+            creation_observations = 0,
+            shutdowns = 0,
+            replacement_inputs = 0,
+            creates = 0,
+            become = crate::Step::Continue
+        );
+        assert_action_counts!(active
             .on_path(WorkerCreationResolved::new(
                 3,
                 0,
@@ -1341,10 +1811,18 @@ mod tests {
                 Ok(()),
             ))
             .unwrap();
+            outcomes = 1,
+            child_observations = 0,
+            creation_observations = 0,
+            shutdowns = 0,
+            replacement_inputs = 0,
+            creates = 0,
+            become = crate::Step::Continue
+        );
 
         let replacing = active
             .receive(
-                MailAddr(1),
+                TestAddr(1),
                 DynamicSupervisorMessage::Replace {
                     nonce: 3,
                     child: Worker,
@@ -1352,11 +1830,19 @@ mod tests {
                 },
             )
             .unwrap();
-        assert_eq!(replacing.sends.replacements.len(), 1);
+        assert_eq!(replacing.sends.replacement_inputs.len(), 1);
         assert_eq!(active.phase(3), Some(DynamicChildPhase::Replacing));
-        active
+        assert_action_counts!(active
             .on_path(WorkerStopped::new(3, 0, Ok(Exit::Normal), Instant::now()))
             .unwrap();
+            outcomes = 0,
+            child_observations = 0,
+            creation_observations = 0,
+            shutdowns = 0,
+            replacement_inputs = 0,
+            creates = 0,
+            become = crate::Step::Continue
+        );
         let wrong_replacement =
             WorkerCreationResolved::new(3, 4, CreationKind::replacement_of(9), Ok(()));
         assert!(matches!(
@@ -1365,7 +1851,7 @@ mod tests {
                 if returned == wrong_replacement
         ));
         assert_eq!(active.phase(3), Some(DynamicChildPhase::Replacing));
-        active
+        assert_action_counts!(active
             .on_path(WorkerCreationResolved::new(
                 3,
                 4,
@@ -1373,11 +1859,19 @@ mod tests {
                 Ok(()),
             ))
             .unwrap();
+            outcomes = 1,
+            child_observations = 0,
+            creation_observations = 0,
+            shutdowns = 0,
+            replacement_inputs = 0,
+            creates = 0,
+            become = crate::Step::Continue
+        );
         assert_eq!(active.phase(3), Some(DynamicChildPhase::Available));
 
         let stopping = active
             .receive(
-                MailAddr(1),
+                TestAddr(1),
                 DynamicSupervisorMessage::Stop {
                     nonce: 3,
                     reply_to: reply(),
@@ -1386,9 +1880,17 @@ mod tests {
             .unwrap();
         assert_eq!(stopping.sends.shutdowns.as_slice(), [ShutdownChild::new(3)]);
         assert_eq!(active.phase(3), Some(DynamicChildPhase::Stopping));
-        active
+        assert_action_counts!(active
             .on_path(WorkerStopped::new(3, 4, Ok(Exit::Normal), Instant::now()))
             .unwrap();
+            outcomes = 0,
+            child_observations = 0,
+            creation_observations = 0,
+            shutdowns = 0,
+            replacement_inputs = 0,
+            creates = 0,
+            become = crate::Step::Continue
+        );
         let outcome = Err(crate::Crash::Panicked);
         let stopped = active
             .on_path(ChildStopped::new(3, outcome, Instant::now()))
@@ -1405,13 +1907,13 @@ mod tests {
 
     #[test]
     fn explicit_stop_rejection_preserves_the_capability_reason() {
-        let mut active = DynamicSupervisor::<MailAddr, Worker, Recipient<Reply>>::new()
+        let mut active = DynamicSupervisor::new(|worker: Worker| crate::Proxy::new(worker))
             .initialize()
             .unwrap()
             .behavior;
-        active
+        assert_action_counts!(active
             .receive(
-                MailAddr(1),
+                TestAddr(1),
                 DynamicSupervisorMessage::Start {
                     nonce: 3,
                     child: Worker,
@@ -1419,10 +1921,26 @@ mod tests {
                 },
             )
             .unwrap();
-        active
-            .on_path(CreationResolved::birth(3, MailAddr(30)))
+            outcomes = 1,
+            child_observations = 1,
+            creation_observations = 1,
+            shutdowns = 0,
+            replacement_inputs = 0,
+            creates = 1,
+            become = crate::Step::Continue
+        );
+        assert_action_counts!(active
+            .on_path(creation(3, CreationKind::Birth, 30))
             .unwrap();
-        active
+            outcomes = 0,
+            child_observations = 0,
+            creation_observations = 0,
+            shutdowns = 0,
+            replacement_inputs = 0,
+            creates = 0,
+            become = crate::Step::Continue
+        );
+        assert_action_counts!(active
             .on_path(WorkerCreationResolved::new(
                 3,
                 0,
@@ -1430,15 +1948,31 @@ mod tests {
                 Ok(()),
             ))
             .unwrap();
-        active
+            outcomes = 1,
+            child_observations = 0,
+            creation_observations = 0,
+            shutdowns = 0,
+            replacement_inputs = 0,
+            creates = 0,
+            become = crate::Step::Continue
+        );
+        assert_action_counts!(active
             .receive(
-                MailAddr(1),
+                TestAddr(1),
                 DynamicSupervisorMessage::Stop {
                     nonce: 3,
                     reply_to: reply(),
                 },
             )
             .unwrap();
+            outcomes = 1,
+            child_observations = 0,
+            creation_observations = 0,
+            shutdowns = 1,
+            replacement_inputs = 0,
+            creates = 0,
+            become = crate::Step::Continue
+        );
 
         let rejected = active
             .on_path(ChildShutdownRejected::new(
@@ -1460,13 +1994,13 @@ mod tests {
 
     #[test]
     fn worker_stop_vacates_only_the_exact_running_incarnation() {
-        let initialized = DynamicSupervisor::<MailAddr, Worker, Recipient<Reply>>::new()
+        let initialized = DynamicSupervisor::new(|worker: Worker| crate::Proxy::new(worker))
             .initialize()
             .unwrap();
         let mut active = initialized.behavior;
-        active
+        assert_action_counts!(active
             .receive(
-                MailAddr(1),
+                TestAddr(1),
                 DynamicSupervisorMessage::Start {
                     nonce: 3,
                     child: Worker,
@@ -1474,10 +2008,26 @@ mod tests {
                 },
             )
             .unwrap();
-        active
-            .on_path(CreationResolved::birth(3, MailAddr(30)))
+            outcomes = 1,
+            child_observations = 1,
+            creation_observations = 1,
+            shutdowns = 0,
+            replacement_inputs = 0,
+            creates = 1,
+            become = crate::Step::Continue
+        );
+        assert_action_counts!(active
+            .on_path(creation(3, CreationKind::Birth, 30))
             .unwrap();
-        active
+            outcomes = 0,
+            child_observations = 0,
+            creation_observations = 0,
+            shutdowns = 0,
+            replacement_inputs = 0,
+            creates = 0,
+            become = crate::Step::Continue
+        );
+        assert_action_counts!(active
             .on_path(WorkerCreationResolved::new(
                 3,
                 0,
@@ -1485,6 +2035,14 @@ mod tests {
                 Ok(()),
             ))
             .unwrap();
+            outcomes = 1,
+            child_observations = 0,
+            creation_observations = 0,
+            shutdowns = 0,
+            replacement_inputs = 0,
+            creates = 0,
+            become = crate::Step::Continue
+        );
         let actions = active
             .on_path(WorkerStopped::new(3, 0, Ok(Exit::Normal), Instant::now()))
             .unwrap();
@@ -1504,13 +2062,13 @@ mod tests {
 
     #[test]
     fn initial_worker_failure_is_reported_and_the_empty_proxy_is_retired() {
-        let mut active = DynamicSupervisor::<MailAddr, Worker, Recipient<Reply>>::new()
+        let mut active = DynamicSupervisor::new(|worker: Worker| crate::Proxy::new(worker))
             .initialize()
             .unwrap()
             .behavior;
-        active
+        assert_action_counts!(active
             .receive(
-                MailAddr(1),
+                TestAddr(1),
                 DynamicSupervisorMessage::Start {
                     nonce: 3,
                     child: Worker,
@@ -1518,8 +2076,16 @@ mod tests {
                 },
             )
             .unwrap();
+            outcomes = 1,
+            child_observations = 1,
+            creation_observations = 1,
+            shutdowns = 0,
+            replacement_inputs = 0,
+            creates = 1,
+            become = crate::Step::Continue
+        );
         let proxy_committed = active
-            .on_path(CreationResolved::birth(3, MailAddr(30)))
+            .on_path(creation(3, CreationKind::Birth, 30))
             .unwrap();
         assert!(proxy_committed.sends.outcomes.is_empty());
 
@@ -1550,13 +2116,13 @@ mod tests {
 
     #[test]
     fn wrong_creation_provenance_is_returned_without_advancing_either_stage() {
-        let mut active = DynamicSupervisor::<MailAddr, Worker, Recipient<Reply>>::new()
+        let mut active = DynamicSupervisor::new(|worker: Worker| crate::Proxy::new(worker))
             .initialize()
             .unwrap()
             .behavior;
-        active
+        assert_action_counts!(active
             .receive(
-                MailAddr(1),
+                TestAddr(1),
                 DynamicSupervisorMessage::Start {
                     nonce: 3,
                     child: Worker,
@@ -1564,18 +2130,41 @@ mod tests {
                 },
             )
             .unwrap();
+            outcomes = 1,
+            child_observations = 1,
+            creation_observations = 1,
+            shutdowns = 0,
+            replacement_inputs = 0,
+            creates = 1,
+            become = crate::Step::Continue
+        );
 
-        let wrong_proxy =
-            CreationResolved::installed(3, CreationKind::replacement_of(9), MailAddr(30));
-        assert!(matches!(
-            active.on_path(wrong_proxy),
-            Err(DynamicSupervisorError::UnexpectedCreation(returned))
-                if returned == wrong_proxy
-        ));
+        match active.on_path(creation(3, CreationKind::replacement_of(9), 30)) {
+            Err(DynamicSupervisorError::UnexpectedCreation(returned)) => {
+                assert_eq!(returned.nonce(), 3);
+                assert_eq!(returned.kind(), CreationKind::replacement_of(9));
+                assert_eq!(
+                    returned
+                        .into_recipient()
+                        .unwrap()
+                        .interpret(&mut EndpointId),
+                    30
+                );
+            }
+            _ => panic!("the wrong-provenance exact creation must be returned"),
+        }
         assert_eq!(active.phase(3), Some(DynamicChildPhase::Installing));
-        active
-            .on_path(CreationResolved::birth(3, MailAddr(30)))
+        assert_action_counts!(active
+            .on_path(creation(3, CreationKind::Birth, 30))
             .unwrap();
+            outcomes = 0,
+            child_observations = 0,
+            creation_observations = 0,
+            shutdowns = 0,
+            replacement_inputs = 0,
+            creates = 0,
+            become = crate::Step::Continue
+        );
 
         let wrong_worker =
             WorkerCreationResolved::new(3, 0, CreationKind::replacement_of(9), Ok(()));
@@ -1589,14 +2178,14 @@ mod tests {
 
     #[test]
     fn shutdown_drains_established_and_installing_proxies_before_stopping() {
-        let mut active = DynamicSupervisor::<MailAddr, Worker, Recipient<Reply>>::new()
+        let mut active = DynamicSupervisor::new(|worker: Worker| crate::Proxy::new(worker))
             .initialize()
             .unwrap()
             .behavior;
         for nonce in [3, 4] {
-            active
+            assert_action_counts!(active
                 .receive(
-                    MailAddr(1),
+                    TestAddr(1),
                     DynamicSupervisorMessage::Start {
                         nonce,
                         child: Worker,
@@ -1604,11 +2193,27 @@ mod tests {
                     },
                 )
                 .unwrap();
+                outcomes = 1,
+                child_observations = 1,
+                creation_observations = 1,
+                shutdowns = 0,
+                replacement_inputs = 0,
+                creates = 1,
+                become = crate::Step::Continue
+            );
         }
-        active
-            .on_path(CreationResolved::birth(3, MailAddr(30)))
+        assert_action_counts!(active
+            .on_path(creation(3, CreationKind::Birth, 30))
             .unwrap();
-        active
+            outcomes = 0,
+            child_observations = 0,
+            creation_observations = 0,
+            shutdowns = 0,
+            replacement_inputs = 0,
+            creates = 0,
+            become = crate::Step::Continue
+        );
+        assert_action_counts!(active
             .on_path(WorkerCreationResolved::new(
                 3,
                 0,
@@ -1616,6 +2221,14 @@ mod tests {
                 Ok(()),
             ))
             .unwrap();
+            outcomes = 1,
+            child_observations = 0,
+            creation_observations = 0,
+            shutdowns = 0,
+            replacement_inputs = 0,
+            creates = 0,
+            become = crate::Step::Continue
+        );
 
         let requested = active.on_path(ShutdownRequested).unwrap();
         assert_eq!(
@@ -1625,15 +2238,23 @@ mod tests {
         assert!(matches!(requested.become_, crate::Step::Continue));
 
         let installed_during_drain = active
-            .on_path(CreationResolved::birth(4, MailAddr(40)))
+            .on_path(creation(4, CreationKind::Birth, 40))
             .unwrap();
         assert_eq!(
             installed_during_drain.sends.shutdowns.as_slice(),
             [ShutdownChild::new(4)]
         );
-        active
+        assert_action_counts!(active
             .on_path(WorkerStopped::new(3, 0, Ok(Exit::Normal), Instant::now()))
             .unwrap();
+            outcomes = 0,
+            child_observations = 0,
+            creation_observations = 0,
+            shutdowns = 0,
+            replacement_inputs = 0,
+            creates = 0,
+            become = crate::Step::Continue
+        );
         let failed_during_drain = active
             .on_path(WorkerCreationResolved::new(
                 4,

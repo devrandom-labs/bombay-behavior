@@ -23,6 +23,26 @@
           file = ./rust-toolchain.toml;
           sha256 = "sha256-gh/xTkxKHL4eiRXzWv8KP7vfjSk61Iq48x47BEDFgfk=";
         };
+        fuzzToolchain = fenix.packages.${system}.latest.withComponents [
+          "cargo"
+          "rustc"
+          "rust-src"
+          "rust-std"
+          "llvm-tools-preview"
+        ];
+        fuzzRunner = pkgs.writeShellApplication {
+          name = "bombay-behavior-fuzz";
+          runtimeInputs = [ fuzzToolchain pkgs.cargo-fuzz ];
+          text = ''
+            fuzz_manifest="crates/behavior-testkit/fuzz/Cargo.toml"
+            if [[ ! -f "$fuzz_manifest" ]]; then
+              echo "run this command from the bombay-behavior repository root" >&2
+              exit 2
+            fi
+            cd "$(dirname "$fuzz_manifest")"
+            exec cargo fuzz "$@"
+          '';
+        };
         craneLib = (crane.mkLib pkgs).overrideToolchain (_: rustToolchain);
         src = pkgs.lib.fileset.toSource {
           root = ./.;
@@ -45,6 +65,10 @@
             inherit cargoArtifacts;
             cargoNextestExtraArgs = "--workspace";
           });
+          bombay-behavior-clippy = craneLib.cargoClippy (commonArgs // {
+            inherit cargoArtifacts;
+            cargoClippyExtraArgs = "--workspace --all-targets";
+          });
           bombay-behavior-doc = craneLib.cargoDoc (commonArgs // {
             inherit cargoArtifacts;
             cargoDocExtraArgs = "--workspace --no-deps";
@@ -59,6 +83,7 @@
 
         packages = rec {
           default = craneLib.buildPackage (commonArgs // { inherit cargoArtifacts; });
+          fuzz = fuzzRunner;
 
           # Expensive on-demand lane. The gate rejects survivors, timeouts,
           # incomplete runs, and per-function viability regressions. Keep it
@@ -112,6 +137,9 @@
         devShells.default = craneLib.devShell {
           checks = self.checks.${system};
           packages = with pkgs; [ cargo-audit cargo-deny cargo-mutants cargo-nextest taplo ];
+        };
+        devShells.fuzz = pkgs.mkShell {
+          packages = [ fuzzToolchain pkgs.cargo-fuzz ];
         };
       });
 }

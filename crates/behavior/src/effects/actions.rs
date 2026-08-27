@@ -30,6 +30,7 @@ pub trait AppendSend<Input, Path>: Sized {
 /// and each concrete named send lane retains its own order; this contract does
 /// not impose an order between independent lanes. Constructing a value remains
 /// pure.
+#[must_use = "actor transition effects must be interpreted, inspected, or retained"]
 pub struct Actions<A: Address, Ph, Sends, Birth: BirthMode> {
     pub sends: Sends,
     pub creates: Vec<Create<A, Birth::Child>>,

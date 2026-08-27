@@ -493,9 +493,22 @@ mod tests {
     fn threshold_opens_matching_elapsed_allows_one_probe() {
         let mut subject = subject();
         let first = admit(&mut subject);
-        subject
+        let first_failure = subject
             .receive(MailAddr(0), BreakerMessage::Failed { attempt: first })
             .unwrap();
+        assert!(matches!(
+            first_failure.sends.replies.as_slice(),
+            [behavior::Delivery {
+                message: BreakerOutcome::FailureRecorded {
+                    attempt,
+                    consecutive_failures: 1,
+                },
+                ..
+            }] if *attempt == first
+        ));
+        assert!(first_failure.sends.schedules.is_empty());
+        assert!(first_failure.creates.is_empty());
+        assert_eq!(first_failure.become_, crate::Step::Continue);
         let second = admit(&mut subject);
         let opened = subject
             .receive(MailAddr(0), BreakerMessage::Failed { attempt: second })
@@ -511,9 +524,13 @@ mod tests {
             denied.sends.replies[0].message,
             BreakerOutcome::Rejected(BreakerRejection::Open { .. })
         ));
-        subject
+        let elapsed = subject
             .on_path(TimerElapsed::new(TimerId(8), TimerGeneration(0)))
             .unwrap();
+        assert!(elapsed.sends.replies.is_empty());
+        assert!(elapsed.sends.schedules.is_empty());
+        assert!(elapsed.creates.is_empty());
+        assert_eq!(elapsed.become_, crate::Step::Continue);
         let probe = admit(&mut subject);
         assert_eq!(probe, BreakerAttempt(2));
         let busy = subject

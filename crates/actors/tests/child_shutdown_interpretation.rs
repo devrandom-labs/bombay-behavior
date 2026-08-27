@@ -117,15 +117,14 @@ impl<Event: Send> SendInterpreter for Recording<Event> {
     type Error = Never;
 }
 
-impl<Event, Plan, TargetPath, Path>
-    InterpretRequest<ReportShutdownPlan<Plan, TargetPath>, Event, Path> for Recording<Event>
+impl<Event, Plan, Path> InterpretRequest<ReportShutdownPlan<Plan>, Event, Path> for Recording<Event>
 where
-    Event: InjectEvent<InstallShutdownPlan<Plan>, TargetPath> + Send,
+    Event: EventIngress<Here, InstallShutdownPlan<Plan>> + Send,
     Plan: Send,
 {
     fn interpret_request(
         &mut self,
-        request: ReportShutdownPlan<Plan, TargetPath>,
+        request: ReportShutdownPlan<Plan>,
     ) -> impl Future<Output = Result<(), Self::Error>> + Send {
         self.events.push(request.into_event());
         async { Ok(()) }
@@ -194,7 +193,11 @@ where
     assert_eq!(interpreter.events.len(), 2);
 
     let first_creation = interpreter.events.remove(0);
-    active.transition(first_creation).unwrap();
+    let first = active.transition(first_creation).unwrap();
+    interpret(first.sends, &mut interpreter).await;
+    assert_eq!(interpreter.events.len(), 1);
+    assert!(first.creates.is_empty());
+    assert!(matches!(first.become_, behavior_actors::Step::Continue));
 
     if shutdown_first {
         let waiting = active.on(ShutdownRequested).unwrap();
@@ -241,7 +244,7 @@ where
 
 fn framework_finish<Builder>(builder: Builder) -> Builder::Output
 where
-    Builder: FinishShutdownPhases<Here>,
+    Builder: FinishShutdownPhases,
 {
     builder.finish()
 }
@@ -261,7 +264,7 @@ async fn coordinator_preserves_phase_order_for_both_arrival_orders() {
     let plan_first = shutdown_after_children(Application)
         .shutdown_phase(StoreRole)
         .shutdown_phase(GatewayRole)
-        .finish::<Here>()
+        .finish()
         .initialize()
         .unwrap();
     assert_eq!(shutdown_trace(plan_first, false).await, [11, 12]);
@@ -269,7 +272,7 @@ async fn coordinator_preserves_phase_order_for_both_arrival_orders() {
     let shutdown_first = shutdown_after_children(Application)
         .shutdown_phase(StoreRole)
         .shutdown_phase(GatewayRole)
-        .finish::<Here>()
+        .finish()
         .initialize()
         .unwrap();
     assert_eq!(shutdown_trace(shutdown_first, true).await, [11, 12]);
@@ -280,7 +283,7 @@ async fn reversing_phases_reverses_interpreted_child_shutdown_order() {
     let reversed = shutdown_after_children(Application)
         .shutdown_phase(GatewayRole)
         .shutdown_phase(StoreRole)
-        .finish::<Here>()
+        .finish()
         .initialize()
         .unwrap();
 

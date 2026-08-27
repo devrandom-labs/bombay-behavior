@@ -609,9 +609,16 @@ mod tests {
             .initialize()
             .unwrap()
             .behavior;
-        subject
+        let started = subject
             .receive(MailAddr(0), WorkflowMessage::Start { reply_to: reply() })
             .unwrap();
+        assert_eq!(started.sends.len(), 1);
+        assert!(matches!(
+            started.sends[0].message,
+            WorkflowOutcome::Started { .. }
+        ));
+        assert!(started.creates.is_empty());
+        assert_eq!(started.become_, crate::Step::Continue);
         let blocked = subject
             .receive(MailAddr(0), WorkflowMessage::Fail { step: "join" })
             .unwrap();
@@ -619,9 +626,19 @@ mod tests {
             blocked.sends[0].message,
             WorkflowOutcome::Rejected(WorkflowRejection::Blocked { step: "join" })
         ));
-        subject
+        let advanced = subject
             .receive(MailAddr(0), WorkflowMessage::Complete { step: "root" })
             .unwrap();
+        assert_eq!(advanced.sends.len(), 1);
+        assert!(matches!(
+            advanced.sends[0].message,
+            WorkflowOutcome::Advanced {
+                completed: "root",
+                ..
+            }
+        ));
+        assert!(advanced.creates.is_empty());
+        assert_eq!(advanced.become_, crate::Step::Continue);
         let duplicate = subject
             .receive(MailAddr(0), WorkflowMessage::Complete { step: "root" })
             .unwrap();

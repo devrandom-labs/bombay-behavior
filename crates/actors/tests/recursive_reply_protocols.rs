@@ -22,6 +22,37 @@ impl Behavior for Target {
     }
 }
 
+struct NominalBytes;
+struct NominalBufferReply;
+struct NominalCacheReply;
+struct NominalBarrierReply;
+struct NominalLatchReply;
+
+impl Protocol for NominalBytes {
+    type Addr = MailAddr;
+    type Msg = u8;
+}
+
+impl Protocol for NominalBufferReply {
+    type Addr = MailAddr;
+    type Msg = BufferOutcome<u8>;
+}
+
+impl Protocol for NominalCacheReply {
+    type Addr = MailAddr;
+    type Msg = CacheResult<u8, u16>;
+}
+
+impl Protocol for NominalBarrierReply {
+    type Addr = MailAddr;
+    type Msg = BarrierReleased;
+}
+
+impl Protocol for NominalLatchReply {
+    type Addr = MailAddr;
+    type Msg = LatchReleased;
+}
+
 macro_rules! recursive_reply_case {
     ($module:ident, $input:ty, $subject:ty) => {
         mod $module {
@@ -57,7 +88,8 @@ macro_rules! recursive_reply_case {
                 assert_behavior::<StopOnShutdown<Root>>();
                 assert_behavior::<Subject>();
                 let root = Recipient::<Root>::global(MailAddr(1));
-                let _: Reply = MessageAdapter::new(root, adapt);
+                let reply: Reply = MessageAdapter::new(root, adapt);
+                assert_eq!(reply.destination().address(), MailAddr(1));
             }
         }
     };
@@ -215,10 +247,10 @@ fn every_reply_template_accepts_a_pure_message_protocol() {
 }
 
 #[test]
-fn every_send_only_destination_accepts_a_protocol_without_a_behavior() {
+fn every_send_only_destination_accepts_an_ordinary_nominal_protocol() {
     fn assert_behavior<B: Behavior>() {}
 
-    type Bytes = MessageProtocol<MailAddr, u8>;
+    type Bytes = NominalBytes;
     type GateReply = MessageProtocol<MailAddr, OrderGateOutcome<u8, u8>>;
     type PriorityReply = MessageProtocol<MailAddr, PriorityQueueOutcome<u8, u8>>;
     type QueueReply = MessageProtocol<MailAddr, WorkQueueOutcome<u8>>;
@@ -227,11 +259,13 @@ fn every_send_only_destination_accepts_a_protocol_without_a_behavior() {
     type DedupReply = MessageProtocol<MailAddr, DeduplicatorOutcome<u8, u8>>;
     type RegistryReply = MessageProtocol<MailAddr, RegistryResult<u8, Bytes>>;
     type ResolverReply = MessageProtocol<MailAddr, Resolution<u8, Bytes>>;
-    type BufferReply = MessageProtocol<MailAddr, BufferOutcome<u8>>;
-    type BarrierReply = MessageProtocol<MailAddr, BarrierReleased>;
-    type LatchReply = MessageProtocol<MailAddr, LatchReleased>;
+    type BufferReply = NominalBufferReply;
+    type CacheReply = NominalCacheReply;
+    type BarrierReply = NominalBarrierReply;
+    type LatchReply = NominalLatchReply;
 
     assert_behavior::<Buffer<MailAddr, u8, Recipient<Bytes>, Recipient<BufferReply>>>();
+    assert_behavior::<Cache<MailAddr, u8, u16, Recipient<CacheReply>>>();
     assert_behavior::<OrderGate<MailAddr, u8, u8, Recipient<Bytes>, Recipient<GateReply>>>();
     assert_behavior::<PriorityQueue<MailAddr, u8, u8, Recipient<Bytes>, Recipient<PriorityReply>>>(
     );
@@ -246,6 +280,39 @@ fn every_send_only_destination_accepts_a_protocol_without_a_behavior() {
     assert_behavior::<Resolver<MailAddr, u8, Bytes, Recipient<ResolverReply>>>();
     assert_behavior::<Barrier<MailAddr, u8, Recipient<BarrierReply>>>();
     assert_behavior::<Latch<MailAddr, Recipient<LatchReply>>>();
+}
+
+#[test]
+fn standalone_templates_host_the_same_nominal_capability_users_hold() {
+    fn nominal<B: Behavior<Protocol = B>>() {}
+    fn transparent<B, W>(_: &W)
+    where
+        B: Behavior,
+        W: Behavior<Protocol = B>,
+    {
+    }
+
+    type CacheActor = Cache<MailAddr, u8, u16, Recipient<NominalCacheReply>>;
+    type BarrierActor = Barrier<MailAddr, u8, Recipient<NominalBarrierReply>>;
+    type LatchActor = Latch<MailAddr, Recipient<NominalLatchReply>>;
+
+    nominal::<CacheActor>();
+    nominal::<BarrierActor>();
+    nominal::<LatchActor>();
+
+    let cache_capability = Recipient::<CacheActor>::global(MailAddr(41));
+    let barrier_capability = Recipient::<BarrierActor>::global(MailAddr(42));
+    let latch_capability = Recipient::<LatchActor>::global(MailAddr(43));
+    assert_eq!(cache_capability.address(), MailAddr(41));
+    assert_eq!(barrier_capability.address(), MailAddr(42));
+    assert_eq!(latch_capability.address(), MailAddr(43));
+
+    let cache = CacheActor::new(CacheConfiguration::new(2).unwrap());
+    let barrier = BarrierActor::new(BarrierMembership::new(vec![1]).unwrap());
+    let latch = LatchActor::new(1);
+    transparent::<CacheActor, _>(&StopOnShutdown::new(cache));
+    transparent::<BarrierActor, _>(&StopOnShutdown::new(barrier));
+    transparent::<LatchActor, _>(&StopOnShutdown::new(latch));
 }
 
 #[test]

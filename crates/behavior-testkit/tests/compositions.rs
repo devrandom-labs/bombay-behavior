@@ -7,9 +7,10 @@ use std::time::Duration;
 
 use behavior::EventLayer;
 use behavior::{
-    Acted, Actions, Activate, Behavior, Crash, Delivery, Exit, MailAddr, Never, PeerStopped,
-    Recipient, SendEffects, StashRoute, Step, SupervisionEvent, TimerElapsed, TimerGeneration,
-    TimerId, User, UserEvent, WorkerStopped, stop_on_abnormal_death, stop_on_supervision_failure,
+    Acted, Actions, Activate, Behavior, BehaviorActed, BehaviorBase, Births, Crash, Delivery, Exit,
+    MailAddr, Never, PeerStopped, Recipient, SendEffects, StashRoute, Step, Supervise,
+    SupervisionEvent, TimerElapsed, TimerGeneration, TimerId, User, UserEvent, WorkerStopped,
+    stop_on_abnormal_death, stop_on_supervision_failure,
 };
 use std::time::Instant;
 
@@ -66,6 +67,39 @@ type Child = Recorder;
 
 fn child(_index: usize) -> Child {
     Recorder::default()
+}
+
+struct SupervisedParent;
+
+type SupervisedParentEvent = User<MailAddr, u64>;
+
+impl behavior::Protocol for SupervisedParent {
+    type Addr = MailAddr;
+    type Msg = u64;
+}
+
+impl BehaviorBase for SupervisedParent {
+    type Base = Self;
+
+    fn base(&self) -> &Self {
+        self
+    }
+}
+
+impl Behavior for SupervisedParent {
+    type Protocol = Self;
+    type Event = SupervisedParentEvent;
+    type Sends = Vec<Never>;
+    type Ph = Never;
+    type Error = Never;
+    type Birth = Births<Child>;
+
+    fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+        Ok(Actions::create(vec![behavior::Create::birth(
+            event.message,
+            child(0),
+        )]))
+    }
 }
 
 const PEER: MailAddr = MailAddr(44);
@@ -334,9 +368,14 @@ async fn environment_lanes_bypass_stash_while_user_lane_is_intercepted() {
 
     // User lane: intercepted by the stash buffer.
     let user = User::user(MailAddr(7), 3);
-    behavior
+    let stashed = behavior
         .transition(EventLayer::Inner(EventLayer::Inner(user)))
         .unwrap();
+    assert!(stashed.sends.owned.is_empty());
+    assert!(stashed.sends.inner.owned.is_empty());
+    assert!(stashed.sends.inner.inner.is_empty());
+    assert!(stashed.creates.is_empty());
+    assert!(matches!(stashed.become_, Step::Continue));
     assert_eq!(behavior.stashed(), 1);
     assert!(behavior.base().seen.is_empty());
 }
@@ -493,23 +532,8 @@ async fn abnormal_death_reaction_outcome_classes() {
 /// stop the whole supervised fold.
 #[tokio::test]
 async fn supervision_preserves_inner_watch_routing() {
-    struct Parent;
-    #[behavior::behavior(addr = MailAddr, message = u64, sends = Vec<Never>, births = behavior::Births<Child>, error = Never)]
-    impl Parent {
-        fn receive(
-            &mut self,
-            _from: MailAddr,
-            message: u64,
-        ) -> Acted<MailAddr, Never, Vec<Never>, behavior::Births<Child>, Never> {
-            Ok(Actions::create(vec![behavior::Create::birth(
-                message,
-                child(0),
-            )]))
-        }
-    }
-
-    let behavior = behavior::Supervise::new(
-        behavior::Watch::new(Parent, PEER, stop_on_abnormal_death),
+    let behavior = Supervise::new(
+        behavior::Watch::new(SupervisedParent, PEER, stop_on_abnormal_death),
         behavior::ChildTopology::new((0..2).map(|index| u64::try_from(index).unwrap()), |index| {
             Some(child(index))
         }),
@@ -518,7 +542,9 @@ async fn supervision_preserves_inner_watch_routing() {
             behavior::RestartPolicy::Transient,
             1,
             std::time::Duration::from_secs(5),
+            behavior::RestartTiming::Immediate,
         ),
+        behavior::Proxy::new,
     )
     .unwrap();
     let initialized = behavior.initialize().unwrap();
@@ -542,8 +568,8 @@ async fn supervision_preserves_inner_watch_routing() {
     assert!(matches!(died.become_, Step::Stop(behavior::Stopped)));
 
     // Child lane: a death still yields a replacement send on a fresh stack.
-    let replacement = behavior::Supervise::new(
-        behavior::Watch::new(Parent, PEER, stop_on_abnormal_death),
+    let replacement = Supervise::new(
+        behavior::Watch::new(SupervisedParent, PEER, stop_on_abnormal_death),
         behavior::ChildTopology::new((0..2).map(|index| u64::try_from(index).unwrap()), |index| {
             Some(child(index))
         }),
@@ -552,7 +578,9 @@ async fn supervision_preserves_inner_watch_routing() {
             behavior::RestartPolicy::Transient,
             1,
             std::time::Duration::from_secs(5),
+            behavior::RestartTiming::Immediate,
         ),
+        behavior::Proxy::new,
     )
     .unwrap();
     let initialized = replacement.initialize().unwrap();
@@ -565,8 +593,8 @@ async fn supervision_preserves_inner_watch_routing() {
             at: Instant::now(),
         }))
         .unwrap();
-    assert_eq!(actions.sends.owned.replacement_commands.len(), 1);
-    assert_eq!(actions.sends.owned.replacement_commands[0].nonce, 0);
+    assert_eq!(actions.sends.owned.replacement_inputs.len(), 1);
+    assert_eq!(actions.sends.owned.replacement_inputs[0].nonce, 0);
 }
 
 /// A supervision failure reaction composes above an inner watch without
@@ -574,23 +602,8 @@ async fn supervision_preserves_inner_watch_routing() {
 /// ordinary become result visible through the complete stack.
 #[tokio::test]
 async fn supervision_failure_reaction_preserves_composed_send_lanes() {
-    struct Parent;
-    #[behavior::behavior(addr = MailAddr, message = u64, sends = Vec<Never>, births = behavior::Births<Child>, error = Never)]
-    impl Parent {
-        fn receive(
-            &mut self,
-            _from: MailAddr,
-            message: u64,
-        ) -> Acted<MailAddr, Never, Vec<Never>, behavior::Births<Child>, Never> {
-            Ok(Actions::create(vec![behavior::Create::birth(
-                message,
-                child(0),
-            )]))
-        }
-    }
-
-    let behavior = behavior::Supervise::new(
-        behavior::Watch::new(Parent, PEER, stop_on_abnormal_death),
+    let behavior = Supervise::new(
+        behavior::Watch::new(SupervisedParent, PEER, stop_on_abnormal_death),
         behavior::ChildTopology::new((0..1).map(|index| u64::try_from(index).unwrap()), |index| {
             Some(child(index))
         }),
@@ -599,7 +612,9 @@ async fn supervision_failure_reaction_preserves_composed_send_lanes() {
             behavior::RestartPolicy::Transient,
             0,
             Duration::MAX,
+            behavior::RestartTiming::Immediate,
         ),
+        behavior::Proxy::new,
     )
     .unwrap()
     .with_failure_reaction(stop_on_supervision_failure);
@@ -618,6 +633,6 @@ async fn supervision_failure_reaction_preserves_composed_send_lanes() {
     assert!(actions.sends.inner.inner.is_empty());
     assert!(actions.sends.inner.owned.is_empty());
     assert!(actions.sends.owned.child_observations.is_empty());
-    assert!(actions.sends.owned.replacement_commands.is_empty());
+    assert!(actions.sends.owned.replacement_inputs.is_empty());
     assert_eq!(actions.become_, Step::Stop(behavior::Stopped));
 }

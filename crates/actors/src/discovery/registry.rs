@@ -118,7 +118,7 @@ impl<K: core::fmt::Debug, D: Protocol> core::fmt::Debug for RegistryError<K, D> 
 ///
 /// State is a sequence of unique key/recipient bindings. Inputs are
 /// [`RegistryMessage`] values and lookup outputs are one typed
-/// [`Delivery<Reply>`]. Initialization is empty. Duplicate bind, absent
+/// [`crate::Delivery`]. Initialization is empty. Duplicate bind, absent
 /// unbind, and stale unbind are explicit errors and leave state unchanged.
 /// Lookups never fail: absence is a factual [`RegistryResult::Missing`]. The
 /// actor does not terminate by policy. Ordering and conflict behavior are
@@ -345,7 +345,7 @@ mod tests {
         ));
         assert!(registry.bindings() == [(4, one)]);
 
-        registry
+        let unbound = registry
             .receive(
                 MailAddr(9),
                 RegistryMessage::Unbind {
@@ -354,6 +354,9 @@ mod tests {
                 },
             )
             .unwrap();
+        assert!(unbound.sends.is_empty());
+        assert!(unbound.creates.is_empty());
+        assert_eq!(unbound.become_, crate::Step::Continue);
         assert!(registry.bindings().is_empty());
     }
 
@@ -362,7 +365,7 @@ mod tests {
         let destination = Recipient::<Destination>::global(MailAddr(1));
         let reply = Recipient::<Reply>::global(MailAddr(8));
         let mut registry = (TestRegistry::new()).initialize().unwrap().behavior;
-        registry
+        let bound = registry
             .receive(
                 MailAddr(9),
                 RegistryMessage::Bind {
@@ -371,6 +374,9 @@ mod tests {
                 },
             )
             .unwrap();
+        assert!(bound.sends.is_empty());
+        assert!(bound.creates.is_empty());
+        assert_eq!(bound.become_, crate::Step::Continue);
 
         let found = registry
             .receive(

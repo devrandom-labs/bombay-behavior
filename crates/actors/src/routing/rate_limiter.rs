@@ -349,13 +349,18 @@ mod tests {
             .initialize()
             .unwrap()
             .behavior;
-        s.receive(
-            MailAddr(0),
-            RateLimiterMessage::Refill {
-                tokens: tokens(u64::MAX),
-            },
-        )
-        .unwrap();
+        let refilled = s
+            .receive(
+                MailAddr(0),
+                RateLimiterMessage::Refill {
+                    tokens: tokens(u64::MAX),
+                },
+            )
+            .unwrap();
+        assert!(refilled.sends.deliveries.is_empty());
+        assert!(refilled.sends.outcomes.is_empty());
+        assert!(refilled.creates.is_empty());
+        assert_eq!(refilled.become_, crate::Step::Continue);
         assert_eq!(s.state().available(), 5);
     }
 }

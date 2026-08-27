@@ -21,8 +21,14 @@ together, but they do not mean the same thing.
 | Does another law transform this actor's mailbox fold? | `Behavior::layer` with an existing concrete transformation | the complete resulting `Behavior`, including event, sends, births, phase, error, initialization, and next decision |
 | May this actor send to a transferable destination? | `DeliveryRoute` | one exact protocol and its logical, established, or mixed concrete send product |
 | May this topology owner send to its direct child? | `DeliveryRouteFor<Owner>` | the same transferable routes, or one `ChildRoute` resolved from `Owner::Birth` |
-| Which actors can this actor create? | `Behavior::Birth`, `InstallationRequirements` | the closed, occurrence-preserving fresh-child algebra |
-| Which intentional logical destinations must a runtime host? | `LogicalHostRequirements` | the owner-authored, transitive, duplicate-preserving logical protocol product |
+| Which actors can this actor create? | `Behavior::Birth`, `BirthProtocols` | the closed, occurrence-preserving fresh-child algebra |
+
+`LogicalHostRequirements` separately derives the ordered product of every
+intentional logical `Delivery<P>` in the root and its transitive births. It
+excludes established-incarnation delivery, creator-local child effects, and
+interpreter requests while retaining repeated protocol occurrences. A runtime
+may recursively require its own static `Hosts<P>` proof for that product; the
+projection creates no host and performs no lookup.
 
 ### Same-mailbox layers
 
@@ -59,14 +65,14 @@ routes and explicit topology ownership, not by flattening their protocols into
 one envelope. A representative supervised routing graph is:
 
 ```text
-Application topology owner
-├── Router<Recipient<Proxy<PriorityQueue>>>       unicast selection
-│                │
-│                └── Delivery<Proxy<PriorityQueue>>
-└── Supervisor<PriorityQueue>                     stable-fleet ownership
-    └── Proxy<PriorityQueue>                       incarnation lifecycle
-        └── PriorityQueue                          admission and ordering
-            └── Delivery<Target>                   domain destination
+Application topology
+├── Router                                      unicast selection
+│   └── stable-worker capability
+└── Supervisor                                  fixed-fleet ownership
+    └── Proxy                                   stable incarnation
+        └── worker-internal `BehaviorLayer` stack
+            └── PriorityQueue                    admission and ordering
+                └── target capability            domain destination
 ```
 
 `Router` and `Supervisor` are peers in the application topology. The
@@ -77,11 +83,33 @@ fresh worker incarnation and translates a successful command into one
 owner-proven `ChildDelivery`. The priority queue alone owns capacity, priority,
 and release order.
 
-The complete command path remains visible in concrete values:
+The lifecycle order is deliberate. The topology factory first constructs the
+complete worker value, including any same-mailbox layers. The owner then
+applies the reusable stable-incarnation layer. Every replacement therefore
+rebuilds the same worker composition and installs it behind the same stable
+protocol. Callers supply values and Rust infers both layer outputs:
+
+```rust,ignore
+let workers = ChildTopology::new([7], |_| {
+    Some(
+        PriorityQueue::new(32)
+            .unwrap()
+            .layer(|queue| ReceiveTimeout::new(queue, timer, idle, on_idle)),
+    )
+});
+
+let supervisor = Supervisor::new(workers, restart, Proxy::new)?;
+```
+
+No alias for `ReceiveTimeout<PriorityQueue<...>>`, `Proxy<...>`, or the final
+supervisor type is part of construction. The domain protocol's own parameters
+remain explicit when they determine real destinations or reply laws.
+
+The complete command path remains visible in concrete values and effects:
 
 ```text
-RouterMessage::Route(ProxyCommand::Forward(queue_command))
-  → Delivery<Proxy<PriorityQueue>>
+RouterMessage::Route(queue_command)
+  → Delivery<PriorityQueue>
   → ChildDelivery<PriorityQueue, ChildHead>
   → Delivery<Target> + Delivery<PriorityQueueOutcome>
 ```
@@ -116,10 +144,27 @@ new transition law; hiding that fact in a generic wrapper would be incorrect.
 
 ## Application routing and fixed supervision
 
-`Supervisor<A, C>` owns one fixed stable-proxy fleet. Its public protocol is
+`Supervisor` owns one fixed stable-child fleet. Its public protocol is
 the ownership protocol: worker lifecycle facts, replacement decisions, and
 coordinated shutdown. It does not also pretend to be an application command
 router.
+
+`Supervise<B, ...>` likewise preserves `B`'s public protocol; it does not issue
+a second domain capability. If `B` already owns a route to a configured stable
+child, `B`'s authored event sum accepts the complete `ProxyUnavailable` at that
+exact child occurrence. `SupervisionEvent` adds only the framework lifecycle
+sum around it. A lifecycle-only composition therefore invents no domain
+recovery event, while a routing application receives the original sender,
+phase, and command through its ordinary pure fold.
+
+`DynamicSupervisor` is different because `Started` deliberately transfers the
+exact established capability issued when its stable proxy commits. It retains
+the `Start` outcome route and returns any later unavailable command to that
+route as `CommandUnavailable`; it never reconstructs a logical destination
+from the creation nonce or allocation address. A worker pool does not expose
+its worker routes: it admits into its bounded backlog, sends only to an
+ownership-proven routable slot, and joins a raced proxy return with the
+matching assignment before retrying or resolving the customer.
 
 When an application command selects a worker, that selection is application
 state-transition policy. Keep it in the application behavior and emit a typed
@@ -133,11 +178,11 @@ This composition makes both protocols and both rejection laws visible to Rust.
 selected route; it does not require the command to be `Clone`. Use `Topic` or
 `PubSub` when fan-out and its explicit cloning cost are the intended law.
 
-Use `BackoffSupervisor<A, C>` when the standalone fleet must delay accepted
-replacement requests. Use `BackoffSupervise<B, C>` when an existing behavior
-creates and adopts its own workers. These are separate transformations because
-their input folds and typed effect products differ. Backoff remains explicit
-policy supplied with `Backoff`; it is not another actor template.
+Delayed replacement is a transformation of an accepted replacement effect,
+not a second fleet owner. The catalogue must expose that policy through the
+same ownership fold for standalone and application-owned supervision;
+duplicating a supervisor state machine under another public name would not be
+composition.
 
 ## Bombay application provisioning
 
@@ -230,11 +275,12 @@ deferred nonce allocation, and construction of runtime child handles.
 
 The runtime must derive installation storage from the running application's
 combined birth algebra, not from `Root::Birth`. Consequently
-`InstallationRequirements` automatically includes the root, genuine root
+`BirthProtocols` automatically includes the root, genuine root
 children, application peers, and every transitive birth. Intentional logical
-destinations remain a separate owner contract: Bombay consumes
-`LogicalHostRequirements::LogicalHosts`; it must not infer them from arbitrary
-send products or add a protocol registry.
+destinations remain concrete in the composed send products. Behavior does not
+fabricate a completeness proof by asking the application to repeat those
+destinations in metadata, and Bombay must not add a protocol registry to
+compensate.
 
 ### Unicast and broadcast in Bombay
 
@@ -252,14 +298,12 @@ Fan-out is the distinct `Topic`/`PubSub` state-transition law:
   `PubSubMessage::Publish { topic, value }` fans out within one key.
 
 Choose `Route` truthfully. `EstablishedRecipient<P>` broadcasts to exact
-installed incarnations and adds no logical-host requirement.
-`Recipient<P>` broadcasts to intentional logical identities and Bombay's
-application owner must include every such protocol occurrence in
-`LogicalHostRequirements`, including meaningful duplicates. For stable
-replaceable workers, subscribe the logical `Recipient<Proxy<C>>`, not a stale
-exact worker incarnation. Different destination protocols remain different
-actors and are connected with typed `MessageAdapter`s; `Topic` never erases
-them into a common envelope.
+installed incarnations and adds no logical-host requirement. `Recipient<P>`
+broadcasts to intentional logical identities, so the application topology must
+install that concrete protocol. For stable replaceable workers, subscribe the
+logical stable protocol, not a stale exact worker incarnation. Different
+destination protocols remain different actors and are connected with typed
+`MessageAdapter`s; `Topic` never erases them into a common envelope.
 
 ## Root shutdown
 

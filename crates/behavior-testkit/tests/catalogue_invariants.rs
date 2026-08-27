@@ -8,8 +8,8 @@ use behavior::{
     ConfigurationError, ConfigurationMessage, ConfigurationState, ConfigurationVersion, Health,
     HealthError, HealthEvidence, HealthMessage, HealthStatus, MailAddr, MessageProtocol, Never,
     NoBirths, ObservationVersion, Readiness, ReadinessError, ReadinessEvidence, ReadinessMessage,
-    ReadinessStatus, Recipient, Registry, RegistryError, RegistryMessage, RegistryResult, Topic,
-    TopicError, TopicMessage, User,
+    ReadinessStatus, Recipient, Registry, RegistryError, RegistryMessage, RegistryResult, Step,
+    Topic, TopicError, TopicMessage, User,
 };
 use proptest::collection::vec;
 use proptest::prelude::*;
@@ -348,11 +348,21 @@ proptest! {
             let subscriber = Recipient::global(MailAddr(u64::from(address)));
             match operation {
                 0 => {
-                    actual.receive(MailAddr(9), TopicMessage::Subscribe(subscriber)).unwrap();
+                    let actions = actual
+                        .receive(MailAddr(9), TopicMessage::Subscribe(subscriber))
+                        .unwrap();
+                    prop_assert!(actions.sends.is_empty());
+                    prop_assert!(actions.creates.is_empty());
+                    prop_assert!(matches!(actions.become_, Step::Continue));
                     if !expected.contains(&subscriber) { expected.push(subscriber); }
                 }
                 1 => {
-                    actual.receive(MailAddr(9), TopicMessage::Unsubscribe(subscriber)).unwrap();
+                    let actions = actual
+                        .receive(MailAddr(9), TopicMessage::Unsubscribe(subscriber))
+                        .unwrap();
+                    prop_assert!(actions.sends.is_empty());
+                    prop_assert!(actions.creates.is_empty());
+                    prop_assert!(matches!(actions.become_, Step::Continue));
                     expected.retain(|candidate| *candidate != subscriber);
                 }
                 _ if expected.is_empty() => {

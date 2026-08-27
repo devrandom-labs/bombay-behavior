@@ -955,9 +955,12 @@ mod tests {
         assert!(first.sends == vec![Delivery::new(one, 7)]);
         assert!(matches!(first.become_, Step::Continue));
 
-        router
+        let removed = router
             .receive(MailAddr(9), RouterMessage::Remove(one))
             .unwrap();
+        assert!(removed.sends.is_empty());
+        assert!(removed.creates.is_empty());
+        assert_eq!(removed.become_, Step::Continue);
         let second = router
             .receive(MailAddr(9), RouterMessage::Route(8))
             .unwrap();
@@ -994,7 +997,7 @@ mod tests {
             Err(RouterError::NoEligibleRecipients(1))
         ));
         for recipient in [one, two] {
-            router
+            let observed = router
                 .receive(
                     MailAddr(9),
                     RouterMessage::Observe(LoadObservation {
@@ -1004,13 +1007,16 @@ mod tests {
                     }),
                 )
                 .unwrap();
+            assert!(observed.sends.is_empty());
+            assert!(observed.creates.is_empty());
+            assert_eq!(observed.become_, Step::Continue);
         }
         let tied = router
             .receive(MailAddr(9), RouterMessage::Route(2))
             .unwrap();
         assert!(tied.sends == vec![Delivery::new(one, 2)]);
 
-        router
+        let observed = router
             .receive(
                 MailAddr(9),
                 RouterMessage::Observe(LoadObservation {
@@ -1020,6 +1026,9 @@ mod tests {
                 }),
             )
             .unwrap();
+        assert!(observed.sends.is_empty());
+        assert!(observed.creates.is_empty());
+        assert_eq!(observed.become_, Step::Continue);
         let selected = router
             .receive(MailAddr(9), RouterMessage::Route(3))
             .unwrap();
@@ -1034,7 +1043,7 @@ mod tests {
             .initialize()
             .unwrap()
             .behavior;
-        router
+        let observed = router
             .receive(
                 MailAddr(9),
                 RouterMessage::Observe(LoadObservation {
@@ -1044,6 +1053,9 @@ mod tests {
                 }),
             )
             .unwrap();
+        assert!(observed.sends.is_empty());
+        assert!(observed.creates.is_empty());
+        assert_eq!(observed.become_, Step::Continue);
 
         assert!(matches!(
             router.receive(
@@ -1115,7 +1127,7 @@ mod tests {
         .unwrap()
         .behavior;
         for (index, recipient) in members.into_iter().enumerate() {
-            router
+            let observed = router
                 .receive(
                     MailAddr(9),
                     RouterMessage::Observe(MemberTokenObservation {
@@ -1125,6 +1137,9 @@ mod tests {
                     }),
                 )
                 .unwrap();
+            assert!(observed.sends.is_empty());
+            assert!(observed.creates.is_empty());
+            assert_eq!(observed.become_, Step::Continue);
         }
         let before = (0..128_u64)
             .map(|key| {
@@ -1141,9 +1156,12 @@ mod tests {
                     .to
             })
             .collect::<Vec<_>>();
-        router
+        let removed = router
             .receive(MailAddr(9), RouterMessage::Remove(members[1]))
             .unwrap();
+        assert!(removed.sends.is_empty());
+        assert!(removed.creates.is_empty());
+        assert_eq!(removed.become_, Step::Continue);
         for (key, previous) in before.into_iter().enumerate() {
             let current = router
                 .receive(
@@ -1171,7 +1189,7 @@ mod tests {
             .unwrap()
             .behavior;
         for (recipient, token) in [(one, 11), (two, 22)] {
-            router
+            let observed = router
                 .receive(
                     MailAddr(9),
                     RouterMessage::Observe(MemberTokenObservation {
@@ -1181,6 +1199,9 @@ mod tests {
                     }),
                 )
                 .unwrap();
+            assert!(observed.sends.is_empty());
+            assert!(observed.creates.is_empty());
+            assert_eq!(observed.become_, Step::Continue);
         }
         let first = router
             .receive(

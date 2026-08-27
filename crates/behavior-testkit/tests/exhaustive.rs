@@ -7,12 +7,28 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, CreationKind, Delivery, MailAddr, Never, RestartPolicy, Strategy,
-    SupervisionEvent, Supervisor, SupervisorError, WorkerCreationResolved, WorkerStopped,
+    Acted, Actions, Behavior, BehaviorActed, BehaviorBase, Births, CreationKind, Delivery,
+    MailAddr, Never, RestartPolicy, Strategy, Supervise, SuperviseError, SupervisionEvent, User,
+    WorkerCreationResolved, WorkerStopped,
 };
 use behavior_testkit::model::{Model, Outcome, SupervisionModelError};
 use std::time::Instant;
 use tokio::runtime::Builder;
+
+macro_rules! assert_quiet_supervision {
+    ($actions:expr) => {{
+        let actions = &$actions;
+        assert!(actions.sends.owned.child_observations.is_empty());
+        assert!(actions.sends.owned.creation_observations.is_empty());
+        assert!(actions.sends.owned.schedules.is_empty());
+        assert!(actions.sends.owned.replacement_inputs.is_empty());
+        assert!(actions.sends.owned.failure_reports.is_empty());
+        assert!(actions.sends.owned.shutdowns.is_empty());
+        assert!(actions.sends.inner.is_empty());
+        assert!(actions.creates.is_empty());
+        assert!(matches!(actions.become_, behavior::Step::Continue));
+    }};
+}
 
 #[derive(Default)]
 struct Echo;
@@ -38,6 +54,34 @@ type Child = Echo;
 
 fn child(_index: usize) -> Child {
     Echo
+}
+
+struct ExhaustiveApplication;
+
+impl behavior::Protocol for ExhaustiveApplication {
+    type Addr = MailAddr;
+    type Msg = ();
+}
+
+impl BehaviorBase for ExhaustiveApplication {
+    type Base = Self;
+
+    fn base(&self) -> &Self {
+        self
+    }
+}
+
+impl Behavior for ExhaustiveApplication {
+    type Protocol = Self;
+    type Event = User<MailAddr, ()>;
+    type Sends = Vec<Never>;
+    type Ph = Never;
+    type Error = Never;
+    type Birth = Births<Child>;
+
+    fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
+        Ok(Actions::cont())
+    }
 }
 
 const FLEET: usize = 2;
@@ -97,7 +141,8 @@ fn exhaustive_supervision_sequences_match_the_reference_model() {
                             }
 
                             let mut model = Model::new(FLEET);
-                            let behavior = Supervisor::new(
+                            let behavior = Supervise::new(
+                                ExhaustiveApplication,
                                 behavior::ChildTopology::indexed(
                                     |index| u64::try_from(index).unwrap(),
                                     FLEET,
@@ -108,13 +153,33 @@ fn exhaustive_supervision_sequences_match_the_reference_model() {
                                     policy,
                                     maximum,
                                     window_duration,
+                                    behavior::RestartTiming::Immediate,
                                 ),
+                                behavior::Proxy::new,
                             )
                             .unwrap();
                             let initialized = behavior.initialize().unwrap();
                             let mut behavior = initialized.behavior;
                             let mut workers = [0_u64, 1];
                             let mut next_worker = 2_u64;
+                            for proxy in 0..FLEET {
+                                let proxy = u64::try_from(proxy).unwrap();
+                                let joined = runtime
+                                    .block_on(async {
+                                        behavior.transition(
+                                            SupervisionEvent::WorkerCreationResolved(
+                                                WorkerCreationResolved::new(
+                                                    proxy,
+                                                    proxy,
+                                                    CreationKind::Birth,
+                                                    Ok(()),
+                                                ),
+                                            ),
+                                        )
+                                    })
+                                    .unwrap();
+                                assert_quiet_supervision!(joined);
+                            }
 
                             for (nonce, outcome, at) in events {
                                 let stopped = WorkerStopped {
@@ -138,7 +203,7 @@ fn exhaustive_supervision_sequences_match_the_reference_model() {
                                         assert_eq!(rejected, nonce);
                                         assert!(matches!(
                                             actual,
-                                            Err(SupervisorError::UnexpectedWorkerStopped(returned))
+                                            Err(SuperviseError::UnexpectedWorkerStopped(returned))
                                                 if returned == stopped
                                         ));
                                         continue;
@@ -147,7 +212,8 @@ fn exhaustive_supervision_sequences_match_the_reference_model() {
                                 let actions = actual.unwrap();
                                 let sends: Vec<u64> = actions
                                     .sends
-                                    .replacement_commands
+                                    .owned
+                                    .replacement_inputs
                                     .iter()
                                     .map(|delivery| delivery.nonce)
                                     .collect();
@@ -160,7 +226,7 @@ fn exhaustive_supervision_sequences_match_the_reference_model() {
                                     let index = usize::try_from(proxy).unwrap();
                                     let previous = workers[index];
                                     if proxy != nonce {
-                                        runtime
+                                        let duplicate_stop = runtime
                                             .block_on(async {
                                                 behavior.transition(
                                                     SupervisionEvent::WorkerStopped(
@@ -176,8 +242,9 @@ fn exhaustive_supervision_sequences_match_the_reference_model() {
                                                 )
                                             })
                                             .unwrap();
+                                        assert_quiet_supervision!(duplicate_stop);
                                     }
-                                    runtime
+                                    let joined = runtime
                                         .block_on(async {
                                             behavior.transition(
                                                 SupervisionEvent::WorkerCreationResolved(
@@ -193,12 +260,13 @@ fn exhaustive_supervision_sequences_match_the_reference_model() {
                                             )
                                         })
                                         .unwrap();
+                                    assert_quiet_supervision!(joined);
                                     workers[index] = next_worker;
                                     next_worker += 1;
                                 }
                                 for slot in model.slots() {
                                     assert_eq!(
-                                        behavior.is_alive(slot.nonce).unwrap(),
+                                        behavior.is_restartable(slot.nonce).unwrap(),
                                         slot.alive,
                                         "alive mismatch nonce={} strategy={strategy:?} policy={policy:?} maximum={maximum} window={window:?}",
                                         slot.nonce

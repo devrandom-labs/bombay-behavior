@@ -8,7 +8,7 @@
 
 use std::collections::HashSet;
 
-use behavior::{Machine, MailAddr, Move, Never, Step, User, UserEvent};
+use behavior::{Actions, Machine, MailAddr, Move, Never, NoBirths, Step, User, UserEvent};
 use proptest::collection::vec;
 use proptest::prelude::*;
 use tokio::runtime::Builder;
@@ -61,6 +61,12 @@ fn assert_no_drop_no_dup(seen: &[u64], held: usize, consumed: usize, stepped: us
     assert_eq!(unique.len(), seen.len(), "duplicate delivery: {seen:?}");
 }
 
+fn assert_continue(actions: &Actions<MailAddr, Never, Vec<Never>, NoBirths>) {
+    assert!(actions.sends.is_empty());
+    assert!(actions.creates.is_empty());
+    assert!(matches!(actions.become_, Step::Continue));
+}
+
 proptest! {
     #![proptest_config(ProptestConfig {
         cases: 512,
@@ -82,7 +88,8 @@ proptest! {
                 Phase::B => 2,
             };
             consumed += usize::from(id % 4 == goto_class);
-            machine.transition(User::user(MailAddr(0), id)).unwrap();
+            let actions = machine.transition(User::user(MailAddr(0), id)).unwrap();
+            assert_continue(&actions);
             assert_no_drop_no_dup(machine.state(), machine.held(), consumed, index + 1);
         }
     }
@@ -120,7 +127,8 @@ proptest! {
                 Phase3::C => 3,
             };
             consumed += usize::from(id % 5 == goto_class);
-            machine.transition(User::user(MailAddr(0), id)).unwrap();
+            let actions = machine.transition(User::user(MailAddr(0), id)).unwrap();
+            assert_continue(&actions);
             assert_no_drop_no_dup(machine.state(), machine.held(), consumed, index + 1);
         }
     }
@@ -159,9 +167,10 @@ fn fsm_exhaustive_sequences_never_drop_or_duplicate() {
                     Phase::B => 2,
                 };
                 consumed += usize::from(id % 4 == goto_class);
-                runtime
+                let actions = runtime
                     .block_on(async { machine.transition(User::user(MailAddr(0), id)) })
                     .unwrap();
+                assert_continue(&actions);
                 assert_no_drop_no_dup(machine.state(), machine.held(), consumed, index + 1);
             }
             checked += 1;
@@ -198,15 +207,20 @@ async fn fsm_stop_mid_drain_preserves_remaining_batch() {
     let mut machine = machine.initialize().unwrap().behavior;
     // Defer ids 1 and 2 in P0; id 0 opens P1 and drains: id 1 re-defers in
     // P1, id 2 stops the drain — id 1 must remain held.
-    machine.transition(User::user(MailAddr(0), 1)).unwrap();
-    machine.transition(User::user(MailAddr(0), 2)).unwrap();
+    let deferred = machine.transition(User::user(MailAddr(0), 1)).unwrap();
+    assert_continue(&deferred);
+    let deferred = machine.transition(User::user(MailAddr(0), 2)).unwrap();
+    assert_continue(&deferred);
     let opened = machine.transition(User::user(MailAddr(0), 0)).unwrap();
+    assert!(opened.sends.is_empty());
+    assert!(opened.creates.is_empty());
     assert!(matches!(opened.become_, Step::Stop(behavior::Stopped)));
     assert!(machine.state().is_empty());
     assert_eq!(machine.held(), 1);
 
     // The fold is still live: id 3 records in P1.
-    machine.transition(User::user(MailAddr(0), 3)).unwrap();
+    let recorded = machine.transition(User::user(MailAddr(0), 3)).unwrap();
+    assert_continue(&recorded);
     assert_eq!(machine.state().as_slice(), &[3]);
     assert_eq!(machine.held(), 1);
 }
@@ -236,16 +250,19 @@ async fn fsm_self_goto_does_not_drain() {
         },
     );
     let mut machine = machine.initialize().unwrap().behavior;
-    machine.transition(User::user(MailAddr(0), 1)).unwrap(); // defer
+    let deferred = machine.transition(User::user(MailAddr(0), 1)).unwrap();
+    assert_continue(&deferred);
     assert_eq!(machine.held(), 1);
 
     // Self-goto: no phase change, no drain, the deferred message stays.
-    machine.transition(User::user(MailAddr(0), 3)).unwrap();
+    let stayed = machine.transition(User::user(MailAddr(0), 3)).unwrap();
+    assert_continue(&stayed);
     assert_eq!(machine.held(), 1);
     assert!(machine.state().is_empty());
 
     // A real phase change drains and replays it.
-    machine.transition(User::user(MailAddr(0), 2)).unwrap();
+    let changed = machine.transition(User::user(MailAddr(0), 2)).unwrap();
+    assert_continue(&changed);
     assert_eq!(machine.state().as_slice(), &[1]);
     assert_eq!(machine.held(), 0);
 }

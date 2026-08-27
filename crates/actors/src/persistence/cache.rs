@@ -1,7 +1,9 @@
 //! Bounded least-recently-used value policy.
 
+#[cfg(test)]
+use behavior::MessageProtocol;
 use behavior::{
-    Actions, Address, Behavior, BehaviorActed, BehaviorBase, MessageProtocol, Never, NoBirths, User,
+    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Never, NoBirths, Protocol, User,
 };
 use thiserror::Error;
 
@@ -136,7 +138,8 @@ impl CacheConfiguration {
 pub struct Cache<A, K, V, Route>
 where
     A: Address,
-    Route: DeliveryRoute<Protocol = MessageProtocol<A, CacheResult<K, V>>>,
+    Route: DeliveryRoute,
+    Route::Protocol: Protocol<Addr = A, Msg = CacheResult<K, V>>,
 {
     state: CacheState<K, V>,
     address: core::marker::PhantomData<fn() -> (A, Route)>,
@@ -145,7 +148,8 @@ where
 impl<A, K, V, Route> Cache<A, K, V, Route>
 where
     A: Address,
-    Route: DeliveryRoute<Protocol = MessageProtocol<A, CacheResult<K, V>>>,
+    Route: DeliveryRoute,
+    Route::Protocol: Protocol<Addr = A, Msg = CacheResult<K, V>>,
 {
     /// Bind validated capacity to an empty cache actor.
     #[must_use]
@@ -169,7 +173,8 @@ where
 impl<A, K, V, Route> BehaviorBase for Cache<A, K, V, Route>
 where
     A: Address,
-    Route: DeliveryRoute<Protocol = MessageProtocol<A, CacheResult<K, V>>>,
+    Route: DeliveryRoute,
+    Route::Protocol: Protocol<Addr = A, Msg = CacheResult<K, V>>,
 {
     type Base = Self;
 
@@ -183,7 +188,8 @@ where
     A: Address,
     K: Clone + Eq,
     V: Clone,
-    Route: DeliveryRoute<Protocol = MessageProtocol<A, CacheResult<K, V>>>,
+    Route: DeliveryRoute,
+    Route::Protocol: Protocol<Addr = A, Msg = CacheResult<K, V>>,
 {
     type Addr = A;
     type Msg = CacheMessage<K, V, Route>;
@@ -194,10 +200,11 @@ where
     A: Address,
     K: Clone + Eq,
     V: Clone,
-    Route: DeliveryRoute<Protocol = MessageProtocol<A, CacheResult<K, V>>>,
+    Route: DeliveryRoute,
+    Route::Protocol: Protocol<Addr = A, Msg = CacheResult<K, V>>,
     Route::Sends: behavior::SendsFor<User<A, CacheMessage<K, V, Route>>>,
 {
-    type Protocol = MessageProtocol<A, CacheMessage<K, V, Route>>;
+    type Protocol = Self;
     type Event = User<A, crate::BehaviorMessage<Self>>;
     type Sends = Route::Sends;
     type Ph = Never;

@@ -234,7 +234,11 @@ mod tests {
     async fn exhaustion_retires_only_the_timer_and_preserves_the_inner_fold() {
         let mut timeout =
             ReceiveTimeout::new(Count(0), TimerId(0), Duration::from_secs(1), elapsed);
-        behavior::initialize(&mut timeout).unwrap();
+        let initialized = behavior::initialize(&mut timeout).unwrap();
+        assert_eq!(initialized.sends.owned.len(), 1);
+        assert!(initialized.sends.inner.is_empty());
+        assert!(initialized.creates.is_empty());
+        assert!(matches!(initialized.become_, Step::Continue));
         timeout.timer = TimerLease::idle(TimerGeneration(u64::MAX));
 
         let actions = behavior::delegate_transition(

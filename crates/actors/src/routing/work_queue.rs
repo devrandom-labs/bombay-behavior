@@ -351,8 +351,13 @@ mod tests {
     fn availability_and_waiting_are_fifo() {
         let mut s = (Subject::new(2)).initialize().unwrap().behavior;
         for w in [worker(1), worker(2)] {
-            s.receive(MailAddr(0), WorkQueueMessage::Available { worker: w })
+            let available = s
+                .receive(MailAddr(0), WorkQueueMessage::Available { worker: w })
                 .unwrap();
+            assert!(available.sends.assignments.is_empty());
+            assert!(available.sends.outcomes.is_empty());
+            assert!(available.creates.is_empty());
+            assert_eq!(available.become_, crate::Step::Continue);
         }
         for value in [10, 20, 30] {
             let a = s

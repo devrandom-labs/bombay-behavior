@@ -347,7 +347,7 @@ mod tests {
     #[test]
     fn stale_and_conflicting_evidence_preserve_committed_state() {
         let mut health = (TestHealth::new()).initialize().unwrap().behavior;
-        health
+        let observed = health
             .receive(
                 MailAddr(9),
                 HealthMessage::Observe {
@@ -357,6 +357,9 @@ mod tests {
                 },
             )
             .unwrap();
+        assert!(observed.sends.is_empty());
+        assert!(observed.creates.is_empty());
+        assert_eq!(observed.become_, crate::Step::Continue);
 
         assert!(matches!(
             health.receive(
@@ -404,7 +407,7 @@ mod tests {
         let reply = Recipient::<Reply>::global(MailAddr(8));
         let mut health = (TestHealth::new()).initialize().unwrap().behavior;
         for (component, status) in [(1, HealthStatus::Healthy), (2, HealthStatus::Unhealthy)] {
-            health
+            let observed = health
                 .receive(
                     MailAddr(9),
                     HealthMessage::Observe {
@@ -414,6 +417,9 @@ mod tests {
                     },
                 )
                 .unwrap();
+            assert!(observed.sends.is_empty());
+            assert!(observed.creates.is_empty());
+            assert_eq!(observed.become_, crate::Step::Continue);
         }
         let report = health
             .receive(MailAddr(9), HealthMessage::Query { reply_to: reply })
@@ -441,7 +447,7 @@ mod tests {
             ]
         );
 
-        health
+        let removed = health
             .receive(
                 MailAddr(9),
                 HealthMessage::Remove {
@@ -450,6 +456,9 @@ mod tests {
                 },
             )
             .unwrap();
+        assert!(removed.sends.is_empty());
+        assert!(removed.creates.is_empty());
+        assert_eq!(removed.become_, crate::Step::Continue);
         assert!(matches!(
             health.receive(
                 MailAddr(9),

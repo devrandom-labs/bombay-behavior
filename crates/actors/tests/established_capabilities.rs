@@ -1,16 +1,18 @@
 use behavior_actors::{
     Actions, Activate as _, Behavior, BehaviorActed, BehaviorBase, Births, CancelObservation,
-    ChildHead, ChildOccurrence, ChildRole, ChildRoute, CreationKind, CreationRejection,
-    DeclaredChildOccurrence, Delivery, DeliveryRoute, EndpointAddress, EstablishedCreation,
-    EstablishedDelivery, EstablishedObservation, EstablishedRecipient,
-    EstablishedTerminationMonitor, EventLayer, Exit, Here, HeterogeneousShutdownPlan, Ingress,
-    InterpretEstablishedDelivery, InterpretEstablishedObservation, InterpretEstablishedShutdown,
-    InterpretSends, InterpreterRequests, MessageAdapterWithRoute, Never, NoBirths,
-    NoShutdownTargets, ObservationId, ObservationOperation, ObservationRejection,
-    ObserveEstablished, ObserveEstablishedCreation, Protocol, Proxy, ReceiveTimeout, Recipient,
-    ReplyRoute, ResolveChildOccurrence, SendEffects, SendInterpreter, SendLayer, ShutdownChoice,
-    ShutdownEstablished, ShutdownId, ShutdownRequested, Stash, StopOnShutdown, Supervise,
-    TerminationMonitorError, TerminationObservation, User, Watch, established_child,
+    ChildHead, ChildOccurrence, ChildRole, ChildRoute, ChildTail, ChildTopology, ComposedEvent,
+    CreationKind, CreationRejection, DeclaredChildOccurrence, Delivery, DeliveryRoute,
+    EndpointAddress, EstablishedCreation, EstablishedDelivery, EstablishedObservation,
+    EstablishedRecipient, EstablishedTerminationMonitor, EventLayer, Exit, Here,
+    HeterogeneousShutdownPlan, Ingress, InjectEvent, InterpretEstablishedDelivery,
+    InterpretEstablishedObservation, InterpretEstablishedShutdown, InterpretSends,
+    InterpreterRequests, MessageAdapterWithRoute, Never, NoBirths, NoShutdownTargets,
+    ObservationId, ObservationOperation, ObservationRejection, ObserveEstablished,
+    ObserveEstablishedCreation, Protocol, Proxy, ReceiveTimeout, Recipient, ReplyRoute,
+    ResolveChildOccurrence, RestartConfiguration, RestartPolicy, SendEffects, SendInterpreter,
+    SendLayer, ShutdownChoice, ShutdownEstablished, ShutdownId, ShutdownRequested, Stash,
+    StopOnShutdown, Strategy, Supervise, TerminationMonitorError, TerminationObservation, User,
+    UserEvent, Watch, established_child,
 };
 use core::future::Future;
 use core::marker::PhantomData;
@@ -122,7 +124,41 @@ impl ChildOccurrence<Parent> for PrimaryWorker {
 }
 
 type CreationFact = EstablishedCreation<WorkerProtocol, PrimaryWorker>;
-type ParentEvent = EventLayer<CreationFact, User<RuntimeAddr, ()>>;
+enum ParentEvent {
+    Creation(CreationFact),
+    Command(User<RuntimeAddr, ()>),
+}
+
+impl UserEvent for ParentEvent {
+    type Addr = RuntimeAddr;
+    type Message = ();
+
+    fn user(from: Self::Addr, message: Self::Message) -> Self {
+        Self::Command(User::new(from, message))
+    }
+
+    fn into_user(self) -> Result<User<Self::Addr, Self::Message>, Self> {
+        match self {
+            Self::Command(user) => Ok(user),
+            other => Err(other),
+        }
+    }
+}
+
+impl ComposedEvent for ParentEvent {
+    type Inner = User<RuntimeAddr, ()>;
+
+    fn from_inner(event: Self::Inner) -> Self {
+        Self::Command(event)
+    }
+}
+
+impl InjectEvent<CreationFact, Here> for ParentEvent {
+    fn inject_at(value: CreationFact) -> Self {
+        Self::Creation(value)
+    }
+}
+
 type ParentSends = SendLayer<
     InterpreterRequests<ObserveEstablishedCreation<WorkerProtocol, PrimaryWorker>>,
     Vec<EstablishedDelivery<WorkerProtocol>>,
@@ -186,8 +222,8 @@ impl Behavior for Parent {
         event: Self::Event,
     ) -> BehaviorActed<Self> {
         match event {
-            EventLayer::Inner(_) => Ok(Actions::cont()),
-            EventLayer::Owned(fact) => {
+            ParentEvent::Command(_) => Ok(Actions::cont()),
+            ParentEvent::Creation(fact) => {
                 if !matches!(self.state, ParentState::Awaiting) {
                     return Err(ParentError::StaleCreationFact);
                 }
@@ -229,6 +265,13 @@ where
 {
 }
 
+fn value_resolves_occurrence<Emitter, Occurrence, Child, Position>(_: &Emitter)
+where
+    Emitter: ResolveChildOccurrence<Occurrence, Child = Child, Position = Position>,
+    Child: Behavior,
+{
+}
+
 #[test]
 fn nominal_occurrences_cross_only_topology_transparent_wrappers() {
     resolves_occurrence::<Parent, PrimaryWorker, Worker, ChildHead>();
@@ -252,9 +295,25 @@ fn nominal_occurrences_cross_only_topology_transparent_wrappers() {
         ChildHead,
     >();
 
-    // Supervision owns a different direct child topology, so its raw position
-    // resolves the proxy rather than inheriting `PrimaryWorker`.
-    resolves_occurrence::<Supervise<Parent, Worker>, ChildHead, Proxy<Worker>, ChildHead>();
+    // Supervision preserves the application's direct-child occurrence and
+    // appends its stable child after that complete prefix.
+    let supervised = Supervise::new(
+        Parent::new(),
+        ChildTopology::new([1], |_| Some(Worker)),
+        RestartConfiguration::new(
+            Strategy::OneForOne,
+            RestartPolicy::Permanent,
+            1,
+            core::time::Duration::from_secs(30),
+            behavior_actors::RestartTiming::Immediate,
+        ),
+        Proxy::new,
+    )
+    .unwrap();
+    value_resolves_occurrence::<_, ChildHead, Worker, ChildHead>(&supervised);
+    value_resolves_occurrence::<_, ChildTail<ChildHead>, Proxy<Worker>, ChildTail<ChildHead>>(
+        &supervised,
+    );
 }
 
 #[derive(Default)]
@@ -539,20 +598,28 @@ fn exact_termination_monitor_commits_each_complete_relationship_phase() {
         active.observation(),
         behavior_actors::TerminationObservation::Requested
     );
-    active
+    let started = active
         .on_path(EstablishedObservation::<WorkerProtocol>::started(
             ObservationId(6),
         ))
         .unwrap();
+    assert!(started.sends.owned.is_empty());
+    assert!(started.sends.inner.is_empty());
+    assert!(started.creates.is_empty());
+    assert_eq!(started.become_, behavior_actors::Step::Continue);
     assert_eq!(
         active.observation(),
         behavior_actors::TerminationObservation::Observing
     );
-    active
+    let cancelled = active
         .on_path(EstablishedObservation::<WorkerProtocol>::cancelled(
             ObservationId(6),
         ))
         .unwrap();
+    assert!(cancelled.sends.owned.is_empty());
+    assert!(cancelled.sends.inner.is_empty());
+    assert!(cancelled.creates.is_empty());
+    assert_eq!(cancelled.become_, behavior_actors::Step::Continue);
     assert_eq!(
         active.observation(),
         behavior_actors::TerminationObservation::Cancelled
@@ -597,18 +664,26 @@ fn exact_termination_monitor_reacts_once_to_the_matching_stopped_fact() {
     .unwrap()
     .behavior;
 
-    active
+    let started = active
         .on_path(EstablishedObservation::<WorkerProtocol>::started(
             ObservationId(7),
         ))
         .unwrap();
-    active
+    assert!(started.sends.owned.is_empty());
+    assert!(started.sends.inner.is_empty());
+    assert!(started.creates.is_empty());
+    assert_eq!(started.become_, behavior_actors::Step::Continue);
+    let stopped = active
         .on_path(EstablishedObservation::<WorkerProtocol>::stopped(
             ObservationId(7),
             Ok(Exit::Normal),
             Instant::now(),
         ))
         .unwrap();
+    assert!(stopped.sends.owned.is_empty());
+    assert!(stopped.sends.inner.is_empty());
+    assert!(stopped.creates.is_empty());
+    assert_eq!(stopped.become_, behavior_actors::Step::Continue);
     assert!(matches!(
         active.on_path(EstablishedObservation::<WorkerProtocol>::stopped(
             ObservationId(7),

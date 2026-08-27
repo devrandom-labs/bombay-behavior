@@ -2,8 +2,8 @@ use std::hint::black_box;
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, Crash, Machine, MailAddr, Move, Never, Proxy, ProxyCommand, Recipient,
-    RestartPolicy, StashRoute, Step, Strategy, Supervisor, WorkerStopped, stop_on_abnormal_death,
+    Acted, Actions, Crash, CreationResolved, Machine, MailAddr, Move, Never, Proxy, RestartPolicy,
+    StashRoute, Step, Strategy, Supervisor, WorkerStopped, stop_on_abnormal_death,
 };
 use behavior_testkit::InitializeTest;
 use std::time::Instant;
@@ -55,7 +55,12 @@ fn measure_base() -> f64 {
     let started = Instant::now();
     for index in 0..ITERATIONS {
         let message = u64::try_from(index).unwrap();
-        black_box(behavior.receive(MailAddr(0), black_box(message)).unwrap());
+        let actions = behavior.receive(MailAddr(0), black_box(message)).unwrap();
+        black_box((
+            actions.sends.len(),
+            actions.creates.len(),
+            matches!(actions.become_, Step::Continue),
+        ));
     }
     rate(ITERATIONS, started.elapsed())
 }
@@ -64,17 +69,33 @@ fn measure_proxy() -> f64 {
     let proxy = Proxy::new(child(0));
     let initialized = proxy.initialize().unwrap();
     let mut proxy = initialized.behavior;
+    let installed = proxy
+        .on_path(CreationResolved::birth(0, MailAddr(1)))
+        .unwrap();
+    assert!(installed.sends.deliveries.is_empty());
+    assert!(installed.sends.unavailable_reports.is_empty());
+    assert!(installed.sends.child_observations.is_empty());
+    assert!(installed.sends.creation_observations.is_empty());
+    assert!(installed.sends.stopped_reports.is_empty());
+    assert_eq!(installed.sends.creation_reports.len(), 1);
+    assert!(installed.sends.shutdowns.is_empty());
+    assert!(installed.creates.is_empty());
+    assert!(matches!(installed.become_, Step::Continue));
     let started = Instant::now();
     for index in 0..ITERATIONS {
-        let command = if index % 64 == 0 {
-            ProxyCommand::Replace(child(index))
-        } else {
-            ProxyCommand::Forward {
-                command: u64::try_from(index).unwrap(),
-                unavailable_to: Recipient::global(MailAddr(0)),
-            }
-        };
-        black_box(proxy.receive(MailAddr(0), black_box(command)).unwrap());
+        let command = u64::try_from(index).unwrap();
+        let actions = proxy.receive(MailAddr(0), black_box(command)).unwrap();
+        black_box((
+            actions.sends.deliveries.len(),
+            actions.sends.unavailable_reports.len(),
+            actions.sends.child_observations.len(),
+            actions.sends.creation_observations.len(),
+            actions.sends.stopped_reports.len(),
+            actions.sends.creation_reports.len(),
+            actions.sends.shutdowns.len(),
+            actions.creates.len(),
+            matches!(actions.become_, Step::Continue),
+        ));
     }
     rate(ITERATIONS, started.elapsed())
 }
@@ -95,7 +116,9 @@ fn measure_supervise(fleet: usize) -> f64 {
             RestartPolicy::Permanent,
             u32::MAX,
             Duration::MAX,
+            behavior::RestartTiming::Immediate,
         ),
+        Proxy::new,
     )
     .unwrap();
     let initialized = behavior.initialize().unwrap();
@@ -115,9 +138,18 @@ fn measure_supervise(fleet: usize) -> f64 {
         // Asserting stress workload: every death yields exactly one
         // replacement routed to the dead slot (OneForOne, Permanent,
         // unbounded budget) — correctness checked while measuring.
-        assert_eq!(actions.sends.replacement_commands.len(), 1);
-        assert_eq!(actions.sends.replacement_commands[0].nonce, nonce);
-        black_box(actions);
+        assert_eq!(actions.sends.replacement_inputs.len(), 1);
+        assert_eq!(actions.sends.replacement_inputs[0].nonce, nonce);
+        black_box((
+            actions.sends.child_observations.len(),
+            actions.sends.creation_observations.len(),
+            actions.sends.schedules.len(),
+            actions.sends.replacement_inputs.len(),
+            actions.sends.failure_reports.len(),
+            actions.sends.shutdowns.len(),
+            actions.creates.len(),
+            matches!(actions.become_, Step::Continue),
+        ));
     }
     println!(
         "info supervise_{fleet}_restarts_after={}",
@@ -143,11 +175,14 @@ fn measure_fsm() -> f64 {
     let mut machine = machine.initialize().unwrap().behavior;
     let started = Instant::now();
     for index in 0..SHORT_ITERATIONS {
-        black_box(
-            machine
-                .receive(MailAddr(0), u64::try_from(index).unwrap())
-                .unwrap(),
-        );
+        let actions = machine
+            .receive(MailAddr(0), u64::try_from(index).unwrap())
+            .unwrap();
+        black_box((
+            actions.sends.len(),
+            actions.creates.len(),
+            matches!(actions.become_, Step::Continue),
+        ));
     }
     rate(SHORT_ITERATIONS, started.elapsed())
 }
@@ -159,11 +194,14 @@ fn measure_stash() -> f64 {
     let mut behavior = behavior.initialize().unwrap().behavior;
     let started = Instant::now();
     for index in 0..SHORT_ITERATIONS {
-        black_box(
-            behavior
-                .receive(MailAddr(0), u64::try_from(index).unwrap())
-                .unwrap(),
-        );
+        let actions = behavior
+            .receive(MailAddr(0), u64::try_from(index).unwrap())
+            .unwrap();
+        black_box((
+            actions.sends.len(),
+            actions.creates.len(),
+            matches!(actions.become_, Step::Continue),
+        ));
     }
     rate(SHORT_ITERATIONS, started.elapsed())
 }
@@ -187,11 +225,16 @@ fn measure_nested() -> f64 {
     let mut behavior = initialized.behavior;
     let started = Instant::now();
     for index in 0..SHORT_ITERATIONS {
-        black_box(
-            behavior
-                .receive(MailAddr(0), u64::try_from(index).unwrap())
-                .unwrap(),
-        );
+        let actions = behavior
+            .receive(MailAddr(0), u64::try_from(index).unwrap())
+            .unwrap();
+        black_box((
+            actions.sends.owned.len(),
+            actions.sends.inner.owned.len(),
+            actions.sends.inner.inner.len(),
+            actions.creates.len(),
+            matches!(actions.become_, Step::Continue),
+        ));
     }
     rate(SHORT_ITERATIONS, started.elapsed())
 }

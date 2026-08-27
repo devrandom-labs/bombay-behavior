@@ -267,14 +267,18 @@ mod tests {
         let two = Recipient::global(MailAddr(2));
         let mut s = (Subject::new()).initialize().unwrap().behavior;
         for subscriber in [one, two, one] {
-            s.receive(
-                MailAddr(9),
-                PubSubMessage::Subscribe {
-                    topic: 7,
-                    subscriber,
-                },
-            )
-            .unwrap();
+            let subscribed = s
+                .receive(
+                    MailAddr(9),
+                    PubSubMessage::Subscribe {
+                        topic: 7,
+                        subscriber,
+                    },
+                )
+                .unwrap();
+            assert!(subscribed.sends.is_empty());
+            assert!(subscribed.creates.is_empty());
+            assert_eq!(subscribed.become_, crate::Step::Continue);
         }
         let a = s
             .receive(MailAddr(9), PubSubMessage::Publish { topic: 7, value: 4 })
@@ -285,22 +289,30 @@ mod tests {
     fn empty_known_and_unknown_topics_return_publication() {
         let one = Recipient::global(MailAddr(1));
         let mut s = (Subject::new()).initialize().unwrap().behavior;
-        s.receive(
-            MailAddr(9),
-            PubSubMessage::Subscribe {
-                topic: 1,
-                subscriber: one,
-            },
-        )
-        .unwrap();
-        s.receive(
-            MailAddr(9),
-            PubSubMessage::Unsubscribe {
-                topic: 1,
-                subscriber: one,
-            },
-        )
-        .unwrap();
+        let subscribed = s
+            .receive(
+                MailAddr(9),
+                PubSubMessage::Subscribe {
+                    topic: 1,
+                    subscriber: one,
+                },
+            )
+            .unwrap();
+        assert!(subscribed.sends.is_empty());
+        assert!(subscribed.creates.is_empty());
+        assert_eq!(subscribed.become_, crate::Step::Continue);
+        let unsubscribed = s
+            .receive(
+                MailAddr(9),
+                PubSubMessage::Unsubscribe {
+                    topic: 1,
+                    subscriber: one,
+                },
+            )
+            .unwrap();
+        assert!(unsubscribed.sends.is_empty());
+        assert!(unsubscribed.creates.is_empty());
+        assert_eq!(unsubscribed.become_, crate::Step::Continue);
         for topic in [1, 2] {
             assert!(
                 matches!(s.receive(MailAddr(9),PubSubMessage::Publish{topic,value:8}),Err(PubSubError::NoSubscribers{topic:returned,value:8}) if returned==topic)

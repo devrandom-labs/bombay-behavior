@@ -103,8 +103,7 @@ fn terminal(
 }
 
 fuzz_target!(|bytes: &[u8]| {
-    let mut breaker =
-        CircuitBreaker::<MailAddr, Recipient<BreakerReply>>::new(
+    let mut breaker = CircuitBreaker::<MailAddr, Recipient<BreakerReply>>::new(
         NonZeroU32::new(2).expect("constant is non-zero"),
         Duration::from_nanos(1),
         TimerId(1),
@@ -113,26 +112,19 @@ fuzz_target!(|bytes: &[u8]| {
     .initialize()
     .expect("breaker initialization is infallible")
     .behavior;
-    let mut presence = (Presence::<
-        MailAddr,
-        Vec<u8>,
-        Recipient<PresenceReplyTarget>,
-    >::new(timer))
+    let mut presence = (Presence::<MailAddr, Vec<u8>, Recipient<PresenceReplyTarget>>::new(timer))
         .initialize()
         .expect("presence initialization is infallible")
         .behavior;
-    let mut workflow = Workflow::<
-        MailAddr,
-        u8,
-        Recipient<WorkflowReply>,
-    >::new(WorkflowDefinition {
-        steps: vec![0, 1, 2],
-        dependencies: vec![(0, 2), (1, 2)],
-    })
-    .expect("constant graph is acyclic")
-    .initialize()
-    .expect("workflow initialization is infallible")
-    .behavior;
+    let mut workflow =
+        Workflow::<MailAddr, u8, Recipient<WorkflowReply>>::new(WorkflowDefinition {
+            steps: vec![0, 1, 2],
+            dependencies: vec![(0, 2), (1, 2)],
+        })
+        .expect("constant graph is acyclic")
+        .initialize()
+        .expect("workflow initialization is infallible")
+        .behavior;
     let selected_observation = ObservationId(7);
     let mut monitor = EstablishedTerminationMonitor::established(
         MonitorProbe { terminals: 0 },
@@ -176,14 +168,19 @@ fuzz_target!(|bytes: &[u8]| {
             _ => breaker.on_path(TimerElapsed::new(TimerId(1), generation)),
         };
         match breaker_result {
-            Ok(_) => {}
+            Ok(actions) => {
+                assert!(actions.sends.replies.len() <= 1);
+                assert!(actions.sends.schedules.len() <= 1);
+                assert!(actions.creates.is_empty());
+                assert!(matches!(actions.become_, behavior::Step::Continue));
+            }
             Err(BreakerError::UnexpectedCompletion(returned)) => {
                 assert_eq!(submitted_completion, Some(returned));
             }
         }
 
         let participant = vec![b];
-        if a % 3 == 0 {
+        let presence_actions = if a % 3 == 0 {
             presence.on_path(TimerElapsed::new(TimerId(u64::from(b)), generation))
         } else {
             presence.receive(
@@ -197,6 +194,15 @@ fuzz_target!(|bytes: &[u8]| {
             )
         }
         .expect("presence fold is infallible");
+        if a % 3 == 0 {
+            assert!(presence_actions.sends.replies.len() <= 1);
+            assert!(presence_actions.sends.schedules.is_empty());
+        } else {
+            assert_eq!(presence_actions.sends.replies.len(), 1);
+            assert!(presence_actions.sends.schedules.len() <= 1);
+        }
+        assert!(presence_actions.creates.is_empty());
+        assert!(matches!(presence_actions.become_, behavior::Step::Continue));
 
         let workflow_message = match a % 4 {
             0 => WorkflowMessage::Start {
@@ -209,7 +215,11 @@ fuzz_target!(|bytes: &[u8]| {
             },
         };
         match workflow.receive(MailAddr(0), workflow_message) {
-            Ok(_) => {}
+            Ok(actions) => {
+                assert!(actions.sends.len() <= 1);
+                assert!(actions.creates.is_empty());
+                assert!(matches!(actions.become_, behavior::Step::Continue));
+            }
             Err(WorkflowError::NotStarted(
                 WorkflowInput::Complete { .. } | WorkflowInput::Fail { .. },
             )) => {}
@@ -233,7 +243,12 @@ fuzz_target!(|bytes: &[u8]| {
         let fact_id = fact.id();
         let observation_before = monitor.observation();
         match monitor.on_path(fact) {
-            Ok(_) => {}
+            Ok(actions) => {
+                assert!(actions.sends.owned.is_empty());
+                assert!(actions.sends.inner.is_empty());
+                assert!(actions.creates.is_empty());
+                assert!(matches!(actions.become_, behavior::Step::Continue));
+            }
             Err(TerminationMonitorError::UnexpectedFact { observation, fact }) => {
                 assert_eq!(observation, observation_before);
                 assert_eq!(fact.id(), fact_id);
@@ -245,23 +260,26 @@ fuzz_target!(|bytes: &[u8]| {
         let member = MailAddr(u64::from(b % 8));
         match a % 3 {
             0 => {
-                router
-                    .receive(
-                        MailAddr(0),
-                        RouterMessage::Add(Recipient::global(member)),
-                    )
+                let actions = router
+                    .receive(MailAddr(0), RouterMessage::Add(Recipient::global(member)))
                     .expect("membership addition is infallible");
+                assert!(actions.sends.is_empty());
+                assert!(actions.creates.is_empty());
+                assert!(matches!(actions.become_, behavior::Step::Continue));
                 if !eligible.contains(&member) {
                     eligible.push(member);
                 }
             }
             1 => {
-                router
+                let actions = router
                     .receive(
                         MailAddr(0),
                         RouterMessage::Remove(Recipient::global(member)),
                     )
                     .expect("membership removal is infallible");
+                assert!(actions.sends.is_empty());
+                assert!(actions.creates.is_empty());
+                assert!(matches!(actions.become_, behavior::Step::Continue));
                 if let Some(index) = eligible.iter().position(|candidate| *candidate == member) {
                     eligible.remove(index);
                     if eligible.is_empty() {
@@ -289,6 +307,8 @@ fuzz_target!(|bytes: &[u8]| {
                 assert_eq!(actions.sends.len(), 1);
                 assert_eq!(actions.sends[0].to.address(), expected);
                 assert_eq!(actions.sends[0].message, b);
+                assert!(actions.creates.is_empty());
+                assert!(matches!(actions.become_, behavior::Step::Continue));
             }
         }
         assert_eq!(

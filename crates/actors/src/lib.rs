@@ -12,13 +12,14 @@
 //! Public [`Protocol`] identity remains orthogonal to those internal event and
 //! effect algebras. Concrete actor templates declare their protocol; transparent
 //! wrappers preserve `B::Protocol` and do not become new recipient identities.
-//! [`InstallationRequirements`] projects each template's own protocol and
+//! [`BirthProtocols`] projects each template's own protocol and
 //! complete transitive staged-birth protocols into one closed structural
 //! product. Delivery-only external protocols do not enter that product.
-//! [`LogicalHostRequirements`] separately lets a composition owner declare the
-//! complete ordered product of intentional logical destinations. Exact-only
-//! endpoints remain excluded, and generic runtime consumers recurse over the
-//! concrete product without lookup or type erasure.
+//! [`LogicalHostRequirements`] separately derives every intentional logical
+//! destination from the concrete sends algebra and every transitive birth.
+//! The projection preserves repeated occurrences and excludes exact,
+//! creator-local, and interpreter-owned lanes; it is static proof metadata,
+//! not a host registry or runtime lookup.
 //!
 //! Catalogue values and wrappers are constructed directly through their public
 //! owning-type constructors. [`Activate`] consumes any concrete definition
@@ -93,27 +94,21 @@ pub use persistence::{
 };
 pub use pool::{
     AffinitySelector, AssignmentId, CompletionRejection, InterruptionPolicy, JobId,
-    KeyedPoolMessage, KeyedWorkerPool, KeyedWorkerPoolEvent, KeyedWorkerPoolWithParent,
-    PoolActions, PoolAssignment, PoolBehaviorSends, PoolConfigError, PoolConfiguration, PoolError,
-    PoolFailure, PoolInterruption, PoolMessage, PoolRejection, PoolResponse, PoolSends,
-    RebalanceRejection, WorkerPhase, WorkerPool, WorkerPoolEvent, WorkerPoolWithParent,
-    WorkerRetirement,
+    KeyedPoolMessage, KeyedWorkerPool, KeyedWorkerPoolEvent, PoolAssignment, PoolCompletion,
+    PoolConfigError, PoolConfiguration, PoolError, PoolFailure, PoolInterruption, PoolMessage,
+    PoolRejection, PoolResponse, PoolSends, RebalanceRejection, WorkerPhase, WorkerPool,
+    WorkerPoolEvent, WorkerRetirement,
 };
 pub use protocol::{
     CancelObservation, ChildShutdownRejected, ChildShutdownRejection, ChildStopped,
     CreationResolved, EstablishedChild, EstablishedObservation, EstablishedShutdownResolved,
     InterpretEstablishedObservation, InterpretEstablishedShutdown, KeyedWorkerPoolProtocol,
     ObservationId, ObservationOperation, ObservationRejection, ObserveChild, ObserveCreation,
-    ObserveEstablished, ObserveEstablishedCreation, ObservePeer, PeerStopped,
-    PoolAssignmentProtocol, ProxyParentIngress, ReplacementResolution,
-    ReportWorkerCreationResolved, ReportWorkerStopped, ScheduleAfter, ScheduleAt, ShutdownChild,
-    ShutdownEstablished, ShutdownId, ShutdownRejection, ShutdownRequested, TimerElapsed,
-    TimerGeneration, TimerId, UnwatchPeer, WorkerCreationResolved, WorkerPoolProtocol,
-    WorkerStopped, established_child,
-};
-pub use requirements::{
-    InstallationRequirements, LogicalHostRequirements, NoInstallationRequirements,
-    RequiredProtocol, RequirementAt, RequirementHead, RequirementTail,
+    ObserveEstablished, ObserveEstablishedCreation, ObservePeer, PeerStopped, ReplacementRequested,
+    ReplacementResolution, ReportProxyUnavailable, ReportWorkerCreationResolved,
+    ReportWorkerStopped, ScheduleAfter, ScheduleAt, ShutdownChild, ShutdownEstablished, ShutdownId,
+    ShutdownRejection, ShutdownRequested, TimerElapsed, TimerGeneration, TimerId, UnwatchPeer,
+    WorkerCreationResolved, WorkerPoolProtocol, WorkerStopped, established_child,
 };
 pub use routing::{
     AcknowledgementError, AcknowledgementInput, AcknowledgementMessage, AcknowledgementOutcome,
@@ -137,22 +132,18 @@ pub use routing::{
 pub use shutdown::{FinalizeOnShutdown, ShutdownEvent, ShutdownReaction, StopOnShutdown};
 pub use stash::{Stash, StashRoute, StashStatus, StaticallyInfallible};
 pub use supervision::{
-    Backoff, BackoffConfigError, BackoffError, BackoffSupervise, BackoffSuperviseWithParent,
-    BackoffSupervisor, BackoffSupervisorError, BackoffSupervisorEvent, BackoffSupervisorSends,
-    BackoffSupervisorWithParent, ChildTopology, CommandSupervisionEvent, DynamicChildPhase,
-    DynamicSupervisor, DynamicSupervisorError, DynamicSupervisorEvent, DynamicSupervisorMessage,
-    DynamicSupervisorOutcome, DynamicSupervisorRejection, DynamicSupervisorSends,
-    DynamicSupervisorWithParent, FleetError, IncarnationPhase, Proxy, ProxyCommand, ProxyError,
-    ProxyEvent, ProxyLifecycleError, ProxySends, ProxySendsWithParent, ProxyUnavailable,
-    ProxyWithParent, ReportSupervisionFailure, RestartConfiguration, RestartPolicy, Strategy,
-    Supervise, SuperviseError, SuperviseWithParent, SupervisionEvent, SupervisionFailure,
-    SupervisionFailureReaction, Supervisor, SupervisorError, SupervisorEvent, SupervisorProtocol,
-    SupervisorSends, SupervisorWithParent, TopologyFailurePolicy, restart_all, restart_one,
-    restart_rest, retire_on_supervision_failure, stop_on_supervision_failure,
+    Backoff, BackoffConfigError, BackoffError, ChildTopology, DynamicChildPhase, DynamicSupervisor,
+    DynamicSupervisorError, DynamicSupervisorEvent, DynamicSupervisorMessage,
+    DynamicSupervisorOutcome, DynamicSupervisorProtocol, DynamicSupervisorRejection,
+    DynamicSupervisorSends, FleetError, IncarnationPhase, Proxy, ProxyError, ProxyEvent,
+    ProxyLifecycleError, ProxySends, ProxyUnavailable, ReportSupervisionFailure,
+    RestartConfiguration, RestartPolicy, RestartTiming, Strategy, Supervise, SuperviseError,
+    SupervisionEvent, SupervisionFailure, SupervisionFailureReaction, Supervisor, SupervisorSends,
+    restart_all, restart_one, restart_rest, retire_on_supervision_failure,
+    stop_on_supervision_failure,
 };
 pub use termination::{
-    Crash, Exit, ReportTerminalOutcome, RestartDenial, StableSlotRejection,
-    SupervisionFailureReason, TerminalOutcome,
+    Crash, Exit, ReportTerminalOutcome, RestartDenial, SupervisionFailureReason, TerminalOutcome,
 };
 pub use time::{
     Deadline, DeadlineEvent, DeadlineReaction, Lease, LeaseMessage, LeaseOutcome, LeaseRejection,
