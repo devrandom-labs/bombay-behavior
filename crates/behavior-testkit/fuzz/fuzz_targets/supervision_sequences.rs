@@ -9,11 +9,15 @@
 //! agree on every byte.
 
 use behavior::{
-    Acted, Actions, Activate, Backoff, BackoffSupervisor, Crash, CreationKind, Delivery, MailAddr,
-    Never, RestartDenial, RestartPolicy, ShutdownRequested, Step, Strategy, SupervisionEvent,
-    SupervisionFailureReason, Supervisor, TimerElapsed, TimerGeneration, TimerId,
-    TopologyFailurePolicy, WorkerCreationResolved, WorkerStopped,
+    Acted, Actions, Activate, Address, Backoff, Behavior, BehaviorActed, Crash, CreationKind,
+    CreationRejection, Delivery, DynamicSupervisor, DynamicSupervisorMessage,
+    DynamicSupervisorOutcome, EndpointAddress, EstablishedCreation, EstablishedRecipient,
+    InterpretEstablished, MailAddr, Never, NoBirths, Protocol, Recipient, RestartDenial,
+    RestartPolicy, ShutdownRequested, Step, Strategy, SuperviseError, SupervisionEvent,
+    SupervisionFailureReason, Supervisor, TimerElapsed, TimerGeneration, TimerId, User,
+    WorkerCreationResolved, WorkerStopped,
 };
+use core::marker::PhantomData;
 use libfuzzer_sys::fuzz_target;
 use std::time::Instant;
 use tokio::runtime::Builder;
@@ -45,13 +49,250 @@ fn worker(_index: usize) -> Worker {
     Worker
 }
 
-fn timer(nonce: u64) -> TimerId {
-    TimerId(nonce)
+fn stop_on_failure(_: &behavior::SupervisionFailure<MailAddr>) -> behavior::Become {
+    Step::Stop(behavior::Stopped)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct DynamicAddr(u64);
+
+impl Address for DynamicAddr {
+    type Nonce = u64;
+}
+
+struct DynamicEndpoint<P> {
+    id: u64,
+    protocol: PhantomData<fn() -> P>,
+}
+
+impl<P> DynamicEndpoint<P> {
+    const fn new(id: u64) -> Self {
+        Self {
+            id,
+            protocol: PhantomData,
+        }
+    }
+}
+
+impl<P> Clone for DynamicEndpoint<P> {
+    fn clone(&self) -> Self {
+        Self::new(self.id)
+    }
+}
+
+impl EndpointAddress for DynamicAddr {
+    type Established<P>
+        = DynamicEndpoint<P>
+    where
+        P: Protocol<Addr = Self>;
+}
+
+struct DynamicEndpointId;
+
+impl<P> InterpretEstablished<P> for DynamicEndpointId
+where
+    P: Protocol<Addr = DynamicAddr>,
+{
+    type Output = u64;
+
+    fn interpret_established(&mut self, endpoint: DynamicEndpoint<P>) -> Self::Output {
+        endpoint.id
+    }
+}
+
+struct DynamicWorker;
+
+impl Protocol for DynamicWorker {
+    type Addr = DynamicAddr;
+    type Msg = u8;
+}
+
+impl Behavior for DynamicWorker {
+    type Protocol = Self;
+    type Event = User<DynamicAddr, u8>;
+    type Sends = Vec<Never>;
+    type Ph = Never;
+    type Error = Never;
+    type Birth = NoBirths;
+
+    fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
+        Ok(Actions::cont())
+    }
+}
+
+struct DynamicReply;
+
+impl Protocol for DynamicReply {
+    type Addr = DynamicAddr;
+    type Msg = DynamicSupervisorOutcome<DynamicAddr, DynamicWorker>;
+}
+
+fn installed_dynamic_proxy() -> EstablishedCreation<DynamicWorker, behavior::ChildHead> {
+    EstablishedCreation::installed(
+        7,
+        CreationKind::Birth,
+        EstablishedRecipient::issued(DynamicEndpoint::new(70)),
+    )
+}
+
+macro_rules! assert_quiet_supervisor_lanes {
+    ($actions:expr) => {{
+        let actions = &$actions;
+        assert!(actions.sends.child_observations.is_empty());
+        assert!(actions.sends.creation_observations.is_empty());
+        assert!(actions.sends.schedules.is_empty());
+        assert!(actions.sends.shutdowns.is_empty());
+        assert!(actions.creates.is_empty());
+    }};
+}
+
+fn fuzz_dynamic_initial_join(bytes: &[u8]) {
+    for byte in bytes.iter().copied() {
+        let worker_first = byte & 1 != 0;
+        let worker_rejected = byte & 2 != 0;
+        let shutdown_point = (byte >> 2) & 3;
+        let initialized = DynamicSupervisor::<
+            DynamicAddr,
+            DynamicWorker,
+            Recipient<DynamicReply>,
+            _,
+        >::new(behavior::Proxy::new)
+        .initialize()
+        .unwrap();
+        assert!(initialized.actions.sends.outcomes.is_empty());
+        assert!(initialized.actions.sends.child_observations.is_empty());
+        assert!(initialized.actions.sends.creation_observations.is_empty());
+        assert!(initialized.actions.sends.shutdowns.is_empty());
+        assert!(initialized.actions.sends.replacement_inputs.is_empty());
+        assert!(initialized.actions.creates.is_empty());
+        assert!(matches!(initialized.actions.become_, Step::Continue));
+        let mut subject = initialized.behavior;
+        let started = subject
+            .receive(
+                DynamicAddr(1),
+                DynamicSupervisorMessage::Start {
+                    nonce: 7,
+                    child: DynamicWorker,
+                    reply_to: Recipient::global(DynamicAddr(99)),
+                },
+            )
+            .unwrap();
+        assert!(matches!(
+            started.sends.outcomes.as_slice(),
+            [Delivery {
+                message: DynamicSupervisorOutcome::StartAccepted { nonce: 7 },
+                ..
+            }]
+        ));
+        assert_eq!(started.sends.child_observations.len(), 1);
+        assert_eq!(started.sends.creation_observations.len(), 1);
+        assert!(started.sends.shutdowns.is_empty());
+        assert!(started.sends.replacement_inputs.is_empty());
+        assert_eq!(started.creates.len(), 1);
+        assert!(matches!(started.become_, Step::Continue));
+
+        let worker = WorkerCreationResolved::new(
+            7,
+            0,
+            CreationKind::Birth,
+            if worker_rejected {
+                Err(CreationRejection::EnvironmentFailed)
+            } else {
+                Ok(())
+            },
+        );
+        let mut outcomes = 0;
+        let mut shutdowns = 0;
+
+        if shutdown_point == 0 {
+            let actions = subject.on_path(ShutdownRequested).unwrap();
+            outcomes += actions.sends.outcomes.len();
+            shutdowns += actions.sends.shutdowns.len();
+            assert!(actions.sends.child_observations.is_empty());
+            assert!(actions.sends.creation_observations.is_empty());
+            assert!(actions.sends.replacement_inputs.is_empty());
+            assert!(actions.creates.is_empty());
+            assert!(matches!(actions.become_, Step::Continue));
+        }
+        let first = if worker_first {
+            subject.on_path(worker).unwrap()
+        } else {
+            subject.on_path(installed_dynamic_proxy()).unwrap()
+        };
+        outcomes += first.sends.outcomes.len();
+        shutdowns += first.sends.shutdowns.len();
+        assert!(first.sends.child_observations.is_empty());
+        assert!(first.sends.creation_observations.is_empty());
+        assert!(first.sends.replacement_inputs.is_empty());
+        assert!(first.creates.is_empty());
+        assert!(matches!(first.become_, Step::Continue));
+
+        if shutdown_point == 1 {
+            let actions = subject.on_path(ShutdownRequested).unwrap();
+            outcomes += actions.sends.outcomes.len();
+            shutdowns += actions.sends.shutdowns.len();
+            assert!(actions.sends.child_observations.is_empty());
+            assert!(actions.sends.creation_observations.is_empty());
+            assert!(actions.sends.replacement_inputs.is_empty());
+            assert!(actions.creates.is_empty());
+            assert!(matches!(actions.become_, Step::Continue));
+        }
+        let second = if worker_first {
+            subject.on_path(installed_dynamic_proxy()).unwrap()
+        } else {
+            subject.on_path(worker).unwrap()
+        };
+        outcomes += second.sends.outcomes.len();
+        shutdowns += second.sends.shutdowns.len();
+        assert!(second.sends.child_observations.is_empty());
+        assert!(second.sends.creation_observations.is_empty());
+        assert!(second.sends.replacement_inputs.is_empty());
+        assert!(second.creates.is_empty());
+        assert!(matches!(second.become_, Step::Continue));
+
+        if shutdown_point >= 2 {
+            let actions = subject.on_path(ShutdownRequested).unwrap();
+            outcomes += actions.sends.outcomes.len();
+            shutdowns += actions.sends.shutdowns.len();
+            assert!(actions.sends.child_observations.is_empty());
+            assert!(actions.sends.creation_observations.is_empty());
+            assert!(actions.sends.replacement_inputs.is_empty());
+            assert!(actions.creates.is_empty());
+            assert!(matches!(actions.become_, Step::Continue));
+        }
+
+        assert_eq!(outcomes, 1);
+        assert_eq!(shutdowns, 1);
+        assert_eq!(second.sends.outcomes.len(), 1);
+        let outcome = second
+            .sends
+            .outcomes
+            .into_iter()
+            .next()
+            .expect("the completed join emits one outcome")
+            .message;
+        if worker_rejected {
+            assert!(matches!(
+                outcome,
+                DynamicSupervisorOutcome::StartFailed {
+                    nonce: 7,
+                    reason: CreationRejection::EnvironmentFailed,
+                }
+            ));
+        } else {
+            let DynamicSupervisorOutcome::Started { nonce, child } = outcome else {
+                panic!("the completed join emitted an unexpected outcome")
+            };
+            assert_eq!(nonce, 7);
+            assert_eq!(child.interpret(&mut DynamicEndpointId), 70);
+        }
+    }
 }
 
 fuzz_target!(|bytes: &[u8]| {
     let runtime = Builder::new_current_thread().enable_time().build().unwrap();
     runtime.block_on(async {
+        fuzz_dynamic_initial_join(bytes);
         let behavior = Supervisor::new(
             behavior::ChildTopology::indexed(
                 |index| u64::try_from(index).unwrap(),
@@ -62,12 +303,21 @@ fuzz_target!(|bytes: &[u8]| {
                 Strategy::OneForOne,
                 RestartPolicy::Permanent,
                 BUDGET,
-                std::time::Duration::from_nanos(WINDOW_NANOS),
+                std::time::Duration::from_nanos(WINDOW_NANOS), behavior::RestartTiming::Immediate
             ),
+            behavior::Proxy::new,
         )
         .unwrap()
-        .with_failure_policy(TopologyFailurePolicy::Stop);
+        .with_failure_reaction(stop_on_failure);
         let initialized = (behavior).initialize().unwrap();
+        assert_eq!(initialized.actions.sends.child_observations.len(), FLEET);
+        assert_eq!(initialized.actions.sends.creation_observations.len(), FLEET);
+        assert!(initialized.actions.sends.schedules.is_empty());
+        assert!(initialized.actions.sends.replacement_inputs.is_empty());
+        assert!(initialized.actions.sends.failure_reports.is_empty());
+        assert!(initialized.actions.sends.shutdowns.is_empty());
+        assert_eq!(initialized.actions.creates.len(), FLEET);
+        assert!(matches!(initialized.actions.become_, Step::Continue));
         let mut behavior = initialized.behavior;
         let base = Instant::now();
 
@@ -96,20 +346,34 @@ fuzz_target!(|bytes: &[u8]| {
                 }
             };
 
-            let actions = behavior
-                .transition(SupervisionEvent::WorkerStopped(WorkerStopped {
-                    proxy: u64::try_from(nonce).unwrap(),
-                    worker: workers[nonce],
-                    outcome: Err(Crash::Failed),
-                    at: base + std::time::Duration::from_nanos(at),
-                }))
-                .unwrap();
+            let observed = WorkerStopped {
+                proxy: u64::try_from(nonce).unwrap(),
+                worker: workers[nonce],
+                outcome: Err(Crash::Failed),
+                at: base + std::time::Duration::from_nanos(at),
+            };
+            let result = behavior.transition(SupervisionEvent::WorkerStopped(observed.clone()));
+
+            if !was_alive {
+                assert!(matches!(
+                    result,
+                    Err(SuperviseError::UnexpectedWorkerStopped(returned))
+                        if returned == observed
+                ));
+                continue;
+            }
+            let actions = result.unwrap();
 
             assert_eq!(
-                actions.sends.replacement_commands.len(),
+                actions.sends.replacement_inputs.len(),
                 usize::from(expected_restart),
                 "replacement count mismatch at byte {index}"
             );
+            assert!(actions.sends.child_observations.is_empty());
+            assert!(actions.sends.creation_observations.is_empty());
+            assert!(actions.sends.schedules.is_empty());
+            assert!(actions.sends.shutdowns.is_empty());
+            assert!(actions.creates.is_empty());
             if expected_restart {
                 assert_eq!(actions.become_, Step::Continue);
             } else if was_alive {
@@ -130,7 +394,7 @@ fuzz_target!(|bytes: &[u8]| {
             if expected_restart {
                 let proxy = u64::try_from(nonce).unwrap();
                 let previous = workers[nonce];
-                behavior
+                let installed = behavior
                     .on_path(WorkerCreationResolved::new(
                         proxy,
                         next_worker,
@@ -138,12 +402,18 @@ fuzz_target!(|bytes: &[u8]| {
                         Ok(()),
                     ))
                     .unwrap();
+                assert!(installed.sends.replacement_inputs.is_empty());
+                assert!(installed.sends.failure_reports.is_empty());
+                assert_quiet_supervisor_lanes!(installed);
+                assert!(matches!(installed.become_, Step::Continue));
                 workers[nonce] = next_worker;
                 next_worker = next_worker.checked_add(1).unwrap();
             }
             for slot in 0..FLEET {
                 assert_eq!(
-                    behavior.is_alive(u64::try_from(slot).unwrap()).unwrap(),
+                    behavior
+                        .is_restartable(u64::try_from(slot).unwrap())
+                        .unwrap(),
                     alive[slot],
                     "alive mismatch at byte {index}"
                 );
@@ -155,11 +425,11 @@ fuzz_target!(|bytes: &[u8]| {
             );
         }
 
-        // Independent generation/pending model for the standalone backoff
-        // adapter. Each input selects worker failure, exact timer, stale
+        // Independent generation/pending model for delayed fixed supervision.
+        // Each input selects worker failure, exact timer, stale
         // timer, or shutdown; every step checks delayed release, cancellation,
         // and stale-timer rejection.
-        let supervisor = Supervisor::new(
+        let initialized = Supervisor::new(
             behavior::ChildTopology::indexed(
                 |index| u64::try_from(index).unwrap(),
                 FLEET,
@@ -170,69 +440,99 @@ fuzz_target!(|bytes: &[u8]| {
                 RestartPolicy::Permanent,
                 u32::MAX,
                 std::time::Duration::MAX,
+                behavior::RestartTiming::Delayed(Backoff::exponential(
+                    std::time::Duration::from_nanos(1),
+                    std::time::Duration::from_nanos(8),
+                )
+                .unwrap()),
             ),
+            behavior::Proxy::new,
         )
-        .unwrap();
-        let initialized = BackoffSupervisor::new(
-            supervisor,
-            Backoff::exponential(
-                std::time::Duration::from_nanos(1),
-                std::time::Duration::from_nanos(8),
-            )
-            .unwrap(),
-            timer,
-        )
+        .unwrap()
         .initialize()
         .unwrap();
+        assert_eq!(initialized.actions.sends.child_observations.len(), FLEET);
+        assert_eq!(initialized.actions.sends.creation_observations.len(), FLEET);
+        assert!(initialized.actions.sends.schedules.is_empty());
+        assert!(initialized.actions.sends.replacement_inputs.is_empty());
+        assert!(initialized.actions.sends.failure_reports.is_empty());
+        assert!(initialized.actions.sends.shutdowns.is_empty());
+        assert_eq!(initialized.actions.creates.len(), FLEET);
+        assert!(matches!(initialized.actions.become_, Step::Continue));
         let mut backoff = initialized.behavior;
-        let mut pending = [None; FLEET];
+        let mut pending = [None::<(u64, u64)>; FLEET];
         let mut next_generation = [0_u64; FLEET];
+        let mut next_timer = 0_u64;
         let mut backoff_workers = [0_u64, 1, 2, 3];
         let mut next_backoff_worker = u64::try_from(FLEET).unwrap();
         let mut shutting_down = false;
+        let mut backoff_stopped = [false; FLEET];
 
         for (index, byte) in bytes.iter().copied().enumerate() {
             let slot = (usize::from(byte) / 4) % FLEET;
             let nonce = u64::try_from(slot).unwrap();
             match byte % 4 {
                 0 => {
-                    let actions = backoff
-                        .on_path(WorkerStopped::new(
-                            nonce,
-                            backoff_workers[slot],
-                            Err(Crash::Failed),
-                            base + std::time::Duration::from_nanos(
-                                u64::try_from(index).unwrap(),
-                            ),
-                        ))
-                        .unwrap();
-                    let accepted = !shutting_down && pending[slot].is_none();
-                    assert_eq!(actions.sends.schedules.len(), usize::from(accepted));
-                    assert!(actions.sends.supervision.replacement_commands.is_empty());
-                    if accepted {
+                    let observed = WorkerStopped::new(
+                        nonce,
+                        backoff_workers[slot],
+                        Err(Crash::Failed),
+                        base + std::time::Duration::from_nanos(u64::try_from(index).unwrap()),
+                    );
+                    let result = backoff.on_path(observed.clone());
+                    let accepts_fact = !backoff_stopped[slot];
+                    if !accepts_fact {
+                        assert!(matches!(
+                            result,
+                            Err(SuperviseError::UnexpectedWorkerStopped(returned))
+                                if returned == observed
+                        ));
+                        continue;
+                    }
+                    let actions = result.unwrap();
+                    backoff_stopped[slot] = true;
+                    let scheduled = !shutting_down && pending[slot].is_none();
+                    assert_eq!(actions.sends.schedules.len(), usize::from(scheduled));
+                    assert!(actions.sends.replacement_inputs.is_empty());
+                    assert!(actions.sends.child_observations.is_empty());
+                    assert!(actions.sends.creation_observations.is_empty());
+                    assert!(actions.sends.failure_reports.is_empty());
+                    assert!(actions.sends.shutdowns.is_empty());
+                    assert!(actions.creates.is_empty());
+                    assert!(matches!(actions.become_, Step::Continue));
+                    if scheduled {
                         let generation = next_generation[slot];
-                        assert_eq!(
-                            actions.sends.schedules.as_slice()[0].generation,
-                            TimerGeneration(generation)
-                        );
-                        pending[slot] = Some(generation);
+                        let schedule = actions.sends.schedules.as_slice()[0];
+                        assert_eq!(schedule.id, TimerId(next_timer));
+                        assert_eq!(schedule.generation, TimerGeneration(generation));
+                        pending[slot] = Some((next_timer, generation));
+                        next_timer = next_timer.checked_add(1).unwrap();
                         next_generation[slot] = generation.checked_add(1).unwrap();
                     }
                 }
                 1 => {
-                    let generation = pending[slot].unwrap_or(u64::MAX);
+                    let (timer, generation) = pending[slot].unwrap_or((u64::MAX, u64::MAX));
                     let actions = backoff
-                        .on_path(TimerElapsed::new(TimerId(nonce), TimerGeneration(generation)))
+                        .on_path(TimerElapsed::new(
+                            TimerId(timer),
+                            TimerGeneration(generation),
+                        ))
                         .unwrap();
                     let released = pending[slot].take().is_some() && !shutting_down;
                     assert_eq!(
-                        actions.sends.supervision.replacement_commands.len(),
+                        actions.sends.replacement_inputs.len(),
                         usize::from(released)
                     );
                     assert!(actions.sends.schedules.is_empty());
+                    assert!(actions.sends.child_observations.is_empty());
+                    assert!(actions.sends.creation_observations.is_empty());
+                    assert!(actions.sends.failure_reports.is_empty());
+                    assert!(actions.sends.shutdowns.is_empty());
+                    assert!(actions.creates.is_empty());
+                    assert!(matches!(actions.become_, Step::Continue));
                     if released {
                         let previous = backoff_workers[slot];
-                        backoff
+                        let installed = backoff
                             .on_path(WorkerCreationResolved::new(
                                 nonce,
                                 next_backoff_worker,
@@ -240,28 +540,51 @@ fuzz_target!(|bytes: &[u8]| {
                                 Ok(()),
                             ))
                             .unwrap();
+                        assert!(installed.sends.replacement_inputs.is_empty());
+                        assert!(installed.sends.failure_reports.is_empty());
+                        assert_quiet_supervisor_lanes!(installed);
+                        assert!(matches!(installed.become_, Step::Continue));
                         backoff_workers[slot] = next_backoff_worker;
+                        backoff_stopped[slot] = false;
                         next_backoff_worker = next_backoff_worker.checked_add(1).unwrap();
                     }
                 }
                 2 => {
-                    let generation = pending[slot].map_or(0, |generation| generation + 1);
                     let actions = backoff
-                        .on_path(TimerElapsed::new(TimerId(nonce), TimerGeneration(generation)))
+                        .on_path(TimerElapsed::new(
+                            TimerId(u64::MAX),
+                            TimerGeneration(u64::MAX),
+                        ))
                         .unwrap();
-                    assert!(actions.sends.supervision.replacement_commands.is_empty());
+                    assert!(actions.sends.replacement_inputs.is_empty());
                     assert!(actions.sends.schedules.is_empty());
+                    assert!(actions.sends.child_observations.is_empty());
+                    assert!(actions.sends.creation_observations.is_empty());
+                    assert!(actions.sends.failure_reports.is_empty());
+                    assert!(actions.sends.shutdowns.is_empty());
+                    assert!(actions.creates.is_empty());
+                    assert!(matches!(actions.become_, Step::Continue));
                 }
                 _ => {
                     let actions = backoff.on_path(ShutdownRequested).unwrap();
                     pending.fill(None);
                     shutting_down = true;
                     assert!(actions.sends.schedules.is_empty());
+                    assert!(actions.sends.child_observations.is_empty());
+                    assert!(actions.sends.creation_observations.is_empty());
+                    assert!(actions.sends.replacement_inputs.is_empty());
+                    assert!(actions.sends.failure_reports.is_empty());
+                    assert!(actions.sends.shutdowns.len() <= FLEET);
+                    assert!(actions.creates.is_empty());
+                    assert!(matches!(actions.become_, Step::Continue));
                 }
             }
             assert_eq!(
                 backoff.pending_restarts(),
-                pending.iter().filter(|generation| generation.is_some()).count()
+                pending
+                    .iter()
+                    .filter(|generation| generation.is_some())
+                    .count()
             );
         }
     });

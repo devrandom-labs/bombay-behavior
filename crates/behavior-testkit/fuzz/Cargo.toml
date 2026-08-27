@@ -4,6 +4,9 @@ version = "0.0.0"
 edition = "2024"
 publish = false
 
+[lints.rust]
+unused_must_use = "deny"
+
 [package.metadata]
 cargo-fuzz = true
 
@@ -86,6 +89,13 @@ bench = false
 [[bin]]
 name = "catalogue_sequences"
 path = "fuzz_targets/catalogue_sequences.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "shutdown_plan_sequences"
+path = "fuzz_targets/shutdown_plan_sequences.rs"
 test = false
 doc = false
 bench = false

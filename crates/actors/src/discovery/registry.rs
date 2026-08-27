@@ -1,10 +1,14 @@
 //! Typed recipient bindings and lookup replies.
 
+#[cfg(test)]
+use behavior::Delivery;
 use behavior::{
-    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, Never, NoBirths, Protocol,
-    Recipient, User,
+    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Never, NoBirths, Protocol, Recipient,
+    User,
 };
 use thiserror::Error;
+
+use crate::DeliveryRoute;
 
 /// The complete lookup result returned by [`Registry`].
 pub enum RegistryResult<K, D: Protocol> {
@@ -52,46 +56,89 @@ impl<K: Eq, D: Protocol> Eq for RegistryResult<K, D> {}
 ///
 /// A lookup owns a typed reply recipient; no runtime registry or reply-channel
 /// discovery is performed.
-pub enum RegistryMessage<K, D: Protocol, Reply: behavior::Protocol> {
+pub enum RegistryMessage<K, D: Protocol, Route> {
     /// Establish a previously absent binding.
     Bind { key: K, recipient: Recipient<D> },
     /// Remove a binding only if it still names the supplied recipient.
     Unbind { key: K, recipient: Recipient<D> },
     /// Return the exact current result to `reply_to`.
-    Lookup { key: K, reply_to: Recipient<Reply> },
+    Lookup { key: K, reply_to: Route },
 }
 
 /// A rejected registry mutation.
-#[derive(Debug, Error, Clone, PartialEq, Eq)]
-pub enum RegistryError<K> {
+#[derive(Error, Clone, PartialEq, Eq)]
+pub enum RegistryError<K, D: Protocol> {
     /// A different recipient already owns the key.
     #[error("registry key is already bound")]
-    AlreadyBound(K),
+    AlreadyBound {
+        /// Rejected key.
+        key: K,
+        /// Exact recipient from the rejected bind command.
+        recipient: Recipient<D>,
+        /// Recipient that currently owns the key.
+        current: Recipient<D>,
+    },
     /// Unbinding named an absent key.
     #[error("registry key is not bound")]
-    NotBound(K),
+    NotBound { key: K, recipient: Recipient<D> },
     /// Unbinding named a recipient other than the current binding.
     #[error("registry unbind is stale")]
-    StaleBinding(K),
+    StaleBinding {
+        key: K,
+        recipient: Recipient<D>,
+        current: Recipient<D>,
+    },
+}
+
+impl<K: core::fmt::Debug, D: Protocol> core::fmt::Debug for RegistryError<K, D> {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::AlreadyBound { key, .. } => formatter
+                .debug_struct("AlreadyBound")
+                .field("key", key)
+                .field("recipient", &"<typed recipient>")
+                .field("current", &"<typed recipient>")
+                .finish(),
+            Self::NotBound { key, .. } => formatter
+                .debug_struct("NotBound")
+                .field("key", key)
+                .field("recipient", &"<typed recipient>")
+                .finish(),
+            Self::StaleBinding { key, .. } => formatter
+                .debug_struct("StaleBinding")
+                .field("key", key)
+                .field("recipient", &"<typed recipient>")
+                .field("current", &"<typed recipient>")
+                .finish(),
+        }
+    }
 }
 
 /// Insertion-ordered typed recipient registry.
 ///
 /// State is a sequence of unique key/recipient bindings. Inputs are
 /// [`RegistryMessage`] values and lookup outputs are one typed
-/// [`Delivery<Reply>`]. Initialization is empty. Duplicate bind, absent
+/// [`crate::Delivery`]. Initialization is empty. Duplicate bind, absent
 /// unbind, and stale unbind are explicit errors and leave state unchanged.
 /// Lookups never fail: absence is a factual [`RegistryResult::Missing`]. The
 /// actor does not terminate by policy. Ordering and conflict behavior are
 /// deliberate Bombay policy; endpoint generation and delivery are interpreted
 /// by Bombay Address and Communication.
-pub struct Registry<A: Address, K, D: Protocol<Addr = A>, Reply: behavior::Protocol<Addr = A>> {
+pub struct Registry<A, K, D, Route>
+where
+    A: Address,
+    D: Protocol<Addr = A>,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = RegistryResult<K, D>>>,
+{
     bindings: Vec<(K, Recipient<D>)>,
-    address: core::marker::PhantomData<fn() -> (A, Reply)>,
+    address: core::marker::PhantomData<fn() -> (A, Route)>,
 }
 
-impl<A: Address, K, D: Protocol<Addr = A>, Reply: behavior::Protocol<Addr = A>>
-    Registry<A, K, D, Reply>
+impl<A, K, D, Route> Registry<A, K, D, Route>
+where
+    A: Address,
+    D: Protocol<Addr = A>,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = RegistryResult<K, D>>>,
 {
     /// Construct an empty registry definition.
     #[must_use]
@@ -109,16 +156,22 @@ impl<A: Address, K, D: Protocol<Addr = A>, Reply: behavior::Protocol<Addr = A>>
     }
 }
 
-impl<A: Address, K, D: Protocol<Addr = A>, Reply: behavior::Protocol<Addr = A>> Default
-    for Registry<A, K, D, Reply>
+impl<A, K, D, Route> Default for Registry<A, K, D, Route>
+where
+    A: Address,
+    D: Protocol<Addr = A>,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = RegistryResult<K, D>>>,
 {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<A: Address, K, D: Protocol<Addr = A>, Reply: behavior::Protocol<Addr = A>> BehaviorBase
-    for Registry<A, K, D, Reply>
+impl<A, K, D, Route> BehaviorBase for Registry<A, K, D, Route>
+where
+    A: Address,
+    D: Protocol<Addr = A>,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = RegistryResult<K, D>>>,
 {
     type Base = Self;
 
@@ -127,46 +180,55 @@ impl<A: Address, K, D: Protocol<Addr = A>, Reply: behavior::Protocol<Addr = A>> 
     }
 }
 
-impl<A, K, D, Reply> behavior::Protocol for Registry<A, K, D, Reply>
+impl<A, K, D, Route> behavior::Protocol for Registry<A, K, D, Route>
 where
     A: Address,
     K: Clone + Eq,
     D: Protocol<Addr = A>,
-    Reply: behavior::Protocol<Addr = A, Msg = RegistryResult<K, D>>,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = RegistryResult<K, D>>>,
 {
     type Addr = A;
-    type Msg = RegistryMessage<K, D, Reply>;
+    type Msg = RegistryMessage<K, D, Route>;
 }
 
-impl<A, K, D, Reply> Behavior for Registry<A, K, D, Reply>
+impl<A, K, D, Route> Behavior for Registry<A, K, D, Route>
 where
     A: Address,
     K: Clone + Eq,
     D: Protocol<Addr = A>,
-    Reply: behavior::Protocol<Addr = A, Msg = RegistryResult<K, D>>,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = RegistryResult<K, D>>>,
+    Route::Sends: behavior::SendsFor<User<A, RegistryMessage<K, D, Route>>>,
 {
     type Protocol = Self;
     type Event = User<A, crate::BehaviorMessage<Self>>;
-    type Sends = Vec<Delivery<Reply>>;
+    type Sends = Route::Sends;
     type Ph = Never;
-    type Error = RegistryError<K>;
+    type Error = RegistryError<K, D>;
     type Birth = NoBirths;
 
     fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
         match event.message {
             RegistryMessage::Bind { key, recipient } => {
-                if self.bindings.iter().any(|(bound, _)| *bound == key) {
-                    return Err(RegistryError::AlreadyBound(key));
+                if let Some((_, current)) = self.bindings.iter().find(|(bound, _)| *bound == key) {
+                    return Err(RegistryError::AlreadyBound {
+                        key,
+                        recipient,
+                        current: *current,
+                    });
                 }
                 self.bindings.push((key, recipient));
                 Ok(Actions::cont())
             }
             RegistryMessage::Unbind { key, recipient } => {
                 let Some(index) = self.bindings.iter().position(|(bound, _)| *bound == key) else {
-                    return Err(RegistryError::NotBound(key));
+                    return Err(RegistryError::NotBound { key, recipient });
                 };
                 if self.bindings[index].1 != recipient {
-                    return Err(RegistryError::StaleBinding(key));
+                    return Err(RegistryError::StaleBinding {
+                        key,
+                        recipient,
+                        current: self.bindings[index].1,
+                    });
                 }
                 self.bindings.remove(index);
                 Ok(Actions::cont())
@@ -183,7 +245,7 @@ where
                             recipient: *recipient,
                         },
                     );
-                Ok(Actions::send(vec![Delivery::new(reply_to, result)]))
+                Ok(Actions::send(reply_to.deliver(result)))
             }
         }
     }
@@ -235,7 +297,7 @@ mod tests {
         }
     }
 
-    type TestRegistry = Registry<MailAddr, u8, Destination, Reply>;
+    type TestRegistry = Registry<MailAddr, u8, Destination, Recipient<Reply>>;
 
     #[test]
     fn mutations_are_atomic_and_stale_unbind_is_typed() {
@@ -264,7 +326,8 @@ mod tests {
                     recipient: two,
                 },
             ),
-            Err(RegistryError::AlreadyBound(4))
+            Err(RegistryError::AlreadyBound { key: 4, recipient, current })
+                if recipient == two && current == one
         ));
         assert!(matches!(
             registry.receive(
@@ -274,11 +337,15 @@ mod tests {
                     recipient: two,
                 },
             ),
-            Err(RegistryError::StaleBinding(4))
+            Err(RegistryError::StaleBinding {
+                key: 4,
+                recipient,
+                current,
+            }) if recipient == two && current == one
         ));
         assert!(registry.bindings() == [(4, one)]);
 
-        registry
+        let unbound = registry
             .receive(
                 MailAddr(9),
                 RegistryMessage::Unbind {
@@ -287,6 +354,9 @@ mod tests {
                 },
             )
             .unwrap();
+        assert!(unbound.sends.is_empty());
+        assert!(unbound.creates.is_empty());
+        assert_eq!(unbound.become_, crate::Step::Continue);
         assert!(registry.bindings().is_empty());
     }
 
@@ -295,7 +365,7 @@ mod tests {
         let destination = Recipient::<Destination>::global(MailAddr(1));
         let reply = Recipient::<Reply>::global(MailAddr(8));
         let mut registry = (TestRegistry::new()).initialize().unwrap().behavior;
-        registry
+        let bound = registry
             .receive(
                 MailAddr(9),
                 RegistryMessage::Bind {
@@ -304,6 +374,9 @@ mod tests {
                 },
             )
             .unwrap();
+        assert!(bound.sends.is_empty());
+        assert!(bound.creates.is_empty());
+        assert_eq!(bound.become_, crate::Step::Continue);
 
         let found = registry
             .receive(

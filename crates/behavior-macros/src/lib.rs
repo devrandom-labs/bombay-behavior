@@ -101,11 +101,19 @@ struct NamedProduct {
     fields: Vec<NamedField>,
 }
 
+#[allow(
+    clippy::large_enum_variant,
+    reason = "boxing syn::Type would add lint-driven indirection to compile-time parser state"
+)]
 enum SendsSpec {
     Existing(Type),
     Generated(NamedProduct),
 }
 
+#[allow(
+    clippy::large_enum_variant,
+    reason = "boxing syn::Type would add lint-driven indirection to compile-time parser state"
+)]
 enum BirthsSpec {
     Existing(Type),
     Generated(NamedProduct),
@@ -598,11 +606,20 @@ fn generate_births(
                     type Child = #declared_child_types;
                     type Position = #role_positions;
                 }
+
+                impl #parent_impl_generics #behavior::ChildOccurrence<#parent> for #role_names
+                    #parent_where_clause
+                {
+                    type Resolution = #behavior::DeclaredChildOccurrence;
+                }
             )*
 
             pub struct #roles_name;
 
-            #[allow(non_upper_case_globals)]
+            #[allow(
+                non_upper_case_globals,
+                reason = "generated role values retain the application-authored field spelling"
+            )]
             impl #roles_name {
                 #(pub const #role_values: #role_names = #role_names;)*
             }

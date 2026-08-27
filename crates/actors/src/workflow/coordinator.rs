@@ -1,10 +1,11 @@
 //! Dependency-ordered workflow activation as a pure fold.
 
-use behavior::{
-    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, Never, NoBirths, Recipient,
-    User,
-};
+#[cfg(test)]
+use behavior::Recipient;
+use behavior::{Actions, Address, Behavior, BehaviorActed, BehaviorBase, Never, NoBirths, User};
 use thiserror::Error;
+
+use crate::DeliveryRoute;
 
 /// Bombay-owned immutable dependency-graph product.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -50,7 +51,7 @@ pub enum WorkflowStepState {
 }
 
 /// Complete workflow phase sum.
-pub enum WorkflowState<K, Reply: behavior::Protocol> {
+pub enum WorkflowState<K, Route> {
     /// Validated definition has not started.
     Ready,
     /// At least one step remains incomplete.
@@ -58,14 +59,25 @@ pub enum WorkflowState<K, Reply: behavior::Protocol> {
         /// Per-step states in definition order.
         steps: Vec<(K, WorkflowStepState)>,
         /// Recipient for every activation and terminal fact.
-        reply_to: Recipient<Reply>,
+        reply_to: Route,
     },
     /// Every step completed successfully.
-    Succeeded,
+    Succeeded {
+        /// Retained result route for typed rejection of later stale input.
+        reply_to: Route,
+    },
     /// One active step failed; no further activations are possible.
-    Failed { step: K },
+    Failed {
+        /// Step whose failure terminated the run.
+        step: K,
+        /// Retained result route for typed rejection of later stale input.
+        reply_to: Route,
+    },
     /// Explicit cancellation terminated the run.
-    Cancelled,
+    Cancelled {
+        /// Retained result route for typed rejection of later stale input.
+        reply_to: Route,
+    },
 }
 
 /// Rejected workflow input.
@@ -81,6 +93,23 @@ pub enum WorkflowRejection<K> {
     AlreadyCompleted { step: K },
     /// The workflow is terminal.
     Terminal { step: Option<K> },
+}
+
+/// A command that requires an established workflow run.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WorkflowInput<K> {
+    /// Successful completion evidence for one step.
+    Complete { step: K },
+    /// Failure evidence for one step.
+    Fail { step: K },
+}
+
+/// Typed refusal of a command for which no result route exists yet.
+#[derive(Debug, Error, Clone, PartialEq, Eq)]
+pub enum WorkflowError<K> {
+    /// `Start` has not established a run and its result route.
+    #[error("workflow input arrived before the run was started")]
+    NotStarted(WorkflowInput<K>),
 }
 
 /// Activation and terminal facts emitted by [`Workflow`].
@@ -101,15 +130,15 @@ pub enum WorkflowOutcome<K> {
 }
 
 /// Closed workflow protocol.
-pub enum WorkflowMessage<K, Reply: behavior::Protocol> {
+pub enum WorkflowMessage<K, Route> {
     /// Begin the single workflow run.
-    Start { reply_to: Recipient<Reply> },
+    Start { reply_to: Route },
     /// Report successful completion of an active step.
     Complete { step: K },
     /// Report failure of an active step.
     Fail { step: K },
     /// Cancel a ready or running workflow.
-    Cancel { reply_to: Recipient<Reply> },
+    Cancel { reply_to: Route },
 }
 
 /// Deterministic dependency-ordered workflow coordinator.
@@ -117,8 +146,10 @@ pub enum WorkflowMessage<K, Reply: behavior::Protocol> {
 /// Construction validates a finite acyclic graph. `Start` activates every
 /// root in definition order. Completion activates a blocked step exactly once
 /// when all of its prerequisites are complete. Unknown, blocked, duplicate,
-/// and terminal input is explicitly rejected without mutation. Failure and
-/// cancellation are terminal and prevent later activation. Initialization is
+/// and post-start terminal input is explicitly rejected without mutation.
+/// Completion or failure input before `Start` is returned as a typed
+/// [`WorkflowError::NotStarted`] because no result route has been established.
+/// Failure and cancellation are terminal and prevent later activation. Initialization is
 /// empty and the actor itself remains available to report terminal rejection.
 /// Graph validation, one-run retention, activation ordering, and terminal
 /// policy are Bombay choices. The actor model requires only that each event be
@@ -127,18 +158,18 @@ pub enum WorkflowMessage<K, Reply: behavior::Protocol> {
 pub struct Workflow<
     A: Address,
     K: Clone + Eq,
-    Reply: behavior::Protocol<Addr = A, Msg = WorkflowOutcome<K>>,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = WorkflowOutcome<K>>>,
 > {
     definition: WorkflowDefinition<K>,
-    state: WorkflowState<K, Reply>,
+    state: WorkflowState<K, Route>,
     marker: core::marker::PhantomData<fn() -> A>,
 }
 
-impl<A, K, Reply> Workflow<A, K, Reply>
+impl<A, K, Route> Workflow<A, K, Route>
 where
     A: Address,
     K: Clone + Eq,
-    Reply: behavior::Protocol<Addr = A, Msg = WorkflowOutcome<K>>,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = WorkflowOutcome<K>>> + Clone,
 {
     /// Validate and retain one dependency graph.
     ///
@@ -163,21 +194,18 @@ where
 
     /// Borrow the complete workflow phase.
     #[must_use]
-    pub const fn state(&self) -> &WorkflowState<K, Reply> {
+    pub const fn state(&self) -> &WorkflowState<K, Route> {
         &self.state
     }
 
     fn reply(
-        reply_to: Recipient<Reply>,
+        reply_to: Route,
         outcome: WorkflowOutcome<K>,
-    ) -> Actions<A, Never, Vec<Delivery<Reply>>, NoBirths> {
-        Actions::send(vec![Delivery::new(reply_to, outcome)])
+    ) -> Actions<A, Never, Route::Sends, NoBirths> {
+        Actions::send(reply_to.deliver(outcome))
     }
 
-    fn start(
-        &mut self,
-        reply_to: Recipient<Reply>,
-    ) -> Actions<A, Never, Vec<Delivery<Reply>>, NoBirths> {
+    fn start(&mut self, reply_to: Route) -> Actions<A, Never, Route::Sends, NoBirths> {
         if !matches!(self.state, WorkflowState::Ready) {
             return Self::reply(
                 reply_to,
@@ -203,15 +231,29 @@ where
                 activated.push(step.clone());
             }
         }
-        self.state = WorkflowState::Running { steps, reply_to };
+        self.state = WorkflowState::Running {
+            steps,
+            reply_to: reply_to.clone(),
+        };
         Self::reply(reply_to, WorkflowOutcome::Started { activated })
     }
 
-    fn complete(&mut self, step: K) -> Actions<A, Never, Vec<Delivery<Reply>>, NoBirths> {
-        let WorkflowState::Running { steps, reply_to } = &mut self.state else {
-            return Actions::cont();
+    fn complete(&mut self, step: K) -> Actions<A, Never, Route::Sends, NoBirths> {
+        let terminal_reply = match &self.state {
+            WorkflowState::Succeeded { reply_to }
+            | WorkflowState::Failed { reply_to, .. }
+            | WorkflowState::Cancelled { reply_to } => Some(reply_to.clone()),
+            WorkflowState::Ready | WorkflowState::Running { .. } => None,
         };
-        let reply_to = *reply_to;
+        let WorkflowState::Running { steps, reply_to } = &mut self.state else {
+            return terminal_reply.map_or_else(Actions::cont, |reply_to| {
+                Self::reply(
+                    reply_to,
+                    WorkflowOutcome::Rejected(WorkflowRejection::Terminal { step: Some(step) }),
+                )
+            });
+        };
+        let reply_to = reply_to.clone();
         let Some(index) = steps.iter().position(|(candidate, _)| candidate == &step) else {
             return Self::reply(
                 reply_to,
@@ -237,7 +279,9 @@ where
             .iter()
             .all(|(_, state)| *state == WorkflowStepState::Completed)
         {
-            self.state = WorkflowState::Succeeded;
+            self.state = WorkflowState::Succeeded {
+                reply_to: reply_to.clone(),
+            };
             return Self::reply(reply_to, WorkflowOutcome::Succeeded { completed: step });
         }
         let completed: Vec<_> = steps
@@ -270,11 +314,22 @@ where
         )
     }
 
-    fn fail(&mut self, step: K) -> Actions<A, Never, Vec<Delivery<Reply>>, NoBirths> {
-        let WorkflowState::Running { steps, reply_to } = &self.state else {
-            return Actions::cont();
+    fn fail(&mut self, step: K) -> Actions<A, Never, Route::Sends, NoBirths> {
+        let terminal_reply = match &self.state {
+            WorkflowState::Succeeded { reply_to }
+            | WorkflowState::Failed { reply_to, .. }
+            | WorkflowState::Cancelled { reply_to } => Some(reply_to.clone()),
+            WorkflowState::Ready | WorkflowState::Running { .. } => None,
         };
-        let reply_to = *reply_to;
+        let WorkflowState::Running { steps, reply_to } = &self.state else {
+            return terminal_reply.map_or_else(Actions::cont, |reply_to| {
+                Self::reply(
+                    reply_to,
+                    WorkflowOutcome::Rejected(WorkflowRejection::Terminal { step: Some(step) }),
+                )
+            });
+        };
+        let reply_to = reply_to.clone();
         let Some((_, phase)) = steps.iter().find(|(candidate, _)| candidate == &step) else {
             return Self::reply(
                 reply_to,
@@ -283,7 +338,10 @@ where
         };
         match phase {
             WorkflowStepState::Active => {
-                self.state = WorkflowState::Failed { step: step.clone() };
+                self.state = WorkflowState::Failed {
+                    step: step.clone(),
+                    reply_to: reply_to.clone(),
+                };
                 Self::reply(reply_to, WorkflowOutcome::Failed { step })
             }
             WorkflowStepState::Blocked => Self::reply(
@@ -347,11 +405,11 @@ fn validate<K: Clone + Eq>(
     Ok(())
 }
 
-impl<A, K, Reply> BehaviorBase for Workflow<A, K, Reply>
+impl<A, K, Route> BehaviorBase for Workflow<A, K, Route>
 where
     A: Address,
     K: Clone + Eq,
-    Reply: behavior::Protocol<Addr = A, Msg = WorkflowOutcome<K>>,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = WorkflowOutcome<K>>>,
 {
     type Base = Self;
     fn base(&self) -> &Self {
@@ -359,36 +417,49 @@ where
     }
 }
 
-impl<A, K, Reply> behavior::Protocol for Workflow<A, K, Reply>
+impl<A, K, Route> behavior::Protocol for Workflow<A, K, Route>
 where
     A: Address,
     K: Clone + Eq,
-    Reply: behavior::Protocol<Addr = A, Msg = WorkflowOutcome<K>>,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = WorkflowOutcome<K>>>,
 {
     type Addr = A;
-    type Msg = WorkflowMessage<K, Reply>;
+    type Msg = WorkflowMessage<K, Route>;
 }
 
-impl<A, K, Reply> Behavior for Workflow<A, K, Reply>
+impl<A, K, Route> Behavior for Workflow<A, K, Route>
 where
     A: Address,
     K: Clone + Eq,
-    Reply: behavior::Protocol<Addr = A, Msg = WorkflowOutcome<K>>,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = WorkflowOutcome<K>>> + Clone,
+    Route::Sends: behavior::SendsFor<User<A, WorkflowMessage<K, Route>>>,
 {
     type Protocol = Self;
     type Event = User<A, crate::BehaviorMessage<Self>>;
-    type Sends = Vec<Delivery<Reply>>;
+    type Sends = Route::Sends;
     type Ph = Never;
-    type Error = Never;
+    type Error = WorkflowError<K>;
     type Birth = NoBirths;
     fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
         Ok(match event.message {
             WorkflowMessage::Start { reply_to } => self.start(reply_to),
-            WorkflowMessage::Complete { step } => self.complete(step),
-            WorkflowMessage::Fail { step } => self.fail(step),
-            WorkflowMessage::Cancel { reply_to } => match self.state {
+            WorkflowMessage::Complete { step } => {
+                if matches!(self.state, WorkflowState::Ready) {
+                    return Err(WorkflowError::NotStarted(WorkflowInput::Complete { step }));
+                }
+                self.complete(step)
+            }
+            WorkflowMessage::Fail { step } => {
+                if matches!(self.state, WorkflowState::Ready) {
+                    return Err(WorkflowError::NotStarted(WorkflowInput::Fail { step }));
+                }
+                self.fail(step)
+            }
+            WorkflowMessage::Cancel { reply_to } => match &self.state {
                 WorkflowState::Ready | WorkflowState::Running { .. } => {
-                    self.state = WorkflowState::Cancelled;
+                    self.state = WorkflowState::Cancelled {
+                        reply_to: reply_to.clone(),
+                    };
                     Self::reply(reply_to, WorkflowOutcome::Cancelled)
                 }
                 _ => Self::reply(
@@ -423,7 +494,7 @@ mod tests {
             Ok(Actions::cont())
         }
     }
-    type Subject = Workflow<MailAddr, &'static str, Reply>;
+    type Subject = Workflow<MailAddr, &'static str, Recipient<Reply>>;
     fn reply() -> Recipient<Reply> {
         Recipient::global(MailAddr(9))
     }
@@ -472,6 +543,28 @@ mod tests {
     }
 
     #[test]
+    fn pre_start_step_facts_are_returned_with_their_operation_and_do_not_start_a_run() {
+        let mut subject = Subject::new(diamond())
+            .unwrap()
+            .initialize()
+            .unwrap()
+            .behavior;
+        assert!(matches!(
+            subject.receive(MailAddr(0), WorkflowMessage::Complete { step: "root" }),
+            Err(WorkflowError::NotStarted(WorkflowInput::Complete {
+                step: "root"
+            }))
+        ));
+        assert!(matches!(
+            subject.receive(MailAddr(0), WorkflowMessage::Fail { step: "left" }),
+            Err(WorkflowError::NotStarted(WorkflowInput::Fail {
+                step: "left"
+            }))
+        ));
+        assert!(matches!(subject.state(), WorkflowState::Ready));
+    }
+
+    #[test]
     fn diamond_activates_each_step_once_after_all_prerequisites() {
         let mut subject = (Subject::new(diamond()).unwrap())
             .initialize()
@@ -516,9 +609,16 @@ mod tests {
             .initialize()
             .unwrap()
             .behavior;
-        subject
+        let started = subject
             .receive(MailAddr(0), WorkflowMessage::Start { reply_to: reply() })
             .unwrap();
+        assert_eq!(started.sends.len(), 1);
+        assert!(matches!(
+            started.sends[0].message,
+            WorkflowOutcome::Started { .. }
+        ));
+        assert!(started.creates.is_empty());
+        assert_eq!(started.become_, crate::Step::Continue);
         let blocked = subject
             .receive(MailAddr(0), WorkflowMessage::Fail { step: "join" })
             .unwrap();
@@ -526,9 +626,19 @@ mod tests {
             blocked.sends[0].message,
             WorkflowOutcome::Rejected(WorkflowRejection::Blocked { step: "join" })
         ));
-        subject
+        let advanced = subject
             .receive(MailAddr(0), WorkflowMessage::Complete { step: "root" })
             .unwrap();
+        assert_eq!(advanced.sends.len(), 1);
+        assert!(matches!(
+            advanced.sends[0].message,
+            WorkflowOutcome::Advanced {
+                completed: "root",
+                ..
+            }
+        ));
+        assert!(advanced.creates.is_empty());
+        assert_eq!(advanced.become_, crate::Step::Continue);
         let duplicate = subject
             .receive(MailAddr(0), WorkflowMessage::Complete { step: "root" })
             .unwrap();

@@ -5,9 +5,9 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, Behavior, Crash, CreationKind, Delivery, MailAddr, Never, Recipient,
-    RestartPolicy, Step, Strategy, SupervisionEvent, Supervisor, User, UserEvent,
-    WorkerCreationResolved, WorkerStopped,
+    Acted, Actions, Behavior, BehaviorActed, BehaviorBase, Crash, CreationKind, Delivery,
+    EventIngress, Here, MailAddr, Never, Recipient, RestartPolicy, Step, Strategy, Supervise,
+    SupervisionEvent, SupervisionLifecycle, User, UserEvent, WorkerCreationResolved, WorkerStopped,
 };
 use std::time::Instant;
 
@@ -110,25 +110,96 @@ fn build_worker(index: usize) -> Option<Worker> {
     }
 }
 
-fn supervise_with<C>(
-    count: usize,
-    build: fn(usize) -> Option<C>,
-    strategy: Strategy,
-) -> Supervisor<MailAddr, C>
-where
-    C: Behavior<Ph = Never> + Send,
-    C::Protocol: behavior::Protocol<Addr = MailAddr>,
-{
-    Supervisor::new(
-        behavior::ChildTopology::indexed(|index| u64::try_from(index).unwrap(), count, build),
-        behavior::RestartConfiguration::new(
-            strategy,
-            RestartPolicy::Permanent,
-            u32::MAX,
-            Duration::MAX,
-        ),
-    )
-    .unwrap()
+struct FleetRoot;
+
+enum FleetEvent {
+    Lifecycle(SupervisionLifecycle<MailAddr>),
+    User(User<MailAddr, ()>),
+}
+
+impl UserEvent for FleetEvent {
+    type Addr = MailAddr;
+    type Message = ();
+
+    fn user(from: MailAddr, message: ()) -> Self {
+        Self::User(User::new(from, message))
+    }
+
+    fn into_user(self) -> Result<User<MailAddr, ()>, Self> {
+        match self {
+            Self::User(user) => Ok(user),
+            lifecycle => Err(lifecycle),
+        }
+    }
+}
+
+impl EventIngress<Here, SupervisionLifecycle<MailAddr>> for FleetEvent {
+    fn ingress(lifecycle: SupervisionLifecycle<MailAddr>) -> Self {
+        Self::Lifecycle(lifecycle)
+    }
+}
+
+impl behavior::Protocol for FleetRoot {
+    type Addr = MailAddr;
+    type Msg = ();
+}
+
+impl BehaviorBase for FleetRoot {
+    type Base = Self;
+
+    fn base(&self) -> &Self {
+        self
+    }
+}
+
+impl Behavior for FleetRoot {
+    type Protocol = Self;
+    type Event = FleetEvent;
+    type Sends = Vec<Never>;
+    type Ph = Never;
+    type Error = Never;
+    type Birth = behavior::NoBirths;
+
+    fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+        match event {
+            FleetEvent::Lifecycle(_lifecycle) => {}
+            FleetEvent::User(_user) => {}
+        }
+        Ok(Actions::cont())
+    }
+}
+
+macro_rules! supervise_with {
+    ($count:expr, $build:expr, $strategy:expr) => {
+        Supervise::new(
+            FleetRoot,
+            behavior::ChildTopology::indexed(|index| u64::try_from(index).unwrap(), $count, $build),
+            behavior::RestartConfiguration::new(
+                $strategy,
+                RestartPolicy::Permanent,
+                u32::MAX,
+                Duration::MAX,
+                behavior::RestartTiming::Immediate,
+            ),
+            behavior::Proxy::new,
+        )
+        .unwrap()
+    };
+}
+
+macro_rules! assert_quiet_supervision {
+    ($actions:expr) => {{
+        let actions = &$actions;
+        assert!(actions.sends.owned.child_observations.is_empty());
+        assert!(actions.sends.owned.creation_observations.is_empty());
+        assert!(actions.sends.owned.schedules.is_empty());
+        assert!(actions.sends.owned.replacement_inputs.is_empty());
+        assert!(actions.sends.owned.failure_reports.is_empty());
+        assert!(actions.sends.owned.shutdowns.is_empty());
+        assert!(actions.sends.inner.is_empty());
+        assert!(actions.creates.is_empty());
+        assert!(matches!(actions.become_, Step::Continue));
+    }};
 }
 
 /// The sum total and per-index variant dispatch are exact: slots 0..2 are
@@ -160,12 +231,20 @@ async fn workers_build_out_of_range_index_is_absent() {
 #[tokio::test]
 async fn supervised_mixed_fleet_routes_replacements_by_birth_sequence() {
     let (count, build) = (3, build_worker as fn(usize) -> Option<Worker>);
-    let supervisor = supervise_with(count, build, Strategy::RestForOne);
+    let supervisor = supervise_with!(count, build, Strategy::RestForOne);
     let initialized = supervisor.initialize().unwrap();
     let initial = initialized.actions;
     let mut supervisor = initialized.behavior;
     assert_eq!(initial.creates.len(), 3);
-    assert_eq!(initial.sends.child_observations.len(), 3);
+    assert_eq!(initial.sends.owned.child_observations.len(), 3);
+    for proxy in 0..3 {
+        let joined = supervisor
+            .transition(SupervisionEvent::WorkerCreationResolved(
+                WorkerCreationResolved::new(proxy, proxy, CreationKind::Birth, Ok(())),
+            ))
+            .unwrap();
+        assert_quiet_supervision!(joined);
+    }
 
     let at = Instant::now();
     let wide = supervisor
@@ -176,17 +255,18 @@ async fn supervised_mixed_fleet_routes_replacements_by_birth_sequence() {
             at,
         }))
         .unwrap();
-    let routes: Vec<MailAddr> = wide
+    let routes: Vec<u64> = wide
         .sends
-        .replacement_commands
+        .owned
+        .replacement_inputs
         .iter()
-        .map(|d| d.to.resolve(MailAddr(17)))
+        .map(|d| d.nonce)
         .collect();
     assert_eq!(routes.len(), 2);
-    assert!(routes.contains(&behavior::Address::birth(MailAddr(17), 1)));
-    assert!(routes.contains(&behavior::Address::birth(MailAddr(17), 2)));
+    assert!(routes.contains(&1));
+    assert!(routes.contains(&2));
 
-    supervisor
+    let duplicate_stop = supervisor
         .transition(SupervisionEvent::WorkerStopped(WorkerStopped {
             proxy: 2,
             worker: 2,
@@ -194,8 +274,9 @@ async fn supervised_mixed_fleet_routes_replacements_by_birth_sequence() {
             at,
         }))
         .unwrap();
+    assert_quiet_supervision!(duplicate_stop);
     for proxy in [1, 2] {
-        supervisor
+        let joined = supervisor
             .transition(SupervisionEvent::WorkerCreationResolved(
                 WorkerCreationResolved::new(
                     proxy,
@@ -205,6 +286,7 @@ async fn supervised_mixed_fleet_routes_replacements_by_birth_sequence() {
                 ),
             ))
             .unwrap();
+        assert_quiet_supervision!(joined);
     }
 
     let narrow = supervisor
@@ -215,13 +297,8 @@ async fn supervised_mixed_fleet_routes_replacements_by_birth_sequence() {
             at,
         }))
         .unwrap();
-    assert_eq!(narrow.sends.replacement_commands.len(), 1);
-    assert_eq!(
-        narrow.sends.replacement_commands[0]
-            .to
-            .resolve(MailAddr(17)),
-        behavior::Address::birth(MailAddr(17), 2)
-    );
+    assert_eq!(narrow.sends.owned.replacement_inputs.len(), 1);
+    assert_eq!(narrow.sends.owned.replacement_inputs[0].nonce, 2);
 }
 
 /// A heterogeneous fleet under `OneForAll`: one death replaces every alive slot,
@@ -229,9 +306,17 @@ async fn supervised_mixed_fleet_routes_replacements_by_birth_sequence() {
 #[tokio::test]
 async fn workers_one_for_all_replaces_every_slot() {
     let (count, build) = (3, build_worker as fn(usize) -> Option<Worker>);
-    let supervisor = supervise_with(count, build, Strategy::OneForAll);
+    let supervisor = supervise_with!(count, build, Strategy::OneForAll);
     let initialized = supervisor.initialize().unwrap();
     let mut supervisor = initialized.behavior;
+    for proxy in 0..3 {
+        let joined = supervisor
+            .transition(SupervisionEvent::WorkerCreationResolved(
+                WorkerCreationResolved::new(proxy, proxy, CreationKind::Birth, Ok(())),
+            ))
+            .unwrap();
+        assert_quiet_supervision!(joined);
+    }
     let actions = supervisor
         .transition(SupervisionEvent::WorkerStopped(WorkerStopped {
             proxy: 0,
@@ -240,18 +325,19 @@ async fn workers_one_for_all_replaces_every_slot() {
             at: Instant::now(),
         }))
         .unwrap();
-    let routes: Vec<MailAddr> = actions
+    let routes: Vec<u64> = actions
         .sends
-        .replacement_commands
+        .owned
+        .replacement_inputs
         .iter()
-        .map(|d| d.to.resolve(MailAddr(17)))
+        .map(|d| d.nonce)
         .collect();
     assert_eq!(routes.len(), 3);
     for nonce in 0..3 {
-        assert!(routes.contains(&behavior::Address::birth(MailAddr(17), nonce)));
+        assert!(routes.contains(&nonce));
     }
-    assert!(supervisor.is_alive(0).unwrap());
-    assert!(supervisor.is_alive(1).unwrap());
-    assert!(supervisor.is_alive(2).unwrap());
+    assert!(supervisor.is_restartable(0).unwrap());
+    assert!(supervisor.is_restartable(1).unwrap());
+    assert!(supervisor.is_restartable(2).unwrap());
 }
 use behavior_testkit::InitializeTest;

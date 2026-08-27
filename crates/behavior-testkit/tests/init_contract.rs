@@ -3,7 +3,10 @@
 
 use std::time::Duration;
 
-use behavior::{Acted, Actions, Activate, Delivery, MailAddr, Never, Recipient, Step};
+use behavior::{
+    Acted, Actions, Activate, Behavior, BehaviorActed, BehaviorBase, Births, Delivery,
+    EventIngress, Here, MailAddr, Never, Recipient, Step, SupervisionLifecycle, User, UserEvent,
+};
 use std::time::Instant;
 
 #[derive(Default)]
@@ -39,12 +42,71 @@ fn child(_index: usize) -> Child {
     Recorder::default()
 }
 
+struct FleetApplication;
+
+enum FleetEvent {
+    Lifecycle(SupervisionLifecycle<MailAddr>),
+    User(User<MailAddr, ()>),
+}
+
+impl UserEvent for FleetEvent {
+    type Addr = MailAddr;
+    type Message = ();
+
+    fn user(from: MailAddr, message: ()) -> Self {
+        Self::User(User::new(from, message))
+    }
+
+    fn into_user(self) -> Result<User<MailAddr, ()>, Self> {
+        match self {
+            Self::User(user) => Ok(user),
+            lifecycle => Err(lifecycle),
+        }
+    }
+}
+
+impl EventIngress<Here, SupervisionLifecycle<MailAddr>> for FleetEvent {
+    fn ingress(lifecycle: SupervisionLifecycle<MailAddr>) -> Self {
+        Self::Lifecycle(lifecycle)
+    }
+}
+
+impl behavior::Protocol for FleetApplication {
+    type Addr = MailAddr;
+    type Msg = ();
+}
+
+impl BehaviorBase for FleetApplication {
+    type Base = Self;
+
+    fn base(&self) -> &Self {
+        self
+    }
+}
+
+impl Behavior for FleetApplication {
+    type Protocol = Self;
+    type Event = FleetEvent;
+    type Sends = Vec<Never>;
+    type Ph = Never;
+    type Error = Never;
+    type Birth = Births<Child>;
+
+    fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+        match event {
+            FleetEvent::Lifecycle(_lifecycle) => {}
+            FleetEvent::User(_user) => {}
+        }
+        Ok(Actions::cont())
+    }
+}
+
 #[tokio::test]
 async fn deadline_initialization_emits_exactly_one_schedule() {
     let due = Instant::now() + Duration::from_secs(1);
     let behavior =
         behavior::Deadline::new(Recorder::default(), behavior::TimerId(0), Some(due), |_| {
-            Ok(Step::Continue)
+            Step::Continue
         });
     let initialized = behavior.initialize().unwrap();
     assert_eq!(initialized.actions.sends.owned.len(), 1);
@@ -55,25 +117,36 @@ async fn initialized_behavior_processes_mailbox_events() {
     let peer = MailAddr(44);
     let initialized = (Recorder::default()).initialize().unwrap();
     let mut behavior = initialized.behavior;
-    behavior.receive(peer, 7).unwrap();
+    let actions = behavior.receive(peer, 7).unwrap();
+    assert_eq!(actions.sends.len(), 1);
+    assert_eq!(actions.sends[0].to.address(), peer);
+    assert_eq!(actions.sends[0].message, 7);
+    assert!(actions.creates.is_empty());
+    assert!(matches!(actions.become_, Step::Continue));
     assert_eq!(behavior.seen, [(peer, 7)]);
 }
 
 #[tokio::test]
 async fn supervisor_initialization_emits_the_configured_fleet_once() {
-    let behavior = behavior::Supervisor::new(
-        behavior::ChildTopology::new((0..2).map(|index| u64::try_from(index).unwrap()), |index| {
-            Some(child(index))
-        }),
-        behavior::RestartConfiguration::new(
-            behavior::Strategy::OneForOne,
-            behavior::RestartPolicy::Transient,
-            1,
-            std::time::Duration::from_secs(5),
-        ),
-    )
-    .unwrap();
+    let behavior = FleetApplication.layer(|inner| {
+        behavior::Supervise::new(
+            inner,
+            behavior::ChildTopology::new(
+                (0..2).map(|index| u64::try_from(index).unwrap()),
+                |index| Some(child(index)),
+            ),
+            behavior::RestartConfiguration::new(
+                behavior::Strategy::OneForOne,
+                behavior::RestartPolicy::Transient,
+                1,
+                std::time::Duration::from_secs(5),
+                behavior::RestartTiming::Immediate,
+            ),
+            behavior::Proxy::new,
+        )
+        .unwrap()
+    });
     let initialized = behavior.initialize().unwrap();
     assert_eq!(initialized.actions.creates.len(), 2);
-    assert_eq!(initialized.actions.sends.child_observations.len(), 2);
+    assert_eq!(initialized.actions.sends.owned.child_observations.len(), 2);
 }

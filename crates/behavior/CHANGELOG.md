@@ -7,6 +7,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Add `BirthNodeAppend`, a sealed static composition law that appends inferred
+  child products after an existing birth algebra while preserving creation
+  order, nonce, provenance, and every prefix occurrence.
+
+### Changed
+
+- Allow nominal child roles to cross a same-protocol wrapper whose birth
+  algebra retains the declared child at its exact position and only appends
+  later occurrences.
+
+## [0.14.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.13.1...bombay-behavior-v0.14.0) - 2026-08-21
+
+### Added
+
+- Add runtime-owned `EndpointAddress` families and inert
+  `EstablishedRecipient<P>`, `EstablishedActor<B>`, and
+  `EstablishedDelivery<P>` capabilities for exact installed incarnations.
+- Add protocol-and-occurrence-indexed `EstablishedCreation<P, Occurrence>`
+  facts with exhaustive allocation, initialization, installation, and binding
+  rejection reasons. Rejected facts carry no endpoint capability.
+- Add `ChildDelivery<P, Occurrence>` for same-action local communication
+  through a committed creator-instance binding.
+- Add the sealed `FoldBirthNode` projection and downstream `BirthNodeMapper`
+  type constructor. Static runtimes can derive occurrence-preserving storage
+  from concrete behavior leaves, `ChildChoice`, and `Never` without
+  reclassifying Behavior-owned nodes or adding bounds to domain generics.
+- Add sealed `ResolveChildOccurrence<Occurrence>` projection from a running
+  emitter and nominal or structural occurrence to its exact direct child and
+  position. Generated roles cross only wrappers that preserve the canonical
+  protocol and complete birth topology; raw `ChildHead`/`ChildTail<_>` paths
+  resolve against topology-changing wrappers directly.
+
+### Changed
+
+- Make fresh address allocation wholly interpreter-owned. `Address` now
+  declares only its creator-local nonce type; a nonce is no longer convertible
+  into an address.
+- Index concrete birth installers by structural child position with
+  `InstallBirth<Position, Child, ...>`. Duplicate occurrences remain distinct
+  without making the parent behavior or role another protocol identity.
+- Keep `Recipient<P>` as logical addressed intent and separate its resolver
+  path from exact endpoint and creator-local child delivery.
+- Require established endpoints to be cloneable but not unconditionally
+  `Send`. Sendability is enforced on concrete asynchronous delivery and
+  interpreter-request paths, allowing sound closure-owned local endpoints
+  without imposing `P::Msg: Send` on every exact capability value.
+
+### Removed
+
+- Remove deterministic `Address::birth`, `ChildRecipient`, `DeliveryTarget`,
+  and local-child construction on ordinary `Delivery`.
+- Remove research probes and superseded architecture/audit documents now that
+  the established-capability contract is part of the production API.
+
 ## [0.13.1](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.13.0...bombay-behavior-v0.13.1) - 2026-08-21
 
 ### Other

@@ -1,16 +1,17 @@
 use behavior::{
-    Actions, BehaviorActed, ChildChoice, Children, Delivery, MailAddr, Never, Recipient,
-    SendEffects, SendInterpreter, Step,
+    Actions, BehaviorActed, BirthProtocol, BirthProtocolProduct, ChildChoice, Children, Delivery,
+    LogicalDeliveryProtocols, MailAddr, Never, NoBirthProtocols, Recipient, SendEffects,
+    SendInterpreter, Step,
 };
 
-struct FirstDestination;
+pub struct FirstDestination;
 
 impl behavior::Protocol for FirstDestination {
     type Addr = MailAddr;
     type Msg = u8;
 }
 
-struct SecondDestination;
+pub struct SecondDestination;
 
 impl behavior::Protocol for SecondDestination {
     type Addr = MailAddr;
@@ -74,6 +75,26 @@ impl Bootstrap {
     fn receive(&mut self, _: MailAddr, _: ()) -> BehaviorActed<Self> {
         Ok(Actions::cont())
     }
+}
+
+impl LogicalDeliveryProtocols for BootstrapSends {
+    type Protocols =
+        <<Vec<Delivery<FirstDestination>> as LogicalDeliveryProtocols>::Protocols as BirthProtocolProduct>::Append<
+            <Vec<Delivery<SecondDestination>> as LogicalDeliveryProtocols>::Protocols,
+        >;
+}
+
+#[test]
+fn generated_send_product_owner_exposes_its_exact_logical_destinations() {
+    type Actual = <Bootstrap as behavior::LogicalHostRequirements>::LogicalHosts;
+    type Expected =
+        BirthProtocol<FirstDestination, BirthProtocol<SecondDestination, NoBirthProtocols>>;
+
+    trait Same<T> {}
+    impl<T> Same<T> for T {}
+    fn exact<T: Same<Expected>, Expected>() {}
+
+    exact::<Actual, Expected>();
 }
 
 struct Positioned;
@@ -255,8 +276,8 @@ fn generated_products_preserve_exact_initialization_actions() {
 fn generated_child_routes_share_one_named_creation_and_routing_source() {
     let children = BootstrapChildrenRoutes::new(11, 17);
 
-    let first: behavior::ChildRecipient<FirstChild> = children.first.recipient();
-    let second: behavior::ChildRecipient<SecondChild> = children.second.recipient();
+    let first = children.first;
+    let second = children.second;
     let creates = Children::<MailAddr>::new()
         .child_at(children.first, FirstChild)
         .child_at(children.second, SecondChild)
@@ -280,6 +301,13 @@ fn has_child_position<Parent, Role, Position>()
 where
     Parent: behavior::Behavior,
     Role: behavior::ChildRole<Parent, Position = Position>,
+{
+}
+
+fn resolves_child_occurrence<Emitter, Occurrence, Child, Position>()
+where
+    Emitter: behavior::ResolveChildOccurrence<Occurrence, Child = Child, Position = Position>,
+    Child: behavior::Behavior,
 {
 }
 
@@ -330,6 +358,21 @@ fn generated_child_selectors_prove_the_exact_parent_role_and_child() {
     has_child_position::<Bootstrap, BootstrapChildrenFirst, behavior::ChildTail<behavior::ChildHead>>(
     );
     has_child_position::<Bootstrap, BootstrapChildrenSecond, behavior::ChildHead>();
+    resolves_child_occurrence::<
+        Bootstrap,
+        BootstrapChildrenFirst,
+        FirstChild,
+        behavior::ChildTail<behavior::ChildHead>,
+    >();
+    resolves_child_occurrence::<Bootstrap, BootstrapChildrenSecond, SecondChild, behavior::ChildHead>(
+    );
+    resolves_child_occurrence::<Bootstrap, behavior::ChildHead, SecondChild, behavior::ChildHead>();
+    resolves_child_occurrence::<
+        Bootstrap,
+        behavior::ChildTail<behavior::ChildHead>,
+        FirstChild,
+        behavior::ChildTail<behavior::ChildHead>,
+    >();
 }
 
 #[test]
@@ -355,6 +398,19 @@ fn generated_positions_lower_named_roles_into_an_independent_sum() {
         IndependentTarget::Remaining(IndependentTarget::Selected(5, _))
     ));
     assert!(matches!(fallback, IndependentTarget::Selected(7, _)));
+
+    resolves_child_occurrence::<
+        Positioned,
+        PositionedChildrenPrimary,
+        FirstChild,
+        behavior::ChildTail<behavior::ChildTail<behavior::ChildHead>>,
+    >();
+    resolves_child_occurrence::<
+        Positioned,
+        PositionedChildrenFallback,
+        FirstChild,
+        behavior::ChildHead,
+    >();
 }
 
 #[test]
@@ -366,6 +422,12 @@ fn generated_child_routes_preserve_only_the_child_types_required_generics() {
         Generic(core::marker::PhantomData),
     );
     has_child_position::<Advanced<'static, u16, 3>, AdvancedChildrenGeneric, behavior::ChildHead>();
+    resolves_child_occurrence::<
+        Advanced<'static, u16, 3>,
+        AdvancedChildrenGeneric,
+        Generic<u16>,
+        behavior::ChildHead,
+    >();
 
     assert_eq!(route.nonce(), 23);
 }
@@ -377,8 +439,8 @@ fn equal_payload_protocols_remain_distinct_named_lanes() {
         second: vec![Delivery::new(Recipient::global(MailAddr(4)), 7)],
     };
 
-    assert_eq!(sends.first[0].to.resolve(MailAddr(0)), MailAddr(3));
-    assert_eq!(sends.second[0].to.resolve(MailAddr(0)), MailAddr(4));
+    assert_eq!(sends.first[0].to.address(), MailAddr(3));
+    assert_eq!(sends.second[0].to.address(), MailAddr(4));
 }
 
 #[test]
@@ -414,7 +476,10 @@ fn generated_fluent_lanes_preserve_verdict_order_and_lane_identity() {
 fn omitted_capabilities_are_empty_and_uninhabited() {
     let mut child = FirstChild;
     let actions = behavior::initialize(&mut child).expect("default initialization succeeds");
-    let _: Actions<MailAddr, Never, behavior::NoSends, behavior::NoBirths> = actions;
+    let actions: Actions<MailAddr, Never, behavior::NoSends, behavior::NoBirths> = actions;
+    assert!(matches!(actions.sends, behavior::NoSends));
+    assert!(actions.creates.is_empty());
+    assert_eq!(actions.become_, Step::Continue);
 }
 
 #[test]

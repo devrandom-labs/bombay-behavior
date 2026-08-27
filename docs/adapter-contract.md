@@ -1,241 +1,186 @@
-# Behavior Adapter Contract
+# Behavior adapter contract
 
-This contract uses the orthogonal roles defined in
-[Protocol, ingress, behavior, and effect algebras](protocol-algebra.md). An
-adapter drives a `Behavior`; ordinary delivery addresses its projected
-`Behavior::Protocol`.
-
-This document defines the complete runtime-neutral contract for driving a
-concrete Bombay behavior. It does not define a runtime, executor, mailbox,
-transport, or capability registry. Bombay's Driver and an independent adapter
-are both implementations of this same boundary.
+An adapter drives one concrete `B: Behavior`. It owns execution and resource
+capabilities while the behavior owns state and semantic decisions.
 
 ## Universal execution law
 
-An adapter accepts one exact, closed behavior `B` and an environment capable of
-producing `B::Event` and interpreting every lane of `B::Sends` and `B::Birth`:
+For each actor incarnation an adapter must:
 
-```text
-own one B
-    -> initialize B exactly once
-    -> commit the complete initialization Actions
-    -> if terminal, retire
-    -> otherwise repeat:
-        obtain one B::Event
-        -> fold it exactly once
-        -> commit the complete successful Actions exactly once
-        -> if terminal, retire
-```
+1. consume `B` through `initialize` exactly once;
+2. completely interpret initialization `Actions` before accepting mailbox
+   events;
+3. process at most one accepted `B::Event` at a time;
+4. call `transition` exactly once for that event;
+5. if the fold succeeds, interpret the returned `Actions` exactly once; and
+6. commit its `Continue`, `Goto`, or `Stop` verdict exactly once.
 
-The algorithm is identical for `Machine`, `Supervisor`, `Deadline`, routing
-templates, persistence-derived templates, nominal domain behaviors, and any
-composition of them. An adapter must never inspect a wrapper type or select a
-template-specific loop.
+A controlled fold error commits no partial actions. Cancellation or adapter
+failure must not manufacture a successful semantic fact.
 
 ## Static boundary
 
-For a concrete `B: Behavior<Ph = Never>`, the adapter must statically supply:
+The adapter is monomorphized over the complete behavior and its capabilities:
 
-- an ordered source of the exact closed `B::Event` sum;
-- an interpreter for every named lane in `B::Sends`;
-- fresh creation for `<B::Birth as BirthMode>::Child`; a child may be one
-  concrete behavior or a closed recursive `ChildChoice` whose exhaustive
-  `DispatchBirth` implementation requires one concrete `InstallBirth` adapter
-  per alternative;
-- `Send` futures from concrete installation and exhaustive dispatch, preserving
-  the recursive driver's eligibility for a thread-safe executor spawn;
-- exact behavior and capability errors;
-- incarnation-local retirement.
-
-Missing capability support is a compile-time failure. Dynamic capability maps,
-`Any`, downcasting, type-name dispatch, erased messages, and string routing are
-not valid adapter mechanisms.
-
-## Activation
-
-`Activate::initialize` consumes a concrete definition and returns:
-
-```rust,ignore
-Initialized {
-    behavior: Active<B>,
-    actions: Actions<BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>,
-}
+```text
+B: Behavior
+B::Sends: InterpretSends<Adapter, B::Event, Here>
+B::Birth::Child: DispatchBirth<B::Protocol::Addr, Installer, Output, Error>
 ```
 
-The complete initialization actions must be committed before the event source
-can expose the actor for delivery. A failed initialization consumes the
-definition and produces no successful actions. `Active<B>` cannot initialize
-again.
+The concrete bounds vary with the host design, but every lane and child
+alternative must have a compile-time implementation. A universal driver may
+be generic; it may not erase events, effects, endpoints, futures, or child
+types to achieve universality. `EndpointAddress` itself does not require every
+endpoint to be `Send`. A thread-safe driver instead requires `Send` on the
+concrete `Actions`, request, event, endpoint, or future that it actually moves
+across its asynchronous boundary.
 
-## Action commitment
+## Actions commitment
 
-One successful fold yields one indivisible decision value. The adapter receives
-that complete value exactly once. This does not make external effects
-transactional.
+For one successful `Actions` value, the adapter interprets:
 
-Commitment obeys these laws:
+1. creations in vector order;
+2. each creation's initialization effects before committing that child;
+3. every named sends lane in its structural `InterpretSends` order; and
+4. the next-behavior or termination verdict.
 
-1. creations are attempted in vector order before same-action sends;
-2. a nonce collision is a typed rejection, never replacement;
-3. creation observations describe only creations in that exact action value;
-4. order within every named send lane is preserved;
-5. no payload is dropped, duplicated, or reconstructed;
-6. a successfully committed prefix remains factual after a later failure;
-7. the adapter performs no implicit retry or rollback;
-8. final actions are committed before terminal retirement;
-9. delivery admission does not claim recipient processing or business success.
+All creation attempts precede sends and interpreter requests from the same
+action. This is a Bombay policy that makes create-then-send and
+create-then-observe deterministic. It is not a general actor-model ordering
+guarantee between independent actors.
 
-For a heterogeneous creation sum, alternative dispatch occurs inside the same ordered
-creation loop. It does not create another nonce namespace: collision checks,
-`ObserveCreation`, and `ObserveChild` correlation all use the original
-creator-local nonce and provenance. A successful arm installs the contained
-concrete behavior and binds its declared `Behavior::Protocol`; the creation
-choice sum is neither an actor nor a public protocol.
+Within `SendLayer`, inner effects are interpreted before wrapper-owned effects.
+Within a vector lane, values retain vector order. The algebra deliberately
+does not invent an order between independent product lanes beyond the product's
+own `InterpretSends` implementation.
 
-## Effect products
+If interpretation fails, later effects are not consumed. The adapter reports
+its concrete error; it may not reinterpret failure as actor termination,
+successful creation, restart, or observation.
 
-One owned lane uses the common layer algebra directly:
+## Fresh creation
 
-```rust,ignore
-let SendLayer { owned: schedules, inner } = effects;
-```
+`Create<A, C>` contains a creator-local nonce, concrete child, and
+`CreationKind`. The adapter must not derive an address from the nonce.
 
-Static `InterpretSends` traversal normally removes the need to destructure
-that layer. Named products remain appropriate when several domain lanes
-coexist, for example supervision observations, replacement communications,
-and failure reports:
+For each request it must:
 
-```rust,ignore
-let SendLayer {
-    owned: SupervisorSends {
-        child_observations,
-        creation_observations,
-        replacement_commands,
-        failure_reports,
-    },
-    inner,
-} = sends;
-```
+- reject an already-bound nonce without disturbing the existing binding;
+- allocate an address fresh with respect to the actor configuration;
+- initialize the concrete child and interpret its initialization actions;
+- install a runtime endpoint for `C::Protocol`;
+- atomically commit the creator-local occurrence/nonce binding; and
+- publish `EstablishedCreation<C::Protocol, Occurrence>::Installed` only after
+  all preceding steps succeed.
 
-`InterpretSends<Interpreter, RootEvent, Path>` recursively traverses structural
-layers. A layer's owned effects retain `Path`; its inner effects receive
-`Inside<Path>`. Concrete interpreters therefore see the exact root event and
-absolute structural destination for every request. Public multi-lane products
-retain named fields and propagate the same path through each field.
+Failure publishes the matching `CreationRejection` and no capability. An
+allocation collision is retryable or rejected according to runtime policy; it
+can never mean replacement. `CreationKind::ReplacementIncarnation` preserves
+provenance but still requires fresh allocation.
+
+`DispatchBirth` recursively selects the concrete child. One
+`InstallBirth<Position, C, ...>` implementation is required per structural
+occurrence. `Position` is interpreter navigation evidence, not hosting
+identity.
+
+When the adapter retains exact child bindings, it may derive their complete
+direct-child product through `FoldBirthNode`. Behavior owns and seals the leaf,
+`ChildChoice`, and `Never` recursion; the adapter's `BirthNodeMapper` chooses
+only its storage constructor. The fold is compile-time structure and performs
+none of the creation transaction above. Each installed child derives its own
+product from its own `Behavior::Birth`, so creator namespaces are not flattened
+or shared.
+
+When an effect carries a nominal occurrence, require
+`Emitter: ResolveChildOccurrence<Occurrence>` and select the mapper-owned slot
+with its associated `Position`. This sealed projection accepts generated roles,
+raw `ChildHead`/`ChildTail<_>` paths, and genuinely transparent wrappers. It
+rejects inherited roles when a wrapper changes protocol or birth topology; an
+adapter must not repair that mismatch with a registry or runtime search.
+
+## Destination interpretation
+
+The three delivery paths have different obligations:
+
+| Request | Adapter action |
+|---|---|
+| `Delivery<P>` | resolve `Recipient<P>::address()` under the runtime's logical-name policy, then deliver `P::Msg` |
+| `ChildDelivery<P, O>` | resolve the current creator's committed `(O, nonce)` binding, then deliver |
+| `EstablishedDelivery<P>` | transfer the exact endpoint and deliver directly |
+
+The adapter must preserve `P` statically throughout. It may not coalesce two
+protocols merely because their addresses or message layouts match.
+
+`EndpointAddress` lets the runtime's own address newtype select the endpoint
+family. `InterpretEstablished`, `InterpretEstablishedDelivery`, and the exact
+observation/shutdown interpreter traits are public power-user boundaries. They
+do not grant endpoint access outside the explicit transfer call, but they are
+not sealed as exclusive runtime authority.
 
 ## Event injection
 
-Runtime facts return as later typed events. `InjectEvent<Input, Path>` proves
-both that the concrete closed event algebra accepts an input and which layer
-owns it. `Here` selects the current layer; `Inside<Path>` selects the same
-capability below exactly one outer layer. `EventLayer<Owned, Inner>` is the
-canonical structural coproduct for a wrapper with one owned lane. Templates
-with several related owned facts use a named exhaustive event sum and obey the
-same path law.
+Interpreter-originated facts return through their declared
+`ReturnsToEmitter<Input, Path>`. The adapter retains the corresponding
+`Ingress<Input, Path>` or equivalent static constructor and enqueues exactly
+the root `B::Event` it produces.
 
-There is no payload search or fallthrough. The request selects its owner when
-emitted. A stale result is inert at that owner; it is never offered to an inner
-layer merely because that layer accepts the same Rust payload type. Named
-send effects preserve the dual structure: traversal begins at `Here`, a
-wrapper's own request retains the current path, and a request in its `inner`
-effects moves through `Inside<_>`.
+Ancestor reports instead carry their destination ingress in the request and
+declare `NoReturnToEmitter`. For `ReportShutdownPlan<P, Path>`, the adapter
+calls `into_event` and enqueues that exact root event. It must not deliver the
+plan to the emitting inner lane, mutate the coordinator directly, or treat the
+request as successful installation before the coordinator consumes the event.
 
-Request values do not carry a duplicate emitter-local `Ingress<_, Here>`.
-`InterpreterRequest::ReturnToEmitter` declares the relative continuation and
-path-indexed traversal supplies its absolute root path. A request targeting a
-different actor may still carry that separate actor's ingress capability; for
-example `ShutdownChild<C>` names shutdown inside the selected child while its
-typed rejection returns to the emitting parent.
+It must not inspect payload types to find a lane. Repeated fact types at
+different wrapper depths are distinct because their structural paths are
+distinct.
 
-This duality applies only to emitter-return to the emitters. `SendsFor<Event>` and
-`InterpreterRequest::ReturnToEmitter` expose that scope statically. An adapter must not
-reindex an established recipient, child destination, or report targeting an
-already established parent/child relationship merely because the emitter has
-another behavior wrapper.
+## Observation
 
-If `k: Result -> InnerEvent` is local and `i` is the wrapper's inner event
-injection, the composed continuation is `i . k`. Identity and associativity
-follow from function composition. A non-local destination `d` instead obeys
-wrapper invariance: `W(d) = d`.
+Exact observation uses `ObservationId` as observer-local relationship
+correlation and the supplied endpoint as incarnation identity. The adapter
+must return a complete `EstablishedObservation<P>` fact for start, cancel,
+rejection, or eventual stop. Duplicate live IDs and cancellation of a missing
+relationship are explicit rejections.
 
-Timer, creation, lifecycle, and observation callbacks must enqueue their
-structurally selected typed input; they must not synchronously re-enter the
-behavior fold.
+Address-based `ObservePeer<A>` remains separate. A missing live address is not
+proof that the requested incarnation stopped. Without a selected live
+incarnation or authoritative retained terminal fact, the adapter returns its
+own error rather than fabricating `PeerStopped`.
 
-## Error and cancellation law
+## Orderly shutdown
 
-Behavior failure and environment failure remain distinct concrete error types.
-An adapter may compose capability failures into its own closed `thiserror` sum,
-but must not erase or stringify them.
+`ShutdownEstablished<B, Path>` supplies an exact endpoint and a typed
+`Ingress<ShutdownRequested, Path>`. The adapter injects that event through the
+normal mailbox boundary. It returns `EstablishedShutdownResolved<P>::Accepted`
+only when the request is admitted, or the precise rejection otherwise.
 
-Cancellation drops the values owned by the cancelled future. It cannot claim
-that asynchronous retirement or an uncertain external effect completed. Panic
-or cancellation must not permit later polling of the consumed execution.
+Acceptance is not termination. Eventual termination is reported through the
+observation relationship.
 
-## Nameability
+## Environment and liveness
 
-Local construction relies on inference:
+Clock reads, timer queues, bounded-mailbox waiting, task scheduling, endpoint
+storage, networking, persistence, and operating-system failures are adapter
+concerns. They must enter or leave the fold only through declared typed events,
+effects, and errors.
 
-```rust,ignore
-let behavior = Deadline::new(Stash::new(worker, route), timer, when, react);
-run(behavior, environment);
-```
-
-Adapter entry points should be generic over the concrete behavior:
-
-```rust,ignore
-fn run<B, E>(behavior: B, environment: E)
-where
-    B: Behavior<Ph = Never>,
-    E: EnvironmentFor<B>,
-{
-    // Activate and drive this exact B.
-}
-```
-
-This preserves the exact event, sends, phase, error, birth, initialization,
-and transition contracts while allowing callers to rely on inference. A rare
-component-internal storage boundary may use an ordinary Rust alias or newtype;
-the catalogue does not define another macro or erased adapter type for it.
+Backpressure may delay a concrete interpretation future. The adapter must not
+silently drop or reorder accepted effects. Fairness, scheduling policy, and
+resource limits are runtime policy and should be documented by the runtime,
+not presented as laws of this crate.
 
 ## Conformance checklist
 
-`crates/actors/tests/runtime_contracts.rs` is the compile-time template
-manifest for interpreter-originated lanes. It enumerates every timer,
-observation, creation, parent-report, and shutdown request/fact pair and fails
-to compile when a concrete template emits a request whose returned fact cannot
-enter the owning event sum, or when `ShutdownChild<C>` names a child protocol
-that cannot accept `ShutdownRequested`.
-
-The manifest must prove the associated `Behavior::Event` of each concrete
-template, never a hand-written approximation of that event type. For a named
-effect product, one interpretation test must populate every lane and prove all
-returning requests inject at the product's actual structural path. This guards
-against a template implementing a transition while leaving its capability
-unreachable through the adapter boundary.
-
-An adapter is conforming only when tests kill each of these inversions:
-
-| Law | Required negative proof |
-|---|---|
-| Initialization once | missing or duplicate initialization fails |
-| Initialization precedence | ingress before initialization commitment fails |
-| One event, one fold | skipped or duplicate fold fails |
-| One decision, one commit | dropped or duplicate action commitment fails |
-| No prefetch | requesting the next event before commitment fails |
-| No re-entry | folding while commitment is pending fails |
-| Complete output | projecting or dropping a named lane fails |
-| Lane order | reordering one lane fails |
-| Creation precedence | sending before completing creation attempts fails |
-| Creation-result scope | cross-action or reordered results fail |
-| Terminal fusion | work after stop, failure, or input closure fails |
-| Exact errors | behavior or capability error erasure fails |
-| No retry | a second uncertain commitment attempt fails |
-| No rollback | reconstructing predecessor state fails |
-| Honest completion | external delivery completion claims fail |
-| Retirement | missing or duplicate ordinary retirement fails |
-
-The behavior testkit supplies deterministic folds, model traces, exhaustive
-sequences, properties, and fuzz targets for the template side of these laws.
-An execution adapter must additionally test its asynchronous event source,
-commitment, cancellation, and retirement implementation.
+- initialization once and before mailbox events;
+- one event at a time and one fold per accepted event;
+- creations before dependent sends/requests;
+- fresh allocation independent of nonce;
+- rejected creation commits no binding or endpoint;
+- static interpretation for every effect and child occurrence;
+- exact endpoints bypass logical-name resolution;
+- all returning facts use their declared structural ingress;
+- ancestor reports use only the explicit ingress capability carried by the request;
+- no erased envelopes, registries, downcasts, or hidden side effects; and
+- no success, restart, stop, or observation fact is inferred from failed
+  mechanics.

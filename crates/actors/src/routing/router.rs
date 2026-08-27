@@ -3,24 +3,24 @@
 use core::num::NonZeroU16;
 
 use behavior::{
-    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, Never, NoBirths, Protocol,
-    Recipient, User,
+    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Never, NoBirths, Protocol, User,
 };
 use thiserror::Error;
+
+use crate::DeliveryRoute;
 
 /// One command accepted by [`Router`].
 ///
 /// Membership changes are processed in mailbox order. `Route` transfers
 /// ownership of one destination-protocol message to the router. Duplicate
 /// members are inert and removal preserves the relative order of survivors.
-#[derive(Clone, PartialEq, Eq)]
-pub enum RouterMessage<D: Protocol, R: RoutingStrategy<D>> {
+pub enum RouterMessage<Route: DeliveryRoute + Clone + PartialEq, R: RoutingStrategy<Route>> {
     /// Add one eligible recipient if it is not already present.
-    Add(Recipient<D>),
+    Add(Route),
     /// Remove one eligible recipient if present.
-    Remove(Recipient<D>),
+    Remove(Route),
     /// Select recipient(s) and emit typed deliveries.
-    Route(D::Msg),
+    Route(<Route::Protocol as Protocol>::Msg),
     /// Deliver one statically selected policy observation.
     Observe(R::Observation),
 }
@@ -29,30 +29,81 @@ pub enum RouterMessage<D: Protocol, R: RoutingStrategy<D>> {
 ///
 /// Selection failure is ordinary typed behavior failure; it does not stop the
 /// actor, mutate policy state, or ask the runtime to fabricate a recipient.
-#[derive(Debug, Error, Clone, PartialEq, Eq)]
-pub enum RouterError<M, E> {
+#[derive(Error, Clone, PartialEq, Eq)]
+pub enum RouterError<M, O, E> {
     /// No recipient was eligible at the instant this command was folded.
     #[error("routing rejected because no recipient is eligible")]
     NoEligibleRecipients(M),
+    /// The selected policy returned an index outside the exact membership
+    /// snapshot it received. The command and policy state remain unconsumed.
+    #[error("routing policy selected index {index} from {members} members")]
+    InvalidSelection {
+        /// Unaccepted destination command.
+        message: M,
+        /// Invalid index returned by the policy.
+        index: usize,
+        /// Size of the membership snapshot supplied to the policy.
+        members: usize,
+    },
     /// The concrete policy rejected its typed observation atomically.
     #[error("routing policy rejected an observation")]
-    Policy(E),
+    Policy {
+        /// Exact observation rejected by the policy.
+        observation: O,
+        /// Concrete policy reason.
+        error: E,
+    },
+}
+
+impl<M: core::fmt::Debug, O, E: core::fmt::Debug> core::fmt::Debug for RouterError<M, O, E> {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::NoEligibleRecipients(message) => formatter
+                .debug_tuple("NoEligibleRecipients")
+                .field(message)
+                .finish(),
+            Self::InvalidSelection {
+                message,
+                index,
+                members,
+            } => formatter
+                .debug_struct("InvalidSelection")
+                .field("message", message)
+                .field("index", index)
+                .field("members", members)
+                .finish(),
+            Self::Policy { error, .. } => formatter
+                .debug_struct("Policy")
+                .field("observation", &"<retained>")
+                .field("error", error)
+                .finish(),
+        }
+    }
 }
 
 /// Static recipient-selection policy used by [`Router`].
 ///
-/// Implementations receive only the current membership length and return
-/// indices into that exact snapshot. Returning an out-of-range index is a
-/// policy bug and is ignored rather than converted into an untyped runtime
-/// lookup. Policies perform no effects and obtain no ambient entropy.
-pub trait RoutingStrategy<D: Protocol> {
+/// Implementations receive the current membership snapshot and return at most
+/// one index into it. Returning an out-of-range index is a typed
+/// [`RouterError::InvalidSelection`]; the command is returned and the cloned
+/// policy candidate is discarded without committing policy state. Policies
+/// perform no effects and obtain no ambient entropy.
+pub trait RoutingStrategy<Route: DeliveryRoute + Clone + PartialEq>: Clone {
     /// Closed observation type accepted by this policy.
     type Observation;
     /// Concrete observation rejection.
     type Error;
 
-    /// Select zero or more indices from this exact typed membership snapshot.
-    fn select(&mut self, members: &[Recipient<D>], message: &D::Msg) -> Vec<usize>;
+    /// Select at most one index from this exact typed membership snapshot.
+    ///
+    /// Returning `None` means no member is currently eligible. The selected
+    /// route receives ownership of the message, so unicast routing does not
+    /// require the destination protocol's message to implement [`Clone`].
+    fn select(
+        &mut self,
+        members: &[Route],
+        message: &<Route::Protocol as Protocol>::Msg,
+    ) -> Option<usize>;
 
     /// Fold one typed observation against the same membership snapshot.
     ///
@@ -62,15 +113,15 @@ pub trait RoutingStrategy<D: Protocol> {
     /// evidence is unknown, stale, or contradictory.
     fn observe(
         &mut self,
-        _members: &[Recipient<D>],
+        _members: &[Route],
         observation: Self::Observation,
     ) -> Result<(), Self::Error>;
 
     /// Update policy-local state after one new membership is committed.
-    fn added(&mut self, _recipient: Recipient<D>) {}
+    fn added(&mut self, _recipient: Route) {}
 
     /// Repair policy-local position after a membership removal.
-    fn removed(&mut self, _index: usize, _recipient: Recipient<D>, _remaining: usize) {}
+    fn removed(&mut self, _index: usize, _recipient: Route, _remaining: usize) {}
 }
 
 /// Deterministic rotating single-recipient selection.
@@ -83,24 +134,28 @@ pub struct RoundRobin {
     next: usize,
 }
 
-impl<D: Protocol> RoutingStrategy<D> for RoundRobin {
+impl<Route: DeliveryRoute + Clone + PartialEq> RoutingStrategy<Route> for RoundRobin {
     type Observation = Never;
     type Error = Never;
 
-    fn select(&mut self, members: &[Recipient<D>], _: &D::Msg) -> Vec<usize> {
+    fn select(
+        &mut self,
+        members: &[Route],
+        _: &<Route::Protocol as Protocol>::Msg,
+    ) -> Option<usize> {
         if members.is_empty() {
-            return Vec::new();
+            return None;
         }
         let selected = self.next % members.len();
         self.next = (selected + 1) % members.len();
-        vec![selected]
+        Some(selected)
     }
 
-    fn observe(&mut self, _: &[Recipient<D>], observation: Never) -> Result<(), Never> {
+    fn observe(&mut self, _: &[Route], observation: Never) -> Result<(), Never> {
         match observation {}
     }
 
-    fn removed(&mut self, index: usize, _: Recipient<D>, remaining: usize) {
+    fn removed(&mut self, index: usize, _: Route, remaining: usize) {
         if remaining == 0 {
             self.next = 0;
         } else {
@@ -109,26 +164,6 @@ impl<D: Protocol> RoutingStrategy<D> for RoundRobin {
             }
             self.next %= remaining;
         }
-    }
-}
-
-/// Deterministic selection of every current recipient in membership order.
-///
-/// Broadcasting clones the destination payload once per recipient. The
-/// application-visible clone cost is explicit in the [`Behavior`] bound.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct Broadcast;
-
-impl<D: Protocol> RoutingStrategy<D> for Broadcast {
-    type Observation = Never;
-    type Error = Never;
-
-    fn select(&mut self, members: &[Recipient<D>], _: &D::Msg) -> Vec<usize> {
-        (0..members.len()).collect()
-    }
-
-    fn observe(&mut self, _: &[Recipient<D>], observation: Never) -> Result<(), Never> {
-        match observation {}
     }
 }
 
@@ -141,9 +176,9 @@ pub struct LoadVersion(pub u64);
 pub struct Load(pub u64);
 
 /// Explicit typed load evidence for [`LeastLoaded`].
-pub struct LoadObservation<D: Protocol> {
+pub struct LoadObservation<Route: DeliveryRoute + Clone + PartialEq> {
     /// Recipient whose load was observed.
-    pub recipient: Recipient<D>,
+    pub recipient: Route,
     /// Version within that recipient's evidence stream.
     pub version: LoadVersion,
     /// Point-in-time comparable load.
@@ -164,26 +199,35 @@ pub enum LoadEvidence {
     },
 }
 
-struct RecipientLoad<D: Protocol> {
-    recipient: Recipient<D>,
+struct RecipientLoad<Route: DeliveryRoute + Clone + PartialEq> {
+    recipient: Route,
     evidence: LoadEvidence,
+}
+
+impl<Route: DeliveryRoute + Clone + PartialEq> Clone for RecipientLoad<Route> {
+    fn clone(&self) -> Self {
+        Self {
+            recipient: self.recipient.clone(),
+            evidence: self.evidence,
+        }
+    }
 }
 
 /// Rejected [`LeastLoaded`] evidence.
 #[derive(Clone, PartialEq, Eq, Error)]
-pub enum LeastLoadedError<D: Protocol> {
+pub enum LeastLoadedError<Route: DeliveryRoute + Clone + PartialEq> {
     /// Evidence names a recipient outside current membership.
     #[error("load evidence names an unknown recipient")]
-    UnknownRecipient(LoadObservation<D>),
+    UnknownRecipient(LoadObservation<Route>),
     /// Evidence predates the committed version.
     #[error("load evidence is stale")]
-    Stale(LoadObservation<D>),
+    Stale(LoadObservation<Route>),
     /// Evidence contradicts the committed load at the same version.
     #[error("load evidence conflicts at the committed version")]
-    ConflictingVersion(LoadObservation<D>),
+    ConflictingVersion(LoadObservation<Route>),
 }
 
-impl<D: Protocol> core::fmt::Debug for LeastLoadedError<D> {
+impl<Route: DeliveryRoute + Clone + PartialEq> core::fmt::Debug for LeastLoadedError<Route> {
     fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         formatter.write_str(match self {
             Self::UnknownRecipient(_) => "UnknownRecipient(..)",
@@ -193,17 +237,17 @@ impl<D: Protocol> core::fmt::Debug for LeastLoadedError<D> {
     }
 }
 
-impl<D: Protocol> Clone for LoadObservation<D> {
+impl<Route: DeliveryRoute + Clone + PartialEq> Clone for LoadObservation<Route> {
     fn clone(&self) -> Self {
         Self {
-            recipient: self.recipient,
+            recipient: self.recipient.clone(),
             version: self.version,
             load: self.load,
         }
     }
 }
 
-impl<D: Protocol> PartialEq for LoadObservation<D> {
+impl<Route: DeliveryRoute + Clone + PartialEq> PartialEq for LoadObservation<Route> {
     fn eq(&self, other: &Self) -> bool {
         self.recipient == other.recipient
             && self.version == other.version
@@ -211,7 +255,7 @@ impl<D: Protocol> PartialEq for LoadObservation<D> {
     }
 }
 
-impl<D: Protocol> Eq for LoadObservation<D> {}
+impl<Route: DeliveryRoute + Clone + PartialEq> Eq for LoadObservation<Route> {}
 
 /// Deterministic selection of the lowest observed load.
 ///
@@ -220,11 +264,19 @@ impl<D: Protocol> Eq for LoadObservation<D> {}
 /// conflicting evidence is rejected without mutation; identical evidence is
 /// idempotent. Membership removal discards its evidence. These evidence and
 /// tie rules are Bombay policy; gathering load remains an Environment concern.
-pub struct LeastLoaded<D: Protocol> {
-    loads: Vec<RecipientLoad<D>>,
+pub struct LeastLoaded<Route: DeliveryRoute + Clone + PartialEq> {
+    loads: Vec<RecipientLoad<Route>>,
 }
 
-impl<D: Protocol> LeastLoaded<D> {
+impl<Route: DeliveryRoute + Clone + PartialEq> Clone for LeastLoaded<Route> {
+    fn clone(&self) -> Self {
+        Self {
+            loads: self.loads.clone(),
+        }
+    }
+}
+
+impl<Route: DeliveryRoute + Clone + PartialEq> LeastLoaded<Route> {
     /// Construct a policy whose membership state is populated by [`Router`].
     #[must_use]
     pub const fn new() -> Self {
@@ -233,7 +285,7 @@ impl<D: Protocol> LeastLoaded<D> {
 
     /// Borrow one recipient's complete evidence phase.
     #[must_use]
-    pub fn evidence(&self, recipient: Recipient<D>) -> Option<LoadEvidence> {
+    pub fn evidence(&self, recipient: Route) -> Option<LoadEvidence> {
         self.loads
             .iter()
             .find(|entry| entry.recipient == recipient)
@@ -241,34 +293,38 @@ impl<D: Protocol> LeastLoaded<D> {
     }
 }
 
-impl<D: Protocol> Default for LeastLoaded<D> {
+impl<Route: DeliveryRoute + Clone + PartialEq> Default for LeastLoaded<Route> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<D: Protocol> RoutingStrategy<D> for LeastLoaded<D> {
-    type Observation = LoadObservation<D>;
-    type Error = LeastLoadedError<D>;
+impl<Route: DeliveryRoute + Clone + PartialEq> RoutingStrategy<Route> for LeastLoaded<Route> {
+    type Observation = LoadObservation<Route>;
+    type Error = LeastLoadedError<Route>;
 
-    fn select(&mut self, members: &[Recipient<D>], _: &D::Msg) -> Vec<usize> {
+    fn select(
+        &mut self,
+        members: &[Route],
+        _: &<Route::Protocol as Protocol>::Msg,
+    ) -> Option<usize> {
         members
             .iter()
             .enumerate()
             .filter_map(|(index, recipient)| {
-                self.evidence(*recipient)
+                self.evidence(recipient.clone())
                     .and_then(|evidence| match evidence {
                         LoadEvidence::Unknown => None,
                         LoadEvidence::Observed { load, .. } => Some((index, load)),
                     })
             })
             .min_by_key(|(index, load)| (*load, *index))
-            .map_or_else(Vec::new, |(index, _)| vec![index])
+            .map(|(index, _)| index)
     }
 
     fn observe(
         &mut self,
-        members: &[Recipient<D>],
+        members: &[Route],
         observation: Self::Observation,
     ) -> Result<(), Self::Error> {
         if !members.contains(&observation.recipient) {
@@ -305,14 +361,14 @@ impl<D: Protocol> RoutingStrategy<D> for LeastLoaded<D> {
         Ok(())
     }
 
-    fn added(&mut self, recipient: Recipient<D>) {
+    fn added(&mut self, recipient: Route) {
         self.loads.push(RecipientLoad {
             recipient,
             evidence: LoadEvidence::Unknown,
         });
     }
 
-    fn removed(&mut self, index: usize, _: Recipient<D>, _: usize) {
+    fn removed(&mut self, index: usize, _: Route, _: usize) {
         if index < self.loads.len() {
             self.loads.remove(index);
         }
@@ -334,26 +390,26 @@ pub struct MemberToken(pub u64);
 pub struct MemberTokenVersion(pub u64);
 
 /// Typed versioned stable-token evidence for hash routing.
-pub struct MemberTokenObservation<D: Protocol> {
+pub struct MemberTokenObservation<Route: DeliveryRoute + Clone + PartialEq> {
     /// Eligible recipient described by the evidence.
-    pub recipient: Recipient<D>,
+    pub recipient: Route,
     /// Evidence version.
     pub version: MemberTokenVersion,
     /// Stable policy token. It is not an actor identity or freshness proof.
     pub token: MemberToken,
 }
 
-impl<D: Protocol> Clone for MemberTokenObservation<D> {
+impl<Route: DeliveryRoute + Clone + PartialEq> Clone for MemberTokenObservation<Route> {
     fn clone(&self) -> Self {
         Self {
-            recipient: self.recipient,
+            recipient: self.recipient.clone(),
             version: self.version,
             token: self.token,
         }
     }
 }
 
-impl<D: Protocol> PartialEq for MemberTokenObservation<D> {
+impl<Route: DeliveryRoute + Clone + PartialEq> PartialEq for MemberTokenObservation<Route> {
     fn eq(&self, other: &Self) -> bool {
         self.recipient == other.recipient
             && self.version == other.version
@@ -361,7 +417,7 @@ impl<D: Protocol> PartialEq for MemberTokenObservation<D> {
     }
 }
 
-impl<D: Protocol> Eq for MemberTokenObservation<D> {}
+impl<Route: DeliveryRoute + Clone + PartialEq> Eq for MemberTokenObservation<Route> {}
 
 /// Complete stable-token evidence phase.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -379,19 +435,19 @@ pub enum MemberTokenEvidence {
 
 /// Rejected hash-membership evidence.
 #[derive(Clone, PartialEq, Eq, Error)]
-pub enum HashPolicyError<D: Protocol> {
+pub enum HashPolicyError<Route: DeliveryRoute + Clone + PartialEq> {
     /// Evidence names a recipient outside current membership.
     #[error("hash-member evidence names an unknown recipient")]
-    UnknownRecipient(MemberTokenObservation<D>),
+    UnknownRecipient(MemberTokenObservation<Route>),
     /// Evidence predates the current token version.
     #[error("hash-member evidence is stale")]
-    Stale(MemberTokenObservation<D>),
+    Stale(MemberTokenObservation<Route>),
     /// Evidence contradicts the token at the committed version.
     #[error("hash-member evidence conflicts at the committed version")]
-    ConflictingVersion(MemberTokenObservation<D>),
+    ConflictingVersion(MemberTokenObservation<Route>),
 }
 
-impl<D: Protocol> core::fmt::Debug for HashPolicyError<D> {
+impl<Route: DeliveryRoute + Clone + PartialEq> core::fmt::Debug for HashPolicyError<Route> {
     fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         formatter.write_str(match self {
             Self::UnknownRecipient(_) => "UnknownRecipient(..)",
@@ -401,23 +457,40 @@ impl<D: Protocol> core::fmt::Debug for HashPolicyError<D> {
     }
 }
 
-struct HashMember<D: Protocol> {
-    recipient: Recipient<D>,
+struct HashMember<Route: DeliveryRoute + Clone + PartialEq> {
+    recipient: Route,
     evidence: MemberTokenEvidence,
 }
 
-struct HashMembership<D: Protocol> {
-    members: Vec<HashMember<D>>,
+impl<Route: DeliveryRoute + Clone + PartialEq> Clone for HashMember<Route> {
+    fn clone(&self) -> Self {
+        Self {
+            recipient: self.recipient.clone(),
+            evidence: self.evidence,
+        }
+    }
 }
 
-impl<D: Protocol> HashMembership<D> {
+struct HashMembership<Route: DeliveryRoute + Clone + PartialEq> {
+    members: Vec<HashMember<Route>>,
+}
+
+impl<Route: DeliveryRoute + Clone + PartialEq> Clone for HashMembership<Route> {
+    fn clone(&self) -> Self {
+        Self {
+            members: self.members.clone(),
+        }
+    }
+}
+
+impl<Route: DeliveryRoute + Clone + PartialEq> HashMembership<Route> {
     const fn new() -> Self {
         Self {
             members: Vec::new(),
         }
     }
 
-    fn added(&mut self, recipient: Recipient<D>) {
+    fn added(&mut self, recipient: Route) {
         self.members.push(HashMember {
             recipient,
             evidence: MemberTokenEvidence::Unknown,
@@ -430,7 +503,7 @@ impl<D: Protocol> HashMembership<D> {
         }
     }
 
-    fn evidence(&self, recipient: Recipient<D>) -> Option<MemberTokenEvidence> {
+    fn evidence(&self, recipient: Route) -> Option<MemberTokenEvidence> {
         self.members
             .iter()
             .find(|member| member.recipient == recipient)
@@ -439,9 +512,9 @@ impl<D: Protocol> HashMembership<D> {
 
     fn observe(
         &mut self,
-        recipients: &[Recipient<D>],
-        observation: MemberTokenObservation<D>,
-    ) -> Result<(), HashPolicyError<D>> {
+        recipients: &[Route],
+        observation: MemberTokenObservation<Route>,
+    ) -> Result<(), HashPolicyError<Route>> {
         if !recipients.contains(&observation.recipient) {
             return Err(HashPolicyError::UnknownRecipient(observation));
         }
@@ -476,12 +549,12 @@ impl<D: Protocol> HashMembership<D> {
         Ok(())
     }
 
-    fn tokens(&self, recipients: &[Recipient<D>]) -> Vec<(usize, MemberToken)> {
+    fn tokens(&self, recipients: &[Route]) -> Vec<(usize, MemberToken)> {
         recipients
             .iter()
             .enumerate()
             .filter_map(|(index, recipient)| {
-                self.evidence(*recipient)
+                self.evidence(recipient.clone())
                     .and_then(|evidence| match evidence {
                         MemberTokenEvidence::Unknown => None,
                         MemberTokenEvidence::Observed { token, .. } => Some((index, token)),
@@ -507,13 +580,23 @@ fn mixed_hash(left: u64, right: u64) -> u64 {
 /// functions and observations. Tokens are policy data, never actor identities
 /// or freshness evidence. Ring mixing, clockwise tie order, and replica count
 /// are deliberate Bombay policy; no external hash-routing crate is used.
-pub struct ConsistentHash<D: Protocol, K> {
-    membership: HashMembership<D>,
+pub struct ConsistentHash<Route: DeliveryRoute + Clone + PartialEq, K> {
+    membership: HashMembership<Route>,
     replicas: NonZeroU16,
     hash_key: fn(&K) -> u64,
 }
 
-impl<D: Protocol, K> ConsistentHash<D, K> {
+impl<Route: DeliveryRoute + Clone + PartialEq, K> Clone for ConsistentHash<Route, K> {
+    fn clone(&self) -> Self {
+        Self {
+            membership: self.membership.clone(),
+            replicas: self.replicas,
+            hash_key: self.hash_key,
+        }
+    }
+}
+
+impl<Route: DeliveryRoute + Clone + PartialEq, K> ConsistentHash<Route, K> {
     /// Construct a stable-ring policy with explicit virtual-point count.
     #[must_use]
     pub const fn new(replicas: NonZeroU16, hash_key: fn(&K) -> u64) -> Self {
@@ -526,20 +609,24 @@ impl<D: Protocol, K> ConsistentHash<D, K> {
 
     /// Borrow one recipient's complete token-evidence phase.
     #[must_use]
-    pub fn evidence(&self, recipient: Recipient<D>) -> Option<MemberTokenEvidence> {
+    pub fn evidence(&self, recipient: Route) -> Option<MemberTokenEvidence> {
         self.membership.evidence(recipient)
     }
 }
 
-impl<D, K> RoutingStrategy<D> for ConsistentHash<D, K>
+impl<Route, K> RoutingStrategy<Route> for ConsistentHash<Route, K>
 where
-    D: Protocol,
-    D::Msg: RouteKey<K>,
+    Route: DeliveryRoute + Clone + PartialEq,
+    <Route::Protocol as Protocol>::Msg: RouteKey<K>,
 {
-    type Observation = MemberTokenObservation<D>;
-    type Error = HashPolicyError<D>;
+    type Observation = MemberTokenObservation<Route>;
+    type Error = HashPolicyError<Route>;
 
-    fn select(&mut self, members: &[Recipient<D>], message: &D::Msg) -> Vec<usize> {
+    fn select(
+        &mut self,
+        members: &[Route],
+        message: &<Route::Protocol as Protocol>::Msg,
+    ) -> Option<usize> {
         let key = (self.hash_key)(message.route_key());
         self.membership
             .tokens(members)
@@ -549,22 +636,22 @@ where
                     .map(move |replica| (mixed_hash(token.0, u64::from(replica)), index))
             })
             .min_by_key(|(point, index)| (*point < key, *point, *index))
-            .map_or_else(Vec::new, |(_, index)| vec![index])
+            .map(|(_, index)| index)
     }
 
     fn observe(
         &mut self,
-        members: &[Recipient<D>],
+        members: &[Route],
         observation: Self::Observation,
     ) -> Result<(), Self::Error> {
         self.membership.observe(members, observation)
     }
 
-    fn added(&mut self, recipient: Recipient<D>) {
+    fn added(&mut self, recipient: Route) {
         self.membership.added(recipient);
     }
 
-    fn removed(&mut self, index: usize, _: Recipient<D>, _: usize) {
+    fn removed(&mut self, index: usize, _: Route, _: usize) {
         self.membership.removed(index);
     }
 }
@@ -576,12 +663,21 @@ where
 /// Evidence and identity laws are the same as [`ConsistentHash`]. This is a
 /// reviewed local algorithm so external crates cannot silently own Bombay's
 /// membership or hash policy.
-pub struct RendezvousHash<D: Protocol, K> {
-    membership: HashMembership<D>,
+pub struct RendezvousHash<Route: DeliveryRoute + Clone + PartialEq, K> {
+    membership: HashMembership<Route>,
     hash_key: fn(&K) -> u64,
 }
 
-impl<D: Protocol, K> RendezvousHash<D, K> {
+impl<Route: DeliveryRoute + Clone + PartialEq, K> Clone for RendezvousHash<Route, K> {
+    fn clone(&self) -> Self {
+        Self {
+            membership: self.membership.clone(),
+            hash_key: self.hash_key,
+        }
+    }
+}
+
+impl<Route: DeliveryRoute + Clone + PartialEq, K> RendezvousHash<Route, K> {
     /// Construct a highest-random-weight policy.
     #[must_use]
     pub const fn new(hash_key: fn(&K) -> u64) -> Self {
@@ -593,42 +689,46 @@ impl<D: Protocol, K> RendezvousHash<D, K> {
 
     /// Borrow one recipient's complete token-evidence phase.
     #[must_use]
-    pub fn evidence(&self, recipient: Recipient<D>) -> Option<MemberTokenEvidence> {
+    pub fn evidence(&self, recipient: Route) -> Option<MemberTokenEvidence> {
         self.membership.evidence(recipient)
     }
 }
 
-impl<D, K> RoutingStrategy<D> for RendezvousHash<D, K>
+impl<Route, K> RoutingStrategy<Route> for RendezvousHash<Route, K>
 where
-    D: Protocol,
-    D::Msg: RouteKey<K>,
+    Route: DeliveryRoute + Clone + PartialEq,
+    <Route::Protocol as Protocol>::Msg: RouteKey<K>,
 {
-    type Observation = MemberTokenObservation<D>;
-    type Error = HashPolicyError<D>;
+    type Observation = MemberTokenObservation<Route>;
+    type Error = HashPolicyError<Route>;
 
-    fn select(&mut self, members: &[Recipient<D>], message: &D::Msg) -> Vec<usize> {
+    fn select(
+        &mut self,
+        members: &[Route],
+        message: &<Route::Protocol as Protocol>::Msg,
+    ) -> Option<usize> {
         let key = (self.hash_key)(message.route_key());
         self.membership
             .tokens(members)
             .into_iter()
             .map(|(index, token)| (mixed_hash(key, token.0), index))
             .max_by(|left, right| left.0.cmp(&right.0).then_with(|| right.1.cmp(&left.1)))
-            .map_or_else(Vec::new, |(_, index)| vec![index])
+            .map(|(_, index)| index)
     }
 
     fn observe(
         &mut self,
-        members: &[Recipient<D>],
+        members: &[Route],
         observation: Self::Observation,
     ) -> Result<(), Self::Error> {
         self.membership.observe(members, observation)
     }
 
-    fn added(&mut self, recipient: Recipient<D>) {
+    fn added(&mut self, recipient: Route) {
         self.membership.added(recipient);
     }
 
-    fn removed(&mut self, index: usize, _: Recipient<D>, _: usize) {
+    fn removed(&mut self, index: usize, _: Route, _: usize) {
         self.membership.removed(index);
     }
 }
@@ -636,21 +736,32 @@ where
 /// A pure typed router over one concrete destination protocol.
 ///
 /// State is the insertion-ordered recipient product plus a statically selected
-/// policy. Inputs are [`RouterMessage`]; outputs are ordinary
-/// [`Delivery<D>`] values. Initialization is empty. Successful membership
-/// transitions emit no effects. A successful route emits deliveries in policy
-/// order and continues; an empty selection returns [`RouterError`] without
-/// changing membership. The router never terminates by policy and requires
+/// policy. Inputs are [`RouterMessage`]; outputs are the concrete send product
+/// selected by `Route`. Initialization is empty. Successful membership
+/// transitions emit no effects. A successful route transfers ownership to one
+/// selected member and continues; an empty selection returns [`RouterError`]
+/// without changing membership. Fan-out is the distinct [`crate::Topic`] or
+/// [`crate::PubSub`] law and therefore does not impose a message-cloning bound
+/// on this unicast actor. The router never terminates by policy and requires
 /// only Bombay Address and Communication interpretation for its send lane.
-pub struct Router<A: Address, D: Protocol<Addr = A>, R> {
-    recipients: Vec<Recipient<D>>,
+pub struct Router<
+    A: Address,
+    Route: DeliveryRoute<Protocol: Protocol<Addr = A>> + Clone + PartialEq,
+    R,
+> {
+    recipients: Vec<Route>,
     strategy: R,
 }
 
-impl<A: Address, D: Protocol<Addr = A>, R: RoutingStrategy<D>> Router<A, D, R> {
+impl<A, Route, R> Router<A, Route, R>
+where
+    A: Address,
+    Route: DeliveryRoute<Protocol: Protocol<Addr = A>> + Clone + PartialEq,
+    R: RoutingStrategy<Route>,
+{
     /// Construct a definition from explicit initial membership and policy.
     #[must_use]
-    pub fn new(recipients: Vec<Recipient<D>>, strategy: R) -> Self {
+    pub fn new(recipients: Vec<Route>, strategy: R) -> Self {
         let mut unique = Vec::with_capacity(recipients.len());
         for recipient in recipients {
             if !unique.contains(&recipient) {
@@ -659,7 +770,7 @@ impl<A: Address, D: Protocol<Addr = A>, R: RoutingStrategy<D>> Router<A, D, R> {
         }
         let mut strategy = strategy;
         for recipient in &unique {
-            strategy.added(*recipient);
+            strategy.added(recipient.clone());
         }
         Self {
             recipients: unique,
@@ -669,7 +780,7 @@ impl<A: Address, D: Protocol<Addr = A>, R: RoutingStrategy<D>> Router<A, D, R> {
 
     /// Current eligible recipients in observable routing order.
     #[must_use]
-    pub fn recipients(&self) -> &[Recipient<D>] {
+    pub fn recipients(&self) -> &[Route] {
         &self.recipients
     }
 
@@ -680,7 +791,12 @@ impl<A: Address, D: Protocol<Addr = A>, R: RoutingStrategy<D>> Router<A, D, R> {
     }
 }
 
-impl<A: Address, D: Protocol<Addr = A>, R: RoutingStrategy<D>> BehaviorBase for Router<A, D, R> {
+impl<A, Route, R> BehaviorBase for Router<A, Route, R>
+where
+    A: Address,
+    Route: DeliveryRoute<Protocol: Protocol<Addr = A>> + Clone + PartialEq,
+    R: RoutingStrategy<Route>,
+{
     type Base = Self;
 
     fn base(&self) -> &Self::Base {
@@ -688,63 +804,74 @@ impl<A: Address, D: Protocol<Addr = A>, R: RoutingStrategy<D>> BehaviorBase for 
     }
 }
 
-impl<A, D, R> behavior::Protocol for Router<A, D, R>
+impl<A, Route, R> behavior::Protocol for Router<A, Route, R>
 where
     A: Address,
-    D: Protocol<Addr = A>,
-    D::Msg: Clone,
-    R: RoutingStrategy<D>,
+    Route: DeliveryRoute<Protocol: Protocol<Addr = A>> + Clone + PartialEq,
+    R: RoutingStrategy<Route>,
+    R::Observation: Clone,
 {
     type Addr = A;
-    type Msg = RouterMessage<D, R>;
+    type Msg = RouterMessage<Route, R>;
 }
 
-impl<A, D, R> Behavior for Router<A, D, R>
+impl<A, Route, R> Behavior for Router<A, Route, R>
 where
     A: Address,
-    D: Protocol<Addr = A>,
-    D::Msg: Clone,
-    R: RoutingStrategy<D>,
+    Route: DeliveryRoute<Protocol: Protocol<Addr = A>> + Clone + PartialEq,
+    R: RoutingStrategy<Route>,
+    R::Observation: Clone,
+    Route::Sends: behavior::SendsFor<User<A, RouterMessage<Route, R>>>,
 {
     type Protocol = Self;
-    type Event = User<A, RouterMessage<D, R>>;
-    type Sends = Vec<Delivery<D>>;
+    type Event = User<A, RouterMessage<Route, R>>;
+    type Sends = Route::Sends;
     type Ph = Never;
-    type Error = RouterError<D::Msg, R::Error>;
+    type Error = RouterError<<Route::Protocol as Protocol>::Msg, R::Observation, R::Error>;
     type Birth = NoBirths;
 
     fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
         match event.message {
             RouterMessage::Add(recipient) => {
                 if !self.recipients.contains(&recipient) {
-                    self.recipients.push(recipient);
+                    self.recipients.push(recipient.clone());
                     self.strategy.added(recipient);
                 }
                 Ok(Actions::cont())
             }
             RouterMessage::Remove(recipient) => {
-                if let Some(index) = self.recipients.iter().position(|item| *item == recipient) {
+                if let Some(index) = self.recipients.iter().position(|item| item == &recipient) {
                     let removed = self.recipients.remove(index);
                     self.strategy.removed(index, removed, self.recipients.len());
                 }
                 Ok(Actions::cont())
             }
             RouterMessage::Route(message) => {
-                let selected = self.strategy.select(&self.recipients, &message);
-                let sends = selected
-                    .into_iter()
-                    .filter_map(|index| self.recipients.get(index).copied())
-                    .map(|recipient| Delivery::new(recipient, message.clone()))
-                    .collect::<Vec<_>>();
-                if sends.is_empty() {
+                let mut strategy = self.strategy.clone();
+                let Some(index) = strategy.select(&self.recipients, &message) else {
                     return Err(RouterError::NoEligibleRecipients(message));
+                };
+                if index >= self.recipients.len() {
+                    return Err(RouterError::InvalidSelection {
+                        message,
+                        index,
+                        members: self.recipients.len(),
+                    });
                 }
+                let sends = self.recipients[index].clone().deliver(message);
+                self.strategy = strategy;
                 Ok(Actions::send(sends))
             }
             RouterMessage::Observe(observation) => {
-                self.strategy
+                let mut strategy = self.strategy.clone();
+                let retained = observation.clone();
+                strategy
                     .observe(&self.recipients, observation)
-                    .map_err(RouterError::Policy)?;
+                    .map_err(|error| RouterError::Policy {
+                        observation: retained,
+                        error,
+                    })?;
+                self.strategy = strategy;
                 Ok(Actions::cont())
             }
         }
@@ -755,7 +882,7 @@ where
 mod tests {
     use super::*;
     use crate::Activate as _;
-    use behavior::{MailAddr, Step};
+    use behavior::{Delivery, MailAddr, Recipient, Step};
 
     struct Destination;
 
@@ -828,9 +955,12 @@ mod tests {
         assert!(first.sends == vec![Delivery::new(one, 7)]);
         assert!(matches!(first.become_, Step::Continue));
 
-        router
+        let removed = router
             .receive(MailAddr(9), RouterMessage::Remove(one))
             .unwrap();
+        assert!(removed.sends.is_empty());
+        assert!(removed.creates.is_empty());
+        assert_eq!(removed.become_, Step::Continue);
         let second = router
             .receive(MailAddr(9), RouterMessage::Route(8))
             .unwrap();
@@ -838,24 +968,9 @@ mod tests {
     }
 
     #[test]
-    fn broadcast_preserves_membership_order_and_deduplicates() {
-        let one = Recipient::<Destination>::global(MailAddr(1));
-        let two = Recipient::<Destination>::global(MailAddr(2));
-        let mut router = (Router::new(vec![one, two, one], Broadcast))
-            .initialize()
-            .unwrap()
-            .behavior;
-
-        let actions = router
-            .receive(MailAddr(9), RouterMessage::Route(4))
-            .unwrap();
-        assert!(actions.sends == vec![Delivery::new(one, 4), Delivery::new(two, 4)]);
-    }
-
-    #[test]
     fn empty_membership_returns_the_owned_payload() {
         let mut router =
-            (Router::<MailAddr, Destination, _>::new(Vec::new(), RoundRobin::default()))
+            (Router::<MailAddr, Recipient<Destination>, _>::new(Vec::new(), RoundRobin::default()))
                 .initialize()
                 .unwrap()
                 .behavior;
@@ -871,17 +986,18 @@ mod tests {
     fn least_loaded_requires_typed_evidence_and_breaks_ties_by_membership_order() {
         let one = Recipient::<Destination>::global(MailAddr(1));
         let two = Recipient::<Destination>::global(MailAddr(2));
-        let mut router = (Router::new(vec![one, two], LeastLoaded::<Destination>::new()))
-            .initialize()
-            .unwrap()
-            .behavior;
+        let mut router =
+            (Router::new(vec![one, two], LeastLoaded::<Recipient<Destination>>::new()))
+                .initialize()
+                .unwrap()
+                .behavior;
 
         assert!(matches!(
             router.receive(MailAddr(9), RouterMessage::Route(1)),
             Err(RouterError::NoEligibleRecipients(1))
         ));
         for recipient in [one, two] {
-            router
+            let observed = router
                 .receive(
                     MailAddr(9),
                     RouterMessage::Observe(LoadObservation {
@@ -891,13 +1007,16 @@ mod tests {
                     }),
                 )
                 .unwrap();
+            assert!(observed.sends.is_empty());
+            assert!(observed.creates.is_empty());
+            assert_eq!(observed.become_, Step::Continue);
         }
         let tied = router
             .receive(MailAddr(9), RouterMessage::Route(2))
             .unwrap();
         assert!(tied.sends == vec![Delivery::new(one, 2)]);
 
-        router
+        let observed = router
             .receive(
                 MailAddr(9),
                 RouterMessage::Observe(LoadObservation {
@@ -907,6 +1026,9 @@ mod tests {
                 }),
             )
             .unwrap();
+        assert!(observed.sends.is_empty());
+        assert!(observed.creates.is_empty());
+        assert_eq!(observed.become_, Step::Continue);
         let selected = router
             .receive(MailAddr(9), RouterMessage::Route(3))
             .unwrap();
@@ -917,11 +1039,11 @@ mod tests {
     fn least_loaded_rejects_stale_and_unknown_evidence_without_mutation() {
         let one = Recipient::<Destination>::global(MailAddr(1));
         let unknown = Recipient::<Destination>::global(MailAddr(8));
-        let mut router = (Router::new(vec![one], LeastLoaded::<Destination>::new()))
+        let mut router = (Router::new(vec![one], LeastLoaded::<Recipient<Destination>>::new()))
             .initialize()
             .unwrap()
             .behavior;
-        router
+        let observed = router
             .receive(
                 MailAddr(9),
                 RouterMessage::Observe(LoadObservation {
@@ -931,6 +1053,9 @@ mod tests {
                 }),
             )
             .unwrap();
+        assert!(observed.sends.is_empty());
+        assert!(observed.creates.is_empty());
+        assert_eq!(observed.become_, Step::Continue);
 
         assert!(matches!(
             router.receive(
@@ -941,7 +1066,10 @@ mod tests {
                     load: Load(0),
                 })
             ),
-            Err(RouterError::Policy(LeastLoadedError::Stale(_)))
+            Err(RouterError::Policy {
+                error: LeastLoadedError::Stale(_),
+                ..
+            })
         ));
         assert!(matches!(
             router.receive(
@@ -952,7 +1080,10 @@ mod tests {
                     load: Load(5),
                 })
             ),
-            Err(RouterError::Policy(LeastLoadedError::ConflictingVersion(_)))
+            Err(RouterError::Policy {
+                error: LeastLoadedError::ConflictingVersion(_),
+                ..
+            })
         ));
         assert!(matches!(
             router.receive(
@@ -963,7 +1094,10 @@ mod tests {
                     load: Load(0),
                 })
             ),
-            Err(RouterError::Policy(LeastLoadedError::UnknownRecipient(_)))
+            Err(RouterError::Policy {
+                error: LeastLoadedError::UnknownRecipient(_),
+                ..
+            })
         ));
         assert_eq!(
             router.strategy().evidence(one),
@@ -993,7 +1127,7 @@ mod tests {
         .unwrap()
         .behavior;
         for (index, recipient) in members.into_iter().enumerate() {
-            router
+            let observed = router
                 .receive(
                     MailAddr(9),
                     RouterMessage::Observe(MemberTokenObservation {
@@ -1003,6 +1137,9 @@ mod tests {
                     }),
                 )
                 .unwrap();
+            assert!(observed.sends.is_empty());
+            assert!(observed.creates.is_empty());
+            assert_eq!(observed.become_, Step::Continue);
         }
         let before = (0..128_u64)
             .map(|key| {
@@ -1019,9 +1156,12 @@ mod tests {
                     .to
             })
             .collect::<Vec<_>>();
-        router
+        let removed = router
             .receive(MailAddr(9), RouterMessage::Remove(members[1]))
             .unwrap();
+        assert!(removed.sends.is_empty());
+        assert!(removed.creates.is_empty());
+        assert_eq!(removed.become_, Step::Continue);
         for (key, previous) in before.into_iter().enumerate() {
             let current = router
                 .receive(
@@ -1049,7 +1189,7 @@ mod tests {
             .unwrap()
             .behavior;
         for (recipient, token) in [(one, 11), (two, 22)] {
-            router
+            let observed = router
                 .receive(
                     MailAddr(9),
                     RouterMessage::Observe(MemberTokenObservation {
@@ -1059,6 +1199,9 @@ mod tests {
                     }),
                 )
                 .unwrap();
+            assert!(observed.sends.is_empty());
+            assert!(observed.creates.is_empty());
+            assert_eq!(observed.become_, Step::Continue);
         }
         let first = router
             .receive(
@@ -1092,7 +1235,10 @@ mod tests {
                     token: MemberToken(99),
                 })
             ),
-            Err(RouterError::Policy(HashPolicyError::ConflictingVersion(_)))
+            Err(RouterError::Policy {
+                error: HashPolicyError::ConflictingVersion(_),
+                ..
+            })
         ));
         assert_eq!(
             router.strategy().evidence(one),
@@ -1101,5 +1247,58 @@ mod tests {
                 token: MemberToken(11)
             })
         );
+    }
+
+    #[derive(Clone, Default)]
+    struct RejectAfterMutation {
+        selections: usize,
+        observations: usize,
+    }
+
+    impl RoutingStrategy<Recipient<Destination>> for RejectAfterMutation {
+        type Observation = u8;
+        type Error = u8;
+
+        fn select(&mut self, members: &[Recipient<Destination>], _: &u8) -> Option<usize> {
+            self.selections += 1;
+            Some(members.len())
+        }
+
+        fn observe(
+            &mut self,
+            _: &[Recipient<Destination>],
+            observation: Self::Observation,
+        ) -> Result<(), Self::Error> {
+            self.observations += 1;
+            Err(observation)
+        }
+    }
+
+    #[test]
+    fn rejected_policy_turns_preserve_the_command_and_policy_snapshot() {
+        let member = Recipient::<Destination>::global(MailAddr(1));
+        let mut router = Router::new(vec![member], RejectAfterMutation::default())
+            .initialize()
+            .unwrap()
+            .behavior;
+
+        assert!(matches!(
+            router.receive(MailAddr(9), RouterMessage::Route(42)),
+            Err(RouterError::InvalidSelection {
+                message: 42,
+                index: 1,
+                members: 1,
+            })
+        ));
+        assert_eq!(router.strategy().selections, 0);
+
+        assert!(matches!(
+            router.receive(MailAddr(9), RouterMessage::Observe(7)),
+            Err(RouterError::Policy {
+                observation: 7,
+                error: 7,
+            })
+        ));
+        assert_eq!(router.strategy().observations, 0);
     }
 }

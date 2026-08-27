@@ -50,17 +50,35 @@ impl<B: crate::StashStatus> crate::StashStatus for StopOnShutdown<B> {
 pub type ShutdownReaction<B> = fn(
     &mut B,
     ShutdownRequested,
-) -> Result<
-    Actions<
-        crate::BehaviorAddr<B>,
-        <B as Behavior>::Ph,
-        <B as Behavior>::Sends,
-        <B as Behavior>::Birth,
-    >,
-    <B as Behavior>::Error,
+) -> Actions<
+    crate::BehaviorAddr<B>,
+    <B as Behavior>::Ph,
+    <B as Behavior>::Sends,
+    <B as Behavior>::Birth,
 >;
 
 /// Run one explicit final fold and then stop normally.
+///
+/// The finalization reaction is infallible because it receives mutable access
+/// to `B`: a fallible reaction could change `B` and then reject the same
+/// shutdown fact, violating transition atomicity. Ordinary delegated `B`
+/// transitions retain `B::Error`.
+///
+/// ```compile_fail,E0308
+/// # use behavior::{Actions, Behavior, MailAddr, Never, NoBirths, User};
+/// # use behavior_actors::{FinalizeOnShutdown, ShutdownRequested};
+/// # struct App;
+/// # impl behavior::Protocol for App { type Addr = MailAddr; type Msg = (); }
+/// # impl Behavior for App {
+/// #   type Protocol = Self; type Event = User<MailAddr, ()>; type Sends = Vec<Never>;
+/// #   type Ph = Never; type Error = Never; type Birth = NoBirths;
+/// #   fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> behavior::BehaviorActed<Self> { Ok(Actions::cont()) }
+/// # }
+/// fn fallible(_: &mut App, _: ShutdownRequested) -> behavior::BehaviorActed<App> {
+///     Ok(Actions::cont())
+/// }
+/// let _ = FinalizeOnShutdown::new(App, fallible);
+/// ```
 pub struct FinalizeOnShutdown<B: Behavior> {
     inner: B,
     finalize: ShutdownReaction<B>,
@@ -146,7 +164,7 @@ impl_shutdown_behavior!(StopOnShutdown, |_this: &mut StopOnShutdown<B>, _request
 impl_shutdown_behavior!(
     FinalizeOnShutdown,
     |this: &mut FinalizeOnShutdown<B>, request| {
-        let actions = (this.finalize)(&mut this.inner, request)?;
+        let actions = (this.finalize)(&mut this.inner, request);
         Ok(actions
             .map_become(|_| Step::Stop(behavior::Stopped))
             .map_sends(|inner| SendLayer::new(NoSends, inner)))

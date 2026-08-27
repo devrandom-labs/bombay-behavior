@@ -1,10 +1,12 @@
 //! Read-only typed name resolution capability.
 
 use behavior::{
-    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, Never, NoBirths, Protocol,
-    Recipient, User,
+    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Never, NoBirths, Protocol, Recipient,
+    User,
 };
 use thiserror::Error;
+
+use crate::DeliveryRoute;
 
 /// Complete factual result returned by [`Resolver`].
 pub enum Resolution<K, D: Protocol> {
@@ -23,13 +25,13 @@ pub enum Resolution<K, D: Protocol> {
 }
 
 /// The only operation exposed by a [`Resolver`] recipient.
-pub enum ResolverMessage<K, Reply: behavior::Protocol> {
+pub enum ResolverMessage<K, Route> {
     /// Resolve one typed key without granting mutation authority.
     Resolve {
         /// Queried key.
         key: K,
         /// Typed result recipient.
-        reply_to: Recipient<Reply>,
+        reply_to: Route,
     },
 }
 
@@ -61,18 +63,18 @@ pub struct Resolver<
     A: Address,
     K,
     D: Protocol<Addr = A>,
-    Reply: behavior::Protocol<Addr = A, Msg = Resolution<K, D>>,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = Resolution<K, D>>>,
 > {
     bindings: Vec<(K, Recipient<D>)>,
-    marker: core::marker::PhantomData<fn() -> (A, Reply)>,
+    marker: core::marker::PhantomData<fn() -> (A, Route)>,
 }
 
-impl<A, K, D, Reply> Resolver<A, K, D, Reply>
+impl<A, K, D, Route> Resolver<A, K, D, Route>
 where
     A: Address,
     K: Clone + Eq,
     D: Protocol<Addr = A>,
-    Reply: behavior::Protocol<Addr = A, Msg = Resolution<K, D>>,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = Resolution<K, D>>>,
 {
     /// Copy one borrowed immutable binding definition.
     ///
@@ -104,12 +106,12 @@ where
     }
 }
 
-impl<A, K, D, Reply> BehaviorBase for Resolver<A, K, D, Reply>
+impl<A, K, D, Route> BehaviorBase for Resolver<A, K, D, Route>
 where
     A: Address,
     K: Clone + Eq,
     D: Protocol<Addr = A>,
-    Reply: behavior::Protocol<Addr = A, Msg = Resolution<K, D>>,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = Resolution<K, D>>>,
 {
     type Base = Self;
     fn base(&self) -> &Self {
@@ -117,27 +119,28 @@ where
     }
 }
 
-impl<A, K, D, Reply> behavior::Protocol for Resolver<A, K, D, Reply>
+impl<A, K, D, Route> behavior::Protocol for Resolver<A, K, D, Route>
 where
     A: Address,
     K: Clone + Eq,
     D: Protocol<Addr = A>,
-    Reply: behavior::Protocol<Addr = A, Msg = Resolution<K, D>>,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = Resolution<K, D>>>,
 {
     type Addr = A;
-    type Msg = ResolverMessage<K, Reply>;
+    type Msg = ResolverMessage<K, Route>;
 }
 
-impl<A, K, D, Reply> Behavior for Resolver<A, K, D, Reply>
+impl<A, K, D, Route> Behavior for Resolver<A, K, D, Route>
 where
     A: Address,
     K: Clone + Eq,
     D: Protocol<Addr = A>,
-    Reply: behavior::Protocol<Addr = A, Msg = Resolution<K, D>>,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = Resolution<K, D>>>,
+    Route::Sends: behavior::SendsFor<User<A, ResolverMessage<K, Route>>>,
 {
     type Protocol = Self;
     type Event = User<A, crate::BehaviorMessage<Self>>;
-    type Sends = Vec<Delivery<Reply>>;
+    type Sends = Route::Sends;
     type Ph = Never;
     type Error = Never;
     type Birth = NoBirths;
@@ -155,7 +158,7 @@ where
                     recipient: *recipient,
                 },
             );
-        Ok(Actions::send(vec![Delivery::new(reply_to, result)]))
+        Ok(Actions::send(reply_to.deliver(result)))
     }
 }
 
@@ -198,7 +201,7 @@ mod tests {
             Ok(Actions::cont())
         }
     }
-    type Subject = Resolver<MailAddr, u8, Destination, Reply>;
+    type Subject = Resolver<MailAddr, u8, Destination, Recipient<Reply>>;
     #[test]
     fn duplicate_definition_is_rejected_without_consuming_source() {
         let destination = Recipient::global(MailAddr(1));

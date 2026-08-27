@@ -1,12 +1,12 @@
 //! Versioned readiness policy over a fixed dependency set.
 
-use behavior::{
-    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, Never, NoBirths, Recipient,
-    User,
-};
+#[cfg(test)]
+use behavior::Recipient;
+use behavior::{Actions, Address, Behavior, BehaviorActed, BehaviorBase, Never, NoBirths, User};
 use thiserror::Error;
 
 use super::ObservationVersion;
+use crate::DeliveryRoute;
 
 /// Classification carried by committed readiness evidence.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -64,7 +64,7 @@ impl<K> ReadinessReport<K> {
 }
 
 /// Inputs accepted by [`Readiness`].
-pub enum ReadinessMessage<K, Reply: behavior::Protocol> {
+pub enum ReadinessMessage<K, Route> {
     /// Commit versioned readiness evidence for a configured dependency.
     Observe {
         /// Dependency identity.
@@ -77,7 +77,7 @@ pub enum ReadinessMessage<K, Reply: behavior::Protocol> {
     /// Return a complete point-in-time report.
     Query {
         /// Typed report recipient.
-        reply_to: Recipient<Reply>,
+        reply_to: Route,
     },
 }
 
@@ -89,6 +89,10 @@ pub enum ReadinessError<K> {
     UnknownDependency {
         /// Rejected dependency.
         dependency: K,
+        /// Rejected evidence version.
+        observed: ObservationVersion,
+        /// Exact rejected classification.
+        status: ReadinessStatus,
     },
     /// Evidence predates the latest committed version.
     #[error("readiness evidence is stale")]
@@ -99,6 +103,8 @@ pub enum ReadinessError<K> {
         observed: ObservationVersion,
         /// Latest committed version.
         current: ObservationVersion,
+        /// Exact rejected classification.
+        status: ReadinessStatus,
     },
     /// Evidence reuses one version with a different classification.
     #[error("readiness evidence conflicts at the committed version")]
@@ -107,6 +113,8 @@ pub enum ReadinessError<K> {
         dependency: K,
         /// Reused version.
         version: ObservationVersion,
+        /// Exact rejected classification.
+        status: ReadinessStatus,
     },
 }
 
@@ -122,16 +130,20 @@ pub enum ReadinessError<K> {
 /// membership, version ordering, and empty-set readiness are deliberate Bombay
 /// policy. Export through HTTP or orchestration remains a System adapter
 /// responsibility. No method has a semantic panic condition.
-pub struct Readiness<A: Address, K, Reply: behavior::Protocol<Addr = A, Msg = ReadinessReport<K>>> {
+pub struct Readiness<A, K, Route>
+where
+    A: Address,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = ReadinessReport<K>>>,
+{
     dependencies: Vec<DependencyReadiness<K>>,
-    marker: core::marker::PhantomData<fn() -> (A, Reply)>,
+    marker: core::marker::PhantomData<fn() -> (A, Route)>,
 }
 
-impl<A, K, Reply> Readiness<A, K, Reply>
+impl<A, K, Route> Readiness<A, K, Route>
 where
     A: Address,
     K: Clone + Eq,
-    Reply: behavior::Protocol<Addr = A, Msg = ReadinessReport<K>>,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = ReadinessReport<K>>>,
 {
     /// Construct readiness policy for a fixed dependency set.
     #[must_use]
@@ -171,7 +183,11 @@ where
             .iter_mut()
             .find(|state| state.dependency == dependency)
         else {
-            return Err(ReadinessError::UnknownDependency { dependency });
+            return Err(ReadinessError::UnknownDependency {
+                dependency,
+                observed: version,
+                status,
+            });
         };
         let ReadinessEvidence::Observed {
             version: committed,
@@ -186,6 +202,7 @@ where
                 dependency,
                 observed: version,
                 current: committed,
+                status,
             });
         }
         if version == committed {
@@ -195,6 +212,7 @@ where
             return Err(ReadinessError::ConflictingVersion {
                 dependency,
                 version,
+                status,
             });
         }
         current.evidence = ReadinessEvidence::Observed { version, status };
@@ -208,11 +226,11 @@ where
     }
 }
 
-impl<A, K, Reply> BehaviorBase for Readiness<A, K, Reply>
+impl<A, K, Route> BehaviorBase for Readiness<A, K, Route>
 where
     A: Address,
     K: Clone + Eq,
-    Reply: behavior::Protocol<Addr = A, Msg = ReadinessReport<K>>,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = ReadinessReport<K>>>,
 {
     type Base = Self;
     fn base(&self) -> &Self {
@@ -220,25 +238,26 @@ where
     }
 }
 
-impl<A, K, Reply> behavior::Protocol for Readiness<A, K, Reply>
+impl<A, K, Route> behavior::Protocol for Readiness<A, K, Route>
 where
     A: Address,
     K: Clone + Eq,
-    Reply: behavior::Protocol<Addr = A, Msg = ReadinessReport<K>>,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = ReadinessReport<K>>>,
 {
     type Addr = A;
-    type Msg = ReadinessMessage<K, Reply>;
+    type Msg = ReadinessMessage<K, Route>;
 }
 
-impl<A, K, Reply> Behavior for Readiness<A, K, Reply>
+impl<A, K, Route> Behavior for Readiness<A, K, Route>
 where
     A: Address,
     K: Clone + Eq,
-    Reply: behavior::Protocol<Addr = A, Msg = ReadinessReport<K>>,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = ReadinessReport<K>>>,
+    Route::Sends: behavior::SendsFor<User<A, ReadinessMessage<K, Route>>>,
 {
     type Protocol = Self;
     type Event = User<A, crate::BehaviorMessage<Self>>;
-    type Sends = Vec<Delivery<Reply>>;
+    type Sends = Route::Sends;
     type Ph = Never;
     type Error = ReadinessError<K>;
     type Birth = NoBirths;
@@ -254,7 +273,7 @@ where
                 Ok(Actions::cont())
             }
             ReadinessMessage::Query { reply_to } => {
-                Ok(Actions::send(vec![Delivery::new(reply_to, self.report())]))
+                Ok(Actions::send(reply_to.deliver(self.report())))
             }
         }
     }
@@ -284,7 +303,7 @@ mod tests {
         }
     }
 
-    type Subject = Readiness<MailAddr, u8, Reply>;
+    type Subject = Readiness<MailAddr, u8, Recipient<Reply>>;
 
     #[test]
     fn all_dependencies_must_have_ready_evidence() {
@@ -300,7 +319,7 @@ mod tests {
                 .unwrap()
         };
         assert!(!query(&mut subject).sends[0].message.ready());
-        let _ = subject
+        let observed = subject
             .receive(
                 MailAddr(9),
                 ReadinessMessage::Observe {
@@ -310,8 +329,11 @@ mod tests {
                 },
             )
             .unwrap();
+        assert!(observed.sends.is_empty());
+        assert!(observed.creates.is_empty());
+        assert_eq!(observed.become_, behavior::Step::Continue);
         assert!(!query(&mut subject).sends[0].message.ready());
-        let _ = subject
+        let observed = subject
             .receive(
                 MailAddr(9),
                 ReadinessMessage::Observe {
@@ -321,13 +343,16 @@ mod tests {
                 },
             )
             .unwrap();
+        assert!(observed.sends.is_empty());
+        assert!(observed.creates.is_empty());
+        assert_eq!(observed.become_, behavior::Step::Continue);
         assert!(query(&mut subject).sends[0].message.ready());
     }
 
     #[test]
     fn stale_conflicting_and_unknown_evidence_are_atomic() {
         let mut subject = (Subject::new([1])).initialize().unwrap().behavior;
-        let _ = subject
+        let observed = subject
             .receive(
                 MailAddr(9),
                 ReadinessMessage::Observe {
@@ -337,6 +362,9 @@ mod tests {
                 },
             )
             .unwrap();
+        assert!(observed.sends.is_empty());
+        assert!(observed.creates.is_empty());
+        assert_eq!(observed.become_, behavior::Step::Continue);
         assert!(matches!(
             subject.receive(
                 MailAddr(9),
@@ -368,7 +396,11 @@ mod tests {
                     status: ReadinessStatus::Ready
                 }
             ),
-            Err(ReadinessError::UnknownDependency { dependency: 9 })
+            Err(ReadinessError::UnknownDependency {
+                dependency: 9,
+                observed: ObservationVersion(1),
+                status: ReadinessStatus::Ready,
+            })
         ));
         assert!(matches!(
             subject.dependencies()[0].evidence,

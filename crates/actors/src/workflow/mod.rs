@@ -9,7 +9,7 @@ pub use barrier::{
     BarrierMembership, BarrierMessage, BarrierReleased, BarrierState,
 };
 pub use coordinator::{
-    Workflow, WorkflowConfigError, WorkflowDefinition, WorkflowMessage, WorkflowOutcome,
-    WorkflowRejection, WorkflowState, WorkflowStepState,
+    Workflow, WorkflowConfigError, WorkflowDefinition, WorkflowError, WorkflowInput,
+    WorkflowMessage, WorkflowOutcome, WorkflowRejection, WorkflowState, WorkflowStepState,
 };
 pub use latch::{Latch, LatchMessage, LatchReleased, LatchState};

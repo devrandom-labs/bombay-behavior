@@ -29,6 +29,7 @@ pub enum SupervisionFailureReason {
     RestartDenied(RestartDenial),
     StableChildStopped,
     StableChildCreationRejected(crate::CreationRejection),
+    WorkerFactoryRejected,
     WorkerCreationRejected(crate::CreationRejection),
 }
 
@@ -40,6 +41,14 @@ pub enum RestartDenial {
         replacements_requested: usize,
         maximum_restarts: u32,
     },
+    /// The configured delay policy could not represent the next delay.
+    BackoffExhausted(crate::BackoffError),
+    /// The per-trigger restart-attempt sequence could not advance.
+    AttemptSequenceExhausted,
+    /// The per-trigger timer generation could not advance.
+    TimerGenerationExhausted,
+    /// No fresh local restart-timer identity remained.
+    TimerIdentityExhausted,
 }
 
 /// Why execution terminated without a behavior-requested stop.

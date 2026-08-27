@@ -3,9 +3,9 @@
 use core::future::Future;
 use core::marker::PhantomData;
 
-use super::addressing::{Address, ChildRecipient};
+use super::addressing::{Address, EndpointAddress, EstablishedActor, EstablishedRecipient};
 use crate::next::Never;
-use crate::{Behavior, Protocol};
+use crate::{Behavior, BehaviorAddr, BehaviorBase, Protocol};
 
 /// Behavior-owned provenance for a staged fresh actor creation request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -57,18 +57,6 @@ impl<A: Address, New> Create<A, New> {
     }
 }
 
-/// A named creator-local route for one statically declared child role.
-///
-/// The route carries routing intent only. Its nonce is not an actor identity,
-/// proof of freshness, or evidence that creation succeeded. `Child` fixes the
-/// exact behavior accepted by [`ChildRoute::birth`], while `Role` keeps two
-/// declarations of the same child behavior nominally distinct.
-pub struct ChildRoute<Child: Behavior, Role> {
-    recipient: ChildRecipient<Child::Protocol>,
-    child: PhantomData<fn() -> Child>,
-    role: PhantomData<fn() -> Role>,
-}
-
 /// Static proof that `Role` names one exact direct child of `Parent`.
 ///
 /// Behavior authoring owns this relationship. A runtime may use the proof to
@@ -82,54 +70,210 @@ pub trait ChildRole<Parent: Behavior> {
     type Position: ChildPosition<<Parent::Birth as BirthMode>::Child, Self::Child>;
 }
 
-impl<Child: Behavior, Role> Copy for ChildRoute<Child, Role> {}
+/// Declares how one effect occurrence is resolved from an authored parent.
+///
+/// This is topology metadata, not actor identity or a runtime capability.
+/// Generated nominal roles implement it with their declared parent, child,
+/// and structural position. [`ChildHead`] and [`ChildTail`] implement it as
+/// raw structural positions. Consumers normally use
+/// [`ResolveChildOccurrence`] rather than inspecting `Resolution`.
+///
+/// Manually authored roles may implement this trait as the power-user path by
+/// selecting [`DeclaredChildOccurrence`] with the same relationship expressed
+/// by their [`ChildRole`] implementation. The actual resolution contract is
+/// sealed, so downstream code cannot redefine wrapper transparency or replace
+/// structural resolution with a runtime lookup.
+pub trait ChildOccurrence<Parent: Behavior>: Sized {
+    /// Sealed descriptor interpreted by [`ResolveChildOccurrence`].
+    #[doc(hidden)]
+    type Resolution: ChildOccurrenceResolution<Parent, Self>;
+}
 
-impl<Child: Behavior, Role> Clone for ChildRoute<Child, Role> {
+/// Sealed descriptor for one nominal child occurrence declared by `Parent`.
+///
+/// This type exists so generated and manually authored roles can carry their
+/// static declaration into the sealed resolver. It has no values or runtime
+/// behavior.
+#[doc(hidden)]
+pub struct DeclaredChildOccurrence;
+
+/// Sealed descriptor for a raw structural child position.
+///
+/// This type has no values or runtime behavior.
+#[doc(hidden)]
+pub struct StructuralChildOccurrence<Position>(PhantomData<fn() -> Position>);
+
+/// Resolve an effect's nominal or structural occurrence against the concrete
+/// behavior currently being interpreted.
+///
+/// This is a sealed, type-level derived construction. It performs no lookup,
+/// allocates no actor, and introduces no second identity: the resolved child's
+/// [`Behavior::Protocol`] remains canonical identity, while `Position` is only
+/// navigation evidence into the emitter's direct birth algebra.
+///
+/// A nominal role follows [`BehaviorBase`] through a wrapper only when the
+/// wrapper preserves the exact protocol and the role's declared child at its
+/// exact structural position. A wrapper may append births after that position,
+/// but it cannot replace, reorder, or insert births before it. Raw
+/// [`ChildHead`] and [`ChildTail`] positions instead resolve directly against
+/// the running emitter's own birth algebra.
+///
+/// A wrapper that replaces its base role's child cannot silently reuse that
+/// role:
+///
+/// ```compile_fail
+/// use behavior::{
+///     Actions, Behavior, BehaviorActed, BehaviorBase, Births, ChildHead,
+///     ChildOccurrence, ChildRole, DeclaredChildOccurrence, MailAddr, Never,
+///     NoBirths, NoSends, Protocol, ResolveChildOccurrence,
+/// };
+///
+/// struct ActorProtocol;
+/// impl Protocol for ActorProtocol {
+///     type Addr = MailAddr;
+///     type Msg = Never;
+/// }
+///
+/// macro_rules! inert {
+///     ($actor:ident, $birth:ty) => {
+///         struct $actor;
+///         impl Behavior for $actor {
+///             type Protocol = ActorProtocol;
+///             type Event = Never;
+///             type Sends = NoSends;
+///             type Ph = Never;
+///             type Error = Never;
+///             type Birth = $birth;
+///             fn transition(
+///                 &mut self,
+///                 _: behavior::ActiveTurn,
+///                 event: Never,
+///             ) -> BehaviorActed<Self> {
+///                 match event {}
+///             }
+///         }
+///     };
+/// }
+/// inert!(Child, NoBirths);
+/// inert!(Proxy, NoBirths);
+/// inert!(Parent, Births<Child>);
+/// inert!(ChangedTopology, Births<Proxy>);
+///
+/// impl BehaviorBase for Parent {
+///     type Base = Self;
+///     fn base(&self) -> &Self { self }
+/// }
+/// impl BehaviorBase for ChangedTopology {
+///     type Base = Parent;
+///     fn base(&self) -> &Parent { unreachable!() }
+/// }
+///
+/// struct WorkerRole;
+/// impl ChildRole<Parent> for WorkerRole {
+///     type Child = Child;
+///     type Position = ChildHead;
+/// }
+/// impl ChildOccurrence<Parent> for WorkerRole {
+///     type Resolution = DeclaredChildOccurrence;
+/// }
+///
+/// fn require<T: ResolveChildOccurrence<WorkerRole>>() {}
+/// require::<ChangedTopology>();
+/// ```
+pub trait ResolveChildOccurrence<Occurrence>:
+    Behavior + sealed::ResolveChildOccurrence<Occurrence>
+{
+    /// Exact concrete child behavior at this occurrence.
+    type Child: Behavior;
+
+    /// Exact structural position in this emitter's direct birth algebra.
+    type Position: ChildPosition<<Self::Birth as BirthMode>::Child, Self::Child>;
+}
+
+impl<Emitter, Occurrence> ResolveChildOccurrence<Occurrence> for Emitter
+where
+    Emitter: Behavior + BehaviorBase + sealed::ResolveChildOccurrence<Occurrence>,
+    Emitter::Base: Behavior,
+    Occurrence: ChildOccurrence<Emitter::Base>,
+    Occurrence::Resolution: ResolveChildOccurrenceDescriptor<Emitter, Occurrence>,
+{
+    type Child =
+        <Occurrence::Resolution as ResolveChildOccurrenceDescriptor<Emitter, Occurrence>>::Child;
+    type Position =
+        <Occurrence::Resolution as ResolveChildOccurrenceDescriptor<Emitter, Occurrence>>::Position;
+}
+
+/// Child behavior resolved from `Occurrence` for the running `Emitter`.
+pub type ResolvedChild<Emitter, Occurrence> =
+    <Emitter as ResolveChildOccurrence<Occurrence>>::Child;
+
+/// Structural birth position resolved from `Occurrence` for the running
+/// `Emitter`.
+pub type ResolvedChildPosition<Emitter, Occurrence> =
+    <Emitter as ResolveChildOccurrence<Occurrence>>::Position;
+
+/// Child behavior selected by one named role.
+pub type RoleChild<Parent, Role> = <Role as ChildRole<Parent>>::Child;
+
+/// Canonical protocol selected by one named role.
+pub type RoleProtocol<Parent, Role> = <RoleChild<Parent, Role> as Behavior>::Protocol;
+
+/// Creator-local route for one child behavior at one nominal role.
+///
+/// `Role` is authored or generated topology evidence. Its [`ChildRole`]
+/// implementation selects a structural position only when an operation is
+/// contextualized by the parent behavior. The role is not protocol identity,
+/// runtime identity, or a lookup key. Duplicate occurrences receive distinct
+/// nominal role types and therefore cannot exchange routes.
+pub struct ChildRoute<Child, Role>
+where
+    Child: Behavior,
+{
+    nonce: <BehaviorAddr<Child> as Address>::Nonce,
+    role: PhantomData<fn() -> Role>,
+}
+
+impl<Child: Behavior, Position> Copy for ChildRoute<Child, Position> {}
+
+impl<Child: Behavior, Position> Clone for ChildRoute<Child, Position> {
     fn clone(&self) -> Self {
         *self
     }
 }
 
-impl<Child: Behavior, Role> PartialEq for ChildRoute<Child, Role> {
+impl<Child: Behavior, Position> PartialEq for ChildRoute<Child, Position> {
     fn eq(&self, other: &Self) -> bool {
-        self.recipient == other.recipient
+        self.nonce == other.nonce
     }
 }
 
-impl<Child: Behavior, Role> Eq for ChildRoute<Child, Role> {}
+impl<Child: Behavior, Position> Eq for ChildRoute<Child, Position> {}
 
-impl<Child: Behavior, Role> core::fmt::Debug for ChildRoute<Child, Role>
+impl<Child: Behavior, Position> core::fmt::Debug for ChildRoute<Child, Position>
 where
-    <<Child::Protocol as Protocol>::Addr as Address>::Nonce: core::fmt::Debug,
+    <BehaviorAddr<Child> as Address>::Nonce: core::fmt::Debug,
 {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("ChildRoute")
-            .field("nonce", &self.nonce())
+            .field("nonce", &self.nonce)
             .finish()
     }
 }
 
-impl<Child: Behavior, Role> ChildRoute<Child, Role> {
+impl<Child: Behavior, Position> ChildRoute<Child, Position> {
     /// Name this declared role at a creator-local route.
     #[must_use]
-    pub const fn new(nonce: <<Child::Protocol as Protocol>::Addr as Address>::Nonce) -> Self {
+    pub const fn new(nonce: <BehaviorAddr<Child> as Address>::Nonce) -> Self {
         Self {
-            recipient: ChildRecipient::new(nonce),
-            child: PhantomData,
+            nonce,
             role: PhantomData,
         }
     }
 
-    /// Return the creator-local recipient for this declared child role.
-    #[must_use]
-    pub const fn recipient(self) -> ChildRecipient<Child::Protocol> {
-        self.recipient
-    }
-
     /// Return the creator-local nonce used by creation and lifecycle facts.
     #[must_use]
-    pub const fn nonce(self) -> <<Child::Protocol as Protocol>::Addr as Address>::Nonce {
-        self.recipient.nonce()
+    pub const fn nonce(self) -> <BehaviorAddr<Child> as Address>::Nonce {
+        self.nonce
     }
 
     /// Stage one creation request with explicit Behavior-owned provenance.
@@ -137,14 +281,14 @@ impl<Child: Behavior, Role> ChildRoute<Child, Role> {
     pub const fn stage(
         self,
         child: Child,
-        kind: CreationKind<<<Child::Protocol as Protocol>::Addr as Address>::Nonce>,
-    ) -> Create<<Child::Protocol as Protocol>::Addr, Child> {
+        kind: CreationKind<<BehaviorAddr<Child> as Address>::Nonce>,
+    ) -> Create<BehaviorAddr<Child>, Child> {
         Create::new(self.nonce(), child, kind)
     }
 
     /// Stage an ordinary fresh-birth request for this declared child role.
     #[must_use]
-    pub const fn birth(self, child: Child) -> Create<<Child::Protocol as Protocol>::Addr, Child> {
+    pub const fn birth(self, child: Child) -> Create<BehaviorAddr<Child>, Child> {
         self.stage(child, CreationKind::Birth)
     }
 
@@ -152,10 +296,310 @@ impl<Child: Behavior, Role> ChildRoute<Child, Role> {
     #[must_use]
     pub const fn replacement_incarnation(
         self,
-        replaces: <<Child::Protocol as Protocol>::Addr as Address>::Nonce,
+        replaces: <BehaviorAddr<Child> as Address>::Nonce,
         child: Child,
-    ) -> Create<<Child::Protocol as Protocol>::Addr, Child> {
+    ) -> Create<BehaviorAddr<Child>, Child> {
         self.stage(child, CreationKind::replacement_of(replaces))
+    }
+}
+
+/// Failure to claim an address fresh with respect to the current actor
+/// configuration.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum AllocationRejection {
+    /// The allocator has no address it can presently claim.
+    #[error("fresh actor-address allocation is exhausted")]
+    Exhausted,
+    /// The proposed address was already claimed; accepting it would violate
+    /// actor-name freshness.
+    #[error("the proposed actor address is already claimed")]
+    AddressAlreadyClaimed,
+}
+
+/// Complete semantic rejection of one staged fresh creation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum CreationRejection {
+    /// The creator-local nonce is already bound.
+    #[error("the creator-local nonce is already bound")]
+    NonceAlreadyBound,
+    /// Fresh address allocation failed.
+    #[error("fresh allocation failed: {0}")]
+    Allocation(AllocationRejection),
+    /// The child's initialization fold did not complete successfully.
+    #[error("child initialization failed")]
+    InitializationFailed,
+    /// Installation or commit failed after allocation.
+    #[error("the interpreter could not install and commit the child")]
+    EnvironmentFailed,
+}
+
+/// Committed or rejected result for one exact child-protocol occurrence.
+///
+/// `Installed` is constructed only after fresh allocation, successful
+/// initialization, installation, and creator-local binding. It returns the
+/// exact protocol capability. `Rejected` carries no capability, so a
+/// failed request cannot be used as an established destination. Both variants
+/// preserve Behavior-authored creation provenance.
+///
+/// `Occurrence` is topology navigation evidence authored by the parent. It
+/// distinguishes duplicate occurrences without becoming another protocol
+/// identity or runtime key. `P` remains canonical identity. The concrete child
+/// behavior is deliberately absent: consumers that only retain or communicate
+/// with the installed protocol do not have to pretend to be parent actors.
+///
+/// Duplicate occurrences remain incompatible even when their protocols and
+/// endpoint representations match:
+///
+/// ```compile_fail
+/// use behavior::{
+///     Address, CreationKind, EndpointAddress, EstablishedCreation,
+///     EstablishedRecipient, Protocol,
+/// };
+/// #[derive(Clone, Copy, PartialEq, Eq)]
+/// struct RuntimeAddr(u64);
+/// impl Address for RuntimeAddr { type Nonce = u64; }
+/// struct Endpoint;
+/// impl Clone for Endpoint { fn clone(&self) -> Self { Self } }
+/// impl EndpointAddress for RuntimeAddr {
+///     type Established<P> = Endpoint where P: Protocol<Addr = Self>;
+/// }
+/// struct Worker;
+/// impl Protocol for Worker { type Addr = RuntimeAddr; type Msg = (); }
+/// struct Primary;
+/// struct Backup;
+/// fn accepts_primary(_: EstablishedCreation<Worker, Primary>) {}
+/// let backup: EstablishedCreation<Worker, Backup> = EstablishedCreation::installed(
+///     1,
+///     CreationKind::Birth,
+///     EstablishedRecipient::issued(Endpoint),
+/// );
+/// accepts_primary(backup);
+/// ```
+pub enum EstablishedCreation<P, Occurrence>
+where
+    P: Protocol,
+    P::Addr: EndpointAddress,
+{
+    Installed {
+        nonce: <P::Addr as Address>::Nonce,
+        kind: CreationKind<<P::Addr as Address>::Nonce>,
+        recipient: EstablishedRecipient<P>,
+        occurrence: PhantomData<fn() -> Occurrence>,
+    },
+    Rejected {
+        nonce: <P::Addr as Address>::Nonce,
+        kind: CreationKind<<P::Addr as Address>::Nonce>,
+        reason: CreationRejection,
+        occurrence: PhantomData<fn() -> Occurrence>,
+    },
+}
+
+impl<P, Occurrence> EstablishedCreation<P, Occurrence>
+where
+    P: Protocol,
+    P::Addr: EndpointAddress,
+{
+    #[must_use]
+    pub const fn installed(
+        nonce: <P::Addr as Address>::Nonce,
+        kind: CreationKind<<P::Addr as Address>::Nonce>,
+        recipient: EstablishedRecipient<P>,
+    ) -> Self {
+        Self::Installed {
+            nonce,
+            kind,
+            recipient,
+            occurrence: PhantomData,
+        }
+    }
+
+    #[must_use]
+    pub const fn rejected(
+        nonce: <P::Addr as Address>::Nonce,
+        kind: CreationKind<<P::Addr as Address>::Nonce>,
+        reason: CreationRejection,
+    ) -> Self {
+        Self::Rejected {
+            nonce,
+            kind,
+            reason,
+            occurrence: PhantomData,
+        }
+    }
+
+    #[must_use]
+    pub const fn nonce(&self) -> <P::Addr as Address>::Nonce {
+        match self {
+            Self::Installed { nonce, .. } | Self::Rejected { nonce, .. } => *nonce,
+        }
+    }
+
+    #[must_use]
+    pub const fn kind(&self) -> CreationKind<<P::Addr as Address>::Nonce> {
+        match self {
+            Self::Installed { kind, .. } | Self::Rejected { kind, .. } => *kind,
+        }
+    }
+
+    /// Consume the fact and return its exact endpoint capability.
+    ///
+    /// # Errors
+    /// Returns the original [`CreationRejection`] when installation did not
+    /// commit.
+    pub fn into_recipient(self) -> Result<EstablishedRecipient<P>, CreationRejection> {
+        match self {
+            Self::Installed { recipient, .. } => Ok(recipient),
+            Self::Rejected { reason, .. } => Err(reason),
+        }
+    }
+
+    /// Recover the concrete installed-actor proof when this occurrence is a
+    /// declared role of `Parent`.
+    ///
+    /// `Parent` is used only as compile-time topology evidence at this
+    /// capability-strengthening boundary; it is not part of the creation-fact
+    /// identity. Ordinary consumers can retain [`EstablishedRecipient<P>`]
+    /// without carrying the parent behavior.
+    ///
+    /// # Errors
+    /// Returns the original [`CreationRejection`] when installation did not
+    /// commit.
+    pub fn into_actor<Parent>(
+        self,
+    ) -> Result<EstablishedActor<RoleChild<Parent, Occurrence>>, CreationRejection>
+    where
+        Parent: Behavior,
+        Occurrence: ChildRole<Parent>,
+        RoleChild<Parent, Occurrence>: Behavior<Protocol = P>,
+    {
+        self.into_recipient().map(EstablishedActor::from_recipient)
+    }
+}
+
+/// Same-action communication to one declared creator-local role.
+///
+/// The interpreter resolves this route only after all creations in the same
+/// [`crate::Actions`] have committed. A rejected or absent binding must produce
+/// a typed interpreter outcome; it can never be converted into a logical
+/// address by nonce arithmetic.
+pub struct ChildDelivery<P, Occurrence>
+where
+    P: Protocol,
+{
+    pub nonce: <P::Addr as Address>::Nonce,
+    pub message: P::Msg,
+    occurrence: PhantomData<fn() -> Occurrence>,
+}
+
+/// Private typed communication to one declared creator-local child role.
+///
+/// `ChildDelivery` addresses the child's public protocol. `ChildInput`
+/// instead selects one owner-defined member of the concrete child's event
+/// algebra through `Source`. This is the static boundary used for lifecycle
+/// coordination between an owner and a composed child: it retains the exact
+/// child behavior, occurrence, input, and ingress owner without exposing the
+/// input through the child's public protocol or performing a runtime lookup.
+///
+/// This is a derived Bombay communication form. Like `ChildDelivery`, its
+/// creator-local route is interpreted only after same-action creations have
+/// committed; constructing it performs no delivery.
+pub struct ChildInput<Child, Source, Input, Occurrence>
+where
+    Child: Behavior,
+{
+    /// Creator-local nonce of the concrete child receiving the input.
+    pub nonce: <BehaviorAddr<Child> as Address>::Nonce,
+    /// Complete private input transferred to the child.
+    pub input: Input,
+    marker: PhantomData<fn() -> (Child, Source, Occurrence)>,
+}
+
+/// One report emitted through an established creator/child relationship.
+///
+/// The interpreter attaches `child` from its exact local binding; the
+/// emitting behavior supplies only `report`. `EventIngress` separately keeps
+/// the concrete child behavior and occurrence in the parent's event type, so
+/// equal nonce representations cannot confuse different child roles.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ChildReport<A: Address, R> {
+    /// Creator-local nonce of the child that emitted the report.
+    pub child: A::Nonce,
+    /// Complete report value transferred by that child.
+    pub report: R,
+}
+
+impl<A: Address, R> ChildReport<A, R> {
+    /// Attach an established creator-local child nonce to one report.
+    #[must_use]
+    pub const fn new(child: A::Nonce, report: R) -> Self {
+        Self { child, report }
+    }
+}
+
+impl<A: Address, R> From<(A::Nonce, crate::ReportToParent<R>)> for ChildReport<A, R> {
+    fn from((child, request): (A::Nonce, crate::ReportToParent<R>)) -> Self {
+        Self::new(child, request.into_inner())
+    }
+}
+
+impl<Child, Source, Input, Occurrence> ChildInput<Child, Source, Input, Occurrence>
+where
+    Child: Behavior,
+    Child::Event: crate::ChildInputIngress<Source, Input>,
+{
+    /// Construct a private input for one exact creator-local child route.
+    #[must_use]
+    pub const fn at(route: ChildRoute<Child, Occurrence>, input: Input) -> Self {
+        Self {
+            nonce: route.nonce(),
+            input,
+            marker: PhantomData,
+        }
+    }
+}
+
+impl<Child, Source, Input, Occurrence> Clone for ChildInput<Child, Source, Input, Occurrence>
+where
+    Child: Behavior,
+    Input: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            nonce: self.nonce,
+            input: self.input.clone(),
+            marker: PhantomData,
+        }
+    }
+}
+
+impl<P, Occurrence> ChildDelivery<P, Occurrence>
+where
+    P: Protocol,
+{
+    #[must_use]
+    pub const fn at<Child>(route: ChildRoute<Child, Occurrence>, message: P::Msg) -> Self
+    where
+        Child: Behavior<Protocol = P>,
+    {
+        Self {
+            nonce: route.nonce(),
+            message,
+            occurrence: PhantomData,
+        }
+    }
+}
+
+impl<P, Occurrence> Clone for ChildDelivery<P, Occurrence>
+where
+    P: Protocol,
+    P::Msg: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            nonce: self.nonce,
+            message: self.message.clone(),
+            occurrence: PhantomData,
+        }
     }
 }
 
@@ -171,9 +615,9 @@ impl<Child: Behavior, Role> ChildRoute<Child, Role> {
 /// alternatives fail to compile instead of falling through to a registry or
 /// erased path. The returned future is sendable so an interpreter may remain
 /// inside a thread-safe recursive driver future.
-pub trait InstallBirth<A: Address, C: Behavior, Output, Error>
+pub trait InstallBirth<Position, C, Output, Error>
 where
-    C::Protocol: Protocol<Addr = A>,
+    C: Behavior,
 {
     /// Install and commit exactly the supplied concrete creation.
     ///
@@ -182,7 +626,7 @@ where
     /// failure without binding the requested nonce.
     fn install_birth(
         &mut self,
-        creation: Create<A, C>,
+        creation: Create<BehaviorAddr<C>, C>,
     ) -> impl Future<Output = Result<Output, Error>> + Send;
 }
 
@@ -205,6 +649,31 @@ pub trait DispatchBirth<A: Address, Installer, Output, Error>: Sized {
         kind: CreationKind<A::Nonce>,
         installer: &mut Installer,
     ) -> impl Future<Output = Result<Output, Error>> + Send;
+}
+
+#[doc(hidden)]
+pub trait DispatchBirthAt<A: Address, Position, Installer, Output, Error>: Sized {
+    fn dispatch_birth_at(
+        self,
+        nonce: A::Nonce,
+        kind: CreationKind<A::Nonce>,
+        installer: &mut Installer,
+    ) -> impl Future<Output = Result<Output, Error>> + Send;
+}
+
+impl<A, Child, Installer, Output, Error> DispatchBirth<A, Installer, Output, Error> for Child
+where
+    A: Address,
+    Child: DispatchBirthAt<A, ChildHead, Installer, Output, Error>,
+{
+    fn dispatch_birth(
+        self,
+        nonce: A::Nonce,
+        kind: CreationKind<A::Nonce>,
+        installer: &mut Installer,
+    ) -> impl Future<Output = Result<Output, Error>> + Send {
+        self.dispatch_birth_at(nonce, kind, installer)
+    }
 }
 
 /// One alternative in a closed, recursively composed child-creation sum.
@@ -252,7 +721,7 @@ pub trait DispatchBirth<A: Address, Installer, Output, Error>: Sized {
 /// inert!(Second);
 ///
 /// struct Incomplete;
-/// impl InstallBirth<MailAddr, First, (), Never> for Incomplete {
+/// impl InstallBirth<ChildHead, First, (), Never> for Incomplete {
 ///     async fn install_birth(
 ///         &mut self,
 ///         _: Create<MailAddr, First>,
@@ -341,6 +810,8 @@ pub trait ChildPosition<Children, Child: Behavior>: sealed::ChildPosition {}
 
 impl sealed::ChildPosition for ChildHead {}
 
+impl<Child: Behavior> ChildPosition<Child, Child> for ChildHead {}
+
 impl<Head: Behavior, Tail> ChildPosition<ChildChoice<Head, Tail>, Head> for ChildHead {}
 
 impl<Position> sealed::ChildPosition for ChildTail<Position> {}
@@ -353,9 +824,452 @@ where
 {
 }
 
+/// Append one closed direct-child algebra after another.
+///
+/// `Self` remains the structural prefix, so every child occurrence already
+/// valid in that prefix retains both its child type and its position. `Tail`
+/// begins only after the prefix's final position. The two injection functions
+/// change only the closed sum containing a child; [`append_creations`](Self::append_creations)
+/// additionally preserves every creation's nonce, provenance, and vector
+/// order while placing all prefix creations before all appended creations.
+///
+/// This is a static composition of Bombay's existing staged-creation
+/// capability, not another actor effect and not an allocation operation. The
+/// interpreter remains solely responsible for fresh installation and binding.
+///
+/// A generic topology owner can therefore retain an inner behavior's exact
+/// creation effects and append children whose concrete types were inferred
+/// from value construction:
+///
+/// ```
+/// use behavior::{BirthNodeAppend, Create, MailAddr, Never};
+///
+/// type Combined = <Never as BirthNodeAppend<Never>>::Output;
+/// let creations = <Never as BirthNodeAppend<Never>>::append_creations::<MailAddr>(
+///     Vec::new(),
+///     Vec::new(),
+/// );
+/// let _: Vec<Create<MailAddr, Combined>> = creations;
+/// ```
+pub trait BirthNodeAppend<Tail>: sealed::BirthNode + Sized
+where
+    Tail: sealed::BirthNode,
+{
+    /// Closed child algebra containing the complete prefix followed by the
+    /// complete appended tail.
+    type Output: sealed::BirthNode;
+
+    /// Inject one child from the existing prefix without changing its
+    /// structural occurrence.
+    fn append_prefix(self) -> Self::Output;
+
+    /// Inject one child from the appended tail after every prefix occurrence.
+    fn append_tail(tail: Tail) -> Self::Output;
+
+    /// Preserve and concatenate two ordered creation vectors.
+    #[must_use]
+    fn append_creations<A: Address>(
+        prefix: Vec<Create<A, Self>>,
+        tail: Vec<Create<A, Tail>>,
+    ) -> Vec<Create<A, Self::Output>> {
+        let mut combined = Vec::with_capacity(prefix.len() + tail.len());
+        combined.extend(prefix.into_iter().map(|creation| {
+            Create::new(
+                creation.nonce,
+                Self::append_prefix(creation.child),
+                creation.kind,
+            )
+        }));
+        combined.extend(tail.into_iter().map(|creation| {
+            Create::new(
+                creation.nonce,
+                Self::append_tail(creation.child),
+                creation.kind,
+            )
+        }));
+        combined
+    }
+}
+
+impl<Tail> BirthNodeAppend<Tail> for Never
+where
+    Tail: sealed::BirthNode,
+{
+    type Output = Tail;
+
+    fn append_prefix(self) -> Self::Output {
+        match self {}
+    }
+
+    fn append_tail(tail: Tail) -> Self::Output {
+        tail
+    }
+}
+
+impl<Node> BirthNodeAppend<Never> for Node
+where
+    Node: sealed::NonEmptyBirthNode,
+{
+    type Output = Node;
+
+    fn append_prefix(self) -> Self::Output {
+        self
+    }
+
+    fn append_tail(tail: Never) -> Self::Output {
+        match tail {}
+    }
+}
+
+impl<Child, Tail> BirthNodeAppend<Tail> for Child
+where
+    Child: Behavior,
+    Tail: sealed::NonEmptyBirthNode,
+{
+    type Output = ChildChoice<Child, Tail>;
+
+    fn append_prefix(self) -> Self::Output {
+        ChildChoice::Head(self)
+    }
+
+    fn append_tail(tail: Tail) -> Self::Output {
+        ChildChoice::Tail(tail)
+    }
+}
+
+impl<Head, Rest, Tail> BirthNodeAppend<Tail> for ChildChoice<Head, Rest>
+where
+    Head: Behavior,
+    Rest: sealed::BirthNode + BirthNodeAppend<Tail>,
+    Tail: sealed::NonEmptyBirthNode,
+    Rest::Output: sealed::BirthNode,
+{
+    type Output = ChildChoice<Head, Rest::Output>;
+
+    fn append_prefix(self) -> Self::Output {
+        match self {
+            ChildChoice::Head(head) => ChildChoice::Head(head),
+            ChildChoice::Tail(rest) => ChildChoice::Tail(rest.append_prefix()),
+        }
+    }
+
+    fn append_tail(tail: Tail) -> Self::Output {
+        ChildChoice::Tail(Rest::append_tail(tail))
+    }
+}
+
+impl<Parent: Behavior> ChildOccurrence<Parent> for ChildHead {
+    type Resolution = StructuralChildOccurrence<Self>;
+}
+
+impl<Parent: Behavior, Position> ChildOccurrence<Parent> for ChildTail<Position> {
+    type Resolution = StructuralChildOccurrence<Self>;
+}
+
+/// Sealed proof that an occurrence may select one resolver descriptor.
+///
+/// Nominal occurrences can select [`DeclaredChildOccurrence`] only when their
+/// existing [`ChildRole`] implementation supplies the child and position. Raw
+/// structural descriptors are available only to the identical
+/// [`ChildHead`] or [`ChildTail`] occurrence.
+#[doc(hidden)]
+pub trait ChildOccurrenceResolution<Parent: Behavior, Occurrence>:
+    sealed::ChildOccurrenceDescriptor + sealed::OccurrenceResolution<Parent, Occurrence>
+{
+}
+
+impl<Parent, Occurrence> ChildOccurrenceResolution<Parent, Occurrence> for DeclaredChildOccurrence
+where
+    Parent: Behavior,
+    Occurrence: ChildRole<Parent>,
+{
+}
+
+impl<Parent: Behavior> ChildOccurrenceResolution<Parent, ChildHead>
+    for StructuralChildOccurrence<ChildHead>
+{
+}
+
+impl<Parent: Behavior, Position> ChildOccurrenceResolution<Parent, ChildTail<Position>>
+    for StructuralChildOccurrence<ChildTail<Position>>
+{
+}
+
+/// Sealed implementation detail for resolving occurrence descriptors.
+#[doc(hidden)]
+pub trait ResolveChildOccurrenceDescriptor<Emitter: Behavior, Occurrence>:
+    sealed::ChildOccurrenceDescriptor + sealed::ResolveDescriptor<Emitter, Occurrence>
+{
+    type Child: Behavior;
+    type Position: ChildPosition<<Emitter::Birth as BirthMode>::Child, Self::Child>;
+}
+
+impl<Emitter, Occurrence, Position> ResolveChildOccurrenceDescriptor<Emitter, Occurrence>
+    for StructuralChildOccurrence<Position>
+where
+    Emitter: Behavior,
+    <Emitter::Birth as BirthMode>::Child: BirthNodeAt<Position>,
+    Position: ChildPosition<
+            <Emitter::Birth as BirthMode>::Child,
+            <<Emitter::Birth as BirthMode>::Child as BirthNodeAt<Position>>::Child,
+        >,
+{
+    type Child = <<Emitter::Birth as BirthMode>::Child as BirthNodeAt<Position>>::Child;
+    type Position = Position;
+}
+
+impl<Emitter, Occurrence> ResolveChildOccurrenceDescriptor<Emitter, Occurrence>
+    for DeclaredChildOccurrence
+where
+    Emitter:
+        Behavior<Protocol = <<Emitter as BehaviorBase>::Base as Behavior>::Protocol> + BehaviorBase,
+    Emitter::Base: Behavior,
+    Occurrence: ChildRole<Emitter::Base>,
+    <Emitter::Birth as BirthMode>::Child:
+        BirthNodeAt<Occurrence::Position, Child = Occurrence::Child>,
+    Occurrence::Position: ChildPosition<<Emitter::Birth as BirthMode>::Child, Occurrence::Child>,
+{
+    type Child = Occurrence::Child;
+    type Position = Occurrence::Position;
+}
+
+/// Sealed inverse projection from one structural position to its child.
+#[doc(hidden)]
+pub trait BirthNodeAt<Position>: sealed::BirthNode {
+    type Child: Behavior;
+}
+
+impl<Child: Behavior> BirthNodeAt<ChildHead> for Child {
+    type Child = Child;
+}
+
+impl<Head: Behavior, Tail> BirthNodeAt<ChildHead> for ChildChoice<Head, Tail>
+where
+    Tail: sealed::BirthNode,
+{
+    type Child = Head;
+}
+
+impl<Head, Tail, Position> BirthNodeAt<ChildTail<Position>> for ChildChoice<Head, Tail>
+where
+    Head: Behavior,
+    Tail: BirthNodeAt<Position>,
+{
+    type Child = <Tail as BirthNodeAt<Position>>::Child;
+}
+
+/// Downstream type constructor for a structural fold of one direct-child sum.
+///
+/// Behavior owns the closed node algebra: a concrete [`Behavior`] leaf,
+/// [`ChildChoice`], or [`Never`]. A runtime owns the representation associated
+/// with each leaf. `Empty` supplies its terminal representation and `Mapped`
+/// receives one concrete child, its structural position, and the recursively
+/// folded tail.
+///
+/// This is a type-level derived construction. It creates no value, allocates
+/// no actor, interprets no effect, and introduces no protocol identity or
+/// runtime key. A mapper that builds a heterogeneous product should retain
+/// `Tail`; the fold itself visits every declared leaf exactly once.
+///
+/// ```
+/// use core::marker::PhantomData;
+/// use behavior::{Behavior, BirthNodeMapper, FoldedBirthNode};
+///
+/// struct NoChildBindings;
+/// struct ChildBinding<Position, Child, Tail>(PhantomData<fn() -> (Position, Child, Tail)>);
+/// struct RuntimeStorage;
+///
+/// impl BirthNodeMapper for RuntimeStorage {
+///     type Empty = NoChildBindings;
+///     type Mapped<Position, Child: Behavior, Tail> = ChildBinding<Position, Child, Tail>;
+/// }
+///
+/// type ChildBindings<Node> = FoldedBirthNode<Node, RuntimeStorage>;
+/// ```
+pub trait BirthNodeMapper {
+    /// Representation of the empty [`Never`] node.
+    type Empty;
+
+    /// Representation of one concrete child followed by the folded tail.
+    type Mapped<Position, Child: Behavior, Tail>;
+}
+
+/// Sealed structural fold of a closed direct-child birth node.
+///
+/// The fold starts at [`ChildHead`] and advances through
+/// [`ChildTail<Position>`] in exactly the same way as [`DispatchBirth`] and
+/// [`ChildPosition`]. A downstream runtime selects only the result type
+/// constructor through [`BirthNodeMapper`]; it cannot reclassify a foreign
+/// type as a birth node or replace the recursion.
+///
+/// This fold is intentionally direct rather than transitive. Each installed
+/// actor owns the bindings for its own `Behavior::Birth`; when a concrete child
+/// is installed, the same fold applies to that child's birth algebra.
+///
+/// Foreign types cannot extend the closed node algebra:
+///
+/// ```compile_fail
+/// use behavior::{BirthNodeMapper, FoldBirthNode};
+///
+/// struct RuntimeShape;
+/// impl BirthNodeMapper for RuntimeShape {
+///     type Empty = ();
+///     type Mapped<Position, Child: behavior::Behavior, Tail> = ();
+/// }
+///
+/// struct ForeignNode;
+/// impl FoldBirthNode<RuntimeShape> for ForeignNode {
+///     type Folded = ();
+/// }
+/// ```
+pub trait FoldBirthNode<Mapper>: sealed::BirthNode
+where
+    Mapper: BirthNodeMapper,
+{
+    /// Complete mapper-owned representation of this closed birth node.
+    type Folded;
+}
+
+/// Position-carrying recursion for [`FoldBirthNode`]. Consumers should name
+/// [`FoldBirthNode`] or [`FoldedBirthNode`] instead.
+#[doc(hidden)]
+pub trait FoldBirthNodeAt<Position, Mapper>: sealed::BirthNode
+where
+    Mapper: BirthNodeMapper,
+{
+    type Folded;
+}
+
+impl<Node, Mapper> FoldBirthNode<Mapper> for Node
+where
+    Node: FoldBirthNodeAt<ChildHead, Mapper>,
+    Mapper: BirthNodeMapper,
+{
+    type Folded = <Node as FoldBirthNodeAt<ChildHead, Mapper>>::Folded;
+}
+
+impl<Position, Mapper, Child> FoldBirthNodeAt<Position, Mapper> for Child
+where
+    Mapper: BirthNodeMapper,
+    Child: Behavior,
+{
+    type Folded = Mapper::Mapped<Position, Child, Mapper::Empty>;
+}
+
+impl<Position, Mapper, Head, Tail> FoldBirthNodeAt<Position, Mapper> for ChildChoice<Head, Tail>
+where
+    Mapper: BirthNodeMapper,
+    Head: Behavior,
+    Tail: FoldBirthNodeAt<ChildTail<Position>, Mapper>,
+{
+    type Folded = Mapper::Mapped<
+        Position,
+        Head,
+        <Tail as FoldBirthNodeAt<ChildTail<Position>, Mapper>>::Folded,
+    >;
+}
+
+impl<Position, Mapper> FoldBirthNodeAt<Position, Mapper> for Never
+where
+    Mapper: BirthNodeMapper,
+{
+    type Folded = Mapper::Empty;
+}
+
+/// Result of folding `Node` with one downstream [`BirthNodeMapper`].
+pub type FoldedBirthNode<Node, Mapper> = <Node as FoldBirthNode<Mapper>>::Folded;
+
 mod sealed {
+    use super::{
+        Behavior, BehaviorBase, BirthMode, BirthNodeAt, ChildChoice, ChildHead, ChildOccurrence,
+        ChildRole, ChildTail, DeclaredChildOccurrence, Never, ResolveChildOccurrenceDescriptor,
+        StructuralChildOccurrence,
+    };
+
+    pub trait BirthNode {}
+
+    pub trait NonEmptyBirthNode: BirthNode {}
+
+    impl<Child: Behavior> BirthNode for Child {}
+    impl<Child: Behavior> NonEmptyBirthNode for Child {}
+
+    impl<Head, Tail> BirthNode for ChildChoice<Head, Tail>
+    where
+        Head: Behavior,
+        Tail: BirthNode,
+    {
+    }
+
+    impl<Head, Tail> NonEmptyBirthNode for ChildChoice<Head, Tail>
+    where
+        Head: Behavior,
+        Tail: BirthNode,
+    {
+    }
+
+    impl BirthNode for Never {}
+
     pub trait ChildPosition {}
     pub trait ChildProduct {}
+
+    pub trait ChildOccurrenceDescriptor {}
+
+    impl ChildOccurrenceDescriptor for DeclaredChildOccurrence {}
+
+    impl<Position> ChildOccurrenceDescriptor for StructuralChildOccurrence<Position> {}
+
+    pub trait OccurrenceResolution<Parent: Behavior, Occurrence> {}
+
+    impl<Parent, Occurrence> OccurrenceResolution<Parent, Occurrence> for DeclaredChildOccurrence
+    where
+        Parent: Behavior,
+        Occurrence: ChildRole<Parent>,
+    {
+    }
+
+    impl<Parent: Behavior> OccurrenceResolution<Parent, ChildHead>
+        for StructuralChildOccurrence<ChildHead>
+    {
+    }
+
+    impl<Parent: Behavior, Position> OccurrenceResolution<Parent, ChildTail<Position>>
+        for StructuralChildOccurrence<ChildTail<Position>>
+    {
+    }
+
+    pub trait ResolveDescriptor<Emitter: Behavior, Occurrence> {}
+
+    impl<Emitter, Occurrence, Position> ResolveDescriptor<Emitter, Occurrence>
+        for StructuralChildOccurrence<Position>
+    where
+        Emitter: Behavior,
+        <Emitter::Birth as BirthMode>::Child: BirthNodeAt<Position>,
+    {
+    }
+
+    impl<Emitter, Occurrence> ResolveDescriptor<Emitter, Occurrence> for DeclaredChildOccurrence
+    where
+        Emitter: Behavior<Protocol = <<Emitter as BehaviorBase>::Base as Behavior>::Protocol>
+            + BehaviorBase,
+        Emitter::Base: Behavior,
+        Occurrence: ChildRole<Emitter::Base>,
+        <Emitter::Birth as BirthMode>::Child:
+            BirthNodeAt<Occurrence::Position, Child = Occurrence::Child>,
+        Occurrence::Position:
+            super::ChildPosition<<Emitter::Birth as BirthMode>::Child, Occurrence::Child>,
+    {
+    }
+
+    pub trait ResolveChildOccurrence<Occurrence> {}
+
+    impl<Emitter, Occurrence> ResolveChildOccurrence<Occurrence> for Emitter
+    where
+        Emitter: Behavior + BehaviorBase,
+        Emitter::Base: Behavior,
+        Occurrence: ChildOccurrence<Emitter::Base>,
+        Occurrence::Resolution: ResolveChildOccurrenceDescriptor<Emitter, Occurrence>,
+    {
+    }
 }
 
 /// The empty heterogeneous creation product.
@@ -397,7 +1311,7 @@ pub enum ChildrenError<N> {
 /// Closed recursive conversion implemented only by Bombay child products.
 pub trait ChildProduct<A: Address>: sealed::ChildProduct + Sized {
     /// Closed sum containing exactly the concrete child behavior types.
-    type Choice;
+    type Choice: BirthNodeAppend<Never>;
 
     #[doc(hidden)]
     fn stage(
@@ -499,9 +1413,9 @@ impl<A: Address, Product> Children<A, Product> {
 
     /// Append an ordinary birth through one named child-role binding.
     #[must_use]
-    pub fn child_at<C, Role>(
+    pub fn child_at<C, Position>(
         self,
-        route: ChildRoute<C, Role>,
+        route: ChildRoute<C, Position>,
         child: C,
     ) -> Children<A, ChildCons<A, C, Product>>
     where
@@ -529,17 +1443,17 @@ where
     }
 }
 
-impl<A, Head, Tail, Installer, Output, Error> DispatchBirth<A, Installer, Output, Error>
-    for ChildChoice<Head, Tail>
+impl<A, Position, Head, Tail, Installer, Output, Error>
+    DispatchBirthAt<A, Position, Installer, Output, Error> for ChildChoice<Head, Tail>
 where
     A: Address,
     A::Nonce: Send,
     Head: Behavior + Send,
     Head::Protocol: Protocol<Addr = A>,
-    Tail: DispatchBirth<A, Installer, Output, Error> + Send,
-    Installer: InstallBirth<A, Head, Output, Error> + Send,
+    Tail: DispatchBirthAt<A, ChildTail<Position>, Installer, Output, Error> + Send,
+    Installer: InstallBirth<Position, Head, Output, Error> + Send,
 {
-    async fn dispatch_birth(
+    async fn dispatch_birth_at(
         self,
         nonce: A::Nonce,
         kind: CreationKind<A::Nonce>,
@@ -551,16 +1465,17 @@ where
                     .install_birth(Create::new(nonce, child, kind))
                     .await
             }
-            Self::Tail(tail) => tail.dispatch_birth(nonce, kind, installer).await,
+            Self::Tail(tail) => tail.dispatch_birth_at(nonce, kind, installer).await,
         }
     }
 }
 
-impl<A, Installer, Output, Error> DispatchBirth<A, Installer, Output, Error> for Never
+impl<A, Position, Installer, Output, Error> DispatchBirthAt<A, Position, Installer, Output, Error>
+    for Never
 where
     A: Address,
 {
-    fn dispatch_birth(
+    fn dispatch_birth_at(
         self,
         _nonce: A::Nonce,
         _kind: CreationKind<A::Nonce>,
@@ -570,14 +1485,15 @@ where
     }
 }
 
-impl<A, C, Installer, Output, Error> DispatchBirth<A, Installer, Output, Error> for C
+impl<A, Position, C, Installer, Output, Error>
+    DispatchBirthAt<A, Position, Installer, Output, Error> for C
 where
     A: Address,
     C: Behavior,
     C::Protocol: Protocol<Addr = A>,
-    Installer: InstallBirth<A, C, Output, Error>,
+    Installer: InstallBirth<Position, C, Output, Error>,
 {
-    fn dispatch_birth(
+    fn dispatch_birth_at(
         self,
         nonce: A::Nonce,
         kind: CreationKind<A::Nonce>,
@@ -693,6 +1609,34 @@ impl BirthNodeProtocols for Never {
     type Protocols = NoBirthProtocols;
 }
 
+/// Structural logical-destination projection for one closed birth node.
+///
+/// This implementation detail is public only because its associated product
+/// participates in the blanket [`crate::LogicalHostRequirements`] interface.
+#[doc(hidden)]
+pub trait BirthNodeLogicalHosts {
+    type LogicalHosts: BirthProtocolProduct;
+}
+
+impl<B> BirthNodeLogicalHosts for B
+where
+    B: crate::LogicalHostRequirements,
+{
+    type LogicalHosts = B::LogicalHosts;
+}
+
+impl<Head, Tail> BirthNodeLogicalHosts for ChildChoice<Head, Tail>
+where
+    Head: BirthNodeLogicalHosts,
+    Tail: BirthNodeLogicalHosts,
+{
+    type LogicalHosts = <Head::LogicalHosts as BirthProtocolProduct>::Append<Tail::LogicalHosts>;
+}
+
+impl BirthNodeLogicalHosts for Never {
+    type LogicalHosts = NoBirthProtocols;
+}
+
 /// This behavior cannot emit child births.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct NoBirths;
@@ -788,7 +1732,7 @@ mod tests {
     #[derive(Default)]
     struct SharedProtocolInstaller(Vec<SharedInstallation>);
 
-    impl InstallBirth<MailAddr, Primary, (), Never> for SharedProtocolInstaller {
+    impl InstallBirth<ChildHead, Primary, (), Never> for SharedProtocolInstaller {
         async fn install_birth(
             &mut self,
             creation: Create<MailAddr, Primary>,
@@ -798,7 +1742,7 @@ mod tests {
         }
     }
 
-    impl InstallBirth<MailAddr, Fallback, (), Never> for SharedProtocolInstaller {
+    impl InstallBirth<ChildTail<ChildHead>, Fallback, (), Never> for SharedProtocolInstaller {
         async fn install_birth(
             &mut self,
             creation: Create<MailAddr, Fallback>,
@@ -808,7 +1752,7 @@ mod tests {
         }
     }
 
-    impl InstallBirth<MailAddr, Child, u32, InstallError> for RecordingInstaller {
+    impl InstallBirth<ChildHead, Child, u32, InstallError> for RecordingInstaller {
         async fn install_birth(
             &mut self,
             creation: Create<MailAddr, Child>,
@@ -831,12 +1775,16 @@ mod tests {
 
     enum WorkerRole {}
 
+    impl ChildRole<Primary> for WorkerRole {
+        type Child = Child;
+        type Position = ChildHead;
+    }
+
     #[test]
     fn child_route_preserves_one_nonce_across_routing_and_creation_provenance() {
         let route = ChildRoute::<Child, WorkerRole>::new(17);
 
         assert_eq!(route.nonce(), 17);
-        assert_eq!(route.recipient().nonce(), 17);
         assert_eq!(route, ChildRoute::new(17));
         assert_ne!(route, ChildRoute::new(19));
         assert_eq!(format!("{route:?}"), "ChildRoute { nonce: 17 }");

@@ -1,9 +1,10 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, ChildStopped, Crash, CreationKind, CreationResolved, Delivery, Exit, MailAddr,
-    Never, Proxy, ProxyCommand, ProxyEvent, Recipient, RestartPolicy, Step, Strategy,
-    SupervisionEvent, Supervisor, TimerId, User, UserEvent, WorkerStopped,
+    Acted, Actions, Behavior, BehaviorActed, BehaviorBase, Births, ChildStopped, Crash,
+    CreationKind, CreationResolved, Delivery, EventIngress, Exit, Here, MailAddr, Never, Proxy,
+    ProxyEvent, Recipient, ReplacementRequested, RestartPolicy, Step, Strategy, Supervise,
+    SupervisionEvent, SupervisionLifecycle, TimerId, User, UserEvent, WorkerStopped,
 };
 use behavior_testkit::{Mailbox, drive};
 use proptest::collection::vec;
@@ -45,21 +46,85 @@ fn child(_index: usize) -> Child {
     Echo
 }
 
-fn supervisor(strategy: Strategy, count: usize) -> Supervisor<MailAddr, Child> {
-    Supervisor::new(
-        behavior::ChildTopology::indexed(
-            |index| u64::try_from(index).unwrap(),
-            count,
-            |index| Some(child(index)),
-        ),
-        behavior::RestartConfiguration::new(
-            strategy,
-            RestartPolicy::Permanent,
-            u32::MAX,
-            Duration::MAX,
-        ),
-    )
-    .unwrap()
+struct SupervisorHarness;
+
+enum HarnessEvent {
+    Lifecycle(SupervisionLifecycle<MailAddr>),
+    User(User<MailAddr, ()>),
+}
+
+impl UserEvent for HarnessEvent {
+    type Addr = MailAddr;
+    type Message = ();
+
+    fn user(from: MailAddr, message: ()) -> Self {
+        Self::User(User::new(from, message))
+    }
+
+    fn into_user(self) -> Result<User<MailAddr, ()>, Self> {
+        match self {
+            Self::User(user) => Ok(user),
+            lifecycle => Err(lifecycle),
+        }
+    }
+}
+
+impl EventIngress<Here, SupervisionLifecycle<MailAddr>> for HarnessEvent {
+    fn ingress(lifecycle: SupervisionLifecycle<MailAddr>) -> Self {
+        Self::Lifecycle(lifecycle)
+    }
+}
+
+impl behavior::Protocol for SupervisorHarness {
+    type Addr = MailAddr;
+    type Msg = ();
+}
+
+impl BehaviorBase for SupervisorHarness {
+    type Base = Self;
+
+    fn base(&self) -> &Self {
+        self
+    }
+}
+
+impl Behavior for SupervisorHarness {
+    type Protocol = Self;
+    type Event = HarnessEvent;
+    type Sends = Vec<Never>;
+    type Ph = Never;
+    type Error = Never;
+    type Birth = Births<Child>;
+
+    fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+        match event {
+            HarnessEvent::Lifecycle(_lifecycle) => {}
+            HarnessEvent::User(_user) => {}
+        }
+        Ok(Actions::cont())
+    }
+}
+
+macro_rules! supervisor {
+    ($strategy:expr, $count:expr) => {
+        Supervise::new(
+            SupervisorHarness,
+            behavior::ChildTopology::indexed(
+                |index| u64::try_from(index).unwrap(),
+                $count,
+                |index| Some(child(index)),
+            ),
+            behavior::RestartConfiguration::new(
+                $strategy,
+                RestartPolicy::Permanent,
+                u32::MAX,
+                Duration::MAX,
+                behavior::RestartTiming::Immediate,
+            ),
+            Proxy::new,
+        )
+        .unwrap()
+    };
 }
 
 proptest! {
@@ -88,7 +153,7 @@ proptest! {
         prop_assert_eq!(trace.pending, messages.len() - expected_len);
         for (index, delivery) in trace.sends.iter().enumerate() {
             prop_assert_eq!(delivery.message, messages[index]);
-            prop_assert_eq!(delivery.to.resolve(MailAddr(999)), MailAddr(u64::try_from(index).unwrap()));
+            prop_assert_eq!(delivery.to.address(), MailAddr(u64::try_from(index).unwrap()));
         }
     }
 
@@ -99,7 +164,7 @@ proptest! {
         let _runtime = Builder::new_current_thread().enable_all().build().unwrap();
         let origin = Instant::now();
         let first = origin + Duration::from_nanos(offsets[0]);
-        let one = behavior::Deadline::new(Echo, TimerId(0), Some(first), |_| Ok(Step::Continue));
+        let one = behavior::Deadline::new(Echo, TimerId(0), Some(first), |_| Step::Continue);
         let initialized = one.initialize().unwrap();
     let initial = initialized.actions;
     let _one = initialized.behavior;
@@ -108,7 +173,7 @@ proptest! {
 
         for offset in &offsets {
             let due = origin + Duration::from_nanos(*offset);
-            let composed = behavior::Deadline::new(Echo, TimerId(0), Some(due), |_| Ok(Step::Continue));
+            let composed = behavior::Deadline::new(Echo, TimerId(0), Some(due), |_| Step::Continue);
             let initialized = composed.initialize().unwrap();
     let actions = initialized.actions;
     let _composed = initialized.behavior;
@@ -127,22 +192,30 @@ proptest! {
     let mut proxy = initialized.behavior;
         prop_assert_eq!(initial.creates[0].nonce, 0);
         prop_assert_eq!(initial.creates[0].kind, CreationKind::Birth);
-        proxy
+        let installed = proxy
             .transition(ProxyEvent::CreationResolved(CreationResolved {
                 nonce: 0,
                 kind: CreationKind::Birth,
                 result: Ok(MailAddr(999)),
             }))
             .unwrap();
+        prop_assert!(installed.sends.deliveries.is_empty());
+        prop_assert!(installed.sends.unavailable_reports.is_empty());
+        prop_assert!(installed.sends.child_observations.is_empty());
+        prop_assert!(installed.sends.creation_observations.is_empty());
+        prop_assert!(installed.sends.stopped_reports.is_empty());
+        prop_assert_eq!(installed.sends.creation_reports.len(), 1);
+        prop_assert!(installed.sends.shutdowns.is_empty());
+        prop_assert!(installed.creates.is_empty());
+        prop_assert!(matches!(installed.become_, Step::Continue));
         let mut generation = 0_u64;
 
         for (index, replace) in commands.into_iter().enumerate() {
             if replace {
                 generation += 1;
                 let actions = proxy
-                    .transition(ProxyEvent::Command(User::user(
-                        MailAddr(0),
-                        ProxyCommand::Replace(child(index)),
+                    .transition(ProxyEvent::WorkerRequested(ReplacementRequested::new(
+                        child(index),
                     )))
                     .unwrap();
                 prop_assert!(actions.creates.is_empty());
@@ -163,7 +236,7 @@ proptest! {
                     }
                 );
                 prop_assert!(actions.sends.deliveries.is_empty());
-                proxy
+                let installed = proxy
                     .transition(ProxyEvent::CreationResolved(CreationResolved {
                         nonce: generation,
                         kind: CreationKind::ReplacementIncarnation {
@@ -172,18 +245,24 @@ proptest! {
                         result: Ok(MailAddr(999)),
                     }))
                     .unwrap();
+                prop_assert!(installed.sends.deliveries.is_empty());
+                prop_assert!(installed.sends.unavailable_reports.is_empty());
+                prop_assert!(installed.sends.child_observations.is_empty());
+                prop_assert!(installed.sends.creation_observations.is_empty());
+                prop_assert!(installed.sends.stopped_reports.is_empty());
+                prop_assert_eq!(installed.sends.creation_reports.len(), 1);
+                prop_assert!(installed.sends.shutdowns.is_empty());
+                prop_assert!(installed.creates.is_empty());
+                prop_assert!(matches!(installed.become_, Step::Continue));
             } else {
                 let message = u8::try_from(index % 255).unwrap();
                 let actions = proxy
-                    .transition(ProxyEvent::Command(User::user(
-                        MailAddr(0),
-                        ProxyCommand::Forward(message),
-                    )))
+                    .transition(ProxyEvent::Command(User::user(MailAddr(0), message)))
                     .unwrap();
                 prop_assert!(actions.creates.is_empty());
                 prop_assert_eq!(
-                    actions.sends.deliveries[0].to.resolve(MailAddr(17)),
-                    behavior::Address::birth(MailAddr(17), generation)
+                    actions.sends.deliveries[0].nonce,
+                    generation
                 );
                 prop_assert_eq!(actions.sends.deliveries[0].message, message);
             }
@@ -208,8 +287,30 @@ proptest! {
             Strategy::RestForOne => count - dead,
         };
         let _runtime = Builder::new_current_thread().enable_all().build().unwrap();
-        let initialized = supervisor(strategy, count).initialize().unwrap();
+        let initialized = supervisor!(strategy, count).initialize().unwrap();
         let mut behavior = initialized.behavior;
+        for proxy in 0..count {
+            let proxy = u64::try_from(proxy).unwrap();
+            let joined = behavior
+                .transition(SupervisionEvent::WorkerCreationResolved(
+                    behavior::WorkerCreationResolved::new(
+                        proxy,
+                        proxy,
+                        CreationKind::Birth,
+                        Ok(()),
+                    ),
+                ))
+                .unwrap();
+            prop_assert!(joined.sends.owned.child_observations.is_empty());
+            prop_assert!(joined.sends.owned.creation_observations.is_empty());
+            prop_assert!(joined.sends.owned.schedules.is_empty());
+            prop_assert!(joined.sends.owned.replacement_inputs.is_empty());
+            prop_assert!(joined.sends.owned.failure_reports.is_empty());
+            prop_assert!(joined.sends.owned.shutdowns.is_empty());
+            prop_assert!(joined.sends.inner.is_empty());
+            prop_assert!(joined.creates.is_empty());
+            prop_assert!(matches!(joined.become_, Step::Continue));
+        }
         let event = SupervisionEvent::WorkerStopped(WorkerStopped {
             proxy: u64::try_from(dead).unwrap(),
             worker: u64::try_from(dead).unwrap(),
@@ -218,13 +319,10 @@ proptest! {
         });
         let actions = behavior.transition(event).unwrap();
 
-        prop_assert_eq!(actions.sends.replacement_commands.len(), expected);
+        prop_assert_eq!(actions.sends.owned.replacement_inputs.len(), expected);
         prop_assert!(actions.creates.is_empty());
-        for delivery in actions.sends.replacement_commands {
-            prop_assert_ne!(
-                delivery.to.resolve(MailAddr(17)),
-                delivery.to.resolve(MailAddr(18))
-            );
+        for delivery in actions.sends.owned.replacement_inputs {
+            prop_assert!(delivery.nonce < u64::try_from(count).unwrap());
         }
     }
 }

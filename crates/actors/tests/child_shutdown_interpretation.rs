@@ -1,0 +1,298 @@
+//! Final-composition proof for child-derived shutdown planning.
+
+use behavior_actors::*;
+use core::future::Future;
+use std::fmt::Debug;
+use std::time::Instant;
+
+struct Store;
+struct Gateway;
+
+macro_rules! inert_child {
+    ($child:ty) => {
+        impl Protocol for $child {
+            type Addr = MailAddr;
+            type Msg = Never;
+        }
+
+        impl Behavior for $child {
+            type Protocol = Self;
+            type Event = User<MailAddr, Never>;
+            type Sends = NoSends;
+            type Ph = Never;
+            type Error = Never;
+            type Birth = NoBirths;
+
+            fn transition(&mut self, _: ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+                match event.message {}
+            }
+        }
+    };
+}
+
+inert_child!(Store);
+inert_child!(Gateway);
+
+type ManagedStore = StopOnShutdown<Store>;
+type ManagedGateway = StopOnShutdown<Gateway>;
+
+struct StoreRole;
+struct GatewayRole;
+struct Application;
+
+impl Protocol for Application {
+    type Addr = MailAddr;
+    type Msg = Never;
+}
+
+impl BehaviorBase for Application {
+    type Base = Self;
+
+    fn base(&self) -> &Self::Base {
+        self
+    }
+}
+
+impl ChildRole<Application> for StoreRole {
+    type Child = ManagedStore;
+    type Position = ChildTail<ChildHead>;
+}
+
+impl ChildOccurrence<Application> for StoreRole {
+    type Resolution = DeclaredChildOccurrence;
+}
+
+impl ChildRole<Application> for GatewayRole {
+    type Child = ManagedGateway;
+    type Position = ChildHead;
+}
+
+impl ChildOccurrence<Application> for GatewayRole {
+    type Resolution = DeclaredChildOccurrence;
+}
+
+impl Behavior for Application {
+    type Protocol = Self;
+    type Event = User<MailAddr, Never>;
+    type Sends = NoSends;
+    type Ph = Never;
+    type Error = Never;
+    type Birth = Births<ChildChoice<ManagedGateway, ChildChoice<ManagedStore, Never>>>;
+
+    fn init(&mut self, _: InitializationTurn) -> BehaviorActed<Self> {
+        let creates = Children::<MailAddr>::new()
+            .child_at(
+                ChildRoute::<ManagedStore, StoreRole>::new(11),
+                StopOnShutdown::new(Store),
+            )
+            .child_at(
+                ChildRoute::<ManagedGateway, GatewayRole>::new(12),
+                StopOnShutdown::new(Gateway),
+            )
+            .into_creates()
+            .expect("fixture child routes are distinct");
+        Ok(Actions::create(creates))
+    }
+
+    fn transition(&mut self, _: ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+        match event.message {}
+    }
+}
+
+struct Recording<Event> {
+    events: Vec<Event>,
+    shutdowns: Vec<u64>,
+}
+
+impl<Event> Default for Recording<Event> {
+    fn default() -> Self {
+        Self {
+            events: Vec::new(),
+            shutdowns: Vec::new(),
+        }
+    }
+}
+
+impl<Event: Send> SendInterpreter for Recording<Event> {
+    type Error = Never;
+}
+
+impl<Event, Plan, Path> InterpretRequest<ReportShutdownPlan<Plan>, Event, Path> for Recording<Event>
+where
+    Event: EventIngress<Here, InstallShutdownPlan<Plan>> + Send,
+    Plan: Send,
+{
+    fn interpret_request(
+        &mut self,
+        request: ReportShutdownPlan<Plan>,
+    ) -> impl Future<Output = Result<(), Self::Error>> + Send {
+        self.events.push(request.into_event());
+        async { Ok(()) }
+    }
+}
+
+impl<Event, Occurrence, Path> InterpretRequest<ObserveCreation<MailAddr, Occurrence>, Event, Path>
+    for Recording<Event>
+where
+    Event: InjectEvent<CreationResolved<MailAddr>, Path> + Send,
+    Occurrence: Send,
+{
+    fn interpret_request(
+        &mut self,
+        request: ObserveCreation<MailAddr, Occurrence>,
+    ) -> impl Future<Output = Result<(), Self::Error>> + Send {
+        self.events
+            .push(Ingress::<_, Path>::new().event(CreationResolved::birth(
+                request.nonce,
+                MailAddr(100 + request.nonce),
+            )));
+        async { Ok(()) }
+    }
+}
+
+impl<Event, Child, Occurrence, Path> InterpretRequest<ShutdownChild<Child, Occurrence>, Event, Path>
+    for Recording<Event>
+where
+    Event: InjectEvent<ChildStopped<MailAddr>, Path> + Send,
+    Child: Behavior<Protocol: Protocol<Addr = MailAddr>>,
+    Occurrence: Send,
+{
+    fn interpret_request(
+        &mut self,
+        request: ShutdownChild<Child, Occurrence>,
+    ) -> impl Future<Output = Result<(), Self::Error>> + Send {
+        self.shutdowns.push(request.nonce);
+        self.events
+            .push(Ingress::<_, Path>::new().event(ChildStopped::new(
+                request.nonce,
+                Ok(Exit::Normal),
+                Instant::now(),
+            )));
+        async { Ok(()) }
+    }
+}
+
+async fn interpret<Sends, Event>(sends: Sends, interpreter: &mut Recording<Event>)
+where
+    Event: Send,
+    Sends: InterpretSends<Recording<Event>, Event, Here>,
+{
+    sends.interpret(interpreter).await.unwrap();
+}
+
+async fn shutdown_trace<B>(initialized: Initialized<B>, shutdown_first: bool) -> Vec<u64>
+where
+    B: Behavior<Protocol: Protocol<Addr = MailAddr>>,
+    B::Event: InjectEvent<ShutdownRequested, Here> + Send,
+    B::Sends: InterpretSends<Recording<B::Event>, B::Event, Here>,
+    B::Error: Debug,
+{
+    let mut active = initialized.behavior;
+    let mut interpreter = Recording::default();
+    interpret(initialized.actions.sends, &mut interpreter).await;
+    assert_eq!(interpreter.events.len(), 2);
+
+    let first_creation = interpreter.events.remove(0);
+    let first = active.transition(first_creation).unwrap();
+    interpret(first.sends, &mut interpreter).await;
+    assert_eq!(interpreter.events.len(), 1);
+    assert!(first.creates.is_empty());
+    assert!(matches!(first.become_, behavior_actors::Step::Continue));
+
+    if shutdown_first {
+        let waiting = active.on(ShutdownRequested).unwrap();
+        interpret(waiting.sends, &mut interpreter).await;
+        assert!(interpreter.shutdowns.is_empty());
+        assert_eq!(interpreter.events.len(), 1);
+    }
+
+    let second_creation = interpreter.events.remove(0);
+    let reported = active.transition(second_creation).unwrap();
+
+    interpret(reported.sends, &mut interpreter).await;
+    assert_eq!(interpreter.events.len(), 1);
+    assert!(interpreter.shutdowns.is_empty());
+
+    let installation = interpreter
+        .events
+        .pop()
+        .expect("the report must enqueue one final root event");
+    let started = active.transition(installation).unwrap();
+    interpret(started.sends, &mut interpreter).await;
+
+    if !shutdown_first {
+        assert!(interpreter.shutdowns.is_empty());
+        let started = active.on(ShutdownRequested).unwrap();
+        interpret(started.sends, &mut interpreter).await;
+    }
+
+    while !interpreter.events.is_empty() {
+        let stopped = interpreter.events.remove(0);
+        let next = active.transition(stopped).unwrap();
+        interpret(next.sends, &mut interpreter).await;
+    }
+
+    interpreter.shutdowns
+}
+
+fn framework_phase<Builder, Role>(builder: Builder, role: Role) -> Builder::Output
+where
+    Builder: DeclareShutdownPhase<Role>,
+{
+    builder.shutdown_phase(role)
+}
+
+fn framework_begin<B>(application: B) -> B::Output
+where
+    B: BeginShutdownPhases,
+{
+    application.begin_shutdown_phases()
+}
+
+fn framework_finish<Builder>(builder: Builder) -> Builder::Output
+where
+    Builder: FinishShutdownPhases,
+{
+    builder.finish()
+}
+
+#[tokio::test]
+async fn generic_framework_carries_hidden_phase_states_without_copying_the_typestate() {
+    let builder = framework_begin(Application);
+    let builder = framework_phase(builder, StoreRole);
+    let builder = framework_phase(builder, GatewayRole);
+    let initialized = framework_finish(builder).initialize().unwrap();
+
+    assert_eq!(shutdown_trace(initialized, false).await, [11, 12]);
+}
+
+#[tokio::test]
+async fn coordinator_preserves_phase_order_for_both_arrival_orders() {
+    let plan_first = shutdown_after_children(Application)
+        .shutdown_phase(StoreRole)
+        .shutdown_phase(GatewayRole)
+        .finish()
+        .initialize()
+        .unwrap();
+    assert_eq!(shutdown_trace(plan_first, false).await, [11, 12]);
+
+    let shutdown_first = shutdown_after_children(Application)
+        .shutdown_phase(StoreRole)
+        .shutdown_phase(GatewayRole)
+        .finish()
+        .initialize()
+        .unwrap();
+    assert_eq!(shutdown_trace(shutdown_first, true).await, [11, 12]);
+}
+
+#[tokio::test]
+async fn reversing_phases_reverses_interpreted_child_shutdown_order() {
+    let reversed = shutdown_after_children(Application)
+        .shutdown_phase(GatewayRole)
+        .shutdown_phase(StoreRole)
+        .finish()
+        .initialize()
+        .unwrap();
+
+    assert_eq!(shutdown_trace(reversed, false).await, [12, 11]);
+}

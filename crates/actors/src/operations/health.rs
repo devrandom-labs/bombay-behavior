@@ -1,10 +1,11 @@
 //! Versioned component-health aggregation.
 
-use behavior::{
-    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, Never, NoBirths, Recipient,
-    User,
-};
+#[cfg(test)]
+use behavior::Recipient;
+use behavior::{Actions, Address, Behavior, BehaviorActed, BehaviorBase, Never, NoBirths, User};
 use thiserror::Error;
+
+use crate::DeliveryRoute;
 
 /// Monotonic version of one component's health evidence.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -82,7 +83,7 @@ impl<K> HealthReport<K> {
 }
 
 /// Commands accepted by [`Health`].
-pub enum HealthMessage<K, Reply: behavior::Protocol> {
+pub enum HealthMessage<K, Route> {
     /// Commit versioned evidence for a present component.
     Observe {
         /// Component identity.
@@ -102,7 +103,7 @@ pub enum HealthMessage<K, Reply: behavior::Protocol> {
     /// Return a point-in-time report to a typed recipient.
     Query {
         /// Recipient whose protocol accepts [`HealthReport<K>`].
-        reply_to: Recipient<Reply>,
+        reply_to: Route,
     },
 }
 
@@ -118,6 +119,8 @@ pub enum HealthError<K> {
         observed: ObservationVersion,
         /// Latest committed version.
         current: ObservationVersion,
+        /// Exact rejected evidence.
+        evidence: HealthEvidence,
     },
     /// Evidence reuses a committed version with different meaning.
     #[error("health evidence contradicts the committed value at the same version")]
@@ -126,7 +129,18 @@ pub enum HealthError<K> {
         component: K,
         /// Reused version.
         version: ObservationVersion,
+        /// Exact rejected evidence.
+        evidence: HealthEvidence,
     },
+}
+
+/// Exact meaning of one submitted health fact.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HealthEvidence {
+    /// The component is present with this classification.
+    Present(HealthStatus),
+    /// The component is removed at the submitted version.
+    Removed,
 }
 
 /// Versioned typed health aggregation behavior.
@@ -141,13 +155,19 @@ pub enum HealthError<K> {
 /// policy, and it requires only ordinary typed delivery interpretation.
 /// Versioning, aggregate ordering, and empty-set health are Bombay policy, not
 /// actor-model laws. No method has a semantic panic condition.
-pub struct Health<A: Address, K, Reply: behavior::Protocol<Addr = A, Msg = HealthReport<K>>> {
+pub struct Health<A, K, Route>
+where
+    A: Address,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = HealthReport<K>>>,
+{
     components: Vec<ComponentHealthState<K>>,
-    address: core::marker::PhantomData<fn() -> (A, Reply)>,
+    address: core::marker::PhantomData<fn() -> (A, Route)>,
 }
 
-impl<A: Address, K, Reply: behavior::Protocol<Addr = A, Msg = HealthReport<K>>>
-    Health<A, K, Reply>
+impl<A, K, Route> Health<A, K, Route>
+where
+    A: Address,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = HealthReport<K>>>,
 {
     /// Construct an empty health definition.
     #[must_use]
@@ -165,16 +185,20 @@ impl<A: Address, K, Reply: behavior::Protocol<Addr = A, Msg = HealthReport<K>>>
     }
 }
 
-impl<A: Address, K, Reply: behavior::Protocol<Addr = A, Msg = HealthReport<K>>> Default
-    for Health<A, K, Reply>
+impl<A, K, Route> Default for Health<A, K, Route>
+where
+    A: Address,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = HealthReport<K>>>,
 {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<A: Address, K, Reply: behavior::Protocol<Addr = A, Msg = HealthReport<K>>> BehaviorBase
-    for Health<A, K, Reply>
+impl<A, K, Route> BehaviorBase for Health<A, K, Route>
+where
+    A: Address,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = HealthReport<K>>>,
 {
     type Base = Self;
 
@@ -183,31 +207,25 @@ impl<A: Address, K, Reply: behavior::Protocol<Addr = A, Msg = HealthReport<K>>> 
     }
 }
 
-#[derive(Clone, Copy)]
-enum Evidence {
-    Present(HealthStatus),
-    Removed,
-}
-
-impl<A, K, Reply> Health<A, K, Reply>
+impl<A, K, Route> Health<A, K, Route>
 where
     A: Address,
     K: Clone + Eq,
-    Reply: behavior::Protocol<Addr = A, Msg = HealthReport<K>>,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = HealthReport<K>>>,
 {
     fn commit(
         &mut self,
         component: K,
         version: ObservationVersion,
-        evidence: Evidence,
+        evidence: HealthEvidence,
     ) -> Result<(), HealthError<K>> {
         let replacement = match evidence {
-            Evidence::Present(status) => ComponentHealthState::Present(ComponentHealth {
+            HealthEvidence::Present(status) => ComponentHealthState::Present(ComponentHealth {
                 component: component.clone(),
                 version,
                 status,
             }),
-            Evidence::Removed => ComponentHealthState::Removed {
+            HealthEvidence::Removed => ComponentHealthState::Removed {
                 component: component.clone(),
                 version,
             },
@@ -226,13 +244,18 @@ where
                 component,
                 observed: version,
                 current,
+                evidence,
             });
         }
         if version == current {
             if self.components[index] == replacement {
                 return Ok(());
             }
-            return Err(HealthError::ConflictingVersion { component, version });
+            return Err(HealthError::ConflictingVersion {
+                component,
+                version,
+                evidence,
+            });
         }
         self.components[index] = replacement;
         Ok(())
@@ -250,25 +273,26 @@ where
     }
 }
 
-impl<A, K, Reply> behavior::Protocol for Health<A, K, Reply>
+impl<A, K, Route> behavior::Protocol for Health<A, K, Route>
 where
     A: Address,
     K: Clone + Eq,
-    Reply: behavior::Protocol<Addr = A, Msg = HealthReport<K>>,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = HealthReport<K>>>,
 {
     type Addr = A;
-    type Msg = HealthMessage<K, Reply>;
+    type Msg = HealthMessage<K, Route>;
 }
 
-impl<A, K, Reply> Behavior for Health<A, K, Reply>
+impl<A, K, Route> Behavior for Health<A, K, Route>
 where
     A: Address,
     K: Clone + Eq,
-    Reply: behavior::Protocol<Addr = A, Msg = HealthReport<K>>,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = HealthReport<K>>>,
+    Route::Sends: behavior::SendsFor<User<A, HealthMessage<K, Route>>>,
 {
     type Protocol = Self;
     type Event = User<A, crate::BehaviorMessage<Self>>;
-    type Sends = Vec<Delivery<Reply>>;
+    type Sends = Route::Sends;
     type Ph = Never;
     type Error = HealthError<K>;
     type Birth = NoBirths;
@@ -280,16 +304,14 @@ where
                 version,
                 status,
             } => {
-                self.commit(component, version, Evidence::Present(status))?;
+                self.commit(component, version, HealthEvidence::Present(status))?;
                 Ok(Actions::cont())
             }
             HealthMessage::Remove { component, version } => {
-                self.commit(component, version, Evidence::Removed)?;
+                self.commit(component, version, HealthEvidence::Removed)?;
                 Ok(Actions::cont())
             }
-            HealthMessage::Query { reply_to } => {
-                Ok(Actions::send(vec![Delivery::new(reply_to, self.report())]))
-            }
+            HealthMessage::Query { reply_to } => Ok(Actions::send(reply_to.deliver(self.report()))),
         }
     }
 }
@@ -320,12 +342,12 @@ mod tests {
         }
     }
 
-    type TestHealth = Health<MailAddr, u8, Reply>;
+    type TestHealth = Health<MailAddr, u8, Recipient<Reply>>;
 
     #[test]
     fn stale_and_conflicting_evidence_preserve_committed_state() {
         let mut health = (TestHealth::new()).initialize().unwrap().behavior;
-        health
+        let observed = health
             .receive(
                 MailAddr(9),
                 HealthMessage::Observe {
@@ -335,6 +357,9 @@ mod tests {
                 },
             )
             .unwrap();
+        assert!(observed.sends.is_empty());
+        assert!(observed.creates.is_empty());
+        assert_eq!(observed.become_, crate::Step::Continue);
 
         assert!(matches!(
             health.receive(
@@ -349,6 +374,7 @@ mod tests {
                 component: 1,
                 observed: ObservationVersion(2),
                 current: ObservationVersion(3),
+                evidence: HealthEvidence::Present(HealthStatus::Healthy),
             })
         ));
         assert!(matches!(
@@ -363,6 +389,7 @@ mod tests {
             Err(HealthError::ConflictingVersion {
                 component: 1,
                 version: ObservationVersion(3),
+                evidence: HealthEvidence::Present(HealthStatus::Unhealthy),
             })
         ));
         assert_eq!(
@@ -380,7 +407,7 @@ mod tests {
         let reply = Recipient::<Reply>::global(MailAddr(8));
         let mut health = (TestHealth::new()).initialize().unwrap().behavior;
         for (component, status) in [(1, HealthStatus::Healthy), (2, HealthStatus::Unhealthy)] {
-            health
+            let observed = health
                 .receive(
                     MailAddr(9),
                     HealthMessage::Observe {
@@ -390,6 +417,9 @@ mod tests {
                     },
                 )
                 .unwrap();
+            assert!(observed.sends.is_empty());
+            assert!(observed.creates.is_empty());
+            assert_eq!(observed.become_, crate::Step::Continue);
         }
         let report = health
             .receive(MailAddr(9), HealthMessage::Query { reply_to: reply })
@@ -417,7 +447,7 @@ mod tests {
             ]
         );
 
-        health
+        let removed = health
             .receive(
                 MailAddr(9),
                 HealthMessage::Remove {
@@ -426,6 +456,9 @@ mod tests {
                 },
             )
             .unwrap();
+        assert!(removed.sends.is_empty());
+        assert!(removed.creates.is_empty());
+        assert_eq!(removed.become_, crate::Step::Continue);
         assert!(matches!(
             health.receive(
                 MailAddr(9),

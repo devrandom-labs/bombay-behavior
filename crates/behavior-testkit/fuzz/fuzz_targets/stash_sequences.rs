@@ -53,10 +53,26 @@ fuzz_target!(|bytes: &[u8]| {
     let runtime = Builder::new_current_thread().enable_time().build().unwrap();
     runtime.block_on(async {
         let behavior = behavior::Stash::new(Recorder::default(), route);
-        let mut behavior = behavior.initialize().unwrap().behavior;
+        let initialized = behavior.initialize().unwrap();
+        assert!(initialized.actions.sends.is_empty());
+        assert!(initialized.actions.creates.is_empty());
+        assert!(matches!(initialized.actions.become_, Step::Continue));
+        let mut behavior = initialized.behavior;
         for (index, _) in bytes.iter().enumerate() {
             let id = u64::try_from(index).unwrap();
-            behavior.transition(User::user(MailAddr(0), id)).unwrap();
+            let recorded_before = behavior.base().seen.len();
+            let actions = behavior.transition(User::user(MailAddr(0), id)).unwrap();
+            let newly_recorded = &behavior.base().seen[recorded_before..];
+            assert_eq!(actions.sends.len(), newly_recorded.len());
+            assert!(
+                actions
+                    .sends
+                    .iter()
+                    .zip(newly_recorded)
+                    .all(|(delivery, recorded)| delivery.message == *recorded)
+            );
+            assert!(actions.creates.is_empty());
+            assert!(matches!(actions.become_, Step::Continue));
             assert_eq!(
                 behavior.base().seen.len() + behavior.held(),
                 index + 1,

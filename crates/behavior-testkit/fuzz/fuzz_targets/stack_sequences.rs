@@ -8,12 +8,14 @@
 //! for child deaths — are asserted per byte: effects land in exactly their
 //! product lane and never leak across.
 
-use behavior::{
-    Acted, Actions, Activate, Crash, Create, Delivery, MailAddr, Never, PeerStopped, Recipient,
-    RestartPolicy, StashRoute, Step, Strategy, SupervisionEvent, TimerElapsed, TimerGeneration,
-    TimerId, UserEvent, WorkerStopped, stop_on_abnormal_death,
-};
 use behavior::EventLayer;
+use behavior::{
+    Acted, Actions, Activate, Behavior, BehaviorActed, BehaviorBase, Births, Crash, Create,
+    CreationKind, Delivery, EventIngress, Here, MailAddr, Never, PeerStopped, Recipient,
+    RestartPolicy, StashRoute, Step, Strategy, SupervisionEvent, SupervisionLifecycle,
+    TimerElapsed, TimerGeneration, TimerId, User, UserEvent, WorkerCreationResolved, WorkerStopped,
+    stop_on_abnormal_death,
+};
 use libfuzzer_sys::fuzz_target;
 use std::time::Instant;
 use tokio::runtime::Builder;
@@ -23,29 +25,70 @@ struct EchoingParent {
     seen: Vec<u64>,
 }
 
-#[behavior::behavior(addr = MailAddr, message = u64, sends = Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u64>>>, births = behavior::Births<Echo>, error = Never)]
-impl EchoingParent {
-    fn receive(
-        &mut self,
-        _from: MailAddr,
-        message: u64,
-    ) -> Acted<
-        MailAddr,
-        Never,
-        Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u64>>>,
-        behavior::Births<Echo>,
-        Never,
-    > {
-        self.seen.push(message);
-        Ok(Actions {
-            sends: vec![Delivery::new(Recipient::global(MailAddr(0)), message)],
-            creates: if message == u64::MAX {
-                vec![Create::birth(message, child(0))]
-            } else {
-                Vec::new()
-            },
-            become_: Step::Continue,
-        })
+enum ParentEvent {
+    Lifecycle(SupervisionLifecycle<MailAddr>),
+    User(User<MailAddr, u64>),
+}
+
+impl UserEvent for ParentEvent {
+    type Addr = MailAddr;
+    type Message = u64;
+
+    fn user(from: MailAddr, message: u64) -> Self {
+        Self::User(User::new(from, message))
+    }
+
+    fn into_user(self) -> Result<User<MailAddr, u64>, Self> {
+        match self {
+            Self::User(user) => Ok(user),
+            lifecycle => Err(lifecycle),
+        }
+    }
+}
+
+impl EventIngress<Here, SupervisionLifecycle<MailAddr>> for ParentEvent {
+    fn ingress(lifecycle: SupervisionLifecycle<MailAddr>) -> Self {
+        Self::Lifecycle(lifecycle)
+    }
+}
+
+impl behavior::Protocol for EchoingParent {
+    type Addr = MailAddr;
+    type Msg = u64;
+}
+
+impl BehaviorBase for EchoingParent {
+    type Base = Self;
+
+    fn base(&self) -> &Self::Base {
+        self
+    }
+}
+
+impl Behavior for EchoingParent {
+    type Protocol = Self;
+    type Event = ParentEvent;
+    type Sends = Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u64>>>;
+    type Ph = Never;
+    type Error = Never;
+    type Birth = Births<Echo>;
+
+    fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+        match event {
+            ParentEvent::Lifecycle(_lifecycle) => Ok(Actions::cont()),
+            ParentEvent::User(event) => {
+                self.seen.push(event.message);
+                Ok(Actions {
+                    sends: vec![Delivery::new(Recipient::global(MailAddr(0)), event.message)],
+                    creates: if event.message == u64::MAX {
+                        vec![Create::birth(event.message, child(0))]
+                    } else {
+                        Vec::new()
+                    },
+                    become_: Step::Continue,
+                })
+            }
+        }
     }
 }
 
@@ -95,7 +138,7 @@ fuzz_target!(|bytes: &[u8]| {
                 ),
                 behavior::TimerId(0),
                 Some(due),
-                |_| Ok(Step::Continue),
+                |_| Step::Continue,
             ),
             behavior::ChildTopology::new(
                 (0..2).map(|index| u64::try_from(index).unwrap()),
@@ -106,11 +149,16 @@ fuzz_target!(|bytes: &[u8]| {
                 RestartPolicy::Permanent,
                 u32::MAX,
                 std::time::Duration::MAX,
+                behavior::RestartTiming::Immediate,
             ),
-        ).unwrap();
+            behavior::Proxy::new,
+        )
+        .unwrap();
         let initialized = behavior.initialize().unwrap();
         let mut behavior = initialized.behavior;
         let base = Instant::now();
+        let mut workers = [0_u64, 1];
+        let mut next_worker = 2_u64;
 
         for (index, byte) in bytes.iter().copied().enumerate() {
             let actions = match byte % 4 {
@@ -133,7 +181,7 @@ fuzz_target!(|bytes: &[u8]| {
                     let expected = if arg % 3 != 2 { vec![arg] } else { vec![] };
                     assert_eq!(echo_step, expected, "echo lane mismatch at byte {index}");
                     assert!(
-                        actions.sends.owned.replacement_commands.is_empty(),
+                        actions.sends.owned.replacement_inputs.is_empty(),
                         "user leaked to child lane"
                     );
                     assert_eq!(actions.become_, Step::Continue);
@@ -153,7 +201,7 @@ fuzz_target!(|bytes: &[u8]| {
                         matches!(actions.become_, Step::Stop(behavior::Stopped)),
                         "peer death verdict at byte {index}"
                     );
-                    assert!(actions.sends.owned.replacement_commands.is_empty());
+                    assert!(actions.sends.owned.replacement_inputs.is_empty());
                     actions
                 }
                 2 => {
@@ -176,25 +224,24 @@ fuzz_target!(|bytes: &[u8]| {
                 _ => {
                     // Child lane: exactly one replacement to the dead slot.
                     let nonce = u64::from(byte % 2);
+                    let position = usize::try_from(nonce).unwrap();
+                    let worker = workers[position];
                     let actions = behavior
                         .transition(SupervisionEvent::WorkerStopped(WorkerStopped {
                             proxy: nonce,
-                            worker: nonce,
+                            worker,
                             outcome: Err(Crash::Failed),
                             at: base
                                 + std::time::Duration::from_nanos(u64::try_from(index).unwrap()),
                         }))
                         .unwrap();
                     assert_eq!(
-                        actions.sends.owned.replacement_commands.len(),
+                        actions.sends.owned.replacement_inputs.len(),
                         1,
                         "replacement at byte {index}"
                     );
                     assert_eq!(
-                        actions.sends.owned.replacement_commands[0]
-                            .to
-                            .resolve(MailAddr(17)),
-                        behavior::Address::birth(MailAddr(17), nonce),
+                        actions.sends.owned.replacement_inputs[0].nonce, nonce,
                         "replacement route at byte {index}"
                     );
                     assert!(
@@ -202,10 +249,26 @@ fuzz_target!(|bytes: &[u8]| {
                         "child event leaked into the echo lane at byte {index}"
                     );
                     assert_eq!(actions.become_, Step::Continue);
+                    let replacement = next_worker;
+                    next_worker = next_worker.checked_add(1).unwrap();
+                    let resolved = behavior
+                        .transition(SupervisionEvent::WorkerCreationResolved(
+                            WorkerCreationResolved::new(
+                                nonce,
+                                replacement,
+                                CreationKind::replacement_of(worker),
+                                Ok(()),
+                            ),
+                        ))
+                        .unwrap();
+                    assert!(resolved.sends.owned.replacement_inputs.is_empty());
+                    assert!(resolved.sends.inner.inner.inner.is_empty());
+                    assert_eq!(resolved.become_, Step::Continue);
+                    workers[position] = replacement;
                     actions
                 }
             };
-            let _ = actions;
+            drop(actions);
         }
     });
 });

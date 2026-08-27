@@ -1,12 +1,13 @@
 //! One-result terminal child behavior.
 
 use behavior::{
-    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, Never, NoBirths, Recipient,
-    Step, User,
+    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Never, NoBirths, Step, User,
 };
+#[cfg(test)]
+use behavior::{Delivery, Recipient};
 use thiserror::Error;
 
-type TaskProtocol<A, R, Reply> = core::marker::PhantomData<fn() -> (A, R, Reply)>;
+use crate::DeliveryRoute;
 
 /// Complete semantic state of a [`Task`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -29,37 +30,37 @@ pub enum TaskResult<R> {
 }
 
 /// Commands accepted by a [`Task`].
-pub enum TaskMessage<R, Reply: behavior::Protocol> {
+pub enum TaskMessage<R, Route> {
     /// Complete with one owned result and its typed recipient.
     Complete {
         /// Owned terminal result.
         result: R,
         /// Recipient for the terminal fact.
-        reply_to: Recipient<Reply>,
+        reply_to: Route,
     },
     /// Cancel before completion and report to a typed recipient.
     Cancel {
         /// Recipient for the cancellation fact.
-        reply_to: Recipient<Reply>,
+        reply_to: Route,
     },
 }
 
 /// Rejected terminal transition when a test or nonconforming interpreter
 /// invokes a task after its stopping action.
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
-pub enum TaskError<R> {
+pub enum TaskError<R, Route> {
     /// A second result followed successful completion; ownership is returned.
     #[error("task result arrived after completion")]
-    ResultAfterCompletion(R),
+    ResultAfterCompletion { result: R, reply_to: Route },
     /// A result followed cancellation; ownership is returned.
     #[error("task result arrived after cancellation")]
-    ResultAfterCancellation(R),
+    ResultAfterCancellation { result: R, reply_to: Route },
     /// Cancellation followed successful completion.
     #[error("task cancellation arrived after completion")]
-    CancellationAfterCompletion,
+    CancellationAfterCompletion { reply_to: Route },
     /// Cancellation was repeated.
     #[error("task cancellation arrived after cancellation")]
-    CancellationAfterCancellation,
+    CancellationAfterCancellation { reply_to: Route },
 }
 
 /// One-result terminal behavior template.
@@ -75,12 +76,20 @@ pub enum TaskError<R> {
 /// not a new actor-model primitive. Typed delivery and terminal publication
 /// are interpreted by Bombay Communication and Observe. No method has a
 /// semantic panic condition.
-pub struct Task<A: Address, R, Reply: behavior::Protocol<Addr = A, Msg = TaskResult<R>>> {
+pub struct Task<A, R, Route>
+where
+    A: Address,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = TaskResult<R>>>,
+{
     state: TaskState,
-    protocol: TaskProtocol<A, R, Reply>,
+    protocol: core::marker::PhantomData<fn() -> (A, R, Route)>,
 }
 
-impl<A: Address, R, Reply: behavior::Protocol<Addr = A, Msg = TaskResult<R>>> Task<A, R, Reply> {
+impl<A, R, Route> Task<A, R, Route>
+where
+    A: Address,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = TaskResult<R>>>,
+{
     /// Construct a pending task definition.
     #[must_use]
     pub const fn new() -> Self {
@@ -97,16 +106,20 @@ impl<A: Address, R, Reply: behavior::Protocol<Addr = A, Msg = TaskResult<R>>> Ta
     }
 }
 
-impl<A: Address, R, Reply: behavior::Protocol<Addr = A, Msg = TaskResult<R>>> Default
-    for Task<A, R, Reply>
+impl<A, R, Route> Default for Task<A, R, Route>
+where
+    A: Address,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = TaskResult<R>>>,
 {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<A: Address, R, Reply: behavior::Protocol<Addr = A, Msg = TaskResult<R>>> BehaviorBase
-    for Task<A, R, Reply>
+impl<A, R, Route> BehaviorBase for Task<A, R, Route>
+where
+    A: Address,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = TaskResult<R>>>,
 {
     type Base = Self;
 
@@ -115,25 +128,26 @@ impl<A: Address, R, Reply: behavior::Protocol<Addr = A, Msg = TaskResult<R>>> Be
     }
 }
 
-impl<A, R, Reply> behavior::Protocol for Task<A, R, Reply>
+impl<A, R, Route> behavior::Protocol for Task<A, R, Route>
 where
     A: Address,
-    Reply: behavior::Protocol<Addr = A, Msg = TaskResult<R>>,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = TaskResult<R>>>,
 {
     type Addr = A;
-    type Msg = TaskMessage<R, Reply>;
+    type Msg = TaskMessage<R, Route>;
 }
 
-impl<A, R, Reply> Behavior for Task<A, R, Reply>
+impl<A, R, Route> Behavior for Task<A, R, Route>
 where
     A: Address,
-    Reply: behavior::Protocol<Addr = A, Msg = TaskResult<R>>,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = TaskResult<R>>>,
+    Route::Sends: behavior::SendsFor<User<A, TaskMessage<R, Route>>>,
 {
     type Protocol = Self;
     type Event = User<A, crate::BehaviorMessage<Self>>;
-    type Sends = Vec<Delivery<Reply>>;
+    type Sends = Route::Sends;
     type Ph = Never;
-    type Error = TaskError<R>;
+    type Error = TaskError<R, Route>;
     type Birth = NoBirths;
 
     fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
@@ -141,7 +155,7 @@ where
             (TaskState::Pending, TaskMessage::Complete { result, reply_to }) => {
                 self.state = TaskState::Completed;
                 Ok(Actions::new(
-                    vec![Delivery::new(reply_to, TaskResult::Completed(result))],
+                    reply_to.deliver(TaskResult::Completed(result)),
                     Vec::new(),
                     Step::Stop(behavior::Stopped),
                 ))
@@ -149,22 +163,22 @@ where
             (TaskState::Pending, TaskMessage::Cancel { reply_to }) => {
                 self.state = TaskState::Cancelled;
                 Ok(Actions::new(
-                    vec![Delivery::new(reply_to, TaskResult::Cancelled)],
+                    reply_to.deliver(TaskResult::Cancelled),
                     Vec::new(),
                     Step::Stop(behavior::Stopped),
                 ))
             }
-            (TaskState::Completed, TaskMessage::Complete { result, .. }) => {
-                Err(TaskError::ResultAfterCompletion(result))
+            (TaskState::Completed, TaskMessage::Complete { result, reply_to }) => {
+                Err(TaskError::ResultAfterCompletion { result, reply_to })
             }
-            (TaskState::Cancelled, TaskMessage::Complete { result, .. }) => {
-                Err(TaskError::ResultAfterCancellation(result))
+            (TaskState::Cancelled, TaskMessage::Complete { result, reply_to }) => {
+                Err(TaskError::ResultAfterCancellation { result, reply_to })
             }
-            (TaskState::Completed, TaskMessage::Cancel { .. }) => {
-                Err(TaskError::CancellationAfterCompletion)
+            (TaskState::Completed, TaskMessage::Cancel { reply_to }) => {
+                Err(TaskError::CancellationAfterCompletion { reply_to })
             }
-            (TaskState::Cancelled, TaskMessage::Cancel { .. }) => {
-                Err(TaskError::CancellationAfterCancellation)
+            (TaskState::Cancelled, TaskMessage::Cancel { reply_to }) => {
+                Err(TaskError::CancellationAfterCancellation { reply_to })
             }
         }
     }
@@ -196,7 +210,7 @@ mod tests {
         }
     }
 
-    type TestTask = Task<MailAddr, u8, Reply>;
+    type TestTask = Task<MailAddr, u8, Recipient<Reply>>;
 
     #[test]
     fn completion_reports_owned_result_and_stops_atomically() {
@@ -223,7 +237,7 @@ mod tests {
                     reply_to: reply,
                 },
             ),
-            Err(TaskError::ResultAfterCompletion(8))
+            Err(TaskError::ResultAfterCompletion { result: 8, reply_to }) if reply_to == reply
         ));
     }
 
@@ -245,7 +259,7 @@ mod tests {
                     reply_to: reply,
                 },
             ),
-            Err(TaskError::ResultAfterCancellation(9))
+            Err(TaskError::ResultAfterCancellation { result: 9, reply_to }) if reply_to == reply
         ));
     }
 }

@@ -1,129 +1,377 @@
-# Proven composition recipes
+# Actor composition
 
-`bombay-behavior-actors` exposes two ordinary construction functions for
-wrapper orders whose placement changes ownership of lifecycle or timer facts.
-They return existing concrete stacks: recipes are not builders, macros,
-runtime actors, or new behavior implementations.
+`bombay-behavior-actors` exposes concrete actor folds and typed event/effect
+transformations. Applications connect those actors with ordinary typed
+composition. A constructor recipe is not a separate actor template when it
+only selects policy values, forwards to another constructor, or hides a nested
+type.
 
-These orders are derived Bombay API policy, not laws of the actor model. The
-recipes only make two reusable, correctness-sensitive compositions easy to
-select without hiding any policy input.
+These compositions are derived Bombay constructions. They preserve the pure
+behavior boundary: one typed input produces complete `Actions` and a next
+behavior decision, while the interpreter alone realizes delivery, creation,
+observation, scheduling, and shutdown effects.
 
-## Supervised restart backoff
+## The composition map
 
-Use `supervised_backoff` when a standalone fixed fleet needs delayed,
-generation-safe replacement:
+There are two orthogonal ways to compose Behavior Actors. They may be used
+together, but they do not mean the same thing.
 
-```rust,ignore
-let behavior: BackoffSupervisor<MailAddr, Worker> = supervised_backoff(
-    ChildTopology::new([1, 2], worker_factory),
-    RestartConfiguration::new(
-        Strategy::OneForOne,
-        RestartPolicy::Permanent,
-        3,
-        Duration::from_secs(30),
-    ),
-    Backoff::exponential(Duration::from_millis(100), Duration::from_secs(5))?,
-    restart_timer,
-)?;
+| Question | Static construction | What it proves |
+|---|---|---|
+| Does another law transform this actor's mailbox fold? | `Behavior::layer` with an existing concrete transformation | the complete resulting `Behavior`, including event, sends, births, phase, error, initialization, and next decision |
+| May this actor send to a transferable destination? | `DeliveryRoute` | one exact protocol and its logical, established, or mixed concrete send product |
+| May this topology owner send to its direct child? | `DeliveryRouteFor<Owner>` | the same transferable routes, or one `ChildRoute` resolved from `Owner::Birth` |
+| Which actors can this actor create? | `Behavior::Birth`, `BirthProtocols` | the closed, occurrence-preserving fresh-child algebra |
+
+`LogicalHostRequirements` separately derives the ordered product of every
+intentional logical `Delivery<P>` in the root and its transitive births. It
+excludes established-incarnation delivery, creator-local child effects, and
+interpreter requests while retaining repeated protocol occurrences. A runtime
+may recursively require its own static `Hosts<P>` proof for that product; the
+projection creates no host and performs no lookup.
+
+### Same-mailbox layers
+
+A layer constructs a new concrete behavior around one existing behavior. Both
+participate in one mailbox fold. Put the domain state machine at the center and
+add only transformations that own a distinct event/effect law:
+
+```text
+StopOnShutdown                         root lifecycle transformation
+└── ReceiveTimeout                     activity/timer transformation
+    └── Stash                          bounded hold/replay transformation
+        └── DomainBehavior             application transition law
 ```
 
-This is exactly equivalent to:
+Callers compose at the value level; Rust infers the full nested type:
 
 ```rust,ignore
-BackoffSupervisor::new(
-    Supervisor::new(topology, restart)?,
-    backoff,
-    timer,
-)
+let behavior = domain
+    .layer(|inner| Stash::new(inner, admission))
+    .layer(|inner| ReceiveTimeout::new(inner, timer, idle, on_idle))
+    .layer(StopOnShutdown::new);
 ```
 
-Its only construction error is `FleetError<A::Nonce>` from `Supervisor::new`.
-`BackoffConfigError` belongs to prior `Backoff` validation. `BackoffError`
-belongs to later transition-time delay calculation. The recipe does not merge
-these distinct phases into a builder error.
+`BehaviorLayer` itself performs no actor effect. Each concrete transformation
+still owns and documents its event routing, initialization order, sends
+product, failure, and terminal decision. Reordering layers can therefore
+change the program and must be chosen from those laws, not from type
+convenience.
 
-Use `BackoffSupervise<B, C>` directly when a real inner application behavior
-has an additional `Births<C>` lane. The standalone recipe must not fabricate
-that capability.
+### Actor-to-actor topology
 
-## Coordinated terminal application
+Independent actors keep independent mailboxes. They compose through typed
+routes and explicit topology ownership, not by flattening their protocols into
+one envelope. A representative supervised routing graph is:
 
-Use `coordinated_terminal_application` when an application must coordinate a
-validated heterogeneous shutdown plan, trigger it once after a timeout, and
-publish the exact terminal outcome of one selected child:
-
-Named child roles lower into the existing target sum without positional
-construction at the call site:
-
-```rust,ignore
-let routes = ApplicationChildrenRoutes::new(worker_nonce, query_nonce);
-let workers = shutdown_target::<Application, _, ShutdownTargets>(
-    ApplicationChild::Workers,
-    routes.workers,
-);
-let queries = shutdown_target::<Application, _, ShutdownTargets>(
-    ApplicationChild::Queries,
-    routes.queries,
-);
-let validated_shutdown_plan = HeterogeneousShutdownPlan::new([
-    vec![queries],
-    vec![workers],
-])?;
+```text
+Application topology
+├── Router                                      unicast selection
+│   └── stable-worker capability
+└── Supervisor                                  fixed-fleet ownership
+    └── Proxy                                   stable incarnation
+        └── worker-internal `BehaviorLayer` stack
+            └── PriorityQueue                    admission and ordering
+                └── target capability            domain destination
 ```
 
-`shutdown_target` only selects the statically proven `ShutdownChoice` branch
-and copies the route nonce. Plan validation still owns empty-phase and global
-duplicate-nonce rejection; the coordinator still owns phase and terminal-fact
-transitions.
+`Router` and `Supervisor` are peers in the application topology. The
+supervisor owns creation, replacement, provenance, and shutdown of stable
+proxies. The router owns only membership and single-recipient selection; its
+members are capabilities for those stable proxy protocols. The proxy owns the
+fresh worker incarnation and translates a successful command into one
+owner-proven `ChildDelivery`. The priority queue alone owns capacity, priority,
+and release order.
+
+The lifecycle order is deliberate. The topology factory first constructs the
+complete worker value, including any same-mailbox layers. The owner then
+applies the reusable stable-incarnation layer. Every replacement therefore
+rebuilds the same worker composition and installs it behind the same stable
+protocol. Callers supply values and Rust infers both layer outputs:
 
 ```rust,ignore
-let behavior: CoordinatedTerminalApplication<Application, ShutdownTargets> =
-    coordinated_terminal_application(
-        application,
-        validated_shutdown_plan,
-        TimerId(7),
-        Duration::from_secs(20),
-        request_shutdown,
-        supervised_pool_nonce,
-        propagate_abnormal,
+let workers = ChildTopology::new([7], |_| {
+    Some(
+        PriorityQueue::new(32)
+            .unwrap()
+            .layer(|queue| ReceiveTimeout::new(queue, timer, idle, on_idle)),
+    )
+});
+
+let supervisor = Supervisor::new(workers, restart, Proxy::new)?;
+```
+
+No alias for `ReceiveTimeout<PriorityQueue<...>>`, `Proxy<...>`, or the final
+supervisor type is part of construction. The domain protocol's own parameters
+remain explicit when they determine real destinations or reply laws.
+
+The complete command path remains visible in concrete values and effects:
+
+```text
+RouterMessage::Route(queue_command)
+  → Delivery<PriorityQueue>
+  → ChildDelivery<PriorityQueue, ChildHead>
+  → Delivery<Target> + Delivery<PriorityQueueOutcome>
+```
+
+This path is executable in
+[`router_to_supervised_proxy_to_priority_queue_preserves_every_hierarchy_edge`](../crates/behavior-testkit/tests/universal_layers.rs).
+The test starts from the supervisor's staged proxy, starts the proxy's staged
+queue, commits the queue creation, then folds offer and release commands
+through every hop while asserting every `Actions` lane.
+
+## Choose the owner of the law
+
+The catalogue is a vocabulary of state-transition laws, not a list of stacks
+that must always be used together:
+
+| Required law | Owning actor or transformation |
+|---|---|
+| domain state and protocol | the application behavior or one catalogue core |
+| bounded admission or ordering | `Buffer`, `PriorityQueue`, `OrderGate`, `Sequencer`, `WorkQueue` |
+| one-recipient selection | `Router` with `RoundRobin`, `LeastLoaded`, `ConsistentHash`, or `RendezvousHash` |
+| fan-out to a membership snapshot | `Topic` or `PubSub` |
+| stable address across fresh incarnations | `Proxy` |
+| fixed or dynamic replacement ownership | `Supervisor`, `Supervise`, or `DynamicSupervisor` |
+| delayed replacement | the corresponding backoff supervision transformation |
+| same-mailbox timing, observation, stashing, or shutdown | the concrete layer owning that transformation |
+| ordered child shutdown | `ShutdownCoordinator` or `HeterogeneousShutdownCoordinator` |
+
+If two laws belong to different actors, connect them with `DeliveryRoute`. If
+one law transforms the same mailbox fold, construct it with `Behavior::layer`.
+If neither is true, the application is defining a new topology or a genuinely
+new transition law; hiding that fact in a generic wrapper would be incorrect.
+
+## Application routing and fixed supervision
+
+`Supervisor` owns one fixed stable-child fleet. Its public protocol is
+the ownership protocol: worker lifecycle facts, replacement decisions, and
+coordinated shutdown. It does not also pretend to be an application command
+router.
+
+`Supervise<B, ...>` likewise preserves `B`'s public protocol; it does not issue
+a second domain capability. If `B` already owns a route to a configured stable
+child, `B`'s authored event sum accepts the complete `ProxyUnavailable` at that
+exact child occurrence. `SupervisionEvent` adds only the framework lifecycle
+sum around it. A lifecycle-only composition therefore invents no domain
+recovery event, while a routing application receives the original sender,
+phase, and command through its ordinary pure fold.
+
+`DynamicSupervisor` is different because `Started` deliberately transfers the
+exact established capability issued when its stable proxy commits. It retains
+the `Start` outcome route and returns any later unavailable command to that
+route as `CommandUnavailable`; it never reconstructs a logical destination
+from the creation nonce or allocation address. A worker pool does not expose
+its worker routes: it admits into its bounded backlog, sends only to an
+ownership-proven routable slot, and joins a raced proxy return with the
+matching assignment before retrying or resolving the customer.
+
+When an application command selects a worker, that selection is application
+state-transition policy. Keep it in the application behavior and emit a typed
+delivery to the chosen stable proxy, or place a concrete routing actor beside
+the supervisor and give it those proxy capabilities. The supervisor remains
+responsible for fresh worker incarnations and stable slot ownership; the
+router remains responsible for command admission and destination selection.
+This composition makes both protocols and both rejection laws visible to Rust.
+
+`Router` is deliberately unicast and transfers ownership of a command to one
+selected route; it does not require the command to be `Clone`. Use `Topic` or
+`PubSub` when fan-out and its explicit cloning cost are the intended law.
+
+Delayed replacement is a transformation of an accepted replacement effect,
+not a second fleet owner. The catalogue must expose that policy through the
+same ownership fold for standalone and application-owned supervision;
+duplicating a supervisor state machine under another public name would not be
+composition.
+
+## Bombay application provisioning
+
+Bombay must distinguish two creation owners:
+
+- `Root::Birth` contains only children the root fold can itself create and
+  address with its nominal `ChildRoute`s.
+- `Application` contains peers provisioned by the application declaration.
+
+An application child must therefore stop appearing in the root's `births =
+{ ... }` declaration merely to make it runnable. That old arrangement forces
+the declaration to name the child's fully composed type before Rust can infer
+it. It is the source of aliases such as `ManagedTask =
+StopOnShutdown<Task<...>>`.
+
+The application declaration should instead store each semantic slot and child
+value in its own heterogeneous product. Its private staging fold may defer
+nonce selection until root initialization, declare the runtime route, and
+lower the resulting values through the existing `Children` product. The
+public spelling then contains values, not nested type declarations:
+
+```rust,ignore
+struct Tasks;
+struct Events;
+
+let application = Application::new(root)
+    .child(Tasks, WorkQueue::new(worker).stop_on_shutdown())
+    .child(
+        Events,
+        Topic::<MailAddr, Event, Recipient<EventSink>>::new()
+            .stop_on_shutdown(),
     );
 ```
 
-The returned concrete type is:
+`Tasks` and `Events` are nominal application roles, not aliases for actor
+types. The expression passed to each `child` call determines the concrete
+child type. Each call returns the next inferred application-product type, so
+neither the composed child types nor the final `Application<...>` type is
+written by the caller. A zero-state generic actor such as an empty `Topic`
+still needs enough protocol arguments to determine its law; that is real
+protocol information, not a mechanical nesting alias.
 
-```text
-PropagateTermination<
-    OneShot<HeterogeneousShutdownCoordinator<B, S>>,
-    ChildTermination<BehaviorAddr<B>>,
->
+Internally, Bombay needs one private declaration fold with an associated
+`Product: ChildProduct<MailAddr>`. It should return
+`Children<MailAddr, Product>` after allocating collision-free creator-local
+nonces and declaring the corresponding role routes. The running application
+then uses exactly these Behavior projections:
+
+```rust,ignore
+type RootNode<R> = <<R as Behavior>::Birth as BirthMode>::Child;
+type AppNode<L> = <<L as StageApplicationChildren>::Product
+    as ChildProduct<MailAddr>>::Choice;
+type RunningNode<R, L> =
+    <RootNode<R> as BirthNodeAppend<AppNode<L>>>::Output;
+
+impl<R, L, Routes> Behavior for RunningApplication<R, L, Routes>
+where
+    R: Behavior<Protocol: Protocol<Addr = MailAddr>> + BehaviorBase,
+    L: StageApplicationChildren<Routes>,
+    RootNode<R>: BirthNodeAppend<AppNode<L>>,
+{
+    type Birth = Births<RunningNode<R, L>>;
+
+    // init:
+    // 1. initialize R;
+    // 2. select app nonces disjoint from R's initialization creations;
+    // 3. lower L through Children::into_creates;
+    // 4. call BirthNodeAppend::append_creations(root, application);
+    // 5. rebuild Actions with the original sends and become decision.
+
+    // transition:
+    // delegate to R, then call append_creations(root_creates, Vec::new()).
+}
 ```
 
-The outer terminal observer and shutdown coordinator may both observe child
-lifecycle facts. They remain independent structural observation requests; one
-consumer must not steal the other's fact. An unmatched child fact is inert at
-the propagation layer. The terminal policy either discharges or publishes the
-original outcome without reclassification.
+`BirthNodeAppend` keeps `RootNode<R>` as an exact structural prefix. Existing
+root roles therefore retain the same child and position after application
+peers are appended. It also preserves every child value, nonce,
+`CreationKind`, and within-lane order, with root creations before application
+creations. It does not allocate, install, or validate freshness. Bombay still
+owns nonce selection and must surface initialization-twice or child-product
+rejection as a typed private running-application error rather than panic.
 
-The function is infallible because `HeterogeneousShutdownPlan::new` validates
-non-empty phases and global child-nonce uniqueness before construction. Timer
-identity, duration, the pure `OneShotReaction`, observed nonce, and terminal
-policy are all explicit.
+This lets Bombay delete its root-shaped vacant-slot machinery:
+`RuntimeApplicationTopology`, `EmptyApplicationTopology`, `VacantChild`,
+`OccupiedChild`, `AvailableApplicationRole`, `FillApplicationRoleAt`, and
+`InjectApplicationChildAt`. A smaller role-indexed application product remains
+because it owns a genuine law absent from `Children`: semantic naming,
+deferred nonce allocation, and construction of runtime child handles.
 
-## Initialization and testing
+The runtime must derive installation storage from the running application's
+combined birth algebra, not from `Root::Birth`. Consequently
+`BirthProtocols` automatically includes the root, genuine root
+children, application peers, and every transitive birth. Intentional logical
+destinations remain concrete in the composed send products. Behavior does not
+fabricate a completeness proof by asking the application to repeat those
+destinations in metadata, and Bombay must not add a protocol registry to
+compensate.
 
-Wrapper initialization is inside-out and accumulates effects without dropping
-or reordering them. For the coordinated recipe, application initialization is
-preserved, the one-shot schedule is added, and the outer exact-child
-observation is added to its own named lane. These effects must be interpreted
-before the first mailbox event.
+### Unicast and broadcast in Bombay
 
-Owner tests compare recipe-produced stacks with equivalent manual stacks over
-initialization and transition traces. Type assertions verify exact return
-types; error tests retain existing variants and nonces. Alternative wrapper
-orders are different concrete constructions and must be named and tested
-independently rather than presented as equivalent spellings.
+`Router` is only unicast. Use `RoundRobin`, `LeastLoaded`, `ConsistentHash`, or
+`RendezvousHash`; each successful route transfers one owned message to at most
+one member. Bombay must remove stale `Router<Broadcast>` examples and imports,
+not recreate a broadcast strategy or compatibility wrapper.
 
-`WorkerPool::new(topology, configuration, complete_to)` remains the canonical
-pool construction boundary. It has no sensitive wrapper order, so a second
-recipe would only hide already explicit policy.
+Fan-out is the distinct `Topic`/`PubSub` state-transition law:
+
+- `Topic<A, P, Route>` owns one insertion-ordered membership snapshot;
+  `TopicMessage::Publish(P)` sends a clone to every member.
+- `PubSub<A, K, P, Route>` additionally owns keyed topic introduction,
+  known-empty retention, and per-topic membership;
+  `PubSubMessage::Publish { topic, value }` fans out within one key.
+
+Choose `Route` truthfully. `EstablishedRecipient<P>` broadcasts to exact
+installed incarnations and adds no logical-host requirement. `Recipient<P>`
+broadcasts to intentional logical identities, so the application topology must
+install that concrete protocol. For stable replaceable workers, subscribe the
+logical stable protocol, not a stale exact worker incarnation. Different
+destination protocols remain different actors and are connected with typed
+`MessageAdapter`s; `Topic` never erases them into a common envelope.
+
+## Root shutdown
+
+Use `StopOnShutdown<B>` when a shutdown request means that this actor stops
+directly. Use `FinalizeOnShutdown<B>` when shutdown must run one typed finalizer
+and preserve all of its sends, creations, and terminal decision. If shutdown
+must first be delegated to a coordinator, place that coordinator at the root;
+no guardian alias or builder is required.
+
+These transformations compose like every other wrapper:
+
+```rust,ignore
+let direct = StopOnShutdown::new(application);
+let finalizing = FinalizeOnShutdown::new(application, finalize);
+let coordinated = ShutdownCoordinator::new(application, plan);
+```
+
+The choice is deliberate Bombay policy. It is not automatic discovery of a
+nested shutdown handler.
+
+## Plans derived from committed children
+
+`ShutdownCoordinator` and `HeterogeneousShutdownCoordinator` own the distinct
+homogeneous and heterogeneous ordered-shutdown folds. A topology-owning
+application that cannot construct its plan until children commit records those
+committed `EstablishedChild` capabilities in its own state. Once complete, it
+emits `ReportShutdownPlan::new(plan)` in its ordinary `Actions` send product.
+The interpreter returns the corresponding typed `InstallShutdownPlan<P>` event
+to the coordinator.
+
+The topology owner must preserve the following policy:
+
+- only a successfully committed creation contributes a child target;
+- rejection remains a typed application transition failure;
+- every declared role contributes exactly once;
+- an early shutdown request remains pending until installation; and
+- a plan installs at most once.
+
+This is ordinary actor communication between two concrete folds. A generic
+child-plan wrapper cannot own these laws because it does not own the
+application's topology or role state.
+
+## Observation
+
+`Watch<B>` is the recurring logical-name observation transformation. It
+continues observing later incarnations of the same logical peer.
+`TerminationMonitor` owns a correlated, exact-once observation lifecycle and
+consumes its terminal relationship. Exact-incarnation monitoring uses that
+same monitor law with an established target and an ordinary typed reaction.
+
+Those recurrence laws are different, so they remain separate folds. Target
+aliases and established-watch wrappers add no law and are unnecessary.
+
+## Pools and shutdown products
+
+`WorkerPool` and `KeyedWorkerPool` each implement their public transition law
+directly. They may reuse private data helpers, but neither delegates its
+`Behavior` fold to a hidden generic actor engine. FIFO assignment and
+persistent key affinity have different state transitions.
+
+Likewise, homogeneous and heterogeneous shutdown coordinators retain separate
+folds. Their phase products select different concrete child effect lanes, so a
+generic execution engine would hide the very distinction the public types are
+meant to prove.
+
+## Audit record
+
+The complete catalogue classification and change ledger are in
+[Actor-template composition audit](template-composition-audit.md). The broader
+capability and adversarial-test record remains in
+[Behavior Actors template-law audit](template-law-audit.md).

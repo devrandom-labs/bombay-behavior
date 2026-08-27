@@ -7,12 +7,28 @@
 use std::time::Duration;
 
 use behavior::{
-    Acted, Actions, CreationKind, Delivery, MailAddr, Never, RestartPolicy, Strategy,
-    SupervisionEvent, Supervisor, WorkerCreationResolved, WorkerStopped,
+    Acted, Actions, Behavior, BehaviorActed, BehaviorBase, Births, CreationKind, Delivery,
+    EventIngress, Here, MailAddr, Never, RestartPolicy, Strategy, Supervise, SuperviseError,
+    SupervisionEvent, SupervisionLifecycle, User, UserEvent, WorkerCreationResolved, WorkerStopped,
 };
-use behavior_testkit::model::{Model, Outcome};
+use behavior_testkit::model::{Model, Outcome, SupervisionModelError};
 use std::time::Instant;
 use tokio::runtime::Builder;
+
+macro_rules! assert_quiet_supervision {
+    ($actions:expr) => {{
+        let actions = &$actions;
+        assert!(actions.sends.owned.child_observations.is_empty());
+        assert!(actions.sends.owned.creation_observations.is_empty());
+        assert!(actions.sends.owned.schedules.is_empty());
+        assert!(actions.sends.owned.replacement_inputs.is_empty());
+        assert!(actions.sends.owned.failure_reports.is_empty());
+        assert!(actions.sends.owned.shutdowns.is_empty());
+        assert!(actions.sends.inner.is_empty());
+        assert!(actions.creates.is_empty());
+        assert!(matches!(actions.become_, behavior::Step::Continue));
+    }};
+}
 
 #[derive(Default)]
 struct Echo;
@@ -38,6 +54,65 @@ type Child = Echo;
 
 fn child(_index: usize) -> Child {
     Echo
+}
+
+struct ExhaustiveApplication;
+
+enum ExhaustiveEvent {
+    Lifecycle(SupervisionLifecycle<MailAddr>),
+    User(User<MailAddr, ()>),
+}
+
+impl UserEvent for ExhaustiveEvent {
+    type Addr = MailAddr;
+    type Message = ();
+
+    fn user(from: MailAddr, message: ()) -> Self {
+        Self::User(User::new(from, message))
+    }
+
+    fn into_user(self) -> Result<User<MailAddr, ()>, Self> {
+        match self {
+            Self::User(user) => Ok(user),
+            lifecycle => Err(lifecycle),
+        }
+    }
+}
+
+impl EventIngress<Here, SupervisionLifecycle<MailAddr>> for ExhaustiveEvent {
+    fn ingress(lifecycle: SupervisionLifecycle<MailAddr>) -> Self {
+        Self::Lifecycle(lifecycle)
+    }
+}
+
+impl behavior::Protocol for ExhaustiveApplication {
+    type Addr = MailAddr;
+    type Msg = ();
+}
+
+impl BehaviorBase for ExhaustiveApplication {
+    type Base = Self;
+
+    fn base(&self) -> &Self {
+        self
+    }
+}
+
+impl Behavior for ExhaustiveApplication {
+    type Protocol = Self;
+    type Event = ExhaustiveEvent;
+    type Sends = Vec<Never>;
+    type Ph = Never;
+    type Error = Never;
+    type Birth = Births<Child>;
+
+    fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+        match event {
+            ExhaustiveEvent::Lifecycle(_lifecycle) => {}
+            ExhaustiveEvent::User(_user) => {}
+        }
+        Ok(Actions::cont())
+    }
 }
 
 const FLEET: usize = 2;
@@ -97,7 +172,8 @@ fn exhaustive_supervision_sequences_match_the_reference_model() {
                             }
 
                             let mut model = Model::new(FLEET);
-                            let behavior = Supervisor::new(
+                            let behavior = Supervise::new(
+                                ExhaustiveApplication,
                                 behavior::ChildTopology::indexed(
                                     |index| u64::try_from(index).unwrap(),
                                     FLEET,
@@ -108,40 +184,71 @@ fn exhaustive_supervision_sequences_match_the_reference_model() {
                                     policy,
                                     maximum,
                                     window_duration,
+                                    behavior::RestartTiming::Immediate,
                                 ),
+                                behavior::Proxy::new,
                             )
                             .unwrap();
                             let initialized = behavior.initialize().unwrap();
                             let mut behavior = initialized.behavior;
                             let mut workers = [0_u64, 1];
                             let mut next_worker = 2_u64;
-
-                            for (nonce, outcome, at) in events {
-                                let expected = model
-                                    .apply(nonce, outcome, at, strategy, policy, maximum, window);
-                                let actions = runtime
+                            for proxy in 0..FLEET {
+                                let proxy = u64::try_from(proxy).unwrap();
+                                let joined = runtime
                                     .block_on(async {
-                                        behavior.transition(SupervisionEvent::WorkerStopped(
-                                            WorkerStopped {
-                                                proxy: nonce,
-                                                worker: workers[usize::try_from(nonce).unwrap()],
-                                                outcome: outcome.into_result(),
-                                                at: base + Duration::from_nanos(at),
-                                            },
-                                        ))
+                                        behavior.transition(
+                                            SupervisionEvent::WorkerCreationResolved(
+                                                WorkerCreationResolved::new(
+                                                    proxy,
+                                                    proxy,
+                                                    CreationKind::Birth,
+                                                    Ok(()),
+                                                ),
+                                            ),
+                                        )
                                     })
                                     .unwrap();
-                                let sends: Vec<MailAddr> = actions
+                                assert_quiet_supervision!(joined);
+                            }
+
+                            for (nonce, outcome, at) in events {
+                                let stopped = WorkerStopped {
+                                    proxy: nonce,
+                                    worker: workers[usize::try_from(nonce).unwrap()],
+                                    outcome: outcome.into_result(),
+                                    at: base + Duration::from_nanos(at),
+                                };
+                                let expected = model
+                                    .apply(nonce, outcome, at, strategy, policy, maximum, window);
+                                let actual = runtime.block_on(async {
+                                    behavior.transition(SupervisionEvent::WorkerStopped(
+                                        stopped.clone(),
+                                    ))
+                                });
+                                let expected = match expected {
+                                    Ok(expected) => expected,
+                                    Err(SupervisionModelError::AlreadyStopped {
+                                        nonce: rejected,
+                                    }) => {
+                                        assert_eq!(rejected, nonce);
+                                        assert!(matches!(
+                                            actual,
+                                            Err(SuperviseError::UnexpectedWorkerStopped(returned))
+                                                if returned == stopped
+                                        ));
+                                        continue;
+                                    }
+                                };
+                                let actions = actual.unwrap();
+                                let sends: Vec<u64> = actions
                                     .sends
-                                    .replacement_commands
+                                    .owned
+                                    .replacement_inputs
                                     .iter()
-                                    .map(|delivery| delivery.to.resolve(MailAddr(17)))
+                                    .map(|delivery| delivery.nonce)
                                     .collect();
-                                let expected_routes: Vec<MailAddr> = expected
-                                    .iter()
-                                    .copied()
-                                    .map(|nonce| behavior::Address::birth(MailAddr(17), nonce))
-                                    .collect();
+                                let expected_routes: Vec<u64> = expected.clone();
                                 assert_eq!(
                                     sends, expected_routes,
                                     "strategy={strategy:?} policy={policy:?} maximum={maximum} window={window:?}"
@@ -150,7 +257,7 @@ fn exhaustive_supervision_sequences_match_the_reference_model() {
                                     let index = usize::try_from(proxy).unwrap();
                                     let previous = workers[index];
                                     if proxy != nonce {
-                                        runtime
+                                        let duplicate_stop = runtime
                                             .block_on(async {
                                                 behavior.transition(
                                                     SupervisionEvent::WorkerStopped(
@@ -166,8 +273,9 @@ fn exhaustive_supervision_sequences_match_the_reference_model() {
                                                 )
                                             })
                                             .unwrap();
+                                        assert_quiet_supervision!(duplicate_stop);
                                     }
-                                    runtime
+                                    let joined = runtime
                                         .block_on(async {
                                             behavior.transition(
                                                 SupervisionEvent::WorkerCreationResolved(
@@ -183,12 +291,13 @@ fn exhaustive_supervision_sequences_match_the_reference_model() {
                                             )
                                         })
                                         .unwrap();
+                                    assert_quiet_supervision!(joined);
                                     workers[index] = next_worker;
                                     next_worker += 1;
                                 }
                                 for slot in model.slots() {
                                     assert_eq!(
-                                        behavior.is_alive(slot.nonce).unwrap(),
+                                        behavior.is_restartable(slot.nonce).unwrap(),
                                         slot.alive,
                                         "alive mismatch nonce={} strategy={strategy:?} policy={policy:?} maximum={maximum} window={window:?}",
                                         slot.nonce

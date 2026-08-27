@@ -8,7 +8,7 @@
 //! `recorded + fsm_held + stash_held + goto_consumed == stepped`, with the
 //! goto class taken from the phase BEFORE the step (a Goto flips the phase).
 
-use behavior::{Activate, Machine, MailAddr, Move, Never, StashRoute, User, UserEvent};
+use behavior::{Activate, Machine, MailAddr, Move, Never, StashRoute, Step, User, UserEvent};
 use libfuzzer_sys::fuzz_target;
 use tokio::runtime::Builder;
 
@@ -41,14 +41,21 @@ fuzz_target!(|bytes: &[u8]| {
             1 => StashRoute::Deliver,
             _ => StashRoute::Stash,
         });
-        let mut behavior = behavior.initialize().unwrap().behavior;
+        let initialized = behavior.initialize().unwrap();
+        assert!(initialized.actions.sends.is_empty());
+        assert!(initialized.actions.creates.is_empty());
+        assert!(matches!(initialized.actions.become_, Step::Continue));
+        let mut behavior = initialized.behavior;
 
         let mut consumed = 0_usize;
         let mut stepped = 0_usize;
         for (index, _) in bytes.iter().enumerate() {
             let id = u64::try_from(index).unwrap();
             let phase_before = behavior.base().phase();
-            behavior.transition(User::user(MailAddr(0), id)).unwrap();
+            let actions = behavior.transition(User::user(MailAddr(0), id)).unwrap();
+            assert!(actions.sends.is_empty());
+            assert!(actions.creates.is_empty());
+            assert!(matches!(actions.become_, Step::Continue));
             stepped += 1;
             if id % 3 != 2 {
                 let goto_class = match phase_before {

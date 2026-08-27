@@ -1,10 +1,11 @@
 use std::time::{Duration, Instant};
 
 use behavior::{
-    Actions, Activate, Behavior, BehaviorActed, Births, ChildTopology, Create, Delivery,
-    InterpreterRequests, MailAddr, Never, NoBirths, ObserveChild, PoolAssignment,
-    PoolConfiguration, PoolResponse, Proxy, Recipient, RestartConfiguration, RestartPolicy,
-    StashRoute, Step, Strategy, Supervise, SupervisorSends, TimerId, User, WorkerPool,
+    Actions, Activate, Behavior, BehaviorActed, BehaviorBase, Births, ChildChoice, ChildTopology,
+    Create, Delivery, EventIngress, Here, InterpreterRequests, JobId, MailAddr, Never, NoBirths,
+    ObserveChild, PoolAssignment, PoolConfiguration, PoolMessage, PoolResponse, Proxy, Recipient,
+    RestartConfiguration, RestartPolicy, StashRoute, Step, Strategy, Supervise,
+    SupervisionLifecycle, SupervisorSends, TimerId, User, UserEvent, WorkerPool,
     WorkerPoolProtocol,
 };
 
@@ -71,8 +72,8 @@ fn deliver(_: &u64) -> StashRoute {
     clippy::unnecessary_wraps,
     reason = "DeadlineReaction requires the behavior's exact controlled-failure result"
 )]
-fn deadline(_: &mut behavior::Stash<Domain>) -> Result<behavior::Become, Never> {
-    Ok(Step::Continue)
+fn deadline(_: &mut behavior::Stash<Domain>) -> behavior::Become {
+    Step::Continue
 }
 
 fn accepts_closed_behavior<B>(behavior: B) -> B
@@ -132,6 +133,33 @@ impl Behavior for Child {
 
 struct Parent;
 
+enum ParentEvent {
+    Lifecycle(SupervisionLifecycle<MailAddr>),
+    User(User<MailAddr, ()>),
+}
+
+impl UserEvent for ParentEvent {
+    type Addr = MailAddr;
+    type Message = ();
+
+    fn user(from: MailAddr, message: ()) -> Self {
+        Self::User(User::new(from, message))
+    }
+
+    fn into_user(self) -> Result<User<MailAddr, ()>, Self> {
+        match self {
+            Self::User(user) => Ok(user),
+            lifecycle => Err(lifecycle),
+        }
+    }
+}
+
+impl EventIngress<Here, SupervisionLifecycle<MailAddr>> for ParentEvent {
+    fn ingress(lifecycle: SupervisionLifecycle<MailAddr>) -> Self {
+        Self::Lifecycle(lifecycle)
+    }
+}
+
 impl behavior::Protocol for Parent {
     type Addr = MailAddr;
     type Msg = ();
@@ -139,7 +167,7 @@ impl behavior::Protocol for Parent {
 
 impl Behavior for Parent {
     type Protocol = Self;
-    type Event = User<MailAddr, ()>;
+    type Event = ParentEvent;
     type Sends = Vec<Never>;
     type Ph = Never;
     type Error = Never;
@@ -149,8 +177,20 @@ impl Behavior for Parent {
         Ok(Actions::create(vec![Create::birth(9, Child)]))
     }
 
-    fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
+    fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+        match event {
+            ParentEvent::Lifecycle(_lifecycle) => {}
+            ParentEvent::User(_user) => {}
+        }
         Ok(Actions::cont())
+    }
+}
+
+impl BehaviorBase for Parent {
+    type Base = Self;
+
+    fn base(&self) -> &Self {
+        self
     }
 }
 
@@ -163,7 +203,7 @@ fn child(_: usize) -> Option<Child> {
 }
 
 #[test]
-fn supervisor_products_are_named_and_creation_order_is_adapter_visible() {
+fn supervision_preserves_inner_births_without_claiming_their_lifecycle() {
     let supervisor = Supervise::new(
         Parent,
         ChildTopology::new([1, 2], child),
@@ -172,7 +212,9 @@ fn supervisor_products_are_named_and_creation_order_is_adapter_visible() {
             RestartPolicy::Permanent,
             4,
             Duration::from_secs(1),
+            behavior::RestartTiming::Immediate,
         ),
+        Proxy::new,
     )
     .unwrap();
     let initialized = supervisor.initialize().unwrap();
@@ -183,7 +225,8 @@ fn supervisor_products_are_named_and_creation_order_is_adapter_visible() {
                     SupervisorSends {
                         child_observations,
                         creation_observations,
-                        replacement_commands,
+                        schedules,
+                        replacement_inputs,
                         failure_reports,
                         shutdowns,
                     },
@@ -195,18 +238,22 @@ fn supervisor_products_are_named_and_creation_order_is_adapter_visible() {
 
     let created: Vec<_> = creates.iter().map(|creation| creation.nonce).collect();
     assert_eq!(created, [9, 1, 2]);
+    assert!(matches!(&creates[0].child, ChildChoice::Head(_)));
+    assert!(matches!(&creates[1].child, ChildChoice::Tail(_)));
+    assert!(matches!(&creates[2].child, ChildChoice::Tail(_)));
     let observed: Vec<_> = child_observations
         .iter()
         .map(|ObserveChild { nonce, .. }| *nonce)
         .collect();
-    assert_eq!(observed, [9, 1, 2]);
+    assert_eq!(observed, [1, 2]);
     let creation_observed: Vec<_> = creation_observations
         .iter()
         .map(|behavior::ObserveCreation { nonce, .. }| *nonce)
         .collect();
-    assert_eq!(creation_observed, [9, 1, 2]);
+    assert_eq!(creation_observed, [1, 2]);
     assert!(behavior.is_empty());
-    assert!(replacement_commands.is_empty());
+    assert!(schedules.is_empty());
+    assert!(replacement_inputs.is_empty());
     assert!(failure_reports.is_empty());
     assert!(shutdowns.is_empty());
     assert!(matches!(become_, Step::Continue));
@@ -235,7 +282,7 @@ impl Behavior for Reply {
 struct Worker;
 impl behavior::Protocol for Worker {
     type Addr = MailAddr;
-    type Msg = PoolAssignment<WorkerPoolProtocol<MailAddr, Reply, u8, ()>>;
+    type Msg = PoolAssignment<u8>;
 }
 
 impl Behavior for Worker {
@@ -253,35 +300,60 @@ impl Behavior for Worker {
 
 #[test]
 fn pool_configuration_separates_topology_from_runtime_neutral_policy() {
-    let pool = WorkerPool::new(
-        ChildTopology::new([3, 7], |_| Some(Worker)),
-        PoolConfiguration::new(
-            8,
-            behavior::InterruptionPolicy::Retry,
-            RestartPolicy::Transient,
-            2,
-            Duration::from_secs(10),
-        ),
-        Recipient::global(MailAddr(9)),
-    )
-    .unwrap();
-    let initialized = pool.initialize().unwrap();
+    fn owned_pool<B>(behavior: B) -> B
+    where
+        B: Behavior<Protocol = WorkerPoolProtocol<MailAddr, u8, (), Recipient<Reply>>>,
+    {
+        behavior
+    }
+
+    let pool = owned_pool(
+        WorkerPool::new(
+            ChildTopology::new([3, 7], |_| Some(Worker)),
+            PoolConfiguration::new(
+                8,
+                behavior::InterruptionPolicy::Retry,
+                RestartPolicy::Transient,
+                2,
+                Duration::from_secs(10),
+                behavior::RestartTiming::Immediate,
+            ),
+            Proxy::new,
+        )
+        .unwrap(),
+    );
+    let mut initialized = pool.initialize().unwrap();
     assert_eq!(initialized.actions.creates.len(), 2);
-    assert!(initialized.actions.sends.inner.responses.is_empty());
-    assert!(initialized.actions.sends.inner.assignments.is_empty());
+    assert!(initialized.actions.sends.responses.is_empty());
+    assert!(initialized.actions.sends.assignments.is_empty());
     assert_eq!(
         initialized
             .actions
             .sends
-            .owned
+            .supervision
             .child_observations
             .as_slice()
             .len(),
         2
     );
-    let _: InterpreterRequests<ObserveChild<MailAddr>> =
-        initialized.actions.sends.owned.child_observations;
-    let _: InterpreterRequests<behavior::ObserveCreation<MailAddr>> =
-        initialized.actions.sends.owned.creation_observations;
-    let _: Vec<Delivery<Proxy<Worker>>> = initialized.actions.sends.owned.replacement_commands;
+    let _: InterpreterRequests<ObserveChild<MailAddr, behavior::ChildHead>> =
+        initialized.actions.sends.supervision.child_observations;
+    let _: InterpreterRequests<behavior::ObserveCreation<MailAddr, behavior::ChildHead>> =
+        initialized.actions.sends.supervision.creation_observations;
+    assert!(
+        initialized
+            .actions
+            .sends
+            .supervision
+            .replacement_inputs
+            .is_empty()
+    );
+
+    let command: PoolMessage<MailAddr, u8, (), Recipient<Reply>> = PoolMessage::Submit {
+        job: JobId(1),
+        payload: 9_u8,
+        reply_to: Recipient::<Reply>::global(MailAddr(2)),
+    };
+    let submitted = initialized.behavior.receive(MailAddr(1), command).unwrap();
+    assert_eq!(submitted.sends.responses.len(), 1);
 }

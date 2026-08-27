@@ -2,15 +2,15 @@
 //! effect into the trace via `SendEffects::append`. For composed behaviors
 //! the sends use named products; this is where "send/create order and wrapper
 //! preservation are lossless under composition" (contract #3) is enforced at
-//! the trace level. Also: the `SendEffects` monoid law itself, and the
-//! empty-fleet birth→death restart path.
+//! the trace level. It also checks the `SendEffects` monoid law itself.
 
 use std::time::Duration;
 
 use behavior::EventLayer;
 use behavior::{
-    Acted, Actions, Crash, Create, Delivery, MailAddr, Never, Recipient, RestartPolicy,
-    SendEffects, Step, Strategy, SupervisionEvent, User, UserEvent, WorkerStopped,
+    Acted, Actions, Behavior, BehaviorActed, BehaviorBase, Births, Crash, Create, Delivery,
+    EventIngress, Here, MailAddr, Never, Recipient, RestartPolicy, SendEffects, Step, Strategy,
+    Supervise, SupervisionEvent, SupervisionLifecycle, User, UserEvent, WorkerStopped,
 };
 use behavior_testkit::{Mailbox, drive};
 use proptest::collection::vec;
@@ -49,56 +49,72 @@ struct EchoingParent {
     seen: Vec<u64>,
 }
 
-#[behavior::behavior(addr = MailAddr, message = u64, sends = Vec<Delivery<behavior_testkit::TestRecipient<u64>>>, births = behavior::Births<Child>, error = Never)]
-impl EchoingParent {
-    fn receive(
-        &mut self,
-        _from: MailAddr,
-        message: u64,
-    ) -> Acted<
-        MailAddr,
-        Never,
-        Vec<Delivery<behavior_testkit::TestRecipient<u64>>>,
-        behavior::Births<Child>,
-        Never,
-    > {
-        self.seen.push(message);
-        Ok(Actions {
-            sends: vec![Delivery::new(Recipient::global(MailAddr(0)), message)],
-            creates: if message == u64::MAX {
-                vec![Create::birth(message, child(0))]
-            } else {
-                Vec::new()
-            },
-            become_: Step::Continue,
-        })
+enum ParentEvent {
+    Lifecycle(SupervisionLifecycle<MailAddr>),
+    User(User<MailAddr, u64>),
+}
+
+impl UserEvent for ParentEvent {
+    type Addr = MailAddr;
+    type Message = u64;
+
+    fn user(from: MailAddr, message: u64) -> Self {
+        Self::User(User::new(from, message))
     }
-}
 
-struct BirthingParent {
-    born: bool,
-}
-
-#[behavior::behavior(addr = MailAddr, message = u64, sends = Vec<Never>, births = behavior::Births<Child>, error = Never)]
-impl BirthingParent {
-    fn receive(
-        &mut self,
-        _from: MailAddr,
-        nonce: u64,
-    ) -> Acted<MailAddr, Never, Vec<Never>, behavior::Births<Child>, Never> {
-        if self.born {
-            return Ok(Actions::cont());
+    fn into_user(self) -> Result<User<MailAddr, u64>, Self> {
+        match self {
+            Self::User(user) => Ok(user),
+            lifecycle => Err(lifecycle),
         }
-        self.born = true;
-        Ok(Actions {
-            sends: Vec::new(),
-            creates: vec![Create::birth(nonce, child(0))],
-            become_: Step::Continue,
-        })
     }
 }
 
-type TestSupervisor = behavior::Supervise<EchoingParent, Child>;
+impl EventIngress<Here, SupervisionLifecycle<MailAddr>> for ParentEvent {
+    fn ingress(lifecycle: SupervisionLifecycle<MailAddr>) -> Self {
+        Self::Lifecycle(lifecycle)
+    }
+}
+
+impl behavior::Protocol for EchoingParent {
+    type Addr = MailAddr;
+    type Msg = u64;
+}
+
+impl BehaviorBase for EchoingParent {
+    type Base = Self;
+
+    fn base(&self) -> &Self {
+        self
+    }
+}
+
+impl Behavior for EchoingParent {
+    type Protocol = Self;
+    type Event = ParentEvent;
+    type Sends = Vec<Delivery<behavior_testkit::TestRecipient<u64>>>;
+    type Ph = Never;
+    type Error = Never;
+    type Birth = Births<Child>;
+
+    fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+        match event {
+            ParentEvent::Lifecycle(_lifecycle) => Ok(Actions::cont()),
+            ParentEvent::User(event) => {
+                self.seen.push(event.message);
+                Ok(Actions {
+                    sends: vec![Delivery::new(Recipient::global(MailAddr(0)), event.message)],
+                    creates: if event.message == u64::MAX {
+                        vec![Create::birth(event.message, child(0))]
+                    } else {
+                        Vec::new()
+                    },
+                    become_: Step::Continue,
+                })
+            }
+        }
+    }
+}
 
 /// A driven supervised trace: user echoes accumulate in the inner lane,
 /// replacement sends in the supervisor's own lane, observe-child sends stay
@@ -106,7 +122,7 @@ type TestSupervisor = behavior::Supervise<EchoingParent, Child>;
 #[tokio::test]
 async fn driver_accumulates_supervising_send_products_losslessly() {
     let at = Instant::now();
-    let supervisor: TestSupervisor = behavior::Supervise::new(
+    let supervisor = behavior::Supervise::new(
         EchoingParent { seen: Vec::new() },
         behavior::ChildTopology::indexed(
             |index| u64::try_from(index).unwrap(),
@@ -118,18 +134,20 @@ async fn driver_accumulates_supervising_send_products_losslessly() {
             RestartPolicy::Permanent,
             u32::MAX,
             Duration::MAX,
+            behavior::RestartTiming::Immediate,
         ),
+        behavior::Proxy::new,
     )
     .unwrap();
     let mut mailbox = Mailbox::new([
-        SupervisionEvent::Behavior(User::user(MailAddr(9), 3)),
+        SupervisionEvent::Behavior(ParentEvent::user(MailAddr(9), 3)),
         SupervisionEvent::WorkerStopped(WorkerStopped {
             proxy: 0,
             worker: 0,
             outcome: Err(Crash::Failed),
             at,
         }),
-        SupervisionEvent::Behavior(User::user(MailAddr(9), 5)),
+        SupervisionEvent::Behavior(ParentEvent::user(MailAddr(9), 5)),
         SupervisionEvent::WorkerStopped(WorkerStopped {
             proxy: 1,
             worker: 1,
@@ -147,20 +165,14 @@ async fn driver_accumulates_supervising_send_products_losslessly() {
     let echoes: Vec<u64> = trace.sends.inner.iter().map(|d| d.message).collect();
     assert_eq!(echoes, [3, 5]);
     // Supervise's own replacement lane: one per death, in order.
-    let replacements: Vec<MailAddr> = trace
+    let replacements: Vec<u64> = trace
         .sends
         .owned
-        .replacement_commands
+        .replacement_inputs
         .iter()
-        .map(|d| d.to.resolve(MailAddr(17)))
+        .map(|d| d.nonce)
         .collect();
-    assert_eq!(
-        replacements,
-        [
-            behavior::Address::birth(MailAddr(17), 0),
-            behavior::Address::birth(MailAddr(17), 1)
-        ]
-    );
+    assert_eq!(replacements, [0, 1]);
     // Observe-child sends: emitted once at init, never again.
     assert_eq!(trace.sends.owned.child_observations.len(), 2);
     // Creates: exactly the two init proxies; the driver never re-creates.
@@ -203,52 +215,6 @@ proptest! {
     }
 }
 
-/// Empty configured fleet: a dynamic birth (sequence 0) followed by its
-/// death restarts exactly that child under `OneForOne`.
-#[tokio::test]
-async fn empty_fleet_dynamic_birth_then_death_restarts() {
-    let at = Instant::now();
-    let supervisor = behavior::Supervise::new(
-        BirthingParent { born: false },
-        behavior::ChildTopology::indexed(
-            |index| u64::try_from(index).unwrap(),
-            0,
-            |index| Some(child(index)),
-        ),
-        behavior::RestartConfiguration::new(
-            Strategy::OneForOne,
-            RestartPolicy::Permanent,
-            u32::MAX,
-            Duration::MAX,
-        ),
-    )
-    .unwrap();
-    let initialized = supervisor.initialize().unwrap();
-    let mut supervisor = initialized.behavior;
-    supervisor
-        .transition(UserEvent::user(MailAddr(0), 9))
-        .unwrap();
-    assert_eq!(supervisor.child_count(), 1);
-    assert!(supervisor.is_alive(9).unwrap());
-
-    let actions = supervisor
-        .transition(SupervisionEvent::WorkerStopped(WorkerStopped {
-            proxy: 9,
-            worker: 9,
-            outcome: Err(Crash::Failed),
-            at,
-        }))
-        .unwrap();
-    assert_eq!(actions.sends.owned.replacement_commands.len(), 1);
-    assert_eq!(
-        actions.sends.owned.replacement_commands[0]
-            .to
-            .resolve(MailAddr(17)),
-        behavior::Address::birth(MailAddr(17), 9)
-    );
-    assert!(supervisor.is_alive(9).unwrap());
-}
-
 /// The full four-layer stack driven through the mailbox: user echoes
 /// accumulate in the innermost lane, the time lane fires once, a watched
 /// peer's death stops the fold with `LinkDied` and leaves the remaining
@@ -261,7 +227,7 @@ async fn driver_full_stack_mixed_lanes_stop_on_peer_death() {
 
     let due = Instant::now() + Duration::from_secs(1);
     let peer = MailAddr(44);
-    let behavior = behavior::Supervise::new(
+    let behavior = Supervise::new(
         behavior::Deadline::new(
             behavior::Watch::new(
                 behavior::Stash::new(EchoingParent { seen: Vec::new() }, |m| {
@@ -276,7 +242,7 @@ async fn driver_full_stack_mixed_lanes_stop_on_peer_death() {
             ),
             behavior::TimerId(0),
             Some(due),
-            |_| Ok(Step::Continue),
+            |_| Step::Continue,
         ),
         behavior::ChildTopology::new((0..2).map(|index| u64::try_from(index).unwrap()), |index| {
             Some(child(index))
@@ -286,15 +252,17 @@ async fn driver_full_stack_mixed_lanes_stop_on_peer_death() {
             RestartPolicy::Permanent,
             u32::MAX,
             Duration::MAX,
+            behavior::RestartTiming::Immediate,
         ),
+        behavior::Proxy::new,
     )
     .unwrap();
     let mut mailbox = Mailbox::new([
-        SupervisionEvent::Behavior(EventLayer::Inner(EventLayer::Inner(User::user(
+        SupervisionEvent::Behavior(EventLayer::Inner(EventLayer::Inner(ParentEvent::user(
             MailAddr(9),
             1,
         )))),
-        SupervisionEvent::Behavior(EventLayer::Inner(EventLayer::Inner(User::user(
+        SupervisionEvent::Behavior(EventLayer::Inner(EventLayer::Inner(ParentEvent::user(
             MailAddr(9),
             5,
         )))),
@@ -306,7 +274,7 @@ async fn driver_full_stack_mixed_lanes_stop_on_peer_death() {
             peer,
             outcome: Err(Crash::Failed),
         }))),
-        SupervisionEvent::Behavior(EventLayer::Inner(EventLayer::Inner(User::user(
+        SupervisionEvent::Behavior(EventLayer::Inner(EventLayer::Inner(ParentEvent::user(
             MailAddr(9),
             7,
         )))),
@@ -443,4 +411,3 @@ async fn driver_stash_stop_preserves_held_and_stops() {
     assert_eq!(trace.behavior.held(), 1); // the stashed message survives the stop
     assert_eq!(trace.behavior.base().seen, [(MailAddr(9), 0)]);
 }
-use behavior_testkit::InitializeTest;

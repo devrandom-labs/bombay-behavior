@@ -5,6 +5,23 @@ use std::collections::VecDeque;
 use behavior::{Actions, Address, Behavior, BirthMode, SendEffects, User, UserEvent};
 use behavior::{Never, Step};
 
+mod sealed {
+    pub trait StaticallyInfallible {}
+}
+
+/// Statically proven uninhabited transition error accepted by [`Stash`].
+///
+/// The trait is sealed: replay safety depends on the error being genuinely
+/// impossible, so downstream code cannot assert the capability for an
+/// inhabited type.
+pub trait StaticallyInfallible: sealed::StaticallyInfallible {}
+
+impl sealed::StaticallyInfallible for Never {}
+impl StaticallyInfallible for Never {}
+
+impl<A, M> sealed::StaticallyInfallible for crate::MachineError<A, M, Never> {}
+impl<A, M> StaticallyInfallible for crate::MachineError<A, M, Never> {}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StashRoute {
     Stash,
@@ -18,6 +35,34 @@ pub trait StashStatus {
     fn stashed_messages(&self) -> usize;
 }
 
+/// FIFO message holding for an infallible inner fold.
+///
+/// Releasing one command may replay several retained mailbox inputs in one
+/// transition. Because [`behavior::Actions`] has no rollback effect, a
+/// fallible inner fold could reject after earlier replayed inputs had already
+/// produced unreturnable actions. Such an inner behavior is therefore not a
+/// valid `Stash` composition:
+///
+/// ```compile_fail,E0271
+/// use behavior_actors::{Actions, ActiveTurn, Behavior, BehaviorActed, MailAddr,
+///     Never, NoBirths, Stash, StashRoute, User};
+/// struct Fallible;
+/// impl behavior_actors::Protocol for Fallible { type Addr = MailAddr; type Msg = (); }
+/// impl Behavior for Fallible {
+///     type Protocol = Self;
+///     type Event = User<MailAddr, ()>;
+///     type Sends = Vec<Never>;
+///     type Ph = Never;
+///     type Error = u8;
+///     type Birth = NoBirths;
+///     fn transition(&mut self, _: ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
+///         Err(1)
+///     }
+/// }
+/// fn route(_: &()) -> StashRoute { StashRoute::Release }
+/// fn requires_behavior<B: Behavior>(_: &B) {}
+/// requires_behavior(&Stash::new(Fallible, route));
+/// ```
 pub struct Stash<B: Behavior> {
     inner: B,
     route: fn(&crate::BehaviorMessage<B>) -> StashRoute,
@@ -68,6 +113,7 @@ where
     Sends: SendEffects + behavior::SendsFor<B::Event>,
     Br: BirthMode,
     B: Behavior<Ph = Never, Sends = Sends, Birth = Br>,
+    B::Error: StaticallyInfallible,
     B::Protocol: crate::Protocol<Addr = A>,
 {
     fn drain_into(
@@ -103,6 +149,7 @@ where
     Sends: SendEffects + behavior::SendsFor<B::Event>,
     Br: BirthMode,
     B: Behavior<Ph = Never, Sends = Sends, Birth = Br>,
+    B::Error: StaticallyInfallible,
     B::Protocol: crate::Protocol<Addr = A>,
 {
     type Protocol = B::Protocol;
@@ -115,7 +162,7 @@ where
     fn init(
         &mut self,
         _: crate::InitializationTurn,
-    ) -> Result<Actions<A, Never, Sends, Br>, B::Error> {
+    ) -> Result<Actions<A, Never, Sends, Br>, Self::Error> {
         behavior::initialize(&mut self.inner)
     }
 
@@ -123,7 +170,7 @@ where
         &mut self,
         _: crate::ActiveTurn,
         event: B::Event,
-    ) -> Result<Actions<A, Never, Sends, Br>, B::Error> {
+    ) -> Result<Actions<A, Never, Sends, Br>, Self::Error> {
         let user = match event.into_user() {
             Ok(user) => user,
             Err(other) => return behavior::delegate_transition(&mut self.inner, other),

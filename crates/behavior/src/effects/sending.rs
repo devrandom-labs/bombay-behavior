@@ -1,6 +1,10 @@
 //! Typed send effects, their composition contract, and event ownership.
 
-use crate::{ComposedEvent, Delivery, InjectEvent, Inside, Protocol};
+use crate::{
+    Behavior, BirthProtocol, BirthProtocolProduct, ChildDelivery, ChildInput, ComposedEvent,
+    Delivery, EndpointAddress, EstablishedDelivery, InjectEvent, Inside, NoBirthProtocols,
+    Protocol,
+};
 use core::future::Future;
 
 /// Error domain shared by one concrete effect interpreter.
@@ -49,8 +53,8 @@ pub trait InterpretRequest<Request, RootEvent, Path>: SendInterpreter {
 /// Interpreter capability for deliveries to one concrete actor protocol.
 ///
 /// `P` is preserved unchanged from [`Delivery<P>`] and is the destination's
-/// canonical hosting identity. A creator-local child route changes only how
-/// the address is resolved; it does not introduce a role-keyed delivery lane.
+/// canonical identity. This logical-address path is distinct from exact
+/// endpoint and creator-local child-delivery paths.
 pub trait InterpretDelivery<P: Protocol>: SendInterpreter {
     /// Interpret one typed delivery, awaiting bounded-mailbox capacity when
     /// required by the concrete communication transport.
@@ -60,6 +64,72 @@ pub trait InterpretDelivery<P: Protocol>: SendInterpreter {
     fn interpret_delivery(
         &mut self,
         delivery: Delivery<P>,
+    ) -> impl Future<Output = Result<(), Self::Error>> + Send;
+}
+
+/// Interpreter capability for delivery to one exact installed incarnation.
+///
+/// The endpoint crosses this explicit power-user boundary only. No address
+/// lookup, runtime protocol key, erasure, or downcast participates in
+/// selection.
+pub trait InterpretEstablishedDelivery<P>: SendInterpreter
+where
+    P: Protocol,
+    P::Addr: EndpointAddress,
+{
+    /// Interpret one exact typed delivery.
+    ///
+    /// # Errors
+    /// Returns the interpreter's concrete delivery failure.
+    fn interpret_established_delivery(
+        &mut self,
+        endpoint: <P::Addr as EndpointAddress>::Established<P>,
+        message: P::Msg,
+    ) -> impl Future<Output = Result<(), Self::Error>> + Send;
+}
+
+/// Interpreter capability for a same-action delivery to one creator-local
+/// named child role.
+///
+/// The interpreter must commit creations before invoking this capability and
+/// resolve the exact creator-instance `(Occurrence, Nonce)` binding. The
+/// parent instance is interpreter context rather than a generic carried by
+/// ordinary domain values. The route cannot be
+/// converted into an address by nonce arithmetic.
+pub trait InterpretChildDelivery<P, Occurrence>: SendInterpreter
+where
+    P: Protocol,
+{
+    /// Interpret one typed local-role delivery.
+    ///
+    /// # Errors
+    /// Returns the interpreter's concrete missing-binding or delivery failure.
+    fn interpret_child_delivery(
+        &mut self,
+        delivery: ChildDelivery<P, Occurrence>,
+    ) -> impl Future<Output = Result<(), Self::Error>> + Send;
+}
+
+/// Interpreter capability for one private input to a concrete creator-local
+/// child.
+///
+/// `Source` statically selects the event member owned by the layer that
+/// understands `Input`. The interpreter resolves only the exact child binding
+/// and invokes that child's `EventIngress` implementation; it does not inspect
+/// event types, construct a template-specific event, or expose the input as a
+/// public protocol message.
+pub trait InterpretChildInput<Child, Source, Input, Occurrence>: SendInterpreter
+where
+    Child: Behavior,
+    Child::Event: crate::ChildInputIngress<Source, Input>,
+{
+    /// Interpret one typed private child communication.
+    ///
+    /// # Errors
+    /// Returns the concrete missing-binding or closed-child failure.
+    fn interpret_child_input(
+        &mut self,
+        input: ChildInput<Child, Source, Input, Occurrence>,
     ) -> impl Future<Output = Result<(), Self::Error>> + Send;
 }
 
@@ -113,6 +183,50 @@ pub trait SendEffects: Sized {
     }
 }
 
+/// Static projection of intentional logical destinations from one concrete
+/// sends product.
+///
+/// Implementations mirror the product's [`InterpretSends`] traversal without
+/// inspecting values. Only [`Delivery<P>`] contributes `P`; exact established
+/// deliveries, creator-local child deliveries and inputs, and interpreter
+/// requests contribute nothing. Named products append their field projections
+/// in interpretation order, preserving repeated protocol occurrences.
+///
+/// Custom named sends products must implement this trait explicitly. There is
+/// deliberately no blanket `Vec<T>` implementation that could silently treat
+/// an unknown delivery representation as having no logical destination.
+///
+/// ```compile_fail,E0277
+/// use behavior::{
+///     Actions, Behavior, BehaviorActed, LogicalHostRequirements, MailAddr,
+///     Never, NoBirths, Protocol, SendEffects, User,
+/// };
+/// struct OpaqueSends;
+/// impl SendEffects for OpaqueSends {
+///     fn empty() -> Self { Self }
+///     fn append(&mut self, _: Self) {}
+/// }
+/// impl<E> behavior::SendsFor<E> for OpaqueSends {}
+/// struct Actor;
+/// impl Protocol for Actor { type Addr = MailAddr; type Msg = (); }
+/// impl Behavior for Actor {
+///     type Protocol = Self;
+///     type Event = User<MailAddr, ()>;
+///     type Sends = OpaqueSends;
+///     type Ph = Never;
+///     type Error = Never;
+///     type Birth = NoBirths;
+///     fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event)
+///         -> BehaviorActed<Self> { Ok(Actions::cont()) }
+/// }
+/// fn require_complete<B: LogicalHostRequirements>() {}
+/// require_complete::<Actor>();
+/// ```
+pub trait LogicalDeliveryProtocols: SendEffects {
+    /// Ordered, duplicate-preserving logical protocol occurrences.
+    type Protocols: BirthProtocolProduct;
+}
+
 /// Proof that send effects are lawful for one complete event type.
 ///
 /// Ordinary communications are independent of `Event`. Interpreter requests
@@ -163,6 +277,38 @@ pub trait InterpreterRequest {
     type ReturnToEmitter;
 }
 
+/// Transfer one owned report to the emitter's established parent.
+///
+/// The request is an ordinary typed send effect. Its interpreter uses the
+/// already-established creator/child relationship, attaches the emitter's
+/// exact creator-local nonce, and injects a [`crate::ChildReport`] into the
+/// parent's closed event algebra. It performs no address or protocol lookup.
+/// A root behavior has no parent capability and therefore cannot interpret
+/// this request.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ReportToParent<R> {
+    /// Complete report value transferred to the parent.
+    pub report: R,
+}
+
+impl<R> ReportToParent<R> {
+    /// Construct one structural parent report.
+    #[must_use]
+    pub const fn new(report: R) -> Self {
+        Self { report }
+    }
+
+    /// Recover ownership of the complete report value.
+    #[must_use]
+    pub fn into_inner(self) -> R {
+        self.report
+    }
+}
+
+impl<R> InterpreterRequest for ReportToParent<R> {
+    type ReturnToEmitter = NoReturnToEmitter;
+}
+
 /// Send effects containing no communications or interpreter requests.
 ///
 /// A behavior layer that adds an event lane but emits nothing of its own uses
@@ -176,6 +322,10 @@ impl SendEffects for NoSends {
     }
 
     fn append(&mut self, _: Self) {}
+}
+
+impl LogicalDeliveryProtocols for NoSends {
+    type Protocols = NoBirthProtocols;
 }
 
 impl<Event> SendsFor<Event> for NoSends {}
@@ -228,6 +378,15 @@ impl<Owned: SendEffects, Inner: SendEffects> SendEffects for SendLayer<Owned, In
         self.owned.append(other.owned);
         self.inner.append(other.inner);
     }
+}
+
+impl<Owned, Inner> LogicalDeliveryProtocols for SendLayer<Owned, Inner>
+where
+    Owned: LogicalDeliveryProtocols,
+    Inner: LogicalDeliveryProtocols,
+{
+    // Interpretation preserves authored inner-to-outer wrapper order.
+    type Protocols = <Inner::Protocols as BirthProtocolProduct>::Append<Owned::Protocols>;
 }
 
 impl<Event, OwnedEffects, InnerEffects> SendsFor<Event> for SendLayer<OwnedEffects, InnerEffects>
@@ -286,6 +445,34 @@ impl<T> SendEffects for Vec<T> {
     }
 }
 
+impl<P: Protocol> LogicalDeliveryProtocols for Vec<Delivery<P>> {
+    type Protocols = BirthProtocol<P, NoBirthProtocols>;
+}
+
+impl<P: Protocol, Occurrence> LogicalDeliveryProtocols for Vec<ChildDelivery<P, Occurrence>> {
+    type Protocols = NoBirthProtocols;
+}
+
+impl<Child, Source, Input, Occurrence> LogicalDeliveryProtocols
+    for Vec<ChildInput<Child, Source, Input, Occurrence>>
+where
+    Child: Behavior,
+{
+    type Protocols = NoBirthProtocols;
+}
+
+impl<P> LogicalDeliveryProtocols for Vec<EstablishedDelivery<P>>
+where
+    P: Protocol,
+    P::Addr: EndpointAddress,
+{
+    type Protocols = NoBirthProtocols;
+}
+
+impl LogicalDeliveryProtocols for Vec<crate::Never> {
+    type Protocols = NoBirthProtocols;
+}
+
 impl<Event, T> SendsFor<Event> for Vec<T> {}
 
 impl<Interpreter, RootEvent, Path, P> InterpretSends<Interpreter, RootEvent, Path>
@@ -309,9 +496,80 @@ where
     }
 }
 
+impl<Interpreter, RootEvent, Path, P, Occurrence> InterpretSends<Interpreter, RootEvent, Path>
+    for Vec<ChildDelivery<P, Occurrence>>
+where
+    Interpreter: InterpretChildDelivery<P, Occurrence>,
+    Interpreter: Send,
+    P: Protocol,
+    ChildDelivery<P, Occurrence>: Send,
+{
+    fn interpret(
+        self,
+        interpreter: &mut Interpreter,
+    ) -> impl Future<Output = Result<(), Interpreter::Error>> + Send {
+        async move {
+            for delivery in self {
+                interpreter.interpret_child_delivery(delivery).await?;
+            }
+            Ok(())
+        }
+    }
+}
+
+impl<Interpreter, RootEvent, Path, Child, Source, Input, Occurrence>
+    InterpretSends<Interpreter, RootEvent, Path>
+    for Vec<ChildInput<Child, Source, Input, Occurrence>>
+where
+    Interpreter: InterpretChildInput<Child, Source, Input, Occurrence> + Send,
+    Child: Behavior,
+    Child::Event: crate::ChildInputIngress<Source, Input>,
+    ChildInput<Child, Source, Input, Occurrence>: Send,
+{
+    fn interpret(
+        self,
+        interpreter: &mut Interpreter,
+    ) -> impl Future<Output = Result<(), Interpreter::Error>> + Send {
+        async move {
+            for input in self {
+                interpreter.interpret_child_input(input).await?;
+            }
+            Ok(())
+        }
+    }
+}
+
+impl<Interpreter, RootEvent, Path, P> InterpretSends<Interpreter, RootEvent, Path>
+    for Vec<EstablishedDelivery<P>>
+where
+    Interpreter: InterpretEstablishedDelivery<P>,
+    Interpreter: Send,
+    P: Protocol,
+    P::Addr: EndpointAddress,
+    EstablishedDelivery<P>: Send,
+{
+    fn interpret(
+        self,
+        interpreter: &mut Interpreter,
+    ) -> impl Future<Output = Result<(), Interpreter::Error>> + Send {
+        async move {
+            for delivery in self {
+                interpreter
+                    .interpret_established_delivery(delivery.to.endpoint, delivery.message)
+                    .await?;
+            }
+            Ok(())
+        }
+    }
+}
+
 impl<Interpreter: SendInterpreter, RootEvent, Path> InterpretSends<Interpreter, RootEvent, Path>
     for Vec<crate::Never>
 {
+    #[allow(
+        clippy::never_loop,
+        reason = "exhaustive iteration proves every member of the uninhabited effect lane impossible"
+    )]
     fn interpret(
         self,
         _: &mut Interpreter,
@@ -405,6 +663,10 @@ impl<M> SendEffects for InterpreterRequests<M> {
     fn append(&mut self, mut other: Self) {
         self.requests.append(&mut other.requests);
     }
+}
+
+impl<M> LogicalDeliveryProtocols for InterpreterRequests<M> {
+    type Protocols = NoBirthProtocols;
 }
 
 impl<Event, M> SendsFor<Event> for InterpreterRequests<M>

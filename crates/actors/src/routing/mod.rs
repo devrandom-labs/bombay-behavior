@@ -4,46 +4,49 @@
 //! values. Endpoint resolution, mailbox admission, delivery, and physical
 //! backpressure remain runtime capabilities.
 
-use behavior::{Delivery, InterpretSends, Protocol, SendEffects, SendInterpreter};
+use behavior::{InterpretSends, SendEffects, SendInterpreter};
 
 /// Ordered target deliveries followed by ordered factual outcomes.
 ///
 /// Routing templates use this product when these are their complete and
 /// semantically distinct effect lanes. Interpretation always exhausts
 /// `deliveries` before beginning `outcomes`.
-pub struct DeliveryOutcomes<Target: Protocol, Reply: Protocol> {
-    pub deliveries: Vec<Delivery<Target>>,
-    pub outcomes: Vec<Delivery<Reply>>,
+pub struct DeliveryOutcomes<Deliveries: SendEffects, OutcomeSends: SendEffects> {
+    pub deliveries: Deliveries,
+    pub outcomes: OutcomeSends,
 }
 
-impl<Target: Protocol, Reply: Protocol> SendEffects for DeliveryOutcomes<Target, Reply> {
+impl<Deliveries: SendEffects, OutcomeSends: SendEffects> SendEffects
+    for DeliveryOutcomes<Deliveries, OutcomeSends>
+{
     fn empty() -> Self {
         Self {
-            deliveries: Vec::new(),
-            outcomes: Vec::new(),
+            deliveries: Deliveries::empty(),
+            outcomes: OutcomeSends::empty(),
         }
     }
 
-    fn append(&mut self, mut other: Self) {
-        self.deliveries.append(&mut other.deliveries);
-        self.outcomes.append(&mut other.outcomes);
+    fn append(&mut self, other: Self) {
+        self.deliveries.append(other.deliveries);
+        self.outcomes.append(other.outcomes);
     }
 }
 
-impl<Event, Target: Protocol, Reply: Protocol> behavior::SendsFor<Event>
-    for DeliveryOutcomes<Target, Reply>
+impl<Event, Deliveries, OutcomeSends> behavior::SendsFor<Event>
+    for DeliveryOutcomes<Deliveries, OutcomeSends>
+where
+    Deliveries: SendEffects + behavior::SendsFor<Event>,
+    OutcomeSends: SendEffects + behavior::SendsFor<Event>,
 {
 }
 
-impl<I, RootEvent, Path, Target, Reply> InterpretSends<I, RootEvent, Path>
-    for DeliveryOutcomes<Target, Reply>
+impl<I, RootEvent, Path, Deliveries, OutcomeSends> InterpretSends<I, RootEvent, Path>
+    for DeliveryOutcomes<Deliveries, OutcomeSends>
 where
     I: SendInterpreter,
-    Target: Protocol,
-    Reply: Protocol,
-    Vec<Delivery<Target>>: InterpretSends<I, RootEvent, Path>,
-    Vec<Delivery<Reply>>: InterpretSends<I, RootEvent, Path>,
-    DeliveryOutcomes<Target, Reply>: Send,
+    Deliveries: SendEffects + InterpretSends<I, RootEvent, Path>,
+    OutcomeSends: SendEffects + InterpretSends<I, RootEvent, Path>,
+    DeliveryOutcomes<Deliveries, OutcomeSends>: Send,
 {
     fn interpret(
         self,
@@ -69,16 +72,17 @@ mod sequencer;
 mod work_queue;
 
 pub use acknowledgements::{
-    AcknowledgementError, AcknowledgementMessage, AcknowledgementOutcome, AcknowledgementRecord,
-    AcknowledgementState, Acknowledgements,
+    AcknowledgementError, AcknowledgementInput, AcknowledgementMessage, AcknowledgementOutcome,
+    AcknowledgementRecord, AcknowledgementState, Acknowledgements,
 };
 pub use buffer::{
     Buffer, BufferConfigError, BufferConfiguration, BufferMessage, BufferOutcome, BufferRejection,
     BufferSends, BufferState, Buffered, OverflowPolicy,
 };
 pub use circuit_breaker::{
-    BreakerAttempt, BreakerConfigError, BreakerMessage, BreakerOutcome, BreakerPhase,
-    BreakerRejection, BreakerSends, CircuitBreaker, ClosedPhase, ProbePhase,
+    BreakerAttempt, BreakerCompletion, BreakerConfigError, BreakerError, BreakerMessage,
+    BreakerOutcome, BreakerPhase, BreakerRejection, BreakerSends, CircuitBreaker, ClosedPhase,
+    ProbePhase,
 };
 pub use correlator::{
     CorrelationResult, CorrelationState, Correlator, CorrelatorError, CorrelatorMessage,
@@ -97,7 +101,7 @@ pub use rate_limiter::{
     RateLimiterOutcome, RateLimiterState, TokenCount,
 };
 pub use router::{
-    Broadcast, ConsistentHash, HashPolicyError, LeastLoaded, LeastLoadedError, Load, LoadEvidence,
+    ConsistentHash, HashPolicyError, LeastLoaded, LeastLoadedError, Load, LoadEvidence,
     LoadObservation, LoadVersion, MemberToken, MemberTokenEvidence, MemberTokenObservation,
     MemberTokenVersion, RendezvousHash, RoundRobin, RouteKey, Router, RouterError, RouterMessage,
     RoutingStrategy,

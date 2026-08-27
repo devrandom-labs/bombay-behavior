@@ -62,6 +62,7 @@ struct ModelInstaller {
     trace: Vec<(u64, InstalledKind, CreationKind<u64>)>,
     device_groups: Vec<Recipient<DeviceGroups>>,
     queries: Vec<Recipient<Queries>>,
+    next_address: u64,
 }
 
 impl ModelInstaller {
@@ -79,32 +80,30 @@ impl ModelInstaller {
     }
 }
 
-impl InstallBirth<MailAddr, DeviceGroups, (), InstallError> for ModelInstaller {
+impl InstallBirth<foundation::ChildHead, DeviceGroups, (), InstallError> for ModelInstaller {
     async fn install_birth(
         &mut self,
         creation: Create<MailAddr, DeviceGroups>,
     ) -> Result<(), InstallError> {
         self.admit(creation.nonce, InstalledKind::DeviceGroups, creation.kind)?;
         self.device_groups
-            .push(Recipient::global(behavior::Address::birth(
-                MailAddr(17),
-                creation.nonce,
-            )));
+            .push(Recipient::global(MailAddr(self.next_address)));
+        self.next_address += 1;
         Ok(())
     }
 }
 
-impl InstallBirth<MailAddr, Queries, (), InstallError> for ModelInstaller {
+impl InstallBirth<foundation::ChildTail<foundation::ChildHead>, Queries, (), InstallError>
+    for ModelInstaller
+{
     async fn install_birth(
         &mut self,
         creation: Create<MailAddr, Queries>,
     ) -> Result<(), InstallError> {
         self.admit(creation.nonce, InstalledKind::Queries, creation.kind)?;
         self.queries
-            .push(Recipient::global(behavior::Address::birth(
-                MailAddr(17),
-                creation.nonce,
-            )));
+            .push(Recipient::global(MailAddr(self.next_address)));
+        self.next_address += 1;
         Ok(())
     }
 }
@@ -115,7 +114,20 @@ fn installer() -> ModelInstaller {
         trace: Vec::new(),
         device_groups: Vec::new(),
         queries: Vec::new(),
+        next_address: 1_000,
     }
+}
+
+async fn dispatch(
+    child: IoTChildren,
+    nonce: u64,
+    kind: CreationKind<u64>,
+    installer: &mut ModelInstaller,
+) -> Result<(), InstallError> {
+    <IoTChildren as DispatchBirth<MailAddr, ModelInstaller, (), InstallError>>::dispatch_birth(
+        child, nonce, kind, installer,
+    )
+    .await
 }
 
 fn assert_send<T: Send>(_: &T) {}
@@ -129,9 +141,7 @@ async fn one_ordered_creation_vector_dispatches_to_concrete_protocol_installers(
     ]);
     let mut model = installer();
     for creation in actions.creates {
-        creation
-            .child
-            .dispatch_birth(creation.nonce, creation.kind, &mut model)
+        dispatch(creation.child, creation.nonce, creation.kind, &mut model)
             .await
             .unwrap();
     }
@@ -151,23 +161,27 @@ async fn one_ordered_creation_vector_dispatches_to_concrete_protocol_installers(
 #[tokio::test]
 async fn nonce_collision_is_global_across_variants_and_preserves_the_first_binding() {
     let mut model = installer();
-    let first = ChildChoice::<DeviceGroups, ChildChoice<Queries, Never>>::Head(DeviceGroups)
-        .dispatch_birth(5, CreationKind::Birth, &mut model);
+    let first = dispatch(
+        ChildChoice::<DeviceGroups, ChildChoice<Queries, Never>>::Head(DeviceGroups),
+        5,
+        CreationKind::Birth,
+        &mut model,
+    );
     assert_send(&first);
     first.await.unwrap();
-    let collision =
-        ChildChoice::<DeviceGroups, ChildChoice<Queries, Never>>::Tail(ChildChoice::Head(Queries))
-            .dispatch_birth(5, CreationKind::Birth, &mut model);
+    let collision = dispatch(
+        ChildChoice::<DeviceGroups, ChildChoice<Queries, Never>>::Tail(ChildChoice::Head(Queries)),
+        5,
+        CreationKind::Birth,
+        &mut model,
+    );
     assert_send(&collision);
     assert_eq!(collision.await, Err(InstallError::Collision));
     assert_eq!(
         model.trace,
         [(5, InstalledKind::DeviceGroups, CreationKind::Birth)]
     );
-    assert_eq!(
-        model.device_groups,
-        [Recipient::global(behavior::Address::birth(MailAddr(17), 5))]
-    );
+    assert_eq!(model.device_groups, [Recipient::global(MailAddr(1_000))]);
     assert!(model.queries.is_empty());
 }
 
@@ -194,15 +208,21 @@ proptest! {
             };
             let actual = runtime.block_on(async {
                 if device {
-                    ChildChoice::<DeviceGroups, ChildChoice<Queries, Never>>::Head(DeviceGroups)
-                        .dispatch_birth(nonce, CreationKind::Birth, &mut installer)
-                        .await
+                    dispatch(
+                        ChildChoice::<DeviceGroups, ChildChoice<Queries, Never>>::Head(DeviceGroups),
+                        nonce,
+                        CreationKind::Birth,
+                        &mut installer,
+                    ).await
                 } else {
-                    ChildChoice::<DeviceGroups, ChildChoice<Queries, Never>>::Tail(
-                        ChildChoice::Head(Queries),
-                    )
-                        .dispatch_birth(nonce, CreationKind::Birth, &mut installer)
-                        .await
+                    dispatch(
+                        ChildChoice::<DeviceGroups, ChildChoice<Queries, Never>>::Tail(
+                            ChildChoice::Head(Queries),
+                        ),
+                        nonce,
+                        CreationKind::Birth,
+                        &mut installer,
+                    ).await
                 }
             });
             prop_assert_eq!(actual, expected_result);

@@ -70,18 +70,17 @@ type SubjectBehavior = Subject;
 
 fn on_timeout(
     _inner: &mut SubjectBehavior,
-) -> Acted<
+) -> Actions<
     MailAddr,
     Never,
     Vec<Delivery<behavior_testkit::TestRecipient<u8>>>,
     Births<ChildBehavior>,
-    Failed,
 > {
-    Ok(Actions {
+    Actions {
         sends: vec![Delivery::new(Recipient::global(MailAddr(91)), 99)],
         creates: vec![Create::birth(99, Child)],
         become_: Step::Continue,
-    })
+    }
 }
 
 #[tokio::test]
@@ -209,15 +208,15 @@ async fn errors_and_terminal_user_folds_do_not_rearm() {
     assert!(formerly_live.sends.owned.is_empty());
 }
 
-fn inner_at(_inner: &mut SubjectBehavior) -> Result<behavior::Become, Failed> {
-    Ok(Step::Continue)
+fn inner_at(_inner: &mut SubjectBehavior) -> behavior::Become {
+    Step::Continue
 }
 
 type TimedInner = behavior::Deadline<SubjectBehavior>;
 
 fn outer_timeout(
     _inner: &mut TimedInner,
-) -> Acted<
+) -> Actions<
     MailAddr,
     Never,
     behavior::SendLayer<
@@ -225,9 +224,8 @@ fn outer_timeout(
         <SubjectBehavior as Behavior>::Sends,
     >,
     Births<ChildBehavior>,
-    Failed,
 > {
-    Ok(Actions::cont())
+    Actions::cont()
 }
 
 #[tokio::test]
@@ -380,8 +378,8 @@ impl Behavior for StopsAtInitialization {
     }
 }
 
-fn stopped_at_reaction(_inner: &mut StopsAtInitialization) -> Result<behavior::Become, Never> {
-    Ok(Step::Continue)
+fn stopped_at_reaction(_inner: &mut StopsAtInitialization) -> behavior::Become {
+    Step::Continue
 }
 
 #[tokio::test]

@@ -4,29 +4,14 @@ use crate::{Address, ChildShutdownRejection, CreationKind, CreationRejection, Cr
 
 /// The complete lifecycle state of the worker behind one stable proxy.
 enum IncarnationState<N, C> {
-    Dormant {
-        initial: C,
-    },
-    Installing {
-        attempt: N,
-        kind: CreationKind<N>,
-    },
-    InstallingDuringShutdown {
-        attempt: N,
-        kind: CreationKind<N>,
-    },
-    Running {
-        incarnation: N,
-        queued_replacement: Option<C>,
-    },
-    ShuttingDown {
-        incarnation: N,
-    },
-    Vacant {
-        last_installed: Option<N>,
-    },
+    Dormant { initial: C },
+    Installing { attempt: N, kind: CreationKind<N> },
+    InstallingDuringShutdown { attempt: N, kind: CreationKind<N> },
+    Running { incarnation: N },
+    AwaitingStop { incarnation: N, replacement: C },
+    ShuttingDown { incarnation: N },
+    Vacant { last_installed: Option<N> },
 }
-
 /// A copyable observation of the lifecycle without owned child specifications.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IncarnationPhase<N> {
@@ -41,7 +26,7 @@ pub enum IncarnationPhase<N> {
 
 /// A failure of one stable proxy's worker-incarnation lifecycle.
 ///
-/// This is the single authority for the two incarnation-lifecycle failures;
+/// This is the single authority for incarnation-lifecycle failures;
 /// the public façade exposes it as `ProxyError`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub enum IncarnationError {
@@ -49,8 +34,8 @@ pub enum IncarnationError {
     AlreadyInitialized,
     #[error("the incarnation creation-attempt sequence is exhausted")]
     AttemptSequenceExhausted,
-    #[error("orderly worker shutdown was rejected: {0}")]
-    ShutdownRejected(ChildShutdownRejection),
+    #[error("the current incarnation phase cannot accept a replacement")]
+    ReplacementUnavailable,
 }
 
 /// A fresh child creation selected by the lifecycle transition.
@@ -99,14 +84,37 @@ where
     Stop,
 }
 
-/// Effects of accepting an exact child-stop observation.
-///
-/// This is distinct from [`IncarnationEffects`] so the adapter never has to
-/// reconstruct stop provenance from an optional, unrelated input.
+/// Complete effect selected by one exact child-stop observation.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct IncarnationStopEffects<N, C> {
-    pub creation: Option<IncarnationCreation<N, C>>,
-    pub stopped: Option<N>,
+pub(crate) enum IncarnationStopEffects<N, C> {
+    Stopped {
+        incarnation: N,
+    },
+    StoppedAndCreate {
+        incarnation: N,
+        creation: IncarnationCreation<N, C>,
+    },
+}
+
+/// Failure to consume one exact child-stop observation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum IncarnationStopError<N> {
+    /// The observation does not name a child owned in the current phase.
+    Unexpected(N),
+    /// The matching transition could not begin its queued replacement.
+    Lifecycle(IncarnationError),
+}
+
+/// Failure to consume one exact child-shutdown rejection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum IncarnationShutdownError<N> {
+    /// The rejection does not belong to the outstanding shutdown request.
+    Unexpected {
+        nonce: N,
+        reason: ChildShutdownRejection,
+    },
+    /// The matching outstanding request was rejected by the interpreter.
+    Rejected(ChildShutdownRejection),
 }
 
 /// The typed state machine for one proxy's sequence of fresh incarnations.
@@ -140,16 +148,10 @@ impl<N: Copy, C> Incarnation<N, C> {
                     kind: *kind,
                 }
             }
-            IncarnationState::Running {
-                incarnation,
-                queued_replacement: Some(_),
-            } => IncarnationPhase::AwaitingStop {
+            IncarnationState::AwaitingStop { incarnation, .. } => IncarnationPhase::AwaitingStop {
                 incarnation: *incarnation,
             },
-            IncarnationState::Running {
-                incarnation,
-                queued_replacement: None,
-            } => IncarnationPhase::Running {
+            IncarnationState::Running { incarnation } => IncarnationPhase::Running {
                 incarnation: *incarnation,
             },
             IncarnationState::ShuttingDown { incarnation } => IncarnationPhase::ShuttingDown {
@@ -178,9 +180,15 @@ impl<N: Copy + From<u64> + PartialEq, C> Incarnation<N, C> {
             },
         );
         match previous {
-            IncarnationState::Dormant { initial } => self
-                .begin(initial, CreationKind::Birth)
-                .map(IncarnationEffects::Create),
+            IncarnationState::Dormant { initial } => {
+                match self.begin(initial, CreationKind::Birth) {
+                    Ok(creation) => Ok(IncarnationEffects::Create(creation)),
+                    Err((error, initial)) => {
+                        self.state = IncarnationState::Dormant { initial };
+                        Err(error)
+                    }
+                }
+            }
             state => {
                 self.state = state;
                 Err(IncarnationError::AlreadyInitialized)
@@ -192,12 +200,12 @@ impl<N: Copy + From<u64> + PartialEq, C> Incarnation<N, C> {
         &mut self,
         child: C,
         kind: CreationKind<N>,
-    ) -> Result<IncarnationCreation<N, C>, IncarnationError> {
+    ) -> Result<IncarnationCreation<N, C>, (IncarnationError, C)> {
         let attempt = N::from(self.next_attempt);
-        self.next_attempt = self
-            .next_attempt
-            .checked_add(1)
-            .ok_or(IncarnationError::AttemptSequenceExhausted)?;
+        let Some(next_attempt) = self.next_attempt.checked_add(1) else {
+            return Err((IncarnationError::AttemptSequenceExhausted, child));
+        };
+        self.next_attempt = next_attempt;
         self.state = IncarnationState::Installing { attempt, kind };
         Ok(IncarnationCreation::new(attempt, kind, child))
     }
@@ -207,14 +215,15 @@ impl<N: Copy + From<u64> + PartialEq, C> Incarnation<N, C> {
         attempt: N,
         kind: CreationKind<N>,
         result: Result<A, CreationRejection>,
-    ) -> IncarnationEffects<N, C, M, A> {
+    ) -> Result<IncarnationEffects<N, C, M, A>, CreationResolved<A>> {
+        let observed = CreationResolved::new(attempt, kind, result);
         let (pending, pending_kind, shutting_down) = match self.state {
             IncarnationState::Installing { attempt, kind } => (attempt, kind, false),
             IncarnationState::InstallingDuringShutdown { attempt, kind } => (attempt, kind, true),
-            _ => return IncarnationEffects::None,
+            _ => return Err(observed),
         };
         if attempt != pending || kind != pending_kind {
-            return IncarnationEffects::None;
+            return Err(observed);
         }
         self.state = match result {
             Ok(_) if shutting_down => IncarnationState::ShuttingDown {
@@ -222,7 +231,6 @@ impl<N: Copy + From<u64> + PartialEq, C> Incarnation<N, C> {
             },
             Ok(_) => IncarnationState::Running {
                 incarnation: attempt,
-                queued_replacement: None,
             },
             Err(_) => IncarnationState::Vacant {
                 last_installed: match kind {
@@ -231,47 +239,36 @@ impl<N: Copy + From<u64> + PartialEq, C> Incarnation<N, C> {
                 },
             },
         };
-        let resolved = CreationResolved::new(attempt, kind, result);
-        match (shutting_down, result) {
+        Ok(match (shutting_down, result) {
             (true, Ok(_)) => IncarnationEffects::ReportAndShutdown {
-                resolved,
+                resolved: observed,
                 incarnation: attempt,
             },
-            (true, Err(_)) => IncarnationEffects::ReportAndStop(resolved),
-            (false, _) => IncarnationEffects::Report(resolved),
-        }
+            (true, Err(_)) => IncarnationEffects::ReportAndStop(observed),
+            (false, _) => IncarnationEffects::Report(observed),
+        })
     }
 
     pub(crate) fn child_stopped(
         &mut self,
         stopped: N,
-    ) -> Result<IncarnationStopEffects<N, C>, IncarnationError> {
+    ) -> Result<IncarnationStopEffects<N, C>, IncarnationStopError<N>> {
         if let IncarnationState::ShuttingDown { incarnation } = self.state {
             if stopped == incarnation {
                 self.state = IncarnationState::Vacant {
                     last_installed: Some(incarnation),
                 };
-                return Ok(IncarnationStopEffects {
-                    creation: None,
-                    stopped: Some(incarnation),
-                });
+                return Ok(IncarnationStopEffects::Stopped { incarnation });
             }
-            return Ok(IncarnationStopEffects {
-                creation: None,
-                stopped: None,
-            });
+            return Err(IncarnationStopError::Unexpected(stopped));
         }
-        let IncarnationState::Running { incarnation, .. } = self.state else {
-            return Ok(IncarnationStopEffects {
-                creation: None,
-                stopped: None,
-            });
+        let incarnation = match self.state {
+            IncarnationState::Running { incarnation }
+            | IncarnationState::AwaitingStop { incarnation, .. } => incarnation,
+            _ => return Err(IncarnationStopError::Unexpected(stopped)),
         };
         if stopped != incarnation {
-            return Ok(IncarnationStopEffects {
-                creation: None,
-                stopped: None,
-            });
+            return Err(IncarnationStopError::Unexpected(stopped));
         }
         let previous = core::mem::replace(
             &mut self.state,
@@ -279,60 +276,71 @@ impl<N: Copy + From<u64> + PartialEq, C> Incarnation<N, C> {
                 last_installed: Some(incarnation),
             },
         );
-        let IncarnationState::Running {
-            incarnation,
-            queued_replacement,
-        } = previous
-        else {
-            self.state = previous;
-            return Ok(IncarnationStopEffects {
-                creation: None,
-                stopped: None,
-            });
-        };
-        let creation = match queued_replacement {
-            Some(child) => Some(self.begin(
-                child,
-                CreationKind::ReplacementIncarnation {
-                    replaces: incarnation,
-                },
-            )?),
-            None => None,
-        };
-        Ok(IncarnationStopEffects {
-            creation,
-            stopped: Some(incarnation),
-        })
+        match previous {
+            IncarnationState::Running { incarnation } => {
+                Ok(IncarnationStopEffects::Stopped { incarnation })
+            }
+            IncarnationState::AwaitingStop {
+                incarnation,
+                replacement,
+            } => {
+                let creation = match self.begin(
+                    replacement,
+                    CreationKind::ReplacementIncarnation {
+                        replaces: incarnation,
+                    },
+                ) {
+                    Ok(creation) => creation,
+                    Err((error, replacement)) => {
+                        self.state = IncarnationState::AwaitingStop {
+                            incarnation,
+                            replacement,
+                        };
+                        return Err(IncarnationStopError::Lifecycle(error));
+                    }
+                };
+                Ok(IncarnationStopEffects::StoppedAndCreate {
+                    incarnation,
+                    creation,
+                })
+            }
+            state => {
+                self.state = state;
+                Err(IncarnationStopError::Unexpected(stopped))
+            }
+        }
     }
 
     pub(crate) fn forward<M, A: Address<Nonce = N>>(
         &self,
         message: M,
-    ) -> IncarnationEffects<N, C, M, A> {
+    ) -> Result<IncarnationEffects<N, C, M, A>, (IncarnationPhase<N>, M)> {
         match self.state {
-            IncarnationState::Running { incarnation, .. } => IncarnationEffects::Deliver {
+            IncarnationState::Running { incarnation } => Ok(IncarnationEffects::Deliver {
                 incarnation,
                 message,
-            },
+            }),
             IncarnationState::Dormant { .. }
             | IncarnationState::Installing { .. }
             | IncarnationState::InstallingDuringShutdown { .. }
+            | IncarnationState::AwaitingStop { .. }
             | IncarnationState::ShuttingDown { .. }
-            | IncarnationState::Vacant { .. } => IncarnationEffects::None,
+            | IncarnationState::Vacant { .. } => Err((self.phase(), message)),
         }
     }
 
     pub(crate) fn replace<M, A: Address<Nonce = N>>(
         &mut self,
         child: C,
-    ) -> Result<IncarnationEffects<N, C, M, A>, IncarnationError> {
+    ) -> Result<IncarnationEffects<N, C, M, A>, (IncarnationError, C)> {
         Ok(match &mut self.state {
-            IncarnationState::Running {
-                queued_replacement: queued_replacement @ None,
-                incarnation,
-            } => {
-                *queued_replacement = Some(child);
-                IncarnationEffects::Shutdown(*incarnation)
+            IncarnationState::Running { incarnation } => {
+                let incarnation = *incarnation;
+                self.state = IncarnationState::AwaitingStop {
+                    incarnation,
+                    replacement: child,
+                };
+                IncarnationEffects::Shutdown(incarnation)
             }
             IncarnationState::Vacant {
                 last_installed: Some(last),
@@ -346,10 +354,10 @@ impl<N: Copy + From<u64> + PartialEq, C> Incarnation<N, C> {
             | IncarnationState::Installing { .. }
             | IncarnationState::InstallingDuringShutdown { .. }
             | IncarnationState::ShuttingDown { .. }
-            | IncarnationState::Running { .. }
+            | IncarnationState::AwaitingStop { .. }
             | IncarnationState::Vacant {
                 last_installed: None,
-            } => IncarnationEffects::None,
+            } => return Err((IncarnationError::ReplacementUnavailable, child)),
         })
     }
 
@@ -373,7 +381,8 @@ impl<N: Copy + From<u64> + PartialEq, C> Incarnation<N, C> {
                 self.state = IncarnationState::InstallingDuringShutdown { attempt, kind };
                 IncarnationEffects::None
             }
-            IncarnationState::Running { incarnation, .. } => {
+            IncarnationState::Running { incarnation }
+            | IncarnationState::AwaitingStop { incarnation, .. } => {
                 self.state = IncarnationState::ShuttingDown { incarnation };
                 IncarnationEffects::Shutdown(incarnation)
             }
@@ -403,17 +412,17 @@ impl<N: Copy + From<u64> + PartialEq, C> Incarnation<N, C> {
         &mut self,
         nonce: N,
         reason: ChildShutdownRejection,
-    ) -> Result<IncarnationEffects<N, C, M, A>, IncarnationError> {
+    ) -> Result<IncarnationEffects<N, C, M, A>, IncarnationShutdownError<N>> {
         let IncarnationState::ShuttingDown { incarnation } = self.state else {
-            return Ok(IncarnationEffects::None);
+            return Err(IncarnationShutdownError::Unexpected { nonce, reason });
         };
         if nonce != incarnation {
-            return Ok(IncarnationEffects::None);
+            return Err(IncarnationShutdownError::Unexpected { nonce, reason });
         }
         match reason {
             ChildShutdownRejection::AlreadyStopping => Ok(IncarnationEffects::None),
             ChildShutdownRejection::NotEstablished => {
-                Err(IncarnationError::ShutdownRejected(reason))
+                Err(IncarnationShutdownError::Rejected(reason))
             }
         }
     }
@@ -427,18 +436,22 @@ mod tests {
     fn rejected_attempt_preserves_successful_provenance() {
         let mut machine = Incarnation::<u64, &'static str>::new("first");
         machine.initialize::<(), crate::MailAddr>().unwrap();
-        machine.creation_resolved::<(), crate::MailAddr>(
-            0,
-            CreationKind::Birth,
-            Ok(crate::MailAddr(10)),
-        );
+        machine
+            .creation_resolved::<(), crate::MailAddr>(
+                0,
+                CreationKind::Birth,
+                Ok(crate::MailAddr(10)),
+            )
+            .unwrap();
         machine.replace::<(), crate::MailAddr>("second").unwrap();
         machine.child_stopped(0).unwrap();
-        machine.creation_resolved::<(), crate::MailAddr>(
-            1,
-            CreationKind::ReplacementIncarnation { replaces: 0 },
-            Err(CreationRejection::EnvironmentFailed),
-        );
+        machine
+            .creation_resolved::<(), crate::MailAddr>(
+                1,
+                CreationKind::ReplacementIncarnation { replaces: 0 },
+                Err(CreationRejection::EnvironmentFailed),
+            )
+            .unwrap();
 
         assert_eq!(
             machine.phase(),
@@ -458,7 +471,71 @@ mod tests {
     }
 
     #[test]
-    fn stale_inputs_are_inert() {
+    fn exhausted_attempts_return_or_retain_the_exact_replacement() {
+        let mut vacant = Incarnation::<u64, &'static str>::new("first");
+        vacant.initialize::<(), crate::MailAddr>().unwrap();
+        vacant
+            .creation_resolved::<(), crate::MailAddr>(
+                0,
+                CreationKind::Birth,
+                Ok(crate::MailAddr(10)),
+            )
+            .unwrap();
+        vacant.replace::<(), crate::MailAddr>("failed").unwrap();
+        vacant.child_stopped(0).unwrap();
+        vacant
+            .creation_resolved::<(), crate::MailAddr>(
+                1,
+                CreationKind::ReplacementIncarnation { replaces: 0 },
+                Err(CreationRejection::EnvironmentFailed),
+            )
+            .unwrap();
+        vacant.next_attempt = u64::MAX;
+        let error = vacant.replace::<(), crate::MailAddr>("replacement");
+        assert_eq!(
+            error,
+            Err((IncarnationError::AttemptSequenceExhausted, "replacement"))
+        );
+        assert_eq!(
+            vacant.phase(),
+            IncarnationPhase::Vacant {
+                last_installed: Some(0),
+            }
+        );
+
+        let mut queued = Incarnation::<u64, &'static str>::new("first");
+        queued.initialize::<(), crate::MailAddr>().unwrap();
+        queued
+            .creation_resolved::<(), crate::MailAddr>(
+                0,
+                CreationKind::Birth,
+                Ok(crate::MailAddr(10)),
+            )
+            .unwrap();
+        queued.replace::<(), crate::MailAddr>("queued").unwrap();
+        queued.next_attempt = u64::MAX;
+        assert_eq!(
+            queued.child_stopped(0),
+            Err(IncarnationStopError::Lifecycle(
+                IncarnationError::AttemptSequenceExhausted
+            ))
+        );
+        assert_eq!(
+            queued.phase(),
+            IncarnationPhase::AwaitingStop { incarnation: 0 }
+        );
+
+        queued.next_attempt = 1;
+        let IncarnationStopEffects::StoppedAndCreate { creation, .. } =
+            queued.child_stopped(0).unwrap()
+        else {
+            panic!("the retained replacement was not available for a later attempt");
+        };
+        assert_eq!(creation.child, "queued");
+    }
+
+    #[test]
+    fn stale_creation_is_returned_exactly_without_advancing_installation() {
         let mut machine = Incarnation::<u64, ()>::new(());
         machine.initialize::<(), crate::MailAddr>().unwrap();
         let effects = machine.creation_resolved::<(), crate::MailAddr>(
@@ -466,7 +543,10 @@ mod tests {
             CreationKind::Birth,
             Ok(crate::MailAddr(90)),
         );
-        assert_eq!(effects, IncarnationEffects::None);
+        assert_eq!(
+            effects,
+            Err(CreationResolved::birth(9, crate::MailAddr(90)))
+        );
         assert_eq!(
             machine.phase(),
             IncarnationPhase::Installing {

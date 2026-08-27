@@ -1,4 +1,4 @@
-# Nominal Behavior Attribute
+# Nominal Behavior attribute
 
 `#[behavior::behavior(...)]` is the single generated authoring path. It
 preserves an ordinary inherent impl and emits the adjacent nominal `Protocol`,
@@ -79,12 +79,13 @@ births = {
 ```
 
 generates `SystemChildren` as the exact recursive `ChildChoice` produced by
-calling `Children::child` in that declaration order. The generated behavior's
+calling `Children::child_at` in that declaration order. The generated behavior's
 birth capability is `Births<SystemChildren>`. The field labels record semantic
 roles. It also generates `SystemChildrenRoutes`, with one nominally distinct
-typed route per role. The same route stages that role's creation and
-produces its creator-local `ChildRecipient`, so creation and routing do not
-repeat a raw nonce. Values and nonces remain explicitly authored.
+typed route per role. The same route stages that role's creation and constructs
+`ChildDelivery<Child::Protocol, Role>` or
+`ObserveEstablishedCreation<Child::Protocol, Role>`, so dependent effects do
+not repeat an untyped nonce. Values and nonces remain explicitly authored.
 
 These names extend the macro's existing generated namespace: `SystemChild`,
 `SystemChildren`, `SystemChildrenRoutes`, and one `SystemChildrenRole` marker
@@ -96,9 +97,10 @@ routes.
 
 The same declaration also generates the `SystemChild` selector namespace. Its
 inhabited values, such as `SystemChild::Workers`, implement
-`ChildRole<System, Child = Workers>`. Each role also carries a sealed
+`ChildRole<System, Child = Workers>`. Each role also carries a structural
 `ChildHead`/`ChildTail<_>` position proving where that exact behavior occurs in
-`SystemChildren`. This is the Behavior-owned proof consumed by static
+`SystemChildren`, and implements `ChildOccurrence<System>` for the sealed
+running-emitter resolver. This is the Behavior-owned proof consumed by static
 application topology and existing heterogeneous effect products:
 
 ```rust,ignore
@@ -109,16 +111,32 @@ Application::new(System::new())
 
 The selector contains no nonce and performs no creation. `SystemChildrenRoutes`
 remains the separate creator-local routing product used when the parent stages
-and addresses actual child creations.
+creation and local dependent effects.
 
 A route is routing intent only. It is not an actor identity, proof of
 freshness, or successful installation fact.
 
+Generated and handwritten child products share the same sealed structural
+fold. A static runtime may implement `BirthNodeMapper` once to project any
+`SystemChildren` into its own occurrence-preserving direct-child storage.
+The macro emits no runtime storage or mapper implementation, and equal child
+types at two named roles still receive distinct structural positions.
+
+`ResolveChildOccurrence<Role>` maps such a generated role to the exact child
+and position of the concrete behavior currently being interpreted. It follows
+`BehaviorBase` through wrappers only when they preserve both the canonical
+protocol and complete birth algebra. Wrappers that rewrite child topology do
+not inherit the base role; their own `ChildHead`/`ChildTail<_>` positions remain
+available. The mapping is sealed and type-level, not generated runtime code.
+
 This is Bombay's staged creation policy: `Children` builds typed `Create`
 requests, and the interpreter must commit them before dependent same-action
-sends. The macro does not allocate, install, replace, choose nonces, or infer
-lifecycle provenance. `DispatchBirth` still requires one concrete
-`InstallBirth` implementation for every alternative.
+sends and interpreter requests. The macro does not allocate, install, replace,
+choose nonces, or infer lifecycle provenance. `DispatchBirth` still requires
+one concrete `InstallBirth<Position, Child, ...>` implementation for every
+alternative. The position distinguishes duplicate occurrences without making
+the role a protocol identity or forcing the parent type onto ordinary creation
+fact consumers.
 
 ## Exact initialization and transition results
 

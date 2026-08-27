@@ -1,17 +1,20 @@
 //! Typed protocol adaptation through an ordinary actor hop.
 
-use behavior::{
-    Actions, Behavior, BehaviorActed, BehaviorBase, Delivery, Never, NoBirths, Recipient, User,
-};
+use behavior::{Actions, Behavior, BehaviorActed, BehaviorBase, Never, NoBirths, Recipient, User};
+
+use super::DeliveryRoute;
 
 /// A pure actor that maps one input protocol into one destination protocol.
 ///
 /// For every accepted `Input`, the adapter invokes its function pointer exactly
 /// once. If that invocation returns normally, the transition emits exactly one
-/// [`Delivery<Destination>`] to the configured recipient and continues with
-/// the same behavior. Initialization emits no effects; the adapter cannot
-/// create actors, enter another phase, stop itself, or return a controlled
-/// error.
+/// effect selected by [`DeliveryRoute`] and continues with the same behavior.
+/// A logical recipient produces `Delivery` and an established recipient
+/// produces `EstablishedDelivery`. Initialization emits no effects; the
+/// adapter cannot create actors, enter another phase, stop itself, or return a
+/// controlled error. In particular, it cannot address a creator-local child:
+/// its [`behavior::NoBirths`] algebra supplies no local binding for an
+/// interpreter to resolve.
 ///
 /// This is a derived Bombay protocol composition, not an additional actor-model
 /// primitive. Delivery is interpreted as an ordinary actor communication, so
@@ -23,37 +26,74 @@ use behavior::{
 /// in birth products, child products, supervisors, and topology evidence. If
 /// the mapper panics, unwinding follows the same runtime policy as a panic from
 /// any other [`Behavior`] fold; no successful [`Actions`] value is returned.
-pub struct MessageAdapter<Input, Destination>
+///
+/// A creator-local child route is not a valid standalone adapter destination:
+///
+/// ```compile_fail
+/// use behavior::{
+///     Actions, Behavior, BehaviorActed, ChildHead, ChildRoute, MailAddr, Never,
+///     NoBirths, NoSends, Protocol, User,
+/// };
+/// use behavior_actors::MessageAdapterWithRoute;
+/// struct Destination;
+/// impl Protocol for Destination {
+///     type Addr = MailAddr;
+///     type Msg = u16;
+/// }
+/// impl Behavior for Destination {
+///     type Protocol = Self;
+///     type Event = User<MailAddr, u16>;
+///     type Sends = NoSends;
+///     type Ph = Never;
+///     type Error = Never;
+///     type Birth = NoBirths;
+///     fn transition(
+///         &mut self,
+///         _: behavior::ActiveTurn,
+///         _: Self::Event,
+///     ) -> BehaviorActed<Self> {
+///         Ok(Actions::cont())
+///     }
+/// }
+/// fn adapt(value: u8) -> u16 { u16::from(value) }
+/// let foreign = ChildRoute::<Destination, ChildHead>::new(1);
+/// let _ = MessageAdapterWithRoute::new(foreign, adapt);
+/// ```
+pub struct MessageAdapterWithRoute<Input, Route>
 where
-    Destination: behavior::Protocol,
+    Route: DeliveryRoute,
 {
-    destination: Recipient<Destination>,
-    adapt: fn(Input) -> Destination::Msg,
+    destination: Route,
+    adapt: fn(Input) -> <Route::Protocol as behavior::Protocol>::Msg,
 }
 
-impl<Input, Destination> MessageAdapter<Input, Destination>
+/// An adapter whose destination is a logical protocol name.
+pub type MessageAdapter<Input, Destination> =
+    MessageAdapterWithRoute<Input, Recipient<Destination>>;
+
+impl<Input, Route> MessageAdapterWithRoute<Input, Route>
 where
-    Destination: behavior::Protocol,
+    Route: DeliveryRoute,
 {
     /// Construct an adapter for one concrete destination protocol.
     #[must_use]
     pub const fn new(
-        destination: Recipient<Destination>,
-        adapt: fn(Input) -> Destination::Msg,
+        destination: Route,
+        adapt: fn(Input) -> <Route::Protocol as behavior::Protocol>::Msg,
     ) -> Self {
         Self { destination, adapt }
     }
 
     /// Return the destination routing intent.
     #[must_use]
-    pub const fn destination(&self) -> Recipient<Destination> {
-        self.destination
+    pub const fn destination(&self) -> &Route {
+        &self.destination
     }
 }
 
-impl<Input, Destination> BehaviorBase for MessageAdapter<Input, Destination>
+impl<Input, Route> BehaviorBase for MessageAdapterWithRoute<Input, Route>
 where
-    Destination: behavior::Protocol,
+    Route: DeliveryRoute,
 {
     type Base = Self;
 
@@ -62,31 +102,29 @@ where
     }
 }
 
-impl<Input, Destination> behavior::Protocol for MessageAdapter<Input, Destination>
+impl<Input, Route> behavior::Protocol for MessageAdapterWithRoute<Input, Route>
 where
-    Destination: behavior::Protocol,
+    Route: DeliveryRoute,
 {
-    type Addr = Destination::Addr;
+    type Addr = <Route::Protocol as behavior::Protocol>::Addr;
     type Msg = Input;
 }
 
-impl<Input, Destination> Behavior for MessageAdapter<Input, Destination>
+impl<Input, Route> Behavior for MessageAdapterWithRoute<Input, Route>
 where
-    Destination: behavior::Protocol,
+    Route: DeliveryRoute + Clone,
+    Route::Sends: behavior::SendsFor<User<<Route::Protocol as behavior::Protocol>::Addr, Input>>,
 {
     type Protocol = Self;
-    type Event = User<Destination::Addr, Input>;
-    type Sends = Vec<Delivery<Destination>>;
+    type Event = User<<Route::Protocol as behavior::Protocol>::Addr, Input>;
+    type Sends = Route::Sends;
     type Ph = Never;
     type Error = Never;
     type Birth = NoBirths;
 
     fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
         let message = (self.adapt)(event.message);
-        Ok(Actions::send(vec![Delivery::new(
-            self.destination,
-            message,
-        )]))
+        Ok(Actions::send(self.destination.clone().deliver(message)))
     }
 }
 
@@ -133,7 +171,7 @@ mod tests {
         assert!(initialized.actions.sends.is_empty());
         assert!(initialized.actions.creates.is_empty());
         assert_eq!(initialized.actions.become_, behavior::Step::Continue);
-        assert_eq!(initialized.behavior.destination(), destination);
+        assert_eq!(*initialized.behavior.destination(), destination);
     }
 
     #[test]
