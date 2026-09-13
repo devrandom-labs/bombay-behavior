@@ -6,6 +6,13 @@
 //! behavior or termination. A protocol is not a behavior, and `Behavior` is not
 //! a `Protocol` supertrait. Higher capabilities extend internal event and
 //! effect algebras while transparent wrappers preserve [`Behavior::Protocol`].
+//!
+//! Finite mailbox execution belongs to a runtime or test driver, not to this
+//! one-turn behavior algebra.
+//!
+//! ```compile_fail
+//! use behavior::ActionReducer;
+//! ```
 
 // The `#[behavior]` expansion emits `::behavior::…` paths; this alias lets the
 // expansion resolve inside this crate too.
@@ -15,31 +22,44 @@ mod actor;
 mod effect;
 mod effects;
 mod next;
-mod reducer;
 mod transition;
 mod user_event;
 
 pub use actor::{
-    Address, BirthMode, BirthNodeProtocols, BirthProtocol, BirthProtocolAt, BirthProtocolHead,
-    BirthProtocolProduct, BirthProtocolTail, BirthProtocols, Births, ChildChoice, ChildCons,
-    ChildHead, ChildPosition, ChildProduct, ChildRecipient, ChildRole, ChildRoute, ChildTail,
-    Children, ChildrenError, Create, CreationKind, Delivery, DeliveryTarget, DispatchBirth,
-    InstallBirth, MailAddr, NoBirthProtocols, NoBirths, NoChildren, Recipient,
+    Address, AllocationRejection, BirthMode, BirthNodeAppend, BirthNodeAt, BirthNodeLogicalHosts,
+    BirthNodeProtocols, BirthProtocol, BirthProtocolAt, BirthProtocolHead, BirthProtocolProduct,
+    BirthProtocolTail, BirthProtocols, Births, ChildChoice, ChildCons, ChildCreationOutcome,
+    ChildCreationProduct, ChildCreationSettled, ChildDelivery, ChildDeliveryReason, ChildHead,
+    ChildInput, ChildInputReason, ChildNamespaceExhausted, ChildOccurrence, ChildOccurrenceProduct,
+    ChildOccurrenceProductAt, ChildOccurrenceResolution, ChildOccurrenceShape, ChildOccurrences,
+    ChildPosition, ChildProduct, ChildReport, ChildRole, ChildTail, Children, CreateChild,
+    CreationCorrelation, CreationId, CreationKind, CreationRejection, CreationSequence, Creations,
+    DeclaredChildOccurrence, Delivery, DispatchBirth, EndpointAddress, EstablishChild,
+    EstablishedActor, EstablishedCreation, EstablishedDelivery, EstablishedRecipient,
+    ExactDeliveryReason, InterpretEstablished, LogicalDeliveryReason, MailAddr, NoBirthProtocols,
+    NoBirths, NoChildren, Recipient, ResolveChildOccurrence, ResolvedChild, ResolvedChildPosition,
+    RoleChild, RoleProtocol, RoutedCreation, StructuralChildOccurrence,
 };
 pub use effect::Effect;
 pub use effects::{
-    Acted, Actions, AppendSend, Become, InterpretDelivery, InterpretRequest, InterpretSends,
-    InterpreterRequest, InterpreterRequests, NoReturnToEmitter, NoSends, Own, ReturnsToEmitter,
-    SendEffects, SendInput, SendInterpreter, SendLayer, SendsFor,
+    Acted, ActionItem, ActionItemResult, ActionSettlement, ActionSettlements, Actions, AppendSend,
+    Become, ClassifySettlement, CreationCustody, CreationSettlement, CreationSettlements,
+    CreationsSettled, InterpretCreations, InterpretItem, InterpretSends, Interpretation,
+    InterpreterFault, InterpreterRequest, InterpreterRequests, ItemSettlement,
+    LogicalDeliveryProtocols, NoReturnToEmitter, NoSends, Own, ParentReportReason, ReportToParent,
+    ReturnsToEmitter, SendEffects, SendInput, SendLayer, SendSettlements, SendsFor, SettledItem,
+    SettlementStatus, SourceAction, SourceActions, SourceAdmission, SourceCustody,
+    SourceSettlementCustody, SourceSettlements, settle_in_order, settle_item,
 };
 pub use next::{Never, Step, Stopped};
-pub use reducer::{ActionReducer, Effects, FoldFailure, Folded, fold_events};
 pub use transition::{
-    ActiveTurn, Behavior, BehaviorActed, BehaviorAddr, BehaviorBase, BehaviorMessage,
-    InitializationTurn, MessageProtocol, Protocol, delegate_transition, initialize,
+    ActiveTurn, Behavior, BehaviorActed, BehaviorAddr, BehaviorBase, BehaviorLayer,
+    BehaviorMessage, InitializationTurn, LogicalHostRequirements, MessageProtocol, Protocol,
+    delegate_transition, initialize,
 };
 pub use user_event::{
-    ComposedEvent, EventLayer, Here, Ingress, InjectEvent, Inside, User, UserEvent,
+    ChildInputIngress, ComposedEvent, EventIngress, EventLayer, Here, Ingress, InjectEvent, Inside,
+    RecoverEvent, User, UserEvent,
 };
 
 /// Generate the nominal protocol, closed effect products, and exact `Behavior`
@@ -49,17 +69,20 @@ pub use user_event::{
 ///
 /// A `sends = { lane: Product }` declaration generates `ActorSends`, one
 /// distinct `ActorSendsLane` selector per field, and structural `SendEffects`,
-/// `SendsFor`, and `InterpretSends` implementations. It also generates an
+/// `SendsFor`, [`SendSettlements`], and `InterpretSends` implementations. The
+/// doc-hidden `ActorSettlements` product keeps the same semantic field names
+/// and has one runtime-independent type. The macro also generates an
 /// `ActorActions` extension trait with one fluent `send_lane` method per named
 /// lane. Each method delegates to [`AppendSend`], changing only the send leg
 /// while preserving creations and the exact next-behavior verdict. A
 /// `births = { lane: Child }` declaration generates `ActorChildren` as the
-/// exact recursive `ChildChoice` produced by `Children` calls in declaration
-/// order. It also generates `ActorChildrenRoutes`, containing one nominally
-/// distinct [`ChildRoute`] per declared role. A route is the single typed
-/// source for staging that role's creation and addressing its creator-local
-/// recipient. Creation remains an authored [`Children`] value and is never
-/// performed by the macro.
+/// exact closed child algebra. One child remains its direct concrete type;
+/// multiple alternatives form `ChildChoice` in declaration order. The macro
+/// also generates one nominal role per declaration and an `ActorChild`
+/// namespace for those roles. Every role implements both [`ChildRole`] for its
+/// authored parent and [`ChildOccurrence`] for sealed resolution against that
+/// parent or a topology-transparent wrapper. Creation remains an authored
+/// [`Creations`] or [`Children`] value and is never performed by the macro.
 ///
 /// Invalid receivers are rejected at compile time.
 ///
@@ -145,14 +168,27 @@ pub use user_event::{
 /// A child absent from the declared closed birth product cannot be created:
 ///
 /// ```compile_fail
-/// use behavior::{Actions, BehaviorActed, Create, MailAddr};
+/// use behavior::{Actions, BehaviorActed, CreationSequence, Creations, CreateChild, MailAddr};
 /// struct Declared;
+/// #[behavior::behavior(addr = MailAddr, message = behavior::Never)]
+/// impl Declared {
+///     fn receive(&mut self, _: MailAddr, message: behavior::Never) -> BehaviorActed<Self> {
+///         match message {}
+///     }
+/// }
 /// struct Other;
-/// struct Root;
+/// #[behavior::behavior(addr = MailAddr, message = behavior::Never)]
+/// impl Other {
+///     fn receive(&mut self, _: MailAddr, message: behavior::Never) -> BehaviorActed<Self> {
+///         match message {}
+///     }
+/// }
+/// struct Root { creations: CreationSequence }
 /// #[behavior::behavior(addr = MailAddr, message = (), births = { declared: Declared })]
 /// impl Root {
 ///     fn receive(&mut self, _: MailAddr, _: ()) -> BehaviorActed<Self> {
-///         Ok(Actions::create(vec![Create::birth(1, Other)]))
+///         let id = self.creations.issue().expect("fixture creation ID");
+///         Ok(Actions::create(Creations::one(CreateChild::birth(id, Other))))
 ///     }
 /// }
 /// ```
@@ -160,14 +196,14 @@ pub use user_event::{
 /// Every generated send lane remains a separate interpreter obligation:
 ///
 /// ```compile_fail
-/// use behavior::{BehaviorActed, Delivery, InterpretDelivery, InterpretSends, MailAddr,
-///     MessageProtocol, Recipient, SendInterpreter};
+/// use behavior::{BehaviorActed, Delivery, InterpretItem, InterpretSends, ItemSettlement,
+///     MailAddr, MessageProtocol, Never};
 /// struct Root;
-/// type First = MessageProtocol<MailAddr, u8>;
-/// type Second = MessageProtocol<MailAddr, u16>;
+/// type AuditProtocol = MessageProtocol<MailAddr, u8>;
+/// type MetricsProtocol = MessageProtocol<MailAddr, u16>;
 /// #[behavior::behavior(addr = MailAddr, message = (), sends = {
-///     first: Vec<Delivery<First>>,
-///     second: Vec<Delivery<Second>>,
+///     audit: Vec<Delivery<AuditProtocol>>,
+///     metrics: Vec<Delivery<MetricsProtocol>>,
 /// })]
 /// impl Root {
 ///     fn receive(&mut self, _: MailAddr, _: ()) -> BehaviorActed<Self> {
@@ -175,10 +211,11 @@ pub use user_event::{
 ///     }
 /// }
 /// struct Incomplete;
-/// impl SendInterpreter for Incomplete { type Error = (); }
-/// impl InterpretDelivery<First> for Incomplete {
-///     fn interpret_delivery(&mut self, _: Delivery<First>) -> impl core::future::Future<Output = Result<(), ()>> + Send {
-///         async { Ok(()) }
+/// impl<RootEvent, Path> InterpretItem<Delivery<AuditProtocol>, RootEvent, Path> for Incomplete {
+///     fn interpret_item(&mut self, _: Delivery<AuditProtocol>) -> impl core::future::Future<
+///         Output = ItemSettlement<Delivery<AuditProtocol>, (), Never, Never>,
+///     > + Send {
+///         async { ItemSettlement::Accepted(()) }
 ///     }
 /// }
 /// fn require_complete()
@@ -187,77 +224,19 @@ pub use user_event::{
 /// {}
 /// ```
 ///
-/// Generated child products likewise require an installer for every declared
-/// alternative:
-///
-/// ```compile_fail
-/// use behavior::{BehaviorActed, Create, DispatchBirth, InstallBirth, MailAddr, Never};
-/// struct First;
-/// struct Second;
-/// #[behavior::behavior(addr = MailAddr, message = Never)]
-/// impl First {
-///     fn receive(&mut self, _: MailAddr, message: Never) -> BehaviorActed<Self> { match message {} }
-/// }
-/// #[behavior::behavior(addr = MailAddr, message = Never)]
-/// impl Second {
-///     fn receive(&mut self, _: MailAddr, message: Never) -> BehaviorActed<Self> { match message {} }
-/// }
-/// struct Root;
-/// #[behavior::behavior(addr = MailAddr, message = (), births = {
-///     first: First,
-///     second: Second,
-/// })]
-/// impl Root {
-///     fn receive(&mut self, _: MailAddr, _: ()) -> BehaviorActed<Self> {
-///         Ok(behavior::Actions::cont())
-///     }
-/// }
-/// struct Incomplete;
-/// impl InstallBirth<MailAddr, First, (), Never> for Incomplete {
-///     async fn install_birth(&mut self, _: Create<MailAddr, First>) -> Result<(), Never> { Ok(()) }
-/// }
-/// fn require_complete<T: DispatchBirth<MailAddr, Incomplete, (), Never>>() {}
-/// require_complete::<RootChildren>();
-/// ```
-///
-/// A generated child route accepts only its declared behavior:
-///
-/// ```compile_fail
-/// use behavior::{BehaviorActed, Children, MailAddr, Never};
-/// struct Declared;
-/// #[behavior::behavior(addr = MailAddr, message = Never)]
-/// impl Declared {
-///     fn receive(&mut self, _: MailAddr, message: Never) -> BehaviorActed<Self> {
-///         match message {}
-///     }
-/// }
-/// struct Other;
-/// #[behavior::behavior(addr = MailAddr, message = Never)]
-/// impl Other {
-///     fn receive(&mut self, _: MailAddr, message: Never) -> BehaviorActed<Self> {
-///         match message {}
-///     }
-/// }
-/// struct Root;
-/// #[behavior::behavior(addr = MailAddr, message = Never, births = { worker: Declared })]
-/// impl Root {
-///     fn receive(&mut self, _: MailAddr, message: Never) -> BehaviorActed<Self> {
-///         match message {}
-///     }
-/// }
-/// let routes = RootChildrenRoutes::new(1);
-/// let _ = Children::<MailAddr>::new().child_at(routes.worker, Other);
-/// ```
+/// Generated child products likewise require one [`EstablishChild`]
+/// implementation for every declared alternative. [`DispatchBirth`] owns the
+/// compile-denial example so this crate overview does not duplicate it.
 ///
 /// Two declared roles remain distinct even when they use the same behavior:
 ///
 /// ```compile_fail
-/// use behavior::{BehaviorActed, ChildRoute, MailAddr, Never};
+/// use behavior::{Behavior, BehaviorActed, ChildDelivery, CreationSequence, MailAddr, Never};
 /// struct Worker;
-/// #[behavior::behavior(addr = MailAddr, message = Never)]
+/// #[behavior::behavior(addr = MailAddr, message = ())]
 /// impl Worker {
-///     fn receive(&mut self, _: MailAddr, message: Never) -> BehaviorActed<Self> {
-///         match message {}
+///     fn receive(&mut self, _: MailAddr, _: ()) -> BehaviorActed<Self> {
+///         Ok(behavior::Actions::cont())
 ///     }
 /// }
 /// struct Root;
@@ -270,9 +249,13 @@ pub use user_event::{
 ///         match message {}
 ///     }
 /// }
-/// fn requires_primary(_: ChildRoute<Worker, RootChildrenPrimary>) {}
-/// let routes = RootChildrenRoutes::new(1, 2);
-/// requires_primary(routes.backup);
+/// fn requires_primary(
+///     _: ChildDelivery<<Worker as Behavior>::Protocol, RootChildrenPrimary>,
+/// ) {}
+/// let mut sequence = CreationSequence::new();
+/// let id = sequence.issue().expect("fixture creation ID");
+/// let backup = ChildDelivery::<<Worker as Behavior>::Protocol, RootChildrenBackup>::after(id, ());
+/// requires_primary(backup);
 /// ```
 ///
 /// Named topology selectors accept only the child declared for that parent

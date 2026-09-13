@@ -4,16 +4,56 @@
 //! these lanes. Keeping their values and construction capabilities here avoids
 //! dependencies between otherwise independent transformations.
 
-mod pool;
+mod established;
 
-pub use pool::{KeyedWorkerPoolProtocol, PoolAssignmentProtocol, WorkerPoolProtocol};
+pub use established::{
+    CancelObservation, EstablishedChild, EstablishedObservation, EstablishedShutdownResolved,
+    InterpretEstablishedObservation, InterpretEstablishedShutdown, ObservationId,
+    ObservationOperation, ObservationRejection, ObserveEstablished, ObserveEstablishedCreation,
+    ShutdownEstablished, ShutdownId, ShutdownRejection, established_child,
+};
 
 use std::time::Duration;
 
 use std::time::Instant;
 
-use crate::{Crash, CreationKind, Exit};
-use behavior::Address;
+use crate::{Crash, CreationId, CreationKind, Exit};
+pub use behavior::CreationRejection;
+use behavior::{ActionItem, Address, Protocol, SourceAction};
+
+/// Exact timer correlation accepted by the local scheduler.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TimerScheduled {
+    /// Actor-local timer identity supplied by the behavior.
+    pub id: TimerId,
+    /// Behavior-owned generation returned without reinterpretation.
+    pub generation: TimerGeneration,
+}
+
+/// Exact reason an absolute timer request was rejected before scheduling.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum ScheduleAtRejection {
+    /// The timer queue cannot issue another internal generation.
+    #[error("timer queue generation exhausted")]
+    QueueGenerationExhausted,
+    /// The timer queue cannot issue another stable insertion sequence.
+    #[error("timer queue insertion sequence exhausted")]
+    QueueSequenceExhausted,
+}
+
+/// Exact reason a relative timer request was rejected before scheduling.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum ScheduleAfterRejection {
+    /// Adding the delay to the interpreter's current instant overflowed.
+    #[error("timer deadline overflowed")]
+    DeadlineOverflow,
+    /// The timer queue cannot issue another internal generation.
+    #[error("timer queue generation exhausted")]
+    QueueGenerationExhausted,
+    /// The timer queue cannot issue another stable insertion sequence.
+    #[error("timer queue insertion sequence exhausted")]
+    QueueSequenceExhausted,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TimerId(pub u64);
@@ -69,6 +109,16 @@ impl behavior::InterpreterRequest for ScheduleAt {
     type ReturnToEmitter = behavior::ReturnsToEmitter<TimerElapsed, behavior::Here>;
 }
 
+impl ActionItem for ScheduleAt {
+    type Accepted = TimerScheduled;
+    type Rejection = ScheduleAtRejection;
+    type Prerequisite = behavior::Never;
+}
+
+impl SourceAction for ScheduleAt {
+    type Source = Self;
+}
+
 /// Request scheduling relative to the interpreter's clock.
 ///
 /// Constructing this value does not observe a clock. The interpreter resolves
@@ -102,6 +152,16 @@ impl behavior::InterpreterRequest for ScheduleAfter {
     type ReturnToEmitter = behavior::ReturnsToEmitter<TimerElapsed, behavior::Here>;
 }
 
+impl ActionItem for ScheduleAfter {
+    type Accepted = TimerScheduled;
+    type Rejection = ScheduleAfterRejection;
+    type Prerequisite = behavior::Never;
+}
+
+impl SourceAction for ScheduleAfter {
+    type Source = Self;
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TimerElapsed {
     pub id: TimerId,
@@ -128,9 +188,10 @@ impl From<(TimerId, TimerGeneration)> for TimerElapsed {
 /// selected live incarnation later terminates, or may arrive immediately when
 /// the interpreter has authoritative retained termination for the requested
 /// incarnation. Absence from a live-address table is not such authority: an
-/// interpreter that can select neither a live incarnation nor retained
-/// terminal history must return an interpreter error rather than fabricate a
-/// stop result.
+/// interpreter that can select neither a live incarnation nor retained terminal
+/// history must return the complete request with
+/// [`PeerObservationRejection::UnknownAddress`] rather than fabricate a stop
+/// result.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ObservePeer<A: Address> {
     pub peer: A,
@@ -149,8 +210,29 @@ impl<A: Address> ObservePeer<A> {
     }
 }
 
+/// Exact reason a logical peer observation was not established.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum PeerObservationRejection {
+    /// No live incarnation or authoritative retained termination exists at the
+    /// requested logical address.
+    #[error("no actor incarnation exists at the requested logical address")]
+    UnknownAddress,
+}
+
 impl<A: Address> behavior::InterpreterRequest for ObservePeer<A> {
     type ReturnToEmitter = behavior::ReturnsToEmitter<PeerStopped<A>, behavior::Here>;
+}
+
+/// Acceptance establishes the relationship and leaves unit; its later result
+/// is [`PeerStopped`]. Name resolution is the only expected rejection, and the
+/// request has no prerequisite.
+impl<A> ActionItem for ObservePeer<A>
+where
+    A: Address + Send,
+{
+    type Accepted = ();
+    type Rejection = PeerObservationRejection;
+    type Prerequisite = behavior::Never;
 }
 
 /// Ask the local interpreter to cancel this actor's observation of `peer`.
@@ -202,139 +284,107 @@ impl<A: Address> From<(A, Result<Exit<A>, Crash>)> for PeerStopped<A> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ChildStopped<A: Address> {
-    pub nonce: A::Nonce,
+    pub child: CreationId,
     pub outcome: Result<Exit<A>, Crash>,
     pub at: Instant,
 }
 
 impl<A: Address> ChildStopped<A> {
     #[must_use]
-    pub fn new(nonce: A::Nonce, outcome: Result<Exit<A>, Crash>, at: Instant) -> Self {
-        Self { nonce, outcome, at }
+    pub fn new(child: CreationId, outcome: Result<Exit<A>, Crash>, at: Instant) -> Self {
+        Self { child, outcome, at }
     }
 }
 
-impl<A: Address> From<(A::Nonce, Result<Exit<A>, Crash>, Instant)> for ChildStopped<A> {
-    fn from((nonce, outcome, at): (A::Nonce, Result<Exit<A>, Crash>, Instant)) -> Self {
-        Self { nonce, outcome, at }
+impl<A: Address> From<(CreationId, Result<Exit<A>, Crash>, Instant)> for ChildStopped<A> {
+    fn from((child, outcome, at): (CreationId, Result<Exit<A>, Crash>, Instant)) -> Self {
+        Self { child, outcome, at }
     }
 }
 
-/// Ask the local interpreter to observe the exact child generation bound at
-/// `nonce`.
+/// Ask the local interpreter to observe the exact child generation of protocol
+/// `P` bound at one creator-local creation ID.
 ///
 /// Creation is resolved before same-action service sends. If that creation was
-/// rejected, no child exists to observe: the interpreter consumes this request
-/// without installing an observation or emitting [`ChildStopped`]. The
-/// rejection remains observable through [`ObserveCreation`], and a later
-/// creation cannot inherit the consumed observation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ObserveChild<A: Address> {
-    pub nonce: A::Nonce,
-}
-
-impl<A: Address> ObserveChild<A> {
-    #[must_use]
-    pub const fn new(nonce: A::Nonce) -> Self {
-        Self { nonce }
-    }
-
-    /// Observe the child selected by one typed creator-local route.
-    #[must_use]
-    pub const fn at<C, Role>(route: behavior::ChildRoute<C, Role>) -> Self
-    where
-        C: behavior::Behavior,
-        C::Protocol: behavior::Protocol<Addr = A>,
-    {
-        Self::new(route.nonce())
-    }
-}
-
-impl<A: Address> behavior::InterpreterRequest for ObserveChild<A> {
-    type ReturnToEmitter = behavior::ReturnsToEmitter<ChildStopped<A>, behavior::Here>;
-}
-
-/// A proxy's request for its interpreter to report a worker termination to
-/// the proxy's parent. The interpreter supplies the emitting proxy's child
-/// nonce when constructing [`WorkerStopped`].
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ReportWorkerStopped<A: Address, Path> {
-    /// Exact worker-stop owner in the proxy's parent event algebra.
-    pub ingress: behavior::Ingress<WorkerStopped<A>, Path>,
-    pub worker: A::Nonce,
-    pub outcome: Result<Exit<A>, Crash>,
-    pub at: Instant,
-}
-
-impl<A: Address, Path> ReportWorkerStopped<A, Path> {
-    #[must_use]
-    pub fn new(
-        ingress: behavior::Ingress<WorkerStopped<A>, Path>,
-        worker: A::Nonce,
-        outcome: Result<Exit<A>, Crash>,
-        at: Instant,
-    ) -> Self {
-        Self {
-            ingress,
-            worker,
-            outcome,
-            at,
-        }
-    }
-}
-
-impl<A: Address, Path> behavior::InterpreterRequest for ReportWorkerStopped<A, Path> {
-    type ReturnToEmitter = behavior::NoReturnToEmitter;
-}
-
-/// A worker termination reported by a still-live supervised proxy.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct WorkerStopped<A: Address> {
-    pub proxy: A::Nonce,
-    pub worker: A::Nonce,
-    pub outcome: Result<Exit<A>, Crash>,
-    pub at: Instant,
-}
-
-impl<A: Address> WorkerStopped<A> {
-    #[must_use]
-    pub fn new(
-        proxy: A::Nonce,
-        worker: A::Nonce,
-        outcome: Result<Exit<A>, Crash>,
-        at: Instant,
-    ) -> Self {
-        Self {
-            proxy,
-            worker,
-            outcome,
-            at,
-        }
-    }
-}
-
-impl<A: Address, Path> From<(A::Nonce, ReportWorkerStopped<A, Path>)> for WorkerStopped<A> {
-    fn from((proxy, stopped): (A::Nonce, ReportWorkerStopped<A, Path>)) -> Self {
-        Self::new(proxy, stopped.worker, stopped.outcome, stopped.at)
-    }
-}
-
-/// Why a staged fresh creation was not committed by an interpreter.
+/// rejected, the request is blocked by its exact
+/// [`behavior::CreationCorrelation`]. An established child is observed through
+/// its concrete protocol and declared occurrence; equal address types do not
+/// make different child protocols interchangeable.
 ///
-/// This is a closed semantic classification; interpreter-specific error
-/// values remain at the runtime boundary.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CreationRejection {
-    /// The creator-local nonce was already bound, so accepting the request
-    /// would overwrite rather than establish a fresh child.
-    NonceAlreadyBound,
-    /// The fresh child's initialization did not complete successfully.
-    InitializationFailed,
-    /// The interpreter could not allocate, install, or commit the fresh child.
-    EnvironmentFailed,
+/// ```compile_fail,E0308
+/// struct Worker;
+/// impl behavior::Protocol for Worker {
+///     type Addr = behavior::MailAddr;
+///     type Msg = ();
+/// }
+/// struct Account;
+/// impl behavior::Protocol for Account {
+///     type Addr = behavior::MailAddr;
+///     type Msg = ();
+/// }
+/// let child = behavior::CreationSequence::new()
+///     .issue()
+///     .expect("the first creation ID exists");
+/// let account = behavior_actors::ObserveChild::<Account, behavior::ChildHead>::new(child);
+/// let _: behavior_actors::ObserveChild<Worker, behavior::ChildHead> = account;
+/// ```
+pub struct ObserveChild<P: Protocol, Occurrence> {
+    pub child: CreationId,
+    protocol: core::marker::PhantomData<fn() -> P>,
+    occurrence: core::marker::PhantomData<fn() -> Occurrence>,
 }
 
-/// The committed result of one staged [`crate::Create`] request.
+impl<P: Protocol, Occurrence> Copy for ObserveChild<P, Occurrence> {}
+
+impl<P: Protocol, Occurrence> Clone for ObserveChild<P, Occurrence> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<P: Protocol, Occurrence> PartialEq for ObserveChild<P, Occurrence> {
+    fn eq(&self, other: &Self) -> bool {
+        self.child == other.child
+    }
+}
+
+impl<P: Protocol, Occurrence> Eq for ObserveChild<P, Occurrence> {}
+
+impl<P: Protocol, Occurrence> core::fmt::Debug for ObserveChild<P, Occurrence> {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        formatter
+            .debug_struct("ObserveChild")
+            .field("child", &self.child)
+            .finish()
+    }
+}
+
+impl<P: Protocol, Occurrence> ObserveChild<P, Occurrence> {
+    #[must_use]
+    pub const fn new(child: CreationId) -> Self {
+        Self {
+            child,
+            protocol: core::marker::PhantomData,
+            occurrence: core::marker::PhantomData,
+        }
+    }
+}
+
+impl<P: Protocol, Occurrence> behavior::InterpreterRequest for ObserveChild<P, Occurrence> {
+    type ReturnToEmitter = behavior::ReturnsToEmitter<ChildStopped<P::Addr>, behavior::Here>;
+}
+
+impl<P, Occurrence> behavior::ActionItem for ObserveChild<P, Occurrence>
+where
+    P: Protocol,
+    <P::Addr as Address>::Nonce: Send,
+{
+    type Accepted = ();
+    type Rejection = behavior::Never;
+    type Prerequisite = behavior::CreationCorrelation<P, Occurrence>;
+}
+
+/// The committed result of one staged [`crate::CreateChild`] request.
 ///
 /// `Installed` is emitted only after fresh allocation, successful
 /// initialization, and binding at `nonce`. The replacement provenance is the
@@ -342,72 +392,60 @@ pub enum CreationRejection {
 /// address reuse or creation order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CreationResolved<A: behavior::Address> {
-    pub nonce: A::Nonce,
-    pub kind: CreationKind<A::Nonce>,
+    pub creation: CreationId,
+    pub kind: CreationKind,
     pub result: Result<A, CreationRejection>,
 }
 
 impl<A: behavior::Address> CreationResolved<A> {
     #[must_use]
     pub const fn new(
-        nonce: A::Nonce,
-        kind: CreationKind<A::Nonce>,
+        creation: CreationId,
+        kind: CreationKind,
         result: Result<A, CreationRejection>,
     ) -> Self {
         Self {
-            nonce,
+            creation,
             kind,
             result,
         }
     }
 
     #[must_use]
-    pub const fn installed(nonce: A::Nonce, kind: CreationKind<A::Nonce>, address: A) -> Self {
-        Self::new(nonce, kind, Ok(address))
+    pub const fn installed(creation: CreationId, kind: CreationKind, address: A) -> Self {
+        Self::new(creation, kind, Ok(address))
     }
 
     /// A successfully committed ordinary birth.
     #[must_use]
-    pub const fn birth(nonce: A::Nonce, address: A) -> Self {
-        Self::installed(nonce, CreationKind::Birth, address)
+    pub const fn birth(creation: CreationId, address: A) -> Self {
+        Self::installed(creation, CreationKind::Birth, address)
     }
 
     /// A successfully committed replacement incarnation.
     #[must_use]
-    pub const fn replacement_incarnation(nonce: A::Nonce, replaces: A::Nonce, address: A) -> Self {
-        Self::installed(
-            nonce,
-            CreationKind::ReplacementIncarnation { replaces },
-            address,
-        )
+    pub const fn replacement(creation: CreationId, previous: CreationId, address: A) -> Self {
+        Self::installed(creation, CreationKind::replacement(previous), address)
     }
 
     #[must_use]
     pub const fn rejected(
-        nonce: A::Nonce,
-        kind: CreationKind<A::Nonce>,
+        creation: CreationId,
+        kind: CreationKind,
         rejection: CreationRejection,
     ) -> Self {
-        Self::new(nonce, kind, Err(rejection))
+        Self::new(creation, kind, Err(rejection))
     }
 }
 
-impl<A: behavior::Address>
-    From<(
-        A::Nonce,
-        CreationKind<A::Nonce>,
-        Result<A, CreationRejection>,
-    )> for CreationResolved<A>
+impl<A: behavior::Address> From<(CreationId, CreationKind, Result<A, CreationRejection>)>
+    for CreationResolved<A>
 {
     fn from(
-        (nonce, kind, result): (
-            A::Nonce,
-            CreationKind<A::Nonce>,
-            Result<A, CreationRejection>,
-        ),
+        (creation, kind, result): (CreationId, CreationKind, Result<A, CreationRejection>),
     ) -> Self {
         Self {
-            nonce,
+            creation,
             kind,
             result,
         }
@@ -415,212 +453,80 @@ impl<A: behavior::Address>
 }
 
 /// Ask the local interpreter to return the committed result of the same-action
-/// creation at `nonce` through the behavior's typed creation-result lane.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ObserveCreation<A: Address> {
-    pub nonce: A::Nonce,
-}
-
-impl<A: Address> ObserveCreation<A> {
-    #[must_use]
-    pub const fn new(nonce: A::Nonce) -> Self {
-        Self { nonce }
-    }
-
-    /// Observe the creation staged through one typed creator-local route.
-    #[must_use]
-    pub const fn at<C, Role>(route: behavior::ChildRoute<C, Role>) -> Self
-    where
-        C: behavior::Behavior,
-        C::Protocol: behavior::Protocol<Addr = A>,
-    {
-        Self::new(route.nonce())
-    }
-}
-
-impl<A: Address> behavior::InterpreterRequest for ObserveCreation<A> {
-    type ReturnToEmitter = behavior::ReturnsToEmitter<CreationResolved<A>, behavior::Here>;
-}
-
-/// Ask a proxy's interpreter to report a worker creation result to its parent.
-/// The interpreter supplies the emitting proxy's nonce.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ReportWorkerCreationResolved<N, Path> {
-    /// Exact creation-result owner in the proxy's parent event algebra.
-    pub ingress: behavior::Ingress<WorkerCreationResolved<N>, Path>,
-    pub worker: N,
-    pub kind: CreationKind<N>,
-    pub result: Result<(), CreationRejection>,
-}
-
-impl<N, Path> ReportWorkerCreationResolved<N, Path> {
-    #[must_use]
-    pub const fn new(
-        ingress: behavior::Ingress<WorkerCreationResolved<N>, Path>,
-        worker: N,
-        kind: CreationKind<N>,
-        result: Result<(), CreationRejection>,
-    ) -> Self {
-        Self {
-            ingress,
-            worker,
-            kind,
-            result,
-        }
-    }
-}
-
-impl<N, Path> behavior::InterpreterRequest for ReportWorkerCreationResolved<N, Path> {
-    type ReturnToEmitter = behavior::NoReturnToEmitter;
-}
-
-/// A worker creation result reported by a still-live supervised proxy.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct WorkerCreationResolved<N> {
-    pub proxy: N,
-    pub worker: N,
-    pub kind: CreationKind<N>,
-    pub result: Result<(), CreationRejection>,
-}
-
-/// The complete, statically selected return capability given to a stable
-/// proxy when its parent stages the proxy's fresh creation.
+/// creation ID through the behavior's typed creation-result lane.
 ///
-/// Actor acquaintance locality requires the proxy to receive this capability;
-/// the `Path` is Bombay's derived proof of the exact owners in the parent's
-/// composed event algebra. Neither the proxy nor its interpreter may discover
-/// a parent lane from runtime topology or payload type.
-pub struct ProxyParentIngress<A: Address, Path> {
-    pub stopped: behavior::Ingress<WorkerStopped<A>, Path>,
-    pub creation: behavior::Ingress<WorkerCreationResolved<A::Nonce>, Path>,
+/// Equal address and message types do not make child protocols substitutable:
+///
+/// ```compile_fail,E0308
+/// struct Store;
+/// struct Gateway;
+/// impl behavior::Protocol for Store {
+///     type Addr = behavior::MailAddr;
+///     type Msg = ();
+/// }
+/// impl behavior::Protocol for Gateway {
+///     type Addr = behavior::MailAddr;
+///     type Msg = ();
+/// }
+/// let creation = behavior::CreationSequence::new()
+///     .issue()
+///     .expect("the child creation ID exists");
+/// let gateway = behavior_actors::ObserveCreation::<Gateway, behavior::ChildHead>::new(creation);
+/// let _: behavior_actors::ObserveCreation<Store, behavior::ChildHead> = gateway;
+/// ```
+#[doc(hidden)]
+pub struct ObserveCreation<P: Protocol, Occurrence> {
+    pub creation: CreationId,
+    occurrence: core::marker::PhantomData<fn() -> (P, Occurrence)>,
 }
 
-impl<A: Address, Path> Copy for ProxyParentIngress<A, Path> {}
+impl<P: Protocol, Occurrence> Copy for ObserveCreation<P, Occurrence> {}
 
-impl<A: Address, Path> Clone for ProxyParentIngress<A, Path> {
+impl<P: Protocol, Occurrence> Clone for ObserveCreation<P, Occurrence> {
     fn clone(&self) -> Self {
         *self
     }
 }
 
-impl<A: Address, Path> core::fmt::Debug for ProxyParentIngress<A, Path> {
+impl<P: Protocol, Occurrence> PartialEq for ObserveCreation<P, Occurrence> {
+    fn eq(&self, other: &Self) -> bool {
+        self.creation == other.creation
+    }
+}
+
+impl<P: Protocol, Occurrence> Eq for ObserveCreation<P, Occurrence> {}
+
+impl<P: Protocol, Occurrence> core::fmt::Debug for ObserveCreation<P, Occurrence> {
     fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        formatter.write_str("ProxyParentIngress")
+        formatter
+            .debug_struct("ObserveCreation")
+            .field("creation", &self.creation)
+            .finish()
     }
 }
 
-impl<A: Address, Path> PartialEq for ProxyParentIngress<A, Path> {
-    fn eq(&self, _: &Self) -> bool {
-        true
-    }
-}
-
-impl<A: Address, Path> Eq for ProxyParentIngress<A, Path> {}
-
-impl<A: Address, Path> ProxyParentIngress<A, Path> {
+impl<P: Protocol, Occurrence> ObserveCreation<P, Occurrence> {
     #[must_use]
-    pub const fn new() -> Self {
+    pub const fn new(creation: CreationId) -> Self {
         Self {
-            stopped: behavior::Ingress::new(),
-            creation: behavior::Ingress::new(),
-        }
-    }
-
-    /// Lift both correlated report lanes through one structural parent layer.
-    #[must_use]
-    pub const fn inside(self) -> ProxyParentIngress<A, behavior::Inside<Path>> {
-        ProxyParentIngress {
-            stopped: self.stopped.inside(),
-            creation: self.creation.inside(),
+            creation,
+            occurrence: core::marker::PhantomData,
         }
     }
 }
 
-impl<A: Address, Path> Default for ProxyParentIngress<A, Path> {
-    fn default() -> Self {
-        Self::new()
-    }
+impl<P: Protocol, Occurrence> behavior::InterpreterRequest for ObserveCreation<P, Occurrence> {
+    type ReturnToEmitter = behavior::ReturnsToEmitter<CreationResolved<P::Addr>, behavior::Here>;
 }
 
-/// Consumer-facing resolution of one explicitly designated replacement.
-///
-/// This is a derived view of [`WorkerCreationResolved`], not another runtime
-/// fact or observation request. `replaced` is the exact prior incarnation
-/// carried by Behavior in [`CreationKind::ReplacementIncarnation`];
-/// `replacement`/`attempt` is the fresh creation nonce. The prior worker's
-/// terminal outcome remains the separate [`WorkerStopped`] fact so creation
-/// resolution cannot duplicate, erase, or reinterpret it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ReplacementResolution<N> {
-    Installed {
-        proxy: N,
-        replaced: N,
-        replacement: N,
-    },
-    Rejected {
-        proxy: N,
-        replaced: N,
-        attempt: N,
-        rejection: CreationRejection,
-    },
-}
-
-impl<N> WorkerCreationResolved<N> {
-    #[must_use]
-    pub const fn new(
-        proxy: N,
-        worker: N,
-        kind: CreationKind<N>,
-        result: Result<(), CreationRejection>,
-    ) -> Self {
-        Self {
-            proxy,
-            worker,
-            kind,
-            result,
-        }
-    }
-
-    /// Project a replacement result without conflating ordinary birth with
-    /// replacement or inferring provenance from nonce arithmetic.
-    #[must_use]
-    pub fn into_replacement(self) -> Option<ReplacementResolution<N>> {
-        let CreationKind::ReplacementIncarnation { replaces } = self.kind else {
-            return None;
-        };
-        Some(match self.result {
-            Ok(()) => ReplacementResolution::Installed {
-                proxy: self.proxy,
-                replaced: replaces,
-                replacement: self.worker,
-            },
-            Err(rejection) => ReplacementResolution::Rejected {
-                proxy: self.proxy,
-                replaced: replaces,
-                attempt: self.worker,
-                rejection,
-            },
-        })
-    }
-}
-
-impl<N> From<(N, N, CreationKind<N>, Result<(), CreationRejection>)> for WorkerCreationResolved<N> {
-    fn from(
-        (proxy, worker, kind, result): (N, N, CreationKind<N>, Result<(), CreationRejection>),
-    ) -> Self {
-        Self {
-            proxy,
-            worker,
-            kind,
-            result,
-        }
-    }
-}
-
-impl<N, Path> From<(N, ReportWorkerCreationResolved<N, Path>)> for WorkerCreationResolved<N> {
-    fn from((proxy, resolved): (N, ReportWorkerCreationResolved<N, Path>)) -> Self {
-        Self::new(proxy, resolved.worker, resolved.kind, resolved.result)
-    }
+impl<P, Occurrence> behavior::ActionItem for ObserveCreation<P, Occurrence>
+where
+    P: Protocol,
+    <P::Addr as Address>::Nonce: Send,
+{
+    type Accepted = ();
+    type Rejection = behavior::Never;
+    type Prerequisite = behavior::CreationCorrelation<P, Occurrence>;
 }
 
 /// A request to finish through one serialized behavior transition.
@@ -638,7 +544,9 @@ pub struct ShutdownRequested;
 /// the same address and nonce types:
 ///
 /// ```compile_fail
-/// use behavior::{Actions, Behavior, MailAddr, Never, NoBirths, Protocol, User};
+/// use behavior::{
+///     Actions, Behavior, ChildHead, CreationSequence, MailAddr, Never, NoBirths, Protocol, User,
+/// };
 /// use behavior_actors::ShutdownChild;
 ///
 /// struct Queue;
@@ -650,15 +558,16 @@ pub struct ShutdownRequested;
 ///             type Msg = u8;
 ///         }
 ///         impl Behavior for $actor {
+///             type Protocol = Self;
 ///             type Event = User<MailAddr, u8>;
 ///             type Sends = Vec<Never>;
 ///             type Ph = Never;
 ///             type Error = Never;
 ///             type Birth = NoBirths;
-///             fn init(&mut self, _: crate::InitializationTurn) -> behavior::BehaviorActed<Self> {
+///             fn init(&mut self, _: behavior::InitializationTurn) -> behavior::BehaviorActed<Self> {
 ///                 Ok(Actions::cont())
 ///             }
-///             fn transition(&mut self, _: crate::ActiveTurn, _: Self::Event) -> behavior::BehaviorActed<Self> {
+///             fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> behavior::BehaviorActed<Self> {
 ///                 Ok(Actions::cont())
 ///             }
 ///         }
@@ -667,63 +576,101 @@ pub struct ShutdownRequested;
 /// inert!(Queue);
 /// inert!(Worker);
 ///
-/// let queue = ShutdownChild::<Queue>::new(1);
-/// let _: ShutdownChild<Worker> = queue;
+/// let child = CreationSequence::new()
+///     .issue()
+///     .expect("the first creation ID exists");
+/// let queue = ShutdownChild::<Queue, ChildHead>::new(child);
+/// let _: ShutdownChild<Worker, ChildHead> = queue;
 /// ```
-pub struct ShutdownChild<C: behavior::Behavior> {
-    pub nonce: <crate::BehaviorAddr<C> as behavior::Address>::Nonce,
+///
+/// Repeated occurrences of the same behavior are also incompatible:
+///
+/// ```compile_fail
+/// use behavior::{
+///     Actions, Behavior, ChildHead, ChildTail, CreationSequence, MailAddr, Never, NoBirths,
+///     Protocol, User,
+/// };
+/// use behavior_actors::ShutdownChild;
+/// struct Worker;
+/// impl Protocol for Worker {
+///     type Addr = MailAddr;
+///     type Msg = ();
+/// }
+/// impl Behavior for Worker {
+///     type Protocol = Self;
+///     type Event = User<MailAddr, ()>;
+///     type Sends = Vec<Never>;
+///     type Ph = Never;
+///     type Error = Never;
+///     type Birth = NoBirths;
+///     fn transition(
+///         &mut self,
+///         _: behavior::ActiveTurn,
+///         _: Self::Event,
+///     ) -> behavior::BehaviorActed<Self> {
+///         Ok(Actions::cont())
+///     }
+/// }
+/// let child = CreationSequence::new()
+///     .issue()
+///     .expect("the first creation ID exists");
+/// let first = ShutdownChild::<Worker, ChildHead>::new(child);
+/// let _: ShutdownChild<Worker, ChildTail<ChildHead>> = first;
+/// ```
+pub struct ShutdownChild<C: behavior::Behavior, Occurrence> {
+    pub child: CreationId,
     /// Exact shutdown owner in the selected child behavior.
     pub ingress: behavior::Ingress<ShutdownRequested, behavior::Here>,
-    protocol: core::marker::PhantomData<fn() -> C>,
+    protocol: core::marker::PhantomData<fn() -> (C, Occurrence)>,
 }
 
-impl<C: behavior::Behavior> ShutdownChild<C> {
+impl<C: behavior::Behavior, Occurrence> ShutdownChild<C, Occurrence> {
     #[must_use]
-    pub const fn new(nonce: <crate::BehaviorAddr<C> as behavior::Address>::Nonce) -> Self {
+    pub const fn new(child: CreationId) -> Self {
         Self {
-            nonce,
+            child,
             ingress: behavior::Ingress::new(),
             protocol: core::marker::PhantomData,
         }
     }
-
-    /// Request shutdown through one typed route to this exact child behavior.
-    #[must_use]
-    pub const fn at<Role>(route: behavior::ChildRoute<C, Role>) -> Self {
-        Self::new(route.nonce())
-    }
 }
 
-impl<C: behavior::Behavior> behavior::InterpreterRequest for ShutdownChild<C> {
-    type ReturnToEmitter = behavior::ReturnsToEmitter<
-        ChildShutdownRejected<<crate::BehaviorAddr<C> as behavior::Address>::Nonce>,
-        behavior::Here,
-    >;
+impl<C: behavior::Behavior, Occurrence> behavior::InterpreterRequest
+    for ShutdownChild<C, Occurrence>
+{
+    type ReturnToEmitter = behavior::ReturnsToEmitter<ChildShutdownRejected, behavior::Here>;
 }
 
-impl<C: behavior::Behavior> Copy for ShutdownChild<C> {}
+impl<C, Occurrence> behavior::ActionItem for ShutdownChild<C, Occurrence>
+where
+    C: behavior::Behavior,
+    <crate::BehaviorAddr<C> as behavior::Address>::Nonce: Send,
+{
+    type Accepted = ();
+    type Rejection = ChildShutdownRejection;
+    type Prerequisite = behavior::CreationCorrelation<C::Protocol, Occurrence>;
+}
 
-impl<C: behavior::Behavior> Clone for ShutdownChild<C> {
+impl<C: behavior::Behavior, Occurrence> Copy for ShutdownChild<C, Occurrence> {}
+
+impl<C: behavior::Behavior, Occurrence> Clone for ShutdownChild<C, Occurrence> {
     fn clone(&self) -> Self {
         *self
     }
 }
 
-impl<C: behavior::Behavior> PartialEq for ShutdownChild<C> {
+impl<C: behavior::Behavior, Occurrence> PartialEq for ShutdownChild<C, Occurrence> {
     fn eq(&self, other: &Self) -> bool {
-        self.nonce == other.nonce
+        self.child == other.child
     }
 }
 
-impl<C: behavior::Behavior> Eq for ShutdownChild<C> {}
+impl<C: behavior::Behavior, Occurrence> Eq for ShutdownChild<C, Occurrence> {}
 
-impl<C: behavior::Behavior> core::fmt::Debug for ShutdownChild<C>
-where
-    <crate::BehaviorAddr<C> as behavior::Address>::Nonce: core::fmt::Debug,
-{
+impl<C: behavior::Behavior, Occurrence> core::fmt::Debug for ShutdownChild<C, Occurrence> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("ShutdownChild")
-            .field("nonce", &self.nonce)
+            .field("child", &self.child)
             .finish()
     }
 }
@@ -741,21 +688,21 @@ pub enum ChildShutdownRejection {
 
 /// Explicit failed resolution of one [`ShutdownChild`] request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ChildShutdownRejected<N> {
-    pub nonce: N,
+pub struct ChildShutdownRejected {
+    pub child: CreationId,
     pub reason: ChildShutdownRejection,
 }
 
-impl<N> ChildShutdownRejected<N> {
+impl ChildShutdownRejected {
     #[must_use]
-    pub const fn new(nonce: N, reason: ChildShutdownRejection) -> Self {
-        Self { nonce, reason }
+    pub const fn new(child: CreationId, reason: ChildShutdownRejection) -> Self {
+        Self { child, reason }
     }
 }
 
-impl<N> From<(N, ChildShutdownRejection)> for ChildShutdownRejected<N> {
-    fn from((nonce, reason): (N, ChildShutdownRejection)) -> Self {
-        Self { nonce, reason }
+impl From<(CreationId, ChildShutdownRejection)> for ChildShutdownRejected {
+    fn from((child, reason): (CreationId, ChildShutdownRejection)) -> Self {
+        Self { child, reason }
     }
 }
 
@@ -764,75 +711,16 @@ mod tests {
     use super::*;
     use crate::MailAddr;
 
-    #[test]
-    fn lifecycle_conversions_preserve_every_semantic_field() {
-        let at = Instant::now();
-        let child: ChildStopped<MailAddr> = (3, Err(Crash::Failed), at).into();
-        let report = ReportWorkerStopped::new(
-            behavior::Ingress::<WorkerStopped<MailAddr>, behavior::Here>::new(),
-            child.nonce,
-            child.outcome,
-            child.at,
-        );
-        let worker = WorkerStopped::from((7, report));
-        assert_eq!(worker.proxy, 7);
-        assert_eq!(worker.worker, 3);
-        assert_eq!(worker.outcome, Err(Crash::Failed));
-        assert_eq!(worker.at, at);
-
-        let creation = CreationResolved::<behavior::MailAddr>::rejected(
-            4,
-            CreationKind::replacement_of(3),
-            CreationRejection::EnvironmentFailed,
-        );
-        let report = ReportWorkerCreationResolved::new(
-            behavior::Ingress::<WorkerCreationResolved<u64>, behavior::Here>::new(),
-            creation.nonce,
-            creation.kind,
-            creation.result.map(|_| ()),
-        );
-        let worker = WorkerCreationResolved::from((7, report));
-        assert_eq!(worker.proxy, 7);
-        assert_eq!(worker.worker, 4);
-        assert_eq!(worker.kind, CreationKind::replacement_of(3));
-        assert_eq!(worker.result, Err(CreationRejection::EnvironmentFailed));
-        assert_eq!(
-            worker.into_replacement(),
-            Some(ReplacementResolution::Rejected {
-                proxy: 7,
-                replaced: 3,
-                attempt: 4,
-                rejection: CreationRejection::EnvironmentFailed,
-            })
-        );
-
-        let installed = WorkerCreationResolved::new(7, 5, CreationKind::replacement_of(4), Ok(()));
-        assert_eq!(
-            installed.into_replacement(),
-            Some(ReplacementResolution::Installed {
-                proxy: 7,
-                replaced: 4,
-                replacement: 5,
-            })
-        );
-        assert_eq!(
-            WorkerCreationResolved::new(7, 0, CreationKind::Birth, Ok(())).into_replacement(),
-            None
-        );
-        assert_eq!(
-            WorkerCreationResolved::new(
-                7,
-                0,
-                CreationKind::Birth,
-                Err(CreationRejection::NonceAlreadyBound),
-            )
-            .into_replacement(),
-            None
-        );
+    fn creation(number: u64) -> CreationId {
+        let mut sequence = behavior::CreationSequence::new();
+        (0..number)
+            .filter_map(|_| sequence.issue())
+            .last()
+            .unwrap_or_else(|| panic!("test creation ID is issued"))
     }
 
     #[test]
-    fn one_child_route_drives_observation_creation_and_shutdown_correlation() {
+    fn one_creation_correlates_observation_creation_and_shutdown() {
         enum WorkerRole {}
 
         struct Worker;
@@ -859,25 +747,39 @@ mod tests {
             }
         }
 
-        let route = behavior::ChildRoute::<Worker, WorkerRole>::new(13);
+        let child = creation(13);
 
-        assert_eq!(ObserveChild::at(route).nonce, 13);
-        assert_eq!(ObserveCreation::at(route).nonce, 13);
-        assert_eq!(ShutdownChild::at(route).nonce, 13);
+        fn copy_without_occurrence_bounds<T: Copy>() {}
+        copy_without_occurrence_bounds::<ObserveChild<Worker, WorkerRole>>();
+        copy_without_occurrence_bounds::<ObserveCreation<Worker, WorkerRole>>();
+        copy_without_occurrence_bounds::<ShutdownChild<Worker, WorkerRole>>();
+
+        assert_eq!(ObserveChild::<Worker, WorkerRole>::new(child).child, child);
+        assert_eq!(
+            ObserveCreation::<Worker, WorkerRole>::new(child).creation,
+            child
+        );
+        assert_eq!(ShutdownChild::<Worker, WorkerRole>::new(child).child, child);
     }
 
     #[test]
     fn expected_lane_types_infer_lossless_protocol_products() {
         let peer: ObservePeer<MailAddr> = MailAddr(7).into();
-        let child: ObserveChild<MailAddr> = ObserveChild::new(9);
-        let creation: ObserveCreation<MailAddr> = ObserveCreation::new(11);
-        let rejected: ChildShutdownRejected<u64> =
-            (13, ChildShutdownRejection::NotEstablished).into();
+        let child: ObserveChild<
+            behavior::MessageProtocol<MailAddr, behavior::Never>,
+            behavior::ChildHead,
+        > = ObserveChild::new(creation(9));
+        let observed_creation: ObserveCreation<
+            behavior::MessageProtocol<MailAddr, behavior::Never>,
+            behavior::ChildHead,
+        > = ObserveCreation::new(creation(11));
+        let rejected: ChildShutdownRejected =
+            (creation(13), ChildShutdownRejection::NotEstablished).into();
 
         assert_eq!(peer.peer, MailAddr(7));
-        assert_eq!(child.nonce, 9);
-        assert_eq!(creation.nonce, 11);
-        assert_eq!(rejected.nonce, 13);
+        assert_eq!(child.child.get(), 9);
+        assert_eq!(observed_creation.creation.get(), 11);
+        assert_eq!(rejected.child.get(), 13);
     }
 
     #[test]

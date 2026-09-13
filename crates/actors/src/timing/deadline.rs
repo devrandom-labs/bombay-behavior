@@ -14,7 +14,24 @@ use behavior::{
 
 pub type DeadlineEvent<E> = TimedEvent<E>;
 
-pub type DeadlineReaction<B> = fn(&mut B) -> Result<Become, <B as Behavior>::Error>;
+/// Infallible reaction to one accepted deadline.
+///
+/// ```compile_fail,E0308
+/// # use behavior::{Actions, Behavior, MailAddr, Never, NoBirths, User};
+/// # use behavior_actors::{Deadline, TimerId};
+/// # struct App;
+/// # impl behavior::Protocol for App { type Addr = MailAddr; type Msg = (); }
+/// # impl Behavior for App {
+/// #   type Protocol = Self; type Event = User<MailAddr, ()>; type Sends = Vec<Never>;
+/// #   type Ph = Never; type Error = Never; type Birth = NoBirths;
+/// #   fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> behavior::BehaviorActed<Self> { Ok(Actions::cont()) }
+/// # }
+/// fn fallible(_: &mut App) -> Result<behavior::Become, Never> {
+///     Ok(behavior::Step::Continue)
+/// }
+/// let _ = Deadline::new(App, TimerId(1), None, fallible);
+/// ```
+pub type DeadlineReaction<B> = fn(&mut B) -> Become;
 
 pub(crate) type DeadlineActions<B> = Actions<
     crate::BehaviorAddr<B>,
@@ -37,6 +54,8 @@ impl<B: Behavior> Deadline<B> {
     /// Nested timers remain independently addressable even when they reuse the
     /// same `(id, generation)`: each emitted schedule selects this wrapper's
     /// structural ingress destination.
+    /// The reaction is infallible because it receives mutable access to the
+    /// wrapped behavior; ordinary delegated transitions retain its error type.
     #[must_use]
     pub fn new(
         inner: B,
@@ -107,7 +126,7 @@ where
     ) -> Result<DeadlineActions<B>, B::Error> {
         match event {
             EventLayer::Owned(event) if self.schedule.accept(event.id, event.generation) => {
-                let become_ = match (self.on_reached)(&mut self.inner)? {
+                let become_ = match (self.on_reached)(&mut self.inner) {
                     Step::Continue => Step::Continue,
                     Step::Goto(never) => match never {},
                     Step::Stop(exit) => Step::Stop(exit),

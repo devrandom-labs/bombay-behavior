@@ -1,4 +1,4 @@
-use core_behavior::{Actions, BehaviorActed, MailAddr};
+use core_behavior::{Actions, BehaviorActed, Delivery, MailAddr, MessageProtocol, Recipient};
 
 struct Direct;
 
@@ -6,12 +6,13 @@ struct Direct;
     addr = MailAddr,
     message = u8,
     sends = {
-        values: Vec<u8>,
+        notices: Vec<Delivery<MessageProtocol<MailAddr, u8>>>,
     },
 )]
 impl Direct {
     fn receive(&mut self, _: MailAddr, _: u8) -> BehaviorActed<Self> {
-        Ok(Actions::cont().send_values(1))
+        let recipient = Recipient::global(MailAddr(1));
+        Ok(Actions::cont().send_notices(Delivery::new(recipient, 1)))
     }
 }
 

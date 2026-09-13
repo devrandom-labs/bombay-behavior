@@ -76,6 +76,40 @@ impl<Input, Path> PartialEq for Ingress<Input, Path> {
 
 impl<Input, Path> Eq for Ingress<Input, Path> {}
 
+/// Owner-selected event ingress for one statically identified source.
+///
+/// `Source` distinguishes otherwise identical inputs without an absolute
+/// wrapper path. A child report uses its semantic [`ChildRole`](crate::ChildRole)
+/// as the source; a current-actor policy input uses [`Here`]. Outer
+/// [`EventLayer`] composition lifts the selected
+/// ingress automatically, so adding a [`BehaviorLayer`](crate::BehaviorLayer)
+/// never requires a caller to recount structural event depth.
+///
+/// This is a derived Bombay composition contract, not an actor-model
+/// primitive. It constructs a typed event only and performs no delivery,
+/// lookup, or interpreter effect.
+pub trait EventIngress<Source, Input>: Sized {
+    /// Construct the event selected for `Source` and `Input`.
+    fn ingress(input: Input) -> Self;
+}
+
+/// Construction of one private input sent by an established parent to its
+/// concrete direct child.
+///
+/// This is the event-side contract of [`ChildInput`](crate::ChildInput). It is
+/// deliberately distinct from [`EventIngress`], which selects a parent event
+/// for an incoming child report or a same-actor owner input. Keeping the two
+/// directions distinct lets a report-owning behavior transformation preserve
+/// every inner child-input capability without knowing its source or payload.
+///
+/// `Source` identifies the behavior law that owns `Input`; it is neither an
+/// actor address nor runtime lookup key. Constructing the event performs no
+/// delivery or other actor effect.
+pub trait ChildInputIngress<Source, Input>: Sized {
+    /// Construct the concrete child event selected by `Source` and `Input`.
+    fn child_input(input: Input) -> Self;
+}
+
 /// One statically owned input lane composed in front of an inner event algebra.
 ///
 /// `EventLayer` is a concrete coproduct, not an erased envelope. `Owned` is the
@@ -85,6 +119,15 @@ impl<Input, Path> Eq for Ingress<Input, Path> {}
 pub enum EventLayer<Owned, Inner> {
     Owned(Owned),
     Inner(Inner),
+}
+
+impl<Owned, Inner, Source, Input> EventIngress<Source, Input> for EventLayer<Owned, Inner>
+where
+    Inner: EventIngress<Source, Input>,
+{
+    fn ingress(input: Input) -> Self {
+        Self::Inner(Inner::ingress(input))
+    }
 }
 
 /// A complete event algebra formed by adding owned inputs around an inner
@@ -134,9 +177,43 @@ pub trait InjectEvent<Input, Path>: Sized {
     fn inject_at(input: Input) -> Self;
 }
 
+/// Exact recovery of one statically selected input from a returned event.
+///
+/// A failed runtime admission returns the complete root event. This ownership
+/// port recovers the original input without cloning, downcasting, or searching
+/// another lane. An event from a different lane is returned unchanged.
+/// Discarding the returned event cannot preserve an affine input:
+///
+/// ```compile_fail,E0382
+/// type Event = behavior::EventLayer<
+///     String,
+///     behavior::User<behavior::MailAddr, ()>,
+/// >;
+/// let input = String::from("worker");
+/// let event = <Event as behavior::InjectEvent<String, behavior::Here>>::inject_at(input);
+/// drop(event);
+/// drop(input);
+/// ```
+pub trait RecoverEvent<Input, Path>: Sized {
+    /// Recover `Input` when this event belongs to `Path`.
+    ///
+    /// # Errors
+    /// Returns the unchanged event when another lane owns it.
+    fn recover(event: Self) -> Result<Input, Self>;
+}
+
 impl<Owned, Inner> InjectEvent<Owned, Here> for EventLayer<Owned, Inner> {
     fn inject_at(input: Owned) -> Self {
         Self::Owned(input)
+    }
+}
+
+impl<Owned, Inner> RecoverEvent<Owned, Here> for EventLayer<Owned, Inner> {
+    fn recover(event: Self) -> Result<Owned, Self> {
+        match event {
+            Self::Owned(input) => Ok(input),
+            other @ Self::Inner(_) => Err(other),
+        }
     }
 }
 
@@ -146,6 +223,18 @@ where
 {
     fn inject_at(input: Input) -> Self {
         Self::Inner(Inner::inject_at(input))
+    }
+}
+
+impl<Owned, Inner, Input, Path> RecoverEvent<Input, Inside<Path>> for EventLayer<Owned, Inner>
+where
+    Inner: RecoverEvent<Input, Path>,
+{
+    fn recover(event: Self) -> Result<Input, Self> {
+        match event {
+            Self::Inner(inner) => Inner::recover(inner).map_err(Self::Inner),
+            other @ Self::Owned(_) => Err(other),
+        }
     }
 }
 
@@ -258,6 +347,10 @@ mod structural_tests {
     }
 
     #[test]
+    #[allow(
+        clippy::clone_on_copy,
+        reason = "the contract test independently exercises both promised construction traits"
+    )]
     fn ingress_is_a_copyable_equal_capability_with_stable_debug_identity() {
         let ingress = Ingress::<u16, Here>::new();
         let copied = ingress;

@@ -92,7 +92,8 @@ proptest! {
     fn sequencer_matches_an_independent_gap_map_after_every_offer(
         offers in vec((0_u64..24, any::<u8>()), 0..128)
     ) {
-        type Subject = Sequencer<MailAddr, u8, ByteTarget, SequenceReply>;
+        type Subject =
+            Sequencer<MailAddr, u8, Recipient<ByteTarget>, Recipient<SequenceReply>>;
         let mut actual = (Subject::new(Sequence(0))).initialize().unwrap().behavior;
         let mut oracle = SequenceOracle::default();
 
@@ -121,7 +122,13 @@ proptest! {
         capacity in 1_usize..8,
         attempts in vec((0_u8..16, any::<u8>()), 0..128)
     ) {
-        type Subject = Deduplicator<MailAddr, u8, u8, ByteTarget, DedupReply>;
+        type Subject = Deduplicator<
+            MailAddr,
+            u8,
+            u8,
+            Recipient<ByteTarget>,
+            Recipient<DedupReply>,
+        >;
         let mut actual = (Subject::new(capacity).unwrap()).initialize().unwrap().behavior;
         let mut retained = VecDeque::new();
 
@@ -162,7 +169,8 @@ proptest! {
     fn order_gate_matches_an_independent_watermark_map_after_every_operation(
         operations in gate_operations()
     ) {
-        type Subject = OrderGate<MailAddr, u8, u8, ByteTarget, GateReply>;
+        type Subject =
+            OrderGate<MailAddr, u8, u8, Recipient<ByteTarget>, Recipient<GateReply>>;
         let mut actual = (Subject::new()).initialize().unwrap().behavior;
         let mut watermark = None;
         let mut held = BTreeMap::new();

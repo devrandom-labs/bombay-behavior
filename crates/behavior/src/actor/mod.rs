@@ -1,11 +1,21 @@
 mod addressing;
 mod creation;
 
-pub use addressing::{Address, ChildRecipient, Delivery, DeliveryTarget, MailAddr, Recipient};
+pub use addressing::{
+    Address, Delivery, EndpointAddress, EstablishedActor, EstablishedDelivery,
+    EstablishedRecipient, ExactDeliveryReason, InterpretEstablished, LogicalDeliveryReason,
+    MailAddr, Recipient,
+};
 pub use creation::{
-    BirthMode, BirthNodeProtocols, BirthProtocol, BirthProtocolAt, BirthProtocolHead,
-    BirthProtocolProduct, BirthProtocolTail, BirthProtocols, Births, ChildChoice, ChildCons,
-    ChildHead, ChildPosition, ChildProduct, ChildRole, ChildRoute, ChildTail, Children,
-    ChildrenError, Create, CreationKind, DispatchBirth, InstallBirth, NoBirthProtocols, NoBirths,
-    NoChildren,
+    AllocationRejection, BirthMode, BirthNodeAppend, BirthNodeAt, BirthNodeLogicalHosts,
+    BirthNodeProtocols, BirthProtocol, BirthProtocolAt, BirthProtocolHead, BirthProtocolProduct,
+    BirthProtocolTail, BirthProtocols, Births, ChildChoice, ChildCons, ChildCreationOutcome,
+    ChildCreationProduct, ChildCreationSettled, ChildDelivery, ChildDeliveryReason, ChildHead,
+    ChildInput, ChildInputReason, ChildNamespaceExhausted, ChildOccurrence, ChildOccurrenceProduct,
+    ChildOccurrenceProductAt, ChildOccurrenceResolution, ChildOccurrenceShape, ChildOccurrences,
+    ChildPosition, ChildProduct, ChildReport, ChildRole, ChildTail, Children, CreateChild,
+    CreationCorrelation, CreationId, CreationKind, CreationRejection, CreationSequence, Creations,
+    DeclaredChildOccurrence, DispatchBirth, EstablishChild, EstablishedCreation, NoBirthProtocols,
+    NoBirths, NoChildren, ResolveChildOccurrence, ResolvedChild, ResolvedChildPosition, RoleChild,
+    RoleProtocol, RoutedCreation, StructuralChildOccurrence,
 };

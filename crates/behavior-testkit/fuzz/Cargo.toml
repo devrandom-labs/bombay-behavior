@@ -4,6 +4,9 @@ version = "0.0.0"
 edition = "2024"
 publish = false
 
+[lints.rust]
+unused_must_use = "deny"
+
 [package.metadata]
 cargo-fuzz = true
 
@@ -14,15 +17,71 @@ libfuzzer-sys = "0.4"
 tokio = { version = "1.47", features = ["rt", "time"] }
 
 [[bin]]
-name = "protocol_sequences"
-path = "fuzz_targets/protocol_sequences.rs"
+name = "stable_proxy_shutdown_sequences"
+path = "fuzz_targets/stable_proxy_shutdown_sequences.rs"
 test = false
 doc = false
 bench = false
 
 [[bin]]
-name = "supervision_sequences"
-path = "fuzz_targets/supervision_sequences.rs"
+name = "stable_proxy_replacement_sequences"
+path = "fuzz_targets/stable_proxy_replacement_sequences.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fixed_supervisor_shutdown_sequences"
+path = "fuzz_targets/fixed_supervisor_shutdown_sequences.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fixed_supervisor_recovery_sequences"
+path = "fuzz_targets/fixed_supervisor_recovery_sequences.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fixed_supervisor_delayed_sequences"
+path = "fuzz_targets/fixed_supervisor_delayed_sequences.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fixed_supervisor_role_correlation_sequences"
+path = "fuzz_targets/fixed_supervisor_role_correlation_sequences.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "dynamic_supervisor_cancellation_sequences"
+path = "fuzz_targets/dynamic_supervisor_cancellation_sequences.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "dynamic_supervisor_transferred_cancellation_sequences"
+path = "fuzz_targets/dynamic_supervisor_transferred_cancellation_sequences.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "dynamic_supervisor_shutdown_sequences"
+path = "fuzz_targets/dynamic_supervisor_shutdown_sequences.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "dynamic_supervisor_unexpected_exit_sequences"
+path = "fuzz_targets/dynamic_supervisor_unexpected_exit_sequences.rs"
 test = false
 doc = false
 bench = false
@@ -30,13 +89,6 @@ bench = false
 [[bin]]
 name = "fsm_sequences"
 path = "fuzz_targets/fsm_sequences.rs"
-test = false
-doc = false
-bench = false
-
-[[bin]]
-name = "birth_sequences"
-path = "fuzz_targets/birth_sequences.rs"
 test = false
 doc = false
 bench = false
@@ -77,15 +129,36 @@ doc = false
 bench = false
 
 [[bin]]
-name = "pool_sequences"
-path = "fuzz_targets/pool_sequences.rs"
+name = "catalogue_sequences"
+path = "fuzz_targets/catalogue_sequences.rs"
 test = false
 doc = false
 bench = false
 
 [[bin]]
-name = "catalogue_sequences"
-path = "fuzz_targets/catalogue_sequences.rs"
+name = "shutdown_plan_sequences"
+path = "fuzz_targets/shutdown_plan_sequences.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fifo_pool_sequences"
+path = "fuzz_targets/fifo_pool_sequences.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "keyed_binding_sequences"
+path = "fuzz_targets/keyed_binding_sequences.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "keyed_assignment_sequences"
+path = "fuzz_targets/keyed_assignment_sequences.rs"
 test = false
 doc = false
 bench = false

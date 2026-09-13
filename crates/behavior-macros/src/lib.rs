@@ -10,8 +10,8 @@ use quote::{format_ident, quote};
 use syn::parse::{Parse, ParseStream};
 use syn::visit::Visit;
 use syn::{
-    Error, FnArg, GenericParam, Generics, Ident, ImplItem, ItemImpl, Result, ReturnType, Token,
-    Type, braced, parse_macro_input, parse_quote,
+    Error, FnArg, GenericArgument, GenericParam, Generics, Ident, ImplItem, ItemImpl,
+    PathArguments, Result, ReturnType, Token, Type, braced, parse_macro_input, parse_quote,
 };
 
 fn crate_path(found: FoundCrate) -> TokenStream2 {
@@ -75,6 +75,34 @@ fn behavior_crate() -> Result<TokenStream2> {
     ))
 }
 
+fn actors_crate() -> Result<TokenStream2> {
+    if std::env::var("CARGO_PKG_NAME").as_deref() == Ok("bombay-behavior-actors") {
+        return if std::env::var("CARGO_CRATE_NAME").as_deref() == Ok("behavior_actors") {
+            Ok(quote!(crate))
+        } else {
+            Ok(quote!(::behavior_actors))
+        };
+    }
+    if std::env::var("CARGO_PKG_NAME").as_deref() == Ok("bombay-rs") {
+        return if std::env::var("CARGO_CRATE_NAME").as_deref() == Ok("bombay") {
+            Ok(quote!(crate::behavior))
+        } else {
+            Ok(quote!(::bombay::behavior))
+        };
+    }
+    if let Ok(found) = crate_name("bombay-behavior-actors") {
+        return Ok(crate_path(found));
+    }
+    if let Ok(found) = crate_name("bombay-rs") {
+        let bombay = facade_crate_path(found);
+        return Ok(quote!(#bombay::behavior));
+    }
+    Err(Error::new(
+        Span::call_site(),
+        "could not resolve `bombay-behavior-actors` directly or through `bombay-rs`",
+    ))
+}
+
 #[cfg(test)]
 mod crate_resolution_tests {
     use super::*;
@@ -101,11 +129,19 @@ struct NamedProduct {
     fields: Vec<NamedField>,
 }
 
+#[allow(
+    clippy::large_enum_variant,
+    reason = "boxing syn::Type would add lint-driven indirection to compile-time parser state"
+)]
 enum SendsSpec {
     Existing(Type),
     Generated(NamedProduct),
 }
 
+#[allow(
+    clippy::large_enum_variant,
+    reason = "boxing syn::Type would add lint-driven indirection to compile-time parser state"
+)]
 enum BirthsSpec {
     Existing(Type),
     Generated(NamedProduct),
@@ -144,6 +180,39 @@ struct BehaviorArgs {
     sends: Option<SendsSpec>,
     births: Option<BirthsSpec>,
     error: Option<Type>,
+}
+
+struct PoolWorkerArgs {
+    addr: Type,
+    result: Type,
+}
+
+impl Parse for PoolWorkerArgs {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let mut addr = None;
+        let mut result = None;
+        while !input.is_empty() {
+            let key: Ident = input.parse()?;
+            input.parse::<Token![=]>()?;
+            match key.to_string().as_str() {
+                "addr" if addr.is_none() => addr = Some(input.parse()?),
+                "result" if result.is_none() => result = Some(input.parse()?),
+                "addr" | "result" => {
+                    return Err(Error::new_spanned(key, "duplicate pool worker argument"));
+                }
+                _ => return Err(Error::new_spanned(key, "unknown pool worker argument")),
+            }
+            if input.peek(Token![,]) {
+                input.parse::<Token![,]>()?;
+            } else if !input.is_empty() {
+                return Err(input.error("expected `,` between pool worker arguments"));
+            }
+        }
+        Ok(Self {
+            addr: addr.ok_or_else(|| input.error("missing `addr`"))?,
+            result: result.ok_or_else(|| input.error("missing `result`"))?,
+        })
+    }
 }
 
 impl Parse for BehaviorArgs {
@@ -227,6 +296,128 @@ fn validate_receiver(method: &syn::ImplItemFn) -> Result<()> {
     Ok(())
 }
 
+fn validate_pool_worker_output(output: &ReturnType) -> Result<()> {
+    let ReturnType::Type(_, output) = output else {
+        return Err(Error::new_spanned(
+            output,
+            "pool worker transition must return WorkerActed<Self>",
+        ));
+    };
+    let Type::Path(output) = output.as_ref() else {
+        return Err(Error::new_spanned(
+            output,
+            "pool worker transition must return WorkerActed<Self>",
+        ));
+    };
+    if output.qself.is_some() || output.path.segments.len() != 1 {
+        return Err(Error::new_spanned(
+            output,
+            "pool worker transition must return WorkerActed<Self>",
+        ));
+    }
+    let segment = output
+        .path
+        .segments
+        .first()
+        .ok_or_else(|| Error::new_spanned(output, "missing pool worker return type"))?;
+    let PathArguments::AngleBracketed(arguments) = &segment.arguments else {
+        return Err(Error::new_spanned(
+            output,
+            "pool worker transition must return WorkerActed<Self>",
+        ));
+    };
+    let mut arguments = arguments.args.iter();
+    let Some(GenericArgument::Type(Type::Path(self_type))) = arguments.next() else {
+        return Err(Error::new_spanned(
+            output,
+            "pool worker transition must return WorkerActed<Self>",
+        ));
+    };
+    let self_segment = self_type.path.segments.first();
+    if segment.ident != "WorkerActed"
+        || arguments.next().is_some()
+        || self_type.qself.is_some()
+        || self_type.path.segments.len() != 1
+        || !matches!(self_segment, Some(segment) if segment.ident == "Self" && matches!(segment.arguments, PathArguments::None))
+    {
+        return Err(Error::new_spanned(
+            output,
+            "pool worker transition must return WorkerActed<Self>",
+        ));
+    }
+    Ok(())
+}
+
+fn pool_worker_assignment(method: &syn::ImplItemFn) -> Result<Type> {
+    let Some(FnArg::Receiver(receiver)) = method.sig.inputs.first() else {
+        return Err(Error::new_spanned(
+            &method.sig,
+            "pool worker transition must begin with &mut self",
+        ));
+    };
+    if !matches!(receiver.kind, syn::ReceiverKind::Reference(_, _, Some(_))) {
+        return Err(Error::new_spanned(
+            receiver,
+            "pool worker transition must begin with &mut self",
+        ));
+    }
+    if method.sig.constness.is_some()
+        || method.sig.asyncness.is_some()
+        || matches!(method.sig.safety, syn::Safety::Unsafe(_))
+        || method.sig.abi.is_some()
+        || method.sig.variadic.is_some()
+        || !method.sig.generics.params.is_empty()
+    {
+        return Err(Error::new_spanned(
+            &method.sig,
+            "pool worker transition must be synchronous, safe, and non-generic",
+        ));
+    }
+    if method.sig.inputs.len() != 2 {
+        return Err(Error::new_spanned(
+            &method.sig,
+            "pool worker transition must accept exactly &mut self and one Assignment<Job>",
+        ));
+    }
+    validate_pool_worker_output(&method.sig.output)?;
+
+    let Some(FnArg::Typed(assignment)) = method.sig.inputs.iter().nth(1) else {
+        return Err(Error::new_spanned(
+            &method.sig,
+            "pool worker transition must accept one Assignment<Job>",
+        ));
+    };
+    let Type::Path(assignment_path) = assignment.ty.as_ref() else {
+        return Err(Error::new_spanned(
+            &assignment.ty,
+            "pool worker transition input must be Assignment<Job>",
+        ));
+    };
+    let Some(segment) = assignment_path.path.segments.last() else {
+        return Err(Error::new_spanned(
+            &assignment.ty,
+            "pool worker transition input must be Assignment<Job>",
+        ));
+    };
+    let PathArguments::AngleBracketed(arguments) = &segment.arguments else {
+        return Err(Error::new_spanned(
+            &assignment.ty,
+            "pool worker transition input must be Assignment<Job>",
+        ));
+    };
+    let mut arguments = arguments.args.iter();
+    if segment.ident != "Assignment"
+        || !matches!(arguments.next(), Some(GenericArgument::Type(_)))
+        || arguments.next().is_some()
+    {
+        return Err(Error::new_spanned(
+            &assignment.ty,
+            "pool worker transition input must be Assignment<Job>",
+        ));
+    }
+    Ok(assignment.ty.as_ref().clone())
+}
+
 fn pascal_name(field: &Ident) -> String {
     field
         .to_string()
@@ -303,6 +494,7 @@ fn generate_sends(
         Some(SendsSpec::Generated(product)) => product,
     };
     let name = format_ident!("{}Sends", actor);
+    let settlements_name = format_ident!("{}Settlements", actor);
     let field_names: Vec<_> = product.fields.iter().map(|field| &field.name).collect();
     let field_types: Vec<_> = product.fields.iter().map(|field| &field.ty).collect();
     let lane_names: Vec<_> = field_names
@@ -435,7 +627,7 @@ fn generate_sends(
     interpret_generics
         .make_where_clause()
         .predicates
-        .push(parse_quote!(__BombayInterpreter: #behavior::SendInterpreter));
+        .push(parse_quote!(__BombayInterpreter: ::core::marker::Send));
     for field_ty in &field_types {
         interpret_generics
             .make_where_clause()
@@ -453,12 +645,156 @@ fn generate_sends(
         .predicates
         .push(parse_quote!(#name #type_generics: ::core::marker::Send));
     let (interpret_impl_generics, _, interpret_where_clause) = interpret_generics.split_for_impl();
+    let mut settlement_generics = product_generics.clone();
+    for field_ty in &field_types {
+        settlement_generics
+            .make_where_clause()
+            .predicates
+            .push(parse_quote!(#field_ty: #behavior::SendSettlements));
+    }
+    let (settlement_impl_generics, settlement_type_generics, settlement_where_clause) =
+        settlement_generics.split_for_impl();
+    let mut classification_generics = settlement_generics.clone();
+    for field_ty in &field_types {
+        classification_generics
+            .make_where_clause()
+            .predicates
+            .push(parse_quote!(
+                <#field_ty as #behavior::SendSettlements>::Settlements:
+                    #behavior::ClassifySettlement
+            ));
+    }
+    let (classification_impl_generics, classification_type_generics, classification_where_clause) =
+        classification_generics.split_for_impl();
+    let mut custody_generics = settlement_generics.clone();
+    custody_generics
+        .params
+        .push(parse_quote!(__BombaySettlementHost));
+    custody_generics
+        .params
+        .push(parse_quote!(__BombaySettlementEvent));
+    custody_generics
+        .make_where_clause()
+        .predicates
+        .push(parse_quote!(__BombaySettlementHost: ::core::marker::Send));
+    for field_ty in &field_types {
+        custody_generics
+            .make_where_clause()
+            .predicates
+            .push(parse_quote!(
+                <#field_ty as #behavior::SendSettlements>::Settlements:
+                    #behavior::SourceSettlementCustody<
+                        __BombaySettlementHost,
+                        __BombaySettlementEvent,
+                    >
+                    + ::core::marker::Send
+            ));
+    }
+    let (custody_impl_generics, _, custody_where_clause) = custody_generics.split_for_impl();
+    let mut combined_status = quote!(#behavior::SettlementStatus::Accepted);
+    for field in &field_names {
+        combined_status = quote! {
+            (#combined_status).combine(
+                #behavior::ClassifySettlement::settlement_status(&self.#field)
+            )
+        };
+    }
+
+    let mut interpretation = quote! {
+        #behavior::Interpretation::Complete(#settlements_name {
+            #(#field_names: #field_names,)*
+        })
+    };
+    for index in (0..field_names.len()).rev() {
+        let field = field_names[index];
+        let field_ty = field_types[index];
+        let prior_fields = &field_names[..index];
+        let later_fields = &field_names[index + 1..];
+        let later_types = &field_types[index + 1..];
+        let on_complete = interpretation;
+        interpretation = quote! {
+            match <#field_ty as #behavior::InterpretSends<
+                __BombayInterpreter,
+                __BombayRootEvent,
+                __BombayPath,
+            >>::interpret(self.#field, interpreter).await {
+                #behavior::Interpretation::Complete(#field) => #on_complete,
+                #behavior::Interpretation::Corrupt(#field) => {
+                    #behavior::Interpretation::Corrupt(#settlements_name {
+                        #(#prior_fields: #prior_fields,)*
+                        #field: #field,
+                        #(
+                            #later_fields: <#later_types as #behavior::SendSettlements>::unattempted(
+                                self.#later_fields,
+                            ),
+                        )*
+                    })
+                }
+            }
+        };
+    }
+    let custody_fields = field_names.iter().enumerate().map(|(index, field)| {
+        let prior_fields = &field_names[..index];
+        let later_fields = &field_names[index + 1..];
+        quote! {
+            let #field = match #behavior::SourceSettlementCustody::offer_to_source(
+                self.#field,
+                host,
+            ).await {
+                #behavior::SourceCustody::Open(#field) => #field,
+                #behavior::SourceCustody::Closed(#field) => {
+                    return #behavior::SourceCustody::Closed(#settlements_name {
+                        #(#prior_fields: #prior_fields,)*
+                        #field: #field,
+                        #(#later_fields: self.#later_fields,)*
+                    });
+                }
+            };
+        }
+    });
 
     let items = quote! {
         #(pub enum #lane_names {})*
 
         pub struct #name #generics {
             #(pub #field_names: #field_types,)*
+        }
+
+        #[doc(hidden)]
+        pub struct #settlements_name #settlement_impl_generics #settlement_where_clause {
+            #(
+                pub #field_names: <#field_types as #behavior::SendSettlements>::Settlements,
+            )*
+        }
+
+        impl #classification_impl_generics #behavior::ClassifySettlement
+            for #settlements_name #classification_type_generics #classification_where_clause
+        {
+            fn settlement_status(&self) -> #behavior::SettlementStatus {
+                #combined_status
+            }
+        }
+
+        impl #custody_impl_generics
+            #behavior::SourceSettlementCustody<
+                __BombaySettlementHost,
+                __BombaySettlementEvent,
+            >
+            for #settlements_name #settlement_type_generics #custody_where_clause
+        {
+            fn offer_to_source(
+                self,
+                host: &mut __BombaySettlementHost,
+            ) -> impl ::core::future::Future<
+                Output = #behavior::SourceCustody<Self>,
+            > + ::core::marker::Send {
+                async move {
+                    #(#custody_fields)*
+                    #behavior::SourceCustody::Open(#settlements_name {
+                        #(#field_names: #field_names,)*
+                    })
+                }
+            }
         }
 
         /// Fluent, statically routed send-lane methods for this behavior's
@@ -502,6 +838,22 @@ fn generate_sends(
             for #name #type_generics #lawful_where_clause
         {}
 
+        impl #settlement_impl_generics #behavior::SendSettlements
+            for #name #type_generics #settlement_where_clause
+        {
+            type Settlements = #settlements_name #settlement_type_generics;
+
+            fn unattempted(self) -> Self::Settlements {
+                #settlements_name {
+                    #(
+                        #field_names: <#field_types as #behavior::SendSettlements>::unattempted(
+                            self.#field_names,
+                        ),
+                    )*
+                }
+            }
+        }
+
         #(#send_impls)*
 
         impl #interpret_impl_generics
@@ -512,17 +864,10 @@ fn generate_sends(
                 self,
                 interpreter: &mut __BombayInterpreter,
             ) -> impl ::core::future::Future<
-                Output = ::core::result::Result<(), __BombayInterpreter::Error>,
+                Output = #behavior::Interpretation<Self::Settlements>,
             > + ::core::marker::Send {
                 async move {
-                    #(
-                        <#field_types as #behavior::InterpretSends<
-                            __BombayInterpreter,
-                            __BombayRootEvent,
-                            __BombayPath,
-                        >>::interpret(self.#field_names, interpreter).await?;
-                    )*
-                    ::core::result::Result::Ok(())
+                    #interpretation
                 }
             }
         }
@@ -533,7 +878,7 @@ fn generate_sends(
 fn generate_births(
     product: Option<BirthsSpec>,
     actor: &Ident,
-    addr: &Type,
+    _addr: &Type,
     item: &ItemImpl,
     behavior: &TokenStream2,
 ) -> (TokenStream2, TokenStream2) {
@@ -544,12 +889,6 @@ fn generate_births(
     };
     let name = format_ident!("{}Children", actor);
     let roles_name = format_ident!("{}Child", actor);
-    let routes_name = format_ident!("{}ChildrenRoutes", actor);
-    let field_names = product
-        .fields
-        .iter()
-        .map(|field| &field.name)
-        .collect::<Vec<_>>();
     let role_names = product
         .fields
         .iter()
@@ -573,16 +912,18 @@ fn generate_births(
             )
         })
         .collect::<Vec<_>>();
-    let child_types = product.fields.iter().map(|field| &field.ty);
     let product_generics = product_generics(item, &product.fields);
-    let (impl_generics, type_generics, where_clause) = product_generics.split_for_impl();
+    let (_, type_generics, _) = product_generics.split_for_impl();
     let generics = &product_generics;
     let parent = &item.self_ty;
     let (parent_impl_generics, _, parent_where_clause) = item.generics.split_for_impl();
-    let choice = child_types.fold(
-        quote!(#behavior::Never),
-        |tail, child| quote!(#behavior::ChildChoice<#child, #tail>),
-    );
+    let choice = match declared_child_types.as_slice() {
+        [child] => quote!(#child),
+        children => children.iter().fold(
+            quote!(#behavior::Never),
+            |tail, child| quote!(#behavior::ChildChoice<#child, #tail>),
+        ),
+    };
     (
         quote!(#behavior::Births<#name #type_generics>),
         quote! {
@@ -598,33 +939,24 @@ fn generate_births(
                     type Child = #declared_child_types;
                     type Position = #role_positions;
                 }
+
+                impl #parent_impl_generics #behavior::ChildOccurrence<#parent> for #role_names
+                    #parent_where_clause
+                {
+                    type Resolution = #behavior::DeclaredChildOccurrence;
+                }
             )*
 
             pub struct #roles_name;
 
-            #[allow(non_upper_case_globals)]
+            #[allow(
+                non_upper_case_globals,
+                reason = "generated role values retain the application-authored field spelling"
+            )]
             impl #roles_name {
                 #(pub const #role_values: #role_names = #role_names;)*
             }
 
-            pub struct #routes_name #generics {
-                #(
-                    pub #field_names: #behavior::ChildRoute<#declared_child_types, #role_names>,
-                )*
-            }
-
-            impl #impl_generics #routes_name #type_generics #where_clause {
-                #[must_use]
-                pub fn new(
-                    #(#field_names: <#addr as #behavior::Address>::Nonce,)*
-                ) -> Self {
-                    Self {
-                        #(
-                            #field_names: #behavior::ChildRoute::new(#field_names),
-                        )*
-                    }
-                }
-            }
         },
     )
 }
@@ -767,6 +1099,106 @@ pub fn behavior(args: TokenStream, item: TokenStream) -> TokenStream {
     .into()
 }
 
+/// Derive one pool worker's ordinary actor protocol and behavior from its
+/// assignment transition.
+///
+/// This attribute owns syntax only. The generated send product is the existing
+/// typed parent request carrying the opaque completion produced by
+/// `Assignment::complete`; assignment authority and delivery remain owned by
+/// the Behavior Actors pool protocol and the runtime interpreter.
+#[proc_macro_attribute]
+pub fn pool_worker(args: TokenStream, item: TokenStream) -> TokenStream {
+    let PoolWorkerArgs { addr, result } = parse_macro_input!(args as PoolWorkerArgs);
+    let mut item = parse_macro_input!(item as ItemImpl);
+
+    if item.trait_.is_some() {
+        return Error::new_spanned(
+            &item,
+            "#[pool_worker] applies to an inherent impl, not a trait impl",
+        )
+        .to_compile_error()
+        .into();
+    }
+
+    let self_ty = item.self_ty.clone();
+    if !matches!(self_ty.as_ref(), Type::Path(path) if path.qself.is_none()) {
+        return Error::new_spanned(&self_ty, "#[pool_worker] requires a nominal worker type")
+            .to_compile_error()
+            .into();
+    }
+
+    let actors = match actors_crate() {
+        Ok(actors) => actors,
+        Err(error) => return error.to_compile_error().into(),
+    };
+    let assignment = {
+        let mut transitions = item.items.iter_mut().filter_map(|item| match item {
+            ImplItem::Fn(method) if method.sig.ident == "transition" => Some(method),
+            _ => None,
+        });
+        let Some(transition) = transitions.next() else {
+            return Error::new_spanned(
+                &self_ty,
+                "#[pool_worker] requires transition(&mut self, Assignment<Job>)",
+            )
+            .to_compile_error()
+            .into();
+        };
+        if let Some(duplicate) = transitions.next() {
+            return Error::new_spanned(
+                &duplicate.sig,
+                "#[pool_worker] accepts exactly one transition method",
+            )
+            .to_compile_error()
+            .into();
+        }
+        let assignment = match pool_worker_assignment(transition) {
+            Ok(assignment) => assignment,
+            Err(error) => return error.to_compile_error().into(),
+        };
+        transition.sig.output = parse_quote!(-> #actors::BehaviorActed<Self>);
+        assignment
+    };
+    let (impl_generics, _, where_clause) = item.generics.split_for_impl();
+
+    quote! {
+        #item
+
+        impl #impl_generics #actors::Protocol for #self_ty #where_clause {
+            type Addr = #addr;
+            type Msg = #assignment;
+        }
+
+        impl #impl_generics #actors::Behavior for #self_ty #where_clause {
+            type Protocol = Self;
+            type Event = #actors::User<#addr, #assignment>;
+            type Sends = #actors::InterpreterRequests<
+                #actors::ReportToParent<#actors::atomic::Completion<#result>>
+            >;
+            type Ph = #actors::Never;
+            type Error = #actors::Never;
+            type Birth = #actors::NoBirths;
+
+            fn transition(
+                &mut self,
+                _: #actors::ActiveTurn,
+                event: Self::Event,
+            ) -> #actors::BehaviorActed<Self> {
+                <#self_ty>::transition(self, event.message)
+            }
+        }
+
+        impl #impl_generics #actors::BehaviorBase for #self_ty #where_clause {
+            type Base = Self;
+
+            fn base(&self) -> &Self {
+                self
+            }
+        }
+    }
+    .into()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -822,6 +1254,72 @@ mod tests {
             assert!(
                 syn::parse_str::<BehaviorArgs>(case).is_err(),
                 "invalid declaration parsed: `{case}`"
+            );
+        }
+    }
+
+    #[test]
+    fn pool_worker_arguments_require_one_address_and_result() {
+        for valid in [
+            "addr = u64, result = String",
+            "result = String, addr = u64,",
+        ] {
+            syn::parse_str::<PoolWorkerArgs>(valid)
+                .unwrap_or_else(|error| panic!("failed to parse `{valid}`: {error}"));
+        }
+        for invalid in [
+            "addr = u64",
+            "result = String",
+            "addr = u64, result = String, addr = u32",
+            "addr = u64, result = String, result = u8",
+            "addr = u64, result = String, message = u8",
+        ] {
+            assert!(
+                syn::parse_str::<PoolWorkerArgs>(invalid).is_err(),
+                "invalid pool worker arguments parsed: `{invalid}`"
+            );
+        }
+    }
+
+    #[test]
+    fn pool_worker_transition_requires_the_domain_source_shape() {
+        let valid: ItemImpl = syn::parse_str(
+            "impl Worker { fn transition(&mut self, assignment: Assignment<Job>) \
+             -> WorkerActed<Self> { result() } }",
+        )
+        .expect("valid inherent worker declaration parses");
+        let method = valid
+            .items
+            .iter()
+            .find_map(|item| match item {
+                ImplItem::Fn(method) => Some(method),
+                _ => None,
+            })
+            .expect("fixture declares one method");
+        let assignment = pool_worker_assignment(method)
+            .unwrap_or_else(|error| panic!("valid worker transition rejected: {error}"));
+        assert_eq!(quote!(#assignment).to_string(), "Assignment < Job >");
+
+        for invalid in [
+            "impl Worker { fn transition(self, assignment: Assignment<Job>) -> WorkerActed<Self> { result() } }",
+            "impl Worker { async fn transition(&mut self, assignment: Assignment<Job>) -> WorkerActed<Self> { result() } }",
+            "impl Worker { fn transition(&mut self, job: Job) -> WorkerActed<Self> { result() } }",
+            "impl Worker { fn transition(&mut self, assignment: Assignment<Job>) -> WorkerActed<Job> { result() } }",
+            "impl Worker { fn transition(&mut self, assignment: Assignment<Job>) -> Result<(), ()> { result() } }",
+        ] {
+            let declaration: ItemImpl = syn::parse_str(invalid)
+                .unwrap_or_else(|error| panic!("invalid fixture did not parse: {error}"));
+            let method = declaration
+                .items
+                .iter()
+                .find_map(|item| match item {
+                    ImplItem::Fn(method) => Some(method),
+                    _ => None,
+                })
+                .expect("fixture declares one method");
+            assert!(
+                pool_worker_assignment(method).is_err(),
+                "invalid pool worker transition was accepted: `{invalid}`"
             );
         }
     }

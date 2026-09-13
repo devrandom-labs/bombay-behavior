@@ -1,16 +1,18 @@
 use behavior::{
-    Actions, BehaviorActed, ChildChoice, Children, Delivery, MailAddr, Never, Recipient,
-    SendEffects, SendInterpreter, Step,
+    Actions, BehaviorActed, BirthProtocol, BirthProtocolProduct, ChildChoice, Children,
+    ClassifySettlement, CreationSequence, Delivery, Interpretation, ItemSettlement,
+    LogicalDeliveryProtocols, MailAddr, Never, NoBirthProtocols, Recipient, SendEffects,
+    SettledItem, SettlementStatus, Step,
 };
 
-struct FirstDestination;
+pub struct FirstDestination;
 
 impl behavior::Protocol for FirstDestination {
     type Addr = MailAddr;
     type Msg = u8;
 }
 
-struct SecondDestination;
+pub struct SecondDestination;
 
 impl behavior::Protocol for SecondDestination {
     type Addr = MailAddr;
@@ -18,10 +20,16 @@ impl behavior::Protocol for SecondDestination {
 }
 
 #[derive(Clone, Copy)]
-struct LocalRequest;
+struct LocalRequest(u8);
 
 impl behavior::InterpreterRequest for LocalRequest {
     type ReturnToEmitter = behavior::NoReturnToEmitter;
+}
+
+impl behavior::ActionItem for LocalRequest {
+    type Accepted = ();
+    type Rejection = Never;
+    type Prerequisite = Never;
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -44,7 +52,9 @@ impl SecondChild {
     }
 }
 
-struct Bootstrap;
+struct Bootstrap {
+    creations: CreationSequence,
+}
 
 #[behavior::behavior(
     addr = MailAddr,
@@ -60,12 +70,18 @@ struct Bootstrap;
 )]
 impl Bootstrap {
     fn init(&mut self) -> BehaviorActed<Self> {
-        let children = BootstrapChildrenRoutes::new(1, 2);
+        let first = self
+            .creations
+            .issue()
+            .expect("the first fixture creation ID exists");
+        let second = self
+            .creations
+            .issue()
+            .expect("the second fixture creation ID exists");
         let creates = Children::<MailAddr>::new()
-            .child_at(children.first, FirstChild)
-            .child_at(children.second, SecondChild)
-            .into_creates()
-            .expect("distinct fixture nonces");
+            .child(first, FirstChild)
+            .child(second, SecondChild)
+            .into_creates();
         Ok(Actions::create(creates)
             .send_first(Delivery::new(Recipient::global(MailAddr(10)), 1))
             .send_second(Delivery::new(Recipient::global(MailAddr(20)), 2)))
@@ -74,6 +90,26 @@ impl Bootstrap {
     fn receive(&mut self, _: MailAddr, _: ()) -> BehaviorActed<Self> {
         Ok(Actions::cont())
     }
+}
+
+impl LogicalDeliveryProtocols for BootstrapSends {
+    type Protocols =
+        <<Vec<Delivery<FirstDestination>> as LogicalDeliveryProtocols>::Protocols as BirthProtocolProduct>::Append<
+            <Vec<Delivery<SecondDestination>> as LogicalDeliveryProtocols>::Protocols,
+        >;
+}
+
+#[test]
+fn generated_send_product_owner_exposes_its_exact_logical_destinations() {
+    type Actual = <Bootstrap as behavior::LogicalHostRequirements>::LogicalHosts;
+    type Expected =
+        BirthProtocol<FirstDestination, BirthProtocol<SecondDestination, NoBirthProtocols>>;
+
+    trait Same<T> {}
+    impl<T> Same<T> for T {}
+    fn exact<T: Same<Expected>, Expected>() {}
+
+    exact::<Actual, Expected>();
 }
 
 struct Positioned;
@@ -106,7 +142,7 @@ struct LaneFamilies;
 impl LaneFamilies {
     fn init(&mut self) -> BehaviorActed<Self> {
         Ok(Actions::cont()
-            .send_requests(LocalRequest)
+            .send_requests(LocalRequest(0))
             .send_deliveries(Delivery::new(Recipient::global(MailAddr(5)), 8)))
     }
 
@@ -121,13 +157,15 @@ struct EqualProducts;
     addr = MailAddr,
     message = (),
     sends = {
-        audit: Vec<u8>,
-        metrics: Vec<u8>,
+        audit: behavior::InterpreterRequests<LocalRequest>,
+        metrics: behavior::InterpreterRequests<LocalRequest>,
     },
 )]
 impl EqualProducts {
     fn receive(&mut self, _: MailAddr, _: ()) -> BehaviorActed<Self> {
-        Ok(Actions::cont().send_audit(1).send_metrics(2))
+        Ok(Actions::cont()
+            .send_audit(LocalRequest(1))
+            .send_metrics(LocalRequest(2)))
     }
 }
 
@@ -187,39 +225,121 @@ where
 #[derive(Default)]
 struct CompleteInterpreter(Vec<&'static str>);
 
-impl SendInterpreter for CompleteInterpreter {
-    type Error = Never;
-}
-
-impl behavior::InterpretDelivery<FirstDestination> for CompleteInterpreter {
-    fn interpret_delivery(
-        &mut self,
-        _: Delivery<FirstDestination>,
-    ) -> impl core::future::Future<Output = Result<(), Self::Error>> + Send {
-        self.0.push("first");
-        async { Ok(()) }
-    }
-}
-
-impl behavior::InterpretDelivery<SecondDestination> for CompleteInterpreter {
-    fn interpret_delivery(
-        &mut self,
-        _: Delivery<SecondDestination>,
-    ) -> impl core::future::Future<Output = Result<(), Self::Error>> + Send {
-        self.0.push("second");
-        async { Ok(()) }
-    }
-}
-
-impl behavior::InterpretRequest<LocalRequest, behavior::User<MailAddr, ()>, behavior::Here>
+impl<RootEvent, Path> behavior::InterpretItem<Delivery<FirstDestination>, RootEvent, Path>
     for CompleteInterpreter
 {
-    fn interpret_request(
+    fn interpret_item(
+        &mut self,
+        _: Delivery<FirstDestination>,
+    ) -> impl core::future::Future<
+        Output = ItemSettlement<
+            Delivery<FirstDestination>,
+            <Delivery<FirstDestination> as behavior::ActionItem>::Accepted,
+            <Delivery<FirstDestination> as behavior::ActionItem>::Rejection,
+            <Delivery<FirstDestination> as behavior::ActionItem>::Prerequisite,
+        >,
+    > + Send {
+        self.0.push("first");
+        async { ItemSettlement::Accepted(()) }
+    }
+}
+
+impl<RootEvent, Path> behavior::InterpretItem<Delivery<SecondDestination>, RootEvent, Path>
+    for CompleteInterpreter
+{
+    fn interpret_item(
+        &mut self,
+        _: Delivery<SecondDestination>,
+    ) -> impl core::future::Future<
+        Output = ItemSettlement<
+            Delivery<SecondDestination>,
+            <Delivery<SecondDestination> as behavior::ActionItem>::Accepted,
+            <Delivery<SecondDestination> as behavior::ActionItem>::Rejection,
+            <Delivery<SecondDestination> as behavior::ActionItem>::Prerequisite,
+        >,
+    > + Send {
+        self.0.push("second");
+        async { ItemSettlement::Accepted(()) }
+    }
+}
+
+impl<RootEvent, Path> behavior::InterpretItem<LocalRequest, RootEvent, Path>
+    for CompleteInterpreter
+{
+    fn interpret_item(
         &mut self,
         _: LocalRequest,
-    ) -> impl core::future::Future<Output = Result<(), Self::Error>> + Send {
+    ) -> impl core::future::Future<
+        Output = ItemSettlement<
+            LocalRequest,
+            <LocalRequest as behavior::ActionItem>::Accepted,
+            <LocalRequest as behavior::ActionItem>::Rejection,
+            <LocalRequest as behavior::ActionItem>::Prerequisite,
+        >,
+    > + Send {
         self.0.push("request");
-        async { Ok(()) }
+        async { ItemSettlement::Accepted(()) }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum FirstPlan {
+    Reject,
+    Corrupt,
+}
+
+struct PlannedInterpreter {
+    first: FirstPlan,
+    attempts: Vec<&'static str>,
+}
+
+impl<RootEvent, Path> behavior::InterpretItem<Delivery<FirstDestination>, RootEvent, Path>
+    for PlannedInterpreter
+{
+    fn interpret_item(
+        &mut self,
+        item: Delivery<FirstDestination>,
+    ) -> impl core::future::Future<
+        Output = ItemSettlement<
+            Delivery<FirstDestination>,
+            <Delivery<FirstDestination> as behavior::ActionItem>::Accepted,
+            <Delivery<FirstDestination> as behavior::ActionItem>::Rejection,
+            <Delivery<FirstDestination> as behavior::ActionItem>::Prerequisite,
+        >,
+    > + Send {
+        self.attempts.push("first");
+        let plan = self.first;
+        async move {
+            match plan {
+                FirstPlan::Reject => ItemSettlement::Rejected {
+                    item,
+                    reason: behavior::LogicalDeliveryReason::ClosedRecipient,
+                },
+                FirstPlan::Corrupt => ItemSettlement::Corrupt {
+                    item,
+                    fault: behavior::InterpreterFault::CorruptTraversal,
+                },
+            }
+        }
+    }
+}
+
+impl<RootEvent, Path> behavior::InterpretItem<Delivery<SecondDestination>, RootEvent, Path>
+    for PlannedInterpreter
+{
+    fn interpret_item(
+        &mut self,
+        _: Delivery<SecondDestination>,
+    ) -> impl core::future::Future<
+        Output = ItemSettlement<
+            Delivery<SecondDestination>,
+            <Delivery<SecondDestination> as behavior::ActionItem>::Accepted,
+            <Delivery<SecondDestination> as behavior::ActionItem>::Rejection,
+            <Delivery<SecondDestination> as behavior::ActionItem>::Prerequisite,
+        >,
+    > + Send {
+        self.attempts.push("second");
+        async { ItemSettlement::Accepted(()) }
     }
 }
 
@@ -230,7 +350,9 @@ fn exact_actions(
 
 #[test]
 fn generated_products_preserve_exact_initialization_actions() {
-    let mut actor = Bootstrap;
+    let mut actor = Bootstrap {
+        creations: CreationSequence::new(),
+    };
     let actions = behavior::initialize(&mut actor).expect("fixture initialization succeeds");
     exact_actions(&actions);
 
@@ -239,34 +361,17 @@ fn generated_products_preserve_exact_initialization_actions() {
     assert_eq!(actions.sends.first[0].message, 1);
     assert_eq!(actions.sends.second[0].message, 2);
     assert_eq!(actions.creates.len(), 2);
-    assert_eq!(actions.creates[0].nonce, 1);
-    assert_eq!(actions.creates[1].nonce, 2);
+    let mut creations = actions.creates.into_iter();
+    let first = creations.next().expect("the first child is retained");
+    let (_, first, _) = first.into_parts();
     assert!(matches!(
-        actions.creates[0].child,
+        first,
         ChildChoice::Tail(ChildChoice::Head(FirstChild))
     ));
-    assert!(matches!(
-        actions.creates[1].child,
-        ChildChoice::Head(SecondChild)
-    ));
-}
-
-#[test]
-fn generated_child_routes_share_one_named_creation_and_routing_source() {
-    let children = BootstrapChildrenRoutes::new(11, 17);
-
-    let first: behavior::ChildRecipient<FirstChild> = children.first.recipient();
-    let second: behavior::ChildRecipient<SecondChild> = children.second.recipient();
-    let creates = Children::<MailAddr>::new()
-        .child_at(children.first, FirstChild)
-        .child_at(children.second, SecondChild)
-        .into_creates()
-        .expect("generated bindings use distinct fixture nonces");
-
-    assert_eq!(first.nonce(), 11);
-    assert_eq!(second.nonce(), 17);
-    assert_eq!(creates[0].nonce, 11);
-    assert_eq!(creates[1].nonce, 17);
+    let second = creations.next().expect("the second child is retained");
+    let (_, second, _) = second.into_parts();
+    assert!(matches!(second, ChildChoice::Head(SecondChild)));
+    assert!(creations.next().is_none());
 }
 
 fn accepts_named_child<Parent, Role>(_: Role, _: Role::Child)
@@ -280,6 +385,13 @@ fn has_child_position<Parent, Role, Position>()
 where
     Parent: behavior::Behavior,
     Role: behavior::ChildRole<Parent, Position = Position>,
+{
+}
+
+fn resolves_child_occurrence<Emitter, Occurrence, Child, Position>()
+where
+    Emitter: behavior::ResolveChildOccurrence<Occurrence, Child = Child, Position = Position>,
+    Child: behavior::Behavior,
 {
 }
 
@@ -330,6 +442,21 @@ fn generated_child_selectors_prove_the_exact_parent_role_and_child() {
     has_child_position::<Bootstrap, BootstrapChildrenFirst, behavior::ChildTail<behavior::ChildHead>>(
     );
     has_child_position::<Bootstrap, BootstrapChildrenSecond, behavior::ChildHead>();
+    resolves_child_occurrence::<
+        Bootstrap,
+        BootstrapChildrenFirst,
+        FirstChild,
+        behavior::ChildTail<behavior::ChildHead>,
+    >();
+    resolves_child_occurrence::<Bootstrap, BootstrapChildrenSecond, SecondChild, behavior::ChildHead>(
+    );
+    resolves_child_occurrence::<Bootstrap, behavior::ChildHead, SecondChild, behavior::ChildHead>();
+    resolves_child_occurrence::<
+        Bootstrap,
+        behavior::ChildTail<behavior::ChildHead>,
+        FirstChild,
+        behavior::ChildTail<behavior::ChildHead>,
+    >();
 }
 
 #[test]
@@ -355,19 +482,34 @@ fn generated_positions_lower_named_roles_into_an_independent_sum() {
         IndependentTarget::Remaining(IndependentTarget::Selected(5, _))
     ));
     assert!(matches!(fallback, IndependentTarget::Selected(7, _)));
+
+    resolves_child_occurrence::<
+        Positioned,
+        PositionedChildrenPrimary,
+        FirstChild,
+        behavior::ChildTail<behavior::ChildTail<behavior::ChildHead>>,
+    >();
+    resolves_child_occurrence::<
+        Positioned,
+        PositionedChildrenFallback,
+        FirstChild,
+        behavior::ChildHead,
+    >();
 }
 
 #[test]
-fn generated_child_routes_preserve_only_the_child_types_required_generics() {
-    let routes = AdvancedChildrenRoutes::<u16>::new(23);
-    let route: behavior::ChildRoute<Generic<u16>, AdvancedChildrenGeneric> = routes.generic;
+fn generated_child_roles_preserve_only_the_child_types_required_generics() {
     accepts_named_child::<Advanced<'static, u16, 3>, _>(
         AdvancedChild::Generic,
         Generic(core::marker::PhantomData),
     );
     has_child_position::<Advanced<'static, u16, 3>, AdvancedChildrenGeneric, behavior::ChildHead>();
-
-    assert_eq!(route.nonce(), 23);
+    resolves_child_occurrence::<
+        Advanced<'static, u16, 3>,
+        AdvancedChildrenGeneric,
+        Generic<u16>,
+        behavior::ChildHead,
+    >();
 }
 
 #[test]
@@ -377,8 +519,8 @@ fn equal_payload_protocols_remain_distinct_named_lanes() {
         second: vec![Delivery::new(Recipient::global(MailAddr(4)), 7)],
     };
 
-    assert_eq!(sends.first[0].to.resolve(MailAddr(0)), MailAddr(3));
-    assert_eq!(sends.second[0].to.resolve(MailAddr(0)), MailAddr(4));
+    assert_eq!(sends.first[0].to.address(), MailAddr(3));
+    assert_eq!(sends.second[0].to.address(), MailAddr(4));
 }
 
 #[test]
@@ -414,7 +556,10 @@ fn generated_fluent_lanes_preserve_verdict_order_and_lane_identity() {
 fn omitted_capabilities_are_empty_and_uninhabited() {
     let mut child = FirstChild;
     let actions = behavior::initialize(&mut child).expect("default initialization succeeds");
-    let _: Actions<MailAddr, Never, behavior::NoSends, behavior::NoBirths> = actions;
+    let actions: Actions<MailAddr, Never, behavior::NoSends, behavior::NoBirths> = actions;
+    assert!(matches!(actions.sends, behavior::NoSends));
+    assert!(actions.creates.is_empty());
+    assert_eq!(actions.become_, Step::Continue);
 }
 
 #[test]
@@ -452,15 +597,85 @@ async fn generated_interpreter_visits_every_lane_in_declaration_order() {
     };
     let mut interpreter = CompleteInterpreter::default();
 
-    <BootstrapSends as behavior::InterpretSends<
+    let settlement = <BootstrapSends as behavior::InterpretSends<
         CompleteInterpreter,
         behavior::User<MailAddr, ()>,
         behavior::Here,
     >>::interpret(sends, &mut interpreter)
-    .await
-    .expect("uninhabited interpreter error");
+    .await;
 
     assert_eq!(interpreter.0, ["first", "second"]);
+    let Interpretation::Complete(settlement) = settlement else {
+        panic!("infallible fixture interpretation corrupted");
+    };
+    assert!(matches!(
+        settlement.first.as_slice(),
+        [SettledItem::Attempted(ItemSettlement::Accepted(()))]
+    ));
+    assert!(matches!(
+        settlement.second.as_slice(),
+        [SettledItem::Attempted(ItemSettlement::Accepted(()))]
+    ));
+}
+
+#[tokio::test]
+async fn generated_product_continues_rejection_and_retains_corrupt_suffix() {
+    fn sends() -> BootstrapSends {
+        BootstrapSends {
+            first: vec![Delivery::new(Recipient::global(MailAddr(1)), 1)],
+            second: vec![Delivery::new(Recipient::global(MailAddr(2)), 2)],
+        }
+    }
+
+    let mut rejecting = PlannedInterpreter {
+        first: FirstPlan::Reject,
+        attempts: Vec::new(),
+    };
+    let settlement = <BootstrapSends as behavior::InterpretSends<
+        PlannedInterpreter,
+        behavior::User<MailAddr, ()>,
+        behavior::Here,
+    >>::interpret(sends(), &mut rejecting)
+    .await;
+    assert_eq!(rejecting.attempts, ["first", "second"]);
+    let Interpretation::Complete(settlement) = settlement else {
+        panic!("lawful rejection cannot corrupt the product");
+    };
+    assert_eq!(settlement.settlement_status(), SettlementStatus::Rejected);
+    assert!(matches!(
+        settlement.first.as_slice(),
+        [SettledItem::Attempted(ItemSettlement::Rejected {
+            item: Delivery { message: 1, .. },
+            reason: behavior::LogicalDeliveryReason::ClosedRecipient,
+        })]
+    ));
+
+    let mut corrupting = PlannedInterpreter {
+        first: FirstPlan::Corrupt,
+        attempts: Vec::new(),
+    };
+    let settlement = <BootstrapSends as behavior::InterpretSends<
+        PlannedInterpreter,
+        behavior::User<MailAddr, ()>,
+        behavior::Here,
+    >>::interpret(sends(), &mut corrupting)
+    .await;
+    assert_eq!(corrupting.attempts, ["first"]);
+    let Interpretation::Corrupt(settlement) = settlement else {
+        panic!("interpreter corruption must mark the complete product");
+    };
+    assert_eq!(settlement.settlement_status(), SettlementStatus::Corrupt);
+    assert!(matches!(
+        settlement.first.as_slice(),
+        [SettledItem::Attempted(ItemSettlement::Corrupt {
+            item: Delivery { message: 1, .. },
+            fault: behavior::InterpreterFault::CorruptTraversal,
+        })]
+    ));
+    assert!(matches!(
+        settlement.second.as_slice(),
+        [SettledItem::Unattempted(Delivery { message: 2, .. })]
+    ));
 }
 
 #[tokio::test]
@@ -469,15 +684,25 @@ async fn generated_product_composes_delivery_and_interpreter_request_lanes() {
     let actions = behavior::initialize(&mut actor).expect("lane initialization succeeds");
     let mut interpreter = CompleteInterpreter::default();
 
-    <LaneFamiliesSends as behavior::InterpretSends<
+    let settlement = <LaneFamiliesSends as behavior::InterpretSends<
         CompleteInterpreter,
         behavior::User<MailAddr, ()>,
         behavior::Here,
     >>::interpret(actions.sends, &mut interpreter)
-    .await
-    .expect("uninhabited interpreter error");
+    .await;
 
     assert_eq!(interpreter.0, ["request", "first"]);
+    let Interpretation::Complete(settlement) = settlement else {
+        panic!("infallible fixture interpretation corrupted");
+    };
+    assert!(matches!(
+        settlement.requests.as_slice(),
+        [SettledItem::Attempted(ItemSettlement::Accepted(()))]
+    ));
+    assert!(matches!(
+        settlement.deliveries.as_slice(),
+        [SettledItem::Attempted(ItemSettlement::Accepted(()))]
+    ));
 }
 
 #[test]
@@ -491,8 +716,8 @@ fn identical_product_types_require_distinct_lane_selectors() {
         },
     )
     .expect("equal-product transition succeeds");
-    assert_eq!(actions.sends.audit, [1]);
-    assert_eq!(actions.sends.metrics, [2]);
+    assert_eq!(actions.sends.audit.as_slice()[0].0, 1);
+    assert_eq!(actions.sends.metrics.as_slice()[0].0, 2);
 }
 
 #[test]
@@ -574,15 +799,15 @@ mod capability_matrix {
     }
 
     without_init!(NoneNoInit);
-    without_init!(SendsNoInit, sends = { output: Vec<u8> });
+    without_init!(SendsNoInit, sends = { output: behavior::InterpreterRequests<LocalRequest> });
     without_init!(BirthsNoInit, births = { child: FirstChild });
     without_init!(ErrorNoInit, error = MatrixError);
     without_init!(SendsBirthsNoInit,
-        sends = { output: Vec<u8> },
+        sends = { output: behavior::InterpreterRequests<LocalRequest> },
         births = { child: FirstChild }
     );
     without_init!(SendsErrorNoInit,
-        sends = { output: Vec<u8> },
+        sends = { output: behavior::InterpreterRequests<LocalRequest> },
         error = MatrixError
     );
     without_init!(BirthsErrorNoInit,
@@ -590,21 +815,21 @@ mod capability_matrix {
         error = MatrixError
     );
     without_init!(AllNoInit,
-        sends = { output: Vec<u8> },
+        sends = { output: behavior::InterpreterRequests<LocalRequest> },
         births = { child: FirstChild },
         error = MatrixError
     );
 
     with_init!(NoneWithInit);
-    with_init!(SendsWithInit, sends = { output: Vec<u8> });
+    with_init!(SendsWithInit, sends = { output: behavior::InterpreterRequests<LocalRequest> });
     with_init!(BirthsWithInit, births = { child: FirstChild });
     with_init!(ErrorWithInit, error = MatrixError);
     with_init!(SendsBirthsWithInit,
-        sends = { output: Vec<u8> },
+        sends = { output: behavior::InterpreterRequests<LocalRequest> },
         births = { child: FirstChild }
     );
     with_init!(SendsErrorWithInit,
-        sends = { output: Vec<u8> },
+        sends = { output: behavior::InterpreterRequests<LocalRequest> },
         error = MatrixError
     );
     with_init!(BirthsErrorWithInit,
@@ -612,7 +837,7 @@ mod capability_matrix {
         error = MatrixError
     );
     with_init!(AllWithInit,
-        sends = { output: Vec<u8> },
+        sends = { output: behavior::InterpreterRequests<LocalRequest> },
         births = { child: FirstChild },
         error = MatrixError
     );

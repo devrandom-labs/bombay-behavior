@@ -76,7 +76,7 @@ impl Behavior for SelfSending {
     ) -> behavior::BehaviorActed<Self> {
         Ok(Actions::new(
             vec![Delivery::new(Recipient::global(MailAddr(9)), 11)],
-            Vec::new(),
+            behavior::Creations::empty(),
             behavior::Step::Continue,
         ))
     }
@@ -115,10 +115,6 @@ struct RemoteAddr(u64);
 
 impl behavior::Address for RemoteAddr {
     type Nonce = u16;
-
-    fn birth(self, nonce: Self::Nonce) -> Self {
-        Self(self.0 ^ u64::from(nonce))
-    }
 }
 
 struct Remote;
@@ -175,7 +171,7 @@ impl Behavior for CrossNamespaceSender {
     ) -> behavior::BehaviorActed<Self> {
         Ok(Actions::new(
             vec![Delivery::new(Recipient::global(RemoteAddr(31)), 5)],
-            Vec::new(),
+            behavior::Creations::empty(),
             behavior::Step::Continue,
         ))
     }
@@ -190,7 +186,7 @@ fn destination_protocol_owns_the_address_namespace() {
         .receive(MailAddr(1), ())
         .expect("cross-namespace send succeeds");
 
-    assert_eq!(actions.sends[0].to.resolve(RemoteAddr(99)), RemoteAddr(31));
+    assert_eq!(actions.sends[0].to.address(), RemoteAddr(31));
 }
 
 #[test]
@@ -209,7 +205,7 @@ fn reusable_message_protocol_retains_one_established_identity_across_emitters() 
     let first = Delivery::new(root, 1);
     let second = Delivery::new(root, 2);
 
-    assert_eq!(first.to.resolve(MailAddr(11)), MailAddr(0));
-    assert_eq!(second.to.resolve(MailAddr(99)), MailAddr(0));
+    assert_eq!(first.to.address(), MailAddr(0));
+    assert_eq!(second.to.address(), MailAddr(0));
 }
 use behavior_testkit::InitializeTest;

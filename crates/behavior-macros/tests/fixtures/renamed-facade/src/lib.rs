@@ -1,4 +1,6 @@
-use runtime::behavior::{Actions, BehaviorActed, MailAddr};
+use runtime::behavior::{
+    Actions, BehaviorActed, Delivery, MailAddr, MessageProtocol, Recipient,
+};
 
 struct First;
 struct Second;
@@ -7,12 +9,13 @@ struct Second;
     addr = MailAddr,
     message = u8,
     sends = {
-        values: Vec<u8>,
+        notices: Vec<Delivery<MessageProtocol<MailAddr, u8>>>,
     },
 )]
 impl First {
     fn receive(&mut self, _: MailAddr, _: u8) -> BehaviorActed<Self> {
-        Ok(Actions::cont().send_values(1))
+        let recipient = Recipient::global(MailAddr(1));
+        Ok(Actions::cont().send_notices(Delivery::new(recipient, 1)))
     }
 }
 

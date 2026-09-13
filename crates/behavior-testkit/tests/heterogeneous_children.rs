@@ -1,22 +1,29 @@
-//! Independent checks for the pure heterogeneous child creation product.
+//! Independent checks for pure heterogeneous child creation.
 
-use behavior::{Activate as _, DynamicSupervisor, DynamicSupervisorOutcome, Guardian};
+use behavior::{Activate, StopOnShutdown};
 use foundation::{
-    Actions, Behavior, BehaviorActed, ChildChoice, Children, ChildrenError, Create, CreationKind,
-    MailAddr, Never, NoBirths, User,
+    Actions, Address, Behavior, BehaviorActed, Births, ChildChoice, Children, CreateChild,
+    CreationKind, CreationSequence, Never, NoBirths, Protocol, User,
 };
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct RuntimeAddr(u64);
+
+impl Address for RuntimeAddr {
+    type Nonce = u64;
+}
 
 #[derive(Debug, PartialEq, Eq)]
 struct Devices;
 
-impl behavior::Protocol for Devices {
-    type Addr = MailAddr;
+impl Protocol for Devices {
+    type Addr = RuntimeAddr;
     type Msg = Never;
 }
 
 impl Behavior for Devices {
     type Protocol = Self;
-    type Event = User<MailAddr, Never>;
+    type Event = User<RuntimeAddr, Never>;
     type Sends = Vec<Never>;
     type Ph = Never;
     type Error = Never;
@@ -30,14 +37,14 @@ impl Behavior for Devices {
 #[derive(Debug, PartialEq, Eq)]
 struct Queries;
 
-impl behavior::Protocol for Queries {
-    type Addr = MailAddr;
+impl Protocol for Queries {
+    type Addr = RuntimeAddr;
     type Msg = Never;
 }
 
 impl Behavior for Queries {
     type Protocol = Self;
-    type Event = User<MailAddr, Never>;
+    type Event = User<RuntimeAddr, Never>;
     type Sends = Vec<Never>;
     type Ph = Never;
     type Error = Never;
@@ -48,57 +55,35 @@ impl Behavior for Queries {
     }
 }
 
-struct SupervisorReply;
+type RootChildren = ChildChoice<Queries, ChildChoice<Devices, Never>>;
 
-impl behavior::Protocol for SupervisorReply {
-    type Addr = MailAddr;
-    type Msg = DynamicSupervisorOutcome<MailAddr, Devices>;
+struct Root {
+    creations: CreationSequence,
 }
 
-impl Behavior for SupervisorReply {
-    type Protocol = Self;
-    type Event = User<MailAddr, behavior::BehaviorMessage<Self>>;
-    type Sends = Vec<Never>;
-    type Ph = Never;
-    type Error = Never;
-    type Birth = NoBirths;
-
-    fn transition(&mut self, _: foundation::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
-        Ok(Actions::cont())
-    }
-}
-
-type DeviceSupervisor = DynamicSupervisor<MailAddr, Devices, SupervisorReply>;
-type RootChildren = ChildChoice<Queries, ChildChoice<DeviceSupervisor, Never>>;
-
-struct Root;
-
-impl behavior::BehaviorBase for Root {
-    type Base = Self;
-
-    fn base(&self) -> &Self {
-        self
-    }
-}
-
-impl behavior::Protocol for Root {
-    type Addr = MailAddr;
+impl Protocol for Root {
+    type Addr = RuntimeAddr;
     type Msg = Never;
 }
 
 impl Behavior for Root {
     type Protocol = Self;
-    type Event = User<MailAddr, Never>;
+    type Event = User<RuntimeAddr, Never>;
     type Sends = Vec<Never>;
     type Ph = Never;
-    type Error = ChildrenError<u64>;
-    type Birth = foundation::Births<RootChildren>;
+    type Error = Never;
+    type Birth = Births<RootChildren>;
 
     fn init(&mut self, _: foundation::InitializationTurn) -> BehaviorActed<Self> {
-        let creates = Children::<MailAddr>::new()
-            .child(13, DeviceSupervisor::new())
-            .child(17, Queries)
-            .into_creates()?;
+        let devices = self
+            .creations
+            .issue()
+            .expect("the device fixture ID exists");
+        let queries = self.creations.issue().expect("the query fixture ID exists");
+        let creates = Children::<RuntimeAddr>::new()
+            .child(devices, Devices)
+            .child(queries, Queries)
+            .into_creates();
         Ok(Actions::create(creates))
     }
 
@@ -108,74 +93,52 @@ impl Behavior for Root {
 }
 
 #[test]
-fn heterogeneous_children_preserve_declaration_order_and_provenance() {
-    let creates = Children::<MailAddr>::new()
-        .child(7, Devices)
-        .create(Create::replacement_incarnation(11, 3, Queries))
-        .into_creates()
-        .unwrap();
-
-    assert_eq!(creates.len(), 2);
-    assert_eq!(creates[0].nonce, 7);
-    assert_eq!(creates[0].kind, CreationKind::Birth);
-    assert!(matches!(
-        creates[0].child,
-        ChildChoice::Tail(ChildChoice::Head(Devices))
-    ));
-    assert_eq!(creates[1].nonce, 11);
-    assert_eq!(creates[1].kind, CreationKind::replacement_of(3));
-    assert!(matches!(creates[1].child, ChildChoice::Head(Queries)));
-}
-
-#[test]
-fn duplicate_nonce_rejects_the_complete_product() {
-    let result = Children::<MailAddr>::new()
-        .child(7, Devices)
-        .child(7, Queries)
+fn heterogeneous_children_preserve_declaration_order_and_creation_kind() {
+    let mut device_ids = CreationSequence::new();
+    let device = device_ids.issue().expect("the device ID exists");
+    let mut query_ids = CreationSequence::new();
+    let previous_query = query_ids.issue().expect("the previous query ID exists");
+    let query = query_ids.issue().expect("the replacement query ID exists");
+    let creates = Children::<RuntimeAddr>::new()
+        .child(device, Devices)
+        .create(CreateChild::replacement(query, previous_query, Queries))
         .into_creates();
 
-    assert_eq!(result, Err(ChildrenError::DuplicateNonce { nonce: 7 }));
+    let mut creates = creates.into_iter();
+    let devices = creates.next().expect("the device child is retained");
+    assert_eq!(devices.id(), device);
+    assert_eq!(devices.kind(), CreationKind::Birth);
+    assert!(matches!(
+        devices.child(),
+        ChildChoice::Tail(ChildChoice::Head(Devices))
+    ));
+
+    let queries = creates.next().expect("the query child is retained");
+    assert_eq!(queries.id(), query);
+    assert_eq!(queries.kind(), CreationKind::replacement(previous_query));
+    assert!(matches!(queries.child(), ChildChoice::Head(Queries)));
+    assert!(creates.next().is_none());
 }
 
 #[test]
 fn empty_product_emits_no_creations() {
-    assert!(
-        Children::<MailAddr>::new()
-            .into_creates()
-            .unwrap()
-            .is_empty()
-    );
+    assert!(Children::<RuntimeAddr>::new().into_creates().is_empty());
 }
 
 #[test]
-fn product_is_pure_input_to_the_existing_actions_creation_leg() {
-    let creates = Children::<MailAddr>::new()
-        .child(2, Devices)
-        .child(5, Queries)
-        .into_creates()
-        .unwrap();
-    let actions = Actions::<
-        MailAddr,
-        Never,
-        Vec<Never>,
-        foundation::Births<ChildChoice<Queries, ChildChoice<Devices, Never>>>,
-    >::create(creates);
+fn shutdown_wrapper_preserves_root_child_initialization() {
+    let initialized = Activate::initialize(StopOnShutdown::new(Root {
+        creations: CreationSequence::new(),
+    }))
+    .expect("root initialization succeeds");
+    let mut creates = initialized.actions.creates.into_iter();
 
-    assert_eq!(actions.creates.len(), 2);
-    assert!(actions.sends.is_empty());
-}
-
-#[test]
-fn address_constrained_template_flows_through_root_initialization_and_guardian() {
-    let initialized = Guardian::new(Root).initialize().unwrap();
-    let creates = initialized.actions.creates;
-
-    assert_eq!(creates.len(), 2);
-    assert_eq!(creates[0].nonce, 13);
+    let devices = creates.next().expect("the device child is retained");
     assert!(matches!(
-        creates[0].child,
-        ChildChoice::Tail(ChildChoice::Head(_))
+        devices.child(),
+        ChildChoice::Tail(ChildChoice::Head(Devices))
     ));
-    assert_eq!(creates[1].nonce, 17);
-    assert!(matches!(creates[1].child, ChildChoice::Head(Queries)));
+    let queries = creates.next().expect("the query child is retained");
+    assert!(matches!(queries.child(), ChildChoice::Head(Queries)));
+    assert!(creates.next().is_none());
 }
