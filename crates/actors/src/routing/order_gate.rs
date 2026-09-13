@@ -5,9 +5,11 @@ use std::collections::BTreeMap;
 use super::DeliveryOutcomes;
 
 use behavior::{
-    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, Never, NoBirths, Protocol,
-    Recipient, User,
+    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Never, NoBirths, Protocol,
+    SendEffects, User,
 };
+
+use crate::DeliveryRoute;
 
 /// Complete observable state of an [`OrderGate`].
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -66,7 +68,7 @@ pub enum OrderGateOutcome<K, T> {
 }
 
 /// Commands accepted by [`OrderGate`].
-pub enum OrderGateMessage<K, T, Target: Protocol, Reply: behavior::Protocol> {
+pub enum OrderGateMessage<K, T, TargetRoute, ReplyRoute> {
     /// Submit one keyed value.
     Hold {
         /// Ordered release key.
@@ -74,22 +76,22 @@ pub enum OrderGateMessage<K, T, Target: Protocol, Reply: behavior::Protocol> {
         /// Owned value.
         value: T,
         /// Typed delivery destination.
-        to: Recipient<Target>,
+        to: TargetRoute,
         /// Typed outcome recipient.
-        reply_to: Recipient<Reply>,
+        reply_to: ReplyRoute,
     },
     /// Monotonically open every key through the supplied bound.
     OpenThrough {
         /// Inclusive new watermark.
         through: K,
         /// Typed outcome recipient.
-        reply_to: Recipient<Reply>,
+        reply_to: ReplyRoute,
     },
 }
 
-struct Held<T, Target: Protocol> {
+struct Held<T, TargetRoute> {
     value: T,
-    to: Recipient<Target>,
+    to: TargetRoute,
 }
 
 /// Deterministic explicit ordered-release policy.
@@ -106,20 +108,20 @@ pub struct OrderGate<
     A: Address,
     K,
     T,
-    Target: Protocol<Addr = A, Msg = T>,
-    Reply: behavior::Protocol<Addr = A, Msg = OrderGateOutcome<K, T>>,
+    TargetRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = T>>,
+    ReplyRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = OrderGateOutcome<K, T>>>,
 > {
     watermark: Option<K>,
-    held: BTreeMap<K, Held<T, Target>>,
-    marker: core::marker::PhantomData<fn() -> (A, Reply)>,
+    held: BTreeMap<K, Held<T, TargetRoute>>,
+    marker: core::marker::PhantomData<fn() -> (A, ReplyRoute)>,
 }
 
-impl<A, K, T, Target, Reply> OrderGate<A, K, T, Target, Reply>
+impl<A, K, T, TargetRoute, ReplyRoute> OrderGate<A, K, T, TargetRoute, ReplyRoute>
 where
     A: Address,
     K: Clone + Ord,
-    Target: Protocol<Addr = A, Msg = T>,
-    Reply: behavior::Protocol<Addr = A, Msg = OrderGateOutcome<K, T>>,
+    TargetRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = T>>,
+    ReplyRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = OrderGateOutcome<K, T>>>,
 {
     /// Construct a closed gate with no retained values.
     #[must_use]
@@ -141,13 +143,13 @@ where
     }
 
     fn sends(
-        deliveries: Vec<Delivery<Target>>,
-        reply_to: Recipient<Reply>,
+        deliveries: TargetRoute::Sends,
+        reply_to: ReplyRoute,
         outcome: OrderGateOutcome<K, T>,
-    ) -> Actions<A, Never, DeliveryOutcomes<Target, Reply>, NoBirths> {
+    ) -> Actions<A, Never, DeliveryOutcomes<TargetRoute::Sends, ReplyRoute::Sends>, NoBirths> {
         Actions::send(DeliveryOutcomes {
             deliveries,
-            outcomes: vec![Delivery::new(reply_to, outcome)],
+            outcomes: reply_to.deliver(outcome),
         })
     }
 
@@ -155,30 +157,30 @@ where
         &mut self,
         key: K,
         value: T,
-        to: Recipient<Target>,
-        reply_to: Recipient<Reply>,
-    ) -> Actions<A, Never, DeliveryOutcomes<Target, Reply>, NoBirths> {
+        to: TargetRoute,
+        reply_to: ReplyRoute,
+    ) -> Actions<A, Never, DeliveryOutcomes<TargetRoute::Sends, ReplyRoute::Sends>, NoBirths> {
         if self
             .watermark
             .as_ref()
             .is_some_and(|watermark| key <= *watermark)
         {
             return Self::sends(
-                vec![Delivery::new(to, value)],
+                to.deliver(value),
                 reply_to,
                 OrderGateOutcome::Delivered { key },
             );
         }
         if self.held.contains_key(&key) {
             return Self::sends(
-                Vec::new(),
+                TargetRoute::Sends::empty(),
                 reply_to,
                 OrderGateOutcome::Duplicate { key, value },
             );
         }
         self.held.insert(key.clone(), Held { value, to });
         Self::sends(
-            Vec::new(),
+            TargetRoute::Sends::empty(),
             reply_to,
             OrderGateOutcome::Held {
                 key,
@@ -190,13 +192,13 @@ where
     fn open(
         &mut self,
         through: K,
-        reply_to: Recipient<Reply>,
-    ) -> Actions<A, Never, DeliveryOutcomes<Target, Reply>, NoBirths> {
+        reply_to: ReplyRoute,
+    ) -> Actions<A, Never, DeliveryOutcomes<TargetRoute::Sends, ReplyRoute::Sends>, NoBirths> {
         if let Some(current) = &self.watermark
             && through <= *current
         {
             return Self::sends(
-                Vec::new(),
+                TargetRoute::Sends::empty(),
                 reply_to,
                 OrderGateOutcome::StaleOpening {
                     requested: through,
@@ -209,13 +211,13 @@ where
             .range(..=through.clone())
             .map(|(key, _)| key.clone())
             .collect::<Vec<_>>();
-        let mut deliveries = Vec::with_capacity(keys.len());
+        let released = keys.len();
+        let mut deliveries = TargetRoute::Sends::empty();
         for key in keys {
             if let Some(held) = self.held.remove(&key) {
-                deliveries.push(Delivery::new(held.to, held.value));
+                deliveries.append(held.to.deliver(held.value));
             }
         }
-        let released = deliveries.len();
         self.watermark = Some(through.clone());
         Self::sends(
             deliveries,
@@ -229,24 +231,24 @@ where
     }
 }
 
-impl<A, K, T, Target, Reply> Default for OrderGate<A, K, T, Target, Reply>
+impl<A, K, T, TargetRoute, ReplyRoute> Default for OrderGate<A, K, T, TargetRoute, ReplyRoute>
 where
     A: Address,
     K: Clone + Ord,
-    Target: Protocol<Addr = A, Msg = T>,
-    Reply: behavior::Protocol<Addr = A, Msg = OrderGateOutcome<K, T>>,
+    TargetRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = T>>,
+    ReplyRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = OrderGateOutcome<K, T>>>,
 {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<A, K, T, Target, Reply> BehaviorBase for OrderGate<A, K, T, Target, Reply>
+impl<A, K, T, TargetRoute, ReplyRoute> BehaviorBase for OrderGate<A, K, T, TargetRoute, ReplyRoute>
 where
     A: Address,
     K: Clone + Ord,
-    Target: Protocol<Addr = A, Msg = T>,
-    Reply: behavior::Protocol<Addr = A, Msg = OrderGateOutcome<K, T>>,
+    TargetRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = T>>,
+    ReplyRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = OrderGateOutcome<K, T>>>,
 {
     type Base = Self;
     fn base(&self) -> &Self {
@@ -254,27 +256,31 @@ where
     }
 }
 
-impl<A, K, T, Target, Reply> behavior::Protocol for OrderGate<A, K, T, Target, Reply>
+impl<A, K, T, TargetRoute, ReplyRoute> behavior::Protocol
+    for OrderGate<A, K, T, TargetRoute, ReplyRoute>
 where
     A: Address,
     K: Clone + Ord,
-    Target: Protocol<Addr = A, Msg = T>,
-    Reply: behavior::Protocol<Addr = A, Msg = OrderGateOutcome<K, T>>,
+    TargetRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = T>>,
+    ReplyRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = OrderGateOutcome<K, T>>>,
 {
     type Addr = A;
-    type Msg = OrderGateMessage<K, T, Target, Reply>;
+    type Msg = OrderGateMessage<K, T, TargetRoute, ReplyRoute>;
 }
 
-impl<A, K, T, Target, Reply> Behavior for OrderGate<A, K, T, Target, Reply>
+impl<A, K, T, TargetRoute, ReplyRoute> Behavior for OrderGate<A, K, T, TargetRoute, ReplyRoute>
 where
     A: Address,
     K: Clone + Ord,
-    Target: Protocol<Addr = A, Msg = T>,
-    Reply: behavior::Protocol<Addr = A, Msg = OrderGateOutcome<K, T>>,
+    TargetRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = T>>,
+    ReplyRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = OrderGateOutcome<K, T>>>,
+    TargetRoute::Sends:
+        behavior::SendsFor<User<A, OrderGateMessage<K, T, TargetRoute, ReplyRoute>>>,
+    ReplyRoute::Sends: behavior::SendsFor<User<A, OrderGateMessage<K, T, TargetRoute, ReplyRoute>>>,
 {
     type Protocol = Self;
     type Event = User<A, crate::BehaviorMessage<Self>>;
-    type Sends = DeliveryOutcomes<Target, Reply>;
+    type Sends = DeliveryOutcomes<TargetRoute::Sends, ReplyRoute::Sends>;
     type Ph = Never;
     type Error = Never;
     type Birth = NoBirths;
@@ -295,7 +301,7 @@ where
 mod tests {
     use super::*;
     use crate::Activate as _;
-    use behavior::MailAddr;
+    use behavior::{Delivery, MailAddr, Recipient};
     struct Target;
     struct Reply;
     macro_rules! leaf {
@@ -324,12 +330,17 @@ mod tests {
     }
     leaf!(Target, u8);
     leaf!(Reply,OrderGateOutcome<u8,u8>);
-    type Subject = OrderGate<MailAddr, u8, u8, Target, Reply>;
+    type Subject = OrderGate<MailAddr, u8, u8, Recipient<Target>, Recipient<Reply>>;
     fn hold(
         s: &mut crate::Active<Subject>,
         key: u8,
         value: u8,
-    ) -> Actions<MailAddr, Never, DeliveryOutcomes<Target, Reply>, NoBirths> {
+    ) -> Actions<
+        MailAddr,
+        Never,
+        DeliveryOutcomes<Vec<Delivery<Target>>, Vec<Delivery<Reply>>>,
+        NoBirths,
+    > {
         s.receive(
             MailAddr(9),
             OrderGateMessage::Hold {
@@ -344,7 +355,12 @@ mod tests {
     fn open(
         s: &mut crate::Active<Subject>,
         through: u8,
-    ) -> Actions<MailAddr, Never, DeliveryOutcomes<Target, Reply>, NoBirths> {
+    ) -> Actions<
+        MailAddr,
+        Never,
+        DeliveryOutcomes<Vec<Delivery<Target>>, Vec<Delivery<Reply>>>,
+        NoBirths,
+    > {
         s.receive(
             MailAddr(9),
             OrderGateMessage::OpenThrough {
@@ -357,8 +373,14 @@ mod tests {
     #[test]
     fn opening_releases_in_key_order_and_future_open_keys_deliver_immediately() {
         let mut s = (Subject::new()).initialize().unwrap().behavior;
-        let _ = hold(&mut s, 3, 30);
-        let _ = hold(&mut s, 1, 10);
+        assert!(matches!(
+            hold(&mut s, 3, 30).sends.outcomes[0].message,
+            OrderGateOutcome::Held { key: 3, held: 1 }
+        ));
+        assert!(matches!(
+            hold(&mut s, 1, 10).sends.outcomes[0].message,
+            OrderGateOutcome::Held { key: 1, held: 2 }
+        ));
         let a = open(&mut s, 2);
         assert_eq!(
             a.sends
@@ -375,12 +397,22 @@ mod tests {
     #[test]
     fn duplicate_and_stale_opening_are_atomic() {
         let mut s = (Subject::new()).initialize().unwrap().behavior;
-        let _ = hold(&mut s, 2, 20);
+        assert!(matches!(
+            hold(&mut s, 2, 20).sends.outcomes[0].message,
+            OrderGateOutcome::Held { key: 2, held: 1 }
+        ));
         assert!(matches!(
             hold(&mut s, 2, 21).sends.outcomes[0].message,
             OrderGateOutcome::Duplicate { value: 21, .. }
         ));
-        let _ = open(&mut s, 1);
+        assert!(matches!(
+            open(&mut s, 1).sends.outcomes[0].message,
+            OrderGateOutcome::Opened {
+                through: 1,
+                released: 0,
+                held: 1
+            }
+        ));
         assert!(matches!(
             open(&mut s, 1).sends.outcomes[0].message,
             OrderGateOutcome::StaleOpening { .. }

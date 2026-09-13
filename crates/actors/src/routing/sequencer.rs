@@ -5,9 +5,11 @@ use std::collections::BTreeMap;
 use super::DeliveryOutcomes;
 
 use behavior::{
-    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, Never, NoBirths, Protocol,
-    Recipient, User,
+    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Never, NoBirths, Protocol,
+    SendEffects, User,
 };
+
+use crate::DeliveryRoute;
 
 /// A position in a [`Sequencer`] stream.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -40,6 +42,8 @@ pub enum SequencerOutcome<T> {
     },
     /// The position precedes the current expected position.
     Stale {
+        /// Rejected sequence position.
+        sequence: Sequence,
         /// Rejected value, returned without cloning or loss.
         value: T,
         /// Current expected position.
@@ -54,13 +58,15 @@ pub enum SequencerOutcome<T> {
     },
     /// The sequence domain has no representable successor.
     Exhausted {
+        /// Rejected sequence position.
+        sequence: Sequence,
         /// Rejected value.
         value: T,
     },
 }
 
 /// Commands accepted by [`Sequencer`].
-pub enum SequencerMessage<T, Target: Protocol, Reply: behavior::Protocol> {
+pub enum SequencerMessage<T, TargetRoute, ReplyRoute> {
     /// Offer one value for delivery after all preceding positions.
     Offer {
         /// Explicit sequence position.
@@ -68,15 +74,15 @@ pub enum SequencerMessage<T, Target: Protocol, Reply: behavior::Protocol> {
         /// Owned value.
         value: T,
         /// Destination used when this position becomes contiguous.
-        to: Recipient<Target>,
+        to: TargetRoute,
         /// Recipient for the complete offer outcome.
-        reply_to: Recipient<Reply>,
+        reply_to: ReplyRoute,
     },
 }
 
-struct Pending<T, Target: Protocol> {
+struct Pending<T, TargetRoute> {
     value: T,
-    to: Recipient<Target>,
+    to: TargetRoute,
 }
 
 /// Deterministic gap-buffered ordered-delivery policy.
@@ -95,19 +101,19 @@ struct Pending<T, Target: Protocol> {
 pub struct Sequencer<
     A: Address,
     T,
-    Target: Protocol<Addr = A, Msg = T>,
-    Reply: behavior::Protocol<Addr = A, Msg = SequencerOutcome<T>>,
+    TargetRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = T>>,
+    ReplyRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = SequencerOutcome<T>>>,
 > {
     expected: Option<Sequence>,
-    pending: BTreeMap<Sequence, Pending<T, Target>>,
-    marker: core::marker::PhantomData<fn() -> (A, Reply)>,
+    pending: BTreeMap<Sequence, Pending<T, TargetRoute>>,
+    marker: core::marker::PhantomData<fn() -> (A, ReplyRoute)>,
 }
 
-impl<A, T, Target, Reply> Sequencer<A, T, Target, Reply>
+impl<A, T, TargetRoute, ReplyRoute> Sequencer<A, T, TargetRoute, ReplyRoute>
 where
     A: Address,
-    Target: Protocol<Addr = A, Msg = T>,
-    Reply: behavior::Protocol<Addr = A, Msg = SequencerOutcome<T>>,
+    TargetRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = T>>,
+    ReplyRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = SequencerOutcome<T>>>,
 {
     /// Construct an empty sequencer beginning at `first`.
     #[must_use]
@@ -132,21 +138,21 @@ where
     }
 
     fn actions(
-        deliveries: Vec<Delivery<Target>>,
-        outcome: Delivery<Reply>,
-    ) -> Actions<A, Never, DeliveryOutcomes<Target, Reply>, NoBirths> {
+        deliveries: TargetRoute::Sends,
+        outcomes: ReplyRoute::Sends,
+    ) -> Actions<A, Never, DeliveryOutcomes<TargetRoute::Sends, ReplyRoute::Sends>, NoBirths> {
         Actions::send(DeliveryOutcomes {
             deliveries,
-            outcomes: vec![outcome],
+            outcomes,
         })
     }
 }
 
-impl<A, T, Target, Reply> BehaviorBase for Sequencer<A, T, Target, Reply>
+impl<A, T, TargetRoute, ReplyRoute> BehaviorBase for Sequencer<A, T, TargetRoute, ReplyRoute>
 where
     A: Address,
-    Target: Protocol<Addr = A, Msg = T>,
-    Reply: behavior::Protocol<Addr = A, Msg = SequencerOutcome<T>>,
+    TargetRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = T>>,
+    ReplyRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = SequencerOutcome<T>>>,
 {
     type Base = Self;
 
@@ -155,25 +161,27 @@ where
     }
 }
 
-impl<A, T, Target, Reply> behavior::Protocol for Sequencer<A, T, Target, Reply>
+impl<A, T, TargetRoute, ReplyRoute> behavior::Protocol for Sequencer<A, T, TargetRoute, ReplyRoute>
 where
     A: Address,
-    Target: Protocol<Addr = A, Msg = T>,
-    Reply: behavior::Protocol<Addr = A, Msg = SequencerOutcome<T>>,
+    TargetRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = T>>,
+    ReplyRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = SequencerOutcome<T>>>,
 {
     type Addr = A;
-    type Msg = SequencerMessage<T, Target, Reply>;
+    type Msg = SequencerMessage<T, TargetRoute, ReplyRoute>;
 }
 
-impl<A, T, Target, Reply> Behavior for Sequencer<A, T, Target, Reply>
+impl<A, T, TargetRoute, ReplyRoute> Behavior for Sequencer<A, T, TargetRoute, ReplyRoute>
 where
     A: Address,
-    Target: Protocol<Addr = A, Msg = T>,
-    Reply: behavior::Protocol<Addr = A, Msg = SequencerOutcome<T>>,
+    TargetRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = T>>,
+    ReplyRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = SequencerOutcome<T>>>,
+    TargetRoute::Sends: behavior::SendsFor<User<A, SequencerMessage<T, TargetRoute, ReplyRoute>>>,
+    ReplyRoute::Sends: behavior::SendsFor<User<A, SequencerMessage<T, TargetRoute, ReplyRoute>>>,
 {
     type Protocol = Self;
     type Event = User<A, crate::BehaviorMessage<Self>>;
-    type Sends = DeliveryOutcomes<Target, Reply>;
+    type Sends = DeliveryOutcomes<TargetRoute::Sends, ReplyRoute::Sends>;
     type Ph = Never;
     type Error = Never;
     type Birth = NoBirths;
@@ -187,28 +195,34 @@ where
         } = event.message;
         let Some(expected) = self.expected else {
             return Ok(Self::actions(
-                Vec::new(),
-                Delivery::new(reply_to, SequencerOutcome::Exhausted { value }),
+                TargetRoute::Sends::empty(),
+                reply_to.deliver(SequencerOutcome::Exhausted { sequence, value }),
             ));
         };
         if sequence < expected {
             return Ok(Self::actions(
-                Vec::new(),
-                Delivery::new(reply_to, SequencerOutcome::Stale { value, expected }),
+                TargetRoute::Sends::empty(),
+                reply_to.deliver(SequencerOutcome::Stale {
+                    sequence,
+                    value,
+                    expected,
+                }),
             ));
         }
         if self.pending.contains_key(&sequence) {
             return Ok(Self::actions(
-                Vec::new(),
-                Delivery::new(reply_to, SequencerOutcome::Duplicate { value, sequence }),
+                TargetRoute::Sends::empty(),
+                reply_to.deliver(SequencerOutcome::Duplicate { value, sequence }),
             ));
         }
 
         self.pending.insert(sequence, Pending { value, to });
         let mut cursor = expected;
-        let mut deliveries = Vec::new();
+        let mut deliveries = TargetRoute::Sends::empty();
+        let mut released = 0;
         while let Some(pending) = self.pending.remove(&cursor) {
-            deliveries.push(Delivery::new(pending.to, pending.value));
+            deliveries.append(pending.to.deliver(pending.value));
+            released += 1;
             if cursor.0 == u64::MAX {
                 self.expected = None;
                 break;
@@ -217,17 +231,17 @@ where
             self.expected = Some(cursor);
         }
         let outcome = SequencerOutcome::Accepted {
-            released: deliveries.len(),
+            released,
             buffered: self.pending.len(),
         };
-        Ok(Self::actions(deliveries, Delivery::new(reply_to, outcome)))
+        Ok(Self::actions(deliveries, reply_to.deliver(outcome)))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::Activate as _;
-    use behavior::{MailAddr, Step};
+    use behavior::{Delivery, MailAddr, Recipient, Step};
 
     use super::*;
 
@@ -262,7 +276,7 @@ mod tests {
     leaf!(Target, u8);
     leaf!(Reply, SequencerOutcome<u8>);
 
-    type Subject = Sequencer<MailAddr, u8, Target, Reply>;
+    type Subject = Sequencer<MailAddr, u8, Recipient<Target>, Recipient<Reply>>;
 
     fn offer(
         subject: &mut crate::Active<Subject>,
@@ -271,7 +285,7 @@ mod tests {
     ) -> behavior::Actions<
         MailAddr,
         behavior::Never,
-        DeliveryOutcomes<Target, Reply>,
+        DeliveryOutcomes<Vec<Delivery<Target>>, Vec<Delivery<Reply>>>,
         behavior::NoBirths,
     > {
         subject
@@ -322,7 +336,13 @@ mod tests {
     #[test]
     fn stale_and_duplicate_offers_return_the_rejected_value() {
         let mut subject = (Subject::new(Sequence(1))).initialize().unwrap().behavior;
-        let _ = offer(&mut subject, 2, 20);
+        assert!(matches!(
+            offer(&mut subject, 2, 20).sends.outcomes[0].message,
+            SequencerOutcome::Accepted {
+                released: 0,
+                buffered: 1
+            }
+        ));
         let duplicate = offer(&mut subject, 2, 21);
         assert!(matches!(
             duplicate.sends.outcomes[0].message,
@@ -331,11 +351,18 @@ mod tests {
                 sequence: Sequence(2)
             }
         ));
-        let _ = offer(&mut subject, 1, 10);
+        assert!(matches!(
+            offer(&mut subject, 1, 10).sends.outcomes[0].message,
+            SequencerOutcome::Accepted {
+                released: 2,
+                buffered: 0
+            }
+        ));
         let stale = offer(&mut subject, 1, 11);
         assert!(matches!(
             stale.sends.outcomes[0].message,
             SequencerOutcome::Stale {
+                sequence: Sequence(1),
                 value: 11,
                 expected: Sequence(3)
             }
@@ -355,7 +382,10 @@ mod tests {
         let rejected = offer(&mut subject, u64::MAX, 2);
         assert!(matches!(
             rejected.sends.outcomes[0].message,
-            SequencerOutcome::Exhausted { value: 2 }
+            SequencerOutcome::Exhausted {
+                sequence: Sequence(u64::MAX),
+                value: 2,
+            }
         ));
     }
 }

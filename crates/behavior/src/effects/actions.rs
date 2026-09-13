@@ -1,10 +1,297 @@
 //! The explicit result of one actor behavior transition.
 
-use super::sending::{SendEffects, SendInput};
-use crate::actor::{Address, BirthMode, Create};
+use super::sending::{
+    ClassifySettlement, InterpretItem, InterpretSends, Interpretation, InterpreterFault,
+    ItemSettlement, SendEffects, SendInput, SendSettlements, SettledItem, SettlementStatus,
+    SourceAdmission, SourceCustody,
+};
+use crate::actor::{
+    Address, BirthMode, Births, ChildCreationProduct, ChildHead, ChildNamespaceExhausted,
+    CreateChild, CreationRejection, Creations, DispatchBirth, NoBirths, RoutedCreation,
+};
 use crate::next::{Never, Step, Stopped};
 
 pub type Become<Ph = Never> = Step<Ph, Stopped>;
+
+/// Complete owned settlement of one [`Actions`] value.
+///
+/// Creations retain their declared vector order, sends retain their named
+/// product shape, and `become_` is the exact verdict already committed by the
+/// pure behavior fold. The enclosing [`Interpretation`] records whether the
+/// interpreter completed or corrupted while retaining this entire shape.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ActionSettlement<Creations, Sends, Ph> {
+    pub creations: Creations,
+    pub sends: Sends,
+    pub become_: Become<Ph>,
+}
+
+/// Final settlement of the creation leg of one [`Actions`] value.
+#[doc(hidden)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum CreationSettlement<Requests, Settlements> {
+    /// The whole batch was routed and every child has an exact settlement.
+    Settled(Settlements),
+    /// Route preparation rejected the complete unchanged batch.
+    Rejected {
+        creations: Requests,
+        reason: ChildNamespaceExhausted,
+    },
+    /// Route preparation corrupted before transferring any request.
+    Corrupt {
+        creations: Requests,
+        fault: InterpreterFault,
+    },
+}
+
+/// Static complete-settlement product selected by one concrete action type.
+///
+/// This projection performs no interpretation and names no runtime. It lets a
+/// lifecycle host retain the exact result type of an action without rebuilding
+/// its creation or send products.
+pub trait ActionSettlements {
+    type Settlements;
+}
+
+impl<A, Ph, Sends, Birth> ActionSettlements for Actions<A, Ph, Sends, Birth>
+where
+    A: Address,
+    Sends: SendSettlements,
+    Birth: CreationSettlements<A>,
+{
+    type Settlements = ActionSettlement<Birth::Settlements, Sends::Settlements, Ph>;
+}
+
+impl<Requests, Settlements> ClassifySettlement for CreationSettlement<Requests, Settlements>
+where
+    Settlements: ClassifySettlement,
+{
+    fn settlement_status(&self) -> SettlementStatus {
+        match self {
+            Self::Settled(settlements) => settlements.settlement_status(),
+            Self::Rejected { .. } => SettlementStatus::Rejected,
+            Self::Corrupt { .. } => SettlementStatus::Corrupt,
+        }
+    }
+}
+
+impl<Item> ClassifySettlement for Creations<Item>
+where
+    Item: ClassifySettlement,
+{
+    fn settlement_status(&self) -> SettlementStatus {
+        let mut status = SettlementStatus::Accepted;
+        for item in self.iter() {
+            status = status.combine(item.settlement_status());
+        }
+        status
+    }
+}
+
+/// Static creation-settlement product selected by one birth mode.
+#[doc(hidden)]
+pub trait CreationSettlements<A: Address>: BirthMode {
+    type Settlements: ClassifySettlement;
+}
+
+impl<A: Address> CreationSettlements<A> for NoBirths {
+    type Settlements = Creations<Never>;
+}
+
+impl<A, C> CreationSettlements<A> for Births<C>
+where
+    A: Address,
+    C: ChildCreationProduct<A, ChildHead>,
+{
+    type Settlements = CreationSettlement<
+        Creations<CreateChild<A, C>>,
+        Creations<
+            SettledItem<
+                RoutedCreation<A, C>,
+                ItemSettlement<
+                    RoutedCreation<A, C>,
+                    <C as ChildCreationProduct<A, ChildHead>>::Result,
+                    CreationRejection,
+                    Never,
+                >,
+            >,
+        >,
+    >;
+}
+
+/// One complete creation batch returned to its live creator.
+///
+/// The value retains either every routed child settlement or the entire
+/// unchanged batch rejected during route preparation. It is interpreter-facing
+/// custody, not an application protocol or another creation operation.
+#[doc(hidden)]
+#[must_use = "a returned creation batch must be admitted or retained"]
+pub struct CreationsSettled<A, C>
+where
+    A: Address,
+    C: ChildCreationProduct<A, ChildHead>,
+{
+    settlement: <Births<C> as CreationSettlements<A>>::Settlements,
+}
+
+impl<A, C> CreationsSettled<A, C>
+where
+    A: Address,
+    C: ChildCreationProduct<A, ChildHead>,
+{
+    #[must_use]
+    pub const fn new(settlement: <Births<C> as CreationSettlements<A>>::Settlements) -> Self {
+        Self { settlement }
+    }
+
+    #[must_use]
+    pub fn into_settlement(self) -> <Births<C> as CreationSettlements<A>>::Settlements {
+        self.settlement
+    }
+}
+
+/// Generic admission of one complete creation result to its live creator.
+///
+/// `NoBirths` needs no host capability. `Births<C>` uses the same source
+/// admission law as returning send results. Closed admission returns the
+/// complete batch unchanged for parent or root custody.
+#[doc(hidden)]
+pub trait CreationCustody<A, Host, RootEvent>: CreationSettlements<A>
+where
+    A: Address,
+{
+    fn offer_creation(
+        settlement: Self::Settlements,
+        host: &mut Host,
+    ) -> impl core::future::Future<Output = SourceCustody<Self::Settlements>> + Send;
+}
+
+impl<A, Host, RootEvent> CreationCustody<A, Host, RootEvent> for NoBirths
+where
+    A: Address,
+{
+    fn offer_creation(
+        settlement: Self::Settlements,
+        _: &mut Host,
+    ) -> impl core::future::Future<Output = SourceCustody<Self::Settlements>> + Send {
+        core::future::ready(SourceCustody::Open(settlement))
+    }
+}
+
+impl<A, C, Host, RootEvent> CreationCustody<A, Host, RootEvent> for Births<C>
+where
+    A: Address,
+    A::Nonce: Send,
+    C: ChildCreationProduct<A, ChildHead> + Send,
+    <C as ChildCreationProduct<A, ChildHead>>::Result: Send,
+    Host: SourceAdmission<RootEvent, Births<C>, CreationsSettled<A, C>>,
+    RootEvent: crate::EventIngress<Births<C>, CreationsSettled<A, C>>,
+{
+    fn offer_creation(
+        settlement: Self::Settlements,
+        host: &mut Host,
+    ) -> impl core::future::Future<Output = SourceCustody<Self::Settlements>> + Send {
+        async move {
+            match host.admit_source(CreationsSettled::new(settlement)).await {
+                Ok(()) => SourceCustody::Open(CreationSettlement::Settled(Creations::empty())),
+                Err(returned) => SourceCustody::Closed(returned.into_settlement()),
+            }
+        }
+    }
+}
+
+/// Generic interpretation of the one creation leg selected by a birth mode.
+///
+/// `NoBirths` needs no runtime capability. `Births<C>` performs one real batch
+/// route attempt followed by independent child establishment in declared order.
+#[doc(hidden)]
+pub trait InterpretCreations<A, Interpreter, RootEvent, Path>: CreationSettlements<A>
+where
+    A: Address,
+{
+    fn interpret_creations(
+        creations: Creations<CreateChild<A, Self::Child>>,
+        interpreter: &mut Interpreter,
+    ) -> impl core::future::Future<Output = Interpretation<Self::Settlements>> + Send;
+}
+
+impl<A, Interpreter, RootEvent, Path> InterpretCreations<A, Interpreter, RootEvent, Path>
+    for NoBirths
+where
+    A: Address,
+{
+    fn interpret_creations(
+        _: Creations<CreateChild<A, Never>>,
+        _: &mut Interpreter,
+    ) -> impl core::future::Future<Output = Interpretation<Self::Settlements>> + Send {
+        core::future::ready(Interpretation::Complete(Creations::empty()))
+    }
+}
+
+impl<A, C, Interpreter, RootEvent, Path> InterpretCreations<A, Interpreter, RootEvent, Path>
+    for Births<C>
+where
+    A: Address,
+    A::Nonce: Send,
+    C: ChildCreationProduct<A, ChildHead> + DispatchBirth<A, Interpreter> + Send,
+    <C as ChildCreationProduct<A, ChildHead>>::Result: Send,
+    Interpreter: InterpretItem<Creations<CreateChild<A, C>>, RootEvent, Path> + Send,
+{
+    fn interpret_creations(
+        creations: Creations<CreateChild<A, C>>,
+        interpreter: &mut Interpreter,
+    ) -> impl core::future::Future<Output = Interpretation<Self::Settlements>> + Send {
+        async move {
+            let routed = match interpreter.interpret_item(creations).await {
+                ItemSettlement::Accepted(routed) => routed,
+                ItemSettlement::Rejected { item, reason } => {
+                    return Interpretation::Complete(CreationSettlement::Rejected {
+                        creations: item,
+                        reason,
+                    });
+                }
+                ItemSettlement::Blocked { prerequisite, .. } => match prerequisite {},
+                ItemSettlement::Corrupt { item, fault } => {
+                    return Interpretation::Corrupt(CreationSettlement::Corrupt {
+                        creations: item,
+                        fault,
+                    });
+                }
+            };
+
+            let mut remaining = routed.into_iter();
+            let mut settled = Vec::with_capacity(remaining.len());
+            while let Some(creation) = remaining.next() {
+                let (creation, route) = creation.into_parts();
+                let (id, child, kind) = creation.into_parts();
+                let settlement = child.dispatch_birth(id, route, kind, interpreter).await;
+                match settlement {
+                    corrupt @ ItemSettlement::Corrupt { .. } => {
+                        settled.push(SettledItem::Attempted(corrupt));
+                        settled.extend(remaining.map(SettledItem::Unattempted));
+                        return Interpretation::Corrupt(CreationSettlement::Settled(
+                            Creations::from_items(settled),
+                        ));
+                    }
+                    creation => settled.push(SettledItem::Attempted(creation)),
+                }
+            }
+            Interpretation::Complete(CreationSettlement::Settled(Creations::from_items(settled)))
+        }
+    }
+}
+
+impl<Creations, Sends, Ph> ClassifySettlement for ActionSettlement<Creations, Sends, Ph>
+where
+    Creations: ClassifySettlement,
+    Sends: ClassifySettlement,
+{
+    fn settlement_status(&self) -> SettlementStatus {
+        self.creations
+            .settlement_status()
+            .combine(self.sends.settlement_status())
+    }
+}
 
 /// Capability to append one communication at a statically selected lane while
 /// preserving every other actor-transition effect.
@@ -17,22 +304,21 @@ pub trait AppendSend<Input, Path>: Sized {
 /// Bombay's typed realization of the actor transition effects: communications,
 /// fresh actor creation, and next behavior or termination.
 ///
-/// An interpreter resolves every fresh creation in `creates` before
-/// interpreting any ordinary delivery or [`crate::InterpreterRequests`] request in
-/// `sends` from this value. A successful resolution installs and binds the
-/// child; a rejected resolution binds nothing. This ordering lets a same-action
-/// typed creation-observation request return the committed result rather than
-/// the behavior's intent. When creation is rejected, a same-action
-/// child-observation request for its nonce is consumed without installing an
-/// observation or emitting a child-stopped fact, while the creation-observation
-/// request reports the rejection. A later creation cannot
-/// inherit that consumed observation. Creation order is vector order, and each
-/// concrete named send lane retains its own order; this contract does not
-/// impose an order between independent lanes. Constructing a value remains
-/// pure.
+/// [`Actions::interpret`] resolves every fresh creation in `creates` before the
+/// named `sends` product. A committed resolution installs and binds the child;
+/// a semantic rejection binds nothing but remains an accepted interpretation
+/// receipt. This ordering lets a same-action [`crate::ChildDelivery`] or typed
+/// creation-observation request use the authoritative result rather than
+/// Behavior's intent. Each child-operation interpreter returns `Blocked` only
+/// when its exact binding prerequisite rejected, while independent later items
+/// are still attempted. Interpreter corruption retains the factual prefix and
+/// every exact remaining value. No later creation may inherit a failed binding.
+/// Creation order is vector order, and named send products declare their own
+/// stable order. Constructing a value remains pure.
+#[must_use = "actor transition effects must be interpreted, inspected, or retained"]
 pub struct Actions<A: Address, Ph, Sends, Birth: BirthMode> {
     pub sends: Sends,
-    pub creates: Vec<Create<A, Birth::Child>>,
+    pub creates: Creations<CreateChild<A, Birth::Child>>,
     pub become_: Become<Ph>,
 }
 
@@ -122,6 +408,56 @@ impl<A: Address, Ph, Sends, Birth: BirthMode> Actions<A, Ph, Sends, Birth> {
         <Sends as SendInput<Input, Path>>::emit(&mut self.sends, input);
         self
     }
+
+    /// Interpret this complete action value using one statically typed runtime.
+    ///
+    /// Creation items are attempted in vector order before the named send
+    /// product. Lawful creation rejection or blocking is retained and does not
+    /// suppress sends; concrete child-operation interpreters decide whether an
+    /// exact binding prerequisite was satisfied. Interpreter corruption stops
+    /// traversal and retains every later creation and the complete send product
+    /// as unattempted. The next-behavior verdict is never reconstructed.
+    pub async fn interpret<Interpreter, RootEvent, Path>(
+        self,
+        interpreter: &mut Interpreter,
+    ) -> Interpretation<
+        ActionSettlement<Birth::Settlements, <Sends as SendSettlements>::Settlements, Ph>,
+    >
+    where
+        Ph: Send,
+        Sends: InterpretSends<Interpreter, RootEvent, Path>,
+        Birth: InterpretCreations<A, Interpreter, RootEvent, Path>,
+        Interpreter: Send,
+    {
+        let Actions {
+            sends,
+            creates,
+            become_,
+        } = self;
+        let creations = match Birth::interpret_creations(creates, interpreter).await {
+            Interpretation::Complete(creations) => creations,
+            Interpretation::Corrupt(creations) => {
+                return Interpretation::Corrupt(ActionSettlement {
+                    creations,
+                    sends: Sends::unattempted(sends),
+                    become_,
+                });
+            }
+        };
+
+        match Sends::interpret(sends, interpreter).await {
+            Interpretation::Complete(sends) => Interpretation::Complete(ActionSettlement {
+                creations,
+                sends,
+                become_,
+            }),
+            Interpretation::Corrupt(sends) => Interpretation::Corrupt(ActionSettlement {
+                creations,
+                sends,
+                become_,
+            }),
+        }
+    }
 }
 
 impl<A, Ph, Sends, Birth, Input, Path> AppendSend<Input, Path> for Actions<A, Ph, Sends, Birth>
@@ -139,7 +475,7 @@ impl<A: Address, Ph, Sends: SendEffects, Birth: BirthMode> Actions<A, Ph, Sends,
     #[must_use]
     pub const fn new(
         sends: Sends,
-        creates: Vec<Create<A, Birth::Child>>,
+        creates: Creations<CreateChild<A, Birth::Child>>,
         become_: Become<Ph>,
     ) -> Self {
         Self {
@@ -153,7 +489,7 @@ impl<A: Address, Ph, Sends: SendEffects, Birth: BirthMode> Actions<A, Ph, Sends,
     pub fn just(become_: Become<Ph>) -> Self {
         Self {
             sends: Sends::empty(),
-            creates: Vec::new(),
+            creates: Creations::empty(),
             become_,
         }
     }
@@ -174,20 +510,23 @@ impl<A: Address, Ph, Sends: SendEffects, Birth: BirthMode> Actions<A, Ph, Sends,
     /// Continue after emitting the complete declared send product.
     #[must_use]
     pub fn send(sends: Sends) -> Self {
-        Self::new(sends, Vec::new(), Step::Continue)
+        Self::new(sends, Creations::empty(), Step::Continue)
     }
 
     /// Continue after staging the complete declared creation product.
     #[must_use]
-    pub fn create(creates: Vec<Create<A, Birth::Child>>) -> Self {
+    pub fn create(creates: Creations<CreateChild<A, Birth::Child>>) -> Self {
         Self::new(Sends::empty(), creates, Step::Continue)
     }
 }
 
 impl<A: Address, Ph, Sends, Birth: BirthMode>
-    From<(Sends, Vec<Create<A, Birth::Child>>, Become<Ph>)> for Actions<A, Ph, Sends, Birth>
+    From<(Sends, Creations<CreateChild<A, Birth::Child>>, Become<Ph>)>
+    for Actions<A, Ph, Sends, Birth>
 {
-    fn from((sends, creates, become_): (Sends, Vec<Create<A, Birth::Child>>, Become<Ph>)) -> Self {
+    fn from(
+        (sends, creates, become_): (Sends, Creations<CreateChild<A, Birth::Child>>, Become<Ph>),
+    ) -> Self {
         Self {
             sends,
             creates,
@@ -201,31 +540,51 @@ pub type Acted<A, Ph, Sends, Birth, E> = Result<Actions<A, Ph, Sends, Birth>, E>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Births, CreationKind, MailAddr, NoBirths, Own};
+    use crate::{Births, CreationSequence, MailAddr, NoBirths, Own};
+
+    fn two_ids() -> (crate::CreationId, crate::CreationId) {
+        let mut sequence = CreationSequence::new();
+        let first = sequence.issue().expect("the first creation ID exists");
+        let second = sequence.issue().expect("the second creation ID exists");
+        (first, second)
+    }
 
     #[test]
     fn equality_and_debug_cover_every_named_effect_leg() {
         type Plain = Actions<MailAddr, u8, Vec<u8>, NoBirths>;
         type Creating = Actions<MailAddr, Never, Vec<u8>, Births<u8>>;
 
-        let value = Plain::new(vec![1], Vec::new(), Step::Goto(3));
-        assert_eq!(value, Plain::new(vec![1], Vec::new(), Step::Goto(3)));
-        assert_ne!(value, Plain::new(vec![2], Vec::new(), Step::Goto(3)));
-        assert_ne!(value, Plain::new(vec![1], Vec::new(), Step::Goto(4)));
-        assert_ne!(value, Plain::new(vec![1], Vec::new(), Step::Continue));
+        let value = Plain::new(vec![1], Creations::empty(), Step::Goto(3));
+        assert_eq!(
+            value,
+            Plain::new(vec![1], Creations::empty(), Step::Goto(3))
+        );
+        assert_ne!(
+            value,
+            Plain::new(vec![2], Creations::empty(), Step::Goto(3))
+        );
+        assert_ne!(
+            value,
+            Plain::new(vec![1], Creations::empty(), Step::Goto(4))
+        );
+        assert_ne!(
+            value,
+            Plain::new(vec![1], Creations::empty(), Step::Continue)
+        );
         assert_eq!(
             format!("{value:?}"),
-            "Actions { sends: [1], creates: [], become: Goto(3) }"
+            "Actions { sends: [1], creates: Creations { items: [] }, become: Goto(3) }"
         );
 
+        let (first, second) = two_ids();
         let created = Creating::new(
             Vec::new(),
-            vec![Create::new(7, 9, CreationKind::Birth)],
+            Creations::one(CreateChild::birth(first, 9)),
             Step::Continue,
         );
         let other_creation = Creating::new(
             Vec::new(),
-            vec![Create::new(8, 9, CreationKind::Birth)],
+            Creations::one(CreateChild::birth(second, 9)),
             Step::Continue,
         );
         assert_ne!(created, other_creation);
@@ -233,12 +592,14 @@ mod tests {
 
     #[test]
     fn mapping_sends_preserves_creation_order_and_verdict() {
+        let (first, second) = two_ids();
         let actions: Actions<MailAddr, u8, Vec<u8>, Births<()>> = Actions::new(
             vec![1, 2],
-            vec![
-                Create::new(3, (), CreationKind::Birth),
-                Create::new(4, (), CreationKind::replacement_of(3)),
-            ],
+            Creations::one(CreateChild::birth(first, ())).and(CreateChild::replacement(
+                second,
+                first,
+                (),
+            )),
             Step::Goto(7),
         );
 
@@ -248,36 +609,42 @@ mod tests {
             mapped
                 .creates
                 .iter()
-                .map(|creation| creation.nonce)
+                .map(CreateChild::id)
                 .collect::<Vec<_>>(),
-            [3, 4]
+            [first, second]
         );
         assert!(matches!(mapped.become_, Step::Goto(7)));
     }
 
     #[test]
     fn mapping_become_preserves_sends_and_creation_order() {
+        let (first, _) = two_ids();
         let actions: Actions<MailAddr, u8, Vec<u8>, Births<()>> = Actions::new(
             vec![1, 2],
-            vec![Create::new(3, (), CreationKind::Birth)],
+            Creations::one(CreateChild::birth(first, ())),
             Step::Goto(7),
         );
 
         let mapped: Actions<MailAddr, Never, Vec<u8>, Births<()>> =
             actions.map_become(|_| Step::Stop(Stopped));
         assert_eq!(mapped.sends, [1, 2]);
-        assert_eq!(mapped.creates[0].nonce, 3);
+        assert_eq!(
+            mapped.creates.iter().next().map(CreateChild::id),
+            Some(first)
+        );
         assert!(matches!(mapped.become_, Step::Stop(Stopped)));
     }
 
     #[test]
     fn fluent_send_changes_only_the_selected_effect_leg() {
+        let (first, second) = two_ids();
         let actions: Actions<MailAddr, u8, Vec<u8>, Births<()>> = Actions::new(
             vec![1],
-            vec![
-                Create::new(3, (), CreationKind::Birth),
-                Create::new(4, (), CreationKind::replacement_of(3)),
-            ],
+            Creations::one(CreateChild::birth(first, ())).and(CreateChild::replacement(
+                second,
+                first,
+                (),
+            )),
             Step::Goto(7),
         )
         .with_send::<_, Own>(2)
@@ -288,9 +655,9 @@ mod tests {
             actions
                 .creates
                 .iter()
-                .map(|creation| creation.nonce)
+                .map(CreateChild::id)
                 .collect::<Vec<_>>(),
-            [3, 4]
+            [first, second]
         );
         assert!(matches!(actions.become_, Step::Goto(7)));
 

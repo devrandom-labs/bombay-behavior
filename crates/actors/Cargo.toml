@@ -16,11 +16,16 @@ name = "behavior_actors"
 
 [dependencies]
 behavior.workspace = true
+behavior-macros.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "sync"] }
+
+[[bench]]
+name = "fifo_pool"
+harness = false
 
 [lints]
 workspace = true

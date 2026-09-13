@@ -56,7 +56,7 @@ impl Recorder {
         self.seen.push((from, message));
         Ok(Actions {
             sends: vec![Delivery::new(Recipient::global(from), message)],
-            creates: Vec::new(),
+            creates: behavior::Creations::empty(),
             become_: Step::Continue,
         })
     }
@@ -90,12 +90,35 @@ proptest! {
         let behavior = behavior::Stash::new(Recorder::default(), route);
         let initialized = behavior.initialize().unwrap();
         let mut behavior = initialized.behavior;
+        let mut effect_trace = Vec::new();
 
         for (from, message) in &messages {
-            behavior.transition(UserEvent::user(MailAddr(*from), *message)).unwrap();
+            let actions = behavior
+                .transition(UserEvent::user(MailAddr(*from), *message))
+                .unwrap();
+            effect_trace.extend(
+                actions
+                    .sends
+                    .iter()
+                    .map(|delivery| (delivery.to.address(), delivery.message)),
+            );
+            prop_assert!(actions.creates.is_empty());
+            prop_assert!(matches!(actions.become_, Step::Continue));
+            prop_assert_eq!(&effect_trace, &behavior.base().seen);
         }
         for _ in &releases {
-            behavior.transition(UserEvent::user(MailAddr(99), 7)).unwrap();
+            let actions = behavior
+                .transition(UserEvent::user(MailAddr(99), 7))
+                .unwrap();
+            effect_trace.extend(
+                actions
+                    .sends
+                    .iter()
+                    .map(|delivery| (delivery.to.address(), delivery.message)),
+            );
+            prop_assert!(actions.creates.is_empty());
+            prop_assert!(matches!(actions.become_, Step::Continue));
+            prop_assert_eq!(&effect_trace, &behavior.base().seen);
         }
 
         // Independent filter model: delivered == route-admitted messages in
@@ -178,6 +201,7 @@ fn stash_exhaustive_sequences_match_the_filter_model() {
             let behavior = behavior::Stash::new(Recorder::default(), residue_route);
             let initialized = behavior.initialize().unwrap();
             let mut behavior = initialized.behavior;
+            let mut effect_trace = Vec::new();
             let mut residues = Vec::with_capacity(length);
             let mut rest = code;
             for _ in 0..length {
@@ -186,9 +210,18 @@ fn stash_exhaustive_sequences_match_the_filter_model() {
             }
             for (index, residue) in residues.iter().enumerate() {
                 let message = u8::try_from(index * ALPHABET + *residue).unwrap();
-                runtime
+                let actions = runtime
                     .block_on(async { behavior.transition(UserEvent::user(MailAddr(1), message)) })
                     .unwrap();
+                effect_trace.extend(
+                    actions
+                        .sends
+                        .iter()
+                        .map(|delivery| (delivery.to.address(), delivery.message)),
+                );
+                assert!(actions.creates.is_empty());
+                assert!(matches!(actions.become_, Step::Continue));
+                assert_eq!(effect_trace, behavior.base().seen);
             }
             // Expected: route-admitted messages (Release/Deliver) in arrival
             // order with origins; held == Stash-routed count.
@@ -228,7 +261,7 @@ impl StopRecorder {
         self.seen.push((from, message));
         Ok(Actions {
             sends: vec![Delivery::new(Recipient::global(from), message)],
-            creates: Vec::new(),
+            creates: behavior::Creations::empty(),
             become_: if message == 9 {
                 Step::Stop(behavior::Stopped)
             } else {
@@ -240,7 +273,7 @@ impl StopRecorder {
 
 /// The stash filter interacting with a stopping inner: delivered == the
 /// route-admitted prefix up to and including the first stopping message,
-/// held == the stash-routed count within that prefix, and the fold stops.
+/// held == the stash-routed count within that prefix, and the behavior stops.
 #[test]
 fn stash_filter_with_a_stopping_inner_matches_the_prefix_model() {
     let runtime = Builder::new_current_thread().enable_all().build().unwrap();

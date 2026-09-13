@@ -1,10 +1,11 @@
-//! Initialization is a consuming typestate transition. Definitions can only
-//! initialize; active behaviors can only process events.
+//! Initialization precedes ordinary actor input.
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use behavior::{Acted, Actions, Activate, Delivery, MailAddr, Never, Recipient, Step};
-use std::time::Instant;
+use proptest::collection::vec;
+use proptest::prelude::ProptestConfig;
+use proptest::{prop_assert_eq, proptest};
 
 #[derive(Default)]
 struct Recorder {
@@ -25,55 +26,66 @@ impl Recorder {
         Never,
     > {
         self.seen.push((from, message));
-        Ok(Actions {
-            sends: vec![Delivery::new(Recipient::global(from), message)],
-            creates: Vec::new(),
-            become_: Step::Continue,
-        })
+        Ok(Actions::send(vec![Delivery::new(
+            Recipient::global(from),
+            message,
+        )]))
     }
 }
 
-type Child = Recorder;
-
-fn child(_index: usize) -> Child {
-    Recorder::default()
-}
-
-#[tokio::test]
-async fn deadline_initialization_emits_exactly_one_schedule() {
+#[test]
+fn deadline_initialization_emits_exactly_one_schedule() {
     let due = Instant::now() + Duration::from_secs(1);
-    let behavior =
+    let deadline =
         behavior::Deadline::new(Recorder::default(), behavior::TimerId(0), Some(due), |_| {
-            Ok(Step::Continue)
+            Step::Continue
         });
-    let initialized = behavior.initialize().unwrap();
+    let initialized = deadline.initialize().expect("deadline initializes");
     assert_eq!(initialized.actions.sends.owned.len(), 1);
 }
 
-#[tokio::test]
-async fn initialized_behavior_processes_mailbox_events() {
+#[test]
+fn initialized_behavior_processes_mailbox_events() {
     let peer = MailAddr(44);
-    let initialized = (Recorder::default()).initialize().unwrap();
-    let mut behavior = initialized.behavior;
-    behavior.receive(peer, 7).unwrap();
-    assert_eq!(behavior.seen, [(peer, 7)]);
+    let initialized = Recorder::default()
+        .initialize()
+        .expect("recorder initializes");
+    let mut recorder = initialized.behavior;
+    let actions = recorder.receive(peer, 7).expect("recorder accepts input");
+    assert_eq!(actions.sends.len(), 1);
+    assert_eq!(actions.sends[0].to.address(), peer);
+    assert_eq!(actions.sends[0].message, 7);
+    assert!(actions.creates.is_empty());
+    assert!(matches!(actions.become_, Step::Continue));
+    assert_eq!(recorder.seen, [(peer, 7)]);
 }
 
-#[tokio::test]
-async fn supervisor_initialization_emits_the_configured_fleet_once() {
-    let behavior = behavior::Supervisor::new(
-        behavior::ChildTopology::new((0..2).map(|index| u64::try_from(index).unwrap()), |index| {
-            Some(child(index))
-        }),
-        behavior::RestartConfiguration::new(
-            behavior::Strategy::OneForOne,
-            behavior::RestartPolicy::Transient,
-            1,
-            std::time::Duration::from_secs(5),
-        ),
-    )
-    .unwrap();
-    let initialized = behavior.initialize().unwrap();
-    assert_eq!(initialized.actions.creates.len(), 2);
-    assert_eq!(initialized.actions.sends.child_observations.len(), 2);
+proptest! {
+    #![proptest_config(ProptestConfig {
+        cases: 512,
+        max_shrink_iters: 100_000,
+        ..ProptestConfig::default()
+    })]
+
+    #[test]
+    fn deadline_initialization_preserves_each_due_time(
+        offsets in vec(0_u64..1_000_000, 1..32)
+    ) {
+        let origin = Instant::now();
+
+        for offset in offsets {
+            let due = origin + Duration::from_nanos(offset);
+            let initialized = behavior::Deadline::new(
+                Recorder::default(),
+                behavior::TimerId(0),
+                Some(due),
+                |_| Step::Continue,
+            )
+            .initialize()
+            .unwrap();
+
+            prop_assert_eq!(initialized.actions.sends.owned.len(), 1);
+            prop_assert_eq!(initialized.actions.sends.owned[0].at, due);
+        }
+    }
 }

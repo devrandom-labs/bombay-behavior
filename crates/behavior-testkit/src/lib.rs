@@ -2,7 +2,7 @@
 
 use std::collections::VecDeque;
 
-use behavior::{ActionReducer, Active, Address, Behavior, BirthMode, Create, SendEffects};
+use behavior::{Active, Behavior, BirthMode, CreateChild, SendEffects, Step, Stopped};
 use core::marker::PhantomData;
 
 /// A nominal, inert destination used by behavior tests that inspect emitted
@@ -13,8 +13,6 @@ impl<M> behavior::Protocol for TestRecipient<M> {
     type Addr = behavior::MailAddr;
     type Msg = M;
 }
-
-use core::ops::ControlFlow;
 
 /// Test-fixture shorthand for activating a raw concrete behavior through the
 /// same activation boundary used by production definitions.
@@ -56,11 +54,21 @@ impl<E> Mailbox<E> {
     }
 }
 
+/// Why the finite test driver returned control to its caller.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DriveDisposition {
+    /// Every queued event was processed without a termination decision.
+    MailboxDrained,
+    /// The behavior designated termination and the mailbox may retain a suffix.
+    BehaviorStopped(Stopped),
+}
+
+/// Complete observation of one finite test-driver run.
 pub struct Trace<B: Behavior> {
     pub behavior: Active<B>,
     pub sends: B::Sends,
-    pub creates: Vec<Create<behavior::BehaviorAddr<B>, <B::Birth as BirthMode>::Child>>,
-    pub stopped: bool,
+    pub creates: Vec<CreateChild<behavior::BehaviorAddr<B>, <B::Birth as BirthMode>::Child>>,
+    pub disposition: DriveDisposition,
     pub transitions: usize,
     pub pending: usize,
 }
@@ -71,43 +79,39 @@ pub struct Trace<B: Behavior> {
 ///
 /// # Errors
 /// Returns the behavior's first controlled failure (`B::Error`).
-pub fn drive<B, A, Sends, Br>(
-    definition: B,
-    mailbox: &mut Mailbox<B::Event>,
-) -> Result<Trace<B>, B::Error>
+pub fn drive<B>(definition: B, mailbox: &mut Mailbox<B::Event>) -> Result<Trace<B>, B::Error>
 where
-    A: Address,
-    Sends: SendEffects,
-    Br: BirthMode,
-    B: Behavior<Ph = behavior::Never, Sends = Sends, Birth = Br>,
-    B::Protocol: behavior::Protocol<Addr = A>,
+    B: Behavior<Ph = behavior::Never>,
 {
     let initialized = behavior::Activate::initialize(definition)?;
     let mut behavior = initialized.behavior;
-    let mut fold = ActionReducer::new();
-    let mut exit = match fold.push(initialized.actions) {
-        ControlFlow::Continue(()) => None,
-        ControlFlow::Break(exit) => Some(exit),
-    };
+    let mut sends = B::Sends::empty();
+    let mut creates = Vec::new();
+    let mut transitions = 0;
+    let mut actions = initialized.actions;
 
-    while exit.is_none() {
+    let disposition = loop {
+        transitions += 1;
+        sends.append(actions.sends);
+        creates.extend(actions.creates);
+        match actions.become_ {
+            Step::Continue => {}
+            Step::Goto(never) => match never {},
+            Step::Stop(stopped) => break DriveDisposition::BehaviorStopped(stopped),
+        }
+
         let Some(event) = mailbox.receive() else {
-            break;
+            break DriveDisposition::MailboxDrained;
         };
-        exit = match fold.push(behavior.transition(event)?) {
-            ControlFlow::Continue(()) => None,
-            ControlFlow::Break(exit) => Some(exit),
-        };
-    }
-
-    let folded = fold.finish(exit.is_some());
+        actions = behavior.transition(event)?;
+    };
 
     Ok(Trace {
         behavior,
-        sends: folded.effects.sends,
-        creates: folded.effects.creates,
-        stopped: folded.stopped,
-        transitions: folded.transitions,
+        sends,
+        creates,
+        disposition,
+        transitions,
         pending: mailbox.pending(),
     })
 }

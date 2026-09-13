@@ -1,9 +1,12 @@
+use core::future::Future;
 use std::time::Duration;
 
 use behavior::EventLayer;
 use behavior::{
-    Acted, Actions, Activate, Behavior, Births, Create, Delivery, MailAddr, Never, NoBirths,
-    Recipient, Step, TimerElapsed, TimerGeneration, TimerId, User, UserEvent,
+    Acted, ActionItem, Actions, Activate, Behavior, Births, CreateChild, CreationKind,
+    CreationSequence, Creations, Delivery, Here, Inside, InterpretItem, InterpretSends,
+    Interpretation, ItemSettlement, MailAddr, Never, NoBirths, Recipient, ScheduleAfter,
+    ScheduleAt, Step, TimerElapsed, TimerGeneration, TimerId, TimerScheduled, User, UserEvent,
 };
 use behavior_testkit::model::InactivityModel;
 
@@ -28,6 +31,7 @@ type ChildBehavior = Child;
 #[derive(Default)]
 struct Subject {
     accepted: Vec<u8>,
+    child_ids: CreationSequence,
 }
 
 #[behavior::behavior(addr = MailAddr, message = u8, sends = Vec<Delivery<behavior_testkit::TestRecipient<u8>>>, births = Births<ChildBehavior>, error = Failed)]
@@ -47,45 +51,54 @@ impl Subject {
             return Err(Failed);
         }
         self.accepted.push(message);
-        let mut actions: Actions<
-            MailAddr,
-            Never,
-            Vec<Delivery<behavior_testkit::TestRecipient<u8>>>,
-            Births<ChildBehavior>,
-        > = Actions::cont();
-        actions
-            .sends
-            .push(Delivery::new(Recipient::global(MailAddr(90)), message));
-        actions
-            .creates
-            .push(Create::birth(u64::from(message), Child));
-        if message == 0 {
-            actions.become_ = Step::Stop(behavior::Stopped);
-        }
-        Ok(actions)
+        let child_id = self
+            .child_ids
+            .issue()
+            .expect("the test creator has another child ID");
+        let next = match message {
+            0 => Step::Stop(behavior::Stopped),
+            _ => Step::Continue,
+        };
+        Ok(Actions::new(
+            vec![Delivery::new(Recipient::global(MailAddr(90)), message)],
+            Creations::one(CreateChild::birth(child_id, Child)),
+            next,
+        ))
     }
 }
 
 type SubjectBehavior = Subject;
 
+fn assert_one_child_birth(creations: &Creations<CreateChild<MailAddr, ChildBehavior>>) {
+    let mut children = creations.iter();
+    assert_eq!(
+        children.next().map(CreateChild::kind),
+        Some(CreationKind::Birth)
+    );
+    assert!(children.next().is_none());
+}
+
 fn on_timeout(
-    _inner: &mut SubjectBehavior,
-) -> Acted<
+    inner: &mut SubjectBehavior,
+) -> Actions<
     MailAddr,
     Never,
     Vec<Delivery<behavior_testkit::TestRecipient<u8>>>,
     Births<ChildBehavior>,
-    Failed,
 > {
-    Ok(Actions {
+    let child_id = inner
+        .child_ids
+        .issue()
+        .expect("the test creator has another child ID");
+    Actions {
         sends: vec![Delivery::new(Recipient::global(MailAddr(91)), 99)],
-        creates: vec![Create::birth(99, Child)],
+        creates: Creations::one(CreateChild::birth(child_id, Child)),
         become_: Step::Continue,
-    })
+    }
 }
 
 #[tokio::test]
-async fn initialization_and_successful_user_folds_arm_after_preserving_actions() {
+async fn initialization_and_successful_user_turns_arm_after_preserving_actions() {
     let after = Duration::from_secs(5);
     let behavior =
         behavior::ReceiveTimeout::new(Subject::default(), behavior::TimerId(0), after, on_timeout);
@@ -106,8 +119,7 @@ async fn initialization_and_successful_user_folds_arm_after_preserving_actions()
         .unwrap();
     assert_eq!(first.sends.inner.len(), 1);
     assert_eq!(first.sends.inner[0].message, 1);
-    assert_eq!(first.creates.len(), 1);
-    assert_eq!(first.creates[0].nonce, 1);
+    assert_one_child_birth(&first.creates);
     assert_eq!(first.become_, Step::Continue);
     assert_eq!(first.sends.owned[0].generation, TimerGeneration(1));
 
@@ -144,7 +156,7 @@ async fn matching_delivery_consumes_once_and_reaction_preserves_full_actions() {
         }))
         .unwrap();
     assert_eq!(fired.sends.inner[0].message, 99);
-    assert_eq!(fired.creates[0].nonce, 99);
+    assert_one_child_birth(&fired.creates);
     assert_eq!(fired.become_, Step::Continue);
     assert!(fired.sends.owned.is_empty());
 
@@ -164,7 +176,7 @@ async fn matching_delivery_consumes_once_and_reaction_preserves_full_actions() {
 }
 
 #[tokio::test]
-async fn errors_and_terminal_user_folds_do_not_rearm() {
+async fn errors_and_terminal_user_turns_do_not_rearm() {
     let failing = behavior::ReceiveTimeout::new(
         Subject::default(),
         behavior::TimerId(0),
@@ -197,7 +209,7 @@ async fn errors_and_terminal_user_folds_do_not_rearm() {
     assert_eq!(stopped.become_, Step::Stop(behavior::Stopped));
     assert!(stopped.sends.owned.is_empty());
     assert_eq!(stopped.sends.inner[0].message, 0);
-    assert_eq!(stopped.creates[0].nonce, 0);
+    assert_one_child_birth(&stopped.creates);
 
     let formerly_live = terminal
         .transition(EventLayer::Owned(TimerElapsed {
@@ -209,15 +221,15 @@ async fn errors_and_terminal_user_folds_do_not_rearm() {
     assert!(formerly_live.sends.owned.is_empty());
 }
 
-fn inner_at(_inner: &mut SubjectBehavior) -> Result<behavior::Become, Failed> {
-    Ok(Step::Continue)
+fn inner_at(_inner: &mut SubjectBehavior) -> behavior::Become {
+    Step::Continue
 }
 
 type TimedInner = behavior::Deadline<SubjectBehavior>;
 
 fn outer_timeout(
     _inner: &mut TimedInner,
-) -> Acted<
+) -> Actions<
     MailAddr,
     Never,
     behavior::SendLayer<
@@ -225,9 +237,93 @@ fn outer_timeout(
         <SubjectBehavior as Behavior>::Sends,
     >,
     Births<ChildBehavior>,
-    Failed,
 > {
-    Ok(Actions::cont())
+    Actions::cont()
+}
+
+type TimerCompositionEvent =
+    behavior::ReceiveTimeoutEvent<behavior::DeadlineEvent<User<MailAddr, u8>>>;
+
+#[derive(Debug, PartialEq, Eq)]
+enum TimerScheduleAcceptance {
+    Absolute(ScheduleAt),
+    Relative(ScheduleAfter),
+}
+
+struct TimerCompositionRuntime {
+    accepted_deliveries: Vec<Delivery<behavior_testkit::TestRecipient<u8>>>,
+    accepted_schedules: Vec<TimerScheduleAcceptance>,
+}
+
+impl
+    InterpretItem<
+        Delivery<behavior_testkit::TestRecipient<u8>>,
+        TimerCompositionEvent,
+        Inside<Inside<Here>>,
+    > for TimerCompositionRuntime
+{
+    fn interpret_item(
+        &mut self,
+        delivery: Delivery<behavior_testkit::TestRecipient<u8>>,
+    ) -> impl Future<
+        Output = ItemSettlement<
+            Delivery<behavior_testkit::TestRecipient<u8>>,
+            <Delivery<behavior_testkit::TestRecipient<u8>> as ActionItem>::Accepted,
+            <Delivery<behavior_testkit::TestRecipient<u8>> as ActionItem>::Rejection,
+            <Delivery<behavior_testkit::TestRecipient<u8>> as ActionItem>::Prerequisite,
+        >,
+    > + Send {
+        async move {
+            self.accepted_deliveries.push(delivery);
+            ItemSettlement::Accepted(())
+        }
+    }
+}
+
+impl InterpretItem<ScheduleAt, TimerCompositionEvent, Inside<Here>> for TimerCompositionRuntime {
+    fn interpret_item(
+        &mut self,
+        schedule: ScheduleAt,
+    ) -> impl Future<
+        Output = ItemSettlement<
+            ScheduleAt,
+            <ScheduleAt as ActionItem>::Accepted,
+            <ScheduleAt as ActionItem>::Rejection,
+            <ScheduleAt as ActionItem>::Prerequisite,
+        >,
+    > + Send {
+        async move {
+            self.accepted_schedules
+                .push(TimerScheduleAcceptance::Absolute(schedule));
+            ItemSettlement::Accepted(TimerScheduled {
+                id: schedule.id,
+                generation: schedule.generation,
+            })
+        }
+    }
+}
+
+impl InterpretItem<ScheduleAfter, TimerCompositionEvent, Here> for TimerCompositionRuntime {
+    fn interpret_item(
+        &mut self,
+        schedule: ScheduleAfter,
+    ) -> impl Future<
+        Output = ItemSettlement<
+            ScheduleAfter,
+            <ScheduleAfter as ActionItem>::Accepted,
+            <ScheduleAfter as ActionItem>::Rejection,
+            <ScheduleAfter as ActionItem>::Prerequisite,
+        >,
+    > + Send {
+        async move {
+            self.accepted_schedules
+                .push(TimerScheduleAcceptance::Relative(schedule));
+            ItemSettlement::Accepted(TimerScheduled {
+                id: schedule.id,
+                generation: schedule.generation,
+            })
+        }
+    }
 }
 
 #[tokio::test]
@@ -247,8 +343,32 @@ async fn nested_timer_service_events_never_reset_receive_inactivity() {
     let initialized = behavior.initialize().unwrap();
     let initial = initialized.actions;
     let mut behavior = initialized.behavior;
-    assert_eq!(initial.sends.inner.owned[0].id, TimerId(0));
-    assert_eq!(initial.sends.owned[0].id, TimerId(1));
+    let mut runtime = TimerCompositionRuntime {
+        accepted_deliveries: Vec::new(),
+        accepted_schedules: Vec::new(),
+    };
+    let interpreted = <_ as InterpretSends<_, TimerCompositionEvent, Here>>::interpret(
+        initial.sends,
+        &mut runtime,
+    )
+    .await;
+    assert!(matches!(interpreted, Interpretation::Complete(_)));
+    assert!(runtime.accepted_deliveries.is_empty());
+    assert_eq!(
+        runtime.accepted_schedules,
+        [
+            TimerScheduleAcceptance::Absolute(behavior::ScheduleAt::new(
+                TimerId(0),
+                TimerGeneration(0),
+                due,
+            )),
+            TimerScheduleAcceptance::Relative(behavior::ScheduleAfter::new(
+                TimerId(1),
+                TimerGeneration(0),
+                Duration::from_secs(1),
+            )),
+        ]
+    );
 
     let accepted = behavior
         .transition(EventLayer::Owned(TimerElapsed {
@@ -256,7 +376,14 @@ async fn nested_timer_service_events_never_reset_receive_inactivity() {
             generation: TimerGeneration(0),
         }))
         .unwrap();
-    assert!(accepted.sends.owned.is_empty());
+    let interpreted = <_ as InterpretSends<_, TimerCompositionEvent, Here>>::interpret(
+        accepted.sends,
+        &mut runtime,
+    )
+    .await;
+    assert!(matches!(interpreted, Interpretation::Complete(_)));
+    assert!(runtime.accepted_deliveries.is_empty());
+    assert_eq!(runtime.accepted_schedules.len(), 2);
 
     let stale = behavior
         .transition(EventLayer::Owned(TimerElapsed {
@@ -264,7 +391,12 @@ async fn nested_timer_service_events_never_reset_receive_inactivity() {
             generation: TimerGeneration(0),
         }))
         .unwrap();
-    assert!(stale.sends.owned.is_empty());
+    let interpreted =
+        <_ as InterpretSends<_, TimerCompositionEvent, Here>>::interpret(stale.sends, &mut runtime)
+            .await;
+    assert!(matches!(interpreted, Interpretation::Complete(_)));
+    assert!(runtime.accepted_deliveries.is_empty());
+    assert_eq!(runtime.accepted_schedules.len(), 2);
 
     let outer = behavior
         .transition(EventLayer::Owned(TimerElapsed {
@@ -380,8 +512,8 @@ impl Behavior for StopsAtInitialization {
     }
 }
 
-fn stopped_at_reaction(_inner: &mut StopsAtInitialization) -> Result<behavior::Become, Never> {
-    Ok(Step::Continue)
+fn stopped_at_reaction(_inner: &mut StopsAtInitialization) -> behavior::Become {
+    Step::Continue
 }
 
 #[tokio::test]

@@ -3,15 +3,14 @@
 //! (time, peer observation) bypass a stash buffer while user messages are
 //! intercepted; watch reactions are re-invocable and deterministic.
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use behavior::EventLayer;
 use behavior::{
-    Acted, Actions, Activate, Behavior, Crash, Delivery, Exit, MailAddr, Never, PeerStopped,
-    Recipient, SendEffects, StashRoute, Step, SupervisionEvent, TimerElapsed, TimerGeneration,
-    TimerId, User, UserEvent, WorkerStopped, stop_on_abnormal_death, stop_on_supervision_failure,
+    Acted, Actions, Activate, Behavior, Crash, CreateChild, CreationSequence, Creations, Delivery,
+    Exit, MailAddr, Never, PeerStopped, Recipient, SendEffects, StashRoute, Step, TimerElapsed,
+    TimerGeneration, TimerId, User, UserEvent, stop_on_abnormal_death,
 };
-use std::time::Instant;
 
 struct Sink;
 
@@ -56,27 +55,23 @@ impl Recorder {
         self.seen.push((from, message));
         Ok(Actions {
             sends: vec![Delivery::new(Recipient::global(from), message)],
-            creates: Vec::new(),
+            creates: Creations::empty(),
             become_: Step::Continue,
         })
     }
-}
-
-type Child = Recorder;
-
-fn child(_index: usize) -> Child {
-    Recorder::default()
 }
 
 const PEER: MailAddr = MailAddr(44);
 
 fn at<T: Behavior>(behavior: T, when: Instant) -> behavior::Deadline<T> {
     behavior::Deadline::new(behavior, behavior::TimerId(0), Some(when), |_| {
-        Ok(Step::Continue)
+        Step::Continue
     })
 }
 
-struct GeneratedBase;
+struct GeneratedBase {
+    creations: CreationSequence,
+}
 
 #[behavior::behavior(
     addr = MailAddr,
@@ -89,14 +84,21 @@ struct GeneratedBase;
     },
 )]
 impl GeneratedBase {
+    fn new() -> Self {
+        Self {
+            creations: CreationSequence::new(),
+        }
+    }
+
     fn init(&mut self) -> behavior::BehaviorActed<Self> {
         let mut sends = GeneratedBaseSends::empty();
         sends
             .send::<_, GeneratedBaseSendsReplies>(Delivery::new(Recipient::global(MailAddr(9)), 7));
-        let creates = behavior::Children::<MailAddr>::new()
-            .child(4, Recorder::default())
-            .into_creates()
-            .expect("one child nonce is unique");
+        let id = self
+            .creations
+            .issue()
+            .expect("the generated child ID exists");
+        let creates = Creations::one(CreateChild::birth(id, Recorder::default()));
         Ok(Actions::new(sends, creates, Step::Continue))
     }
 
@@ -111,16 +113,18 @@ fn assert_generated_base_effects(sends: &GeneratedBaseSends, creates: usize) {
     assert_eq!(creates, 1);
 }
 
-/// Every ordering of the three transparent wrapper families accepts the
-/// generated nominal send and birth products. Stash contributes no product;
-/// Deadline and Watch each wrap it once without consuming either base leg.
+/// Every sound ordering of the three wrapper families accepts the generated
+/// nominal send and birth products. `Stash` must remain inside every fallible
+/// wrapper because replay cannot roll back actions from earlier messages if a
+/// later replayed transition is rejected. Its compile-fail contract covers
+/// the other three permutations.
 #[tokio::test]
-async fn generated_products_compose_through_every_three_wrapper_order() {
+async fn generated_products_compose_through_every_sound_three_wrapper_order() {
     let due = Instant::now() + Duration::from_secs(1);
 
     let first = at(
         behavior::Watch::new(
-            behavior::Stash::new(GeneratedBase, |_| StashRoute::Deliver),
+            behavior::Stash::new(GeneratedBase::new(), |_| StashRoute::Deliver),
             PEER,
             stop_on_abnormal_death,
         ),
@@ -131,61 +135,28 @@ async fn generated_products_compose_through_every_three_wrapper_order() {
     .actions;
     assert_generated_base_effects(&first.sends.inner.inner, first.creates.len());
 
-    let second = at(
-        behavior::Stash::new(
-            behavior::Watch::new(GeneratedBase, PEER, stop_on_abnormal_death),
-            |_| StashRoute::Deliver,
+    let second = behavior::Watch::new(
+        at(
+            behavior::Stash::new(GeneratedBase::new(), |_| StashRoute::Deliver),
+            due,
         ),
-        due,
+        PEER,
+        stop_on_abnormal_death,
     )
     .initialize()
     .unwrap()
     .actions;
     assert_generated_base_effects(&second.sends.inner.inner, second.creates.len());
 
-    let third = behavior::Stash::new(
-        at(
-            behavior::Watch::new(GeneratedBase, PEER, stop_on_abnormal_death),
-            due,
-        ),
-        |_| StashRoute::Deliver,
+    let third = behavior::Watch::new(
+        behavior::Stash::new(at(GeneratedBase::new(), due), |_| StashRoute::Deliver),
+        PEER,
+        stop_on_abnormal_death,
     )
     .initialize()
     .unwrap()
     .actions;
     assert_generated_base_effects(&third.sends.inner.inner, third.creates.len());
-
-    let fourth = behavior::Watch::new(
-        at(
-            behavior::Stash::new(GeneratedBase, |_| StashRoute::Deliver),
-            due,
-        ),
-        PEER,
-        stop_on_abnormal_death,
-    )
-    .initialize()
-    .unwrap()
-    .actions;
-    assert_generated_base_effects(&fourth.sends.inner.inner, fourth.creates.len());
-
-    let fifth = behavior::Watch::new(
-        behavior::Stash::new(at(GeneratedBase, due), |_| StashRoute::Deliver),
-        PEER,
-        stop_on_abnormal_death,
-    )
-    .initialize()
-    .unwrap()
-    .actions;
-    assert_generated_base_effects(&fifth.sends.inner.inner, fifth.creates.len());
-
-    let sixth = behavior::Stash::new(
-        behavior::Watch::new(at(GeneratedBase, due), PEER, stop_on_abnormal_death),
-        |_| StashRoute::Deliver,
-    )
-    .initialize()
-    .unwrap()
-    .actions;
-    assert_generated_base_effects(&sixth.sends.inner.inner, sixth.creates.len());
 }
 
 /// Every ordering of {at, watch, at} preserves each layer's own initial
@@ -202,7 +173,7 @@ async fn all_wrapper_permutations_preserve_init_protocol_nesting() {
         behavior::Watch::new(at(Recorder::default(), first), PEER, stop_on_abnormal_death),
         behavior::TimerId(0),
         Some(second),
-        |_| Ok(Step::Continue),
+        |_| Step::Continue,
     );
     let initialized = c1.initialize().unwrap();
     let i1 = initialized.actions;
@@ -217,7 +188,7 @@ async fn all_wrapper_permutations_preserve_init_protocol_nesting() {
             at(Recorder::default(), first),
             behavior::TimerId(0),
             Some(second),
-            |_| Ok(Step::Continue),
+            |_| Step::Continue,
         ),
         PEER,
         stop_on_abnormal_death,
@@ -235,11 +206,11 @@ async fn all_wrapper_permutations_preserve_init_protocol_nesting() {
             behavior::Watch::new(Recorder::default(), PEER, stop_on_abnormal_death),
             behavior::TimerId(0),
             Some(first),
-            |_| Ok(Step::Continue),
+            |_| Step::Continue,
         ),
         behavior::TimerId(0),
         Some(second),
-        |_| Ok(Step::Continue),
+        |_| Step::Continue,
     );
     let initialized = c3.initialize().unwrap();
     let i3 = initialized.actions;
@@ -254,7 +225,7 @@ async fn all_wrapper_permutations_preserve_init_protocol_nesting() {
             at(Recorder::default(), second),
             behavior::TimerId(0),
             Some(first),
-            |_| Ok(Step::Continue),
+            |_| Step::Continue,
         ),
         PEER,
         stop_on_abnormal_death,
@@ -275,7 +246,7 @@ async fn all_wrapper_permutations_preserve_init_protocol_nesting() {
         ),
         behavior::TimerId(0),
         Some(first),
-        |_| Ok(Step::Continue),
+        |_| Step::Continue,
     );
     let initialized = c5.initialize().unwrap();
     let i5 = initialized.actions;
@@ -290,11 +261,11 @@ async fn all_wrapper_permutations_preserve_init_protocol_nesting() {
             behavior::Watch::new(Recorder::default(), PEER, stop_on_abnormal_death),
             behavior::TimerId(0),
             Some(second),
-            |_| Ok(Step::Continue),
+            |_| Step::Continue,
         ),
         behavior::TimerId(0),
         Some(first),
-        |_| Ok(Step::Continue),
+        |_| Step::Continue,
     );
     let initialized = c6.initialize().unwrap();
     let i6 = initialized.actions;
@@ -304,27 +275,57 @@ async fn all_wrapper_permutations_preserve_init_protocol_nesting() {
     assert_eq!(i6.sends.inner.inner.owned[0].peer, PEER);
 }
 
-/// A stash layer contributes no initialization sends and shifts nothing:
-/// the at/watch markers keep their nesting depths relative to each other.
-#[tokio::test]
-async fn stash_layer_contributes_no_init_sends() {
+#[test]
+fn nested_deadlines_at_the_same_instant_route_to_the_selected_occurrence() {
     let due = Instant::now() + Duration::from_secs(1);
-    let behavior = behavior::Deadline::new(
-        behavior::Watch::new(
-            behavior::Stash::new(Recorder::default(), |_| StashRoute::Deliver),
-            PEER,
-            stop_on_abnormal_death,
-        ),
-        behavior::TimerId(0),
+    let deadline = behavior::Deadline::new(
+        behavior::Deadline::new(Recorder::default(), TimerId(0), Some(due), |_| {
+            Step::Stop(behavior::Stopped)
+        }),
+        TimerId(1),
         Some(due),
-        |_| Ok(Step::Continue),
+        |_| Step::Continue,
     );
-    let initialized = behavior.initialize().unwrap();
-    let initial = initialized.actions;
-    let _behavior = initialized.behavior;
-    assert_eq!(initial.sends.owned[0].at, due);
-    assert_eq!(initial.sends.inner.owned[0].peer, PEER);
-    assert!(initial.sends.inner.inner.is_empty());
+    let mut deadline = deadline.initialize().unwrap().behavior;
+
+    let actions = deadline
+        .transition(EventLayer::Inner(EventLayer::Owned(TimerElapsed {
+            id: TimerId(0),
+            generation: TimerGeneration(0),
+        })))
+        .unwrap();
+
+    assert!(matches!(actions.become_, Step::Stop(_)));
+}
+
+#[test]
+fn equal_timer_ids_in_nested_deadlines_remain_separately_addressable() {
+    let due = Instant::now() + Duration::from_secs(1);
+    let deadline = behavior::Deadline::new(
+        behavior::Deadline::new(Recorder::default(), TimerId(0), Some(due), |_| {
+            Step::Stop(behavior::Stopped)
+        }),
+        TimerId(0),
+        Some(due),
+        |_| Step::Continue,
+    );
+    let mut deadline = deadline.initialize().unwrap().behavior;
+
+    let outer = deadline
+        .transition(EventLayer::Owned(TimerElapsed {
+            id: TimerId(0),
+            generation: TimerGeneration(0),
+        }))
+        .unwrap();
+    assert!(matches!(outer.become_, Step::Continue));
+
+    let inner = deadline
+        .transition(EventLayer::Inner(EventLayer::Owned(TimerElapsed {
+            id: TimerId(0),
+            generation: TimerGeneration(0),
+        })))
+        .unwrap();
+    assert!(matches!(inner.become_, Step::Stop(_)));
 }
 
 /// In an Deadline∘Watch∘Stash stack, only the user lane enters the stash buffer:
@@ -340,7 +341,7 @@ async fn environment_lanes_bypass_stash_while_user_lane_is_intercepted() {
         ),
         behavior::TimerId(0),
         Some(due),
-        |_| Ok(Step::Continue),
+        |_| Step::Continue,
     );
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
@@ -354,7 +355,7 @@ async fn environment_lanes_bypass_stash_while_user_lane_is_intercepted() {
     assert!(matches!(fired.become_, Step::Continue));
     assert_eq!(behavior.stashed(), 0);
 
-    // Peer lane: matching peer death stops the fold through the stash layer.
+    // Peer lane: matching peer death stops the behavior through the stash layer.
     let peer = EventLayer::Owned(PeerStopped {
         peer: PEER,
         outcome: Err(Crash::Failed),
@@ -365,17 +366,19 @@ async fn environment_lanes_bypass_stash_while_user_lane_is_intercepted() {
 
     // User lane: intercepted by the stash buffer.
     let user = User::user(MailAddr(7), 3);
-    behavior
+    let stashed = behavior
         .transition(EventLayer::Inner(EventLayer::Inner(user)))
         .unwrap();
+    assert!(stashed.creates.is_empty());
+    assert!(matches!(stashed.become_, Step::Continue));
     assert_eq!(behavior.stashed(), 1);
     assert!(behavior.base().seen.is_empty());
 }
 
 /// Watch does not latch: stepping after a Stop is allowed and re-invokes
-/// the reaction on each matching death; ordinary user messages still fold.
+/// the reaction on each matching death; ordinary user messages still run.
 #[tokio::test]
-async fn watch_reaction_reinvokes_on_each_death_and_fold_continues() {
+async fn watch_reaction_reinvokes_on_each_death_and_transition_continues() {
     let behavior = behavior::Watch::new(Recorder::default(), PEER, stop_on_abnormal_death);
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
@@ -390,7 +393,7 @@ async fn watch_reaction_reinvokes_on_each_death_and_fold_continues() {
     let second = behavior.transition(death).unwrap();
     assert!(matches!(second.become_, Step::Stop(behavior::Stopped)));
 
-    // The fold is still usable: a user message after the stop is processed.
+    // The behavior remains usable: a user message after the stop is processed.
     let actions = behavior
         .transition(UserEvent::user(MailAddr(2), 9))
         .unwrap();
@@ -432,8 +435,8 @@ fn continue_after_death<B: Behavior>(
     _: &mut B,
     _: MailAddr,
     _: &Result<Exit<MailAddr>, Crash>,
-) -> Result<behavior::Become, B::Error> {
-    Ok(Step::Continue)
+) -> behavior::Become {
+    Step::Continue
 }
 
 #[tokio::test]
@@ -467,7 +470,7 @@ async fn duplicate_nested_watch_peer_remains_addressable_at_both_paths() {
 #[tokio::test]
 async fn unscheduled_at_is_inert_to_reached_events() {
     let behavior = behavior::Deadline::new(Recorder::default(), behavior::TimerId(0), None, |_| {
-        Ok(Step::Stop(behavior::Stopped))
+        Step::Stop(behavior::Stopped)
     });
     let initialized = behavior.initialize().unwrap();
     let initial = initialized.actions;
@@ -486,7 +489,7 @@ async fn unscheduled_at_is_inert_to_reached_events() {
 }
 
 /// `stop_on_abnormal_death` classifies outcomes: Normal and Collected keep
-/// the fold alive; `LinkDied` and crashes stop it carrying the peer address.
+/// the behavior active; `LinkDied` and crashes stop it carrying the peer address.
 #[tokio::test]
 async fn abnormal_death_reaction_outcome_classes() {
     let behavior = behavior::Watch::new(Recorder::default(), PEER, stop_on_abnormal_death);
@@ -516,144 +519,4 @@ async fn abnormal_death_reaction_outcome_classes() {
         let crashed = behavior.transition(outcome(Err(crash))).unwrap();
         assert!(matches!(crashed.become_, Step::Stop(behavior::Stopped)));
     }
-}
-
-/// Supervision over a watched parent: the fleet's observe sends and the
-/// watch's observe send live in their own product lanes, both event lanes
-/// (peer death, child death) route to their own layer, and a peer death can
-/// stop the whole supervised fold.
-#[tokio::test]
-async fn supervision_preserves_inner_watch_routing() {
-    struct Parent;
-    #[behavior::behavior(addr = MailAddr, message = u64, sends = Vec<Never>, births = behavior::Births<Child>, error = Never)]
-    impl Parent {
-        fn receive(
-            &mut self,
-            _from: MailAddr,
-            message: u64,
-        ) -> Acted<MailAddr, Never, Vec<Never>, behavior::Births<Child>, Never> {
-            Ok(Actions::create(vec![behavior::Create::birth(
-                message,
-                child(0),
-            )]))
-        }
-    }
-
-    let behavior = behavior::Supervise::new(
-        behavior::Watch::new(Parent, PEER, stop_on_abnormal_death),
-        behavior::ChildTopology::new((0..2).map(|index| u64::try_from(index).unwrap()), |index| {
-            Some(child(index))
-        }),
-        behavior::RestartConfiguration::new(
-            behavior::Strategy::OneForOne,
-            behavior::RestartPolicy::Transient,
-            1,
-            std::time::Duration::from_secs(5),
-        ),
-    )
-    .unwrap();
-    let initialized = behavior.initialize().unwrap();
-    let initial = initialized.actions;
-    let mut behavior = initialized.behavior;
-    assert_eq!(initial.creates.len(), 2);
-    assert_eq!(initial.sends.owned.child_observations.len(), 2); // observe-child x2
-    assert_eq!(initial.sends.owned.child_observations[0].nonce, 0);
-    assert_eq!(initial.sends.owned.creation_observations.len(), 2);
-    assert_eq!(initial.sends.owned.creation_observations[0].nonce, 0);
-    assert_eq!(initial.sends.inner.owned.len(), 1); // observe-peer
-    assert_eq!(initial.sends.inner.owned[0].peer, PEER);
-
-    // Peer lane: the watch reaction stops the supervised fold.
-    let died = behavior
-        .on_path(PeerStopped {
-            peer: PEER,
-            outcome: Err(Crash::Failed),
-        })
-        .unwrap();
-    assert!(matches!(died.become_, Step::Stop(behavior::Stopped)));
-
-    // Child lane: a death still yields a replacement send on a fresh stack.
-    let replacement = behavior::Supervise::new(
-        behavior::Watch::new(Parent, PEER, stop_on_abnormal_death),
-        behavior::ChildTopology::new((0..2).map(|index| u64::try_from(index).unwrap()), |index| {
-            Some(child(index))
-        }),
-        behavior::RestartConfiguration::new(
-            behavior::Strategy::OneForOne,
-            behavior::RestartPolicy::Transient,
-            1,
-            std::time::Duration::from_secs(5),
-        ),
-    )
-    .unwrap();
-    let initialized = replacement.initialize().unwrap();
-    let mut replacement = initialized.behavior;
-    let actions = replacement
-        .transition(SupervisionEvent::WorkerStopped(WorkerStopped {
-            proxy: 0,
-            worker: 0,
-            outcome: Err(Crash::Failed),
-            at: Instant::now(),
-        }))
-        .unwrap();
-    assert_eq!(actions.sends.owned.replacement_commands.len(), 1);
-    assert_eq!(
-        actions.sends.owned.replacement_commands[0]
-            .to
-            .resolve(MailAddr(17)),
-        behavior::Address::birth(MailAddr(17), 0)
-    );
-}
-
-/// A supervision failure reaction composes above an inner watch without
-/// emitting into either layer's send lane. Its stop verdict remains an
-/// ordinary become result visible through the complete stack.
-#[tokio::test]
-async fn supervision_failure_reaction_preserves_composed_send_lanes() {
-    struct Parent;
-    #[behavior::behavior(addr = MailAddr, message = u64, sends = Vec<Never>, births = behavior::Births<Child>, error = Never)]
-    impl Parent {
-        fn receive(
-            &mut self,
-            _from: MailAddr,
-            message: u64,
-        ) -> Acted<MailAddr, Never, Vec<Never>, behavior::Births<Child>, Never> {
-            Ok(Actions::create(vec![behavior::Create::birth(
-                message,
-                child(0),
-            )]))
-        }
-    }
-
-    let behavior = behavior::Supervise::new(
-        behavior::Watch::new(Parent, PEER, stop_on_abnormal_death),
-        behavior::ChildTopology::new((0..1).map(|index| u64::try_from(index).unwrap()), |index| {
-            Some(child(index))
-        }),
-        behavior::RestartConfiguration::new(
-            behavior::Strategy::OneForOne,
-            behavior::RestartPolicy::Transient,
-            0,
-            Duration::MAX,
-        ),
-    )
-    .unwrap()
-    .with_failure_reaction(stop_on_supervision_failure);
-    let initialized = behavior.initialize().unwrap();
-    let mut behavior = initialized.behavior;
-
-    let actions = behavior
-        .transition(SupervisionEvent::WorkerStopped(WorkerStopped {
-            proxy: 0,
-            worker: 0,
-            outcome: Err(Crash::Failed),
-            at: Instant::now(),
-        }))
-        .unwrap();
-
-    assert!(actions.sends.inner.inner.is_empty());
-    assert!(actions.sends.inner.owned.is_empty());
-    assert!(actions.sends.owned.child_observations.is_empty());
-    assert!(actions.sends.owned.replacement_commands.is_empty());
-    assert_eq!(actions.become_, Step::Stop(behavior::Stopped));
 }

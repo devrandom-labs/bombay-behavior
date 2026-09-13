@@ -43,7 +43,7 @@ presenting it as an Agha guarantee.
 - Preserve `Actions` as the explicit effect boundary. A successful transition
   returns sends, fresh creations, and its next behavior/termination decision.
   Do not add ambient side channels or let combinators perform those effects.
-- Preserve freshness. `Create` is a staged request to establish a fresh child
+- Preserve freshness. `CreateChild` is a staged request to establish a fresh child
   and bind it to a nonce in the creating actor's child namespace. The nonce is
   a local routing and correlation key, not an actor identity or proof of
   freshness. A creation becomes an established birth only when the interpreter
@@ -126,6 +126,271 @@ friction is often evidence that an invariant has not yet been modeled.
 Model the semantic domain before writing transition code. Rust's algebraic
 data types are the default design language for this repository, not an
 implementation detail to add after behavior has been encoded procedurally.
+
+Model quality is the paramount acceptance criterion. Cohesion, information
+hiding, one semantic owner, truthful domain language, and locality of change
+all outrank source-line, file, branch, or type counts. Those counts are only
+diagnostics that can expose drift; they may never justify merging distinct
+responsibilities or retaining machinery with no independent purpose. Every
+type, trait, module, file, wrapper, and protocol value must own a distinct
+invariant, hidden design decision, domain capability, or independently changing
+responsibility. Decompose around those responsibilities, not around procedural
+steps in a transition.
+
+Apply these Rust interface-engineering rules to every production crate, test,
+example, benchmark, and research-local integration probe in this repository:
+
+- Treat a public Rust interface as a long-lived semantic promise. Export the
+  smallest domain surface that applications or interpreters must name; keep
+  representation, composition, and settlement machinery behind the owning
+  module. Do not expose a type merely because an associated type mentions it.
+- Let ownership state the protocol. Borrow for temporary observation, consume a
+  value when authority or custody transfers, and return the original owned value
+  on rejection. Never add `Clone`, `Copy`, shared ownership, or interior
+  mutability merely to escape an ownership design question.
+- Put each generic parameter and trait bound at the narrowest interface whose
+  law actually requires substitution. A parameter without two meaningful
+  substitutions, or a bound justified only by a compiler diagnostic, is blocked.
+  Audit compile time, diagnostic quality, and monomorphization when a generic
+  becomes application-facing or repeats across the catalogue.
+- Introduce a newtype only when construction establishes an invariant, separates
+  otherwise swappable domain values, or carries a distinct capability. A
+  transparent wrapper that only renames storage must be removed. Validate once
+  at construction and preserve the validated value thereafter.
+- Use typestate only when the available operations genuinely differ by phase and
+  the representation deletes illegal runtime branches. Do not build a typestate
+  builder or state-machine framework around ordinary required fields.
+- Keep extension traits sealed unless third-party implementations are a stated
+  ownership port. Add a trait only for multiple real implementations or one
+  interpreter seam; prefer inherent methods and concrete composition otherwise.
+- Test interfaces from the caller's perspective. Compile-pass fixtures prove the
+  intended inferred syntax; compile-fail fixtures prove forged authority and
+  invalid construction remain impossible. Pure transition tests separately prove
+  runtime semantics and complete ownership return.
+- Prefer ordinary, unsurprising Rust control flow. Iterators, combinators, and
+  `?` are useful only when their short-circuiting, ordering, and ownership match
+  the domain law exactly. Dense fluent code is not more functional when it hides
+  which affine value survives a rejection or join.
+
+These are repository-wide constraints, not aggregate-specific preferences.
+Advanced Rust machinery has no presumption of value: it is accepted only when it
+makes the domain contract more truthful and removes more competing machinery
+than it adds.
+
+- Never encode semantic state, phase, authority, provenance, policy, or a
+  transition choice in a `bool`. Use a closed exhaustive sum type whose
+  variants name the domain alternatives. Ordinary predicate return values
+  required by Rust traits (for example `PartialEq::eq`) are not semantic state.
+- Never write inline `use` statements inside a function, method, block, test,
+  macro arm, or generated body. Keep every import at module scope so the
+  dependency surface is visible before the implementation. Rustdoc and
+  compile-fixture snippets use fully qualified names instead of creating a
+  miniature import section that hides their dependencies.
+- Research identifiers must never appear in production code, tests, fixtures,
+  modules, functions, types, constants, feature names, or temporary source
+  edits. Name source constructs solely for the domain behavior they express.
+- Name modules, types, fields, and protocol variants with ubiquitous domain
+  language. The words `fold`, `fact`, `boundary`, `handler`, `manager`,
+  `helper`, and `utils` are banned as architectural identifiers, including in
+  private and test code. Do not strip a domain qualifier from a proposal name:
+  use names such as `StableProxy`, `ProxyState`, `ProxyControl`,
+  `ProxyOutcome`, `ProxyDrain`, `Worker`, `WorkerAttempt`, and
+  `ChildReservation`, not generic standalone names for implementation
+  mechanics. `Installation` and `Incarnation` are also banned architectural
+  identifiers; name the actual domain object or transition instead.
+
+- Private visibility does not permit generic implementation-mechanic names.
+  Every private type must still name the actor-domain value, authority, phase,
+  proposal, rejection, or outcome it owns. Do not introduce names such as
+  `NumberProposalResult`, `ProcessResult`, `TransitionData`, or similarly vague
+  wrappers. If a type merely restates `Result`, `Option`, a tuple, or another
+  existing sum without adding a domain invariant, delete it and use the
+  existing representation. A private reusable mechanism must be named for its
+  proven semantic law, such as a correlation sequence, not for its storage
+  primitive.
+
+- Never distinguish two constructs only by reversing the same words or changing
+  grammatical voice. Name an operation with the domain action it performs and
+  name a value with the domain state or protocol product it contains. A reader
+  must be able to infer the ownership and timing distinction without memorizing
+  word order.
+
+- Require a protocol type and its variants to read as complete domain
+  statements. Do not repeat the same verb in the type and variant, such as
+  `ChildCreation::Created`, or use a context-free verb such as `Create` as a
+  noun. Name the emitted operation for its target, name the returned sum for
+  what it contains, and name each variant for the distinct truth it establishes
+  or returns.
+
+- Use conversions to expose semantic inclusion, never to conceal it. Implement
+  `From` only for total, ownership-preserving embedding into a larger domain
+  sum, and `TryFrom` for a genuinely fallible domain conversion. Use
+  `thiserror` to derive `Error`, display text, and truthful source/`From`
+  relationships where those contracts are required; do not create manual
+  conversion chains that merely repeat an existing lawful embedding. The `?`
+  operator is preferred for linear validation when early return is the exact
+  law and the error retains every affine input. It is forbidden when it would
+  skip independent later actions, discard or reconstruct rejected ownership,
+  collapse distinct provenance, or hide a state-machine join. Avoid vague
+  `convert`, `into_result`, or blanket `Into` layers; consuming `into_parts`
+  methods are acceptable only when they expose the complete owned domain
+  product without semantic reinterpretation.
+
+- Before adding another state type or another match, ask whether a queue, map,
+  ordered range, checked sequence, or commutative join can represent the
+  invariant directly. Prefer that direct domain representation when it owns the
+  same alternatives and preserves all affine values; do not wrap it in a second
+  state vocabulary merely to organize transition code.
+- Store the facts that remain true—not the history of how those facts arrived.
+  Retain historical evidence only when a named law needs it for a
+  future decision, correlation, audit, or exact ownership return; never keep
+  transition breadcrumbs merely to make later branching convenient.
+
+### Protocol vocabulary
+
+Protocol values are data, not subordinate actors or aggregate roots. A command,
+event, request, receipt, rejection, outcome, or reply may validate its own
+identity and expose its owned parts, but it must not acquire a lifecycle API
+that dispatches other protocol values or advances aggregate state. The owning
+aggregate root receives those values and remains the sole authority that selects
+the next aggregate state and complete `Actions`. Do not turn each verb in a
+transition into a stateful object merely to distribute a large match.
+
+Standardize meanings and unify identical protocol equations:
+
+- `input` is any typed value entering a behavior transition;
+- `command` is application intent sent to an actor;
+- `request` is an emitted runtime operation awaiting interpretation;
+- `receipt` proves that the runtime accepted that exact request;
+- `rejection` returns the complete request with its reason;
+- `outcome` or `report` is a later domain or lifecycle result, not send
+  acceptance; and
+- `reply` is an application-level answer to a command.
+
+Every aggregate owns one root `*Error` sum for failures that prevent it from
+producing the lawful next state and complete `Actions`. A subordinate module
+may own a narrower `*Error` only when it has an independently meaningful
+failure contract; embed it in the aggregate error with an ownership-preserving
+`#[from]` conversion. Do not call the same alternative a problem, result, and
+error at different layers. `Problem` is banned as a domain type or field name.
+Reserve Rust `Result<T, E>` for the success/error carrier, and give domain
+payloads a qualified name such as `WorkerResult`. A rejection, settlement,
+outcome, receipt, or diagnostic is not an error merely because it describes an
+unhappy path: keep its ownership-bearing protocol name and settle it through
+`Actions`. Never use `?` to turn one of those normal transition alternatives
+into early actor failure.
+
+Do not use `response` or `output` when one of those ownership-bearing terms is
+more precise. Before adding a protocol sum or product, compare its complete
+ownership and timing equation with existing models. Use `Result`, `Option`, or
+one shared generic domain product when the alternatives, ownership, ordering,
+errors, and retirement are identical after substituting payload types. Keep a
+separate concrete protocol when any of those laws differ. Do not infer either
+reuse or distinctness from suffixes, existing module divisions, or current type
+names. Audit new names against this vocabulary before adding them to production.
+
+### Module ownership
+
+Let the filesystem hierarchy show domain ownership. One child module may own
+one coherent aggregate concern, keep its details private, and expose only the
+values its parent actually consumes with the narrowest truthful visibility.
+The aggregate root module decides which domain values belong to the aggregate's
+public contract; the crate root re-exports only the canonical application and
+runtime surface.
+
+Read a module path compositionally. Parent directories supply domain
+qualification, so child filenames use the shortest unambiguous domain noun:
+`stable_proxy/worker/activation.rs`, not
+`stable_proxy/worker_activation_shutdown.rs`. Add a nested directory when it
+groups several real sibling concerns; do not repeat the parent name in every
+child filename or encode an entire transition sentence in one filename.
+
+Follow Rust naming conventions: modules and source files use `snake_case`,
+types and variants use `UpperCamelCase`, and the source path mirrors the module
+tree. The repository deliberately uses `mod.rs` at an aggregate directory root
+when that file curates the aggregate's visibility and child modules; do not mix
+`aggregate.rs` and `aggregate/mod.rs` for the same aggregate. This is a conscious
+repository convention despite the newer Rust file-layout preference. The root
+must remain a small ownership and visibility surface, not a second copy of its
+children.
+
+Organize an aggregate by domain ownership: the aggregate root, its owned
+entities/current state, validated values and policies, protocol data, and
+terminal custody. Do not mirror every command, event, transition verb, or
+arrival path with another module or file. A child module must own one coherent
+domain concept that remains meaningful when transition history is erased.
+
+Do not flatten a truthful hierarchy merely to reduce file count, and do not use
+`#[doc(hidden)]` as a substitute for deciding ownership at the aggregate root.
+Delete or merge a child module when its only purpose is a test fixture, a
+renamed standard sum/product, an arrival-history wrapper, or forwarding another
+module unchanged. A retained child module must make one domain concern easier
+to locate and must not create a second transition authority.
+
+The design sources for this rule are Parnas's information-hiding decomposition
+criterion, Evans's ubiquitous-language and aggregate guidance, and the official
+Rust module and API naming guidance:
+
+- <https://doi.org/10.1145/361598.361623>
+- <https://www.domainlanguage.com/ddd/reference/>
+- <https://rust-lang.github.io/api-guidelines/naming.html>
+- <https://doc.rust-lang.org/stable/book/ch07-05-separating-modules-into-different-files.html>
+
+### Aggregate-drift checkpoint
+
+Run this checkpoint before every semantic experiment and again after every
+retained batch. It is part of the research loop, not an optional final cleanup.
+
+1. Write the aggregate's one complete control-state sum in domain vocabulary.
+   There is one actor transition authority. A subordinate value may own a small
+   current invariant, but it may not become another behavior, lifecycle engine,
+   or dispatcher of arbitrary aggregate events or `Actions`.
+2. For every subordinate state or result, identify the exact value it owns that
+   a future decision still needs. Delete an alternative whose only distinction
+   is which event arrived first, which function ran, or how the current values
+   were obtained. Arrival order belongs in state only when an accepted law makes
+   that order observable.
+3. Test the direct data structures first: product, sum, `Option`, `Result`,
+   queue/deque, map/set, checked sequence, ordered range, or commutative reunion.
+   A named type is accepted only when the direct structure cannot express the
+   invariant or the name owns a distinct domain law.
+4. State cardinality and selection policy independently of the aggregate's
+   noun. Never infer “one,” “many,” ordering, balancing, affinity, or failover
+   merely from names such as proxy, supervisor, pool, worker, or router.
+5. Count aggregate states, subordinate sums, result alternatives, transition
+   branches, production lines, modules, and public spellings before and after.
+   A batch that teaches more code a growing state graph without deleting an
+   equal or larger competing concept reopens the model.
+6. Re-run the ownership question from the consumer's perspective: does the
+   consumer decide from this value, or must it inspect a second label carrying
+   the same cause? One semantic cause has one owner.
+7. Cross-check the resulting representation against the aggregate law and all
+   normalized atomic-actor documents. Passing tests cannot retain a historical
+   state, false cardinality assumption, duplicated cause, or nested actor engine.
+
+If any answer exposes another state machine whose purpose is only to navigate
+the parent state machine, stop production lowering and return to the direct
+owned-data model. Do not defer this checkpoint to a later distillation pass.
+
+Every experiment result must record this checkpoint before the hypothesis may
+be retained. The record must contain:
+
+- the aggregate control states before and after;
+- subordinate state and result alternatives before and after;
+- transition branches, production lines, modules, and public spellings before
+  and after;
+- the exact current value required from every surviving subordinate
+  alternative;
+- the residue scan for arrival history, repeated causes, false cardinality,
+  nested transition authority, semantic booleans, and structural user syntax;
+- the law documents and normalized documents cross-checked; and
+- one disposition: `pass` or `reopen`.
+
+`reopen` means the batch is not retained. Remove its production representation,
+record the falsifier in `DEAD_ENDS.md`, and start the next hypothesis from the
+last retained representation. Missing measurements or an unexplained surviving
+alternative also mean `reopen`; a green compiler or test suite cannot supply
+the missing architectural evidence.
 
 - Use `Option<T>` only when the domain is exactly “one `T` or absence.” Do not
   combine several `Option` values to encode mutually exclusive phases or
@@ -221,6 +486,189 @@ Do not add speculative abstractions. Add a trait or combinator only when its
 laws are clear, its composition is type-safe, and at least one concrete use
 demonstrates why it belongs at the algebraic boundary.
 
+## Compiler-friction checkpoint
+
+The compiler is an invariant oracle and a veto, never a source of architecture
+or a work queue. Compiler output may reject a candidate model; it may not
+originate or justify a type, trait, bound, callback, wrapper, alias, marker,
+event variant, route, associated type, constructor parameter, default generic,
+visibility change, or structural path.
+
+### Design-provenance gate
+
+Every production edit that changes the static or semantic shape of the system
+must have all of the following provenance recorded before the edit exists:
+
+1. a stated actor-model, derived, or deliberate Bombay law;
+2. the user-level syntax and complete observable transition that law requires;
+3. a focused compile or pure-fold regression written in domain vocabulary,
+   before production code, which fails for that law on the prior design; and
+4. the existing lower-order behaviors, layers, event/effect products, and
+   interpreter capabilities that the implementation will compose or delete.
+
+“The compiler requires it,” “this bound makes the implementation type-check,”
+and “the callers can be migrated” are never valid provenance. If a compiler
+error appears to require new semantic surface not already named by the recorded
+law and regression, stop the implementation and return to the model. Do not
+edit around the error, even once.
+
+Separate design from fallout. A stage that invents or changes an abstraction
+may update only its focused law tests and the smallest end-to-end interpreter
+witness. It must not bulk-migrate the catalogue. Mechanical migration is a
+later, separately measured stage and may only apply the already-proven syntax;
+it may introduce no new semantic type, bound, wrapper, policy, route, or test
+fixture. If migration discovers one, the abstraction is unproven and the
+design stage reopens.
+
+At every checkpoint, audit the entire working-tree diff by provenance rather
+than asking whether it compiles. For each new or reshaped production symbol,
+point to its pre-edit law and regression. Remove any symbol or caller plumbing
+whose only explanation is a compiler diagnostic. A green build with an
+unproven symbol is a failed design; a temporarily failing build while an
+invalid candidate is being removed is not a reason to preserve that candidate.
+
+### No-op symptom prohibition
+
+A general behavior or template API must never require a caller to provide a
+no-op policy, callback, marker, route, alias, wrapper, event variant, or
+discarded transition merely because the template's signature demands one.
+This prohibition applies equally to production callers, examples, unit and
+compile tests, model tests, properties, fuzz targets, benchmarks, macros, and
+downstream interpreters.
+
+The first legitimate caller that can only satisfy a new abstraction with a
+no-op or placeholder invalidates that abstraction. Stop immediately: do not
+fix a second caller, do not add a default or convenience constructor, and do
+not hide the placeholder in a helper. Restore the user-level composition law
+first, beginning with ordinary `BehaviorLayer` composition and the existing
+event/effect products. A mandatory input is lawful only when absence is itself
+an illegal semantic state proven by the public type and exercised by every
+valid construction.
+
+Mechanical migration may begin only after a focused pure-fold test proves the
+new law, at least two unrelated real templates and two wrapper orders use it
+without placeholders, and the change deletes or subsumes the repeated
+machinery it replaces. A green compiler cannot waive this rule.
+
+The no-op rule is only a high-signal symptom check. Passing it does not satisfy
+the design-provenance gate: compiler-driven surface can still be invalid even
+when every caller performs non-empty work.
+
+Trigger this checkpoint before fixing the second call site when two failures
+share any of the following:
+
+- the same missing bound, ingress path, occurrence proof, or associated type;
+- the same template-specific constructor, alias, `With*` variant, builder, or
+  policy marker;
+- the need to count wrapper depth or spell `.inside()` differently because an
+  otherwise ordinary `BehaviorLayer` was added;
+- a new application event, type alias, or adapter whose only purpose is to
+  satisfy machinery internal to a reusable template; or
+- the same routing, lifecycle, availability, or hosting operation implemented
+  independently by two higher-order templates.
+
+When triggered, stop production and migration edits and perform this audit:
+
+1. Cluster every matching compiler error and locate every occurrence across
+   Behavior, actors, macros, testkit, interpreters, examples, and Bombay.
+2. State the user-level composition syntax that should work without naming the
+   resulting behavior type. Write the smallest compile-only or pure-fold test
+   for that syntax before changing production code.
+3. Identify the one semantic law and the existing lowest-order behavior or
+   layer that should own it. Treat repeated generic plumbing as evidence of a
+   missing composition law, not evidence that every caller needs an adapter.
+4. List the aliases, `With*` variants, constructors, wrappers, marker types,
+   and duplicated folds the design will delete. If it deletes none, presume
+   the proposed abstraction is relocating complexity and redesign it.
+5. Prove the same mechanism through at least two unrelated templates and two
+   wrapper orders. A mechanism demonstrated only by proxy/supervision, only by
+   pools, or only by one test fixture is still template-specific.
+6. Inspect the interpreter boundary before accepting the algebra. Static
+   metadata that no interpreter can consume is not an implemented feature.
+7. Only after the public algebra and interpreter path are coherent may bulk
+   call-site migration begin.
+
+During this checkpoint, making more tests compile is not progress. Do not add
+custom fixture events, aliases, explicit generic annotations, compatibility
+constructors, or path-counting calls to preserve the suspect API. If such
+edits have already begun, stop and separate or revert only those edits before
+continuing; never use unrelated user changes as rollback collateral.
+
+At the end of each compiler-fix batch, answer these questions explicitly:
+
+- Did this batch remove a repeated concept, or merely teach more callers its
+  current shape?
+- Would adding one unrelated `BehaviorLayer` require another caller edit?
+- Is any public name describing structural position (`WithParent`, `Inner`,
+  `AtPath`) rather than a distinct state-transition law?
+- Did test code gain more protocol/type plumbing than production code lost?
+
+Any “yes” to the last three questions reopens the design checkpoint and blocks
+further migration.
+
+## Change containment and abstraction budget
+
+Correct architecture does not justify unlimited code growth. Treat source
+size, public surface, and reviewability as design constraints. A typed wrapper
+that merely relocates complexity is not a successful composition.
+
+Keep the requested blocker separate from later cleanup. Complete and verify
+the blocker before editing production code for a broader audit or refactor. An
+audit may add independent tests and identify later work, but it must not grow
+the current production design unless a failing law independently proves that
+the additional machinery is necessary.
+
+Before the first production edit, record a change ledger containing:
+
+- the exact blocker and the smallest end-to-end failing regression;
+- expected files touched and expected production line delta;
+- public types expected to be added and removed; and
+- the existing folds, products, and compositions that will be reused or
+  deleted.
+
+The following are automatic stop thresholds for the cumulative task, not
+targets to evade by splitting commits:
+
+- more than 15 changed files;
+- more than 500 net new production lines; or
+- more than three new public types.
+
+When any threshold is reached, stop before further production edits. Report
+the current ledger and obtain explicit user authorization for the expanded
+surface. Prior instructions to “finish,” “audit everything,” or “do it
+holistically” do not waive this checkpoint.
+
+Every new wrapper, builder, trait, or public product must answer all of these
+questions before implementation:
+
+1. What unique semantic state does it own?
+2. What unique event or effect transformation does it implement?
+3. Why can the existing concrete composition not express the law?
+4. What existing production code or caller-side machinery does it delete?
+5. Which concrete use demonstrates that the abstraction belongs here?
+
+Reject an abstraction that only renames a nested type, forwards unchanged
+events or effects, stores another wrapper, hides a structural path, or makes a
+single example look shorter while increasing the total public surface. Start
+with a compile-only or pure-fold test that attempts the desired syntax using
+existing types. Add production machinery only after that test isolates the
+precise compositional gap.
+
+At each logical checkpoint, measure the complete working tree, including
+untracked files, and report:
+
+```text
+production: +A / -B / net C
+tests:      +A / -B / net C
+public API: +N types / -M types
+```
+
+Do not describe a change as cleanup, consolidation, or code reduction when its
+production delta is net-positive. Separate new capability code from deletion
+work so each can be judged honestly. Work in independently reviewable stages;
+do not combine the blocker, a catalogue-wide redesign, wrapper cleanup, and a
+test expansion into one undifferentiated patch.
+
 ## Testability standard
 
 Extreme testability is a design constraint. Behavior logic must be runnable as
@@ -250,6 +698,20 @@ Regression tests must fail for the original bug for the intended reason. When
 testing a model, use independent vocabulary and structure so the test cannot
 reproduce the same implementation error. Use paused or explicitly advanced
 time for timer semantics; do not write timing-sensitive sleeps.
+
+Before broadening a semantic change, run its focused regressions in both debug
+and optimized builds. Assertions must be observational only: never place a
+state transition, mutation, ownership transfer, or required function call
+inside `assert!`, `debug_assert!`, or their equality variants. Treat
+`clippy::debug_assert_with_mut_call` and `clippy::let_underscore_must_use` as
+denied. For lifecycle and generation laws, explicitly replay the same fact in
+an optimized test and prove that it cannot be accepted twice.
+
+A regression is not accepted merely because it passes after the fix. Restore
+or simulate the original defect and establish that the test fails for the
+intended law. Tests must assert complete `Actions` lanes or an independent
+trace; repeated assertions of the same field, discarded `Actions`, predicted
+nonces, or models copied from implementation branches are invalid evidence.
 
 Test-only `unwrap`/`expect` is acceptable when it asserts test setup or an
 expected successful transition. Production panics require a documented,
@@ -294,4 +756,5 @@ evaluating performance, since benchmarks are not nextest binaries.
 A change is not complete merely because happy-path runtime tests pass. It is
 complete when the type surface preserves the stated invariants, invalid uses
 fail to compile where appropriate, the transition laws are tested
-independently, and the full repository gates pass.
+independently, the final change ledger reports the complete tracked and
+untracked delta, and the full repository gates pass.

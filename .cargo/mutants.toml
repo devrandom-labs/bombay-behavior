@@ -4,9 +4,12 @@ exclude_re = [
     # EQUIVALENT: Ingress is a PhantomData-only capability, so copying it and
     # constructing its Default value produce the same unique value.
     'replace <impl Clone for Ingress<Input, Path>>::clone -> Self with Default::default\(\)',
-    # EQUIVALENT: the empty child product's successful staging result is
-    # definitionally the same pair of empty Vec values.
-    'replace <impl ChildProduct<A> for NoChildren>::stage -> .* with Ok\(\(vec!\[\], vec!\[\]\)\)',
+    # EQUIVALENT: NoChildren has no inhabitants to stage, so its only lawful
+    # result and a newly constructed empty Vec are the same value.
+    'replace <impl ChildProduct<A> for NoChildren>::stage -> .* with vec!\[\]',
     # EQUIVALENT: Vec's Default value is exactly Vec::new().
     'replace <impl SendEffects for Vec<T>>::empty -> Self with Default::default\(\)',
+    # EQUIVALENT: Never is uninhabited, so every Vec<Never> is empty and
+    # returning the input is observationally identical to Vec::default().
+    'replace <impl SendSettlements for Vec<crate::Never>>::unattempted -> Self::Settlements with Default::default\(\)',
 ]

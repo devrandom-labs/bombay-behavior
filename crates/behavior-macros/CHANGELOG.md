@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.4](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-macros-v0.11.3...bombay-behavior-macros-v0.11.4) - 2026-08-21
+
+### Added
+
+- Generate `ChildOccurrence<Parent>` metadata beside every nominal
+  `ChildRole<Parent>`, allowing the sealed Behavior resolver to recover the
+  exact child and structural position through topology-transparent wrappers.
+
 ## [0.11.3](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-macros-v0.11.2...bombay-behavior-macros-v0.11.3) - 2026-08-21
 
 ### Other

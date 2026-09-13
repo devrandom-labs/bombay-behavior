@@ -1,171 +1,23 @@
-//! Driver-level lossless accumulation: `drive` folds every transition's
+//! Driver-level lossless accumulation: `drive` appends every transition's
 //! effect into the trace via `SendEffects::append`. For composed behaviors
-//! the sends use named products; this is where "send/create order and wrapper
+//! the sends use named products; this is where "send order and wrapper
 //! preservation are lossless under composition" (contract #3) is enforced at
-//! the trace level. Also: the `SendEffects` monoid law itself, and the
-//! empty-fleet birth→death restart path.
+//! the trace level. It also checks the `SendEffects` monoid law itself.
 
-use std::time::Duration;
+use core::future::Future;
+use std::time::{Duration, Instant};
 
-use behavior::EventLayer;
 use behavior::{
-    Acted, Actions, Crash, Create, Delivery, MailAddr, Never, Recipient, RestartPolicy,
-    SendEffects, Step, Strategy, SupervisionEvent, User, UserEvent, WorkerStopped,
+    Acted, ActionItem, Actions, Crash, Creations, Delivery, EventLayer, Here, Inside,
+    InterpretItem, InterpretSends, Interpretation, ItemSettlement, MailAddr, Never, ObservePeer,
+    PeerObservationRejection, PeerStopped, Recipient, ScheduleAt, SendEffects, SettledItem,
+    StashRoute, Step, TimerElapsed, TimerGeneration, TimerId, TimerScheduled, User,
+    stop_on_abnormal_death,
 };
-use behavior_testkit::{Mailbox, drive};
+use behavior_testkit::{DriveDisposition, Mailbox, drive};
 use proptest::collection::vec;
-use proptest::prelude::*;
-use std::time::Instant;
-
-#[derive(Default)]
-struct Echo;
-
-#[behavior::behavior(addr = MailAddr, message = u8, sends = Vec<Delivery<behavior_testkit::TestRecipient<u8>>>, births = behavior::NoBirths, error = Never)]
-impl Echo {
-    fn receive(
-        &mut self,
-        _from: MailAddr,
-        _message: u8,
-    ) -> Acted<
-        MailAddr,
-        Never,
-        Vec<Delivery<behavior_testkit::TestRecipient<u8>>>,
-        behavior::NoBirths,
-        Never,
-    > {
-        Ok(Actions::cont())
-    }
-}
-
-type Child = Echo;
-
-fn child(_index: usize) -> Child {
-    Echo
-}
-
-/// Parent that echoes every user message on its own send lane and can birth
-/// children.
-struct EchoingParent {
-    seen: Vec<u64>,
-}
-
-#[behavior::behavior(addr = MailAddr, message = u64, sends = Vec<Delivery<behavior_testkit::TestRecipient<u64>>>, births = behavior::Births<Child>, error = Never)]
-impl EchoingParent {
-    fn receive(
-        &mut self,
-        _from: MailAddr,
-        message: u64,
-    ) -> Acted<
-        MailAddr,
-        Never,
-        Vec<Delivery<behavior_testkit::TestRecipient<u64>>>,
-        behavior::Births<Child>,
-        Never,
-    > {
-        self.seen.push(message);
-        Ok(Actions {
-            sends: vec![Delivery::new(Recipient::global(MailAddr(0)), message)],
-            creates: if message == u64::MAX {
-                vec![Create::birth(message, child(0))]
-            } else {
-                Vec::new()
-            },
-            become_: Step::Continue,
-        })
-    }
-}
-
-struct BirthingParent {
-    born: bool,
-}
-
-#[behavior::behavior(addr = MailAddr, message = u64, sends = Vec<Never>, births = behavior::Births<Child>, error = Never)]
-impl BirthingParent {
-    fn receive(
-        &mut self,
-        _from: MailAddr,
-        nonce: u64,
-    ) -> Acted<MailAddr, Never, Vec<Never>, behavior::Births<Child>, Never> {
-        if self.born {
-            return Ok(Actions::cont());
-        }
-        self.born = true;
-        Ok(Actions {
-            sends: Vec::new(),
-            creates: vec![Create::birth(nonce, child(0))],
-            become_: Step::Continue,
-        })
-    }
-}
-
-type TestSupervisor = behavior::Supervise<EchoingParent, Child>;
-
-/// A driven supervised trace: user echoes accumulate in the inner lane,
-/// replacement sends in the supervisor's own lane, observe-child sends stay
-/// exactly at init — every product lane keeps its own accumulation order.
-#[tokio::test]
-async fn driver_accumulates_supervising_send_products_losslessly() {
-    let at = Instant::now();
-    let supervisor: TestSupervisor = behavior::Supervise::new(
-        EchoingParent { seen: Vec::new() },
-        behavior::ChildTopology::indexed(
-            |index| u64::try_from(index).unwrap(),
-            2,
-            |index| Some(child(index)),
-        ),
-        behavior::RestartConfiguration::new(
-            Strategy::OneForOne,
-            RestartPolicy::Permanent,
-            u32::MAX,
-            Duration::MAX,
-        ),
-    )
-    .unwrap();
-    let mut mailbox = Mailbox::new([
-        SupervisionEvent::Behavior(User::user(MailAddr(9), 3)),
-        SupervisionEvent::WorkerStopped(WorkerStopped {
-            proxy: 0,
-            worker: 0,
-            outcome: Err(Crash::Failed),
-            at,
-        }),
-        SupervisionEvent::Behavior(User::user(MailAddr(9), 5)),
-        SupervisionEvent::WorkerStopped(WorkerStopped {
-            proxy: 1,
-            worker: 1,
-            outcome: Err(Crash::Failed),
-            at,
-        }),
-    ]);
-    let trace = drive(supervisor, &mut mailbox).unwrap();
-
-    assert_eq!(trace.transitions, 5);
-    assert_eq!(trace.pending, 0);
-    assert!(!trace.stopped);
-
-    // Inner lane: user echoes, in order, exactly the delivered messages.
-    let echoes: Vec<u64> = trace.sends.inner.iter().map(|d| d.message).collect();
-    assert_eq!(echoes, [3, 5]);
-    // Supervise's own replacement lane: one per death, in order.
-    let replacements: Vec<MailAddr> = trace
-        .sends
-        .owned
-        .replacement_commands
-        .iter()
-        .map(|d| d.to.resolve(MailAddr(17)))
-        .collect();
-    assert_eq!(
-        replacements,
-        [
-            behavior::Address::birth(MailAddr(17), 0),
-            behavior::Address::birth(MailAddr(17), 1)
-        ]
-    );
-    // Observe-child sends: emitted once at init, never again.
-    assert_eq!(trace.sends.owned.child_observations.len(), 2);
-    // Creates: exactly the two init proxies; the driver never re-creates.
-    assert_eq!(trace.creates.len(), 2);
-}
+use proptest::prelude::{ProptestConfig, any};
+use proptest::{prop_assert_eq, proptest};
 
 // The `SendEffects` monoid law that the driver's accumulation depends on:
 // `empty` is a two-sided identity and `append` is associative, at both the
@@ -203,142 +55,227 @@ proptest! {
     }
 }
 
-/// Empty configured fleet: a dynamic birth (sequence 0) followed by its
-/// death restarts exactly that child under `OneForOne`.
-#[tokio::test]
-async fn empty_fleet_dynamic_birth_then_death_restarts() {
-    let at = Instant::now();
-    let supervisor = behavior::Supervise::new(
-        BirthingParent { born: false },
-        behavior::ChildTopology::indexed(
-            |index| u64::try_from(index).unwrap(),
-            0,
-            |index| Some(child(index)),
-        ),
-        behavior::RestartConfiguration::new(
-            Strategy::OneForOne,
-            RestartPolicy::Permanent,
-            u32::MAX,
-            Duration::MAX,
-        ),
-    )
-    .unwrap();
-    let initialized = supervisor.initialize().unwrap();
-    let mut supervisor = initialized.behavior;
-    supervisor
-        .transition(UserEvent::user(MailAddr(0), 9))
-        .unwrap();
-    assert_eq!(supervisor.child_count(), 1);
-    assert!(supervisor.is_alive(9).unwrap());
-
-    let actions = supervisor
-        .transition(SupervisionEvent::WorkerStopped(WorkerStopped {
-            proxy: 9,
-            worker: 9,
-            outcome: Err(Crash::Failed),
-            at,
-        }))
-        .unwrap();
-    assert_eq!(actions.sends.owned.replacement_commands.len(), 1);
-    assert_eq!(
-        actions.sends.owned.replacement_commands[0]
-            .to
-            .resolve(MailAddr(17)),
-        behavior::Address::birth(MailAddr(17), 9)
-    );
-    assert!(supervisor.is_alive(9).unwrap());
+struct EchoingApplication {
+    seen: Vec<u64>,
 }
 
-/// The full four-layer stack driven through the mailbox: user echoes
+#[behavior::behavior(addr = MailAddr, message = u64, sends = Vec<Delivery<behavior_testkit::TestRecipient<u64>>>, births = behavior::NoBirths, error = Never)]
+impl EchoingApplication {
+    fn receive(
+        &mut self,
+        _from: MailAddr,
+        message: u64,
+    ) -> Acted<
+        MailAddr,
+        Never,
+        Vec<Delivery<behavior_testkit::TestRecipient<u64>>>,
+        behavior::NoBirths,
+        Never,
+    > {
+        self.seen.push(message);
+        Ok(Actions::send(vec![Delivery::new(
+            Recipient::global(MailAddr(0)),
+            message,
+        )]))
+    }
+}
+
+type FullStackEvent = behavior::DeadlineEvent<behavior::WatchEvent<User<MailAddr, u64>>>;
+
+#[derive(Debug, PartialEq, Eq)]
+enum FullStackRuntimeEffect {
+    EchoDeliveryAccepted(u64),
+    PeerObservationAccepted(MailAddr),
+    TimerScheduleAccepted(TimerId),
+}
+
+struct FullStackRuntime {
+    effects: Vec<FullStackRuntimeEffect>,
+}
+
+impl
+    InterpretItem<
+        Delivery<behavior_testkit::TestRecipient<u64>>,
+        FullStackEvent,
+        Inside<Inside<Here>>,
+    > for FullStackRuntime
+{
+    fn interpret_item(
+        &mut self,
+        delivery: Delivery<behavior_testkit::TestRecipient<u64>>,
+    ) -> impl Future<
+        Output = ItemSettlement<
+            Delivery<behavior_testkit::TestRecipient<u64>>,
+            <Delivery<behavior_testkit::TestRecipient<u64>> as ActionItem>::Accepted,
+            <Delivery<behavior_testkit::TestRecipient<u64>> as ActionItem>::Rejection,
+            <Delivery<behavior_testkit::TestRecipient<u64>> as ActionItem>::Prerequisite,
+        >,
+    > + Send {
+        async move {
+            self.effects
+                .push(FullStackRuntimeEffect::EchoDeliveryAccepted(
+                    delivery.message,
+                ));
+            ItemSettlement::Accepted(())
+        }
+    }
+}
+
+impl InterpretItem<ObservePeer<MailAddr>, FullStackEvent, Inside<Here>> for FullStackRuntime {
+    fn interpret_item(
+        &mut self,
+        observation: ObservePeer<MailAddr>,
+    ) -> impl Future<
+        Output = ItemSettlement<
+            ObservePeer<MailAddr>,
+            <ObservePeer<MailAddr> as ActionItem>::Accepted,
+            <ObservePeer<MailAddr> as ActionItem>::Rejection,
+            <ObservePeer<MailAddr> as ActionItem>::Prerequisite,
+        >,
+    > + Send {
+        async move {
+            self.effects
+                .push(FullStackRuntimeEffect::PeerObservationAccepted(
+                    observation.peer,
+                ));
+            ItemSettlement::Accepted(())
+        }
+    }
+}
+
+impl InterpretItem<ScheduleAt, FullStackEvent, Here> for FullStackRuntime {
+    fn interpret_item(
+        &mut self,
+        schedule: ScheduleAt,
+    ) -> impl Future<
+        Output = ItemSettlement<
+            ScheduleAt,
+            <ScheduleAt as ActionItem>::Accepted,
+            <ScheduleAt as ActionItem>::Rejection,
+            <ScheduleAt as ActionItem>::Prerequisite,
+        >,
+    > + Send {
+        async move {
+            self.effects
+                .push(FullStackRuntimeEffect::TimerScheduleAccepted(schedule.id));
+            ItemSettlement::Accepted(TimerScheduled {
+                id: schedule.id,
+                generation: schedule.generation,
+            })
+        }
+    }
+}
+
+struct UnknownPeerRuntime;
+
+impl InterpretItem<ObservePeer<MailAddr>, FullStackEvent, Inside<Here>> for UnknownPeerRuntime {
+    fn interpret_item(
+        &mut self,
+        observation: ObservePeer<MailAddr>,
+    ) -> impl Future<
+        Output = ItemSettlement<
+            ObservePeer<MailAddr>,
+            <ObservePeer<MailAddr> as ActionItem>::Accepted,
+            <ObservePeer<MailAddr> as ActionItem>::Rejection,
+            <ObservePeer<MailAddr> as ActionItem>::Prerequisite,
+        >,
+    > + Send {
+        async move {
+            ItemSettlement::Rejected {
+                item: observation,
+                reason: PeerObservationRejection::UnknownAddress,
+            }
+        }
+    }
+}
+
+/// The full three-layer stack driven through the mailbox: user echoes
 /// accumulate in the innermost lane, the time lane fires once, a watched
-/// peer's death stops the fold with `LinkDied` and leaves the remaining
+/// peer's death stops the behavior with `LinkDied` and leaves the remaining
 /// mailbox unconsumed.
 #[tokio::test]
 async fn driver_full_stack_mixed_lanes_stop_on_peer_death() {
-    use behavior::{
-        PeerStopped, StashRoute, TimerElapsed, TimerGeneration, TimerId, stop_on_abnormal_death,
-    };
-
     let due = Instant::now() + Duration::from_secs(1);
     let peer = MailAddr(44);
-    let behavior = behavior::Supervise::new(
-        behavior::Deadline::new(
-            behavior::Watch::new(
-                behavior::Stash::new(EchoingParent { seen: Vec::new() }, |m| {
-                    if m % 3 == 2 {
-                        StashRoute::Stash
-                    } else {
-                        StashRoute::Deliver
-                    }
-                }),
-                peer,
-                stop_on_abnormal_death,
-            ),
-            behavior::TimerId(0),
-            Some(due),
-            |_| Ok(Step::Continue),
+    let behavior = behavior::Deadline::new(
+        behavior::Watch::new(
+            behavior::Stash::new(EchoingApplication { seen: Vec::new() }, |message| {
+                match message % 3 {
+                    2 => StashRoute::Stash,
+                    _ => StashRoute::Deliver,
+                }
+            }),
+            peer,
+            stop_on_abnormal_death,
         ),
-        behavior::ChildTopology::new((0..2).map(|index| u64::try_from(index).unwrap()), |index| {
-            Some(child(index))
-        }),
-        behavior::RestartConfiguration::new(
-            behavior::Strategy::OneForOne,
-            RestartPolicy::Permanent,
-            u32::MAX,
-            Duration::MAX,
-        ),
-    )
-    .unwrap();
+        TimerId(0),
+        Some(due),
+        |_| Step::Continue,
+    );
     let mut mailbox = Mailbox::new([
-        SupervisionEvent::Behavior(EventLayer::Inner(EventLayer::Inner(User::user(
-            MailAddr(9),
-            1,
-        )))),
-        SupervisionEvent::Behavior(EventLayer::Inner(EventLayer::Inner(User::user(
-            MailAddr(9),
-            5,
-        )))),
-        SupervisionEvent::Behavior(EventLayer::Owned(TimerElapsed {
+        EventLayer::Inner(EventLayer::Inner(User::new(MailAddr(9), 1))),
+        EventLayer::Inner(EventLayer::Inner(User::new(MailAddr(9), 5))),
+        EventLayer::Owned(TimerElapsed {
             id: TimerId(0),
             generation: TimerGeneration(0),
-        })),
-        SupervisionEvent::Behavior(EventLayer::Inner(EventLayer::Owned(PeerStopped {
+        }),
+        EventLayer::Inner(EventLayer::Owned(PeerStopped {
             peer,
             outcome: Err(Crash::Failed),
-        }))),
-        SupervisionEvent::Behavior(EventLayer::Inner(EventLayer::Inner(User::user(
-            MailAddr(9),
-            7,
-        )))),
+        })),
+        EventLayer::Inner(EventLayer::Inner(User::new(MailAddr(9), 7))),
     ]);
     let trace = drive(behavior, &mut mailbox).unwrap();
 
     // Stopped at the peer death: init + 4 processed events, tail left.
     assert_eq!(trace.transitions, 5);
     assert_eq!(trace.pending, 1);
-    assert!(trace.stopped);
+    assert!(matches!(
+        trace.disposition,
+        DriveDisposition::BehaviorStopped(behavior::Stopped)
+    ));
 
-    // Echo lane accumulated exactly the Deliver-routed message (1); the
-    // stashed message (5 % 3 == 2 -> Stash) and the post-stop message (7)
-    // never reached the parent.
-    let echoes: Vec<u64> = trace
-        .sends
-        .inner
-        .inner
-        .inner
-        .iter()
-        .map(|d| d.message)
-        .collect();
-    assert_eq!(echoes, [1]);
-    // Schedule send emitted once at init.
-    assert_eq!(trace.sends.inner.owned.len(), 1);
-    // Observe-peer emitted once at init.
-    assert_eq!(trace.sends.inner.inner.owned.len(), 1);
-    // Observe-child sends emitted once at init.
-    assert_eq!(trace.sends.owned.child_observations.len(), 2);
+    let mut runtime = FullStackRuntime {
+        effects: Vec::new(),
+    };
+    let interpreted =
+        <_ as InterpretSends<_, FullStackEvent, Here>>::interpret(trace.sends, &mut runtime).await;
+    assert!(matches!(interpreted, Interpretation::Complete(_)));
+    assert_eq!(
+        runtime.effects,
+        [
+            FullStackRuntimeEffect::EchoDeliveryAccepted(1),
+            FullStackRuntimeEffect::PeerObservationAccepted(peer),
+            FullStackRuntimeEffect::TimerScheduleAccepted(TimerId(0)),
+        ]
+    );
 }
 
-/// A macro-defined behavior folds through the same driver boundary as a
+#[tokio::test]
+async fn unknown_peer_observation_returns_the_complete_request() {
+    let peer = MailAddr(404);
+    let observations = behavior::InterpreterRequests::one(ObservePeer::new(peer));
+    let mut runtime = UnknownPeerRuntime;
+
+    let interpreted = <_ as InterpretSends<_, FullStackEvent, Inside<Here>>>::interpret(
+        observations,
+        &mut runtime,
+    )
+    .await;
+    let Interpretation::Complete(settlements) = interpreted else {
+        panic!("expected a complete logical-peer observation rejection");
+    };
+    let [SettledItem::Attempted(ItemSettlement::Rejected { item, reason })] =
+        settlements.as_slice()
+    else {
+        panic!("expected exactly one attempted logical-peer observation rejection");
+    };
+
+    assert_eq!(item.peer, peer);
+    assert_eq!(*reason, PeerObservationRejection::UnknownAddress);
+}
+
+/// A macro-defined behavior runs through the same Driver contract as a
 /// hand-written `Behavior`: same effect algebra and accumulation.
 #[tokio::test]
 #[allow(
@@ -366,7 +303,7 @@ async fn macro_defined_behavior_drives_like_a_base() {
             self.seen.push(message);
             Ok(Actions {
                 sends: vec![Delivery::new(Recipient::global(MailAddr(0)), message)],
-                creates: Vec::new(),
+                creates: Creations::empty(),
                 become_: if message == 9 {
                     Step::Stop(behavior::Stopped)
                 } else {
@@ -378,26 +315,27 @@ async fn macro_defined_behavior_drives_like_a_base() {
 
     let behavior = FnRecorder { seen: Vec::new() };
     let mut mailbox = Mailbox::new([
-        User::user(MailAddr(1), 3),
-        User::user(MailAddr(2), 9),
-        User::user(MailAddr(3), 5),
+        User::new(MailAddr(1), 3),
+        User::new(MailAddr(2), 9),
+        User::new(MailAddr(3), 5),
     ]);
     let trace = drive(behavior, &mut mailbox).unwrap();
 
     assert_eq!(trace.transitions, 3);
     assert_eq!(trace.pending, 1);
-    assert!(trace.stopped);
+    assert!(matches!(
+        trace.disposition,
+        DriveDisposition::BehaviorStopped(behavior::Stopped)
+    ));
     let echoes: Vec<u64> = trace.sends.iter().map(|d| d.message).collect();
     assert_eq!(echoes, [3, 9]);
     assert_eq!(trace.behavior.seen, [3, 9]);
 }
 
-/// A stash release whose trigger stops the inner fold: the driver stops,
+/// A stash release whose trigger stops the inner behavior: the Driver stops,
 /// the stash buffer keeps the held messages, and nothing is lost.
 #[tokio::test]
 async fn driver_stash_stop_preserves_held_and_stops() {
-    use behavior::StashRoute;
-
     struct StopOnZero {
         seen: Vec<(MailAddr, u64)>,
     }
@@ -417,7 +355,7 @@ async fn driver_stash_stop_preserves_held_and_stops() {
             self.seen.push((from, message));
             Ok(Actions {
                 sends: Vec::new(),
-                creates: Vec::new(),
+                creates: Creations::empty(),
                 become_: if message == 0 {
                     Step::Stop(behavior::Stopped)
                 } else {
@@ -427,20 +365,23 @@ async fn driver_stash_stop_preserves_held_and_stops() {
         }
     }
 
-    let behavior = behavior::Stash::new(StopOnZero { seen: Vec::new() }, |m: &u64| {
-        if *m == 0 {
-            StashRoute::Release
-        } else {
-            StashRoute::Stash
-        }
-    });
-    let mut mailbox = Mailbox::new([User::user(MailAddr(1), 5), User::user(MailAddr(9), 0)]);
+    let behavior =
+        behavior::Stash::new(
+            StopOnZero { seen: Vec::new() },
+            |message: &u64| match message {
+                0 => StashRoute::Release,
+                _ => StashRoute::Stash,
+            },
+        );
+    let mut mailbox = Mailbox::new([User::new(MailAddr(1), 5), User::new(MailAddr(9), 0)]);
     let trace = drive(behavior, &mut mailbox).unwrap();
 
     assert_eq!(trace.transitions, 3);
     assert_eq!(trace.pending, 0);
-    assert!(trace.stopped);
+    assert!(matches!(
+        trace.disposition,
+        DriveDisposition::BehaviorStopped(behavior::Stopped)
+    ));
     assert_eq!(trace.behavior.held(), 1); // the stashed message survives the stop
     assert_eq!(trace.behavior.base().seen, [(MailAddr(9), 0)]);
 }
-use behavior_testkit::InitializeTest;

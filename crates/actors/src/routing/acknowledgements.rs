@@ -1,10 +1,11 @@
 //! Multi-participant acknowledgement lifecycle correlation.
 
-use behavior::{
-    Actions, Address, Behavior, BehaviorActed, BehaviorBase, Delivery, Never, NoBirths, Recipient,
-    User,
-};
+#[cfg(test)]
+use behavior::Recipient;
+use behavior::{Actions, Address, Behavior, BehaviorActed, BehaviorBase, Never, NoBirths, User};
 use thiserror::Error;
+
+use crate::DeliveryRoute;
 
 /// Exhaustive lifecycle phase for one acknowledgement key.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -31,6 +32,15 @@ pub struct AcknowledgementRecord<K, P> {
     pub state: AcknowledgementState<P>,
 }
 
+/// Exact operation submitted to an already terminal or unknown lifecycle.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AcknowledgementInput<K, P> {
+    /// One participant attempted to acknowledge.
+    Acknowledge { key: K, participant: P },
+    /// The lifecycle was asked to cancel.
+    Cancel { key: K },
+}
+
 /// Typed rejection of an acknowledgement operation.
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum AcknowledgementError<K, P> {
@@ -39,13 +49,12 @@ pub enum AcknowledgementError<K, P> {
     Existing {
         /// Rejected key.
         key: K,
+        /// Exact participant declaration from the rejected command.
+        participants: Vec<P>,
     },
     /// No lifecycle exists for this key.
     #[error("acknowledgement key is unknown")]
-    Unknown {
-        /// Rejected key.
-        key: K,
-    },
+    Unknown(AcknowledgementInput<K, P>),
     /// The participant was not declared for the pending lifecycle.
     #[error("participant is not required by this acknowledgement")]
     UnexpectedParticipant {
@@ -64,16 +73,10 @@ pub enum AcknowledgementError<K, P> {
     },
     /// An operation targeted a completed lifecycle.
     #[error("acknowledgement lifecycle is already complete")]
-    Completed {
-        /// Correlation key.
-        key: K,
-    },
+    Completed(AcknowledgementInput<K, P>),
     /// An operation targeted a cancelled lifecycle.
     #[error("acknowledgement lifecycle is cancelled")]
-    Cancelled {
-        /// Correlation key.
-        key: K,
-    },
+    Cancelled(AcknowledgementInput<K, P>),
 }
 
 /// Complete result of one acknowledgement operation.
@@ -110,7 +113,7 @@ pub enum AcknowledgementOutcome<K, P> {
 }
 
 /// Operations accepted by [`Acknowledgements`].
-pub enum AcknowledgementMessage<K, P, Reply: behavior::Protocol> {
+pub enum AcknowledgementMessage<K, P, Route> {
     /// Establish a fresh acknowledgement lifecycle.
     Begin {
         /// Correlation key.
@@ -118,7 +121,7 @@ pub enum AcknowledgementMessage<K, P, Reply: behavior::Protocol> {
         /// Required participants; duplicates are normalized by first occurrence.
         participants: Vec<P>,
         /// Typed outcome recipient.
-        reply_to: Recipient<Reply>,
+        reply_to: Route,
     },
     /// Record one participant acknowledgement.
     Acknowledge {
@@ -127,14 +130,14 @@ pub enum AcknowledgementMessage<K, P, Reply: behavior::Protocol> {
         /// Participant making the acknowledgement.
         participant: P,
         /// Typed outcome recipient.
-        reply_to: Recipient<Reply>,
+        reply_to: Route,
     },
     /// Cancel a pending lifecycle.
     Cancel {
         /// Correlation key.
         key: K,
         /// Typed outcome recipient.
-        reply_to: Recipient<Reply>,
+        reply_to: Route,
     },
 }
 
@@ -155,18 +158,19 @@ pub struct Acknowledgements<
     A: Address,
     K,
     P,
-    Reply: behavior::Protocol<Addr = A, Msg = AcknowledgementOutcome<K, P>>,
+    Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = AcknowledgementOutcome<K, P>>>,
 > {
     records: Vec<AcknowledgementRecord<K, P>>,
-    marker: core::marker::PhantomData<fn() -> (A, Reply)>,
+    marker: core::marker::PhantomData<fn() -> (A, Route)>,
 }
 
-impl<A, K, P, Reply> Acknowledgements<A, K, P, Reply>
+impl<A, K, P, Route> Acknowledgements<A, K, P, Route>
 where
     A: Address,
     K: Clone + Eq,
     P: Clone + Eq,
-    Reply: behavior::Protocol<Addr = A, Msg = AcknowledgementOutcome<K, P>>,
+    Route:
+        DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = AcknowledgementOutcome<K, P>>>,
 {
     /// Construct an empty acknowledgement table.
     #[must_use]
@@ -184,22 +188,25 @@ where
     }
 
     fn result(
-        reply_to: Recipient<Reply>,
+        reply_to: Route,
         outcome: AcknowledgementOutcome<K, P>,
-    ) -> Actions<A, Never, Vec<Delivery<Reply>>, NoBirths> {
-        Actions::send(vec![Delivery::new(reply_to, outcome)])
+    ) -> Actions<A, Never, Route::Sends, NoBirths> {
+        Actions::send(reply_to.deliver(outcome))
     }
 
     fn begin(
         &mut self,
         key: K,
         participants: Vec<P>,
-        reply_to: Recipient<Reply>,
-    ) -> Actions<A, Never, Vec<Delivery<Reply>>, NoBirths> {
+        reply_to: Route,
+    ) -> Actions<A, Never, Route::Sends, NoBirths> {
         if self.records.iter().any(|record| record.key == key) {
             return Self::result(
                 reply_to,
-                AcknowledgementOutcome::Rejected(AcknowledgementError::Existing { key }),
+                AcknowledgementOutcome::Rejected(AcknowledgementError::Existing {
+                    key,
+                    participants,
+                }),
             );
         }
         let mut distinct = Vec::new();
@@ -233,12 +240,14 @@ where
         &mut self,
         key: K,
         participant: P,
-        reply_to: Recipient<Reply>,
-    ) -> Actions<A, Never, Vec<Delivery<Reply>>, NoBirths> {
+        reply_to: Route,
+    ) -> Actions<A, Never, Route::Sends, NoBirths> {
         let Some(record) = self.records.iter_mut().find(|record| record.key == key) else {
             return Self::result(
                 reply_to,
-                AcknowledgementOutcome::Rejected(AcknowledgementError::Unknown { key }),
+                AcknowledgementOutcome::Rejected(AcknowledgementError::Unknown(
+                    AcknowledgementInput::Acknowledge { key, participant },
+                )),
             );
         };
         let (remaining, acknowledged) = match &mut record.state {
@@ -249,13 +258,17 @@ where
             AcknowledgementState::Completed => {
                 return Self::result(
                     reply_to,
-                    AcknowledgementOutcome::Rejected(AcknowledgementError::Completed { key }),
+                    AcknowledgementOutcome::Rejected(AcknowledgementError::Completed(
+                        AcknowledgementInput::Acknowledge { key, participant },
+                    )),
                 );
             }
             AcknowledgementState::Cancelled => {
                 return Self::result(
                     reply_to,
-                    AcknowledgementOutcome::Rejected(AcknowledgementError::Cancelled { key }),
+                    AcknowledgementOutcome::Rejected(AcknowledgementError::Cancelled(
+                        AcknowledgementInput::Acknowledge { key, participant },
+                    )),
                 );
             }
         };
@@ -297,15 +310,13 @@ where
         }
     }
 
-    fn cancel(
-        &mut self,
-        key: K,
-        reply_to: Recipient<Reply>,
-    ) -> Actions<A, Never, Vec<Delivery<Reply>>, NoBirths> {
+    fn cancel(&mut self, key: K, reply_to: Route) -> Actions<A, Never, Route::Sends, NoBirths> {
         let Some(record) = self.records.iter_mut().find(|record| record.key == key) else {
             return Self::result(
                 reply_to,
-                AcknowledgementOutcome::Rejected(AcknowledgementError::Unknown { key }),
+                AcknowledgementOutcome::Rejected(AcknowledgementError::Unknown(
+                    AcknowledgementInput::Cancel { key },
+                )),
             );
         };
         match record.state {
@@ -315,34 +326,40 @@ where
             }
             AcknowledgementState::Completed => Self::result(
                 reply_to,
-                AcknowledgementOutcome::Rejected(AcknowledgementError::Completed { key }),
+                AcknowledgementOutcome::Rejected(AcknowledgementError::Completed(
+                    AcknowledgementInput::Cancel { key },
+                )),
             ),
             AcknowledgementState::Cancelled => Self::result(
                 reply_to,
-                AcknowledgementOutcome::Rejected(AcknowledgementError::Cancelled { key }),
+                AcknowledgementOutcome::Rejected(AcknowledgementError::Cancelled(
+                    AcknowledgementInput::Cancel { key },
+                )),
             ),
         }
     }
 }
 
-impl<A, K, P, Reply> Default for Acknowledgements<A, K, P, Reply>
+impl<A, K, P, Route> Default for Acknowledgements<A, K, P, Route>
 where
     A: Address,
     K: Clone + Eq,
     P: Clone + Eq,
-    Reply: behavior::Protocol<Addr = A, Msg = AcknowledgementOutcome<K, P>>,
+    Route:
+        DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = AcknowledgementOutcome<K, P>>>,
 {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<A, K, P, Reply> BehaviorBase for Acknowledgements<A, K, P, Reply>
+impl<A, K, P, Route> BehaviorBase for Acknowledgements<A, K, P, Route>
 where
     A: Address,
     K: Clone + Eq,
     P: Clone + Eq,
-    Reply: behavior::Protocol<Addr = A, Msg = AcknowledgementOutcome<K, P>>,
+    Route:
+        DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = AcknowledgementOutcome<K, P>>>,
 {
     type Base = Self;
     fn base(&self) -> &Self {
@@ -350,27 +367,30 @@ where
     }
 }
 
-impl<A, K, P, Reply> behavior::Protocol for Acknowledgements<A, K, P, Reply>
+impl<A, K, P, Route> behavior::Protocol for Acknowledgements<A, K, P, Route>
 where
     A: Address,
     K: Clone + Eq,
     P: Clone + Eq,
-    Reply: behavior::Protocol<Addr = A, Msg = AcknowledgementOutcome<K, P>>,
+    Route:
+        DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = AcknowledgementOutcome<K, P>>>,
 {
     type Addr = A;
-    type Msg = AcknowledgementMessage<K, P, Reply>;
+    type Msg = AcknowledgementMessage<K, P, Route>;
 }
 
-impl<A, K, P, Reply> Behavior for Acknowledgements<A, K, P, Reply>
+impl<A, K, P, Route> Behavior for Acknowledgements<A, K, P, Route>
 where
     A: Address,
     K: Clone + Eq,
     P: Clone + Eq,
-    Reply: behavior::Protocol<Addr = A, Msg = AcknowledgementOutcome<K, P>>,
+    Route:
+        DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = AcknowledgementOutcome<K, P>>>,
+    Route::Sends: behavior::SendsFor<User<A, AcknowledgementMessage<K, P, Route>>>,
 {
     type Protocol = Self;
     type Event = User<A, crate::BehaviorMessage<Self>>;
-    type Sends = Vec<Delivery<Reply>>;
+    type Sends = Route::Sends;
     type Ph = Never;
     type Error = Never;
     type Birth = NoBirths;
@@ -416,7 +436,7 @@ mod tests {
         }
     }
 
-    type Subject = Acknowledgements<MailAddr, u8, u8, Reply>;
+    type Subject = Acknowledgements<MailAddr, u8, u8, Recipient<Reply>>;
     fn reply() -> Recipient<Reply> {
         Recipient::global(MailAddr(1))
     }
@@ -481,14 +501,19 @@ mod tests {
             .unwrap();
         assert!(matches!(
             stale.sends[0].message,
-            AcknowledgementOutcome::Rejected(AcknowledgementError::Completed { key: 7 })
+            AcknowledgementOutcome::Rejected(AcknowledgementError::Completed(
+                AcknowledgementInput::Acknowledge {
+                    key: 7,
+                    participant: 2,
+                }
+            ))
         ));
     }
 
     #[test]
     fn rejection_and_cancellation_do_not_conflate_phases() {
         let mut subject = (Subject::new()).initialize().unwrap().behavior;
-        let _ = subject
+        let started = subject
             .receive(
                 MailAddr(9),
                 AcknowledgementMessage::Begin {
@@ -498,6 +523,13 @@ mod tests {
                 },
             )
             .unwrap();
+        assert!(matches!(
+            started.sends[0].message,
+            AcknowledgementOutcome::Started {
+                key: 1,
+                remaining: 1
+            }
+        ));
         let unexpected = subject
             .receive(
                 MailAddr(9),

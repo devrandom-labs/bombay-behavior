@@ -4,56 +4,85 @@ use crate::{
     ChildStopped, ObserveChild, ObservePeer, PeerStopped, ReportTerminalOutcome, TerminalOutcome,
 };
 use behavior::{
-    Actions, Address, Behavior, BehaviorActed, BirthMode, EventLayer, Here, InterpretSends,
-    InterpreterRequest, InterpreterRequests, ReturnsToEmitter, SendEffects, SendInterpreter,
-    SendLayer,
+    Actions, Address, Behavior, BehaviorActed, BirthMode, CreationId, EventLayer, Here,
+    InterpretSends, InterpreterRequest, InterpreterRequests, Protocol, ReturnsToEmitter,
+    SendEffects, SendLayer,
 };
 
-/// A statically selected source of one authoritative terminal fact.
+/// A statically selected source of one authoritative terminal report.
 ///
-/// Implementations identify both the interpreter request and the exact fact
+/// Implementations identify both the interpreter request and the exact report
 /// returned to this composition.  This keeps owned-child and known-peer
 /// selection concrete without a runtime target enum or topology lookup.
 pub trait TerminationTarget<A: Address>: Copy {
-    type Fact;
-    type Request: InterpreterRequest<ReturnToEmitter = ReturnsToEmitter<Self::Fact, Here>>;
+    type Report;
+    type Request: InterpreterRequest<ReturnToEmitter = ReturnsToEmitter<Self::Report, Here>>;
 
     fn request(self) -> Self::Request;
-    fn matches(self, fact: &Self::Fact) -> bool;
-    fn outcome(fact: Self::Fact) -> TerminalOutcome<A>;
+    fn matches(self, report: &Self::Report) -> bool;
+    fn outcome(report: Self::Report) -> TerminalOutcome<A>;
 }
 
 /// Select one exact generation from the emitting actor's child namespace.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ChildTermination<A: Address> {
-    pub nonce: A::Nonce,
+pub struct ChildTermination<P: Protocol, Occurrence> {
+    pub child: CreationId,
+    protocol: core::marker::PhantomData<fn() -> P>,
+    occurrence: core::marker::PhantomData<fn() -> Occurrence>,
 }
 
-impl<A: Address> ChildTermination<A> {
-    #[must_use]
-    pub const fn new(nonce: A::Nonce) -> Self {
-        Self { nonce }
+impl<P: Protocol, Occurrence> Copy for ChildTermination<P, Occurrence> {}
+
+impl<P: Protocol, Occurrence> Clone for ChildTermination<P, Occurrence> {
+    fn clone(&self) -> Self {
+        *self
     }
 }
 
-impl<A> TerminationTarget<A> for ChildTermination<A>
+impl<P: Protocol, Occurrence> PartialEq for ChildTermination<P, Occurrence> {
+    fn eq(&self, other: &Self) -> bool {
+        self.child == other.child
+    }
+}
+
+impl<P: Protocol, Occurrence> Eq for ChildTermination<P, Occurrence> {}
+
+impl<P: Protocol, Occurrence> core::fmt::Debug for ChildTermination<P, Occurrence> {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        formatter
+            .debug_struct("ChildTermination")
+            .field("child", &self.child)
+            .finish()
+    }
+}
+
+impl<P: Protocol, Occurrence> ChildTermination<P, Occurrence> {
+    #[must_use]
+    pub const fn new(child: CreationId) -> Self {
+        Self {
+            child,
+            protocol: core::marker::PhantomData,
+            occurrence: core::marker::PhantomData,
+        }
+    }
+}
+
+impl<P, Occurrence> TerminationTarget<P::Addr> for ChildTermination<P, Occurrence>
 where
-    A: Address,
-    A::Nonce: Copy + Eq,
+    P: Protocol,
 {
-    type Fact = ChildStopped<A>;
-    type Request = ObserveChild<A>;
+    type Report = ChildStopped<P::Addr>;
+    type Request = ObserveChild<P, Occurrence>;
 
     fn request(self) -> Self::Request {
-        ObserveChild::new(self.nonce)
+        ObserveChild::new(self.child)
     }
 
-    fn matches(self, fact: &Self::Fact) -> bool {
-        fact.nonce == self.nonce
+    fn matches(self, report: &Self::Report) -> bool {
+        report.child == self.child
     }
 
-    fn outcome(fact: Self::Fact) -> TerminalOutcome<A> {
-        fact.outcome
+    fn outcome(report: Self::Report) -> TerminalOutcome<P::Addr> {
+        report.outcome
     }
 }
 
@@ -74,28 +103,28 @@ impl<A> TerminationTarget<A> for PeerTermination<A>
 where
     A: Address + Copy + Eq,
 {
-    type Fact = PeerStopped<A>;
+    type Report = PeerStopped<A>;
     type Request = ObservePeer<A>;
 
     fn request(self) -> Self::Request {
         ObservePeer::new(self.peer)
     }
 
-    fn matches(self, fact: &Self::Fact) -> bool {
-        fact.peer == self.peer
+    fn matches(self, report: &Self::Report) -> bool {
+        report.peer == self.peer
     }
 
-    fn outcome(fact: Self::Fact) -> TerminalOutcome<A> {
-        fact.outcome
+    fn outcome(report: Self::Report) -> TerminalOutcome<A> {
+        report.outcome
     }
 }
 
-/// Explicit disposition of an accepted authoritative terminal fact.
+/// Explicit disposition of an accepted authoritative terminal report.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TerminalDisposition {
-    /// The composition's documented policy consumes the fact locally.
+    /// The composition's documented policy consumes the report locally.
     Discharge,
-    /// Publish the fact unchanged as this actor's terminal outcome and stop.
+    /// Publish the report unchanged as this actor's terminal outcome and stop.
     Propagate,
 }
 
@@ -129,20 +158,62 @@ pub enum TerminalPropagationState {
     Propagated,
 }
 
-/// Named effects owned by [`PropagateTermination`].
-pub struct TerminalPropagationSends<A, Request>
-where
-    A: Address,
-{
-    pub observations: InterpreterRequests<Request>,
-    pub reports: InterpreterRequests<ReportTerminalOutcome<A>>,
+/// Exact rejection from terminal propagation.
+pub enum TerminationPropagationError<E, Report> {
+    /// The wrapped behavior rejected its own event.
+    Inner(E),
+    /// A returned terminal report does not match the configured source or the
+    /// still-observing phase.
+    UnexpectedReport {
+        state: TerminalPropagationState,
+        report: Report,
+    },
 }
 
-impl<A: Address, Request> SendEffects for TerminalPropagationSends<A, Request> {
+impl<E: core::fmt::Debug, Report> core::fmt::Debug for TerminationPropagationError<E, Report> {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::Inner(error) => formatter.debug_tuple("Inner").field(error).finish(),
+            Self::UnexpectedReport { state, .. } => formatter
+                .debug_struct("UnexpectedReport")
+                .field("state", state)
+                .field("report", &"<retained>")
+                .finish(),
+        }
+    }
+}
+
+impl<E, Report> core::fmt::Display for TerminationPropagationError<E, Report> {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::Inner(_) => formatter.write_str("wrapped behavior rejected its event"),
+            Self::UnexpectedReport { .. } => {
+                formatter.write_str("terminal report does not match the active propagation source")
+            }
+        }
+    }
+}
+
+impl<E, Report> std::error::Error for TerminationPropagationError<E, Report>
+where
+    E: std::error::Error + 'static,
+    Report: 'static,
+{
+}
+
+/// Named effects owned by [`PropagateTermination`].
+pub struct TerminalPropagationSends<Observations, Reports> {
+    pub observations: Observations,
+    pub reports: Reports,
+}
+
+impl<Observations: SendEffects, Reports: SendEffects> SendEffects
+    for TerminalPropagationSends<Observations, Reports>
+{
     fn empty() -> Self {
         Self {
-            observations: InterpreterRequests::empty(),
-            reports: InterpreterRequests::empty(),
+            observations: Observations::empty(),
+            reports: Reports::empty(),
         }
     }
 
@@ -152,50 +223,93 @@ impl<A: Address, Request> SendEffects for TerminalPropagationSends<A, Request> {
     }
 }
 
-impl<A, Request, Event> behavior::SendsFor<Event> for TerminalPropagationSends<A, Request>
+impl<Observations, Reports, Event> behavior::SendsFor<Event>
+    for TerminalPropagationSends<Observations, Reports>
 where
-    A: Address,
-    InterpreterRequests<Request>: behavior::SendsFor<Event>,
-    InterpreterRequests<ReportTerminalOutcome<A>>: behavior::SendsFor<Event>,
+    Observations: SendEffects + behavior::SendsFor<Event>,
+    Reports: SendEffects + behavior::SendsFor<Event>,
 {
 }
 
-impl<Interpreter, RootEvent, Path, A, Request> InterpretSends<Interpreter, RootEvent, Path>
-    for TerminalPropagationSends<A, Request>
+impl<Observations, Reports> behavior::ClassifySettlement
+    for TerminalPropagationSends<Observations, Reports>
 where
-    Interpreter: SendInterpreter + Send,
-    A: Address,
-    Request: Send,
-    InterpreterRequests<Request>: InterpretSends<Interpreter, RootEvent, Path>,
-    InterpreterRequests<ReportTerminalOutcome<A>>: InterpretSends<Interpreter, RootEvent, Path>,
-    TerminalPropagationSends<A, Request>: Send,
+    Observations: behavior::ClassifySettlement,
+    Reports: behavior::ClassifySettlement,
 {
-    fn interpret(
-        self,
-        interpreter: &mut Interpreter,
-    ) -> impl core::future::Future<Output = Result<(), Interpreter::Error>> + Send {
-        async move {
-            self.observations.interpret(interpreter).await?;
-            self.reports.interpret(interpreter).await
+    fn settlement_status(&self) -> behavior::SettlementStatus {
+        self.observations
+            .settlement_status()
+            .combine(self.reports.settlement_status())
+    }
+}
+
+impl<Observations, Reports> behavior::SendSettlements
+    for TerminalPropagationSends<Observations, Reports>
+where
+    Observations: behavior::SendSettlements,
+    Reports: behavior::SendSettlements,
+{
+    type Settlements = TerminalPropagationSends<Observations::Settlements, Reports::Settlements>;
+
+    fn unattempted(self) -> Self::Settlements {
+        TerminalPropagationSends {
+            observations: self.observations.unattempted(),
+            reports: self.reports.unattempted(),
         }
     }
 }
 
-/// Propagate a selected actor's exact terminal fact through this actor's
+impl<Interpreter, RootEvent, Path, Observations, Reports>
+    InterpretSends<Interpreter, RootEvent, Path> for TerminalPropagationSends<Observations, Reports>
+where
+    Interpreter: Send,
+    Observations: SendEffects + InterpretSends<Interpreter, RootEvent, Path>,
+    Reports: SendEffects + InterpretSends<Interpreter, RootEvent, Path>,
+{
+    fn interpret(
+        self,
+        interpreter: &mut Interpreter,
+    ) -> impl core::future::Future<Output = behavior::Interpretation<Self::Settlements>> + Send
+    {
+        async move {
+            behavior::settle_in_order(self.observations, self.reports, interpreter)
+                .await
+                .map(|(observations, reports)| TerminalPropagationSends {
+                    observations,
+                    reports,
+                })
+        }
+    }
+}
+
+type PropagationSends<A, Request> = TerminalPropagationSends<
+    InterpreterRequests<Request>,
+    InterpreterRequests<ReportTerminalOutcome<A>>,
+>;
+
+/// Propagate a selected actor's exact terminal report through this actor's
 /// terminal boundary.
 ///
 /// The target determines which authoritative observation is installed.  A
-/// matching fact is accepted once.  The configured policy either discharges
+/// matching report is accepted once.  The configured policy either discharges
 /// it locally or emits [`ReportTerminalOutcome`] unchanged and stops in the
 /// same [`Actions`] value.  Publication-before-stop is interpreter policy;
 /// the actor-model nucleus does not define lifecycle observation or failure
 /// escalation.
 ///
-/// The target's address family is part of the static contract:
+/// A child selection requires a concrete protocol and an opaque creation ID:
 ///
 /// ```compile_fail
-/// use bombay_behavior_actors::{ChildTermination, MailAddr};
-/// let _ = ChildTermination::<MailAddr>::new("not a MailAddr child nonce");
+/// use behavior_actors::{ChildTermination, MailAddr, Never, Protocol};
+///
+/// struct Worker;
+/// impl Protocol for Worker {
+///     type Addr = MailAddr;
+///     type Msg = Never;
+/// }
+///
+/// let _ = ChildTermination::<Worker, behavior::ChildHead>::new("not a creation ID");
 /// ```
 pub struct PropagateTermination<B: Behavior, Target> {
     inner: B,
@@ -208,7 +322,7 @@ type PropagationActions<B, Target> = Actions<
     crate::BehaviorAddr<B>,
     <B as Behavior>::Ph,
     SendLayer<
-        TerminalPropagationSends<
+        PropagationSends<
             crate::BehaviorAddr<B>,
             <Target as TerminationTarget<crate::BehaviorAddr<B>>>::Request,
         >,
@@ -243,7 +357,7 @@ where
 
     fn wrap(
         actions: Actions<crate::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>,
-        owned: TerminalPropagationSends<crate::BehaviorAddr<B>, Target::Request>,
+        owned: PropagationSends<crate::BehaviorAddr<B>, Target::Request>,
     ) -> PropagationActions<B, Target> {
         actions.map_sends(|inner| SendLayer::new(owned, inner))
     }
@@ -279,30 +393,31 @@ where
     B: Behavior<Ph = Ph, Sends = Sends, Birth = Br>,
     B::Protocol: crate::Protocol<Addr = A>,
     Target: TerminationTarget<A>,
-    Target::Fact: Send,
+    Target::Report: Send,
     Target::Request: Send,
 {
     type Protocol = B::Protocol;
-    type Event = EventLayer<Target::Fact, B::Event>;
-    type Sends = SendLayer<TerminalPropagationSends<A, Target::Request>, Sends>;
+    type Event = EventLayer<Target::Report, B::Event>;
+    type Sends = SendLayer<PropagationSends<A, Target::Request>, Sends>;
     type Ph = Ph;
-    type Error = B::Error;
+    type Error = TerminationPropagationError<B::Error, Target::Report>;
     type Birth = Br;
 
     fn init(&mut self, _: crate::InitializationTurn) -> BehaviorActed<Self> {
-        let actions = behavior::initialize(&mut self.inner)?;
-        let mut owned = TerminalPropagationSends::empty();
+        let actions =
+            behavior::initialize(&mut self.inner).map_err(TerminationPropagationError::Inner)?;
+        let mut owned: PropagationSends<A, Target::Request> = TerminalPropagationSends::empty();
         owned.observations.send(self.target.request());
         Ok(Self::wrap(actions, owned))
     }
 
     fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
         match event {
-            EventLayer::Owned(fact)
+            EventLayer::Owned(report)
                 if self.state == TerminalPropagationState::Observing
-                    && self.target.matches(&fact) =>
+                    && self.target.matches(&report) =>
             {
-                let outcome = Target::outcome(fact);
+                let outcome = Target::outcome(report);
                 match (self.policy)(&outcome) {
                     TerminalDisposition::Discharge => {
                         self.state = TerminalPropagationState::Discharged;
@@ -310,19 +425,24 @@ where
                     }
                     TerminalDisposition::Propagate => {
                         self.state = TerminalPropagationState::Propagated;
-                        let mut owned = TerminalPropagationSends::empty();
+                        let mut owned: PropagationSends<A, Target::Request> =
+                            TerminalPropagationSends::empty();
                         owned.reports.send(ReportTerminalOutcome::new(outcome));
                         Ok(Actions::new(
                             SendLayer::new(owned, Sends::empty()),
-                            Vec::new(),
+                            behavior::Creations::empty(),
                             crate::Step::Stop(behavior::Stopped),
                         ))
                     }
                 }
             }
-            EventLayer::Owned(_) => Ok(Actions::cont()),
+            EventLayer::Owned(report) => Err(TerminationPropagationError::UnexpectedReport {
+                state: self.state,
+                report,
+            }),
             EventLayer::Inner(event) => behavior::delegate_transition(&mut self.inner, event)
-                .map(|actions| Self::wrap(actions, TerminalPropagationSends::empty())),
+                .map(|actions| Self::wrap(actions, TerminalPropagationSends::empty()))
+                .map_err(TerminationPropagationError::Inner),
         }
     }
 }
@@ -333,12 +453,47 @@ mod tests {
 
     use super::*;
     use crate::{
-        Activate as _, Crash, CreationRejection, Exit, RestartDenial, SupervisionFailureReason,
+        Activate as _, AllocationRejection, Crash, CreationRejection, Exit, RestartDenial,
+        RestartReleaseFailure, SupervisionFailureReason,
     };
-    use behavior::{Births, Create, MailAddr, Never, Step, User};
+    use behavior::{
+        Births, CreateChild, CreationSequence, Creations, MailAddr, Never, NoBirths, NoSends, Step,
+        User,
+    };
     use proptest::prelude::*;
 
-    struct Probe;
+    struct Probe {
+        worker: CreationId,
+    }
+
+    #[derive(Debug, Eq, PartialEq)]
+    struct Worker;
+
+    impl behavior::Protocol for Worker {
+        type Addr = MailAddr;
+        type Msg = Never;
+    }
+
+    impl crate::BehaviorBase for Worker {
+        type Base = Self;
+
+        fn base(&self) -> &Self::Base {
+            self
+        }
+    }
+
+    impl Behavior for Worker {
+        type Protocol = Self;
+        type Event = User<MailAddr, Never>;
+        type Sends = NoSends;
+        type Ph = Never;
+        type Error = Never;
+        type Birth = NoBirths;
+
+        fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+            match event.message {}
+        }
+    }
 
     impl behavior::Protocol for Probe {
         type Addr = MailAddr;
@@ -359,12 +514,12 @@ mod tests {
         type Sends = Vec<u8>;
         type Ph = Never;
         type Error = Never;
-        type Birth = Births<u8>;
+        type Birth = Births<Worker>;
 
         fn init(&mut self, _: crate::InitializationTurn) -> BehaviorActed<Self> {
             Ok(Actions::new(
                 vec![1],
-                vec![Create::birth(7, 9)],
+                Creations::one(CreateChild::birth(self.worker, Worker)),
                 Step::Continue,
             ))
         }
@@ -374,22 +529,33 @@ mod tests {
         }
     }
 
+    fn worker_creation() -> CreationId {
+        CreationSequence::new()
+            .issue()
+            .expect("the first worker creation ID exists")
+    }
+
     fn child(
+        worker: CreationId,
         policy: TerminalPropagationPolicy<MailAddr>,
-    ) -> PropagateTermination<Probe, ChildTermination<MailAddr>> {
-        PropagateTermination::new(Probe, ChildTermination::new(7), policy)
+    ) -> PropagateTermination<Probe, ChildTermination<Worker, behavior::ChildHead>> {
+        PropagateTermination::new(Probe { worker }, ChildTermination::new(worker), policy)
     }
 
     #[test]
     fn initialization_preserves_inner_effects_and_observes_the_exact_child() {
-        let initialized = child(propagate_all).initialize().unwrap();
+        let worker = worker_creation();
+        let initialized = child(worker, propagate_all).initialize().unwrap();
 
         assert_eq!(initialized.actions.sends.inner, [1]);
-        assert_eq!(initialized.actions.creates, [Create::birth(7, 9)]);
+        assert_eq!(
+            initialized.actions.creates,
+            Creations::one(CreateChild::birth(worker, Worker))
+        );
         assert!(matches!(initialized.actions.become_, Step::Continue));
         assert_eq!(
             initialized.actions.sends.owned.observations.as_slice(),
-            [ObserveChild::new(7)]
+            [ObserveChild::new(worker)]
         );
         assert!(initialized.actions.sends.owned.reports.is_empty());
     }
@@ -411,8 +577,27 @@ mod tests {
                 }),
             )),
             Ok(Exit::SupervisionFailed(
+                SupervisionFailureReason::RestartDenied(RestartDenial::ReleaseRejected(
+                    RestartReleaseFailure::DurationOverflow,
+                )),
+            )),
+            Ok(Exit::SupervisionFailed(
+                SupervisionFailureReason::RestartDenied(RestartDenial::AttemptSequenceExhausted),
+            )),
+            Ok(Exit::SupervisionFailed(
+                SupervisionFailureReason::RestartDenied(RestartDenial::TimerGenerationExhausted),
+            )),
+            Ok(Exit::SupervisionFailed(
+                SupervisionFailureReason::RestartDenied(RestartDenial::TimerIdentityExhausted),
+            )),
+            Ok(Exit::SupervisionFailed(
                 SupervisionFailureReason::StableChildCreationRejected(
-                    CreationRejection::NonceAlreadyBound,
+                    CreationRejection::Allocation(AllocationRejection::Exhausted),
+                ),
+            )),
+            Ok(Exit::SupervisionFailed(
+                SupervisionFailureReason::StableChildCreationRejected(
+                    CreationRejection::Allocation(AllocationRejection::AddressAlreadyClaimed),
                 ),
             )),
             Ok(Exit::SupervisionFailed(
@@ -426,9 +611,14 @@ mod tests {
                 ),
             )),
             Ok(Exit::SupervisionFailed(
-                SupervisionFailureReason::WorkerCreationRejected(
-                    CreationRejection::NonceAlreadyBound,
-                ),
+                SupervisionFailureReason::WorkerCreationRejected(CreationRejection::Allocation(
+                    AllocationRejection::Exhausted,
+                )),
+            )),
+            Ok(Exit::SupervisionFailed(
+                SupervisionFailureReason::WorkerCreationRejected(CreationRejection::Allocation(
+                    AllocationRejection::AddressAlreadyClaimed,
+                )),
             )),
             Ok(Exit::SupervisionFailed(
                 SupervisionFailureReason::WorkerCreationRejected(
@@ -439,6 +629,9 @@ mod tests {
                 SupervisionFailureReason::WorkerCreationRejected(
                     CreationRejection::EnvironmentFailed,
                 ),
+            )),
+            Ok(Exit::SupervisionFailed(
+                SupervisionFailureReason::WorkerFactoryRejected,
             )),
             Err(Crash::Failed),
             Err(Crash::EnvironmentFailed),
@@ -447,10 +640,11 @@ mod tests {
         ];
 
         for outcome in outcomes {
-            let mut active = child(propagate_all).initialize().unwrap().behavior;
+            let worker = worker_creation();
+            let mut active = child(worker, propagate_all).initialize().unwrap().behavior;
             let actions = active
                 .transition(EventLayer::Owned(ChildStopped::new(
-                    7,
+                    worker,
                     outcome,
                     Instant::now(),
                 )))
@@ -466,24 +660,28 @@ mod tests {
             assert!(matches!(actions.become_, Step::Stop(_)));
             assert_eq!(active.state(), TerminalPropagationState::Propagated);
 
-            let duplicate = active
-                .transition(EventLayer::Owned(ChildStopped::new(
-                    7,
-                    outcome,
-                    Instant::now(),
-                )))
-                .unwrap();
-            assert!(duplicate.sends.owned.reports.is_empty());
+            let duplicate = ChildStopped::new(worker, outcome, Instant::now());
+            assert!(matches!(
+                active.transition(EventLayer::Owned(duplicate)),
+                Err(TerminationPropagationError::UnexpectedReport {
+                    state: TerminalPropagationState::Propagated,
+                    report,
+                }) if report == duplicate
+            ));
         }
     }
 
     #[test]
     fn abnormal_policy_explicitly_discharges_normal_outcomes() {
         for outcome in [Ok(Exit::Normal), Ok(Exit::Collected)] {
-            let mut active = child(propagate_abnormal).initialize().unwrap().behavior;
+            let worker = worker_creation();
+            let mut active = child(worker, propagate_abnormal)
+                .initialize()
+                .unwrap()
+                .behavior;
             let actions = active
                 .transition(EventLayer::Owned(ChildStopped::new(
-                    7,
+                    worker,
                     outcome,
                     Instant::now(),
                 )))
@@ -496,16 +694,21 @@ mod tests {
     }
 
     #[test]
-    fn unmatched_facts_are_inert_and_inner_events_preserve_inner_actions() {
-        let mut active = child(propagate_all).initialize().unwrap().behavior;
-        let unrelated = active
-            .transition(EventLayer::Owned(ChildStopped::new(
-                8,
-                Err(Crash::Failed),
-                Instant::now(),
-            )))
-            .unwrap();
-        assert!(unrelated.sends.owned.reports.is_empty());
+    fn unmatched_reports_are_returned_and_inner_events_preserve_inner_actions() {
+        let mut creations = CreationSequence::new();
+        let worker = creations.issue().expect("the worker creation ID exists");
+        let unrelated_worker = creations
+            .issue()
+            .expect("the unrelated worker creation ID exists");
+        let mut active = child(worker, propagate_all).initialize().unwrap().behavior;
+        let unrelated = ChildStopped::new(unrelated_worker, Err(Crash::Failed), Instant::now());
+        assert!(matches!(
+            active.transition(EventLayer::Owned(unrelated)),
+            Err(TerminationPropagationError::UnexpectedReport {
+                state: TerminalPropagationState::Observing,
+                report,
+            }) if report == unrelated
+        ));
         assert_eq!(active.state(), TerminalPropagationState::Observing);
 
         let delegated = active
@@ -518,10 +721,15 @@ mod tests {
 
     #[test]
     fn peer_target_uses_the_same_propagation_law() {
-        let mut initialized =
-            PropagateTermination::new(Probe, PeerTermination::new(MailAddr(4)), propagate_all)
-                .initialize()
-                .unwrap();
+        let mut initialized = PropagateTermination::new(
+            Probe {
+                worker: worker_creation(),
+            },
+            PeerTermination::new(MailAddr(4)),
+            propagate_all,
+        )
+        .initialize()
+        .unwrap();
         assert_eq!(
             initialized.actions.sends.owned.observations.as_slice(),
             [ObservePeer::new(MailAddr(4))]
@@ -541,7 +749,7 @@ mod tests {
     proptest! {
         #[test]
         fn arbitrary_terminal_payload_is_conserved_once(
-            tag in 0_u8..15,
+            tag in 0_u8..22,
             peer in any::<u64>(),
             admitted in any::<usize>(),
             requested in any::<usize>(),
@@ -561,20 +769,28 @@ mod tests {
                         maximum_restarts: maximum,
                     }),
                 )),
-                5 => Ok(Exit::SupervisionFailed(SupervisionFailureReason::StableChildCreationRejected(CreationRejection::NonceAlreadyBound))),
-                6 => Ok(Exit::SupervisionFailed(SupervisionFailureReason::StableChildCreationRejected(CreationRejection::InitializationFailed))),
-                7 => Ok(Exit::SupervisionFailed(SupervisionFailureReason::StableChildCreationRejected(CreationRejection::EnvironmentFailed))),
-                8 => Ok(Exit::SupervisionFailed(SupervisionFailureReason::WorkerCreationRejected(CreationRejection::NonceAlreadyBound))),
-                9 => Ok(Exit::SupervisionFailed(SupervisionFailureReason::WorkerCreationRejected(CreationRejection::InitializationFailed))),
-                10 => Ok(Exit::SupervisionFailed(SupervisionFailureReason::WorkerCreationRejected(CreationRejection::EnvironmentFailed))),
-                11 => Err(Crash::Failed),
-                12 => Err(Crash::EnvironmentFailed),
-                13 => Err(Crash::Panicked),
+                5 => Ok(Exit::SupervisionFailed(SupervisionFailureReason::RestartDenied(RestartDenial::ReleaseRejected(RestartReleaseFailure::DurationOverflow)))),
+                6 => Ok(Exit::SupervisionFailed(SupervisionFailureReason::RestartDenied(RestartDenial::AttemptSequenceExhausted))),
+                7 => Ok(Exit::SupervisionFailed(SupervisionFailureReason::RestartDenied(RestartDenial::TimerGenerationExhausted))),
+                8 => Ok(Exit::SupervisionFailed(SupervisionFailureReason::RestartDenied(RestartDenial::TimerIdentityExhausted))),
+                9 => Ok(Exit::SupervisionFailed(SupervisionFailureReason::StableChildCreationRejected(CreationRejection::Allocation(AllocationRejection::Exhausted)))),
+                10 => Ok(Exit::SupervisionFailed(SupervisionFailureReason::StableChildCreationRejected(CreationRejection::Allocation(AllocationRejection::AddressAlreadyClaimed)))),
+                11 => Ok(Exit::SupervisionFailed(SupervisionFailureReason::StableChildCreationRejected(CreationRejection::InitializationFailed))),
+                12 => Ok(Exit::SupervisionFailed(SupervisionFailureReason::StableChildCreationRejected(CreationRejection::EnvironmentFailed))),
+                13 => Ok(Exit::SupervisionFailed(SupervisionFailureReason::WorkerCreationRejected(CreationRejection::Allocation(AllocationRejection::Exhausted)))),
+                14 => Ok(Exit::SupervisionFailed(SupervisionFailureReason::WorkerCreationRejected(CreationRejection::Allocation(AllocationRejection::AddressAlreadyClaimed)))),
+                15 => Ok(Exit::SupervisionFailed(SupervisionFailureReason::WorkerCreationRejected(CreationRejection::InitializationFailed))),
+                16 => Ok(Exit::SupervisionFailed(SupervisionFailureReason::WorkerCreationRejected(CreationRejection::EnvironmentFailed))),
+                17 => Ok(Exit::SupervisionFailed(SupervisionFailureReason::WorkerFactoryRejected)),
+                18 => Err(Crash::Failed),
+                19 => Err(Crash::EnvironmentFailed),
+                20 => Err(Crash::Panicked),
                 _ => Err(Crash::Cancelled),
             };
-            let mut active = child(propagate_all).initialize().unwrap().behavior;
+            let worker = worker_creation();
+            let mut active = child(worker, propagate_all).initialize().unwrap().behavior;
             let first = active.transition(EventLayer::Owned(ChildStopped::new(
-                7,
+                worker,
                 outcome,
                 Instant::now(),
             ))).unwrap();
@@ -582,12 +798,19 @@ mod tests {
                 first.sends.owned.reports.as_slice(),
                 [ReportTerminalOutcome::new(outcome)]
             );
-            let duplicate = active.transition(EventLayer::Owned(ChildStopped::new(
-                7,
+            let duplicate = ChildStopped::new(
+                worker,
                 outcome,
                 Instant::now(),
-            ))).unwrap();
-            prop_assert!(duplicate.sends.owned.reports.is_empty());
+            );
+            let rejected = matches!(
+                active.transition(EventLayer::Owned(duplicate)),
+                Err(TerminationPropagationError::UnexpectedReport {
+                    state: TerminalPropagationState::Propagated,
+                    report,
+                }) if report == duplicate
+            );
+            prop_assert!(rejected);
         }
     }
 }

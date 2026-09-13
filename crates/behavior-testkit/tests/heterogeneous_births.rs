@@ -1,44 +1,80 @@
-//! Independent interpreter checks for creation-only heterogeneous birth sums.
+//! Independent static-dispatch checks for heterogeneous child creation.
 
-use std::collections::BTreeSet;
+use std::collections::BTreeMap;
+use std::collections::btree_map::Entry;
+use std::marker::PhantomData;
 
 use foundation::{
-    Actions, Behavior, BehaviorActed, Births, ChildChoice, Create, CreationKind, DispatchBirth,
-    InstallBirth, MailAddr, Never, NoBirths, Recipient, User,
+    Actions, Address, AllocationRejection, Behavior, BehaviorActed, Births, ChildChoice,
+    ChildCreationOutcome, ChildCreationProduct, ChildHead, CreateChild, CreationId, CreationKind,
+    CreationRejection, CreationSequence, Creations, DispatchBirth, EndpointAddress, EstablishChild,
+    EstablishedCreation, EstablishedRecipient, InterpreterFault, ItemSettlement, Never, NoBirths,
+    Protocol, RoutedCreation, User,
 };
 use proptest::prelude::*;
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct ModelAddr(u64);
+
+impl Address for ModelAddr {
+    type Nonce = u64;
+}
+
+#[derive(Debug, Eq, PartialEq)]
+struct ModelEndpoint<P>(u64, PhantomData<fn() -> P>);
+
+impl<P> Clone for ModelEndpoint<P> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<P> Copy for ModelEndpoint<P> {}
+
+impl EndpointAddress for ModelAddr {
+    type Established<P>
+        = ModelEndpoint<P>
+    where
+        P: Protocol<Addr = Self>;
+}
+
+#[derive(Debug, PartialEq, Eq)]
 struct DeviceGroups;
-impl behavior::Protocol for DeviceGroups {
-    type Addr = MailAddr;
+
+impl Protocol for DeviceGroups {
+    type Addr = ModelAddr;
     type Msg = u8;
 }
 
 impl Behavior for DeviceGroups {
     type Protocol = Self;
-    type Event = User<MailAddr, u8>;
+    type Event = User<ModelAddr, u8>;
     type Sends = Vec<Never>;
     type Ph = Never;
     type Error = Never;
     type Birth = NoBirths;
+
     fn transition(&mut self, _: foundation::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
         Ok(Actions::cont())
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
 struct Queries;
-impl behavior::Protocol for Queries {
-    type Addr = MailAddr;
+
+impl Protocol for Queries {
+    type Addr = ModelAddr;
     type Msg = &'static str;
 }
 
 impl Behavior for Queries {
     type Protocol = Self;
-    type Event = User<MailAddr, &'static str>;
+    type Event = User<ModelAddr, &'static str>;
     type Sends = Vec<Never>;
     type Ph = Never;
     type Error = Never;
     type Birth = NoBirths;
+
     fn transition(&mut self, _: foundation::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
         Ok(Actions::cont())
     }
@@ -47,166 +83,379 @@ impl Behavior for Queries {
 type IoTChildren = ChildChoice<DeviceGroups, ChildChoice<Queries, Never>>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum InstalledKind {
+enum ChildKind {
     DeviceGroups,
     Queries,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum InstallError {
-    Collision,
+enum ObservedCreation {
+    Established,
+    Rejected(CreationRejection),
+    Corrupt(InterpreterFault),
 }
 
-struct ModelInstaller {
-    occupied: BTreeSet<u64>,
-    trace: Vec<(u64, InstalledKind, CreationKind<u64>)>,
-    device_groups: Vec<Recipient<DeviceGroups>>,
-    queries: Vec<Recipient<Queries>>,
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum HostPlan {
+    Commit,
+    RejectAfterInitialization,
 }
 
-impl ModelInstaller {
+enum HostDecision {
+    CommitAt(u64),
+    RejectAfterInitialization,
+}
+
+struct ModelHost {
+    claimed_routes: BTreeMap<u64, ()>,
+    plans: BTreeMap<u64, HostPlan>,
+    trace: Vec<(CreationId, u64, ChildKind, CreationKind)>,
+    next_address: u64,
+}
+
+impl ModelHost {
     fn admit(
         &mut self,
-        nonce: u64,
-        kind: InstalledKind,
-        provenance: CreationKind<u64>,
-    ) -> Result<(), InstallError> {
-        if !self.occupied.insert(nonce) {
-            return Err(InstallError::Collision);
+        id: CreationId,
+        route: u64,
+        child: ChildKind,
+        kind: CreationKind,
+    ) -> Result<HostDecision, CreationRejection> {
+        match self.claimed_routes.entry(route) {
+            Entry::Occupied(_) => Err(CreationRejection::Allocation(
+                AllocationRejection::AddressAlreadyClaimed,
+            )),
+            Entry::Vacant(entry) => match self.plans.remove(&route).unwrap_or(HostPlan::Commit) {
+                HostPlan::Commit => {
+                    entry.insert(());
+                    self.trace.push((id, route, child, kind));
+                    let address = self.next_address;
+                    self.next_address += 1;
+                    Ok(HostDecision::CommitAt(address))
+                }
+                HostPlan::RejectAfterInitialization => Ok(HostDecision::RejectAfterInitialization),
+            },
         }
-        self.trace.push((nonce, kind, provenance));
-        Ok(())
     }
 }
 
-impl InstallBirth<MailAddr, DeviceGroups, (), InstallError> for ModelInstaller {
-    async fn install_birth(
+impl EstablishChild<foundation::ChildHead, DeviceGroups> for ModelHost {
+    async fn establish_child(
         &mut self,
-        creation: Create<MailAddr, DeviceGroups>,
-    ) -> Result<(), InstallError> {
-        self.admit(creation.nonce, InstalledKind::DeviceGroups, creation.kind)?;
-        self.device_groups
-            .push(Recipient::global(behavior::Address::birth(
-                MailAddr(17),
-                creation.nonce,
-            )));
-        Ok(())
+        creation: RoutedCreation<ModelAddr, DeviceGroups>,
+    ) -> ItemSettlement<
+        RoutedCreation<ModelAddr, DeviceGroups>,
+        ChildCreationOutcome<DeviceGroups, foundation::ChildHead>,
+        CreationRejection,
+        Never,
+    > {
+        let decision = self.admit(
+            creation.id(),
+            creation.route(),
+            ChildKind::DeviceGroups,
+            creation.kind(),
+        );
+        settle_child(creation, decision)
     }
 }
 
-impl InstallBirth<MailAddr, Queries, (), InstallError> for ModelInstaller {
-    async fn install_birth(
+fn settle_child<C, Occurrence>(
+    creation: RoutedCreation<ModelAddr, C>,
+    decision: Result<HostDecision, CreationRejection>,
+) -> ItemSettlement<
+    RoutedCreation<ModelAddr, C>,
+    ChildCreationOutcome<C, Occurrence>,
+    CreationRejection,
+    Never,
+>
+where
+    C: Behavior,
+    C::Protocol: Protocol<Addr = ModelAddr>,
+{
+    match decision {
+        Err(reason) => ItemSettlement::Rejected {
+            item: creation,
+            reason,
+        },
+        Ok(HostDecision::CommitAt(address)) => {
+            let id = creation.id();
+            let kind = creation.kind();
+            let (request, _) = creation.into_parts();
+            let (_, _child, _) = request.into_parts();
+            ItemSettlement::Accepted(ChildCreationOutcome::Established {
+                established: EstablishedCreation::installed(
+                    id,
+                    kind,
+                    EstablishedRecipient::issued(ModelEndpoint(address, PhantomData)),
+                ),
+            })
+        }
+        Ok(HostDecision::RejectAfterInitialization) => {
+            ItemSettlement::Accepted(ChildCreationOutcome::HostRejected {
+                creation,
+                initialization: Actions::cont(),
+                reason: CreationRejection::EnvironmentFailed,
+            })
+        }
+    }
+}
+
+impl EstablishChild<foundation::ChildTail<foundation::ChildHead>, Queries> for ModelHost {
+    async fn establish_child(
         &mut self,
-        creation: Create<MailAddr, Queries>,
-    ) -> Result<(), InstallError> {
-        self.admit(creation.nonce, InstalledKind::Queries, creation.kind)?;
-        self.queries
-            .push(Recipient::global(behavior::Address::birth(
-                MailAddr(17),
-                creation.nonce,
-            )));
-        Ok(())
+        creation: RoutedCreation<ModelAddr, Queries>,
+    ) -> ItemSettlement<
+        RoutedCreation<ModelAddr, Queries>,
+        ChildCreationOutcome<Queries, foundation::ChildTail<foundation::ChildHead>>,
+        CreationRejection,
+        Never,
+    > {
+        let decision = self.admit(
+            creation.id(),
+            creation.route(),
+            ChildKind::Queries,
+            creation.kind(),
+        );
+        settle_child(creation, decision)
     }
 }
 
-fn installer() -> ModelInstaller {
-    ModelInstaller {
-        occupied: BTreeSet::new(),
+fn host() -> ModelHost {
+    ModelHost {
+        claimed_routes: BTreeMap::new(),
+        plans: BTreeMap::new(),
         trace: Vec::new(),
-        device_groups: Vec::new(),
-        queries: Vec::new(),
+        next_address: 1_000,
+    }
+}
+
+async fn dispatch(
+    child: IoTChildren,
+    id: CreationId,
+    route: u64,
+    kind: CreationKind,
+    host: &mut ModelHost,
+) -> ItemSettlement<
+    RoutedCreation<ModelAddr, IoTChildren>,
+    <IoTChildren as ChildCreationProduct<ModelAddr, ChildHead>>::Result,
+    CreationRejection,
+    Never,
+> {
+    <IoTChildren as DispatchBirth<ModelAddr, ModelHost>>::dispatch_birth(
+        child, id, route, kind, host,
+    )
+    .await
+}
+
+fn normalize(
+    settlement: ItemSettlement<
+        RoutedCreation<ModelAddr, IoTChildren>,
+        <IoTChildren as ChildCreationProduct<ModelAddr, ChildHead>>::Result,
+        CreationRejection,
+        Never,
+    >,
+) -> ObservedCreation {
+    match settlement {
+        ItemSettlement::Accepted(ChildChoice::Head(ChildCreationOutcome::Established {
+            ..
+        }))
+        | ItemSettlement::Accepted(ChildChoice::Tail(ChildChoice::Head(
+            ChildCreationOutcome::Established { .. },
+        ))) => ObservedCreation::Established,
+        ItemSettlement::Accepted(ChildChoice::Head(ChildCreationOutcome::HostRejected {
+            reason,
+            ..
+        }))
+        | ItemSettlement::Accepted(ChildChoice::Tail(ChildChoice::Head(
+            ChildCreationOutcome::HostRejected { reason, .. },
+        ))) => ObservedCreation::Rejected(reason),
+        ItemSettlement::Accepted(ChildChoice::Head(
+            ChildCreationOutcome::InitializationRejected { error, .. },
+        ))
+        | ItemSettlement::Accepted(ChildChoice::Tail(ChildChoice::Head(
+            ChildCreationOutcome::InitializationRejected { error, .. },
+        ))) => match error {},
+        ItemSettlement::Accepted(ChildChoice::Tail(ChildChoice::Tail(never))) => match never {},
+        ItemSettlement::Rejected { reason, .. } => ObservedCreation::Rejected(reason),
+        ItemSettlement::Blocked { prerequisite, .. } => match prerequisite {},
+        ItemSettlement::Corrupt { fault, .. } => ObservedCreation::Corrupt(fault),
     }
 }
 
 fn assert_send<T: Send>(_: &T) {}
 
 #[tokio::test]
-async fn one_ordered_creation_vector_dispatches_to_concrete_protocol_installers() {
-    let actions: Actions<MailAddr, Never, Vec<Never>, Births<IoTChildren>> = Actions::create(vec![
-        Create::birth(9, ChildChoice::Head(DeviceGroups)),
-        Create::replacement_incarnation(4, 2, ChildChoice::Tail(ChildChoice::Head(Queries))),
-        Create::birth(7, ChildChoice::Tail(ChildChoice::Head(Queries))),
-    ]);
-    let mut model = installer();
-    for creation in actions.creates {
-        creation
-            .child
-            .dispatch_birth(creation.nonce, creation.kind, &mut model)
-            .await
-            .unwrap();
+async fn ordered_creations_dispatch_to_their_concrete_child_hosts() {
+    let mut sequence = CreationSequence::new();
+    let devices = sequence.issue().expect("device child ID exists");
+    let previous = sequence.issue().expect("previous query child ID exists");
+    let replacement = sequence.issue().expect("replacement query child ID exists");
+    let query = sequence.issue().expect("query child ID exists");
+    let actions: Actions<ModelAddr, Never, Vec<Never>, Births<IoTChildren>> = Actions::create(
+        Creations::one(CreateChild::birth(devices, ChildChoice::Head(DeviceGroups)))
+            .and(CreateChild::replacement(
+                replacement,
+                previous,
+                ChildChoice::Tail(ChildChoice::Head(Queries)),
+            ))
+            .and(CreateChild::birth(
+                query,
+                ChildChoice::Tail(ChildChoice::Head(Queries)),
+            )),
+    );
+    let mut model = host();
+    for (creation, route) in actions.creates.into_iter().zip([9, 4, 7]) {
+        let (id, child, kind) = creation.into_parts();
+        assert!(matches!(
+            dispatch(child, id, route, kind, &mut model).await,
+            ItemSettlement::Accepted(_)
+        ));
     }
 
     assert_eq!(
         model.trace,
         [
-            (9, InstalledKind::DeviceGroups, CreationKind::Birth),
-            (4, InstalledKind::Queries, CreationKind::replacement_of(2)),
-            (7, InstalledKind::Queries, CreationKind::Birth),
+            (devices, 9, ChildKind::DeviceGroups, CreationKind::Birth),
+            (
+                replacement,
+                4,
+                ChildKind::Queries,
+                CreationKind::replacement(previous),
+            ),
+            (query, 7, ChildKind::Queries, CreationKind::Birth),
         ]
     );
-    let _: Recipient<DeviceGroups> = model.device_groups[0];
-    let _: Recipient<Queries> = model.queries[0];
 }
 
 #[tokio::test]
-async fn nonce_collision_is_global_across_variants_and_preserves_the_first_binding() {
-    let mut model = installer();
-    let first = ChildChoice::<DeviceGroups, ChildChoice<Queries, Never>>::Head(DeviceGroups)
-        .dispatch_birth(5, CreationKind::Birth, &mut model);
+async fn host_rejection_returns_the_routed_child_and_initialization_actions() {
+    let mut sequence = CreationSequence::new();
+    let id = sequence.issue().expect("child ID exists");
+    let mut model = host();
+    assert_eq!(
+        model.plans.insert(9, HostPlan::RejectAfterInitialization),
+        None
+    );
+
+    let settlement = dispatch(
+        ChildChoice::<DeviceGroups, ChildChoice<Queries, Never>>::Head(DeviceGroups),
+        id,
+        9,
+        CreationKind::Birth,
+        &mut model,
+    )
+    .await;
+
+    let ItemSettlement::Accepted(ChildChoice::Head(ChildCreationOutcome::HostRejected {
+        creation,
+        initialization,
+        reason,
+    })) = settlement
+    else {
+        panic!("expected exact child-host rejection ownership");
+    };
+    assert_eq!(
+        creation,
+        RoutedCreation::new(CreateChild::birth(id, DeviceGroups), 9)
+    );
+    assert!(initialization.sends.is_empty());
+    assert!(initialization.creates.is_empty());
+    assert_eq!(initialization.become_, foundation::Step::Continue);
+    assert_eq!(reason, CreationRejection::EnvironmentFailed);
+    assert!(model.claimed_routes.is_empty());
+}
+
+#[tokio::test]
+async fn claimed_address_is_global_across_child_alternatives() {
+    let mut sequence = CreationSequence::new();
+    let first_id = sequence.issue().expect("first child ID exists");
+    let second_id = sequence.issue().expect("second child ID exists");
+    let mut model = host();
+    let first = dispatch(
+        ChildChoice::<DeviceGroups, ChildChoice<Queries, Never>>::Head(DeviceGroups),
+        first_id,
+        5,
+        CreationKind::Birth,
+        &mut model,
+    );
     assert_send(&first);
-    first.await.unwrap();
-    let collision =
-        ChildChoice::<DeviceGroups, ChildChoice<Queries, Never>>::Tail(ChildChoice::Head(Queries))
-            .dispatch_birth(5, CreationKind::Birth, &mut model);
+    assert!(matches!(first.await, ItemSettlement::Accepted(_)));
+    let collision = dispatch(
+        ChildChoice::<DeviceGroups, ChildChoice<Queries, Never>>::Tail(ChildChoice::Head(Queries)),
+        second_id,
+        5,
+        CreationKind::Birth,
+        &mut model,
+    );
     assert_send(&collision);
-    assert_eq!(collision.await, Err(InstallError::Collision));
+    let ItemSettlement::Rejected { item, reason } = collision.await else {
+        panic!("expected exact claimed-address rejection");
+    };
+    assert_eq!(
+        item,
+        RoutedCreation::new(
+            CreateChild::birth(second_id, ChildChoice::Tail(ChildChoice::Head(Queries))),
+            5
+        )
+    );
+    assert_eq!(
+        reason,
+        CreationRejection::Allocation(AllocationRejection::AddressAlreadyClaimed)
+    );
     assert_eq!(
         model.trace,
-        [(5, InstalledKind::DeviceGroups, CreationKind::Birth)]
+        [(first_id, 5, ChildKind::DeviceGroups, CreationKind::Birth)]
     );
-    assert_eq!(
-        model.device_groups,
-        [Recipient::global(behavior::Address::birth(MailAddr(17), 5))]
-    );
-    assert!(model.queries.is_empty());
 }
 
 proptest! {
     #[test]
-    fn arbitrary_cross_variant_sequences_match_one_global_nonce_model(
-        inputs in proptest::collection::vec((any::<bool>(), 0_u8..12), 0..80)
+    fn arbitrary_child_routes_match_one_global_address_model(
+        inputs in proptest::collection::vec((
+            prop_oneof![Just(ChildKind::DeviceGroups), Just(ChildKind::Queries)],
+            0_u8..12,
+        ), 0..80)
     ) {
         let runtime = tokio::runtime::Builder::new_current_thread().build().unwrap();
-        let mut installer = installer();
-        let mut occupied = BTreeSet::new();
+        let mut ids = CreationSequence::new();
+        let mut host = host();
+        let mut claimed = BTreeMap::new();
         let mut expected = Vec::new();
-        for (device, raw_nonce) in inputs {
-            let nonce = u64::from(raw_nonce);
-            let expected_result = if occupied.insert(nonce) {
-                expected.push((
-                    nonce,
-                    if device { InstalledKind::DeviceGroups } else { InstalledKind::Queries },
-                    CreationKind::Birth,
-                ));
-                Ok(())
-            } else {
-                Err(InstallError::Collision)
+        for (child, raw_route) in inputs {
+            let id = ids.issue().expect("generated sequence does not exhaust child IDs");
+            let route = u64::from(raw_route);
+            let expected_result = match claimed.entry(route) {
+                Entry::Vacant(entry) => {
+                    entry.insert(());
+                    expected.push((id, route, child, CreationKind::Birth));
+                    ObservedCreation::Established
+                }
+                Entry::Occupied(_) => ObservedCreation::Rejected(
+                    CreationRejection::Allocation(AllocationRejection::AddressAlreadyClaimed),
+                ),
             };
             let actual = runtime.block_on(async {
-                if device {
-                    ChildChoice::<DeviceGroups, ChildChoice<Queries, Never>>::Head(DeviceGroups)
-                        .dispatch_birth(nonce, CreationKind::Birth, &mut installer)
-                        .await
-                } else {
-                    ChildChoice::<DeviceGroups, ChildChoice<Queries, Never>>::Tail(
-                        ChildChoice::Head(Queries),
-                    )
-                        .dispatch_birth(nonce, CreationKind::Birth, &mut installer)
-                        .await
+                match child {
+                    ChildKind::DeviceGroups => dispatch(
+                        ChildChoice::<DeviceGroups, ChildChoice<Queries, Never>>::Head(DeviceGroups),
+                        id,
+                        route,
+                        CreationKind::Birth,
+                        &mut host,
+                    ).await,
+                    ChildKind::Queries => dispatch(
+                        ChildChoice::<DeviceGroups, ChildChoice<Queries, Never>>::Tail(
+                            ChildChoice::Head(Queries),
+                        ),
+                        id,
+                        route,
+                        CreationKind::Birth,
+                        &mut host,
+                    ).await,
                 }
             });
-            prop_assert_eq!(actual, expected_result);
-            prop_assert_eq!(&installer.trace, &expected);
+            prop_assert_eq!(normalize(actual), expected_result);
+            prop_assert_eq!(&host.trace, &expected);
         }
     }
 }

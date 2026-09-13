@@ -72,7 +72,7 @@ proptest! {
             behavior::Stash::new(Machine::new(Vec::new(), Phase::A, on), route),
             behavior::TimerId(0),
             Some(due),
-            |_| Ok(Step::Continue),
+            |_| Step::Continue,
         );
         let runtime = Builder::new_current_thread().enable_all().build().unwrap();
         let initialized = behavior.initialize().unwrap();
@@ -99,9 +99,13 @@ proptest! {
             // User message through the stack. The fresh message is classified
             // in the phase BEFORE the step (a Goto flips the phase).
             let phase_before = behavior.base().phase();
-            let _ = runtime
+            let actions = runtime
                 .block_on(async { behavior.transition(EventLayer::Inner(UserEvent::user(MailAddr(0), id))) })
                 .unwrap();
+            prop_assert!(actions.sends.owned.is_empty(), "user step scheduled a deadline");
+            prop_assert!(actions.sends.inner.is_empty(), "user step emitted machine sends");
+            prop_assert!(actions.creates.is_empty(), "user step created an actor");
+            prop_assert_eq!(actions.become_, Step::Continue, "user step verdict");
             stepped += 1;
             // Only Deliver/Release-routed messages reach the FSM, and only
             // those can be goto-consumed (class 0 in A, 2 in B).
