@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.5](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-macros-v0.11.4...bombay-behavior-macros-v0.11.5) - 2026-09-15
+
+### Other
+
+- Prepare crates for release and remove redundant public API ([#57](https://github.com/devrandom-labs/bombay-behavior/pull/57)) ([#57](https://github.com/devrandom-labs/bombay-behavior/pull/57))
+
 ### Changed
 
 - Publish a crate-specific README and both license texts with the package.
