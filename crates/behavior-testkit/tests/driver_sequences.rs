@@ -1,6 +1,6 @@
 //! Generated mailbox sequences for the pure testkit Driver.
 
-use behavior::{Acted, Actions, Creations, Delivery, MailAddr, Never, Recipient, Step, User};
+use behavior_core::{Acted, Actions, Creations, Delivery, MailAddr, Never, Recipient, Step, User};
 use behavior_testkit::{Mailbox, drive};
 use proptest::collection::vec;
 use proptest::prelude::{ProptestConfig, any};
@@ -8,7 +8,7 @@ use proptest::{prop_assert_eq, proptest};
 
 struct Echo;
 
-#[behavior::behavior(addr = MailAddr, message = u8, sends = Vec<Delivery<behavior_testkit::TestRecipient<u8>>>, births = behavior::NoBirths, error = Never)]
+#[behavior_core::behavior(addr = MailAddr, message = u8, sends = Vec<Delivery<behavior_testkit::TestRecipient<u8>>>, births = behavior_core::NoBirths, error = Never)]
 impl Echo {
     fn receive(
         &mut self,
@@ -18,11 +18,11 @@ impl Echo {
         MailAddr,
         Never,
         Vec<Delivery<behavior_testkit::TestRecipient<u8>>>,
-        behavior::NoBirths,
+        behavior_core::NoBirths,
         Never,
     > {
         let next = match message {
-            u8::MAX => Step::Stop(behavior::Stopped),
+            u8::MAX => Step::Stop(behavior_core::Stopped),
             _ => Step::Continue,
         };
         Ok(Actions::new(

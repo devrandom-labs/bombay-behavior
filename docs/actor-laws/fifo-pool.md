@@ -5,7 +5,7 @@
 This document is the AA-30 independent semantic model for one FIFO worker
 pool. It is a non-production falsification oracle. It does not select Rust
 types, define another behavior algebra, implement a pool, or mark a production
-coverage row implemented. `docs/atomic-actor-solution.md` remains the
+coverage row implemented. `docs/engineering/atomic-actor-solution.md` remains the
 production design authority.
 
 The actor-model laws used here are isolated processing of one communication,

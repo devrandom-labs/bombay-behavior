@@ -2,20 +2,22 @@
 
 use std::time::Instant;
 
-use behavior::atomic::RestartReleaseFailure;
-use behavior::{
-    Actions, Activate as _, AllocationRejection, Behavior, BehaviorActed, ChildStopped, Crash,
-    CreationRejection, CreationSequence, EventLayer, Exit, MailAddr, Never, NoBirths,
-    PropagateTermination, ReportTerminalOutcome, RestartDenial, Step, SupervisionFailureReason,
-    TerminalDisposition, TerminalOutcome, TerminalPropagationState, TerminationPropagationError,
-    User, propagate_abnormal, propagate_all,
+use behavior_actors::atomic::RestartReleaseFailure;
+use behavior_actors::{
+    Activate as _, ChildStopped, Crash, Exit, PropagateTermination, ReportTerminalOutcome,
+    RestartDenial, SupervisionFailureReason, TerminalDisposition, TerminalOutcome,
+    TerminalPropagationState, TerminationPropagationError, propagate_abnormal, propagate_all,
+};
+use behavior_core::{
+    Actions, AllocationRejection, Behavior, BehaviorActed, CreationRejection, CreationSequence,
+    EventLayer, MailAddr, Never, NoBirths, Step, User,
 };
 use proptest::prelude::any;
 use proptest::{prop_assert, prop_assert_eq, proptest};
 
 struct Domain;
 
-impl foundation::Protocol for Domain {
+impl behavior_core::Protocol for Domain {
     type Addr = MailAddr;
     type Msg = u8;
 }
@@ -28,7 +30,11 @@ impl Behavior for Domain {
     type Error = Never;
     type Birth = NoBirths;
 
-    fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+    fn transition(
+        &mut self,
+        _: behavior_core::ActiveTurn,
+        event: Self::Event,
+    ) -> BehaviorActed<Self> {
         Ok(Actions::send(vec![event.message]))
     }
 }
@@ -206,7 +212,7 @@ proptest! {
         let other_child = creation_ids.issue().expect("the other child ID exists");
         let mut subject = PropagateTermination::new(
             Domain,
-            behavior::ChildTermination::<Domain, behavior::ChildHead>::new(selected_child),
+            behavior_actors::ChildTermination::<Domain, behavior_core::ChildHead>::new(selected_child),
             policy_function,
         )
         .initialize()

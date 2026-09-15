@@ -238,31 +238,31 @@ where
 ///
 /// ```compile_fail
 /// struct Worker;
-/// #[behavior_actors::behavior(
-///     addr = behavior_actors::MailAddr,
-///     message = behavior_actors::Never,
+/// #[behavior::behavior(
+///     addr = behavior::MailAddr,
+///     message = behavior::Never,
 /// )]
 /// impl Worker {
 ///     fn receive(
 ///         &mut self,
-///         _: behavior_actors::MailAddr,
-///         message: behavior_actors::Never,
-///     ) -> behavior_actors::BehaviorActed<Self> {
+///         _: behavior::MailAddr,
+///         message: behavior::Never,
+///     ) -> behavior::BehaviorActed<Self> {
 ///         match message {}
 ///     }
 /// }
 /// struct Parent;
-/// #[behavior_actors::behavior(
-///     addr = behavior_actors::MailAddr,
-///     message = behavior_actors::Never,
+/// #[behavior::behavior(
+///     addr = behavior::MailAddr,
+///     message = behavior::Never,
 ///     births = { primary: Worker, fallback: Worker },
 /// )]
 /// impl Parent {
 ///     fn receive(
 ///         &mut self,
-///         _: behavior_actors::MailAddr,
-///         message: behavior_actors::Never,
-///     ) -> behavior_actors::BehaviorActed<Self> {
+///         _: behavior::MailAddr,
+///         message: behavior::Never,
+///     ) -> behavior::BehaviorActed<Self> {
 ///         match message {}
 ///     }
 /// }
@@ -271,10 +271,10 @@ where
 ///     Worker,
 ///     behavior_actors::ShutdownChoice<
 ///         Worker,
-///         behavior_actors::NoShutdownTargets<behavior_actors::MailAddr>,
+///         behavior_actors::NoShutdownTargets<behavior::MailAddr>,
 ///     >,
 /// >;
-/// let mut creations = behavior_actors::CreationSequence::new();
+/// let mut creations = behavior::CreationSequence::new();
 /// let child = creations.issue().expect("fixture creation ID");
 /// let _: Targets =
 ///     behavior_actors::shutdown_target::<Parent, _, Targets>(UnrelatedRole, child);
@@ -292,7 +292,7 @@ where
 impl<C, Tail> Copy for ShutdownChoice<C, Tail>
 where
     C: Behavior,
-    <crate::BehaviorAddr<C> as Address>::Nonce: Copy,
+    <behavior::BehaviorAddr<C> as Address>::Nonce: Copy,
     Tail: Copy,
 {
 }
@@ -300,7 +300,7 @@ where
 impl<C, Tail> Clone for ShutdownChoice<C, Tail>
 where
     C: Behavior,
-    <crate::BehaviorAddr<C> as Address>::Nonce: Copy,
+    <behavior::BehaviorAddr<C> as Address>::Nonce: Copy,
     Tail: Copy,
 {
     fn clone(&self) -> Self {
@@ -377,9 +377,9 @@ pub(crate) mod heterogeneous {
     where
         C: Behavior,
         C::Event: InjectEvent<crate::ShutdownRequested, Here>,
-        Tail: Selection<Addr = crate::BehaviorAddr<C>>,
+        Tail: Selection<Addr = behavior::BehaviorAddr<C>>,
     {
-        type Addr = crate::BehaviorAddr<C>;
+        type Addr = behavior::BehaviorAddr<C>;
         fn creation(&self) -> CreationId {
             match self {
                 Self::Child { creation, .. } => *creation,
@@ -622,9 +622,9 @@ enum ShutdownMove<P> {
 /// heterogeneous plans therefore cannot be confused at installation:
 ///
 /// ```compile_fail
-/// use behavior::{Actions, Activate, Behavior, ChildHead, MailAddr, Never, NoBirths, User};
+/// use behavior::{Actions, Behavior, ChildHead, MailAddr, Never, NoBirths, User};
 /// use behavior_actors::{
-///     HeterogeneousShutdownPlan, InstallShutdownPlan, NoShutdownTargets, ShutdownChoice,
+///     Activate, HeterogeneousShutdownPlan, InstallShutdownPlan, NoShutdownTargets, ShutdownChoice,
 ///     ShutdownCoordinator, StopOnShutdown,
 /// };
 /// struct Probe;
@@ -868,7 +868,7 @@ pub enum ShutdownCoordinatorError<E, A: Address, P> {
 /// ```
 pub struct ShutdownCoordinator<B: Behavior, C: Behavior, Occurrence>
 where
-    C::Protocol: crate::Protocol<Addr = crate::BehaviorAddr<B>>,
+    C::Protocol: behavior::Protocol<Addr = behavior::BehaviorAddr<B>>,
 {
     inner: B,
     state: ShutdownState<ShutdownPlan<CreationId>, CreationId>,
@@ -876,7 +876,7 @@ where
 }
 
 type ShutdownCoordinatorActions<B, C, Occurrence> = Actions<
-    crate::BehaviorAddr<B>,
+    behavior::BehaviorAddr<B>,
     <B as Behavior>::Ph,
     SendLayer<InterpreterRequests<ShutdownChild<C, Occurrence>>, <B as Behavior>::Sends>,
     <B as Behavior>::Birth,
@@ -884,7 +884,7 @@ type ShutdownCoordinatorActions<B, C, Occurrence> = Actions<
 
 impl<B: Behavior, C: Behavior, Occurrence> ShutdownCoordinator<B, C, Occurrence>
 where
-    C::Protocol: crate::Protocol<Addr = crate::BehaviorAddr<B>>,
+    C::Protocol: behavior::Protocol<Addr = behavior::BehaviorAddr<B>>,
 {
     #[must_use]
     pub const fn new(inner: B, plan: ShutdownPlan<CreationId>) -> Self {
@@ -915,7 +915,7 @@ where
     }
 
     fn wrap(
-        actions: Actions<crate::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>,
+        actions: Actions<behavior::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>,
     ) -> ShutdownCoordinatorActions<B, C, Occurrence> {
         actions.map_sends(|inner| SendLayer::new(InterpreterRequests::empty(), inner))
     }
@@ -1026,11 +1026,11 @@ where
     }
 }
 
-impl<B, C, Occurrence> crate::BehaviorBase for ShutdownCoordinator<B, C, Occurrence>
+impl<B, C, Occurrence> behavior::BehaviorBase for ShutdownCoordinator<B, C, Occurrence>
 where
-    B: Behavior + crate::BehaviorBase,
+    B: Behavior + behavior::BehaviorBase,
     C: Behavior,
-    C::Protocol: crate::Protocol<Addr = crate::BehaviorAddr<B>>,
+    C::Protocol: behavior::Protocol<Addr = behavior::BehaviorAddr<B>>,
 {
     type Base = B::Base;
     fn base(&self) -> &Self::Base {
@@ -1042,7 +1042,7 @@ impl<B, C, Occurrence> crate::StashStatus for ShutdownCoordinator<B, C, Occurren
 where
     B: Behavior + crate::StashStatus,
     C: Behavior,
-    C::Protocol: crate::Protocol<Addr = crate::BehaviorAddr<B>>,
+    C::Protocol: behavior::Protocol<Addr = behavior::BehaviorAddr<B>>,
 {
     fn stashed_messages(&self) -> usize {
         self.inner.stashed_messages()
@@ -1055,9 +1055,9 @@ where
     S: SendEffects + behavior::SendsFor<B::Event>,
     Br: BirthMode,
     B: Behavior<Ph = Ph, Sends = S, Birth = Br>,
-    B::Protocol: crate::Protocol<Addr = A>,
+    B::Protocol: behavior::Protocol<Addr = A>,
     C: Behavior,
-    C::Protocol: crate::Protocol<Addr = A>,
+    C::Protocol: behavior::Protocol<Addr = A>,
     C::Event: InjectEvent<crate::ShutdownRequested, Here>,
 {
     type Protocol = B::Protocol;
@@ -1066,12 +1066,12 @@ where
     type Ph = Ph;
     type Error = ShutdownCoordinatorError<B::Error, A, ShutdownPlan<CreationId>>;
     type Birth = Br;
-    fn init(&mut self, _: crate::InitializationTurn) -> BehaviorActed<Self> {
+    fn init(&mut self, _: behavior::InitializationTurn) -> BehaviorActed<Self> {
         behavior::initialize(&mut self.inner)
             .map(Self::wrap)
             .map_err(ShutdownCoordinatorError::Behavior)
     }
-    fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+    fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
         match event {
             ShutdownCoordinatorEvent::Plan(installation) => {
                 let next = self
@@ -1122,14 +1122,14 @@ where
 /// phased ordering is Bombay policy, not an actor-model guarantee.
 pub struct HeterogeneousShutdownCoordinator<B: Behavior, T>
 where
-    T: heterogeneous::Selection<Addr = crate::BehaviorAddr<B>>,
+    T: heterogeneous::Selection<Addr = behavior::BehaviorAddr<B>>,
 {
     inner: B,
     state: ShutdownState<HeterogeneousShutdownPlan<T>, CreationId>,
 }
 
 type HeterogeneousShutdownActions<B, T> = Actions<
-    crate::BehaviorAddr<B>,
+    behavior::BehaviorAddr<B>,
     <B as Behavior>::Ph,
     SendLayer<HeterogeneousShutdownSends<T>, <B as Behavior>::Sends>,
     <B as Behavior>::Birth,
@@ -1137,7 +1137,7 @@ type HeterogeneousShutdownActions<B, T> = Actions<
 
 impl<B: Behavior, T> HeterogeneousShutdownCoordinator<B, T>
 where
-    T: heterogeneous::Selection<Addr = crate::BehaviorAddr<B>> + Copy,
+    T: heterogeneous::Selection<Addr = behavior::BehaviorAddr<B>> + Copy,
 {
     #[must_use]
     pub const fn new(inner: B, plan: HeterogeneousShutdownPlan<T>) -> Self {
@@ -1162,7 +1162,7 @@ where
     }
 
     fn wrap(
-        actions: Actions<crate::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>,
+        actions: Actions<behavior::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>,
     ) -> HeterogeneousShutdownActions<B, T> {
         actions.map_sends(|inner| SendLayer::new(HeterogeneousShutdownSends::empty(), inner))
     }
@@ -1276,10 +1276,10 @@ where
     }
 }
 
-impl<B, T> crate::BehaviorBase for HeterogeneousShutdownCoordinator<B, T>
+impl<B, T> behavior::BehaviorBase for HeterogeneousShutdownCoordinator<B, T>
 where
-    B: Behavior + crate::BehaviorBase,
-    T: heterogeneous::Selection<Addr = crate::BehaviorAddr<B>>,
+    B: Behavior + behavior::BehaviorBase,
+    T: heterogeneous::Selection<Addr = behavior::BehaviorAddr<B>>,
 {
     type Base = B::Base;
     fn base(&self) -> &Self::Base {
@@ -1290,7 +1290,7 @@ where
 impl<B, T> crate::StashStatus for HeterogeneousShutdownCoordinator<B, T>
 where
     B: Behavior + crate::StashStatus,
-    T: heterogeneous::Selection<Addr = crate::BehaviorAddr<B>>,
+    T: heterogeneous::Selection<Addr = behavior::BehaviorAddr<B>>,
 {
     fn stashed_messages(&self) -> usize {
         self.inner.stashed_messages()
@@ -1303,7 +1303,7 @@ where
     Sends: SendEffects + behavior::SendsFor<B::Event>,
     Br: BirthMode,
     B: Behavior<Ph = Ph, Sends = Sends, Birth = Br>,
-    B::Protocol: crate::Protocol<Addr = A>,
+    B::Protocol: behavior::Protocol<Addr = A>,
     T: heterogeneous::Selection<Addr = A> + Copy,
 {
     type Protocol = B::Protocol;
@@ -1313,13 +1313,13 @@ where
     type Error = ShutdownCoordinatorError<B::Error, A, HeterogeneousShutdownPlan<T>>;
     type Birth = Br;
 
-    fn init(&mut self, _: crate::InitializationTurn) -> BehaviorActed<Self> {
+    fn init(&mut self, _: behavior::InitializationTurn) -> BehaviorActed<Self> {
         behavior::initialize(&mut self.inner)
             .map(Self::wrap)
             .map_err(ShutdownCoordinatorError::Behavior)
     }
 
-    fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+    fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
         match event {
             ShutdownCoordinatorEvent::Plan(installation) => {
                 let next = self
@@ -1376,7 +1376,7 @@ mod tests {
 
     struct Probe;
 
-    impl crate::BehaviorBase for Probe {
+    impl behavior::BehaviorBase for Probe {
         type Base = Self;
         fn base(&self) -> &Self {
             self
@@ -1395,10 +1395,14 @@ mod tests {
         type Ph = Never;
         type Error = Never;
         type Birth = NoBirths;
-        fn init(&mut self, _: crate::InitializationTurn) -> BehaviorActed<Self> {
+        fn init(&mut self, _: behavior::InitializationTurn) -> BehaviorActed<Self> {
             Ok(Actions::send(vec![1]))
         }
-        fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+        fn transition(
+            &mut self,
+            _: behavior::ActiveTurn,
+            event: Self::Event,
+        ) -> BehaviorActed<Self> {
             Ok(Actions::send(vec![event.message]))
         }
     }

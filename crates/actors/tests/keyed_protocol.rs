@@ -1,8 +1,8 @@
+use behavior::{Address, EndpointAddress, MessageProtocol, Protocol, Recipient};
 use behavior_actors::atomic::{
     BindingExpectation, BindingReply, BindingRequestId, KeyedAdmissionRejection, KeyedCommand,
     KeyedOutcome, SubmissionId,
 };
-use behavior_actors::{Address, EndpointAddress, MessageProtocol, Protocol, Recipient};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct RuntimeAddr(u64);

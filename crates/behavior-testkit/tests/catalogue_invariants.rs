@@ -2,14 +2,18 @@
 //! examples but not long, adversarial histories. The models use ordinary
 //! collections and domain facts rather than reproducing template branches.
 
-use behavior::{
-    Actions, Activate as _, Behavior, BehaviorActed, Cache, CacheConfiguration, CacheEntry,
-    CacheMessage, CacheResult, ComponentHealth, ComponentHealthState, Configuration,
-    ConfigurationError, ConfigurationMessage, ConfigurationState, ConfigurationVersion, Health,
-    HealthError, HealthEvidence, HealthMessage, HealthStatus, MailAddr, MessageProtocol, Never,
-    NoBirths, ObservationVersion, Readiness, ReadinessError, ReadinessEvidence, ReadinessMessage,
-    ReadinessStatus, Recipient, Registry, RegistryError, RegistryMessage, RegistryResult, Step,
-    Topic, TopicError, TopicMessage, User,
+use behavior_actors::{
+    Activate as _, Cache, CacheConfiguration, CacheEntry, CacheMessage, CacheResult,
+    ComponentHealth, ComponentHealthState, Configuration, ConfigurationError, ConfigurationMessage,
+    ConfigurationState, ConfigurationVersion, Health, HealthError, HealthEvidence, HealthMessage,
+    HealthStatus, ObservationVersion, Readiness, ReadinessError, ReadinessEvidence,
+    ReadinessMessage, ReadinessStatus, Registry, RegistryError, RegistryMessage, RegistryResult,
+    Topic, TopicError, TopicMessage,
+};
+
+use behavior_core::{
+    Actions, Behavior, BehaviorActed, MailAddr, MessageProtocol, Never, NoBirths, Recipient, Step,
+    User,
 };
 use proptest::collection::vec;
 use proptest::prelude::*;
@@ -17,7 +21,7 @@ use proptest::prelude::*;
 macro_rules! protocol {
     ($name:ident, $message:ty) => {
         struct $name;
-        impl behavior::Protocol for $name {
+        impl behavior_core::Protocol for $name {
             type Addr = MailAddr;
             type Msg = $message;
         }
@@ -30,7 +34,7 @@ macro_rules! protocol {
             type Birth = NoBirths;
             fn transition(
                 &mut self,
-                _: behavior::ActiveTurn,
+                _: behavior_core::ActiveTurn,
                 _: Self::Event,
             ) -> BehaviorActed<Self> {
                 Ok(Actions::cont())
@@ -40,8 +44,8 @@ macro_rules! protocol {
 }
 
 protocol!(ConfigurationReply, ConfigurationState<u8>);
-protocol!(ReadinessReply, behavior::ReadinessReport<u8>);
-protocol!(HealthReply, behavior::HealthReport<u8>);
+protocol!(ReadinessReply, behavior_actors::ReadinessReport<u8>);
+protocol!(HealthReply, behavior_actors::HealthReport<u8>);
 protocol!(RegistryDestination, u8);
 protocol!(RegistryReply, RegistryResult<u8, RegistryDestination>);
 

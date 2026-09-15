@@ -7,7 +7,9 @@
 //! (recorded + held + fresh-goto-consumed == stepped), and no occurrence is
 //! ever recorded twice.
 
-use behavior::{Activate, Machine, MailAddr, Move, Never, Step, User, UserEvent};
+use behavior_actors::{Activate, Machine, Move};
+
+use behavior_core::{MailAddr, Never, Step, User, UserEvent};
 use libfuzzer_sys::fuzz_target;
 use tokio::runtime::Builder;
 

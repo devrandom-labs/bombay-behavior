@@ -5,14 +5,12 @@ use std::time::Instant;
 
 use super::domain::OneShotSchedule;
 use super::event::TimedEvent;
-use crate::Step;
 use crate::protocol::{ScheduleAt, TimerId};
+use behavior::Step;
 use behavior::{
     Actions, Address, Become, Behavior, BirthMode, EventLayer, InterpreterRequests, SendEffects,
     SendLayer,
 };
-
-pub type DeadlineEvent<E> = TimedEvent<E>;
 
 /// Infallible reaction to one accepted deadline.
 ///
@@ -34,7 +32,7 @@ pub type DeadlineEvent<E> = TimedEvent<E>;
 pub type DeadlineReaction<B> = fn(&mut B) -> Become;
 
 pub(crate) type DeadlineActions<B> = Actions<
-    crate::BehaviorAddr<B>,
+    behavior::BehaviorAddr<B>,
     <B as Behavior>::Ph,
     SendLayer<InterpreterRequests<ScheduleAt>, <B as Behavior>::Sends>,
     <B as Behavior>::Birth,
@@ -71,7 +69,7 @@ impl<B: Behavior> Deadline<B> {
     }
 }
 
-impl<B: Behavior + crate::BehaviorBase> crate::BehaviorBase for Deadline<B> {
+impl<B: Behavior + behavior::BehaviorBase> behavior::BehaviorBase for Deadline<B> {
     type Base = B::Base;
 
     fn base(&self) -> &Self::Base {
@@ -94,16 +92,16 @@ where
     Sends: SendEffects + behavior::SendsFor<B::Event>,
     Br: BirthMode,
     B: Behavior<Ph = Ph, Sends = Sends, Birth = Br>,
-    B::Protocol: crate::Protocol<Addr = A>,
+    B::Protocol: behavior::Protocol<Addr = A>,
 {
     type Protocol = B::Protocol;
-    type Event = DeadlineEvent<B::Event>;
+    type Event = TimedEvent<B::Event>;
     type Sends = SendLayer<InterpreterRequests<ScheduleAt>, Sends>;
     type Ph = Ph;
     type Error = B::Error;
     type Birth = Br;
 
-    fn init(&mut self, _: crate::InitializationTurn) -> Result<DeadlineActions<B>, B::Error> {
+    fn init(&mut self, _: behavior::InitializationTurn) -> Result<DeadlineActions<B>, B::Error> {
         let actions = behavior::initialize(&mut self.inner)?;
         let own = if matches!(actions.become_, Step::Stop(_)) {
             self.schedule.cancel();
@@ -121,7 +119,7 @@ where
 
     fn transition(
         &mut self,
-        _: crate::ActiveTurn,
+        _: behavior::ActiveTurn,
         event: Self::Event,
     ) -> Result<DeadlineActions<B>, B::Error> {
         match event {
@@ -147,7 +145,7 @@ where
 
 impl<B: Behavior> Deadline<B> {
     fn wrap(
-        actions: Actions<crate::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>,
+        actions: Actions<behavior::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>,
         own: InterpreterRequests<ScheduleAt>,
     ) -> DeadlineActions<B> {
         actions.map_sends(|inner| SendLayer::new(own, inner))

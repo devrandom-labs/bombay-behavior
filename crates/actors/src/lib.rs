@@ -4,18 +4,18 @@
 //! [`lifecycle`], [`routing`], [`discovery`], [`time`],
 //! [`persistence`], [`workflow`], and [`operations`]. Every template is a
 //! deterministic fold from one concrete event sum to explicit typed
-//! [`Actions`]. It performs no scheduling, delivery, allocation, observation,
+//! [`behavior::Actions`]. It performs no scheduling, delivery, allocation, observation,
 //! persistence, or I/O itself. Those effects remain inputs and named output
 //! lanes for Bombay's one universal Driver and statically selected Environment
 //! interpreters.
 //!
-//! Public [`Protocol`] identity remains orthogonal to those internal event and
+//! Public [`behavior::Protocol`] identity remains orthogonal to those internal event and
 //! effect algebras. Concrete actor templates declare their protocol; transparent
 //! wrappers preserve `B::Protocol` and do not become new recipient identities.
-//! [`BirthProtocols`] projects each template's own protocol and
+//! [`behavior::BirthProtocols`] projects each template's own protocol and
 //! complete transitive staged-birth protocols into one closed structural
 //! product. Delivery-only external protocols do not enter that product.
-//! [`LogicalHostRequirements`] separately derives every intentional logical
+//! [`behavior::LogicalHostRequirements`] separately derives every intentional logical
 //! destination from the concrete sends algebra and every transitive birth.
 //! The projection preserves repeated occurrences and excludes exact,
 //! creator-local, and interpreter-owned lanes; it is static proof metadata,
@@ -33,8 +33,31 @@
 //! The top-level Bombay package is the ordinary application façade. Direct use
 //! of this component crate is intended for interpreter implementation,
 //! component tests, and advanced framework extension.
+//!
+//! Timer wrappers expose their shared event and reaction equations directly;
+//! template-specific aliases do not create nominal distinctions.
+//!
+//! ```
+//! fn accepts_timer_reactions<B: behavior::Behavior>(
+//!     _: behavior_actors::TimedReaction<B>,
+//!     _: behavior_actors::DeadlineReaction<B>,
+//! ) {
+//! }
+//! ```
+//!
+//! ```compile_fail
+//! use behavior_actors::{
+//!     DeadlineEvent, OneShotEvent, OneShotReaction, PeriodicEvent,
+//!     PeriodicReaction, ReceiveTimeoutEvent, ReceiveTimeoutReaction,
+//! };
+//! ```
+//!
+//! Foundational algebra stays owned by the `bombay-behavior` package.
+//!
+//! ```compile_fail
+//! use behavior_actors::Actions;
+//! ```
 
-pub use behavior::*;
 mod activation;
 pub mod atomic;
 pub mod composition;
@@ -49,7 +72,6 @@ pub mod routing;
 mod shutdown;
 mod stash;
 mod termination;
-#[path = "timing/mod.rs"]
 pub mod time;
 mod watch;
 pub mod workflow;
@@ -133,10 +155,8 @@ pub use termination::{
     Crash, Exit, ReportTerminalOutcome, RestartDenial, SupervisionFailureReason, TerminalOutcome,
 };
 pub use time::{
-    Deadline, DeadlineEvent, DeadlineReaction, Lease, LeaseMessage, LeaseOutcome, LeaseRejection,
-    LeaseRequest, LeaseSends, LeaseState, OneShot, OneShotEvent, OneShotReaction, Periodic,
-    PeriodicEvent, PeriodicReaction, ReceiveTimeout, ReceiveTimeoutEvent, ReceiveTimeoutReaction,
-    TimedEvent,
+    Deadline, DeadlineReaction, Lease, LeaseMessage, LeaseOutcome, LeaseRejection, LeaseRequest,
+    LeaseSends, LeaseState, OneShot, Periodic, ReceiveTimeout, TimedEvent, TimedReaction,
 };
 pub use watch::{LinkReaction, Watch, WatchEvent, stop_on_abnormal_death};
 pub use workflow::{

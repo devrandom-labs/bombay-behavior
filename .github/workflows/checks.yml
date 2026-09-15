@@ -1,9 +1,18 @@
 name: CI
 
 on:
+  push:
+    branches:
+      - main
   pull_request:
     branches:
       - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - labeled
+      - unlabeled
   workflow_dispatch:
 
 concurrency:
@@ -11,6 +20,27 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  semver:
+    name: Published API Change Audit
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compare published APIs
+        uses: obi1kenobi/cargo-semver-checks-action@v2
+        with:
+          package: bombay-behavior, bombay-behavior-actors
+          # Ordinary PRs must preserve the published API. A deliberately
+          # breaking batch is explicit in review, while main must admit that
+          # batch long enough for release-plz to create its version-bump PR.
+          release-type: ${{ github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'semver-breaking') && 'minor' || 'major' }}
+          rust-toolchain: 1.95.0
+
   checks:
     name: Nix Flake Check
     runs-on: ubuntu-latest
@@ -45,6 +75,9 @@ jobs:
 
       - name: Flake Check
         run: nix flake check
+
+      - name: Build fuzz targets
+        run: nix run .#fuzz -- build
 
   mutation:
     name: Mutation Gate

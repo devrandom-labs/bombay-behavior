@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Publish a crate-specific README and both license texts with the package.
+- Resolve `#[pool_worker]` foundational algebra through the direct
+  `bombay-behavior` dependency while retaining pool protocol values under
+  `bombay-behavior-actors`.
+
 ## [0.11.4](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-macros-v0.11.3...bombay-behavior-macros-v0.11.4) - 2026-08-21
 
 ### Added

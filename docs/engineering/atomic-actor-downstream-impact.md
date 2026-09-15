@@ -1,4 +1,4 @@
-# Atomic actor downstream impact
+# Atomic actor downstream impact (engineering record)
 
 Status: current read-only impact report after H591. This document assigns the
 remaining integration work; it does not authorize writes to a sibling
@@ -133,7 +133,7 @@ mailbox, or persistence effect inside `Behavior`.
 ## Required Bombay work by owner and order
 
 The normative details remain in
-[`atomic-runtime-settlement.md`](atomic-runtime-settlement.md). The executable
+[`atomic-runtime-settlement.md`](../atomic-runtime-settlement.md). The executable
 downstream sequence is:
 
 | Order | Owner and exact files | Required observable change | Explicit non-requirement |

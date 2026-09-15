@@ -1,0 +1,67 @@
+name: Scheduled Fuzz
+
+on:
+  schedule:
+    - cron: '23 4 * * 0'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: scheduled-fuzz
+  cancel-in-progress: false
+
+jobs:
+  fuzz:
+    name: Bounded fuzz campaign
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: nixbuild/nix-quick-install-action@v30
+        with:
+          nix_conf: |
+            experimental-features = nix-command flakes
+            accept-flake-config = true
+
+      - name: Run every fuzz target
+        run: |
+          targets=(
+            stable_proxy_shutdown_sequences
+            stable_proxy_replacement_sequences
+            fixed_supervisor_shutdown_sequences
+            fixed_supervisor_recovery_sequences
+            fixed_supervisor_delayed_sequences
+            fixed_supervisor_role_correlation_sequences
+            dynamic_supervisor_cancellation_sequences
+            dynamic_supervisor_transferred_cancellation_sequences
+            dynamic_supervisor_shutdown_sequences
+            dynamic_supervisor_unexpected_exit_sequences
+            fsm_sequences
+            stash_sequences
+            stack_sequences
+            error_sequences
+            two_buffer_sequences
+            receive_timeout_sequences
+            catalogue_sequences
+            shutdown_plan_sequences
+            fifo_pool_sequences
+            keyed_binding_sequences
+            keyed_assignment_sequences
+          )
+          for target in "${targets[@]}"; do
+            nix run .#fuzz -- run "$target" -- \
+              -max_total_time=30 \
+              -print_final_stats=1
+          done
+
+      - name: Preserve crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-crash-artifacts
+          path: crates/behavior-testkit/fuzz/artifacts
+          if-no-files-found: ignore

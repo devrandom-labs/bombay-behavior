@@ -2,13 +2,13 @@
 
 use core::convert::Infallible;
 
-use behavior::atomic::{
+use behavior_actors::atomic::{
     CapabilityResult, FixedCommand, FixedSupervisor, ImmediateActivation, PrepareWorkers,
     ProxyOutcome, Recovery, StableProxy, WorkerAttempt, WorkerSource,
 };
-use behavior::{
-    Active, ChildReport, MessageProtocol, NoSends, Recipient, ReplyDelivery, SendSettlements,
-    SettledItem, Step,
+use behavior_actors::{Active, ReplyDelivery};
+use behavior_core::{
+    ChildReport, MessageProtocol, NoSends, Recipient, SendSettlements, SettledItem, Step,
 };
 
 use crate::fixed_supervisor::{Role, ready_supervisor};
@@ -21,7 +21,7 @@ where
     pub(crate) supervisor:
         Active<FixedSupervisor<Role, Worker, ImmediateActivation, Source, Infallible, Infallible>>,
     pub(crate) proxy: Active<StableProxy<Worker, ImmediateActivation>>,
-    pub(crate) proxy_id: behavior::CreationId,
+    pub(crate) proxy_id: behavior_core::CreationId,
     pub(crate) previous: WorkerAttempt,
     pub(crate) preparation: PrepareWorkers<Source, Role, Worker, ImmediateActivation>,
 }

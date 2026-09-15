@@ -78,7 +78,7 @@ where
 pub struct EstablishedChild<C, Occurrence>
 where
     C: Behavior,
-    crate::BehaviorAddr<C>: EndpointAddress,
+    behavior::BehaviorAddr<C>: EndpointAddress,
 {
     creation: CreationId,
     actor: EstablishedActor<C>,
@@ -88,7 +88,7 @@ where
 impl<C, Occurrence> EstablishedChild<C, Occurrence>
 where
     C: Behavior,
-    crate::BehaviorAddr<C>: EndpointAddress,
+    behavior::BehaviorAddr<C>: EndpointAddress,
 {
     /// Return the creator-local ID of this child.
     #[must_use]
@@ -144,7 +144,7 @@ pub fn established_child<Parent, Role>(
 where
     Parent: Behavior,
     Role: behavior::ChildRole<Parent>,
-    crate::BehaviorAddr<behavior::RoleChild<Parent, Role>>: EndpointAddress,
+    behavior::BehaviorAddr<behavior::RoleChild<Parent, Role>>: EndpointAddress,
 {
     let creation = report.id();
     let actor = report.into_actor::<Parent>()?;
@@ -395,10 +395,12 @@ pub struct ShutdownId(pub u64);
 /// strengthened into an orderly-shutdown request:
 ///
 /// ```compile_fail
-/// use behavior_actors::{
+/// use behavior::{
 ///     Actions, Address, Behavior, BehaviorActed, EndpointAddress,
-///     EstablishedActor, Here, Ingress, Never, NoBirths, NoSends, Protocol,
-///     ShutdownEstablished, ShutdownId, ShutdownRequested, User,
+///     EstablishedActor, Here, Ingress, Never, NoBirths, NoSends, Protocol, User,
+/// };
+/// use behavior_actors::{
+///     ShutdownEstablished, ShutdownId, ShutdownRequested,
 /// };
 /// #[derive(Clone, Copy, PartialEq, Eq)]
 /// struct RuntimeAddr(u64);
@@ -419,7 +421,7 @@ pub struct ShutdownId(pub u64);
 ///     type Birth = NoBirths;
 ///     fn transition(
 ///         &mut self,
-///         _: behavior_actors::ActiveTurn,
+///         _: behavior::ActiveTurn,
 ///         _: Self::Event,
 ///     ) -> BehaviorActed<Self> { Ok(Actions::cont()) }
 /// }
@@ -433,7 +435,7 @@ pub struct ShutdownId(pub u64);
 pub struct ShutdownEstablished<B, TargetPath>
 where
     B: Behavior,
-    crate::BehaviorAddr<B>: EndpointAddress,
+    behavior::BehaviorAddr<B>: EndpointAddress,
     B::Event: InjectEvent<ShutdownRequested, TargetPath>,
 {
     pub id: ShutdownId,
@@ -444,7 +446,7 @@ where
 impl<B, TargetPath> ShutdownEstablished<B, TargetPath>
 where
     B: Behavior,
-    crate::BehaviorAddr<B>: EndpointAddress,
+    behavior::BehaviorAddr<B>: EndpointAddress,
     B::Event: InjectEvent<ShutdownRequested, TargetPath>,
 {
     #[must_use]
@@ -486,7 +488,7 @@ where
 impl<B, TargetPath> InterpreterRequest for ShutdownEstablished<B, TargetPath>
 where
     B: Behavior,
-    crate::BehaviorAddr<B>: EndpointAddress,
+    behavior::BehaviorAddr<B>: EndpointAddress,
     B::Event: InjectEvent<ShutdownRequested, TargetPath>,
 {
     type ReturnToEmitter =
@@ -496,7 +498,7 @@ where
 impl<B, TargetPath> ActionItem for ShutdownEstablished<B, TargetPath>
 where
     B: Behavior,
-    crate::BehaviorAddr<B>: EndpointAddress,
+    behavior::BehaviorAddr<B>: EndpointAddress,
     B::Event: InjectEvent<ShutdownRequested, TargetPath>,
     EstablishedActor<B>: Send,
 {
@@ -557,13 +559,13 @@ impl<P: Protocol> EstablishedShutdownResolved<P> {
 pub trait InterpretEstablishedShutdown<B, TargetPath>
 where
     B: Behavior,
-    crate::BehaviorAddr<B>: EndpointAddress,
+    behavior::BehaviorAddr<B>: EndpointAddress,
     B::Event: InjectEvent<ShutdownRequested, TargetPath>,
 {
     fn shutdown(
         &mut self,
         id: ShutdownId,
-        endpoint: <crate::BehaviorAddr<B> as EndpointAddress>::Established<B::Protocol>,
+        endpoint: <behavior::BehaviorAddr<B> as EndpointAddress>::Established<B::Protocol>,
         ingress: Ingress<ShutdownRequested, TargetPath>,
     ) -> Result<(), ShutdownRejection>;
 }
@@ -578,7 +580,7 @@ struct ShutdownTransfer<'a, I, B, TargetPath> {
 impl<B, TargetPath, I> InterpretEstablished<B::Protocol> for ShutdownTransfer<'_, I, B, TargetPath>
 where
     B: Behavior,
-    crate::BehaviorAddr<B>: EndpointAddress,
+    behavior::BehaviorAddr<B>: EndpointAddress,
     B::Event: InjectEvent<ShutdownRequested, TargetPath>,
     I: InterpretEstablishedShutdown<B, TargetPath>,
 {
@@ -586,7 +588,7 @@ where
 
     fn interpret_established(
         &mut self,
-        endpoint: <crate::BehaviorAddr<B> as EndpointAddress>::Established<B::Protocol>,
+        endpoint: <behavior::BehaviorAddr<B> as EndpointAddress>::Established<B::Protocol>,
     ) -> Self::Output {
         self.interpreter.shutdown(self.id, endpoint, self.ingress)
     }

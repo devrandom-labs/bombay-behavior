@@ -1,5 +1,6 @@
 //! Compile-contract matrix for every customer-passing actor template.
 
+use behavior::*;
 use behavior_actors::*;
 use core::marker::PhantomData;
 use core::num::NonZeroU64;
@@ -448,7 +449,7 @@ fn exact_capabilities_survive_every_payload_and_membership_transition() {
             if matches!(delivery.message, PriorityQueueOutcome::Accepted { depth: 1 })
     ));
     assert!(offered.creates.is_empty());
-    assert_eq!(offered.become_, behavior_actors::Step::Continue);
+    assert_eq!(offered.become_, behavior::Step::Continue);
     let released = priority
         .receive(
             sender,
@@ -492,7 +493,7 @@ fn exact_capabilities_survive_every_payload_and_membership_transition() {
             if matches!(delivery.message, BufferOutcome::Accepted { depth: 1 })
     ));
     assert!(offered.creates.is_empty());
-    assert_eq!(offered.become_, behavior_actors::Step::Continue);
+    assert_eq!(offered.become_, behavior::Step::Continue);
     let buffered = buffer
         .receive(
             sender,
@@ -538,7 +539,7 @@ fn exact_capabilities_survive_every_payload_and_membership_transition() {
     assert!(available.sends.assignments.is_empty());
     assert!(available.sends.outcomes.is_empty());
     assert!(available.creates.is_empty());
-    assert_eq!(available.become_, behavior_actors::Step::Continue);
+    assert_eq!(available.become_, behavior::Step::Continue);
     let assigned = work
         .receive(
             sender,
@@ -566,7 +567,7 @@ fn exact_capabilities_survive_every_payload_and_membership_transition() {
         .unwrap();
     assert!(subscribed.sends.is_empty());
     assert!(subscribed.creates.is_empty());
-    assert_eq!(subscribed.become_, behavior_actors::Step::Continue);
+    assert_eq!(subscribed.become_, behavior::Step::Continue);
     let published = topic.receive(sender, TopicMessage::Publish(48)).unwrap();
     assert_eq!(published.sends.len(), 1);
     assert_eq!(published.sends[0].to, subscriber);
@@ -588,7 +589,7 @@ fn exact_capabilities_survive_every_payload_and_membership_transition() {
         .unwrap();
     assert!(subscribed.sends.is_empty());
     assert!(subscribed.creates.is_empty());
-    assert_eq!(subscribed.become_, behavior_actors::Step::Continue);
+    assert_eq!(subscribed.become_, behavior::Step::Continue);
     let published = pub_sub
         .receive(
             sender,

@@ -5,7 +5,7 @@
 This document is the AA-20 independent semantic model for one dynamic
 supervisor. It is a non-production falsification oracle. It does not select
 Rust types, define another behavior algebra, implement a supervisor, or mark a
-production coverage row implemented. `docs/atomic-actor-solution.md` remains
+production coverage row implemented. `docs/engineering/atomic-actor-solution.md` remains
 the production design authority.
 
 Fresh allocation is the actor-model law used here: every accepted entry owns a

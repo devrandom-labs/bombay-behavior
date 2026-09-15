@@ -7,12 +7,15 @@
 use core::future::Future;
 use std::time::{Duration, Instant};
 
-use behavior::{
-    Acted, ActionItem, Actions, Crash, Creations, Delivery, EventLayer, Here, Inside,
-    InterpretItem, InterpretSends, Interpretation, ItemSettlement, MailAddr, Never, ObservePeer,
-    PeerObservationRejection, PeerStopped, Recipient, ScheduleAt, SendEffects, SettledItem,
-    StashRoute, Step, TimerElapsed, TimerGeneration, TimerId, TimerScheduled, User,
-    stop_on_abnormal_death,
+use behavior_actors::{
+    Crash, ObservePeer, PeerObservationRejection, PeerStopped, ScheduleAt, StashRoute,
+    TimerElapsed, TimerGeneration, TimerId, TimerScheduled, stop_on_abnormal_death,
+};
+
+use behavior_core::{
+    Acted, ActionItem, Actions, Creations, Delivery, EventLayer, Here, Inside, InterpretItem,
+    InterpretSends, Interpretation, ItemSettlement, MailAddr, Never, Recipient, SendEffects,
+    SettledItem, Step, User,
 };
 use behavior_testkit::{DriveDisposition, Mailbox, drive};
 use proptest::collection::vec;
@@ -59,7 +62,7 @@ struct EchoingApplication {
     seen: Vec<u64>,
 }
 
-#[behavior::behavior(addr = MailAddr, message = u64, sends = Vec<Delivery<behavior_testkit::TestRecipient<u64>>>, births = behavior::NoBirths, error = Never)]
+#[behavior_core::behavior(addr = MailAddr, message = u64, sends = Vec<Delivery<behavior_testkit::TestRecipient<u64>>>, births = behavior_core::NoBirths, error = Never)]
 impl EchoingApplication {
     fn receive(
         &mut self,
@@ -69,7 +72,7 @@ impl EchoingApplication {
         MailAddr,
         Never,
         Vec<Delivery<behavior_testkit::TestRecipient<u64>>>,
-        behavior::NoBirths,
+        behavior_core::NoBirths,
         Never,
     > {
         self.seen.push(message);
@@ -80,7 +83,7 @@ impl EchoingApplication {
     }
 }
 
-type FullStackEvent = behavior::DeadlineEvent<behavior::WatchEvent<User<MailAddr, u64>>>;
+type FullStackEvent = behavior_actors::TimedEvent<behavior_actors::WatchEvent<User<MailAddr, u64>>>;
 
 #[derive(Debug, PartialEq, Eq)]
 enum FullStackRuntimeEffect {
@@ -197,9 +200,9 @@ impl InterpretItem<ObservePeer<MailAddr>, FullStackEvent, Inside<Here>> for Unkn
 async fn driver_full_stack_mixed_lanes_stop_on_peer_death() {
     let due = Instant::now() + Duration::from_secs(1);
     let peer = MailAddr(44);
-    let behavior = behavior::Deadline::new(
-        behavior::Watch::new(
-            behavior::Stash::new(EchoingApplication { seen: Vec::new() }, |message| {
+    let behavior = behavior_actors::Deadline::new(
+        behavior_actors::Watch::new(
+            behavior_actors::Stash::new(EchoingApplication { seen: Vec::new() }, |message| {
                 match message % 3 {
                     2 => StashRoute::Stash,
                     _ => StashRoute::Deliver,
@@ -232,7 +235,7 @@ async fn driver_full_stack_mixed_lanes_stop_on_peer_death() {
     assert_eq!(trace.pending, 1);
     assert!(matches!(
         trace.disposition,
-        DriveDisposition::BehaviorStopped(behavior::Stopped)
+        DriveDisposition::BehaviorStopped(behavior_core::Stopped)
     ));
 
     let mut runtime = FullStackRuntime {
@@ -254,7 +257,7 @@ async fn driver_full_stack_mixed_lanes_stop_on_peer_death() {
 #[tokio::test]
 async fn unknown_peer_observation_returns_the_complete_request() {
     let peer = MailAddr(404);
-    let observations = behavior::InterpreterRequests::one(ObservePeer::new(peer));
+    let observations = behavior_core::InterpreterRequests::one(ObservePeer::new(peer));
     let mut runtime = UnknownPeerRuntime;
 
     let interpreted = <_ as InterpretSends<_, FullStackEvent, Inside<Here>>>::interpret(
@@ -287,7 +290,7 @@ async fn macro_defined_behavior_drives_like_a_base() {
         seen: Vec<u64>,
     }
 
-    #[behavior::behavior(addr = MailAddr, message = u64, sends = Vec<Delivery<behavior_testkit::TestRecipient<u64>>>, births = behavior::NoBirths, error = Never)]
+    #[behavior_core::behavior(addr = MailAddr, message = u64, sends = Vec<Delivery<behavior_testkit::TestRecipient<u64>>>, births = behavior_core::NoBirths, error = Never)]
     impl FnRecorder {
         fn receive(
             &mut self,
@@ -297,7 +300,7 @@ async fn macro_defined_behavior_drives_like_a_base() {
             MailAddr,
             Never,
             Vec<Delivery<behavior_testkit::TestRecipient<u64>>>,
-            behavior::NoBirths,
+            behavior_core::NoBirths,
             Never,
         > {
             self.seen.push(message);
@@ -305,7 +308,7 @@ async fn macro_defined_behavior_drives_like_a_base() {
                 sends: vec![Delivery::new(Recipient::global(MailAddr(0)), message)],
                 creates: Creations::empty(),
                 become_: if message == 9 {
-                    Step::Stop(behavior::Stopped)
+                    Step::Stop(behavior_core::Stopped)
                 } else {
                     Step::Continue
                 },
@@ -325,7 +328,7 @@ async fn macro_defined_behavior_drives_like_a_base() {
     assert_eq!(trace.pending, 1);
     assert!(matches!(
         trace.disposition,
-        DriveDisposition::BehaviorStopped(behavior::Stopped)
+        DriveDisposition::BehaviorStopped(behavior_core::Stopped)
     ));
     let echoes: Vec<u64> = trace.sends.iter().map(|d| d.message).collect();
     assert_eq!(echoes, [3, 9]);
@@ -339,7 +342,7 @@ async fn driver_stash_stop_preserves_held_and_stops() {
     struct StopOnZero {
         seen: Vec<(MailAddr, u64)>,
     }
-    #[behavior::behavior(addr = MailAddr, message = u64, sends = Vec<Delivery<behavior_testkit::TestRecipient<u64>>>, births = behavior::NoBirths, error = Never)]
+    #[behavior_core::behavior(addr = MailAddr, message = u64, sends = Vec<Delivery<behavior_testkit::TestRecipient<u64>>>, births = behavior_core::NoBirths, error = Never)]
     impl StopOnZero {
         fn receive(
             &mut self,
@@ -349,7 +352,7 @@ async fn driver_stash_stop_preserves_held_and_stops() {
             MailAddr,
             Never,
             Vec<Delivery<behavior_testkit::TestRecipient<u64>>>,
-            behavior::NoBirths,
+            behavior_core::NoBirths,
             Never,
         > {
             self.seen.push((from, message));
@@ -357,7 +360,7 @@ async fn driver_stash_stop_preserves_held_and_stops() {
                 sends: Vec::new(),
                 creates: Creations::empty(),
                 become_: if message == 0 {
-                    Step::Stop(behavior::Stopped)
+                    Step::Stop(behavior_core::Stopped)
                 } else {
                     Step::Continue
                 },
@@ -366,7 +369,7 @@ async fn driver_stash_stop_preserves_held_and_stops() {
     }
 
     let behavior =
-        behavior::Stash::new(
+        behavior_actors::Stash::new(
             StopOnZero { seen: Vec::new() },
             |message: &u64| match message {
                 0 => StashRoute::Release,
@@ -380,7 +383,7 @@ async fn driver_stash_stop_preserves_held_and_stops() {
     assert_eq!(trace.pending, 0);
     assert!(matches!(
         trace.disposition,
-        DriveDisposition::BehaviorStopped(behavior::Stopped)
+        DriveDisposition::BehaviorStopped(behavior_core::Stopped)
     ));
     assert_eq!(trace.behavior.held(), 1); // the stashed message survives the stop
     assert_eq!(trace.behavior.base().seen, [(MailAddr(9), 0)]);

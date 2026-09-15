@@ -55,7 +55,7 @@ callback, marker, empty route, structural path, application alias, or public
 proxy factory.
 
 The complete application syntax and public products are owned by
-[`atomic-actor-devx.md`](atomic-actor-devx.md).
+[`atomic-actor-devx.md`](engineering/atomic-actor-devx.md).
 
 ## Commands and outcomes
 
@@ -167,4 +167,4 @@ final aggregate type, and compile-fail contracts reject duplicated or forged
 cancellation authority. Same-signature foreign authority remains AA-20's
 runtime-stale case rather than a fabricated compiler-only owner brand. The
 verification plan and remaining whole-catalogue gates are owned by
-[`atomic-actor-verification.md`](atomic-actor-verification.md).
+[`atomic-actor-verification.md`](engineering/atomic-actor-verification.md).

@@ -18,7 +18,7 @@ mod stable_proxy;
 mod worker;
 
 pub use activation::{ActivationPolicy, EntryCapacity};
-/// Derive the one ordinary [`Behavior`](crate::Behavior) implementation for a
+/// Derive the one ordinary [`Behavior`](behavior::Behavior) implementation for a
 /// pool worker from its assignment transition.
 ///
 /// The authored transition receives [`Assignment`] and completes it directly;
@@ -28,8 +28,8 @@ pub use activation::{ActivationPolicy, EntryCapacity};
 /// Omitting a required domain declaration is rejected at the attribute:
 ///
 /// ```compile_fail
+/// use behavior::{Actions, MailAddr};
 /// use behavior_actors::atomic::{Assignment, pool_worker};
-/// use behavior_actors::{Actions, MailAddr};
 /// struct Worker;
 /// #[pool_worker(addr = MailAddr)]
 /// impl Worker {
@@ -42,8 +42,8 @@ pub use activation::{ActivationPolicy, EntryCapacity};
 /// The transition must consume one assignment rather than an unrelated input:
 ///
 /// ```compile_fail
+/// use behavior::MailAddr;
 /// use behavior_actors::atomic::pool_worker;
-/// use behavior_actors::MailAddr;
 /// struct Worker;
 /// #[pool_worker(addr = MailAddr, result = u16)]
 /// impl Worker {

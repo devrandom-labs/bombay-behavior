@@ -5,9 +5,11 @@ use behavior::{
 };
 
 use crate::{
-    ActivationPlan, ChildInputReason, ChildStopped, ProxyOperation, ProxyOutcome, ProxyPhase,
-    ScheduleAfter, ScheduleAfterRejection, StableProxy, WorkerSubmission,
+    ActivationPlan, ChildStopped, ProxyOperation, ProxyOutcome, ProxyPhase, ScheduleAfter,
+    ScheduleAfterRejection, StableProxy, WorkerSubmission,
 };
+
+use behavior::ChildInputReason;
 
 use super::super::{PreparedWorker, RoleName, WorkerSource};
 use super::restart::RecoveryDenialReason;

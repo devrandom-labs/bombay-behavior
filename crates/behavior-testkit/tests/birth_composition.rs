@@ -3,8 +3,8 @@
 //! The test-only `Provisioned` behavior stands in for Bombay's application
 //! owner. Child behavior types and the resulting application type are inferred.
 
-use behavior::{FinalizeOnShutdown, ShutdownRequested, StopOnShutdown};
-use foundation::{
+use behavior_actors::{FinalizeOnShutdown, ShutdownRequested, StopOnShutdown};
+use behavior_core::{
     Actions, Behavior, BehaviorActed, BehaviorBase, BirthMode, BirthNodeAppend, Births,
     ChildChoice, ChildCons, ChildHead, ChildOccurrence, ChildProduct, ChildRole, Children,
     CreateChild, CreationId, CreationKind, CreationSequence, Creations, DeclaredChildOccurrence,
@@ -44,7 +44,7 @@ macro_rules! inert {
 
             fn transition(
                 &mut self,
-                _: foundation::ActiveTurn,
+                _: behavior_core::ActiveTurn,
                 event: Self::Event,
             ) -> BehaviorActed<Self> {
                 match event.message {}
@@ -82,14 +82,18 @@ impl Behavior for Root {
     type Error = Never;
     type Birth = Births<Owned>;
 
-    fn init(&mut self, _: foundation::InitializationTurn) -> BehaviorActed<Self> {
+    fn init(&mut self, _: behavior_core::InitializationTurn) -> BehaviorActed<Self> {
         let id = self.creations.issue().expect("the root fixture ID exists");
         Ok(Actions::create(Creations::one(CreateChild::birth(
             id, Owned,
         ))))
     }
 
-    fn transition(&mut self, _: foundation::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+    fn transition(
+        &mut self,
+        _: behavior_core::ActiveTurn,
+        event: Self::Event,
+    ) -> BehaviorActed<Self> {
         match event.message {}
     }
 }
@@ -171,7 +175,7 @@ where
     type Birth =
         Births<<<R::Birth as BirthMode>::Child as BirthNodeAppend<Product::Choice>>::Output>;
 
-    fn init(&mut self, _: foundation::InitializationTurn) -> BehaviorActed<Self> {
+    fn init(&mut self, _: behavior_core::InitializationTurn) -> BehaviorActed<Self> {
         let inner = initialize(&mut self.root).map_err(ProvisionError::Inner)?;
         let children = self
             .children
@@ -186,7 +190,11 @@ where
         Ok(Actions::new(inner.sends, creates, inner.become_))
     }
 
-    fn transition(&mut self, _: foundation::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+    fn transition(
+        &mut self,
+        _: behavior_core::ActiveTurn,
+        event: Self::Event,
+    ) -> BehaviorActed<Self> {
         let inner = delegate_transition(&mut self.root, event).map_err(ProvisionError::Inner)?;
         let creates =
             <<R::Birth as BirthMode>::Child as BirthNodeAppend<Product::Choice>>::append_creations(
@@ -222,7 +230,7 @@ fn inferred_application_children_append_after_root_children_without_aliases_or_i
 
     assert_owned_occurrence_is_unchanged(&definition);
 
-    let initialized = behavior::Activate::initialize(definition).unwrap();
+    let initialized = behavior_actors::Activate::initialize(definition).unwrap();
     assert_eq!(initialized.actions.become_, Step::Continue);
     assert_eq!(initialized.actions.creates.len(), 3);
 

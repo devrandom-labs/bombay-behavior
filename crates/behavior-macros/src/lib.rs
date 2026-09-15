@@ -1131,6 +1131,10 @@ pub fn pool_worker(args: TokenStream, item: TokenStream) -> TokenStream {
         Ok(actors) => actors,
         Err(error) => return error.to_compile_error().into(),
     };
+    let behavior = match behavior_crate() {
+        Ok(behavior) => behavior,
+        Err(error) => return error.to_compile_error().into(),
+    };
     let assignment = {
         let mut transitions = item.items.iter_mut().filter_map(|item| match item {
             ImplItem::Fn(method) if method.sig.ident == "transition" => Some(method),
@@ -1156,7 +1160,7 @@ pub fn pool_worker(args: TokenStream, item: TokenStream) -> TokenStream {
             Ok(assignment) => assignment,
             Err(error) => return error.to_compile_error().into(),
         };
-        transition.sig.output = parse_quote!(-> #actors::BehaviorActed<Self>);
+        transition.sig.output = parse_quote!(-> #behavior::BehaviorActed<Self>);
         assignment
     };
     let (impl_generics, _, where_clause) = item.generics.split_for_impl();
@@ -1164,31 +1168,31 @@ pub fn pool_worker(args: TokenStream, item: TokenStream) -> TokenStream {
     quote! {
         #item
 
-        impl #impl_generics #actors::Protocol for #self_ty #where_clause {
+        impl #impl_generics #behavior::Protocol for #self_ty #where_clause {
             type Addr = #addr;
             type Msg = #assignment;
         }
 
-        impl #impl_generics #actors::Behavior for #self_ty #where_clause {
+        impl #impl_generics #behavior::Behavior for #self_ty #where_clause {
             type Protocol = Self;
-            type Event = #actors::User<#addr, #assignment>;
-            type Sends = #actors::InterpreterRequests<
-                #actors::ReportToParent<#actors::atomic::Completion<#result>>
+            type Event = #behavior::User<#addr, #assignment>;
+            type Sends = #behavior::InterpreterRequests<
+                #behavior::ReportToParent<#actors::atomic::Completion<#result>>
             >;
-            type Ph = #actors::Never;
-            type Error = #actors::Never;
-            type Birth = #actors::NoBirths;
+            type Ph = #behavior::Never;
+            type Error = #behavior::Never;
+            type Birth = #behavior::NoBirths;
 
             fn transition(
                 &mut self,
-                _: #actors::ActiveTurn,
+                _: #behavior::ActiveTurn,
                 event: Self::Event,
-            ) -> #actors::BehaviorActed<Self> {
+            ) -> #behavior::BehaviorActed<Self> {
                 <#self_ty>::transition(self, event.message)
             }
         }
 
-        impl #impl_generics #actors::BehaviorBase for #self_ty #where_clause {
+        impl #impl_generics #behavior::BehaviorBase for #self_ty #where_clause {
             type Base = Self;
 
             fn base(&self) -> &Self {

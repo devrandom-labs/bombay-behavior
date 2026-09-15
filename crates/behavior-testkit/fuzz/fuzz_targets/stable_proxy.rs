@@ -4,15 +4,15 @@ use core::future::Future;
 use core::task::{Context, Poll, Waker};
 use std::time::Instant;
 
-use behavior::atomic::{
+use behavior_actors::atomic::{
     BeginActivation, ImmediateActivation, ProxyControl, ProxyOutcome, ProxyPhase, StableProxy,
     WorkerActivation, WorkerInitializationOutcome,
 };
-use behavior::{
-    Actions, Activate as _, Active, ActiveTurn, Address, Behavior, BehaviorActed,
-    ChildCreationOutcome, ChildStopped, CreateChild, CreationId, CreationSettlement,
-    CreationsSettled, EndpointAddress, EstablishedCreation, EstablishedRecipient, ItemSettlement,
-    Never, NoBirths, Protocol, SettledItem, StopOnShutdown, User,
+use behavior_actors::{Activate as _, Active, ChildStopped, StopOnShutdown};
+use behavior_core::{
+    Actions, ActiveTurn, Address, Behavior, BehaviorActed, ChildCreationOutcome, CreateChild,
+    CreationId, CreationSettlement, CreationsSettled, EndpointAddress, EstablishedCreation,
+    EstablishedRecipient, ItemSettlement, Never, NoBirths, Protocol, SettledItem, User,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -150,5 +150,5 @@ pub(crate) fn start_ready_worker(
 }
 
 pub(crate) fn worker_stopped(worker: CreationId) -> ChildStopped<RuntimeAddress> {
-    ChildStopped::new(worker, Ok(behavior::Exit::Normal), Instant::now())
+    ChildStopped::new(worker, Ok(behavior_actors::Exit::Normal), Instant::now())
 }

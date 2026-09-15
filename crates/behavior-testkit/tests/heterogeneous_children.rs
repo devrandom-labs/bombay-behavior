@@ -1,7 +1,7 @@
 //! Independent checks for pure heterogeneous child creation.
 
-use behavior::{Activate, StopOnShutdown};
-use foundation::{
+use behavior_actors::{Activate, StopOnShutdown};
+use behavior_core::{
     Actions, Address, Behavior, BehaviorActed, Births, ChildChoice, Children, CreateChild,
     CreationKind, CreationSequence, Never, NoBirths, Protocol, User,
 };
@@ -29,7 +29,11 @@ impl Behavior for Devices {
     type Error = Never;
     type Birth = NoBirths;
 
-    fn transition(&mut self, _: foundation::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+    fn transition(
+        &mut self,
+        _: behavior_core::ActiveTurn,
+        event: Self::Event,
+    ) -> BehaviorActed<Self> {
         match event.message {}
     }
 }
@@ -50,7 +54,11 @@ impl Behavior for Queries {
     type Error = Never;
     type Birth = NoBirths;
 
-    fn transition(&mut self, _: foundation::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+    fn transition(
+        &mut self,
+        _: behavior_core::ActiveTurn,
+        event: Self::Event,
+    ) -> BehaviorActed<Self> {
         match event.message {}
     }
 }
@@ -74,7 +82,7 @@ impl Behavior for Root {
     type Error = Never;
     type Birth = Births<RootChildren>;
 
-    fn init(&mut self, _: foundation::InitializationTurn) -> BehaviorActed<Self> {
+    fn init(&mut self, _: behavior_core::InitializationTurn) -> BehaviorActed<Self> {
         let devices = self
             .creations
             .issue()
@@ -87,7 +95,11 @@ impl Behavior for Root {
         Ok(Actions::create(creates))
     }
 
-    fn transition(&mut self, _: foundation::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+    fn transition(
+        &mut self,
+        _: behavior_core::ActiveTurn,
+        event: Self::Event,
+    ) -> BehaviorActed<Self> {
         match event.message {}
     }
 }

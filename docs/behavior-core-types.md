@@ -94,7 +94,6 @@ Behavior {
 | `Actions<A, Ph, Sends, Birth>` | Struct | Explicit transition product with named `sends`, ordered `creates`, and `become_` legs. The interpreter commits creations before same-action sends that may depend on them. |
 | `Acted<A, Ph, Sends, Birth, E>` | Type alias | `Result<Actions<A, Ph, Sends, Birth>, E>`. |
 | `AppendSend<Input, Path>` | Trait | Appends one input to a statically selected send lane while preserving creation and next-state legs. |
-| `Effect<S, A>` | Struct | Convenience wrapper for infallible, no-birth, one-phase `Actions<A, Never, Vec<S>, NoBirths>`. |
 
 `Actions` constructors (`cont`, `stop`, `goto`, `send`, and `create`) construct
 values only. They do not interpret sends, allocate actors, change runtime

@@ -6,6 +6,11 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
+use behavior::{
+    ActionItemResult, ChildCreationOutcome, ChildHead, CreateChild, CreationKind, CreationSequence,
+    CreationSettlement, CreationsSettled, EstablishedCreation, EstablishedRecipient,
+    InterpreterFault, ItemSettlement, MessageProtocol, Never, Recipient, SettledItem, Step,
+};
 use behavior_actors::atomic::{
     ActivationPlan, ActivationPolicy, ActorDrainPolicy, AssignWorker, BacklogCapacity,
     BindingCapacity, CustomerDelivery, DiagnosticAction, DiagnosticDisposition,
@@ -15,11 +20,8 @@ use behavior_actors::atomic::{
     WorkerSubmission, keyed,
 };
 use behavior_actors::{
-    ActionItemResult, Activate, ChildCreationOutcome, ChildHead, ChildStopped, Crash, CreateChild,
-    CreationKind, CreationSequence, CreationSettlement, CreationsSettled, EstablishedCreation,
-    EstablishedRecipient, EstablishedShutdownResolved, Exit, InterpreterFault, ItemSettlement,
-    MessageProtocol, Never, Recipient, ScheduleAfterRejection, SettledItem, ShutdownId,
-    ShutdownRejection, Step, StopOnShutdown, TimerElapsed, TimerGeneration, TimerId,
+    Activate, ChildStopped, Crash, EstablishedShutdownResolved, Exit, ScheduleAfterRejection,
+    ShutdownId, ShutdownRejection, StopOnShutdown, TimerElapsed, TimerGeneration, TimerId,
     TimerScheduled,
 };
 
@@ -173,7 +175,7 @@ fn commit_worker_creation(
 }
 
 fn worker_creation_settlement(
-    worker: behavior_actors::CreationId,
+    worker: behavior::CreationId,
     kind: CreationKind,
 ) -> CreationsSettled<RuntimeAddr, StopOnShutdown<SearchWorker>> {
     CreationsSettled::new(CreationSettlement::Settled(
@@ -1524,7 +1526,7 @@ async fn ready_worker_drains_only_its_role_queue() {
     assert_eq!(queued_assignment.payload(), &SearchJob(9));
 
     let completion_before_receipt = pool
-        .on(behavior_actors::ChildReport::new(
+        .on(behavior::ChildReport::new(
             primary_worker,
             queued_assignment.complete(SearchResult(109)).into_inner(),
         ))
@@ -1593,7 +1595,7 @@ async fn ready_worker_drains_only_its_role_queue() {
     assert!(receipt_before_completion.sends.customer_outcomes.is_empty());
 
     let followup_completed = pool
-        .on(behavior_actors::ChildReport::new(
+        .on(behavior::ChildReport::new(
             primary_worker,
             followup_assignment.complete(SearchResult(110)).into_inner(),
         ))
@@ -1674,7 +1676,7 @@ async fn ready_worker_drains_only_its_role_queue() {
     assert!(accepted.sends.customer_outcomes.is_empty());
 
     let foreign_completion = pool
-        .on(behavior_actors::ChildReport::new(
+        .on(behavior::ChildReport::new(
             primary_worker,
             replica_assignment.complete(SearchResult(120)).into_inner(),
         ))

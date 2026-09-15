@@ -1,15 +1,18 @@
 use core::ops::ControlFlow;
 
+use behavior::{
+    ActionItemResult, ChildNamespaceExhausted, ChildReport, CreationSettlement,
+    EstablishedRecipient, ExactDeliveryReason, ItemSettlement, MessageProtocol, Never, Recipient,
+    SettledItem, Step,
+};
 use behavior_actors::atomic::{
     AssignWorker, BacklogCapacity, DiagnosticAction, DiagnosticDisposition, FifoCommand, FifoEvent,
     FifoOutcome, Interruption, OrderedRoles, PoolFailureReaction, PoolRecovery, RestartLimit,
     RestartRelease, SubmissionId, WorkerSubmission, fifo,
 };
 use behavior_actors::{
-    ActionItemResult, Activate as _, ChildNamespaceExhausted, ChildReport, ChildStopped,
-    CreationSettlement, EstablishedRecipient, EstablishedShutdownResolved, ExactDeliveryReason,
-    Exit, ItemSettlement, MessageProtocol, Never, Recipient, ReplyDelivery, SettledItem,
-    ShutdownId, ShutdownRejection, Step, TimerElapsed, TimerScheduled,
+    Activate as _, ChildStopped, EstablishedShutdownResolved, Exit, ReplyDelivery, ShutdownId,
+    ShutdownRejection, TimerElapsed, TimerScheduled,
 };
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};

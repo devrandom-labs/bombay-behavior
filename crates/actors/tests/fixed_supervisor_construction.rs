@@ -2,16 +2,17 @@ use core::time::Duration;
 use std::cell::Cell;
 use std::rc::Rc;
 
+use behavior::{
+    ActiveTurn, Address, Behavior, BehaviorActed, ChildCreationOutcome, CreationKind,
+    CreationSettlement, CreationsSettled, EndpointAddress, EstablishedCreation,
+    EstablishedRecipient, ItemSettlement, MessageProtocol, Never, NoBirths, NoSends, Protocol,
+    SettledItem, User,
+};
+use behavior_actors::Activate;
 use behavior_actors::atomic::{
     ActivationPlan, ActivationPolicy, ActorDrainPolicy, DiagnosticDisposition, FailureReaction,
     OrderedRoles, ProxyPhase, Recovery, RestartLimit, RestartRelease, StableProxy, Strategy,
     WorkerSource, WorkerSubmission, fixed,
-};
-use behavior_actors::{
-    Activate, ActiveTurn, Address, Behavior, BehaviorActed, ChildCreationOutcome, CreationKind,
-    CreationSettlement, CreationsSettled, EndpointAddress, EstablishedCreation,
-    EstablishedRecipient, ItemSettlement, MessageProtocol, Never, NoBirths, NoSends, Protocol,
-    SettledItem, User,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

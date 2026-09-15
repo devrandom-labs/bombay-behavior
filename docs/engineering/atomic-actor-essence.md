@@ -1,4 +1,4 @@
-# Atomic actor essence and clean-room boundary
+# Atomic actor essence and clean-room boundary (engineering record)
 
 ## Status
 

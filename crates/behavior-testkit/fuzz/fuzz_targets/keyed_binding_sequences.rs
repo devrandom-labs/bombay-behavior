@@ -4,18 +4,18 @@
 use std::collections::{BTreeSet, VecDeque};
 use std::convert::Infallible;
 
-use behavior::atomic::{
+use behavior_actors::atomic::{
     ActivationPolicy, ActorDrainPolicy, Assignment, BacklogCapacity, BindingCapacity,
     BindingEvidence, BindingExpectation, BindingGeneration, BindingRejection, BindingReply,
     BindingRequestId, Completion, DiagnosticDisposition, ImmediateActivation, Interruption,
     KeyedCommand, KeyedPool, OrderedRoles, PoolFailureReaction, PoolRecovery, WorkerSubmission,
     keyed,
 };
-use behavior::{
-    Actions, Activate, Active, ActiveTurn, Address, Behavior, BehaviorActed, BehaviorBase,
-    Creations, Delivery, EndpointAddress, EstablishedDelivery, InterpreterRequests,
-    MessageProtocol, Never, NoBirths, Protocol, Recipient, ReplyDelivery, ReportToParent,
-    StopOnShutdown, User,
+use behavior_actors::{Activate, Active, ReplyDelivery, StopOnShutdown};
+use behavior_core::{
+    Actions, ActiveTurn, Address, Behavior, BehaviorActed, BehaviorBase, Creations, Delivery,
+    EndpointAddress, EstablishedDelivery, InterpreterRequests, MessageProtocol, Never, NoBirths,
+    Protocol, Recipient, ReportToParent, User,
 };
 use libfuzzer_sys::fuzz_target;
 
@@ -103,7 +103,7 @@ fn selected_role(_: &Account) -> Role {
 
 fn pool() -> (
     BindingPool,
-    Creations<behavior::CreateChild<RuntimeAddress, StopOnShutdown<SearchWorker>>>,
+    Creations<behavior_core::CreateChild<RuntimeAddress, StopOnShutdown<SearchWorker>>>,
 ) {
     let pool = keyed(
         prepare_worker,
@@ -153,7 +153,7 @@ impl Input {
 struct Scenario {
     pool: BindingPool,
     _pending_workers:
-        Creations<behavior::CreateChild<RuntimeAddress, StopOnShutdown<SearchWorker>>>,
+        Creations<behavior_core::CreateChild<RuntimeAddress, StopOnShutdown<SearchWorker>>>,
     current: CurrentBinding,
     foreign: BindingGeneration,
     stale: VecDeque<BindingGeneration>,

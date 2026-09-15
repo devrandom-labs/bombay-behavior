@@ -95,13 +95,13 @@ where
     Route::Sends: behavior::SendsFor<User<A, TopicMessage<P, Route>>>,
 {
     type Protocol = Self;
-    type Event = User<A, crate::BehaviorMessage<Self>>;
+    type Event = User<A, behavior::BehaviorMessage<Self>>;
     type Sends = Route::Sends;
     type Ph = Never;
     type Error = TopicError<P>;
     type Birth = NoBirths;
 
-    fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+    fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
         match event.message {
             TopicMessage::Subscribe(subscriber) => {
                 if !self.subscribers.contains(&subscriber) {
@@ -136,7 +136,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Activate as _, Recipient};
+    use crate::Activate as _;
+    use behavior::Recipient;
     use behavior::{Delivery, MailAddr, MessageProtocol};
 
     #[test]
@@ -153,7 +154,7 @@ mod tests {
                 .unwrap();
             assert!(subscribed.sends.is_empty());
             assert!(subscribed.creates.is_empty());
-            assert_eq!(subscribed.become_, crate::Step::Continue);
+            assert_eq!(subscribed.become_, behavior::Step::Continue);
         }
         assert!(topic.subscribers() == [one, two]);
         let published = topic
@@ -165,7 +166,7 @@ mod tests {
             .unwrap();
         assert!(unsubscribed.sends.is_empty());
         assert!(unsubscribed.creates.is_empty());
-        assert_eq!(unsubscribed.become_, crate::Step::Continue);
+        assert_eq!(unsubscribed.become_, behavior::Step::Continue);
         assert!(topic.subscribers() == [two]);
     }
 

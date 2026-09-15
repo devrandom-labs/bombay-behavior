@@ -1,18 +1,20 @@
+use behavior::{
+    Actions, Behavior, BehaviorActed, BehaviorBase, Births, ChildHead, ChildOccurrence, ChildRole,
+    ComposedEvent, CreationId, CreationKind, CreationRejection, CreationSequence, Creations,
+    DeclaredChildOccurrence, Delivery, EndpointAddress, EstablishedCreation, EstablishedDelivery,
+    EstablishedRecipient, EventLayer, ExactDeliveryReason, Here, Ingress, InjectEvent,
+    InterpretEstablished, InterpretItem, InterpretSends, Interpretation, InterpreterRequests,
+    ItemSettlement, LogicalDeliveryReason, Never, NoBirths, Protocol, Recipient,
+    ResolveChildOccurrence, SendEffects, SendLayer, User, UserEvent,
+};
 use behavior_actors::{
-    Actions, Activate as _, Behavior, BehaviorActed, BehaviorBase, Births, CancelObservation,
-    ChildHead, ChildOccurrence, ChildRole, ComposedEvent, CreationId, CreationKind,
-    CreationRejection, CreationSequence, Creations, DeclaredChildOccurrence, Delivery,
-    DeliveryRoute, EndpointAddress, EstablishedCreation, EstablishedDelivery,
-    EstablishedObservation, EstablishedRecipient, EstablishedTerminationMonitor, EventLayer,
-    ExactDeliveryReason, Exit, Here, HeterogeneousShutdownPlan, Ingress, InjectEvent,
-    InterpretEstablished, InterpretEstablishedObservation, InterpretEstablishedShutdown,
-    InterpretItem, InterpretSends, Interpretation, InterpreterRequests, ItemSettlement,
-    LogicalDeliveryReason, MessageAdapterWithRoute, Never, NoBirths, NoShutdownTargets,
-    ObservationId, ObservationOperation, ObservationRejection, ObserveEstablished,
-    ObserveEstablishedCreation, Protocol, ReceiveTimeout, Recipient, ReplyRoute,
-    ResolveChildOccurrence, SendEffects, SendLayer, ShutdownChoice, ShutdownEstablished,
-    ShutdownId, ShutdownRejection, ShutdownRequested, Stash, StopOnShutdown,
-    TerminationMonitorError, TerminationObservation, User, UserEvent, Watch, established_child,
+    Activate as _, CancelObservation, DeliveryRoute, EstablishedObservation,
+    EstablishedTerminationMonitor, Exit, HeterogeneousShutdownPlan,
+    InterpretEstablishedObservation, InterpretEstablishedShutdown, MessageAdapterWithRoute,
+    NoShutdownTargets, ObservationId, ObservationOperation, ObservationRejection,
+    ObserveEstablished, ObserveEstablishedCreation, ReceiveTimeout, ReplyRoute, ShutdownChoice,
+    ShutdownEstablished, ShutdownId, ShutdownRejection, ShutdownRequested, Stash, StopOnShutdown,
+    TerminationMonitorError, TerminationObservation, Watch, established_child,
 };
 use core::future::Future;
 use core::marker::PhantomData;
@@ -21,7 +23,7 @@ use std::time::Instant;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct RuntimeAddr(u64);
 
-impl behavior_actors::Address for RuntimeAddr {
+impl behavior::Address for RuntimeAddr {
     type Nonce = u64;
 }
 
@@ -93,11 +95,7 @@ impl Behavior for Worker {
     type Error = Never;
     type Birth = NoBirths;
 
-    fn transition(
-        &mut self,
-        _: behavior_actors::ActiveTurn,
-        event: Self::Event,
-    ) -> BehaviorActed<Self> {
+    fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
         match event {
             EventLayer::Owned(_) => Ok(Actions::stop()),
             EventLayer::Inner(_) => Ok(Actions::cont()),
@@ -213,22 +211,18 @@ impl Behavior for Parent {
     type Error = ParentError;
     type Birth = Births<Worker>;
 
-    fn init(&mut self, _: behavior_actors::InitializationTurn) -> BehaviorActed<Self> {
+    fn init(&mut self, _: behavior::InitializationTurn) -> BehaviorActed<Self> {
         Ok(Actions::new(
             SendLayer::new(
                 InterpreterRequests::one(ObserveEstablishedCreation::new(self.child)),
                 Vec::new(),
             ),
-            Creations::one(behavior_actors::CreateChild::birth(self.child, Worker)),
-            behavior_actors::Step::Continue,
+            Creations::one(behavior::CreateChild::birth(self.child, Worker)),
+            behavior::Step::Continue,
         ))
     }
 
-    fn transition(
-        &mut self,
-        _: behavior_actors::ActiveTurn,
-        event: Self::Event,
-    ) -> BehaviorActed<Self> {
+    fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
         match event {
             ParentEvent::Command(_) => Ok(Actions::cont()),
             ParentEvent::Creation(creation) => {
@@ -556,11 +550,7 @@ impl Behavior for Observer {
     type Error = Never;
     type Birth = NoBirths;
 
-    fn transition(
-        &mut self,
-        _: behavior_actors::ActiveTurn,
-        _: Self::Event,
-    ) -> BehaviorActed<Self> {
+    fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
         Ok(Actions::cont())
     }
 }
@@ -583,7 +573,7 @@ fn outer_shutdown_wrapper_reindexes_exact_observation_return_ingress_only() {
     fn accepts_inside<B, Input>()
     where
         B: Behavior,
-        B::Event: behavior_actors::InjectEvent<Input, behavior_actors::Inside<Here>>,
+        B::Event: behavior::InjectEvent<Input, behavior::Inside<Here>>,
     {
     }
 
@@ -618,7 +608,7 @@ fn exact_termination_monitor_commits_each_complete_relationship_phase() {
     assert!(started.sends.owned.is_empty());
     assert!(started.sends.inner.is_empty());
     assert!(started.creates.is_empty());
-    assert_eq!(started.become_, behavior_actors::Step::Continue);
+    assert_eq!(started.become_, behavior::Step::Continue);
     assert_eq!(
         active.observation(),
         behavior_actors::TerminationObservation::Observing
@@ -631,7 +621,7 @@ fn exact_termination_monitor_commits_each_complete_relationship_phase() {
     assert!(cancelled.sends.owned.is_empty());
     assert!(cancelled.sends.inner.is_empty());
     assert!(cancelled.creates.is_empty());
-    assert_eq!(cancelled.become_, behavior_actors::Step::Continue);
+    assert_eq!(cancelled.become_, behavior::Step::Continue);
     assert_eq!(
         active.observation(),
         behavior_actors::TerminationObservation::Cancelled
@@ -684,7 +674,7 @@ fn exact_termination_monitor_reacts_once_to_the_matching_stop() {
     assert!(started.sends.owned.is_empty());
     assert!(started.sends.inner.is_empty());
     assert!(started.creates.is_empty());
-    assert_eq!(started.become_, behavior_actors::Step::Continue);
+    assert_eq!(started.become_, behavior::Step::Continue);
     let stopped = active
         .on_path(EstablishedObservation::<WorkerProtocol>::stopped(
             ObservationId(7),
@@ -695,7 +685,7 @@ fn exact_termination_monitor_reacts_once_to_the_matching_stop() {
     assert!(stopped.sends.owned.is_empty());
     assert!(stopped.sends.inner.is_empty());
     assert!(stopped.creates.is_empty());
-    assert_eq!(stopped.become_, behavior_actors::Step::Continue);
+    assert_eq!(stopped.become_, behavior::Step::Continue);
     assert!(matches!(
         active.on_path(EstablishedObservation::<WorkerProtocol>::stopped(
             ObservationId(7),

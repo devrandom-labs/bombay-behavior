@@ -1,4 +1,4 @@
-# Solution design for the atomic actor catalogue
+# Solution design for the atomic actor catalogue (engineering record)
 
 This document follows and cross-references
 [`atomic-actor-features.md`](atomic-actor-features.md). The feature catalogue is
@@ -84,7 +84,7 @@ still missing; dependent coverage rows remain `Open`.
 | Activation concurrency and late readiness | Every owner counts unresolved activation authorizations. Supervisors reserve conservatively at opaque proxy install; pools reserve at `BeginActivation`. Owners store waiting definitions or permits, exact occupied tickets, and an ordered authorization queue. Cancellation is logical after ownership transfer; late ready drains without publication. | Selected/Open realization; `SH-READY`, actor state equations |
 | Startup-limit meaning | The public law always bounds unresolved activation authorizations. Supervisor reservation is deliberately earlier and conservative because its proxy reports no progress; pool reservation occurs at direct activation emission. | Selected; `SH-READY`, activation journeys and inventory |
 | Dynamic cancellation ownership | Transaction-local preparation, proxy-create-emitted, waiting-for-authorization, install-emitted, awaiting atomic proxy outcome, ready, cancelling, and shutdown-owned phases are distinct. Worker installation and activation progress remain proxy-private. Only definition-owning phases return it. | Selected/Open realization; **Dynamic supervisor solution**, `DS-CANCEL` |
-| Diagnostic failure | `Diagnostics<Route> = DeliverTo(Route) | Terminate`; failed diagnostic delivery becomes terminal settlement and never sends recursively. Proxy uses its mandatory exact parent. | Selected/Open realization; **Diagnostic policy**, `SH-DIAGNOSTIC` |
+| Diagnostic failure | `Diagnostics[Route] = DeliverTo(Route) | Terminate`; failed diagnostic delivery becomes terminal settlement and never sends recursively. Proxy uses its mandatory exact parent. | Selected/Open realization; **Diagnostic policy**, `SH-DIAGNOSTIC` |
 | Readiness/query wording | Routability begins only at exact `Ready`; dynamic public phase exposes only supervisor-observable reservation, proxy creation, activation authorization, awaiting-proxy-outcome, cancellation, drain, and retirement phases. | Reconciled; `SH-READY`, `DS-QUERY` |
 | Competing runtime state machines | This solution is the sole normative ownership equation. The type inventory now references it and contains no duplicate private state tables. | Reconciled; type inventory introduction and runtime references |
 | Keyed submission model | `Submit { key, payload, reply_to }` plus one concrete `Fn(&Key) -> Role`; no `KeyedJob` or `SelectWorker`. | Selected; keyed solution, inventory, DevX |
@@ -193,7 +193,7 @@ H41b later corrected the custody split: Bombay retains the complete concrete
 initialization settlement in the worker environment and transfers it through
 runtime retirement. The proxy outcome above carries only the closed failure
 classification. The normative contract is
-[`atomic-runtime-settlement.md`](atomic-runtime-settlement.md#exact-bombay-changes-for-worker-initialization-and-activation).
+[`atomic-runtime-settlement.md`](../atomic-runtime-settlement.md#exact-bombay-changes-for-worker-initialization-and-activation).
 
 The capability boundary is explicit:
 
@@ -605,7 +605,7 @@ result.
 Every configurable diagnostic-producing actor selects one semantic sum:
 
 ```text
-Diagnostics<Route> = DeliverTo(Route) | Terminate
+Diagnostics[Route] = DeliverTo(Route) | Terminate
 ```
 
 That notation is the domain equation, not the selected Rust representation.
@@ -1010,7 +1010,7 @@ This proposal originally copied trigger classification, budget charge, release
 provenance, and an eight-way prerequisite product into the admitted recovery.
 H76 rejected that Rust representation without changing the semantic law. The
 normative current representation is owned by
-[`fixed-supervisor.md`](actor-laws/fixed-supervisor.md#recovery-partition):
+[`fixed-supervisor.md`](../actor-laws/fixed-supervisor.md#recovery-partition):
 the participant order is `before_trigger / trigger / after_trigger`; restart
 release stores only `Ready`, an unsettled schedule, or one awaited timer;
 participant readiness remains in its current subject; activation availability

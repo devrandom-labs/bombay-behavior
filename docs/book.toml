@@ -1,0 +1,19 @@
+[book]
+title = "Bombay Behavior"
+description = "Actor behavior algebra, composition laws, and reusable actor catalogue"
+authors = ["Joel DSouza"]
+language = "en"
+src = "."
+
+[build]
+build-dir = "../target/doc/guide"
+create-missing = false
+
+[output.html]
+git-repository-url = "https://github.com/devrandom-labs/bombay-behavior"
+edit-url-template = "https://github.com/devrandom-labs/bombay-behavior/edit/main/docs/{path}"
+site-url = "/bombay-behavior/guide/"
+
+[output.html.fold]
+enable = true
+level = 1

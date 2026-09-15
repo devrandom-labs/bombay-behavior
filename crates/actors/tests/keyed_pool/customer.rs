@@ -1,16 +1,17 @@
 use std::time::Instant;
 
+use behavior::{
+    ChildCreationOutcome, ChildHead, ChildReport, CreateChild, CreationSettlement,
+    CreationsSettled, EstablishedCreation, EstablishedRecipient, ItemSettlement, MessageProtocol,
+    Recipient, SettledItem,
+};
 use behavior_actors::atomic::{
     ActivationPolicy, ActorDrainPolicy, BacklogCapacity, BindingCapacity, CustomerDelivery,
     DiagnosticDisposition, Interruption, KeyedAssignedReturnReason, KeyedCommand, KeyedEvent,
     KeyedOutcome, OrderedRoles, PoolFailureReaction, PoolRecovery, SubmissionId,
     WorkerInitializationOutcome, keyed,
 };
-use behavior_actors::{
-    Activate, ChildCreationOutcome, ChildHead, ChildReport, ChildStopped, CreateChild,
-    CreationSettlement, CreationsSettled, EstablishedCreation, EstablishedRecipient, Exit,
-    ItemSettlement, MessageProtocol, Recipient, SettledItem, StopOnShutdown,
-};
+use behavior_actors::{Activate, ChildStopped, Exit, StopOnShutdown};
 
 use super::direct_pool_customer::{
     CustomerDesk, DeskInput, DeskJob, DeskNotice, DeskReturn, WorkEnding, input_orders,

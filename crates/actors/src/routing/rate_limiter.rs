@@ -235,12 +235,12 @@ where
     ReplyRoute::Sends: behavior::SendsFor<User<A, RateLimiterMessage<T, TargetRoute, ReplyRoute>>>,
 {
     type Protocol = Self;
-    type Event = User<A, crate::BehaviorMessage<Self>>;
+    type Event = User<A, behavior::BehaviorMessage<Self>>;
     type Sends = DeliveryOutcomes<TargetRoute::Sends, ReplyRoute::Sends>;
     type Ph = Never;
     type Error = Never;
     type Birth = NoBirths;
-    fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+    fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
         Ok(match event.message {
             RateLimiterMessage::Acquire {
                 cost,
@@ -278,7 +278,7 @@ mod tests {
         type Ph = Never;
         type Error = Never;
         type Birth = NoBirths;
-        fn transition(&mut self, _: crate::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
+        fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
             Ok(Actions::cont())
         }
     }
@@ -289,12 +289,12 @@ mod tests {
 
     impl Behavior for Reply {
         type Protocol = Self;
-        type Event = User<MailAddr, crate::BehaviorMessage<Self>>;
+        type Event = User<MailAddr, behavior::BehaviorMessage<Self>>;
         type Sends = Vec<Never>;
         type Ph = Never;
         type Error = Never;
         type Birth = NoBirths;
-        fn transition(&mut self, _: crate::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
+        fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
             Ok(Actions::cont())
         }
     }
@@ -360,7 +360,7 @@ mod tests {
         assert!(refilled.sends.deliveries.is_empty());
         assert!(refilled.sends.outcomes.is_empty());
         assert!(refilled.creates.is_empty());
-        assert_eq!(refilled.become_, crate::Step::Continue);
+        assert_eq!(refilled.become_, behavior::Step::Continue);
         assert_eq!(s.state().available(), 5);
     }
 }

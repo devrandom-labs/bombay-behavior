@@ -5,7 +5,7 @@
 This document is the AA-10 independent semantic model for one fixed
 supervisor. It is a non-production falsification oracle. It does not select
 Rust types, define another behavior algebra, implement a supervisor, or mark a
-row in `docs/atomic-actor-solution.md` implemented. That document remains the
+row in `docs/engineering/atomic-actor-solution.md` implemented. That document remains the
 production design authority.
 
 AA-10 is blocked, not complete. The state and transition oracle requires typed
@@ -717,7 +717,7 @@ delivery_rejections
 
 This is the semantic lane inventory, not a second interpretation-order
 specification. The generic ordering rule is owned by
-[`docs/atomic-runtime-settlement.md`](../../../docs/atomic-runtime-settlement.md):
+[`atomic-runtime-settlement.md`](../atomic-runtime-settlement.md):
 among the currently retained fixed-supervisor lanes, worker preparation
 precedes proxy operations, which precede restart scheduling, lifecycle
 publication, management replies, and diagnostics. Adding a missing lane must

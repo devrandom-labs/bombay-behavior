@@ -726,7 +726,7 @@ WorkerCompletionActions = {
 
 Each field is a concrete named typed lane, not a generic pool envelope or a
 flattened FIFO aggregate product. Generic item interpretation and settlement
-are owned only by [`atomic-runtime-settlement.md`](../../../docs/atomic-runtime-settlement.md):
+are owned only by [`atomic-runtime-settlement.md`](../atomic-runtime-settlement.md):
 accepted items leave their receipt, rejected items return the complete request,
 blocked items retain the exact prerequisite, independent later items continue,
 and corruption retains the committed prefix plus exact remainder. Creation is

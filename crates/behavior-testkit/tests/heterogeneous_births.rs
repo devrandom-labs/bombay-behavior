@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
 use std::marker::PhantomData;
 
-use foundation::{
+use behavior_core::{
     Actions, Address, AllocationRejection, Behavior, BehaviorActed, Births, ChildChoice,
     ChildCreationOutcome, ChildCreationProduct, ChildHead, CreateChild, CreationId, CreationKind,
     CreationRejection, CreationSequence, Creations, DispatchBirth, EndpointAddress, EstablishChild,
@@ -54,7 +54,7 @@ impl Behavior for DeviceGroups {
     type Error = Never;
     type Birth = NoBirths;
 
-    fn transition(&mut self, _: foundation::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
+    fn transition(&mut self, _: behavior_core::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
         Ok(Actions::cont())
     }
 }
@@ -75,7 +75,7 @@ impl Behavior for Queries {
     type Error = Never;
     type Birth = NoBirths;
 
-    fn transition(&mut self, _: foundation::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
+    fn transition(&mut self, _: behavior_core::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
         Ok(Actions::cont())
     }
 }
@@ -139,13 +139,13 @@ impl ModelHost {
     }
 }
 
-impl EstablishChild<foundation::ChildHead, DeviceGroups> for ModelHost {
+impl EstablishChild<behavior_core::ChildHead, DeviceGroups> for ModelHost {
     async fn establish_child(
         &mut self,
         creation: RoutedCreation<ModelAddr, DeviceGroups>,
     ) -> ItemSettlement<
         RoutedCreation<ModelAddr, DeviceGroups>,
-        ChildCreationOutcome<DeviceGroups, foundation::ChildHead>,
+        ChildCreationOutcome<DeviceGroups, behavior_core::ChildHead>,
         CreationRejection,
         Never,
     > {
@@ -200,13 +200,13 @@ where
     }
 }
 
-impl EstablishChild<foundation::ChildTail<foundation::ChildHead>, Queries> for ModelHost {
+impl EstablishChild<behavior_core::ChildTail<behavior_core::ChildHead>, Queries> for ModelHost {
     async fn establish_child(
         &mut self,
         creation: RoutedCreation<ModelAddr, Queries>,
     ) -> ItemSettlement<
         RoutedCreation<ModelAddr, Queries>,
-        ChildCreationOutcome<Queries, foundation::ChildTail<foundation::ChildHead>>,
+        ChildCreationOutcome<Queries, behavior_core::ChildTail<behavior_core::ChildHead>>,
         CreationRejection,
         Never,
     > {
@@ -360,7 +360,7 @@ async fn host_rejection_returns_the_routed_child_and_initialization_actions() {
     );
     assert!(initialization.sends.is_empty());
     assert!(initialization.creates.is_empty());
-    assert_eq!(initialization.become_, foundation::Step::Continue);
+    assert_eq!(initialization.become_, behavior_core::Step::Continue);
     assert_eq!(reason, CreationRejection::EnvironmentFailed);
     assert!(model.claimed_routes.is_empty());
 }

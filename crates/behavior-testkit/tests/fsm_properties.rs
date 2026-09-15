@@ -8,7 +8,9 @@
 
 use std::collections::HashSet;
 
-use behavior::{Actions, Machine, MailAddr, Move, Never, NoBirths, Step, User, UserEvent};
+use behavior_actors::{Machine, Move};
+
+use behavior_core::{Actions, MailAddr, Never, NoBirths, Step, User, UserEvent};
 use behavior_testkit::InitializeTest;
 use proptest::collection::vec;
 use proptest::prelude::*;
@@ -27,7 +29,7 @@ enum Phase {
 /// - B: `id % 4 == 2` -> Goto(A); `id % 4 == 1` -> Defer; else record.
 type MachineDefinition = Machine<MailAddr, Vec<u64>, u64, Phase, Never>;
 
-fn machine() -> behavior::Active<MachineDefinition> {
+fn machine() -> behavior_actors::Active<MachineDefinition> {
     Machine::new(
         Vec::new(),
         Phase::A,
@@ -215,7 +217,7 @@ async fn fsm_stop_mid_drain_preserves_remaining_batch() {
     let opened = machine.transition(User::user(MailAddr(0), 0)).unwrap();
     assert!(opened.sends.is_empty());
     assert!(opened.creates.is_empty());
-    assert!(matches!(opened.become_, Step::Stop(behavior::Stopped)));
+    assert!(matches!(opened.become_, Step::Stop(behavior_core::Stopped)));
     assert!(machine.state().is_empty());
     assert_eq!(machine.held(), 1);
 

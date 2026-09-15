@@ -44,10 +44,10 @@ pub trait StashStatus {
 /// valid `Stash` composition:
 ///
 /// ```compile_fail,E0271
-/// use behavior_actors::{Actions, ActiveTurn, Behavior, BehaviorActed, MailAddr,
-///     Never, NoBirths, Stash, StashRoute, User};
+/// use behavior::{Actions, ActiveTurn, Behavior, BehaviorActed, MailAddr, Never, NoBirths, User};
+/// use behavior_actors::{Stash, StashRoute};
 /// struct Fallible;
-/// impl behavior_actors::Protocol for Fallible { type Addr = MailAddr; type Msg = (); }
+/// impl behavior::Protocol for Fallible { type Addr = MailAddr; type Msg = (); }
 /// impl Behavior for Fallible {
 ///     type Protocol = Self;
 ///     type Event = User<MailAddr, ()>;
@@ -65,8 +65,8 @@ pub trait StashStatus {
 /// ```
 pub struct Stash<B: Behavior> {
     inner: B,
-    route: fn(&crate::BehaviorMessage<B>) -> StashRoute,
-    held: VecDeque<User<crate::BehaviorAddr<B>, crate::BehaviorMessage<B>>>,
+    route: fn(&behavior::BehaviorMessage<B>) -> StashRoute,
+    held: VecDeque<User<behavior::BehaviorAddr<B>, behavior::BehaviorMessage<B>>>,
 }
 
 impl<B: Behavior<Ph = Never>> Stash<B> {
@@ -76,7 +76,7 @@ impl<B: Behavior<Ph = Never>> Stash<B> {
     /// [`StashRoute::Release`]. Construction performs no transition or runtime
     /// operation.
     #[must_use]
-    pub fn new(inner: B, route: fn(&crate::BehaviorMessage<B>) -> StashRoute) -> Self {
+    pub fn new(inner: B, route: fn(&behavior::BehaviorMessage<B>) -> StashRoute) -> Self {
         Self {
             inner,
             route,
@@ -96,9 +96,9 @@ impl<B: Behavior<Ph = Never>> StashStatus for Stash<B> {
     }
 }
 
-impl<B> crate::BehaviorBase for Stash<B>
+impl<B> behavior::BehaviorBase for Stash<B>
 where
-    B: Behavior<Ph = Never> + crate::BehaviorBase,
+    B: Behavior<Ph = Never> + behavior::BehaviorBase,
 {
     type Base = B::Base;
 
@@ -114,11 +114,11 @@ where
     Br: BirthMode,
     B: Behavior<Ph = Never, Sends = Sends, Birth = Br>,
     B::Error: StaticallyInfallible,
-    B::Protocol: crate::Protocol<Addr = A>,
+    B::Protocol: behavior::Protocol<Addr = A>,
 {
     fn drain_into(
         &mut self,
-        acc: &mut Actions<crate::BehaviorAddr<B>, Never, B::Sends, B::Birth>,
+        acc: &mut Actions<behavior::BehaviorAddr<B>, Never, B::Sends, B::Birth>,
     ) -> Result<(), B::Error> {
         let mut batch = core::mem::take(&mut self.held);
         while let Some(user) = batch.pop_front() {
@@ -150,7 +150,7 @@ where
     Br: BirthMode,
     B: Behavior<Ph = Never, Sends = Sends, Birth = Br>,
     B::Error: StaticallyInfallible,
-    B::Protocol: crate::Protocol<Addr = A>,
+    B::Protocol: behavior::Protocol<Addr = A>,
 {
     type Protocol = B::Protocol;
     type Event = B::Event;
@@ -161,14 +161,14 @@ where
 
     fn init(
         &mut self,
-        _: crate::InitializationTurn,
+        _: behavior::InitializationTurn,
     ) -> Result<Actions<A, Never, Sends, Br>, Self::Error> {
         behavior::initialize(&mut self.inner)
     }
 
     fn transition(
         &mut self,
-        _: crate::ActiveTurn,
+        _: behavior::ActiveTurn,
         event: B::Event,
     ) -> Result<Actions<A, Never, Sends, Br>, Self::Error> {
         let user = match event.into_user() {

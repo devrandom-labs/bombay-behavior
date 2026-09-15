@@ -1,8 +1,8 @@
-use behavior_actors::atomic::{ActivationPlan, ImmediateActivation, StableProxy};
-use behavior_actors::{
+use behavior::{
     Actions, ActiveTurn, Address, Behavior, BehaviorActed, BehaviorAddr, EndpointAddress, Never,
     NoBirths, Protocol, User,
 };
+use behavior_actors::atomic::{ActivationPlan, ImmediateActivation, StableProxy};
 
 fn accepts_proxy_child<Worker, Plan>()
 where

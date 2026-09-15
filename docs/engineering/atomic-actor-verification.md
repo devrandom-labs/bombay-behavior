@@ -1,4 +1,4 @@
-# Atomic actor verification contract
+# Atomic actor verification contract (engineering record)
 
 Status: normative verification owner. No family document duplicates this
 matrix; each links here and adds only family-specific law references.
@@ -13,11 +13,11 @@ themselves establish implementation status.
 
 | Family | State | Executable evidence | Remaining gate |
 |---|---|---|---|
-| [`StableProxy`](stable-proxy.md) | `feature-complete` locally | independent models, compile contracts, two stateful fuzz targets | final fresh audits and Bombay root custody |
-| [`FixedSupervisor`](fixed-supervisor.md) | `feature-complete` locally | focused models, exact multi-role examples, four stateful fuzz targets, 34 worker-rejection cases, 30 source/corrupt/unattempted preparation-return cases, all 5,040 coordinated preparation/shutdown arrival orders, every distinct-role `RestForOne` overlap pair, 540 lawful three-recovery correlation traces, complete 753-candidate owner reconciliation, type-valid root/protocol inversions, exact lifecycle/management/event projections, and full aggregate-residue audit | final fresh audits and Bombay custody |
-| [`DynamicSupervisor`](dynamic-supervisor.md) | `feature-complete` locally | independent models, compile contracts, three closed mutation partitions, and four stateful fuzz targets | final fresh audits and Bombay root custody |
-| [`FifoPool`](fifo-pool.md) | `feature-complete` locally | independent customer/recovery/retirement/queue models, mutation audit, performance workload, one stateful fuzz target | final fresh audits and Bombay custody |
-| [`KeyedPool`](keyed-pool.md) | `feature-complete` locally | two bounded independent models, shared customer law suite, two stateful fuzz targets, and complete 232-candidate owner reconciliation with all 72 executable mutations caught and 160 compiler-unviable substitutions retained only as inventory | final fresh audits and Bombay custody |
+| [`StableProxy`](../stable-proxy.md) | `feature-complete` locally | independent models, compile contracts, two stateful fuzz targets | final fresh audits and Bombay root custody |
+| [`FixedSupervisor`](../fixed-supervisor.md) | `feature-complete` locally | focused models, exact multi-role examples, four stateful fuzz targets, 34 worker-rejection cases, 30 source/corrupt/unattempted preparation-return cases, all 5,040 coordinated preparation/shutdown arrival orders, every distinct-role `RestForOne` overlap pair, 540 lawful three-recovery correlation traces, complete 753-candidate owner reconciliation, type-valid root/protocol inversions, exact lifecycle/management/event projections, and full aggregate-residue audit | final fresh audits and Bombay custody |
+| [`DynamicSupervisor`](../dynamic-supervisor.md) | `feature-complete` locally | independent models, compile contracts, three closed mutation partitions, and four stateful fuzz targets | final fresh audits and Bombay root custody |
+| [`FifoPool`](../fifo-pool.md) | `feature-complete` locally | independent customer/recovery/retirement/queue models, mutation audit, performance workload, one stateful fuzz target | final fresh audits and Bombay custody |
+| [`KeyedPool`](../keyed-pool.md) | `feature-complete` locally | two bounded independent models, shared customer law suite, two stateful fuzz targets, and complete 232-candidate owner reconciliation with all 72 executable mutations caught and 160 compiler-unviable substitutions retained only as inventory | final fresh audits and Bombay custody |
 
 The current fuzz manifest therefore contains thirteen replacement-family targets:
 two proxy, four fixed-supervisor, four dynamic-supervisor, one FIFO, and one

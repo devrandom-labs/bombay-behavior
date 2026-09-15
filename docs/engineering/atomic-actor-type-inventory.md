@@ -1,4 +1,4 @@
-# Minimal type equations and actor relationships
+# Minimal type equations and actor relationships (engineering record)
 
 This document derives types from the feature catalogue. It deliberately does
 not turn every phase, error reason, effect lane, builder axis, or compiler

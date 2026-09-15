@@ -165,13 +165,13 @@ where
         behavior::SendsFor<User<A, DeduplicatorMessage<K, T, TargetRoute, ReplyRoute>>>,
 {
     type Protocol = Self;
-    type Event = User<A, crate::BehaviorMessage<Self>>;
+    type Event = User<A, behavior::BehaviorMessage<Self>>;
     type Sends = DeliveryOutcomes<TargetRoute::Sends, ReplyRoute::Sends>;
     type Ph = Never;
     type Error = Never;
     type Birth = NoBirths;
 
-    fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+    fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
         let DeduplicatorMessage::Deliver {
             key,
             value,
@@ -217,14 +217,14 @@ mod tests {
 
             impl Behavior for $name {
                 type Protocol = Self;
-                type Event = User<MailAddr, crate::BehaviorMessage<Self>>;
+                type Event = User<MailAddr, behavior::BehaviorMessage<Self>>;
                 type Sends = Vec<Never>;
                 type Ph = Never;
                 type Error = Never;
                 type Birth = NoBirths;
                 fn transition(
                     &mut self,
-                    _: crate::ActiveTurn,
+                    _: behavior::ActiveTurn,
                     _: Self::Event,
                 ) -> BehaviorActed<Self> {
                     Ok(Actions::cont())

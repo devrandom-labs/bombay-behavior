@@ -8,6 +8,8 @@ authors.workspace = true
 repository.workspace = true
 homepage.workspace = true
 description = "Reusable, statically typed actors for Bombay Behavior"
+documentation = "https://docs.rs/bombay-behavior-actors"
+readme = "README.md"
 keywords = ["actor", "async", "behavior", "concurrency"]
 categories = ["asynchronous", "concurrency"]
 

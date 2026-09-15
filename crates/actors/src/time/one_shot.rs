@@ -3,16 +3,13 @@
 use std::time::Duration;
 
 use super::domain::TimerLease;
-use super::event::TimedEvent;
-use crate::Step;
+use super::event::{TimedEvent, TimedReaction};
 use crate::protocol::{ScheduleAfter, TimerId};
+use behavior::Step;
 use behavior::{
     Actions, Address, Behavior, BehaviorActed, BirthMode, EventLayer, InterpreterRequests,
     SendEffects, SendLayer,
 };
-
-/// Complete event sum accepted by [`OneShot`].
-pub type OneShotEvent<E> = TimedEvent<E>;
 
 /// Infallible fold invoked for the one accepted timer generation.
 ///
@@ -30,15 +27,6 @@ pub type OneShotEvent<E> = TimedEvent<E>;
 /// fn fallible(_: &mut App) -> behavior::BehaviorActed<App> { Ok(Actions::cont()) }
 /// let _ = OneShot::new(App, TimerId(1), Duration::ZERO, fallible);
 /// ```
-pub type OneShotReaction<B> = fn(
-    &mut B,
-) -> Actions<
-    crate::BehaviorAddr<B>,
-    <B as Behavior>::Ph,
-    <B as Behavior>::Sends,
-    <B as Behavior>::Birth,
->;
-
 /// Notify a wrapped behavior once after a relative delay.
 ///
 /// Initialization first preserves the wrapped initialization actions, then
@@ -56,13 +44,13 @@ pub struct OneShot<B: Behavior> {
     id: TimerId,
     after: Duration,
     lease: TimerLease,
-    on_elapsed: OneShotReaction<B>,
+    on_elapsed: TimedReaction<B>,
 }
 
 impl<B: Behavior> OneShot<B> {
     /// Construct a relative one-shot wrapper definition.
     #[must_use]
-    pub fn new(inner: B, id: TimerId, after: Duration, on_elapsed: OneShotReaction<B>) -> Self {
+    pub fn new(inner: B, id: TimerId, after: Duration, on_elapsed: TimedReaction<B>) -> Self {
         Self {
             inner,
             id,
@@ -81,10 +69,10 @@ impl<B: Behavior> OneShot<B> {
     }
 
     fn wrap(
-        actions: Actions<crate::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>,
+        actions: Actions<behavior::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>,
         schedules: InterpreterRequests<ScheduleAfter>,
     ) -> Actions<
-        crate::BehaviorAddr<B>,
+        behavior::BehaviorAddr<B>,
         B::Ph,
         SendLayer<InterpreterRequests<ScheduleAfter>, B::Sends>,
         B::Birth,
@@ -93,7 +81,7 @@ impl<B: Behavior> OneShot<B> {
     }
 }
 
-impl<B: Behavior + crate::BehaviorBase> crate::BehaviorBase for OneShot<B> {
+impl<B: Behavior + behavior::BehaviorBase> behavior::BehaviorBase for OneShot<B> {
     type Base = B::Base;
 
     fn base(&self) -> &Self::Base {
@@ -107,16 +95,16 @@ where
     Sends: SendEffects + behavior::SendsFor<B::Event>,
     Br: BirthMode,
     B: Behavior<Ph = Ph, Sends = Sends, Birth = Br>,
-    B::Protocol: crate::Protocol<Addr = A>,
+    B::Protocol: behavior::Protocol<Addr = A>,
 {
     type Protocol = B::Protocol;
-    type Event = OneShotEvent<B::Event>;
+    type Event = TimedEvent<B::Event>;
     type Sends = SendLayer<InterpreterRequests<ScheduleAfter>, Sends>;
     type Ph = Ph;
     type Error = B::Error;
     type Birth = Br;
 
-    fn init(&mut self, _: crate::InitializationTurn) -> BehaviorActed<Self> {
+    fn init(&mut self, _: behavior::InitializationTurn) -> BehaviorActed<Self> {
         let actions = behavior::initialize(&mut self.inner)?;
         let schedules = if matches!(actions.become_, Step::Stop(_)) {
             self.lease.disarm();
@@ -127,7 +115,7 @@ where
         Ok(Self::wrap(actions, schedules))
     }
 
-    fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+    fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
         match event {
             EventLayer::Owned(elapsed)
                 if elapsed.id == self.id && self.lease.accept(elapsed.generation) =>
@@ -152,7 +140,7 @@ mod tests {
         elapsed: usize,
     }
 
-    impl crate::BehaviorBase for Probe {
+    impl behavior::BehaviorBase for Probe {
         type Base = Self;
 
         fn base(&self) -> &Self {
@@ -173,7 +161,7 @@ mod tests {
         type Error = Never;
         type Birth = NoBirths;
 
-        fn transition(&mut self, _: crate::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
+        fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
             Ok(Actions::cont())
         }
     }

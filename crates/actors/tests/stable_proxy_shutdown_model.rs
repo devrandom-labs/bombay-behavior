@@ -4,16 +4,19 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Instant;
 
+use behavior::{
+    Actions, ActiveTurn, Address, Behavior, BehaviorActed, ChildCreationOutcome, CreateChild,
+    CreationId, CreationSequence, CreationSettlement, CreationsSettled, EndpointAddress,
+    EstablishedCreation, EstablishedRecipient, ItemSettlement, Never, NoBirths, Protocol,
+    SettledItem, Step, User,
+};
 use behavior_actors::atomic::{
     ActivationPlan, ActivationStartRejection, BeginActivation, ProxyControl, ProxyPhase,
     StableProxy, WorkerActivation, WorkerAttempt, WorkerInitializationOutcome,
 };
 use behavior_actors::{
-    Actions, Activate as _, Active, ActiveTurn, Address, Behavior, BehaviorActed,
-    ChildCreationOutcome, ChildStopped, CreateChild, CreationId, CreationSequence,
-    CreationSettlement, CreationsSettled, EndpointAddress, EstablishedCreation,
-    EstablishedRecipient, EstablishedShutdownResolved, Exit, ItemSettlement, Never, NoBirths,
-    Protocol, SettledItem, ShutdownId, Step, StopOnShutdown, User,
+    Activate as _, Active, ChildStopped, EstablishedShutdownResolved, Exit, ShutdownId,
+    StopOnShutdown,
 };
 use proptest::strategy::Just;
 use proptest::test_runner::Config;

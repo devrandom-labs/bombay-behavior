@@ -8,7 +8,9 @@
 //! - no occurrence is ever recorded twice (no duplicate delivery);
 //! - the fold never panics.
 
-use behavior::{Activate, Machine, MailAddr, Move, User, UserEvent};
+use behavior_actors::{Activate, Machine, Move};
+
+use behavior_core::{MailAddr, User, UserEvent};
 use libfuzzer_sys::fuzz_target;
 use tokio::runtime::Builder;
 

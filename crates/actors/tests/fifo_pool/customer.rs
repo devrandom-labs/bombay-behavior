@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use behavior_actors::{Delivery, EstablishedDelivery};
+use behavior::{Delivery, EstablishedDelivery};
 
 use super::direct_pool_customer::{
     CustomerDesk, DeskInput, DeskJob, DeskNotice, DeskReturn, WorkEnding, input_orders,

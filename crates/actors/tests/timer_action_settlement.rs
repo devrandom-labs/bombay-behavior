@@ -1,10 +1,12 @@
 use std::time::{Duration, Instant};
 
+use behavior::{
+    ActionItem, ActionItemResult, Behavior, InterpreterRequests, ItemSettlement, MailAddr,
+    MessageProtocol, Never, NoBirths, NoSends, SendLayer, SendSettlements, SettledItem, User,
+};
 use behavior_actors::{
-    ActionItem, ActionItemResult, Behavior, Deadline, InterpreterRequests, ItemSettlement,
-    MailAddr, MessageProtocol, Never, NoBirths, NoSends, ReceiveTimeout, ScheduleAfter,
-    ScheduleAfterRejection, ScheduleAt, ScheduleAtRejection, SendLayer, SendSettlements,
-    SettledItem, TimerGeneration, TimerId, TimerScheduled, User,
+    Deadline, ReceiveTimeout, ScheduleAfter, ScheduleAfterRejection, ScheduleAt,
+    ScheduleAtRejection, TimerGeneration, TimerId, TimerScheduled,
 };
 
 struct Probe;
@@ -19,9 +21,9 @@ impl Behavior for Probe {
 
     fn transition(
         &mut self,
-        _: behavior_actors::ActiveTurn,
+        _: behavior::ActiveTurn,
         event: Self::Event,
-    ) -> behavior_actors::BehaviorActed<Self> {
+    ) -> behavior::BehaviorActed<Self> {
         match event.message {}
     }
 }
@@ -119,7 +121,7 @@ fn every_dependency_rejection_is_explicit_and_requests_remain_unattempted() {
     let unattempted = InterpreterRequests::one(request).unattempted();
     assert_eq!(
         unattempted,
-        vec![behavior_actors::SettledItem::Unattempted(request)]
+        vec![behavior::SettledItem::Unattempted(request)]
     );
 
     has_exact_timer_contract::<ScheduleAt>();

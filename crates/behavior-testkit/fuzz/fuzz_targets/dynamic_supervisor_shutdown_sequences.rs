@@ -3,17 +3,17 @@
 
 use std::time::Instant;
 
-use behavior::atomic::{
+use behavior_actors::atomic::{
     ActivationPolicy, ActorDrainPolicy, CancellationReceipt, DiagnosticAction,
     DiagnosticDisposition, DynamicCommand, DynamicDiagnostic, DynamicLifecycle, DynamicStatus,
     EntryCapacity, EntryRetirement, ImmediateActivation, InterruptedWorker, ReplaceRejection,
     StartRejection, StopRejection, UnexpectedExit, WorkerChange, WorkerChangeInterruption,
     WorkerSubmission, dynamic,
 };
-use behavior::{
-    Activate as _, ChildStopped, Exit, MessageProtocol, Recipient, ReplyDelivery, ReplyRoute,
-    ShutdownRequested, Step,
+use behavior_actors::{
+    Activate as _, ChildStopped, Exit, ReplyDelivery, ReplyRoute, ShutdownRequested,
 };
+use behavior_core::{MessageProtocol, Recipient, Step};
 use libfuzzer_sys::fuzz_target;
 
 mod dynamic_supervisor;
@@ -166,7 +166,7 @@ fuzz_target!(|input: &[u8]| {
                 assert!(matches!(
                     &queried.sends.query_replies.as_slice()[0],
                     ReplyDelivery::Logical(delivery)
-                        if matches!(delivery.message, behavior::atomic::QueryReply::Known {
+                        if matches!(delivery.message, behavior_actors::atomic::QueryReply::Known {
                             status: DynamicStatus::Draining,
                             ..
                         })

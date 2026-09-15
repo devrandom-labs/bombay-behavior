@@ -13,7 +13,8 @@ use super::{
     HeterogeneousShutdownCoordinator, HeterogeneousShutdownPlan, NoShutdownTargets,
     ReportShutdownPlan, ShutdownChoice, ShutdownPlanError, ShutdownTargetAt,
 };
-use crate::{CreationResolved, ObserveCreation, Protocol};
+use crate::{CreationResolved, ObserveCreation};
+use behavior::Protocol;
 
 /// Creation state expected by the shutdown-plan composition when one
 /// authoritative creation fact arrives.
@@ -99,7 +100,7 @@ mod tests {
 
                 fn transition(
                     &mut self,
-                    _: crate::ActiveTurn,
+                    _: behavior::ActiveTurn,
                     event: Self::Event,
                 ) -> BehaviorActed<Self> {
                     match event.message {}
@@ -220,7 +221,7 @@ mod tests {
         type Error = Never;
         type Birth = Births<ChildrenNode>;
 
-        fn init(&mut self, _: crate::InitializationTurn) -> BehaviorActed<Self> {
+        fn init(&mut self, _: behavior::InitializationTurn) -> BehaviorActed<Self> {
             let creates = match self.0 {
                 InitialChildren::Complete { store, gateway } => Children::<MailAddr>::new()
                     .child(store, StopOnShutdown::new(Store))
@@ -248,7 +249,11 @@ mod tests {
             Ok(Actions::create(creates))
         }
 
-        fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+        fn transition(
+            &mut self,
+            _: behavior::ActiveTurn,
+            event: Self::Event,
+        ) -> BehaviorActed<Self> {
             match event.message {}
         }
     }
@@ -474,11 +479,10 @@ where
     /// A duplicate role is rejected independently:
     ///
     /// ```compile_fail,E0277
-    /// use behavior_actors::{
-    ///     BehaviorActed, MailAddr, Never, StopOnShutdown, shutdown_after_children,
-    /// };
+    /// use behavior::{BehaviorActed, MailAddr, Never};
+    /// use behavior_actors::{StopOnShutdown, shutdown_after_children};
     /// struct Worker;
-    /// #[behavior_actors::behavior(addr = MailAddr, message = Never)]
+    /// #[behavior::behavior(addr = MailAddr, message = Never)]
     /// impl Worker {
     ///     fn receive(&mut self, _: MailAddr, message: Never) -> BehaviorActed<Self> {
     ///         match message {}
@@ -486,7 +490,7 @@ where
     /// }
     /// type ManagedWorker = StopOnShutdown<Worker>;
     /// struct Application;
-    /// #[behavior_actors::behavior(addr = MailAddr, message = Never, births = {
+    /// #[behavior::behavior(addr = MailAddr, message = Never, births = {
     ///     store: ManagedWorker,
     ///     gateway: ManagedWorker,
     /// })]
@@ -503,11 +507,10 @@ where
     /// A role that belongs to no child declaration is rejected independently:
     ///
     /// ```compile_fail,E0277
-    /// use behavior_actors::{
-    ///     BehaviorActed, MailAddr, Never, StopOnShutdown, shutdown_after_children,
-    /// };
+    /// use behavior::{BehaviorActed, MailAddr, Never};
+    /// use behavior_actors::{StopOnShutdown, shutdown_after_children};
     /// struct Worker;
-    /// #[behavior_actors::behavior(addr = MailAddr, message = Never)]
+    /// #[behavior::behavior(addr = MailAddr, message = Never)]
     /// impl Worker {
     ///     fn receive(&mut self, _: MailAddr, message: Never) -> BehaviorActed<Self> {
     ///         match message {}
@@ -515,7 +518,7 @@ where
     /// }
     /// type ManagedWorker = StopOnShutdown<Worker>;
     /// struct Application;
-    /// #[behavior_actors::behavior(addr = MailAddr, message = Never, births = {
+    /// #[behavior::behavior(addr = MailAddr, message = Never, births = {
     ///     store: ManagedWorker,
     ///     gateway: ManagedWorker,
     /// })]
@@ -531,11 +534,10 @@ where
     /// A route value cannot stand in for its declared role:
     ///
     /// ```compile_fail,E0277
-    /// use behavior_actors::{
-    ///     BehaviorActed, MailAddr, Never, StopOnShutdown, shutdown_after_children,
-    /// };
+    /// use behavior::{BehaviorActed, MailAddr, Never};
+    /// use behavior_actors::{StopOnShutdown, shutdown_after_children};
     /// struct Worker;
-    /// #[behavior_actors::behavior(addr = MailAddr, message = Never)]
+    /// #[behavior::behavior(addr = MailAddr, message = Never)]
     /// impl Worker {
     ///     fn receive(&mut self, _: MailAddr, message: Never) -> BehaviorActed<Self> {
     ///         match message {}
@@ -543,7 +545,7 @@ where
     /// }
     /// type ManagedWorker = StopOnShutdown<Worker>;
     /// struct Application;
-    /// #[behavior_actors::behavior(addr = MailAddr, message = Never, births = {
+    /// #[behavior::behavior(addr = MailAddr, message = Never, births = {
     ///     store: ManagedWorker,
     ///     gateway: ManagedWorker,
     /// })]
@@ -608,9 +610,9 @@ where
     Available: AllAssigned,
     <B::Birth as BirthMode>::Child: ChildOccurrenceProduct<ShutdownTargets<B>>,
     Phases: BuildShutdownPlan<B, TargetsFor<B>>,
-    TargetsFor<B>:
-        super::shutdown_coordinator::heterogeneous::Selection<Addr = crate::BehaviorAddr<B>> + Copy,
-    <crate::BehaviorAddr<B> as Address>::Nonce: Copy + Eq,
+    TargetsFor<B>: super::shutdown_coordinator::heterogeneous::Selection<Addr = behavior::BehaviorAddr<B>>
+        + Copy,
+    <behavior::BehaviorAddr<B> as Address>::Nonce: Copy + Eq,
 {
     /// Complete the application after proving that every child role occurs in
     /// exactly one declared phase.
@@ -619,11 +621,10 @@ where
     /// arbitrary outer layers without exposing a structural path.
     ///
     /// ```compile_fail,E0599
-    /// use behavior_actors::{
-    ///     BehaviorActed, MailAddr, Never, StopOnShutdown, shutdown_after_children,
-    /// };
+    /// use behavior::{BehaviorActed, MailAddr, Never};
+    /// use behavior_actors::{StopOnShutdown, shutdown_after_children};
     /// struct Worker;
-    /// #[behavior_actors::behavior(addr = MailAddr, message = Never)]
+    /// #[behavior::behavior(addr = MailAddr, message = Never)]
     /// impl Worker {
     ///     fn receive(&mut self, _: MailAddr, message: Never) -> BehaviorActed<Self> {
     ///         match message {}
@@ -631,7 +632,7 @@ where
     /// }
     /// type ManagedWorker = StopOnShutdown<Worker>;
     /// struct Application;
-    /// #[behavior_actors::behavior(addr = MailAddr, message = Never, births = {
+    /// #[behavior::behavior(addr = MailAddr, message = Never, births = {
     ///     store: ManagedWorker,
     ///     gateway: ManagedWorker,
     /// })]
@@ -667,9 +668,9 @@ where
     Available: AllAssigned,
     <B::Birth as BirthMode>::Child: ChildOccurrenceProduct<ShutdownTargets<B>>,
     Phases: BuildShutdownPlan<B, TargetsFor<B>>,
-    TargetsFor<B>:
-        super::shutdown_coordinator::heterogeneous::Selection<Addr = crate::BehaviorAddr<B>> + Copy,
-    <crate::BehaviorAddr<B> as Address>::Nonce: Copy + Eq,
+    TargetsFor<B>: super::shutdown_coordinator::heterogeneous::Selection<Addr = behavior::BehaviorAddr<B>>
+        + Copy,
+    <behavior::BehaviorAddr<B> as Address>::Nonce: Copy + Eq,
     ChildShutdownPlan<B, Phases>: Behavior<Protocol = B::Protocol>,
 {
     type Output = HeterogeneousShutdownCoordinator<ChildShutdownPlan<B, Phases>, TargetsFor<B>>;
@@ -736,7 +737,7 @@ impl<Child, Tail: AllAssigned> AllAssigned for Assigned<Child, Tail> {}
 pub struct ShutdownTargets<B: Behavior>(PhantomData<fn() -> B>);
 
 impl<B: Behavior> ChildOccurrenceShape for ShutdownTargets<B> {
-    type Empty = NoShutdownTargets<crate::BehaviorAddr<B>>;
+    type Empty = NoShutdownTargets<behavior::BehaviorAddr<B>>;
     type Member<Occurrence, Child: Behavior, Tail> = ShutdownChoice<Child, Tail>;
 }
 
@@ -815,9 +816,9 @@ impl<B: Behavior, Phases> ChildShutdownPlan<B, Phases> {
     }
 }
 
-impl<B, Phases> crate::BehaviorBase for ChildShutdownPlan<B, Phases>
+impl<B, Phases> behavior::BehaviorBase for ChildShutdownPlan<B, Phases>
 where
-    B: Behavior + crate::BehaviorBase,
+    B: Behavior + behavior::BehaviorBase,
 {
     type Base = B::Base;
 
@@ -992,13 +993,14 @@ where
 trait BuildShutdownPlan<B: Behavior, Targets> {
     fn build(
         children: &[ChildStatus],
-    ) -> Result<Vec<Vec<Targets>>, ChildShutdownPlanError<B::Error, crate::BehaviorAddr<B>>>;
+    ) -> Result<Vec<Vec<Targets>>, ChildShutdownPlanError<B::Error, behavior::BehaviorAddr<B>>>;
 }
 
 impl<B: Behavior, Targets> BuildShutdownPlan<B, Targets> for NoPhases {
     fn build(
         _: &[ChildStatus],
-    ) -> Result<Vec<Vec<Targets>>, ChildShutdownPlanError<B::Error, crate::BehaviorAddr<B>>> {
+    ) -> Result<Vec<Vec<Targets>>, ChildShutdownPlanError<B::Error, behavior::BehaviorAddr<B>>>
+    {
         Ok(Vec::new())
     }
 }
@@ -1006,10 +1008,10 @@ impl<B: Behavior, Targets> BuildShutdownPlan<B, Targets> for NoPhases {
 impl<B, Targets, Role, Earlier> BuildShutdownPlan<B, Targets> for Phase<Role, Earlier>
 where
     B: Behavior + ResolveChildOccurrence<Role>,
-    crate::BehaviorAddr<B>: Address,
+    behavior::BehaviorAddr<B>: Address,
     <B as ResolveChildOccurrence<Role>>::Position: PositionNumber,
     <<B as ResolveChildOccurrence<Role>>::Child as Behavior>::Protocol:
-        Protocol<Addr = crate::BehaviorAddr<B>>,
+        Protocol<Addr = behavior::BehaviorAddr<B>>,
     Targets: ShutdownTargetAt<
             <B as ResolveChildOccurrence<Role>>::Child,
             <B as ResolveChildOccurrence<Role>>::Position,
@@ -1018,7 +1020,8 @@ where
 {
     fn build(
         children: &[ChildStatus],
-    ) -> Result<Vec<Vec<Targets>>, ChildShutdownPlanError<B::Error, crate::BehaviorAddr<B>>> {
+    ) -> Result<Vec<Vec<Targets>>, ChildShutdownPlanError<B::Error, behavior::BehaviorAddr<B>>>
+    {
         let mut phases = Earlier::build(children)?;
         let position = <<B as ResolveChildOccurrence<Role>>::Position as PositionNumber>::INDEX;
         let Some(ChildStatus::Established { creation }) = children.get(position) else {
@@ -1053,7 +1056,7 @@ where
     type Error = ChildShutdownPlanError<B::Error, A>;
     type Birth = Br;
 
-    fn init(&mut self, _: crate::InitializationTurn) -> crate::BehaviorActed<Self> {
+    fn init(&mut self, _: behavior::InitializationTurn) -> behavior::BehaviorActed<Self> {
         let actions = behavior::initialize(&mut self.application)
             .map_err(ChildShutdownPlanError::Behavior)?;
         self.wrap_initialization(actions)
@@ -1061,9 +1064,9 @@ where
 
     fn transition(
         &mut self,
-        _: crate::ActiveTurn,
+        _: behavior::ActiveTurn,
         event: Self::Event,
-    ) -> crate::BehaviorActed<Self> {
+    ) -> behavior::BehaviorActed<Self> {
         match Shape::read(event) {
             PlannedEvent::Application(event) => {
                 let actions = behavior::delegate_transition(&mut self.application, event)

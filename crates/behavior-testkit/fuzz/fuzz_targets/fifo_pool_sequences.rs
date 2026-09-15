@@ -7,21 +7,23 @@ use std::collections::{BTreeSet, VecDeque};
 use std::convert::Infallible;
 use std::time::Instant;
 
-use behavior::atomic::{
+use behavior_actors::atomic::{
     ActivationPolicy, ActorDrainPolicy, AssignWorker, AssignedReturnReason, Assignment,
     AssignmentReceipt, BacklogCapacity, Completion, DiagnosticDisposition, FifoCommand, FifoEvent,
     FifoOutcome, FifoOutcomeKind, FifoPool, ImmediateActivation, Interruption, OrderedRoles,
     PoolFailureReaction, PoolRecovery, QueuedReturnReason, SubmissionId,
     WorkerInitializationOutcome, WorkerSubmission, fifo,
 };
-use behavior::{
-    ActionItemResult, Actions, Activate as _, Active, ActiveTurn, Address, Behavior, BehaviorActed,
-    BehaviorBase, ChildCreationOutcome, ChildHead, ChildReport, ChildStopped, CreateChild,
-    CreationId, CreationSequence, CreationSettlement, CreationsSettled, EndpointAddress,
-    EstablishedCreation, EstablishedRecipient, EstablishedShutdownResolved, ExactDeliveryReason,
-    Exit, InterpreterRequests, ItemSettlement, MessageProtocol, Never, NoBirths, Protocol,
-    Recipient, ReplyDelivery, ReportToParent, SettledItem, ShutdownId, ShutdownRejection, Step,
-    StopOnShutdown, User,
+use behavior_actors::{
+    Activate as _, Active, ChildStopped, EstablishedShutdownResolved, Exit, ReplyDelivery,
+    ShutdownId, ShutdownRejection, StopOnShutdown,
+};
+use behavior_core::{
+    ActionItemResult, Actions, ActiveTurn, Address, Behavior, BehaviorActed, BehaviorBase,
+    ChildCreationOutcome, ChildHead, ChildReport, CreateChild, CreationId, CreationSequence,
+    CreationSettlement, CreationsSettled, EndpointAddress, EstablishedCreation,
+    EstablishedRecipient, ExactDeliveryReason, InterpreterRequests, ItemSettlement,
+    MessageProtocol, Never, NoBirths, Protocol, Recipient, ReportToParent, SettledItem, Step, User,
 };
 use libfuzzer_sys::fuzz_target;
 

@@ -64,7 +64,7 @@ all role-owned work in one transition. Temporary recovery retains bindings.
 
 The initial factory is construction-only. `KeyedConstructionRejected` embeds
 the shared `InitialWorkerRejection` described in
-[`atomic-actor-architecture.md`](atomic-actor-architecture.md) beside keyed
+[`atomic-actor-architecture.md`](engineering/atomic-actor-architecture.md) beside keyed
 policy. Permanent and transient recovery use
 the same generic one-role worker-source request as FIFO and fixed supervision;
 Bombay executes it outside `Behavior`, while KeyedPool owns eligibility, budget,
@@ -150,7 +150,7 @@ delivers no input after `Step::Stop`, matching the interpreter lifecycle law.
 ## Realization gate
 
 Canonical construction, submission, management, outcomes, and worker completion
-syntax are owned by [`atomic-actor-devx.md`](atomic-actor-devx.md). The exact
+syntax are owned by [`atomic-actor-devx.md`](engineering/atomic-actor-devx.md). The exact
 production-source binding harness proves final-generation issuance, permanent
 exhaustion without wrap, complete rejected-key return, and preservation of an
 existing binding when rebinding cannot issue a generation. Real aggregate
@@ -178,4 +178,4 @@ No generic pool engine, optional key, selector mode, cloned key evidence,
 generation inference, permanent tombstone, stable proxy, structural completion
 route, helper alias, or compatibility spelling may enter the replacement.
 Repository-wide verification status and remaining gates are owned by
-[`atomic-actor-verification.md`](atomic-actor-verification.md).
+[`atomic-actor-verification.md`](engineering/atomic-actor-verification.md).

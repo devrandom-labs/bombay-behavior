@@ -1,7 +1,7 @@
 //! Rejected proxy creation shared by management and shutdown scenarios.
 
-use behavior::atomic::{ImmediateActivation, StableProxy};
-use behavior::{
+use behavior_actors::atomic::{ImmediateActivation, StableProxy};
+use behavior_core::{
     CreateChild, CreationKind, CreationRejection, CreationSettlement, CreationsSettled,
     ItemSettlement, RoutedCreation, SettledItem,
 };

@@ -97,7 +97,7 @@ or import StableProxy's private worker state.
 
 The initial factory is consumed only while constructing the all-or-none roster.
 Its rejection is the shared `InitialWorkerRejection` described in
-[`atomic-actor-architecture.md`](atomic-actor-architecture.md), embedded in
+[`atomic-actor-architecture.md`](engineering/atomic-actor-architecture.md), embedded in
 `FifoConstructionRejected` beside FIFO policy. Automatic recovery never calls
 that closure inside `Behavior`; permanent and
 transient recovery emit the generic typed worker-source request for one role,
@@ -186,7 +186,7 @@ environment residual rather than being duplicated inside the pool.
 
 Canonical construction, submission, outcomes, and the required
 `assignment.complete(result)` worker expression are owned by
-[`atomic-actor-devx.md`](atomic-actor-devx.md). The implementation must prove
+[`atomic-actor-devx.md`](engineering/atomic-actor-devx.md). The implementation must prove
 capacity zero/full boundaries, FIFO fill, multiple interrupted reinsertion,
 every assignment join order, authority reunion, duplicate/stale/foreign
 completion, recovery, complete shutdown, and exactly one terminal outcome.
@@ -195,4 +195,4 @@ No supervisor, proxy, generic pool engine, selector placeholder, structural
 parent route, named interpreter send lane, helper type alias, or alternate pool
 spelling may survive.
 Repository-wide verification status and remaining gates are owned by
-[`atomic-actor-verification.md`](atomic-actor-verification.md).
+[`atomic-actor-verification.md`](engineering/atomic-actor-verification.md).

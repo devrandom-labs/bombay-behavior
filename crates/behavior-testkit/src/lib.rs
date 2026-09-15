@@ -2,15 +2,17 @@
 
 use std::collections::VecDeque;
 
-use behavior::{Active, Behavior, BirthMode, CreateChild, SendEffects, Step, Stopped};
+use behavior_actors::Active;
+
+use behavior_core::{Behavior, BirthMode, CreateChild, SendEffects, Step, Stopped};
 use core::marker::PhantomData;
 
 /// A nominal, inert destination used by behavior tests that inspect emitted
 /// communications without interpreting a recipient mailbox.
 pub struct TestRecipient<M>(PhantomData<fn(M)>);
 
-impl<M> behavior::Protocol for TestRecipient<M> {
-    type Addr = behavior::MailAddr;
+impl<M> behavior_core::Protocol for TestRecipient<M> {
+    type Addr = behavior_core::MailAddr;
     type Msg = M;
 }
 
@@ -23,8 +25,8 @@ pub trait InitializeTest: Behavior + Sized {
     ///
     /// Returns the concrete behavior error when its initialization fold
     /// rejects activation.
-    fn initialize(self) -> Result<behavior::Initialized<Self>, Self::Error> {
-        behavior::Activate::initialize(self)
+    fn initialize(self) -> Result<behavior_actors::Initialized<Self>, Self::Error> {
+        behavior_actors::Activate::initialize(self)
     }
 }
 
@@ -67,7 +69,7 @@ pub enum DriveDisposition {
 pub struct Trace<B: Behavior> {
     pub behavior: Active<B>,
     pub sends: B::Sends,
-    pub creates: Vec<CreateChild<behavior::BehaviorAddr<B>, <B::Birth as BirthMode>::Child>>,
+    pub creates: Vec<CreateChild<behavior_core::BehaviorAddr<B>, <B::Birth as BirthMode>::Child>>,
     pub disposition: DriveDisposition,
     pub transitions: usize,
     pub pending: usize,
@@ -81,9 +83,9 @@ pub struct Trace<B: Behavior> {
 /// Returns the behavior's first controlled failure (`B::Error`).
 pub fn drive<B>(definition: B, mailbox: &mut Mailbox<B::Event>) -> Result<Trace<B>, B::Error>
 where
-    B: Behavior<Ph = behavior::Never>,
+    B: Behavior<Ph = behavior_core::Never>,
 {
-    let initialized = behavior::Activate::initialize(definition)?;
+    let initialized = behavior_actors::Activate::initialize(definition)?;
     let mut behavior = initialized.behavior;
     let mut sends = B::Sends::empty();
     let mut creates = Vec::new();

@@ -1,13 +1,13 @@
 //! Application-defined worker variants sharing one actor protocol.
 
-use behavior::{
+use behavior_core::{
     Acted, Actions, Behavior, BehaviorActed, Delivery, MailAddr, Never, Recipient, User,
 };
 use behavior_testkit::InitializeTest;
 
 struct WorkerA;
 
-#[behavior::behavior(addr = MailAddr, message = u8, sends = Vec<Delivery<behavior_testkit::TestRecipient<u8>>>, births = behavior::NoBirths, error = Never)]
+#[behavior_core::behavior(addr = MailAddr, message = u8, sends = Vec<Delivery<behavior_testkit::TestRecipient<u8>>>, births = behavior_core::NoBirths, error = Never)]
 impl WorkerA {
     fn receive(
         &mut self,
@@ -17,7 +17,7 @@ impl WorkerA {
         MailAddr,
         Never,
         Vec<Delivery<behavior_testkit::TestRecipient<u8>>>,
-        behavior::NoBirths,
+        behavior_core::NoBirths,
         Never,
     > {
         Ok(Actions::send(vec![Delivery::new(
@@ -29,7 +29,7 @@ impl WorkerA {
 
 struct WorkerB;
 
-#[behavior::behavior(addr = MailAddr, message = u8, sends = Vec<Delivery<behavior_testkit::TestRecipient<u8>>>, births = behavior::NoBirths, error = Never)]
+#[behavior_core::behavior(addr = MailAddr, message = u8, sends = Vec<Delivery<behavior_testkit::TestRecipient<u8>>>, births = behavior_core::NoBirths, error = Never)]
 impl WorkerB {
     fn receive(
         &mut self,
@@ -39,7 +39,7 @@ impl WorkerB {
         MailAddr,
         Never,
         Vec<Delivery<behavior_testkit::TestRecipient<u8>>>,
-        behavior::NoBirths,
+        behavior_core::NoBirths,
         Never,
     > {
         Ok(Actions::send(vec![Delivery::new(
@@ -54,7 +54,7 @@ enum Worker {
     B(WorkerB),
 }
 
-impl behavior::Protocol for Worker {
+impl behavior_core::Protocol for Worker {
     type Addr = MailAddr;
     type Msg = u8;
 }
@@ -65,9 +65,9 @@ impl Behavior for Worker {
     type Sends = Vec<Delivery<behavior_testkit::TestRecipient<u8>>>;
     type Ph = Never;
     type Error = Never;
-    type Birth = behavior::NoBirths;
+    type Birth = behavior_core::NoBirths;
 
-    fn init(&mut self, turn: behavior::InitializationTurn) -> BehaviorActed<Self> {
+    fn init(&mut self, turn: behavior_core::InitializationTurn) -> BehaviorActed<Self> {
         match self {
             Self::A(worker) => worker.init(turn),
             Self::B(worker) => worker.init(turn),
@@ -76,7 +76,7 @@ impl Behavior for Worker {
 
     fn transition(
         &mut self,
-        turn: behavior::ActiveTurn,
+        turn: behavior_core::ActiveTurn,
         event: Self::Event,
     ) -> BehaviorActed<Self> {
         match self {

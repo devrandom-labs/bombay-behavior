@@ -7,7 +7,7 @@ use std::collections::{BTreeSet, VecDeque};
 use std::convert::Infallible;
 use std::time::Instant;
 
-use behavior::atomic::{
+use behavior_actors::atomic::{
     ActivationPolicy, ActorDrainPolicy, AssignWorker, Assignment, AssignmentReceipt,
     BacklogCapacity, BindingCapacity, BindingEvidence, BindingGeneration, Completion,
     CustomerDelivery, DiagnosticDisposition, ImmediateActivation, Interruption,
@@ -15,13 +15,16 @@ use behavior::atomic::{
     KeyedQueuedReturnReason, OrderedRoles, PoolFailureReaction, PoolRecovery, SubmissionId,
     WorkerInitializationOutcome, WorkerSubmission, keyed,
 };
-use behavior::{
-    ActionItemResult, Actions, Activate as _, Active, ActiveTurn, Address, Behavior, BehaviorActed,
-    BehaviorBase, ChildCreationOutcome, ChildHead, ChildReport, ChildStopped, Crash, CreateChild,
-    CreationId, CreationSequence, CreationSettlement, CreationsSettled, EndpointAddress,
-    EstablishedCreation, EstablishedRecipient, EstablishedShutdownResolved, ExactDeliveryReason,
-    InterpreterRequests, ItemSettlement, MessageProtocol, Never, NoBirths, Protocol, Recipient,
-    ReportToParent, SettledItem, ShutdownId, ShutdownRejection, Step, StopOnShutdown, User,
+use behavior_actors::{
+    Activate as _, Active, ChildStopped, Crash, EstablishedShutdownResolved, ShutdownId,
+    ShutdownRejection, StopOnShutdown,
+};
+use behavior_core::{
+    ActionItemResult, Actions, ActiveTurn, Address, Behavior, BehaviorActed, BehaviorBase,
+    ChildCreationOutcome, ChildHead, ChildReport, CreateChild, CreationId, CreationSequence,
+    CreationSettlement, CreationsSettled, EndpointAddress, EstablishedCreation,
+    EstablishedRecipient, ExactDeliveryReason, InterpreterRequests, ItemSettlement,
+    MessageProtocol, Never, NoBirths, Protocol, Recipient, ReportToParent, SettledItem, Step, User,
 };
 use libfuzzer_sys::fuzz_target;
 

@@ -1,4 +1,4 @@
-# Atomic actor architecture map
+# Atomic actor architecture map (engineering record)
 
 Status: feature-complete normalization map. This document owns dependency
 direction and responsibility placement only. It does not restate aggregate
@@ -25,12 +25,12 @@ different aggregate name or message suffix.
 
 | Concern | One normative owner |
 |---|---|
-| Stable-proxy transition law | [`actor-laws/proxy.md`](actor-laws/proxy.md) |
-| Fixed-supervisor transition law | [`actor-laws/fixed-supervisor.md`](actor-laws/fixed-supervisor.md) |
-| Dynamic-supervisor transition law | [`actor-laws/dynamic-supervisor.md`](actor-laws/dynamic-supervisor.md) |
-| FIFO-pool transition law | [`actor-laws/fifo-pool.md`](actor-laws/fifo-pool.md) |
-| Keyed-pool transition law | [`actor-laws/keyed-pool.md`](actor-laws/keyed-pool.md) |
-| Generic interpretation, settlement, and terminal custody | [`atomic-runtime-settlement.md`](atomic-runtime-settlement.md) |
+| Stable-proxy transition law | [`actor-laws/proxy.md`](../actor-laws/proxy.md) |
+| Fixed-supervisor transition law | [`actor-laws/fixed-supervisor.md`](../actor-laws/fixed-supervisor.md) |
+| Dynamic-supervisor transition law | [`actor-laws/dynamic-supervisor.md`](../actor-laws/dynamic-supervisor.md) |
+| FIFO-pool transition law | [`actor-laws/fifo-pool.md`](../actor-laws/fifo-pool.md) |
+| Keyed-pool transition law | [`actor-laws/keyed-pool.md`](../actor-laws/keyed-pool.md) |
+| Generic interpretation, settlement, and terminal custody | [`atomic-runtime-settlement.md`](../atomic-runtime-settlement.md) |
 | Application construction and usage | [`atomic-actor-devx.md`](atomic-actor-devx.md) |
 | Verification and evidence gates | [`atomic-actor-verification.md`](atomic-actor-verification.md) |
 

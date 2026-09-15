@@ -3,17 +3,18 @@
 
 use std::time::Instant;
 
-use behavior::atomic::{
+use behavior_actors::atomic::{
     ActivationPolicy, ActorDrainPolicy, CancellationReceipt, DiagnosticAction,
     DiagnosticDisposition, DynamicCommand, DynamicDiagnostic, DynamicLifecycle, DynamicStatus,
     EntryCapacity, EntryRetirement, ImmediateActivation, InitialWorkerOutcome, ProxyInputReceipt,
     ProxyInputResult, ProxyOperationId, ProxyOutcome, StartRejection, UnexpectedExit,
     WorkerChangeRejection, WorkerStartResult, WorkerSubmission, dynamic,
 };
-use behavior::{
-    Activate as _, ChildCreationOutcome, ChildReport, ChildStopped, CreationId, CreationSettlement,
-    CreationsSettled, EstablishedActor, EstablishedCreation, EstablishedRecipient, Exit,
-    ItemSettlement, MessageProtocol, Recipient, ReplyDelivery, ReplyRoute, SettledItem, Step,
+use behavior_actors::{Activate as _, ChildStopped, Exit, ReplyDelivery, ReplyRoute};
+use behavior_core::{
+    ChildCreationOutcome, ChildReport, CreationId, CreationSettlement, CreationsSettled,
+    EstablishedActor, EstablishedCreation, EstablishedRecipient, ItemSettlement, MessageProtocol,
+    Recipient, SettledItem, Step,
 };
 use libfuzzer_sys::fuzz_target;
 
@@ -48,7 +49,7 @@ const RETIREMENT_ORDERS: [[RetirementArrival; 2]; 2] = [
 fn accepted_proxy_input(
     creation: CreationId,
     operation: ProxyOperationId,
-) -> ProxyInputResult<behavior::Here, Worker, ImmediateActivation> {
+) -> ProxyInputResult<behavior_core::Here, Worker, ImmediateActivation> {
     SettledItem::Attempted(ItemSettlement::Accepted(ProxyInputReceipt::new(
         creation,
         EstablishedActor::issued(WorkerEndpoint),
@@ -244,7 +245,7 @@ fuzz_target!(|input: &[u8]| {
                 assert!(matches!(
                     &queried.sends.query_replies.as_slice()[0],
                     ReplyDelivery::Logical(delivery)
-                        if matches!(delivery.message, behavior::atomic::QueryReply::Known {
+                        if matches!(delivery.message, behavior_actors::atomic::QueryReply::Known {
                             status: DynamicStatus::Empty,
                             ..
                         })
@@ -403,7 +404,7 @@ fuzz_target!(|input: &[u8]| {
                 assert!(matches!(
                     &queried.sends.query_replies.as_slice()[0],
                     ReplyDelivery::Logical(delivery)
-                        if matches!(delivery.message, behavior::atomic::QueryReply::Known {
+                        if matches!(delivery.message, behavior_actors::atomic::QueryReply::Known {
                             status: DynamicStatus::CreatingProxy,
                             ..
                         })

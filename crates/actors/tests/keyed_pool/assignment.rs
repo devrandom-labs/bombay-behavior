@@ -1,17 +1,17 @@
 use std::time::Instant;
 
+use behavior::{
+    ActionItemResult, ChildCreationOutcome, ChildHead, CreateChild, CreationSettlement,
+    CreationsSettled, EstablishedCreation, EstablishedRecipient, ExactDeliveryReason,
+    ItemSettlement, MessageProtocol, Recipient, SettledItem, Step,
+};
 use behavior_actors::atomic::{
     ActivationPolicy, ActorDrainPolicy, AssignWorker, BacklogCapacity, BindingCapacity,
     CustomerDelivery, DiagnosticDisposition, Interruption, KeyedCommand, KeyedEvent, KeyedOutcome,
     KeyedQueuedReturnReason, OrderedRoles, PoolFailureReaction, PoolRecovery, SubmissionId,
     WorkerInitializationOutcome, keyed,
 };
-use behavior_actors::{
-    ActionItemResult, Activate, ChildCreationOutcome, ChildHead, ChildStopped, CreateChild,
-    CreationSettlement, CreationsSettled, EstablishedCreation, EstablishedRecipient,
-    EstablishedShutdownResolved, ExactDeliveryReason, Exit, ItemSettlement, MessageProtocol,
-    Recipient, SettledItem, Step, StopOnShutdown,
-};
+use behavior_actors::{Activate, ChildStopped, EstablishedShutdownResolved, Exit, StopOnShutdown};
 
 use super::domain::{
     Account, Endpoint, RuntimeAddr, SearchJob, SearchResult, SearchRole, SearchWorker,
@@ -423,7 +423,7 @@ async fn exact_completion_selects_the_busy_nonzero_role() {
     assert!(both_busy.sends.customer_outcomes.is_empty());
 
     let replica_completed = pool
-        .on(behavior_actors::ChildReport::new(
+        .on(behavior::ChildReport::new(
             workers[1],
             replica_assignment.complete(SearchResult(120)).into_inner(),
         ))
@@ -459,7 +459,7 @@ async fn exact_completion_selects_the_busy_nonzero_role() {
     }
 
     let primary_completed = pool
-        .on(behavior_actors::ChildReport::new(
+        .on(behavior::ChildReport::new(
             workers[0],
             primary_assignment.complete(SearchResult(110)).into_inner(),
         ))

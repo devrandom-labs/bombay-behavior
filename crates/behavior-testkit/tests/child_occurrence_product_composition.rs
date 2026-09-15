@@ -1,7 +1,7 @@
 use core::marker::PhantomData;
 
-use behavior::StopOnShutdown;
-use foundation::{
+use behavior_actors::StopOnShutdown;
+use behavior_core::{
     Actions, Behavior, BehaviorActed, BirthMode, Births, ChildHead, ChildOccurrenceShape,
     ChildOccurrences, MailAddr, Never, NoBirths, NoSends, User,
 };
@@ -24,7 +24,7 @@ type OccurrencesOf<B> = ChildOccurrences<ChildrenOf<B>, TestOccurrences>;
 
 struct Worker;
 
-impl foundation::Protocol for Worker {
+impl behavior_core::Protocol for Worker {
     type Addr = MailAddr;
     type Msg = Never;
 }
@@ -37,14 +37,18 @@ impl Behavior for Worker {
     type Error = Never;
     type Birth = NoBirths;
 
-    fn transition(&mut self, _: foundation::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+    fn transition(
+        &mut self,
+        _: behavior_core::ActiveTurn,
+        event: Self::Event,
+    ) -> BehaviorActed<Self> {
         match event.message {}
     }
 }
 
 struct Team;
 
-impl foundation::Protocol for Team {
+impl behavior_core::Protocol for Team {
     type Addr = MailAddr;
     type Msg = Never;
 }
@@ -57,18 +61,22 @@ impl Behavior for Team {
     type Error = Never;
     type Birth = Births<Worker>;
 
-    fn init(&mut self, _: foundation::InitializationTurn) -> BehaviorActed<Self> {
+    fn init(&mut self, _: behavior_core::InitializationTurn) -> BehaviorActed<Self> {
         Ok(Actions::cont())
     }
 
-    fn transition(&mut self, _: foundation::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+    fn transition(
+        &mut self,
+        _: behavior_core::ActiveTurn,
+        event: Self::Event,
+    ) -> BehaviorActed<Self> {
         match event.message {}
     }
 }
 
 struct Company;
 
-impl foundation::Protocol for Company {
+impl behavior_core::Protocol for Company {
     type Addr = MailAddr;
     type Msg = Never;
 }
@@ -81,11 +89,15 @@ impl Behavior for Company {
     type Error = Never;
     type Birth = Births<Team>;
 
-    fn init(&mut self, _: foundation::InitializationTurn) -> BehaviorActed<Self> {
+    fn init(&mut self, _: behavior_core::InitializationTurn) -> BehaviorActed<Self> {
         Ok(Actions::cont())
     }
 
-    fn transition(&mut self, _: foundation::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+    fn transition(
+        &mut self,
+        _: behavior_core::ActiveTurn,
+        event: Self::Event,
+    ) -> BehaviorActed<Self> {
         match event.message {}
     }
 }

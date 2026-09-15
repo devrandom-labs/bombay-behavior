@@ -2,18 +2,22 @@
 
 use std::time::Instant;
 
-use behavior::{
-    Actions, Activate as _, Behavior, BehaviorActed, ChildHead, ChildStopped, CreationId,
-    CreationSequence, Exit, HeterogeneousShutdownCoordinator, HeterogeneousShutdownPlan,
-    InstallShutdownPlan, MailAddr, Never, NoBirths, NoShutdownTargets, ShutdownChoice,
-    ShutdownCoordinator, ShutdownCoordinatorError, ShutdownPlan, ShutdownPlanError,
-    ShutdownRequested, ShutdownState, Step, StopOnShutdown, User, shutdown_target,
+use behavior_actors::{
+    Activate as _, ChildStopped, Exit, HeterogeneousShutdownCoordinator, HeterogeneousShutdownPlan,
+    InstallShutdownPlan, NoShutdownTargets, ShutdownChoice, ShutdownCoordinator,
+    ShutdownCoordinatorError, ShutdownPlan, ShutdownPlanError, ShutdownRequested, ShutdownState,
+    StopOnShutdown, shutdown_target,
+};
+
+use behavior_core::{
+    Actions, Behavior, BehaviorActed, ChildHead, CreationId, CreationSequence, MailAddr, Never,
+    NoBirths, Step, User,
 };
 use proptest::prelude::*;
 
 struct Inert<const KIND: u8>;
 
-impl<const KIND: u8> behavior::Protocol for Inert<KIND> {
+impl<const KIND: u8> behavior_core::Protocol for Inert<KIND> {
     type Addr = MailAddr;
     type Msg = ();
 }
@@ -26,14 +30,14 @@ impl<const KIND: u8> Behavior for Inert<KIND> {
     type Error = Never;
     type Birth = NoBirths;
 
-    fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
+    fn transition(&mut self, _: behavior_core::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
         Ok(Actions::cont())
     }
 }
 
 struct ShutdownTopology;
 
-#[behavior::behavior(
+#[behavior_core::behavior(
     addr = MailAddr,
     message = Never,
     births = {
@@ -143,13 +147,13 @@ fn five_unrelated_protocols_share_one_phase_machine() {
             .collect::<Vec<_>>(),
         [children[3], children[0], children[4]]
     );
-    assert!(matches!(started.sends.inner, behavior::NoSends));
+    assert!(matches!(started.sends.inner, behavior_core::NoSends));
     assert!(started.creates.is_empty());
     assert!(matches!(started.become_, Step::Continue));
     for child in [children[0], children[4]] {
         let retained = active.on_path(stopped(child)).unwrap();
         assert!(retained.sends.owned.as_slice().is_empty());
-        assert!(matches!(retained.sends.inner, behavior::NoSends));
+        assert!(matches!(retained.sends.inner, behavior_core::NoSends));
         assert!(retained.creates.is_empty());
         assert!(matches!(retained.become_, Step::Continue));
         assert!(matches!(
@@ -168,7 +172,7 @@ fn five_unrelated_protocols_share_one_phase_machine() {
             .collect::<Vec<_>>(),
         [children[2], children[1]]
     );
-    assert!(matches!(next_phase.sends.inner, behavior::NoSends));
+    assert!(matches!(next_phase.sends.inner, behavior_core::NoSends));
     assert!(next_phase.creates.is_empty());
     assert!(matches!(next_phase.become_, Step::Continue));
     assert!(matches!(
@@ -177,12 +181,12 @@ fn five_unrelated_protocols_share_one_phase_machine() {
     ));
     let retained = active.on_path(stopped(children[1])).unwrap();
     assert!(retained.sends.owned.as_slice().is_empty());
-    assert!(matches!(retained.sends.inner, behavior::NoSends));
+    assert!(matches!(retained.sends.inner, behavior_core::NoSends));
     assert!(retained.creates.is_empty());
     assert!(matches!(retained.become_, Step::Continue));
     let completed = active.on_path(stopped(children[2])).unwrap();
     assert!(completed.sends.owned.as_slice().is_empty());
-    assert!(matches!(completed.sends.inner, behavior::NoSends));
+    assert!(matches!(completed.sends.inner, behavior_core::NoSends));
     assert!(completed.creates.is_empty());
     assert!(matches!(completed.become_, Step::Stop(_)));
     assert!(matches!(active.state(), ShutdownState::Completed));

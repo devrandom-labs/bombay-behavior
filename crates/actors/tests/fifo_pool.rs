@@ -6,6 +6,13 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
+use behavior::{
+    ActionItemResult, Actions, ActiveTurn, Address, Behavior, BehaviorActed, BehaviorBase,
+    ChildCreationOutcome, ChildHead, ChildReport, CreationId, CreationSequence, CreationSettlement,
+    CreationsSettled, EndpointAddress, EstablishedCreation, EstablishedRecipient,
+    ExactDeliveryReason, InterpreterFault, InterpreterRequests, ItemSettlement, MessageProtocol,
+    Never, NoBirths, Protocol, Recipient, ReportToParent, SettledItem, Step, User,
+};
 use behavior_actors::atomic::{
     ActivationPlan, ActivationPolicy, ActivationStartRejection, ActorDrainPolicy,
     AdmissionRejection, AssignWorker, AssignedReturnReason, Assignment, BacklogCapacity,
@@ -16,14 +23,9 @@ use behavior_actors::atomic::{
     WorkerSource, WorkerSubmission, fifo,
 };
 use behavior_actors::{
-    ActionItemResult, Actions, Activate as _, Active, ActiveTurn, Address, Behavior, BehaviorActed,
-    BehaviorBase, ChildCreationOutcome, ChildHead, ChildReport, ChildStopped, Crash, CreationId,
-    CreationSequence, CreationSettlement, CreationsSettled, EndpointAddress, EstablishedCreation,
-    EstablishedRecipient, EstablishedShutdownResolved, ExactDeliveryReason, Exit, InterpreterFault,
-    InterpreterRequests, ItemSettlement, MessageProtocol, Never, NoBirths, Protocol, Recipient,
-    ReplyDelivery, ReportToParent, ScheduleAfter, ScheduleAfterRejection, SettledItem,
-    ShutdownRejection, Step, StopOnShutdown, SupervisionFailureReason, TimerElapsed, TimerId,
-    TimerScheduled, User,
+    Activate as _, Active, ChildStopped, Crash, EstablishedShutdownResolved, Exit, ReplyDelivery,
+    ScheduleAfter, ScheduleAfterRejection, ShutdownRejection, StopOnShutdown,
+    SupervisionFailureReason, TimerElapsed, TimerId, TimerScheduled,
 };
 
 #[path = "fifo_pool/compile.rs"]
@@ -195,7 +197,7 @@ impl ActivationPlan for HeldActivation {
 }
 
 fn created_worker(
-    creation: behavior_actors::CreateChild<RuntimeAddr, StopOnShutdown<SearchWorker>>,
+    creation: behavior::CreateChild<RuntimeAddr, StopOnShutdown<SearchWorker>>,
 ) -> CreationsSettled<RuntimeAddr, StopOnShutdown<SearchWorker>> {
     let (worker, _, kind) = creation.into_parts();
     let endpoint = Endpoint(40 + worker.get());

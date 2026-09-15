@@ -13,13 +13,19 @@
 //! ```compile_fail
 //! use behavior::ActionReducer;
 //! ```
+//!
+//! Capability-restricted action products use the existing `Actions` algebra;
+//! there is no second convenience wrapper with an overlapping contract.
+//!
+//! ```compile_fail
+//! fn accepts_duplicate(_: behavior::Effect<u8>) {}
+//! ```
 
 // The `#[behavior]` expansion emits `::behavior::…` paths; this alias lets the
 // expansion resolve inside this crate too.
 extern crate self as behavior;
 
 mod actor;
-mod effect;
 mod effects;
 mod next;
 mod transition;
@@ -40,7 +46,6 @@ pub use actor::{
     NoBirths, NoChildren, Recipient, ResolveChildOccurrence, ResolvedChild, ResolvedChildPosition,
     RoleChild, RoleProtocol, RoutedCreation, StructuralChildOccurrence,
 };
-pub use effect::Effect;
 pub use effects::{
     Acted, ActionItem, ActionItemResult, ActionSettlement, ActionSettlements, Actions, AppendSend,
     Become, ClassifySettlement, CreationCustody, CreationSettlement, CreationSettlements,

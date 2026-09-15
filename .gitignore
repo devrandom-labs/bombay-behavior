@@ -12,3 +12,4 @@ mutants.out.old/
 .pi-loop-log.jsonl
 .pi-loop-log.jsonl.1
 .serena/
+__pycache__/

@@ -1,12 +1,13 @@
 use std::collections::BTreeMap;
 
+use behavior::{MessageProtocol, Recipient};
 use behavior_actors::atomic::{
     ActivationPolicy, ActorDrainPolicy, BacklogCapacity, BindingCapacity, BindingExpectation,
     BindingRejection, BindingReply, BindingRequestId, CustomerDelivery, DiagnosticDisposition,
     Interruption, KeyedAdmissionRejection, KeyedCommand, KeyedOutcome, OrderedRoles,
     PoolFailureReaction, PoolRecovery, SubmissionId, keyed,
 };
-use behavior_actors::{Activate, MessageProtocol, Recipient, ReplyDelivery, ReplyRoute};
+use behavior_actors::{Activate, ReplyDelivery, ReplyRoute};
 
 use super::domain::{Account, RuntimeAddr, SearchJob, SearchResult, SearchRole, prepare_worker};
 

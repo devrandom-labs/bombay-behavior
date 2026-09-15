@@ -331,13 +331,13 @@ where
     ReplyRoute::Sends: behavior::SendsFor<User<A, BufferMessage<T, TargetRoute, ReplyRoute>>>,
 {
     type Protocol = Self;
-    type Event = User<A, crate::BehaviorMessage<Self>>;
+    type Event = User<A, behavior::BehaviorMessage<Self>>;
     type Sends = BufferSends<TargetRoute::Sends, ReplyRoute::Sends>;
     type Ph = Never;
     type Error = Never;
     type Birth = NoBirths;
 
-    fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+    fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
         match event.message {
             BufferMessage::Offer { value, reply_to }
                 if self.state.queued.len() < self.state.capacity =>
@@ -524,7 +524,7 @@ mod tests {
                             })
                 ));
                 assert!(offered.creates.is_empty());
-                assert_eq!(offered.become_, crate::Step::Continue);
+                assert_eq!(offered.become_, behavior::Step::Continue);
             }
             let overflow = buffer
                 .receive(

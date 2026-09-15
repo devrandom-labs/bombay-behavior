@@ -5,9 +5,9 @@ use behavior::{
     InterpreterRequests, ItemSettlement, Protocol, SendEffects, SettledItem,
 };
 
-use crate::{
-    ChildReport, DiagnosticRoute, EstablishedShutdownResolved, ShutdownRequested, StopOnShutdown,
-};
+use crate::{DiagnosticRoute, EstablishedShutdownResolved, ShutdownRequested, StopOnShutdown};
+
+use behavior::ChildReport;
 
 use crate::atomic::RoleName;
 use crate::atomic::pool::assignment::{

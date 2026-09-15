@@ -3,15 +3,15 @@
 
 use std::time::Instant;
 
-use behavior::atomic::{
+use behavior_actors::atomic::{
     ActivationPolicy, ActorDrainPolicy, CancellationOutcome, CancellationReceipt,
     DiagnosticDisposition, DynamicCommand, DynamicDiagnostic, DynamicLifecycle, EntryCapacity,
     EntryRetirement, ImmediateActivation, InitialWorkerOutcome, ProxyOperation, ProxyOutcome,
     ProxyPhase, UnexpectedExit, WorkerChange, WorkerSubmission, dynamic,
 };
-use behavior::{
-    Activate as _, ChildInputReason, ChildReport, ChildStopped, Exit, ItemSettlement,
-    MessageProtocol, Recipient, ReplyDelivery, ReplyRoute, SettledItem,
+use behavior_actors::{Activate as _, ChildStopped, Exit, ReplyDelivery, ReplyRoute};
+use behavior_core::{
+    ChildInputReason, ChildReport, ItemSettlement, MessageProtocol, Recipient, SettledItem,
 };
 use libfuzzer_sys::fuzz_target;
 
@@ -41,7 +41,7 @@ impl WorkerDisposition {
 }
 
 enum WorkerArrival {
-    InputRejected(ProxyOperation<behavior::Here, Worker, ImmediateActivation>),
+    InputRejected(ProxyOperation<behavior_core::Here, Worker, ImmediateActivation>),
     ProxyReported(ChildReport<ProxyOutcome<Worker, ImmediateActivation>>),
 }
 
@@ -265,7 +265,7 @@ fuzz_target!(|input: &[u8]| {
                     assert_eq!(acted.sends.diagnostics.len(), 1);
                     assert!(matches!(
                         &acted.sends.diagnostics[0],
-                        behavior::atomic::DiagnosticAction::Deliver {
+                        behavior_actors::atomic::DiagnosticAction::Deliver {
                             diagnostic: DynamicDiagnostic::ProxyInputRejected { .. },
                             ..
                         }
@@ -327,7 +327,7 @@ fuzz_target!(|input: &[u8]| {
         assert!(matches!(
             &queried.sends.query_replies.as_slice()[0],
             ReplyDelivery::Logical(delivery)
-                if matches!(delivery.message, behavior::atomic::QueryReply::Unknown { .. })
+                if matches!(delivery.message, behavior_actors::atomic::QueryReply::Unknown { .. })
         ));
     }
 });

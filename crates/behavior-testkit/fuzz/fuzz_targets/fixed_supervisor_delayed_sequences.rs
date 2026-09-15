@@ -8,15 +8,15 @@ mod stable_proxy;
 use core::ops::ControlFlow;
 use std::time::Duration;
 
-use behavior::atomic::{
+use behavior_actors::atomic::{
     CapabilityResult, DiagnosticAction, FixedDiagnostic, FixedSupervisorEvent, ImmediateActivation,
     Recovery, RestartLimit, RestartRelease, Strategy, UnavailablePhase, WorkerSource,
     WorkerSubmission,
 };
-use behavior::{
-    ItemSettlement, Never, NoSends, ScheduleAfterRejection, SendSettlements, SettledItem, Step,
-    TimerElapsed, TimerGeneration, TimerId, TimerScheduled,
+use behavior_actors::{
+    ScheduleAfterRejection, TimerElapsed, TimerGeneration, TimerId, TimerScheduled,
 };
+use behavior_core::{ItemSettlement, Never, NoSends, SendSettlements, SettledItem, Step};
 use fixed_supervisor::Role;
 use fixed_supervisor_recovery::{search_capability, search_recovery};
 use libfuzzer_sys::fuzz_target;

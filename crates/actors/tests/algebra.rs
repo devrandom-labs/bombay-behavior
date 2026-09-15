@@ -6,20 +6,21 @@
     reason = "fixture methods intentionally match the fallible behavior macro contract"
 )]
 
-use behavior_actors as behavior;
 use core::future::Future;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use behavior::{
-    Acted, ActionItem, Actions, Activate, Become, Behavior, BehaviorBase, Births, Crash,
-    CreateChild, CreationKind, CreationSequence, Creations, Delivery, EventLayer, Exit, Here,
-    InjectEvent, Inside, InterpretItem, InterpretSends, Interpretation, InterpreterRequests,
-    ItemSettlement, LogicalDeliveryProtocols, Machine, MailAddr, Move, Never, NoBirthProtocols,
-    NoBirths, ObserveChild, PeerStopped, Recipient, ScheduleAt, SendEffects, ShutdownRequested,
-    StashRoute, Step, TimerElapsed, TimerGeneration, TimerId, TimerScheduled, User, UserEvent,
-    Watch, stop_on_abnormal_death,
+    Acted, ActionItem, Actions, Become, Behavior, BehaviorBase, Births, CreateChild, CreationKind,
+    CreationSequence, Creations, Delivery, EventLayer, Here, InjectEvent, Inside, InterpretItem,
+    InterpretSends, Interpretation, InterpreterRequests, ItemSettlement, LogicalDeliveryProtocols,
+    MailAddr, Never, NoBirthProtocols, NoBirths, Recipient, SendEffects, Step, User, UserEvent,
+};
+use behavior_actors::{
+    Activate, Crash, Exit, Machine, Move, ObserveChild, PeerStopped, ScheduleAt, ShutdownEvent,
+    ShutdownRequested, StashRoute, TimedEvent, TimerElapsed, TimerGeneration, TimerId,
+    TimerScheduled, Watch, stop_on_abnormal_death,
 };
 use std::time::Instant;
 
@@ -321,7 +322,7 @@ fn custom_send_product_owner_projects_delivery_without_classifying_custom_marker
 
 #[tokio::test]
 async fn direct_behavior_composes_with_existing_wrappers_and_init_order() {
-    type InitializationEvent = behavior::ShutdownEvent<behavior::DeadlineEvent<User<MailAddr, u8>>>;
+    type InitializationEvent = ShutdownEvent<TimedEvent<User<MailAddr, u8>>>;
 
     #[derive(PartialEq, Eq)]
     enum AcceptedInitializationRequest {
@@ -483,9 +484,7 @@ async fn outer_combinators_preserve_the_shutdown_lane() {
 
 #[tokio::test]
 async fn shutdown_over_two_deadlines_preserves_both_exact_local_continuations() {
-    type RootEvent = behavior::ShutdownEvent<
-        behavior::DeadlineEvent<behavior::DeadlineEvent<User<MailAddr, u64>>>,
-    >;
+    type RootEvent = ShutdownEvent<TimedEvent<TimedEvent<User<MailAddr, u64>>>>;
 
     struct TimerInterpreter {
         schedules: Vec<ScheduleAt>,

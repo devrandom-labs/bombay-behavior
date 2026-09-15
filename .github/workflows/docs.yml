@@ -22,11 +22,25 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.95.0
+      - name: Install mdBook
+        run: cargo install mdbook --version 0.4.52 --locked
       - name: Build documentation
-        run: cargo doc -p bombay-behavior -p bombay-behavior-actors --no-deps
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: |
+          cargo doc -p bombay-behavior -p bombay-behavior-actors --no-deps
+          mdbook build docs
       - name: Add landing page
-        run: cp docs/index.html target/doc/index.html
+        run: cp .github/pages-index.html target/doc/index.html
+      - name: Verify published documentation
+        run: |
+          python3 -m unittest scripts/test_check_published_docs.py
+          test -f target/doc/index.html
+          test -f target/doc/guide/index.html
+          test -f target/doc/behavior/index.html
+          test -f target/doc/behavior_actors/index.html
+          python3 scripts/check_published_docs.py target/doc
       - name: Configure Pages
         uses: actions/configure-pages@v5
       - name: Upload Pages artifact

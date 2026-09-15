@@ -1,9 +1,9 @@
 use core::ops::ControlFlow;
 use std::time::Instant;
 
+use behavior::{CreationId, CreationSequence, MailAddr, Protocol};
 use behavior_actors::{
-    ChildStopped, CreationId, CreationSequence, EstablishedShutdownResolved, Exit, MailAddr,
-    Protocol, ShutdownId, ShutdownRejection,
+    ChildStopped, EstablishedShutdownResolved, Exit, ShutdownId, ShutdownRejection,
 };
 
 struct Worker;

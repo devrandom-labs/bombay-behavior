@@ -1,10 +1,10 @@
+use behavior::{
+    ActiveTurn, Address, Behavior, BehaviorActed, EndpointAddress, InterpreterFault,
+    MessageProtocol, Never, NoBirths, NoSends, Protocol, Recipient, User,
+};
 use behavior_actors::atomic::{
     ActivationPlan, FixedDiagnostic, WorkerPreparationFailure, WorkerPreparationFailureReason,
     WorkerSource,
-};
-use behavior_actors::{
-    ActiveTurn, Address, Behavior, BehaviorActed, EndpointAddress, InterpreterFault,
-    MessageProtocol, Never, NoBirths, NoSends, Protocol, Recipient, User,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

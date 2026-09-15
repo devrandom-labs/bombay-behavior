@@ -7,10 +7,9 @@
 //! either delivered to the inner recorder exactly once or still held, so
 //! `|recorded| + held() == stepped` and no id is recorded twice.
 
-use behavior::{
-    Acted, Actions, Activate, Delivery, MailAddr, Never, Recipient, StashRoute, Step, User,
-    UserEvent,
-};
+use behavior_actors::{Activate, StashRoute};
+
+use behavior_core::{Acted, Actions, Delivery, MailAddr, Never, Recipient, Step, User, UserEvent};
 use libfuzzer_sys::fuzz_target;
 
 #[derive(Default)]
@@ -18,7 +17,7 @@ struct Recorder {
     seen: Vec<u64>,
 }
 
-#[behavior::behavior(addr = MailAddr, message = u64, sends = Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u64>>>, births = behavior::NoBirths, error = Never)]
+#[behavior_core::behavior(addr = MailAddr, message = u64, sends = Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u64>>>, births = behavior_core::NoBirths, error = Never)]
 impl Recorder {
     fn receive(
         &mut self,
@@ -28,7 +27,7 @@ impl Recorder {
         MailAddr,
         Never,
         Vec<Delivery<bombay_behavior_fuzz::TestRecipient<u64>>>,
-        behavior::NoBirths,
+        behavior_core::NoBirths,
         Never,
     > {
         self.seen.push(message);
@@ -45,7 +44,7 @@ fn route(message: &u64) -> StashRoute {
 }
 
 fuzz_target!(|bytes: &[u8]| {
-    let behavior = behavior::Stash::new(Recorder::default(), route);
+    let behavior = behavior_actors::Stash::new(Recorder::default(), route);
     let initialized = behavior.initialize().unwrap();
     assert!(initialized.actions.sends.is_empty());
     assert!(initialized.actions.creates.is_empty());

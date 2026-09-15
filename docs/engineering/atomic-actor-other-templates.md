@@ -1,4 +1,4 @@
-# Disposition of every other actor template
+# Disposition of every other actor template (engineering record)
 
 The five supervisor/pool actors are not a reason to delete the rest of
 `crates/actors`. Most other templates own different, smaller transition laws.

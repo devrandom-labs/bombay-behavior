@@ -8,12 +8,12 @@ mod stable_proxy;
 use core::ops::ControlFlow;
 use std::time::Duration;
 
-use behavior::atomic::{
+use behavior_actors::atomic::{
     CapabilityResult, FixedSupervisorEvent, ImmediateActivation, ProxyInputReceipt, ProxyOutcome,
     Recovery, RestartLimit, RestartRelease, StableProxy, Strategy, UnavailablePhase, WorkerSource,
     WorkerSubmission,
 };
-use behavior::{
+use behavior_core::{
     ChildReport, CreationSequence, EstablishedActor, ItemSettlement, Never, NoSends,
     SendSettlements, SettledItem, Step,
 };

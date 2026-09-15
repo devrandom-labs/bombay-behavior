@@ -1,8 +1,8 @@
 //! Direct, consuming behavior activation.
 
-use crate::Actions;
-use crate::BehaviorBase;
+use behavior::Actions;
 use behavior::Behavior;
+use behavior::BehaviorBase;
 use behavior::{BehaviorActed, Here, InjectEvent, UserEvent, delegate_transition};
 
 /// An initialized behavior and the effects that must be interpreted before
@@ -12,7 +12,7 @@ pub struct Initialized<B: Behavior> {
     pub behavior: Active<B>,
     /// Ordered initialization effects that the Driver interprets before the
     /// first mailbox event.
-    pub actions: Actions<crate::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>,
+    pub actions: Actions<behavior::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>,
 }
 
 /// A behavior whose initialization fold has completed exactly once.
@@ -21,7 +21,8 @@ pub struct Initialized<B: Behavior> {
 /// repeated through the public API:
 ///
 /// ```compile_fail
-/// use behavior_actors::{Activate, Behavior, Machine, MailAddr, Move, Never};
+/// use behavior::{Behavior, MailAddr, Never};
+/// use behavior_actors::{Activate, Machine, Move};
 ///
 /// let definition = Machine::<MailAddr, _, _, _, Never>::new(
 ///     (),
@@ -70,8 +71,8 @@ impl<B: Behavior> Active<B> {
     /// Returns the behavior's declared controlled transition failure.
     pub fn receive(
         &mut self,
-        from: crate::BehaviorAddr<B>,
-        message: crate::BehaviorMessage<B>,
+        from: behavior::BehaviorAddr<B>,
+        message: behavior::BehaviorMessage<B>,
     ) -> BehaviorActed<B> {
         self.transition(B::Event::user(from, message))
     }
@@ -114,7 +115,8 @@ impl<B: Behavior> core::ops::Deref for Active<B> {
 /// A raw definition cannot use the active mailbox API:
 ///
 /// ```compile_fail
-/// use behavior_actors::{Machine, MailAddr, Move, Never};
+/// use behavior::{MailAddr, Never};
+/// use behavior_actors::{Machine, Move};
 ///
 /// let mut definition = Machine::<MailAddr, _, _, _, Never>::new(
 ///     (),

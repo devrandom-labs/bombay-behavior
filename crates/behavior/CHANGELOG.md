@@ -7,25 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-
-- Add `BirthNodeAppend`, a sealed static composition law that appends inferred
-  child products after an existing birth algebra while preserving creation
-  order, nonce, provenance, and every prefix occurrence.
-
 ### Changed
 
-- Allow nominal child roles to cross a same-protocol wrapper whose birth
-  algebra retains the declared child at its exact position and only appends
-  later occurrences.
-- Scope `CreationId` uniqueness to one statically declared child occurrence.
-  `Children::into_creates` is now total, and independently composed occurrences
-  may use equal numeric IDs without sharing mutable state.
+- Publish a crate-specific README and both license texts with the package.
+
+### Removed
+
+- Remove the unused `Effect` convenience wrapper. Infallible, single-phase,
+  no-birth behaviors use the existing `Actions<A, Never, Vec<S>, NoBirths>`
+  product directly.
 
 ## [0.14.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.13.1...bombay-behavior-v0.14.0) - 2026-08-21
 
 ### Added
 
+- Add `BirthNodeAppend`, a sealed static composition law that appends inferred
+  child products after an existing birth algebra while preserving creation
+  order, nonce, provenance, and every prefix occurrence.
 - Add runtime-owned `EndpointAddress` families and inert
   `EstablishedRecipient<P>`, `EstablishedActor<B>`, and
   `EstablishedDelivery<P>` capabilities for exact installed incarnations.
@@ -47,6 +45,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Allow nominal child roles to cross a same-protocol wrapper whose birth
+  algebra retains the declared child at its exact position and only appends
+  later occurrences.
+- Scope `CreationId` uniqueness to one statically declared child occurrence.
+  `Children::into_creates` is now total, and independently composed occurrences
+  may use equal numeric IDs without sharing mutable state.
 - Make fresh address allocation wholly interpreter-owned. `Address` now
   declares only its creator-local nonce type; a nonce is no longer convertible
   into an address.

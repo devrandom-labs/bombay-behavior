@@ -310,12 +310,12 @@ where
     ReplyRoute::Sends: behavior::SendsFor<User<A, WorkQueueMessage<T, WorkerRoute, ReplyRoute>>>,
 {
     type Protocol = Self;
-    type Event = User<A, crate::BehaviorMessage<Self>>;
+    type Event = User<A, behavior::BehaviorMessage<Self>>;
     type Sends = WorkQueueSends<WorkerRoute::Sends, ReplyRoute::Sends>;
     type Ph = Never;
     type Error = Never;
     type Birth = NoBirths;
-    fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+    fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
         Ok(match event.message {
             WorkQueueMessage::Submit { value, reply_to } => self.submit(value, reply_to),
             WorkQueueMessage::Available { worker } => self.announce(worker),
@@ -336,8 +336,9 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Activate as _, Recipient};
+    use crate::Activate as _;
     use behavior::MailAddr;
+    use behavior::Recipient;
     struct Worker;
     struct Reply;
     impl behavior::Protocol for Worker {
@@ -352,7 +353,7 @@ mod tests {
         type Ph = Never;
         type Error = Never;
         type Birth = NoBirths;
-        fn transition(&mut self, _: crate::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
+        fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
             Ok(Actions::cont())
         }
     }
@@ -363,12 +364,12 @@ mod tests {
 
     impl Behavior for Reply {
         type Protocol = Self;
-        type Event = User<MailAddr, crate::BehaviorMessage<Self>>;
+        type Event = User<MailAddr, behavior::BehaviorMessage<Self>>;
         type Sends = Vec<Never>;
         type Ph = Never;
         type Error = Never;
         type Birth = NoBirths;
-        fn transition(&mut self, _: crate::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
+        fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
             Ok(Actions::cont())
         }
     }
@@ -389,7 +390,7 @@ mod tests {
             assert!(available.sends.assignments.is_empty());
             assert!(available.sends.outcomes.is_empty());
             assert!(available.creates.is_empty());
-            assert_eq!(available.become_, crate::Step::Continue);
+            assert_eq!(available.become_, behavior::Step::Continue);
         }
         for value in [10, 20, 30] {
             let a = s

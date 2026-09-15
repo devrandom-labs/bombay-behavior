@@ -2,16 +2,17 @@
 
 use std::time::Duration;
 
-use behavior::{
-    Actions, Activate as _, Behavior, BehaviorActed, Lease, LeaseMessage, LeaseOutcome,
-    LeaseRejection, LeaseRequest, LeaseState, MailAddr, Never, NoBirths, Recipient, TimerElapsed,
-    TimerGeneration, TimerId, User,
+use behavior_actors::{
+    Activate as _, Lease, LeaseMessage, LeaseOutcome, LeaseRejection, LeaseRequest, LeaseState,
+    TimerElapsed, TimerGeneration, TimerId,
 };
+
+use behavior_core::{Actions, Behavior, BehaviorActed, MailAddr, Never, NoBirths, Recipient, User};
 use proptest::collection::vec;
 use proptest::prelude::*;
 
 struct Reply;
-impl behavior::Protocol for Reply {
+impl behavior_core::Protocol for Reply {
     type Addr = MailAddr;
     type Msg = LeaseOutcome<u8>;
 }
@@ -22,7 +23,7 @@ impl Behavior for Reply {
     type Ph = Never;
     type Error = Never;
     type Birth = NoBirths;
-    fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
+    fn transition(&mut self, _: behavior_core::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
         Ok(Actions::cont())
     }
 }

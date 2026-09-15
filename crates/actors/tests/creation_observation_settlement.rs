@@ -1,7 +1,5 @@
-use behavior_actors::{
-    ActionItem, CreationCorrelation, CreationId, MailAddr, Never, ObserveCreation, Protocol,
-    ReportShutdownPlan, ShutdownPlan,
-};
+use behavior::{ActionItem, CreationCorrelation, CreationId, MailAddr, Never, Protocol};
+use behavior_actors::{ObserveCreation, ReportShutdownPlan, ShutdownPlan};
 
 struct Store;
 struct StoreRole;

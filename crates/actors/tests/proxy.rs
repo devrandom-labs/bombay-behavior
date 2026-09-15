@@ -3,19 +3,19 @@
 use std::collections::BTreeMap;
 use std::time::Instant;
 
+use behavior::{
+    Actions, ActiveTurn, Address, Behavior, BehaviorActed, ChildCreationOutcome, ChildInput,
+    ChildNamespaceExhausted, CreationId, CreationSequence, CreationSettlement, CreationsSettled,
+    EndpointAddress, EstablishedCreation, EstablishedRecipient, ItemSettlement, Never, NoBirths,
+    Protocol, SettledItem, Step, User,
+};
 use behavior_actors::atomic::{
     BeginActivation, ImmediateActivation, InitialWorkerOutcome, InitializeWorker, ProxyControl,
     ProxyOutcome, ProxyPhase, ReplacementOutcome, StableProxy, WorkerActivation,
     WorkerCreationRejection, WorkerInitializationOutcome, WorkerInitializationReport,
     WorkerStartResult,
 };
-use behavior_actors::{
-    Actions, Activate, Active, ActiveTurn, Address, Behavior, BehaviorActed, ChildCreationOutcome,
-    ChildInput, ChildNamespaceExhausted, ChildStopped, CreationId, CreationSequence,
-    CreationSettlement, CreationsSettled, EndpointAddress, EstablishedCreation,
-    EstablishedRecipient, EstablishedShutdownResolved, Exit, ItemSettlement, Never, NoBirths,
-    Protocol, SettledItem, Step, User,
-};
+use behavior_actors::{Activate, Active, ChildStopped, EstablishedShutdownResolved, Exit};
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 struct RuntimeAddress;
@@ -474,7 +474,7 @@ fn owner_control_uses_a_creation_id_not_a_runtime_route() {
         StableProxy<Worker, ImmediateActivation>,
         StableProxy<Worker, ImmediateActivation>,
         ProxyControl<Worker, ImmediateActivation>,
-        behavior_actors::ChildHead,
+        behavior::ChildHead,
     > = ChildInput::after(first_creation(), ProxyControl::start(Worker(4)));
 }
 

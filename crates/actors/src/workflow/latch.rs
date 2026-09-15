@@ -124,13 +124,13 @@ where
     Route::Sends: behavior::SendsFor<User<A, LatchMessage<Route>>>,
 {
     type Protocol = Self;
-    type Event = User<A, crate::BehaviorMessage<Self>>;
+    type Event = User<A, behavior::BehaviorMessage<Self>>;
     type Sends = Route::Sends;
     type Ph = Never;
     type Error = Never;
     type Birth = NoBirths;
 
-    fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+    fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
         let current = core::mem::replace(&mut self.state, LatchState::Released);
         let (next, sends) = match current {
             LatchState::Released => (

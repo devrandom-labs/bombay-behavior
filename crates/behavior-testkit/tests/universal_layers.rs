@@ -2,13 +2,13 @@
 
 use std::time::{Duration, Instant};
 
-use behavior::{
+use behavior_actors::{
     Activate as _, Cache, CacheConfiguration, CacheMessage, CacheResult, Deadline,
     FinalizeOnShutdown, OneShot, PeerTermination, Periodic, PropagateTermination, ReceiveTimeout,
     ShutdownRequested, Stash, StashRoute, StopOnShutdown, TerminationMonitor, TimerId, Watch,
     propagate_all, stop_on_abnormal_death,
 };
-use foundation::{
+use behavior_core::{
     Actions, Behavior, BehaviorLayer, Delivery, MailAddr, MessageProtocol, Never, NoBirths,
     Recipient, Step,
 };

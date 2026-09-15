@@ -1,4 +1,4 @@
-# DevX research cross-audit for atomic supervisors and pools
+# DevX research cross-audit for atomic supervisors and pools (engineering record)
 
 This audit was performed after the feature catalogue, solution, DevX target,
 minimal core decision, and type equations were written. The research corpus is

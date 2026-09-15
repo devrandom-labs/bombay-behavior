@@ -1,4 +1,4 @@
-# Behavior Actors template-law audit
+# Behavior Actors template-law audit (engineering record)
 
 This is the working record of a proof-driven audit of every reusable `Behavior` implementation
 exported by `bombay-behavior-actors`. It replaces the earlier routing-only
@@ -152,11 +152,10 @@ actor-model law.
 - **A4 — no primitive effect ordering:** the actor model does not require a
   general order among send, create, and become effects.
 
-The primary-source extraction and the exact boundary between these laws and
-Bombay constructions are recorded in
-[`research/architecture-critical-review-loop`](../research/architecture-critical-review-loop/ACTOR-RESEARCH-SURVEY.md)
-and
-[`research/established-recipient-capability`](../research/established-recipient-capability/REPORT.md).
+The primary-source classification and the exact boundary between these laws
+and Bombay constructions are summarized in the canonical
+[actor-transition algebra](../actor-transition-algebra.md) and
+[established-capabilities](../established-capabilities.md) contracts.
 
 ### Behavior Core laws
 

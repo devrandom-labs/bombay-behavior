@@ -4,17 +4,21 @@ use std::array;
 use std::collections::HashSet;
 use std::time::Instant;
 
-use behavior::{
-    Actions, Activate, Behavior, ChildHead, ChildStopped, CreationId, CreationSequence, Exit,
-    MailAddr, Never, NoBirths, ReportShutdownPlan, ShutdownCoordinator, ShutdownCoordinatorError,
-    ShutdownCoordinatorEvent, ShutdownPlan, ShutdownRequested, ShutdownState, Step, StopOnShutdown,
+use behavior_actors::{
+    Activate, ChildStopped, Exit, ReportShutdownPlan, ShutdownCoordinator,
+    ShutdownCoordinatorError, ShutdownCoordinatorEvent, ShutdownPlan, ShutdownRequested,
+    ShutdownState, StopOnShutdown,
+};
+
+use behavior_core::{
+    Actions, Behavior, ChildHead, CreationId, CreationSequence, MailAddr, Never, NoBirths, Step,
     User,
 };
 use libfuzzer_sys::fuzz_target;
 
 struct Probe;
 
-impl behavior::Protocol for Probe {
+impl behavior_core::Protocol for Probe {
     type Addr = MailAddr;
     type Msg = ();
 }
@@ -29,9 +33,9 @@ impl Behavior for Probe {
 
     fn transition(
         &mut self,
-        _: behavior::ActiveTurn,
+        _: behavior_core::ActiveTurn,
         _: Self::Event,
-    ) -> behavior::BehaviorActed<Self> {
+    ) -> behavior_core::BehaviorActed<Self> {
         Ok(Actions::cont())
     }
 }
