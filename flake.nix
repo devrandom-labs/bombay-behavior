@@ -50,6 +50,23 @@
             (craneLib.fileset.commonCargoSources ./.)
             ./.cargo/mutants.toml
             ./.config/nextest.toml
+            ./LICENSE-APACHE
+            ./LICENSE-MIT
+            ./README.md
+            ./.github/pages-index.html
+            ./crates/actors/LICENSE-APACHE
+            ./crates/actors/LICENSE-MIT
+            ./crates/actors/README.md
+            ./crates/behavior/LICENSE-APACHE
+            ./crates/behavior/LICENSE-MIT
+            ./crates/behavior/README.md
+            ./crates/behavior-macros/LICENSE-APACHE
+            ./crates/behavior-macros/LICENSE-MIT
+            ./crates/behavior-macros/README.md
+            ./docs
+            ./scripts/check_published_docs.py
+            ./scripts/test_check_published_docs.py
+            ./scripts/check_published_packages.sh
             (pkgs.lib.fileset.maybeMissing ./mutants-baseline.json)
           ];
         };
@@ -69,9 +86,27 @@
             inherit cargoArtifacts;
             cargoClippyExtraArgs = "--workspace --all-targets";
           });
-          bombay-behavior-doc = craneLib.cargoDoc (commonArgs // {
+          bombay-behavior-doc = craneLib.mkCargoDerivation (commonArgs // {
             inherit cargoArtifacts;
-            cargoDocExtraArgs = "--workspace --no-deps";
+            pnameSuffix = "-doc";
+            nativeBuildInputs = [ pkgs.mdbook pkgs.python3 ];
+            buildPhaseCargoCommand = ''
+              export RUSTDOCFLAGS="-D warnings"
+              cargo doc -p bombay-behavior -p bombay-behavior-actors --no-deps
+              mdbook build docs
+              cp .github/pages-index.html target/doc/index.html
+              python3 -m unittest scripts/test_check_published_docs.py
+              python3 scripts/check_published_docs.py target/doc
+            '';
+            doInstallCargoArtifacts = false;
+            doCheck = false;
+          });
+          bombay-behavior-doctest = craneLib.mkCargoDerivation (commonArgs // {
+            inherit cargoArtifacts;
+            pnameSuffix = "-doctest";
+            buildPhaseCargoCommand = "cargo test --workspace --doc";
+            doInstallCargoArtifacts = false;
+            doCheck = false;
           });
           bombay-behavior-fmt = craneLib.cargoFmt { inherit src; };
           bombay-behavior-toml-fmt = craneLib.taploFmt {
@@ -79,6 +114,14 @@
           };
           bombay-behavior-audit = craneLib.cargoAudit { inherit src advisory-db; };
           bombay-behavior-deny = craneLib.cargoDeny { inherit src; };
+          bombay-behavior-package = craneLib.mkCargoDerivation (commonArgs // {
+            inherit cargoArtifacts;
+            pnameSuffix = "-package";
+            buildPhaseCargoCommand =
+              "BOMBAY_PACKAGE_MODE=list bash scripts/check_published_packages.sh";
+            doInstallCargoArtifacts = false;
+            doCheck = false;
+          });
         };
 
         packages = rec {

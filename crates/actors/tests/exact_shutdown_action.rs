@@ -2,11 +2,14 @@
 
 use core::future::Future;
 
-use behavior_actors::{
+use behavior::{
     ActionItem, Actions, Address, Behavior, BehaviorActed, EndpointAddress, EstablishedActor, Here,
-    Ingress, InterpretEstablishedShutdown, InterpretItem, InterpretSends, Interpretation,
-    InterpreterRequests, ItemSettlement, Never, NoBirths, Protocol, SettledItem,
-    ShutdownEstablished, ShutdownId, ShutdownRejection, ShutdownRequested, StopOnShutdown, User,
+    Ingress, InterpretItem, InterpretSends, Interpretation, InterpreterRequests, ItemSettlement,
+    Never, NoBirths, Protocol, SettledItem, User,
+};
+use behavior_actors::{
+    InterpretEstablishedShutdown, ShutdownEstablished, ShutdownId, ShutdownRejection,
+    ShutdownRequested, StopOnShutdown,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -41,11 +44,7 @@ impl Behavior for Worker {
     type Error = Never;
     type Birth = NoBirths;
 
-    fn transition(
-        &mut self,
-        _: behavior_actors::ActiveTurn,
-        _: Self::Event,
-    ) -> BehaviorActed<Self> {
+    fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
         Ok(Actions::cont())
     }
 }

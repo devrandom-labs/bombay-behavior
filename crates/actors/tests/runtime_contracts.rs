@@ -4,14 +4,16 @@
 //! target retains the unrelated timer, observation, shutdown, and local-return
 //! contracts shared across the catalogue.
 
+use behavior::{
+    Actions, Behavior, BehaviorActed, Births, ChildHead, CreationId, CreationSequence, Here,
+    Ingress, InjectEvent, InterpreterRequest, MailAddr, Never, NoBirths, Recipient, User,
+};
 use behavior_actors::{
-    Actions, Behavior, BehaviorActed, Births, BreakerOutcome, ChildHead, ChildShutdownRejected,
-    ChildStopped, CircuitBreaker, CreationId, CreationResolved, CreationSequence, Deadline, Here,
-    Ingress, InjectEvent, InstallShutdownPlan, InterpreterRequest, Lease, LeaseOutcome, MailAddr,
-    Never, NoBirths, ObserveChild, ObserveCreation, ObservePeer, OneShot, PeerStopped, Periodic,
-    Presence, PresenceReply, ReceiveTimeout, Recipient, ScheduleAfter, ScheduleAt, ShutdownChild,
-    ShutdownCoordinator, ShutdownCoordinatorEvent, ShutdownPlan, ShutdownRequested, StopOnShutdown,
-    TerminationMonitor, TimerElapsed, User, Watch, WatchEvent,
+    BreakerOutcome, ChildShutdownRejected, ChildStopped, CircuitBreaker, CreationResolved,
+    Deadline, InstallShutdownPlan, Lease, LeaseOutcome, ObserveChild, ObserveCreation, ObservePeer,
+    OneShot, PeerStopped, Periodic, Presence, PresenceReply, ReceiveTimeout, ScheduleAfter,
+    ScheduleAt, ShutdownChild, ShutdownCoordinator, ShutdownCoordinatorEvent, ShutdownPlan,
+    ShutdownRequested, StopOnShutdown, TerminationMonitor, TimerElapsed, Watch, WatchEvent,
 };
 
 struct Inert;
@@ -29,11 +31,7 @@ impl Behavior for Inert {
     type Error = Never;
     type Birth = NoBirths;
 
-    fn transition(
-        &mut self,
-        _: behavior_actors::ActiveTurn,
-        _: Self::Event,
-    ) -> BehaviorActed<Self> {
+    fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
         Ok(Actions::cont())
     }
 }
@@ -74,11 +72,7 @@ impl Behavior for Parent {
     type Error = Never;
     type Birth = Births<StopOnShutdown<Inert>>;
 
-    fn transition(
-        &mut self,
-        _: behavior_actors::ActiveTurn,
-        _: Self::Event,
-    ) -> BehaviorActed<Self> {
+    fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
         Ok(Actions::cont())
     }
 }
@@ -143,8 +137,7 @@ fn shutdown_templates_accept_their_complete_inputs() {
 fn local_requests_return_to_the_emitting_actor() {
     fn returns_here<Request, Input>()
     where
-        Request:
-            InterpreterRequest<ReturnToEmitter = behavior_actors::ReturnsToEmitter<Input, Here>>,
+        Request: InterpreterRequest<ReturnToEmitter = behavior::ReturnsToEmitter<Input, Here>>,
     {
     }
 

@@ -1,9 +1,9 @@
 use std::hint::black_box;
 use std::time::Duration;
 
-use behavior::{
-    Acted, Actions, Machine, MailAddr, Move, Never, StashRoute, Step, stop_on_abnormal_death,
-};
+use behavior_actors::{Machine, Move, StashRoute, stop_on_abnormal_death};
+
+use behavior_core::{Acted, Actions, MailAddr, Never, Step};
 use behavior_testkit::InitializeTest;
 use std::time::Instant;
 
@@ -19,13 +19,13 @@ fn iterations(variable: &str, default: usize) -> usize {
 
 struct Sink(u64);
 
-#[behavior::behavior(addr = MailAddr, message = u64, sends = Vec<Never>, births = behavior::NoBirths, error = Never)]
+#[behavior_core::behavior(addr = MailAddr, message = u64, sends = Vec<Never>, births = behavior_core::NoBirths, error = Never)]
 impl Sink {
     fn receive(
         &mut self,
         _from: MailAddr,
         message: u64,
-    ) -> Acted<MailAddr, Never, Vec<Never>, behavior::NoBirths, Never> {
+    ) -> Acted<MailAddr, Never, Vec<Never>, behavior_core::NoBirths, Never> {
         self.0 = self.0.wrapping_add(message);
         Ok(Actions::cont())
     }
@@ -98,7 +98,7 @@ fn measure_fsm() -> f64 {
 /// the hot path without holding.
 fn measure_stash() -> f64 {
     let iterations = iterations("BOMBAY_BENCH_SHORT_ITERATIONS", SHORT_ITERATIONS);
-    let behavior = behavior::Stash::new(Sink(0), |_| StashRoute::Deliver);
+    let behavior = behavior_actors::Stash::new(Sink(0), |_| StashRoute::Deliver);
     let mut behavior = behavior.initialize().unwrap().behavior;
     let started = Instant::now();
     for index in 0..iterations {
@@ -120,13 +120,13 @@ fn measure_stash() -> f64 {
 fn measure_nested() -> f64 {
     let iterations = iterations("BOMBAY_BENCH_SHORT_ITERATIONS", SHORT_ITERATIONS);
     let due = Instant::now() + Duration::from_mins(1);
-    let behavior = behavior::Deadline::new(
-        behavior::Watch::new(
-            behavior::Stash::new(Sink(0), |_| StashRoute::Deliver),
+    let behavior = behavior_actors::Deadline::new(
+        behavior_actors::Watch::new(
+            behavior_actors::Stash::new(Sink(0), |_| StashRoute::Deliver),
             MailAddr(7),
             stop_on_abnormal_death,
         ),
-        behavior::TimerId(0),
+        behavior_actors::TimerId(0),
         Some(due),
         |_| Step::Continue,
     );

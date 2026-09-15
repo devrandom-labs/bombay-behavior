@@ -441,7 +441,7 @@ where
     type Ph = Never;
     type Error = BreakerError;
     type Birth = NoBirths;
-    fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+    fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
         match event {
             EventLayer::Inner(event) => match event.message {
                 BreakerMessage::Admit { reply_to } => Ok(self.admit(reply_to)),
@@ -482,12 +482,12 @@ mod tests {
 
     impl Behavior for Reply {
         type Protocol = Self;
-        type Event = User<MailAddr, crate::BehaviorMessage<Self>>;
+        type Event = User<MailAddr, behavior::BehaviorMessage<Self>>;
         type Sends = Vec<Never>;
         type Ph = Never;
         type Error = Never;
         type Birth = NoBirths;
-        fn transition(&mut self, _: crate::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
+        fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
             Ok(Actions::cont())
         }
     }
@@ -539,7 +539,7 @@ mod tests {
         ));
         assert!(first_failure.sends.schedules.is_empty());
         assert!(first_failure.creates.is_empty());
-        assert_eq!(first_failure.become_, crate::Step::Continue);
+        assert_eq!(first_failure.become_, behavior::Step::Continue);
         let second = admit(&mut subject);
         let opened = subject
             .receive(MailAddr(0), BreakerMessage::Failed { attempt: second })
@@ -561,7 +561,7 @@ mod tests {
         assert!(elapsed.sends.replies.is_empty());
         assert!(elapsed.sends.schedules.is_empty());
         assert!(elapsed.creates.is_empty());
-        assert_eq!(elapsed.become_, crate::Step::Continue);
+        assert_eq!(elapsed.become_, behavior::Step::Continue);
         let probe = admit(&mut subject);
         assert_eq!(probe, BreakerAttempt(2));
         let busy = subject

@@ -78,7 +78,7 @@ where
     }
 }
 
-impl<A, S, M, P, E> crate::BehaviorBase for Machine<A, S, M, P, E>
+impl<A, S, M, P, E> behavior::BehaviorBase for Machine<A, S, M, P, E>
 where
     A: Address,
     P: Copy + PartialEq,
@@ -185,14 +185,14 @@ where
 
     fn init(
         &mut self,
-        _: crate::InitializationTurn,
+        _: behavior::InitializationTurn,
     ) -> Result<Actions<A, Never, Self::Sends, NoBirths>, Self::Error> {
         Ok(Actions::cont())
     }
 
     fn transition(
         &mut self,
-        _: crate::ActiveTurn,
+        _: behavior::ActiveTurn,
         event: Self::Event,
     ) -> Result<Actions<A, Never, Self::Sends, NoBirths>, Self::Error> {
         let mut staged = self.clone();

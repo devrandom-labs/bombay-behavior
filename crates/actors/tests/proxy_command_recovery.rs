@@ -2,6 +2,13 @@
 
 use std::time::{Duration, Instant};
 
+use behavior::{
+    ActionItem, Actions, ActiveTurn, Address, Behavior, BehaviorActed, ChildCreationOutcome,
+    ChildHead, ChildNamespaceExhausted, CreateChild, CreationRejection, CreationSequence,
+    CreationSettlement, CreationsSettled, EndpointAddress, EstablishedCreation,
+    EstablishedRecipient, ItemSettlement, Never, NoBirths, Protocol, RoutedCreation, SettledItem,
+    Step, User,
+};
 use behavior_actors::atomic::{
     ActivationPlan, ActivationStartRejection, BeginActivation, ImmediateActivation,
     InitialWorkerOutcome, InitializeWorker, ProxyControl, ProxyDiagnostic, ProxyDrain,
@@ -10,12 +17,8 @@ use behavior_actors::atomic::{
     WorkerInitializationReport, WorkerStartResult,
 };
 use behavior_actors::{
-    ActionItem, Actions, Activate as _, Active, ActiveTurn, Address, Behavior, BehaviorActed,
-    ChildCreationOutcome, ChildHead, ChildNamespaceExhausted, ChildStopped, CreateChild,
-    CreationRejection, CreationSequence, CreationSettlement, CreationsSettled, EndpointAddress,
-    EstablishedCreation, EstablishedRecipient, EstablishedShutdownResolved, Exit, ItemSettlement,
-    Never, NoBirths, ObserveChild, Protocol, RoutedCreation, SettledItem, ShutdownId, Step,
-    StopOnShutdown, User,
+    Activate as _, Active, ChildStopped, EstablishedShutdownResolved, Exit, ObserveChild,
+    ShutdownId, StopOnShutdown,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

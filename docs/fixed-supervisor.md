@@ -62,7 +62,7 @@ Construction either returns one supervisor owning every prepared role and
 submission, or returns `FixedConstructionRejected`. Its `workers` value is the
 shared `InitialWorkerRejection`: the function, accepted prefix, rejected role
 and reason, and unexamined suffix. The shared representation is owned by
-[`atomic-actor-architecture.md`](atomic-actor-architecture.md); this document
+[`atomic-actor-architecture.md`](engineering/atomic-actor-architecture.md); this document
 owns only fixed-supervisor construction policy. A duplicate role is rejected by
 `OrderedRoles` before the supervisor exists.
 
@@ -308,5 +308,5 @@ composition requirement, not permission to add a FixedSupervisor-specific
 driver, detached task, mailbox, settlement adapter, or callback.
 
 Canonical construction and application syntax are owned by
-[`atomic-actor-devx.md`](atomic-actor-devx.md). Verification ownership is mapped
-in [`atomic-actor-verification.md`](atomic-actor-verification.md).
+[`atomic-actor-devx.md`](engineering/atomic-actor-devx.md). Verification ownership is mapped
+in [`atomic-actor-verification.md`](engineering/atomic-actor-verification.md).

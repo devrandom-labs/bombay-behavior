@@ -1,10 +1,11 @@
 use std::collections::{BTreeMap, VecDeque};
 
-use behavior::{
-    Actions, Activate, Behavior, BehaviorActed, Deduplicator, DeduplicatorMessage,
-    DeduplicatorOutcome, MailAddr, Never, NoBirths, OrderGate, OrderGateMessage, Recipient,
-    Sequence, Sequencer, SequencerMessage, SequencerState, User,
+use behavior_actors::{
+    Activate, Deduplicator, DeduplicatorMessage, DeduplicatorOutcome, OrderGate, OrderGateMessage,
+    Sequence, Sequencer, SequencerMessage, SequencerState,
 };
+
+use behavior_core::{Actions, Behavior, BehaviorActed, MailAddr, Never, NoBirths, Recipient, User};
 use proptest::collection::vec;
 use proptest::prelude::*;
 
@@ -15,14 +16,14 @@ struct GateReply;
 
 macro_rules! leaf {
     ($name:ident, $message:ty) => {
-        impl behavior::Protocol for $name {
+        impl behavior_core::Protocol for $name {
             type Addr = MailAddr;
             type Msg = $message;
         }
 
         impl Behavior for $name {
             type Protocol = Self;
-            type Event = User<MailAddr, behavior::BehaviorMessage<Self>>;
+            type Event = User<MailAddr, behavior_core::BehaviorMessage<Self>>;
             type Sends = Vec<Never>;
             type Ph = Never;
             type Error = Never;
@@ -30,7 +31,7 @@ macro_rules! leaf {
 
             fn transition(
                 &mut self,
-                _: behavior::ActiveTurn,
+                _: behavior_core::ActiveTurn,
                 _: Self::Event,
             ) -> BehaviorActed<Self> {
                 Ok(Actions::cont())
@@ -40,9 +41,9 @@ macro_rules! leaf {
 }
 
 leaf!(ByteTarget, u8);
-leaf!(SequenceReply, behavior::SequencerOutcome<u8>);
+leaf!(SequenceReply, behavior_actors::SequencerOutcome<u8>);
 leaf!(DedupReply, DeduplicatorOutcome<u8, u8>);
-leaf!(GateReply, behavior::OrderGateOutcome<u8, u8>);
+leaf!(GateReply, behavior_actors::OrderGateOutcome<u8, u8>);
 
 #[derive(Default)]
 struct SequenceOracle {

@@ -49,7 +49,6 @@ behavior and event/effect algebra.
 |---|---|---|
 | `Recipient<P>` | logical address with canonical protocol `P` | yes |
 | `Delivery<P>` | logical recipient plus `P::Msg` | yes |
-| `ChildRoute<C, O>` | staged route for concrete child `C` at occurrence `O` | no address exists yet |
 | `ChildDelivery<P, O>` | message to a committed local occurrence/nonce binding | no protocol-wide lookup |
 | `EstablishedRecipient<P>` | exact installed endpoint for `P` | no |
 | `EstablishedDelivery<P>` | exact endpoint plus `P::Msg` | no |

@@ -4,9 +4,10 @@
 //! intact; Stash-routed messages are held, never lost, never duplicated,
 //! across any number of release events.
 
-use behavior::{
-    Acted, Actions, Activate, Behavior, Delivery, MailAddr, Never, Recipient, StashRoute, Step,
-    User, UserEvent,
+use behavior_actors::{Activate, StashRoute};
+
+use behavior_core::{
+    Acted, Actions, Behavior, Delivery, MailAddr, Never, Recipient, Step, User, UserEvent,
 };
 use behavior_testkit::Mailbox;
 use proptest::collection::vec;
@@ -15,7 +16,7 @@ use tokio::runtime::Builder;
 
 struct Sink;
 
-impl behavior::Protocol for Sink {
+impl behavior_core::Protocol for Sink {
     type Addr = MailAddr;
     type Msg = u8;
 }
@@ -26,17 +27,17 @@ impl Behavior for Sink {
     type Sends = Vec<Never>;
     type Ph = Never;
     type Error = Never;
-    type Birth = behavior::NoBirths;
+    type Birth = behavior_core::NoBirths;
 
-    fn init(&mut self, _: behavior::InitializationTurn) -> behavior::BehaviorActed<Self> {
+    fn init(&mut self, _: behavior_core::InitializationTurn) -> behavior_core::BehaviorActed<Self> {
         Ok(Actions::cont())
     }
 
     fn transition(
         &mut self,
-        _: behavior::ActiveTurn,
+        _: behavior_core::ActiveTurn,
         _: Self::Event,
-    ) -> behavior::BehaviorActed<Self> {
+    ) -> behavior_core::BehaviorActed<Self> {
         Ok(Actions::cont())
     }
 }
@@ -46,17 +47,17 @@ struct Recorder {
     seen: Vec<(MailAddr, u8)>,
 }
 
-#[behavior::behavior(addr = MailAddr, message = u8, sends = Vec<Delivery<Sink>>, births = behavior::NoBirths, error = Never)]
+#[behavior_core::behavior(addr = MailAddr, message = u8, sends = Vec<Delivery<Sink>>, births = behavior_core::NoBirths, error = Never)]
 impl Recorder {
     fn receive(
         &mut self,
         from: MailAddr,
         message: u8,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<Sink>>, behavior::NoBirths, Never> {
+    ) -> Acted<MailAddr, Never, Vec<Delivery<Sink>>, behavior_core::NoBirths, Never> {
         self.seen.push((from, message));
         Ok(Actions {
             sends: vec![Delivery::new(Recipient::global(from), message)],
-            creates: behavior::Creations::empty(),
+            creates: behavior_core::Creations::empty(),
             become_: Step::Continue,
         })
     }
@@ -87,7 +88,7 @@ proptest! {
         releases in vec(any::<u8>(), 0..32),
     ) {
         let _runtime = Builder::new_current_thread().enable_all().build().unwrap();
-        let behavior = behavior::Stash::new(Recorder::default(), route);
+        let behavior = behavior_actors::Stash::new(Recorder::default(), route);
         let initialized = behavior.initialize().unwrap();
         let mut behavior = initialized.behavior;
         let mut effect_trace = Vec::new();
@@ -158,7 +159,7 @@ async fn stash_filter_holds_through_the_driver() {
         User::user(MailAddr(4), 4), // Stash
     ];
     let mut mailbox = Mailbox::new(events);
-    let behavior = behavior::Stash::new(Recorder::default(), route);
+    let behavior = behavior_actors::Stash::new(Recorder::default(), route);
     let trace = behavior_testkit::drive(behavior, &mut mailbox).unwrap();
 
     assert_eq!(
@@ -198,7 +199,7 @@ fn stash_exhaustive_sequences_match_the_filter_model() {
     while length <= MAX_LENGTH {
         let total = ALPHABET.pow(u32::try_from(length).unwrap());
         for code in 0..total {
-            let behavior = behavior::Stash::new(Recorder::default(), residue_route);
+            let behavior = behavior_actors::Stash::new(Recorder::default(), residue_route);
             let initialized = behavior.initialize().unwrap();
             let mut behavior = initialized.behavior;
             let mut effect_trace = Vec::new();
@@ -251,19 +252,19 @@ struct StopRecorder {
     seen: Vec<(MailAddr, u8)>,
 }
 
-#[behavior::behavior(addr = MailAddr, message = u8, sends = Vec<Delivery<Sink>>, births = behavior::NoBirths, error = Never)]
+#[behavior_core::behavior(addr = MailAddr, message = u8, sends = Vec<Delivery<Sink>>, births = behavior_core::NoBirths, error = Never)]
 impl StopRecorder {
     fn receive(
         &mut self,
         from: MailAddr,
         message: u8,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<Sink>>, behavior::NoBirths, Never> {
+    ) -> Acted<MailAddr, Never, Vec<Delivery<Sink>>, behavior_core::NoBirths, Never> {
         self.seen.push((from, message));
         Ok(Actions {
             sends: vec![Delivery::new(Recipient::global(from), message)],
-            creates: behavior::Creations::empty(),
+            creates: behavior_core::Creations::empty(),
             become_: if message == 9 {
-                Step::Stop(behavior::Stopped)
+                Step::Stop(behavior_core::Stopped)
             } else {
                 Step::Continue
             },
@@ -277,7 +278,7 @@ impl StopRecorder {
 #[test]
 fn stash_filter_with_a_stopping_inner_matches_the_prefix_model() {
     let runtime = Builder::new_current_thread().enable_all().build().unwrap();
-    let behavior = behavior::Stash::new(StopRecorder::default(), route);
+    let behavior = behavior_actors::Stash::new(StopRecorder::default(), route);
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
     let mut stopped = false;
@@ -289,7 +290,7 @@ fn stash_filter_with_a_stopping_inner_matches_the_prefix_model() {
         let actions = runtime
             .block_on(async { behavior.transition(UserEvent::user(from, message)) })
             .unwrap();
-        if matches!(actions.become_, Step::Stop(behavior::Stopped)) {
+        if matches!(actions.become_, Step::Stop(behavior_core::Stopped)) {
             stopped = true;
         }
     }

@@ -1,7 +1,8 @@
-use behavior_actors::{
-    ActionItem, ChildHead, ChildStopped, CreationCorrelation, CreationSequence, Here,
-    InterpreterRequest, MailAddr, Never, ObserveChild, Protocol, ReturnsToEmitter,
+use behavior::{
+    ActionItem, ChildHead, CreationCorrelation, CreationSequence, Here, InterpreterRequest,
+    MailAddr, Never, Protocol, ReturnsToEmitter,
 };
+use behavior_actors::{ChildStopped, ObserveChild};
 
 struct Worker;
 

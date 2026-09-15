@@ -14,15 +14,16 @@ use core::ops::ControlFlow;
 use std::collections::BTreeMap;
 use std::time::Duration;
 
-use behavior::atomic::{
+use behavior_actors::atomic::{
     CapabilityResult, DiagnosticAction, FixedCommand, FixedDiagnostic, FixedSupervisor,
     FixedSupervisorEvent, ImmediateActivation, ProxyControl, ProxyInputReceipt, ProxyOperationId,
     ProxyOutcome, Recovery, RestartLimit, RestartRelease, StableProxy, Strategy, UnavailablePhase,
     WorkerAttempt, WorkerSource, WorkerSubmission,
 };
-use behavior::{
-    Active, ChildReport, CreationId, EstablishedActor, EstablishedRecipient, ItemSettlement,
-    MessageProtocol, Never, Recipient, ReplyDelivery, SendSettlements, SettledItem, Step,
+use behavior_actors::{Active, ReplyDelivery};
+use behavior_core::{
+    ChildReport, CreationId, EstablishedActor, EstablishedRecipient, ItemSettlement,
+    MessageProtocol, Never, Recipient, SendSettlements, SettledItem, Step,
 };
 use libfuzzer_sys::fuzz_target;
 use roster::{ReadyMember, Role, ready_three_role_roster};

@@ -5,13 +5,13 @@
 )]
 
 use behavior::{
-    Acted, Actions, ChildStopped, CreationSequence, DeadlineEvent, EventLayer, Exit, Here,
-    InjectEvent, Inside, InterpreterRequests, MailAddr, Never, ObservePeer, PeerStopped,
-    ReceiveTimeoutEvent, Recipient, ScheduleAfter, ScheduleAt, SendEffects, SendLayer,
-    ShutdownEvent, ShutdownRequested, TimerElapsed, TimerGeneration, TimerId, UnwatchPeer, User,
-    UserEvent, WatchEvent,
+    Acted, Actions, CreationSequence, EventLayer, Here, InjectEvent, Inside, InterpreterRequests,
+    MailAddr, Never, Recipient, SendEffects, SendLayer, User, UserEvent,
 };
-use behavior_actors as behavior;
+use behavior_actors::{
+    ChildStopped, Exit, ObservePeer, PeerStopped, ScheduleAfter, ScheduleAt, ShutdownEvent,
+    ShutdownRequested, TimedEvent, TimerElapsed, TimerGeneration, TimerId, UnwatchPeer, WatchEvent,
+};
 use std::time::Duration;
 use std::time::Instant;
 
@@ -99,13 +99,12 @@ fn child() -> ChildStopped<MailAddr> {
     reason = "one mutation contract exhaustively checks every environment lane"
 )]
 fn structural_paths_select_owners_without_forwarding_lists() {
-    let deadline = <DeadlineEvent<Lane> as InjectEvent<_, Inside<Here>>>::inject_at(peer());
+    let deadline = <TimedEvent<Lane> as InjectEvent<_, Inside<Here>>>::inject_at(peer());
     assert!(matches!(deadline, EventLayer::Inner(Lane::Peer(_))));
 
-    let timeout = <ReceiveTimeoutEvent<Lane> as InjectEvent<_, Here>>::inject_at(elapsed());
+    let timeout = <TimedEvent<Lane> as InjectEvent<_, Here>>::inject_at(elapsed());
     assert!(matches!(timeout, EventLayer::Owned(_)));
-    let nested_timeout =
-        <ReceiveTimeoutEvent<Lane> as InjectEvent<_, Inside<Here>>>::inject_at(peer());
+    let nested_timeout = <TimedEvent<Lane> as InjectEvent<_, Inside<Here>>>::inject_at(peer());
     assert!(matches!(nested_timeout, EventLayer::Inner(Lane::Peer(_))));
 
     let shutdown = <ShutdownEvent<Lane> as InjectEvent<_, Here>>::inject_at(ShutdownRequested);

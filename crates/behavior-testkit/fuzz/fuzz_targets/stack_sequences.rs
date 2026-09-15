@@ -5,11 +5,14 @@
 //! the stash filter, peer-death verdict, and one-shot deadline without an atomic
 //! actor wrapper.
 
-use behavior::EventLayer;
-use behavior::{
-    Actions, Activate, Behavior, BehaviorActed, BehaviorBase, Crash, Delivery, MailAddr, Never,
-    NoBirths, PeerStopped, Recipient, StashRoute, Step, TimerElapsed, TimerGeneration, TimerId,
-    User, UserEvent, stop_on_abnormal_death,
+use behavior_actors::{
+    Activate, Crash, PeerStopped, StashRoute, TimerElapsed, TimerGeneration, TimerId,
+    stop_on_abnormal_death,
+};
+use behavior_core::EventLayer;
+use behavior_core::{
+    Actions, Behavior, BehaviorActed, BehaviorBase, Delivery, MailAddr, Never, NoBirths, Recipient,
+    Step, User, UserEvent,
 };
 use libfuzzer_sys::fuzz_target;
 use std::time::Instant;
@@ -19,7 +22,7 @@ struct EchoingParent {
     seen: Vec<u64>,
 }
 
-impl behavior::Protocol for EchoingParent {
+impl behavior_core::Protocol for EchoingParent {
     type Addr = MailAddr;
     type Msg = u64;
 }
@@ -40,7 +43,11 @@ impl Behavior for EchoingParent {
     type Error = Never;
     type Birth = NoBirths;
 
-    fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+    fn transition(
+        &mut self,
+        _: behavior_core::ActiveTurn,
+        event: Self::Event,
+    ) -> BehaviorActed<Self> {
         self.seen.push(event.message);
         Ok(Actions::cont().with_send(Delivery::new(Recipient::global(MailAddr(0)), event.message)))
     }
@@ -57,13 +64,13 @@ fn route(message: &u64) -> StashRoute {
 fuzz_target!(|bytes: &[u8]| {
     let due = Instant::now() + std::time::Duration::from_secs(1);
     let peer = MailAddr(44);
-    let behavior = behavior::Deadline::new(
-        behavior::Watch::new(
-            behavior::Stash::new(EchoingParent::default(), route),
+    let behavior = behavior_actors::Deadline::new(
+        behavior_actors::Watch::new(
+            behavior_actors::Stash::new(EchoingParent::default(), route),
             peer,
             stop_on_abnormal_death,
         ),
-        behavior::TimerId(0),
+        behavior_actors::TimerId(0),
         Some(due),
         |_| Step::Continue,
     );
@@ -102,7 +109,7 @@ fuzz_target!(|bytes: &[u8]| {
                     })))
                     .unwrap();
                 assert!(
-                    matches!(actions.become_, Step::Stop(behavior::Stopped)),
+                    matches!(actions.become_, Step::Stop(behavior_core::Stopped)),
                     "peer death verdict at byte {index}"
                 );
             }

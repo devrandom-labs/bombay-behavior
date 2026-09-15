@@ -80,9 +80,9 @@ queue, workflow, or domain actor remains a peer whose own transition law is
 connected through a typed transferable capability.
 
 The short responsibility map is
-[`atomic-actor-architecture.md`](atomic-actor-architecture.md). The sole
+[`atomic-actor-architecture.md`](engineering/atomic-actor-architecture.md). The sole
 application-facing construction and worker-authoring syntax is
-[`atomic-actor-devx.md`](atomic-actor-devx.md); this composition guide does not
+[`atomic-actor-devx.md`](engineering/atomic-actor-devx.md); this composition guide does not
 repeat either specification.
 
 ## Choose the owner of the law
@@ -326,6 +326,6 @@ meant to prove.
 ## Audit record
 
 The complete catalogue classification and change ledger are in
-[Actor-template composition audit](template-composition-audit.md). The broader
+[Actor-template composition audit](engineering/template-composition-audit.md). The broader
 capability and adversarial-test record remains in
-[Behavior Actors template-law audit](template-law-audit.md).
+[Behavior Actors template-law audit](engineering/template-law-audit.md).

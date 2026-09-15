@@ -118,7 +118,7 @@ impl<K: core::fmt::Debug, D: Protocol> core::fmt::Debug for RegistryError<K, D> 
 ///
 /// State is a sequence of unique key/recipient bindings. Inputs are
 /// [`RegistryMessage`] values and lookup outputs are one typed
-/// [`crate::Delivery`]. Initialization is empty. Duplicate bind, absent
+/// [`behavior::Delivery`]. Initialization is empty. Duplicate bind, absent
 /// unbind, and stale unbind are explicit errors and leave state unchanged.
 /// Lookups never fail: absence is a factual [`RegistryResult::Missing`]. The
 /// actor does not terminate by policy. Ordering and conflict behavior are
@@ -200,13 +200,13 @@ where
     Route::Sends: behavior::SendsFor<User<A, RegistryMessage<K, D, Route>>>,
 {
     type Protocol = Self;
-    type Event = User<A, crate::BehaviorMessage<Self>>;
+    type Event = User<A, behavior::BehaviorMessage<Self>>;
     type Sends = Route::Sends;
     type Ph = Never;
     type Error = RegistryError<K, D>;
     type Birth = NoBirths;
 
-    fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+    fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
         match event.message {
             RegistryMessage::Bind { key, recipient } => {
                 if let Some((_, current)) = self.bindings.iter().find(|(bound, _)| *bound == key) {
@@ -274,7 +274,7 @@ mod tests {
         type Error = Never;
         type Birth = NoBirths;
 
-        fn transition(&mut self, _: crate::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
+        fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
             Ok(Actions::cont())
         }
     }
@@ -286,13 +286,13 @@ mod tests {
 
     impl Behavior for Reply {
         type Protocol = Self;
-        type Event = User<MailAddr, crate::BehaviorMessage<Self>>;
+        type Event = User<MailAddr, behavior::BehaviorMessage<Self>>;
         type Sends = Vec<Never>;
         type Ph = Never;
         type Error = Never;
         type Birth = NoBirths;
 
-        fn transition(&mut self, _: crate::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
+        fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
             Ok(Actions::cont())
         }
     }
@@ -356,7 +356,7 @@ mod tests {
             .unwrap();
         assert!(unbound.sends.is_empty());
         assert!(unbound.creates.is_empty());
-        assert_eq!(unbound.become_, crate::Step::Continue);
+        assert_eq!(unbound.become_, behavior::Step::Continue);
         assert!(registry.bindings().is_empty());
     }
 
@@ -376,7 +376,7 @@ mod tests {
             .unwrap();
         assert!(bound.sends.is_empty());
         assert!(bound.creates.is_empty());
-        assert_eq!(bound.become_, crate::Step::Continue);
+        assert_eq!(bound.become_, behavior::Step::Continue);
 
         let found = registry
             .receive(

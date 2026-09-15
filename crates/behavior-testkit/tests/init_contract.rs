@@ -2,7 +2,9 @@
 
 use std::time::{Duration, Instant};
 
-use behavior::{Acted, Actions, Activate, Delivery, MailAddr, Never, Recipient, Step};
+use behavior_actors::Activate;
+
+use behavior_core::{Acted, Actions, Delivery, MailAddr, Never, Recipient, Step};
 use proptest::collection::vec;
 use proptest::prelude::ProptestConfig;
 use proptest::{prop_assert_eq, proptest};
@@ -12,7 +14,7 @@ struct Recorder {
     seen: Vec<(MailAddr, u8)>,
 }
 
-#[behavior::behavior(addr = MailAddr, message = u8, sends = Vec<Delivery<behavior_testkit::TestRecipient<u8>>>, births = behavior::NoBirths, error = Never)]
+#[behavior_core::behavior(addr = MailAddr, message = u8, sends = Vec<Delivery<behavior_testkit::TestRecipient<u8>>>, births = behavior_core::NoBirths, error = Never)]
 impl Recorder {
     fn receive(
         &mut self,
@@ -22,7 +24,7 @@ impl Recorder {
         MailAddr,
         Never,
         Vec<Delivery<behavior_testkit::TestRecipient<u8>>>,
-        behavior::NoBirths,
+        behavior_core::NoBirths,
         Never,
     > {
         self.seen.push((from, message));
@@ -36,10 +38,12 @@ impl Recorder {
 #[test]
 fn deadline_initialization_emits_exactly_one_schedule() {
     let due = Instant::now() + Duration::from_secs(1);
-    let deadline =
-        behavior::Deadline::new(Recorder::default(), behavior::TimerId(0), Some(due), |_| {
-            Step::Continue
-        });
+    let deadline = behavior_actors::Deadline::new(
+        Recorder::default(),
+        behavior_actors::TimerId(0),
+        Some(due),
+        |_| Step::Continue,
+    );
     let initialized = deadline.initialize().expect("deadline initializes");
     assert_eq!(initialized.actions.sends.owned.len(), 1);
 }
@@ -75,9 +79,9 @@ proptest! {
 
         for offset in offsets {
             let due = origin + Duration::from_nanos(offset);
-            let initialized = behavior::Deadline::new(
+            let initialized = behavior_actors::Deadline::new(
                 Recorder::default(),
-                behavior::TimerId(0),
+                behavior_actors::TimerId(0),
                 Some(due),
                 |_| Step::Continue,
             )

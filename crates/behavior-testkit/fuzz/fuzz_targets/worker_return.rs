@@ -1,6 +1,6 @@
 //! Independent model of the exact worker-stop and shutdown-receipt join.
 
-use behavior::{CreationId, CreationSequence};
+use behavior_core::{CreationId, CreationSequence};
 
 #[derive(Clone, Copy)]
 pub(crate) enum WorkerReturnInput {

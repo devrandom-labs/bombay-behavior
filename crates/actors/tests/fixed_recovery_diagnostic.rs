@@ -1,12 +1,13 @@
 use core::num::NonZeroUsize;
 use std::time::Instant;
 
+use behavior::{
+    Address, Behavior, BehaviorActed, EndpointAddress, MessageProtocol, Never, NoBirths, NoSends,
+    Protocol, User,
+};
+use behavior_actors::ChildStopped;
 use behavior_actors::atomic::{
     FixedDiagnostic, RecoveryDenialReason, RecoveryDenied, RestartReleaseFailure,
-};
-use behavior_actors::{
-    Address, Behavior, BehaviorActed, ChildStopped, EndpointAddress, MessageProtocol, Never,
-    NoBirths, NoSends, Protocol, User,
 };
 
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -39,11 +40,7 @@ impl Behavior for SearchWorker {
     type Error = Never;
     type Birth = NoBirths;
 
-    fn transition(
-        &mut self,
-        _: behavior_actors::ActiveTurn,
-        event: Self::Event,
-    ) -> BehaviorActed<Self> {
+    fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
         match event.message {}
     }
 }
@@ -97,10 +94,10 @@ fn accepts_inspector(_: fn(&RecoveryDenied<SearchRole, SearchWorker>)) {}
 #[test]
 fn diagnostic_route_names_only_domain_types() {
     accepts_inspector(inspect);
-    let _diagnostic_route: behavior_actors::EstablishedRecipient<
+    let _diagnostic_route: behavior::EstablishedRecipient<
         MessageProtocol<
             RuntimeAddr,
             FixedDiagnostic<SearchRole, SearchWorker, SearchPlan, SearchSource>,
         >,
-    > = behavior_actors::EstablishedRecipient::issued(Endpoint);
+    > = behavior::EstablishedRecipient::issued(Endpoint);
 }

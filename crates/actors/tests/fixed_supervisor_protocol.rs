@@ -1,5 +1,5 @@
+use behavior::{Address, EndpointAddress, EstablishedRecipient, Protocol, Recipient};
 use behavior_actors::atomic::FixedCommand;
-use behavior_actors::{Address, EndpointAddress, EstablishedRecipient, Protocol, Recipient};
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 struct RuntimeAddress(u64);

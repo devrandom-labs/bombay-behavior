@@ -1,8 +1,9 @@
 //! Controlled-error attacks for `Machine` and the testkit driver.
 
-use behavior::{
-    Actions, Behavior, BehaviorActed, Machine, MailAddr, Move, Never, NoBirths, Step, User,
-    UserEvent,
+use behavior_actors::{Machine, Move};
+
+use behavior_core::{
+    Actions, Behavior, BehaviorActed, MailAddr, Never, NoBirths, Step, User, UserEvent,
 };
 use behavior_testkit::{Mailbox, drive};
 
@@ -18,7 +19,7 @@ fn assert_machine_continue(actions: &Actions<MailAddr, Never, Vec<Never>, NoBirt
 
 struct RejectInput;
 
-impl behavior::Protocol for RejectInput {
+impl behavior_core::Protocol for RejectInput {
     type Addr = MailAddr;
     type Msg = u64;
 }
@@ -31,7 +32,7 @@ impl Behavior for RejectInput {
     type Error = Boom;
     type Birth = NoBirths;
 
-    fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
+    fn transition(&mut self, _: behavior_core::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
         Err(Boom)
     }
 }
@@ -66,7 +67,7 @@ async fn fsm_error_mid_drain_preserves_the_unprocessed_batch() {
     let result = machine.transition(User::user(MailAddr(0), 0));
     assert!(matches!(
         result,
-        Err(behavior::MachineError {
+        Err(behavior_actors::MachineError {
             event: User {
                 from: MailAddr(0),
                 message: 0
@@ -117,7 +118,7 @@ async fn fsm_direct_step_error_keeps_held_intact() {
     let result = machine.transition(User::user(MailAddr(0), 1));
     assert!(matches!(
         result,
-        Err(behavior::MachineError {
+        Err(behavior_actors::MachineError {
             event: User {
                 from: MailAddr(0),
                 message: 1
@@ -175,7 +176,7 @@ async fn fsm_error_mid_drain_rolls_back_the_complete_staged_drain() {
     let result = machine.transition(User::user(MailAddr(0), 0));
     assert!(matches!(
         result,
-        Err(behavior::MachineError {
+        Err(behavior_actors::MachineError {
             event: User {
                 from: MailAddr(0),
                 message: 0

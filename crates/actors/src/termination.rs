@@ -1,6 +1,6 @@
 //! Typed lifecycle outcomes used by reusable actor compositions.
 
-use crate::Address;
+use behavior::Address;
 
 /// The authoritative terminal fact for one exact actor incarnation.
 ///
@@ -28,9 +28,9 @@ pub enum Exit<A: Address> {
 pub enum SupervisionFailureReason {
     RestartDenied(RestartDenial),
     StableChildStopped,
-    StableChildCreationRejected(crate::CreationRejection),
+    StableChildCreationRejected(behavior::CreationRejection),
     WorkerFactoryRejected,
-    WorkerCreationRejected(crate::CreationRejection),
+    WorkerCreationRejected(behavior::CreationRejection),
 }
 
 /// Why an otherwise eligible replacement set was denied.

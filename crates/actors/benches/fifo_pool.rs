@@ -2,16 +2,17 @@ use std::convert::Infallible;
 use std::hint::black_box;
 use std::time::{Duration, Instant};
 
+use behavior::{
+    Actions, Address, ChildCreationOutcome, ChildHead, ChildReport, CreationSettlement,
+    CreationsSettled, EndpointAddress, EstablishedCreation, EstablishedRecipient, ItemSettlement,
+    MessageProtocol, Never, Protocol, Recipient, SettledItem, Step,
+};
 use behavior_actors::atomic::{
     ActivationPolicy, ActorDrainPolicy, Assignment, BacklogCapacity, DiagnosticDisposition,
     FifoCommand, FifoEvent, FifoOutcome, ImmediateActivation, Interruption, OrderedRoles,
     PoolFailureReaction, PoolRecovery, SubmissionId, WorkerSubmission, fifo, pool_worker,
 };
-use behavior_actors::{
-    Actions, Activate, Address, ChildCreationOutcome, ChildHead, ChildReport, CreationSettlement,
-    CreationsSettled, EndpointAddress, EstablishedCreation, EstablishedRecipient, ItemSettlement,
-    MessageProtocol, Never, Protocol, Recipient, SettledItem, Step, StopOnShutdown,
-};
+use behavior_actors::{Activate, StopOnShutdown};
 
 const DEFAULT_ITERATIONS: usize = 100_000;
 

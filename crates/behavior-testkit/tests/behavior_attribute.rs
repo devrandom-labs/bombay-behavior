@@ -1,9 +1,11 @@
-use behavior::{Actions, Behavior, Delivery, MailAddr, Never, NoBirths, Recipient, SendEffects};
+use behavior_core::{
+    Actions, Behavior, Delivery, MailAddr, Never, NoBirths, Recipient, SendEffects,
+};
 use behavior_testkit::InitializeTest;
 
 struct Printer(u64);
 
-#[behavior::behavior(
+#[behavior_core::behavior(
     addr = MailAddr,
     message = u64,
     sends = {
@@ -11,7 +13,7 @@ struct Printer(u64);
     },
 )]
 impl Printer {
-    fn receive(&mut self, from: MailAddr, message: u64) -> behavior::BehaviorActed<Self> {
+    fn receive(&mut self, from: MailAddr, message: u64) -> behavior_core::BehaviorActed<Self> {
         self.0 += message;
         let mut sends = PrinterSends::empty();
         sends.send::<_, PrinterSendsReplies>(Delivery::new(Recipient::global(from), self.0));
@@ -23,7 +25,7 @@ struct Counter {
     total: u64,
 }
 
-#[behavior::behavior(
+#[behavior_core::behavior(
     addr = MailAddr,
     message = u64,
     sends = Vec<Delivery<behavior_testkit::TestRecipient<u64>>>,
@@ -33,7 +35,7 @@ struct Counter {
 impl Counter {
     fn init(
         &mut self,
-    ) -> behavior::Acted<
+    ) -> behavior_core::Acted<
         MailAddr,
         Never,
         Vec<Delivery<behavior_testkit::TestRecipient<u64>>>,
@@ -48,7 +50,7 @@ impl Counter {
         &mut self,
         from: MailAddr,
         message: u64,
-    ) -> behavior::Acted<
+    ) -> behavior_core::Acted<
         MailAddr,
         Never,
         Vec<Delivery<behavior_testkit::TestRecipient<u64>>>,
@@ -65,14 +67,14 @@ impl Counter {
 
 struct Manual;
 
-impl behavior::Protocol for Manual {
+impl behavior_core::Protocol for Manual {
     type Addr = MailAddr;
     type Msg = ();
 }
 
 impl Behavior for Manual {
     type Protocol = Self;
-    type Event = behavior::User<MailAddr, ()>;
+    type Event = behavior_core::User<MailAddr, ()>;
     type Sends = Vec<Never>;
     type Ph = Never;
     type Error = Never;
@@ -80,9 +82,9 @@ impl Behavior for Manual {
 
     fn transition(
         &mut self,
-        _: behavior::ActiveTurn,
+        _: behavior_core::ActiveTurn,
         _event: Self::Event,
-    ) -> behavior::BehaviorActed<Self> {
+    ) -> behavior_core::BehaviorActed<Self> {
         Ok(Actions::cont())
     }
 }
@@ -91,7 +93,7 @@ struct Generic<T> {
     last: Option<T>,
 }
 
-#[behavior::behavior(
+#[behavior_core::behavior(
     addr = MailAddr,
     message = T,
     sends = Vec<Delivery<behavior_testkit::TestRecipient<T>>>,
@@ -104,7 +106,7 @@ where
 {
     fn init(
         &mut self,
-    ) -> behavior::Acted<
+    ) -> behavior_core::Acted<
         MailAddr,
         Never,
         Vec<Delivery<behavior_testkit::TestRecipient<T>>>,
@@ -118,7 +120,7 @@ where
         &mut self,
         from: MailAddr,
         message: T,
-    ) -> behavior::Acted<
+    ) -> behavior_core::Acted<
         MailAddr,
         Never,
         Vec<Delivery<behavior_testkit::TestRecipient<T>>>,
@@ -140,7 +142,7 @@ fn omitted_initialization_is_the_explicit_empty_transition() {
 
     assert!(actions.sends.replies.is_empty());
     assert!(actions.creates.is_empty());
-    assert!(matches!(actions.become_, behavior::Step::Continue));
+    assert!(matches!(actions.become_, behavior_core::Step::Continue));
 }
 
 #[test]
@@ -148,7 +150,7 @@ fn capability_defaults_cover_the_infallible_no_birth_subset() {
     fn assert_protocol<B>(_: &B)
     where
         B: Behavior<Error = Never, Birth = NoBirths>,
-        B::Protocol: behavior::Protocol<Addr = MailAddr, Msg = u64>,
+        B::Protocol: behavior_core::Protocol<Addr = MailAddr, Msg = u64>,
     {
     }
 
@@ -169,7 +171,7 @@ fn behavior_trait_provides_the_same_empty_initialization_transition() {
 
     assert!(actions.sends.is_empty());
     assert!(actions.creates.is_empty());
-    assert!(matches!(actions.become_, behavior::Step::Continue));
+    assert!(matches!(actions.become_, behavior_core::Step::Continue));
 }
 
 #[test]

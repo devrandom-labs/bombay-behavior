@@ -17,9 +17,11 @@ use std::time::Duration;
 
 use std::time::Instant;
 
-use crate::{Crash, CreationId, CreationKind, Exit};
+use crate::{Crash, Exit};
+
 pub use behavior::CreationRejection;
 use behavior::{ActionItem, Address, Protocol, SourceAction};
+use behavior::{CreationId, CreationKind};
 
 /// Exact timer correlation accepted by the local scheduler.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -384,7 +386,7 @@ where
     type Prerequisite = behavior::CreationCorrelation<P, Occurrence>;
 }
 
-/// The committed result of one staged [`crate::CreateChild`] request.
+/// The committed result of one staged [`behavior::CreateChild`] request.
 ///
 /// `Installed` is emitted only after fresh allocation, successful
 /// initialization, and binding at `nonce`. The replacement provenance is the
@@ -644,7 +646,7 @@ impl<C: behavior::Behavior, Occurrence> behavior::InterpreterRequest
 impl<C, Occurrence> behavior::ActionItem for ShutdownChild<C, Occurrence>
 where
     C: behavior::Behavior,
-    <crate::BehaviorAddr<C> as behavior::Address>::Nonce: Send,
+    <behavior::BehaviorAddr<C> as behavior::Address>::Nonce: Send,
 {
     type Accepted = ();
     type Rejection = ChildShutdownRejection;
@@ -709,7 +711,7 @@ impl From<(CreationId, ChildShutdownRejection)> for ChildShutdownRejected {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::MailAddr;
+    use behavior::MailAddr;
 
     fn creation(number: u64) -> CreationId {
         let mut sequence = behavior::CreationSequence::new();

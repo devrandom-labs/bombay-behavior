@@ -3,15 +3,14 @@
 
 use std::time::Instant;
 
-use behavior::atomic::{
+use behavior_actors::atomic::{
     ActivationPolicy, ActorDrainPolicy, CancelAuthority, CancellationOutcome, CancellationReceipt,
     DiagnosticDisposition, DynamicCommand, DynamicDiagnostic, DynamicLifecycle, DynamicStatus,
     EntryCapacity, EntryRetirement, ImmediateActivation, StartRejection, UnexpectedExit,
     WorkerChange, WorkerSubmission, dynamic,
 };
-use behavior::{
-    Activate as _, ChildStopped, Exit, MessageProtocol, Recipient, ReplyDelivery, ReplyRoute, Step,
-};
+use behavior_actors::{Activate as _, ChildStopped, Exit, ReplyDelivery, ReplyRoute};
+use behavior_core::{MessageProtocol, Recipient, Step};
 use libfuzzer_sys::fuzz_target;
 
 mod dynamic_supervisor;
@@ -143,7 +142,7 @@ fuzz_target!(|input: &[u8]| {
                 ReplyDelivery::Logical(delivery)
                     if matches!(
                         delivery.message,
-                        behavior::atomic::QueryReply::Known {
+                        behavior_actors::atomic::QueryReply::Known {
                             status: DynamicStatus::CreatingProxy,
                             ..
                         }
@@ -327,7 +326,7 @@ fuzz_target!(|input: &[u8]| {
         assert!(matches!(
             &queried.sends.query_replies.as_slice()[0],
             ReplyDelivery::Logical(delivery)
-                if matches!(delivery.message, behavior::atomic::QueryReply::Unknown { .. })
+                if matches!(delivery.message, behavior_actors::atomic::QueryReply::Unknown { .. })
         ));
 
         let stale = supervisor

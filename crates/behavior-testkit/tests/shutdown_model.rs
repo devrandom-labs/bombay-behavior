@@ -1,7 +1,5 @@
-use behavior::{
-    Acted, Actions, Delivery, MailAddr, Never, NoBirths, Recipient, ShutdownEvent,
-    ShutdownRequested, User,
-};
+use behavior_actors::{ShutdownEvent, ShutdownRequested};
+use behavior_core::{Acted, Actions, Delivery, MailAddr, Never, NoBirths, Recipient, User};
 use behavior_testkit::{DriveDisposition, Mailbox, drive};
 use proptest::collection::vec;
 use proptest::prelude::*;
@@ -9,7 +7,7 @@ use tokio::runtime::Builder;
 
 struct Echo;
 
-#[behavior::behavior(addr = MailAddr, message = u8, sends = Vec<Delivery<behavior_testkit::TestRecipient<u8>>>, births = NoBirths, error = Never)]
+#[behavior_core::behavior(addr = MailAddr, message = u8, sends = Vec<Delivery<behavior_testkit::TestRecipient<u8>>>, births = NoBirths, error = Never)]
 impl Echo {
     fn receive(
         &mut self,
@@ -54,7 +52,7 @@ proptest! {
                 }),
         });
         let mut mailbox = Mailbox::new(events);
-        let behavior = behavior::StopOnShutdown::new(Echo);
+        let behavior = behavior_actors::StopOnShutdown::new(Echo);
         let trace = drive(behavior, &mut mailbox).unwrap();
         let stop = inputs
             .iter()
@@ -82,7 +80,7 @@ proptest! {
             expected_messages
         );
         let expected_disposition = match stop {
-            Some(_) => DriveDisposition::BehaviorStopped(behavior::Stopped),
+            Some(_) => DriveDisposition::BehaviorStopped(behavior_core::Stopped),
             None => DriveDisposition::MailboxDrained,
         };
         prop_assert_eq!(trace.disposition, expected_disposition);

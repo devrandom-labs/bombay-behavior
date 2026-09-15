@@ -139,13 +139,13 @@ where
     Route::Sends: behavior::SendsFor<User<A, ResolverMessage<K, Route>>>,
 {
     type Protocol = Self;
-    type Event = User<A, crate::BehaviorMessage<Self>>;
+    type Event = User<A, behavior::BehaviorMessage<Self>>;
     type Sends = Route::Sends;
     type Ph = Never;
     type Error = Never;
     type Birth = NoBirths;
 
-    fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+    fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
         let ResolverMessage::Resolve { key, reply_to } = event.message;
         let result = self
             .bindings
@@ -181,7 +181,7 @@ mod tests {
         type Ph = Never;
         type Error = Never;
         type Birth = NoBirths;
-        fn transition(&mut self, _: crate::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
+        fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
             Ok(Actions::cont())
         }
     }
@@ -192,12 +192,12 @@ mod tests {
 
     impl Behavior for Reply {
         type Protocol = Self;
-        type Event = User<MailAddr, crate::BehaviorMessage<Self>>;
+        type Event = User<MailAddr, behavior::BehaviorMessage<Self>>;
         type Sends = Vec<Never>;
         type Ph = Never;
         type Error = Never;
         type Birth = NoBirths;
-        fn transition(&mut self, _: crate::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
+        fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
             Ok(Actions::cont())
         }
     }

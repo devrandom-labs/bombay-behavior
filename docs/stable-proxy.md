@@ -301,10 +301,10 @@ implementation targets that contract without adding a Behavior-side runtime.
 This external integration requirement prevents a whole-system completion claim;
 it does not reopen StableProxy's locally owned transitions.
 The repository-wide gates are owned by
-[`atomic-actor-verification.md`](atomic-actor-verification.md).
+[`atomic-actor-verification.md`](engineering/atomic-actor-verification.md).
 
 There is one canonical construction path described in
-[`atomic-actor-devx.md`](atomic-actor-devx.md). No legacy `With*` wrapper,
+[`atomic-actor-devx.md`](engineering/atomic-actor-devx.md). No legacy `With*` wrapper,
 structural route, compatibility alias, public nonce, readiness flag, erased
 callback, or application-authored final behavior type may return.
 

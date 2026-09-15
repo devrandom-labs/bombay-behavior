@@ -1,10 +1,10 @@
+use behavior::{
+    Behavior, BehaviorAddr, ClassifySettlement, EndpointAddress, InterpretSends, Interpretation,
+    SendEffects, SendSettlements, SettlementStatus,
+};
 use behavior_actors::atomic::{
     DynamicSupervisorRequests, FixedSupervisorRequests, InitializeWorker,
     WorkerInitializationOutcome, WorkerInitializationReport,
-};
-use behavior_actors::{
-    Behavior, BehaviorAddr, ClassifySettlement, EndpointAddress, InterpretSends, Interpretation,
-    SendEffects, SendSettlements, SettlementStatus,
 };
 
 #[expect(
@@ -92,7 +92,7 @@ impl<const NUMBER: u8> SendSettlements for Lane<NUMBER> {
     }
 }
 
-impl<const NUMBER: u8> InterpretSends<Vec<u8>, (), behavior_actors::Here> for Lane<NUMBER> {
+impl<const NUMBER: u8> InterpretSends<Vec<u8>, (), behavior::Here> for Lane<NUMBER> {
     fn interpret(
         self,
         trace: &mut Vec<u8>,
@@ -119,7 +119,7 @@ async fn interpret<Product>(
     trace: &mut Vec<u8>,
 ) -> Interpretation<Product::Settlements>
 where
-    Product: InterpretSends<Vec<u8>, (), behavior_actors::Here>,
+    Product: InterpretSends<Vec<u8>, (), behavior::Here>,
 {
     product.interpret(trace).await
 }

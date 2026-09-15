@@ -6,9 +6,9 @@ This document is the AA-01 independent semantic model for a stable worker
 proxy. It is a non-production falsification oracle. It does not define Rust
 types, a second behavior algebra, an interpreter contract, or evidence that a
 solution-matrix row is implemented. It is authoritative for the StableProxy
-behavior it covers. [`docs/stable-proxy.md`](../../../docs/stable-proxy.md) maps
+behavior it covers. [`stable-proxy.md`](../stable-proxy.md) maps
 that behavior to the selected implementation, and
-[`docs/atomic-runtime-settlement.md`](../../../docs/atomic-runtime-settlement.md)
+[`atomic-runtime-settlement.md`](../atomic-runtime-settlement.md)
 owns runtime interpretation and custody.
 
 The actor-model law used here is fresh allocation: creating a replacement must

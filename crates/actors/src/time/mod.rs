@@ -14,11 +14,11 @@ mod one_shot;
 mod periodic;
 mod receive_timeout;
 
-pub use deadline::{Deadline, DeadlineEvent, DeadlineReaction};
-pub use event::TimedEvent;
+pub use deadline::{Deadline, DeadlineReaction};
+pub use event::{TimedEvent, TimedReaction};
 pub use lease::{
     Lease, LeaseMessage, LeaseOutcome, LeaseRejection, LeaseRequest, LeaseSends, LeaseState,
 };
-pub use one_shot::{OneShot, OneShotEvent, OneShotReaction};
-pub use periodic::{Periodic, PeriodicEvent, PeriodicReaction};
-pub use receive_timeout::{ReceiveTimeout, ReceiveTimeoutEvent, ReceiveTimeoutReaction};
+pub use one_shot::OneShot;
+pub use periodic::Periodic;
+pub use receive_timeout::ReceiveTimeout;

@@ -5,8 +5,8 @@
 //! shutdown lane, but ingress closure and mailbox ordering remain interpreter
 //! concerns.
 
-use crate::Step;
 use crate::protocol::ShutdownRequested;
+use behavior::Step;
 use behavior::{
     Actions, Address, Behavior, BirthMode, EventLayer, NoSends, SendEffects, SendLayer,
 };
@@ -35,7 +35,7 @@ impl<B> StopOnShutdown<B> {
     }
 }
 
-impl<B: Behavior + crate::BehaviorBase> crate::BehaviorBase for StopOnShutdown<B> {
+impl<B: Behavior + behavior::BehaviorBase> behavior::BehaviorBase for StopOnShutdown<B> {
     type Base = B::Base;
 
     fn base(&self) -> &Self::Base {
@@ -55,7 +55,7 @@ pub type ShutdownReaction<B> = fn(
     &mut B,
     ShutdownRequested,
 ) -> Actions<
-    crate::BehaviorAddr<B>,
+    behavior::BehaviorAddr<B>,
     <B as Behavior>::Ph,
     <B as Behavior>::Sends,
     <B as Behavior>::Birth,
@@ -101,7 +101,7 @@ impl<B: Behavior> FinalizeOnShutdown<B> {
     }
 }
 
-impl<B: Behavior + crate::BehaviorBase> crate::BehaviorBase for FinalizeOnShutdown<B> {
+impl<B: Behavior + behavior::BehaviorBase> behavior::BehaviorBase for FinalizeOnShutdown<B> {
     type Base = B::Base;
 
     fn base(&self) -> &Self::Base {
@@ -126,7 +126,7 @@ macro_rules! impl_shutdown_behavior {
             Sends: SendEffects + behavior::SendsFor<B::Event>,
             Br: BirthMode,
             B: Behavior<Ph = Ph, Sends = Sends, Birth = Br>,
-            B::Protocol: crate::Protocol<Addr = A>,
+            B::Protocol: behavior::Protocol<Addr = A>,
         {
             type Protocol = B::Protocol;
             type Event = ShutdownEvent<B::Event>;
@@ -137,7 +137,7 @@ macro_rules! impl_shutdown_behavior {
 
             fn init(
                 &mut self,
-                _: crate::InitializationTurn,
+                _: behavior::InitializationTurn,
             ) -> Result<Actions<A, Ph, Self::Sends, Br>, B::Error> {
                 behavior::initialize(&mut self.inner)
                     .map(|actions| actions.map_sends(|inner| SendLayer::new(NoSends, inner)))
@@ -145,7 +145,7 @@ macro_rules! impl_shutdown_behavior {
 
             fn transition(
                 &mut self,
-                _: crate::ActiveTurn,
+                _: behavior::ActiveTurn,
                 event: Self::Event,
             ) -> Result<Actions<A, Ph, Self::Sends, Br>, B::Error> {
                 match event {

@@ -2,15 +2,16 @@
 
 use core::convert::Infallible;
 
-use behavior::atomic::{
+use behavior_actors::atomic::{
     ActivationPolicy, ActorDrainPolicy, DiagnosticDisposition, FailureReaction, FixedSupervisor,
     ImmediateActivation, InitialWorkerOutcome, OrderedRoles, ProxyInputReceipt, ProxyOutcome,
     Recovery, StableProxy, WorkerAttempt, WorkerSource, WorkerStartResult, WorkerSubmission, fixed,
 };
-use behavior::{
-    Activate as _, Active, ChildCreationOutcome, ChildReport, CreateChild, CreationId,
-    CreationSettlement, Creations, CreationsSettled, EstablishedActor, EstablishedCreation,
-    EstablishedRecipient, ItemSettlement, Never, SendSettlements, SettledItem, Step,
+use behavior_actors::{Activate as _, Active};
+use behavior_core::{
+    ChildCreationOutcome, ChildReport, CreateChild, CreationId, CreationSettlement, Creations,
+    CreationsSettled, EstablishedActor, EstablishedCreation, EstablishedRecipient, ItemSettlement,
+    Never, SendSettlements, SettledItem, Step,
 };
 
 use crate::stable_proxy::{RuntimeAddress, Worker, WorkerEndpoint, drive_ready_proxy};

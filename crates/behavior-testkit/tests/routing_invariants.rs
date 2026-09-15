@@ -3,13 +3,16 @@
 use core::num::NonZeroU64;
 use std::collections::VecDeque;
 
-use behavior::{
-    Actions, Activate as _, Behavior, BehaviorActed, Buffer, BufferConfiguration, BufferMessage,
-    BufferOutcome, BufferRejection, MailAddr, MessageProtocol, Never, NoBirths, OverflowPolicy,
-    PriorityQueue, PriorityQueueMessage, PriorityQueueOutcome, PriorityQueueRejection,
-    RateLimitRejection, RateLimiter, RateLimiterMessage, RateLimiterOutcome, Recipient, RoundRobin,
-    Router, RouterError, RouterMessage, TokenCount, User, WorkQueue, WorkQueueMessage,
-    WorkQueueOutcome, WorkQueueRejection,
+use behavior_actors::{
+    Activate as _, Buffer, BufferConfiguration, BufferMessage, BufferOutcome, BufferRejection,
+    OverflowPolicy, PriorityQueue, PriorityQueueMessage, PriorityQueueOutcome,
+    PriorityQueueRejection, RateLimitRejection, RateLimiter, RateLimiterMessage,
+    RateLimiterOutcome, RoundRobin, Router, RouterError, RouterMessage, TokenCount, WorkQueue,
+    WorkQueueMessage, WorkQueueOutcome, WorkQueueRejection,
+};
+
+use behavior_core::{
+    Actions, Behavior, BehaviorActed, MailAddr, MessageProtocol, Never, NoBirths, Recipient, User,
 };
 use proptest::collection::vec;
 use proptest::prelude::*;
@@ -17,7 +20,7 @@ use proptest::prelude::*;
 macro_rules! protocol {
     ($name:ident, $message:ty) => {
         struct $name;
-        impl behavior::Protocol for $name {
+        impl behavior_core::Protocol for $name {
             type Addr = MailAddr;
             type Msg = $message;
         }
@@ -30,7 +33,7 @@ macro_rules! protocol {
             type Birth = NoBirths;
             fn transition(
                 &mut self,
-                _: behavior::ActiveTurn,
+                _: behavior_core::ActiveTurn,
                 _: Self::Event,
             ) -> BehaviorActed<Self> {
                 Ok(Actions::cont())
@@ -183,8 +186,8 @@ proptest! {
                 prop_assert_eq!(actions.sends.deliveries[0].message, released);
             }
             let queued = match actual.state() {
-                behavior::PriorityQueueState::Active { queued, .. }
-                | behavior::PriorityQueueState::Exhausted { queued } => queued,
+                behavior_actors::PriorityQueueState::Active { queued, .. }
+                | behavior_actors::PriorityQueueState::Exhausted { queued } => queued,
             };
             prop_assert_eq!(queued, expected.len());
         }
@@ -233,7 +236,7 @@ proptest! {
                 prop_assert!(refilled.sends.deliveries.is_empty());
                 prop_assert!(refilled.sends.outcomes.is_empty());
                 prop_assert!(refilled.creates.is_empty());
-                prop_assert!(matches!(refilled.become_, behavior::Step::Continue));
+                prop_assert!(matches!(refilled.become_, behavior_core::Step::Continue));
                 available = available.saturating_add(amount).min(capacity);
             }
             prop_assert_eq!(actual.state().available(), available);
@@ -311,7 +314,7 @@ proptest! {
                         .unwrap();
                     prop_assert!(added.sends.is_empty());
                     prop_assert!(added.creates.is_empty());
-                    prop_assert!(matches!(added.become_, behavior::Step::Continue));
+                    prop_assert!(matches!(added.become_, behavior_core::Step::Continue));
                     if !members.contains(&recipient) {
                         members.push(recipient);
                         if next.is_none() { next = Some(recipient); }
@@ -323,7 +326,7 @@ proptest! {
                         .unwrap();
                     prop_assert!(removed.sends.is_empty());
                     prop_assert!(removed.creates.is_empty());
-                    prop_assert!(matches!(removed.become_, behavior::Step::Continue));
+                    prop_assert!(matches!(removed.become_, behavior_core::Step::Continue));
                     if let Some(index) = members.iter().position(|candidate| *candidate == recipient) {
                         let removed_was_next = next == Some(recipient);
                         members.remove(index);

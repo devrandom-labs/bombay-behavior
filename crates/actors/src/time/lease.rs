@@ -398,12 +398,12 @@ where
     Route::Sends: behavior::SendsFor<TimedEvent<User<A, LeaseMessage<K, Route>>>>,
 {
     type Protocol = Self;
-    type Event = TimedEvent<User<A, crate::BehaviorMessage<Self>>>;
+    type Event = TimedEvent<User<A, behavior::BehaviorMessage<Self>>>;
     type Sends = LeaseSends<Route::Sends, InterpreterRequests<ScheduleAfter>>;
     type Ph = Never;
     type Error = Never;
     type Birth = NoBirths;
-    fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+    fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
         Ok(match event {
             EventLayer::Inner(event) => match event.message {
                 LeaseMessage::Acquire {
@@ -528,12 +528,12 @@ mod tests {
 
     impl Behavior for Reply {
         type Protocol = Self;
-        type Event = User<MailAddr, crate::BehaviorMessage<Self>>;
+        type Event = User<MailAddr, behavior::BehaviorMessage<Self>>;
         type Sends = Vec<Never>;
         type Ph = Never;
         type Error = Never;
         type Birth = NoBirths;
-        fn transition(&mut self, _: crate::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
+        fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
             Ok(Actions::cont())
         }
     }
@@ -563,7 +563,7 @@ mod tests {
         );
         assert_eq!(acquired.sends.outcomes.len(), 1);
         assert!(acquired.creates.is_empty());
-        assert_eq!(acquired.become_, crate::Step::Continue);
+        assert_eq!(acquired.become_, behavior::Step::Continue);
         let renewed = s
             .receive(
                 MailAddr(0),
@@ -581,14 +581,14 @@ mod tests {
         );
         assert_eq!(renewed.sends.outcomes.len(), 1);
         assert!(renewed.creates.is_empty());
-        assert_eq!(renewed.become_, crate::Step::Continue);
+        assert_eq!(renewed.become_, behavior::Step::Continue);
         let stale = s
             .on_path(TimerElapsed::new(TimerId(7), TimerGeneration(0)))
             .unwrap();
         assert!(stale.sends.outcomes.is_empty());
         assert!(stale.sends.schedules.is_empty());
         assert!(stale.creates.is_empty());
-        assert_eq!(stale.become_, crate::Step::Continue);
+        assert_eq!(stale.become_, behavior::Step::Continue);
         let released = s
             .receive(
                 MailAddr(0),
@@ -606,7 +606,7 @@ mod tests {
             LeaseOutcome::Released { holder: 1, .. }
         ));
         assert!(released.creates.is_empty());
-        assert_eq!(released.become_, crate::Step::Continue);
+        assert_eq!(released.become_, behavior::Step::Continue);
         assert!(matches!(s.state(), LeaseState::Vacant { .. }));
     }
     #[test]
@@ -625,7 +625,7 @@ mod tests {
         assert_eq!(acquired.sends.schedules.len(), 1);
         assert_eq!(acquired.sends.outcomes.len(), 1);
         assert!(acquired.creates.is_empty());
-        assert_eq!(acquired.become_, crate::Step::Continue);
+        assert_eq!(acquired.become_, behavior::Step::Continue);
         let wrong = s
             .receive(
                 MailAddr(0),
@@ -676,14 +676,14 @@ mod tests {
         assert_eq!(acquired.sends.schedules.len(), 1);
         assert_eq!(acquired.sends.outcomes.len(), 1);
         assert!(acquired.creates.is_empty());
-        assert_eq!(acquired.become_, crate::Step::Continue);
+        assert_eq!(acquired.become_, behavior::Step::Continue);
         let expired = subject
             .on_path(TimerElapsed::new(TimerId(7), TimerGeneration(u64::MAX)))
             .unwrap();
         assert!(expired.sends.schedules.is_empty());
         assert_eq!(expired.sends.outcomes.len(), 1);
         assert!(expired.creates.is_empty());
-        assert_eq!(expired.become_, crate::Step::Continue);
+        assert_eq!(expired.become_, behavior::Step::Continue);
         assert!(matches!(subject.state(), LeaseState::Exhausted));
         let rejected = subject
             .receive(

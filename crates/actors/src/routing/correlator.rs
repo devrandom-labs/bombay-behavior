@@ -165,13 +165,13 @@ where
     Route::Sends: behavior::SendsFor<User<A, CorrelatorMessage<K, V, Route>>>,
 {
     type Protocol = Self;
-    type Event = User<A, crate::BehaviorMessage<Self>>;
+    type Event = User<A, behavior::BehaviorMessage<Self>>;
     type Sends = Route::Sends;
     type Ph = Never;
     type Error = CorrelatorError<K, V, Route>;
     type Birth = NoBirths;
 
-    fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+    fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
         match event.message {
             CorrelatorMessage::Begin { key, reply_to } => {
                 if let Some(existing) = self.states.iter().find(|state| state.key() == &key) {
@@ -246,13 +246,13 @@ mod tests {
 
     impl Behavior for Reply {
         type Protocol = Self;
-        type Event = User<MailAddr, crate::BehaviorMessage<Self>>;
+        type Event = User<MailAddr, behavior::BehaviorMessage<Self>>;
         type Sends = Vec<Never>;
         type Ph = Never;
         type Error = Never;
         type Birth = NoBirths;
 
-        fn transition(&mut self, _: crate::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
+        fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
             Ok(Actions::cont())
         }
     }
@@ -274,7 +274,7 @@ mod tests {
             .unwrap();
         assert!(begun.sends.is_empty());
         assert!(begun.creates.is_empty());
-        assert_eq!(begun.become_, crate::Step::Continue);
+        assert_eq!(begun.become_, behavior::Step::Continue);
         let resolved = correlator
             .receive(
                 MailAddr(9),
@@ -324,7 +324,7 @@ mod tests {
             .unwrap();
         assert!(begun.sends.is_empty());
         assert!(begun.creates.is_empty());
-        assert_eq!(begun.become_, crate::Step::Continue);
+        assert_eq!(begun.become_, behavior::Step::Continue);
         let cancelled = correlator
             .receive(MailAddr(9), CorrelatorMessage::Cancel { key: 2 })
             .unwrap();

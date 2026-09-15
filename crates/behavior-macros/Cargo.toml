@@ -8,6 +8,8 @@ authors.workspace = true
 repository.workspace = true
 homepage.workspace = true
 description = "Procedural macros for Bombay Behavior"
+documentation = "https://docs.rs/bombay-behavior-macros"
+readme = "README.md"
 
 [lib]
 name = "behavior_macros"

@@ -291,13 +291,13 @@ where
     Route::Sends: behavior::SendsFor<User<A, HealthMessage<K, Route>>>,
 {
     type Protocol = Self;
-    type Event = User<A, crate::BehaviorMessage<Self>>;
+    type Event = User<A, behavior::BehaviorMessage<Self>>;
     type Sends = Route::Sends;
     type Ph = Never;
     type Error = HealthError<K>;
     type Birth = NoBirths;
 
-    fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+    fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
         match event.message {
             HealthMessage::Observe {
                 component,
@@ -331,13 +331,13 @@ mod tests {
 
     impl Behavior for Reply {
         type Protocol = Self;
-        type Event = User<MailAddr, crate::BehaviorMessage<Self>>;
+        type Event = User<MailAddr, behavior::BehaviorMessage<Self>>;
         type Sends = Vec<Never>;
         type Ph = Never;
         type Error = Never;
         type Birth = NoBirths;
 
-        fn transition(&mut self, _: crate::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
+        fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
             Ok(Actions::cont())
         }
     }
@@ -359,7 +359,7 @@ mod tests {
             .unwrap();
         assert!(observed.sends.is_empty());
         assert!(observed.creates.is_empty());
-        assert_eq!(observed.become_, crate::Step::Continue);
+        assert_eq!(observed.become_, behavior::Step::Continue);
 
         assert!(matches!(
             health.receive(
@@ -419,7 +419,7 @@ mod tests {
                 .unwrap();
             assert!(observed.sends.is_empty());
             assert!(observed.creates.is_empty());
-            assert_eq!(observed.become_, crate::Step::Continue);
+            assert_eq!(observed.become_, behavior::Step::Continue);
         }
         let report = health
             .receive(MailAddr(9), HealthMessage::Query { reply_to: reply })
@@ -458,7 +458,7 @@ mod tests {
             .unwrap();
         assert!(removed.sends.is_empty());
         assert!(removed.creates.is_empty());
-        assert_eq!(removed.become_, crate::Step::Continue);
+        assert_eq!(removed.become_, behavior::Step::Continue);
         assert!(matches!(
             health.receive(
                 MailAddr(9),

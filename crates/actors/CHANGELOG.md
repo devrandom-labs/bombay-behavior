@@ -1,21 +1,37 @@
 # Changelog
 
+All notable changes to `bombay-behavior-actors` are documented here.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+### Changed
+
+- Publish a crate-specific README and both license texts with the package.
+- Use the shared `TimedEvent` event algebra for every timer wrapper and one
+  shared `TimedReaction` callback contract for ReceiveTimeout, Periodic, and
+  OneShot.
+
+### Removed
+
+- Remove the actors-crate glob reexport of the complete foundational behavior
+  algebra. Depend on `bombay-behavior` for core types and macros, and on
+  `bombay-behavior-actors` for catalogue actors and wrappers.
+- Remove the four type-identical timer event aliases and the three
+  type-identical complete-action reaction aliases. `DeadlineReaction` remains
+  separate because its result is only the next-behavior verdict.
+
+## [0.14.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-actors-v0.13.1...bombay-behavior-actors-v0.14.0) - 2026-08-21
+
+### Added
+
 - Add the source-selected fixed-supervisor preparation diagnostic protocol:
   `WorkerPreparationFailure` retains the complete owned failure while
   `WorkerPreparationFailureReason` exposes one exhaustive borrowed cause. Roles
   remain borrowed, the source value stays with recovery, and
   `FixedDiagnostic<Role, Worker, Plan, Source>` requires no structural alias.
-
-- StableProxy now has one private exact worker-departure join shared by
-  pre-readiness return and predecessor replacement; the duplicate internal
-  state machines were removed without changing the public API.
-
-All notable changes to `bombay-behavior-actors` are documented here.
-
-## [Unreleased]
-
-### Added
-
 - Add exact FixedSupervisor unavailable-command admission. One owned
   `WorkerUnavailable` product preserves role, original sender, proxy phase, and
   command for configured lifecycle publication or operational diagnostics;
@@ -70,9 +86,18 @@ All notable changes to `bombay-behavior-actors` are documented here.
   route so committed children can enter typed heterogeneous shutdown plans.
 - Add typed proxy-command unavailability returns and generic operations for
   the existing child-shutdown builder.
+- Add `ObserveEstablishedCreation`, `ObserveEstablished`, and
+  `CancelObservation` with explicit relationship IDs and complete
+  started/cancelled/rejected/stopped fact variants.
+- Add `ShutdownEstablished` and `EstablishedShutdownResolved`, preserving the
+  exact concrete behavior and typed shutdown ingress without an ambient
+  lifecycle side channel.
 
 ### Changed
 
+- StableProxy now has one private exact worker-departure join shared by
+  pre-readiness return and predecessor replacement; the duplicate internal
+  state machines were removed without changing the public API.
 - Replace DynamicSupervisor's start-only `StartInterrupted` lifecycle case
   with `WorkerChangeInterrupted` and a closed `WorkerChangeInterruption` cause.
   Explicit Stop retains both operation correlations; the same value can
@@ -126,6 +151,18 @@ All notable changes to `bombay-behavior-actors` are documented here.
 - Make `Router` a single-recipient ownership transfer so round-robin,
   least-loaded, consistent-hash, and rendezvous routing accept non-`Clone`
   domain commands routed through a proxy-preserved protocol.
+- Preserve generated child-role resolution through topology-transparent
+  lifecycle, timing, stash, and observation wrapper compositions, while
+  topology-changing supervision exposes its own proxy child position.
+- Route built-in same-action proxy and worker communication through
+  occurrence-indexed `ChildDelivery` rather than nonce-derived logical
+  addresses.
+- Reuse the foundational `CreationRejection` domain and remove false parent or
+  wrapper `Behavior` bounds from creation facts, pool send products, and
+  replacement bookkeeping.
+- Retain legacy address-based observation and lifecycle requests as distinct
+  logical-name operations; they are not aliases for exact endpoint
+  capabilities.
 
 ### Removed
 
@@ -141,32 +178,6 @@ All notable changes to `bombay-behavior-actors` are documented here.
   their distinct, explicitly clone-requiring membership-snapshot law.
 - Remove the duplicate delayed restart constructors and the crate-root relay
   re-exports; the relay feature remains public in `actors::composition`.
-
-## [0.14.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-actors-v0.13.1...bombay-behavior-actors-v0.14.0) - 2026-08-21
-
-### Added
-
-- Add `ObserveEstablishedCreation`, `ObserveEstablished`, and
-  `CancelObservation` with explicit relationship IDs and complete
-  started/cancelled/rejected/stopped fact variants.
-- Add `ShutdownEstablished` and `EstablishedShutdownResolved`, preserving the
-  exact concrete behavior and typed shutdown ingress without an ambient
-  lifecycle side channel.
-
-### Changed
-
-- Preserve generated child-role resolution through topology-transparent
-  lifecycle, timing, stash, and observation wrapper compositions, while
-  topology-changing supervision exposes its own proxy child position.
-- Route built-in same-action proxy and worker communication through
-  occurrence-indexed `ChildDelivery` rather than nonce-derived logical
-  addresses.
-- Reuse the foundational `CreationRejection` domain and remove false parent or
-  wrapper `Behavior` bounds from creation facts, pool send products, and
-  replacement bookkeeping.
-- Retain legacy address-based observation and lifecycle requests as distinct
-  logical-name operations; they are not aliases for exact endpoint
-  capabilities.
 
 ## [0.13.1](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-actors-v0.13.0...bombay-behavior-actors-v0.13.1) - 2026-08-21
 

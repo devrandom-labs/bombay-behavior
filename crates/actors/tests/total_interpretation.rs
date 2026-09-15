@@ -1,10 +1,11 @@
-use behavior_actors::atomic::{ImmediateActivation, ProxyEffects, StableProxy};
-use behavior_actors::{
-    ActionItem, Actions, ActiveTurn, Address, Behavior, BehaviorActed, BufferSends,
-    ClassifySettlement, EndpointAddress, Here, InterpretItem, InterpretSends, Interpretation,
-    InterpreterFault, InterpreterRequests, ItemSettlement, LeaseSends, Never, NoBirths, Protocol,
-    SettledItem, SettlementStatus, User,
+use behavior::{
+    ActionItem, Actions, ActiveTurn, Address, Behavior, BehaviorActed, ClassifySettlement,
+    EndpointAddress, Here, InterpretItem, InterpretSends, Interpretation, InterpreterFault,
+    InterpreterRequests, ItemSettlement, Never, NoBirths, Protocol, SettledItem, SettlementStatus,
+    User,
 };
+use behavior_actors::atomic::{ImmediateActivation, ProxyEffects, StableProxy};
+use behavior_actors::{BufferSends, LeaseSends};
 use std::collections::BTreeMap;
 
 #[derive(Clone, Copy)]

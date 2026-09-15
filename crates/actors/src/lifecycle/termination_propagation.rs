@@ -301,7 +301,8 @@ type PropagationSends<A, Request> = TerminalPropagationSends<
 /// A child selection requires a concrete protocol and an opaque creation ID:
 ///
 /// ```compile_fail
-/// use behavior_actors::{ChildTermination, MailAddr, Never, Protocol};
+/// use behavior::{MailAddr, Never, Protocol};
+/// use behavior_actors::ChildTermination;
 ///
 /// struct Worker;
 /// impl Protocol for Worker {
@@ -314,17 +315,17 @@ type PropagationSends<A, Request> = TerminalPropagationSends<
 pub struct PropagateTermination<B: Behavior, Target> {
     inner: B,
     target: Target,
-    policy: TerminalPropagationPolicy<crate::BehaviorAddr<B>>,
+    policy: TerminalPropagationPolicy<behavior::BehaviorAddr<B>>,
     state: TerminalPropagationState,
 }
 
 type PropagationActions<B, Target> = Actions<
-    crate::BehaviorAddr<B>,
+    behavior::BehaviorAddr<B>,
     <B as Behavior>::Ph,
     SendLayer<
         PropagationSends<
-            crate::BehaviorAddr<B>,
-            <Target as TerminationTarget<crate::BehaviorAddr<B>>>::Request,
+            behavior::BehaviorAddr<B>,
+            <Target as TerminationTarget<behavior::BehaviorAddr<B>>>::Request,
         >,
         <B as Behavior>::Sends,
     >,
@@ -334,13 +335,13 @@ type PropagationActions<B, Target> = Actions<
 impl<B, Target> PropagateTermination<B, Target>
 where
     B: Behavior,
-    Target: TerminationTarget<crate::BehaviorAddr<B>>,
+    Target: TerminationTarget<behavior::BehaviorAddr<B>>,
 {
     #[must_use]
     pub const fn new(
         inner: B,
         target: Target,
-        policy: TerminalPropagationPolicy<crate::BehaviorAddr<B>>,
+        policy: TerminalPropagationPolicy<behavior::BehaviorAddr<B>>,
     ) -> Self {
         Self {
             inner,
@@ -356,17 +357,17 @@ where
     }
 
     fn wrap(
-        actions: Actions<crate::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>,
-        owned: PropagationSends<crate::BehaviorAddr<B>, Target::Request>,
+        actions: Actions<behavior::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>,
+        owned: PropagationSends<behavior::BehaviorAddr<B>, Target::Request>,
     ) -> PropagationActions<B, Target> {
         actions.map_sends(|inner| SendLayer::new(owned, inner))
     }
 }
 
-impl<B, Target> crate::BehaviorBase for PropagateTermination<B, Target>
+impl<B, Target> behavior::BehaviorBase for PropagateTermination<B, Target>
 where
-    B: Behavior + crate::BehaviorBase,
-    Target: TerminationTarget<crate::BehaviorAddr<B>>,
+    B: Behavior + behavior::BehaviorBase,
+    Target: TerminationTarget<behavior::BehaviorAddr<B>>,
 {
     type Base = B::Base;
 
@@ -378,7 +379,7 @@ where
 impl<B, Target> crate::StashStatus for PropagateTermination<B, Target>
 where
     B: Behavior + crate::StashStatus,
-    Target: TerminationTarget<crate::BehaviorAddr<B>>,
+    Target: TerminationTarget<behavior::BehaviorAddr<B>>,
 {
     fn stashed_messages(&self) -> usize {
         self.inner.stashed_messages()
@@ -391,7 +392,7 @@ where
     Sends: SendEffects + behavior::SendsFor<B::Event>,
     Br: BirthMode,
     B: Behavior<Ph = Ph, Sends = Sends, Birth = Br>,
-    B::Protocol: crate::Protocol<Addr = A>,
+    B::Protocol: behavior::Protocol<Addr = A>,
     Target: TerminationTarget<A>,
     Target::Report: Send,
     Target::Request: Send,
@@ -403,7 +404,7 @@ where
     type Error = TerminationPropagationError<B::Error, Target::Report>;
     type Birth = Br;
 
-    fn init(&mut self, _: crate::InitializationTurn) -> BehaviorActed<Self> {
+    fn init(&mut self, _: behavior::InitializationTurn) -> BehaviorActed<Self> {
         let actions =
             behavior::initialize(&mut self.inner).map_err(TerminationPropagationError::Inner)?;
         let mut owned: PropagationSends<A, Target::Request> = TerminalPropagationSends::empty();
@@ -411,7 +412,7 @@ where
         Ok(Self::wrap(actions, owned))
     }
 
-    fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+    fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
         match event {
             EventLayer::Owned(report)
                 if self.state == TerminalPropagationState::Observing
@@ -431,7 +432,7 @@ where
                         Ok(Actions::new(
                             SendLayer::new(owned, Sends::empty()),
                             behavior::Creations::empty(),
-                            crate::Step::Stop(behavior::Stopped),
+                            behavior::Step::Stop(behavior::Stopped),
                         ))
                     }
                 }
@@ -453,9 +454,9 @@ mod tests {
 
     use super::*;
     use crate::{
-        Activate as _, AllocationRejection, Crash, CreationRejection, Exit, RestartDenial,
-        RestartReleaseFailure, SupervisionFailureReason,
+        Activate as _, Crash, Exit, RestartDenial, RestartReleaseFailure, SupervisionFailureReason,
     };
+    use behavior::{AllocationRejection, CreationRejection};
     use behavior::{
         Births, CreateChild, CreationSequence, Creations, MailAddr, Never, NoBirths, NoSends, Step,
         User,
@@ -474,7 +475,7 @@ mod tests {
         type Msg = Never;
     }
 
-    impl crate::BehaviorBase for Worker {
+    impl behavior::BehaviorBase for Worker {
         type Base = Self;
 
         fn base(&self) -> &Self::Base {
@@ -490,7 +491,11 @@ mod tests {
         type Error = Never;
         type Birth = NoBirths;
 
-        fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+        fn transition(
+            &mut self,
+            _: behavior::ActiveTurn,
+            event: Self::Event,
+        ) -> BehaviorActed<Self> {
             match event.message {}
         }
     }
@@ -500,7 +505,7 @@ mod tests {
         type Msg = u8;
     }
 
-    impl crate::BehaviorBase for Probe {
+    impl behavior::BehaviorBase for Probe {
         type Base = Self;
 
         fn base(&self) -> &Self::Base {
@@ -516,7 +521,7 @@ mod tests {
         type Error = Never;
         type Birth = Births<Worker>;
 
-        fn init(&mut self, _: crate::InitializationTurn) -> BehaviorActed<Self> {
+        fn init(&mut self, _: behavior::InitializationTurn) -> BehaviorActed<Self> {
             Ok(Actions::new(
                 vec![1],
                 Creations::one(CreateChild::birth(self.worker, Worker)),
@@ -524,7 +529,11 @@ mod tests {
             ))
         }
 
-        fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+        fn transition(
+            &mut self,
+            _: behavior::ActiveTurn,
+            event: Self::Event,
+        ) -> BehaviorActed<Self> {
             Ok(Actions::send(vec![event.message]))
         }
     }

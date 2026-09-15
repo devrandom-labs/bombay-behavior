@@ -1,4 +1,4 @@
-# Minimal core used by atomic supervisors and pools
+# Minimal core used by atomic supervisors and pools (engineering record)
 
 This is a deletion audit, not a preservation promise. “Already in core” is not
 a reason to keep a type, and “the compiler needs a name” is not a semantic law.
@@ -120,7 +120,6 @@ promise to preserve every helper name.
 | `Behavior`, `BehaviorActed`, `BehaviorAddr`, `BehaviorMessage`, `InitializationTurn`, `ActiveTurn` | Keep as the pure fold contract and truthful aliases/turn witnesses. Atomic actors implement this contract directly. |
 | `BehaviorLayer`, `BehaviorBase`, `initialize`, `delegate_transition` | Keep for genuine transparent wrappers and initialization composition. Supervisors/pools do not use them as a behavioral decomposition. |
 | `Actions`, `Step`, `Stopped`, `Never`, `Become`, `Acted`, `AppendSend` | Keep the explicit transition result. Convenience aliases remain only while they preserve all three action legs and the exact verdict. |
-| `Effect` | Keep as optional no-birth/infallible shorthand. Atomic templates use full named `Actions`; `Effect` is not a second algebra. |
 | `SendEffects`, `SendsFor`, `NoSends`, `SendLayer` and generated named products | Keep only the product/append laws required by concrete behaviors. Ordinary atomic-actor source sees semantic lane names, never `SendLayer` nesting. |
 | `SendInterpreter`, `InterpretSends`, `InterpretDelivery`, `InterpretEstablishedDelivery`, `InterpretChildDelivery`, `InterpretChildInput`, `InterpretRequest` | Replace the success/one-error short-circuit equation with complete per-item settlement; retain only the static concrete dispatch pieces that realize it. |
 | `InterpreterRequest`, `InterpreterRequests`, `ReportToParent`, `Own`, `SendInput` | Keep interpreter-facing and hidden from ordinary users. `ReportToParent` must compose behind `assignment.complete`, not appear in worker code. |

@@ -1,9 +1,9 @@
-use behavior_actors::atomic::{
-    ImmediateActivation, ProxyInputReceipt, ProxyInputResult, ProxyOperation,
-};
-use behavior_actors::{
+use behavior::{
     ActionItem, ActionItemResult, ActiveTurn, Address, Behavior, BehaviorActed, ChildInputReason,
     EndpointAddress, Never, NoBirths, NoSends, Protocol, SourceAction, User,
+};
+use behavior_actors::atomic::{
+    ImmediateActivation, ProxyInputReceipt, ProxyInputResult, ProxyOperation,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

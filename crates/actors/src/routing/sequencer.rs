@@ -180,13 +180,13 @@ where
     ReplyRoute::Sends: behavior::SendsFor<User<A, SequencerMessage<T, TargetRoute, ReplyRoute>>>,
 {
     type Protocol = Self;
-    type Event = User<A, crate::BehaviorMessage<Self>>;
+    type Event = User<A, behavior::BehaviorMessage<Self>>;
     type Sends = DeliveryOutcomes<TargetRoute::Sends, ReplyRoute::Sends>;
     type Ph = Never;
     type Error = Never;
     type Birth = NoBirths;
 
-    fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+    fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
         let SequencerMessage::Offer {
             sequence,
             value,
@@ -257,14 +257,14 @@ mod tests {
 
             impl Behavior for $name {
                 type Protocol = Self;
-                type Event = behavior::User<MailAddr, crate::BehaviorMessage<Self>>;
+                type Event = behavior::User<MailAddr, behavior::BehaviorMessage<Self>>;
                 type Sends = Vec<behavior::Never>;
                 type Ph = behavior::Never;
                 type Error = behavior::Never;
                 type Birth = behavior::NoBirths;
                 fn transition(
                     &mut self,
-                    _: crate::ActiveTurn,
+                    _: behavior::ActiveTurn,
                     _: Self::Event,
                 ) -> behavior::BehaviorActed<Self> {
                     Ok(behavior::Actions::cont())

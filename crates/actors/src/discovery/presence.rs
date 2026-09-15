@@ -519,12 +519,12 @@ where
     Route::Sends: behavior::SendsFor<TimedEvent<User<A, PresenceMessage<K, Route>>>>,
 {
     type Protocol = Self;
-    type Event = TimedEvent<User<A, crate::BehaviorMessage<Self>>>;
+    type Event = TimedEvent<User<A, behavior::BehaviorMessage<Self>>>;
     type Sends = PresenceSends<Route::Sends, InterpreterRequests<ScheduleAfter>>;
     type Ph = Never;
     type Error = Never;
     type Birth = NoBirths;
-    fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+    fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
         Ok(match event {
             EventLayer::Inner(event) => match event.message {
                 PresenceMessage::Announce {
@@ -581,12 +581,12 @@ mod tests {
 
     impl Behavior for Reply {
         type Protocol = Self;
-        type Event = User<MailAddr, crate::BehaviorMessage<Self>>;
+        type Event = User<MailAddr, behavior::BehaviorMessage<Self>>;
         type Sends = Vec<Never>;
         type Ph = Never;
         type Error = Never;
         type Birth = NoBirths;
-        fn transition(&mut self, _: crate::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
+        fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
             Ok(Actions::cont())
         }
     }
@@ -617,7 +617,7 @@ mod tests {
         assert_eq!(announced.sends.schedules.len(), 1);
         assert_eq!(announced.sends.replies.len(), 1);
         assert!(announced.creates.is_empty());
-        assert_eq!(announced.become_, crate::Step::Continue);
+        assert_eq!(announced.become_, behavior::Step::Continue);
         let refreshed = s
             .receive(
                 MailAddr(0),
@@ -635,7 +635,7 @@ mod tests {
         );
         assert_eq!(refreshed.sends.replies.len(), 1);
         assert!(refreshed.creates.is_empty());
-        assert_eq!(refreshed.become_, crate::Step::Continue);
+        assert_eq!(refreshed.become_, behavior::Step::Continue);
         assert!(
             s.on_path(TimerElapsed::new(TimerId(1), TimerGeneration(0)))
                 .unwrap()
@@ -655,7 +655,7 @@ mod tests {
         ));
         assert!(expired.sends.schedules.is_empty());
         assert!(expired.creates.is_empty());
-        assert_eq!(expired.become_, crate::Step::Continue);
+        assert_eq!(expired.become_, behavior::Step::Continue);
     }
     #[test]
     fn collision_and_stale_evidence_are_atomic() {
@@ -677,7 +677,7 @@ mod tests {
         assert_eq!(announced.sends.schedules.len(), 1);
         assert_eq!(announced.sends.replies.len(), 1);
         assert!(announced.creates.is_empty());
-        assert_eq!(announced.become_, crate::Step::Continue);
+        assert_eq!(announced.become_, behavior::Step::Continue);
         let collision = s
             .receive(
                 MailAddr(0),
@@ -741,7 +741,7 @@ mod tests {
         assert!(expired.sends.schedules.is_empty());
         assert_eq!(expired.sends.replies.len(), 1);
         assert!(expired.creates.is_empty());
-        assert_eq!(expired.become_, crate::Step::Continue);
+        assert_eq!(expired.become_, behavior::Step::Continue);
 
         let second = subject
             .receive(MailAddr(0), announce(Participant(2)))
@@ -776,7 +776,7 @@ mod tests {
         assert_eq!(announced.sends.schedules.len(), 1);
         assert_eq!(announced.sends.replies.len(), 1);
         assert!(announced.creates.is_empty());
-        assert_eq!(announced.become_, crate::Step::Continue);
+        assert_eq!(announced.become_, behavior::Step::Continue);
         let unchanged = s.receive(MailAddr(0), message()).unwrap();
         assert!(unchanged.sends.schedules.as_slice().is_empty());
         assert!(matches!(

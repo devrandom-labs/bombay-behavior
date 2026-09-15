@@ -6,15 +6,18 @@ use std::{
     time::{Duration, Instant},
 };
 
-use behavior::{
-    Actions, Activate, Address, Behavior, BehaviorActed, BehaviorBase, BreakerCompletion,
-    BreakerError, BreakerMessage, BreakerOutcome, CircuitBreaker, EndpointAddress,
-    EstablishedObservation, EstablishedRecipient, EstablishedTerminationMonitor, Exit, MailAddr,
-    Never, NoBirths, ObservationId, ObservationOperation, ObservationRejection, Presence,
-    PresenceMessage, PresenceReply, PresenceVersion, Protocol, Recipient, RoundRobin, Router,
-    RouterError, RouterMessage, TerminationMonitorError, TimerElapsed, TimerGeneration, TimerId,
-    User, Workflow, WorkflowDefinition, WorkflowError, WorkflowInput, WorkflowMessage,
-    WorkflowOutcome,
+use behavior_actors::{
+    Activate, BreakerCompletion, BreakerError, BreakerMessage, BreakerOutcome, CircuitBreaker,
+    EstablishedObservation, EstablishedTerminationMonitor, Exit, ObservationId,
+    ObservationOperation, ObservationRejection, Presence, PresenceMessage, PresenceReply,
+    PresenceVersion, RoundRobin, Router, RouterError, RouterMessage, TerminationMonitorError,
+    TimerElapsed, TimerGeneration, TimerId, Workflow, WorkflowDefinition, WorkflowError,
+    WorkflowInput, WorkflowMessage, WorkflowOutcome,
+};
+
+use behavior_core::{
+    Actions, Address, Behavior, BehaviorActed, BehaviorBase, EndpointAddress, EstablishedRecipient,
+    MailAddr, Never, NoBirths, Protocol, Recipient, User,
 };
 use bombay_behavior_fuzz::TestRecipient;
 use libfuzzer_sys::fuzz_target;
@@ -84,7 +87,7 @@ impl Behavior for MonitorProbe {
     type Error = Never;
     type Birth = NoBirths;
 
-    fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
+    fn transition(&mut self, _: behavior_core::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
         Ok(Actions::cont())
     }
 }
@@ -149,7 +152,7 @@ fuzz_target!(|bytes: &[u8]| {
         let a = chunk.first().copied().unwrap_or(0);
         let b = chunk.get(1).copied().unwrap_or(0);
         let generation = TimerGeneration(u64::from(chunk.get(2).copied().unwrap_or(0)));
-        let attempt = behavior::BreakerAttempt(u64::from(b));
+        let attempt = behavior_actors::BreakerAttempt(u64::from(b));
         let submitted_completion = match a % 4 {
             1 => Some(BreakerCompletion::Succeeded { attempt }),
             2 => Some(BreakerCompletion::Failed { attempt }),
@@ -171,7 +174,7 @@ fuzz_target!(|bytes: &[u8]| {
                 assert!(actions.sends.replies.len() <= 1);
                 assert!(actions.sends.schedules.len() <= 1);
                 assert!(actions.creates.is_empty());
-                assert!(matches!(actions.become_, behavior::Step::Continue));
+                assert!(matches!(actions.become_, behavior_core::Step::Continue));
             }
             Err(BreakerError::UnexpectedCompletion(returned)) => {
                 assert_eq!(submitted_completion, Some(returned));
@@ -201,7 +204,10 @@ fuzz_target!(|bytes: &[u8]| {
             assert!(presence_actions.sends.schedules.len() <= 1);
         }
         assert!(presence_actions.creates.is_empty());
-        assert!(matches!(presence_actions.become_, behavior::Step::Continue));
+        assert!(matches!(
+            presence_actions.become_,
+            behavior_core::Step::Continue
+        ));
 
         let workflow_message = match a % 4 {
             0 => WorkflowMessage::Start {
@@ -217,7 +223,7 @@ fuzz_target!(|bytes: &[u8]| {
             Ok(actions) => {
                 assert!(actions.sends.len() <= 1);
                 assert!(actions.creates.is_empty());
-                assert!(matches!(actions.become_, behavior::Step::Continue));
+                assert!(matches!(actions.become_, behavior_core::Step::Continue));
             }
             Err(WorkflowError::NotStarted(
                 WorkflowInput::Complete { .. } | WorkflowInput::Fail { .. },
@@ -246,9 +252,12 @@ fuzz_target!(|bytes: &[u8]| {
                 assert!(actions.sends.owned.is_empty());
                 assert!(actions.sends.inner.is_empty());
                 assert!(actions.creates.is_empty());
-                assert!(matches!(actions.become_, behavior::Step::Continue));
+                assert!(matches!(actions.become_, behavior_core::Step::Continue));
             }
-            Err(TerminationMonitorError::UnexpectedReport { observation, report }) => {
+            Err(TerminationMonitorError::UnexpectedReport {
+                observation,
+                report,
+            }) => {
                 assert_eq!(observation, observation_before);
                 assert_eq!(report.id(), report_id);
             }
@@ -264,7 +273,7 @@ fuzz_target!(|bytes: &[u8]| {
                     .expect("membership addition is infallible");
                 assert!(actions.sends.is_empty());
                 assert!(actions.creates.is_empty());
-                assert!(matches!(actions.become_, behavior::Step::Continue));
+                assert!(matches!(actions.become_, behavior_core::Step::Continue));
                 if !eligible.contains(&member) {
                     eligible.push(member);
                 }
@@ -278,7 +287,7 @@ fuzz_target!(|bytes: &[u8]| {
                     .expect("membership removal is infallible");
                 assert!(actions.sends.is_empty());
                 assert!(actions.creates.is_empty());
-                assert!(matches!(actions.become_, behavior::Step::Continue));
+                assert!(matches!(actions.become_, behavior_core::Step::Continue));
                 if let Some(index) = eligible.iter().position(|candidate| *candidate == member) {
                     eligible.remove(index);
                     if eligible.is_empty() {
@@ -307,7 +316,7 @@ fuzz_target!(|bytes: &[u8]| {
                 assert_eq!(actions.sends[0].to.address(), expected);
                 assert_eq!(actions.sends[0].message, b);
                 assert!(actions.creates.is_empty());
-                assert!(matches!(actions.become_, behavior::Step::Continue));
+                assert!(matches!(actions.become_, behavior_core::Step::Continue));
             }
         }
         assert_eq!(

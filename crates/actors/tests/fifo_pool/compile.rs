@@ -1,9 +1,10 @@
+use behavior::{Actions, Never};
+use behavior_actors::Activate as _;
 use behavior_actors::atomic::{
     ActivationPolicy, ActorDrainPolicy, Assignment, BacklogCapacity, DiagnosticDisposition,
     ImmediateActivation, Interruption, OrderedRoles, PoolFailureReaction, PoolRecovery,
     WorkerSubmission, fifo, pool_worker,
 };
-use behavior_actors::{Actions, Activate as _, Never};
 
 use super::RuntimeAddr;
 
@@ -62,10 +63,10 @@ fn canonical_fifo_worker_and_constructor_need_no_structural_types() {
 
 fn accepts_timed_pool_worker<W>(_: W)
 where
-    W: behavior_actors::Behavior + behavior_actors::BehaviorBase,
-    W::Protocol: behavior_actors::Protocol<Addr = RuntimeAddr, Msg = Assignment<SearchJob>>,
+    W: behavior::Behavior + behavior::BehaviorBase,
+    W::Protocol: behavior::Protocol<Addr = RuntimeAddr, Msg = Assignment<SearchJob>>,
     W::Sends: behavior_actors::atomic::CompletesAssignments<WorkerResult = SearchResult>
-        + behavior_actors::SendSettlements,
+        + behavior::SendSettlements,
 {
 }
 
@@ -73,7 +74,7 @@ where
 fn actual_timer_wrappers_preserve_completion_in_both_orders() {
     accepts_timed_pool_worker(behavior_actors::ReceiveTimeout::new(
         behavior_actors::Deadline::new(SearchWorker, behavior_actors::TimerId(10), None, |_| {
-            behavior_actors::Step::Stop(behavior_actors::Stopped)
+            behavior::Step::Stop(behavior::Stopped)
         }),
         behavior_actors::TimerId(11),
         std::time::Duration::from_secs(5),
@@ -88,6 +89,6 @@ fn actual_timer_wrappers_preserve_completion_in_both_orders() {
         ),
         behavior_actors::TimerId(13),
         None,
-        |_| behavior_actors::Step::Stop(behavior_actors::Stopped),
+        |_| behavior::Step::Stop(behavior::Stopped),
     ));
 }

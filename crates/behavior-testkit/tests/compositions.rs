@@ -5,16 +5,19 @@
 
 use std::time::{Duration, Instant};
 
-use behavior::EventLayer;
-use behavior::{
-    Acted, Actions, Activate, Behavior, Crash, CreateChild, CreationSequence, Creations, Delivery,
-    Exit, MailAddr, Never, PeerStopped, Recipient, SendEffects, StashRoute, Step, TimerElapsed,
-    TimerGeneration, TimerId, User, UserEvent, stop_on_abnormal_death,
+use behavior_actors::{
+    Activate, Crash, Exit, PeerStopped, StashRoute, TimerElapsed, TimerGeneration, TimerId,
+    stop_on_abnormal_death,
+};
+use behavior_core::EventLayer;
+use behavior_core::{
+    Acted, Actions, Behavior, CreateChild, CreationSequence, Creations, Delivery, MailAddr, Never,
+    Recipient, SendEffects, Step, User, UserEvent,
 };
 
 struct Sink;
 
-impl behavior::Protocol for Sink {
+impl behavior_core::Protocol for Sink {
     type Addr = MailAddr;
     type Msg = u8;
 }
@@ -25,17 +28,17 @@ impl Behavior for Sink {
     type Sends = Vec<Never>;
     type Ph = Never;
     type Error = Never;
-    type Birth = behavior::NoBirths;
+    type Birth = behavior_core::NoBirths;
 
-    fn init(&mut self, _: behavior::InitializationTurn) -> behavior::BehaviorActed<Self> {
+    fn init(&mut self, _: behavior_core::InitializationTurn) -> behavior_core::BehaviorActed<Self> {
         Ok(Actions::cont())
     }
 
     fn transition(
         &mut self,
-        _: behavior::ActiveTurn,
+        _: behavior_core::ActiveTurn,
         _: Self::Event,
-    ) -> behavior::BehaviorActed<Self> {
+    ) -> behavior_core::BehaviorActed<Self> {
         Ok(Actions::cont())
     }
 }
@@ -45,13 +48,13 @@ struct Recorder {
     seen: Vec<(MailAddr, u8)>,
 }
 
-#[behavior::behavior(addr = MailAddr, message = u8, sends = Vec<Delivery<Sink>>, births = behavior::NoBirths, error = Never)]
+#[behavior_core::behavior(addr = MailAddr, message = u8, sends = Vec<Delivery<Sink>>, births = behavior_core::NoBirths, error = Never)]
 impl Recorder {
     fn receive(
         &mut self,
         from: MailAddr,
         message: u8,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<Sink>>, behavior::NoBirths, Never> {
+    ) -> Acted<MailAddr, Never, Vec<Delivery<Sink>>, behavior_core::NoBirths, Never> {
         self.seen.push((from, message));
         Ok(Actions {
             sends: vec![Delivery::new(Recipient::global(from), message)],
@@ -63,8 +66,8 @@ impl Recorder {
 
 const PEER: MailAddr = MailAddr(44);
 
-fn at<T: Behavior>(behavior: T, when: Instant) -> behavior::Deadline<T> {
-    behavior::Deadline::new(behavior, behavior::TimerId(0), Some(when), |_| {
+fn at<T: Behavior>(behavior: T, when: Instant) -> behavior_actors::Deadline<T> {
+    behavior_actors::Deadline::new(behavior, behavior_actors::TimerId(0), Some(when), |_| {
         Step::Continue
     })
 }
@@ -73,7 +76,7 @@ struct GeneratedBase {
     creations: CreationSequence,
 }
 
-#[behavior::behavior(
+#[behavior_core::behavior(
     addr = MailAddr,
     message = u8,
     sends = {
@@ -90,7 +93,7 @@ impl GeneratedBase {
         }
     }
 
-    fn init(&mut self) -> behavior::BehaviorActed<Self> {
+    fn init(&mut self) -> behavior_core::BehaviorActed<Self> {
         let mut sends = GeneratedBaseSends::empty();
         sends
             .send::<_, GeneratedBaseSendsReplies>(Delivery::new(Recipient::global(MailAddr(9)), 7));
@@ -102,7 +105,7 @@ impl GeneratedBase {
         Ok(Actions::new(sends, creates, Step::Continue))
     }
 
-    fn receive(&mut self, _: MailAddr, _: u8) -> behavior::BehaviorActed<Self> {
+    fn receive(&mut self, _: MailAddr, _: u8) -> behavior_core::BehaviorActed<Self> {
         Ok(Actions::cont())
     }
 }
@@ -123,8 +126,8 @@ async fn generated_products_compose_through_every_sound_three_wrapper_order() {
     let due = Instant::now() + Duration::from_secs(1);
 
     let first = at(
-        behavior::Watch::new(
-            behavior::Stash::new(GeneratedBase::new(), |_| StashRoute::Deliver),
+        behavior_actors::Watch::new(
+            behavior_actors::Stash::new(GeneratedBase::new(), |_| StashRoute::Deliver),
             PEER,
             stop_on_abnormal_death,
         ),
@@ -135,9 +138,9 @@ async fn generated_products_compose_through_every_sound_three_wrapper_order() {
     .actions;
     assert_generated_base_effects(&first.sends.inner.inner, first.creates.len());
 
-    let second = behavior::Watch::new(
+    let second = behavior_actors::Watch::new(
         at(
-            behavior::Stash::new(GeneratedBase::new(), |_| StashRoute::Deliver),
+            behavior_actors::Stash::new(GeneratedBase::new(), |_| StashRoute::Deliver),
             due,
         ),
         PEER,
@@ -148,8 +151,8 @@ async fn generated_products_compose_through_every_sound_three_wrapper_order() {
     .actions;
     assert_generated_base_effects(&second.sends.inner.inner, second.creates.len());
 
-    let third = behavior::Watch::new(
-        behavior::Stash::new(at(GeneratedBase::new(), due), |_| StashRoute::Deliver),
+    let third = behavior_actors::Watch::new(
+        behavior_actors::Stash::new(at(GeneratedBase::new(), due), |_| StashRoute::Deliver),
         PEER,
         stop_on_abnormal_death,
     )
@@ -169,9 +172,9 @@ async fn all_wrapper_permutations_preserve_init_protocol_nesting() {
 
     // Deadline::new(Watch::new(Deadline::new(inner, T1), p), T2): outermost Deadline owns T2, Watch owns p.
     // innermost Deadline owns T1.
-    let c1 = behavior::Deadline::new(
-        behavior::Watch::new(at(Recorder::default(), first), PEER, stop_on_abnormal_death),
-        behavior::TimerId(0),
+    let c1 = behavior_actors::Deadline::new(
+        behavior_actors::Watch::new(at(Recorder::default(), first), PEER, stop_on_abnormal_death),
+        behavior_actors::TimerId(0),
         Some(second),
         |_| Step::Continue,
     );
@@ -183,10 +186,10 @@ async fn all_wrapper_permutations_preserve_init_protocol_nesting() {
     assert_eq!(i1.sends.inner.inner.owned[0].at, first);
 
     // Watch::new(Deadline::new(Deadline::new(inner, T1), T2), p): Watch owns the outer product.
-    let c2 = behavior::Watch::new(
-        behavior::Deadline::new(
+    let c2 = behavior_actors::Watch::new(
+        behavior_actors::Deadline::new(
             at(Recorder::default(), first),
-            behavior::TimerId(0),
+            behavior_actors::TimerId(0),
             Some(second),
             |_| Step::Continue,
         ),
@@ -201,14 +204,14 @@ async fn all_wrapper_permutations_preserve_init_protocol_nesting() {
     assert_eq!(i2.sends.inner.inner.owned[0].at, first);
 
     // Deadline::new(Deadline::new(Watch::new(inner, p), T1), T2).
-    let c3 = behavior::Deadline::new(
-        behavior::Deadline::new(
-            behavior::Watch::new(Recorder::default(), PEER, stop_on_abnormal_death),
-            behavior::TimerId(0),
+    let c3 = behavior_actors::Deadline::new(
+        behavior_actors::Deadline::new(
+            behavior_actors::Watch::new(Recorder::default(), PEER, stop_on_abnormal_death),
+            behavior_actors::TimerId(0),
             Some(first),
             |_| Step::Continue,
         ),
-        behavior::TimerId(0),
+        behavior_actors::TimerId(0),
         Some(second),
         |_| Step::Continue,
     );
@@ -220,10 +223,10 @@ async fn all_wrapper_permutations_preserve_init_protocol_nesting() {
     assert_eq!(i3.sends.inner.inner.owned[0].peer, PEER);
 
     // Watch::new(Deadline::new(Deadline::new(inner, T2), T1), p).
-    let c4 = behavior::Watch::new(
-        behavior::Deadline::new(
+    let c4 = behavior_actors::Watch::new(
+        behavior_actors::Deadline::new(
             at(Recorder::default(), second),
-            behavior::TimerId(0),
+            behavior_actors::TimerId(0),
             Some(first),
             |_| Step::Continue,
         ),
@@ -238,13 +241,13 @@ async fn all_wrapper_permutations_preserve_init_protocol_nesting() {
     assert_eq!(i4.sends.inner.inner.owned[0].at, second);
 
     // Deadline::new(Watch::new(Deadline::new(inner, T2), p), T1).
-    let c5 = behavior::Deadline::new(
-        behavior::Watch::new(
+    let c5 = behavior_actors::Deadline::new(
+        behavior_actors::Watch::new(
             at(Recorder::default(), second),
             PEER,
             stop_on_abnormal_death,
         ),
-        behavior::TimerId(0),
+        behavior_actors::TimerId(0),
         Some(first),
         |_| Step::Continue,
     );
@@ -256,14 +259,14 @@ async fn all_wrapper_permutations_preserve_init_protocol_nesting() {
     assert_eq!(i5.sends.inner.inner.owned[0].at, second);
 
     // Deadline::new(Deadline::new(Watch::new(inner, p), T2), T1).
-    let c6 = behavior::Deadline::new(
-        behavior::Deadline::new(
-            behavior::Watch::new(Recorder::default(), PEER, stop_on_abnormal_death),
-            behavior::TimerId(0),
+    let c6 = behavior_actors::Deadline::new(
+        behavior_actors::Deadline::new(
+            behavior_actors::Watch::new(Recorder::default(), PEER, stop_on_abnormal_death),
+            behavior_actors::TimerId(0),
             Some(second),
             |_| Step::Continue,
         ),
-        behavior::TimerId(0),
+        behavior_actors::TimerId(0),
         Some(first),
         |_| Step::Continue,
     );
@@ -278,9 +281,9 @@ async fn all_wrapper_permutations_preserve_init_protocol_nesting() {
 #[test]
 fn nested_deadlines_at_the_same_instant_route_to_the_selected_occurrence() {
     let due = Instant::now() + Duration::from_secs(1);
-    let deadline = behavior::Deadline::new(
-        behavior::Deadline::new(Recorder::default(), TimerId(0), Some(due), |_| {
-            Step::Stop(behavior::Stopped)
+    let deadline = behavior_actors::Deadline::new(
+        behavior_actors::Deadline::new(Recorder::default(), TimerId(0), Some(due), |_| {
+            Step::Stop(behavior_core::Stopped)
         }),
         TimerId(1),
         Some(due),
@@ -301,9 +304,9 @@ fn nested_deadlines_at_the_same_instant_route_to_the_selected_occurrence() {
 #[test]
 fn equal_timer_ids_in_nested_deadlines_remain_separately_addressable() {
     let due = Instant::now() + Duration::from_secs(1);
-    let deadline = behavior::Deadline::new(
-        behavior::Deadline::new(Recorder::default(), TimerId(0), Some(due), |_| {
-            Step::Stop(behavior::Stopped)
+    let deadline = behavior_actors::Deadline::new(
+        behavior_actors::Deadline::new(Recorder::default(), TimerId(0), Some(due), |_| {
+            Step::Stop(behavior_core::Stopped)
         }),
         TimerId(0),
         Some(due),
@@ -333,13 +336,13 @@ fn equal_timer_ids_in_nested_deadlines_remain_separately_addressable() {
 #[tokio::test]
 async fn environment_lanes_bypass_stash_while_user_lane_is_intercepted() {
     let due = Instant::now() + Duration::from_secs(1);
-    let behavior = behavior::Deadline::new(
-        behavior::Watch::new(
-            behavior::Stash::new(Recorder::default(), |_| StashRoute::Stash),
+    let behavior = behavior_actors::Deadline::new(
+        behavior_actors::Watch::new(
+            behavior_actors::Stash::new(Recorder::default(), |_| StashRoute::Stash),
             PEER,
             stop_on_abnormal_death,
         ),
-        behavior::TimerId(0),
+        behavior_actors::TimerId(0),
         Some(due),
         |_| Step::Continue,
     );
@@ -361,7 +364,7 @@ async fn environment_lanes_bypass_stash_while_user_lane_is_intercepted() {
         outcome: Err(Crash::Failed),
     });
     let died = behavior.transition(EventLayer::Inner(peer)).unwrap();
-    assert!(matches!(died.become_, Step::Stop(behavior::Stopped)));
+    assert!(matches!(died.become_, Step::Stop(behavior_core::Stopped)));
     assert_eq!(behavior.stashed(), 0);
 
     // User lane: intercepted by the stash buffer.
@@ -379,7 +382,7 @@ async fn environment_lanes_bypass_stash_while_user_lane_is_intercepted() {
 /// the reaction on each matching death; ordinary user messages still run.
 #[tokio::test]
 async fn watch_reaction_reinvokes_on_each_death_and_transition_continues() {
-    let behavior = behavior::Watch::new(Recorder::default(), PEER, stop_on_abnormal_death);
+    let behavior = behavior_actors::Watch::new(Recorder::default(), PEER, stop_on_abnormal_death);
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
 
@@ -388,10 +391,10 @@ async fn watch_reaction_reinvokes_on_each_death_and_transition_continues() {
         outcome: Err(Crash::Failed),
     });
     let first = behavior.transition(death.clone()).unwrap();
-    assert!(matches!(first.become_, Step::Stop(behavior::Stopped)));
+    assert!(matches!(first.become_, Step::Stop(behavior_core::Stopped)));
 
     let second = behavior.transition(death).unwrap();
-    assert!(matches!(second.become_, Step::Stop(behavior::Stopped)));
+    assert!(matches!(second.become_, Step::Stop(behavior_core::Stopped)));
 
     // The behavior remains usable: a user message after the stop is processed.
     let actions = behavior
@@ -406,8 +409,8 @@ async fn watch_reaction_reinvokes_on_each_death_and_transition_continues() {
 async fn watch_of_watch_routes_each_peer_to_its_own_layer() {
     let inner_peer = MailAddr(1);
     let outer_peer = MailAddr(2);
-    let behavior = behavior::Watch::new(
-        behavior::Watch::new(Recorder::default(), inner_peer, stop_on_abnormal_death),
+    let behavior = behavior_actors::Watch::new(
+        behavior_actors::Watch::new(Recorder::default(), inner_peer, stop_on_abnormal_death),
         outer_peer,
         stop_on_abnormal_death,
     );
@@ -420,7 +423,7 @@ async fn watch_of_watch_routes_each_peer_to_its_own_layer() {
         outcome: Err(Crash::Failed),
     });
     let outer = behavior.transition(outer_death).unwrap();
-    assert!(matches!(outer.become_, Step::Stop(behavior::Stopped)));
+    assert!(matches!(outer.become_, Step::Stop(behavior_core::Stopped)));
 
     // The inner observation request selects the inner watcher directly.
     let inner_death = EventLayer::Inner(EventLayer::Owned(PeerStopped {
@@ -428,21 +431,21 @@ async fn watch_of_watch_routes_each_peer_to_its_own_layer() {
         outcome: Err(Crash::Failed),
     }));
     let inner = behavior.transition(inner_death).unwrap();
-    assert!(matches!(inner.become_, Step::Stop(behavior::Stopped)));
+    assert!(matches!(inner.become_, Step::Stop(behavior_core::Stopped)));
 }
 
 fn continue_after_death<B: Behavior>(
     _: &mut B,
     _: MailAddr,
     _: &Result<Exit<MailAddr>, Crash>,
-) -> behavior::Become {
+) -> behavior_core::Become {
     Step::Continue
 }
 
 #[tokio::test]
 async fn duplicate_nested_watch_peer_remains_addressable_at_both_paths() {
-    let behavior = behavior::Watch::new(
-        behavior::Watch::new(Recorder::default(), PEER, stop_on_abnormal_death),
+    let behavior = behavior_actors::Watch::new(
+        behavior_actors::Watch::new(Recorder::default(), PEER, stop_on_abnormal_death),
         PEER,
         continue_after_death,
     );
@@ -462,16 +465,19 @@ async fn duplicate_nested_watch_peer_remains_addressable_at_both_paths() {
             outcome: Err(Crash::Failed),
         })))
         .unwrap();
-    assert!(matches!(inner.become_, Step::Stop(behavior::Stopped)));
+    assert!(matches!(inner.become_, Step::Stop(behavior_core::Stopped)));
 }
 
 /// An `Deadline` constructed with `None` schedules nothing and is inert to every
 /// Reached event: the reaction never fires.
 #[tokio::test]
 async fn unscheduled_at_is_inert_to_reached_events() {
-    let behavior = behavior::Deadline::new(Recorder::default(), behavior::TimerId(0), None, |_| {
-        Step::Stop(behavior::Stopped)
-    });
+    let behavior = behavior_actors::Deadline::new(
+        Recorder::default(),
+        behavior_actors::TimerId(0),
+        None,
+        |_| Step::Stop(behavior_core::Stopped),
+    );
     let initialized = behavior.initialize().unwrap();
     let initial = initialized.actions;
     let mut behavior = initialized.behavior;
@@ -492,7 +498,7 @@ async fn unscheduled_at_is_inert_to_reached_events() {
 /// the behavior active; `LinkDied` and crashes stop it carrying the peer address.
 #[tokio::test]
 async fn abnormal_death_reaction_outcome_classes() {
-    let behavior = behavior::Watch::new(Recorder::default(), PEER, stop_on_abnormal_death);
+    let behavior = behavior_actors::Watch::new(Recorder::default(), PEER, stop_on_abnormal_death);
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
 
@@ -509,7 +515,7 @@ async fn abnormal_death_reaction_outcome_classes() {
     let linked = behavior
         .transition(outcome(Ok(Exit::LinkDied(MailAddr(3)))))
         .unwrap();
-    assert!(matches!(linked.become_, Step::Stop(behavior::Stopped)));
+    assert!(matches!(linked.become_, Step::Stop(behavior_core::Stopped)));
     for crash in [
         Crash::Failed,
         Crash::EnvironmentFailed,
@@ -517,6 +523,9 @@ async fn abnormal_death_reaction_outcome_classes() {
         Crash::Cancelled,
     ] {
         let crashed = behavior.transition(outcome(Err(crash))).unwrap();
-        assert!(matches!(crashed.become_, Step::Stop(behavior::Stopped)));
+        assert!(matches!(
+            crashed.become_,
+            Step::Stop(behavior_core::Stopped)
+        ));
     }
 }

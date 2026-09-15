@@ -1,17 +1,20 @@
 //! Independent state-machine attacks for workflow coordination templates.
 
-use behavior::{
-    Actions, Activate as _, Barrier, BarrierError, BarrierGeneration, BarrierMembership,
-    BarrierMessage, BarrierReleased, BarrierState, Behavior, BehaviorActed, Latch, LatchMessage,
-    LatchState, MailAddr, MessageProtocol, Never, NoBirths, Recipient, User, Workflow,
-    WorkflowDefinition, WorkflowError, WorkflowInput, WorkflowMessage, WorkflowOutcome,
-    WorkflowRejection, WorkflowState, WorkflowStepState,
+use behavior_actors::{
+    Activate as _, Barrier, BarrierError, BarrierGeneration, BarrierMembership, BarrierMessage,
+    BarrierReleased, BarrierState, Latch, LatchMessage, LatchState, Workflow, WorkflowDefinition,
+    WorkflowError, WorkflowInput, WorkflowMessage, WorkflowOutcome, WorkflowRejection,
+    WorkflowState, WorkflowStepState,
+};
+
+use behavior_core::{
+    Actions, Behavior, BehaviorActed, MailAddr, MessageProtocol, Never, NoBirths, Recipient, User,
 };
 use proptest::collection::vec;
 use proptest::prelude::*;
 
 struct WorkflowReply;
-impl behavior::Protocol for WorkflowReply {
+impl behavior_core::Protocol for WorkflowReply {
     type Addr = MailAddr;
     type Msg = WorkflowOutcome<u8>;
 }
@@ -22,13 +25,14 @@ impl Behavior for WorkflowReply {
     type Ph = Never;
     type Error = Never;
     type Birth = NoBirths;
-    fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
+    fn transition(&mut self, _: behavior_core::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
         Ok(Actions::cont())
     }
 }
 
 type TestBarrier = Barrier<MailAddr, u8, Recipient<MessageProtocol<MailAddr, BarrierReleased>>>;
-type TestLatch = Latch<MailAddr, Recipient<MessageProtocol<MailAddr, behavior::LatchReleased>>>;
+type TestLatch =
+    Latch<MailAddr, Recipient<MessageProtocol<MailAddr, behavior_actors::LatchReleased>>>;
 type TestWorkflow = Workflow<MailAddr, u8, Recipient<WorkflowReply>>;
 
 proptest! {

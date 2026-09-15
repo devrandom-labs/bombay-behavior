@@ -7,11 +7,11 @@
 
 use std::time::Duration;
 
-use behavior::EventLayer;
-use behavior::{
-    Activate, Machine, MailAddr, Move, Never, StashRoute, Step, TimerElapsed, TimerGeneration,
-    TimerId, UserEvent,
+use behavior_actors::{
+    Activate, Machine, Move, StashRoute, TimerElapsed, TimerGeneration, TimerId,
 };
+use behavior_core::EventLayer;
+use behavior_core::{MailAddr, Never, Step, UserEvent};
 use proptest::collection::vec;
 use proptest::prelude::*;
 use std::time::Instant;
@@ -68,9 +68,9 @@ proptest! {
         fires in vec(any::<u8>(), 0..32),
     ) {
         let due = Instant::now() + Duration::from_secs(1);
-        let behavior = behavior::Deadline::new(
-            behavior::Stash::new(Machine::new(Vec::new(), Phase::A, on), route),
-            behavior::TimerId(0),
+        let behavior = behavior_actors::Deadline::new(
+            behavior_actors::Stash::new(Machine::new(Vec::new(), Phase::A, on), route),
+            behavior_actors::TimerId(0),
             Some(due),
             |_| Step::Continue,
         );

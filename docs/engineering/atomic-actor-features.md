@@ -1,4 +1,4 @@
-# Exhaustive feature catalogue for atomic actor templates
+# Exhaustive feature catalogue for atomic actor templates (engineering record)
 
 This document records the observable requirements that the replacement actor
 templates must satisfy. It intentionally makes no decision about Rust types,

@@ -1,18 +1,19 @@
 //! Independent retained-lifecycle models for correlation templates.
 
-use behavior::{
+use behavior_actors::{
     AcknowledgementError, AcknowledgementInput, AcknowledgementMessage, AcknowledgementOutcome,
-    AcknowledgementState, Acknowledgements, Actions, Activate as _, Behavior, BehaviorActed,
-    CorrelationResult, CorrelationState, Correlator, CorrelatorError, CorrelatorMessage, MailAddr,
-    Never, NoBirths, Recipient, User,
+    AcknowledgementState, Acknowledgements, Activate as _, CorrelationResult, CorrelationState,
+    Correlator, CorrelatorError, CorrelatorMessage,
 };
+
+use behavior_core::{Actions, Behavior, BehaviorActed, MailAddr, Never, NoBirths, Recipient, User};
 use proptest::collection::vec;
 use proptest::prelude::*;
 
 macro_rules! reply {
     ($name:ident, $message:ty) => {
         struct $name;
-        impl behavior::Protocol for $name {
+        impl behavior_core::Protocol for $name {
             type Addr = MailAddr;
             type Msg = $message;
         }
@@ -25,7 +26,7 @@ macro_rules! reply {
             type Birth = NoBirths;
             fn transition(
                 &mut self,
-                _: behavior::ActiveTurn,
+                _: behavior_core::ActiveTurn,
                 _: Self::Event,
             ) -> BehaviorActed<Self> {
                 Ok(Actions::cont())

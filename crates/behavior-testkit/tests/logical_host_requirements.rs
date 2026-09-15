@@ -1,13 +1,13 @@
 //! Structural logical-host projection from real sends and birth algebras.
 
-use behavior::DeliveryOutcomes;
-use core::marker::PhantomData;
-use foundation::{
+use behavior_actors::DeliveryOutcomes;
+use behavior_core::{
     Actions, Address, Behavior, BehaviorActed, BirthProtocol, BirthProtocolAt, BirthProtocolHead,
     BirthProtocolProduct, BirthProtocolTail, Births, ChildChoice, Delivery, EndpointAddress,
     EstablishedDelivery, LogicalHostRequirements, Never, NoBirthProtocols, NoBirths, Protocol,
     User,
 };
+use core::marker::PhantomData;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 struct RuntimeAddr(u64);
@@ -60,7 +60,7 @@ impl Behavior for Leaf {
     type Error = Never;
     type Birth = NoBirths;
 
-    fn transition(&mut self, _: foundation::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
+    fn transition(&mut self, _: behavior_core::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
         Ok(Actions::cont())
     }
 }
@@ -76,7 +76,7 @@ impl Behavior for Application {
     type Error = Never;
     type Birth = Births<ChildChoice<Leaf, ChildChoice<Leaf, Never>>>;
 
-    fn transition(&mut self, _: foundation::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
+    fn transition(&mut self, _: behavior_core::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
         Ok(Actions::cont())
     }
 }

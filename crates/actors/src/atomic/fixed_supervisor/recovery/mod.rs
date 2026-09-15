@@ -16,10 +16,10 @@ use crate::atomic::worker::{
 };
 use crate::atomic::{PrepareWorkers, RoleName, WorkerSource};
 use crate::{
-    ChildInputReason, ChildStopped, ProxyInputResult, ProxyOperation, ProxyOperationId,
-    ReplacementOutcome, ScheduleAfter, ScheduleAfterRejection, StableProxy, TimerElapsed,
-    WorkerAttempt,
+    ChildStopped, ProxyInputResult, ProxyOperation, ProxyOperationId, ReplacementOutcome,
+    ScheduleAfter, ScheduleAfterRejection, StableProxy, TimerElapsed, WorkerAttempt,
 };
+use behavior::ChildInputReason;
 
 use super::diagnostic::{RecoveryDenied, RestartScheduleFailure, WorkerPreparationFailure};
 use super::member::{OnlineMember, RosterOwner};

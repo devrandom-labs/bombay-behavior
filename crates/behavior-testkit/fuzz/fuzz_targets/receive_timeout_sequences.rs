@@ -2,17 +2,15 @@
 
 use std::time::Duration;
 
-use behavior::EventLayer;
-use behavior::{
-    Acted, Actions, Activate, MailAddr, Never, NoBirths, Step, TimerElapsed, TimerGeneration,
-    TimerId, User, UserEvent,
-};
+use behavior_actors::{Activate, TimerElapsed, TimerGeneration, TimerId};
+use behavior_core::EventLayer;
+use behavior_core::{Acted, Actions, MailAddr, Never, NoBirths, Step, User, UserEvent};
 use libfuzzer_sys::fuzz_target;
 use tokio::runtime::Builder;
 
 struct Sink;
 
-#[behavior::behavior(addr = MailAddr, message = u8, sends = Vec<Never>, births = NoBirths, error = Never)]
+#[behavior_core::behavior(addr = MailAddr, message = u8, sends = Vec<Never>, births = NoBirths, error = Never)]
 impl Sink {
     fn receive(
         &mut self,
@@ -32,8 +30,12 @@ fn elapsed(_inner: &mut SinkBehavior) -> Actions<MailAddr, Never, Vec<Never>, No
 fuzz_target!(|bytes: &[u8]| {
     let runtime = Builder::new_current_thread().build().unwrap();
     runtime.block_on(async {
-        let behavior =
-            behavior::ReceiveTimeout::new(Sink, TimerId(0), Duration::from_nanos(1), elapsed);
+        let behavior = behavior_actors::ReceiveTimeout::new(
+            Sink,
+            TimerId(0),
+            Duration::from_nanos(1),
+            elapsed,
+        );
         let initialized = behavior.initialize().unwrap();
         let initial = initialized.actions;
         let mut behavior = initialized.behavior;

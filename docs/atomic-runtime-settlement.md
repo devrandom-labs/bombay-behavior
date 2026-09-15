@@ -467,7 +467,7 @@ supplies these five links. H03 authorizes neither a Behavior-side custodian nor
 a second Driver, mailbox, task, or lifecycle service.
 
 Bombay's application facade re-exports only the non-hidden semantic names listed
-by [`atomic-actor-devx.md`](atomic-actor-devx.md). Interpreter code may import
+by [`atomic-actor-devx.md`](engineering/atomic-actor-devx.md). Interpreter code may import
 the doc-hidden associated request, event, effect, and settlement types through
 `behavior_actors::atomic`; none becomes a second application spelling.
 

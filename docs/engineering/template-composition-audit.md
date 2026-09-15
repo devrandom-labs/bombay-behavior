@@ -1,4 +1,4 @@
-# Actor-template composition audit
+# Actor-template composition audit (engineering record)
 
 ## Authoritative redesign ledger
 

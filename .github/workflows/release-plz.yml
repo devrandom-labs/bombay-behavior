@@ -6,29 +6,36 @@ permissions:
 
 on:
   workflow_dispatch:
-  push:
+  workflow_run:
+    workflows:
+      - CI
+    types:
+      - completed
     branches:
       - main
-    paths:
-      - 'crates/**'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
 
 jobs:
   release-plz:
     name: Release
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     concurrency:
-      group: release-plz-${{ github.ref }}
+      group: release-plz-main
       cancel-in-progress: false
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.95.0
+
+      - name: Assemble and inspect published crates
+        run: bash scripts/check_published_packages.sh
 
       - name: Generate GitHub App token
         id: app-token

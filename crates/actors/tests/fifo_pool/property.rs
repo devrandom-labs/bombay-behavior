@@ -1,15 +1,16 @@
 use std::collections::VecDeque;
 use std::convert::Infallible;
 
+use behavior::{
+    ActionItemResult, ChildReport, CreationId, ItemSettlement, MessageProtocol, Never, Recipient,
+    SettledItem, Step,
+};
 use behavior_actors::atomic::{
     AdmissionRejection, AssignWorker, Assignment, AssignmentReceipt, BacklogCapacity, FifoCommand,
     FifoEvent, FifoOutcomeKind, FifoPool, ImmediateActivation, Interruption, PoolFailureReaction,
     PoolRecovery, SubmissionId,
 };
-use behavior_actors::{
-    ActionItemResult, Active, ChildReport, CreationId, ItemSettlement, MessageProtocol, Never,
-    Recipient, ReplyDelivery, SettledItem, Step,
-};
+use behavior_actors::{Active, ReplyDelivery};
 use proptest::collection::vec;
 use proptest::prelude::{Just, Strategy, any};
 use proptest::prop_assert;

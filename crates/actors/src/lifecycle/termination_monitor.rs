@@ -12,9 +12,9 @@ use behavior::{
 /// Pure reaction applied to the exact matching terminal report.
 pub type TerminationReaction<B> = fn(
     &mut B,
-    PeerStopped<crate::BehaviorAddr<B>>,
+    PeerStopped<behavior::BehaviorAddr<B>>,
 ) -> Actions<
-    crate::BehaviorAddr<B>,
+    behavior::BehaviorAddr<B>,
     <B as Behavior>::Ph,
     <B as Behavior>::Sends,
     <B as Behavior>::Birth,
@@ -101,7 +101,7 @@ pub trait TerminationObservationTarget<B: Behavior>:
         report: Self::Report,
     ) -> Result<
         (
-            Actions<crate::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>,
+            Actions<behavior::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>,
             TerminationObservation,
         ),
         Self::Report,
@@ -110,15 +110,15 @@ pub trait TerminationObservationTarget<B: Behavior>:
 
 /// Address-selected legacy termination observation.
 pub struct LogicalTerminationTarget<B: Behavior> {
-    peer: crate::BehaviorAddr<B>,
+    peer: behavior::BehaviorAddr<B>,
     react: TerminationReaction<B>,
 }
 
 impl<B: Behavior> sealed::TerminationObservationTarget<B> for LogicalTerminationTarget<B> {}
 
 impl<B: Behavior> TerminationObservationTarget<B> for LogicalTerminationTarget<B> {
-    type Report = PeerStopped<crate::BehaviorAddr<B>>;
-    type Request = ObservePeer<crate::BehaviorAddr<B>>;
+    type Report = PeerStopped<behavior::BehaviorAddr<B>>;
+    type Request = ObservePeer<behavior::BehaviorAddr<B>>;
 
     fn request(&self) -> Self::Request {
         ObservePeer::new(self.peer)
@@ -131,7 +131,7 @@ impl<B: Behavior> TerminationObservationTarget<B> for LogicalTerminationTarget<B
         report: Self::Report,
     ) -> Result<
         (
-            Actions<crate::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>,
+            Actions<behavior::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>,
             TerminationObservation,
         ),
         Self::Report,
@@ -155,7 +155,7 @@ pub type EstablishedTerminationReaction<B, P> = fn(
     &mut B,
     EstablishedObservation<P>,
 ) -> Actions<
-    crate::BehaviorAddr<B>,
+    behavior::BehaviorAddr<B>,
     <B as Behavior>::Ph,
     <B as Behavior>::Sends,
     <B as Behavior>::Birth,
@@ -164,8 +164,8 @@ pub type EstablishedTerminationReaction<B, P> = fn(
 /// Exact-incarnation termination observation policy.
 pub struct EstablishedTerminationTarget<B: Behavior, P>
 where
-    P: behavior::Protocol<Addr = crate::BehaviorAddr<B>>,
-    crate::BehaviorAddr<B>: EndpointAddress,
+    P: behavior::Protocol<Addr = behavior::BehaviorAddr<B>>,
+    behavior::BehaviorAddr<B>: EndpointAddress,
 {
     id: ObservationId,
     peer: EstablishedRecipient<P>,
@@ -175,16 +175,16 @@ where
 impl<B, P> sealed::TerminationObservationTarget<B> for EstablishedTerminationTarget<B, P>
 where
     B: Behavior,
-    P: behavior::Protocol<Addr = crate::BehaviorAddr<B>>,
-    crate::BehaviorAddr<B>: EndpointAddress,
+    P: behavior::Protocol<Addr = behavior::BehaviorAddr<B>>,
+    behavior::BehaviorAddr<B>: EndpointAddress,
 {
 }
 
 impl<B, P> TerminationObservationTarget<B> for EstablishedTerminationTarget<B, P>
 where
     B: Behavior,
-    P: behavior::Protocol<Addr = crate::BehaviorAddr<B>>,
-    crate::BehaviorAddr<B>: EndpointAddress,
+    P: behavior::Protocol<Addr = behavior::BehaviorAddr<B>>,
+    behavior::BehaviorAddr<B>: EndpointAddress,
 {
     type Report = EstablishedObservation<P>;
     type Request = ObserveEstablished<P>;
@@ -200,7 +200,7 @@ where
         report: Self::Report,
     ) -> Result<
         (
-            Actions<crate::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>,
+            Actions<behavior::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>,
             TerminationObservation,
         ),
         Self::Report,
@@ -283,7 +283,7 @@ pub type EstablishedTerminationMonitor<B, P> =
     TerminationMonitorWith<B, EstablishedTerminationTarget<B, P>>;
 
 type TerminationMonitorActions<B, Target> = Actions<
-    crate::BehaviorAddr<B>,
+    behavior::BehaviorAddr<B>,
     <B as Behavior>::Ph,
     SendLayer<
         InterpreterRequests<<Target as TerminationObservationTarget<B>>::Request>,
@@ -297,7 +297,7 @@ impl<B: Behavior> TerminationMonitorWith<B, LogicalTerminationTarget<B>> {
     #[must_use]
     pub const fn new(
         inner: B,
-        peer: crate::BehaviorAddr<B>,
+        peer: behavior::BehaviorAddr<B>,
         on_stopped: TerminationReaction<B>,
     ) -> Self {
         Self {
@@ -314,8 +314,8 @@ impl<B: Behavior> TerminationMonitorWith<B, LogicalTerminationTarget<B>> {
 impl<B, P> TerminationMonitorWith<B, EstablishedTerminationTarget<B, P>>
 where
     B: Behavior,
-    P: behavior::Protocol<Addr = crate::BehaviorAddr<B>>,
-    crate::BehaviorAddr<B>: EndpointAddress,
+    P: behavior::Protocol<Addr = behavior::BehaviorAddr<B>>,
+    behavior::BehaviorAddr<B>: EndpointAddress,
 {
     #[must_use]
     pub fn established(
@@ -340,16 +340,16 @@ impl<B: Behavior, Target: TerminationObservationTarget<B>> TerminationMonitorWit
     }
 
     fn wrap(
-        actions: Actions<crate::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>,
+        actions: Actions<behavior::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>,
         observations: InterpreterRequests<Target::Request>,
     ) -> TerminationMonitorActions<B, Target> {
         actions.map_sends(|inner| SendLayer::new(observations, inner))
     }
 }
 
-impl<B, Target> crate::BehaviorBase for TerminationMonitorWith<B, Target>
+impl<B, Target> behavior::BehaviorBase for TerminationMonitorWith<B, Target>
 where
-    B: Behavior + crate::BehaviorBase,
+    B: Behavior + behavior::BehaviorBase,
     Target: TerminationObservationTarget<B>,
 {
     type Base = B::Base;
@@ -375,7 +375,7 @@ where
     Sends: SendEffects + behavior::SendsFor<B::Event>,
     Br: BirthMode,
     B: Behavior<Ph = Ph, Sends = Sends, Birth = Br>,
-    B::Protocol: crate::Protocol<Addr = A>,
+    B::Protocol: behavior::Protocol<Addr = A>,
     Target: TerminationObservationTarget<B>,
 {
     type Protocol = B::Protocol;
@@ -385,7 +385,7 @@ where
     type Error = TerminationMonitorError<B::Error, Target::Report>;
     type Birth = Br;
 
-    fn init(&mut self, _: crate::InitializationTurn) -> BehaviorActed<Self> {
+    fn init(&mut self, _: behavior::InitializationTurn) -> BehaviorActed<Self> {
         let actions =
             behavior::initialize(&mut self.inner).map_err(TerminationMonitorError::Inner)?;
         Ok(Self::wrap(
@@ -394,7 +394,7 @@ where
         ))
     }
 
-    fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+    fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
         match event {
             EventLayer::Owned(report) => {
                 let (actions, next) = self
@@ -431,7 +431,7 @@ mod tests {
 
     struct Probe;
 
-    impl crate::BehaviorBase for Probe {
+    impl behavior::BehaviorBase for Probe {
         type Base = Self;
 
         fn base(&self) -> &Self {
@@ -452,11 +452,15 @@ mod tests {
         type Error = Never;
         type Birth = Births<()>;
 
-        fn init(&mut self, _: crate::InitializationTurn) -> BehaviorActed<Self> {
+        fn init(&mut self, _: behavior::InitializationTurn) -> BehaviorActed<Self> {
             Ok(Actions::send(vec![1]))
         }
 
-        fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+        fn transition(
+            &mut self,
+            _: behavior::ActiveTurn,
+            event: Self::Event,
+        ) -> BehaviorActed<Self> {
             Ok(Actions::send(vec![event.message]))
         }
     }

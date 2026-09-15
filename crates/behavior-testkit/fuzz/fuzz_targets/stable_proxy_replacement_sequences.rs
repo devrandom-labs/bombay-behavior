@@ -2,8 +2,11 @@
 //! Arbitrary overlap, correlation, and cancellation during proxy replacement.
 mod stable_proxy;
 mod worker_return;
-use behavior::atomic::{ProxyControl, ProxyOutcome, ProxyPhase, ReplacementOutcome, StableProxy};
-use behavior::{EstablishedShutdownResolved, ShutdownId, Step};
+use behavior_actors::atomic::{
+    ProxyControl, ProxyOutcome, ProxyPhase, ReplacementOutcome, StableProxy,
+};
+use behavior_actors::{EstablishedShutdownResolved, ShutdownId};
+use behavior_core::Step;
 use libfuzzer_sys::fuzz_target;
 use stable_proxy::{Worker, drive_ready_proxy, worker_stopped};
 use worker_return::{WorkerReturn, WorkerReturnDecision, WorkerReturnInput, foreign_worker};

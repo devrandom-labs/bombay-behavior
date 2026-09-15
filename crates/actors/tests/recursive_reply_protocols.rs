@@ -1,5 +1,6 @@
 //! Compile-time regression matrix for reply adapters that target their sender's root.
 
+use behavior::*;
 use behavior_actors::*;
 
 struct Target;

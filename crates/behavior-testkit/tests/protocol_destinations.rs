@@ -1,4 +1,4 @@
-use behavior::{
+use behavior_core::{
     Actions, Behavior, Delivery, MailAddr, MessageProtocol, Never, NoBirths, Recipient, User,
 };
 
@@ -7,7 +7,7 @@ struct Worker;
 
 macro_rules! inert {
     ($actor:ty) => {
-        impl behavior::Protocol for $actor {
+        impl behavior_core::Protocol for $actor {
             type Addr = MailAddr;
             type Msg = u8;
         }
@@ -20,15 +20,18 @@ macro_rules! inert {
             type Error = Never;
             type Birth = NoBirths;
 
-            fn init(&mut self, _: behavior::InitializationTurn) -> behavior::BehaviorActed<Self> {
+            fn init(
+                &mut self,
+                _: behavior_core::InitializationTurn,
+            ) -> behavior_core::BehaviorActed<Self> {
                 Ok(Actions::cont())
             }
 
             fn transition(
                 &mut self,
-                _: behavior::ActiveTurn,
+                _: behavior_core::ActiveTurn,
                 _: Self::Event,
-            ) -> behavior::BehaviorActed<Self> {
+            ) -> behavior_core::BehaviorActed<Self> {
                 Ok(Actions::cont())
             }
         }
@@ -52,7 +55,7 @@ fn identical_address_and_message_types_keep_distinct_protocol_lanes() {
 
 struct SelfSending;
 
-impl behavior::Protocol for SelfSending {
+impl behavior_core::Protocol for SelfSending {
     type Addr = MailAddr;
     type Msg = u8;
 }
@@ -65,19 +68,19 @@ impl Behavior for SelfSending {
     type Error = Never;
     type Birth = NoBirths;
 
-    fn init(&mut self, _: behavior::InitializationTurn) -> behavior::BehaviorActed<Self> {
+    fn init(&mut self, _: behavior_core::InitializationTurn) -> behavior_core::BehaviorActed<Self> {
         Ok(Actions::cont())
     }
 
     fn transition(
         &mut self,
-        _: behavior::ActiveTurn,
+        _: behavior_core::ActiveTurn,
         _: Self::Event,
-    ) -> behavior::BehaviorActed<Self> {
+    ) -> behavior_core::BehaviorActed<Self> {
         Ok(Actions::new(
             vec![Delivery::new(Recipient::global(MailAddr(9)), 11)],
-            behavior::Creations::empty(),
-            behavior::Step::Continue,
+            behavior_core::Creations::empty(),
+            behavior_core::Step::Continue,
         ))
     }
 }
@@ -113,13 +116,13 @@ fn equal_payloads_cannot_conflate_adjacent_protocol_lanes() {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct RemoteAddr(u64);
 
-impl behavior::Address for RemoteAddr {
+impl behavior_core::Address for RemoteAddr {
     type Nonce = u16;
 }
 
 struct Remote;
 
-impl behavior::Protocol for Remote {
+impl behavior_core::Protocol for Remote {
     type Addr = RemoteAddr;
     type Msg = u8;
 }
@@ -132,22 +135,22 @@ impl Behavior for Remote {
     type Error = Never;
     type Birth = NoBirths;
 
-    fn init(&mut self, _: behavior::InitializationTurn) -> behavior::BehaviorActed<Self> {
+    fn init(&mut self, _: behavior_core::InitializationTurn) -> behavior_core::BehaviorActed<Self> {
         Ok(Actions::cont())
     }
 
     fn transition(
         &mut self,
-        _: behavior::ActiveTurn,
+        _: behavior_core::ActiveTurn,
         _: Self::Event,
-    ) -> behavior::BehaviorActed<Self> {
+    ) -> behavior_core::BehaviorActed<Self> {
         Ok(Actions::cont())
     }
 }
 
 struct CrossNamespaceSender;
 
-impl behavior::Protocol for CrossNamespaceSender {
+impl behavior_core::Protocol for CrossNamespaceSender {
     type Addr = MailAddr;
     type Msg = ();
 }
@@ -160,19 +163,19 @@ impl Behavior for CrossNamespaceSender {
     type Error = Never;
     type Birth = NoBirths;
 
-    fn init(&mut self, _: behavior::InitializationTurn) -> behavior::BehaviorActed<Self> {
+    fn init(&mut self, _: behavior_core::InitializationTurn) -> behavior_core::BehaviorActed<Self> {
         Ok(Actions::cont())
     }
 
     fn transition(
         &mut self,
-        _: behavior::ActiveTurn,
+        _: behavior_core::ActiveTurn,
         _: Self::Event,
-    ) -> behavior::BehaviorActed<Self> {
+    ) -> behavior_core::BehaviorActed<Self> {
         Ok(Actions::new(
             vec![Delivery::new(Recipient::global(RemoteAddr(31)), 5)],
-            behavior::Creations::empty(),
-            behavior::Step::Continue,
+            behavior_core::Creations::empty(),
+            behavior_core::Step::Continue,
         ))
     }
 }

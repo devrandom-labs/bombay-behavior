@@ -4,6 +4,13 @@ use std::time::{Duration, Instant};
 use proptest::collection::vec;
 use proptest::proptest;
 
+use behavior::{
+    ActiveTurn, Address, Behavior, BehaviorActed, ChildCreationOutcome, ChildInputReason,
+    ChildReport, CreateChild, CreationId, CreationKind, CreationRejection, CreationSequence,
+    CreationSettlement, CreationsSettled, EndpointAddress, EstablishedActor, EstablishedCreation,
+    EstablishedRecipient, Here, InterpreterFault, ItemSettlement, MessageProtocol, Never, NoBirths,
+    NoSends, Protocol, Recipient, RoutedCreation, SettledItem, User,
+};
 use behavior_actors::atomic::{
     ActivationPlan, ActivationPolicy, ActorDrainPolicy, CancellationOutcome, CancellationReceipt,
     DiagnosticAction, DiagnosticDisposition, DynamicCommand, DynamicDiagnostic, DynamicLifecycle,
@@ -16,13 +23,8 @@ use behavior_actors::atomic::{
     ZeroCapacity, dynamic,
 };
 use behavior_actors::{
-    Activate, Active, ActiveTurn, Address, Behavior, BehaviorActed, ChildCreationOutcome,
-    ChildInputReason, ChildReport, ChildStopped, CreateChild, CreationId, CreationKind,
-    CreationRejection, CreationSequence, CreationSettlement, CreationsSettled, EndpointAddress,
-    EstablishedActor, EstablishedCreation, EstablishedRecipient, Exit, Here, InterpreterFault,
-    ItemSettlement, MessageProtocol, Never, NoBirths, NoSends, Protocol, Recipient, ReplyDelivery,
-    ReplyRoute, RoutedCreation, ScheduleAfterRejection, SettledItem, ShutdownRequested,
-    TimerElapsed, TimerGeneration, TimerId, TimerScheduled, User,
+    Activate, Active, ChildStopped, Exit, ReplyDelivery, ReplyRoute, ScheduleAfterRejection,
+    ShutdownRequested, TimerElapsed, TimerGeneration, TimerId, TimerScheduled,
 };
 
 #[expect(
@@ -125,7 +127,7 @@ enum CustomerCatalogue {
 }
 
 fn overlapping_initial_report(
-    creation: behavior_actors::CreationId,
+    creation: behavior::CreationId,
 ) -> ChildReport<ProxyOutcome<SearchWorker, SearchActivation>> {
     ChildReport::new(
         creation,
@@ -397,7 +399,7 @@ fn empty_global_shutdown_stops_without_runtime_work() {
     assert!(shutdown.sends.lifecycle.is_empty());
     assert!(shutdown.sends.diagnostics.is_empty());
     assert!(shutdown.creates.is_empty());
-    assert!(matches!(shutdown.become_, behavior_actors::Step::Stop(_)));
+    assert!(matches!(shutdown.become_, behavior::Step::Stop(_)));
 }
 
 #[test]
@@ -437,7 +439,7 @@ fn global_shutdown_drains_a_pending_proxy_creation_and_closes_management() {
     let shutdown = supervisor
         .on(ShutdownRequested)
         .unwrap_or_else(|_| panic!("shutdown accepts the pending proxy creation"));
-    assert!(matches!(shutdown.become_, behavior_actors::Step::Continue));
+    assert!(matches!(shutdown.become_, behavior::Step::Continue));
     assert!(shutdown.sends.proxy_operations.is_empty());
     assert_eq!(shutdown.sends.lifecycle.len(), 1);
     assert!(matches!(
@@ -523,7 +525,7 @@ fn global_shutdown_drains_a_pending_proxy_creation_and_closes_management() {
     let settled = supervisor
         .on(accepted_search_input(shutdown_creation, shutdown_operation))
         .unwrap_or_else(|_| panic!("the shutdown receipt waits for exact proxy exit"));
-    assert!(matches!(settled.become_, behavior_actors::Step::Continue));
+    assert!(matches!(settled.become_, behavior::Step::Continue));
     let retired = supervisor
         .on(ChildStopped::new(
             creation,
@@ -531,7 +533,7 @@ fn global_shutdown_drains_a_pending_proxy_creation_and_closes_management() {
             Instant::now(),
         ))
         .unwrap_or_else(|_| panic!("the exact proxy exit completes aggregate shutdown"));
-    assert!(matches!(retired.become_, behavior_actors::Step::Stop(_)));
+    assert!(matches!(retired.become_, behavior::Step::Stop(_)));
     assert!(matches!(
         &retired.sends.lifecycle[0].message,
         DynamicLifecycle::EntryRetired {
@@ -597,7 +599,7 @@ fn global_shutdown_preserves_a_locally_cancelled_start() {
     let shutdown = supervisor
         .on(ShutdownRequested)
         .unwrap_or_else(|_| panic!("shutdown retains the unresolved proxy creation"));
-    assert!(matches!(shutdown.become_, behavior_actors::Step::Continue));
+    assert!(matches!(shutdown.become_, behavior::Step::Continue));
     assert!(shutdown.sends.proxy_operations.is_empty());
     assert!(shutdown.sends.lifecycle.is_empty());
     let draining = supervisor
@@ -633,10 +635,7 @@ fn global_shutdown_preserves_a_locally_cancelled_start() {
     let awaiting_exit = supervisor
         .on(accepted_search_input(shutdown_creation, operation))
         .unwrap_or_else(|_| panic!("shutdown settlement waits for exact exit"));
-    assert!(matches!(
-        awaiting_exit.become_,
-        behavior_actors::Step::Continue
-    ));
+    assert!(matches!(awaiting_exit.become_, behavior::Step::Continue));
     let retired = supervisor
         .on(ChildStopped::new(
             creation,
@@ -644,7 +643,7 @@ fn global_shutdown_preserves_a_locally_cancelled_start() {
             Instant::now(),
         ))
         .unwrap_or_else(|_| panic!("exact proxy exit closes global shutdown"));
-    assert!(matches!(retired.become_, behavior_actors::Step::Stop(_)));
+    assert!(matches!(retired.become_, behavior::Step::Stop(_)));
     assert!(matches!(
         &retired.sends.lifecycle[0].message,
         DynamicLifecycle::OperationCancelled {
@@ -701,7 +700,7 @@ fn shutdown_deadline_rejection_and_elapsed_force_retirement() {
             .pop()
             .unwrap_or_else(|| panic!("timed drain emits one schedule"));
         assert_eq!(schedule.after, Duration::from_secs(5));
-        assert!(matches!(shutdown.become_, behavior_actors::Step::Continue));
+        assert!(matches!(shutdown.become_, behavior::Step::Continue));
 
         let forced = match result {
             DeadlineResult::Rejected => supervisor
@@ -721,7 +720,7 @@ fn shutdown_deadline_rejection_and_elapsed_force_retirement() {
                         })),
                     ))
                     .unwrap_or_else(|_| panic!("exact schedule receipt starts the deadline"));
-                assert!(matches!(scheduled.become_, behavior_actors::Step::Continue));
+                assert!(matches!(scheduled.become_, behavior::Step::Continue));
                 let foreign = TimerElapsed::new(TimerId(9), TimerGeneration(9));
                 assert!(matches!(
                     supervisor.on(foreign),
@@ -732,7 +731,7 @@ fn shutdown_deadline_rejection_and_elapsed_force_retirement() {
                     .unwrap_or_else(|_| panic!("exact elapsed deadline forces retirement"))
             }
         };
-        assert!(matches!(forced.become_, behavior_actors::Step::Stop(_)));
+        assert!(matches!(forced.become_, behavior::Step::Stop(_)));
         assert!(forced.sends.lifecycle.is_empty());
         assert!(forced.creates.is_empty());
     }
@@ -1511,7 +1510,7 @@ async fn global_shutdown_retains_a_replacement_awaiting_input_settlement() {
             ..
         }
     ));
-    assert!(matches!(retired.become_, behavior_actors::Step::Stop(_)));
+    assert!(matches!(retired.become_, behavior::Step::Stop(_)));
 }
 
 #[tokio::test]
@@ -1655,7 +1654,7 @@ async fn global_shutdown_retains_an_accepted_replacement_report() {
             ..
         }
     ));
-    assert!(matches!(retired.become_, behavior_actors::Step::Stop(_)));
+    assert!(matches!(retired.become_, behavior::Step::Stop(_)));
 }
 
 #[tokio::test]
@@ -1738,7 +1737,7 @@ async fn global_shutdown_retires_an_available_service_once() {
             ..
         }
     ));
-    assert!(matches!(retired.become_, behavior_actors::Step::Stop(_)));
+    assert!(matches!(retired.become_, behavior::Step::Stop(_)));
 }
 
 #[test]
@@ -1812,7 +1811,7 @@ fn global_shutdown_preserves_start_failure_retirement() {
             ..
         }
     ));
-    assert!(matches!(retired.become_, behavior_actors::Step::Stop(_)));
+    assert!(matches!(retired.become_, behavior::Step::Stop(_)));
 }
 
 #[test]
@@ -2396,7 +2395,7 @@ async fn ready_service_accepts_one_replacement_on_its_current_proxy() {
             .unwrap_or_else(|_| panic!("global shutdown retains the accepted stop"));
         assert!(draining.sends.proxy_operations.is_empty());
         assert!(draining.sends.lifecycle.is_empty());
-        assert!(matches!(draining.become_, behavior_actors::Step::Continue));
+        assert!(matches!(draining.become_, behavior::Step::Continue));
         let mut foreign_creations = CreationSequence::new();
         let first_foreign = foreign_creations.issue();
         assert_eq!(first_foreign.map(CreationId::get), Some(1));
@@ -2459,7 +2458,7 @@ async fn ready_service_accepts_one_replacement_on_its_current_proxy() {
                 ..
             }
         ));
-        assert!(matches!(retired.become_, behavior_actors::Step::Stop(_)));
+        assert!(matches!(retired.become_, behavior::Step::Stop(_)));
         let duplicate = supervisor
             .on(ChildStopped::new(
                 creation,
@@ -2989,7 +2988,7 @@ fn accepted_start_cancellation_retires_before_fresh_key_reuse() {
         .unwrap_or_else(|_| panic!("a vacant bounded supervisor accepts its first service"));
 
     let rejected = supervisor.on(CreationsSettled::new(CreationSettlement::Settled(
-        behavior_actors::Creations::empty(),
+        behavior::Creations::empty(),
     )));
     assert!(
         rejected.is_err(),
@@ -3095,10 +3094,7 @@ fn accepted_start_cancellation_retires_before_fresh_key_reuse() {
     assert!(cancelled_again.sends.query_replies.as_slice().is_empty());
     assert!(cancelled_again.sends.lifecycle.is_empty());
     assert!(cancelled_again.sends.diagnostics.is_empty());
-    assert!(matches!(
-        cancelled_again.become_,
-        behavior_actors::Step::Continue
-    ));
+    assert!(matches!(cancelled_again.become_, behavior::Step::Continue));
     let cancelled_authority = match cancelled_again
         .sends
         .cancel_replies
@@ -3163,7 +3159,7 @@ fn accepted_start_cancellation_retires_before_fresh_key_reuse() {
     assert!(stale.sends.query_replies.as_slice().is_empty());
     assert!(stale.sends.lifecycle.is_empty());
     assert!(stale.sends.diagnostics.is_empty());
-    assert!(matches!(stale.become_, behavior_actors::Step::Continue));
+    assert!(matches!(stale.become_, behavior::Step::Continue));
     let stale_authority = match stale
         .sends
         .cancel_replies
@@ -3234,7 +3230,7 @@ fn accepted_start_cancellation_retires_before_fresh_key_reuse() {
     assert!(stale_after_reuse.sends.diagnostics.is_empty());
     assert!(matches!(
         stale_after_reuse.become_,
-        behavior_actors::Step::Continue
+        behavior::Step::Continue
     ));
     match stale_after_reuse
         .sends
@@ -3412,7 +3408,7 @@ async fn committed_proxy_creation_emits_the_exact_initial_worker_input() {
         .unwrap_or_else(|| panic!("the proxy creates one worker"));
     let (worker_creation, _worker, worker_kind) = worker_creation.into_parts();
     let initializing = proxy
-        .on(behavior_actors::CreationsSettled::new(
+        .on(behavior::CreationsSettled::new(
             CreationSettlement::Settled(
                 [SettledItem::Attempted(ItemSettlement::Accepted(
                     ChildCreationOutcome::Established {
@@ -3545,7 +3541,7 @@ fn activation_capacity_two_preserves_admission_order() {
         assert!(started.sends.cancel_replies.as_slice().is_empty());
         assert!(started.sends.lifecycle.is_empty());
         assert!(started.sends.diagnostics.is_empty());
-        assert!(matches!(started.become_, behavior_actors::Step::Continue));
+        assert!(matches!(started.become_, behavior::Step::Continue));
         let created = started
             .creates
             .into_iter()
@@ -3567,7 +3563,7 @@ fn activation_capacity_two_preserves_admission_order() {
         assert!(advanced.sends.cancel_replies.as_slice().is_empty());
         assert!(advanced.sends.lifecycle.is_empty());
         assert!(advanced.sends.diagnostics.is_empty());
-        assert!(matches!(advanced.become_, behavior_actors::Step::Continue));
+        assert!(matches!(advanced.become_, behavior::Step::Continue));
 
         let operations = advanced.sends.proxy_operations.into_items();
         match occupied.len() {
@@ -3615,7 +3611,7 @@ fn activation_capacity_two_preserves_admission_order() {
                 DynamicDiagnostic::ProxyInputRejected { key, .. } if key.0 == "search"
             )
     ));
-    assert!(matches!(released.become_, behavior_actors::Step::Continue));
+    assert!(matches!(released.become_, behavior::Step::Continue));
     let next = released.sends.proxy_operations.into_items();
     assert_eq!(next.len(), 2);
     assert_eq!(next[0].creation(), creations[0]);
@@ -3766,7 +3762,7 @@ async fn global_shutdown_orders_local_start_and_replacement_by_key() {
             ..
         }
     ));
-    assert!(matches!(draining.become_, behavior_actors::Step::Continue));
+    assert!(matches!(draining.become_, behavior::Step::Continue));
     drop(proxy);
 }
 
@@ -4103,7 +4099,7 @@ fn admission_queries_match_one_customer_catalogue(bytes: Vec<u8>) {
                 assert!(acted.sends.cancel_replies.as_slice().is_empty());
                 assert!(acted.sends.lifecycle.is_empty());
                 assert!(acted.sends.diagnostics.is_empty());
-                assert!(matches!(acted.become_, behavior_actors::Step::Continue));
+                assert!(matches!(acted.become_, behavior::Step::Continue));
 
                 let mut replies = acted.sends.start_replies.into_deliveries().into_iter();
                 let reply = replies.next().expect("every start receives one reply");
@@ -4160,7 +4156,7 @@ fn admission_queries_match_one_customer_catalogue(bytes: Vec<u8>) {
                 assert!(acted.sends.cancel_replies.as_slice().is_empty());
                 assert!(acted.sends.lifecycle.is_empty());
                 assert!(acted.sends.diagnostics.is_empty());
-                assert!(matches!(acted.become_, behavior_actors::Step::Continue));
+                assert!(matches!(acted.become_, behavior::Step::Continue));
 
                 let mut replies = acted.sends.query_replies.into_deliveries().into_iter();
                 let reply = replies.next().expect("every query receives one reply");

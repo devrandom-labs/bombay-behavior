@@ -1,12 +1,14 @@
 use core::future::Future;
 use std::time::Duration;
 
-use behavior::EventLayer;
-use behavior::{
-    Acted, ActionItem, Actions, Activate, Behavior, Births, CreateChild, CreationKind,
-    CreationSequence, Creations, Delivery, Here, Inside, InterpretItem, InterpretSends,
-    Interpretation, ItemSettlement, MailAddr, Never, NoBirths, Recipient, ScheduleAfter,
-    ScheduleAt, Step, TimerElapsed, TimerGeneration, TimerId, TimerScheduled, User, UserEvent,
+use behavior_actors::{
+    Activate, ScheduleAfter, ScheduleAt, TimerElapsed, TimerGeneration, TimerId, TimerScheduled,
+};
+use behavior_core::EventLayer;
+use behavior_core::{
+    Acted, ActionItem, Actions, Behavior, Births, CreateChild, CreationKind, CreationSequence,
+    Creations, Delivery, Here, Inside, InterpretItem, InterpretSends, Interpretation,
+    ItemSettlement, MailAddr, Never, NoBirths, Recipient, Step, User, UserEvent,
 };
 use behavior_testkit::model::InactivityModel;
 
@@ -15,7 +17,7 @@ struct Failed;
 
 struct Child;
 
-#[behavior::behavior(addr = MailAddr, message = u8, sends = Vec<Never>, births = behavior::NoBirths, error = Never)]
+#[behavior_core::behavior(addr = MailAddr, message = u8, sends = Vec<Never>, births = behavior_core::NoBirths, error = Never)]
 impl Child {
     fn receive(
         &mut self,
@@ -34,7 +36,7 @@ struct Subject {
     child_ids: CreationSequence,
 }
 
-#[behavior::behavior(addr = MailAddr, message = u8, sends = Vec<Delivery<behavior_testkit::TestRecipient<u8>>>, births = Births<ChildBehavior>, error = Failed)]
+#[behavior_core::behavior(addr = MailAddr, message = u8, sends = Vec<Delivery<behavior_testkit::TestRecipient<u8>>>, births = Births<ChildBehavior>, error = Failed)]
 impl Subject {
     fn receive(
         &mut self,
@@ -56,7 +58,7 @@ impl Subject {
             .issue()
             .expect("the test creator has another child ID");
         let next = match message {
-            0 => Step::Stop(behavior::Stopped),
+            0 => Step::Stop(behavior_core::Stopped),
             _ => Step::Continue,
         };
         Ok(Actions::new(
@@ -100,8 +102,12 @@ fn on_timeout(
 #[tokio::test]
 async fn initialization_and_successful_user_turns_arm_after_preserving_actions() {
     let after = Duration::from_secs(5);
-    let behavior =
-        behavior::ReceiveTimeout::new(Subject::default(), behavior::TimerId(0), after, on_timeout);
+    let behavior = behavior_actors::ReceiveTimeout::new(
+        Subject::default(),
+        behavior_actors::TimerId(0),
+        after,
+        on_timeout,
+    );
 
     let initialized = behavior.initialize().unwrap();
     let initial = initialized.actions;
@@ -131,9 +137,9 @@ async fn initialization_and_successful_user_turns_arm_after_preserving_actions()
 
 #[tokio::test]
 async fn matching_delivery_consumes_once_and_reaction_preserves_full_actions() {
-    let behavior = behavior::ReceiveTimeout::new(
+    let behavior = behavior_actors::ReceiveTimeout::new(
         Subject::default(),
-        behavior::TimerId(0),
+        behavior_actors::TimerId(0),
         Duration::from_secs(1),
         on_timeout,
     );
@@ -177,9 +183,9 @@ async fn matching_delivery_consumes_once_and_reaction_preserves_full_actions() {
 
 #[tokio::test]
 async fn errors_and_terminal_user_turns_do_not_rearm() {
-    let failing = behavior::ReceiveTimeout::new(
+    let failing = behavior_actors::ReceiveTimeout::new(
         Subject::default(),
-        behavior::TimerId(0),
+        behavior_actors::TimerId(0),
         Duration::from_secs(1),
         on_timeout,
     );
@@ -195,9 +201,9 @@ async fn errors_and_terminal_user_turns_do_not_rearm() {
         .unwrap();
     assert_eq!(still_live.sends.inner[0].message, 99);
 
-    let terminal = behavior::ReceiveTimeout::new(
+    let terminal = behavior_actors::ReceiveTimeout::new(
         Subject::default(),
-        behavior::TimerId(0),
+        behavior_actors::TimerId(0),
         Duration::from_secs(1),
         on_timeout,
     );
@@ -206,7 +212,7 @@ async fn errors_and_terminal_user_turns_do_not_rearm() {
     let stopped = terminal
         .transition(EventLayer::Inner(User::user(MailAddr(1), 0)))
         .unwrap();
-    assert_eq!(stopped.become_, Step::Stop(behavior::Stopped));
+    assert_eq!(stopped.become_, Step::Stop(behavior_core::Stopped));
     assert!(stopped.sends.owned.is_empty());
     assert_eq!(stopped.sends.inner[0].message, 0);
     assert_one_child_birth(&stopped.creates);
@@ -221,19 +227,19 @@ async fn errors_and_terminal_user_turns_do_not_rearm() {
     assert!(formerly_live.sends.owned.is_empty());
 }
 
-fn inner_at(_inner: &mut SubjectBehavior) -> behavior::Become {
+fn inner_at(_inner: &mut SubjectBehavior) -> behavior_core::Become {
     Step::Continue
 }
 
-type TimedInner = behavior::Deadline<SubjectBehavior>;
+type TimedInner = behavior_actors::Deadline<SubjectBehavior>;
 
 fn outer_timeout(
     _inner: &mut TimedInner,
 ) -> Actions<
     MailAddr,
     Never,
-    behavior::SendLayer<
-        behavior::InterpreterRequests<behavior::ScheduleAt>,
+    behavior_core::SendLayer<
+        behavior_core::InterpreterRequests<behavior_actors::ScheduleAt>,
         <SubjectBehavior as Behavior>::Sends,
     >,
     Births<ChildBehavior>,
@@ -242,7 +248,7 @@ fn outer_timeout(
 }
 
 type TimerCompositionEvent =
-    behavior::ReceiveTimeoutEvent<behavior::DeadlineEvent<User<MailAddr, u8>>>;
+    behavior_actors::TimedEvent<behavior_actors::TimedEvent<User<MailAddr, u8>>>;
 
 #[derive(Debug, PartialEq, Eq)]
 enum TimerScheduleAcceptance {
@@ -329,14 +335,14 @@ impl InterpretItem<ScheduleAfter, TimerCompositionEvent, Here> for TimerComposit
 #[tokio::test]
 async fn nested_timer_service_events_never_reset_receive_inactivity() {
     let due = std::time::Instant::now() + Duration::from_secs(2);
-    let behavior = behavior::ReceiveTimeout::new(
-        behavior::Deadline::new(
+    let behavior = behavior_actors::ReceiveTimeout::new(
+        behavior_actors::Deadline::new(
             Subject::default(),
-            behavior::TimerId(0),
+            behavior_actors::TimerId(0),
             Some(due),
             inner_at,
         ),
-        behavior::TimerId(1),
+        behavior_actors::TimerId(1),
         Duration::from_secs(1),
         outer_timeout,
     );
@@ -357,12 +363,12 @@ async fn nested_timer_service_events_never_reset_receive_inactivity() {
     assert_eq!(
         runtime.accepted_schedules,
         [
-            TimerScheduleAcceptance::Absolute(behavior::ScheduleAt::new(
+            TimerScheduleAcceptance::Absolute(behavior_actors::ScheduleAt::new(
                 TimerId(0),
                 TimerGeneration(0),
                 due,
             )),
-            TimerScheduleAcceptance::Relative(behavior::ScheduleAfter::new(
+            TimerScheduleAcceptance::Relative(behavior_actors::ScheduleAfter::new(
                 TimerId(1),
                 TimerGeneration(0),
                 Duration::from_secs(1),
@@ -410,9 +416,9 @@ async fn nested_timer_service_events_never_reset_receive_inactivity() {
 #[tokio::test]
 async fn accepted_stale_timeout_error_and_terminal_turns_match_independent_model() {
     let mut model = InactivityModel::new();
-    let behavior = behavior::ReceiveTimeout::new(
+    let behavior = behavior_actors::ReceiveTimeout::new(
         Subject::default(),
-        behavior::TimerId(0),
+        behavior_actors::TimerId(0),
         Duration::from_secs(1),
         on_timeout,
     );
@@ -476,14 +482,14 @@ async fn accepted_stale_timeout_error_and_terminal_turns_match_independent_model
     let terminal = behavior
         .transition(EventLayer::Inner(User::user(MailAddr(1), 0)))
         .unwrap();
-    assert_eq!(terminal.become_, Step::Stop(behavior::Stopped));
+    assert_eq!(terminal.become_, Step::Stop(behavior_core::Stopped));
     assert!(terminal.sends.owned.is_empty());
     assert_eq!(model.no_activity(), Some(2));
 }
 
 struct StopsAtInitialization;
 
-impl behavior::Protocol for StopsAtInitialization {
+impl behavior_core::Protocol for StopsAtInitialization {
     type Addr = MailAddr;
     type Msg = ();
 }
@@ -498,28 +504,28 @@ impl Behavior for StopsAtInitialization {
 
     fn init(
         &mut self,
-        _: behavior::InitializationTurn,
+        _: behavior_core::InitializationTurn,
     ) -> Acted<MailAddr, Never, Self::Sends, NoBirths, Never> {
         Ok(Actions::stop())
     }
 
     fn transition(
         &mut self,
-        _: behavior::ActiveTurn,
+        _: behavior_core::ActiveTurn,
         _event: Self::Event,
     ) -> Acted<MailAddr, Never, Self::Sends, NoBirths, Never> {
         Ok(Actions::cont())
     }
 }
 
-fn stopped_at_reaction(_inner: &mut StopsAtInitialization) -> behavior::Become {
+fn stopped_at_reaction(_inner: &mut StopsAtInitialization) -> behavior_core::Become {
     Step::Continue
 }
 
 #[tokio::test]
 async fn terminal_initialization_consumes_absolute_timer_state() {
     let due = std::time::Instant::now() + Duration::from_secs(1);
-    let behavior = behavior::Deadline::new(
+    let behavior = behavior_actors::Deadline::new(
         StopsAtInitialization,
         TimerId(0),
         Some(due),
@@ -528,7 +534,7 @@ async fn terminal_initialization_consumes_absolute_timer_state() {
     let initialized = behavior.initialize().unwrap();
     let initial = initialized.actions;
     let mut behavior = initialized.behavior;
-    assert_eq!(initial.become_, Step::Stop(behavior::Stopped));
+    assert_eq!(initial.become_, Step::Stop(behavior_core::Stopped));
     assert!(initial.sends.owned.is_empty());
 
     let after_stop = behavior

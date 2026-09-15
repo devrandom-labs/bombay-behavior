@@ -1,8 +1,8 @@
-# Developer-experience acceptance contract
+# Developer-experience acceptance contract (engineering record)
 
 Normative ownership: this is the single owner of canonical application
 construction and usage syntax for all five families. Aggregate law documents
-own transitions; [`atomic-runtime-settlement.md`](atomic-runtime-settlement.md)
+own transitions; [`atomic-runtime-settlement.md`](../atomic-runtime-settlement.md)
 owns interpretation/custody; [`atomic-actor-verification.md`](atomic-actor-verification.md)
 owns evidence gates. Other documents link here rather than repeating builder
 orders or worker authoring syntax.

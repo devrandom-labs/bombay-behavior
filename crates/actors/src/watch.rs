@@ -1,7 +1,8 @@
 //! Recurring logical-name peer observation.
 
 use crate::protocol::{ObservePeer, PeerStopped};
-use crate::{Crash, Exit, Step, TerminationMonitorError, TerminationObservation};
+use crate::{Crash, Exit, TerminationMonitorError, TerminationObservation};
+use behavior::Step;
 use behavior::{
     Actions, Address, Become, Behavior, BehaviorActed, BirthMode, EventLayer, InterpreterRequests,
     SendEffects, SendLayer, UserEvent,
@@ -11,8 +12,11 @@ use behavior::{
 pub type WatchEvent<E, Report = PeerStopped<<E as UserEvent>::Addr>> = EventLayer<Report, E>;
 
 /// Infallible reaction to one matching logical peer stop.
-pub type LinkReaction<B> =
-    fn(&mut B, crate::BehaviorAddr<B>, &Result<Exit<crate::BehaviorAddr<B>>, Crash>) -> Become;
+pub type LinkReaction<B> = fn(
+    &mut B,
+    behavior::BehaviorAddr<B>,
+    &Result<Exit<behavior::BehaviorAddr<B>>, Crash>,
+) -> Become;
 
 /// Observe a logical peer name across any number of later incarnations.
 ///
@@ -23,21 +27,25 @@ pub type LinkReaction<B> =
 /// [`ObservePeer`] request after preserving the inner initialization effects.
 pub struct Watch<B: Behavior> {
     inner: B,
-    peer: crate::BehaviorAddr<B>,
+    peer: behavior::BehaviorAddr<B>,
     on_stopped: LinkReaction<B>,
 }
 
 type WatchActions<B> = Actions<
-    crate::BehaviorAddr<B>,
+    behavior::BehaviorAddr<B>,
     <B as Behavior>::Ph,
-    SendLayer<InterpreterRequests<ObservePeer<crate::BehaviorAddr<B>>>, <B as Behavior>::Sends>,
+    SendLayer<InterpreterRequests<ObservePeer<behavior::BehaviorAddr<B>>>, <B as Behavior>::Sends>,
     <B as Behavior>::Birth,
 >;
 
 impl<B: Behavior> Watch<B> {
     /// Wrap `inner` with recurring observation of one logical peer name.
     #[must_use]
-    pub const fn new(inner: B, peer: crate::BehaviorAddr<B>, on_stopped: LinkReaction<B>) -> Self {
+    pub const fn new(
+        inner: B,
+        peer: behavior::BehaviorAddr<B>,
+        on_stopped: LinkReaction<B>,
+    ) -> Self {
         Self {
             inner,
             peer,
@@ -46,16 +54,16 @@ impl<B: Behavior> Watch<B> {
     }
 
     fn wrap(
-        actions: Actions<crate::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>,
-        observations: InterpreterRequests<ObservePeer<crate::BehaviorAddr<B>>>,
+        actions: Actions<behavior::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>,
+        observations: InterpreterRequests<ObservePeer<behavior::BehaviorAddr<B>>>,
     ) -> WatchActions<B> {
         actions.map_sends(|inner| SendLayer::new(observations, inner))
     }
 }
 
-impl<B> crate::BehaviorBase for Watch<B>
+impl<B> behavior::BehaviorBase for Watch<B>
 where
-    B: Behavior + crate::BehaviorBase,
+    B: Behavior + behavior::BehaviorBase,
 {
     type Base = B::Base;
 
@@ -79,7 +87,7 @@ where
     Sends: SendEffects + behavior::SendsFor<B::Event>,
     Br: BirthMode,
     B: Behavior<Ph = Ph, Sends = Sends, Birth = Br>,
-    B::Protocol: crate::Protocol<Addr = A>,
+    B::Protocol: behavior::Protocol<Addr = A>,
 {
     type Protocol = B::Protocol;
     type Event = WatchEvent<B::Event>;
@@ -88,7 +96,7 @@ where
     type Error = TerminationMonitorError<B::Error, PeerStopped<A>>;
     type Birth = Br;
 
-    fn init(&mut self, _: crate::InitializationTurn) -> BehaviorActed<Self> {
+    fn init(&mut self, _: behavior::InitializationTurn) -> BehaviorActed<Self> {
         let actions =
             behavior::initialize(&mut self.inner).map_err(TerminationMonitorError::Inner)?;
         Ok(Self::wrap(
@@ -97,7 +105,7 @@ where
         ))
     }
 
-    fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+    fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
         match event {
             EventLayer::Owned(report) if report.peer == self.peer => {
                 let become_ = match (self.on_stopped)(&mut self.inner, report.peer, &report.outcome)
@@ -125,12 +133,12 @@ where
 /// Stop when a logical watch reports an abnormal outcome.
 pub fn stop_on_abnormal_death<B: Behavior>(
     _behavior: &mut B,
-    _peer: crate::BehaviorAddr<B>,
-    outcome: &Result<Exit<crate::BehaviorAddr<B>>, Crash>,
+    _peer: behavior::BehaviorAddr<B>,
+    outcome: &Result<Exit<behavior::BehaviorAddr<B>>, Crash>,
 ) -> Become {
     if let Ok(Exit::Normal | Exit::Collected) = outcome {
         Step::Continue
     } else {
-        Step::Stop(crate::Stopped)
+        Step::Stop(behavior::Stopped)
     }
 }

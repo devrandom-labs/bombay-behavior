@@ -1,5 +1,6 @@
 //! Final-composition proof for child-derived shutdown planning.
 
+use behavior::*;
 use behavior_actors::*;
 use core::future::Future;
 use std::fmt::Debug;
@@ -247,7 +248,7 @@ where
     interpret(first.sends, &mut interpreter).await;
     assert_eq!(interpreter.events.len(), 1);
     assert!(first.creates.is_empty());
-    assert!(matches!(first.become_, behavior_actors::Step::Continue));
+    assert!(matches!(first.become_, behavior::Step::Continue));
 
     if matches!(arrival, ShutdownArrival::BeforePlan) {
         let waiting = active.on(ShutdownRequested).unwrap();

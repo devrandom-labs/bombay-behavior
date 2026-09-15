@@ -1,5 +1,5 @@
+use behavior::{Actions, Address, EndpointAddress, Never, Protocol};
 use behavior_actors::atomic::{Assignment, ImmediateActivation, WorkerSubmission, pool_worker};
-use behavior_actors::{Actions, Address, EndpointAddress, Never, Protocol};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) struct RuntimeAddr(pub(super) u64);

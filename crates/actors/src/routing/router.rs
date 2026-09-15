@@ -830,7 +830,7 @@ where
     type Error = RouterError<<Route::Protocol as Protocol>::Msg, R::Observation, R::Error>;
     type Birth = NoBirths;
 
-    fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+    fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
         match event.message {
             RouterMessage::Add(recipient) => {
                 if !self.recipients.contains(&recipient) {
@@ -916,7 +916,7 @@ mod tests {
         type Error = Never;
         type Birth = NoBirths;
 
-        fn transition(&mut self, _: crate::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
+        fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
             Ok(Actions::cont())
         }
     }
@@ -934,7 +934,7 @@ mod tests {
         type Error = Never;
         type Birth = NoBirths;
 
-        fn transition(&mut self, _: crate::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
+        fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
             Ok(Actions::cont())
         }
     }

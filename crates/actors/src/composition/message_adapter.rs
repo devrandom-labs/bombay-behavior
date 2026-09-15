@@ -122,7 +122,7 @@ where
     type Error = Never;
     type Birth = NoBirths;
 
-    fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+    fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
         let message = (self.adapt)(event.message);
         Ok(Actions::send(self.destination.clone().deliver(message)))
     }
@@ -131,7 +131,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Activate as _, MailAddr};
+    use crate::Activate as _;
+    use behavior::MailAddr;
     use core::sync::atomic::{AtomicUsize, Ordering};
 
     struct Destination;
@@ -149,7 +150,7 @@ mod tests {
         type Error = Never;
         type Birth = NoBirths;
 
-        fn transition(&mut self, _: crate::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
+        fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
             Ok(Actions::cont())
         }
     }

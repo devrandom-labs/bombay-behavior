@@ -3,11 +3,14 @@
 use std::marker::PhantomData;
 use std::time::Instant;
 
-use behavior::{
-    Actions, Activate as _, Address, Behavior, BehaviorActed, BehaviorBase, EndpointAddress,
-    EstablishedObservation, EstablishedRecipient, EstablishedTerminationMonitor, Exit, Never,
-    NoBirths, ObservationId, ObservationOperation, ObservationRejection, Protocol,
-    TerminationMonitorError, TerminationObservation, User,
+use behavior_actors::{
+    Activate as _, EstablishedObservation, EstablishedTerminationMonitor, Exit, ObservationId,
+    ObservationOperation, ObservationRejection, TerminationMonitorError, TerminationObservation,
+};
+
+use behavior_core::{
+    Actions, Address, Behavior, BehaviorActed, BehaviorBase, EndpointAddress, EstablishedRecipient,
+    Never, NoBirths, Protocol, User,
 };
 use proptest::prelude::*;
 
@@ -69,7 +72,7 @@ impl Behavior for Subject {
     type Error = Never;
     type Birth = NoBirths;
 
-    fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
+    fn transition(&mut self, _: behavior_core::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
         Ok(Actions::cont())
     }
 }

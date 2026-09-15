@@ -206,12 +206,12 @@ where
     Route::Sends: behavior::SendsFor<User<A, PubSubMessage<K, P, Route>>>,
 {
     type Protocol = Self;
-    type Event = User<A, crate::BehaviorMessage<Self>>;
+    type Event = User<A, behavior::BehaviorMessage<Self>>;
     type Sends = Route::Sends;
     type Ph = Never;
     type Error = PubSubError<K, P, Route>;
     type Birth = NoBirths;
-    fn transition(&mut self, _: crate::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+    fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
         match event.message {
             PubSubMessage::Subscribe { topic, subscriber } => {
                 self.subscribe(topic, subscriber);
@@ -241,7 +241,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Activate as _, Recipient};
+    use crate::Activate as _;
+    use behavior::Recipient;
     use behavior::{Delivery, MailAddr};
     struct Destination;
     impl behavior::Protocol for Destination {
@@ -256,7 +257,7 @@ mod tests {
         type Ph = Never;
         type Error = Never;
         type Birth = NoBirths;
-        fn transition(&mut self, _: crate::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
+        fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
             Ok(Actions::cont())
         }
     }
@@ -278,7 +279,7 @@ mod tests {
                 .unwrap();
             assert!(subscribed.sends.is_empty());
             assert!(subscribed.creates.is_empty());
-            assert_eq!(subscribed.become_, crate::Step::Continue);
+            assert_eq!(subscribed.become_, behavior::Step::Continue);
         }
         let a = s
             .receive(MailAddr(9), PubSubMessage::Publish { topic: 7, value: 4 })
@@ -300,7 +301,7 @@ mod tests {
             .unwrap();
         assert!(subscribed.sends.is_empty());
         assert!(subscribed.creates.is_empty());
-        assert_eq!(subscribed.become_, crate::Step::Continue);
+        assert_eq!(subscribed.become_, behavior::Step::Continue);
         let unsubscribed = s
             .receive(
                 MailAddr(9),
@@ -312,7 +313,7 @@ mod tests {
             .unwrap();
         assert!(unsubscribed.sends.is_empty());
         assert!(unsubscribed.creates.is_empty());
-        assert_eq!(unsubscribed.become_, crate::Step::Continue);
+        assert_eq!(unsubscribed.become_, behavior::Step::Continue);
         for topic in [1, 2] {
             assert!(
                 matches!(s.receive(MailAddr(9),PubSubMessage::Publish{topic,value:8}),Err(PubSubError::NoSubscribers{topic:returned,value:8}) if returned==topic)

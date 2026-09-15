@@ -4,10 +4,10 @@
 mod fixed_supervisor;
 mod stable_proxy;
 
-use behavior::atomic::{
+use behavior_actors::atomic::{
     FixedCommand, ImmediateActivation, ProxyInputReceipt, Recovery, StableProxy,
 };
-use behavior::{
+use behavior_core::{
     CreationSequence, EstablishedActor, ItemSettlement, NoSends, SendSettlements, SettledItem, Step,
 };
 use fixed_supervisor::ready_supervisor;

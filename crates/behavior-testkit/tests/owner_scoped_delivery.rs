@@ -2,8 +2,8 @@
 
 use core::marker::PhantomData;
 
-use behavior::{DeliveryRouteFor, ReplyDelivery, ReplyRoute};
-use foundation::{
+use behavior_actors::{DeliveryRouteFor, ReplyDelivery, ReplyRoute};
+use behavior_core::{
     Actions, Address, Behavior, BehaviorActed, EndpointAddress, EstablishedRecipient, Never,
     NoBirths, Protocol, Recipient, User,
 };
@@ -51,7 +51,7 @@ impl Behavior for Worker {
     type Error = Never;
     type Birth = NoBirths;
 
-    fn transition(&mut self, _: foundation::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
+    fn transition(&mut self, _: behavior_core::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
         Ok(Actions::cont())
     }
 }

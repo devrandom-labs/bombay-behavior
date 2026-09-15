@@ -190,13 +190,13 @@ alternative. The structural position prevents duplicate child alternatives
 from silently sharing an installer obligation while avoiding false `Behavior`
 bounds on unrelated wrapper and domain types.
 
-`FoldBirthNode` exposes that same closed direct-child structure to static
-runtimes. A runtime implements `BirthNodeMapper` to choose its own empty and
-per-child storage types; Behavior supplies every concrete leaf and its existing
-`ChildHead`/`ChildTail<_>` position. The fold creates no values and adds no
-creation semantics, registry, protocol key, or runtime dependency. Nested
-children are folded in the namespace of the concrete actor that creates them,
-not flattened into root-owned storage.
+`ChildOccurrenceProduct` exposes that same closed direct-child structure to
+static runtimes. A runtime implements `ChildOccurrenceShape` to choose its own
+empty and per-child storage types; Behavior supplies every concrete leaf and
+its existing `ChildHead`/`ChildTail<_>` position. This type-level projection
+creates no values and adds no creation semantics, registry, protocol key, or
+runtime dependency. Nested children remain in the namespace of the concrete
+actor that creates them rather than being flattened into root-owned storage.
 
 `ResolveChildOccurrence<Occurrence>` statically joins an emitted effect back to
 that storage. Generated roles resolve through `BehaviorBase` only across

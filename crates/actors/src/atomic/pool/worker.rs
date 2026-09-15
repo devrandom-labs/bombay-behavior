@@ -1357,7 +1357,7 @@ where
 
 impl<Role, W, P, Job, WorkerResult, Customer> Member<Role, W, P, Job, WorkerResult, Customer>
 where
-    W: Behavior + crate::BehaviorBase,
+    W: Behavior + behavior::BehaviorBase,
     P: ActivationPlan,
     BehaviorAddr<W>: EndpointAddress,
     StopOnShutdown<W>:
