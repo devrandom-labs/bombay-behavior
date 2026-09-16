@@ -83,3 +83,12 @@ impl<A: Address> ReportTerminalOutcome<A> {
 impl<A: Address> behavior::InterpreterRequest for ReportTerminalOutcome<A> {
     type ReturnToEmitter = behavior::NoReturnToEmitter;
 }
+
+impl<A> behavior::ActionItem for ReportTerminalOutcome<A>
+where
+    A: Address + Send,
+{
+    type Accepted = ();
+    type Rejection = behavior::Never;
+    type Prerequisite = behavior::Never;
+}

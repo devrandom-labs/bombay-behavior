@@ -69,6 +69,17 @@ where
         ReturnsToEmitter<behavior::EstablishedCreation<P, Occurrence>, behavior::Here>;
 }
 
+impl<P, Occurrence> ActionItem for ObserveEstablishedCreation<P, Occurrence>
+where
+    P: Protocol,
+    P::Addr: EndpointAddress,
+    <P::Addr as behavior::Address>::Nonce: Send,
+{
+    type Accepted = ();
+    type Rejection = Never;
+    type Prerequisite = behavior::CreationCorrelation<P, Occurrence>;
+}
+
 /// Both capabilities established by one committed named-child creation.
 ///
 /// `creation` remains relative to the creating actor and selects its private
@@ -203,6 +214,17 @@ where
     type ReturnToEmitter = ReturnsToEmitter<EstablishedObservation<P>, behavior::Here>;
 }
 
+impl<P> ActionItem for ObserveEstablished<P>
+where
+    P: Protocol,
+    P::Addr: EndpointAddress,
+    <P::Addr as EndpointAddress>::Established<P>: Send,
+{
+    type Accepted = ();
+    type Rejection = Never;
+    type Prerequisite = Never;
+}
+
 /// Cancel one exact observer-local relationship.
 pub struct CancelObservation<P: Protocol> {
     pub id: ObservationId,
@@ -237,6 +259,12 @@ impl<P: Protocol> Clone for CancelObservation<P> {
 
 impl<P: Protocol> InterpreterRequest for CancelObservation<P> {
     type ReturnToEmitter = ReturnsToEmitter<EstablishedObservation<P>, behavior::Here>;
+}
+
+impl<P: Protocol> ActionItem for CancelObservation<P> {
+    type Accepted = ();
+    type Rejection = Never;
+    type Prerequisite = Never;
 }
 
 /// Operation correlated by an [`ObservationId`].
