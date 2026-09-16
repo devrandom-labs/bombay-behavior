@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-actors-v0.15.1...bombay-behavior-actors-v0.16.0) - 2026-09-16
+
+### Fixed
+
+- complete settlement custody contract ([#62](https://github.com/devrandom-labs/bombay-behavior/pull/62))
+
 ### Added
 
 - Add direct `settle` operations for `ObserveEstablished` and
