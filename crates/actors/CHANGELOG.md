@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.1](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-actors-v0.15.0...bombay-behavior-actors-v0.15.1) - 2026-09-16
+
+### Other
+
+- Fix Actors interpreter request settlements ([#60](https://github.com/devrandom-labs/bombay-behavior/pull/60))
+
 ### Fixed
 
 - Give terminal-outcome reporting and established-observation interpreter
