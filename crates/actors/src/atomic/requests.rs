@@ -72,6 +72,32 @@ macro_rules! request_product {
             }
         }
 
+        impl<Host, RootEvent, $($parameter),+>
+            behavior::SourceSettlementCustody<Host, RootEvent>
+            for $name<$($parameter),+>
+        where
+            Host: Send,
+            $($parameter: behavior::SourceSettlementCustody<Host, RootEvent> + Send),+
+        {
+            fn offer_next_to_source(
+                self,
+                host: &mut Host,
+            ) -> impl core::future::Future<
+                Output = behavior::SourceCustody<Self>,
+            > + Send {
+                async move {
+                    request_product! {
+                        @custody
+                        $name,
+                        self,
+                        host,
+                        [],
+                        [$(($field, $field_type)),+]
+                    }
+                }
+            }
+        }
+
         impl<Interpreter, RootEvent, Path, $($parameter),+>
             behavior::InterpretSends<Interpreter, RootEvent, Path>
             for $name<$($parameter),+>
@@ -97,6 +123,56 @@ macro_rules! request_product {
                 }
             }
         }
+    };
+    (
+        @custody
+        $name:ident,
+        $owner:ident,
+        $host:ident,
+        [$($settled:ident),*],
+        [($field:ident, $field_type:ident) $(, ($later:ident, $later_type:ident))*]
+    ) => {
+        match <$field_type as behavior::SourceSettlementCustody<_, _>>::offer_next_to_source(
+            $owner.$field,
+            $host,
+        ).await {
+            behavior::SourceCustody::Exhausted($field) => {
+                request_product! {
+                    @custody
+                    $name,
+                    $owner,
+                    $host,
+                    [$($settled,)* $field],
+                    [$(($later, $later_type)),*]
+                }
+            }
+            behavior::SourceCustody::Admitted($field) => {
+                behavior::SourceCustody::Admitted($name {
+                    $($settled: $settled,)*
+                    $field,
+                    $($later: $owner.$later),*
+                })
+            }
+            behavior::SourceCustody::Closed($field) => {
+                behavior::SourceCustody::Closed($name {
+                    $($settled: $settled,)*
+                    $field,
+                    $($later: $owner.$later),*
+                })
+            }
+        }
+    };
+    (
+        @custody
+        $name:ident,
+        $owner:ident,
+        $host:ident,
+        [$($settled:ident),+],
+        []
+    ) => {
+        behavior::SourceCustody::Exhausted($name {
+            $($settled: $settled),+
+        })
     };
     (
         @interpret

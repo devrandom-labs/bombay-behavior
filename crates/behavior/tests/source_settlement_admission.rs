@@ -1,7 +1,8 @@
 use behavior::{
-    ActionItem, ActionItemResult, BehaviorActed, EventIngress, InterpretItem, InterpretSends,
-    Interpretation, InterpreterFault, ItemSettlement, MailAddr, Never, SendLayer, SettledItem,
-    SourceAction, SourceActions, SourceAdmission, SourceCustody, SourceSettlementCustody, Step,
+    ActionItem, ActionItemResult, ActionSettlement, BehaviorActed, Creations, EventIngress,
+    InterpretItem, InterpretSends, Interpretation, InterpreterFault, ItemSettlement, MailAddr,
+    Never, SendLayer, SettledItem, SourceAction, SourceActions, SourceAdmission, SourceCustody,
+    SourceSettlementCustody, Step,
 };
 use core::future::Future;
 use std::collections::VecDeque;
@@ -307,7 +308,7 @@ async fn source_actions_normalize_rejection_corruption_and_unattempted_values() 
         panic!("the third source action must corrupt interpretation");
     };
     let mut host = Host::new(AdmissionWindow::Closed);
-    let SourceCustody::Closed(residual) = settlements.offer_to_source(&mut host).await else {
+    let SourceCustody::Closed(residual) = settlements.offer_next_to_source(&mut host).await else {
         panic!("closed source admission must retain every result");
     };
 
@@ -342,9 +343,19 @@ async fn both_send_layer_orders_match_interpretation_order() {
         panic!("both source actions must settle");
     };
     let mut host = Host::new(AdmissionWindow::Unlimited);
-    let SourceCustody::Open(_) = settlements.offer_to_source(&mut host).await else {
-        panic!("unlimited admission must remain open");
+    let SourceCustody::Admitted(settlements) = settlements.offer_next_to_source(&mut host).await
+    else {
+        panic!("the inner assignment result must be admitted first");
     };
+    assert_eq!(host.trace, [AdmissionTrace::Assignment(AssignmentToken(1))]);
+    let SourceCustody::Admitted(settlements) = settlements.offer_next_to_source(&mut host).await
+    else {
+        panic!("the outer proxy result must be admitted second");
+    };
+    assert!(matches!(
+        settlements.offer_next_to_source(&mut host).await,
+        SourceCustody::Exhausted(_)
+    ));
     assert_eq!(
         host.trace,
         [
@@ -369,9 +380,19 @@ async fn both_send_layer_orders_match_interpretation_order() {
         panic!("both source actions must settle");
     };
     let mut host = Host::new(AdmissionWindow::Unlimited);
-    let SourceCustody::Open(_) = settlements.offer_to_source(&mut host).await else {
-        panic!("unlimited admission must remain open");
+    let SourceCustody::Admitted(settlements) = settlements.offer_next_to_source(&mut host).await
+    else {
+        panic!("the inner proxy result must be admitted first");
     };
+    assert_eq!(host.trace, [AdmissionTrace::Proxy(OperationTicket(3))]);
+    let SourceCustody::Admitted(settlements) = settlements.offer_next_to_source(&mut host).await
+    else {
+        panic!("the outer assignment result must be admitted second");
+    };
+    assert!(matches!(
+        settlements.offer_next_to_source(&mut host).await,
+        SourceCustody::Exhausted(_)
+    ));
     assert_eq!(
         host.trace,
         [
@@ -379,6 +400,62 @@ async fn both_send_layer_orders_match_interpretation_order() {
             AdmissionTrace::Assignment(AssignmentToken(4)),
         ]
     );
+}
+
+#[tokio::test]
+async fn nested_products_offer_only_the_first_remaining_source() {
+    let first = source_actions([proxy(1, "first")]);
+    let second = source_actions([assignment(2, "second")]);
+    let third = source_actions([proxy(3, "third")]);
+    let mut runtime = Runtime::new(
+        vec![AttemptPlan::Accept, AttemptPlan::Accept],
+        vec![AttemptPlan::Accept],
+    );
+    let Interpretation::Complete(first) = <SourceActions<ProxyOperation> as InterpretSends<
+        Runtime,
+        SystemEvent,
+        behavior::Here,
+    >>::interpret(first, &mut runtime)
+    .await
+    else {
+        panic!("the first source must settle");
+    };
+    let Interpretation::Complete(second) = <SourceActions<AssignmentDelivery> as InterpretSends<
+        Runtime,
+        SystemEvent,
+        behavior::Here,
+    >>::interpret(second, &mut runtime)
+    .await
+    else {
+        panic!("the second source must settle");
+    };
+    let Interpretation::Complete(third) = <SourceActions<ProxyOperation> as InterpretSends<
+        Runtime,
+        SystemEvent,
+        behavior::Here,
+    >>::interpret(third, &mut runtime)
+    .await
+    else {
+        panic!("the third source must settle");
+    };
+    let mut residual = ((first, second), third);
+    let mut host = Host::new(AdmissionWindow::Unlimited);
+
+    for expected in [
+        AdmissionTrace::Proxy(OperationTicket(1)),
+        AdmissionTrace::Assignment(AssignmentToken(2)),
+        AdmissionTrace::Proxy(OperationTicket(3)),
+    ] {
+        let SourceCustody::Admitted(next) = residual.offer_next_to_source(&mut host).await else {
+            panic!("exactly one nested source must transfer per offer");
+        };
+        residual = next;
+        assert_eq!(host.trace.last(), Some(&expected));
+    }
+    assert!(matches!(
+        residual.offer_next_to_source(&mut host).await,
+        SourceCustody::Exhausted(_)
+    ));
 }
 
 #[tokio::test]
@@ -398,8 +475,12 @@ async fn generated_product_stops_after_closed_source_and_retains_later_field() {
         panic!("both generated fields must settle");
     };
     let mut host = Host::new(AdmissionWindow::One);
-    let SourceCustody::Closed(residual) = settlements.offer_to_source(&mut host).await else {
-        panic!("the host closes after the proxy result");
+    let SourceCustody::Admitted(settlements) = settlements.offer_next_to_source(&mut host).await
+    else {
+        panic!("the proxy result must be the only first admission");
+    };
+    let SourceCustody::Closed(residual) = settlements.offer_next_to_source(&mut host).await else {
+        panic!("the host closes before the assignment result transfers");
     };
 
     assert_eq!(host.trace, [AdmissionTrace::Proxy(OperationTicket(1))]);
@@ -409,6 +490,41 @@ async fn generated_product_stops_after_closed_source_and_retains_later_field() {
         [SettledItem::Attempted(ItemSettlement::Accepted(
             AssignmentToken(2)
         ))]
+    ));
+}
+
+#[tokio::test]
+async fn complete_action_custody_offers_only_one_source_result() {
+    let sends = GeneratedSends {
+        proxy: source_actions([proxy(1, "proxy")]),
+        assignment: source_actions([assignment(2, "assignment")]),
+    };
+    let mut runtime = Runtime::new(vec![AttemptPlan::Accept], vec![AttemptPlan::Accept]);
+    let Interpretation::Complete(sends) = <GeneratedSends as InterpretSends<
+        Runtime,
+        SystemEvent,
+        behavior::Here,
+    >>::interpret(sends, &mut runtime)
+    .await
+    else {
+        panic!("both generated fields must settle");
+    };
+    let settlement = ActionSettlement {
+        creations: Creations::<Never>::empty(),
+        sends,
+        become_: behavior::Become::<Never>::Continue,
+    };
+    let mut host = Host::new(AdmissionWindow::Unlimited);
+
+    let SourceCustody::Admitted(settlement) = settlement.offer_next_to_source(&mut host).await
+    else {
+        panic!("complete action custody must admit one result");
+    };
+
+    assert_eq!(host.trace, [AdmissionTrace::Proxy(OperationTicket(1))]);
+    assert!(matches!(
+        settlement.offer_next_to_source(&mut host).await,
+        SourceCustody::Admitted(_)
     ));
 }
 

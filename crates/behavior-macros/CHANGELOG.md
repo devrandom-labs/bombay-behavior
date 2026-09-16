@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Generate one-at-a-time source-settlement custody for named request products,
+  preserving declared field order and every untouched suffix field.
+
 ## [0.11.5](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-macros-v0.11.4...bombay-behavior-macros-v0.11.5) - 2026-09-15
 
 ### Other

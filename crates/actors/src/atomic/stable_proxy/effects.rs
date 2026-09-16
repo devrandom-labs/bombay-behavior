@@ -74,6 +74,84 @@ where
 }
 
 impl<
+    Host,
+    RootEvent,
+    WorkerObservations,
+    WorkerInitializations,
+    WorkerActivations,
+    WorkerShutdowns,
+    WorkerDeliveries,
+    OwnerOutcomes,
+    Diagnostics,
+> behavior::SourceSettlementCustody<Host, RootEvent>
+    for ProxyEffects<
+        WorkerObservations,
+        WorkerInitializations,
+        WorkerActivations,
+        WorkerShutdowns,
+        WorkerDeliveries,
+        OwnerOutcomes,
+        Diagnostics,
+    >
+where
+    Host: Send,
+    WorkerObservations: behavior::SourceSettlementCustody<Host, RootEvent> + Send,
+    WorkerInitializations: behavior::SourceSettlementCustody<Host, RootEvent> + Send,
+    WorkerActivations: behavior::SourceSettlementCustody<Host, RootEvent> + Send,
+    WorkerShutdowns: behavior::SourceSettlementCustody<Host, RootEvent> + Send,
+    WorkerDeliveries: behavior::SourceSettlementCustody<Host, RootEvent> + Send,
+    OwnerOutcomes: behavior::SourceSettlementCustody<Host, RootEvent> + Send,
+    Diagnostics: behavior::SourceSettlementCustody<Host, RootEvent> + Send,
+{
+    fn offer_next_to_source(
+        self,
+        host: &mut Host,
+    ) -> impl core::future::Future<Output = behavior::SourceCustody<Self>> + Send {
+        async move {
+            let settlements = (
+                (
+                    (
+                        (
+                            (
+                                (self.worker_observations, self.worker_initializations),
+                                self.worker_activations,
+                            ),
+                            self.worker_shutdowns,
+                        ),
+                        self.worker_deliveries,
+                    ),
+                    self.owner_outcomes,
+                ),
+                self.diagnostics,
+            );
+            settlements.offer_next_to_source(host).await.map(
+                |(
+                    (
+                        (
+                            (
+                                ((worker_observations, worker_initializations), worker_activations),
+                                worker_shutdowns,
+                            ),
+                            worker_deliveries,
+                        ),
+                        owner_outcomes,
+                    ),
+                    diagnostics,
+                )| ProxyEffects {
+                    worker_observations,
+                    worker_initializations,
+                    worker_activations,
+                    worker_shutdowns,
+                    worker_deliveries,
+                    owner_outcomes,
+                    diagnostics,
+                },
+            )
+        }
+    }
+}
+
+impl<
     Event,
     WorkerObservations,
     WorkerInitializations,

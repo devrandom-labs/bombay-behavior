@@ -204,6 +204,15 @@ where
             interpreter,
         })
     }
+
+    /// Transfer this request and return its unconditional action settlement.
+    pub fn settle<I>(self, interpreter: &mut I) -> ItemSettlement<Self, (), Never, Never>
+    where
+        I: InterpretEstablishedObservation<P, Output = ()>,
+    {
+        self.interpret(interpreter);
+        ItemSettlement::Accepted(())
+    }
 }
 
 impl<P> InterpreterRequest for ObserveEstablished<P>
@@ -246,6 +255,16 @@ impl<P: Protocol> CancelObservation<P> {
         I: InterpretEstablishedObservation<P>,
     {
         interpreter.cancel(self.id)
+    }
+
+    /// Transfer this request and return its unconditional action settlement.
+    pub fn settle<I>(self, interpreter: &mut I) -> ItemSettlement<Self, (), Never, Never>
+    where
+        P::Addr: EndpointAddress,
+        I: InterpretEstablishedObservation<P, Output = ()>,
+    {
+        self.interpret(interpreter);
+        ItemSettlement::Accepted(())
     }
 }
 

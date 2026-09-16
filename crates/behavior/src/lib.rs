@@ -48,7 +48,7 @@ pub use actor::{
 };
 pub use effects::{
     Acted, ActionItem, ActionItemResult, ActionSettlement, ActionSettlements, Actions, AppendSend,
-    Become, ClassifySettlement, CreationCustody, CreationSettlement, CreationSettlements,
+    Become, BehaviorSettlements, ClassifySettlement, CreationSettlement, CreationSettlements,
     CreationsSettled, InterpretCreations, InterpretItem, InterpretSends, Interpretation,
     InterpreterFault, InterpreterRequest, InterpreterRequests, ItemSettlement,
     LogicalDeliveryProtocols, NoReturnToEmitter, NoSends, Own, ParentReportReason, ReportToParent,

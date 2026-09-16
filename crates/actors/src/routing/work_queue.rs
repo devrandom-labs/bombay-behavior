@@ -141,6 +141,29 @@ where
     }
 }
 
+impl<Host, RootEvent, Assignments, OutcomeSends> behavior::SourceSettlementCustody<Host, RootEvent>
+    for WorkQueueSends<Assignments, OutcomeSends>
+where
+    Host: Send,
+    Assignments: behavior::SourceSettlementCustody<Host, RootEvent> + Send,
+    OutcomeSends: behavior::SourceSettlementCustody<Host, RootEvent> + Send,
+{
+    fn offer_next_to_source(
+        self,
+        host: &mut Host,
+    ) -> impl core::future::Future<Output = behavior::SourceCustody<Self>> + Send {
+        async move {
+            (self.assignments, self.outcomes)
+                .offer_next_to_source(host)
+                .await
+                .map(|(assignments, outcomes)| WorkQueueSends {
+                    assignments,
+                    outcomes,
+                })
+        }
+    }
+}
+
 impl<I, RootEvent, Path, Assignments, OutcomeSends> behavior::InterpretSends<I, RootEvent, Path>
     for WorkQueueSends<Assignments, OutcomeSends>
 where

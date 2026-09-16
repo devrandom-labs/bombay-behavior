@@ -99,6 +99,23 @@ impl InterpretEstablishedObservation<ProbeProtocol> for ObservationCapture {
     }
 }
 
+#[derive(Default)]
+struct ObservationSettlementCapture {
+    calls: Vec<CapturedObservation>,
+}
+
+impl InterpretEstablishedObservation<ProbeProtocol> for ObservationSettlementCapture {
+    type Output = ();
+
+    fn observe(&mut self, id: ObservationId, endpoint: ProbeEndpoint) {
+        self.calls.push(CapturedObservation::Started(id, endpoint));
+    }
+
+    fn cancel(&mut self, id: ObservationId) {
+        self.calls.push(CapturedObservation::Cancelled(id));
+    }
+}
+
 fn creation_id() -> CreationId {
     CreationSequence::new()
         .issue()
@@ -218,4 +235,25 @@ async fn established_creation_observation_retains_its_blocking_correlation() {
                 })] if item.creation == creation && prerequisite.id() == creation
             )
     ));
+}
+
+#[test]
+fn exact_observation_requests_own_their_accepted_settlement() {
+    let mut runtime = ObservationSettlementCapture::default();
+    let observed = ObserveEstablished::<ProbeProtocol>::new(
+        ObservationId(31),
+        behavior::EstablishedRecipient::issued(ProbeEndpoint(32)),
+    )
+    .settle(&mut runtime);
+    let cancelled = CancelObservation::<ProbeProtocol>::new(ObservationId(33)).settle(&mut runtime);
+
+    assert!(matches!(observed, ItemSettlement::Accepted(())));
+    assert!(matches!(cancelled, ItemSettlement::Accepted(())));
+    assert_eq!(
+        runtime.calls,
+        [
+            CapturedObservation::Started(ObservationId(31), ProbeEndpoint(32)),
+            CapturedObservation::Cancelled(ObservationId(33)),
+        ]
+    );
 }

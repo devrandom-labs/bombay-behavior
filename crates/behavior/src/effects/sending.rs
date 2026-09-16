@@ -608,18 +608,74 @@ where
     fn admit_source(&mut self, input: Input) -> impl Future<Output = Result<(), Input>> + Send;
 }
 
-/// Progress of one ordered source-settlement custody pass.
+/// Result of offering at most one ordered source settlement.
 pub enum SourceCustody<Residual> {
-    /// Source admission remains available after processing this residual.
-    Open(Residual),
+    /// No source input remains in the complete residual product.
+    Exhausted(Residual),
+    /// Exactly one source input transferred; the residual remains in custody.
+    Admitted(Residual),
     /// Admission closed; the residual contains the current and untouched suffix.
     Closed(Residual),
 }
 
-/// Static ordered source admission for one complete settlement product.
+impl<Residual> SourceCustody<Residual> {
+    /// Transform the complete residual without changing its custody state.
+    #[must_use]
+    pub fn map<Mapped>(self, map: impl FnOnce(Residual) -> Mapped) -> SourceCustody<Mapped> {
+        match self {
+            Self::Exhausted(residual) => SourceCustody::Exhausted(map(residual)),
+            Self::Admitted(residual) => SourceCustody::Admitted(map(residual)),
+            Self::Closed(residual) => SourceCustody::Closed(map(residual)),
+        }
+    }
+}
+
+/// Static one-at-a-time source admission for one complete settlement product.
 pub trait SourceSettlementCustody<Host, RootEvent>: Sized {
-    /// Offer source inputs in their declared order.
-    fn offer_to_source(self, host: &mut Host) -> impl Future<Output = SourceCustody<Self>> + Send;
+    /// Offer only the next source input in declared order.
+    fn offer_next_to_source(
+        self,
+        host: &mut Host,
+    ) -> impl Future<Output = SourceCustody<Self>> + Send;
+}
+
+/// Offer one source input from two settlement products in declared order.
+///
+/// The later product is untouched unless the earlier product is exhausted.
+/// Even when the earlier product admits an input, this operation returns so
+/// the actor loop can process that input and its transitive effects first.
+pub(super) async fn offer_source_in_order<Host, RootEvent, Earlier, Later>(
+    earlier: Earlier,
+    later: Later,
+    host: &mut Host,
+) -> SourceCustody<(Earlier, Later)>
+where
+    Host: Send,
+    Earlier: SourceSettlementCustody<Host, RootEvent> + Send,
+    Later: SourceSettlementCustody<Host, RootEvent> + Send,
+{
+    match earlier.offer_next_to_source(host).await {
+        SourceCustody::Exhausted(earlier) => later
+            .offer_next_to_source(host)
+            .await
+            .map(|later| (earlier, later)),
+        SourceCustody::Admitted(earlier) => SourceCustody::Admitted((earlier, later)),
+        SourceCustody::Closed(earlier) => SourceCustody::Closed((earlier, later)),
+    }
+}
+
+impl<Host, RootEvent, Earlier, Later> SourceSettlementCustody<Host, RootEvent> for (Earlier, Later)
+where
+    Host: Send,
+    Earlier: SourceSettlementCustody<Host, RootEvent> + Send,
+    Later: SourceSettlementCustody<Host, RootEvent> + Send,
+{
+    fn offer_next_to_source(
+        self,
+        host: &mut Host,
+    ) -> impl Future<Output = SourceCustody<Self>> + Send {
+        offer_source_in_order(self.0, self.1, host)
+    }
 }
 
 impl<Host, RootEvent, Item> SourceSettlementCustody<Host, RootEvent> for SourceSettlements<Item>
@@ -628,28 +684,34 @@ where
     RootEvent: crate::EventIngress<Item::Source, ActionItemResult<Item>>,
     Item: SourceAction,
 {
-    fn offer_to_source(self, host: &mut Host) -> impl Future<Output = SourceCustody<Self>> + Send {
+    fn offer_next_to_source(
+        self,
+        host: &mut Host,
+    ) -> impl Future<Output = SourceCustody<Self>> + Send {
         async move {
             let mut source_inputs = self.inputs.into_iter();
-            let mut residual = Vec::new();
-            while let Some(input) = source_inputs.next() {
-                match host.admit_source(input).await {
-                    Ok(()) => {}
-                    Err(input) => {
-                        residual.push(input);
-                        residual.extend(source_inputs);
-                        return SourceCustody::Closed(Self::new(residual));
-                    }
+            let Some(input) = source_inputs.next() else {
+                return SourceCustody::Exhausted(Self::new(Vec::new()));
+            };
+            match host.admit_source(input).await {
+                Ok(()) => SourceCustody::Admitted(Self::new(source_inputs.collect())),
+                Err(input) => {
+                    let mut residual = Vec::with_capacity(source_inputs.len() + 1);
+                    residual.push(input);
+                    residual.extend(source_inputs);
+                    SourceCustody::Closed(Self::new(residual))
                 }
             }
-            SourceCustody::Open(Self::new(residual))
         }
     }
 }
 
 impl<Host, RootEvent> SourceSettlementCustody<Host, RootEvent> for NoSends {
-    fn offer_to_source(self, _: &mut Host) -> impl Future<Output = SourceCustody<Self>> + Send {
-        async move { SourceCustody::Open(self) }
+    fn offer_next_to_source(
+        self,
+        _: &mut Host,
+    ) -> impl Future<Output = SourceCustody<Self>> + Send {
+        async move { SourceCustody::Exhausted(self) }
     }
 }
 
@@ -657,14 +719,20 @@ impl<Host, RootEvent, Item> SourceSettlementCustody<Host, RootEvent> for Vec<Act
 where
     Item: ActionItem,
 {
-    fn offer_to_source(self, _: &mut Host) -> impl Future<Output = SourceCustody<Self>> + Send {
-        async move { SourceCustody::Open(self) }
+    fn offer_next_to_source(
+        self,
+        _: &mut Host,
+    ) -> impl Future<Output = SourceCustody<Self>> + Send {
+        async move { SourceCustody::Exhausted(self) }
     }
 }
 
 impl<Host, RootEvent> SourceSettlementCustody<Host, RootEvent> for Vec<crate::Never> {
-    fn offer_to_source(self, _: &mut Host) -> impl Future<Output = SourceCustody<Self>> + Send {
-        async move { SourceCustody::Open(self) }
+    fn offer_next_to_source(
+        self,
+        _: &mut Host,
+    ) -> impl Future<Output = SourceCustody<Self>> + Send {
+        async move { SourceCustody::Exhausted(self) }
     }
 }
 
@@ -675,19 +743,14 @@ where
     Owned: SourceSettlementCustody<Host, RootEvent> + Send,
     Inner: SourceSettlementCustody<Host, RootEvent> + Send,
 {
-    fn offer_to_source(self, host: &mut Host) -> impl Future<Output = SourceCustody<Self>> + Send {
+    fn offer_next_to_source(
+        self,
+        host: &mut Host,
+    ) -> impl Future<Output = SourceCustody<Self>> + Send {
         async move {
-            match self.inner.offer_to_source(host).await {
-                SourceCustody::Open(inner) => match self.owned.offer_to_source(host).await {
-                    SourceCustody::Open(owned) => SourceCustody::Open(SendLayer::new(owned, inner)),
-                    SourceCustody::Closed(owned) => {
-                        SourceCustody::Closed(SendLayer::new(owned, inner))
-                    }
-                },
-                SourceCustody::Closed(inner) => {
-                    SourceCustody::Closed(SendLayer::new(self.owned, inner))
-                }
-            }
+            offer_source_in_order(self.inner, self.owned, host)
+                .await
+                .map(|(inner, owned)| SendLayer::new(owned, inner))
         }
     }
 }

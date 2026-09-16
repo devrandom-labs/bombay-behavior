@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Add direct `settle` operations for `ObserveEstablished` and
+  `CancelObservation`, matching the existing established-shutdown request
+  contract.
+
+### Fixed
+
+- Make every named Actors settlement product participate in ordered source
+  custody, including generated request products and StableProxy's seven
+  declared effect lanes.
+
 ## [0.15.1](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-actors-v0.15.0...bombay-behavior-actors-v0.15.1) - 2026-09-16
 
 ### Other
