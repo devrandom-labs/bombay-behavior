@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Give terminal-outcome reporting and established-observation interpreter
+  requests total action-settlement contracts, including typed same-action
+  creation correlation.
+
 ## [0.15.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-actors-v0.14.0...bombay-behavior-actors-v0.15.0) - 2026-09-15
 
 ### Other
