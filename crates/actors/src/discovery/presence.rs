@@ -236,6 +236,26 @@ where
     }
 }
 
+impl<Host, RootEvent, ReplySends, Schedules> behavior::SourceSettlementCustody<Host, RootEvent>
+    for PresenceSends<ReplySends, Schedules>
+where
+    Host: Send,
+    ReplySends: behavior::SourceSettlementCustody<Host, RootEvent> + Send,
+    Schedules: behavior::SourceSettlementCustody<Host, RootEvent> + Send,
+{
+    fn offer_next_to_source(
+        self,
+        host: &mut Host,
+    ) -> impl core::future::Future<Output = behavior::SourceCustody<Self>> + Send {
+        async move {
+            (self.replies, self.schedules)
+                .offer_next_to_source(host)
+                .await
+                .map(|(replies, schedules)| PresenceSends { replies, schedules })
+        }
+    }
+}
+
 impl<I, RootEvent, Path, ReplySends, Schedules> behavior::InterpretSends<I, RootEvent, Path>
     for PresenceSends<ReplySends, Schedules>
 where

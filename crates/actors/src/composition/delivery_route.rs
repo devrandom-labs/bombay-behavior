@@ -384,6 +384,22 @@ where
     }
 }
 
+impl<Host, RootEvent, P> behavior::SourceSettlementCustody<Host, RootEvent>
+    for ReplyDeliveries<ActionItemResult<Delivery<P>>, ActionItemResult<EstablishedDelivery<P>>>
+where
+    P: Protocol,
+    P::Addr: EndpointAddress,
+    Delivery<P>: ActionItem,
+    EstablishedDelivery<P>: ActionItem,
+{
+    fn offer_next_to_source(
+        self,
+        _: &mut Host,
+    ) -> impl Future<Output = behavior::SourceCustody<Self>> + Send {
+        core::future::ready(behavior::SourceCustody::Exhausted(self))
+    }
+}
+
 impl<Interpreter, RootEvent, Path, P> InterpretSends<Interpreter, RootEvent, Path>
     for ReplyDeliveries<Delivery<P>, EstablishedDelivery<P>>
 where

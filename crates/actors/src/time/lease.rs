@@ -224,6 +224,29 @@ where
     }
 }
 
+impl<Host, RootEvent, OutcomeSends, Schedules> behavior::SourceSettlementCustody<Host, RootEvent>
+    for LeaseSends<OutcomeSends, Schedules>
+where
+    Host: Send,
+    OutcomeSends: behavior::SourceSettlementCustody<Host, RootEvent> + Send,
+    Schedules: behavior::SourceSettlementCustody<Host, RootEvent> + Send,
+{
+    fn offer_next_to_source(
+        self,
+        host: &mut Host,
+    ) -> impl core::future::Future<Output = behavior::SourceCustody<Self>> + Send {
+        async move {
+            (self.outcomes, self.schedules)
+                .offer_next_to_source(host)
+                .await
+                .map(|(outcomes, schedules)| LeaseSends {
+                    outcomes,
+                    schedules,
+                })
+        }
+    }
+}
+
 impl<I, RootEvent, Path, OutcomeSends, Schedules> behavior::InterpretSends<I, RootEvent, Path>
     for LeaseSends<OutcomeSends, Schedules>
 where

@@ -3,13 +3,14 @@
 use super::sending::{
     ClassifySettlement, InterpretItem, InterpretSends, Interpretation, InterpreterFault,
     ItemSettlement, SendEffects, SendInput, SendSettlements, SettledItem, SettlementStatus,
-    SourceAdmission, SourceCustody,
+    SourceAdmission, SourceCustody, SourceSettlementCustody, offer_source_in_order,
 };
 use crate::actor::{
     Address, BirthMode, Births, ChildCreationProduct, ChildHead, ChildNamespaceExhausted,
     CreateChild, CreationRejection, Creations, DispatchBirth, NoBirths, RoutedCreation,
 };
 use crate::next::{Never, Step, Stopped};
+use crate::transition::{Behavior, BehaviorAddr};
 
 pub type Become<Ph = Never> = Step<Ph, Stopped>;
 
@@ -60,6 +61,26 @@ where
     Birth: CreationSettlements<A>,
 {
     type Settlements = ActionSettlement<Birth::Settlements, Sends::Settlements, Ph>;
+}
+
+/// One exact action-settlement product selected by a concrete behavior.
+///
+/// Runtime lifecycle types use this blanket projection instead of repeating
+/// the behavior's internal send- and birth-product bounds through every parent
+/// and application owner. The associated value remains fully concrete and is
+/// never erased or reclassified.
+pub trait BehaviorSettlements: Behavior {
+    type Settlements;
+}
+
+impl<B> BehaviorSettlements for B
+where
+    B: Behavior,
+    B::Sends: SendSettlements,
+    B::Birth: CreationSettlements<BehaviorAddr<B>>,
+{
+    type Settlements =
+        <Actions<BehaviorAddr<B>, B::Ph, B::Sends, B::Birth> as ActionSettlements>::Settlements;
 }
 
 impl<Requests, Settlements> ClassifySettlement for CreationSettlement<Requests, Settlements>
@@ -150,35 +171,30 @@ where
     }
 }
 
-/// Generic admission of one complete creation result to its live creator.
-///
-/// `NoBirths` needs no host capability. `Births<C>` uses the same source
-/// admission law as returning send results. Closed admission returns the
-/// complete batch unchanged for parent or root custody.
-#[doc(hidden)]
-pub trait CreationCustody<A, Host, RootEvent>: CreationSettlements<A>
-where
-    A: Address,
-{
-    fn offer_creation(
-        settlement: Self::Settlements,
-        host: &mut Host,
-    ) -> impl core::future::Future<Output = SourceCustody<Self::Settlements>> + Send;
-}
-
-impl<A, Host, RootEvent> CreationCustody<A, Host, RootEvent> for NoBirths
-where
-    A: Address,
-{
-    fn offer_creation(
-        settlement: Self::Settlements,
+impl<Host, RootEvent> SourceSettlementCustody<Host, RootEvent> for Creations<Never> {
+    fn offer_next_to_source(
+        self,
         _: &mut Host,
-    ) -> impl core::future::Future<Output = SourceCustody<Self::Settlements>> + Send {
-        core::future::ready(SourceCustody::Open(settlement))
+    ) -> impl core::future::Future<Output = SourceCustody<Self>> + Send {
+        core::future::ready(SourceCustody::Exhausted(self))
     }
 }
 
-impl<A, C, Host, RootEvent> CreationCustody<A, Host, RootEvent> for Births<C>
+impl<A, C, Host, RootEvent> SourceSettlementCustody<Host, RootEvent>
+    for CreationSettlement<
+        Creations<CreateChild<A, C>>,
+        Creations<
+            SettledItem<
+                RoutedCreation<A, C>,
+                ItemSettlement<
+                    RoutedCreation<A, C>,
+                    <C as ChildCreationProduct<A, ChildHead>>::Result,
+                    CreationRejection,
+                    Never,
+                >,
+            >,
+        >,
+    >
 where
     A: Address,
     A::Nonce: Send,
@@ -187,13 +203,16 @@ where
     Host: SourceAdmission<RootEvent, Births<C>, CreationsSettled<A, C>>,
     RootEvent: crate::EventIngress<Births<C>, CreationsSettled<A, C>>,
 {
-    fn offer_creation(
-        settlement: Self::Settlements,
+    fn offer_next_to_source(
+        self,
         host: &mut Host,
-    ) -> impl core::future::Future<Output = SourceCustody<Self::Settlements>> + Send {
+    ) -> impl core::future::Future<Output = SourceCustody<Self>> + Send {
         async move {
-            match host.admit_source(CreationsSettled::new(settlement)).await {
-                Ok(()) => SourceCustody::Open(CreationSettlement::Settled(Creations::empty())),
+            if matches!(&self, CreationSettlement::Settled(settlements) if settlements.is_empty()) {
+                return SourceCustody::Exhausted(self);
+            }
+            match host.admit_source(CreationsSettled::new(self)).await {
+                Ok(()) => SourceCustody::Admitted(CreationSettlement::Settled(Creations::empty())),
                 Err(returned) => SourceCustody::Closed(returned.into_settlement()),
             }
         }
@@ -290,6 +309,35 @@ where
         self.creations
             .settlement_status()
             .combine(self.sends.settlement_status())
+    }
+}
+
+impl<Host, RootEvent, Creations, Sends, Ph> SourceSettlementCustody<Host, RootEvent>
+    for ActionSettlement<Creations, Sends, Ph>
+where
+    Host: Send,
+    Creations: SourceSettlementCustody<Host, RootEvent> + Send,
+    Sends: SourceSettlementCustody<Host, RootEvent> + Send,
+    Ph: Send,
+{
+    fn offer_next_to_source(
+        self,
+        host: &mut Host,
+    ) -> impl core::future::Future<Output = SourceCustody<Self>> + Send {
+        async move {
+            let Self {
+                creations,
+                sends,
+                become_,
+            } = self;
+            offer_source_in_order(creations, sends, host)
+                .await
+                .map(|(creations, sends)| Self {
+                    creations,
+                    sends,
+                    become_,
+                })
+        }
     }
 }
 

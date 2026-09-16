@@ -184,12 +184,18 @@ receive interpreter meaning.
 | `SettledItem<Item, Settlement>` | Enum | Distinguishes an attempted item from an untouched item after earlier corruption. |
 | `Interpretation<Settlement>` | Enum | Owns the complete product after successful traversal or corruption. |
 | `SendSettlements` | Trait | Projects one concrete sends product to its runtime-independent settlement product. |
+| `ActionSettlements` | Trait | Projects one concrete `Actions` product to its complete creation-and-send settlement. |
+| `BehaviorSettlements` | Trait | Blanket projection from a concrete behavior to that exact action-settlement type without restating internal birth or send bounds. |
 | `InterpretItem<Item, RootEvent, Path>` | Trait | Lets one concrete runtime attempt exactly one statically selected action item. |
 | `InterpretSends<Interpreter, RootEvent, Path>` | Trait | Exhaustively interprets one complete send product in structural order. |
+| `SourceSettlementCustody<Host, RootEvent>` | Trait | Offers at most one emitter-return settlement input in declared order while retaining the exact residual product. |
+| `SourceCustody<Residual>` | Enum | Distinguishes an exhausted product, exactly one admitted input, and closed admission with complete residual ownership. |
 
 These are statically dispatched interpreter obligations. A composite send
 product cannot silently omit a lane: the concrete interpreter must implement
-every required capability or fail to compile.
+every required capability or fail to compile. Source custody uses the same
+declared order, but returns after one successful admission so the runtime can
+process that input and all transitive effects before offering the next one.
 
 ## Staged creation and lifecycle result types
 

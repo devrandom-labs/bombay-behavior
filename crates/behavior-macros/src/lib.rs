@@ -737,11 +737,18 @@ fn generate_sends(
         let prior_fields = &field_names[..index];
         let later_fields = &field_names[index + 1..];
         quote! {
-            let #field = match #behavior::SourceSettlementCustody::offer_to_source(
+            let #field = match #behavior::SourceSettlementCustody::offer_next_to_source(
                 self.#field,
                 host,
             ).await {
-                #behavior::SourceCustody::Open(#field) => #field,
+                #behavior::SourceCustody::Exhausted(#field) => #field,
+                #behavior::SourceCustody::Admitted(#field) => {
+                    return #behavior::SourceCustody::Admitted(#settlements_name {
+                        #(#prior_fields: #prior_fields,)*
+                        #field: #field,
+                        #(#later_fields: self.#later_fields,)*
+                    });
+                }
                 #behavior::SourceCustody::Closed(#field) => {
                     return #behavior::SourceCustody::Closed(#settlements_name {
                         #(#prior_fields: #prior_fields,)*
@@ -782,7 +789,7 @@ fn generate_sends(
             >
             for #settlements_name #settlement_type_generics #custody_where_clause
         {
-            fn offer_to_source(
+            fn offer_next_to_source(
                 self,
                 host: &mut __BombaySettlementHost,
             ) -> impl ::core::future::Future<
@@ -790,7 +797,7 @@ fn generate_sends(
             > + ::core::marker::Send {
                 async move {
                     #(#custody_fields)*
-                    #behavior::SourceCustody::Open(#settlements_name {
+                    #behavior::SourceCustody::Exhausted(#settlements_name {
                         #(#field_names: #field_names,)*
                     })
                 }

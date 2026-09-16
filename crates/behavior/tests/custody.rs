@@ -1,8 +1,8 @@
 use behavior::{
     Address, Behavior, BehaviorActed, Births, ChildChoice, ChildNamespaceExhausted,
-    CreationCustody, CreationSequence, CreationSettlement, CreationSettlements, Creations,
-    CreationsSettled, EndpointAddress, EventIngress, Never, NoBirths, NoSends, Protocol,
-    SourceAdmission, SourceCustody, User,
+    CreationSequence, CreationSettlement, CreationSettlements, Creations, CreationsSettled,
+    EndpointAddress, EventIngress, Never, NoBirths, NoSends, Protocol, SourceAdmission,
+    SourceCustody, SourceSettlementCustody, User,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -124,14 +124,9 @@ async fn open_creator_receives_one_ordered_batch() {
         received: Vec::new(),
     };
 
-    let residual =
-        <Births<Children> as CreationCustody<RuntimeAddr, Host, CreatorEvent>>::offer_creation(
-            rejected_children(),
-            &mut host,
-        )
-        .await;
+    let residual = rejected_children().offer_next_to_source(&mut host).await;
 
-    assert!(matches!(residual, SourceCustody::Open(_)));
+    assert!(matches!(residual, SourceCustody::Admitted(_)));
     let returned = host.received.pop().expect("one creation batch returned");
     let CreationSettlement::Rejected { creations, .. } = returned.into_settlement() else {
         panic!("route rejection changed classification");
@@ -148,12 +143,7 @@ async fn closed_creator_returns_the_complete_batch() {
         received: Vec::new(),
     };
 
-    let residual =
-        <Births<Children> as CreationCustody<RuntimeAddr, Host, CreatorEvent>>::offer_creation(
-            rejected_children(),
-            &mut host,
-        )
-        .await;
+    let residual = rejected_children().offer_next_to_source(&mut host).await;
 
     let SourceCustody::Closed(CreationSettlement::Rejected { creations, .. }) = residual else {
         panic!("closed admission lost the rejected creation batch");
@@ -169,11 +159,12 @@ enum NoEvent {}
 
 #[tokio::test]
 async fn no_births_requires_no_admission_port() {
-    let residual = <NoBirths as CreationCustody<RuntimeAddr, NoHost, NoEvent>>::offer_creation(
-        Creations::empty(),
-        &mut NoHost,
-    )
-    .await;
+    let residual =
+        <Creations<Never> as SourceSettlementCustody<NoHost, NoEvent>>::offer_next_to_source(
+            Creations::empty(),
+            &mut NoHost,
+        )
+        .await;
 
-    assert!(matches!(residual, SourceCustody::Open(creations) if creations.is_empty()));
+    assert!(matches!(residual, SourceCustody::Exhausted(creations) if creations.is_empty()));
 }

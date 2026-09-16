@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Add `BehaviorSettlements`, the blanket exact-settlement projection for a
+  concrete behavior, without leaking its send and birth bounds into lifecycle
+  owners.
+- Add compositional, one-at-a-time `SourceSettlementCustody` for complete
+  action settlements. `SourceCustody` distinguishes exhaustion, one admitted
+  input, and closed admission while preserving the exact residual value.
+
+### Changed
+
+- Replace bulk source-result admission with `offer_next_to_source`, allowing a
+  runtime to process one admitted input and its transitive effects before the
+  next result.
+- Fold creation-result custody into the same source-settlement contract used by
+  sends; remove the redundant `CreationCustody` port.
+
 ## [0.15.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.14.0...bombay-behavior-v0.15.0) - 2026-09-15
 
 ### Other

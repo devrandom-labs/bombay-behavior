@@ -1,6 +1,6 @@
 use behavior::{
-    ActionItem, ActionSettlement, ActionSettlements, Actions, Creations, InterpreterRequests,
-    MailAddr, Never, NoBirths, SendSettlements,
+    ActionItem, ActionSettlement, ActionSettlements, Actions, BehaviorSettlements, Creations,
+    InterpreterRequests, MailAddr, Never, NoBirths, SendSettlements,
 };
 
 struct Observation;
@@ -14,6 +14,10 @@ impl ActionItem for Observation {
 type ObservationSettlements = <InterpreterRequests<Observation> as SendSettlements>::Settlements;
 type ExpectedSettlement = ActionSettlement<Creations<Never>, ObservationSettlements, Never>;
 type WorkerActions = Actions<MailAddr, Never, InterpreterRequests<Observation>, NoBirths>;
+
+pub struct RetainedSettlement<B: BehaviorSettlements> {
+    pub settlement: <B as BehaviorSettlements>::Settlements,
+}
 
 fn requires_exact_settlement<T>()
 where

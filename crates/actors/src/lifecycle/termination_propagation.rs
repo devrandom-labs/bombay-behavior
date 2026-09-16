@@ -260,6 +260,29 @@ where
     }
 }
 
+impl<Host, RootEvent, Observations, Reports> behavior::SourceSettlementCustody<Host, RootEvent>
+    for TerminalPropagationSends<Observations, Reports>
+where
+    Host: Send,
+    Observations: behavior::SourceSettlementCustody<Host, RootEvent> + Send,
+    Reports: behavior::SourceSettlementCustody<Host, RootEvent> + Send,
+{
+    fn offer_next_to_source(
+        self,
+        host: &mut Host,
+    ) -> impl core::future::Future<Output = behavior::SourceCustody<Self>> + Send {
+        async move {
+            (self.observations, self.reports)
+                .offer_next_to_source(host)
+                .await
+                .map(|(observations, reports)| TerminalPropagationSends {
+                    observations,
+                    reports,
+                })
+        }
+    }
+}
+
 impl<Interpreter, RootEvent, Path, Observations, Reports>
     InterpretSends<Interpreter, RootEvent, Path> for TerminalPropagationSends<Observations, Reports>
 where

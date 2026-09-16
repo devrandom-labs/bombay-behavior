@@ -551,6 +551,19 @@ where
     }
 }
 
+impl<Host, RootEvent, T> behavior::SourceSettlementCustody<Host, RootEvent>
+    for HeterogeneousShutdownSends<T>
+where
+    T: Send,
+{
+    fn offer_next_to_source(
+        self,
+        _: &mut Host,
+    ) -> impl core::future::Future<Output = behavior::SourceCustody<Self>> + Send {
+        core::future::ready(behavior::SourceCustody::Exhausted(self))
+    }
+}
+
 impl<I, E, Path, T> behavior::InterpretSends<I, E, Path> for HeterogeneousShutdownSends<T>
 where
     I: Send,

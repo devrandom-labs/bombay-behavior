@@ -2,7 +2,7 @@ mod actions;
 mod sending;
 
 pub use actions::{
-    Acted, ActionSettlement, ActionSettlements, Actions, AppendSend, Become, CreationCustody,
+    Acted, ActionSettlement, ActionSettlements, Actions, AppendSend, Become, BehaviorSettlements,
     CreationSettlement, CreationSettlements, CreationsSettled, InterpretCreations,
 };
 pub use sending::{

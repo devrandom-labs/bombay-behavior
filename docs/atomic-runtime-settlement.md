@@ -277,10 +277,12 @@ normally. `Corrupt` includes an interpreter fault or any unattempted suffix and
 therefore enters the existing residual-custody path with the entire settlement.
 
 `ActionSettlements` projects a concrete `Actions` type to this complete static
-settlement without naming an interpreter. Lifecycle-host requests use that
-associated type when they must return a worker's initialization settlement;
+settlement without naming an interpreter. `BehaviorSettlements` applies that
+projection to a concrete behavior without forcing lifecycle owners to restate
+the behavior's internal creation and send bounds. Lifecycle-host requests use
+the associated type when they must return a worker's initialization settlement;
 they do not restate the creation vector or send-product structure in each actor
-template. The projection performs no interpretation and changes no custody.
+template. Both projections perform no interpretation and change no custody.
 
 Named products containing two independent effect lanes use Behavior's single
 `settle_in_order` operation. It completely settles the declared earlier lane
@@ -631,12 +633,17 @@ the existing Driver; it is not a recursive call, detached task, second mailbox,
 or second actor loop. The ordering does not claim termination or fairness: an
 actor can continually produce more source results and starve ordinary traffic.
 
-The static operation must compose through every generated named sends product
-and `SendLayer` without Bombay matching product fields, variants, or structural
-positions by hand. The generic source product supplies the exact input type once.
-Neither FixedSupervisor, DynamicSupervisor, FIFO pool, nor keyed pool supplies a
-runtime admission adapter. The same mechanism must compile with one unrelated
-existing catalogue action before the Bombay migration is accepted.
+`SourceSettlementCustody::offer_next_to_source` is the static operation over a
+complete `ActionSettlement`. It visits creation before sends, preserves every
+named field and wrapper order, and returns `SourceCustody::Admitted` immediately
+after exactly one successful admission. `Exhausted` proves no source input
+remains; `Closed` returns the current input and untouched suffix in the exact
+residual product. The operation composes through every generated named sends
+product, catalogue-owned named product, and `SendLayer` without Bombay matching
+product fields, variants, or structural positions by hand. The generic source
+product supplies the exact input type once. Neither FixedSupervisor,
+DynamicSupervisor, FIFO pool, nor keyed pool supplies a runtime admission
+adapter.
 
 ### Exact Bombay and Timers changes for scheduling
 
