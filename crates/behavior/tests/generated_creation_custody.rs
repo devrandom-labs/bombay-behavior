@@ -3,8 +3,8 @@ use behavior::{
     BehaviorSettlements, Births, ChildCreationOutcome, ChildNamespaceExhausted, ClassifySettlement,
     CreateChild, CreationId, CreationSequence, CreationSettlement, CreationSettlements, Creations,
     CreationsSettled, EndpointAddress, EstablishedCreation, EstablishedRecipient, EventIngress,
-    InterpretItem, InterpretSends, Interpretation, ItemSettlement, Never, Own, Protocol,
-    RetirementBirths, RetirementCreationSettlement, SendEffects, SendInput, SettledItem,
+    EventLayer, InterpretItem, InterpretSends, Interpretation, ItemSettlement, Never, Own,
+    Protocol, RetirementBirths, RetirementCreationSettlement, SendEffects, SendInput, SettledItem,
     SettlementStatus, SourceAction, SourceActions, SourceAdmission, SourceCustody,
     SourceSettlementCustody, Step, Stopped,
 };
@@ -314,4 +314,68 @@ async fn retirement_creation_custody_allows_later_source_results_before_terminal
     };
     assert_eq!(creations.len(), 1);
     assert!(settlement.sends.into_inputs().is_empty());
+}
+
+// --- The Bombay stop shape ----------------------------------------------------
+//
+// The Bombay ledger's BEH1 blocker: a generated actor that creates one
+// declared child and stops. Retirement custody must hold without any
+// creation-ingress event lane, one staged creation must compose with an
+// explicit termination verdict in a single `Actions` value, and a composed
+// behavior layer must lift the creation-settlement ingress through its inner
+// event.
+
+struct ShutdownRequested;
+
+struct Shard;
+
+#[behavior::behavior(addr = RuntimeAddr, message = Never)]
+impl Shard {
+    fn receive(&mut self, _: RuntimeAddr, message: Never) -> BehaviorActed<Self> {
+        match message {}
+    }
+}
+
+struct StoppingSupervisor;
+
+#[behavior::behavior(
+    addr = RuntimeAddr,
+    message = Never,
+    births = { shard: Shard },
+    creation_settlements = retain_for_retirement,
+)]
+impl StoppingSupervisor {
+    fn receive(&mut self, _: RuntimeAddr, message: Never) -> BehaviorActed<Self> {
+        match message {}
+    }
+}
+
+#[test]
+fn generated_actor_that_creates_one_child_and_stops_keeps_retirement_custody() {
+    requires_custody::<StoppingSupervisor, NoCreationIngress>();
+
+    let mut sequence = CreationSequence::new();
+    let creation = sequence.issue().expect("the first creation ID exists");
+    let actions = Actions::<
+        RuntimeAddr,
+        Never,
+        behavior::NoSends,
+        <StoppingSupervisor as Behavior>::Birth,
+    >::create(Creations::one(CreateChild::birth(creation, Shard)))
+    .map_become::<Never>(|_| Step::Stop(Stopped));
+
+    assert_eq!(actions.creates.iter().count(), 1);
+    assert!(matches!(actions.become_, Step::Stop(Stopped)));
+}
+
+#[test]
+fn composed_behavior_layers_lift_the_creation_settlement_ingress() {
+    let (_, settlement) = returning_established();
+    let event =
+        <EventLayer<ShutdownRequested, <ReturningCreator as Behavior>::Event> as EventIngress<
+            Births<ReturningCreatorChildren>,
+            CreationsSettled<RuntimeAddr, ReturningCreatorChildren>,
+        >>::ingress(CreationsSettled::new(settlement));
+
+    assert!(matches!(event, EventLayer::Inner(_)));
 }
