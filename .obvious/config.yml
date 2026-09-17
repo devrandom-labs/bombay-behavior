@@ -1,0 +1,9 @@
+# Obvious repo policy for devrandom-labs/bombay-behavior
+# Auto-detected from GitHub repo settings and main-branch history, 2026-09-17.
+defaultBranch: main
+# Repo allows squash, merge-commit, and rebase; observed history is squash
+# (commit subjects carry "(#N)", no merge commits).
+mergeMethod: squash
+# A human must review and merge setup and semantic PRs.
+requireHumanMerge: true
+deleteBranchOnMerge: true
