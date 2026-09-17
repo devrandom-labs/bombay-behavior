@@ -48,7 +48,7 @@ struct Recorder {
     seen: Vec<(MailAddr, u8)>,
 }
 
-#[behavior_core::behavior(addr = MailAddr, message = u8, sends = Vec<Delivery<Sink>>, births = behavior_core::NoBirths, error = Never)]
+#[behavior_core::behavior(addr = MailAddr, message = u8, sends = Vec<Delivery<Sink>>, error = Never)]
 impl Recorder {
     fn receive(
         &mut self,
@@ -85,6 +85,7 @@ struct GeneratedBase {
     births = {
         recorder: Recorder,
     },
+    creation_settlements = retain_for_retirement,
 )]
 impl GeneratedBase {
     fn new() -> Self {

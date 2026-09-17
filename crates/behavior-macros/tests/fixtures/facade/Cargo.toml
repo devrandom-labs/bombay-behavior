@@ -8,4 +8,5 @@ publish = false
 name = "bombay"
 
 [dependencies]
+catalog = { package = "bombay-behavior-actors", path = "../../../../actors" }
 foundation = { package = "bombay-behavior", path = "../../../../behavior" }

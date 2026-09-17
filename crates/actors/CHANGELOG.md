@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Preserve retained source custody through generated request products and the
+  lifecycle actors that own child creation, without preventing later source
+  lanes from being admitted.
+
 ## [0.16.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-actors-v0.15.1...bombay-behavior-actors-v0.16.0) - 2026-09-16
 
 ### Fixed

@@ -3,7 +3,8 @@ mod sending;
 
 pub use actions::{
     Acted, ActionSettlement, ActionSettlements, Actions, AppendSend, Become, BehaviorSettlements,
-    CreationSettlement, CreationSettlements, CreationsSettled, InterpretCreations,
+    CreationEvent, CreationSettlement, CreationSettlements, CreationsSettled, InterpretCreations,
+    RetirementCreationSettlement,
 };
 pub use sending::{
     ActionItem, ActionItemResult, ClassifySettlement, InterpretItem, InterpretSends,

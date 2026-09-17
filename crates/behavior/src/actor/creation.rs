@@ -2186,6 +2186,20 @@ impl<C> BirthMode for Births<C> {
     type Child = C;
 }
 
+/// This behavior may emit births of `C` whose exact settlements remain in
+/// runtime custody until actor retirement.
+///
+/// Unlike [`Births`], this mode does not return a creation settlement as a
+/// later input to the live creator. It is the deliberate policy for actors
+/// whose terminal owner, rather than another behavior transition, must retain
+/// every authoritative creation result.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct RetirementBirths<C>(PhantomData<fn() -> C>);
+
+impl<C> BirthMode for RetirementBirths<C> {
+    type Child = C;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

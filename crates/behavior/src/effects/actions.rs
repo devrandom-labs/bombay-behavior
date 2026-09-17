@@ -7,10 +7,12 @@ use super::sending::{
 };
 use crate::actor::{
     Address, BirthMode, Births, ChildCreationProduct, ChildHead, ChildNamespaceExhausted,
-    CreateChild, CreationRejection, Creations, DispatchBirth, NoBirths, RoutedCreation,
+    CreateChild, CreationRejection, Creations, DispatchBirth, NoBirths, RetirementBirths,
+    RoutedCreation,
 };
 use crate::next::{Never, Step, Stopped};
 use crate::transition::{Behavior, BehaviorAddr};
+use crate::user_event::{EventIngress, User, UserEvent};
 
 pub type Become<Ph = Never> = Step<Ph, Stopped>;
 
@@ -43,6 +45,29 @@ pub enum CreationSettlement<Requests, Settlements> {
         creations: Requests,
         fault: InterpreterFault,
     },
+}
+
+/// Exact creation settlement deliberately retained for actor retirement.
+///
+/// This product distinguishes terminal custody from a settlement that must
+/// return as another input to a live creator. It never erases or reconstructs
+/// the enclosed accepted, rejected, corrupt, or unattempted values.
+#[must_use = "a retirement creation settlement must remain in terminal custody"]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RetirementCreationSettlement<Settlement> {
+    settlement: Settlement,
+}
+
+impl<Settlement> RetirementCreationSettlement<Settlement> {
+    #[must_use]
+    pub const fn new(settlement: Settlement) -> Self {
+        Self { settlement }
+    }
+
+    #[must_use]
+    pub fn into_settlement(self) -> Settlement {
+        self.settlement
+    }
 }
 
 /// Static complete-settlement product selected by one concrete action type.
@@ -96,6 +121,15 @@ where
     }
 }
 
+impl<Settlement> ClassifySettlement for RetirementCreationSettlement<Settlement>
+where
+    Settlement: ClassifySettlement,
+{
+    fn settlement_status(&self) -> SettlementStatus {
+        self.settlement.settlement_status()
+    }
+}
+
 impl<Item> ClassifySettlement for Creations<Item>
 where
     Item: ClassifySettlement,
@@ -140,6 +174,15 @@ where
     >;
 }
 
+impl<A, C> CreationSettlements<A> for RetirementBirths<C>
+where
+    A: Address,
+    C: ChildCreationProduct<A, ChildHead>,
+{
+    type Settlements =
+        RetirementCreationSettlement<<Births<C> as CreationSettlements<A>>::Settlements>;
+}
+
 /// One complete creation batch returned to its live creator.
 ///
 /// The value retains either every routed child settlement or the entire
@@ -153,6 +196,51 @@ where
     C: ChildCreationProduct<A, ChildHead>,
 {
     settlement: <Births<C> as CreationSettlements<A>>::Settlements,
+}
+
+/// Complete event algebra for an ordinary creator that receives its exact
+/// creation settlements as a later behavior input.
+///
+/// The creation source is selected semantically by [`Births<C>`]. Outer
+/// behavior layers lift that ingress through their existing event composition;
+/// no structural path is exposed to the actor author.
+pub enum CreationEvent<A, C, M>
+where
+    A: Address,
+    C: ChildCreationProduct<A, ChildHead>,
+{
+    Settlements(CreationsSettled<A, C>),
+    User(User<A, M>),
+}
+
+impl<A, C, M> EventIngress<Births<C>, CreationsSettled<A, C>> for CreationEvent<A, C, M>
+where
+    A: Address,
+    C: ChildCreationProduct<A, ChildHead>,
+{
+    fn ingress(input: CreationsSettled<A, C>) -> Self {
+        Self::Settlements(input)
+    }
+}
+
+impl<A, C, M> UserEvent for CreationEvent<A, C, M>
+where
+    A: Address,
+    C: ChildCreationProduct<A, ChildHead>,
+{
+    type Addr = A;
+    type Message = M;
+
+    fn user(from: A, message: M) -> Self {
+        Self::User(User::new(from, message))
+    }
+
+    fn into_user(self) -> Result<User<A, M>, Self> {
+        match self {
+            Self::User(event) => Ok(event),
+            settlements @ Self::Settlements(_) => Err(settlements),
+        }
+    }
 }
 
 impl<A, C> CreationsSettled<A, C>
@@ -214,6 +302,46 @@ where
             match host.admit_source(CreationsSettled::new(self)).await {
                 Ok(()) => SourceCustody::Admitted(CreationSettlement::Settled(Creations::empty())),
                 Err(returned) => SourceCustody::Closed(returned.into_settlement()),
+            }
+        }
+    }
+}
+
+impl<A, C, Host, RootEvent> SourceSettlementCustody<Host, RootEvent>
+    for RetirementCreationSettlement<
+        CreationSettlement<
+            Creations<CreateChild<A, C>>,
+            Creations<
+                SettledItem<
+                    RoutedCreation<A, C>,
+                    ItemSettlement<
+                        RoutedCreation<A, C>,
+                        <C as ChildCreationProduct<A, ChildHead>>::Result,
+                        CreationRejection,
+                        Never,
+                    >,
+                >,
+            >,
+        >,
+    >
+where
+    A: Address,
+    A::Nonce: Send,
+    C: ChildCreationProduct<A, ChildHead> + Send,
+    <C as ChildCreationProduct<A, ChildHead>>::Result: Send,
+{
+    fn offer_next_to_source(
+        self,
+        _: &mut Host,
+    ) -> impl core::future::Future<Output = SourceCustody<Self>> + Send {
+        async move {
+            if matches!(
+                &self.settlement,
+                CreationSettlement::Settled(settlements) if settlements.is_empty()
+            ) {
+                SourceCustody::Exhausted(self)
+            } else {
+                SourceCustody::Retained(self)
             }
         }
     }
@@ -297,6 +425,26 @@ where
             }
             Interpretation::Complete(CreationSettlement::Settled(Creations::from_items(settled)))
         }
+    }
+}
+
+impl<A, C, Interpreter, RootEvent, Path> InterpretCreations<A, Interpreter, RootEvent, Path>
+    for RetirementBirths<C>
+where
+    A: Address,
+    C: ChildCreationProduct<A, ChildHead>,
+    Births<C>: BirthMode<Child = C> + InterpretCreations<A, Interpreter, RootEvent, Path>,
+{
+    fn interpret_creations(
+        creations: Creations<CreateChild<A, C>>,
+        interpreter: &mut Interpreter,
+    ) -> impl core::future::Future<Output = Interpretation<Self::Settlements>> + Send {
+        let interpretation =
+            <Births<C> as InterpretCreations<A, Interpreter, RootEvent, Path>>::interpret_creations(
+                creations,
+                interpreter,
+            );
+        async move { interpretation.await.map(RetirementCreationSettlement::new) }
     }
 }
 

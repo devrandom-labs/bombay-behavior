@@ -86,11 +86,17 @@ macro_rules! request_product {
                 Output = behavior::SourceCustody<Self>,
             > + Send {
                 async move {
+                    enum TerminalCustody {
+                        Unrequired,
+                        Required,
+                    }
+                    let mut terminal_custody = TerminalCustody::Unrequired;
                     request_product! {
                         @custody
                         $name,
                         self,
                         host,
+                        terminal_custody,
                         [],
                         [$(($field, $field_type)),+]
                     }
@@ -129,6 +135,7 @@ macro_rules! request_product {
         $name:ident,
         $owner:ident,
         $host:ident,
+        $terminal_custody:ident,
         [$($settled:ident),*],
         [($field:ident, $field_type:ident) $(, ($later:ident, $later_type:ident))*]
     ) => {
@@ -142,6 +149,19 @@ macro_rules! request_product {
                     $name,
                     $owner,
                     $host,
+                    $terminal_custody,
+                    [$($settled,)* $field],
+                    [$(($later, $later_type)),*]
+                }
+            }
+            behavior::SourceCustody::Retained($field) => {
+                $terminal_custody = TerminalCustody::Required;
+                request_product! {
+                    @custody
+                    $name,
+                    $owner,
+                    $host,
+                    $terminal_custody,
                     [$($settled,)* $field],
                     [$(($later, $later_type)),*]
                 }
@@ -167,12 +187,23 @@ macro_rules! request_product {
         $name:ident,
         $owner:ident,
         $host:ident,
+        $terminal_custody:ident,
         [$($settled:ident),+],
         []
     ) => {
-        behavior::SourceCustody::Exhausted($name {
-            $($settled: $settled),+
-        })
+        {
+            let settlements = $name {
+                $($settled: $settled),+
+            };
+            match $terminal_custody {
+                TerminalCustody::Unrequired => {
+                    behavior::SourceCustody::Exhausted(settlements)
+                }
+                TerminalCustody::Required => {
+                    behavior::SourceCustody::Retained(settlements)
+                }
+            }
+        }
     };
     (
         @interpret

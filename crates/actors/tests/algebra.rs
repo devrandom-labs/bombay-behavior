@@ -15,7 +15,8 @@ use behavior::{
     Acted, ActionItem, Actions, Become, Behavior, BehaviorBase, Births, CreateChild, CreationKind,
     CreationSequence, Creations, Delivery, EventLayer, Here, InjectEvent, Inside, InterpretItem,
     InterpretSends, Interpretation, InterpreterRequests, ItemSettlement, LogicalDeliveryProtocols,
-    MailAddr, Never, NoBirthProtocols, NoBirths, Recipient, SendEffects, Step, User, UserEvent,
+    MailAddr, Never, NoBirthProtocols, NoBirths, Recipient, RetirementBirths, SendEffects, Step,
+    User, UserEvent,
 };
 use behavior_actors::{
     Activate, Crash, Exit, Machine, Move, ObserveChild, PeerStopped, ScheduleAt, ShutdownEvent,
@@ -48,13 +49,13 @@ struct DelegatingCounter {
     creations: CreationSequence,
 }
 
-#[behavior::behavior(addr = MailAddr, message = u64, sends = Vec<Delivery<Quiet>>, births = Births<Quiet>, error = Rejected)]
+#[behavior::behavior(addr = MailAddr, message = u64, sends = Vec<Delivery<Quiet>>, births = Births<Quiet>, creation_settlements = retain_for_retirement, error = Rejected)]
 impl DelegatingCounter {
     fn receive(
         &mut self,
         from: MailAddr,
         message: u64,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<Quiet>>, Births<Quiet>, Rejected> {
+    ) -> Acted<MailAddr, Never, Vec<Delivery<Quiet>>, RetirementBirths<Quiet>, Rejected> {
         self.transitions += 1;
         if message == 0 {
             return Err(Rejected(message));
@@ -73,9 +74,9 @@ struct ExplicitInitialization {
     creations: CreationSequence,
 }
 
-#[behavior::behavior(addr = MailAddr, message = u64, sends = BehaviorSends, births = Births<Quiet>, error = Never)]
+#[behavior::behavior(addr = MailAddr, message = u64, sends = BehaviorSends, births = Births<Quiet>, creation_settlements = retain_for_retirement, error = Never)]
 impl ExplicitInitialization {
-    fn init(&mut self) -> Acted<MailAddr, Never, BehaviorSends, Births<Quiet>, Never> {
+    fn init(&mut self) -> Acted<MailAddr, Never, BehaviorSends, RetirementBirths<Quiet>, Never> {
         self.received.push(1);
         let mut sends = BehaviorSends::empty();
         sends.markers.push(7);
@@ -91,7 +92,7 @@ impl ExplicitInitialization {
         &mut self,
         _from: MailAddr,
         message: u64,
-    ) -> Acted<MailAddr, Never, BehaviorSends, Births<Quiet>, Never> {
+    ) -> Acted<MailAddr, Never, BehaviorSends, RetirementBirths<Quiet>, Never> {
         self.received.push(message);
         Ok(Actions::new(
             BehaviorSends {
@@ -106,7 +107,7 @@ impl ExplicitInitialization {
 
 struct InitializationCounter(u8);
 
-#[behavior::behavior(addr = MailAddr, message = u8, sends = Vec<Delivery<U8Sink>>, births = NoBirths, error = Never)]
+#[behavior::behavior(addr = MailAddr, message = u8, sends = Vec<Delivery<U8Sink>>, error = Never)]
 impl InitializationCounter {
     fn init(&mut self) -> Acted<MailAddr, Never, Vec<Delivery<U8Sink>>, NoBirths, Never> {
         self.0 += 1;
@@ -194,13 +195,13 @@ fn deliveries_and_interpreter_requests_have_disjoint_static_dispatch() {
     );
 }
 
-fn requires_births<B, C>(_behavior: &B)
+fn requires_retirement_births<B, C>(_behavior: &B)
 where
-    B: Behavior<Birth = Births<C>>,
+    B: Behavior<Birth = RetirementBirths<C>>,
 {
 }
 
-#[behavior::behavior(addr = MailAddr, message = u64, sends = Vec<Never>, births = NoBirths, error = Never)]
+#[behavior::behavior(addr = MailAddr, message = u64, sends = Vec<Never>, error = Never)]
 impl Quiet {
     fn receive(
         &mut self,
@@ -213,13 +214,13 @@ impl Quiet {
 
 struct ShutdownParent(CreationSequence);
 
-#[behavior::behavior(addr = MailAddr, message = u64, sends = Vec<Delivery<Quiet>>, births = Births<Quiet>, error = Never)]
+#[behavior::behavior(addr = MailAddr, message = u64, sends = Vec<Delivery<Quiet>>, births = Births<Quiet>, creation_settlements = retain_for_retirement, error = Never)]
 impl ShutdownParent {
     fn receive(
         &mut self,
         _from: MailAddr,
         _message: u64,
-    ) -> Acted<MailAddr, Never, Vec<Delivery<Quiet>>, Births<Quiet>, Never> {
+    ) -> Acted<MailAddr, Never, Vec<Delivery<Quiet>>, RetirementBirths<Quiet>, Never> {
         let creation = self.0.issue().expect("fixture has one creation ID");
         Ok(Actions::create(Creations::one(CreateChild::birth(
             creation, Quiet,
@@ -230,7 +231,7 @@ impl ShutdownParent {
 fn finalize_parent(
     behavior: &mut ShutdownParent,
     _request: ShutdownRequested,
-) -> Actions<MailAddr, Never, Vec<Delivery<Quiet>>, Births<Quiet>> {
+) -> Actions<MailAddr, Never, Vec<Delivery<Quiet>>, RetirementBirths<Quiet>> {
     let creation = behavior
         .0
         .issue()
@@ -638,7 +639,7 @@ async fn watching_registers_and_reacts_through_messages() {
 #[tokio::test]
 async fn stashing_is_local_state_and_replay() {
     struct Seen(Vec<u64>);
-    #[behavior::behavior(addr = MailAddr, message = u64, sends = Vec<Never>, births = NoBirths, error = Never)]
+    #[behavior::behavior(addr = MailAddr, message = u64, sends = Vec<Never>, error = Never)]
     impl Seen {
         fn receive(
             &mut self,
@@ -722,7 +723,7 @@ fn mutation_stash_route(message: &StashMessage) -> StashRoute {
 
 struct StashRecording(Vec<u64>);
 
-#[behavior::behavior(addr = MailAddr, message = StashMessage, sends = Vec<Never>, births = NoBirths, error = Never)]
+#[behavior::behavior(addr = MailAddr, message = StashMessage, sends = Vec<Never>, error = Never)]
 impl StashRecording {
     fn receive(
         &mut self,
@@ -975,7 +976,7 @@ fn birth_modes_are_disjoint_and_wrappers_forward_them() {
         MailAddr(4),
         stop_on_abnormal_death,
     );
-    requires_births::<_, Quiet>(&creator);
+    requires_retirement_births::<_, Quiet>(&creator);
 }
 
 #[tokio::test]

@@ -493,7 +493,7 @@ where
     /// #[behavior::behavior(addr = MailAddr, message = Never, births = {
     ///     store: ManagedWorker,
     ///     gateway: ManagedWorker,
-    /// })]
+    /// }, creation_settlements = retain_for_retirement)]
     /// impl Application {
     ///     fn receive(&mut self, _: MailAddr, message: Never) -> BehaviorActed<Self> {
     ///         match message {}
@@ -521,7 +521,7 @@ where
     /// #[behavior::behavior(addr = MailAddr, message = Never, births = {
     ///     store: ManagedWorker,
     ///     gateway: ManagedWorker,
-    /// })]
+    /// }, creation_settlements = retain_for_retirement)]
     /// impl Application {
     ///     fn receive(&mut self, _: MailAddr, message: Never) -> BehaviorActed<Self> {
     ///         match message {}
@@ -548,7 +548,7 @@ where
     /// #[behavior::behavior(addr = MailAddr, message = Never, births = {
     ///     store: ManagedWorker,
     ///     gateway: ManagedWorker,
-    /// })]
+    /// }, creation_settlements = retain_for_retirement)]
     /// impl Application {
     ///     fn receive(&mut self, _: MailAddr, message: Never) -> BehaviorActed<Self> {
     ///         match message {}
@@ -635,7 +635,7 @@ where
     /// #[behavior::behavior(addr = MailAddr, message = Never, births = {
     ///     store: ManagedWorker,
     ///     gateway: ManagedWorker,
-    /// })]
+    /// }, creation_settlements = retain_for_retirement)]
     /// impl Application {
     ///     fn receive(&mut self, _: MailAddr, message: Never) -> BehaviorActed<Self> {
     ///         match message {}

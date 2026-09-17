@@ -11,6 +11,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "bombay-behavior-actors"
+version = "0.16.0"
+dependencies = [
+ "bombay-behavior",
+ "bombay-behavior-macros",
+ "thiserror",
+]
+
+[[package]]
 name = "bombay-behavior-macros"
 version = "0.11.6"
 dependencies = [
@@ -25,6 +34,7 @@ name = "bombay-rs"
 version = "0.0.0"
 dependencies = [
  "bombay-behavior",
+ "bombay-behavior-actors",
 ]
 
 [[package]]

@@ -44,17 +44,18 @@ pub use actor::{
     EstablishedActor, EstablishedCreation, EstablishedDelivery, EstablishedRecipient,
     ExactDeliveryReason, InterpretEstablished, LogicalDeliveryReason, MailAddr, NoBirthProtocols,
     NoBirths, NoChildren, Recipient, ResolveChildOccurrence, ResolvedChild, ResolvedChildPosition,
-    RoleChild, RoleProtocol, RoutedCreation, StructuralChildOccurrence,
+    RetirementBirths, RoleChild, RoleProtocol, RoutedCreation, StructuralChildOccurrence,
 };
 pub use effects::{
     Acted, ActionItem, ActionItemResult, ActionSettlement, ActionSettlements, Actions, AppendSend,
-    Become, BehaviorSettlements, ClassifySettlement, CreationSettlement, CreationSettlements,
-    CreationsSettled, InterpretCreations, InterpretItem, InterpretSends, Interpretation,
-    InterpreterFault, InterpreterRequest, InterpreterRequests, ItemSettlement,
+    Become, BehaviorSettlements, ClassifySettlement, CreationEvent, CreationSettlement,
+    CreationSettlements, CreationsSettled, InterpretCreations, InterpretItem, InterpretSends,
+    Interpretation, InterpreterFault, InterpreterRequest, InterpreterRequests, ItemSettlement,
     LogicalDeliveryProtocols, NoReturnToEmitter, NoSends, Own, ParentReportReason, ReportToParent,
-    ReturnsToEmitter, SendEffects, SendInput, SendLayer, SendSettlements, SendsFor, SettledItem,
-    SettlementStatus, SourceAction, SourceActions, SourceAdmission, SourceCustody,
-    SourceSettlementCustody, SourceSettlements, settle_in_order, settle_item,
+    RetirementCreationSettlement, ReturnsToEmitter, SendEffects, SendInput, SendLayer,
+    SendSettlements, SendsFor, SettledItem, SettlementStatus, SourceAction, SourceActions,
+    SourceAdmission, SourceCustody, SourceSettlementCustody, SourceSettlements, settle_in_order,
+    settle_item,
 };
 pub use next::{Never, Step, Stopped};
 pub use transition::{
@@ -90,6 +91,37 @@ pub use user_event::{
 /// [`Creations`] or [`Children`] value and is never performed by the macro.
 ///
 /// Invalid receivers are rejected at compile time.
+/// A birth-owning generated actor must also select the exact creation-settlement
+/// disposition; there is no implicit discard or generated no-op receiver.
+///
+/// ```compile_fail
+/// struct Child;
+/// #[behavior::behavior(addr = behavior::MailAddr, message = behavior::Never)]
+/// impl Child {
+///     fn receive(
+///         &mut self,
+///         _: behavior::MailAddr,
+///         message: behavior::Never,
+///     ) -> behavior::BehaviorActed<Self> {
+///         match message {}
+///     }
+/// }
+/// struct MissingCreationSettlementDisposition;
+/// #[behavior::behavior(
+///     addr = behavior::MailAddr,
+///     message = behavior::Never,
+///     births = { child: Child },
+/// )]
+/// impl MissingCreationSettlementDisposition {
+///     fn receive(
+///         &mut self,
+///         _: behavior::MailAddr,
+///         message: behavior::Never,
+///     ) -> behavior::BehaviorActed<Self> {
+///         match message {}
+///     }
+/// }
+/// ```
 ///
 /// ```compile_fail
 /// use behavior::{Actions, BehaviorActed, MailAddr};
@@ -189,7 +221,12 @@ pub use user_event::{
 ///     }
 /// }
 /// struct Root { creations: CreationSequence }
-/// #[behavior::behavior(addr = MailAddr, message = (), births = { declared: Declared })]
+/// #[behavior::behavior(
+///     addr = MailAddr,
+///     message = (),
+///     births = { declared: Declared },
+///     creation_settlements = retain_for_retirement,
+/// )]
 /// impl Root {
 ///     fn receive(&mut self, _: MailAddr, _: ()) -> BehaviorActed<Self> {
 ///         let id = self.creations.issue().expect("fixture creation ID");
@@ -248,7 +285,7 @@ pub use user_event::{
 /// #[behavior::behavior(addr = MailAddr, message = Never, births = {
 ///     primary: Worker,
 ///     backup: Worker,
-/// })]
+/// }, creation_settlements = retain_for_retirement)]
 /// impl Root {
 ///     fn receive(&mut self, _: MailAddr, message: Never) -> BehaviorActed<Self> {
 ///         match message {}
@@ -283,7 +320,12 @@ pub use user_event::{
 ///     }
 /// }
 /// struct Root;
-/// #[behavior::behavior(addr = MailAddr, message = Never, births = { workers: Worker })]
+/// #[behavior::behavior(
+///     addr = MailAddr,
+///     message = Never,
+///     births = { workers: Worker },
+///     creation_settlements = retain_for_retirement,
+/// )]
 /// impl Root {
 ///     fn receive(&mut self, _: MailAddr, message: Never) -> BehaviorActed<Self> {
 ///         match message {}
