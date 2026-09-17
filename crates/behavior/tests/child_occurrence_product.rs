@@ -45,7 +45,7 @@ struct Parent;
 #[behavior::behavior(addr = MailAddr, message = Never, births = {
     primary: Worker,
     fallback: Worker,
-})]
+}, creation_settlements = retain_for_retirement)]
 impl Parent {
     fn receive(&mut self, _: MailAddr, message: Never) -> BehaviorActed<Self> {
         match message {}

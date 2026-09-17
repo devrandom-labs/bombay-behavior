@@ -612,6 +612,8 @@ where
 pub enum SourceCustody<Residual> {
     /// No source input remains in the complete residual product.
     Exhausted(Residual),
+    /// No live-source input remains, but exact terminal custody is required.
+    Retained(Residual),
     /// Exactly one source input transferred; the residual remains in custody.
     Admitted(Residual),
     /// Admission closed; the residual contains the current and untouched suffix.
@@ -624,6 +626,7 @@ impl<Residual> SourceCustody<Residual> {
     pub fn map<Mapped>(self, map: impl FnOnce(Residual) -> Mapped) -> SourceCustody<Mapped> {
         match self {
             Self::Exhausted(residual) => SourceCustody::Exhausted(map(residual)),
+            Self::Retained(residual) => SourceCustody::Retained(map(residual)),
             Self::Admitted(residual) => SourceCustody::Admitted(map(residual)),
             Self::Closed(residual) => SourceCustody::Closed(map(residual)),
         }
@@ -659,6 +662,13 @@ where
             .offer_next_to_source(host)
             .await
             .map(|later| (earlier, later)),
+        SourceCustody::Retained(earlier) => match later.offer_next_to_source(host).await {
+            SourceCustody::Exhausted(later) | SourceCustody::Retained(later) => {
+                SourceCustody::Retained((earlier, later))
+            }
+            SourceCustody::Admitted(later) => SourceCustody::Admitted((earlier, later)),
+            SourceCustody::Closed(later) => SourceCustody::Closed((earlier, later)),
+        },
         SourceCustody::Admitted(earlier) => SourceCustody::Admitted((earlier, later)),
         SourceCustody::Closed(earlier) => SourceCustody::Closed((earlier, later)),
     }

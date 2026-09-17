@@ -256,6 +256,7 @@ struct GeneratedParent;
     addr = RuntimeAddr,
     message = (),
     births = { worker: Worker },
+    creation_settlements = retain_for_retirement,
 )]
 impl GeneratedParent {
     fn receive(&mut self, _: RuntimeAddr, _: ()) -> BehaviorActed<Self> {

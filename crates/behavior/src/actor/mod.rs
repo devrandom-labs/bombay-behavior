@@ -16,6 +16,6 @@ pub use creation::{
     ChildPosition, ChildProduct, ChildReport, ChildRole, ChildTail, Children, CreateChild,
     CreationCorrelation, CreationId, CreationKind, CreationRejection, CreationSequence, Creations,
     DeclaredChildOccurrence, DispatchBirth, EstablishChild, EstablishedCreation, NoBirthProtocols,
-    NoBirths, NoChildren, ResolveChildOccurrence, ResolvedChild, ResolvedChildPosition, RoleChild,
-    RoleProtocol, RoutedCreation, StructuralChildOccurrence,
+    NoBirths, NoChildren, ResolveChildOccurrence, ResolvedChild, ResolvedChildPosition,
+    RetirementBirths, RoleChild, RoleProtocol, RoutedCreation, StructuralChildOccurrence,
 };

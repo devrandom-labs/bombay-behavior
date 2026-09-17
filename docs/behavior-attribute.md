@@ -75,7 +75,8 @@ births = {
     workers: Workers,
     query_reply: ManagedQueryReply,
     query_starter: ManagedQueryStarter,
-}
+},
+creation_settlements = return_to_creator,
 ```
 
 generates `SystemChildren` as the exact recursive `ChildChoice` produced by
@@ -121,6 +122,27 @@ product. A static runtime may implement `ChildOccurrenceShape` once to project
 any `SystemChildren` into its own occurrence-preserving direct-child storage.
 The macro emits no runtime storage or shape implementation, and equal child
 types at two named roles still receive distinct structural positions.
+
+Every real birth declaration must state who owns its completed creation
+settlements. `creation_settlements = return_to_creator` makes the generated
+event type `CreationEvent<Addr, SystemChildren, Message>` and requires an
+authored transition with this shape:
+
+```rust,ignore
+fn creations_settled(
+    &mut self,
+    settlements: behavior::CreationsSettled<behavior::MailAddr, SystemChildren>,
+) -> behavior::BehaviorActed<Self> {
+    // Decide from the exact accepted or rejected creation settlements.
+}
+```
+
+Use `creation_settlements = retain_for_retirement` when the actor has no lawful
+transition for those runtime results. Its birth capability becomes
+`RetirementBirths<SystemChildren>`; the interpreter retains the exact
+settlement as terminal source custody rather than dropping it or manufacturing
+a no-op callback. Omitting `births`, or explicitly declaring `NoBirths`, needs
+no settlement policy because no creation request can exist.
 
 `ResolveChildOccurrence<Role>` maps such a generated role to the exact child
 and position of the concrete behavior currently being interpreted. It follows

@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Add explicit generated-actor creation-settlement custody. Birth-owning
+  actors either admit exact `CreationsSettled` values through `CreationEvent`
+  or preserve them through `RetirementBirths` terminal custody.
+
+### Changed
+
+- Extend ordered source settlement admission with `SourceCustody::Retained`,
+  allowing an uninterpretable exact source result to remain authoritative while
+  later source lanes are still offered in declaration order.
+
 ## [0.16.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.15.1...bombay-behavior-v0.16.0) - 2026-09-16
 
 ### Fixed

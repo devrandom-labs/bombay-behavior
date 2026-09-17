@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Require each real `#[behavior]` birth declaration to choose
+  `creation_settlements = return_to_creator` or
+  `creation_settlements = retain_for_retirement`; explicit `NoBirths` remains
+  policy-free.
+
+### Fixed
+
+- Resolve `#[pool_worker]` Actors types from the `bombay-rs` facade root,
+  including renamed facade dependencies and facade sibling targets.
+
 ## [0.11.6](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-macros-v0.11.5...bombay-behavior-macros-v0.11.6) - 2026-09-16
 
 ### Fixed

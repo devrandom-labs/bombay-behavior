@@ -67,6 +67,7 @@ struct Bootstrap {
         first: FirstChild,
         second: SecondChild,
     },
+    creation_settlements = retain_for_retirement,
 )]
 impl Bootstrap {
     fn init(&mut self) -> BehaviorActed<Self> {
@@ -122,6 +123,7 @@ struct Positioned;
         secondary: SecondChild,
         fallback: FirstChild,
     },
+    creation_settlements = retain_for_retirement,
 )]
 impl Positioned {
     fn receive(&mut self, _: MailAddr, message: Never) -> BehaviorActed<Self> {
@@ -210,6 +212,7 @@ struct Advanced<'a, T, const N: usize> {
     births = {
         generic: Generic<T>,
     },
+    creation_settlements = retain_for_retirement,
 )]
 impl<'a, T, const N: usize> Advanced<'a, T, N>
 where
@@ -344,7 +347,7 @@ impl<RootEvent, Path> behavior::InterpretItem<Delivery<SecondDestination>, RootE
 }
 
 fn exact_actions(
-    _: &Actions<MailAddr, Never, BootstrapSends, behavior::Births<BootstrapChildren>>,
+    _: &Actions<MailAddr, Never, BootstrapSends, behavior::RetirementBirths<BootstrapChildren>>,
 ) {
 }
 
@@ -800,11 +803,15 @@ mod capability_matrix {
 
     without_init!(NoneNoInit);
     without_init!(SendsNoInit, sends = { output: behavior::InterpreterRequests<LocalRequest> });
-    without_init!(BirthsNoInit, births = { child: FirstChild });
+    without_init!(BirthsNoInit,
+        births = { child: FirstChild },
+        creation_settlements = retain_for_retirement
+    );
     without_init!(ErrorNoInit, error = MatrixError);
     without_init!(SendsBirthsNoInit,
         sends = { output: behavior::InterpreterRequests<LocalRequest> },
-        births = { child: FirstChild }
+        births = { child: FirstChild },
+        creation_settlements = retain_for_retirement
     );
     without_init!(SendsErrorNoInit,
         sends = { output: behavior::InterpreterRequests<LocalRequest> },
@@ -812,21 +819,27 @@ mod capability_matrix {
     );
     without_init!(BirthsErrorNoInit,
         births = { child: FirstChild },
+        creation_settlements = retain_for_retirement,
         error = MatrixError
     );
     without_init!(AllNoInit,
         sends = { output: behavior::InterpreterRequests<LocalRequest> },
         births = { child: FirstChild },
+        creation_settlements = retain_for_retirement,
         error = MatrixError
     );
 
     with_init!(NoneWithInit);
     with_init!(SendsWithInit, sends = { output: behavior::InterpreterRequests<LocalRequest> });
-    with_init!(BirthsWithInit, births = { child: FirstChild });
+    with_init!(BirthsWithInit,
+        births = { child: FirstChild },
+        creation_settlements = retain_for_retirement
+    );
     with_init!(ErrorWithInit, error = MatrixError);
     with_init!(SendsBirthsWithInit,
         sends = { output: behavior::InterpreterRequests<LocalRequest> },
-        births = { child: FirstChild }
+        births = { child: FirstChild },
+        creation_settlements = retain_for_retirement
     );
     with_init!(SendsErrorWithInit,
         sends = { output: behavior::InterpreterRequests<LocalRequest> },
@@ -834,11 +847,13 @@ mod capability_matrix {
     );
     with_init!(BirthsErrorWithInit,
         births = { child: FirstChild },
+        creation_settlements = retain_for_retirement,
         error = MatrixError
     );
     with_init!(AllWithInit,
         sends = { output: behavior::InterpreterRequests<LocalRequest> },
         births = { child: FirstChild },
+        creation_settlements = retain_for_retirement,
         error = MatrixError
     );
 
@@ -864,7 +879,7 @@ mod capability_matrix {
     fn every_capability_and_initializer_combination_has_the_exact_shape() {
         let _ = MatrixError::Rejected;
         type NoBirth = behavior::NoBirths;
-        type OneBirth = behavior::Births<BirthsNoInitChildren>;
+        type OneBirth = behavior::RetirementBirths<BirthsNoInitChildren>;
 
         assert_shape::<NoneNoInit, behavior::NoSends, NoBirth, Never>();
         assert_shape::<SendsNoInit, SendsNoInitSends, NoBirth, Never>();
@@ -873,45 +888,49 @@ mod capability_matrix {
         assert_shape::<
             SendsBirthsNoInit,
             SendsBirthsNoInitSends,
-            behavior::Births<SendsBirthsNoInitChildren>,
+            behavior::RetirementBirths<SendsBirthsNoInitChildren>,
             Never,
         >();
         assert_shape::<SendsErrorNoInit, SendsErrorNoInitSends, NoBirth, MatrixError>();
         assert_shape::<
             BirthsErrorNoInit,
             behavior::NoSends,
-            behavior::Births<BirthsErrorNoInitChildren>,
+            behavior::RetirementBirths<BirthsErrorNoInitChildren>,
             MatrixError,
         >();
-        assert_shape::<AllNoInit, AllNoInitSends, behavior::Births<AllNoInitChildren>, MatrixError>(
-        );
+        assert_shape::<
+            AllNoInit,
+            AllNoInitSends,
+            behavior::RetirementBirths<AllNoInitChildren>,
+            MatrixError,
+        >();
 
         assert_shape::<NoneWithInit, behavior::NoSends, NoBirth, Never>();
         assert_shape::<SendsWithInit, SendsWithInitSends, NoBirth, Never>();
         assert_shape::<
             BirthsWithInit,
             behavior::NoSends,
-            behavior::Births<BirthsWithInitChildren>,
+            behavior::RetirementBirths<BirthsWithInitChildren>,
             Never,
         >();
         assert_shape::<ErrorWithInit, behavior::NoSends, NoBirth, MatrixError>();
         assert_shape::<
             SendsBirthsWithInit,
             SendsBirthsWithInitSends,
-            behavior::Births<SendsBirthsWithInitChildren>,
+            behavior::RetirementBirths<SendsBirthsWithInitChildren>,
             Never,
         >();
         assert_shape::<SendsErrorWithInit, SendsErrorWithInitSends, NoBirth, MatrixError>();
         assert_shape::<
             BirthsErrorWithInit,
             behavior::NoSends,
-            behavior::Births<BirthsErrorWithInitChildren>,
+            behavior::RetirementBirths<BirthsErrorWithInitChildren>,
             MatrixError,
         >();
         assert_shape::<
             AllWithInit,
             AllWithInitSends,
-            behavior::Births<AllWithInitChildren>,
+            behavior::RetirementBirths<AllWithInitChildren>,
             MatrixError,
         >();
     }

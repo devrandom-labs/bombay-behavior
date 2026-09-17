@@ -47,6 +47,7 @@ struct ShutdownTopology;
         three: StopOnShutdown<Inert<3>>,
         four: StopOnShutdown<Inert<4>>,
     },
+    creation_settlements = retain_for_retirement,
 )]
 impl ShutdownTopology {
     fn receive(&mut self, _: MailAddr, message: Never) -> BehaviorActed<Self> {

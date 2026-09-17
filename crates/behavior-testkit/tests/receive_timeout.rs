@@ -8,7 +8,7 @@ use behavior_core::EventLayer;
 use behavior_core::{
     Acted, ActionItem, Actions, Behavior, Births, CreateChild, CreationKind, CreationSequence,
     Creations, Delivery, Here, Inside, InterpretItem, InterpretSends, Interpretation,
-    ItemSettlement, MailAddr, Never, NoBirths, Recipient, Step, User, UserEvent,
+    ItemSettlement, MailAddr, Never, NoBirths, Recipient, RetirementBirths, Step, User, UserEvent,
 };
 use behavior_testkit::model::InactivityModel;
 
@@ -17,7 +17,7 @@ struct Failed;
 
 struct Child;
 
-#[behavior_core::behavior(addr = MailAddr, message = u8, sends = Vec<Never>, births = behavior_core::NoBirths, error = Never)]
+#[behavior_core::behavior(addr = MailAddr, message = u8, sends = Vec<Never>, error = Never)]
 impl Child {
     fn receive(
         &mut self,
@@ -36,7 +36,7 @@ struct Subject {
     child_ids: CreationSequence,
 }
 
-#[behavior_core::behavior(addr = MailAddr, message = u8, sends = Vec<Delivery<behavior_testkit::TestRecipient<u8>>>, births = Births<ChildBehavior>, error = Failed)]
+#[behavior_core::behavior(addr = MailAddr, message = u8, sends = Vec<Delivery<behavior_testkit::TestRecipient<u8>>>, births = Births<ChildBehavior>, creation_settlements = retain_for_retirement, error = Failed)]
 impl Subject {
     fn receive(
         &mut self,
@@ -46,7 +46,7 @@ impl Subject {
         MailAddr,
         Never,
         Vec<Delivery<behavior_testkit::TestRecipient<u8>>>,
-        Births<ChildBehavior>,
+        RetirementBirths<ChildBehavior>,
         Failed,
     > {
         if message == 7 {
@@ -86,7 +86,7 @@ fn on_timeout(
     MailAddr,
     Never,
     Vec<Delivery<behavior_testkit::TestRecipient<u8>>>,
-    Births<ChildBehavior>,
+    RetirementBirths<ChildBehavior>,
 > {
     let child_id = inner
         .child_ids
@@ -242,7 +242,7 @@ fn outer_timeout(
         behavior_core::InterpreterRequests<behavior_actors::ScheduleAt>,
         <SubjectBehavior as Behavior>::Sends,
     >,
-    Births<ChildBehavior>,
+    RetirementBirths<ChildBehavior>,
 > {
     Actions::cont()
 }

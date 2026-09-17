@@ -256,6 +256,7 @@ where
 ///     addr = behavior::MailAddr,
 ///     message = behavior::Never,
 ///     births = { primary: Worker, fallback: Worker },
+///     creation_settlements = retain_for_retirement,
 /// )]
 /// impl Parent {
 ///     fn receive(
@@ -1430,6 +1431,7 @@ mod tests {
             pool: crate::StopOnShutdown<Probe>,
             fallback: crate::StopOnShutdown<Probe>,
         },
+        creation_settlements = retain_for_retirement,
     )]
     impl NamedParent {
         fn receive(&mut self, _: MailAddr, message: Never) -> BehaviorActed<Self> {

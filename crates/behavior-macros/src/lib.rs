@@ -85,17 +85,16 @@ fn actors_crate() -> Result<TokenStream2> {
     }
     if std::env::var("CARGO_PKG_NAME").as_deref() == Ok("bombay-rs") {
         return if std::env::var("CARGO_CRATE_NAME").as_deref() == Ok("bombay") {
-            Ok(quote!(crate::behavior))
+            Ok(quote!(crate))
         } else {
-            Ok(quote!(::bombay::behavior))
+            Ok(quote!(::bombay))
         };
     }
     if let Ok(found) = crate_name("bombay-behavior-actors") {
         return Ok(crate_path(found));
     }
     if let Ok(found) = crate_name("bombay-rs") {
-        let bombay = facade_crate_path(found);
-        return Ok(quote!(#bombay::behavior));
+        return Ok(facade_crate_path(found));
     }
     Err(Error::new(
         Span::call_site(),
@@ -147,6 +146,24 @@ enum BirthsSpec {
     Generated(NamedProduct),
 }
 
+impl BirthsSpec {
+    fn is_no_births(&self) -> bool {
+        let Self::Existing(Type::Path(path)) = self else {
+            return false;
+        };
+        path.qself.is_none()
+            && path.path.segments.last().is_some_and(|segment| {
+                segment.ident == "NoBirths" && matches!(segment.arguments, syn::PathArguments::None)
+            })
+    }
+}
+
+#[derive(Clone, Copy)]
+enum CreationSettlementDisposition {
+    ReturnToCreator,
+    RetainForRetirement,
+}
+
 fn parse_product(input: ParseStream) -> Result<NamedProduct> {
     let content;
     braced!(content in input);
@@ -179,6 +196,7 @@ struct BehaviorArgs {
     message: Type,
     sends: Option<SendsSpec>,
     births: Option<BirthsSpec>,
+    creation_settlements: Option<CreationSettlementDisposition>,
     error: Option<Type>,
 }
 
@@ -221,6 +239,7 @@ impl Parse for BehaviorArgs {
         let mut message = None;
         let mut sends = None;
         let mut births = None;
+        let mut creation_settlements = None;
         let mut error = None;
         while !input.is_empty() {
             let key: Ident = input.parse()?;
@@ -242,8 +261,23 @@ impl Parse for BehaviorArgs {
                         BirthsSpec::Existing(input.parse()?)
                     });
                 }
+                "creation_settlements" if creation_settlements.is_none() => {
+                    let disposition: Ident = input.parse()?;
+                    creation_settlements = Some(match disposition.to_string().as_str() {
+                        "return_to_creator" => CreationSettlementDisposition::ReturnToCreator,
+                        "retain_for_retirement" => {
+                            CreationSettlementDisposition::RetainForRetirement
+                        }
+                        _ => {
+                            return Err(Error::new_spanned(
+                                disposition,
+                                "creation settlements must `return_to_creator` or `retain_for_retirement`",
+                            ));
+                        }
+                    });
+                }
                 "error" if error.is_none() => error = Some(input.parse()?),
-                "addr" | "message" | "sends" | "births" | "error" => {
+                "addr" | "message" | "sends" | "births" | "creation_settlements" | "error" => {
                     return Err(Error::new_spanned(key, "duplicate behavior argument"));
                 }
                 _ => return Err(Error::new_spanned(key, "unknown behavior argument")),
@@ -254,11 +288,23 @@ impl Parse for BehaviorArgs {
                 return Err(input.error("expected `,` between behavior arguments"));
             }
         }
+        match (&births, creation_settlements) {
+            (Some(births), None) if !births.is_no_births() => {
+                return Err(input.error(
+                    "birth-owning behaviors must declare `creation_settlements = return_to_creator` or `creation_settlements = retain_for_retirement`",
+                ));
+            }
+            (None, Some(_)) => {
+                return Err(input.error("`creation_settlements` requires a `births` declaration"));
+            }
+            (Some(_), Some(_)) | (Some(_), None) | (None, None) => {}
+        }
         Ok(Self {
             addr: addr.ok_or_else(|| input.error("missing `addr`"))?,
             message: message.ok_or_else(|| input.error("missing `message`"))?,
             sends,
             births,
+            creation_settlements,
             error,
         })
     }
@@ -284,7 +330,7 @@ fn validate_receiver(method: &syn::ImplItemFn) -> Result<()> {
     {
         return Err(Error::new_spanned(
             &method.sig,
-            "behavior init and receive methods must be synchronous, safe, and non-generic",
+            "behavior methods must be synchronous, safe, and non-generic",
         ));
     }
     if matches!(method.sig.output, ReturnType::Default) {
@@ -742,6 +788,10 @@ fn generate_sends(
                 host,
             ).await {
                 #behavior::SourceCustody::Exhausted(#field) => #field,
+                #behavior::SourceCustody::Retained(#field) => {
+                    terminal_custody = __BombayTerminalCustody::Required;
+                    #field
+                }
                 #behavior::SourceCustody::Admitted(#field) => {
                     return #behavior::SourceCustody::Admitted(#settlements_name {
                         #(#prior_fields: #prior_fields,)*
@@ -796,10 +846,23 @@ fn generate_sends(
                 Output = #behavior::SourceCustody<Self>,
             > + ::core::marker::Send {
                 async move {
+                    enum __BombayTerminalCustody {
+                        Unrequired,
+                        Required,
+                    }
+                    let mut terminal_custody = __BombayTerminalCustody::Unrequired;
                     #(#custody_fields)*
-                    #behavior::SourceCustody::Exhausted(#settlements_name {
+                    let settlements = #settlements_name {
                         #(#field_names: #field_names,)*
-                    })
+                    };
+                    match terminal_custody {
+                        __BombayTerminalCustody::Unrequired => {
+                            #behavior::SourceCustody::Exhausted(settlements)
+                        }
+                        __BombayTerminalCustody::Required => {
+                            #behavior::SourceCustody::Retained(settlements)
+                        }
+                    }
                 }
             }
         }
@@ -884,6 +947,7 @@ fn generate_sends(
 
 fn generate_births(
     product: Option<BirthsSpec>,
+    disposition: Option<CreationSettlementDisposition>,
     actor: &Ident,
     _addr: &Type,
     item: &ItemImpl,
@@ -891,7 +955,22 @@ fn generate_births(
 ) -> (TokenStream2, TokenStream2) {
     let product = match product {
         None => return (quote!(#behavior::NoBirths), quote!()),
-        Some(BirthsSpec::Existing(ty)) => return (quote!(#ty), quote!()),
+        Some(BirthsSpec::Existing(ty)) => {
+            if disposition.is_none() {
+                return (quote!(#ty), quote!());
+            }
+            let child = quote!(<#ty as #behavior::BirthMode>::Child);
+            let birth = match disposition {
+                Some(CreationSettlementDisposition::ReturnToCreator) => {
+                    quote!(#behavior::Births<#child>)
+                }
+                Some(CreationSettlementDisposition::RetainForRetirement) => {
+                    quote!(#behavior::RetirementBirths<#child>)
+                }
+                None => unreachable!("a no-birth declaration has no settlement disposition"),
+            };
+            return (birth, quote!());
+        }
         Some(BirthsSpec::Generated(product)) => product,
     };
     let name = format_ident!("{}Children", actor);
@@ -931,8 +1010,17 @@ fn generate_births(
             |tail, child| quote!(#behavior::ChildChoice<#child, #tail>),
         ),
     };
+    let birth = match disposition {
+        Some(CreationSettlementDisposition::ReturnToCreator) => {
+            quote!(#behavior::Births<#name #type_generics>)
+        }
+        Some(CreationSettlementDisposition::RetainForRetirement) => {
+            quote!(#behavior::RetirementBirths<#name #type_generics>)
+        }
+        None => unreachable!("a generated birth product has an explicit settlement disposition"),
+    };
     (
-        quote!(#behavior::Births<#name #type_generics>),
+        birth,
         quote! {
             pub type #name #generics = #choice;
 
@@ -999,6 +1087,10 @@ pub fn behavior(args: TokenStream, item: TokenStream) -> TokenStream {
         ImplItem::Fn(method) if method.sig.ident == "receive" => Some(method),
         _ => None,
     });
+    let creations_settled = item.items.iter().find_map(|item| match item {
+        ImplItem::Fn(method) if method.sig.ident == "creations_settled" => Some(method),
+        _ => None,
+    });
     let Some(receive) = receive else {
         return Error::new_spanned(
             &item.self_ty,
@@ -1028,12 +1120,46 @@ pub fn behavior(args: TokenStream, item: TokenStream) -> TokenStream {
         .to_compile_error()
         .into();
     }
+    match (args.creation_settlements, creations_settled) {
+        (Some(CreationSettlementDisposition::ReturnToCreator), Some(method)) => {
+            if let Err(error) = validate_receiver(method) {
+                return error.to_compile_error().into();
+            }
+            if method.sig.inputs.len() != 2 {
+                return Error::new_spanned(
+                    &method.sig,
+                    "creations_settled must accept exactly &mut self and one CreationsSettled value",
+                )
+                .to_compile_error()
+                .into();
+            }
+        }
+        (Some(CreationSettlementDisposition::ReturnToCreator), None) => {
+            return Error::new_spanned(
+                &item.self_ty,
+                "`creation_settlements = return_to_creator` requires a creations_settled transition",
+            )
+            .to_compile_error()
+            .into();
+        }
+        (Some(CreationSettlementDisposition::RetainForRetirement), Some(method)) => {
+            return Error::new_spanned(
+                &method.sig,
+                "retirement-owned creation settlements do not enter a creations_settled transition",
+            )
+            .to_compile_error()
+            .into();
+        }
+        (Some(CreationSettlementDisposition::RetainForRetirement), None) | (None, None) => {}
+        (None, Some(_)) => {}
+    }
 
     let BehaviorArgs {
         addr,
         message,
         sends,
         births,
+        creation_settlements,
         error,
     } = args;
     let self_ty = &item.self_ty;
@@ -1059,7 +1185,36 @@ pub fn behavior(args: TokenStream, item: TokenStream) -> TokenStream {
     );
 
     let (sends_ty, sends_items) = generate_sends(sends, self_name, &item, &behavior);
-    let (births_ty, births_items) = generate_births(births, self_name, &addr, &item, &behavior);
+    let (births_ty, births_items) = generate_births(
+        births,
+        creation_settlements,
+        self_name,
+        &addr,
+        &item,
+        &behavior,
+    );
+    let (event_ty, transition) = match creation_settlements {
+        Some(CreationSettlementDisposition::ReturnToCreator) => {
+            let child = quote!(<#births_ty as #behavior::BirthMode>::Child);
+            (
+                quote!(#behavior::CreationEvent<#addr, #child, #message>),
+                quote! {
+                    match event {
+                        #behavior::CreationEvent::Settlements(settlements) => {
+                            <#self_ty>::creations_settled(self, settlements)
+                        }
+                        #behavior::CreationEvent::User(event) => {
+                            <#self_ty>::receive(self, event.from, event.message)
+                        }
+                    }
+                },
+            )
+        }
+        Some(CreationSettlementDisposition::RetainForRetirement) | None => (
+            quote!(#behavior::User<#addr, #message>),
+            quote!(<#self_ty>::receive(self, event.from, event.message)),
+        ),
+    };
 
     quote! {
         #sends_items
@@ -1073,7 +1228,7 @@ pub fn behavior(args: TokenStream, item: TokenStream) -> TokenStream {
 
         impl #impl_generics #behavior::Behavior for #self_ty #where_clause {
             type Protocol = Self;
-            type Event = #behavior::User<#addr, #message>;
+            type Event = #event_ty;
             type Sends = #sends_ty;
             type Ph = #behavior::Never;
             type Error = #error;
@@ -1091,7 +1246,7 @@ pub fn behavior(args: TokenStream, item: TokenStream) -> TokenStream {
                 _: #behavior::ActiveTurn,
                 event: Self::Event,
             ) -> #behavior::BehaviorActed<Self> {
-                <#self_ty>::receive(self, event.from, event.message)
+                #transition
             }
         }
 
@@ -1233,11 +1388,12 @@ mod tests {
             "message = String",
             "sends = { first: Vec<u8>, second: Vec<u16> }",
             "births = { first: u8, second: u16 }",
+            "creation_settlements = retain_for_retirement",
             "error = String",
         ];
         let mut cases = Vec::new();
         permutations(&mut declarations, 0, &mut cases);
-        assert_eq!(cases.len(), 120);
+        assert_eq!(cases.len(), 720);
         for case in cases {
             syn::parse_str::<BehaviorArgs>(&case)
                 .unwrap_or_else(|error| panic!("failed to parse `{case}`: {error}"));
@@ -1248,6 +1404,12 @@ mod tests {
     fn capability_omission_and_trailing_comma_parse() {
         syn::parse_str::<BehaviorArgs>("message = (), addr = u8,")
             .expect("only required protocol declarations are sufficient");
+        for declaration in ["NoBirths", "behavior::NoBirths"] {
+            syn::parse_str::<BehaviorArgs>(&format!(
+                "message = (), addr = u8, births = {declaration}"
+            ))
+            .unwrap_or_else(|error| panic!("explicit no-birth declaration did not parse: {error}"));
+        }
     }
 
     #[test]
@@ -1259,8 +1421,12 @@ mod tests {
             "addr = u8, message = (), unknown = u8",
             "addr = u8, message = (), sends = {}",
             "addr = u8, message = (), births = {}",
+            "addr = u8, message = (), births = {}, creation_settlements = retain_for_retirement",
             "addr = u8, message = (), sends = { same: Vec<u8>, same: Vec<u8> }",
-            "addr = u8, message = (), births = { same: u8, same: u16 }",
+            "addr = u8, message = (), births = { same: u8, same: u16 }, creation_settlements = retain_for_retirement",
+            "addr = u8, message = (), creation_settlements = retain_for_retirement",
+            "addr = u8, message = (), births = { child: u8 }, creation_settlements = discard",
+            "addr = u8, message = (), births = { child: u8 }, creation_settlements = retain_for_retirement, creation_settlements = return_to_creator",
         ] {
             assert!(
                 syn::parse_str::<BehaviorArgs>(case).is_err(),

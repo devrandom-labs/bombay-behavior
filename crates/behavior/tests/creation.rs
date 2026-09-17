@@ -127,6 +127,7 @@ fn child_creation_names_the_action_and_established_outcome() {
     addr = OpaqueAddress,
     message = Worker,
     births = { worker: Worker },
+    creation_settlements = retain_for_retirement,
 )]
 impl Parent {
     fn init(&mut self) -> BehaviorActed<Self> {

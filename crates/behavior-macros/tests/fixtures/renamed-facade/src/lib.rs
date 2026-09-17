@@ -1,6 +1,7 @@
 use runtime::behavior::{
     Actions, BehaviorActed, Delivery, MailAddr, MessageProtocol, Recipient,
 };
+use runtime::atomic::{Assignment, pool_worker};
 
 struct First;
 struct Second;
@@ -25,6 +26,7 @@ impl First {
     births = {
         first: First,
     },
+    creation_settlements = retain_for_retirement,
 )]
 impl Second {
     fn receive(&mut self, _: MailAddr, _: u16) -> BehaviorActed<Self> {
@@ -38,5 +40,14 @@ struct Inferred;
 impl Inferred {
     fn receive(&mut self, _: MailAddr, _: u32) -> BehaviorActed<Self> {
         Ok(Actions::cont())
+    }
+}
+
+struct RenamedFacadeWorker;
+
+#[pool_worker(addr = MailAddr, result = u16)]
+impl RenamedFacadeWorker {
+    fn transition(&mut self, assignment: Assignment<u8>) -> WorkerActed<Self> {
+        Ok(Actions::cont().with_send(assignment.complete(8)))
     }
 }
