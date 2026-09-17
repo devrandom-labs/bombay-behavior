@@ -1,0 +1,35 @@
+# Advisory and license audit for the dependency tree. The nix gate covers
+# builds and tests; this checks crates.io advisories and license compliance.
+name: cargo-deny
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  schedule:
+    # Weekly, so newly-published advisories flag even when nothing changes.
+    # (Fixed time; Mondays 05:37 UTC.)
+    - cron: "37 5 * * 1"
+
+# Don't pile up redundant runs on rapid pushes.
+concurrency:
+  group: deny-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deny:
+    name: Advisories and Licenses
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check advisories and licenses
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check advisories licenses

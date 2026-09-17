@@ -1,12 +1,28 @@
+# cargo-deny configuration. CI runs `cargo deny check advisories licenses`
+# (see .github/workflows/deny.yml); other checks are not gated.
+
+[advisories]
+version = 2
+yanked = "warn"
+
 [licenses]
+version = 2
 allow = [
     "MIT",
     "Apache-2.0",
     "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
     "Unicode-3.0",
+    "CDLA-Permissive-2.0",
+    "MPL-2.0",
+    "Zlib",
+    "CC0-1.0",
 ]
 private = { ignore = true }
 
+# Retained from the pre-existing deny.toml: refuse dependency sources outside
+# crates.io, so a rogue registry or git dep fails the audit instead of building.
 [sources]
 unknown-registry = "deny"
 unknown-git = "deny"
