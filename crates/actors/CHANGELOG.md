@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-actors-v0.16.0...bombay-behavior-actors-v0.17.0) - 2026-09-17
+
+### Added
+
+- [**breaking**] preserve generated creation settlements ([#64](https://github.com/devrandom-labs/bombay-behavior/pull/64))
+
 ### Fixed
 
 - Preserve retained source custody through generated request products and the
