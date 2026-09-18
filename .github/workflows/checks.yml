@@ -79,12 +79,25 @@ jobs:
       - name: Build fuzz targets
         run: nix run .#fuzz -- build
 
-  mutation:
-    name: Mutation Gate
+  # The single-run Mutation Gate was ceiling-cancelled at GitHub's default
+  # 6h job limit (run 35260993642) with no verdict, so the campaign now runs
+  # as eight parallel shards. Every shard shares the same campaign arguments
+  # and the same denominator (see mkMutantsShard in flake.nix); each uploads
+  # its outcomes and the discovered-candidate list. The aggregate job named
+  # `Mutation Gate` is the single authoritative verdict: the gate passes only
+  # when every shard report is collected and the strict gate accepts the
+  # merged full-campaign results.
+  mutation-shards:
+    name: Mutation Gate (shard ${{ matrix.shard }}/8)
     runs-on: ubuntu-latest
     permissions:
       actions: write
       contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+    timeout-minutes: 270
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -109,5 +122,101 @@ jobs:
           purge-created: 0
           purge-primary-key: never
 
-      - name: Run strict mutation verdict
-        run: nix build .#mutants -L
+      - name: Run mutation shard
+        run: nix build .#mutants-shard${{ matrix.shard }} -L
+
+      - name: Collect shard report
+        run: |
+          report_dir="$(find -L result -type f -name outcomes.json -printf '%h\n' | head -n1)"
+          if [ -z "$report_dir" ]; then
+            echo "no outcomes.json found under result/"
+            exit 1
+          fi
+          mkdir -p "shard-report-${{ matrix.shard }}"
+          cp "$report_dir/outcomes.json" "$report_dir/mutants.json" "shard-report-${{ matrix.shard }}/"
+
+      - name: Upload shard report
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-shard-${{ matrix.shard }}
+          path: shard-report-${{ matrix.shard }}/
+          if-no-files-found: error
+
+  mutation-aggregate:
+    name: Mutation Gate
+    needs: mutation-shards
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+    timeout-minutes: 90
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Require every mutation shard to pass
+        run: |
+          result='${{ needs.mutation-shards.result }}'
+          echo "mutation-shards result: $result"
+          if [ "$result" != "success" ]; then
+            echo "One or more mutation shards failed, were cancelled, or were skipped."
+            exit 1
+          fi
+
+      - name: Download all shard reports
+        uses: actions/download-artifact@v4
+        with:
+          pattern: mutation-shard-*
+          path: shards
+
+      - name: Assert every shard report is collected
+        run: |
+          found="$(find shards -maxdepth 1 -mindepth 1 -type d | wc -l)"
+          echo "collected $found shard report(s)"
+          if [ "$found" -ne 8 ]; then
+            echo "expected 8 shard reports (one per partition)"
+            exit 1
+          fi
+          for directory in shards/mutation-shard-*/; do
+            for file in outcomes.json mutants.json; do
+              if [ ! -s "$directory$file" ]; then
+                echo "missing or empty $file in $directory"
+                exit 1
+              fi
+            done
+          done
+
+      - name: Install Nix
+        uses: nixbuild/nix-quick-install-action@v30
+        with:
+          nix_conf: |
+            experimental-features = nix-command flakes
+            accept-flake-config = true
+            keep-env-derivations = true
+            keep-outputs = true
+
+      - name: Restore and save Nix store
+        uses: nix-community/cache-nix-action@v6
+        with:
+          primary-key: mutation-${{ runner.os }}-${{ hashFiles('Cargo.toml', 'flake.nix', 'flake.lock', 'Cargo.lock', 'mutants-baseline.json') }}
+          restore-prefixes-first-match: mutation-${{ runner.os }}-
+          gc-max-store-size-linux: 2G
+          purge: true
+          purge-prefixes: mutation-${{ runner.os }}-
+          purge-created: 0
+          purge-primary-key: never
+
+      - name: Build the gate binary
+        run: nix build .#default -L
+
+      - name: Merge shard reports into one campaign
+        run: |
+          mkdir -p merged
+          jq -s '{outcomes: (map(.outcomes) | add)}' shards/mutation-shard-*/outcomes.json > merged/outcomes.json
+          jq -s 'add | unique' shards/mutation-shard-*/mutants.json > merged/mutants.json
+
+      - name: Strict mutation verdict over the merged campaign
+        run: |
+          ./result/bin/behavior-mutants-gate check merged mutants-baseline.json \
+            | tee merged-mutation-gate-report.txt

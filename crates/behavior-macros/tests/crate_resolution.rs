@@ -33,6 +33,16 @@ fn direct_and_facade_dependency_paths_resolve_with_renames() {
 }
 
 #[test]
+fn pool_worker_expansion_resolves_the_facade_catalogue_with_both_paths_present() {
+    let output = cargo_check(&["direct-actors-and-facade"]);
+    assert!(
+        output.status.success(),
+        "fixture compilation failed:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
 fn facade_package_sibling_targets_resolve_the_library_crate() {
     let output = cargo_check(&["bombay-rs"]);
     assert!(

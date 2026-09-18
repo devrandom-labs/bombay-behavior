@@ -23,7 +23,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Resolve `#[pool_worker]` Actors types from the `bombay-rs` facade root,
-  including renamed facade dependencies and facade sibling targets.
+  including renamed facade dependencies and facade sibling targets. A direct
+  `bombay-behavior-actors` dependency remains the fallback when no facade is
+  present, so expansions agree with the facade-path catalogue the consumer
+  imports even when both dependencies resolve to different revisions.
 
 ## [0.11.6](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-macros-v0.11.5...bombay-behavior-macros-v0.11.6) - 2026-09-16
 
