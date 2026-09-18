@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.1](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-macros-v0.12.0...bombay-behavior-macros-v0.12.1) - 2026-09-18
+
+### Other
+
+- *(behavior)* prove the Bombay stop shape; fix(macros): facade-first Actors resolution ([#68](https://github.com/devrandom-labs/bombay-behavior/pull/68))
+
 ## [0.12.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-macros-v0.11.6...bombay-behavior-macros-v0.12.0) - 2026-09-17
 
 ### Added
