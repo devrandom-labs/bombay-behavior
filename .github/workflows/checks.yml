@@ -127,7 +127,7 @@ jobs:
 
       - name: Collect shard report
         run: |
-          report_dir="$(find result -type f -name outcomes.json -printf '%h\n' | head -n1)"
+          report_dir="$(find -L result -type f -name outcomes.json -printf '%h\n' | head -n1)"
           if [ -z "$report_dir" ]; then
             echo "no outcomes.json found under result/"
             exit 1
