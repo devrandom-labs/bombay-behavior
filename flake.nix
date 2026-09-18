@@ -75,6 +75,34 @@
           strictDeps = true;
         };
         cargoArtifacts = craneLib.buildDepsOnly commonArgs;
+
+        # Ceiling-split form of the `mutants` campaign: one derivation per
+        # shard, each running the full campaign argument set with its own
+        # baseline run. All shards share the same arguments and denominator,
+        # and use round-robin distribution so shards finish at similar times.
+        # The CI aggregate job merges the shard results and runs the strict
+        # `behavior-mutants-gate` verdict over the union; the unsharded
+        # `mutants` package remains the local full-campaign entry point.
+        mkMutantsShard = k:
+          craneLib.mkCargoDerivation (commonArgs // {
+            inherit cargoArtifacts;
+            pnameSuffix = "-mutants-shard${toString k}";
+            nativeBuildInputs = [ pkgs.cargo-mutants pkgs.cargo-nextest ];
+            buildPhaseCargoCommand = ''
+              set -o pipefail
+              PROPTEST_CASES=64 cargo mutants \
+                --package bombay-behavior \
+                --test-package bombay-behavior \
+                --test-package bombay-behavior-testkit \
+                --test-tool nextest --no-shuffle --colors never \
+                --minimum-test-timeout 180 \
+                --sharding round-robin \
+                --shard ${toString k}/8 \
+                --output "$out" -- --profile mutants || true
+            '';
+            doInstallCargoArtifacts = false;
+            doCheck = false;
+          });
       in {
         checks = {
           bombay-behavior = craneLib.buildPackage (commonArgs // { inherit cargoArtifacts; });
@@ -151,6 +179,15 @@
             doInstallCargoArtifacts = false;
             doCheck = false;
           });
+
+          mutants-shard0 = mkMutantsShard 0;
+          mutants-shard1 = mkMutantsShard 1;
+          mutants-shard2 = mkMutantsShard 2;
+          mutants-shard3 = mkMutantsShard 3;
+          mutants-shard4 = mkMutantsShard 4;
+          mutants-shard5 = mkMutantsShard 5;
+          mutants-shard6 = mkMutantsShard 6;
+          mutants-shard7 = mkMutantsShard 7;
 
           # Seeder for the reviewed per-function viability ratchet. Copy the
           # emitted baseline into the repository only after reviewing every
