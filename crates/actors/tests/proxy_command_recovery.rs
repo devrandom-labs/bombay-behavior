@@ -2355,6 +2355,53 @@ fn activation_from_another_proxy_is_returned_unchanged() {
 }
 
 #[test]
+fn equal_worker_values_and_endpoints_do_not_share_activation_authority() {
+    let (mut target, expected) = awaiting_activation(Worker(41), Hydrate(17), Endpoint(91));
+    let (mut source, foreign) = awaiting_activation(Worker(41), Hydrate(17), Endpoint(91));
+    let foreign_worker = foreign.worker();
+    assert_ne!(expected.worker(), foreign_worker);
+
+    let rejected = target
+        .on(foreign.started())
+        .expect("foreign activation is a total diagnostic transition");
+    assert_eq!(target.phase(), ProxyPhase::Activating);
+    assert!(matches!(rejected.become_, Step::Continue));
+    assert!(rejected.creates.is_empty());
+    assert!(rejected.sends.worker_observations.is_empty());
+    assert!(rejected.sends.worker_initializations.is_empty());
+    assert!(rejected.sends.worker_activations.is_empty());
+    assert!(rejected.sends.worker_shutdowns.is_empty());
+    assert!(rejected.sends.worker_deliveries.is_empty());
+    assert!(rejected.sends.owner_outcomes.is_empty());
+    assert_eq!(rejected.sends.diagnostics.len(), 1);
+
+    let returned = match rejected
+        .sends
+        .diagnostics
+        .into_iter()
+        .next()
+        .expect("the exact foreign activation is returned")
+        .into_inner()
+    {
+        ProxyDiagnostic::UnexpectedWorkerActivation { phase, activation } => {
+            assert_eq!(phase, ProxyPhase::Activating);
+            assert_eq!(activation.worker(), foreign_worker);
+            activation
+        }
+        _ => panic!("foreign activation changed diagnostic category"),
+    };
+    let accepted_by_source = source
+        .on(returned)
+        .expect("the original owner accepts the returned activation");
+    assert!(accepted_by_source.sends.diagnostics.is_empty());
+
+    let accepted_by_target = target
+        .on(expected.started())
+        .expect("the target retains its own exact activation");
+    assert!(accepted_by_target.sends.diagnostics.is_empty());
+}
+
+#[test]
 fn host_rejection_keeps_worker_and_initialization_actions_together() {
     let initialized = StableProxy::immediate()
         .initialize()

@@ -781,6 +781,56 @@ five-mutant routing-law result, not an actor-wide mutation verdict. A07 still
 needs independently reviewable campaigns for the other actor families and a
 separate viability ratchet.
 
+### A07 stable-proxy activation admission experiment, before simplification
+
+Classification: derived exact-correlation law. `BeginActivation` consumes one
+`ActivationPermit` and issues an `ActivationAttempt` containing that permit's
+`WorkerAttempt`. Every `WorkerActivation` constructor in
+`atomic/worker/activation.rs` carries that same worker evidence alongside the
+attempt; its fields are private, and the permit cannot be duplicated. Thus a
+matching activation attempt already proves the matching worker for every
+constructible input. The public transition still accepts only its exact
+activation and returns a foreign input intact through the diagnostic lane.
+The caller syntax is a normal `StableProxy::on(request.started())`, including
+two independently constructed requests with equal worker payload and endpoint
+values but different non-forgeable attempt tokens.
+
+At signed revision `855458a`, the Nix-pinned campaign first selected the only
+mutant in `stable_proxy/state.rs`; it was unviable because `ProxyPhase` has no
+`Default`, so it supplied no mutation verdict. Its unmutated baseline ran 590
+actor tests. The separate activation-guard campaign selected all five
+mutations at `stable_proxy/mod.rs:314` and ran 702 actor/testkit tests per
+mutant; it skipped a second baseline, while the full 812-test workspace run
+had passed at this revision. Four were caught; changing `&&` to `||` survived.
+The survivor is a falsifier for the claim that
+both comparisons are independently necessary, not evidence that foreign
+activation is untested. The focused caller regression distinguished exact
+attempt tokens despite equal payload and endpoint values. It passed before
+and after the edit; the complete 51-test proxy recovery suite and optimized
+focused witness also passed after it. The private guard now retains only the
+exact activation comparison and deletes the redundant worker input. No public
+type, effect lane,
+interpreter operation, wrapper, or actor-model law changes. The existing
+activation and shutdown models remain the lower-order transition witnesses.
+
+Aggregate-drift checkpoint before the edit: stable proxy's control states are
+`Dormant`, `Starting`, `Ready`, `EmptyInitial`, `EmptyAfter`, `Replacing`,
+`ShuttingDown`, and `Stopped`; they remain the same. No subordinate state or
+result alternative, production module, or public spelling changes. The only
+transition branch affected is the exact activation admission predicate. Every
+surviving state keeps the same current worker, attempt, activation plan, and
+pending custody. The proposal stores no arrival history or repeated cause,
+assumes no cardinality, adds no nested transition authority or semantic
+boolean, and exposes no positional syntax. It is cross-checked with the
+stable-proxy and atomic actor laws and the complete-effect rule in
+`actor-transition-algebra.md`. Expected and actual files: this audit, one proxy
+caller test, and `stable_proxy/mod.rs`. The production diff is +7/-11 lines,
+net -4; the test adds 47 lines. Public types added/removed: 0/0. Control states,
+subordinate alternatives, transition branch count, modules, and public
+spellings remain unchanged. The exact retained current values and residue
+scan remain as recorded before the edit. Disposition: `pass` for the retained
+representation, pending the post-edit mutation verdict and full Nix gate.
+
 ### A20 ledger entry: bounded-buffer capacity and ownership
 
 | Evidence layer | Current witness and limit |
