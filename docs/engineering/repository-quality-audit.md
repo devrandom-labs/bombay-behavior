@@ -661,8 +661,8 @@ plumbing. The actor `src` tree changed by +111/-1,104 physical lines, net
 -993 including the focused unit test; the production representation alone is
 about 1,020 lines smaller. No public type was added or removed. The actor
 all-target Cargo check, formatter, 812 workspace Nextest cases, and current
-workspace coverage run passed under the Nix toolchain. The full Nix flake gate
-is pending before this stage can be retained.
+workspace coverage run passed under the Nix toolchain. The full 21-check Nix
+flake gate also passed from a clean worktree at signed commit `65caa65`.
 
 Post-migration aggregate-drift checkpoint: the affected routing, timing,
 discovery, lifecycle, and stable-proxy control states, subordinate result
@@ -675,7 +675,7 @@ residue scan found no new arrival history, repeated cause, false cardinality,
 nested transition authority, semantic boolean, or positional consumer syntax.
 The ordered product law in `actor-transition-algebra.md` and the normalized
 atomic, routing, timing, discovery, and lifecycle contracts were cross-checked.
-Disposition: `pass` for the representation; full gate still pending.
+Disposition: `pass` for the retained representation.
 
 ### A13 pre-edit protocol-bound law
 
