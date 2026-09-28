@@ -540,16 +540,142 @@ not justify merging them.
 
 | Product path | Product and settlement shape | Ordered lanes and shared law | Distinct obligation |
 |---|---|---|---|
-| Handwritten `DeliveryOutcomes`, `LeaseSends`, `PresenceSends` | Two generic fields; settlement reuses the same product with settled field types | Empty/append, left-before-right interpretation, unattempted suffix on corruption, source custody, classification, and logical projection | Public domain field names differ; `requirements.rs` currently supplies projection separately. |
-| `atomic::request_product!` | One or more generic named fields; settlement reuses the product | The same ordered operations and projection are generated together | Source custody must preserve every earlier settlement and every unvisited owned field across any arity. |
+| Former handwritten `DeliveryOutcomes`, `LeaseSends`, `PresenceSends` | Two generic fields; settlement reuses the same product with settled field types | Empty/append, left-before-right interpretation, unattempted suffix on corruption, source custody, classification, and logical projection | Their public domain field names differ; all three now use the shared private derivation. |
+| Private `send_product!`, formerly `atomic::request_product!` | One or more generic named fields; settlement reuses the product | The same ordered operations and projection are generated together | Source custody must preserve every earlier settlement and every unvisited owned field across any arity. |
 | `#[behavior]` generated sends | Generated fields may have concrete types; a separate generated settlement struct holds associated settlement types | Generated lane order, corruption suffix, and source custody use the same transition equation | Separate settlement representation and caller lane methods are part of the generated API; this path currently has no generated logical-host projection. |
 
-The next candidate should first prove that the three handwritten two-lane
-products can share one private derivation while retaining their public field
-names and both wrapper orders. The generated product needs a separate focused
-projection witness before deciding whether its distinct settlement shape can
-share any implementation. No product or public API is changed by this
-inventory.
+The named generic products now share the private derivation and retain their
+public field names and both wrapper orders. The generated product still needs
+a lawful public projection witness before its distinct settlement shape can
+share an implementation. This inventory itself changed no product or API.
+
+### A11 generated-send projection law, before implementation
+
+Classification: derived typed-composition law. A `#[behavior]` send product's
+logical destinations are exactly the ordered, duplicate-preserving append of
+its declared lane projections. A lane with no logical destination contributes
+`NoBirthProtocols`; a nested interpreter-request lane contributes only its
+declared logical protocols. The caller syntax is
+`<Bootstrap as LogicalHostRequirements>::LogicalHosts`, without a handwritten
+`LogicalDeliveryProtocols for BootstrapSends` implementation. Existing
+`behavior/tests/behavior_generation.rs` has precisely that handwritten
+implementation, so removing it is the focused pre-edit compile regression.
+The expected product is `FirstDestination` followed by `SecondDestination`.
+The macro already generates the named send lanes and settlement interpretation;
+the implementation should reuse each field's `LogicalDeliveryProtocols` and
+the existing `BirthProtocolProduct::Append`. No new runtime operation,
+transition, wrapper, or host lookup is required. The caller must still compose
+through existing wrapper projections in either order.
+
+Aggregate-drift checkpoint: the generated behavior's control states,
+subordinate alternatives, transition branches, production modules, and
+public type spellings are unchanged. Each lane's current value remains in its
+existing generated field. The proposed implementation adds one derived trait
+impl to the existing generated product and deletes the handwritten witness;
+it stores no history, duplicates no cause, asserts no cardinality, creates no
+nested transition authority or semantic boolean, and exposes no positional
+consumer path. The law is cross-checked with `actor-transition-algebra.md` and
+the normalized logical-host contracts in this audit. Disposition: `pass` for
+the pre-edit model, pending the focused failing regression.
+
+Removing the handwritten `BootstrapSends` projection produced E0277 in the
+Nix-pinned `behavior_generation` caller: both `BootstrapSends` and a second
+generated product with a request lane and repeated delivery destination lack
+`LogicalDeliveryProtocols`. An unconditional generated impl using the field
+projections then failed E0446 for existing private interpreter-request types.
+That candidate was removed, the test fixture restored, and the experiment
+recorded in the root `DEAD_ENDS.md`. A11 remains open; a public
+interface law must be established before another generated projection edit.
+
+### A11 named generic product derivation, before implementation
+
+Classification: derived ordered-product law and private implementation
+consolidation. `LeaseSends<OutcomeSends, Schedules>` and
+`PresenceSends<ReplySends, Schedules>` each own two named generic lanes. For
+both, empty and append act lane by lane; interpretation visits the first lane
+before the second, preserves the unattempted suffix on corruption, and
+continues to the second lane after lawful rejection. Source admission visits
+in the same order and returns the complete named product. Settlement status
+combines both lanes, and logical-host projection appends their protocol
+occurrences in order. The distinct public field names remain part of the
+contract. This is the same law already derived by the private atomic
+`request_product!` macro for generic named lanes. Moving that existing
+derivation to the actor-crate root and giving it a domain-general send-product
+name can delete the duplicate implementations; it adds no public framework.
+
+Focused characterization before production edits passed in the Nix-pinned
+toolchain: `requirements::tests::lease_and_presence_products_keep_both_wrapper_orders`
+proves both logical orders through `SendLayer`; `total_interpretation`
+checks Lease's corrupt suffix and Presence's rejection followed by its
+independent schedule lane. These tests pass on the prior implementation
+because this stage removes duplication without changing the observable law.
+The existing four atomic request products and the core ordered settlement
+and source-custody products remain the lower-order witnesses. The expected
+design-stage files are the private derivation module, its four atomic import
+sites, the actor crate root, Lease, Presence, their two projection impls in
+`requirements.rs`, and the focused tests. The expected production delta is
+roughly 200 fewer lines, with zero new or removed public types; later product
+migration is a separate measured stage.
+
+Aggregate-drift checkpoint: Lease and Presence control states, subordinate
+alternatives, transition branches, modules by count, and public spellings
+remain unchanged. The exact current values are Lease's owned outcomes and
+schedule requests and Presence's owned replies and schedule requests. No
+arrival history, repeated cause, false cardinality, nested authority,
+semantic boolean, or positional consumer syntax is introduced. The ordered
+send-product equation in `actor-transition-algebra.md` and the normalized
+timing and presence contracts are cross-checked. Disposition: `pass` for the
+pre-edit model and both focused caller witnesses.
+
+The design stage moved the existing 273-line private macro from atomic
+requests to the actor-crate send-product owner, changed its private name, and
+retained field rustdoc. Lease and Presence now invoke it with their original
+public field names. Their handwritten `SendEffects`, `SendsFor`, settlement,
+source-custody, interpretation, and separately maintained logical-projection
+impls were deleted. Both wrapper-order projections passed, all five focused
+total-interpretation cases passed, and the actor crate's 158 unit tests passed
+under `nix develop`. The retained production representation is 196 physical
+lines smaller; focused tests add 56 lines, yielding 169 fewer actor `src`
+lines including its new unit test. Public types and spellings, modules by
+count, aggregate states, subordinate alternatives, and transition branches
+are unchanged. Every surviving product field still owns its prior value.
+The residue scan and law-document cross-check remain as recorded above.
+Disposition: `pass` for the design stage. Other generic products are a
+separate mechanical migration; the distinct proc-macro-generated settlement
+shape remains an open A11 design question.
+
+The measured mechanical stage applies only the proven syntax to
+`DeliveryOutcomes`, `WorkQueueSends`, `BreakerSends`,
+`TerminalPropagationSends`, and `ProxyEffects`, and removes their matching
+separate projection impls. Each has generic named fields, the same ordered
+interpretation/source-custody/settlement equation, and an existing real
+consumer. Expected production delta is roughly 800 fewer lines, with zero
+new or removed public types. No new effect lane, bound, state, or fixture is
+authorized by this migration; a mismatch reopens the derivation instead of
+adding a one-off branch.
+
+The mechanical stage now uses the shared derivation at those five sites and
+deletes their former implementations. `ProxyEffects` retains all seven public
+field names and their declared order while losing its nested tuple source
+plumbing. The actor `src` tree changed by +111/-1,104 physical lines, net
+-993 including the focused unit test; the production representation alone is
+about 1,020 lines smaller. No public type was added or removed. The actor
+all-target Cargo check, formatter, 812 workspace Nextest cases, and current
+workspace coverage run passed under the Nix toolchain. The full Nix flake gate
+is pending before this stage can be retained.
+
+Post-migration aggregate-drift checkpoint: the affected routing, timing,
+discovery, lifecycle, and stable-proxy control states, subordinate result
+alternatives, and transition branches are identical before and after; no
+aggregate transition function changed. The current values in every surviving
+send alternative are the same owned effect lanes, including all seven stable
+proxy lanes. Modules remain constant by count because the derivation module
+moved from `atomic/` to the actor root. Public spellings remain constant. The
+residue scan found no new arrival history, repeated cause, false cardinality,
+nested transition authority, semantic boolean, or positional consumer syntax.
+The ordered product law in `actor-transition-algebra.md` and the normalized
+atomic, routing, timing, discovery, and lifecycle contracts were cross-checked.
+Disposition: `pass` for the representation; full gate still pending.
 
 ### A13 pre-edit protocol-bound law
 
@@ -653,8 +779,27 @@ separate viability ratchet.
 | Invalid construction and boundaries | `BufferConfiguration::new(0, ..)` returns `ZeroCapacity`; a runtime numeric capacity is validated at construction. The full-queue tests distinguish `Reject`, `DropNewest`, and `DropOldest` ownership. |
 | Counterfactual | The five guard/operator mutants in the A07 slice were all caught by actor buffer tests. This evidence covers this capacity branch only. |
 
-The remaining catalogue laws need equally specific entries, and source
-coverage measurement is still absent, so A20 remains open.
+The remaining catalogue laws need equally specific entries, so A20 remains
+open.
+
+### A20 Nix coverage measurement
+
+The flake now provides `nix run .#coverage -- --lcov --output-path
+target/coverage.lcov`, using the pinned Rust toolchain, its LLVM tools, and
+Nix-provided `cargo-llvm-cov`. The default development shell also includes
+`cargo-llvm-cov`. A full `--workspace --lib --tests --locked` run passed after
+the A11 migration and produced `target/coverage.lcov`; the macro fixture
+integration tests ran too. Instrumented source-line observations were: core
+1,584/1,834 (86.4%), actors 25,438/30,848 (82.5%), macros 727/899 (80.9%),
+testkit 70/73 (95.9%), and mutation gate 309/348 (88.8%). The actor files
+with the least measured execution among files of at least 30 instrumented
+lines include stable-proxy state (15/71), the shared send-product derivation
+(21/46), dynamic-supervisor event (21/43), dynamic-supervisor entry retirement
+(43/85), stable-proxy protocol (46/87), and delivery-route composition
+(81/149). Some generic code depends on which concrete products are
+instantiated, so these counts identify review targets, not necessarily missing
+runtime transitions. A20 remains open until the law ledger and
+counterfactuals cover the full catalogue.
 
 ### Repair ledger: dependency resolution and mutation verdicts
 

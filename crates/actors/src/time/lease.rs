@@ -10,6 +10,7 @@ use behavior::{
 };
 use thiserror::Error;
 
+use crate::send_product::send_product;
 use crate::{DeliveryRoute, ScheduleAfter, TimedEvent, TimerGeneration, TimerId};
 
 /// Complete exclusive lease phase.
@@ -167,106 +168,13 @@ pub enum LeaseMessage<K, Route> {
     },
 }
 
-/// Named effect lanes emitted by [`Lease`].
-pub struct LeaseSends<OutcomeSends, Schedules> {
-    /// Lease facts.
-    pub outcomes: OutcomeSends,
-    /// Relative expiry requests.
-    pub schedules: Schedules,
-}
-impl<OutcomeSends: SendEffects, Schedules: SendEffects> SendEffects
-    for LeaseSends<OutcomeSends, Schedules>
-{
-    fn empty() -> Self {
-        Self {
-            outcomes: OutcomeSends::empty(),
-            schedules: Schedules::empty(),
-        }
-    }
-    fn append(&mut self, other: Self) {
-        self.outcomes.append(other.outcomes);
-        self.schedules.append(other.schedules);
-    }
-}
-
-impl<Event, OutcomeSends, Schedules> behavior::SendsFor<Event>
-    for LeaseSends<OutcomeSends, Schedules>
-where
-    OutcomeSends: SendEffects + behavior::SendsFor<Event>,
-    Schedules: SendEffects + behavior::SendsFor<Event>,
-{
-}
-
-impl<OutcomeSends, Schedules> behavior::ClassifySettlement for LeaseSends<OutcomeSends, Schedules>
-where
-    OutcomeSends: behavior::ClassifySettlement,
-    Schedules: behavior::ClassifySettlement,
-{
-    fn settlement_status(&self) -> behavior::SettlementStatus {
-        self.outcomes
-            .settlement_status()
-            .combine(self.schedules.settlement_status())
-    }
-}
-
-impl<OutcomeSends, Schedules> behavior::SendSettlements for LeaseSends<OutcomeSends, Schedules>
-where
-    OutcomeSends: behavior::SendSettlements,
-    Schedules: behavior::SendSettlements,
-{
-    type Settlements = LeaseSends<OutcomeSends::Settlements, Schedules::Settlements>;
-
-    fn unattempted(self) -> Self::Settlements {
-        LeaseSends {
-            outcomes: self.outcomes.unattempted(),
-            schedules: self.schedules.unattempted(),
-        }
-    }
-}
-
-impl<Host, RootEvent, OutcomeSends, Schedules> behavior::SourceSettlementCustody<Host, RootEvent>
-    for LeaseSends<OutcomeSends, Schedules>
-where
-    Host: Send,
-    OutcomeSends: behavior::SourceSettlementCustody<Host, RootEvent> + Send,
-    Schedules: behavior::SourceSettlementCustody<Host, RootEvent> + Send,
-{
-    fn offer_next_to_source(
-        self,
-        host: &mut Host,
-    ) -> impl core::future::Future<Output = behavior::SourceCustody<Self>> + Send {
-        async move {
-            (self.outcomes, self.schedules)
-                .offer_next_to_source(host)
-                .await
-                .map(|(outcomes, schedules)| LeaseSends {
-                    outcomes,
-                    schedules,
-                })
-        }
-    }
-}
-
-impl<I, RootEvent, Path, OutcomeSends, Schedules> behavior::InterpretSends<I, RootEvent, Path>
-    for LeaseSends<OutcomeSends, Schedules>
-where
-    I: Send,
-    OutcomeSends: SendEffects + behavior::InterpretSends<I, RootEvent, Path>,
-    Schedules: SendEffects + behavior::InterpretSends<I, RootEvent, Path>,
-{
-    fn interpret(
-        self,
-        interpreter: &mut I,
-    ) -> impl core::future::Future<Output = behavior::Interpretation<Self::Settlements>> + Send
-    {
-        async move {
-            behavior::settle_in_order(self.outcomes, self.schedules, interpreter)
-                .await
-                .map(|(outcomes, schedules)| LeaseSends {
-                    outcomes,
-                    schedules,
-                })
-        }
+send_product! {
+    /// Named effect lanes emitted by [`Lease`].
+    pub struct LeaseSends<OutcomeSends, Schedules> {
+        /// Lease facts.
+        pub outcomes: OutcomeSends,
+        /// Relative expiry requests.
+        pub schedules: Schedules,
     }
 }
 

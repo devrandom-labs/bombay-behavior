@@ -1,15 +1,15 @@
-//! Mechanical derivation of the shared named request-product contracts.
+//! Ordered derivation of named generic send-product contracts.
 
-macro_rules! request_product {
+macro_rules! send_product {
     (
         $(#[$attribute:meta])*
         $visibility:vis struct $name:ident<$($parameter:ident),+ $(,)?> {
-            $($field_visibility:vis $field:ident: $field_type:ident),+ $(,)?
+            $($(#[$field_attribute:meta])* $field_visibility:vis $field:ident: $field_type:ident),+ $(,)?
         }
     ) => {
         $(#[$attribute])*
         $visibility struct $name<$($parameter),+> {
-            $($field_visibility $field: $field_type),+
+            $($(#[$field_attribute])* $field_visibility $field: $field_type),+
         }
 
         impl<$($parameter),+> behavior::SendEffects for $name<$($parameter),+>
@@ -36,7 +36,7 @@ macro_rules! request_product {
         where
             $($parameter: behavior::LogicalDeliveryProtocols),+
         {
-            type Protocols = request_product!(@protocols [$($field_type),+]);
+            type Protocols = send_product!(@protocols [$($field_type),+]);
         }
 
         impl<Event, $($parameter),+> behavior::SendsFor<Event> for $name<$($parameter),+>
@@ -98,7 +98,7 @@ macro_rules! request_product {
                         Required,
                     }
                     let mut terminal_custody = TerminalCustody::Unrequired;
-                    request_product! {
+                    send_product! {
                         @custody
                         $name,
                         self,
@@ -125,7 +125,7 @@ macro_rules! request_product {
                 Output = behavior::Interpretation<Self::Settlements>,
             > + Send {
                 async move {
-                    request_product! {
+                    send_product! {
                         @interpret
                         $name,
                         self,
@@ -143,7 +143,7 @@ macro_rules! request_product {
     (@protocols [$first:ident, $($later:ident),+]) => {
         <<$first as behavior::LogicalDeliveryProtocols>::Protocols
             as behavior::BirthProtocolProduct>::Append<
-                request_product!(@protocols [$($later),+])
+                send_product!(@protocols [$($later),+])
             >
     };
     (
@@ -160,7 +160,7 @@ macro_rules! request_product {
             $host,
         ).await {
             behavior::SourceCustody::Exhausted($field) => {
-                request_product! {
+                send_product! {
                     @custody
                     $name,
                     $owner,
@@ -172,7 +172,7 @@ macro_rules! request_product {
             }
             behavior::SourceCustody::Retained($field) => {
                 $terminal_custody = TerminalCustody::Required;
-                request_product! {
+                send_product! {
                     @custody
                     $name,
                     $owner,
@@ -234,7 +234,7 @@ macro_rules! request_product {
             $interpreter,
         ).await {
             behavior::Interpretation::Complete($field) => {
-                request_product! {
+                send_product! {
                     @interpret
                     $name,
                     $owner,
@@ -270,4 +270,4 @@ macro_rules! request_product {
     };
 }
 
-pub(super) use request_product;
+pub(crate) use send_product;

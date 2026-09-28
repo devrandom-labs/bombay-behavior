@@ -10,7 +10,6 @@ mod fixed_supervisor;
 mod keyed_pool;
 mod pool;
 mod proxy_creation;
-mod requests;
 mod restart;
 mod roster;
 mod schedule;

@@ -1,12 +1,12 @@
 //! Exact terminal-outcome propagation from a statically selected actor.
 
+use crate::send_product::send_product;
 use crate::{
     ChildStopped, ObserveChild, ObservePeer, PeerStopped, ReportTerminalOutcome, TerminalOutcome,
 };
 use behavior::{
     Actions, Address, Behavior, BehaviorActed, BirthMode, CreationId, EventLayer, Here,
-    InterpretSends, InterpreterRequest, InterpreterRequests, Protocol, ReturnsToEmitter,
-    SendEffects, SendLayer,
+    InterpreterRequest, InterpreterRequests, Protocol, ReturnsToEmitter, SendEffects, SendLayer,
 };
 
 /// A statically selected source of one authoritative terminal report.
@@ -186,108 +186,11 @@ impl<E: core::fmt::Debug, Report> core::fmt::Debug for TerminationPropagationErr
     }
 }
 
-/// Named effects owned by [`PropagateTermination`].
-pub struct TerminalPropagationSends<Observations, Reports> {
-    pub observations: Observations,
-    pub reports: Reports,
-}
-
-impl<Observations: SendEffects, Reports: SendEffects> SendEffects
-    for TerminalPropagationSends<Observations, Reports>
-{
-    fn empty() -> Self {
-        Self {
-            observations: Observations::empty(),
-            reports: Reports::empty(),
-        }
-    }
-
-    fn append(&mut self, other: Self) {
-        self.observations.append(other.observations);
-        self.reports.append(other.reports);
-    }
-}
-
-impl<Observations, Reports, Event> behavior::SendsFor<Event>
-    for TerminalPropagationSends<Observations, Reports>
-where
-    Observations: SendEffects + behavior::SendsFor<Event>,
-    Reports: SendEffects + behavior::SendsFor<Event>,
-{
-}
-
-impl<Observations, Reports> behavior::ClassifySettlement
-    for TerminalPropagationSends<Observations, Reports>
-where
-    Observations: behavior::ClassifySettlement,
-    Reports: behavior::ClassifySettlement,
-{
-    fn settlement_status(&self) -> behavior::SettlementStatus {
-        self.observations
-            .settlement_status()
-            .combine(self.reports.settlement_status())
-    }
-}
-
-impl<Observations, Reports> behavior::SendSettlements
-    for TerminalPropagationSends<Observations, Reports>
-where
-    Observations: behavior::SendSettlements,
-    Reports: behavior::SendSettlements,
-{
-    type Settlements = TerminalPropagationSends<Observations::Settlements, Reports::Settlements>;
-
-    fn unattempted(self) -> Self::Settlements {
-        TerminalPropagationSends {
-            observations: self.observations.unattempted(),
-            reports: self.reports.unattempted(),
-        }
-    }
-}
-
-impl<Host, RootEvent, Observations, Reports> behavior::SourceSettlementCustody<Host, RootEvent>
-    for TerminalPropagationSends<Observations, Reports>
-where
-    Host: Send,
-    Observations: behavior::SourceSettlementCustody<Host, RootEvent> + Send,
-    Reports: behavior::SourceSettlementCustody<Host, RootEvent> + Send,
-{
-    fn offer_next_to_source(
-        self,
-        host: &mut Host,
-    ) -> impl core::future::Future<Output = behavior::SourceCustody<Self>> + Send {
-        async move {
-            (self.observations, self.reports)
-                .offer_next_to_source(host)
-                .await
-                .map(|(observations, reports)| TerminalPropagationSends {
-                    observations,
-                    reports,
-                })
-        }
-    }
-}
-
-impl<Interpreter, RootEvent, Path, Observations, Reports>
-    InterpretSends<Interpreter, RootEvent, Path> for TerminalPropagationSends<Observations, Reports>
-where
-    Interpreter: Send,
-    Observations: SendEffects + InterpretSends<Interpreter, RootEvent, Path>,
-    Reports: SendEffects + InterpretSends<Interpreter, RootEvent, Path>,
-{
-    fn interpret(
-        self,
-        interpreter: &mut Interpreter,
-    ) -> impl core::future::Future<Output = behavior::Interpretation<Self::Settlements>> + Send
-    {
-        async move {
-            behavior::settle_in_order(self.observations, self.reports, interpreter)
-                .await
-                .map(|(observations, reports)| TerminalPropagationSends {
-                    observations,
-                    reports,
-                })
-        }
+send_product! {
+    /// Named effects owned by [`PropagateTermination`].
+    pub struct TerminalPropagationSends<Observations, Reports> {
+        pub observations: Observations,
+        pub reports: Reports,
     }
 }
 

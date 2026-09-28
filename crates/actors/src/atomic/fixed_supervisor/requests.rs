@@ -1,8 +1,8 @@
 //! FixedSupervisor request order.
 
-use crate::atomic::requests::request_product;
+use crate::send_product::send_product;
 
-request_product! {
+send_product! {
     /// Named request lanes in their declared interpretation order.
     #[doc(hidden)]
     pub struct FixedSupervisorRequests<

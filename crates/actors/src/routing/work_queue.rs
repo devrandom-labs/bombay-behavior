@@ -8,6 +8,7 @@ use behavior::{
 };
 
 use crate::DeliveryRoute;
+use crate::send_product::send_product;
 
 /// Complete observable [`WorkQueue`] state.
 pub struct WorkQueueState<WorkerRoute> {
@@ -81,109 +82,13 @@ pub enum WorkQueueMessage<T, WorkerRoute, ReplyRoute> {
     },
 }
 
-/// Named effect lanes emitted by [`WorkQueue`].
-pub struct WorkQueueSends<Assignments, OutcomeSends> {
-    /// Work assigned to workers.
-    pub assignments: Assignments,
-    /// Submission admission and dispatch facts.
-    pub outcomes: OutcomeSends,
-}
-
-impl<Assignments: SendEffects, OutcomeSends: SendEffects> SendEffects
-    for WorkQueueSends<Assignments, OutcomeSends>
-{
-    fn empty() -> Self {
-        Self {
-            assignments: Assignments::empty(),
-            outcomes: OutcomeSends::empty(),
-        }
-    }
-    fn append(&mut self, other: Self) {
-        self.assignments.append(other.assignments);
-        self.outcomes.append(other.outcomes);
-    }
-}
-
-impl<Event, Assignments, OutcomeSends> behavior::SendsFor<Event>
-    for WorkQueueSends<Assignments, OutcomeSends>
-where
-    Assignments: SendEffects + behavior::SendsFor<Event>,
-    OutcomeSends: SendEffects + behavior::SendsFor<Event>,
-{
-}
-
-impl<Assignments, OutcomeSends> behavior::ClassifySettlement
-    for WorkQueueSends<Assignments, OutcomeSends>
-where
-    Assignments: behavior::ClassifySettlement,
-    OutcomeSends: behavior::ClassifySettlement,
-{
-    fn settlement_status(&self) -> behavior::SettlementStatus {
-        self.assignments
-            .settlement_status()
-            .combine(self.outcomes.settlement_status())
-    }
-}
-
-impl<Assignments, OutcomeSends> behavior::SendSettlements
-    for WorkQueueSends<Assignments, OutcomeSends>
-where
-    Assignments: behavior::SendSettlements,
-    OutcomeSends: behavior::SendSettlements,
-{
-    type Settlements = WorkQueueSends<Assignments::Settlements, OutcomeSends::Settlements>;
-
-    fn unattempted(self) -> Self::Settlements {
-        WorkQueueSends {
-            assignments: self.assignments.unattempted(),
-            outcomes: self.outcomes.unattempted(),
-        }
-    }
-}
-
-impl<Host, RootEvent, Assignments, OutcomeSends> behavior::SourceSettlementCustody<Host, RootEvent>
-    for WorkQueueSends<Assignments, OutcomeSends>
-where
-    Host: Send,
-    Assignments: behavior::SourceSettlementCustody<Host, RootEvent> + Send,
-    OutcomeSends: behavior::SourceSettlementCustody<Host, RootEvent> + Send,
-{
-    fn offer_next_to_source(
-        self,
-        host: &mut Host,
-    ) -> impl core::future::Future<Output = behavior::SourceCustody<Self>> + Send {
-        async move {
-            (self.assignments, self.outcomes)
-                .offer_next_to_source(host)
-                .await
-                .map(|(assignments, outcomes)| WorkQueueSends {
-                    assignments,
-                    outcomes,
-                })
-        }
-    }
-}
-
-impl<I, RootEvent, Path, Assignments, OutcomeSends> behavior::InterpretSends<I, RootEvent, Path>
-    for WorkQueueSends<Assignments, OutcomeSends>
-where
-    I: Send,
-    Assignments: SendEffects + behavior::InterpretSends<I, RootEvent, Path>,
-    OutcomeSends: SendEffects + behavior::InterpretSends<I, RootEvent, Path>,
-{
-    fn interpret(
-        self,
-        interpreter: &mut I,
-    ) -> impl core::future::Future<Output = behavior::Interpretation<Self::Settlements>> + Send
-    {
-        async move {
-            behavior::settle_in_order(self.assignments, self.outcomes, interpreter)
-                .await
-                .map(|(assignments, outcomes)| WorkQueueSends {
-                    assignments,
-                    outcomes,
-                })
-        }
+send_product! {
+    /// Named effect lanes emitted by [`WorkQueue`].
+    pub struct WorkQueueSends<Assignments, OutcomeSends> {
+        /// Work assigned to workers.
+        pub assignments: Assignments,
+        /// Submission admission and dispatch facts.
+        pub outcomes: OutcomeSends,
     }
 }
 

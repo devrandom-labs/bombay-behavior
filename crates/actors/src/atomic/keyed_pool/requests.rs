@@ -1,8 +1,8 @@
 //! Keyed-pool request order.
 
-use super::super::requests::request_product;
+use crate::send_product::send_product;
 
-request_product! {
+send_product! {
     /// Named keyed-pool request lanes in their declared interpretation order.
     #[doc(hidden)]
     pub struct KeyedRequests<

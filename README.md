@@ -228,11 +228,14 @@ Use the pinned environment and repository gates:
 nix develop
 cargo nextest run --workspace
 nix flake check
+nix run .#coverage -- --lcov --output-path target/coverage.lcov
 ```
 
 `nix flake check` is authoritative and includes build, tests, rustdoc,
 formatting, dependency audit, and dependency policy. Benchmarks and fuzz
-targets are run explicitly when their surfaces change.
+targets are run explicitly when their surfaces change. The on-demand Nix
+coverage command measures workspace library and integration-test execution;
+line coverage helps locate missing witnesses but does not prove a behavior law.
 
 ## License
 

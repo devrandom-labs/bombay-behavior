@@ -10,6 +10,7 @@ use behavior::{
 };
 use thiserror::Error;
 
+use crate::send_product::send_product;
 use crate::{DeliveryRoute, ScheduleAfter, TimedEvent, TimerGeneration, TimerId};
 
 /// Identity of one admitted operation.
@@ -131,100 +132,13 @@ pub enum BreakerMessage<Route> {
     Failed { attempt: BreakerAttempt },
 }
 
-/// Named output lanes for circuit facts and reset scheduling.
-pub struct BreakerSends<ReplySends, Schedules> {
-    /// Admission and completion facts.
-    pub replies: ReplySends,
-    /// Relative reset requests interpreted by Bombay Timers.
-    pub schedules: Schedules,
-}
-
-impl<ReplySends: SendEffects, Schedules: SendEffects> SendEffects
-    for BreakerSends<ReplySends, Schedules>
-{
-    fn empty() -> Self {
-        Self {
-            replies: ReplySends::empty(),
-            schedules: Schedules::empty(),
-        }
-    }
-    fn append(&mut self, other: Self) {
-        self.replies.append(other.replies);
-        self.schedules.append(other.schedules);
-    }
-}
-
-impl<Event, ReplySends, Schedules> behavior::SendsFor<Event> for BreakerSends<ReplySends, Schedules>
-where
-    ReplySends: SendEffects + behavior::SendsFor<Event>,
-    Schedules: SendEffects + behavior::SendsFor<Event>,
-{
-}
-
-impl<ReplySends, Schedules> behavior::ClassifySettlement for BreakerSends<ReplySends, Schedules>
-where
-    ReplySends: behavior::ClassifySettlement,
-    Schedules: behavior::ClassifySettlement,
-{
-    fn settlement_status(&self) -> behavior::SettlementStatus {
-        self.replies
-            .settlement_status()
-            .combine(self.schedules.settlement_status())
-    }
-}
-
-impl<ReplySends, Schedules> behavior::SendSettlements for BreakerSends<ReplySends, Schedules>
-where
-    ReplySends: behavior::SendSettlements,
-    Schedules: behavior::SendSettlements,
-{
-    type Settlements = BreakerSends<ReplySends::Settlements, Schedules::Settlements>;
-
-    fn unattempted(self) -> Self::Settlements {
-        BreakerSends {
-            replies: self.replies.unattempted(),
-            schedules: self.schedules.unattempted(),
-        }
-    }
-}
-
-impl<Host, RootEvent, ReplySends, Schedules> behavior::SourceSettlementCustody<Host, RootEvent>
-    for BreakerSends<ReplySends, Schedules>
-where
-    Host: Send,
-    ReplySends: behavior::SourceSettlementCustody<Host, RootEvent> + Send,
-    Schedules: behavior::SourceSettlementCustody<Host, RootEvent> + Send,
-{
-    fn offer_next_to_source(
-        self,
-        host: &mut Host,
-    ) -> impl core::future::Future<Output = behavior::SourceCustody<Self>> + Send {
-        async move {
-            (self.replies, self.schedules)
-                .offer_next_to_source(host)
-                .await
-                .map(|(replies, schedules)| BreakerSends { replies, schedules })
-        }
-    }
-}
-
-impl<I, RootEvent, Path, ReplySends, Schedules> behavior::InterpretSends<I, RootEvent, Path>
-    for BreakerSends<ReplySends, Schedules>
-where
-    I: Send,
-    ReplySends: SendEffects + behavior::InterpretSends<I, RootEvent, Path>,
-    Schedules: SendEffects + behavior::InterpretSends<I, RootEvent, Path>,
-{
-    fn interpret(
-        self,
-        interpreter: &mut I,
-    ) -> impl core::future::Future<Output = behavior::Interpretation<Self::Settlements>> + Send
-    {
-        async move {
-            behavior::settle_in_order(self.replies, self.schedules, interpreter)
-                .await
-                .map(|(replies, schedules)| BreakerSends { replies, schedules })
-        }
+send_product! {
+    /// Named output lanes for circuit facts and reset scheduling.
+    pub struct BreakerSends<ReplySends, Schedules> {
+        /// Admission and completion facts.
+        pub replies: ReplySends,
+        /// Relative reset requests interpreted by Bombay Timers.
+        pub schedules: Schedules,
     }
 }
 

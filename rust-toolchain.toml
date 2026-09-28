@@ -5,4 +5,4 @@
 # Stable only: the crates carry no `#![feature(...)]` gates.
 [toolchain]
 channel = "1.95.0"
-components = ["cargo", "rustc", "rust-std", "rustfmt", "clippy"]
+components = ["cargo", "rustc", "rust-std", "rustfmt", "clippy", "llvm-tools-preview"]

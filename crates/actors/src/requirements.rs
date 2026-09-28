@@ -1,47 +1,8 @@
 //! Static logical-delivery projections for handwritten actor send products.
 
 use behavior::{
-    BirthProtocol, BirthProtocolProduct, EndpointAddress, LogicalDeliveryProtocols,
-    NoBirthProtocols, Protocol,
+    BirthProtocol, EndpointAddress, LogicalDeliveryProtocols, NoBirthProtocols, Protocol,
 };
-
-impl<ReplySends, Schedules> LogicalDeliveryProtocols for crate::BreakerSends<ReplySends, Schedules>
-where
-    ReplySends: LogicalDeliveryProtocols,
-    Schedules: LogicalDeliveryProtocols,
-{
-    type Protocols = <ReplySends::Protocols as BirthProtocolProduct>::Append<Schedules::Protocols>;
-}
-
-impl<Deliveries, OutcomeSends> LogicalDeliveryProtocols
-    for crate::DeliveryOutcomes<Deliveries, OutcomeSends>
-where
-    Deliveries: LogicalDeliveryProtocols,
-    OutcomeSends: LogicalDeliveryProtocols,
-{
-    type Protocols =
-        <Deliveries::Protocols as BirthProtocolProduct>::Append<OutcomeSends::Protocols>;
-}
-
-impl<Assignments, OutcomeSends> LogicalDeliveryProtocols
-    for crate::WorkQueueSends<Assignments, OutcomeSends>
-where
-    Assignments: LogicalDeliveryProtocols,
-    OutcomeSends: LogicalDeliveryProtocols,
-{
-    type Protocols =
-        <Assignments::Protocols as BirthProtocolProduct>::Append<OutcomeSends::Protocols>;
-}
-
-impl<OutcomeSends, Schedules> LogicalDeliveryProtocols
-    for crate::LeaseSends<OutcomeSends, Schedules>
-where
-    OutcomeSends: LogicalDeliveryProtocols,
-    Schedules: LogicalDeliveryProtocols,
-{
-    type Protocols =
-        <OutcomeSends::Protocols as BirthProtocolProduct>::Append<Schedules::Protocols>;
-}
 
 impl<P> LogicalDeliveryProtocols
     for crate::ReplyDeliveries<behavior::Delivery<P>, behavior::EstablishedDelivery<P>>
@@ -54,23 +15,6 @@ where
 
 impl<T> LogicalDeliveryProtocols for crate::HeterogeneousShutdownSends<T> {
     type Protocols = NoBirthProtocols;
-}
-
-impl<ReplySends, Schedules> LogicalDeliveryProtocols for crate::PresenceSends<ReplySends, Schedules>
-where
-    ReplySends: LogicalDeliveryProtocols,
-    Schedules: LogicalDeliveryProtocols,
-{
-    type Protocols = <ReplySends::Protocols as BirthProtocolProduct>::Append<Schedules::Protocols>;
-}
-
-impl<Observations, Reports> LogicalDeliveryProtocols
-    for crate::TerminalPropagationSends<Observations, Reports>
-where
-    Observations: LogicalDeliveryProtocols,
-    Reports: LogicalDeliveryProtocols,
-{
-    type Protocols = <Observations::Protocols as BirthProtocolProduct>::Append<Reports::Protocols>;
 }
 
 #[cfg(test)]
@@ -204,6 +148,33 @@ mod tests {
         fn exact<T: Same<Expected>, Expected>() {}
 
         exact::<NamedActual, NamedExpected>();
+    }
+
+    #[test]
+    fn lease_and_presence_products_keep_both_wrapper_orders() {
+        type Lease = crate::LeaseSends<
+            Vec<behavior::Delivery<SharedProtocol>>,
+            behavior::InterpreterRequests<crate::ScheduleAfter>,
+        >;
+        type Presence = crate::PresenceSends<
+            Vec<behavior::Delivery<ExternalProtocol>>,
+            behavior::InterpreterRequests<crate::ScheduleAfter>,
+        >;
+        type PresenceFirst =
+            <behavior::SendLayer<Lease, Presence> as LogicalDeliveryProtocols>::Protocols;
+        type LeaseFirst =
+            <behavior::SendLayer<Presence, Lease> as LogicalDeliveryProtocols>::Protocols;
+        type PresenceFirstExpected =
+            BirthProtocol<ExternalProtocol, BirthProtocol<SharedProtocol, NoBirthProtocols>>;
+        type LeaseFirstExpected =
+            BirthProtocol<SharedProtocol, BirthProtocol<ExternalProtocol, NoBirthProtocols>>;
+
+        trait Same<T> {}
+        impl<T> Same<T> for T {}
+        fn exact<T: Same<Expected>, Expected>() {}
+
+        exact::<PresenceFirst, PresenceFirstExpected>();
+        exact::<LeaseFirst, LeaseFirstExpected>();
     }
 
     #[test]

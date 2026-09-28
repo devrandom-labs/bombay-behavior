@@ -5,7 +5,7 @@ use behavior::{
     User,
 };
 use behavior_actors::atomic::{ImmediateActivation, ProxyEffects, StableProxy};
-use behavior_actors::{DeliveryOutcomes, LeaseSends};
+use behavior_actors::{DeliveryOutcomes, LeaseSends, PresenceSends};
 use std::collections::BTreeMap;
 
 #[derive(Clone, Copy)]
@@ -176,6 +176,33 @@ async fn retained_lease_preserves_the_exact_second_lane_after_corruption() {
     assert!(matches!(
         settlement.schedules.as_slice(),
         [SettledItem::Unattempted(Work(4))]
+    ));
+}
+
+#[tokio::test]
+async fn presence_reports_settle_before_schedules_after_rejection() {
+    let sends = PresenceSends {
+        replies: InterpreterRequests::one(Work(12)),
+        schedules: InterpreterRequests::one(Work(13)),
+    };
+    let mut runtime = Runtime::new([(12, Plan::Reject)]);
+
+    let settlement = <_ as InterpretSends<_, (), Here>>::interpret(sends, &mut runtime).await;
+    assert_eq!(runtime.attempts, [12, 13]);
+    let Interpretation::Complete(settlement) = settlement else {
+        panic!("lawful rejection cannot skip the independent schedule lane");
+    };
+    assert_eq!(settlement.settlement_status(), SettlementStatus::Rejected);
+    assert!(matches!(
+        settlement.replies.as_slice(),
+        [SettledItem::Attempted(ItemSettlement::Rejected {
+            item: Work(12),
+            reason: WorkRejection::Closed,
+        })]
+    ));
+    assert!(matches!(
+        settlement.schedules.as_slice(),
+        [SettledItem::Attempted(ItemSettlement::Accepted(Work(13)))]
     ));
 }
 

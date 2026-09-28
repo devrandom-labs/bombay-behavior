@@ -43,6 +43,17 @@
             exec cargo fuzz "$@"
           '';
         };
+        coverageRunner = pkgs.writeShellApplication {
+          name = "bombay-behavior-coverage";
+          runtimeInputs = [ rustToolchain pkgs.cargo-llvm-cov ];
+          text = ''
+            if [[ ! -f Cargo.toml || ! -d crates/actors ]]; then
+              echo "run this command from the bombay-behavior repository root" >&2
+              exit 2
+            fi
+            exec cargo llvm-cov --workspace --lib --tests --locked "$@"
+          '';
+        };
         craneLib = (crane.mkLib pkgs).overrideToolchain (_: rustToolchain);
         src = pkgs.lib.fileset.toSource {
           root = ./.;
@@ -131,6 +142,7 @@
         packages = rec {
           default = craneLib.buildPackage (commonArgs // { inherit cargoArtifacts; });
           fuzz = fuzzRunner;
+          coverage = coverageRunner;
 
           # Expensive on-demand lane. The gate rejects survivors, timeouts,
           # incomplete runs, and per-function viability regressions. Keep it
@@ -183,7 +195,7 @@
 
         devShells.default = craneLib.devShell {
           checks = self.checks.${system};
-          packages = with pkgs; [ cargo-audit cargo-deny cargo-mutants cargo-nextest taplo ];
+          packages = with pkgs; [ cargo-audit cargo-deny cargo-llvm-cov cargo-mutants cargo-nextest taplo ];
         };
         devShells.fuzz = pkgs.mkShell {
           packages = [ fuzzToolchain pkgs.cargo-fuzz ];

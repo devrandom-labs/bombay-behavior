@@ -67,6 +67,7 @@ pub mod persistence;
 mod protocol;
 mod requirements;
 pub mod routing;
+mod send_product;
 mod shutdown;
 mod stash;
 mod termination;
