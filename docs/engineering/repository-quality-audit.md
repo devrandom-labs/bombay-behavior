@@ -238,9 +238,12 @@ is recorded against a revision.
   Keep FIFO assignment policy and keyed binding policy distinct.
 
 - [ ] **A13 — Audit public bounds, hidden exports, and extension ownership.**
-  **Confirmed surface requiring review.** There are 25 `#[doc(hidden)]`
-  annotations in core source and 89 in actor source, including members and
-  re-exports. They do not make an item private. Conversely, an associated type
+  **Confirmed surface requiring review.** The current source has 22
+  `#[doc(hidden)]` annotation sites in core and 86 in actors, including a
+  private constructor, members, and re-exports. The
+  [public-surface inventory](public-surface-inventory.md) classifies each site
+  by contract owner. These annotations do not make an item private.
+  Conversely, an associated type
   mentioning a value does not by itself justify exporting it. Some `Protocol`
   impls carried transition-related bounds: `Cache` required `K: Clone + Eq`
   and `V: Clone`; `Resolver` required `K: Clone + Eq` before the focused A13
@@ -719,6 +722,15 @@ custody rules; the `#[doc(hidden)]` markers were removed so readers can find
 those contracts. This changes documentation visibility only. Other hidden
 generated obligations and runtime ports still need the full ownership
 classification before A13 can close.
+
+The follow-up inventory found a second hiding site for `KeyedError` and
+`FixedBuilder`: their `atomic` re-exports still shared `#[doc(hidden)]` groups
+with interpreter products. They now belong to the visible re-export groups.
+The Nix-pinned Rustdoc build succeeded, and
+`target/doc/behavior_actors/atomic/index.html` contains direct public links to
+both items. The [public-surface inventory](public-surface-inventory.md)
+classifies the remaining annotation sites. Trait implementor ownership and a
+repeatable compile-cost comparison remain open before A13 can close.
 
 ### A15 coding-rule progress
 
