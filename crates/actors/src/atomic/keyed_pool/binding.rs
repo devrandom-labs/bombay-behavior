@@ -33,8 +33,7 @@ impl BindingCapacity {
 /// Applications receive generations from pool outcomes and cannot mint them:
 ///
 /// ```compile_fail,E0599
-/// use behavior_actors::atomic::BindingGeneration;
-/// let _ = BindingGeneration::new(1);
+/// let _ = behavior_actors::atomic::BindingGeneration::new(1);
 /// ```
 #[derive(Clone)]
 pub struct BindingGeneration {

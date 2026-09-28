@@ -479,27 +479,25 @@ where
     /// A duplicate role is rejected independently:
     ///
     /// ```compile_fail,E0277
-    /// use behavior::{BehaviorActed, MailAddr, Never};
-    /// use behavior_actors::{StopOnShutdown, shutdown_after_children};
     /// struct Worker;
-    /// #[behavior::behavior(addr = MailAddr, message = Never)]
+    /// #[behavior::behavior(addr = behavior::MailAddr, message = behavior::Never)]
     /// impl Worker {
-    ///     fn receive(&mut self, _: MailAddr, message: Never) -> BehaviorActed<Self> {
+    ///     fn receive(&mut self, _: behavior::MailAddr, message: behavior::Never) -> behavior::BehaviorActed<Self> {
     ///         match message {}
     ///     }
     /// }
-    /// type ManagedWorker = StopOnShutdown<Worker>;
+    /// type ManagedWorker = behavior_actors::StopOnShutdown<Worker>;
     /// struct Application;
-    /// #[behavior::behavior(addr = MailAddr, message = Never, births = {
+    /// #[behavior::behavior(addr = behavior::MailAddr, message = behavior::Never, births = {
     ///     store: ManagedWorker,
     ///     gateway: ManagedWorker,
     /// }, creation_settlements = retain_for_retirement)]
     /// impl Application {
-    ///     fn receive(&mut self, _: MailAddr, message: Never) -> BehaviorActed<Self> {
+    ///     fn receive(&mut self, _: behavior::MailAddr, message: behavior::Never) -> behavior::BehaviorActed<Self> {
     ///         match message {}
     ///     }
     /// }
-    /// let _ = shutdown_after_children(Application)
+    /// let _ = behavior_actors::shutdown_after_children(Application)
     ///     .shutdown_phase(ApplicationChild::Store)
     ///     .shutdown_phase(ApplicationChild::Store);
     /// ```
@@ -507,55 +505,51 @@ where
     /// A role that belongs to no child declaration is rejected independently:
     ///
     /// ```compile_fail,E0277
-    /// use behavior::{BehaviorActed, MailAddr, Never};
-    /// use behavior_actors::{StopOnShutdown, shutdown_after_children};
     /// struct Worker;
-    /// #[behavior::behavior(addr = MailAddr, message = Never)]
+    /// #[behavior::behavior(addr = behavior::MailAddr, message = behavior::Never)]
     /// impl Worker {
-    ///     fn receive(&mut self, _: MailAddr, message: Never) -> BehaviorActed<Self> {
+    ///     fn receive(&mut self, _: behavior::MailAddr, message: behavior::Never) -> behavior::BehaviorActed<Self> {
     ///         match message {}
     ///     }
     /// }
-    /// type ManagedWorker = StopOnShutdown<Worker>;
+    /// type ManagedWorker = behavior_actors::StopOnShutdown<Worker>;
     /// struct Application;
-    /// #[behavior::behavior(addr = MailAddr, message = Never, births = {
+    /// #[behavior::behavior(addr = behavior::MailAddr, message = behavior::Never, births = {
     ///     store: ManagedWorker,
     ///     gateway: ManagedWorker,
     /// }, creation_settlements = retain_for_retirement)]
     /// impl Application {
-    ///     fn receive(&mut self, _: MailAddr, message: Never) -> BehaviorActed<Self> {
+    ///     fn receive(&mut self, _: behavior::MailAddr, message: behavior::Never) -> behavior::BehaviorActed<Self> {
     ///         match message {}
     ///     }
     /// }
     /// struct ForeignRole;
-    /// let _ = shutdown_after_children(Application).shutdown_phase(ForeignRole);
+    /// let _ = behavior_actors::shutdown_after_children(Application).shutdown_phase(ForeignRole);
     /// ```
     ///
     /// A route value cannot stand in for its declared role:
     ///
     /// ```compile_fail,E0277
-    /// use behavior::{BehaviorActed, MailAddr, Never};
-    /// use behavior_actors::{StopOnShutdown, shutdown_after_children};
     /// struct Worker;
-    /// #[behavior::behavior(addr = MailAddr, message = Never)]
+    /// #[behavior::behavior(addr = behavior::MailAddr, message = behavior::Never)]
     /// impl Worker {
-    ///     fn receive(&mut self, _: MailAddr, message: Never) -> BehaviorActed<Self> {
+    ///     fn receive(&mut self, _: behavior::MailAddr, message: behavior::Never) -> behavior::BehaviorActed<Self> {
     ///         match message {}
     ///     }
     /// }
-    /// type ManagedWorker = StopOnShutdown<Worker>;
+    /// type ManagedWorker = behavior_actors::StopOnShutdown<Worker>;
     /// struct Application;
-    /// #[behavior::behavior(addr = MailAddr, message = Never, births = {
+    /// #[behavior::behavior(addr = behavior::MailAddr, message = behavior::Never, births = {
     ///     store: ManagedWorker,
     ///     gateway: ManagedWorker,
     /// }, creation_settlements = retain_for_retirement)]
     /// impl Application {
-    ///     fn receive(&mut self, _: MailAddr, message: Never) -> BehaviorActed<Self> {
+    ///     fn receive(&mut self, _: behavior::MailAddr, message: behavior::Never) -> behavior::BehaviorActed<Self> {
     ///         match message {}
     ///     }
     /// }
     /// let routes = ApplicationChildrenRoutes::new(1, 2);
-    /// let _ = shutdown_after_children(Application).shutdown_phase(routes.store);
+    /// let _ = behavior_actors::shutdown_after_children(Application).shutdown_phase(routes.store);
     /// ```
     #[must_use]
     pub fn shutdown_phase<Role>(
@@ -621,28 +615,26 @@ where
     /// arbitrary outer layers without exposing a structural path.
     ///
     /// ```compile_fail,E0599
-    /// use behavior::{BehaviorActed, MailAddr, Never};
-    /// use behavior_actors::{StopOnShutdown, shutdown_after_children};
     /// struct Worker;
-    /// #[behavior::behavior(addr = MailAddr, message = Never)]
+    /// #[behavior::behavior(addr = behavior::MailAddr, message = behavior::Never)]
     /// impl Worker {
-    ///     fn receive(&mut self, _: MailAddr, message: Never) -> BehaviorActed<Self> {
+    ///     fn receive(&mut self, _: behavior::MailAddr, message: behavior::Never) -> behavior::BehaviorActed<Self> {
     ///         match message {}
     ///     }
     /// }
-    /// type ManagedWorker = StopOnShutdown<Worker>;
+    /// type ManagedWorker = behavior_actors::StopOnShutdown<Worker>;
     /// struct Application;
-    /// #[behavior::behavior(addr = MailAddr, message = Never, births = {
+    /// #[behavior::behavior(addr = behavior::MailAddr, message = behavior::Never, births = {
     ///     store: ManagedWorker,
     ///     gateway: ManagedWorker,
     /// }, creation_settlements = retain_for_retirement)]
     /// impl Application {
-    ///     fn receive(&mut self, _: MailAddr, message: Never) -> BehaviorActed<Self> {
+    ///     fn receive(&mut self, _: behavior::MailAddr, message: behavior::Never) -> behavior::BehaviorActed<Self> {
     ///         match message {}
     ///     }
     /// }
     /// // `gateway` remains unassigned, so `finish` does not exist here.
-    /// let incomplete = shutdown_after_children(Application)
+    /// let incomplete = behavior_actors::shutdown_after_children(Application)
     ///     .shutdown_phase(ApplicationChild::Store)
     ///     .finish();
     /// ```

@@ -309,16 +309,13 @@ type PropagationSends<A, Request> = TerminalPropagationSends<
 /// A child selection requires a concrete protocol and an opaque creation ID:
 ///
 /// ```compile_fail
-/// use behavior::{MailAddr, Never, Protocol};
-/// use behavior_actors::ChildTermination;
-///
 /// struct Worker;
-/// impl Protocol for Worker {
-///     type Addr = MailAddr;
-///     type Msg = Never;
+/// impl behavior::Protocol for Worker {
+///     type Addr = behavior::MailAddr;
+///     type Msg = behavior::Never;
 /// }
 ///
-/// let _ = ChildTermination::<Worker, behavior::ChildHead>::new("not a creation ID");
+/// let _ = behavior_actors::ChildTermination::<Worker, behavior::ChildHead>::new("not a creation ID");
 /// ```
 pub struct PropagateTermination<B: Behavior, Target> {
     inner: B,

@@ -28,13 +28,11 @@ pub use activation::{ActivationPolicy, EntryCapacity};
 /// Omitting a required domain declaration is rejected at the attribute:
 ///
 /// ```compile_fail
-/// use behavior::{Actions, MailAddr};
-/// use behavior_actors::atomic::{Assignment, pool_worker};
 /// struct Worker;
-/// #[pool_worker(addr = MailAddr)]
+/// #[behavior_actors::atomic::pool_worker(addr = behavior::MailAddr)]
 /// impl Worker {
-///     fn transition(&mut self, assignment: Assignment<u8>) -> WorkerActed<Self> {
-///         Ok(Actions::cont().with_send(assignment.complete(10_u16)))
+///     fn transition(&mut self, assignment: behavior_actors::atomic::Assignment<u8>) -> WorkerActed<Self> {
+///         Ok(behavior::Actions::cont().with_send(assignment.complete(10_u16)))
 ///     }
 /// }
 /// ```
@@ -42,10 +40,8 @@ pub use activation::{ActivationPolicy, EntryCapacity};
 /// The transition must consume one assignment rather than an unrelated input:
 ///
 /// ```compile_fail
-/// use behavior::MailAddr;
-/// use behavior_actors::atomic::pool_worker;
 /// struct Worker;
-/// #[pool_worker(addr = MailAddr, result = u16)]
+/// #[behavior_actors::atomic::pool_worker(addr = behavior::MailAddr, result = u16)]
 /// impl Worker {
 ///     fn transition(&mut self, job: u8) -> WorkerActed<Self> {
 ///         loop {}

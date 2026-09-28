@@ -43,25 +43,23 @@ pub trait StashStatus {
 /// produced unreturnable actions. Such an inner behavior is therefore not a
 /// valid `Stash` composition:
 ///
-/// ```compile_fail,E0271
-/// use behavior::{Actions, ActiveTurn, Behavior, BehaviorActed, MailAddr, Never, NoBirths, User};
-/// use behavior_actors::{Stash, StashRoute};
+/// ```compile_fail,E0277
 /// struct Fallible;
-/// impl behavior::Protocol for Fallible { type Addr = MailAddr; type Msg = (); }
-/// impl Behavior for Fallible {
+/// impl behavior::Protocol for Fallible { type Addr = behavior::MailAddr; type Msg = (); }
+/// impl behavior::Behavior for Fallible {
 ///     type Protocol = Self;
-///     type Event = User<MailAddr, ()>;
-///     type Sends = Vec<Never>;
-///     type Ph = Never;
+///     type Event = behavior::User<behavior::MailAddr, ()>;
+///     type Sends = Vec<behavior::Never>;
+///     type Ph = behavior::Never;
 ///     type Error = u8;
-///     type Birth = NoBirths;
-///     fn transition(&mut self, _: ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
+///     type Birth = behavior::NoBirths;
+///     fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> behavior::BehaviorActed<Self> {
 ///         Err(1)
 ///     }
 /// }
-/// fn route(_: &()) -> StashRoute { StashRoute::Release }
-/// fn requires_behavior<B: Behavior>(_: &B) {}
-/// requires_behavior(&Stash::new(Fallible, route));
+/// fn route(_: &()) -> behavior_actors::StashRoute { behavior_actors::StashRoute::Release }
+/// fn requires_behavior<B: behavior::Behavior>(_: &B) {}
+/// requires_behavior(&behavior_actors::Stash::new(Fallible, route));
 /// ```
 pub struct Stash<B: Behavior> {
     inner: B,

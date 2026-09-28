@@ -45,17 +45,15 @@
 //! }
 //! ```
 //!
-//! ```compile_fail
-//! use behavior_actors::{
-//!     DeadlineEvent, OneShotEvent, OneShotReaction, PeriodicEvent,
-//!     PeriodicReaction, ReceiveTimeoutEvent, ReceiveTimeoutReaction,
-//! };
-//! ```
-//!
 //! Foundational algebra stays owned by the `bombay-behavior` package.
 //!
-//! ```compile_fail
-//! use behavior_actors::Actions;
+//! ```compile_fail,E0425
+//! fn unavailable(_: behavior_actors::Actions<
+//!     behavior::MailAddr,
+//!     behavior::Never,
+//!     behavior::NoSends,
+//!     behavior::NoBirths,
+//! >) {}
 //! ```
 
 mod activation;

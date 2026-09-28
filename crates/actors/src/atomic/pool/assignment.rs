@@ -33,8 +33,7 @@ impl SubmissionId {
 /// Applications may inspect a received identifier but cannot mint one:
 ///
 /// ```compile_fail,E0599
-/// use behavior_actors::atomic::JobId;
-/// let _ = JobId::new(1);
+/// let _ = behavior_actors::atomic::JobId::new(1);
 /// ```
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct JobId(NonZeroU64);
@@ -56,16 +55,14 @@ impl JobId {
 /// Only a pool can issue an assignment:
 ///
 /// ```compile_fail,E0599
-/// use behavior_actors::atomic::Assignment;
-/// let _ = Assignment::new(String::from("job"));
+/// let _ = behavior_actors::atomic::Assignment::new(String::from("job"));
 /// ```
 ///
 /// Completing consumes the affine authority, so the same assignment cannot
 /// complete twice:
 ///
 /// ```compile_fail,E0382
-/// use behavior_actors::atomic::Assignment;
-/// fn duplicate(assignment: Assignment<u8>) {
+/// fn duplicate(assignment: behavior_actors::atomic::Assignment<u8>) {
 ///     let _first = assignment.complete(10_u16);
 ///     let _second = assignment.complete(11_u16);
 /// }
@@ -121,8 +118,7 @@ where
 /// A result without assignment authority cannot be forged:
 ///
 /// ```compile_fail,E0599
-/// use behavior_actors::atomic::Completion;
-/// let _ = Completion::new(10_u16);
+/// let _ = behavior_actors::atomic::Completion::new(10_u16);
 /// ```
 #[must_use = "a completion must return to its pool or remain in terminal custody"]
 pub struct Completion<WorkerResult> {

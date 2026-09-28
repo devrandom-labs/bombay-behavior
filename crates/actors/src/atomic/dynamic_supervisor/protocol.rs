@@ -16,9 +16,7 @@ use crate::{ReplyRoute, WorkerSubmission};
 /// Applications cannot forge an operation authority from a key and number:
 ///
 /// ```compile_fail,E0451
-/// use behavior_actors::atomic::CancelAuthority;
-///
-/// let _authority = CancelAuthority {
+/// let _authority = behavior_actors::atomic::CancelAuthority {
 ///     key: "search",
 ///     operation: 1,
 /// };

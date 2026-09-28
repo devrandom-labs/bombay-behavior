@@ -109,11 +109,9 @@ where
 /// A route for another diagnostic protocol cannot become an action item:
 ///
 /// ```compile_fail,E0271
-/// use behavior::{ActionItem, MailAddr, MessageProtocol, Recipient};
-/// use behavior_actors::atomic::DiagnosticAction;
-/// fn require_action<Item: ActionItem>(_: Item) {}
-/// let route = Recipient::<MessageProtocol<MailAddr, u8>>::global(MailAddr(1));
-/// require_action(DiagnosticAction::deliver(route, String::from("failed")));
+/// fn require_action<Item: behavior::ActionItem>(_: Item) {}
+/// let route = behavior::Recipient::<behavior::MessageProtocol<behavior::MailAddr, u8>>::global(behavior::MailAddr(1));
+/// require_action(behavior_actors::atomic::DiagnosticAction::deliver(route, String::from("failed")));
 /// ```
 #[doc(hidden)]
 #[must_use = "a diagnostic action must be interpreted or retained"]

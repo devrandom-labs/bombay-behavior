@@ -38,17 +38,15 @@ pub trait DeliveryRoute: sealed::DeliveryRoute + Sized {
 /// A route for another protocol cannot be substituted merely because its
 /// payload has the same Rust type:
 ///
-/// ```compile_fail,E0277
-/// use behavior::{MailAddr, MessageProtocol, Recipient};
-/// use behavior_actors::DeliveryRoute;
-/// type Expected = MessageProtocol<MailAddr, u8>;
+/// ```compile_fail,E0271
+/// type Expected = behavior::MessageProtocol<behavior::MailAddr, u8>;
 /// struct Other;
 /// impl behavior::Protocol for Other {
-///     type Addr = MailAddr;
+///     type Addr = behavior::MailAddr;
 ///     type Msg = u8;
 /// }
-/// fn require_expected<R: DeliveryRoute<Protocol = Expected>>(_: R) {}
-/// require_expected(Recipient::<Other>::global(MailAddr(1)));
+/// fn require_expected<R: behavior_actors::DeliveryRoute<Protocol = Expected>>(_: R) {}
+/// require_expected(behavior::Recipient::<Other>::global(behavior::MailAddr(1)));
 /// ```
 /// A delivery capability interpreted in the namespace of one emitting owner.
 ///

@@ -551,31 +551,26 @@ pub struct ShutdownRequested;
 /// the same address and nonce types:
 ///
 /// ```compile_fail
-/// use behavior::{
-///     Actions, Behavior, ChildHead, CreationSequence, MailAddr, Never, NoBirths, Protocol, User,
-/// };
-/// use behavior_actors::ShutdownChild;
-///
 /// struct Queue;
 /// struct Worker;
 /// macro_rules! inert {
 ///     ($actor:ty) => {
-///         impl Protocol for $actor {
-///             type Addr = MailAddr;
+///         impl behavior::Protocol for $actor {
+///             type Addr = behavior::MailAddr;
 ///             type Msg = u8;
 ///         }
-///         impl Behavior for $actor {
+///         impl behavior::Behavior for $actor {
 ///             type Protocol = Self;
-///             type Event = User<MailAddr, u8>;
-///             type Sends = Vec<Never>;
-///             type Ph = Never;
-///             type Error = Never;
-///             type Birth = NoBirths;
+///             type Event = behavior::User<behavior::MailAddr, u8>;
+///             type Sends = Vec<behavior::Never>;
+///             type Ph = behavior::Never;
+///             type Error = behavior::Never;
+///             type Birth = behavior::NoBirths;
 ///             fn init(&mut self, _: behavior::InitializationTurn) -> behavior::BehaviorActed<Self> {
-///                 Ok(Actions::cont())
+///                 Ok(behavior::Actions::cont())
 ///             }
 ///             fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> behavior::BehaviorActed<Self> {
-///                 Ok(Actions::cont())
+///                 Ok(behavior::Actions::cont())
 ///             }
 ///         }
 ///     };
@@ -583,46 +578,41 @@ pub struct ShutdownRequested;
 /// inert!(Queue);
 /// inert!(Worker);
 ///
-/// let child = CreationSequence::new()
+/// let child = behavior::CreationSequence::new()
 ///     .issue()
 ///     .expect("the first creation ID exists");
-/// let queue = ShutdownChild::<Queue, ChildHead>::new(child);
-/// let _: ShutdownChild<Worker, ChildHead> = queue;
+/// let queue = behavior_actors::ShutdownChild::<Queue, behavior::ChildHead>::new(child);
+/// let _: behavior_actors::ShutdownChild<Worker, behavior::ChildHead> = queue;
 /// ```
 ///
 /// Repeated occurrences of the same behavior are also incompatible:
 ///
 /// ```compile_fail
-/// use behavior::{
-///     Actions, Behavior, ChildHead, ChildTail, CreationSequence, MailAddr, Never, NoBirths,
-///     Protocol, User,
-/// };
-/// use behavior_actors::ShutdownChild;
 /// struct Worker;
-/// impl Protocol for Worker {
-///     type Addr = MailAddr;
+/// impl behavior::Protocol for Worker {
+///     type Addr = behavior::MailAddr;
 ///     type Msg = ();
 /// }
-/// impl Behavior for Worker {
+/// impl behavior::Behavior for Worker {
 ///     type Protocol = Self;
-///     type Event = User<MailAddr, ()>;
-///     type Sends = Vec<Never>;
-///     type Ph = Never;
-///     type Error = Never;
-///     type Birth = NoBirths;
+///     type Event = behavior::User<behavior::MailAddr, ()>;
+///     type Sends = Vec<behavior::Never>;
+///     type Ph = behavior::Never;
+///     type Error = behavior::Never;
+///     type Birth = behavior::NoBirths;
 ///     fn transition(
 ///         &mut self,
 ///         _: behavior::ActiveTurn,
 ///         _: Self::Event,
 ///     ) -> behavior::BehaviorActed<Self> {
-///         Ok(Actions::cont())
+///         Ok(behavior::Actions::cont())
 ///     }
 /// }
-/// let child = CreationSequence::new()
+/// let child = behavior::CreationSequence::new()
 ///     .issue()
 ///     .expect("the first creation ID exists");
-/// let first = ShutdownChild::<Worker, ChildHead>::new(child);
-/// let _: ShutdownChild<Worker, ChildTail<ChildHead>> = first;
+/// let first = behavior_actors::ShutdownChild::<Worker, behavior::ChildHead>::new(child);
+/// let _: behavior_actors::ShutdownChild<Worker, behavior::ChildTail<behavior::ChildHead>> = first;
 /// ```
 pub struct ShutdownChild<C: behavior::Behavior, Occurrence> {
     pub child: CreationId,

@@ -85,27 +85,25 @@ impl ActiveTurn {
 /// The public protocol must exactly match the address and user-message lane:
 ///
 /// ```compile_fail
-/// use behavior::{Actions, ActiveTurn, Behavior, BehaviorActed, MailAddr, MessageProtocol,
-///     Never, NoBirths, Protocol, User};
 /// struct Wrong;
-/// impl Protocol for Wrong {
-///     type Addr = MailAddr;
+/// impl behavior::Protocol for Wrong {
+///     type Addr = behavior::MailAddr;
 ///     type Msg = String;
 /// }
 /// struct Counter;
-/// impl Protocol for Counter {
-///     type Addr = MailAddr;
+/// impl behavior::Protocol for Counter {
+///     type Addr = behavior::MailAddr;
 ///     type Msg = u8;
 /// }
-/// impl Behavior for Counter {
+/// impl behavior::Behavior for Counter {
 ///     type Protocol = Wrong;
-///     type Event = User<MailAddr, u8>;
-///     type Sends = Vec<Never>;
-///     type Ph = Never;
-///     type Error = Never;
-///     type Birth = NoBirths;
-///     fn transition(&mut self, _: ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
-///         Ok(Actions::cont())
+///     type Event = behavior::User<behavior::MailAddr, u8>;
+///     type Sends = Vec<behavior::Never>;
+///     type Ph = behavior::Never;
+///     type Error = behavior::Never;
+///     type Birth = behavior::NoBirths;
+///     fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> behavior::BehaviorActed<Self> {
+///         Ok(behavior::Actions::cont())
 ///     }
 /// }
 /// ```
@@ -209,28 +207,25 @@ where
 /// configuration-only `*Layer` types:
 ///
 /// ```
-/// use behavior::{Actions, Behavior, BehaviorActed, BehaviorLayer, MailAddr,
-///     Never, NoBirths, Protocol, User};
-///
 /// struct Inner;
-/// impl Protocol for Inner { type Addr = MailAddr; type Msg = (); }
-/// impl Behavior for Inner {
+/// impl behavior::Protocol for Inner { type Addr = behavior::MailAddr; type Msg = (); }
+/// impl behavior::Behavior for Inner {
 ///     type Protocol = Self;
-///     type Event = User<MailAddr, ()>;
-///     type Sends = Vec<Never>;
-///     type Ph = Never;
-///     type Error = Never;
-///     type Birth = NoBirths;
+///     type Event = behavior::User<behavior::MailAddr, ()>;
+///     type Sends = Vec<behavior::Never>;
+///     type Ph = behavior::Never;
+///     type Error = behavior::Never;
+///     type Birth = behavior::NoBirths;
 ///     fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event)
-///         -> BehaviorActed<Self> { Ok(Actions::cont()) }
+///         -> behavior::BehaviorActed<Self> { Ok(behavior::Actions::cont()) }
 /// }
 ///
 /// fn apply<B, L>(behavior: B, layer: L) -> L::Output
 /// where
-///     B: Behavior,
-///     L: BehaviorLayer<B>,
+///     B: behavior::Behavior,
+///     L: behavior::BehaviorLayer<B>,
 /// {
-///     layer.layer(behavior)
+///     behavior::BehaviorLayer::layer(&layer, behavior)
 /// }
 ///
 /// let _: Inner = apply(Inner, core::convert::identity::<Inner>);

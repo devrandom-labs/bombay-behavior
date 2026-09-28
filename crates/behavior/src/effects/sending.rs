@@ -189,7 +189,7 @@ impl ClassifySettlement for crate::Never {
 ///
 /// A runtime cannot substitute a different rejection type for the same item:
 ///
-/// ```compile_fail,E0053
+/// ```compile_fail,E0271
 /// struct Request;
 /// struct RequiredRejection;
 /// struct RuntimeRejection;
@@ -387,29 +387,25 @@ pub trait SendEffects: Sized {
 /// an unknown delivery representation as having no logical destination.
 ///
 /// ```compile_fail,E0277
-/// use behavior::{
-///     Actions, Behavior, BehaviorActed, LogicalHostRequirements, MailAddr,
-///     Never, NoBirths, Protocol, SendEffects, User,
-/// };
 /// struct OpaqueSends;
-/// impl SendEffects for OpaqueSends {
+/// impl behavior::SendEffects for OpaqueSends {
 ///     fn empty() -> Self { Self }
 ///     fn append(&mut self, _: Self) {}
 /// }
 /// impl<E> behavior::SendsFor<E> for OpaqueSends {}
 /// struct Actor;
-/// impl Protocol for Actor { type Addr = MailAddr; type Msg = (); }
-/// impl Behavior for Actor {
+/// impl behavior::Protocol for Actor { type Addr = behavior::MailAddr; type Msg = (); }
+/// impl behavior::Behavior for Actor {
 ///     type Protocol = Self;
-///     type Event = User<MailAddr, ()>;
+///     type Event = behavior::User<behavior::MailAddr, ()>;
 ///     type Sends = OpaqueSends;
-///     type Ph = Never;
-///     type Error = Never;
-///     type Birth = NoBirths;
+///     type Ph = behavior::Never;
+///     type Error = behavior::Never;
+///     type Birth = behavior::NoBirths;
 ///     fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event)
-///         -> BehaviorActed<Self> { Ok(Actions::cont()) }
+///         -> behavior::BehaviorActed<Self> { Ok(behavior::Actions::cont()) }
 /// }
-/// fn require_complete<B: LogicalHostRequirements>() {}
+/// fn require_complete<B: behavior::LogicalHostRequirements>() {}
 /// require_complete::<Actor>();
 /// ```
 pub trait LogicalDeliveryProtocols: SendEffects {
@@ -429,17 +425,15 @@ pub trait LogicalDeliveryProtocols: SendEffects {
 /// layer:
 ///
 /// ```compile_fail
-/// use behavior::{SendsFor, EventLayer, Here, MailAddr, ReturnsToEmitter,
-///     InterpreterRequest, InterpreterRequests, User};
 /// struct Request;
-/// impl InterpreterRequest for Request {
-///     type ReturnToEmitter = ReturnsToEmitter<u8, Here>;
+/// impl behavior::InterpreterRequest for Request {
+///     type ReturnToEmitter = behavior::ReturnsToEmitter<u8, behavior::Here>;
 ///     type LogicalProtocols = behavior::NoBirthProtocols;
 /// }
-/// fn lawful<E, F: SendsFor<E>>() {}
-/// type Inner = EventLayer<u8, User<MailAddr, ()>>;
-/// type Outer = EventLayer<(), Inner>;
-/// lawful::<Outer, InterpreterRequests<Request>>();
+/// fn lawful<E, F: behavior::SendsFor<E>>() {}
+/// type Inner = behavior::EventLayer<u8, behavior::User<behavior::MailAddr, ()>>;
+/// type Outer = behavior::EventLayer<(), Inner>;
+/// lawful::<Outer, behavior::InterpreterRequests<Request>>();
 /// ```
 pub trait SendsFor<Event>: SendEffects {}
 

@@ -241,19 +241,17 @@ where
 /// transition atomicity. Ordinary delegated `B` transitions retain `B::Error`.
 ///
 /// ```compile_fail,E0308
-/// # use behavior::{Actions, Behavior, MailAddr, Never, NoBirths, User};
-/// # use behavior_actors::{PeerStopped, TerminationMonitor};
 /// # struct App;
-/// # impl behavior::Protocol for App { type Addr = MailAddr; type Msg = (); }
-/// # impl Behavior for App {
-/// #   type Protocol = Self; type Event = User<MailAddr, ()>; type Sends = Vec<Never>;
-/// #   type Ph = Never; type Error = Never; type Birth = NoBirths;
-/// #   fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> behavior::BehaviorActed<Self> { Ok(Actions::cont()) }
+/// # impl behavior::Protocol for App { type Addr = behavior::MailAddr; type Msg = (); }
+/// # impl behavior::Behavior for App {
+/// #   type Protocol = Self; type Event = behavior::User<behavior::MailAddr, ()>; type Sends = Vec<behavior::Never>;
+/// #   type Ph = behavior::Never; type Error = behavior::Never; type Birth = behavior::NoBirths;
+/// #   fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> behavior::BehaviorActed<Self> { Ok(behavior::Actions::cont()) }
 /// # }
-/// fn fallible(_: &mut App, _: PeerStopped<MailAddr>) -> behavior::BehaviorActed<App> {
-///     Ok(Actions::cont())
+/// fn fallible(_: &mut App, _: behavior_actors::PeerStopped<behavior::MailAddr>) -> behavior::BehaviorActed<App> {
+///     Ok(behavior::Actions::cont())
 /// }
-/// let _ = TerminationMonitor::new(App, MailAddr(1), fallible);
+/// let _ = behavior_actors::TerminationMonitor::new(App, behavior::MailAddr(1), fallible);
 /// ```
 pub struct TerminationMonitorWith<B: Behavior, Target: TerminationObservationTarget<B>> {
     inner: B,

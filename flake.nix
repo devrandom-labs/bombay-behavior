@@ -67,6 +67,8 @@
             ./scripts/check_published_docs.py
             ./scripts/test_check_published_docs.py
             ./scripts/check_published_packages.sh
+            ./scripts/check_rustdoc_imports.py
+            ./scripts/check_rustdoc_error_codes.py
             (pkgs.lib.fileset.maybeMissing ./mutants-baseline.json)
           ];
         };
@@ -97,6 +99,8 @@
               cp .github/pages-index.html target/doc/index.html
               python3 -m unittest scripts/test_check_published_docs.py
               python3 scripts/check_published_docs.py target/doc
+              python3 scripts/check_rustdoc_imports.py
+              python3 scripts/check_rustdoc_error_codes.py
             '';
             doInstallCargoArtifacts = false;
             doCheck = false;

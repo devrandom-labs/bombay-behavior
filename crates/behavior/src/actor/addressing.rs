@@ -48,52 +48,46 @@ impl Address for MailAddr {
 /// A local endpoint remains valid, but cannot enter the sendable
 /// [`crate::InterpretSends`] path:
 ///
-/// ```compile_fail
-/// use behavior::{
-///     Address, EndpointAddress, EstablishedDelivery, EstablishedRecipient,
-///     Here, InterpretItem, InterpretSends, ItemSettlement, Never, Protocol, User,
-/// };
-/// use core::marker::PhantomData;
-/// use std::rc::Rc;
+/// ```compile_fail,E0277
 /// #[derive(Clone, Copy, PartialEq, Eq)]
 /// struct LocalAddr(u8);
-/// impl Address for LocalAddr { type Nonce = u8; }
-/// struct LocalEndpoint<P>(Rc<()>, PhantomData<fn() -> P>);
+/// impl behavior::Address for LocalAddr { type Nonce = u8; }
+/// struct LocalEndpoint<P>(std::rc::Rc<()>, core::marker::PhantomData<fn() -> P>);
 /// impl<P> Clone for LocalEndpoint<P> {
-///     fn clone(&self) -> Self { Self(self.0.clone(), PhantomData) }
+///     fn clone(&self) -> Self { Self(self.0.clone(), core::marker::PhantomData) }
 /// }
-/// impl EndpointAddress for LocalAddr {
-///     type Established<P> = LocalEndpoint<P> where P: Protocol<Addr = Self>;
+/// impl behavior::EndpointAddress for LocalAddr {
+///     type Established<P> = LocalEndpoint<P> where P: behavior::Protocol<Addr = Self>;
 /// }
 /// struct LocalProtocol;
-/// impl Protocol for LocalProtocol {
+/// impl behavior::Protocol for LocalProtocol {
 ///     type Addr = LocalAddr;
-///     type Msg = Rc<()>;
+///     type Msg = std::rc::Rc<()>;
 /// }
 /// struct Runtime;
-/// impl<RootEvent, Path> InterpretItem<EstablishedDelivery<LocalProtocol>, RootEvent, Path>
+/// impl<RootEvent, Path> behavior::InterpretItem<behavior::EstablishedDelivery<LocalProtocol>, RootEvent, Path>
 ///     for Runtime
 /// {
 ///     fn interpret_item(
 ///         &mut self,
-///         delivery: EstablishedDelivery<LocalProtocol>,
-///     ) -> impl core::future::Future<Output = ItemSettlement<
-///         EstablishedDelivery<LocalProtocol>, (), Never, Never,
+///         delivery: behavior::EstablishedDelivery<LocalProtocol>,
+///     ) -> impl core::future::Future<Output = behavior::ItemSettlement<
+///         behavior::EstablishedDelivery<LocalProtocol>, (), behavior::Never, behavior::Never,
 ///     >> + Send {
 ///         async move {
 ///             drop(delivery);
-///             ItemSettlement::Accepted(())
+///             behavior::ItemSettlement::Accepted(())
 ///         }
 ///     }
 /// }
 /// fn require_async<T>()
 /// where
-///     T: InterpretSends<Runtime, User<LocalAddr, Rc<()>>, Here>,
+///     T: behavior::InterpretSends<Runtime, behavior::User<LocalAddr, std::rc::Rc<()>>, behavior::Here>,
 /// {}
-/// let endpoint = LocalEndpoint(Rc::new(()), PhantomData);
-/// let recipient = EstablishedRecipient::<LocalProtocol>::issued(endpoint);
-/// let _delivery = EstablishedDelivery::new(recipient, Rc::new(()));
-/// require_async::<Vec<EstablishedDelivery<LocalProtocol>>>();
+/// let endpoint = LocalEndpoint(std::rc::Rc::new(()), core::marker::PhantomData);
+/// let recipient = behavior::EstablishedRecipient::<LocalProtocol>::issued(endpoint);
+/// let _delivery = behavior::EstablishedDelivery::new(recipient, std::rc::Rc::new(()));
+/// require_async::<Vec<behavior::EstablishedDelivery<LocalProtocol>>>();
 /// ```
 pub trait EndpointAddress: Address + Sized {
     type Established<P>: Clone
@@ -156,19 +150,18 @@ impl<A: Address, M> From<A> for Recipient<MessageProtocol<A, M>> {
 /// explicit interpretation boundary. That boundary is public and therefore a
 /// deliberate power-user authority boundary, not exclusive runtime authority.
 ///
-/// ```compile_fail
-/// use behavior::{Address, EndpointAddress, EstablishedRecipient, Protocol};
+/// ```compile_fail,E0599
 /// #[derive(Clone, Copy, PartialEq, Eq)]
 /// struct RuntimeAddr(u64);
-/// impl Address for RuntimeAddr { type Nonce = u64; }
+/// impl behavior::Address for RuntimeAddr { type Nonce = u64; }
 /// struct Worker;
-/// impl Protocol for Worker { type Addr = RuntimeAddr; type Msg = (); }
+/// impl behavior::Protocol for Worker { type Addr = RuntimeAddr; type Msg = (); }
 /// #[derive(Clone)]
 /// struct Endpoint;
-/// impl EndpointAddress for RuntimeAddr {
-///     type Established<P> = Endpoint where P: Protocol<Addr = Self>;
+/// impl behavior::EndpointAddress for RuntimeAddr {
+///     type Established<P> = Endpoint where P: behavior::Protocol<Addr = Self>;
 /// }
-/// let recipient = EstablishedRecipient::<Worker>::issued(Endpoint);
+/// let recipient = behavior::EstablishedRecipient::<Worker>::issued(Endpoint);
 /// let _endpoint = recipient.endpoint();
 /// ```
 pub struct EstablishedRecipient<P>
@@ -398,82 +391,46 @@ where
 /// protocols with the same address and message types still have distinct
 /// delivery types.
 ///
-/// ```compile_fail
-/// use behavior::{Actions, Behavior, Delivery, MailAddr, Never, NoBirths, Protocol, Recipient, User};
-///
+/// ```compile_fail,E0308
 /// struct Queue;
 /// struct Worker;
-/// macro_rules! inert {
-///     ($actor:ty) => {
-///         impl Protocol for $actor {
-///             type Addr = MailAddr;
-///             type Msg = u8;
-///         }
-///         impl Behavior for $actor {
-///             type Event = User<MailAddr, u8>;
-///             type Sends = Vec<Never>;
-///             type Ph = Never;
-///             type Error = Never;
-///             type Birth = NoBirths;
-///             fn init(&mut self, _: crate::InitializationTurn) -> behavior::BehaviorActed<Self> { Ok(Actions::cont()) }
-///             fn transition(&mut self, _: crate::ActiveTurn, _: Self::Event) -> behavior::BehaviorActed<Self> {
-///                 Ok(Actions::cont())
-///             }
-///         }
-///     };
+/// impl behavior::Protocol for Queue {
+///     type Addr = behavior::MailAddr;
+///     type Msg = u8;
 /// }
-/// inert!(Queue);
-/// inert!(Worker);
+/// impl behavior::Protocol for Worker {
+///     type Addr = behavior::MailAddr;
+///     type Msg = u8;
+/// }
 ///
-/// let worker = Recipient::<Worker>::global(MailAddr(1));
-/// let _: Delivery<Queue> = Delivery::new(worker, 7);
+/// let worker = behavior::Recipient::<Worker>::global(behavior::MailAddr(1));
+/// let _: behavior::Delivery<Queue> = behavior::Delivery::new(worker, 7);
 /// ```
 ///
 /// A destination also fixes its message and address namespaces:
 ///
-/// ```compile_fail
-/// use behavior::{Actions, Address, Behavior, Delivery, MailAddr, Never, NoBirths, Protocol, Recipient, User};
+/// ```compile_fail,E0308
 /// #[derive(Clone, Copy, PartialEq, Eq)]
 /// struct OtherAddr(u64);
-/// impl Address for OtherAddr {
+/// impl behavior::Address for OtherAddr {
 ///     type Nonce = u64;
 /// }
 /// struct Worker;
-/// impl Protocol for Worker {
-///     type Addr = MailAddr;
+/// impl behavior::Protocol for Worker {
+///     type Addr = behavior::MailAddr;
 ///     type Msg = u8;
 /// }
-/// impl Behavior for Worker {
-///     type Event = User<MailAddr, u8>;
-///     type Sends = Vec<Never>;
-///     type Ph = Never;
-///     type Error = Never;
-///     type Birth = NoBirths;
-///     fn init(&mut self, _: crate::InitializationTurn) -> behavior::BehaviorActed<Self> { Ok(Actions::cont()) }
-///     fn transition(&mut self, _: crate::ActiveTurn, _: Self::Event) -> behavior::BehaviorActed<Self> { Ok(Actions::cont()) }
-/// }
-/// let _ = Recipient::<Worker>::global(OtherAddr(1));
+/// let _ = behavior::Recipient::<Worker>::global(OtherAddr(1));
 /// ```
 ///
-/// ```compile_fail
-/// # use behavior::{Actions, Behavior, Delivery, MailAddr, Never, NoBirths, Protocol, Recipient, User};
+/// ```compile_fail,E0308
 /// # struct Worker;
-/// # impl Protocol for Worker {
-/// #     type Addr = MailAddr;
+/// # impl behavior::Protocol for Worker {
+/// #     type Addr = behavior::MailAddr;
 /// #     type Msg = u8;
 /// # }
-/// # impl Behavior for Worker {
-/// #     type Protocol = Self;
-/// #     type Event = User<MailAddr, u8>;
-/// #     type Sends = Vec<Never>;
-/// #     type Ph = Never;
-/// #     type Error = Never;
-/// #     type Birth = NoBirths;
-/// #     fn init(&mut self, _: crate::InitializationTurn) -> behavior::BehaviorActed<Self> { Ok(Actions::cont()) }
-/// #     fn transition(&mut self, _: crate::ActiveTurn, _: Self::Event) -> behavior::BehaviorActed<Self> { Ok(Actions::cont()) }
-/// # }
-/// let worker = Recipient::<Worker>::global(MailAddr(1));
-/// let _ = Delivery::<Worker>::new(worker, "wrong payload");
+/// let worker = behavior::Recipient::<Worker>::global(behavior::MailAddr(1));
+/// let _ = behavior::Delivery::<Worker>::new(worker, "wrong payload");
 /// ```
 /// Exact reason one logical delivery was not accepted.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -552,28 +509,23 @@ where
 /// Exact endpoints remain protocol-indexed even when two protocols share an
 /// address namespace and message type:
 ///
-/// ```compile_fail
-/// use behavior::{
-///     Address, EndpointAddress, EstablishedDelivery, EstablishedRecipient,
-///     Protocol,
-/// };
-/// use core::marker::PhantomData;
+/// ```compile_fail,E0308
 /// #[derive(Clone, Copy, PartialEq, Eq)]
 /// struct RuntimeAddr(u64);
-/// impl Address for RuntimeAddr { type Nonce = u64; }
-/// struct Endpoint<P>(PhantomData<fn() -> P>);
+/// impl behavior::Address for RuntimeAddr { type Nonce = u64; }
+/// struct Endpoint<P>(core::marker::PhantomData<fn() -> P>);
 /// impl<P> Clone for Endpoint<P> {
-///     fn clone(&self) -> Self { Self(PhantomData) }
+///     fn clone(&self) -> Self { Self(core::marker::PhantomData) }
 /// }
-/// impl EndpointAddress for RuntimeAddr {
-///     type Established<P> = Endpoint<P> where P: Protocol<Addr = Self>;
+/// impl behavior::EndpointAddress for RuntimeAddr {
+///     type Established<P> = Endpoint<P> where P: behavior::Protocol<Addr = Self>;
 /// }
 /// struct Queue;
 /// struct Worker;
-/// impl Protocol for Queue { type Addr = RuntimeAddr; type Msg = u8; }
-/// impl Protocol for Worker { type Addr = RuntimeAddr; type Msg = u8; }
-/// let worker = EstablishedRecipient::<Worker>::issued(Endpoint(PhantomData));
-/// let _: EstablishedDelivery<Queue> = EstablishedDelivery::new(worker, 7);
+/// impl behavior::Protocol for Queue { type Addr = RuntimeAddr; type Msg = u8; }
+/// impl behavior::Protocol for Worker { type Addr = RuntimeAddr; type Msg = u8; }
+/// let worker = behavior::EstablishedRecipient::<Worker>::issued(Endpoint(core::marker::PhantomData));
+/// let _: behavior::EstablishedDelivery<Queue> = behavior::EstablishedDelivery::new(worker, 7);
 /// ```
 pub struct EstablishedDelivery<P>
 where

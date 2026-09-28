@@ -267,7 +267,7 @@ is recorded against a revision.
   establish its composition law before changing the API; hiding rustdoc is
   insufficient.
 
-- [ ] **A15 — Make coding-rule enforcement agree with the actual repository.**
+- [x] **A15 — Make coding-rule enforcement agree with the actual repository.**
   **Confirmed local-rule deviations.** Timer-domain tests invoke mutable
   `accept` inside `assert!`; catalogue models carry readiness decisions as
   booleans. Many rustdoc fixtures have `use` sections despite the explicit
@@ -534,6 +534,23 @@ assumption, nested authority, semantic boolean, or structural consumer syntax.
 Disposition: `pass` for this duplicate deletion. Broader A11 derivation work
 remains open.
 
+The remaining product paths have different type equations. This inventory is
+the input to the next A11 design experiment; matching method names alone does
+not justify merging them.
+
+| Product path | Product and settlement shape | Ordered lanes and shared law | Distinct obligation |
+|---|---|---|---|
+| Handwritten `DeliveryOutcomes`, `LeaseSends`, `PresenceSends` | Two generic fields; settlement reuses the same product with settled field types | Empty/append, left-before-right interpretation, unattempted suffix on corruption, source custody, classification, and logical projection | Public domain field names differ; `requirements.rs` currently supplies projection separately. |
+| `atomic::request_product!` | One or more generic named fields; settlement reuses the product | The same ordered operations and projection are generated together | Source custody must preserve every earlier settlement and every unvisited owned field across any arity. |
+| `#[behavior]` generated sends | Generated fields may have concrete types; a separate generated settlement struct holds associated settlement types | Generated lane order, corruption suffix, and source custody use the same transition equation | Separate settlement representation and caller lane methods are part of the generated API; this path currently has no generated logical-host projection. |
+
+The next candidate should first prove that the three handwritten two-lane
+products can share one private derivation while retaining their public field
+names and both wrapper orders. The generated product needs a separate focused
+projection witness before deciding whether its distinct settlement shape can
+share any implementation. No product or public API is changed by this
+inventory.
+
 ### A13 pre-edit protocol-bound law
 
 Classification: derived Rust protocol identity. A cache or resolver recipient
@@ -586,9 +603,58 @@ boolean. The pool-private values formerly named only `Operating` are now
 `FifoOperating` and `KeyedOperating`; each remains under its existing root
 state variant with no state or branch change. The nested `.sends.inner.inner`
 uses in `testkit/tests/compositions.rs` are structural composition tests that
-explicitly assert nesting order. Rustdoc snippets still contain import
-sections and the repository has no focused enforcement for all naming/import
-rules, so A15 remains open.
+explicitly assert nesting order. All 92 rustdoc import lines across 26 source
+files now use qualified paths or were removed where the negative example
+tested only a missing alias. `scripts/check_rustdoc_imports.py` enforces that
+rule in the Nix documentation gate; a hidden-import counterexample fails the
+check. Core delivery compile-fail examples now require only `Protocol`, the
+capability they actually test, rather than an inert `Behavior` fixture.
+Direct `rustc --error-format=json` probes of the three logical-delivery
+examples produced only `E0308`; replacing the wrong protocol, address, or
+payload with the declared one compiled in each case. Rustdoc's
+`compile_fail,E0308` tag alone does not enforce that error code, so this
+counterfactual check supplies the failure-reason evidence. A direct compiler
+check now validates the expected diagnostic for all 45 tagged compile-fail
+snippets in the Nix documentation gate; it found and corrected five stale
+tags. The optimized timer-domain tests passed both cases, and
+`nix flake check` passed all ten checks on `aarch64-darwin`, including the
+documentation and doctest gates. The post-check edits in this audit batch
+only add the A11 inventory and this verification result; its Rustdoc examples,
+scripts, and Nix gate definition are the checked snapshot. Disposition: `pass`.
+
+### A07 actor mutation evidence: routing-buffer capacity
+
+At revision `0274dab`, a focused campaign mutated the bounded buffer's
+below-capacity guard (`routing/buffer.rs:261`). The law is Bombay's declared
+overflow policy: an offer below capacity is retained, while an offer at
+capacity follows the configured rejection or eviction branch and preserves
+ownership of every value. The actor unit tests and the independent FIFO and
+overflow property in `behavior-testkit/tests/routing_invariants.rs` are the
+relevant witnesses.
+
+The command selected `bombay-behavior-actors`, filtered to the guard and its
+comparison operators, and set `--test-workspace true --test-tool nextest
+--no-shuffle --minimum-test-timeout 180 -- --profile mutants` with
+`PROPTEST_CASES=32`. The mutation log confirmed `test_packages=All` for each
+mutant. The unmutated baseline passed; all five selected mutants built and
+were caught by actor buffer tests, primarily
+`every_overflow_policy_preserves_or_returns_all_owned_values`. This is a
+five-mutant routing-law result, not an actor-wide mutation verdict. A07 still
+needs independently reviewable campaigns for the other actor families and a
+separate viability ratchet.
+
+### A20 ledger entry: bounded-buffer capacity and ownership
+
+| Evidence layer | Current witness and limit |
+|---|---|
+| Focused transition | `routing/buffer.rs` tests zero capacity, FIFO release and empty outcomes, and every overflow policy with distinct values. |
+| Independent trace | `behavior-testkit/tests/routing_invariants.rs::buffer_preserves_fifo_and_returns_every_unaccepted_value` compares retained FIFO values and returned custody after each generated command; it does not claim transport admission. |
+| Composition | The buffer is a standalone `Behavior` whose destination lanes are concrete `DeliveryRoute`s. There is no wrapper-order law for its capacity decision; route typing is checked separately in `composition/delivery_route.rs`. |
+| Invalid construction and boundaries | `BufferConfiguration::new(0, ..)` returns `ZeroCapacity`; a runtime numeric capacity is validated at construction. The full-queue tests distinguish `Reject`, `DropNewest`, and `DropOldest` ownership. |
+| Counterfactual | The five guard/operator mutants in the A07 slice were all caught by actor buffer tests. This evidence covers this capacity branch only. |
+
+The remaining catalogue laws need equally specific entries, and source
+coverage measurement is still absent, so A20 remains open.
 
 ### Repair ledger: dependency resolution and mutation verdicts
 

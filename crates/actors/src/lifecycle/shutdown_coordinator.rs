@@ -136,26 +136,24 @@ pub enum ShutdownTreeError<N> {
 /// validated heterogeneous plan:
 ///
 /// ```compile_fail
-/// use behavior::{Actions, Behavior, CreationSequence, MailAddr, Never, NoBirths, User};
-/// use behavior_actors::{HeterogeneousShutdownPlan, NoShutdownTargets, ShutdownChoice};
 /// struct Plain;
-/// impl behavior::Protocol for Plain { type Addr = MailAddr; type Msg = (); }
-/// impl Behavior for Plain {
+/// impl behavior::Protocol for Plain { type Addr = behavior::MailAddr; type Msg = (); }
+/// impl behavior::Behavior for Plain {
 ///     type Protocol = Self;
-///     type Event = User<MailAddr, ()>;
-///     type Sends = Vec<Never>;
-///     type Ph = Never;
-///     type Error = Never;
-///     type Birth = NoBirths;
+///     type Event = behavior::User<behavior::MailAddr, ()>;
+///     type Sends = Vec<behavior::Never>;
+///     type Ph = behavior::Never;
+///     type Error = behavior::Never;
+///     type Birth = behavior::NoBirths;
 ///     fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> behavior::BehaviorActed<Self> {
-///         Ok(Actions::cont())
+///         Ok(behavior::Actions::cont())
 ///     }
 /// }
-/// type Targets = ShutdownChoice<Plain, NoShutdownTargets<MailAddr>>;
-/// let child = CreationSequence::new()
+/// type Targets = behavior_actors::ShutdownChoice<Plain, behavior_actors::NoShutdownTargets<behavior::MailAddr>>;
+/// let child = behavior::CreationSequence::new()
 ///     .issue()
 ///     .expect("the first child creation ID exists");
-/// let _ = HeterogeneousShutdownPlan::new([vec![Targets::child(child)]]);
+/// let _ = behavior_actors::HeterogeneousShutdownPlan::new([vec![Targets::child(child)]]);
 /// ```
 pub enum ShutdownChoice<C: Behavior, Tail> {
     Child {
@@ -636,29 +634,25 @@ enum ShutdownMove<P> {
 /// heterogeneous plans therefore cannot be confused at installation:
 ///
 /// ```compile_fail
-/// use behavior::{Actions, Behavior, ChildHead, MailAddr, Never, NoBirths, User};
-/// use behavior_actors::{
-///     Activate, HeterogeneousShutdownPlan, InstallShutdownPlan, NoShutdownTargets, ShutdownChoice,
-///     ShutdownCoordinator, StopOnShutdown,
-/// };
 /// struct Probe;
-/// impl behavior::Protocol for Probe { type Addr = MailAddr; type Msg = (); }
-/// impl Behavior for Probe {
+/// impl behavior::Protocol for Probe { type Addr = behavior::MailAddr; type Msg = (); }
+/// impl behavior::Behavior for Probe {
 ///     type Protocol = Self;
-///     type Event = User<MailAddr, ()>;
-///     type Sends = Vec<Never>;
-///     type Ph = Never;
-///     type Error = Never;
-///     type Birth = NoBirths;
+///     type Event = behavior::User<behavior::MailAddr, ()>;
+///     type Sends = Vec<behavior::Never>;
+///     type Ph = behavior::Never;
+///     type Error = behavior::Never;
+///     type Birth = behavior::NoBirths;
 ///     fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> behavior::BehaviorActed<Self> {
-///         Ok(Actions::cont())
+///         Ok(behavior::Actions::cont())
 ///     }
 /// }
-/// type Targets = ShutdownChoice<StopOnShutdown<Probe>, NoShutdownTargets<MailAddr>>;
-/// let mut coordinator = ShutdownCoordinator::<Probe, StopOnShutdown<Probe>, ChildHead>::awaiting_plan(Probe)
-///     .initialize().unwrap().behavior;
-/// let heterogeneous = HeterogeneousShutdownPlan::<Targets>::new([]).unwrap();
-/// coordinator.on_path(InstallShutdownPlan::new(heterogeneous)).unwrap();
+/// type Targets = behavior_actors::ShutdownChoice<behavior_actors::StopOnShutdown<Probe>, behavior_actors::NoShutdownTargets<behavior::MailAddr>>;
+/// let mut coordinator = behavior_actors::Activate::initialize(
+///     behavior_actors::ShutdownCoordinator::<Probe, behavior_actors::StopOnShutdown<Probe>, behavior::ChildHead>::awaiting_plan(Probe)
+/// ).unwrap().behavior;
+/// let heterogeneous = behavior_actors::HeterogeneousShutdownPlan::<Targets>::new([]).unwrap();
+/// coordinator.on_path(behavior_actors::InstallShutdownPlan::new(heterogeneous)).unwrap();
 /// ```
 pub struct InstallShutdownPlan<P> {
     plan: P,
@@ -852,34 +846,30 @@ pub enum ShutdownCoordinatorError<E, A: Address, P> {
 /// coordinator:
 ///
 /// ```compile_fail
-/// use behavior::{
-///     Actions, Behavior, ChildHead, CreationSequence, MailAddr, Never, NoBirths, Protocol, User,
-/// };
-/// use behavior_actors::{ShutdownCoordinator, ShutdownPlan};
 ///
 /// struct Plain;
-/// impl Protocol for Plain {
-///     type Addr = MailAddr;
+/// impl behavior::Protocol for Plain {
+///     type Addr = behavior::MailAddr;
 ///     type Msg = ();
 /// }
-/// impl Behavior for Plain {
+/// impl behavior::Behavior for Plain {
 ///     type Protocol = Self;
-///     type Event = User<MailAddr, ()>;
-///     type Sends = Vec<Never>;
-///     type Ph = Never;
-///     type Error = Never;
-///     type Birth = NoBirths;
+///     type Event = behavior::User<behavior::MailAddr, ()>;
+///     type Sends = Vec<behavior::Never>;
+///     type Ph = behavior::Never;
+///     type Error = behavior::Never;
+///     type Birth = behavior::NoBirths;
 ///     fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> behavior::BehaviorActed<Self> {
-///         Ok(Actions::cont())
+///         Ok(behavior::Actions::cont())
 ///     }
 /// }
 ///
-/// fn require_behavior<B: Behavior>(_: B) {}
-/// let child = CreationSequence::new()
+/// fn require_behavior<B: behavior::Behavior>(_: B) {}
+/// let child = behavior::CreationSequence::new()
 ///     .issue()
 ///     .expect("the first child creation ID exists");
-/// let plan = ShutdownPlan::new([vec![child]]).unwrap();
-/// require_behavior(ShutdownCoordinator::<Plain, Plain, ChildHead>::new(Plain, plan));
+/// let plan = behavior_actors::ShutdownPlan::new([vec![child]]).unwrap();
+/// require_behavior(behavior_actors::ShutdownCoordinator::<Plain, Plain, behavior::ChildHead>::new(Plain, plan));
 /// ```
 pub struct ShutdownCoordinator<B: Behavior, C: Behavior, Occurrence>
 where
