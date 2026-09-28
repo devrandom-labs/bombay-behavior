@@ -107,7 +107,7 @@ type KeyedRoleCell<Role, W, P, Key, Job, WorkerResult> = RoleCell<
     CustomerRoute<BehaviorAddr<W>, Key, Role, Job, WorkerResult>,
 >;
 
-struct Operating<Role, W, P, Key, Job, WorkerResult>
+struct KeyedOperating<Role, W, P, Key, Job, WorkerResult>
 where
     W: Behavior,
     BehaviorAddr<W>: EndpointAddress,
@@ -116,7 +116,7 @@ where
     bindings: BindingTable<Key, Role>,
 }
 
-impl<Role, W, P, Key, Job, WorkerResult> Operating<Role, W, P, Key, Job, WorkerResult>
+impl<Role, W, P, Key, Job, WorkerResult> KeyedOperating<Role, W, P, Key, Job, WorkerResult>
 where
     Role: Eq,
     W: Behavior + BehaviorBase,
@@ -189,7 +189,7 @@ where
     BehaviorAddr<W>: EndpointAddress,
 {
     Constructed(Vec<PreparedWorker<Role, W, P>>),
-    Operating(Operating<Role, W, P, Key, Job, WorkerResult>),
+    Operating(KeyedOperating<Role, W, P, Key, Job, WorkerResult>),
     Retiring {
         workers: Vec<RetiringWorker<Role, W, P>>,
         deadline: super::drain::ShutdownDeadline,
@@ -260,7 +260,7 @@ where
             .collect();
 
         Ok((
-            Self::Operating(Operating {
+            Self::Operating(KeyedOperating {
                 roles,
                 bindings: BindingTable::new(binding_capacity),
             }),
@@ -271,7 +271,6 @@ where
 }
 
 /// Controlled failure while starting or transitioning one keyed pool.
-#[doc(hidden)]
 #[derive(Debug, Error)]
 pub enum KeyedError {
     /// Initialization was invoked after the prepared roster had already advanced.
@@ -447,14 +446,14 @@ where
 {
     fn reject_submission(
         &self,
-        operating: Operating<Role, W, P, Key, Job, WorkerResult>,
+        operating: KeyedOperating<Role, W, P, Key, Job, WorkerResult>,
         submission: SubmissionId,
         key: Key,
         payload: Job,
         customer: CustomerRoute<BehaviorAddr<W>, Key, Role, Job, WorkerResult>,
         reason: KeyedAdmissionRejection,
     ) -> (
-        Operating<Role, W, P, Key, Job, WorkerResult>,
+        KeyedOperating<Role, W, P, Key, Job, WorkerResult>,
         KeyedActions<Role, W, P, Source, Diagnostics, Key, Job, WorkerResult>,
     ) {
         let mut actions: KeyedActions<Role, W, P, Source, Diagnostics, Key, Job, WorkerResult> =
@@ -473,13 +472,13 @@ where
 
     fn accept_submission(
         &mut self,
-        mut operating: Operating<Role, W, P, Key, Job, WorkerResult>,
+        mut operating: KeyedOperating<Role, W, P, Key, Job, WorkerResult>,
         submission: SubmissionId,
         key: Key,
         payload: Job,
         customer: CustomerRoute<BehaviorAddr<W>, Key, Role, Job, WorkerResult>,
     ) -> (
-        Operating<Role, W, P, Key, Job, WorkerResult>,
+        KeyedOperating<Role, W, P, Key, Job, WorkerResult>,
         KeyedActions<Role, W, P, Source, Diagnostics, Key, Job, WorkerResult>,
     ) {
         let (position, proposed) = match operating.bindings.binding(&key) {
@@ -700,7 +699,7 @@ where
 
     fn fill_role(
         &mut self,
-        operating: &mut Operating<Role, W, P, Key, Job, WorkerResult>,
+        operating: &mut KeyedOperating<Role, W, P, Key, Job, WorkerResult>,
         position: usize,
         actions: &mut KeyedActions<Role, W, P, Source, Diagnostics, Key, Job, WorkerResult>,
     ) {
@@ -748,7 +747,7 @@ where
 
     fn authorize_waiting(
         &mut self,
-        operating: &mut Operating<Role, W, P, Key, Job, WorkerResult>,
+        operating: &mut KeyedOperating<Role, W, P, Key, Job, WorkerResult>,
         actions: &mut KeyedActions<Role, W, P, Source, Diagnostics, Key, Job, WorkerResult>,
     ) {
         let occupied = operating
@@ -823,15 +822,15 @@ where
 
     fn accept_creations(
         &mut self,
-        mut operating: Operating<Role, W, P, Key, Job, WorkerResult>,
+        mut operating: KeyedOperating<Role, W, P, Key, Job, WorkerResult>,
         workers: CreationsSettled<BehaviorAddr<W>, StopOnShutdown<W>>,
     ) -> Result<
         (
-            Operating<Role, W, P, Key, Job, WorkerResult>,
+            KeyedOperating<Role, W, P, Key, Job, WorkerResult>,
             KeyedActions<Role, W, P, Source, Diagnostics, Key, Job, WorkerResult>,
         ),
         (
-            Operating<Role, W, P, Key, Job, WorkerResult>,
+            KeyedOperating<Role, W, P, Key, Job, WorkerResult>,
             CreationsSettled<BehaviorAddr<W>, StopOnShutdown<W>>,
         ),
     > {
@@ -923,15 +922,15 @@ where
 
     fn accept_initialization(
         &mut self,
-        mut operating: Operating<Role, W, P, Key, Job, WorkerResult>,
+        mut operating: KeyedOperating<Role, W, P, Key, Job, WorkerResult>,
         input: WorkerInitializationReport<W, P>,
     ) -> Result<
         (
-            Operating<Role, W, P, Key, Job, WorkerResult>,
+            KeyedOperating<Role, W, P, Key, Job, WorkerResult>,
             KeyedActions<Role, W, P, Source, Diagnostics, Key, Job, WorkerResult>,
         ),
         (
-            Operating<Role, W, P, Key, Job, WorkerResult>,
+            KeyedOperating<Role, W, P, Key, Job, WorkerResult>,
             WorkerInitializationReport<W, P>,
         ),
     > {
@@ -973,15 +972,15 @@ where
 
     fn accept_activation(
         &mut self,
-        mut operating: Operating<Role, W, P, Key, Job, WorkerResult>,
+        mut operating: KeyedOperating<Role, W, P, Key, Job, WorkerResult>,
         input: WorkerActivation<W, P>,
     ) -> Result<
         (
-            Operating<Role, W, P, Key, Job, WorkerResult>,
+            KeyedOperating<Role, W, P, Key, Job, WorkerResult>,
             KeyedActions<Role, W, P, Source, Diagnostics, Key, Job, WorkerResult>,
         ),
         (
-            Operating<Role, W, P, Key, Job, WorkerResult>,
+            KeyedOperating<Role, W, P, Key, Job, WorkerResult>,
             WorkerActivation<W, P>,
         ),
     > {
@@ -1044,11 +1043,11 @@ where
 
     fn reject_binding(
         &self,
-        operating: Operating<Role, W, P, Key, Job, WorkerResult>,
+        operating: KeyedOperating<Role, W, P, Key, Job, WorkerResult>,
         command: BindingCommand<BehaviorAddr<W>, Key, Role>,
         reason: BindingRejection,
     ) -> (
-        Operating<Role, W, P, Key, Job, WorkerResult>,
+        KeyedOperating<Role, W, P, Key, Job, WorkerResult>,
         KeyedActions<Role, W, P, Source, Diagnostics, Key, Job, WorkerResult>,
     ) {
         let target = command.reply().clone();
@@ -1060,10 +1059,10 @@ where
 
     fn accept_binding(
         &self,
-        mut operating: Operating<Role, W, P, Key, Job, WorkerResult>,
+        mut operating: KeyedOperating<Role, W, P, Key, Job, WorkerResult>,
         command: BindingCommand<BehaviorAddr<W>, Key, Role>,
     ) -> (
-        Operating<Role, W, P, Key, Job, WorkerResult>,
+        KeyedOperating<Role, W, P, Key, Job, WorkerResult>,
         KeyedActions<Role, W, P, Source, Diagnostics, Key, Job, WorkerResult>,
     ) {
         let actual = operating.binding_expectation(command.key());

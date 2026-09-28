@@ -112,6 +112,7 @@ fn keyed_construction_and_commands_need_only_domain_types() {
         DiagnosticDisposition::terminate(),
     )
     .unwrap_or_else(|_| panic!("the worker declaration constructs a keyed pool"));
+    super::keyed_pool_requires_its_customer_and_management_hosts(&pool);
     let initialized = pool
         .initialize()
         .unwrap_or_else(|error| panic!("keyed initialization failed: {error}"));

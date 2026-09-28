@@ -25,6 +25,7 @@ case "$package_mode" in
       --locked \
       --allow-dirty \
       --no-verify
+    python3 scripts/verify_published_packages.py
     ;;
   list)
     ;;

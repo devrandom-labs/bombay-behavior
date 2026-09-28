@@ -1,4 +1,5 @@
 use core_behavior::{Actions, BehaviorActed, Delivery, MailAddr, MessageProtocol, Recipient};
+use actors::atomic::Assignment;
 
 struct Direct;
 
@@ -18,4 +19,13 @@ impl Direct {
 
 fn facade_is_also_present() -> bombay::behavior::MailAddr {
     bombay::behavior::MailAddr(0)
+}
+
+struct DirectWorker;
+
+#[actors::atomic::pool_worker(addr = MailAddr, result = u16)]
+impl DirectWorker {
+    fn transition(&mut self, assignment: Assignment<u8>) -> WorkerActed<Self> {
+        Ok(Actions::cont().with_send(assignment.complete(7)))
+    }
 }

@@ -729,6 +729,7 @@ impl<P> ReportShutdownPlan<P> {
 
 impl<P> behavior::InterpreterRequest for ReportShutdownPlan<P> {
     type ReturnToEmitter = behavior::NoReturnToEmitter;
+    type LogicalProtocols = behavior::NoBirthProtocols;
 }
 
 impl<P: Send> behavior::ActionItem for ReportShutdownPlan<P> {

@@ -434,6 +434,7 @@ pub trait LogicalDeliveryProtocols: SendEffects {
 /// struct Request;
 /// impl InterpreterRequest for Request {
 ///     type ReturnToEmitter = ReturnsToEmitter<u8, Here>;
+///     type LogicalProtocols = behavior::NoBirthProtocols;
 /// }
 /// fn lawful<E, F: SendsFor<E>>() {}
 /// type Inner = EventLayer<u8, User<MailAddr, ()>>;
@@ -785,9 +786,12 @@ impl<Event, Input, Path> ReturnToEmitterFor<Event> for ReturnsToEmitter<Input, P
 /// Declares only the continuation returning to the actor that emitted this
 /// interpreter request. Destinations owned by a child, parent, ancestor, or
 /// established actor are separate capabilities and are not reindexed when the
-/// emitter is wrapped.
+/// emitter is wrapped. `LogicalProtocols` lists possible logical destinations
+/// of the request in declaration order, independently of any value's selected
+/// variant; exact and creator-local destinations contribute none.
 pub trait InterpreterRequest {
     type ReturnToEmitter;
+    type LogicalProtocols: BirthProtocolProduct;
 }
 
 /// Transfer one owned report to the emitter's established parent.
@@ -820,6 +824,7 @@ impl<R> ReportToParent<R> {
 
 impl<R> InterpreterRequest for ReportToParent<R> {
     type ReturnToEmitter = NoReturnToEmitter;
+    type LogicalProtocols = NoBirthProtocols;
 }
 
 impl<R> ActionItem for ReportToParent<R>
@@ -1202,10 +1207,11 @@ impl<T> SendInput<T, Own> for Vec<T> {
 
 /// Requests interpreted by the runtime local to the emitting actor.
 ///
-/// Unlike [`crate::Delivery`], a interpreter request has no actor address. Its
-/// recipient is definitionally the interpreter of the actor whose transition
-/// emitted it. This distinct send lane lets interpreters route ordinary
-/// deliveries and interpreter requests with disjoint static implementations.
+/// The request itself is interpreted by the runtime local to the emitting
+/// actor. A request may carry a separate typed logical or exact destination;
+/// its [`InterpreterRequest::LogicalProtocols`] reports any possible logical
+/// destination. This lane keeps ordinary deliveries and interpreter operations
+/// statically distinct.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InterpreterRequests<M> {
     requests: Vec<M>,
@@ -1276,8 +1282,8 @@ impl<M> SendEffects for InterpreterRequests<M> {
     }
 }
 
-impl<M> LogicalDeliveryProtocols for InterpreterRequests<M> {
-    type Protocols = NoBirthProtocols;
+impl<M: InterpreterRequest> LogicalDeliveryProtocols for InterpreterRequests<M> {
+    type Protocols = M::LogicalProtocols;
 }
 
 impl<Event, M> SendsFor<Event> for InterpreterRequests<M>
@@ -1380,6 +1386,7 @@ mod tests {
 
     impl InterpreterRequest for Returning {
         type ReturnToEmitter = ReturnsToEmitter<u8, crate::Here>;
+        type LogicalProtocols = NoBirthProtocols;
     }
 
     fn lawful<Event, Effects: SendsFor<Event>>() {}

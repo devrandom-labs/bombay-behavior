@@ -152,19 +152,29 @@ before ordinary mailbox ingress and compose with wrapper initialization in one
 defined order:
 
 ```text
-fresh installation commit
-  -> pure initialization fold
+fresh address reservation, no live endpoint
+  -> pure definition initialization fold
+  -> endpoint installation and creator-local binding commit
   -> total initialization-action interpretation
   -> initialization settlement and residual custody
-  -> activation authorization and attempt
-  -> exact readiness or failure fact
-  -> ordinary ingress
+  -> activation authorization and attempt, where required
+  -> exact readiness or failure fact, where required
+  -> ordinary ingress only after a continuing, successfully settled initialization
 ```
 
 Initialization may stop with final actions. Accepted initialization effects are
 settled before ordinary ingress, even when the resulting actor is stopping.
 Activation capacity is actor-side admission before an action is emitted; it is
 not relabelled as an interpreter rejection afterward.
+
+Reservation rejection retains the complete staged creation without running
+the fold. Pure initialization rejection retains the current child and exact
+error. Host rejection after the fold retains the current child and
+uninterpreted initialization `Actions`. After installation commits, an effect
+rejection or interpreter fault belongs to the installed child's drain and
+cannot be recast as a creation rejection. A stopped initialization settles
+its final actions without permitting ordinary ingress. Fresh allocation is
+the actor-model requirement; this packaging and ordering are Bombay policy.
 
 ### Exact Bombay changes for worker initialization and activation
 
@@ -541,7 +551,8 @@ replacement. Applying only a subset leaves affine values unowned.
 4. Child hosting consumes `RoutedCreation` and returns `ChildCreationOutcome<C,
    Occurrence>` as its accepted receipt. Successful commit returns `Created`.
    A pure initialization error returns `InitializationRejected` with the routed
-   child and exact error. Allocation or host rejection after initialization
+   child and exact error. Allocation rejection occurs before initialization
+   and returns the complete routed creation. Host rejection after initialization
    returns `HostRejected` with the routed child and still-uninterpreted
    initialization `Actions`. Post-commit initialization-action failure is not a
    creation rejection; it enters the created child's drain.

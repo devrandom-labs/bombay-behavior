@@ -122,7 +122,6 @@ where
 impl<A, K, D, Route> behavior::Protocol for Resolver<A, K, D, Route>
 where
     A: Address,
-    K: Clone + Eq,
     D: Protocol<Addr = A>,
     Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = Resolution<K, D>>>,
 {

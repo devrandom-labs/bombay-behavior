@@ -147,7 +147,6 @@ pub enum FailureReaction {
 }
 
 /// Inferred construction value that owns every required supervisor input.
-#[doc(hidden)]
 pub struct FixedBuilder<Factory, Role, Source, DiagnosticRoute, LifecycleRoute> {
     factory: Factory,
     roles: OrderedRoles<Role>,

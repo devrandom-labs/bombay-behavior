@@ -10,6 +10,7 @@ use behavior::{
 };
 use thiserror::Error;
 
+use super::DeliveryOutcomes;
 use crate::DeliveryRoute;
 
 /// Exhaustive behavior-owned policy when a [`Buffer`] is full.
@@ -116,112 +117,6 @@ pub enum BufferMessage<T, TargetRoute, ReplyRoute> {
     },
 }
 
-/// Named delivery products emitted by [`Buffer`].
-pub struct BufferSends<Deliveries, OutcomeSends> {
-    /// Released values in FIFO order.
-    pub deliveries: Deliveries,
-    /// Acceptance, rejection, eviction, release, and empty facts.
-    pub outcomes: OutcomeSends,
-}
-
-impl<Deliveries: SendEffects, OutcomeSends: SendEffects> SendEffects
-    for BufferSends<Deliveries, OutcomeSends>
-{
-    fn empty() -> Self {
-        Self {
-            deliveries: Deliveries::empty(),
-            outcomes: OutcomeSends::empty(),
-        }
-    }
-
-    fn append(&mut self, other: Self) {
-        self.deliveries.append(other.deliveries);
-        self.outcomes.append(other.outcomes);
-    }
-}
-
-impl<Event, Deliveries, OutcomeSends> behavior::SendsFor<Event>
-    for BufferSends<Deliveries, OutcomeSends>
-where
-    Deliveries: SendEffects + behavior::SendsFor<Event>,
-    OutcomeSends: SendEffects + behavior::SendsFor<Event>,
-{
-}
-
-impl<Deliveries, OutcomeSends> behavior::ClassifySettlement
-    for BufferSends<Deliveries, OutcomeSends>
-where
-    Deliveries: behavior::ClassifySettlement,
-    OutcomeSends: behavior::ClassifySettlement,
-{
-    fn settlement_status(&self) -> behavior::SettlementStatus {
-        self.deliveries
-            .settlement_status()
-            .combine(self.outcomes.settlement_status())
-    }
-}
-
-impl<Deliveries, OutcomeSends> behavior::SendSettlements for BufferSends<Deliveries, OutcomeSends>
-where
-    Deliveries: behavior::SendSettlements,
-    OutcomeSends: behavior::SendSettlements,
-{
-    type Settlements = BufferSends<Deliveries::Settlements, OutcomeSends::Settlements>;
-
-    fn unattempted(self) -> Self::Settlements {
-        BufferSends {
-            deliveries: self.deliveries.unattempted(),
-            outcomes: self.outcomes.unattempted(),
-        }
-    }
-}
-
-impl<Host, RootEvent, Deliveries, OutcomeSends> behavior::SourceSettlementCustody<Host, RootEvent>
-    for BufferSends<Deliveries, OutcomeSends>
-where
-    Host: Send,
-    Deliveries: behavior::SourceSettlementCustody<Host, RootEvent> + Send,
-    OutcomeSends: behavior::SourceSettlementCustody<Host, RootEvent> + Send,
-{
-    fn offer_next_to_source(
-        self,
-        host: &mut Host,
-    ) -> impl core::future::Future<Output = behavior::SourceCustody<Self>> + Send {
-        async move {
-            (self.deliveries, self.outcomes)
-                .offer_next_to_source(host)
-                .await
-                .map(|(deliveries, outcomes)| BufferSends {
-                    deliveries,
-                    outcomes,
-                })
-        }
-    }
-}
-
-impl<I, RootEvent, Path, Deliveries, OutcomeSends> behavior::InterpretSends<I, RootEvent, Path>
-    for BufferSends<Deliveries, OutcomeSends>
-where
-    I: Send,
-    Deliveries: SendEffects + behavior::InterpretSends<I, RootEvent, Path>,
-    OutcomeSends: SendEffects + behavior::InterpretSends<I, RootEvent, Path>,
-{
-    fn interpret(
-        self,
-        interpreter: &mut I,
-    ) -> impl core::future::Future<Output = behavior::Interpretation<Self::Settlements>> + Send
-    {
-        async move {
-            behavior::settle_in_order(self.deliveries, self.outcomes, interpreter)
-                .await
-                .map(|(deliveries, outcomes)| BufferSends {
-                    deliveries,
-                    outcomes,
-                })
-        }
-    }
-}
-
 /// Invalid buffer definition.
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
 pub enum BufferConfigError {
@@ -308,8 +203,8 @@ where
     fn actions(
         deliveries: TargetRoute::Sends,
         outcomes: ReplyRoute::Sends,
-    ) -> Actions<A, Never, BufferSends<TargetRoute::Sends, ReplyRoute::Sends>, NoBirths> {
-        Actions::send(BufferSends {
+    ) -> Actions<A, Never, DeliveryOutcomes<TargetRoute::Sends, ReplyRoute::Sends>, NoBirths> {
+        Actions::send(DeliveryOutcomes {
             deliveries,
             outcomes,
         })
@@ -355,7 +250,7 @@ where
 {
     type Protocol = Self;
     type Event = User<A, behavior::BehaviorMessage<Self>>;
-    type Sends = BufferSends<TargetRoute::Sends, ReplyRoute::Sends>;
+    type Sends = DeliveryOutcomes<TargetRoute::Sends, ReplyRoute::Sends>;
     type Ph = Never;
     type Error = Never;
     type Birth = NoBirths;
@@ -450,6 +345,18 @@ mod tests {
             .initialize()
             .unwrap()
             .behavior
+    }
+
+    #[test]
+    fn buffer_uses_the_shared_delivery_outcome_product() {
+        type Target = Recipient<MessageProtocol<MailAddr, u8>>;
+        type Reply = Recipient<MessageProtocol<MailAddr, BufferOutcome<u8>>>;
+        type Expected = crate::DeliveryOutcomes<
+            <Target as DeliveryRoute>::Sends,
+            <Reply as DeliveryRoute>::Sends,
+        >;
+        fn exact<B: Behavior<Sends = Expected>>() {}
+        exact::<Buffer<MailAddr, u8, Target, Reply>>();
     }
 
     #[test]

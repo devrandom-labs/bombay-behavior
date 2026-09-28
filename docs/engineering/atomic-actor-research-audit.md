@@ -1,5 +1,9 @@
 # DevX research cross-audit for atomic supervisors and pools (engineering record)
 
+Historical evidence snapshot: this record was last committed at `1f20cc4`.
+Its verdicts describe that revision; the [current repository quality audit](repository-quality-audit.md)
+tracks later verification and unresolved integration work.
+
 This audit was performed after the feature catalogue, solution, DevX target,
 minimal core decision, and type equations were written. The research corpus is
 evidence and a dead-end register; it is not an architecture to copy.

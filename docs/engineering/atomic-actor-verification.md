@@ -1,5 +1,10 @@
 # Atomic actor verification contract (engineering record)
 
+The campaign evidence in this record was last committed at `1f20cc4`.
+Its `feature-complete` verdicts describe local gates at that revision. The
+[current repository quality audit](repository-quality-audit.md) tracks later
+verification and downstream integration separately.
+
 Status: normative verification owner. No family document duplicates this
 matrix; each links here and adds only family-specific law references.
 

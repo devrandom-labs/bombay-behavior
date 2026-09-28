@@ -159,11 +159,14 @@ pub enum TerminalPropagationState {
 }
 
 /// Exact rejection from terminal propagation.
+#[derive(thiserror::Error)]
 pub enum TerminationPropagationError<E, Report> {
     /// The wrapped behavior rejected its own event.
-    Inner(E),
+    #[error("wrapped behavior rejected its event")]
+    Inner(#[source] E),
     /// A returned terminal report does not match the configured source or the
     /// still-observing phase.
+    #[error("terminal report does not match the active propagation source")]
     UnexpectedReport {
         state: TerminalPropagationState,
         report: Report,
@@ -181,24 +184,6 @@ impl<E: core::fmt::Debug, Report> core::fmt::Debug for TerminationPropagationErr
                 .finish(),
         }
     }
-}
-
-impl<E, Report> core::fmt::Display for TerminationPropagationError<E, Report> {
-    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self {
-            Self::Inner(_) => formatter.write_str("wrapped behavior rejected its event"),
-            Self::UnexpectedReport { .. } => {
-                formatter.write_str("terminal report does not match the active propagation source")
-            }
-        }
-    }
-}
-
-impl<E, Report> std::error::Error for TerminationPropagationError<E, Report>
-where
-    E: std::error::Error + 'static,
-    Report: 'static,
-{
 }
 
 /// Named effects owned by [`PropagateTermination`].

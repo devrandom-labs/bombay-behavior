@@ -12,6 +12,12 @@ transition.
 The crate contains no dynamic protocol registry, type erasure, executor, or
 transport.
 
+From the repository root, run the current `#[behavior]` example:
+
+```sh
+cargo run -p bombay-behavior --example behavior
+```
+
 - [API documentation](https://docs.rs/bombay-behavior)
 - [Guide and semantic contracts](https://devrandom-labs.github.io/bombay-behavior/guide/)
 - [Source repository](https://github.com/devrandom-labs/bombay-behavior)

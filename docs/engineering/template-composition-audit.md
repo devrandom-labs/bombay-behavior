@@ -1,5 +1,9 @@
 # Actor-template composition audit (engineering record)
 
+Historical evidence snapshot: this record was last committed at `1f20cc4`.
+Its verdicts describe that revision; the [current repository quality audit](repository-quality-audit.md)
+tracks later verification and unresolved work.
+
 ## Authoritative redesign ledger
 
 This section supersedes every historical "fixed" or provisional design claim

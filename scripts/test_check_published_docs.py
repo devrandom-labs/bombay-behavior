@@ -1,3 +1,4 @@
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -6,6 +7,19 @@ from scripts.check_published_docs import validate
 
 
 class PublishedDocumentationValidation(unittest.TestCase):
+    def test_repository_and_crate_readme_links_resolve_locally(self) -> None:
+        root = Path(__file__).resolve().parent.parent
+        readmes = [root / "README.md", *sorted((root / "crates").glob("*/README.md"))]
+        local_targets = 0
+        for path in readmes:
+            readme = path.read_text(encoding="utf-8")
+            for target in re.findall(r"\]\(([^)#]+)", readme):
+                if target.startswith(("https://", "http://", "mailto:")):
+                    continue
+                local_targets += 1
+                self.assertTrue((path.parent / target).is_file(), f"{path}: {target}")
+        self.assertGreater(local_targets, 0)
+
     def test_accepts_existing_local_file_and_fragment(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             site = Path(directory)

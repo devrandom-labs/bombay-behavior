@@ -1,6 +1,6 @@
 use behavior::{
-    Actions, ActiveTurn, Address, Behavior, BehaviorActed, BehaviorAddr, EndpointAddress, Never,
-    NoBirths, Protocol, User,
+    Actions, ActiveTurn, Address, Behavior, BehaviorActed, BehaviorAddr, BirthProtocol, Delivery,
+    EndpointAddress, LogicalHostRequirements, Never, NoBirthProtocols, NoBirths, Protocol, User,
 };
 use behavior_actors::atomic::{ActivationPlan, ImmediateActivation, StableProxy};
 
@@ -39,6 +39,13 @@ impl EndpointAddress for RuntimeAddress {
 
 struct AccountWorker;
 
+struct HostedNotice;
+
+impl Protocol for HostedNotice {
+    type Addr = RuntimeAddress;
+    type Msg = ();
+}
+
 impl Protocol for AccountWorker {
     type Addr = RuntimeAddress;
     type Msg = u8;
@@ -47,7 +54,7 @@ impl Protocol for AccountWorker {
 impl Behavior for AccountWorker {
     type Protocol = Self;
     type Event = User<RuntimeAddress, u8>;
-    type Sends = Vec<Never>;
+    type Sends = Vec<Delivery<HostedNotice>>;
     type Ph = Never;
     type Error = Never;
     type Birth = NoBirths;
@@ -60,4 +67,15 @@ impl Behavior for AccountWorker {
 #[test]
 fn a_proxy_owner_needs_only_the_proxy_behavior_contract() {
     accepts_proxy_child::<AccountWorker, ImmediateActivation>();
+}
+
+#[test]
+fn proxy_hosts_the_worker_transitive_logical_destination_once() {
+    trait Same<T> {}
+    impl<T> Same<T> for T {}
+    fn exact<T: Same<BirthProtocol<HostedNotice, NoBirthProtocols>>>() {}
+
+    exact::<
+        <StableProxy<AccountWorker, ImmediateActivation> as LogicalHostRequirements>::LogicalHosts,
+    >();
 }

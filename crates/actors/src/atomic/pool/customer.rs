@@ -82,6 +82,7 @@ where
     P::Addr: EndpointAddress,
 {
     type ReturnToEmitter = NoReturnToEmitter;
+    type LogicalProtocols = behavior::BirthProtocol<P, behavior::NoBirthProtocols>;
 }
 
 impl<P> ActionItem for CustomerDelivery<P>

@@ -186,8 +186,6 @@ where
 impl<A, K, V, Route> behavior::Protocol for Cache<A, K, V, Route>
 where
     A: Address,
-    K: Clone + Eq,
-    V: Clone,
     Route: DeliveryRoute,
     Route::Protocol: Protocol<Addr = A, Msg = CacheResult<K, V>>,
 {

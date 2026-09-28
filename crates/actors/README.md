@@ -12,6 +12,12 @@ This is the component crate used by the broader Bombay application facade.
 Direct use is intended for interpreter implementations, component tests, and
 advanced framework extension.
 
+From the repository root, run the compiled stable-proxy owner example:
+
+```sh
+cargo test -p bombay-behavior-actors --test stable_proxy_owner_composition
+```
+
 - [API documentation](https://docs.rs/bombay-behavior-actors)
 - [Actor catalogue and laws](https://devrandom-labs.github.io/bombay-behavior/guide/stable-proxy.html)
 - [Source repository](https://github.com/devrandom-labs/bombay-behavior)

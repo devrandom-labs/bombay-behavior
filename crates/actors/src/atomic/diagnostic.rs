@@ -53,6 +53,7 @@ impl DiagnosticDisposition<Infallible> {
 #[doc(hidden)]
 pub trait DiagnosticRoute<Diagnostic>: sealed::DiagnosticRoute<Diagnostic> + Send + Sized {
     type Rejection: Send;
+    type LogicalProtocols: behavior::BirthProtocolProduct;
 }
 
 impl<P> sealed::DiagnosticRoute<P::Msg> for Recipient<P>
@@ -70,6 +71,7 @@ where
     P::Msg: Send,
 {
     type Rejection = LogicalDeliveryReason;
+    type LogicalProtocols = behavior::BirthProtocol<P, behavior::NoBirthProtocols>;
 }
 
 impl<P> sealed::DiagnosticRoute<P::Msg> for EstablishedRecipient<P>
@@ -89,6 +91,7 @@ where
     P::Msg: Send,
 {
     type Rejection = ExactDeliveryReason;
+    type LogicalProtocols = behavior::NoBirthProtocols;
 }
 
 impl<Diagnostic> sealed::DiagnosticRoute<Diagnostic> for Infallible where Diagnostic: Send {}
@@ -98,6 +101,7 @@ where
     Diagnostic: Send,
 {
     type Rejection = Never;
+    type LogicalProtocols = behavior::NoBirthProtocols;
 }
 
 /// One complete diagnostic selected for delivery or terminal custody.
@@ -144,6 +148,7 @@ where
     Route: DiagnosticRoute<Diagnostic>,
 {
     type ReturnToEmitter = NoReturnToEmitter;
+    type LogicalProtocols = Route::LogicalProtocols;
 }
 
 impl<Route, Diagnostic> ActionItem for DiagnosticAction<Route, Diagnostic>

@@ -39,6 +39,28 @@ use behavior_actors::{
 const ONE_WORKER: NonZeroUsize = NonZeroUsize::new(1).expect("one is positive");
 const THREE_WORKERS: NonZeroUsize = NonZeroUsize::new(3).expect("three is positive");
 
+#[test]
+fn fixed_supervisor_projects_status_and_capability_hosts_in_order() {
+    type Supervisor =
+        FixedSupervisor<SearchRole, SearchWorker, SearchActivation, Never, Infallible, Infallible>;
+    type Status =
+        MessageProtocol<RuntimeAddr, atomic::FixedSnapshot<<SearchWorker as Behavior>::Protocol>>;
+    type Capability = MessageProtocol<
+        RuntimeAddr,
+        CapabilityResult<SearchRole, <SearchWorker as Behavior>::Protocol>,
+    >;
+    type Expected = behavior::BirthProtocol<
+        Status,
+        behavior::BirthProtocol<Capability, behavior::NoBirthProtocols>,
+    >;
+
+    trait Same<T> {}
+    impl<T> Same<T> for T {}
+    fn exact<T: Same<Expected>>() {}
+
+    exact::<<Supervisor as behavior::LogicalHostRequirements>::LogicalHosts>();
+}
+
 fn fixed_runtime_sources_are_distinct<Event>()
 where
     Event: EventIngress<Here, ProxyInputResult<Here, SearchWorker, SearchActivation>>,

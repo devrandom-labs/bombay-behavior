@@ -31,6 +31,7 @@
 # Engineering records
 
 - [Record index](engineering/README.md)
+  - [Repository quality audit and checklist](engineering/repository-quality-audit.md)
   - [Atomic actor essence](engineering/atomic-actor-essence.md)
   - [Atomic actor architecture](engineering/atomic-actor-architecture.md)
   - [Atomic actor developer experience](engineering/atomic-actor-devx.md)

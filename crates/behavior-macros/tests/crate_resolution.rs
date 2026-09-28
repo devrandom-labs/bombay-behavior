@@ -8,7 +8,7 @@ fn fixture_manifest() -> PathBuf {
         .join("Cargo.toml")
 }
 
-fn cargo_check(packages: &[&str]) -> std::process::Output {
+fn cargo_check(packages: &[&str], target: &[&str]) -> std::process::Output {
     let mut command = Command::new(env!("CARGO"));
     command
         .arg("check")
@@ -19,12 +19,13 @@ fn cargo_check(packages: &[&str]) -> std::process::Output {
     for package in packages {
         command.arg("--package").arg(package);
     }
+    command.args(target);
     command.output().expect("fixture cargo check must start")
 }
 
 #[test]
 fn direct_and_facade_dependency_paths_resolve_with_renames() {
-    let output = cargo_check(&["facade-only", "renamed-facade", "direct-and-facade"]);
+    let output = cargo_check(&["facade-only", "renamed-facade", "direct-and-facade"], &[]);
     assert!(
         output.status.success(),
         "fixture compilation failed:\n{}",
@@ -33,8 +34,18 @@ fn direct_and_facade_dependency_paths_resolve_with_renames() {
 }
 
 #[test]
+fn ordinary_direct_dependencies_resolve_their_library_targets() {
+    let output = cargo_check(&["unrenamed-direct"], &[]);
+    assert!(
+        output.status.success(),
+        "ordinary direct dependency compilation failed:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
 fn facade_package_sibling_targets_resolve_the_library_crate() {
-    let output = cargo_check(&["bombay-rs"]);
+    let output = cargo_check(&["bombay-rs"], &["--example", "sibling_target"]);
     assert!(
         output.status.success(),
         "facade sibling-target compilation failed:\n{}",
@@ -44,7 +55,7 @@ fn facade_package_sibling_targets_resolve_the_library_crate() {
 
 #[test]
 fn missing_behavior_and_facade_dependencies_report_the_contract_error() {
-    let output = cargo_check(&["missing-dependency"]);
+    let output = cargo_check(&["missing-dependency"], &[]);
     assert!(!output.status.success());
     assert!(
         String::from_utf8_lossy(&output.stderr)

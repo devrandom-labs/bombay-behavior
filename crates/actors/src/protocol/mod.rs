@@ -109,6 +109,7 @@ impl From<(TimerId, TimerGeneration, Instant)> for ScheduleAt {
 
 impl behavior::InterpreterRequest for ScheduleAt {
     type ReturnToEmitter = behavior::ReturnsToEmitter<TimerElapsed, behavior::Here>;
+    type LogicalProtocols = behavior::NoBirthProtocols;
 }
 
 impl ActionItem for ScheduleAt {
@@ -152,6 +153,7 @@ impl From<(TimerId, TimerGeneration, Duration)> for ScheduleAfter {
 
 impl behavior::InterpreterRequest for ScheduleAfter {
     type ReturnToEmitter = behavior::ReturnsToEmitter<TimerElapsed, behavior::Here>;
+    type LogicalProtocols = behavior::NoBirthProtocols;
 }
 
 impl ActionItem for ScheduleAfter {
@@ -223,6 +225,7 @@ pub enum PeerObservationRejection {
 
 impl<A: Address> behavior::InterpreterRequest for ObservePeer<A> {
     type ReturnToEmitter = behavior::ReturnsToEmitter<PeerStopped<A>, behavior::Here>;
+    type LogicalProtocols = behavior::NoBirthProtocols;
 }
 
 /// Acceptance establishes the relationship and leaves unit; its later result
@@ -374,6 +377,7 @@ impl<P: Protocol, Occurrence> ObserveChild<P, Occurrence> {
 
 impl<P: Protocol, Occurrence> behavior::InterpreterRequest for ObserveChild<P, Occurrence> {
     type ReturnToEmitter = behavior::ReturnsToEmitter<ChildStopped<P::Addr>, behavior::Here>;
+    type LogicalProtocols = behavior::NoBirthProtocols;
 }
 
 impl<P, Occurrence> behavior::ActionItem for ObserveChild<P, Occurrence>
@@ -519,6 +523,7 @@ impl<P: Protocol, Occurrence> ObserveCreation<P, Occurrence> {
 
 impl<P: Protocol, Occurrence> behavior::InterpreterRequest for ObserveCreation<P, Occurrence> {
     type ReturnToEmitter = behavior::ReturnsToEmitter<CreationResolved<P::Addr>, behavior::Here>;
+    type LogicalProtocols = behavior::NoBirthProtocols;
 }
 
 impl<P, Occurrence> behavior::ActionItem for ObserveCreation<P, Occurrence>
@@ -641,6 +646,7 @@ impl<C: behavior::Behavior, Occurrence> behavior::InterpreterRequest
     for ShutdownChild<C, Occurrence>
 {
     type ReturnToEmitter = behavior::ReturnsToEmitter<ChildShutdownRejected, behavior::Here>;
+    type LogicalProtocols = behavior::NoBirthProtocols;
 }
 
 impl<C, Occurrence> behavior::ActionItem for ShutdownChild<C, Occurrence>

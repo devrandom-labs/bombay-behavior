@@ -63,7 +63,7 @@ termination, initialization effects, and Bombay interpretation ordering.
 | `BehaviorActed<B>` | Type alias | Exact controlled result type of behavior `B`: `Acted<BehaviorAddr<B>, B::Ph, B::Sends, B::Birth, B::Error>`. |
 | `BehaviorAddr<B>` | Type alias | Projects the address namespace from `B::Protocol`. |
 | `BehaviorMessage<B>` | Type alias | Projects the public message type from `B::Protocol`. |
-| `InitializationTurn` | Non-constructible struct | Lifecycle-issued authority to invoke `Behavior::init` exactly at the initialization boundary. |
+| `InitializationTurn` | Non-constructible struct | Prevents direct caller fabrication; trusted public composition ports can issue it repeatedly, while the consuming `Activate` path enforces one initialization for its owned definition. |
 | `ActiveTurn` | Non-constructible struct | Lifecycle- or composition-issued authority to invoke one active transition. |
 | `BehaviorLayer<B>` | Trait | Statically constructs one fully concrete behavior from another; closures implement it without trait objects or effects. |
 | `BehaviorBase` | Trait | Projects a composed wrapper to its authored base behavior without exposing wrapper depth. |
@@ -162,8 +162,8 @@ depth.
 | `Own` | Uninhabited marker enum | Selects a named send product's own semantic lane. |
 | `NoSends` | Unit struct | Named empty send product. |
 | `SendLayer<Owned, Inner>` | Struct | Named product of wrapper-owned and inner send effects. Interpretation preserves inner-to-outer authored order. |
-| `LogicalDeliveryProtocols` | Trait | Projects intentional logical `Delivery<P>` destinations from a send product while preserving order and duplicates. |
-| `InterpreterRequest` | Trait | Declares whether a runtime-local request later returns a typed event to its emitter. |
+| `LogicalDeliveryProtocols` | Trait | Projects possible logical recipients from a send product while preserving order and duplicates. |
+| `InterpreterRequest` | Trait | Declares a request's emitter continuation and its possible logical recipient protocols. |
 | `InterpreterRequests<M>` | Struct | Ordered send lane of runtime-local requests with no actor address. |
 | `NoReturnToEmitter` | Uninhabited enum | Declares that an interpreter request produces no later local event. |
 | `ReturnsToEmitter<Input, Path>` | Zero-state struct | Declares a later local event of `Input` at a compile-time event path. |

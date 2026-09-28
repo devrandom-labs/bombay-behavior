@@ -40,8 +40,10 @@ across its asynchronous boundary.
 
 For one successful `Actions` value, the adapter interprets:
 
-1. creations in vector order;
-2. each creation's initialization effects before committing that child;
+1. creations in vector order, reserving a fresh address, running each child's
+   pure initialization fold, then committing its endpoint and creator-local
+   binding when those steps succeed;
+2. each committed child's initialization effects before its ordinary ingress;
 3. every named sends lane in its structural `InterpretSends` order; and
 4. the next-behavior or termination verdict.
 

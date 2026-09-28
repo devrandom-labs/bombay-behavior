@@ -11,10 +11,7 @@ use behavior_actors::{
     Topic, TopicError, TopicMessage,
 };
 
-use behavior_core::{
-    Actions, Behavior, BehaviorActed, MailAddr, MessageProtocol, Never, NoBirths, Recipient, Step,
-    User,
-};
+use behavior_core::{MailAddr, MessageProtocol, Recipient, Step};
 use proptest::collection::vec;
 use proptest::prelude::*;
 
@@ -24,21 +21,6 @@ macro_rules! protocol {
         impl behavior_core::Protocol for $name {
             type Addr = MailAddr;
             type Msg = $message;
-        }
-        impl Behavior for $name {
-            type Protocol = Self;
-            type Event = User<MailAddr, $message>;
-            type Sends = Vec<Never>;
-            type Ph = Never;
-            type Error = Never;
-            type Birth = NoBirths;
-            fn transition(
-                &mut self,
-                _: behavior_core::ActiveTurn,
-                _: Self::Event,
-            ) -> BehaviorActed<Self> {
-                Ok(Actions::cont())
-            }
         }
     };
 }
@@ -66,7 +48,11 @@ proptest! {
     fn configuration_is_a_monotonic_atomic_register(
         proposals in vec((0_u8..12, any::<u8>()), 0..160),
     ) {
-        let mut actual = TestConfiguration::new().initialize().unwrap().behavior;
+        let initialized = TestConfiguration::new().initialize().unwrap();
+        prop_assert!(initialized.actions.sends.is_empty());
+        prop_assert!(initialized.actions.creates.is_empty());
+        prop_assert!(matches!(initialized.actions.become_, Step::Continue));
+        let mut actual = initialized.behavior;
         let mut expected: Option<(u8, u8)> = None;
 
         for (version, value) in proposals {
@@ -83,7 +69,10 @@ proptest! {
                 },
             );
             if accepted {
-                prop_assert!(result.is_ok());
+                let actions = result.expect("the independent model accepted this configuration");
+                prop_assert!(actions.sends.is_empty());
+                prop_assert!(actions.creates.is_empty());
+                prop_assert!(matches!(actions.become_, Step::Continue));
                 if before.is_none_or(|(current, _)| version > current) {
                     expected = Some((version, value));
                 }
@@ -117,13 +106,20 @@ proptest! {
 
     #[test]
     fn readiness_matches_per_dependency_version_registers(
-        operations in vec((0_u8..5, 0_u8..10, any::<bool>()), 0..160),
+        operations in vec((
+            0_u8..5,
+            0_u8..10,
+            prop_oneof![Just(ReadinessStatus::Ready), Just(ReadinessStatus::NotReady)],
+        ), 0..160),
     ) {
-        let mut actual = TestReadiness::new([0, 1, 2]).initialize().unwrap().behavior;
+        let initialized = TestReadiness::new([0, 1, 2]).initialize().unwrap();
+        prop_assert!(initialized.actions.sends.is_empty());
+        prop_assert!(initialized.actions.creates.is_empty());
+        prop_assert!(matches!(initialized.actions.become_, Step::Continue));
+        let mut actual = initialized.behavior;
         let mut expected = [None; 3];
 
-        for (dependency, version, ready) in operations {
-            let status = if ready { ReadinessStatus::Ready } else { ReadinessStatus::NotReady };
+        for (dependency, version, status) in operations {
             let result = actual.receive(MailAddr(9), ReadinessMessage::Observe {
                 dependency,
                 version: ObservationVersion(u64::from(version)),
@@ -135,15 +131,18 @@ proptest! {
             } else {
                 let slot = &mut expected[usize::from(dependency)];
                 let accepted = slot.is_none_or(|(current, committed)| {
-                    version > current || (version == current && ready == committed)
+                    version > current || (version == current && status == committed)
                 });
                 if accepted {
-                    prop_assert!(result.is_ok());
+                    let actions = result.expect("the independent model accepted this observation");
+                    prop_assert!(actions.sends.is_empty());
+                    prop_assert!(actions.creates.is_empty());
+                    prop_assert!(matches!(actions.become_, Step::Continue));
                     if slot.is_none_or(|(current, _)| version > current) {
-                        *slot = Some((version, ready));
+                        *slot = Some((version, status));
                     }
                 } else if version < slot.unwrap().0 {
-                    let matched = matches!(result, Err(ReadinessError::Stale { dependency: returned, observed, status: returned_status, .. }) if returned == dependency && observed == ObservationVersion(u64::from(version)) && returned_status == status);
+                    let matched = matches!(result, Err(ReadinessError::Stale { dependency: returned, observed, current, status: returned_status }) if returned == dependency && observed == ObservationVersion(u64::from(version)) && current == ObservationVersion(u64::from(slot.unwrap().0)) && returned_status == status);
                     prop_assert!(matched);
                 } else {
                     let matched = matches!(result, Err(ReadinessError::ConflictingVersion { dependency: returned, version: returned_version, status: returned_status }) if returned == dependency && returned_version == ObservationVersion(u64::from(version)) && returned_status == status);
@@ -151,11 +150,12 @@ proptest! {
                 }
             }
 
+            prop_assert_eq!(actual.dependencies().len(), expected.len());
             for (index, state) in actual.dependencies().iter().enumerate() {
-                let modeled = expected[index].map_or(ReadinessEvidence::Unknown, |(version, ready)| {
+                let modeled = expected[index].map_or(ReadinessEvidence::Unknown, |(version, status)| {
                     ReadinessEvidence::Observed {
                         version: ObservationVersion(u64::from(version)),
-                        status: if ready { ReadinessStatus::Ready } else { ReadinessStatus::NotReady },
+                        status,
                     }
                 });
                 prop_assert_eq!(state.dependency, u8::try_from(index).unwrap());
@@ -170,7 +170,11 @@ proptest! {
     ) {
         #[derive(Clone, Copy, PartialEq, Eq)]
         enum Evidence { Present(HealthStatus), Removed }
-        let mut actual = TestHealth::new().initialize().unwrap().behavior;
+        let initialized = TestHealth::new().initialize().unwrap();
+        prop_assert!(initialized.actions.sends.is_empty());
+        prop_assert!(initialized.actions.creates.is_empty());
+        prop_assert!(matches!(initialized.actions.become_, Step::Continue));
+        let mut actual = initialized.behavior;
         let mut expected: Vec<(u8, u8, Evidence)> = Vec::new();
 
         for (component, version, tag) in operations {
@@ -198,7 +202,10 @@ proptest! {
                 version > current || (version == current && evidence == committed)
             });
             if accepted {
-                prop_assert!(result.is_ok());
+                let actions = result.expect("the independent model accepted this health evidence");
+                prop_assert!(actions.sends.is_empty());
+                prop_assert!(actions.creates.is_empty());
+                prop_assert!(matches!(actions.become_, Step::Continue));
                 match existing {
                     Some(index) if version > expected[index].1 => expected[index] = (component, version, evidence),
                     None => expected.push((component, version, evidence)),
@@ -206,7 +213,7 @@ proptest! {
                 }
             } else if version < expected[existing.unwrap()].1 {
                 let submitted = match evidence { Evidence::Present(status) => HealthEvidence::Present(status), Evidence::Removed => HealthEvidence::Removed };
-                let matched = matches!(result, Err(HealthError::Stale { component: returned, observed, evidence: returned_evidence, .. }) if returned == component && observed == ObservationVersion(u64::from(version)) && returned_evidence == submitted);
+                let matched = matches!(result, Err(HealthError::Stale { component: returned, observed, current, evidence: returned_evidence }) if returned == component && observed == ObservationVersion(u64::from(version)) && current == ObservationVersion(u64::from(expected[existing.unwrap()].1)) && returned_evidence == submitted);
                 prop_assert!(matched);
             } else {
                 let submitted = match evidence { Evidence::Present(status) => HealthEvidence::Present(status), Evidence::Removed => HealthEvidence::Removed };
@@ -234,8 +241,12 @@ proptest! {
         capacity in 1_usize..7,
         operations in vec((0_u8..3, 0_u8..10, any::<u8>()), 0..180),
     ) {
-        let mut actual = TestCache::new(CacheConfiguration::new(capacity).unwrap())
-            .initialize().unwrap().behavior;
+        let initialized = TestCache::new(CacheConfiguration::new(capacity).unwrap())
+            .initialize().unwrap();
+        prop_assert!(initialized.actions.sends.is_empty());
+        prop_assert!(initialized.actions.creates.is_empty());
+        prop_assert!(matches!(initialized.actions.become_, Step::Continue));
+        let mut actual = initialized.behavior;
         let mut expected: Vec<(u8, u8)> = Vec::new();
         let reply = Recipient::global(MailAddr(1));
 
@@ -270,7 +281,12 @@ proptest! {
                 _ => CacheMessage::Remove { key, reply_to: reply },
             };
             let actions = actual.receive(MailAddr(9), message).unwrap();
-            prop_assert_eq!(&actions.sends[0].message, &expected_result);
+            prop_assert!(actions.creates.is_empty());
+            prop_assert!(matches!(actions.become_, Step::Continue));
+            let replies = actions.sends.into_iter()
+                .map(|delivery| (delivery.to.address(), delivery.message))
+                .collect::<Vec<_>>();
+            prop_assert_eq!(replies, [(MailAddr(1), expected_result)]);
             let retained = actual.state().entries().iter().map(|entry| (entry.key, entry.value)).collect::<Vec<_>>();
             prop_assert_eq!(retained, expected.clone());
             prop_assert!(actual.state().len() <= capacity);
@@ -281,7 +297,11 @@ proptest! {
     fn registry_matches_atomic_compare_and_remove_bindings(
         operations in vec((0_u8..3, 0_u8..8, 0_u8..8), 0..160),
     ) {
-        let mut actual = TestRegistry::new().initialize().unwrap().behavior;
+        let initialized = TestRegistry::new().initialize().unwrap();
+        prop_assert!(initialized.actions.sends.is_empty());
+        prop_assert!(initialized.actions.creates.is_empty());
+        prop_assert!(matches!(initialized.actions.become_, Step::Continue));
+        let mut actual = initialized.behavior;
         let mut expected: Vec<(u8, Recipient<RegistryDestination>)> = Vec::new();
         let lookup_reply = Recipient::global(MailAddr(99));
 
@@ -299,7 +319,10 @@ proptest! {
                         let matched = matches!(result, Err(RegistryError::AlreadyBound { key: returned, recipient: returned_recipient, current: returned_current }) if returned == key && returned_recipient == recipient && returned_current == current);
                         prop_assert!(matched);
                     } else {
-                        prop_assert!(result.is_ok());
+                        let actions = result.expect("the independent model accepted this binding");
+                        prop_assert!(actions.sends.is_empty());
+                        prop_assert!(actions.creates.is_empty());
+                        prop_assert!(matches!(actions.become_, Step::Continue));
                         expected.push((key, recipient));
                     }
                 }
@@ -316,7 +339,10 @@ proptest! {
                             prop_assert!(matched);
                         }
                         Some(index) => {
-                            prop_assert!(result.is_ok());
+                            let actions = result.expect("the independent model removed this binding");
+                            prop_assert!(actions.sends.is_empty());
+                            prop_assert!(actions.creates.is_empty());
+                            prop_assert!(matches!(actions.become_, Step::Continue));
                             expected.remove(index);
                         }
                     }
@@ -327,7 +353,12 @@ proptest! {
                         RegistryResult::Missing { key },
                         |(_, recipient)| RegistryResult::Found { key, recipient: *recipient },
                     );
-                    prop_assert!(actions.sends[0].message == expected_result);
+                    prop_assert!(actions.creates.is_empty());
+                    prop_assert!(matches!(actions.become_, Step::Continue));
+                    let replies = actions.sends.into_iter()
+                        .map(|delivery| (delivery.to.address(), delivery.message))
+                        .collect::<Vec<_>>();
+                    prop_assert!(replies == [(MailAddr(99), expected_result)]);
                 }
             }
             prop_assert_eq!(actual.bindings(), expected.as_slice());
@@ -338,14 +369,17 @@ proptest! {
     fn topic_is_an_ordered_idempotent_membership_snapshot(
         operations in vec((0_u8..3, 0_u8..8, any::<u8>()), 0..160),
     ) {
-        let mut actual = Topic::<
+        let initialized = Topic::<
             MailAddr,
             u8,
             Recipient<MessageProtocol<MailAddr, u8>>,
         >::new()
         .initialize()
-        .unwrap()
-        .behavior;
+        .unwrap();
+        prop_assert!(initialized.actions.sends.is_empty());
+        prop_assert!(initialized.actions.creates.is_empty());
+        prop_assert!(matches!(initialized.actions.become_, Step::Continue));
+        let mut actual = initialized.behavior;
         let mut expected: Vec<Recipient<MessageProtocol<MailAddr, u8>>> = Vec::new();
 
         for (operation, address, value) in operations {
@@ -376,9 +410,14 @@ proptest! {
                 }
                 _ => {
                     let actions = actual.receive(MailAddr(9), TopicMessage::Publish(value)).unwrap();
-                    let recipients = actions.sends.iter().map(|delivery| delivery.to).collect::<Vec<_>>();
-                    prop_assert_eq!(recipients, expected.clone());
-                    prop_assert!(actions.sends.iter().all(|delivery| delivery.message == value));
+                    let deliveries = actions.sends.into_iter()
+                        .map(|delivery| (delivery.to, delivery.message))
+                        .collect::<Vec<_>>();
+                    let expected_deliveries = expected.iter().copied()
+                        .map(|to| (to, value)).collect::<Vec<_>>();
+                    prop_assert_eq!(deliveries, expected_deliveries);
+                    prop_assert!(actions.creates.is_empty());
+                    prop_assert!(matches!(actions.become_, Step::Continue));
                 }
             }
             prop_assert_eq!(actual.subscribers(), expected.as_slice());

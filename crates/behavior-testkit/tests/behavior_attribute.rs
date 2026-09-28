@@ -1,7 +1,7 @@
+use behavior_actors::Activate;
 use behavior_core::{
     Actions, Behavior, Delivery, MailAddr, Never, NoBirths, Recipient, SendEffects,
 };
-use behavior_testkit::InitializeTest;
 
 struct Printer(u64);
 

@@ -14,16 +14,6 @@ where
 }
 
 impl<Deliveries, OutcomeSends> LogicalDeliveryProtocols
-    for crate::BufferSends<Deliveries, OutcomeSends>
-where
-    Deliveries: LogicalDeliveryProtocols,
-    OutcomeSends: LogicalDeliveryProtocols,
-{
-    type Protocols =
-        <Deliveries::Protocols as BirthProtocolProduct>::Append<OutcomeSends::Protocols>;
-}
-
-impl<Deliveries, OutcomeSends> LogicalDeliveryProtocols
     for crate::DeliveryOutcomes<Deliveries, OutcomeSends>
 where
     Deliveries: LogicalDeliveryProtocols,
@@ -202,7 +192,7 @@ mod tests {
 
     #[test]
     fn logical_projection_follows_named_lanes_and_excludes_nonlogical_lanes() {
-        type Named = crate::BufferSends<
+        type Named = crate::DeliveryOutcomes<
             Vec<behavior::Delivery<ExternalProtocol>>,
             Vec<behavior::Delivery<SharedProtocol>>,
         >;

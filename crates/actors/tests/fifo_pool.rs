@@ -8,10 +8,11 @@ use std::time::{Duration, Instant};
 
 use behavior::{
     ActionItemResult, Actions, ActiveTurn, Address, Behavior, BehaviorActed, BehaviorBase,
-    ChildCreationOutcome, ChildHead, ChildReport, CreationId, CreationSequence, CreationSettlement,
-    CreationsSettled, EndpointAddress, EstablishedCreation, EstablishedRecipient,
-    ExactDeliveryReason, InterpreterFault, InterpreterRequests, ItemSettlement, MessageProtocol,
-    Never, NoBirths, Protocol, Recipient, ReportToParent, SettledItem, Step, User,
+    BirthProtocol, ChildCreationOutcome, ChildHead, ChildReport, CreationId, CreationSequence,
+    CreationSettlement, CreationsSettled, EndpointAddress, EstablishedCreation,
+    EstablishedRecipient, ExactDeliveryReason, InterpreterFault, InterpreterRequests,
+    ItemSettlement, LogicalHostRequirements, MessageProtocol, Never, NoBirthProtocols, NoBirths,
+    Protocol, Recipient, ReportToParent, SettledItem, Step, User,
 };
 use behavior_actors::atomic::{
     ActivationPlan, ActivationPolicy, ActivationStartRejection, ActorDrainPolicy,
@@ -41,6 +42,19 @@ mod property;
 mod recovery;
 #[path = "fifo_pool/retirement.rs"]
 mod retirement;
+
+#[test]
+fn fifo_pool_projects_its_customer_host_from_real_behavior_sends() {
+    type Pool = FifoPool<Role, SearchWorker, ImmediateActivation, Never, Infallible, u8, u16>;
+    type Customer = MessageProtocol<RuntimeAddr, FifoOutcome<Role, u8, u16>>;
+    type Expected = BirthProtocol<Customer, NoBirthProtocols>;
+
+    trait Same<T> {}
+    impl<T> Same<T> for T {}
+    fn exact<T: Same<Expected>>() {}
+
+    exact::<<Pool as LogicalHostRequirements>::LogicalHosts>();
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct RuntimeAddr(u64);

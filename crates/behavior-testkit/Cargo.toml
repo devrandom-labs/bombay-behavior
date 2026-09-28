@@ -19,9 +19,6 @@ behavior-core = { package = "bombay-behavior", path = "../behavior" }
 proptest.workspace = true
 tokio = { workspace = true, features = ["macros", "rt"] }
 
-[dev-dependencies]
-criterion.workspace = true
-
 [[bench]]
 name = "protocol_matrix"
 harness = false

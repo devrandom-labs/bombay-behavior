@@ -26,10 +26,10 @@ use super::protocol;
 use super::role::RoleCell;
 use super::{
     CustomerRoute, KeyedActions, KeyedAssignedReturnReason, KeyedCustomer, KeyedDiagnostic,
-    KeyedEvent, KeyedOutcome, KeyedPool, KeyedPoolState, KeyedQueue, Operating,
+    KeyedEvent, KeyedOperating, KeyedOutcome, KeyedPool, KeyedPoolState, KeyedQueue,
 };
 
-impl<Role, W, P, Key, Job, WorkerResult> Operating<Role, W, P, Key, Job, WorkerResult>
+impl<Role, W, P, Key, Job, WorkerResult> KeyedOperating<Role, W, P, Key, Job, WorkerResult>
 where
     Role: Eq,
     W: Behavior + BehaviorBase,
@@ -143,7 +143,7 @@ where
 
     fn complete_assignment(
         &mut self,
-        mut operating: Operating<Role, W, P, Key, Job, WorkerResult>,
+        mut operating: KeyedOperating<Role, W, P, Key, Job, WorkerResult>,
         position: usize,
         role: RoleName<Role>,
         recoveries: RecoveryCount,
@@ -213,7 +213,7 @@ where
 
     fn interrupt_assignment(
         &mut self,
-        operating: Operating<Role, W, P, Key, Job, WorkerResult>,
+        operating: KeyedOperating<Role, W, P, Key, Job, WorkerResult>,
         position: usize,
         role: RoleName<Role>,
         recoveries: RecoveryCount,
@@ -261,7 +261,7 @@ where
 
     fn quarantine_worker(
         &self,
-        mut operating: Operating<Role, W, P, Key, Job, WorkerResult>,
+        mut operating: KeyedOperating<Role, W, P, Key, Job, WorkerResult>,
         position: usize,
         role: RoleName<Role>,
         recoveries: RecoveryCount,
@@ -271,7 +271,7 @@ where
         capacity: BacklogCapacity,
         mut actions: KeyedActions<Role, W, P, Source, Diagnostics, Key, Job, WorkerResult>,
     ) -> (
-        Operating<Role, W, P, Key, Job, WorkerResult>,
+        KeyedOperating<Role, W, P, Key, Job, WorkerResult>,
         KeyedActions<Role, W, P, Source, Diagnostics, Key, Job, WorkerResult>,
     ) {
         actions
@@ -298,7 +298,7 @@ where
 
     pub(super) fn reject_assignment_delivery(
         &mut self,
-        mut operating: Operating<Role, W, P, Key, Job, WorkerResult>,
+        mut operating: KeyedOperating<Role, W, P, Key, Job, WorkerResult>,
         item: AssignWorker<W::Protocol, Job>,
         reason: behavior::ExactDeliveryReason,
     ) -> (
@@ -488,7 +488,7 @@ where
 
     pub(super) fn accept_assignment_receipt(
         &mut self,
-        mut operating: Operating<Role, W, P, Key, Job, WorkerResult>,
+        mut operating: KeyedOperating<Role, W, P, Key, Job, WorkerResult>,
         receipt: AssignmentReceipt,
     ) -> Result<
         (
@@ -496,7 +496,7 @@ where
             KeyedActions<Role, W, P, Source, Diagnostics, Key, Job, WorkerResult>,
         ),
         (
-            Operating<Role, W, P, Key, Job, WorkerResult>,
+            KeyedOperating<Role, W, P, Key, Job, WorkerResult>,
             AssignmentReceipt,
         ),
     > {
@@ -598,7 +598,7 @@ where
 
     pub(super) fn accept_completion(
         &mut self,
-        mut operating: Operating<Role, W, P, Key, Job, WorkerResult>,
+        mut operating: KeyedOperating<Role, W, P, Key, Job, WorkerResult>,
         child: behavior::CreationId,
         completion: Completion<WorkerResult>,
     ) -> Result<
@@ -607,7 +607,7 @@ where
             KeyedActions<Role, W, P, Source, Diagnostics, Key, Job, WorkerResult>,
         ),
         (
-            Operating<Role, W, P, Key, Job, WorkerResult>,
+            KeyedOperating<Role, W, P, Key, Job, WorkerResult>,
             ChildReport<Completion<WorkerResult>>,
         ),
     > {
@@ -693,7 +693,7 @@ where
 
     pub(super) fn accept_worker_stop(
         &mut self,
-        mut operating: Operating<Role, W, P, Key, Job, WorkerResult>,
+        mut operating: KeyedOperating<Role, W, P, Key, Job, WorkerResult>,
         stopped: crate::ChildStopped<BehaviorAddr<W>>,
     ) -> Result<
         (
@@ -701,7 +701,7 @@ where
             KeyedActions<Role, W, P, Source, Diagnostics, Key, Job, WorkerResult>,
         ),
         (
-            Operating<Role, W, P, Key, Job, WorkerResult>,
+            KeyedOperating<Role, W, P, Key, Job, WorkerResult>,
             crate::ChildStopped<BehaviorAddr<W>>,
         ),
     > {
@@ -862,7 +862,7 @@ where
 
     fn recover_quarantined_worker(
         &mut self,
-        operating: Operating<Role, W, P, Key, Job, WorkerResult>,
+        operating: KeyedOperating<Role, W, P, Key, Job, WorkerResult>,
         position: usize,
         role: RoleName<Role>,
         recoveries: RecoveryCount,
@@ -906,7 +906,7 @@ where
 
     pub(super) fn accept_quarantine_shutdown(
         &mut self,
-        mut operating: Operating<Role, W, P, Key, Job, WorkerResult>,
+        mut operating: KeyedOperating<Role, W, P, Key, Job, WorkerResult>,
         settlement: EstablishedShutdownResolved<W::Protocol>,
     ) -> Result<
         (
@@ -914,7 +914,7 @@ where
             KeyedActions<Role, W, P, Source, Diagnostics, Key, Job, WorkerResult>,
         ),
         (
-            Operating<Role, W, P, Key, Job, WorkerResult>,
+            KeyedOperating<Role, W, P, Key, Job, WorkerResult>,
             EstablishedShutdownResolved<W::Protocol>,
         ),
     > {

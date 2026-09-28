@@ -131,7 +131,7 @@ pub use acknowledgements::{
 };
 pub use buffer::{
     Buffer, BufferConfigError, BufferConfiguration, BufferMessage, BufferOutcome, BufferRejection,
-    BufferSends, BufferState, Buffered, OverflowPolicy,
+    BufferState, Buffered, OverflowPolicy,
 };
 pub use circuit_breaker::{
     BreakerAttempt, BreakerCompletion, BreakerConfigError, BreakerError, BreakerMessage,

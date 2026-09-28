@@ -63,8 +63,8 @@ endpoint and can be delivered to, observed, or transferred without a
 protocol-wide lookup table.
 
 Fresh allocation is an interpreter law. A successful
-`EstablishedCreation<P, O>` is produced only after allocation,
-initialization, installation, and binding commit. Rejection is an exhaustive
+`EstablishedCreation<P, O>` is produced only after the runtime establishes a
+fresh endpoint and commits the creator-local binding. Rejection is an exhaustive
 typed result and contains no endpoint capability.
 
 A behavior correlates a staged child with a creator-issued `CreationId`; it
@@ -82,12 +82,11 @@ only for the values it actually transports.
 The full capability and lifecycle contract is in
 [Established capabilities](docs/established-capabilities.md).
 
-The [actor-template composition audit](docs/template-composition-audit.md)
-classifies the complete current catalogue by distinct transition law. The
-[Behavior Actors template law audit](docs/template-law-audit.md) records which
-retained templates intentionally use logical names, exact installed
-capabilities, or creator-local child routes, and the hard-coding checks applied
-across the catalogue.
+The [actor-template composition audit](docs/engineering/template-composition-audit.md)
+and [Behavior Actors template law audit](docs/engineering/template-law-audit.md)
+preserve historical design evidence. The [repository quality checklist](docs/engineering/repository-quality-audit.md)
+tracks current verification gaps; retained source and normalized actor laws
+govern current behavior.
 
 The [external actor-system interface](docs/external-actor-interface.md) records
 the intended common boundary for HTTP, CLI, tests, embedded clients, and future
@@ -138,8 +137,8 @@ See [Nominal Behavior attribute](docs/behavior-attribute.md).
 
 ```toml
 [dependencies]
-bombay-behavior = "0.14"
-bombay-behavior-actors = "0.14"
+bombay-behavior = "0.17"
+bombay-behavior-actors = "0.17"
 ```
 
 Composition has two axes. `Behavior::layer` invokes a statically typed
@@ -156,9 +155,9 @@ its `CreationId`, while Bombay owns runtime routing.
 The five atomic families have one current ownership map and one application
 construction guide. Fixed and dynamic supervisors reuse `StableProxy`; FIFO and
 keyed pools own their workers directly. Their aggregate responsibilities and
-policies are documented in [Atomic actor architecture](docs/atomic-actor-architecture.md),
+policies are documented in [Atomic actor architecture](docs/engineering/atomic-actor-architecture.md),
 and their sole public construction paths are documented in
-[Atomic actor DevX](docs/atomic-actor-devx.md).
+[Atomic actor DevX](docs/engineering/atomic-actor-devx.md).
 
 The [Actor composition map](docs/composition-recipes.md#the-composition-map)
 distinguishes same-mailbox layers, transferable actor routes, atomic ownership,
@@ -169,14 +168,14 @@ an occurrence-preserving protocol product. It excludes protocols mentioned
 only by delivery lanes. Duplicate protocol occurrences remain distinct; the
 product is structural installation evidence, not a protocol registry.
 
-`LogicalHostRequirements` structurally projects every intentional logical
-`Delivery<P>` in a behavior's concrete sends and in every transitive birth.
-Core structural and handwritten catalogue send products append their lane
-projections in interpretation order. Repeated occurrences remain repeated, while exact
-established deliveries, direct-child effects, and interpreter requests add no
-logical host. A framework consumes the resulting proof product using its own
-static `Hosts<P>` implementation; the projection performs no installation or
-runtime lookup.
+`LogicalHostRequirements` projects logical delivery protocols from participating
+send products and transitive births. Core structural products and several
+handwritten catalogue products append lane projections in interpretation order.
+The atomic products and logical requests inside `InterpreterRequests` use
+the same ordered projection; see the [repository quality audit](docs/engineering/repository-quality-audit.md).
+Repeated occurrences remain repeated. A framework consumes the resulting proof
+product using its own static `Hosts<P>` implementation; projection performs no
+installation or runtime lookup.
 
 `shutdown_after_children(app)` remains the single child-derived shutdown-plan
 builder. Direct callers declare phases and finish normally. Generic frameworks
@@ -185,7 +184,7 @@ types carry the hidden availability and phase proofs without copying the
 builder typestate.
 
 `Children` stages heterogeneous creations. `DispatchBirth` recursively proves
-that an interpreter implements `InstallBirth<Position, Child, ...>` for every
+that an interpreter implements `EstablishChild<Position, Child>` for every
 alternative. The structural position prevents duplicate child alternatives
 from silently sharing an installer obligation while avoiding false `Behavior`
 bounds on unrelated wrapper and domain types.
@@ -206,18 +205,20 @@ births. A topology-changing wrapper therefore exposes its new structural child
 instead of silently inheriting a stale base role. Resolution is type-only: it
 adds no registry, key, value, or runtime lookup.
 
-Initialization is a consuming typestate transition. Wrapper initialization
-effects compose in defined order and must be interpreted before mailbox
-events. Send products likewise retain named lanes and structural ordering;
+`behavior_actors::Activate::initialize` consumes a definition and returns
+`Active<B>` with its complete initialization actions. The lower-level public
+composition ports rely on their wrapper or runtime caller to enforce that
+once-per-definition order. Wrapper initialization effects compose in defined
+order and must be interpreted before mailbox events. Send products likewise
+retain named lanes and structural ordering;
 they are never flattened into a dynamic envelope.
 
 The distinct direct-pool contracts are documented in [FIFO pool](docs/fifo-pool.md)
 and [keyed pool](docs/keyed-pool.md). Correctness-sensitive actor arrangements
 are documented in [Actor composition](docs/composition-recipes.md).
-The catalogue classification is recorded in the
-[actor-template composition audit](docs/template-composition-audit.md), and the
-repository-wide law and adversarial-test audit is recorded in
-[Behavior Actors template-law audit](docs/template-law-audit.md).
+Historical catalogue classification and adversarial tests are recorded in the
+[composition](docs/engineering/template-composition-audit.md) and
+[template-law](docs/engineering/template-law-audit.md) engineering records.
 
 ## Development
 

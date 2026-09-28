@@ -1,9 +1,9 @@
 //! Application-defined worker variants sharing one actor protocol.
 
+use behavior_actors::Activate;
 use behavior_core::{
     Acted, Actions, Behavior, BehaviorActed, Delivery, MailAddr, Never, Recipient, User,
 };
-use behavior_testkit::InitializeTest;
 
 struct WorkerA;
 

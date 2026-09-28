@@ -47,8 +47,12 @@ pub type BehaviorMessage<B> = <<B as Behavior>::Protocol as Protocol>::Msg;
 
 /// Capability for defining one initialization fold.
 ///
-/// The constructor is private: only the lifecycle boundary can issue this
-/// capability, exactly once for an owned behavior value.
+/// The constructor is private, so callers cannot pass a fabricated turn to
+/// [`Behavior::init`]. The public [`initialize`] composition port can issue a
+/// turn more than once for the same mutable definition. A wrapper or runtime
+/// using that port must enforce its own initialization order; the consuming
+/// `Activate::initialize` path in `behavior-actors` enforces one call for its
+/// owned definition.
 pub struct InitializationTurn {
     #[allow(dead_code, reason = "private field prevents external construction")]
     private: (),
@@ -158,9 +162,9 @@ pub trait Behavior {
 ///
 /// The product is derived from the behavior's concrete sends algebra and from
 /// every behavior reachable through its transitive birth algebra. Only
-/// intentional logical [`Delivery`](crate::Delivery) lanes contribute a
-/// protocol. Exact established recipients, creator-local children and inputs,
-/// and interpreter requests do not require a logical host. Repeated protocol
+/// intentional logical [`Delivery`](crate::Delivery) lanes and interpreter
+/// requests with logical recipients contribute a protocol. Exact established
+/// recipients and creator-local children and inputs do not. Repeated protocol
 /// occurrences are retained in the existing structural birth-protocol
 /// product; this trait performs no normalization or runtime lookup.
 ///
@@ -274,15 +278,15 @@ pub trait BehaviorBase {
 ///
 /// This is Bombay's derived, canonical boundary for wrapper composition; it is
 /// not an additional actor-model operation. It invokes the inner initialization
-/// fold exactly once and returns its complete typed action value without
-/// inspecting or transforming it. It does not execute a runtime turn,
+/// fold once per call and returns its complete typed action value without
+/// inspecting or transforming it. Callers own the once-per-definition
+/// lifecycle rule. It does not execute a runtime turn,
 /// interpret effects, or provide an alternate actor executor; top-level runtime
 /// transitions remain the responsibility of the runtime's machine adapter.
 ///
 /// # Errors
 ///
 /// Returns the inner behavior's controlled transition failure unchanged.
-#[doc(hidden)]
 pub fn initialize<B: Behavior>(behavior: &mut B) -> BehaviorActed<B> {
     B::init(behavior, InitializationTurn::new())
 }
@@ -290,12 +294,13 @@ pub fn initialize<B: Behavior>(behavior: &mut B) -> BehaviorActed<B> {
 /// Fold one event through an inner behavior owned by a semantic wrapper.
 ///
 /// This invokes the inner deterministic fold exactly once and returns its
-/// complete typed action value without interpreting it.
+/// complete typed action value without interpreting it. The port can be
+/// invoked before initialization; a wrapper or runtime must enforce the
+/// order required by its lifecycle contract.
 ///
 /// # Errors
 ///
 /// Returns the inner behavior's controlled transition failure unchanged.
-#[doc(hidden)]
 pub fn delegate_transition<B: Behavior>(behavior: &mut B, event: B::Event) -> BehaviorActed<B> {
     B::transition(behavior, ActiveTurn::new(), event)
 }

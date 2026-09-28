@@ -1,6 +1,9 @@
 //! Named StableProxy action lanes and their total ordered settlement.
 
-use behavior::{ClassifySettlement, InterpretSends, Interpretation, SendEffects, SendSettlements};
+use behavior::{
+    BirthProtocolProduct, ClassifySettlement, InterpretSends, Interpretation,
+    LogicalDeliveryProtocols, SendEffects, SendSettlements,
+};
 
 /// Named worker lifecycle, delivery, owner-outcome, and diagnostic lanes.
 #[doc(hidden)]
@@ -20,6 +23,48 @@ pub struct ProxyEffects<
     pub worker_deliveries: WorkerDeliveries,
     pub owner_outcomes: OwnerOutcomes,
     pub diagnostics: Diagnostics,
+}
+
+impl<
+    WorkerObservations,
+    WorkerInitializations,
+    WorkerActivations,
+    WorkerShutdowns,
+    WorkerDeliveries,
+    OwnerOutcomes,
+    Diagnostics,
+> LogicalDeliveryProtocols
+    for ProxyEffects<
+        WorkerObservations,
+        WorkerInitializations,
+        WorkerActivations,
+        WorkerShutdowns,
+        WorkerDeliveries,
+        OwnerOutcomes,
+        Diagnostics,
+    >
+where
+    WorkerObservations: LogicalDeliveryProtocols,
+    WorkerInitializations: LogicalDeliveryProtocols,
+    WorkerActivations: LogicalDeliveryProtocols,
+    WorkerShutdowns: LogicalDeliveryProtocols,
+    WorkerDeliveries: LogicalDeliveryProtocols,
+    OwnerOutcomes: LogicalDeliveryProtocols,
+    Diagnostics: LogicalDeliveryProtocols,
+{
+    type Protocols = <WorkerObservations::Protocols as BirthProtocolProduct>::Append<
+        <WorkerInitializations::Protocols as BirthProtocolProduct>::Append<
+            <WorkerActivations::Protocols as BirthProtocolProduct>::Append<
+                <WorkerShutdowns::Protocols as BirthProtocolProduct>::Append<
+                    <WorkerDeliveries::Protocols as BirthProtocolProduct>::Append<
+                        <OwnerOutcomes::Protocols as BirthProtocolProduct>::Append<
+                            Diagnostics::Protocols,
+                        >,
+                    >,
+                >,
+            >,
+        >,
+    >;
 }
 
 impl<

@@ -49,8 +49,22 @@ impl Eq for InitializationAttempt {}
 
 /// One-shot authority to begin activation for one initialized worker.
 ///
+/// ```
+/// fn accept<W>(permit: behavior_actors::atomic::ActivationPermit<W>)
+/// where
+///     W: behavior::Behavior,
+///     behavior::BehaviorAddr<W>: behavior::EndpointAddress,
+/// {
+///     let _accepted = permit;
+/// }
+/// ```
+///
 /// ```compile_fail,E0382
-/// fn duplicate<W>(permit: behavior_actors::atomic::ActivationPermit<W>) {
+/// fn duplicate<W>(permit: behavior_actors::atomic::ActivationPermit<W>)
+/// where
+///     W: behavior::Behavior,
+///     behavior::BehaviorAddr<W>: behavior::EndpointAddress,
+/// {
 ///     let _accepted = permit;
 ///     let _duplicate = permit;
 /// }
@@ -215,6 +229,7 @@ where
     BehaviorAddr<W>: EndpointAddress,
 {
     type ReturnToEmitter = ReturnsToEmitter<WorkerInitializationReport<W, P>, Here>;
+    type LogicalProtocols = behavior::NoBirthProtocols;
 }
 
 impl<W, P> ActionItem for InitializeWorker<W, P>

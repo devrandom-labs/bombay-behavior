@@ -172,6 +172,7 @@ where
     P: ActivationPlan,
 {
     type ReturnToEmitter = ReturnsToEmitter<WorkerActivation<W, P>, Here>;
+    type LogicalProtocols = behavior::NoBirthProtocols;
 }
 
 impl<W, P> ActionItem for BeginActivation<W, P>

@@ -24,6 +24,7 @@ struct LocalRequest(u8);
 
 impl behavior::InterpreterRequest for LocalRequest {
     type ReturnToEmitter = behavior::NoReturnToEmitter;
+    type LogicalProtocols = behavior::NoBirthProtocols;
 }
 
 impl behavior::ActionItem for LocalRequest {

@@ -399,7 +399,6 @@ pub type RoleProtocol<Parent, Role> = <RoleChild<Parent, Role> as Behavior>::Pro
 /// Behavior never constructs or stores this value. It exists only between the
 /// generic batch-routing step and the concrete child host, and it returns
 /// complete on rejection or corruption.
-#[doc(hidden)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RoutedCreation<A: Address, New> {
     creation: CreateChild<A, New>,
@@ -426,6 +425,13 @@ impl<A: Address, New> RoutedCreation<A, New> {
     #[must_use]
     pub const fn route(&self) -> A::Nonce {
         self.route
+    }
+
+    /// Borrow the staged child for its pure initialization fold while the
+    /// complete routed request remains owned for a possible rejection.
+    #[must_use]
+    pub fn child_mut(&mut self) -> &mut New {
+        &mut self.creation.child
     }
 
     #[must_use]
@@ -1154,7 +1160,7 @@ where
 /// Every alternative requires a concrete child host; incomplete interpreter
 /// support is rejected statically:
 ///
-/// ```compile_fail
+/// ```compile_fail,E0277
 /// #[derive(Clone, Copy, Eq, PartialEq)]
 /// struct RuntimeAddr;
 /// impl behavior::Address for RuntimeAddr { type Nonce = u8; }
@@ -1195,19 +1201,19 @@ where
 ///
 /// struct Incomplete;
 /// impl behavior::EstablishChild<behavior::ChildHead, CacheWorker> for Incomplete {
-///     async fn establish_child(
+///     fn establish_child(
 ///         &mut self,
 ///         creation: behavior::RoutedCreation<RuntimeAddr, CacheWorker>,
-///     ) -> behavior::ItemSettlement<
+///     ) -> impl core::future::Future<Output = behavior::ItemSettlement<
 ///         behavior::RoutedCreation<RuntimeAddr, CacheWorker>,
 ///         behavior::ChildCreationOutcome<CacheWorker, behavior::ChildHead>,
 ///         behavior::CreationRejection,
 ///         behavior::Never,
-///     > {
-///         behavior::ItemSettlement::Rejected {
+///     >> + Send {
+///         async move { behavior::ItemSettlement::Rejected {
 ///             item: creation,
 ///             reason: behavior::CreationRejection::EnvironmentFailed,
-///         }
+///         } }
 ///     }
 /// }
 ///

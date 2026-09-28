@@ -39,11 +39,14 @@ pub enum TerminationObservation {
 }
 
 /// Exact rejection from the observation wrapper.
+#[derive(thiserror::Error)]
 pub enum TerminationMonitorError<E, Report> {
     /// The wrapped behavior rejected its own event.
-    Inner(E),
+    #[error("wrapped behavior rejected its event")]
+    Inner(#[source] E),
     /// A returned observation report does not belong to the current phase or
     /// configured relationship.
+    #[error("observation report does not match the active relationship phase")]
     UnexpectedReport {
         observation: TerminationObservation,
         report: Report,
@@ -61,23 +64,6 @@ impl<E: core::fmt::Debug, Report> core::fmt::Debug for TerminationMonitorError<E
                 .finish(),
         }
     }
-}
-
-impl<E, Report> core::fmt::Display for TerminationMonitorError<E, Report> {
-    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self {
-            Self::Inner(_) => formatter.write_str("wrapped behavior rejected its event"),
-            Self::UnexpectedReport { .. } => formatter
-                .write_str("observation report does not match the active relationship phase"),
-        }
-    }
-}
-
-impl<E, Report> std::error::Error for TerminationMonitorError<E, Report>
-where
-    E: std::error::Error + 'static,
-    Report: 'static,
-{
 }
 
 pub(crate) mod sealed {

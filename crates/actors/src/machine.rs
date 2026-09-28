@@ -13,11 +13,13 @@ pub enum Move<P> {
 }
 
 /// Controlled machine rejection with the complete unaccepted mailbox input.
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, thiserror::Error)]
+#[error("machine rejected its mailbox input: {cause}")]
 pub struct MachineError<A, M, E> {
     /// Exact user event whose transition or induced drain was rejected.
     pub event: User<A, M>,
     /// Domain error returned by the phase function.
+    #[source]
     pub cause: E,
 }
 
@@ -30,21 +32,6 @@ impl<A, M, E: core::fmt::Debug> core::fmt::Debug for MachineError<A, M, E> {
             .finish()
     }
 }
-
-impl<A, M, E> core::fmt::Display for MachineError<A, M, E>
-where
-    E: core::fmt::Display,
-{
-    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(
-            formatter,
-            "machine rejected its mailbox input: {}",
-            self.cause
-        )
-    }
-}
-
-impl<A, M, E> std::error::Error for MachineError<A, M, E> where E: std::error::Error + 'static {}
 
 enum Advance {
     Continue,

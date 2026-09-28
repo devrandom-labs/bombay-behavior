@@ -5,7 +5,7 @@ use behavior::{
     User,
 };
 use behavior_actors::atomic::{ImmediateActivation, ProxyEffects, StableProxy};
-use behavior_actors::{BufferSends, LeaseSends};
+use behavior_actors::{DeliveryOutcomes, LeaseSends};
 use std::collections::BTreeMap;
 
 #[derive(Clone, Copy)]
@@ -126,8 +126,8 @@ impl InterpretItem<Work, (), Here> for Runtime {
 }
 
 #[tokio::test]
-async fn retained_buffer_continues_after_rejection_at_the_same_event_path() {
-    let sends = BufferSends {
+async fn delivery_outcomes_continue_after_rejection_at_the_same_event_path() {
+    let sends = DeliveryOutcomes {
         deliveries: InterpreterRequests::one(Work(1)),
         outcomes: InterpreterRequests::one(Work(2)),
     };

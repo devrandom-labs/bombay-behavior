@@ -16,22 +16,6 @@ impl<M> behavior_core::Protocol for TestRecipient<M> {
     type Msg = M;
 }
 
-/// Test-fixture shorthand for activating a raw concrete behavior through the
-/// same activation boundary used by production definitions.
-pub trait InitializeTest: Behavior + Sized {
-    /// Activate the fixture and preserve its complete initialization actions.
-    ///
-    /// # Errors
-    ///
-    /// Returns the concrete behavior error when its initialization fold
-    /// rejects activation.
-    fn initialize(self) -> Result<behavior_actors::Initialized<Self>, Self::Error> {
-        behavior_actors::Activate::initialize(self)
-    }
-}
-
-impl<B: Behavior> InitializeTest for B {}
-
 pub mod model;
 
 pub struct Mailbox<E> {
@@ -65,7 +49,9 @@ pub enum DriveDisposition {
     BehaviorStopped(Stopped),
 }
 
-/// Complete observation of one finite test-driver run.
+/// Accumulated effects from a finite run that completed without a fold error.
+/// The send and creation lanes are appended independently, so this value does
+/// not retain turn boundaries or prove interpreter settlement order.
 pub struct Trace<B: Behavior> {
     pub behavior: Active<B>,
     pub sends: B::Sends,
@@ -77,10 +63,16 @@ pub struct Trace<B: Behavior> {
 
 /// Drive `init` then every queued event through `behavior` until it stops or
 /// the mailbox drains. Returns the accumulated effect triple plus driver
-/// bookkeeping (transition count and unconsumed tail).
+/// bookkeeping (transition count and unconsumed tail). This driver never
+/// interprets the effects. It is suitable for aggregate fold assertions, not
+/// for a runtime ordering witness.
 ///
 /// # Errors
-/// Returns the behavior's first controlled failure (`B::Error`).
+/// Returns the behavior's first controlled failure (`B::Error`). A later
+/// failure drops the active behavior and all successful prefix actions already
+/// accumulated by this driver. The mailbox retains only events after the
+/// rejected input. Use direct per-turn folds or a typed interpreter trace when
+/// a test must retain prefix custody or prove effect ordering.
 pub fn drive<B>(definition: B, mailbox: &mut Mailbox<B::Event>) -> Result<Trace<B>, B::Error>
 where
     B: Behavior<Ph = behavior_core::Never>,

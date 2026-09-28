@@ -370,6 +370,69 @@ fn role_first_construction_returns_the_complete_behavior() {
     .initialize()
     .unwrap_or_else(|_| panic!("dynamic supervisor initialization is pure"))
     .behavior;
+    type Start = MessageProtocol<
+        SearchAddress,
+        Result<
+            WorkerChangeReceipt<SearchKey>,
+            WorkerChangeRejection<SearchKey, SearchWorker, SearchActivation, StartRejection>,
+        >,
+    >;
+    type Replace = MessageProtocol<
+        SearchAddress,
+        Result<
+            WorkerChangeReceipt<SearchKey>,
+            WorkerChangeRejection<
+                SearchKey,
+                SearchWorker,
+                SearchActivation,
+                behavior_actors::atomic::ReplaceRejection,
+            >,
+        >,
+    >;
+    type Stop = MessageProtocol<
+        SearchAddress,
+        Result<SearchKey, behavior_actors::atomic::StopRejection<SearchKey>>,
+    >;
+    type Query =
+        MessageProtocol<SearchAddress, QueryReply<SearchKey, <SearchWorker as Behavior>::Protocol>>;
+    type Cancel = MessageProtocol<
+        SearchAddress,
+        CancellationReceipt<SearchKey, SearchWorker, SearchActivation>,
+    >;
+    type Lifecycle =
+        MessageProtocol<SearchAddress, DynamicLifecycle<SearchKey, SearchWorker, SearchActivation>>;
+    type Diagnostic = MessageProtocol<
+        SearchAddress,
+        DynamicDiagnostic<SearchKey, SearchWorker, SearchActivation>,
+    >;
+    type Expected = behavior::BirthProtocol<
+        Start,
+        behavior::BirthProtocol<
+            Replace,
+            behavior::BirthProtocol<
+                Stop,
+                behavior::BirthProtocol<
+                    Query,
+                    behavior::BirthProtocol<
+                        Cancel,
+                        behavior::BirthProtocol<
+                            Lifecycle,
+                            behavior::BirthProtocol<Diagnostic, behavior::NoBirthProtocols>,
+                        >,
+                    >,
+                >,
+            >,
+        >,
+    >;
+
+    trait Same<T> {}
+    impl<T> Same<T> for T {}
+    fn exact<B: behavior::LogicalHostRequirements>(_: &B)
+    where
+        B::LogicalHosts: Same<Expected>,
+    {
+    }
+    exact(&*supervisor);
     drop(supervisor);
 }
 

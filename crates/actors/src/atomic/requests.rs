@@ -32,6 +32,13 @@ macro_rules! request_product {
             }
         }
 
+        impl<$($parameter),+> behavior::LogicalDeliveryProtocols for $name<$($parameter),+>
+        where
+            $($parameter: behavior::LogicalDeliveryProtocols),+
+        {
+            type Protocols = request_product!(@protocols [$($field_type),+]);
+        }
+
         impl<Event, $($parameter),+> behavior::SendsFor<Event> for $name<$($parameter),+>
         where
             $($parameter: behavior::SendEffects + behavior::SendsFor<Event>),+
@@ -129,6 +136,15 @@ macro_rules! request_product {
                 }
             }
         }
+    };
+    (@protocols [$only:ident]) => {
+        <$only as behavior::LogicalDeliveryProtocols>::Protocols
+    };
+    (@protocols [$first:ident, $($later:ident),+]) => {
+        <<$first as behavior::LogicalDeliveryProtocols>::Protocols
+            as behavior::BirthProtocolProduct>::Append<
+                request_product!(@protocols [$($later),+])
+            >
     };
     (
         @custody

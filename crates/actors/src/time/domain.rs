@@ -116,8 +116,10 @@ mod tests {
     fn consumed_generation_cannot_fire_twice() {
         let mut lease = TimerLease::new();
         let generation = lease.arm().unwrap();
-        assert!(lease.accept(generation));
-        assert!(!lease.accept(generation));
+        let first = lease.accept(generation);
+        let duplicate = lease.accept(generation);
+        assert!(first);
+        assert!(!duplicate);
     }
 
     #[test]
@@ -130,6 +132,7 @@ mod tests {
         );
         schedule.cancel();
         assert_eq!(schedule.request(), None);
-        assert!(!schedule.accept(TimerId(4), TimerGeneration(0)));
+        let cancelled = schedule.accept(TimerId(4), TimerGeneration(0));
+        assert!(!cancelled);
     }
 }

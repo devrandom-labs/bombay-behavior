@@ -18,25 +18,13 @@ fn crate_path(found: FoundCrate) -> TokenStream2 {
     match found {
         FoundCrate::Itself => quote!(crate),
         FoundCrate::Name(name) => {
-            let name = syn::Ident::new(&name, Span::call_site());
-            quote!(::#name)
-        }
-    }
-}
-
-fn facade_crate_path(found: FoundCrate) -> TokenStream2 {
-    match found {
-        FoundCrate::Itself => quote!(crate),
-        FoundCrate::Name(name) => {
-            // Cargo names the package `bombay-rs`, while its public library
-            // target is `bombay`. `proc_macro_crate` reports the normalized
-            // package name for an unrenamed dependency, but generated Rust
-            // must address the library target. An explicit dependency rename
-            // remains the caller's actual extern-crate name.
-            let name = if name == "bombay_rs" {
-                "bombay".to_owned()
-            } else {
-                name
+            // Cargo package keys and library target names differ for each
+            // Bombay crate. Explicit dependency renames remain unchanged.
+            let name = match name.as_str() {
+                "bombay_behavior" => "behavior",
+                "bombay_behavior_actors" => "behavior_actors",
+                "bombay_rs" => "bombay",
+                _ => &name,
             };
             let name = syn::Ident::new(&name, Span::call_site());
             quote!(::#name)
@@ -66,7 +54,7 @@ fn behavior_crate() -> Result<TokenStream2> {
         return Ok(crate_path(found));
     }
     if let Ok(found) = crate_name("bombay-rs") {
-        let bombay = facade_crate_path(found);
+        let bombay = crate_path(found);
         return Ok(quote!(#bombay::behavior));
     }
     Err(Error::new(
@@ -94,7 +82,7 @@ fn actors_crate() -> Result<TokenStream2> {
         return Ok(crate_path(found));
     }
     if let Ok(found) = crate_name("bombay-rs") {
-        return Ok(facade_crate_path(found));
+        return Ok(crate_path(found));
     }
     Err(Error::new(
         Span::call_site(),
@@ -107,13 +95,21 @@ mod crate_resolution_tests {
     use super::*;
 
     #[test]
-    fn facade_default_library_name_and_explicit_rename_resolve_distinctly() {
+    fn package_library_names_and_explicit_renames_resolve_distinctly() {
         assert_eq!(
-            facade_crate_path(FoundCrate::Name("bombay_rs".to_owned())).to_string(),
+            crate_path(FoundCrate::Name("bombay_rs".to_owned())).to_string(),
             ":: bombay"
         );
         assert_eq!(
-            facade_crate_path(FoundCrate::Name("runtime".to_owned())).to_string(),
+            crate_path(FoundCrate::Name("bombay_behavior".to_owned())).to_string(),
+            ":: behavior"
+        );
+        assert_eq!(
+            crate_path(FoundCrate::Name("bombay_behavior_actors".to_owned())).to_string(),
+            ":: behavior_actors"
+        );
+        assert_eq!(
+            crate_path(FoundCrate::Name("runtime".to_owned())).to_string(),
             ":: runtime"
         );
     }

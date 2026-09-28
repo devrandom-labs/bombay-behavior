@@ -67,6 +67,7 @@ where
 {
     type ReturnToEmitter =
         ReturnsToEmitter<behavior::EstablishedCreation<P, Occurrence>, behavior::Here>;
+    type LogicalProtocols = behavior::NoBirthProtocols;
 }
 
 impl<P, Occurrence> ActionItem for ObserveEstablishedCreation<P, Occurrence>
@@ -221,6 +222,7 @@ where
     P::Addr: EndpointAddress,
 {
     type ReturnToEmitter = ReturnsToEmitter<EstablishedObservation<P>, behavior::Here>;
+    type LogicalProtocols = behavior::NoBirthProtocols;
 }
 
 impl<P> ActionItem for ObserveEstablished<P>
@@ -278,6 +280,7 @@ impl<P: Protocol> Clone for CancelObservation<P> {
 
 impl<P: Protocol> InterpreterRequest for CancelObservation<P> {
     type ReturnToEmitter = ReturnsToEmitter<EstablishedObservation<P>, behavior::Here>;
+    type LogicalProtocols = behavior::NoBirthProtocols;
 }
 
 impl<P: Protocol> ActionItem for CancelObservation<P> {
@@ -540,6 +543,7 @@ where
 {
     type ReturnToEmitter =
         ReturnsToEmitter<EstablishedShutdownResolved<B::Protocol>, behavior::Here>;
+    type LogicalProtocols = behavior::NoBirthProtocols;
 }
 
 impl<B, TargetPath> ActionItem for ShutdownEstablished<B, TargetPath>
