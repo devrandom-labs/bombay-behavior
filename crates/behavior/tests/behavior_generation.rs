@@ -724,7 +724,8 @@ fn identical_product_types_require_distinct_lane_selectors() {
 #[test]
 fn declared_error_is_exact_for_initialization() {
     let mut actor = Fallible;
-    assert_eq!(behavior::initialize(&mut actor), Err(InitError::Rejected));
+    let initialized = behavior::initialize(&mut actor);
+    assert_eq!(initialized, Err(InitError::Rejected));
 }
 
 #[test]

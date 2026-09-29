@@ -336,8 +336,9 @@ mod tests {
     #[test]
     fn stale_and_duplicate_offers_return_the_rejected_value() {
         let mut subject = (Subject::new(Sequence(1))).initialize().unwrap().behavior;
+        let buffered = offer(&mut subject, 2, 20);
         assert!(matches!(
-            offer(&mut subject, 2, 20).sends.outcomes[0].message,
+            buffered.sends.outcomes[0].message,
             SequencerOutcome::Accepted {
                 released: 0,
                 buffered: 1
@@ -351,8 +352,9 @@ mod tests {
                 sequence: Sequence(2)
             }
         ));
+        let released = offer(&mut subject, 1, 10);
         assert!(matches!(
-            offer(&mut subject, 1, 10).sends.outcomes[0].message,
+            released.sends.outcomes[0].message,
             SequencerOutcome::Accepted {
                 released: 2,
                 buffered: 0

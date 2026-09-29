@@ -2417,14 +2417,13 @@ mod tests {
         assert_eq!(creations.len(), 3);
         assert!(!creations.is_empty());
         assert_eq!(creations.iter().copied().collect::<Vec<_>>(), [1, 2, 3]);
-        assert_eq!(
-            (&creations).into_iter().copied().collect::<Vec<_>>(),
-            [1, 2, 3]
-        );
+        let borrowed = (&creations).into_iter().copied().collect::<Vec<_>>();
+        assert_eq!(borrowed, [1, 2, 3]);
 
         let collected: Creations<_> = [4_u8, 5].into_iter().collect();
         assert_eq!(collected.len(), 2);
-        assert_eq!(collected.into_iter().collect::<Vec<_>>(), [4, 5]);
+        let collected_values = collected.into_iter().collect::<Vec<_>>();
+        assert_eq!(collected_values, [4, 5]);
 
         let returned = ChildCreationSettled::<Child, ChildHead>::new(SettledItem::Unattempted(
             RoutedCreation::new(CreateChild::birth(first, Child), 17),

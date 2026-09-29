@@ -125,7 +125,7 @@ fn exercise(inputs: &[u8]) {
     };
     assert_eq!(schedule.after, delay);
     let NoSends = scheduled.sends.lifecycle;
-    assert!(scheduled.sends.status_replies.into_deliveries().is_empty());
+    assert!(scheduled.sends.status_replies.as_slice().is_empty());
     let capabilities = scheduled.sends.capability_replies.into_deliveries();
     assert!(capabilities.is_empty());
     assert!(scheduled.sends.diagnostics.is_empty());
@@ -183,14 +183,14 @@ fn exercise(inputs: &[u8]) {
         expected_service = expected_service.observe(input);
 
         assert!(action.creates.is_empty());
-        assert!(action.sends.proxy_observations.into_requests().is_empty());
+        assert!(action.sends.proxy_observations.is_empty());
         let preparations = action.sends.worker_preparations.unattempted().into_inputs();
         assert!(preparations.is_empty());
         let schedules = action.sends.restart_schedules.unattempted().into_inputs();
         assert!(schedules.is_empty());
         let NoSends = action.sends.lifecycle;
-        assert!(action.sends.status_replies.into_deliveries().is_empty());
-        assert!(action.sends.capability_replies.into_deliveries().is_empty());
+        assert!(action.sends.status_replies.as_slice().is_empty());
+        assert!(action.sends.capability_replies.as_slice().is_empty());
         let mut replacements = action.sends.proxy_operations.unattempted().into_inputs();
         let mut diagnostics = action.sends.diagnostics.into_requests();
 
@@ -199,8 +199,9 @@ fn exercise(inputs: &[u8]) {
                 assert!(replacements.is_empty());
                 assert!(diagnostics.is_empty());
                 assert!(matches!(action.become_, Step::Continue));
+                let capability = search_capability(&mut supervisor);
                 assert!(matches!(
-                    search_capability(&mut supervisor),
+                    capability,
                     CapabilityResult::Unavailable {
                         phase: UnavailablePhase::Recovering,
                         ..

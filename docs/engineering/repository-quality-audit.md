@@ -1372,6 +1372,33 @@ not catch these. Hoist those transitions and ownership transfers before
 assertions, run the affected tests, and repeat the broader scan before A15
 can close.
 
+The follow-up batch hoisted local actor transitions, interpreter calls,
+initialization, creation decomposition, source admission, and consuming
+iteration before their assertions. It also replaced 91 assertion-side
+`unattempted().into_inputs().len()/is_empty()`,
+`into_requests().len()/is_empty()`, and
+`into_deliveries().is_empty()` chains with existing borrowed `len`,
+`is_empty`, or `as_slice().is_empty` observations. The direct forms inspect
+the same ordered product without transferring custody merely to count it.
+Across 25 Rust files the test-only diff is +206/-663 (net -457) lines;
+production is +0/-0 and public API, actor control states, effect lanes,
+transition branches, and module count are unchanged. All source-file edits
+are inside `#[cfg(test)]`; the remaining files are tests or fuzz targets.
+The surviving current values are the original actor state and exact owned
+effect products; no arrival history, repeated cause, false cardinality,
+nested authority, semantic boolean, or positional consumer path was added.
+The actor transition and source-custody laws were cross-checked. The broader
+assertion scan now finds no selected mutating or consuming method inside an
+assertion; its ten remaining `&mut` matches compare a returned source with a
+temporary source and do not invoke a transition. Workspace test compilation
+and formatting passed. Local Nextest discovery and a direct actor test binary
+then stalled in macOS `_dyld_start` before the Rust harness ran, so that run
+is not test evidence. `scripts/check_assertion_effects.py` now enforces the
+identified consuming-method and mutating-helper patterns in the Nix document
+gate; five checker regression cases cover detection and allowed observation.
+The local checker and its tests passed. A clean-snapshot Nix gate and changed
+fuzz-target build remain required before this batch or A15 can close.
+
 ### A07 actor mutation evidence: routing-buffer capacity
 
 At revision `0274dab`, a focused campaign mutated the bounded buffer's

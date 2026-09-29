@@ -135,7 +135,8 @@ fn heterogeneous_children_preserve_declaration_order_and_creation_kind() {
 
 #[test]
 fn empty_product_emits_no_creations() {
-    assert!(Children::<RuntimeAddr>::new().into_creates().is_empty());
+    let creations = Children::<RuntimeAddr>::new().into_creates();
+    assert!(creations.is_empty());
 }
 
 #[test]

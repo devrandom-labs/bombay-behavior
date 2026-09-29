@@ -785,8 +785,9 @@ fn shutdown_deadline_rejection_and_elapsed_force_retirement() {
                     .unwrap_or_else(|_| panic!("exact schedule receipt starts the deadline"));
                 assert!(matches!(scheduled.become_, behavior::Step::Continue));
                 let foreign = TimerElapsed::new(TimerId(9), TimerGeneration(9));
+                let rejected = supervisor.on(foreign);
                 assert!(matches!(
-                    supervisor.on(foreign),
+                    rejected,
                     Err(DynamicSupervisorEvent::ShutdownElapsed(elapsed)) if elapsed == foreign
                 ));
                 supervisor

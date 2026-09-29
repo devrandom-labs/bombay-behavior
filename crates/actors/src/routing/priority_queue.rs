@@ -371,13 +371,14 @@ mod tests {
         for pair in [(1, 2), (2, 3), (3, 3), (4, 1)] {
             offer(&mut s, pair.0, pair.1);
         }
+        let released = [
+            release(&mut s),
+            release(&mut s),
+            release(&mut s),
+            release(&mut s),
+        ];
         assert_eq!(
-            [
-                release(&mut s).sends.deliveries[0].message,
-                release(&mut s).sends.deliveries[0].message,
-                release(&mut s).sends.deliveries[0].message,
-                release(&mut s).sends.deliveries[0].message
-            ],
+            released.map(|actions| actions.sends.deliveries[0].message),
             [2, 3, 1, 4]
         );
     }
@@ -409,8 +410,9 @@ mod tests {
             released.sends.outcomes[0].message,
             PriorityQueueOutcome::Released { remaining: 0 }
         ));
+        let empty = release(&mut s);
         assert!(matches!(
-            release(&mut s).sends.outcomes[0].message,
+            empty.sends.outcomes[0].message,
             PriorityQueueOutcome::Empty
         ));
     }

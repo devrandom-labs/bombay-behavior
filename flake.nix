@@ -113,6 +113,8 @@
               python3 scripts/check_published_docs.py target/doc
               python3 scripts/check_rustdoc_imports.py
               python3 scripts/check_rustdoc_error_codes.py
+              python3 -m unittest scripts/test_check_assertion_effects.py
+              python3 scripts/check_assertion_effects.py
             '';
             doInstallCargoArtifacts = false;
             doCheck = false;

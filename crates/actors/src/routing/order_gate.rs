@@ -373,12 +373,14 @@ mod tests {
     #[test]
     fn opening_releases_in_key_order_and_future_open_keys_deliver_immediately() {
         let mut s = (Subject::new()).initialize().unwrap().behavior;
+        let held_three = hold(&mut s, 3, 30);
         assert!(matches!(
-            hold(&mut s, 3, 30).sends.outcomes[0].message,
+            held_three.sends.outcomes[0].message,
             OrderGateOutcome::Held { key: 3, held: 1 }
         ));
+        let held_one = hold(&mut s, 1, 10);
         assert!(matches!(
-            hold(&mut s, 1, 10).sends.outcomes[0].message,
+            held_one.sends.outcomes[0].message,
             OrderGateOutcome::Held { key: 1, held: 2 }
         ));
         let a = open(&mut s, 2);
@@ -390,31 +392,36 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![10]
         );
-        assert_eq!(hold(&mut s, 2, 20).sends.deliveries.len(), 1);
+        let delivered = hold(&mut s, 2, 20);
+        assert_eq!(delivered.sends.deliveries.len(), 1);
         assert_eq!(s.state().watermark, Some(2));
         assert_eq!(s.state().held(), 1);
     }
     #[test]
     fn duplicate_and_stale_opening_are_atomic() {
         let mut s = (Subject::new()).initialize().unwrap().behavior;
+        let held = hold(&mut s, 2, 20);
         assert!(matches!(
-            hold(&mut s, 2, 20).sends.outcomes[0].message,
+            held.sends.outcomes[0].message,
             OrderGateOutcome::Held { key: 2, held: 1 }
         ));
+        let duplicate = hold(&mut s, 2, 21);
         assert!(matches!(
-            hold(&mut s, 2, 21).sends.outcomes[0].message,
+            duplicate.sends.outcomes[0].message,
             OrderGateOutcome::Duplicate { value: 21, .. }
         ));
+        let opened = open(&mut s, 1);
         assert!(matches!(
-            open(&mut s, 1).sends.outcomes[0].message,
+            opened.sends.outcomes[0].message,
             OrderGateOutcome::Opened {
                 through: 1,
                 released: 0,
                 held: 1
             }
         ));
+        let stale = open(&mut s, 1);
         assert!(matches!(
-            open(&mut s, 1).sends.outcomes[0].message,
+            stale.sends.outcomes[0].message,
             OrderGateOutcome::StaleOpening { .. }
         ));
         assert_eq!(s.state().held, 1);

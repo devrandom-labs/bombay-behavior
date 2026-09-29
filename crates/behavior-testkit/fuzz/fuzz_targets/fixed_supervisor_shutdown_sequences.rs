@@ -163,34 +163,25 @@ fn exercise(inputs: &[u8]) {
         retirement = next;
 
         assert!(action.creates.is_empty());
-        assert!(action.sends.proxy_observations.into_requests().is_empty());
+        assert!(action.sends.proxy_observations.is_empty());
         assert!(
             action
                 .sends
-                .worker_preparations
-                .unattempted()
-                .into_inputs()
-                .is_empty()
+                .worker_preparations.is_empty()
         );
         assert!(
             action
                 .sends
-                .proxy_operations
-                .unattempted()
-                .into_inputs()
-                .is_empty()
+                .proxy_operations.is_empty()
         );
         assert!(
             action
                 .sends
-                .restart_schedules
-                .unattempted()
-                .into_inputs()
-                .is_empty()
+                .restart_schedules.is_empty()
         );
         let NoSends = action.sends.lifecycle;
-        assert!(action.sends.status_replies.into_deliveries().is_empty());
-        assert!(action.sends.capability_replies.into_deliveries().is_empty());
+        assert!(action.sends.status_replies.as_slice().is_empty());
+        assert!(action.sends.capability_replies.as_slice().is_empty());
 
         match decision {
             ProxyRetirementDecision::Waiting => {

@@ -352,10 +352,8 @@ async fn both_send_layer_orders_match_interpretation_order() {
     else {
         panic!("the outer proxy result must be admitted second");
     };
-    assert!(matches!(
-        settlements.offer_next_to_source(&mut host).await,
-        SourceCustody::Exhausted(_)
-    ));
+    let exhausted = settlements.offer_next_to_source(&mut host).await;
+    assert!(matches!(exhausted, SourceCustody::Exhausted(_)));
     assert_eq!(
         host.trace,
         [
@@ -389,10 +387,8 @@ async fn both_send_layer_orders_match_interpretation_order() {
     else {
         panic!("the outer assignment result must be admitted second");
     };
-    assert!(matches!(
-        settlements.offer_next_to_source(&mut host).await,
-        SourceCustody::Exhausted(_)
-    ));
+    let exhausted = settlements.offer_next_to_source(&mut host).await;
+    assert!(matches!(exhausted, SourceCustody::Exhausted(_)));
     assert_eq!(
         host.trace,
         [
@@ -452,10 +448,8 @@ async fn nested_products_offer_only_the_first_remaining_source() {
         residual = next;
         assert_eq!(host.trace.last(), Some(&expected));
     }
-    assert!(matches!(
-        residual.offer_next_to_source(&mut host).await,
-        SourceCustody::Exhausted(_)
-    ));
+    let exhausted = residual.offer_next_to_source(&mut host).await;
+    assert!(matches!(exhausted, SourceCustody::Exhausted(_)));
 }
 
 #[tokio::test]
@@ -484,9 +478,11 @@ async fn generated_product_stops_after_closed_source_and_retains_later_field() {
     };
 
     assert_eq!(host.trace, [AdmissionTrace::Proxy(OperationTicket(1))]);
-    assert_eq!(residual.proxy.into_inputs(), []);
+    let proxy_inputs = residual.proxy.into_inputs();
+    assert_eq!(proxy_inputs, []);
+    let assignment_inputs = residual.assignment.into_inputs();
     assert!(matches!(
-        residual.assignment.into_inputs().as_slice(),
+        assignment_inputs.as_slice(),
         [SettledItem::Attempted(ItemSettlement::Accepted(
             AssignmentToken(2)
         ))]
@@ -522,10 +518,8 @@ async fn complete_action_custody_offers_only_one_source_result() {
     };
 
     assert_eq!(host.trace, [AdmissionTrace::Proxy(OperationTicket(1))]);
-    assert!(matches!(
-        settlement.offer_next_to_source(&mut host).await,
-        SourceCustody::Admitted(_)
-    ));
+    let admitted = settlement.offer_next_to_source(&mut host).await;
+    assert!(matches!(admitted, SourceCustody::Admitted(_)));
 }
 
 #[test]

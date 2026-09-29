@@ -1345,11 +1345,10 @@ mod tests {
         <InterpreterRequests<u8> as SendInput<u8, Own>>::emit(&mut services, 3);
         assert!(!services.is_empty());
         assert_eq!(services.as_slice(), [2, 4, 5, 3]);
-        assert_eq!(
-            (&services).into_iter().copied().collect::<Vec<_>>(),
-            [2, 4, 5, 3]
-        );
-        assert_eq!(services.into_iter().collect::<Vec<_>>(), [2, 4, 5, 3]);
+        let borrowed = (&services).into_iter().copied().collect::<Vec<_>>();
+        assert_eq!(borrowed, [2, 4, 5, 3]);
+        let owned = services.into_iter().collect::<Vec<_>>();
+        assert_eq!(owned, [2, 4, 5, 3]);
 
         let requests = InterpreterRequests::new(vec![4, 5]).into_requests();
         assert_eq!(requests, [4, 5]);
@@ -1370,7 +1369,8 @@ mod tests {
         prefix.append(suffix);
         assert!(!prefix.is_empty());
         assert_eq!(prefix.len(), 4);
-        assert_eq!(prefix.into_items(), [1, 2, 3, 4]);
+        let items = prefix.into_items();
+        assert_eq!(items, [1, 2, 3, 4]);
 
         let requests = InterpreterRequests::new(vec![5, 6, 7]);
         assert_eq!(requests.len(), 3);

@@ -314,5 +314,6 @@ async fn retirement_creation_custody_allows_later_source_results_before_terminal
         panic!("terminal custody changed the creation rejection")
     };
     assert_eq!(creations.len(), 1);
-    assert!(settlement.sends.into_inputs().is_empty());
+    let sends = settlement.sends.into_inputs();
+    assert!(sends.is_empty());
 }

@@ -285,15 +285,17 @@ mod tests {
     #[test]
     fn eviction_is_explicit_and_allows_later_readmission() {
         let mut subject = (Subject::new(2).unwrap()).initialize().unwrap().behavior;
+        let first = deliver(&mut subject, 1, 10);
         assert!(matches!(
-            deliver(&mut subject, 1, 10).sends.outcomes[0].message,
+            first.sends.outcomes[0].message,
             DeduplicatorOutcome::Delivered {
                 key: 1,
                 evicted: None
             }
         ));
+        let second = deliver(&mut subject, 2, 20);
         assert!(matches!(
-            deliver(&mut subject, 2, 20).sends.outcomes[0].message,
+            second.sends.outcomes[0].message,
             DeduplicatorOutcome::Delivered {
                 key: 2,
                 evicted: None
@@ -308,7 +310,8 @@ mod tests {
             }
         ));
         assert_eq!(subject.state().retained().to_vec(), vec![2, 3]);
-        assert_eq!(deliver(&mut subject, 1, 12).sends.deliveries.len(), 1);
+        let readmitted = deliver(&mut subject, 1, 12);
+        assert_eq!(readmitted.sends.deliveries.len(), 1);
     }
 
     #[test]

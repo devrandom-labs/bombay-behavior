@@ -450,8 +450,9 @@ async fn parent_retains_the_exact_capability_and_emits_delivery_only_through_act
         CreationKind::Birth,
         CreationRejection::EnvironmentFailed,
     );
+    let rejected = active.on(stale);
     assert!(matches!(
-        active.on(stale),
+        rejected,
         Err(ParentError::UnexpectedWorkerCreation)
     ));
 }

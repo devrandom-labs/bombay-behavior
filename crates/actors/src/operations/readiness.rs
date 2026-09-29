@@ -317,7 +317,8 @@ mod tests {
                 )
                 .unwrap()
         };
-        assert!(!query(&mut subject).sends[0].message.ready());
+        let queried = query(&mut subject);
+        assert!(!queried.sends[0].message.ready());
         let observed = subject
             .receive(
                 MailAddr(9),
@@ -331,7 +332,8 @@ mod tests {
         assert!(observed.sends.is_empty());
         assert!(observed.creates.is_empty());
         assert_eq!(observed.become_, behavior::Step::Continue);
-        assert!(!query(&mut subject).sends[0].message.ready());
+        let queried = query(&mut subject);
+        assert!(!queried.sends[0].message.ready());
         let observed = subject
             .receive(
                 MailAddr(9),
@@ -345,7 +347,8 @@ mod tests {
         assert!(observed.sends.is_empty());
         assert!(observed.creates.is_empty());
         assert_eq!(observed.become_, behavior::Step::Continue);
-        assert!(query(&mut subject).sends[0].message.ready());
+        let queried = query(&mut subject);
+        assert!(queried.sends[0].message.ready());
     }
 
     #[test]

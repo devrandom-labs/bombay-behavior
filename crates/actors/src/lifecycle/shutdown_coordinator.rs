@@ -1473,7 +1473,8 @@ mod tests {
     #[test]
     fn tree_derives_stable_dependency_layers_and_rejects_invalid_graphs() {
         let tree = ShutdownTree::new([1, 2, 3, 4], [(1, 3), (2, 3), (3, 4)]).unwrap();
-        assert_eq!(tree.into_plan().phases(), &[vec![1, 2], vec![3], vec![4]]);
+        let plan = tree.into_plan();
+        assert_eq!(plan.phases(), &[vec![1, 2], vec![3], vec![4]]);
         assert!(matches!(
             ShutdownTree::new([1, 1], []),
             Err(ShutdownTreeError::DuplicateChild(1))

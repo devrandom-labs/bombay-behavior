@@ -306,10 +306,8 @@ async fn ordered_creations_dispatch_to_their_concrete_child_hosts() {
     let mut model = host();
     for (creation, route) in actions.creates.into_iter().zip([9, 4, 7]) {
         let (id, child, kind) = creation.into_parts();
-        assert!(matches!(
-            dispatch(child, id, route, kind, &mut model).await,
-            ItemSettlement::Accepted(_)
-        ));
+        let established = dispatch(child, id, route, kind, &mut model).await;
+        assert!(matches!(established, ItemSettlement::Accepted(_)));
     }
 
     assert_eq!(

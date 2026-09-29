@@ -246,10 +246,8 @@ async fn initialization_rejection_preserves_the_current_child_and_exact_error() 
         panic!("pure initialization failure is a typed creation outcome");
     };
     assert_eq!(error, ChildError::Rejected);
-    assert_eq!(
-        creation.into_parts().0.child().initialization,
-        ChildInitialization::Reject
-    );
+    let (child, _) = creation.into_parts();
+    assert_eq!(child.child().initialization, ChildInitialization::Reject);
     assert_eq!(host.trace, [HostTrace::Reserve, HostTrace::Initialize]);
     assert!(host.retained.is_empty());
 }
@@ -267,10 +265,8 @@ async fn installation_rejection_preserves_uninterpreted_initialization_actions()
         panic!("host refusal retains the staged child and its actions");
     };
     assert_eq!(reason, CreationRejection::EnvironmentFailed);
-    assert_eq!(
-        creation.into_parts().0.child().initialization,
-        ChildInitialization::Continue
-    );
+    let (child, _) = creation.into_parts();
+    assert_eq!(child.child().initialization, ChildInitialization::Continue);
     assert_eq!(initialization.sends, [7]);
     assert_eq!(initialization.become_, Step::Continue);
     assert_eq!(
