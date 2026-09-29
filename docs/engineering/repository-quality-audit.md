@@ -207,12 +207,15 @@ is recorded against a revision.
   settlement products if a richer error observation is needed.
 
 - [ ] **A11 — Give named effect-product derivation one maintained implementation.**
-  **Design candidate with observed drift.** The proc macro's generated sends,
-  `atomic::request_product!`, and handwritten products such as `BufferSends`,
-  `DeliveryOutcomes`, `LeaseSends`, and `PresenceSends` independently implement
-  empty/append, interpretation, settlement classification, and custody.
-  Logical-host projection is maintained separately in `requirements.rs`; A03
-  shows a missed law in one derivation path.
+  **Design candidate with observed drift.** The catalogue now uses the local
+  `send_product!` derivation for `DeliveryOutcomes`, `LeaseSends`,
+  `PresenceSends`, and other generic named products; `BufferSends` and
+  `atomic::request_product!` were removed in the earlier consolidation.
+  That derivation implements empty/append, ordered interpretation, settlement
+  classification, source custody, and logical-host projection together.
+  The proc macro still derives a separate named-send implementation, while
+  `requirements.rs` now contains only the exceptional `ReplyDeliveries` and
+  `HeterogeneousShutdownSends` projections. A03 exposed the prior omission.
   **Complete when:** a law table compares complete equations before selecting
   shared machinery. A retained derivation must preserve semantic field names,
   declared order, corruption suffixes, source admission, and logical-host
@@ -220,6 +223,9 @@ is recorded against a revision.
   products and both wrapper orders before catalogue migration. Do not merge
   products with different ownership or retirement laws, or introduce a public
   product framework merely to save typing.
+  **Progress:** the [current equation inventory](#a11-named-send-equation-inventory)
+  identifies one remaining missing proc-macro projection and the two
+  domain-specific manual projections. No shared derivation has been retained.
 
 - [ ] **A12 — Reassess aggregate decomposition using retained current values.**
   **Design candidate.** FIFO's root has 4,095 lines, stable proxy's root 3,509,
@@ -695,6 +701,35 @@ nested transition authority, semantic boolean, or positional consumer syntax.
 The ordered product law in `actor-transition-algebra.md` and the normalized
 atomic, routing, timing, discovery, and lifecycle contracts were cross-checked.
 Disposition: `pass` for the retained representation.
+
+### A11 named-send equation inventory
+
+The two current general derivations preserve the same named field order and
+the same complete settlement alternatives, but they have different authoring
+inputs. This is a pre-design comparison, not approval for a shared public
+product framework.
+
+| Equation | `send_product!` in `actors` | `#[behavior]` proc macro |
+|---|---|---|
+| Authored product | A generic named struct with semantic fields. | A behavior declaration generates a named sends struct, a distinct settlement struct, lane selectors, and fluent action methods. |
+| Empty and append | Delegates to each field in declaration order. | Delegates to each field in declaration order. |
+| Interpretation | Traverses fields in declaration order; corruption preserves the committed prefix and makes the untouched suffix unattempted. | The same ordered traversal and corrupt suffix equation. |
+| Settlement status | Combines every named field. | Combines every generated settlement field. |
+| Source custody | Offers each field in order; admission or closure retains the complete remaining product. | The same ordered offer and remaining-product equation. |
+| Event-lane routing | Composes the fields' `SendsFor<Event>` proofs; authored code selects a concrete field. | Composes the fields' `SendsFor<Event>` proofs and generates `SendInput` selectors and fluent methods. |
+| Logical hosts | Appends every field's `LogicalDeliveryProtocols` in interpretation order. | No generated `LogicalDeliveryProtocols` implementation is present. A lawful addition must distinguish logical deliveries from exact and interpreter-request lanes. |
+
+`ReplyDeliveries` has a logical and an established route with distinct target
+laws; `HeterogeneousShutdownSends` has its own finite target shape. Their
+manual projections in `requirements.rs` are therefore evidence of semantic
+exceptions, not merely missed macro invocations. The next A11 hypothesis must
+prove the logical-host equation through two unrelated proc-macro behaviors and
+both wrapper orders before it can subsume either derivation. The aggregate
+drift checkpoint for this inventory has no retained production change: control
+states, subordinate alternatives, branches, production lines, modules, and
+public spellings are unchanged; no new history, cause, cardinality, transition
+authority, semantic boolean, or positional consumer syntax is introduced.
+Disposition: `pass` for the evidence record only.
 
 ### A13 pre-edit protocol-bound law
 
