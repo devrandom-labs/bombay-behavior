@@ -1825,12 +1825,12 @@ passed separately. These gates do not close the six remaining design,
 mutation, and downstream integration criteria.
 
 Against merge base `435560ce7bea8ad3330ee2d42e5034f837a80602`, the
-current branch's source changes are net −82 lines in `behavior/src`, −1,085
+current branch's source changes are net −78 lines in `behavior/src`, −1,062
 in `actors/src`, −4 in `behavior-macros/src`, and −8 in
-`behavior-testkit/src`: **1,179 fewer production and testkit source lines**.
-The `crates/` tree as a whole is net +230 lines because tests grew by 977
-lines and the stricter mutation gate grew by 334, alongside benchmark and
-supporting changes. These `git diff --numstat` counts are diagnostics; the six
+`behavior-testkit/src`: **1,152 fewer production and testkit source lines**.
+The `crates/` tree as a whole is net +272 lines because focused tests and the
+stricter mutation gate grew, alongside benchmark and supporting changes.
+These `git diff --numstat` counts are diagnostics; the six
 open checklist items still decide whether the remaining interfaces and
 aggregate states are essential.
 
