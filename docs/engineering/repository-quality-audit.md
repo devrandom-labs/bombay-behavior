@@ -1508,6 +1508,28 @@ The propagation selection is reproducible with
 `-f crates/actors/src/lifecycle/termination_propagation.rs
 -F '::matches|match guard self.state|replace && with'`.
 
+### A07 actor mutation evidence: health observation versions
+
+Classification: deliberate Bombay component-correlation and version-commit policy. A
+health observation updates only its selected component. Older evidence returns
+a stale error with its owned evidence; equal-version conflicting evidence
+returns a conflict; equal-version identical evidence is idempotent. A removal
+tombstone cannot be undone by an older observation.
+
+The Nix-toolchain campaign selected all seven candidates in
+`Health<A, K, Route>::commit` at revision `ab0d65f`. The actor baseline and
+mutated actor and testkit suites passed or failed as expected. Every candidate
+compiled, then a named health test failed; the relevant tests were
+`stale_and_conflicting_evidence_preserve_committed_state` and
+`tombstone_rejects_resurrection_and_report_aggregates_worst_status`. The strict
+gate accepted `7 viable / 7 total`, with no survivor or timeout. Reproduce
+the selection with `cargo mutants --package bombay-behavior-actors
+--test-package bombay-behavior-actors --test-package bombay-behavior-testkit
+--test-tool nextest --no-shuffle --minimum-test-timeout 180
+-f crates/actors/src/operations/health.rs
+-F 'Health<A, K, Route>::commit'`. This is one operation-law slice, not an
+actor-wide mutation verdict.
+
 ### A20 ledger entry: stable-proxy activation correlation
 
 | Evidence layer | Current witness and limit |
@@ -1600,6 +1622,15 @@ The propagation selection is reproducible with
 | Independent trace | `exact_termination_model` compares generated exact-report phases and reaction count but does not inspect every action lane. `terminal_outcome_sequences` independently predicts selected-child acceptance, foreign return, discharge, publication, and later rejection; since `f0dce34` it also checks initialization and every effect lane on successful steps. It does not model `PeerTermination`. |
 | Composition and invalid construction | The exact monitor composes inside `StopOnShutdown`, and the logical monitor appears in the universal-layer tests. No two-order wrapper proof is claimed for propagation. A child target requires a typed creation ID and protocol occurrence; a foreign report is a runtime input returned through the typed error. |
 | Counterfactual | Eight viable monitor mutations were caught and two were unviable. The propagation campaign exposed an unconditional-peer-acceptance survivor; its isolated post-regression rerun was caught by the new focused test. The two campaign reports retain their separate baselines and verdicts. |
+
+### A20 ledger entry: health observation versions
+
+| Evidence layer | Current witness and limit |
+|---|---|
+| Focused transition and custody | The two `operations::health` tests check component selection, stale and equal-version conflicts, idempotence, tombstone retention, and report aggregation. Error variants retain the rejected component and evidence. |
+| Independent trace | `behavior-testkit/tests/catalogue_invariants.rs::health_tombstones_and_versions_match_an_independent_map` compares generated health operations and complete rejected evidence with an independent ordered component map. It does not interpret host delivery admission. |
+| Composition and boundaries | The health actor returns its report through a typed route. Version equality and ordering are explicit in the pure transition; the focused test includes a removed component and a later older observation. No wrapper-order claim is made for this standalone actor. |
+| Counterfactual | All seven selected `Health::commit` mutations compiled and failed named health tests. The strict gate accepted `7 viable / 7 total`; other health methods remain outside this slice. |
 
 The remaining catalogue laws need equally specific entries, so A20 remains
 open.
