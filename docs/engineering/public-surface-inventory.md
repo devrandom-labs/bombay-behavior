@@ -99,6 +99,12 @@ or order messages. A focused caller failed before the change only on these
 three impl-level bounds and passed afterward; the routing transition suite
 remained green.
 
+`PriorityQueue` now also accepts an opaque priority type at protocol identity
+and base projection. Its `Ord` proof remains required where construction and
+transition use the heap. The external caller failed on the old aggregate
+bound and passes after this move; the stable-priority selection trace remains
+green.
+
 ## Public trait implementors
 
 The source declares 77 top-level public traits: 55 in `behavior` and 22 in

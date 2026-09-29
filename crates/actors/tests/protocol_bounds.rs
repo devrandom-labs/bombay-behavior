@@ -8,10 +8,11 @@ use behavior_actors::{
     CorrelationResult, Correlator, CorrelatorMessage, Deduplicator, DeduplicatorMessage,
     DeduplicatorOutcome, Health, HealthMessage, HealthReport, Lease, LeaseMessage, LeaseOutcome,
     Machine, OrderGate, OrderGateMessage, OrderGateOutcome, Presence, PresenceMessage,
-    PresenceReply, PubSub, PubSubMessage, Readiness, ReadinessMessage, ReadinessReport, Registry,
-    RegistryMessage, RegistryResult, ReplyRoute, Resolution, Resolver, Router, RouterMessage,
-    RoutingStrategy, Topic, TopicMessage, WorkQueue, WorkQueueMessage, WorkQueueOutcome, Workflow,
-    WorkflowMessage, WorkflowOutcome,
+    PresenceReply, PriorityQueue, PriorityQueueMessage, PriorityQueueOutcome, PubSub,
+    PubSubMessage, Readiness, ReadinessMessage, ReadinessReport, Registry, RegistryMessage,
+    RegistryResult, ReplyRoute, Resolution, Resolver, Router, RouterMessage, RoutingStrategy,
+    Topic, TopicMessage, WorkQueue, WorkQueueMessage, WorkQueueOutcome, Workflow, WorkflowMessage,
+    WorkflowOutcome,
 };
 
 struct Key;
@@ -121,6 +122,8 @@ type OrderGateProtocol = OrderGate<MailAddr, Key, u8, Recipient<Destination>, Or
 type DeduplicatorReply = Recipient<MessageProtocol<MailAddr, DeduplicatorOutcome<Key, u8>>>;
 type DeduplicatorProtocol =
     Deduplicator<MailAddr, Key, u8, Recipient<Destination>, DeduplicatorReply>;
+type PriorityReply = Recipient<MessageProtocol<MailAddr, PriorityQueueOutcome<u8, Value>>>;
+type PriorityProtocol = PriorityQueue<MailAddr, u8, Value, Recipient<Destination>, PriorityReply>;
 
 fn accepts_protocol<P: Protocol<Addr = MailAddr>>() {}
 
@@ -159,6 +162,10 @@ fn protocol_identity_does_not_require_transition_or_construction_bounds() {
         OrderGateProtocol,
         OrderGateMessage<Key, u8, Recipient<Destination>, OrderGateReply>,
     >();
+    accepts_message::<
+        PriorityProtocol,
+        PriorityQueueMessage<u8, Value, Recipient<Destination>, PriorityReply>,
+    >();
     accepts_message_at::<
         ExactAddr,
         WorkQueueProtocol,
@@ -181,6 +188,7 @@ fn base_projection_does_not_require_transition_or_construction_bounds() {
     accepts_base::<WorkflowProtocol>();
     accepts_base::<OrderGateProtocol>();
     accepts_base::<DeduplicatorProtocol>();
+    accepts_base::<PriorityProtocol>();
 }
 
 #[test]

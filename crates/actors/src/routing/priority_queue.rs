@@ -132,7 +132,7 @@ impl<T, P: Ord> Ord for Entry<T, P> {
 pub struct PriorityQueue<
     A: Address,
     T,
-    P: Ord,
+    P,
     TargetRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = T>>,
     ReplyRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = PriorityQueueOutcome<T, P>>>,
 > {
@@ -230,7 +230,6 @@ impl<A, T, P, TargetRoute, ReplyRoute> BehaviorBase
     for PriorityQueue<A, T, P, TargetRoute, ReplyRoute>
 where
     A: Address,
-    P: Ord,
     TargetRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = T>>,
     ReplyRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = PriorityQueueOutcome<T, P>>>,
 {
@@ -243,7 +242,6 @@ impl<A, T, P, TargetRoute, ReplyRoute> behavior::Protocol
     for PriorityQueue<A, T, P, TargetRoute, ReplyRoute>
 where
     A: Address,
-    P: Ord,
     TargetRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = T>>,
     ReplyRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = PriorityQueueOutcome<T, P>>>,
 {

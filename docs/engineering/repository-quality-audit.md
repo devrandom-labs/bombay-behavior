@@ -309,16 +309,15 @@ is recorded against a revision.
   manually authored child roles and generic logical-host owners have compile
   witnesses for the newly visible types. The cache/resolver protocol-bound
   comparison found no material compile-time difference in its measured pair;
-  the caller diagnostics improved. The protocol-only caller now covers 19
+  the caller diagnostics improved. The protocol-only caller now covers 20
   catalogue actors, keeping construction and transition bounds at the
-  operations that need them. A separate caller now proves that 12 unwrapped
+  operations that need them. A separate caller now proves that 14 unwrapped
   catalogue actors expose their read-only `BehaviorBase` projection without
   requiring the cloning, comparison, or ordering used only by construction or
-  transition. This includes keyed `Deduplicator` and `OrderGate` protocol
-  identities without their transition-only key bounds. The proxy operation ID
-  is now crate-private;
-  focused external fixtures distinguish forbidden ID naming, receipt
-  construction, and double settlement. Review of remaining hidden runtime
+  transition. This also includes keyed `Deduplicator` and `OrderGate` and a
+  priority queue with opaque priority data. The proxy operation ID is now
+  crate-private; focused external fixtures distinguish forbidden ID naming,
+  receipt construction, and double settlement. Review of remaining hidden runtime
   ports and the rest of the public surface is still required.
 
   The creation settlement review found a narrower documentation defect:
@@ -1033,6 +1032,42 @@ effect lanes, interpreter operations, and retained values are unchanged.
 The deduplicator still owns its FIFO key window; the order gate still owns its
 watermark and held map. The residue scan and law cross-check above remain
 clear. Disposition: `pass` for this interface-only batch; A13 remains open.
+
+### A13 pre-edit priority-protocol law
+
+Classification: derived, typed-protocol identity law. A priority-queue
+command carries an application priority as owned data; only construction and
+release ordering require `Ord`. `BinaryHeap<Entry<T, P>>` can be stored before
+`Entry<T, P>: Ord` is available; the ordering proof is needed when operations
+use the heap. The external syntax is a `Protocol<Msg =
+PriorityQueueMessage<...>>` and `BehaviorBase<Base = Self>` bound with an
+opaque priority type. Neither syntax constructs or transitions the queue.
+The prior design is expected to fail this caller solely at the struct's
+`P: Ord` bound. The existing priority selection/FIFO trace and construction
+tests witness the lower-order operation contract. The candidate removes the
+bound from the aggregate declaration and the two read-only impls, retaining
+it on construction and `Behavior`. It adds no new state, effect, policy,
+interpreter operation, or public spelling. Baseline control phases remain
+Active and Exhausted; the current values remain capacity, next token, and
+owned heap entries. Transition branches, subordinate alternatives, modules,
+and wrapper products are unchanged. The residue scan finds no proposed
+arrival-history state, repeated cause, false cardinality, nested authority,
+semantic boolean, or positional caller syntax. Cross-check: the actor
+transition algebra and routing priority law. Disposition: `pass` for the
+pre-edit model. The external caller failed before production with exactly two
+`E0277` diagnostics, both requiring `Value: Ord` at protocol identity and
+base projection. No route, message, or heap-storage error appeared.
+
+The focused caller and all 827 workspace Nextest cases pass after the bound
+move. The production module changed `+1/-3`, net two fewer physical lines
+(`446 → 444`); no transition branch changed. Its control phases remain
+Active/Exhausted, the heap still owns the same entries, and all priority
+comparison remains on construction and `Behavior`. Subordinate alternatives,
+modules, public spellings, effect lanes, and interpreter operations are
+unchanged. The residue scan found no arrival history, repeated cause, false
+cardinality, nested authority, semantic boolean, or positional consumer
+syntax. The actor transition and routing priority laws were cross-checked.
+Disposition: `pass` for this bound-only stage; A13 remains open.
 
 ### A13 pre-edit protocol-bound law
 
