@@ -256,6 +256,22 @@ is recorded against a revision.
   this path. Merging the states would admit a second initial worker or change
   the documented outcome. The other subordinate alternatives and family
   measurements still require the full A12 checkpoint.
+  Dynamic supervision's `WorkerChangeDisposition::{Committed,Cancelled}`
+  retains the answer to a future repeated cancellation. In
+  `DynamicEntryPhase::Available`, the disposition selects the same committed
+  or cancelled receipt again. `dynamic::ready_service_accepts_one_replacement_on_its_current_proxy`
+  and `dynamic::accepted_start_cancellation_retires_before_fresh_key_reuse`
+  exercise these answers. Deleting the disposition would change that later
+  reply even though service availability is the same. This read-only
+  distinction does not close the wider family audit.
+  The stopped and forced-retirement alternatives in StableProxy, fixed
+  supervision, FIFO, and keyed pooling still own workers, submissions,
+  shutdown results, or rejection causes for terminal custody. Their fields
+  have no local read path in some cases because the whole stopped behavior is
+  retained for the interpreter. The downstream terminal-return witness in
+  A17 and the interpreter ownership PRD must prove each transfer before any
+  such alternative can be removed. This is a custody question left open by
+  the source-only review.
 
 - [ ] **A13 — Audit public bounds, hidden exports, and extension ownership.**
   **Confirmed surface requiring review.** The current source has 12
