@@ -979,7 +979,10 @@ semantic boolean, or structural caller syntax. Disposition: `pass` for this
 protocol-bound batch; the rest of A13 remains open. The focused debug and
 optimized caller tests, two FIFO unit tests, workspace all-target compile,
 all 824 workspace Nextest cases, and the documentation book build passed
-through Nix.
+through Nix. The complete `nix flake check -L` passed all ten declared checks
+at signed commit `870f4b2`, including the optimized 824-case Nextest run,
+release tests, doctests, Clippy, package, documentation, formatting,
+dependency-audit, and dependency-policy gates.
 
 The same derived protocol-identity law applies to `Topic` and `PubSub`:
 their message sums contain owned publication, topic, and route values, and
