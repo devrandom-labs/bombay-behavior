@@ -414,6 +414,17 @@ is recorded against a revision.
   code, but never use a percentage as proof of the law. Keep the workflow's
   fuzz-target list synchronized with the manifest; it is currently complete.
 
+## Follow-on after the audit checklist
+
+- [ ] **Complete [the creation and delivery custody PRD](creation-and-delivery-custody-prd.md) after A01–A20 are complete.**
+  Implement the PRD's decision, delivery stages, and every acceptance criterion
+  C1–C12 exactly as specified there. Keep its required real Address and Bombay
+  witnesses, rejection and terminal custody, external consumer checks, release
+  and downstream lock verification, and applicable repository gates. Use the
+  PRD's stated alternative only if its reservation hypothesis is falsified by
+  the required witness. This follow-on remains open until the PRD's own
+  evidence proves completion; the audit checklist does not narrow its scope.
+
 ## Coverage map and what should remain distinct
 
 This table locates the continuation work for every family. Existing evidence
