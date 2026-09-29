@@ -81,6 +81,7 @@
             ./scripts/check_rustdoc_imports.py
             ./scripts/check_rustdoc_error_codes.py
             (pkgs.lib.fileset.maybeMissing ./mutants-baseline.json)
+            ./mutants/actors
           ];
         };
         commonArgs = {
@@ -187,6 +188,49 @@
                 emit-baseline "$out/mutants.out" > "$out/mutants-baseline.json"
               cp -f "$out/mutants.out/missed.txt" "$out/missed.txt" 2>/dev/null || true
               cp -f "$out/mutants.out/timeout.txt" "$out/timeout.txt" 2>/dev/null || true
+            '';
+            doInstallCargoArtifacts = false;
+            doCheck = false;
+          });
+
+          # On-demand actor-family slices. Each reviewed floor is committed,
+          # so a later rerun cannot silently turn a caught mutant unviable.
+          mutants-actors = craneLib.mkCargoDerivation (commonArgs // {
+            inherit cargoArtifacts;
+            pnameSuffix = "-actors-mutants";
+            nativeBuildInputs = [ pkgs.cargo-mutants pkgs.cargo-nextest ];
+            buildPhaseCargoCommand = ''
+              set -euo pipefail
+              mkdir -p "$out"
+              run_actor_campaign() {
+                campaign="$1"
+                file="$2"
+                filter="$3"
+                PROPTEST_CASES=64 cargo mutants \
+                  --package bombay-behavior-actors \
+                  --test-package bombay-behavior-actors \
+                  --test-package bombay-behavior-testkit \
+                  --test-tool nextest --no-shuffle --colors never \
+                  --minimum-test-timeout 180 \
+                  -f "$file" -F "$filter" \
+                  --output "$out/$campaign" -- --profile mutants || true
+                cargo run --release -p behavior-mutants-gate -- \
+                  check "$out/$campaign/mutants.out" \
+                  "$PWD/mutants/actors/$campaign.json" \
+                  | tee "$out/$campaign/mutants-gate-report.txt"
+              }
+              run_actor_campaign health \
+                crates/actors/src/operations/health.rs \
+                'Health<A, K, Route>::commit'
+              run_actor_campaign work_queue \
+                crates/actors/src/routing/work_queue.rs \
+                '::submit|::announce'
+              run_actor_campaign pub_sub_membership \
+                crates/actors/src/discovery/pub_sub.rs \
+                'PubSub<A, K, P, Route>::subscribe|PubSub<A, K, P, Route>::unsubscribe'
+              run_actor_campaign pub_sub_publish \
+                crates/actors/src/discovery/pub_sub.rs \
+                '<impl Behavior for PubSub<A, K, P, Route>>::transition'
             '';
             doInstallCargoArtifacts = false;
             doCheck = false;

@@ -1,0 +1,6 @@
+{
+  "floors": {
+    "crates/actors/src/operations/health.rs::Health<A, K, Route>::commit": 7
+  },
+  "known_zero_viable": []
+}
