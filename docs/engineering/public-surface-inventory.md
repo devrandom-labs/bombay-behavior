@@ -47,3 +47,46 @@ public spelling. In particular, an associated type that mentions one of these
 values is not proof that applications must name it. Closing A13 still requires
 caller-facing compile witnesses, a trait-implementor inventory, and a
 repeatable compile-cost comparison before changing visibility or bounds.
+
+## Public trait implementors
+
+The source declares 77 top-level public traits: 55 in `behavior` and 22 in
+`behavior-actors` (counted with `rg '^pub trait '`). The following inventory
+accounts for every declaration. “Author” means an application defining its
+own typed actor, effect, or child protocol; “interpreter” means the code that
+settles an exact typed request. A structural proof may be public because a
+generated or manually authored product must implement it, even if ordinary
+applications should not mention it directly.
+
+| Owner | Traits | Lawful implementors and reason for the port |
+|---|---|---|
+| `transition.rs` | `Protocol`, `Behavior` | Authors declare a stable typed destination and its pure transition; wrappers implement the same contract for composed actors. |
+| `transition.rs` | `LogicalHostRequirements`, `BehaviorBase` | Blanket logical-host projection for any qualifying behavior; authored behaviors and wrappers expose the underlying base. |
+| `transition.rs` | `BehaviorLayer` | A concrete construction closure or an authored construction type; the existing blanket closure implementation is the common case. |
+| `user_event.rs` | `UserEvent`, `ComposedEvent`, `EventIngress`, `ChildInputIngress`, `InjectEvent`, `RecoverEvent` | Authored event sums and structural wrapper event products; these preserve a typed user-message lane and lossless event injection/recovery. |
+| `actor/addressing.rs` | `Address`, `EndpointAddress` | Address-space authors and concrete address types; the latter provides the endpoint form used at the interpreter edge. |
+| `actor/addressing.rs` | `InterpretEstablished` | Interpreters of an exact established recipient capability. |
+| `actor/creation.rs` | `ChildRole`, `ChildOccurrence`, `ResolveChildOccurrence`, `EstablishChild`, `ChildCreationProduct`, `DispatchBirth` | Authors or generated role declarations establish exact child positions; structural birth products and interpreter adapters resolve and dispatch them. |
+| `actor/creation.rs` | `ChildPosition`, `BirthNodeAppend`, `ChildOccurrenceResolution`, `ResolveChildOccurrenceDescriptor`, `BirthNodeAt`, `ChildOccurrenceShape`, `ChildOccurrenceProduct`, `ChildOccurrenceProductAt`, `ChildProduct` | Closed structural child-position and birth-product proofs; source and generated products implement these to retain exact occurrence and custody. |
+| `actor/creation.rs` | `BirthMode`, `BirthProtocolAt`, `BirthProtocolProduct`, `BirthProtocols`, `BirthModeProtocols`, `BirthNodeProtocols`, `BirthNodeLogicalHosts` | Authored birth modes and structural projections enumerate child protocols and logical hosts without runtime lookup. |
+| `effects/actions.rs` | `ActionSettlements`, `BehaviorSettlements`, `CreationSettlements`, `AppendSend` | Complete structural action/creation settlements and typed send-product append operations. |
+| `effects/actions.rs` | `InterpretCreations` | Interpreter-bound traversal of one exact ordered creation product. |
+| `effects/sending.rs` | `ClassifySettlement`, `ActionItem`, `SendSettlements`, `SendInput`, `SendEffects`, `LogicalDeliveryProtocols`, `SendsFor`, `SourceAction`, `SourceSettlementCustody`, `ReturnToEmitterFor`, `InterpreterRequest` | Authors and concrete structural products define the request, settlement, routing, and logical-destination equations; authored custom sends products must state their logical-host projection explicitly. |
+| `effects/sending.rs` | `InterpretItem`, `InterpretSends`, `SourceAdmission` | Interpreters settle exact items; concrete send products traverse them; actor ingress admits an exact returned source action. |
+| `activation.rs` | `Activate` | Blanket implementation for a behavior that can enter its consuming initialization path. |
+| `atomic/diagnostic.rs`, `atomic/fixed_supervisor/lifecycle.rs`, `atomic/pool/mod.rs` | `DiagnosticRoute`, `FixedLifecycleRoute`, `CompletesAssignments` | Sealed diagnostic, fixed-lifecycle, and completion products; only the declared finite alternatives implement them. |
+| `atomic/worker/mod.rs`, `atomic/worker/preparation.rs` | `ActivationPlan`, `WorkerSource` | An author supplies a concrete worker activation plan and a source that returns complete prepared or rejected worker custody. |
+| `composition/delivery_route.rs` | `DeliveryRoute`, `DeliveryRouteFor` | Sealed exact route products and their owning behavior relationship. |
+| `lifecycle/child_shutdown.rs` | `BeginShutdownPhases`, `DeclareShutdownPhase`, `FinishShutdownPhases`, `AssignAt`, `AllAssigned` | Structural shutdown-plan composition and the finite proof that every required child was assigned. |
+| `lifecycle/shutdown_coordinator.rs` | `ShutdownTargetAt` | A typed child-position shutdown target in a heterogeneous plan. |
+| `lifecycle/termination_monitor.rs`, `lifecycle/termination_propagation.rs` | `TerminationObservationTarget`, `TerminationTarget` | Exact recipient forms for observing and propagating termination. |
+| `protocol/established.rs` | `InterpretEstablishedObservation`, `InterpretEstablishedShutdown` | Interpreters of exact established observation and shutdown requests. |
+| `routing/router.rs` | `RoutingStrategy`, `RouteKey` | Authors select a concrete policy and define the application message key; the catalogue supplies round-robin, least-loaded, consistent-hash, and rendezvous strategies. |
+| `stash.rs` | `StaticallyInfallible`, `StashStatus` | The former is sealed to infallible forms; the latter projects stashed-message status through multiple existing wrappers. |
+
+The table identifies implementor *roles*, not proof that every spelling should
+stay public. In particular, the structural rows still need external compile
+witnesses before visibility can be reduced. `StashStatus` already has multiple
+real wrapper implementations, so treating it as a redundant one-implementation
+trait would be incorrect. The remaining A13 work includes a cold, repeatable
+compile-time comparison and caller diagnostics for any further bound change.

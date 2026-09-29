@@ -238,9 +238,9 @@ is recorded against a revision.
   Keep FIFO assignment policy and keyed binding policy distinct.
 
 - [ ] **A13 — Audit public bounds, hidden exports, and extension ownership.**
-  **Confirmed surface requiring review.** The current source has 22
-  `#[doc(hidden)]` annotation sites in core and 86 in actors, including a
-  private constructor, members, and re-exports. The
+  **Confirmed surface requiring review.** The current source has 18
+  `#[doc(hidden)]` annotation sites in core and 86 in actors, including
+  members and re-exports. The
   [public-surface inventory](public-surface-inventory.md) classifies each site
   by contract owner. These annotations do not make an item private.
   Conversely, an associated type
@@ -256,6 +256,13 @@ is recorded against a revision.
   law. Measure diagnostics and compile cost. Document required runtime ports
   openly and keep representation private where Rust permits. Add no aliases,
   defaults, visibility, or generic parameters solely to silence the compiler.
+  **Progress:** the [public-surface inventory](public-surface-inventory.md)
+  now accounts for all 77 top-level public traits by lawful implementor role.
+  The inventory confirms that `StashStatus` has multiple real wrapper
+  implementations; its name alone is not grounds for deletion. External
+  manually authored child roles and generic logical-host owners have compile
+  witnesses for the newly visible types. A repeatable compile-cost comparison
+  and review of remaining hidden runtime ports are still required.
 
 - [x] **A14 — State the trust scope of initialization capabilities accurately.**
   **Confirmed documentation/API mismatch.** `InitializationTurn` says only the
