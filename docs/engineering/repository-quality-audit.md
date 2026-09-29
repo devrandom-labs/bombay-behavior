@@ -351,6 +351,30 @@ is recorded against a revision.
   on a separate branch. This branch has not run the required downstream
   revision/witness, so the scripted testkit trace is not labeled integration
   evidence.
+  **Isolated downstream probe:** an unmodified snapshot of the sibling
+  worktree compiled `bombay-rs --lib` under its Nix-pinned Rust 1.96 toolchain
+  against published behavior crates. With Cargo patches pointing to this
+  branch, compilation stopped at `E0046`: `EntityAdmission<D>` has not declared
+  the newer `InterpreterRequest::LogicalProtocols` projection. Source review
+  found another test-local `InitializationRequest` implementation with the
+  same omission. The candidate law for a temporary compatibility probe is
+  that both requests use already-owned capabilities and emit no logical actor
+  `Delivery`, so their emitting actor's logical-host product is empty. This is
+  an inference from the downstream source, not an actor-model guarantee or a
+  successful A17 witness. No change was made to the sibling checkout.
+  In a second isolated copy, those two requests declared the empty logical
+  protocol product and Cargo patched both behavior crates to signed commit
+  `4cd3b7f`. `bombay-rs --lib` then compiled, and five selected downstream
+  targets passed 27 tests: `application_children` (1),
+  `application_terminal_custody` (2), `entity_application` (1),
+  `entity_runtime` (11), and `run_with` (12). The selected tests include real
+  application admission, activation failure, passivation, terminal custody,
+  and caller compile fixtures. The snapshot came from the dirty downstream
+  worktree at `a7a66e391273`; it is not a recorded clean revision, and the
+  temporary projections are not present in that repository. These tests do
+  not prove replacement-establishment failure, every creation collision and
+  exhaustion path, independent sends after rejection, or parent-to-root
+  residual transfer. A17 stays open.
 
 ## P3 — make supporting evidence intentional
 
@@ -1654,6 +1678,16 @@ audit, deny, and package verification. The later `4cd3b7f` commit changed
 only documentation visibility and audit text; its Nix documentation check
 passed separately. These gates do not close the six remaining design,
 mutation, and downstream integration criteria.
+
+Against merge base `435560ce7bea8ad3330ee2d42e5034f837a80602`, the
+current branch's source changes are net −82 lines in `behavior/src`, −1,085
+in `actors/src`, −4 in `behavior-macros/src`, and −8 in
+`behavior-testkit/src`: **1,179 fewer production and testkit source lines**.
+The `crates/` tree as a whole is net +230 lines because tests grew by 977
+lines and the stricter mutation gate grew by 334, alongside benchmark and
+supporting changes. These `git diff --numstat` counts are diagnostics; the six
+open checklist items still decide whether the remaining interfaces and
+aggregate states are essential.
 
 ## References
 
