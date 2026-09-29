@@ -30,7 +30,6 @@ pub struct ActionSettlement<Creations, Sends, Ph> {
 }
 
 /// Final settlement of the creation leg of one [`Actions`] value.
-#[doc(hidden)]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CreationSettlement<Requests, Settlements> {
     /// The whole batch was routed and every child has an exact settlement.
@@ -144,7 +143,6 @@ where
 }
 
 /// Static creation-settlement product selected by one birth mode.
-#[doc(hidden)]
 pub trait CreationSettlements<A: Address>: BirthMode {
     type Settlements: ClassifySettlement;
 }
@@ -188,7 +186,6 @@ where
 /// The value retains either every routed child settlement or the entire
 /// unchanged batch rejected during route preparation. It is interpreter-facing
 /// custody, not an application protocol or another creation operation.
-#[doc(hidden)]
 #[must_use = "a returned creation batch must be admitted or retained"]
 pub struct CreationsSettled<A, C>
 where

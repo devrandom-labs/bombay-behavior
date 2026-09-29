@@ -238,7 +238,7 @@ is recorded against a revision.
   Keep FIFO assignment policy and keyed binding policy distinct.
 
 - [ ] **A13 — Audit public bounds, hidden exports, and extension ownership.**
-  **Confirmed surface requiring review.** The current source has 18
+  **Confirmed surface requiring review.** The current source has 15
   `#[doc(hidden)]` annotation sites in core and 86 in actors, including
   members and re-exports. The
   [public-surface inventory](public-surface-inventory.md) classifies each site
@@ -263,6 +263,15 @@ is recorded against a revision.
   manually authored child roles and generic logical-host owners have compile
   witnesses for the newly visible types. A repeatable compile-cost comparison
   and review of remaining hidden runtime ports are still required.
+
+  The creation settlement review found a narrower documentation defect:
+  external caller suites name `CreationSettlement`, `CreationSettlements`, and
+  `CreationsSettled` to retain or return exact child-creation custody, but none
+  appears as an item in the generated crate-root Rustdoc index. Their public
+  visibility and settlement equations already exist; showing them changes no
+  actor transition. `InterpretCreations` is currently consumed only by the
+  library's own traversal, so the same evidence does not justify exposing it.
+  The three externally named settlement ports are now listed by Rustdoc.
 
 - [x] **A14 — State the trust scope of initialization capabilities accurately.**
   **Confirmed documentation/API mismatch.** `InitializationTurn` says only the

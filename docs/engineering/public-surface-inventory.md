@@ -3,7 +3,7 @@
 This inventory supports [A13](repository-quality-audit.md). `#[doc(hidden)]`
 changes Rustdoc display, not Rust visibility. The counts below are annotation
 sites in source, so a grouped re-export and its original declaration each
-count once. The 2026-09-28 branch has 18 sites in `crates/behavior/src` and 86
+count once. The 2026-09-28 branch has 15 sites in `crates/behavior/src` and 86
 in `crates/actors/src`; the earlier audit counted 25 and 89 before the
 documentation visibility review.
 
@@ -15,7 +15,7 @@ documentation visibility review.
 | `actor/creation.rs`, occurrence proof | `StructuralChildOccurrence`, `ChildCreationProduct`, `ChildOccurrenceResolution`, `ResolveChildOccurrenceDescriptor`, `BirthNodeAt`, `ChildOccurrenceProductAt` | Generated code obligation | The macro and structural child products implement these proofs. A visibility change needs compile-pass and forged-occurrence compile-fail witnesses. |
 | `actor/creation.rs`, protocol projection | `BirthModeProtocols`, `BirthNodeProtocols`, `BirthNodeLogicalHosts` | Generated code obligation | These traits project closed birth and logical-host products; consumers can name the resulting associated types without constructing the proof nodes. |
 | `actor/creation.rs`, creation staging | `ChildProduct::stage` | Runtime port | The interpreter consumes ordered staged child requests; it must retain every owned child on rejection. |
-| `effects/actions.rs` | `CreationSettlement`, `CreationSettlements`, `CreationsSettled`, `InterpretCreations` | Runtime port | These settle creations in order and preserve exact rejected requests. |
+| `effects/actions.rs` | `InterpretCreations` | Structural traversal port | The existing action interpreter uses this birth-mode traversal internally; no external caller witness requires naming it. |
 | `effects/sending.rs` | `settle_in_order` | Runtime port | Shared ordered interpretation used by concrete send products. |
 
 `ChildOccurrence::Resolution` and `DeclaredChildOccurrence` are now visible
@@ -23,6 +23,9 @@ because manually authored roles must name them. `BirthProtocolProduct` is
 visible because generic logical-host owners constrain and append that public
 product. Rustdoc lists both names and the caller suites exercise them. The
 private `Recipient::new` no longer carries an ineffective documentation marker.
+`CreationSettlement`, `CreationSettlements`, and `CreationsSettled` are now
+visible because external callers name them when retaining or returning exact
+child-creation custody.
 
 ## Hidden actor declarations
 
