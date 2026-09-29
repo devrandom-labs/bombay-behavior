@@ -244,7 +244,7 @@ is recorded against a revision.
   Keep FIFO assignment policy and keyed binding policy distinct.
 
 - [ ] **A13 — Audit public bounds, hidden exports, and extension ownership.**
-  **Confirmed surface requiring review.** The current source has 14
+  **Confirmed surface requiring review.** The current source has 13
   `#[doc(hidden)]` annotation sites in core and 86 in actors, including
   members and re-exports. The
   [public-surface inventory](public-surface-inventory.md) classifies each site
@@ -291,6 +291,33 @@ is recorded against a revision.
   `InterpretCreations` confirmed that all four names have crate-root index
   links and item pages. The `bombay-behavior-doc` Nix check passed on signed
   commit `4cd3b7f`, including Rustdoc, the book, and published-document checks.
+
+  The next required runtime method is `CreateChild::into_parts`. The external
+  `creation_initialization_order`, `creation_settlement_custody`, and
+  `behavior_generation` caller suites consume it to retain the exact child,
+  creator-local ID, and provenance. The real Bombay child host also names it
+  after consuming a `RoutedCreation`. Its Rust visibility is already public,
+  but `#[doc(hidden)]` conceals it from an interpreter author reading the API.
+  This is a derived ownership port, not a new actor transition. The focused
+  documentation repair removes that one marker and gives the method an
+  explicit custody description; it adds no type, bound, effect lane, control
+  state, or interpreter capability. The existing external callers are its
+  compile witnesses. The post-edit check is that Rustdoc lists the method on
+  `CreateChild` and those callers still compile.
+  Post-edit, `cargo doc -p bombay-behavior --no-deps --locked` generated
+  `struct.CreateChild.html` with `method.into_parts` and its custody text.
+  `cargo check --locked` passed for the external
+  `behavior-testkit/tests/creation_initialization_order` and
+  `behavior/tests/creation_settlement_custody` callers; `mdbook build docs`,
+  formatter, and diff checks passed. The source change is `+6/-1` physical
+  lines of documentation only; tests and public type counts are unchanged.
+  Aggregate control states, subordinate alternatives, transition branches,
+  modules, and public spellings are unchanged. The owned child, ID, and kind
+  remain the same complete product; no arrival history, duplicated cause,
+  false cardinality, nested authority, semantic boolean, or positional caller
+  syntax was introduced. The actor transition and creation-custody laws were
+  cross-checked. Disposition: `pass` for this one documentation port. A13's
+  wider surface review remains open.
 
 - [x] **A14 — State the trust scope of initialization capabilities accurately.**
   **Confirmed documentation/API mismatch.** `InitializationTurn` says only the

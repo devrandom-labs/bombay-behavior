@@ -137,7 +137,12 @@ impl<A: Address, New> CreateChild<A, New> {
         &self.child
     }
 
-    #[doc(hidden)]
+    /// Consume the staged request, returning its exact correlation, child,
+    /// and creation provenance to the interpreter.
+    ///
+    /// Taking these parts does not establish a child actor. The interpreter
+    /// remains responsible for fresh creation and for returning owned work on
+    /// rejection.
     #[must_use]
     pub fn into_parts(self) -> (CreationId, New, CreationKind) {
         (self.id, self.child, self.kind)
