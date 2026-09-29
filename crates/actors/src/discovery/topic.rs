@@ -171,9 +171,7 @@ mod tests {
             .initialize()
             .unwrap()
             .behavior;
-        assert!(matches!(
-            topic.receive(MailAddr(9), TopicMessage::Publish(7)),
-            Err(TopicError::NoSubscribers(7))
-        ));
+        let rejection = topic.receive(MailAddr(9), TopicMessage::Publish(7));
+        assert!(matches!(rejection, Err(TopicError::NoSubscribers(7))));
     }
 }

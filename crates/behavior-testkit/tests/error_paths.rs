@@ -177,7 +177,8 @@ fn driver_discards_successful_prefix_after_later_error() {
     assert!(matches!(result, Err(Boom)));
     assert_eq!(seen.get(), 2);
     assert_eq!(mailbox.pending(), 1);
-    assert_eq!(mailbox.receive().unwrap().message, 4);
+    let next_message = mailbox.receive().unwrap();
+    assert_eq!(next_message.message, 4);
 }
 
 /// A later deferred-message error cannot commit the successful prefix of the

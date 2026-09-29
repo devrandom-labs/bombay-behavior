@@ -578,8 +578,9 @@ mod tests {
             assert_eq!(active.state(), TerminalPropagationState::Propagated);
 
             let duplicate = ChildStopped::new(worker, outcome, Instant::now());
+            let rejected = active.transition(EventLayer::Owned(duplicate));
             assert!(matches!(
-                active.transition(EventLayer::Owned(duplicate)),
+                rejected,
                 Err(TerminationPropagationError::UnexpectedReport {
                     state: TerminalPropagationState::Propagated,
                     report,
@@ -619,8 +620,9 @@ mod tests {
             .expect("the unrelated worker creation ID exists");
         let mut active = child(worker, propagate_all).initialize().unwrap().behavior;
         let unrelated = ChildStopped::new(unrelated_worker, Err(Crash::Failed), Instant::now());
+        let rejected = active.transition(EventLayer::Owned(unrelated));
         assert!(matches!(
-            active.transition(EventLayer::Owned(unrelated)),
+            rejected,
             Err(TerminationPropagationError::UnexpectedReport {
                 state: TerminalPropagationState::Observing,
                 report,
@@ -653,10 +655,11 @@ mod tests {
         );
 
         let foreign = PeerStopped::new(MailAddr(5), Err(Crash::Failed));
+        let rejected = initialized
+            .behavior
+            .transition(EventLayer::Owned(foreign.clone()));
         assert!(matches!(
-            initialized
-                .behavior
-                .transition(EventLayer::Owned(foreign.clone())),
+            rejected,
             Err(TerminationPropagationError::UnexpectedReport {
                 state: TerminalPropagationState::Observing,
                 report,

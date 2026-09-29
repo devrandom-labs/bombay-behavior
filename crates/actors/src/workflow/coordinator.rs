@@ -548,14 +548,16 @@ mod tests {
             .initialize()
             .unwrap()
             .behavior;
+        let rejection = subject.receive(MailAddr(0), WorkflowMessage::Complete { step: "root" });
         assert!(matches!(
-            subject.receive(MailAddr(0), WorkflowMessage::Complete { step: "root" }),
+            rejection,
             Err(WorkflowError::NotStarted(WorkflowInput::Complete {
                 step: "root"
             }))
         ));
+        let rejection = subject.receive(MailAddr(0), WorkflowMessage::Fail { step: "left" });
         assert!(matches!(
-            subject.receive(MailAddr(0), WorkflowMessage::Fail { step: "left" }),
+            rejection,
             Err(WorkflowError::NotStarted(WorkflowInput::Fail {
                 step: "left"
             }))

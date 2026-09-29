@@ -364,37 +364,37 @@ mod tests {
         assert!(observed.sends.is_empty());
         assert!(observed.creates.is_empty());
         assert_eq!(observed.become_, behavior::Step::Continue);
+        let rejection = subject.receive(
+            MailAddr(9),
+            ReadinessMessage::Observe {
+                dependency: 1,
+                version: ObservationVersion(1),
+                status: ReadinessStatus::NotReady,
+            },
+        );
+        assert!(matches!(rejection, Err(ReadinessError::Stale { .. })));
+        let rejection = subject.receive(
+            MailAddr(9),
+            ReadinessMessage::Observe {
+                dependency: 1,
+                version: ObservationVersion(2),
+                status: ReadinessStatus::NotReady,
+            },
+        );
         assert!(matches!(
-            subject.receive(
-                MailAddr(9),
-                ReadinessMessage::Observe {
-                    dependency: 1,
-                    version: ObservationVersion(1),
-                    status: ReadinessStatus::NotReady
-                }
-            ),
-            Err(ReadinessError::Stale { .. })
-        ));
-        assert!(matches!(
-            subject.receive(
-                MailAddr(9),
-                ReadinessMessage::Observe {
-                    dependency: 1,
-                    version: ObservationVersion(2),
-                    status: ReadinessStatus::NotReady
-                }
-            ),
+            rejection,
             Err(ReadinessError::ConflictingVersion { .. })
         ));
+        let rejection = subject.receive(
+            MailAddr(9),
+            ReadinessMessage::Observe {
+                dependency: 9,
+                version: ObservationVersion(1),
+                status: ReadinessStatus::Ready,
+            },
+        );
         assert!(matches!(
-            subject.receive(
-                MailAddr(9),
-                ReadinessMessage::Observe {
-                    dependency: 9,
-                    version: ObservationVersion(1),
-                    status: ReadinessStatus::Ready
-                }
-            ),
+            rejection,
             Err(ReadinessError::UnknownDependency {
                 dependency: 9,
                 observed: ObservationVersion(1),

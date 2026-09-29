@@ -317,7 +317,8 @@ impl Scenario {
 
     fn accept_generation(&mut self, binding: &BindingEvidence<Role>) {
         let ordinal = binding.generation().get();
-        assert!(self.issued.insert(ordinal));
+        let newly_issued = self.issued.insert(ordinal);
+        assert!(newly_issued);
         if let Some(previous) = self.last_issued {
             assert!(ordinal > previous);
         }

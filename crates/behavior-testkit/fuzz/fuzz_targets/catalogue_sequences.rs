@@ -301,8 +301,9 @@ fuzz_target!(|bytes: &[u8]| {
                 }
             }
             _ if eligible.is_empty() => {
+                let rejection = router.receive(MailAddr(0), RouterMessage::Route(b));
                 assert!(matches!(
-                    router.receive(MailAddr(0), RouterMessage::Route(b)),
+                    rejection,
                     Err(RouterError::NoEligibleRecipients(returned)) if returned == b
                 ));
             }

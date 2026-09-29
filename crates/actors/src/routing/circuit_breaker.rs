@@ -514,13 +514,14 @@ mod tests {
         let stale = BreakerCompletion::Succeeded {
             attempt: BreakerAttempt(99),
         };
+        let rejection = subject.receive(
+            MailAddr(0),
+            BreakerMessage::Succeeded {
+                attempt: BreakerAttempt(99),
+            },
+        );
         assert!(matches!(
-            subject.receive(
-                MailAddr(0),
-                BreakerMessage::Succeeded {
-                    attempt: BreakerAttempt(99)
-                }
-            ),
+            rejection,
             Err(BreakerError::UnexpectedCompletion(returned)) if returned == stale
         ));
         assert!(

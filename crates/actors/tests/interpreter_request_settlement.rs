@@ -155,7 +155,8 @@ where
         Some(SettledItem::Attempted(_)) => panic!("an unattempted product attempted its item"),
         None => panic!("the source item was lost"),
     };
-    assert!(settlements.next().is_none());
+    let remaining_settlements = settlements.next();
+    assert!(remaining_settlements.is_none());
     recovered
 }
 

@@ -170,7 +170,8 @@ fn heterogeneous_children_preserve_ids_and_declared_order() {
     assert_eq!(first_creation.id(), first);
     let second_creation = creations.next().expect("the second child is retained");
     assert_eq!(second_creation.id(), second);
-    assert!(creations.next().is_none());
+    let remaining_creations = creations.next();
+    assert!(remaining_creations.is_none());
 }
 
 #[test]
@@ -186,15 +187,18 @@ fn distinct_child_occurrences_may_use_their_first_local_id() {
         .child(backup, Backup(8))
         .into_creates();
     let mut creations = creations.into_iter();
+    let retained_worker = creations.next().expect("the worker is retained");
     assert!(matches!(
-        creations.next().expect("the worker is retained").child(),
+        retained_worker.child(),
         behavior::ChildChoice::Tail(behavior::ChildChoice::Head(Worker(7)))
     ));
+    let retained_backup = creations.next().expect("the backup is retained");
     assert!(matches!(
-        creations.next().expect("the backup is retained").child(),
+        retained_backup.child(),
         behavior::ChildChoice::Head(Backup(8))
     ));
-    assert!(creations.next().is_none());
+    let remaining_creations = creations.next();
+    assert!(remaining_creations.is_none());
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -439,7 +443,8 @@ async fn routed_rejection_returns_the_id_child_kind_and_route() {
     let (_, worker, _) = creation.into_parts();
     assert_eq!(worker, Worker(7));
     assert_eq!(reason, CreationRejection::EnvironmentFailed);
-    assert!(creations.next().is_none());
+    let remaining_creations = creations.next();
+    assert!(remaining_creations.is_none());
 }
 
 #[tokio::test]
@@ -482,6 +487,7 @@ async fn corrupt_child_retains_the_exact_routed_suffix_and_skips_sends() {
     };
     assert_eq!(item.id(), second);
     assert_eq!(item.route(), OpaqueNonce(43));
-    assert!(creations.next().is_none());
+    let remaining_creations = creations.next();
+    assert!(remaining_creations.is_none());
     assert!(runtime.pings.is_empty());
 }

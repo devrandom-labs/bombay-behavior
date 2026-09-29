@@ -375,7 +375,8 @@ fn generated_products_preserve_exact_initialization_actions() {
     let second = creations.next().expect("the second child is retained");
     let (_, second, _) = second.into_parts();
     assert!(matches!(second, ChildChoice::Head(SecondChild)));
-    assert!(creations.next().is_none());
+    let remaining_creations = creations.next();
+    assert!(remaining_creations.is_none());
 }
 
 fn accepts_named_child<Parent, Role>(_: Role, _: Role::Child)

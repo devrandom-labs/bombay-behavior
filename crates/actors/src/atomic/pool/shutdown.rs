@@ -33,12 +33,15 @@ mod tests {
     fn reserves_ordered_nonreused_batches() {
         let mut shutdowns = ShutdownSequence::new();
 
-        assert_eq!(shutdowns.reserve(0), Some(Vec::new()));
+        let empty_batch = shutdowns.reserve(0);
+        assert_eq!(empty_batch, Some(Vec::new()));
+        let first_batch = shutdowns.reserve(3);
         assert_eq!(
-            shutdowns.reserve(3),
+            first_batch,
             Some(vec![ShutdownId(0), ShutdownId(1), ShutdownId(2)])
         );
-        assert_eq!(shutdowns.reserve(1), Some(vec![ShutdownId(3)]));
+        let second_batch = shutdowns.reserve(1);
+        assert_eq!(second_batch, Some(vec![ShutdownId(3)]));
     }
 
     #[test]
@@ -47,8 +50,11 @@ mod tests {
             next: Some(u64::MAX),
         };
 
-        assert_eq!(shutdowns.reserve(2), None);
-        assert_eq!(shutdowns.reserve(1), Some(vec![ShutdownId(u64::MAX)]));
-        assert_eq!(shutdowns.reserve(1), None);
+        let oversized_batch = shutdowns.reserve(2);
+        assert_eq!(oversized_batch, None);
+        let final_batch = shutdowns.reserve(1);
+        assert_eq!(final_batch, Some(vec![ShutdownId(u64::MAX)]));
+        let exhausted_batch = shutdowns.reserve(1);
+        assert_eq!(exhausted_batch, None);
     }
 }

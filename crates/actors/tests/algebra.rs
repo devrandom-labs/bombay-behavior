@@ -272,16 +272,12 @@ fn active_behavior_runs_one_transition_and_preserves_actions() {
     assert_eq!(actions.sends[0].to.address(), MailAddr(7));
     assert_eq!(actions.sends[0].message, 11);
     assert_eq!(actions.creates.len(), 1);
-    assert_eq!(
-        actions.creates.iter().next().unwrap().kind(),
-        CreationKind::Birth
-    );
+    let creation_kind = actions.creates.iter().next().unwrap().kind();
+    assert_eq!(creation_kind, CreationKind::Birth);
     assert!(matches!(actions.become_, Step::Stop(behavior::Stopped)));
 
-    assert!(matches!(
-        behavior.transition(User::new(MailAddr(7), 0)),
-        Err(Rejected(0))
-    ));
+    let rejected = behavior.transition(User::new(MailAddr(7), 0));
+    assert!(matches!(rejected, Err(Rejected(0))));
     assert_eq!(behavior.base().transitions, 2);
 }
 
@@ -455,10 +451,8 @@ async fn final_shutdown_transition_preserves_effects_and_forces_normal_stop() {
     assert_eq!(actions.sends.inner.len(), 1);
     assert_eq!(actions.sends.inner[0].message, 42);
     assert_eq!(actions.creates.len(), 1);
-    assert_eq!(
-        actions.creates.iter().next().unwrap().kind(),
-        CreationKind::Birth
-    );
+    let creation_kind = actions.creates.iter().next().unwrap().kind();
+    assert_eq!(creation_kind, CreationKind::Birth);
     assert!(matches!(actions.become_, Step::Stop(behavior::Stopped)));
 }
 
@@ -589,13 +583,12 @@ async fn shutdown_over_two_deadlines_preserves_both_exact_local_continuations() 
     // Traversal records the inner deadline first. Popping completes the two
     // identical requests in reverse order: outer, then inner.
     let outer = timers.pending.pop().unwrap();
-    assert_eq!(active.transition(outer).unwrap().become_, Step::Continue);
+    let outer_actions = active.transition(outer).unwrap();
+    assert_eq!(outer_actions.become_, Step::Continue);
 
     let inner = timers.pending.pop().unwrap();
-    assert_eq!(
-        active.transition(inner).unwrap().become_,
-        Step::Stop(behavior::Stopped)
-    );
+    let inner_actions = active.transition(inner).unwrap();
+    assert_eq!(inner_actions.become_, Step::Stop(behavior::Stopped));
 }
 
 #[tokio::test]

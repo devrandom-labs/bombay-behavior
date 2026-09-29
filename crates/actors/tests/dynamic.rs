@@ -4166,7 +4166,8 @@ fn admission_queries_match_one_customer_catalogue(bytes: Vec<u8>) {
 
                 let mut replies = acted.sends.start_replies.into_deliveries().into_iter();
                 let reply = replies.next().expect("every start receives one reply");
-                assert!(replies.next().is_none());
+                let remaining_replies = replies.next();
+                assert!(remaining_replies.is_none());
                 let ReplyDelivery::Logical(delivery) = reply else {
                     panic!("the customer supplied a logical reply route");
                 };
@@ -4177,7 +4178,8 @@ fn admission_queries_match_one_customer_catalogue(bytes: Vec<u8>) {
                         assert_eq!(acted.sends.proxy_observations.len(), 1);
                         let mut creations = acted.creates.into_iter();
                         let creation = creations.next().expect("accepted start creates one proxy");
-                        assert!(creations.next().is_none());
+                        let remaining_creations = creations.next();
+                        assert!(remaining_creations.is_none());
                         catalogue = CustomerCatalogue::Pending {
                             service,
                             creation,
@@ -4223,7 +4225,8 @@ fn admission_queries_match_one_customer_catalogue(bytes: Vec<u8>) {
 
                 let mut replies = acted.sends.query_replies.into_deliveries().into_iter();
                 let reply = replies.next().expect("every query receives one reply");
-                assert!(replies.next().is_none());
+                let remaining_replies = replies.next();
+                assert!(remaining_replies.is_none());
                 let ReplyDelivery::Logical(delivery) = reply else {
                     panic!("the customer supplied a logical reply route");
                 };

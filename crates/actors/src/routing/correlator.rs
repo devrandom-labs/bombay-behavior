@@ -292,11 +292,12 @@ mod tests {
             correlator.states(),
             [CorrelationState::Completed { key: 1 }]
         ));
+        let rejection = correlator.receive(
+            MailAddr(9),
+            CorrelatorMessage::Resolve { key: 1, value: 43 },
+        );
         assert!(matches!(
-            correlator.receive(
-                MailAddr(9),
-                CorrelatorMessage::Resolve { key: 1, value: 43 },
-            ),
+            rejection,
             Err(CorrelatorError::StaleCompleted { key: 1, value: 43 })
         ));
     }
@@ -305,11 +306,12 @@ mod tests {
     fn cancel_is_terminal_and_unknown_reply_preserves_the_value() {
         let reply = Recipient::<Reply>::global(MailAddr(8));
         let mut correlator = (TestCorrelator::new()).initialize().unwrap().behavior;
+        let rejection = correlator.receive(
+            MailAddr(9),
+            CorrelatorMessage::Resolve { key: 7, value: 99 },
+        );
         assert!(matches!(
-            correlator.receive(
-                MailAddr(9),
-                CorrelatorMessage::Resolve { key: 7, value: 99 },
-            ),
+            rejection,
             Err(CorrelatorError::UnknownReply { key: 7, value: 99 })
         ));
         let begun = correlator
@@ -334,11 +336,12 @@ mod tests {
                     CorrelationResult::Cancelled { key: 2 },
                 )]
         );
+        let rejection = correlator.receive(
+            MailAddr(9),
+            CorrelatorMessage::Resolve { key: 2, value: 100 },
+        );
         assert!(matches!(
-            correlator.receive(
-                MailAddr(9),
-                CorrelatorMessage::Resolve { key: 2, value: 100 },
-            ),
+            rejection,
             Err(CorrelatorError::StaleCancelled { key: 2, value: 100 })
         ));
     }

@@ -332,10 +332,8 @@ async fn host_rejection_returns_the_routed_child_and_initialization_actions() {
     let mut sequence = CreationSequence::new();
     let id = sequence.issue().expect("child ID exists");
     let mut model = host();
-    assert_eq!(
-        model.plans.insert(9, HostPlan::RejectAfterInitialization),
-        None
-    );
+    let prior_plan = model.plans.insert(9, HostPlan::RejectAfterInitialization);
+    assert_eq!(prior_plan, None);
 
     let settlement = dispatch(
         ChildChoice::<DeviceGroups, ChildChoice<Queries, Never>>::Head(DeviceGroups),

@@ -1289,6 +1289,19 @@ positional syntax in this path. Cross-check against the receive-timeout
 Rustdoc and the actor transition effect law passed. Disposition: `pass` for
 this batch; A15 awaits the full Nix gate on the signed revision.
 
+A whole-crate assertion scan found additional test and fuzz assertions that
+called state-changing methods inside the macro: actor `transition`, model
+`initialize`/`activity`, collection `insert`/`remove`, mailbox `receive`,
+sequence `issue`/`reserve`, and iterator `next`. The test-execution law is that
+setup and transitions run before observation; assertions inspect retained
+results and complete actions only. This is test discipline, not a new actor
+transition. The calls were moved to named locals in their original order,
+including four observational iterator calls, across 34 Rust files (+304/-258
+lines, net +46). All changes are in test or fuzz code, including inline test
+modules; no production type, state, effect lane, or branch changed. A repeated
+whole-crate scan for these methods inside assertion macros found zero sites.
+The affected suites and full Nix gate remain to be recorded before A15 closes.
+
 ### A07 actor mutation evidence: routing-buffer capacity
 
 At revision `0274dab`, a focused campaign mutated the bounded buffer's

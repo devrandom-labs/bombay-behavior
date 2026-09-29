@@ -229,14 +229,15 @@ mod tests {
         assert!(completed.creates.is_empty());
         assert!(matches!(completed.become_, Step::Stop(_)));
         assert_eq!(task.state(), TaskState::Completed);
+        let rejection = task.receive(
+            MailAddr(9),
+            TaskMessage::Complete {
+                result: 8,
+                reply_to: reply,
+            },
+        );
         assert!(matches!(
-            task.receive(
-                MailAddr(9),
-                TaskMessage::Complete {
-                    result: 8,
-                    reply_to: reply,
-                },
-            ),
+            rejection,
             Err(TaskError::ResultAfterCompletion { result: 8, reply_to }) if reply_to == reply
         ));
     }
@@ -251,14 +252,15 @@ mod tests {
         assert!(cancelled.sends == vec![Delivery::new(reply, TaskResult::Cancelled)]);
         assert!(matches!(cancelled.become_, Step::Stop(_)));
         assert_eq!(task.state(), TaskState::Cancelled);
+        let rejection = task.receive(
+            MailAddr(9),
+            TaskMessage::Complete {
+                result: 9,
+                reply_to: reply,
+            },
+        );
         assert!(matches!(
-            task.receive(
-                MailAddr(9),
-                TaskMessage::Complete {
-                    result: 9,
-                    reply_to: reply,
-                },
-            ),
+            rejection,
             Err(TaskError::ResultAfterCancellation { result: 9, reply_to }) if reply_to == reply
         ));
     }

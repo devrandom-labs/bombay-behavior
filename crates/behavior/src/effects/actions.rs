@@ -820,10 +820,8 @@ mod tests {
         let mapped: Actions<MailAddr, Never, Vec<u8>, Births<()>> =
             actions.map_become(|_| Step::Stop(Stopped));
         assert_eq!(mapped.sends, [1, 2]);
-        assert_eq!(
-            mapped.creates.iter().next().map(CreateChild::id),
-            Some(first)
-        );
+        let mapped_creation_id = mapped.creates.iter().next().map(CreateChild::id);
+        assert_eq!(mapped_creation_id, Some(first));
         assert!(matches!(mapped.become_, Step::Stop(Stopped)));
     }
 

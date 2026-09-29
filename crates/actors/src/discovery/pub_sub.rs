@@ -298,8 +298,9 @@ mod tests {
         assert!(unsubscribed.creates.is_empty());
         assert_eq!(unsubscribed.become_, behavior::Step::Continue);
         for topic in [1, 2] {
+            let rejection = s.receive(MailAddr(9), PubSubMessage::Publish { topic, value: 8 });
             assert!(
-                matches!(s.receive(MailAddr(9),PubSubMessage::Publish{topic,value:8}),Err(PubSubError::NoSubscribers{topic:returned,value:8}) if returned==topic)
+                matches!(rejection,Err(PubSubError::NoSubscribers{topic:returned,value:8}) if returned==topic)
             );
         }
     }

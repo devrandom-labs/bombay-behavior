@@ -273,7 +273,8 @@ async fn generated_retirement_policy_needs_no_creation_event_and_preserves_exact
     let mut creations = creations.into_iter();
     let creation = creations.next().expect("the rejected child remains owned");
     assert_eq!(creation.child(), &Worker);
-    assert!(creations.next().is_none());
+    let remaining_creations = creations.next();
+    assert!(remaining_creations.is_none());
 }
 
 #[tokio::test]

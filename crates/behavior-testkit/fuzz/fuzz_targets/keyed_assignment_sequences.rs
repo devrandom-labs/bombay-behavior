@@ -621,7 +621,8 @@ impl Scenario {
                 }
             };
             assert_eq!(terminal, job);
-            assert!(terminal_jobs.insert(terminal));
+            let newly_terminal = terminal_jobs.insert(terminal);
+            assert!(newly_terminal);
         }
         for shutdown in acted.sends.worker_shutdowns.into_requests() {
             pending_shutdowns.push_back(shutdown.id);

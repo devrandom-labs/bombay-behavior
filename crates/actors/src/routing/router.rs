@@ -974,8 +974,9 @@ mod tests {
                 .unwrap()
                 .behavior;
 
+        let rejection = router.receive(MailAddr(9), RouterMessage::Route(11));
         assert!(matches!(
-            router.receive(MailAddr(9), RouterMessage::Route(11)),
+            rejection,
             Err(RouterError::NoEligibleRecipients(11))
         ));
         assert!(router.recipients().is_empty());
@@ -991,8 +992,9 @@ mod tests {
                 .unwrap()
                 .behavior;
 
+        let rejection = router.receive(MailAddr(9), RouterMessage::Route(1));
         assert!(matches!(
-            router.receive(MailAddr(9), RouterMessage::Route(1)),
+            rejection,
             Err(RouterError::NoEligibleRecipients(1))
         ));
         for recipient in [one, two] {
@@ -1056,43 +1058,46 @@ mod tests {
         assert!(observed.creates.is_empty());
         assert_eq!(observed.become_, Step::Continue);
 
+        let rejection = router.receive(
+            MailAddr(9),
+            RouterMessage::Observe(LoadObservation {
+                recipient: one,
+                version: LoadVersion(1),
+                load: Load(0),
+            }),
+        );
         assert!(matches!(
-            router.receive(
-                MailAddr(9),
-                RouterMessage::Observe(LoadObservation {
-                    recipient: one,
-                    version: LoadVersion(1),
-                    load: Load(0),
-                })
-            ),
+            rejection,
             Err(RouterError::Policy {
                 error: LeastLoadedError::Stale(_),
                 ..
             })
         ));
+        let rejection = router.receive(
+            MailAddr(9),
+            RouterMessage::Observe(LoadObservation {
+                recipient: one,
+                version: LoadVersion(2),
+                load: Load(5),
+            }),
+        );
         assert!(matches!(
-            router.receive(
-                MailAddr(9),
-                RouterMessage::Observe(LoadObservation {
-                    recipient: one,
-                    version: LoadVersion(2),
-                    load: Load(5),
-                })
-            ),
+            rejection,
             Err(RouterError::Policy {
                 error: LeastLoadedError::ConflictingVersion(_),
                 ..
             })
         ));
+        let rejection = router.receive(
+            MailAddr(9),
+            RouterMessage::Observe(LoadObservation {
+                recipient: unknown,
+                version: LoadVersion(0),
+                load: Load(0),
+            }),
+        );
         assert!(matches!(
-            router.receive(
-                MailAddr(9),
-                RouterMessage::Observe(LoadObservation {
-                    recipient: unknown,
-                    version: LoadVersion(0),
-                    load: Load(0),
-                })
-            ),
+            rejection,
             Err(RouterError::Policy {
                 error: LeastLoadedError::UnknownRecipient(_),
                 ..
@@ -1225,15 +1230,16 @@ mod tests {
             .sends[0]
             .to;
         assert!(first == again);
+        let rejection = router.receive(
+            MailAddr(9),
+            RouterMessage::Observe(MemberTokenObservation {
+                recipient: one,
+                version: MemberTokenVersion(0),
+                token: MemberToken(99),
+            }),
+        );
         assert!(matches!(
-            router.receive(
-                MailAddr(9),
-                RouterMessage::Observe(MemberTokenObservation {
-                    recipient: one,
-                    version: MemberTokenVersion(0),
-                    token: MemberToken(99),
-                })
-            ),
+            rejection,
             Err(RouterError::Policy {
                 error: HashPolicyError::ConflictingVersion(_),
                 ..
@@ -1281,8 +1287,9 @@ mod tests {
             .unwrap()
             .behavior;
 
+        let rejection = router.receive(MailAddr(9), RouterMessage::Route(42));
         assert!(matches!(
-            router.receive(MailAddr(9), RouterMessage::Route(42)),
+            rejection,
             Err(RouterError::InvalidSelection {
                 message: 42,
                 index: 1,
@@ -1291,8 +1298,9 @@ mod tests {
         ));
         assert_eq!(router.strategy().selections, 0);
 
+        let rejection = router.receive(MailAddr(9), RouterMessage::Observe(7));
         assert!(matches!(
-            router.receive(MailAddr(9), RouterMessage::Observe(7)),
+            rejection,
             Err(RouterError::Policy {
                 observation: 7,
                 error: 7,

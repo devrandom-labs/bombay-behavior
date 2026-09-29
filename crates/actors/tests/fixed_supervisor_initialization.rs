@@ -2874,7 +2874,8 @@ async fn three_disjoint_recoveries_keep_exact_correlation_in_every_lawful_order(
                         .expect("the prepared role belongs to the roster")
                         .proxy
                 );
-                assert!(operations.insert(*role, Some(operation)).is_none());
+                let prior_operation = operations.insert(*role, Some(operation));
+                assert!(prior_operation.is_none());
                 assert!(actions.creates.is_empty());
                 assert!(actions.sends.proxy_observations.is_empty());
                 assert!(actions.sends.worker_preparations.is_empty());
@@ -2989,7 +2990,8 @@ async fn three_disjoint_recoveries_keep_exact_correlation_in_every_lawful_order(
                                 ..
                             } if *lifecycle_role == role
                         ));
-                        assert!(ready_roles.insert(role));
+                        let newly_ready = ready_roles.insert(role);
+                        assert!(newly_ready);
                     }
                 }
 
@@ -8051,11 +8053,10 @@ async fn coordinated_worker_rejection_restores_peers_before_supervisor_shutdown(
             assert_eq!(route, diagnostics);
             assert_eq!(failure.role(), &SearchRole::Index);
             let mut prepared = failure.prepared();
-            assert_eq!(
-                prepared.next().map(|(role, _)| role),
-                Some(&SearchRole::Search)
-            );
-            assert!(prepared.next().is_none());
+            let first_prepared_role = prepared.next().map(|(role, _)| role);
+            assert_eq!(first_prepared_role, Some(&SearchRole::Search));
+            let remaining_prepared = prepared.next();
+            assert!(remaining_prepared.is_none());
             assert!(matches!(
                 failure.reason(),
                 WorkerPreparationFailureReason::WorkerRejected {
@@ -8198,7 +8199,8 @@ async fn every_coordinated_preparation_return_preserves_selection_and_reaction()
                     } => {
                         assert_eq!(route, diagnostics);
                         assert_eq!(failure.role(), &trigger_role);
-                        assert!(failure.prepared().next().is_none());
+                        let prepared = failure.prepared().next();
+                        assert!(prepared.is_none());
                         assert_eq!(
                             failure.remaining_roles().collect::<Vec<_>>(),
                             selected_roles.iter().collect::<Vec<_>>()

@@ -129,7 +129,8 @@ fn heterogeneous_children_preserve_declaration_order_and_creation_kind() {
     assert_eq!(queries.id(), query);
     assert_eq!(queries.kind(), CreationKind::replacement(previous_query));
     assert!(matches!(queries.child(), ChildChoice::Head(Queries)));
-    assert!(creates.next().is_none());
+    let remaining_creations = creates.next();
+    assert!(remaining_creations.is_none());
 }
 
 #[test]
@@ -152,5 +153,6 @@ fn shutdown_wrapper_preserves_root_child_initialization() {
     ));
     let queries = creates.next().expect("the query child is retained");
     assert!(matches!(queries.child(), ChildChoice::Head(Queries)));
-    assert!(creates.next().is_none());
+    let remaining_creations = creates.next();
+    assert!(remaining_creations.is_none());
 }
