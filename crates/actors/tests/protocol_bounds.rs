@@ -1,4 +1,4 @@
-use behavior::{MailAddr, MessageProtocol, Protocol, Recipient};
+use behavior::{MailAddr, MessageProtocol, Never, Protocol, Recipient};
 use behavior_actors::atomic::FifoError;
 use behavior_actors::{
     AcknowledgementMessage, AcknowledgementOutcome, Acknowledgements, Barrier, BarrierMessage,
@@ -6,8 +6,8 @@ use behavior_actors::{
     CorrelationResult, Correlator, CorrelatorMessage, Health, HealthMessage, HealthReport, Lease,
     LeaseMessage, LeaseOutcome, Machine, Presence, PresenceMessage, PresenceReply, PubSub,
     PubSubMessage, Readiness, ReadinessMessage, ReadinessReport, Registry, RegistryMessage,
-    RegistryResult, Resolution, Resolver, Topic, TopicMessage, Workflow, WorkflowMessage,
-    WorkflowOutcome,
+    RegistryResult, Resolution, Resolver, Router, RouterMessage, RoutingStrategy, Topic,
+    TopicMessage, Workflow, WorkflowMessage, WorkflowOutcome,
 };
 
 struct Key;
@@ -16,6 +16,38 @@ struct Destination;
 struct Publication;
 struct Subscription;
 struct Phase;
+
+struct AcceptedPayloads(Vec<u8>);
+
+#[derive(Clone)]
+struct ObservedSelection {
+    accepted: Vec<u8>,
+}
+
+impl RoutingStrategy<Recipient<Destination>> for ObservedSelection {
+    type Observation = AcceptedPayloads;
+    type Error = Never;
+
+    fn select(&mut self, members: &[Recipient<Destination>], message: &u8) -> Option<usize> {
+        if members.is_empty() {
+            return None;
+        }
+        if self.accepted.contains(message) {
+            Some(0)
+        } else {
+            None
+        }
+    }
+
+    fn observe(
+        &mut self,
+        _: &[Recipient<Destination>],
+        observation: Self::Observation,
+    ) -> Result<(), Self::Error> {
+        self.accepted = observation.0;
+        Ok(())
+    }
+}
 
 impl Protocol for Destination {
     type Addr = MailAddr;
@@ -51,6 +83,7 @@ type LeaseResult = Recipient<MessageProtocol<MailAddr, LeaseOutcome<Key>>>;
 type LeaseProtocol = Lease<MailAddr, Key, LeaseResult>;
 type WorkflowResult = Recipient<MessageProtocol<MailAddr, WorkflowOutcome<Key>>>;
 type WorkflowProtocol = Workflow<MailAddr, Key, WorkflowResult>;
+type RouterProtocol = Router<MailAddr, Recipient<Destination>, ObservedSelection>;
 
 fn accepts_protocol<P: Protocol<Addr = MailAddr>>() {}
 
@@ -76,6 +109,7 @@ fn protocol_identity_does_not_require_transition_or_construction_bounds() {
     accepts_message::<PresenceProtocol, PresenceMessage<Key, PresenceResult>>();
     accepts_message::<LeaseProtocol, LeaseMessage<Key, LeaseResult>>();
     accepts_message::<WorkflowProtocol, WorkflowMessage<Key, WorkflowResult>>();
+    accepts_message::<RouterProtocol, RouterMessage<Recipient<Destination>, ObservedSelection>>();
 }
 
 #[test]

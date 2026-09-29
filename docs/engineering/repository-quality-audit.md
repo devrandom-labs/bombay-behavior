@@ -995,6 +995,33 @@ lines, with unchanged states, alternatives, branches, modules, and public
 spellings. The future-needed values, residue scan, and cross-checked laws
 remain as recorded above. Disposition: `pass` for this bound relocation.
 
+`Router` has a distinct protocol-only bound: its strategy's observation must
+be `Clone` to execute the current rollback transition, but the public
+`RouterMessage` can own an observation without cloning it. An application
+strategy with a non-`Clone` observation must still be able to name the router
+protocol. A focused compile caller in `actors/tests/protocol_bounds.rs`
+implements a real membership-selection and observation-update policy, then
+projects `Protocol::Msg`; it precedes the proposed one-line `Protocol` bound
+removal. `RoutingStrategy`, `RouterMessage`, `Recipient`, and `Behavior` are
+the existing pieces. No runtime, wrapper, or effect lane changes.
+
+Pre-edit aggregate-drift checkpoint: router retains its ordered recipients
+and one concrete strategy. Its control state, subordinate alternatives,
+transition branches, modules, and public spellings do not change. Future
+decisions need that recipient order and the strategy's current observation
+state. No arrival-history state, repeated cause, false cardinality, nested
+authority, semantic boolean, or positional syntax is proposed. The routing
+and actor transition contracts were cross-checked. Expected production delta
+is one deleted bound line, no new public type. Disposition: `pass` for the
+proposed narrower identity law, pending the failing caller and implementation.
+
+The pre-edit caller failed with E0277 for its owned, non-`Clone` observation.
+After deleting `R::Observation: Clone` from only the router's `Protocol` impl,
+it passes; the transition impl retains the rollback bound. The existing router
+transition tests pass. One production line was removed; state, alternatives,
+branches, modules, public spellings, future-needed values, and the residue
+scan are unchanged. Disposition: `pass` for this identity-law repair.
+
 Classification: derived Rust protocol identity. A cache or resolver recipient
 names an address and a command type without running a transition or copying a
 binding definition. Thus `Protocol` for `Cache<K,V>` and `Resolver<K>` does

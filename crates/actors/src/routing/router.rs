@@ -809,7 +809,6 @@ where
     A: Address,
     Route: DeliveryRoute<Protocol: Protocol<Addr = A>> + Clone + PartialEq,
     R: RoutingStrategy<Route>,
-    R::Observation: Clone,
 {
     type Addr = A;
     type Msg = RouterMessage<Route, R>;
