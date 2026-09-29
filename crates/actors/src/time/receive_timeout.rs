@@ -3,7 +3,7 @@
 
 use std::time::Duration;
 
-use super::domain::TimerLease;
+use super::domain::{TimerAdmission, TimerLease};
 use super::event::{TimedEvent, TimedReaction};
 use crate::protocol::{ScheduleAfter, TimerId};
 use behavior::Step;
@@ -136,11 +136,14 @@ where
         event: Self::Event,
     ) -> Result<ReceiveTimeoutActions<B>, Self::Error> {
         match event {
-            EventLayer::Owned(elapsed)
-                if elapsed.id == self.id && self.timer.accept(elapsed.generation) =>
-            {
-                let actions = (self.on_elapsed)(&mut self.inner);
-                Ok(Self::wrap(actions, InterpreterRequests::empty()))
+            EventLayer::Owned(elapsed) if elapsed.id == self.id => {
+                match self.timer.accept(elapsed.generation) {
+                    TimerAdmission::Accepted => {
+                        let actions = (self.on_elapsed)(&mut self.inner);
+                        Ok(Self::wrap(actions, InterpreterRequests::empty()))
+                    }
+                    TimerAdmission::Ignored => Ok(Actions::cont()),
+                }
             }
             EventLayer::Owned(_) => Ok(Actions::cont()),
             EventLayer::Inner(event) => match event.into_user() {

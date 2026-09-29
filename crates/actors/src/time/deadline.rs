@@ -3,7 +3,7 @@
 
 use std::time::Instant;
 
-use super::domain::OneShotSchedule;
+use super::domain::{OneShotSchedule, TimerAdmission};
 use super::event::TimedEvent;
 use crate::protocol::{ScheduleAt, TimerId};
 use behavior::Step;
@@ -121,15 +121,17 @@ where
         event: Self::Event,
     ) -> Result<DeadlineActions<B>, B::Error> {
         match event {
-            EventLayer::Owned(event) if self.schedule.accept(event.id, event.generation) => {
-                let become_ = match (self.on_reached)(&mut self.inner) {
-                    Step::Continue => Step::Continue,
-                    Step::Goto(never) => match never {},
-                    Step::Stop(exit) => Step::Stop(exit),
-                };
-                Ok(Actions::just(become_))
-            }
-            EventLayer::Owned(_) => Ok(Actions::cont()),
+            EventLayer::Owned(event) => match self.schedule.accept(event.id, event.generation) {
+                TimerAdmission::Accepted => {
+                    let become_ = match (self.on_reached)(&mut self.inner) {
+                        Step::Continue => Step::Continue,
+                        Step::Goto(never) => match never {},
+                        Step::Stop(exit) => Step::Stop(exit),
+                    };
+                    Ok(Actions::just(become_))
+                }
+                TimerAdmission::Ignored => Ok(Actions::cont()),
+            },
             EventLayer::Inner(event) => {
                 let actions = behavior::delegate_transition(&mut self.inner, event)?;
                 if matches!(actions.become_, Step::Stop(_)) {

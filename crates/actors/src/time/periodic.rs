@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use super::domain::TimerLease;
+use super::domain::{TimerAdmission, TimerLease};
 use super::event::{TimedEvent, TimedReaction};
 use crate::protocol::{ScheduleAfter, TimerId};
 use behavior::Step;
@@ -128,11 +128,14 @@ where
 
     fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
         match event {
-            EventLayer::Owned(elapsed)
-                if elapsed.id == self.id && self.lease.accept(elapsed.generation) =>
-            {
-                let actions = (self.on_elapsed)(&mut self.inner);
-                Ok(self.wrap_and_rearm(actions))
+            EventLayer::Owned(elapsed) if elapsed.id == self.id => {
+                match self.lease.accept(elapsed.generation) {
+                    TimerAdmission::Accepted => {
+                        let actions = (self.on_elapsed)(&mut self.inner);
+                        Ok(self.wrap_and_rearm(actions))
+                    }
+                    TimerAdmission::Ignored => Ok(Actions::cont()),
+                }
             }
             EventLayer::Owned(_) => Ok(Actions::cont()),
             EventLayer::Inner(event) => {

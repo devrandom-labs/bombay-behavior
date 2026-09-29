@@ -362,7 +362,7 @@ is recorded against a revision.
   establish its composition law before changing the API; hiding rustdoc is
   insufficient.
 
-- [x] **A15 — Make coding-rule enforcement agree with the actual repository.**
+- [ ] **A15 — Make coding-rule enforcement agree with the actual repository.**
   **Confirmed local-rule deviations.** Timer-domain tests invoke mutable
   `accept` inside `assert!`; catalogue models carry readiness decisions as
   booleans. Many rustdoc fixtures have `use` sections despite the explicit
@@ -1190,6 +1190,63 @@ tags. The optimized timer-domain tests passed both cases, and
 documentation and doctest gates. The post-check edits in this audit batch
 only add the A11 inventory and this verification result; its Rustdoc examples,
 scripts, and Nix gate definition are the checked snapshot. Disposition: `pass`.
+
+### A15 timer admission outcome, before implementation
+
+The earlier A15 pass covered the listed fixtures, but a repository-wide scan
+found a remaining semantic boolean: `TimerLease::accept` and
+`OneShotSchedule::accept` mutate the schedule and return `bool`. Their callers
+use that value to choose whether to run a timer reaction. Reopen A15 for this
+specific policy violation; the prior evidence remains valid for its scope.
+
+Classification: deliberate Bombay timer policy, not an actor-model guarantee.
+An event matching the currently armed timer is admitted once and consumes that
+schedule. A foreign, stale, duplicate, cancelled, or exhausted event is
+ignored without changing schedule state. The complete local result is
+`TimerAdmission::{Accepted, Ignored}`; the wrapper still emits the same
+`Actions` and invokes the same reaction only on `Accepted`. The caller syntax
+matches that sum instead of using a mutating boolean in a guard. The focused
+domain regression checks exact, duplicate, cancelled, foreign-ID, and
+foreign-generation arrivals, including the surviving schedule. Existing
+timer-wrapper tests and both wrapper orders remain lower-order witnesses.
+
+Pre-edit aggregate-drift checkpoint: `TimerLease` retains its four states
+(`NeverIssued`, `Armed`, `Idle`, `Exhausted`), and `OneShotSchedule` retains its
+two states (`Unscheduled`, `Scheduled`). The new return sum represents one
+transition's disposition; it stores no future state. The future-needed values
+remain the armed generation and the one-shot ID, generation, and deadline.
+No actor aggregate state, public spelling, or effect lane changes. The edit is
+expected to touch the domain and four wrappers, replacing two boolean returns
+and four guard uses with one private sum and exhaustive matches. Record exact
+line, branch, and module deltas after the edit. The residue scan found no
+arrival history, repeated cause, false cardinality, nested transition
+authority, or positional user syntax. Cross-check the explicit effect law in
+`docs/actor-transition-algebra.md` and the timer wrapper Rustdoc.
+Disposition: `pass` for the pre-edit model.
+
+The pre-edit Nix-toolchain compile witness failed with seven `E0433`
+diagnostics because `TimerAdmission` did not exist. After implementation,
+the two mutating domain operations return the private `Accepted | Ignored` sum,
+and Deadline, OneShot, Periodic, and ReceiveTimeout match it exhaustively.
+The original ID guard and all action lanes remain in place. Domain tests
+passed 3/3 in debug and optimized builds; all nine actor time unit tests
+passed in both profiles. The actor timer-settlement integration target passed
+4/4, including both wrapper orders, and the independent receive-timeout model
+target passed 6/6. Full repository gates remain pending for this batch.
+
+Post-edit aggregate-drift checkpoint: TimerLease remains four states and
+OneShotSchedule two; no stored subordinate alternative or future-needed value
+changed. The former boolean result is the new two-case local admission sum.
+Across the four wrappers, top-level event arms changed from 12 to 11 because
+Deadline now matches its owned arrival once; eight explicit admission arms
+replace four boolean guard decisions. The five affected modules remain five,
+and no public spelling changed. Measured production diff is +56/-34 (net +22)
+lines; the focused tests are +22/-3 (net +19). This is a domain-model repair,
+not a code-reduction claim. No arrival history, repeated cause, false
+cardinality, nested transition authority, semantic boolean, or structural
+caller syntax remains in this timer admission path. The actor effect law and
+all four wrapper Rustdoc contracts were cross-checked. Disposition: `pass`
+for this retained batch, pending the full Nix gate before A15 closes.
 
 ### A07 actor mutation evidence: routing-buffer capacity
 
