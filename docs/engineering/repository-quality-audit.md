@@ -481,14 +481,14 @@ is recorded against a revision.
 
 ## Follow-on after the audit checklist
 
-- [ ] **Complete [the creation and delivery custody PRD](creation-and-delivery-custody-prd.md) after A01–A20 are complete.**
-  Implement the PRD's decision, delivery stages, and every acceptance criterion
-  C1–C12 exactly as specified there. Keep its required real Address and Bombay
-  witnesses, rejection and terminal custody, external consumer checks, release
-  and downstream lock verification, and applicable repository gates. Use the
-  PRD's stated alternative only if its reservation hypothesis is falsified by
-  the required witness. This follow-on remains open until the PRD's own
-  evidence proves completion; the audit checklist does not narrow its scope.
+- [ ] **Complete the [Interpreter ownership and startup PRD](creation-and-delivery-custody-prd.md) after A01–A20 are complete.**
+  Follow its ordered work packages P0–P5 and prove every acceptance trace
+  T01–T24 against the real Address and Bombay interpreters. Include complete
+  rejection and terminal custody, external consumer compilation, release and
+  downstream lock verification, and every required repository gate. Apply its
+  architecture checkpoints and definition of done; the audit checklist does
+  not narrow the PRD's scope. Its optional P6 consolidation follows the
+  blocking contracts only where an independent law proves the deletion.
 
 ## Coverage map and what should remain distinct
 
