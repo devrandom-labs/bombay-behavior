@@ -287,7 +287,8 @@ is recorded against a revision.
   runtime witnesses remain part of A17; this source inspection does not claim
   they pass. A second Nix-provided Rustdoc build after exposing
   `InterpretCreations` confirmed that all four names have crate-root index
-  links and item pages.
+  links and item pages. The `bombay-behavior-doc` Nix check passed on signed
+  commit `4cd3b7f`, including Rustdoc, the book, and published-document checks.
 
 - [x] **A14 — State the trust scope of initialization capabilities accurately.**
   **Confirmed documentation/API mismatch.** `InitializationTurn` says only the
