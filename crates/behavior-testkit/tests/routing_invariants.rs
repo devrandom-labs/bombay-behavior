@@ -178,8 +178,8 @@ proptest! {
             };
             match turn {
                 PriorityTurn::Offer { value, priority } => {
+                    prop_assert!(actions.sends.deliveries.is_empty());
                     if expected.len() == capacity {
-                        prop_assert!(actions.sends.deliveries.is_empty());
                         let matched = matches!(actions.sends.outcomes[0].message,
                             PriorityQueueOutcome::Rejected { value: returned, priority: returned_priority, reason: PriorityQueueRejection::Full }
                                 if returned == value && returned_priority == priority);
@@ -187,8 +187,7 @@ proptest! {
                     } else {
                         expected.push((value, priority, order));
                         order += 1;
-                        let matched = matches!(actions.sends.outcomes[0].message, PriorityQueueOutcome::Accepted { .. });
-                        prop_assert!(matched);
+                        prop_assert_eq!(&actions.sends.outcomes[0].message, &PriorityQueueOutcome::Accepted { depth: expected.len() });
                     }
                 }
                 PriorityTurn::Release => {
@@ -200,10 +199,17 @@ proptest! {
                             left.1.cmp(&right.1).then_with(|| right.2.cmp(&left.2))
                         }).unwrap().0;
                         let released = expected.remove(selected).0;
+                        prop_assert_eq!(actions.sends.deliveries.len(), 1);
+                        prop_assert_eq!(actions.sends.deliveries[0].to, target);
                         prop_assert_eq!(actions.sends.deliveries[0].message, released);
+                        prop_assert_eq!(&actions.sends.outcomes[0].message, &PriorityQueueOutcome::Released { remaining: expected.len() });
                     }
                 }
             }
+            prop_assert_eq!(actions.sends.outcomes.len(), 1);
+            prop_assert_eq!(actions.sends.outcomes[0].to, reply);
+            prop_assert!(actions.creates.is_empty());
+            prop_assert!(matches!(actions.become_, behavior_core::Step::Continue));
             let queued = match actual.state() {
                 behavior_actors::PriorityQueueState::Active { queued, .. }
                 | behavior_actors::PriorityQueueState::Exhausted { queued } => queued,
