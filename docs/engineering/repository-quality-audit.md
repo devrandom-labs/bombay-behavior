@@ -244,7 +244,7 @@ is recorded against a revision.
   Keep FIFO assignment policy and keyed binding policy distinct.
 
 - [ ] **A13 — Audit public bounds, hidden exports, and extension ownership.**
-  **Confirmed surface requiring review.** The current source has 15
+  **Confirmed surface requiring review.** The current source has 14
   `#[doc(hidden)]` annotation sites in core and 86 in actors, including
   members and re-exports. The
   [public-surface inventory](public-surface-inventory.md) classifies each site
@@ -273,11 +273,21 @@ is recorded against a revision.
   The creation settlement review found a narrower documentation defect:
   external caller suites name `CreationSettlement`, `CreationSettlements`, and
   `CreationsSettled` to retain or return exact child-creation custody, but none
-  appears as an item in the generated crate-root Rustdoc index. Their public
-  visibility and settlement equations already exist; showing them changes no
-  actor transition. `InterpretCreations` is currently consumed only by the
-  library's own traversal, so the same evidence does not justify exposing it.
-  The three externally named settlement ports are now listed by Rustdoc.
+  appeared as an item in the generated crate-root Rustdoc index. Their public
+  visibility and settlement equations already existed; showing them changes
+  no actor transition. A later read-only downstream inspection found that
+  Bombay's `ActionInterpreter` explicitly requires `InterpretCreations` in
+  its `CommitActions` implementation. That is a real interpreter port and
+  supplies the missing caller evidence to show the trait in Rustdoc as well.
+  The three externally named settlement ports are now listed by Rustdoc:
+  `cargo doc -p bombay-behavior --no-deps --locked` succeeded with the
+  Nix-provided Rust 1.95 toolchain, and all three crate-root index links and
+  item pages exist. The external `generated_creation_custody`, `custody`, and
+  actor caller suites already name these products. Downstream compilation and
+  runtime witnesses remain part of A17; this source inspection does not claim
+  they pass. A second Nix-provided Rustdoc build after exposing
+  `InterpretCreations` confirmed that all four names have crate-root index
+  links and item pages.
 
 - [x] **A14 — State the trust scope of initialization capabilities accurately.**
   **Confirmed documentation/API mismatch.** `InitializationTurn` says only the

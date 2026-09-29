@@ -348,7 +348,6 @@ where
 ///
 /// `NoBirths` needs no runtime capability. `Births<C>` performs one real batch
 /// route attempt followed by independent child establishment in declared order.
-#[doc(hidden)]
 pub trait InterpretCreations<A, Interpreter, RootEvent, Path>: CreationSettlements<A>
 where
     A: Address,
