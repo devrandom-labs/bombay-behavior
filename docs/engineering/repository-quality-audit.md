@@ -322,6 +322,16 @@ is recorded against a revision.
   `Router`'s `Route: Clone + PartialEq`, which is also required by its current
   `RoutingStrategy<Route>` contract. Changing that contract would require a
   distinct membership and policy law, not a mechanical bound deletion.
+  The read-only Router review found no legitimate transition for a route
+  without identity comparison: `new` removes duplicates, `Add`/`Remove`
+  select exact members, and selection clones the policy candidate so a
+  failed route leaves it unchanged. A logical or established route whose
+  endpoint lacks equality cannot currently satisfy that membership law.
+  Narrowing only the protocol/base headers would create a nameable router
+  that cannot be constructed or run; no bound edit was retained. Round-robin's
+  cursor repair and the least-loaded/Rendezvous traces exercise the current
+  comparable-route contract. This resolves the isolated header question,
+  while A13's broader hidden-port review remains open.
 
   The creation settlement review found a narrower documentation defect:
   external caller suites name `CreationSettlement`, `CreationSettlements`, and

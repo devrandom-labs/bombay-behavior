@@ -108,9 +108,11 @@ A source scan after these batches found `Router` as the only catalogue
 `Protocol` or `BehaviorBase` impl whose header still carries a copying,
 comparison, or ordering bound. Its route equality is used for membership and
 its current `RoutingStrategy<Route>` contract requires `Clone + PartialEq`.
-That trait and the aggregate declaration must be reviewed together before
-any further narrowing; deleting one repeated bound alone would merely move
-the requirement to another public surface.
+The aggregate review retained those bounds: construction deduplicates by
+route identity, Add/Remove compare exact members, and a route attempt clones
+its policy candidate for rollback on rejection. A type-level router with an
+uncomparable route would have no lawful construction or transition, so
+removing only a repeated header bound would add no usable protocol contract.
 
 ## Public trait implementors
 
