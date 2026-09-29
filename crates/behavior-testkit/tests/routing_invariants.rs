@@ -48,6 +48,24 @@ type TestRate = RateLimiter<MailAddr, u8, Recipient<RateTarget>, Recipient<RateR
 type TestQueue = WorkQueue<MailAddr, OwnedQueueWork, Recipient<QueueWorker>, Recipient<QueueReply>>;
 type TestRouter = Router<MailAddr, Recipient<PriorityTarget>, RoundRobin>;
 
+#[derive(Clone, Copy, Debug)]
+enum BufferTurn {
+    Offer { value: u8 },
+    Release,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum PriorityTurn {
+    Offer { value: u8, priority: u8 },
+    Release,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum RateTurn {
+    Acquire { amount: u64, value: u8 },
+    Refill { amount: u64 },
+}
+
 fn overflow(tag: u8) -> OverflowPolicy {
     match tag % 3 {
         0 => OverflowPolicy::Reject,
@@ -67,7 +85,10 @@ proptest! {
     fn buffer_preserves_fifo_and_returns_every_unaccepted_value(
         capacity in 1_usize..8,
         policy_tag in any::<u8>(),
-        operations in vec((any::<bool>(), any::<u8>()), 0..200),
+        operations in vec(prop_oneof![
+            any::<u8>().prop_map(|value| BufferTurn::Offer { value }),
+            Just(BufferTurn::Release),
+        ], 0..200),
     ) {
         let policy = overflow(policy_tag);
         let mut actual = TestBuffer::new(BufferConfiguration::new(capacity, policy).unwrap())
@@ -76,11 +97,10 @@ proptest! {
         let outcome = Recipient::global(MailAddr(1));
         let target = Recipient::global(MailAddr(2));
 
-        for (offer, value) in operations {
-            let actions = if offer {
-                actual.receive(MailAddr(9), BufferMessage::Offer { value, reply_to: outcome }).unwrap()
-            } else {
-                actual.receive(MailAddr(9), BufferMessage::Release { to: target, reply_to: outcome }).unwrap()
+        for turn in operations {
+            let actions = match turn {
+                BufferTurn::Offer { value } => actual.receive(MailAddr(9), BufferMessage::Offer { value, reply_to: outcome }).unwrap(),
+                BufferTurn::Release => actual.receive(MailAddr(9), BufferMessage::Release { to: target, reply_to: outcome }).unwrap(),
             };
             let mut returned = Vec::new();
             for delivery in &actions.sends.outcomes {
@@ -90,40 +110,45 @@ proptest! {
                 }
             }
 
-            if offer {
-                if expected.len() < capacity {
-                    expected.push_back(value);
-                    prop_assert!(returned.is_empty());
-                } else {
-                    match policy {
-                        OverflowPolicy::Reject => {
-                            prop_assert_eq!(returned, vec![value]);
-                            let matched = matches!(actions.sends.outcomes[0].message,
-                                BufferOutcome::Rejected { reason: BufferRejection::Full, .. });
-                            prop_assert!(matched);
-                        }
-                        OverflowPolicy::DropNewest => {
-                            prop_assert_eq!(returned, vec![value]);
-                            let matched = matches!(actions.sends.outcomes[0].message,
-                                BufferOutcome::Rejected { reason: BufferRejection::DroppedNewest, .. });
-                            prop_assert!(matched);
-                        }
-                        OverflowPolicy::DropOldest => {
-                            let evicted = expected.pop_front().unwrap();
-                            expected.push_back(value);
-                            prop_assert_eq!(returned, vec![evicted]);
-                            prop_assert_eq!(actions.sends.outcomes.len(), 2);
+            match turn {
+                BufferTurn::Offer { value } => {
+                    if expected.len() < capacity {
+                        expected.push_back(value);
+                        prop_assert!(returned.is_empty());
+                    } else {
+                        match policy {
+                            OverflowPolicy::Reject => {
+                                prop_assert_eq!(returned, vec![value]);
+                                let matched = matches!(actions.sends.outcomes[0].message,
+                                    BufferOutcome::Rejected { reason: BufferRejection::Full, .. });
+                                prop_assert!(matched);
+                            }
+                            OverflowPolicy::DropNewest => {
+                                prop_assert_eq!(returned, vec![value]);
+                                let matched = matches!(actions.sends.outcomes[0].message,
+                                    BufferOutcome::Rejected { reason: BufferRejection::DroppedNewest, .. });
+                                prop_assert!(matched);
+                            }
+                            OverflowPolicy::DropOldest => {
+                                let evicted = expected.pop_front().unwrap();
+                                expected.push_back(value);
+                                prop_assert_eq!(returned, vec![evicted]);
+                                prop_assert_eq!(actions.sends.outcomes.len(), 2);
+                            }
                         }
                     }
+                    prop_assert!(actions.sends.deliveries.is_empty());
                 }
-                prop_assert!(actions.sends.deliveries.is_empty());
-            } else if let Some(released) = expected.pop_front() {
-                prop_assert_eq!(actions.sends.deliveries.len(), 1);
-                prop_assert_eq!(actions.sends.deliveries[0].message, released);
-                prop_assert!(returned.is_empty());
-            } else {
-                prop_assert!(actions.sends.deliveries.is_empty());
-                prop_assert!(matches!(actions.sends.outcomes[0].message, BufferOutcome::Empty));
+                BufferTurn::Release => {
+                    if let Some(released) = expected.pop_front() {
+                        prop_assert_eq!(actions.sends.deliveries.len(), 1);
+                        prop_assert_eq!(actions.sends.deliveries[0].message, released);
+                        prop_assert!(returned.is_empty());
+                    } else {
+                        prop_assert!(actions.sends.deliveries.is_empty());
+                        prop_assert!(matches!(actions.sends.outcomes[0].message, BufferOutcome::Empty));
+                    }
+                }
             }
 
             let retained = actual.state().queued().map(|entry| entry.value).collect::<Vec<_>>();
@@ -135,7 +160,10 @@ proptest! {
     #[test]
     fn priority_queue_matches_stable_max_priority_selection(
         capacity in 1_usize..8,
-        operations in vec((any::<bool>(), any::<u8>(), 0_u8..8), 0..200),
+        operations in vec(prop_oneof![
+            (any::<u8>(), 0_u8..8).prop_map(|(value, priority)| PriorityTurn::Offer { value, priority }),
+            Just(PriorityTurn::Release),
+        ], 0..200),
     ) {
         let mut actual = TestPriority::new(capacity).unwrap().initialize().unwrap().behavior;
         let mut expected: Vec<(u8, u8, u64)> = Vec::new();
@@ -143,34 +171,38 @@ proptest! {
         let reply = Recipient::global(MailAddr(1));
         let target = Recipient::global(MailAddr(2));
 
-        for (offer, value, priority) in operations {
-            let actions = if offer {
-                actual.receive(MailAddr(9), PriorityQueueMessage::Offer { value, priority, reply_to: reply }).unwrap()
-            } else {
-                actual.receive(MailAddr(9), PriorityQueueMessage::Release { to: target, reply_to: reply }).unwrap()
+        for turn in operations {
+            let actions = match turn {
+                PriorityTurn::Offer { value, priority } => actual.receive(MailAddr(9), PriorityQueueMessage::Offer { value, priority, reply_to: reply }).unwrap(),
+                PriorityTurn::Release => actual.receive(MailAddr(9), PriorityQueueMessage::Release { to: target, reply_to: reply }).unwrap(),
             };
-            if offer {
-                if expected.len() == capacity {
-                    prop_assert!(actions.sends.deliveries.is_empty());
-                    let matched = matches!(actions.sends.outcomes[0].message,
-                        PriorityQueueOutcome::Rejected { value: returned, priority: returned_priority, reason: PriorityQueueRejection::Full }
-                            if returned == value && returned_priority == priority);
-                    prop_assert!(matched);
-                } else {
-                    expected.push((value, priority, order));
-                    order += 1;
-                    let matched = matches!(actions.sends.outcomes[0].message, PriorityQueueOutcome::Accepted { .. });
-                    prop_assert!(matched);
+            match turn {
+                PriorityTurn::Offer { value, priority } => {
+                    if expected.len() == capacity {
+                        prop_assert!(actions.sends.deliveries.is_empty());
+                        let matched = matches!(actions.sends.outcomes[0].message,
+                            PriorityQueueOutcome::Rejected { value: returned, priority: returned_priority, reason: PriorityQueueRejection::Full }
+                                if returned == value && returned_priority == priority);
+                        prop_assert!(matched);
+                    } else {
+                        expected.push((value, priority, order));
+                        order += 1;
+                        let matched = matches!(actions.sends.outcomes[0].message, PriorityQueueOutcome::Accepted { .. });
+                        prop_assert!(matched);
+                    }
                 }
-            } else if expected.is_empty() {
-                prop_assert!(actions.sends.deliveries.is_empty());
-                prop_assert!(matches!(actions.sends.outcomes[0].message, PriorityQueueOutcome::Empty));
-            } else {
-                let selected = expected.iter().enumerate().max_by(|(_, left), (_, right)| {
-                    left.1.cmp(&right.1).then_with(|| right.2.cmp(&left.2))
-                }).unwrap().0;
-                let released = expected.remove(selected).0;
-                prop_assert_eq!(actions.sends.deliveries[0].message, released);
+                PriorityTurn::Release => {
+                    if expected.is_empty() {
+                        prop_assert!(actions.sends.deliveries.is_empty());
+                        prop_assert!(matches!(actions.sends.outcomes[0].message, PriorityQueueOutcome::Empty));
+                    } else {
+                        let selected = expected.iter().enumerate().max_by(|(_, left), (_, right)| {
+                            left.1.cmp(&right.1).then_with(|| right.2.cmp(&left.2))
+                        }).unwrap().0;
+                        let released = expected.remove(selected).0;
+                        prop_assert_eq!(actions.sends.deliveries[0].message, released);
+                    }
+                }
             }
             let queued = match actual.state() {
                 behavior_actors::PriorityQueueState::Active { queued, .. }
@@ -184,7 +216,10 @@ proptest! {
     fn rate_limiter_matches_saturating_token_arithmetic(
         capacity in 1_u64..32,
         initial_seed in 0_u64..64,
-        operations in vec((any::<bool>(), 1_u64..48, any::<u8>()), 0..200),
+        operations in vec(prop_oneof![
+            (1_u64..48, any::<u8>()).prop_map(|(amount, value)| RateTurn::Acquire { amount, value }),
+            (1_u64..48).prop_map(|amount| RateTurn::Refill { amount }),
+        ], 0..200),
     ) {
         let initial = initial_seed % (capacity + 1);
         let capacity_tokens = TokenCount::new(NonZeroU64::new(capacity).unwrap());
@@ -193,38 +228,42 @@ proptest! {
         let reply = Recipient::global(MailAddr(1));
         let target = Recipient::global(MailAddr(2));
 
-        for (acquire, amount, value) in operations {
-            let tokens = TokenCount::new(NonZeroU64::new(amount).unwrap());
-            if acquire {
-                let actions = actual.receive(MailAddr(9), RateLimiterMessage::Acquire {
-                    cost: tokens, value, to: target, reply_to: reply,
-                }).unwrap();
-                if amount > capacity {
-                    let matched = matches!(actions.sends.outcomes[0].message,
-                        RateLimiterOutcome::Rejected { cost: returned_cost, value: returned, reason: RateLimitRejection::ExceedsCapacity }
-                            if returned == value && returned_cost == tokens);
-                    prop_assert!(matched);
-                    prop_assert!(actions.sends.deliveries.is_empty());
-                } else if amount > available {
-                    let matched = matches!(actions.sends.outcomes[0].message,
-                        RateLimiterOutcome::Rejected { cost: returned_cost, value: returned, reason: RateLimitRejection::InsufficientTokens }
-                            if returned == value && returned_cost == tokens);
-                    prop_assert!(matched);
-                    prop_assert!(actions.sends.deliveries.is_empty());
-                } else {
-                    available -= amount;
-                    prop_assert_eq!(actions.sends.deliveries[0].message, value);
-                    prop_assert_eq!(&actions.sends.outcomes[0].message, &RateLimiterOutcome::Admitted { remaining: available });
+        for turn in operations {
+            match turn {
+                RateTurn::Acquire { amount, value } => {
+                    let tokens = TokenCount::new(NonZeroU64::new(amount).unwrap());
+                    let actions = actual.receive(MailAddr(9), RateLimiterMessage::Acquire {
+                        cost: tokens, value, to: target, reply_to: reply,
+                    }).unwrap();
+                    if amount > capacity {
+                        let matched = matches!(actions.sends.outcomes[0].message,
+                            RateLimiterOutcome::Rejected { cost: returned_cost, value: returned, reason: RateLimitRejection::ExceedsCapacity }
+                                if returned == value && returned_cost == tokens);
+                        prop_assert!(matched);
+                        prop_assert!(actions.sends.deliveries.is_empty());
+                    } else if amount > available {
+                        let matched = matches!(actions.sends.outcomes[0].message,
+                            RateLimiterOutcome::Rejected { cost: returned_cost, value: returned, reason: RateLimitRejection::InsufficientTokens }
+                                if returned == value && returned_cost == tokens);
+                        prop_assert!(matched);
+                        prop_assert!(actions.sends.deliveries.is_empty());
+                    } else {
+                        available -= amount;
+                        prop_assert_eq!(actions.sends.deliveries[0].message, value);
+                        prop_assert_eq!(&actions.sends.outcomes[0].message, &RateLimiterOutcome::Admitted { remaining: available });
+                    }
                 }
-            } else {
-                let refilled = actual
-                    .receive(MailAddr(9), RateLimiterMessage::Refill { tokens })
-                    .unwrap();
-                prop_assert!(refilled.sends.deliveries.is_empty());
-                prop_assert!(refilled.sends.outcomes.is_empty());
-                prop_assert!(refilled.creates.is_empty());
-                prop_assert!(matches!(refilled.become_, behavior_core::Step::Continue));
-                available = available.saturating_add(amount).min(capacity);
+                RateTurn::Refill { amount } => {
+                    let tokens = TokenCount::new(NonZeroU64::new(amount).unwrap());
+                    let refilled = actual
+                        .receive(MailAddr(9), RateLimiterMessage::Refill { tokens })
+                        .unwrap();
+                    prop_assert!(refilled.sends.deliveries.is_empty());
+                    prop_assert!(refilled.sends.outcomes.is_empty());
+                    prop_assert!(refilled.creates.is_empty());
+                    prop_assert!(matches!(refilled.become_, behavior_core::Step::Continue));
+                    available = available.saturating_add(amount).min(capacity);
+                }
             }
             prop_assert_eq!(actual.state().available(), available);
             prop_assert!(available <= capacity);

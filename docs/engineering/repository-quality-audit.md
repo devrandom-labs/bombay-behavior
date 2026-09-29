@@ -1338,6 +1338,40 @@ including the macro dependency-resolution fixtures and the affected actor,
 core, and testkit suites. The changed fuzz targets and clean-snapshot flake
 gate remain to be checked.
 
+The next A15 scan found five generated `bool` selectors in the independent
+testkit models. Each selected a domain event or exact/foreign source; the
+tuple generators also supplied values unused by some event alternatives.
+This is a test-model policy issue, not a new actor law. Before editing, the
+static scan `rg 'any::<bool>\(\)' crates --glob '*.rs'` found exactly these
+five sites. The expected regression is that the same scan finds none after
+the edit, while the three affected model targets still compare every generated
+turn with their independent oracle in debug and optimized builds. The direct
+test data model is a separate closed sum for buffer, priority, rate, lease,
+and observation operations, with each variant owning only the data it uses.
+No production state, effect product, interpreter path, or public spelling is
+changed. The five-site static regression now finds no `any::<bool>()` under
+`crates/`. The three edited test binaries passed 7/7 cases in both debug and
+release mode with the Nix-pinned toolchain. Their measured test-only diff is
++219/-137 (net +82) lines; production is +0/-0, with no public API change.
+Production control states, subordinate alternatives, transition branches, and
+modules are unchanged. The independent models retain their prior observable
+decisions. Five boolean event/source selectors and two numeric operation tags
+became seven closed input sums with 18 alternatives. Each alternative owns its
+current event data, such as an offered value, acquired cost, exact report
+target, or elapsed timer source. The three test modules remain three. The
+residue scan found no retained arrival history, repeated cause, false
+cardinality, nested transition authority, semantic selector boolean, or
+unused field on these generated operations. The actor transition and relevant
+routing, timing, and observation laws were cross-checked. Disposition:
+`pass` for this test-model batch; the complete A15 gate remains open.
+
+A wider assertion scan then found mutating helper calls hidden behind local
+names such as `query`, `put`, `acquire`, `release`, `hold`, and `offer`, plus
+interpreter methods called inside assertions. The earlier method-name scan did
+not catch these. Hoist those transitions and ownership transfers before
+assertions, run the affected tests, and repeat the broader scan before A15
+can close.
+
 ### A07 actor mutation evidence: routing-buffer capacity
 
 At revision `0274dab`, a focused campaign mutated the bounded buffer's

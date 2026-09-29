@@ -95,6 +95,20 @@ enum ModelPhase {
     Rejected,
 }
 
+#[derive(Debug, Clone, Copy)]
+enum ReportTarget {
+    Selected,
+    Foreign,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum ReportKind {
+    Started,
+    Cancelled,
+    Rejected,
+    Stopped,
+}
+
 fn actual_phase(observation: TerminationObservation) -> ModelPhase {
     match observation {
         TerminationObservation::Requested => ModelPhase::Requested,
@@ -108,7 +122,15 @@ fn actual_phase(observation: TerminationObservation) -> ModelPhase {
 proptest! {
     #[test]
     fn exact_monitor_matches_the_independent_single_terminal_model(
-        operations in prop::collection::vec((any::<bool>(), 0_u8..4), 0..96),
+        operations in prop::collection::vec((
+            prop_oneof![Just(ReportTarget::Selected), Just(ReportTarget::Foreign)],
+            prop_oneof![
+                Just(ReportKind::Started),
+                Just(ReportKind::Cancelled),
+                Just(ReportKind::Rejected),
+                Just(ReportKind::Stopped),
+            ],
+        ), 0..96),
     ) {
         let selected = ObservationId(7);
         let recipient = EstablishedRecipient::issued(Endpoint::<Peer> {
@@ -127,45 +149,43 @@ proptest! {
         let mut model = ModelPhase::Requested;
         let mut terminal_reactions = 0;
 
-        for (matching, operation) in operations {
-            let id = if matching { selected } else { ObservationId(8) };
+        for (target, operation) in operations {
+            let id = match target {
+                ReportTarget::Selected => selected,
+                ReportTarget::Foreign => ObservationId(8),
+            };
             let report = match operation {
-                0 => EstablishedObservation::started(id),
-                1 => EstablishedObservation::cancelled(id),
-                2 => EstablishedObservation::rejected(
+                ReportKind::Started => EstablishedObservation::started(id),
+                ReportKind::Cancelled => EstablishedObservation::cancelled(id),
+                ReportKind::Rejected => EstablishedObservation::rejected(
                     id,
                     ObservationOperation::Start,
                     ObservationRejection::IdAlreadyBound,
                 ),
-                _ => EstablishedObservation::stopped(id, Ok(Exit::Normal), timestamp),
+                ReportKind::Stopped => EstablishedObservation::stopped(id, Ok(Exit::Normal), timestamp),
             };
 
-            let accepted = matching && matches!(
-                (model, operation),
-                (ModelPhase::Requested, 0 | 2)
-                    | (ModelPhase::Observing, 1 | 2 | 3)
-            );
+            let next_phase = match (target, model, operation) {
+                (ReportTarget::Selected, ModelPhase::Requested, ReportKind::Started) => Some(ModelPhase::Observing),
+                (ReportTarget::Selected, ModelPhase::Requested | ModelPhase::Observing, ReportKind::Rejected) => Some(ModelPhase::Rejected),
+                (ReportTarget::Selected, ModelPhase::Observing, ReportKind::Cancelled) => Some(ModelPhase::Cancelled),
+                (ReportTarget::Selected, ModelPhase::Observing, ReportKind::Stopped) => Some(ModelPhase::Observed),
+                _ => None,
+            };
             let before = subject.observation();
-            match subject.on_path(report) {
-                Ok(_) => prop_assert!(accepted),
-                Err(TerminationMonitorError::UnexpectedReport { observation, report }) => {
-                    prop_assert!(!accepted);
+            match (subject.on_path(report), next_phase) {
+                (Ok(_), Some(next)) => {
+                    if matches!(next, ModelPhase::Observed) {
+                        terminal_reactions += 1;
+                    }
+                    model = next;
+                }
+                (Err(TerminationMonitorError::UnexpectedReport { observation, report }), None) => {
                     prop_assert_eq!(observation, before);
                     prop_assert_eq!(report.id(), id);
                 }
-                Err(TerminationMonitorError::Inner(never)) => match never {},
-            }
-
-            if accepted {
-                model = match operation {
-                    0 => ModelPhase::Observing,
-                    1 => ModelPhase::Cancelled,
-                    2 => ModelPhase::Rejected,
-                    _ => {
-                        terminal_reactions += 1;
-                        ModelPhase::Observed
-                    }
-                };
+                (Err(TerminationMonitorError::Inner(never)), _) => match never {},
+                _ => prop_assert!(false, "report settlement diverged from the model"),
             }
 
             prop_assert_eq!(actual_phase(subject.observation()), model);
