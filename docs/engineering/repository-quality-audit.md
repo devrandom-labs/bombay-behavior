@@ -961,6 +961,40 @@ alternatives, branches, modules, and public spellings are unchanged. The
 retained values, residue scan, and routing/workflow law cross-check remain as
 recorded above. Disposition: `pass` for the focused identity-law migration.
 
+`Presence`, `Lease`, and `Workflow` expose one further instance of the same
+derived law. Each public struct requires `K: Clone + Eq` merely to name its
+type, although its private fields can store a non-`Clone`, non-`Eq` `K` and its
+message sum can own one. The constructor and `Behavior` impl genuinely need
+those bounds for their policies; the protocol identity does not. The intended
+caller projects `Protocol::Msg` for each actor with a non-`Clone`, non-`Eq`
+key and a lawful result route. The compile witness is added to
+`actors/tests/protocol_bounds.rs` before touching production. The change
+removes the bound at each struct declaration and its `Protocol` impl only;
+constructor and execution bounds remain, and no new trait or port is needed.
+
+Pre-edit aggregate-drift checkpoint: presence retains its ordered records and
+timer mapping, lease retains one vacant/held/exhausted state and timer ID, and
+workflow retains its validated definition and current run state. Their
+control states, subordinate alternatives, branches, modules, and public
+spellings do not change. The future-needed values are respectively the
+participant records, current lease holder/generation, and workflow steps and
+result route. No arrival-history state, repeated cause, false cardinality,
+nested authority, semantic boolean, or positional syntax is proposed. The
+discovery, time, workflow, and actor transition contracts were cross-checked.
+Expected production delta is six bounds removed across three files, three
+physical source lines deleted, and no new public types. Disposition: `pass`
+for the proposed bound relocation, pending the focused failing caller and
+implementation.
+
+The pre-edit caller failed with six E0277 diagnostics at the three struct
+declarations. With their `K` parameters unbounded and the same bounds removed
+from their `Protocol` impls, it passes. Constructors and transitions retain
+their `Clone + Eq` requirements; the focused presence, lease, and workflow
+transition tests pass. The three production files contain three fewer physical
+lines, with unchanged states, alternatives, branches, modules, and public
+spellings. The future-needed values, residue scan, and cross-checked laws
+remain as recorded above. Disposition: `pass` for this bound relocation.
+
 Classification: derived Rust protocol identity. A cache or resolver recipient
 names an address and a command type without running a transition or copying a
 binding definition. Thus `Protocol` for `Cache<K,V>` and `Resolver<K>` does

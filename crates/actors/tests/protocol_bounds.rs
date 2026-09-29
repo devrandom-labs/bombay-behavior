@@ -3,9 +3,11 @@ use behavior_actors::atomic::FifoError;
 use behavior_actors::{
     AcknowledgementMessage, AcknowledgementOutcome, Acknowledgements, Barrier, BarrierMessage,
     BarrierReleased, Cache, CacheResult, Configuration, ConfigurationMessage, ConfigurationState,
-    CorrelationResult, Correlator, CorrelatorMessage, Health, HealthMessage, HealthReport, Machine,
-    PubSub, PubSubMessage, Readiness, ReadinessMessage, ReadinessReport, Registry, RegistryMessage,
-    RegistryResult, Resolution, Resolver, Topic, TopicMessage,
+    CorrelationResult, Correlator, CorrelatorMessage, Health, HealthMessage, HealthReport, Lease,
+    LeaseMessage, LeaseOutcome, Machine, Presence, PresenceMessage, PresenceReply, PubSub,
+    PubSubMessage, Readiness, ReadinessMessage, ReadinessReport, Registry, RegistryMessage,
+    RegistryResult, Resolution, Resolver, Topic, TopicMessage, Workflow, WorkflowMessage,
+    WorkflowOutcome,
 };
 
 struct Key;
@@ -43,6 +45,12 @@ type AcknowledgementReply =
 type AcknowledgementProtocol = Acknowledgements<MailAddr, Key, Value, AcknowledgementReply>;
 type BarrierReply = Recipient<MessageProtocol<MailAddr, BarrierReleased>>;
 type BarrierProtocol = Barrier<MailAddr, Key, BarrierReply>;
+type PresenceResult = Recipient<MessageProtocol<MailAddr, PresenceReply<Key>>>;
+type PresenceProtocol = Presence<MailAddr, Key, PresenceResult>;
+type LeaseResult = Recipient<MessageProtocol<MailAddr, LeaseOutcome<Key>>>;
+type LeaseProtocol = Lease<MailAddr, Key, LeaseResult>;
+type WorkflowResult = Recipient<MessageProtocol<MailAddr, WorkflowOutcome<Key>>>;
+type WorkflowProtocol = Workflow<MailAddr, Key, WorkflowResult>;
 
 fn accepts_protocol<P: Protocol<Addr = MailAddr>>() {}
 
@@ -65,6 +73,9 @@ fn protocol_identity_does_not_require_transition_or_construction_bounds() {
         AcknowledgementMessage<Key, Value, AcknowledgementReply>,
     >();
     accepts_message::<BarrierProtocol, BarrierMessage<Key, BarrierReply>>();
+    accepts_message::<PresenceProtocol, PresenceMessage<Key, PresenceResult>>();
+    accepts_message::<LeaseProtocol, LeaseMessage<Key, LeaseResult>>();
+    accepts_message::<WorkflowProtocol, WorkflowMessage<Key, WorkflowResult>>();
 }
 
 #[test]

@@ -212,7 +212,7 @@ struct Record<K, Route> {
 /// No transition has a semantic panic condition.
 pub struct Presence<
     A: Address,
-    K: Clone + Eq,
+    K,
     Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = PresenceReply<K>>>,
 > {
     timer_id: fn(&K) -> TimerId,
@@ -438,7 +438,6 @@ where
 impl<A, K, Route> behavior::Protocol for Presence<A, K, Route>
 where
     A: Address,
-    K: Clone + Eq,
     Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = PresenceReply<K>>>,
 {
     type Addr = A;

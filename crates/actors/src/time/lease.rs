@@ -194,7 +194,7 @@ send_product! {
 /// while the stale queue entry may remain until due. No transition panics.
 pub struct Lease<
     A: Address,
-    K: Clone + Eq,
+    K,
     Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = LeaseOutcome<K>>>,
 > {
     id: TimerId,
@@ -314,7 +314,6 @@ where
 impl<A, K, Route> behavior::Protocol for Lease<A, K, Route>
 where
     A: Address,
-    K: Clone + Eq,
     Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = LeaseOutcome<K>>>,
 {
     type Addr = A;
