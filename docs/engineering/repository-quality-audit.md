@@ -926,6 +926,22 @@ edit was needed. This is one dynamic-supervision law slice, not a full
 family campaign. The full Nix flake gate passed all ten checks on `f9f39dc`
 before the counterfactual; the latter ran in a separate detached worktree.
 
+### A07 actor mutation evidence: fixed replacement correlation
+
+Classification: Bombay's exact predecessor-correlation and returned-custody
+policy. A fixed supervisor accepts a replacement outcome only while that
+member awaits an outcome for the same predecessor worker. A foreign outcome
+returns unchanged with the pending member; a matching outcome remains held
+until the independent predecessor-stop leg resolves. At signed revision
+`ebcfa9d`, a Nix-pinned campaign selected three mutations at
+`fixed_supervisor/recovery/mod.rs:1876`: unconditional guard acceptance,
+unconditional refusal, and inverted predecessor equality. Its baseline
+passed 591 actor tests; each mutated build selected the 814-test workspace
+suite. All three built and were caught. The foreign-outcome integration test
+caught unconditional acceptance; valid replacement and coordinated-restart
+tests caught refusal and inversion. No production edit was needed. This is
+one fixed-supervision replacement-law slice, not a full family campaign.
+
 ### A20 ledger entry: stable-proxy activation correlation
 
 | Evidence layer | Current witness and limit |
@@ -962,6 +978,15 @@ before the counterfactual; the latter ran in a separate detached worktree.
 | Independent trace | Dynamic cancellation and shutdown fuzz targets explore orderings. The focused integration trace has concrete expected replies but is not an independent state model. |
 | Composition and invalid construction | `CancelAuthority<Key>` carries the key and operation; the actor compares it with the entry's current operation. This is a keyed aggregate decision, not a wrapper-order law. The authority is returned by start or replacement receipt and retained in cancellation replies. |
 | Counterfactual | Inverting `!=` to `==` built and failed four dynamic integration tests. Replacing `!=` with `>` in an isolated worktree left current-token cancellation intact but made the old token after same-key reuse pass; the focused test failed at the stale assertion. These checks do not certify all dynamic entry phases. |
+
+### A20 ledger entry: fixed replacement correlation
+
+| Evidence layer | Current witness and limit |
+|---|---|
+| Focused transition and custody | `fixed_supervisor_initialization::replacement_rejects_an_outcome_for_another_predecessor` checks the complete foreign outcome returned through the diagnostic path. Valid receipt and coordinated-restart tests check a matching outcome waits for the independent predecessor stop. |
+| Independent trace | `fixed_supervisor_initialization` explores 90 lawful replacement arrival orders across recovery strategies. This is a local typed interpreter trace, not the downstream host required by A17. |
+| Composition and invalid construction | The outcome and pending replacement each carry exact predecessor evidence; the guard compares those values after the input settlement advanced to outcome-pending. A foreign predecessor can be reported by a runtime, so this is an aggregate ingress check rather than a static invalid-construction case. |
+| Counterfactual | Guard-true, guard-false, and equality-inversion mutants at `recovery/mod.rs:1876` all built and were caught by fixed-supervision integration tests. This slice does not cover scheduling, policy selection, or terminal retirement. |
 
 ### A20 ledger entry: bounded-buffer capacity and ownership
 
