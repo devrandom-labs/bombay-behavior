@@ -2091,7 +2091,11 @@ owned values and future decisions remain those stated above. The residue
 scan found no production arrival history, repeated cause, false cardinality,
 nested authority, semantic boolean, or structural caller syntax. The
 transition algebra and routing catalogue record were cross-checked.
-Disposition: `pass` for this test-only evidence batch; A20 remains open.
+Disposition: `pass` for this test-only evidence batch; A20 remains open. The
+complete `nix flake check -L` passed all ten declared checks at signed commit
+`ad4d198`, including optimized Nextest with 826 passing cases, release tests,
+doctests, Clippy, package, documentation, formatting, dependency-audit, and
+dependency-policy gates.
 
 | Law | Focused transition and independent trace | Remaining proof boundary |
 |---|---|---|
