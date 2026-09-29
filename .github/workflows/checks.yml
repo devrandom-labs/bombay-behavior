@@ -76,6 +76,12 @@ jobs:
       - name: Flake Check
         run: nix flake check -L
 
+      - name: External interpreter contract, debug
+        run: nix develop -c cargo test --locked --manifest-path tests/interpreter-contract/Cargo.toml
+
+      - name: External interpreter contract, optimized
+        run: nix develop -c cargo test --locked --release --manifest-path tests/interpreter-contract/Cargo.toml
+
       - name: Build fuzz targets
         run: nix run .#fuzz -- build
 

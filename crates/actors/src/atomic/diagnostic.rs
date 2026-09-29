@@ -157,6 +157,15 @@ where
     type Accepted = DiagnosticAccepted<Diagnostic>;
     type Rejection = Route::Rejection;
     type Prerequisite = Never;
+
+    fn retain_accepted(accepted: Self::Accepted) -> Option<Self::Accepted> {
+        match accepted {
+            DiagnosticAccepted::Delivered => None,
+            DiagnosticAccepted::Terminal(diagnostic) => {
+                Some(DiagnosticAccepted::Terminal(diagnostic))
+            }
+        }
+    }
 }
 
 /// Complete accepted disposition of one diagnostic action.

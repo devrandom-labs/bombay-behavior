@@ -223,6 +223,16 @@ pub trait ActionItem: Sized + Send {
     type Accepted: Send;
     type Rejection: Send;
     type Prerequisite: Send;
+
+    /// Keep an accepted value only while it still carries terminal custody.
+    ///
+    /// The default discharges and destroys the receipt. An implementation
+    /// returning `Some` must return the same owned value on every later offer;
+    /// it must not perform an effect or consume authority still promised by
+    /// that value. This decision does not change settlement status.
+    fn retain_accepted(_: Self::Accepted) -> Option<Self::Accepted> {
+        None
+    }
 }
 
 /// Exact result of one action item within an interpreted action product.
@@ -728,7 +738,24 @@ where
         self,
         _: &mut Host,
     ) -> impl Future<Output = SourceCustody<Self>> + Send {
-        async move { SourceCustody::Exhausted(self) }
+        async move {
+            let residual: Self = self
+                .into_iter()
+                .filter_map(|settled| match settled {
+                    SettledItem::Attempted(ItemSettlement::Accepted(accepted)) => {
+                        Item::retain_accepted(accepted).map(|accepted| {
+                            SettledItem::Attempted(ItemSettlement::Accepted(accepted))
+                        })
+                    }
+                    other => Some(other),
+                })
+                .collect();
+            if residual.is_empty() {
+                SourceCustody::Exhausted(residual)
+            } else {
+                SourceCustody::Retained(residual)
+            }
+        }
     }
 }
 
