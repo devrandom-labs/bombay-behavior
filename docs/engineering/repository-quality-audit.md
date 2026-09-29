@@ -1229,6 +1229,42 @@ detection. The false stale-generation guard was caught by the independent
 model; the other six viable changes were caught by lease unit tests. This is
 one lease law slice, not an actor-wide verdict.
 
+### A07 actor mutation evidence: termination observation and propagation
+
+Classification: derived exact-correlation and terminal-custody laws. A
+termination monitor consumes only the selected peer or observation report in
+its lawful phase. A propagation target accepts one matching terminal report;
+foreign or later reports return their complete value without changing state.
+
+At signed revision `812fe86`, the Nix-toolchain monitor campaign selected all
+ten `TerminationObservationTarget::react` candidates in
+`lifecycle/termination_monitor.rs`. Its actor baseline passed 593 tests, and
+mutated commands selected actor and testkit suites (705 tests). Eight viable
+mutations failed named actor or independent-model tests; two whole-function
+replacements could not compile because `Actions` has no `Default`. No survivor
+or timeout occurred, and the strict gate accepted `8 viable / 10 total`.
+Both lifecycle campaigns used `cargo mutants --package
+bombay-behavior-actors --test-package bombay-behavior-actors --test-package
+bombay-behavior-testkit --test-tool nextest --no-shuffle
+--minimum-test-timeout 180`; reproduce the monitor selection with
+`-f crates/actors/src/lifecycle/termination_monitor.rs -F '::react'`.
+
+The matching propagation campaign selected nine correlation mutations in
+`lifecycle/termination_propagation.rs`. Eight were caught, but replacing
+`PeerTermination::matches` with unconditional acceptance survived: the peer
+test exercised only a matching report. The strict gate correctly rejected
+that original report. Signed commit `f0dce34` added a foreign-peer report
+that must return intact while observation remains active, followed by an
+accepted selected-peer report; it also made the independent child-sequence
+model inspect initialization and every successful effect lane. Both focused
+tests passed. A separate one-mutant rerun failed the new peer test, with no
+timeout, and the strict gate accepted its complete `1 viable / 1 total`
+report. The original eight results and the focused rerun are separate
+revision-specific evidence, not a claim that all actor mutations were run.
+The propagation selection is reproducible with
+`-f crates/actors/src/lifecycle/termination_propagation.rs
+-F '::matches|match guard self.state|replace && with'`.
+
 ### A20 ledger entry: stable-proxy activation correlation
 
 | Evidence layer | Current witness and limit |
@@ -1312,6 +1348,15 @@ one lease law slice, not an actor-wide verdict.
 | Composition | `recursive_reply_protocols` and exact-reply template tests prove typed reply routes; this mutation slice does not establish a separate wrapper-order law for `Lease`. |
 | Invalid construction and boundaries | Holder and generation are concrete typed inputs. `generation_exhaustion_is_terminal_and_never_wraps` checks the upper sequence boundary; the model's generated sequence stays below it. |
 | Counterfactual | Seven viable `successor` mutations were caught; one replacement could not compile because `TimerGeneration` has no `Default`. Other lease transition branches remain outside this campaign. |
+
+### A20 ledger entry: termination observation and propagation
+
+| Evidence layer | Current witness and limit |
+|---|---|
+| Focused transition and custody | Logical-monitor unit tests check matching reaction actions, duplicate rejection, exact foreign-report return, and continued user delegation. Established-monitor integration tests check requested, observing, cancelled, and observed phases with exact observation IDs; the independent model also covers rejection. The propagation peer regression checks foreign return before selected-peer publication and stop. |
+| Independent trace | `exact_termination_model` compares generated exact-report phases and reaction count but does not inspect every action lane. `terminal_outcome_sequences` independently predicts selected-child acceptance, foreign return, discharge, publication, and later rejection; since `f0dce34` it also checks initialization and every effect lane on successful steps. It does not model `PeerTermination`. |
+| Composition and invalid construction | The exact monitor composes inside `StopOnShutdown`, and the logical monitor appears in the universal-layer tests. No two-order wrapper proof is claimed for propagation. A child target requires a typed creation ID and protocol occurrence; a foreign report is a runtime input returned through the typed error. |
+| Counterfactual | Eight viable monitor mutations were caught and two were unviable. The propagation campaign exposed an unconditional-peer-acceptance survivor; its isolated post-regression rerun was caught by the new focused test. The two campaign reports retain their separate baselines and verdicts. |
 
 The remaining catalogue laws need equally specific entries, so A20 remains
 open.
