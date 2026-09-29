@@ -1880,6 +1880,15 @@ actor-wide mutation verdict.
 | Latch release | `workflow::latch` tests threshold order and zero-count startup. `workflow_invariants::latch_releases_each_accepted_route_exactly_once` compares an independent waiting list, release phase, and exact recipient order through generated arrivals. | The property does not interpret delivery admission or record a dedicated mutation slice. |
 | Dependency workflow | `workflow_invariants::workflow_matches_an_independent_dependency_run` tracks step and run phases across start, completion, failure, and cancellation, including invalid early completion and failure. | The focused property and workflow unit tests do not provide a real interpreter trace or dedicated mutation slice for every branch. |
 
+### A20 ledger entries: catalogue versioning and membership
+
+| Law | Focused transition and independent trace | Remaining proof boundary |
+|---|---|---|
+| Configuration version | `operations::configuration` tests stale and equal-version conflicting candidates with complete value return. `catalogue_invariants::configuration_is_a_monotonic_atomic_register` compares each generated proposal with an independent optional version/value register, including idempotent equality and every action lane. | The recorded equality mutant covers one guard only; persistence and host delivery do not follow from this pure actor trace. |
+| Readiness evidence | `catalogue_invariants::readiness_matches_per_dependency_version_registers` compares three independent version/status slots after generated known and unknown observations, including stale and equal-version conflicts with returned evidence. | The generated range cannot reach numeric version exhaustion, and no dedicated readiness mutation slice is recorded. |
+| Registry identity | `discovery::registry` tests atomic stale unbind. `catalogue_invariants::registry_matches_atomic_compare_and_remove_bindings` compares a separate ordered binding list and exact bind, unbind, and lookup outcomes after generated commands. | The existing inversion covers exact-recipient comparison only; snapshot ordering and host delivery have no dedicated counterfactual here. |
+| Topic membership | `catalogue_invariants::topic_is_an_ordered_idempotent_membership_snapshot` models first subscription order, duplicate subscription, unsubscribe, and publication to every current recipient or exact empty-topic rejection. | This standalone topic law differs from keyed `PubSub` membership; no topic-specific mutation slice or host admission is claimed. |
+
 The remaining catalogue laws need equally specific entries, so A20 remains
 open.
 
