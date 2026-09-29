@@ -1194,6 +1194,30 @@ complete report (`4 viable / 4 total`). No production edit was needed. These
 are three law slices; the actor-wide 3,125-candidate inventory is not claimed
 as fully tested.
 
+### A07 actor mutation evidence: lease renewal authority
+
+Classification: derived generation-correlation law. A held lease may renew only
+when both the holder and observed generation match its current state. A stale
+generation or different holder returns a typed rejection without scheduling a
+new expiry. The independent model in `timing_invariants` compares the outcome,
+scheduled generation, and state after each generated operation.
+
+At signed revision `a334b0b`, a Nix-toolchain campaign selected all eight
+mutations of `Lease::successor` with `cargo mutants --package
+bombay-behavior-actors --test-package bombay-behavior-actors --test-package
+bombay-behavior-testkit --test-tool nextest --no-shuffle
+--minimum-test-timeout 180 -f crates/actors/src/time/lease.rs -F successor`.
+The unmutated actor baseline passed 593 tests; a separate unmutated testkit
+run passed 112 tests, including the independent lease model. Mutated commands
+selected both packages (705 tests). Seven candidates compiled and failed
+named tests; the eighth was unviable because `TimerGeneration` has no
+`Default`. There were no survivors or timeouts. The strict mutation gate
+accepted the complete report with a viability floor of seven
+(`7 viable / 8 total`), keeping compiler rejection distinct from test
+detection. The false stale-generation guard was caught by the independent
+model; the other six viable changes were caught by lease unit tests. This is
+one lease law slice, not an actor-wide verdict.
+
 ### A20 ledger entry: stable-proxy activation correlation
 
 | Evidence layer | Current witness and limit |
@@ -1267,6 +1291,16 @@ as fully tested.
 | Composition | The buffer is a standalone `Behavior` whose destination lanes are concrete `DeliveryRoute`s. There is no wrapper-order law for its capacity decision; route typing is checked separately in `composition/delivery_route.rs`. |
 | Invalid construction and boundaries | `BufferConfiguration::new(0, ..)` returns `ZeroCapacity`; a runtime numeric capacity is validated at construction. The full-queue tests distinguish `Reject`, `DropNewest`, and `DropOldest` ownership. |
 | Counterfactual | The five guard/operator mutants in the A07 slice were all caught by actor buffer tests. This evidence covers this capacity branch only. |
+
+### A20 ledger entry: lease holder and generation correlation
+
+| Evidence layer | Current witness and limit |
+|---|---|
+| Focused transition | `time::lease::tests::acquire_renew_release_and_stale_elapsed_are_generation_safe` and `wrong_holder_and_matching_expiry_are_distinct` check renewal, wrong-holder rejection, stale expiry, release, and continued state. |
+| Independent trace | `timing_invariants::lease_matches_exclusive_generation_ownership_after_every_event` compares each generated outcome, scheduled generation, and held/vacant state against its own model; it caught the false stale-generation guard. |
+| Composition | `recursive_reply_protocols` and exact-reply template tests prove typed reply routes; this mutation slice does not establish a separate wrapper-order law for `Lease`. |
+| Invalid construction and boundaries | Holder and generation are concrete typed inputs. `generation_exhaustion_is_terminal_and_never_wraps` checks the upper sequence boundary; the model's generated sequence stays below it. |
+| Counterfactual | Seven viable `successor` mutations were caught; one replacement could not compile because `TimerGeneration` has no `Default`. Other lease transition branches remain outside this campaign. |
 
 The remaining catalogue laws need equally specific entries, so A20 remains
 open.
