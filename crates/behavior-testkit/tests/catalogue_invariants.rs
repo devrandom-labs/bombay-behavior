@@ -2,13 +2,15 @@
 //! examples but not long, adversarial histories. The models use ordinary
 //! collections and domain facts rather than reproducing template branches.
 
+use std::collections::BTreeMap;
+
 use behavior_actors::{
     Activate as _, Cache, CacheConfiguration, CacheEntry, CacheMessage, CacheResult,
     ComponentHealth, ComponentHealthState, Configuration, ConfigurationError, ConfigurationMessage,
     ConfigurationState, ConfigurationVersion, Health, HealthError, HealthEvidence, HealthMessage,
-    HealthStatus, ObservationVersion, Readiness, ReadinessError, ReadinessEvidence,
-    ReadinessMessage, ReadinessStatus, Registry, RegistryError, RegistryMessage, RegistryResult,
-    Topic, TopicError, TopicMessage,
+    HealthStatus, ObservationVersion, PubSub, PubSubError, PubSubMessage, Readiness,
+    ReadinessError, ReadinessEvidence, ReadinessMessage, ReadinessStatus, Registry, RegistryError,
+    RegistryMessage, RegistryResult, Topic, TopicError, TopicMessage,
 };
 
 use behavior_core::{MailAddr, MessageProtocol, Recipient, Step};
@@ -36,6 +38,7 @@ type TestReadiness = Readiness<MailAddr, u8, Recipient<ReadinessReply>>;
 type TestHealth = Health<MailAddr, u8, Recipient<HealthReply>>;
 type TestCache = Cache<MailAddr, u8, u8, Recipient<MessageProtocol<MailAddr, CacheResult<u8, u8>>>>;
 type TestRegistry = Registry<MailAddr, u8, RegistryDestination, Recipient<RegistryReply>>;
+type TestPubSub = PubSub<MailAddr, u8, String, Recipient<MessageProtocol<MailAddr, String>>>;
 
 proptest! {
     #![proptest_config(ProptestConfig {
@@ -362,6 +365,103 @@ proptest! {
                 }
             }
             prop_assert_eq!(actual.bindings(), expected.as_slice());
+        }
+    }
+
+    #[test]
+    fn pub_sub_preserves_topic_membership_and_rejected_publications(
+        operations in vec((0_u8..3, 0_u8..8, 0_u8..8, any::<u8>()), 0..160),
+    ) {
+        let initialized = TestPubSub::new().initialize().unwrap();
+        prop_assert!(initialized.actions.sends.is_empty());
+        prop_assert!(initialized.actions.creates.is_empty());
+        prop_assert!(matches!(initialized.actions.become_, Step::Continue));
+        let mut actual = initialized.behavior;
+        let mut membership = BTreeMap::<
+            u8,
+            Vec<Recipient<MessageProtocol<MailAddr, String>>>,
+        >::new();
+        let mut introduced = Vec::<u8>::new();
+
+        for (turn, (operation, topic, address, content)) in operations.into_iter().enumerate() {
+            let subscriber = Recipient::global(MailAddr(u64::from(address)));
+            match operation {
+                0 => {
+                    let actions = actual.receive(
+                        MailAddr(9),
+                        PubSubMessage::Subscribe { topic, subscriber },
+                    ).unwrap();
+                    prop_assert!(actions.sends.is_empty());
+                    prop_assert!(actions.creates.is_empty());
+                    prop_assert!(matches!(actions.become_, Step::Continue));
+                    if let Some(members) = membership.get_mut(&topic) {
+                        if !members.contains(&subscriber) { members.push(subscriber); }
+                    } else {
+                        membership.insert(topic, vec![subscriber]);
+                        introduced.push(topic);
+                    }
+                }
+                1 => {
+                    let result = actual.receive(
+                        MailAddr(9),
+                        PubSubMessage::Unsubscribe { topic, subscriber },
+                    );
+                    if let Some(members) = membership.get_mut(&topic) {
+                        if let Some(index) = members.iter().position(|member| *member == subscriber) {
+                            members.remove(index);
+                            let actions = result.unwrap();
+                            prop_assert!(actions.sends.is_empty());
+                            prop_assert!(actions.creates.is_empty());
+                            prop_assert!(matches!(actions.become_, Step::Continue));
+                        } else {
+                            let exact = matches!(result, Err(PubSubError::NotSubscribed {
+                                topic: returned_topic,
+                                subscriber: returned_subscriber,
+                            }) if returned_topic == topic && returned_subscriber == subscriber);
+                            prop_assert!(exact);
+                        }
+                    } else {
+                        let exact = matches!(result, Err(PubSubError::UnknownTopic {
+                            topic: returned_topic,
+                            subscriber: returned_subscriber,
+                        }) if returned_topic == topic && returned_subscriber == subscriber);
+                        prop_assert!(exact);
+                    }
+                }
+                _ => {
+                    let expected_publication = format!("publication-{turn}-{content}");
+                    let publication = expected_publication.clone();
+                    let original_pointer = publication.as_ptr();
+                    let result = actual.receive(
+                        MailAddr(9),
+                        PubSubMessage::Publish { topic, value: publication },
+                    );
+                    if let Some(members) = membership.get(&topic).filter(|members| !members.is_empty()) {
+                        let actions = result.unwrap();
+                        let deliveries = actions.sends.into_iter()
+                            .map(|delivery| (delivery.to, delivery.message))
+                            .collect::<Vec<_>>();
+                        let expected_deliveries = members.iter().copied()
+                            .map(|to| (to, expected_publication.clone()))
+                            .collect::<Vec<_>>();
+                        prop_assert_eq!(deliveries, expected_deliveries);
+                        prop_assert!(actions.creates.is_empty());
+                        prop_assert!(matches!(actions.become_, Step::Continue));
+                    } else {
+                        let exact = matches!(result, Err(PubSubError::NoSubscribers {
+                            topic: returned_topic,
+                            value: returned_value,
+                        }) if returned_topic == topic && returned_value == expected_publication
+                            && returned_value.as_ptr() == original_pointer);
+                        prop_assert!(exact);
+                    }
+                }
+            }
+            prop_assert_eq!(actual.topics().len(), introduced.len());
+            for (state, topic) in actual.topics().iter().zip(&introduced) {
+                prop_assert_eq!(&state.topic, topic);
+                prop_assert_eq!(state.subscribers.as_slice(), membership[topic].as_slice());
+            }
         }
     }
 

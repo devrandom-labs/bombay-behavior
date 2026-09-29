@@ -501,7 +501,7 @@ is valuable even where A06 or A20 requires a stronger oracle.
 | Lifecycle and shutdown | shutdown models, heterogeneous shutdown, exact termination model, propagation sequences | A01/A17/A19; distinguish watch recurrence from exact-once monitoring and homogeneous from heterogeneous ownership |
 | Time | receive-timeout model, timing invariants, init/composition tests, timer settlement tests | A06/A15; prove exhaustion and stale/duplicate input in both profiles; keep one-shot, periodic, deadline and inactivity policies distinct |
 | Routing | catalogue models, routing/correlation invariants, exact reply tests | A06/A07/A11; distinguish sequencer gap closure from explicit watermark release and queue policy from delivery acceptance |
-| Discovery | registry/topic models, presence fuzz, resolver/pub-sub unit tests | Assert snapshot order, stale versions, recipient identity, and complete rejected commands; retain read-only resolver authority |
+| Discovery | registry/topic/pub-sub models, presence fuzz, resolver unit tests | Assert snapshot order, stale versions, recipient identity, and complete rejected commands; retain read-only resolver authority |
 | Operations and persistence | configuration/readiness/health/cache models | A06/A13; preserve health tombstones, fixed readiness membership, version conflicts, LRU ownership |
 | Workflow | workflow invariants, barrier/latch tests, catalogue fuzz | Assert complete activations and terminal/stale cases; latch, reusable barrier, and dependency workflow have different laws |
 | Macros and published consumers | parser permutations, behavior generation, facade fixture workspace | A02/A08; parser success and token text cannot substitute for consumer compilation |
@@ -1531,6 +1531,40 @@ strengthened to inspect all action lanes with non-Clone work values and unique
 reply destinations; this newer oracle passed, but was not part of the earlier
 mutant verdict.
 
+### A07 actor mutation evidence: keyed publication membership
+
+Classification: deliberate Bombay keyed-membership and ordered-publication
+policy. A topic is retained after its last subscriber leaves; a repeated
+subscription is idempotent. Unsubscription of an unknown topic or absent
+recipient returns the complete command without changing membership.
+
+At signed revision `d7d0832`, a Nix-toolchain campaign selected all six
+`PubSub::subscribe` and `PubSub::unsubscribe` candidates in
+`discovery/pub_sub.rs`. The actor baseline passed, every candidate compiled,
+and named pub-sub unit tests failed under each mutation. The strict gate
+accepted `6 viable / 6 total`, with no survivor or timeout. Reproduce with
+`cargo mutants --package bombay-behavior-actors --test-package
+bombay-behavior-actors --test-package bombay-behavior-testkit --test-tool
+nextest --no-shuffle --minimum-test-timeout 180
+-f crates/actors/src/discovery/pub_sub.rs
+-F 'PubSub<A, K, P, Route>::subscribe|PubSub<A, K, P, Route>::unsubscribe'`.
+A later independent sequence model checks topic order, exact membership,
+every successful action lane, and rejected publication custody with distinct
+owned strings. It passed after the campaign and is not credited with the
+earlier mutant kills. Publication-loop and downstream delivery laws remain
+outside this mutation slice. Aggregate-drift checkpoint for the test-only
+batch: control states `1 → 1` (active), named subordinate state sums `0 → 0`,
+aggregate error variants `3 → 3`, message arms `3 → 3`, production lines
+`234 → 234`, modules `1 → 1`, and public spellings unchanged. The current topic key,
+retained membership list, and introduction order remain the only future-needed
+values. The test's map and order list model the observable order; no production
+arrival history, repeated cause, false cardinality, nested authority,
+semantic boolean, or structural user syntax was added. Cross-checks were
+`actor-transition-algebra.md`, `atomic-runtime-settlement.md`, and the PubSub
+row in `engineering/atomic-actor-other-templates.md`. Disposition: `pass` for
+this test-only evidence batch; capacity, retirement, and delivery settlement
+remain independent future laws in that normalized catalogue record.
+
 ### A07 actor mutation evidence: health observation versions
 
 Classification: deliberate Bombay component-correlation and version-commit policy. A
@@ -1654,6 +1688,15 @@ actor-wide mutation verdict.
 | Independent trace | `routing_invariants::work_queue_matches_two_coupled_fifo_capabilities` tracks waiting work and available workers in separate deques, with unique reply recipients and a non-Clone work payload. It checks the complete observable state after every generated operation. It does not claim transport admission. |
 | Composition and boundaries | Exact reply-route template tests cover logical and established customer routes. The property generates capacities including zero and repeated worker notices and withdrawals; it does not check downstream worker execution. |
 | Counterfactual | Two viable guard mutants failed actor unit tests; two whole-function replacements were unviable. The strengthened independent property passed after this campaign, so the original verdict is not attributed to it. |
+
+### A20 ledger entry: keyed publication membership
+
+| Evidence layer | Current witness and limit |
+|---|---|
+| Focused transition and custody | `discovery::pub_sub` unit tests check first subscription order, duplicate suppression, and publication rejection for known empty and unknown topics. The independent property checks the exact returned topic, recipient, and original publication allocation. |
+| Independent trace | `catalogue_invariants::pub_sub_preserves_topic_membership_and_rejected_publications` tracks membership in a map plus introduction order, then compares every current topic, recipient order, successful action lane, and rejection after generated commands. Each publication has a distinct owned string. It does not interpret transport admission. |
+| Composition and boundaries | Exact reply template tests exercise established publication routes. The property explores absent topics, empty retained topics, duplicate recipients, and re-subscription; it does not prove scheduling or downstream delivery. Topic/member capacity and topic retirement still need laws as recorded in `atomic-actor-other-templates.md`. |
+| Counterfactual | All six selected membership mutants compiled and failed named unit tests. The independent property was added after that campaign, so no mutant kill is attributed to it. Publication-loop mutation evidence remains open. |
 
 ### A20 ledger entry: health observation versions
 
@@ -1965,6 +2008,7 @@ The routing-invariant fixtures and work-queue unit tests also dropped their
 destination-only inert `Behavior` implementations. Their routes require only
 `Protocol`; the routing and queue tests still pass with those narrower
 fixtures.
+The pub-sub unit destination likewise now implements only `Protocol`.
 
 ### A06 property-oracle evidence
 
@@ -1985,6 +2029,10 @@ The work-queue model now checks initialization and every step's full
 assignment/outcome vectors, recipient, creation lane, and next verdict. It
 tracks distinct non-Clone owned work and unique reply destinations through
 both waiting and available FIFO queues; the focused property passed.
+The keyed pub-sub model now independently checks topic introduction order,
+recipient membership, complete successful actions, exact rejected commands,
+and the original allocation of an undelivered owned publication. Its full
+seven-test invariant suite passed.
 Four isolated temporary counterfactuals each caused the targeted property to
 fail: an extra reply, a wrong destination, a stop verdict, and a lost original
 boxed payload. The temporary test target and its regression artifact were

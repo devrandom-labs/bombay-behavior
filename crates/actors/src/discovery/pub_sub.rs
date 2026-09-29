@@ -244,17 +244,6 @@ mod tests {
         type Msg = u8;
     }
 
-    impl Behavior for Destination {
-        type Protocol = Self;
-        type Event = User<MailAddr, u8>;
-        type Sends = Vec<Never>;
-        type Ph = Never;
-        type Error = Never;
-        type Birth = NoBirths;
-        fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
-            Ok(Actions::cont())
-        }
-    }
     type Subject = PubSub<MailAddr, u8, u8, Recipient<Destination>>;
     #[test]
     fn topics_and_subscribers_preserve_first_order() {
