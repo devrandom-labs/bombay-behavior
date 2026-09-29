@@ -2113,6 +2113,58 @@ actor-wide mutation verdict.
 | One-shot timer admission | The one-shot unit trace checks initialization scheduling, matching generation, and exact-once firing; timing composition tests check wrapper use. | A timer ID or generation mismatch is a typed runtime input. Four guard mutants built and failed the focused test; broader periodic and deadline laws are separate. |
 | Barrier duplicate arrival | The barrier unit trace checks exact membership and arrival-order release; workflow invariant tests cover reusable generations. | A repeat arrival is an ordinary command rejection. One equality inversion was caught; it does not certify the future/stale-generation branches. |
 
+### A20 pre-edit acknowledgement model law
+
+Classification: deliberate Bombay participant-correlation policy. `Begin`
+normalizes declaration order; each declared participant can acknowledge once;
+the final acknowledgement completes; cancellation succeeds only while pending.
+Unknown, duplicate, unexpected, completed, and cancelled operations each
+return the exact rejected command or participant through the one reply lane,
+without changing the retained lifecycle. Terminal records remain distinct.
+The existing property checks begin/acknowledge in two separate batches and
+never emits `Cancel`, so it cannot prove the cancellation or interleaving law.
+The test-only replacement will generate mixed operations and varied reply
+recipients, compare every ordered reply and complete outcome, the full record
+order and current participant state, empty creations, and continuing verdict
+after every step. Its independent pending model retains original declaration
+and accepted participants, then derives remaining participants; terminal
+states discard those lists. It does not perform the actor's in-place removal.
+The existing concrete actor and `Actions` products remain the lower-order
+contracts. No production symbol,
+state, effect, runtime port, wrapper, or public spelling changes. Pre-edit
+control phases Pending/Completed/Cancelled, subordinate error/outcome
+alternatives, transition branches, production lines/modules, and public
+spellings stay fixed. Every retained model value is needed for a future
+acceptance, duplicate, or exact-order decision. No arrival-history residue is
+added to production; the model's accepted order is observable and therefore
+lawful. No repeated cause, false cardinality, nested authority, semantic
+boolean, or positional caller syntax is proposed. Cross-check: actor
+transition algebra and the routing correlation catalogue. Disposition:
+`pass` for the test-only model before implementation.
+
+The focused correlation suite passed all three cases in the Nix toolchain.
+The previous no-op reply-actor macro was deleted; both model routes use the
+existing concrete `MessageProtocol`. The new generated trace mixes Begin,
+Acknowledge, and Cancel, and a deterministic trace reaches unknown,
+unexpected, duplicate, completed, and cancelled replies. Every turn checks
+the exact reply recipient/outcome, all current records and order, empty
+creations, and `Continue`. In a disposable Behavior worktree, a one-line
+counterfactual changed only a repeat-cancellation reply from `Cancelled` to
+`Completed`. Both tests failed for that exact outcome; the generated trace
+shrunk to Begin, Cancel, Cancel on one key. The mutation and worktree were
+removed. This proves the new oracle detects wrong terminal rejection
+classification, not every acknowledgement defect. Test source changed
+`+298/-119/net +179` physical lines; production `+0/-0`, public API
+`+0/-0`, control states, subordinate alternatives, transition branches, and
+modules are unchanged. The surviving model alternatives own exactly their
+future-needed current values; no arrival-history, repeated-cause, false
+cardinality, nested-authority, semantic-boolean, or positional-syntax residue
+remains. The actor transition and routing correlation contracts were
+cross-checked. Disposition: `pass` for this test-only evidence batch; A20
+remains open. The pure trace does not prove host delivery admission or a
+wrapper-order interaction, and its isolated counterfactual covers one
+terminal branch only.
+
 ### A20 ledger entries: machine, stash, and cache
 
 | Law | Focused transition and broader witness | Boundary and counterfactual limit |
