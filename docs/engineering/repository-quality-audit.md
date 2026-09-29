@@ -895,6 +895,42 @@ transition branches, modules, and public spellings remain unchanged. The
 future-needed values and residue scan are unchanged from the pre-edit
 checkpoint. Disposition: `pass` for this protocol-only repair.
 
+The next A13 protocol-bound batch applies that already-proven identity law to
+`Configuration`, `Health`, `Readiness`, and `Registry`. Their command types
+contain owned configuration or key values; naming those commands does not
+clone or compare them. The route and destination bounds remain on each actor
+struct because those types currently define its retained delivery capability;
+the proposed edit removes only `C: Clone + Eq` or `K: Clone + Eq` from its
+`Protocol` impl. A caller projects each exact command sum with a non-`Clone`,
+non-`Eq` value and a lawful concrete result route. The compile regression in
+`actors/tests/protocol_bounds.rs` precedes the four source edits. Existing
+`Protocol`, command sums, result protocols, `DeliveryRoute`, and `Behavior`
+are reused. No interpreter, wrapper, effect lane, or public spelling changes.
+
+Pre-edit aggregate-drift checkpoint: configuration has one current
+`ConfigurationState`; health retains ordered component states; readiness
+retains ordered fixed dependencies; registry retains ordered key-recipient
+bindings. Their control states, subordinate alternatives, transition
+branches, modules, and public spellings do not change. The future-needed
+values remain respectively the current version/value, component evidence,
+dependency evidence, and key-recipient binding. There is no proposed arrival
+history, repeated cause, false cardinality, nested authority, semantic
+boolean, or positional syntax. The operations/discovery contracts and
+`actor-transition-algebra.md` were cross-checked. Expected source change:
+four `Protocol` impls, roughly four bound lines deleted; no new public type.
+Disposition: `pass` for the proposed identity-law migration, pending its
+failing caller and implementation.
+
+The pre-edit caller failed with eight E0277 diagnostics, two for each actor's
+unneeded `Clone + Eq` requirement. It passes after removing only those four
+`Protocol` bound lines. Execution, construction, and retained route bounds
+remain unchanged. The four aggregates retain all prior current values,
+alternatives, transition branches, and modules; production source is four
+lines smaller and public spellings are unchanged. The pre-edit residue scan
+and law cross-check still hold. Disposition: `pass` for this identity-law
+migration. A13 remains open for bounds on other protocols and the remaining
+public-surface review.
+
 Classification: derived Rust protocol identity. A cache or resolver recipient
 names an address and a command type without running a transition or copying a
 binding definition. Thus `Protocol` for `Cache<K,V>` and `Resolver<K>` does

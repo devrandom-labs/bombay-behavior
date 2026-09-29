@@ -183,7 +183,6 @@ where
 impl<A, K, D, Route> behavior::Protocol for Registry<A, K, D, Route>
 where
     A: Address,
-    K: Clone + Eq,
     D: Protocol<Addr = A>,
     Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = RegistryResult<K, D>>>,
 {

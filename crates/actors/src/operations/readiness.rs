@@ -241,7 +241,6 @@ where
 impl<A, K, Route> behavior::Protocol for Readiness<A, K, Route>
 where
     A: Address,
-    K: Clone + Eq,
     Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = ReadinessReport<K>>>,
 {
     type Addr = A;
