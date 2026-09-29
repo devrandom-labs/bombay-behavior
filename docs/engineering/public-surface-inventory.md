@@ -3,7 +3,7 @@
 This inventory supports [A13](repository-quality-audit.md). `#[doc(hidden)]`
 changes Rustdoc display, not Rust visibility. The counts below are annotation
 sites in source, so a grouped re-export and its original declaration each
-count once. The 2026-09-29 branch has 13 sites in `crates/behavior/src` and 86
+count once. The 2026-09-29 branch has 12 sites in `crates/behavior/src` and 86
 in `crates/actors/src`; the earlier audit counted 25 and 89 before the
 documentation visibility review.
 
@@ -11,11 +11,11 @@ documentation visibility review.
 
 | Owner | Annotated declarations | Contract owner | Visibility decision to review |
 |---|---|---|---|
-| `actor/creation.rs`, identity and correlation | `CreationId::get`, `CreationCorrelation` | Runtime port | Retain their public reachability for existing correlation products; keep them out of the Rustdoc index until a named external caller needs the numeric projection or proof. |
+| `actor/creation.rs`, numeric correlation | `CreationId::get` | Runtime port | Actor catalogue protocols derive other correlation values from this number; retain public reachability while the numeric projection's external documentation need is reviewed. |
 | `actor/creation.rs`, occurrence proof | `StructuralChildOccurrence`, `ChildCreationProduct`, `ChildOccurrenceResolution`, `ResolveChildOccurrenceDescriptor`, `BirthNodeAt`, `ChildOccurrenceProductAt` | Generated code obligation | The macro and structural child products implement these proofs. A visibility change needs compile-pass and forged-occurrence compile-fail witnesses. |
 | `actor/creation.rs`, protocol projection | `BirthModeProtocols`, `BirthNodeProtocols`, `BirthNodeLogicalHosts` | Generated code obligation | These traits project closed birth and logical-host products; consumers can name the resulting associated types without constructing the proof nodes. |
 | `actor/creation.rs`, creation staging | `ChildProduct::stage` | Runtime port | The interpreter consumes ordered staged child requests; it must retain every owned child on rejection. |
-| `effects/sending.rs` | `settle_in_order` | Runtime port | Shared ordered interpretation used by concrete send products. |
+| `effects/sending.rs` | `settle_in_order` | Candidate runtime port | No call site remains in this workspace or the inspected Bombay checkout. The generic named products generate ordered interpretation directly; A11 must justify or remove this tuple-returning export. |
 
 `ChildOccurrence::Resolution` and `DeclaredChildOccurrence` are now visible
 because manually authored roles must name them. `BirthProtocolProduct` is
@@ -31,6 +31,10 @@ witness for required port visibility, not yet an A17 integration verdict.
 tests and the inspected Bombay child host consume it to retain exact owned
 creation parts across acceptance or rejection. The method did not gain a new
 capability; its Rustdoc now describes the existing custody transfer.
+`CreationCorrelation<P, Occurrence>` is visible because external `ActionItem`
+implementations name it as an exact, non-authoritative creation prerequisite.
+Its occurrence parameter and private fields keep equal numeric IDs at
+different child positions distinct.
 
 ## Hidden actor declarations
 

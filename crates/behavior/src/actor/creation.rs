@@ -774,7 +774,6 @@ where
 /// let backup = behavior::CreationCorrelation::<Worker, Backup>::new(id);
 /// let _: behavior::CreationCorrelation<Worker, Primary> = backup;
 /// ```
-#[doc(hidden)]
 pub struct CreationCorrelation<P, Occurrence>
 where
     P: Protocol,

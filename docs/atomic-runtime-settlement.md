@@ -294,13 +294,15 @@ the associated type when they must return a worker's initialization settlement;
 they do not restate the creation vector or send-product structure in each actor
 template. Both projections perform no interpretation and change no custody.
 
-Named products containing two independent effect lanes use Behavior's single
-`settle_in_order` operation. It completely settles the declared earlier lane
-before the later lane and retains the untouched later value if the earlier lane
-reports interpreter corruption. Routing, lifecycle, discovery, timing, and
-atomic actors all delegate that identical sequencing law to Behavior. The former
-Actors-local routing copy has been deleted; aggregate products still own their
-domain lane names and map the two returned settlements into those named fields.
+Named products interpret their fields in declared order. A corrupt earlier
+field retains the untouched later fields as unattempted; a lawful rejection
+does not stop independent later fields. The private Actors `send_product!`
+derivation currently generates this traversal for routing, lifecycle,
+discovery, timing, and atomic products while preserving their domain field
+names. Behavior still exports a doc-hidden two-product `settle_in_order`
+function, but neither this workspace nor the inspected Bombay checkout calls
+it. A11 tracks whether that unused tuple-returning export should be deleted
+when the remaining generated-product derivation is reconciled.
 
 StableProxy's `ProxyEffects` declares worker observation, initialization,
 activation, shutdown, service delivery, owner outcome, and diagnostic lanes in

@@ -216,6 +216,12 @@ is recorded against a revision.
   The proc macro still derives a separate named-send implementation, while
   `requirements.rs` now contains only the exceptional `ReplyDeliveries` and
   `HeterogeneousShutdownSends` projections. A03 exposed the prior omission.
+  The doc-hidden `behavior::settle_in_order` is also exported but has no call
+  site in this workspace or the inspected Bombay checkout; the current named
+  products generate the ordered traversal directly. The normative settlement
+  document's older claim that those actors delegate to that helper was
+  corrected. Its tuple result is not evidence that it remains an essential
+  public runtime port.
   **Complete when:** a law table compares complete equations before selecting
   shared machinery. A retained derivation must preserve semantic field names,
   declared order, corruption suffixes, source admission, and logical-host
@@ -244,7 +250,7 @@ is recorded against a revision.
   Keep FIFO assignment policy and keyed binding policy distinct.
 
 - [ ] **A13 — Audit public bounds, hidden exports, and extension ownership.**
-  **Confirmed surface requiring review.** The current source has 13
+  **Confirmed surface requiring review.** The current source has 12
   `#[doc(hidden)]` annotation sites in core and 86 in actors, including
   members and re-exports. The
   [public-surface inventory](public-surface-inventory.md) classifies each site
@@ -318,6 +324,28 @@ is recorded against a revision.
   syntax was introduced. The actor transition and creation-custody laws were
   cross-checked. Disposition: `pass` for this one documentation port. A13's
   wider surface review remains open.
+
+  `CreationCorrelation<P, Occurrence>` is another required, already-public
+  effect prerequisite. The external `behavior/tests/action_interpretation`
+  and actor `interpreter_request_settlement` callers name it in `ActionItem`
+  implementations; its compile-fail example rejects exchange of equal IDs
+  at different occurrences. The derived law is typed correlation to exactly
+  one creation settlement, without granting child-hosting authority. The
+  focused visibility repair removes its Rustdoc hiding marker, retains its
+  private representation and public constructor unchanged, and adds no transition
+  or type. The pre-edit regression is the absence of its item in the generated
+  crate-root Rustdoc index despite those external compile witnesses. The
+  post-edit checks are the Rustdoc index and the occurrence-mismatch doctest.
+  Post-edit Rustdoc has a crate-root link and item page, the focused E0308
+  compile-fail doctest passed, and `cargo check --locked` passed for both
+  `action_interpretation` and `interpreter_request_settlement` external tests.
+  The source change deletes one hidden annotation; tests, public types,
+  control states, subordinate alternatives, transition branches, modules,
+  and public spellings are unchanged. No history, repeated cause, false
+  cardinality, nested authority, semantic boolean, or positional syntax was
+  introduced. The actor transition and occurrence laws were cross-checked.
+  Disposition: `pass` for this visible prerequisite, with A13 still open for
+  other items.
 
 - [x] **A14 — State the trust scope of initialization capabilities accurately.**
   **Confirmed documentation/API mismatch.** `InitializationTurn` says only the
