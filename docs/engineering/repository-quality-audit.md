@@ -769,6 +769,44 @@ public `atomic` index links `FifoError` alongside `KeyedError` and
 recorded above. Disposition: `pass` for this export repair; A13's wider trait
 ownership and compile-cost review remains open.
 
+### A13 authored-role and logical-product documentation, before edit
+
+Classification: Rust caller contract and derived typed-composition policy.
+A manually authored direct-child role lawfully implements `ChildRole` and
+`ChildOccurrence` with `DeclaredChildOccurrence`; an application host can
+constrain the exact logical-host product with `BirthProtocolProduct`. Both
+are existing external caller paths in `established_capabilities.rs` and
+`logical_host_requirements.rs`. Their public proof names and the required
+`ChildOccurrence::Resolution` associated type must be discoverable in
+Rustdoc. Before editing, a Nix-pinned `cargo doc -p bombay-behavior --no-deps`
+build succeeded but the crate index omitted `DeclaredChildOccurrence` and
+`BirthProtocolProduct`, and the declared-occurrence page was absent. The
+private `Recipient::new` has an ineffective `#[doc(hidden)]` marker to remove.
+The intended edit changes documentation display only; it adds no alias,
+default, bound, constructor, implementor, actor transition, or runtime port.
+
+Aggregate-drift checkpoint: all actor control states, subordinate alternatives,
+transition branches, production modules, and public spellings are identical
+before and after. The future-needed role values remain its declared parent,
+child behavior, and structural position; the logical product retains its
+ordered protocol occurrences. Four ineffective or misleading documentation
+markers are removed, with no arrival history, repeated cause, false
+cardinality, nested authority, semantic boolean, or structural user syntax.
+The actor-transition, creation, and logical-host laws are cross-checked.
+Disposition: `pass` for the model; Rustdoc visibility and external caller
+witnesses still need post-edit verification.
+
+The four markers were removed as modeled. The core annotation count fell
+from 22 to 18; no visibility modifier, trait bound, type, implementation,
+aggregate state, branch, module, or public spelling changed. The Nix-pinned
+Rustdoc index now links both `DeclaredChildOccurrence` and
+`BirthProtocolProduct`, and both documentation pages exist. The
+`established_capabilities` and `logical_host_requirements` external caller
+suites passed 20 tests, including manual nominal occurrence and generic
+logical-host use. The residue scan and law cross-check remain as recorded
+above. Disposition: `pass` for the documentation repair. A13's wider trait
+implementor and compile-cost review remains open.
+
 ### A15 coding-rule progress
 
 Timer-domain tests now call the mutating `accept` operation before assertions,

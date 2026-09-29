@@ -127,7 +127,6 @@ impl<P: Protocol> Recipient<P> {
         self.address
     }
 
-    #[doc(hidden)]
     const fn new(address: P::Addr) -> Self {
         Self {
             address,

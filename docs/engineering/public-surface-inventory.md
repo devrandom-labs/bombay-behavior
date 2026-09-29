@@ -3,22 +3,26 @@
 This inventory supports [A13](repository-quality-audit.md). `#[doc(hidden)]`
 changes Rustdoc display, not Rust visibility. The counts below are annotation
 sites in source, so a grouped re-export and its original declaration each
-count once. The 2026-09-28 branch has 22 sites in `crates/behavior/src` and 86
-in `crates/actors/src`; the earlier audit counted 25 and 89 before six
-documentation markers were removed. A private constructor is included in the
-count and is not part of the public surface.
+count once. The 2026-09-28 branch has 18 sites in `crates/behavior/src` and 86
+in `crates/actors/src`; the earlier audit counted 25 and 89 before the
+documentation visibility review.
 
 ## Hidden core declarations
 
 | Owner | Annotated declarations | Contract owner | Visibility decision to review |
 |---|---|---|---|
-| `actor/addressing.rs` | `Recipient::new` | Private representation | Already private; only `Recipient::global` and the lawful `From` conversion are public. |
 | `actor/creation.rs`, identity and correlation | `CreationId::get`, `CreateChild::into_parts`, `CreationCorrelation` | Runtime port | Interpreter code needs exact identity and owned request parts; document custody before displaying these ports. |
-| `actor/creation.rs`, occurrence proof | `ChildOccurrence::Resolution`, `DeclaredChildOccurrence`, `StructuralChildOccurrence`, `ChildCreationProduct`, `ChildOccurrenceResolution`, `ResolveChildOccurrenceDescriptor`, `BirthNodeAt`, `ChildOccurrenceProductAt` | Generated code obligation | The macro and structural child products implement these proofs. A visibility change needs compile-pass and forged-occurrence compile-fail witnesses. |
-| `actor/creation.rs`, protocol projection | `BirthProtocolProduct`, `BirthModeProtocols`, `BirthNodeProtocols`, `BirthNodeLogicalHosts` | Generated code obligation | These traits project closed birth and logical-host products; consumers can name the resulting associated types without constructing the proof nodes. |
+| `actor/creation.rs`, occurrence proof | `StructuralChildOccurrence`, `ChildCreationProduct`, `ChildOccurrenceResolution`, `ResolveChildOccurrenceDescriptor`, `BirthNodeAt`, `ChildOccurrenceProductAt` | Generated code obligation | The macro and structural child products implement these proofs. A visibility change needs compile-pass and forged-occurrence compile-fail witnesses. |
+| `actor/creation.rs`, protocol projection | `BirthModeProtocols`, `BirthNodeProtocols`, `BirthNodeLogicalHosts` | Generated code obligation | These traits project closed birth and logical-host products; consumers can name the resulting associated types without constructing the proof nodes. |
 | `actor/creation.rs`, creation staging | `ChildProduct::stage` | Runtime port | The interpreter consumes ordered staged child requests; it must retain every owned child on rejection. |
 | `effects/actions.rs` | `CreationSettlement`, `CreationSettlements`, `CreationsSettled`, `InterpretCreations` | Runtime port | These settle creations in order and preserve exact rejected requests. |
 | `effects/sending.rs` | `settle_in_order` | Runtime port | Shared ordered interpretation used by concrete send products. |
+
+`ChildOccurrence::Resolution` and `DeclaredChildOccurrence` are now visible
+because manually authored roles must name them. `BirthProtocolProduct` is
+visible because generic logical-host owners constrain and append that public
+product. Rustdoc lists both names and the caller suites exercise them. The
+private `Recipient::new` no longer carries an ineffective documentation marker.
 
 ## Hidden actor declarations
 

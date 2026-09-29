@@ -261,7 +261,6 @@ pub trait ChildRole<Parent: Behavior> {
 /// structural resolution with a runtime lookup.
 pub trait ChildOccurrence<Parent: Behavior>: Sized {
     /// Sealed descriptor interpreted by [`ResolveChildOccurrence`].
-    #[doc(hidden)]
     type Resolution: ChildOccurrenceResolution<Parent, Self>;
 }
 
@@ -270,7 +269,6 @@ pub trait ChildOccurrence<Parent: Behavior>: Sized {
 /// This type exists so generated and manually authored roles can carry their
 /// static declaration into the sealed resolver. It has no values or runtime
 /// behavior.
-#[doc(hidden)]
 pub struct DeclaredChildOccurrence;
 
 /// Sealed descriptor for a raw structural child position.
@@ -2056,7 +2054,6 @@ where
 }
 
 /// Closed product operation used by the structural birth projection.
-#[doc(hidden)]
 pub trait BirthProtocolProduct {
     type Append<Tail: BirthProtocolProduct>: BirthProtocolProduct;
 }
