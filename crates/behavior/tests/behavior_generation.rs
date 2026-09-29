@@ -107,11 +107,7 @@ fn generated_send_product_owner_exposes_its_exact_logical_destinations() {
     type Expected =
         BirthProtocol<FirstDestination, BirthProtocol<SecondDestination, NoBirthProtocols>>;
 
-    trait Same<T> {}
-    impl<T> Same<T> for T {}
-    fn exact<T: Same<Expected>, Expected>() {}
-
-    exact::<Actual, Expected>();
+    let _exact_hosts: core::marker::PhantomData<Expected> = core::marker::PhantomData::<Actual>;
 }
 
 struct Positioned;

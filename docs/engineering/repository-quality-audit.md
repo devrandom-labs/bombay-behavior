@@ -151,7 +151,7 @@ is recorded against a revision.
 
 ## P2 — improve verification reach and remove repeated machinery
 
-- [ ] **A07 — Extend mutation evidence to the actor catalogue.**
+- [x] **A07 — Extend mutation evidence to the actor catalogue.**
   **Coverage gap.** Both mutation derivations in `flake.nix` select only
   `--package bombay-behavior`; test packages are core and testkit. They do not
   mutate `bombay-behavior-actors` or run its integration tests as a selected
@@ -164,6 +164,16 @@ is recorded against a revision.
   from mutant detection, and label coverage by crate and law. Fix A05 first.
   The current candidate listing for `bombay-behavior-actors` contains 3,125
   mutations; no actor-wide campaign verdict is claimed by this branch.
+  **Verified selected-slice gate:** `nix build .#mutants-actors --no-link
+  --no-write-lock-file` passed four independently ratcheted actor campaigns.
+  Health caught 7/7 viable mutations; WorkQueue caught 2/2 viable among four
+  candidates; PubSub membership caught 6/6; publication caught 1/1 viable
+  among five candidates. The remaining six whole-function replacements could
+  not compile. All four reports had zero missed viable mutations and zero
+  timeouts. `mutants/actors/*.json` records separate viability floors by
+  function; the Nix command runs actor and testkit suites. Other actor laws
+  retain their focused campaign evidence below, and A20 tracks their broader
+  law coverage without claiming an actor-wide mutation verdict.
 
 - [x] **A08 — Make external-consumer and packaging gates exercise their claims.**
   **Confirmed gate gap.**
@@ -740,6 +750,13 @@ projections then failed E0446 for existing private interpreter-request types.
 That candidate was removed, the test fixture restored, and the experiment
 recorded in the root `DEAD_ENDS.md`. A11 remains open; a public
 interface law must be established before another generated projection edit.
+A later public wrapper probe avoided E0446 but lost the concrete structural
+product needed for recursive host traversal. Its `reopen` record is also in
+`DEAD_ENDS.md`; no generated projection was retained. The existing
+`behavior_generation` caller now uses a direct `PhantomData` type check in
+place of a one-implementation `Same` trait to keep the exact structural
+product requirement visible with less test machinery. All 18 cases in that
+test binary passed under the Nix-pinned toolchain.
 
 ### A11 named generic product derivation, before implementation
 
@@ -1316,7 +1333,10 @@ including four observational iterator calls, across 34 Rust files (+304/-258
 lines, net +46). All changes are in test or fuzz code, including inline test
 modules; no production type, state, effect lane, or branch changed. A repeated
 whole-crate scan for these methods inside assertion macros found zero sites.
-The affected suites and full Nix gate remain to be recorded before A15 closes.
+The Nix-pinned workspace Nextest run after this batch passed 819/819 tests,
+including the macro dependency-resolution fixtures and the affected actor,
+core, and testkit suites. The changed fuzz targets and clean-snapshot flake
+gate remain to be checked.
 
 ### A07 actor mutation evidence: routing-buffer capacity
 
