@@ -63,13 +63,13 @@ Reviewed baselines:
 
 Exact source owners:
 
-- [Creation and child outcomes](../../crates/behavior/src/actor/creation.rs),
-  [action settlement](../../crates/behavior/src/effects/actions.rs), and
-  [item interpretation](../../crates/behavior/src/effects/sending.rs).
-- [Assignment custody](../../crates/actors/src/atomic/pool/assignment.rs),
-  [proxy operations](../../crates/actors/src/atomic/stable_proxy/operation.rs),
-  [worker creation](../../crates/actors/src/atomic/worker/mod.rs), and
-  [worker initialization](../../crates/actors/src/atomic/worker/initialization.rs).
+- [Creation and child outcomes](https://github.com/devrandom-labs/bombay-behavior/blob/main/crates/behavior/src/actor/creation.rs),
+  [action settlement](https://github.com/devrandom-labs/bombay-behavior/blob/main/crates/behavior/src/effects/actions.rs), and
+  [item interpretation](https://github.com/devrandom-labs/bombay-behavior/blob/main/crates/behavior/src/effects/sending.rs).
+- [Assignment custody](https://github.com/devrandom-labs/bombay-behavior/blob/main/crates/actors/src/atomic/pool/assignment.rs),
+  [proxy operations](https://github.com/devrandom-labs/bombay-behavior/blob/main/crates/actors/src/atomic/stable_proxy/operation.rs),
+  [worker creation](https://github.com/devrandom-labs/bombay-behavior/blob/main/crates/actors/src/atomic/worker/mod.rs), and
+  [worker initialization](https://github.com/devrandom-labs/bombay-behavior/blob/main/crates/actors/src/atomic/worker/initialization.rs).
 - Downstream: `bombay/crates/bombay/src/{local,launch,application_runtime,terminal}.rs`,
   `bombay/crates/bombay-engine/src/driver.rs`, and
   `bombay-address/crates/address/src/lib.rs`.
@@ -377,7 +377,7 @@ all subordinate alternatives, exact retained values, transition branches,
 production lines, modules, and public spellings. Repeat after the batch. Scan
 for arrival-history state, duplicated causes, false cardinality, nested
 transition authority, semantic booleans, and structural application syntax.
-Cross-check all five [normalized actor laws](../actor-laws/README.md), the
+Cross-check all five [normalized actor laws](https://github.com/devrandom-labs/bombay-behavior/blob/main/docs/actor-laws/README.md), the
 runtime contract, and the relevant catalogue pages. Record `pass` or `reopen`;
 missing measurements mean `reopen`, not provisional acceptance.
 
