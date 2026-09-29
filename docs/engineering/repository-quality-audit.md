@@ -285,7 +285,7 @@ is recorded against a revision.
 
 - [ ] **A13 — Audit public bounds, hidden exports, and extension ownership.**
   **Confirmed surface requiring review.** The current source has 12
-  `#[doc(hidden)]` annotation sites in core and 86 in actors, including
+  `#[doc(hidden)]` annotation sites in core and 84 in actors, including
   members and re-exports. The
   [public-surface inventory](public-surface-inventory.md) classifies each site
   by contract owner. These annotations do not make an item private.
@@ -382,6 +382,15 @@ is recorded against a revision.
   introduced. The actor transition and occurrence laws were cross-checked.
   Disposition: `pass` for this visible prerequisite, with A13 still open for
   other items.
+
+  The assignment custody repair narrowed `AssignWorker::receipt` and
+  `AssignWorker::into_parts` from public to atomic-module-only after the
+  external consuming settlement passed. Compile-fail fixtures now reject
+  those two old assembly paths with `E0624` and reject double settlement with
+  `E0382`; FIFO/keyed callers, benchmark, and fuzz campaigns use the actual
+  exact-delivery result. The public-surface inventory reflects 84 remaining
+  actor `#[doc(hidden)]` sites. Proxy receipt construction and the wider port
+  classification remain open.
 
 - [x] **A14 — State the trust scope of initialization capabilities accurately.**
   **Confirmed documentation/API mismatch.** `InitializationTurn` says only the
@@ -878,6 +887,41 @@ states, subordinate alternatives, branches, production lines, modules, and
 public spellings are unchanged; no new history, cause, cardinality, transition
 authority, semantic boolean, or positional consumer syntax is introduced.
 Disposition: `pass` for the evidence record only.
+
+The next focused A11 law is a derived logical-host projection: a generated
+named send product contributes each field's `LogicalDeliveryProtocols` in its
+declared order, including duplicates, while exact delivery and interpreter
+request fields contribute their existing empty projection. The user-level
+syntax is a `LogicalHostRequirements` bound on two unrelated generated
+behaviors and `LogicalDeliveryProtocols` bounds on both `SendLayer` orders;
+the expected type product spells the actual protocol order. Before changing
+the proc macro, caller tests in `behavior_attribute.rs` and `compositions.rs`
+must fail solely because the generated named sends lack this trait. Existing
+field projections, `BirthProtocolProductAppend`, and wrapper composition are
+the lower-order laws. No actor state, effect lane, transition, generic
+parameter, runtime port, or policy is added. Pre-edit aggregate drift:
+control states, subordinate alternatives, transition branches, production
+lines, modules, and public spellings stay unchanged until the focused witness
+fails; the generated product retains only its authored fields. No arrival
+history, repeated cause, false cardinality, nested authority, semantic
+boolean, or positional caller syntax is proposed. Cross-checks:
+`actor-transition-algebra.md`, `behavior-layer-laws.md`, and normalized
+atomic documents. Disposition: `pass` for the proposed projection model,
+pending the red caller witness.
+
+The two caller tests failed before production with only `E0277`: generated
+`PrinterSends` and `GeneratedBaseSends` lacked
+`LogicalDeliveryProtocols`. `Printer`'s direct logical-host bound and both
+`SendLayer` orders failed for that missing trait; `GeneratedBase` failed for
+the same reason. The first draft of the wrapper type assertion expected the
+outer lane before the inner lane and produced an unrelated `E0271`; it was
+corrected to the existing inner-before-outer law in `SendLayer` before this
+red result was accepted. A 24-line generated-impl candidate then reopened the
+design. It conflicted with an existing handwritten `BootstrapSends` impl and
+leaked private protocol/request types from public generated products (`E0446`).
+The candidate and focused test edits were removed; the exact falsifier and
+post-experiment drift checkpoint are in `DEAD_ENDS.md`. The missing projection
+remains open and requires an explicit visibility/ownership model before code.
 
 ### A13 pre-edit protocol-bound law
 

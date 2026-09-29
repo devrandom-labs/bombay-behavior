@@ -22,6 +22,29 @@ the public interface law. The generated impl and focused fixture edits were
 removed. The retained design still needs a lawful way to project generated
 products without forcing unrelated request visibility changes.
 
+On 2026-09-29, two unrelated generated behaviors (`Printer` and
+`GeneratedBase`) and both `SendLayer` orders reproduced the missing trait with
+only `E0277` after their expected inner-before-outer type order was corrected.
+The same unconditional 24-line projection candidate again failed the full
+core caller check: an existing `BootstrapSends` implementation conflicted
+(`E0119`), and public generated products exposed private `ProxyOperation` and
+`AssignmentDelivery` request types (`E0446`). The testkit's private `Sink`
+protocol produced the same `E0446`. Removing or widening those domain values
+would change their ownership contract solely to satisfy the candidate. The
+candidate and both focused caller edits were removed. This repeats the earlier
+falsifier and provides no independent basis to retain the projection.
+
+Post-experiment aggregate-drift checkpoint: generated actors retain the same
+control states, subordinate alternatives, transition branches, and authored
+send fields; production lines, modules, and public spellings are unchanged
+before and after the retained batch (0/0 delta). The rejected candidate added
+one trait implementation template and no actor transition. The residue scan
+found no arrival-history state, repeated cause, false cardinality, nested
+transition authority, semantic boolean, or positional caller syntax. The
+logical-host law, `SendLayer` ordering in `behavior-layer-laws.md`, the
+recursive host product in `actor/creation.rs`, and the A11 equation inventory
+were cross-checked. Disposition: `reopen`.
+
 A separate Rust 1.95 scratch probe tried to hide the field projection behind
 a private helper trait on the public product. Its public associated type used
 `<Self as PrivateProjection>::Output`; rustc still emitted E0446 for both the
