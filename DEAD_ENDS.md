@@ -37,3 +37,29 @@ arrival history, repeated cause, false cardinality, nested transition
 authority, semantic boolean, or positional consumer syntax. The mismatch is
 the public type boundary, cross-checked against the logical-host law in
 `docs/actor-transition-algebra.md` and the normalized A03/A11 audit record.
+
+## Opaque generated logical-host product
+
+Date: 2026-09-29. Disposition: `reopen`.
+
+A Rust 1.95 scratch probe proved that a public generated host-product wrapper
+can keep a private request type inside a trait-impl bound without E0446. The
+wrapper forwarded `BirthProtocolAt<P, Position>` to the exact private
+projection. It fails the current recursive-consumer contract: an external
+interpreter can traverse the concrete `NoBirthProtocols` and
+`BirthProtocol<P, Tail>` forms, while the opaque wrapper is neither form.
+Membership at a known position cannot enumerate every protocol in an
+unknown product. A new traversal port would change the public host contract
+without a prior failing consumer law. No production code or fixture changed.
+
+Aggregate-drift checkpoint against signed `a43e0d6`: the two focused
+generated behaviors retain their prior control states (Bootstrap's creation
+sequence and LaneFamilies' unit state), zero subordinate state alternatives,
+and the same transition branches. Production lines changed: 0; modules
+changed: 0; public spellings changed: 0. Each generated send field still owns
+its exact declared lane. The residue scan found no arrival-history state,
+repeated cause, false cardinality, nested actor authority, semantic boolean,
+or positional application access. The recursive-consumer law in
+`transition.rs`, the structural birth product in `actor/creation.rs`, and the
+A11 equation inventory were cross-checked. The wrapper hypothesis is
+rejected pending a representation that preserves recursive host traversal.
