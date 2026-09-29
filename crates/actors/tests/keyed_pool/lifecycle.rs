@@ -25,6 +25,7 @@ use behavior_actors::{
     TimerScheduled,
 };
 
+use super::assignment_delivery::accepted_assignment;
 use super::domain::{
     Account, Endpoint, RuntimeAddr, SearchJob, SearchResult, SearchRole, SearchWorker,
     prepare_worker,
@@ -1522,7 +1523,8 @@ async fn ready_worker_drains_only_its_role_queue() {
         .into_items()
         .pop()
         .unwrap_or_else(|| panic!("ready primary receives its queued work"));
-    let (_, queued_assignment, queued_receipt) = queued_assignment.into_parts();
+    let (queued_receipt, queued_delivery) = accepted_assignment(queued_assignment);
+    let queued_assignment = queued_delivery.message;
     assert_eq!(queued_assignment.payload(), &SearchJob(9));
 
     let completion_before_receipt = pool
@@ -1586,7 +1588,8 @@ async fn ready_worker_drains_only_its_role_queue() {
         .into_items()
         .pop()
         .unwrap_or_else(|| panic!("idle primary receives the follow-up job"));
-    let (_, followup_assignment, followup_receipt) = followup_assignment.into_parts();
+    let (followup_receipt, followup_delivery) = accepted_assignment(followup_assignment);
+    let followup_assignment = followup_delivery.message;
     let accepted: ActionItemResult<AssignWorker<SearchWorker, SearchJob>> =
         SettledItem::Attempted(ItemSettlement::Accepted(followup_receipt));
     let receipt_before_completion = pool
@@ -1642,7 +1645,8 @@ async fn ready_worker_drains_only_its_role_queue() {
         .into_items()
         .pop()
         .unwrap_or_else(|| panic!("idle replica receives its job"));
-    let (_, replica_assignment, replica_receipt) = replica_assignment.into_parts();
+    let (replica_receipt, replica_delivery) = accepted_assignment(replica_assignment);
+    let replica_assignment = replica_delivery.message;
     let accepted: ActionItemResult<AssignWorker<SearchWorker, SearchJob>> =
         SettledItem::Attempted(ItemSettlement::Accepted(replica_receipt));
     let accepted = pool
@@ -1667,7 +1671,7 @@ async fn ready_worker_drains_only_its_role_queue() {
         .into_items()
         .pop()
         .unwrap_or_else(|| panic!("idle primary receives the interrupted job"));
-    let (_, _, interrupted_receipt) = interrupted_assignment.into_parts();
+    let (interrupted_receipt, _interrupted_delivery) = accepted_assignment(interrupted_assignment);
     let accepted: ActionItemResult<AssignWorker<SearchWorker, SearchJob>> =
         SettledItem::Attempted(ItemSettlement::Accepted(interrupted_receipt));
     let accepted = pool

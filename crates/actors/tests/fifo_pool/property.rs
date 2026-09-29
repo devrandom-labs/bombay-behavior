@@ -20,6 +20,7 @@ use proptest::proptest;
 use proptest::test_runner::{Config, TestCaseError};
 use tokio::runtime::Builder;
 
+use super::assignment_delivery::accepted_assignment;
 use super::{ReadySearchPool, Role, RuntimeAddr, SearchWorker, ready_search_pool};
 
 const BACKLOG_MAXIMUM: usize = 3;
@@ -439,7 +440,8 @@ impl PoolWitness {
         };
         let (delivery, assigned_payload) = match (delivery, emitted) {
             (DeliveryCustody::Available, Some(action)) => {
-                let (_, assignment, receipt) = action.into_parts();
+                let (receipt, exact) = accepted_assignment(action);
+                let assignment = exact.message;
                 let payload = *assignment.payload();
                 (
                     DeliveryCustody::Awaiting {

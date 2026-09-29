@@ -22,10 +22,15 @@ use behavior_core::{
     ActionItemResult, Actions, ActiveTurn, Address, Behavior, BehaviorActed, BehaviorBase,
     ChildCreationOutcome, ChildHead, ChildReport, CreateChild, CreationId, CreationSequence,
     CreationSettlement, CreationsSettled, EndpointAddress, EstablishedCreation,
-    EstablishedRecipient, ExactDeliveryReason, InterpreterRequests, ItemSettlement,
-    MessageProtocol, Never, NoBirths, Protocol, Recipient, ReportToParent, SettledItem, Step, User,
+    EstablishedRecipient, InterpreterRequests, ItemSettlement, MessageProtocol, Never, NoBirths,
+    Protocol, Recipient, ReportToParent, SettledItem, Step, User,
 };
 use libfuzzer_sys::fuzz_target;
+
+use assignment_delivery::{accept_assignment, reject_assignment};
+
+#[path = "assignment_delivery.rs"]
+mod assignment_delivery;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct RuntimeAddress(u64);
@@ -206,10 +211,7 @@ fn submit_work(pool: &mut SearchPool) -> AcceptedWork {
 enum DeliveryCustody {
     Emitted(AssignWorker<SearchWorker, u8>),
     Delivered(Assignment<u8>),
-    CompletionBeforeDelivery {
-        receipt: AssignmentReceipt,
-        replay: AssignmentReceipt,
-    },
+    CompletionBeforeDelivery { receipt: AssignmentReceipt },
     Settled,
 }
 
@@ -218,7 +220,6 @@ enum FuzzInput {
     AcceptDelivery,
     Complete,
     RejectDelivery,
-    ReplayReceipt,
     ForeignReceipt,
     ForeignCompletion,
     WorkerStopped,
@@ -231,18 +232,17 @@ enum FuzzInput {
 
 impl FuzzInput {
     const fn from_byte(byte: u8) -> Self {
-        match byte % 12 {
+        match byte % 11 {
             0 => Self::AcceptDelivery,
             1 => Self::Complete,
             2 => Self::RejectDelivery,
-            3 => Self::ReplayReceipt,
-            4 => Self::ForeignReceipt,
-            5 => Self::ForeignCompletion,
-            6 => Self::WorkerStopped,
-            7 => Self::ForeignWorkerStopped,
-            8 => Self::Shutdown,
-            9 => Self::ShutdownAccepted,
-            10 => Self::ShutdownRejected,
+            3 => Self::ForeignReceipt,
+            4 => Self::ForeignCompletion,
+            5 => Self::WorkerStopped,
+            6 => Self::ForeignWorkerStopped,
+            7 => Self::Shutdown,
+            8 => Self::ShutdownAccepted,
+            9 => Self::ShutdownRejected,
             _ => Self::ReplayShutdown,
         }
     }
@@ -267,7 +267,6 @@ struct Scenario {
     foreign_worker: CreationId,
     job: u64,
     delivery: DeliveryCustody,
-    stale_receipts: VecDeque<AssignmentReceipt>,
     foreign_receipts: VecDeque<AssignmentReceipt>,
     foreign_completion: Option<Completion<u16>>,
     pending_shutdowns: VecDeque<ShutdownId>,
@@ -284,7 +283,6 @@ impl Scenario {
             foreign_worker,
             job,
             delivery,
-            mut stale_receipts,
             mut foreign_receipts,
             mut foreign_completion,
             mut pending_shutdowns,
@@ -294,9 +292,8 @@ impl Scenario {
         } = self;
         let (delivery, selected) = match (delivery, input) {
             (DeliveryCustody::Emitted(action), FuzzInput::AcceptDelivery) => {
-                let receipt = action.receipt();
-                stale_receipts.push_back(action.receipt());
-                let (_, assignment, _) = action.into_parts();
+                let (receipt, delivery) = accept_assignment(action);
+                let assignment = delivery.message;
                 let accepted: ActionItemResult<AssignWorker<SearchWorker, u8>> =
                     SettledItem::Attempted(ItemSettlement::Accepted(receipt));
                 let expected = match progress {
@@ -314,11 +311,10 @@ impl Scenario {
                 )
             }
             (DeliveryCustody::Emitted(action), FuzzInput::Complete) => {
-                let receipt = action.receipt();
-                let replay = action.receipt();
-                let (_, assignment, _) = action.into_parts();
+                let (receipt, delivery) = accept_assignment(action);
+                let assignment = delivery.message;
                 (
-                    DeliveryCustody::CompletionBeforeDelivery { receipt, replay },
+                    DeliveryCustody::CompletionBeforeDelivery { receipt },
                     Some((
                         CustomerEmission::MustWait,
                         pool.on(ChildReport::new(
@@ -330,10 +326,7 @@ impl Scenario {
             }
             (DeliveryCustody::Emitted(action), FuzzInput::RejectDelivery) => {
                 let rejected: ActionItemResult<AssignWorker<SearchWorker, u8>> =
-                    SettledItem::Attempted(ItemSettlement::Rejected {
-                        item: action,
-                        reason: ExactDeliveryReason::ClosedRecipient,
-                    });
+                    SettledItem::Attempted(reject_assignment(action));
                 let expected = match progress {
                     PoolProgress::WorkerPresent => CustomerEmission::MustWait,
                     PoolProgress::WorkerStopped | PoolProgress::PoolStopped => {
@@ -358,11 +351,7 @@ impl Scenario {
                     )),
                 )),
             ),
-            (
-                DeliveryCustody::CompletionBeforeDelivery { receipt, replay },
-                FuzzInput::AcceptDelivery,
-            ) => {
-                stale_receipts.push_back(replay);
+            (DeliveryCustody::CompletionBeforeDelivery { receipt }, FuzzInput::AcceptDelivery) => {
                 let accepted: ActionItemResult<AssignWorker<SearchWorker, u8>> =
                     SettledItem::Attempted(ItemSettlement::Accepted(receipt));
                 (
@@ -373,20 +362,6 @@ impl Scenario {
                     )),
                 )
             }
-            (delivery, FuzzInput::ReplayReceipt) => match stale_receipts.pop_front() {
-                Some(receipt) => {
-                    let accepted: ActionItemResult<AssignWorker<SearchWorker, u8>> =
-                        SettledItem::Attempted(ItemSettlement::Accepted(receipt));
-                    (
-                        delivery,
-                        Some((
-                            CustomerEmission::MustWait,
-                            pool.transition(FifoEvent::AssignmentSettled(accepted)),
-                        )),
-                    )
-                }
-                None => (delivery, None),
-            },
             (delivery, FuzzInput::ForeignReceipt) => match foreign_receipts.pop_front() {
                 Some(receipt) => {
                     let accepted: ActionItemResult<AssignWorker<SearchWorker, u8>> =
@@ -488,7 +463,6 @@ impl Scenario {
                 foreign_worker,
                 job,
                 delivery,
-                stale_receipts,
                 foreign_receipts,
                 foreign_completion,
                 pending_shutdowns,
@@ -577,7 +551,6 @@ impl Scenario {
             foreign_worker,
             job,
             delivery,
-            stale_receipts,
             foreign_receipts,
             foreign_completion,
             pending_shutdowns,
@@ -593,12 +566,9 @@ fn exercise(bytes: &[u8]) {
     let accepted = submit_work(&mut pool);
     let (mut foreign_pool, _) = ready_pool();
     let foreign = submit_work(&mut foreign_pool);
-    let mut foreign_receipts = VecDeque::new();
-    for _ in 0..4 {
-        foreign_receipts.push_back(foreign.assignment.receipt());
-    }
-    let (_, foreign_assignment, _) = foreign.assignment.into_parts();
-    let foreign_completion = Some(foreign_assignment.complete(999).into_inner());
+    let (foreign_receipt, foreign_delivery) = accept_assignment(foreign.assignment);
+    let foreign_receipts = VecDeque::from([foreign_receipt]);
+    let foreign_completion = Some(foreign_delivery.message.complete(999).into_inner());
     let mut sequence = CreationSequence::new();
     let _occupied = sequence.issue().expect("one creation ID exists");
     let foreign_worker = sequence.issue().expect("a second creation ID exists");
@@ -609,7 +579,6 @@ fn exercise(bytes: &[u8]) {
         foreign_worker,
         job: accepted.job,
         delivery: DeliveryCustody::Emitted(accepted.assignment),
-        stale_receipts: VecDeque::new(),
         foreign_receipts,
         foreign_completion,
         pending_shutdowns: VecDeque::new(),

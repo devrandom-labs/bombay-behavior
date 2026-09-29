@@ -14,6 +14,15 @@ use behavior_actors::atomic::{
 };
 use behavior_actors::{Activate, StopOnShutdown};
 
+use assignment_delivery::accepted_assignment;
+
+#[path = "../tests/support/assignment_delivery.rs"]
+#[expect(
+    dead_code,
+    reason = "benchmark exercises the accepting path of the shared test interpreter"
+)]
+mod assignment_delivery;
+
 const DEFAULT_ITERATIONS: usize = 100_000;
 const DEFAULT_SAMPLES: usize = 5;
 
@@ -216,8 +225,8 @@ async fn measure() -> f64 {
             .into_iter()
             .next()
             .unwrap_or_else(|| panic!("accepted submission must emit one assignment"));
-        let receipt = assignment.receipt();
-        let (_, assignment, _) = assignment.into_parts();
+        let (receipt, delivered) = accepted_assignment(assignment);
+        let assignment = delivered.message;
         let accepted = pool
             .transition(FifoEvent::AssignmentSettled(SettledItem::Attempted(
                 ItemSettlement::Accepted(receipt),

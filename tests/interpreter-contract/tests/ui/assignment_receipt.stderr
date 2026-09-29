@@ -1,0 +1,10 @@
+error[E0624]: method `receipt` is private
+ --> tests/ui/assignment_receipt.rs:8:13
+  |
+8 |     request.receipt()
+  |             ^^^^^^^ private method
+  |
+ ::: $BEHAVIOR_ACTORS/src/atomic/pool/assignment.rs
+  |
+  |     pub(in crate::atomic) fn receipt(&self) -> AssignmentReceipt {
+  |     ------------------------------------------------------------ private method defined here

@@ -18,6 +18,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
+use super::assignment_delivery::accepted_assignment;
 use super::{
     Endpoint, Role, RuntimeAddr, SearchWorker, created_worker, prepare_search_worker,
     ready_search_pool,
@@ -140,8 +141,8 @@ async fn completed_work_advances_and_wraps_worker_selection() {
         .pop()
         .unwrap_or_else(|| panic!("the first worker receives the first job"));
     assert_eq!(first.target(), EstablishedRecipient::issued(Endpoint(41)));
-    let receipt = first.receipt();
-    let (_, assignment, _) = first.into_parts();
+    let (receipt, delivery) = accepted_assignment(first);
+    let assignment = delivery.message;
     let accepted = pool
         .transition(FifoEvent::AssignmentSettled(SettledItem::Attempted(
             ItemSettlement::Accepted(receipt),
@@ -169,8 +170,8 @@ async fn completed_work_advances_and_wraps_worker_selection() {
         .pop()
         .unwrap_or_else(|| panic!("the second worker receives the second job"));
     assert_eq!(second.target(), EstablishedRecipient::issued(Endpoint(42)));
-    let receipt = second.receipt();
-    let (_, assignment, _) = second.into_parts();
+    let (receipt, delivery) = accepted_assignment(second);
+    let assignment = delivery.message;
     let accepted = pool
         .transition(FifoEvent::AssignmentSettled(SettledItem::Attempted(
             ItemSettlement::Accepted(receipt),
@@ -229,8 +230,8 @@ async fn public_fifo_values_reveal_their_domain_payloads() {
         .into_items()
         .pop()
         .unwrap_or_else(|| panic!("the ready worker receives the job"));
-    let receipt = assignment.receipt();
-    let (_, assignment, _) = assignment.into_parts();
+    let (receipt, delivery) = accepted_assignment(assignment);
+    let assignment = delivery.message;
     assert!(format!("{assignment:?}").contains("payload: 27"));
     let worker = workers
         .pop()

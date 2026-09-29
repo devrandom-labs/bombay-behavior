@@ -1,5 +1,7 @@
 #[path = "keyed_pool/assignment.rs"]
 mod assignment;
+#[path = "support/assignment_delivery.rs"]
+mod assignment_delivery;
 #[path = "keyed_pool/compile.rs"]
 mod compile;
 #[path = "keyed_pool/customer.rs"]

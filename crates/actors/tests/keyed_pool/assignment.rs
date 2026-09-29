@@ -2,8 +2,8 @@ use std::time::Instant;
 
 use behavior::{
     ActionItemResult, ChildCreationOutcome, ChildHead, CreateChild, CreationSettlement,
-    CreationsSettled, EstablishedCreation, EstablishedRecipient, ExactDeliveryReason,
-    ItemSettlement, MessageProtocol, Recipient, SettledItem, Step,
+    CreationsSettled, EstablishedCreation, EstablishedRecipient, ItemSettlement, MessageProtocol,
+    Recipient, SettledItem, Step,
 };
 use behavior_actors::atomic::{
     ActivationPolicy, ActorDrainPolicy, AssignWorker, BacklogCapacity, BindingCapacity,
@@ -13,6 +13,7 @@ use behavior_actors::atomic::{
 };
 use behavior_actors::{Activate, ChildStopped, EstablishedShutdownResolved, Exit, StopOnShutdown};
 
+use super::assignment_delivery::{AssignmentDeliveryHost, accepted_assignment};
 use super::domain::{
     Account, Endpoint, RuntimeAddr, SearchJob, SearchResult, SearchRole, SearchWorker,
     prepare_worker,
@@ -145,11 +146,9 @@ async fn rejected_assignments_wait_for_worker_shutdown_before_returning_to_custo
         .pop()
         .unwrap_or_else(|| panic!("idle replica receives its job"));
 
+    let mut delivery = AssignmentDeliveryHost::<SearchWorker>::rejecting();
     let primary_rejected: ActionItemResult<AssignWorker<SearchWorker, SearchJob>> =
-        SettledItem::Attempted(ItemSettlement::Rejected {
-            item: primary_assignment,
-            reason: ExactDeliveryReason::ClosedRecipient,
-        });
+        SettledItem::Attempted(primary_assignment.settle(&mut delivery).await);
     let primary_quarantined = pool
         .transition(KeyedEvent::AssignmentSettled(primary_rejected))
         .unwrap_or_else(|error| panic!("primary assignment rejection failed: {error}"));
@@ -162,14 +161,12 @@ async fn rejected_assignments_wait_for_worker_shutdown_before_returning_to_custo
         .unwrap_or_else(|| panic!("rejected delivery quarantines the primary worker"));
 
     let replica_rejected: ActionItemResult<AssignWorker<SearchWorker, SearchJob>> =
-        SettledItem::Attempted(ItemSettlement::Rejected {
-            item: replica_assignment,
-            reason: ExactDeliveryReason::ClosedRecipient,
-        });
+        SettledItem::Attempted(replica_assignment.settle(&mut delivery).await);
     let replica_quarantined = pool
         .transition(KeyedEvent::AssignmentSettled(replica_rejected))
         .unwrap_or_else(|error| panic!("replica assignment rejection failed: {error}"));
     assert!(replica_quarantined.sends.customer_outcomes.is_empty());
+    assert_eq!(delivery.rejections(), 2);
     let replica_shutdown = replica_quarantined
         .sends
         .worker_shutdowns
@@ -366,7 +363,10 @@ async fn exact_completion_selects_the_busy_nonzero_role() {
         .into_items()
         .pop()
         .unwrap_or_else(|| panic!("idle primary receives its job"));
-    let (_, primary_assignment, primary_receipt) = primary_assignment.into_parts();
+    let primary_target = primary_assignment.target();
+    let (primary_receipt, primary_delivery) = accepted_assignment(primary_assignment);
+    assert_eq!(primary_delivery.to, primary_target);
+    let primary_assignment = primary_delivery.message;
     let primary_receipt: ActionItemResult<AssignWorker<SearchWorker, SearchJob>> =
         SettledItem::Attempted(ItemSettlement::Accepted(primary_receipt));
     let primary_busy = pool
@@ -414,7 +414,8 @@ async fn exact_completion_selects_the_busy_nonzero_role() {
         .into_items()
         .pop()
         .unwrap_or_else(|| panic!("idle replica receives its job"));
-    let (_, replica_assignment, replica_receipt) = replica_assignment.into_parts();
+    let (replica_receipt, replica_delivery) = accepted_assignment(replica_assignment);
+    let replica_assignment = replica_delivery.message;
     let replica_receipt: ActionItemResult<AssignWorker<SearchWorker, SearchJob>> =
         SettledItem::Attempted(ItemSettlement::Accepted(replica_receipt));
     let both_busy = pool
