@@ -301,10 +301,9 @@ field retains the untouched later fields as unattempted; a lawful rejection
 does not stop independent later fields. The private Actors `send_product!`
 derivation currently generates this traversal for routing, lifecycle,
 discovery, timing, and atomic products while preserving their domain field
-names. Behavior still exports a doc-hidden two-product `settle_in_order`
-function, but neither this workspace nor the inspected Bombay checkout calls
-it. A11 tracks whether that unused tuple-returning export should be deleted
-when the remaining generated-product derivation is reconciled.
+names. The unused two-product tuple helper was removed; the generated named
+products own their ordered traversal and return their complete named
+settlement shapes. A11 still tracks the separate proc-macro projection gap.
 
 StableProxy's `ProxyEffects` declares worker observation, initialization,
 activation, shutdown, service delivery, owner outcome, and diagnostic lanes in

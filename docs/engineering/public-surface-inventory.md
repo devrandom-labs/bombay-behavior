@@ -3,7 +3,7 @@
 This inventory supports [A13](repository-quality-audit.md). `#[doc(hidden)]`
 changes Rustdoc display, not Rust visibility. The counts below are annotation
 sites in source, so a grouped re-export and its original declaration each
-count once. The 2026-09-29 branch has 12 sites in `crates/behavior/src` and 81
+count once. The 2026-09-29 branch has 11 sites in `crates/behavior/src` and 81
 in `crates/actors/src`; the earlier audit counted 25 and 89 before the
 documentation visibility review.
 
@@ -15,7 +15,6 @@ documentation visibility review.
 | `actor/creation.rs`, occurrence proof | `StructuralChildOccurrence`, `ChildCreationProduct`, `ChildOccurrenceResolution`, `ResolveChildOccurrenceDescriptor`, `BirthNodeAt`, `ChildOccurrenceProductAt` | Generated code obligation | The macro and structural child products implement these proofs. A visibility change needs compile-pass and forged-occurrence compile-fail witnesses. |
 | `actor/creation.rs`, protocol projection | `BirthModeProtocols`, `BirthNodeProtocols`, `BirthNodeLogicalHosts` | Generated code obligation | These traits project closed birth and logical-host products; consumers can name the resulting associated types without constructing the proof nodes. |
 | `actor/creation.rs`, creation staging | `ChildProduct::stage` | Runtime port | The interpreter consumes ordered staged child requests; it must retain every owned child on rejection. |
-| `effects/sending.rs` | `settle_in_order` | Candidate runtime port | No call site remains in this workspace or the inspected Bombay checkout. The generic named products generate ordered interpretation directly; A11 must justify or remove this tuple-returning export. |
 
 `ChildOccurrence::Resolution` and `DeclaredChildOccurrence` are now visible
 because manually authored roles must name them. `BirthProtocolProduct` is

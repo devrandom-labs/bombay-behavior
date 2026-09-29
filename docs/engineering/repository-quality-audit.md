@@ -226,12 +226,10 @@ is recorded against a revision.
   The proc macro still derives a separate named-send implementation, while
   `requirements.rs` now contains only the exceptional `ReplyDeliveries` and
   `HeterogeneousShutdownSends` projections. A03 exposed the prior omission.
-  The doc-hidden `behavior::settle_in_order` is also exported but has no call
-  site in this workspace or the inspected Bombay checkout; the current named
-  products generate the ordered traversal directly. The normative settlement
-  document's older claim that those actors delegate to that helper was
-  corrected. Its tuple result is not evidence that it remains an essential
-  public runtime port.
+  The unused public `behavior::settle_in_order` tuple helper was removed after
+  a source search found no Rust caller in this workspace or adjacent
+  Bombay/Address repositories. Named products generate their ordered traversal
+  directly; the normative settlement document states that law.
   **Complete when:** a law table compares complete equations before selecting
   shared machinery. A retained derivation must preserve semantic field names,
   declared order, corruption suffixes, source admission, and logical-host
@@ -284,7 +282,7 @@ is recorded against a revision.
   the source-only review.
 
 - [ ] **A13 — Audit public bounds, hidden exports, and extension ownership.**
-  **Confirmed surface requiring review.** The current source has 12
+  **Confirmed surface requiring review.** The current source has 11
   `#[doc(hidden)]` annotation sites in core and 81 in actors, including
   members and re-exports. The
   [public-surface inventory](public-surface-inventory.md) classifies each site
@@ -683,6 +681,40 @@ preflights ran successfully for both programs; those timings are correctness
 smoke checks, not performance conclusions. No actor law or state type changed.
 Disposition: `pass`.
 
+### A11 unused tuple-settlement export, before deletion
+
+Classification: derived ordered-effect product law. A named send product
+itself owns its declared lane names, settlement shape, left-to-right
+interpretation, and intact unattempted suffix. The public, doc-hidden
+`settle_in_order` function offers only a two-product tuple settlement; it
+establishes no additional actor capability or independent invariant. A source
+search across the Behavior workspace and adjacent Bombay/Address repositories
+found its declaration and two re-exports but no Rust caller. Existing
+named-product tests and external interpretation callers exercise their own
+generated traversal, so deleting the dead export changes no transition,
+effect, or ownership return. Expected production touch: core
+`effects/sending.rs`, `effects/mod.rs`, and `lib.rs`, about 29 deleted lines,
+zero new public types, and one removed public function; update the two
+documents that name it. Core behavior control states, subordinate
+alternatives, branches, and modules remain unchanged. The future-needed
+values are each product's named lanes and complete settlements, already
+retained by its implementation. No arrival history, repeated cause, false
+cardinality, nested authority, semantic boolean, or structural caller syntax
+is proposed. Cross-check: actor transition algebra and atomic runtime
+settlement law. Disposition: `pass` for this deletion design, pending gates
+and final measurements.
+
+The unused function and both re-exports are removed. The core production
+delta is `+2/-31/net -29` physical lines, tests `+0/-0/net 0`, public types
+`+0/-0`, and public functions `-1`; `effects/sending.rs` is
+`1,505 → 1,477` lines. Control states, subordinate alternatives, transition
+branches, and module counts are unchanged, and each named product still owns
+the same fields and settlement return. The source scan found no remaining
+Rust call site; the Behavior, actors, and testkit Nextest run passed 808/808
+cases, with formatter, book build, and diff checks passing. The residue and
+law-document cross-checks above still hold. Disposition: `pass` for the
+unused-export deletion; A11 remains open for generated logical projection.
+
 ### A11 pre-edit product-equivalence law
 
 Classification: derived product law and Rust interface cleanup. Buffer's
@@ -695,7 +727,8 @@ and overflow policy live in `BufferState`. The caller-level syntax should
 therefore be `Behavior::Sends = DeliveryOutcomes<TargetSends, ReplySends>` for
 Buffer just as for Sequencer and OrderGate. A focused type assertion in
 `routing/buffer.rs` is the pre-edit regression. The existing product,
-`settle_in_order`, tuple source custody, and wrapper composition are reused;
+named-product interpretation, tuple source custody, and wrapper composition
+are reused;
 the duplicate public `BufferSends` implementation and its duplicate logical
 projection will be deleted. No transition, owned effect, interpreter
 operation, ordering, or error semantics changes.
@@ -2383,7 +2416,8 @@ reply or returned value, all effect lanes, and membership and reading state
 after every operation. The deterministic trace covers tied loads, stale and
 conflicting observations, removal, and re-addition; 384 generated traces mix
 those operations. The seven focused routing invariant tests passed after a
-clean Nix development build. An isolated one-line counterfactual changed the
+clean Nix development build; both new tests also passed in the optimized Nix
+build. An isolated one-line counterfactual changed the
 selection from minimum to maximum. Both new tests failed for the intended
 recipient-selection law, and the generated trace shrank to two observed
 members followed by one route. The counterfactual worktree was removed.

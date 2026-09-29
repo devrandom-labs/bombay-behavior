@@ -69,34 +69,6 @@ impl<Settlement> Interpretation<Settlement> {
     }
 }
 
-/// Interpret two statically named send products in declared order.
-///
-/// A corrupt earlier product retains the complete later product as
-/// unattempted. Expected rejection inside the earlier product does not stop
-/// the later product because it remains a complete interpretation.
-#[doc(hidden)]
-pub async fn settle_in_order<Interpreter, RootEvent, Path, Earlier, Later>(
-    earlier: Earlier,
-    later: Later,
-    interpreter: &mut Interpreter,
-) -> Interpretation<(Earlier::Settlements, Later::Settlements)>
-where
-    Interpreter: Send,
-    Earlier: InterpretSends<Interpreter, RootEvent, Path>,
-    Later: InterpretSends<Interpreter, RootEvent, Path>,
-{
-    let earlier = match earlier.interpret(interpreter).await {
-        Interpretation::Complete(earlier) => earlier,
-        Interpretation::Corrupt(earlier) => {
-            return Interpretation::Corrupt((earlier, later.unattempted()));
-        }
-    };
-    later
-        .interpret(interpreter)
-        .await
-        .map(|later| (earlier, later))
-}
-
 /// Read-only control-flow status of one complete retained settlement product.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SettlementStatus {

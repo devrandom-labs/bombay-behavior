@@ -54,8 +54,7 @@ pub use effects::{
     LogicalDeliveryProtocols, NoReturnToEmitter, NoSends, Own, ParentReportReason, ReportToParent,
     RetirementCreationSettlement, ReturnsToEmitter, SendEffects, SendInput, SendLayer,
     SendSettlements, SendsFor, SettledItem, SettlementStatus, SourceAction, SourceActions,
-    SourceAdmission, SourceCustody, SourceSettlementCustody, SourceSettlements, settle_in_order,
-    settle_item,
+    SourceAdmission, SourceCustody, SourceSettlementCustody, SourceSettlements, settle_item,
 };
 pub use next::{Never, Step, Stopped};
 pub use transition::{
