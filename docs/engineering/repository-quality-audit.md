@@ -908,6 +908,24 @@ which checks generations, owned rejection, and an independent directory
 placement. No production edit was needed. This is a keyed binding-law slice;
 other keyed and actor-family laws still require mutation review.
 
+### A07 actor mutation evidence: dynamic cancellation authority
+
+Classification: Bombay's keyed-operation correlation and affine authority
+policy. Cancellation of a live service requires the exact current operation;
+the actor returns a stale authority unchanged and retains the active entry.
+At signed revision `f9f39dc`, a Nix-pinned campaign inverted the operation
+comparison at `dynamic_supervisor/mod.rs:885`. Its baseline passed 591 actor
+tests; the mutated build selected the 814-test workspace suite. The mutant
+built and was caught by four dynamic integration tests, including
+`accepted_start_cancellation_retires_before_fresh_key_reuse`. A separate
+isolated counterfactual changed `!=` to `>`: current authority still passed
+the guard, but an older authority for the same reused key was accepted. The
+focused integration test failed exactly at its stale-after-reuse assertion
+(`dynamic.rs:3309`). The counterfactual was reverted. No branch production
+edit was needed. This is one dynamic-supervision law slice, not a full
+family campaign. The full Nix flake gate passed all ten checks on `f9f39dc`
+before the counterfactual; the latter ran in a separate detached worktree.
+
 ### A20 ledger entry: stable-proxy activation correlation
 
 | Evidence layer | Current witness and limit |
@@ -935,6 +953,15 @@ other keyed and actor-family laws still require mutation review.
 | Independent trace | The test compares placement to a separate account directory; keyed pool assignment and lifecycle tests and keyed fuzz targets cover other transitions, not every binding counterfactual. |
 | Composition and invalid construction | `BindingExpectation` is an exhaustive absent-or-exact sum; stale rejection returns the complete command and current generation. This is an aggregate binding decision, not a wrapper-order transformation. |
 | Counterfactual | Both selected guard inversions in `keyed_pool/mod.rs` built and were caught by the binding integration test. The remaining keyed aggregate laws still need mutation slices. |
+
+### A20 ledger entry: dynamic cancellation authority
+
+| Evidence layer | Current witness and limit |
+|---|---|
+| Focused transition and custody | `dynamic::accepted_start_cancellation_retires_before_fresh_key_reuse` checks current cancellation, returned authority and submission, exact retirement before key reuse, and the old authority's stale reply after reuse. It checks all send lanes and the continuing verdict for replayed and stale cancellation. |
+| Independent trace | Dynamic cancellation and shutdown fuzz targets explore orderings. The focused integration trace has concrete expected replies but is not an independent state model. |
+| Composition and invalid construction | `CancelAuthority<Key>` carries the key and operation; the actor compares it with the entry's current operation. This is a keyed aggregate decision, not a wrapper-order law. The authority is returned by start or replacement receipt and retained in cancellation replies. |
+| Counterfactual | Inverting `!=` to `==` built and failed four dynamic integration tests. Replacing `!=` with `>` in an isolated worktree left current-token cancellation intact but made the old token after same-key reuse pass; the focused test failed at the stale assertion. These checks do not certify all dynamic entry phases. |
 
 ### A20 ledger entry: bounded-buffer capacity and ownership
 
