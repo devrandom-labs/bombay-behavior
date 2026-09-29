@@ -149,7 +149,6 @@ where
 impl<A, K, V, Route> behavior::Protocol for Correlator<A, K, V, Route>
 where
     A: Address,
-    K: Clone + Eq,
     Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = CorrelationResult<K, V>>>,
 {
     type Addr = A;

@@ -217,7 +217,6 @@ where
 impl<A, K, Route> behavior::Protocol for Barrier<A, K, Route>
 where
     A: Address,
-    K: Clone + Eq,
     Route: DeliveryRoute,
     Route::Protocol: Protocol<Addr = A, Msg = BarrierReleased>,
 {

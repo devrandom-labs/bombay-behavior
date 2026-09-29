@@ -370,8 +370,6 @@ where
 impl<A, K, P, Route> behavior::Protocol for Acknowledgements<A, K, P, Route>
 where
     A: Address,
-    K: Clone + Eq,
-    P: Clone + Eq,
     Route:
         DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = AcknowledgementOutcome<K, P>>>,
 {

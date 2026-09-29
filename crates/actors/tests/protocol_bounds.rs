@@ -1,10 +1,11 @@
 use behavior::{MailAddr, MessageProtocol, Protocol, Recipient};
 use behavior_actors::atomic::FifoError;
 use behavior_actors::{
-    Cache, CacheResult, Configuration, ConfigurationMessage, ConfigurationState, Health,
-    HealthMessage, HealthReport, Machine, PubSub, PubSubMessage, Readiness, ReadinessMessage,
-    ReadinessReport, Registry, RegistryMessage, RegistryResult, Resolution, Resolver, Topic,
-    TopicMessage,
+    AcknowledgementMessage, AcknowledgementOutcome, Acknowledgements, Barrier, BarrierMessage,
+    BarrierReleased, Cache, CacheResult, Configuration, ConfigurationMessage, ConfigurationState,
+    CorrelationResult, Correlator, CorrelatorMessage, Health, HealthMessage, HealthReport, Machine,
+    PubSub, PubSubMessage, Readiness, ReadinessMessage, ReadinessReport, Registry, RegistryMessage,
+    RegistryResult, Resolution, Resolver, Topic, TopicMessage,
 };
 
 struct Key;
@@ -35,6 +36,13 @@ type ReadinessReply = Recipient<MessageProtocol<MailAddr, ReadinessReport<Key>>>
 type ReadinessProtocol = Readiness<MailAddr, Key, ReadinessReply>;
 type RegistryReply = Recipient<MessageProtocol<MailAddr, RegistryResult<Key, Destination>>>;
 type RegistryProtocol = Registry<MailAddr, Key, Destination, RegistryReply>;
+type CorrelatorReply = Recipient<MessageProtocol<MailAddr, CorrelationResult<Key, Value>>>;
+type CorrelatorProtocol = Correlator<MailAddr, Key, Value, CorrelatorReply>;
+type AcknowledgementReply =
+    Recipient<MessageProtocol<MailAddr, AcknowledgementOutcome<Key, Value>>>;
+type AcknowledgementProtocol = Acknowledgements<MailAddr, Key, Value, AcknowledgementReply>;
+type BarrierReply = Recipient<MessageProtocol<MailAddr, BarrierReleased>>;
+type BarrierProtocol = Barrier<MailAddr, Key, BarrierReply>;
 
 fn accepts_protocol<P: Protocol<Addr = MailAddr>>() {}
 
@@ -51,6 +59,12 @@ fn protocol_identity_does_not_require_transition_or_construction_bounds() {
     accepts_message::<HealthProtocol, HealthMessage<Key, HealthReply>>();
     accepts_message::<ReadinessProtocol, ReadinessMessage<Key, ReadinessReply>>();
     accepts_message::<RegistryProtocol, RegistryMessage<Key, Destination, RegistryReply>>();
+    accepts_message::<CorrelatorProtocol, CorrelatorMessage<Key, Value, CorrelatorReply>>();
+    accepts_message::<
+        AcknowledgementProtocol,
+        AcknowledgementMessage<Key, Value, AcknowledgementReply>,
+    >();
+    accepts_message::<BarrierProtocol, BarrierMessage<Key, BarrierReply>>();
 }
 
 #[test]

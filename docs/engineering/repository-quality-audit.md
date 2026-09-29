@@ -931,6 +931,36 @@ and law cross-check still hold. Disposition: `pass` for this identity-law
 migration. A13 remains open for bounds on other protocols and the remaining
 public-surface review.
 
+The same derived identity law reaches `Correlator`, `Acknowledgements`, and
+`Barrier`: their command sums can carry non-`Clone`, non-`Eq` correlation keys,
+payloads, and barrier members while a lawful result route remains named.
+`Clone`/`Eq` are execution bounds; their structs and message sums do not
+require them. The caller projects the three message sums in
+`actors/tests/protocol_bounds.rs` before production edits, using the existing
+`Recipient<MessageProtocol<...>>` route. The proposed edit only removes
+transition bounds from three `Protocol` impls, reusing their existing result
+protocols, routes, and `Behavior` impls. No wrapper or interpreter path changes.
+
+Pre-edit aggregate-drift checkpoint: correlator retains its ordered key
+lifecycle states; acknowledgements retains ordered records; barrier retains
+member order and its current generation/state. Their control states,
+subordinate alternatives, transition branches, modules, and public spellings
+are unchanged by this proposal. The future-needed values remain the keys,
+reply recipients, pending acknowledgement payloads, members, and generation.
+The residue scan finds no proposed arrival-history state, repeated cause,
+false cardinality, nested authority, semantic boolean, or positional syntax.
+The routing, workflow, and actor transition contracts were cross-checked.
+Expected source delta is four deleted bound lines, no new public types.
+Disposition: `pass` for the proposed identity-law migration, pending its
+failing caller and implementation.
+
+The pre-edit caller failed with eight E0277 diagnostics for `Key` and `Value`.
+After removing four bound lines from the three `Protocol` impls, that caller
+passes; the execution impls retain their bounds. Current states, subordinate
+alternatives, branches, modules, and public spellings are unchanged. The
+retained values, residue scan, and routing/workflow law cross-check remain as
+recorded above. Disposition: `pass` for the focused identity-law migration.
+
 Classification: derived Rust protocol identity. A cache or resolver recipient
 names an address and a command type without running a transition or copying a
 binding definition. Thus `Protocol` for `Cache<K,V>` and `Resolver<K>` does
