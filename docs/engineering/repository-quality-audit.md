@@ -118,7 +118,7 @@ is recorded against a revision.
   separate from capability-denial evidence. Rustdoc `compile_fail` alone proves
   that compilation fails, not why it fails.
 
-- [ ] **A05 — Make the mutation verdict reject malformed and incomplete runs.**
+- [x] **A05 — Make the mutation verdict reject malformed and incomplete runs.**
   **Confirmed source defects; adversarial probe recorded below.**
   `mutants-gate/src/main.rs::usable` rejects a failed baseline if present but
   does not require a successful baseline. `tallies` counts `Failure` and
@@ -993,6 +993,50 @@ is cross-checked with the A05 report-identity law above and the Nix mutation
 derivation. Disposition: `pass` for the pre-edit model; the failing fixture
 and retained verdict still need verification.
 
+The adversarial gate fixture failed on the prior implementation: `check`
+returned `Ok(())` for a complete `CaughtMutant` report whose only Nextest
+evidence was `TIMEOUT`. The repaired gate requires a safe relative log path
+and a `FAIL` test line for each caught mutant, rejects any `TIMEOUT` line even
+alongside a failure, and applies the same validation when seeding a baseline.
+The mutation Nextest profile no longer terminates individual tests after ten
+seconds; cargo-mutants owns the command timeout and reports `Timeout` to the
+strict verdict. All 12 gate tests, targeted Clippy, and formatting passed.
+The actual three-mutant child-creation campaign passed the repaired verdict
+(`3 viable / 3 total`) with three test failures and zero timeouts. The gate's
+production portion grew from 252 to 294 lines; its test portion added 62 net
+lines. The actor file added 46 test lines and no production lines; the Nextest
+profile shrank from six to four lines. Aggregate states, alternatives,
+branches, modules, and public spellings remain unchanged. The residue scan
+and law cross-check remain as recorded above. Disposition: `pass` for this
+verification repair. The full Nix flake gate passed all ten
+`aarch64-darwin` checks on signed revision `81bda41`.
+
+### A07 actor mutation evidence: catalogue correlation and admission
+
+At signed revision `337bc2e`, one Nix-pinned campaign selected ten mutations
+across registry unbinding, child creation settlement, configuration version
+conflict, one-shot timer admission, and barrier duplicate arrival. The baseline
+passed 591 actor tests; mutated commands selected the 814-test workspace.
+Every mutant built and cargo-mutants labeled every one caught, but one label
+was false evidence: the child-creation `||` to `&&` mutant passed all actor
+tests, while four unrelated macro fixture tests hit the ten-second Nextest
+timeout. The other nine mutants had named actor test failures. The focused
+child-creation regression on `81bda41` passed unmutated and failed under
+`||` to `&&` at the wrong-kind/same-ID assertion. A separate Nix-pinned,
+actor-only rerun selected all three current creation-correlation mutations;
+its 593-test baseline passed, all three mutants built and failed actor
+assertions, and the strengthened gate accepted its complete report with no
+timeout, miss, or unviable candidate. This closes the false-positive slice;
+other catalogue laws still need review, so A07 remains open.
+
+| Family and law | Original mutation result with a real actor oracle |
+|---|---|
+| Registry: exact recipient required to unbind | One inversion caught by `discovery::registry::tests::mutations_are_atomic_and_stale_unbind_is_typed`. |
+| Child shutdown: exact creation ID and kind | Two comparison inversions caught by child-shutdown tests; the initially false `||` to `&&` verdict was corrected by the independent-component test and actor-only rerun. |
+| Configuration: same-version equality | One inversion caught by `operations::configuration::tests::stale_and_conflicting_candidates_return_ownership_atomically`. |
+| One-shot timer: ID and generation admission | Guard-true, guard-false, `&&` to `||`, and ID-equality inversion all caught by `time::one_shot::tests::initialization_schedules_then_matching_generation_fires_once`. |
+| Barrier: duplicate participant arrival | One inversion caught by `workflow::barrier::tests::generation_releases_exact_membership_in_arrival_order`. |
+
 ### A20 ledger entry: stable-proxy activation correlation
 
 | Evidence layer | Current witness and limit |
@@ -1038,6 +1082,16 @@ and retained verdict still need verification.
 | Independent trace | `fixed_supervisor_initialization` explores 90 lawful replacement arrival orders across recovery strategies. This is a local typed interpreter trace, not the downstream host required by A17. |
 | Composition and invalid construction | The outcome and pending replacement each carry exact predecessor evidence; the guard compares those values after the input settlement advanced to outcome-pending. A foreign predecessor can be reported by a runtime, so this is an aggregate ingress check rather than a static invalid-construction case. |
 | Counterfactual | Guard-true, guard-false, and equality-inversion mutants at `recovery/mod.rs:1876` all built and were caught by fixed-supervision integration tests. This slice does not cover scheduling, policy selection, or terminal retirement. |
+
+### A20 ledger entries: catalogue admission laws
+
+| Law | Focused transition and broader witness | Boundary and counterfactual limit |
+|---|---|---|
+| Registry stale unbind | The registry unit test returns the stale recipient and keeps its binding; discovery model tests cover broader bind/lookup sequences. | Recipient equality is a runtime command condition, not a compile-denial capability. One comparison inversion was caught; snapshot ordering is outside this slice. |
+| Child creation ID and kind | `creation_resolution_requires_matching_id_and_kind_independently` returns each single-component mismatch with exact expected values and then accepts the lawful birth. The surrounding shutdown plan exercises nested event paths. | Runtime reports can carry mismatched typed facts. The `||` to `&&` counterfactual failed this test, and all three actor-only mutants were caught; the earlier workspace timeout was rejected as evidence. |
+| Configuration version conflict | `stale_and_conflicting_candidates_return_ownership_atomically` checks stale version and same-version value conflict; catalogue models cover update sequences. | This is a runtime version decision. The same-version comparison inversion was caught; no downstream persistence claim is made. |
+| One-shot timer admission | The one-shot unit trace checks initialization scheduling, matching generation, and exact-once firing; timing composition tests check wrapper use. | A timer ID or generation mismatch is a typed runtime input. Four guard mutants built and failed the focused test; broader periodic and deadline laws are separate. |
+| Barrier duplicate arrival | The barrier unit trace checks exact membership and arrival-order release; workflow invariant tests cover reusable generations. | A repeat arrival is an ordinary command rejection. One equality inversion was caught; it does not certify the future/stale-generation branches. |
 
 ### A20 ledger entry: bounded-buffer capacity and ownership
 
