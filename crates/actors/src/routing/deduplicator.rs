@@ -130,7 +130,6 @@ impl<A, K, T, TargetRoute, ReplyRoute> BehaviorBase
     for Deduplicator<A, K, T, TargetRoute, ReplyRoute>
 where
     A: Address,
-    K: Clone + Eq,
     TargetRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = T>>,
     ReplyRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = DeduplicatorOutcome<K, T>>>,
 {
@@ -145,7 +144,6 @@ impl<A, K, T, TargetRoute, ReplyRoute> behavior::Protocol
     for Deduplicator<A, K, T, TargetRoute, ReplyRoute>
 where
     A: Address,
-    K: Clone + Eq,
     TargetRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = T>>,
     ReplyRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = DeduplicatorOutcome<K, T>>>,
 {

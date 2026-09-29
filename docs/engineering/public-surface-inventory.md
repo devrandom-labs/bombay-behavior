@@ -92,6 +92,13 @@ impl-level bounds. Their stored state, protocol, and transition contracts are
 unchanged. `Router` remains structurally bound by its route and strategy
 policy and needs a separate owner review.
 
+`Deduplicator` and `OrderGate` now also expose protocol identity for an opaque
+key. `Deduplicator` exposes its read-only base projection on the same terms.
+The key comparison bounds remain on the operations that actually deduplicate
+or order messages. A focused caller failed before the change only on these
+three impl-level bounds and passed afterward; the routing transition suite
+remained green.
+
 ## Public trait implementors
 
 The source declares 77 top-level public traits: 55 in `behavior` and 22 in

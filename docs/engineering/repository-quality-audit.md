@@ -309,12 +309,14 @@ is recorded against a revision.
   manually authored child roles and generic logical-host owners have compile
   witnesses for the newly visible types. The cache/resolver protocol-bound
   comparison found no material compile-time difference in its measured pair;
-  the caller diagnostics improved. The protocol-only caller now covers 17
+  the caller diagnostics improved. The protocol-only caller now covers 19
   catalogue actors, keeping construction and transition bounds at the
   operations that need them. A separate caller now proves that 12 unwrapped
   catalogue actors expose their read-only `BehaviorBase` projection without
   requiring the cloning, comparison, or ordering used only by construction or
-  transition. The proxy operation ID is now crate-private;
+  transition. This includes keyed `Deduplicator` and `OrderGate` protocol
+  identities without their transition-only key bounds. The proxy operation ID
+  is now crate-private;
   focused external fixtures distinguish forbidden ID naming, receipt
   construction, and double settlement. Review of remaining hidden runtime
   ports and the rest of the public surface is still required.
@@ -996,6 +998,41 @@ cardinality, nested transition authority, semantic boolean, or positional
 caller syntax. The `BehaviorBase` contract and catalogue laws remain the
 cross-check. Disposition: `pass` for this bound-only batch; A13 remains open
 for other public ports and protocol bounds.
+
+### A13 pre-edit routing identity law
+
+Classification: derived, typed-protocol identity law. `Deduplicator` and
+`OrderGate` command types name a key and two concrete delivery routes;
+identifying those messages neither compares nor copies the key. The
+`Deduplicator` base projection also only borrows `Self`. The caller syntax is
+an external `Protocol<Msg = ...>` bound for both actors and a
+`BehaviorBase<Base = Self>` bound for `Deduplicator`, with an opaque key that
+implements no `Clone`, `Eq`, or `Ord`. The complete observable product is the
+same associated message type or shared reference, without a transition.
+The focused protocol caller must fail on the old impl-only key bounds before
+production changes. Existing route and actor type bounds, transition tests,
+and the preceding base-projection witness are lower-order contracts. The
+candidate changes no event, effect, state, runtime port, wrapper, or public
+spelling. Baseline control sums, subordinate alternatives, transition
+branches, and modules remain fixed; the deduplicator retains its FIFO key
+window and the gate its watermark and held map. The residue scan finds no
+proposed history, duplicate cause, false cardinality, nested authority,
+semantic boolean, or positional caller syntax. Cross-check: actor transition
+algebra and the routing catalogue contract. Disposition: `pass` for the
+pre-edit law. The external caller failed before production with six `E0277`
+diagnostics: `Clone`/`Eq` from the deduplicator's two impls and
+`Clone`/`Ord` from the order gate's protocol impl. No route or message-shape
+error occurred.
+
+The focused external caller and the 827-case workspace Nextest suite pass
+after removing those three impl-level lines. These two production modules
+changed `+0/-3` physical lines (`752 → 749`); test syntax adds two protocol
+substitutions and one base-projection substitution. Control states,
+subordinate alternatives, transition branches, modules, public spellings,
+effect lanes, interpreter operations, and retained values are unchanged.
+The deduplicator still owns its FIFO key window; the order gate still owns its
+watermark and held map. The residue scan and law cross-check above remain
+clear. Disposition: `pass` for this interface-only batch; A13 remains open.
 
 ### A13 pre-edit protocol-bound law
 

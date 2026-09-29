@@ -5,8 +5,9 @@ use behavior_actors::atomic::FifoError;
 use behavior_actors::{
     AcknowledgementMessage, AcknowledgementOutcome, Acknowledgements, Barrier, BarrierMessage,
     BarrierReleased, Cache, CacheResult, Configuration, ConfigurationMessage, ConfigurationState,
-    CorrelationResult, Correlator, CorrelatorMessage, Health, HealthMessage, HealthReport, Lease,
-    LeaseMessage, LeaseOutcome, Machine, OrderGate, OrderGateOutcome, Presence, PresenceMessage,
+    CorrelationResult, Correlator, CorrelatorMessage, Deduplicator, DeduplicatorMessage,
+    DeduplicatorOutcome, Health, HealthMessage, HealthReport, Lease, LeaseMessage, LeaseOutcome,
+    Machine, OrderGate, OrderGateMessage, OrderGateOutcome, Presence, PresenceMessage,
     PresenceReply, PubSub, PubSubMessage, Readiness, ReadinessMessage, ReadinessReport, Registry,
     RegistryMessage, RegistryResult, ReplyRoute, Resolution, Resolver, Router, RouterMessage,
     RoutingStrategy, Topic, TopicMessage, WorkQueue, WorkQueueMessage, WorkQueueOutcome, Workflow,
@@ -117,6 +118,9 @@ type WorkQueueReply = Recipient<MessageProtocol<ExactAddr, WorkQueueOutcome<u8>>
 type WorkQueueProtocol = WorkQueue<ExactAddr, u8, WorkQueueWorker, WorkQueueReply>;
 type OrderGateReply = Recipient<MessageProtocol<MailAddr, OrderGateOutcome<Key, u8>>>;
 type OrderGateProtocol = OrderGate<MailAddr, Key, u8, Recipient<Destination>, OrderGateReply>;
+type DeduplicatorReply = Recipient<MessageProtocol<MailAddr, DeduplicatorOutcome<Key, u8>>>;
+type DeduplicatorProtocol =
+    Deduplicator<MailAddr, Key, u8, Recipient<Destination>, DeduplicatorReply>;
 
 fn accepts_protocol<P: Protocol<Addr = MailAddr>>() {}
 
@@ -147,6 +151,14 @@ fn protocol_identity_does_not_require_transition_or_construction_bounds() {
     accepts_message::<LeaseProtocol, LeaseMessage<Key, LeaseResult>>();
     accepts_message::<WorkflowProtocol, WorkflowMessage<Key, WorkflowResult>>();
     accepts_message::<RouterProtocol, RouterMessage<Recipient<Destination>, ObservedSelection>>();
+    accepts_message::<
+        DeduplicatorProtocol,
+        DeduplicatorMessage<Key, u8, Recipient<Destination>, DeduplicatorReply>,
+    >();
+    accepts_message::<
+        OrderGateProtocol,
+        OrderGateMessage<Key, u8, Recipient<Destination>, OrderGateReply>,
+    >();
     accepts_message_at::<
         ExactAddr,
         WorkQueueProtocol,
@@ -168,6 +180,7 @@ fn base_projection_does_not_require_transition_or_construction_bounds() {
     accepts_base::<BarrierProtocol>();
     accepts_base::<WorkflowProtocol>();
     accepts_base::<OrderGateProtocol>();
+    accepts_base::<DeduplicatorProtocol>();
 }
 
 #[test]
