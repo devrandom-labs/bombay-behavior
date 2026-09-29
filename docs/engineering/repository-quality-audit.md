@@ -248,6 +248,14 @@ is recorded against a revision.
   preserve distinctions needed for rejection, concurrency, or terminal custody.
   Reduce responsibilities only where a falsifying law proves redundancy.
   Keep FIFO assignment policy and keyed binding policy distinct.
+  **Reviewed distinction:** StableProxy's data-free `Dormant` and
+  `EmptyInitial` states are not duplicate history labels. `Dormant` admits its
+  one initial worker submission; `EmptyInitial` follows a rejected initial
+  creation and rejects another submission with the observable `Overlap` and
+  `ProxyPhase::EmptyInitial`. `proxy_command_recovery` and `proxy` exercise
+  this path. Merging the states would admit a second initial worker or change
+  the documented outcome. The other subordinate alternatives and family
+  measurements still require the full A12 checkpoint.
 
 - [ ] **A13 — Audit public bounds, hidden exports, and extension ownership.**
   **Confirmed surface requiring review.** The current source has 12
