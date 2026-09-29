@@ -267,8 +267,10 @@ is recorded against a revision.
   The inventory confirms that `StashStatus` has multiple real wrapper
   implementations; its name alone is not grounds for deletion. External
   manually authored child roles and generic logical-host owners have compile
-  witnesses for the newly visible types. A repeatable compile-cost comparison
-  and review of remaining hidden runtime ports are still required.
+  witnesses for the newly visible types. The cache/resolver protocol-bound
+  comparison found no material compile-time difference in its measured pair;
+  the caller diagnostics improved. Review of remaining hidden runtime ports
+  and the rest of the public surface is still required.
 
   The creation settlement review found a narrower documentation defect:
   external caller suites name `CreationSettlement`, `CreationSettlements`, and
@@ -774,6 +776,20 @@ module, aggregate control state, subordinate alternative, transition branch,
 or public spelling changed. The residue scan and law cross-check remain as
 recorded before the edit. Disposition: `pass` for these two bound repairs.
 The wider hidden-export and extension-port inventory in A13 remains open.
+
+Compile-cost comparison for those two bounds, on `aarch64-darwin` with the
+Nix-provided Rust 1.95 toolchain: two detached checkouts at `1559a87` differed
+only by restoring `K: Clone + Eq, V: Clone` to `Cache`'s `Protocol` impl and
+`K: Clone + Eq` to `Resolver`'s `Protocol` impl. Both used the same warm
+`CARGO_TARGET_DIR`, `CARGO_BUILD_JOBS=2`, `CARGO_INCREMENTAL=0`, and
+`cargo check -p bombay-behavior-actors --lib --locked`. Before each measured
+run, `cargo clean -p bombay-behavior-actors` removed only the actor package's
+artifacts. Both runs visibly checked that crate: restored bounds took 187.07
+seconds wall time; narrower bounds took 187.84 seconds. The 0.77-second
+difference is under 1% and does not establish a compile-time improvement.
+The supported benefit is the narrower protocol law and the removal of five
+misleading E0277 caller diagnostics. This pair does not measure every generic
+bound or the full workspace build.
 
 The public `FifoError` and `KeyedError` sums are application-visible aggregate
 failure contracts, and `FixedBuilder` is the inferred application
@@ -1621,14 +1637,23 @@ Final verification of this repair batch before its branch commit:
   performance claims. `mdbook build docs`, README link tests, `cargo fmt
   --all -- --check`, and `git diff --check HEAD` passed.
 
-Thirteen checklist items are complete; seven remain open with their explicit
-criteria above. The source changes under `crates/*/src` are `+609/-430` physical
+At that checkpoint, thirteen checklist items were complete and seven remained
+open. The source changes under `crates/*/src` were `+609/-430` physical
 lines (net +179), including the stricter mutation verdict and logical-host
 projection. The branch deletes the duplicate `BufferSends` and test-only
 `InitializeTest` public names and adds one associated logical-protocol type
 and one child-borrow method to existing ports. No actor control-state variant
 was added. This scope measurement is diagnostic; it does not certify the seven
 open design and integration items.
+
+The later branch currently has fourteen complete items and six open items.
+After `nix flake update`, `nix flake check` passed
+all ten applicable `aarch64-darwin` checks on signed commit `e77cbfd`,
+including build, Nextest, Clippy, docs, doctests, both formatting checks,
+audit, deny, and package verification. The later `4cd3b7f` commit changed
+only documentation visibility and audit text; its Nix documentation check
+passed separately. These gates do not close the six remaining design,
+mutation, and downstream integration criteria.
 
 ## References
 
