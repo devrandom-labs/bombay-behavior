@@ -309,7 +309,7 @@ is recorded against a revision.
   manually authored child roles and generic logical-host owners have compile
   witnesses for the newly visible types. The cache/resolver protocol-bound
   comparison found no material compile-time difference in its measured pair;
-  the caller diagnostics improved. The protocol-only caller now covers 16
+  the caller diagnostics improved. The protocol-only caller now covers 17
   catalogue actors, keeping construction and transition bounds at the
   operations that need them. The proxy operation ID is now crate-private;
   focused external fixtures distinguish forbidden ID naming, receipt
@@ -937,6 +937,49 @@ post-experiment drift checkpoint are in `DEAD_ENDS.md`. The missing projection
 remains open and requires an explicit visibility/ownership model before code.
 
 ### A13 pre-edit protocol-bound law
+
+The next A13 protocol-identity witness is `WorkQueue` with a
+`ReplyRoute<ExactDestination>` worker route. `ReplyRoute` is a sealed, lawful
+`DeliveryRoute` and can carry logical or exact recipients, but deliberately
+does not claim `PartialEq` between them. The derived identity law requires
+only the address and the two route protocol/message relationships to name
+`WorkQueueMessage`; worker-route cloning and equality belong to queue state
+inspection and availability transitions. The caller syntax is an external
+`Protocol<Addr = ExactAddr, Msg = WorkQueueMessage<...>>` bound, with no
+construction or transition. On the prior representation the intended focused
+test must fail solely because the aggregate declaration and protocol impl
+require `ReplyRoute<ExactDestination>: PartialEq`. The existing protocol-only
+caller suite, `Recipient`, `ReplyRoute`, and `DeliveryRoute` are the lower-order
+witnesses. The candidate moves the bound to existing methods/`Behavior`, adds
+no semantic state, effect, public type, or runtime port. Its control states,
+subordinate alternatives, branches, modules, and public spellings stay
+unchanged; the route remains the same owned field. No history, repeated cause,
+false cardinality, nested authority, semantic boolean, or positional syntax
+is proposed. Cross-checks: `actor-transition-algebra.md`, `behavior-layer-laws.md`,
+and the normalized FIFO law. Disposition: `pass` for the pre-edit model,
+pending the red caller witness and measured implementation.
+
+The first draft witness also failed because the ordinary `MailAddr` lacks an
+exact-endpoint family; that failure was unrelated to route equality. The
+corrected external caller uses an `EndpointAddress` and failed with only
+`E0277`: `ReplyRoute<ExactDestination>` does not implement `PartialEq`, which
+the previous `WorkQueue` declaration demanded. Moving `Clone + PartialEq`
+from the aggregate declaration, `BehaviorBase`, and `Protocol` to the existing
+construction/transition impls made that caller compile without changing queue
+operation. The measured source change is production `+7/-4/net +3`, including
+the public bound explanation, test `+35/-3/net +32`, and public API `+0/-0`
+types. The one aggregate module grows from 263 to 266 production lines; the
+direct state product remains capacity,
+available workers, and waiting jobs, with no control-state enum or subordinate
+sum. The five production `if` selections and three command arms remain eight
+transition branches by the same count before and after. Every stored route is
+still required for later dispatch or withdrawal. The residue scan found no
+new arrival history, repeated cause, false cardinality, nested authority,
+semantic boolean, or structural caller syntax. Disposition: `pass` for this
+protocol-bound batch; the rest of A13 remains open. The focused debug and
+optimized caller tests, two FIFO unit tests, workspace all-target compile,
+all 824 workspace Nextest cases, and the documentation book build passed
+through Nix.
 
 The same derived protocol-identity law applies to `Topic` and `PubSub`:
 their message sums contain owned publication, topic, and route values, and

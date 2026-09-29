@@ -75,6 +75,13 @@ the ID name with `E0603`, while the receipt-constructor fixture independently
 rejects `new` with `E0599`. The ID remains available to private supervisor
 state and receipt settlement through a crate-private re-export.
 
+`WorkQueue` now keeps worker-route cloning and equality on construction and
+transition operations, where queue inspection and duplicate availability use
+them. Its protocol identity accepts a lawful `ReplyRoute` without `PartialEq`.
+The external protocol-only caller failed on the previous aggregate bound with
+only `E0277` and passes after the bound move; the FIFO transition suite still
+exercises the comparable route used by a running queue.
+
 ## Public trait implementors
 
 The source declares 77 top-level public traits: 55 in `behavior` and 22 in

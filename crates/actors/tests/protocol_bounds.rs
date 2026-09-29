@@ -1,4 +1,4 @@
-use behavior::{MailAddr, MessageProtocol, Never, Protocol, Recipient};
+use behavior::{Address, EndpointAddress, MailAddr, MessageProtocol, Never, Protocol, Recipient};
 use behavior_actors::atomic::FifoError;
 use behavior_actors::{
     AcknowledgementMessage, AcknowledgementOutcome, Acknowledgements, Barrier, BarrierMessage,
@@ -6,8 +6,9 @@ use behavior_actors::{
     CorrelationResult, Correlator, CorrelatorMessage, Health, HealthMessage, HealthReport, Lease,
     LeaseMessage, LeaseOutcome, Machine, Presence, PresenceMessage, PresenceReply, PubSub,
     PubSubMessage, Readiness, ReadinessMessage, ReadinessReport, Registry, RegistryMessage,
-    RegistryResult, Resolution, Resolver, Router, RouterMessage, RoutingStrategy, Topic,
-    TopicMessage, Workflow, WorkflowMessage, WorkflowOutcome,
+    RegistryResult, ReplyRoute, Resolution, Resolver, Router, RouterMessage, RoutingStrategy,
+    Topic, TopicMessage, WorkQueue, WorkQueueMessage, WorkQueueOutcome, Workflow, WorkflowMessage,
+    WorkflowOutcome,
 };
 
 struct Key;
@@ -16,6 +17,27 @@ struct Destination;
 struct Publication;
 struct Subscription;
 struct Phase;
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct ExactAddr(u8);
+
+impl Address for ExactAddr {
+    type Nonce = u64;
+}
+
+impl EndpointAddress for ExactAddr {
+    type Established<P>
+        = u64
+    where
+        P: Protocol<Addr = Self>;
+}
+
+struct ExactDestination;
+
+impl Protocol for ExactDestination {
+    type Addr = ExactAddr;
+    type Msg = u8;
+}
 
 struct AcceptedPayloads(Vec<u8>);
 
@@ -84,10 +106,15 @@ type LeaseProtocol = Lease<MailAddr, Key, LeaseResult>;
 type WorkflowResult = Recipient<MessageProtocol<MailAddr, WorkflowOutcome<Key>>>;
 type WorkflowProtocol = Workflow<MailAddr, Key, WorkflowResult>;
 type RouterProtocol = Router<MailAddr, Recipient<Destination>, ObservedSelection>;
+type WorkQueueWorker = ReplyRoute<ExactDestination>;
+type WorkQueueReply = Recipient<MessageProtocol<ExactAddr, WorkQueueOutcome<u8>>>;
+type WorkQueueProtocol = WorkQueue<ExactAddr, u8, WorkQueueWorker, WorkQueueReply>;
 
 fn accepts_protocol<P: Protocol<Addr = MailAddr>>() {}
 
 fn accepts_message<P: Protocol<Addr = MailAddr, Msg = M>, M>() {}
+
+fn accepts_message_at<A: Address, P: Protocol<Addr = A, Msg = M>, M>() {}
 
 #[test]
 fn protocol_identity_does_not_require_transition_or_construction_bounds() {
@@ -110,6 +137,11 @@ fn protocol_identity_does_not_require_transition_or_construction_bounds() {
     accepts_message::<LeaseProtocol, LeaseMessage<Key, LeaseResult>>();
     accepts_message::<WorkflowProtocol, WorkflowMessage<Key, WorkflowResult>>();
     accepts_message::<RouterProtocol, RouterMessage<Recipient<Destination>, ObservedSelection>>();
+    accepts_message_at::<
+        ExactAddr,
+        WorkQueueProtocol,
+        WorkQueueMessage<u8, WorkQueueWorker, WorkQueueReply>,
+    >();
 }
 
 #[test]

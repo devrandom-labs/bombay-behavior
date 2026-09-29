@@ -106,11 +106,14 @@ struct Waiting<T, Route> {
 /// idempotent. Initialization is empty, no actors are created, and the host
 /// never terminates by policy. FIFO selection and bounded admission are Bombay
 /// policy. Worker execution, mailbox admission, and physical backpressure are
-/// runtime responsibilities. No transition has a semantic panic condition.
+/// runtime responsibilities. Naming its protocol requires only typed routes;
+/// running the queue requires cloneable, comparable worker routes for state
+/// inspection and duplicate availability checks. No transition has a semantic
+/// panic condition.
 pub struct WorkQueue<
     A: Address,
     T,
-    WorkerRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = T>> + Clone + PartialEq,
+    WorkerRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = T>>,
     ReplyRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = WorkQueueOutcome<T>>>,
 > {
     capacity: usize,
@@ -211,7 +214,7 @@ where
 impl<A, T, WorkerRoute, ReplyRoute> BehaviorBase for WorkQueue<A, T, WorkerRoute, ReplyRoute>
 where
     A: Address,
-    WorkerRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = T>> + Clone + PartialEq,
+    WorkerRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = T>>,
     ReplyRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = WorkQueueOutcome<T>>>,
 {
     type Base = Self;
@@ -222,7 +225,7 @@ where
 impl<A, T, WorkerRoute, ReplyRoute> behavior::Protocol for WorkQueue<A, T, WorkerRoute, ReplyRoute>
 where
     A: Address,
-    WorkerRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = T>> + Clone + PartialEq,
+    WorkerRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = T>>,
     ReplyRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = WorkQueueOutcome<T>>>,
 {
     type Addr = A;
