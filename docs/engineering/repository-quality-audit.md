@@ -2046,6 +2046,53 @@ actor-wide mutation verdict.
 
 ### A20 ledger entries: ordered routing and workflow
 
+The next A20 test-only experiment targets the circuit breaker's deliberate
+single-flight and reset policy. A model built from the documented public
+contract owns a free slot with consecutive failures, one accepted attempt,
+a cooling generation, or a single trial. It predicts every reply recipient
+and outcome, timer request, next phase, empty creation lane, and continuation
+after each generated command. Successful admission must retain the same
+attempt until its matching completion; unrelated completions return the exact
+command; stale timer evidence changes nothing. The existing focused breaker
+tests and typed `TimerElapsed` input are lower-order witnesses. No production
+type, state, transition, or interpreter port is proposed. The pre-edit
+aggregate control sum is Closed/Idle, Closed/Awaiting, Open,
+Probing/Available, Probing/Awaiting, and Exhausted; the test adds no alternative
+to it. The model's phase is an independent expected-value oracle, not another
+production transition authority. The source has one aggregate module and its
+existing branches remain unchanged. A mutation of the reset-generation guard
+must fail this oracle before the test is retained. Cross-checks are the actor
+transition algebra and normalized routing catalogue law. Disposition:
+`pass` for the test design, pending the counterfactual and measurements.
+
+The retained `circuit_breaker_model` compares generated command sequences
+with an independently named single-flight/cooling/trial oracle, plus a
+deterministic open/reopen trace. Each successful step compares ordered reply
+recipients and complete outcomes, exact reset requests, phase and owned
+attempt, empty creation lane, and continuing verdict; each invalid completion
+checks its exact returned command. The generated instructions include current
+and foreign completions, matching/stale timer generations, and a foreign
+timer ID. Attempt-number and generation exhaustion remain in the focused
+unit tests, since generated traces cannot approach `u64::MAX`. This is a pure
+transition proof; it does not establish timer scheduling or delivery by a
+real runtime. Both tests passed in debug and optimized Nix builds.
+
+The isolated one-line counterfactual inverted the timer-generation equality
+guard. Both tests failed; the generated oracle shrank to `Admit, Fail, Admit,
+Fail, ElapsedCurrent`, where the actual phase remained open instead of
+offering one trial. The temporary mutation and worktree were removed. This
+proves the model detects incorrect matching-reset admission, not every
+possible circuit-breaker defect. The test-only batch changes production
+`+0/-0/net 0`, tests `+419/-0/net +419`, public API `+0/-0` types,
+production lines `404 → 404`, production modules `1 → 1`, and production
+transition branches unchanged. The control sum remains Closed/Idle,
+Closed/Awaiting, Open, Probing/Available, Probing/Awaiting, Exhausted; its
+owned values and future decisions remain those stated above. The residue
+scan found no production arrival history, repeated cause, false cardinality,
+nested authority, semantic boolean, or structural caller syntax. The
+transition algebra and routing catalogue record were cross-checked.
+Disposition: `pass` for this test-only evidence batch; A20 remains open.
+
 | Law | Focused transition and independent trace | Remaining proof boundary |
 |---|---|---|
 | Sequencer gap release | `routing::sequencer` tests missing, stale, duplicate, and maximum positions. `catalogue_models::sequencer_matches_an_independent_gap_map_after_every_offer` compares deliveries, outcomes, state, and empty creation lane after each generated offer. | Generated positions stay below exhaustion. The maximum-position unit test covers that separate boundary; no sequencer mutation slice is recorded. |
