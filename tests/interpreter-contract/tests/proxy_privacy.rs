@@ -4,4 +4,5 @@ fn proxy_evidence_cannot_be_assembled_or_settled_twice() {
     cases.compile_fail("tests/ui/proxy_parts.rs");
     cases.compile_fail("tests/ui/proxy_receipt.rs");
     cases.compile_fail("tests/ui/proxy_double_settlement.rs");
+    cases.compile_fail("tests/ui/proxy_identity.rs");
 }

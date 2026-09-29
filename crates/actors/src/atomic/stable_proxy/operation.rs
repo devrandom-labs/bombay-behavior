@@ -13,16 +13,8 @@ use crate::WorkerSubmission;
 use super::{ActivationPlan, ProxyControl, StableProxy};
 
 /// Affine correlation returned after one stable-proxy input is accepted.
-///
-/// ```compile_fail,E0382
-/// fn duplicate(id: behavior_actors::atomic::ProxyOperationId) {
-///     let accepted = id;
-///     let duplicate = id;
-/// }
-/// ```
-#[doc(hidden)]
 #[must_use = "a proxy operation ID must return through settlement or retire outward"]
-pub struct ProxyOperationId {
+pub(crate) struct ProxyOperationId {
     token: Arc<()>,
 }
 

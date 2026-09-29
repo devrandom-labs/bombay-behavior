@@ -1,0 +1,11 @@
+error[E0603]: struct `ProxyOperationId` is private
+ --> tests/ui/proxy_identity.rs:2:44
+  |
+2 |     let _: Option<behavior_actors::atomic::ProxyOperationId> = None;
+  |                                            ^^^^^^^^^^^^^^^^ private struct
+  |
+note: the struct `ProxyOperationId` is defined here
+ --> $BEHAVIOR_ACTORS/src/atomic/mod.rs
+  |
+  | pub(crate) use stable_proxy::ProxyOperationId;
+  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

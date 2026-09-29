@@ -96,6 +96,7 @@ pub use pool::{
 pub use restart::{RestartLimit, RestartRelease, RestartReleaseError, RestartReleaseFailure};
 pub(crate) use roster::RoleName;
 pub use roster::{DuplicateRole, OrderedRoles};
+pub(crate) use stable_proxy::ProxyOperationId;
 pub use stable_proxy::{
     InitialWorkerOutcome, ProxyControlAdmission, ProxyDiagnostic, ProxyOutcome, ProxyPhase,
     ReplacementOutcome, StableProxy,
@@ -103,7 +104,7 @@ pub use stable_proxy::{
 #[doc(hidden)]
 pub use stable_proxy::{
     ProxyControl, ProxyDrain, ProxyEffects, ProxyInputReceipt, ProxyInputResult, ProxyOperation,
-    ProxyOperationId, WorkerStartResult,
+    WorkerStartResult,
 };
 #[doc(hidden)]
 pub use worker::{

@@ -3,7 +3,7 @@
 This inventory supports [A13](repository-quality-audit.md). `#[doc(hidden)]`
 changes Rustdoc display, not Rust visibility. The counts below are annotation
 sites in source, so a grouped re-export and its original declaration each
-count once. The 2026-09-29 branch has 12 sites in `crates/behavior/src` and 84
+count once. The 2026-09-29 branch has 12 sites in `crates/behavior/src` and 81
 in `crates/actors/src`; the earlier audit counted 25 and 89 before the
 documentation visibility review.
 
@@ -45,7 +45,7 @@ different child positions distinct.
 | `atomic/fixed_supervisor/lifecycle.rs` | `FixedLifecycleRoute` | Generated code obligation | This sealed route proof is implemented for the finite fixed-supervision lifecycle forms. |
 | `atomic/pool/assignment.rs` and `atomic/pool/customer.rs` | `AssignmentReceipt`, `AssignWorker`, `AssignWorker::target`, `CustomerDelivery` | Runtime port | The interpreter uses `AssignWorker::settle` to transfer the exact delivery while the request retains its receipt. The former public `receipt` and `into_parts` assembly methods are now atomic-module-only. |
 | `atomic/pool/mod.rs` | `CompletesAssignments` | Generated code obligation | The sealed completion capability belongs to generated pool workers and declared completion products. |
-| `atomic/stable_proxy/{effects,operation,protocol}.rs` and `atomic/mod.rs` | `ProxyEffects`, `ProxyOperationId`, `ProxyOperation`, `ProxyInputResult`, `ProxyOperation::{creation,into_parts}`, `ProxyInputReceipt`, `ProxyInputReceipt::new`, `ProxyDrain`, `ProxyEvent`, plus re-export-only `ProxyControl` and `WorkerStartResult` | Runtime port | The host and typed proxy effects must keep operation identity, rejection custody, and every ordered lane. |
+| `atomic/stable_proxy/{effects,operation,protocol}.rs` and `atomic/mod.rs` | `ProxyEffects`, `ProxyOperation`, `ProxyInputResult`, `ProxyOperation::{creation,into_parts}`, `ProxyInputReceipt`, `ProxyInputReceipt::new`, `ProxyDrain`, `ProxyEvent`, plus re-export-only `ProxyControl` and `WorkerStartResult` | Runtime port | The host and typed proxy effects must keep rejection custody and every ordered lane; the affine operation identity is now crate-private. |
 | `atomic/worker/activation.rs` | `ActivationStartRejection`, `BeginActivation`, `BeginActivation::{new,target,worker,initialization,started,start_rejected,activate}`, `WorkerActivation`, `WorkerActivation::{worker,into_ready,into_rejection}` | Runtime port | The host settles activation only after the exact worker and initialization attempt are known. |
 | `atomic/worker/initialization.rs` | `InitializationAttempt`, `ActivationPermit`, `ActivationPermit::{worker,initialization,target}`, `InitializeWorker`, `InitializeWorker::{target,worker,initialization,resolve}`, `WorkerInitializationOutcome`, `WorkerInitializationReport`, `WorkerInitializationFailure` | Runtime port | Initialization settlement carries exact worker custody and can authorize or reject later activation. |
 | `atomic/worker/preparation.rs` | `PrepareWorkers`, `PrepareWorkers::{source_and_role,accept,reject}`, `PendingWorkerPreparation`, `PendingWorkerPreparation::{source_and_role,accept,reject}`, `WorkerPreparation` | Runtime port | A lawful application `WorkerSource` implementation supplies preparation and receives its complete rejection. The pool owns sequencing. |
@@ -66,6 +66,14 @@ fixtures reject receipt extraction and splitting the request with `E0624`,
 while a second settlement fails with `E0382`. The corresponding real FIFO and
 keyed caller suites, benchmark, and fuzz campaigns use actual exact-delivery
 admission. This closes those two spellings only; proxy assembly remains open.
+
+The P2 proxy owner settlement also made the previously doc-hidden
+`ProxyOperationId` export unnecessary. External interpreters now receive the
+complete control through `ProxyControlAdmission` and return the exact actor or
+control; only the owner retains the ID. A dedicated external fixture rejects
+the ID name with `E0603`, while the receipt-constructor fixture independently
+rejects `new` with `E0599`. The ID remains available to private supervisor
+state and receipt settlement through a crate-private re-export.
 
 ## Public trait implementors
 

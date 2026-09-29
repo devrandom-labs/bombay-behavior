@@ -33,10 +33,9 @@ pub use super::worker::{
     WorkerActivation,
 };
 pub use effects::ProxyEffects;
+pub(crate) use operation::ProxyOperationId;
 pub(crate) use operation::ProxyOperationWitness;
-pub use operation::{
-    ProxyControlAdmission, ProxyInputReceipt, ProxyInputResult, ProxyOperation, ProxyOperationId,
-};
+pub use operation::{ProxyControlAdmission, ProxyInputReceipt, ProxyInputResult, ProxyOperation};
 pub use protocol::{
     InitialWorkerOutcome, ProxyControl, ProxyDiagnostic, ProxyDrain, ProxyOutcome, ProxyPhase,
     ReplacementOutcome,
