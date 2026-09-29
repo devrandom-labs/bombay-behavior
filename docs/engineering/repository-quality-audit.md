@@ -836,6 +836,65 @@ Disposition: `pass` for the evidence record only.
 
 ### A13 pre-edit protocol-bound law
 
+The same derived protocol-identity law applies to `Topic` and `PubSub`:
+their message sums contain owned publication, topic, and route values, and
+name an address, without requiring those values to be cloned, compared, or
+delivered. The intended caller syntax projects `Protocol::Msg` from each
+actor with non-`Clone`, non-`Eq` publication and route types. The focused
+`actors/tests/protocol_bounds.rs` compile witness must fail on the prior
+impls. `Clone`, `Eq`, `PartialEq`, and `DeliveryRoute` remain necessary on the
+actual transition impls. The lower-order `TopicMessage`, `PubSubMessage`,
+`Protocol`, and `Behavior` contracts already express this distinction; no
+new protocol, effect lane, wrapper, or interpreter capability is proposed.
+
+Pre-edit aggregate-drift checkpoint: both actors have one membership state
+(`Vec<Route>` for `Topic`, `Vec<TopicMembership<K, Route>>` for `PubSub`) and
+the same control states, subordinate alternatives, transition branches,
+production lines, modules, and public spellings before and after this proposed
+bound change. The future-needed values are each ordered subscriber route,
+and for `PubSub` each retained topic identity. No arrival-history state,
+repeated cause, false cardinality, nested authority, semantic boolean, or
+positional consumer syntax is proposed. The discovery contracts and the
+`Protocol`/`Behavior` distinction in `actor-transition-algebra.md` are
+cross-checked. Disposition: `pass` for the proposed narrower protocol law,
+pending its pre-edit regression and implementation.
+
+The pre-edit caller produced ten E0277 diagnostics for transition-only
+`DeliveryRoute`, `Clone`, `Eq`, and `PartialEq` bounds. After narrowing only the
+two `Protocol` impls, the caller passes; the `Behavior` impls retain their
+transition bounds. Aggregate control states remain one for each actor;
+subordinate state and result alternatives and transition branches remain
+unchanged. Production lines in these two files changed from 323 and 184 to
+317 and 179; modules and public spellings remain unchanged. The ordered
+subscriber routes and retained topic identities remain the future-needed
+state, with no residue from the pre-edit scan. The discovery and actor
+transition law cross-check remains valid. Disposition: `pass` for this focused
+bound repair; A13 remains open for the rest of the public surface.
+
+The same identity equation also applies to `Machine<A,S,M,P,E>`: its protocol
+is `(A, M)`, independent of phase copying and comparison. A caller must be
+able to project `Protocol::Msg = M` while `P` lacks `Copy` and `PartialEq`;
+execution still requires those bounds. The focused caller is added to
+`actors/tests/protocol_bounds.rs` before production edit. Existing `Machine`,
+`Protocol`, and `Behavior` are the only required layers, with no interpreter
+effect or wrapper change. Pre-edit drift checkpoint: the machine's state,
+held queue, phase, transition function, one control state, subordinate
+`Advance` alternatives, branch count, modules, and public spellings are
+unchanged by this bound proposal. Its future-needed values are the current
+phase, owned state and held messages. No arrival history, repeated cause,
+false cardinality, nested authority, semantic boolean, or positional syntax
+is proposed. The machine and actor transition law documents were
+cross-checked. Disposition: `pass` for the proposed bound repair, pending
+the failing caller and implementation.
+
+The pre-edit machine caller failed with E0277 for `Phase: Copy + PartialEq`.
+After narrowing `Machine`'s `Protocol` impl, it passes while its constructor,
+phase access, and `Behavior` impl retain the execution bounds. Production
+lines in `machine.rs` changed from 198 to 194; all state alternatives,
+transition branches, modules, and public spellings remain unchanged. The
+future-needed values and residue scan are unchanged from the pre-edit
+checkpoint. Disposition: `pass` for this protocol-only repair.
+
 Classification: derived Rust protocol identity. A cache or resolver recipient
 names an address and a command type without running a transition or copying a
 binding definition. Thus `Protocol` for `Cache<K,V>` and `Resolver<K>` does

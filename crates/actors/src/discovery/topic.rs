@@ -77,12 +77,7 @@ where
     }
 }
 
-impl<A, P, Route> behavior::Protocol for Topic<A, P, Route>
-where
-    A: Address,
-    P: Clone,
-    Route: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = P>> + Clone + PartialEq,
-{
+impl<A: Address, P, Route> behavior::Protocol for Topic<A, P, Route> {
     type Addr = A;
     type Msg = TopicMessage<P, Route>;
 }

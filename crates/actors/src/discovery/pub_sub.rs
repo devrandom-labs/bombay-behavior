@@ -186,13 +186,7 @@ where
     }
 }
 
-impl<A, K, P, Route> behavior::Protocol for PubSub<A, K, P, Route>
-where
-    A: Address,
-    K: Clone + Eq,
-    P: Clone,
-    Route: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = P>> + Clone + PartialEq,
-{
+impl<A: Address, K, P, Route> behavior::Protocol for PubSub<A, K, P, Route> {
     type Addr = A;
     type Msg = PubSubMessage<K, P, Route>;
 }

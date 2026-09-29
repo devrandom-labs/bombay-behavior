@@ -147,11 +147,7 @@ impl<A: Address, S, M, P: Copy + PartialEq, E> Machine<A, S, M, P, E> {
     }
 }
 
-impl<A, S, M, P, E> behavior::Protocol for Machine<A, S, M, P, E>
-where
-    A: Address,
-    P: Copy + PartialEq,
-{
+impl<A: Address, S, M, P, E> behavior::Protocol for Machine<A, S, M, P, E> {
     type Addr = A;
     type Msg = M;
 }
