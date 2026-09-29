@@ -2004,19 +2004,17 @@ was added. This scope measurement is diagnostic; it does not certify the seven
 open design and integration items.
 
 The later branch currently has fourteen complete items and six open items.
-After `nix flake update`, `nix flake check` passed
-all ten applicable `aarch64-darwin` checks on signed commit `e77cbfd`,
-including build, Nextest, Clippy, docs, doctests, both formatting checks,
-audit, deny, and package verification. The later `4cd3b7f` commit changed
-only documentation visibility and audit text; its Nix documentation check
-passed separately. These gates do not close the six remaining design,
-mutation, and downstream integration criteria.
+After `nix flake update`, `nix flake check` passed all ten applicable
+`aarch64-darwin` checks on signed commit `d332af9`, including build, Nextest,
+Clippy, docs, doctests, both formatting checks, audit, deny, and package
+verification. These gates do not close the six remaining design, mutation,
+and downstream integration criteria.
 
 Against merge base `435560ce7bea8ad3330ee2d42e5034f837a80602`, the
-current branch's source changes are net −78 lines in `behavior/src`, −1,062
+current branch's source changes are net −78 lines in `behavior/src`, −1,089
 in `actors/src`, −4 in `behavior-macros/src`, and −8 in
-`behavior-testkit/src`: **1,152 fewer production and testkit source lines**.
-The `crates/` tree as a whole is net +272 lines because focused tests and the
+`behavior-testkit/src`: **1,179 fewer production and testkit source lines**.
+The `crates/` tree as a whole is net +332 lines because focused tests and the
 stricter mutation gate grew, alongside benchmark and supporting changes.
 These `git diff --numstat` counts are diagnostics; the six
 open checklist items still decide whether the remaining interfaces and
