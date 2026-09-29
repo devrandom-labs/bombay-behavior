@@ -105,6 +105,14 @@ transition use the heap. The external caller failed on the old aggregate
 bound and passes after this move; the stable-priority selection trace remains
 green.
 
+A source scan after these batches found `Router` as the only catalogue
+`Protocol` or `BehaviorBase` impl whose header still carries a copying,
+comparison, or ordering bound. Its route equality is used for membership and
+its current `RoutingStrategy<Route>` contract requires `Clone + PartialEq`.
+That trait and the aggregate declaration must be reviewed together before
+any further narrowing; deleting one repeated bound alone would merely move
+the requirement to another public surface.
+
 ## Public trait implementors
 
 The source declares 77 top-level public traits: 55 in `behavior` and 22 in

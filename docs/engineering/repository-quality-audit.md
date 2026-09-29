@@ -319,6 +319,11 @@ is recorded against a revision.
   crate-private; focused external fixtures distinguish forbidden ID naming,
   receipt construction, and double settlement. Review of remaining hidden runtime
   ports and the rest of the public surface is still required.
+  A post-repair source scan of catalogue `Protocol` and `BehaviorBase` impl
+  headers found no remaining copying/comparison/ordering bounds except
+  `Router`'s `Route: Clone + PartialEq`, which is also required by its current
+  `RoutingStrategy<Route>` contract. Changing that contract would require a
+  distinct membership and policy law, not a mechanical bound deletion.
 
   The creation settlement review found a narrower documentation defect:
   external caller suites name `CreationSettlement`, `CreationSettlements`, and
@@ -997,6 +1002,10 @@ cardinality, nested transition authority, semantic boolean, or positional
 caller syntax. The `BehaviorBase` contract and catalogue laws remain the
 cross-check. Disposition: `pass` for this bound-only batch; A13 remains open
 for other public ports and protocol bounds.
+The complete `nix flake check -L` passed all eight declared local checks at
+signed commit `790d194`, including the optimized workspace Nextest and
+release-test lanes. Later routing bound and test-only batches passed their
+focused Nix tests; they still need the final flake run together.
 
 ### A13 pre-edit routing identity law
 
@@ -1068,6 +1077,17 @@ unchanged. The residue scan found no arrival history, repeated cause, false
 cardinality, nested authority, semantic boolean, or positional consumer
 syntax. The actor transition and routing priority laws were cross-checked.
 Disposition: `pass` for this bound-only stage; A13 remains open.
+
+No-op and compiler-friction checkpoint for the three A13 bound batches:
+they remove 21 net production lines of repeated read-only/identity bounds,
+with zero new public types, traits, policies, adapters, or wrapper syntax.
+An unrelated `BehaviorLayer` does not require a caller edit, and no public
+name describes structural position. The external test file grew 47 net lines
+of direct compile witnesses; eight aliases (11 physical lines) name existing
+concrete routes and products, so test protocol plumbing did not exceed the
+21-line production deletion. No test supplies a no-op policy or discarded
+effect to satisfy the new surface. The remaining `Router` trait-level bound
+is a separate design question rather than compiler fallout from these edits.
 
 ### A13 pre-edit protocol-bound law
 
