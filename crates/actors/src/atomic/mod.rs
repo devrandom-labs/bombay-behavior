@@ -63,8 +63,8 @@ pub use dynamic_supervisor::{
 #[doc(hidden)]
 pub use dynamic_supervisor::{DynamicSupervisorEvent, DynamicSupervisorRequests};
 pub use fifo_pool::{
-    AdmissionRejection, AssignedReturnReason, FifoCommand, FifoConstructionRejected, FifoEvent,
-    FifoOutcome, FifoOutcomeKind, FifoPool, FifoRequests, QueuedReturnReason, fifo,
+    AdmissionRejection, AssignedReturnReason, FifoCommand, FifoConstructionRejected, FifoError,
+    FifoEvent, FifoOutcome, FifoOutcomeKind, FifoPool, FifoRequests, QueuedReturnReason, fifo,
 };
 pub use fixed_supervisor::{
     CapabilityResult, FailureReaction, FixedBuilder, FixedCommand, FixedConstructionRejected,

@@ -1,4 +1,5 @@
 use behavior::{MailAddr, MessageProtocol, Protocol, Recipient};
+use behavior_actors::atomic::FifoError;
 use behavior_actors::{Cache, CacheResult, Resolution, Resolver};
 
 struct Key;
@@ -22,4 +23,23 @@ fn accepts_protocol<P: Protocol<Addr = MailAddr>>() {}
 fn protocol_identity_does_not_require_transition_or_construction_bounds() {
     accepts_protocol::<CacheProtocol>();
     accepts_protocol::<ResolverProtocol>();
+}
+
+#[test]
+fn fifo_transition_failures_are_nameable_and_exhaustive_to_callers() {
+    fn classify(error: FifoError) -> &'static str {
+        match error {
+            FifoError::InitializationUnavailable => "initialization already advanced",
+            FifoError::WorkerCreationsExhausted => "creation identifiers exhausted",
+        }
+    }
+
+    assert_eq!(
+        classify(FifoError::InitializationUnavailable),
+        "initialization already advanced"
+    );
+    assert_eq!(
+        classify(FifoError::WorkerCreationsExhausted),
+        "creation identifiers exhausted"
+    );
 }

@@ -732,6 +732,43 @@ both items. The [public-surface inventory](public-surface-inventory.md)
 classifies the remaining annotation sites. Trait implementor ownership and a
 repeatable compile-cost comparison remain open before A13 can close.
 
+### A13 FIFO aggregate error export, before implementation
+
+Classification: deliberate Bombay public error policy, not an actor-model law.
+`FifoError` is the FIFO aggregate's complete transition-failure sum, with
+distinct `InitializationUnavailable` and `WorkerCreationsExhausted`
+alternatives. An application that owns FIFO initialization must be able to
+match those alternatives without naming the private `fifo_pool` module, just
+as it can match the sibling `KeyedError`. The intended caller syntax is
+`behavior_actors::atomic::FifoError` in an exhaustive match. The external
+`actors/tests/protocol_bounds.rs` fixture will first require that path and
+must fail before the re-export; then it will pass after the smallest
+`atomic` visibility edit. The runtime-facing `Behavior::Error` remains the
+same type and no failure or ownership transition changes.
+
+Aggregate-drift checkpoint: FIFO control states remain `Constructed`,
+`Operating`, `Draining`, `Stopped`, and `ForcedRetirement`. Subordinate states,
+result alternatives, transition branches, and module count are unchanged by
+the proposed re-export. The retained current values are the prepared workers,
+operating members/backlog/cursor, draining workers/deadline, and terminal
+forced-retirement members/cause in their existing variants. A12 still owns the
+question of whether every terminal field is needed. Public
+spellings increase by one, with zero public types added or removed. The edit
+adds no arrival history, repeated cause, false cardinality, nested transition
+authority, semantic boolean, or structural user syntax. It is cross-checked
+with `actor-transition-algebra.md`, the FIFO law, and the existing aggregate
+error vocabulary. Expected files: `atomic/mod.rs`, the external compile
+fixture, and this audit; expected production line delta is zero or one.
+The external caller failed before the edit with E0432 for the inaccessible
+`behavior_actors::atomic::FifoError` path and passed after the one-spelling
+re-export. The production diff is +1/-1 line; no type, state, alternative,
+transition branch, or module changed. The existing two alternatives and their
+error displays are unchanged. The Nix-pinned Rustdoc build passed and the
+public `atomic` index links `FifoError` alongside `KeyedError` and
+`FixedBuilder`. The residue scan and law cross-check remain as
+recorded above. Disposition: `pass` for this export repair; A13's wider trait
+ownership and compile-cost review remains open.
+
 ### A15 coding-rule progress
 
 Timer-domain tests now call the mutating `accept` operation before assertions,
@@ -802,16 +839,16 @@ actor tests. The separate activation-guard campaign selected all five
 mutations at `stable_proxy/mod.rs:314` and ran 702 actor/testkit tests per
 mutant; it skipped a second baseline, while the full 812-test workspace run
 had passed at this revision. Four were caught; changing `&&` to `||` survived.
-The survivor is a falsifier for the claim that
-both comparisons are independently necessary, not evidence that foreign
-activation is untested. The focused caller regression distinguished exact
+The survivor falsified the claim that both comparisons are independently
+necessary; existing tests already reject foreign activation. The focused
+caller regression distinguished exact
 attempt tokens despite equal payload and endpoint values. It passed before
 and after the edit; the complete 51-test proxy recovery suite and optimized
 focused witness also passed after it. The private guard now retains only the
 exact activation comparison and deletes the redundant worker input. No public
-type, effect lane,
-interpreter operation, wrapper, or actor-model law changes. The existing
-activation and shutdown models remain the lower-order transition witnesses.
+type, effect lane, interpreter operation, wrapper, or actor-model law changed.
+The existing activation and shutdown models remain the lower-order transition
+witnesses.
 
 Aggregate-drift checkpoint before the edit: stable proxy's control states are
 `Dormant`, `Starting`, `Ready`, `EmptyInitial`, `EmptyAfter`, `Replacing`,
@@ -840,6 +877,37 @@ Clippy, docs, doctests, formatting, dependency policy, and packaging.
 Disposition: `pass` for the retained representation and focused mutation
 slice.
 
+### A07 actor mutation evidence: FIFO completion correlation
+
+Classification: Bombay's creator-local correlation and assignment-custody
+policy. A worker completion has exact assignment authority, while its outer
+`ChildReport` separately names the child creation. The pool accepts a
+completion only when both identify the current busy worker. A foreign child
+report must not release the assignment or send a completed customer outcome.
+At signed revision `0a40bdc`, a Nix-pinned campaign selected the three
+guard mutations at `fifo_pool/mod.rs:276`: unconditional true, unconditional
+false, and inverted child-ID equality. The baseline ran 591 actor tests; the
+full Nix gate had passed on the same production code at `7163ec3`. Every
+mutated command selected the 813-test workspace suite. All three mutants
+built and were caught. `fifo_pool::delivery_and_completion_orders_complete_once`
+caught unconditional acceptance; the FIFO correlation suite caught rejection
+and inversion. No production edit was needed. This is one FIFO correlation-law
+slice, not a full FIFO mutation campaign or an actor-wide verdict.
+
+### A07 actor mutation evidence: keyed binding expectations
+
+Classification: Bombay's keyed-binding compare-and-set policy. A binding
+command carries the expectation it observed; a stale generation returns the
+complete command and current expectation without changing placement. A
+rebalance to the already bound role returns the existing binding. At signed
+revision `0a40bdc`, a separate Nix-pinned campaign inverted the two guards
+at `keyed_pool/mod.rs:1069` and `:1146`. Its baseline ran 591 actor tests;
+mutated commands selected the 813-test workspace suite. Both mutants built
+and were caught by the keyed construction-and-commands integration test,
+which checks generations, owned rejection, and an independent directory
+placement. No production edit was needed. This is a keyed binding-law slice;
+other keyed and actor-family laws still require mutation review.
+
 ### A20 ledger entry: stable-proxy activation correlation
 
 | Evidence layer | Current witness and limit |
@@ -849,8 +917,24 @@ slice.
 | Invalid construction | `ActivationPermit` is affine and has a compile-fail duplication example; `WorkerActivation` has private fields and constructors that couple worker and activation evidence. The application cannot synthesize the inconsistent pair required by the surviving pre-edit `&&` to `||` mutation. |
 | Counterfactual | Four of five pre-edit guard mutants were caught. The `&&` to `||` survivor exposed a redundant worker comparison, which was removed. The post-edit equality inversion was caught by six actor tests; the function-wide default replacement was not selected. |
 
-A20 still needs the same law-specific ledger and counterfactual review across
-the rest of the catalogue.
+### A20 ledger entry: FIFO completion child correlation
+
+| Evidence layer | Current witness and limit |
+|---|---|
+| Focused transition | `fifo_pool::delivery_and_completion_orders_complete_once` places completion before and after the assignment receipt, then wraps an authorized completion with a foreign child ID. It checks no customer completion, one diagnostic, and later return of the still-assigned job during shutdown. |
+| Independent trace | `fifo_pool::correlation::completed_work_advances_and_wraps_worker_selection` checks completed work and worker selection across roles. The FIFO model and fuzz targets cover broader ordering; this mutation slice does not certify them. |
+| Composition and invalid construction | The completion authority is issued only from an assignment, but a `ChildReport` can carry a different creator-local child ID. The pool must check both. This is an aggregate ingress decision, not a wrapper-order transformation. |
+| Ownership limit | The public `FifoDiagnostic` is intentionally opaque. The test checks diagnostic cardinality and that shutdown returns the still-assigned job, but it cannot inspect the exact foreign completion inside the terminal diagnostic. That custody seam remains for A17/A20. |
+| Counterfactual | All three guard mutants at `fifo_pool/mod.rs:276` built and were caught; viable selection and detection are recorded separately. |
+
+### A20 ledger entry: keyed binding expectations
+
+| Evidence layer | Current witness and limit |
+|---|---|
+| Focused transition | `keyed_pool::compile::keyed_construction_and_commands_need_only_domain_types` exercises absent, exact, stale, same-role, cross-role, and removed bindings with distinct request IDs and generation values. |
+| Independent trace | The test compares placement to a separate account directory; keyed pool assignment and lifecycle tests and keyed fuzz targets cover other transitions, not every binding counterfactual. |
+| Composition and invalid construction | `BindingExpectation` is an exhaustive absent-or-exact sum; stale rejection returns the complete command and current generation. This is an aggregate binding decision, not a wrapper-order transformation. |
+| Counterfactual | Both selected guard inversions in `keyed_pool/mod.rs` built and were caught by the binding integration test. The remaining keyed aggregate laws still need mutation slices. |
 
 ### A20 ledger entry: bounded-buffer capacity and ownership
 

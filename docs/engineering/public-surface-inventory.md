@@ -36,7 +36,7 @@ count and is not part of the public surface.
 | `atomic/worker/mod.rs` | `HostedInitialization`, `WorkerRecovery`, `WorkerRecovery::into_retirement`, `WorkerAttempt`, `WorkerAttempt::creation` | Runtime port | The host retains the attempt and complete initialization effects through retirement. |
 | `lifecycle/shutdown_coordinator.rs` | `HeterogeneousShutdownItem`, `ChoiceSettlements`, `HeterogeneousShutdownChoiceSettlement` | Generated code obligation | The closed heterogeneous choice product supplies the typed settlement shape. |
 | `protocol/mod.rs` | `ObserveCreation` | Runtime port | Observation must refer to the exact staged child creation and return its request on rejection. |
-| `atomic/mod.rs`, `atomic/pool/mod.rs`, and `lifecycle/shutdown_coordinator.rs` | Grouped re-exports of the declarations above | Same as original declaration | The re-export annotations add no second capability; each name remains publicly reachable through its parent module. `FixedBuilder` and `KeyedError` were moved to visible re-exports because applications name the inferred builder and aggregate error. |
+| `atomic/mod.rs`, `atomic/pool/mod.rs`, and `lifecycle/shutdown_coordinator.rs` | Grouped re-exports of the declarations above | Same as original declaration | The re-export annotations add no second capability; each name remains publicly reachable through its parent module. `FixedBuilder`, `FifoError`, and `KeyedError` are visible re-exports because applications name the inferred builder and aggregate errors. |
 
 This table classifies ownership but does not by itself justify retaining each
 public spelling. In particular, an associated type that mentions one of these
