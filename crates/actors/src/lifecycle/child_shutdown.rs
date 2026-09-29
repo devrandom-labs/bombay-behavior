@@ -384,6 +384,52 @@ mod tests {
         assert_eq!(expected, ChildCreationExpectation::PlanReported);
         assert_eq!(returned, observed);
     }
+
+    #[test]
+    fn creation_resolution_requires_matching_id_and_kind_independently() {
+        let children = ApplicationChildren::issue();
+        let wrong_kind =
+            CreationResolved::replacement(children.store, children.gateway, MailAddr(191));
+        let wrong_id = CreationResolved::birth(children.alternate_store, MailAddr(192));
+
+        for observed in [wrong_kind, wrong_id] {
+            let mut active = shutdown_after_children(Application::complete(children))
+                .shutdown_phase(StoreRole)
+                .shutdown_phase(GatewayRole)
+                .finish()
+                .initialize()
+                .unwrap()
+                .behavior;
+            let Err(ShutdownCoordinatorError::Behavior(
+                ChildShutdownPlanError::UnexpectedCreationResult {
+                    position,
+                    expected,
+                    observed: returned,
+                },
+            )) = active.on_path::<_, Inside<Inside<Here>>>(observed)
+            else {
+                panic!("a mismatched creation component must return the report");
+            };
+            assert_eq!(position, 1);
+            assert_eq!(
+                expected,
+                ChildCreationExpectation::Awaiting {
+                    creation: children.store,
+                    kind: CreationKind::Birth,
+                }
+            );
+            assert_eq!(returned, observed);
+
+            let Ok(accepted) = active.on_path::<_, Inside<Inside<Here>>>(CreationResolved::birth(
+                children.store,
+                MailAddr(193),
+            )) else {
+                panic!("the exact birth remains admissible after rejection");
+            };
+            assert!(accepted.creates.is_empty());
+            assert!(matches!(accepted.become_, Step::Continue));
+        }
+    }
 }
 
 /// Start declaring shutdown phases for every direct child role of `application`.

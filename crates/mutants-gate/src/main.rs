@@ -3,7 +3,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::env;
 use std::fs;
-use std::path::Path;
+use std::path::{Component, Path};
 use std::process::ExitCode;
 
 use serde::Deserialize;
@@ -17,6 +17,7 @@ struct Report {
 struct Outcome {
     summary: Summary,
     scenario: Scenario,
+    log_path: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
@@ -150,10 +151,50 @@ fn campaign_tallies(
     tallies(report)
 }
 
-fn emit_baseline(report: &Report, candidates: &[Mutant]) -> Result<String, String> {
+fn certify_caught_logs(report: &Report, output: &Path) -> Result<(), String> {
+    for outcome in &report.outcomes {
+        if outcome.summary != Summary::CaughtMutant {
+            continue;
+        }
+        let Scenario::Mutant(mutant) = &outcome.scenario else {
+            return Err("a baseline cannot be a caught mutant".into());
+        };
+        let log_path = outcome
+            .log_path
+            .as_deref()
+            .ok_or_else(|| format!("{}: missing caught-mutant log", mutant.name))?;
+        let relative = Path::new(log_path);
+        if !relative
+            .components()
+            .all(|component| matches!(component, Component::Normal(_)))
+        {
+            return Err(format!("{}: invalid caught-mutant log path", mutant.name));
+        }
+        let path = output.join(relative);
+        let log =
+            fs::read_to_string(&path).map_err(|error| format!("{}: {error}", path.display()))?;
+        if log
+            .lines()
+            .any(|line| line.trim_start().starts_with("TIMEOUT ["))
+        {
+            return Err(format!("{}: a selected test timed out", mutant.name));
+        }
+        if !log
+            .lines()
+            .any(|line| line.trim_start().starts_with("FAIL ["))
+        {
+            return Err(format!("{}: no failing test in log", mutant.name));
+        }
+    }
+    Ok(())
+}
+
+fn emit_baseline(report: &Report, candidates: &[Mutant], output: &Path) -> Result<String, String> {
+    let tallies = campaign_tallies(report, candidates)?;
+    certify_caught_logs(report, output)?;
     let mut floors = BTreeMap::new();
     let mut known_zero_viable = Vec::new();
-    for (key, tally) in campaign_tallies(report, candidates)? {
+    for (key, tally) in tallies {
         if tally.viable == 0 {
             known_zero_viable.push(key);
         } else {
@@ -215,8 +256,9 @@ fn check(output: &Path, baseline_path: &Path) -> Result<(), String> {
     }
     let viable: usize = tallies.values().map(|tally| tally.viable).sum();
     let total: usize = tallies.values().map(|tally| tally.total).sum();
-    println!("mutation coverage: {viable} viable / {total} total");
     if failures.is_empty() {
+        certify_caught_logs(&report, output)?;
+        println!("mutation coverage: {viable} viable / {total} total");
         Ok(())
     } else {
         Err(failures.join("\n"))
@@ -230,7 +272,7 @@ fn run() -> Result<(), String> {
             let output = Path::new(output);
             let report = read(&output.join("outcomes.json"))?;
             let candidates: Vec<Mutant> = read(&output.join("mutants.json"))?;
-            println!("{}", emit_baseline(&report, &candidates)?);
+            println!("{}", emit_baseline(&report, &candidates, output)?);
             Ok(())
         }
         [mode, output, baseline] if mode == "check" => {
@@ -290,6 +332,62 @@ mod tests {
                 .unwrap_err()
                 .contains("baseline")
         );
+    }
+
+    #[test]
+    fn nested_test_timeout_cannot_certify_a_caught_mutant() {
+        let directory = scratch("nested-timeout");
+        fs::create_dir_all(directory.join("log")).unwrap();
+        fs::write(
+            directory.join("log/first.log"),
+            "TIMEOUT [ 10.002s] (1/2) bombay-behavior-actors::creation correlation\n",
+        )
+        .unwrap();
+        let baseline = report(
+            &directory,
+            serde_json::json!({"outcomes":[
+                {"summary":"Success","scenario":"Baseline"},
+                {"summary":"CaughtMutant","scenario":{"Mutant":{"name":"first","file":"a.rs","function":{"function_name":"f"}}},"log_path":"log/first.log"},
+                {"summary":"Unviable","scenario":{"Mutant":{"name":"second","file":"a.rs","function":{"function_name":"f"}}}}
+            ]}),
+        );
+        assert!(
+            check(&directory, &baseline)
+                .unwrap_err()
+                .contains("timed out")
+        );
+    }
+
+    #[test]
+    fn caught_mutant_requires_a_failing_test_log_without_any_timeout() {
+        for (case, log, expected) in [
+            ("missing-log", None, "missing caught-mutant log"),
+            (
+                "mixed-timeout",
+                Some("FAIL [ 0.001s] actor law\nTIMEOUT [ 10.002s] macro fixture\n"),
+                "timed out",
+            ),
+            (
+                "no-failure",
+                Some("PASS [ 0.001s] actor law\n"),
+                "no failing test",
+            ),
+        ] {
+            let directory = scratch(case);
+            if let Some(log) = log {
+                fs::create_dir_all(directory.join("log")).unwrap();
+                fs::write(directory.join("log/first.log"), log).unwrap();
+            }
+            let baseline = report(
+                &directory,
+                serde_json::json!({"outcomes":[
+                    {"summary":"Success","scenario":"Baseline"},
+                    {"summary":"CaughtMutant","scenario":{"Mutant":{"name":"first","file":"a.rs","function":{"function_name":"f"}}},"log_path":log.map(|_| "log/first.log")},
+                    {"summary":"Unviable","scenario":{"Mutant":{"name":"second","file":"a.rs","function":{"function_name":"f"}}}}
+                ]}),
+            );
+            assert!(check(&directory, &baseline).unwrap_err().contains(expected));
+        }
     }
 
     #[test]
@@ -457,7 +555,13 @@ mod tests {
     #[test]
     fn clean_complete_run_passes_the_ratchet() {
         let directory = scratch("clean");
-        fs::write(directory.join("outcomes.json"), r#"{"outcomes":[{"summary":"Success","scenario":"Baseline"},{"summary":"CaughtMutant","scenario":{"Mutant":{"name":"first","file":"a.rs","function":{"function_name":"f"}}}},{"summary":"Unviable","scenario":{"Mutant":{"name":"second","file":"a.rs","function":{"function_name":"f"}}}}]}"#).unwrap();
+        fs::create_dir_all(directory.join("log")).unwrap();
+        fs::write(
+            directory.join("log/first.log"),
+            "FAIL [ 0.001s] actor law\n",
+        )
+        .unwrap();
+        fs::write(directory.join("outcomes.json"), r#"{"outcomes":[{"summary":"Success","scenario":"Baseline"},{"summary":"CaughtMutant","scenario":{"Mutant":{"name":"first","file":"a.rs","function":{"function_name":"f"}}},"log_path":"log/first.log"},{"summary":"Unviable","scenario":{"Mutant":{"name":"second","file":"a.rs","function":{"function_name":"f"}}}}]}"#).unwrap();
         fs::write(directory.join("mutants.json"), r#"[{"name":"first","file":"a.rs","function":{"function_name":"f"}},{"name":"second","file":"a.rs","function":{"function_name":"f"}}]"#).unwrap();
         let baseline = directory.join("baseline.json");
         fs::write(
@@ -500,7 +604,7 @@ mod tests {
         )
         .unwrap();
         assert!(
-            emit_baseline(&report, &candidates)
+            emit_baseline(&report, &candidates, &scratch("seeding-baseline"))
                 .unwrap_err()
                 .contains("baseline")
         );

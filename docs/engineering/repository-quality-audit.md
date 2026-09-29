@@ -118,7 +118,7 @@ is recorded against a revision.
   separate from capability-denial evidence. Rustdoc `compile_fail` alone proves
   that compilation fails, not why it fails.
 
-- [x] **A05 — Make the mutation verdict reject malformed and incomplete runs.**
+- [ ] **A05 — Make the mutation verdict reject malformed and incomplete runs.**
   **Confirmed source defects; adversarial probe recorded below.**
   `mutants-gate/src/main.rs::usable` rejects a failed baseline if present but
   does not require a successful baseline. `tallies` counts `Failure` and
@@ -941,6 +941,57 @@ suite. All three built and were caught. The foreign-outcome integration test
 caught unconditional acceptance; valid replacement and coordinated-restart
 tests caught refusal and inversion. No production edit was needed. This is
 one fixed-supervision replacement-law slice, not a full family campaign.
+
+### A07 child creation resolution regression, before test edit
+
+Classification: Bombay's exact staged-creation correlation policy. A
+`ChildShutdownPlan` may mark a declared child established only when both the
+reported creation ID and creation kind equal the values stored in that child's
+`Awaiting` state. A report with exactly one mismatched component returns the
+complete report, leaves the child awaiting, and permits the later exact report.
+The existing test used a replacement report with both components mismatched,
+so replacing the `||` admission rejection with `&&` passed every actor test;
+the workspace mutant was mislabeled caught only when unrelated macro fixture
+tests timed out. A focused test will present wrong-kind/same-ID and
+right-kind/wrong-ID reports independently before the exact birth. No
+production type, bound, wrapper, interpreter port, transition branch, or
+public spelling changes.
+
+Aggregate-drift checkpoint: `Planning` remains `Collecting` or `Reported`;
+each child remains `NotRequested`, `Awaiting { creation, kind }`, or
+`Established { creation }`. The future-needed values are the declared
+position, exact staged ID and kind while awaiting, and committed ID for plan
+construction. Production states, subordinate alternatives, branches, lines,
+modules, and public spellings are unchanged before and after this test-only
+experiment. The residue scan finds no arrival-history state, repeated cause,
+false cardinality, nested authority, semantic boolean, or structural user
+syntax. This is cross-checked with `actor-transition-algebra.md` and
+`atomic-runtime-settlement.md`. Disposition: `pass` for the regression model;
+the focused counterfactual and baseline still need verification.
+
+### A05 nested test-timeout verdict, before implementation
+
+Classification: deliberate Bombay verification policy. A `CaughtMutant`
+summary is not proof that a law assertion failed when the selected test runner
+itself timed out a test and returned failure. The verdict must reject any
+selected mutant whose Nextest log contains a timed-out test, even if another
+test failed, and must require inspectable log evidence for every claimed
+caught mutant. A focused gate fixture will submit a complete, otherwise valid
+campaign with `CaughtMutant` and a Nextest `TIMEOUT` line; the prior gate
+accepts it. The implementation will reuse cargo-mutants' `log_path` and
+existing `Outcome`/candidate identity, and the Nix mutation profile will let
+the outer cargo-mutants timeout classify genuinely stalled commands. No actor
+algebra, aggregate state, transition, interpreter effect, public Rust
+spelling, or wrapper changes.
+
+Aggregate-drift checkpoint: actor control states, subordinate alternatives,
+branches, production lines, modules, and public spellings are unchanged; the
+gate adds only report validation and removes the runner's premature timeout.
+No arrival history, repeated cause, false cardinality, nested authority,
+semantic boolean, or structural user syntax enters actor code. The gate law
+is cross-checked with the A05 report-identity law above and the Nix mutation
+derivation. Disposition: `pass` for the pre-edit model; the failing fixture
+and retained verdict still need verification.
 
 ### A20 ledger entry: stable-proxy activation correlation
 
