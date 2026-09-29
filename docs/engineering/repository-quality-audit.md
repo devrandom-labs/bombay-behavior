@@ -390,9 +390,11 @@ is recorded against a revision.
   external consuming settlement passed. Compile-fail fixtures now reject
   those two old assembly paths with `E0624` and reject double settlement with
   `E0382`; FIFO/keyed callers, benchmark, and fuzz campaigns use the actual
-  exact-delivery result. The public-surface inventory reflects 84 remaining
-  actor `#[doc(hidden)]` sites. Proxy receipt construction and the wider port
-  classification remain open.
+  exact-delivery result. The later proxy settlement stage also narrowed its
+  operation ID, request decomposition, and receipt construction after external
+  privacy and closed-control witnesses. The public-surface inventory reflects
+  81 remaining actor `#[doc(hidden)]` sites. The wider port and bound review
+  remains open.
 
 - [x] **A14 — State the trust scope of initialization capabilities accurately.**
   **Confirmed documentation/API mismatch.** `InitializationTurn` says only the
@@ -477,6 +479,15 @@ is recorded against a revision.
   not prove replacement-establishment failure, every creation collision and
   exhaustion path, independent sends after rejection, or parent-to-root
   residual transfer. A17 stays open.
+
+  Address `0.3.0` is now published. In the isolated Bombay worktree
+  `codex/interpreter-ownership`, Cargo resolves that release while Behavior
+  and Communication remain path-patched research inputs. Bombay's all-target
+  compile passes against this mixed graph. Its current library run passes
+  174 of 179 tests; five older startup assertions still expect publication
+  after initialization stop or task unwind after a caught pure fold panic.
+  This is neither an immutable integration revision nor an A17 verdict. The
+  original Bombay checkout remains untouched.
 
 ## P3 — make supporting evidence intentional
 
