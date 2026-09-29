@@ -408,7 +408,6 @@ fn validate<K: Clone + Eq>(
 impl<A, K, Route> BehaviorBase for Workflow<A, K, Route>
 where
     A: Address,
-    K: Clone + Eq,
     Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = WorkflowOutcome<K>>>,
 {
     type Base = Self;

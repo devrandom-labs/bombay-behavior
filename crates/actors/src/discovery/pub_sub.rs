@@ -176,9 +176,6 @@ where
 impl<A, K, P, Route> BehaviorBase for PubSub<A, K, P, Route>
 where
     A: Address,
-    K: Clone + Eq,
-    P: Clone,
-    Route: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = P>> + Clone + PartialEq,
 {
     type Base = Self;
     fn base(&self) -> &Self {

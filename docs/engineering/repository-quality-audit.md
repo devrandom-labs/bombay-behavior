@@ -311,7 +311,10 @@ is recorded against a revision.
   comparison found no material compile-time difference in its measured pair;
   the caller diagnostics improved. The protocol-only caller now covers 17
   catalogue actors, keeping construction and transition bounds at the
-  operations that need them. The proxy operation ID is now crate-private;
+  operations that need them. A separate caller now proves that 12 unwrapped
+  catalogue actors expose their read-only `BehaviorBase` projection without
+  requiring the cloning, comparison, or ordering used only by construction or
+  transition. The proxy operation ID is now crate-private;
   focused external fixtures distinguish forbidden ID naming, receipt
   construction, and double settlement. Review of remaining hidden runtime
   ports and the rest of the public surface is still required.
@@ -935,6 +938,64 @@ leaked private protocol/request types from public generated products (`E0446`).
 The candidate and focused test edits were removed; the exact falsifier and
 post-experiment drift checkpoint are in `DEAD_ENDS.md`. The missing projection
 remains open and requires an explicit visibility/ownership model before code.
+
+### A13 pre-edit base-projection law
+
+Classification: derived, read-only composition law. `BehaviorBase` on an
+unwrapped catalogue actor returns `&Self`; it neither constructs nor advances
+that actor. Naming this projection must therefore require only the bounds that
+make the actor type well formed. `Clone` and `Eq` on a command key or payload
+belong to construction or transition when those operations actually copy or
+compare values. The caller syntax is a `BehaviorBase<Base = Self>` bound on
+`Acknowledgements`, `Resolver`, `Configuration`, and `Readiness` with opaque
+non-`Clone`, non-`Eq` domain values. Its observable product is the same shared
+reference, with no action or state transition. The focused external
+`protocol_bounds` witness must fail only because the current base-projection
+impls carry those operation bounds. Existing `Protocol` witnesses and the
+runtime transition tests are the lower-order contracts; no new effect lane,
+interpreter operation, wrapper, or actor state is proposed. Before-edit
+control states, subordinate alternatives, transition branches, and public
+spellings are unchanged. The current values in each actor remain its exact
+records, bindings, versioned configuration, or dependency observations. The
+residue scan finds no proposed arrival history, repeated cause, false
+cardinality, nested transition authority, semantic boolean, or positional
+caller syntax. Cross-check: `BehaviorBase` in `transition.rs`, the actor
+transition algebra, and the normalized catalogue contracts. Disposition:
+`pass` for the proposed law. The external witness failed before production
+edits with ten `E0277` diagnostics, all from the four named `BehaviorBase`
+impls demanding `Clone` or `Eq` for opaque `Key`/`Value`. There was no route,
+protocol, or associated-type failure. This is one repeated interface-bound
+error, so the edit is limited to removing those operation bounds from the
+four read-only impls.
+
+The same derived read-only law applies to `Machine`, `Topic`, `PubSub`,
+`Presence`, `Lease`, `Barrier`, `Workflow`, and `OrderGate`. Their base method
+also returns `&Self`, while the current impls demand copying, equality, or
+ordering used by other operations. The second focused caller stage names
+`BehaviorBase<Base = Self>` for the already opaque payload/key/phase types,
+including an `OrderGate` whose key has no `Ord`. It must fail before editing
+these eight impls solely on their operation bounds. The existing actor
+type/route bounds stay in place. No state or action changes; the ownership,
+residue, and law cross-check above apply to this extension too.
+
+The initial caller draft reused protocol-only topic aliases whose
+`Subscription` deliberately is not a delivery route; that unrelated error
+was corrected before accepting the red result. With lawful concrete routes,
+the second stage failed with sixteen `E0277` diagnostics, all for the eight
+impls' copying, equality, or ordering bounds. No route error remained.
+
+After both stages, the focused external caller passes all three cases and
+workspace Nextest passes 827/827. The twelve production files changed by
+`+0/-16` physical lines (`1,517 → 1,501`); the external caller gained one
+compile witness with twelve concrete substitutions. Aggregate control sums,
+subordinate alternatives, transition branches, modules, public spellings,
+stored values, effect lanes, and interpreter operations are unchanged before
+and after. Every surviving state alternative still owns the same current
+value. The residue scan found no arrival history, repeated cause, false
+cardinality, nested transition authority, semantic boolean, or positional
+caller syntax. The `BehaviorBase` contract and catalogue laws remain the
+cross-check. Disposition: `pass` for this bound-only batch; A13 remains open
+for other public ports and protocol bounds.
 
 ### A13 pre-edit protocol-bound law
 

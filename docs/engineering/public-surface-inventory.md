@@ -82,6 +82,16 @@ The external protocol-only caller failed on the previous aggregate bound with
 only `E0277` and passes after the bound move; the FIFO transition suite still
 exercises the comparable route used by a running queue.
 
+Twelve unwrapped catalogue actors now expose `BehaviorBase<Base = Self>` for
+opaque domain types without inheriting bounds used only by construction or
+transition: `Acknowledgements`, `Resolver`, `Configuration`, `Readiness`,
+`Machine`, `Topic`, `PubSub`, `Presence`, `Lease`, `Barrier`, `Workflow`, and
+`OrderGate`. The external caller test failed on their former `Clone`, `Eq`,
+`Copy`, `PartialEq`, or `Ord` bounds and passes after removing only those
+impl-level bounds. Their stored state, protocol, and transition contracts are
+unchanged. `Router` remains structurally bound by its route and strategy
+policy and needs a separate owner review.
+
 ## Public trait implementors
 
 The source declares 77 top-level public traits: 55 in `behavior` and 22 in

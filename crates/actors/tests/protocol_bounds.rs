@@ -1,14 +1,16 @@
-use behavior::{Address, EndpointAddress, MailAddr, MessageProtocol, Never, Protocol, Recipient};
+use behavior::{
+    Address, BehaviorBase, EndpointAddress, MailAddr, MessageProtocol, Never, Protocol, Recipient,
+};
 use behavior_actors::atomic::FifoError;
 use behavior_actors::{
     AcknowledgementMessage, AcknowledgementOutcome, Acknowledgements, Barrier, BarrierMessage,
     BarrierReleased, Cache, CacheResult, Configuration, ConfigurationMessage, ConfigurationState,
     CorrelationResult, Correlator, CorrelatorMessage, Health, HealthMessage, HealthReport, Lease,
-    LeaseMessage, LeaseOutcome, Machine, Presence, PresenceMessage, PresenceReply, PubSub,
-    PubSubMessage, Readiness, ReadinessMessage, ReadinessReport, Registry, RegistryMessage,
-    RegistryResult, ReplyRoute, Resolution, Resolver, Router, RouterMessage, RoutingStrategy,
-    Topic, TopicMessage, WorkQueue, WorkQueueMessage, WorkQueueOutcome, Workflow, WorkflowMessage,
-    WorkflowOutcome,
+    LeaseMessage, LeaseOutcome, Machine, OrderGate, OrderGateOutcome, Presence, PresenceMessage,
+    PresenceReply, PubSub, PubSubMessage, Readiness, ReadinessMessage, ReadinessReport, Registry,
+    RegistryMessage, RegistryResult, ReplyRoute, Resolution, Resolver, Router, RouterMessage,
+    RoutingStrategy, Topic, TopicMessage, WorkQueue, WorkQueueMessage, WorkQueueOutcome, Workflow,
+    WorkflowMessage, WorkflowOutcome,
 };
 
 struct Key;
@@ -83,6 +85,10 @@ type ResolverReply = Recipient<MessageProtocol<MailAddr, Resolution<Key, Destina
 type ResolverProtocol = Resolver<MailAddr, Key, Destination, ResolverReply>;
 type TopicProtocol = Topic<MailAddr, Publication, Subscription>;
 type PubSubProtocol = PubSub<MailAddr, Key, Publication, Subscription>;
+type TopicBaseProtocol =
+    Topic<MailAddr, Publication, Recipient<MessageProtocol<MailAddr, Publication>>>;
+type PubSubBaseProtocol =
+    PubSub<MailAddr, Key, Publication, Recipient<MessageProtocol<MailAddr, Publication>>>;
 type MachineProtocol = Machine<MailAddr, (), Publication, Phase, ()>;
 type ConfigurationReply = Recipient<MessageProtocol<MailAddr, ConfigurationState<Value>>>;
 type ConfigurationProtocol = Configuration<MailAddr, Value, ConfigurationReply>;
@@ -109,8 +115,12 @@ type RouterProtocol = Router<MailAddr, Recipient<Destination>, ObservedSelection
 type WorkQueueWorker = ReplyRoute<ExactDestination>;
 type WorkQueueReply = Recipient<MessageProtocol<ExactAddr, WorkQueueOutcome<u8>>>;
 type WorkQueueProtocol = WorkQueue<ExactAddr, u8, WorkQueueWorker, WorkQueueReply>;
+type OrderGateReply = Recipient<MessageProtocol<MailAddr, OrderGateOutcome<Key, u8>>>;
+type OrderGateProtocol = OrderGate<MailAddr, Key, u8, Recipient<Destination>, OrderGateReply>;
 
 fn accepts_protocol<P: Protocol<Addr = MailAddr>>() {}
+
+fn accepts_base<B: BehaviorBase<Base = B>>() {}
 
 fn accepts_message<P: Protocol<Addr = MailAddr, Msg = M>, M>() {}
 
@@ -142,6 +152,22 @@ fn protocol_identity_does_not_require_transition_or_construction_bounds() {
         WorkQueueProtocol,
         WorkQueueMessage<u8, WorkQueueWorker, WorkQueueReply>,
     >();
+}
+
+#[test]
+fn base_projection_does_not_require_transition_or_construction_bounds() {
+    accepts_base::<AcknowledgementProtocol>();
+    accepts_base::<ResolverProtocol>();
+    accepts_base::<ConfigurationProtocol>();
+    accepts_base::<ReadinessProtocol>();
+    accepts_base::<MachineProtocol>();
+    accepts_base::<TopicBaseProtocol>();
+    accepts_base::<PubSubBaseProtocol>();
+    accepts_base::<PresenceProtocol>();
+    accepts_base::<LeaseProtocol>();
+    accepts_base::<BarrierProtocol>();
+    accepts_base::<WorkflowProtocol>();
+    accepts_base::<OrderGateProtocol>();
 }
 
 #[test]

@@ -67,8 +67,6 @@ impl<A: Address, P, Route> Default for Topic<A, P, Route> {
 impl<A, P, Route> BehaviorBase for Topic<A, P, Route>
 where
     A: Address,
-    P: Clone,
-    Route: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = P>> + Clone + PartialEq,
 {
     type Base = Self;
 

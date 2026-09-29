@@ -68,7 +68,6 @@ where
 impl<A, S, M, P, E> behavior::BehaviorBase for Machine<A, S, M, P, E>
 where
     A: Address,
-    P: Copy + PartialEq,
 {
     type Base = Self;
 

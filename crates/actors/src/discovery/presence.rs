@@ -427,7 +427,6 @@ where
 impl<A, K, Route> BehaviorBase for Presence<A, K, Route>
 where
     A: Address,
-    K: Clone + Eq,
     Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = PresenceReply<K>>>,
 {
     type Base = Self;

@@ -246,7 +246,6 @@ where
 impl<A, K, T, TargetRoute, ReplyRoute> BehaviorBase for OrderGate<A, K, T, TargetRoute, ReplyRoute>
 where
     A: Address,
-    K: Clone + Ord,
     TargetRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = T>>,
     ReplyRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = OrderGateOutcome<K, T>>>,
 {

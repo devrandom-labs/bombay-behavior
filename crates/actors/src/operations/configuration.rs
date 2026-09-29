@@ -150,7 +150,6 @@ where
 impl<A, C, Route> BehaviorBase for Configuration<A, C, Route>
 where
     A: Address,
-    C: Clone + Eq,
     Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = ConfigurationState<C>>>,
 {
     type Base = Self;
