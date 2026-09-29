@@ -1037,6 +1037,23 @@ other catalogue laws still need review, so A07 remains open.
 | One-shot timer: ID and generation admission | Guard-true, guard-false, `&&` to `||`, and ID-equality inversion all caught by `time::one_shot::tests::initialization_schedules_then_matching_generation_fires_once`. |
 | Barrier: duplicate participant arrival | One inversion caught by `workflow::barrier::tests::generation_releases_exact_membership_in_arrival_order`. |
 
+### A07 actor mutation evidence: state and ownership
+
+Classification: derived state-transition and returned-custody laws. A machine
+replays held messages when `Goto` changes phase, a stash releases its held
+FIFO when its route admits delivery, and a cache evicts the oldest entry only
+when an absent key enters a full cache. Replacing an existing key returns its
+old value without evicting another entry. At signed revision `c3a54b3`, a
+Nix-pinned actor-only campaign selected four mutations: machine phase equality,
+stash drain removal, cache `&&` to `||`, and cache capacity equality. Its
+baseline passed 593 actor tests. All four mutants built and failed named
+actor tests, with zero misses, timeouts, or unviable candidates. Machine and
+stash failures came from `algebra`; both cache mutations failed its recency
+and replacement-custody tests. The repaired mutation verdict accepted the
+complete report (`4 viable / 4 total`). No production edit was needed. These
+are three law slices; the actor-wide 3,125-candidate inventory is not claimed
+as fully tested.
+
 ### A20 ledger entry: stable-proxy activation correlation
 
 | Evidence layer | Current witness and limit |
@@ -1092,6 +1109,14 @@ other catalogue laws still need review, so A07 remains open.
 | Configuration version conflict | `stale_and_conflicting_candidates_return_ownership_atomically` checks stale version and same-version value conflict; catalogue models cover update sequences. | This is a runtime version decision. The same-version comparison inversion was caught; no downstream persistence claim is made. |
 | One-shot timer admission | The one-shot unit trace checks initialization scheduling, matching generation, and exact-once firing; timing composition tests check wrapper use. | A timer ID or generation mismatch is a typed runtime input. Four guard mutants built and failed the focused test; broader periodic and deadline laws are separate. |
 | Barrier duplicate arrival | The barrier unit trace checks exact membership and arrival-order release; workflow invariant tests cover reusable generations. | A repeat arrival is an ordinary command rejection. One equality inversion was caught; it does not certify the future/stale-generation branches. |
+
+### A20 ledger entries: machine, stash, and cache
+
+| Law | Focused transition and broader witness | Boundary and counterfactual limit |
+|---|---|---|
+| Machine phase replay | `algebra::fsm_is_receive_plus_become_policy` observes phase change and held-message replay; `fsm_properties` separately exercises self-`Goto`, generated sequences, and rollback. | Inverting phase equality built and failed the changed-phase algebra test. The self-`Goto` oracle is separate; this mutation slice does not test every error rollback branch. |
+| Stash FIFO release | `algebra::stash_release_delivers_the_trigger_then_drains_the_held_fifo` checks trigger-first delivery and held FIFO order; `stash_properties` covers generated hold/release sequences. | Replacing `drain_into` with a no-op built and failed the algebra test. The statically infallible inner behavior is the applicable compile-time constraint; runtime route choices remain typed. |
+| Cache replacement and eviction | Cache unit tests check recency, full-capacity eviction, and complete replacement/removal custody; `catalogue_invariants` compares generated operations with an independent ordered-entry model. | Zero capacity is rejected at construction. Both capacity-condition mutations built and failed cache tests; this slice does not certify other persistence mechanisms. |
 
 ### A20 ledger entry: bounded-buffer capacity and ownership
 
