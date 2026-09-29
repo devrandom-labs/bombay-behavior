@@ -18,6 +18,7 @@ use libfuzzer_sys::fuzz_target;
 
 mod dynamic_supervisor;
 mod dynamic_supervisor_rejection;
+mod proxy_control;
 
 use dynamic_supervisor::{RuntimeAddress, Worker, accepted_proxy_input, committed_proxy};
 use dynamic_supervisor_rejection::rejected_proxy;
@@ -300,9 +301,8 @@ fuzz_target!(|input: &[u8]| {
                 .into_items()
                 .pop()
                 .expect("late proxy is shut down once");
-            let (shutdown_creation, _control, shutdown_operation) = shutdown.into_parts();
-            assert_eq!(shutdown_creation, creation);
-            let mut settled = Some(accepted_proxy_input(shutdown_creation, shutdown_operation));
+            assert_eq!(shutdown.creation(), creation);
+            let mut settled = Some(accepted_proxy_input(shutdown));
             let mut exited = Some(ChildStopped::new(
                 creation,
                 Ok(Exit::Normal),

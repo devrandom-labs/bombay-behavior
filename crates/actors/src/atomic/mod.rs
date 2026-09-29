@@ -97,8 +97,8 @@ pub use restart::{RestartLimit, RestartRelease, RestartReleaseError, RestartRele
 pub(crate) use roster::RoleName;
 pub use roster::{DuplicateRole, OrderedRoles};
 pub use stable_proxy::{
-    InitialWorkerOutcome, ProxyDiagnostic, ProxyOutcome, ProxyPhase, ReplacementOutcome,
-    StableProxy,
+    InitialWorkerOutcome, ProxyControlAdmission, ProxyDiagnostic, ProxyOutcome, ProxyPhase,
+    ReplacementOutcome, StableProxy,
 };
 #[doc(hidden)]
 pub use stable_proxy::{

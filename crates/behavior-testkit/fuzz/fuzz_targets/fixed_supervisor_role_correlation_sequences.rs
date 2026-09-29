@@ -5,6 +5,7 @@
 )]
 //! Three simultaneous recoveries preserve exact role ownership under noisy returns.
 
+mod proxy_control;
 #[path = "fixed_supervisor/roster.rs"]
 mod roster;
 mod stable_proxy;
@@ -16,9 +17,9 @@ use std::time::Duration;
 
 use behavior_actors::atomic::{
     CapabilityResult, DiagnosticAction, FixedCommand, FixedDiagnostic, FixedSupervisor,
-    FixedSupervisorEvent, ImmediateActivation, ProxyControl, ProxyInputReceipt, ProxyOperationId,
-    ProxyOutcome, Recovery, RestartLimit, RestartRelease, StableProxy, Strategy, UnavailablePhase,
-    WorkerAttempt, WorkerSource, WorkerSubmission,
+    FixedSupervisorEvent, ImmediateActivation, ProxyControl, ProxyInputReceipt, ProxyOutcome,
+    Recovery, RestartLimit, RestartRelease, StableProxy, Strategy, UnavailablePhase, WorkerAttempt,
+    WorkerSource, WorkerSubmission,
 };
 use behavior_actors::{Active, ReplyDelivery};
 use behavior_core::{
@@ -26,6 +27,7 @@ use behavior_core::{
     MessageProtocol, Never, Recipient, SendSettlements, SettledItem, Step,
 };
 use libfuzzer_sys::fuzz_target;
+use proxy_control::admit_proxy_operation;
 use roster::{ReadyMember, Role, ready_three_role_roster};
 use stable_proxy::{RuntimeAddress, Worker, WorkerEndpoint, start_ready_worker, worker_stopped};
 
@@ -47,9 +49,8 @@ struct PendingRecovery {
 
 enum ReplacementWork {
     AwaitingDelivery {
-        route: CreationId,
         control: ProxyControl<Worker, ImmediateActivation>,
-        operation: ProxyOperationId,
+        receipt: ProxyInputReceipt<Worker, ImmediateActivation>,
     },
     AwaitingReport(ProxyOutcome<Worker, ImmediateActivation>),
     Ready,
@@ -182,17 +183,16 @@ fn begin_recovery(
         SettledItem::Unattempted(operation) => operation,
         SettledItem::Attempted(_) => panic!("the replacement has not been interpreted"),
     };
-    let (route, control, operation) = operation.into_parts();
+    let (route, control, receipt) = admit_proxy_operation(
+        operation,
+        EstablishedActor::<StableProxy<Worker, ImmediateActivation>>::issued(WorkerEndpoint),
+    );
     assert_eq!(route, member.proxy_id);
     PendingRecovery {
         proxy_id: member.proxy_id,
         proxy: member.proxy,
         previous: member.worker,
-        work: ReplacementWork::AwaitingDelivery {
-            route,
-            control,
-            operation,
-        },
+        work: ReplacementWork::AwaitingDelivery { control, receipt },
     }
 }
 
@@ -301,27 +301,15 @@ fn return_receipt(
     >,
     mut recovery: PendingRecovery,
 ) -> PendingRecovery {
-    let (route, control, operation) = match recovery.work {
-        ReplacementWork::AwaitingDelivery {
-            route,
-            control,
-            operation,
-        } => (route, control, operation),
+    let (control, receipt) = match recovery.work {
+        ReplacementWork::AwaitingDelivery { control, receipt } => (control, receipt),
         work @ (ReplacementWork::AwaitingReport(_) | ReplacementWork::Ready) => {
             recovery.work = work;
             return recovery;
         }
     };
     let accepted = supervisor
-        .on(SettledItem::Attempted(ItemSettlement::Accepted(
-            ProxyInputReceipt::new(
-                route,
-                EstablishedActor::<StableProxy<Worker, ImmediateActivation>>::issued(
-                    WorkerEndpoint,
-                ),
-                operation,
-            ),
-        )))
+        .on(SettledItem::Attempted(ItemSettlement::Accepted(receipt)))
         .unwrap_or_else(|_| panic!("the exact proxy input return advances its recovery"));
     assert!(matches!(accepted.become_, Step::Continue));
     assert!(accepted.sends.diagnostics.is_empty());

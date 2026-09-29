@@ -16,6 +16,7 @@ use behavior_core::{
 use libfuzzer_sys::fuzz_target;
 
 mod dynamic_supervisor;
+mod proxy_control;
 
 use dynamic_supervisor::{RuntimeAddress, Worker, accepted_proxy_input, committed_proxy};
 
@@ -129,10 +130,9 @@ fuzz_target!(|input: &[u8]| {
         let worker = match disposition {
             WorkerDisposition::InputRejected => WorkerArrival::InputRejected(primary_input),
             WorkerDisposition::ProxyReported => {
-                let (creation, _input, operation) = primary_input.into_parts();
-                assert_eq!(creation, primary_creation);
+                assert_eq!(primary_input.creation(), primary_creation);
                 let accepted = supervisor
-                    .on(accepted_proxy_input(creation, operation))
+                    .on(accepted_proxy_input(primary_input))
                     .unwrap_or_else(|_| panic!("the primary input is accepted"));
                 assert!(accepted.sends.proxy_operations.is_empty());
                 WorkerArrival::ProxyReported(ChildReport::new(
@@ -210,11 +210,10 @@ fuzz_target!(|input: &[u8]| {
             .into_items()
             .pop()
             .expect("cancellation shuts down the exact proxy");
-        let (shutdown_creation, _request, shutdown_operation) = shutdown.into_parts();
-        assert_eq!(shutdown_creation, primary_creation);
+        assert_eq!(shutdown.creation(), primary_creation);
 
         let mut worker = Some(worker);
-        let mut shutdown = Some(accepted_proxy_input(shutdown_creation, shutdown_operation));
+        let mut shutdown = Some(accepted_proxy_input(shutdown));
         let mut proxy_exit = Some(ChildStopped::new(
             primary_creation,
             Ok(Exit::Normal),

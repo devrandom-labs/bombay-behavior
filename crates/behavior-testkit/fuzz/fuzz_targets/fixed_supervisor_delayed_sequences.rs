@@ -3,6 +3,7 @@
 
 mod fixed_supervisor;
 mod fixed_supervisor_recovery;
+mod proxy_control;
 mod stable_proxy;
 
 use core::ops::ControlFlow;

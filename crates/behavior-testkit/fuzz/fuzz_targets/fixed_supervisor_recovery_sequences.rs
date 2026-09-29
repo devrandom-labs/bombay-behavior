@@ -3,14 +3,15 @@
 
 mod fixed_supervisor;
 mod fixed_supervisor_recovery;
+mod proxy_control;
 mod stable_proxy;
 
 use core::ops::ControlFlow;
 use std::time::Duration;
 
 use behavior_actors::atomic::{
-    CapabilityResult, FixedSupervisorEvent, ImmediateActivation, ProxyInputReceipt, ProxyOutcome,
-    Recovery, RestartLimit, RestartRelease, StableProxy, Strategy, UnavailablePhase, WorkerSource,
+    CapabilityResult, FixedSupervisorEvent, ImmediateActivation, ProxyOutcome, Recovery,
+    RestartLimit, RestartRelease, StableProxy, Strategy, UnavailablePhase, WorkerSource,
     WorkerSubmission,
 };
 use behavior_core::{
@@ -20,6 +21,7 @@ use behavior_core::{
 use fixed_supervisor::Role;
 use fixed_supervisor_recovery::{search_capability, search_recovery};
 use libfuzzer_sys::fuzz_target;
+use proxy_control::admit_proxy_operation;
 use stable_proxy::{Worker, WorkerEndpoint, start_ready_worker, worker_stopped};
 
 struct Workshop;
@@ -128,10 +130,13 @@ fn exercise(inputs: &[u8]) {
         SettledItem::Unattempted(operation) => operation,
         SettledItem::Attempted(_) => panic!("the replacement has not been interpreted"),
     };
-    let (route, control, operation_id) = replacement.into_parts();
+    let (route, control, receipt) = admit_proxy_operation(
+        replacement,
+        EstablishedActor::<StableProxy<Worker, ImmediateActivation>>::issued(WorkerEndpoint),
+    );
     assert_eq!(route, proxy_id);
     let (_successor, replacement_outcome) = start_ready_worker(&mut proxy, control);
-    let mut operation = Some((route, operation_id));
+    let mut operation = Some(receipt);
     let mut outcome = Some(replacement_outcome);
     let mut sequence = CreationSequence::new();
     let _occupied = sequence
@@ -151,15 +156,9 @@ fn exercise(inputs: &[u8]) {
         let input = RecoveryInput::from_byte(*byte);
         let action = match input {
             RecoveryInput::ReceiptReturned => match operation.take() {
-                Some((route, operation_id)) => supervisor.on(SettledItem::Attempted(
-                    ItemSettlement::Accepted(ProxyInputReceipt::new(
-                        route,
-                        EstablishedActor::<StableProxy<Worker, ImmediateActivation>>::issued(
-                            WorkerEndpoint,
-                        ),
-                        operation_id,
-                    )),
-                )),
+                Some(receipt) => {
+                    supervisor.on(SettledItem::Attempted(ItemSettlement::Accepted(receipt)))
+                }
                 None => continue,
             },
             RecoveryInput::OutcomeReturned => match outcome.take() {
@@ -190,21 +189,9 @@ fn exercise(inputs: &[u8]) {
 
         assert!(action.creates.is_empty());
         assert!(action.sends.proxy_observations.is_empty());
-        assert!(
-            action
-                .sends
-                .worker_preparations.is_empty()
-        );
-        assert!(
-            action
-                .sends
-                .proxy_operations.is_empty()
-        );
-        assert!(
-            action
-                .sends
-                .restart_schedules.is_empty()
-        );
+        assert!(action.sends.worker_preparations.is_empty());
+        assert!(action.sends.proxy_operations.is_empty());
+        assert!(action.sends.restart_schedules.is_empty());
         let NoSends = action.sends.lifecycle;
         assert!(action.sends.status_replies.as_slice().is_empty());
         assert!(action.sends.capability_replies.as_slice().is_empty());

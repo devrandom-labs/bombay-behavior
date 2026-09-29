@@ -2,16 +2,16 @@
 //! Stateful shutdown-order exploration for one ready fixed roster.
 
 mod fixed_supervisor;
+mod proxy_control;
 mod stable_proxy;
 
-use behavior_actors::atomic::{
-    FixedCommand, ImmediateActivation, ProxyInputReceipt, Recovery, StableProxy,
-};
+use behavior_actors::atomic::{FixedCommand, ImmediateActivation, Recovery, StableProxy};
 use behavior_core::{
     CreationSequence, EstablishedActor, ItemSettlement, NoSends, SendSettlements, SettledItem, Step,
 };
 use fixed_supervisor::ready_supervisor;
 use libfuzzer_sys::fuzz_target;
+use proxy_control::admit_proxy_operation;
 use stable_proxy::{RuntimeAddress, Worker, WorkerEndpoint, worker_stopped};
 
 #[derive(Clone, Copy)]
@@ -135,16 +135,13 @@ fn exercise(inputs: &[u8]) {
         let action = match input {
             ShutdownInput::OperationAccepted => match operation.take() {
                 Some(operation) => {
-                    let (route, _, operation) = operation.into_parts();
-                    supervisor.on(SettledItem::Attempted(ItemSettlement::Accepted(
-                        ProxyInputReceipt::new(
-                            route,
-                            EstablishedActor::<StableProxy<Worker, ImmediateActivation>>::issued(
-                                WorkerEndpoint,
-                            ),
-                            operation,
+                    let (_, _, receipt) = admit_proxy_operation(
+                        operation,
+                        EstablishedActor::<StableProxy<Worker, ImmediateActivation>>::issued(
+                            WorkerEndpoint,
                         ),
-                    )))
+                    );
+                    supervisor.on(SettledItem::Attempted(ItemSettlement::Accepted(receipt)))
                 }
                 None => continue,
             },
@@ -164,21 +161,9 @@ fn exercise(inputs: &[u8]) {
 
         assert!(action.creates.is_empty());
         assert!(action.sends.proxy_observations.is_empty());
-        assert!(
-            action
-                .sends
-                .worker_preparations.is_empty()
-        );
-        assert!(
-            action
-                .sends
-                .proxy_operations.is_empty()
-        );
-        assert!(
-            action
-                .sends
-                .restart_schedules.is_empty()
-        );
+        assert!(action.sends.worker_preparations.is_empty());
+        assert!(action.sends.proxy_operations.is_empty());
+        assert!(action.sends.restart_schedules.is_empty());
         let NoSends = action.sends.lifecycle;
         assert!(action.sends.status_replies.as_slice().is_empty());
         assert!(action.sends.capability_replies.as_slice().is_empty());

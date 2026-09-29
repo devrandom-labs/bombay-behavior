@@ -3,17 +3,17 @@ use std::cell::Cell;
 use std::rc::Rc;
 
 use behavior::{
-    ActiveTurn, Address, Behavior, BehaviorActed, ChildCreationOutcome, CreationKind,
-    CreationSettlement, CreationsSettled, EndpointAddress, EstablishedCreation,
-    EstablishedRecipient, ItemSettlement, MessageProtocol, Never, NoBirths, NoSends, Protocol,
-    SettledItem, User,
+    ActiveTurn, Address, Behavior, BehaviorActed, ChildCreationOutcome, ChildInputReason,
+    CreationId, CreationKind, CreationSettlement, CreationsSettled, EndpointAddress,
+    EstablishedActor, EstablishedCreation, EstablishedRecipient, ItemSettlement, MessageProtocol,
+    Never, NoBirths, NoSends, Protocol, SettledItem, User,
 };
-use behavior_actors::Activate;
 use behavior_actors::atomic::{
     ActivationPlan, ActivationPolicy, ActorDrainPolicy, DiagnosticDisposition, FailureReaction,
-    OrderedRoles, ProxyPhase, Recovery, RestartLimit, RestartRelease, StableProxy, Strategy,
-    WorkerSource, WorkerSubmission, fixed,
+    OrderedRoles, ProxyControl, ProxyControlAdmission, ProxyPhase, Recovery, RestartLimit,
+    RestartRelease, StableProxy, Strategy, WorkerSource, WorkerSubmission, fixed,
 };
+use behavior_actors::{Activate, Active};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct RuntimeAddr(u64);
@@ -192,6 +192,38 @@ fn transient_recovery_infers_its_worker_source() {
     .unwrap_or_else(|_| panic!("the worker prepares"));
 }
 
+struct SearchProxyHost {
+    creation: CreationId,
+    proxy: Active<StableProxy<SearchWorker, SearchActivation>>,
+    worker_creations: usize,
+}
+
+impl ProxyControlAdmission<SearchWorker, SearchActivation> for SearchProxyHost {
+    fn admit_proxy_control(
+        &mut self,
+        creation: CreationId,
+        control: ProxyControl<SearchWorker, SearchActivation>,
+    ) -> ItemSettlement<
+        ProxyControl<SearchWorker, SearchActivation>,
+        EstablishedActor<StableProxy<SearchWorker, SearchActivation>>,
+        ChildInputReason,
+        Never,
+    > {
+        if creation != self.creation {
+            return ItemSettlement::Rejected {
+                item: control,
+                reason: ChildInputReason::MissingBinding,
+            };
+        }
+        let actions = self
+            .proxy
+            .on(control)
+            .unwrap_or_else(|_| panic!("the exact proxy accepts its initial control"));
+        self.worker_creations += actions.creates.len();
+        ItemSettlement::Accepted(EstablishedActor::issued(Endpoint(100)))
+    }
+}
+
 #[test]
 fn initialization_creates_and_admits_one_ordered_proxy_batch() {
     let roles = OrderedRoles::new(SearchRole::Search, [SearchRole::Index])
@@ -266,6 +298,29 @@ fn initialization_creates_and_admits_one_ordered_proxy_batch() {
 
     assert_eq!(actions.sends.proxy_operations.len(), 1);
     assert_eq!(actions.creates.len(), 0);
+
+    let operation = actions
+        .sends
+        .proxy_operations
+        .into_items()
+        .pop()
+        .unwrap_or_else(|| panic!("the first proxy operation is issued"));
+    let proxy = StableProxy::<SearchWorker, SearchActivation>::activated()
+        .initialize()
+        .unwrap_or_else(|_| panic!("proxy initialization is pure"))
+        .behavior;
+    let mut host = SearchProxyHost {
+        creation: operation.creation(),
+        proxy,
+        worker_creations: 0,
+    };
+    let settlement = operation.settle(&mut host);
+    assert!(matches!(settlement, ItemSettlement::Accepted(_)));
+    assert_eq!(host.worker_creations, 1);
+    let settled = supervisor
+        .on(SettledItem::Attempted(settlement))
+        .unwrap_or_else(|_| panic!("the fixed supervisor accepts its exact proxy receipt"));
+    assert_eq!(settled.sends.proxy_operations.len(), 0);
 }
 
 #[test]
