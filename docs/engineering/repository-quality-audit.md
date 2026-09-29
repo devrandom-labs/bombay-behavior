@@ -285,7 +285,7 @@ is recorded against a revision.
 
 - [ ] **A13 — Audit public bounds, hidden exports, and extension ownership.**
   **Confirmed surface requiring review.** The current source has 12
-  `#[doc(hidden)]` annotation sites in core and 84 in actors, including
+  `#[doc(hidden)]` annotation sites in core and 81 in actors, including
   members and re-exports. The
   [public-surface inventory](public-surface-inventory.md) classifies each site
   by contract owner. These annotations do not make an item private.
@@ -311,8 +311,10 @@ is recorded against a revision.
   comparison found no material compile-time difference in its measured pair;
   the caller diagnostics improved. The protocol-only caller now covers 16
   catalogue actors, keeping construction and transition bounds at the
-  operations that need them. Review of remaining hidden runtime ports and
-  the rest of the public surface is still required.
+  operations that need them. The proxy operation ID is now crate-private;
+  focused external fixtures distinguish forbidden ID naming, receipt
+  construction, and double settlement. Review of remaining hidden runtime
+  ports and the rest of the public surface is still required.
 
   The creation settlement review found a narrower documentation defect:
   external caller suites name `CreationSettlement`, `CreationSettlements`, and
