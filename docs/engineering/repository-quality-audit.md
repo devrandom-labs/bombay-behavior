@@ -396,7 +396,7 @@ is recorded against a revision.
   establish its composition law before changing the API; hiding rustdoc is
   insufficient.
 
-- [ ] **A15 — Make coding-rule enforcement agree with the actual repository.**
+- [x] **A15 — Make coding-rule enforcement agree with the actual repository.**
   **Confirmed local-rule deviations.** Timer-domain tests invoke mutable
   `accept` inside `assert!`; catalogue models carry readiness decisions as
   booleans. Many rustdoc fixtures have `use` sections despite the explicit
@@ -1400,6 +1400,17 @@ identified consuming-method and mutating-helper patterns in the Nix document
 gate; five checker regression cases cover detection and allowed observation.
 The local checker and its tests passed. A clean-snapshot Nix gate and changed
 fuzz-target build remain required before this batch or A15 can close.
+
+The clean detached snapshot at signed commit `9c9973e` passed
+`nix flake check --max-jobs 1 --no-write-lock-file`, including package,
+Nextest, Clippy, Rustdoc, doctests, formatting, deny, and the document gate
+with both assertion-checker scripts in the flake source set. The Nix-provided
+fuzz runner then built all manifest targets after the assertion edits with
+`nix run .#fuzz -- build`; its separate lockfile was synchronized to the
+workspace crate versions. These runs complete the pending A15 verification.
+The later A20 priority-property edit has its own focused baseline and
+counterfactual evidence and does not change the A15 assertion discipline.
+Disposition: `pass`; A15 is closed.
 
 ### A07 actor mutation evidence: routing-buffer capacity
 
