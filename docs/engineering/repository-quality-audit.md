@@ -275,8 +275,10 @@ is recorded against a revision.
   manually authored child roles and generic logical-host owners have compile
   witnesses for the newly visible types. The cache/resolver protocol-bound
   comparison found no material compile-time difference in its measured pair;
-  the caller diagnostics improved. Review of remaining hidden runtime ports
-  and the rest of the public surface is still required.
+  the caller diagnostics improved. The protocol-only caller now covers 16
+  catalogue actors, keeping construction and transition bounds at the
+  operations that need them. Review of remaining hidden runtime ports and
+  the rest of the public surface is still required.
 
   The creation settlement review found a narrower documentation defect:
   external caller suites name `CreationSettlement`, `CreationSettlements`, and
