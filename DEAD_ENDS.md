@@ -22,6 +22,12 @@ the public interface law. The generated impl and focused fixture edits were
 removed. The retained design still needs a lawful way to project generated
 products without forcing unrelated request visibility changes.
 
+A separate Rust 1.95 scratch probe tried to hide the field projection behind
+a private helper trait on the public product. Its public associated type used
+`<Self as PrivateProjection>::Output`; rustc still emitted E0446 for both the
+private trait and its associated type. That indirection does not establish a
+lawful public interface and was not added to the repository.
+
 Aggregate-drift checkpoint: the retained control-state sums, subordinate
 alternatives, transition branches, production lines, modules, and public
 spellings are unchanged from `1af8a3d`. Each generated product still owns its
