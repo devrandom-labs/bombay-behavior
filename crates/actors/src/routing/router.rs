@@ -423,76 +423,44 @@ impl<Route: DeliveryRoute + Clone + PartialEq> core::fmt::Debug for HashPolicyEr
     }
 }
 
-struct HashMember<Route: DeliveryRoute + Clone + PartialEq> {
-    recipient: Route,
-    evidence: MemberTokenEvidence,
+#[derive(Clone)]
+struct HashMembership {
+    evidence: Vec<MemberTokenEvidence>,
 }
 
-impl<Route: DeliveryRoute + Clone + PartialEq> Clone for HashMember<Route> {
-    fn clone(&self) -> Self {
-        Self {
-            recipient: self.recipient.clone(),
-            evidence: self.evidence,
-        }
-    }
-}
-
-struct HashMembership<Route: DeliveryRoute + Clone + PartialEq> {
-    members: Vec<HashMember<Route>>,
-}
-
-impl<Route: DeliveryRoute + Clone + PartialEq> Clone for HashMembership<Route> {
-    fn clone(&self) -> Self {
-        Self {
-            members: self.members.clone(),
-        }
-    }
-}
-
-impl<Route: DeliveryRoute + Clone + PartialEq> HashMembership<Route> {
+impl HashMembership {
     const fn new() -> Self {
         Self {
-            members: Vec::new(),
+            evidence: Vec::new(),
         }
     }
 
-    fn added(&mut self, recipient: Route) {
-        self.members.push(HashMember {
-            recipient,
-            evidence: MemberTokenEvidence::Unknown,
-        });
+    fn added(&mut self) {
+        self.evidence.push(MemberTokenEvidence::Unknown);
     }
 
     fn removed(&mut self, index: usize) {
-        if index < self.members.len() {
-            self.members.remove(index);
+        if index < self.evidence.len() {
+            self.evidence.remove(index);
         }
     }
 
-    fn evidence(&self, recipient: Route) -> Option<MemberTokenEvidence> {
-        self.members
-            .iter()
-            .find(|member| member.recipient == recipient)
-            .map(|member| member.evidence)
-    }
-
-    fn observe(
+    fn observe<Route: DeliveryRoute + Clone + PartialEq>(
         &mut self,
         recipients: &[Route],
         observation: MemberTokenObservation<Route>,
     ) -> Result<(), HashPolicyError<Route>> {
-        if !recipients.contains(&observation.recipient) {
-            return Err(HashPolicyError::UnknownRecipient(observation));
-        }
-        let Some(member) = self
-            .members
-            .iter_mut()
-            .find(|member| member.recipient == observation.recipient)
+        let Some(index) = recipients
+            .iter()
+            .position(|member| member == &observation.recipient)
         else {
             return Err(HashPolicyError::UnknownRecipient(observation));
         };
-        let MemberTokenEvidence::Observed { version, token } = member.evidence else {
-            member.evidence = MemberTokenEvidence::Observed {
+        let Some(evidence) = self.evidence.get_mut(index) else {
+            return Err(HashPolicyError::UnknownRecipient(observation));
+        };
+        let MemberTokenEvidence::Observed { version, token } = *evidence else {
+            *evidence = MemberTokenEvidence::Observed {
                 version: observation.version,
                 token: observation.token,
             };
@@ -508,25 +476,20 @@ impl<Route: DeliveryRoute + Clone + PartialEq> HashMembership<Route> {
                 Err(HashPolicyError::ConflictingVersion(observation))
             };
         }
-        member.evidence = MemberTokenEvidence::Observed {
+        *evidence = MemberTokenEvidence::Observed {
             version: observation.version,
             token: observation.token,
         };
         Ok(())
     }
 
-    fn tokens(&self, recipients: &[Route]) -> Vec<(usize, MemberToken)> {
-        recipients
-            .iter()
-            .enumerate()
-            .filter_map(|(index, recipient)| {
-                self.evidence(recipient.clone())
-                    .and_then(|evidence| match evidence {
-                        MemberTokenEvidence::Unknown => None,
-                        MemberTokenEvidence::Observed { token, .. } => Some((index, token)),
-                    })
-            })
-            .collect()
+    fn tokens(&self, members: usize) -> impl Iterator<Item = (usize, MemberToken)> + '_ {
+        self.evidence.iter().enumerate().take(members).filter_map(
+            |(index, evidence)| match evidence {
+                MemberTokenEvidence::Unknown => None,
+                MemberTokenEvidence::Observed { token, .. } => Some((index, *token)),
+            },
+        )
     }
 }
 
@@ -546,13 +509,15 @@ fn mixed_hash(left: u64, right: u64) -> u64 {
 /// functions and observations. Tokens are policy data, never actor identities
 /// or freshness evidence. Ring mixing, clockwise tie order, and replica count
 /// are deliberate Bombay policy; no external hash-routing crate is used.
-pub struct ConsistentHash<Route: DeliveryRoute + Clone + PartialEq, K> {
-    membership: HashMembership<Route>,
+/// Router owns recipient identity and order; this policy retains only the
+/// corresponding versioned token evidence.
+pub struct ConsistentHash<K> {
+    membership: HashMembership,
     replicas: NonZeroU16,
     hash_key: fn(&K) -> u64,
 }
 
-impl<Route: DeliveryRoute + Clone + PartialEq, K> Clone for ConsistentHash<Route, K> {
+impl<K> Clone for ConsistentHash<K> {
     fn clone(&self) -> Self {
         Self {
             membership: self.membership.clone(),
@@ -562,7 +527,7 @@ impl<Route: DeliveryRoute + Clone + PartialEq, K> Clone for ConsistentHash<Route
     }
 }
 
-impl<Route: DeliveryRoute + Clone + PartialEq, K> ConsistentHash<Route, K> {
+impl<K> ConsistentHash<K> {
     /// Construct a stable-ring policy with explicit virtual-point count.
     #[must_use]
     pub const fn new(replicas: NonZeroU16, hash_key: fn(&K) -> u64) -> Self {
@@ -572,15 +537,9 @@ impl<Route: DeliveryRoute + Clone + PartialEq, K> ConsistentHash<Route, K> {
             hash_key,
         }
     }
-
-    /// Borrow one recipient's complete token-evidence phase.
-    #[must_use]
-    pub fn evidence(&self, recipient: Route) -> Option<MemberTokenEvidence> {
-        self.membership.evidence(recipient)
-    }
 }
 
-impl<Route, K> RoutingStrategy<Route> for ConsistentHash<Route, K>
+impl<Route, K> RoutingStrategy<Route> for ConsistentHash<K>
 where
     Route: DeliveryRoute + Clone + PartialEq,
     <Route::Protocol as Protocol>::Msg: RouteKey<K>,
@@ -595,8 +554,7 @@ where
     ) -> Option<usize> {
         let key = (self.hash_key)(message.route_key());
         self.membership
-            .tokens(members)
-            .into_iter()
+            .tokens(members.len())
             .flat_map(|(index, token)| {
                 (0..self.replicas.get())
                     .map(move |replica| (mixed_hash(token.0, u64::from(replica)), index))
@@ -613,8 +571,8 @@ where
         self.membership.observe(members, observation)
     }
 
-    fn added(&mut self, recipient: Route) {
-        self.membership.added(recipient);
+    fn added(&mut self, _: Route) {
+        self.membership.added();
     }
 
     fn removed(&mut self, index: usize, _: Route, _: usize) {
@@ -629,12 +587,14 @@ where
 /// Evidence and identity laws are the same as [`ConsistentHash`]. This is a
 /// reviewed local algorithm so external crates cannot silently own Bombay's
 /// membership or hash policy.
-pub struct RendezvousHash<Route: DeliveryRoute + Clone + PartialEq, K> {
-    membership: HashMembership<Route>,
+/// Router owns recipient identity and order; this policy retains only the
+/// corresponding versioned token evidence.
+pub struct RendezvousHash<K> {
+    membership: HashMembership,
     hash_key: fn(&K) -> u64,
 }
 
-impl<Route: DeliveryRoute + Clone + PartialEq, K> Clone for RendezvousHash<Route, K> {
+impl<K> Clone for RendezvousHash<K> {
     fn clone(&self) -> Self {
         Self {
             membership: self.membership.clone(),
@@ -643,7 +603,7 @@ impl<Route: DeliveryRoute + Clone + PartialEq, K> Clone for RendezvousHash<Route
     }
 }
 
-impl<Route: DeliveryRoute + Clone + PartialEq, K> RendezvousHash<Route, K> {
+impl<K> RendezvousHash<K> {
     /// Construct a highest-random-weight policy.
     #[must_use]
     pub const fn new(hash_key: fn(&K) -> u64) -> Self {
@@ -652,15 +612,9 @@ impl<Route: DeliveryRoute + Clone + PartialEq, K> RendezvousHash<Route, K> {
             hash_key,
         }
     }
-
-    /// Borrow one recipient's complete token-evidence phase.
-    #[must_use]
-    pub fn evidence(&self, recipient: Route) -> Option<MemberTokenEvidence> {
-        self.membership.evidence(recipient)
-    }
 }
 
-impl<Route, K> RoutingStrategy<Route> for RendezvousHash<Route, K>
+impl<Route, K> RoutingStrategy<Route> for RendezvousHash<K>
 where
     Route: DeliveryRoute + Clone + PartialEq,
     <Route::Protocol as Protocol>::Msg: RouteKey<K>,
@@ -675,8 +629,7 @@ where
     ) -> Option<usize> {
         let key = (self.hash_key)(message.route_key());
         self.membership
-            .tokens(members)
-            .into_iter()
+            .tokens(members.len())
             .map(|(index, token)| (mixed_hash(key, token.0), index))
             .max_by(|left, right| left.0.cmp(&right.0).then_with(|| right.1.cmp(&left.1)))
             .map(|(_, index)| index)
@@ -690,8 +643,8 @@ where
         self.membership.observe(members, observation)
     }
 
-    fn added(&mut self, recipient: Route) {
-        self.membership.added(recipient);
+    fn added(&mut self, _: Route) {
+        self.membership.added();
     }
 
     fn removed(&mut self, index: usize, _: Route, _: usize) {
@@ -755,6 +708,12 @@ where
     pub const fn strategy(&self) -> &R {
         &self.strategy
     }
+
+    fn member_index(&self, recipient: &Route) -> Option<usize> {
+        self.recipients
+            .iter()
+            .position(|member| member == recipient)
+    }
 }
 
 impl<A, Route> Router<A, Route, LeastLoaded>
@@ -768,10 +727,38 @@ where
     /// its old evidence, so a later addition starts at [`LoadEvidence::Unknown`].
     #[must_use]
     pub fn load_evidence(&self, recipient: &Route) -> Option<LoadEvidence> {
-        self.recipients
-            .iter()
-            .position(|member| member == recipient)
+        self.member_index(recipient)
             .and_then(|index| self.strategy.loads.get(index).copied())
+    }
+}
+
+impl<A, Route, K> Router<A, Route, ConsistentHash<K>>
+where
+    A: Address,
+    Route: DeliveryRoute<Protocol: Protocol<Addr = A>> + Clone + PartialEq,
+    <Route::Protocol as Protocol>::Msg: RouteKey<K>,
+{
+    /// Borrow one current member's complete stable-token evidence.
+    /// Removal retires the old evidence; later addition starts Unknown.
+    #[must_use]
+    pub fn member_token_evidence(&self, recipient: &Route) -> Option<MemberTokenEvidence> {
+        self.member_index(recipient)
+            .and_then(|index| self.strategy.membership.evidence.get(index).copied())
+    }
+}
+
+impl<A, Route, K> Router<A, Route, RendezvousHash<K>>
+where
+    A: Address,
+    Route: DeliveryRoute<Protocol: Protocol<Addr = A>> + Clone + PartialEq,
+    <Route::Protocol as Protocol>::Msg: RouteKey<K>,
+{
+    /// Borrow one current member's complete stable-token evidence.
+    /// Removal retires the old evidence; later addition starts Unknown.
+    #[must_use]
+    pub fn member_token_evidence(&self, recipient: &Route) -> Option<MemberTokenEvidence> {
+        self.member_index(recipient)
+            .and_then(|index| self.strategy.membership.evidence.get(index).copied())
     }
 }
 
@@ -1121,6 +1108,32 @@ mod tests {
     }
 
     #[test]
+    fn hash_policies_return_untracked_member_evidence() {
+        let recipient = Recipient::<KeyedDestination>::global(MailAddr(1));
+        let observation = MemberTokenObservation {
+            recipient,
+            version: MemberTokenVersion(3),
+            token: MemberToken(8),
+        };
+        let mut ring = ConsistentHash::new(NonZeroU16::new(1).unwrap(), identity_hash);
+        let mut rendezvous = RendezvousHash::new(identity_hash);
+
+        for rejection in [
+            ring.observe(&[recipient], observation.clone()),
+            rendezvous.observe(&[recipient], observation),
+        ] {
+            assert!(matches!(
+                rejection,
+                Err(HashPolicyError::UnknownRecipient(MemberTokenObservation {
+                    recipient: returned,
+                    version: MemberTokenVersion(3),
+                    token: MemberToken(8),
+                })) if returned == recipient
+            ));
+        }
+    }
+
+    #[test]
     fn consistent_hash_removal_moves_only_keys_owned_by_the_removed_member() {
         let members = [
             Recipient::<KeyedDestination>::global(MailAddr(1)),
@@ -1250,7 +1263,7 @@ mod tests {
             })
         ));
         assert_eq!(
-            router.strategy().evidence(one),
+            router.member_token_evidence(&one),
             Some(MemberTokenEvidence::Observed {
                 version: MemberTokenVersion(0),
                 token: MemberToken(11)

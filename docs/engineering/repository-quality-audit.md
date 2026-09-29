@@ -1048,6 +1048,72 @@ state, repeated cause, false cardinality, nested transition authority,
 semantic boolean, or positional syntax exposed to callers. Disposition:
 `pass`.
 
+### A12/A13 hash-token membership owner, before edit
+
+Classification: deliberate Bombay hash-routing policy and derived Rust
+ownership law. The Router already owns its ordered, duplicate-free recipient
+list. Both hash policies need exactly one current Unknown or Observed(version,
+token) evidence value at each member position; neither needs a second owned
+copy of each recipient. Add appends Unknown, removal deletes the same position,
+observation resolves the recipient in the Router snapshot and updates only
+that position, and selection considers the observed tokens in membership
+order. Unknown, stale, and conflicting observations must return their exact
+owned request. The caller syntax is `ConsistentHash<K>` or
+`RendezvousHash<K>` inside `Router<A, Route, _>`, with
+`router.member_token_evidence(&recipient)` for current evidence. One policy
+type must work with different eligible route types for the same key.
+
+The focused pre-edit caller regression is the external keyed-routing test's
+`Router<..., RendezvousHash<u64>>` and a corresponding `ConsistentHash<u64>`
+type witness; they must fail only because the old policy demands an unrelated
+route parameter. Existing rendezvous membership/permutation properties and
+the consistent-hash removal test are the independent transition witnesses.
+The direct policy boundary must return `UnknownRecipient` with the complete
+observation when its passed member slice has no aligned evidence, without an
+index panic. Existing `RoutingStrategy` hooks, `MemberTokenObservation`, and
+the two concrete selectors are reused; no runtime or effect product changes.
+
+Aggregate-drift precheck: Router retains one ordered member list before and
+after. `HashMembership` changes from a second list of recipient/evidence
+products to the aligned evidence list; its Unknown and Observed alternatives
+stay two, and their current version/token remain necessary for later
+selection and stale/conflict decisions. Router's four messages and three
+errors, the hash policies' three rejection alternatives, all actor control
+states, transition alternatives, modules, and interpreter paths stay the
+same. Expected edit files are `routing/router.rs`, the keyed routing caller,
+this audit, and any focused direct-policy regression. Expected production
+delta is negative, with one private product and two public route parameters
+removed, no public type added, and one Router evidence lookup added. The
+residue scan finds no arrival history, repeated cause, false cardinality,
+nested authority, semantic boolean, or structural caller syntax. Cross-checks
+are the actor transition algebra and normalized routing law. Disposition:
+`pass` for the proposed model, pending the red witness and implementation.
+
+Post-edit checkpoint: the external keyed-routing caller failed on the old
+policy shape with exactly two E0107 diagnostics, one for each unwanted route
+parameter. The new caller syntax compiles. The nine focused router unit tests
+pass, including complete typed return of an untracked observation from both
+hash policies. All nine routing invariant tests pass in debug and optimized
+builds; their rendezvous trace includes membership edits, evidence versions,
+selection, and token-order permutation. `mdbook build docs` passes. The full
+workspace gate for this batch is pending.
+
+The Router control state and its four commands/three errors are unchanged.
+The policy evidence still has two alternatives and the hash rejection still
+has three. The production portion of `routing/router.rs` fell from 863 to 850
+physical lines, despite adding the recipient-based Router lookup; the private
+`HashMember<Route>` product and the second recipient list disappeared. Both
+public policies lost only their route parameter and direct recipient lookup;
+their key parameter remains because two key types and their hash functions
+are valid substitutions. No new type, trait, module, effect, actor transition
+branch, or interpreter path was introduced. Router retains member identity
+and order; the policy retains only current version/token evidence. The shared
+private member-index operation serves all three evidence lookups. Rechecking
+the actor transition algebra and normalized routing law found no arrival
+history, repeated cause, false cardinality, nested transition authority,
+semantic boolean, or structural caller syntax. Disposition: `pass` for this
+representation, subject to the pending full gate.
+
 ### A13 pre-edit base-projection law
 
 Classification: derived, read-only composition law. `BehaviorBase` on an

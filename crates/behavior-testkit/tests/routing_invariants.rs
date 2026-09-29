@@ -5,9 +5,9 @@ use std::collections::VecDeque;
 
 use behavior_actors::{
     Activate as _, Active, Buffer, BufferConfiguration, BufferMessage, BufferOutcome,
-    BufferRejection, LeastLoaded, LeastLoadedError, Load, LoadEvidence, LoadObservation,
-    LoadVersion, MemberToken, MemberTokenEvidence, MemberTokenObservation, MemberTokenVersion,
-    OverflowPolicy, PriorityQueue, PriorityQueueMessage, PriorityQueueOutcome,
+    BufferRejection, ConsistentHash, LeastLoaded, LeastLoadedError, Load, LoadEvidence,
+    LoadObservation, LoadVersion, MemberToken, MemberTokenEvidence, MemberTokenObservation,
+    MemberTokenVersion, OverflowPolicy, PriorityQueue, PriorityQueueMessage, PriorityQueueOutcome,
     PriorityQueueRejection, RateLimitRejection, RateLimiter, RateLimiterMessage,
     RateLimiterOutcome, RendezvousHash, RoundRobin, RouteKey, Router, RouterError, RouterMessage,
     TokenCount, WorkQueue, WorkQueueMessage, WorkQueueOutcome, WorkQueueRejection,
@@ -65,11 +65,14 @@ type TestRate = RateLimiter<MailAddr, u8, Recipient<RateTarget>, Recipient<RateR
 type TestQueue = WorkQueue<MailAddr, OwnedQueueWork, Recipient<QueueWorker>, Recipient<QueueReply>>;
 type TestRouter = Router<MailAddr, Recipient<PriorityTarget>, RoundRobin>;
 type TestLeastLoaded = Router<MailAddr, Recipient<PriorityTarget>, LeastLoaded>;
-type TestRendezvous = Router<
-    MailAddr,
-    Recipient<KeyedRoutingTarget>,
-    RendezvousHash<Recipient<KeyedRoutingTarget>, u64>,
->;
+type TestRendezvous = Router<MailAddr, Recipient<KeyedRoutingTarget>, RendezvousHash<u64>>;
+type TestConsistent = Router<MailAddr, Recipient<KeyedRoutingTarget>, ConsistentHash<u64>>;
+
+#[test]
+fn hash_policy_types_leave_recipient_identity_with_router() {
+    let _: core::marker::PhantomData<TestRendezvous> = core::marker::PhantomData;
+    let _: core::marker::PhantomData<TestConsistent> = core::marker::PhantomData;
+}
 
 #[derive(Clone, Copy, Debug)]
 enum BufferTurn {
@@ -728,7 +731,7 @@ proptest! {
         prop_assert!(added.creates.is_empty());
         prop_assert_eq!(added.become_, Step::Continue);
         prop_assert_eq!(router.recipients(), recipients.as_slice());
-        prop_assert_eq!(router.strategy().evidence(recipients[3]), Some(MemberTokenEvidence::Unknown));
+        prop_assert_eq!(router.member_token_evidence(&recipients[3]), Some(MemberTokenEvidence::Unknown));
         for ((index, key), owner) in keys.iter().copied().enumerate().zip(before.iter().copied()) {
             prop_assert_eq!(route_rendezvous(&mut router, key, u8::try_from(index).unwrap())?, owner);
         }
@@ -769,9 +772,9 @@ proptest! {
         prop_assert!(removed.creates.is_empty());
         prop_assert_eq!(removed.become_, Step::Continue);
         prop_assert_eq!(router.recipients(), &[recipients[0], recipients[2], recipients[3]]);
-        prop_assert_eq!(router.strategy().evidence(recipients[1]), None);
+        prop_assert_eq!(router.member_token_evidence(&recipients[1]), None);
         for member in [0, 2, 3] {
-            prop_assert_eq!(router.strategy().evidence(recipients[member]), Some(MemberTokenEvidence::Observed {
+            prop_assert_eq!(router.member_token_evidence(&recipients[member]), Some(MemberTokenEvidence::Observed {
                 version: MemberTokenVersion(0),
                 token: MemberToken(tokens[member]),
             }));
