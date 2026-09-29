@@ -5,15 +5,17 @@ use std::collections::VecDeque;
 
 use behavior_actors::{
     Activate as _, Buffer, BufferConfiguration, BufferMessage, BufferOutcome, BufferRejection,
+    LeastLoaded, LeastLoadedError, Load, LoadEvidence, LoadObservation, LoadVersion,
     OverflowPolicy, PriorityQueue, PriorityQueueMessage, PriorityQueueOutcome,
     PriorityQueueRejection, RateLimitRejection, RateLimiter, RateLimiterMessage,
     RateLimiterOutcome, RoundRobin, Router, RouterError, RouterMessage, TokenCount, WorkQueue,
     WorkQueueMessage, WorkQueueOutcome, WorkQueueRejection,
 };
 
-use behavior_core::{MailAddr, MessageProtocol, Recipient};
+use behavior_core::{MailAddr, MessageProtocol, Recipient, Step};
 use proptest::collection::vec;
 use proptest::prelude::*;
+use proptest::test_runner::TestCaseResult;
 
 macro_rules! protocol {
     ($name:ident, $message:ty) => {
@@ -47,6 +49,8 @@ type TestPriority =
 type TestRate = RateLimiter<MailAddr, u8, Recipient<RateTarget>, Recipient<RateReply>>;
 type TestQueue = WorkQueue<MailAddr, OwnedQueueWork, Recipient<QueueWorker>, Recipient<QueueReply>>;
 type TestRouter = Router<MailAddr, Recipient<PriorityTarget>, RoundRobin>;
+type TestLeastLoaded =
+    Router<MailAddr, Recipient<PriorityTarget>, LeastLoaded<Recipient<PriorityTarget>>>;
 
 #[derive(Clone, Copy, Debug)]
 enum BufferTurn {
@@ -411,4 +415,234 @@ proptest! {
             prop_assert_eq!(actual.recipients(), members.as_slice());
         }
     }
+}
+
+#[derive(Clone, Copy, Debug)]
+enum LoadInstruction {
+    AddMember(u8),
+    RemoveMember(u8),
+    ReportLoad { member: u8, version: u8, load: u8 },
+    RouteMessage(u8),
+}
+
+#[derive(Clone, Copy)]
+struct ModeledReading {
+    version: u8,
+    load: u8,
+}
+
+struct ModeledMember {
+    id: u8,
+    evidence: Option<ModeledReading>,
+}
+
+fn load_recipient(member: u8) -> Recipient<PriorityTarget> {
+    Recipient::global(MailAddr(u64::from(member) + 1))
+}
+
+fn same_load_observation(
+    observation: &LoadObservation<Recipient<PriorityTarget>>,
+    member: u8,
+    version: u8,
+    load: u8,
+) -> bool {
+    observation.recipient == load_recipient(member)
+        && observation.version == LoadVersion(u64::from(version))
+        && observation.load == Load(u64::from(load))
+}
+
+fn check_least_loaded_trace(turns: impl IntoIterator<Item = LoadInstruction>) -> TestCaseResult {
+    let mut router = TestLeastLoaded::new(Vec::new(), LeastLoaded::new())
+        .initialize()
+        .unwrap()
+        .behavior;
+    let mut members: Vec<ModeledMember> = Vec::new();
+
+    for turn in turns {
+        match turn {
+            LoadInstruction::AddMember(member) => {
+                let actions = router
+                    .receive(MailAddr(9), RouterMessage::Add(load_recipient(member)))
+                    .unwrap();
+                prop_assert!(actions.sends.is_empty());
+                prop_assert!(actions.creates.is_empty());
+                prop_assert_eq!(actions.become_, Step::Continue);
+                if !members.iter().any(|current| current.id == member) {
+                    members.push(ModeledMember {
+                        id: member,
+                        evidence: None,
+                    });
+                }
+            }
+            LoadInstruction::RemoveMember(member) => {
+                let actions = router
+                    .receive(MailAddr(9), RouterMessage::Remove(load_recipient(member)))
+                    .unwrap();
+                prop_assert!(actions.sends.is_empty());
+                prop_assert!(actions.creates.is_empty());
+                prop_assert_eq!(actions.become_, Step::Continue);
+                if let Some(position) = members.iter().position(|current| current.id == member) {
+                    members.remove(position);
+                }
+            }
+            LoadInstruction::ReportLoad {
+                member,
+                version,
+                load,
+            } => {
+                let observation = LoadObservation {
+                    recipient: load_recipient(member),
+                    version: LoadVersion(u64::from(version)),
+                    load: Load(u64::from(load)),
+                };
+                let result = router.receive(MailAddr(9), RouterMessage::Observe(observation));
+                match members.iter().position(|current| current.id == member) {
+                    None => {
+                        let exact = matches!(result,
+                            Err(RouterError::Policy { observation, error: LeastLoadedError::UnknownRecipient(returned) })
+                            if same_load_observation(&observation, member, version, load)
+                                && same_load_observation(&returned, member, version, load));
+                        prop_assert!(exact);
+                    }
+                    Some(position) => match members[position].evidence {
+                        Some(ModeledReading {
+                            version: committed, ..
+                        }) if version < committed => {
+                            let exact = matches!(result,
+                                Err(RouterError::Policy { observation, error: LeastLoadedError::Stale(returned) })
+                                if same_load_observation(&observation, member, version, load)
+                                    && same_load_observation(&returned, member, version, load));
+                            prop_assert!(exact);
+                        }
+                        Some(ModeledReading {
+                            version: committed,
+                            load: prior_load,
+                        }) if version == committed && load != prior_load => {
+                            let exact = matches!(result,
+                                Err(RouterError::Policy { observation, error: LeastLoadedError::ConflictingVersion(returned) })
+                                if same_load_observation(&observation, member, version, load)
+                                    && same_load_observation(&returned, member, version, load));
+                            prop_assert!(exact);
+                        }
+                        _ => {
+                            let actions = result.unwrap();
+                            prop_assert!(actions.sends.is_empty());
+                            prop_assert!(actions.creates.is_empty());
+                            prop_assert_eq!(actions.become_, Step::Continue);
+                            members[position].evidence = Some(ModeledReading { version, load });
+                        }
+                    },
+                }
+            }
+            LoadInstruction::RouteMessage(value) => {
+                let result = router.receive(MailAddr(9), RouterMessage::Route(value));
+                let mut selected: Option<(u8, u8)> = None;
+                for entry in &members {
+                    if let Some(reading) = entry.evidence
+                        && selected.is_none_or(|(_, least)| reading.load < least)
+                    {
+                        selected = Some((entry.id, reading.load));
+                    }
+                }
+                if let Some((member, _)) = selected {
+                    let actions = result.unwrap();
+                    prop_assert_eq!(actions.sends.len(), 1);
+                    prop_assert_eq!(actions.sends[0].to, load_recipient(member));
+                    prop_assert_eq!(actions.sends[0].message, value);
+                    prop_assert!(actions.creates.is_empty());
+                    prop_assert_eq!(actions.become_, Step::Continue);
+                } else {
+                    prop_assert!(
+                        matches!(result, Err(RouterError::NoEligibleRecipients(returned)) if returned == value)
+                    );
+                }
+            }
+        }
+        let recipients = members
+            .iter()
+            .map(|entry| load_recipient(entry.id))
+            .collect::<Vec<_>>();
+        prop_assert_eq!(router.recipients(), recipients.as_slice());
+        for member in 0..6 {
+            let expected = members
+                .iter()
+                .find(|current| current.id == member)
+                .map(|entry| match entry.evidence {
+                    Some(reading) => LoadEvidence::Observed {
+                        version: LoadVersion(u64::from(reading.version)),
+                        load: Load(u64::from(reading.load)),
+                    },
+                    None => LoadEvidence::Unknown,
+                });
+            prop_assert_eq!(router.strategy().evidence(load_recipient(member)), expected);
+        }
+    }
+    Ok(())
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig { cases: 384, max_shrink_iters: 100_000, ..ProptestConfig::default() })]
+
+    #[test]
+    fn least_loaded_matches_versioned_membership_and_selection(
+        turns in vec(prop_oneof![
+            (0_u8..6).prop_map(LoadInstruction::AddMember),
+            (0_u8..6).prop_map(LoadInstruction::RemoveMember),
+            (0_u8..6, 0_u8..8, 0_u8..8).prop_map(|(member, version, load)| LoadInstruction::ReportLoad { member, version, load }),
+            any::<u8>().prop_map(LoadInstruction::RouteMessage),
+        ], 0..160),
+    ) {
+        check_least_loaded_trace(turns)?;
+    }
+}
+
+#[test]
+fn least_loaded_readdition_discards_old_evidence_and_ties_keep_first_member() {
+    check_least_loaded_trace([
+        LoadInstruction::AddMember(0),
+        LoadInstruction::AddMember(1),
+        LoadInstruction::RouteMessage(7),
+        LoadInstruction::ReportLoad {
+            member: 0,
+            version: 0,
+            load: 3,
+        },
+        LoadInstruction::ReportLoad {
+            member: 1,
+            version: 0,
+            load: 3,
+        },
+        LoadInstruction::RouteMessage(8),
+        LoadInstruction::ReportLoad {
+            member: 1,
+            version: 1,
+            load: 1,
+        },
+        LoadInstruction::RouteMessage(9),
+        LoadInstruction::ReportLoad {
+            member: 1,
+            version: 0,
+            load: 0,
+        },
+        LoadInstruction::ReportLoad {
+            member: 1,
+            version: 1,
+            load: 2,
+        },
+        LoadInstruction::RemoveMember(1),
+        LoadInstruction::AddMember(1),
+        LoadInstruction::RouteMessage(10),
+        LoadInstruction::ReportLoad {
+            member: 1,
+            version: 0,
+            load: 0,
+        },
+        LoadInstruction::RouteMessage(11),
+        LoadInstruction::ReportLoad {
+            member: 5,
+            version: 0,
+            load: 0,
+        },
+    ])
+    .unwrap();
 }

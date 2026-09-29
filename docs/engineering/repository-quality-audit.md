@@ -2347,9 +2347,63 @@ dependency-policy gates.
 | Order-gate watermark | `catalogue_models::order_gate_matches_an_independent_watermark_map_after_every_operation` compares ordered releases, duplicate and stale-open outcomes, watermark, held count, and empty creation lane after each generated operation. | The generated trace does not prove a runtime delivery receipt or a dedicated guard mutation slice. |
 | Priority selection | `routing::priority_queue` tests stable priority/FIFO ties and full/empty outcomes. `routing_invariants::priority_queue_matches_stable_max_priority_selection` compares an independent ordered list after each offer or release, including exact delivery and reply recipients, reply depth, empty creation lane, and continuing verdict. An isolated `Released.remaining = queued.len() + 1` counterfactual compiled and failed at the new remaining-depth assertion on a one-offer, one-release trace. | The generated priorities cover 0–7 and positive capacities below eight; exhaustion and real host admission are outside this property. The recorded counterfactual covers the release-depth branch, not every routing branch. |
 | Rate admission | `routing::rate_limiter` tests accepted/rejected ownership and saturating refill. `routing_invariants::rate_limiter_matches_saturating_token_arithmetic` compares capacity, available tokens, rejection reasons and returned value, and admitted delivery after each generated operation. | Its generated path constructs positive token costs and capacities; no host admission or dedicated mutation slice is recorded. |
-| Round-robin membership cursor | `routing::router` tests cursor repair after removal. `routing_invariants::round_robin_keeps_the_same_next_recipient_across_membership_edits` tracks an independent member list and next recipient through generated edits and routes. | Least-loaded, consistent-hash, and rendezvous policies have separate focused tests but no comparable independent trace or mutation slice in this ledger. |
+| Round-robin membership cursor | `routing::router` tests cursor repair after removal. `routing_invariants::round_robin_keeps_the_same_next_recipient_across_membership_edits` tracks an independent member list and next recipient through generated edits and routes. | Consistent-hash and rendezvous policies have separate focused tests but no comparable independent trace or mutation slice in this ledger. |
+| Least-loaded evidence | `routing::router` tests unknown, stale, conflicting, tied, and newly lower evidence. `routing_invariants::least_loaded_matches_versioned_membership_and_selection` models member order and latest evidence after mixed add, remove, observe, and route operations; a deterministic trace covers re-addition. | An isolated max-load selection counterfactual failed both new tests; pure routing still does not prove host delivery admission or the other policy families. |
 | Latch release | `workflow::latch` tests threshold order and zero-count startup. `workflow_invariants::latch_releases_each_accepted_route_exactly_once` compares an independent waiting list, release phase, and exact recipient order through generated arrivals. | The property does not interpret delivery admission or record a dedicated mutation slice. |
 | Dependency workflow | `workflow_invariants::workflow_matches_an_independent_dependency_run` tracks step and run phases across start, completion, failure, and cancellation, including invalid early completion and failure. | The focused property and workflow unit tests do not provide a real interpreter trace or dedicated mutation slice for every branch. |
+
+### A20 pre-edit least-loaded evidence law
+
+Classification: deliberate Bombay routing policy. A member is ineligible
+until it has versioned load evidence; the least load wins and declaration
+order breaks ties. Unknown, stale, and same-version conflicting observations
+return the exact evidence without changing membership or load. Removal
+retires a member's evidence, so re-addition begins unknown. A source-only
+unit test checks selected examples but no generated trace combines all of
+these operations. The test-only candidate uses an ordered list of members
+with optional latest `(version, load)` evidence and independently scans for
+the first minimum, rather than calling the strategy's selection logic.
+Mixed generated and deterministic traces will compare complete delivery or
+rejection, every action lane, member order, and evidence after every step.
+Existing `Router`/`LeastLoaded` types and actor unit tests are the
+lower-order contracts. No production type, trait, state, effect, wrapper,
+interpreter port, or public spelling changes. Baseline actor control remains
+one router with an ordered membership list; subordinate evidence is Unknown
+or Observed. Its latest version/load pair and membership order are the exact
+future-needed values. Production branches, lines, and modules remain fixed.
+The residue scan finds no proposed arrival history, repeated cause, false
+cardinality, nested transition authority, semantic boolean, or positional
+consumer syntax. Cross-check: actor transition algebra and normalized
+routing catalogue law. Disposition: `pass` for this test-only model before
+implementation.
+
+The retained independent model uses an ordered member list and each member's
+optional latest version/load reading. It predicts the first minimum, exact
+reply or returned value, all effect lanes, and membership and reading state
+after every operation. The deterministic trace covers tied loads, stale and
+conflicting observations, removal, and re-addition; 384 generated traces mix
+those operations. The seven focused routing invariant tests passed after a
+clean Nix development build. An isolated one-line counterfactual changed the
+selection from minimum to maximum. Both new tests failed for the intended
+recipient-selection law, and the generated trace shrank to two observed
+members followed by one route. The counterfactual worktree was removed.
+
+The isolated worktree temporarily shared the main checkout's Cargo target
+directory. A later main-checkout test linked its mutated artifact and failed;
+that failure is excluded from the baseline evidence. Cleaning both affected
+packages and rebuilding the unchanged main actor source restored the seven
+passing tests. Future worktree counterfactuals need separate Cargo targets.
+This test-only batch changes production `+0/-0/net 0`, tests
+`+235/-1/net +234`, and public API `+0/-0` types; the test file is
+`414 → 648` lines. Production `router.rs` stays at 1,311 physical lines and
+its modules, branches, and public spellings are unchanged. Router control
+remains an ordered membership list with each member Unknown or Observed;
+the optional latest reading and order are precisely the future-needed values.
+The test model adds no production state or nested transition authority. The
+residue scan found no arrival history, repeated cause, false cardinality,
+semantic boolean, or structural caller syntax. The actor transition algebra
+and normalized routing catalogue law were cross-checked. Disposition: `pass`
+for this evidence batch; A20 remains open for the rest of the ledger.
 
 ### A20 ledger entries: catalogue versioning and membership
 
