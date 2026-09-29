@@ -274,32 +274,9 @@ mod tests {
         type Msg = u8;
     }
 
-    impl Behavior for Worker {
-        type Protocol = Self;
-        type Event = User<MailAddr, u8>;
-        type Sends = Vec<Never>;
-        type Ph = Never;
-        type Error = Never;
-        type Birth = NoBirths;
-        fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
-            Ok(Actions::cont())
-        }
-    }
     impl behavior::Protocol for Reply {
         type Addr = MailAddr;
         type Msg = WorkQueueOutcome<u8>;
-    }
-
-    impl Behavior for Reply {
-        type Protocol = Self;
-        type Event = User<MailAddr, behavior::BehaviorMessage<Self>>;
-        type Sends = Vec<Never>;
-        type Ph = Never;
-        type Error = Never;
-        type Birth = NoBirths;
-        fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
-            Ok(Actions::cont())
-        }
     }
     type Subject = WorkQueue<MailAddr, u8, Recipient<Worker>, Recipient<Reply>>;
     fn worker(n: u64) -> Recipient<Worker> {

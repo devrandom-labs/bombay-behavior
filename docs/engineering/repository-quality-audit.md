@@ -1508,6 +1508,29 @@ The propagation selection is reproducible with
 `-f crates/actors/src/lifecycle/termination_propagation.rs
 -F '::matches|match guard self.state|replace && with'`.
 
+### A07 actor mutation evidence: work admission and availability
+
+Classification: deliberate Bombay FIFO and bounded-admission policy. A
+submission consumes the oldest available worker or joins the bounded waiting
+queue; at capacity its complete value is returned. An availability notice
+dispatches the oldest waiting value or joins the unique worker queue.
+
+At signed revision `69adab4`, the Nix-toolchain campaign selected four
+`WorkQueue::submit` and `WorkQueue::announce` candidates in
+`routing/work_queue.rs`. The actor baseline passed, and mutated commands ran
+the actor and testkit suites. Both whole-function default replacements were
+unviable because the complete `Actions` product has no `Default`. The two
+viable admission and duplicate-availability guard changes compiled and failed
+named work-queue unit tests. The strict gate accepted `2 viable / 4 total`,
+with no survivor or timeout. Reproduce with `cargo mutants --package
+bombay-behavior-actors --test-package bombay-behavior-actors --test-package
+bombay-behavior-testkit --test-tool nextest --no-shuffle
+--minimum-test-timeout 180 -f crates/actors/src/routing/work_queue.rs
+-F '::submit|::announce'`. The independent two-FIFO property was subsequently
+strengthened to inspect all action lanes with non-Clone work values and unique
+reply destinations; this newer oracle passed, but was not part of the earlier
+mutant verdict.
+
 ### A07 actor mutation evidence: health observation versions
 
 Classification: deliberate Bombay component-correlation and version-commit policy. A
@@ -1622,6 +1645,15 @@ actor-wide mutation verdict.
 | Independent trace | `exact_termination_model` compares generated exact-report phases and reaction count but does not inspect every action lane. `terminal_outcome_sequences` independently predicts selected-child acceptance, foreign return, discharge, publication, and later rejection; since `f0dce34` it also checks initialization and every effect lane on successful steps. It does not model `PeerTermination`. |
 | Composition and invalid construction | The exact monitor composes inside `StopOnShutdown`, and the logical monitor appears in the universal-layer tests. No two-order wrapper proof is claimed for propagation. A child target requires a typed creation ID and protocol occurrence; a foreign report is a runtime input returned through the typed error. |
 | Counterfactual | Eight viable monitor mutations were caught and two were unviable. The propagation campaign exposed an unconditional-peer-acceptance survivor; its isolated post-regression rerun was caught by the new focused test. The two campaign reports retain their separate baselines and verdicts. |
+
+### A20 ledger entry: work admission and availability
+
+| Evidence layer | Current witness and limit |
+|---|---|
+| Focused transition and custody | `routing::work_queue` unit tests cover FIFO worker selection, queued dispatch, and zero-capacity rejection. The newer independent property also checks every emitted assignment and outcome, recipient, empty creation lane, and continuing verdict. |
+| Independent trace | `routing_invariants::work_queue_matches_two_coupled_fifo_capabilities` tracks waiting work and available workers in separate deques, with unique reply recipients and a non-Clone work payload. It checks the complete observable state after every generated operation. It does not claim transport admission. |
+| Composition and boundaries | Exact reply-route template tests cover logical and established customer routes. The property generates capacities including zero and repeated worker notices and withdrawals; it does not check downstream worker execution. |
+| Counterfactual | Two viable guard mutants failed actor unit tests; two whole-function replacements were unviable. The strengthened independent property passed after this campaign, so the original verdict is not attributed to it. |
 
 ### A20 ledger entry: health observation versions
 
@@ -1929,6 +1961,11 @@ it changes no actor transition or runtime effect law. The existing consuming
 `Activate` path and its tests are the caller-facing proof, so no replacement
 interface or no-op fixture was introduced.
 
+The routing-invariant fixtures and work-queue unit tests also dropped their
+destination-only inert `Behavior` implementations. Their routes require only
+`Protocol`; the routing and queue tests still pass with those narrower
+fixtures.
+
 ### A06 property-oracle evidence
 
 The sequencer, deduplicator, and order-gate models now compare complete
@@ -1944,6 +1981,10 @@ those observations. Readiness generation carries the domain status enum
 instead of a semantic boolean; stale errors check the committed version.
 The independent map, deque, and list oracles remain separate from the
 production transition methods. Focused model and invariant suites passed.
+The work-queue model now checks initialization and every step's full
+assignment/outcome vectors, recipient, creation lane, and next verdict. It
+tracks distinct non-Clone owned work and unique reply destinations through
+both waiting and available FIFO queues; the focused property passed.
 Four isolated temporary counterfactuals each caused the targeted property to
 fail: an extra reply, a wrong destination, a stop verdict, and a lost original
 boxed payload. The temporary test target and its regression artifact were

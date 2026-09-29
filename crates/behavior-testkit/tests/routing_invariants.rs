@@ -11,9 +11,7 @@ use behavior_actors::{
     WorkQueueMessage, WorkQueueOutcome, WorkQueueRejection,
 };
 
-use behavior_core::{
-    Actions, Behavior, BehaviorActed, MailAddr, MessageProtocol, Never, NoBirths, Recipient, User,
-};
+use behavior_core::{MailAddr, MessageProtocol, Recipient};
 use proptest::collection::vec;
 use proptest::prelude::*;
 
@@ -24,21 +22,6 @@ macro_rules! protocol {
             type Addr = MailAddr;
             type Msg = $message;
         }
-        impl Behavior for $name {
-            type Protocol = Self;
-            type Event = User<MailAddr, $message>;
-            type Sends = Vec<Never>;
-            type Ph = Never;
-            type Error = Never;
-            type Birth = NoBirths;
-            fn transition(
-                &mut self,
-                _: behavior_core::ActiveTurn,
-                _: Self::Event,
-            ) -> BehaviorActed<Self> {
-                Ok(Actions::cont())
-            }
-        }
     };
 }
 
@@ -46,8 +29,12 @@ protocol!(PriorityTarget, u8);
 protocol!(PriorityReply, PriorityQueueOutcome<u8, u8>);
 protocol!(RateTarget, u8);
 protocol!(RateReply, RateLimiterOutcome<u8>);
-protocol!(QueueWorker, u8);
-protocol!(QueueReply, WorkQueueOutcome<u8>);
+
+#[derive(Debug, Eq, PartialEq)]
+struct OwnedQueueWork(String);
+
+protocol!(QueueWorker, OwnedQueueWork);
+protocol!(QueueReply, WorkQueueOutcome<OwnedQueueWork>);
 
 type TestBuffer = Buffer<
     MailAddr,
@@ -58,7 +45,7 @@ type TestBuffer = Buffer<
 type TestPriority =
     PriorityQueue<MailAddr, u8, u8, Recipient<PriorityTarget>, Recipient<PriorityReply>>;
 type TestRate = RateLimiter<MailAddr, u8, Recipient<RateTarget>, Recipient<RateReply>>;
-type TestQueue = WorkQueue<MailAddr, u8, Recipient<QueueWorker>, Recipient<QueueReply>>;
+type TestQueue = WorkQueue<MailAddr, OwnedQueueWork, Recipient<QueueWorker>, Recipient<QueueReply>>;
 type TestRouter = Router<MailAddr, Recipient<PriorityTarget>, RoundRobin>;
 
 fn overflow(tag: u8) -> OverflowPolicy {
@@ -249,46 +236,71 @@ proptest! {
         capacity in 0_usize..7,
         operations in vec((0_u8..3, any::<u8>(), 0_u8..8), 0..220),
     ) {
-        let mut actual = TestQueue::new(capacity).initialize().unwrap().behavior;
-        let mut waiting = VecDeque::new();
+        let initialized = TestQueue::new(capacity).initialize().unwrap();
+        prop_assert!(initialized.actions.sends.assignments.is_empty());
+        prop_assert!(initialized.actions.sends.outcomes.is_empty());
+        prop_assert!(initialized.actions.creates.is_empty());
+        prop_assert!(matches!(initialized.actions.become_, behavior_core::Step::Continue));
+        let mut actual = initialized.behavior;
+        let mut waiting: VecDeque<(OwnedQueueWork, Recipient<QueueReply>)> = VecDeque::new();
         let mut available: VecDeque<Recipient<QueueWorker>> = VecDeque::new();
-        let reply = Recipient::global(MailAddr(1));
 
-        for (operation, value, worker_seed) in operations {
+        for (turn, (operation, value, worker_seed)) in operations.into_iter().enumerate() {
             let worker = Recipient::global(MailAddr(u64::from(worker_seed)));
+            let reply = Recipient::global(MailAddr(
+                u64::try_from(turn).expect("generated sequence length fits a u64") + 100,
+            ));
+            let submitted = OwnedQueueWork(format!("work-{turn}-{value}"));
+            let expected_value = OwnedQueueWork(format!("work-{turn}-{value}"));
             let actions = match operation {
-                0 => actual.receive(MailAddr(9), WorkQueueMessage::Submit { value, reply_to: reply }).unwrap(),
+                0 => actual.receive(MailAddr(9), WorkQueueMessage::Submit { value: submitted, reply_to: reply }).unwrap(),
                 1 => actual.receive(MailAddr(9), WorkQueueMessage::Available { worker }).unwrap(),
                 _ => actual.receive(MailAddr(9), WorkQueueMessage::Withdraw { worker }).unwrap(),
             };
+            let mut expected_assignments = Vec::new();
+            let mut expected_outcomes = Vec::new();
             match operation {
                 0 if !available.is_empty() => {
                     let selected = available.pop_front().unwrap();
-                    prop_assert_eq!(actions.sends.assignments[0].to, selected);
-                    prop_assert_eq!(actions.sends.assignments[0].message, value);
+                    expected_assignments.push((selected, expected_value));
+                    expected_outcomes.push((reply, WorkQueueOutcome::Dispatched { queued: waiting.len() }));
                 }
                 0 if waiting.len() < capacity => {
-                    waiting.push_back(value);
-                    prop_assert!(actions.sends.assignments.is_empty());
-                    prop_assert_eq!(&actions.sends.outcomes[0].message, &WorkQueueOutcome::Queued { depth: waiting.len() });
+                    waiting.push_back((expected_value, reply));
+                    expected_outcomes.push((reply, WorkQueueOutcome::Queued { depth: waiting.len() }));
                 }
                 0 => {
-                    let matched = matches!(actions.sends.outcomes[0].message,
-                        WorkQueueOutcome::Rejected { value: returned, reason: WorkQueueRejection::Full }
-                            if returned == value);
-                    prop_assert!(matched);
+                    expected_outcomes.push((reply, WorkQueueOutcome::Rejected {
+                        value: expected_value,
+                        reason: WorkQueueRejection::Full,
+                    }));
                 }
                 1 if !waiting.is_empty() => {
-                    let assigned = waiting.pop_front().unwrap();
-                    prop_assert_eq!(actions.sends.assignments[0].to, worker);
-                    prop_assert_eq!(actions.sends.assignments[0].message, assigned);
+                    let (assigned, waiting_reply) = waiting.pop_front().unwrap();
+                    expected_assignments.push((worker, assigned));
+                    expected_outcomes.push((waiting_reply, WorkQueueOutcome::Dispatched { queued: waiting.len() }));
                 }
                 1 => {
                     if !available.contains(&worker) { available.push_back(worker); }
-                    prop_assert!(actions.sends.assignments.is_empty());
                 }
                 _ => available.retain(|candidate| *candidate != worker),
             }
+            prop_assert_eq!(actions.sends.assignments.len(), expected_assignments.len());
+            for (assignment, (recipient, assigned)) in
+                actions.sends.assignments.iter().zip(expected_assignments)
+            {
+                prop_assert_eq!(assignment.to, recipient);
+                prop_assert_eq!(&assignment.message, &assigned);
+            }
+            prop_assert_eq!(actions.sends.outcomes.len(), expected_outcomes.len());
+            for (outcome, (recipient, expected)) in
+                actions.sends.outcomes.iter().zip(expected_outcomes)
+            {
+                prop_assert_eq!(outcome.to, recipient);
+                prop_assert_eq!(&outcome.message, &expected);
+            }
+            prop_assert!(actions.creates.is_empty());
+            prop_assert!(matches!(actions.become_, behavior_core::Step::Continue));
             let state = actual.state();
             prop_assert_eq!(state.available(), available.make_contiguous());
             prop_assert_eq!(state.queued(), waiting.len());
