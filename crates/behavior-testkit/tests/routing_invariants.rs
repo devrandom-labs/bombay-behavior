@@ -4,18 +4,19 @@ use core::num::NonZeroU64;
 use std::collections::VecDeque;
 
 use behavior_actors::{
-    Activate as _, Buffer, BufferConfiguration, BufferMessage, BufferOutcome, BufferRejection,
-    LeastLoaded, LeastLoadedError, Load, LoadEvidence, LoadObservation, LoadVersion,
+    Activate as _, Active, Buffer, BufferConfiguration, BufferMessage, BufferOutcome,
+    BufferRejection, LeastLoaded, LeastLoadedError, Load, LoadEvidence, LoadObservation,
+    LoadVersion, MemberToken, MemberTokenEvidence, MemberTokenObservation, MemberTokenVersion,
     OverflowPolicy, PriorityQueue, PriorityQueueMessage, PriorityQueueOutcome,
     PriorityQueueRejection, RateLimitRejection, RateLimiter, RateLimiterMessage,
-    RateLimiterOutcome, RoundRobin, Router, RouterError, RouterMessage, TokenCount, WorkQueue,
-    WorkQueueMessage, WorkQueueOutcome, WorkQueueRejection,
+    RateLimiterOutcome, RendezvousHash, RoundRobin, RouteKey, Router, RouterError, RouterMessage,
+    TokenCount, WorkQueue, WorkQueueMessage, WorkQueueOutcome, WorkQueueRejection,
 };
 
 use behavior_core::{MailAddr, MessageProtocol, Recipient, Step};
 use proptest::collection::vec;
 use proptest::prelude::*;
-use proptest::test_runner::TestCaseResult;
+use proptest::test_runner::{TestCaseError, TestCaseResult};
 
 macro_rules! protocol {
     ($name:ident, $message:ty) => {
@@ -31,6 +32,20 @@ protocol!(PriorityTarget, u8);
 protocol!(PriorityReply, PriorityQueueOutcome<u8, u8>);
 protocol!(RateTarget, u8);
 protocol!(RateReply, RateLimiterOutcome<u8>);
+
+#[derive(Debug, Eq, PartialEq)]
+struct KeyedRoutingMessage {
+    key: u64,
+    value: u8,
+}
+
+impl RouteKey<u64> for KeyedRoutingMessage {
+    fn route_key(&self) -> &u64 {
+        &self.key
+    }
+}
+
+protocol!(KeyedRoutingTarget, KeyedRoutingMessage);
 
 #[derive(Debug, Eq, PartialEq)]
 struct OwnedQueueWork(String);
@@ -51,6 +66,11 @@ type TestQueue = WorkQueue<MailAddr, OwnedQueueWork, Recipient<QueueWorker>, Rec
 type TestRouter = Router<MailAddr, Recipient<PriorityTarget>, RoundRobin>;
 type TestLeastLoaded =
     Router<MailAddr, Recipient<PriorityTarget>, LeastLoaded<Recipient<PriorityTarget>>>;
+type TestRendezvous = Router<
+    MailAddr,
+    Recipient<KeyedRoutingTarget>,
+    RendezvousHash<Recipient<KeyedRoutingTarget>, u64>,
+>;
 
 #[derive(Clone, Copy, Debug)]
 enum BufferTurn {
@@ -645,4 +665,124 @@ fn least_loaded_readdition_discards_old_evidence_and_ties_keep_first_member() {
         },
     ])
     .unwrap();
+}
+
+fn keyed_recipient(member: u8) -> Recipient<KeyedRoutingTarget> {
+    Recipient::global(MailAddr(u64::from(member) + 1))
+}
+
+fn identity_key(key: &u64) -> u64 {
+    *key
+}
+
+fn route_rendezvous(
+    router: &mut Active<TestRendezvous>,
+    key: u64,
+    value: u8,
+) -> Result<Recipient<KeyedRoutingTarget>, TestCaseError> {
+    let actions = router
+        .receive(
+            MailAddr(9),
+            RouterMessage::Route(KeyedRoutingMessage { key, value }),
+        )
+        .unwrap();
+    prop_assert_eq!(actions.sends.len(), 1);
+    prop_assert_eq!(
+        &actions.sends[0].message,
+        &KeyedRoutingMessage { key, value }
+    );
+    prop_assert!(actions.creates.is_empty());
+    prop_assert_eq!(actions.become_, Step::Continue);
+    Ok(actions.sends[0].to)
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig { cases: 128, ..ProptestConfig::default() })]
+
+    #[test]
+    fn rendezvous_membership_edits_only_move_keys_to_or_from_the_changed_member(
+        tokens in prop::array::uniform4(any::<u64>()),
+        extra_keys in vec(any::<u64>(), 0..32),
+    ) {
+        prop_assume!(tokens.iter().enumerate().all(|(index, token)| tokens[..index].iter().all(|earlier| earlier != token)));
+        let recipients = [keyed_recipient(0), keyed_recipient(1), keyed_recipient(2), keyed_recipient(3)];
+        let mut router = TestRendezvous::new(recipients[..3].to_vec(), RendezvousHash::new(identity_key))
+            .initialize().unwrap().behavior;
+        for (member, token) in tokens[..3].iter().copied().enumerate() {
+            let actions = router.receive(MailAddr(9), RouterMessage::Observe(MemberTokenObservation {
+                recipient: recipients[member],
+                version: MemberTokenVersion(0),
+                token: MemberToken(token),
+            })).unwrap();
+            prop_assert!(actions.sends.is_empty());
+            prop_assert!(actions.creates.is_empty());
+            prop_assert_eq!(actions.become_, Step::Continue);
+        }
+        let keys = (0..64_u64).chain(extra_keys).collect::<Vec<_>>();
+        let mut before = Vec::with_capacity(keys.len());
+        for (index, key) in keys.iter().copied().enumerate() {
+            before.push(route_rendezvous(&mut router, key, u8::try_from(index).unwrap())?);
+        }
+
+        let added = router.receive(MailAddr(9), RouterMessage::Add(recipients[3])).unwrap();
+        prop_assert!(added.sends.is_empty());
+        prop_assert!(added.creates.is_empty());
+        prop_assert_eq!(added.become_, Step::Continue);
+        prop_assert_eq!(router.recipients(), recipients.as_slice());
+        prop_assert_eq!(router.strategy().evidence(recipients[3]), Some(MemberTokenEvidence::Unknown));
+        for ((index, key), owner) in keys.iter().copied().enumerate().zip(before.iter().copied()) {
+            prop_assert_eq!(route_rendezvous(&mut router, key, u8::try_from(index).unwrap())?, owner);
+        }
+
+        let observed = router.receive(MailAddr(9), RouterMessage::Observe(MemberTokenObservation {
+            recipient: recipients[3],
+            version: MemberTokenVersion(0),
+            token: MemberToken(tokens[3]),
+        })).unwrap();
+        prop_assert!(observed.sends.is_empty());
+        prop_assert!(observed.creates.is_empty());
+        prop_assert_eq!(observed.become_, Step::Continue);
+        let mut after_addition = Vec::with_capacity(keys.len());
+        for ((index, key), previous) in keys.iter().copied().enumerate().zip(before) {
+            let current = route_rendezvous(&mut router, key, u8::try_from(index).unwrap())?;
+            prop_assert!(current == previous || current == recipients[3]);
+            after_addition.push(current);
+        }
+
+        let mut reversed = TestRendezvous::new(recipients.iter().rev().copied().collect(), RendezvousHash::new(identity_key))
+            .initialize().unwrap().behavior;
+        for member in (0..4).rev() {
+            let actions = reversed.receive(MailAddr(9), RouterMessage::Observe(MemberTokenObservation {
+                recipient: recipients[member],
+                version: MemberTokenVersion(0),
+                token: MemberToken(tokens[member]),
+            })).unwrap();
+            prop_assert!(actions.sends.is_empty());
+            prop_assert!(actions.creates.is_empty());
+            prop_assert_eq!(actions.become_, Step::Continue);
+        }
+        for ((index, key), owner) in keys.iter().copied().enumerate().zip(after_addition.iter().copied()) {
+            prop_assert_eq!(route_rendezvous(&mut reversed, key, u8::try_from(index).unwrap())?, owner);
+        }
+
+        let removed = router.receive(MailAddr(9), RouterMessage::Remove(recipients[1])).unwrap();
+        prop_assert!(removed.sends.is_empty());
+        prop_assert!(removed.creates.is_empty());
+        prop_assert_eq!(removed.become_, Step::Continue);
+        prop_assert_eq!(router.recipients(), &[recipients[0], recipients[2], recipients[3]]);
+        prop_assert_eq!(router.strategy().evidence(recipients[1]), None);
+        for member in [0, 2, 3] {
+            prop_assert_eq!(router.strategy().evidence(recipients[member]), Some(MemberTokenEvidence::Observed {
+                version: MemberTokenVersion(0),
+                token: MemberToken(tokens[member]),
+            }));
+        }
+        for ((index, key), previous) in keys.iter().copied().enumerate().zip(after_addition) {
+            let current = route_rendezvous(&mut router, key, u8::try_from(index).unwrap())?;
+            prop_assert_ne!(current, recipients[1]);
+            if previous != recipients[1] {
+                prop_assert_eq!(current, previous);
+            }
+        }
+    }
 }
