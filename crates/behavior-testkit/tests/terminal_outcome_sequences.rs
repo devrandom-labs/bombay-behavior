@@ -4,9 +4,10 @@ use std::time::Instant;
 
 use behavior_actors::atomic::RestartReleaseFailure;
 use behavior_actors::{
-    Activate as _, ChildStopped, Crash, Exit, PropagateTermination, ReportTerminalOutcome,
-    RestartDenial, SupervisionFailureReason, TerminalDisposition, TerminalOutcome,
-    TerminalPropagationState, TerminationPropagationError, propagate_abnormal, propagate_all,
+    Activate as _, ChildStopped, Crash, Exit, ObserveChild, PropagateTermination,
+    ReportTerminalOutcome, RestartDenial, SupervisionFailureReason, TerminalDisposition,
+    TerminalOutcome, TerminalPropagationState, TerminationPropagationError, propagate_abnormal,
+    propagate_all,
 };
 use behavior_core::{
     Actions, AllocationRejection, Behavior, BehaviorActed, CreationRejection, CreationSequence,
@@ -210,14 +211,22 @@ proptest! {
         let mut creation_ids = CreationSequence::new();
         let selected_child = creation_ids.issue().expect("the selected child ID exists");
         let other_child = creation_ids.issue().expect("the other child ID exists");
-        let mut subject = PropagateTermination::new(
+        let initialized = PropagateTermination::new(
             Domain,
             behavior_actors::ChildTermination::<Domain, behavior_core::ChildHead>::new(selected_child),
             policy_function,
         )
         .initialize()
-        .unwrap()
-        .behavior;
+        .unwrap();
+        prop_assert_eq!(
+            initialized.actions.sends.owned.observations.as_slice(),
+            [ObserveChild::<Domain, behavior_core::ChildHead>::new(selected_child)]
+        );
+        prop_assert!(initialized.actions.sends.owned.reports.is_empty());
+        prop_assert!(initialized.actions.sends.inner.is_empty());
+        prop_assert!(initialized.actions.creates.is_empty());
+        prop_assert!(matches!(initialized.actions.become_, Step::Continue));
+        let mut subject = initialized.behavior;
         let mut model = ExpectedState::Listening;
 
         for (kind, outcome_tag, detail) in inputs {
@@ -230,7 +239,9 @@ proptest! {
                         .transition(EventLayer::Inner(User::new(sender, payload)))
                         .unwrap();
                     prop_assert_eq!(actions.sends.inner, [expected]);
+                    prop_assert!(actions.sends.owned.observations.is_empty());
                     prop_assert!(actions.sends.owned.reports.is_empty());
+                    prop_assert!(actions.creates.is_empty());
                     prop_assert!(matches!(actions.become_, Step::Continue));
                     model = next;
                 }
@@ -247,7 +258,9 @@ proptest! {
                         actions.sends.owned.reports.as_slice(),
                         [ReportTerminalOutcome::new(expected)]
                     );
+                    prop_assert!(actions.sends.owned.observations.is_empty());
                     prop_assert!(actions.sends.inner.is_empty());
+                    prop_assert!(actions.creates.is_empty());
                     prop_assert!(matches!(actions.become_, Step::Stop(_)));
                     model = ExpectedState::Published;
                 }
@@ -260,7 +273,9 @@ proptest! {
                         )))
                         .unwrap();
                     prop_assert!(actions.sends.owned.reports.is_empty());
+                    prop_assert!(actions.sends.owned.observations.is_empty());
                     prop_assert!(actions.sends.inner.is_empty());
+                    prop_assert!(actions.creates.is_empty());
                     prop_assert!(matches!(actions.become_, Step::Continue));
                     model = next;
                 }

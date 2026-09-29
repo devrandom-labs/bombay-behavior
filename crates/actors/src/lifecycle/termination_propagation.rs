@@ -637,7 +637,7 @@ mod tests {
     }
 
     #[test]
-    fn peer_target_uses_the_same_propagation_law() {
+    fn peer_target_returns_foreign_report_before_propagating_selected_peer() {
         let mut initialized = PropagateTermination::new(
             Probe {
                 worker: worker_creation(),
@@ -652,6 +652,21 @@ mod tests {
             [ObservePeer::new(MailAddr(4))]
         );
 
+        let foreign = PeerStopped::new(MailAddr(5), Err(Crash::Failed));
+        assert!(matches!(
+            initialized
+                .behavior
+                .transition(EventLayer::Owned(foreign.clone())),
+            Err(TerminationPropagationError::UnexpectedReport {
+                state: TerminalPropagationState::Observing,
+                report,
+            }) if report == foreign
+        ));
+        assert_eq!(
+            initialized.behavior.state(),
+            TerminalPropagationState::Observing
+        );
+
         let outcome = Err(Crash::Panicked);
         let actions = initialized
             .behavior
@@ -660,6 +675,14 @@ mod tests {
         assert_eq!(
             actions.sends.owned.reports.as_slice(),
             [ReportTerminalOutcome::new(outcome)]
+        );
+        assert!(actions.sends.owned.observations.is_empty());
+        assert!(actions.sends.inner.is_empty());
+        assert!(actions.creates.is_empty());
+        assert!(matches!(actions.become_, behavior::Step::Stop(_)));
+        assert_eq!(
+            initialized.behavior.state(),
+            TerminalPropagationState::Propagated
         );
     }
 
