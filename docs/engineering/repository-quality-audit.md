@@ -2165,6 +2165,44 @@ remains open. The pure trace does not prove host delivery admission or a
 wrapper-order interaction, and its isolated counterfactual covers one
 terminal branch only.
 
+### A20 pre-edit correlation reply custody
+
+Classification: deliberate Bombay keyed-correlation policy. `Begin` retains
+one exact reply recipient while pending. A matching Resolve or Cancel emits
+one terminal result to that recipient, then removes its authority; a later
+reply is rejected with complete key/value ownership. The current generated
+property uses the same reply route for every Begin and checks only the first
+send's payload on successful terminal transitions. It cannot detect a wrong
+destination, duplicate send, creation, or stop verdict. The test-only
+candidate varies reply recipients, retains their address in the independent
+model only while pending, and compares all successful action lanes and the
+exact retained state after every operation. Existing `CorrelatorError` cases
+already check the owned rejected values. No production state, transition,
+effect, interpreter operation, wrapper, public spelling, module, or line
+changes are proposed. Control phases Pending/Completed/Cancelled and every
+subordinate alternative remain fixed; the pending reply address is the exact
+future-needed current value. The residue scan finds no proposed arrival
+history, repeated cause, false cardinality, nested authority, semantic
+boolean, or positional consumer syntax. Cross-check: actor transition
+algebra and routing correlation law. Disposition: `pass` for the test-only
+model before implementation.
+
+The focused three-case correlation suite passes after the property varies
+reply addresses for each Begin. Successful Begin asserts empty sends and
+creations plus Continue; matching Resolve and Cancel each assert exactly one
+send to the retained recipient, the complete result, empty creations, and
+Continue. The record comparison now checks the retained pending recipient
+alongside its key and phase. Every existing rejection still checks its exact
+returned key, value, or submitted reply route. Test source changed
+`+26/-10/net +16` physical lines (`393 → 409`); production `+0/-0`, public
+types, control states, subordinate alternatives, transition branches, and
+modules are unchanged. The pending recipient is discarded from the model
+upon terminal settlement, matching the current-value law. No history,
+repeated cause, false cardinality, nested authority, semantic boolean, or
+positional consumer syntax was added. The actor transition and correlation
+laws were cross-checked. Disposition: `pass` for this test-only batch; a
+dedicated route mutation and real interpreter delivery remain outside it.
+
 ### A20 ledger entries: machine, stash, and cache
 
 | Law | Focused transition and broader witness | Boundary and counterfactual limit |

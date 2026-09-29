@@ -22,7 +22,7 @@ type Correlations =
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum CorrelationPhase {
-    Pending,
+    Pending(MailAddr),
     Completed,
     Cancelled,
 }
@@ -242,13 +242,13 @@ proptest! {
 
     #[test]
     fn correlator_permits_one_terminal_transition_and_never_reopens(
-        operations in vec((0_u8..3, 0_u8..8, any::<u8>()), 0..200),
+        operations in vec((0_u8..3, 0_u8..8, any::<u8>(), 1_u8..5), 0..200),
     ) {
         let mut actual = Correlations::new().initialize().unwrap().behavior;
         let mut expected: Vec<(u8, CorrelationPhase)> = Vec::new();
-        let reply = Recipient::global(MailAddr(1));
 
-        for (operation, key, value) in operations {
+        for (operation, key, value, reply_address) in operations {
+            let reply = Recipient::global(MailAddr(u64::from(reply_address)));
             let existing = expected.iter().position(|(candidate, _)| *candidate == key);
             let result = match operation {
                 0 => actual.receive(MailAddr(9), CorrelatorMessage::Begin { key, reply_to: reply }),
@@ -256,8 +256,14 @@ proptest! {
                 _ => actual.receive(MailAddr(9), CorrelatorMessage::Cancel { key }),
             };
             match (operation, existing.map(|index| expected[index].1)) {
-                (0, None) => { prop_assert!(result.is_ok()); expected.push((key, CorrelationPhase::Pending)); }
-                (0, Some(CorrelationPhase::Pending)) => {
+                (0, None) => {
+                    let actions = result.unwrap();
+                    prop_assert!(actions.sends.is_empty());
+                    prop_assert!(actions.creates.is_empty());
+                    prop_assert_eq!(actions.become_, Step::Continue);
+                    expected.push((key, CorrelationPhase::Pending(MailAddr(u64::from(reply_address)))));
+                }
+                (0, Some(CorrelationPhase::Pending(_))) => {
                     let exact = matches!(result, Err(CorrelatorError::AlreadyPending { key: returned, reply_to }) if returned == key && reply_to == reply);
                     prop_assert!(exact);
                 }
@@ -273,10 +279,14 @@ proptest! {
                     let matched = matches!(result, Err(CorrelatorError::UnknownReply { key: returned, value: returned_value }) if returned == key && returned_value == value);
                     prop_assert!(matched);
                 }
-                (1, Some(CorrelationPhase::Pending)) => {
+                (1, Some(CorrelationPhase::Pending(destination))) => {
                     let actions = result.unwrap();
                     expected[existing.unwrap()].1 = CorrelationPhase::Completed;
+                    prop_assert_eq!(actions.sends.len(), 1);
+                    prop_assert_eq!(actions.sends[0].to, Recipient::global(destination));
                     prop_assert_eq!(&actions.sends[0].message, &CorrelationResult::Resolved { key, value });
+                    prop_assert!(actions.creates.is_empty());
+                    prop_assert_eq!(actions.become_, Step::Continue);
                 }
                 (1, Some(CorrelationPhase::Completed)) => {
                     let matched = matches!(result, Err(CorrelatorError::StaleCompleted { key: returned, value: returned_value }) if returned == key && returned_value == value);
@@ -287,10 +297,14 @@ proptest! {
                     prop_assert!(matched);
                 }
                 (2, None) => prop_assert!(matches!(result, Err(CorrelatorError::Unknown(returned)) if returned == key)),
-                (2, Some(CorrelationPhase::Pending)) => {
+                (2, Some(CorrelationPhase::Pending(destination))) => {
                     let actions = result.unwrap();
                     expected[existing.unwrap()].1 = CorrelationPhase::Cancelled;
+                    prop_assert_eq!(actions.sends.len(), 1);
+                    prop_assert_eq!(actions.sends[0].to, Recipient::global(destination));
                     prop_assert_eq!(&actions.sends[0].message, &CorrelationResult::Cancelled { key });
+                    prop_assert!(actions.creates.is_empty());
+                    prop_assert_eq!(actions.become_, Step::Continue);
                 }
                 (2, Some(CorrelationPhase::Completed)) => prop_assert!(matches!(result, Err(CorrelatorError::AlreadyCompleted(returned)) if returned == key)),
                 (2, Some(CorrelationPhase::Cancelled)) => prop_assert!(matches!(result, Err(CorrelatorError::AlreadyCancelled(returned)) if returned == key)),
@@ -299,8 +313,10 @@ proptest! {
             prop_assert_eq!(actual.states().len(), expected.len());
             for (state, (modeled_key, phase)) in actual.states().iter().zip(&expected) {
                 let same = match (state, phase) {
-                    (CorrelationState::Pending { key, .. }, CorrelationPhase::Pending)
-                    | (CorrelationState::Completed { key }, CorrelationPhase::Completed)
+                    (CorrelationState::Pending { key, reply_to }, CorrelationPhase::Pending(destination)) => {
+                        key == modeled_key && *reply_to == Recipient::global(*destination)
+                    }
+                    (CorrelationState::Completed { key }, CorrelationPhase::Completed)
                     | (CorrelationState::Cancelled { key }, CorrelationPhase::Cancelled) => key == modeled_key,
                     _ => false,
                 };
