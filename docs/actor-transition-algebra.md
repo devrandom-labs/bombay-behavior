@@ -97,7 +97,10 @@ Only the committed path may produce
 the complete staged creation before the initialization fold. Pure
 initialization rejection returns the current child and exact error; host
 rejection after that fold returns the current child and uninterpreted
-initialization `Actions`. Neither rejection commits a binding. Once committed,
+initialization `Actions`. A caught pure initialization panic returns the
+extant current child through `InitializationPanicked`, without claiming an
+initialization error or accepted actions. None of these outcomes commits a
+binding. Once committed,
 an initialization-effect failure belongs to the installed child's drain and
 cannot be reported as a creation rejection. An initialization `Stop` still
 settles its final actions and never enables ordinary ingress.

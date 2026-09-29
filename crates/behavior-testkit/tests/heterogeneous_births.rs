@@ -92,6 +92,7 @@ enum ChildKind {
 enum ObservedCreation {
     Established,
     Rejected(CreationRejection),
+    InitializationPanicked,
     Corrupt(InterpreterFault),
 }
 
@@ -275,6 +276,12 @@ fn normalize(
         | ItemSettlement::Accepted(ChildChoice::Tail(ChildChoice::Head(
             ChildCreationOutcome::InitializationRejected { error, .. },
         ))) => match error {},
+        ItemSettlement::Accepted(ChildChoice::Head(
+            ChildCreationOutcome::InitializationPanicked { .. },
+        ))
+        | ItemSettlement::Accepted(ChildChoice::Tail(ChildChoice::Head(
+            ChildCreationOutcome::InitializationPanicked { .. },
+        ))) => ObservedCreation::InitializationPanicked,
         ItemSettlement::Accepted(ChildChoice::Tail(ChildChoice::Tail(never))) => match never {},
         ItemSettlement::Rejected { reason, .. } => ObservedCreation::Rejected(reason),
         ItemSettlement::Blocked { prerequisite, .. } => match prerequisite {},

@@ -80,6 +80,8 @@ For each ordered creation batch and routed request it must:
 
 Failure publishes no capability. After ownership transfer,
 `InitializationRejected` returns the current child and exact error, while
+`InitializationPanicked` returns the extant current child after a caught pure
+initialization panic, and
 `HostRejected` returns the current child, uninterpreted initialization actions,
 and matching `CreationRejection`. Before transfer, rejection returns the
 original creation batch with `ChildNamespaceExhausted`. An allocation collision

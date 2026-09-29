@@ -622,9 +622,11 @@ where
 ///
 /// A created child leaves only its exact established capability. Rejection
 /// during the pure initialization transition returns the current child and its
-/// exact error. Rejection while establishing the host returns the current child
-/// and the still-uninterpreted initialization actions. No variant reconstructs
-/// a pre-initialization value or silently discards an affine action.
+/// exact error. A caught panic returns the extant current child without
+/// claiming an error or successful actions. Rejection while establishing the
+/// host returns the current child and the still-uninterpreted initialization
+/// actions. No variant reconstructs a pre-initialization value or silently
+/// discards an affine action.
 pub enum ChildCreationOutcome<C, Occurrence>
 where
     C: Behavior,
@@ -641,6 +643,14 @@ where
         creation: RoutedCreation<BehaviorAddr<C>, C>,
         /// Exact error returned by the child's initialization transition.
         error: C::Error,
+    },
+    /// The child's pure initialization panicked before any host commitment.
+    ///
+    /// Only the outer routed child that survived Rust unwinding is returned;
+    /// this does not promise recovery of values destroyed inside user code.
+    InitializationPanicked {
+        /// Current child value with its creator correlation and private route.
+        creation: RoutedCreation<BehaviorAddr<C>, C>,
     },
     /// Host establishment rejected after initialization produced actions.
     HostRejected {

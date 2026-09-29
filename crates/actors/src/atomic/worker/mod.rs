@@ -106,6 +106,8 @@ where
     NamespaceExhausted { worker: W },
     /// The worker's pure initialization transition rejected.
     WorkerRejected { worker: W, error: W::Error },
+    /// The worker's pure initialization panicked before host commitment.
+    WorkerPanicked { worker: W },
     /// Host establishment rejected after initialization produced actions.
     HostRejected {
         recovery: WorkerRecovery<W>,
@@ -164,6 +166,11 @@ where
                 WorkerCreationOutcome::Rejected(WorkerCreationRejection::WorkerRejected {
                     worker: recover_worker(creation),
                     error,
+                })
+            }
+            Err(ChildCreationOutcome::InitializationPanicked { creation }) => {
+                WorkerCreationOutcome::Rejected(WorkerCreationRejection::WorkerPanicked {
+                    worker: recover_worker(creation),
                 })
             }
             Err(ChildCreationOutcome::HostRejected {

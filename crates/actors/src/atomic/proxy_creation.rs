@@ -44,6 +44,7 @@ where
                 (established.id(), established.kind())
             }
             ChildCreationOutcome::InitializationRejected { creation, .. }
+            | ChildCreationOutcome::InitializationPanicked { creation }
             | ChildCreationOutcome::HostRejected { creation, .. } => {
                 (creation.id(), creation.kind())
             }

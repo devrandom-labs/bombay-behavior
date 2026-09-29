@@ -2150,6 +2150,7 @@ where
                 established: EstablishedCreation::Rejected { .. },
             } => None,
             ChildCreationOutcome::InitializationRejected { creation, .. }
+            | ChildCreationOutcome::InitializationPanicked { creation }
             | ChildCreationOutcome::HostRejected { creation, .. } => {
                 Some((creation.id(), creation.kind()))
             }

@@ -854,6 +854,7 @@ where
                             established: EstablishedCreation::Rejected { .. },
                         }
                         | ChildCreationOutcome::InitializationRejected { .. }
+                        | ChildCreationOutcome::InitializationPanicked { .. }
                         | ChildCreationOutcome::HostRejected { .. },
                     )
                     | ItemSettlement::Rejected { .. }

@@ -113,7 +113,9 @@ mailbox, task, registry, callback, or lifecycle service.
 An establishment attempt that accepts ownership of a child definition returns
 an authoritative `ChildCreationOutcome<C, Occurrence>`. `Established` owns the exact
 capability. `InitializationRejected` returns the current child and exact initialization
-error. `HostRejected` returns the current child, uninterpreted initialization
+error. `InitializationPanicked` returns the extant current child after a caught
+pure fold panic, without claiming a typed initialization error or actions.
+`HostRejected` returns the current child, uninterpreted initialization
 actions, and exact reason. These are semantic creation rejections, not
 interpreter corruption, and none reconstructs the pre-initialization child.
 Rejection or corruption before ownership transfer instead returns the complete
@@ -502,9 +504,10 @@ replacement. Applying only a subset leaves affine values unowned.
    returns one ordered `Creations<RoutedCreation<BehaviorAddr<C>, C>>` value.
    Then `EstablishChild<Occurrence, C>` settles each routed child independently.
    Its output is fixed by the routed creation, not selected by Bombay.
-   `Created` returns the exact established capability.
+   `Established` returns the exact established capability.
    `InitializationRejected` returns the current routed child and exact
-   initialization error. `HostRejected` returns the current routed child,
+   initialization error. `InitializationPanicked` returns the extant current
+   routed child after a caught pure fold panic. `HostRejected` returns the current routed child,
    uninterpreted initialization `Actions`, and exact reason. Corruption retains
    the exact routed suffix through `InterpreterFault`.
 3. Replace `CommitActions::commit`'s creation `for` loop and subsequent
@@ -551,9 +554,11 @@ replacement. Applying only a subset leaves affine values unowned.
    action transaction. Equal numeric runtime routes and distinct occurrences
    cannot satisfy each other's prerequisite.
 4. Child hosting consumes `RoutedCreation` and returns `ChildCreationOutcome<C,
-   Occurrence>` as its accepted receipt. Successful commit returns `Created`.
+   Occurrence>` as its accepted receipt. Successful commit returns `Established`.
    A pure initialization error returns `InitializationRejected` with the routed
-   child and exact error. Allocation rejection occurs before initialization
+   child and exact error. A caught pure initialization panic returns
+   `InitializationPanicked` with the extant current routed child. Allocation
+   rejection occurs before initialization
    and returns the complete routed creation. Host rejection after initialization
    returns `HostRejected` with the routed child and still-uninterpreted
    initialization `Actions`. Post-commit initialization-action failure is not a

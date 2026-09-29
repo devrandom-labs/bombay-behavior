@@ -1400,6 +1400,54 @@ fn rejected_worker_is_returned_and_initial_empty_provenance_is_preserved() {
 }
 
 #[test]
+fn panicked_initial_worker_returns_its_current_definition_without_a_birth() {
+    let initialized = StableProxy::immediate()
+        .initialize()
+        .expect("proxy initialization is pure");
+    let mut proxy = initialized.behavior;
+    let started = proxy
+        .on(ProxyControl::start(Worker(8)))
+        .expect("the proxy stages one initial worker");
+    let creation = started
+        .creates
+        .into_iter()
+        .next()
+        .expect("one worker creation is staged");
+    let rejected = proxy
+        .on(worker_creation_result(
+            ChildCreationOutcome::InitializationPanicked {
+                creation: RoutedCreation::new(creation, 708),
+            },
+        ))
+        .expect("a pure initialization panic is a total proxy input");
+
+    assert_eq!(proxy.phase(), ProxyPhase::EmptyInitial);
+    assert!(rejected.creates.is_empty());
+    assert!(rejected.sends.diagnostics.is_empty());
+    match rejected
+        .sends
+        .owner_outcomes
+        .into_iter()
+        .next()
+        .expect("the owner receives one exact initial-worker outcome")
+        .into_inner()
+    {
+        ProxyOutcome::Initial {
+            outcome:
+                InitialWorkerOutcome::Resolved {
+                    result:
+                        WorkerStartResult::CreationRejected {
+                            activation: ImmediateActivation,
+                            rejection: WorkerCreationRejection::WorkerPanicked { worker },
+                            stopped: None,
+                        },
+                },
+        } => assert_eq!(worker, Worker(8)),
+        _ => panic!("the panic must not become an established worker"),
+    }
+}
+
+#[test]
 fn overlapping_start_returns_the_complete_submission() {
     let initialized = StableProxy::immediate()
         .initialize()

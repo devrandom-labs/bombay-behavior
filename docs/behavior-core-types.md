@@ -283,7 +283,7 @@ not protocol identity, actor identity, or runtime lookup keys.
 
 | Type | Kind | Semantic role |
 |---|---|---|
-| `ChildCreationOutcome<C, Occurrence>` | Enum | Created child, initialization rejection retaining child/error, or host rejection retaining child/uninterpreted initialization actions/reason. |
+| `ChildCreationOutcome<C, Occurrence>` | Enum | Established child, initialization rejection retaining child/error, caught pure-fold panic retaining the extant child, or host rejection retaining child/uninterpreted initialization actions/reason. |
 | `EstablishChild<Occurrence, C>` | Trait | Concrete interpreter ownership port returning the fixed `ChildCreationOutcome` result for `C` at one exact occurrence. |
 | `ChildCreationProduct<A, Occurrence>` | Hidden trait | Runtime-independent result product for a closed creation-only child sum. |
 | `DispatchBirth<A, Host>` | Trait | Exhaustive static dispatch over one closed creation-only child sum. |
