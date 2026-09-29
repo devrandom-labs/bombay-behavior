@@ -828,8 +828,29 @@ caller test, and `stable_proxy/mod.rs`. The production diff is +7/-11 lines,
 net -4; the test adds 47 lines. Public types added/removed: 0/0. Control states,
 subordinate alternatives, transition branch count, modules, and public
 spellings remain unchanged. The exact retained current values and residue
-scan remain as recorded before the edit. Disposition: `pass` for the retained
-representation, pending the post-edit mutation verdict and full Nix gate.
+scan remain as recorded before the edit. At signed revision `7163ec3`, the
+Nix-pinned post-edit campaign ran a 591-test actor baseline and selected the
+remaining viable equality mutation. The mutated build ran 703 actor/testkit
+tests; six actor tests failed, so the mutant was caught. The unselected
+function-wide replacement proposes `Ok(Default::default())`, which cannot
+construct the returned affine activation. This is a stable-proxy
+activation-law verdict, not an actor-wide result. The full Nix flake gate
+passed from a clean worktree at `7163ec3`, including workspace Nextest,
+Clippy, docs, doctests, formatting, dependency policy, and packaging.
+Disposition: `pass` for the retained representation and focused mutation
+slice.
+
+### A20 ledger entry: stable-proxy activation correlation
+
+| Evidence layer | Current witness and limit |
+|---|---|
+| Focused transition and custody | `proxy_command_recovery::equal_worker_values_and_endpoints_do_not_share_activation_authority` checks every effect lane, unchanged phase, exact diagnostic return, admission by the original owner, and admission of the target's own activation. |
+| Independent trace and composition | `stable_proxy_shutdown_model` explores activation, return, stop, and shutdown order; `stable_proxy_owner_composition` checks owner projection. These models do not themselves forge inconsistent worker and activation evidence. |
+| Invalid construction | `ActivationPermit` is affine and has a compile-fail duplication example; `WorkerActivation` has private fields and constructors that couple worker and activation evidence. The application cannot synthesize the inconsistent pair required by the surviving pre-edit `&&` to `||` mutation. |
+| Counterfactual | Four of five pre-edit guard mutants were caught. The `&&` to `||` survivor exposed a redundant worker comparison, which was removed. The post-edit equality inversion was caught by six actor tests; the function-wide default replacement was not selected. |
+
+A20 still needs the same law-specific ledger and counterfactual review across
+the rest of the catalogue.
 
 ### A20 ledger entry: bounded-buffer capacity and ownership
 
