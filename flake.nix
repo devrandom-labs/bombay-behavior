@@ -80,6 +80,8 @@
             ./scripts/check_published_packages.sh
             ./scripts/check_rustdoc_imports.py
             ./scripts/check_rustdoc_error_codes.py
+            ./scripts/check_assertion_effects.py
+            ./scripts/test_check_assertion_effects.py
             (pkgs.lib.fileset.maybeMissing ./mutants-baseline.json)
             ./mutants/actors
           ];
