@@ -1248,6 +1248,39 @@ caller syntax remains in this timer admission path. The actor effect law and
 all four wrapper Rustdoc contracts were cross-checked. Disposition: `pass`
 for this retained batch, pending the full Nix gate before A15 closes.
 
+The same scan found `InactivityModel::notification` in the independent
+testkit: it consumes a live token, returns a semantic `bool`, and three caller
+assertions perform that mutation inside `assert!`. This is a second A15
+checkpoint. The testkit policy is that one matching notification consumes and
+returns its exact current token; a stale or duplicate notification returns
+absence and leaves the live token unchanged. `Option<u64>` is the direct domain
+representation of one accepted token or absence, with no new protocol type.
+The caller must bind the outcome before asserting, so debug and optimized
+builds execute the same transition. A focused testkit caller expecting
+`Some(1)` versus `None` is the pre-edit compile regression. The lower-order
+witnesses are the existing receive-timeout model trace, the actor timer-domain
+test, and both timer wrapper orders. This changes no production actor state,
+interpreter path, or effect lane. The model keeps its two optional tokens;
+its future-needed value is still the current live token. Expected files are
+the model and its one caller test. Record post-edit measurements and gates
+before closing A15.
+
+The standalone Nix-pinned `rustc` caller included the actual testkit model
+module and required `notification` to return `Option<u64>`. Before the edit it
+failed with the intended `E0308` (`bool` versus `Option<u64>`); afterward it
+compiled. The 6-test independent receive-timeout trace passed in debug and
+optimized builds. It now binds each admission before asserting, checks that a
+stale notification leaves token 1 live, and checks that an accepted one returns
+that same token. The model still uses two optional tokens and the same two
+transition branches; it adds no public type, state, module, or effect lane.
+Measured testkit model diff is +4/-5 (net -1) lines and its caller test is
++7/-3 (net +4). The retained current values remain the last issued token and
+the one live token. The residue scan found no arrival-history alternative,
+repeated cause, false cardinality, nested authority, semantic boolean, or
+positional syntax in this path. Cross-check against the receive-timeout
+Rustdoc and the actor transition effect law passed. Disposition: `pass` for
+this batch; A15 awaits the full Nix gate on the signed revision.
+
 ### A07 actor mutation evidence: routing-buffer capacity
 
 At revision `0274dab`, a focused campaign mutated the bounded buffer's

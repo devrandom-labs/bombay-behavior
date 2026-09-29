@@ -439,7 +439,9 @@ async fn accepted_stale_timeout_error_and_terminal_turns_match_independent_model
         TimerGeneration(model.activity().unwrap())
     );
 
-    assert!(!model.notification(0));
+    let stale_admission = model.notification(0);
+    assert_eq!(stale_admission, None);
+    assert_eq!(model.no_activity(), Some(1));
     let stale = behavior
         .transition(EventLayer::Owned(TimerElapsed {
             id: TimerId(0),
@@ -448,7 +450,8 @@ async fn accepted_stale_timeout_error_and_terminal_turns_match_independent_model
         .unwrap();
     assert!(stale.sends.inner.is_empty());
 
-    assert!(model.notification(1));
+    let current_admission = model.notification(1);
+    assert_eq!(current_admission, Some(1));
     let timeout = behavior
         .transition(EventLayer::Owned(TimerElapsed {
             id: TimerId(0),
@@ -458,7 +461,8 @@ async fn accepted_stale_timeout_error_and_terminal_turns_match_independent_model
     assert_eq!(timeout.sends.inner[0].message, 99);
     assert!(timeout.sends.owned.is_empty());
 
-    assert!(!model.notification(1));
+    let duplicate_admission = model.notification(1);
+    assert_eq!(duplicate_admission, None);
     let duplicate = behavior
         .transition(EventLayer::Owned(TimerElapsed {
             id: TimerId(0),
