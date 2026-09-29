@@ -1565,6 +1565,19 @@ row in `engineering/atomic-actor-other-templates.md`. Disposition: `pass` for
 this test-only evidence batch; capacity, retirement, and delivery settlement
 remain independent future laws in that normalized catalogue record.
 
+A second Nix-toolchain campaign at signed revision `888e78a` selected the
+five `PubSub::transition` candidates. Four whole-function replacements were
+unviable because they attempted invalid `BehaviorActed` construction; the
+topic-equality inversion compiled and failed the existing publication unit
+test. The strict gate accepted `1 viable / 5 total`, with no survivor or
+timeout. Since that runner stopped after the unit failure, a separate
+isolated-worktree counterfactual changed only publication's topic comparison
+from `==` to `!=` and ran the new independent property alone. It failed and
+shrunk to two commands: subscribe to topic 0, then publish to topic 0; the
+actor incorrectly returned `NoSubscribers`. The temporary edit and worktree
+were removed. This proves the independent oracle's topic-selection
+sensitivity, not the publication clone-loop or transport settlement law.
+
 ### A07 actor mutation evidence: health observation versions
 
 Classification: deliberate Bombay component-correlation and version-commit policy. A
@@ -1696,7 +1709,7 @@ actor-wide mutation verdict.
 | Focused transition and custody | `discovery::pub_sub` unit tests check first subscription order, duplicate suppression, and publication rejection for known empty and unknown topics. The independent property checks the exact returned topic, recipient, and original publication allocation. |
 | Independent trace | `catalogue_invariants::pub_sub_preserves_topic_membership_and_rejected_publications` tracks membership in a map plus introduction order, then compares every current topic, recipient order, successful action lane, and rejection after generated commands. Each publication has a distinct owned string. It does not interpret transport admission. |
 | Composition and boundaries | Exact reply template tests exercise established publication routes. The property explores absent topics, empty retained topics, duplicate recipients, and re-subscription; it does not prove scheduling or downstream delivery. Topic/member capacity and topic retirement still need laws as recorded in `atomic-actor-other-templates.md`. |
-| Counterfactual | All six selected membership mutants compiled and failed named unit tests. The independent property was added after that campaign, so no mutant kill is attributed to it. Publication-loop mutation evidence remains open. |
+| Counterfactual | All six selected membership mutants compiled and failed named unit tests. The separate topic-selection campaign caught one viable equality inversion and had four unviable replacements. An isolated rerun of that inversion against only the independent property failed with a two-command counterexample. Publication clone-loop and transport settlement evidence remain open. |
 
 ### A20 ledger entry: health observation versions
 
