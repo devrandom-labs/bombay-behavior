@@ -7,7 +7,7 @@ use behavior_actors::{
     BarrierReleased, Cache, CacheResult, Configuration, ConfigurationMessage, ConfigurationState,
     CorrelationResult, Correlator, CorrelatorMessage, Deduplicator, DeduplicatorMessage,
     DeduplicatorOutcome, Health, HealthMessage, HealthReport, Lease, LeaseMessage, LeaseOutcome,
-    Machine, OrderGate, OrderGateMessage, OrderGateOutcome, Presence, PresenceMessage,
+    LeastLoaded, Machine, OrderGate, OrderGateMessage, OrderGateOutcome, Presence, PresenceMessage,
     PresenceReply, PriorityQueue, PriorityQueueMessage, PriorityQueueOutcome, PubSub,
     PubSubMessage, Readiness, ReadinessMessage, ReadinessReport, Registry, RegistryMessage,
     RegistryResult, ReplyRoute, Resolution, Resolver, Router, RouterMessage, RoutingStrategy,
@@ -114,6 +114,7 @@ type LeaseProtocol = Lease<MailAddr, Key, LeaseResult>;
 type WorkflowResult = Recipient<MessageProtocol<MailAddr, WorkflowOutcome<Key>>>;
 type WorkflowProtocol = Workflow<MailAddr, Key, WorkflowResult>;
 type RouterProtocol = Router<MailAddr, Recipient<Destination>, ObservedSelection>;
+type LoadRouterProtocol = Router<MailAddr, Recipient<Destination>, LeastLoaded>;
 type WorkQueueWorker = ReplyRoute<ExactDestination>;
 type WorkQueueReply = Recipient<MessageProtocol<ExactAddr, WorkQueueOutcome<u8>>>;
 type WorkQueueProtocol = WorkQueue<ExactAddr, u8, WorkQueueWorker, WorkQueueReply>;
@@ -154,6 +155,7 @@ fn protocol_identity_does_not_require_transition_or_construction_bounds() {
     accepts_message::<LeaseProtocol, LeaseMessage<Key, LeaseResult>>();
     accepts_message::<WorkflowProtocol, WorkflowMessage<Key, WorkflowResult>>();
     accepts_message::<RouterProtocol, RouterMessage<Recipient<Destination>, ObservedSelection>>();
+    accepts_message::<LoadRouterProtocol, RouterMessage<Recipient<Destination>, LeastLoaded>>();
     accepts_message::<
         DeduplicatorProtocol,
         DeduplicatorMessage<Key, u8, Recipient<Destination>, DeduplicatorReply>,

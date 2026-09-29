@@ -988,6 +988,66 @@ The candidate and focused test edits were removed; the exact falsifier and
 post-experiment drift checkpoint are in `DEAD_ENDS.md`. The missing projection
 remains open and requires an explicit visibility/ownership model before code.
 
+### A12/A13 least-loaded membership owner, before edit
+
+Classification: deliberate Bombay routing policy and derived Rust ownership
+law. `Router` owns the ordered, duplicate-free member list. `LeastLoaded`
+needs exactly one current `LoadEvidence` per member position, not a second
+copy of each recipient. On add it appends Unknown; on removal it deletes that
+position; observations find the member in the Router list and update only
+the aligned evidence; selection uses the first minimum observed load. An
+unknown, stale, or conflicting observation still returns the exact request.
+The caller syntax is `Router<A, Recipient<P>, LeastLoaded>` and
+`router.load_evidence(&recipient)`; it borrows for observation and exposes
+neither an index nor a
+route parameter on the policy's stored state. Two different protocol routes
+can use the same policy type. The existing independent least-loaded trace is
+the pure transition oracle; the external `protocol_bounds` compile witness
+must first fail solely on the old required generic argument.
+
+Before-edit aggregate control is one Router membership list, with
+`LeastLoaded` holding a parallel list of recipient/evidence pairs. After the
+candidate, Router remains the only member identity owner and the policy holds
+an aligned evidence list. The subordinate sum remains Unknown or Observed
+(version, load); its current version/load are needed for every later
+selection and stale/conflict decision. Neither the actor's control states nor
+its effects, errors, interpreter path, transition branches, or module count
+change. Expected files: `routing/router.rs`, the external protocol caller,
+the routing model, and this audit; expected production delta is negative and
+no public type is added. The public policy loses one generic parameter and
+its direct recipient lookup; Router gains one semantic evidence lookup.
+The current `Router::new` and membership transitions are the only legitimate
+policy-hook callers; direct policy use with an unrelated member slice must
+return typed unknown evidence, not index-panic. The residue scan finds no
+arrival history, duplicated cause, false cardinality, nested authority,
+semantic boolean, or structural user syntax. Cross-checks are the actor
+transition algebra and normalized routing law. Disposition: `pass` for the
+model, pending the focused red compile witness and implementation.
+
+Post-edit checkpoint: `protocol_bounds` failed before the production edit with
+only the two expected E0107 diagnostics for `LeastLoaded`'s unwanted route
+parameter, then compiled with `Router<MailAddr, Recipient<Destination>,
+LeastLoaded>`. The independent 384-case least-loaded trace passed in debug
+and optimized builds. All eight focused router unit tests passed, including
+the exact owned observation returned when a direct policy caller supplies a
+member slice without matching policy evidence. `mdbook build docs` passed.
+
+The Router control state remains one ordered, duplicate-free membership list;
+the four message alternatives and three Router error alternatives remain four
+and three. Policy evidence remains the same two-alternative sum, Unknown or
+Observed(version, load), and its three typed rejection alternatives remain
+three. There is no new transition authority, module, effect, or interpreter
+path. The production portion of `routing/router.rs` fell from 879 to 863
+physical lines; one private recipient/evidence product disappeared. The
+public policy loses its route parameter and direct identity lookup, while the
+Router gains the recipient-based evidence lookup. Router owns current member
+identity and order; the aligned policy evidence owns the current load and
+version needed for selection and stale/conflict decisions. Rechecking the
+actor transition algebra and normalized routing laws found no arrival-history
+state, repeated cause, false cardinality, nested transition authority,
+semantic boolean, or positional syntax exposed to callers. Disposition:
+`pass`.
+
 ### A13 pre-edit base-projection law
 
 Classification: derived, read-only composition law. `BehaviorBase` on an

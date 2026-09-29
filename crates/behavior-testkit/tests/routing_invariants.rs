@@ -64,8 +64,7 @@ type TestPriority =
 type TestRate = RateLimiter<MailAddr, u8, Recipient<RateTarget>, Recipient<RateReply>>;
 type TestQueue = WorkQueue<MailAddr, OwnedQueueWork, Recipient<QueueWorker>, Recipient<QueueReply>>;
 type TestRouter = Router<MailAddr, Recipient<PriorityTarget>, RoundRobin>;
-type TestLeastLoaded =
-    Router<MailAddr, Recipient<PriorityTarget>, LeastLoaded<Recipient<PriorityTarget>>>;
+type TestLeastLoaded = Router<MailAddr, Recipient<PriorityTarget>, LeastLoaded>;
 type TestRendezvous = Router<
     MailAddr,
     Recipient<KeyedRoutingTarget>,
@@ -594,7 +593,7 @@ fn check_least_loaded_trace(turns: impl IntoIterator<Item = LoadInstruction>) ->
                     },
                     None => LoadEvidence::Unknown,
                 });
-            prop_assert_eq!(router.strategy().evidence(load_recipient(member)), expected);
+            prop_assert_eq!(router.load_evidence(&load_recipient(member)), expected);
         }
     }
     Ok(())

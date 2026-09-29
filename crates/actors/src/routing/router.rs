@@ -199,20 +199,6 @@ pub enum LoadEvidence {
     },
 }
 
-struct RecipientLoad<Route: DeliveryRoute + Clone + PartialEq> {
-    recipient: Route,
-    evidence: LoadEvidence,
-}
-
-impl<Route: DeliveryRoute + Clone + PartialEq> Clone for RecipientLoad<Route> {
-    fn clone(&self) -> Self {
-        Self {
-            recipient: self.recipient.clone(),
-            evidence: self.evidence,
-        }
-    }
-}
-
 /// Rejected [`LeastLoaded`] evidence.
 #[derive(Clone, PartialEq, Eq, Error)]
 pub enum LeastLoadedError<Route: DeliveryRoute + Clone + PartialEq> {
@@ -264,42 +250,28 @@ impl<Route: DeliveryRoute + Clone + PartialEq> Eq for LoadObservation<Route> {}
 /// conflicting evidence is rejected without mutation; identical evidence is
 /// idempotent. Membership removal discards its evidence. These evidence and
 /// tie rules are Bombay policy; gathering load remains an Environment concern.
-pub struct LeastLoaded<Route: DeliveryRoute + Clone + PartialEq> {
-    loads: Vec<RecipientLoad<Route>>,
+/// Evidence follows the Router's member order; only Router owns recipient
+/// identity and exposes recipient-based lookup through [`Router::load_evidence`].
+#[derive(Clone)]
+pub struct LeastLoaded {
+    loads: Vec<LoadEvidence>,
 }
 
-impl<Route: DeliveryRoute + Clone + PartialEq> Clone for LeastLoaded<Route> {
-    fn clone(&self) -> Self {
-        Self {
-            loads: self.loads.clone(),
-        }
-    }
-}
-
-impl<Route: DeliveryRoute + Clone + PartialEq> LeastLoaded<Route> {
+impl LeastLoaded {
     /// Construct a policy whose membership state is populated by [`Router`].
     #[must_use]
     pub const fn new() -> Self {
         Self { loads: Vec::new() }
     }
-
-    /// Borrow one recipient's complete evidence phase.
-    #[must_use]
-    pub fn evidence(&self, recipient: Route) -> Option<LoadEvidence> {
-        self.loads
-            .iter()
-            .find(|entry| entry.recipient == recipient)
-            .map(|entry| entry.evidence)
-    }
 }
 
-impl<Route: DeliveryRoute + Clone + PartialEq> Default for LeastLoaded<Route> {
+impl Default for LeastLoaded {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<Route: DeliveryRoute + Clone + PartialEq> RoutingStrategy<Route> for LeastLoaded<Route> {
+impl<Route: DeliveryRoute + Clone + PartialEq> RoutingStrategy<Route> for LeastLoaded {
     type Observation = LoadObservation<Route>;
     type Error = LeastLoadedError<Route>;
 
@@ -308,15 +280,13 @@ impl<Route: DeliveryRoute + Clone + PartialEq> RoutingStrategy<Route> for LeastL
         members: &[Route],
         _: &<Route::Protocol as Protocol>::Msg,
     ) -> Option<usize> {
-        members
+        self.loads
             .iter()
             .enumerate()
-            .filter_map(|(index, recipient)| {
-                self.evidence(recipient.clone())
-                    .and_then(|evidence| match evidence {
-                        LoadEvidence::Unknown => None,
-                        LoadEvidence::Observed { load, .. } => Some((index, load)),
-                    })
+            .take(members.len())
+            .filter_map(|(index, evidence)| match evidence {
+                LoadEvidence::Unknown => None,
+                LoadEvidence::Observed { load, .. } => Some((index, *load)),
             })
             .min_by_key(|(index, load)| (*load, *index))
             .map(|(index, _)| index)
@@ -327,18 +297,17 @@ impl<Route: DeliveryRoute + Clone + PartialEq> RoutingStrategy<Route> for LeastL
         members: &[Route],
         observation: Self::Observation,
     ) -> Result<(), Self::Error> {
-        if !members.contains(&observation.recipient) {
-            return Err(LeastLoadedError::UnknownRecipient(observation));
-        }
-        let Some(entry) = self
-            .loads
-            .iter_mut()
-            .find(|entry| entry.recipient == observation.recipient)
+        let Some(index) = members
+            .iter()
+            .position(|member| member == &observation.recipient)
         else {
             return Err(LeastLoadedError::UnknownRecipient(observation));
         };
-        let LoadEvidence::Observed { version, load } = entry.evidence else {
-            entry.evidence = LoadEvidence::Observed {
+        let Some(evidence) = self.loads.get_mut(index) else {
+            return Err(LeastLoadedError::UnknownRecipient(observation));
+        };
+        let LoadEvidence::Observed { version, load } = *evidence else {
+            *evidence = LoadEvidence::Observed {
                 version: observation.version,
                 load: observation.load,
             };
@@ -354,18 +323,15 @@ impl<Route: DeliveryRoute + Clone + PartialEq> RoutingStrategy<Route> for LeastL
                 Err(LeastLoadedError::ConflictingVersion(observation))
             };
         }
-        entry.evidence = LoadEvidence::Observed {
+        *evidence = LoadEvidence::Observed {
             version: observation.version,
             load: observation.load,
         };
         Ok(())
     }
 
-    fn added(&mut self, recipient: Route) {
-        self.loads.push(RecipientLoad {
-            recipient,
-            evidence: LoadEvidence::Unknown,
-        });
+    fn added(&mut self, _: Route) {
+        self.loads.push(LoadEvidence::Unknown);
     }
 
     fn removed(&mut self, index: usize, _: Route, _: usize) {
@@ -791,6 +757,24 @@ where
     }
 }
 
+impl<A, Route> Router<A, Route, LeastLoaded>
+where
+    A: Address,
+    Route: DeliveryRoute<Protocol: Protocol<Addr = A>> + Clone + PartialEq,
+{
+    /// Borrow the current load-evidence phase of one member.
+    ///
+    /// Returns `None` when the route is not a current member. Removal retires
+    /// its old evidence, so a later addition starts at [`LoadEvidence::Unknown`].
+    #[must_use]
+    pub fn load_evidence(&self, recipient: &Route) -> Option<LoadEvidence> {
+        self.recipients
+            .iter()
+            .position(|member| member == recipient)
+            .and_then(|index| self.strategy.loads.get(index).copied())
+    }
+}
+
 impl<A, Route, R> BehaviorBase for Router<A, Route, R>
 where
     A: Address,
@@ -986,11 +970,10 @@ mod tests {
     fn least_loaded_requires_typed_evidence_and_breaks_ties_by_membership_order() {
         let one = Recipient::<Destination>::global(MailAddr(1));
         let two = Recipient::<Destination>::global(MailAddr(2));
-        let mut router =
-            (Router::new(vec![one, two], LeastLoaded::<Recipient<Destination>>::new()))
-                .initialize()
-                .unwrap()
-                .behavior;
+        let mut router = (Router::new(vec![one, two], LeastLoaded::new()))
+            .initialize()
+            .unwrap()
+            .behavior;
 
         let rejection = router.receive(MailAddr(9), RouterMessage::Route(1));
         assert!(matches!(
@@ -1040,7 +1023,7 @@ mod tests {
     fn least_loaded_rejects_stale_and_unknown_evidence_without_mutation() {
         let one = Recipient::<Destination>::global(MailAddr(1));
         let unknown = Recipient::<Destination>::global(MailAddr(8));
-        let mut router = (Router::new(vec![one], LeastLoaded::<Recipient<Destination>>::new()))
+        let mut router = (Router::new(vec![one], LeastLoaded::new()))
             .initialize()
             .unwrap()
             .behavior;
@@ -1104,12 +1087,33 @@ mod tests {
             })
         ));
         assert_eq!(
-            router.strategy().evidence(one),
+            router.load_evidence(&one),
             Some(LoadEvidence::Observed {
                 version: LoadVersion(2),
                 load: Load(4)
             })
         );
+    }
+
+    #[test]
+    fn least_loaded_returns_unknown_observation_for_untracked_member() {
+        let recipient = Recipient::<Destination>::global(MailAddr(1));
+        let observation = LoadObservation {
+            recipient,
+            version: LoadVersion(4),
+            load: Load(7),
+        };
+        let mut policy = LeastLoaded::new();
+
+        let rejection = policy.observe(&[recipient], observation);
+        assert!(matches!(
+            rejection,
+            Err(LeastLoadedError::UnknownRecipient(LoadObservation {
+                recipient: returned,
+                version: LoadVersion(4),
+                load: Load(7),
+            })) if returned == recipient
+        ));
     }
 
     fn identity_hash(key: &Key) -> u64 {
