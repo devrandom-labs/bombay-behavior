@@ -72,6 +72,17 @@ The PRD's T02 requirement for a **move-only job** is not proved by this FIFO
 fixture: `Box<str>` implements `Clone`, and the current FIFO bound rules out a
 non-`Clone` job. The full ownership equation must be revisited before claiming
 T02 complete; a test using a cloneable value cannot certify a move-only law.
+This is a real policy conflict, not just a missing test: FIFO's dispatch
+clones `queued.customer.payload` into `Assignment` while retaining the original
+in `AssignedJob`. On accepted delivery followed by a worker stop,
+`Interruption::Fail` returns that original as `ReturnedAssigned`, and
+`Interruption::Retry` requeues it. A single non-`Clone` job cannot be both
+transferred to an independently executing worker and retained by the pool for
+those later paths. The public pool is the only current producer of this exact
+assignment request besides the similarly clone-bound keyed pool. A future
+move-only witness therefore needs a changed post-acceptance return/retry law
+or a distinct lawful producer; merely changing the `Job: Clone` bound would
+make the existing transition impossible. No such policy change was made here.
 
 The remaining work is to establish the exact pre-commit versus post-commit
 ownership equation with a production host witness, then cover PRD T10–T21 and
