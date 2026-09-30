@@ -3,7 +3,7 @@
 This inventory supports [A13](repository-quality-audit.md). `#[doc(hidden)]`
 changes Rustdoc display, not Rust visibility. The counts below are annotation
 sites in source, so a grouped re-export and its original declaration each
-count once. The current branch has 10 sites in `crates/behavior/src` and 58
+count once. The current branch has 10 sites in `crates/behavior/src` and 56
 in `crates/actors/src`; the earlier audit counted 25 and 89 before the
 documentation visibility review.
 
@@ -44,7 +44,6 @@ is neither actor identity nor proof of a committed fresh child.
 |---|---|---|---|
 | `atomic/{dynamic_supervisor,fifo_pool,fixed_supervisor,keyed_pool}/{event,requests}.rs` | `DynamicSupervisorEvent`, `DynamicSupervisorRequests`, `FifoEvent`, `FifoRequests`, `FixedSupervisorEvent`, `FixedSupervisorRequests`, `KeyedEvent`, `KeyedRequests` | Runtime port | Public associated event and send products let an interpreter carry complete typed lanes; the aggregate owns their transition semantics. |
 | `atomic/fixed_supervisor/lifecycle.rs` | `FixedLifecycleRoute` | Generated code obligation | This sealed route proof is implemented for the finite fixed-supervision lifecycle forms. |
-| `atomic/pool/assignment.rs` and `atomic/pool/customer.rs` | `AssignWorker::target`, `CustomerDelivery` | Runtime port | The interpreter uses the now visible `AssignWorker::settle` to transfer the exact delivery while the request retains its receipt. The former public `receipt` and `into_parts` assembly methods are now atomic-module-only. |
 | `atomic/pool/mod.rs` | `CompletesAssignments` | Generated code obligation | The sealed completion capability belongs to generated pool workers and declared completion products. |
 | `atomic/stable_proxy/{effects,operation,protocol}.rs` and `atomic/mod.rs` | `ProxyEffects`, `ProxyOperation::creation`, `ProxyDrain`, `ProxyEvent`, plus re-export-only `WorkerStartResult` | Runtime port | The host and typed proxy effects must keep rejection custody and every ordered lane; operation identity, request decomposition, and receipt construction are now restricted to their owning modules. The exact `ProxyOperation` and `ProxyInputReceipt` used by the interpreter are visible. |
 | `atomic/worker/activation.rs` | `ActivationStartRejection`, `BeginActivation`, `BeginActivation::{new,target,worker,initialization,started,start_rejected,activate}`, `WorkerActivation`, `WorkerActivation::{worker,into_ready,into_rejection}` | Runtime port | The host settles activation only after the exact worker and initialization attempt are known. |
@@ -52,13 +51,20 @@ is neither actor identity nor proof of a committed fresh child.
 | `atomic/worker/mod.rs` | `HostedInitialization`, `WorkerRecovery`, `WorkerRecovery::into_retirement`, `WorkerAttempt`, `WorkerAttempt::creation` | Runtime port | The host retains the attempt and complete initialization effects through retirement. |
 | `lifecycle/shutdown_coordinator.rs` | `HeterogeneousShutdownItem`, `ChoiceSettlements`, `HeterogeneousShutdownChoiceSettlement` | Generated code obligation | The closed heterogeneous choice product supplies the typed settlement shape. |
 | `protocol/mod.rs` | `ObserveCreation` | Runtime port | Observation must refer to the exact staged child creation and return its request on rejection. |
-| `atomic/mod.rs`, `atomic/pool/mod.rs`, and `lifecycle/shutdown_coordinator.rs` | Grouped re-exports of the declarations above | Same as original declaration | The re-export annotations add no second capability; each name remains publicly reachable through its parent module. `FixedBuilder`, `FifoError`, and `KeyedError` are visible re-exports because applications name the inferred builder and aggregate errors. |
+| `atomic/mod.rs`, `atomic/pool/mod.rs`, and `lifecycle/shutdown_coordinator.rs` | Grouped re-exports of the declarations above | Same as original declaration | The re-export annotations add no second capability; each name remains publicly reachable through its parent module. `CustomerDelivery` is now visible because external interpreters must name it; `FixedBuilder`, `FifoError`, and `KeyedError` are visible because applications name the inferred builder and aggregate errors. |
 
 This table classifies ownership but does not by itself justify retaining each
 public spelling. In particular, an associated type that mentions one of these
 values is not proof that applications must name it. Closing A13 still requires
 caller-facing compile witnesses, a trait-implementor inventory, and a
 repeatable compile-cost comparison before changing visibility or bounds.
+
+`AssignWorker::target` and `CustomerDelivery` are now visible runtime ports.
+The interpreter obtains a clone of the exact recipient capability through
+`target`, then consumes `settle` to transfer the delivery while the request
+retains its receipt. A rejected keyed outcome retains the original customer
+route in the complete `CustomerDelivery` action. The former public `receipt`
+and `into_parts` assembly methods remain atomic-module-only.
 
 The P2 assignment custody witness narrowed two formerly public methods after
 external caller tests proved the consuming `settle` operation. Compile-fail
@@ -95,7 +101,8 @@ existing constructors are now visible in Rustdoc. External actor and
 interpreter-contract suites already name these products to settle routed and
 route-free diagnostics, while the sealed route trait still limits its
 implementors. Removing eight documentation annotations changes no Rust
-visibility, constructor, or transition; 58 actor annotations remain.
+visibility, constructor, or transition; 58 actor annotations remained at that
+checkpoint, with 56 after exposing the customer-delivery ports.
 
 `WorkQueue` now keeps worker-route cloning and equality on construction and
 transition operations, where queue inspection and duplicate availability use

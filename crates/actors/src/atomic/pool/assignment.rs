@@ -297,8 +297,8 @@ where
         }
     }
 
-    /// Borrow the exact worker recipient selected by the pool.
-    #[doc(hidden)]
+    /// Return a clone of the exact worker recipient selected by the pool.
+    /// The assignment and its accepted receipt remain inside this request.
     #[must_use]
     pub fn target(&self) -> EstablishedRecipient<P> {
         self.target.clone()

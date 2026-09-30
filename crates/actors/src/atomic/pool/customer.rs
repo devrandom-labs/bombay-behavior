@@ -13,7 +13,6 @@ use crate::{ReplyDelivery, ReplyRoute};
 /// as the delivery target. A synchronously rejected keyed submission instead
 /// uses a cloned target and retains the original customer route in this action.
 /// A rejecting interpreter therefore returns both capabilities together.
-#[doc(hidden)]
 #[must_use = "customer delivery must be interpreted or retained"]
 pub enum CustomerDelivery<P>
 where

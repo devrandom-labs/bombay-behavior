@@ -470,7 +470,7 @@ is recorded against a revision.
 
 - [ ] **A13 — Audit public bounds, hidden exports, and extension ownership.**
   **Confirmed surface requiring review.** The current source has 10
-  `#[doc(hidden)]` annotation sites in core and 58 in actors, including
+  `#[doc(hidden)]` annotation sites in core and 56 in actors, including
   members and re-exports. The
   [public-surface inventory](public-surface-inventory.md) classifies each site
   by contract owner. These annotations do not make an item private.
@@ -529,6 +529,37 @@ is recorded against a revision.
   cursor repair and the least-loaded/Rendezvous traces exercise the current
   comparable-route contract. This resolves the isolated header question,
   while A13's broader hidden-port review remains open.
+
+  **Pre-edit A13 customer-delivery documentation law:** A keyed-pool
+  interpreter must name the concrete `CustomerDelivery<P>` action to return
+  both the attempted delivery and original customer route on rejection. An
+  assignment interpreter must call `AssignWorker::target()` to obtain a clone of the
+  exact worker recipient before consuming `settle`. These are existing
+  derived ownership ports, not new actor powers. The public caller syntax is
+  already exercised by the keyed-pool external compile suite and the
+  interpreter-contract assignment fixture; the four customer alternatives
+  retain their existing complete settlement equation. Before editing,
+  Nix-pinned Rustdoc omits `CustomerDelivery` from the `atomic` index and has
+  no item page, and omits `method.target` from the visible `AssignWorker`
+  page. Removing their two declaration markers and separating the existing
+  grouped re-export exposes only those already-public names. The focused
+  regression is their Rustdoc visibility with the existing external callers
+  still passing. No constructor, method, bound, trait, effect lane, control
+  state, transition branch, or interpreter operation changes.
+  Post-edit, Nix-pinned Rustdoc lists `CustomerDelivery` in the `atomic`
+  index, generates its item page, and lists `method.target` on `AssignWorker`.
+  The 23 keyed-pool tests and three external assignment-delivery tests pass.
+  Actor hidden annotations fall from 58 to 56; the two declaration markers
+  are gone while the sealed `CompletesAssignments` re-export remains hidden.
+  The root aggregate states, subordinate alternatives, transition branches,
+  source modules, and Rust public spellings are unchanged. The exact worker
+  recipient capability remains inside `AssignWorker`, and the original
+  customer route remains inside a rejected `CustomerDelivery`. No arrival
+  history, repeated cause, false cardinality, nested authority, semantic
+  boolean, or positional caller syntax was introduced. The keyed-customer
+  rejection law in `docs/atomic-runtime-settlement.md` and the normalized
+  pool law were cross-checked. Disposition: `pass` for these two visible ports;
+  the wider A13 surface and compile-cost review remain open.
 
   **Pre-edit A13 diagnostic-port visibility law:** An external interpreter
   must name the concrete `DiagnosticAction`, `DiagnosticAccepted`, and sealed

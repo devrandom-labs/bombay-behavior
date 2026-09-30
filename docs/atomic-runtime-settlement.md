@@ -805,7 +805,7 @@ to emit a recursive diagnostic.
 AA-40 requires more custody than an ordinary reply delivery for one case only:
 a synchronously rejected submission must preserve the original customer route
 inside the rejected action while a clone targets the `KeyedOutcome::Rejected`
-message. Behavior Actors represents that invariant with the doc-hidden
+message. Behavior Actors represents that invariant with the
 `CustomerDelivery<P>` action item. The public `KeyedOutcome` remains free of an
 address generic, and neither the key nor payload is cloned.
 

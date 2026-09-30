@@ -84,13 +84,14 @@ pub use keyed_pool::{
 };
 #[doc(hidden)]
 pub use keyed_pool::{KeyedEvent, KeyedRequests};
+#[doc(hidden)]
+pub use pool::CompletesAssignments;
+pub use pool::CustomerDelivery;
 pub use pool::{AssignWorker, AssignmentReceipt};
 pub use pool::{
     Assignment, BacklogCapacity, Completion, Interruption, JobId, PoolFailureReaction,
     PoolRecovery, SubmissionId,
 };
-#[doc(hidden)]
-pub use pool::{CompletesAssignments, CustomerDelivery};
 pub use restart::{RestartLimit, RestartRelease, RestartReleaseError, RestartReleaseFailure};
 pub(crate) use roster::RoleName;
 pub use roster::{DuplicateRole, OrderedRoles};
