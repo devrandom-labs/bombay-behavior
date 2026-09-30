@@ -3,7 +3,7 @@
 This inventory supports [A13](repository-quality-audit.md). `#[doc(hidden)]`
 changes Rustdoc display, not Rust visibility. The counts below are annotation
 sites in source, so a grouped re-export and its original declaration each
-count once. The current branch has 10 sites in `crates/behavior/src` and 81
+count once. The current branch has 10 sites in `crates/behavior/src` and 75
 in `crates/actors/src`; the earlier audit counted 25 and 89 before the
 documentation visibility review.
 
@@ -45,9 +45,9 @@ is neither actor identity nor proof of a committed fresh child.
 | `atomic/diagnostic.rs` | `DiagnosticRoute`, `DiagnosticAction`, `DiagnosticAction::{deliver,terminal}`, `DiagnosticAccepted`, `DiagnosticAccepted::{delivered,terminal}` | Runtime port | Diagnostic admission and terminal return are typed operation outcomes. `DiagnosticRoute` is sealed, so third parties cannot add a new route form. |
 | `atomic/{dynamic_supervisor,fifo_pool,fixed_supervisor,keyed_pool}/{event,requests}.rs` | `DynamicSupervisorEvent`, `DynamicSupervisorRequests`, `FifoEvent`, `FifoRequests`, `FixedSupervisorEvent`, `FixedSupervisorRequests`, `KeyedEvent`, `KeyedRequests` | Runtime port | Public associated event and send products let an interpreter carry complete typed lanes; the aggregate owns their transition semantics. |
 | `atomic/fixed_supervisor/lifecycle.rs` | `FixedLifecycleRoute` | Generated code obligation | This sealed route proof is implemented for the finite fixed-supervision lifecycle forms. |
-| `atomic/pool/assignment.rs` and `atomic/pool/customer.rs` | `AssignmentReceipt`, `AssignWorker`, `AssignWorker::target`, `CustomerDelivery` | Runtime port | The interpreter uses `AssignWorker::settle` to transfer the exact delivery while the request retains its receipt. The former public `receipt` and `into_parts` assembly methods are now atomic-module-only. |
+| `atomic/pool/assignment.rs` and `atomic/pool/customer.rs` | `AssignWorker::target`, `CustomerDelivery` | Runtime port | The interpreter uses the now visible `AssignWorker::settle` to transfer the exact delivery while the request retains its receipt. The former public `receipt` and `into_parts` assembly methods are now atomic-module-only. |
 | `atomic/pool/mod.rs` | `CompletesAssignments` | Generated code obligation | The sealed completion capability belongs to generated pool workers and declared completion products. |
-| `atomic/stable_proxy/{effects,operation,protocol}.rs` and `atomic/mod.rs` | `ProxyEffects`, `ProxyOperation`, `ProxyInputResult`, `ProxyOperation::creation`, `ProxyInputReceipt`, `ProxyDrain`, `ProxyEvent`, plus re-export-only `ProxyControl` and `WorkerStartResult` | Runtime port | The host and typed proxy effects must keep rejection custody and every ordered lane; operation identity, request decomposition, and receipt construction are now restricted to their owning modules. |
+| `atomic/stable_proxy/{effects,operation,protocol}.rs` and `atomic/mod.rs` | `ProxyEffects`, `ProxyOperation::creation`, `ProxyDrain`, `ProxyEvent`, plus re-export-only `WorkerStartResult` | Runtime port | The host and typed proxy effects must keep rejection custody and every ordered lane; operation identity, request decomposition, and receipt construction are now restricted to their owning modules. The exact `ProxyOperation` and `ProxyInputReceipt` used by the interpreter are visible. |
 | `atomic/worker/activation.rs` | `ActivationStartRejection`, `BeginActivation`, `BeginActivation::{new,target,worker,initialization,started,start_rejected,activate}`, `WorkerActivation`, `WorkerActivation::{worker,into_ready,into_rejection}` | Runtime port | The host settles activation only after the exact worker and initialization attempt are known. |
 | `atomic/worker/initialization.rs` | `InitializationAttempt`, `ActivationPermit`, `ActivationPermit::{worker,initialization,target}`, `InitializeWorker`, `InitializeWorker::{target,worker,initialization,resolve}`, `WorkerInitializationOutcome`, `WorkerInitializationReport`, `WorkerInitializationFailure` | Runtime port | Initialization settlement carries exact worker custody and can authorize or reject later activation. |
 | `atomic/worker/preparation.rs` | `PrepareWorkers`, `PrepareWorkers::{source_and_role,accept,reject}`, `PendingWorkerPreparation`, `PendingWorkerPreparation::{source_and_role,accept,reject}`, `WorkerPreparation` | Runtime port | A lawful application `WorkerSource` implementation supplies preparation and receives its complete rejection. The pool owns sequencing. |
@@ -76,6 +76,14 @@ control; only the owner retains the ID. A dedicated external fixture rejects
 the ID name with `E0603`, while the receipt-constructor fixture independently
 rejects `new` with `E0599`. The ID remains available to private supervisor
 state and receipt settlement through a crate-private re-export.
+
+The exact assignment and proxy interpreter products are now visible in the
+`atomic` Rustdoc index: `AssignWorker`, `AssignmentReceipt`, `ProxyControl`,
+`ProxyOperation`, `ProxyInputReceipt`, and `ProxyInputResult`. These were
+already public Rust names required by external `InterpretItem` and
+`ProxyControlAdmission` implementations. Their fields and owner-only receipt
+constructors remain private; hiding the item pages served no capability
+boundary. Six actor annotation sites were removed, leaving 75.
 
 `WorkQueue` now keeps worker-route cloning and equality on construction and
 transition operations, where queue inspection and duplicate availability use

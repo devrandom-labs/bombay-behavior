@@ -317,7 +317,7 @@ is recorded against a revision.
 
 - [ ] **A13 — Audit public bounds, hidden exports, and extension ownership.**
   **Confirmed surface requiring review.** The current source has 10
-  `#[doc(hidden)]` annotation sites in core and 81 in actors, including
+  `#[doc(hidden)]` annotation sites in core and 75 in actors, including
   members and re-exports. The
   [public-surface inventory](public-surface-inventory.md) classifies each site
   by contract owner. These annotations do not make an item private.
@@ -463,8 +463,42 @@ is recorded against a revision.
   exact-delivery result. The later proxy settlement stage also narrowed its
   operation ID, request decomposition, and receipt construction after external
   privacy and closed-control witnesses. The public-surface inventory reflects
-  81 remaining actor `#[doc(hidden)]` sites. The wider port and bound review
+  81 actor `#[doc(hidden)]` sites at that checkpoint. The wider port and bound review
   remains open.
+
+  **Pre-edit A13 interpreter-name law:** an external interpreter implementing
+  `InterpretItem<AssignWorker<Worker, Job>, ...>` or
+  `InterpretItem<ProxyOperation<Source, Worker, Plan>, ...>` must name the
+  corresponding opaque accepted receipt in its return type. The interpreter
+  also names `ProxyControl` and the immediate proxy result when implementing
+  the concrete `ProxyControlAdmission` port. These are derived ownership
+  products, not additional actor powers; their fields and receipt constructors
+  stay private. Existing external assignment and proxy caller suites, plus
+  the inspected Bombay interpreter source, prove the naming syntax. Before
+  editing, Nix-pinned `cargo doc -p bombay-behavior-actors --no-deps --locked`
+  built successfully, but the generated `atomic` index and item files omitted
+  `AssignWorker`, `AssignmentReceipt`, `ProxyControl`, `ProxyOperation`,
+  `ProxyInputReceipt`, and `ProxyInputResult` because their declarations or
+  grouped re-exports carried `#[doc(hidden)]`. The focused regression is that
+  these existing names and their custody descriptions appear in Rustdoc while
+  the external caller and compile-fail fixtures keep compiling unchanged.
+  The edit is limited to documentation visibility and regrouping the already
+  public re-exports; it introduces no trait, type, constructor, effect lane,
+  bound, or actor transition. The ownership proof remains the consuming
+  `settle` methods and the existing static interpreter port. Aggregate states,
+  subordinate alternatives, branches, modules, production public spellings,
+  and current values are unchanged by this visibility repair; there is no
+  arrival history, repeated cause, false cardinality, nested authority,
+  semantic boolean, or structural caller path to retain. Disposition will be
+  `pass` only after the item pages, external fixtures, and Nix documentation
+  gate are checked.
+  The focused Rustdoc build now lists all six types in the `atomic` index and
+  generates their item pages. The actor source has 75 hidden annotation sites,
+  six fewer than the preceding checkpoint. All 13 external fixture test
+  functions passed in debug and optimized profiles. Four compile-fail snapshots
+  changed only the diagnostic's displayed type path; their E0382 and E0599
+  failures remain the intended ownership and privacy errors. Clean Nix
+  verification is still pending for this batch.
 
 - [x] **A14 — State the trust scope of initialization capabilities accurately.**
   **Confirmed documentation/API mismatch.** `InitializationTurn` says only the

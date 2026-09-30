@@ -87,12 +87,13 @@ pub use keyed_pool::{
 };
 #[doc(hidden)]
 pub use keyed_pool::{KeyedEvent, KeyedRequests};
-#[doc(hidden)]
-pub use pool::{AssignWorker, AssignmentReceipt, CompletesAssignments, CustomerDelivery};
+pub use pool::{AssignWorker, AssignmentReceipt};
 pub use pool::{
     Assignment, BacklogCapacity, Completion, Interruption, JobId, PoolFailureReaction,
     PoolRecovery, SubmissionId,
 };
+#[doc(hidden)]
+pub use pool::{CompletesAssignments, CustomerDelivery};
 pub use restart::{RestartLimit, RestartRelease, RestartReleaseError, RestartReleaseFailure};
 pub(crate) use roster::RoleName;
 pub use roster::{DuplicateRole, OrderedRoles};
@@ -101,11 +102,9 @@ pub use stable_proxy::{
     InitialWorkerOutcome, ProxyControlAdmission, ProxyDiagnostic, ProxyOutcome, ProxyPhase,
     ReplacementOutcome, StableProxy,
 };
+pub use stable_proxy::{ProxyControl, ProxyInputReceipt, ProxyInputResult, ProxyOperation};
 #[doc(hidden)]
-pub use stable_proxy::{
-    ProxyControl, ProxyDrain, ProxyEffects, ProxyInputReceipt, ProxyInputResult, ProxyOperation,
-    WorkerStartResult,
-};
+pub use stable_proxy::{ProxyDrain, ProxyEffects, WorkerStartResult};
 #[doc(hidden)]
 pub use worker::{
     ActivationPermit, ActivationStartRejection, BeginActivation, InitializationAttempt,

@@ -1,5 +1,5 @@
-error[E0599]: no method named `into_parts` found for struct `behavior_actors::atomic::ProxyOperation<Source, Worker, Plan>` in the current scope
+error[E0599]: no method named `into_parts` found for struct `ProxyOperation<Source, Worker, Plan>` in the current scope
   --> tests/ui/proxy_parts.rs:11:23
    |
 11 |     let _ = operation.into_parts();
-   |                       ^^^^^^^^^^ method not found in `behavior_actors::atomic::ProxyOperation<Source, Worker, Plan>`
+   |                       ^^^^^^^^^^ method not found in `ProxyOperation<Source, Worker, Plan>`

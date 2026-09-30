@@ -8,7 +8,6 @@ mod policy;
 mod shutdown;
 pub(in crate::atomic) mod worker;
 
-#[doc(hidden)]
 pub use assignment::{AssignWorker, AssignmentReceipt};
 pub use assignment::{Assignment, Completion, JobId, SubmissionId};
 #[doc(hidden)]

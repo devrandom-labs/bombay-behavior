@@ -135,7 +135,6 @@ mod direct_operation_admission_contract {
 }
 
 /// One exact private input to a stable-proxy child.
-#[doc(hidden)]
 #[must_use = "a proxy operation must be interpreted or retained"]
 pub struct ProxyOperation<Source, Worker, Plan>
 where
@@ -151,7 +150,6 @@ where
 }
 
 /// Exact immediate result of submitting one private proxy input.
-#[doc(hidden)]
 pub type ProxyInputResult<Source, Worker, Plan> = ActionItemResult<
     ProxyOperation<Source, Worker, Plan>,
     ProxyInputReceipt<Worker, Plan>,
@@ -309,7 +307,6 @@ where
 }
 
 /// Exact receipt for one accepted stable-proxy input.
-#[doc(hidden)]
 #[must_use = "accepted proxy input must return to its owning aggregate"]
 pub struct ProxyInputReceipt<Worker, Plan>
 where

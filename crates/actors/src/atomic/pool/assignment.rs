@@ -244,7 +244,6 @@ pub(in crate::atomic) enum CorrelationMatch {
 }
 
 /// Accepted result proving which exact assignment delivery settled.
-#[doc(hidden)]
 pub struct AssignmentReceipt {
     assignment: AssignmentId,
     worker: WorkerAttempt,
@@ -270,7 +269,6 @@ impl AssignmentReceipt {
 }
 
 /// One exact direct-worker delivery whose complete settlement returns to its pool.
-#[doc(hidden)]
 #[must_use = "worker assignment delivery must settle or remain in lifecycle custody"]
 pub struct AssignWorker<P, Job>
 where
