@@ -21,7 +21,10 @@ pub struct CreationId(NonZeroU64);
 impl CreationId {
     /// Return the occurrence-local numeric value for protocols that derive
     /// another correlation from this creation.
-    #[doc(hidden)]
+    ///
+    /// This number is neither an actor identity nor evidence that the runtime
+    /// established a fresh child. Only a committed creation settlement proves
+    /// establishment.
     #[must_use]
     pub const fn get(self) -> u64 {
         self.0.get()

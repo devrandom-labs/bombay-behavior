@@ -282,8 +282,41 @@ is recorded against a revision.
   such alternative can be removed. This is a custody question left open by
   the source-only review.
 
+  **Current decomposition baseline (read-only):** the figures below count
+  physical lines in each family source tree, including comments and embedded
+  tests. Match arrows are a search diagnostic, not semantic branch counts or
+  the production-line measurement required to close A12.
+
+  | Family | Root control representation | Source modules | Physical lines | Match arrows | Still required |
+  |---|---|---:|---:|---:|---|
+  | Stable proxy | `ProxyState`: 8 alternatives | 6 | 5,962 | 394 | Enumerate each nested shutdown and retirement value against exact terminal custody. |
+  | Fixed supervisor | `FixedRoster`: 5 alternatives; recovery owns a separate 2-way policy state | 19 | 10,104 | 718 | Check roster/recovery joins and every retained prepared worker. |
+  | Dynamic supervisor | `SupervisorAvailability`: 2 alternatives; each keyed `DynamicEntryPhase` has 14 alternatives | 8 | 4,120 | 246 | Check whether per-key transitions remain an entity invariant rather than a second aggregate authority. |
+  | FIFO pool | `PoolState`: 5 alternatives | 5 | 4,783 | 311 | Check backlog, cursor, per-member custody and forced retirement separately. |
+  | Keyed pool | `KeyedPoolState`: 5 alternatives | 10 | 5,755 | 268 | Check binding generations and per-role order without importing FIFO policy. |
+
+  These sums have no proposed deletion yet. The source scan found no semantic
+  `bool` field in these families; the observed boolean signatures are
+  membership or equality predicates. The `FifoDispatch` alternatives that
+  return the same queued job still select different lawful actions: unavailable
+  worker may enqueue it, while exhausted assignment correlation returns an
+  explicit rejection. Fixed recovery's `LeaveEmpty` and `SourceUnavailable`
+  both retain recovery state but select a lifecycle fact versus exact input
+  rejection. Those alternatives cannot be merged by payload shape alone.
+  This baseline does not replace the future-needed-value and production
+  measurements for every subordinate alternative; A12 remains open.
+  FIFO and keyed pools each move their root state out with `mem::replace(...,
+  Stopped)` during initialization and transition; fixed supervision similarly
+  substitutes `Stopped` or a temporary recovery value, and StableProxy
+  substitutes `Dormant` during one consuming transition. Normal return commits
+  the result once, but a caught pure-fold panic before that commit may leave
+  only the placeholder in the actor while owned state unwinds. This is an
+  inference from the source, not a proven runtime outcome. The PRD's T16 panic
+  and root-custody witness must test it before these sites can be called safe
+  or refactored. A passing ordinary transition suite cannot decide that law.
+
 - [ ] **A13 — Audit public bounds, hidden exports, and extension ownership.**
-  **Confirmed surface requiring review.** The current source has 11
+  **Confirmed surface requiring review.** The current source has 10
   `#[doc(hidden)]` annotation sites in core and 81 in actors, including
   members and re-exports. The
   [public-surface inventory](public-surface-inventory.md) classifies each site
@@ -402,6 +435,22 @@ is recorded against a revision.
   introduced. The actor transition and occurrence laws were cross-checked.
   Disposition: `pass` for this visible prerequisite, with A13 still open for
   other items.
+
+  `CreationId::get` is likewise an existing public runtime port concealed in
+  Rustdoc. The actor catalogue derives shutdown and operation correlations
+  from its occurrence-local number; external actor tests also inspect it.
+  Exposing the existing method does not make the number an actor identity or
+  a freshness proof, so its documentation now says that explicitly. The
+  pre-edit symptom was its absence from generated Rustdoc despite external
+  callers. The source edit removes one hidden marker and adds only custody
+  text: zero types, bounds, lanes, states, branches, modules, or public
+  spellings change. The current owned ID remains the sole value. The residue
+  scan is clear for history, repeated cause, false cardinality, nested
+  authority, semantic boolean, and structural syntax. Cross-checks: actor
+  creation law and the exact-correlation consumers. Nix-pinned Rustdoc built
+  `CreationId` with a visible `method.get` item, and `cargo check -p
+  bombay-behavior-actors --tests --locked` passed. Disposition: `pass` for this
+  documentation-only port; A13 remains open for the wider surface.
 
   The assignment custody repair narrowed `AssignWorker::receipt` and
   `AssignWorker::into_parts` from public to atomic-module-only after the

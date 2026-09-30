@@ -3,7 +3,7 @@
 This inventory supports [A13](repository-quality-audit.md). `#[doc(hidden)]`
 changes Rustdoc display, not Rust visibility. The counts below are annotation
 sites in source, so a grouped re-export and its original declaration each
-count once. The 2026-09-29 branch has 11 sites in `crates/behavior/src` and 81
+count once. The current branch has 10 sites in `crates/behavior/src` and 81
 in `crates/actors/src`; the earlier audit counted 25 and 89 before the
 documentation visibility review.
 
@@ -11,7 +11,6 @@ documentation visibility review.
 
 | Owner | Annotated declarations | Contract owner | Visibility decision to review |
 |---|---|---|---|
-| `actor/creation.rs`, numeric correlation | `CreationId::get` | Runtime port | Actor catalogue protocols derive other correlation values from this number; retain public reachability while the numeric projection's external documentation need is reviewed. |
 | `actor/creation.rs`, occurrence proof | `StructuralChildOccurrence`, `ChildCreationProduct`, `ChildOccurrenceResolution`, `ResolveChildOccurrenceDescriptor`, `BirthNodeAt`, `ChildOccurrenceProductAt` | Generated code obligation | The macro and structural child products implement these proofs. A visibility change needs compile-pass and forged-occurrence compile-fail witnesses. |
 | `actor/creation.rs`, protocol projection | `BirthModeProtocols`, `BirthNodeProtocols`, `BirthNodeLogicalHosts` | Generated code obligation | These traits project closed birth and logical-host products; consumers can name the resulting associated types without constructing the proof nodes. |
 | `actor/creation.rs`, creation staging | `ChildProduct::stage` | Runtime port | The interpreter consumes ordered staged child requests; it must retain every owned child on rejection. |
@@ -34,6 +33,10 @@ capability; its Rustdoc now describes the existing custody transfer.
 implementations name it as an exact, non-authoritative creation prerequisite.
 Its occurrence parameter and private fields keep equal numeric IDs at
 different child positions distinct.
+`CreationId::get` is also visible because the actor catalogue derives
+shutdown and operation correlations from it, and external interpreter tests
+inspect those exact values. Its Rustdoc now states that the numeric projection
+is neither actor identity nor proof of a committed fresh child.
 
 ## Hidden actor declarations
 
