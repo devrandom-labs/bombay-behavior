@@ -38,6 +38,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "direct-actors-and-facade"
+version = "0.0.0"
+dependencies = [
+ "bombay-behavior-actors",
+ "bombay-rs",
+]
+
+[[package]]
 name = "direct-and-facade"
 version = "0.0.0"
 dependencies = [

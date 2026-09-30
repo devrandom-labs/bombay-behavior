@@ -79,15 +79,22 @@ fn actors_crate() -> Result<TokenStream2> {
             Ok(quote!(::bombay))
         };
     }
-    if let Ok(found) = crate_name("bombay-behavior-actors") {
+    // The Bombay facade owns the Actors catalogue its expansion sites compile
+    // against. A consumer may carry both the facade and a direct foundational
+    // actors dependency, and the two resolve to different revisions whenever
+    // the facade pins its own: generated paths must then agree with the
+    // facade-path imports the consumer actually writes (`bombay::atomic`), so
+    // the facade wins. The foundational crate remains the fallback when no
+    // facade is present.
+    if let Ok(found) = crate_name("bombay-rs") {
         return Ok(crate_path(found));
     }
-    if let Ok(found) = crate_name("bombay-rs") {
+    if let Ok(found) = crate_name("bombay-behavior-actors") {
         return Ok(crate_path(found));
     }
     Err(Error::new(
         Span::call_site(),
-        "could not resolve `bombay-behavior-actors` directly or through `bombay-rs`",
+        "could not resolve `bombay-behavior-actors` through `bombay-rs` or directly",
     ))
 }
 
