@@ -33,7 +33,7 @@ Neither adjacent repository was edited for this ledger.
 | D6 hidden address reservation | Address now exposes `try_reserve` and consuming `Reservation::publish`; the isolated Bombay `LocalEnvironment::prepare` uses it. | Runtime interleavings, bounded nested progress, and immutable dependency graph. |
 | D7 premature publication | The isolated Driver now calls `publish` only on the continuing initialization path after pending settlements progress; the early terminal branches no longer call it. | Production startup rejection/corruption/stop traces and public-resolution absence. |
 
-The fixture at `tests/interpreter-contract` passes all 12 test functions in
+The fixture at `tests/interpreter-contract` passed all 12 baseline test functions in
 debug and optimized profiles. Its assignment host and startup panic witness
 are local interpreters, so they do not close the production runtime matrix.
 The fixture is already wired into `.github/workflows/checks.yml` in both
@@ -41,6 +41,20 @@ profiles. A clean Nix flake check at the Behavior snapshot passed eight
 available `aarch64-darwin` checks, including 843 optimized Nextest tests.
 
 ## Next ownership proof
+
+**T03 focused law before extending the fixture:** two independent FIFO pools
+can have same-typed worker deliveries outstanding at once, even when their
+creator-local child IDs are numerically equal. Settling those deliveries in
+reverse order must return each opaque accepted receipt to its originating
+pool. Both pools must continue without a foreign-receipt diagnostic, and each
+later worker completion must produce exactly its own customer outcome. The
+existing `AssignWorker::settle` and FIFO receipt correlation supply the
+lower-order behavior; no new production representation is proposed.
+The external regression now passes in debug and optimized profiles. It uses
+two separate pool instances with equal numeric child IDs, settles their
+same-typed requests in reverse order, rejects any diagnostic or early customer
+outcome, and checks both later completions. This is a focused T03 witness,
+not a production transport witness.
 
 The remaining work is to establish the exact pre-commit versus post-commit
 ownership equation with a production host witness, then cover PRD T10–T21 and

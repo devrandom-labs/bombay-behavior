@@ -262,6 +262,61 @@ async fn accepted_assignment_returns_its_receipt_before_completion() {
 }
 
 #[tokio::test]
+async fn concurrent_same_typed_assignments_return_receipts_to_their_own_pools() {
+    let (mut first, first_worker) = ready_pool().await;
+    let (mut second, second_worker) = ready_pool().await;
+    assert_eq!(first_worker, second_worker);
+    let first_request = submitted_assignment(&mut first, Box::from("first"));
+    let second_request = submitted_assignment(&mut second, Box::from("second"));
+    let mut host = DeliveryHost::new(DeliveryAdmission::Accept);
+
+    let second_receipt = second_request.settle(&mut host).await;
+    let first_receipt = first_request.settle(&mut host).await;
+    assert_eq!(host.endpoints.len(), 2);
+    let [second_completion, first_completion]: [_; 2] = host
+        .completions
+        .try_into()
+        .unwrap_or_else(|_| panic!("both exact worker deliveries completed once"));
+
+    let first_accepted = first
+        .transition(FifoEvent::AssignmentSettled(SettledItem::Attempted(
+            first_receipt,
+        )))
+        .expect("first pool receives its original opaque receipt");
+    let second_accepted = second
+        .transition(FifoEvent::AssignmentSettled(SettledItem::Attempted(
+            second_receipt,
+        )))
+        .expect("second pool receives its original opaque receipt");
+    for accepted in [first_accepted, second_accepted] {
+        assert!(accepted.sends.diagnostics.is_empty());
+        assert!(accepted.sends.customer_outcomes.as_slice().is_empty());
+    }
+
+    for finished in [
+        first
+            .on(ChildReport::new(first_worker, first_completion))
+            .expect("first worker completion"),
+        second
+            .on(ChildReport::new(second_worker, second_completion))
+            .expect("second worker completion"),
+    ] {
+        assert!(finished.sends.diagnostics.is_empty());
+        let [outcome]: [_; 1] = finished
+            .sends
+            .customer_outcomes
+            .into_deliveries()
+            .try_into()
+            .unwrap_or_else(|_| panic!("one customer completion per pool"));
+        let ReplyDelivery::Logical(delivery) = outcome else {
+            panic!("the customer route remains logical");
+        };
+        assert_eq!(delivery.message.kind(), FifoOutcomeKind::Completed);
+        assert_eq!(delivery.message.worker_result(), Some(&23));
+    }
+}
+
+#[tokio::test]
 async fn rejected_assignment_returns_original_customer_job_after_quarantine() {
     let (mut pool, worker) = ready_pool().await;
     let payload: Box<str> = Box::from("rejected");
