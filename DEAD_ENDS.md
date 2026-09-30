@@ -86,3 +86,70 @@ or positional application access. The recursive-consumer law in
 `transition.rs`, the structural birth product in `actor/creation.rs`, and the
 A11 equation inventory were cross-checked. The wrapper hypothesis is
 rejected pending a representation that preserves recursive host traversal.
+## Installed actor on every endpoint address
+
+Date: 2026-09-30. Disposition: `reopen`.
+
+The shutdown-authority experiment added `EndpointAddress::Installed<B>` and
+recipient projection to every address namespace, plus a `B`-indexed actor
+transfer and direct committed-child product. Focused issuance, creation, and
+shutdown tests passed. Compiling the existing unit tests exposed a legitimate
+delivery-only `DeliveryAddr` in `atomic/pool/assignment.rs`: it can issue
+exact protocol endpoints but has no installed actor or lifecycle control. The
+candidate required that caller to supply an unused `Installed<B>` family
+solely because `EndpointAddress` demanded it. The same pressure appeared in
+other protocol-only fixtures. This is the first no-op symptom and invalidates
+the address-wide association. Giving the fixtures endpoint-only installed
+aliases or dummy control tokens would conceal the ownership gap.
+
+Pre-experiment creation control states were established, initialization
+rejected, initialization panicked, and host rejected. The named report had
+installed and rejected, with one impossible nested child state. The temporary
+candidate kept four child states, removed the impossible nested result, and
+introduced one committed-child product plus one interpretation trait. Its
+nine production files had +193/-160 lines (net +33), two new public types,
+and no new modules. The direct product owned ID, kind, occurrence, and exact
+actor; each rejected variant retained its prior affine child or actions.
+The residue scan found no arrival-history state, duplicated cause, false
+cardinality, nested transition authority, semantic boolean, or structural
+user syntax. The actual falsifier was a mandatory unused capability in a
+protocol-only address implementation. Cross-checks: the shutdown authority
+PRD, the normalized atomic-actor essence/architecture/retained-core/downstream
+documents, `AGENTS.md` creation law, and the actor-model fresh-allocation
+law. The production experiment was removed; the failing law regressions and
+ledger remain for the next hypothesis.
+## Separate installed-address bound through every actor template
+
+Date: 2026-09-30. Disposition: `reopen`.
+
+The second shutdown-authority experiment kept `EndpointAddress` protocol-only
+and introduced `InstalledAddress` solely for installed actor values. A
+delivery-only address no longer needed an unused installed family, and the
+focused Behavior tests passed. The actors crate then emitted 2,839 diagnostics
+because `EstablishedActor<B>`, `ChildCreationOutcome<C, O>`, and every
+creation product acquired a new `InstalledAddress` bound, while generic
+template surfaces across 47 actors source files still declared the prior
+`EndpointAddress` law. This is one repeated bound cluster, not 2,839
+independent defects. No catalogue caller was patched to satisfy it.
+
+The intended user syntax remains ordinary `BehaviorLayer` composition with
+two wrapper orders and no explicit installed-handle parameter. Pool and stable
+proxy are unrelated real templates that already own exact actors; neither
+should force clients to count wrapper depth or write placeholder control
+values. The candidate deleted recipient strengthening and nested impossible
+creation state in its focused core, but its new trait bound spread through the
+catalogue instead of deleting a repeated application-side mechanism. The
+candidate therefore failed the compiler-friction and public-surface audit
+before migration. It was removed.
+
+The pre/post retained creation control sum remains the baseline four outcomes
+with the nested report's two alternatives. The temporary candidate had four
+direct outcomes and a separate installed/rejected report; the committed-child
+product owned ID, kind, occurrence, and exact actor. The focused production
+files had +208/-157 lines (net +51), no new module, and three new public types
+(`InstalledAddress`, `InterpretInstalledActor`, `CommittedChild`). No
+historical state, duplicate cause, false cardinality, nested dispatcher,
+semantic boolean, or positional user syntax was added. The structural residue
+was the new bound repeated at many generic template declarations. The
+shutdown PRD, normalized atomic-actor documents, `BehaviorLayer` law, and
+`AGENTS.md` compiler-friction rule were cross-checked.

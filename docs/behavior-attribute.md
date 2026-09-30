@@ -85,7 +85,7 @@ birth capability is `Births<SystemChildren>`. The field labels record semantic
 roles. It also generates `SystemChildrenRoutes`, with one nominally distinct
 typed route per role. The same route stages that role's creation and constructs
 `ChildDelivery<Child::Protocol, Role>` or
-`ObserveEstablishedCreation<Child::Protocol, Role>`, so dependent effects do
+`ObserveEstablishedCreation<Child, Role>`, so dependent effects do
 not repeat an untyped nonce. Values and nonces remain explicitly authored.
 
 These names extend the macro's existing generated namespace: `SystemChild`,

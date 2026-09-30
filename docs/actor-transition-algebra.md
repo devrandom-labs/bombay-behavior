@@ -61,15 +61,16 @@ the same lifecycle order itself.
 | `ChildDelivery<P, O>` | message to a committed local occurrence/nonce binding | no protocol-wide lookup |
 | `EstablishedRecipient<P>` | exact installed endpoint for `P` | no |
 | `EstablishedDelivery<P>` | exact endpoint plus `P::Msg` | no |
-| `EstablishedActor<B>` | exact endpoint plus proof of installed concrete behavior `B` | no |
+| `EstablishedActor<B>` | exact installed `B` endpoint and matching lifecycle authority | no |
 
 `P` is always canonical protocol identity. `O` is structural occurrence
 evidence used to navigate duplicate child declarations. It is not a key,
 address, or second identity.
 
-The runtime selects the endpoint representation through
-`EndpointAddress::Established<P>`. This makes the endpoint family a property
-of the runtime-owned address namespace. Generic application types and protocol
+The runtime selects exact message endpoints through
+`RecipientAddress::Established<P>`. Actor-hosting namespaces additionally
+select `EndpointAddress::Installed<B>`, which projects the endpoint and keeps
+matching `B::Event` authority. Generic application types and protocol
 owners do not implement key traits or carry runtime types. The inert endpoint
 family requires `Clone`, not `Send`. `InterpretSends` and concrete request
 interpretation require `Send` when an effect actually crosses an asynchronous
@@ -92,8 +93,9 @@ The interpreter performs, in order:
    effects settle successfully.
 
 Only the committed path may produce
-`ChildCreationOutcome::Established` with
-`EstablishedCreation<P, Occurrence>::Installed`. Allocation rejection returns
+`ChildCreationOutcome<C, Occurrence>::Established(CommittedChild<C, Occurrence>)`.
+A later named report may return `EstablishedCreation<C, Occurrence>::Installed`
+with the same committed product. Allocation rejection returns
 the complete staged creation before the initialization fold. Pure
 initialization rejection returns the current child and exact error; host
 rejection after that fold returns the current child and uninterpreted
