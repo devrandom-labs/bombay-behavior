@@ -1,6 +1,6 @@
 //! Adversarial sequence invariants for ownership-carrying routing actors.
 
-use core::num::NonZeroU64;
+use core::num::{NonZeroU16, NonZeroU64};
 use std::collections::VecDeque;
 
 use behavior_actors::{
@@ -10,7 +10,7 @@ use behavior_actors::{
     MemberTokenVersion, OverflowPolicy, PriorityQueue, PriorityQueueMessage, PriorityQueueOutcome,
     PriorityQueueRejection, RateLimitRejection, RateLimiter, RateLimiterMessage,
     RateLimiterOutcome, RendezvousHash, RoundRobin, RouteKey, Router, RouterError, RouterMessage,
-    TokenCount, WorkQueue, WorkQueueMessage, WorkQueueOutcome, WorkQueueRejection,
+    RoutingStrategy, TokenCount, WorkQueue, WorkQueueMessage, WorkQueueOutcome, WorkQueueRejection,
 };
 
 use behavior_core::{MailAddr, MessageProtocol, Recipient, Step};
@@ -677,17 +677,21 @@ fn identity_key(key: &u64) -> u64 {
     *key
 }
 
-fn route_rendezvous(
-    router: &mut Active<TestRendezvous>,
+fn route_keyed<R>(
+    router: &mut Active<Router<MailAddr, Recipient<KeyedRoutingTarget>, R>>,
     key: u64,
     value: u8,
-) -> Result<Recipient<KeyedRoutingTarget>, TestCaseError> {
-    let actions = router
-        .receive(
-            MailAddr(9),
-            RouterMessage::Route(KeyedRoutingMessage { key, value }),
-        )
-        .unwrap();
+) -> Result<Recipient<KeyedRoutingTarget>, TestCaseError>
+where
+    R: RoutingStrategy<Recipient<KeyedRoutingTarget>>,
+    R::Observation: Clone,
+{
+    let Ok(actions) = router.receive(
+        MailAddr(9),
+        RouterMessage::Route(KeyedRoutingMessage { key, value }),
+    ) else {
+        return Err(TestCaseError::fail("keyed route unexpectedly rejected"));
+    };
     prop_assert_eq!(actions.sends.len(), 1);
     prop_assert_eq!(
         &actions.sends[0].message,
@@ -696,6 +700,84 @@ fn route_rendezvous(
     prop_assert!(actions.creates.is_empty());
     prop_assert_eq!(actions.become_, Step::Continue);
     Ok(actions.sends[0].to)
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig { cases: 128, ..ProptestConfig::default() })]
+
+    #[test]
+    fn consistent_hash_membership_edits_preserve_unaffected_key_owners(
+        tokens in prop::array::uniform4(any::<u64>()),
+        extra_keys in vec(any::<u64>(), 0..32),
+    ) {
+        prop_assume!(tokens.iter().enumerate().all(|(index, token)| tokens[..index].iter().all(|earlier| earlier != token)));
+        let recipients = [keyed_recipient(0), keyed_recipient(1), keyed_recipient(2), keyed_recipient(3)];
+        let mut router = TestConsistent::new(
+            recipients[..3].to_vec(),
+            ConsistentHash::new(NonZeroU16::new(8).unwrap(), identity_key),
+        ).initialize().unwrap().behavior;
+        for (member, token) in tokens[..3].iter().copied().enumerate() {
+            let actions = router.receive(MailAddr(9), RouterMessage::Observe(MemberTokenObservation {
+                recipient: recipients[member],
+                version: MemberTokenVersion(0),
+                token: MemberToken(token),
+            })).unwrap();
+            prop_assert!(actions.sends.is_empty());
+            prop_assert!(actions.creates.is_empty());
+            prop_assert_eq!(actions.become_, Step::Continue);
+        }
+
+        let keys = (0..64_u64).chain(extra_keys).collect::<Vec<_>>();
+        let mut before = Vec::with_capacity(keys.len());
+        for (index, key) in keys.iter().copied().enumerate() {
+            before.push(route_keyed(&mut router, key, u8::try_from(index).unwrap())?);
+        }
+
+        let added = router.receive(MailAddr(9), RouterMessage::Add(recipients[3])).unwrap();
+        prop_assert!(added.sends.is_empty());
+        prop_assert!(added.creates.is_empty());
+        prop_assert_eq!(added.become_, Step::Continue);
+        prop_assert_eq!(router.recipients(), recipients.as_slice());
+        prop_assert_eq!(router.member_token_evidence(&recipients[3]), Some(MemberTokenEvidence::Unknown));
+        for ((index, key), owner) in keys.iter().copied().enumerate().zip(before.iter().copied()) {
+            prop_assert_eq!(route_keyed(&mut router, key, u8::try_from(index).unwrap())?, owner);
+        }
+
+        let observed = router.receive(MailAddr(9), RouterMessage::Observe(MemberTokenObservation {
+            recipient: recipients[3],
+            version: MemberTokenVersion(0),
+            token: MemberToken(tokens[3]),
+        })).unwrap();
+        prop_assert!(observed.sends.is_empty());
+        prop_assert!(observed.creates.is_empty());
+        prop_assert_eq!(observed.become_, Step::Continue);
+        let mut after_addition = Vec::with_capacity(keys.len());
+        for ((index, key), previous) in keys.iter().copied().enumerate().zip(before) {
+            let current = route_keyed(&mut router, key, u8::try_from(index).unwrap())?;
+            prop_assert!(current == previous || current == recipients[3]);
+            after_addition.push(current);
+        }
+
+        let removed = router.receive(MailAddr(9), RouterMessage::Remove(recipients[1])).unwrap();
+        prop_assert!(removed.sends.is_empty());
+        prop_assert!(removed.creates.is_empty());
+        prop_assert_eq!(removed.become_, Step::Continue);
+        prop_assert_eq!(router.recipients(), &[recipients[0], recipients[2], recipients[3]]);
+        prop_assert_eq!(router.member_token_evidence(&recipients[1]), None);
+        for member in [0, 2, 3] {
+            prop_assert_eq!(router.member_token_evidence(&recipients[member]), Some(MemberTokenEvidence::Observed {
+                version: MemberTokenVersion(0),
+                token: MemberToken(tokens[member]),
+            }));
+        }
+        for ((index, key), previous) in keys.iter().copied().enumerate().zip(after_addition) {
+            let current = route_keyed(&mut router, key, u8::try_from(index).unwrap())?;
+            prop_assert_ne!(current, recipients[1]);
+            if previous != recipients[1] {
+                prop_assert_eq!(current, previous);
+            }
+        }
+    }
 }
 
 proptest! {
@@ -723,7 +805,7 @@ proptest! {
         let keys = (0..64_u64).chain(extra_keys).collect::<Vec<_>>();
         let mut before = Vec::with_capacity(keys.len());
         for (index, key) in keys.iter().copied().enumerate() {
-            before.push(route_rendezvous(&mut router, key, u8::try_from(index).unwrap())?);
+            before.push(route_keyed(&mut router, key, u8::try_from(index).unwrap())?);
         }
 
         let added = router.receive(MailAddr(9), RouterMessage::Add(recipients[3])).unwrap();
@@ -733,7 +815,7 @@ proptest! {
         prop_assert_eq!(router.recipients(), recipients.as_slice());
         prop_assert_eq!(router.member_token_evidence(&recipients[3]), Some(MemberTokenEvidence::Unknown));
         for ((index, key), owner) in keys.iter().copied().enumerate().zip(before.iter().copied()) {
-            prop_assert_eq!(route_rendezvous(&mut router, key, u8::try_from(index).unwrap())?, owner);
+            prop_assert_eq!(route_keyed(&mut router, key, u8::try_from(index).unwrap())?, owner);
         }
 
         let observed = router.receive(MailAddr(9), RouterMessage::Observe(MemberTokenObservation {
@@ -746,7 +828,7 @@ proptest! {
         prop_assert_eq!(observed.become_, Step::Continue);
         let mut after_addition = Vec::with_capacity(keys.len());
         for ((index, key), previous) in keys.iter().copied().enumerate().zip(before) {
-            let current = route_rendezvous(&mut router, key, u8::try_from(index).unwrap())?;
+            let current = route_keyed(&mut router, key, u8::try_from(index).unwrap())?;
             prop_assert!(current == previous || current == recipients[3]);
             after_addition.push(current);
         }
@@ -764,7 +846,7 @@ proptest! {
             prop_assert_eq!(actions.become_, Step::Continue);
         }
         for ((index, key), owner) in keys.iter().copied().enumerate().zip(after_addition.iter().copied()) {
-            prop_assert_eq!(route_rendezvous(&mut reversed, key, u8::try_from(index).unwrap())?, owner);
+            prop_assert_eq!(route_keyed(&mut reversed, key, u8::try_from(index).unwrap())?, owner);
         }
 
         let removed = router.receive(MailAddr(9), RouterMessage::Remove(recipients[1])).unwrap();
@@ -780,7 +862,7 @@ proptest! {
             }));
         }
         for ((index, key), previous) in keys.iter().copied().enumerate().zip(after_addition) {
-            let current = route_rendezvous(&mut router, key, u8::try_from(index).unwrap())?;
+            let current = route_keyed(&mut router, key, u8::try_from(index).unwrap())?;
             prop_assert_ne!(current, recipients[1]);
             if previous != recipients[1] {
                 prop_assert_eq!(current, previous);

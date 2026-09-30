@@ -2516,11 +2516,58 @@ dependency-policy gates.
 | Order-gate watermark | `catalogue_models::order_gate_matches_an_independent_watermark_map_after_every_operation` compares ordered releases, duplicate and stale-open outcomes, watermark, held count, and empty creation lane after each generated operation. | The generated trace does not prove a runtime delivery receipt or a dedicated guard mutation slice. |
 | Priority selection | `routing::priority_queue` tests stable priority/FIFO ties and full/empty outcomes. `routing_invariants::priority_queue_matches_stable_max_priority_selection` compares an independent ordered list after each offer or release, including exact delivery and reply recipients, reply depth, empty creation lane, and continuing verdict. An isolated `Released.remaining = queued.len() + 1` counterfactual compiled and failed at the new remaining-depth assertion on a one-offer, one-release trace. | The generated priorities cover 0–7 and positive capacities below eight; exhaustion and real host admission are outside this property. The recorded counterfactual covers the release-depth branch, not every routing branch. |
 | Rate admission | `routing::rate_limiter` tests accepted/rejected ownership and saturating refill. `routing_invariants::rate_limiter_matches_saturating_token_arithmetic` compares capacity, available tokens, rejection reasons and returned value, and admitted delivery after each generated operation. | Its generated path constructs positive token costs and capacities; no host admission or dedicated mutation slice is recorded. |
-| Round-robin membership cursor | `routing::router` tests cursor repair after removal. `routing_invariants::round_robin_keeps_the_same_next_recipient_across_membership_edits` tracks an independent member list and next recipient through generated edits and routes. | Consistent-hash has a focused removal witness, but no comparable generated trace or mutation slice in this ledger. |
+| Round-robin membership cursor | `routing::router` tests cursor repair after removal. `routing_invariants::round_robin_keeps_the_same_next_recipient_across_membership_edits` tracks an independent member list and next recipient through generated edits and routes. | The pure trace does not prove transport admission. |
+| Consistent-hash membership stability | `routing::router` tests one three-member removal over 128 keys. `routing_invariants::consistent_hash_membership_edits_preserve_unaffected_key_owners` checks complete actions, Unknown admission, varying tokens and keys, aligned evidence, addition, and removal in 128 generated cases. An isolated no-removal mutant failed at the exact surviving member token, shrinking to tokens `[0,1,2,3]`. | The relational property does not independently calculate every ring point or prove host delivery admission; token-version rejection remains in focused actor tests. |
 | Least-loaded evidence | `routing::router` tests unknown, stale, conflicting, tied, and newly lower evidence. `routing_invariants::least_loaded_matches_versioned_membership_and_selection` models member order and latest evidence after mixed add, remove, observe, and route operations; a deterministic trace covers re-addition. | An isolated max-load selection counterfactual failed both new tests; pure routing still does not prove host delivery admission or the other policy families. |
 | Rendezvous member stability | `routing::router` tests one keyed route and conflicting token. `routing_invariants::rendezvous_membership_edits_only_move_keys_to_or_from_the_changed_member` checks exact route actions, token evidence, membership edits, and order-independent ownership for 128 generated distinct-token cases. An isolated index-dependent score counterfactual failed at the permutation assertion with a minimal `[0,1,2,3]` token set. | This relational law does not independently calculate each score or prove host delivery, stale token versions, and every tie case. |
 | Latch release | `workflow::latch` tests threshold order and zero-count startup. `workflow_invariants::latch_releases_each_accepted_route_exactly_once` compares an independent waiting list, release phase, and exact recipient order through generated arrivals. | The property does not interpret delivery admission or record a dedicated mutation slice. |
 | Dependency workflow | `workflow_invariants::workflow_matches_an_independent_dependency_run` tracks step and run phases across start, completion, failure, and cancellation, including invalid early completion and failure. | The focused property and workflow unit tests do not provide a real interpreter trace or dedicated mutation slice for every branch. |
+
+### A20 pre-edit consistent-hash membership law
+
+Classification: deliberate Bombay ring-routing policy. With a fixed key hash,
+stable member tokens, and a positive replica count, adding an Unknown member
+changes no existing assignment; accepting its token can move a key only to
+that member. Removing a member can change only keys it owned. These are
+relational consequences of the stated clockwise ring selection law and do
+not require a test to duplicate the point-mixing function. A generated test
+will vary four distinct tokens and extra keys, compare complete route and
+observation `Actions`, member order and token evidence, then check the two
+before/after ownership relations. The focused three-member removal test and
+the typed `MemberTokenObservation` are the lower-order witnesses. An isolated
+mutation that leaves removed token evidence in the policy or changes the
+selected eligible point must fail the generated law before retention.
+
+The Router's one ordered membership control state, Unknown/Observed token
+evidence, three hash rejections, transition branches, modules, production
+lines, and public spellings remain unchanged. Current member order and each
+latest token/version are the only values needed for later selection and
+stale/conflict decisions. The proposed test adds no actor state, arrival
+history, repeated cause, false cardinality, nested transition authority,
+semantic boolean, or structural caller syntax. Cross-checks are the actor
+transition algebra and normalized routing catalogue law. Disposition: `pass`
+for the test model, pending the generated trace and counterfactual.
+
+Post-edit, all ten routing invariant tests pass in debug and optimized Nix
+builds. The new consistent-hash property checks every successful action lane
+and continuation, exact keyed deliveries, member order and token evidence,
+then the before/after key-owner relations. A shared typed route assertion now
+serves the ring and rendezvous properties, deleting their duplicate action
+check without adding a production bound. In an isolated Behavior worktree
+with its own Cargo target, deleting only `HashMembership::removed` made the
+new property fail at the exact survivor-token assertion; proptest shrank to
+`tokens = [0,1,2,3]` with no extra keys. The mutant and worktree were removed.
+This counterfactual proves detection of missing token-position repair, not
+the ring mixer or runtime admission.
+
+The test-only batch changes production `+0/-0/net 0`, tests
+`+98/-16/net +82`, and public API `+0/-0` types; the routing invariant file
+is 790 to 872 physical lines. Router control, hash evidence alternatives,
+rejections, branches, production modules, and all future-needed member and
+token values remain unchanged. The residue scan and law-document cross-check
+above found no new production history, repeated cause, false cardinality,
+nested authority, semantic boolean, or positional caller syntax. Disposition:
+`pass` for this evidence batch; A20 remains open for other laws.
 
 ### A20 pre-edit least-loaded evidence law
 
