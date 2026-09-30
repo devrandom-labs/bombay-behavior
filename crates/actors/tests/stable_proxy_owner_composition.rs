@@ -1,3 +1,5 @@
+mod installed_control;
+
 use behavior::{
     Actions, ActiveTurn, Address, Behavior, BehaviorActed, BehaviorAddr, BirthProtocol, Delivery,
     EndpointAddress, LogicalHostRequirements, Never, NoBirthProtocols, NoBirths, Protocol, User,
@@ -35,6 +37,21 @@ impl EndpointAddress for RuntimeAddress {
         = AccountEndpoint
     where
         P: Protocol<Addr = Self>;
+
+    type Installed<B>
+        =
+        installed_control::InstalledControl<B, <Self as EndpointAddress>::Established<B::Protocol>>
+    where
+        B: behavior::Behavior<Protocol: Protocol<Addr = Self>>;
+
+    fn recipient<B>(
+        installed: &Self::Installed<B>,
+    ) -> <Self as EndpointAddress>::Established<B::Protocol>
+    where
+        B: behavior::Behavior<Protocol: Protocol<Addr = Self>>,
+    {
+        installed.endpoint().clone()
+    }
 }
 
 struct AccountWorker;

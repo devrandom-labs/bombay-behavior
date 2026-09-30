@@ -1,5 +1,7 @@
 //! Independent static-dispatch checks for heterogeneous child creation.
 
+mod installed_control;
+
 use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
 use std::marker::PhantomData;
@@ -8,8 +10,7 @@ use behavior_core::{
     Actions, Address, AllocationRejection, Behavior, BehaviorActed, Births, ChildChoice,
     ChildCreationOutcome, ChildCreationProduct, ChildHead, CreateChild, CreationId, CreationKind,
     CreationRejection, CreationSequence, Creations, DispatchBirth, EndpointAddress, EstablishChild,
-    EstablishedCreation, EstablishedRecipient, InterpreterFault, ItemSettlement, Never, NoBirths,
-    Protocol, RoutedCreation, User,
+    InterpreterFault, ItemSettlement, Never, NoBirths, Protocol, RoutedCreation, User,
 };
 use proptest::prelude::*;
 
@@ -36,6 +37,21 @@ impl EndpointAddress for ModelAddr {
         = ModelEndpoint<P>
     where
         P: Protocol<Addr = Self>;
+
+    type Installed<B>
+        =
+        installed_control::InstalledControl<B, <Self as EndpointAddress>::Established<B::Protocol>>
+    where
+        B: behavior_core::Behavior<Protocol: Protocol<Addr = Self>>;
+
+    fn recipient<B>(
+        installed: &Self::Installed<B>,
+    ) -> <Self as EndpointAddress>::Established<B::Protocol>
+    where
+        B: behavior_core::Behavior<Protocol: Protocol<Addr = Self>>,
+    {
+        installed.endpoint().clone()
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -183,13 +199,18 @@ where
             let kind = creation.kind();
             let (request, _) = creation.into_parts();
             let (_, _child, _) = request.into_parts();
-            ItemSettlement::Accepted(ChildCreationOutcome::Established {
-                established: EstablishedCreation::installed(
+            ItemSettlement::Accepted(ChildCreationOutcome::Established(
+                behavior_core::CommittedChild::new(
                     id,
                     kind,
-                    EstablishedRecipient::issued(ModelEndpoint(address, PhantomData)),
+                    behavior_core::EstablishedActor::issued(
+                        installed_control::InstalledControl::new(ModelEndpoint(
+                            address,
+                            PhantomData,
+                        )),
+                    ),
                 ),
-            })
+            ))
         }
         Ok(HostDecision::RejectAfterInitialization) => {
             ItemSettlement::Accepted(ChildCreationOutcome::HostRejected {
@@ -261,7 +282,7 @@ fn normalize(
             ..
         }))
         | ItemSettlement::Accepted(ChildChoice::Tail(ChildChoice::Head(
-            ChildCreationOutcome::Established { .. },
+            ChildCreationOutcome::Established(..),
         ))) => ObservedCreation::Established,
         ItemSettlement::Accepted(ChildChoice::Head(ChildCreationOutcome::HostRejected {
             reason,

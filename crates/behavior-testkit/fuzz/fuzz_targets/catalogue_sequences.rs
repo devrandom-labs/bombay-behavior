@@ -1,5 +1,8 @@
 #![no_main]
 
+#[path = "installed_control.rs"]
+mod installed_control;
+
 use std::{
     marker::PhantomData,
     num::NonZeroU32,
@@ -46,6 +49,21 @@ impl EndpointAddress for RuntimeAddr {
         = Endpoint<P>
     where
         P: Protocol<Addr = Self>;
+
+    type Installed<B>
+        =
+        installed_control::InstalledControl<B, <Self as EndpointAddress>::Established<B::Protocol>>
+    where
+        B: Behavior<Protocol: Protocol<Addr = Self>>;
+
+    fn recipient<B>(
+        installed: &Self::Installed<B>,
+    ) -> <Self as EndpointAddress>::Established<B::Protocol>
+    where
+        B: Behavior<Protocol: Protocol<Addr = Self>>,
+    {
+        installed.endpoint().clone()
+    }
 }
 
 struct Peer;

@@ -1,13 +1,14 @@
 //! StableProxy creation uses creator-local IDs, never runtime route values.
 
+mod installed_control;
+
 use std::collections::BTreeMap;
 use std::time::Instant;
 
 use behavior::{
     Actions, ActiveTurn, Address, Behavior, BehaviorActed, ChildCreationOutcome, ChildInput,
     ChildNamespaceExhausted, CreationId, CreationSequence, CreationSettlement, CreationsSettled,
-    EndpointAddress, EstablishedCreation, EstablishedRecipient, ItemSettlement, Never, NoBirths,
-    Protocol, SettledItem, Step, User,
+    EndpointAddress, ItemSettlement, Never, NoBirths, Protocol, SettledItem, Step, User,
 };
 use behavior_actors::atomic::{
     BeginActivation, ImmediateActivation, InitialWorkerOutcome, InitializeWorker, ProxyControl,
@@ -35,6 +36,21 @@ impl EndpointAddress for RuntimeAddress {
         = WorkerEndpoint
     where
         P: Protocol<Addr = Self>;
+
+    type Installed<B>
+        =
+        installed_control::InstalledControl<B, <Self as EndpointAddress>::Established<B::Protocol>>
+    where
+        B: behavior::Behavior<Protocol: Protocol<Addr = Self>>;
+
+    fn recipient<B>(
+        installed: &Self::Installed<B>,
+    ) -> <Self as EndpointAddress>::Established<B::Protocol>
+    where
+        B: behavior::Behavior<Protocol: Protocol<Addr = Self>>,
+    {
+        installed.endpoint().clone()
+    }
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -113,13 +129,13 @@ fn initializing_proxy() -> (
     let initialized = proxy
         .on(CreationsSettled::new(CreationSettlement::Settled(
             [SettledItem::Attempted(ItemSettlement::Accepted(
-                ChildCreationOutcome::Established {
-                    established: EstablishedCreation::installed(
-                        worker,
-                        kind,
-                        EstablishedRecipient::issued(WorkerEndpoint),
-                    ),
-                },
+                ChildCreationOutcome::Established(behavior::CommittedChild::new(
+                    worker,
+                    kind,
+                    behavior::EstablishedActor::issued(installed_control::InstalledControl::new(
+                        WorkerEndpoint,
+                    )),
+                )),
             ))]
             .into_iter()
             .collect(),
@@ -635,13 +651,13 @@ async fn replacement_report_waits_for_the_predecessor_shutdown_result() {
     let initialized = proxy
         .on(CreationsSettled::new(CreationSettlement::Settled(
             [SettledItem::Attempted(ItemSettlement::Accepted(
-                ChildCreationOutcome::Established {
-                    established: EstablishedCreation::installed(
-                        successor,
-                        kind,
-                        EstablishedRecipient::issued(WorkerEndpoint),
-                    ),
-                },
+                ChildCreationOutcome::Established(behavior::CommittedChild::new(
+                    successor,
+                    kind,
+                    behavior::EstablishedActor::issued(installed_control::InstalledControl::new(
+                        WorkerEndpoint,
+                    )),
+                )),
             ))]
             .into_iter()
             .collect(),

@@ -40,9 +40,7 @@ where
 {
     match settlement {
         SettledItem::Attempted(ItemSettlement::Accepted(created)) => match created {
-            ChildCreationOutcome::Established { established } => {
-                (established.id(), established.kind())
-            }
+            ChildCreationOutcome::Established(child) => (child.id(), child.kind()),
             ChildCreationOutcome::InitializationRejected { creation, .. }
             | ChildCreationOutcome::InitializationPanicked { creation }
             | ChildCreationOutcome::HostRejected { creation, .. } => {
@@ -71,13 +69,8 @@ where
     match kind {
         CreationKind::Birth => match settlement {
             SettledItem::Attempted(ItemSettlement::Accepted(
-                ChildCreationOutcome::Established { established },
-            )) => match (ChildCreationOutcome::Established { established }).into_actor() {
-                Ok(proxy) => StableProxyCreation::Committed(proxy),
-                Err(created) => StableProxyCreation::Rejected(SettledItem::Attempted(
-                    ItemSettlement::Accepted(created),
-                )),
-            },
+                ChildCreationOutcome::Established(child),
+            )) => StableProxyCreation::Committed(child.into_parts().2),
             settlement => StableProxyCreation::Rejected(settlement),
         },
         CreationKind::Replacement { .. } => StableProxyCreation::Rejected(settlement),

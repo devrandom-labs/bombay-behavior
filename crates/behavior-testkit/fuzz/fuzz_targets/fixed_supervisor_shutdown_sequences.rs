@@ -138,7 +138,7 @@ fn exercise(inputs: &[u8]) {
                     let (_, _, receipt) = admit_proxy_operation(
                         operation,
                         EstablishedActor::<StableProxy<Worker, ImmediateActivation>>::issued(
-                            WorkerEndpoint,
+                            stable_proxy::installed_control::InstalledControl::new(WorkerEndpoint),
                         ),
                     );
                     supervisor.on(SettledItem::Attempted(ItemSettlement::Accepted(receipt)))

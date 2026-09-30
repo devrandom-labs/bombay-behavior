@@ -25,7 +25,7 @@ Deliberate Bombay policies:
   statically declared child occurrence before allocation;
 - all creations in one `Actions` value commit before dependent sends or
   interpreter requests from that value;
-- successful creation reports an exact installed endpoint;
+- successful creation reports an exact installed concrete actor;
 - observation and orderly shutdown have explicit correlation identities and
   complete accepted/rejected fact algebras; and
 - public interpretation traits are power-user authority boundaries.
@@ -33,54 +33,73 @@ Deliberate Bombay policies:
 ## Capability ladder
 
 ```text
-logical name                     exact installed incarnation
+logical name                     exact protocol endpoint
 
 Recipient<P>                    EstablishedRecipient<P>
     │ address lookup                 │ endpoint transferred directly
     ▼                                ▼
 Delivery<P>                     EstablishedDelivery<P>
 
-CreateChild<A, C> --establish--> EstablishedCreation<P, O>
-          │                            │ protocol occurrence
-          │                            ▼
-          └───────────────────> EstablishedActor<C>
+CreateChild<A, C> --commit--> CommittedChild<C, O>
+          │                        │ ID, kind, occurrence, actor
+          │                        ▼
+          └───────────────> EstablishedCreation<C, O>
+                                   │ Installed or Rejected
+                                   ▼
+                            EstablishedActor<C>
 ```
 
 `Recipient<P>` is a typed logical name. It remains necessary where a stable
 name, external address, discovery result, or transport address is the intended
 semantics. Resolving it to a live endpoint is runtime work.
 
-`EstablishedRecipient<P>` is an inert capability for one exact installed
-incarnation. Its endpoint representation is
-`<P::Addr as EndpointAddress>::Established<P>`. It exposes no endpoint
+`EstablishedRecipient<P>` is an inert capability for one exact protocol
+endpoint. Its representation is
+`<P::Addr as RecipientAddress>::Established<P>`. It exposes no endpoint
 accessor and no direct send method. Transfer occurs through the public
 `InterpretEstablished<P>` boundary, so this is a power-user API boundary, not
-exclusive runtime authority.
+exclusive runtime authority. It does not prove which behavior is installed.
 
-`EstablishedActor<B>` additionally proves which concrete behavior was
-installed. Most consumers should keep only `EstablishedRecipient<B::Protocol>`.
-The stronger proof is appropriate when an operation depends on `B::Event`, as
-orderly shutdown does.
+`EstablishedActor<B>` retains the runtime-owned `Installed<B>` value. That
+value projects the exact protocol endpoint and carries lifecycle authority
+for the same installed `B`. Its public constructor accepts only this one
+installed value. Message-only consumers may project an
+`EstablishedRecipient<B::Protocol>`; that projection cannot recreate the
+stronger actor. Generic orderly shutdown transfers the full `B` value and
+typed ingress without address lookup.
 
-## Why the address owns the endpoint family
+## Why the address owns both capability families
 
-`EndpointAddress` is implemented once by a runtime's address newtype:
+An address used only for exact messages implements `RecipientAddress`.
+An actor-hosting namespace implements `EndpointAddress`, which supplies
+both projections:
 
 ```rust,ignore
 impl EndpointAddress for RuntimeAddr {
     type Established<P> = RuntimeEndpoint<P>
     where
         P: Protocol<Addr = Self>;
+
+    type Installed<B> = RuntimeInstalled<B>
+    where
+        B: Behavior<Protocol: Protocol<Addr = Self>>;
+
+    fn recipient<B>(installed: &Self::Installed<B>) -> RuntimeEndpoint<B::Protocol>
+    where
+        B: Behavior<Protocol: Protocol<Addr = Self>>,
+    {
+        installed.recipient()
+    }
 }
 ```
 
 This preserves static dispatch without imposing an associated endpoint or key
 on every domain protocol. Each concrete `P`, including a generic
 instantiation, produces a distinct `EstablishedRecipient<P>` capability type.
-The runtime may reuse the same underlying endpoint representation across
-projections without allowing those capability types to mix. There is no
-hashing, `TypeId`, dynamic dispatch, erased storage, or manually authored
-protocol key.
+The runtime may reuse one message endpoint representation across protocols;
+`Installed<B>` remains indexed by the concrete behavior because two behaviors
+can share `P` while accepting different events. There is no hashing,
+`TypeId`, dynamic dispatch, erased storage, or manually authored protocol key.
 
 The associated endpoint must be `Clone`, because an established recipient is
 transferable acquaintance evidence. It is deliberately not unconditionally
@@ -107,9 +126,9 @@ prepare one route for every creation without partial consumption
     -> allocate fresh address
     -> initialize child
     -> interpret initialization actions
-    -> install exact endpoint
+    -> install exact endpoint and matching B::Event control
     -> commit creator-local (protocol occurrence, CreationId) binding
-    -> publish Installed result
+    -> issue EstablishedActor<B> and publish CommittedChild<B, O>
 ```
 
 Route preparation rejection returns the complete untouched batch with
@@ -144,14 +163,13 @@ unchanged. Raw structural positions always refer to the emitter's current
 birth node, including a topology-changing wrapper's proxy child. No endpoint,
 binding, or runtime lookup is performed by this type-level resolution.
 
-`EstablishedCreation<P, O>` deliberately excludes the parent behavior and
-concrete child behavior from its identity. Ordinary consumers need only the
-canonical protocol and occurrence. `into_actor::<Parent>()` reintroduces the
-concrete child proof only where `O: ChildRole<Parent>` establishes it.
-
-This separation is important for generic composition: a wrapper, destination,
-payload, or application state type is never required to implement `Behavior`
-merely to satisfy an indexing trick.
+`ChildCreationOutcome<C, O>::Established` directly owns
+`CommittedChild<C, O>`: ID, `CreationKind`, occurrence, and exact actor.
+It cannot nest a rejected `EstablishedCreation`. The later
+`EstablishedCreation<C, O>` report uses the same committed product on success
+and a typed `CreationRejection` without authority on failure. The parent
+behavior is absent from the report type; `C` is the actual child behavior,
+not a protocol-only guess reconstructed after the fact.
 
 ## Same-action local delivery
 
@@ -166,8 +184,8 @@ dropped, redirected, or resolved to an older incarnation.
 
 ## Exact observation
 
-`ObserveEstablishedCreation<P, O>` requests the committed result of a staged
-creation. It returns `EstablishedCreation<P, O>` to the emitting behavior.
+`ObserveEstablishedCreation<C, O>` requests the committed result of a staged
+creation. It returns `EstablishedCreation<C, O>` to the emitting behavior.
 
 `ObserveEstablished<P>` starts observation of an exact endpoint under a fresh
 observer-local `ObservationId`. `CancelObservation<P>` cancels that exact
@@ -201,7 +219,7 @@ rejection.
 - `Ingress<ShutdownRequested, TargetPath>` proving where shutdown enters
   `B::Event`.
 
-The interpreter receives the exact endpoint and typed ingress. The request
+The interpreter receives the exact installed actor and typed ingress. The request
 therefore remains an explicit event/effect transformation, not an ambient
 mailbox or runtime shutdown side channel. Immediate resolution is either
 `Accepted` or a typed `AlreadyStopping`/`AlreadyStopped` rejection. Later
@@ -220,7 +238,8 @@ clone to the concrete admission port so rejection remains ownership-complete.
 A conforming interpreter needs only capabilities justified by the values it
 drives:
 
-- one concrete endpoint family for its address namespace;
+- one concrete message endpoint family and, for actor-hosting namespaces,
+  one concrete installed `B` family with matching control;
 - fresh allocation independent of occurrence-local creation IDs;
 - creator-instance protocol-occurrence/`CreationId` bindings for local child
   effects, which may be derived statically from the sealed direct-child

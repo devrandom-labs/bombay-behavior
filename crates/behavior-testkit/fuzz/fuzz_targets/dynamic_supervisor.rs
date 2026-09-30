@@ -1,10 +1,13 @@
 //! Inert typed runtime values shared by DynamicSupervisor fuzz targets.
 
+#[path = "installed_control.rs"]
+pub(super) mod installed_control;
+
 use behavior_actors::atomic::{ImmediateActivation, ProxyInputResult, ProxyOperation, StableProxy};
 use behavior_core::{
     ActiveTurn, Address, Behavior, BehaviorActed, ChildCreationOutcome, CreateChild, CreationId,
-    CreationSettlement, CreationsSettled, EndpointAddress, EstablishedActor, EstablishedCreation,
-    EstablishedRecipient, ItemSettlement, Never, NoBirths, NoSends, Protocol, SettledItem, User,
+    CreationSettlement, CreationsSettled, EndpointAddress, EstablishedActor, ItemSettlement, Never,
+    NoBirths, NoSends, Protocol, SettledItem, User,
 };
 
 use crate::proxy_control::admit_proxy_operation;
@@ -24,6 +27,21 @@ impl EndpointAddress for RuntimeAddress {
         = WorkerEndpoint
     where
         P: Protocol<Addr = Self>;
+
+    type Installed<B>
+        =
+        installed_control::InstalledControl<B, <Self as EndpointAddress>::Established<B::Protocol>>
+    where
+        B: Behavior<Protocol: Protocol<Addr = Self>>;
+
+    fn recipient<B>(
+        installed: &Self::Installed<B>,
+    ) -> <Self as EndpointAddress>::Established<B::Protocol>
+    where
+        B: Behavior<Protocol: Protocol<Addr = Self>>,
+    {
+        installed.endpoint().clone()
+    }
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -55,13 +73,13 @@ pub(super) fn committed_proxy(
 ) {
     let (creation, _proxy, kind) = created.into_parts();
     let settlement = SettledItem::Attempted(ItemSettlement::Accepted(
-        ChildCreationOutcome::Established {
-            established: EstablishedCreation::installed(
-                creation,
-                kind,
-                EstablishedRecipient::issued(WorkerEndpoint),
-            ),
-        },
+        ChildCreationOutcome::Established(behavior_core::CommittedChild::new(
+            creation,
+            kind,
+            behavior_core::EstablishedActor::issued(installed_control::InstalledControl::new(
+                WorkerEndpoint,
+            )),
+        )),
     ));
     (
         creation,
@@ -74,7 +92,9 @@ pub(super) fn committed_proxy(
 pub(super) fn accepted_proxy_input<Source>(
     operation: ProxyOperation<Source, Worker, ImmediateActivation>,
 ) -> ProxyInputResult<Source, Worker, ImmediateActivation> {
-    let (_, _, receipt) =
-        admit_proxy_operation(operation, EstablishedActor::issued(WorkerEndpoint));
+    let (_, _, receipt) = admit_proxy_operation(
+        operation,
+        EstablishedActor::issued(installed_control::InstalledControl::new(WorkerEndpoint)),
+    );
     SettledItem::Attempted(ItemSettlement::Accepted(receipt))
 }

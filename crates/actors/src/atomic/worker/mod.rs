@@ -140,7 +140,29 @@ where
 {
     Established(EstablishedActor<StopOnShutdown<W>>),
     Rejected(WorkerCreationRejection<W>),
-    InvalidSettlement(WorkerCreationSettlement<W>),
+}
+
+#[cfg(test)]
+mod creation_outcome_tests {
+    use behavior::{Behavior, BehaviorAddr, EndpointAddress};
+
+    use super::WorkerCreationOutcome;
+    use crate::StopOnShutdown;
+
+    #[expect(
+        dead_code,
+        reason = "compile contract for complete worker creation custody"
+    )]
+    fn settled_worker_outcome<W>(outcome: WorkerCreationOutcome<W>)
+    where
+        W: Behavior,
+        BehaviorAddr<W>: EndpointAddress,
+        StopOnShutdown<W>: Behavior<Protocol = W::Protocol>,
+    {
+        match outcome {
+            WorkerCreationOutcome::Established(_) | WorkerCreationOutcome::Rejected(_) => {}
+        }
+    }
 }
 
 pub(in crate::atomic) fn settle_worker_creation<W>(
@@ -153,29 +175,26 @@ where
         Behavior<Protocol = W::Protocol, Error = W::Error, Ph = W::Ph, Birth = W::Birth>,
 {
     match settlement {
-        SettledItem::Attempted(ItemSettlement::Accepted(created)) => match created.into_actor() {
-            Ok(actor) => WorkerCreationOutcome::Established(actor),
-            Err(created @ ChildCreationOutcome::Established { .. }) => {
-                WorkerCreationOutcome::InvalidSettlement(SettledItem::Attempted(
-                    ItemSettlement::Accepted(created),
-                ))
+        SettledItem::Attempted(ItemSettlement::Accepted(created)) => match created {
+            ChildCreationOutcome::Established(child) => {
+                WorkerCreationOutcome::Established(child.into_parts().2)
             }
-            Err(ChildCreationOutcome::InitializationRejected { creation, error }) => {
+            ChildCreationOutcome::InitializationRejected { creation, error } => {
                 WorkerCreationOutcome::Rejected(WorkerCreationRejection::WorkerRejected {
                     worker: recover_worker(creation),
                     error,
                 })
             }
-            Err(ChildCreationOutcome::InitializationPanicked { creation }) => {
+            ChildCreationOutcome::InitializationPanicked { creation } => {
                 WorkerCreationOutcome::Rejected(WorkerCreationRejection::WorkerPanicked {
                     worker: recover_worker(creation),
                 })
             }
-            Err(ChildCreationOutcome::HostRejected {
+            ChildCreationOutcome::HostRejected {
                 creation,
                 initialization,
                 reason,
-            }) => WorkerCreationOutcome::Rejected(WorkerCreationRejection::HostRejected {
+            } => WorkerCreationOutcome::Rejected(WorkerCreationRejection::HostRejected {
                 recovery: WorkerRecovery::new(recover_worker(creation), initialization),
                 reason,
             }),

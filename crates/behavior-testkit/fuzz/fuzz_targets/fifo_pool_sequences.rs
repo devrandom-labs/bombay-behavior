@@ -1,6 +1,9 @@
 #![no_main]
 //! Arbitrary direct-worker assignment, rejection, exit, and shutdown order.
 
+#[path = "installed_control.rs"]
+mod installed_control;
+
 use core::future::Future;
 use core::task::{Context, Poll, Waker};
 use std::collections::{BTreeSet, VecDeque};
@@ -21,9 +24,8 @@ use behavior_actors::{
 use behavior_core::{
     ActionItemResult, Actions, ActiveTurn, Address, Behavior, BehaviorActed, BehaviorBase,
     ChildCreationOutcome, ChildHead, ChildReport, CreateChild, CreationId, CreationSequence,
-    CreationSettlement, CreationsSettled, EndpointAddress, EstablishedCreation,
-    EstablishedRecipient, InterpreterRequests, ItemSettlement, MessageProtocol, Never, NoBirths,
-    Protocol, Recipient, ReportToParent, SettledItem, Step, User,
+    CreationSettlement, CreationsSettled, EndpointAddress, InterpreterRequests, ItemSettlement,
+    MessageProtocol, Never, NoBirths, Protocol, Recipient, ReportToParent, SettledItem, Step, User,
 };
 use libfuzzer_sys::fuzz_target;
 
@@ -47,6 +49,21 @@ impl EndpointAddress for RuntimeAddress {
         = WorkerEndpoint
     where
         P: Protocol<Addr = Self>;
+
+    type Installed<B>
+        =
+        installed_control::InstalledControl<B, <Self as EndpointAddress>::Established<B::Protocol>>
+    where
+        B: Behavior<Protocol: Protocol<Addr = Self>>;
+
+    fn recipient<B>(
+        installed: &Self::Installed<B>,
+    ) -> <Self as EndpointAddress>::Established<B::Protocol>
+    where
+        B: Behavior<Protocol: Protocol<Addr = Self>>,
+    {
+        installed.endpoint().clone()
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -97,13 +114,15 @@ fn created_worker(
     let (worker, _, kind) = creation.into_parts();
     CreationsSettled::new(CreationSettlement::Settled(
         [SettledItem::Attempted(ItemSettlement::Accepted(
-            ChildCreationOutcome::<StopOnShutdown<SearchWorker>, ChildHead>::Established {
-                established: EstablishedCreation::installed(
+            ChildCreationOutcome::<StopOnShutdown<SearchWorker>, ChildHead>::Established(
+                behavior_core::CommittedChild::new(
                     worker,
                     kind,
-                    EstablishedRecipient::issued(WorkerEndpoint),
+                    behavior_core::EstablishedActor::issued(
+                        installed_control::InstalledControl::new(WorkerEndpoint),
+                    ),
                 ),
-            },
+            ),
         ))]
         .into_iter()
         .collect(),

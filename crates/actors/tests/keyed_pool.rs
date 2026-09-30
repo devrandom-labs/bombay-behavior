@@ -9,6 +9,8 @@ mod customer;
 mod direct_pool_customer;
 #[path = "keyed_pool/domain.rs"]
 mod domain;
+#[path = "installed_control/mod.rs"]
+mod installed_control;
 #[path = "keyed_pool/lifecycle.rs"]
 mod lifecycle;
 

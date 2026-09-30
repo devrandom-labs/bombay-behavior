@@ -1,3 +1,5 @@
+mod installed_control;
+
 use behavior::{Address, EndpointAddress, MessageProtocol, Protocol, Recipient};
 use behavior_actors::atomic::{
     BindingExpectation, BindingReply, BindingRequestId, KeyedAdmissionRejection, KeyedCommand,
@@ -19,6 +21,21 @@ impl EndpointAddress for RuntimeAddr {
         = Endpoint
     where
         P: Protocol<Addr = Self>;
+
+    type Installed<B>
+        =
+        installed_control::InstalledControl<B, <Self as EndpointAddress>::Established<B::Protocol>>
+    where
+        B: behavior::Behavior<Protocol: Protocol<Addr = Self>>;
+
+    fn recipient<B>(
+        installed: &Self::Installed<B>,
+    ) -> <Self as EndpointAddress>::Established<B::Protocol>
+    where
+        B: behavior::Behavior<Protocol: Protocol<Addr = Self>>,
+    {
+        installed.endpoint().clone()
+    }
 }
 
 #[derive(Debug, Eq, PartialEq)]

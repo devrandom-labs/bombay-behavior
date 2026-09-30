@@ -77,9 +77,10 @@ For each ordered creation batch and routed request it must:
 - prepare every required runtime route without partially consuming the batch;
 - allocate an address fresh with respect to the actor configuration;
 - initialize the concrete child exactly once;
-- install a private runtime host and exact endpoint for `C::Protocol`;
+- install a private runtime host, exact endpoint for `C::Protocol`, and matching
+  `C::Event` control authority;
 - atomically commit the creator-local protocol-occurrence/`CreationId` binding;
-- report `EstablishedCreation<C::Protocol, Occurrence>::Installed` after that
+- report `EstablishedCreation<C, Occurrence>::Installed` after that
   commitment, without claiming initialization-effect success; and
 - interpret the child's initialization actions once, then make a continuing
   successful child publicly resolvable before ordinary ingress.

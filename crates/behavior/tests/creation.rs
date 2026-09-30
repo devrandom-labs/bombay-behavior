@@ -7,6 +7,7 @@ use behavior::ChildCreationOutcome;
 use behavior::ChildHead;
 use behavior::ChildNamespaceExhausted;
 use behavior::Children;
+use behavior::CommittedChild;
 use behavior::CreateChild;
 use behavior::CreationKind;
 use behavior::CreationRejection;
@@ -14,7 +15,7 @@ use behavior::CreationSequence;
 use behavior::Creations;
 use behavior::EndpointAddress;
 use behavior::EstablishChild;
-use behavior::EstablishedCreation;
+use behavior::EstablishedActor;
 use behavior::EstablishedRecipient;
 use behavior::Here;
 use behavior::InterpretItem;
@@ -31,6 +32,9 @@ use behavior::SettledItem;
 use behavior::Step;
 use behavior::User;
 use std::collections::VecDeque;
+
+mod installed_control;
+use installed_control::InstalledControl;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct OpaqueAddress;
@@ -50,6 +54,18 @@ impl EndpointAddress for OpaqueAddress {
         = OpaqueEndpoint
     where
         P: Protocol<Addr = Self>;
+
+    type Installed<B>
+        = InstalledControl<B, OpaqueEndpoint>
+    where
+        B: Behavior<Protocol: Protocol<Addr = Self>>;
+
+    fn recipient<B>(installed: &Self::Installed<B>) -> OpaqueEndpoint
+    where
+        B: Behavior<Protocol: Protocol<Addr = Self>>,
+    {
+        installed.endpoint().clone()
+    }
 }
 
 struct WorkerProtocol;
@@ -107,13 +123,11 @@ fn child_creation_names_the_action_and_established_outcome() {
     let request = CreateChild::<OpaqueAddress, Worker>::birth(id, Worker(7));
     assert_eq!(request.id(), id);
 
-    let outcome = ChildCreationOutcome::<Worker, ChildHead>::Established {
-        established: EstablishedCreation::installed(
-            id,
-            CreationKind::Birth,
-            EstablishedRecipient::issued(OpaqueEndpoint(41)),
-        ),
-    };
+    let outcome = ChildCreationOutcome::<Worker, ChildHead>::Established(CommittedChild::new(
+        id,
+        CreationKind::Birth,
+        EstablishedActor::issued(InstalledControl::new(OpaqueEndpoint(41))),
+    ));
     let Ok(actor) = outcome.into_actor() else {
         panic!("an established child carries the exact actor capability");
     };
@@ -316,13 +330,11 @@ impl EstablishChild<ChildHead, Worker> for Runtime {
                 let route = creation.route();
                 let (creation, _) = creation.into_parts();
                 let (_, _worker, _) = creation.into_parts();
-                ItemSettlement::Accepted(ChildCreationOutcome::Established {
-                    established: EstablishedCreation::installed(
-                        id,
-                        kind,
-                        EstablishedRecipient::issued(OpaqueEndpoint(route.0)),
-                    ),
-                })
+                ItemSettlement::Accepted(ChildCreationOutcome::Established(CommittedChild::new(
+                    id,
+                    kind,
+                    EstablishedActor::issued(InstalledControl::new(OpaqueEndpoint(route.0))),
+                )))
             }
         }
     }

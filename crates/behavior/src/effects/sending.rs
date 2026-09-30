@@ -2,8 +2,8 @@
 
 use crate::{
     Behavior, BirthProtocol, BirthProtocolProduct, ChildDelivery, ChildInput, ComposedEvent,
-    Delivery, EndpointAddress, EstablishedDelivery, InjectEvent, Inside, NoBirthProtocols,
-    Protocol,
+    Delivery, EstablishedDelivery, InjectEvent, Inside, NoBirthProtocols, Protocol,
+    RecipientAddress,
 };
 use core::future::Future;
 
@@ -1034,7 +1034,7 @@ where
 impl<P> LogicalDeliveryProtocols for Vec<EstablishedDelivery<P>>
 where
     P: Protocol,
-    P::Addr: EndpointAddress,
+    P::Addr: RecipientAddress,
 {
     type Protocols = NoBirthProtocols;
 }
@@ -1162,7 +1162,7 @@ impl<Interpreter, RootEvent, Path, P> InterpretSends<Interpreter, RootEvent, Pat
 where
     Interpreter: InterpretItem<EstablishedDelivery<P>, RootEvent, Path>,
     P: Protocol,
-    P::Addr: EndpointAddress,
+    P::Addr: RecipientAddress,
     EstablishedDelivery<P>: ActionItem,
 {
     fn interpret(

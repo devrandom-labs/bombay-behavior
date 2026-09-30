@@ -53,7 +53,7 @@ The API distinguishes three transferable destination capabilities:
 ```text
 Recipient<P>                 logical protocol address
 EstablishedRecipient<P>      exact installed protocol endpoint
-EstablishedActor<B>          exact installed endpoint plus concrete-behavior proof
+EstablishedActor<B>          exact installed behavior and lifecycle authority
 ```
 
 `Recipient<P>` remains correct at transport, discovery, and stable-name
@@ -63,21 +63,21 @@ endpoint and can be delivered to, observed, or transferred without a
 protocol-wide lookup table.
 
 Fresh allocation is an interpreter law. A successful
-`EstablishedCreation<P, O>` is produced only after the runtime establishes a
-fresh endpoint and commits the creator-local binding. Rejection is an exhaustive
-typed result and contains no endpoint capability.
+`EstablishedCreation<C, O>` carries the exact installed `C` actor only after
+the runtime establishes a fresh child and commits the creator-local binding.
+Rejection is an exhaustive typed result and contains no actor capability.
 
 A behavior correlates a staged child with a creator-issued `CreationId`; it
 does not construct or retain a runtime route. Bombay privately maps the
 creation ID and the statically selected child occurrence to the runtime route.
 
-The runtime owns the endpoint family once per address namespace by
-implementing `EndpointAddress`. Ordinary protocols declare no keys and domain
-types acquire no endpoint boilerplate. Public interpretation traits are an
-intentional power-user transfer boundary; endpoint values have no direct
-accessor or ambient send operation. Exact endpoints are cloneable but not
-intrinsically `Send`; concrete asynchronous interpretation requires `Send`
-only for the values it actually transports.
+The runtime owns exact message endpoints through `RecipientAddress`. An
+actor-hosting namespace implements `EndpointAddress`, adding the installed
+`B` value that couples that endpoint to `B::Event` lifecycle authority.
+Ordinary protocols declare no keys. Public interpretation traits are an
+intentional power-user transfer boundary; capabilities have no ambient send
+operation. Exact endpoints are cloneable but not intrinsically `Send`;
+asynchronous interpretation requires `Send` only for transported values.
 
 The full capability and lifecycle contract is in
 [Established capabilities](docs/established-capabilities.md).

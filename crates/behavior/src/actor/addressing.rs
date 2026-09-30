@@ -33,7 +33,7 @@ impl Address for MailAddr {
     type Nonce = u64;
 }
 
-/// Runtime-owned exact endpoint family for one logical address namespace.
+/// Runtime-owned exact message endpoint family for one logical address namespace.
 ///
 /// A runtime implements this trait on its own address newtype, selecting one
 /// statically projected endpoint representation for each concrete protocol.
@@ -56,7 +56,7 @@ impl Address for MailAddr {
 /// impl<P> Clone for LocalEndpoint<P> {
 ///     fn clone(&self) -> Self { Self(self.0.clone(), core::marker::PhantomData) }
 /// }
-/// impl behavior::EndpointAddress for LocalAddr {
+/// impl behavior::RecipientAddress for LocalAddr {
 ///     type Established<P> = LocalEndpoint<P> where P: behavior::Protocol<Addr = Self>;
 /// }
 /// struct LocalProtocol;
@@ -89,8 +89,38 @@ impl Address for MailAddr {
 /// let _delivery = behavior::EstablishedDelivery::new(recipient, std::rc::Rc::new(()));
 /// require_async::<Vec<behavior::EstablishedDelivery<LocalProtocol>>>();
 /// ```
+pub trait RecipientAddress: Address + Sized {
+    type Established<P>: Clone
+    where
+        P: Protocol<Addr = Self>;
+}
+
+/// Runtime-owned installed actor family for an address namespace.
+///
+/// The runtime must bind one protocol endpoint and its matching concrete
+/// lifecycle authority to the same incarnation before issuing this value.
+/// A namespace used only for protocol messaging implements
+/// [`RecipientAddress`] without this stronger port.
 pub trait EndpointAddress: Address + Sized {
     type Established<P>: Clone
+    where
+        P: Protocol<Addr = Self>;
+
+    type Installed<B>: Clone
+    where
+        B: Behavior<Protocol: Protocol<Addr = Self>>;
+
+    /// Project the message-only endpoint from one installed actor.
+    fn recipient<B>(
+        installed: &Self::Installed<B>,
+    ) -> <Self as EndpointAddress>::Established<B::Protocol>
+    where
+        B: Behavior<Protocol: Protocol<Addr = Self>>;
+}
+
+impl<A: EndpointAddress> RecipientAddress for A {
+    type Established<P>
+        = <A as EndpointAddress>::Established<P>
     where
         P: Protocol<Addr = Self>;
 }
@@ -141,7 +171,7 @@ impl<A: Address, M> From<A> for Recipient<MessageProtocol<A, M>> {
     }
 }
 
-/// Inert capability for one exact installed incarnation of protocol `P`.
+/// Inert capability for one exact protocol endpoint.
 ///
 /// The endpoint type is selected by `P::Addr`, so `P` remains the only
 /// protocol identity and ordinary domain types carry no endpoint parameter.
@@ -157,7 +187,7 @@ impl<A: Address, M> From<A> for Recipient<MessageProtocol<A, M>> {
 /// impl behavior::Protocol for Worker { type Addr = RuntimeAddr; type Msg = (); }
 /// #[derive(Clone)]
 /// struct Endpoint;
-/// impl behavior::EndpointAddress for RuntimeAddr {
+/// impl behavior::RecipientAddress for RuntimeAddr {
 ///     type Established<P> = Endpoint where P: behavior::Protocol<Addr = Self>;
 /// }
 /// let recipient = behavior::EstablishedRecipient::<Worker>::issued(Endpoint);
@@ -166,24 +196,24 @@ impl<A: Address, M> From<A> for Recipient<MessageProtocol<A, M>> {
 pub struct EstablishedRecipient<P>
 where
     P: Protocol,
-    P::Addr: EndpointAddress,
+    P::Addr: RecipientAddress,
 {
-    pub(crate) endpoint: <P::Addr as EndpointAddress>::Established<P>,
+    pub(crate) endpoint: <P::Addr as RecipientAddress>::Established<P>,
 }
 
 impl<P> EstablishedRecipient<P>
 where
     P: Protocol,
-    P::Addr: EndpointAddress,
+    P::Addr: RecipientAddress,
 {
-    /// Issue a capability from an endpoint already established by an
-    /// interpreter.
+    /// Issue a capability from an exact endpoint established or imported by
+    /// an interpreter.
     ///
-    /// This constructor performs no allocation or validation. Callers at this
-    /// power-user boundary must issue it only after successful fresh
-    /// installation and commit.
+    /// This constructor performs no allocation or validation. It proves only
+    /// protocol messaging; it never establishes a concrete behavior or
+    /// lifecycle authority.
     #[must_use]
-    pub const fn issued(endpoint: <P::Addr as EndpointAddress>::Established<P>) -> Self {
+    pub const fn issued(endpoint: <P::Addr as RecipientAddress>::Established<P>) -> Self {
         Self { endpoint }
     }
 
@@ -200,20 +230,20 @@ where
 pub trait InterpretEstablished<P>
 where
     P: Protocol,
-    P::Addr: EndpointAddress,
+    P::Addr: RecipientAddress,
 {
     type Output;
 
     fn interpret_established(
         &mut self,
-        endpoint: <P::Addr as EndpointAddress>::Established<P>,
+        endpoint: <P::Addr as RecipientAddress>::Established<P>,
     ) -> Self::Output;
 }
 
 impl<P> Clone for EstablishedRecipient<P>
 where
     P: Protocol,
-    P::Addr: EndpointAddress,
+    P::Addr: RecipientAddress,
 {
     fn clone(&self) -> Self {
         Self::issued(self.endpoint.clone())
@@ -223,8 +253,8 @@ where
 impl<P> core::fmt::Debug for EstablishedRecipient<P>
 where
     P: Protocol,
-    P::Addr: EndpointAddress,
-    <P::Addr as EndpointAddress>::Established<P>: core::fmt::Debug,
+    P::Addr: RecipientAddress,
+    <P::Addr as RecipientAddress>::Established<P>: core::fmt::Debug,
 {
     fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         formatter
@@ -237,8 +267,8 @@ where
 impl<P> PartialEq for EstablishedRecipient<P>
 where
     P: Protocol,
-    P::Addr: EndpointAddress,
-    <P::Addr as EndpointAddress>::Established<P>: PartialEq,
+    P::Addr: RecipientAddress,
+    <P::Addr as RecipientAddress>::Established<P>: PartialEq,
 {
     fn eq(&self, other: &Self) -> bool {
         self.endpoint == other.endpoint
@@ -248,8 +278,8 @@ where
 impl<P> Eq for EstablishedRecipient<P>
 where
     P: Protocol,
-    P::Addr: EndpointAddress,
-    <P::Addr as EndpointAddress>::Established<P>: Eq,
+    P::Addr: RecipientAddress,
+    <P::Addr as RecipientAddress>::Established<P>: Eq,
 {
 }
 
@@ -260,13 +290,99 @@ where
 /// lifecycle effects to require static evidence about that behavior's event
 /// algebra. It remains inert: no direct send, shutdown, endpoint accessor, or
 /// other ambient effect is exposed.
+///
+/// A protocol recipient cannot issue installed-actor authority:
+///
+/// ```compile_fail,E0271
+/// #[derive(Clone, Copy, Eq, PartialEq)]
+/// struct RuntimeAddr;
+/// impl behavior::Address for RuntimeAddr { type Nonce = u8; }
+/// #[derive(Clone)]
+/// struct Endpoint;
+/// struct Installed<B: behavior::Behavior>(Endpoint, std::sync::mpsc::Sender<B::Event>);
+/// impl<B: behavior::Behavior> Clone for Installed<B> {
+///     fn clone(&self) -> Self { Self(self.0.clone(), self.1.clone()) }
+/// }
+/// impl behavior::EndpointAddress for RuntimeAddr {
+///     type Established<P> = Endpoint where P: behavior::Protocol<Addr = Self>;
+///     type Installed<B> = Installed<B>
+///         where B: behavior::Behavior<Protocol: behavior::Protocol<Addr = Self>>;
+///     fn recipient<B>(installed: &Self::Installed<B>) -> Endpoint
+///     where B: behavior::Behavior<Protocol: behavior::Protocol<Addr = Self>> {
+///         installed.0.clone()
+///     }
+/// }
+/// struct Worker;
+/// impl behavior::Protocol for Worker { type Addr = RuntimeAddr; type Msg = (); }
+/// impl behavior::Behavior for Worker {
+///     type Protocol = Self;
+///     type Event = behavior::User<RuntimeAddr, ()>;
+///     type Sends = behavior::NoSends;
+///     type Ph = behavior::Never;
+///     type Error = behavior::Never;
+///     type Birth = behavior::NoBirths;
+///     fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event)
+///         -> behavior::BehaviorActed<Self> { Ok(behavior::Actions::cont()) }
+/// }
+/// let recipient = behavior::EstablishedRecipient::<Worker>::issued(Endpoint);
+/// let _: behavior::EstablishedActor<Worker> = behavior::EstablishedActor::issued(recipient);
+/// ```
+///
+/// Two behaviors sharing one protocol retain distinct installed authority:
+///
+/// ```compile_fail,E0308
+/// #[derive(Clone, Copy, Eq, PartialEq)]
+/// struct RuntimeAddr;
+/// impl behavior::Address for RuntimeAddr { type Nonce = u8; }
+/// #[derive(Clone)]
+/// struct Endpoint;
+/// struct Installed<B: behavior::Behavior>(Endpoint, std::sync::mpsc::Sender<B::Event>);
+/// impl<B: behavior::Behavior> Clone for Installed<B> {
+///     fn clone(&self) -> Self { Self(self.0.clone(), self.1.clone()) }
+/// }
+/// impl behavior::EndpointAddress for RuntimeAddr {
+///     type Established<P> = Endpoint where P: behavior::Protocol<Addr = Self>;
+///     type Installed<B> = Installed<B>
+///         where B: behavior::Behavior<Protocol: behavior::Protocol<Addr = Self>>;
+///     fn recipient<B>(installed: &Self::Installed<B>) -> Endpoint
+///     where B: behavior::Behavior<Protocol: behavior::Protocol<Addr = Self>> {
+///         installed.0.clone()
+///     }
+/// }
+/// struct Shared;
+/// impl behavior::Protocol for Shared { type Addr = RuntimeAddr; type Msg = (); }
+/// struct First;
+/// struct Second;
+/// impl behavior::Behavior for First {
+///     type Protocol = Shared;
+///     type Event = behavior::User<RuntimeAddr, ()>;
+///     type Sends = behavior::NoSends;
+///     type Ph = behavior::Never;
+///     type Error = behavior::Never;
+///     type Birth = behavior::NoBirths;
+///     fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event)
+///         -> behavior::BehaviorActed<Self> { Ok(behavior::Actions::cont()) }
+/// }
+/// impl behavior::Behavior for Second {
+///     type Protocol = Shared;
+///     type Event = behavior::EventLayer<u8, behavior::User<RuntimeAddr, ()>>;
+///     type Sends = behavior::NoSends;
+///     type Ph = behavior::Never;
+///     type Error = behavior::Never;
+///     type Birth = behavior::NoBirths;
+///     fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event)
+///         -> behavior::BehaviorActed<Self> { Ok(behavior::Actions::cont()) }
+/// }
+/// let (control, _inbox) = std::sync::mpsc::channel::<<First as behavior::Behavior>::Event>();
+/// let first = behavior::EstablishedActor::<First>::issued(Installed(Endpoint, control));
+/// let _: behavior::EstablishedActor<Second> = first;
+/// ```
 pub struct EstablishedActor<B>
 where
     B: Behavior,
     <B::Protocol as Protocol>::Addr: EndpointAddress,
 {
-    recipient: EstablishedRecipient<B::Protocol>,
-    behavior: PhantomData<fn() -> B>,
+    installed: <<B::Protocol as Protocol>::Addr as EndpointAddress>::Installed<B>,
 }
 
 impl<B> EstablishedActor<B>
@@ -276,47 +392,54 @@ where
 {
     /// Issue an exact actor capability after successful installation.
     ///
-    /// This is the same public power-user boundary as
-    /// [`EstablishedRecipient::issued`]. It performs no allocation,
-    /// initialization, installation, or validation.
+    /// This power-user boundary accepts one runtime-owned installed value.
+    /// Only successful fresh installation and binding commit may issue it.
+    /// It performs no allocation or validation itself.
     #[must_use]
     pub const fn issued(
-        endpoint: <<B::Protocol as Protocol>::Addr as EndpointAddress>::Established<B::Protocol>,
+        installed: <<B::Protocol as Protocol>::Addr as EndpointAddress>::Installed<B>,
     ) -> Self {
-        Self {
-            recipient: EstablishedRecipient::issued(endpoint),
-            behavior: PhantomData,
-        }
-    }
-
-    pub(crate) const fn from_recipient(recipient: EstablishedRecipient<B::Protocol>) -> Self {
-        Self {
-            recipient,
-            behavior: PhantomData,
-        }
+        Self { installed }
     }
 
     /// Project the exact public-protocol recipient for this incarnation.
     #[must_use]
     pub fn recipient(&self) -> EstablishedRecipient<B::Protocol> {
-        self.recipient.clone()
+        EstablishedRecipient::issued(
+            <<B::Protocol as Protocol>::Addr as EndpointAddress>::recipient(&self.installed),
+        )
     }
 
     /// Consume the concrete-actor proof and retain its exact protocol
     /// recipient.
     #[must_use]
     pub fn into_recipient(self) -> EstablishedRecipient<B::Protocol> {
-        self.recipient
+        EstablishedRecipient::issued(
+            <<B::Protocol as Protocol>::Addr as EndpointAddress>::recipient(&self.installed),
+        )
     }
 
-    /// Transfer the endpoint through the explicit interpretation boundary
-    /// while preserving `B` in the caller's request type.
-    pub fn interpret<I>(self, interpreter: &mut I) -> I::Output
+    /// Transfer the complete installed value with its exact `B` index.
+    pub fn interpret_actor<I>(self, interpreter: &mut I) -> I::Output
     where
-        I: InterpretEstablished<B::Protocol>,
+        I: InterpretInstalledActor<B>,
     {
-        self.recipient.interpret(interpreter)
+        interpreter.interpret_actor(self.installed)
     }
+}
+
+/// Public power-user transfer boundary for one exact installed actor.
+pub trait InterpretInstalledActor<B>
+where
+    B: Behavior,
+    <B::Protocol as Protocol>::Addr: EndpointAddress,
+{
+    type Output;
+
+    fn interpret_actor(
+        &mut self,
+        installed: <<B::Protocol as Protocol>::Addr as EndpointAddress>::Installed<B>,
+    ) -> Self::Output;
 }
 
 impl<B> Clone for EstablishedActor<B>
@@ -325,10 +448,7 @@ where
     <B::Protocol as Protocol>::Addr: EndpointAddress,
 {
     fn clone(&self) -> Self {
-        Self {
-            recipient: self.recipient.clone(),
-            behavior: PhantomData,
-        }
+        Self::issued(self.installed.clone())
     }
 }
 
@@ -336,13 +456,12 @@ impl<B> core::fmt::Debug for EstablishedActor<B>
 where
     B: Behavior,
     <B::Protocol as Protocol>::Addr: EndpointAddress,
-    <<B::Protocol as Protocol>::Addr as EndpointAddress>::Established<B::Protocol>:
-        core::fmt::Debug,
+    <<B::Protocol as Protocol>::Addr as EndpointAddress>::Installed<B>: core::fmt::Debug,
 {
     fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         formatter
             .debug_tuple("EstablishedActor")
-            .field(&self.recipient)
+            .field(&self.installed)
             .finish()
     }
 }
@@ -351,10 +470,10 @@ impl<B> PartialEq for EstablishedActor<B>
 where
     B: Behavior,
     <B::Protocol as Protocol>::Addr: EndpointAddress,
-    <<B::Protocol as Protocol>::Addr as EndpointAddress>::Established<B::Protocol>: PartialEq,
+    <<B::Protocol as Protocol>::Addr as EndpointAddress>::Installed<B>: PartialEq,
 {
     fn eq(&self, other: &Self) -> bool {
-        self.recipient == other.recipient
+        self.installed == other.installed
     }
 }
 
@@ -362,7 +481,7 @@ impl<B> Eq for EstablishedActor<B>
 where
     B: Behavior,
     <B::Protocol as Protocol>::Addr: EndpointAddress,
-    <<B::Protocol as Protocol>::Addr as EndpointAddress>::Established<B::Protocol>: Eq,
+    <<B::Protocol as Protocol>::Addr as EndpointAddress>::Installed<B>: Eq,
 {
 }
 
@@ -516,7 +635,7 @@ where
 /// impl<P> Clone for Endpoint<P> {
 ///     fn clone(&self) -> Self { Self(core::marker::PhantomData) }
 /// }
-/// impl behavior::EndpointAddress for RuntimeAddr {
+/// impl behavior::RecipientAddress for RuntimeAddr {
 ///     type Established<P> = Endpoint<P> where P: behavior::Protocol<Addr = Self>;
 /// }
 /// struct Queue;
@@ -529,7 +648,7 @@ where
 pub struct EstablishedDelivery<P>
 where
     P: Protocol,
-    P::Addr: EndpointAddress,
+    P::Addr: RecipientAddress,
 {
     pub to: EstablishedRecipient<P>,
     pub message: P::Msg,
@@ -538,7 +657,7 @@ where
 impl<P> EstablishedDelivery<P>
 where
     P: Protocol,
-    P::Addr: EndpointAddress,
+    P::Addr: RecipientAddress,
 {
     #[must_use]
     pub const fn new(to: EstablishedRecipient<P>, message: P::Msg) -> Self {
@@ -549,7 +668,7 @@ where
 impl<P> Clone for EstablishedDelivery<P>
 where
     P: Protocol,
-    P::Addr: EndpointAddress,
+    P::Addr: RecipientAddress,
     P::Msg: Clone,
 {
     fn clone(&self) -> Self {
@@ -560,7 +679,7 @@ where
 impl<P> core::fmt::Debug for EstablishedDelivery<P>
 where
     P: Protocol,
-    P::Addr: EndpointAddress,
+    P::Addr: RecipientAddress,
     EstablishedRecipient<P>: core::fmt::Debug,
     P::Msg: core::fmt::Debug,
 {
@@ -576,7 +695,7 @@ where
 impl<P> PartialEq for EstablishedDelivery<P>
 where
     P: Protocol,
-    P::Addr: EndpointAddress,
+    P::Addr: RecipientAddress,
     EstablishedRecipient<P>: PartialEq,
     P::Msg: PartialEq,
 {
@@ -588,7 +707,7 @@ where
 impl<P> Eq for EstablishedDelivery<P>
 where
     P: Protocol,
-    P::Addr: EndpointAddress,
+    P::Addr: RecipientAddress,
     EstablishedRecipient<P>: Eq,
     P::Msg: Eq,
 {
@@ -597,8 +716,8 @@ where
 impl<P> ActionItem for EstablishedDelivery<P>
 where
     P: Protocol,
-    P::Addr: EndpointAddress,
-    <P::Addr as EndpointAddress>::Established<P>: Send,
+    P::Addr: RecipientAddress,
+    <P::Addr as RecipientAddress>::Established<P>: Send,
     P::Msg: Send,
 {
     type Accepted = ();
@@ -658,11 +777,53 @@ mod tests {
 
     impl<P> Eq for LocalEndpoint<P> {}
 
+    struct LocalInstalled<B: Behavior> {
+        endpoint: LocalEndpoint<B::Protocol>,
+        control: std::sync::mpsc::Sender<B::Event>,
+        incarnation: Rc<()>,
+    }
+
+    impl<B: Behavior> Clone for LocalInstalled<B> {
+        fn clone(&self) -> Self {
+            Self {
+                endpoint: self.endpoint.clone(),
+                control: self.control.clone(),
+                incarnation: self.incarnation.clone(),
+            }
+        }
+    }
+
+    impl<B: Behavior> core::fmt::Debug for LocalInstalled<B> {
+        fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+            formatter.write_str("LocalInstalled")
+        }
+    }
+
+    impl<B: Behavior> PartialEq for LocalInstalled<B> {
+        fn eq(&self, other: &Self) -> bool {
+            Rc::ptr_eq(&self.incarnation, &other.incarnation)
+        }
+    }
+
+    impl<B: Behavior> Eq for LocalInstalled<B> {}
+
     impl EndpointAddress for LocalAddr {
         type Established<P>
             = LocalEndpoint<P>
         where
             P: Protocol<Addr = Self>;
+
+        type Installed<B>
+            = LocalInstalled<B>
+        where
+            B: Behavior<Protocol: Protocol<Addr = Self>>;
+
+        fn recipient<B>(installed: &Self::Installed<B>) -> Self::Established<B::Protocol>
+        where
+            B: Behavior<Protocol: Protocol<Addr = Self>>,
+        {
+            installed.endpoint.clone()
+        }
     }
 
     struct LocalTransfer;
@@ -675,6 +836,19 @@ mod tests {
             endpoint: LocalEndpoint<LocalProtocol>,
         ) -> Self::Output {
             endpoint.token
+        }
+    }
+
+    struct LocalEndpointTransfer;
+
+    impl InterpretEstablished<LocalProtocol> for LocalEndpointTransfer {
+        type Output = LocalEndpoint<LocalProtocol>;
+
+        fn interpret_established(
+            &mut self,
+            endpoint: LocalEndpoint<LocalProtocol>,
+        ) -> Self::Output {
+            endpoint
         }
     }
 
@@ -792,16 +966,25 @@ mod tests {
             "EstablishedRecipient(LocalEndpoint)"
         );
 
-        let actor = EstablishedActor::<LocalBehavior>::from_recipient(recipient.clone());
-        let same_actor = EstablishedActor::<LocalBehavior>::from_recipient(same_recipient.clone());
-        let other_actor =
-            EstablishedActor::<LocalBehavior>::from_recipient(other_recipient.clone());
+        let (control, _consumer) = std::sync::mpsc::channel();
+        let installed = LocalInstalled {
+            endpoint: recipient.clone().interpret(&mut LocalEndpointTransfer),
+            control,
+            incarnation: Rc::new(()),
+        };
+        let actor = EstablishedActor::<LocalBehavior>::issued(installed.clone());
+        let same_actor = EstablishedActor::<LocalBehavior>::issued(installed);
+        let (other_control, _other_consumer) = std::sync::mpsc::channel();
+        let other_actor = EstablishedActor::<LocalBehavior>::issued(LocalInstalled {
+            endpoint: other_recipient
+                .clone()
+                .interpret(&mut LocalEndpointTransfer),
+            control: other_control,
+            incarnation: Rc::new(()),
+        });
         assert_eq!(actor, same_actor);
         assert_ne!(actor, other_actor);
-        assert_eq!(
-            format!("{actor:?}"),
-            "EstablishedActor(EstablishedRecipient(LocalEndpoint))"
-        );
+        assert_eq!(format!("{actor:?}"), "EstablishedActor(LocalInstalled)");
 
         let delivery = EstablishedDelivery::new(recipient, 7);
         let same_delivery = EstablishedDelivery::new(same_recipient.clone(), 7);

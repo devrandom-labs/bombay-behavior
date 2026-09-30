@@ -6,10 +6,9 @@ use std::mem;
 use behavior::{
     Actions, ActiveTurn, Address, Behavior, BehaviorActed, BehaviorAddr, BehaviorBase, Births,
     ChildCreationOutcome, ChildCreationSettled, ChildReport, CreateChild, CreationKind,
-    CreationSequence, CreationSettlement, Creations, CreationsSettled, EndpointAddress,
-    EstablishedCreation, Here, InitializationTurn, InjectEvent, InterpreterRequests,
-    ItemSettlement, MessageProtocol, Never, Protocol, SendEffects, SettledItem, SourceActions,
-    User,
+    CreationSequence, CreationSettlement, Creations, CreationsSettled, EndpointAddress, Here,
+    InitializationTurn, InjectEvent, InterpreterRequests, ItemSettlement, MessageProtocol, Never,
+    Protocol, SendEffects, SettledItem, SourceActions, User,
 };
 use thiserror::Error;
 
@@ -844,16 +843,11 @@ where
             .iter()
             .map(|settlement| match settlement {
                 SettledItem::Attempted(ItemSettlement::Accepted(
-                    ChildCreationOutcome::Established {
-                        established: EstablishedCreation::Installed { id, kind, .. },
-                    },
-                )) => Some((*id, *kind)),
+                    ChildCreationOutcome::Established(child),
+                )) => Some((child.id(), child.kind())),
                 SettledItem::Attempted(
                     ItemSettlement::Accepted(
-                        ChildCreationOutcome::Established {
-                            established: EstablishedCreation::Rejected { .. },
-                        }
-                        | ChildCreationOutcome::InitializationRejected { .. }
+                        ChildCreationOutcome::InitializationRejected { .. }
                         | ChildCreationOutcome::InitializationPanicked { .. }
                         | ChildCreationOutcome::HostRejected { .. },
                     )

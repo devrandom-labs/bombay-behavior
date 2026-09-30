@@ -5,8 +5,8 @@ use std::time::Instant;
 
 use behavior::{
     ActionItem, Behavior, CreationId, EndpointAddress, EstablishedActor, EstablishedRecipient,
-    Ingress, InjectEvent, InterpretEstablished, InterpreterRequest, ItemSettlement, Never,
-    Protocol, ReturnsToEmitter,
+    Ingress, InjectEvent, InterpretEstablished, InterpretInstalledActor, InterpreterRequest,
+    ItemSettlement, Never, Protocol, RecipientAddress, ReturnsToEmitter,
 };
 
 use super::ShutdownRequested;
@@ -20,19 +20,19 @@ use crate::{Crash, Exit};
 /// carries no capability. `Occurrence` keeps duplicate declarations of the
 /// same child protocol distinct without becoming protocol identity or a
 /// runtime key.
-pub struct ObserveEstablishedCreation<P, Occurrence>
+pub struct ObserveEstablishedCreation<C, Occurrence>
 where
-    P: Protocol,
-    P::Addr: EndpointAddress,
+    C: Behavior,
+    behavior::BehaviorAddr<C>: EndpointAddress,
 {
     pub creation: CreationId,
-    occurrence: PhantomData<fn() -> (P, Occurrence)>,
+    occurrence: PhantomData<fn() -> (C, Occurrence)>,
 }
 
-impl<P, Occurrence> ObserveEstablishedCreation<P, Occurrence>
+impl<C, Occurrence> ObserveEstablishedCreation<C, Occurrence>
 where
-    P: Protocol,
-    P::Addr: EndpointAddress,
+    C: Behavior,
+    behavior::BehaviorAddr<C>: EndpointAddress,
 {
     #[must_use]
     pub const fn new(creation: CreationId) -> Self {
@@ -43,42 +43,42 @@ where
     }
 }
 
-impl<P, Occurrence> Copy for ObserveEstablishedCreation<P, Occurrence>
+impl<C, Occurrence> Copy for ObserveEstablishedCreation<C, Occurrence>
 where
-    P: Protocol,
-    P::Addr: EndpointAddress,
+    C: Behavior,
+    behavior::BehaviorAddr<C>: EndpointAddress,
 {
 }
 
-impl<P, Occurrence> Clone for ObserveEstablishedCreation<P, Occurrence>
+impl<C, Occurrence> Clone for ObserveEstablishedCreation<C, Occurrence>
 where
-    P: Protocol,
-    P::Addr: EndpointAddress,
+    C: Behavior,
+    behavior::BehaviorAddr<C>: EndpointAddress,
 {
     fn clone(&self) -> Self {
         *self
     }
 }
 
-impl<P, Occurrence> InterpreterRequest for ObserveEstablishedCreation<P, Occurrence>
+impl<C, Occurrence> InterpreterRequest for ObserveEstablishedCreation<C, Occurrence>
 where
-    P: Protocol,
-    P::Addr: EndpointAddress,
+    C: Behavior,
+    behavior::BehaviorAddr<C>: EndpointAddress,
 {
     type ReturnToEmitter =
-        ReturnsToEmitter<behavior::EstablishedCreation<P, Occurrence>, behavior::Here>;
+        ReturnsToEmitter<behavior::EstablishedCreation<C, Occurrence>, behavior::Here>;
     type LogicalProtocols = behavior::NoBirthProtocols;
 }
 
-impl<P, Occurrence> ActionItem for ObserveEstablishedCreation<P, Occurrence>
+impl<C, Occurrence> ActionItem for ObserveEstablishedCreation<C, Occurrence>
 where
-    P: Protocol,
-    P::Addr: EndpointAddress,
-    <P::Addr as behavior::Address>::Nonce: Send,
+    C: Behavior,
+    behavior::BehaviorAddr<C>: EndpointAddress,
+    <behavior::BehaviorAddr<C> as behavior::Address>::Nonce: Send,
 {
     type Accepted = ();
     type Rejection = Never;
-    type Prerequisite = behavior::CreationCorrelation<P, Occurrence>;
+    type Prerequisite = behavior::CreationCorrelation<C::Protocol, Occurrence>;
 }
 
 /// Both capabilities established by one committed named-child creation.
@@ -151,15 +151,14 @@ where
 /// Returns the creation's typed [`behavior::CreationRejection`] and produces
 /// no actor capability when installation did not commit.
 pub fn established_child<Parent, Role>(
-    report: behavior::EstablishedCreation<behavior::RoleProtocol<Parent, Role>, Role>,
+    report: behavior::EstablishedCreation<behavior::RoleChild<Parent, Role>, Role>,
 ) -> Result<EstablishedChild<behavior::RoleChild<Parent, Role>, Role>, behavior::CreationRejection>
 where
     Parent: Behavior,
     Role: behavior::ChildRole<Parent>,
     behavior::BehaviorAddr<behavior::RoleChild<Parent, Role>>: EndpointAddress,
 {
-    let creation = report.id();
-    let actor = report.into_actor::<Parent>()?;
+    let (creation, _, actor) = report.into_committed()?.into_parts();
     Ok(EstablishedChild {
         creation,
         actor,
@@ -178,7 +177,7 @@ pub struct ObservationId(pub u64);
 pub struct ObserveEstablished<P>
 where
     P: Protocol,
-    P::Addr: EndpointAddress,
+    P::Addr: RecipientAddress,
 {
     pub id: ObservationId,
     recipient: EstablishedRecipient<P>,
@@ -187,7 +186,7 @@ where
 impl<P> ObserveEstablished<P>
 where
     P: Protocol,
-    P::Addr: EndpointAddress,
+    P::Addr: RecipientAddress,
 {
     #[must_use]
     pub const fn new(id: ObservationId, recipient: EstablishedRecipient<P>) -> Self {
@@ -219,7 +218,7 @@ where
 impl<P> InterpreterRequest for ObserveEstablished<P>
 where
     P: Protocol,
-    P::Addr: EndpointAddress,
+    P::Addr: RecipientAddress,
 {
     type ReturnToEmitter = ReturnsToEmitter<EstablishedObservation<P>, behavior::Here>;
     type LogicalProtocols = behavior::NoBirthProtocols;
@@ -228,8 +227,8 @@ where
 impl<P> ActionItem for ObserveEstablished<P>
 where
     P: Protocol,
-    P::Addr: EndpointAddress,
-    <P::Addr as EndpointAddress>::Established<P>: Send,
+    P::Addr: RecipientAddress,
+    <P::Addr as RecipientAddress>::Established<P>: Send,
 {
     type Accepted = ();
     type Rejection = Never;
@@ -253,7 +252,7 @@ impl<P: Protocol> CancelObservation<P> {
 
     pub fn interpret<I>(self, interpreter: &mut I) -> I::Output
     where
-        P::Addr: EndpointAddress,
+        P::Addr: RecipientAddress,
         I: InterpretEstablishedObservation<P>,
     {
         interpreter.cancel(self.id)
@@ -262,7 +261,7 @@ impl<P: Protocol> CancelObservation<P> {
     /// Transfer this request and return its unconditional action settlement.
     pub fn settle<I>(self, interpreter: &mut I) -> ItemSettlement<Self, (), Never, Never>
     where
-        P::Addr: EndpointAddress,
+        P::Addr: RecipientAddress,
         I: InterpretEstablishedObservation<P, Output = ()>,
     {
         self.interpret(interpreter);
@@ -395,14 +394,14 @@ impl<P: Protocol> EstablishedObservation<P> {
 pub trait InterpretEstablishedObservation<P>
 where
     P: Protocol,
-    P::Addr: EndpointAddress,
+    P::Addr: RecipientAddress,
 {
     type Output;
 
     fn observe(
         &mut self,
         id: ObservationId,
-        endpoint: <P::Addr as EndpointAddress>::Established<P>,
+        endpoint: <P::Addr as RecipientAddress>::Established<P>,
     ) -> Self::Output;
 
     fn cancel(&mut self, id: ObservationId) -> Self::Output;
@@ -416,14 +415,14 @@ struct ObservationTransfer<'a, I> {
 impl<P, I> InterpretEstablished<P> for ObservationTransfer<'_, I>
 where
     P: Protocol,
-    P::Addr: EndpointAddress,
+    P::Addr: RecipientAddress,
     I: InterpretEstablishedObservation<P>,
 {
     type Output = I::Output;
 
     fn interpret_established(
         &mut self,
-        endpoint: <P::Addr as EndpointAddress>::Established<P>,
+        endpoint: <P::Addr as RecipientAddress>::Established<P>,
     ) -> Self::Output {
         self.interpreter.observe(self.id, endpoint)
     }
@@ -437,21 +436,31 @@ pub struct ShutdownId(pub u64);
 ///
 /// `TargetPath` proves where [`ShutdownRequested`] enters the installed
 /// behavior's closed event algebra. The interpreter receives that typed
-/// ingress together with the exact endpoint; shutdown is therefore still an
+/// ingress together with the exact installed actor; shutdown is therefore still an
 /// explicit event/effect transformation, not a privileged runtime side
 /// channel.
 ///
 /// A concrete actor whose event algebra has no shutdown ingress cannot be
 /// strengthened into an orderly-shutdown request:
 ///
-/// ```compile_fail
+/// ```compile_fail,E0277
 /// #[derive(Clone, Copy, PartialEq, Eq)]
 /// struct RuntimeAddr(u64);
 /// impl behavior::Address for RuntimeAddr { type Nonce = u64; }
 /// struct Endpoint;
 /// impl Clone for Endpoint { fn clone(&self) -> Self { Self } }
+/// struct Installed<B: behavior::Behavior>(Endpoint, std::sync::mpsc::Sender<B::Event>);
+/// impl<B: behavior::Behavior> Clone for Installed<B> {
+///     fn clone(&self) -> Self { Self(self.0.clone(), self.1.clone()) }
+/// }
 /// impl behavior::EndpointAddress for RuntimeAddr {
 ///     type Established<P> = Endpoint where P: behavior::Protocol<Addr = Self>;
+///     type Installed<B> = Installed<B>
+///         where B: behavior::Behavior<Protocol: behavior::Protocol<Addr = Self>>;
+///     fn recipient<B>(installed: &Self::Installed<B>) -> Endpoint
+///     where B: behavior::Behavior<Protocol: behavior::Protocol<Addr = Self>> {
+///         installed.0.clone()
+///     }
 /// }
 /// struct Worker;
 /// impl behavior::Protocol for Worker { type Addr = RuntimeAddr; type Msg = (); }
@@ -468,7 +477,8 @@ pub struct ShutdownId(pub u64);
 ///         _: Self::Event,
 ///     ) -> behavior::BehaviorActed<Self> { Ok(behavior::Actions::cont()) }
 /// }
-/// let actor = behavior::EstablishedActor::<Worker>::issued(Endpoint);
+/// let (control, _inbox) = std::sync::mpsc::channel::<<Worker as behavior::Behavior>::Event>();
+/// let actor = behavior::EstablishedActor::<Worker>::issued(Installed(Endpoint, control));
 /// let _ = behavior_actors::ShutdownEstablished::<Worker, behavior::Here>::new(
 ///     behavior_actors::ShutdownId(1),
 ///     actor,
@@ -515,7 +525,7 @@ where
     where
         I: InterpretEstablishedShutdown<B, TargetPath>,
     {
-        let admission = self.actor.clone().interpret(&mut ShutdownTransfer {
+        let admission = self.actor.clone().interpret_actor(&mut ShutdownTransfer {
             id: self.id,
             ingress: self.ingress,
             interpreter,
@@ -609,7 +619,7 @@ where
     fn shutdown(
         &mut self,
         id: ShutdownId,
-        endpoint: <behavior::BehaviorAddr<B> as EndpointAddress>::Established<B::Protocol>,
+        installed: <behavior::BehaviorAddr<B> as EndpointAddress>::Installed<B>,
         ingress: Ingress<ShutdownRequested, TargetPath>,
     ) -> Result<(), ShutdownRejection>;
 }
@@ -621,7 +631,7 @@ struct ShutdownTransfer<'a, I, B, TargetPath> {
     behavior: PhantomData<fn() -> B>,
 }
 
-impl<B, TargetPath, I> InterpretEstablished<B::Protocol> for ShutdownTransfer<'_, I, B, TargetPath>
+impl<B, TargetPath, I> InterpretInstalledActor<B> for ShutdownTransfer<'_, I, B, TargetPath>
 where
     B: Behavior,
     behavior::BehaviorAddr<B>: EndpointAddress,
@@ -630,10 +640,10 @@ where
 {
     type Output = Result<(), ShutdownRejection>;
 
-    fn interpret_established(
+    fn interpret_actor(
         &mut self,
-        endpoint: <behavior::BehaviorAddr<B> as EndpointAddress>::Established<B::Protocol>,
+        installed: <behavior::BehaviorAddr<B> as EndpointAddress>::Installed<B>,
     ) -> Self::Output {
-        self.interpreter.shutdown(self.id, endpoint, self.ingress)
+        self.interpreter.shutdown(self.id, installed, self.ingress)
     }
 }

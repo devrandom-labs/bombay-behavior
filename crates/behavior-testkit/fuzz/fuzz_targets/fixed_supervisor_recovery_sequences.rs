@@ -132,7 +132,9 @@ fn exercise(inputs: &[u8]) {
     };
     let (route, control, receipt) = admit_proxy_operation(
         replacement,
-        EstablishedActor::<StableProxy<Worker, ImmediateActivation>>::issued(WorkerEndpoint),
+        EstablishedActor::<StableProxy<Worker, ImmediateActivation>>::issued(
+            stable_proxy::installed_control::InstalledControl::new(WorkerEndpoint),
+        ),
     );
     assert_eq!(route, proxy_id);
     let (_successor, replacement_outcome) = start_ready_worker(&mut proxy, control);

@@ -1,5 +1,7 @@
 //! Independent order model for StableProxy ready-worker shutdown.
 
+mod installed_control;
+
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Instant;
@@ -7,8 +9,7 @@ use std::time::Instant;
 use behavior::{
     Actions, ActiveTurn, Address, Behavior, BehaviorActed, ChildCreationOutcome, CreateChild,
     CreationId, CreationSequence, CreationSettlement, CreationsSettled, EndpointAddress,
-    EstablishedCreation, EstablishedRecipient, ItemSettlement, Never, NoBirths, Protocol,
-    SettledItem, Step, User,
+    ItemSettlement, Never, NoBirths, Protocol, SettledItem, Step, User,
 };
 use behavior_actors::atomic::{
     ActivationPlan, ActivationStartRejection, BeginActivation, ProxyControl, ProxyPhase,
@@ -37,6 +38,21 @@ impl EndpointAddress for RuntimeAddr {
         = Endpoint
     where
         P: Protocol<Addr = Self>;
+
+    type Installed<B>
+        =
+        installed_control::InstalledControl<B, <Self as EndpointAddress>::Established<B::Protocol>>
+    where
+        B: behavior::Behavior<Protocol: Protocol<Addr = Self>>;
+
+    fn recipient<B>(
+        installed: &Self::Installed<B>,
+    ) -> <Self as EndpointAddress>::Established<B::Protocol>
+    where
+        B: behavior::Behavior<Protocol: Protocol<Addr = Self>>,
+    {
+        installed.endpoint().clone()
+    }
 }
 
 struct Worker;
@@ -78,13 +94,13 @@ fn created_worker(
     let (worker, _, kind) = creation.into_parts();
     CreationsSettled::new(CreationSettlement::Settled(
         [SettledItem::Attempted(ItemSettlement::Accepted(
-            ChildCreationOutcome::Established {
-                established: EstablishedCreation::installed(
-                    worker,
-                    kind,
-                    EstablishedRecipient::issued(Endpoint),
-                ),
-            },
+            ChildCreationOutcome::Established(behavior::CommittedChild::new(
+                worker,
+                kind,
+                behavior::EstablishedActor::issued(installed_control::InstalledControl::new(
+                    Endpoint,
+                )),
+            )),
         ))]
         .into_iter()
         .collect(),

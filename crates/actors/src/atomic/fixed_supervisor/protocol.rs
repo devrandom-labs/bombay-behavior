@@ -115,8 +115,18 @@ where
 /// impl behavior::Address for RuntimeAddress { type Nonce = u64; }
 /// #[derive(Clone)]
 /// struct Endpoint;
+/// struct Installed<B: behavior::Behavior>(Endpoint, std::sync::mpsc::Sender<B::Event>);
+/// impl<B: behavior::Behavior> Clone for Installed<B> {
+///     fn clone(&self) -> Self { Self(self.0.clone(), self.1.clone()) }
+/// }
 /// impl behavior::EndpointAddress for RuntimeAddress {
 ///     type Established<P> = Endpoint where P: behavior::Protocol<Addr = Self>;
+///     type Installed<B> = Installed<B>
+///         where B: behavior::Behavior<Protocol: behavior::Protocol<Addr = Self>>;
+///     fn recipient<B>(installed: &Self::Installed<B>) -> Endpoint
+///     where B: behavior::Behavior<Protocol: behavior::Protocol<Addr = Self>> {
+///         installed.0.clone()
+///     }
 /// }
 /// struct Service;
 /// impl behavior::Protocol for Service {

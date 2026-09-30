@@ -185,7 +185,9 @@ fn begin_recovery(
     };
     let (route, control, receipt) = admit_proxy_operation(
         operation,
-        EstablishedActor::<StableProxy<Worker, ImmediateActivation>>::issued(WorkerEndpoint),
+        EstablishedActor::<StableProxy<Worker, ImmediateActivation>>::issued(
+            stable_proxy::installed_control::InstalledControl::new(WorkerEndpoint),
+        ),
     );
     assert_eq!(route, member.proxy_id);
     PendingRecovery {

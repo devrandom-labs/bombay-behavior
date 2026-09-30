@@ -497,57 +497,103 @@ where
     type Prerequisite = Never;
 }
 
-/// Committed or rejected result for one exact child-protocol occurrence.
+/// One committed fresh child with its creator-local provenance and exact
+/// installed actor. The occurrence distinguishes equal child behaviors in
+/// distinct static positions; it is not an actor identity or runtime route.
+pub struct CommittedChild<C, Occurrence>
+where
+    C: Behavior,
+    BehaviorAddr<C>: EndpointAddress,
+{
+    id: CreationId,
+    kind: CreationKind,
+    actor: EstablishedActor<C>,
+    occurrence: PhantomData<fn() -> Occurrence>,
+}
+
+impl<C, Occurrence> CommittedChild<C, Occurrence>
+where
+    C: Behavior,
+    BehaviorAddr<C>: EndpointAddress,
+{
+    /// Record an already committed fresh installation. This does not install
+    /// an actor; only a successful interpreter installation may issue its
+    /// runtime-owned actor value.
+    #[must_use]
+    pub const fn new(id: CreationId, kind: CreationKind, actor: EstablishedActor<C>) -> Self {
+        Self {
+            id,
+            kind,
+            actor,
+            occurrence: PhantomData,
+        }
+    }
+
+    #[must_use]
+    pub const fn id(&self) -> CreationId {
+        self.id
+    }
+
+    #[must_use]
+    pub const fn kind(&self) -> CreationKind {
+        self.kind
+    }
+
+    #[must_use]
+    pub fn actor(&self) -> EstablishedActor<C> {
+        self.actor.clone()
+    }
+
+    #[must_use]
+    pub fn into_parts(self) -> (CreationId, CreationKind, EstablishedActor<C>) {
+        (self.id, self.kind, self.actor)
+    }
+}
+
+/// Committed or rejected result for one exact concrete child occurrence.
 ///
 /// `Installed` is constructed only after fresh allocation, successful
 /// initialization, endpoint establishment, and creator-local binding. It returns the
-/// exact protocol capability. `Rejected` carries no capability, so a
+/// exact installed actor. `Rejected` carries no capability, so a
 /// failed request cannot be used as an established destination. Both variants
 /// preserve Behavior-authored creation provenance.
 ///
 /// `Occurrence` is topology navigation evidence authored by the parent. It
 /// distinguishes duplicate occurrences without becoming another protocol
-/// identity or runtime key. `P` remains canonical identity. The concrete child
-/// behavior is deliberately absent: consumers that only retain or communicate
-/// with the installed protocol do not have to pretend to be parent actors.
+/// identity or runtime key. A consumer that only sends messages may project
+/// the protocol recipient without retaining the installed actor.
+///
+/// A rejected named report has no actor capability to extract:
+///
+/// ```compile_fail,E0026
+/// fn rejected_actor<C, Occurrence>(report: behavior::EstablishedCreation<C, Occurrence>)
+/// where
+///     C: behavior::Behavior,
+///     behavior::BehaviorAddr<C>: behavior::EndpointAddress,
+/// {
+///     let behavior::EstablishedCreation::Rejected { actor, .. } = report else { return; };
+///     let _: behavior::EstablishedActor<C> = actor;
+/// }
+/// ```
 ///
 /// Duplicate occurrences remain incompatible even when their protocols and
 /// endpoint representations match:
 ///
-/// ```compile_fail
-/// #[derive(Clone, Copy, PartialEq, Eq)]
-/// struct RuntimeAddr(u64);
-/// impl behavior::Address for RuntimeAddr { type Nonce = u64; }
-/// struct Endpoint;
-/// impl Clone for Endpoint { fn clone(&self) -> Self { Self } }
-/// impl behavior::EndpointAddress for RuntimeAddr {
-///     type Established<P> = Endpoint where P: behavior::Protocol<Addr = Self>;
+/// ```compile_fail,E0308
+/// fn wrong_occurrence<C, Primary, Backup>(backup: behavior::EstablishedCreation<C, Backup>)
+/// where
+///     C: behavior::Behavior,
+///     behavior::BehaviorAddr<C>: behavior::EndpointAddress,
+/// {
+///     let _: behavior::EstablishedCreation<C, Primary> = backup;
 /// }
-/// struct Worker;
-/// impl behavior::Protocol for Worker { type Addr = RuntimeAddr; type Msg = (); }
-/// struct Primary;
-/// struct Backup;
-/// fn accepts_primary(_: behavior::EstablishedCreation<Worker, Primary>) {}
-/// let mut sequence = behavior::CreationSequence::new();
-/// let id = sequence.issue().expect("fixture creation ID");
-/// let backup: behavior::EstablishedCreation<Worker, Backup> = behavior::EstablishedCreation::installed(
-///     id,
-///     behavior::CreationKind::Birth,
-///     behavior::EstablishedRecipient::issued(Endpoint),
-/// );
-/// accepts_primary(backup);
 /// ```
-pub enum EstablishedCreation<P, Occurrence>
+pub enum EstablishedCreation<C, Occurrence>
 where
-    P: Protocol,
-    P::Addr: EndpointAddress,
+    C: Behavior,
+    BehaviorAddr<C>: EndpointAddress,
 {
-    Installed {
-        id: CreationId,
-        kind: CreationKind,
-        recipient: EstablishedRecipient<P>,
-        occurrence: PhantomData<fn() -> Occurrence>,
-    },
+    Installed(CommittedChild<C, Occurrence>),
     Rejected {
         id: CreationId,
         kind: CreationKind,
@@ -556,23 +602,14 @@ where
     },
 }
 
-impl<P, Occurrence> EstablishedCreation<P, Occurrence>
+impl<C, Occurrence> EstablishedCreation<C, Occurrence>
 where
-    P: Protocol,
-    P::Addr: EndpointAddress,
+    C: Behavior,
+    BehaviorAddr<C>: EndpointAddress,
 {
     #[must_use]
-    pub const fn installed(
-        id: CreationId,
-        kind: CreationKind,
-        recipient: EstablishedRecipient<P>,
-    ) -> Self {
-        Self::Installed {
-            id,
-            kind,
-            recipient,
-            occurrence: PhantomData,
-        }
+    pub const fn installed(child: CommittedChild<C, Occurrence>) -> Self {
+        Self::Installed(child)
     }
 
     #[must_use]
@@ -588,14 +625,16 @@ where
     #[must_use]
     pub const fn id(&self) -> CreationId {
         match self {
-            Self::Installed { id, .. } | Self::Rejected { id, .. } => *id,
+            Self::Installed(child) => child.id(),
+            Self::Rejected { id, .. } => *id,
         }
     }
 
     #[must_use]
     pub const fn kind(&self) -> CreationKind {
         match self {
-            Self::Installed { kind, .. } | Self::Rejected { kind, .. } => *kind,
+            Self::Installed(child) => child.kind(),
+            Self::Rejected { kind, .. } => *kind,
         }
     }
 
@@ -604,33 +643,24 @@ where
     /// # Errors
     /// Returns the original [`CreationRejection`] when child creation did not
     /// commit.
-    pub fn into_recipient(self) -> Result<EstablishedRecipient<P>, CreationRejection> {
+    pub fn into_recipient(self) -> Result<EstablishedRecipient<C::Protocol>, CreationRejection> {
         match self {
-            Self::Installed { recipient, .. } => Ok(recipient),
+            Self::Installed(child) => Ok(child.into_parts().2.into_recipient()),
             Self::Rejected { reason, .. } => Err(reason),
         }
     }
 
-    /// Recover the concrete installed-actor proof when this occurrence is a
-    /// declared role of `Parent`.
-    ///
-    /// `Parent` is used only as compile-time topology evidence at this
-    /// capability-strengthening boundary; it is not part of the creation-report
-    /// identity. Ordinary consumers can retain [`EstablishedRecipient<P>`]
-    /// without carrying the parent behavior.
+    /// Transfer the concrete committed child without recreating authority
+    /// from a protocol recipient.
     ///
     /// # Errors
     /// Returns the original [`CreationRejection`] when child creation did not
     /// commit.
-    pub fn into_actor<Parent>(
-        self,
-    ) -> Result<EstablishedActor<RoleChild<Parent, Occurrence>>, CreationRejection>
-    where
-        Parent: Behavior,
-        Occurrence: ChildRole<Parent>,
-        RoleChild<Parent, Occurrence>: Behavior<Protocol = P>,
-    {
-        self.into_recipient().map(EstablishedActor::from_recipient)
+    pub fn into_committed(self) -> Result<CommittedChild<C, Occurrence>, CreationRejection> {
+        match self {
+            Self::Installed(child) => Ok(child),
+            Self::Rejected { reason, .. } => Err(reason),
+        }
     }
 }
 
@@ -643,16 +673,27 @@ where
 /// host returns the current child and the still-uninterpreted initialization
 /// actions. No variant reconstructs a pre-initialization value or silently
 /// discards an affine action.
+///
+/// A failed child installation returns current work and no installed actor:
+///
+/// ```compile_fail,E0026
+/// fn rejected_actor<C, Occurrence>(outcome: behavior::ChildCreationOutcome<C, Occurrence>)
+/// where
+///     C: behavior::Behavior,
+///     behavior::BehaviorAddr<C>: behavior::EndpointAddress,
+/// {
+///     if let behavior::ChildCreationOutcome::HostRejected { actor, .. } = outcome {
+///         let _: behavior::EstablishedActor<C> = actor;
+///     }
+/// }
+/// ```
 pub enum ChildCreationOutcome<C, Occurrence>
 where
     C: Behavior,
     BehaviorAddr<C>: EndpointAddress,
 {
     /// Fresh child creation committed successfully.
-    Established {
-        /// Exact capability and creation provenance for this occurrence.
-        established: EstablishedCreation<C::Protocol, Occurrence>,
-    },
+    Established(CommittedChild<C, Occurrence>),
     /// The child's pure initialization transition rejected before host commit.
     InitializationRejected {
         /// Current child value with its creator correlation and private route.
@@ -687,21 +728,25 @@ where
     /// Consume a committed child result into its exact concrete actor
     /// capability.
     ///
-    /// The enclosing `ChildCreationOutcome<C, Occurrence>` already proves which
-    /// concrete behavior was created. A protocol recipient is therefore
-    /// strengthened only to `EstablishedActor<C>`; callers cannot select a
-    /// different behavior sharing the same protocol.
+    /// The committed variant directly owns the actor, ID, kind, and
+    /// occurrence; no nested rejection can appear under success.
     ///
     /// # Errors
     ///
     /// Returns the complete original result when creation did not commit.
-    pub fn into_actor(self) -> Result<EstablishedActor<C>, Self> {
+    pub fn into_committed(self) -> Result<CommittedChild<C, Occurrence>, Self> {
         match self {
-            Self::Established {
-                established: EstablishedCreation::Installed { recipient, .. },
-            } => Ok(EstablishedActor::from_recipient(recipient)),
+            Self::Established(child) => Ok(child),
             other => Err(other),
         }
+    }
+
+    /// Consume a committed child into its exact actor.
+    ///
+    /// # Errors
+    /// Returns the complete original result when creation did not commit.
+    pub fn into_actor(self) -> Result<EstablishedActor<C>, Self> {
+        self.into_committed().map(|child| child.into_parts().2)
     }
 }
 
@@ -1034,8 +1079,18 @@ where
 /// impl behavior::Address for RuntimeAddr { type Nonce = u8; }
 /// #[derive(Clone)]
 /// struct Endpoint;
+/// struct Installed<B: behavior::Behavior>(Endpoint, std::sync::mpsc::Sender<B::Event>);
+/// impl<B: behavior::Behavior> Clone for Installed<B> {
+///     fn clone(&self) -> Self { Self(self.0.clone(), self.1.clone()) }
+/// }
 /// impl behavior::EndpointAddress for RuntimeAddr {
 ///     type Established<P> = Endpoint where P: behavior::Protocol<Addr = Self>;
+///     type Installed<B> = Installed<B>
+///         where B: behavior::Behavior<Protocol: behavior::Protocol<Addr = Self>>;
+///     fn recipient<B>(installed: &Self::Installed<B>) -> Endpoint
+///     where B: behavior::Behavior<Protocol: behavior::Protocol<Addr = Self>> {
+///         installed.0.clone()
+///     }
 /// }
 /// struct Child;
 /// impl behavior::Protocol for Child {
@@ -1185,8 +1240,18 @@ where
 /// impl behavior::Address for RuntimeAddr { type Nonce = u8; }
 /// #[derive(Clone)]
 /// struct Endpoint;
+/// struct Installed<B: behavior::Behavior>(Endpoint, std::sync::mpsc::Sender<B::Event>);
+/// impl<B: behavior::Behavior> Clone for Installed<B> {
+///     fn clone(&self) -> Self { Self(self.0.clone(), self.1.clone()) }
+/// }
 /// impl behavior::EndpointAddress for RuntimeAddr {
 ///     type Established<P> = Endpoint where P: behavior::Protocol<Addr = Self>;
+///     type Installed<B> = Installed<B>
+///         where B: behavior::Behavior<Protocol: behavior::Protocol<Addr = Self>>;
+///     fn recipient<B>(installed: &Self::Installed<B>) -> Endpoint
+///     where B: behavior::Behavior<Protocol: behavior::Protocol<Addr = Self>> {
+///         installed.0.clone()
+///     }
 /// }
 /// struct CacheWorker;
 /// struct QueueWorker;
@@ -2234,11 +2299,37 @@ mod tests {
 
     impl<P> Copy for TestEndpoint<P> {}
 
+    struct TestInstalled<B: Behavior> {
+        endpoint: TestEndpoint<B::Protocol>,
+        control: std::sync::mpsc::Sender<B::Event>,
+    }
+
+    impl<B: Behavior> Clone for TestInstalled<B> {
+        fn clone(&self) -> Self {
+            Self {
+                endpoint: self.endpoint,
+                control: self.control.clone(),
+            }
+        }
+    }
+
     impl EndpointAddress for TestAddr {
         type Established<P>
             = TestEndpoint<P>
         where
             P: Protocol<Addr = Self>;
+
+        type Installed<B>
+            = TestInstalled<B>
+        where
+            B: Behavior<Protocol: Protocol<Addr = Self>>;
+
+        fn recipient<B>(installed: &Self::Installed<B>) -> Self::Established<B::Protocol>
+        where
+            B: Behavior<Protocol: Protocol<Addr = Self>>,
+        {
+            installed.endpoint
+        }
     }
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2306,6 +2397,7 @@ mod tests {
         calls: usize,
         observed: Vec<(CreationId, u64, CreationKind)>,
         plan: ChildPlan,
+        control_receivers: Vec<std::sync::mpsc::Receiver<User<TestAddr, u8>>>,
     }
 
     #[derive(Debug, PartialEq, Eq)]
@@ -2315,7 +2407,10 @@ mod tests {
     }
 
     #[derive(Default)]
-    struct SharedProtocolHost(Vec<SharedCreation>);
+    struct SharedProtocolHost(
+        Vec<SharedCreation>,
+        Vec<std::sync::mpsc::Receiver<User<TestAddr, u8>>>,
+    );
 
     impl EstablishChild<ChildHead, Primary> for SharedProtocolHost {
         async fn establish_child(
@@ -2333,13 +2428,16 @@ mod tests {
             let (creation, _) = creation.into_parts();
             let (_, _child, _) = creation.into_parts();
             self.0.push(SharedCreation::Primary(id, route));
-            ItemSettlement::Accepted(ChildCreationOutcome::Established {
-                established: EstablishedCreation::installed(
-                    id,
-                    kind,
-                    EstablishedRecipient::issued(TestEndpoint(PhantomData)),
-                ),
-            })
+            let (control, receiver) = std::sync::mpsc::channel();
+            self.1.push(receiver);
+            ItemSettlement::Accepted(ChildCreationOutcome::Established(CommittedChild::new(
+                id,
+                kind,
+                EstablishedActor::issued(TestInstalled {
+                    endpoint: TestEndpoint(PhantomData),
+                    control,
+                }),
+            )))
         }
     }
 
@@ -2359,13 +2457,16 @@ mod tests {
             let (creation, _) = creation.into_parts();
             let (_, _child, _) = creation.into_parts();
             self.0.push(SharedCreation::Fallback(id, route));
-            ItemSettlement::Accepted(ChildCreationOutcome::Established {
-                established: EstablishedCreation::installed(
-                    id,
-                    kind,
-                    EstablishedRecipient::issued(TestEndpoint(PhantomData)),
-                ),
-            })
+            let (control, receiver) = std::sync::mpsc::channel();
+            self.1.push(receiver);
+            ItemSettlement::Accepted(ChildCreationOutcome::Established(CommittedChild::new(
+                id,
+                kind,
+                EstablishedActor::issued(TestInstalled {
+                    endpoint: TestEndpoint(PhantomData),
+                    control,
+                }),
+            )))
         }
     }
 
@@ -2388,13 +2489,18 @@ mod tests {
                     let kind = creation.kind();
                     let (creation, _) = creation.into_parts();
                     let (_, _child, _) = creation.into_parts();
-                    ItemSettlement::Accepted(ChildCreationOutcome::Established {
-                        established: EstablishedCreation::installed(
+                    let (control, receiver) = std::sync::mpsc::channel();
+                    self.control_receivers.push(receiver);
+                    ItemSettlement::Accepted(ChildCreationOutcome::Established(
+                        CommittedChild::new(
                             id,
                             kind,
-                            EstablishedRecipient::issued(TestEndpoint(PhantomData)),
+                            EstablishedActor::issued(TestInstalled {
+                                endpoint: TestEndpoint(PhantomData),
+                                control,
+                            }),
                         ),
-                    })
+                    ))
                 }
                 ChildPlan::RejectBeforeTransfer => ItemSettlement::Rejected {
                     item: creation,
@@ -2409,6 +2515,7 @@ mod tests {
             calls: 0,
             observed: Vec::new(),
             plan,
+            control_receivers: Vec::new(),
         }
     }
 
@@ -2468,7 +2575,7 @@ mod tests {
         assert_send(&future);
         let result = future.await;
 
-        let ItemSettlement::Accepted(ChildCreationOutcome::Established { established }) = result
+        let ItemSettlement::Accepted(ChildCreationOutcome::Established(established)) = result
         else {
             panic!("expected the child to be created");
         };
@@ -2519,17 +2626,14 @@ mod tests {
             .dispatch_birth(fallback_id, 17, CreationKind::Birth, &mut host)
             .await;
 
-        let ItemSettlement::Accepted(ChildChoice::Head(ChildCreationOutcome::Established {
-            established: primary,
-        })) = primary
+        let ItemSettlement::Accepted(ChildChoice::Head(ChildCreationOutcome::Established(primary))) =
+            primary
         else {
             panic!("expected the primary child result");
         };
         assert_eq!(primary.id(), primary_id);
         let ItemSettlement::Accepted(ChildChoice::Tail(ChildChoice::Head(
-            ChildCreationOutcome::Established {
-                established: fallback,
-            },
+            ChildCreationOutcome::Established(fallback),
         ))) = fallback
         else {
             panic!("expected the fallback child result");

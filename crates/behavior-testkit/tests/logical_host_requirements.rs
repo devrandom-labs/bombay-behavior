@@ -1,5 +1,7 @@
 //! Structural logical-host projection from real sends and birth algebras.
 
+mod installed_control;
+
 use behavior_actors::DeliveryOutcomes;
 use behavior_actors::atomic::{CustomerDelivery, DiagnosticAction};
 use behavior_core::{
@@ -31,6 +33,21 @@ impl EndpointAddress for RuntimeAddr {
         = Endpoint<P>
     where
         P: Protocol<Addr = Self>;
+
+    type Installed<B>
+        =
+        installed_control::InstalledControl<B, <Self as EndpointAddress>::Established<B::Protocol>>
+    where
+        B: behavior_core::Behavior<Protocol: Protocol<Addr = Self>>;
+
+    fn recipient<B>(
+        installed: &Self::Installed<B>,
+    ) -> <Self as EndpointAddress>::Established<B::Protocol>
+    where
+        B: behavior_core::Behavior<Protocol: Protocol<Addr = Self>>,
+    {
+        installed.endpoint().clone()
+    }
 }
 
 struct RootProtocol;

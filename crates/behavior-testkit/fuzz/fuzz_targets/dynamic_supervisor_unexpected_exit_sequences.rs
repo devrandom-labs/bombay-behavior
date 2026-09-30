@@ -12,9 +12,8 @@ use behavior_actors::atomic::{
 };
 use behavior_actors::{Activate as _, ChildStopped, Exit, ReplyDelivery, ReplyRoute};
 use behavior_core::{
-    ChildCreationOutcome, ChildReport, CreationSettlement, CreationsSettled,
-    EstablishedActor, EstablishedCreation, EstablishedRecipient, ItemSettlement, MessageProtocol,
-    Recipient, SettledItem, Step,
+    ChildCreationOutcome, ChildReport, CreationSettlement, CreationsSettled, EstablishedActor,
+    ItemSettlement, MessageProtocol, Recipient, SettledItem, Step,
 };
 use libfuzzer_sys::fuzz_target;
 
@@ -105,13 +104,13 @@ fuzz_target!(|input: &[u8]| {
             .expect("the primary service creates one proxy");
         let (proxy_creation, proxy, proxy_kind) = created.into_parts();
         let proxy_settlement = SettledItem::Attempted(ItemSettlement::Accepted(
-            ChildCreationOutcome::Established {
-                established: EstablishedCreation::installed(
-                    proxy_creation,
-                    proxy_kind,
-                    EstablishedRecipient::issued(WorkerEndpoint),
+            ChildCreationOutcome::Established(behavior_core::CommittedChild::new(
+                proxy_creation,
+                proxy_kind,
+                behavior_core::EstablishedActor::issued(
+                    stable_proxy::installed_control::InstalledControl::new(WorkerEndpoint),
                 ),
-            },
+            )),
         ));
         let committed = CreationsSettled::new(CreationSettlement::Settled(
             [proxy_settlement].into_iter().collect(),
@@ -124,8 +123,12 @@ fuzz_target!(|input: &[u8]| {
             .into_items()
             .pop()
             .expect("one worker input is emitted");
-        let (input_creation, control, receipt) =
-            admit_proxy_operation(proxy_input, EstablishedActor::issued(WorkerEndpoint));
+        let (input_creation, control, receipt) = admit_proxy_operation(
+            proxy_input,
+            EstablishedActor::issued(stable_proxy::installed_control::InstalledControl::new(
+                WorkerEndpoint,
+            )),
+        );
         assert_eq!(input_creation, proxy_creation);
         let input_accepted = supervisor
             .on(SettledItem::Attempted(ItemSettlement::Accepted(receipt)))
@@ -269,8 +272,12 @@ fuzz_target!(|input: &[u8]| {
                     .into_items()
                     .pop()
                     .expect("retirement shuts down the exact proxy");
-                let (shutdown_creation, shutdown_control, shutdown_receipt) =
-                    admit_proxy_operation(shutdown, EstablishedActor::issued(WorkerEndpoint));
+                let (shutdown_creation, shutdown_control, shutdown_receipt) = admit_proxy_operation(
+                    shutdown,
+                    EstablishedActor::issued(
+                        stable_proxy::installed_control::InstalledControl::new(WorkerEndpoint),
+                    ),
+                );
                 assert_eq!(shutdown_creation, proxy_creation);
                 let proxy_retired = proxy
                     .on(shutdown_control)

@@ -1,0 +1,11 @@
+[package]
+name = "bombay-shutdown-authority-probe"
+version = "0.0.0"
+edition = "2024"
+
+[dependencies]
+behavior = { package = "bombay-behavior", path = "../../crates/behavior" }
+communication = { package = "bombay-communication", version = "0.1.2" }
+tokio = { version = "1", features = ["macros", "rt"] }
+
+[workspace]

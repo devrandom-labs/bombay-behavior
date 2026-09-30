@@ -212,7 +212,8 @@ process that input and all transitive effects before offering the next one.
 | `AllocationRejection` | Enum | Typed fresh-address failures: exhaustion or already-claimed proposed address. |
 | `ChildNamespaceExhausted` | Struct | The interpreter cannot route the complete declared creation batch without partial route consumption. |
 | `CreationRejection` | Enum | Complete rejected-child reasons after routing: allocation, initialization, or environment/commit failure. |
-| `EstablishedCreation<P, Occurrence>` | Enum | Exact `Installed` or `Rejected` result for one child-protocol occurrence, retaining its creation ID and intent. |
+| `CommittedChild<C, Occurrence>` | Struct | One committed child's ID, creation kind, occurrence, and exact installed `C` actor. |
+| `EstablishedCreation<C, Occurrence>` | Enum | Named `Installed(CommittedChild)` or `Rejected` result for one concrete child occurrence. |
 | `ObserveCreation<P, Occurrence>` | Struct | Same-action request for the exact protocol/occurrence creation result; returns `CreationResolved<P::Addr>` and depends on `CreationCorrelation<P, Occurrence>`. |
 | `ChildDelivery<P, Occurrence>` | Struct | Same-action public-protocol delivery to a declared creator-local child occurrence. |
 | `ChildInput<Child, Source, Input, Occurrence>` | Struct | Private typed input to a concrete declared child event lane. |

@@ -1,11 +1,12 @@
 //! Total settlement contract for exact orderly worker shutdown.
 
 use core::future::Future;
+use core::marker::PhantomData;
 
 use behavior::{
     ActionItem, Actions, Address, Behavior, BehaviorActed, EndpointAddress, EstablishedActor, Here,
-    Ingress, InterpretItem, InterpretSends, Interpretation, InterpreterRequests, ItemSettlement,
-    Never, NoBirths, Protocol, SettledItem, User,
+    Ingress, InterpretInstalledActor, InterpretItem, InterpretSends, Interpretation,
+    InterpreterRequests, ItemSettlement, Never, NoBirths, Protocol, SettledItem, User,
 };
 use behavior_actors::{
     InterpretEstablishedShutdown, ShutdownEstablished, ShutdownId, ShutdownRejection,
@@ -22,11 +23,38 @@ impl Address for RuntimeAddr {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct Endpoint(u64);
 
+struct Installed<B: Behavior> {
+    endpoint: Endpoint,
+    control: u64,
+    behavior: PhantomData<fn() -> B>,
+}
+
+impl<B: Behavior> Clone for Installed<B> {
+    fn clone(&self) -> Self {
+        Self {
+            endpoint: self.endpoint,
+            control: self.control,
+            behavior: PhantomData,
+        }
+    }
+}
+
 impl EndpointAddress for RuntimeAddr {
     type Established<P>
         = Endpoint
     where
         P: Protocol<Addr = Self>;
+    type Installed<B>
+        = Installed<B>
+    where
+        B: Behavior<Protocol: Protocol<Addr = Self>>;
+
+    fn recipient<B>(installed: &Self::Installed<B>) -> Self::Established<B::Protocol>
+    where
+        B: Behavior<Protocol: Protocol<Addr = Self>>,
+    {
+        installed.endpoint
+    }
 }
 
 struct Worker;
@@ -57,21 +85,29 @@ enum ShutdownAdmission {
 
 struct ShutdownRuntime {
     admission: ShutdownAdmission,
-    calls: Vec<(ShutdownId, Endpoint)>,
+    calls: Vec<(ShutdownId, Endpoint, u64)>,
 }
 
 impl InterpretEstablishedShutdown<StopOnShutdown<Worker>, Here> for ShutdownRuntime {
     fn shutdown(
         &mut self,
         id: ShutdownId,
-        endpoint: Endpoint,
+        installed: Installed<StopOnShutdown<Worker>>,
         _: Ingress<ShutdownRequested, Here>,
     ) -> Result<(), ShutdownRejection> {
-        self.calls.push((id, endpoint));
+        self.calls.push((id, installed.endpoint, installed.control));
         match self.admission {
             ShutdownAdmission::Accept => Ok(()),
             ShutdownAdmission::Reject(reason) => Err(reason),
         }
+    }
+}
+
+impl InterpretInstalledActor<StopOnShutdown<Worker>> for ShutdownRuntime {
+    type Output = (Endpoint, u64);
+
+    fn interpret_actor(&mut self, installed: Installed<StopOnShutdown<Worker>>) -> Self::Output {
+        (installed.endpoint, installed.control)
     }
 }
 
@@ -96,7 +132,11 @@ impl<RootEvent> InterpretItem<ShutdownEstablished<StopOnShutdown<Worker>, Here>,
 fn request(id: u64, endpoint: u64) -> ShutdownEstablished<StopOnShutdown<Worker>, Here> {
     ShutdownEstablished::new(
         ShutdownId(id),
-        EstablishedActor::issued(Endpoint(endpoint)),
+        EstablishedActor::issued(Installed {
+            endpoint: Endpoint(endpoint),
+            control: endpoint + 100,
+            behavior: PhantomData,
+        }),
         Ingress::new(),
     )
 }
@@ -121,27 +161,37 @@ fn exact_shutdown_acceptance_consumes_the_request_and_keeps_its_id() {
         ItemSettlement::Accepted(id) => assert_eq!(id, ShutdownId(3)),
         _ => panic!("accepted exact shutdown produced the wrong settlement"),
     }
-    assert_eq!(runtime.calls, [(ShutdownId(3), Endpoint(41))]);
+    assert_eq!(runtime.calls, [(ShutdownId(3), Endpoint(41), 141)]);
 }
 
 #[test]
 fn exact_shutdown_rejections_return_the_complete_request() {
-    for reason in [
-        ShutdownRejection::AlreadyStopping,
-        ShutdownRejection::AlreadyStopped,
+    for (reason, control) in [
+        (ShutdownRejection::AlreadyStopping, 983),
+        (ShutdownRejection::AlreadyStopped, 984),
     ] {
         let mut runtime = ShutdownRuntime {
             admission: ShutdownAdmission::Reject(reason),
             calls: Vec::new(),
         };
-        match request(5, 43).settle(&mut runtime) {
+        let original = ShutdownEstablished::new(
+            ShutdownId(5),
+            EstablishedActor::issued(Installed {
+                endpoint: Endpoint(43),
+                control,
+                behavior: PhantomData,
+            }),
+            Ingress::new(),
+        );
+        match original.settle(&mut runtime) {
             ItemSettlement::Rejected {
                 item,
                 reason: returned,
             } => {
                 assert_eq!(returned, reason);
                 assert_eq!(item.id, ShutdownId(5));
-                assert_eq!(item.actor().recipient(), request(8, 43).actor().recipient());
+                let installed = item.actor().interpret_actor(&mut runtime);
+                assert_eq!(installed, (Endpoint(43), control));
             }
             _ => panic!("rejected exact shutdown lost its request"),
         }
@@ -179,8 +229,8 @@ async fn exact_shutdown_uses_the_generic_ordered_product_law() {
     assert_eq!(
         runtime.calls,
         [
-            (ShutdownId(7), Endpoint(47)),
-            (ShutdownId(11), Endpoint(53))
+            (ShutdownId(7), Endpoint(47), 147),
+            (ShutdownId(11), Endpoint(53), 153)
         ]
     );
 }

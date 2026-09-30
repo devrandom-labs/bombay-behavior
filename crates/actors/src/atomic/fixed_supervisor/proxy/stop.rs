@@ -358,6 +358,7 @@ where
 #[cfg(test)]
 mod tests {
     use core::ops::ControlFlow;
+    use std::sync::{Arc, Mutex, mpsc};
     use std::time::Instant;
 
     use behavior::{
@@ -382,11 +383,50 @@ mod tests {
     #[derive(Clone, Copy)]
     struct TestEndpoint;
 
+    struct TestInstalled<B: Behavior> {
+        endpoint: TestEndpoint,
+        control: mpsc::Sender<B::Event>,
+        inbox: Arc<Mutex<mpsc::Receiver<B::Event>>>,
+    }
+
+    impl<B: Behavior> Clone for TestInstalled<B> {
+        fn clone(&self) -> Self {
+            Self {
+                endpoint: self.endpoint,
+                control: self.control.clone(),
+                inbox: Arc::clone(&self.inbox),
+            }
+        }
+    }
+
+    impl<B: Behavior> TestInstalled<B> {
+        fn new(endpoint: TestEndpoint) -> Self {
+            let (control, inbox) = mpsc::channel();
+            Self {
+                endpoint,
+                control,
+                inbox: Arc::new(Mutex::new(inbox)),
+            }
+        }
+    }
+
     impl EndpointAddress for TestAddr {
         type Established<P>
             = TestEndpoint
         where
             P: Protocol<Addr = Self>;
+
+        type Installed<B>
+            = TestInstalled<B>
+        where
+            B: Behavior<Protocol: Protocol<Addr = Self>>;
+
+        fn recipient<B>(installed: &Self::Installed<B>) -> TestEndpoint
+        where
+            B: Behavior<Protocol: Protocol<Addr = Self>>,
+        {
+            installed.endpoint
+        }
     }
 
     struct Worker;
@@ -418,8 +458,9 @@ mod tests {
     #[test]
     fn proxy_exit_before_shutdown_acceptance_closes_only_after_acceptance() {
         let creation = creation(17);
-        let proxy =
-            EstablishedActor::<StableProxy<Worker, ImmediateActivation>>::issued(TestEndpoint);
+        let proxy = EstablishedActor::<StableProxy<Worker, ImmediateActivation>>::issued(
+            TestInstalled::new(TestEndpoint),
+        );
         let (stopping, shutdown) = ProxyStoppingMember::begin(
             MemberRole::declared(RosterPosition::new(0), SearchRole),
             creation,
@@ -439,7 +480,9 @@ mod tests {
         let (creation, _, operation) = shutdown.into_parts();
         let accepted = SettledItem::Attempted(ItemSettlement::Accepted(ProxyInputReceipt::new(
             creation,
-            EstablishedActor::<StableProxy<Worker, ImmediateActivation>>::issued(TestEndpoint),
+            EstablishedActor::<StableProxy<Worker, ImmediateActivation>>::issued(
+                TestInstalled::new(TestEndpoint),
+            ),
             operation,
         )));
         let member = stopping.accept_operation(accepted);
@@ -455,8 +498,9 @@ mod tests {
     #[test]
     fn shutdown_receipt_requires_the_retained_proxy_creation() {
         let exact_creation = creation(19);
-        let exact_proxy =
-            EstablishedActor::<StableProxy<Worker, ImmediateActivation>>::issued(TestEndpoint);
+        let exact_proxy = EstablishedActor::<StableProxy<Worker, ImmediateActivation>>::issued(
+            TestInstalled::new(TestEndpoint),
+        );
         let (exact_stopping, exact_shutdown) = ProxyStoppingMember::begin(
             MemberRole::declared(RosterPosition::new(0), SearchRole),
             exact_creation,
@@ -475,7 +519,9 @@ mod tests {
         let exact_receipt =
             SettledItem::Attempted(ItemSettlement::Accepted(ProxyInputReceipt::new(
                 exact_creation,
-                EstablishedActor::<StableProxy<Worker, ImmediateActivation>>::issued(TestEndpoint),
+                EstablishedActor::<StableProxy<Worker, ImmediateActivation>>::issued(
+                    TestInstalled::new(TestEndpoint),
+                ),
                 exact_operation,
             )));
         match exact_stopping.accept_operation(exact_receipt) {
@@ -491,8 +537,9 @@ mod tests {
 
         let retained_creation = creation(31);
         let foreign_creation = creation(32);
-        let retained_proxy =
-            EstablishedActor::<StableProxy<Worker, ImmediateActivation>>::issued(TestEndpoint);
+        let retained_proxy = EstablishedActor::<StableProxy<Worker, ImmediateActivation>>::issued(
+            TestInstalled::new(TestEndpoint),
+        );
         let (foreign_stopping, foreign_shutdown) = ProxyStoppingMember::begin(
             MemberRole::declared(RosterPosition::new(0), SearchRole),
             retained_creation,
@@ -511,7 +558,9 @@ mod tests {
         let foreign_receipt =
             SettledItem::Attempted(ItemSettlement::Accepted(ProxyInputReceipt::new(
                 foreign_creation,
-                EstablishedActor::<StableProxy<Worker, ImmediateActivation>>::issued(TestEndpoint),
+                EstablishedActor::<StableProxy<Worker, ImmediateActivation>>::issued(
+                    TestInstalled::new(TestEndpoint),
+                ),
                 foreign_operation,
             )));
         match foreign_stopping.accept_operation(foreign_receipt) {
@@ -532,8 +581,9 @@ mod tests {
     #[test]
     fn rejected_shutdown_after_exit_retains_both_complete_inputs() {
         let creation = creation(23);
-        let proxy =
-            EstablishedActor::<StableProxy<Worker, ImmediateActivation>>::issued(TestEndpoint);
+        let proxy = EstablishedActor::<StableProxy<Worker, ImmediateActivation>>::issued(
+            TestInstalled::new(TestEndpoint),
+        );
         let (stopping, shutdown) = ProxyStoppingMember::begin(
             MemberRole::declared(RosterPosition::new(0), SearchRole),
             creation,
@@ -569,8 +619,9 @@ mod tests {
     #[test]
     fn proxy_exit_after_rejected_shutdown_retires_with_both_complete_inputs() {
         let creation = creation(29);
-        let proxy =
-            EstablishedActor::<StableProxy<Worker, ImmediateActivation>>::issued(TestEndpoint);
+        let proxy = EstablishedActor::<StableProxy<Worker, ImmediateActivation>>::issued(
+            TestInstalled::new(TestEndpoint),
+        );
         let (stopping, shutdown) = ProxyStoppingMember::begin(
             MemberRole::declared(RosterPosition::new(0), SearchRole),
             creation,

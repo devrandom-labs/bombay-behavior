@@ -1,6 +1,9 @@
 #![no_main]
 //! Arbitrary generation-exact KeyedPool binding management.
 
+#[path = "installed_control.rs"]
+mod installed_control;
+
 use std::collections::{BTreeSet, VecDeque};
 use std::convert::Infallible;
 
@@ -34,6 +37,21 @@ impl EndpointAddress for RuntimeAddress {
         = WorkerEndpoint
     where
         P: Protocol<Addr = Self>;
+
+    type Installed<B>
+        =
+        installed_control::InstalledControl<B, <Self as EndpointAddress>::Established<B::Protocol>>
+    where
+        B: Behavior<Protocol: Protocol<Addr = Self>>;
+
+    fn recipient<B>(
+        installed: &Self::Installed<B>,
+    ) -> <Self as EndpointAddress>::Established<B::Protocol>
+    where
+        B: Behavior<Protocol: Protocol<Addr = Self>>,
+    {
+        installed.endpoint().clone()
+    }
 }
 
 #[derive(Debug, Eq, PartialEq)]
