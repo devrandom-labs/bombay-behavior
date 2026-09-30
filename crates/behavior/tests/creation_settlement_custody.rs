@@ -107,7 +107,8 @@ fn worker_definition_is_not_cloneable() {
 #[test]
 fn exact_one_creation_batch_returns_every_move_only_item_on_mismatch() {
     let one = Creations::one(Worker(3));
-    assert_eq!(one.into_one().expect("one item is accepted"), Worker(3));
+    let worker = one.into_one().expect("one item is accepted");
+    assert_eq!(worker, Worker(3));
 
     let empty = Creations::<Worker>::empty()
         .into_one()
@@ -116,11 +117,9 @@ fn exact_one_creation_batch_returns_every_move_only_item_on_mismatch() {
 
     let pair = Creations::one(Worker(5)).and(Worker(8));
     let returned = pair.into_one().expect_err("both items are returned");
-    assert_eq!(
-        returned
-            .into_iter()
-            .map(|worker| worker.0)
-            .collect::<Vec<_>>(),
-        vec![5, 8]
-    );
+    let returned = returned
+        .into_iter()
+        .map(|worker| worker.0)
+        .collect::<Vec<_>>();
+    assert_eq!(returned, vec![5, 8]);
 }

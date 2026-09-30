@@ -3160,10 +3160,8 @@ fn accepted_start_cancellation_retires_before_fresh_key_reuse() {
         Err(DynamicSupervisorEvent::ProxyCreationsSettled(returned)) => returned,
         _ => panic!("an empty creation settlement returns its exact event"),
     };
-    assert!(matches!(
-        empty.into_settlement(),
-        CreationSettlement::Settled(batch) if batch.is_empty()
-    ));
+    let empty = empty.into_settlement();
+    assert!(matches!(empty, CreationSettlement::Settled(batch) if batch.is_empty()));
 
     let mut ids = CreationSequence::new();
     let first = ids.issue().expect("first malformed creation ID exists");
