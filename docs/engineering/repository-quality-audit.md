@@ -482,6 +482,9 @@ outcomes separately from the later Bombay integration result.
   law, proxy law, stable-proxy guide, and normalized atomic documents were
   cross-checked. Disposition: `pass` for the StableProxy source model; A12
   remains open for the other families and downstream terminal custody.
+  A clean detached-worktree `nix flake check -L --max-jobs 2` at `7574bcb`
+  passed all eight active aarch64-darwin checks, including 845/845 optimized
+  Nextest tests, Rustdoc, Clippy, package, formatting, audit, and deny gates.
 
   **A12 shared pool assignment join, read-only review:** FIFO and keyed pools
   both use the four-alternative private `AssignmentDelivery` sum. This is one
