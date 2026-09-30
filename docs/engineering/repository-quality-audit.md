@@ -458,6 +458,33 @@ is recorded against a revision.
   join only; both pool families' member, recovery, and retirement sums remain
   under A12 review, and the move-only FIFO law remains unresolved in the PRD.
 
+  **A12 FIFO/keyed root values, read-only review:** each pool has one
+  five-alternative root sum. This review changes zero states, subordinate
+  alternatives, transition branches, production lines, modules, or public
+  spellings. FIFO remains five modules and 4,783 production lines; keyed
+  remains ten modules and 5,536 production lines. The exact future-needed
+  values differ inside their operating products:
+
+  | Root alternative | FIFO current value | Keyed current value |
+  |---|---|---|
+  | `Constructed` | The ordered prepared worker roster must be returned intact if initialization ID reservation fails. | The same prepared roster must survive failure before the per-role queues and binding table exist. |
+  | `Operating` | `FifoOperating` owns the ordered members, admission-ordinal backlog, and next role cursor. These select a global FIFO dispatch. | `KeyedOperating` owns one queue per role, current worker cells, and the bounded key binding table with generations. These select exact key affinity. |
+  | `Draining` / `Retiring` | The exact unresolved `RetiringWorker` vector and `ShutdownDeadline` settle worker results and a bounded drain. | The same shared worker-retirement values and deadline settle keyed drain; key/queue outcomes are emitted when retirement begins. |
+  | `Stopped` | No worker or job remains in the actor root after ordinary retirement; later input is rejected. | No worker or binding remains in the actor root after ordinary retirement; later input is rejected. |
+  | `ForcedRetirement` | The unresolved workers and exact cause (`WorkerShutdownIdsExhausted`, `DeadlineNotScheduled`, or `DeadlineElapsed`) must transfer to the runtime custodian. | The same kind of unresolved worker vector and exact cause must transfer; the per-role binding policy does not turn that into a FIFO backlog. |
+
+  `Constructed` is a pre-initialization ownership phase and
+  `ForcedRetirement` is terminal residual custody, not duplicates of the
+  operational `Stopped` state. Both are source-level extensions to the
+  three-state operational sketches in the normalized FIFO/keyed law documents;
+  those documents now name the distinction. Existing FIFO forced-retirement
+  tests and keyed lifecycle tests check retained workers locally. They do not
+  prove the parent-to-root transfer, which remains A17/T16 work. The source
+  scan found no arrival-history root alternative, repeated cause, false role
+  cardinality, nested actor authority, semantic boolean, or positional caller
+  syntax. Disposition: `pass` for these root sums only; member, recovery,
+  deadline, and terminal-custody alternatives remain under A12 review.
+
   FIFO and keyed pools each move their root state out with `mem::replace(...,
   Stopped)` during initialization and transition; fixed supervision similarly
   substitutes `Stopped` or a temporary recovery value, and StableProxy
