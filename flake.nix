@@ -93,7 +93,11 @@
         cargoArtifacts = craneLib.buildDepsOnly commonArgs;
       in {
         checks = {
-          bombay-behavior = craneLib.buildPackage (commonArgs // { inherit cargoArtifacts; });
+          bombay-behavior = craneLib.buildPackage (commonArgs // {
+            inherit cargoArtifacts;
+            # Nextest and the doctest derivation own the test runs.
+            doCheck = false;
+          });
           bombay-behavior-nextest = craneLib.cargoNextest (commonArgs // {
             inherit cargoArtifacts;
             cargoNextestExtraArgs = "--workspace";
