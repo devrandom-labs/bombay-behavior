@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.18.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-actors-v0.17.0...bombay-behavior-actors-v0.18.0) - 2026-09-30
+
+### Added
+
+- *(behavior)* [**breaking**] complete interpreter ownership and repository quality repairs
+
 ## [0.17.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-actors-v0.16.0...bombay-behavior-actors-v0.17.0) - 2026-09-17
 
 ### Added
