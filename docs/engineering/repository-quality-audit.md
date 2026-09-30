@@ -441,8 +441,47 @@ outcomes separately from the later Bombay integration result.
   `proxy_command_recovery` exercises stop-first and resolution-first joins.
   The root table and this join match `docs/stable-proxy.md` and
   `docs/actor-laws/proxy.md`; they justify retention, not a new deletion.
-  Nested result and retirement sums, other family inventories, and the
+  The nested sums are inventoried next; other family inventories and the
   interpreter's terminal transfer still keep A12 open.
+
+  **A12 StableProxy nested values, read-only checkpoint:** The current
+  `state.rs` has the same eight root alternatives and sixteen subordinate
+  sums with fifty alternatives as the earlier baseline. Across the six family
+  modules, current source has 5,950 physical and 5,080 production lines,
+  398 `=>` tokens as a search diagnostic, and fifteen top-level public
+  declarations. This review changes none of those counts, no transition
+  branch, and no public spelling. Each row names what a later transition or
+  terminal custodian still needs; paired alternatives below have different
+  legal next operations even where they carry the same payload shape.
+
+  | Subordinate sum | Alternatives and future-needed current values |
+  |---|---|
+  | `PreReadyFailure` | `InitializationEffects`: failure plus activation plan; `ActivationStart`: complete request plus refusal; `Activation`: plan rejection. These select distinct owner outcomes after worker return. |
+  | `WorkerStartKind` | `Initial`: no predecessor; `Replacement`: replaced attempt plus predecessor shutdown status, selecting lifecycle provenance and join. |
+  | `PredecessorShutdown` | `Settled`: no outstanding shutdown; `Awaiting`: exact shutdown ID to match its later resolution. |
+  | `ReplacementCompletion` | `Ready`: current worker plus result; `ReadyAfterStop`: worker attempt, result, exact stop; `Empty`: worker attempt plus result. Each joins a predecessor shutdown differently. |
+  | `ProxyReplacement` | `ReturningPredecessor`: predecessor departure, pending successor, staged creation; `SuccessorResultAwaitingShutdown`: replaced attempt, shutdown ID, successor completion. |
+  | `ActivationProgress` | `WaitingForStart` and `Running` each retain the exact activation attempt; only `Running` has admitted `Started`, so readiness can be consumed there. |
+  | `ActivationDuringDeparture` | `Pending`: activation progress still awaiting input; `Returned`: completed activation value owed at retirement. |
+  | `WorkerActivationShutdown` | `Departing`: activation state plus worker departure; `WaitingForActivation`: activation progress, current worker, optional shutdown resolution, exact stop. |
+  | `WorkerStartPhase` | `Creating`: pending worker and optional early stop; `Initializing`: committed worker and optional stop; `Activating`: committed worker, progress, optional stop; `ReturningWorker`: departure and precise pre-ready failure. |
+  | `WorkerInitializationShutdown` | `Departing`: optional returned initialization value plus worker departure; `WaitingForInitialization`: worker, optional shutdown resolution, exact stop. |
+  | `WorkerInitializationRetirement` | `Initialized`: permit plus plan; `EffectsRejected`: failure plus plan; `Stopped`: plan plus optional earlier initialization stop. |
+  | `WorkerActivationRetirement` | `StartRejected`: complete request plus refusal; `Ready`: readiness value; `Rejected`: application rejection. |
+  | `WorkerStartRetirement` | `Result`: start result; `Initialization`: initialization retirement, worker, optional shutdown resolution, stop; `Activation`: activation retirement, worker, optional resolution, stop; `ReadyWorker`: result plus returned worker; `ReplacementCompletion`: exact successor completion. |
+  | `ProxyRetirement` | `Empty`: optional previous attempt; `ReplacementCancelled`: replaced and successor attempts plus predecessor; `Worker`: returned worker; `WorkerStart`: optional replaced attempt plus start retirement; `ReplacementAfterPredecessor`: replaced attempt, predecessor resolution, start retirement. These are whole stopped-state custody. |
+  | `ProxyShutdown` | `Starting`: start state; `ReturningWorker`: departure; `ReturningWorkerStart`: kind, departure, failure; `ReturningPredecessor`: departure and both attempts; `ReturningSuccessor`: replaced attempt, predecessor return, successor departure and result; `Initializing`: kind and initialization shutdown; `Activating`: kind and activation shutdown; `WaitingForPredecessor`: replaced attempt, shutdown ID, start retirement. |
+  | `PredecessorReturn` | `Awaiting`: shutdown ID; `Returned`: exact shutdown resolution. |
+
+  The subordinate sums store current affine custody and correlation, not an
+  independently dispatched behavior. Optional stops and resolutions mean
+  exactly absence or presence of one fact; they do not encode mutually
+  exclusive aggregate phases. No arrival-history-only alternative, repeated
+  failure cause, false worker cardinality, nested transition authority,
+  semantic boolean, or structural user syntax was found. The actor transition
+  law, proxy law, stable-proxy guide, and normalized atomic documents were
+  cross-checked. Disposition: `pass` for the StableProxy source model; A12
+  remains open for the other families and downstream terminal custody.
 
   **A12 shared pool assignment join, read-only review:** FIFO and keyed pools
   both use the four-alternative private `AssignmentDelivery` sum. This is one
