@@ -75,6 +75,7 @@ impl EventIngress<PoolOwner, ActionItemResult<AssignmentDelivery>> for SystemEve
     }
 }
 
+#[allow(dead_code, reason = "compile-only generated source-admission contract")]
 struct Generated;
 
 #[derive(behavior_macros::SendProduct)]
@@ -92,6 +93,10 @@ struct SourceAdmissionSends<ProxySends, AssignmentSends> {
     },
 )]
 impl Generated {
+    #[allow(
+        dead_code,
+        reason = "the message type is uninhabited in this compile contract"
+    )]
     fn receive(&mut self, _: MailAddr, message: Never) -> BehaviorActed<Self> {
         match message {}
     }
