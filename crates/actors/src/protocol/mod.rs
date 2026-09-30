@@ -480,7 +480,6 @@ impl<A: behavior::Address> From<(CreationId, CreationKind, Result<A, CreationRej
 /// let gateway = behavior_actors::ObserveCreation::<Gateway, behavior::ChildHead>::new(creation);
 /// let _: behavior_actors::ObserveCreation<Store, behavior::ChildHead> = gateway;
 /// ```
-#[doc(hidden)]
 pub struct ObserveCreation<P: Protocol, Occurrence> {
     pub creation: CreationId,
     occurrence: core::marker::PhantomData<fn() -> (P, Occurrence)>,

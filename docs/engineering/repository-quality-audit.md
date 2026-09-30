@@ -52,6 +52,19 @@ Priority: **P1** affects contract correctness or trust in verification;
 **P3** is supporting cleanup. Check an item only after its completion evidence
 is recorded against a revision.
 
+## Behavior release boundary
+
+This branch completes and releases the five Behavior workspace crates. A17's
+production Bombay interpreter witness and the PRD's Bombay/Address runtime
+packages follow the Behavior release against immutable published versions.
+They remain open handoff obligations with their original acceptance criteria;
+their absence must not be described as a passing downstream test or silently
+used to change the Behavior algebra. Finish the Behavior-owned A12, A13, and
+A20 reviews and required Behavior gates before merging this branch to `main`.
+The release workflow creates its version PR after successful `main` CI, then
+publishes from the versioned `main` revision. Record those CI and publication
+outcomes separately from the later Bombay integration result.
+
 ## P1 — close contract and verification gaps
 
 - [x] **A01 — Reconcile creation, installation, and initialization ordering.**
@@ -569,7 +582,7 @@ is recorded against a revision.
 
 - [ ] **A13 — Audit public bounds, hidden exports, and extension ownership.**
   **Confirmed surface requiring review.** The current source has 10
-  `#[doc(hidden)]` annotation sites in core and 23 in actors, including
+  `#[doc(hidden)]` annotation sites in core and 22 in actors, including
   members and re-exports. The
   [public-surface inventory](public-surface-inventory.md) classifies each site
   by contract owner. These annotations do not make an item private.
@@ -702,6 +715,32 @@ is recorded against a revision.
   guide, and normalized atomic documents were cross-checked. Disposition:
   `pass` for this visibility batch; A13 remains open for the other hidden
   ports and the full public surface review.
+
+  **Pre-edit A13 creation-observation port law:** A local interpreter may
+  observe the exact same-action child creation named by protocol, occurrence,
+  and creator-local `CreationId`. The public `ObserveCreation<P, Occurrence>`
+  request carries that typed prerequisite; it does not establish freshness or
+  let a foreign child protocol substitute because its payload shape matches.
+  This is an existing Bombay observation policy. External
+  `creation_observation_settlement` and `child_shutdown_interpretation` callers
+  already name and interpret the request, while its Rustdoc compile-fail
+  fixture rejects a different protocol. Before editing, Rustdoc hides the
+  existing item page. The focused regression is a visible request page and
+  retained external and compile-fail results. Only its documentation marker
+  may change; request fields, constructor, prerequisite, effect order,
+  behavior state, and interpreter semantics remain unchanged.
+  Post-edit, the actor Rustdoc index links to `ObserveCreation` and its
+  `new` method. The two external caller suites pass 5 tests and actor
+  doctests pass 44, including the wrong-protocol compile-fail example.
+  Hidden actor annotation sites fall from 23 to 22; the touched production
+  file loses one marker line. Control states, subordinate alternatives,
+  branches, modules, and public Rust spellings stay unchanged. The request
+  retains the same exact typed prerequisite and current creation ID. No
+  arrival history, repeated cause, false cardinality, nested authority,
+  semantic boolean, or positional caller syntax was introduced. The actor
+  creation/lifecycle law and normalized observation document were
+  cross-checked. Disposition: `pass` for this runtime-port documentation;
+  A13 remains open for the broader surface review.
 
   **Pre-edit A13 proxy outcome and correlation documentation law:** A caller
   inspecting an initial or replacement proxy result must distinguish
@@ -1118,7 +1157,7 @@ is recorded against a revision.
 
 ## Follow-on after the audit checklist
 
-- [ ] **Complete the [Interpreter ownership and startup PRD](creation-and-delivery-custody-prd.md) after the Behavior-side audit repairs.**
+- [ ] **Complete the [Interpreter ownership and startup PRD](creation-and-delivery-custody-prd.md) against released Behavior crates.**
   Follow its ordered work packages P0–P5 and prove every acceptance trace
   T01–T24 against the real Address and Bombay interpreters. Include complete
   rejection and terminal custody, external consumer compilation, release and
@@ -1127,7 +1166,8 @@ is recorded against a revision.
   not narrow the PRD's scope. Its optional P6 consolidation follows the
   blocking contracts only where an independent law proves the deletion. P5's
   integrated witnesses are required to close A17 and the corresponding A20
-  runtime-evidence rows; those items remain open until that proof exists.
+  runtime-evidence rows; those downstream rows remain open after this
+  Behavior release until that proof exists.
 
 ## Coverage map and what should remain distinct
 
