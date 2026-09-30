@@ -371,6 +371,34 @@ is recorded against a revision.
   Nested result and retirement sums, other family inventories, and the
   interpreter's terminal transfer still keep A12 open.
 
+  **A12 shared pool assignment join, read-only review:** FIFO and keyed pools
+  both use the four-alternative private `AssignmentDelivery` sum. This is one
+  current job obligation with an exact assignment correlation; it is not a
+  second actor transition authority. The owning aggregate still selects the
+  complete `Actions`. The shared assignment module has 811 production lines
+  and 311 embedded-test lines; this review changes zero states, alternatives,
+  transition branches, modules, production lines, or public spellings.
+
+  | `AssignmentDelivery` alternative | Exact value needed by a future decision |
+  |---|---|
+  | `AwaitingReceipt` | No delivery receipt exists; completion or stop must be retained until acceptance or rejection settles the moved assignment. |
+  | `Accepted` | The exact receipt has committed delivery; the next matching completion or stop can select the one customer disposition. |
+  | `CompletionHasPriority` | The completion is authoritative if delivery is accepted; an optional later exact stop must still drive worker recovery once. |
+  | `WorkerExitHasPriority` | The exact stop is authoritative if delivery is accepted; an optional later completion must remain available for stale or contradictory settlement. |
+
+  `CompletionHasPriority` and `WorkerExitHasPriority` are observable order
+  decisions, not duplicate arrival labels. Collapsing them into a product of
+  two optional facts would lose which terminal event won. The two focused
+  `atomic::pool::assignment` order tests and the FIFO/keyed pool law documents
+  cross-check the retained values. `AssignmentReceiptOutcome`,
+  `WorkerCompletionOutcome`, `AssignmentRejectionOutcome`, and
+  `WorkerExitOutcome` return different complete values to their respective
+  callers; they have not been merged by their common job fields. This review
+  finds no semantic boolean, repeated cause, false cardinality, structural
+  caller path, or redundant nested actor. Disposition: `pass` for this shared
+  join only; both pool families' member, recovery, and retirement sums remain
+  under A12 review, and the move-only FIFO law remains unresolved in the PRD.
+
   FIFO and keyed pools each move their root state out with `mem::replace(...,
   Stopped)` during initialization and transition; fixed supervision similarly
   substitutes `Stopped` or a temporary recovery value, and StableProxy
