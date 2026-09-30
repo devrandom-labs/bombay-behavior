@@ -1247,26 +1247,96 @@ mod tests {
             .sends[0]
             .to;
         assert!(first == again);
-        let rejection = router.receive(
-            MailAddr(9),
-            RouterMessage::Observe(MemberTokenObservation {
-                recipient: one,
-                version: MemberTokenVersion(0),
-                token: MemberToken(99),
-            }),
-        );
-        assert!(matches!(
-            rejection,
+        let conflicting = MemberTokenObservation {
+            recipient: one,
+            version: MemberTokenVersion(0),
+            token: MemberToken(99),
+        };
+        let rejection = router.receive(MailAddr(9), RouterMessage::Observe(conflicting.clone()));
+        match rejection {
             Err(RouterError::Policy {
-                error: HashPolicyError::ConflictingVersion(_),
-                ..
-            })
-        ));
+                observation,
+                error: HashPolicyError::ConflictingVersion(returned),
+            }) => {
+                assert!(observation == conflicting);
+                assert!(returned == conflicting);
+            }
+            _ => panic!("conflicting token evidence must return its exact observation"),
+        }
         assert_eq!(
             router.member_token_evidence(&one),
             Some(MemberTokenEvidence::Observed {
                 version: MemberTokenVersion(0),
                 token: MemberToken(11)
+            })
+        );
+    }
+
+    #[test]
+    fn hash_token_versions_return_stale_evidence_and_accept_newer_observations() {
+        let recipient = Recipient::<KeyedDestination>::global(MailAddr(1));
+        let mut router = (Router::new(vec![recipient], RendezvousHash::new(identity_hash)))
+            .initialize()
+            .unwrap()
+            .behavior;
+        let observed = router
+            .receive(
+                MailAddr(9),
+                RouterMessage::Observe(MemberTokenObservation {
+                    recipient,
+                    version: MemberTokenVersion(2),
+                    token: MemberToken(11),
+                }),
+            )
+            .unwrap();
+        assert!(observed.sends.is_empty());
+        assert!(observed.creates.is_empty());
+        assert_eq!(observed.become_, Step::Continue);
+
+        let stale = MemberTokenObservation {
+            recipient,
+            version: MemberTokenVersion(1),
+            token: MemberToken(99),
+        };
+        let rejection = router.receive(MailAddr(9), RouterMessage::Observe(stale.clone()));
+        match rejection {
+            Err(RouterError::Policy {
+                observation,
+                error: HashPolicyError::Stale(returned),
+            }) => {
+                assert!(observation == stale);
+                assert!(returned == stale);
+            }
+            _ => panic!("older token evidence must return its exact observation"),
+        }
+        assert_eq!(
+            router.member_token_evidence(&recipient),
+            Some(MemberTokenEvidence::Observed {
+                version: MemberTokenVersion(2),
+                token: MemberToken(11),
+            })
+        );
+
+        for (version, token) in [(2, 11), (3, 22)] {
+            let accepted = router
+                .receive(
+                    MailAddr(9),
+                    RouterMessage::Observe(MemberTokenObservation {
+                        recipient,
+                        version: MemberTokenVersion(version),
+                        token: MemberToken(token),
+                    }),
+                )
+                .unwrap();
+            assert!(accepted.sends.is_empty());
+            assert!(accepted.creates.is_empty());
+            assert_eq!(accepted.become_, Step::Continue);
+        }
+        assert_eq!(
+            router.member_token_evidence(&recipient),
+            Some(MemberTokenEvidence::Observed {
+                version: MemberTokenVersion(3),
+                token: MemberToken(22),
             })
         );
     }

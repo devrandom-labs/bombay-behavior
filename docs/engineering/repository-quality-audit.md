@@ -659,6 +659,25 @@ The current root README no longer describes the repaired A03 projection as
 open. These are documentation and verification changes: no actor control
 state, effect lane, or public Rust spelling changed. Disposition: `pass`.
 
+### A08 Nix test-runner ownership, before edit
+
+The flake's `bombay-behavior-nextest` check already runs every workspace unit
+and integration test in an optimized build; the separate
+`bombay-behavior-doctest` check runs the workspace doctests. The
+`bombay-behavior` package check also invokes Cargo's test phase, repeating
+those executable tests and the slow external macro consumer builds. In the
+committed hash-policy gate, Nextest passed 834/834 cases while the package
+check separately ran the same `crate_resolution` cases. The derived gate law
+is one owner for each test class plus an independent package build: keep
+Nextest as the workspace executable test gate, keep the doctest check, and
+make the package derivation build without its duplicate test phase. No source
+test, target, profile, package artifact, dependency policy, or public API is
+removed. The focused regression is a full Nix check whose log must show all
+workspace cases under Nextest and the doctests under their own derivation,
+while the package derivation completes without another unit/integration test
+run. Expected files are `flake.nix` and this audit; production Rust delta and
+public type delta are both zero.
+
 ### A10 finite-driver contract
 
 `drive` now explicitly documents that its successful `Trace` appends send and
@@ -2517,9 +2536,9 @@ dependency-policy gates.
 | Priority selection | `routing::priority_queue` tests stable priority/FIFO ties and full/empty outcomes. `routing_invariants::priority_queue_matches_stable_max_priority_selection` compares an independent ordered list after each offer or release, including exact delivery and reply recipients, reply depth, empty creation lane, and continuing verdict. An isolated `Released.remaining = queued.len() + 1` counterfactual compiled and failed at the new remaining-depth assertion on a one-offer, one-release trace. | The generated priorities cover 0–7 and positive capacities below eight; exhaustion and real host admission are outside this property. The recorded counterfactual covers the release-depth branch, not every routing branch. |
 | Rate admission | `routing::rate_limiter` tests accepted/rejected ownership and saturating refill. `routing_invariants::rate_limiter_matches_saturating_token_arithmetic` compares capacity, available tokens, rejection reasons and returned value, and admitted delivery after each generated operation. | Its generated path constructs positive token costs and capacities; no host admission or dedicated mutation slice is recorded. |
 | Round-robin membership cursor | `routing::router` tests cursor repair after removal. `routing_invariants::round_robin_keeps_the_same_next_recipient_across_membership_edits` tracks an independent member list and next recipient through generated edits and routes. | The pure trace does not prove transport admission. |
-| Consistent-hash membership stability | `routing::router` tests one three-member removal over 128 keys. `routing_invariants::consistent_hash_membership_edits_preserve_unaffected_key_owners` checks complete actions, Unknown admission, varying tokens and keys, aligned evidence, addition, and removal in 128 generated cases. An isolated no-removal mutant failed at the exact surviving member token, shrinking to tokens `[0,1,2,3]`. | The relational property does not independently calculate every ring point or prove host delivery admission; token-version rejection remains in focused actor tests. |
+| Consistent-hash membership stability | `routing::router` tests one three-member removal over 128 keys. `routing_invariants::consistent_hash_membership_edits_preserve_unaffected_key_owners` checks complete actions, Unknown admission, varying tokens and keys, aligned evidence, addition, and removal in 128 generated cases. An isolated no-removal mutant failed at the exact surviving member token, shrinking to tokens `[0,1,2,3]`. | The relational property does not independently calculate every ring point or prove host delivery admission; the focused actor test covers same-version conflict but stale token evidence still needs a direct witness. |
 | Least-loaded evidence | `routing::router` tests unknown, stale, conflicting, tied, and newly lower evidence. `routing_invariants::least_loaded_matches_versioned_membership_and_selection` models member order and latest evidence after mixed add, remove, observe, and route operations; a deterministic trace covers re-addition. | An isolated max-load selection counterfactual failed both new tests; pure routing still does not prove host delivery admission or the other policy families. |
-| Rendezvous member stability | `routing::router` tests one keyed route and conflicting token. `routing_invariants::rendezvous_membership_edits_only_move_keys_to_or_from_the_changed_member` checks exact route actions, token evidence, membership edits, and order-independent ownership for 128 generated distinct-token cases. An isolated index-dependent score counterfactual failed at the permutation assertion with a minimal `[0,1,2,3]` token set. | This relational law does not independently calculate each score or prove host delivery, stale token versions, and every tie case. |
+| Rendezvous member stability | `routing::router` tests one keyed route, conflicting token, and exact stale-version return. `routing_invariants::rendezvous_membership_edits_only_move_keys_to_or_from_the_changed_member` checks exact route actions, token evidence, membership edits, and order-independent ownership for 128 generated distinct-token cases. An isolated index-dependent score counterfactual failed at the permutation assertion with a minimal `[0,1,2,3]` token set. | This relational law does not independently calculate each score or prove host delivery and every tie case. |
 | Latch release | `workflow::latch` tests threshold order and zero-count startup. `workflow_invariants::latch_releases_each_accepted_route_exactly_once` compares an independent waiting list, release phase, and exact recipient order through generated arrivals. | The property does not interpret delivery admission or record a dedicated mutation slice. |
 | Dependency workflow | `workflow_invariants::workflow_matches_an_independent_dependency_run` tracks step and run phases across start, completion, failure, and cancellation, including invalid early completion and failure. | The focused property and workflow unit tests do not provide a real interpreter trace or dedicated mutation slice for every branch. |
 
@@ -2568,6 +2587,46 @@ token values remain unchanged. The residue scan and law-document cross-check
 above found no new production history, repeated cause, false cardinality,
 nested authority, semantic boolean, or positional caller syntax. Disposition:
 `pass` for this evidence batch; A20 remains open for other laws.
+
+### A20 pre-edit hash-token version law
+
+Classification: deliberate Bombay evidence policy, shared by consistent and
+rendezvous selection. Once a member has Observed(version, token), an older
+observation must return its exact owned value with `Stale` and leave the
+committed evidence unchanged. The same version/token is idempotent, the same
+version with a different token is a conflict, and a newer version replaces the
+current token. The existing rendezvous example covers conflict only. A focused
+pure Router test will prove stale ownership, idempotence, newer acceptance,
+all action lanes, and evidence state. An isolated inversion of the version
+ordering guard must fail the stale or newer assertion before retention.
+
+No production type, branch, module, public spelling, or state alternative is
+proposed. Router's one ordered membership list and each current token/version
+remain exactly the values used by later selection and rejection. The test
+adds no arrival-history state, repeated cause, false cardinality, nested
+authority, semantic boolean, or structural caller syntax. Cross-checks are
+the actor transition algebra and normalized routing catalogue law.
+Disposition: `pass` for the test model, pending the focused witness and
+counterfactual.
+
+Post-edit, the focused router test passed in debug and optimized Nix builds.
+It checks the exact stale observation in both returned policy fields, no
+evidence mutation, idempotent same-version replay, a newer accepted token,
+and empty send/create lanes with continuation. The existing conflicting-token
+test now also checks the exact returned observation in both fields. In a
+separate Behavior worktree and Cargo target, inverting only the hash evidence
+version guard made the new test fail at the stale-return assertion. The
+mutant and worktree were removed. This counterfactual tests ordering of
+version admission; it does not prove the hash score or host delivery.
+
+The actor source test section changes `+84/-14/net +70` physical lines;
+production Rust, public types, control states, evidence alternatives,
+transition branches, and modules stay unchanged. The current member order
+and latest version/token remain the only future-needed values. No arrival
+history, repeated cause, false cardinality, nested authority, semantic
+boolean, or structural caller syntax was introduced. The actor transition
+and normalized routing laws were cross-checked. Disposition: `pass` for this
+focused evidence batch; A20 remains open elsewhere.
 
 ### A20 pre-edit least-loaded evidence law
 
