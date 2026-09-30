@@ -57,7 +57,9 @@ This table classifies ownership but does not by itself justify retaining each
 public spelling. In particular, an associated type that mentions one of these
 values is not proof that applications must name it. Closing A13 still requires
 caller-facing compile witnesses, a trait-implementor inventory, and a
-repeatable compile-cost comparison before changing visibility or bounds.
+repeatable compile-cost comparison before changing visibility or bounds. The
+branch-level cold comparison below measures aggregate compiler impact; it does
+not replace a focused before/after comparison for a future individual bound.
 
 `AssignWorker::target` and `CustomerDelivery` are now visible runtime ports.
 The interpreter obtains a clone of the exact recipient capability through
@@ -185,5 +187,26 @@ The table identifies implementor *roles*, not proof that every spelling should
 stay public. In particular, the structural rows still need external compile
 witnesses before visibility can be reduced. `StashStatus` already has multiple
 real wrapper implementations, so treating it as a redundant one-implementation
-trait would be incorrect. The remaining A13 work includes a cold, repeatable
-compile-time comparison and caller diagnostics for any further bound change.
+trait would be incorrect. The remaining A13 work includes caller diagnostics
+and a focused compile-cost comparison for any further bound change.
+
+## Cold actor-library compile comparison
+
+On aarch64-darwin, the Nix shell at `1aeaed1` supplied Cargo 1.95.0 for both
+revisions. Each run used a newly absent `CARGO_TARGET_DIR`, the same command
+shape (`cargo check --manifest-path REV/Cargo.toml -p
+bombay-behavior-actors --lib --locked --offline -q`), and ran sequentially.
+The actor crate's Cargo fingerprint recorded the same feature list, profile,
+compiler configuration, and dependency identities in both revisions.
+
+| Revision | Cold run 1 | Cold run 2 | Actor `.rmeta` |
+|---|---:|---:|---:|
+| `main` at `435560c` | 184.54 s | 180.09 s | 27 MiB |
+| Audit branch at `1aeaed1` | 4.46 s | 3.97 s | 5.8 MiB |
+
+The measured command checks the actor library only, not tests, downstream
+applications, or release builds. The revisions differ in many source files,
+including macro and actor implementations; the observation cannot attribute
+the difference to any one A13 bound or predict downstream compile time. It
+does show that this branch's actor-library metadata and cold check cost did
+not grow under this controlled comparison.

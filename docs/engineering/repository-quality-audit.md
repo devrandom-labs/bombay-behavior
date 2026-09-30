@@ -541,6 +541,14 @@ is recorded against a revision.
   crate-private; focused external fixtures distinguish forbidden ID naming,
   receipt construction, and double settlement. Review of remaining hidden runtime
   ports and the rest of the public surface is still required.
+  A repeatable cold actor-library check on aarch64-darwin used the same
+  Nix-pinned Cargo 1.95.0 and two separate fresh targets per revision:
+  `main@435560c` took 184.54/180.09 seconds and this branch at `1aeaed1`
+  took 4.46/3.97 seconds. The actor `.rmeta` sizes were 27 MiB and 5.8 MiB.
+  The [measurement record](public-surface-inventory.md#cold-actor-library-compile-comparison)
+  gives the command and scope. This is a whole-branch comparison, not causal
+  evidence for any one A13 bound; future bound edits still need focused caller
+  diagnostics and their own cost check.
   A post-repair source scan of catalogue `Protocol` and `BehaviorBase` impl
   headers found no remaining copying/comparison/ordering bounds except
   `Router`'s `Route: Clone + PartialEq`, which is also required by its current
