@@ -529,7 +529,13 @@ is recorded against a revision.
   progression methods on their item pages. Actor hidden annotation sites fell
   from 75 to 66. The external `fifo_pool` and
   `fixed_supervisor_initialization` actor suites passed 91 and 98 tests,
-  respectively. Clean Nix verification remains to be recorded.
+  respectively. The first clean Nix attempt at signed commit `a74b287`
+  stopped during optimized compilation when the machine ran out of disk space;
+  it reported no Rust law failure. After cleaning this repository's generated
+  Cargo target directory, the retry with two concurrent Nix builds passed all
+  ten available macOS checks, including Rustdoc and 843 optimized Nextest
+  tests. Disposition: `pass` for this documentation port; A13 remains open for
+  the rest of the public surface.
 
 - [x] **A14 — State the trust scope of initialization capabilities accurately.**
   **Confirmed documentation/API mismatch.** `InitializationTurn` says only the
@@ -661,6 +667,18 @@ is recorded against a revision.
   inapplicable with a reason. Add coverage measurement to locate unexecuted
   code, but never use a percentage as proof of the law. Keep the workflow's
   fuzz-target list synchronized with the manifest; it is currently complete.
+  **Assignment custody evidence correction:** the external delivery fixture
+  previously compared the original `Box<str>` payload allocation with the
+  address of the delivered `Box` handle. A temporary equality assertion made
+  both affected tests fail, proving that the old pointer comparison did not
+  identify the payload. The retained fixture now records the delivered `str`
+  allocation and contents. It verifies that FIFO's current `Job: Clone` policy
+  sends a distinct copied allocation, while rejection returns the original
+  allocation. Two same-typed requests settle in reverse order and return their
+  own receipts. Debug and optimized external fixture runs pass. This evidence
+  does not satisfy the PRD's non-`Clone` T02 requirement; the precise source
+  conflict and current test scope are in the
+  [implementation ledger](interpreter-contract-implementation-ledger.md).
 
 ## Follow-on after the audit checklist
 
