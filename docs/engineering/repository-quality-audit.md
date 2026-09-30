@@ -512,7 +512,7 @@ outcomes separately from the later Bombay integration result.
   finds no semantic boolean, repeated cause, false cardinality, structural
   caller path, or redundant nested actor. Disposition: `pass` for this shared
   join only; both pool families' member, recovery, and retirement sums remain
-  under A12 review, and the move-only FIFO law remains unresolved in the PRD.
+  under A12 review. The PRD now states FIFO's clone-and-retry policy explicitly.
 
   **A12 FIFO/keyed root values, read-only review:** each pool has one
   five-alternative root sum. This review changes zero states, subordinate
@@ -1241,8 +1241,9 @@ outcomes separately from the later Bombay integration result.
   sends a distinct copied allocation, while rejection returns the original
   allocation. Two same-typed requests settle in reverse order and return their
   own receipts. Debug and optimized external fixture runs pass. This evidence
-  does not satisfy the PRD's non-`Clone` T02 requirement; the precise source
-  conflict and current test scope are in the
+  satisfies the Behavior-side return shape of the clarified T02 law: the pool
+  keeps its original job for retry and the worker receives a copy. The runtime
+  close-after-resolution witness remains downstream. The source analysis is in the
   [implementation ledger](interpreter-contract-implementation-ledger.md).
   **Pre-commit host-refusal custody:** the external
   `tests/interpreter-contract/tests/startup_host_rejection.rs` caller runs a

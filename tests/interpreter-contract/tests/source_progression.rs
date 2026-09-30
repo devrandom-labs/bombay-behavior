@@ -2,13 +2,96 @@ use core::convert::Infallible;
 use core::future::Future;
 
 use behavior::{
-    ActionItem, ActionItemResult, EventIngress, ItemSettlement, Own, SendEffects, SendLayer,
+    ActionItem, ActionItemResult, ActionSettlement, ActiveTurn, Address, Behavior, BehaviorActed,
+    ChildNamespaceExhausted, CreateChild, CreationSequence, CreationSettlement,
+    CreationSettlements, Creations, EndpointAddress, EventIngress, ItemSettlement, MessageProtocol,
+    Never, NoBirths, NoSends, Own, Protocol, RetirementBirths, SendEffects, SendLayer,
     SendSettlements, SettledItem, SourceAction, SourceActions, SourceAdmission, SourceCustody,
-    SourceSettlementCustody,
+    SourceSettlementCustody, Step, Stopped, User,
 };
 use behavior_actors::atomic::{DiagnosticAccepted, DiagnosticAction};
 
 struct ReplySource;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct RuntimeAddr(u64);
+
+impl Address for RuntimeAddr {
+    type Nonce = u64;
+}
+
+impl EndpointAddress for RuntimeAddr {
+    type Established<P>
+        = u64
+    where
+        P: Protocol<Addr = Self>;
+}
+
+struct Child(Box<str>);
+
+impl Behavior for Child {
+    type Protocol = MessageProtocol<RuntimeAddr, Never>;
+    type Event = User<RuntimeAddr, Never>;
+    type Sends = NoSends;
+    type Ph = Never;
+    type Error = Never;
+    type Birth = NoBirths;
+
+    fn transition(&mut self, _: ActiveTurn, input: Self::Event) -> BehaviorActed<Self> {
+        match input.message {}
+    }
+}
+
+type PendingRetirement = <RetirementBirths<Child> as CreationSettlements<RuntimeAddr>>::Settlements;
+
+fn retained_creation() -> PendingRetirement {
+    let id = CreationSequence::new()
+        .issue()
+        .expect("one child creation ID is available");
+    behavior::RetirementCreationSettlement::new(CreationSettlement::Rejected {
+        creations: Creations::one(CreateChild::birth(id, Child("uncreated child".into()))),
+        reason: ChildNamespaceExhausted,
+    })
+}
+
+fn assert_creation(settlement: PendingRetirement) {
+    let CreationSettlement::Rejected { creations, .. } = settlement.into_settlement() else {
+        panic!("the complete rejected creation batch remains owned");
+    };
+    let [creation]: [_; 1] = creations
+        .into_iter()
+        .collect::<Vec<_>>()
+        .try_into()
+        .unwrap_or_else(|_| panic!("one rejected child remains"));
+    assert_eq!(creation.into_parts().1.0.as_ref(), "uncreated child");
+}
+
+struct IndependentRequest(Box<str>);
+
+impl ActionItem for IndependentRequest {
+    type Accepted = ();
+    type Rejection = u8;
+    type Prerequisite = Infallible;
+}
+
+fn independent_rejection() -> Vec<ActionItemResult<IndependentRequest>> {
+    vec![SettledItem::Attempted(ItemSettlement::Rejected {
+        item: IndependentRequest("independent rejection".into()),
+        reason: 4,
+    })]
+}
+
+fn assert_independent(mut residual: Vec<ActionItemResult<IndependentRequest>>) {
+    let Some(SettledItem::Attempted(ItemSettlement::Rejected {
+        item: IndependentRequest(value),
+        reason: 4,
+    })) = residual.pop()
+    else {
+        panic!("the independent request and exact reason remain owned");
+    };
+    assert_eq!(value.as_ref(), "independent rejection");
+    assert!(residual.is_empty());
+}
 
 struct ReplyRequest(Box<str>);
 
@@ -168,4 +251,98 @@ async fn closed_source_retains_its_request_and_terminal_sibling() {
         panic!("the closed source request remains exact");
     };
     assert_eq!(&*value, "returned");
+}
+
+#[tokio::test]
+async fn mixed_retirement_product_admits_source_after_retained_inner_lanes() {
+    let mut host = ReturnHost {
+        window: AdmissionWindow::Open,
+        admitted: Vec::new(),
+    };
+    let settlement = ActionSettlement {
+        creations: retained_creation(),
+        sends: SendLayer::new(
+            source_result(),
+            SendLayer::new(retained_diagnostic(), independent_rejection()),
+        ),
+        become_: Step::<Never, Stopped>::Continue,
+    };
+    let SourceCustody::Admitted(settlement) = settlement.offer_next_to_source(&mut host).await
+    else {
+        panic!("retained creation and inner lanes must not block source admission");
+    };
+    assert_admitted(&mut host);
+    let SourceCustody::Retained(settlement) = settlement.offer_next_to_source(&mut host).await
+    else {
+        panic!("remaining creation, diagnostic, and rejection need terminal custody");
+    };
+    assert_creation(settlement.creations);
+    assert!(settlement.sends.owned.into_inputs().is_empty());
+    assert_terminal(settlement.sends.inner.owned);
+    assert_independent(settlement.sends.inner.inner);
+    assert!(matches!(settlement.become_, Step::Continue));
+}
+
+#[tokio::test]
+async fn mixed_retirement_product_admits_source_through_the_other_layer_order() {
+    let mut host = ReturnHost {
+        window: AdmissionWindow::Open,
+        admitted: Vec::new(),
+    };
+    let settlement = ActionSettlement {
+        creations: retained_creation(),
+        sends: SendLayer::new(
+            SendLayer::new(source_result(), independent_rejection()),
+            retained_diagnostic(),
+        ),
+        become_: Step::<Never, Stopped>::Continue,
+    };
+    let SourceCustody::Admitted(settlement) = settlement.offer_next_to_source(&mut host).await
+    else {
+        panic!("retained creation and diagnostic must not block inner source admission");
+    };
+    assert_admitted(&mut host);
+    let SourceCustody::Retained(settlement) = settlement.offer_next_to_source(&mut host).await
+    else {
+        panic!("remaining creation, diagnostic, and rejection need terminal custody");
+    };
+    assert_creation(settlement.creations);
+    assert!(settlement.sends.owned.owned.into_inputs().is_empty());
+    assert_independent(settlement.sends.owned.inner);
+    assert_terminal(settlement.sends.inner);
+    assert!(matches!(settlement.become_, Step::Continue));
+}
+
+#[tokio::test]
+async fn mixed_retirement_product_returns_every_lane_when_source_closes() {
+    let mut host = ReturnHost {
+        window: AdmissionWindow::Closed,
+        admitted: Vec::new(),
+    };
+    let settlement = ActionSettlement {
+        creations: retained_creation(),
+        sends: SendLayer::new(
+            source_result(),
+            SendLayer::new(retained_diagnostic(), independent_rejection()),
+        ),
+        become_: Step::<Never, Stopped>::Continue,
+    };
+    let SourceCustody::Closed(settlement) = settlement.offer_next_to_source(&mut host).await else {
+        panic!("a closed source returns the complete mixed product");
+    };
+    assert!(host.admitted.is_empty());
+    assert_creation(settlement.creations);
+    let source: [ActionItemResult<ReplyRequest>; 1] = settlement
+        .sends
+        .owned
+        .into_inputs()
+        .try_into()
+        .unwrap_or_else(|_| panic!("the source request remains pending"));
+    let [SettledItem::Unattempted(ReplyRequest(value))] = source else {
+        panic!("the exact source request remains untouched");
+    };
+    assert_eq!(value.as_ref(), "returned");
+    assert_terminal(settlement.sends.inner.owned);
+    assert_independent(settlement.sends.inner.inner);
+    assert!(matches!(settlement.become_, Step::Continue));
 }

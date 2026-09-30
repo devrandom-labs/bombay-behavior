@@ -68,9 +68,8 @@ fn pure_initialization_panic_returns_the_exact_outer_routed_child() {
     let panic = catch_unwind(AssertUnwindSafe(|| initialize(routed.child_mut())));
     assert!(panic.is_err());
 
-    let outcome = ChildCreationOutcome::<PanickingChild, Here>::InitializationPanicked {
-        creation: routed,
-    };
+    let outcome =
+        ChildCreationOutcome::<PanickingChild, Here>::InitializationPanicked { creation: routed };
     let ChildCreationOutcome::InitializationPanicked { creation } = outcome else {
         panic!("the panic is distinct from a controlled initialization rejection");
     };

@@ -35,12 +35,19 @@ async fn terminal_diagnostic_remains_owned_across_repeated_offers() {
         ItemSettlement::Accepted(DiagnosticAccepted::terminal(diagnostic)),
     )];
 
-    let SourceCustody::Retained(residual) = offer(settlements).await else {
+    let SourceCustody::Retained(mut residual) = offer(settlements).await else {
         panic!("terminal diagnostic must remain in custody");
     };
-    let SourceCustody::Retained(mut residual) = offer(residual).await else {
-        panic!("re-offering must preserve terminal custody");
-    };
+    for _ in 0..3 {
+        residual.push(SettledItem::Attempted(ItemSettlement::Accepted(
+            DiagnosticAccepted::delivered(),
+        )));
+        let SourceCustody::Retained(next) = offer(residual).await else {
+            panic!("a later continuing turn must preserve terminal custody");
+        };
+        assert_eq!(next.len(), 1, "discharged receipts must not accumulate");
+        residual = next;
+    }
     let SettledItem::Attempted(ItemSettlement::Accepted(DiagnosticAccepted::Terminal(returned))) =
         residual.pop().expect("one retained diagnostic")
     else {

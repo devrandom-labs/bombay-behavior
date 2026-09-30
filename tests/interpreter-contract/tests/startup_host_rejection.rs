@@ -60,13 +60,9 @@ impl Behavior for RefusedChild {
             .take()
             .expect("this fixture initializes only once");
         let nested = self.nested.take().expect("one nested child is staged");
-        Ok(Actions::create(Creations::one(nested)).with_send(Delivery::new(
-            Recipient::global(RuntimeAddr(91)),
-            first,
-        )).with_send(Delivery::new(
-            Recipient::global(RuntimeAddr(92)),
-            second,
-        )))
+        Ok(Actions::create(Creations::one(nested))
+            .with_send(Delivery::new(Recipient::global(RuntimeAddr(91)), first))
+            .with_send(Delivery::new(Recipient::global(RuntimeAddr(92)), second)))
     }
 
     fn transition(&mut self, _: ActiveTurn, input: Self::Event) -> BehaviorActed<Self> {
@@ -154,4 +150,67 @@ fn host_refusal_returns_current_child_and_all_uninterpreted_actions() {
     assert_eq!(second.to.address(), RuntimeAddr(92));
     assert_eq!(second.message.0.as_ptr(), second_ptr);
     assert_eq!(second.message.0.as_ref(), "second send");
+}
+
+struct RejectingChild {
+    current: OwnedText,
+    error: Option<OwnedText>,
+}
+
+impl Behavior for RejectingChild {
+    type Protocol = MessageProtocol<RuntimeAddr, Never>;
+    type Event = User<RuntimeAddr, Never>;
+    type Sends = NoSends;
+    type Ph = Never;
+    type Error = OwnedText;
+    type Birth = NoBirths;
+
+    fn init(&mut self, _: InitializationTurn) -> BehaviorActed<Self> {
+        Err(self.error.take().expect("one pure initialization attempt"))
+    }
+
+    fn transition(&mut self, _: ActiveTurn, input: Self::Event) -> BehaviorActed<Self> {
+        match input.message {}
+    }
+}
+
+#[test]
+fn pure_initialization_rejection_returns_current_child_and_exact_error() {
+    let id = CreationSequence::new()
+        .issue()
+        .expect("one creation ID is available");
+    let current = OwnedText("current child".into());
+    let error = OwnedText("exact rejection".into());
+    let current_ptr = current.0.as_ptr();
+    let error_ptr = error.0.as_ptr();
+    let mut creation = RoutedCreation::new(
+        CreateChild::<RuntimeAddr, _>::birth(
+            id,
+            RejectingChild {
+                current,
+                error: Some(error),
+            },
+        ),
+        79,
+    );
+    let error = match initialize(creation.child_mut()) {
+        Ok(_) => panic!("the pure initialization must reject"),
+        Err(error) => error,
+    };
+    let outcome =
+        ChildCreationOutcome::<RejectingChild, Here>::InitializationRejected { creation, error };
+    let Err(ChildCreationOutcome::InitializationRejected { creation, error }) =
+        outcome.into_actor()
+    else {
+        panic!("rejection must not issue an established actor");
+    };
+    let (request, route) = creation.into_parts();
+    let (returned_id, child, kind) = request.into_parts();
+    assert_eq!(returned_id, id);
+    assert_eq!(route, 79);
+    assert_eq!(kind, CreationKind::Birth);
+    assert_eq!(child.current.0.as_ptr(), current_ptr);
+    assert!(child.error.is_none());
+    assert_eq!(error.0.as_ptr(), error_ptr);
+    assert_eq!(error.0.as_ref(), "exact rejection");
 }

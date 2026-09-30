@@ -4,6 +4,51 @@ This ledger records implementation evidence against the separately maintained
 [ownership and startup PRD](creation-and-delivery-custody-prd.md). It does not
 change that specification or treat a scripted host as a production interpreter.
 
+## Merged Behavior candidate, 2026-09-30
+
+The release branch merged current `main` at `835cf8d` into the repaired
+Behavior candidate at `bd613ae`. The merge retained both ordinary direct
+dependency and facade-first Actors macro witnesses. Its five macro-resolution
+fixtures passed, followed by all ten local aarch64-darwin Nix checks and the
+external interpreter fixture in debug and optimized builds. The user's revised
+PRD was copied verbatim from the original worktree into this release branch;
+the original uncommitted file remains untouched.
+
+The external workspace now has a README and a Cargo-metadata guard. The guard
+requires one local resolved package for each of core Behavior, Actors, and
+macros, rejecting a duplicate or registry copy of these crates. It passed on
+the merged candidate. It does not assert that the later Bombay/Address graph
+is immutable or integrated. The retained-diagnostic witness now carries one
+non-cloneable value across three later source-free offers, adding a discharged
+diagnostic on each offer; each resulting residual contains only the original
+terminal value. Debug and optimized tests pass. This strengthens the
+Behavior-side T06/T07 law, while the real Driver retirement remains P5.
+The precommit creation fixture also now rejects pure initialization with a
+non-cloneable child and error, verifies that `into_actor` refuses to issue an
+established capability, and returns the exact current child, route, ID, kind,
+and error allocation. Debug and optimized tests pass. This is the Behavior
+ownership shape for T10; the real reservation and publication trace remains
+downstream.
+The external mixed-product fixture now combines retirement creation custody,
+an accepted terminal diagnostic, a live source request, and an independent
+rejection. It exercises two `SendLayer` orders, requires source admission to
+progress past retained siblings, and verifies that closed admission returns
+every lane and the continuation verdict. The new focused tests pass in debug;
+the optimized fixture and final gate follow after this batch is staged. This
+is the Behavior-side composition portion of T08/T24, not a real Driver trace.
+
+Before/after for this evidence-only batch: aggregate control states and
+subordinate alternatives unchanged; production transition branches and
+production lines unchanged; one fixture README and one graph-check script
+added; one CI step and one external test changed; public spellings unchanged.
+The terminal value remains the sole future-needed residual. No arrival-history
+state, duplicate cause, cardinality assumption, nested transition authority,
+semantic boolean, or structural caller syntax was added. Cross-checks:
+`actor-transition-algebra.md`, `atomic-runtime-settlement.md`,
+`behavior-layer-laws.md`, and the five normalized actor-law documents.
+Disposition: `pass` for this Behavior-side evidence batch. The PRD's real
+runtime acceptance matrix is still open.
+
 ## P0 snapshot, 2026-09-29
 
 Behavior is at `605d0634644a435f4bba31ce1768253abcafe23e` on
@@ -68,7 +113,7 @@ requires a rejected assignment to return the original address. The concurrent
 test checks both copied worker payloads in reverse settlement order. No
 production symbol or actor transition changed.
 
-The PRD's T02 requirement for a **move-only job** is not proved by this FIFO
+The earlier PRD's T02 requirement for a **move-only job** is not proved by this FIFO
 fixture: `Box<str>` implements `Clone`, and the current FIFO bound rules out a
 non-`Clone` job. The full ownership equation must be revisited before claiming
 T02 complete; a test using a cloneable value cannot certify a move-only law.
@@ -83,6 +128,12 @@ assignment request besides the similarly clone-bound keyed pool. A future
 move-only witness therefore needs a changed post-acceptance return/retry law
 or a distinct lawful producer; merely changing the `Job: Clone` bound would
 make the existing transition impossible. No such policy change was made here.
+
+The revised T02 preserves FIFO's existing clone-and-retry law. It requires a
+rejected delivery to return the pool's exact original job and affine
+completion authority without another settlement-time clone. The pointer
+witness proves this Behavior-side distinction; the real close-after-resolution
+runtime trace remains open for Bombay integration.
 
 The remaining work is to establish the exact pre-commit versus post-commit
 ownership equation with a production host witness, then cover PRD T10–T21 and
