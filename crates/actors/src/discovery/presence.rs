@@ -11,7 +11,6 @@ use behavior::{
 use thiserror::Error;
 
 use crate::DeliveryRoute;
-use crate::send_product::send_product;
 use crate::{ScheduleAfter, TimedEvent, TimerGeneration, TimerId};
 
 /// Version within one participant's presence-evidence stream.
@@ -180,14 +179,13 @@ pub enum PresenceMessage<K, Route> {
     },
 }
 
-send_product! {
-    /// Named effect lanes emitted by [`Presence`].
-    pub struct PresenceSends<ReplySends, Schedules> {
-        /// Transition and query facts.
-        pub replies: ReplySends,
-        /// Relative expiry requests.
-        pub schedules: Schedules,
-    }
+/// Named effect lanes emitted by [`Presence`].
+#[derive(behavior_macros::SendProduct)]
+pub struct PresenceSends<ReplySends, Schedules> {
+    /// Transition and query facts.
+    pub replies: ReplySends,
+    /// Relative expiry requests.
+    pub schedules: Schedules,
 }
 
 struct Record<K, Route> {

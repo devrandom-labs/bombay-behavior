@@ -10,7 +10,6 @@ use behavior::{
 };
 use thiserror::Error;
 
-use crate::send_product::send_product;
 use crate::{DeliveryRoute, ScheduleAfter, TimedEvent, TimerGeneration, TimerId};
 
 /// Complete exclusive lease phase.
@@ -168,14 +167,13 @@ pub enum LeaseMessage<K, Route> {
     },
 }
 
-send_product! {
-    /// Named effect lanes emitted by [`Lease`].
-    pub struct LeaseSends<OutcomeSends, Schedules> {
-        /// Lease facts.
-        pub outcomes: OutcomeSends,
-        /// Relative expiry requests.
-        pub schedules: Schedules,
-    }
+/// Named effect lanes emitted by [`Lease`].
+#[derive(behavior_macros::SendProduct)]
+pub struct LeaseSends<OutcomeSends, Schedules> {
+    /// Lease facts.
+    pub outcomes: OutcomeSends,
+    /// Relative expiry requests.
+    pub schedules: Schedules,
 }
 
 /// Exclusive expiring ownership behavior.

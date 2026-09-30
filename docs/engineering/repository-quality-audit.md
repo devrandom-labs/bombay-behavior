@@ -1093,6 +1093,78 @@ contracts were cross-checked. Disposition: `pass` for this focused projection
 and visibility stage, pending its full gate. The wider A11 one-implementation
 derivation remains open.
 
+Clean `24fe931` Nix gate: all ten active aarch64-darwin checks passed,
+including the optimized Nextest campaign (841/841). The four macro fixture
+checks took about three minutes each under the shared fixture lock; all passed.
+
+Next A11 consolidation hypothesis, before implementation: an authored generic
+named send product and a `#[behavior]` generated named product have the same
+field-order, empty/append, logical-host, interpretation, source-custody, and
+settlement-status equations. Their Rust settlement representations differ:
+the authored product is generic over each lane and reuses its own struct with
+settled lane parameters, while the behavior attribute generates a separate
+nominal settlement struct for concrete authored lane types. A shared
+procedural generator should own the traversal equations, with that
+representation difference explicit. The caller syntax for an authored
+product is a normal named generic struct with a `SendProduct` derive; its
+public fields, generic parameters, settlement associated type, and ordered
+`Actions` remain identical. The first focused regression will use a real
+two-lane effect fixture and fail on the old code because this derive does not
+exist; it must then prove accepted, retained, closed, and corrupt suffix
+custody. Two unrelated existing products, `DeliveryOutcomes` and `LeaseSends`,
+and both `SendLayer` orders must pass before any catalogue migration. The
+lower-order contracts are the current `send_product!` equations, the
+generated product just proved above, `ActionItem` settlement products, and
+the recursive logical-host proof. No new actor state, event, effect lane,
+runtime port, or no-op caller input is authorized. Pre-edit aggregate drift:
+all actor control sums, subordinate alternatives, transition branches,
+product fields, and public spellings remain fixed. The candidate may add one
+proc-macro entry point while deleting the 273-line declarative derivation
+after proof; source-line reduction is diagnostic, not acceptance. Each lane's
+owned settlement and declared order remain the only future-needed values.
+The residue scan finds no proposed arrival history, repeated cause, false
+cardinality, nested transition authority, semantic boolean, or positional
+caller syntax. Cross-checks: actor transition algebra, A11 equation table,
+source settlement law, wrapper law, and normalized routing/timing contracts.
+Disposition: `pass` for the hypothesis only; implementation must reopen if a
+third representation or caller placeholder is required.
+
+The pre-edit `SourceAdmissionSends<ProxySends, AssignmentSends>` caller now
+uses the proposed derive on two real source-action lanes. It checks the exact
+generic settlement type; empty/append; accepted first admission; closed
+second admission with complete residual custody; corrupt first result and
+unattempted second suffix; and rejected-result retention. On the old code,
+its first diagnostic is E0433 for the absent `behavior_macros::SendProduct`;
+the remaining seven diagnostics are the missing trait implementations that
+this derive is meant to produce. No unrelated interpreter or route mismatch
+appears in the red log.
+
+Retained A11 derivation batch: `SendProduct` now derives the named generic
+product contract for authored lanes. The two unrelated actor products
+`DeliveryOutcomes` and `LeaseSends` passed the 167 actor unit tests in debug
+and optimized builds. The source-custody fixture passed eight tests, including
+both orders around `SendLayer`; the generated-product fixture passed nineteen.
+All eleven former `send_product!` declarations compile through the derive,
+and workspace `--all-targets` tests passed. The 273-line declarative macro
+and its module were deleted. One procedural settlement generator now owns
+classification and ordered source custody for both authored and generated
+products; the interpreter traversal is shared as well. The remaining duplicate
+effect-product trait generation between the two procedural paths must be
+consolidated before A11 closes.
+
+Aggregate-drift checkpoint for this retained derivation batch: actor control
+states, subordinate alternatives, transition branches, effect lanes, and
+public product spellings are unchanged (zero added or removed). Eleven macro
+invocations became eleven ordinary named structs with one derive each; one
+actor source module was removed. Every surviving field owns the same current
+lane value needed for ordered interpretation and exact settlement return.
+The residue scan found no new arrival-history state, duplicated cause, false
+cardinality, nested transition authority, semantic boolean, or positional
+consumer syntax. Cross-checks: the actor transition algebra, A11 equation
+table, source-settlement law, both wrapper orders, routing and timing
+contracts. Disposition: `pass` for the already-proven representation migration;
+the remaining common trait generation is still open.
+
 ### A12/A13 least-loaded membership owner, before edit
 
 Classification: deliberate Bombay routing policy and derived Rust ownership

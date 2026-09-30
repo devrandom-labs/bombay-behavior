@@ -8,7 +8,6 @@ use behavior::{
 };
 
 use crate::DeliveryRoute;
-use crate::send_product::send_product;
 
 /// Complete observable [`WorkQueue`] state.
 pub struct WorkQueueState<WorkerRoute> {
@@ -82,14 +81,13 @@ pub enum WorkQueueMessage<T, WorkerRoute, ReplyRoute> {
     },
 }
 
-send_product! {
-    /// Named effect lanes emitted by [`WorkQueue`].
-    pub struct WorkQueueSends<Assignments, OutcomeSends> {
-        /// Work assigned to workers.
-        pub assignments: Assignments,
-        /// Submission admission and dispatch facts.
-        pub outcomes: OutcomeSends,
-    }
+/// Named effect lanes emitted by [`WorkQueue`].
+#[derive(behavior_macros::SendProduct)]
+pub struct WorkQueueSends<Assignments, OutcomeSends> {
+    /// Work assigned to workers.
+    pub assignments: Assignments,
+    /// Submission admission and dispatch facts.
+    pub outcomes: OutcomeSends,
 }
 
 struct Waiting<T, Route> {

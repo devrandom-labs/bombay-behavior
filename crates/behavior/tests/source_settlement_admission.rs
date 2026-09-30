@@ -1,8 +1,8 @@
 use behavior::{
-    ActionItem, ActionItemResult, ActionSettlement, BehaviorActed, Creations, EventIngress,
-    InterpretItem, InterpretSends, Interpretation, InterpreterFault, ItemSettlement, MailAddr,
-    Never, SendLayer, SettledItem, SourceAction, SourceActions, SourceAdmission, SourceCustody,
-    SourceSettlementCustody, Step,
+    ActionItem, ActionItemResult, ActionSettlement, BehaviorActed, ClassifySettlement, Creations,
+    EventIngress, InterpretItem, InterpretSends, Interpretation, InterpreterFault, ItemSettlement,
+    MailAddr, Never, SendEffects, SendLayer, SettledItem, SettlementStatus, SourceAction,
+    SourceActions, SourceAdmission, SourceCustody, SourceSettlementCustody, Step,
 };
 use core::future::Future;
 use std::collections::VecDeque;
@@ -76,6 +76,12 @@ impl EventIngress<PoolOwner, ActionItemResult<AssignmentDelivery>> for SystemEve
 }
 
 struct Generated;
+
+#[derive(behavior_macros::SendProduct)]
+struct SourceAdmissionSends<ProxySends, AssignmentSends> {
+    proxy: ProxySends,
+    assignment: AssignmentSends,
+}
 
 #[behavior::behavior(
     addr = MailAddr,
@@ -280,6 +286,179 @@ where
         behavior::SendInput::<Item, behavior::Own>::emit(&mut actions, item);
     }
     actions
+}
+
+#[tokio::test]
+async fn authored_named_product_preserves_source_admission_and_corrupt_suffix() {
+    type Sends =
+        SourceAdmissionSends<SourceActions<ProxyOperation>, SourceActions<AssignmentDelivery>>;
+    type Settled = SourceAdmissionSends<
+        behavior::SourceSettlements<ProxyOperation>,
+        behavior::SourceSettlements<AssignmentDelivery>,
+    >;
+    type Actual = <Sends as behavior::SendSettlements>::Settlements;
+    let _: core::marker::PhantomData<Settled> = core::marker::PhantomData::<Actual>;
+
+    let mut sends = Sends::empty();
+    sends.append(Sends {
+        proxy: source_actions([proxy(1, "accepted")]),
+        assignment: source_actions([assignment(2, "closed")]),
+    });
+    let mut runtime = Runtime::new(vec![AttemptPlan::Accept], vec![AttemptPlan::Accept]);
+    let Interpretation::Complete(settled) = <Sends as InterpretSends<
+        Runtime,
+        SystemEvent,
+        behavior::Here,
+    >>::interpret(sends, &mut runtime)
+    .await
+    else {
+        panic!("both authored lanes must settle");
+    };
+    assert_eq!(settled.settlement_status(), SettlementStatus::Accepted);
+    let mut host = Host::new(AdmissionWindow::One);
+    let SourceCustody::Admitted(settled) = settled.offer_next_to_source(&mut host).await else {
+        panic!("the first source result must be admitted");
+    };
+    let SourceCustody::Closed(residual) = settled.offer_next_to_source(&mut host).await else {
+        panic!("closed admission must return the second result");
+    };
+    assert_eq!(host.trace, [AdmissionTrace::Proxy(OperationTicket(1))]);
+    assert!(residual.proxy.into_inputs().is_empty());
+    assert!(matches!(
+        residual.assignment.into_inputs().as_slice(),
+        [SettledItem::Attempted(ItemSettlement::Accepted(
+            AssignmentToken(2)
+        ))]
+    ));
+
+    let sends = Sends {
+        proxy: source_actions([proxy(3, "corrupt")]),
+        assignment: source_actions([assignment(4, "untouched")]),
+    };
+    let mut runtime = Runtime::new(vec![AttemptPlan::Corrupt], vec![AttemptPlan::Accept]);
+    let Interpretation::Corrupt(settled) = <Sends as InterpretSends<
+        Runtime,
+        SystemEvent,
+        behavior::Here,
+    >>::interpret(sends, &mut runtime)
+    .await
+    else {
+        panic!("corruption must retain the untouched assignment suffix");
+    };
+    assert_eq!(settled.settlement_status(), SettlementStatus::Corrupt);
+    assert_eq!(runtime.assignments.len(), 1);
+    let mut host = Host::new(AdmissionWindow::Closed);
+    let SourceCustody::Closed(residual) = settled.offer_next_to_source(&mut host).await else {
+        panic!("closed admission must return the complete corrupt product");
+    };
+    assert!(host.trace.is_empty());
+    assert!(matches!(
+        residual.proxy.into_inputs().as_slice(),
+        [SettledItem::Attempted(ItemSettlement::Corrupt { item, .. })]
+            if item.ticket == OperationTicket(3) && item.command == "corrupt"
+    ));
+    assert!(matches!(
+        residual.assignment.into_inputs().as_slice(),
+        [SettledItem::Unattempted(item)]
+            if item.token == AssignmentToken(4) && item.payload == "untouched"
+    ));
+
+    let retained = SourceAdmissionSends {
+        proxy: vec![SettledItem::Attempted(ItemSettlement::Rejected {
+            item: proxy(5, "retained"),
+            reason: ProxyRejection::Closed,
+        })],
+        assignment: Vec::<ActionItemResult<AssignmentDelivery>>::new(),
+    };
+    assert_eq!(retained.settlement_status(), SettlementStatus::Rejected);
+    let mut host = Host::new(AdmissionWindow::Unlimited);
+    let SourceCustody::Retained(residual) =
+        SourceSettlementCustody::<Host, SystemEvent>::offer_next_to_source(retained, &mut host)
+            .await
+    else {
+        panic!("a rejected source result must remain retained");
+    };
+    assert!(host.trace.is_empty());
+    assert!(matches!(
+        residual.proxy.as_slice(),
+        [SettledItem::Attempted(ItemSettlement::Rejected { item, .. })]
+            if item.ticket == OperationTicket(5) && item.command == "retained"
+    ));
+    assert!(residual.assignment.is_empty());
+}
+
+#[tokio::test]
+async fn authored_product_preserves_custody_in_both_send_layer_orders() {
+    type Product =
+        SourceAdmissionSends<SourceActions<ProxyOperation>, SourceActions<AssignmentDelivery>>;
+
+    let product = Product {
+        proxy: source_actions([proxy(1, "first")]),
+        assignment: source_actions([assignment(2, "second")]),
+    };
+    let sends = SendLayer::new(source_actions([assignment(3, "outer")]), product);
+    let mut runtime = Runtime::new(vec![AttemptPlan::Accept], vec![AttemptPlan::Accept; 2]);
+    let Interpretation::Complete(mut settled) =
+        <SendLayer<SourceActions<AssignmentDelivery>, Product> as InterpretSends<
+            Runtime,
+            SystemEvent,
+            behavior::Here,
+        >>::interpret(sends, &mut runtime)
+        .await
+    else {
+        panic!("the nested authored product must settle");
+    };
+    let mut host = Host::new(AdmissionWindow::Unlimited);
+    for expected in [
+        AdmissionTrace::Proxy(OperationTicket(1)),
+        AdmissionTrace::Assignment(AssignmentToken(2)),
+        AdmissionTrace::Assignment(AssignmentToken(3)),
+    ] {
+        let SourceCustody::Admitted(next) = settled.offer_next_to_source(&mut host).await else {
+            panic!("each nested source result must transfer once");
+        };
+        settled = next;
+        assert_eq!(host.trace.last(), Some(&expected));
+    }
+    assert!(matches!(
+        settled.offer_next_to_source(&mut host).await,
+        SourceCustody::Exhausted(_)
+    ));
+    assert_eq!(host.trace.len(), 3);
+
+    let product = Product {
+        proxy: source_actions([proxy(5, "second")]),
+        assignment: source_actions([assignment(6, "third")]),
+    };
+    let sends = SendLayer::new(product, source_actions([proxy(4, "inner")]));
+    let mut runtime = Runtime::new(vec![AttemptPlan::Accept; 2], vec![AttemptPlan::Accept]);
+    let Interpretation::Complete(mut settled) =
+        <SendLayer<Product, SourceActions<ProxyOperation>> as InterpretSends<
+            Runtime,
+            SystemEvent,
+            behavior::Here,
+        >>::interpret(sends, &mut runtime)
+        .await
+    else {
+        panic!("the outer authored product must settle");
+    };
+    let mut host = Host::new(AdmissionWindow::Unlimited);
+    for expected in [
+        AdmissionTrace::Proxy(OperationTicket(4)),
+        AdmissionTrace::Proxy(OperationTicket(5)),
+        AdmissionTrace::Assignment(AssignmentToken(6)),
+    ] {
+        let SourceCustody::Admitted(next) = settled.offer_next_to_source(&mut host).await else {
+            panic!("each outer source result must transfer once");
+        };
+        settled = next;
+        assert_eq!(host.trace.last(), Some(&expected));
+    }
+    assert!(matches!(
+        settled.offer_next_to_source(&mut host).await,
+        SourceCustody::Exhausted(_)
+    ));
+    assert_eq!(host.trace.len(), 3);
 }
 
 #[tokio::test]

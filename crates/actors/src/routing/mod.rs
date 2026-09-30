@@ -4,18 +4,15 @@
 //! values. Endpoint resolution, mailbox admission, delivery, and physical
 //! backpressure remain runtime capabilities.
 
-use crate::send_product::send_product;
-
-send_product! {
-    /// Ordered target deliveries followed by ordered factual outcomes.
-    ///
-    /// Routing templates use this product when these are their complete and
-    /// semantically distinct effect lanes. Interpretation always exhausts
-    /// `deliveries` before beginning `outcomes`.
-    pub struct DeliveryOutcomes<Deliveries, OutcomeSends> {
-        pub deliveries: Deliveries,
-        pub outcomes: OutcomeSends,
-    }
+/// Ordered target deliveries followed by ordered factual outcomes.
+///
+/// Routing templates use this product when these are their complete and
+/// semantically distinct effect lanes. Interpretation always exhausts
+/// `deliveries` before beginning `outcomes`.
+#[derive(behavior_macros::SendProduct)]
+pub struct DeliveryOutcomes<Deliveries, OutcomeSends> {
+    pub deliveries: Deliveries,
+    pub outcomes: OutcomeSends,
 }
 
 mod acknowledgements;

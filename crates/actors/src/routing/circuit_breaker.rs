@@ -10,7 +10,6 @@ use behavior::{
 };
 use thiserror::Error;
 
-use crate::send_product::send_product;
 use crate::{DeliveryRoute, ScheduleAfter, TimedEvent, TimerGeneration, TimerId};
 
 /// Identity of one admitted operation.
@@ -132,14 +131,13 @@ pub enum BreakerMessage<Route> {
     Failed { attempt: BreakerAttempt },
 }
 
-send_product! {
-    /// Named output lanes for circuit facts and reset scheduling.
-    pub struct BreakerSends<ReplySends, Schedules> {
-        /// Admission and completion facts.
-        pub replies: ReplySends,
-        /// Relative reset requests interpreted by Bombay Timers.
-        pub schedules: Schedules,
-    }
+/// Named output lanes for circuit facts and reset scheduling.
+#[derive(behavior_macros::SendProduct)]
+pub struct BreakerSends<ReplySends, Schedules> {
+    /// Admission and completion facts.
+    pub replies: ReplySends,
+    /// Relative reset requests interpreted by Bombay Timers.
+    pub schedules: Schedules,
 }
 
 type BreakerEvent<A, Route> = TimedEvent<User<A, BreakerMessage<Route>>>;

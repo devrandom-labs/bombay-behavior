@@ -1,6 +1,5 @@
 //! Exact terminal-outcome propagation from a statically selected actor.
 
-use crate::send_product::send_product;
 use crate::{
     ChildStopped, ObserveChild, ObservePeer, PeerStopped, ReportTerminalOutcome, TerminalOutcome,
 };
@@ -186,12 +185,11 @@ impl<E: core::fmt::Debug, Report> core::fmt::Debug for TerminationPropagationErr
     }
 }
 
-send_product! {
-    /// Named effects owned by [`PropagateTermination`].
-    pub struct TerminalPropagationSends<Observations, Reports> {
-        pub observations: Observations,
-        pub reports: Reports,
-    }
+/// Named effects owned by [`PropagateTermination`].
+#[derive(behavior_macros::SendProduct)]
+pub struct TerminalPropagationSends<Observations, Reports> {
+    pub observations: Observations,
+    pub reports: Reports,
 }
 
 type PropagationSends<A, Request> = TerminalPropagationSends<

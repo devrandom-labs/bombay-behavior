@@ -10,9 +10,9 @@ use quote::{format_ident, quote};
 use syn::parse::{Parse, ParseStream};
 use syn::visit::Visit;
 use syn::{
-    Error, FnArg, GenericArgument, GenericParam, Generics, Ident, ImplItem, ItemImpl,
-    PathArguments, Result, ReturnType, Token, Type, Visibility, braced, parse_macro_input,
-    parse_quote,
+    Data, DeriveInput, Error, Fields, FnArg, GenericArgument, GenericParam, Generics, Ident,
+    ImplItem, ItemImpl, PathArguments, Result, ReturnType, Token, Type, Visibility, braced,
+    parse_macro_input, parse_quote,
 };
 
 fn crate_path(found: FoundCrate) -> TokenStream2 {
@@ -530,6 +530,408 @@ fn product_generics(item: &ItemImpl, fields: &[NamedField]) -> Generics {
     generics
 }
 
+fn named_send_interpretation(
+    fields: &[&Ident],
+    field_types: &[&Type],
+    settlements: &Ident,
+    behavior: &TokenStream2,
+) -> TokenStream2 {
+    let mut interpretation = quote! {
+        #behavior::Interpretation::Complete(#settlements {
+            #(#fields: #fields,)*
+        })
+    };
+    for index in (0..fields.len()).rev() {
+        let field = fields[index];
+        let field_ty = field_types[index];
+        let prior_fields = &fields[..index];
+        let later_fields = &fields[index + 1..];
+        let later_types = &field_types[index + 1..];
+        let on_complete = interpretation;
+        interpretation = quote! {
+            match <#field_ty as #behavior::InterpretSends<
+                __BombayInterpreter,
+                __BombayRootEvent,
+                __BombayPath,
+            >>::interpret(self.#field, interpreter).await {
+                #behavior::Interpretation::Complete(#field) => #on_complete,
+                #behavior::Interpretation::Corrupt(#field) => {
+                    #behavior::Interpretation::Corrupt(#settlements {
+                        #(#prior_fields: #prior_fields,)*
+                        #field: #field,
+                        #(
+                            #later_fields: <#later_types as #behavior::SendSettlements>::unattempted(
+                                self.#later_fields,
+                            ),
+                        )*
+                    })
+                }
+            }
+        };
+    }
+    interpretation
+}
+
+fn named_send_custody(
+    fields: &[&Ident],
+    settlements: &Ident,
+    behavior: &TokenStream2,
+) -> Vec<TokenStream2> {
+    fields
+        .iter()
+        .enumerate()
+        .map(|(index, field)| {
+            let prior_fields = &fields[..index];
+            let later_fields = &fields[index + 1..];
+            quote! {
+                let #field = match #behavior::SourceSettlementCustody::offer_next_to_source(
+                    self.#field,
+                    host,
+                ).await {
+                    #behavior::SourceCustody::Exhausted(#field) => #field,
+                    #behavior::SourceCustody::Retained(#field) => {
+                        terminal_custody = __BombayTerminalCustody::Required;
+                        #field
+                    }
+                    #behavior::SourceCustody::Admitted(#field) => {
+                        return #behavior::SourceCustody::Admitted(#settlements {
+                            #(#prior_fields: #prior_fields,)*
+                            #field: #field,
+                            #(#later_fields: self.#later_fields,)*
+                        });
+                    }
+                    #behavior::SourceCustody::Closed(#field) => {
+                        return #behavior::SourceCustody::Closed(#settlements {
+                            #(#prior_fields: #prior_fields,)*
+                            #field: #field,
+                            #(#later_fields: self.#later_fields,)*
+                        });
+                    }
+                };
+            }
+        })
+        .collect()
+}
+
+fn named_settlement_contract(
+    name: &Ident,
+    settlement_type: &TokenStream2,
+    generics: &Generics,
+    fields: &[&Ident],
+    field_types: &[Type],
+    behavior: &TokenStream2,
+) -> TokenStream2 {
+    let mut classification_generics = generics.clone();
+    let mut custody_generics = generics.clone();
+    custody_generics
+        .params
+        .push(parse_quote!(__BombaySettlementHost));
+    custody_generics
+        .params
+        .push(parse_quote!(__BombaySettlementEvent));
+    custody_generics
+        .make_where_clause()
+        .predicates
+        .push(parse_quote!(__BombaySettlementHost: ::core::marker::Send));
+    let mut combined_status = quote!(#behavior::SettlementStatus::Accepted);
+    for (field, field_ty) in fields.iter().zip(field_types) {
+        classification_generics
+            .make_where_clause()
+            .predicates
+            .push(parse_quote!(#field_ty: #behavior::ClassifySettlement));
+        custody_generics
+            .make_where_clause()
+            .predicates
+            .push(parse_quote!(
+                #field_ty: #behavior::SourceSettlementCustody<
+                    __BombaySettlementHost,
+                    __BombaySettlementEvent,
+                > + ::core::marker::Send
+            ));
+        combined_status = quote! {
+            (#combined_status).combine(
+                #behavior::ClassifySettlement::settlement_status(&self.#field)
+            )
+        };
+    }
+    let (classification_impl, _, classification_where) = classification_generics.split_for_impl();
+    let (custody_impl, _, custody_where) = custody_generics.split_for_impl();
+    let custody_fields = named_send_custody(fields, name, behavior);
+
+    quote! {
+        impl #classification_impl #behavior::ClassifySettlement
+            for #settlement_type #classification_where
+        {
+            fn settlement_status(&self) -> #behavior::SettlementStatus {
+                #combined_status
+            }
+        }
+
+        impl #custody_impl
+            #behavior::SourceSettlementCustody<
+                __BombaySettlementHost,
+                __BombaySettlementEvent,
+            > for #settlement_type #custody_where
+        {
+            fn offer_next_to_source(
+                self,
+                host: &mut __BombaySettlementHost,
+            ) -> impl ::core::future::Future<
+                Output = #behavior::SourceCustody<Self>,
+            > + ::core::marker::Send {
+                async move {
+                    enum __BombayTerminalCustody {
+                        Unrequired,
+                        Required,
+                    }
+                    let mut terminal_custody = __BombayTerminalCustody::Unrequired;
+                    #(#custody_fields)*
+                    let settlements = #name {
+                        #(#fields: #fields,)*
+                    };
+                    match terminal_custody {
+                        __BombayTerminalCustody::Unrequired => {
+                            #behavior::SourceCustody::Exhausted(settlements)
+                        }
+                        __BombayTerminalCustody::Required => {
+                            #behavior::SourceCustody::Retained(settlements)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[allow(
+    clippy::too_many_lines,
+    reason = "each generated contract is one facet of the same named send product"
+)]
+fn derive_send_product_contract(input: DeriveInput) -> Result<TokenStream2> {
+    let behavior = behavior_crate()?;
+    let name = input.ident;
+    let generics = input.generics;
+    let Data::Struct(data) = input.data else {
+        return Err(Error::new_spanned(
+            name,
+            "send products must be named structs",
+        ));
+    };
+    let Fields::Named(fields) = data.fields else {
+        return Err(Error::new_spanned(
+            name,
+            "send products need named effect lanes",
+        ));
+    };
+    if fields.named.is_empty() {
+        return Err(Error::new_spanned(
+            name,
+            "empty send products must be omitted",
+        ));
+    }
+    let mut parameters = Vec::new();
+    for parameter in &generics.params {
+        let GenericParam::Type(parameter) = parameter else {
+            return Err(Error::new_spanned(
+                parameter,
+                "generic send products use only lane type parameters",
+            ));
+        };
+        parameters.push(&parameter.ident);
+    }
+    let mut field_names = Vec::new();
+    let mut field_types = Vec::new();
+    for field in &fields.named {
+        let Some(field_name) = field.ident.as_ref() else {
+            return Err(Error::new_spanned(field, "send lanes must be named"));
+        };
+        let Type::Path(path) = &field.ty else {
+            return Err(Error::new_spanned(
+                &field.ty,
+                "each send lane must be one product type parameter",
+            ));
+        };
+        let Some(segment) = path.path.get_ident() else {
+            return Err(Error::new_spanned(
+                &field.ty,
+                "each send lane must be one product type parameter",
+            ));
+        };
+        if path.qself.is_some() || !parameters.iter().any(|parameter| *parameter == segment) {
+            return Err(Error::new_spanned(
+                &field.ty,
+                "each send lane must be one product type parameter",
+            ));
+        }
+        field_names.push(field_name);
+        field_types.push(&field.ty);
+    }
+    let (_, type_generics, _) = generics.split_for_impl();
+    let mut effects_generics = generics.clone();
+    let mut logical_generics = generics.clone();
+    let mut settlement_generics = generics.clone();
+    let mut lawful_generics = generics.clone();
+    lawful_generics.params.push(parse_quote!(__BombayEvent));
+    let mut interpretation_generics = generics.clone();
+    interpretation_generics
+        .params
+        .push(parse_quote!(__BombayInterpreter));
+    interpretation_generics
+        .params
+        .push(parse_quote!(__BombayRootEvent));
+    interpretation_generics
+        .params
+        .push(parse_quote!(__BombayPath));
+    interpretation_generics
+        .make_where_clause()
+        .predicates
+        .push(parse_quote!(__BombayInterpreter: ::core::marker::Send));
+    interpretation_generics
+        .make_where_clause()
+        .predicates
+        .push(parse_quote!(#name #type_generics: ::core::marker::Send));
+    let mut logical_protocols = quote!(#behavior::NoBirthProtocols);
+    for field_ty in &field_types {
+        effects_generics
+            .make_where_clause()
+            .predicates
+            .push(parse_quote!(
+                #field_ty: #behavior::SendEffects
+            ));
+        logical_generics
+            .make_where_clause()
+            .predicates
+            .push(parse_quote!(
+                #field_ty: #behavior::LogicalDeliveryProtocols
+            ));
+        settlement_generics
+            .make_where_clause()
+            .predicates
+            .push(parse_quote!(
+                #field_ty: #behavior::SendSettlements
+            ));
+        lawful_generics
+            .make_where_clause()
+            .predicates
+            .push(parse_quote!(
+                #field_ty: #behavior::SendEffects + #behavior::SendsFor<__BombayEvent>
+            ));
+        interpretation_generics
+            .make_where_clause()
+            .predicates
+            .push(parse_quote!(
+                #field_ty: #behavior::InterpretSends<
+                    __BombayInterpreter,
+                    __BombayRootEvent,
+                    __BombayPath,
+                >
+            ));
+        logical_protocols = quote!(
+            <#logical_protocols as #behavior::BirthProtocolProduct>::Append<
+                <#field_ty as #behavior::LogicalDeliveryProtocols>::Protocols
+            >
+        );
+    }
+    let (effects_impl, _, effects_where) = effects_generics.split_for_impl();
+    let (logical_impl, _, logical_where) = logical_generics.split_for_impl();
+    let (settlement_impl, _, settlement_where) = settlement_generics.split_for_impl();
+    let (lawful_impl, _, lawful_where) = lawful_generics.split_for_impl();
+    let (interpretation_impl, _, interpretation_where) = interpretation_generics.split_for_impl();
+    let settled_parameters = parameters
+        .iter()
+        .map(|parameter| quote!(<#parameter as #behavior::SendSettlements>::Settlements));
+    let interpretation = named_send_interpretation(&field_names, &field_types, &name, &behavior);
+    let settlement_type = quote!(#name #type_generics);
+    let settled_fields = field_types
+        .iter()
+        .map(|field_ty| (*field_ty).clone())
+        .collect::<Vec<_>>();
+    let settlement_contract = named_settlement_contract(
+        &name,
+        &settlement_type,
+        &generics,
+        &field_names,
+        &settled_fields,
+        &behavior,
+    );
+
+    Ok(quote! {
+        impl #effects_impl #behavior::SendEffects for #name #type_generics #effects_where {
+            fn empty() -> Self {
+                Self {
+                    #(#field_names: <#field_types as #behavior::SendEffects>::empty(),)*
+                }
+            }
+
+            fn append(&mut self, other: Self) {
+                #(
+                    <#field_types as #behavior::SendEffects>::append(
+                        &mut self.#field_names,
+                        other.#field_names,
+                    );
+                )*
+            }
+        }
+
+        impl #logical_impl #behavior::LogicalDeliveryProtocols
+            for #name #type_generics #logical_where
+        {
+            type Protocols = #logical_protocols;
+        }
+
+        impl #lawful_impl #behavior::SendsFor<__BombayEvent>
+            for #name #type_generics #lawful_where
+        {}
+
+        impl #settlement_impl #behavior::SendSettlements
+            for #name #type_generics #settlement_where
+        {
+            type Settlements = #name<#(#settled_parameters),*>;
+
+            fn unattempted(self) -> Self::Settlements {
+                #name {
+                    #(
+                        #field_names: <#field_types as #behavior::SendSettlements>::unattempted(
+                            self.#field_names,
+                        ),
+                    )*
+                }
+            }
+        }
+
+        #settlement_contract
+
+        impl #interpretation_impl
+            #behavior::InterpretSends<
+                __BombayInterpreter,
+                __BombayRootEvent,
+                __BombayPath,
+            > for #name #type_generics #interpretation_where
+        {
+            fn interpret(
+                self,
+                interpreter: &mut __BombayInterpreter,
+            ) -> impl ::core::future::Future<
+                Output = #behavior::Interpretation<Self::Settlements>,
+            > + ::core::marker::Send {
+                async move {
+                    #interpretation
+                }
+            }
+        }
+    })
+}
+
+/// Derive the ordered send and settlement contracts for a named generic
+/// product whose fields are its lane type parameters.
+#[proc_macro_derive(SendProduct)]
+pub fn derive_send_product(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    derive_send_product_contract(input)
+        .unwrap_or_else(Error::into_compile_error)
+        .into()
+}
+
 #[allow(
     clippy::too_many_lines,
     reason = "the generated nominal product keeps every structural trait implementation adjacent"
@@ -726,115 +1128,21 @@ fn generate_sends(
     }
     let (settlement_impl_generics, settlement_type_generics, settlement_where_clause) =
         settlement_generics.split_for_impl();
-    let mut classification_generics = settlement_generics.clone();
-    for field_ty in &field_types {
-        classification_generics
-            .make_where_clause()
-            .predicates
-            .push(parse_quote!(
-                <#field_ty as #behavior::SendSettlements>::Settlements:
-                    #behavior::ClassifySettlement
-            ));
-    }
-    let (classification_impl_generics, classification_type_generics, classification_where_clause) =
-        classification_generics.split_for_impl();
-    let mut custody_generics = settlement_generics.clone();
-    custody_generics
-        .params
-        .push(parse_quote!(__BombaySettlementHost));
-    custody_generics
-        .params
-        .push(parse_quote!(__BombaySettlementEvent));
-    custody_generics
-        .make_where_clause()
-        .predicates
-        .push(parse_quote!(__BombaySettlementHost: ::core::marker::Send));
-    for field_ty in &field_types {
-        custody_generics
-            .make_where_clause()
-            .predicates
-            .push(parse_quote!(
-                <#field_ty as #behavior::SendSettlements>::Settlements:
-                    #behavior::SourceSettlementCustody<
-                        __BombaySettlementHost,
-                        __BombaySettlementEvent,
-                    >
-                    + ::core::marker::Send
-            ));
-    }
-    let (custody_impl_generics, _, custody_where_clause) = custody_generics.split_for_impl();
-    let mut combined_status = quote!(#behavior::SettlementStatus::Accepted);
-    for field in &field_names {
-        combined_status = quote! {
-            (#combined_status).combine(
-                #behavior::ClassifySettlement::settlement_status(&self.#field)
-            )
-        };
-    }
-
-    let mut interpretation = quote! {
-        #behavior::Interpretation::Complete(#settlements_name {
-            #(#field_names: #field_names,)*
-        })
-    };
-    for index in (0..field_names.len()).rev() {
-        let field = field_names[index];
-        let field_ty = field_types[index];
-        let prior_fields = &field_names[..index];
-        let later_fields = &field_names[index + 1..];
-        let later_types = &field_types[index + 1..];
-        let on_complete = interpretation;
-        interpretation = quote! {
-            match <#field_ty as #behavior::InterpretSends<
-                __BombayInterpreter,
-                __BombayRootEvent,
-                __BombayPath,
-            >>::interpret(self.#field, interpreter).await {
-                #behavior::Interpretation::Complete(#field) => #on_complete,
-                #behavior::Interpretation::Corrupt(#field) => {
-                    #behavior::Interpretation::Corrupt(#settlements_name {
-                        #(#prior_fields: #prior_fields,)*
-                        #field: #field,
-                        #(
-                            #later_fields: <#later_types as #behavior::SendSettlements>::unattempted(
-                                self.#later_fields,
-                            ),
-                        )*
-                    })
-                }
-            }
-        };
-    }
-    let custody_fields = field_names.iter().enumerate().map(|(index, field)| {
-        let prior_fields = &field_names[..index];
-        let later_fields = &field_names[index + 1..];
-        quote! {
-            let #field = match #behavior::SourceSettlementCustody::offer_next_to_source(
-                self.#field,
-                host,
-            ).await {
-                #behavior::SourceCustody::Exhausted(#field) => #field,
-                #behavior::SourceCustody::Retained(#field) => {
-                    terminal_custody = __BombayTerminalCustody::Required;
-                    #field
-                }
-                #behavior::SourceCustody::Admitted(#field) => {
-                    return #behavior::SourceCustody::Admitted(#settlements_name {
-                        #(#prior_fields: #prior_fields,)*
-                        #field: #field,
-                        #(#later_fields: self.#later_fields,)*
-                    });
-                }
-                #behavior::SourceCustody::Closed(#field) => {
-                    return #behavior::SourceCustody::Closed(#settlements_name {
-                        #(#prior_fields: #prior_fields,)*
-                        #field: #field,
-                        #(#later_fields: self.#later_fields,)*
-                    });
-                }
-            };
-        }
-    });
+    let interpretation =
+        named_send_interpretation(&field_names, &field_types, &settlements_name, behavior);
+    let settlement_type = quote!(#settlements_name #settlement_type_generics);
+    let settled_fields = field_types
+        .iter()
+        .map(|field_ty| parse_quote!(<#field_ty as #behavior::SendSettlements>::Settlements))
+        .collect::<Vec<Type>>();
+    let settlement_contract = named_settlement_contract(
+        &settlements_name,
+        &settlement_type,
+        &settlement_generics,
+        &field_names,
+        &settled_fields,
+        behavior,
+    );
 
     let items = quote! {
         #(#visibility enum #lane_names {})*
@@ -849,48 +1157,7 @@ fn generate_sends(
             )*
         }
 
-        impl #classification_impl_generics #behavior::ClassifySettlement
-            for #settlements_name #classification_type_generics #classification_where_clause
-        {
-            fn settlement_status(&self) -> #behavior::SettlementStatus {
-                #combined_status
-            }
-        }
-
-        impl #custody_impl_generics
-            #behavior::SourceSettlementCustody<
-                __BombaySettlementHost,
-                __BombaySettlementEvent,
-            >
-            for #settlements_name #settlement_type_generics #custody_where_clause
-        {
-            fn offer_next_to_source(
-                self,
-                host: &mut __BombaySettlementHost,
-            ) -> impl ::core::future::Future<
-                Output = #behavior::SourceCustody<Self>,
-            > + ::core::marker::Send {
-                async move {
-                    enum __BombayTerminalCustody {
-                        Unrequired,
-                        Required,
-                    }
-                    let mut terminal_custody = __BombayTerminalCustody::Unrequired;
-                    #(#custody_fields)*
-                    let settlements = #settlements_name {
-                        #(#field_names: #field_names,)*
-                    };
-                    match terminal_custody {
-                        __BombayTerminalCustody::Unrequired => {
-                            #behavior::SourceCustody::Exhausted(settlements)
-                        }
-                        __BombayTerminalCustody::Required => {
-                            #behavior::SourceCustody::Retained(settlements)
-                        }
-                    }
-                }
-            }
-        }
+        #settlement_contract
 
         /// Fluent, statically routed send-lane methods for this behavior's
         /// generated action product.
