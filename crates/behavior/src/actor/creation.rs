@@ -174,6 +174,19 @@ impl<Item> Creations<Item> {
         Self { items: vec![item] }
     }
 
+    /// Consume a batch containing exactly one item.
+    ///
+    /// # Errors
+    /// Returns the complete ordered batch when it is empty or contains more
+    /// than one item.
+    pub fn into_one(self) -> Result<Item, Self> {
+        let one: Result<[Item; 1], Vec<Item>> = self.items.try_into();
+        match one {
+            Ok([item]) => Ok(item),
+            Err(items) => Err(Self { items }),
+        }
+    }
+
     #[must_use]
     pub fn and(mut self, item: Item) -> Self {
         self.items.push(item);

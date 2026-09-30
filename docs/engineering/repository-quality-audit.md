@@ -345,6 +345,39 @@ is recorded against a revision.
   recovery suite passes. Disposition: `pass` for this local simplification;
   A12 remains open for the complete family inventory and terminal custody.
 
+  **A12 exact-one creation batch, pre-edit law:** Actor research requires fresh
+  creation but does not prescribe a Rust batch API. Bombay's ordered
+  `Creations<Item>` is a derived effect product. A single-child aggregate may
+  consume exactly one result; if the batch has zero or multiple items, the
+  conversion must return the complete original batch in order. The intended
+  caller syntax is `creations.into_one()`, returning `Result<Item,
+  Creations<Item>>` without `Clone`. A focused external caller test will require
+  one move-only item to succeed and empty/two-item batches to return intact;
+  the prior API fails that test because it has no such operation. The existing
+  lower-order value is the privately owned `Vec<Item>` in `Creations`; its
+  exact-one array conversion already appears twice in StableProxy, while
+  DynamicSupervisor manually checks length then has an unreachable empty
+  branch. The design stage adds only the batch operation and its focused test.
+  Separate migration stages will apply that proven operation to those two
+  aggregates, preserving their current `CreationSettlement` outcomes and
+  interpreter requirements. Before editing, the core batch has no state sum;
+  StableProxy has eight root states and six modules, DynamicSupervisor has two
+  root availability states, fourteen entry phases, and eight modules. No new
+  actor state, effect lane, trait bound, interpreter capability, or type is
+  proposed. The public batch method count grows by one in the design stage;
+  branch and line measurements follow each retained stage.
+  The external caller initially failed with three `E0599` diagnostics at the
+  intended `into_one` calls. After the core method was added, the focused
+  Nix-pinned test passed for one, zero, and two move-only workers. The design
+  stage adds 13 production source lines and 22 net test lines; it changes no
+  aggregate state, subordinate alternative, transition branch, module, or
+  interpreter path. On failure, the original `Vec<Item>` is returned inside
+  the same ordered `Creations` value; there is no clone, dropped item, arrival
+  history, repeated cause, false cardinality, nested authority, semantic
+  boolean, or positional caller syntax. The actor transition and retained-core
+  creation laws were cross-checked. Disposition: `pass` for the batch API;
+  aggregate migrations and their separate checkpoints remain open.
+
   **A12 StableProxy root values, read-only review:** the one control-state sum
   remains eight alternatives in six modules and 5,076 production lines. The
   retained values below are used by a later decision or returned as terminal

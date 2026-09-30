@@ -1,7 +1,8 @@
 use behavior::{
     Address, Behavior, BehaviorActed, ChildCreationOutcome, ChildCreationSettled, ChildHead,
-    CreateChild, CreationSequence, EndpointAddress, EventLayer, Here, InjectEvent, ItemSettlement,
-    Never, NoBirths, NoSends, Protocol, RecoverEvent, RoutedCreation, SettledItem, User, UserEvent,
+    CreateChild, CreationSequence, Creations, EndpointAddress, EventLayer, Here, InjectEvent,
+    ItemSettlement, Never, NoBirths, NoSends, Protocol, RecoverEvent, RoutedCreation, SettledItem,
+    User, UserEvent,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -101,4 +102,25 @@ fn worker_definition_is_not_cloneable() {
     fn requires_owned(_: Worker) {}
 
     requires_owned(Worker(17));
+}
+
+#[test]
+fn exact_one_creation_batch_returns_every_move_only_item_on_mismatch() {
+    let one = Creations::one(Worker(3));
+    assert_eq!(one.into_one().expect("one item is accepted"), Worker(3));
+
+    let empty = Creations::<Worker>::empty()
+        .into_one()
+        .expect_err("an empty batch is returned");
+    assert!(empty.is_empty());
+
+    let pair = Creations::one(Worker(5)).and(Worker(8));
+    let returned = pair.into_one().expect_err("both items are returned");
+    assert_eq!(
+        returned
+            .into_iter()
+            .map(|worker| worker.0)
+            .collect::<Vec<_>>(),
+        vec![5, 8]
+    );
 }
