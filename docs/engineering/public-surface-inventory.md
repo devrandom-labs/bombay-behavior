@@ -218,8 +218,40 @@ The table identifies implementor *roles*, not proof that every spelling should
 stay public. In particular, the structural rows still need external compile
 witnesses before visibility can be reduced. `StashStatus` already has multiple
 real wrapper implementations, so treating it as a redundant one-implementation
-trait would be incorrect. The remaining A13 work includes caller diagnostics
-and a focused compile-cost comparison for any further bound change.
+trait would be incorrect. Any further bound change needs a new caller diagnostic
+and focused compile-cost comparison for that particular edit.
+
+## Canonical export ownership
+
+The crate roots are the canonical export lists. This table classifies their
+complete groups by the owner that justifies the public names; mixed groups
+are further split by the hidden-item and trait tables above. No public
+spelling is retained merely because a private associated type mentions it.
+
+| Crate-root export group | Public contract owner |
+|---|---|
+| Core `actor::addressing` | Application address, logical/exact recipient and delivery capabilities; exact-delivery admission belongs to the interpreter. |
+| Core `actor::creation` | Authored child roles and staged creation are application algebra; occurrence/birth products are generated structural proofs; establishment, creation settlement, and exact returned custody are interpreter ports. |
+| Core `effects::{actions,sending}` and `next` | `Actions`, typed send products, and next decisions are application algebra; `Interpret*`, settlement, and source-admission contracts are interpreter ports; product traversal and append proofs are structural. |
+| Core `transition` and `user_event` | `Protocol`, `Behavior`, `BehaviorLayer`, turns, and event ingress are application and wrapper contracts; event-path and logical-host projections are structural composition proofs. |
+| Actors `activation` and `atomic` | `Active` and aggregate constructors/outcomes are application contracts; exact assignment, proxy, worker, observation, diagnostic, and preparation custody is the interpreter surface; event/request products and sealed completion/lifecycle traits are structural. The hidden-item table identifies every intentionally hidden member. |
+| Actors `composition`, `machine`, `shutdown`, `stash`, `termination`, and `watch` | Concrete application wrappers and protocol products; `DeliveryRoute` is the single sealed transferable route equation. |
+| Actors `lifecycle` and `protocol` | Authored shutdown/observation capabilities and results are application contracts; exact lifecycle, timer, observation, and shutdown admission are interpreter ports; closed child-position products are structural. |
+| Actors `discovery`, `operations`, `persistence`, `routing`, `time`, and `workflow` | Application templates, commands, outcomes, configuration values, and typed policies. Their concrete effects use the core interpreter ports. |
+| Macros `SendProduct`, `behavior`, and `pool_worker` | Generated-code obligations producing the same concrete products and bounds available to handwritten callers. |
+| Testkit `TestRecipient`, `Mailbox`, `DriveDisposition`, `Trace`, `drive`, and `model` | Test-only caller and independent-model API; none is a production interpreter. |
+| Mutation gate binary | No public library API; the command and CI verdict contract are the exported developer interface. |
+
+All 77 top-level public traits have implementor roles in the preceding table.
+The 10 remaining hidden core sites are sealed or generated birth/occurrence
+proofs. The 22 remaining hidden actor sites are structural event/effect
+products, sealed generated proof traits and their grouped re-exports, plus
+the internal `HostedInitialization` type alias. The `CustomerDelivery`
+re-export from `atomic::pool` remains hidden because the canonical
+`atomic::CustomerDelivery` page is visible. External interpreters can name
+the actual request, outcome, receipt, and rejection values without naming
+those hidden structural products. A further visibility reduction would need
+its own caller witness; it is not part of this release review.
 
 ## Cold actor-library compile comparison
 

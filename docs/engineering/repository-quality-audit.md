@@ -622,7 +622,7 @@ outcomes separately from the later Bombay integration result.
   and root-custody witness must test it before these sites can be called safe
   or refactored. A passing ordinary transition suite cannot decide that law.
 
-- [ ] **A13 — Audit public bounds, hidden exports, and extension ownership.**
+- [x] **A13 — Audit public bounds, hidden exports, and extension ownership.**
   **Confirmed surface requiring review.** The current source has 10
   `#[doc(hidden)]` annotation sites in core and 22 in actors, including
   members and re-exports. The
@@ -1079,6 +1079,28 @@ outcomes separately from the later Bombay integration result.
   ten available macOS checks, including Rustdoc and 843 optimized Nextest
   tests. Disposition: `pass` for this documentation port; A13 remains open for
   the rest of the public surface.
+
+  **A13 release disposition:** The [public-surface inventory](public-surface-inventory.md)
+  now assigns the canonical export groups across all five crates to
+  application, generated-code, test-only, or interpreter ownership. It names
+  lawful implementor roles for all 77 top-level public traits and classifies
+  all 10 remaining core and 22 remaining actor Rustdoc-hidden sites. The
+  still-hidden items are structural products/proofs or the internal
+  `HostedInitialization` alias; the public requests, receipts, rejections,
+  and custody methods that interpreters must name are visible. The
+  `atomic::pool::CustomerDelivery` re-export remains hidden only because its
+  canonical `atomic` page is visible. Caller-facing compile witnesses justify
+  the narrower catalogue bounds, and the Router comparison law explains the
+  one retained identity bound. The redundant `DeliveryRouteFor` trait was
+  removed after its only external caller passed with `DeliveryRoute`'s
+  associated-address bound in debug and optimized builds; its negative
+  rustdoc fixture failed on the prior API and now passes. The repeatable
+  cold compile comparison and caller diagnostics are recorded in the
+  inventory. No further bound or visibility edit is justified by the current
+  evidence. The complete Nix gate at `7574bcb` passed, including Rustdoc and
+  845 optimized tests. Disposition: `pass` for the Behavior public-surface
+  review. A17 separately retains the real Bombay runtime witness; closing
+  A13 does not claim that integration.
 
 - [x] **A14 — State the trust scope of initialization capabilities accurately.**
   **Confirmed documentation/API mismatch.** `InitializationTurn` says only the
