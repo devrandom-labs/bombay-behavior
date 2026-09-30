@@ -705,6 +705,149 @@ fn named_settlement_contract(
 
 #[allow(
     clippy::too_many_lines,
+    reason = "the ordered send-product traits share one named-lane equation"
+)]
+fn named_send_contract(
+    name: &Ident,
+    generics: &Generics,
+    fields: &[&Ident],
+    field_types: &[&Type],
+    settlement_type: &TokenStream2,
+    settlement_name: &Ident,
+    behavior: &TokenStream2,
+) -> TokenStream2 {
+    let (_, type_generics, _) = generics.split_for_impl();
+    let mut effects_generics = generics.clone();
+    let mut logical_generics = generics.clone();
+    let mut settlement_generics = generics.clone();
+    let mut lawful_generics = generics.clone();
+    lawful_generics.params.push(parse_quote!(__BombayEvent));
+    let mut interpretation_generics = generics.clone();
+    interpretation_generics
+        .params
+        .push(parse_quote!(__BombayInterpreter));
+    interpretation_generics
+        .params
+        .push(parse_quote!(__BombayRootEvent));
+    interpretation_generics
+        .params
+        .push(parse_quote!(__BombayPath));
+    interpretation_generics
+        .make_where_clause()
+        .predicates
+        .push(parse_quote!(__BombayInterpreter: ::core::marker::Send));
+    interpretation_generics
+        .make_where_clause()
+        .predicates
+        .push(parse_quote!(#name #type_generics: ::core::marker::Send));
+    let mut logical_protocols = quote!(#behavior::NoBirthProtocols);
+    for field_ty in field_types {
+        effects_generics
+            .make_where_clause()
+            .predicates
+            .push(parse_quote!(#field_ty: #behavior::SendEffects));
+        logical_generics
+            .make_where_clause()
+            .predicates
+            .push(parse_quote!(#field_ty: #behavior::LogicalDeliveryProtocols));
+        settlement_generics
+            .make_where_clause()
+            .predicates
+            .push(parse_quote!(#field_ty: #behavior::SendSettlements));
+        lawful_generics
+            .make_where_clause()
+            .predicates
+            .push(parse_quote!(#field_ty: #behavior::SendsFor<__BombayEvent>));
+        interpretation_generics
+            .make_where_clause()
+            .predicates
+            .push(parse_quote!(
+                #field_ty: #behavior::InterpretSends<
+                    __BombayInterpreter,
+                    __BombayRootEvent,
+                    __BombayPath,
+                >
+            ));
+        logical_protocols = quote!(
+            <#logical_protocols as #behavior::BirthProtocolProduct>::Append<
+                <#field_ty as #behavior::LogicalDeliveryProtocols>::Protocols
+            >
+        );
+    }
+    let (effects_impl, _, effects_where) = effects_generics.split_for_impl();
+    let (logical_impl, _, logical_where) = logical_generics.split_for_impl();
+    let (settlement_impl, _, settlement_where) = settlement_generics.split_for_impl();
+    let (lawful_impl, _, lawful_where) = lawful_generics.split_for_impl();
+    let (interpretation_impl, _, interpretation_where) = interpretation_generics.split_for_impl();
+    let interpretation = named_send_interpretation(fields, field_types, settlement_name, behavior);
+
+    quote! {
+        impl #effects_impl #behavior::SendEffects for #name #type_generics #effects_where {
+            fn empty() -> Self {
+                Self {
+                    #(#fields: <#field_types as #behavior::SendEffects>::empty(),)*
+                }
+            }
+
+            fn append(&mut self, other: Self) {
+                #(
+                    <#field_types as #behavior::SendEffects>::append(
+                        &mut self.#fields,
+                        other.#fields,
+                    );
+                )*
+            }
+        }
+
+        impl #logical_impl #behavior::LogicalDeliveryProtocols
+            for #name #type_generics #logical_where
+        {
+            type Protocols = #logical_protocols;
+        }
+
+        impl #lawful_impl #behavior::SendsFor<__BombayEvent>
+            for #name #type_generics #lawful_where
+        {}
+
+        impl #settlement_impl #behavior::SendSettlements
+            for #name #type_generics #settlement_where
+        {
+            type Settlements = #settlement_type;
+
+            fn unattempted(self) -> Self::Settlements {
+                #settlement_name {
+                    #(
+                        #fields: <#field_types as #behavior::SendSettlements>::unattempted(
+                            self.#fields,
+                        ),
+                    )*
+                }
+            }
+        }
+
+        impl #interpretation_impl
+            #behavior::InterpretSends<
+                __BombayInterpreter,
+                __BombayRootEvent,
+                __BombayPath,
+            > for #name #type_generics #interpretation_where
+        {
+            fn interpret(
+                self,
+                interpreter: &mut __BombayInterpreter,
+            ) -> impl ::core::future::Future<
+                Output = #behavior::Interpretation<Self::Settlements>,
+            > + ::core::marker::Send {
+                async move {
+                    #interpretation
+                }
+            }
+        }
+    }
+}
+
+#[allow(
+    clippy::too_many_lines,
     reason = "each generated contract is one facet of the same named send product"
 )]
 fn derive_send_product_contract(input: DeriveInput) -> Result<TokenStream2> {
@@ -767,159 +910,33 @@ fn derive_send_product_contract(input: DeriveInput) -> Result<TokenStream2> {
         field_types.push(&field.ty);
     }
     let (_, type_generics, _) = generics.split_for_impl();
-    let mut effects_generics = generics.clone();
-    let mut logical_generics = generics.clone();
-    let mut settlement_generics = generics.clone();
-    let mut lawful_generics = generics.clone();
-    lawful_generics.params.push(parse_quote!(__BombayEvent));
-    let mut interpretation_generics = generics.clone();
-    interpretation_generics
-        .params
-        .push(parse_quote!(__BombayInterpreter));
-    interpretation_generics
-        .params
-        .push(parse_quote!(__BombayRootEvent));
-    interpretation_generics
-        .params
-        .push(parse_quote!(__BombayPath));
-    interpretation_generics
-        .make_where_clause()
-        .predicates
-        .push(parse_quote!(__BombayInterpreter: ::core::marker::Send));
-    interpretation_generics
-        .make_where_clause()
-        .predicates
-        .push(parse_quote!(#name #type_generics: ::core::marker::Send));
-    let mut logical_protocols = quote!(#behavior::NoBirthProtocols);
-    for field_ty in &field_types {
-        effects_generics
-            .make_where_clause()
-            .predicates
-            .push(parse_quote!(
-                #field_ty: #behavior::SendEffects
-            ));
-        logical_generics
-            .make_where_clause()
-            .predicates
-            .push(parse_quote!(
-                #field_ty: #behavior::LogicalDeliveryProtocols
-            ));
-        settlement_generics
-            .make_where_clause()
-            .predicates
-            .push(parse_quote!(
-                #field_ty: #behavior::SendSettlements
-            ));
-        lawful_generics
-            .make_where_clause()
-            .predicates
-            .push(parse_quote!(
-                #field_ty: #behavior::SendEffects + #behavior::SendsFor<__BombayEvent>
-            ));
-        interpretation_generics
-            .make_where_clause()
-            .predicates
-            .push(parse_quote!(
-                #field_ty: #behavior::InterpretSends<
-                    __BombayInterpreter,
-                    __BombayRootEvent,
-                    __BombayPath,
-                >
-            ));
-        logical_protocols = quote!(
-            <#logical_protocols as #behavior::BirthProtocolProduct>::Append<
-                <#field_ty as #behavior::LogicalDeliveryProtocols>::Protocols
-            >
-        );
-    }
-    let (effects_impl, _, effects_where) = effects_generics.split_for_impl();
-    let (logical_impl, _, logical_where) = logical_generics.split_for_impl();
-    let (settlement_impl, _, settlement_where) = settlement_generics.split_for_impl();
-    let (lawful_impl, _, lawful_where) = lawful_generics.split_for_impl();
-    let (interpretation_impl, _, interpretation_where) = interpretation_generics.split_for_impl();
     let settled_parameters = parameters
         .iter()
         .map(|parameter| quote!(<#parameter as #behavior::SendSettlements>::Settlements));
-    let interpretation = named_send_interpretation(&field_names, &field_types, &name, &behavior);
-    let settlement_type = quote!(#name #type_generics);
+    let settlement_type = quote!(#name<#(#settled_parameters),*>);
+    let send_contract = named_send_contract(
+        &name,
+        &generics,
+        &field_names,
+        &field_types,
+        &settlement_type,
+        &name,
+        &behavior,
+    );
     let settled_fields = field_types
         .iter()
         .map(|field_ty| (*field_ty).clone())
         .collect::<Vec<_>>();
+    let settlement_owner = quote!(#name #type_generics);
     let settlement_contract = named_settlement_contract(
         &name,
-        &settlement_type,
+        &settlement_owner,
         &generics,
         &field_names,
         &settled_fields,
         &behavior,
     );
-
-    Ok(quote! {
-        impl #effects_impl #behavior::SendEffects for #name #type_generics #effects_where {
-            fn empty() -> Self {
-                Self {
-                    #(#field_names: <#field_types as #behavior::SendEffects>::empty(),)*
-                }
-            }
-
-            fn append(&mut self, other: Self) {
-                #(
-                    <#field_types as #behavior::SendEffects>::append(
-                        &mut self.#field_names,
-                        other.#field_names,
-                    );
-                )*
-            }
-        }
-
-        impl #logical_impl #behavior::LogicalDeliveryProtocols
-            for #name #type_generics #logical_where
-        {
-            type Protocols = #logical_protocols;
-        }
-
-        impl #lawful_impl #behavior::SendsFor<__BombayEvent>
-            for #name #type_generics #lawful_where
-        {}
-
-        impl #settlement_impl #behavior::SendSettlements
-            for #name #type_generics #settlement_where
-        {
-            type Settlements = #name<#(#settled_parameters),*>;
-
-            fn unattempted(self) -> Self::Settlements {
-                #name {
-                    #(
-                        #field_names: <#field_types as #behavior::SendSettlements>::unattempted(
-                            self.#field_names,
-                        ),
-                    )*
-                }
-            }
-        }
-
-        #settlement_contract
-
-        impl #interpretation_impl
-            #behavior::InterpretSends<
-                __BombayInterpreter,
-                __BombayRootEvent,
-                __BombayPath,
-            > for #name #type_generics #interpretation_where
-        {
-            fn interpret(
-                self,
-                interpreter: &mut __BombayInterpreter,
-            ) -> impl ::core::future::Future<
-                Output = #behavior::Interpretation<Self::Settlements>,
-            > + ::core::marker::Send {
-                async move {
-                    #interpretation
-                }
-            }
-        }
-    })
+    Ok(quote!(#send_contract #settlement_contract))
 }
 
 /// Derive the ordered send and settlement contracts for a named generic
@@ -1054,71 +1071,6 @@ fn generate_sends(
             }
         });
 
-    let mut effects_generics = product_generics.clone();
-    for field_ty in &field_types {
-        effects_generics
-            .make_where_clause()
-            .predicates
-            .push(parse_quote!(#field_ty: #behavior::SendEffects));
-    }
-    let (effects_impl_generics, _, effects_where_clause) = effects_generics.split_for_impl();
-
-    let mut lawful_generics = product_generics.clone();
-    lawful_generics.params.push(parse_quote!(__BombayEvent));
-    for field_ty in &field_types {
-        lawful_generics
-            .make_where_clause()
-            .predicates
-            .push(parse_quote!(#field_ty: #behavior::SendsFor<__BombayEvent>));
-    }
-    let (lawful_impl_generics, _, lawful_where_clause) = lawful_generics.split_for_impl();
-
-    let mut logical_generics = product_generics.clone();
-    let mut logical_protocols = quote!(#behavior::NoBirthProtocols);
-    for field_ty in &field_types {
-        logical_generics
-            .make_where_clause()
-            .predicates
-            .push(parse_quote!(
-                #field_ty: #behavior::LogicalDeliveryProtocols
-            ));
-        logical_protocols = quote!(
-            <#logical_protocols as #behavior::BirthProtocolProduct>::Append<
-                <#field_ty as #behavior::LogicalDeliveryProtocols>::Protocols
-            >
-        );
-    }
-    let (logical_impl_generics, _, logical_where_clause) = logical_generics.split_for_impl();
-
-    let mut interpret_generics = product_generics.clone();
-    interpret_generics
-        .params
-        .push(parse_quote!(__BombayInterpreter));
-    interpret_generics
-        .params
-        .push(parse_quote!(__BombayRootEvent));
-    interpret_generics.params.push(parse_quote!(__BombayPath));
-    interpret_generics
-        .make_where_clause()
-        .predicates
-        .push(parse_quote!(__BombayInterpreter: ::core::marker::Send));
-    for field_ty in &field_types {
-        interpret_generics
-            .make_where_clause()
-            .predicates
-            .push(parse_quote!(
-                #field_ty: #behavior::InterpretSends<
-                    __BombayInterpreter,
-                    __BombayRootEvent,
-                    __BombayPath,
-                >
-            ));
-    }
-    interpret_generics
-        .make_where_clause()
-        .predicates
-        .push(parse_quote!(#name #type_generics: ::core::marker::Send));
-    let (interpret_impl_generics, _, interpret_where_clause) = interpret_generics.split_for_impl();
     let mut settlement_generics = product_generics.clone();
     for field_ty in &field_types {
         settlement_generics
@@ -1128,9 +1080,16 @@ fn generate_sends(
     }
     let (settlement_impl_generics, settlement_type_generics, settlement_where_clause) =
         settlement_generics.split_for_impl();
-    let interpretation =
-        named_send_interpretation(&field_names, &field_types, &settlements_name, behavior);
     let settlement_type = quote!(#settlements_name #settlement_type_generics);
+    let send_contract = named_send_contract(
+        &name,
+        &product_generics,
+        &field_names,
+        &field_types,
+        &settlement_type,
+        &settlements_name,
+        behavior,
+    );
     let settled_fields = field_types
         .iter()
         .map(|field_ty| parse_quote!(<#field_ty as #behavior::SendSettlements>::Settlements))
@@ -1177,68 +1136,9 @@ fn generate_sends(
             #(#action_impl_methods)*
         }
 
-        impl #effects_impl_generics #behavior::SendEffects for #name #type_generics
-            #effects_where_clause
-        {
-            fn empty() -> Self {
-                Self {
-                    #(#field_names: <#field_types as #behavior::SendEffects>::empty(),)*
-                }
-            }
-
-            fn append(&mut self, other: Self) {
-                #(
-                    <#field_types as #behavior::SendEffects>::append(
-                        &mut self.#field_names,
-                        other.#field_names,
-                    );
-                )*
-            }
-        }
-
-        impl #lawful_impl_generics #behavior::SendsFor<__BombayEvent>
-            for #name #type_generics #lawful_where_clause
-        {}
-
-        impl #logical_impl_generics #behavior::LogicalDeliveryProtocols
-            for #name #type_generics #logical_where_clause
-        {
-            type Protocols = #logical_protocols;
-        }
-
-        impl #settlement_impl_generics #behavior::SendSettlements
-            for #name #type_generics #settlement_where_clause
-        {
-            type Settlements = #settlements_name #settlement_type_generics;
-
-            fn unattempted(self) -> Self::Settlements {
-                #settlements_name {
-                    #(
-                        #field_names: <#field_types as #behavior::SendSettlements>::unattempted(
-                            self.#field_names,
-                        ),
-                    )*
-                }
-            }
-        }
+        #send_contract
 
         #(#send_impls)*
-
-        impl #interpret_impl_generics
-            #behavior::InterpretSends<__BombayInterpreter, __BombayRootEvent, __BombayPath>
-            for #name #type_generics #interpret_where_clause
-        {
-            fn interpret(
-                self,
-                interpreter: &mut __BombayInterpreter,
-            ) -> impl ::core::future::Future<
-                Output = #behavior::Interpretation<Self::Settlements>,
-            > + ::core::marker::Send {
-                async move {
-                    #interpretation
-                }
-            }
-        }
     };
     (quote!(#name #type_generics), items)
 }

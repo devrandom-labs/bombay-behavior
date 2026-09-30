@@ -298,12 +298,11 @@ template. Both projections perform no interpretation and change no custody.
 
 Named products interpret their fields in declared order. A corrupt earlier
 field retains the untouched later fields as unattempted; a lawful rejection
-does not stop independent later fields. The private Actors `send_product!`
-derivation currently generates this traversal for routing, lifecycle,
-discovery, timing, and atomic products while preserving their domain field
-names. The unused two-product tuple helper was removed; the generated named
-products own their ordered traversal and return their complete named
-settlement shapes. A11 still tracks the separate proc-macro projection gap.
+does not stop independent later fields. The `SendProduct` derive and the
+`#[behavior]` generated products share the ordered traversal and source-custody
+generator while preserving their domain field names. The unused two-product
+tuple helper and the private Actors declarative macro were removed. Named
+products return complete named settlement shapes.
 
 StableProxy's `ProxyEffects` declares worker observation, initialization,
 activation, shutdown, service delivery, owner outcome, and diagnostic lanes in

@@ -1165,6 +1165,29 @@ table, source-settlement law, both wrapper orders, routing and timing
 contracts. Disposition: `pass` for the already-proven representation migration;
 the remaining common trait generation is still open.
 
+Follow-up A11 consolidation: `named_send_contract` now generates all five
+send-product traits for both authored and `#[behavior]` products, while
+`named_settlement_contract` generates their classification and source custody.
+Only their truthful settlement representations and generated fluent lanes
+remain separate. This removes another 100 net production lines from the macro
+crate. The focused generated and authored tests (19 and 8) and workspace
+`--all-targets` tests passed after the consolidation. The first clean Nix gate
+for the preceding migration commit reached the documentation checker, which
+found six consuming calls inside new assertions. The test moved those calls
+before the assertions; its focused tests and `check_assertion_effects.py` now
+pass. A clean gate on the corrected consolidation is pending.
+
+Aggregate-drift checkpoint for consolidation: actor control sums, subordinate
+alternatives, transition branches, product fields, modules, and public
+spellings all remain unchanged (zero delta). The macro crate replaces two
+copies of the same five trait equations with one generator; no current actor
+value is added or removed. The residue scan remains clear for arrival history,
+repeated causes, false cardinality, nested transition authority, semantic
+booleans, and structural caller syntax. Cross-checks: actor transition law,
+A11 equations, source-custody law, generated behavior contract, both wrapper
+orders, normalized routing and timing documents. Disposition: `pass`, pending
+the clean Nix gate.
+
 ### A12/A13 least-loaded membership owner, before edit
 
 Classification: deliberate Bombay routing policy and derived Rust ownership

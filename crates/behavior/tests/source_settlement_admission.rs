@@ -323,9 +323,11 @@ async fn authored_named_product_preserves_source_admission_and_corrupt_suffix() 
         panic!("closed admission must return the second result");
     };
     assert_eq!(host.trace, [AdmissionTrace::Proxy(OperationTicket(1))]);
-    assert!(residual.proxy.into_inputs().is_empty());
+    let proxy_results = residual.proxy.into_inputs();
+    let assignment_results = residual.assignment.into_inputs();
+    assert!(proxy_results.is_empty());
     assert!(matches!(
-        residual.assignment.into_inputs().as_slice(),
+        assignment_results.as_slice(),
         [SettledItem::Attempted(ItemSettlement::Accepted(
             AssignmentToken(2)
         ))]
@@ -352,13 +354,15 @@ async fn authored_named_product_preserves_source_admission_and_corrupt_suffix() 
         panic!("closed admission must return the complete corrupt product");
     };
     assert!(host.trace.is_empty());
+    let proxy_results = residual.proxy.into_inputs();
+    let assignment_results = residual.assignment.into_inputs();
     assert!(matches!(
-        residual.proxy.into_inputs().as_slice(),
+        proxy_results.as_slice(),
         [SettledItem::Attempted(ItemSettlement::Corrupt { item, .. })]
             if item.ticket == OperationTicket(3) && item.command == "corrupt"
     ));
     assert!(matches!(
-        residual.assignment.into_inputs().as_slice(),
+        assignment_results.as_slice(),
         [SettledItem::Unattempted(item)]
             if item.token == AssignmentToken(4) && item.payload == "untouched"
     ));
@@ -420,10 +424,8 @@ async fn authored_product_preserves_custody_in_both_send_layer_orders() {
         settled = next;
         assert_eq!(host.trace.last(), Some(&expected));
     }
-    assert!(matches!(
-        settled.offer_next_to_source(&mut host).await,
-        SourceCustody::Exhausted(_)
-    ));
+    let exhausted = settled.offer_next_to_source(&mut host).await;
+    assert!(matches!(exhausted, SourceCustody::Exhausted(_)));
     assert_eq!(host.trace.len(), 3);
 
     let product = Product {
@@ -454,10 +456,8 @@ async fn authored_product_preserves_custody_in_both_send_layer_orders() {
         settled = next;
         assert_eq!(host.trace.last(), Some(&expected));
     }
-    assert!(matches!(
-        settled.offer_next_to_source(&mut host).await,
-        SourceCustody::Exhausted(_)
-    ));
+    let exhausted = settled.offer_next_to_source(&mut host).await;
+    assert!(matches!(exhausted, SourceCustody::Exhausted(_)));
     assert_eq!(host.trace.len(), 3);
 }
 
