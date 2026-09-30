@@ -1587,6 +1587,97 @@ fn foreign_worker_result_is_returned_without_disturbing_the_expected_start() {
 }
 
 #[test]
+fn malformed_worker_creation_batch_returns_every_settlement() {
+    let initialized = StableProxy::immediate()
+        .initialize()
+        .expect("proxy initialization is pure");
+    let mut proxy = initialized.behavior;
+    let started = proxy
+        .on(ProxyControl::start(Worker(1)))
+        .expect("initial worker start is total");
+    assert_eq!(started.creates.len(), 1);
+
+    let empty = proxy
+        .on(CreationsSettled::new(CreationSettlement::Settled(
+            behavior::Creations::empty(),
+        )))
+        .expect("empty settlement is returned to the owner");
+    assert_eq!(proxy.phase(), ProxyPhase::Creating);
+    let diagnostic = empty
+        .sends
+        .diagnostics
+        .into_iter()
+        .next()
+        .expect("empty batch has an owner diagnostic")
+        .into_inner();
+    let ProxyDiagnostic::UnexpectedWorkerStart { workers, .. } = diagnostic else {
+        panic!("empty batch changed diagnostic category");
+    };
+    let CreationSettlement::Settled(workers) = workers.into_settlement() else {
+        panic!("empty batch changed settlement category");
+    };
+    assert!(workers.is_empty());
+
+    let mut sequence = CreationSequence::new();
+    let first = sequence.issue().expect("first creation ID is available");
+    let second = sequence.issue().expect("second creation ID is available");
+    let settlements = [(first, 91, 4), (second, 92, 5)]
+        .into_iter()
+        .map(|(id, route, error)| {
+            SettledItem::Attempted(ItemSettlement::Accepted(
+                ChildCreationOutcome::InitializationRejected {
+                    creation: RoutedCreation::new(
+                        CreateChild::birth(id, StopOnShutdown::new(Worker(error))),
+                        route,
+                    ),
+                    error: WorkerRejected(error),
+                },
+            ))
+        })
+        .collect();
+    let returned = proxy
+        .on(CreationsSettled::new(CreationSettlement::Settled(
+            settlements,
+        )))
+        .expect("multi-item settlement is returned to the owner");
+    assert_eq!(proxy.phase(), ProxyPhase::Creating);
+    assert!(returned.sends.owner_outcomes.is_empty());
+    let diagnostic = returned
+        .sends
+        .diagnostics
+        .into_iter()
+        .next()
+        .expect("multi-item batch has an owner diagnostic")
+        .into_inner();
+    let ProxyDiagnostic::UnexpectedWorkerStart { phase, workers } = diagnostic else {
+        panic!("multi-item batch changed diagnostic category");
+    };
+    assert_eq!(phase, ProxyPhase::Creating);
+    let CreationSettlement::Settled(workers) = workers.into_settlement() else {
+        panic!("multi-item batch changed settlement category");
+    };
+    let returned: Vec<_> = workers
+        .into_iter()
+        .map(|item| {
+            let SettledItem::Attempted(ItemSettlement::Accepted(
+                ChildCreationOutcome::InitializationRejected { creation, error },
+            )) = item
+            else {
+                panic!("worker settlement changed outcome category");
+            };
+            (creation.id(), creation.route(), error)
+        })
+        .collect();
+    assert_eq!(
+        returned,
+        [
+            (first, 91, WorkerRejected(4)),
+            (second, 92, WorkerRejected(5))
+        ]
+    );
+}
+
+#[test]
 fn committed_worker_enters_initializing_without_publishing_readiness() {
     let initialized = StableProxy::immediate()
         .initialize()

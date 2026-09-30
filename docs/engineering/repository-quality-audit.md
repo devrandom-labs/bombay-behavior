@@ -305,6 +305,43 @@ is recorded against a revision.
   rejection. Those alternatives cannot be merged by payload shape alone.
   This baseline does not replace the future-needed-value and production
   measurements for every subordinate alternative; A12 remains open.
+
+  **A12 single-worker creation batch, pre-edit law:** StableProxy stages one
+  worker creation per start. Its creation settlement therefore consumes exactly
+  one matching result; a zero- or multi-item settlement is an unexpected input
+  that must return the complete original ordered batch to the owner while the
+  proxy remains in its creating phase. This is Bombay's derived staged-creation
+  correlation policy, not an actor-model allocation law. The public caller
+  syntax and observable transition stay unchanged. The focused
+  `proxy_command_recovery` malformed-batch regression covers the complete
+  returned batch. Existing lower-order products are `CreationSettlement`,
+  `CreationsSettled`, `WorkerCreation::Unexpected`, and the owner diagnostic;
+  no new type, bound, port, or interpreter operation is needed. The candidate
+  implementation uses the owned vector's exact-one conversion so a failed
+  cardinality check returns every item without cloning or reconstructing a
+  different batch. This local simplification does not close the family-wide
+  A12 inventory.
+
+  **A12 single-worker creation batch, retained checkpoint:** Root
+  `ProxyState` remains 8 alternatives before/after; the touched
+  `WorkerCreation` sum remains 3 and `CreationSettlement` remains 3. Its three
+  top-level settlement branches and five reachable cardinality paths are
+  unchanged; two impossible `pop() == None` branches are gone. The touched
+  production method is 83 → 70 lines; the six-module family is 5,959 → 5,946
+  physical source lines, including unchanged embedded tests. Public spellings
+  and module count are unchanged. `WorkerCreation::Initializing` still owns the
+  committed worker, activation, and possible prior stop;
+  `WorkerCreation::Rejected` owns the rejected worker, activation, and possible
+  prior stop; `WorkerCreation::Unexpected` owns the pending worker, possible
+  prior stop, and the entire anomalous batch for the owner diagnostic. No
+  arrival-history label, repeated cause, false cardinality, nested transition
+  authority, semantic boolean, or structural caller syntax was added.
+  Cross-checked `docs/actor-laws/proxy.md`,
+  `docs/engineering/atomic-actor-essence.md`, and
+  `docs/engineering/atomic-actor-retained-core.md`; the focused 53-test proxy
+  recovery suite passes. Disposition: `pass` for this local simplification;
+  A12 remains open for the complete family inventory and terminal custody.
+
   FIFO and keyed pools each move their root state out with `mem::replace(...,
   Stopped)` during initialization and transition; fixed supervision similarly
   substitutes `Stopped` or a temporary recovery value, and StableProxy
