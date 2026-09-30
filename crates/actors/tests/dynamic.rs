@@ -3156,9 +3156,53 @@ fn accepted_start_cancellation_retires_before_fresh_key_reuse() {
     let rejected = supervisor.on(CreationsSettled::new(CreationSettlement::Settled(
         behavior::Creations::empty(),
     )));
-    assert!(
-        rejected.is_err(),
-        "an empty creation settlement is rejected"
+    let empty = match rejected {
+        Err(DynamicSupervisorEvent::ProxyCreationsSettled(returned)) => returned,
+        _ => panic!("an empty creation settlement returns its exact event"),
+    };
+    assert!(matches!(
+        empty.into_settlement(),
+        CreationSettlement::Settled(batch) if batch.is_empty()
+    ));
+
+    let mut ids = CreationSequence::new();
+    let first = ids.issue().expect("first malformed creation ID exists");
+    let second = ids.issue().expect("second malformed creation ID exists");
+    let malformed = behavior::Creations::one(SettledItem::Unattempted(RoutedCreation::new(
+        CreateChild::birth(first, StableProxy::activated()),
+        31,
+    )))
+    .and(SettledItem::Unattempted(RoutedCreation::new(
+        CreateChild::birth(second, StableProxy::activated()),
+        32,
+    )));
+    let rejected = supervisor.on(CreationsSettled::new(CreationSettlement::Settled(
+        malformed,
+    )));
+    let returned = match rejected {
+        Err(DynamicSupervisorEvent::ProxyCreationsSettled(returned)) => returned,
+        _ => panic!("a multi-item creation settlement returns its exact event"),
+    };
+    let CreationSettlement::Settled(batch) = returned.into_settlement() else {
+        panic!("the returned creation batch keeps its settlement category");
+    };
+    let returned = batch
+        .into_iter()
+        .map(|item| match item {
+            SettledItem::Unattempted(creation) => {
+                let route = creation.route();
+                let (request, _) = creation.into_parts();
+                (request.id(), request.kind(), route)
+            }
+            SettledItem::Attempted(_) => panic!("an untouched item became attempted"),
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        returned,
+        vec![
+            (first, CreationKind::Birth, 31),
+            (second, CreationKind::Birth, 32)
+        ]
     );
     let queried = supervisor
         .receive(

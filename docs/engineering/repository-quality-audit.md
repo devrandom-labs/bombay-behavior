@@ -377,6 +377,27 @@ is recorded against a revision.
   boolean, or positional caller syntax. The actor transition and retained-core
   creation laws were cross-checked. Disposition: `pass` for the batch API;
   aggregate migrations and their separate checkpoints remain open.
+  **A12 exact-one aggregate migration, retained checkpoint:** StableProxy now
+  consumes rejected and settled worker batches through that operation. Its
+  eight root states, three `WorkerCreation` alternatives, six modules, and
+  public spellings are unchanged; the two cardinality success/failure choices
+  are unchanged. Its production source falls by two lines, from 5,076 to
+  5,074. DynamicSupervisor now consumes its proxy-settlement batch through
+  the same operation. Its two availability states, fourteen entry phases,
+  eight modules, and public spellings are unchanged. The same reachable
+  success/failure choice remains, while the old impossible `next() == None`
+  branch after `len() == 1` is gone. Its production source falls by five lines,
+  from 4,020 to 4,015. The dynamic regression now checks empty and two-item
+  rejection as the exact `ProxyCreationsSettled` event, including both untouched
+  routes, creation IDs, kinds, item order, and the retained `CreatingProxy`
+  phase; that test changes by `+47/-3` lines. All 29 dynamic and 53 proxy
+  recovery tests pass with the Nix toolchain. The full malformed batch remains
+  owned by the rejected event, with no arrival history, repeated cause, false
+  cardinality, nested authority, semantic boolean, or structural caller path.
+  `docs/actor-laws/proxy.md`, `docs/actor-laws/dynamic-supervisor.md`, and
+  the normalized atomic-actor documents were cross-checked. Disposition:
+  `pass` for the mechanical migrations; the remaining family inventories and
+  interpreter terminal custody still keep A12 open.
 
   **A12 StableProxy root values, read-only review:** the one control-state sum
   remains eight alternatives in six modules and 5,076 production lines. The

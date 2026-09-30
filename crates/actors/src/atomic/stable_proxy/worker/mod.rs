@@ -488,15 +488,14 @@ impl<P> PendingWorker<P> {
     {
         match workers.into_settlement() {
             CreationSettlement::Rejected { creations, reason } => {
-                let creations: Vec<_> = creations.into_iter().collect();
-                let [creation]: [_; 1] = match creations.try_into() {
+                let creation = match creations.into_one() {
                     Ok(creation) => creation,
                     Err(creations) => {
                         return WorkerCreation::Unexpected {
                             worker: self,
                             stopped,
                             workers: CreationsSettled::new(CreationSettlement::Rejected {
-                                creations: creations.into_iter().collect(),
+                                creations,
                                 reason,
                             }),
                         };
@@ -522,15 +521,14 @@ impl<P> PendingWorker<P> {
                 }
             }
             CreationSettlement::Settled(settlements) => {
-                let settlements: Vec<_> = settlements.into_iter().collect();
-                let [settlement]: [_; 1] = match settlements.try_into() {
+                let settlement = match settlements.into_one() {
                     Ok(settlement) => settlement,
                     Err(settlements) => {
                         return WorkerCreation::Unexpected {
                             worker: self,
                             stopped,
                             workers: CreationsSettled::new(CreationSettlement::Settled(
-                                settlements.into_iter().collect(),
+                                settlements,
                             )),
                         };
                     }
