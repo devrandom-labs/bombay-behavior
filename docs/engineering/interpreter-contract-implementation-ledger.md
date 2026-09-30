@@ -36,6 +36,12 @@ progress past retained siblings, and verifies that closed admission returns
 every lane and the continuation verdict. The new focused tests pass in debug;
 the optimized fixture and final gate follow after this batch is staged. This
 is the Behavior-side composition portion of T08/T24, not a real Driver trace.
+The canonical adapter contract was corrected to distinguish private host
+commitment and `EstablishedCreation::Installed` from later effect settlement
+and public resolution. It now states that ordinary rejection continues
+independent effects while corruption owns an untouched suffix. This is a
+documentation correction to the existing Behavior algebra and the PRD's
+selected startup order; no runtime publication implementation is claimed.
 
 Before/after for this evidence-only batch: aggregate control states and
 subordinate alternatives unchanged; production transition branches and

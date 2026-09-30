@@ -612,6 +612,90 @@ outcomes separately from the later Bombay integration result.
   sums only; nested retirement, operation, and terminal transfer still keep
   A12 open.
 
+  **A12 shared pool member and recovery checkpoint, read-only:** FIFO and keyed
+  pooling share the current member/assignment ownership model, but each root
+  selects its own queue policy. `MemberState` has four alternatives,
+  `WorkerPhase` seven, `RecoveringWorker` four, `ShutdownJoin` three,
+  `RetirementStatus` five, `WorkerStartupCustody` five,
+  `WorkerShutdownStatus` two, `PoolRecoveryState` three, and
+  `WorkerRecoverySource` two. The shared pool subtree has six modules,
+  3,760 physical lines, 3,414 production lines, 198 match arrows, and twelve
+  top-level public declarations. This read-only batch changes zero control
+  states, subordinate alternatives, transition branches, lines, modules, or
+  public spellings.
+
+  | Current sum | Exact value needed by its next owner |
+  |---|---|
+  | `MemberState::{Creating,Worker,Recovering,Retired}` | The pending birth with activation and possible early stop; the established worker phase; the previous attempt plus recovery work; or absence of a live role. |
+  | `WorkerPhase::{Initializing,WaitingForActivation,ActivationDispatched,Activating,Idle,Busy,Stopping}` | Initialization correlation and possible stop; exact permit and plan; dispatched or accepted activation attempt with possible stop; available worker; one assigned job obligation; or the exact shutdown join. Dispatch and acceptance select different later acknowledgements. |
+  | `RecoveringWorker::{WaitingForSource,Preparing,Scheduling,WaitingForTimer}` | Previous attempt and stop, plus respectively unavailable source, preparation ticket, pending replacement and timer, or the same replacement awaiting its timer. The latter two distinguish whether schedule admission still has to settle. |
+  | `ShutdownJoin::{AwaitingBoth,AwaitingStop,AwaitingSettlement}` | Exact shutdown ID; accepted shutdown resolution awaiting stop; or exact stop awaiting settlement. Either arrival order must reunite both facts once. |
+  | `RetirementStatus::{AwaitingCreation,Established,AwaitingPreparation,AwaitingRestartSchedule,Drained}` | Pending birth; current worker, optional startup and shutdown join; prior stop with preparation ticket; pending replacement with timer; or no remaining worker custody. |
+  | `WorkerStartupCustody::{ActivationPlan,Initializing,ActivationPermit,ActivationStart,Activation}` | Respectively untransferred plan, initialization attempt, permit with plan, dispatched start, or accepted activation correlation returned during retirement. |
+  | `WorkerShutdownStatus::{NotRequested,Waiting}` | No shutdown authority yet, or the exact outstanding join. |
+  | `PoolRecoveryState::{Permanent,Transient,Temporary}` and `WorkerRecoverySource::{Available,AwaitingReturn}` | Permanent/transient retain source, limit, release and failure policy; temporary has no source and retains failure policy. Available owns the concrete source; awaiting return records that the preparation request currently owns it. |
+
+  `WorkerRecoveryDecision`, `WorkerCustody`, `RetirementReturns`, and the
+  event-specific retirement outcomes are consuming transition products, not
+  independently stored actor control states. Their distinct payloads return
+  exact source, worker, assignment, or replacement custody to the root. A
+  product of optional values would allow a worker to be both idle and busy or
+  lose which shutdown fact remains; a direct vector already represents the
+  ordered role roster. The normalized FIFO/keyed laws, actor transition law,
+  and runtime settlement law were cross-checked. No arrival-only state,
+  duplicated cause, false role cardinality, nested behavior authority,
+  semantic boolean, or structural caller syntax was found. Disposition:
+  `pass` for the shared member/recovery source model.
+
+  **A12 keyed binding checkpoint, read-only:** `RoleCell` owns one role's
+  member, admission-ordinal queue, and capacity. `BindingTable` owns bounded
+  key-to-role bindings and a checked generation sequence. `AdmissionBinding`
+  has two short-lived alternatives: `Retained` keeps the submitted key and
+  existing evidence, while `Reserved` owns the fresh table reservation until
+  admission commits or returns the key. `BindingExpectation::{Absent,Exact}`
+  distinguishes a missing binding from one exact generation; the three
+  `BindingReservationRejected` reasons return the same key with distinct
+  capacity, conflict, or sequence-exhaustion causes. These are current
+  authority/return values, not another keyed actor. Keyed pooling remains ten
+  modules, 5,755 physical and 5,536 production lines, 268 match arrows, and
+  twenty top-level public declarations before and after this review. Root
+  states, subordinate alternatives, transition branches, and public spellings
+  change by zero. The normalized keyed law and binding generation tests were
+  cross-checked; the residue scan found no arrival history, duplicate cause,
+  false cardinality, nested transition authority, semantic boolean, or
+  structural caller path. Disposition: `pass` for source binding custody.
+
+  **A12 fixed roster and dynamic retirement checkpoint, read-only:** Fixed
+  supervision remains nineteen modules, 10,104 physical and 9,512 production
+  lines, 718 match arrows, and twenty-seven top-level public declarations.
+  Dynamic supervision remains eight modules, 4,115 physical and 4,015
+  production lines, 246 match arrows, and twenty-five such declarations.
+  Both roots, all subordinate sums, transition branches, lines, modules, and
+  public spellings are unchanged by this review.
+
+  | Current sum | Exact future-needed value |
+  |---|---|
+  | `RosterOwner::{Starting,Stopping,Online,Empty,Recovery,Unrecovered,Retired}` | Respectively a proxy start correlation; proxy shutdown join; established proxy, worker and readiness; empty role identity; recovery batch/preparation; unrecovered worker and reason; or terminal returned proxy custody. Its status projection does not select aggregate `Actions`. |
+  | `ProxyStartingMember` six alternatives | Pending creation with original operation; established proxy awaiting authorization; dispatched input witness; accepted input ID awaiting outcome; exact rejected input; or exact rejected birth. Each has a different next input or return value. |
+  | `RecoveryRosterOwner::{Preparing,Admitted}` and `RecoveryMember::{Waiting,Replacing}` | Preparation owns the source/ticket; admitted batch owns prepared participants. A waiting member owns an untransferred submission; replacing owns an established proxy and exact replacement result. |
+  | `RecoveryParticipant::{Stopped,InitialInputDispatched,AwaitingInitialOutcome,Online}` | Original stopped member; proxy with dispatched input witness; accepted operation ID; or current ready member. |
+  | `ReplacementResponse::{InputPending,OutcomePending,OutcomeReturned,InputRejected}` | Exact input witness, accepted operation ID, returned outcome, or returned operation with rejection reason. `RestartReleaseState::{Ready,Scheduling,Waiting}` likewise distinguishes no timer from timer admission and an admitted timer. |
+  | Fixed `ProxyShutdown::{Dispatched,Accepted,Rejected}` | Unsettled input witness, accepted operation ID, or complete rejected shutdown. An optional exact `ChildStopped` in the containing member joins independently. |
+  | Dynamic `ProxyShutdown::{AwaitingSettlement,Accepted,Rejected}` | Pending shutdown witness, accepted operation ID, or rejection; the entry's stop remains independently correlated. |
+  | Dynamic `RetiringWork` six alternatives | Distinct start failure, unexpected stop, interrupted start, supervisor shutdown with optional service, cancelled returned worker change, or transferred proxy input with exact purpose and custody. These causes select different public lifecycle reports. |
+  | Dynamic `ProxyInputPurpose` four alternatives and `ProxyInputCustody` four alternatives | The purpose distinguishes cancellation, interrupted start, initial start, and replacement with service. Custody distinguishes unadmitted witness, accepted operation, rejected input, and returned proxy outcome. The pair determines exact terminal return without replaying a control. |
+
+  Fixed recovery policy, dynamic key/operation correlation, source ownership,
+  and the five normalized atomic laws were cross-checked with the source.
+  Data-free retirement causes are observable lifecycle policy, and separate
+  accepted-input versus returned-outcome states are needed to prevent false
+  readiness/restart. No arrival-only state, repeated cause, false worker/key
+  cardinality, nested `Behavior` implementation, semantic boolean, or
+  structural application syntax was found. Disposition: `pass` for these
+  source-level subordinate sums. Terminal transfer and caught-panic ownership
+  remain the real-runtime A17/T16 witness; this review makes no claim about
+  those downstream effects.
+
   FIFO and keyed pools each move their root state out with `mem::replace(...,
   Stopped)` during initialization and transition; fixed supervision similarly
   substitutes `Stopped` or a temporary recovery value, and StableProxy
