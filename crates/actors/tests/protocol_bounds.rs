@@ -1,18 +1,19 @@
 use behavior::{
     Address, BehaviorBase, EndpointAddress, MailAddr, MessageProtocol, Never, Protocol, Recipient,
+    Step,
 };
 use behavior_actors::atomic::FifoError;
 use behavior_actors::{
-    AcknowledgementMessage, AcknowledgementOutcome, Acknowledgements, Barrier, BarrierMessage,
-    BarrierReleased, Cache, CacheResult, Configuration, ConfigurationMessage, ConfigurationState,
-    CorrelationResult, Correlator, CorrelatorMessage, Deduplicator, DeduplicatorMessage,
-    DeduplicatorOutcome, Health, HealthMessage, HealthReport, Lease, LeaseMessage, LeaseOutcome,
-    LeastLoaded, Machine, OrderGate, OrderGateMessage, OrderGateOutcome, Presence, PresenceMessage,
-    PresenceReply, PriorityQueue, PriorityQueueMessage, PriorityQueueOutcome, PubSub,
-    PubSubMessage, Readiness, ReadinessMessage, ReadinessReport, Registry, RegistryMessage,
-    RegistryResult, ReplyRoute, Resolution, Resolver, Router, RouterMessage, RoutingStrategy,
-    Topic, TopicMessage, WorkQueue, WorkQueueMessage, WorkQueueOutcome, Workflow, WorkflowMessage,
-    WorkflowOutcome,
+    AcknowledgementMessage, AcknowledgementOutcome, Acknowledgements, Activate as _, Barrier,
+    BarrierMessage, BarrierReleased, Cache, CacheResult, Configuration, ConfigurationMessage,
+    ConfigurationState, CorrelationResult, Correlator, CorrelatorMessage, Deduplicator,
+    DeduplicatorMessage, DeduplicatorOutcome, Health, HealthMessage, HealthReport, Lease,
+    LeaseMessage, LeaseOutcome, LeastLoaded, Machine, OrderGate, OrderGateMessage,
+    OrderGateOutcome, Presence, PresenceMessage, PresenceReply, PriorityQueue,
+    PriorityQueueMessage, PriorityQueueOutcome, PubSub, PubSubMessage, Readiness, ReadinessMessage,
+    ReadinessReport, Registry, RegistryMessage, RegistryResult, ReplyRoute, Resolution, Resolver,
+    Router, RouterMessage, RoutingObservationRejection, RoutingStrategy, Topic, TopicMessage,
+    WorkQueue, WorkQueueMessage, WorkQueueOutcome, Workflow, WorkflowMessage, WorkflowOutcome,
 };
 
 struct Key;
@@ -69,7 +70,7 @@ impl RoutingStrategy<Recipient<Destination>> for ObservedSelection {
         &mut self,
         _: &[Recipient<Destination>],
         observation: Self::Observation,
-    ) -> Result<(), Self::Error> {
+    ) -> Result<(), RoutingObservationRejection<Self::Observation, Self::Error>> {
         self.accepted = observation.0;
         Ok(())
     }
@@ -130,6 +131,8 @@ fn accepts_protocol<P: Protocol<Addr = MailAddr>>() {}
 
 fn accepts_base<B: BehaviorBase<Base = B>>() {}
 
+fn accepts_behavior<B: behavior::Behavior>() {}
+
 fn accepts_message<P: Protocol<Addr = MailAddr, Msg = M>, M>() {}
 
 fn accepts_message_at<A: Address, P: Protocol<Addr = A, Msg = M>, M>() {}
@@ -173,6 +176,32 @@ fn protocol_identity_does_not_require_transition_or_construction_bounds() {
         WorkQueueProtocol,
         WorkQueueMessage<u8, WorkQueueWorker, WorkQueueReply>,
     >();
+}
+
+#[test]
+fn router_accepts_an_owned_noncloning_policy_observation() {
+    accepts_behavior::<RouterProtocol>();
+    let recipient = Recipient::<Destination>::global(MailAddr(1));
+    let mut router = Router::new(
+        vec![recipient],
+        ObservedSelection {
+            accepted: Vec::new(),
+        },
+    )
+    .initialize()
+    .unwrap()
+    .behavior;
+
+    let actions = router
+        .receive(
+            MailAddr(9),
+            RouterMessage::Observe(AcceptedPayloads(vec![7])),
+        )
+        .unwrap();
+    assert!(actions.sends.is_empty());
+    assert!(actions.creates.is_empty());
+    assert_eq!(actions.become_, Step::Continue);
+    assert_eq!(router.strategy().accepted, vec![7]);
 }
 
 #[test]

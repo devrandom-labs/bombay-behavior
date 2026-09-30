@@ -60,10 +60,10 @@ pub use rate_limiter::{
     RateLimiterOutcome, RateLimiterState, TokenCount,
 };
 pub use router::{
-    ConsistentHash, HashPolicyError, LeastLoaded, LeastLoadedError, Load, LoadEvidence,
-    LoadObservation, LoadVersion, MemberToken, MemberTokenEvidence, MemberTokenObservation,
+    ConsistentHash, LeastLoaded, Load, LoadEvidence, LoadObservation, LoadVersion,
+    MemberEvidenceError, MemberToken, MemberTokenEvidence, MemberTokenObservation,
     MemberTokenVersion, RendezvousHash, RoundRobin, RouteKey, Router, RouterError, RouterMessage,
-    RoutingStrategy,
+    RoutingObservationRejection, RoutingStrategy,
 };
 pub use sequencer::{Sequence, Sequencer, SequencerMessage, SequencerOutcome, SequencerState};
 pub use work_queue::{

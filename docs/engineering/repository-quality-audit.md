@@ -678,6 +678,14 @@ while the package derivation completes without another unit/integration test
 run. Expected files are `flake.nix` and this audit; production Rust delta and
 public type delta are both zero.
 
+At signed commit `326f1c2`, the clean-worktree `nix flake check -L` passed all
+eight active `aarch64-darwin` checks. Nextest ran 836/836 workspace tests;
+the doctest derivation passed separately. The package derivation built and
+installed with `doCheck = false` and no `checkPhase`, so it did not repeat the
+workspace executable suite. The check omitted incompatible systems as usual.
+No actor state, public spelling, production Rust line, or test case changed.
+Disposition: `pass` for the gate ownership repair.
+
 ### A10 finite-driver contract
 
 `drive` now explicitly documents that its successful `Trace` appends send and
@@ -1132,6 +1140,91 @@ the actor transition algebra and normalized routing law found no arrival
 history, repeated cause, false cardinality, nested transition authority,
 semantic boolean, or structural caller syntax. Disposition: `pass` for this
 representation, subject to the pending full gate.
+
+### A12/A13 router observation rejection custody, before edit
+
+Classification: derived affine Rust ownership law; neither Agha's transition
+effects nor hash-routing policy prescribes a Rust error representation. A
+policy consumes one typed observation. If it cannot accept that observation,
+it must return the same owned observation with one concrete reason, and
+Router must retain exactly that returned value while discarding the mutated
+policy candidate. Acceptance commits the candidate and returns empty
+continuing `Actions`. There is no need for an observation to implement
+`Clone`: it can own a move-only payload. The current trait returns only
+`Self::Error`; Router therefore clones the input first, and the built-in
+`LeastLoadedError<Route>` and `HashPolicyError<Route>` carry a second copy of
+it. One semantic cause has two owners and every runnable policy observation
+inherits a cloning bound.
+
+The caller syntax is a running `Router<MailAddr, Recipient<Destination>,
+ObservedSelection>` accepting the existing non-cloneable
+`AcceptedPayloads(Vec<u8>)`, followed by a rejecting move-only observation
+whose exact allocation returns through `RouterError::Policy`. The external
+`protocol_bounds` caller must first fail only because the old Router behavior
+requires `R::Observation: Clone`. A focused pure transition test will then
+prove pointer identity, complete rejected ownership, policy-state rollback,
+and one successful commit. The public policy seam should return one named
+observation/reason product; the aggregate `RouterError::Policy` remains the
+sole actor error owner. Once the observation moves to that product,
+`LeastLoadedError` and `HashPolicyError` have the same three payload-free
+reason alternatives and ownership equation. One shared
+`MemberEvidenceError` should replace both, without a compatibility alias.
+`RoundRobin` remains statically unable to observe. Existing `RoutingStrategy`
+hooks, typed `RouterMessage`, policy candidate rollback, delivery effects,
+and interpreter path are reused. No policy needs a no-op placeholder.
+
+Pre-edit drift checkpoint: Router retains one ordered member list and the
+same four message and three actor-error alternatives. Least-loaded evidence
+remains Unknown/Observed(version, load); hash evidence remains
+Unknown/Observed(version, token). The shared policy reason retains the same
+three alternatives without duplicating the observation. The proposed public
+surface adds one named rejection product and one shared reason sum, removes
+two policy-specific reason types and the observation-clone bound from Router's
+transition; no new actor state, effect, interpreter capability, module, or
+transition branch is authorized. Expected production delta is negative after
+removing redundant payloads, manual Debug implementations, and cloning.
+Current membership/evidence and the actual rejected observation are exactly
+the values needed for later decisions and ownership return. The residue scan
+finds no arrival history, repeated cause, false cardinality, nested
+authority, semantic boolean, or structural caller syntax in the proposed
+model. Cross-checks are `actor-transition-algebra.md`, the routing law in
+`atomic-actor-other-templates.md`, and existing wrapper composition tests.
+Disposition: `pass` for the proposed model, pending red caller and pure
+transition witnesses.
+
+The external caller now constructs and advances the existing
+`ObservedSelection` with non-cloneable `AcceptedPayloads`. Before any
+production edit, its explicit Behavior witness fails with E0277 naming only
+the missing `AcceptedPayloads: Clone` bound; the subsequent `initialize`
+E0599 is the same unmet Behavior obligation. There is no unrelated route,
+send, or address diagnostic. The acceptance action and committed policy state
+are asserted in the caller test. Before production code, the rejecting
+move-only custody regression failed because the named rejection product did
+not exist and the Router still required `Observation: Clone`. After the
+interface and built-in policy changes, all 11 focused router unit tests and
+all four external protocol-bound tests pass. The pure rejection test checks
+the returned `Box` allocation address, complete reason, discarded candidate
+mutation, subsequent accepted observation, empty observation effects, and
+the resulting delivery. LeastLoaded and the two hash policies use the same
+rejection product; RoundRobin's uninhabited observation remains unchanged.
+
+Post-design drift checkpoint: Router still has one control state, four
+messages, three actor-error alternatives, and the same four transition arms.
+Least-loaded and hash evidence each retain Unknown/Observed; their two
+three-alternative reason sums became one three-alternative sum. The production
+portion of `routing/router.rs` grew from 850 to 866 physical lines because
+each rejection now explicitly returns its owned observation and reason; two
+manual Debug implementations and the Router observation clone disappeared.
+The two removed public error names were replaced by the shared reason and
+named ownership product, so the public type count is unchanged. Modules,
+effect lanes, and interpreter capabilities are unchanged. The current
+member evidence is the only policy-local value needed for the next selection;
+the returned observation is needed only for the exact rejection. The residue
+scan finds no arrival history, repeated cause, false cardinality, nested
+transition authority, semantic boolean, or structural caller syntax. The
+actor transition, routing, and wrapper composition laws were cross-checked.
+Disposition: `pass` for the design stage; testkit migration and the full gate
+are separate follow-up work.
 
 ### A13 pre-edit base-projection law
 

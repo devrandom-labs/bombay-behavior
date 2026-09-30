@@ -81,6 +81,19 @@ impl<M: core::fmt::Debug, O, E: core::fmt::Debug> core::fmt::Debug for RouterErr
     }
 }
 
+/// One policy observation returned with its concrete rejection reason.
+///
+/// The policy consumes an observation only on acceptance. Rejection transfers
+/// that exact owned value back to Router, which retains it in
+/// [`RouterError::Policy`] while discarding the uncommitted policy candidate.
+#[must_use = "a rejected routing observation must be returned to its owner"]
+pub struct RoutingObservationRejection<Observation, Reason> {
+    /// Exact observation that the policy could not accept.
+    pub observation: Observation,
+    /// Concrete reason the policy rejected that observation.
+    pub reason: Reason,
+}
+
 /// Static recipient-selection policy used by [`Router`].
 ///
 /// Implementations receive the current membership snapshot and return at most
@@ -91,7 +104,7 @@ impl<M: core::fmt::Debug, O, E: core::fmt::Debug> core::fmt::Debug for RouterErr
 pub trait RoutingStrategy<Route: DeliveryRoute + Clone + PartialEq>: Clone {
     /// Closed observation type accepted by this policy.
     type Observation;
-    /// Concrete observation rejection.
+    /// Concrete observation rejection reason.
     type Error;
 
     /// Select at most one index from this exact typed membership snapshot.
@@ -109,13 +122,14 @@ pub trait RoutingStrategy<Route: DeliveryRoute + Clone + PartialEq>: Clone {
     ///
     /// # Errors
     ///
-    /// Returns the concrete policy error without changing policy state when
-    /// evidence is unknown, stale, or contradictory.
+    /// Returns the exact owned observation and concrete reason when evidence
+    /// is unknown, stale, or contradictory. Router discards the policy
+    /// candidate on rejection, so no partial policy mutation is committed.
     fn observe(
         &mut self,
         _members: &[Route],
         observation: Self::Observation,
-    ) -> Result<(), Self::Error>;
+    ) -> Result<(), RoutingObservationRejection<Self::Observation, Self::Error>>;
 
     /// Update policy-local state after one new membership is committed.
     fn added(&mut self, _recipient: Route) {}
@@ -151,7 +165,11 @@ impl<Route: DeliveryRoute + Clone + PartialEq> RoutingStrategy<Route> for RoundR
         Some(selected)
     }
 
-    fn observe(&mut self, _: &[Route], observation: Never) -> Result<(), Never> {
+    fn observe(
+        &mut self,
+        _: &[Route],
+        observation: Never,
+    ) -> Result<(), RoutingObservationRejection<Never, Never>> {
         match observation {}
     }
 
@@ -199,28 +217,22 @@ pub enum LoadEvidence {
     },
 }
 
-/// Rejected [`LeastLoaded`] evidence.
-#[derive(Clone, PartialEq, Eq, Error)]
-pub enum LeastLoadedError<Route: DeliveryRoute + Clone + PartialEq> {
+/// Rejection reason for one versioned routing-member observation.
+///
+/// Load and stable-token policies have the same reason alternatives. The
+/// complete owned observation travels separately in
+/// [`RoutingObservationRejection`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum MemberEvidenceError {
     /// Evidence names a recipient outside current membership.
-    #[error("load evidence names an unknown recipient")]
-    UnknownRecipient(LoadObservation<Route>),
+    #[error("evidence names an unknown routing member")]
+    UnknownRecipient,
     /// Evidence predates the committed version.
-    #[error("load evidence is stale")]
-    Stale(LoadObservation<Route>),
-    /// Evidence contradicts the committed load at the same version.
-    #[error("load evidence conflicts at the committed version")]
-    ConflictingVersion(LoadObservation<Route>),
-}
-
-impl<Route: DeliveryRoute + Clone + PartialEq> core::fmt::Debug for LeastLoadedError<Route> {
-    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        formatter.write_str(match self {
-            Self::UnknownRecipient(_) => "UnknownRecipient(..)",
-            Self::Stale(_) => "Stale(..)",
-            Self::ConflictingVersion(_) => "ConflictingVersion(..)",
-        })
-    }
+    #[error("routing-member evidence is stale")]
+    Stale,
+    /// Evidence contradicts the value at the committed version.
+    #[error("routing-member evidence conflicts at the committed version")]
+    ConflictingVersion,
 }
 
 impl<Route: DeliveryRoute + Clone + PartialEq> Clone for LoadObservation<Route> {
@@ -273,7 +285,7 @@ impl Default for LeastLoaded {
 
 impl<Route: DeliveryRoute + Clone + PartialEq> RoutingStrategy<Route> for LeastLoaded {
     type Observation = LoadObservation<Route>;
-    type Error = LeastLoadedError<Route>;
+    type Error = MemberEvidenceError;
 
     fn select(
         &mut self,
@@ -296,15 +308,21 @@ impl<Route: DeliveryRoute + Clone + PartialEq> RoutingStrategy<Route> for LeastL
         &mut self,
         members: &[Route],
         observation: Self::Observation,
-    ) -> Result<(), Self::Error> {
+    ) -> Result<(), RoutingObservationRejection<Self::Observation, Self::Error>> {
         let Some(index) = members
             .iter()
             .position(|member| member == &observation.recipient)
         else {
-            return Err(LeastLoadedError::UnknownRecipient(observation));
+            return Err(RoutingObservationRejection {
+                observation,
+                reason: MemberEvidenceError::UnknownRecipient,
+            });
         };
         let Some(evidence) = self.loads.get_mut(index) else {
-            return Err(LeastLoadedError::UnknownRecipient(observation));
+            return Err(RoutingObservationRejection {
+                observation,
+                reason: MemberEvidenceError::UnknownRecipient,
+            });
         };
         let LoadEvidence::Observed { version, load } = *evidence else {
             *evidence = LoadEvidence::Observed {
@@ -314,13 +332,19 @@ impl<Route: DeliveryRoute + Clone + PartialEq> RoutingStrategy<Route> for LeastL
             return Ok(());
         };
         if observation.version < version {
-            return Err(LeastLoadedError::Stale(observation));
+            return Err(RoutingObservationRejection {
+                observation,
+                reason: MemberEvidenceError::Stale,
+            });
         }
         if observation.version == version {
             return if observation.load == load {
                 Ok(())
             } else {
-                Err(LeastLoadedError::ConflictingVersion(observation))
+                Err(RoutingObservationRejection {
+                    observation,
+                    reason: MemberEvidenceError::ConflictingVersion,
+                })
             };
         }
         *evidence = LoadEvidence::Observed {
@@ -399,30 +423,6 @@ pub enum MemberTokenEvidence {
     },
 }
 
-/// Rejected hash-membership evidence.
-#[derive(Clone, PartialEq, Eq, Error)]
-pub enum HashPolicyError<Route: DeliveryRoute + Clone + PartialEq> {
-    /// Evidence names a recipient outside current membership.
-    #[error("hash-member evidence names an unknown recipient")]
-    UnknownRecipient(MemberTokenObservation<Route>),
-    /// Evidence predates the current token version.
-    #[error("hash-member evidence is stale")]
-    Stale(MemberTokenObservation<Route>),
-    /// Evidence contradicts the token at the committed version.
-    #[error("hash-member evidence conflicts at the committed version")]
-    ConflictingVersion(MemberTokenObservation<Route>),
-}
-
-impl<Route: DeliveryRoute + Clone + PartialEq> core::fmt::Debug for HashPolicyError<Route> {
-    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        formatter.write_str(match self {
-            Self::UnknownRecipient(_) => "UnknownRecipient(..)",
-            Self::Stale(_) => "Stale(..)",
-            Self::ConflictingVersion(_) => "ConflictingVersion(..)",
-        })
-    }
-}
-
 #[derive(Clone)]
 struct HashMembership {
     evidence: Vec<MemberTokenEvidence>,
@@ -449,15 +449,22 @@ impl HashMembership {
         &mut self,
         recipients: &[Route],
         observation: MemberTokenObservation<Route>,
-    ) -> Result<(), HashPolicyError<Route>> {
+    ) -> Result<(), RoutingObservationRejection<MemberTokenObservation<Route>, MemberEvidenceError>>
+    {
         let Some(index) = recipients
             .iter()
             .position(|member| member == &observation.recipient)
         else {
-            return Err(HashPolicyError::UnknownRecipient(observation));
+            return Err(RoutingObservationRejection {
+                observation,
+                reason: MemberEvidenceError::UnknownRecipient,
+            });
         };
         let Some(evidence) = self.evidence.get_mut(index) else {
-            return Err(HashPolicyError::UnknownRecipient(observation));
+            return Err(RoutingObservationRejection {
+                observation,
+                reason: MemberEvidenceError::UnknownRecipient,
+            });
         };
         let MemberTokenEvidence::Observed { version, token } = *evidence else {
             *evidence = MemberTokenEvidence::Observed {
@@ -467,13 +474,19 @@ impl HashMembership {
             return Ok(());
         };
         if observation.version < version {
-            return Err(HashPolicyError::Stale(observation));
+            return Err(RoutingObservationRejection {
+                observation,
+                reason: MemberEvidenceError::Stale,
+            });
         }
         if observation.version == version {
             return if observation.token == token {
                 Ok(())
             } else {
-                Err(HashPolicyError::ConflictingVersion(observation))
+                Err(RoutingObservationRejection {
+                    observation,
+                    reason: MemberEvidenceError::ConflictingVersion,
+                })
             };
         }
         *evidence = MemberTokenEvidence::Observed {
@@ -545,7 +558,7 @@ where
     <Route::Protocol as Protocol>::Msg: RouteKey<K>,
 {
     type Observation = MemberTokenObservation<Route>;
-    type Error = HashPolicyError<Route>;
+    type Error = MemberEvidenceError;
 
     fn select(
         &mut self,
@@ -567,7 +580,7 @@ where
         &mut self,
         members: &[Route],
         observation: Self::Observation,
-    ) -> Result<(), Self::Error> {
+    ) -> Result<(), RoutingObservationRejection<Self::Observation, Self::Error>> {
         self.membership.observe(members, observation)
     }
 
@@ -620,7 +633,7 @@ where
     <Route::Protocol as Protocol>::Msg: RouteKey<K>,
 {
     type Observation = MemberTokenObservation<Route>;
-    type Error = HashPolicyError<Route>;
+    type Error = MemberEvidenceError;
 
     fn select(
         &mut self,
@@ -639,7 +652,7 @@ where
         &mut self,
         members: &[Route],
         observation: Self::Observation,
-    ) -> Result<(), Self::Error> {
+    ) -> Result<(), RoutingObservationRejection<Self::Observation, Self::Error>> {
         self.membership.observe(members, observation)
     }
 
@@ -790,7 +803,6 @@ where
     A: Address,
     Route: DeliveryRoute<Protocol: Protocol<Addr = A>> + Clone + PartialEq,
     R: RoutingStrategy<Route>,
-    R::Observation: Clone,
     Route::Sends: behavior::SendsFor<User<A, RouterMessage<Route, R>>>,
 {
     type Protocol = Self;
@@ -834,13 +846,15 @@ where
             }
             RouterMessage::Observe(observation) => {
                 let mut strategy = self.strategy.clone();
-                let retained = observation.clone();
-                strategy
-                    .observe(&self.recipients, observation)
-                    .map_err(|error| RouterError::Policy {
-                        observation: retained,
-                        error,
-                    })?;
+                strategy.observe(&self.recipients, observation).map_err(
+                    |RoutingObservationRejection {
+                         observation,
+                         reason,
+                     }| RouterError::Policy {
+                        observation,
+                        error: reason,
+                    },
+                )?;
                 self.strategy = strategy;
                 Ok(Actions::cont())
             }
@@ -1039,7 +1053,7 @@ mod tests {
         assert!(matches!(
             rejection,
             Err(RouterError::Policy {
-                error: LeastLoadedError::Stale(_),
+                error: MemberEvidenceError::Stale,
                 ..
             })
         ));
@@ -1054,7 +1068,7 @@ mod tests {
         assert!(matches!(
             rejection,
             Err(RouterError::Policy {
-                error: LeastLoadedError::ConflictingVersion(_),
+                error: MemberEvidenceError::ConflictingVersion,
                 ..
             })
         ));
@@ -1069,7 +1083,7 @@ mod tests {
         assert!(matches!(
             rejection,
             Err(RouterError::Policy {
-                error: LeastLoadedError::UnknownRecipient(_),
+                error: MemberEvidenceError::UnknownRecipient,
                 ..
             })
         ));
@@ -1095,11 +1109,14 @@ mod tests {
         let rejection = policy.observe(&[recipient], observation);
         assert!(matches!(
             rejection,
-            Err(LeastLoadedError::UnknownRecipient(LoadObservation {
-                recipient: returned,
-                version: LoadVersion(4),
-                load: Load(7),
-            })) if returned == recipient
+            Err(RoutingObservationRejection {
+                observation: LoadObservation {
+                    recipient: returned,
+                    version: LoadVersion(4),
+                    load: Load(7),
+                },
+                reason: MemberEvidenceError::UnknownRecipient,
+            }) if returned == recipient
         ));
     }
 
@@ -1124,11 +1141,14 @@ mod tests {
         ] {
             assert!(matches!(
                 rejection,
-                Err(HashPolicyError::UnknownRecipient(MemberTokenObservation {
-                    recipient: returned,
-                    version: MemberTokenVersion(3),
-                    token: MemberToken(8),
-                })) if returned == recipient
+                Err(RoutingObservationRejection {
+                    observation: MemberTokenObservation {
+                        recipient: returned,
+                        version: MemberTokenVersion(3),
+                        token: MemberToken(8),
+                    },
+                    reason: MemberEvidenceError::UnknownRecipient,
+                }) if returned == recipient
             ));
         }
     }
@@ -1252,17 +1272,18 @@ mod tests {
             version: MemberTokenVersion(0),
             token: MemberToken(99),
         };
-        let rejection = router.receive(MailAddr(9), RouterMessage::Observe(conflicting.clone()));
-        match rejection {
+        let rejection = router.receive(MailAddr(9), RouterMessage::Observe(conflicting));
+        assert!(matches!(
+            rejection,
             Err(RouterError::Policy {
-                observation,
-                error: HashPolicyError::ConflictingVersion(returned),
-            }) => {
-                assert!(observation == conflicting);
-                assert!(returned == conflicting);
-            }
-            _ => panic!("conflicting token evidence must return its exact observation"),
-        }
+                observation: MemberTokenObservation {
+                    recipient: returned,
+                    version: MemberTokenVersion(0),
+                    token: MemberToken(99),
+                },
+                error: MemberEvidenceError::ConflictingVersion,
+            }) if returned == one
+        ));
         assert_eq!(
             router.member_token_evidence(&one),
             Some(MemberTokenEvidence::Observed {
@@ -1298,17 +1319,18 @@ mod tests {
             version: MemberTokenVersion(1),
             token: MemberToken(99),
         };
-        let rejection = router.receive(MailAddr(9), RouterMessage::Observe(stale.clone()));
-        match rejection {
+        let rejection = router.receive(MailAddr(9), RouterMessage::Observe(stale));
+        assert!(matches!(
+            rejection,
             Err(RouterError::Policy {
-                observation,
-                error: HashPolicyError::Stale(returned),
-            }) => {
-                assert!(observation == stale);
-                assert!(returned == stale);
-            }
-            _ => panic!("older token evidence must return its exact observation"),
-        }
+                observation: MemberTokenObservation {
+                    recipient: returned,
+                    version: MemberTokenVersion(1),
+                    token: MemberToken(99),
+                },
+                error: MemberEvidenceError::Stale,
+            }) if returned == recipient
+        ));
         assert_eq!(
             router.member_token_evidence(&recipient),
             Some(MemberTokenEvidence::Observed {
@@ -1341,6 +1363,98 @@ mod tests {
         );
     }
 
+    enum CapacityReading {
+        Available(Box<u64>),
+        Unavailable(Box<u64>),
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum CapacityRefusal {
+        NoReading,
+    }
+
+    #[derive(Clone, Default)]
+    struct CapacityPolicy {
+        current: Option<u64>,
+    }
+
+    impl RoutingStrategy<Recipient<Destination>> for CapacityPolicy {
+        type Observation = CapacityReading;
+        type Error = CapacityRefusal;
+
+        fn select(&mut self, members: &[Recipient<Destination>], _: &u8) -> Option<usize> {
+            if self.current.is_some() && !members.is_empty() {
+                Some(0)
+            } else {
+                None
+            }
+        }
+
+        fn observe(
+            &mut self,
+            _: &[Recipient<Destination>],
+            observation: Self::Observation,
+        ) -> Result<(), RoutingObservationRejection<Self::Observation, Self::Error>> {
+            match observation {
+                CapacityReading::Available(amount) => {
+                    self.current = Some(*amount);
+                    Ok(())
+                }
+                observation @ CapacityReading::Unavailable(_) => {
+                    self.current = Some(999);
+                    Err(RoutingObservationRejection {
+                        observation,
+                        reason: CapacityRefusal::NoReading,
+                    })
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn rejected_noncloning_observation_returns_original_allocation_and_policy_state() {
+        let recipient = Recipient::<Destination>::global(MailAddr(1));
+        let mut router = (Router::new(vec![recipient], CapacityPolicy::default()))
+            .initialize()
+            .unwrap()
+            .behavior;
+        let reading = Box::new(13);
+        let original = (&*reading) as *const u64;
+        let rejection = router.receive(
+            MailAddr(9),
+            RouterMessage::Observe(CapacityReading::Unavailable(reading)),
+        );
+        match rejection {
+            Err(RouterError::Policy {
+                observation: CapacityReading::Unavailable(returned),
+                error: CapacityRefusal::NoReading,
+            }) => {
+                assert_eq!((&*returned) as *const u64, original);
+                assert_eq!(*returned, 13);
+            }
+            _ => panic!("unavailable reading must return its original allocation"),
+        }
+        assert_eq!(router.strategy().current, None);
+
+        let observed = router
+            .receive(
+                MailAddr(9),
+                RouterMessage::Observe(CapacityReading::Available(Box::new(3))),
+            )
+            .unwrap();
+        assert!(observed.sends.is_empty());
+        assert!(observed.creates.is_empty());
+        assert_eq!(observed.become_, Step::Continue);
+        assert_eq!(router.strategy().current, Some(3));
+
+        let routed = router
+            .receive(MailAddr(9), RouterMessage::Route(42))
+            .unwrap();
+        assert!(routed.sends == vec![Delivery::new(recipient, 42)]);
+        assert!(routed.creates.is_empty());
+        assert_eq!(routed.become_, Step::Continue);
+    }
+
     #[derive(Clone, Default)]
     struct RejectAfterMutation {
         selections: usize,
@@ -1360,9 +1474,12 @@ mod tests {
             &mut self,
             _: &[Recipient<Destination>],
             observation: Self::Observation,
-        ) -> Result<(), Self::Error> {
+        ) -> Result<(), RoutingObservationRejection<Self::Observation, Self::Error>> {
             self.observations += 1;
-            Err(observation)
+            Err(RoutingObservationRejection {
+                observation,
+                reason: 99,
+            })
         }
     }
 
@@ -1390,7 +1507,7 @@ mod tests {
             rejection,
             Err(RouterError::Policy {
                 observation: 7,
-                error: 7,
+                error: 99,
             })
         ));
         assert_eq!(router.strategy().observations, 0);
