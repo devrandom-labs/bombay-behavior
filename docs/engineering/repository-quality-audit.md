@@ -317,7 +317,7 @@ is recorded against a revision.
 
 - [ ] **A13 — Audit public bounds, hidden exports, and extension ownership.**
   **Confirmed surface requiring review.** The current source has 10
-  `#[doc(hidden)]` annotation sites in core and 75 in actors, including
+  `#[doc(hidden)]` annotation sites in core and 66 in actors, including
   members and re-exports. The
   [public-surface inventory](public-surface-inventory.md) classifies each site
   by contract owner. These annotations do not make an item private.
@@ -502,6 +502,34 @@ is recorded against a revision.
   including Rustdoc, published-document checks, and 843 optimized Nextest
   tests. Disposition: `pass` for these six runtime item pages; A13 remains open
   for the rest of the surface.
+
+  **Pre-edit A13 worker-preparation port law:** a trusted worker-source
+  interpreter consumes the owner-emitted `PrepareWorkers` request, borrows its
+  current source and role, then consumes either an accepted submission or its
+  exact rejection. A multi-role request continues through the owned
+  `PendingWorkerPreparation` until the complete `WorkerPreparation` returns.
+  The public methods already express that affine progression; the interpreter
+  must be able to discover those types and methods without guessing hidden
+  Rustdoc paths. This is a derived Bombay ownership port, not a new actor-model
+  operation. External fixed/FIFO actor tests and the inspected Bombay
+  `worker_preparation.rs` use this exact syntax; no replacement trait or
+  constructor is proposed. Before editing, Nix-pinned Rustdoc omitted the
+  three types from the `atomic` index. The focused regression is that the
+  existing three types and six progression methods become visible while their
+  constructors, tickets, fields, and owner settlement remain private. This
+  visibility-only batch changes zero control states, subordinate alternatives,
+  transition branches, modules, or Rust public spellings; the exact current
+  source, role, prepared prefix, ticket, and remaining roles retain their one
+  owners. The residue scan is clear for arrival history, duplicated cause,
+  false cardinality, nested transition authority, semantic booleans, and
+  structural caller syntax. Cross-checks are the worker-preparation custody
+  law and normalized atomic pool/supervisor documents. Disposition requires
+  Rustdoc visibility, the external actor suites, and the clean gate.
+  Nix-pinned Rustdoc now lists the three structs in `atomic` and all six
+  progression methods on their item pages. Actor hidden annotation sites fell
+  from 75 to 66. The external `fifo_pool` and
+  `fixed_supervisor_initialization` actor suites passed 91 and 98 tests,
+  respectively. Clean Nix verification remains to be recorded.
 
 - [x] **A14 — State the trust scope of initialization capabilities accurately.**
   **Confirmed documentation/API mismatch.** `InitializationTurn` says only the

@@ -3,7 +3,7 @@
 This inventory supports [A13](repository-quality-audit.md). `#[doc(hidden)]`
 changes Rustdoc display, not Rust visibility. The counts below are annotation
 sites in source, so a grouped re-export and its original declaration each
-count once. The current branch has 10 sites in `crates/behavior/src` and 75
+count once. The current branch has 10 sites in `crates/behavior/src` and 66
 in `crates/actors/src`; the earlier audit counted 25 and 89 before the
 documentation visibility review.
 
@@ -50,7 +50,6 @@ is neither actor identity nor proof of a committed fresh child.
 | `atomic/stable_proxy/{effects,operation,protocol}.rs` and `atomic/mod.rs` | `ProxyEffects`, `ProxyOperation::creation`, `ProxyDrain`, `ProxyEvent`, plus re-export-only `WorkerStartResult` | Runtime port | The host and typed proxy effects must keep rejection custody and every ordered lane; operation identity, request decomposition, and receipt construction are now restricted to their owning modules. The exact `ProxyOperation` and `ProxyInputReceipt` used by the interpreter are visible. |
 | `atomic/worker/activation.rs` | `ActivationStartRejection`, `BeginActivation`, `BeginActivation::{new,target,worker,initialization,started,start_rejected,activate}`, `WorkerActivation`, `WorkerActivation::{worker,into_ready,into_rejection}` | Runtime port | The host settles activation only after the exact worker and initialization attempt are known. |
 | `atomic/worker/initialization.rs` | `InitializationAttempt`, `ActivationPermit`, `ActivationPermit::{worker,initialization,target}`, `InitializeWorker`, `InitializeWorker::{target,worker,initialization,resolve}`, `WorkerInitializationOutcome`, `WorkerInitializationReport`, `WorkerInitializationFailure` | Runtime port | Initialization settlement carries exact worker custody and can authorize or reject later activation. |
-| `atomic/worker/preparation.rs` | `PrepareWorkers`, `PrepareWorkers::{source_and_role,accept,reject}`, `PendingWorkerPreparation`, `PendingWorkerPreparation::{source_and_role,accept,reject}`, `WorkerPreparation` | Runtime port | A lawful application `WorkerSource` implementation supplies preparation and receives its complete rejection. The pool owns sequencing. |
 | `atomic/worker/mod.rs` | `HostedInitialization`, `WorkerRecovery`, `WorkerRecovery::into_retirement`, `WorkerAttempt`, `WorkerAttempt::creation` | Runtime port | The host retains the attempt and complete initialization effects through retirement. |
 | `lifecycle/shutdown_coordinator.rs` | `HeterogeneousShutdownItem`, `ChoiceSettlements`, `HeterogeneousShutdownChoiceSettlement` | Generated code obligation | The closed heterogeneous choice product supplies the typed settlement shape. |
 | `protocol/mod.rs` | `ObserveCreation` | Runtime port | Observation must refer to the exact staged child creation and return its request on rejection. |
@@ -84,6 +83,13 @@ already public Rust names required by external `InterpretItem` and
 `ProxyControlAdmission` implementations. Their fields and owner-only receipt
 constructors remain private; hiding the item pages served no capability
 boundary. Six actor annotation sites were removed, leaving 75.
+
+The worker-preparation interpreter path is also visible: `PrepareWorkers`,
+`PendingWorkerPreparation`, `WorkerPreparation`, and both request phases'
+`source_and_role`, `accept`, and `reject` methods. External fixed/FIFO tests
+and Bombay's inspected source already name this progression. The ticket,
+constructors, fields, and owner settlement remain private. Nine more actor
+annotation sites were removed, leaving 66.
 
 `WorkQueue` now keeps worker-route cloning and equality on construction and
 transition operations, where queue inspection and duplicate availability use

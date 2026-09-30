@@ -75,10 +75,8 @@ pub use fixed_supervisor::{
     fixed,
 };
 #[doc(hidden)]
-pub use fixed_supervisor::{
-    FixedLifecycleRoute, FixedSupervisorEvent, FixedSupervisorRequests, PendingWorkerPreparation,
-    PrepareWorkers, WorkerPreparation,
-};
+pub use fixed_supervisor::{FixedLifecycleRoute, FixedSupervisorEvent, FixedSupervisorRequests};
+pub use fixed_supervisor::{PendingWorkerPreparation, PrepareWorkers, WorkerPreparation};
 pub use keyed_pool::{
     BindingCapacity, BindingCommand, BindingEvidence, BindingExpectation, BindingGeneration,
     BindingRejection, BindingReply, BindingRequestId, KeyedAdmissionRejection,
