@@ -35,10 +35,10 @@ use super::protocol;
 use super::role::RoleCell;
 use super::{
     CustomerDelivery, CustomerRoute, KeyedActions, KeyedAssignedReturnReason, KeyedDiagnostic,
-    KeyedOutcome, KeyedPool, KeyedPoolState, KeyedQueue, KeyedQueuedReturnReason, Operating,
+    KeyedOperating, KeyedOutcome, KeyedPool, KeyedPoolState, KeyedQueue, KeyedQueuedReturnReason,
 };
 
-impl<Role, W, P, Key, Job, WorkerResult> Operating<Role, W, P, Key, Job, WorkerResult>
+impl<Role, W, P, Key, Job, WorkerResult> KeyedOperating<Role, W, P, Key, Job, WorkerResult>
 where
     Role: Eq,
     W: Behavior + BehaviorBase,
@@ -117,7 +117,7 @@ where
 {
     fn retire_role(
         &self,
-        mut operating: Operating<Role, W, P, Key, Job, WorkerResult>,
+        mut operating: KeyedOperating<Role, W, P, Key, Job, WorkerResult>,
         position: usize,
         role: RoleName<Role>,
         recoveries: RecoveryCount,
@@ -125,7 +125,7 @@ where
         capacity: super::super::BacklogCapacity,
         mut actions: KeyedActions<Role, W, P, Source, Diagnostics, Key, Job, WorkerResult>,
     ) -> (
-        Operating<Role, W, P, Key, Job, WorkerResult>,
+        KeyedOperating<Role, W, P, Key, Job, WorkerResult>,
         KeyedActions<Role, W, P, Source, Diagnostics, Key, Job, WorkerResult>,
     ) {
         for (_, customer) in queue {
@@ -216,10 +216,10 @@ where
 
     fn prepare_next_waiting(
         &mut self,
-        mut operating: Operating<Role, W, P, Key, Job, WorkerResult>,
+        mut operating: KeyedOperating<Role, W, P, Key, Job, WorkerResult>,
         actions: KeyedActions<Role, W, P, Source, Diagnostics, Key, Job, WorkerResult>,
     ) -> (
-        Operating<Role, W, P, Key, Job, WorkerResult>,
+        KeyedOperating<Role, W, P, Key, Job, WorkerResult>,
         KeyedActions<Role, W, P, Source, Diagnostics, Key, Job, WorkerResult>,
     ) {
         let Some(position) = operating.waiting_recovery_position() else {
@@ -276,7 +276,7 @@ where
 
     fn retire_unrecovered_worker(
         &mut self,
-        mut operating: Operating<Role, W, P, Key, Job, WorkerResult>,
+        mut operating: KeyedOperating<Role, W, P, Key, Job, WorkerResult>,
         position: usize,
         role: RoleName<Role>,
         recoveries: RecoveryCount,
@@ -315,7 +315,7 @@ where
 
     fn reject_preparation(
         &mut self,
-        operating: Operating<Role, W, P, Key, Job, WorkerResult>,
+        operating: KeyedOperating<Role, W, P, Key, Job, WorkerResult>,
         position: usize,
         role: RoleName<Role>,
         recoveries: RecoveryCount,
@@ -354,7 +354,7 @@ where
 
     fn reject_replacement(
         &mut self,
-        operating: Operating<Role, W, P, Key, Job, WorkerResult>,
+        operating: KeyedOperating<Role, W, P, Key, Job, WorkerResult>,
         position: usize,
         role: RoleName<Role>,
         recoveries: RecoveryCount,
@@ -390,7 +390,7 @@ where
 
     fn return_source_after_replacement_failure(
         &mut self,
-        operating: Operating<Role, W, P, Key, Job, WorkerResult>,
+        operating: KeyedOperating<Role, W, P, Key, Job, WorkerResult>,
         position: usize,
         role: RoleName<Role>,
         recoveries: RecoveryCount,
@@ -427,7 +427,7 @@ where
 
     pub(super) fn recover_worker(
         &mut self,
-        mut operating: Operating<Role, W, P, Key, Job, WorkerResult>,
+        mut operating: KeyedOperating<Role, W, P, Key, Job, WorkerResult>,
         position: usize,
         role: RoleName<Role>,
         recoveries: RecoveryCount,
@@ -540,7 +540,7 @@ where
 
     pub(super) fn accept_worker_preparation(
         &mut self,
-        mut operating: Operating<Role, W, P, Key, Job, WorkerResult>,
+        mut operating: KeyedOperating<Role, W, P, Key, Job, WorkerResult>,
         input: behavior::ActionItemResult<PrepareWorkers<Source, Role, W, P>>,
     ) -> Result<
         (
@@ -548,7 +548,7 @@ where
             KeyedActions<Role, W, P, Source, Diagnostics, Key, Job, WorkerResult>,
         ),
         (
-            Operating<Role, W, P, Key, Job, WorkerResult>,
+            KeyedOperating<Role, W, P, Key, Job, WorkerResult>,
             behavior::ActionItemResult<PrepareWorkers<Source, Role, W, P>>,
         ),
     > {
@@ -728,7 +728,7 @@ where
 
     pub(super) fn accept_restart_schedule(
         &mut self,
-        mut operating: Operating<Role, W, P, Key, Job, WorkerResult>,
+        mut operating: KeyedOperating<Role, W, P, Key, Job, WorkerResult>,
         input: behavior::ActionItemResult<ScheduleAfter>,
     ) -> Result<
         (
@@ -736,7 +736,7 @@ where
             KeyedActions<Role, W, P, Source, Diagnostics, Key, Job, WorkerResult>,
         ),
         (
-            Operating<Role, W, P, Key, Job, WorkerResult>,
+            KeyedOperating<Role, W, P, Key, Job, WorkerResult>,
             behavior::ActionItemResult<ScheduleAfter>,
         ),
     > {
@@ -825,7 +825,7 @@ where
 
     pub(super) fn accept_restart_timer(
         &mut self,
-        mut operating: Operating<Role, W, P, Key, Job, WorkerResult>,
+        mut operating: KeyedOperating<Role, W, P, Key, Job, WorkerResult>,
         elapsed: crate::TimerElapsed,
     ) -> Result<
         (
@@ -833,7 +833,7 @@ where
             KeyedActions<Role, W, P, Source, Diagnostics, Key, Job, WorkerResult>,
         ),
         (
-            Operating<Role, W, P, Key, Job, WorkerResult>,
+            KeyedOperating<Role, W, P, Key, Job, WorkerResult>,
             crate::TimerElapsed,
         ),
     > {

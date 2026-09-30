@@ -4,6 +4,7 @@ target
 .biscuit/
 **/.env
 **/target
+*.profraw
 .env
 .envrc.local
 .worktrees/

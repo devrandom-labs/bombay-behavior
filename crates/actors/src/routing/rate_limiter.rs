@@ -324,17 +324,20 @@ mod tests {
             .initialize()
             .unwrap()
             .behavior;
-        assert_eq!(acquire(&mut s, 2, 7).sends.deliveries[0].message, 7);
+        let admitted = acquire(&mut s, 2, 7);
+        assert_eq!(admitted.sends.deliveries[0].message, 7);
+        let insufficient = acquire(&mut s, 2, 8);
         assert!(matches!(
-            acquire(&mut s, 2, 8).sends.outcomes[0].message,
+            insufficient.sends.outcomes[0].message,
             RateLimiterOutcome::Rejected {
                 cost,
                 value: 8,
                 reason: RateLimitRejection::InsufficientTokens
             } if cost == tokens(2)
         ));
+        let over_capacity = acquire(&mut s, 6, 9);
         assert!(matches!(
-            acquire(&mut s, 6, 9).sends.outcomes[0].message,
+            over_capacity.sends.outcomes[0].message,
             RateLimiterOutcome::Rejected {
                 cost,
                 value: 9,

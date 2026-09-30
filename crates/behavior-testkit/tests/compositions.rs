@@ -111,6 +111,34 @@ impl GeneratedBase {
     }
 }
 
+#[test]
+fn generated_creation_owner_preserves_logical_host_order() {
+    type Direct = <GeneratedBase as behavior_core::LogicalHostRequirements>::LogicalHosts;
+    type InnerFirst = <behavior_core::SendLayer<GeneratedBaseSends, Vec<Delivery<Recorder>>>
+        as behavior_core::LogicalDeliveryProtocols>::Protocols;
+    type OwnedFirst = <behavior_core::SendLayer<Vec<Delivery<Recorder>>, GeneratedBaseSends>
+        as behavior_core::LogicalDeliveryProtocols>::Protocols;
+
+    let _: core::marker::PhantomData<
+        behavior_core::BirthProtocol<
+            Sink,
+            behavior_core::BirthProtocol<Sink, behavior_core::NoBirthProtocols>,
+        >,
+    > = core::marker::PhantomData::<Direct>;
+    let _: core::marker::PhantomData<
+        behavior_core::BirthProtocol<
+            Recorder,
+            behavior_core::BirthProtocol<Sink, behavior_core::NoBirthProtocols>,
+        >,
+    > = core::marker::PhantomData::<InnerFirst>;
+    let _: core::marker::PhantomData<
+        behavior_core::BirthProtocol<
+            Sink,
+            behavior_core::BirthProtocol<Recorder, behavior_core::NoBirthProtocols>,
+        >,
+    > = core::marker::PhantomData::<OwnedFirst>;
+}
+
 fn assert_generated_base_effects(sends: &GeneratedBaseSends, creates: usize) {
     assert_eq!(sends.replies.len(), 1);
     assert_eq!(sends.replies[0].message, 7);
@@ -122,8 +150,8 @@ fn assert_generated_base_effects(sends: &GeneratedBaseSends, creates: usize) {
 /// wrapper because replay cannot roll back actions from earlier messages if a
 /// later replayed transition is rejected. Its compile-fail contract covers
 /// the other three permutations.
-#[tokio::test]
-async fn generated_products_compose_through_every_sound_three_wrapper_order() {
+#[test]
+fn generated_products_compose_through_every_sound_three_wrapper_order() {
     let due = Instant::now() + Duration::from_secs(1);
 
     let first = at(
@@ -166,8 +194,8 @@ async fn generated_products_compose_through_every_sound_three_wrapper_order() {
 /// Every ordering of {at, watch, at} preserves each layer's own initial
 /// protocol at exactly its nesting depth: outermost send product carries the
 /// outermost schedule, and so on inward.
-#[tokio::test]
-async fn all_wrapper_permutations_preserve_init_protocol_nesting() {
+#[test]
+fn all_wrapper_permutations_preserve_init_protocol_nesting() {
     let first = Instant::now() + Duration::from_secs(1);
     let second = first + Duration::from_secs(1);
 
@@ -334,8 +362,8 @@ fn equal_timer_ids_in_nested_deadlines_remain_separately_addressable() {
 
 /// In an Deadline∘Watch∘Stash stack, only the user lane enters the stash buffer:
 /// Reached and `PeerStopped` events pass through to their layer untouched.
-#[tokio::test]
-async fn environment_lanes_bypass_stash_while_user_lane_is_intercepted() {
+#[test]
+fn environment_lanes_bypass_stash_while_user_lane_is_intercepted() {
     let due = Instant::now() + Duration::from_secs(1);
     let behavior = behavior_actors::Deadline::new(
         behavior_actors::Watch::new(
@@ -381,8 +409,8 @@ async fn environment_lanes_bypass_stash_while_user_lane_is_intercepted() {
 
 /// Watch does not latch: stepping after a Stop is allowed and re-invokes
 /// the reaction on each matching death; ordinary user messages still run.
-#[tokio::test]
-async fn watch_reaction_reinvokes_on_each_death_and_transition_continues() {
+#[test]
+fn watch_reaction_reinvokes_on_each_death_and_transition_continues() {
     let behavior = behavior_actors::Watch::new(Recorder::default(), PEER, stop_on_abnormal_death);
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
@@ -406,8 +434,8 @@ async fn watch_reaction_reinvokes_on_each_death_and_transition_continues() {
 }
 
 /// A watch-of-watch exposes distinct structural destinations for both owners.
-#[tokio::test]
-async fn watch_of_watch_routes_each_peer_to_its_own_layer() {
+#[test]
+fn watch_of_watch_routes_each_peer_to_its_own_layer() {
     let inner_peer = MailAddr(1);
     let outer_peer = MailAddr(2);
     let behavior = behavior_actors::Watch::new(
@@ -443,8 +471,8 @@ fn continue_after_death<B: Behavior>(
     Step::Continue
 }
 
-#[tokio::test]
-async fn duplicate_nested_watch_peer_remains_addressable_at_both_paths() {
+#[test]
+fn duplicate_nested_watch_peer_remains_addressable_at_both_paths() {
     let behavior = behavior_actors::Watch::new(
         behavior_actors::Watch::new(Recorder::default(), PEER, stop_on_abnormal_death),
         PEER,
@@ -471,8 +499,8 @@ async fn duplicate_nested_watch_peer_remains_addressable_at_both_paths() {
 
 /// An `Deadline` constructed with `None` schedules nothing and is inert to every
 /// Reached event: the reaction never fires.
-#[tokio::test]
-async fn unscheduled_at_is_inert_to_reached_events() {
+#[test]
+fn unscheduled_at_is_inert_to_reached_events() {
     let behavior = behavior_actors::Deadline::new(
         Recorder::default(),
         behavior_actors::TimerId(0),
@@ -497,8 +525,8 @@ async fn unscheduled_at_is_inert_to_reached_events() {
 
 /// `stop_on_abnormal_death` classifies outcomes: Normal and Collected keep
 /// the behavior active; `LinkDied` and crashes stop it carrying the peer address.
-#[tokio::test]
-async fn abnormal_death_reaction_outcome_classes() {
+#[test]
+fn abnormal_death_reaction_outcome_classes() {
     let behavior = behavior_actors::Watch::new(Recorder::default(), PEER, stop_on_abnormal_death);
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;

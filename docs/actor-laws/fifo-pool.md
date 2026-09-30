@@ -218,6 +218,14 @@ FifoPoolState =
   | Stopped
 ```
 
+The Rust aggregate also has `Constructed`, which owns the prepared worker
+roster before its one initialization transition, and `ForcedRetirement`, which
+owns unresolved retiring workers plus the exact shutdown-ID or deadline
+failure after a terminal transition. The sketch above describes the operating
+law; those two additional source states preserve initialization rejection and
+terminal custody. A real interpreter still has to prove transfer of the
+`ForcedRetirement` value to the parent or root custodian.
+
 `OrderedMemberMap` has exactly one member for each declared role. Roles are
 never inserted, removed, or reordered. `Retired` remains as a terminal cell so
 cursor order and late-fact classification do not depend on sequence arithmetic.

@@ -1,0 +1,16 @@
+error[E0382]: use of moved value: `operation`
+  --> tests/ui/proxy_double_settlement.rs:14:22
+   |
+ 2 |     operation: behavior_actors::atomic::ProxyOperation<Source, Worker, Plan>,
+   |     --------- move occurs because `operation` has type `ProxyOperation<Source, Worker, Plan>`, which does not implement the `Copy` trait
+...
+13 |     let _accepted = operation.settle(host);
+   |                               ------------ `operation` moved due to this method call
+14 |     let _duplicate = operation.settle(host);
+   |                      ^^^^^^^^^ value used here after move
+   |
+note: `ProxyOperation::<Source, Worker, Plan>::settle` takes ownership of the receiver `self`, which moves `operation`
+  --> $BEHAVIOR_ACTORS/src/atomic/stable_proxy/operation.rs
+   |
+   |         self,
+   |         ^^^^

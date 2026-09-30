@@ -161,17 +161,15 @@ where
 /// Unsupported input has no construction capability:
 ///
 /// ```compile_fail
-/// use behavior::{Here, InjectEvent, MailAddr, User};
-/// let _ = <User<MailAddr, ()> as InjectEvent<u8, Here>>::inject_at(7);
+/// let _ = <behavior::User<behavior::MailAddr, ()> as behavior::InjectEvent<u8, behavior::Here>>::inject_at(7);
 /// ```
 ///
 /// Repeated payload types require an explicit ownership path rather than an
 /// outermost-first runtime guess:
 ///
 /// ```compile_fail
-/// use behavior::{EventLayer, InjectEvent, MailAddr, User};
-/// type Duplicate = EventLayer<u8, EventLayer<u8, User<MailAddr, ()>>>;
-/// let _ = <Duplicate as InjectEvent<u8, _>>::inject_at(7);
+/// type Duplicate = behavior::EventLayer<u8, behavior::EventLayer<u8, behavior::User<behavior::MailAddr, ()>>>;
+/// let _ = <Duplicate as behavior::InjectEvent<u8, _>>::inject_at(7);
 /// ```
 pub trait InjectEvent<Input, Path>: Sized {
     fn inject_at(input: Input) -> Self;

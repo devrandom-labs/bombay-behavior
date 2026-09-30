@@ -15,6 +15,7 @@ use libfuzzer_sys::fuzz_target;
 
 mod dynamic_supervisor;
 mod dynamic_supervisor_rejection;
+mod proxy_control;
 
 use dynamic_supervisor::{RuntimeAddress, Worker, accepted_proxy_input, committed_proxy};
 use dynamic_supervisor_rejection::rejected_proxy;
@@ -253,10 +254,9 @@ fuzz_target!(|input: &[u8]| {
                     .into_items()
                     .pop()
                     .expect("late proxy receives one shutdown");
-                let (shutdown_creation, _request, operation) = shutdown.into_parts();
-                assert_eq!(shutdown_creation, creation);
+                assert_eq!(shutdown.creation(), creation);
                 let settled = supervisor
-                    .on(accepted_proxy_input(shutdown_creation, operation))
+                    .on(accepted_proxy_input(shutdown))
                     .unwrap_or_else(|_| panic!("shutdown receipt waits for exact proxy exit"));
                 assert!(settled.sends.lifecycle.is_empty());
                 supervisor
@@ -285,10 +285,9 @@ fuzz_target!(|input: &[u8]| {
                     ))
                     .unwrap_or_else(|_| panic!("proxy exit may precede shutdown receipt"));
                 assert!(exited.sends.lifecycle.is_empty());
-                let (shutdown_creation, _request, operation) = shutdown.into_parts();
-                assert_eq!(shutdown_creation, creation);
+                assert_eq!(shutdown.creation(), creation);
                 supervisor
-                    .on(accepted_proxy_input(shutdown_creation, operation))
+                    .on(accepted_proxy_input(shutdown))
                     .unwrap_or_else(|_| panic!("shutdown receipt closes reverse-order retirement"))
             }
         };

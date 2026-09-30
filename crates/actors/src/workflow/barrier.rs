@@ -203,7 +203,6 @@ where
 impl<A, K, Route> BehaviorBase for Barrier<A, K, Route>
 where
     A: Address,
-    K: Clone + Eq,
     Route: DeliveryRoute,
     Route::Protocol: Protocol<Addr = A, Msg = BarrierReleased>,
 {
@@ -217,7 +216,6 @@ where
 impl<A, K, Route> behavior::Protocol for Barrier<A, K, Route>
 where
     A: Address,
-    K: Clone + Eq,
     Route: DeliveryRoute,
     Route::Protocol: Protocol<Addr = A, Msg = BarrierReleased>,
 {
@@ -355,15 +353,16 @@ mod tests {
             )
             .unwrap();
         assert!(first.sends.is_empty());
+        let rejection = barrier.receive(
+            MailAddr(9),
+            BarrierMessage {
+                generation: BarrierGeneration(0),
+                participant: 2,
+                reply_to: two,
+            },
+        );
         assert!(matches!(
-            barrier.receive(
-                MailAddr(9),
-                BarrierMessage {
-                    generation: BarrierGeneration(0),
-                    participant: 2,
-                    reply_to: two,
-                },
-            ),
+            rejection,
             Err(BarrierError::DuplicateArrival {
                 participant: 2,
                 generation: BarrierGeneration(0),
@@ -404,15 +403,16 @@ mod tests {
                 arrivals,
             } if arrivals.is_empty()
         ));
+        let rejection = barrier.receive(
+            MailAddr(9),
+            BarrierMessage {
+                generation: BarrierGeneration(0),
+                participant: 1,
+                reply_to: one,
+            },
+        );
         assert!(matches!(
-            barrier.receive(
-                MailAddr(9),
-                BarrierMessage {
-                    generation: BarrierGeneration(0),
-                    participant: 1,
-                    reply_to: one,
-                },
-            ),
+            rejection,
             Err(BarrierError::StaleGeneration {
                 current: BarrierGeneration(1),
                 reply_to,

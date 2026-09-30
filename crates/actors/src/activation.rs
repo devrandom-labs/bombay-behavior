@@ -21,16 +21,13 @@ pub struct Initialized<B: Behavior> {
 /// repeated through the public API:
 ///
 /// ```compile_fail
-/// use behavior::{Behavior, MailAddr, Never};
-/// use behavior_actors::{Activate, Machine, Move};
-///
-/// let definition = Machine::<MailAddr, _, _, _, Never>::new(
+/// let definition = behavior_actors::Machine::<behavior::MailAddr, _, _, _, behavior::Never>::new(
 ///     (),
 ///     (),
-///     |_, _, _| Ok(Move::Stay),
+///     |_, _, _| Ok(behavior_actors::Move::Stay),
 /// );
-/// let active = definition.initialize().unwrap().behavior;
-/// active.initialize();
+/// let active = behavior_actors::Activate::initialize(definition).unwrap().behavior;
+/// behavior_actors::Activate::initialize(active);
 /// ```
 pub struct Active<B: Behavior> {
     pub(crate) behavior: B,
@@ -115,15 +112,12 @@ impl<B: Behavior> core::ops::Deref for Active<B> {
 /// A raw definition cannot use the active mailbox API:
 ///
 /// ```compile_fail
-/// use behavior::{MailAddr, Never};
-/// use behavior_actors::{Machine, Move};
-///
-/// let mut definition = Machine::<MailAddr, _, _, _, Never>::new(
+/// let mut definition = behavior_actors::Machine::<behavior::MailAddr, _, _, _, behavior::Never>::new(
 ///     (),
 ///     (),
-///     |_, _, _| Ok(Move::Stay),
+///     |_, _, _| Ok(behavior_actors::Move::Stay),
 /// );
-/// definition.receive(MailAddr(0), 1_u8);
+/// definition.receive(behavior::MailAddr(0), 1_u8);
 /// ```
 pub trait Activate: Behavior + Sized {
     /// Consume this definition, perform its one initialization fold, and

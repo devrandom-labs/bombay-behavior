@@ -30,7 +30,6 @@ pub struct ActionSettlement<Creations, Sends, Ph> {
 }
 
 /// Final settlement of the creation leg of one [`Actions`] value.
-#[doc(hidden)]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CreationSettlement<Requests, Settlements> {
     /// The whole batch was routed and every child has an exact settlement.
@@ -144,7 +143,6 @@ where
 }
 
 /// Static creation-settlement product selected by one birth mode.
-#[doc(hidden)]
 pub trait CreationSettlements<A: Address>: BirthMode {
     type Settlements: ClassifySettlement;
 }
@@ -188,7 +186,6 @@ where
 /// The value retains either every routed child settlement or the entire
 /// unchanged batch rejected during route preparation. It is interpreter-facing
 /// custody, not an application protocol or another creation operation.
-#[doc(hidden)]
 #[must_use = "a returned creation batch must be admitted or retained"]
 pub struct CreationsSettled<A, C>
 where
@@ -351,7 +348,6 @@ where
 ///
 /// `NoBirths` needs no runtime capability. `Births<C>` performs one real batch
 /// route attempt followed by independent child establishment in declared order.
-#[doc(hidden)]
 pub trait InterpretCreations<A, Interpreter, RootEvent, Path>: CreationSettlements<A>
 where
     A: Address,
@@ -824,10 +820,8 @@ mod tests {
         let mapped: Actions<MailAddr, Never, Vec<u8>, Births<()>> =
             actions.map_become(|_| Step::Stop(Stopped));
         assert_eq!(mapped.sends, [1, 2]);
-        assert_eq!(
-            mapped.creates.iter().next().map(CreateChild::id),
-            Some(first)
-        );
+        let mapped_creation_id = mapped.creates.iter().next().map(CreateChild::id);
+        assert_eq!(mapped_creation_id, Some(first));
         assert!(matches!(mapped.become_, Step::Stop(Stopped)));
     }
 

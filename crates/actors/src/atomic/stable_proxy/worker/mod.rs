@@ -233,6 +233,7 @@ impl<P> PendingWorker<P> {
                     (established.id(), established.kind())
                 }
                 ChildCreationOutcome::InitializationRejected { creation, .. }
+                | ChildCreationOutcome::InitializationPanicked { creation }
                 | ChildCreationOutcome::HostRejected { creation, .. } => {
                     (creation.id(), creation.kind())
                 }
@@ -487,26 +488,18 @@ impl<P> PendingWorker<P> {
     {
         match workers.into_settlement() {
             CreationSettlement::Rejected { creations, reason } => {
-                let mut creations: Vec<_> = creations.into_iter().collect();
-                if creations.len() != 1 {
-                    return WorkerCreation::Unexpected {
-                        worker: self,
-                        stopped,
-                        workers: CreationsSettled::new(CreationSettlement::Rejected {
-                            creations: creations.into_iter().collect(),
-                            reason,
-                        }),
-                    };
-                }
-                let Some(creation) = creations.pop() else {
-                    return WorkerCreation::Unexpected {
-                        worker: self,
-                        stopped,
-                        workers: CreationsSettled::new(CreationSettlement::Rejected {
-                            creations: behavior::Creations::empty(),
-                            reason,
-                        }),
-                    };
+                let creation = match creations.into_one() {
+                    Ok(creation) => creation,
+                    Err(creations) => {
+                        return WorkerCreation::Unexpected {
+                            worker: self,
+                            stopped,
+                            workers: CreationsSettled::new(CreationSettlement::Rejected {
+                                creations,
+                                reason,
+                            }),
+                        };
+                    }
                 };
                 if (creation.id(), creation.kind()) != (self.creation(), self.kind) {
                     return WorkerCreation::Unexpected {
@@ -528,24 +521,17 @@ impl<P> PendingWorker<P> {
                 }
             }
             CreationSettlement::Settled(settlements) => {
-                let mut settlements: Vec<_> = settlements.into_iter().collect();
-                if settlements.len() != 1 {
-                    return WorkerCreation::Unexpected {
-                        worker: self,
-                        stopped,
-                        workers: CreationsSettled::new(CreationSettlement::Settled(
-                            settlements.into_iter().collect(),
-                        )),
-                    };
-                }
-                let Some(settlement) = settlements.pop() else {
-                    return WorkerCreation::Unexpected {
-                        worker: self,
-                        stopped,
-                        workers: CreationsSettled::new(CreationSettlement::Settled(
-                            behavior::Creations::empty(),
-                        )),
-                    };
+                let settlement = match settlements.into_one() {
+                    Ok(settlement) => settlement,
+                    Err(settlements) => {
+                        return WorkerCreation::Unexpected {
+                            worker: self,
+                            stopped,
+                            workers: CreationsSettled::new(CreationSettlement::Settled(
+                                settlements,
+                            )),
+                        };
+                    }
                 };
                 self.created_one(settlement, stopped)
             }

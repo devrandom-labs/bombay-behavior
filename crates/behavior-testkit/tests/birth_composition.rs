@@ -258,7 +258,8 @@ fn inferred_application_children_append_after_root_children_without_aliases_or_i
         second.child(),
         ChildChoice::Tail(ChildChoice::Head(_))
     ));
-    assert!(creates.next().is_none());
+    let remaining_creates = creates.next();
+    assert!(remaining_creates.is_none());
 
     assert_eq!(owned_id, first_id);
     assert_ne!(first_id, second.id());
@@ -317,7 +318,8 @@ fn empty_child_algebra_is_a_left_and_right_identity() {
     assert_eq!(first.id(), replacement);
     assert_eq!(first.kind(), CreationKind::replacement(previous));
     assert!(matches!(first.child(), First));
-    assert!(left.next().is_none());
+    let remaining_left = left.next();
+    assert!(remaining_left.is_none());
 
     let mut owned_ids = CreationSequence::new();
     let owned = owned_ids.issue().expect("the owned ID exists");
@@ -330,7 +332,8 @@ fn empty_child_algebra_is_a_left_and_right_identity() {
     assert_eq!(owned_child.id(), owned);
     assert_eq!(owned_child.kind(), CreationKind::Birth);
     assert!(matches!(owned_child.child(), Owned));
-    assert!(right.next().is_none());
+    let remaining_right = right.next();
+    assert!(remaining_right.is_none());
 }
 
 #[test]
@@ -404,7 +407,8 @@ fn repeated_child_types_retain_each_static_occurrence() {
             First
         ))))
     ));
-    assert!(combined.next().is_none());
+    let remaining_combined = combined.next();
+    assert!(remaining_combined.is_none());
 
     assert_eq!(first_owned, second_owned);
     assert_eq!(first_owned, first_tail);

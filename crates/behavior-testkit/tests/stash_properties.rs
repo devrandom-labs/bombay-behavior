@@ -150,8 +150,8 @@ proptest! {
 
 /// Mailbox-driven variant: the same filter property through the driver,
 /// including the unconsumed-tail accounting after a stop.
-#[tokio::test]
-async fn stash_filter_holds_through_the_driver() {
+#[test]
+fn stash_filter_holds_through_the_driver() {
     let events = [
         User::user(MailAddr(1), 2), // Stash
         User::user(MailAddr(2), 3), // Deliver

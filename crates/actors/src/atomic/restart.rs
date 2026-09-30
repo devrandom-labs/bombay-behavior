@@ -448,7 +448,8 @@ mod tests {
             panic!("valid restart is proposed")
         };
         assert_eq!(proposal.ordinal().get(), 1);
-        assert_eq!(proposal.release(), RecoveryRelease::Immediate);
+        let release = proposal.release();
+        assert_eq!(release, RecoveryRelease::Immediate);
         let budget = proposal.accept();
         assert_eq!(count.admitted(), 1);
         assert_eq!(budget.latest(), Some((observed, charge(2))));

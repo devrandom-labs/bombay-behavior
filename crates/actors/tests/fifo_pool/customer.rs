@@ -2,6 +2,7 @@ use std::time::Instant;
 
 use behavior::{Delivery, EstablishedDelivery};
 
+use super::assignment_delivery::accepted_assignment;
 use super::direct_pool_customer::{
     CustomerDesk, DeskInput, DeskJob, DeskNotice, DeskReturn, WorkEnding, input_orders,
 };
@@ -108,8 +109,8 @@ async fn customer_desk_matches_every_assignment_exit_and_shutdown_order() {
             .into_items()
             .pop()
             .unwrap_or_else(|| panic!("ready worker receives the accepted job"));
-        let receipt = assignment.receipt();
-        let (_, assignment, _) = assignment.into_parts();
+        let (receipt, delivery) = accepted_assignment(assignment);
+        let assignment = delivery.message;
         let completion = ChildReport::new(worker, assignment.complete(58).into_inner());
         let job = DeskJob {
             customer: 88,

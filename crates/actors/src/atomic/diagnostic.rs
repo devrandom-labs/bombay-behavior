@@ -50,9 +50,9 @@ impl DiagnosticDisposition<Infallible> {
 }
 
 /// Static rejection vocabulary selected by one diagnostic route family.
-#[doc(hidden)]
 pub trait DiagnosticRoute<Diagnostic>: sealed::DiagnosticRoute<Diagnostic> + Send + Sized {
     type Rejection: Send;
+    type LogicalProtocols: behavior::BirthProtocolProduct;
 }
 
 impl<P> sealed::DiagnosticRoute<P::Msg> for Recipient<P>
@@ -70,6 +70,7 @@ where
     P::Msg: Send,
 {
     type Rejection = LogicalDeliveryReason;
+    type LogicalProtocols = behavior::BirthProtocol<P, behavior::NoBirthProtocols>;
 }
 
 impl<P> sealed::DiagnosticRoute<P::Msg> for EstablishedRecipient<P>
@@ -89,6 +90,7 @@ where
     P::Msg: Send,
 {
     type Rejection = ExactDeliveryReason;
+    type LogicalProtocols = behavior::NoBirthProtocols;
 }
 
 impl<Diagnostic> sealed::DiagnosticRoute<Diagnostic> for Infallible where Diagnostic: Send {}
@@ -98,6 +100,7 @@ where
     Diagnostic: Send,
 {
     type Rejection = Never;
+    type LogicalProtocols = behavior::NoBirthProtocols;
 }
 
 /// One complete diagnostic selected for delivery or terminal custody.
@@ -105,13 +108,10 @@ where
 /// A route for another diagnostic protocol cannot become an action item:
 ///
 /// ```compile_fail,E0271
-/// use behavior::{ActionItem, MailAddr, MessageProtocol, Recipient};
-/// use behavior_actors::atomic::DiagnosticAction;
-/// fn require_action<Item: ActionItem>(_: Item) {}
-/// let route = Recipient::<MessageProtocol<MailAddr, u8>>::global(MailAddr(1));
-/// require_action(DiagnosticAction::deliver(route, String::from("failed")));
+/// fn require_action<Item: behavior::ActionItem>(_: Item) {}
+/// let route = behavior::Recipient::<behavior::MessageProtocol<behavior::MailAddr, u8>>::global(behavior::MailAddr(1));
+/// require_action(behavior_actors::atomic::DiagnosticAction::deliver(route, String::from("failed")));
 /// ```
-#[doc(hidden)]
 #[must_use = "a diagnostic action must be interpreted or retained"]
 pub enum DiagnosticAction<Route, Diagnostic> {
     Deliver {
@@ -125,14 +125,12 @@ pub enum DiagnosticAction<Route, Diagnostic> {
 
 impl<Route, Diagnostic> DiagnosticAction<Route, Diagnostic> {
     /// Construct one routed diagnostic without cloning its payload.
-    #[doc(hidden)]
     #[must_use]
     pub const fn deliver(route: Route, diagnostic: Diagnostic) -> Self {
         Self::Deliver { route, diagnostic }
     }
 
     /// Construct one route-free terminal diagnostic.
-    #[doc(hidden)]
     #[must_use]
     pub const fn terminal(diagnostic: Diagnostic) -> Self {
         Self::Terminal { diagnostic }
@@ -144,6 +142,7 @@ where
     Route: DiagnosticRoute<Diagnostic>,
 {
     type ReturnToEmitter = NoReturnToEmitter;
+    type LogicalProtocols = Route::LogicalProtocols;
 }
 
 impl<Route, Diagnostic> ActionItem for DiagnosticAction<Route, Diagnostic>
@@ -154,10 +153,18 @@ where
     type Accepted = DiagnosticAccepted<Diagnostic>;
     type Rejection = Route::Rejection;
     type Prerequisite = Never;
+
+    fn retain_accepted(accepted: Self::Accepted) -> Option<Self::Accepted> {
+        match accepted {
+            DiagnosticAccepted::Delivered => None,
+            DiagnosticAccepted::Terminal(diagnostic) => {
+                Some(DiagnosticAccepted::Terminal(diagnostic))
+            }
+        }
+    }
 }
 
 /// Complete accepted disposition of one diagnostic action.
-#[doc(hidden)]
 #[must_use = "terminal diagnostic custody must be retained"]
 pub enum DiagnosticAccepted<Diagnostic> {
     Delivered,
@@ -166,14 +173,12 @@ pub enum DiagnosticAccepted<Diagnostic> {
 
 impl<Diagnostic> DiagnosticAccepted<Diagnostic> {
     /// Record one accepted routed delivery.
-    #[doc(hidden)]
     #[must_use]
     pub const fn delivered() -> Self {
         Self::Delivered
     }
 
     /// Transfer one complete diagnostic into terminal custody.
-    #[doc(hidden)]
     #[must_use]
     pub const fn terminal(diagnostic: Diagnostic) -> Self {
         Self::Terminal(diagnostic)

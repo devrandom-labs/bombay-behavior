@@ -1,14 +1,26 @@
 use std::hint::black_box;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
-use behavior_actors::{Machine, Move, StashRoute, stop_on_abnormal_death};
-
+use behavior_actors::{Activate, Machine, Move, StashRoute, stop_on_abnormal_death};
 use behavior_core::{Acted, Actions, MailAddr, Never, Step};
-use behavior_testkit::InitializeTest;
-use std::time::Instant;
 
 const ITERATIONS: usize = 250_000;
 const SHORT_ITERATIONS: usize = 100_000;
+const SAMPLES: usize = 5;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Phase {
+    A,
+    B,
+}
+
+fn alternate(phase: Phase, state: &mut u64, message: &u64) -> Result<Move<Phase>, Never> {
+    *state = state.wrapping_add(*message);
+    Ok(Move::Goto(match phase {
+        Phase::A => Phase::B,
+        Phase::B => Phase::A,
+    }))
+}
 
 fn iterations(variable: &str, default: usize) -> usize {
     std::env::var(variable)
@@ -32,15 +44,12 @@ impl Sink {
 }
 
 fn main() {
-    let base_rate = measure_base();
-    println!("METRIC base_transitions_per_s={base_rate:.0}");
-
-    let fsm_rate = measure_fsm();
-    let stash_rate = measure_stash();
-    let nested_rate = measure_nested();
-    println!("METRIC fsm_tps={fsm_rate:.0}");
-    println!("METRIC stash_tps={stash_rate:.0}");
-    println!("METRIC nested_tps={nested_rate:.0}");
+    preflight_fsm();
+    samples("base_transitions_per_s", measure_base);
+    samples("fsm_tps", measure_fsm);
+    samples("stash_tps", measure_stash);
+    samples("nested_tps", measure_nested);
+    samples("machine_clone_ops_per_s", measure_machine_clone);
 
     let end_delay_ms = iterations("BOMBAY_BENCH_END_DELAY_MS", 0);
     if end_delay_ms != 0 {
@@ -48,9 +57,34 @@ fn main() {
     }
 }
 
+fn samples(name: &str, measure: fn() -> f64) {
+    let count = iterations("BOMBAY_BENCH_SAMPLES", SAMPLES);
+    assert!(count > 0, "a benchmark needs at least one sample");
+    let mut rates: Vec<_> = (0..count).map(|_| measure()).collect();
+    rates.sort_by(f64::total_cmp);
+    println!("METRIC {name}_min={:.0}", rates[0]);
+    println!("METRIC {name}_median={:.0}", rates[rates.len() / 2]);
+    println!("METRIC {name}_max={:.0}", rates[rates.len() - 1]);
+    println!("METRIC {name}_samples={count}");
+}
+
+fn preflight_fsm() {
+    let mut machine = Machine::new(0_u64, Phase::A, alternate)
+        .initialize()
+        .unwrap()
+        .behavior;
+    for (message, expected) in [(1, Phase::B), (2, Phase::A), (3, Phase::B)] {
+        let actions = machine.receive(MailAddr(0), message).unwrap();
+        assert!(matches!(actions.become_, Step::Continue));
+        assert_eq!(machine.phase(), expected);
+    }
+    assert_eq!(*machine.state(), 6);
+    assert_eq!(machine.held(), 0);
+}
+
 fn measure_base() -> f64 {
     let iterations = iterations("BOMBAY_BENCH_ITERATIONS", ITERATIONS);
-    let mut behavior = Sink(0);
+    let mut behavior = Sink(0).initialize().unwrap().behavior;
     let started = Instant::now();
     for index in 0..iterations {
         let message = u64::try_from(index).unwrap();
@@ -61,25 +95,17 @@ fn measure_base() -> f64 {
             matches!(actions.become_, Step::Continue),
         ));
     }
+    black_box(behavior.0);
     rate(iterations, started.elapsed())
 }
 
-/// FSM with alternating phase changes: every other event drains (empty) held
-/// queue. Probes deferral machinery overhead on the hot path.
+/// FSM with a phase change on every event and an empty held queue.
 fn measure_fsm() -> f64 {
     let iterations = iterations("BOMBAY_BENCH_SHORT_ITERATIONS", SHORT_ITERATIONS);
-    #[derive(Clone, Copy, PartialEq)]
-    enum Phase {
-        A,
-        B,
-    }
-    let machine = Machine::new((), Phase::A, |phase, (): &mut (), _: &u64| {
-        Ok::<Move<Phase>, Never>(match phase {
-            Phase::A => Move::Goto(Phase::B),
-            Phase::B => Move::Stay,
-        })
-    });
-    let mut machine = machine.initialize().unwrap().behavior;
+    let mut machine = Machine::new(0_u64, Phase::A, alternate)
+        .initialize()
+        .unwrap()
+        .behavior;
     let started = Instant::now();
     for index in 0..iterations {
         let actions = machine
@@ -91,6 +117,16 @@ fn measure_fsm() -> f64 {
             matches!(actions.become_, Step::Continue),
         ));
     }
+    assert_eq!(machine.held(), 0);
+    assert_eq!(
+        machine.phase(),
+        if iterations % 2 == 0 {
+            Phase::A
+        } else {
+            Phase::B
+        }
+    );
+    black_box(*machine.state());
     rate(iterations, started.elapsed())
 }
 
@@ -111,6 +147,7 @@ fn measure_stash() -> f64 {
             matches!(actions.become_, Step::Continue),
         ));
     }
+    black_box(behavior.base().0);
     rate(iterations, started.elapsed())
 }
 
@@ -143,9 +180,36 @@ fn measure_nested() -> f64 {
             matches!(actions.become_, Step::Continue),
         ));
     }
+    black_box(behavior.base().0);
+    rate(iterations, started.elapsed())
+}
+
+/// Clone a nonempty machine state and held queue to measure rollback cost.
+fn measure_machine_clone() -> f64 {
+    let iterations = iterations("BOMBAY_BENCH_SHORT_ITERATIONS", SHORT_ITERATIONS);
+    let mut machine = Machine::new(vec![7_u64; 64], (), |_, _: &mut Vec<u64>, _: &u64| {
+        Ok::<Move<()>, Never>(Move::Defer)
+    })
+    .initialize()
+    .unwrap()
+    .behavior;
+    for message in 0..128 {
+        let actions = machine.receive(MailAddr(0), message).unwrap();
+        assert!(actions.sends.is_empty());
+        assert!(actions.creates.is_empty());
+        assert!(matches!(actions.become_, Step::Continue));
+    }
+    assert_eq!(machine.state().len(), 64);
+    assert_eq!(machine.held(), 128);
+    let started = Instant::now();
+    for _ in 0..iterations {
+        let cloned = (*machine).clone();
+        black_box((&cloned.state()[0], cloned.held()));
+    }
     rate(iterations, started.elapsed())
 }
 
 fn rate(iterations: usize, elapsed: Duration) -> f64 {
+    assert!(iterations > 0, "a benchmark needs at least one iteration");
     f64::from(u32::try_from(iterations).unwrap()) / elapsed.as_secs_f64()
 }

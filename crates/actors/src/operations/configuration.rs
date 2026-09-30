@@ -150,7 +150,6 @@ where
 impl<A, C, Route> BehaviorBase for Configuration<A, C, Route>
 where
     A: Address,
-    C: Clone + Eq,
     Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = ConfigurationState<C>>>,
 {
     type Base = Self;
@@ -162,7 +161,6 @@ where
 impl<A, C, Route> behavior::Protocol for Configuration<A, C, Route>
 where
     A: Address,
-    C: Clone + Eq,
     Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = ConfigurationState<C>>>,
 {
     type Addr = A;
@@ -238,24 +236,26 @@ mod tests {
         assert!(applied.sends.is_empty());
         assert!(applied.creates.is_empty());
         assert_eq!(applied.become_, behavior::Step::Continue);
+        let rejection = subject.receive(
+            MailAddr(9),
+            ConfigurationMessage::Apply {
+                version: ConfigurationVersion(1),
+                value: 10,
+            },
+        );
         assert!(matches!(
-            subject.receive(
-                MailAddr(9),
-                ConfigurationMessage::Apply {
-                    version: ConfigurationVersion(1),
-                    value: 10
-                }
-            ),
+            rejection,
             Err(ConfigurationError::Stale { value: 10, .. })
         ));
+        let rejection = subject.receive(
+            MailAddr(9),
+            ConfigurationMessage::Apply {
+                version: ConfigurationVersion(2),
+                value: 21,
+            },
+        );
         assert!(matches!(
-            subject.receive(
-                MailAddr(9),
-                ConfigurationMessage::Apply {
-                    version: ConfigurationVersion(2),
-                    value: 21
-                }
-            ),
+            rejection,
             Err(ConfigurationError::ConflictingVersion { value: 21, .. })
         ));
         assert_eq!(

@@ -4,8 +4,8 @@ use core::num::NonZeroU64;
 use std::sync::Arc;
 
 use behavior::{
-    ActionItem, EndpointAddress, EstablishedRecipient, ExactDeliveryReason, Never, Protocol,
-    ReportToParent, SourceAction,
+    ActionItem, EndpointAddress, EstablishedDelivery, EstablishedRecipient, ExactDeliveryReason,
+    InterpretItem, ItemSettlement, Never, Protocol, ReportToParent, SourceAction,
 };
 
 use super::super::WorkerAttempt;
@@ -33,8 +33,7 @@ impl SubmissionId {
 /// Applications may inspect a received identifier but cannot mint one:
 ///
 /// ```compile_fail,E0599
-/// use behavior_actors::atomic::JobId;
-/// let _ = JobId::new(1);
+/// let _ = behavior_actors::atomic::JobId::new(1);
 /// ```
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct JobId(NonZeroU64);
@@ -56,16 +55,14 @@ impl JobId {
 /// Only a pool can issue an assignment:
 ///
 /// ```compile_fail,E0599
-/// use behavior_actors::atomic::Assignment;
-/// let _ = Assignment::new(String::from("job"));
+/// let _ = behavior_actors::atomic::Assignment::new(String::from("job"));
 /// ```
 ///
 /// Completing consumes the affine authority, so the same assignment cannot
 /// complete twice:
 ///
 /// ```compile_fail,E0382
-/// use behavior_actors::atomic::Assignment;
-/// fn duplicate(assignment: Assignment<u8>) {
+/// fn duplicate(assignment: behavior_actors::atomic::Assignment<u8>) {
 ///     let _first = assignment.complete(10_u16);
 ///     let _second = assignment.complete(11_u16);
 /// }
@@ -121,8 +118,7 @@ where
 /// A result without assignment authority cannot be forged:
 ///
 /// ```compile_fail,E0599
-/// use behavior_actors::atomic::Completion;
-/// let _ = Completion::new(10_u16);
+/// let _ = behavior_actors::atomic::Completion::new(10_u16);
 /// ```
 #[must_use = "a completion must return to its pool or remain in terminal custody"]
 pub struct Completion<WorkerResult> {
@@ -248,7 +244,6 @@ pub(in crate::atomic) enum CorrelationMatch {
 }
 
 /// Accepted result proving which exact assignment delivery settled.
-#[doc(hidden)]
 pub struct AssignmentReceipt {
     assignment: AssignmentId,
     worker: WorkerAttempt,
@@ -274,7 +269,6 @@ impl AssignmentReceipt {
 }
 
 /// One exact direct-worker delivery whose complete settlement returns to its pool.
-#[doc(hidden)]
 #[must_use = "worker assignment delivery must settle or remain in lifecycle custody"]
 pub struct AssignWorker<P, Job>
 where
@@ -303,27 +297,27 @@ where
         }
     }
 
-    /// Borrow the exact worker recipient selected by the pool.
-    #[doc(hidden)]
+    /// Return a clone of the exact worker recipient selected by the pool.
+    /// The assignment and its accepted receipt remain inside this request.
     #[must_use]
     pub fn target(&self) -> EstablishedRecipient<P> {
         self.target.clone()
     }
 
-    /// Borrow the opaque accepted receipt Bombay must return after delivery.
-    #[doc(hidden)]
+    /// Borrow the opaque accepted receipt inside the owning atomic module.
     #[must_use]
-    pub fn receipt(&self) -> AssignmentReceipt {
+    pub(in crate::atomic) fn receipt(&self) -> AssignmentReceipt {
         AssignmentReceipt {
             assignment: self.receipt.assignment,
             worker: self.receipt.worker.clone(),
         }
     }
 
-    /// Recover the exact delivery values when Communication rejects them.
-    #[doc(hidden)]
+    /// Recover the exact delivery values inside the owning atomic module.
     #[must_use]
-    pub fn into_parts(self) -> (EstablishedRecipient<P>, Assignment<Job>, AssignmentReceipt) {
+    pub(in crate::atomic) fn into_parts(
+        self,
+    ) -> (EstablishedRecipient<P>, Assignment<Job>, AssignmentReceipt) {
         (self.target, self.assignment, self.receipt)
     }
 
@@ -336,6 +330,53 @@ where
             target,
             assignment,
             receipt,
+        }
+    }
+
+    /// Transfer only the exact worker delivery while keeping pool correlation
+    /// under this request's ownership until the lower capability settles it.
+    pub async fn settle<Host, RootEvent, Path>(
+        self,
+        host: &mut Host,
+    ) -> ItemSettlement<Self, AssignmentReceipt, ExactDeliveryReason, Never>
+    where
+        Host: InterpretItem<EstablishedDelivery<P>, RootEvent, Path>,
+        <P::Addr as EndpointAddress>::Established<P>: Send,
+        Job: Send,
+    {
+        let Self {
+            target,
+            assignment,
+            receipt,
+        } = self;
+        match host
+            .interpret_item(EstablishedDelivery::new(target, assignment))
+            .await
+        {
+            ItemSettlement::Accepted(()) => ItemSettlement::Accepted(receipt),
+            ItemSettlement::Rejected {
+                item: EstablishedDelivery { to, message },
+                reason,
+            } => ItemSettlement::Rejected {
+                item: Self {
+                    target: to,
+                    assignment: message,
+                    receipt,
+                },
+                reason,
+            },
+            ItemSettlement::Blocked { prerequisite, .. } => match prerequisite {},
+            ItemSettlement::Corrupt {
+                item: EstablishedDelivery { to, message },
+                fault,
+            } => ItemSettlement::Corrupt {
+                item: Self {
+                    target: to,
+                    assignment: message,
+                    receipt,
+                },
+                fault,
+            },
         }
     }
 }
@@ -770,15 +811,21 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::collections::VecDeque;
     use std::sync::Arc;
     use std::time::Instant;
 
-    use behavior::{CreationSequence, MailAddr};
+    use behavior::{
+        Address, CreationSequence, EndpointAddress, EstablishedDelivery, EstablishedRecipient,
+        ExactDeliveryReason, Here, InterpretItem, ItemSettlement, MailAddr, MessageProtocol, Never,
+        Protocol,
+    };
 
     use super::{
-        AcceptedJobSequence, AssignedJob, AssignmentReceipt, AssignmentReceiptOutcome,
-        AssignmentRejectionOutcome, AssignmentSequence, CompletionAuthority, CustomerJob,
-        WorkerCompletionOutcome, WorkerExitOutcome,
+        AcceptedJobSequence, AssignWorker, AssignedJob, Assignment, AssignmentReceipt,
+        AssignmentReceiptOutcome, AssignmentRejectionOutcome, AssignmentSequence,
+        CompletionAuthority, CorrelationMatch, CustomerJob, WorkerCompletionOutcome,
+        WorkerExitOutcome,
     };
     use crate::atomic::WorkerAttempt;
     use crate::{ChildStopped, Crash};
@@ -802,6 +849,117 @@ mod tests {
             payload: 7,
             customer: 9,
         }
+    }
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    struct DeliveryAddr(u64);
+
+    impl Address for DeliveryAddr {
+        type Nonce = u64;
+    }
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    struct DeliveryEndpoint(u64);
+
+    impl EndpointAddress for DeliveryAddr {
+        type Established<P>
+            = DeliveryEndpoint
+        where
+            P: Protocol<Addr = Self>;
+    }
+
+    struct MoveJob(Box<str>);
+
+    type AssignmentProtocol = MessageProtocol<DeliveryAddr, Assignment<MoveJob>>;
+    type ExactAssignment = EstablishedDelivery<AssignmentProtocol>;
+
+    enum DeliveryAdmission {
+        Accept,
+        Reject,
+    }
+
+    struct AssignmentDeliveryHost {
+        decisions: VecDeque<DeliveryAdmission>,
+        observed_payloads: Vec<usize>,
+    }
+
+    impl InterpretItem<ExactAssignment, (), Here> for AssignmentDeliveryHost {
+        async fn interpret_item(
+            &mut self,
+            delivery: ExactAssignment,
+        ) -> ItemSettlement<ExactAssignment, (), ExactDeliveryReason, Never> {
+            self.observed_payloads
+                .push(delivery.message.payload().0.as_ptr() as usize);
+            match self
+                .decisions
+                .pop_front()
+                .expect("one decision per delivery")
+            {
+                DeliveryAdmission::Accept => ItemSettlement::Accepted(()),
+                DeliveryAdmission::Reject => ItemSettlement::Rejected {
+                    item: delivery,
+                    reason: ExactDeliveryReason::ClosedRecipient,
+                },
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn exact_assignment_settlement_preserves_original_correlation_after_transfer() {
+        let worker = worker();
+        let mut assignments = AssignmentSequence::new();
+        let (first_correlation, first_assignment) = assignments
+            .assign(&worker, MoveJob(Box::from("first")))
+            .expect("first assignment correlation");
+        let (second_correlation, second_assignment) = assignments
+            .assign(&worker, MoveJob(Box::from("second")))
+            .expect("second assignment correlation");
+        let first_payload = first_assignment.payload().0.as_ptr();
+        let second_payload = second_assignment.payload().0.as_ptr();
+        let first_target = EstablishedRecipient::issued(DeliveryEndpoint(41));
+        let second_target = EstablishedRecipient::issued(DeliveryEndpoint(42));
+        let first = AssignWorker::<AssignmentProtocol, _>::new(
+            first_target.clone(),
+            &first_correlation,
+            first_assignment,
+        );
+        let second = AssignWorker::<AssignmentProtocol, _>::new(
+            second_target,
+            &second_correlation,
+            second_assignment,
+        );
+        let mut host = AssignmentDeliveryHost {
+            decisions: VecDeque::from([DeliveryAdmission::Accept, DeliveryAdmission::Reject]),
+            observed_payloads: Vec::new(),
+        };
+
+        let ItemSettlement::Accepted(second_receipt) = second.settle(&mut host).await else {
+            panic!("second assignment admission returns its held receipt");
+        };
+        assert!(matches!(
+            second_receipt.compare(&second_correlation),
+            CorrelationMatch::Exact
+        ));
+        let ItemSettlement::Rejected {
+            item: first_returned,
+            reason: ExactDeliveryReason::ClosedRecipient,
+        } = first.settle(&mut host).await
+        else {
+            panic!("first assignment returns its actual rejected delivery");
+        };
+        assert_eq!(first_returned.target(), first_target);
+        let (_, returned_assignment, first_receipt) = first_returned.into_parts();
+        assert_eq!(returned_assignment.payload().0.as_ptr(), first_payload);
+        assert_eq!(&*returned_assignment.payload().0, "first");
+        assert!(matches!(
+            first_receipt.compare(&first_correlation),
+            CorrelationMatch::Exact
+        ));
+        assert_eq!(
+            host.observed_payloads,
+            [second_payload as usize, first_payload as usize]
+        );
+        assert!(host.decisions.is_empty());
     }
 
     #[test]

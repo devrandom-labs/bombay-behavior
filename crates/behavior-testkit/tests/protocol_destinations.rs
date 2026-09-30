@@ -211,4 +211,4 @@ fn reusable_message_protocol_retains_one_established_identity_across_emitters() 
     assert_eq!(first.to.address(), MailAddr(0));
     assert_eq!(second.to.address(), MailAddr(0));
 }
-use behavior_testkit::InitializeTest;
+use behavior_actors::Activate;

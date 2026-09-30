@@ -6,20 +6,22 @@ use std::time::Instant;
 use behavior_actors::atomic::{
     ActivationPolicy, ActorDrainPolicy, CancellationReceipt, DiagnosticAction,
     DiagnosticDisposition, DynamicCommand, DynamicDiagnostic, DynamicLifecycle, DynamicStatus,
-    EntryCapacity, EntryRetirement, ImmediateActivation, InitialWorkerOutcome, ProxyInputReceipt,
-    ProxyInputResult, ProxyOperationId, ProxyOutcome, StartRejection, UnexpectedExit,
-    WorkerChangeRejection, WorkerStartResult, WorkerSubmission, dynamic,
+    EntryCapacity, EntryRetirement, ImmediateActivation, InitialWorkerOutcome, ProxyOutcome,
+    StartRejection, UnexpectedExit, WorkerChangeRejection, WorkerStartResult, WorkerSubmission,
+    dynamic,
 };
 use behavior_actors::{Activate as _, ChildStopped, Exit, ReplyDelivery, ReplyRoute};
 use behavior_core::{
-    ChildCreationOutcome, ChildReport, CreationId, CreationSettlement, CreationsSettled,
+    ChildCreationOutcome, ChildReport, CreationSettlement, CreationsSettled,
     EstablishedActor, EstablishedCreation, EstablishedRecipient, ItemSettlement, MessageProtocol,
     Recipient, SettledItem, Step,
 };
 use libfuzzer_sys::fuzz_target;
 
+mod proxy_control;
 mod stable_proxy;
 
+use proxy_control::admit_proxy_operation;
 use stable_proxy::{RuntimeAddress, Worker, WorkerEndpoint, drive_ready_proxy, worker_stopped};
 
 #[derive(Clone, Eq, Ord, PartialEq, PartialOrd)]
@@ -45,17 +47,6 @@ const RETIREMENT_ORDERS: [[RetirementArrival; 2]; 2] = [
     [RetirementArrival::Shutdown, RetirementArrival::ProxyExit],
     [RetirementArrival::ProxyExit, RetirementArrival::Shutdown],
 ];
-
-fn accepted_proxy_input(
-    creation: CreationId,
-    operation: ProxyOperationId,
-) -> ProxyInputResult<behavior_core::Here, Worker, ImmediateActivation> {
-    SettledItem::Attempted(ItemSettlement::Accepted(ProxyInputReceipt::new(
-        creation,
-        EstablishedActor::issued(WorkerEndpoint),
-        operation,
-    )))
-}
 
 fuzz_target!(|input: &[u8]| {
     for byte in input.iter().copied().take(64) {
@@ -133,10 +124,11 @@ fuzz_target!(|input: &[u8]| {
             .into_items()
             .pop()
             .expect("one worker input is emitted");
-        let (input_creation, control, operation) = proxy_input.into_parts();
+        let (input_creation, control, receipt) =
+            admit_proxy_operation(proxy_input, EstablishedActor::issued(WorkerEndpoint));
         assert_eq!(input_creation, proxy_creation);
         let input_accepted = supervisor
-            .on(accepted_proxy_input(input_creation, operation))
+            .on(SettledItem::Attempted(ItemSettlement::Accepted(receipt)))
             .unwrap_or_else(|_| panic!("the worker input is accepted"));
         assert!(input_accepted.creates.is_empty());
         assert!(input_accepted.sends.proxy_observations.is_empty());
@@ -277,16 +269,17 @@ fuzz_target!(|input: &[u8]| {
                     .into_items()
                     .pop()
                     .expect("retirement shuts down the exact proxy");
-                let (shutdown_creation, shutdown_control, shutdown_operation) =
-                    shutdown.into_parts();
+                let (shutdown_creation, shutdown_control, shutdown_receipt) =
+                    admit_proxy_operation(shutdown, EstablishedActor::issued(WorkerEndpoint));
                 assert_eq!(shutdown_creation, proxy_creation);
                 let proxy_retired = proxy
                     .on(shutdown_control)
                     .unwrap_or_else(|_| panic!("the empty proxy accepts shutdown"));
                 assert!(matches!(proxy_retired.become_, Step::Stop(_)));
 
-                let mut shutdown =
-                    Some(accepted_proxy_input(shutdown_creation, shutdown_operation));
+                let mut shutdown = Some(SettledItem::Attempted(ItemSettlement::Accepted(
+                    shutdown_receipt,
+                )));
                 let mut proxy_exit = Some(ChildStopped::new(
                     proxy_creation,
                     Ok(Exit::Normal),

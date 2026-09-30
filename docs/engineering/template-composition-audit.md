@@ -1,5 +1,12 @@
 # Actor-template composition audit (engineering record)
 
+Historical evidence snapshot: this record was last committed at `1f20cc4`.
+Its verdicts describe that revision; the [current repository quality audit](repository-quality-audit.md)
+tracks later verification and unresolved work.
+The historical `DeliveryRouteFor<Owner>` proposals below were removed during
+the A13 review; current callers constrain `DeliveryRoute`'s associated
+protocol address directly.
+
 ## Authoritative redesign ledger
 
 This section supersedes every historical "fixed" or provisional design claim

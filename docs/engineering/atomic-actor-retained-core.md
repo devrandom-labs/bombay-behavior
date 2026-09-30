@@ -55,7 +55,7 @@ are composed, and they are not automatically part of ordinary DevX.
 | `ShutdownChild`, `ChildShutdownRejected`, `ShutdownRequested` | Exact child drain request/rejection and actor shutdown ingress | Reuse internally where their current facts are complete. Deadline retirement remains `ActorDrainPolicy`. |
 | `ScheduleAfter`, `TimerElapsed`, `TimerId`, `TimerGeneration` | Interpreter-clock delay and exact timer correlation | Reuse internally. IDs are actor-owned and never builder inputs. |
 | `ReportToParent` | Structural lowering of a child report | Keep private to actor/interpreter integration. A worker user writes `assignment.complete(result)`, never this type. |
-| `DeliveryRoute`, `DeliveryRouteFor` | Preserve a statically selected logical or exact destination | Reuse for lifecycle/customer routes; do not force every actor to support a mixed route. |
+| `DeliveryRoute` | Preserve a statically selected logical or exact destination; constrain its associated protocol address to the owner where needed | Reuse for lifecycle/customer routes; do not force every actor to support a mixed route. |
 
 None of these rows proves that every current helper trait around the value must
 survive. `SendEffects`, `SendsFor`, `InterpretSends`, `InterpretDelivery`,
@@ -129,7 +129,7 @@ promise to preserve every helper name.
 | `ChildRoute`, `ChildDelivery`, `ChildInput`, `ChildReport`, `EstablishedCreation` | Keep as exact creator/child carriers where their facts remain complete; never expose structural routing in ordinary actor DevX. |
 | `ChildChoice`, role/occurrence/position traits, fold/mapping traits, `Children`, and birth protocol products | Keep the closed authored-child algebra for macros/interpreters and other templates. Atomic runtime roles are private values, not one public type-level role per member. |
 | `User`, `UserEvent`, `Ingress`, `EventIngress`, `ChildInputIngress`, `InjectEvent`, `EventLayer`, `ComposedEvent`, `Here`, `Inside` | Keep typed event composition for real wrappers/interpreters. Paths and nesting markers remain generated/internal to ordinary atomic-actor source. |
-| `LogicalHostRequirements`, `LogicalDeliveryProtocols`, birth logical-host projections | Keep static evidence for intentional logical routes. Exact/child/interpreter routes must not acquire fake logical-host obligations. |
+| `LogicalHostRequirements`, `LogicalDeliveryProtocols`, birth logical-host projections | Keep static evidence for intentional logical routes, including requests that carry a logical recipient. Exact and creator-local routes add no logical-host obligation. |
 | the `#[behavior]` owning macro | Keep syntax generation for the same concrete algebra. Do not add supervisor/pool or completion macros until ordinary composition is proven impossible. |
 
 Behavior intentionally exposes no finite mailbox reducer. One-turn

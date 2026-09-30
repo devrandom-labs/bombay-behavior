@@ -1108,17 +1108,12 @@ where
                 ));
             }
         };
-        if settlements.len() != 1 {
-            return self.reject_input(DynamicSupervisorEvent::ProxyCreationsSettled(
-                behavior::CreationsSettled::new(behavior::CreationSettlement::Settled(settlements)),
-            ));
-        }
-        let settlement = match settlements.into_iter().next() {
-            Some(settlement) => settlement,
-            None => {
+        let settlement = match settlements.into_one() {
+            Ok(settlement) => settlement,
+            Err(settlements) => {
                 return self.reject_input(DynamicSupervisorEvent::ProxyCreationsSettled(
                     behavior::CreationsSettled::new(behavior::CreationSettlement::Settled(
-                        Creations::empty(),
+                        settlements,
                     )),
                 ));
             }

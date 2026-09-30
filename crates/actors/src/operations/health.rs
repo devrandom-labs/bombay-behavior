@@ -276,7 +276,6 @@ where
 impl<A, K, Route> behavior::Protocol for Health<A, K, Route>
 where
     A: Address,
-    K: Clone + Eq,
     Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = HealthReport<K>>>,
 {
     type Addr = A;
@@ -361,15 +360,16 @@ mod tests {
         assert!(observed.creates.is_empty());
         assert_eq!(observed.become_, behavior::Step::Continue);
 
+        let rejection = health.receive(
+            MailAddr(9),
+            HealthMessage::Observe {
+                component: 1,
+                version: ObservationVersion(2),
+                status: HealthStatus::Healthy,
+            },
+        );
         assert!(matches!(
-            health.receive(
-                MailAddr(9),
-                HealthMessage::Observe {
-                    component: 1,
-                    version: ObservationVersion(2),
-                    status: HealthStatus::Healthy,
-                },
-            ),
+            rejection,
             Err(HealthError::Stale {
                 component: 1,
                 observed: ObservationVersion(2),
@@ -377,15 +377,16 @@ mod tests {
                 evidence: HealthEvidence::Present(HealthStatus::Healthy),
             })
         ));
+        let rejection = health.receive(
+            MailAddr(9),
+            HealthMessage::Observe {
+                component: 1,
+                version: ObservationVersion(3),
+                status: HealthStatus::Unhealthy,
+            },
+        );
         assert!(matches!(
-            health.receive(
-                MailAddr(9),
-                HealthMessage::Observe {
-                    component: 1,
-                    version: ObservationVersion(3),
-                    status: HealthStatus::Unhealthy,
-                },
-            ),
+            rejection,
             Err(HealthError::ConflictingVersion {
                 component: 1,
                 version: ObservationVersion(3),
@@ -459,17 +460,15 @@ mod tests {
         assert!(removed.sends.is_empty());
         assert!(removed.creates.is_empty());
         assert_eq!(removed.become_, behavior::Step::Continue);
-        assert!(matches!(
-            health.receive(
-                MailAddr(9),
-                HealthMessage::Observe {
-                    component: 2,
-                    version: ObservationVersion(1),
-                    status: HealthStatus::Healthy,
-                },
-            ),
-            Err(HealthError::Stale { .. })
-        ));
+        let rejection = health.receive(
+            MailAddr(9),
+            HealthMessage::Observe {
+                component: 2,
+                version: ObservationVersion(1),
+                status: HealthStatus::Healthy,
+            },
+        );
+        assert!(matches!(rejection, Err(HealthError::Stale { .. })));
         let after = health
             .receive(MailAddr(9), HealthMessage::Query { reply_to: reply })
             .unwrap();

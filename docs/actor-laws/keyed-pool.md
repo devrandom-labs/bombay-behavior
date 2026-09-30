@@ -232,6 +232,14 @@ KeyedPoolState =
   | Stopped
 ```
 
+The Rust aggregate also has `Constructed`, which owns the prepared worker
+roster before initialization, and `ForcedRetirement`, which owns unresolved
+retiring workers plus the exact shutdown-ID or deadline failure after a
+terminal transition. The sketch above describes the operating law; those two
+additional source states preserve initialization rejection and terminal
+custody. A real interpreter still has to prove transfer of the
+`ForcedRetirement` value to the parent or root custodian.
+
 `OrderedRoleTable` has exactly one `RoleCell` for each declared role. One cell
 owns both that role's member phase and its FIFO queue; there is no separately
 mutable member map and partition map whose phases can disagree. Roles are never

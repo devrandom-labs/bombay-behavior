@@ -201,7 +201,6 @@ where
 }
 
 /// Complete retained values proving how one unavailable worker was returned.
-#[doc(hidden)]
 #[must_use = "a proxy return retains affine worker lifecycle values"]
 pub enum ProxyDrain<W, P>
 where
@@ -209,33 +208,39 @@ where
     BehaviorAddr<W>: EndpointAddress,
     P: ActivationPlan,
 {
+    /// Pure initialization rejected after the worker was committed.
     InitializationRejected {
         failure: WorkerInitializationFailure,
         activation: P,
         shutdown: Option<EstablishedShutdownResolved<W::Protocol>>,
         stopped: ChildStopped<BehaviorAddr<W>>,
     },
+    /// Initialization stopped after the worker was committed.
     InitializationStopped {
         activation: P,
         observed: Option<ChildStopped<BehaviorAddr<W>>>,
         returned: ChildStopped<BehaviorAddr<W>>,
     },
+    /// Initialization completed, but an exact worker stop prevented activation.
     InitializationCompleted {
         permit: ActivationPermit<W>,
         activation: P,
         stopped: ChildStopped<BehaviorAddr<W>>,
     },
+    /// The activation request was rejected before the plan ran.
     ActivationStartRejected {
         request: BeginActivation<W, P>,
         reason: ActivationStartRejection,
         shutdown: Option<EstablishedShutdownResolved<W::Protocol>>,
         stopped: ChildStopped<BehaviorAddr<W>>,
     },
+    /// The activation plan rejected after its request was accepted.
     ActivationRejected {
         rejection: P::Rejection,
         shutdown: Option<EstablishedShutdownResolved<W::Protocol>>,
         stopped: ChildStopped<BehaviorAddr<W>>,
     },
+    /// Activation completed, but an exact worker stop prevented availability.
     ActivationCompleted {
         readiness: P::Ready,
         stopped: ChildStopped<BehaviorAddr<W>>,

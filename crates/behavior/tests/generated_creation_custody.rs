@@ -273,7 +273,8 @@ async fn generated_retirement_policy_needs_no_creation_event_and_preserves_exact
     let mut creations = creations.into_iter();
     let creation = creations.next().expect("the rejected child remains owned");
     assert_eq!(creation.child(), &Worker);
-    assert!(creations.next().is_none());
+    let remaining_creations = creations.next();
+    assert!(remaining_creations.is_none());
 }
 
 #[tokio::test]
@@ -313,7 +314,8 @@ async fn retirement_creation_custody_allows_later_source_results_before_terminal
         panic!("terminal custody changed the creation rejection")
     };
     assert_eq!(creations.len(), 1);
-    assert!(settlement.sends.into_inputs().is_empty());
+    let sends = settlement.sends.into_inputs();
+    assert!(sends.is_empty());
 }
 
 // --- The Bombay stop shape ----------------------------------------------------

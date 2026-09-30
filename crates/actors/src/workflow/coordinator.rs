@@ -157,7 +157,7 @@ pub enum WorkflowMessage<K, Route> {
 /// belong to the Driver/Mnesis boundaries. No transition panics.
 pub struct Workflow<
     A: Address,
-    K: Clone + Eq,
+    K,
     Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = WorkflowOutcome<K>>>,
 > {
     definition: WorkflowDefinition<K>,
@@ -408,7 +408,6 @@ fn validate<K: Clone + Eq>(
 impl<A, K, Route> BehaviorBase for Workflow<A, K, Route>
 where
     A: Address,
-    K: Clone + Eq,
     Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = WorkflowOutcome<K>>>,
 {
     type Base = Self;
@@ -420,7 +419,6 @@ where
 impl<A, K, Route> behavior::Protocol for Workflow<A, K, Route>
 where
     A: Address,
-    K: Clone + Eq,
     Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = WorkflowOutcome<K>>>,
 {
     type Addr = A;
@@ -549,14 +547,16 @@ mod tests {
             .initialize()
             .unwrap()
             .behavior;
+        let rejection = subject.receive(MailAddr(0), WorkflowMessage::Complete { step: "root" });
         assert!(matches!(
-            subject.receive(MailAddr(0), WorkflowMessage::Complete { step: "root" }),
+            rejection,
             Err(WorkflowError::NotStarted(WorkflowInput::Complete {
                 step: "root"
             }))
         ));
+        let rejection = subject.receive(MailAddr(0), WorkflowMessage::Fail { step: "left" });
         assert!(matches!(
-            subject.receive(MailAddr(0), WorkflowMessage::Fail { step: "left" }),
+            rejection,
             Err(WorkflowError::NotStarted(WorkflowInput::Fail {
                 step: "left"
             }))

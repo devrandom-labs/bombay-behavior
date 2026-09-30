@@ -3,7 +3,7 @@
 
 use std::time::Instant;
 
-use super::domain::OneShotSchedule;
+use super::domain::{OneShotSchedule, TimerAdmission};
 use super::event::TimedEvent;
 use crate::protocol::{ScheduleAt, TimerId};
 use behavior::Step;
@@ -15,19 +15,17 @@ use behavior::{
 /// Infallible reaction to one accepted deadline.
 ///
 /// ```compile_fail,E0308
-/// # use behavior::{Actions, Behavior, MailAddr, Never, NoBirths, User};
-/// # use behavior_actors::{Deadline, TimerId};
 /// # struct App;
-/// # impl behavior::Protocol for App { type Addr = MailAddr; type Msg = (); }
-/// # impl Behavior for App {
-/// #   type Protocol = Self; type Event = User<MailAddr, ()>; type Sends = Vec<Never>;
-/// #   type Ph = Never; type Error = Never; type Birth = NoBirths;
-/// #   fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> behavior::BehaviorActed<Self> { Ok(Actions::cont()) }
+/// # impl behavior::Protocol for App { type Addr = behavior::MailAddr; type Msg = (); }
+/// # impl behavior::Behavior for App {
+/// #   type Protocol = Self; type Event = behavior::User<behavior::MailAddr, ()>; type Sends = Vec<behavior::Never>;
+/// #   type Ph = behavior::Never; type Error = behavior::Never; type Birth = behavior::NoBirths;
+/// #   fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> behavior::BehaviorActed<Self> { Ok(behavior::Actions::cont()) }
 /// # }
-/// fn fallible(_: &mut App) -> Result<behavior::Become, Never> {
+/// fn fallible(_: &mut App) -> Result<behavior::Become, behavior::Never> {
 ///     Ok(behavior::Step::Continue)
 /// }
-/// let _ = Deadline::new(App, TimerId(1), None, fallible);
+/// let _ = behavior_actors::Deadline::new(App, behavior_actors::TimerId(1), None, fallible);
 /// ```
 pub type DeadlineReaction<B> = fn(&mut B) -> Become;
 
@@ -123,15 +121,17 @@ where
         event: Self::Event,
     ) -> Result<DeadlineActions<B>, B::Error> {
         match event {
-            EventLayer::Owned(event) if self.schedule.accept(event.id, event.generation) => {
-                let become_ = match (self.on_reached)(&mut self.inner) {
-                    Step::Continue => Step::Continue,
-                    Step::Goto(never) => match never {},
-                    Step::Stop(exit) => Step::Stop(exit),
-                };
-                Ok(Actions::just(become_))
-            }
-            EventLayer::Owned(_) => Ok(Actions::cont()),
+            EventLayer::Owned(event) => match self.schedule.accept(event.id, event.generation) {
+                TimerAdmission::Accepted => {
+                    let become_ = match (self.on_reached)(&mut self.inner) {
+                        Step::Continue => Step::Continue,
+                        Step::Goto(never) => match never {},
+                        Step::Stop(exit) => Step::Stop(exit),
+                    };
+                    Ok(Actions::just(become_))
+                }
+                TimerAdmission::Ignored => Ok(Actions::cont()),
+            },
             EventLayer::Inner(event) => {
                 let actions = behavior::delegate_transition(&mut self.inner, event)?;
                 if matches!(actions.become_, Step::Stop(_)) {

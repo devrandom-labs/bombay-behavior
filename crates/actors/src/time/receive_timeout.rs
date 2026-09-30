@@ -3,7 +3,7 @@
 
 use std::time::Duration;
 
-use super::domain::TimerLease;
+use super::domain::{TimerAdmission, TimerLease};
 use super::event::{TimedEvent, TimedReaction};
 use crate::protocol::{ScheduleAfter, TimerId};
 use behavior::Step;
@@ -22,18 +22,15 @@ pub(crate) type ReceiveTimeoutActions<B> = Actions<
 /// Infallible fold invoked for the accepted inactivity generation.
 ///
 /// ```compile_fail,E0308
-/// # use std::time::Duration;
-/// # use behavior::{Actions, Behavior, MailAddr, Never, NoBirths, User};
-/// # use behavior_actors::{ReceiveTimeout, TimerId};
 /// # struct App;
-/// # impl behavior::Protocol for App { type Addr = MailAddr; type Msg = (); }
-/// # impl Behavior for App {
-/// #   type Protocol = Self; type Event = User<MailAddr, ()>; type Sends = Vec<Never>;
-/// #   type Ph = Never; type Error = Never; type Birth = NoBirths;
-/// #   fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> behavior::BehaviorActed<Self> { Ok(Actions::cont()) }
+/// # impl behavior::Protocol for App { type Addr = behavior::MailAddr; type Msg = (); }
+/// # impl behavior::Behavior for App {
+/// #   type Protocol = Self; type Event = behavior::User<behavior::MailAddr, ()>; type Sends = Vec<behavior::Never>;
+/// #   type Ph = behavior::Never; type Error = behavior::Never; type Birth = behavior::NoBirths;
+/// #   fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> behavior::BehaviorActed<Self> { Ok(behavior::Actions::cont()) }
 /// # }
-/// fn fallible(_: &mut App) -> behavior::BehaviorActed<App> { Ok(Actions::cont()) }
-/// let _ = ReceiveTimeout::new(App, TimerId(1), Duration::from_secs(1), fallible);
+/// fn fallible(_: &mut App) -> behavior::BehaviorActed<App> { Ok(behavior::Actions::cont()) }
+/// let _ = behavior_actors::ReceiveTimeout::new(App, behavior_actors::TimerId(1), std::time::Duration::from_secs(1), fallible);
 /// ```
 /// A pure one-notification-per-idle-period receive timeout.
 ///
@@ -139,11 +136,14 @@ where
         event: Self::Event,
     ) -> Result<ReceiveTimeoutActions<B>, Self::Error> {
         match event {
-            EventLayer::Owned(elapsed)
-                if elapsed.id == self.id && self.timer.accept(elapsed.generation) =>
-            {
-                let actions = (self.on_elapsed)(&mut self.inner);
-                Ok(Self::wrap(actions, InterpreterRequests::empty()))
+            EventLayer::Owned(elapsed) if elapsed.id == self.id => {
+                match self.timer.accept(elapsed.generation) {
+                    TimerAdmission::Accepted => {
+                        let actions = (self.on_elapsed)(&mut self.inner);
+                        Ok(Self::wrap(actions, InterpreterRequests::empty()))
+                    }
+                    TimerAdmission::Ignored => Ok(Actions::cont()),
+                }
             }
             EventLayer::Owned(_) => Ok(Actions::cont()),
             EventLayer::Inner(event) => match event.into_user() {

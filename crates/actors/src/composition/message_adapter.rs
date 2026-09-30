@@ -29,35 +29,28 @@ use super::DeliveryRoute;
 ///
 /// A creator-local child route is not a valid standalone adapter destination:
 ///
-/// ```compile_fail
-/// use behavior::{
-///     Actions, Behavior, BehaviorActed, ChildHead, ChildRoute, MailAddr, Never,
-///     NoBirths, NoSends, Protocol, User,
-/// };
-/// use behavior_actors::MessageAdapterWithRoute;
+/// ```
 /// struct Destination;
-/// impl Protocol for Destination {
-///     type Addr = MailAddr;
+/// impl behavior::Protocol for Destination {
+///     type Addr = behavior::MailAddr;
 ///     type Msg = u16;
 /// }
-/// impl Behavior for Destination {
-///     type Protocol = Self;
-///     type Event = User<MailAddr, u16>;
-///     type Sends = NoSends;
-///     type Ph = Never;
-///     type Error = Never;
-///     type Birth = NoBirths;
-///     fn transition(
-///         &mut self,
-///         _: behavior::ActiveTurn,
-///         _: Self::Event,
-///     ) -> BehaviorActed<Self> {
-///         Ok(Actions::cont())
-///     }
+/// fn adapt(value: u8) -> u16 { u16::from(value) }
+/// let destination = behavior::Recipient::<Destination>::global(behavior::MailAddr(1));
+/// let _ = behavior_actors::MessageAdapterWithRoute::new(destination, adapt);
+/// ```
+///
+/// ```compile_fail,E0277
+/// struct Destination;
+/// impl behavior::Protocol for Destination {
+///     type Addr = behavior::MailAddr;
+///     type Msg = u16;
 /// }
 /// fn adapt(value: u8) -> u16 { u16::from(value) }
-/// let foreign = ChildRoute::<Destination, ChildHead>::new(1);
-/// let _ = MessageAdapterWithRoute::new(foreign, adapt);
+/// let mut sequence = behavior::CreationSequence::new();
+/// let creation = sequence.issue().expect("fixture creation ID");
+/// let child = behavior::ChildDelivery::<Destination, behavior::ChildHead>::after(creation, 1);
+/// let _ = behavior_actors::MessageAdapterWithRoute::new(child, adapt);
 /// ```
 pub struct MessageAdapterWithRoute<Input, Route>
 where

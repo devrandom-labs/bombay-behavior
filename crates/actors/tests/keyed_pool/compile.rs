@@ -112,6 +112,7 @@ fn keyed_construction_and_commands_need_only_domain_types() {
         DiagnosticDisposition::terminate(),
     )
     .unwrap_or_else(|_| panic!("the worker declaration constructs a keyed pool"));
+    super::keyed_pool_requires_its_customer_and_management_hosts(&pool);
     let initialized = pool
         .initialize()
         .unwrap_or_else(|error| panic!("keyed initialization failed: {error}"));
@@ -394,8 +395,9 @@ fn keyed_construction_and_commands_need_only_domain_types() {
                 assert_eq!(request, BindingRequestId::new(6));
                 assert_eq!(key, Account(7));
                 assert_eq!(removed.generation(), primary_binding.generation());
+                let removed_entry = directory.remove(7);
                 assert_eq!(
-                    directory.remove(7),
+                    removed_entry,
                     Some(AccountPlacement {
                         edition: removed.generation().get(),
                         desk: SearchDesk::Primary,

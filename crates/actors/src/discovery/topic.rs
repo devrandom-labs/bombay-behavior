@@ -67,8 +67,6 @@ impl<A: Address, P, Route> Default for Topic<A, P, Route> {
 impl<A, P, Route> BehaviorBase for Topic<A, P, Route>
 where
     A: Address,
-    P: Clone,
-    Route: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = P>> + Clone + PartialEq,
 {
     type Base = Self;
 
@@ -77,12 +75,7 @@ where
     }
 }
 
-impl<A, P, Route> behavior::Protocol for Topic<A, P, Route>
-where
-    A: Address,
-    P: Clone,
-    Route: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = P>> + Clone + PartialEq,
-{
+impl<A: Address, P, Route> behavior::Protocol for Topic<A, P, Route> {
     type Addr = A;
     type Msg = TopicMessage<P, Route>;
 }
@@ -176,9 +169,7 @@ mod tests {
             .initialize()
             .unwrap()
             .behavior;
-        assert!(matches!(
-            topic.receive(MailAddr(9), TopicMessage::Publish(7)),
-            Err(TopicError::NoSubscribers(7))
-        ));
+        let rejection = topic.receive(MailAddr(9), TopicMessage::Publish(7));
+        assert!(matches!(rejection, Err(TopicError::NoSubscribers(7))));
     }
 }

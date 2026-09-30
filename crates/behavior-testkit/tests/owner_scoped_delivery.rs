@@ -2,10 +2,10 @@
 
 use core::marker::PhantomData;
 
-use behavior_actors::{DeliveryRouteFor, ReplyDelivery, ReplyRoute};
+use behavior_actors::{DeliveryRoute, ReplyDelivery, ReplyRoute};
 use behavior_core::{
-    Actions, Address, Behavior, BehaviorActed, EndpointAddress, EstablishedRecipient, Never,
-    NoBirths, Protocol, Recipient, User,
+    Actions, Address, Behavior, BehaviorActed, BehaviorAddr, EndpointAddress, EstablishedRecipient,
+    Never, NoBirths, Protocol, Recipient, User,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -59,9 +59,9 @@ impl Behavior for Worker {
 fn deliver<Owner, Route>(route: Route, message: <Route::Protocol as Protocol>::Msg) -> Route::Sends
 where
     Owner: Behavior,
-    Route: DeliveryRouteFor<Owner>,
+    Route: DeliveryRoute<Protocol: Protocol<Addr = BehaviorAddr<Owner>>>,
 {
-    route.deliver_for(message)
+    route.deliver(message)
 }
 
 #[test]

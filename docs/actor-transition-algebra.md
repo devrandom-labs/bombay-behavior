@@ -43,6 +43,15 @@ A nominal actor may implement both traits and use `Behavior::Protocol = Self`.
 Transparent wrappers preserve the inner protocol while changing the concrete
 behavior and event/effect algebra.
 
+`InitializationTurn` and `ActiveTurn` cannot be constructed directly by an
+application. The public `initialize(&mut B)` and
+`delegate_transition(&mut B, event)` functions are trusted composition and
+runtime ports: they can be called repeatedly, and the latter can run before
+initialization. The consuming `behavior_actors::Activate::initialize` path
+enforces one initialization for its owned definition and returns `Active<B>`
+for mailbox ingress. A runtime or wrapper using the raw ports must enforce
+the same lifecycle order itself.
+
 ## Destination evidence
 
 | Type | Evidence | Requires address lookup? |
@@ -74,18 +83,34 @@ address and proves neither identity nor freshness.
 
 The interpreter performs, in order:
 
-1. fresh address allocation;
-2. child initialization;
-3. initialization-effect interpretation;
-4. endpoint installation; and
-5. creator-local binding commit.
+1. reserve an address fresh with respect to the actor configuration, without
+   publishing a live endpoint;
+2. run the child's pure definition initialization fold;
+3. install the endpoint and commit the creator-local nonce binding;
+4. interpret and settle all initialization effects; and
+5. permit ordinary mailbox ingress only if initialization continues and its
+   effects settle successfully.
 
 Only the committed path may produce
 `ChildCreationOutcome::Established` with
-`EstablishedCreation<P, Occurrence>::Installed`. Initialization and host
-rejection return the current child and exact initialization value through
-`ChildCreationOutcome`; no rejected variant contains an endpoint or commits a binding.
+`EstablishedCreation<P, Occurrence>::Installed`. Allocation rejection returns
+the complete staged creation before the initialization fold. Pure
+initialization rejection returns the current child and exact error; host
+rejection after that fold returns the current child and uninterpreted
+initialization `Actions`. A caught pure initialization panic returns the
+extant current child through `InitializationPanicked`, without claiming an
+initialization error or accepted actions. None of these outcomes commits a
+binding. Once committed,
+an initialization-effect failure belongs to the installed child's drain and
+cannot be reported as a creation rejection. An initialization `Stop` still
+settles its final actions and never enables ordinary ingress.
 A nonce collision is rejection, never replacement or overwrite.
+
+These commit and settlement steps are Bombay policy, not Agha's allocation
+law. [Agha et al.'s `newadr` and `initbeh`](https://doi.org/10.1017/S095679689700261X)
+are separate model operations; Bombay
+packages fresh allocation, the pure fold, and establishment into one staged
+creation request.
 
 `CreationKind::ReplacementIncarnation` records Behavior-authored provenance.
 It is still fresh allocation. A runtime may report a restart only after the

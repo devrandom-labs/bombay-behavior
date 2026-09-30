@@ -39,13 +39,12 @@ impl InactivityModel {
         self.live_token
     }
 
-    /// Consume only the token for the current idle period.
-    pub fn notification(&mut self, token: u64) -> bool {
+    /// Consume and return only the token for the current idle period.
+    pub fn notification(&mut self, token: u64) -> Option<u64> {
         if self.live_token == Some(token) {
-            self.live_token = None;
-            true
+            self.live_token.take()
         } else {
-            false
+            None
         }
     }
 

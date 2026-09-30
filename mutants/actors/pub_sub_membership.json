@@ -1,0 +1,7 @@
+{
+  "floors": {
+    "crates/actors/src/discovery/pub_sub.rs::PubSub<A, K, P, Route>::subscribe": 3,
+    "crates/actors/src/discovery/pub_sub.rs::PubSub<A, K, P, Route>::unsubscribe": 3
+  },
+  "known_zero_viable": []
+}

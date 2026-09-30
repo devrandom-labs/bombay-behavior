@@ -229,7 +229,6 @@ where
 impl<A, K, Route> BehaviorBase for Readiness<A, K, Route>
 where
     A: Address,
-    K: Clone + Eq,
     Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = ReadinessReport<K>>>,
 {
     type Base = Self;
@@ -241,7 +240,6 @@ where
 impl<A, K, Route> behavior::Protocol for Readiness<A, K, Route>
 where
     A: Address,
-    K: Clone + Eq,
     Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = ReadinessReport<K>>>,
 {
     type Addr = A;
@@ -318,7 +316,8 @@ mod tests {
                 )
                 .unwrap()
         };
-        assert!(!query(&mut subject).sends[0].message.ready());
+        let queried = query(&mut subject);
+        assert!(!queried.sends[0].message.ready());
         let observed = subject
             .receive(
                 MailAddr(9),
@@ -332,7 +331,8 @@ mod tests {
         assert!(observed.sends.is_empty());
         assert!(observed.creates.is_empty());
         assert_eq!(observed.become_, behavior::Step::Continue);
-        assert!(!query(&mut subject).sends[0].message.ready());
+        let queried = query(&mut subject);
+        assert!(!queried.sends[0].message.ready());
         let observed = subject
             .receive(
                 MailAddr(9),
@@ -346,7 +346,8 @@ mod tests {
         assert!(observed.sends.is_empty());
         assert!(observed.creates.is_empty());
         assert_eq!(observed.become_, behavior::Step::Continue);
-        assert!(query(&mut subject).sends[0].message.ready());
+        let queried = query(&mut subject);
+        assert!(queried.sends[0].message.ready());
     }
 
     #[test]
@@ -365,37 +366,37 @@ mod tests {
         assert!(observed.sends.is_empty());
         assert!(observed.creates.is_empty());
         assert_eq!(observed.become_, behavior::Step::Continue);
+        let rejection = subject.receive(
+            MailAddr(9),
+            ReadinessMessage::Observe {
+                dependency: 1,
+                version: ObservationVersion(1),
+                status: ReadinessStatus::NotReady,
+            },
+        );
+        assert!(matches!(rejection, Err(ReadinessError::Stale { .. })));
+        let rejection = subject.receive(
+            MailAddr(9),
+            ReadinessMessage::Observe {
+                dependency: 1,
+                version: ObservationVersion(2),
+                status: ReadinessStatus::NotReady,
+            },
+        );
         assert!(matches!(
-            subject.receive(
-                MailAddr(9),
-                ReadinessMessage::Observe {
-                    dependency: 1,
-                    version: ObservationVersion(1),
-                    status: ReadinessStatus::NotReady
-                }
-            ),
-            Err(ReadinessError::Stale { .. })
-        ));
-        assert!(matches!(
-            subject.receive(
-                MailAddr(9),
-                ReadinessMessage::Observe {
-                    dependency: 1,
-                    version: ObservationVersion(2),
-                    status: ReadinessStatus::NotReady
-                }
-            ),
+            rejection,
             Err(ReadinessError::ConflictingVersion { .. })
         ));
+        let rejection = subject.receive(
+            MailAddr(9),
+            ReadinessMessage::Observe {
+                dependency: 9,
+                version: ObservationVersion(1),
+                status: ReadinessStatus::Ready,
+            },
+        );
         assert!(matches!(
-            subject.receive(
-                MailAddr(9),
-                ReadinessMessage::Observe {
-                    dependency: 9,
-                    version: ObservationVersion(1),
-                    status: ReadinessStatus::Ready
-                }
-            ),
+            rejection,
             Err(ReadinessError::UnknownDependency {
                 dependency: 9,
                 observed: ObservationVersion(1),

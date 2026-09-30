@@ -21,7 +21,10 @@ pub struct CreationId(NonZeroU64);
 impl CreationId {
     /// Return the occurrence-local numeric value for protocols that derive
     /// another correlation from this creation.
-    #[doc(hidden)]
+    ///
+    /// This number is neither an actor identity nor evidence that the runtime
+    /// established a fresh child. Only a committed creation settlement proves
+    /// establishment.
     #[must_use]
     pub const fn get(self) -> u64 {
         self.0.get()
@@ -137,7 +140,12 @@ impl<A: Address, New> CreateChild<A, New> {
         &self.child
     }
 
-    #[doc(hidden)]
+    /// Consume the staged request, returning its exact correlation, child,
+    /// and creation provenance to the interpreter.
+    ///
+    /// Taking these parts does not establish a child actor. The interpreter
+    /// remains responsible for fresh creation and for returning owned work on
+    /// rejection.
     #[must_use]
     pub fn into_parts(self) -> (CreationId, New, CreationKind) {
         (self.id, self.child, self.kind)
@@ -164,6 +172,19 @@ impl<Item> Creations<Item> {
     #[must_use]
     pub fn one(item: Item) -> Self {
         Self { items: vec![item] }
+    }
+
+    /// Consume a batch containing exactly one item.
+    ///
+    /// # Errors
+    /// Returns the complete ordered batch when it is empty or contains more
+    /// than one item.
+    pub fn into_one(self) -> Result<Item, Self> {
+        let one: Result<[Item; 1], Vec<Item>> = self.items.try_into();
+        match one {
+            Ok([item]) => Ok(item),
+            Err(items) => Err(Self { items }),
+        }
     }
 
     #[must_use]
@@ -261,7 +282,6 @@ pub trait ChildRole<Parent: Behavior> {
 /// structural resolution with a runtime lookup.
 pub trait ChildOccurrence<Parent: Behavior>: Sized {
     /// Sealed descriptor interpreted by [`ResolveChildOccurrence`].
-    #[doc(hidden)]
     type Resolution: ChildOccurrenceResolution<Parent, Self>;
 }
 
@@ -270,7 +290,6 @@ pub trait ChildOccurrence<Parent: Behavior>: Sized {
 /// This type exists so generated and manually authored roles can carry their
 /// static declaration into the sealed resolver. It has no values or runtime
 /// behavior.
-#[doc(hidden)]
 pub struct DeclaredChildOccurrence;
 
 /// Sealed descriptor for a raw structural child position.
@@ -298,62 +317,57 @@ pub struct StructuralChildOccurrence<Position>(PhantomData<fn() -> Position>);
 /// role:
 ///
 /// ```compile_fail
-/// use behavior::{
-///     Actions, Behavior, BehaviorActed, BehaviorBase, Births, ChildHead,
-///     ChildOccurrence, ChildRole, DeclaredChildOccurrence, MailAddr, Never,
-///     NoBirths, NoSends, Protocol, ResolveChildOccurrence,
-/// };
 ///
 /// struct ActorProtocol;
-/// impl Protocol for ActorProtocol {
-///     type Addr = MailAddr;
-///     type Msg = Never;
+/// impl behavior::Protocol for ActorProtocol {
+///     type Addr = behavior::MailAddr;
+///     type Msg = behavior::Never;
 /// }
 ///
 /// macro_rules! inert {
 ///     ($actor:ident, $birth:ty) => {
 ///         struct $actor;
-///         impl Behavior for $actor {
+///         impl behavior::Behavior for $actor {
 ///             type Protocol = ActorProtocol;
-///             type Event = Never;
-///             type Sends = NoSends;
-///             type Ph = Never;
-///             type Error = Never;
+///             type Event = behavior::Never;
+///             type Sends = behavior::NoSends;
+///             type Ph = behavior::Never;
+///             type Error = behavior::Never;
 ///             type Birth = $birth;
 ///             fn transition(
 ///                 &mut self,
 ///                 _: behavior::ActiveTurn,
-///                 event: Never,
-///             ) -> BehaviorActed<Self> {
+///                 event: behavior::Never,
+///             ) -> behavior::BehaviorActed<Self> {
 ///                 match event {}
 ///             }
 ///         }
 ///     };
 /// }
-/// inert!(Child, NoBirths);
-/// inert!(Proxy, NoBirths);
-/// inert!(Parent, Births<Child>);
-/// inert!(ChangedTopology, Births<Proxy>);
+/// inert!(Child, behavior::NoBirths);
+/// inert!(Proxy, behavior::NoBirths);
+/// inert!(Parent, behavior::Births<Child>);
+/// inert!(ChangedTopology, behavior::Births<Proxy>);
 ///
-/// impl BehaviorBase for Parent {
+/// impl behavior::BehaviorBase for Parent {
 ///     type Base = Self;
 ///     fn base(&self) -> &Self { self }
 /// }
-/// impl BehaviorBase for ChangedTopology {
+/// impl behavior::BehaviorBase for ChangedTopology {
 ///     type Base = Parent;
 ///     fn base(&self) -> &Parent { unreachable!() }
 /// }
 ///
 /// struct WorkerRole;
-/// impl ChildRole<Parent> for WorkerRole {
+/// impl behavior::ChildRole<Parent> for WorkerRole {
 ///     type Child = Child;
-///     type Position = ChildHead;
+///     type Position = behavior::ChildHead;
 /// }
-/// impl ChildOccurrence<Parent> for WorkerRole {
-///     type Resolution = DeclaredChildOccurrence;
+/// impl behavior::ChildOccurrence<Parent> for WorkerRole {
+///     type Resolution = behavior::DeclaredChildOccurrence;
 /// }
 ///
-/// fn require<T: ResolveChildOccurrence<WorkerRole>>() {}
+/// fn require<T: behavior::ResolveChildOccurrence<WorkerRole>>() {}
 /// require::<ChangedTopology>();
 /// ```
 pub trait ResolveChildOccurrence<Occurrence>:
@@ -399,7 +413,6 @@ pub type RoleProtocol<Parent, Role> = <RoleChild<Parent, Role> as Behavior>::Pro
 /// Behavior never constructs or stores this value. It exists only between the
 /// generic batch-routing step and the concrete child host, and it returns
 /// complete on rejection or corruption.
-#[doc(hidden)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RoutedCreation<A: Address, New> {
     creation: CreateChild<A, New>,
@@ -426,6 +439,13 @@ impl<A: Address, New> RoutedCreation<A, New> {
     #[must_use]
     pub const fn route(&self) -> A::Nonce {
         self.route
+    }
+
+    /// Borrow the staged child for its pure initialization fold while the
+    /// complete routed request remains owned for a possible rejection.
+    #[must_use]
+    pub fn child_mut(&mut self) -> &mut New {
+        &mut self.creation.child
     }
 
     #[must_use]
@@ -495,29 +515,25 @@ where
 /// endpoint representations match:
 ///
 /// ```compile_fail
-/// use behavior::{
-///     Address, CreationKind, CreationSequence, EndpointAddress, EstablishedCreation,
-///     EstablishedRecipient, Protocol,
-/// };
 /// #[derive(Clone, Copy, PartialEq, Eq)]
 /// struct RuntimeAddr(u64);
-/// impl Address for RuntimeAddr { type Nonce = u64; }
+/// impl behavior::Address for RuntimeAddr { type Nonce = u64; }
 /// struct Endpoint;
 /// impl Clone for Endpoint { fn clone(&self) -> Self { Self } }
-/// impl EndpointAddress for RuntimeAddr {
-///     type Established<P> = Endpoint where P: Protocol<Addr = Self>;
+/// impl behavior::EndpointAddress for RuntimeAddr {
+///     type Established<P> = Endpoint where P: behavior::Protocol<Addr = Self>;
 /// }
 /// struct Worker;
-/// impl Protocol for Worker { type Addr = RuntimeAddr; type Msg = (); }
+/// impl behavior::Protocol for Worker { type Addr = RuntimeAddr; type Msg = (); }
 /// struct Primary;
 /// struct Backup;
-/// fn accepts_primary(_: EstablishedCreation<Worker, Primary>) {}
-/// let mut sequence = CreationSequence::new();
+/// fn accepts_primary(_: behavior::EstablishedCreation<Worker, Primary>) {}
+/// let mut sequence = behavior::CreationSequence::new();
 /// let id = sequence.issue().expect("fixture creation ID");
-/// let backup: EstablishedCreation<Worker, Backup> = EstablishedCreation::installed(
+/// let backup: behavior::EstablishedCreation<Worker, Backup> = behavior::EstablishedCreation::installed(
 ///     id,
-///     CreationKind::Birth,
-///     EstablishedRecipient::issued(Endpoint),
+///     behavior::CreationKind::Birth,
+///     behavior::EstablishedRecipient::issued(Endpoint),
 /// );
 /// accepts_primary(backup);
 /// ```
@@ -622,9 +638,11 @@ where
 ///
 /// A created child leaves only its exact established capability. Rejection
 /// during the pure initialization transition returns the current child and its
-/// exact error. Rejection while establishing the host returns the current child
-/// and the still-uninterpreted initialization actions. No variant reconstructs
-/// a pre-initialization value or silently discards an affine action.
+/// exact error. A caught panic returns the extant current child without
+/// claiming an error or successful actions. Rejection while establishing the
+/// host returns the current child and the still-uninterpreted initialization
+/// actions. No variant reconstructs a pre-initialization value or silently
+/// discards an affine action.
 pub enum ChildCreationOutcome<C, Occurrence>
 where
     C: Behavior,
@@ -641,6 +659,14 @@ where
         creation: RoutedCreation<BehaviorAddr<C>, C>,
         /// Exact error returned by the child's initialization transition.
         error: C::Error,
+    },
+    /// The child's pure initialization panicked before any host commitment.
+    ///
+    /// Only the outer routed child that survived Rust unwinding is returned;
+    /// this does not promise recovery of values destroyed inside user code.
+    InitializationPanicked {
+        /// Current child value with its creator correlation and private route.
+        creation: RoutedCreation<BehaviorAddr<C>, C>,
     },
     /// Host establishment rejected after initialization produced actions.
     HostRejected {
@@ -774,7 +800,6 @@ where
 /// let backup = behavior::CreationCorrelation::<Worker, Backup>::new(id);
 /// let _: behavior::CreationCorrelation<Worker, Primary> = backup;
 /// ```
-#[doc(hidden)]
 pub struct CreationCorrelation<P, Occurrence>
 where
     P: Protocol,
@@ -1003,7 +1028,7 @@ where
 ///
 /// A runtime cannot substitute a private receipt or rejection type:
 ///
-/// ```compile_fail,E0053
+/// ```compile_fail,E0271
 /// #[derive(Clone, Copy, Eq, PartialEq)]
 /// struct RuntimeAddr;
 /// impl behavior::Address for RuntimeAddr { type Nonce = u8; }
@@ -1154,7 +1179,7 @@ where
 /// Every alternative requires a concrete child host; incomplete interpreter
 /// support is rejected statically:
 ///
-/// ```compile_fail
+/// ```compile_fail,E0277
 /// #[derive(Clone, Copy, Eq, PartialEq)]
 /// struct RuntimeAddr;
 /// impl behavior::Address for RuntimeAddr { type Nonce = u8; }
@@ -1195,19 +1220,19 @@ where
 ///
 /// struct Incomplete;
 /// impl behavior::EstablishChild<behavior::ChildHead, CacheWorker> for Incomplete {
-///     async fn establish_child(
+///     fn establish_child(
 ///         &mut self,
 ///         creation: behavior::RoutedCreation<RuntimeAddr, CacheWorker>,
-///     ) -> behavior::ItemSettlement<
+///     ) -> impl core::future::Future<Output = behavior::ItemSettlement<
 ///         behavior::RoutedCreation<RuntimeAddr, CacheWorker>,
 ///         behavior::ChildCreationOutcome<CacheWorker, behavior::ChildHead>,
 ///         behavior::CreationRejection,
 ///         behavior::Never,
-///     > {
-///         behavior::ItemSettlement::Rejected {
+///     >> + Send {
+///         async move { behavior::ItemSettlement::Rejected {
 ///             item: creation,
 ///             reason: behavior::CreationRejection::EnvironmentFailed,
-///         }
+///         } }
 ///     }
 /// }
 ///
@@ -1241,27 +1266,23 @@ pub struct ChildTail<Position>(PhantomData<fn() -> Position>);
 /// A role cannot claim a position occupied by a different child:
 ///
 /// ```compile_fail
-/// use behavior::{
-///     Actions, Behavior, BehaviorActed, Births, ChildChoice, ChildHead,
-///     ChildRole, MailAddr, Never, NoBirths, User,
-/// };
 /// struct CacheWorker;
 /// struct QueueWorker;
 /// struct Parent;
 /// macro_rules! inert {
 ///     ($actor:ty) => {
 ///         impl behavior::Protocol for $actor {
-///             type Addr = MailAddr;
-///             type Msg = Never;
+///             type Addr = behavior::MailAddr;
+///             type Msg = behavior::Never;
 ///         }
-///         impl Behavior for $actor {
+///         impl behavior::Behavior for $actor {
 ///             type Protocol = Self;
-///             type Event = User<MailAddr, Never>;
-///             type Sends = Vec<Never>;
-///             type Ph = Never;
-///             type Error = Never;
-///             type Birth = NoBirths;
-///             fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+///             type Event = behavior::User<behavior::MailAddr, behavior::Never>;
+///             type Sends = Vec<behavior::Never>;
+///             type Ph = behavior::Never;
+///             type Error = behavior::Never;
+///             type Birth = behavior::NoBirths;
+///             fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> behavior::BehaviorActed<Self> {
 ///                 match event.message {}
 ///             }
 ///         }
@@ -1270,24 +1291,24 @@ pub struct ChildTail<Position>(PhantomData<fn() -> Position>);
 /// inert!(CacheWorker);
 /// inert!(QueueWorker);
 /// impl behavior::Protocol for Parent {
-///     type Addr = MailAddr;
-///     type Msg = Never;
+///     type Addr = behavior::MailAddr;
+///     type Msg = behavior::Never;
 /// }
-/// impl Behavior for Parent {
+/// impl behavior::Behavior for Parent {
 ///     type Protocol = Self;
-///     type Event = User<MailAddr, Never>;
-///     type Sends = Vec<Never>;
-///     type Ph = Never;
-///     type Error = Never;
-///     type Birth = Births<ChildChoice<QueueWorker, ChildChoice<CacheWorker, Never>>>;
-///     fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+///     type Event = behavior::User<behavior::MailAddr, behavior::Never>;
+///     type Sends = Vec<behavior::Never>;
+///     type Ph = behavior::Never;
+///     type Error = behavior::Never;
+///     type Birth = behavior::Births<behavior::ChildChoice<QueueWorker, behavior::ChildChoice<CacheWorker, behavior::Never>>>;
+///     fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> behavior::BehaviorActed<Self> {
 ///         match event.message {}
 ///     }
 /// }
 /// struct ForgedCacheRole;
-/// impl ChildRole<Parent> for ForgedCacheRole {
+/// impl behavior::ChildRole<Parent> for ForgedCacheRole {
 ///     type Child = CacheWorker;
-///     type Position = ChildHead;
+///     type Position = behavior::ChildHead;
 /// }
 /// ```
 pub trait ChildPosition<Children, Child: Behavior>: sealed::ChildPosition {}
@@ -1326,11 +1347,8 @@ where
 /// from value construction:
 ///
 /// ```
-/// use behavior::{BirthNodeAppend, Never};
-/// use core::marker::PhantomData;
-///
-/// type Combined = <Never as BirthNodeAppend<Never>>::Output;
-/// let _: PhantomData<Combined> = PhantomData;
+/// type Combined = <behavior::Never as behavior::BirthNodeAppend<behavior::Never>>::Output;
+/// let _: core::marker::PhantomData<Combined> = core::marker::PhantomData;
 /// ```
 pub trait BirthNodeAppend<Tail>: sealed::BirthNode + Sized
 where
@@ -1547,20 +1565,17 @@ where
 /// `Tail`; the product includes every declared child exactly once.
 ///
 /// ```
-/// use core::marker::PhantomData;
-/// use behavior::{Behavior, ChildOccurrenceShape, ChildOccurrences};
-///
 /// struct NoChildBindings;
-/// struct ChildBinding<Position, Child, Tail>(PhantomData<fn() -> (Position, Child, Tail)>);
+/// struct ChildBinding<Position, Child, Tail>(core::marker::PhantomData<fn() -> (Position, Child, Tail)>);
 /// struct RuntimeStorage;
 ///
-/// impl ChildOccurrenceShape for RuntimeStorage {
+/// impl behavior::ChildOccurrenceShape for RuntimeStorage {
 ///     type Empty = NoChildBindings;
-///     type Member<Occurrence, Child: Behavior, Tail> =
+///     type Member<Occurrence, Child: behavior::Behavior, Tail> =
 ///         ChildBinding<Occurrence, Child, Tail>;
 /// }
 ///
-/// type ChildBindings<Node> = ChildOccurrences<Node, RuntimeStorage>;
+/// type ChildBindings<Node> = behavior::ChildOccurrences<Node, RuntimeStorage>;
 /// ```
 pub trait ChildOccurrenceShape {
     /// Representation of the empty [`Never`] node.
@@ -1585,16 +1600,14 @@ pub trait ChildOccurrenceShape {
 /// Foreign types cannot extend the closed node algebra:
 ///
 /// ```compile_fail
-/// use behavior::{ChildOccurrenceProduct, ChildOccurrenceShape};
-///
 /// struct RuntimeShape;
-/// impl ChildOccurrenceShape for RuntimeShape {
+/// impl behavior::ChildOccurrenceShape for RuntimeShape {
 ///     type Empty = ();
 ///     type Member<Occurrence, Child: behavior::Behavior, Tail> = ();
 /// }
 ///
 /// struct ForeignNode;
-/// impl ChildOccurrenceProduct<RuntimeShape> for ForeignNode {
+/// impl behavior::ChildOccurrenceProduct<RuntimeShape> for ForeignNode {
 ///     type Product = ();
 /// }
 /// ```
@@ -2071,7 +2084,6 @@ where
 }
 
 /// Closed product operation used by the structural birth projection.
-#[doc(hidden)]
 pub trait BirthProtocolProduct {
     type Append<Tail: BirthProtocolProduct>: BirthProtocolProduct;
 }
@@ -2431,14 +2443,13 @@ mod tests {
         assert_eq!(creations.len(), 3);
         assert!(!creations.is_empty());
         assert_eq!(creations.iter().copied().collect::<Vec<_>>(), [1, 2, 3]);
-        assert_eq!(
-            (&creations).into_iter().copied().collect::<Vec<_>>(),
-            [1, 2, 3]
-        );
+        let borrowed = (&creations).into_iter().copied().collect::<Vec<_>>();
+        assert_eq!(borrowed, [1, 2, 3]);
 
         let collected: Creations<_> = [4_u8, 5].into_iter().collect();
         assert_eq!(collected.len(), 2);
-        assert_eq!(collected.into_iter().collect::<Vec<_>>(), [4, 5]);
+        let collected_values = collected.into_iter().collect::<Vec<_>>();
+        assert_eq!(collected_values, [4, 5]);
 
         let returned = ChildCreationSettled::<Child, ChildHead>::new(SettledItem::Unattempted(
             RoutedCreation::new(CreateChild::birth(first, Child), 17),

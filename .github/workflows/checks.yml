@@ -76,6 +76,15 @@ jobs:
       - name: Flake Check
         run: nix flake check -L
 
+      - name: Verify external interpreter dependency graph
+        run: nix develop -c python3 scripts/check_interpreter_contract_graph.py
+
+      - name: External interpreter contract, debug
+        run: nix develop -c cargo test --locked --manifest-path tests/interpreter-contract/Cargo.toml
+
+      - name: External interpreter contract, optimized
+        run: nix develop -c cargo test --locked --release --manifest-path tests/interpreter-contract/Cargo.toml
+
       - name: Build fuzz targets
         run: nix run .#fuzz -- build
 

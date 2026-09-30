@@ -92,7 +92,6 @@ where
 }
 
 /// One non-empty ordered request for replacement worker submissions.
-#[doc(hidden)]
 #[must_use = "worker preparation must settle or transfer outward"]
 pub struct PrepareWorkers<Source, Role, Worker, Plan>
 where
@@ -143,14 +142,12 @@ where
 
     /// Borrow the source and current application role for one Bombay-owned
     /// preparation attempt.
-    #[doc(hidden)]
     #[must_use]
     pub fn source_and_role(&mut self) -> (&mut Source, &Role) {
         (&mut self.source, self.first.role())
     }
 
     /// Accept one submission for the current role.
-    #[doc(hidden)]
     #[must_use]
     pub fn accept(
         self,
@@ -170,7 +167,6 @@ where
     }
 
     /// Return an exact rejection for the current role.
-    #[doc(hidden)]
     #[must_use]
     pub fn reject(
         self,
@@ -231,7 +227,6 @@ pub(in super::super) enum WorkerPreparationOutcome<Source, Role, Worker, Plan, R
 }
 
 /// Non-empty remainder of one exact worker-preparation request.
-#[doc(hidden)]
 #[must_use = "worker preparation must advance, reject, or transfer outward"]
 pub struct PendingWorkerPreparation<Source, Role, Worker, Plan>
 where
@@ -254,14 +249,12 @@ where
 {
     /// Borrow the source and current application role for one Bombay-owned
     /// preparation attempt.
-    #[doc(hidden)]
     #[must_use]
     pub fn source_and_role(&mut self) -> (&mut Source, &Role) {
         (&mut self.source, self.current.role())
     }
 
     /// Accept one submission for the current role.
-    #[doc(hidden)]
     #[must_use]
     pub fn accept(
         self,
@@ -281,7 +274,6 @@ where
     }
 
     /// Return an exact rejection for the current role.
-    #[doc(hidden)]
     #[must_use]
     pub fn reject(
         self,
@@ -299,7 +291,6 @@ where
 }
 
 /// Complete accepted result of one worker-source action.
-#[doc(hidden)]
 #[must_use = "worker preparation must return to its supervisor or retire outward"]
 pub struct WorkerPreparation<Source, Role, Worker, Plan>
 where

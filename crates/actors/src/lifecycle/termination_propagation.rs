@@ -5,8 +5,7 @@ use crate::{
 };
 use behavior::{
     Actions, Address, Behavior, BehaviorActed, BirthMode, CreationId, EventLayer, Here,
-    InterpretSends, InterpreterRequest, InterpreterRequests, Protocol, ReturnsToEmitter,
-    SendEffects, SendLayer,
+    InterpreterRequest, InterpreterRequests, Protocol, ReturnsToEmitter, SendEffects, SendLayer,
 };
 
 /// A statically selected source of one authoritative terminal report.
@@ -159,11 +158,14 @@ pub enum TerminalPropagationState {
 }
 
 /// Exact rejection from terminal propagation.
+#[derive(thiserror::Error)]
 pub enum TerminationPropagationError<E, Report> {
     /// The wrapped behavior rejected its own event.
-    Inner(E),
+    #[error("wrapped behavior rejected its event")]
+    Inner(#[source] E),
     /// A returned terminal report does not match the configured source or the
     /// still-observing phase.
+    #[error("terminal report does not match the active propagation source")]
     UnexpectedReport {
         state: TerminalPropagationState,
         report: Report,
@@ -183,127 +185,11 @@ impl<E: core::fmt::Debug, Report> core::fmt::Debug for TerminationPropagationErr
     }
 }
 
-impl<E, Report> core::fmt::Display for TerminationPropagationError<E, Report> {
-    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self {
-            Self::Inner(_) => formatter.write_str("wrapped behavior rejected its event"),
-            Self::UnexpectedReport { .. } => {
-                formatter.write_str("terminal report does not match the active propagation source")
-            }
-        }
-    }
-}
-
-impl<E, Report> std::error::Error for TerminationPropagationError<E, Report>
-where
-    E: std::error::Error + 'static,
-    Report: 'static,
-{
-}
-
 /// Named effects owned by [`PropagateTermination`].
+#[derive(behavior_macros::SendProduct)]
 pub struct TerminalPropagationSends<Observations, Reports> {
     pub observations: Observations,
     pub reports: Reports,
-}
-
-impl<Observations: SendEffects, Reports: SendEffects> SendEffects
-    for TerminalPropagationSends<Observations, Reports>
-{
-    fn empty() -> Self {
-        Self {
-            observations: Observations::empty(),
-            reports: Reports::empty(),
-        }
-    }
-
-    fn append(&mut self, other: Self) {
-        self.observations.append(other.observations);
-        self.reports.append(other.reports);
-    }
-}
-
-impl<Observations, Reports, Event> behavior::SendsFor<Event>
-    for TerminalPropagationSends<Observations, Reports>
-where
-    Observations: SendEffects + behavior::SendsFor<Event>,
-    Reports: SendEffects + behavior::SendsFor<Event>,
-{
-}
-
-impl<Observations, Reports> behavior::ClassifySettlement
-    for TerminalPropagationSends<Observations, Reports>
-where
-    Observations: behavior::ClassifySettlement,
-    Reports: behavior::ClassifySettlement,
-{
-    fn settlement_status(&self) -> behavior::SettlementStatus {
-        self.observations
-            .settlement_status()
-            .combine(self.reports.settlement_status())
-    }
-}
-
-impl<Observations, Reports> behavior::SendSettlements
-    for TerminalPropagationSends<Observations, Reports>
-where
-    Observations: behavior::SendSettlements,
-    Reports: behavior::SendSettlements,
-{
-    type Settlements = TerminalPropagationSends<Observations::Settlements, Reports::Settlements>;
-
-    fn unattempted(self) -> Self::Settlements {
-        TerminalPropagationSends {
-            observations: self.observations.unattempted(),
-            reports: self.reports.unattempted(),
-        }
-    }
-}
-
-impl<Host, RootEvent, Observations, Reports> behavior::SourceSettlementCustody<Host, RootEvent>
-    for TerminalPropagationSends<Observations, Reports>
-where
-    Host: Send,
-    Observations: behavior::SourceSettlementCustody<Host, RootEvent> + Send,
-    Reports: behavior::SourceSettlementCustody<Host, RootEvent> + Send,
-{
-    fn offer_next_to_source(
-        self,
-        host: &mut Host,
-    ) -> impl core::future::Future<Output = behavior::SourceCustody<Self>> + Send {
-        async move {
-            (self.observations, self.reports)
-                .offer_next_to_source(host)
-                .await
-                .map(|(observations, reports)| TerminalPropagationSends {
-                    observations,
-                    reports,
-                })
-        }
-    }
-}
-
-impl<Interpreter, RootEvent, Path, Observations, Reports>
-    InterpretSends<Interpreter, RootEvent, Path> for TerminalPropagationSends<Observations, Reports>
-where
-    Interpreter: Send,
-    Observations: SendEffects + InterpretSends<Interpreter, RootEvent, Path>,
-    Reports: SendEffects + InterpretSends<Interpreter, RootEvent, Path>,
-{
-    fn interpret(
-        self,
-        interpreter: &mut Interpreter,
-    ) -> impl core::future::Future<Output = behavior::Interpretation<Self::Settlements>> + Send
-    {
-        async move {
-            behavior::settle_in_order(self.observations, self.reports, interpreter)
-                .await
-                .map(|(observations, reports)| TerminalPropagationSends {
-                    observations,
-                    reports,
-                })
-        }
-    }
 }
 
 type PropagationSends<A, Request> = TerminalPropagationSends<
@@ -324,16 +210,13 @@ type PropagationSends<A, Request> = TerminalPropagationSends<
 /// A child selection requires a concrete protocol and an opaque creation ID:
 ///
 /// ```compile_fail
-/// use behavior::{MailAddr, Never, Protocol};
-/// use behavior_actors::ChildTermination;
-///
 /// struct Worker;
-/// impl Protocol for Worker {
-///     type Addr = MailAddr;
-///     type Msg = Never;
+/// impl behavior::Protocol for Worker {
+///     type Addr = behavior::MailAddr;
+///     type Msg = behavior::Never;
 /// }
 ///
-/// let _ = ChildTermination::<Worker, behavior::ChildHead>::new("not a creation ID");
+/// let _ = behavior_actors::ChildTermination::<Worker, behavior::ChildHead>::new("not a creation ID");
 /// ```
 pub struct PropagateTermination<B: Behavior, Target> {
     inner: B,
@@ -693,8 +576,9 @@ mod tests {
             assert_eq!(active.state(), TerminalPropagationState::Propagated);
 
             let duplicate = ChildStopped::new(worker, outcome, Instant::now());
+            let rejected = active.transition(EventLayer::Owned(duplicate));
             assert!(matches!(
-                active.transition(EventLayer::Owned(duplicate)),
+                rejected,
                 Err(TerminationPropagationError::UnexpectedReport {
                     state: TerminalPropagationState::Propagated,
                     report,
@@ -734,8 +618,9 @@ mod tests {
             .expect("the unrelated worker creation ID exists");
         let mut active = child(worker, propagate_all).initialize().unwrap().behavior;
         let unrelated = ChildStopped::new(unrelated_worker, Err(Crash::Failed), Instant::now());
+        let rejected = active.transition(EventLayer::Owned(unrelated));
         assert!(matches!(
-            active.transition(EventLayer::Owned(unrelated)),
+            rejected,
             Err(TerminationPropagationError::UnexpectedReport {
                 state: TerminalPropagationState::Observing,
                 report,
@@ -752,7 +637,7 @@ mod tests {
     }
 
     #[test]
-    fn peer_target_uses_the_same_propagation_law() {
+    fn peer_target_returns_foreign_report_before_propagating_selected_peer() {
         let mut initialized = PropagateTermination::new(
             Probe {
                 worker: worker_creation(),
@@ -767,6 +652,22 @@ mod tests {
             [ObservePeer::new(MailAddr(4))]
         );
 
+        let foreign = PeerStopped::new(MailAddr(5), Err(Crash::Failed));
+        let rejected = initialized
+            .behavior
+            .transition(EventLayer::Owned(foreign.clone()));
+        assert!(matches!(
+            rejected,
+            Err(TerminationPropagationError::UnexpectedReport {
+                state: TerminalPropagationState::Observing,
+                report,
+            }) if report == foreign
+        ));
+        assert_eq!(
+            initialized.behavior.state(),
+            TerminalPropagationState::Observing
+        );
+
         let outcome = Err(Crash::Panicked);
         let actions = initialized
             .behavior
@@ -775,6 +676,14 @@ mod tests {
         assert_eq!(
             actions.sends.owned.reports.as_slice(),
             [ReportTerminalOutcome::new(outcome)]
+        );
+        assert!(actions.sends.owned.observations.is_empty());
+        assert!(actions.sends.inner.is_empty());
+        assert!(actions.creates.is_empty());
+        assert!(matches!(actions.become_, behavior::Step::Stop(_)));
+        assert_eq!(
+            initialized.behavior.state(),
+            TerminalPropagationState::Propagated
         );
     }
 

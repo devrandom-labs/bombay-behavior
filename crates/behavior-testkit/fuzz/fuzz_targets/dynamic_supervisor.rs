@@ -1,13 +1,13 @@
 //! Inert typed runtime values shared by DynamicSupervisor fuzz targets.
 
-use behavior_actors::atomic::{
-    ImmediateActivation, ProxyInputReceipt, ProxyInputResult, ProxyOperationId, StableProxy,
-};
+use behavior_actors::atomic::{ImmediateActivation, ProxyInputResult, ProxyOperation, StableProxy};
 use behavior_core::{
     ActiveTurn, Address, Behavior, BehaviorActed, ChildCreationOutcome, CreateChild, CreationId,
     CreationSettlement, CreationsSettled, EndpointAddress, EstablishedActor, EstablishedCreation,
     EstablishedRecipient, ItemSettlement, Never, NoBirths, NoSends, Protocol, SettledItem, User,
 };
+
+use crate::proxy_control::admit_proxy_operation;
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub(super) struct RuntimeAddress;
@@ -71,13 +71,10 @@ pub(super) fn committed_proxy(
     )
 }
 
-pub(super) fn accepted_proxy_input(
-    creation: CreationId,
-    operation: ProxyOperationId,
-) -> ProxyInputResult<behavior_core::Here, Worker, ImmediateActivation> {
-    SettledItem::Attempted(ItemSettlement::Accepted(ProxyInputReceipt::new(
-        creation,
-        EstablishedActor::issued(WorkerEndpoint),
-        operation,
-    )))
+pub(super) fn accepted_proxy_input<Source>(
+    operation: ProxyOperation<Source, Worker, ImmediateActivation>,
+) -> ProxyInputResult<Source, Worker, ImmediateActivation> {
+    let (_, _, receipt) =
+        admit_proxy_operation(operation, EstablishedActor::issued(WorkerEndpoint));
+    SettledItem::Attempted(ItemSettlement::Accepted(receipt))
 }

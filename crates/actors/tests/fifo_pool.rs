@@ -8,10 +8,11 @@ use std::time::{Duration, Instant};
 
 use behavior::{
     ActionItemResult, Actions, ActiveTurn, Address, Behavior, BehaviorActed, BehaviorBase,
-    ChildCreationOutcome, ChildHead, ChildReport, CreationId, CreationSequence, CreationSettlement,
-    CreationsSettled, EndpointAddress, EstablishedCreation, EstablishedRecipient,
-    ExactDeliveryReason, InterpreterFault, InterpreterRequests, ItemSettlement, MessageProtocol,
-    Never, NoBirths, Protocol, Recipient, ReportToParent, SettledItem, Step, User,
+    BirthProtocol, ChildCreationOutcome, ChildHead, ChildReport, CreationId, CreationSequence,
+    CreationSettlement, CreationsSettled, EndpointAddress, EstablishedCreation,
+    EstablishedRecipient, ExactDeliveryReason, InterpreterFault, InterpreterRequests,
+    ItemSettlement, LogicalHostRequirements, MessageProtocol, Never, NoBirthProtocols, NoBirths,
+    Protocol, Recipient, ReportToParent, SettledItem, Step, User,
 };
 use behavior_actors::atomic::{
     ActivationPlan, ActivationPolicy, ActivationStartRejection, ActorDrainPolicy,
@@ -28,6 +29,11 @@ use behavior_actors::{
     SupervisionFailureReason, TimerElapsed, TimerId, TimerScheduled,
 };
 
+use assignment_delivery::{AssignmentDeliveryHost, accepted_assignment};
+
+#[path = "support/assignment_delivery.rs"]
+mod assignment_delivery;
+
 #[path = "fifo_pool/compile.rs"]
 mod compile;
 #[path = "fifo_pool/correlation.rs"]
@@ -41,6 +47,19 @@ mod property;
 mod recovery;
 #[path = "fifo_pool/retirement.rs"]
 mod retirement;
+
+#[test]
+fn fifo_pool_projects_its_customer_host_from_real_behavior_sends() {
+    type Pool = FifoPool<Role, SearchWorker, ImmediateActivation, Never, Infallible, u8, u16>;
+    type Customer = MessageProtocol<RuntimeAddr, FifoOutcome<Role, u8, u16>>;
+    type Expected = BirthProtocol<Customer, NoBirthProtocols>;
+
+    trait Same<T> {}
+    impl<T> Same<T> for T {}
+    fn exact<T: Same<Expected>>() {}
+
+    exact::<<Pool as LogicalHostRequirements>::LogicalHosts>();
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct RuntimeAddr(u64);
@@ -1731,7 +1750,8 @@ async fn forced_retirement_returns_queued_and_assigned_jobs_once() {
         .into_items()
         .pop()
         .unwrap_or_else(|| panic!("ready worker receives the first job"));
-    let receipt = assignment.receipt();
+    let (receipt, delivered) = accepted_assignment(assignment);
+    let assignment = delivered.message;
     let second = pool
         .receive(
             RuntimeAddr(7),
@@ -2719,8 +2739,10 @@ async fn delivery_and_completion_orders_complete_once() {
         .into_items()
         .pop()
         .unwrap_or_else(|| panic!("ready worker receives the accepted job"));
-    let receipt = assignment.receipt();
-    let (_, assignment, _) = assignment.into_parts();
+    let target = assignment.target();
+    let (receipt, delivery) = accepted_assignment(assignment);
+    assert_eq!(delivery.to, target);
+    let assignment = delivery.message;
 
     let completion = ChildReport::new(worker, assignment.complete(21).into_inner());
     let waiting = pool
@@ -2760,8 +2782,8 @@ async fn delivery_and_completion_orders_complete_once() {
         .into_items()
         .pop()
         .unwrap_or_else(|| panic!("released worker receives the next job"));
-    let receipt = assignment.receipt();
-    let (_, assignment, _) = assignment.into_parts();
+    let (receipt, delivered) = accepted_assignment(assignment);
+    let assignment = delivered.message;
     let accepted: ActionItemResult<AssignWorker<SearchWorker, u8>> =
         SettledItem::Attempted(ItemSettlement::Accepted(receipt));
     let waiting = pool
@@ -2801,8 +2823,8 @@ async fn delivery_and_completion_orders_complete_once() {
         .into_items()
         .pop()
         .unwrap_or_else(|| panic!("released worker receives the third job"));
-    let receipt = assignment.receipt();
-    let (_, assignment, _) = assignment.into_parts();
+    let (receipt, delivered) = accepted_assignment(assignment);
+    let assignment = delivered.message;
     let mut foreign_creations = CreationSequence::new();
     let _first = foreign_creations
         .issue()
@@ -2923,11 +2945,10 @@ async fn rejected_assignment_is_requeued_and_its_worker_is_quarantined() {
         .into_items()
         .pop()
         .unwrap_or_else(|| panic!("ready worker receives the accepted job"));
+    let mut delivery_host = AssignmentDeliveryHost::<SearchWorker>::rejecting();
     let rejected: ActionItemResult<AssignWorker<SearchWorker, u8>> =
-        SettledItem::Attempted(ItemSettlement::Rejected {
-            item: assignment,
-            reason: ExactDeliveryReason::ClosedRecipient,
-        });
+        SettledItem::Attempted(assignment.settle(&mut delivery_host).await);
+    assert_eq!(delivery_host.rejections(), 1);
     let requeued = pool
         .transition(FifoEvent::AssignmentSettled(rejected))
         .unwrap_or_else(|error| panic!("assignment rejection failed: {error}"));
@@ -3260,8 +3281,10 @@ async fn temporary_retirement_reassigns_retry_to_a_surviving_worker() {
         .into_items()
         .pop()
         .unwrap_or_else(|| panic!("first ready worker receives the accepted job"));
+    let (receipt, delivered) = accepted_assignment(assignment);
+    let assignment = delivered.message;
     let accepted: ActionItemResult<AssignWorker<SearchWorker, u8>> =
-        SettledItem::Attempted(ItemSettlement::Accepted(assignment.receipt()));
+        SettledItem::Attempted(ItemSettlement::Accepted(receipt));
     let waiting = pool
         .transition(FifoEvent::AssignmentSettled(accepted))
         .unwrap_or_else(|error| panic!("assignment settlement failed: {error}"));
@@ -3282,8 +3305,14 @@ async fn temporary_retirement_reassigns_retry_to_a_surviving_worker() {
         .into_items()
         .pop()
         .unwrap_or_else(|| panic!("surviving worker receives the retried job"));
-    let (_, reassigned, _) = reassigned.into_parts();
-    assert_eq!(*reassigned.payload(), 37);
+    let (receipt, delivered) = accepted_assignment(reassigned);
+    assert_eq!(*delivered.message.payload(), 37);
+    let accepted: ActionItemResult<AssignWorker<SearchWorker, u8>> =
+        SettledItem::Attempted(ItemSettlement::Accepted(receipt));
+    let waiting = pool
+        .transition(FifoEvent::AssignmentSettled(accepted))
+        .unwrap_or_else(|error| panic!("retried assignment settlement failed: {error}"));
+    assert!(waiting.sends.customer_outcomes.as_slice().is_empty());
     drop(assignment);
 }
 
@@ -4358,7 +4387,8 @@ async fn worker_exit_waits_for_delivery_then_retries_the_same_job() {
         .into_items()
         .pop()
         .unwrap_or_else(|| panic!("ready worker receives the accepted job"));
-    let receipt = assignment.receipt();
+    let (receipt, delivered) = accepted_assignment(assignment);
+    let assignment = delivered.message;
 
     let mut foreign_creations = CreationSequence::new();
     let _first = foreign_creations
@@ -4498,7 +4528,8 @@ async fn worker_exit_after_delivery_returns_the_job_under_fail_policy() {
         .into_items()
         .pop()
         .unwrap_or_else(|| panic!("ready worker receives the accepted job"));
-    let receipt = assignment.receipt();
+    let (receipt, delivered) = accepted_assignment(assignment);
+    let assignment = delivered.message;
     let accepted: ActionItemResult<AssignWorker<SearchWorker, u8>> =
         SettledItem::Attempted(ItemSettlement::Accepted(receipt));
     let waiting = pool

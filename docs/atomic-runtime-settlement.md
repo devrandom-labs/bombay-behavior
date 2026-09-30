@@ -113,7 +113,9 @@ mailbox, task, registry, callback, or lifecycle service.
 An establishment attempt that accepts ownership of a child definition returns
 an authoritative `ChildCreationOutcome<C, Occurrence>`. `Established` owns the exact
 capability. `InitializationRejected` returns the current child and exact initialization
-error. `HostRejected` returns the current child, uninterpreted initialization
+error. `InitializationPanicked` returns the extant current child after a caught
+pure fold panic, without claiming a typed initialization error or actions.
+`HostRejected` returns the current child, uninterpreted initialization
 actions, and exact reason. These are semantic creation rejections, not
 interpreter corruption, and none reconstructs the pre-initialization child.
 Rejection or corruption before ownership transfer instead returns the complete
@@ -152,19 +154,29 @@ before ordinary mailbox ingress and compose with wrapper initialization in one
 defined order:
 
 ```text
-fresh installation commit
-  -> pure initialization fold
+fresh address reservation, no live endpoint
+  -> pure definition initialization fold
+  -> endpoint installation and creator-local binding commit
   -> total initialization-action interpretation
   -> initialization settlement and residual custody
-  -> activation authorization and attempt
-  -> exact readiness or failure fact
-  -> ordinary ingress
+  -> activation authorization and attempt, where required
+  -> exact readiness or failure fact, where required
+  -> ordinary ingress only after a continuing, successfully settled initialization
 ```
 
 Initialization may stop with final actions. Accepted initialization effects are
 settled before ordinary ingress, even when the resulting actor is stopping.
 Activation capacity is actor-side admission before an action is emitted; it is
 not relabelled as an interpreter rejection afterward.
+
+Reservation rejection retains the complete staged creation without running
+the fold. Pure initialization rejection retains the current child and exact
+error. Host rejection after the fold retains the current child and
+uninterpreted initialization `Actions`. After installation commits, an effect
+rejection or interpreter fault belongs to the installed child's drain and
+cannot be recast as a creation rejection. A stopped initialization settles
+its final actions without permitting ordinary ingress. Fresh allocation is
+the actor-model requirement; this packaging and ordering are Bombay policy.
 
 ### Exact Bombay changes for worker initialization and activation
 
@@ -284,13 +296,13 @@ the associated type when they must return a worker's initialization settlement;
 they do not restate the creation vector or send-product structure in each actor
 template. Both projections perform no interpretation and change no custody.
 
-Named products containing two independent effect lanes use Behavior's single
-`settle_in_order` operation. It completely settles the declared earlier lane
-before the later lane and retains the untouched later value if the earlier lane
-reports interpreter corruption. Routing, lifecycle, discovery, timing, and
-atomic actors all delegate that identical sequencing law to Behavior. The former
-Actors-local routing copy has been deleted; aggregate products still own their
-domain lane names and map the two returned settlements into those named fields.
+Named products interpret their fields in declared order. A corrupt earlier
+field retains the untouched later fields as unattempted; a lawful rejection
+does not stop independent later fields. The `SendProduct` derive and the
+`#[behavior]` generated products share the ordered traversal and source-custody
+generator while preserving their domain field names. The unused two-product
+tuple helper and the private Actors declarative macro were removed. Named
+products return complete named settlement shapes.
 
 StableProxy's `ProxyEffects` declares worker observation, initialization,
 activation, shutdown, service delivery, owner outcome, and diagnostic lanes in
@@ -490,9 +502,10 @@ replacement. Applying only a subset leaves affine values unowned.
    returns one ordered `Creations<RoutedCreation<BehaviorAddr<C>, C>>` value.
    Then `EstablishChild<Occurrence, C>` settles each routed child independently.
    Its output is fixed by the routed creation, not selected by Bombay.
-   `Created` returns the exact established capability.
+   `Established` returns the exact established capability.
    `InitializationRejected` returns the current routed child and exact
-   initialization error. `HostRejected` returns the current routed child,
+   initialization error. `InitializationPanicked` returns the extant current
+   routed child after a caught pure fold panic. `HostRejected` returns the current routed child,
    uninterpreted initialization `Actions`, and exact reason. Corruption retains
    the exact routed suffix through `InterpreterFault`.
 3. Replace `CommitActions::commit`'s creation `for` loop and subsequent
@@ -539,9 +552,12 @@ replacement. Applying only a subset leaves affine values unowned.
    action transaction. Equal numeric runtime routes and distinct occurrences
    cannot satisfy each other's prerequisite.
 4. Child hosting consumes `RoutedCreation` and returns `ChildCreationOutcome<C,
-   Occurrence>` as its accepted receipt. Successful commit returns `Created`.
+   Occurrence>` as its accepted receipt. Successful commit returns `Established`.
    A pure initialization error returns `InitializationRejected` with the routed
-   child and exact error. Allocation or host rejection after initialization
+   child and exact error. A caught pure initialization panic returns
+   `InitializationPanicked` with the extant current routed child. Allocation
+   rejection occurs before initialization
+   and returns the complete routed creation. Host rejection after initialization
    returns `HostRejected` with the routed child and still-uninterpreted
    initialization `Actions`. Post-commit initialization-action failure is not a
    creation rejection; it enters the created child's drain.
@@ -789,7 +805,7 @@ to emit a recursive diagnostic.
 AA-40 requires more custody than an ordinary reply delivery for one case only:
 a synchronously rejected submission must preserve the original customer route
 inside the rejected action while a clone targets the `KeyedOutcome::Rejected`
-message. Behavior Actors represents that invariant with the doc-hidden
+message. Behavior Actors represents that invariant with the
 `CustomerDelivery<P>` action item. The public `KeyedOutcome` remains free of an
 address generic, and neither the key nor payload is cloned.
 

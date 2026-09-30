@@ -1,6 +1,4 @@
 [profile.mutants]
 inherits = "default"
-# A mutant may suppress the transition an oracle awaits. Terminate that
-# individual test as a failure; the outer cargo-mutants timeout remains the
-# harness-wide deadlock gate.
-slow-timeout = { period = "5s", terminate-after = 2 }
+# cargo-mutants owns the test-command timeout so a stalled mutant has the
+# report's Timeout outcome instead of a misleading CaughtMutant verdict.

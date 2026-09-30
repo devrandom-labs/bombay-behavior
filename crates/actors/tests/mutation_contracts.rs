@@ -169,10 +169,10 @@ fn service_send_views_and_iterators_preserve_every_request() {
     let sends = InterpreterRequests::new(vec![3, 5, 8]);
     assert_eq!(sends.as_slice(), &[3, 5, 8]);
     assert!(!sends.is_empty());
-    assert_eq!(sends.clone().into_requests(), vec![3, 5, 8]);
-    assert_eq!(sends.clone().into_iter().collect::<Vec<_>>(), vec![3, 5, 8]);
-    assert_eq!(
-        (&sends).into_iter().copied().collect::<Vec<_>>(),
-        vec![3, 5, 8]
-    );
+    let requests = sends.clone().into_requests();
+    assert_eq!(requests, vec![3, 5, 8]);
+    let owned = sends.clone().into_iter().collect::<Vec<_>>();
+    assert_eq!(owned, vec![3, 5, 8]);
+    let borrowed = (&sends).into_iter().copied().collect::<Vec<_>>();
+    assert_eq!(borrowed, vec![3, 5, 8]);
 }

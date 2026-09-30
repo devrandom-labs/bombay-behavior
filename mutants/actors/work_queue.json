@@ -1,0 +1,7 @@
+{
+  "floors": {
+    "crates/actors/src/routing/work_queue.rs::WorkQueue<A, T, WorkerRoute, ReplyRoute>::announce": 1,
+    "crates/actors/src/routing/work_queue.rs::WorkQueue<A, T, WorkerRoute, ReplyRoute>::submit": 1
+  },
+  "known_zero_viable": []
+}

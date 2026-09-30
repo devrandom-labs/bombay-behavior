@@ -1,8 +1,7 @@
 //! Exact owner input and settlement for one stable proxy.
 
-use std::sync::Arc;
-
 use core::marker::PhantomData;
+use std::sync::Arc;
 
 use behavior::{
     ActionItem, ActionItemResult, Address, Behavior, BehaviorAddr, ChildInputReason, CreationId,
@@ -14,16 +13,8 @@ use crate::WorkerSubmission;
 use super::{ActivationPlan, ProxyControl, StableProxy};
 
 /// Affine correlation returned after one stable-proxy input is accepted.
-///
-/// ```compile_fail,E0382
-/// fn duplicate(id: behavior_actors::atomic::ProxyOperationId) {
-///     let accepted = id;
-///     let duplicate = id;
-/// }
-/// ```
-#[doc(hidden)]
 #[must_use = "a proxy operation ID must return through settlement or retire outward"]
-pub struct ProxyOperationId {
+pub(crate) struct ProxyOperationId {
     token: Arc<()>,
 }
 
@@ -144,7 +135,6 @@ mod direct_operation_admission_contract {
 }
 
 /// One exact private input to a stable-proxy child.
-#[doc(hidden)]
 #[must_use = "a proxy operation must be interpreted or retained"]
 pub struct ProxyOperation<Source, Worker, Plan>
 where
@@ -160,13 +150,39 @@ where
 }
 
 /// Exact immediate result of submitting one private proxy input.
-#[doc(hidden)]
 pub type ProxyInputResult<Source, Worker, Plan> = ActionItemResult<
     ProxyOperation<Source, Worker, Plan>,
     ProxyInputReceipt<Worker, Plan>,
     ChildInputReason,
     Never,
 >;
+
+/// Trusted interpreter port for one exact private stable-proxy control.
+///
+/// The interpreter selects the child occurrence statically, uses `creation`
+/// only within that occurrence, and returns the exact actor only after the
+/// control is admitted. A rejected or corrupt admission returns the actual
+/// owned control. This port cannot see or construct the operation ID retained
+/// by [`ProxyOperation`].
+pub trait ProxyControlAdmission<Worker, Plan>
+where
+    Worker: Behavior,
+    Plan: ActivationPlan,
+    BehaviorAddr<Worker>: EndpointAddress,
+    StableProxy<Worker, Plan>: Behavior<Protocol = Worker::Protocol>,
+{
+    /// Admit one control or return its complete owned rejection.
+    fn admit_proxy_control(
+        &mut self,
+        creation: CreationId,
+        control: ProxyControl<Worker, Plan>,
+    ) -> ItemSettlement<
+        ProxyControl<Worker, Plan>,
+        EstablishedActor<StableProxy<Worker, Plan>>,
+        ChildInputReason,
+        Never,
+    >;
+}
 
 impl<Source, Worker, Plan> ProxyOperation<Source, Worker, Plan>
 where
@@ -220,8 +236,9 @@ where
         )
     }
 
-    /// Inspect the exact proxy creation before attempting control admission.
-    #[doc(hidden)]
+    /// Inspect the exact creator-local proxy creation correlation before
+    /// attempting control admission. This is not an actor identity or proof
+    /// that the proxy was installed.
     #[must_use]
     pub const fn creation(&self) -> CreationId {
         self.creation
@@ -231,16 +248,66 @@ where
         &self.operation
     }
 
-    /// Transfer every owned part to Bombay after the exact child is resolved.
-    #[doc(hidden)]
+    /// Transfer every owned part within the atomic catalogue.
+    #[cfg(test)]
     #[must_use]
-    pub fn into_parts(self) -> (CreationId, ProxyControl<Worker, Plan>, ProxyOperationId) {
+    pub(in crate::atomic) fn into_parts(
+        self,
+    ) -> (CreationId, ProxyControl<Worker, Plan>, ProxyOperationId) {
         (self.creation, self.control, self.operation)
+    }
+
+    /// Transfer only the complete control while retaining the operation ID
+    /// until the lower interpreter returns its exact admission outcome.
+    pub fn settle<Host>(
+        self,
+        host: &mut Host,
+    ) -> ItemSettlement<Self, ProxyInputReceipt<Worker, Plan>, ChildInputReason, Never>
+    where
+        Host: ProxyControlAdmission<Worker, Plan>,
+    {
+        let Self {
+            creation,
+            control,
+            operation,
+            source: _,
+        } = self;
+        match host.admit_proxy_control(creation, control) {
+            ItemSettlement::Accepted(proxy) => ItemSettlement::Accepted(ProxyInputReceipt {
+                creation,
+                proxy,
+                operation,
+            }),
+            ItemSettlement::Rejected {
+                item: control,
+                reason,
+            } => ItemSettlement::Rejected {
+                item: Self {
+                    creation,
+                    control,
+                    operation,
+                    source: PhantomData,
+                },
+                reason,
+            },
+            ItemSettlement::Blocked { prerequisite, .. } => match prerequisite {},
+            ItemSettlement::Corrupt {
+                item: control,
+                fault,
+            } => ItemSettlement::Corrupt {
+                item: Self {
+                    creation,
+                    control,
+                    operation,
+                    source: PhantomData,
+                },
+                fault,
+            },
+        }
     }
 }
 
 /// Exact receipt for one accepted stable-proxy input.
-#[doc(hidden)]
 #[must_use = "accepted proxy input must return to its owning aggregate"]
 pub struct ProxyInputReceipt<Worker, Plan>
 where
@@ -265,10 +332,10 @@ where
         self.creation
     }
 
-    /// Construct Bombay's receipt after exact child control admission succeeds.
-    #[doc(hidden)]
+    /// Construct an exact receipt for internal catalogue tests.
+    #[cfg(test)]
     #[must_use]
-    pub const fn new(
+    pub(in crate::atomic) const fn new(
         creation: CreationId,
         proxy: EstablishedActor<StableProxy<Worker, Plan>>,
         operation: ProxyOperationId,
@@ -319,6 +386,9 @@ where
 
 #[cfg(test)]
 mod tests {
+    use core::future::Future;
+    use std::collections::VecDeque;
+
     use behavior::{
         ActiveTurn, Address, BehaviorActed, ClassifySettlement, InterpreterFault, NoBirths,
         NoSends, Protocol, SettlementStatus, User,
@@ -366,6 +436,17 @@ mod tests {
         }
     }
 
+    struct OwnedActivation(Box<str>);
+
+    impl ActivationPlan for OwnedActivation {
+        type Ready = Box<str>;
+        type Rejection = Never;
+
+        fn activate(self) -> impl Future<Output = Result<Self::Ready, Self::Rejection>> + Send {
+            core::future::ready(Ok(self.0))
+        }
+    }
+
     struct Owner;
 
     fn creation(id: u64) -> CreationId {
@@ -375,6 +456,264 @@ mod tests {
             .last()
             .flatten()
             .unwrap_or_else(|| panic!("test creation ID is issued"))
+    }
+
+    enum ControlAdmission {
+        Accept(EstablishedActor<StableProxy<Worker, ImmediateActivation>>),
+        Reject,
+    }
+
+    struct ProxyControlHost {
+        admissions: VecDeque<ControlAdmission>,
+        observed: Vec<(u64, u8)>,
+    }
+
+    impl ProxyControlHost {
+        fn admit(
+            &mut self,
+            creation: CreationId,
+            control: ProxyControl<Worker, ImmediateActivation>,
+        ) -> ItemSettlement<
+            ProxyControl<Worker, ImmediateActivation>,
+            EstablishedActor<StableProxy<Worker, ImmediateActivation>>,
+            ChildInputReason,
+            Never,
+        > {
+            let worker = match &control.command {
+                ProxyCommand::Start(submission) | ProxyCommand::Replace(submission) => {
+                    submission.worker.0
+                }
+                ProxyCommand::Shutdown => panic!("this witness issues worker starts only"),
+            };
+            self.observed.push((creation.get(), worker));
+            match self
+                .admissions
+                .pop_front()
+                .expect("one lower admission per proxy control")
+            {
+                ControlAdmission::Accept(proxy) => ItemSettlement::Accepted(proxy),
+                ControlAdmission::Reject => ItemSettlement::Rejected {
+                    item: control,
+                    reason: ChildInputReason::ClosedControlLane,
+                },
+            }
+        }
+    }
+
+    impl ProxyControlAdmission<Worker, ImmediateActivation> for ProxyControlHost {
+        fn admit_proxy_control(
+            &mut self,
+            creation: CreationId,
+            control: ProxyControl<Worker, ImmediateActivation>,
+        ) -> ItemSettlement<
+            ProxyControl<Worker, ImmediateActivation>,
+            EstablishedActor<StableProxy<Worker, ImmediateActivation>>,
+            ChildInputReason,
+            Never,
+        > {
+            self.admit(creation, control)
+        }
+    }
+
+    enum ObservedControl {
+        Start(usize),
+        Replace(usize),
+        Shutdown,
+    }
+
+    struct RejectingProxyControlHost {
+        reason: ChildInputReason,
+        observed: Vec<(CreationId, ObservedControl)>,
+    }
+
+    impl ProxyControlAdmission<Worker, OwnedActivation> for RejectingProxyControlHost {
+        fn admit_proxy_control(
+            &mut self,
+            creation: CreationId,
+            control: ProxyControl<Worker, OwnedActivation>,
+        ) -> ItemSettlement<
+            ProxyControl<Worker, OwnedActivation>,
+            EstablishedActor<StableProxy<Worker, OwnedActivation>>,
+            ChildInputReason,
+            Never,
+        > {
+            let observed = match &control.command {
+                ProxyCommand::Start(submission) => {
+                    ObservedControl::Start(submission.activation.0.as_ptr() as usize)
+                }
+                ProxyCommand::Replace(submission) => {
+                    ObservedControl::Replace(submission.activation.0.as_ptr() as usize)
+                }
+                ProxyCommand::Shutdown => ObservedControl::Shutdown,
+            };
+            self.observed.push((creation, observed));
+            ItemSettlement::Rejected {
+                item: control,
+                reason: self.reason,
+            }
+        }
+    }
+
+    #[test]
+    fn exact_proxy_control_settlement_keeps_operation_evidence_private() {
+        let first_creation = creation(21);
+        let second_creation = creation(22);
+        let (first_witness, first) = ProxyOperation::<Owner, _, _>::initial(
+            first_creation,
+            WorkerSubmission::immediate(Worker(7)),
+        );
+        let (second_witness, second) = ProxyOperation::<Owner, _, _>::replacement(
+            second_creation,
+            WorkerSubmission::immediate(Worker(8)),
+        );
+        let proxy =
+            EstablishedActor::<StableProxy<Worker, ImmediateActivation>>::issued(Endpoint(31));
+        let expected_proxy = proxy.recipient();
+        let mut host = ProxyControlHost {
+            admissions: VecDeque::from([ControlAdmission::Accept(proxy), ControlAdmission::Reject]),
+            observed: Vec::new(),
+        };
+
+        let ItemSettlement::Accepted(accepted) = second.settle(&mut host) else {
+            panic!("the second control reaches the exact proxy");
+        };
+        let accepted = second_witness
+            .admit_receipt(accepted)
+            .unwrap_or_else(|_| panic!("the accepted receipt retains the second operation ID"));
+        let (accepted_creation, accepted_proxy, accepted_operation) = accepted.into_parts();
+        assert_eq!(accepted_creation, second_creation);
+        assert_eq!(accepted_proxy.recipient(), expected_proxy);
+        drop(accepted_operation);
+
+        let ItemSettlement::Rejected {
+            item: returned,
+            reason,
+        } = first.settle(&mut host)
+        else {
+            panic!("the first control returns its actual rejected request");
+        };
+        let (returned, reason) = first_witness
+            .admit_rejection(returned, reason)
+            .unwrap_or_else(|_| panic!("the rejected request retains the first operation ID"));
+        let (returned_creation, control, returned_operation) = returned.into_parts();
+        assert_eq!(returned_creation, first_creation);
+        assert_eq!(reason, ChildInputReason::ClosedControlLane);
+        match control.command {
+            ProxyCommand::Start(submission) => assert_eq!(submission.worker, Worker(7)),
+            ProxyCommand::Replace(_) | ProxyCommand::Shutdown => {
+                panic!("rejection returns the original start control")
+            }
+        }
+        drop(returned_operation);
+        assert_eq!(host.observed, [(22, 8), (21, 7)]);
+        assert!(host.admissions.is_empty());
+    }
+
+    #[test]
+    fn rejected_proxy_control_returns_move_only_plan_and_shutdown_authority() {
+        let activation = OwnedActivation(Box::from("activation custody"));
+        let expected_plan = activation.0.as_ptr();
+        let first_creation = creation(23);
+        let (first_witness, first) = ProxyOperation::<Owner, _, _>::initial(
+            first_creation,
+            WorkerSubmission::activated(Worker(9), activation),
+        );
+        let second_creation = creation(24);
+        let (second_witness, second) =
+            ProxyOperation::<Owner, Worker, OwnedActivation>::shutdown(second_creation);
+        let replacement_activation = OwnedActivation(Box::from("replacement custody"));
+        let expected_replacement_plan = replacement_activation.0.as_ptr();
+        let third_creation = creation(25);
+        let (third_witness, third) = ProxyOperation::<Owner, _, _>::replacement(
+            third_creation,
+            WorkerSubmission::activated(Worker(10), replacement_activation),
+        );
+        let mut host = RejectingProxyControlHost {
+            reason: ChildInputReason::ClosedControlLane,
+            observed: Vec::new(),
+        };
+
+        let ItemSettlement::Rejected {
+            item: returned,
+            reason,
+        } = first.settle(&mut host)
+        else {
+            panic!("closed private control returns the complete start request");
+        };
+        let (returned, reason) = first_witness
+            .admit_rejection(returned, reason)
+            .unwrap_or_else(|_| panic!("the first operation ID remains paired"));
+        assert_eq!(reason, ChildInputReason::ClosedControlLane);
+        let (creation, control, operation) = returned.into_parts();
+        assert_eq!(creation, first_creation);
+        match control.command {
+            ProxyCommand::Start(submission) => {
+                assert_eq!(submission.worker, Worker(9));
+                assert_eq!(submission.activation.0.as_ptr(), expected_plan);
+                assert_eq!(&*submission.activation.0, "activation custody");
+            }
+            ProxyCommand::Replace(_) | ProxyCommand::Shutdown => {
+                panic!("the rejected start remains a start")
+            }
+        }
+        drop(operation);
+
+        host.reason = ChildInputReason::MissingBinding;
+        let ItemSettlement::Rejected {
+            item: returned,
+            reason,
+        } = second.settle(&mut host)
+        else {
+            panic!("missing binding returns the complete shutdown request");
+        };
+        let (returned, reason) = second_witness
+            .admit_rejection(returned, reason)
+            .unwrap_or_else(|_| panic!("the shutdown operation ID remains paired"));
+        assert_eq!(reason, ChildInputReason::MissingBinding);
+        let (creation, control, operation) = returned.into_parts();
+        assert_eq!(creation, second_creation);
+        assert!(matches!(control.command, ProxyCommand::Shutdown));
+        drop(operation);
+
+        host.reason = ChildInputReason::ClosedControlLane;
+        let ItemSettlement::Rejected {
+            item: returned,
+            reason,
+        } = third.settle(&mut host)
+        else {
+            panic!("closed private control returns the complete replacement request");
+        };
+        let (returned, reason) = third_witness
+            .admit_rejection(returned, reason)
+            .unwrap_or_else(|_| panic!("the replacement operation ID remains paired"));
+        assert_eq!(reason, ChildInputReason::ClosedControlLane);
+        let (creation, control, operation) = returned.into_parts();
+        assert_eq!(creation, third_creation);
+        match control.command {
+            ProxyCommand::Replace(submission) => {
+                assert_eq!(submission.worker, Worker(10));
+                assert_eq!(submission.activation.0.as_ptr(), expected_replacement_plan);
+                assert_eq!(&*submission.activation.0, "replacement custody");
+            }
+            ProxyCommand::Start(_) | ProxyCommand::Shutdown => {
+                panic!("the rejected replacement remains a replacement")
+            }
+        }
+        drop(operation);
+
+        assert_eq!(host.observed.len(), 3);
+        assert_eq!(host.observed[0].0, first_creation);
+        assert!(matches!(
+            host.observed[0].1,
+            ObservedControl::Start(pointer) if pointer == expected_plan as usize
+        ));
+        assert_eq!(host.observed[1].0, second_creation);
+        assert!(matches!(host.observed[1].1, ObservedControl::Shutdown));
+        assert_eq!(host.observed[2].0, third_creation);
+        assert!(matches!(
+            host.observed[2].1,
+            ObservedControl::Replace(pointer) if pointer == expected_replacement_plan as usize
+        ));
     }
 
     #[test]

@@ -20,13 +20,14 @@ together, but they do not mean the same thing.
 |---|---|---|
 | Does another law transform this actor's mailbox fold? | `Behavior::layer` with an existing concrete transformation | the complete resulting `Behavior`, including event, sends, births, phase, error, initialization, and next decision |
 | May this actor send to a transferable destination? | `DeliveryRoute` | one exact protocol and its logical, established, or mixed concrete send product |
-| Must a transferable destination use this actor's address namespace? | `DeliveryRouteFor<Owner>` | the same logical, established, or mixed route, constrained to `BehaviorAddr<Owner>` |
+| Must a transferable destination use this actor's address namespace? | `DeliveryRoute<Protocol: Protocol<Addr = BehaviorAddr<Owner>>>` | the same logical, established, or mixed route, constrained to `BehaviorAddr<Owner>` |
 | Which actors can this actor create? | `Behavior::Birth`, `BirthProtocols` | the closed, occurrence-preserving fresh-child algebra |
 
 `LogicalHostRequirements` separately derives the ordered product of every
-intentional logical `Delivery<P>` in the root and its transitive births. It
-excludes established-incarnation delivery, creator-local child effects, and
-interpreter requests while retaining repeated protocol occurrences. A runtime
+intentional logical `Delivery<P>` in the root and its transitive births,
+including interpreter requests that carry a logical recipient. It excludes
+established-incarnation delivery and creator-local child effects while
+retaining repeated protocol occurrences. A runtime
 may recursively require its own static `Hosts<P>` proof for that product; the
 projection creates no host and performs no lookup.
 

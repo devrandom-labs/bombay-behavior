@@ -25,19 +25,46 @@ use behavior_actors::atomic::{
     self, ActivationPlan, ActivationPolicy, ActorDrainPolicy, CapabilityResult, DiagnosticAction,
     DiagnosticDisposition, FailureReaction, FixedCommand, FixedDiagnostic, FixedLifecycle,
     FixedLifecycleEvent, FixedSupervisor, FixedSupervisorEvent, InitialWorkerOutcome, MemberStatus,
-    OrderedRoles, PendingWorkerPreparation, PrepareWorkers, ProxyControl, ProxyInputReceipt,
-    ProxyInputResult, ProxyOperation, ProxyOutcome, ProxyPhase, Recovery, RecoveryDenialReason,
-    ReplacementOutcome, RestartLimit, RestartRelease, StableProxy, Strategy,
-    WorkerInitializationOutcome, WorkerPreparation, WorkerPreparationFailureReason, WorkerSource,
-    WorkerStartResult, WorkerSubmission, fixed,
+    OrderedRoles, PendingWorkerPreparation, PrepareWorkers, ProxyControl, ProxyInputResult,
+    ProxyOperation, ProxyOutcome, ProxyPhase, Recovery, RecoveryDenialReason, ReplacementOutcome,
+    RestartLimit, RestartRelease, StableProxy, Strategy, WorkerInitializationOutcome,
+    WorkerPreparation, WorkerPreparationFailureReason, WorkerSource, WorkerStartResult,
+    WorkerSubmission, fixed,
 };
 use behavior_actors::{
     Activate as _, Active, ChildStopped, Crash, Exit, ReplyDelivery, ScheduleAfter,
     ScheduleAfterRejection, TimerElapsed, TimerGeneration, TimerId, TimerScheduled,
 };
 
+#[path = "support/proxy_control.rs"]
+mod proxy_control;
+
+use proxy_control::admit_proxy_operation;
+
 const ONE_WORKER: NonZeroUsize = NonZeroUsize::new(1).expect("one is positive");
 const THREE_WORKERS: NonZeroUsize = NonZeroUsize::new(3).expect("three is positive");
+
+#[test]
+fn fixed_supervisor_projects_status_and_capability_hosts_in_order() {
+    type Supervisor =
+        FixedSupervisor<SearchRole, SearchWorker, SearchActivation, Never, Infallible, Infallible>;
+    type Status =
+        MessageProtocol<RuntimeAddr, atomic::FixedSnapshot<<SearchWorker as Behavior>::Protocol>>;
+    type Capability = MessageProtocol<
+        RuntimeAddr,
+        CapabilityResult<SearchRole, <SearchWorker as Behavior>::Protocol>,
+    >;
+    type Expected = behavior::BirthProtocol<
+        Status,
+        behavior::BirthProtocol<Capability, behavior::NoBirthProtocols>,
+    >;
+
+    trait Same<T> {}
+    impl<T> Same<T> for T {}
+    fn exact<T: Same<Expected>>() {}
+
+    exact::<<Supervisor as behavior::LogicalHostRequirements>::LogicalHosts>();
+}
 
 fn fixed_runtime_sources_are_distinct<Event>()
 where
@@ -742,16 +769,7 @@ fn automatic_recovery_has_one_named_worker_preparation_lane() {
     .initialize()
     .unwrap_or_else(|_| panic!("fixed initialization emits reservations"));
 
-    assert_eq!(
-        initialized
-            .actions
-            .sends
-            .worker_preparations
-            .unattempted()
-            .into_inputs()
-            .len(),
-        0
-    );
+    assert_eq!(initialized.actions.sends.worker_preparations.len(), 0);
 }
 
 #[test]
@@ -988,60 +1006,38 @@ fn failed_proxy_birth_batches_require_exact_pending_creations() {
             }
             _ => panic!("the failed batch retains its exact result class"),
         };
-        assert_eq!(
-            returned
-                .into_iter()
-                .map(|creation| (creation.id(), creation.kind()))
-                .collect::<Vec<_>>(),
-            expected
-        );
+        let returned = returned
+            .into_iter()
+            .map(|creation| (creation.id(), creation.kind()))
+            .collect::<Vec<_>>();
+        assert_eq!(returned, expected);
     }
 }
 
 #[test]
 fn accepted_proxy_input_keeps_its_authorization_occupied() {
     let (mut fixed, operation) = first_proxy_dispatched(301);
-    let (creation, _, operation) = operation.into_parts();
     let proxy =
         EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(401));
-    let accepted = SettledItem::Attempted(ItemSettlement::Accepted(ProxyInputReceipt::new(
-        creation, proxy, operation,
-    )));
+    let (_creation, _control, receipt) = admit_proxy_operation(operation, proxy);
+    let accepted = SettledItem::Attempted(ItemSettlement::Accepted(receipt));
     let settled = fixed
         .on(accepted)
         .unwrap_or_else(|_| panic!("exact accepted input advances its dispatched member"));
 
-    assert_eq!(
-        settled
-            .sends
-            .proxy_operations
-            .unattempted()
-            .into_inputs()
-            .len(),
-        0
-    );
+    assert_eq!(settled.sends.proxy_operations.len(), 0);
 }
 
 #[tokio::test]
 async fn exact_ready_proxy_report_releases_capacity_for_the_next_role() {
     let (mut fixed, operation) = first_proxy_dispatched(401);
-    let (creation, control, operation) = operation.into_parts();
     let proxy =
         EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(501));
+    let (creation, control, receipt) = admit_proxy_operation(operation, proxy);
     let accepted = fixed
-        .on(SettledItem::Attempted(ItemSettlement::Accepted(
-            ProxyInputReceipt::new(creation, proxy, operation),
-        )))
+        .on(SettledItem::Attempted(ItemSettlement::Accepted(receipt)))
         .unwrap_or_else(|_| panic!("accepted input awaits the atomic proxy outcome"));
-    assert_eq!(
-        accepted
-            .sends
-            .proxy_operations
-            .unattempted()
-            .into_inputs()
-            .len(),
-        0
-    );
+    assert_eq!(accepted.sends.proxy_operations.len(), 0);
     let outcome = ready_proxy_outcome(control).await;
     let released = fixed
         .on(ChildReport::new(creation, outcome))
@@ -1066,26 +1062,16 @@ async fn exact_ready_proxy_report_releases_capacity_for_the_next_role() {
 #[test]
 fn exact_non_ready_proxy_report_transfers_one_terminal_diagnostic_and_stops() {
     let (mut fixed, operation) = first_proxy_dispatched(451);
-    let (creation, _, operation) = operation.into_parts();
     let proxy =
         EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(551));
+    let (creation, _control, receipt) = admit_proxy_operation(operation, proxy);
     let accepted = fixed
-        .on(SettledItem::Attempted(ItemSettlement::Accepted(
-            ProxyInputReceipt::new(creation, proxy, operation),
-        )))
+        .on(SettledItem::Attempted(ItemSettlement::Accepted(receipt)))
         .unwrap_or_else(|_| panic!("accepted input awaits its exact outcome"));
     assert_eq!(accepted.creates.len(), 0);
     assert!(matches!(accepted.become_, Step::Continue));
-    assert_eq!(
-        accepted
-            .sends
-            .proxy_operations
-            .unattempted()
-            .into_inputs()
-            .len(),
-        0
-    );
-    assert_eq!(accepted.sends.diagnostics.into_requests().len(), 0);
+    assert_eq!(accepted.sends.proxy_operations.len(), 0);
+    assert_eq!(accepted.sends.diagnostics.len(), 0);
 
     let stopped = fixed
         .on(ChildReport::new(
@@ -1101,15 +1087,7 @@ fn exact_non_ready_proxy_report_transfers_one_terminal_diagnostic_and_stops() {
         .unwrap_or_else(|_| panic!("terminal diagnostic policy accepts the complete failure"));
 
     assert!(matches!(stopped.become_, Step::Stop(_)));
-    assert_eq!(
-        stopped
-            .sends
-            .proxy_operations
-            .unattempted()
-            .into_inputs()
-            .len(),
-        0
-    );
+    assert_eq!(stopped.sends.proxy_operations.len(), 0);
     let mut diagnostics = stopped.sends.diagnostics.into_requests();
     assert_eq!(diagnostics.len(), 1);
     match diagnostics.remove(0) {
@@ -1224,19 +1202,14 @@ fn terminal_initial_failure_retains_other_workers_until_supervisor_retirement() 
         SettledItem::Unattempted(operation) => operation,
         SettledItem::Attempted(_) => panic!("the operation remains uninterpreted"),
     };
-    let (creation, control, operation) = operation.into_parts();
+    let (creation, control, receipt) = admit_proxy_operation(
+        operation,
+        EstablishedActor::<StableProxy<TrackedWorker, TrackedActivation>>::issued(Endpoint(1_800)),
+    );
     drop(control);
     assert_eq!(primary_drops.load(Ordering::SeqCst), 1);
     let accepted = fixed
-        .on(SettledItem::Attempted(ItemSettlement::Accepted(
-            ProxyInputReceipt::new(
-                creation,
-                EstablishedActor::<StableProxy<TrackedWorker, TrackedActivation>>::issued(
-                    Endpoint(1_800),
-                ),
-                operation,
-            ),
-        )))
+        .on(SettledItem::Attempted(ItemSettlement::Accepted(receipt)))
         .unwrap_or_else(|_| panic!("the exact proxy input is accepted"));
     assert!(matches!(accepted.become_, Step::Continue));
 
@@ -1341,7 +1314,10 @@ async fn terminal_restart_denial_retains_member_and_prepared_worker_until_retire
         SettledItem::Unattempted(operation) => operation,
         SettledItem::Attempted(_) => panic!("the test intercepts the initial operation"),
     };
-    let (route, control, operation) = operation.into_parts();
+    let (route, control, receipt) = admit_proxy_operation(
+        operation,
+        EstablishedActor::<StableProxy<TrackedWorker, TrackedActivation>>::issued(Endpoint(1_811)),
+    );
     let ready = ready_tracked_proxy_outcome(control).await;
     let attempt = match &ready {
         ProxyOutcome::Initial {
@@ -1356,15 +1332,7 @@ async fn terminal_restart_denial_retains_member_and_prepared_worker_until_retire
         | ProxyOutcome::Unavailable { .. } => panic!("the tracked proxy reaches ready"),
     };
     let accepted = fixed
-        .on(SettledItem::Attempted(ItemSettlement::Accepted(
-            ProxyInputReceipt::new(
-                route,
-                EstablishedActor::<StableProxy<TrackedWorker, TrackedActivation>>::issued(
-                    Endpoint(1_811),
-                ),
-                operation,
-            ),
-        )))
+        .on(SettledItem::Attempted(ItemSettlement::Accepted(receipt)))
         .unwrap_or_else(|_| panic!("the tracked initial input is accepted"));
     assert!(matches!(accepted.become_, Step::Continue));
     let online = fixed
@@ -1428,13 +1396,11 @@ async fn routed_non_ready_report_delivers_diagnostic_and_retires_after_proxy_exi
         diagnostic_route.clone(),
         FailureReaction::RetireMember,
     );
-    let (creation, control, operation) = operation.into_parts();
     let proxy =
         EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(654));
+    let (creation, control, receipt) = admit_proxy_operation(operation, proxy);
     let accepted = fixed
-        .on(SettledItem::Attempted(ItemSettlement::Accepted(
-            ProxyInputReceipt::new(creation, proxy, operation),
-        )))
+        .on(SettledItem::Attempted(ItemSettlement::Accepted(receipt)))
         .unwrap_or_else(|_| panic!("the exact operation is accepted"));
     assert!(matches!(accepted.become_, Step::Continue));
 
@@ -1505,25 +1471,14 @@ async fn routed_non_ready_report_delivers_diagnostic_and_retires_after_proxy_exi
         .receive(RuntimeAddr(653), atomic::FixedCommand::shutdown())
         .unwrap_or_else(|_| panic!("fleet shutdown adopts a member stop already in progress"));
     assert!(matches!(fleet_shutdown.become_, Step::Continue));
-    assert_eq!(
-        fleet_shutdown
-            .sends
-            .proxy_operations
-            .unattempted()
-            .into_inputs()
-            .len(),
-        0
+    assert_eq!(fleet_shutdown.sends.proxy_operations.len(), 0);
+    let (_shutdown_creation, _shutdown_control, shutdown_receipt) = admit_proxy_operation(
+        shutdown,
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(654)),
     );
-    let (shutdown_creation, _, shutdown_operation) = shutdown.into_parts();
     let shutdown_accepted = fixed
         .on(SettledItem::Attempted(ItemSettlement::Accepted(
-            ProxyInputReceipt::new(
-                shutdown_creation,
-                EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(
-                    654,
-                )),
-                shutdown_operation,
-            ),
+            shutdown_receipt,
         )))
         .unwrap_or_else(|_| panic!("shutdown acceptance still awaits exact proxy exit"));
     assert!(matches!(shutdown_accepted.become_, Step::Continue));
@@ -1574,17 +1529,12 @@ fn routed_initial_failure_stops_the_complete_supervisor() {
         diagnostics.clone(),
         FailureReaction::StopSupervisor,
     );
-    let (route, control, operation) = operation.into_parts();
+    let (route, control, receipt) = admit_proxy_operation(
+        operation,
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(762)),
+    );
     let accepted = fixed
-        .on(SettledItem::Attempted(ItemSettlement::Accepted(
-            ProxyInputReceipt::new(
-                route,
-                EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(
-                    762,
-                )),
-                operation,
-            ),
-        )))
+        .on(SettledItem::Attempted(ItemSettlement::Accepted(receipt)))
         .unwrap_or_else(|_| panic!("the exact operation is accepted"));
     assert!(matches!(accepted.become_, Step::Continue));
 
@@ -1615,28 +1565,12 @@ fn routed_initial_failure_stops_the_complete_supervisor() {
         }
     }
     assert_eq!(diagnostic_actions.len(), 0);
-    assert_eq!(
-        failed
-            .sends
-            .proxy_operations
-            .unattempted()
-            .into_inputs()
-            .len(),
-        3
-    );
+    assert_eq!(failed.sends.proxy_operations.len(), 3);
 
     let repeated = fixed
         .receive(RuntimeAddr(762), FixedCommand::shutdown())
         .unwrap_or_else(|_| panic!("repeated shutdown preserves the current drain"));
-    assert_eq!(
-        repeated
-            .sends
-            .proxy_operations
-            .unattempted()
-            .into_inputs()
-            .len(),
-        0
-    );
+    assert_eq!(repeated.sends.proxy_operations.len(), 0);
 
     drop(control);
 }
@@ -1644,23 +1578,13 @@ fn routed_initial_failure_stops_the_complete_supervisor() {
 #[tokio::test]
 async fn replacement_outcome_cannot_satisfy_initial_startup() {
     let (mut fixed, operation) = first_proxy_dispatched(1001);
-    let (creation, control, operation) = operation.into_parts();
     let proxy =
         EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(1101));
+    let (creation, control, receipt) = admit_proxy_operation(operation, proxy);
     let accepted = fixed
-        .on(SettledItem::Attempted(ItemSettlement::Accepted(
-            ProxyInputReceipt::new(creation, proxy, operation),
-        )))
+        .on(SettledItem::Attempted(ItemSettlement::Accepted(receipt)))
         .unwrap_or_else(|_| panic!("initial input awaits an initial outcome"));
-    assert_eq!(
-        accepted
-            .sends
-            .proxy_operations
-            .unattempted()
-            .into_inputs()
-            .len(),
-        0
-    );
+    assert_eq!(accepted.sends.proxy_operations.len(), 0);
 
     let wrong = ChildReport::new(
         creation,
@@ -1693,29 +1617,18 @@ async fn replacement_outcome_cannot_satisfy_initial_startup() {
     let exact = fixed
         .on(ChildReport::new(creation, outcome))
         .unwrap_or_else(|_| panic!("wrong-kind input did not consume initial startup"));
-    assert_eq!(
-        exact
-            .sends
-            .proxy_operations
-            .unattempted()
-            .into_inputs()
-            .len(),
-        1
-    );
+    assert_eq!(exact.sends.proxy_operations.len(), 1);
 }
 
 #[test]
 fn another_supervisors_proxy_input_settlement_returns_to_its_owner() {
     let (mut owner, owner_operation) = first_proxy_dispatched(501);
     let (mut source, source_operation) = first_proxy_dispatched(601);
-    let (source_creation, _, source_operation) = source_operation.into_parts();
     let proxy =
         EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(701));
-    let foreign = SettledItem::Attempted(ItemSettlement::Accepted(ProxyInputReceipt::new(
-        source_creation,
-        proxy,
-        source_operation,
-    )));
+    let (_source_creation, _source_control, source_receipt) =
+        admit_proxy_operation(source_operation, proxy);
+    let foreign = SettledItem::Attempted(ItemSettlement::Accepted(source_receipt));
 
     let unexpected = owner
         .on(foreign)
@@ -1727,36 +1640,17 @@ fn another_supervisors_proxy_input_settlement_returns_to_its_owner() {
     let accepted = source
         .on(returned)
         .unwrap_or_else(|_| panic!("the unchanged settlement remains valid for its owner"));
-    assert_eq!(
-        accepted
-            .sends
-            .proxy_operations
-            .unattempted()
-            .into_inputs()
-            .len(),
-        0
+    assert_eq!(accepted.sends.proxy_operations.len(), 0);
+    let (_owner_creation, _owner_control, owner_receipt) = admit_proxy_operation(
+        owner_operation,
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(702)),
     );
-    let (owner_creation, _, owner_operation) = owner_operation.into_parts();
     let owner_accepted = owner
         .on(SettledItem::Attempted(ItemSettlement::Accepted(
-            ProxyInputReceipt::new(
-                owner_creation,
-                EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(
-                    702,
-                )),
-                owner_operation,
-            ),
+            owner_receipt,
         )))
         .unwrap_or_else(|_| panic!("foreign traversal preserves the owner's exact operation"));
-    assert_eq!(
-        owner_accepted
-            .sends
-            .proxy_operations
-            .unattempted()
-            .into_inputs()
-            .len(),
-        0
-    );
+    assert_eq!(owner_accepted.sends.proxy_operations.len(), 0);
 }
 
 fn single_proxy_dispatched(
@@ -1911,7 +1805,10 @@ where
         actor_drain,
         diagnostics,
     );
-    let (route, control, operation) = initial.into_parts();
+    let (route, control, receipt) = admit_proxy_operation(
+        initial,
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(801)),
+    );
     let ready = ready_proxy_outcome(control).await;
     let worker = match &ready {
         ProxyOutcome::Initial {
@@ -1926,15 +1823,7 @@ where
         | ProxyOutcome::Unavailable { .. } => panic!("the proxy fixture reaches ready"),
     };
     let accepted = fixed
-        .on(SettledItem::Attempted(ItemSettlement::Accepted(
-            ProxyInputReceipt::new(
-                route,
-                EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(
-                    801,
-                )),
-                operation,
-            ),
-        )))
+        .on(SettledItem::Attempted(ItemSettlement::Accepted(receipt)))
         .unwrap_or_else(|_| panic!("the initial proxy input is accepted"));
     assert!(matches!(accepted.become_, Step::Continue));
     let online = fixed
@@ -2026,7 +1915,10 @@ where
             panic!("the test intercepts an uninterpreted operation")
         }
     };
-    let (route, control, operation) = initial.into_parts();
+    let (route, control, receipt) = admit_proxy_operation(
+        initial,
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(801)),
+    );
     let ready = ready_proxy_outcome(control).await;
     let worker = match &ready {
         ProxyOutcome::Initial {
@@ -2041,15 +1933,7 @@ where
         | ProxyOutcome::Unavailable { .. } => panic!("the proxy fixture reaches ready"),
     };
     let accepted = fixed
-        .on(SettledItem::Attempted(ItemSettlement::Accepted(
-            ProxyInputReceipt::new(
-                route,
-                EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(
-                    801,
-                )),
-                operation,
-            ),
-        )))
+        .on(SettledItem::Attempted(ItemSettlement::Accepted(receipt)))
         .unwrap_or_else(|_| panic!("the initial proxy input is accepted"));
     assert!(accepted.sends.lifecycle.is_empty());
     let online = fixed
@@ -2103,15 +1987,16 @@ async fn logical_lifecycle_route_publishes_exact_started_event() {
             panic!("the test intercepts an uninterpreted operation")
         }
     };
-    let (route, control, operation) = operation.into_parts();
+    let (route, control, receipt) = admit_proxy_operation(
+        operation,
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(802)),
+    );
     let ready = ready_proxy_outcome(control).await;
     let proxy =
         EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(802));
     let expected_proxy = proxy.clone();
     let accepted = fixed
-        .on(SettledItem::Attempted(ItemSettlement::Accepted(
-            ProxyInputReceipt::new(route, proxy, operation),
-        )))
+        .on(SettledItem::Attempted(ItemSettlement::Accepted(receipt)))
         .unwrap_or_else(|_| panic!("the initial proxy input is accepted"));
     assert!(accepted.sends.lifecycle.is_empty());
 
@@ -2246,7 +2131,11 @@ where
     DiagnosticRoute: atomic::DiagnosticRoute<FixedDiagnostic<SearchRole, SearchWorker, SearchActivation, Source>>
         + Clone,
 {
-    let (creation, control, operation) = operation.into_parts();
+    let endpoint = Endpoint(operation.creation().get() + 100);
+    let (creation, control, receipt) = admit_proxy_operation(
+        operation,
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(endpoint),
+    );
     let outcome = ready_proxy_outcome(control).await;
     let attempt = match &outcome {
         ProxyOutcome::Initial {
@@ -2261,34 +2150,12 @@ where
         | ProxyOutcome::Unavailable { .. } => panic!("each proxy reaches ready"),
     };
     let settled = fixed
-        .on(SettledItem::Attempted(ItemSettlement::Accepted(
-            ProxyInputReceipt::new(
-                creation,
-                EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(
-                    creation.get() + 100,
-                )),
-                operation,
-            ),
-        )))
+        .on(SettledItem::Attempted(ItemSettlement::Accepted(receipt)))
         .unwrap_or_else(|_| panic!("each initial input settles"));
     assert!(settled.creates.is_empty());
     assert!(settled.sends.proxy_observations.is_empty());
-    assert!(
-        settled
-            .sends
-            .worker_preparations
-            .unattempted()
-            .into_inputs()
-            .is_empty()
-    );
-    assert!(
-        settled
-            .sends
-            .proxy_operations
-            .unattempted()
-            .into_inputs()
-            .is_empty()
-    );
+    assert!(settled.sends.worker_preparations.is_empty());
+    assert!(settled.sends.proxy_operations.is_empty());
     assert!(settled.sends.diagnostics.is_empty());
     let opened = fixed
         .on(ChildReport::new(creation, outcome))
@@ -2311,14 +2178,7 @@ where
             panic!("initial readiness publishes only Started")
         }
     }
-    assert!(
-        opened
-            .sends
-            .worker_preparations
-            .unattempted()
-            .into_inputs()
-            .is_empty()
-    );
+    assert!(opened.sends.worker_preparations.is_empty());
     let operations = opened
         .sends
         .proxy_operations
@@ -2616,20 +2476,18 @@ async fn coordinated_preparation_shutdown_accepts_every_arrival_order() {
                     ))
                 }
                 CoordinatedShutdownArrival::ProxyOperation(role) => {
-                    let (route, control, operation) = operations
-                        .get_mut(&role)
-                        .and_then(Option::take)
-                        .expect("each role's proxy shutdown returns exactly once")
-                        .into_parts();
+                    let (_route, control, receipt) = admit_proxy_operation(
+                        operations
+                            .get_mut(&role)
+                            .and_then(Option::take)
+                            .expect("each role's proxy shutdown returns exactly once"),
+                        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+                            Endpoint(992),
+                        ),
+                    );
                     drop(control);
                     fixed.transition(FixedSupervisorEvent::ProxyInputSettled(
-                        SettledItem::Attempted(ItemSettlement::Accepted(ProxyInputReceipt::new(
-                            route,
-                            EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
-                                Endpoint(992),
-                            ),
-                            operation,
-                        ))),
+                        SettledItem::Attempted(ItemSettlement::Accepted(receipt)),
                     ))
                 }
                 CoordinatedShutdownArrival::ProxyExit(role) => {
@@ -2652,14 +2510,8 @@ async fn coordinated_preparation_shutdown_accepts_every_arrival_order() {
             assert!(actions.sends.restart_schedules.is_empty());
             assert!(actions.sends.lifecycle.is_empty());
             assert!(actions.sends.diagnostics.is_empty());
-            assert!(actions.sends.status_replies.into_deliveries().is_empty());
-            assert!(
-                actions
-                    .sends
-                    .capability_replies
-                    .into_deliveries()
-                    .is_empty()
-            );
+            assert!(actions.sends.status_replies.as_slice().is_empty());
+            assert!(actions.sends.capability_replies.as_slice().is_empty());
             if arrival_position + 1 == arrivals.len() {
                 assert!(matches!(actions.become_, Step::Stop(_)));
             } else {
@@ -2758,14 +2610,8 @@ async fn rest_for_one_classifies_every_distinct_second_worker_stop() {
             assert!(actions.sends.proxy_operations.is_empty());
             assert!(actions.sends.restart_schedules.is_empty());
             assert!(actions.sends.lifecycle.is_empty());
-            assert!(actions.sends.status_replies.into_deliveries().is_empty());
-            assert!(
-                actions
-                    .sends
-                    .capability_replies
-                    .into_deliveries()
-                    .is_empty()
-            );
+            assert!(actions.sends.status_replies.as_slice().is_empty());
+            assert!(actions.sends.capability_replies.as_slice().is_empty());
 
             if selected_roles.contains(&second_role) {
                 assert!(actions.sends.diagnostics.is_empty());
@@ -2852,7 +2698,8 @@ async fn three_disjoint_recoveries_keep_exact_correlation_in_every_lawful_order(
                         .expect("the prepared role belongs to the roster")
                         .proxy
                 );
-                assert!(operations.insert(*role, Some(operation)).is_none());
+                let prior_operation = operations.insert(*role, Some(operation));
+                assert!(prior_operation.is_none());
                 assert!(actions.creates.is_empty());
                 assert!(actions.sends.proxy_observations.is_empty());
                 assert!(actions.sends.worker_preparations.is_empty());
@@ -2880,56 +2727,49 @@ async fn three_disjoint_recoveries_keep_exact_correlation_in_every_lawful_order(
                     ReplacementArrival::ProxyReceipt(role)
                     | ReplacementArrival::WorkerReady(role) => *role,
                 };
-                let actions =
-                    match arrival {
-                        ReplacementArrival::ProxyReceipt(role) => {
-                            let (route, control, operation) = operations
+                let actions = match arrival {
+                    ReplacementArrival::ProxyReceipt(role) => {
+                        let (_route, control, receipt) = admit_proxy_operation(
+                            operations
                                 .get_mut(role)
                                 .and_then(Option::take)
-                                .expect("each proxy receipt returns exactly once")
-                                .into_parts();
-                            drop(control);
-                            fixed.transition(FixedSupervisorEvent::ProxyInputSettled(
-                                SettledItem::Attempted(ItemSettlement::Accepted(
-                                    ProxyInputReceipt::new(
-                                        route,
-                                        EstablishedActor::<
-                                            StableProxy<SearchWorker, SearchActivation>,
-                                        >::issued(Endpoint(
-                                            996,
-                                        )),
-                                        operation,
-                                    ),
-                                )),
-                            ))
-                        }
-                        ReplacementArrival::WorkerReady(role) => {
-                            let member = members
-                                .get(role)
-                                .expect("the ready report belongs to one stable proxy");
-                            let predecessor = predecessors
-                                .get_mut(role)
-                                .and_then(Option::take)
-                                .expect("each predecessor is replaced exactly once");
-                            let successor = successors
-                                .get_mut(role)
-                                .and_then(Option::take)
-                                .expect("each successor becomes ready exactly once");
-                            fixed.transition(FixedSupervisorEvent::ProxyReported(ChildReport::new(
-                                member.proxy,
-                                ProxyOutcome::Replacement {
-                                    outcome: ReplacementOutcome::Resolved {
-                                        replaces: predecessor,
-                                        result: WorkerStartResult::Ready {
-                                            attempt: successor,
-                                            readiness: (),
-                                        },
+                                .expect("each proxy receipt returns exactly once"),
+                            EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+                                Endpoint(996),
+                            ),
+                        );
+                        drop(control);
+                        fixed.transition(FixedSupervisorEvent::ProxyInputSettled(
+                            SettledItem::Attempted(ItemSettlement::Accepted(receipt)),
+                        ))
+                    }
+                    ReplacementArrival::WorkerReady(role) => {
+                        let member = members
+                            .get(role)
+                            .expect("the ready report belongs to one stable proxy");
+                        let predecessor = predecessors
+                            .get_mut(role)
+                            .and_then(Option::take)
+                            .expect("each predecessor is replaced exactly once");
+                        let successor = successors
+                            .get_mut(role)
+                            .and_then(Option::take)
+                            .expect("each successor becomes ready exactly once");
+                        fixed.transition(FixedSupervisorEvent::ProxyReported(ChildReport::new(
+                            member.proxy,
+                            ProxyOutcome::Replacement {
+                                outcome: ReplacementOutcome::Resolved {
+                                    replaces: predecessor,
+                                    result: WorkerStartResult::Ready {
+                                        attempt: successor,
+                                        readiness: (),
                                     },
                                 },
-                            )))
-                        }
+                            },
+                        )))
                     }
-                    .unwrap_or_else(|_| panic!("every exact disjoint return remains admissible"));
+                }
+                .unwrap_or_else(|_| panic!("every exact disjoint return remains admissible"));
 
                 assert!(actions.creates.is_empty());
                 assert!(actions.sends.proxy_observations.is_empty());
@@ -2937,14 +2777,8 @@ async fn three_disjoint_recoveries_keep_exact_correlation_in_every_lawful_order(
                 assert!(actions.sends.proxy_operations.is_empty());
                 assert!(actions.sends.restart_schedules.is_empty());
                 assert!(actions.sends.diagnostics.is_empty());
-                assert!(actions.sends.status_replies.into_deliveries().is_empty());
-                assert!(
-                    actions
-                        .sends
-                        .capability_replies
-                        .into_deliveries()
-                        .is_empty()
-                );
+                assert!(actions.sends.status_replies.as_slice().is_empty());
+                assert!(actions.sends.capability_replies.as_slice().is_empty());
                 assert!(matches!(actions.become_, Step::Continue));
 
                 match arrival {
@@ -2967,7 +2801,8 @@ async fn three_disjoint_recoveries_keep_exact_correlation_in_every_lawful_order(
                                 ..
                             } if *lifecycle_role == role
                         ));
-                        assert!(ready_roles.insert(role));
+                        let newly_ready = ready_roles.insert(role);
+                        assert!(newly_ready);
                     }
                 }
 
@@ -3002,7 +2837,8 @@ async fn three_disjoint_recoveries_keep_exact_correlation_in_every_lawful_order(
                 }
             }
 
-            assert_eq!(ready_roles, SEARCH_ROLES.into_iter().collect());
+            let expected_roles = SEARCH_ROLES.into_iter().collect();
+            assert_eq!(ready_roles, expected_roles);
             assert!(operations.values().all(Option::is_none));
             assert!(predecessors.values().all(Option::is_none));
             assert!(successors.values().all(Option::is_none));
@@ -3082,14 +2918,7 @@ async fn one_for_all_with_dispatched_initial_peers() -> (
         .unwrap_or_else(|_| panic!("dispatched initial peers are eligible for coordination"));
     assert!(selected.creates.is_empty());
     assert!(selected.sends.proxy_observations.is_empty());
-    assert!(
-        selected
-            .sends
-            .proxy_operations
-            .unattempted()
-            .into_inputs()
-            .is_empty()
-    );
+    assert!(selected.sends.proxy_operations.is_empty());
     assert!(selected.sends.diagnostics.is_empty());
     let request = match selected
         .sends
@@ -3135,14 +2964,7 @@ where
         .unwrap_or_else(|_| panic!("the exact stop starts one disjoint recovery"));
     assert!(selected.creates.is_empty());
     assert!(selected.sends.proxy_observations.is_empty());
-    assert!(
-        selected
-            .sends
-            .proxy_operations
-            .unattempted()
-            .into_inputs()
-            .is_empty()
-    );
+    assert!(selected.sends.proxy_operations.is_empty());
     assert!(selected.sends.lifecycle.is_empty());
     assert!(selected.sends.diagnostics.is_empty());
     assert!(matches!(selected.become_, Step::Continue));
@@ -3380,15 +3202,7 @@ async fn one_for_all_includes_dispatched_initial_peers_without_marking_them_read
     let shutdown = fixed
         .receive(RuntimeAddr(944), atomic::FixedCommand::shutdown())
         .unwrap_or_else(|_| panic!("shutdown retains initial operations and prepared workers"));
-    assert_eq!(
-        shutdown
-            .sends
-            .proxy_operations
-            .unattempted()
-            .into_inputs()
-            .len(),
-        3
-    );
+    assert_eq!(shutdown.sends.proxy_operations.len(), 3);
 }
 
 #[tokio::test]
@@ -3611,14 +3425,7 @@ async fn shutdown_drains_every_proxy_selected_for_coordinated_recovery_in_roster
         .unwrap_or_else(|_| panic!("shutdown adopts every selected proxy"));
     assert!(shutdown.creates.is_empty());
     assert!(shutdown.sends.proxy_observations.is_empty());
-    assert!(
-        shutdown
-            .sends
-            .worker_preparations
-            .unattempted()
-            .into_inputs()
-            .is_empty()
-    );
+    assert!(shutdown.sends.worker_preparations.is_empty());
     assert!(shutdown.sends.diagnostics.is_empty());
     let proxy_ids = shutdown
         .sends
@@ -3627,7 +3434,7 @@ async fn shutdown_drains_every_proxy_selected_for_coordinated_recovery_in_roster
         .into_inputs()
         .into_iter()
         .map(|settlement| match settlement {
-            SettledItem::Unattempted(operation) => operation.into_parts().0.get(),
+            SettledItem::Unattempted(operation) => operation.creation().get(),
             SettledItem::Attempted(_) => {
                 panic!("the test intercepts uninterpreted shutdown operations")
             }
@@ -3657,14 +3464,7 @@ async fn coordinated_preparation_issues_ready_replacements_in_declaration_order(
         .unwrap_or_else(|_| panic!("the exact coordinated result restores its worker source"));
     assert!(accepted.creates.is_empty());
     assert!(accepted.sends.proxy_observations.is_empty());
-    assert!(
-        accepted
-            .sends
-            .worker_preparations
-            .unattempted()
-            .into_inputs()
-            .is_empty()
-    );
+    assert!(accepted.sends.worker_preparations.is_empty());
     let replacement_proxy_ids = accepted
         .sends
         .proxy_operations
@@ -3692,15 +3492,7 @@ async fn coordinated_preparation_issues_ready_replacements_in_declaration_order(
     let shutdown = fixed
         .receive(RuntimeAddr(942), atomic::FixedCommand::shutdown())
         .unwrap_or_else(|_| panic!("shutdown retains every prepared participant"));
-    assert_eq!(
-        shutdown
-            .sends
-            .proxy_operations
-            .unattempted()
-            .into_inputs()
-            .len(),
-        3
-    );
+    assert_eq!(shutdown.sends.proxy_operations.len(), 3);
 }
 
 #[tokio::test]
@@ -3721,14 +3513,7 @@ async fn waiting_peer_stop_requires_its_proxy_and_worker() {
         .unwrap_or_else(|_| panic!("the waiting peer accepts its exact stop"));
     assert!(matches!(accepted.become_, Step::Continue));
     assert!(accepted.sends.diagnostics.is_empty());
-    assert!(
-        accepted
-            .sends
-            .proxy_operations
-            .unattempted()
-            .into_inputs()
-            .is_empty()
-    );
+    assert!(accepted.sends.proxy_operations.is_empty());
 
     let (mut proxy_owner, proxy_members, proxy_operations) = admitted_one_for_all(ONE_WORKER).await;
     assert_eq!(proxy_operations.len(), 1);
@@ -3811,18 +3596,13 @@ async fn coordinated_peer_restarts_when_replacement_outcome_precedes_worker_stop
     };
     let successor = ready_single_proxy_with_worker().await.1.worker;
     let predecessor = members[0].worker.clone();
-    let (creation, control, operation) = replacement.into_parts();
+    let (creation, control, receipt) = admit_proxy_operation(
+        replacement,
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(811)),
+    );
     drop(control);
     let accepted = fixed
-        .on(SettledItem::Attempted(ItemSettlement::Accepted(
-            ProxyInputReceipt::new(
-                creation,
-                EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(
-                    811,
-                )),
-                operation,
-            ),
-        )))
+        .on(SettledItem::Attempted(ItemSettlement::Accepted(receipt)))
         .unwrap_or_else(|_| panic!("the exact replacement receipt is accepted"));
     assert!(accepted.sends.lifecycle.is_empty());
 
@@ -3917,27 +3697,15 @@ async fn replacement_outcome_releases_capacity_while_predecessor_stop_is_pending
 
     let successor = ready_single_proxy_with_worker().await.1.worker;
     let predecessor = members[0].worker.clone();
-    let (creation, control, operation) = replacement.into_parts();
+    let (creation, control, receipt) = admit_proxy_operation(
+        replacement,
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(811)),
+    );
     drop(control);
     let accepted = fixed
-        .on(SettledItem::Attempted(ItemSettlement::Accepted(
-            ProxyInputReceipt::new(
-                creation,
-                EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(
-                    811,
-                )),
-                operation,
-            ),
-        )))
+        .on(SettledItem::Attempted(ItemSettlement::Accepted(receipt)))
         .unwrap_or_else(|_| panic!("the exact replacement receipt is accepted"));
-    assert!(
-        accepted
-            .sends
-            .proxy_operations
-            .unattempted()
-            .into_inputs()
-            .is_empty()
-    );
+    assert!(accepted.sends.proxy_operations.is_empty());
 
     let outcome_first = fixed
         .on(ChildReport::new(
@@ -4005,7 +3773,10 @@ async fn coordinated_peer_restarts_when_worker_stop_precedes_replacement_outcome
     };
     let successor = ready_single_proxy_with_worker().await.1.worker;
     let predecessor = members[0].worker.clone();
-    let (creation, control, operation) = replacement.into_parts();
+    let (creation, control, receipt) = admit_proxy_operation(
+        replacement,
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(811)),
+    );
     drop(control);
     let predecessor_stop = ChildStopped::new(
         members[0].worker.creation(),
@@ -4023,15 +3794,7 @@ async fn coordinated_peer_restarts_when_worker_stop_precedes_replacement_outcome
         .unwrap_or_else(|_| panic!("the exact predecessor stop waits for replacement"));
     assert!(stop_first.sends.lifecycle.is_empty());
     let accepted = fixed
-        .on(SettledItem::Attempted(ItemSettlement::Accepted(
-            ProxyInputReceipt::new(
-                creation,
-                EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(
-                    811,
-                )),
-                operation,
-            ),
-        )))
+        .on(SettledItem::Attempted(ItemSettlement::Accepted(receipt)))
         .unwrap_or_else(|_| panic!("the exact replacement receipt is accepted"));
     assert!(accepted.sends.lifecycle.is_empty());
 
@@ -4098,27 +3861,15 @@ async fn rest_for_one_rejects_returned_trigger_while_its_suffix_is_still_recover
     assert_eq!(replacements.len(), 1);
     let successor = ready_single_proxy_with_worker().await.1.worker;
     let previous = members[1].worker.clone();
-    let (creation, control, operation) = replacement.into_parts();
+    let (creation, control, receipt) = admit_proxy_operation(
+        replacement,
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(812)),
+    );
     drop(control);
     let accepted = fixed
-        .on(SettledItem::Attempted(ItemSettlement::Accepted(
-            ProxyInputReceipt::new(
-                creation,
-                EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(
-                    812,
-                )),
-                operation,
-            ),
-        )))
+        .on(SettledItem::Attempted(ItemSettlement::Accepted(receipt)))
         .unwrap_or_else(|_| panic!("the trigger replacement receipt is accepted"));
-    assert!(
-        accepted
-            .sends
-            .proxy_operations
-            .unattempted()
-            .into_inputs()
-            .is_empty()
-    );
+    assert!(accepted.sends.proxy_operations.is_empty());
     let returned = fixed
         .on(ChildReport::new(
             creation,
@@ -4183,18 +3934,13 @@ async fn returned_rest_for_one_suffix_can_begin_disjoint_recovery() {
 
     let successor = ready_single_proxy_with_worker().await.1.worker;
     let predecessor = members[2].worker.clone();
-    let (creation, control, operation) = spellcheck_replacement.into_parts();
+    let (creation, control, receipt) = admit_proxy_operation(
+        spellcheck_replacement,
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(813)),
+    );
     drop(control);
     let accepted = fixed
-        .on(SettledItem::Attempted(ItemSettlement::Accepted(
-            ProxyInputReceipt::new(
-                creation,
-                EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(
-                    813,
-                )),
-                operation,
-            ),
-        )))
+        .on(SettledItem::Attempted(ItemSettlement::Accepted(receipt)))
         .unwrap_or_else(|_| panic!("the Spellcheck replacement receipt is accepted"));
     assert!(accepted.sends.lifecycle.is_empty());
     let stopped = fixed
@@ -4278,14 +4024,7 @@ async fn released_capacity_authorizes_waiting_recoveries_in_roster_order() {
             SettledItem::Attempted(ItemSettlement::Accepted(spellcheck)),
         ))
         .unwrap_or_else(|_| panic!("the later role waits for activation capacity"));
-    assert!(
-        spellcheck_waiting
-            .sends
-            .proxy_operations
-            .unattempted()
-            .into_inputs()
-            .is_empty()
-    );
+    assert!(spellcheck_waiting.sends.proxy_operations.is_empty());
 
     let index = begin_recovery(&mut fixed, &members[1]);
     let index = complete_one_for_one_preparation(index, SearchRole::Index);
@@ -4294,14 +4033,7 @@ async fn released_capacity_authorizes_waiting_recoveries_in_roster_order() {
             SettledItem::Attempted(ItemSettlement::Accepted(index)),
         ))
         .unwrap_or_else(|_| panic!("the earlier role also waits for activation capacity"));
-    assert!(
-        index_waiting
-            .sends
-            .proxy_operations
-            .unattempted()
-            .into_inputs()
-            .is_empty()
-    );
+    assert!(index_waiting.sends.proxy_operations.is_empty());
 
     let waiting_unavailable = fixed
         .on(ChildReport::new(
@@ -4330,27 +4062,15 @@ async fn released_capacity_authorizes_waiting_recoveries_in_roster_order() {
 
     let successor = ready_single_proxy_with_worker().await.1.worker;
     let previous = members[0].worker.clone();
-    let (creation, control, operation) = search_operation.into_parts();
+    let (creation, control, receipt) = admit_proxy_operation(
+        search_operation,
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(811)),
+    );
     drop(control);
     let accepted = fixed
-        .on(SettledItem::Attempted(ItemSettlement::Accepted(
-            ProxyInputReceipt::new(
-                creation,
-                EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(
-                    811,
-                )),
-                operation,
-            ),
-        )))
+        .on(SettledItem::Attempted(ItemSettlement::Accepted(receipt)))
         .unwrap_or_else(|_| panic!("the first replacement receipt is accepted"));
-    assert!(
-        accepted
-            .sends
-            .proxy_operations
-            .unattempted()
-            .into_inputs()
-            .is_empty()
-    );
+    assert!(accepted.sends.proxy_operations.is_empty());
 
     let released = fixed
         .on(ChildReport::new(
@@ -4400,15 +4120,7 @@ async fn rest_for_one_returns_the_stop_when_its_suffix_is_already_recovering() {
             },
         ))
         .unwrap_or_else(|_| panic!("the final role starts its own recovery"));
-    assert_eq!(
-        first_recovery
-            .sends
-            .worker_preparations
-            .unattempted()
-            .into_inputs()
-            .len(),
-        1
-    );
+    assert_eq!(first_recovery.sends.worker_preparations.len(), 1);
 
     let index_stop = ChildStopped::new(
         members[1].worker.creation(),
@@ -4439,15 +4151,7 @@ async fn rest_for_one_returns_the_stop_when_its_suffix_is_already_recovering() {
     let shutdown = fixed
         .receive(RuntimeAddr(943), atomic::FixedCommand::shutdown())
         .unwrap_or_else(|_| panic!("the unchanged roster still owns all three proxies"));
-    assert_eq!(
-        shutdown
-            .sends
-            .proxy_operations
-            .unattempted()
-            .into_inputs()
-            .len(),
-        3
-    );
+    assert_eq!(shutdown.sends.proxy_operations.len(), 3);
 }
 
 #[test]
@@ -4493,14 +4197,21 @@ fn shutdown_cancels_unemitted_initial_inputs_and_stops_proxies_in_roster_order()
         .into_inputs();
     assert_eq!(operations.len(), 3);
 
-    for (settlement, expected_proxy) in operations.into_iter().zip(proxy_ids) {
+    for (position, (settlement, expected_proxy)) in
+        operations.into_iter().zip(proxy_ids).enumerate()
+    {
         let operation = match settlement {
             SettledItem::Unattempted(operation) => operation,
             SettledItem::Attempted(_) => {
                 panic!("shutdown emits uninterpreted proxy operations")
             }
         };
-        let (creation, control, operation_id) = operation.into_parts();
+        let (creation, control, receipt) = admit_proxy_operation(
+            operation,
+            EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(
+                841 + position as u64,
+            )),
+        );
         assert_eq!(creation, expected_proxy);
         let initialized = StableProxy::activated()
             .initialize()
@@ -4510,7 +4221,7 @@ fn shutdown_cancels_unemitted_initial_inputs_and_stops_proxies_in_roster_order()
             .on(control)
             .unwrap_or_else(|_| panic!("each emitted operation is proxy shutdown"));
         assert!(matches!(stopped.become_, Step::Stop(_)));
-        drop(operation_id);
+        drop(receipt);
     }
     drop(initial_search);
 }
@@ -4542,18 +4253,13 @@ fn shutdown_rejects_another_supervisors_initial_input_without_consuming_its_own(
         .unwrap_or_else(|_| panic!("the source supervisor accepts its returned input"));
     assert!(matches!(visitor_retained.become_, Step::Continue));
 
-    let (route, control, operation) = owner_initial.into_parts();
+    let (_route, control, receipt) = admit_proxy_operation(
+        owner_initial,
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(851)),
+    );
     drop(control);
     let owner_retained = owner
-        .on(SettledItem::Attempted(ItemSettlement::Accepted(
-            ProxyInputReceipt::new(
-                route,
-                EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(
-                    851,
-                )),
-                operation,
-            ),
-        )))
+        .on(SettledItem::Attempted(ItemSettlement::Accepted(receipt)))
         .unwrap_or_else(|_| panic!("foreign rejection did not consume the owner's input"));
     assert!(matches!(owner_retained.become_, Step::Continue));
     drop(owner_shutdown);
@@ -4589,15 +4295,7 @@ fn shutdown_retains_pending_proxy_creation_and_stops_an_exact_committed_proxy() 
         .receive(RuntimeAddr(933), atomic::FixedCommand::shutdown())
         .unwrap_or_else(|_| panic!("shutdown retains an unresolved proxy creation"));
     assert!(matches!(shutting_down.become_, Step::Continue));
-    assert_eq!(
-        shutting_down
-            .sends
-            .proxy_operations
-            .unattempted()
-            .into_inputs()
-            .len(),
-        0
-    );
+    assert_eq!(shutting_down.sends.proxy_operations.len(), 0);
     let proxy_recipient = EstablishedRecipient::issued(Endpoint(862));
     let wrong_kind = CreationsSettled::new(CreationSettlement::Settled(
         [SettledItem::Attempted(ItemSettlement::Accepted(
@@ -4664,7 +4362,10 @@ fn shutdown_retains_pending_proxy_creation_and_stops_an_exact_committed_proxy() 
             panic!("the test intercepts an uninterpreted shutdown")
         }
     };
-    let (creation, control, operation) = shutdown.into_parts();
+    let (creation, control, receipt) = admit_proxy_operation(
+        shutdown,
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(861)),
+    );
     assert_eq!(creation, proxy_id);
     let initialized = StableProxy::activated()
         .initialize()
@@ -4676,15 +4377,7 @@ fn shutdown_retains_pending_proxy_creation_and_stops_an_exact_committed_proxy() 
     assert!(matches!(stopped_proxy.become_, Step::Stop(_)));
 
     let accepted = fixed
-        .on(SettledItem::Attempted(ItemSettlement::Accepted(
-            ProxyInputReceipt::new(
-                creation,
-                EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(
-                    861,
-                )),
-                operation,
-            ),
-        )))
+        .on(SettledItem::Attempted(ItemSettlement::Accepted(receipt)))
         .unwrap_or_else(|_| panic!("shutdown settlement still awaits exact proxy exit"));
     assert!(matches!(accepted.become_, Step::Continue));
     let stopped = fixed
@@ -4700,7 +4393,10 @@ fn shutdown_retains_pending_proxy_creation_and_stops_an_exact_committed_proxy() 
 #[tokio::test]
 async fn shutdown_retains_emitted_initial_input_and_its_late_outcome() {
     let (mut fixed, initial) = single_proxy_dispatched(731);
-    let (initial_route, initial_control, initial_operation) = initial.into_parts();
+    let (initial_route, initial_control, initial_receipt) = admit_proxy_operation(
+        initial,
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(831)),
+    );
     let initial_outcome = ready_proxy_outcome(initial_control).await;
 
     let shutting_down = fixed
@@ -4723,13 +4419,7 @@ async fn shutdown_retains_emitted_initial_input_and_its_late_outcome() {
 
     let initial_settled = fixed
         .on(SettledItem::Attempted(ItemSettlement::Accepted(
-            ProxyInputReceipt::new(
-                initial_route,
-                EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(
-                    831,
-                )),
-                initial_operation,
-            ),
+            initial_receipt,
         )))
         .unwrap_or_else(|_| panic!("the prior initial-input settlement remains admissible"));
     assert!(matches!(initial_settled.become_, Step::Continue));
@@ -4766,17 +4456,14 @@ async fn shutdown_retains_emitted_initial_input_and_its_late_outcome() {
         .unwrap_or_else(|_| panic!("the exact initial outcome remains admissible"));
     assert!(matches!(outcome_retained.become_, Step::Continue));
 
-    let (shutdown_route, shutdown_control, shutdown_operation) = proxy_shutdown.into_parts();
+    let (shutdown_route, shutdown_control, shutdown_receipt) = admit_proxy_operation(
+        proxy_shutdown,
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(831)),
+    );
     drop(shutdown_control);
     let shutdown_settled = fixed
         .on(SettledItem::Attempted(ItemSettlement::Accepted(
-            ProxyInputReceipt::new(
-                shutdown_route,
-                EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(
-                    831,
-                )),
-                shutdown_operation,
-            ),
+            shutdown_receipt,
         )))
         .unwrap_or_else(|_| panic!("the distinct shutdown settlement is accepted"));
     assert!(matches!(shutdown_settled.become_, Step::Continue));
@@ -4816,28 +4503,15 @@ async fn ready_roster_shutdown_waits_for_operation_and_proxy_exit() {
         .receive(RuntimeAddr(901), atomic::FixedCommand::shutdown())
         .unwrap_or_else(|_| panic!("repeated shutdown is idempotent"));
     assert!(matches!(repeated.become_, Step::Continue));
-    assert_eq!(
-        repeated
-            .sends
-            .proxy_operations
-            .unattempted()
-            .into_inputs()
-            .len(),
-        0
-    );
+    assert_eq!(repeated.sends.proxy_operations.len(), 0);
 
-    let (route, control, shutdown) = shutdown.into_parts();
+    let (route, control, receipt) = admit_proxy_operation(
+        shutdown,
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(801)),
+    );
     drop(control);
     let accepted = fixed
-        .on(SettledItem::Attempted(ItemSettlement::Accepted(
-            ProxyInputReceipt::new(
-                route,
-                EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(
-                    801,
-                )),
-                shutdown,
-            ),
-        )))
+        .on(SettledItem::Attempted(ItemSettlement::Accepted(receipt)))
         .unwrap_or_else(|_| panic!("shutdown acceptance alone keeps custody open"));
     assert!(matches!(accepted.become_, Step::Continue));
     let stopped = fixed
@@ -4861,15 +4535,7 @@ async fn temporary_worker_stop_leaves_one_empty_member_with_a_live_proxy() {
         .unwrap_or_else(|_| panic!("temporary policy accepts the exact worker stop"));
     assert!(matches!(left_empty.become_, Step::Continue));
     let NoSends = left_empty.sends.lifecycle;
-    assert_eq!(
-        left_empty
-            .sends
-            .proxy_operations
-            .unattempted()
-            .into_inputs()
-            .len(),
-        0
-    );
+    assert_eq!(left_empty.sends.proxy_operations.len(), 0);
 
     let unexpected = fixed
         .on(ChildReport::new(
@@ -4913,18 +4579,13 @@ async fn temporary_worker_stop_leaves_one_empty_member_with_a_live_proxy() {
             panic!("the test intercepts an uninterpreted shutdown")
         }
     };
-    let (route, control, operation) = shutdown.into_parts();
+    let (route, control, receipt) = admit_proxy_operation(
+        shutdown,
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(801)),
+    );
     drop(control);
     let accepted = fixed
-        .on(SettledItem::Attempted(ItemSettlement::Accepted(
-            ProxyInputReceipt::new(
-                route,
-                EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(
-                    801,
-                )),
-                operation,
-            ),
-        )))
+        .on(SettledItem::Attempted(ItemSettlement::Accepted(receipt)))
         .unwrap_or_else(|_| panic!("the exact shutdown result remains required"));
     assert!(matches!(accepted.become_, Step::Continue));
     let stopped = fixed
@@ -4955,39 +4616,12 @@ async fn transient_normal_stop_leaves_one_empty_member_with_a_live_proxy() {
     assert!(matches!(left_empty.become_, Step::Continue));
     assert!(left_empty.creates.is_empty());
     assert!(left_empty.sends.proxy_observations.is_empty());
-    assert!(
-        left_empty
-            .sends
-            .worker_preparations
-            .unattempted()
-            .into_inputs()
-            .is_empty()
-    );
-    assert!(
-        left_empty
-            .sends
-            .proxy_operations
-            .unattempted()
-            .into_inputs()
-            .is_empty()
-    );
-    assert!(
-        left_empty
-            .sends
-            .restart_schedules
-            .unattempted()
-            .into_inputs()
-            .is_empty()
-    );
+    assert!(left_empty.sends.worker_preparations.is_empty());
+    assert!(left_empty.sends.proxy_operations.is_empty());
+    assert!(left_empty.sends.restart_schedules.is_empty());
     let NoSends = left_empty.sends.lifecycle;
-    assert!(left_empty.sends.status_replies.into_deliveries().is_empty());
-    assert!(
-        left_empty
-            .sends
-            .capability_replies
-            .into_deliveries()
-            .is_empty()
-    );
+    assert!(left_empty.sends.status_replies.as_slice().is_empty());
+    assert!(left_empty.sends.capability_replies.as_slice().is_empty());
     assert!(left_empty.sends.diagnostics.is_empty());
 
     let shutting_down = fixed
@@ -5026,30 +4660,9 @@ async fn configured_temporary_stop_publishes_exact_ineligible_lifecycle_once() {
     assert!(matches!(left_empty.become_, Step::Continue));
     assert!(left_empty.creates.is_empty());
     assert!(left_empty.sends.proxy_observations.is_empty());
-    assert!(
-        left_empty
-            .sends
-            .worker_preparations
-            .unattempted()
-            .into_inputs()
-            .is_empty()
-    );
-    assert!(
-        left_empty
-            .sends
-            .proxy_operations
-            .unattempted()
-            .into_inputs()
-            .is_empty()
-    );
-    assert!(
-        left_empty
-            .sends
-            .restart_schedules
-            .unattempted()
-            .into_inputs()
-            .is_empty()
-    );
+    assert!(left_empty.sends.worker_preparations.is_empty());
+    assert!(left_empty.sends.proxy_operations.is_empty());
+    assert!(left_empty.sends.restart_schedules.is_empty());
     assert!(left_empty.sends.diagnostics.is_empty());
     assert_eq!(left_empty.sends.lifecycle.len(), 1);
     match left_empty.sends.lifecycle[0].message.event() {
@@ -5113,15 +4726,7 @@ async fn configured_temporary_stop_publishes_exact_ineligible_lifecycle_once() {
         .receive(RuntimeAddr(971), atomic::FixedCommand::shutdown())
         .unwrap_or_else(|_| panic!("the empty role still owns its live proxy"));
     assert_eq!(shutdown.sends.lifecycle.len(), 0);
-    assert_eq!(
-        shutdown
-            .sends
-            .proxy_operations
-            .unattempted()
-            .into_inputs()
-            .len(),
-        1
-    );
+    assert_eq!(shutdown.sends.proxy_operations.len(), 1);
 }
 
 #[tokio::test]
@@ -5230,14 +4835,7 @@ async fn exact_unavailable_command_uses_diagnostics_when_lifecycle_is_omitted() 
         .unwrap_or_else(|_| panic!("the exact live proxy report is accepted"));
 
     assert!(matches!(unavailable.become_, Step::Continue));
-    assert!(
-        unavailable
-            .sends
-            .proxy_operations
-            .unattempted()
-            .into_inputs()
-            .is_empty()
-    );
+    assert!(unavailable.sends.proxy_operations.is_empty());
     let NoSends = unavailable.sends.lifecycle;
     let mut delivered = unavailable.sends.diagnostics.into_requests();
     assert_eq!(delivered.len(), 1);
@@ -5433,18 +5031,13 @@ fn starting_roles_accept_unavailable_only_from_their_proxy() {
     }
     assert!(delivered.is_empty());
 
-    let (route, control, operation) = initial.into_parts();
+    let (_route, control, receipt) = admit_proxy_operation(
+        initial,
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(996)),
+    );
     drop(control);
     let settled = fixed
-        .on(SettledItem::Attempted(ItemSettlement::Accepted(
-            ProxyInputReceipt::new(
-                route,
-                EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(
-                    996,
-                )),
-                operation,
-            ),
-        )))
+        .on(SettledItem::Attempted(ItemSettlement::Accepted(receipt)))
         .unwrap_or_else(|_| panic!("the unavailable report does not consume initial progress"));
     assert!(matches!(settled.become_, Step::Continue));
 
@@ -5511,7 +5104,7 @@ async fn preparing_recovery_accepts_unavailable_from_its_live_proxy() {
         ))
         .unwrap_or_else(|_| panic!("recovery retains the exact live StableProxy"));
     assert!(matches!(unavailable.become_, Step::Continue));
-    assert_eq!(unavailable.sends.diagnostics.into_requests().len(), 1);
+    assert_eq!(unavailable.sends.diagnostics.len(), 1);
     drop(preparation);
 }
 
@@ -5545,15 +5138,7 @@ async fn admitted_replacement_accepts_unavailable_from_its_live_proxy() {
             SettledItem::Attempted(ItemSettlement::Accepted(preparation)),
         ))
         .unwrap_or_else(|_| panic!("the admitted recovery emits one replacement"));
-    assert_eq!(
-        admitted
-            .sends
-            .proxy_operations
-            .unattempted()
-            .into_inputs()
-            .len(),
-        1
-    );
+    assert_eq!(admitted.sends.proxy_operations.len(), 1);
 
     let unavailable = fixed
         .on(ChildReport::new(
@@ -5917,18 +5502,13 @@ async fn shutdown_accepts_unavailable_until_the_exact_proxy_exit() {
         }
     }
 
-    let (route, control, operation) = shutdown.into_parts();
+    let (_route, control, receipt) = admit_proxy_operation(
+        shutdown,
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(991)),
+    );
     drop(control);
     let retired = fixed
-        .on(SettledItem::Attempted(ItemSettlement::Accepted(
-            ProxyInputReceipt::new(
-                route,
-                EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(
-                    991,
-                )),
-                operation,
-            ),
-        )))
+        .on(SettledItem::Attempted(ItemSettlement::Accepted(receipt)))
         .unwrap_or_else(|_| panic!("the exact settlement closes proxy shutdown"));
     assert!(matches!(retired.become_, Step::Stop(_)));
 }
@@ -5997,18 +5577,13 @@ async fn eligible_worker_stop_emits_one_exact_preparation_request() {
             panic!("the test intercepts an uninterpreted shutdown")
         }
     };
-    let (route, control, operation) = shutdown.into_parts();
+    let (route, control, receipt) = admit_proxy_operation(
+        shutdown,
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(801)),
+    );
     drop(control);
     let shutdown_settled = fixed
-        .on(SettledItem::Attempted(ItemSettlement::Accepted(
-            ProxyInputReceipt::new(
-                route,
-                EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(
-                    801,
-                )),
-                operation,
-            ),
-        )))
+        .on(SettledItem::Attempted(ItemSettlement::Accepted(receipt)))
         .unwrap_or_else(|_| panic!("the exact shutdown operation settles"));
     assert!(matches!(shutdown_settled.become_, Step::Continue));
     let waiting_for_source = fixed
@@ -6077,7 +5652,10 @@ async fn one_replacement_operation() -> (
             panic!("the test intercepts an uninterpreted operation")
         }
     };
-    let (proxy, control, operation) = initial.into_parts();
+    let (proxy, control, receipt) = admit_proxy_operation(
+        initial,
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(801)),
+    );
     let ready = ready_proxy_outcome(control).await;
     let worker = match &ready {
         ProxyOutcome::Initial {
@@ -6092,15 +5670,7 @@ async fn one_replacement_operation() -> (
         | ProxyOutcome::Unavailable { .. } => panic!("the proxy fixture reaches ready"),
     };
     let accepted = fixed
-        .on(SettledItem::Attempted(ItemSettlement::Accepted(
-            ProxyInputReceipt::new(
-                proxy,
-                EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(
-                    801,
-                )),
-                operation,
-            ),
-        )))
+        .on(SettledItem::Attempted(ItemSettlement::Accepted(receipt)))
         .unwrap_or_else(|_| panic!("the initial proxy input is accepted"));
     assert!(matches!(accepted.become_, Step::Continue));
     let online = fixed
@@ -6162,18 +5732,13 @@ async fn replacement_rejects_an_outcome_for_another_predecessor() {
     let foreign = foreign_member.worker;
     let (mut fixed, replacement, previous) = one_replacement_operation().await;
     assert_ne!(foreign, previous);
-    let (route, control, operation) = replacement.into_parts();
+    let (route, control, receipt) = admit_proxy_operation(
+        replacement,
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(802)),
+    );
     drop(control);
     let accepted = fixed
-        .on(SettledItem::Attempted(ItemSettlement::Accepted(
-            ProxyInputReceipt::new(
-                route,
-                EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(
-                    802,
-                )),
-                operation,
-            ),
-        )))
+        .on(SettledItem::Attempted(ItemSettlement::Accepted(receipt)))
         .unwrap_or_else(|_| panic!("the exact replacement receipt advances its recovery"));
     assert!(matches!(accepted.become_, Step::Continue));
 
@@ -6213,18 +5778,13 @@ async fn replacement_rejects_its_outcome_from_another_proxy() {
     let (mut fixed, members, mut replacements) = admitted_one_for_all(THREE_WORKERS).await;
     let replacement = replacements.remove(0);
     let previous = members[0].worker.clone();
-    let (route, control, operation) = replacement.into_parts();
+    let (route, control, receipt) = admit_proxy_operation(
+        replacement,
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(803)),
+    );
     drop(control);
     let accepted = fixed
-        .on(SettledItem::Attempted(ItemSettlement::Accepted(
-            ProxyInputReceipt::new(
-                route,
-                EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(
-                    803,
-                )),
-                operation,
-            ),
-        )))
+        .on(SettledItem::Attempted(ItemSettlement::Accepted(receipt)))
         .unwrap_or_else(|_| panic!("the exact replacement receipt advances its recovery"));
     assert!(matches!(accepted.become_, Step::Continue));
 
@@ -6320,17 +5880,14 @@ async fn replacement_rejects_a_stop_for_another_predecessor() {
 #[tokio::test]
 async fn accepted_replacement_receipt_keeps_shutdown_live_until_outcome_returns() {
     let (mut fixed, replacement, previous) = one_replacement_operation().await;
-    let (replacement_route, replacement_control, replacement_operation) = replacement.into_parts();
+    let (replacement_route, replacement_control, replacement_receipt) = admit_proxy_operation(
+        replacement,
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(802)),
+    );
     drop(replacement_control);
     let replacement_accepted = fixed
         .on(SettledItem::Attempted(ItemSettlement::Accepted(
-            ProxyInputReceipt::new(
-                replacement_route,
-                EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(
-                    802,
-                )),
-                replacement_operation,
-            ),
+            replacement_receipt,
         )))
         .unwrap_or_else(|_| panic!("the exact replacement receipt advances its recovery"));
     assert!(matches!(replacement_accepted.become_, Step::Continue));
@@ -6351,18 +5908,13 @@ async fn accepted_replacement_receipt_keeps_shutdown_live_until_outcome_returns(
             panic!("the test intercepts an uninterpreted shutdown")
         }
     };
-    let (route, control, operation) = shutdown.into_parts();
+    let (route, control, receipt) = admit_proxy_operation(
+        shutdown,
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(801)),
+    );
     drop(control);
     let waiting = fixed
-        .on(SettledItem::Attempted(ItemSettlement::Accepted(
-            ProxyInputReceipt::new(
-                route,
-                EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(
-                    801,
-                )),
-                operation,
-            ),
-        )))
+        .on(SettledItem::Attempted(ItemSettlement::Accepted(receipt)))
         .unwrap_or_else(|_| panic!("the exact shutdown operation settles"));
     assert!(matches!(waiting.become_, Step::Continue));
     let awaiting_replacement_outcome = fixed
@@ -6391,17 +5943,14 @@ async fn accepted_replacement_receipt_keeps_shutdown_live_until_outcome_returns(
 #[tokio::test]
 async fn retired_proxy_rejects_a_later_outcome_from_a_foreign_child() {
     let (mut fixed, replacement, previous) = one_replacement_operation().await;
-    let (replacement_route, replacement_control, replacement_operation) = replacement.into_parts();
+    let (_replacement_route, replacement_control, replacement_receipt) = admit_proxy_operation(
+        replacement,
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(802)),
+    );
     drop(replacement_control);
     let replacement_accepted = fixed
         .on(SettledItem::Attempted(ItemSettlement::Accepted(
-            ProxyInputReceipt::new(
-                replacement_route,
-                EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(
-                    802,
-                )),
-                replacement_operation,
-            ),
+            replacement_receipt,
         )))
         .unwrap_or_else(|_| panic!("the exact replacement receipt advances its recovery"));
     assert!(matches!(replacement_accepted.become_, Step::Continue));
@@ -6422,18 +5971,13 @@ async fn retired_proxy_rejects_a_later_outcome_from_a_foreign_child() {
             panic!("the test intercepts the uninterpreted shutdown")
         }
     };
-    let (route, control, operation) = shutdown.into_parts();
+    let (route, control, receipt) = admit_proxy_operation(
+        shutdown,
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(801)),
+    );
     drop(control);
     let waiting = fixed
-        .on(SettledItem::Attempted(ItemSettlement::Accepted(
-            ProxyInputReceipt::new(
-                route,
-                EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(
-                    801,
-                )),
-                operation,
-            ),
-        )))
+        .on(SettledItem::Attempted(ItemSettlement::Accepted(receipt)))
         .unwrap_or_else(|_| panic!("the exact shutdown operation settles"));
     assert!(matches!(waiting.become_, Step::Continue));
     let awaiting_replacement_outcome = fixed
@@ -6496,18 +6040,13 @@ async fn retired_proxy_rejects_a_later_outcome_from_a_foreign_child() {
 async fn ready_replacement_restores_the_role_before_the_next_worker_stop() {
     let (mut fixed, replacement, previous) = one_replacement_operation().await;
     let successor = ready_single_proxy_with_worker().await.1.worker;
-    let (route, control, operation) = replacement.into_parts();
+    let (route, control, receipt) = admit_proxy_operation(
+        replacement,
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(802)),
+    );
     drop(control);
     let accepted = fixed
-        .on(SettledItem::Attempted(ItemSettlement::Accepted(
-            ProxyInputReceipt::new(
-                route,
-                EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(
-                    802,
-                )),
-                operation,
-            ),
-        )))
+        .on(SettledItem::Attempted(ItemSettlement::Accepted(receipt)))
         .unwrap_or_else(|_| panic!("the exact replacement receipt advances its recovery"));
     assert!(matches!(accepted.become_, Step::Continue));
 
@@ -6526,14 +6065,7 @@ async fn ready_replacement_restores_the_role_before_the_next_worker_stop() {
         ))
         .unwrap_or_else(|_| panic!("the exact ready replacement restores the role"));
     assert!(matches!(replaced.become_, Step::Continue));
-    assert!(
-        replaced
-            .sends
-            .proxy_operations
-            .unattempted()
-            .into_inputs()
-            .is_empty()
-    );
+    assert!(replaced.sends.proxy_operations.is_empty());
     let mut lifecycle = replaced.sends.lifecycle;
     assert_eq!(lifecycle.len(), 2);
     let worker_stopped = lifecycle.remove(0).message;
@@ -6579,33 +6111,20 @@ async fn ready_replacement_restores_the_role_before_the_next_worker_stop() {
             },
         ))
         .unwrap_or_else(|_| panic!("the successor is the role's current worker"));
-    assert_eq!(
-        recovering_again
-            .sends
-            .worker_preparations
-            .unattempted()
-            .into_inputs()
-            .len(),
-        1
-    );
+    assert_eq!(recovering_again.sends.worker_preparations.len(), 1);
 }
 
 #[tokio::test]
 async fn failed_replacement_outcome_enters_terminal_custody_complete() {
     let (mut fixed, replacement, previous) = one_replacement_operation().await;
     let expected = previous.clone();
-    let (route, control, operation) = replacement.into_parts();
+    let (route, control, receipt) = admit_proxy_operation(
+        replacement,
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(802)),
+    );
     drop(control);
     let accepted = fixed
-        .on(SettledItem::Attempted(ItemSettlement::Accepted(
-            ProxyInputReceipt::new(
-                route,
-                EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(
-                    802,
-                )),
-                operation,
-            ),
-        )))
+        .on(SettledItem::Attempted(ItemSettlement::Accepted(receipt)))
         .unwrap_or_else(|_| panic!("the exact replacement receipt advances its recovery"));
     assert!(matches!(accepted.become_, Step::Continue));
 
@@ -6622,15 +6141,7 @@ async fn failed_replacement_outcome_enters_terminal_custody_complete() {
         ))
         .unwrap_or_else(|_| panic!("the exact failed replacement enters terminal custody"));
     assert!(matches!(failed.become_, Step::Stop(_)));
-    assert_eq!(
-        failed
-            .sends
-            .proxy_operations
-            .unattempted()
-            .into_inputs()
-            .len(),
-        1
-    );
+    assert_eq!(failed.sends.proxy_operations.len(), 1);
     match failed
         .sends
         .diagnostics
@@ -6677,15 +6188,7 @@ async fn rejected_replacement_input_enters_terminal_custody_complete() {
         }))
         .unwrap_or_else(|_| panic!("the exact replacement rejection returns to its recovery"));
     assert!(matches!(rejected.become_, Step::Stop(_)));
-    assert_eq!(
-        rejected
-            .sends
-            .proxy_operations
-            .unattempted()
-            .into_inputs()
-            .len(),
-        1
-    );
+    assert_eq!(rejected.sends.proxy_operations.len(), 1);
     let diagnostic = rejected
         .sends
         .diagnostics
@@ -6745,14 +6248,7 @@ async fn zero_restart_limit_denies_prepared_recovery_without_replacement() {
         ))
         .unwrap_or_else(|_| panic!("the exact prepared recovery reaches restart policy"));
     assert!(matches!(denied.become_, Step::Stop(_)));
-    assert!(
-        denied
-            .sends
-            .proxy_operations
-            .unattempted()
-            .into_inputs()
-            .is_empty()
-    );
+    assert!(denied.sends.proxy_operations.is_empty());
     let diagnostic = denied
         .sends
         .diagnostics
@@ -6912,18 +6408,13 @@ async fn routed_replacement_rejection_retires_only_the_failed_member() {
             panic!("the test intercepts shutdown before execution")
         }
     };
-    let (route, control, operation) = shutdown.into_parts();
+    let (route, control, receipt) = admit_proxy_operation(
+        shutdown,
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(801)),
+    );
     drop(control);
     let settled = fixed
-        .on(SettledItem::Attempted(ItemSettlement::Accepted(
-            ProxyInputReceipt::new(
-                route,
-                EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(
-                    801,
-                )),
-                operation,
-            ),
-        )))
+        .on(SettledItem::Attempted(ItemSettlement::Accepted(receipt)))
         .unwrap_or_else(|_| panic!("the failed member retains shutdown settlement"));
     assert!(matches!(settled.become_, Step::Continue));
     let proxy_retired = fixed
@@ -6937,14 +6428,7 @@ async fn routed_replacement_rejection_retires_only_the_failed_member() {
             panic!("the remaining supervisor can stop without another proxy input")
         });
     assert!(matches!(stopped.become_, Step::Stop(_)));
-    assert!(
-        stopped
-            .sends
-            .proxy_operations
-            .unattempted()
-            .into_inputs()
-            .is_empty()
-    );
+    assert!(stopped.sends.proxy_operations.is_empty());
 }
 
 #[tokio::test]
@@ -7074,18 +6558,13 @@ async fn routed_restart_denial_stops_the_complete_supervisor() {
             panic!("the test intercepts shutdown before execution")
         }
     };
-    let (route, control, operation) = shutdown.into_parts();
+    let (route, control, receipt) = admit_proxy_operation(
+        shutdown,
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(801)),
+    );
     drop(control);
     let settled = fixed
-        .on(SettledItem::Attempted(ItemSettlement::Accepted(
-            ProxyInputReceipt::new(
-                route,
-                EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(
-                    801,
-                )),
-                operation,
-            ),
-        )))
+        .on(SettledItem::Attempted(ItemSettlement::Accepted(receipt)))
         .unwrap_or_else(|_| panic!("shutdown settlement remains required"));
     assert!(matches!(settled.become_, Step::Continue));
     let stopped = fixed
@@ -7119,14 +6598,7 @@ async fn delayed_prepared_recovery_emits_exact_schedule_before_replacement() {
             SettledItem::Attempted(ItemSettlement::Accepted(preparation)),
         ))
         .unwrap_or_else(|_| panic!("the exact prepared recovery commits one schedule"));
-    assert!(
-        scheduled
-            .sends
-            .proxy_operations
-            .unattempted()
-            .into_inputs()
-            .is_empty()
-    );
+    assert!(scheduled.sends.proxy_operations.is_empty());
     let mut schedules = scheduled
         .sends
         .restart_schedules
@@ -7152,14 +6624,7 @@ async fn delayed_prepared_recovery_emits_exact_schedule_before_replacement() {
             })),
         ))
         .unwrap_or_else(|_| panic!("the exact schedule acceptance starts timer waiting"));
-    assert!(
-        accepted
-            .sends
-            .proxy_operations
-            .unattempted()
-            .into_inputs()
-            .is_empty()
-    );
+    assert!(accepted.sends.proxy_operations.is_empty());
 
     for elapsed in [
         TimerElapsed::new(TimerId(schedule.id.0 + 1), schedule.generation),
@@ -7252,14 +6717,7 @@ async fn exact_restart_schedule_rejection_enters_terminal_custody() {
         ))
         .unwrap_or_else(|_| panic!("exact timer rejection follows configured terminal policy"));
     assert!(matches!(failed.become_, Step::Stop(_)));
-    assert!(
-        failed
-            .sends
-            .proxy_operations
-            .unattempted()
-            .into_inputs()
-            .is_empty()
-    );
+    assert!(failed.sends.proxy_operations.is_empty());
     let mut diagnostics = failed.sends.diagnostics.into_requests();
     match diagnostics
         .pop()
@@ -7314,7 +6772,7 @@ async fn routed_restart_schedule_rejection_retires_only_the_trigger() {
         ))
         .unwrap_or_else(|_| panic!("routed rejection starts exact member retirement"));
     assert!(matches!(failed.become_, Step::Continue));
-    assert_eq!(failed.sends.diagnostics.into_requests().len(), 1);
+    assert_eq!(failed.sends.diagnostics.len(), 1);
     let shutdown = match failed
         .sends
         .proxy_operations
@@ -7328,18 +6786,13 @@ async fn routed_restart_schedule_rejection_retires_only_the_trigger() {
             panic!("the test intercepts retirement before execution")
         }
     };
-    let (route, control, operation) = shutdown.into_parts();
+    let (route, control, receipt) = admit_proxy_operation(
+        shutdown,
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(801)),
+    );
     drop(control);
     let operation_settled = fixed
-        .on(SettledItem::Attempted(ItemSettlement::Accepted(
-            ProxyInputReceipt::new(
-                route,
-                EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(
-                    801,
-                )),
-                operation,
-            ),
-        )))
+        .on(SettledItem::Attempted(ItemSettlement::Accepted(receipt)))
         .unwrap_or_else(|_| panic!("retirement settlement is accepted"));
     assert!(matches!(operation_settled.become_, Step::Continue));
     assert!(operation_settled.sends.diagnostics.is_empty());
@@ -7371,7 +6824,7 @@ async fn routed_restart_schedule_rejection_stops_the_supervisor() {
         ))
         .unwrap_or_else(|_| panic!("routed rejection starts complete shutdown"));
     assert!(matches!(failed.become_, Step::Continue));
-    assert_eq!(failed.sends.diagnostics.into_requests().len(), 1);
+    assert_eq!(failed.sends.diagnostics.len(), 1);
     let shutdown = match failed
         .sends
         .proxy_operations
@@ -7385,18 +6838,13 @@ async fn routed_restart_schedule_rejection_stops_the_supervisor() {
             panic!("the test intercepts shutdown before execution")
         }
     };
-    let (route, control, operation) = shutdown.into_parts();
+    let (route, control, receipt) = admit_proxy_operation(
+        shutdown,
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(801)),
+    );
     drop(control);
     let operation_settled = fixed
-        .on(SettledItem::Attempted(ItemSettlement::Accepted(
-            ProxyInputReceipt::new(
-                route,
-                EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(
-                    801,
-                )),
-                operation,
-            ),
-        )))
+        .on(SettledItem::Attempted(ItemSettlement::Accepted(receipt)))
         .unwrap_or_else(|_| panic!("shutdown settlement is accepted"));
     assert!(matches!(operation_settled.become_, Step::Continue));
     assert!(operation_settled.sends.diagnostics.is_empty());
@@ -7556,18 +7004,13 @@ async fn shutdown_waits_for_an_emitted_restart_schedule_settlement() {
             panic!("the test intercepts the shutdown before execution")
         }
     };
-    let (route, control, operation) = shutdown.into_parts();
+    let (route, control, receipt) = admit_proxy_operation(
+        shutdown,
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(801)),
+    );
     drop(control);
     let operation_settled = fixed
-        .on(SettledItem::Attempted(ItemSettlement::Accepted(
-            ProxyInputReceipt::new(
-                route,
-                EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(
-                    801,
-                )),
-                operation,
-            ),
-        )))
+        .on(SettledItem::Attempted(ItemSettlement::Accepted(receipt)))
         .unwrap_or_else(|_| panic!("the exact shutdown operation settles"));
     assert!(matches!(operation_settled.become_, Step::Continue));
     let proxy_stopped = fixed
@@ -7620,28 +7063,15 @@ async fn late_preparation_and_proxy_exit_close_shutdown_in_either_order() {
         ))
         .unwrap_or_else(|_| panic!("the exact late preparation is retained"));
     assert!(matches!(awaiting_proxy.become_, Step::Continue));
-    assert_eq!(
-        awaiting_proxy
-            .sends
-            .proxy_operations
-            .unattempted()
-            .into_inputs()
-            .len(),
-        0
-    );
+    assert_eq!(awaiting_proxy.sends.proxy_operations.len(), 0);
 
-    let (route, control, operation) = shutdown.into_parts();
+    let (route, control, receipt) = admit_proxy_operation(
+        shutdown,
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(801)),
+    );
     drop(control);
     let operation_settled = fixed
-        .on(SettledItem::Attempted(ItemSettlement::Accepted(
-            ProxyInputReceipt::new(
-                route,
-                EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(
-                    801,
-                )),
-                operation,
-            ),
-        )))
+        .on(SettledItem::Attempted(ItemSettlement::Accepted(receipt)))
         .unwrap_or_else(|_| panic!("the exact shutdown operation settles"));
     assert!(matches!(operation_settled.become_, Step::Continue));
     let stopped = fixed
@@ -7689,18 +7119,13 @@ async fn late_corrupt_preparation_remains_owned_until_proxy_exit() {
     assert!(matches!(retained.become_, Step::Continue));
     assert_eq!(source_drops.load(Ordering::SeqCst), 0);
 
-    let (route, control, operation) = shutdown.into_parts();
+    let (route, control, receipt) = admit_proxy_operation(
+        shutdown,
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(801)),
+    );
     drop(control);
     let operation_settled = fixed
-        .on(SettledItem::Attempted(ItemSettlement::Accepted(
-            ProxyInputReceipt::new(
-                route,
-                EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(
-                    801,
-                )),
-                operation,
-            ),
-        )))
+        .on(SettledItem::Attempted(ItemSettlement::Accepted(receipt)))
         .unwrap_or_else(|_| panic!("the exact shutdown operation settles"));
     assert!(matches!(operation_settled.become_, Step::Continue));
     let stopped = fixed
@@ -7737,18 +7162,13 @@ async fn late_source_and_worker_rejections_remain_owned_through_shutdown() {
             panic!("the test intercepts an uninterpreted shutdown")
         }
     };
-    let (route, control, operation) = shutdown.into_parts();
+    let (route, control, receipt) = admit_proxy_operation(
+        shutdown,
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(801)),
+    );
     drop(control);
     let operation_settled = source_rejected
-        .on(SettledItem::Attempted(ItemSettlement::Accepted(
-            ProxyInputReceipt::new(
-                route,
-                EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(
-                    801,
-                )),
-                operation,
-            ),
-        )))
+        .on(SettledItem::Attempted(ItemSettlement::Accepted(receipt)))
         .unwrap_or_else(|_| panic!("the exact shutdown operation settles"));
     assert!(matches!(operation_settled.become_, Step::Continue));
     let waiting_for_source = source_rejected
@@ -7795,18 +7215,13 @@ async fn late_source_and_worker_rejections_remain_owned_through_shutdown() {
         ))
         .unwrap_or_else(|_| panic!("the exact worker rejection remains in shutdown custody"));
     assert!(matches!(retained.become_, Step::Continue));
-    let (route, control, operation) = shutdown.into_parts();
+    let (route, control, receipt) = admit_proxy_operation(
+        shutdown,
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(801)),
+    );
     drop(control);
     let operation_settled = worker_rejected
-        .on(SettledItem::Attempted(ItemSettlement::Accepted(
-            ProxyInputReceipt::new(
-                route,
-                EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(
-                    801,
-                )),
-                operation,
-            ),
-        )))
+        .on(SettledItem::Attempted(ItemSettlement::Accepted(receipt)))
         .unwrap_or_else(|_| panic!("the exact shutdown operation settles"));
     assert!(matches!(operation_settled.become_, Step::Continue));
     let stopped = worker_rejected
@@ -7847,18 +7262,13 @@ async fn foreign_late_preparation_cannot_close_another_shutdown() {
         _ => panic!("another recovery ticket cannot close this shutdown"),
     };
 
-    let (route, control, operation) = shutdown.into_parts();
+    let (route, control, receipt) = admit_proxy_operation(
+        shutdown,
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(801)),
+    );
     drop(control);
     let operation_settled = owner
-        .on(SettledItem::Attempted(ItemSettlement::Accepted(
-            ProxyInputReceipt::new(
-                route,
-                EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(
-                    801,
-                )),
-                operation,
-            ),
-        )))
+        .on(SettledItem::Attempted(ItemSettlement::Accepted(receipt)))
         .unwrap_or_else(|_| panic!("the exact owner shutdown operation settles"));
     assert!(matches!(operation_settled.become_, Step::Continue));
     let still_waiting = owner
@@ -7904,15 +7314,7 @@ async fn terminal_source_rejection_stops_with_one_complete_diagnostic() {
         .unwrap_or_else(|_| panic!("the exact source rejection terminates the supervisor"));
 
     assert!(matches!(stopped.become_, Step::Stop(_)));
-    assert_eq!(
-        stopped
-            .sends
-            .proxy_operations
-            .unattempted()
-            .into_inputs()
-            .len(),
-        0
-    );
+    assert_eq!(stopped.sends.proxy_operations.len(), 0);
     let diagnostic = stopped
         .sends
         .diagnostics
@@ -8029,11 +7431,10 @@ async fn coordinated_worker_rejection_restores_peers_before_supervisor_shutdown(
             assert_eq!(route, diagnostics);
             assert_eq!(failure.role(), &SearchRole::Index);
             let mut prepared = failure.prepared();
-            assert_eq!(
-                prepared.next().map(|(role, _)| role),
-                Some(&SearchRole::Search)
-            );
-            assert!(prepared.next().is_none());
+            let first_prepared_role = prepared.next().map(|(role, _)| role);
+            assert_eq!(first_prepared_role, Some(&SearchRole::Search));
+            let remaining_prepared = prepared.next();
+            assert!(remaining_prepared.is_none());
             assert!(matches!(
                 failure.reason(),
                 WorkerPreparationFailureReason::WorkerRejected {
@@ -8065,13 +7466,11 @@ async fn coordinated_worker_rejection_restores_peers_before_supervisor_shutdown(
             }
         })
         .collect::<Vec<_>>();
-    assert_eq!(
-        stopped_proxies,
-        members
-            .into_iter()
-            .map(|member| member.proxy)
-            .collect::<Vec<_>>()
-    );
+    let expected_proxies = members
+        .into_iter()
+        .map(|member| member.proxy)
+        .collect::<Vec<_>>();
+    assert_eq!(stopped_proxies, expected_proxies);
 }
 
 #[derive(Clone, Copy)]
@@ -8162,8 +7561,8 @@ async fn every_coordinated_preparation_return_preserves_selection_and_reaction()
                 assert!(failed.sends.worker_preparations.is_empty());
                 assert!(failed.sends.restart_schedules.is_empty());
                 assert!(failed.sends.lifecycle.is_empty());
-                assert!(failed.sends.status_replies.into_deliveries().is_empty());
-                assert!(failed.sends.capability_replies.into_deliveries().is_empty());
+                assert!(failed.sends.status_replies.as_slice().is_empty());
+                assert!(failed.sends.capability_replies.as_slice().is_empty());
 
                 let mut emitted_diagnostics = failed.sends.diagnostics.into_requests();
                 match emitted_diagnostics
@@ -8176,7 +7575,8 @@ async fn every_coordinated_preparation_return_preserves_selection_and_reaction()
                     } => {
                         assert_eq!(route, diagnostics);
                         assert_eq!(failure.role(), &trigger_role);
-                        assert!(failure.prepared().next().is_none());
+                        let prepared = failure.prepared().next();
+                        assert!(prepared.is_none());
                         assert_eq!(
                             failure.remaining_roles().collect::<Vec<_>>(),
                             selected_roles.iter().collect::<Vec<_>>()
@@ -8634,18 +8034,13 @@ async fn routed_preparation_failure_retires_only_the_failed_member() {
         ))
         .unwrap_or_else(|_| panic!("the member retains an early exact proxy exit"));
     assert!(matches!(exit_first.become_, Step::Continue));
-    let (route, control, operation) = shutdown.into_parts();
+    let (_route, control, receipt) = admit_proxy_operation(
+        shutdown,
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(801)),
+    );
     drop(control);
     let retired = fixed
-        .on(SettledItem::Attempted(ItemSettlement::Accepted(
-            ProxyInputReceipt::new(
-                route,
-                EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(
-                    801,
-                )),
-                operation,
-            ),
-        )))
+        .on(SettledItem::Attempted(ItemSettlement::Accepted(receipt)))
         .unwrap_or_else(|_| panic!("the exact settlement closes member retirement"));
     assert!(matches!(retired.become_, Step::Continue));
 
@@ -8653,15 +8048,7 @@ async fn routed_preparation_failure_retires_only_the_failed_member() {
         .receive(RuntimeAddr(912), atomic::FixedCommand::shutdown())
         .unwrap_or_else(|_| panic!("shutdown sees the retired member and restored source"));
     assert!(matches!(stopped.become_, Step::Stop(_)));
-    assert_eq!(
-        stopped
-            .sends
-            .proxy_operations
-            .unattempted()
-            .into_inputs()
-            .len(),
-        0
-    );
+    assert_eq!(stopped.sends.proxy_operations.len(), 0);
 }
 
 #[tokio::test]
@@ -8687,7 +8074,7 @@ async fn later_retiring_member_accepts_its_own_proxy_exit() {
             SettledItem::Unattempted(search_request),
         ))
         .unwrap_or_else(|_| panic!("the first preparation failure retires Search"));
-    assert_eq!(search_failed.sends.diagnostics.into_requests().len(), 1);
+    assert_eq!(search_failed.sends.diagnostics.len(), 1);
     let search_shutdown = match search_failed
         .sends
         .proxy_operations
@@ -8707,7 +8094,7 @@ async fn later_retiring_member_accepts_its_own_proxy_exit() {
             SettledItem::Unattempted(index_request),
         ))
         .unwrap_or_else(|_| panic!("the second preparation failure retires Index"));
-    assert_eq!(index_failed.sends.diagnostics.into_requests().len(), 1);
+    assert_eq!(index_failed.sends.diagnostics.len(), 1);
     let index_shutdown = match index_failed
         .sends
         .proxy_operations
@@ -8732,18 +8119,13 @@ async fn later_retiring_member_accepts_its_own_proxy_exit() {
     assert!(exit_first.sends.diagnostics.is_empty());
     assert!(exit_first.sends.lifecycle.is_empty());
 
-    let (route, control, operation) = index_shutdown.into_parts();
+    let (_route, control, receipt) = admit_proxy_operation(
+        index_shutdown,
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(802)),
+    );
     drop(control);
     let retired = fixed
-        .on(SettledItem::Attempted(ItemSettlement::Accepted(
-            ProxyInputReceipt::new(
-                route,
-                EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(
-                    802,
-                )),
-                operation,
-            ),
-        )))
+        .on(SettledItem::Attempted(ItemSettlement::Accepted(receipt)))
         .unwrap_or_else(|_| panic!("the Index shutdown receipt completes its retirement"));
     assert!(retired.sends.diagnostics.is_empty());
     let mut lifecycle = retired.sends.lifecycle;
@@ -8831,18 +8213,13 @@ async fn exact_proxy_retirement_publishes_the_topology_change_once() {
         .unwrap_or_else(|_| panic!("the first exact input remains pending"));
     assert!(exit_first.sends.lifecycle.is_empty());
 
-    let (route, control, operation) = shutdown.into_parts();
+    let (route, control, receipt) = admit_proxy_operation(
+        shutdown,
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(801)),
+    );
     drop(control);
     let retired = fixed
-        .on(SettledItem::Attempted(ItemSettlement::Accepted(
-            ProxyInputReceipt::new(
-                route,
-                EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(
-                    801,
-                )),
-                operation,
-            ),
-        )))
+        .on(SettledItem::Attempted(ItemSettlement::Accepted(receipt)))
         .unwrap_or_else(|_| panic!("the second exact input retires the member"));
     let mut lifecycle = retired.sends.lifecycle;
     assert_eq!(lifecycle.len(), 1);
@@ -8965,18 +8342,13 @@ async fn routed_preparation_failure_stops_the_complete_supervisor() {
             panic!("the test intercepts an uninterpreted shutdown")
         }
     };
-    let (route, control, operation) = shutdown.into_parts();
+    let (route, control, receipt) = admit_proxy_operation(
+        shutdown,
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(801)),
+    );
     drop(control);
     let operation_settled = fixed
-        .on(SettledItem::Attempted(ItemSettlement::Accepted(
-            ProxyInputReceipt::new(
-                route,
-                EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(
-                    801,
-                )),
-                operation,
-            ),
-        )))
+        .on(SettledItem::Attempted(ItemSettlement::Accepted(receipt)))
         .unwrap_or_else(|_| panic!("the exact operation settlement remains in fleet custody"));
     assert!(matches!(operation_settled.become_, Step::Continue));
     let stopped = fixed
@@ -9261,18 +8633,13 @@ async fn ready_roster_shutdown_accepts_proxy_exit_before_operation_settlement() 
         .unwrap_or_else(|_| panic!("an early exact proxy exit remains pending"));
     assert!(matches!(waiting.become_, Step::Continue));
 
-    let (route, control, shutdown) = shutdown.into_parts();
+    let (_route, control, receipt) = admit_proxy_operation(
+        shutdown,
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(801)),
+    );
     drop(control);
     let stopped = fixed
-        .on(SettledItem::Attempted(ItemSettlement::Accepted(
-            ProxyInputReceipt::new(
-                route,
-                EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(
-                    801,
-                )),
-                shutdown,
-            ),
-        )))
+        .on(SettledItem::Attempted(ItemSettlement::Accepted(receipt)))
         .unwrap_or_else(|_| panic!("the exact settlement closes fleet shutdown"));
     assert!(matches!(stopped.become_, Step::Stop(_)));
 }
@@ -9327,15 +8694,7 @@ async fn rejected_actor_graph_deadline_transfers_the_unresolved_proxy() {
         .receive(RuntimeAddr(930), FixedCommand::shutdown())
         .unwrap_or_else(|_| panic!("a ready roster starts its actor-graph deadline"));
     assert!(matches!(shutdown.become_, Step::Continue));
-    assert_eq!(
-        shutdown
-            .sends
-            .proxy_operations
-            .unattempted()
-            .into_inputs()
-            .len(),
-        1
-    );
+    assert_eq!(shutdown.sends.proxy_operations.len(), 1);
     let schedule = match shutdown
         .sends
         .restart_schedules
@@ -9354,22 +8713,8 @@ async fn rejected_actor_graph_deadline_transfers_the_unresolved_proxy() {
     let repeated = fixed
         .receive(RuntimeAddr(931), FixedCommand::shutdown())
         .unwrap_or_else(|_| panic!("repeated shutdown retains the same deadline"));
-    assert!(
-        repeated
-            .sends
-            .restart_schedules
-            .unattempted()
-            .into_inputs()
-            .is_empty()
-    );
-    assert!(
-        repeated
-            .sends
-            .proxy_operations
-            .unattempted()
-            .into_inputs()
-            .is_empty()
-    );
+    assert!(repeated.sends.restart_schedules.is_empty());
+    assert!(repeated.sends.proxy_operations.is_empty());
 
     let unexpected = fixed
         .transition(FixedSupervisorEvent::RestartScheduleSettled(
@@ -9591,18 +8936,13 @@ async fn draining_management_queries_distinguish_retired_and_stopping_roles() {
         SettledItem::Unattempted(operation) => operation,
         SettledItem::Attempted(_) => panic!("the test intercepts the first shutdown"),
     };
-    let (route, control, operation) = first.into_parts();
+    let (route, control, receipt) = admit_proxy_operation(
+        first,
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(801)),
+    );
     drop(control);
     let settled = fixed
-        .on(SettledItem::Attempted(ItemSettlement::Accepted(
-            ProxyInputReceipt::new(
-                route,
-                EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(
-                    801,
-                )),
-                operation,
-            ),
-        )))
+        .on(SettledItem::Attempted(ItemSettlement::Accepted(receipt)))
         .unwrap_or_else(|_| panic!("the first shutdown settlement remains draining"));
     assert!(matches!(settled.become_, Step::Continue));
     let exited = fixed
@@ -9715,14 +9055,7 @@ async fn management_queries_project_coordinated_recovery_and_empty_roles() {
         ))
         .unwrap_or_else(|_| panic!("temporary recovery leaves the role empty"));
     assert!(matches!(emptied.become_, Step::Continue));
-    assert!(
-        emptied
-            .sends
-            .worker_preparations
-            .unattempted()
-            .into_inputs()
-            .is_empty()
-    );
+    assert!(emptied.sends.worker_preparations.is_empty());
     let empty_status = empty
         .receive(
             RuntimeAddr(984),

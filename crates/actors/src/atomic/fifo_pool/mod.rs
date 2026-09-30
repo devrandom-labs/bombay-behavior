@@ -89,7 +89,7 @@ type FifoActions<Role, W, P, Source, DiagnosticRoute, Job, WorkerResult> = Actio
 type CustomerRoute<A, Role, Job, WorkerResult> =
     ReplyRoute<MessageProtocol<A, FifoOutcome<Role, Job, WorkerResult>>>;
 
-struct Operating<Role, W, P, Job, WorkerResult>
+struct FifoOperating<Role, W, P, Job, WorkerResult>
 where
     W: Behavior,
     BehaviorAddr<W>: EndpointAddress,
@@ -167,7 +167,7 @@ impl CreationBatchRejection {
     }
 }
 
-impl<Role, W, P, Job, WorkerResult> Operating<Role, W, P, Job, WorkerResult>
+impl<Role, W, P, Job, WorkerResult> FifoOperating<Role, W, P, Job, WorkerResult>
 where
     W: Behavior + BehaviorBase,
     W::Protocol: Protocol<Msg = Assignment<Job>>,
@@ -376,12 +376,12 @@ where
 {
     fn accept_submission(
         &mut self,
-        mut operating: Operating<Role, W, P, Job, WorkerResult>,
+        mut operating: FifoOperating<Role, W, P, Job, WorkerResult>,
         submission: SubmissionId,
         payload: Job,
         customer: CustomerRoute<BehaviorAddr<W>, Role, Job, WorkerResult>,
     ) -> (
-        Operating<Role, W, P, Job, WorkerResult>,
+        FifoOperating<Role, W, P, Job, WorkerResult>,
         FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
     ) {
         let mut actions: FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult> =
@@ -476,7 +476,7 @@ where
 
     fn fill_fifo(
         &mut self,
-        operating: &mut Operating<Role, W, P, Job, WorkerResult>,
+        operating: &mut FifoOperating<Role, W, P, Job, WorkerResult>,
         actions: &mut FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
     ) {
         loop {
@@ -526,7 +526,7 @@ where
 
     fn return_unrecoverable_jobs(
         &self,
-        operating: &mut Operating<Role, W, P, Job, WorkerResult>,
+        operating: &mut FifoOperating<Role, W, P, Job, WorkerResult>,
         actions: &mut FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
     ) {
         if operating.recoverable_position(&self.recovery).is_some() {
@@ -586,10 +586,10 @@ where
 
     fn prepare_next_waiting(
         &mut self,
-        mut operating: Operating<Role, W, P, Job, WorkerResult>,
+        mut operating: FifoOperating<Role, W, P, Job, WorkerResult>,
         actions: FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
     ) -> (
-        Operating<Role, W, P, Job, WorkerResult>,
+        FifoOperating<Role, W, P, Job, WorkerResult>,
         FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
     ) {
         let Some(position) = operating.waiting_recovery_position() else {
@@ -630,7 +630,7 @@ where
 
     fn reject_replacement(
         &mut self,
-        operating: Operating<Role, W, P, Job, WorkerResult>,
+        operating: FifoOperating<Role, W, P, Job, WorkerResult>,
         position: usize,
         role: RoleName<Role>,
         recoveries: super::restart::RecoveryCount,
@@ -662,7 +662,7 @@ where
 
     fn reject_preparation(
         &mut self,
-        operating: Operating<Role, W, P, Job, WorkerResult>,
+        operating: FifoOperating<Role, W, P, Job, WorkerResult>,
         position: usize,
         role: RoleName<Role>,
         recoveries: super::restart::RecoveryCount,
@@ -697,7 +697,7 @@ where
 
     fn retire_role_after_error(
         &mut self,
-        mut operating: Operating<Role, W, P, Job, WorkerResult>,
+        mut operating: FifoOperating<Role, W, P, Job, WorkerResult>,
         position: usize,
         role: RoleName<Role>,
         recoveries: super::restart::RecoveryCount,
@@ -727,7 +727,7 @@ where
 
     fn return_source_after_failed_replacement(
         &mut self,
-        operating: Operating<Role, W, P, Job, WorkerResult>,
+        operating: FifoOperating<Role, W, P, Job, WorkerResult>,
         position: usize,
         role: RoleName<Role>,
         recoveries: super::restart::RecoveryCount,
@@ -760,7 +760,7 @@ where
 
     fn recover_worker(
         &mut self,
-        mut operating: Operating<Role, W, P, Job, WorkerResult>,
+        mut operating: FifoOperating<Role, W, P, Job, WorkerResult>,
         position: usize,
         role: RoleName<Role>,
         recoveries: super::restart::RecoveryCount,
@@ -824,7 +824,7 @@ where
 
     fn continue_after_pre_ready_stop(
         &mut self,
-        operating: Operating<Role, W, P, Job, WorkerResult>,
+        operating: FifoOperating<Role, W, P, Job, WorkerResult>,
         position: usize,
         role: RoleName<Role>,
         recoveries: super::restart::RecoveryCount,
@@ -849,7 +849,7 @@ where
 
     fn continue_after_returned_activation(
         &mut self,
-        operating: Operating<Role, W, P, Job, WorkerResult>,
+        operating: FifoOperating<Role, W, P, Job, WorkerResult>,
         position: usize,
         role: RoleName<Role>,
         recoveries: super::restart::RecoveryCount,
@@ -882,7 +882,7 @@ where
 
     fn accept_worker_preparation(
         &mut self,
-        mut operating: Operating<Role, W, P, Job, WorkerResult>,
+        mut operating: FifoOperating<Role, W, P, Job, WorkerResult>,
         input: behavior::ActionItemResult<PrepareWorkers<Source, Role, W, P>>,
     ) -> Result<
         (
@@ -890,7 +890,7 @@ where
             FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
         ),
         (
-            Operating<Role, W, P, Job, WorkerResult>,
+            FifoOperating<Role, W, P, Job, WorkerResult>,
             behavior::ActionItemResult<PrepareWorkers<Source, Role, W, P>>,
         ),
     >
@@ -1039,7 +1039,7 @@ where
 
     fn accept_restart_schedule(
         &mut self,
-        mut operating: Operating<Role, W, P, Job, WorkerResult>,
+        mut operating: FifoOperating<Role, W, P, Job, WorkerResult>,
         input: behavior::ActionItemResult<ScheduleAfter>,
     ) -> Result<
         (
@@ -1047,7 +1047,7 @@ where
             FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
         ),
         (
-            Operating<Role, W, P, Job, WorkerResult>,
+            FifoOperating<Role, W, P, Job, WorkerResult>,
             behavior::ActionItemResult<ScheduleAfter>,
         ),
     > {
@@ -1118,7 +1118,7 @@ where
 
     fn accept_restart_timer(
         &mut self,
-        mut operating: Operating<Role, W, P, Job, WorkerResult>,
+        mut operating: FifoOperating<Role, W, P, Job, WorkerResult>,
         elapsed: crate::TimerElapsed,
     ) -> Result<
         (
@@ -1126,7 +1126,7 @@ where
             FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
         ),
         (
-            Operating<Role, W, P, Job, WorkerResult>,
+            FifoOperating<Role, W, P, Job, WorkerResult>,
             crate::TimerElapsed,
         ),
     > {
@@ -1199,14 +1199,17 @@ where
 
     fn accept_assignment_receipt(
         &mut self,
-        mut operating: Operating<Role, W, P, Job, WorkerResult>,
+        mut operating: FifoOperating<Role, W, P, Job, WorkerResult>,
         receipt: AssignmentReceipt,
     ) -> Result<
         (
             PoolState<Role, W, P, Job, WorkerResult>,
             FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
         ),
-        (Operating<Role, W, P, Job, WorkerResult>, AssignmentReceipt),
+        (
+            FifoOperating<Role, W, P, Job, WorkerResult>,
+            AssignmentReceipt,
+        ),
     > {
         let Some(position) = operating.assignment_receipt_position(&receipt) else {
             return Err((operating, receipt));
@@ -1289,7 +1292,7 @@ where
 
     fn accept_completion(
         &mut self,
-        mut operating: Operating<Role, W, P, Job, WorkerResult>,
+        mut operating: FifoOperating<Role, W, P, Job, WorkerResult>,
         child: behavior::CreationId,
         completion: Completion<WorkerResult>,
     ) -> Result<
@@ -1298,7 +1301,7 @@ where
             FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
         ),
         (
-            Operating<Role, W, P, Job, WorkerResult>,
+            FifoOperating<Role, W, P, Job, WorkerResult>,
             ChildReport<Completion<WorkerResult>>,
         ),
     > {
@@ -1369,7 +1372,7 @@ where
 
     fn request_worker_shutdown(
         &self,
-        mut operating: Operating<Role, W, P, Job, WorkerResult>,
+        mut operating: FifoOperating<Role, W, P, Job, WorkerResult>,
         position: usize,
         role: RoleName<Role>,
         recoveries: super::restart::RecoveryCount,
@@ -1377,7 +1380,7 @@ where
         shutdown: crate::ShutdownId,
         mut actions: FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
     ) -> (
-        Operating<Role, W, P, Job, WorkerResult>,
+        FifoOperating<Role, W, P, Job, WorkerResult>,
         FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
     ) {
         actions
@@ -1400,7 +1403,7 @@ where
 
     fn reject_assignment_delivery(
         &mut self,
-        mut operating: Operating<Role, W, P, Job, WorkerResult>,
+        mut operating: FifoOperating<Role, W, P, Job, WorkerResult>,
         item: AssignWorker<W::Protocol, Job>,
         reason: behavior::ExactDeliveryReason,
     ) -> (
@@ -1582,7 +1585,7 @@ where
 
     fn accept_worker_stop(
         &mut self,
-        mut operating: Operating<Role, W, P, Job, WorkerResult>,
+        mut operating: FifoOperating<Role, W, P, Job, WorkerResult>,
         stopped: crate::ChildStopped<BehaviorAddr<W>>,
     ) -> Result<
         (
@@ -1590,7 +1593,7 @@ where
             FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
         ),
         (
-            Operating<Role, W, P, Job, WorkerResult>,
+            FifoOperating<Role, W, P, Job, WorkerResult>,
             crate::ChildStopped<BehaviorAddr<W>>,
         ),
     > {
@@ -1838,7 +1841,7 @@ where
 
     fn finish_worker_shutdown(
         &mut self,
-        operating: Operating<Role, W, P, Job, WorkerResult>,
+        operating: FifoOperating<Role, W, P, Job, WorkerResult>,
         position: usize,
         role: RoleName<Role>,
         recoveries: super::restart::RecoveryCount,
@@ -1877,7 +1880,7 @@ where
 
     fn accept_worker_shutdown(
         &mut self,
-        mut operating: Operating<Role, W, P, Job, WorkerResult>,
+        mut operating: FifoOperating<Role, W, P, Job, WorkerResult>,
         shutdown: EstablishedShutdownResolved<W::Protocol>,
     ) -> Result<
         (
@@ -1885,7 +1888,7 @@ where
             FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
         ),
         (
-            Operating<Role, W, P, Job, WorkerResult>,
+            FifoOperating<Role, W, P, Job, WorkerResult>,
             EstablishedShutdownResolved<W::Protocol>,
         ),
     > {
@@ -1950,7 +1953,7 @@ where
 
     fn complete_assignment(
         &mut self,
-        mut operating: Operating<Role, W, P, Job, WorkerResult>,
+        mut operating: FifoOperating<Role, W, P, Job, WorkerResult>,
         position: usize,
         role: RoleName<Role>,
         recoveries: super::restart::RecoveryCount,
@@ -1998,7 +2001,7 @@ where
 
     fn interrupt_assignment(
         &mut self,
-        mut operating: Operating<Role, W, P, Job, WorkerResult>,
+        mut operating: FifoOperating<Role, W, P, Job, WorkerResult>,
         position: usize,
         role: RoleName<Role>,
         recoveries: super::restart::RecoveryCount,
@@ -2057,7 +2060,7 @@ where
 
     fn authorize_waiting(
         &mut self,
-        operating: &mut Operating<Role, W, P, Job, WorkerResult>,
+        operating: &mut FifoOperating<Role, W, P, Job, WorkerResult>,
         actions: &mut FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
     ) {
         let occupied = operating
@@ -2114,7 +2117,7 @@ where
 
     fn accept_initialization(
         &mut self,
-        mut operating: Operating<Role, W, P, Job, WorkerResult>,
+        mut operating: FifoOperating<Role, W, P, Job, WorkerResult>,
         mut input: super::WorkerInitializationReport<W, P>,
     ) -> Result<
         (
@@ -2122,7 +2125,7 @@ where
             FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
         ),
         (
-            Operating<Role, W, P, Job, WorkerResult>,
+            FifoOperating<Role, W, P, Job, WorkerResult>,
             super::WorkerInitializationReport<W, P>,
         ),
     > {
@@ -2318,7 +2321,7 @@ where
 
     fn accept_activation(
         &mut self,
-        mut operating: Operating<Role, W, P, Job, WorkerResult>,
+        mut operating: FifoOperating<Role, W, P, Job, WorkerResult>,
         mut input: super::WorkerActivation<W, P>,
     ) -> Result<
         (
@@ -2326,7 +2329,7 @@ where
             FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
         ),
         (
-            Operating<Role, W, P, Job, WorkerResult>,
+            FifoOperating<Role, W, P, Job, WorkerResult>,
             super::WorkerActivation<W, P>,
         ),
     > {
@@ -2636,7 +2639,7 @@ where
 
     fn reject_creation_batch(
         &self,
-        operating: &mut Operating<Role, W, P, Job, WorkerResult>,
+        operating: &mut FifoOperating<Role, W, P, Job, WorkerResult>,
         creations: Creations<CreateChild<BehaviorAddr<W>, StopOnShutdown<W>>>,
         rejection: CreationBatchRejection,
     ) -> Result<
@@ -2704,7 +2707,7 @@ where
 
     fn accept_creations(
         &mut self,
-        mut operating: Operating<Role, W, P, Job, WorkerResult>,
+        mut operating: FifoOperating<Role, W, P, Job, WorkerResult>,
         workers: CreationsSettled<BehaviorAddr<W>, StopOnShutdown<W>>,
     ) -> Result<
         (
@@ -2712,7 +2715,7 @@ where
             FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
         ),
         (
-            Operating<Role, W, P, Job, WorkerResult>,
+            FifoOperating<Role, W, P, Job, WorkerResult>,
             CreationsSettled<BehaviorAddr<W>, StopOnShutdown<W>>,
         ),
     > {
@@ -2825,13 +2828,13 @@ where
 
     fn begin_shutdown(
         &mut self,
-        operating: Operating<Role, W, P, Job, WorkerResult>,
+        operating: FifoOperating<Role, W, P, Job, WorkerResult>,
         mut actions: FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
     ) -> (
         PoolState<Role, W, P, Job, WorkerResult>,
         FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
     ) {
-        let Operating {
+        let FifoOperating {
             members,
             backlog,
             cursor: _,
@@ -3648,7 +3651,7 @@ where
     BehaviorAddr<W>: EndpointAddress,
 {
     Constructed(Vec<PreparedWorker<Role, W, P>>),
-    Operating(Operating<Role, W, P, Job, WorkerResult>),
+    Operating(FifoOperating<Role, W, P, Job, WorkerResult>),
     Draining {
         members: Vec<RetiringWorker<Role, W, P>>,
         deadline: ShutdownDeadline,
@@ -3669,7 +3672,6 @@ where
 }
 
 /// Controlled failure while starting or transitioning one FIFO pool.
-#[doc(hidden)]
 #[derive(Debug, Error)]
 pub enum FifoError {
     /// Initialization was invoked after the prepared roster had already advanced.
@@ -3728,7 +3730,7 @@ where
             .collect();
 
         Ok((
-            Self::Operating(Operating {
+            Self::Operating(FifoOperating {
                 members,
                 backlog: BTreeMap::new(),
                 cursor: 0,

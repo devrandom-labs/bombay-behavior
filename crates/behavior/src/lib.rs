@@ -10,8 +10,8 @@
 //! Finite mailbox execution belongs to a runtime or test driver, not to this
 //! one-turn behavior algebra.
 //!
-//! ```compile_fail
-//! use behavior::ActionReducer;
+//! ```compile_fail,E0405
+//! fn requires_reducer<T: behavior::ActionReducer>() {}
 //! ```
 //!
 //! Capability-restricted action products use the existing `Actions` algebra;
@@ -54,8 +54,7 @@ pub use effects::{
     LogicalDeliveryProtocols, NoReturnToEmitter, NoSends, Own, ParentReportReason, ReportToParent,
     RetirementCreationSettlement, ReturnsToEmitter, SendEffects, SendInput, SendLayer,
     SendSettlements, SendsFor, SettledItem, SettlementStatus, SourceAction, SourceActions,
-    SourceAdmission, SourceCustody, SourceSettlementCustody, SourceSettlements, settle_in_order,
-    settle_item,
+    SourceAdmission, SourceCustody, SourceSettlementCustody, SourceSettlements, settle_item,
 };
 pub use next::{Never, Step, Stopped};
 pub use transition::{
@@ -73,11 +72,15 @@ pub use user_event::{
 /// `sends`, `births`, or `error` selects the capability-free `NoSends`,
 /// `NoBirths`, or `Never` type respectively.
 ///
-/// A `sends = { lane: Product }` declaration generates `ActorSends`, one
-/// distinct `ActorSendsLane` selector per field, and structural `SendEffects`,
-/// `SendsFor`, [`SendSettlements`], and `InterpretSends` implementations. The
-/// doc-hidden `ActorSettlements` product keeps the same semantic field names
-/// and has one runtime-independent type. The macro also generates an
+/// A `sends = { lane: Product }` declaration generates a module-private
+/// `ActorSends`; `sends = pub { lane: Product }` exports it for a public actor.
+/// Its lane selectors, settlement product, and fluent trait have the same
+/// visibility. Each field contributes its logical-host protocols in declared
+/// order, including duplicates, through [`LogicalDeliveryProtocols`]. The
+/// product also derives structural `SendEffects`, `SendsFor`,
+/// [`SendSettlements`], and `InterpretSends` implementations. The settlement
+/// product keeps the same semantic field names and one runtime-independent
+/// type. The macro also generates an
 /// `ActorActions` extension trait with one fluent `send_lane` method per named
 /// lane. Each method delegates to [`AppendSend`], changing only the send leg
 /// while preserving creations and the exact next-behavior verdict. A
@@ -124,19 +127,18 @@ pub use user_event::{
 /// ```
 ///
 /// ```compile_fail
-/// use behavior::{Actions, BehaviorActed, MailAddr};
 ///
 /// struct Invalid;
 /// #[behavior::behavior(
-///     addr = MailAddr,
+///     addr = behavior::MailAddr,
 ///     message = u8,
 /// )]
 /// impl Invalid {
-///     fn init(&self) -> BehaviorActed<Self> {
-///         Ok(Actions::cont())
+///     fn init(&self) -> behavior::BehaviorActed<Self> {
+///         Ok(behavior::Actions::cont())
 ///     }
-///     fn receive(&mut self, _: MailAddr, _: u8) -> BehaviorActed<Self> {
-///         Ok(Actions::cont())
+///     fn receive(&mut self, _: behavior::MailAddr, _: u8) -> behavior::BehaviorActed<Self> {
+///         Ok(behavior::Actions::cont())
 ///     }
 /// }
 /// ```
@@ -144,10 +146,9 @@ pub use user_event::{
 /// Missing receive methods are rejected by the macro itself:
 ///
 /// ```compile_fail
-/// use behavior::MailAddr;
 /// struct Missing;
 /// #[behavior::behavior(
-///     addr = MailAddr,
+///     addr = behavior::MailAddr,
 ///     message = u8,
 /// )]
 /// impl Missing {
@@ -158,18 +159,17 @@ pub use user_event::{
 /// path:
 ///
 /// ```compile_fail
-/// use behavior::{Actions, BehaviorActed, MailAddr};
 /// struct Async;
 /// #[behavior::behavior(
-///     addr = MailAddr,
+///     addr = behavior::MailAddr,
 ///     message = u8,
 /// )]
 /// impl Async {
-///     async fn init(&mut self) -> BehaviorActed<Self> {
-///         Ok(Actions::cont())
+///     async fn init(&mut self) -> behavior::BehaviorActed<Self> {
+///         Ok(behavior::Actions::cont())
 ///     }
-///     fn receive(&mut self, _: MailAddr, _: u8) -> BehaviorActed<Self> {
-///         Ok(Actions::cont())
+///     fn receive(&mut self, _: behavior::MailAddr, _: u8) -> behavior::BehaviorActed<Self> {
+///         Ok(behavior::Actions::cont())
 ///     }
 /// }
 /// ```
@@ -177,14 +177,13 @@ pub use user_event::{
 /// Undeclared send lanes have no selector and cannot be emitted:
 ///
 /// ```compile_fail
-/// use behavior::{Actions, BehaviorActed, MailAddr, SendEffects};
 /// struct Sender;
-/// #[behavior::behavior(addr = MailAddr, message = (), sends = { replies: Vec<u8> })]
+/// #[behavior::behavior(addr = behavior::MailAddr, message = (), sends = { replies: Vec<u8> })]
 /// impl Sender {
-///     fn receive(&mut self, _: MailAddr, _: ()) -> BehaviorActed<Self> {
-///         let mut sends = SenderSends::empty();
-///         sends.send::<_, SenderSendsUndeclared>(1);
-///         Ok(Actions::send(sends))
+///     fn receive(&mut self, _: behavior::MailAddr, _: ()) -> behavior::BehaviorActed<Self> {
+///         let mut sends: SenderSends = behavior::SendEffects::empty();
+///         behavior::SendEffects::send::<_, SenderSendsUndeclared>(&mut sends, 1);
+///         Ok(behavior::Actions::send(sends))
 ///     }
 /// }
 /// ```
@@ -192,12 +191,11 @@ pub use user_event::{
 /// Generated lane methods accept only inputs supported by that lane:
 ///
 /// ```compile_fail
-/// use behavior::{Actions, BehaviorActed, MailAddr};
 /// struct Sender;
-/// #[behavior::behavior(addr = MailAddr, message = (), sends = { replies: Vec<u8> })]
+/// #[behavior::behavior(addr = behavior::MailAddr, message = (), sends = { replies: Vec<u8> })]
 /// impl Sender {
-///     fn receive(&mut self, _: MailAddr, _: ()) -> BehaviorActed<Self> {
-///         Ok(Actions::cont().send_replies("not a u8"))
+///     fn receive(&mut self, _: behavior::MailAddr, _: ()) -> behavior::BehaviorActed<Self> {
+///         Ok(behavior::Actions::cont().send_replies("not a u8"))
 ///     }
 /// }
 /// ```
@@ -205,32 +203,31 @@ pub use user_event::{
 /// A child absent from the declared closed birth product cannot be created:
 ///
 /// ```compile_fail
-/// use behavior::{Actions, BehaviorActed, CreationSequence, Creations, CreateChild, MailAddr};
 /// struct Declared;
-/// #[behavior::behavior(addr = MailAddr, message = behavior::Never)]
+/// #[behavior::behavior(addr = behavior::MailAddr, message = behavior::Never)]
 /// impl Declared {
-///     fn receive(&mut self, _: MailAddr, message: behavior::Never) -> BehaviorActed<Self> {
+///     fn receive(&mut self, _: behavior::MailAddr, message: behavior::Never) -> behavior::BehaviorActed<Self> {
 ///         match message {}
 ///     }
 /// }
 /// struct Other;
-/// #[behavior::behavior(addr = MailAddr, message = behavior::Never)]
+/// #[behavior::behavior(addr = behavior::MailAddr, message = behavior::Never)]
 /// impl Other {
-///     fn receive(&mut self, _: MailAddr, message: behavior::Never) -> BehaviorActed<Self> {
+///     fn receive(&mut self, _: behavior::MailAddr, message: behavior::Never) -> behavior::BehaviorActed<Self> {
 ///         match message {}
 ///     }
 /// }
-/// struct Root { creations: CreationSequence }
+/// struct Root { creations: behavior::CreationSequence }
 /// #[behavior::behavior(
-///     addr = MailAddr,
+///     addr = behavior::MailAddr,
 ///     message = (),
 ///     births = { declared: Declared },
 ///     creation_settlements = retain_for_retirement,
 /// )]
 /// impl Root {
-///     fn receive(&mut self, _: MailAddr, _: ()) -> BehaviorActed<Self> {
+///     fn receive(&mut self, _: behavior::MailAddr, _: ()) -> behavior::BehaviorActed<Self> {
 ///         let id = self.creations.issue().expect("fixture creation ID");
-///         Ok(Actions::create(Creations::one(CreateChild::birth(id, Other))))
+///         Ok(behavior::Actions::create(behavior::Creations::one(behavior::CreateChild::birth(id, Other))))
 ///     }
 /// }
 /// ```
@@ -238,31 +235,29 @@ pub use user_event::{
 /// Every generated send lane remains a separate interpreter obligation:
 ///
 /// ```compile_fail
-/// use behavior::{BehaviorActed, Delivery, InterpretItem, InterpretSends, ItemSettlement,
-///     MailAddr, MessageProtocol, Never};
 /// struct Root;
-/// type AuditProtocol = MessageProtocol<MailAddr, u8>;
-/// type MetricsProtocol = MessageProtocol<MailAddr, u16>;
-/// #[behavior::behavior(addr = MailAddr, message = (), sends = {
-///     audit: Vec<Delivery<AuditProtocol>>,
-///     metrics: Vec<Delivery<MetricsProtocol>>,
+/// type AuditProtocol = behavior::MessageProtocol<behavior::MailAddr, u8>;
+/// type MetricsProtocol = behavior::MessageProtocol<behavior::MailAddr, u16>;
+/// #[behavior::behavior(addr = behavior::MailAddr, message = (), sends = {
+///     audit: Vec<behavior::Delivery<AuditProtocol>>,
+///     metrics: Vec<behavior::Delivery<MetricsProtocol>>,
 /// })]
 /// impl Root {
-///     fn receive(&mut self, _: MailAddr, _: ()) -> BehaviorActed<Self> {
+///     fn receive(&mut self, _: behavior::MailAddr, _: ()) -> behavior::BehaviorActed<Self> {
 ///         Ok(behavior::Actions::cont())
 ///     }
 /// }
 /// struct Incomplete;
-/// impl<RootEvent, Path> InterpretItem<Delivery<AuditProtocol>, RootEvent, Path> for Incomplete {
-///     fn interpret_item(&mut self, _: Delivery<AuditProtocol>) -> impl core::future::Future<
-///         Output = ItemSettlement<Delivery<AuditProtocol>, (), Never, Never>,
+/// impl<RootEvent, Path> behavior::InterpretItem<behavior::Delivery<AuditProtocol>, RootEvent, Path> for Incomplete {
+///     fn interpret_item(&mut self, _: behavior::Delivery<AuditProtocol>) -> impl core::future::Future<
+///         Output = behavior::ItemSettlement<behavior::Delivery<AuditProtocol>, (), behavior::Never, behavior::Never>,
 ///     > + Send {
-///         async { ItemSettlement::Accepted(()) }
+///         async { behavior::ItemSettlement::Accepted(()) }
 ///     }
 /// }
 /// fn require_complete()
 /// where
-///     RootSends: InterpretSends<Incomplete, behavior::User<MailAddr, ()>, behavior::Here>,
+///     RootSends: behavior::InterpretSends<Incomplete, behavior::User<behavior::MailAddr, ()>, behavior::Here>,
 /// {}
 /// ```
 ///
@@ -273,30 +268,29 @@ pub use user_event::{
 /// Two declared roles remain distinct even when they use the same behavior:
 ///
 /// ```compile_fail
-/// use behavior::{Behavior, BehaviorActed, ChildDelivery, CreationSequence, MailAddr, Never};
 /// struct Worker;
-/// #[behavior::behavior(addr = MailAddr, message = ())]
+/// #[behavior::behavior(addr = behavior::MailAddr, message = ())]
 /// impl Worker {
-///     fn receive(&mut self, _: MailAddr, _: ()) -> BehaviorActed<Self> {
+///     fn receive(&mut self, _: behavior::MailAddr, _: ()) -> behavior::BehaviorActed<Self> {
 ///         Ok(behavior::Actions::cont())
 ///     }
 /// }
 /// struct Root;
-/// #[behavior::behavior(addr = MailAddr, message = Never, births = {
+/// #[behavior::behavior(addr = behavior::MailAddr, message = behavior::Never, births = {
 ///     primary: Worker,
 ///     backup: Worker,
 /// }, creation_settlements = retain_for_retirement)]
 /// impl Root {
-///     fn receive(&mut self, _: MailAddr, message: Never) -> BehaviorActed<Self> {
+///     fn receive(&mut self, _: behavior::MailAddr, message: behavior::Never) -> behavior::BehaviorActed<Self> {
 ///         match message {}
 ///     }
 /// }
 /// fn requires_primary(
-///     _: ChildDelivery<<Worker as Behavior>::Protocol, RootChildrenPrimary>,
+///     _: behavior::ChildDelivery<<Worker as behavior::Behavior>::Protocol, RootChildrenPrimary>,
 /// ) {}
-/// let mut sequence = CreationSequence::new();
+/// let mut sequence = behavior::CreationSequence::new();
 /// let id = sequence.issue().expect("fixture creation ID");
-/// let backup = ChildDelivery::<<Worker as Behavior>::Protocol, RootChildrenBackup>::after(id, ());
+/// let backup = behavior::ChildDelivery::<<Worker as behavior::Behavior>::Protocol, RootChildrenBackup>::after(id, ());
 /// requires_primary(backup);
 /// ```
 ///
@@ -304,37 +298,36 @@ pub use user_event::{
 /// role, which lets an application builder remain entirely static:
 ///
 /// ```compile_fail
-/// use behavior::{Behavior, BehaviorActed, ChildRole, MailAddr, Never};
 /// struct Worker;
-/// #[behavior::behavior(addr = MailAddr, message = Never)]
+/// #[behavior::behavior(addr = behavior::MailAddr, message = behavior::Never)]
 /// impl Worker {
-///     fn receive(&mut self, _: MailAddr, message: Never) -> BehaviorActed<Self> {
+///     fn receive(&mut self, _: behavior::MailAddr, message: behavior::Never) -> behavior::BehaviorActed<Self> {
 ///         match message {}
 ///     }
 /// }
 /// struct Query;
-/// #[behavior::behavior(addr = MailAddr, message = Never)]
+/// #[behavior::behavior(addr = behavior::MailAddr, message = behavior::Never)]
 /// impl Query {
-///     fn receive(&mut self, _: MailAddr, message: Never) -> BehaviorActed<Self> {
+///     fn receive(&mut self, _: behavior::MailAddr, message: behavior::Never) -> behavior::BehaviorActed<Self> {
 ///         match message {}
 ///     }
 /// }
 /// struct Root;
 /// #[behavior::behavior(
-///     addr = MailAddr,
-///     message = Never,
+///     addr = behavior::MailAddr,
+///     message = behavior::Never,
 ///     births = { workers: Worker },
 ///     creation_settlements = retain_for_retirement,
 /// )]
 /// impl Root {
-///     fn receive(&mut self, _: MailAddr, message: Never) -> BehaviorActed<Self> {
+///     fn receive(&mut self, _: behavior::MailAddr, message: behavior::Never) -> behavior::BehaviorActed<Self> {
 ///         match message {}
 ///     }
 /// }
 /// fn child<Parent, Role>(_: Role, _: Role::Child)
 /// where
-///     Parent: Behavior,
-///     Role: ChildRole<Parent>,
+///     Parent: behavior::Behavior,
+///     Role: behavior::ChildRole<Parent>,
 /// {}
 /// child::<Root, _>(RootChild::Workers, Query);
 /// ```

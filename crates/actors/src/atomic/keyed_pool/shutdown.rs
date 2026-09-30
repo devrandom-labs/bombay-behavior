@@ -22,8 +22,8 @@ use super::super::worker::WorkerCreationSettlement;
 use super::super::{ActivationPlan, WorkerCreationRejection, WorkerSource};
 use super::{
     CustomerDelivery, CustomerJob, KeyedActions, KeyedAssignedReturnReason, KeyedCustomer,
-    KeyedDiagnostic, KeyedEvent, KeyedOutcome, KeyedPool, KeyedPoolState, KeyedQueuedReturnReason,
-    Operating, protocol,
+    KeyedDiagnostic, KeyedEvent, KeyedOperating, KeyedOutcome, KeyedPool, KeyedPoolState,
+    KeyedQueuedReturnReason, protocol,
 };
 
 impl<Role, W, P, Source, Selector, Diagnostics, Key, Job, WorkerResult>
@@ -50,13 +50,13 @@ where
 {
     pub(super) fn begin_retirement(
         &mut self,
-        operating: Operating<Role, W, P, Key, Job, WorkerResult>,
+        operating: KeyedOperating<Role, W, P, Key, Job, WorkerResult>,
         mut actions: KeyedActions<Role, W, P, Source, Diagnostics, Key, Job, WorkerResult>,
     ) -> (
         KeyedPoolState<Role, W, P, Key, Job, WorkerResult>,
         KeyedActions<Role, W, P, Source, Diagnostics, Key, Job, WorkerResult>,
     ) {
-        let Operating {
+        let KeyedOperating {
             roles,
             mut bindings,
         } = operating;

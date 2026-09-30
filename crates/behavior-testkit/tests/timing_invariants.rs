@@ -30,12 +30,32 @@ impl Behavior for Reply {
 
 type Subject = Lease<MailAddr, u8, Recipient<Reply>>;
 
+#[derive(Clone, Copy, Debug)]
+enum ElapsedTimer {
+    Armed,
+    Foreign,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum LeaseOperation {
+    Acquire { holder: u8 },
+    Renew { holder: u8, observed: u64 },
+    Release { holder: u8, observed: u64 },
+    Elapsed { observed: u64, timer: ElapsedTimer },
+}
+
 proptest! {
     #![proptest_config(ProptestConfig { cases: 512, max_shrink_iters: 100_000, ..ProptestConfig::default() })]
 
     #[test]
     fn lease_matches_exclusive_generation_ownership_after_every_event(
-        operations in vec((0_u8..4, 0_u8..5, 0_u64..24, any::<bool>()), 0..220),
+        operations in vec(prop_oneof![
+            (0_u8..5).prop_map(|holder| LeaseOperation::Acquire { holder }),
+            (0_u8..5, 0_u64..24).prop_map(|(holder, observed)| LeaseOperation::Renew { holder, observed }),
+            (0_u8..5, 0_u64..24).prop_map(|(holder, observed)| LeaseOperation::Release { holder, observed }),
+            (0_u64..24, prop_oneof![Just(ElapsedTimer::Armed), Just(ElapsedTimer::Foreign)])
+                .prop_map(|(observed, timer)| LeaseOperation::Elapsed { observed, timer }),
+        ], 0..220),
     ) {
         let timer = TimerId(7);
         let mut actual = Subject::new(timer).initialize().unwrap().behavior;
@@ -43,27 +63,30 @@ proptest! {
         let mut next = 0_u64;
         let reply = Recipient::global(MailAddr(1));
 
-        for (operation, holder, observed, wrong_timer) in operations {
+        for operation in operations {
             let duration = Duration::from_nanos(1);
             let actions = match operation {
-                0 => actual.receive(MailAddr(9), LeaseMessage::Acquire {
+                LeaseOperation::Acquire { holder } => actual.receive(MailAddr(9), LeaseMessage::Acquire {
                     holder, duration, reply_to: reply,
                 }).unwrap(),
-                1 => actual.receive(MailAddr(9), LeaseMessage::Renew {
+                LeaseOperation::Renew { holder, observed } => actual.receive(MailAddr(9), LeaseMessage::Renew {
                     holder, generation: TimerGeneration(observed),
                     duration, reply_to: reply,
                 }).unwrap(),
-                2 => actual.receive(MailAddr(9), LeaseMessage::Release {
+                LeaseOperation::Release { holder, observed } => actual.receive(MailAddr(9), LeaseMessage::Release {
                     holder, generation: TimerGeneration(observed), reply_to: reply,
                 }).unwrap(),
-                _ => actual.on(TimerElapsed::new(
-                    if wrong_timer { TimerId(8) } else { timer },
+                LeaseOperation::Elapsed { observed, timer: source } => actual.on(TimerElapsed::new(
+                    match source {
+                        ElapsedTimer::Armed => timer,
+                        ElapsedTimer::Foreign => TimerId(8),
+                    },
                     TimerGeneration(observed),
                 )).unwrap(),
             };
 
             match operation {
-                0 => match held {
+                LeaseOperation::Acquire { holder } => match held {
                     Some((current, _)) => {
                         prop_assert_eq!(&actions.sends.outcomes[0].message,
                             &LeaseOutcome::Rejected {
@@ -81,7 +104,7 @@ proptest! {
                         prop_assert_eq!(actions.sends.schedules.as_slice()[0].generation, TimerGeneration(generation));
                     }
                 },
-                1 => match held {
+                LeaseOperation::Renew { holder, observed } => match held {
                     None => prop_assert_eq!(&actions.sends.outcomes[0].message,
                         &LeaseOutcome::Rejected {
                             request: LeaseRequest::Renew { holder, generation: TimerGeneration(observed), duration },
@@ -108,7 +131,7 @@ proptest! {
                         prop_assert_eq!(actions.sends.schedules.as_slice()[0].generation, TimerGeneration(generation));
                     }
                 },
-                2 => match held {
+                LeaseOperation::Release { holder, observed } => match held {
                     None => prop_assert_eq!(&actions.sends.outcomes[0].message,
                         &LeaseOutcome::Rejected {
                             request: LeaseRequest::Release { holder, generation: TimerGeneration(observed) },
@@ -132,8 +155,8 @@ proptest! {
                             &LeaseOutcome::Released { holder: current, generation: TimerGeneration(generation) });
                     }
                 },
-                _ => match held {
-                    Some((current, generation)) if !wrong_timer && observed == generation => {
+                LeaseOperation::Elapsed { observed, timer: source } => match (held, source) {
+                    (Some((current, generation)), ElapsedTimer::Armed) if observed == generation => {
                         held = None;
                         prop_assert_eq!(&actions.sends.outcomes[0].message,
                             &LeaseOutcome::Expired { holder: current, generation: TimerGeneration(generation) });

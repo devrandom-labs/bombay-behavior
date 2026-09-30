@@ -90,7 +90,7 @@ where
         )
         .unwrap_or_else(|_| panic!("capability query observes the search service"));
     assert!(queried.creates.is_empty());
-    assert!(queried.sends.proxy_observations.into_requests().is_empty());
+    assert!(queried.sends.proxy_observations.is_empty());
     let preparations = queried
         .sends
         .worker_preparations
@@ -102,7 +102,7 @@ where
     let schedules = queried.sends.restart_schedules.unattempted().into_inputs();
     assert!(schedules.is_empty());
     let NoSends = queried.sends.lifecycle;
-    assert!(queried.sends.status_replies.into_deliveries().is_empty());
+    assert!(queried.sends.status_replies.as_slice().is_empty());
     assert!(queried.sends.diagnostics.is_empty());
     assert!(matches!(queried.become_, Step::Continue));
     let reply = queried

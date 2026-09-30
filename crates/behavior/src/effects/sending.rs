@@ -69,34 +69,6 @@ impl<Settlement> Interpretation<Settlement> {
     }
 }
 
-/// Interpret two statically named send products in declared order.
-///
-/// A corrupt earlier product retains the complete later product as
-/// unattempted. Expected rejection inside the earlier product does not stop
-/// the later product because it remains a complete interpretation.
-#[doc(hidden)]
-pub async fn settle_in_order<Interpreter, RootEvent, Path, Earlier, Later>(
-    earlier: Earlier,
-    later: Later,
-    interpreter: &mut Interpreter,
-) -> Interpretation<(Earlier::Settlements, Later::Settlements)>
-where
-    Interpreter: Send,
-    Earlier: InterpretSends<Interpreter, RootEvent, Path>,
-    Later: InterpretSends<Interpreter, RootEvent, Path>,
-{
-    let earlier = match earlier.interpret(interpreter).await {
-        Interpretation::Complete(earlier) => earlier,
-        Interpretation::Corrupt(earlier) => {
-            return Interpretation::Corrupt((earlier, later.unattempted()));
-        }
-    };
-    later
-        .interpret(interpreter)
-        .await
-        .map(|later| (earlier, later))
-}
-
 /// Read-only control-flow status of one complete retained settlement product.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SettlementStatus {
@@ -189,7 +161,7 @@ impl ClassifySettlement for crate::Never {
 ///
 /// A runtime cannot substitute a different rejection type for the same item:
 ///
-/// ```compile_fail,E0053
+/// ```compile_fail,E0271
 /// struct Request;
 /// struct RequiredRejection;
 /// struct RuntimeRejection;
@@ -223,6 +195,16 @@ pub trait ActionItem: Sized + Send {
     type Accepted: Send;
     type Rejection: Send;
     type Prerequisite: Send;
+
+    /// Keep an accepted value only while it still carries terminal custody.
+    ///
+    /// The default discharges and destroys the receipt. An implementation
+    /// returning `Some` must return the same owned value on every later offer;
+    /// it must not perform an effect or consume authority still promised by
+    /// that value. This decision does not change settlement status.
+    fn retain_accepted(_: Self::Accepted) -> Option<Self::Accepted> {
+        None
+    }
 }
 
 /// Exact result of one action item within an interpreted action product.
@@ -387,29 +369,25 @@ pub trait SendEffects: Sized {
 /// an unknown delivery representation as having no logical destination.
 ///
 /// ```compile_fail,E0277
-/// use behavior::{
-///     Actions, Behavior, BehaviorActed, LogicalHostRequirements, MailAddr,
-///     Never, NoBirths, Protocol, SendEffects, User,
-/// };
 /// struct OpaqueSends;
-/// impl SendEffects for OpaqueSends {
+/// impl behavior::SendEffects for OpaqueSends {
 ///     fn empty() -> Self { Self }
 ///     fn append(&mut self, _: Self) {}
 /// }
 /// impl<E> behavior::SendsFor<E> for OpaqueSends {}
 /// struct Actor;
-/// impl Protocol for Actor { type Addr = MailAddr; type Msg = (); }
-/// impl Behavior for Actor {
+/// impl behavior::Protocol for Actor { type Addr = behavior::MailAddr; type Msg = (); }
+/// impl behavior::Behavior for Actor {
 ///     type Protocol = Self;
-///     type Event = User<MailAddr, ()>;
+///     type Event = behavior::User<behavior::MailAddr, ()>;
 ///     type Sends = OpaqueSends;
-///     type Ph = Never;
-///     type Error = Never;
-///     type Birth = NoBirths;
+///     type Ph = behavior::Never;
+///     type Error = behavior::Never;
+///     type Birth = behavior::NoBirths;
 ///     fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event)
-///         -> BehaviorActed<Self> { Ok(Actions::cont()) }
+///         -> behavior::BehaviorActed<Self> { Ok(behavior::Actions::cont()) }
 /// }
-/// fn require_complete<B: LogicalHostRequirements>() {}
+/// fn require_complete<B: behavior::LogicalHostRequirements>() {}
 /// require_complete::<Actor>();
 /// ```
 pub trait LogicalDeliveryProtocols: SendEffects {
@@ -429,16 +407,15 @@ pub trait LogicalDeliveryProtocols: SendEffects {
 /// layer:
 ///
 /// ```compile_fail
-/// use behavior::{SendsFor, EventLayer, Here, MailAddr, ReturnsToEmitter,
-///     InterpreterRequest, InterpreterRequests, User};
 /// struct Request;
-/// impl InterpreterRequest for Request {
-///     type ReturnToEmitter = ReturnsToEmitter<u8, Here>;
+/// impl behavior::InterpreterRequest for Request {
+///     type ReturnToEmitter = behavior::ReturnsToEmitter<u8, behavior::Here>;
+///     type LogicalProtocols = behavior::NoBirthProtocols;
 /// }
-/// fn lawful<E, F: SendsFor<E>>() {}
-/// type Inner = EventLayer<u8, User<MailAddr, ()>>;
-/// type Outer = EventLayer<(), Inner>;
-/// lawful::<Outer, InterpreterRequests<Request>>();
+/// fn lawful<E, F: behavior::SendsFor<E>>() {}
+/// type Inner = behavior::EventLayer<u8, behavior::User<behavior::MailAddr, ()>>;
+/// type Outer = behavior::EventLayer<(), Inner>;
+/// lawful::<Outer, behavior::InterpreterRequests<Request>>();
 /// ```
 pub trait SendsFor<Event>: SendEffects {}
 
@@ -733,7 +710,24 @@ where
         self,
         _: &mut Host,
     ) -> impl Future<Output = SourceCustody<Self>> + Send {
-        async move { SourceCustody::Exhausted(self) }
+        async move {
+            let residual: Self = self
+                .into_iter()
+                .filter_map(|settled| match settled {
+                    SettledItem::Attempted(ItemSettlement::Accepted(accepted)) => {
+                        Item::retain_accepted(accepted).map(|accepted| {
+                            SettledItem::Attempted(ItemSettlement::Accepted(accepted))
+                        })
+                    }
+                    other => Some(other),
+                })
+                .collect();
+            if residual.is_empty() {
+                SourceCustody::Exhausted(residual)
+            } else {
+                SourceCustody::Retained(residual)
+            }
+        }
     }
 }
 
@@ -785,9 +779,12 @@ impl<Event, Input, Path> ReturnToEmitterFor<Event> for ReturnsToEmitter<Input, P
 /// Declares only the continuation returning to the actor that emitted this
 /// interpreter request. Destinations owned by a child, parent, ancestor, or
 /// established actor are separate capabilities and are not reindexed when the
-/// emitter is wrapped.
+/// emitter is wrapped. `LogicalProtocols` lists possible logical destinations
+/// of the request in declaration order, independently of any value's selected
+/// variant; exact and creator-local destinations contribute none.
 pub trait InterpreterRequest {
     type ReturnToEmitter;
+    type LogicalProtocols: BirthProtocolProduct;
 }
 
 /// Transfer one owned report to the emitter's established parent.
@@ -820,6 +817,7 @@ impl<R> ReportToParent<R> {
 
 impl<R> InterpreterRequest for ReportToParent<R> {
     type ReturnToEmitter = NoReturnToEmitter;
+    type LogicalProtocols = NoBirthProtocols;
 }
 
 impl<R> ActionItem for ReportToParent<R>
@@ -1202,10 +1200,11 @@ impl<T> SendInput<T, Own> for Vec<T> {
 
 /// Requests interpreted by the runtime local to the emitting actor.
 ///
-/// Unlike [`crate::Delivery`], a interpreter request has no actor address. Its
-/// recipient is definitionally the interpreter of the actor whose transition
-/// emitted it. This distinct send lane lets interpreters route ordinary
-/// deliveries and interpreter requests with disjoint static implementations.
+/// The request itself is interpreted by the runtime local to the emitting
+/// actor. A request may carry a separate typed logical or exact destination;
+/// its [`InterpreterRequest::LogicalProtocols`] reports any possible logical
+/// destination. This lane keeps ordinary deliveries and interpreter operations
+/// statically distinct.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InterpreterRequests<M> {
     requests: Vec<M>,
@@ -1276,8 +1275,8 @@ impl<M> SendEffects for InterpreterRequests<M> {
     }
 }
 
-impl<M> LogicalDeliveryProtocols for InterpreterRequests<M> {
-    type Protocols = NoBirthProtocols;
+impl<M: InterpreterRequest> LogicalDeliveryProtocols for InterpreterRequests<M> {
+    type Protocols = M::LogicalProtocols;
 }
 
 impl<Event, M> SendsFor<Event> for InterpreterRequests<M>
@@ -1345,11 +1344,10 @@ mod tests {
         <InterpreterRequests<u8> as SendInput<u8, Own>>::emit(&mut services, 3);
         assert!(!services.is_empty());
         assert_eq!(services.as_slice(), [2, 4, 5, 3]);
-        assert_eq!(
-            (&services).into_iter().copied().collect::<Vec<_>>(),
-            [2, 4, 5, 3]
-        );
-        assert_eq!(services.into_iter().collect::<Vec<_>>(), [2, 4, 5, 3]);
+        let borrowed = (&services).into_iter().copied().collect::<Vec<_>>();
+        assert_eq!(borrowed, [2, 4, 5, 3]);
+        let owned = services.into_iter().collect::<Vec<_>>();
+        assert_eq!(owned, [2, 4, 5, 3]);
 
         let requests = InterpreterRequests::new(vec![4, 5]).into_requests();
         assert_eq!(requests, [4, 5]);
@@ -1370,7 +1368,8 @@ mod tests {
         prefix.append(suffix);
         assert!(!prefix.is_empty());
         assert_eq!(prefix.len(), 4);
-        assert_eq!(prefix.into_items(), [1, 2, 3, 4]);
+        let items = prefix.into_items();
+        assert_eq!(items, [1, 2, 3, 4]);
 
         let requests = InterpreterRequests::new(vec![5, 6, 7]);
         assert_eq!(requests.len(), 3);
@@ -1380,6 +1379,7 @@ mod tests {
 
     impl InterpreterRequest for Returning {
         type ReturnToEmitter = ReturnsToEmitter<u8, crate::Here>;
+        type LogicalProtocols = NoBirthProtocols;
     }
 
     fn lawful<Event, Effects: SendsFor<Event>>() {}

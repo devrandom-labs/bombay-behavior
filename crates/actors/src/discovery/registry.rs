@@ -183,7 +183,6 @@ where
 impl<A, K, D, Route> behavior::Protocol for Registry<A, K, D, Route>
 where
     A: Address,
-    K: Clone + Eq,
     D: Protocol<Addr = A>,
     Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = RegistryResult<K, D>>>,
 {
@@ -318,25 +317,27 @@ mod tests {
         assert!(bound.creates.is_empty());
         assert!(matches!(bound.become_, Step::Continue));
 
+        let rejection = registry.receive(
+            MailAddr(9),
+            RegistryMessage::Bind {
+                key: 4,
+                recipient: two,
+            },
+        );
         assert!(matches!(
-            registry.receive(
-                MailAddr(9),
-                RegistryMessage::Bind {
-                    key: 4,
-                    recipient: two,
-                },
-            ),
+            rejection,
             Err(RegistryError::AlreadyBound { key: 4, recipient, current })
                 if recipient == two && current == one
         ));
+        let rejection = registry.receive(
+            MailAddr(9),
+            RegistryMessage::Unbind {
+                key: 4,
+                recipient: two,
+            },
+        );
         assert!(matches!(
-            registry.receive(
-                MailAddr(9),
-                RegistryMessage::Unbind {
-                    key: 4,
-                    recipient: two,
-                },
-            ),
+            rejection,
             Err(RegistryError::StaleBinding {
                 key: 4,
                 recipient,

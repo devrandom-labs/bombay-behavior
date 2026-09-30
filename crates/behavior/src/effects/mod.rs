@@ -12,5 +12,5 @@ pub use sending::{
     LogicalDeliveryProtocols, NoReturnToEmitter, NoSends, Own, ParentReportReason, ReportToParent,
     ReturnsToEmitter, SendEffects, SendInput, SendLayer, SendSettlements, SendsFor, SettledItem,
     SettlementStatus, SourceAction, SourceActions, SourceAdmission, SourceCustody,
-    SourceSettlementCustody, SourceSettlements, settle_in_order, settle_item,
+    SourceSettlementCustody, SourceSettlements, settle_item,
 };

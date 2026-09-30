@@ -1,16 +1,14 @@
 //! Static construction of one concrete delivery effect.
 
 use behavior::{
-    ActionItem, ActionItemResult, Behavior, BehaviorAddr, Delivery, EndpointAddress,
-    EstablishedDelivery, EstablishedRecipient, InterpretItem, InterpretSends, Interpretation, Own,
-    Protocol, Recipient, SendEffects, SendInput, SendSettlements, SendsFor, SettledItem,
-    settle_item,
+    ActionItem, ActionItemResult, Delivery, EndpointAddress, EstablishedDelivery,
+    EstablishedRecipient, InterpretItem, InterpretSends, Interpretation, Own, Protocol, Recipient,
+    SendEffects, SendInput, SendSettlements, SendsFor, SettledItem, settle_item,
 };
 use core::future::Future;
 
 mod sealed {
     pub trait DeliveryRoute {}
-    pub trait DeliveryRouteFor<Owner: behavior::Behavior> {}
 }
 
 /// A statically selected transferable destination capability.
@@ -19,6 +17,33 @@ mod sealed {
 /// protocol parameter beside the route that already determines it. Logical
 /// and established routes select different concrete send products without
 /// weakening either capability.
+///
+/// The owner's address namespace is stated through the associated protocol:
+/// `R: DeliveryRoute<Protocol: Protocol<Addr = BehaviorAddr<Owner>>>`.
+/// A route for another protocol cannot be substituted merely because its
+/// payload has the same Rust type:
+///
+/// ```compile_fail,E0271
+/// type Expected = behavior::MessageProtocol<behavior::MailAddr, u8>;
+/// struct Other;
+/// impl behavior::Protocol for Other {
+///     type Addr = behavior::MailAddr;
+///     type Msg = u8;
+/// }
+/// fn require_expected<R: behavior_actors::DeliveryRoute<Protocol = Expected>>(_: R) {}
+/// require_expected(behavior::Recipient::<Other>::global(behavior::MailAddr(1)));
+/// ```
+/// Creator-local child routes require the owning actor's birth algebra and
+/// cannot be substituted for a transferable acquaintance. There is one route
+/// interface for these transferable capabilities:
+///
+/// ```compile_fail,E0405
+/// fn require<Owner, Route>()
+/// where
+///     Owner: behavior::Behavior,
+///     Route: behavior_actors::DeliveryRouteFor<Owner>,
+/// {}
+/// ```
 pub trait DeliveryRoute: sealed::DeliveryRoute + Sized {
     /// Protocol selected by this capability.
     type Protocol: Protocol;
@@ -29,48 +54,6 @@ pub trait DeliveryRoute: sealed::DeliveryRoute + Sized {
     fn deliver(self, message: <Self::Protocol as Protocol>::Msg) -> Self::Sends;
 }
 
-/// Creator-local child routes are deliberately excluded. A standalone
-/// [`crate::MessageAdapterWithRoute`] declares [`behavior::NoBirths`] and
-/// therefore cannot own the local child binding required to interpret a
-/// [`behavior::ChildDelivery`]. Child forwarding belongs in a topology-owning
-/// behavior whose birth algebra proves that occurrence.
-///
-/// A route for another protocol cannot be substituted merely because its
-/// payload has the same Rust type:
-///
-/// ```compile_fail,E0277
-/// use behavior::{MailAddr, MessageProtocol, Recipient};
-/// use behavior_actors::DeliveryRoute;
-/// type Expected = MessageProtocol<MailAddr, u8>;
-/// struct Other;
-/// impl behavior::Protocol for Other {
-///     type Addr = MailAddr;
-///     type Msg = u8;
-/// }
-/// fn require_expected<R: DeliveryRoute<Protocol = Expected>>(_: R) {}
-/// require_expected(Recipient::<Other>::global(MailAddr(1)));
-/// ```
-/// A delivery capability interpreted in the namespace of one emitting owner.
-///
-/// Logical and established recipients are transferable acquaintances and are
-/// therefore valid for any owner in the same address namespace. Creator-local
-/// child communication is deliberately excluded because its creation ID is
-/// meaningful only with the owner's statically selected child occurrence.
-///
-/// This contract constructs one concrete send product. It performs no
-/// delivery and introduces no effect beyond the existing logical,
-/// established, or creator-local delivery values.
-///
-pub trait DeliveryRouteFor<Owner: Behavior>: sealed::DeliveryRouteFor<Owner> + Sized {
-    /// Protocol selected by this owner-scoped capability.
-    type Protocol: Protocol<Addr = BehaviorAddr<Owner>>;
-    /// Concrete send product selected by this owner-scoped capability.
-    type Sends: SendEffects;
-
-    /// Consume the capability after proving it belongs to `Owner`.
-    fn deliver_for(self, message: <Self::Protocol as Protocol>::Msg) -> Self::Sends;
-}
-
 impl<P: Protocol> sealed::DeliveryRoute for Recipient<P> {}
 impl<P: Protocol> DeliveryRoute for Recipient<P> {
     type Protocol = P;
@@ -78,25 +61,6 @@ impl<P: Protocol> DeliveryRoute for Recipient<P> {
 
     fn deliver(self, message: P::Msg) -> Self::Sends {
         vec![Delivery::new(self, message)]
-    }
-}
-
-impl<Owner, P> sealed::DeliveryRouteFor<Owner> for Recipient<P>
-where
-    Owner: Behavior,
-    P: Protocol<Addr = BehaviorAddr<Owner>>,
-{
-}
-impl<Owner, P> DeliveryRouteFor<Owner> for Recipient<P>
-where
-    Owner: Behavior,
-    P: Protocol<Addr = BehaviorAddr<Owner>>,
-{
-    type Protocol = P;
-    type Sends = Vec<Delivery<P>>;
-
-    fn deliver_for(self, message: P::Msg) -> Self::Sends {
-        DeliveryRoute::deliver(self, message)
     }
 }
 
@@ -116,27 +80,6 @@ where
 
     fn deliver(self, message: P::Msg) -> Self::Sends {
         vec![EstablishedDelivery::new(self, message)]
-    }
-}
-
-impl<Owner, P> sealed::DeliveryRouteFor<Owner> for EstablishedRecipient<P>
-where
-    Owner: Behavior,
-    P: Protocol<Addr = BehaviorAddr<Owner>>,
-    P::Addr: EndpointAddress,
-{
-}
-impl<Owner, P> DeliveryRouteFor<Owner> for EstablishedRecipient<P>
-where
-    Owner: Behavior,
-    P: Protocol<Addr = BehaviorAddr<Owner>>,
-    P::Addr: EndpointAddress,
-{
-    type Protocol = P;
-    type Sends = Vec<EstablishedDelivery<P>>;
-
-    fn deliver_for(self, message: P::Msg) -> Self::Sends {
-        DeliveryRoute::deliver(self, message)
     }
 }
 
@@ -480,26 +423,5 @@ where
             }
         };
         ReplyDeliveries::new(vec![delivery])
-    }
-}
-
-impl<Owner, P> sealed::DeliveryRouteFor<Owner> for ReplyRoute<P>
-where
-    Owner: Behavior,
-    P: Protocol<Addr = BehaviorAddr<Owner>>,
-    P::Addr: EndpointAddress,
-{
-}
-impl<Owner, P> DeliveryRouteFor<Owner> for ReplyRoute<P>
-where
-    Owner: Behavior,
-    P: Protocol<Addr = BehaviorAddr<Owner>>,
-    P::Addr: EndpointAddress,
-{
-    type Protocol = P;
-    type Sends = ReplyDeliveries<Delivery<P>, EstablishedDelivery<P>>;
-
-    fn deliver_for(self, message: P::Msg) -> Self::Sends {
-        DeliveryRoute::deliver(self, message)
     }
 }

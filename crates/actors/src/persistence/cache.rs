@@ -186,8 +186,6 @@ where
 impl<A, K, V, Route> behavior::Protocol for Cache<A, K, V, Route>
 where
     A: Address,
-    K: Clone + Eq,
-    V: Clone,
     Route: DeliveryRoute,
     Route::Protocol: Protocol<Addr = A, Msg = CacheResult<K, V>>,
 {
@@ -331,8 +329,9 @@ mod tests {
             .initialize()
             .unwrap()
             .behavior;
+        let stored = put(&mut cache, reply, 1, 10);
         assert!(matches!(
-            put(&mut cache, reply, 1, 10),
+            stored,
             CacheResult::Stored {
                 replaced: None,
                 evicted: None,
@@ -362,8 +361,9 @@ mod tests {
                 .eq([2, 1])
         );
 
+        let stored = put(&mut cache, reply, 3, 30);
         assert_eq!(
-            put(&mut cache, reply, 3, 30),
+            stored,
             CacheResult::Stored {
                 key: 3,
                 replaced: None,
@@ -388,8 +388,9 @@ mod tests {
             .unwrap()
             .behavior;
         put(&mut cache, reply, 1, 10);
+        let stored = put(&mut cache, reply, 1, 11);
         assert_eq!(
-            put(&mut cache, reply, 1, 11),
+            stored,
             CacheResult::Stored {
                 key: 1,
                 replaced: Some(10),

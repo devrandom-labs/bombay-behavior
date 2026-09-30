@@ -73,11 +73,10 @@ type SubjectBehavior = Subject;
 
 fn assert_one_child_birth(creations: &Creations<CreateChild<MailAddr, ChildBehavior>>) {
     let mut children = creations.iter();
-    assert_eq!(
-        children.next().map(CreateChild::kind),
-        Some(CreationKind::Birth)
-    );
-    assert!(children.next().is_none());
+    let first_child_kind = children.next().map(CreateChild::kind);
+    assert_eq!(first_child_kind, Some(CreationKind::Birth));
+    let remaining_children = children.next();
+    assert!(remaining_children.is_none());
 }
 
 fn on_timeout(
@@ -426,20 +425,24 @@ async fn accepted_stale_timeout_error_and_terminal_turns_match_independent_model
     let initialized = behavior.initialize().unwrap();
     let initial = initialized.actions;
     let mut behavior = initialized.behavior;
+    let initial_token = model.initialize();
     assert_eq!(
         initial.sends.owned[0].generation,
-        TimerGeneration(model.initialize())
+        TimerGeneration(initial_token)
     );
 
     let accepted = behavior
         .transition(EventLayer::Inner(User::user(MailAddr(1), 1)))
         .unwrap();
+    let active_token = model.activity().unwrap();
     assert_eq!(
         accepted.sends.owned[0].generation,
-        TimerGeneration(model.activity().unwrap())
+        TimerGeneration(active_token)
     );
 
-    assert!(!model.notification(0));
+    let stale_admission = model.notification(0);
+    assert_eq!(stale_admission, None);
+    assert_eq!(model.no_activity(), Some(1));
     let stale = behavior
         .transition(EventLayer::Owned(TimerElapsed {
             id: TimerId(0),
@@ -448,7 +451,8 @@ async fn accepted_stale_timeout_error_and_terminal_turns_match_independent_model
         .unwrap();
     assert!(stale.sends.inner.is_empty());
 
-    assert!(model.notification(1));
+    let current_admission = model.notification(1);
+    assert_eq!(current_admission, Some(1));
     let timeout = behavior
         .transition(EventLayer::Owned(TimerElapsed {
             id: TimerId(0),
@@ -458,7 +462,8 @@ async fn accepted_stale_timeout_error_and_terminal_turns_match_independent_model
     assert_eq!(timeout.sends.inner[0].message, 99);
     assert!(timeout.sends.owned.is_empty());
 
-    assert!(!model.notification(1));
+    let duplicate_admission = model.notification(1);
+    assert_eq!(duplicate_admission, None);
     let duplicate = behavior
         .transition(EventLayer::Owned(TimerElapsed {
             id: TimerId(0),
@@ -474,9 +479,10 @@ async fn accepted_stale_timeout_error_and_terminal_turns_match_independent_model
     let accepted = behavior
         .transition(EventLayer::Inner(User::user(MailAddr(1), 2)))
         .unwrap();
+    let next_token = model.activity().unwrap();
     assert_eq!(
         accepted.sends.owned[0].generation,
-        TimerGeneration(model.activity().unwrap())
+        TimerGeneration(next_token)
     );
 
     let terminal = behavior

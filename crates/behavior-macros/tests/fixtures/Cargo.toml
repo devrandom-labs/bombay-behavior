@@ -5,6 +5,7 @@ members = [
     "facade-only",
     "renamed-facade",
     "direct-and-facade",
+    "unrenamed-direct",
     "direct-actors-and-facade",
     "missing-dependency",
 ]

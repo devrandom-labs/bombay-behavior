@@ -14,7 +14,17 @@ use behavior_actors::atomic::{
 };
 use behavior_actors::{Activate, StopOnShutdown};
 
+use assignment_delivery::accepted_assignment;
+
+#[path = "../tests/support/assignment_delivery.rs"]
+#[expect(
+    dead_code,
+    reason = "benchmark exercises the accepting path of the shared test interpreter"
+)]
+mod assignment_delivery;
+
 const DEFAULT_ITERATIONS: usize = 100_000;
+const DEFAULT_SAMPLES: usize = 5;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct RuntimeAddr(u64);
@@ -75,10 +85,34 @@ fn main() {
     let runtime = tokio::runtime::Builder::new_current_thread()
         .build()
         .unwrap_or_else(|error| panic!("benchmark runtime construction failed: {error}"));
-    runtime.block_on(measure());
+    let samples = std::env::var("BOMBAY_FIFO_BENCH_SAMPLES")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(DEFAULT_SAMPLES);
+    assert!(samples > 0, "a benchmark needs at least one sample");
+    let mut rates: Vec<_> = (0..samples).map(|_| runtime.block_on(measure())).collect();
+    rates.sort_by(f64::total_cmp);
+    println!(
+        "METRIC fifo_complete_cycles_per_s={:.0}",
+        rates[samples / 2]
+    );
+    println!("METRIC fifo_complete_cycles_per_s_min={:.0}", rates[0]);
+    println!(
+        "METRIC fifo_complete_cycles_per_s_max={:.0}",
+        rates[samples - 1]
+    );
+    println!("METRIC fifo_samples={samples}");
+    println!("METRIC fifo_iterations={}", iterations());
+    let end_delay = std::env::var("BOMBAY_FIFO_BENCH_END_DELAY_MS")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(0);
+    if end_delay != 0 {
+        std::thread::sleep(Duration::from_millis(end_delay));
+    }
 }
 
-async fn measure() {
+async fn measure() -> f64 {
     let roles = OrderedRoles::new(SearchRole::Primary, core::iter::empty())
         .unwrap_or_else(|_| panic!("one role is a valid roster"));
     let pool = fifo(
@@ -165,6 +199,7 @@ async fn measure() {
         MessageProtocol<RuntimeAddr, FifoOutcome<SearchRole, SearchJob, SearchResult>>,
     >::global(RuntimeAddr(88));
     let iterations = iterations();
+    assert!(iterations > 0, "a benchmark needs at least one iteration");
     let started = Instant::now();
 
     for index in 0..iterations {
@@ -190,8 +225,8 @@ async fn measure() {
             .into_iter()
             .next()
             .unwrap_or_else(|| panic!("accepted submission must emit one assignment"));
-        let receipt = assignment.receipt();
-        let (_, assignment, _) = assignment.into_parts();
+        let (receipt, delivered) = accepted_assignment(assignment);
+        let assignment = delivered.message;
         let accepted = pool
             .transition(FifoEvent::AssignmentSettled(SettledItem::Attempted(
                 ItemSettlement::Accepted(receipt),
@@ -211,7 +246,7 @@ async fn measure() {
             panic!("one completed assignment must emit one terminal outcome");
         }
         black_box((
-            completed.sends.customer_outcomes.as_slice().len(),
+            completed.sends.customer_outcomes.as_slice(),
             completed.sends.worker_assignments.len(),
             completed.sends.worker_observations.len(),
             completed.sends.worker_initializations.len(),
@@ -226,15 +261,5 @@ async fn measure() {
     }
 
     let elapsed = started.elapsed();
-    let rate = iterations as f64 / elapsed.as_secs_f64();
-    println!("METRIC fifo_complete_cycles_per_s={rate:.0}");
-    println!("METRIC fifo_iterations={iterations}");
-    println!("METRIC fifo_elapsed_ns={}", elapsed.as_nanos());
-    let end_delay = std::env::var("BOMBAY_FIFO_BENCH_END_DELAY_MS")
-        .ok()
-        .and_then(|value| value.parse().ok())
-        .unwrap_or(0);
-    if end_delay != 0 {
-        std::thread::sleep(Duration::from_millis(end_delay));
-    }
+    iterations as f64 / elapsed.as_secs_f64()
 }

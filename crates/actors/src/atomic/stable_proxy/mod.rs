@@ -33,8 +33,9 @@ pub use super::worker::{
     WorkerActivation,
 };
 pub use effects::ProxyEffects;
+pub(crate) use operation::ProxyOperationId;
 pub(crate) use operation::ProxyOperationWitness;
-pub use operation::{ProxyInputReceipt, ProxyInputResult, ProxyOperation, ProxyOperationId};
+pub use operation::{ProxyControlAdmission, ProxyInputReceipt, ProxyInputResult, ProxyOperation};
 pub use protocol::{
     InitialWorkerOutcome, ProxyControl, ProxyDiagnostic, ProxyDrain, ProxyOutcome, ProxyPhase,
     ReplacementOutcome,
@@ -301,7 +302,6 @@ where
 
     fn admit_activation(
         progress: &ActivationProgress,
-        worker: &CurrentWorker<W>,
         input: WorkerActivation<W, P>,
     ) -> Result<WorkerActivation<W, P>, WorkerActivation<W, P>> {
         let expected = match progress {
@@ -309,13 +309,10 @@ where
                 attempt
             }
         };
-        match (input.worker(), input.attempt()) {
-            (received_worker, received_activation)
-                if received_worker == worker.attempt && received_activation == expected =>
-            {
-                Ok(input)
-            }
-            _ => Err(input),
+        if input.attempt() == expected {
+            Ok(input)
+        } else {
+            Err(input)
         }
     }
 
@@ -2089,7 +2086,7 @@ where
             WorkerActivationShutdown::Departing {
                 activation: ActivationDuringDeparture::Pending(progress),
                 departure,
-            } => match Self::admit_activation(&progress, departure.worker(), input) {
+            } => match Self::admit_activation(&progress, input) {
                 Ok(input) => Self::retain_activation_while_departing(progress, departure, input),
                 Err(input) => Err((
                     WorkerActivationShutdown::Departing {
@@ -2114,7 +2111,7 @@ where
                 worker,
                 shutdown,
                 stopped,
-            } => match Self::admit_activation(&activation, &worker, input) {
+            } => match Self::admit_activation(&activation, input) {
                 Ok(input) => Self::retain_activation_after_worker(
                     activation, worker, shutdown, stopped, input,
                 ),
@@ -2940,7 +2937,7 @@ where
                         progress,
                         stopped,
                     },
-            }) => match Self::admit_activation(&progress, &worker, input) {
+            }) => match Self::admit_activation(&progress, input) {
                 Ok(input) => match progress {
                     ActivationProgress::WaitingForStart(activation) => Self::activation_waiting(
                         current.creations,

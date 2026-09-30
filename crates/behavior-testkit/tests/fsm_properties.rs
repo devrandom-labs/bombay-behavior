@@ -10,8 +10,8 @@ use std::collections::HashSet;
 
 use behavior_actors::{Machine, Move};
 
+use behavior_actors::Activate;
 use behavior_core::{Actions, MailAddr, Never, NoBirths, Step, User, UserEvent};
-use behavior_testkit::InitializeTest;
 use proptest::collection::vec;
 use proptest::prelude::*;
 use tokio::runtime::Builder;
@@ -185,8 +185,8 @@ fn fsm_exhaustive_sequences_never_drop_or_duplicate() {
 
 /// A `Move::Stop` produced mid-drain propagates the verdict and preserves
 /// the remaining batch in held order; the behavior keeps working afterwards.
-#[tokio::test]
-async fn fsm_stop_mid_drain_preserves_remaining_batch() {
+#[test]
+fn fsm_stop_mid_drain_preserves_remaining_batch() {
     #[derive(Clone, Copy, PartialEq)]
     enum Phase {
         P0,
@@ -230,8 +230,8 @@ async fn fsm_stop_mid_drain_preserves_remaining_batch() {
 
 /// `Goto` to the CURRENT phase is a no-op verdict: no drain runs, held
 /// messages stay deferred until a real phase change.
-#[tokio::test]
-async fn fsm_self_goto_does_not_drain() {
+#[test]
+fn fsm_self_goto_does_not_drain() {
     #[derive(Clone, Copy, PartialEq)]
     enum Phase {
         A,

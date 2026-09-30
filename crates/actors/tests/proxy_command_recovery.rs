@@ -1400,6 +1400,54 @@ fn rejected_worker_is_returned_and_initial_empty_provenance_is_preserved() {
 }
 
 #[test]
+fn panicked_initial_worker_returns_its_current_definition_without_a_birth() {
+    let initialized = StableProxy::immediate()
+        .initialize()
+        .expect("proxy initialization is pure");
+    let mut proxy = initialized.behavior;
+    let started = proxy
+        .on(ProxyControl::start(Worker(8)))
+        .expect("the proxy stages one initial worker");
+    let creation = started
+        .creates
+        .into_iter()
+        .next()
+        .expect("one worker creation is staged");
+    let rejected = proxy
+        .on(worker_creation_result(
+            ChildCreationOutcome::InitializationPanicked {
+                creation: RoutedCreation::new(creation, 708),
+            },
+        ))
+        .expect("a pure initialization panic is a total proxy input");
+
+    assert_eq!(proxy.phase(), ProxyPhase::EmptyInitial);
+    assert!(rejected.creates.is_empty());
+    assert!(rejected.sends.diagnostics.is_empty());
+    match rejected
+        .sends
+        .owner_outcomes
+        .into_iter()
+        .next()
+        .expect("the owner receives one exact initial-worker outcome")
+        .into_inner()
+    {
+        ProxyOutcome::Initial {
+            outcome:
+                InitialWorkerOutcome::Resolved {
+                    result:
+                        WorkerStartResult::CreationRejected {
+                            activation: ImmediateActivation,
+                            rejection: WorkerCreationRejection::WorkerPanicked { worker },
+                            stopped: None,
+                        },
+                },
+        } => assert_eq!(worker, Worker(8)),
+        _ => panic!("the panic must not become an established worker"),
+    }
+}
+
+#[test]
 fn overlapping_start_returns_the_complete_submission() {
     let initialized = StableProxy::immediate()
         .initialize()
@@ -1536,6 +1584,97 @@ fn foreign_worker_result_is_returned_without_disturbing_the_expected_start() {
     assert_eq!(creation.id(), foreign_worker);
     assert_eq!(creation.route(), foreign_route);
     assert_eq!(error, WorkerRejected(4));
+}
+
+#[test]
+fn malformed_worker_creation_batch_returns_every_settlement() {
+    let initialized = StableProxy::immediate()
+        .initialize()
+        .expect("proxy initialization is pure");
+    let mut proxy = initialized.behavior;
+    let started = proxy
+        .on(ProxyControl::start(Worker(1)))
+        .expect("initial worker start is total");
+    assert_eq!(started.creates.len(), 1);
+
+    let empty = proxy
+        .on(CreationsSettled::new(CreationSettlement::Settled(
+            behavior::Creations::empty(),
+        )))
+        .expect("empty settlement is returned to the owner");
+    assert_eq!(proxy.phase(), ProxyPhase::Creating);
+    let diagnostic = empty
+        .sends
+        .diagnostics
+        .into_iter()
+        .next()
+        .expect("empty batch has an owner diagnostic")
+        .into_inner();
+    let ProxyDiagnostic::UnexpectedWorkerStart { workers, .. } = diagnostic else {
+        panic!("empty batch changed diagnostic category");
+    };
+    let CreationSettlement::Settled(workers) = workers.into_settlement() else {
+        panic!("empty batch changed settlement category");
+    };
+    assert!(workers.is_empty());
+
+    let mut sequence = CreationSequence::new();
+    let first = sequence.issue().expect("first creation ID is available");
+    let second = sequence.issue().expect("second creation ID is available");
+    let settlements = [(first, 91, 4), (second, 92, 5)]
+        .into_iter()
+        .map(|(id, route, error)| {
+            SettledItem::Attempted(ItemSettlement::Accepted(
+                ChildCreationOutcome::InitializationRejected {
+                    creation: RoutedCreation::new(
+                        CreateChild::birth(id, StopOnShutdown::new(Worker(error))),
+                        route,
+                    ),
+                    error: WorkerRejected(error),
+                },
+            ))
+        })
+        .collect();
+    let returned = proxy
+        .on(CreationsSettled::new(CreationSettlement::Settled(
+            settlements,
+        )))
+        .expect("multi-item settlement is returned to the owner");
+    assert_eq!(proxy.phase(), ProxyPhase::Creating);
+    assert!(returned.sends.owner_outcomes.is_empty());
+    let diagnostic = returned
+        .sends
+        .diagnostics
+        .into_iter()
+        .next()
+        .expect("multi-item batch has an owner diagnostic")
+        .into_inner();
+    let ProxyDiagnostic::UnexpectedWorkerStart { phase, workers } = diagnostic else {
+        panic!("multi-item batch changed diagnostic category");
+    };
+    assert_eq!(phase, ProxyPhase::Creating);
+    let CreationSettlement::Settled(workers) = workers.into_settlement() else {
+        panic!("multi-item batch changed settlement category");
+    };
+    let returned: Vec<_> = workers
+        .into_iter()
+        .map(|item| {
+            let SettledItem::Attempted(ItemSettlement::Accepted(
+                ChildCreationOutcome::InitializationRejected { creation, error },
+            )) = item
+            else {
+                panic!("worker settlement changed outcome category");
+            };
+            (creation.id(), creation.route(), error)
+        })
+        .collect();
+    assert_eq!(
+        returned,
+        [
+            (first, 91, WorkerRejected(4)),
+            (second, 92, WorkerRejected(5))
+        ]
+    );
 }
 
 #[test]
@@ -2352,6 +2491,53 @@ fn activation_from_another_proxy_is_returned_unchanged() {
         .on(expected.started())
         .expect("the target retains its exact activation");
     assert!(accepted.sends.diagnostics.is_empty());
+}
+
+#[test]
+fn equal_worker_values_and_endpoints_do_not_share_activation_authority() {
+    let (mut target, expected) = awaiting_activation(Worker(41), Hydrate(17), Endpoint(91));
+    let (mut source, foreign) = awaiting_activation(Worker(41), Hydrate(17), Endpoint(91));
+    let foreign_worker = foreign.worker();
+    assert_ne!(expected.worker(), foreign_worker);
+
+    let rejected = target
+        .on(foreign.started())
+        .expect("foreign activation is a total diagnostic transition");
+    assert_eq!(target.phase(), ProxyPhase::Activating);
+    assert!(matches!(rejected.become_, Step::Continue));
+    assert!(rejected.creates.is_empty());
+    assert!(rejected.sends.worker_observations.is_empty());
+    assert!(rejected.sends.worker_initializations.is_empty());
+    assert!(rejected.sends.worker_activations.is_empty());
+    assert!(rejected.sends.worker_shutdowns.is_empty());
+    assert!(rejected.sends.worker_deliveries.is_empty());
+    assert!(rejected.sends.owner_outcomes.is_empty());
+    assert_eq!(rejected.sends.diagnostics.len(), 1);
+
+    let returned = match rejected
+        .sends
+        .diagnostics
+        .into_iter()
+        .next()
+        .expect("the exact foreign activation is returned")
+        .into_inner()
+    {
+        ProxyDiagnostic::UnexpectedWorkerActivation { phase, activation } => {
+            assert_eq!(phase, ProxyPhase::Activating);
+            assert_eq!(activation.worker(), foreign_worker);
+            activation
+        }
+        _ => panic!("foreign activation changed diagnostic category"),
+    };
+    let accepted_by_source = source
+        .on(returned)
+        .expect("the original owner accepts the returned activation");
+    assert!(accepted_by_source.sends.diagnostics.is_empty());
+
+    let accepted_by_target = target
+        .on(expected.started())
+        .expect("the target retains its own exact activation");
+    assert!(accepted_by_target.sends.diagnostics.is_empty());
 }
 
 #[test]

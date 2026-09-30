@@ -1,0 +1,5 @@
+error[E0599]: no function or associated item named `new` found for struct `ProxyInputReceipt<Worker, Plan>` in the current scope
+ --> tests/ui/proxy_receipt.rs:9:73
+  |
+9 |     let _ = behavior_actors::atomic::ProxyInputReceipt::<Worker, Plan>::new;
+  |                                                                         ^^^ function or associated item not found in `ProxyInputReceipt<Worker, Plan>`

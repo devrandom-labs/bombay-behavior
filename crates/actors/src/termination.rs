@@ -82,6 +82,7 @@ impl<A: Address> ReportTerminalOutcome<A> {
 
 impl<A: Address> behavior::InterpreterRequest for ReportTerminalOutcome<A> {
     type ReturnToEmitter = behavior::NoReturnToEmitter;
+    type LogicalProtocols = behavior::NoBirthProtocols;
 }
 
 impl<A> behavior::ActionItem for ReportTerminalOutcome<A>

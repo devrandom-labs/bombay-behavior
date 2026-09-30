@@ -67,6 +67,7 @@ where
 {
     type ReturnToEmitter =
         ReturnsToEmitter<behavior::EstablishedCreation<P, Occurrence>, behavior::Here>;
+    type LogicalProtocols = behavior::NoBirthProtocols;
 }
 
 impl<P, Occurrence> ActionItem for ObserveEstablishedCreation<P, Occurrence>
@@ -221,6 +222,7 @@ where
     P::Addr: EndpointAddress,
 {
     type ReturnToEmitter = ReturnsToEmitter<EstablishedObservation<P>, behavior::Here>;
+    type LogicalProtocols = behavior::NoBirthProtocols;
 }
 
 impl<P> ActionItem for ObserveEstablished<P>
@@ -278,6 +280,7 @@ impl<P: Protocol> Clone for CancelObservation<P> {
 
 impl<P: Protocol> InterpreterRequest for CancelObservation<P> {
     type ReturnToEmitter = ReturnsToEmitter<EstablishedObservation<P>, behavior::Here>;
+    type LogicalProtocols = behavior::NoBirthProtocols;
 }
 
 impl<P: Protocol> ActionItem for CancelObservation<P> {
@@ -442,41 +445,34 @@ pub struct ShutdownId(pub u64);
 /// strengthened into an orderly-shutdown request:
 ///
 /// ```compile_fail
-/// use behavior::{
-///     Actions, Address, Behavior, BehaviorActed, EndpointAddress,
-///     EstablishedActor, Here, Ingress, Never, NoBirths, NoSends, Protocol, User,
-/// };
-/// use behavior_actors::{
-///     ShutdownEstablished, ShutdownId, ShutdownRequested,
-/// };
 /// #[derive(Clone, Copy, PartialEq, Eq)]
 /// struct RuntimeAddr(u64);
-/// impl Address for RuntimeAddr { type Nonce = u64; }
+/// impl behavior::Address for RuntimeAddr { type Nonce = u64; }
 /// struct Endpoint;
 /// impl Clone for Endpoint { fn clone(&self) -> Self { Self } }
-/// impl EndpointAddress for RuntimeAddr {
-///     type Established<P> = Endpoint where P: Protocol<Addr = Self>;
+/// impl behavior::EndpointAddress for RuntimeAddr {
+///     type Established<P> = Endpoint where P: behavior::Protocol<Addr = Self>;
 /// }
 /// struct Worker;
-/// impl Protocol for Worker { type Addr = RuntimeAddr; type Msg = (); }
-/// impl Behavior for Worker {
+/// impl behavior::Protocol for Worker { type Addr = RuntimeAddr; type Msg = (); }
+/// impl behavior::Behavior for Worker {
 ///     type Protocol = Self;
-///     type Event = User<RuntimeAddr, ()>;
-///     type Sends = NoSends;
-///     type Ph = Never;
-///     type Error = Never;
-///     type Birth = NoBirths;
+///     type Event = behavior::User<RuntimeAddr, ()>;
+///     type Sends = behavior::NoSends;
+///     type Ph = behavior::Never;
+///     type Error = behavior::Never;
+///     type Birth = behavior::NoBirths;
 ///     fn transition(
 ///         &mut self,
 ///         _: behavior::ActiveTurn,
 ///         _: Self::Event,
-///     ) -> BehaviorActed<Self> { Ok(Actions::cont()) }
+///     ) -> behavior::BehaviorActed<Self> { Ok(behavior::Actions::cont()) }
 /// }
-/// let actor = EstablishedActor::<Worker>::issued(Endpoint);
-/// let _ = ShutdownEstablished::<Worker, Here>::new(
-///     ShutdownId(1),
+/// let actor = behavior::EstablishedActor::<Worker>::issued(Endpoint);
+/// let _ = behavior_actors::ShutdownEstablished::<Worker, behavior::Here>::new(
+///     behavior_actors::ShutdownId(1),
 ///     actor,
-///     Ingress::<ShutdownRequested, Here>::new(),
+///     behavior::Ingress::<behavior_actors::ShutdownRequested, behavior::Here>::new(),
 /// );
 /// ```
 pub struct ShutdownEstablished<B, TargetPath>
@@ -540,6 +536,7 @@ where
 {
     type ReturnToEmitter =
         ReturnsToEmitter<EstablishedShutdownResolved<B::Protocol>, behavior::Here>;
+    type LogicalProtocols = behavior::NoBirthProtocols;
 }
 
 impl<B, TargetPath> ActionItem for ShutdownEstablished<B, TargetPath>

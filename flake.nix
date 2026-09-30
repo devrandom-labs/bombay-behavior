@@ -43,6 +43,17 @@
             exec cargo fuzz "$@"
           '';
         };
+        coverageRunner = pkgs.writeShellApplication {
+          name = "bombay-behavior-coverage";
+          runtimeInputs = [ rustToolchain pkgs.cargo-llvm-cov ];
+          text = ''
+            if [[ ! -f Cargo.toml || ! -d crates/actors ]]; then
+              echo "run this command from the bombay-behavior repository root" >&2
+              exit 2
+            fi
+            exec cargo llvm-cov --workspace --lib --tests --locked "$@"
+          '';
+        };
         craneLib = (crane.mkLib pkgs).overrideToolchain (_: rustToolchain);
         src = pkgs.lib.fileset.toSource {
           root = ./.;
@@ -67,7 +78,12 @@
             ./scripts/check_published_docs.py
             ./scripts/test_check_published_docs.py
             ./scripts/check_published_packages.sh
+            ./scripts/check_rustdoc_imports.py
+            ./scripts/check_rustdoc_error_codes.py
+            ./scripts/check_assertion_effects.py
+            ./scripts/test_check_assertion_effects.py
             (pkgs.lib.fileset.maybeMissing ./mutants-baseline.json)
+            ./mutants/actors
           ];
         };
         commonArgs = {
@@ -105,7 +121,11 @@
           });
       in {
         checks = {
-          bombay-behavior = craneLib.buildPackage (commonArgs // { inherit cargoArtifacts; });
+          bombay-behavior = craneLib.buildPackage (commonArgs // {
+            inherit cargoArtifacts;
+            # Nextest and the doctest derivation own the test runs.
+            doCheck = false;
+          });
           bombay-behavior-nextest = craneLib.cargoNextest (commonArgs // {
             inherit cargoArtifacts;
             cargoNextestExtraArgs = "--workspace";
@@ -125,6 +145,10 @@
               cp .github/pages-index.html target/doc/index.html
               python3 -m unittest scripts/test_check_published_docs.py
               python3 scripts/check_published_docs.py target/doc
+              python3 scripts/check_rustdoc_imports.py
+              python3 scripts/check_rustdoc_error_codes.py
+              python3 -m unittest scripts/test_check_assertion_effects.py
+              python3 scripts/check_assertion_effects.py
             '';
             doInstallCargoArtifacts = false;
             doCheck = false;
@@ -155,6 +179,7 @@
         packages = rec {
           default = craneLib.buildPackage (commonArgs // { inherit cargoArtifacts; });
           fuzz = fuzzRunner;
+          coverage = coverageRunner;
 
           # Expensive on-demand lane. The gate rejects survivors, timeouts,
           # incomplete runs, and per-function viability regressions. Keep it
@@ -212,11 +237,54 @@
             doInstallCargoArtifacts = false;
             doCheck = false;
           });
+
+          # On-demand actor-family slices. Each reviewed floor is committed,
+          # so a later rerun cannot silently turn a caught mutant unviable.
+          mutants-actors = craneLib.mkCargoDerivation (commonArgs // {
+            inherit cargoArtifacts;
+            pnameSuffix = "-actors-mutants";
+            nativeBuildInputs = [ pkgs.cargo-mutants pkgs.cargo-nextest ];
+            buildPhaseCargoCommand = ''
+              set -euo pipefail
+              mkdir -p "$out"
+              run_actor_campaign() {
+                campaign="$1"
+                file="$2"
+                filter="$3"
+                PROPTEST_CASES=64 cargo mutants \
+                  --package bombay-behavior-actors \
+                  --test-package bombay-behavior-actors \
+                  --test-package bombay-behavior-testkit \
+                  --test-tool nextest --no-shuffle --colors never \
+                  --minimum-test-timeout 180 \
+                  -f "$file" -F "$filter" \
+                  --output "$out/$campaign" -- --profile mutants || true
+                cargo run --release -p behavior-mutants-gate -- \
+                  check "$out/$campaign/mutants.out" \
+                  "$PWD/mutants/actors/$campaign.json" \
+                  | tee "$out/$campaign/mutants-gate-report.txt"
+              }
+              run_actor_campaign health \
+                crates/actors/src/operations/health.rs \
+                'Health<A, K, Route>::commit'
+              run_actor_campaign work_queue \
+                crates/actors/src/routing/work_queue.rs \
+                '::submit|::announce'
+              run_actor_campaign pub_sub_membership \
+                crates/actors/src/discovery/pub_sub.rs \
+                'PubSub<A, K, P, Route>::subscribe|PubSub<A, K, P, Route>::unsubscribe'
+              run_actor_campaign pub_sub_publish \
+                crates/actors/src/discovery/pub_sub.rs \
+                '<impl Behavior for PubSub<A, K, P, Route>>::transition'
+            '';
+            doInstallCargoArtifacts = false;
+            doCheck = false;
+          });
         };
 
         devShells.default = craneLib.devShell {
           checks = self.checks.${system};
-          packages = with pkgs; [ cargo-audit cargo-deny cargo-mutants cargo-nextest taplo ];
+          packages = with pkgs; [ cargo-audit cargo-deny cargo-llvm-cov cargo-mutants cargo-nextest taplo ];
         };
         devShells.fuzz = pkgs.mkShell {
           packages = [ fuzzToolchain pkgs.cargo-fuzz ];

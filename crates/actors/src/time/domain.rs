@@ -4,6 +4,15 @@ use std::time::Instant;
 
 use crate::{TimerGeneration, TimerId};
 
+/// Whether one timer arrival consumed the currently armed schedule.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum TimerAdmission {
+    /// The arrival matched and consumed the current schedule.
+    Accepted,
+    /// The arrival did not match an armed schedule.
+    Ignored,
+}
+
 /// Lifecycle of a re-armable generation-tagged timer.
 pub(crate) enum TimerLease {
     NeverIssued,
@@ -38,13 +47,15 @@ impl TimerLease {
         Some(generation)
     }
 
-    pub(crate) fn accept(&mut self, generation: TimerGeneration) -> bool {
+    pub(crate) fn accept(&mut self, generation: TimerGeneration) -> TimerAdmission {
         match *self {
             Self::Armed(live) if live == generation => {
                 *self = Self::Idle(live);
-                true
+                TimerAdmission::Accepted
             }
-            Self::NeverIssued | Self::Armed(_) | Self::Idle(_) | Self::Exhausted => false,
+            Self::NeverIssued | Self::Armed(_) | Self::Idle(_) | Self::Exhausted => {
+                TimerAdmission::Ignored
+            }
         }
     }
 
@@ -89,7 +100,7 @@ impl OneShotSchedule {
         }
     }
 
-    pub(crate) fn accept(&mut self, id: TimerId, generation: TimerGeneration) -> bool {
+    pub(crate) fn accept(&mut self, id: TimerId, generation: TimerGeneration) -> TimerAdmission {
         match self {
             Self::Scheduled {
                 id: expected_id,
@@ -97,9 +108,9 @@ impl OneShotSchedule {
                 ..
             } if *expected_id == id && *expected_generation == generation => {
                 *self = Self::Unscheduled;
-                true
+                TimerAdmission::Accepted
             }
-            Self::Unscheduled | Self::Scheduled { .. } => false,
+            Self::Unscheduled | Self::Scheduled { .. } => TimerAdmission::Ignored,
         }
     }
 
@@ -116,8 +127,10 @@ mod tests {
     fn consumed_generation_cannot_fire_twice() {
         let mut lease = TimerLease::new();
         let generation = lease.arm().unwrap();
-        assert!(lease.accept(generation));
-        assert!(!lease.accept(generation));
+        let first = lease.accept(generation);
+        let duplicate = lease.accept(generation);
+        assert_eq!(first, TimerAdmission::Accepted);
+        assert_eq!(duplicate, TimerAdmission::Ignored);
     }
 
     #[test]
@@ -130,6 +143,26 @@ mod tests {
         );
         schedule.cancel();
         assert_eq!(schedule.request(), None);
-        assert!(!schedule.accept(TimerId(4), TimerGeneration(0)));
+        let cancelled = schedule.accept(TimerId(4), TimerGeneration(0));
+        assert_eq!(cancelled, TimerAdmission::Ignored);
+    }
+
+    #[test]
+    fn foreign_schedule_arrivals_leave_the_current_deadline_available() {
+        let now = Instant::now();
+        let mut schedule = OneShotSchedule::new(TimerId(4), Some(now));
+        let foreign_id = schedule.accept(TimerId(5), TimerGeneration(0));
+        let foreign_generation = schedule.accept(TimerId(4), TimerGeneration(1));
+        assert_eq!(foreign_id, TimerAdmission::Ignored);
+        assert_eq!(foreign_generation, TimerAdmission::Ignored);
+        assert_eq!(
+            schedule.request(),
+            Some((TimerId(4), TimerGeneration(0), now))
+        );
+        let accepted = schedule.accept(TimerId(4), TimerGeneration(0));
+        let duplicate = schedule.accept(TimerId(4), TimerGeneration(0));
+        assert_eq!(accepted, TimerAdmission::Accepted);
+        assert_eq!(duplicate, TimerAdmission::Ignored);
+        assert_eq!(schedule.request(), None);
     }
 }

@@ -1,10 +1,12 @@
 //! Structural logical-host projection from real sends and birth algebras.
 
 use behavior_actors::DeliveryOutcomes;
+use behavior_actors::atomic::{CustomerDelivery, DiagnosticAction};
 use behavior_core::{
     Actions, Address, Behavior, BehaviorActed, BirthProtocol, BirthProtocolAt, BirthProtocolHead,
     BirthProtocolProduct, BirthProtocolTail, Births, ChildChoice, Delivery, EndpointAddress,
-    EstablishedDelivery, LogicalHostRequirements, Never, NoBirthProtocols, NoBirths, Protocol,
+    EstablishedDelivery, EstablishedRecipient, InterpreterRequests, LogicalDeliveryProtocols,
+    LogicalHostRequirements, Never, NoBirthProtocols, NoBirths, Protocol, Recipient, SendLayer,
     User,
 };
 use core::marker::PhantomData;
@@ -136,4 +138,57 @@ fn a_framework_consumes_repeated_requirements_without_normalizing_them() {
     }
 
     requires_every_host::<Application, ApplicationSpaces>();
+}
+
+#[test]
+fn interpreter_requests_project_possible_logical_customer_and_diagnostic_routes() {
+    type Expected = BirthProtocol<PublicCommands, NoBirthProtocols>;
+    fn exact<T: Same<Expected>>() {}
+    fn empty<T: Same<NoBirthProtocols>>() {}
+
+    type CustomerHosts =
+        <InterpreterRequests<CustomerDelivery<PublicCommands>> as LogicalDeliveryProtocols>::Protocols;
+    type LogicalDiagnosticHosts = <InterpreterRequests<
+        DiagnosticAction<Recipient<PublicCommands>, ()>,
+    > as LogicalDeliveryProtocols>::Protocols;
+    type ExactDiagnosticHosts = <InterpreterRequests<
+        DiagnosticAction<EstablishedRecipient<PublicCommands>, ()>,
+    > as LogicalDeliveryProtocols>::Protocols;
+
+    exact::<CustomerHosts>();
+    exact::<LogicalDiagnosticHosts>();
+    empty::<ExactDiagnosticHosts>();
+}
+
+#[test]
+fn customer_routes_keep_the_two_wrapper_orders_distinct() {
+    type InnerFirst = SendLayer<
+        InterpreterRequests<CustomerDelivery<PublicCommands>>,
+        Vec<Delivery<StableDestination>>,
+    >;
+    type OuterFirst = SendLayer<
+        Vec<Delivery<StableDestination>>,
+        InterpreterRequests<CustomerDelivery<PublicCommands>>,
+    >;
+    type InnerFirstExpected =
+        BirthProtocol<StableDestination, BirthProtocol<PublicCommands, NoBirthProtocols>>;
+    type OuterFirstExpected =
+        BirthProtocol<PublicCommands, BirthProtocol<StableDestination, NoBirthProtocols>>;
+
+    fn inner_first<T: Same<InnerFirstExpected>>() {}
+    fn outer_first<T: Same<OuterFirstExpected>>() {}
+    inner_first::<<InnerFirst as LogicalDeliveryProtocols>::Protocols>();
+    outer_first::<<OuterFirst as LogicalDeliveryProtocols>::Protocols>();
+}
+
+#[test]
+fn repeated_customer_request_routes_keep_both_occurrences() {
+    type Sends = SendLayer<
+        InterpreterRequests<CustomerDelivery<PublicCommands>>,
+        InterpreterRequests<CustomerDelivery<PublicCommands>>,
+    >;
+    type Expected = BirthProtocol<PublicCommands, BirthProtocol<PublicCommands, NoBirthProtocols>>;
+    fn exact<T: Same<Expected>>() {}
+
+    exact::<<Sends as LogicalDeliveryProtocols>::Protocols>();
 }

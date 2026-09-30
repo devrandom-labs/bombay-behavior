@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use super::domain::TimerLease;
+use super::domain::{TimerAdmission, TimerLease};
 use super::event::{TimedEvent, TimedReaction};
 use crate::protocol::{ScheduleAfter, TimerId};
 use behavior::Step;
@@ -14,18 +14,15 @@ use behavior::{
 /// Infallible fold invoked for each accepted periodic generation.
 ///
 /// ```compile_fail,E0308
-/// # use std::time::Duration;
-/// # use behavior::{Actions, Behavior, MailAddr, Never, NoBirths, User};
-/// # use behavior_actors::{Periodic, TimerId};
 /// # struct App;
-/// # impl behavior::Protocol for App { type Addr = MailAddr; type Msg = (); }
-/// # impl Behavior for App {
-/// #   type Protocol = Self; type Event = User<MailAddr, ()>; type Sends = Vec<Never>;
-/// #   type Ph = Never; type Error = Never; type Birth = NoBirths;
-/// #   fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> behavior::BehaviorActed<Self> { Ok(Actions::cont()) }
+/// # impl behavior::Protocol for App { type Addr = behavior::MailAddr; type Msg = (); }
+/// # impl behavior::Behavior for App {
+/// #   type Protocol = Self; type Event = behavior::User<behavior::MailAddr, ()>; type Sends = Vec<behavior::Never>;
+/// #   type Ph = behavior::Never; type Error = behavior::Never; type Birth = behavior::NoBirths;
+/// #   fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> behavior::BehaviorActed<Self> { Ok(behavior::Actions::cont()) }
 /// # }
-/// fn fallible(_: &mut App) -> behavior::BehaviorActed<App> { Ok(Actions::cont()) }
-/// let _ = Periodic::new(App, TimerId(1), Duration::from_secs(1), fallible);
+/// fn fallible(_: &mut App) -> behavior::BehaviorActed<App> { Ok(behavior::Actions::cont()) }
+/// let _ = behavior_actors::Periodic::new(App, behavior_actors::TimerId(1), std::time::Duration::from_secs(1), fallible);
 /// ```
 /// Repeatedly notify a wrapped behavior at a relative interval.
 ///
@@ -131,11 +128,14 @@ where
 
     fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
         match event {
-            EventLayer::Owned(elapsed)
-                if elapsed.id == self.id && self.lease.accept(elapsed.generation) =>
-            {
-                let actions = (self.on_elapsed)(&mut self.inner);
-                Ok(self.wrap_and_rearm(actions))
+            EventLayer::Owned(elapsed) if elapsed.id == self.id => {
+                match self.lease.accept(elapsed.generation) {
+                    TimerAdmission::Accepted => {
+                        let actions = (self.on_elapsed)(&mut self.inner);
+                        Ok(self.wrap_and_rearm(actions))
+                    }
+                    TimerAdmission::Ignored => Ok(Actions::cont()),
+                }
             }
             EventLayer::Owned(_) => Ok(Actions::cont()),
             EventLayer::Inner(event) => {

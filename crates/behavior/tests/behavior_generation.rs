@@ -1,8 +1,7 @@
 use behavior::{
-    Actions, BehaviorActed, BirthProtocol, BirthProtocolProduct, ChildChoice, Children,
-    ClassifySettlement, CreationSequence, Delivery, Interpretation, ItemSettlement,
-    LogicalDeliveryProtocols, MailAddr, Never, NoBirthProtocols, Recipient, SendEffects,
-    SettledItem, SettlementStatus, Step,
+    Actions, BehaviorActed, BirthProtocol, ChildChoice, Children, ClassifySettlement,
+    CreationSequence, Delivery, Interpretation, ItemSettlement, MailAddr, Never, NoBirthProtocols,
+    Recipient, SendEffects, SettledItem, SettlementStatus, Step,
 };
 
 pub struct FirstDestination;
@@ -24,6 +23,7 @@ struct LocalRequest(u8);
 
 impl behavior::InterpreterRequest for LocalRequest {
     type ReturnToEmitter = behavior::NoReturnToEmitter;
+    type LogicalProtocols = behavior::NoBirthProtocols;
 }
 
 impl behavior::ActionItem for LocalRequest {
@@ -93,24 +93,24 @@ impl Bootstrap {
     }
 }
 
-impl LogicalDeliveryProtocols for BootstrapSends {
-    type Protocols =
-        <<Vec<Delivery<FirstDestination>> as LogicalDeliveryProtocols>::Protocols as BirthProtocolProduct>::Append<
-            <Vec<Delivery<SecondDestination>> as LogicalDeliveryProtocols>::Protocols,
-        >;
-}
-
 #[test]
 fn generated_send_product_owner_exposes_its_exact_logical_destinations() {
     type Actual = <Bootstrap as behavior::LogicalHostRequirements>::LogicalHosts;
     type Expected =
         BirthProtocol<FirstDestination, BirthProtocol<SecondDestination, NoBirthProtocols>>;
 
-    trait Same<T> {}
-    impl<T> Same<T> for T {}
-    fn exact<T: Same<Expected>, Expected>() {}
+    let _exact_hosts: core::marker::PhantomData<Expected> = core::marker::PhantomData::<Actual>;
+}
 
-    exact::<Actual, Expected>();
+#[test]
+fn generated_request_lanes_do_not_hide_or_merge_logical_destinations() {
+    type Actual = <LaneFamiliesSends as behavior::LogicalDeliveryProtocols>::Protocols;
+    type Expected =
+        BirthProtocol<FirstDestination, BirthProtocol<FirstDestination, NoBirthProtocols>>;
+    let _: core::marker::PhantomData<Expected> = core::marker::PhantomData::<Actual>;
+
+    type RequestOnly = <EqualProductsSends as behavior::LogicalDeliveryProtocols>::Protocols;
+    let _: core::marker::PhantomData<NoBirthProtocols> = core::marker::PhantomData::<RequestOnly>;
 }
 
 struct Positioned;
@@ -139,13 +139,15 @@ struct LaneFamilies;
     sends = {
         requests: behavior::InterpreterRequests<LocalRequest>,
         deliveries: Vec<Delivery<FirstDestination>>,
+        later: Vec<Delivery<FirstDestination>>,
     },
 )]
 impl LaneFamilies {
     fn init(&mut self) -> BehaviorActed<Self> {
         Ok(Actions::cont()
             .send_requests(LocalRequest(0))
-            .send_deliveries(Delivery::new(Recipient::global(MailAddr(5)), 8)))
+            .send_deliveries(Delivery::new(Recipient::global(MailAddr(5)), 8))
+            .send_later(Delivery::new(Recipient::global(MailAddr(6)), 9)))
     }
 
     fn receive(&mut self, _: MailAddr, _: ()) -> BehaviorActed<Self> {
@@ -374,7 +376,8 @@ fn generated_products_preserve_exact_initialization_actions() {
     let second = creations.next().expect("the second child is retained");
     let (_, second, _) = second.into_parts();
     assert!(matches!(second, ChildChoice::Head(SecondChild)));
-    assert!(creations.next().is_none());
+    let remaining_creations = creations.next();
+    assert!(remaining_creations.is_none());
 }
 
 fn accepts_named_child<Parent, Role>(_: Role, _: Role::Child)
@@ -694,7 +697,7 @@ async fn generated_product_composes_delivery_and_interpreter_request_lanes() {
     >>::interpret(actions.sends, &mut interpreter)
     .await;
 
-    assert_eq!(interpreter.0, ["request", "first"]);
+    assert_eq!(interpreter.0, ["request", "first", "first"]);
     let Interpretation::Complete(settlement) = settlement else {
         panic!("infallible fixture interpretation corrupted");
     };
@@ -704,6 +707,10 @@ async fn generated_product_composes_delivery_and_interpreter_request_lanes() {
     ));
     assert!(matches!(
         settlement.deliveries.as_slice(),
+        [SettledItem::Attempted(ItemSettlement::Accepted(()))]
+    ));
+    assert!(matches!(
+        settlement.later.as_slice(),
         [SettledItem::Attempted(ItemSettlement::Accepted(()))]
     ));
 }
@@ -726,7 +733,8 @@ fn identical_product_types_require_distinct_lane_selectors() {
 #[test]
 fn declared_error_is_exact_for_initialization() {
     let mut actor = Fallible;
-    assert_eq!(behavior::initialize(&mut actor), Err(InitError::Rejected));
+    let initialized = behavior::initialize(&mut actor);
+    assert_eq!(initialized, Err(InitError::Rejected));
 }
 
 #[test]

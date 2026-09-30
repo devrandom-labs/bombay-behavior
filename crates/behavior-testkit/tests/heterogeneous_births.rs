@@ -92,6 +92,7 @@ enum ChildKind {
 enum ObservedCreation {
     Established,
     Rejected(CreationRejection),
+    InitializationPanicked,
     Corrupt(InterpreterFault),
 }
 
@@ -275,6 +276,12 @@ fn normalize(
         | ItemSettlement::Accepted(ChildChoice::Tail(ChildChoice::Head(
             ChildCreationOutcome::InitializationRejected { error, .. },
         ))) => match error {},
+        ItemSettlement::Accepted(ChildChoice::Head(
+            ChildCreationOutcome::InitializationPanicked { .. },
+        ))
+        | ItemSettlement::Accepted(ChildChoice::Tail(ChildChoice::Head(
+            ChildCreationOutcome::InitializationPanicked { .. },
+        ))) => ObservedCreation::InitializationPanicked,
         ItemSettlement::Accepted(ChildChoice::Tail(ChildChoice::Tail(never))) => match never {},
         ItemSettlement::Rejected { reason, .. } => ObservedCreation::Rejected(reason),
         ItemSettlement::Blocked { prerequisite, .. } => match prerequisite {},
@@ -306,10 +313,8 @@ async fn ordered_creations_dispatch_to_their_concrete_child_hosts() {
     let mut model = host();
     for (creation, route) in actions.creates.into_iter().zip([9, 4, 7]) {
         let (id, child, kind) = creation.into_parts();
-        assert!(matches!(
-            dispatch(child, id, route, kind, &mut model).await,
-            ItemSettlement::Accepted(_)
-        ));
+        let established = dispatch(child, id, route, kind, &mut model).await;
+        assert!(matches!(established, ItemSettlement::Accepted(_)));
     }
 
     assert_eq!(
@@ -332,10 +337,8 @@ async fn host_rejection_returns_the_routed_child_and_initialization_actions() {
     let mut sequence = CreationSequence::new();
     let id = sequence.issue().expect("child ID exists");
     let mut model = host();
-    assert_eq!(
-        model.plans.insert(9, HostPlan::RejectAfterInitialization),
-        None
-    );
+    let prior_plan = model.plans.insert(9, HostPlan::RejectAfterInitialization);
+    assert_eq!(prior_plan, None);
 
     let settlement = dispatch(
         ChildChoice::<DeviceGroups, ChildChoice<Queries, Never>>::Head(DeviceGroups),

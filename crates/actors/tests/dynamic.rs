@@ -15,17 +15,22 @@ use behavior_actors::atomic::{
     ActivationPlan, ActivationPolicy, ActorDrainPolicy, CancellationOutcome, CancellationReceipt,
     DiagnosticAction, DiagnosticDisposition, DynamicCommand, DynamicDiagnostic, DynamicLifecycle,
     DynamicStatus, DynamicSupervisor, DynamicSupervisorEvent, EntryCapacity, EntryRetirement,
-    EntryStopFailureReason, InitialWorkerOutcome, InterruptedWorker, ProxyControl, ProxyDrain,
-    ProxyInputReceipt, ProxyInputResult, ProxyOperationId, ProxyOutcome, ProxyPhase, QueryReply,
-    ReplacementFailure, ReplacementOutcome, StableProxy, StartRejection, UnexpectedExit,
-    WorkerChange, WorkerChangeInterruption, WorkerChangeReceipt, WorkerChangeRejection,
-    WorkerCreationRejection, WorkerInitializationOutcome, WorkerStartResult, WorkerSubmission,
-    ZeroCapacity, dynamic,
+    EntryStopFailureReason, InitialWorkerOutcome, InterruptedWorker, ProxyControl,
+    ProxyControlAdmission, ProxyDrain, ProxyInputReceipt, ProxyInputResult, ProxyOutcome,
+    ProxyPhase, QueryReply, ReplacementFailure, ReplacementOutcome, StableProxy, StartRejection,
+    UnexpectedExit, WorkerChange, WorkerChangeInterruption, WorkerChangeReceipt,
+    WorkerChangeRejection, WorkerCreationRejection, WorkerInitializationOutcome, WorkerStartResult,
+    WorkerSubmission, ZeroCapacity, dynamic,
 };
 use behavior_actors::{
     Activate, Active, ChildStopped, Exit, ReplyDelivery, ReplyRoute, ScheduleAfterRejection,
     ShutdownRequested, TimerElapsed, TimerGeneration, TimerId, TimerScheduled,
 };
+
+#[path = "support/proxy_control.rs"]
+mod proxy_control;
+
+use proxy_control::admit_proxy_operation;
 
 #[expect(
     dead_code,
@@ -164,14 +169,9 @@ fn committed_proxy(
 }
 
 fn accepted_search_input(
-    creation: CreationId,
-    operation: ProxyOperationId,
+    receipt: ProxyInputReceipt<SearchWorker, SearchActivation>,
 ) -> ProxyInputResult<Here, SearchWorker, SearchActivation> {
-    SettledItem::Attempted(ItemSettlement::Accepted(ProxyInputReceipt::new(
-        creation,
-        EstablishedActor::issued(SearchEndpoint),
-        operation,
-    )))
+    SettledItem::Attempted(ItemSettlement::Accepted(receipt))
 }
 
 async fn ready_search_proxy(
@@ -302,6 +302,93 @@ fn search_supervisor(
     .behavior
 }
 
+struct DynamicProxyHost {
+    creation: CreationId,
+    proxy: Active<StableProxy<SearchWorker, SearchActivation>>,
+    worker_creations: usize,
+}
+
+impl ProxyControlAdmission<SearchWorker, SearchActivation> for DynamicProxyHost {
+    fn admit_proxy_control(
+        &mut self,
+        creation: CreationId,
+        control: ProxyControl<SearchWorker, SearchActivation>,
+    ) -> ItemSettlement<
+        ProxyControl<SearchWorker, SearchActivation>,
+        EstablishedActor<StableProxy<SearchWorker, SearchActivation>>,
+        ChildInputReason,
+        Never,
+    > {
+        if creation != self.creation {
+            return ItemSettlement::Rejected {
+                item: control,
+                reason: ChildInputReason::MissingBinding,
+            };
+        }
+        let actions = self
+            .proxy
+            .on(control)
+            .unwrap_or_else(|_| panic!("the exact dynamic proxy accepts its initial control"));
+        self.worker_creations += actions.creates.len();
+        ItemSettlement::Accepted(EstablishedActor::issued(SearchEndpoint))
+    }
+}
+
+#[test]
+fn dynamic_start_settles_exact_proxy_control_before_owner_admission() {
+    let mut supervisor = search_supervisor(
+        EntryCapacity::new(1).expect("entry capacity is positive"),
+        ActivationPolicy::new(1).expect("activation capacity is positive"),
+        ActorDrainPolicy::WaitForActorGraph,
+        RootPeers {
+            lifecycle: Recipient::global(SearchAddress(801)),
+            diagnostics: Recipient::global(SearchAddress(802)),
+        },
+    );
+    let started = supervisor
+        .receive(
+            SearchAddress(803),
+            DynamicCommand::Start {
+                key: SearchKey("search"),
+                submission: WorkerSubmission::activated(SearchWorker, SearchActivation),
+                reply_to: ReplyRoute::logical(Recipient::global(SearchAddress(804))),
+            },
+        )
+        .unwrap_or_else(|_| panic!("the dynamic supervisor stages one proxy"));
+    let created = started
+        .creates
+        .into_iter()
+        .next()
+        .unwrap_or_else(|| panic!("the start emits its proxy creation"));
+    let (creation, committed) = committed_proxy(created);
+    let admitted = supervisor
+        .on(committed)
+        .unwrap_or_else(|_| panic!("the exact proxy creation commits"));
+    let operation = admitted
+        .sends
+        .proxy_operations
+        .into_items()
+        .pop()
+        .unwrap_or_else(|| panic!("the dynamic supervisor emits one owner input"));
+    assert_eq!(operation.creation(), creation);
+    let proxy = StableProxy::<SearchWorker, SearchActivation>::activated()
+        .initialize()
+        .unwrap_or_else(|_| panic!("proxy initialization is pure"))
+        .behavior;
+    let mut host = DynamicProxyHost {
+        creation,
+        proxy,
+        worker_creations: 0,
+    };
+    let settlement = operation.settle(&mut host);
+    assert!(matches!(settlement, ItemSettlement::Accepted(_)));
+    assert_eq!(host.worker_creations, 1);
+    let accepted = supervisor
+        .on(SettledItem::Attempted(settlement))
+        .unwrap_or_else(|_| panic!("the exact proxy receipt returns to the dynamic owner"));
+    assert!(accepted.creates.is_empty());
+}
+
 fn admit_search_replacement(
     supervisor: &mut Active<
         DynamicSupervisor<
@@ -339,9 +426,10 @@ fn admit_search_replacement(
         .into_items()
         .pop()
         .unwrap_or_else(|| panic!("one replacement input is emitted"));
-    let (creation, _control, operation) = replacement.into_parts();
+    let (_creation, _control, operation) =
+        admit_proxy_operation(replacement, EstablishedActor::issued(SearchEndpoint));
     let accepted = supervisor
-        .on(accepted_search_input(creation, operation))
+        .on(accepted_search_input(operation))
         .unwrap_or_else(|_| panic!("the replacement input is accepted"));
     assert!(accepted.creates.is_empty());
     assert!(accepted.sends.lifecycle.is_empty());
@@ -370,6 +458,69 @@ fn role_first_construction_returns_the_complete_behavior() {
     .initialize()
     .unwrap_or_else(|_| panic!("dynamic supervisor initialization is pure"))
     .behavior;
+    type Start = MessageProtocol<
+        SearchAddress,
+        Result<
+            WorkerChangeReceipt<SearchKey>,
+            WorkerChangeRejection<SearchKey, SearchWorker, SearchActivation, StartRejection>,
+        >,
+    >;
+    type Replace = MessageProtocol<
+        SearchAddress,
+        Result<
+            WorkerChangeReceipt<SearchKey>,
+            WorkerChangeRejection<
+                SearchKey,
+                SearchWorker,
+                SearchActivation,
+                behavior_actors::atomic::ReplaceRejection,
+            >,
+        >,
+    >;
+    type Stop = MessageProtocol<
+        SearchAddress,
+        Result<SearchKey, behavior_actors::atomic::StopRejection<SearchKey>>,
+    >;
+    type Query =
+        MessageProtocol<SearchAddress, QueryReply<SearchKey, <SearchWorker as Behavior>::Protocol>>;
+    type Cancel = MessageProtocol<
+        SearchAddress,
+        CancellationReceipt<SearchKey, SearchWorker, SearchActivation>,
+    >;
+    type Lifecycle =
+        MessageProtocol<SearchAddress, DynamicLifecycle<SearchKey, SearchWorker, SearchActivation>>;
+    type Diagnostic = MessageProtocol<
+        SearchAddress,
+        DynamicDiagnostic<SearchKey, SearchWorker, SearchActivation>,
+    >;
+    type Expected = behavior::BirthProtocol<
+        Start,
+        behavior::BirthProtocol<
+            Replace,
+            behavior::BirthProtocol<
+                Stop,
+                behavior::BirthProtocol<
+                    Query,
+                    behavior::BirthProtocol<
+                        Cancel,
+                        behavior::BirthProtocol<
+                            Lifecycle,
+                            behavior::BirthProtocol<Diagnostic, behavior::NoBirthProtocols>,
+                        >,
+                    >,
+                >,
+            >,
+        >,
+    >;
+
+    trait Same<T> {}
+    impl<T> Same<T> for T {}
+    fn exact<B: behavior::LogicalHostRequirements>(_: &B)
+    where
+        B::LogicalHosts: Same<Expected>,
+    {
+    }
+    exact(&*supervisor);
     drop(supervisor);
 }
 
@@ -521,9 +672,10 @@ fn global_shutdown_drains_a_pending_proxy_creation_and_closes_management() {
         .into_items()
         .pop()
         .unwrap_or_else(|| panic!("the committed late proxy is shut down once"));
-    let (shutdown_creation, _control, shutdown_operation) = shutdown.into_parts();
+    let (_shutdown_creation, _control, shutdown_operation) =
+        admit_proxy_operation(shutdown, EstablishedActor::issued(SearchEndpoint));
     let settled = supervisor
-        .on(accepted_search_input(shutdown_creation, shutdown_operation))
+        .on(accepted_search_input(shutdown_operation))
         .unwrap_or_else(|_| panic!("the shutdown receipt waits for exact proxy exit"));
     assert!(matches!(settled.become_, behavior::Step::Continue));
     let retired = supervisor
@@ -631,9 +783,10 @@ fn global_shutdown_preserves_a_locally_cancelled_start() {
         .into_items()
         .pop()
         .unwrap_or_else(|| panic!("late proxy is shut down once"));
-    let (shutdown_creation, _control, operation) = shutdown.into_parts();
+    let (_shutdown_creation, _control, operation) =
+        admit_proxy_operation(shutdown, EstablishedActor::issued(SearchEndpoint));
     let awaiting_exit = supervisor
-        .on(accepted_search_input(shutdown_creation, operation))
+        .on(accepted_search_input(operation))
         .unwrap_or_else(|_| panic!("shutdown settlement waits for exact exit"));
     assert!(matches!(awaiting_exit.become_, behavior::Step::Continue));
     let retired = supervisor
@@ -722,8 +875,9 @@ fn shutdown_deadline_rejection_and_elapsed_force_retirement() {
                     .unwrap_or_else(|_| panic!("exact schedule receipt starts the deadline"));
                 assert!(matches!(scheduled.become_, behavior::Step::Continue));
                 let foreign = TimerElapsed::new(TimerId(9), TimerGeneration(9));
+                let rejected = supervisor.on(foreign);
                 assert!(matches!(
-                    supervisor.on(foreign),
+                    rejected,
                     Err(DynamicSupervisorEvent::ShutdownElapsed(elapsed)) if elapsed == foreign
                 ));
                 supervisor
@@ -956,9 +1110,10 @@ fn stop_interrupts_a_worker_waiting_for_activation() {
             .into_items()
             .pop()
             .unwrap_or_else(|| panic!("the first worker input is emitted"));
-        let (occupied_creation, _, occupied_operation) = occupied_input.into_parts();
+        let (_occupied_creation, _, occupied_operation) =
+            admit_proxy_operation(occupied_input, EstablishedActor::issued(SearchEndpoint));
         let occupied = supervisor
-            .on(accepted_search_input(occupied_creation, occupied_operation))
+            .on(accepted_search_input(occupied_operation))
             .unwrap_or_else(|_| panic!("the first worker input occupies capacity"));
         assert!(occupied.sends.proxy_operations.is_empty());
         let waiting = supervisor
@@ -1009,11 +1164,12 @@ fn stop_interrupts_a_worker_waiting_for_activation() {
             .into_items()
             .pop()
             .unwrap_or_else(|| panic!("the waiting proxy receives one shutdown"));
-        let (shutdown_creation, _, shutdown_operation) = shutdown.into_parts();
+        let (_shutdown_creation, _, shutdown_operation) =
+            admit_proxy_operation(shutdown, EstablishedActor::issued(SearchEndpoint));
         let lifecycle = match order {
             StopOrder::ReceiptFirst => {
                 let settled = supervisor
-                    .on(accepted_search_input(shutdown_creation, shutdown_operation))
+                    .on(accepted_search_input(shutdown_operation))
                     .unwrap_or_else(|_| panic!("the shutdown input is accepted"));
                 assert!(settled.sends.lifecycle.is_empty());
                 supervisor
@@ -1036,7 +1192,7 @@ fn stop_interrupts_a_worker_waiting_for_activation() {
                     .unwrap_or_else(|_| panic!("the exact proxy may stop first"));
                 assert!(stopped.sends.lifecycle.is_empty());
                 supervisor
-                    .on(accepted_search_input(shutdown_creation, shutdown_operation))
+                    .on(accepted_search_input(shutdown_operation))
                     .unwrap_or_else(|_| panic!("the shutdown receipt closes stop"))
                     .sends
                     .lifecycle
@@ -1093,13 +1249,10 @@ fn rejected_proxy_shutdown_still_retires_an_interrupted_start_as_stop() {
         .into_items()
         .pop()
         .unwrap_or_else(|| panic!("the first worker input is emitted"));
-    let (occupying_creation, _occupying_control, occupying_operation) =
-        occupying_input.into_parts();
+    let (_occupying_creation, _occupying_control, occupying_operation) =
+        admit_proxy_operation(occupying_input, EstablishedActor::issued(SearchEndpoint));
     let occupied = supervisor
-        .on(accepted_search_input(
-            occupying_creation,
-            occupying_operation,
-        ))
+        .on(accepted_search_input(occupying_operation))
         .unwrap_or_else(|_| panic!("the first worker input occupies activation capacity"));
     assert!(occupied.sends.proxy_operations.is_empty());
 
@@ -1256,9 +1409,10 @@ fn global_shutdown_retains_a_worker_rejected_after_proxy_input_transfer() {
             ..
         } if item.creation() == creation && *reason == ChildInputReason::ClosedControlLane
     ));
-    let (shutdown_creation, _, shutdown_operation) = shutdown.into_parts();
+    let (_shutdown_creation, _, shutdown_operation) =
+        admit_proxy_operation(shutdown, EstablishedActor::issued(SearchEndpoint));
     let accepted = supervisor
-        .on(accepted_search_input(shutdown_creation, shutdown_operation))
+        .on(accepted_search_input(shutdown_operation))
         .unwrap_or_else(|_| panic!("the shutdown input is accepted"));
     assert!(accepted.sends.lifecycle.is_empty());
     let retired = supervisor
@@ -1325,9 +1479,10 @@ fn global_shutdown_retains_the_exact_late_proxy_result() {
         .into_items()
         .pop()
         .unwrap_or_else(|| panic!("one initial proxy input is emitted"));
-    let (input_creation, _, input_operation) = initial.into_parts();
+    let (_input_creation, _, input_operation) =
+        admit_proxy_operation(initial, EstablishedActor::issued(SearchEndpoint));
     let accepted = supervisor
-        .on(accepted_search_input(input_creation, input_operation))
+        .on(accepted_search_input(input_operation))
         .unwrap_or_else(|_| panic!("the initial proxy input is accepted"));
     assert!(accepted.sends.lifecycle.is_empty());
     let draining = supervisor
@@ -1352,9 +1507,10 @@ fn global_shutdown_retains_the_exact_late_proxy_result() {
         ))
         .unwrap_or_else(|_| panic!("the exact proxy may exit before shutdown settlement"));
     assert!(exited.sends.lifecycle.is_empty());
-    let (shutdown_creation, _, shutdown_operation) = shutdown.into_parts();
+    let (_shutdown_creation, _, shutdown_operation) =
+        admit_proxy_operation(shutdown, EstablishedActor::issued(SearchEndpoint));
     let retired = supervisor
-        .on(accepted_search_input(shutdown_creation, shutdown_operation))
+        .on(accepted_search_input(shutdown_operation))
         .unwrap_or_else(|_| panic!("shutdown settlement completes the drained proxy"));
     assert_eq!(retired.sends.lifecycle.len(), 2);
     assert!(matches!(
@@ -1418,9 +1574,10 @@ async fn global_shutdown_retains_a_replacement_awaiting_input_settlement() {
         .into_items()
         .pop()
         .unwrap_or_else(|| panic!("one initial proxy input is emitted"));
-    let (input_creation, control, input_operation) = initial.into_parts();
+    let (_input_creation, control, input_operation) =
+        admit_proxy_operation(initial, EstablishedActor::issued(SearchEndpoint));
     let accepted = supervisor
-        .on(accepted_search_input(input_creation, input_operation))
+        .on(accepted_search_input(input_operation))
         .unwrap_or_else(|_| panic!("the initial proxy input is accepted"));
     assert!(accepted.sends.lifecycle.is_empty());
     let (_proxy, outcome) = ready_search_proxy(control).await;
@@ -1479,9 +1636,10 @@ async fn global_shutdown_retains_a_replacement_awaiting_input_settlement() {
             ..
         } if item.creation() == creation
     ));
-    let (shutdown_creation, _, shutdown_operation) = shutdown.into_parts();
+    let (_shutdown_creation, _, shutdown_operation) =
+        admit_proxy_operation(shutdown, EstablishedActor::issued(SearchEndpoint));
     let settled = supervisor
-        .on(accepted_search_input(shutdown_creation, shutdown_operation))
+        .on(accepted_search_input(shutdown_operation))
         .unwrap_or_else(|_| panic!("the exact shutdown input is accepted"));
     assert!(settled.sends.lifecycle.is_empty());
     let retired = supervisor
@@ -1549,9 +1707,10 @@ async fn global_shutdown_retains_an_accepted_replacement_report() {
         .into_items()
         .pop()
         .unwrap_or_else(|| panic!("one initial proxy input is emitted"));
-    let (input_creation, control, input_operation) = initial.into_parts();
+    let (_input_creation, control, input_operation) =
+        admit_proxy_operation(initial, EstablishedActor::issued(SearchEndpoint));
     let accepted = supervisor
-        .on(accepted_search_input(input_creation, input_operation))
+        .on(accepted_search_input(input_operation))
         .unwrap_or_else(|_| panic!("the initial proxy input is accepted"));
     assert!(accepted.sends.lifecycle.is_empty());
     let (_proxy, outcome) = ready_search_proxy(control).await;
@@ -1589,12 +1748,10 @@ async fn global_shutdown_retains_an_accepted_replacement_report() {
         .into_items()
         .pop()
         .unwrap_or_else(|| panic!("one replacement input is emitted"));
-    let (replacement_creation, _, replacement_operation) = replacement.into_parts();
+    let (_replacement_creation, _, replacement_operation) =
+        admit_proxy_operation(replacement, EstablishedActor::issued(SearchEndpoint));
     let accepted = supervisor
-        .on(accepted_search_input(
-            replacement_creation,
-            replacement_operation,
-        ))
+        .on(accepted_search_input(replacement_operation))
         .unwrap_or_else(|_| panic!("the replacement input is accepted"));
     assert!(accepted.sends.lifecycle.is_empty());
     let draining = supervisor
@@ -1629,9 +1786,10 @@ async fn global_shutdown_retains_an_accepted_replacement_report() {
         ))
         .unwrap_or_else(|_| panic!("proxy exit waits for shutdown settlement"));
     assert!(exited.sends.lifecycle.is_empty());
-    let (shutdown_creation, _, shutdown_operation) = shutdown.into_parts();
+    let (_shutdown_creation, _, shutdown_operation) =
+        admit_proxy_operation(shutdown, EstablishedActor::issued(SearchEndpoint));
     let retired = supervisor
-        .on(accepted_search_input(shutdown_creation, shutdown_operation))
+        .on(accepted_search_input(shutdown_operation))
         .unwrap_or_else(|_| panic!("shutdown settlement closes exact retirement"));
     assert_eq!(retired.sends.lifecycle.len(), 2);
     assert!(matches!(
@@ -1693,9 +1851,10 @@ async fn global_shutdown_retires_an_available_service_once() {
         .into_items()
         .pop()
         .unwrap_or_else(|| panic!("one initial proxy input is emitted"));
-    let (input_creation, control, input_operation) = input.into_parts();
+    let (_input_creation, control, input_operation) =
+        admit_proxy_operation(input, EstablishedActor::issued(SearchEndpoint));
     let accepted = supervisor
-        .on(accepted_search_input(input_creation, input_operation))
+        .on(accepted_search_input(input_operation))
         .unwrap_or_else(|_| panic!("the initial proxy input is accepted"));
     assert!(accepted.sends.lifecycle.is_empty());
     let (_proxy, outcome) = ready_search_proxy(control).await;
@@ -1717,9 +1876,10 @@ async fn global_shutdown_retires_an_available_service_once() {
         .into_items()
         .pop()
         .unwrap_or_else(|| panic!("the available proxy receives one shutdown"));
-    let (shutdown_creation, _, shutdown_operation) = shutdown.into_parts();
+    let (_shutdown_creation, _, shutdown_operation) =
+        admit_proxy_operation(shutdown, EstablishedActor::issued(SearchEndpoint));
     let accepted = supervisor
-        .on(accepted_search_input(shutdown_creation, shutdown_operation))
+        .on(accepted_search_input(shutdown_operation))
         .unwrap_or_else(|_| panic!("the shutdown input is accepted"));
     assert!(accepted.sends.lifecycle.is_empty());
     let retired = supervisor
@@ -1792,9 +1952,10 @@ fn global_shutdown_preserves_start_failure_retirement() {
         .unwrap_or_else(|_| panic!("global shutdown retains Start retirement"));
     assert!(draining.sends.proxy_operations.is_empty());
     assert!(draining.sends.lifecycle.is_empty());
-    let (shutdown_creation, _, shutdown_operation) = shutdown.into_parts();
+    let (_shutdown_creation, _, shutdown_operation) =
+        admit_proxy_operation(shutdown, EstablishedActor::issued(SearchEndpoint));
     let accepted = supervisor
-        .on(accepted_search_input(shutdown_creation, shutdown_operation))
+        .on(accepted_search_input(shutdown_operation))
         .unwrap_or_else(|_| panic!("the existing shutdown input is accepted"));
     assert!(accepted.sends.lifecycle.is_empty());
     let retired = supervisor
@@ -1975,9 +2136,10 @@ async fn ready_service_accepts_one_replacement_on_its_current_proxy() {
             .into_items()
             .pop()
             .unwrap_or_else(|| panic!("one initial input is emitted"));
-        let (input_creation, control, operation) = initial.into_parts();
+        let (_input_creation, control, operation) =
+            admit_proxy_operation(initial, EstablishedActor::issued(SearchEndpoint));
         let accepted = supervisor
-            .on(accepted_search_input(input_creation, operation))
+            .on(accepted_search_input(operation))
             .unwrap_or_else(|_| panic!("the initial input is accepted"));
         assert!(accepted.sends.proxy_operations.is_empty());
         let (proxy, outcome) = ready_search_proxy(control).await;
@@ -2028,9 +2190,10 @@ async fn ready_service_accepts_one_replacement_on_its_current_proxy() {
             .into_items()
             .pop()
             .unwrap_or_else(|| panic!("one replacement input is emitted"));
-        let (input_creation, _control, operation) = replacement.into_parts();
+        let (_input_creation, _control, operation) =
+            admit_proxy_operation(replacement, EstablishedActor::issued(SearchEndpoint));
         let accepted = supervisor
-            .on(accepted_search_input(input_creation, operation))
+            .on(accepted_search_input(operation))
             .unwrap_or_else(|_| panic!("the replacement input is accepted"));
         assert!(accepted.sends.lifecycle.is_empty());
 
@@ -2410,11 +2573,12 @@ async fn ready_service_accepts_one_replacement_on_its_current_proxy() {
             ))
             .unwrap_or_else(|_| panic!("a foreign proxy stop is diagnosed"));
         assert_eq!(foreign.sends.diagnostics.len(), 1);
-        let (shutdown_creation, _control, shutdown_operation) = shutdown.into_parts();
+        let (_shutdown_creation, _control, shutdown_operation) =
+            admit_proxy_operation(shutdown, EstablishedActor::issued(SearchEndpoint));
         let retired = match order {
             StopOrder::ReceiptFirst => {
                 let accepted = supervisor
-                    .on(accepted_search_input(shutdown_creation, shutdown_operation))
+                    .on(accepted_search_input(shutdown_operation))
                     .unwrap_or_else(|_| {
                         panic!("shutdown acceptance waits for the exact proxy stop")
                     });
@@ -2439,7 +2603,7 @@ async fn ready_service_accepts_one_replacement_on_its_current_proxy() {
                     });
                 assert!(stopped.sends.lifecycle.is_empty());
                 supervisor
-                    .on(accepted_search_input(shutdown_creation, shutdown_operation))
+                    .on(accepted_search_input(shutdown_operation))
                     .unwrap_or_else(|_| panic!("shutdown acceptance reunites with the proxy stop"))
             }
         };
@@ -2534,9 +2698,10 @@ async fn retire_policy_drains_an_unexpected_worker_stop_and_releases_its_key() {
         .into_items()
         .pop()
         .unwrap_or_else(|| panic!("one initial proxy input is emitted"));
-    let (input_creation, control, input_operation) = initial.into_parts();
+    let (_input_creation, control, input_operation) =
+        admit_proxy_operation(initial, EstablishedActor::issued(SearchEndpoint));
     let accepted = supervisor
-        .on(accepted_search_input(input_creation, input_operation))
+        .on(accepted_search_input(input_operation))
         .unwrap_or_else(|_| panic!("the proxy accepts its initial worker"));
     assert!(accepted.sends.lifecycle.is_empty());
     let (worker_proxy, ready) = ready_search_proxy(control).await;
@@ -2580,9 +2745,10 @@ async fn retire_policy_drains_an_unexpected_worker_stop_and_releases_its_key() {
         .into_items()
         .pop()
         .unwrap_or_else(|| panic!("retire policy shuts down the exact stable proxy"));
-    let (shutdown_creation, _shutdown_control, shutdown_operation) = shutdown.into_parts();
+    let (_shutdown_creation, _shutdown_control, shutdown_operation) =
+        admit_proxy_operation(shutdown, EstablishedActor::issued(SearchEndpoint));
     let awaiting_proxy_exit = supervisor
-        .on(accepted_search_input(shutdown_creation, shutdown_operation))
+        .on(accepted_search_input(shutdown_operation))
         .unwrap_or_else(|_| panic!("the exact proxy shutdown is accepted"));
     assert!(awaiting_proxy_exit.sends.lifecycle.is_empty());
     let retired = supervisor
@@ -2653,9 +2819,10 @@ async fn corrupt_and_unattempted_proxy_shutdowns_restore_the_ready_service() {
         .into_items()
         .pop()
         .unwrap_or_else(|| panic!("one initial proxy input is emitted"));
-    let (input_creation, control, input_operation) = initial.into_parts();
+    let (_input_creation, control, input_operation) =
+        admit_proxy_operation(initial, EstablishedActor::issued(SearchEndpoint));
     let accepted = supervisor
-        .on(accepted_search_input(input_creation, input_operation))
+        .on(accepted_search_input(input_operation))
         .unwrap_or_else(|_| panic!("the proxy accepts its initial worker"));
     assert!(accepted.sends.lifecycle.is_empty());
     let (worker_proxy, ready) = ready_search_proxy(control).await;
@@ -2829,12 +2996,10 @@ async fn a_ready_service_rejects_another_services_worker_stop() {
         .into_items()
         .pop()
         .unwrap_or_else(|| panic!("one search worker input is emitted"));
-    let (search_input_creation, search_control, search_operation) = search_input.into_parts();
+    let (_search_input_creation, search_control, search_operation) =
+        admit_proxy_operation(search_input, EstablishedActor::issued(SearchEndpoint));
     let search_input_accepted = supervisor
-        .on(accepted_search_input(
-            search_input_creation,
-            search_operation,
-        ))
+        .on(accepted_search_input(search_operation))
         .unwrap_or_else(|_| panic!("the search proxy accepts its worker"));
     assert!(search_input_accepted.sends.lifecycle.is_empty());
     let (search_proxy, search_ready) = ready_search_proxy(search_control).await;
@@ -2874,9 +3039,10 @@ async fn a_ready_service_rejects_another_services_worker_stop() {
         .into_items()
         .pop()
         .unwrap_or_else(|| panic!("one cache worker input is emitted"));
-    let (cache_input_creation, cache_control, cache_operation) = cache_input.into_parts();
+    let (_cache_input_creation, cache_control, cache_operation) =
+        admit_proxy_operation(cache_input, EstablishedActor::issued(SearchEndpoint));
     let cache_input_accepted = supervisor
-        .on(accepted_search_input(cache_input_creation, cache_operation))
+        .on(accepted_search_input(cache_operation))
         .unwrap_or_else(|_| panic!("the cache proxy accepts its worker"));
     assert!(cache_input_accepted.sends.lifecycle.is_empty());
     let (cache_proxy, cache_ready) = ready_search_proxy(cache_control).await;
@@ -2990,9 +3156,51 @@ fn accepted_start_cancellation_retires_before_fresh_key_reuse() {
     let rejected = supervisor.on(CreationsSettled::new(CreationSettlement::Settled(
         behavior::Creations::empty(),
     )));
-    assert!(
-        rejected.is_err(),
-        "an empty creation settlement is rejected"
+    let empty = match rejected {
+        Err(DynamicSupervisorEvent::ProxyCreationsSettled(returned)) => returned,
+        _ => panic!("an empty creation settlement returns its exact event"),
+    };
+    let empty = empty.into_settlement();
+    assert!(matches!(empty, CreationSettlement::Settled(batch) if batch.is_empty()));
+
+    let mut ids = CreationSequence::new();
+    let first = ids.issue().expect("first malformed creation ID exists");
+    let second = ids.issue().expect("second malformed creation ID exists");
+    let malformed = behavior::Creations::one(SettledItem::Unattempted(RoutedCreation::new(
+        CreateChild::birth(first, StableProxy::activated()),
+        31,
+    )))
+    .and(SettledItem::Unattempted(RoutedCreation::new(
+        CreateChild::birth(second, StableProxy::activated()),
+        32,
+    )));
+    let rejected = supervisor.on(CreationsSettled::new(CreationSettlement::Settled(
+        malformed,
+    )));
+    let returned = match rejected {
+        Err(DynamicSupervisorEvent::ProxyCreationsSettled(returned)) => returned,
+        _ => panic!("a multi-item creation settlement returns its exact event"),
+    };
+    let CreationSettlement::Settled(batch) = returned.into_settlement() else {
+        panic!("the returned creation batch keeps its settlement category");
+    };
+    let returned = batch
+        .into_iter()
+        .map(|item| match item {
+            SettledItem::Unattempted(creation) => {
+                let route = creation.route();
+                let (request, _) = creation.into_parts();
+                (request.id(), request.kind(), route)
+            }
+            SettledItem::Attempted(_) => panic!("an untouched item became attempted"),
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        returned,
+        vec![
+            (first, CreationKind::Birth, 31),
+            (second, CreationKind::Birth, 32)
+        ]
     );
     let queried = supervisor
         .receive(
@@ -3119,9 +3327,10 @@ fn accepted_start_cancellation_retires_before_fresh_key_reuse() {
         .into_items()
         .pop()
         .unwrap_or_else(|| panic!("late birth emits one proxy shutdown"));
-    let (creation, _shutdown, operation) = shutdown.into_parts();
+    let (creation, _shutdown, operation) =
+        admit_proxy_operation(shutdown, EstablishedActor::issued(SearchEndpoint));
     let waiting_for_exit = supervisor
-        .on(accepted_search_input(creation, operation))
+        .on(accepted_search_input(operation))
         .unwrap_or_else(|_| panic!("shutdown acceptance waits for the exact proxy stop"));
     assert!(waiting_for_exit.sends.lifecycle.is_empty());
     let retired = supervisor
@@ -3294,9 +3503,10 @@ fn accepted_start_cancellation_retires_before_fresh_key_reuse() {
         ))
         .unwrap_or_else(|_| panic!("proxy stop may precede shutdown settlement"));
     assert!(stopped_first.sends.lifecycle.is_empty());
-    let (second_creation, _shutdown, second_operation) = second_shutdown.into_parts();
+    let (_second_creation, _shutdown, second_operation) =
+        admit_proxy_operation(second_shutdown, EstablishedActor::issued(SearchEndpoint));
     let second_retired = supervisor
-        .on(accepted_search_input(second_creation, second_operation))
+        .on(accepted_search_input(second_operation))
         .unwrap_or_else(|_| panic!("shutdown settlement closes the reverse order"));
     assert_eq!(second_retired.sends.lifecycle.len(), 2);
     match &second_retired.sends.lifecycle[1].message {
@@ -3388,9 +3598,10 @@ async fn committed_proxy_creation_emits_the_exact_initial_worker_input() {
         .pop_front()
         .unwrap_or_else(|| panic!("the last waiting proxy is retained"));
 
-    let (operation_creation, control, operation_id) = operation.into_parts();
+    let (_operation_creation, control, operation_id) =
+        admit_proxy_operation(operation, EstablishedActor::issued(SearchEndpoint));
     let settled = supervisor
-        .on(accepted_search_input(operation_creation, operation_id))
+        .on(accepted_search_input(operation_id))
         .unwrap_or_else(|_| panic!("the exact input receipt advances its service"));
     assert!(settled.creates.is_empty());
     assert!(settled.sends.proxy_operations.is_empty());
@@ -3654,9 +3865,10 @@ async fn global_shutdown_orders_local_start_and_replacement_by_key() {
         .into_items()
         .pop()
         .unwrap_or_else(|| panic!("one service input is emitted"));
-    let (creation, control, operation) = service_input.into_parts();
+    let (_creation, control, operation) =
+        admit_proxy_operation(service_input, EstablishedActor::issued(SearchEndpoint));
     let accepted = supervisor
-        .on(accepted_search_input(creation, operation))
+        .on(accepted_search_input(operation))
         .unwrap_or_else(|_| panic!("the service input is accepted"));
     assert!(accepted.sends.lifecycle.is_empty());
     let (proxy, outcome) = ready_search_proxy(control).await;
@@ -3693,9 +3905,10 @@ async fn global_shutdown_orders_local_start_and_replacement_by_key() {
         .into_items()
         .pop()
         .unwrap_or_else(|| panic!("the occupied input is emitted"));
-    let (creation, _, operation) = occupied_input.into_parts();
+    let (_creation, _, operation) =
+        admit_proxy_operation(occupied_input, EstablishedActor::issued(SearchEndpoint));
     let occupied = supervisor
-        .on(accepted_search_input(creation, operation))
+        .on(accepted_search_input(operation))
         .unwrap_or_else(|_| panic!("the occupied input takes activation capacity"));
     assert!(occupied.sends.proxy_operations.is_empty());
 
@@ -3843,9 +4056,10 @@ fn cancelled_transferred_start_retains_its_rejected_input_outcome() {
             ..
         }
     ));
-    let (shutdown_creation, _shutdown_control, shutdown_operation) = shutdown.into_parts();
+    let (_shutdown_creation, _shutdown_control, shutdown_operation) =
+        admit_proxy_operation(shutdown, EstablishedActor::issued(SearchEndpoint));
     let awaiting_proxy_exit = supervisor
-        .on(accepted_search_input(shutdown_creation, shutdown_operation))
+        .on(accepted_search_input(shutdown_operation))
         .unwrap_or_else(|_| panic!("the exact proxy shutdown is accepted"));
     assert!(awaiting_proxy_exit.sends.lifecycle.is_empty());
     let retired = supervisor
@@ -3934,9 +4148,10 @@ fn cancelled_transferred_start_reunites_its_late_report_with_proxy_retirement() 
             .into_items()
             .pop()
             .unwrap_or_else(|| panic!("one initial proxy input is emitted"));
-        let (operation_creation, _control, operation) = emitted.into_parts();
+        let (_operation_creation, _control, operation) =
+            admit_proxy_operation(emitted, EstablishedActor::issued(SearchEndpoint));
         let accepted = supervisor
-            .on(accepted_search_input(operation_creation, operation))
+            .on(accepted_search_input(operation))
             .unwrap_or_else(|_| panic!("the initial proxy input is accepted"));
         assert!(accepted.sends.proxy_operations.is_empty());
 
@@ -3983,7 +4198,8 @@ fn cancelled_transferred_start_reunites_its_late_report_with_proxy_retirement() 
             .into_items()
             .pop()
             .unwrap_or_else(|| panic!("cancellation shuts down the exact proxy"));
-        let (shutdown_creation, _control, shutdown_operation) = shutdown.into_parts();
+        let (_shutdown_creation, _control, shutdown_operation) =
+            admit_proxy_operation(shutdown, EstablishedActor::issued(SearchEndpoint));
         let (authorized, lifecycle) = match order {
             CancellationOrder::ReportFirst => {
                 let reported = supervisor
@@ -3999,7 +4215,7 @@ fn cancelled_transferred_start_reunites_its_late_report_with_proxy_retirement() 
                     .unwrap_or_else(|_| panic!("proxy exit waits for shutdown settlement"));
                 assert!(stopped.sends.lifecycle.is_empty());
                 let retired = supervisor
-                    .on(accepted_search_input(shutdown_creation, shutdown_operation))
+                    .on(accepted_search_input(shutdown_operation))
                     .unwrap_or_else(|_| panic!("shutdown settlement closes cancellation"));
                 (
                     reported.sends.proxy_operations.into_items(),
@@ -4016,7 +4232,7 @@ fn cancelled_transferred_start_reunites_its_late_report_with_proxy_retirement() 
                     .unwrap_or_else(|_| panic!("proxy exit may precede both settlements"));
                 assert!(stopped.sends.lifecycle.is_empty());
                 let settled = supervisor
-                    .on(accepted_search_input(shutdown_creation, shutdown_operation))
+                    .on(accepted_search_input(shutdown_operation))
                     .unwrap_or_else(|_| panic!("shutdown may settle before the late report"));
                 assert!(settled.sends.lifecycle.is_empty());
                 let reported = supervisor
@@ -4103,7 +4319,8 @@ fn admission_queries_match_one_customer_catalogue(bytes: Vec<u8>) {
 
                 let mut replies = acted.sends.start_replies.into_deliveries().into_iter();
                 let reply = replies.next().expect("every start receives one reply");
-                assert!(replies.next().is_none());
+                let remaining_replies = replies.next();
+                assert!(remaining_replies.is_none());
                 let ReplyDelivery::Logical(delivery) = reply else {
                     panic!("the customer supplied a logical reply route");
                 };
@@ -4114,7 +4331,8 @@ fn admission_queries_match_one_customer_catalogue(bytes: Vec<u8>) {
                         assert_eq!(acted.sends.proxy_observations.len(), 1);
                         let mut creations = acted.creates.into_iter();
                         let creation = creations.next().expect("accepted start creates one proxy");
-                        assert!(creations.next().is_none());
+                        let remaining_creations = creations.next();
+                        assert!(remaining_creations.is_none());
                         catalogue = CustomerCatalogue::Pending {
                             service,
                             creation,
@@ -4160,7 +4378,8 @@ fn admission_queries_match_one_customer_catalogue(bytes: Vec<u8>) {
 
                 let mut replies = acted.sends.query_replies.into_deliveries().into_iter();
                 let reply = replies.next().expect("every query receives one reply");
-                assert!(replies.next().is_none());
+                let remaining_replies = replies.next();
+                assert!(remaining_replies.is_none());
                 let ReplyDelivery::Logical(delivery) = reply else {
                     panic!("the customer supplied a logical reply route");
                 };

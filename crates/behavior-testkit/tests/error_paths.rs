@@ -1,11 +1,14 @@
 //! Controlled-error attacks for `Machine` and the testkit driver.
 
 use behavior_actors::{Machine, Move};
+use std::cell::Cell;
+use std::rc::Rc;
 
 use behavior_core::{
-    Actions, Behavior, BehaviorActed, MailAddr, Never, NoBirths, Step, User, UserEvent,
+    Actions, Behavior, BehaviorActed, Delivery, MailAddr, Never, NoBirths, Recipient, Step, User,
+    UserEvent,
 };
-use behavior_testkit::{Mailbox, drive};
+use behavior_testkit::{Mailbox, TestRecipient, drive};
 
 /// A controlled failure type: unit-like, `Send`, no display machinery.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -39,8 +42,8 @@ impl Behavior for RejectInput {
 
 /// A controlled error during a deferred drain rejects the complete mailbox
 /// turn. State, phase, and the accepted held queue remain exactly unchanged.
-#[tokio::test]
-async fn fsm_error_mid_drain_preserves_the_unprocessed_batch() {
+#[test]
+fn fsm_error_mid_drain_preserves_the_unprocessed_batch() {
     #[derive(Clone, Copy, PartialEq)]
     enum Phase {
         P0,
@@ -87,8 +90,8 @@ async fn fsm_error_mid_drain_preserves_the_unprocessed_batch() {
 
 /// A direct-step error consumes only the errored message: held stays intact
 /// and the fold is still usable.
-#[tokio::test]
-async fn fsm_direct_step_error_keeps_held_intact() {
+#[test]
+fn fsm_direct_step_error_keeps_held_intact() {
     #[derive(Clone, Copy, PartialEq)]
     enum Phase {
         P0,
@@ -135,18 +138,53 @@ async fn fsm_direct_step_error_keeps_held_intact() {
 
 /// The driver propagates the first controlled failure and leaves the
 /// unconsumed mailbox tail intact.
-#[tokio::test]
-async fn driver_propagates_errors_and_preserves_the_tail() {
+#[test]
+fn driver_propagates_errors_and_preserves_the_tail() {
     let mut mailbox = Mailbox::new([User::user(MailAddr(9), 3), User::user(MailAddr(9), 5)]);
     let result = drive(RejectInput, &mut mailbox);
     assert!(matches!(result, Err(Boom)));
     assert_eq!(mailbox.pending(), 1);
 }
 
+struct PrefixEmits {
+    seen: Rc<Cell<usize>>,
+}
+
+#[behavior_core::behavior(addr = MailAddr, message = u64, sends = Vec<Delivery<TestRecipient<u64>>>, births = NoBirths, error = Boom)]
+impl PrefixEmits {
+    fn receive(
+        &mut self,
+        from: MailAddr,
+        message: u64,
+    ) -> behavior_core::Acted<MailAddr, Never, Vec<Delivery<TestRecipient<u64>>>, NoBirths, Boom>
+    {
+        if message == 3 {
+            return Err(Boom);
+        }
+        self.seen.set(self.seen.get() + 1);
+        Ok(Actions::send(vec![Delivery::new(
+            Recipient::global(from),
+            message,
+        )]))
+    }
+}
+
+#[test]
+fn driver_discards_successful_prefix_after_later_error() {
+    let seen = Rc::new(Cell::new(0));
+    let mut mailbox = Mailbox::new([1, 2, 3, 4].map(|message| User::new(MailAddr(9), message)));
+    let result = drive(PrefixEmits { seen: seen.clone() }, &mut mailbox);
+    assert!(matches!(result, Err(Boom)));
+    assert_eq!(seen.get(), 2);
+    assert_eq!(mailbox.pending(), 1);
+    let next_message = mailbox.receive().unwrap();
+    assert_eq!(next_message.message, 4);
+}
+
 /// A later deferred-message error cannot commit the successful prefix of the
 /// staged drain or consume any accepted held communication.
-#[tokio::test]
-async fn fsm_error_mid_drain_rolls_back_the_complete_staged_drain() {
+#[test]
+fn fsm_error_mid_drain_rolls_back_the_complete_staged_drain() {
     #[derive(Clone, Copy, PartialEq)]
     enum Phase {
         P0,
@@ -188,4 +226,4 @@ async fn fsm_error_mid_drain_rolls_back_the_complete_staged_drain() {
     assert!(machine.phase() == Phase::P0);
     assert_eq!(machine.held(), 3);
 }
-use behavior_testkit::InitializeTest;
+use behavior_actors::Activate;

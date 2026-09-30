@@ -1,0 +1,6 @@
+{
+  "floors": {
+    "crates/actors/src/discovery/pub_sub.rs::<impl Behavior for PubSub<A, K, P, Route>>::transition": 1
+  },
+  "known_zero_viable": []
+}

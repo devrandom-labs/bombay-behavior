@@ -40,8 +40,11 @@ across its asynchronous boundary.
 
 For one successful `Actions` value, the adapter interprets:
 
-1. creations in vector order;
-2. each creation's initialization effects before committing that child;
+1. creations in vector order, reserving a fresh unpublished address, running
+   each child's pure initialization fold, then privately committing its host,
+   exact endpoint, and creator-local binding when those steps succeed;
+2. each committed child's initialization effects once before public
+   publication or ordinary ingress;
 3. every named sends lane in its structural `InterpretSends` order; and
 4. the next-behavior or termination verdict.
 
@@ -55,9 +58,12 @@ Within a vector lane, values retain vector order. The algebra deliberately
 does not invent an order between independent product lanes beyond the product's
 own `InterpretSends` implementation.
 
-If interpretation fails, later effects are not consumed. The adapter reports
-its concrete error; it may not reinterpret failure as actor termination,
-successful creation, restart, or observation.
+An expected rejection retains its complete request and does not suppress
+independent later effects. Interpreter corruption retains the settled prefix,
+faulting value, and untouched suffix. Neither outcome can be reinterpreted as
+successful readiness, restart, or observation. A child whose private host was
+already committed remains an established birth even when its initialization
+effects later fail; it drains without public publication.
 
 ## Fresh creation
 
@@ -70,14 +76,20 @@ For each ordered creation batch and routed request it must:
 
 - prepare every required runtime route without partially consuming the batch;
 - allocate an address fresh with respect to the actor configuration;
-- initialize the concrete child and interpret its initialization actions;
-- install a runtime endpoint for `C::Protocol`;
-- atomically commit the creator-local protocol-occurrence/`CreationId` binding; and
-- publish `EstablishedCreation<C::Protocol, Occurrence>::Installed` only after
-  all preceding steps succeed.
+- initialize the concrete child exactly once;
+- install a private runtime host and exact endpoint for `C::Protocol`;
+- atomically commit the creator-local protocol-occurrence/`CreationId` binding;
+- report `EstablishedCreation<C::Protocol, Occurrence>::Installed` after that
+  commitment, without claiming initialization-effect success; and
+- interpret the child's initialization actions once, then make a continuing
+  successful child publicly resolvable before ordinary ingress.
 
-Failure publishes no capability. After ownership transfer,
+Failure before host commitment publishes no capability. Failure after private
+commitment preserves the established birth and its exact action settlement but
+does not publish the endpoint to logical resolution. After ownership transfer,
 `InitializationRejected` returns the current child and exact error, while
+`InitializationPanicked` returns the extant current child after a caught pure
+initialization panic, and
 `HostRejected` returns the current child, uninterpreted initialization actions,
 and matching `CreationRejection`. Before transfer, rejection returns the
 original creation batch with `ChildNamespaceExhausted`. An allocation collision

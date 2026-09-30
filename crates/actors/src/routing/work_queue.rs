@@ -82,109 +82,12 @@ pub enum WorkQueueMessage<T, WorkerRoute, ReplyRoute> {
 }
 
 /// Named effect lanes emitted by [`WorkQueue`].
+#[derive(behavior_macros::SendProduct)]
 pub struct WorkQueueSends<Assignments, OutcomeSends> {
     /// Work assigned to workers.
     pub assignments: Assignments,
     /// Submission admission and dispatch facts.
     pub outcomes: OutcomeSends,
-}
-
-impl<Assignments: SendEffects, OutcomeSends: SendEffects> SendEffects
-    for WorkQueueSends<Assignments, OutcomeSends>
-{
-    fn empty() -> Self {
-        Self {
-            assignments: Assignments::empty(),
-            outcomes: OutcomeSends::empty(),
-        }
-    }
-    fn append(&mut self, other: Self) {
-        self.assignments.append(other.assignments);
-        self.outcomes.append(other.outcomes);
-    }
-}
-
-impl<Event, Assignments, OutcomeSends> behavior::SendsFor<Event>
-    for WorkQueueSends<Assignments, OutcomeSends>
-where
-    Assignments: SendEffects + behavior::SendsFor<Event>,
-    OutcomeSends: SendEffects + behavior::SendsFor<Event>,
-{
-}
-
-impl<Assignments, OutcomeSends> behavior::ClassifySettlement
-    for WorkQueueSends<Assignments, OutcomeSends>
-where
-    Assignments: behavior::ClassifySettlement,
-    OutcomeSends: behavior::ClassifySettlement,
-{
-    fn settlement_status(&self) -> behavior::SettlementStatus {
-        self.assignments
-            .settlement_status()
-            .combine(self.outcomes.settlement_status())
-    }
-}
-
-impl<Assignments, OutcomeSends> behavior::SendSettlements
-    for WorkQueueSends<Assignments, OutcomeSends>
-where
-    Assignments: behavior::SendSettlements,
-    OutcomeSends: behavior::SendSettlements,
-{
-    type Settlements = WorkQueueSends<Assignments::Settlements, OutcomeSends::Settlements>;
-
-    fn unattempted(self) -> Self::Settlements {
-        WorkQueueSends {
-            assignments: self.assignments.unattempted(),
-            outcomes: self.outcomes.unattempted(),
-        }
-    }
-}
-
-impl<Host, RootEvent, Assignments, OutcomeSends> behavior::SourceSettlementCustody<Host, RootEvent>
-    for WorkQueueSends<Assignments, OutcomeSends>
-where
-    Host: Send,
-    Assignments: behavior::SourceSettlementCustody<Host, RootEvent> + Send,
-    OutcomeSends: behavior::SourceSettlementCustody<Host, RootEvent> + Send,
-{
-    fn offer_next_to_source(
-        self,
-        host: &mut Host,
-    ) -> impl core::future::Future<Output = behavior::SourceCustody<Self>> + Send {
-        async move {
-            (self.assignments, self.outcomes)
-                .offer_next_to_source(host)
-                .await
-                .map(|(assignments, outcomes)| WorkQueueSends {
-                    assignments,
-                    outcomes,
-                })
-        }
-    }
-}
-
-impl<I, RootEvent, Path, Assignments, OutcomeSends> behavior::InterpretSends<I, RootEvent, Path>
-    for WorkQueueSends<Assignments, OutcomeSends>
-where
-    I: Send,
-    Assignments: SendEffects + behavior::InterpretSends<I, RootEvent, Path>,
-    OutcomeSends: SendEffects + behavior::InterpretSends<I, RootEvent, Path>,
-{
-    fn interpret(
-        self,
-        interpreter: &mut I,
-    ) -> impl core::future::Future<Output = behavior::Interpretation<Self::Settlements>> + Send
-    {
-        async move {
-            behavior::settle_in_order(self.assignments, self.outcomes, interpreter)
-                .await
-                .map(|(assignments, outcomes)| WorkQueueSends {
-                    assignments,
-                    outcomes,
-                })
-        }
-    }
 }
 
 struct Waiting<T, Route> {
@@ -201,11 +104,14 @@ struct Waiting<T, Route> {
 /// idempotent. Initialization is empty, no actors are created, and the host
 /// never terminates by policy. FIFO selection and bounded admission are Bombay
 /// policy. Worker execution, mailbox admission, and physical backpressure are
-/// runtime responsibilities. No transition has a semantic panic condition.
+/// runtime responsibilities. Naming its protocol requires only typed routes;
+/// running the queue requires cloneable, comparable worker routes for state
+/// inspection and duplicate availability checks. No transition has a semantic
+/// panic condition.
 pub struct WorkQueue<
     A: Address,
     T,
-    WorkerRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = T>> + Clone + PartialEq,
+    WorkerRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = T>>,
     ReplyRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = WorkQueueOutcome<T>>>,
 > {
     capacity: usize,
@@ -306,7 +212,7 @@ where
 impl<A, T, WorkerRoute, ReplyRoute> BehaviorBase for WorkQueue<A, T, WorkerRoute, ReplyRoute>
 where
     A: Address,
-    WorkerRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = T>> + Clone + PartialEq,
+    WorkerRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = T>>,
     ReplyRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = WorkQueueOutcome<T>>>,
 {
     type Base = Self;
@@ -317,7 +223,7 @@ where
 impl<A, T, WorkerRoute, ReplyRoute> behavior::Protocol for WorkQueue<A, T, WorkerRoute, ReplyRoute>
 where
     A: Address,
-    WorkerRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = T>> + Clone + PartialEq,
+    WorkerRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = T>>,
     ReplyRoute: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = WorkQueueOutcome<T>>>,
 {
     type Addr = A;
@@ -369,32 +275,9 @@ mod tests {
         type Msg = u8;
     }
 
-    impl Behavior for Worker {
-        type Protocol = Self;
-        type Event = User<MailAddr, u8>;
-        type Sends = Vec<Never>;
-        type Ph = Never;
-        type Error = Never;
-        type Birth = NoBirths;
-        fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
-            Ok(Actions::cont())
-        }
-    }
     impl behavior::Protocol for Reply {
         type Addr = MailAddr;
         type Msg = WorkQueueOutcome<u8>;
-    }
-
-    impl Behavior for Reply {
-        type Protocol = Self;
-        type Event = User<MailAddr, behavior::BehaviorMessage<Self>>;
-        type Sends = Vec<Never>;
-        type Ph = Never;
-        type Error = Never;
-        type Birth = NoBirths;
-        fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
-            Ok(Actions::cont())
-        }
     }
     type Subject = WorkQueue<MailAddr, u8, Recipient<Worker>, Recipient<Reply>>;
     fn worker(n: u64) -> Recipient<Worker> {

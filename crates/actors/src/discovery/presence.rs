@@ -180,100 +180,12 @@ pub enum PresenceMessage<K, Route> {
 }
 
 /// Named effect lanes emitted by [`Presence`].
+#[derive(behavior_macros::SendProduct)]
 pub struct PresenceSends<ReplySends, Schedules> {
     /// Transition and query facts.
     pub replies: ReplySends,
     /// Relative expiry requests.
     pub schedules: Schedules,
-}
-impl<ReplySends: SendEffects, Schedules: SendEffects> SendEffects
-    for PresenceSends<ReplySends, Schedules>
-{
-    fn empty() -> Self {
-        Self {
-            replies: ReplySends::empty(),
-            schedules: Schedules::empty(),
-        }
-    }
-    fn append(&mut self, other: Self) {
-        self.replies.append(other.replies);
-        self.schedules.append(other.schedules);
-    }
-}
-
-impl<Event, ReplySends, Schedules> behavior::SendsFor<Event>
-    for PresenceSends<ReplySends, Schedules>
-where
-    ReplySends: SendEffects + behavior::SendsFor<Event>,
-    Schedules: SendEffects + behavior::SendsFor<Event>,
-{
-}
-
-impl<ReplySends, Schedules> behavior::ClassifySettlement for PresenceSends<ReplySends, Schedules>
-where
-    ReplySends: behavior::ClassifySettlement,
-    Schedules: behavior::ClassifySettlement,
-{
-    fn settlement_status(&self) -> behavior::SettlementStatus {
-        self.replies
-            .settlement_status()
-            .combine(self.schedules.settlement_status())
-    }
-}
-
-impl<ReplySends, Schedules> behavior::SendSettlements for PresenceSends<ReplySends, Schedules>
-where
-    ReplySends: behavior::SendSettlements,
-    Schedules: behavior::SendSettlements,
-{
-    type Settlements = PresenceSends<ReplySends::Settlements, Schedules::Settlements>;
-
-    fn unattempted(self) -> Self::Settlements {
-        PresenceSends {
-            replies: self.replies.unattempted(),
-            schedules: self.schedules.unattempted(),
-        }
-    }
-}
-
-impl<Host, RootEvent, ReplySends, Schedules> behavior::SourceSettlementCustody<Host, RootEvent>
-    for PresenceSends<ReplySends, Schedules>
-where
-    Host: Send,
-    ReplySends: behavior::SourceSettlementCustody<Host, RootEvent> + Send,
-    Schedules: behavior::SourceSettlementCustody<Host, RootEvent> + Send,
-{
-    fn offer_next_to_source(
-        self,
-        host: &mut Host,
-    ) -> impl core::future::Future<Output = behavior::SourceCustody<Self>> + Send {
-        async move {
-            (self.replies, self.schedules)
-                .offer_next_to_source(host)
-                .await
-                .map(|(replies, schedules)| PresenceSends { replies, schedules })
-        }
-    }
-}
-
-impl<I, RootEvent, Path, ReplySends, Schedules> behavior::InterpretSends<I, RootEvent, Path>
-    for PresenceSends<ReplySends, Schedules>
-where
-    I: Send,
-    ReplySends: SendEffects + behavior::InterpretSends<I, RootEvent, Path>,
-    Schedules: SendEffects + behavior::InterpretSends<I, RootEvent, Path>,
-{
-    fn interpret(
-        self,
-        interpreter: &mut I,
-    ) -> impl core::future::Future<Output = behavior::Interpretation<Self::Settlements>> + Send
-    {
-        async move {
-            behavior::settle_in_order(self.replies, self.schedules, interpreter)
-                .await
-                .map(|(replies, schedules)| PresenceSends { replies, schedules })
-        }
-    }
 }
 
 struct Record<K, Route> {
@@ -298,7 +210,7 @@ struct Record<K, Route> {
 /// No transition has a semantic panic condition.
 pub struct Presence<
     A: Address,
-    K: Clone + Eq,
+    K,
     Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = PresenceReply<K>>>,
 > {
     timer_id: fn(&K) -> TimerId,
@@ -513,7 +425,6 @@ where
 impl<A, K, Route> BehaviorBase for Presence<A, K, Route>
 where
     A: Address,
-    K: Clone + Eq,
     Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = PresenceReply<K>>>,
 {
     type Base = Self;
@@ -524,7 +435,6 @@ where
 impl<A, K, Route> behavior::Protocol for Presence<A, K, Route>
 where
     A: Address,
-    K: Clone + Eq,
     Route: DeliveryRoute<Protocol: behavior::Protocol<Addr = A, Msg = PresenceReply<K>>>,
 {
     type Addr = A;

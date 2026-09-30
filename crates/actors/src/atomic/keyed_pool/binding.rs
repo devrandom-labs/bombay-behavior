@@ -33,8 +33,7 @@ impl BindingCapacity {
 /// Applications receive generations from pool outcomes and cannot mint them:
 ///
 /// ```compile_fail,E0599
-/// use behavior_actors::atomic::BindingGeneration;
-/// let _ = BindingGeneration::new(1);
+/// let _ = behavior_actors::atomic::BindingGeneration::new(1);
 /// ```
 #[derive(Clone)]
 pub struct BindingGeneration {
@@ -449,14 +448,12 @@ mod tests {
             next: Some(maximum),
             token: Arc::new(()),
         };
-        assert_eq!(
-            sequence
-                .issue()
-                .unwrap_or_else(|| panic!("the last generation remains issuable"))
-                .get(),
-            u64::MAX
-        );
-        assert!(matches!(sequence.issue(), None));
+        let final_generation = sequence
+            .issue()
+            .unwrap_or_else(|| panic!("the last generation remains issuable"));
+        assert_eq!(final_generation.get(), u64::MAX);
+        let exhausted_generation = sequence.issue();
+        assert!(matches!(exhausted_generation, None));
 
         let mut table = bindings(1);
         table.generations.next = None;

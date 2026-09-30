@@ -176,9 +176,6 @@ where
 impl<A, K, P, Route> BehaviorBase for PubSub<A, K, P, Route>
 where
     A: Address,
-    K: Clone + Eq,
-    P: Clone,
-    Route: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = P>> + Clone + PartialEq,
 {
     type Base = Self;
     fn base(&self) -> &Self {
@@ -186,13 +183,7 @@ where
     }
 }
 
-impl<A, K, P, Route> behavior::Protocol for PubSub<A, K, P, Route>
-where
-    A: Address,
-    K: Clone + Eq,
-    P: Clone,
-    Route: DeliveryRoute<Protocol: Protocol<Addr = A, Msg = P>> + Clone + PartialEq,
-{
+impl<A: Address, K, P, Route> behavior::Protocol for PubSub<A, K, P, Route> {
     type Addr = A;
     type Msg = PubSubMessage<K, P, Route>;
 }
@@ -250,17 +241,6 @@ mod tests {
         type Msg = u8;
     }
 
-    impl Behavior for Destination {
-        type Protocol = Self;
-        type Event = User<MailAddr, u8>;
-        type Sends = Vec<Never>;
-        type Ph = Never;
-        type Error = Never;
-        type Birth = NoBirths;
-        fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
-            Ok(Actions::cont())
-        }
-    }
     type Subject = PubSub<MailAddr, u8, u8, Recipient<Destination>>;
     #[test]
     fn topics_and_subscribers_preserve_first_order() {
@@ -315,8 +295,9 @@ mod tests {
         assert!(unsubscribed.creates.is_empty());
         assert_eq!(unsubscribed.become_, behavior::Step::Continue);
         for topic in [1, 2] {
+            let rejection = s.receive(MailAddr(9), PubSubMessage::Publish { topic, value: 8 });
             assert!(
-                matches!(s.receive(MailAddr(9),PubSubMessage::Publish{topic,value:8}),Err(PubSubError::NoSubscribers{topic:returned,value:8}) if returned==topic)
+                matches!(rejection,Err(PubSubError::NoSubscribers{topic:returned,value:8}) if returned==topic)
             );
         }
     }

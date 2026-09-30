@@ -39,11 +39,14 @@ pub enum TerminationObservation {
 }
 
 /// Exact rejection from the observation wrapper.
+#[derive(thiserror::Error)]
 pub enum TerminationMonitorError<E, Report> {
     /// The wrapped behavior rejected its own event.
-    Inner(E),
+    #[error("wrapped behavior rejected its event")]
+    Inner(#[source] E),
     /// A returned observation report does not belong to the current phase or
     /// configured relationship.
+    #[error("observation report does not match the active relationship phase")]
     UnexpectedReport {
         observation: TerminationObservation,
         report: Report,
@@ -61,23 +64,6 @@ impl<E: core::fmt::Debug, Report> core::fmt::Debug for TerminationMonitorError<E
                 .finish(),
         }
     }
-}
-
-impl<E, Report> core::fmt::Display for TerminationMonitorError<E, Report> {
-    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self {
-            Self::Inner(_) => formatter.write_str("wrapped behavior rejected its event"),
-            Self::UnexpectedReport { .. } => formatter
-                .write_str("observation report does not match the active relationship phase"),
-        }
-    }
-}
-
-impl<E, Report> std::error::Error for TerminationMonitorError<E, Report>
-where
-    E: std::error::Error + 'static,
-    Report: 'static,
-{
 }
 
 pub(crate) mod sealed {
@@ -255,19 +241,17 @@ where
 /// transition atomicity. Ordinary delegated `B` transitions retain `B::Error`.
 ///
 /// ```compile_fail,E0308
-/// # use behavior::{Actions, Behavior, MailAddr, Never, NoBirths, User};
-/// # use behavior_actors::{PeerStopped, TerminationMonitor};
 /// # struct App;
-/// # impl behavior::Protocol for App { type Addr = MailAddr; type Msg = (); }
-/// # impl Behavior for App {
-/// #   type Protocol = Self; type Event = User<MailAddr, ()>; type Sends = Vec<Never>;
-/// #   type Ph = Never; type Error = Never; type Birth = NoBirths;
-/// #   fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> behavior::BehaviorActed<Self> { Ok(Actions::cont()) }
+/// # impl behavior::Protocol for App { type Addr = behavior::MailAddr; type Msg = (); }
+/// # impl behavior::Behavior for App {
+/// #   type Protocol = Self; type Event = behavior::User<behavior::MailAddr, ()>; type Sends = Vec<behavior::Never>;
+/// #   type Ph = behavior::Never; type Error = behavior::Never; type Birth = behavior::NoBirths;
+/// #   fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> behavior::BehaviorActed<Self> { Ok(behavior::Actions::cont()) }
 /// # }
-/// fn fallible(_: &mut App, _: PeerStopped<MailAddr>) -> behavior::BehaviorActed<App> {
-///     Ok(Actions::cont())
+/// fn fallible(_: &mut App, _: behavior_actors::PeerStopped<behavior::MailAddr>) -> behavior::BehaviorActed<App> {
+///     Ok(behavior::Actions::cont())
 /// }
-/// let _ = TerminationMonitor::new(App, MailAddr(1), fallible);
+/// let _ = behavior_actors::TerminationMonitor::new(App, behavior::MailAddr(1), fallible);
 /// ```
 pub struct TerminationMonitorWith<B: Behavior, Target: TerminationObservationTarget<B>> {
     inner: B,

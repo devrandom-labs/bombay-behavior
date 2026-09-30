@@ -140,7 +140,7 @@ retained values. The outer result never repeats those nested causes as another
 alternative. Its ready and unavailable alternatives carry the opaque worker
 attempt, not a worker actor or route.
 
-`ProxyDrain<W, P>` is doc-hidden. Its six alternatives name current worker
+`ProxyDrain<W, P>` is a visible ownership result. Its six alternatives name current worker
 outcomes: initialization rejected, stopped, or completed after an observed
 stop; and activation start rejected, activation rejected, or activation
 completed after an observed stop. A rejection that may follow an emitted

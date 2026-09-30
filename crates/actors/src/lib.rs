@@ -45,17 +45,15 @@
 //! }
 //! ```
 //!
-//! ```compile_fail
-//! use behavior_actors::{
-//!     DeadlineEvent, OneShotEvent, OneShotReaction, PeriodicEvent,
-//!     PeriodicReaction, ReceiveTimeoutEvent, ReceiveTimeoutReaction,
-//! };
-//! ```
-//!
 //! Foundational algebra stays owned by the `bombay-behavior` package.
 //!
-//! ```compile_fail
-//! use behavior_actors::Actions;
+//! ```compile_fail,E0425
+//! fn unavailable(_: behavior_actors::Actions<
+//!     behavior::MailAddr,
+//!     behavior::Never,
+//!     behavior::NoSends,
+//!     behavior::NoBirths,
+//! >) {}
 //! ```
 
 mod activation;
@@ -85,8 +83,8 @@ pub(crate) use atomic::{
     WorkerStartResult, WorkerSubmission,
 };
 pub use composition::{
-    DeliveryRoute, DeliveryRouteFor, MessageAdapter, MessageAdapterWithRoute, ReplyDeliveries,
-    ReplyDelivery, ReplyRoute,
+    DeliveryRoute, MessageAdapter, MessageAdapterWithRoute, ReplyDeliveries, ReplyDelivery,
+    ReplyRoute,
 };
 pub use discovery::{
     Presence, PresenceEntry, PresenceError, PresenceMessage, PresenceOutcome, PresencePhase,
@@ -135,19 +133,19 @@ pub use routing::{
     AcknowledgementRecord, AcknowledgementState, Acknowledgements, BreakerAttempt,
     BreakerCompletion, BreakerConfigError, BreakerError, BreakerMessage, BreakerOutcome,
     BreakerPhase, BreakerRejection, BreakerSends, Buffer, BufferConfigError, BufferConfiguration,
-    BufferMessage, BufferOutcome, BufferRejection, BufferSends, BufferState, Buffered,
-    CircuitBreaker, ClosedPhase, ConsistentHash, CorrelationResult, CorrelationState, Correlator,
-    CorrelatorError, CorrelatorMessage, Deduplicator, DeduplicatorConfigError, DeduplicatorMessage,
-    DeduplicatorOutcome, DeduplicatorState, DeliveryOutcomes, HashPolicyError, LeastLoaded,
-    LeastLoadedError, Load, LoadEvidence, LoadObservation, LoadVersion, MemberToken,
-    MemberTokenEvidence, MemberTokenObservation, MemberTokenVersion, OrderGate, OrderGateMessage,
-    OrderGateOutcome, OrderGateState, OverflowPolicy, PriorityQueue, PriorityQueueConfigError,
-    PriorityQueueMessage, PriorityQueueOutcome, PriorityQueueRejection, PriorityQueueState,
-    ProbePhase, RateLimitRejection, RateLimiter, RateLimiterConfigError, RateLimiterMessage,
+    BufferMessage, BufferOutcome, BufferRejection, BufferState, Buffered, CircuitBreaker,
+    ClosedPhase, ConsistentHash, CorrelationResult, CorrelationState, Correlator, CorrelatorError,
+    CorrelatorMessage, Deduplicator, DeduplicatorConfigError, DeduplicatorMessage,
+    DeduplicatorOutcome, DeduplicatorState, DeliveryOutcomes, LeastLoaded, Load, LoadEvidence,
+    LoadObservation, LoadVersion, MemberEvidenceError, MemberToken, MemberTokenEvidence,
+    MemberTokenObservation, MemberTokenVersion, OrderGate, OrderGateMessage, OrderGateOutcome,
+    OrderGateState, OverflowPolicy, PriorityQueue, PriorityQueueConfigError, PriorityQueueMessage,
+    PriorityQueueOutcome, PriorityQueueRejection, PriorityQueueState, ProbePhase,
+    RateLimitRejection, RateLimiter, RateLimiterConfigError, RateLimiterMessage,
     RateLimiterOutcome, RateLimiterState, RendezvousHash, RoundRobin, RouteKey, Router,
-    RouterError, RouterMessage, RoutingStrategy, Sequence, Sequencer, SequencerMessage,
-    SequencerOutcome, SequencerState, TokenCount, WorkQueue, WorkQueueMessage, WorkQueueOutcome,
-    WorkQueueRejection, WorkQueueSends, WorkQueueState,
+    RouterError, RouterMessage, RoutingObservationRejection, RoutingStrategy, Sequence, Sequencer,
+    SequencerMessage, SequencerOutcome, SequencerState, TokenCount, WorkQueue, WorkQueueMessage,
+    WorkQueueOutcome, WorkQueueRejection, WorkQueueSends, WorkQueueState,
 };
 pub use shutdown::{FinalizeOnShutdown, ShutdownEvent, ShutdownReaction, StopOnShutdown};
 pub use stash::{Stash, StashRoute, StashStatus, StaticallyInfallible};

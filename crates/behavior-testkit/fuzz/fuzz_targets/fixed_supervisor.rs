@@ -4,8 +4,8 @@ use core::convert::Infallible;
 
 use behavior_actors::atomic::{
     ActivationPolicy, ActorDrainPolicy, DiagnosticDisposition, FailureReaction, FixedSupervisor,
-    ImmediateActivation, InitialWorkerOutcome, OrderedRoles, ProxyInputReceipt, ProxyOutcome,
-    Recovery, StableProxy, WorkerAttempt, WorkerSource, WorkerStartResult, WorkerSubmission, fixed,
+    ImmediateActivation, InitialWorkerOutcome, OrderedRoles, ProxyOutcome, Recovery, StableProxy,
+    WorkerAttempt, WorkerSource, WorkerStartResult, WorkerSubmission, fixed,
 };
 use behavior_actors::{Activate as _, Active};
 use behavior_core::{
@@ -14,6 +14,7 @@ use behavior_core::{
     Never, SendSettlements, SettledItem, Step,
 };
 
+use crate::proxy_control::admit_proxy_operation;
 use crate::stable_proxy::{RuntimeAddress, Worker, WorkerEndpoint, drive_ready_proxy};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -92,7 +93,10 @@ where
         SettledItem::Unattempted(operation) => operation,
         SettledItem::Attempted(_) => panic!("the operation is not interpreted by the fixture"),
     };
-    let (proxy_id, control, operation) = initial.into_parts();
+    let (proxy_id, control, receipt) = admit_proxy_operation(
+        initial,
+        EstablishedActor::<StableProxy<Worker, ImmediateActivation>>::issued(WorkerEndpoint),
+    );
     let (proxy, _, ready) = drive_ready_proxy(StableProxy::immediate(), control);
     let worker = match &ready {
         ProxyOutcome::Initial {
@@ -107,15 +111,7 @@ where
         | ProxyOutcome::Unavailable { .. } => panic!("the proxy reaches ready"),
     };
     let accepted = supervisor
-        .on(SettledItem::Attempted(ItemSettlement::Accepted(
-            ProxyInputReceipt::new(
-                proxy_id,
-                EstablishedActor::<StableProxy<Worker, ImmediateActivation>>::issued(
-                    WorkerEndpoint,
-                ),
-                operation,
-            ),
-        )))
+        .on(SettledItem::Attempted(ItemSettlement::Accepted(receipt)))
         .unwrap_or_else(|_| panic!("the exact initial proxy input is accepted"));
     assert!(matches!(accepted.become_, Step::Continue));
     let opened = supervisor

@@ -155,7 +155,8 @@ where
         Some(SettledItem::Attempted(_)) => panic!("an unattempted product attempted its item"),
         None => panic!("the source item was lost"),
     };
-    assert!(settlements.next().is_none());
+    let remaining_settlements = settlements.next();
+    assert!(remaining_settlements.is_none());
     recovered
 }
 
@@ -194,17 +195,16 @@ fn unattempted_settlements_return_each_exact_source_request() {
         ObservationId(22),
         behavior::EstablishedRecipient::issued(ProbeEndpoint(23)),
     ));
+    let observed = observation.interpret(&mut ObservationCapture);
     assert_eq!(
-        observation.interpret(&mut ObservationCapture),
+        observed,
         CapturedObservation::Started(ObservationId(22), ProbeEndpoint(23))
     );
 
     let cancellation =
         recover_unattempted(CancelObservation::<ProbeProtocol>::new(ObservationId(24)));
-    assert_eq!(
-        cancellation.interpret(&mut ObservationCapture),
-        CapturedObservation::Cancelled(ObservationId(24))
-    );
+    let cancelled = cancellation.interpret(&mut ObservationCapture);
+    assert_eq!(cancelled, CapturedObservation::Cancelled(ObservationId(24)));
 
     let creation = creation_id();
     let observation = recover_unattempted(

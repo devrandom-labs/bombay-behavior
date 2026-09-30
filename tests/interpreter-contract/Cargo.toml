@@ -1,0 +1,15 @@
+[workspace]
+
+[package]
+name = "interpreter-contract"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+behavior = { package = "bombay-behavior", path = "../../crates/behavior" }
+behavior_actors = { package = "bombay-behavior-actors", path = "../../crates/actors" }
+tokio = { version = "1.47", features = ["macros", "rt"] }
+
+[dev-dependencies]
+trybuild = "1.0"
