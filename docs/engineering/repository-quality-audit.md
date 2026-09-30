@@ -569,7 +569,7 @@ is recorded against a revision.
 
 - [ ] **A13 — Audit public bounds, hidden exports, and extension ownership.**
   **Confirmed surface requiring review.** The current source has 10
-  `#[doc(hidden)]` annotation sites in core and 54 in actors, including
+  `#[doc(hidden)]` annotation sites in core and 50 in actors, including
   members and re-exports. The
   [public-surface inventory](public-surface-inventory.md) classifies each site
   by contract owner. These annotations do not make an item private.
@@ -636,6 +636,38 @@ is recorded against a revision.
   cursor repair and the least-loaded/Rendezvous traces exercise the current
   comparable-route contract. This resolves the isolated header question,
   while A13's broader hidden-port review remains open.
+
+  **Pre-edit A13 returned-worker custody documentation law:** A host rejection
+  of a staged worker returns `WorkerCreationRejection::HostRejected` containing
+  `WorkerRecovery<W>`. Its consuming `into_retirement()` returns the exact
+  current worker and untouched initialization actions to the custodian; no
+  replacement worker or reconstructed actions are permitted. A committed
+  worker outcome separately carries opaque `WorkerAttempt` evidence whose
+  `creation()` projection is only creator-local correlation. These are
+  existing derived ownership contracts. The external
+  `proxy_command_recovery::host_rejection_keeps_worker_and_initialization_actions_together`
+  case consumes `WorkerRecovery`, and proxy/fixed-supervisor callers name
+  `WorkerAttempt`. Before editing, Nix-pinned Rustdoc omits both structs from
+  the `atomic` index and has no item pages. The focused regression is visible
+  pages and methods while those external callers continue passing. Only
+  documentation hiding on these already-public types/methods and their
+  grouped re-export may change; their private constructors, fields, result
+  types, actor states, transition branches, and interpreter operations stay
+  unchanged.
+  Post-edit, Nix-pinned Rustdoc lists both types on the `atomic` index with
+  item pages and shows `into_retirement()` and `creation()` on those pages.
+  The focused external host-rejection test passes. Actor hidden annotation
+  sites fall from 54 to 50. Root control states, subordinate alternatives,
+  transition branches, modules, and public Rust spellings remain unchanged;
+  the two touched Rust files fall from 440 to 436 lines as four hidden markers
+  are removed. This edit changes documentation visibility only.
+  `WorkerRecovery` still owns the rejected worker and all unattempted
+  initialization actions, while `WorkerAttempt` still owns only exact issued
+  correlation. No arrival history, repeated cause, false cardinality, nested
+  authority, semantic boolean, or positional caller syntax was introduced.
+  The creation/lifecycle law, stable-proxy guide, and normalized atomic
+  documents were cross-checked. Disposition: `pass` for this custody
+  documentation port; A13 remains open for the wider surface review.
 
   **Pre-edit A13 proxy outcome and correlation documentation law:** A caller
   inspecting an initial or replacement proxy result must distinguish

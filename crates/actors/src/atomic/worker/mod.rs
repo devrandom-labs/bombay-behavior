@@ -55,7 +55,6 @@ pub type HostedInitialization<W> = Actions<
 
 /// An uncommitted worker returned together with initialization actions that
 /// the host rejected before interpreting.
-#[doc(hidden)]
 #[must_use = "a rejected worker and its initialization actions require custody"]
 pub struct WorkerRecovery<W>
 where
@@ -78,7 +77,6 @@ where
     }
 
     /// Transfer both affine values to Bombay's terminal custodian.
-    #[doc(hidden)]
     #[must_use]
     pub fn into_retirement(self) -> (W, HostedInitialization<W>) {
         (self.worker, self.initialization)
@@ -248,7 +246,6 @@ impl ActivationPlan for ImmediateActivation {
 }
 
 /// Exact non-forgeable evidence for one worker creation attempt.
-#[doc(hidden)]
 #[derive(Clone)]
 pub struct WorkerAttempt {
     creation: CreationId,
@@ -263,8 +260,8 @@ impl WorkerAttempt {
         }
     }
 
-    /// Creator-local correlation for this worker attempt.
-    #[doc(hidden)]
+    /// Creator-local correlation for this worker attempt. This number is not
+    /// actor identity or proof that creation committed.
     #[must_use]
     pub const fn creation(&self) -> CreationId {
         self.creation

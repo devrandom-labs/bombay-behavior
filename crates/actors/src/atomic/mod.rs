@@ -107,10 +107,9 @@ pub use stable_proxy::{ProxyDrain, WorkerStartResult};
 #[doc(hidden)]
 pub use worker::{
     ActivationPermit, ActivationStartRejection, BeginActivation, InitializationAttempt,
-    InitializeWorker, WorkerActivation, WorkerAttempt, WorkerInitializationOutcome,
-    WorkerInitializationReport,
+    InitializeWorker, WorkerActivation, WorkerInitializationOutcome, WorkerInitializationReport,
 };
 pub use worker::{
-    ActivationPlan, ImmediateActivation, InitialWorkerRejection, PreparedWorker,
+    ActivationPlan, ImmediateActivation, InitialWorkerRejection, PreparedWorker, WorkerAttempt,
     WorkerCreationRejection, WorkerInitializationFailure, WorkerRecovery, WorkerSubmission,
 };
