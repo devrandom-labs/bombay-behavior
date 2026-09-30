@@ -3,7 +3,7 @@
 This inventory supports [A13](repository-quality-audit.md). `#[doc(hidden)]`
 changes Rustdoc display, not Rust visibility. The counts below are annotation
 sites in source, so a grouped re-export and its original declaration each
-count once. The current branch has 10 sites in `crates/behavior/src` and 56
+count once. The current branch has 10 sites in `crates/behavior/src` and 54
 in `crates/actors/src`; the earlier audit counted 25 and 89 before the
 documentation visibility review.
 
@@ -45,7 +45,7 @@ is neither actor identity nor proof of a committed fresh child.
 | `atomic/{dynamic_supervisor,fifo_pool,fixed_supervisor,keyed_pool}/{event,requests}.rs` | `DynamicSupervisorEvent`, `DynamicSupervisorRequests`, `FifoEvent`, `FifoRequests`, `FixedSupervisorEvent`, `FixedSupervisorRequests`, `KeyedEvent`, `KeyedRequests` | Runtime port | Public associated event and send products let an interpreter carry complete typed lanes; the aggregate owns their transition semantics. |
 | `atomic/fixed_supervisor/lifecycle.rs` | `FixedLifecycleRoute` | Generated code obligation | This sealed route proof is implemented for the finite fixed-supervision lifecycle forms. |
 | `atomic/pool/mod.rs` | `CompletesAssignments` | Generated code obligation | The sealed completion capability belongs to generated pool workers and declared completion products. |
-| `atomic/stable_proxy/{effects,operation,protocol}.rs` and `atomic/mod.rs` | `ProxyEffects`, `ProxyOperation::creation`, `ProxyDrain`, `ProxyEvent`, plus re-export-only `WorkerStartResult` | Runtime port | The host and typed proxy effects must keep rejection custody and every ordered lane; operation identity, request decomposition, and receipt construction are now restricted to their owning modules. The exact `ProxyOperation` and `ProxyInputReceipt` used by the interpreter are visible. |
+| `atomic/stable_proxy/{effects,protocol}.rs` and `atomic/mod.rs` | `ProxyEffects` and its re-export; `ProxyEvent` as a concrete associated event type | Structural event/effect products | The host and typed proxy effects must keep rejection custody and every ordered lane; application callers use the typed `Behavior` projections and event ingress. `ProxyDrain`, `WorkerStartResult`, and `ProxyOperation::creation` are now visible because callers match the concrete outcomes or inspect the exact creation correlation. |
 | `atomic/worker/activation.rs` | `ActivationStartRejection`, `BeginActivation`, `BeginActivation::{new,target,worker,initialization,started,start_rejected,activate}`, `WorkerActivation`, `WorkerActivation::{worker,into_ready,into_rejection}` | Runtime port | The host settles activation only after the exact worker and initialization attempt are known. |
 | `atomic/worker/initialization.rs` | `InitializationAttempt`, `ActivationPermit`, `ActivationPermit::{worker,initialization,target}`, `InitializeWorker`, `InitializeWorker::{target,worker,initialization,resolve}`, `WorkerInitializationOutcome`, `WorkerInitializationReport`, `WorkerInitializationFailure` | Runtime port | Initialization settlement carries exact worker custody and can authorize or reject later activation. |
 | `atomic/worker/mod.rs` | `HostedInitialization`, `WorkerRecovery`, `WorkerRecovery::into_retirement`, `WorkerAttempt`, `WorkerAttempt::creation` | Runtime port | The host retains the attempt and complete initialization effects through retirement. |
@@ -67,6 +67,14 @@ The interpreter obtains a clone of the exact recipient capability through
 retains its receipt. A rejected keyed outcome retains the original customer
 route in the complete `CustomerDelivery` action. The former public `receipt`
 and `into_parts` assembly methods remain atomic-module-only.
+
+`ProxyDrain` and `WorkerStartResult` are visible domain outcome sums because
+external supervisor and proxy callers match their concrete alternatives.
+`ProxyOperation::creation` is visible for trusted interpreters selecting the
+exact proxy; its numeric value remains creator-local correlation, not actor
+identity or installation evidence. `ProxyEffects` and `ProxyEvent` remain
+hidden structural products reachable through typed behavior projections and
+event ingress; their documentation status grants no extra authority.
 
 The P2 assignment custody witness narrowed two formerly public methods after
 external caller tests proved the consuming `settle` operation. Compile-fail
@@ -105,6 +113,7 @@ route-free diagnostics, while the sealed route trait still limits its
 implementors. Removing eight documentation annotations changes no Rust
 visibility, constructor, or transition; 58 actor annotations remained at that
 checkpoint, with 56 after exposing the customer-delivery ports.
+The proxy outcome and correlation documentation repair leaves 54 sites.
 
 `WorkQueue` now keeps worker-route cloning and equality on construction and
 transition operations, where queue inspection and duplicate availability use

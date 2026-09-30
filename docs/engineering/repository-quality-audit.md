@@ -569,7 +569,7 @@ is recorded against a revision.
 
 - [ ] **A13 — Audit public bounds, hidden exports, and extension ownership.**
   **Confirmed surface requiring review.** The current source has 10
-  `#[doc(hidden)]` annotation sites in core and 56 in actors, including
+  `#[doc(hidden)]` annotation sites in core and 54 in actors, including
   members and re-exports. The
   [public-surface inventory](public-surface-inventory.md) classifies each site
   by contract owner. These annotations do not make an item private.
@@ -636,6 +636,37 @@ is recorded against a revision.
   cursor repair and the least-loaded/Rendezvous traces exercise the current
   comparable-route contract. This resolves the isolated header question,
   while A13's broader hidden-port review remains open.
+
+  **Pre-edit A13 proxy outcome and correlation documentation law:** A caller
+  inspecting an initial or replacement proxy result must distinguish
+  `WorkerStartResult::CreationRejected` from `Ready` and `Unavailable`; the
+  latter owns the exact `ProxyDrain` cause and worker lifecycle values. A
+  trusted interpreter inspecting `ProxyOperation` must read its exact
+  creator-local creation correlation before admitting private control. These
+  are existing derived ownership contracts, not additional actor powers.
+  External proxy, fixed-supervisor, and dynamic-supervisor tests already match
+  these products and call `ProxyOperation::creation()`. Before editing,
+  Nix-pinned Rustdoc omits `WorkerStartResult` and `ProxyDrain` from the
+  `atomic` index and has no item pages; it also omits `method.creation` from
+  the visible `ProxyOperation` page. The focused regression is their visible
+  Rustdoc contract with those existing external callers still passing. The
+  edit removes documentation hiding from the domain outcome, exact
+  correlation method, and their grouped re-export; it does not add a Rust
+  spelling, constructor, capability, bound, lane, state, or transition.
+  Post-edit, Nix-pinned Rustdoc lists `ProxyDrain` and `WorkerStartResult` in
+  the `atomic` index with item pages and lists `method.creation` on the
+  `ProxyOperation` page. The focused external proxy, dynamic-supervisor, and
+  fixed-supervisor suites pass 53, 29, and 98 tests. Actor hidden annotation
+  sites fall from 56 to 54. StableProxy's eight root states, the fixed roster's
+  five, and the dynamic entry's fourteen alternatives remain unchanged; their
+  branches, modules, production public spellings, and ownership values are
+  unchanged. `ProxyDrain` still owns one precise committed-worker failure
+  cause, and `creation()` still exposes only the creator-local correlation.
+  No arrival history, repeated cause, false cardinality, nested authority,
+  semantic boolean, or positional caller syntax was introduced. The proxy
+  law, stable-proxy guide, and normalized atomic documents were cross-checked.
+  Disposition: `pass` for these visible contracts; A13 remains open for the
+  wider surface review.
 
   **Pre-edit A13 customer-delivery documentation law:** A keyed-pool
   interpreter must name the concrete `CustomerDelivery<P>` action to return

@@ -236,8 +236,9 @@ where
         )
     }
 
-    /// Inspect the exact proxy creation before attempting control admission.
-    #[doc(hidden)]
+    /// Inspect the exact creator-local proxy creation correlation before
+    /// attempting control admission. This is not an actor identity or proof
+    /// that the proxy was installed.
     #[must_use]
     pub const fn creation(&self) -> CreationId {
         self.creation
