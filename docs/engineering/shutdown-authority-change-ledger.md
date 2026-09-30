@@ -403,7 +403,7 @@ cardinality, nested transition authority, semantic boolean, or structural
 user syntax. Cross-checks are the same law documents named above.
 Disposition: **pass**.
 
-## Final retained batch: interpreter proof and repository gates
+## Retained batch: interpreter proof and repository gates
 
 The single creation authority still selects `Established(CommittedChild)`,
 `InitializationRejected`, `InitializationPanicked`, or `HostRejected` for a
@@ -460,3 +460,55 @@ doctests, format, package, audit, and dependency policy). The dedicated
 Rustdoc failure-code script checked 51 expected compiler diagnostics. The
 fuzz targets were compile-checked because this task changes the shape of a
 creation result, not the stateful sequence or message parsing law they fuzz.
+
+## External interpreter contract migration after PR CI
+
+The standalone `tests/interpreter-contract` crate is a separate Cargo
+workspace, so the root workspace and `nix flake check` did not compile its
+fixtures. The repository CI runs it in debug and release. Before editing the
+fixtures, both commands failed: four address implementations lacked the
+installed value and endpoint projection, and the accepted assignment fixture
+still nested an `EstablishedCreation` under direct child success. This is the
+same pre-edit law failure as the original catalogue regression, in a later
+consumer, not provenance for a new API.
+
+Pre-edit checkpoint: direct child control states remain established,
+initialization rejected, initialization panicked, and host rejected. Named
+report states remain installed and rejected; worker outcome states remain
+established and rejected. Branch counts are four, two, and two. The three
+rejection-only fixtures retain their current child and complete refusal or
+panic custody; they need no new transition. The accepted assignment fixture
+needs the current ID, kind, and exact installed actor. One address namespace
+may serve all four fixtures without inferring single-child cardinality or a
+selection policy. The proposed fixture control owns a typed event channel and
+its receiver identity, with no history state or transition authority. There
+is no repeated cause, false cardinality, semantic boolean, nested success
+sum, or positional wrapper syntax. Before this batch the cumulative change
+is 82 files, 16 production modules, +766/-349 conservative production source
+lines (net +417), four/two/two relevant result alternatives, and three new
+public types. The batch is expected to touch four test files and one private
+test fixture module, with zero production lines or public spellings. The PRD,
+normalized atomic-actor essence/architecture/retained-core/downstream
+documents, and `AGENTS.md` creation and no-op laws were cross-checked.
+Disposition: **pass** for mechanical fixture migration.
+
+The external fixture now uses one private `InstalledControl<B, Endpoint>`
+family with a typed sender and retained receiver. Its successful assignment
+birth carries `CommittedChild(id, kind, EstablishedActor<B>)` directly. The
+three rejection-only fixtures supply the same real installable address family
+without constructing a success or a placeholder control. Their custody tests
+continue to assert the exact current child, route, kind, error, and actions.
+The control-state sums, alternatives, and branch counts remain four/two/two.
+No production symbol, state machine, arrival-history label, or public spelling
+was added. The same law and normalized documents were cross-checked after the
+batch; the residue scan remains clear. Disposition: **pass**.
+
+Both standalone external interpreter commands now pass with `--locked` in
+debug and optimized builds, including its compile-fail fixtures. The graph
+check also passes. The complete cumulative task now touches **87 files**:
+production `src` **+766/-349, net +417**; tests, benches, fuzz fixtures, and
+probes **+2180/-524, net +1656**; documentation and research record
+**+660/-56, net +604**. Sixteen production source files are touched; new
+public types remain three. No untracked file is left after staging. The
+15-file threshold authorization still applies; the other two thresholds are
+not reached.

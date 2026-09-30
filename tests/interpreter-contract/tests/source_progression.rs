@@ -11,6 +11,8 @@ use behavior::{
 };
 use behavior_actors::atomic::{DiagnosticAccepted, DiagnosticAction};
 
+mod installed_control;
+
 struct ReplySource;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -25,6 +27,18 @@ impl EndpointAddress for RuntimeAddr {
         = u64
     where
         P: Protocol<Addr = Self>;
+
+    type Installed<B>
+        = installed_control::InstalledControl<B, u64>
+    where
+        B: Behavior<Protocol: Protocol<Addr = Self>>;
+
+    fn recipient<B>(installed: &Self::Installed<B>) -> u64
+    where
+        B: Behavior<Protocol: Protocol<Addr = Self>>,
+    {
+        *installed.endpoint()
+    }
 }
 
 struct Child(Box<str>);

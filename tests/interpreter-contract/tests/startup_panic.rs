@@ -6,6 +6,8 @@ use behavior::{
     NoSends, Protocol, RoutedCreation, User, initialize,
 };
 
+mod installed_control;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct RuntimeAddr(u64);
 
@@ -18,6 +20,18 @@ impl EndpointAddress for RuntimeAddr {
         = u64
     where
         P: Protocol<Addr = Self>;
+
+    type Installed<B>
+        = installed_control::InstalledControl<B, u64>
+    where
+        B: Behavior<Protocol: Protocol<Addr = Self>>;
+
+    fn recipient<B>(installed: &Self::Installed<B>) -> u64
+    where
+        B: Behavior<Protocol: Protocol<Addr = Self>>,
+    {
+        *installed.endpoint()
+    }
 }
 
 enum InitializationTrace {
