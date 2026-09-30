@@ -586,7 +586,9 @@ is recorded against a revision.
   boolean, or positional caller syntax was introduced. The keyed-customer
   rejection law in `docs/atomic-runtime-settlement.md` and the normalized
   pool law were cross-checked. Disposition: `pass` for these two visible ports;
-  the wider A13 surface and compile-cost review remain open.
+  the wider A13 surface and compile-cost review remain open. A clean
+  detached-worktree `nix flake check -L --max-jobs 2` at `19a38c2` passed all
+  eight active aarch64-darwin checks, including Rustdoc and optimized Nextest.
 
   **Pre-edit A13 diagnostic-port visibility law:** An external interpreter
   must name the concrete `DiagnosticAction`, `DiagnosticAccepted`, and sealed
