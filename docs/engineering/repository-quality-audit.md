@@ -397,7 +397,12 @@ is recorded against a revision.
   `docs/actor-laws/proxy.md`, `docs/actor-laws/dynamic-supervisor.md`, and
   the normalized atomic-actor documents were cross-checked. Disposition:
   `pass` for the mechanical migrations; the remaining family inventories and
-  interpreter terminal custody still keep A12 open.
+  interpreter terminal custody still keep A12 open. A clean detached-worktree
+  `nix flake check -L --max-jobs 2` at `44922e2` passed all eight active
+  aarch64-darwin checks, including 845/845 optimized Nextest tests, Rustdoc,
+  Clippy, package, and formatting. The first run caught three test-only
+  consuming calls inside assertions; those calls now execute before the
+  assertions and the full rerun passes.
 
   **A12 StableProxy root values, read-only review:** the one control-state sum
   remains eight alternatives in six modules and 5,076 production lines. The
