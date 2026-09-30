@@ -91,3 +91,52 @@ focused failing law regression and aggregate-drift record first. Real Bombay
 changes are outside this Behavior branch while the instruction to leave that
 repository untouched remains in force. A local or path-patched compile does
 not close P5 or audit item A17.
+
+## T11 Behavior-side host-refusal custody, before fixture edit
+
+The derived Bombay pre-commit law says a host refusal after a successful pure
+initialization returns the current child and the complete untouched `Actions`;
+no request has crossed the interpreter boundary. The existing public
+`ChildCreationOutcome::HostRejected` already carries those values, but the
+`action_interpretation` host-rejection case supplies `Actions::cont()` and
+cannot detect loss of a pending send. The next external fixture will run a
+move-only child's pure initialization, retain two ordered move-only sends, then
+construct and decompose the public host-rejection outcome. It will check the
+original allocations, route, creation ID, kind, send order, and continuation
+verdict. No production type, bound, host operation, or state change is
+proposed. This proves the Behavior-side ownership equation only; a real
+reservation refusal and non-interpretation trace remain mandatory for T11.
+
+The external `startup_host_rejection` fixture now passes in debug and
+optimized profiles. `OwnedText` has no `Clone` implementation. The test checks
+that pure initialization moves both pending sends into `Actions`, then a host
+refusal returns the mutated current child, both exact send allocations in
+order, the original route, creation ID, birth kind, and `Continue` decision. The
+first version adds 116 test lines and zero production lines, types, states, branches,
+modules, or public spellings. No arrival history, repeated cause, false
+cardinality, nested transition authority, semantic boolean, or positional
+caller syntax is introduced. Cross-checks: the actor transition algebra and
+PRD section 6.3. Disposition: `pass` for the external Behavior-side custody
+witness. T11 remains open because the fixture does not own an Address
+reservation or a production child host and therefore cannot prove that a real
+host attempts no effects after refusing commitment.
+
+**Creation-lane extension, before edit:** the first fixture observes two sends
+and `Continue` but leaves the creation leg empty. A host refusal must also
+return a staged nested creation untouched. Extend the same fixture with one
+move-only nested child, check its exact allocation, ID, and birth kind after
+decomposing `HostRejected`, and keep the existing ordered-send assertions.
+This is a test-only strengthening of the same derived law; no actor or
+interpreter type changes.
+
+The extension passes in debug and optimized profiles. `Grandchild` owns a
+separate non-`Clone` value; its staged request stays in the returned creation
+leg with the exact allocation, nested creation ID, and birth kind. The
+fixture now has 157 test lines and checks sends, creation, and next-behavior
+decision together. Production state, branches, modules, and public API remain
+unchanged. The nested child is current data required for a possible later
+commit, not arrival history; no duplicated cause, false cardinality, nested
+aggregate authority, semantic boolean, or positional caller syntax is added.
+Cross-checks remain the actor transition algebra and PRD section 6.3.
+Disposition: `pass` for the Behavior-side complete-actions witness; T11 still
+requires the real host refusal and absence of effect attempts.

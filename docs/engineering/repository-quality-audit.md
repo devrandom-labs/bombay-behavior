@@ -746,6 +746,15 @@ is recorded against a revision.
   does not satisfy the PRD's non-`Clone` T02 requirement; the precise source
   conflict and current test scope are in the
   [implementation ledger](interpreter-contract-implementation-ledger.md).
+  **Pre-commit host-refusal custody:** the external
+  `tests/interpreter-contract/tests/startup_host_rejection.rs` caller runs a
+  pure initialization with two ordered values whose types do not implement
+  `Clone`. It then requires `HostRejected` to return the mutated current child,
+  both original send allocations in order, the untouched staged nested child,
+  the route, creation IDs, kinds, and continuation decision. Debug and
+  optimized fixture tests pass. This proves
+  the Behavior-side return shape; no production host or Address reservation
+  participates, so it does not establish T11 or close A17/A20.
 
 ## Follow-on after the audit checklist
 
