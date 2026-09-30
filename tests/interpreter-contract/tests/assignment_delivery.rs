@@ -180,6 +180,7 @@ struct DeliveryHost {
     admission: DeliveryAdmission,
     endpoints: Vec<Endpoint>,
     payloads: Vec<usize>,
+    payload_texts: Vec<String>,
     completions: Vec<Completion<u16>>,
 }
 
@@ -189,6 +190,7 @@ impl DeliveryHost {
             admission,
             endpoints: Vec::new(),
             payloads: Vec::new(),
+            payload_texts: Vec::new(),
             completions: Vec::new(),
         }
     }
@@ -203,6 +205,8 @@ impl InterpretItem<EstablishedDelivery<Worker>, (), Here> for DeliveryHost {
             .push(delivery.to.clone().interpret(&mut EndpointReader));
         self.payloads
             .push(delivery.message.payload().as_ref().as_ptr() as usize);
+        self.payload_texts
+            .push(delivery.message.payload().as_ref().to_owned());
         match self.admission {
             DeliveryAdmission::Accept => {
                 self.completions
@@ -229,6 +233,7 @@ async fn accepted_assignment_returns_its_receipt_before_completion() {
     assert_eq!(host.endpoints, [Endpoint(40 + worker.get())]);
     assert_eq!(host.payloads.len(), 1);
     assert_ne!(host.payloads[0], identity);
+    assert_eq!(host.payload_texts, ["accepted"]);
     let accepted: ActionItemResult<AssignWorker<Worker, Box<str>>> =
         SettledItem::Attempted(settlement);
     let awaiting_completion = pool
@@ -279,6 +284,7 @@ async fn concurrent_same_typed_assignments_return_receipts_to_their_own_pools() 
     assert_eq!(host.endpoints.len(), 2);
     assert_ne!(host.payloads[0], second_identity);
     assert_ne!(host.payloads[1], first_identity);
+    assert_eq!(host.payload_texts, ["second", "first"]);
     let [second_completion, first_completion]: [_; 2] = host
         .completions
         .try_into()
@@ -334,6 +340,7 @@ async fn rejected_assignment_returns_original_customer_job_after_quarantine() {
     assert_eq!(host.endpoints, [Endpoint(40 + worker.get())]);
     assert_eq!(host.payloads.len(), 1);
     assert_ne!(host.payloads[0], identity);
+    assert_eq!(host.payload_texts, ["rejected"]);
     assert!(host.completions.is_empty());
     let rejected: ActionItemResult<AssignWorker<Worker, Box<str>>> =
         SettledItem::Attempted(settlement);
