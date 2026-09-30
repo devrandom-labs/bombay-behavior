@@ -497,8 +497,11 @@ is recorded against a revision.
   six fewer than the preceding checkpoint. All 13 external fixture test
   functions passed in debug and optimized profiles. Four compile-fail snapshots
   changed only the diagnostic's displayed type path; their E0382 and E0599
-  failures remain the intended ownership and privacy errors. Clean Nix
-  verification is still pending for this batch.
+  failures remain the intended ownership and privacy errors. A clean Nix flake
+  check at signed commit `b8b9842` passed all eight available macOS checks,
+  including Rustdoc, published-document checks, and 843 optimized Nextest
+  tests. Disposition: `pass` for these six runtime item pages; A13 remains open
+  for the rest of the surface.
 
 - [x] **A14 — State the trust scope of initialization capabilities accurately.**
   **Confirmed documentation/API mismatch.** `InitializationTurn` says only the
