@@ -111,6 +111,34 @@ impl GeneratedBase {
     }
 }
 
+#[test]
+fn generated_creation_owner_preserves_logical_host_order() {
+    type Direct = <GeneratedBase as behavior_core::LogicalHostRequirements>::LogicalHosts;
+    type InnerFirst = <behavior_core::SendLayer<GeneratedBaseSends, Vec<Delivery<Recorder>>>
+        as behavior_core::LogicalDeliveryProtocols>::Protocols;
+    type OwnedFirst = <behavior_core::SendLayer<Vec<Delivery<Recorder>>, GeneratedBaseSends>
+        as behavior_core::LogicalDeliveryProtocols>::Protocols;
+
+    let _: core::marker::PhantomData<
+        behavior_core::BirthProtocol<
+            Sink,
+            behavior_core::BirthProtocol<Sink, behavior_core::NoBirthProtocols>,
+        >,
+    > = core::marker::PhantomData::<Direct>;
+    let _: core::marker::PhantomData<
+        behavior_core::BirthProtocol<
+            Recorder,
+            behavior_core::BirthProtocol<Sink, behavior_core::NoBirthProtocols>,
+        >,
+    > = core::marker::PhantomData::<InnerFirst>;
+    let _: core::marker::PhantomData<
+        behavior_core::BirthProtocol<
+            Sink,
+            behavior_core::BirthProtocol<Recorder, behavior_core::NoBirthProtocols>,
+        >,
+    > = core::marker::PhantomData::<OwnedFirst>;
+}
+
 fn assert_generated_base_effects(sends: &GeneratedBaseSends, creates: usize) {
     assert_eq!(sends.replies.len(), 1);
     assert_eq!(sends.replies[0].message, 7);

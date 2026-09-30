@@ -1015,6 +1015,84 @@ The candidate and focused test edits were removed; the exact falsifier and
 post-experiment drift checkpoint are in `DEAD_ENDS.md`. The missing projection
 remains open and requires an explicit visibility/ownership model before code.
 
+Next A11 visibility hypothesis, before implementation: a generated named send
+product is part of a public actor's interface only when that actor exports it.
+The `#[behavior]` attribute is applied to an `impl`, so it cannot inspect the
+actor declaration's visibility. The current unconditional `pub` product makes
+private actors' private request and destination types leak through the
+generated `LogicalDeliveryProtocols::Protocols` associated type. A Rust 1.95
+scratch compile confirmed that a private product may implement this public
+trait with a private projected protocol, while a public product triggers
+E0446 for the same private protocol. The candidate syntax keeps
+`sends = { ... }` module-private and permits the ordinary Rust visibility
+spelling `sends = pub { ... }` when a public actor deliberately exports the
+product. Generated lane selectors, settlement product, and fluent trait must
+have the same visibility as the named product; no consumer supplies a no-op
+route, marker, or policy. The generated projection appends every field's
+existing `LogicalDeliveryProtocols::Protocols` in declared order, retaining
+duplicates and the empty projections of exact and request lanes. Private
+`Bootstrap`, `Printer`, and `GeneratedBase` are real callers; a public actor
+with public recipient protocol will prove the exported form. The prior
+two-behavior E0277 regressions and both `SendLayer` orders are the focused red
+witnesses, supplemented by a red parser witness for `sends = pub { ... }`.
+The existing `BirthProtocolProduct::Append`, field projections, product
+settlement, and wrapper laws are the lower-order contracts. No actor control
+state, event, effect lane, interpreter operation, or policy is authorized to
+change. Pre-edit drift: product fields and order, actor states, transition
+branches, production modules, and public actor spellings remain fixed; the
+generated product's public exposure is the one intentional interface change
+for private actors. The values needed later are each declared send lane's
+logical-host protocol product and its exact settlement custody. There is no
+arrival history, repeated cause, false cardinality, nested authority,
+semantic boolean, or positional caller syntax in the proposed model.
+Cross-checks are the actor transition algebra, behavior layer law, recursive
+host consumer in `logical_host_requirements`, and normalized atomic docs.
+Disposition: `pass` for the hypothesis only, pending focused red witnesses
+and a full generated-product visibility inventory.
+
+The focused pre-edit callers now fail in the intended places. `compositions`
+reports three E0277 diagnostics because `GeneratedBaseSends` lacks
+`LogicalDeliveryProtocols`: one direct owner and each `SendLayer` order.
+`behavior_attribute` reports the same three E0277 diagnostics for
+`PrinterSends`; its deliberately public actor is rejected at `sends = pub`
+by the old parser, so the later missing `Behavior` diagnostic is a consequence
+of that parse failure. No route, birth, or settlement mismatch appears in the
+red logs. The public actor emits a real reply, and neither private caller
+supplies an inert policy or placeholder.
+
+The design-stage candidate now derives `LogicalDeliveryProtocols` from the
+named fields and makes generated send products and their companions private
+by default, with an explicit Rust `pub` form for an exported actor product.
+The private `BootstrapSends` handwritten projection was deleted. The two
+focused testkit suites passed 6 and 11 tests, including their exact direct
+and both-order host products; core generated-product and source-admission
+suites passed 19 and 6 tests. The duplicate-lane test retains two occurrences
+of the same destination after an empty interpreter-request lane, while a
+request-only product projects the empty host product. An external fixture
+successfully names both the public send and settlement products and checks
+its exact logical host type. All workspace targets passed `cargo check`
+under the Nix toolchain. The macro unit suite passed 6 tests. The full Nix
+gate for this candidate remains pending.
+
+Post-design aggregate-drift checkpoint: actor control states, subordinate
+state alternatives, transition branches, send field order, settlement
+alternatives, and runtime ports are unchanged. The macro parser still has
+the same Existing/Generated send alternatives; Generated now retains the
+explicit Rust visibility needed for its public interface. The macro source
+grew from 1,499 to 1,534 physical lines, including the visibility parser and
+one generated logical-host implementation template. The eight-line
+handwritten `BootstrapSends` projection disappeared; production module count
+is unchanged. Existing generated product names are retained, but products
+for private actors cease to be unnecessarily public, and the new exported
+form is public by declaration. The surviving values are each named send lane,
+its exact ordered settlement, and its statically projected logical-host
+protocols. The residue scan finds no arrival history, repeated cause, false
+cardinality, nested transition authority, semantic boolean, or structural
+consumer syntax. The actor transition, wrapper-order, and recursive host
+contracts were cross-checked. Disposition: `pass` for this focused projection
+and visibility stage, pending its full gate. The wider A11 one-implementation
+derivation remains open.
+
 ### A12/A13 least-loaded membership owner, before edit
 
 Classification: deliberate Bombay routing policy and derived Rust ownership
@@ -1230,8 +1308,15 @@ Mechanical caller migration at `f936dc8` changed only the routing invariant
 test's three rejection patterns to inspect the one returned observation and
 the shared reason. Its generic route witness no longer asks for an unrelated
 observation-cloning bound. All 10 focused routing invariant tests pass in both
-Nix-pinned debug and optimized builds; the full gate is pending. This stage
-adds no production type, transition, branch, module, or policy.
+Nix-pinned debug and optimized builds. This stage adds no production type,
+transition, branch, module, or policy.
+
+The clean-worktree `nix flake check -L` at signed commit `26d2261` passed all
+eight active `aarch64-darwin` checks, including optimized Nextest with
+838/838 passing cases, doctests, Clippy, Rustdoc, documentation links,
+formatting, package build, and deny. This closes the gate for the router
+observation-custody design and its mechanical test migration; A12/A13 retain
+their broader audits.
 
 ### A13 pre-edit base-projection law
 

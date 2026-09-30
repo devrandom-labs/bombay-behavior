@@ -25,7 +25,10 @@ fn cargo_check(packages: &[&str], target: &[&str]) -> std::process::Output {
 
 #[test]
 fn direct_and_facade_dependency_paths_resolve_with_renames() {
-    let output = cargo_check(&["facade-only", "renamed-facade", "direct-and-facade"], &[]);
+    let output = cargo_check(
+        &["facade-only", "renamed-facade", "direct-and-facade"],
+        &["--all-targets"],
+    );
     assert!(
         output.status.success(),
         "fixture compilation failed:\n{}",

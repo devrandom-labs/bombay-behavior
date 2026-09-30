@@ -21,6 +21,55 @@ impl Printer {
     }
 }
 
+pub struct PublicPrinter(u8);
+
+#[behavior_core::behavior(
+    addr = MailAddr,
+    message = u8,
+    sends = pub {
+        replies: Vec<Delivery<behavior_core::MessageProtocol<MailAddr, u8>>>,
+    },
+)]
+impl PublicPrinter {
+    fn receive(&mut self, from: MailAddr, message: u8) -> behavior_core::BehaviorActed<Self> {
+        self.0 = message;
+        let mut sends = PublicPrinterSends::empty();
+        sends.send::<_, PublicPrinterSendsReplies>(Delivery::new(Recipient::global(from), self.0));
+        Ok(Actions::send(sends))
+    }
+}
+
+#[test]
+fn generated_send_products_project_private_and_exported_logical_hosts() {
+    type PrinterHost = behavior_testkit::TestRecipient<u64>;
+    type OtherHost = behavior_core::MessageProtocol<MailAddr, u8>;
+    type Direct = <Printer as behavior_core::LogicalHostRequirements>::LogicalHosts;
+    type InnerFirst = <behavior_core::SendLayer<PrinterSends, Vec<Delivery<OtherHost>>>
+        as behavior_core::LogicalDeliveryProtocols>::Protocols;
+    type OwnedFirst = <behavior_core::SendLayer<Vec<Delivery<OtherHost>>, PrinterSends>
+        as behavior_core::LogicalDeliveryProtocols>::Protocols;
+    type Exported = <PublicPrinter as behavior_core::LogicalHostRequirements>::LogicalHosts;
+
+    let _: core::marker::PhantomData<
+        behavior_core::BirthProtocol<PrinterHost, behavior_core::NoBirthProtocols>,
+    > = core::marker::PhantomData::<Direct>;
+    let _: core::marker::PhantomData<
+        behavior_core::BirthProtocol<
+            OtherHost,
+            behavior_core::BirthProtocol<PrinterHost, behavior_core::NoBirthProtocols>,
+        >,
+    > = core::marker::PhantomData::<InnerFirst>;
+    let _: core::marker::PhantomData<
+        behavior_core::BirthProtocol<
+            PrinterHost,
+            behavior_core::BirthProtocol<OtherHost, behavior_core::NoBirthProtocols>,
+        >,
+    > = core::marker::PhantomData::<OwnedFirst>;
+    let _: core::marker::PhantomData<
+        behavior_core::BirthProtocol<OtherHost, behavior_core::NoBirthProtocols>,
+    > = core::marker::PhantomData::<Exported>;
+}
+
 struct Counter {
     total: u64,
 }

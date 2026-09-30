@@ -1,7 +1,27 @@
-use core_behavior::{Actions, BehaviorActed, Delivery, MailAddr, MessageProtocol, Recipient};
 use actors::atomic::Assignment;
+use core_behavior::{
+    Actions, BehaviorActed, Delivery, MailAddr, MessageProtocol, Recipient, SendEffects,
+};
 
 struct Direct;
+
+pub struct Exported;
+
+#[core_behavior::behavior(
+    addr = MailAddr,
+    message = u8,
+    sends = pub {
+        public_notices: Vec<Delivery<MessageProtocol<MailAddr, u8>>>,
+    },
+)]
+impl Exported {
+    fn receive(&mut self, from: MailAddr, message: u8) -> BehaviorActed<Self> {
+        let mut sends = ExportedSends::empty();
+        sends
+            .send::<_, ExportedSendsPublicNotices>(Delivery::new(Recipient::global(from), message));
+        Ok(Actions::send(sends))
+    }
+}
 
 #[core_behavior::behavior(
     addr = MailAddr,

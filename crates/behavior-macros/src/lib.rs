@@ -11,7 +11,8 @@ use syn::parse::{Parse, ParseStream};
 use syn::visit::Visit;
 use syn::{
     Error, FnArg, GenericArgument, GenericParam, Generics, Ident, ImplItem, ItemImpl,
-    PathArguments, Result, ReturnType, Token, Type, braced, parse_macro_input, parse_quote,
+    PathArguments, Result, ReturnType, Token, Type, Visibility, braced, parse_macro_input,
+    parse_quote,
 };
 
 fn crate_path(found: FoundCrate) -> TokenStream2 {
@@ -130,7 +131,10 @@ struct NamedProduct {
 )]
 enum SendsSpec {
     Existing(Type),
-    Generated(NamedProduct),
+    Generated {
+        product: NamedProduct,
+        visibility: Visibility,
+    },
 }
 
 #[allow(
@@ -244,10 +248,16 @@ impl Parse for BehaviorArgs {
                 "addr" if addr.is_none() => addr = Some(input.parse()?),
                 "message" if message.is_none() => message = Some(input.parse()?),
                 "sends" if sends.is_none() => {
+                    let visibility: Visibility = input.parse()?;
                     sends = Some(if input.peek(syn::token::Brace) {
-                        SendsSpec::Generated(parse_product(input)?)
-                    } else {
+                        SendsSpec::Generated {
+                            product: parse_product(input)?,
+                            visibility,
+                        }
+                    } else if matches!(visibility, Visibility::Inherited) {
                         SendsSpec::Existing(input.parse()?)
+                    } else {
+                        return Err(input.error("send-product visibility requires named lanes"));
                     });
                 }
                 "births" if births.is_none() => {
@@ -530,10 +540,13 @@ fn generate_sends(
     item: &ItemImpl,
     behavior: &TokenStream2,
 ) -> (TokenStream2, TokenStream2) {
-    let product = match product {
+    let (product, visibility) = match product {
         None => return (quote!(#behavior::NoSends), quote!()),
         Some(SendsSpec::Existing(ty)) => return (quote!(#ty), quote!()),
-        Some(SendsSpec::Generated(product)) => product,
+        Some(SendsSpec::Generated {
+            product,
+            visibility,
+        }) => (product, visibility),
     };
     let name = format_ident!("{}Sends", actor);
     let settlements_name = format_ident!("{}Settlements", actor);
@@ -657,6 +670,23 @@ fn generate_sends(
             .push(parse_quote!(#field_ty: #behavior::SendsFor<__BombayEvent>));
     }
     let (lawful_impl_generics, _, lawful_where_clause) = lawful_generics.split_for_impl();
+
+    let mut logical_generics = product_generics.clone();
+    let mut logical_protocols = quote!(#behavior::NoBirthProtocols);
+    for field_ty in &field_types {
+        logical_generics
+            .make_where_clause()
+            .predicates
+            .push(parse_quote!(
+                #field_ty: #behavior::LogicalDeliveryProtocols
+            ));
+        logical_protocols = quote!(
+            <#logical_protocols as #behavior::BirthProtocolProduct>::Append<
+                <#field_ty as #behavior::LogicalDeliveryProtocols>::Protocols
+            >
+        );
+    }
+    let (logical_impl_generics, _, logical_where_clause) = logical_generics.split_for_impl();
 
     let mut interpret_generics = product_generics.clone();
     interpret_generics
@@ -807,14 +837,13 @@ fn generate_sends(
     });
 
     let items = quote! {
-        #(pub enum #lane_names {})*
+        #(#visibility enum #lane_names {})*
 
-        pub struct #name #generics {
+        #visibility struct #name #generics {
             #(pub #field_names: #field_types,)*
         }
 
-        #[doc(hidden)]
-        pub struct #settlements_name #settlement_impl_generics #settlement_where_clause {
+        #visibility struct #settlements_name #settlement_impl_generics #settlement_where_clause {
             #(
                 pub #field_names: <#field_types as #behavior::SendSettlements>::Settlements,
             )*
@@ -865,7 +894,7 @@ fn generate_sends(
 
         /// Fluent, statically routed send-lane methods for this behavior's
         /// generated action product.
-        pub trait #actions_name #action_trait_generics: ::core::marker::Sized {
+        #visibility trait #actions_name #action_trait_generics: ::core::marker::Sized {
             #(#action_trait_methods)*
         }
 
@@ -903,6 +932,12 @@ fn generate_sends(
         impl #lawful_impl_generics #behavior::SendsFor<__BombayEvent>
             for #name #type_generics #lawful_where_clause
         {}
+
+        impl #logical_impl_generics #behavior::LogicalDeliveryProtocols
+            for #name #type_generics #logical_where_clause
+        {
+            type Protocols = #logical_protocols;
+        }
 
         impl #settlement_impl_generics #behavior::SendSettlements
             for #name #type_generics #settlement_where_clause

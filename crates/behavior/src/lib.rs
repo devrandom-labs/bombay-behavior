@@ -72,11 +72,15 @@ pub use user_event::{
 /// `sends`, `births`, or `error` selects the capability-free `NoSends`,
 /// `NoBirths`, or `Never` type respectively.
 ///
-/// A `sends = { lane: Product }` declaration generates `ActorSends`, one
-/// distinct `ActorSendsLane` selector per field, and structural `SendEffects`,
-/// `SendsFor`, [`SendSettlements`], and `InterpretSends` implementations. The
-/// doc-hidden `ActorSettlements` product keeps the same semantic field names
-/// and has one runtime-independent type. The macro also generates an
+/// A `sends = { lane: Product }` declaration generates a module-private
+/// `ActorSends`; `sends = pub { lane: Product }` exports it for a public actor.
+/// Its lane selectors, settlement product, and fluent trait have the same
+/// visibility. Each field contributes its logical-host protocols in declared
+/// order, including duplicates, through [`LogicalDeliveryProtocols`]. The
+/// product also derives structural `SendEffects`, `SendsFor`,
+/// [`SendSettlements`], and `InterpretSends` implementations. The settlement
+/// product keeps the same semantic field names and one runtime-independent
+/// type. The macro also generates an
 /// `ActorActions` extension trait with one fluent `send_lane` method per named
 /// lane. Each method delegates to [`AppendSend`], changing only the send leg
 /// while preserving creations and the exact next-behavior verdict. A
