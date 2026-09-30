@@ -3021,6 +3021,40 @@ remains open for other catalogue and runtime laws.
 | Registry identity | `discovery::registry` tests atomic stale unbind. `catalogue_invariants::registry_matches_atomic_compare_and_remove_bindings` compares a separate ordered binding list and exact bind, unbind, and lookup outcomes after generated commands. | The existing inversion covers exact-recipient comparison only; snapshot ordering and host delivery have no dedicated counterfactual here. |
 | Topic membership | `catalogue_invariants::topic_is_an_ordered_idempotent_membership_snapshot` models first subscription order, duplicate subscription, unsubscribe, and publication to every current recipient or exact empty-topic rejection. | This standalone topic law differs from keyed `PubSub` membership; no topic-specific mutation slice or host admission is claimed. |
 
+Next A20 test-only boundary hypothesis, before edit: readiness version evidence
+is ordered by the full `u64` domain. At the maximum version, lower evidence is
+stale, equal identical evidence is idempotent, and equal contradictory evidence
+is rejected with the exact input; no arithmetic or wraparound manufactures a
+newer observation. This is Bombay's version policy, not an actor-model law.
+The existing independent three-dependency register model already checks the
+complete state and action product after each generated command but samples
+only small versions. Add `u64::MAX - 1` and `u64::MAX` to that model's input
+domain, retaining its own comparison equation and exact error checks. No
+production state, type, lane, branch, public spelling, module, or line changes.
+The root readiness state remains a fixed ordered list of Unknown or
+Observed(version,status); each observed pair is exactly the current value
+needed by the next comparison and query. No arrival-history, repeated cause,
+false cardinality, nested authority, semantic boolean, or structural syntax is
+introduced. Cross-checks: actor transition law and normalized operations
+catalogue. Disposition: `pass` for the test design, pending the run.
+
+The widened register model passed in debug and optimized profiles. Each
+generated trace still checks exact rejection data, the complete empty action
+product on acceptance, and all three dependency slots after every command.
+The change is test-only (`+0/-0` production lines, zero states, branches,
+modules, and public spellings); the current evidence pair and fixed ordered
+membership remain the only future-needed values. The residue scan and law
+cross-check above remain unchanged. Disposition: `pass` for the boundary
+evidence, with A20 still open for other catalogue and runtime laws.
+
+A disposable worktree made readiness treat `u64::MAX` as stale even after
+version zero. The widened independent model failed and shrank to two commands:
+commit `(dependency 1, version 0, Ready)`, then offer the same dependency at
+`u64::MAX`; the model required acceptance while the mutant returned the exact
+wrong `Stale` error. This counterfactual demonstrates that the new boundary
+input is exercised and the oracle rejects the bad ordering. The mutant and its
+generated seed were removed; production remains unchanged.
+
 The remaining catalogue laws need equally specific entries, so A20 remains
 open.
 

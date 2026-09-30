@@ -111,7 +111,7 @@ proptest! {
     fn readiness_matches_per_dependency_version_registers(
         operations in vec((
             0_u8..5,
-            0_u8..10,
+            prop_oneof![0_u64..10, Just(u64::MAX - 1), Just(u64::MAX)],
             prop_oneof![Just(ReadinessStatus::Ready), Just(ReadinessStatus::NotReady)],
         ), 0..160),
     ) {
@@ -125,11 +125,11 @@ proptest! {
         for (dependency, version, status) in operations {
             let result = actual.receive(MailAddr(9), ReadinessMessage::Observe {
                 dependency,
-                version: ObservationVersion(u64::from(version)),
+                version: ObservationVersion(version),
                 status,
             });
             if dependency >= 3 {
-                let matched = matches!(result, Err(ReadinessError::UnknownDependency { dependency: returned, observed, status: returned_status }) if returned == dependency && observed == ObservationVersion(u64::from(version)) && returned_status == status);
+                let matched = matches!(result, Err(ReadinessError::UnknownDependency { dependency: returned, observed, status: returned_status }) if returned == dependency && observed == ObservationVersion(version) && returned_status == status);
                 prop_assert!(matched);
             } else {
                 let slot = &mut expected[usize::from(dependency)];
@@ -145,10 +145,10 @@ proptest! {
                         *slot = Some((version, status));
                     }
                 } else if version < slot.unwrap().0 {
-                    let matched = matches!(result, Err(ReadinessError::Stale { dependency: returned, observed, current, status: returned_status }) if returned == dependency && observed == ObservationVersion(u64::from(version)) && current == ObservationVersion(u64::from(slot.unwrap().0)) && returned_status == status);
+                    let matched = matches!(result, Err(ReadinessError::Stale { dependency: returned, observed, current, status: returned_status }) if returned == dependency && observed == ObservationVersion(version) && current == ObservationVersion(slot.unwrap().0) && returned_status == status);
                     prop_assert!(matched);
                 } else {
-                    let matched = matches!(result, Err(ReadinessError::ConflictingVersion { dependency: returned, version: returned_version, status: returned_status }) if returned == dependency && returned_version == ObservationVersion(u64::from(version)) && returned_status == status);
+                    let matched = matches!(result, Err(ReadinessError::ConflictingVersion { dependency: returned, version: returned_version, status: returned_status }) if returned == dependency && returned_version == ObservationVersion(version) && returned_status == status);
                     prop_assert!(matched);
                 }
             }
@@ -157,7 +157,7 @@ proptest! {
             for (index, state) in actual.dependencies().iter().enumerate() {
                 let modeled = expected[index].map_or(ReadinessEvidence::Unknown, |(version, status)| {
                     ReadinessEvidence::Observed {
-                        version: ObservationVersion(u64::from(version)),
+                        version: ObservationVersion(version),
                         status,
                     }
                 });
