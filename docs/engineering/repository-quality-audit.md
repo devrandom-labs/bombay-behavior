@@ -434,12 +434,19 @@ is recorded against a revision.
   implementors and the isolated Bombay source identify its owner; the latter
   is not yet a successful A17 runtime witness.
   The inventory confirms that `StashStatus` has multiple real wrapper
-  implementations; its name alone is not grounds for deletion. External
-  manually authored child roles and generic logical-host owners have compile
-  witnesses for the newly visible types. The cache/resolver protocol-bound
-  comparison found no material compile-time difference in its measured pair;
-  the caller diagnostics improved. The protocol-only caller now covers 20
-  catalogue actors, keeping construction and transition bounds at the
+  implementations; its name alone is not grounds for deletion. Externally
+  authored child roles and generic logical-host owners have compile witnesses
+  for the newly visible types.
+  The inventory now classifies the hidden `ChildProduct::stage` method as a
+  sealed structural conversion: only `NoChildren` and `ChildCons` implement
+  the trait, `Children::into_creates` is its sole production caller, and the
+  interpreter consumes the resulting `Creations` effect. Calling `stage` a
+  runtime port had overstated its public contract. This correction changes
+  zero Rust items, bounds, states, branches, modules, or public spellings.
+  The cache/resolver protocol-bound comparison found no material compile-time
+  difference in its measured pair; the caller diagnostics improved. The
+  protocol-only caller now covers 20 catalogue actors, keeping construction
+  and transition bounds at the
   operations that need them. A separate caller now proves that 14 unwrapped
   catalogue actors expose their read-only `BehaviorBase` projection without
   requiring the cloning, comparison, or ordering used only by construction or

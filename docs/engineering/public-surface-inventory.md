@@ -13,7 +13,7 @@ documentation visibility review.
 |---|---|---|---|
 | `actor/creation.rs`, occurrence proof | `StructuralChildOccurrence`, `ChildCreationProduct`, `ChildOccurrenceResolution`, `ResolveChildOccurrenceDescriptor`, `BirthNodeAt`, `ChildOccurrenceProductAt` | Generated code obligation | The macro and structural child products implement these proofs. A visibility change needs compile-pass and forged-occurrence compile-fail witnesses. |
 | `actor/creation.rs`, protocol projection | `BirthModeProtocols`, `BirthNodeProtocols`, `BirthNodeLogicalHosts` | Generated code obligation | These traits project closed birth and logical-host products; consumers can name the resulting associated types without constructing the proof nodes. |
-| `actor/creation.rs`, creation staging | `ChildProduct::stage` | Runtime port | The interpreter consumes ordered staged child requests; it must retain every owned child on rejection. |
+| `actor/creation.rs`, creation staging | `ChildProduct::stage` | Sealed structural conversion | `Children::into_creates` calls this method to turn the closed heterogeneous product into an ordered `Creations` batch. Only `NoChildren` and `ChildCons` implement the sealed trait. The interpreter receives the resulting batch through the creation effect; it does not call `stage`. |
 
 `ChildOccurrence::Resolution` and `DeclaredChildOccurrence` are now visible
 because manually authored roles must name them. `BirthProtocolProduct` is
