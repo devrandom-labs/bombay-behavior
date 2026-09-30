@@ -1226,6 +1226,13 @@ actor transition, routing, and wrapper composition laws were cross-checked.
 Disposition: `pass` for the design stage; testkit migration and the full gate
 are separate follow-up work.
 
+Mechanical caller migration at `f936dc8` changed only the routing invariant
+test's three rejection patterns to inspect the one returned observation and
+the shared reason. Its generic route witness no longer asks for an unrelated
+observation-cloning bound. All 10 focused routing invariant tests pass in both
+Nix-pinned debug and optimized builds; the full gate is pending. This stage
+adds no production type, transition, branch, module, or policy.
+
 ### A13 pre-edit base-projection law
 
 Classification: derived, read-only composition law. `BehaviorBase` on an

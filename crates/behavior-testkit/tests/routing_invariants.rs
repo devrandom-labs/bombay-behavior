@@ -5,8 +5,8 @@ use std::collections::VecDeque;
 
 use behavior_actors::{
     Activate as _, Active, Buffer, BufferConfiguration, BufferMessage, BufferOutcome,
-    BufferRejection, ConsistentHash, LeastLoaded, LeastLoadedError, Load, LoadEvidence,
-    LoadObservation, LoadVersion, MemberToken, MemberTokenEvidence, MemberTokenObservation,
+    BufferRejection, ConsistentHash, LeastLoaded, Load, LoadEvidence, LoadObservation, LoadVersion,
+    MemberEvidenceError, MemberToken, MemberTokenEvidence, MemberTokenObservation,
     MemberTokenVersion, OverflowPolicy, PriorityQueue, PriorityQueueMessage, PriorityQueueOutcome,
     PriorityQueueRejection, RateLimitRejection, RateLimiter, RateLimiterMessage,
     RateLimiterOutcome, RendezvousHash, RoundRobin, RouteKey, Router, RouterError, RouterMessage,
@@ -521,9 +521,8 @@ fn check_least_loaded_trace(turns: impl IntoIterator<Item = LoadInstruction>) ->
                 match members.iter().position(|current| current.id == member) {
                     None => {
                         let exact = matches!(result,
-                            Err(RouterError::Policy { observation, error: LeastLoadedError::UnknownRecipient(returned) })
-                            if same_load_observation(&observation, member, version, load)
-                                && same_load_observation(&returned, member, version, load));
+                            Err(RouterError::Policy { observation, error: MemberEvidenceError::UnknownRecipient })
+                            if same_load_observation(&observation, member, version, load));
                         prop_assert!(exact);
                     }
                     Some(position) => match members[position].evidence {
@@ -531,9 +530,8 @@ fn check_least_loaded_trace(turns: impl IntoIterator<Item = LoadInstruction>) ->
                             version: committed, ..
                         }) if version < committed => {
                             let exact = matches!(result,
-                                Err(RouterError::Policy { observation, error: LeastLoadedError::Stale(returned) })
-                                if same_load_observation(&observation, member, version, load)
-                                    && same_load_observation(&returned, member, version, load));
+                                Err(RouterError::Policy { observation, error: MemberEvidenceError::Stale })
+                                if same_load_observation(&observation, member, version, load));
                             prop_assert!(exact);
                         }
                         Some(ModeledReading {
@@ -541,9 +539,8 @@ fn check_least_loaded_trace(turns: impl IntoIterator<Item = LoadInstruction>) ->
                             load: prior_load,
                         }) if version == committed && load != prior_load => {
                             let exact = matches!(result,
-                                Err(RouterError::Policy { observation, error: LeastLoadedError::ConflictingVersion(returned) })
-                                if same_load_observation(&observation, member, version, load)
-                                    && same_load_observation(&returned, member, version, load));
+                                Err(RouterError::Policy { observation, error: MemberEvidenceError::ConflictingVersion })
+                                if same_load_observation(&observation, member, version, load));
                             prop_assert!(exact);
                         }
                         _ => {
@@ -684,7 +681,6 @@ fn route_keyed<R>(
 ) -> Result<Recipient<KeyedRoutingTarget>, TestCaseError>
 where
     R: RoutingStrategy<Recipient<KeyedRoutingTarget>>,
-    R::Observation: Clone,
 {
     let Ok(actions) = router.receive(
         MailAddr(9),
