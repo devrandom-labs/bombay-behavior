@@ -2,8 +2,7 @@ use std::time::Instant;
 
 use behavior::{
     ActionItemResult, ChildCreationOutcome, ChildHead, CreateChild, CreationSettlement,
-    CreationsSettled, EstablishedCreation, EstablishedRecipient, ItemSettlement, MessageProtocol,
-    Recipient, SettledItem, Step,
+    CreationsSettled, ItemSettlement, MessageProtocol, Recipient, SettledItem, Step,
 };
 use behavior_actors::atomic::{
     ActivationPolicy, ActorDrainPolicy, AssignWorker, BacklogCapacity, BindingCapacity,
@@ -25,13 +24,17 @@ fn commit_worker_creation(
     let (worker, _, kind) = creation.into_parts();
     CreationsSettled::new(CreationSettlement::Settled(
         [SettledItem::Attempted(ItemSettlement::Accepted(
-            ChildCreationOutcome::<StopOnShutdown<SearchWorker>, ChildHead>::Established {
-                established: EstablishedCreation::installed(
+            ChildCreationOutcome::<StopOnShutdown<SearchWorker>, ChildHead>::Established(
+                behavior::CommittedChild::new(
                     worker,
                     kind,
-                    EstablishedRecipient::issued(Endpoint(40 + worker.get())),
+                    behavior::EstablishedActor::issued(
+                        super::installed_control::InstalledControl::new(Endpoint(
+                            40 + worker.get(),
+                        )),
+                    ),
                 ),
-            },
+            ),
         ))]
         .into_iter()
         .collect(),

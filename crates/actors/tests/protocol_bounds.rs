@@ -1,3 +1,5 @@
+mod installed_control;
+
 use behavior::{
     Address, BehaviorBase, EndpointAddress, MailAddr, MessageProtocol, Never, Protocol, Recipient,
     Step,
@@ -35,6 +37,18 @@ impl EndpointAddress for ExactAddr {
         = u64
     where
         P: Protocol<Addr = Self>;
+
+    type Installed<B>
+        = installed_control::InstalledControl<B, u64>
+    where
+        B: behavior::Behavior<Protocol: Protocol<Addr = Self>>;
+
+    fn recipient<B>(installed: &Self::Installed<B>) -> u64
+    where
+        B: behavior::Behavior<Protocol: Protocol<Addr = Self>>,
+    {
+        *installed.endpoint()
+    }
 }
 
 struct ExactDestination;

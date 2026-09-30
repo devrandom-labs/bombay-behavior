@@ -1,7 +1,10 @@
+mod installed_control;
+
 use behavior::{
-    ActionItem, Address, CreationCorrelation, CreationId, CreationSequence, EndpointAddress, Here,
-    InterpretItem, InterpretSends, Interpretation, InterpreterRequests, ItemSettlement, Never,
-    Protocol, SendSettlements, SettledItem,
+    ActionItem, Actions, ActiveTurn, Address, Behavior, BehaviorActed, CreationCorrelation,
+    CreationId, CreationSequence, EndpointAddress, Here, InterpretItem, InterpretSends,
+    Interpretation, InterpreterRequests, ItemSettlement, Never, NoBirths, NoSends, Protocol,
+    SendSettlements, SettledItem, User,
 };
 use behavior_actors::{
     CancelObservation, Exit, InterpretEstablishedObservation, ObservationId, ObserveEstablished,
@@ -23,6 +26,21 @@ impl EndpointAddress for ProbeAddr {
         = ProbeEndpoint
     where
         P: Protocol<Addr = Self>;
+
+    type Installed<B>
+        =
+        installed_control::InstalledControl<B, <Self as EndpointAddress>::Established<B::Protocol>>
+    where
+        B: behavior::Behavior<Protocol: Protocol<Addr = Self>>;
+
+    fn recipient<B>(
+        installed: &Self::Installed<B>,
+    ) -> <Self as EndpointAddress>::Established<B::Protocol>
+    where
+        B: behavior::Behavior<Protocol: Protocol<Addr = Self>>,
+    {
+        installed.endpoint().clone()
+    }
 }
 
 struct ProbeProtocol;
@@ -30,6 +48,21 @@ struct ProbeProtocol;
 impl Protocol for ProbeProtocol {
     type Addr = ProbeAddr;
     type Msg = ();
+}
+
+struct ProbeChild;
+
+impl Behavior for ProbeChild {
+    type Protocol = ProbeProtocol;
+    type Event = User<ProbeAddr, ()>;
+    type Sends = NoSends;
+    type Ph = Never;
+    type Error = Never;
+    type Birth = NoBirths;
+
+    fn transition(&mut self, _: ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
+        Ok(Actions::stop())
+    }
 }
 
 struct ProbeRole;
@@ -62,14 +95,14 @@ where
 
 struct CreationBlockedRuntime;
 
-impl InterpretItem<ObserveEstablishedCreation<ProbeProtocol, ProbeRole>, (), Here>
+impl InterpretItem<ObserveEstablishedCreation<ProbeChild, ProbeRole>, (), Here>
     for CreationBlockedRuntime
 {
     async fn interpret_item(
         &mut self,
-        item: ObserveEstablishedCreation<ProbeProtocol, ProbeRole>,
+        item: ObserveEstablishedCreation<ProbeChild, ProbeRole>,
     ) -> ItemSettlement<
-        ObserveEstablishedCreation<ProbeProtocol, ProbeRole>,
+        ObserveEstablishedCreation<ProbeChild, ProbeRole>,
         (),
         Never,
         CreationCorrelation<ProbeProtocol, ProbeRole>,
@@ -165,8 +198,8 @@ fn public_interpreter_requests_own_action_item_contracts() {
     requires_action_item::<ReportTerminalOutcome<ProbeAddr>>();
     requires_action_item::<ObserveEstablished<ProbeProtocol>>();
     requires_action_item::<CancelObservation<ProbeProtocol>>();
-    requires_action_item::<ObserveEstablishedCreation<ProbeProtocol, ProbeRole>>();
-    requires_creation_correlation::<ObserveEstablishedCreation<ProbeProtocol, ProbeRole>>();
+    requires_action_item::<ObserveEstablishedCreation<ProbeChild, ProbeRole>>();
+    requires_creation_correlation::<ObserveEstablishedCreation<ProbeChild, ProbeRole>>();
 }
 
 #[tokio::test]
@@ -178,7 +211,7 @@ async fn public_interpreter_requests_have_accepted_settlements() {
     ))
     .await;
     require_accepted_settlement(CancelObservation::<ProbeProtocol>::new(ObservationId(13))).await;
-    require_accepted_settlement(ObserveEstablishedCreation::<ProbeProtocol, ProbeRole>::new(
+    require_accepted_settlement(ObserveEstablishedCreation::<ProbeChild, ProbeRole>::new(
         creation_id(),
     ))
     .await;
@@ -208,7 +241,7 @@ fn unattempted_settlements_return_each_exact_source_request() {
 
     let creation = creation_id();
     let observation = recover_unattempted(
-        ObserveEstablishedCreation::<ProbeProtocol, ProbeRole>::new(creation),
+        ObserveEstablishedCreation::<ProbeChild, ProbeRole>::new(creation),
     );
     assert_eq!(observation.creation, creation);
 }
@@ -217,7 +250,7 @@ fn unattempted_settlements_return_each_exact_source_request() {
 async fn established_creation_observation_retains_its_blocking_correlation() {
     let creation = creation_id();
     let settlement = <InterpreterRequests<
-        ObserveEstablishedCreation<ProbeProtocol, ProbeRole>,
+        ObserveEstablishedCreation<ProbeChild, ProbeRole>,
     > as InterpretSends<CreationBlockedRuntime, (), Here>>::interpret(
         InterpreterRequests::one(ObserveEstablishedCreation::new(creation)),
         &mut CreationBlockedRuntime,

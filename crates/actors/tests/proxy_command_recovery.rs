@@ -1,13 +1,14 @@
 //! Clean-room StableProxy application syntax regression.
 
+mod installed_control;
+
 use std::time::{Duration, Instant};
 
 use behavior::{
     ActionItem, Actions, ActiveTurn, Address, Behavior, BehaviorActed, ChildCreationOutcome,
     ChildHead, ChildNamespaceExhausted, CreateChild, CreationRejection, CreationSequence,
-    CreationSettlement, CreationsSettled, EndpointAddress, EstablishedCreation,
-    EstablishedRecipient, ItemSettlement, Never, NoBirths, Protocol, RoutedCreation, SettledItem,
-    Step, User,
+    CreationSettlement, CreationsSettled, EndpointAddress, EstablishedRecipient, ItemSettlement,
+    Never, NoBirths, Protocol, RoutedCreation, SettledItem, Step, User,
 };
 use behavior_actors::atomic::{
     ActivationPlan, ActivationStartRejection, BeginActivation, ImmediateActivation,
@@ -36,6 +37,21 @@ impl EndpointAddress for RuntimeAddr {
         = Endpoint
     where
         P: Protocol<Addr = Self>;
+
+    type Installed<B>
+        =
+        installed_control::InstalledControl<B, <Self as EndpointAddress>::Established<B::Protocol>>
+    where
+        B: behavior::Behavior<Protocol: Protocol<Addr = Self>>;
+
+    fn recipient<B>(
+        installed: &Self::Installed<B>,
+    ) -> <Self as EndpointAddress>::Established<B::Protocol>
+    where
+        B: behavior::Behavior<Protocol: Protocol<Addr = Self>>,
+    {
+        installed.endpoint().clone()
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -127,13 +143,13 @@ fn created_worker(
     endpoint: Endpoint,
 ) -> CreationsSettled<RuntimeAddr, StopOnShutdown<Worker>> {
     let (worker, _, kind) = creation.into_parts();
-    worker_creation_result(ChildCreationOutcome::Established {
-        established: EstablishedCreation::installed(
+    worker_creation_result(ChildCreationOutcome::Established(
+        behavior::CommittedChild::new(
             worker,
             kind,
-            EstablishedRecipient::issued(endpoint),
+            behavior::EstablishedActor::issued(installed_control::InstalledControl::new(endpoint)),
         ),
-    })
+    ))
 }
 
 fn worker_creation_result(

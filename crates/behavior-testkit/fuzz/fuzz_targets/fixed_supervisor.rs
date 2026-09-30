@@ -10,8 +10,7 @@ use behavior_actors::atomic::{
 use behavior_actors::{Activate as _, Active};
 use behavior_core::{
     ChildCreationOutcome, ChildReport, CreateChild, CreationId, CreationSettlement, Creations,
-    CreationsSettled, EstablishedActor, EstablishedCreation, EstablishedRecipient, ItemSettlement,
-    Never, SendSettlements, SettledItem, Step,
+    CreationsSettled, EstablishedActor, ItemSettlement, Never, SendSettlements, SettledItem, Step,
 };
 
 use crate::proxy_control::admit_proxy_operation;
@@ -48,13 +47,13 @@ fn committed_proxy(
     drop(actor);
     CreationsSettled::new(CreationSettlement::Settled(
         [SettledItem::Attempted(ItemSettlement::Accepted(
-            ChildCreationOutcome::Established {
-                established: EstablishedCreation::installed(
-                    proxy,
-                    kind,
-                    EstablishedRecipient::issued(WorkerEndpoint),
+            ChildCreationOutcome::Established(behavior_core::CommittedChild::new(
+                proxy,
+                kind,
+                behavior_core::EstablishedActor::issued(
+                    crate::stable_proxy::installed_control::InstalledControl::new(WorkerEndpoint),
                 ),
-            },
+            )),
         ))]
         .into_iter()
         .collect(),
@@ -95,7 +94,9 @@ where
     };
     let (proxy_id, control, receipt) = admit_proxy_operation(
         initial,
-        EstablishedActor::<StableProxy<Worker, ImmediateActivation>>::issued(WorkerEndpoint),
+        EstablishedActor::<StableProxy<Worker, ImmediateActivation>>::issued(
+            crate::stable_proxy::installed_control::InstalledControl::new(WorkerEndpoint),
+        ),
     );
     let (proxy, _, ready) = drive_ready_proxy(StableProxy::immediate(), control);
     let worker = match &ready {

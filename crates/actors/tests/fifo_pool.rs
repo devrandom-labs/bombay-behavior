@@ -1,3 +1,5 @@
+mod installed_control;
+
 use core::ops::ControlFlow;
 use std::cell::RefCell;
 use std::convert::Infallible;
@@ -9,10 +11,9 @@ use std::time::{Duration, Instant};
 use behavior::{
     ActionItemResult, Actions, ActiveTurn, Address, Behavior, BehaviorActed, BehaviorBase,
     BirthProtocol, ChildCreationOutcome, ChildHead, ChildReport, CreationId, CreationSequence,
-    CreationSettlement, CreationsSettled, EndpointAddress, EstablishedCreation,
-    EstablishedRecipient, ExactDeliveryReason, InterpreterFault, InterpreterRequests,
-    ItemSettlement, LogicalHostRequirements, MessageProtocol, Never, NoBirthProtocols, NoBirths,
-    Protocol, Recipient, ReportToParent, SettledItem, Step, User,
+    CreationSettlement, CreationsSettled, EndpointAddress, ExactDeliveryReason, InterpreterFault,
+    InterpreterRequests, ItemSettlement, LogicalHostRequirements, MessageProtocol, Never,
+    NoBirthProtocols, NoBirths, Protocol, Recipient, ReportToParent, SettledItem, Step, User,
 };
 use behavior_actors::atomic::{
     ActivationPlan, ActivationPolicy, ActivationStartRejection, ActorDrainPolicy,
@@ -76,6 +77,21 @@ impl EndpointAddress for RuntimeAddr {
         = Endpoint
     where
         P: Protocol<Addr = Self>;
+
+    type Installed<B>
+        =
+        installed_control::InstalledControl<B, <Self as EndpointAddress>::Established<B::Protocol>>
+    where
+        B: behavior::Behavior<Protocol: Protocol<Addr = Self>>;
+
+    fn recipient<B>(
+        installed: &Self::Installed<B>,
+    ) -> <Self as EndpointAddress>::Established<B::Protocol>
+    where
+        B: behavior::Behavior<Protocol: Protocol<Addr = Self>>,
+    {
+        installed.endpoint().clone()
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -222,13 +238,15 @@ fn created_worker(
     let endpoint = Endpoint(40 + worker.get());
     CreationsSettled::new(CreationSettlement::Settled(
         [SettledItem::Attempted(ItemSettlement::Accepted(
-            ChildCreationOutcome::<StopOnShutdown<SearchWorker>, ChildHead>::Established {
-                established: EstablishedCreation::installed(
+            ChildCreationOutcome::<StopOnShutdown<SearchWorker>, ChildHead>::Established(
+                behavior::CommittedChild::new(
                     worker,
                     kind,
-                    EstablishedRecipient::issued(endpoint),
+                    behavior::EstablishedActor::issued(installed_control::InstalledControl::new(
+                        endpoint,
+                    )),
                 ),
-            },
+            ),
         ))]
         .into_iter()
         .collect(),

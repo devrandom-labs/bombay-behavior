@@ -4,8 +4,8 @@ use core::num::NonZeroU64;
 use std::sync::Arc;
 
 use behavior::{
-    ActionItem, EndpointAddress, EstablishedDelivery, EstablishedRecipient, ExactDeliveryReason,
-    InterpretItem, ItemSettlement, Never, Protocol, ReportToParent, SourceAction,
+    ActionItem, EstablishedDelivery, EstablishedRecipient, ExactDeliveryReason, InterpretItem,
+    ItemSettlement, Never, Protocol, RecipientAddress, ReportToParent, SourceAction,
 };
 
 use super::super::WorkerAttempt;
@@ -273,7 +273,7 @@ impl AssignmentReceipt {
 pub struct AssignWorker<P, Job>
 where
     P: Protocol<Msg = Assignment<Job>>,
-    P::Addr: EndpointAddress,
+    P::Addr: RecipientAddress,
 {
     target: EstablishedRecipient<P>,
     assignment: Assignment<Job>,
@@ -283,7 +283,7 @@ where
 impl<P, Job> AssignWorker<P, Job>
 where
     P: Protocol<Msg = Assignment<Job>>,
-    P::Addr: EndpointAddress,
+    P::Addr: RecipientAddress,
 {
     pub(in crate::atomic) fn new(
         target: EstablishedRecipient<P>,
@@ -341,7 +341,7 @@ where
     ) -> ItemSettlement<Self, AssignmentReceipt, ExactDeliveryReason, Never>
     where
         Host: InterpretItem<EstablishedDelivery<P>, RootEvent, Path>,
-        <P::Addr as EndpointAddress>::Established<P>: Send,
+        <P::Addr as RecipientAddress>::Established<P>: Send,
         Job: Send,
     {
         let Self {
@@ -384,8 +384,8 @@ where
 impl<P, Job> ActionItem for AssignWorker<P, Job>
 where
     P: Protocol<Msg = Assignment<Job>>,
-    P::Addr: EndpointAddress,
-    <P::Addr as EndpointAddress>::Established<P>: Send,
+    P::Addr: RecipientAddress,
+    <P::Addr as RecipientAddress>::Established<P>: Send,
     Job: Send,
 {
     type Accepted = AssignmentReceipt;
@@ -396,8 +396,8 @@ where
 impl<P, Job> SourceAction for AssignWorker<P, Job>
 where
     P: Protocol<Msg = Assignment<Job>>,
-    P::Addr: EndpointAddress,
-    <P::Addr as EndpointAddress>::Established<P>: Send,
+    P::Addr: RecipientAddress,
+    <P::Addr as RecipientAddress>::Established<P>: Send,
     Job: Send,
 {
     type Source = Self;
@@ -816,9 +816,9 @@ mod tests {
     use std::time::Instant;
 
     use behavior::{
-        Address, CreationSequence, EndpointAddress, EstablishedDelivery, EstablishedRecipient,
-        ExactDeliveryReason, Here, InterpretItem, ItemSettlement, MailAddr, MessageProtocol, Never,
-        Protocol,
+        Address, CreationSequence, EstablishedDelivery, EstablishedRecipient, ExactDeliveryReason,
+        Here, InterpretItem, ItemSettlement, MailAddr, MessageProtocol, Never, Protocol,
+        RecipientAddress,
     };
 
     use super::{
@@ -861,7 +861,7 @@ mod tests {
     #[derive(Clone, Copy, Debug, Eq, PartialEq)]
     struct DeliveryEndpoint(u64);
 
-    impl EndpointAddress for DeliveryAddr {
+    impl RecipientAddress for DeliveryAddr {
         type Established<P>
             = DeliveryEndpoint
         where

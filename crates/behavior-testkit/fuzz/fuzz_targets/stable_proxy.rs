@@ -1,5 +1,8 @@
 //! Current StableProxy fuzz setup and independent exact worker-return model.
 
+#[path = "installed_control.rs"]
+pub(super) mod installed_control;
+
 use core::future::Future;
 use core::task::{Context, Poll, Waker};
 use std::time::Instant;
@@ -11,8 +14,8 @@ use behavior_actors::atomic::{
 use behavior_actors::{Activate as _, Active, ChildStopped, StopOnShutdown};
 use behavior_core::{
     Actions, ActiveTurn, Address, Behavior, BehaviorActed, ChildCreationOutcome, CreateChild,
-    CreationId, CreationSettlement, CreationsSettled, EndpointAddress, EstablishedCreation,
-    EstablishedRecipient, ItemSettlement, Never, NoBirths, Protocol, SettledItem, User,
+    CreationId, CreationSettlement, CreationsSettled, EndpointAddress, ItemSettlement, Never,
+    NoBirths, Protocol, SettledItem, User,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -30,6 +33,21 @@ impl EndpointAddress for RuntimeAddress {
         = WorkerEndpoint
     where
         P: Protocol<Addr = Self>;
+
+    type Installed<B>
+        =
+        installed_control::InstalledControl<B, <Self as EndpointAddress>::Established<B::Protocol>>
+    where
+        B: Behavior<Protocol: Protocol<Addr = Self>>;
+
+    fn recipient<B>(
+        installed: &Self::Installed<B>,
+    ) -> <Self as EndpointAddress>::Established<B::Protocol>
+    where
+        B: Behavior<Protocol: Protocol<Addr = Self>>,
+    {
+        installed.endpoint().clone()
+    }
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -65,13 +83,13 @@ fn created_worker(
     let (worker, _actor, kind) = creation.into_parts();
     CreationsSettled::new(CreationSettlement::Settled(
         [SettledItem::Attempted(ItemSettlement::Accepted(
-            ChildCreationOutcome::Established {
-                established: EstablishedCreation::installed(
-                    worker,
-                    kind,
-                    EstablishedRecipient::issued(WorkerEndpoint),
-                ),
-            },
+            ChildCreationOutcome::Established(behavior_core::CommittedChild::new(
+                worker,
+                kind,
+                behavior_core::EstablishedActor::issued(installed_control::InstalledControl::new(
+                    WorkerEndpoint,
+                )),
+            )),
         ))]
         .into_iter()
         .collect(),

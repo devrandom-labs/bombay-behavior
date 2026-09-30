@@ -102,6 +102,7 @@ where
 
 #[cfg(test)]
 mod shutdown_ownership_tests {
+    use std::sync::{Arc, Mutex, mpsc};
     use std::time::{Duration, Instant};
 
     use core::ops::ControlFlow;
@@ -128,11 +129,50 @@ mod shutdown_ownership_tests {
     #[derive(Clone, Copy, Debug, Eq, PartialEq)]
     struct SearchEndpoint;
 
+    struct SearchInstalled<B: Behavior> {
+        endpoint: SearchEndpoint,
+        control: mpsc::Sender<B::Event>,
+        inbox: Arc<Mutex<mpsc::Receiver<B::Event>>>,
+    }
+
+    impl<B: Behavior> Clone for SearchInstalled<B> {
+        fn clone(&self) -> Self {
+            Self {
+                endpoint: self.endpoint,
+                control: self.control.clone(),
+                inbox: Arc::clone(&self.inbox),
+            }
+        }
+    }
+
+    impl<B: Behavior> SearchInstalled<B> {
+        fn new(endpoint: SearchEndpoint) -> Self {
+            let (control, inbox) = mpsc::channel();
+            Self {
+                endpoint,
+                control,
+                inbox: Arc::new(Mutex::new(inbox)),
+            }
+        }
+    }
+
     impl EndpointAddress for SearchAddress {
         type Established<P>
             = SearchEndpoint
         where
             P: Protocol<Addr = Self>;
+
+        type Installed<B>
+            = SearchInstalled<B>
+        where
+            B: Behavior<Protocol: Protocol<Addr = Self>>;
+
+        fn recipient<B>(installed: &Self::Installed<B>) -> SearchEndpoint
+        where
+            B: Behavior<Protocol: Protocol<Addr = Self>>,
+        {
+            installed.endpoint
+        }
     }
 
     struct SearchWorker;
@@ -166,7 +206,9 @@ mod shutdown_ownership_tests {
         let current = CurrentWorker {
             attempt: worker.clone(),
             initialization: initialization.clone(),
-            actor: EstablishedActor::<StopOnShutdown<SearchWorker>>::issued(SearchEndpoint),
+            actor: EstablishedActor::<StopOnShutdown<SearchWorker>>::issued(SearchInstalled::new(
+                SearchEndpoint,
+            )),
         };
         let (departing, _shutdown) = WorkerStopping::begin(current);
         let proxy_stop = ChildStopped::new(creation, Ok(Exit::Normal), Instant::now());
@@ -220,7 +262,9 @@ mod shutdown_ownership_tests {
         let current = CurrentWorker {
             attempt: worker.clone(),
             initialization: initialization.clone(),
-            actor: EstablishedActor::<StopOnShutdown<SearchWorker>>::issued(SearchEndpoint),
+            actor: EstablishedActor::<StopOnShutdown<SearchWorker>>::issued(SearchInstalled::new(
+                SearchEndpoint,
+            )),
         };
         let (departing, _shutdown) = WorkerStopping::begin(current);
         let initialization_stop = ChildStopped::new(creation, Ok(Exit::Normal), Instant::now());

@@ -1,13 +1,16 @@
 use behavior::{
     ActionItem, ActionItemResult, ActionSettlement, Actions, Address, Behavior, BehaviorActed,
     BehaviorSettlements, Births, ChildCreationOutcome, ChildNamespaceExhausted, ClassifySettlement,
-    CreateChild, CreationId, CreationSequence, CreationSettlement, CreationSettlements, Creations,
-    CreationsSettled, EndpointAddress, EstablishedCreation, EstablishedRecipient, EventIngress,
-    EventLayer, InterpretItem, InterpretSends, Interpretation, ItemSettlement, Never, Own,
-    Protocol, RetirementBirths, RetirementCreationSettlement, SendEffects, SendInput, SettledItem,
-    SettlementStatus, SourceAction, SourceActions, SourceAdmission, SourceCustody,
+    CommittedChild, CreateChild, CreationId, CreationSequence, CreationSettlement,
+    CreationSettlements, Creations, CreationsSettled, EndpointAddress, EstablishedActor,
+    EventIngress, EventLayer, InterpretItem, InterpretSends, Interpretation, ItemSettlement, Never,
+    Own, Protocol, RetirementBirths, RetirementCreationSettlement, SendEffects, SendInput,
+    SettledItem, SettlementStatus, SourceAction, SourceActions, SourceAdmission, SourceCustody,
     SourceSettlementCustody, Step, Stopped,
 };
+
+mod installed_control;
+use installed_control::InstalledControl;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct RuntimeAddr(u64);
@@ -24,6 +27,18 @@ impl EndpointAddress for RuntimeAddr {
         = Endpoint
     where
         P: Protocol<Addr = Self>;
+
+    type Installed<B>
+        = InstalledControl<B, Endpoint>
+    where
+        B: Behavior<Protocol: Protocol<Addr = Self>>;
+
+    fn recipient<B>(installed: &Self::Installed<B>) -> Endpoint
+    where
+        B: Behavior<Protocol: Protocol<Addr = Self>>,
+    {
+        *installed.endpoint()
+    }
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -61,7 +76,7 @@ impl ReturningCreator {
         if let CreationSettlement::Settled(creations) = settlement {
             for creation in creations {
                 if let SettledItem::Attempted(ItemSettlement::Accepted(
-                    ChildCreationOutcome::Established { established },
+                    ChildCreationOutcome::Established(established),
                 )) = creation
                 {
                     self.established_creation = Some(established.id());
@@ -112,15 +127,15 @@ fn returning_established() -> (
 ) {
     let mut sequence = CreationSequence::new();
     let creation = sequence.issue().expect("the first creation ID exists");
-    let established = EstablishedCreation::installed(
+    let established = CommittedChild::new(
         creation,
         behavior::CreationKind::Birth,
-        EstablishedRecipient::issued(Endpoint(41)),
+        EstablishedActor::issued(InstalledControl::new(Endpoint(41))),
     );
     (
         creation,
         CreationSettlement::Settled(Creations::one(SettledItem::Attempted(
-            ItemSettlement::Accepted(ChildCreationOutcome::Established { established }),
+            ItemSettlement::Accepted(ChildCreationOutcome::Established(established)),
         ))),
     )
 }

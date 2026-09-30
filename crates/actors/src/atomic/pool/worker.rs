@@ -4,8 +4,8 @@ use core::ops::ControlFlow;
 
 use behavior::{
     Behavior, BehaviorAddr, BehaviorBase, ChildCreationOutcome, ChildCreationSettled, ChildHead,
-    CreateChild, CreationKind, EndpointAddress, EstablishedActor, EstablishedCreation,
-    EstablishedRecipient, Here, Ingress, InjectEvent, ItemSettlement, SettledItem,
+    CreateChild, CreationKind, EndpointAddress, EstablishedActor, EstablishedRecipient, Here,
+    Ingress, InjectEvent, ItemSettlement, SettledItem,
 };
 
 use crate::{
@@ -824,13 +824,6 @@ where
                 activation: worker.activation,
                 stopped: worker.stopped,
             }),
-            WorkerCreationOutcome::InvalidSettlement(settlement) => Err((
-                Self {
-                    role,
-                    state: RetirementStatus::AwaitingCreation(worker),
-                },
-                ChildCreationSettled::new(settlement),
-            )),
         }
     }
 
@@ -1617,16 +1610,6 @@ where
                 activation: starting.activation,
                 stopped: starting.stopped,
             },
-            WorkerCreationOutcome::InvalidSettlement(settlement) => {
-                WorkerCreationAdmission::Unrelated {
-                    member: Self {
-                        role,
-                        recoveries,
-                        state: MemberState::Creating(starting),
-                    },
-                    creation: ChildCreationSettled::new(settlement),
-                }
-            }
         }
     }
 
@@ -1656,9 +1639,7 @@ where
         match settlement {
             SettledItem::Attempted(ItemSettlement::Accepted(created)) => {
                 match &created {
-                    ChildCreationOutcome::Established {
-                        established: EstablishedCreation::Installed { .. },
-                    } => {}
+                    ChildCreationOutcome::Established(_) => {}
                     _ => {
                         return Err((
                             Self {
@@ -2143,12 +2124,7 @@ where
 {
     match settlement {
         SettledItem::Attempted(ItemSettlement::Accepted(created)) => match created {
-            ChildCreationOutcome::Established {
-                established: EstablishedCreation::Installed { id, kind, .. },
-            } => Some((*id, *kind)),
-            ChildCreationOutcome::Established {
-                established: EstablishedCreation::Rejected { .. },
-            } => None,
+            ChildCreationOutcome::Established(child) => Some((child.id(), child.kind())),
             ChildCreationOutcome::InitializationRejected { creation, .. }
             | ChildCreationOutcome::InitializationPanicked { creation }
             | ChildCreationOutcome::HostRejected { creation, .. } => {

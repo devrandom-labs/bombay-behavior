@@ -3,6 +3,8 @@
     reason = "the interpreter and child host consume these exact values at this point"
 )]
 
+mod installed_control;
+
 use core::convert::Infallible;
 use core::num::NonZeroUsize;
 use core::ops::ControlFlow;
@@ -17,9 +19,9 @@ use behavior::{
     ActionItemResult, Actions, ActiveTurn, Address, Behavior, BehaviorActed, ChildCreationOutcome,
     ChildInputReason, ChildNamespaceExhausted, ChildReport, CreateChild, CreationId, CreationKind,
     CreationSequence, CreationSettlement, Creations, CreationsSettled, Delivery, EndpointAddress,
-    EstablishedActor, EstablishedCreation, EstablishedDelivery, EstablishedRecipient, EventIngress,
-    Here, InjectEvent, InterpreterFault, ItemSettlement, MessageProtocol, Never, NoBirths, NoSends,
-    Protocol, Recipient, RecoverEvent, SendSettlements, SettledItem, Step, User, UserEvent,
+    EstablishedActor, EstablishedDelivery, EstablishedRecipient, EventIngress, Here, InjectEvent,
+    InterpreterFault, ItemSettlement, MessageProtocol, Never, NoBirths, NoSends, Protocol,
+    Recipient, RecoverEvent, SendSettlements, SettledItem, Step, User, UserEvent,
 };
 use behavior_actors::atomic::{
     self, ActivationPlan, ActivationPolicy, ActorDrainPolicy, CapabilityResult, DiagnosticAction,
@@ -133,6 +135,21 @@ impl EndpointAddress for RuntimeAddr {
         = Endpoint
     where
         P: Protocol<Addr = Self>;
+
+    type Installed<B>
+        =
+        installed_control::InstalledControl<B, <Self as EndpointAddress>::Established<B::Protocol>>
+    where
+        B: behavior::Behavior<Protocol: Protocol<Addr = Self>>;
+
+    fn recipient<B>(
+        installed: &Self::Installed<B>,
+    ) -> <Self as EndpointAddress>::Established<B::Protocol>
+    where
+        B: behavior::Behavior<Protocol: Protocol<Addr = Self>>,
+    {
+        installed.endpoint().clone()
+    }
 }
 
 fn logical_reply<P>(mut replies: Vec<ReplyDelivery<Delivery<P>, EstablishedDelivery<P>>>) -> P::Msg
@@ -379,15 +396,15 @@ fn commit_proxy_births(
         .map(|(position, creation)| {
             let (id, proxy, kind) = creation.into_parts();
             drop(proxy);
-            SettledItem::Attempted(ItemSettlement::Accepted(
-                ChildCreationOutcome::Established {
-                    established: EstablishedCreation::installed(
-                        id,
-                        kind,
-                        EstablishedRecipient::issued(Endpoint(endpoint + position as u64)),
-                    ),
-                },
-            ))
+            SettledItem::Attempted(ItemSettlement::Accepted(ChildCreationOutcome::Established(
+                behavior::CommittedChild::new(
+                    id,
+                    kind,
+                    behavior::EstablishedActor::issued(installed_control::InstalledControl::new(
+                        Endpoint(endpoint + position as u64),
+                    )),
+                ),
+            )))
         })
         .collect();
     CreationsSettled::new(CreationSettlement::Settled(settlements))
@@ -501,13 +518,13 @@ async fn ready_proxy_outcome(
     drop(child);
     let committed = CreationsSettled::new(CreationSettlement::Settled(
         [SettledItem::Attempted(ItemSettlement::Accepted(
-            ChildCreationOutcome::Established {
-                established: EstablishedCreation::installed(
-                    worker,
-                    kind,
-                    EstablishedRecipient::issued(Endpoint(990)),
-                ),
-            },
+            ChildCreationOutcome::Established(behavior::CommittedChild::new(
+                worker,
+                kind,
+                behavior::EstablishedActor::issued(installed_control::InstalledControl::new(
+                    Endpoint(990),
+                )),
+            )),
         ))]
         .into_iter()
         .collect(),
@@ -564,13 +581,13 @@ async fn ready_tracked_proxy_outcome(
     drop(child);
     let committed = CreationsSettled::new(CreationSettlement::Settled(
         [SettledItem::Attempted(ItemSettlement::Accepted(
-            ChildCreationOutcome::Established {
-                established: EstablishedCreation::installed(
-                    worker,
-                    kind,
-                    EstablishedRecipient::issued(Endpoint(1_812)),
-                ),
-            },
+            ChildCreationOutcome::Established(behavior::CommittedChild::new(
+                worker,
+                kind,
+                behavior::EstablishedActor::issued(installed_control::InstalledControl::new(
+                    Endpoint(1_812),
+                )),
+            )),
         ))]
         .into_iter()
         .collect(),
@@ -804,15 +821,15 @@ fn proxy_birth_batch_requires_each_roles_creation_and_birth_kind() {
         .into_iter()
         .enumerate()
         .map(|(position, (_, kind))| {
-            SettledItem::Attempted(ItemSettlement::Accepted(
-                ChildCreationOutcome::Established {
-                    established: EstablishedCreation::installed(
-                        rotated[position],
-                        kind,
-                        EstablishedRecipient::issued(Endpoint(1200 + position as u64)),
-                    ),
-                },
-            ))
+            SettledItem::Attempted(ItemSettlement::Accepted(ChildCreationOutcome::Established(
+                behavior::CommittedChild::new(
+                    rotated[position],
+                    kind,
+                    behavior::EstablishedActor::issued(installed_control::InstalledControl::new(
+                        Endpoint(1200 + position as u64),
+                    )),
+                ),
+            )))
         })
         .collect();
     let rejected = supervisor
@@ -832,7 +849,7 @@ fn proxy_birth_batch_requires_each_roles_creation_and_birth_kind() {
         .into_iter()
         .map(|settlement| match settlement {
             SettledItem::Attempted(ItemSettlement::Accepted(
-                ChildCreationOutcome::Established { established },
+                ChildCreationOutcome::Established(established),
             )) => (established.id(), established.kind()),
             SettledItem::Attempted(ItemSettlement::Accepted(_))
             | SettledItem::Attempted(ItemSettlement::Rejected { .. })
@@ -873,15 +890,15 @@ fn proxy_birth_batch_requires_each_roles_creation_and_birth_kind() {
                 0 => CreationKind::replacement(creation),
                 _ => kind,
             };
-            SettledItem::Attempted(ItemSettlement::Accepted(
-                ChildCreationOutcome::Established {
-                    established: EstablishedCreation::installed(
-                        creation,
-                        kind,
-                        EstablishedRecipient::issued(Endpoint(1300 + position as u64)),
-                    ),
-                },
-            ))
+            SettledItem::Attempted(ItemSettlement::Accepted(ChildCreationOutcome::Established(
+                behavior::CommittedChild::new(
+                    creation,
+                    kind,
+                    behavior::EstablishedActor::issued(installed_control::InstalledControl::new(
+                        Endpoint(1300 + position as u64),
+                    )),
+                ),
+            )))
         })
         .collect();
     let rejected = supervisor
@@ -901,7 +918,7 @@ fn proxy_birth_batch_requires_each_roles_creation_and_birth_kind() {
         .into_iter()
         .map(|settlement| match settlement {
             SettledItem::Attempted(ItemSettlement::Accepted(
-                ChildCreationOutcome::Established { established },
+                ChildCreationOutcome::Established(established),
             )) => (established.id(), established.kind()),
             SettledItem::Attempted(ItemSettlement::Accepted(_))
             | SettledItem::Attempted(ItemSettlement::Rejected { .. })
@@ -1017,8 +1034,9 @@ fn failed_proxy_birth_batches_require_exact_pending_creations() {
 #[test]
 fn accepted_proxy_input_keeps_its_authorization_occupied() {
     let (mut fixed, operation) = first_proxy_dispatched(301);
-    let proxy =
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(401));
+    let proxy = EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+        installed_control::InstalledControl::new(Endpoint(401)),
+    );
     let (_creation, _control, receipt) = admit_proxy_operation(operation, proxy);
     let accepted = SettledItem::Attempted(ItemSettlement::Accepted(receipt));
     let settled = fixed
@@ -1031,8 +1049,9 @@ fn accepted_proxy_input_keeps_its_authorization_occupied() {
 #[tokio::test]
 async fn exact_ready_proxy_report_releases_capacity_for_the_next_role() {
     let (mut fixed, operation) = first_proxy_dispatched(401);
-    let proxy =
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(501));
+    let proxy = EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+        installed_control::InstalledControl::new(Endpoint(501)),
+    );
     let (creation, control, receipt) = admit_proxy_operation(operation, proxy);
     let accepted = fixed
         .on(SettledItem::Attempted(ItemSettlement::Accepted(receipt)))
@@ -1062,8 +1081,9 @@ async fn exact_ready_proxy_report_releases_capacity_for_the_next_role() {
 #[test]
 fn exact_non_ready_proxy_report_transfers_one_terminal_diagnostic_and_stops() {
     let (mut fixed, operation) = first_proxy_dispatched(451);
-    let proxy =
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(551));
+    let proxy = EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+        installed_control::InstalledControl::new(Endpoint(551)),
+    );
     let (creation, _control, receipt) = admit_proxy_operation(operation, proxy);
     let accepted = fixed
         .on(SettledItem::Attempted(ItemSettlement::Accepted(receipt)))
@@ -1175,15 +1195,15 @@ fn terminal_initial_failure_retains_other_workers_until_supervisor_retirement() 
         .map(|(position, creation)| {
             let (id, proxy, kind) = creation.into_parts();
             drop(proxy);
-            SettledItem::Attempted(ItemSettlement::Accepted(
-                ChildCreationOutcome::Established {
-                    established: EstablishedCreation::installed(
-                        id,
-                        kind,
-                        EstablishedRecipient::issued(Endpoint(1_700 + position as u64)),
-                    ),
-                },
-            ))
+            SettledItem::Attempted(ItemSettlement::Accepted(ChildCreationOutcome::Established(
+                behavior::CommittedChild::new(
+                    id,
+                    kind,
+                    behavior::EstablishedActor::issued(installed_control::InstalledControl::new(
+                        Endpoint(1_700 + position as u64),
+                    )),
+                ),
+            )))
         })
         .collect();
     let started = fixed
@@ -1204,7 +1224,9 @@ fn terminal_initial_failure_retains_other_workers_until_supervisor_retirement() 
     };
     let (creation, control, receipt) = admit_proxy_operation(
         operation,
-        EstablishedActor::<StableProxy<TrackedWorker, TrackedActivation>>::issued(Endpoint(1_800)),
+        EstablishedActor::<StableProxy<TrackedWorker, TrackedActivation>>::issued(
+            installed_control::InstalledControl::new(Endpoint(1_800)),
+        ),
     );
     drop(control);
     assert_eq!(primary_drops.load(Ordering::SeqCst), 1);
@@ -1291,13 +1313,13 @@ async fn terminal_restart_denial_retains_member_and_prepared_worker_until_retire
     let dispatched = fixed
         .on(CreationsSettled::new(CreationSettlement::Settled(
             [SettledItem::Attempted(ItemSettlement::Accepted(
-                ChildCreationOutcome::Established {
-                    established: EstablishedCreation::installed(
-                        route,
-                        kind,
-                        EstablishedRecipient::issued(Endpoint(1_810)),
-                    ),
-                },
+                ChildCreationOutcome::Established(behavior::CommittedChild::new(
+                    route,
+                    kind,
+                    behavior::EstablishedActor::issued(installed_control::InstalledControl::new(
+                        Endpoint(1_810),
+                    )),
+                )),
             ))]
             .into_iter()
             .collect(),
@@ -1316,7 +1338,9 @@ async fn terminal_restart_denial_retains_member_and_prepared_worker_until_retire
     };
     let (route, control, receipt) = admit_proxy_operation(
         operation,
-        EstablishedActor::<StableProxy<TrackedWorker, TrackedActivation>>::issued(Endpoint(1_811)),
+        EstablishedActor::<StableProxy<TrackedWorker, TrackedActivation>>::issued(
+            installed_control::InstalledControl::new(Endpoint(1_811)),
+        ),
     );
     let ready = ready_tracked_proxy_outcome(control).await;
     let attempt = match &ready {
@@ -1396,8 +1420,9 @@ async fn routed_non_ready_report_delivers_diagnostic_and_retires_after_proxy_exi
         diagnostic_route.clone(),
         FailureReaction::RetireMember,
     );
-    let proxy =
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(654));
+    let proxy = EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+        installed_control::InstalledControl::new(Endpoint(654)),
+    );
     let (creation, control, receipt) = admit_proxy_operation(operation, proxy);
     let accepted = fixed
         .on(SettledItem::Attempted(ItemSettlement::Accepted(receipt)))
@@ -1474,7 +1499,9 @@ async fn routed_non_ready_report_delivers_diagnostic_and_retires_after_proxy_exi
     assert_eq!(fleet_shutdown.sends.proxy_operations.len(), 0);
     let (_shutdown_creation, _shutdown_control, shutdown_receipt) = admit_proxy_operation(
         shutdown,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(654)),
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+            installed_control::InstalledControl::new(Endpoint(654)),
+        ),
     );
     let shutdown_accepted = fixed
         .on(SettledItem::Attempted(ItemSettlement::Accepted(
@@ -1531,7 +1558,9 @@ fn routed_initial_failure_stops_the_complete_supervisor() {
     );
     let (route, control, receipt) = admit_proxy_operation(
         operation,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(762)),
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+            installed_control::InstalledControl::new(Endpoint(762)),
+        ),
     );
     let accepted = fixed
         .on(SettledItem::Attempted(ItemSettlement::Accepted(receipt)))
@@ -1578,8 +1607,9 @@ fn routed_initial_failure_stops_the_complete_supervisor() {
 #[tokio::test]
 async fn replacement_outcome_cannot_satisfy_initial_startup() {
     let (mut fixed, operation) = first_proxy_dispatched(1001);
-    let proxy =
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(1101));
+    let proxy = EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+        installed_control::InstalledControl::new(Endpoint(1101)),
+    );
     let (creation, control, receipt) = admit_proxy_operation(operation, proxy);
     let accepted = fixed
         .on(SettledItem::Attempted(ItemSettlement::Accepted(receipt)))
@@ -1624,8 +1654,9 @@ async fn replacement_outcome_cannot_satisfy_initial_startup() {
 fn another_supervisors_proxy_input_settlement_returns_to_its_owner() {
     let (mut owner, owner_operation) = first_proxy_dispatched(501);
     let (mut source, source_operation) = first_proxy_dispatched(601);
-    let proxy =
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(701));
+    let proxy = EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+        installed_control::InstalledControl::new(Endpoint(701)),
+    );
     let (_source_creation, _source_control, source_receipt) =
         admit_proxy_operation(source_operation, proxy);
     let foreign = SettledItem::Attempted(ItemSettlement::Accepted(source_receipt));
@@ -1643,7 +1674,9 @@ fn another_supervisors_proxy_input_settlement_returns_to_its_owner() {
     assert_eq!(accepted.sends.proxy_operations.len(), 0);
     let (_owner_creation, _owner_control, owner_receipt) = admit_proxy_operation(
         owner_operation,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(702)),
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+            installed_control::InstalledControl::new(Endpoint(702)),
+        ),
     );
     let owner_accepted = owner
         .on(SettledItem::Attempted(ItemSettlement::Accepted(
@@ -1807,7 +1840,9 @@ where
     );
     let (route, control, receipt) = admit_proxy_operation(
         initial,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(801)),
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+            installed_control::InstalledControl::new(Endpoint(801)),
+        ),
     );
     let ready = ready_proxy_outcome(control).await;
     let worker = match &ready {
@@ -1917,7 +1952,9 @@ where
     };
     let (route, control, receipt) = admit_proxy_operation(
         initial,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(801)),
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+            installed_control::InstalledControl::new(Endpoint(801)),
+        ),
     );
     let ready = ready_proxy_outcome(control).await;
     let worker = match &ready {
@@ -1987,14 +2024,12 @@ async fn logical_lifecycle_route_publishes_exact_started_event() {
             panic!("the test intercepts an uninterpreted operation")
         }
     };
-    let (route, control, receipt) = admit_proxy_operation(
-        operation,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(802)),
+    let proxy = EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+        installed_control::InstalledControl::new(Endpoint(802)),
     );
-    let ready = ready_proxy_outcome(control).await;
-    let proxy =
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(802));
     let expected_proxy = proxy.clone();
+    let (route, control, receipt) = admit_proxy_operation(operation, proxy);
+    let ready = ready_proxy_outcome(control).await;
     let accepted = fixed
         .on(SettledItem::Attempted(ItemSettlement::Accepted(receipt)))
         .unwrap_or_else(|_| panic!("the initial proxy input is accepted"));
@@ -2134,7 +2169,9 @@ where
     let endpoint = Endpoint(operation.creation().get() + 100);
     let (creation, control, receipt) = admit_proxy_operation(
         operation,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(endpoint),
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+            installed_control::InstalledControl::new(endpoint),
+        ),
     );
     let outcome = ready_proxy_outcome(control).await;
     let attempt = match &outcome {
@@ -2482,7 +2519,7 @@ async fn coordinated_preparation_shutdown_accepts_every_arrival_order() {
                             .and_then(Option::take)
                             .expect("each role's proxy shutdown returns exactly once"),
                         EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
-                            Endpoint(992),
+                            installed_control::InstalledControl::new(Endpoint(992)),
                         ),
                     );
                     drop(control);
@@ -2735,7 +2772,7 @@ async fn three_disjoint_recoveries_keep_exact_correlation_in_every_lawful_order(
                                 .and_then(Option::take)
                                 .expect("each proxy receipt returns exactly once"),
                             EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
-                                Endpoint(996),
+                                installed_control::InstalledControl::new(Endpoint(996)),
                             ),
                         );
                         drop(control);
@@ -3598,7 +3635,9 @@ async fn coordinated_peer_restarts_when_replacement_outcome_precedes_worker_stop
     let predecessor = members[0].worker.clone();
     let (creation, control, receipt) = admit_proxy_operation(
         replacement,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(811)),
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+            installed_control::InstalledControl::new(Endpoint(811)),
+        ),
     );
     drop(control);
     let accepted = fixed
@@ -3699,7 +3738,9 @@ async fn replacement_outcome_releases_capacity_while_predecessor_stop_is_pending
     let predecessor = members[0].worker.clone();
     let (creation, control, receipt) = admit_proxy_operation(
         replacement,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(811)),
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+            installed_control::InstalledControl::new(Endpoint(811)),
+        ),
     );
     drop(control);
     let accepted = fixed
@@ -3775,7 +3816,9 @@ async fn coordinated_peer_restarts_when_worker_stop_precedes_replacement_outcome
     let predecessor = members[0].worker.clone();
     let (creation, control, receipt) = admit_proxy_operation(
         replacement,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(811)),
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+            installed_control::InstalledControl::new(Endpoint(811)),
+        ),
     );
     drop(control);
     let predecessor_stop = ChildStopped::new(
@@ -3863,7 +3906,9 @@ async fn rest_for_one_rejects_returned_trigger_while_its_suffix_is_still_recover
     let previous = members[1].worker.clone();
     let (creation, control, receipt) = admit_proxy_operation(
         replacement,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(812)),
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+            installed_control::InstalledControl::new(Endpoint(812)),
+        ),
     );
     drop(control);
     let accepted = fixed
@@ -3936,7 +3981,9 @@ async fn returned_rest_for_one_suffix_can_begin_disjoint_recovery() {
     let predecessor = members[2].worker.clone();
     let (creation, control, receipt) = admit_proxy_operation(
         spellcheck_replacement,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(813)),
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+            installed_control::InstalledControl::new(Endpoint(813)),
+        ),
     );
     drop(control);
     let accepted = fixed
@@ -4064,7 +4111,9 @@ async fn released_capacity_authorizes_waiting_recoveries_in_roster_order() {
     let previous = members[0].worker.clone();
     let (creation, control, receipt) = admit_proxy_operation(
         search_operation,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(811)),
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+            installed_control::InstalledControl::new(Endpoint(811)),
+        ),
     );
     drop(control);
     let accepted = fixed
@@ -4208,9 +4257,9 @@ fn shutdown_cancels_unemitted_initial_inputs_and_stops_proxies_in_roster_order()
         };
         let (creation, control, receipt) = admit_proxy_operation(
             operation,
-            EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(
-                841 + position as u64,
-            )),
+            EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+                installed_control::InstalledControl::new(Endpoint(841 + position as u64)),
+            ),
         );
         assert_eq!(creation, expected_proxy);
         let initialized = StableProxy::activated()
@@ -4255,7 +4304,9 @@ fn shutdown_rejects_another_supervisors_initial_input_without_consuming_its_own(
 
     let (_route, control, receipt) = admit_proxy_operation(
         owner_initial,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(851)),
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+            installed_control::InstalledControl::new(Endpoint(851)),
+        ),
     );
     drop(control);
     let owner_retained = owner
@@ -4296,16 +4347,15 @@ fn shutdown_retains_pending_proxy_creation_and_stops_an_exact_committed_proxy() 
         .unwrap_or_else(|_| panic!("shutdown retains an unresolved proxy creation"));
     assert!(matches!(shutting_down.become_, Step::Continue));
     assert_eq!(shutting_down.sends.proxy_operations.len(), 0);
-    let proxy_recipient = EstablishedRecipient::issued(Endpoint(862));
     let wrong_kind = CreationsSettled::new(CreationSettlement::Settled(
         [SettledItem::Attempted(ItemSettlement::Accepted(
-            ChildCreationOutcome::Established {
-                established: EstablishedCreation::installed(
-                    proxy_id,
-                    CreationKind::replacement(proxy_id),
-                    proxy_recipient.clone(),
-                ),
-            },
+            ChildCreationOutcome::Established(behavior::CommittedChild::new(
+                proxy_id,
+                CreationKind::replacement(proxy_id),
+                behavior::EstablishedActor::issued(installed_control::InstalledControl::new(
+                    Endpoint(862),
+                )),
+            )),
         ))]
         .into_iter()
         .collect(),
@@ -4320,9 +4370,9 @@ fn shutdown_retains_pending_proxy_creation_and_stops_an_exact_committed_proxy() 
     let CreationSettlement::Settled(settlements) = returned.into_settlement() else {
         panic!("the routed wrong-kind settlement remains routed")
     };
-    let SettledItem::Attempted(ItemSettlement::Accepted(ChildCreationOutcome::Established {
+    let SettledItem::Attempted(ItemSettlement::Accepted(ChildCreationOutcome::Established(
         established,
-    })) = settlements
+    ))) = settlements
         .into_iter()
         .next()
         .expect("the returned batch has one proxy")
@@ -4334,13 +4384,13 @@ fn shutdown_retains_pending_proxy_creation_and_stops_an_exact_committed_proxy() 
 
     let exact_birth = CreationsSettled::new(CreationSettlement::Settled(
         [SettledItem::Attempted(ItemSettlement::Accepted(
-            ChildCreationOutcome::Established {
-                established: EstablishedCreation::installed(
-                    proxy_id,
-                    CreationKind::Birth,
-                    proxy_recipient,
-                ),
-            },
+            ChildCreationOutcome::Established(behavior::CommittedChild::new(
+                proxy_id,
+                CreationKind::Birth,
+                behavior::EstablishedActor::issued(installed_control::InstalledControl::new(
+                    Endpoint(862),
+                )),
+            )),
         ))]
         .into_iter()
         .collect(),
@@ -4364,7 +4414,9 @@ fn shutdown_retains_pending_proxy_creation_and_stops_an_exact_committed_proxy() 
     };
     let (creation, control, receipt) = admit_proxy_operation(
         shutdown,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(861)),
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+            installed_control::InstalledControl::new(Endpoint(861)),
+        ),
     );
     assert_eq!(creation, proxy_id);
     let initialized = StableProxy::activated()
@@ -4395,7 +4447,9 @@ async fn shutdown_retains_emitted_initial_input_and_its_late_outcome() {
     let (mut fixed, initial) = single_proxy_dispatched(731);
     let (initial_route, initial_control, initial_receipt) = admit_proxy_operation(
         initial,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(831)),
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+            installed_control::InstalledControl::new(Endpoint(831)),
+        ),
     );
     let initial_outcome = ready_proxy_outcome(initial_control).await;
 
@@ -4458,7 +4512,9 @@ async fn shutdown_retains_emitted_initial_input_and_its_late_outcome() {
 
     let (shutdown_route, shutdown_control, shutdown_receipt) = admit_proxy_operation(
         proxy_shutdown,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(831)),
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+            installed_control::InstalledControl::new(Endpoint(831)),
+        ),
     );
     drop(shutdown_control);
     let shutdown_settled = fixed
@@ -4507,7 +4563,9 @@ async fn ready_roster_shutdown_waits_for_operation_and_proxy_exit() {
 
     let (route, control, receipt) = admit_proxy_operation(
         shutdown,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(801)),
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+            installed_control::InstalledControl::new(Endpoint(801)),
+        ),
     );
     drop(control);
     let accepted = fixed
@@ -4581,7 +4639,9 @@ async fn temporary_worker_stop_leaves_one_empty_member_with_a_live_proxy() {
     };
     let (route, control, receipt) = admit_proxy_operation(
         shutdown,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(801)),
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+            installed_control::InstalledControl::new(Endpoint(801)),
+        ),
     );
     drop(control);
     let accepted = fixed
@@ -4889,15 +4949,15 @@ fn starting_roles_accept_unavailable_only_from_their_proxy() {
             let (creation, proxy, kind) = creation.into_parts();
             drop(proxy);
             proxies.push(creation);
-            SettledItem::Attempted(ItemSettlement::Accepted(
-                ChildCreationOutcome::Established {
-                    established: EstablishedCreation::installed(
-                        creation,
-                        kind,
-                        EstablishedRecipient::issued(Endpoint(1200 + position as u64)),
-                    ),
-                },
-            ))
+            SettledItem::Attempted(ItemSettlement::Accepted(ChildCreationOutcome::Established(
+                behavior::CommittedChild::new(
+                    creation,
+                    kind,
+                    behavior::EstablishedActor::issued(installed_control::InstalledControl::new(
+                        Endpoint(1200 + position as u64),
+                    )),
+                ),
+            )))
         })
         .collect();
     let started = fixed
@@ -5033,7 +5093,9 @@ fn starting_roles_accept_unavailable_only_from_their_proxy() {
 
     let (_route, control, receipt) = admit_proxy_operation(
         initial,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(996)),
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+            installed_control::InstalledControl::new(Endpoint(996)),
+        ),
     );
     drop(control);
     let settled = fixed
@@ -5504,7 +5566,9 @@ async fn shutdown_accepts_unavailable_until_the_exact_proxy_exit() {
 
     let (_route, control, receipt) = admit_proxy_operation(
         shutdown,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(991)),
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+            installed_control::InstalledControl::new(Endpoint(991)),
+        ),
     );
     drop(control);
     let retired = fixed
@@ -5579,7 +5643,9 @@ async fn eligible_worker_stop_emits_one_exact_preparation_request() {
     };
     let (route, control, receipt) = admit_proxy_operation(
         shutdown,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(801)),
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+            installed_control::InstalledControl::new(Endpoint(801)),
+        ),
     );
     drop(control);
     let shutdown_settled = fixed
@@ -5654,7 +5720,9 @@ async fn one_replacement_operation() -> (
     };
     let (proxy, control, receipt) = admit_proxy_operation(
         initial,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(801)),
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+            installed_control::InstalledControl::new(Endpoint(801)),
+        ),
     );
     let ready = ready_proxy_outcome(control).await;
     let worker = match &ready {
@@ -5734,7 +5802,9 @@ async fn replacement_rejects_an_outcome_for_another_predecessor() {
     assert_ne!(foreign, previous);
     let (route, control, receipt) = admit_proxy_operation(
         replacement,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(802)),
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+            installed_control::InstalledControl::new(Endpoint(802)),
+        ),
     );
     drop(control);
     let accepted = fixed
@@ -5780,7 +5850,9 @@ async fn replacement_rejects_its_outcome_from_another_proxy() {
     let previous = members[0].worker.clone();
     let (route, control, receipt) = admit_proxy_operation(
         replacement,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(803)),
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+            installed_control::InstalledControl::new(Endpoint(803)),
+        ),
     );
     drop(control);
     let accepted = fixed
@@ -5882,7 +5954,9 @@ async fn accepted_replacement_receipt_keeps_shutdown_live_until_outcome_returns(
     let (mut fixed, replacement, previous) = one_replacement_operation().await;
     let (replacement_route, replacement_control, replacement_receipt) = admit_proxy_operation(
         replacement,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(802)),
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+            installed_control::InstalledControl::new(Endpoint(802)),
+        ),
     );
     drop(replacement_control);
     let replacement_accepted = fixed
@@ -5910,7 +5984,9 @@ async fn accepted_replacement_receipt_keeps_shutdown_live_until_outcome_returns(
     };
     let (route, control, receipt) = admit_proxy_operation(
         shutdown,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(801)),
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+            installed_control::InstalledControl::new(Endpoint(801)),
+        ),
     );
     drop(control);
     let waiting = fixed
@@ -5945,7 +6021,9 @@ async fn retired_proxy_rejects_a_later_outcome_from_a_foreign_child() {
     let (mut fixed, replacement, previous) = one_replacement_operation().await;
     let (_replacement_route, replacement_control, replacement_receipt) = admit_proxy_operation(
         replacement,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(802)),
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+            installed_control::InstalledControl::new(Endpoint(802)),
+        ),
     );
     drop(replacement_control);
     let replacement_accepted = fixed
@@ -5973,7 +6051,9 @@ async fn retired_proxy_rejects_a_later_outcome_from_a_foreign_child() {
     };
     let (route, control, receipt) = admit_proxy_operation(
         shutdown,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(801)),
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+            installed_control::InstalledControl::new(Endpoint(801)),
+        ),
     );
     drop(control);
     let waiting = fixed
@@ -6042,7 +6122,9 @@ async fn ready_replacement_restores_the_role_before_the_next_worker_stop() {
     let successor = ready_single_proxy_with_worker().await.1.worker;
     let (route, control, receipt) = admit_proxy_operation(
         replacement,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(802)),
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+            installed_control::InstalledControl::new(Endpoint(802)),
+        ),
     );
     drop(control);
     let accepted = fixed
@@ -6120,7 +6202,9 @@ async fn failed_replacement_outcome_enters_terminal_custody_complete() {
     let expected = previous.clone();
     let (route, control, receipt) = admit_proxy_operation(
         replacement,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(802)),
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+            installed_control::InstalledControl::new(Endpoint(802)),
+        ),
     );
     drop(control);
     let accepted = fixed
@@ -6410,7 +6494,9 @@ async fn routed_replacement_rejection_retires_only_the_failed_member() {
     };
     let (route, control, receipt) = admit_proxy_operation(
         shutdown,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(801)),
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+            installed_control::InstalledControl::new(Endpoint(801)),
+        ),
     );
     drop(control);
     let settled = fixed
@@ -6560,7 +6646,9 @@ async fn routed_restart_denial_stops_the_complete_supervisor() {
     };
     let (route, control, receipt) = admit_proxy_operation(
         shutdown,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(801)),
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+            installed_control::InstalledControl::new(Endpoint(801)),
+        ),
     );
     drop(control);
     let settled = fixed
@@ -6788,7 +6876,9 @@ async fn routed_restart_schedule_rejection_retires_only_the_trigger() {
     };
     let (route, control, receipt) = admit_proxy_operation(
         shutdown,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(801)),
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+            installed_control::InstalledControl::new(Endpoint(801)),
+        ),
     );
     drop(control);
     let operation_settled = fixed
@@ -6840,7 +6930,9 @@ async fn routed_restart_schedule_rejection_stops_the_supervisor() {
     };
     let (route, control, receipt) = admit_proxy_operation(
         shutdown,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(801)),
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+            installed_control::InstalledControl::new(Endpoint(801)),
+        ),
     );
     drop(control);
     let operation_settled = fixed
@@ -7006,7 +7098,9 @@ async fn shutdown_waits_for_an_emitted_restart_schedule_settlement() {
     };
     let (route, control, receipt) = admit_proxy_operation(
         shutdown,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(801)),
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+            installed_control::InstalledControl::new(Endpoint(801)),
+        ),
     );
     drop(control);
     let operation_settled = fixed
@@ -7067,7 +7161,9 @@ async fn late_preparation_and_proxy_exit_close_shutdown_in_either_order() {
 
     let (route, control, receipt) = admit_proxy_operation(
         shutdown,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(801)),
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+            installed_control::InstalledControl::new(Endpoint(801)),
+        ),
     );
     drop(control);
     let operation_settled = fixed
@@ -7121,7 +7217,9 @@ async fn late_corrupt_preparation_remains_owned_until_proxy_exit() {
 
     let (route, control, receipt) = admit_proxy_operation(
         shutdown,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(801)),
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+            installed_control::InstalledControl::new(Endpoint(801)),
+        ),
     );
     drop(control);
     let operation_settled = fixed
@@ -7164,7 +7262,9 @@ async fn late_source_and_worker_rejections_remain_owned_through_shutdown() {
     };
     let (route, control, receipt) = admit_proxy_operation(
         shutdown,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(801)),
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+            installed_control::InstalledControl::new(Endpoint(801)),
+        ),
     );
     drop(control);
     let operation_settled = source_rejected
@@ -7217,7 +7317,9 @@ async fn late_source_and_worker_rejections_remain_owned_through_shutdown() {
     assert!(matches!(retained.become_, Step::Continue));
     let (route, control, receipt) = admit_proxy_operation(
         shutdown,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(801)),
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+            installed_control::InstalledControl::new(Endpoint(801)),
+        ),
     );
     drop(control);
     let operation_settled = worker_rejected
@@ -7264,7 +7366,9 @@ async fn foreign_late_preparation_cannot_close_another_shutdown() {
 
     let (route, control, receipt) = admit_proxy_operation(
         shutdown,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(801)),
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+            installed_control::InstalledControl::new(Endpoint(801)),
+        ),
     );
     drop(control);
     let operation_settled = owner
@@ -8036,7 +8140,9 @@ async fn routed_preparation_failure_retires_only_the_failed_member() {
     assert!(matches!(exit_first.become_, Step::Continue));
     let (_route, control, receipt) = admit_proxy_operation(
         shutdown,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(801)),
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+            installed_control::InstalledControl::new(Endpoint(801)),
+        ),
     );
     drop(control);
     let retired = fixed
@@ -8121,7 +8227,9 @@ async fn later_retiring_member_accepts_its_own_proxy_exit() {
 
     let (_route, control, receipt) = admit_proxy_operation(
         index_shutdown,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(802)),
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+            installed_control::InstalledControl::new(Endpoint(802)),
+        ),
     );
     drop(control);
     let retired = fixed
@@ -8215,7 +8323,9 @@ async fn exact_proxy_retirement_publishes_the_topology_change_once() {
 
     let (route, control, receipt) = admit_proxy_operation(
         shutdown,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(801)),
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+            installed_control::InstalledControl::new(Endpoint(801)),
+        ),
     );
     drop(control);
     let retired = fixed
@@ -8344,7 +8454,9 @@ async fn routed_preparation_failure_stops_the_complete_supervisor() {
     };
     let (route, control, receipt) = admit_proxy_operation(
         shutdown,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(801)),
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+            installed_control::InstalledControl::new(Endpoint(801)),
+        ),
     );
     drop(control);
     let operation_settled = fixed
@@ -8635,7 +8747,9 @@ async fn ready_roster_shutdown_accepts_proxy_exit_before_operation_settlement() 
 
     let (_route, control, receipt) = admit_proxy_operation(
         shutdown,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(801)),
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+            installed_control::InstalledControl::new(Endpoint(801)),
+        ),
     );
     drop(control);
     let stopped = fixed
@@ -8938,7 +9052,9 @@ async fn draining_management_queries_distinguish_retired_and_stopping_roles() {
     };
     let (route, control, receipt) = admit_proxy_operation(
         first,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(Endpoint(801)),
+        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+            installed_control::InstalledControl::new(Endpoint(801)),
+        ),
     );
     drop(control);
     let settled = fixed

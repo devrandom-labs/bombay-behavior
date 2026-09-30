@@ -8,8 +8,8 @@ use std::time::{Duration, Instant};
 
 use behavior::{
     ActionItemResult, ChildCreationOutcome, ChildHead, CreateChild, CreationKind, CreationSequence,
-    CreationSettlement, CreationsSettled, EstablishedCreation, EstablishedRecipient,
-    InterpreterFault, ItemSettlement, MessageProtocol, Never, Recipient, SettledItem, Step,
+    CreationSettlement, CreationsSettled, InterpreterFault, ItemSettlement, MessageProtocol, Never,
+    Recipient, SettledItem, Step,
 };
 use behavior_actors::atomic::{
     ActivationPlan, ActivationPolicy, ActorDrainPolicy, AssignWorker, BacklogCapacity,
@@ -181,13 +181,17 @@ fn worker_creation_settlement(
 ) -> CreationsSettled<RuntimeAddr, StopOnShutdown<SearchWorker>> {
     CreationsSettled::new(CreationSettlement::Settled(
         [SettledItem::Attempted(ItemSettlement::Accepted(
-            ChildCreationOutcome::<StopOnShutdown<SearchWorker>, ChildHead>::Established {
-                established: EstablishedCreation::installed(
+            ChildCreationOutcome::<StopOnShutdown<SearchWorker>, ChildHead>::Established(
+                behavior::CommittedChild::new(
                     worker,
                     kind,
-                    EstablishedRecipient::issued(Endpoint(40 + worker.get())),
+                    behavior::EstablishedActor::issued(
+                        super::installed_control::InstalledControl::new(Endpoint(
+                            40 + worker.get(),
+                        )),
+                    ),
                 ),
-            },
+            ),
         ))]
         .into_iter()
         .collect(),

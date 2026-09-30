@@ -3,8 +3,8 @@ use std::hint::black_box;
 use std::time::{Duration, Instant};
 
 use behavior::{
-    Actions, Address, ChildCreationOutcome, ChildHead, ChildReport, CreationSettlement,
-    CreationsSettled, EndpointAddress, EstablishedCreation, EstablishedRecipient, ItemSettlement,
+    Actions, Address, ChildCreationOutcome, ChildHead, ChildReport, CommittedChild,
+    CreationSettlement, CreationsSettled, EndpointAddress, EstablishedActor, ItemSettlement,
     MessageProtocol, Never, Protocol, Recipient, SettledItem, Step,
 };
 use behavior_actors::atomic::{
@@ -22,6 +22,9 @@ use assignment_delivery::accepted_assignment;
     reason = "benchmark exercises the accepting path of the shared test interpreter"
 )]
 mod assignment_delivery;
+
+#[path = "../tests/installed_control/mod.rs"]
+mod installed_control;
 
 const DEFAULT_ITERATIONS: usize = 100_000;
 const DEFAULT_SAMPLES: usize = 5;
@@ -41,6 +44,21 @@ impl EndpointAddress for RuntimeAddr {
         = Endpoint
     where
         P: Protocol<Addr = Self>;
+
+    type Installed<B>
+        =
+        installed_control::InstalledControl<B, <Self as EndpointAddress>::Established<B::Protocol>>
+    where
+        B: behavior::Behavior<Protocol: Protocol<Addr = Self>>;
+
+    fn recipient<B>(
+        installed: &Self::Installed<B>,
+    ) -> <Self as EndpointAddress>::Established<B::Protocol>
+    where
+        B: behavior::Behavior<Protocol: Protocol<Addr = Self>>,
+    {
+        installed.endpoint().clone()
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -140,13 +158,15 @@ async fn measure() -> f64 {
     let (worker, _, kind) = creation.into_parts();
     let created = CreationsSettled::new(CreationSettlement::Settled(
         [SettledItem::Attempted(ItemSettlement::Accepted(
-            ChildCreationOutcome::<StopOnShutdown<SearchWorker>, ChildHead>::Established {
-                established: EstablishedCreation::installed(
+            ChildCreationOutcome::<StopOnShutdown<SearchWorker>, ChildHead>::Established(
+                CommittedChild::new(
                     worker.clone(),
                     kind,
-                    EstablishedRecipient::issued(Endpoint(41)),
+                    EstablishedActor::issued(installed_control::InstalledControl::new(Endpoint(
+                        41,
+                    ))),
                 ),
-            },
+            ),
         ))]
         .into_iter()
         .collect(),

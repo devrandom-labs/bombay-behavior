@@ -1,3 +1,5 @@
+mod installed_control;
+
 use core::time::Duration;
 use std::cell::Cell;
 use std::rc::Rc;
@@ -5,8 +7,8 @@ use std::rc::Rc;
 use behavior::{
     ActiveTurn, Address, Behavior, BehaviorActed, ChildCreationOutcome, ChildInputReason,
     CreationId, CreationKind, CreationSettlement, CreationsSettled, EndpointAddress,
-    EstablishedActor, EstablishedCreation, EstablishedRecipient, ItemSettlement, MessageProtocol,
-    Never, NoBirths, NoSends, Protocol, SettledItem, User,
+    EstablishedActor, ItemSettlement, MessageProtocol, Never, NoBirths, NoSends, Protocol,
+    SettledItem, User,
 };
 use behavior_actors::atomic::{
     ActivationPlan, ActivationPolicy, ActorDrainPolicy, DiagnosticDisposition, FailureReaction,
@@ -30,6 +32,21 @@ impl EndpointAddress for RuntimeAddr {
         = Endpoint
     where
         P: Protocol<Addr = Self>;
+
+    type Installed<B>
+        =
+        installed_control::InstalledControl<B, <Self as EndpointAddress>::Established<B::Protocol>>
+    where
+        B: behavior::Behavior<Protocol: Protocol<Addr = Self>>;
+
+    fn recipient<B>(
+        installed: &Self::Installed<B>,
+    ) -> <Self as EndpointAddress>::Established<B::Protocol>
+    where
+        B: behavior::Behavior<Protocol: Protocol<Addr = Self>>,
+    {
+        installed.endpoint().clone()
+    }
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -220,7 +237,9 @@ impl ProxyControlAdmission<SearchWorker, SearchActivation> for SearchProxyHost {
             .on(control)
             .unwrap_or_else(|_| panic!("the exact proxy accepts its initial control"));
         self.worker_creations += actions.creates.len();
-        ItemSettlement::Accepted(EstablishedActor::issued(Endpoint(100)))
+        ItemSettlement::Accepted(EstablishedActor::issued(
+            installed_control::InstalledControl::new(Endpoint(100)),
+        ))
     }
 }
 
@@ -276,17 +295,15 @@ fn initialization_creates_and_admits_one_ordered_proxy_batch() {
         .map(|(position, creation)| {
             let (id, proxy, kind) = creation.into_parts();
             drop(proxy);
-            SettledItem::Attempted(ItemSettlement::Accepted(
-                ChildCreationOutcome::Established {
-                    established: EstablishedCreation::installed(
-                        id,
-                        kind,
-                        EstablishedRecipient::<
-                            <StableProxy<SearchWorker, SearchActivation> as Behavior>::Protocol,
-                        >::issued(Endpoint(100 + position as u64)),
-                    ),
-                },
-            ))
+            SettledItem::Attempted(ItemSettlement::Accepted(ChildCreationOutcome::Established(
+                behavior::CommittedChild::new(
+                    id,
+                    kind,
+                    behavior::EstablishedActor::issued(installed_control::InstalledControl::new(
+                        Endpoint(100 + position as u64),
+                    )),
+                ),
+            )))
         })
         .collect();
     let mut supervisor = initialized.behavior;

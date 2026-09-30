@@ -1,5 +1,7 @@
 //! Compile-contract matrix for every customer-passing actor template.
 
+mod installed_control;
+
 use behavior::*;
 use behavior_actors::*;
 use core::marker::PhantomData;
@@ -45,6 +47,18 @@ impl EndpointAddress for RuntimeAddr {
         = Endpoint<P>
     where
         P: Protocol<Addr = Self>;
+
+    type Installed<B>
+        = installed_control::InstalledControl<B, Endpoint<B::Protocol>>
+    where
+        B: Behavior<Protocol: Protocol<Addr = Self>>;
+
+    fn recipient<B>(installed: &Self::Installed<B>) -> Endpoint<B::Protocol>
+    where
+        B: Behavior<Protocol: Protocol<Addr = Self>>,
+    {
+        installed.endpoint().clone()
+    }
 }
 
 fn exact<P>(id: u64) -> EstablishedRecipient<P>

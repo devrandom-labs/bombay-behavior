@@ -229,9 +229,7 @@ impl<P> PendingWorker<P> {
                 (item.id(), item.kind())
             }
             SettledItem::Attempted(ItemSettlement::Accepted(creation)) => match creation {
-                ChildCreationOutcome::Established { established } => {
-                    (established.id(), established.kind())
-                }
+                ChildCreationOutcome::Established(child) => (child.id(), child.kind()),
                 ChildCreationOutcome::InitializationRejected { creation, .. }
                 | ChildCreationOutcome::InitializationPanicked { creation }
                 | ChildCreationOutcome::HostRejected { creation, .. } => {
@@ -570,15 +568,6 @@ impl<P> PendingWorker<P> {
                     activation: self.activation,
                     stopped,
                 },
-                WorkerCreationOutcome::InvalidSettlement(settlement) => {
-                    WorkerCreation::Unexpected {
-                        worker: self,
-                        stopped,
-                        workers: CreationsSettled::new(CreationSettlement::Settled(
-                            behavior::Creations::one(settlement),
-                        )),
-                    }
-                }
             },
             Err(settlement) => WorkerCreation::Unexpected {
                 worker: self,

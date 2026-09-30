@@ -1,3 +1,5 @@
+mod installed_control;
+
 use behavior::{
     ActionItem, ActionItemResult, ActiveTurn, Address, Behavior, BehaviorActed, ChildInputReason,
     EndpointAddress, Never, NoBirths, NoSends, Protocol, SourceAction, User,
@@ -21,6 +23,21 @@ impl EndpointAddress for RuntimeAddr {
         = Endpoint
     where
         P: Protocol<Addr = Self>;
+
+    type Installed<B>
+        =
+        installed_control::InstalledControl<B, <Self as EndpointAddress>::Established<B::Protocol>>
+    where
+        B: behavior::Behavior<Protocol: Protocol<Addr = Self>>;
+
+    fn recipient<B>(
+        installed: &Self::Installed<B>,
+    ) -> <Self as EndpointAddress>::Established<B::Protocol>
+    where
+        B: behavior::Behavior<Protocol: Protocol<Addr = Self>>,
+    {
+        installed.endpoint().clone()
+    }
 }
 
 struct Worker;

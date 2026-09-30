@@ -1,10 +1,12 @@
 //! An interpreter witness for staged creation and initialization custody.
 
+mod installed_control;
+
 use behavior_core::{
     Actions, ActiveTurn, Address, AllocationRejection, Behavior, BehaviorActed,
     ChildCreationOutcome, ChildHead, CreateChild, CreationRejection, CreationSequence,
-    EndpointAddress, EstablishChild, EstablishedCreation, EstablishedRecipient, InitializationTurn,
-    ItemSettlement, Never, NoBirths, Protocol, RoutedCreation, Step, User,
+    EndpointAddress, EstablishChild, InitializationTurn, ItemSettlement, Never, NoBirths, Protocol,
+    RoutedCreation, Step, User,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -22,6 +24,21 @@ impl EndpointAddress for RuntimeAddr {
         = Endpoint
     where
         P: Protocol<Addr = Self>;
+
+    type Installed<B>
+        =
+        installed_control::InstalledControl<B, <Self as EndpointAddress>::Established<B::Protocol>>
+    where
+        B: behavior_core::Behavior<Protocol: Protocol<Addr = Self>>;
+
+    fn recipient<B>(
+        installed: &Self::Installed<B>,
+    ) -> <Self as EndpointAddress>::Established<B::Protocol>
+    where
+        B: behavior_core::Behavior<Protocol: Protocol<Addr = Self>>,
+    {
+        installed.endpoint().clone()
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -164,13 +181,15 @@ impl EstablishChild<ChildHead, Child> for Host {
             (_, Step::Goto(never)) => match never {},
         }
         self.retained.push(child);
-        ItemSettlement::Accepted(ChildCreationOutcome::Established {
-            established: EstablishedCreation::installed(
+        ItemSettlement::Accepted(ChildCreationOutcome::Established(
+            behavior_core::CommittedChild::new(
                 id,
                 kind,
-                EstablishedRecipient::issued(Endpoint),
+                behavior_core::EstablishedActor::issued(installed_control::InstalledControl::new(
+                    Endpoint,
+                )),
             ),
-        })
+        ))
     }
 }
 
@@ -200,7 +219,7 @@ async fn successful_creation_commits_before_effects_and_opens_ingress_last() {
     let (host, settlement) = attempt(HostPlan::Commit, ChildInitialization::Continue).await;
     assert!(matches!(
         settlement,
-        ItemSettlement::Accepted(ChildCreationOutcome::Established { .. })
+        ItemSettlement::Accepted(ChildCreationOutcome::Established(..))
     ));
     assert_eq!(
         host.trace,
@@ -285,7 +304,7 @@ async fn stopped_initialization_settles_final_effects_without_opening_ingress() 
     let (host, settlement) = attempt(HostPlan::Commit, ChildInitialization::Stop).await;
     assert!(matches!(
         settlement,
-        ItemSettlement::Accepted(ChildCreationOutcome::Established { .. })
+        ItemSettlement::Accepted(ChildCreationOutcome::Established(..))
     ));
     assert_eq!(
         host.trace,
@@ -306,7 +325,7 @@ async fn post_commit_effect_failure_drains_without_recasting_the_birth() {
     let (host, settlement) = attempt(HostPlan::RejectEffects, ChildInitialization::Continue).await;
     assert!(matches!(
         settlement,
-        ItemSettlement::Accepted(ChildCreationOutcome::Established { .. })
+        ItemSettlement::Accepted(ChildCreationOutcome::Established(..))
     ));
     assert_eq!(
         host.trace,

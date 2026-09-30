@@ -388,6 +388,7 @@ where
 mod tests {
     use core::future::Future;
     use std::collections::VecDeque;
+    use std::sync::{Arc, Mutex, mpsc};
 
     use behavior::{
         ActiveTurn, Address, BehaviorActed, ClassifySettlement, InterpreterFault, NoBirths,
@@ -408,11 +409,50 @@ mod tests {
     #[derive(Clone, Copy, Debug, Eq, PartialEq)]
     struct Endpoint(u64);
 
+    struct Installed<B: Behavior> {
+        endpoint: Endpoint,
+        control: mpsc::Sender<B::Event>,
+        inbox: Arc<Mutex<mpsc::Receiver<B::Event>>>,
+    }
+
+    impl<B: Behavior> Clone for Installed<B> {
+        fn clone(&self) -> Self {
+            Self {
+                endpoint: self.endpoint,
+                control: self.control.clone(),
+                inbox: Arc::clone(&self.inbox),
+            }
+        }
+    }
+
+    impl<B: Behavior> Installed<B> {
+        fn new(endpoint: Endpoint) -> Self {
+            let (control, inbox) = mpsc::channel();
+            Self {
+                endpoint,
+                control,
+                inbox: Arc::new(Mutex::new(inbox)),
+            }
+        }
+    }
+
     impl EndpointAddress for RuntimeAddr {
         type Established<P>
             = Endpoint
         where
             P: Protocol<Addr = Self>;
+
+        type Installed<B>
+            = Installed<B>
+        where
+            B: Behavior<Protocol: Protocol<Addr = Self>>;
+
+        fn recipient<B>(installed: &Self::Installed<B>) -> Endpoint
+        where
+            B: Behavior<Protocol: Protocol<Addr = Self>>,
+        {
+            installed.endpoint
+        }
     }
 
     #[derive(Debug, Eq, PartialEq)]
@@ -566,8 +606,9 @@ mod tests {
             second_creation,
             WorkerSubmission::immediate(Worker(8)),
         );
-        let proxy =
-            EstablishedActor::<StableProxy<Worker, ImmediateActivation>>::issued(Endpoint(31));
+        let proxy = EstablishedActor::<StableProxy<Worker, ImmediateActivation>>::issued(
+            Installed::new(Endpoint(31)),
+        );
         let expected_proxy = proxy.recipient();
         let mut host = ProxyControlHost {
             admissions: VecDeque::from([ControlAdmission::Accept(proxy), ControlAdmission::Reject]),
@@ -729,8 +770,9 @@ mod tests {
                 panic!("initial operation retains initial control")
             }
         }
-        let proxy =
-            EstablishedActor::<StableProxy<Worker, ImmediateActivation>>::issued(Endpoint(11));
+        let proxy = EstablishedActor::<StableProxy<Worker, ImmediateActivation>>::issued(
+            Installed::new(Endpoint(11)),
+        );
         let expected_proxy = proxy.recipient();
         let accepted = ProxyInputReceipt::new(creation, proxy, operation);
         let result: ProxyInputResult<Owner, Worker, ImmediateActivation> =

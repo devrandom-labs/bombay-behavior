@@ -6,6 +6,7 @@ use behavior::Births;
 use behavior::ChildCreationOutcome;
 use behavior::ChildHead;
 use behavior::ChildNamespaceExhausted;
+use behavior::CommittedChild;
 use behavior::CreateChild;
 use behavior::CreationCorrelation;
 use behavior::CreationId;
@@ -15,8 +16,7 @@ use behavior::CreationSettlement;
 use behavior::Creations;
 use behavior::EndpointAddress;
 use behavior::EstablishChild;
-use behavior::EstablishedCreation;
-use behavior::EstablishedRecipient;
+use behavior::EstablishedActor;
 use behavior::Here;
 use behavior::InterpretItem;
 use behavior::Interpretation;
@@ -33,6 +33,9 @@ use behavior::Step;
 use behavior::User;
 use core::marker::PhantomData;
 use std::collections::HashMap;
+
+mod installed_control;
+use installed_control::InstalledControl;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct RuntimeAddr(u64);
@@ -57,6 +60,18 @@ impl EndpointAddress for RuntimeAddr {
         = RuntimeEndpoint<P>
     where
         P: Protocol<Addr = Self>;
+
+    type Installed<B>
+        = InstalledControl<B, RuntimeEndpoint<B::Protocol>>
+    where
+        B: Behavior<Protocol: Protocol<Addr = Self>>;
+
+    fn recipient<B>(installed: &Self::Installed<B>) -> RuntimeEndpoint<B::Protocol>
+    where
+        B: Behavior<Protocol: Protocol<Addr = Self>>,
+    {
+        *installed.endpoint()
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -183,13 +198,14 @@ impl EstablishChild<ChildHead, Child> for Runtime {
                 let route = creation.route();
                 let (creation, _) = creation.into_parts();
                 let (_, _child, _) = creation.into_parts();
-                ItemSettlement::Accepted(ChildCreationOutcome::Established {
-                    established: EstablishedCreation::installed(
-                        id,
-                        kind,
-                        EstablishedRecipient::issued(RuntimeEndpoint(route, PhantomData)),
-                    ),
-                })
+                ItemSettlement::Accepted(ChildCreationOutcome::Established(CommittedChild::new(
+                    id,
+                    kind,
+                    EstablishedActor::issued(InstalledControl::new(RuntimeEndpoint(
+                        route,
+                        PhantomData,
+                    ))),
+                )))
             }
             CreationPlan::RejectInitialization => {
                 self.resolutions.insert(id, CreationStatus::Rejected);

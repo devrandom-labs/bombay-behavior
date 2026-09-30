@@ -5,6 +5,9 @@ use behavior::{
     SourceCustody, SourceSettlementCustody, User,
 };
 
+mod installed_control;
+use installed_control::InstalledControl;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct RuntimeAddr(u64);
 
@@ -20,6 +23,18 @@ impl EndpointAddress for RuntimeAddr {
         = Endpoint
     where
         P: Protocol<Addr = Self>;
+
+    type Installed<B>
+        = InstalledControl<B, Endpoint>
+    where
+        B: Behavior<Protocol: Protocol<Addr = Self>>;
+
+    fn recipient<B>(installed: &Self::Installed<B>) -> Endpoint
+    where
+        B: Behavior<Protocol: Protocol<Addr = Self>>,
+    {
+        *installed.endpoint()
+    }
 }
 
 #[derive(Debug, Eq, PartialEq)]

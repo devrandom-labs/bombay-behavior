@@ -1,3 +1,4 @@
+use super::installed_control::InstalledControl;
 use behavior::{Actions, Address, EndpointAddress, Never, Protocol};
 use behavior_actors::atomic::{Assignment, ImmediateActivation, WorkerSubmission, pool_worker};
 
@@ -16,6 +17,18 @@ impl EndpointAddress for RuntimeAddr {
         = Endpoint
     where
         P: Protocol<Addr = Self>;
+
+    type Installed<B>
+        = InstalledControl<B, Endpoint>
+    where
+        B: behavior::Behavior<Protocol: Protocol<Addr = Self>>;
+
+    fn recipient<B>(installed: &Self::Installed<B>) -> Endpoint
+    where
+        B: behavior::Behavior<Protocol: Protocol<Addr = Self>>,
+    {
+        *installed.endpoint()
+    }
 }
 
 #[derive(Debug, Eq, PartialEq)]

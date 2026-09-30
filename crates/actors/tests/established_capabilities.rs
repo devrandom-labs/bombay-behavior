@@ -1,11 +1,12 @@
 use behavior::{
     Actions, Behavior, BehaviorActed, BehaviorBase, Births, ChildHead, ChildOccurrence, ChildRole,
-    ComposedEvent, CreationId, CreationKind, CreationRejection, CreationSequence, Creations,
-    DeclaredChildOccurrence, Delivery, EndpointAddress, EstablishedCreation, EstablishedDelivery,
-    EstablishedRecipient, EventLayer, ExactDeliveryReason, Here, Ingress, InjectEvent,
-    InterpretEstablished, InterpretItem, InterpretSends, Interpretation, InterpreterRequests,
-    ItemSettlement, LogicalDeliveryReason, Never, NoBirths, Protocol, Recipient,
-    ResolveChildOccurrence, SendEffects, SendLayer, User, UserEvent,
+    CommittedChild, ComposedEvent, CreationId, CreationKind, CreationRejection, CreationSequence,
+    Creations, DeclaredChildOccurrence, Delivery, EndpointAddress, EstablishedActor,
+    EstablishedCreation, EstablishedDelivery, EstablishedRecipient, EventLayer,
+    ExactDeliveryReason, Here, Ingress, InjectEvent, InterpretEstablished, InterpretItem,
+    InterpretSends, Interpretation, InterpreterRequests, ItemSettlement, LogicalDeliveryReason,
+    Never, NoBirths, Protocol, Recipient, ResolveChildOccurrence, SendEffects, SendLayer, User,
+    UserEvent,
 };
 use behavior_actors::{
     Activate as _, CancelObservation, DeliveryRoute, EstablishedObservation,
@@ -18,6 +19,7 @@ use behavior_actors::{
 };
 use core::future::Future;
 use core::marker::PhantomData;
+use std::sync::{Arc, Mutex, mpsc};
 use std::time::Instant;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -69,11 +71,50 @@ impl<P> PartialEq for Endpoint<P> {
 
 impl<P> Eq for Endpoint<P> {}
 
+struct Installed<B: Behavior> {
+    endpoint: Endpoint<B::Protocol>,
+    control: mpsc::Sender<B::Event>,
+    inbox: Arc<Mutex<mpsc::Receiver<B::Event>>>,
+}
+
+impl<B: Behavior> Clone for Installed<B> {
+    fn clone(&self) -> Self {
+        Self {
+            endpoint: self.endpoint,
+            control: self.control.clone(),
+            inbox: Arc::clone(&self.inbox),
+        }
+    }
+}
+
+impl<B: Behavior> Installed<B> {
+    fn new(endpoint: Endpoint<B::Protocol>) -> Self {
+        let (control, inbox) = mpsc::channel();
+        Self {
+            endpoint,
+            control,
+            inbox: Arc::new(Mutex::new(inbox)),
+        }
+    }
+}
+
 impl EndpointAddress for RuntimeAddr {
     type Established<P>
         = Endpoint<P>
     where
         P: Protocol<Addr = Self>;
+
+    type Installed<B>
+        = Installed<B>
+    where
+        B: Behavior<Protocol: Protocol<Addr = Self>>;
+
+    fn recipient<B>(installed: &Self::Installed<B>) -> Endpoint<B::Protocol>
+    where
+        B: Behavior<Protocol: Protocol<Addr = Self>>,
+    {
+        installed.endpoint
+    }
 }
 
 struct WorkerProtocol;
@@ -121,7 +162,7 @@ impl ChildOccurrence<Parent> for PrimaryWorker {
     type Resolution = DeclaredChildOccurrence;
 }
 
-type WorkerCreationResult = EstablishedCreation<WorkerProtocol, PrimaryWorker>;
+type WorkerCreationResult = EstablishedCreation<Worker, PrimaryWorker>;
 enum ParentEvent {
     Creation(WorkerCreationResult),
     Command(User<RuntimeAddr, ()>),
@@ -158,7 +199,7 @@ impl InjectEvent<WorkerCreationResult, Here> for ParentEvent {
 }
 
 type ParentSends = SendLayer<
-    InterpreterRequests<ObserveEstablishedCreation<WorkerProtocol, PrimaryWorker>>,
+    InterpreterRequests<ObserveEstablishedCreation<Worker, PrimaryWorker>>,
     Vec<EstablishedDelivery<WorkerProtocol>>,
 >;
 
@@ -184,6 +225,14 @@ fn first_creation() -> CreationId {
         panic!("the first creation ID is always available");
     };
     child
+}
+
+fn committed(
+    id: CreationId,
+    kind: CreationKind,
+    endpoint: Endpoint<WorkerProtocol>,
+) -> CommittedChild<Worker, PrimaryWorker> {
+    CommittedChild::new(id, kind, EstablishedActor::issued(Installed::new(endpoint)))
 }
 
 impl BehaviorBase for Parent {
@@ -358,23 +407,23 @@ impl<RootEvent, Path> InterpretItem<EstablishedDelivery<WorkerProtocol>, RootEve
 
 #[test]
 fn creation_result_is_protocol_and_occurrence_indexed() {
-    fn accepts(_: EstablishedCreation<WorkerProtocol, PrimaryWorker>) {}
+    fn accepts(_: EstablishedCreation<Worker, PrimaryWorker>) {}
 
-    accepts(EstablishedCreation::installed(
+    accepts(EstablishedCreation::installed(committed(
         first_creation(),
         CreationKind::Birth,
-        EstablishedRecipient::issued(Endpoint::new(RuntimeAddr(91), 3)),
-    ));
+        Endpoint::new(RuntimeAddr(91), 3),
+    )));
 }
 
 #[test]
 fn committed_named_child_preserves_creation_and_exact_actor_together() {
     let creation = first_creation();
-    let result = EstablishedCreation::<WorkerProtocol, PrimaryWorker>::installed(
+    let result = EstablishedCreation::<Worker, PrimaryWorker>::installed(committed(
         creation,
         CreationKind::Birth,
-        EstablishedRecipient::issued(Endpoint::new(RuntimeAddr(41), 3)),
-    );
+        Endpoint::new(RuntimeAddr(41), 3),
+    ));
 
     let child = established_child::<Parent, PrimaryWorker>(result).unwrap();
     assert_eq!(child.creation(), creation);
@@ -396,7 +445,7 @@ fn committed_named_child_preserves_creation_and_exact_actor_together() {
 
 #[test]
 fn rejected_named_child_produces_neither_local_nor_exact_capability() {
-    let result = EstablishedCreation::<WorkerProtocol, PrimaryWorker>::rejected(
+    let result = EstablishedCreation::<Worker, PrimaryWorker>::rejected(
         first_creation(),
         CreationKind::Birth,
         CreationRejection::InitializationFailed,
@@ -424,11 +473,11 @@ async fn parent_retains_the_exact_capability_and_emits_delivery_only_through_act
     assert_eq!(observation.creation, creation);
 
     let mut active = initialized.behavior;
-    let result = EstablishedCreation::installed(
+    let result = EstablishedCreation::installed(committed(
         creation,
         CreationKind::Birth,
-        EstablishedRecipient::issued(Endpoint::new(RuntimeAddr(91), 3)),
-    );
+        Endpoint::new(RuntimeAddr(91), 3),
+    ));
     let actions = active
         .on(result)
         .expect("the first committed creation is accepted");
@@ -766,28 +815,78 @@ struct ShutdownRuntime {
     calls: Vec<(ShutdownId, RuntimeAddr, u64)>,
 }
 
-impl InterpretEstablishedShutdown<Worker, Here> for ShutdownRuntime {
+impl<B, Path> InterpretEstablishedShutdown<B, Path> for ShutdownRuntime
+where
+    B: Behavior<Protocol: Protocol<Addr = RuntimeAddr>>,
+    B::Event: InjectEvent<ShutdownRequested, Path>,
+{
     fn shutdown(
         &mut self,
         id: ShutdownId,
-        endpoint: Endpoint<WorkerProtocol>,
-        _ingress: Ingress<ShutdownRequested, Here>,
+        installed: Installed<B>,
+        ingress: Ingress<ShutdownRequested, Path>,
     ) -> Result<(), ShutdownRejection> {
+        let endpoint = installed.endpoint;
+        installed
+            .control
+            .send(ingress.event(ShutdownRequested))
+            .expect("live control lane");
+        installed
+            .inbox
+            .lock()
+            .unwrap()
+            .try_recv()
+            .expect("shutdown event delivered");
         self.calls.push((id, endpoint.address, endpoint.slot));
         Ok(())
     }
 }
 
 #[test]
+fn both_wrapper_orders_accept_exact_installed_shutdown() {
+    type Outer = StopOnShutdown<ReceiveTimeout<Watch<Stash<GeneratedParent>>>>;
+    type Inner = Stash<StopOnShutdown<GeneratedParent>>;
+
+    let outer =
+        EstablishedActor::<Outer>::issued(Installed::new(Endpoint::new(RuntimeAddr(81), 1)));
+    let inner =
+        EstablishedActor::<Inner>::issued(Installed::new(Endpoint::new(RuntimeAddr(82), 2)));
+    let mut runtime = ShutdownRuntime::default();
+
+    let outer_result = ShutdownEstablished::new(ShutdownId(11), outer, Ingress::<_, Here>::new())
+        .settle(&mut runtime);
+    let inner_result = ShutdownEstablished::new(ShutdownId(12), inner, Ingress::<_, Here>::new())
+        .settle(&mut runtime);
+
+    assert!(matches!(
+        outer_result,
+        ItemSettlement::Accepted(ShutdownId(11))
+    ));
+    assert!(matches!(
+        inner_result,
+        ItemSettlement::Accepted(ShutdownId(12))
+    ));
+    assert_eq!(
+        runtime.calls,
+        [
+            (ShutdownId(11), RuntimeAddr(81), 1),
+            (ShutdownId(12), RuntimeAddr(82), 2)
+        ]
+    );
+}
+
+#[test]
 fn concrete_actor_proof_authorizes_the_typed_shutdown_request() {
-    let result = EstablishedCreation::<WorkerProtocol, PrimaryWorker>::installed(
+    let result = EstablishedCreation::<Worker, PrimaryWorker>::installed(committed(
         first_creation(),
         CreationKind::Birth,
-        EstablishedRecipient::issued(Endpoint::new(RuntimeAddr(70), 12)),
-    );
+        Endpoint::new(RuntimeAddr(70), 12),
+    ));
     let actor = result
-        .into_actor::<Parent>()
-        .expect("declared role proves the concrete installed behavior");
+        .into_committed()
+        .expect("creation committed")
+        .into_parts()
+        .2;
     let mut runtime = ShutdownRuntime::default();
     let settlement = ShutdownEstablished::new(ShutdownId(2), actor, Ingress::<_, Here>::new())
         .settle(&mut runtime);
