@@ -354,7 +354,7 @@ is recorded against a revision.
 
 - [ ] **A13 — Audit public bounds, hidden exports, and extension ownership.**
   **Confirmed surface requiring review.** The current source has 10
-  `#[doc(hidden)]` annotation sites in core and 66 in actors, including
+  `#[doc(hidden)]` annotation sites in core and 58 in actors, including
   members and re-exports. The
   [public-surface inventory](public-surface-inventory.md) classifies each site
   by contract owner. These annotations do not make an item private.
@@ -406,6 +406,36 @@ is recorded against a revision.
   cursor repair and the least-loaded/Rendezvous traces exercise the current
   comparable-route contract. This resolves the isolated header question,
   while A13's broader hidden-port review remains open.
+
+  **Pre-edit A13 diagnostic-port visibility law:** An external interpreter
+  must name the concrete `DiagnosticAction`, `DiagnosticAccepted`, and sealed
+  `DiagnosticRoute` contract to settle a routed or terminal diagnostic. The
+  accepted value either records delivery or transfers the exact diagnostic
+  into terminal custody; it cannot silently discard the latter. This is a
+  derived interpreter ownership port, not a new actor transition. The
+  external `diagnostic_action` and interpreter-contract
+  `source_free_custody` suites already use this syntax, including the
+  constructor methods. Before editing, Nix-pinned Rustdoc builds but omits
+  all three names from the `atomic` index and has no item pages for them.
+  The focused regression is visible Rustdoc for these already-public names
+  and methods while the existing caller suites continue to pass. The only
+  proposed change removes documentation hiding annotations on the three
+  declarations, their four methods, and grouped re-export. It adds no type,
+  bound, capability, effect lane, or transition branch.
+  Post-edit, Nix-pinned Rustdoc lists all three names in the `atomic` index,
+  generates their item pages, and lists all four methods. The three
+  `diagnostic_action` tests and four external source-free custody tests pass.
+  Actor hidden annotations fall from 66 to 58. Aggregate control states,
+  subordinate alternatives, transition branches, modules, and Rust public
+  spellings are unchanged; the documentation-only edit removes eight source
+  lines. The complete diagnostic remains owned by the terminal accepted
+  variant until the interpreter transfers it. The residue scan finds no
+  arrival history, duplicate cause, false cardinality, nested transition
+  authority, semantic boolean, or structural caller syntax. The actor
+  transition and retained-diagnostic laws were cross-checked against
+  `docs/actor-transition-algebra.md` and
+  `docs/engineering/atomic-actor-retained-core.md`. Disposition: `pass` for
+  these diagnostic item pages; A13 remains open for other ports.
 
   The creation settlement review found a narrower documentation defect:
   external caller suites name `CreationSettlement`, `CreationSettlements`, and

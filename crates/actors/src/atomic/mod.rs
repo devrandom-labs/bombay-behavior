@@ -50,7 +50,6 @@ pub use activation::{ActivationPolicy, EntryCapacity};
 pub use behavior_macros::pool_worker;
 pub use capacity::ZeroCapacity;
 pub use diagnostic::DiagnosticDisposition;
-#[doc(hidden)]
 pub use diagnostic::{DiagnosticAccepted, DiagnosticAction, DiagnosticRoute};
 pub use drain::ActorDrainPolicy;
 pub use dynamic_supervisor::{

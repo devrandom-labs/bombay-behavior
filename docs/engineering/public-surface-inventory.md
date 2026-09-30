@@ -3,7 +3,7 @@
 This inventory supports [A13](repository-quality-audit.md). `#[doc(hidden)]`
 changes Rustdoc display, not Rust visibility. The counts below are annotation
 sites in source, so a grouped re-export and its original declaration each
-count once. The current branch has 10 sites in `crates/behavior/src` and 66
+count once. The current branch has 10 sites in `crates/behavior/src` and 58
 in `crates/actors/src`; the earlier audit counted 25 and 89 before the
 documentation visibility review.
 
@@ -42,7 +42,6 @@ is neither actor identity nor proof of a committed fresh child.
 
 | Owner | Annotated declarations | Contract owner | Visibility decision to review |
 |---|---|---|---|
-| `atomic/diagnostic.rs` | `DiagnosticRoute`, `DiagnosticAction`, `DiagnosticAction::{deliver,terminal}`, `DiagnosticAccepted`, `DiagnosticAccepted::{delivered,terminal}` | Runtime port | Diagnostic admission and terminal return are typed operation outcomes. `DiagnosticRoute` is sealed, so third parties cannot add a new route form. |
 | `atomic/{dynamic_supervisor,fifo_pool,fixed_supervisor,keyed_pool}/{event,requests}.rs` | `DynamicSupervisorEvent`, `DynamicSupervisorRequests`, `FifoEvent`, `FifoRequests`, `FixedSupervisorEvent`, `FixedSupervisorRequests`, `KeyedEvent`, `KeyedRequests` | Runtime port | Public associated event and send products let an interpreter carry complete typed lanes; the aggregate owns their transition semantics. |
 | `atomic/fixed_supervisor/lifecycle.rs` | `FixedLifecycleRoute` | Generated code obligation | This sealed route proof is implemented for the finite fixed-supervision lifecycle forms. |
 | `atomic/pool/assignment.rs` and `atomic/pool/customer.rs` | `AssignWorker::target`, `CustomerDelivery` | Runtime port | The interpreter uses the now visible `AssignWorker::settle` to transfer the exact delivery while the request retains its receipt. The former public `receipt` and `into_parts` assembly methods are now atomic-module-only. |
@@ -90,6 +89,13 @@ The worker-preparation interpreter path is also visible: `PrepareWorkers`,
 and Bombay's inspected source already name this progression. The ticket,
 constructors, fields, and owner settlement remain private. Nine more actor
 annotation sites were removed, leaving 66.
+
+`DiagnosticRoute`, `DiagnosticAction`, `DiagnosticAccepted`, and their four
+existing constructors are now visible in Rustdoc. External actor and
+interpreter-contract suites already name these products to settle routed and
+route-free diagnostics, while the sealed route trait still limits its
+implementors. Removing eight documentation annotations changes no Rust
+visibility, constructor, or transition; 58 actor annotations remain.
 
 `WorkQueue` now keeps worker-route cloning and equality on construction and
 transition operations, where queue inspection and duplicate availability use
