@@ -11,8 +11,9 @@ Behavior candidate at `bd613ae`. The merge retained both ordinary direct
 dependency and facade-first Actors macro witnesses. Its five macro-resolution
 fixtures passed, followed by all ten local aarch64-darwin Nix checks and the
 external interpreter fixture in debug and optimized builds. The user's revised
-PRD was copied verbatim from the original worktree into this release branch;
-the original uncommitted file remains untouched.
+PRD was copied from the original worktree into this release branch, then T02
+was clarified to preserve FIFO's existing clone-and-retry law. The original
+uncommitted file remains untouched.
 
 The external workspace now has a README and a Cargo-metadata guard. The guard
 requires one local resolved package for each of core Behavior, Actors, and
@@ -33,8 +34,8 @@ The external mixed-product fixture now combines retirement creation custody,
 an accepted terminal diagnostic, a live source request, and an independent
 rejection. It exercises two `SendLayer` orders, requires source admission to
 progress past retained siblings, and verifies that closed admission returns
-every lane and the continuation verdict. The new focused tests pass in debug;
-the optimized fixture and final gate follow after this batch is staged. This
+every lane and the continuation verdict. The focused tests pass in debug and
+optimized builds. This
 is the Behavior-side composition portion of T08/T24, not a real Driver trace.
 The canonical adapter contract was corrected to distinguish private host
 commitment and `EstablishedCreation::Installed` from later effect settlement
@@ -46,7 +47,8 @@ selected startup order; no runtime publication implementation is claimed.
 Before/after for this evidence-only batch: aggregate control states and
 subordinate alternatives unchanged; production transition branches and
 production lines unchanged; one fixture README and one graph-check script
-added; one CI step and one external test changed; public spellings unchanged.
+added; one CI step and three external test files changed; public spellings
+unchanged.
 The terminal value remains the sole future-needed residual. No arrival-history
 state, duplicate cause, cardinality assumption, nested transition authority,
 semantic boolean, or structural caller syntax was added. Cross-checks:
@@ -54,6 +56,19 @@ semantic boolean, or structural caller syntax was added. Cross-checks:
 `behavior-layer-laws.md`, and the five normalized actor-law documents.
 Disposition: `pass` for this Behavior-side evidence batch. The PRD's real
 runtime acceptance matrix is still open.
+
+| PRD package | Behavior-side disposition | Downstream dependency |
+|---|---|---|
+| P0 | Current source fingerprints, red ownership regressions, isolated external fixture, and single-source graph guard recorded. | Add immutable Bombay/Address/Communication revisions to the same graph for P5. |
+| P1 | Core retains only outstanding accepted values; terminal diagnostics survive repeated turns and ordinary receipts discharge; both wrapper orders and closed source return pass. | Real Driver continuation and root retirement. |
+| P2 | Assignment and proxy requests consume their lower capability, keep private correlation, and return complete actual payloads on rejection; two same-typed requests and compile denials pass. | Real Communication and exact private proxy-control admission, including close races. |
+| P3 | Core returns exact pure rejection, uncommitted panic, and untouched host refusal; worker panic maps to its owned rejection and public docs distinguish commitment from publication. | Address reservation, private host acknowledgement, effect settlement, termination, and public publication. |
+| P4 | Behavior-owned aggregate consumers, generated/handwritten products, exports, tests, and canonical docs use the retained contract; workspace and external fixture gates pass locally. | Bombay and Address callers migrate after this crate release. |
+
+These dispositions cover the Behavior column of the PRD's scope table. They
+are not claims that the cross-repository P0–P5 packages or T01–T24 runtime
+matrix are complete. P5 and A17 remain open until the released dependency
+graph runs the real leaf interpreters.
 
 ## P0 snapshot, 2026-09-29
 

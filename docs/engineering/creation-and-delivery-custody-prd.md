@@ -1,7 +1,10 @@
 # PRD: Complete interpreter ownership and startup contracts
 
-Date: 2026-09-29. Status: implementation specification; production changes and
-cross-repository acceptance pending. This revision supersedes the 2026-09-28
+Date: 2026-09-29. Status: Behavior-owned contracts implemented on the
+repository-quality release branch; cross-repository P5 acceptance pending.
+The [implementation ledger](interpreter-contract-implementation-ledger.md)
+separates local proof from the future Bombay/Address runtime witnesses. This
+revision supersedes the 2026-09-28
 creation-and-delivery proposal in this file.
 
 ## 1. Objective and implementation baseline

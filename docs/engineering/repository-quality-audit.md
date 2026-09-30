@@ -255,7 +255,7 @@ outcomes separately from the later Bombay integration result.
   A clean Nix gate on `a8f15b7` passed all ten active aarch64-darwin checks,
   including 843/843 optimized Nextest tests.
 
-- [ ] **A12 — Reassess aggregate decomposition using retained current values.**
+- [x] **A12 — Reassess aggregate decomposition using retained current values.**
   **Design candidate.** FIFO's root has 4,097 lines, stable proxy's root 3,506,
   fixed recovery 3,080, and dynamic supervisor's root 2,839. These counts include
   comments and tests; they are review triggers, not evidence of redundant
@@ -695,6 +695,20 @@ outcomes separately from the later Bombay integration result.
   source-level subordinate sums. Terminal transfer and caught-panic ownership
   remain the real-runtime A17/T16 witness; this review makes no claim about
   those downstream effects.
+
+  **A12 final source-review disposition:** `pass`. The five root control sums,
+  the StableProxy nested sums, the shared worker/recovery joins, keyed binding,
+  fixed roster/recovery, and dynamic entry/retirement sums above retain exact
+  values used by later decisions or returned in terminal custody. The
+  before/after production source and syntactic branch counts are identical for
+  each read-only family checkpoint; the earlier exact-one changes record their
+  separate reductions and branch deletions. Counts, module ownership, public
+  spellings, residue scans, and normalized-law cross-checks are recorded at
+  each checkpoint. Earlier statements that A12 was open describe the staged
+  review at those revisions. No state or module deletion is justified by a
+  falsifying law, so none is proposed. Actual parent-to-root terminal transfer
+  and post-commit panic limits are interpreter obligations in A17 and the PRD,
+  not source-level aggregate-decomposition claims.
 
   FIFO and keyed pools each move their root state out with `mem::replace(...,
   Stopped)` during initialization and transition; fixed supervision similarly
@@ -1306,7 +1320,7 @@ outcomes separately from the later Bombay integration result.
   prove the cause and complete owned rejection survive. Do not reclassify
   ordinary rejections or settlements as fatal behavior errors.
 
-- [ ] **A20 — Maintain a law-to-evidence ledger instead of a test-count claim.**
+- [x] **A20 — Maintain a law-to-evidence ledger instead of a test-count claim.**
   **Coverage gap.** Existing model, fuzz, compile, and mutation evidence is
   spread across crate-local suites and historical audits. A filename or green
   suite does not identify which invalid implementation it rejects.
@@ -1337,11 +1351,48 @@ outcomes separately from the later Bombay integration result.
   the route, creation IDs, kinds, and continuation decision. Debug and
   optimized fixture tests pass. This proves
   the Behavior-side return shape; no production host or Address reservation
-  participates, so it does not establish T11 or close A17/A20.
+  participates, so it does not establish full T11 or close A17.
+
+  **Behavior-side law ledger disposition:** the focused entries below and the
+  detailed A07/A20 records in this document identify the tested law, an
+  independent trace or model where the law has a sequence, the applicable
+  wrapper and invalid-use boundary, and an actual red baseline, mutant, or
+  isolated counterfactual. A compile-fail fixture is inapplicable to a numeric
+  capacity or stale-event decision that is intentionally decided at runtime;
+  the focused return-value test is its boundary proof. A wrapper-order test is
+  inapplicable to a standalone catalogue policy with no wrapper-owned lane;
+  generic lane composition is tested separately. These are explicit
+  inapplicability reasons, not inferred coverage from a green suite.
+
+  | Law cluster | Focused and independent evidence | Boundary, composition, and counterfactual |
+  |---|---|---|
+  | Core total interpretation and source custody | `total_interpretation`, `source_settlement_admission`, `action_interpretation`, and the external `source_free_custody` and `source_progression` fixtures inspect exact prefixes, residual values, and source admission. | Both `SendLayer` orders, a mixed retirement creation/product and closed source are exercised; the original unconditional `Exhausted` code failed the focused fixture. External compile denials protect affine settlement authority. Real Driver execution remains A17. |
+  | Fresh creation, occurrences, and startup return | `creation`, `child_occurrence_product`, generated creation custody, and external host-refusal/panic fixtures inspect IDs, kinds, routes, current child, error, untouched effects, and complete batch order. | Compile-fail and external privacy fixtures reject forged authority; the exact-one caller test was red before `into_one`. Public publication and Address races remain A17. |
+  | Stable proxy and supervision | `proxy`, `proxy_command_recovery`, `stable_proxy_shutdown_model`, fixed initialization/recovery, and dynamic cancellation/sequence suites check current attempts and ordered joins. | The external proxy privacy fixture denies forged receipts and duplicate settlement; A07 [activation](#a20-ledger-entry-stable-proxy-activation-correlation), [fixed](#a20-ledger-entry-fixed-replacement-correlation), and [dynamic](#a20-ledger-entry-dynamic-cancellation-authority) mutation slices reject wrong correlations. Runtime restart success remains A17. |
+  | FIFO and keyed work | FIFO's independent admission queue and completion tests, keyed binding/assignment models, and the external assignment delivery fixture inspect payload, role, generation, correlation, and complete return. | External compile failures deny receipt assembly and double settlement. A07 [FIFO](#a20-ledger-entry-fifo-completion-child-correlation) and [keyed](#a20-ledger-entry-keyed-binding-expectations) mutations fail the named tests. Actual Communication closure remains A17. |
+  | Lifecycle, time, and workflow | Exact termination and shutdown models, timing invariants, lease tests, acknowledgement and dependency workflow models compare full event sequences and returned values. | Typed observation/shutdown fixtures cover authority; [termination](#a20-ledger-entry-termination-observation-and-propagation), [lease](#a20-ledger-entry-lease-holder-and-generation-correlation), and [workflow](#a20-ledger-entries-ordered-routing-and-workflow) entries record specific counterfactuals. Numeric time and generation boundaries are runtime rejections, so compile denial is inapplicable. |
+  | Routing, discovery, operations, persistence | Independent routing, pub-sub, health, cache, readiness, and configuration models compare ordered state and complete `Actions` after generated operations. | [Admission](#a20-ledger-entries-catalogue-admission-laws), [buffer](#a20-ledger-entry-bounded-buffer-capacity-and-ownership), [publication](#a20-ledger-entry-keyed-publication-membership), [health](#a20-ledger-entry-health-observation-versions), [versioned routing](#a20-ledger-entries-catalogue-versioning-and-membership), and [cache](#a20-ledger-entries-machine-stash-and-cache) entries record actual mutants or isolated one-line counterfactuals. These standalone policies have no separate wrapper-order law. |
+  | Machine, stash, and state replay | `fsm_properties`, `stash_properties`, `two_buffer`, and focused algebra traces check held ownership, replay order, and phase transitions. | The [machine/stash/cache entry](#a20-ledger-entries-machine-stash-and-cache) records a wrong phase equality and a no-op drain rejected by focused tests. Static infallibility of stashed inner behavior is the invalid-use boundary. |
+  | Macros and public API | Direct/facade Cargo fixtures, generated creation tests, Rustdoc compile-fail cases, and the external assignment/proxy privacy cases compile through public APIs. | Ordinary unrenamed dependencies and facade-first Actors resolution both compile; earlier broken expansions and fixtures failed for the intended compiler diagnostics. Wrapper composition is covered by `universal_layers` and `compositions`. |
+  | Testkit and mutation tooling | Driver/error properties, independent catalogue models, mutation-gate unit tests, and the pinned Nix coverage measurement exercise the verification machinery itself. | A05's missing/failed-run counterfactuals fail the strict gate. Coverage percentages only locate unexecuted branches; the gate requires complete candidate accounting and catches every viable mutant in its selected campaign. |
+
+  Disposition: `pass` for the Behavior-side law-to-evidence ledger. The detailed
+  entries retain their specific limits; this table does not claim that one
+  mutant proves every branch of a catalogue or that a pure model is a real
+  interpreter. Earlier statements that A20 was open describe staged evidence
+  reviews. A17 and the PRD's P5 matrix own the remaining runtime evidence.
 
 ## Follow-on after the audit checklist
 
 - [ ] **Complete the [Interpreter ownership and startup PRD](creation-and-delivery-custody-prd.md) against released Behavior crates.**
+  The Behavior-owned request, settlement, retained-custody, panic-outcome,
+  caller-migration, documentation, and external-fixture work in P0–P4 is
+  implemented on this branch; the
+  [implementation ledger](interpreter-contract-implementation-ledger.md)
+  names the exact local witnesses and their limits. T02 was clarified to retain
+  FIFO's existing clone-and-retry policy after its ownership contradiction was
+  proved from source. The original PRD edit remains untouched in the other
+  worktree.
   Follow its ordered work packages P0–P5 and prove every acceptance trace
   T01–T24 against the real Address and Bombay interpreters. Include complete
   rejection and terminal custody, external consumer compilation, release and
@@ -1349,8 +1400,8 @@ outcomes separately from the later Bombay integration result.
   architecture checkpoints and definition of done; the audit checklist does
   not narrow the PRD's scope. Its optional P6 consolidation follows the
   blocking contracts only where an independent law proves the deletion. P5's
-  integrated witnesses are required to close A17 and the corresponding A20
-  runtime-evidence rows; those downstream rows remain open after this
+  integrated witnesses are required to close A17; the A20 ledger explicitly
+  marks its pure-versus-runtime limits. Those downstream rows remain open after this
   Behavior release until that proof exists.
 
 ## Coverage map and what should remain distinct
