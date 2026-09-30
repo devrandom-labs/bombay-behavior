@@ -243,7 +243,7 @@ is recorded against a revision.
   including 843/843 optimized Nextest tests.
 
 - [ ] **A12 — Reassess aggregate decomposition using retained current values.**
-  **Design candidate.** FIFO's root has 4,095 lines, stable proxy's root 3,509,
+  **Design candidate.** FIFO's root has 4,097 lines, stable proxy's root 3,506,
   fixed recovery 3,080, and dynamic supervisor's root 2,839. These counts include
   comments and tests; they are review triggers, not evidence of redundant
   states. FIFO keeps most transition concerns at its visibility root, while
@@ -284,16 +284,17 @@ is recorded against a revision.
 
   **Current decomposition baseline (read-only):** the figures below count
   physical lines in each family source tree, including comments and embedded
-  tests. Match arrows are a search diagnostic, not semantic branch counts or
-  the production-line measurement required to close A12.
+  tests. Production lines exclude whole spans under `#[cfg(test)]` but retain
+  comments and blank lines. Match arrows are a search diagnostic, not semantic
+  transition branch counts.
 
-  | Family | Root control representation | Source modules | Physical lines | Match arrows | Still required |
-  |---|---|---:|---:|---:|---|
-  | Stable proxy | `ProxyState`: 8 alternatives | 6 | 5,962 | 394 | Enumerate each nested shutdown and retirement value against exact terminal custody. |
-  | Fixed supervisor | `FixedRoster`: 5 alternatives; recovery owns a separate 2-way policy state | 19 | 10,104 | 718 | Check roster/recovery joins and every retained prepared worker. |
-  | Dynamic supervisor | `SupervisorAvailability`: 2 alternatives; each keyed `DynamicEntryPhase` has 14 alternatives | 8 | 4,120 | 246 | Check whether per-key transitions remain an entity invariant rather than a second aggregate authority. |
-  | FIFO pool | `PoolState`: 5 alternatives | 5 | 4,783 | 311 | Check backlog, cursor, per-member custody and forced retirement separately. |
-  | Keyed pool | `KeyedPoolState`: 5 alternatives | 10 | 5,755 | 268 | Check binding generations and per-role order without importing FIFO policy. |
+  | Family | Root control representation | Source modules | Physical lines | Production lines | Match arrows | Still required |
+  |---|---|---:|---:|---:|---:|---|
+  | Stable proxy | `ProxyState`: 8 alternatives | 6 | 5,946 | 5,076 | 398 | Enumerate each nested shutdown and retirement value against exact terminal custody. |
+  | Fixed supervisor | `FixedRoster`: 5 alternatives; recovery owns a separate 2-way policy state | 19 | 10,104 | 9,512 | 718 | Check roster/recovery joins and every retained prepared worker. |
+  | Dynamic supervisor | `SupervisorAvailability`: 2 alternatives; each keyed `DynamicEntryPhase` has 14 alternatives | 8 | 4,120 | 4,020 | 246 | Check whether per-key transitions remain an entity invariant rather than a second aggregate authority. |
+  | FIFO pool | `PoolState`: 5 alternatives | 5 | 4,783 | 4,783 | 311 | Check backlog, cursor, per-member custody and forced retirement separately. |
+  | Keyed pool | `KeyedPoolState`: 5 alternatives | 10 | 5,755 | 5,536 | 268 | Check binding generations and per-role order without importing FIFO policy. |
 
   These sums have no proposed deletion yet. The source scan found no semantic
   `bool` field in these families; the observed boolean signatures are
@@ -328,8 +329,10 @@ is recorded against a revision.
   top-level settlement branches and five reachable cardinality paths are
   unchanged; two impossible `pop() == None` branches are gone. The touched
   production method is 83 → 70 lines; the six-module family is 5,959 → 5,946
-  physical source lines, including unchanged embedded tests. Public spellings
-  and module count are unchanged. `WorkerCreation::Initializing` still owns the
+  physical source lines, including unchanged embedded tests, and 5,089 →
+  5,076 production lines after excluding the 870 lines under `#[cfg(test)]`.
+  Public spellings and module count are unchanged.
+  `WorkerCreation::Initializing` still owns the
   committed worker, activation, and possible prior stop;
   `WorkerCreation::Rejected` owns the rejected worker, activation, and possible
   prior stop; `WorkerCreation::Unexpected` owns the pending worker, possible
@@ -341,6 +344,32 @@ is recorded against a revision.
   `docs/engineering/atomic-actor-retained-core.md`; the focused 53-test proxy
   recovery suite passes. Disposition: `pass` for this local simplification;
   A12 remains open for the complete family inventory and terminal custody.
+
+  **A12 StableProxy root values, read-only review:** the one control-state sum
+  remains eight alternatives in six modules and 5,076 production lines. The
+  retained values below are used by a later decision or returned as terminal
+  custody; these rows do not claim that every nested sum has been reviewed.
+
+  | `ProxyState` alternative | Exact current value required later |
+  |---|---|
+  | `Dormant` | No worker; the one initial submission is still admissible. |
+  | `Starting` | Start kind and current creation, initialization, activation, or return value select correlation, rejection return, and the next effect. |
+  | `Ready` | The exact current worker capability and attempts select service delivery, stop, and replacement. |
+  | `EmptyInitial` | No worker; initial-start authority is spent, so another initial submission must return `Overlap`. |
+  | `EmptyAfter` | The previous worker attempt is needed as replacement provenance. |
+  | `Replacing` | The predecessor departure or successor result plus outstanding shutdown correlation must be joined before publication. |
+  | `ShuttingDown` | Unresolved worker, creation, initialization, activation, and departure values must settle or transfer before retirement. |
+  | `Stopped` | `ProxyRetirement` owns the exact residual values for the runtime custodian; A17/T16 must prove that transfer. |
+
+  `WorkerStopping` is a direct independent join: the shutdown request is
+  either awaiting its exact ID or has its resolution, while the exact worker
+  stop is absent or present. The resolved-plus-stopped combination immediately
+  becomes `StoppedWorker`, so no extra arrival-order state is stored.
+  `proxy_command_recovery` exercises stop-first and resolution-first joins.
+  The root table and this join match `docs/stable-proxy.md` and
+  `docs/actor-laws/proxy.md`; they justify retention, not a new deletion.
+  Nested result and retirement sums, other family inventories, and the
+  interpreter's terminal transfer still keep A12 open.
 
   FIFO and keyed pools each move their root state out with `mem::replace(...,
   Stopped)` during initialization and transition; fixed supervision similarly
