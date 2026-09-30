@@ -335,7 +335,10 @@ is recorded against a revision.
   openly and keep representation private where Rust permits. Add no aliases,
   defaults, visibility, or generic parameters solely to silence the compiler.
   **Progress:** the [public-surface inventory](public-surface-inventory.md)
-  now accounts for all 77 top-level public traits by lawful implementor role.
+  now accounts for all 78 top-level public traits by lawful implementor role,
+  including the later `ProxyControlAdmission` interpreter port. Its actor-suite
+  implementors and the isolated Bombay source identify its owner; the latter
+  is not yet a successful A17 runtime witness.
   The inventory confirms that `StashStatus` has multiple real wrapper
   implementations; its name alone is not grounds for deletion. External
   manually authored child roles and generic logical-host owners have compile
