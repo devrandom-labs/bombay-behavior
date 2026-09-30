@@ -83,8 +83,8 @@ pub(crate) use atomic::{
     WorkerStartResult, WorkerSubmission,
 };
 pub use composition::{
-    DeliveryRoute, DeliveryRouteFor, MessageAdapter, MessageAdapterWithRoute, ReplyDeliveries,
-    ReplyDelivery, ReplyRoute,
+    DeliveryRoute, MessageAdapter, MessageAdapterWithRoute, ReplyDeliveries, ReplyDelivery,
+    ReplyRoute,
 };
 pub use discovery::{
     Presence, PresenceEntry, PresenceError, PresenceMessage, PresenceOutcome, PresencePhase,

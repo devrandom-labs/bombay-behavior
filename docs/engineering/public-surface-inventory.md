@@ -179,7 +179,7 @@ removing only a repeated header bound would add no usable protocol contract.
 
 ## Public trait implementors
 
-The source declares 78 top-level public traits: 55 in `behavior` and 23 in
+The source declares 77 top-level public traits: 55 in `behavior` and 22 in
 `behavior-actors` (counted with `rg '^pub trait '`). The following inventory
 accounts for every declaration. “Author” means an application defining its
 own typed actor, effect, or child protocol; “interpreter” means the code that
@@ -206,7 +206,7 @@ applications should not mention it directly.
 | `atomic/diagnostic.rs`, `atomic/fixed_supervisor/lifecycle.rs`, `atomic/pool/mod.rs` | `DiagnosticRoute`, `FixedLifecycleRoute`, `CompletesAssignments` | Sealed diagnostic, fixed-lifecycle, and completion products; only the declared finite alternatives implement them. |
 | `atomic/worker/mod.rs`, `atomic/worker/preparation.rs` | `ActivationPlan`, `WorkerSource` | An author supplies a concrete worker activation plan and a source that returns complete prepared or rejected worker custody. |
 | `atomic/stable_proxy/operation.rs` | `ProxyControlAdmission` | A trusted interpreter of a statically selected proxy child implements this port. It receives a concrete `ProxyControl` and returns the exact admitted actor or the owned control with a reason; the operation ID stays with `ProxyOperation`. The actor suites provide local interpreters, and the isolated Bombay runtime has an implementation, but its unmerged source does not prove production integration. |
-| `composition/delivery_route.rs` | `DeliveryRoute`, `DeliveryRouteFor` | Sealed exact route products and their owning behavior relationship. |
+| `composition/delivery_route.rs` | `DeliveryRoute` | Sealed transferable logical, established, and mixed routes. An owner constrains its associated protocol address to `BehaviorAddr<Owner>` when needed; no second route trait is required. |
 | `lifecycle/child_shutdown.rs` | `BeginShutdownPhases`, `DeclareShutdownPhase`, `FinishShutdownPhases`, `AssignAt`, `AllAssigned` | Structural shutdown-plan composition and the finite proof that every required child was assigned. |
 | `lifecycle/shutdown_coordinator.rs` | `ShutdownTargetAt` | A typed child-position shutdown target in a heterogeneous plan. |
 | `lifecycle/termination_monitor.rs`, `lifecycle/termination_propagation.rs` | `TerminationObservationTarget`, `TerminationTarget` | Exact recipient forms for observing and propagating termination. |

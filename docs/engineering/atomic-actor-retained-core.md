@@ -55,7 +55,7 @@ are composed, and they are not automatically part of ordinary DevX.
 | `ShutdownChild`, `ChildShutdownRejected`, `ShutdownRequested` | Exact child drain request/rejection and actor shutdown ingress | Reuse internally where their current facts are complete. Deadline retirement remains `ActorDrainPolicy`. |
 | `ScheduleAfter`, `TimerElapsed`, `TimerId`, `TimerGeneration` | Interpreter-clock delay and exact timer correlation | Reuse internally. IDs are actor-owned and never builder inputs. |
 | `ReportToParent` | Structural lowering of a child report | Keep private to actor/interpreter integration. A worker user writes `assignment.complete(result)`, never this type. |
-| `DeliveryRoute`, `DeliveryRouteFor` | Preserve a statically selected logical or exact destination | Reuse for lifecycle/customer routes; do not force every actor to support a mixed route. |
+| `DeliveryRoute` | Preserve a statically selected logical or exact destination; constrain its associated protocol address to the owner where needed | Reuse for lifecycle/customer routes; do not force every actor to support a mixed route. |
 
 None of these rows proves that every current helper trait around the value must
 survive. `SendEffects`, `SendsFor`, `InterpretSends`, `InterpretDelivery`,

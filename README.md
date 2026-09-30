@@ -147,8 +147,8 @@ itself proves no operational law; its output `Behavior` must satisfy the
 [Behavior layer laws](docs/behavior-layer-laws.md) for same-mailbox event,
 effect, initialization, error, birth, and lifecycle composition.
 `DeliveryRoute` connects independent actors through logical, established, or
-mixed capabilities. `DeliveryRouteFor<Owner>` accepts those same transferable
-capabilities only when their protocol uses the owner's address namespace.
+mixed capabilities. A caller requiring the owner's address namespace states
+`Route: DeliveryRoute<Protocol: Protocol<Addr = BehaviorAddr<Owner>>>`.
 Creator-local child communication is not a transferable route; Behavior keeps
 its `CreationId`, while Bombay owns runtime routing.
 

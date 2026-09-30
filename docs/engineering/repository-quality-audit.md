@@ -650,6 +650,41 @@ outcomes separately from the later Bombay integration result.
   comparable-route contract. This resolves the isolated header question,
   while A13's broader hidden-port review remains open.
 
+  **Pre-edit A13 transferable-route owner law:** Logical, established, and
+  mixed reply routes are transferable acquaintances. For any actor `Owner`,
+  `DeliveryRoute` plus its associated protocol address equal to
+  `BehaviorAddr<Owner>` already proves that the emitted delivery belongs to
+  the owner's address namespace. The separate sealed
+  `DeliveryRouteFor<Owner>` duplicates the same three implementations and
+  forwards every `deliver_for` call to `DeliveryRoute::deliver`; no production
+  consumer uses it. The only external caller is
+  `behavior-testkit::owner_scoped_delivery`. This is a derived static
+  composition law, while excluding creator-local `ChildRoute` from a
+  standalone transferable route is a deliberate Bombay policy. Before
+  deleting the trait, change that test's generic caller to use the associated
+  address equality and preserve its logical/exact/mixed outcome assertions.
+  Add a negative compile fixture that rejects naming the redundant trait;
+  the fixture must fail on the prior public API for that exact name. The
+  lower-order `DeliveryRoute`, `Recipient`, `EstablishedRecipient`,
+  `ReplyRoute`, and their concrete send products remain. No new wrapper,
+  route variant, runtime lookup, or child-binding capability is proposed.
+  The negative rustdoc fixture failed on the prior API because its old-trait
+  name still compiled. After deletion, that fixture and the existing
+  wrong-protocol fixture pass, and the external owner-scoped delivery caller
+  passes in debug and optimized builds with the associated-address bound for
+  logical, exact, and mixed routes. The three touched production Rust files fall from 686 to 608
+  physical/production lines; the public trait count falls from 78 to 77.
+  Root control states, subordinate alternatives, actor transition branches,
+  and modules remain unchanged. The only removed public spelling is
+  `DeliveryRouteFor`; existing route ownership stays with each concrete
+  capability and its send product. No arrival history, repeated cause, false
+  cardinality, nested authority, semantic boolean, or positional caller
+  syntax was introduced. The actor transition law, composition guide, and
+  normalized atomic documents were cross-checked. Disposition: `pass`; this
+  is a deliberate source-breaking interface deletion and requires the
+  release PR's breaking-change label. A13 remains open for the remaining
+  surface review.
+
   **Pre-edit A13 returned-worker custody documentation law:** A host rejection
   of a staged worker returns `WorkerCreationRejection::HostRejected` containing
   `WorkerRecovery<W>`. Its consuming `into_retirement()` returns the exact

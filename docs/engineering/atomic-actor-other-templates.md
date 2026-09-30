@@ -130,7 +130,7 @@ generic scheduler component.
 
 The following are not “other atomic templates”:
 
-- `DeliveryRoute`/`DeliveryRouteFor` and exact/logical recipient products;
+- `DeliveryRoute` and exact/logical recipient products;
 - neutral creation, observation, child shutdown, timer, and terminal facts;
 - generated event/send products and static logical-host projections; and
 - occurrence/position machinery required by closed child products.
