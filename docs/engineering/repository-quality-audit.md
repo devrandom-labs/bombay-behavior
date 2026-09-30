@@ -282,7 +282,7 @@ is recorded against a revision.
   such alternative can be removed. This is a custody question left open by
   the source-only review.
 
-  **Current decomposition baseline (read-only):** the figures below count
+  **Decomposition baseline at `e9c8d8c` (read-only):** the figures below count
   physical lines in each family source tree, including comments and embedded
   tests. Production lines exclude whole spans under `#[cfg(test)]` but retain
   comments and blank lines. Match arrows are a search diagnostic, not semantic
@@ -404,8 +404,9 @@ is recorded against a revision.
   consuming calls inside assertions; those calls now execute before the
   assertions and the full rerun passes.
 
-  **A12 StableProxy root values, read-only review:** the one control-state sum
-  remains eight alternatives in six modules and 5,076 production lines. The
+  **A12 StableProxy root values, read-only review:** at the `e9c8d8c`
+  checkpoint the one control-state sum remained eight alternatives in six
+  modules and 5,076 production lines. The
   retained values below are used by a later decision or returned as terminal
   custody; these rows do not claim that every nested sum has been reviewed.
 
@@ -470,7 +471,7 @@ is recorded against a revision.
   | `Constructed` | The ordered prepared worker roster must be returned intact if initialization ID reservation fails. | The same prepared roster must survive failure before the per-role queues and binding table exist. |
   | `Operating` | `FifoOperating` owns the ordered members, admission-ordinal backlog, and next role cursor. These select a global FIFO dispatch. | `KeyedOperating` owns one queue per role, current worker cells, and the bounded key binding table with generations. These select exact key affinity. |
   | `Draining` / `Retiring` | The exact unresolved `RetiringWorker` vector and `ShutdownDeadline` settle worker results and a bounded drain. | The same shared worker-retirement values and deadline settle keyed drain; key/queue outcomes are emitted when retirement begins. |
-  | `Stopped` | No worker or job remains in the actor root after ordinary retirement; later input is rejected. | No worker or binding remains in the actor root after ordinary retirement; later input is rejected. |
+  | `Stopped` | When committed, no worker or job remains in the actor root and later input is rejected; it is also the temporary replacement during a consuming transition. | When committed, no worker or binding remains in the actor root and later input is rejected; it is also the temporary replacement during a consuming transition. |
   | `ForcedRetirement` | The unresolved workers and exact cause (`WorkerShutdownIdsExhausted`, `DeadlineNotScheduled`, or `DeadlineElapsed`) must transfer to the runtime custodian. | The same kind of unresolved worker vector and exact cause must transfer; the per-role binding policy does not turn that into a FIFO backlog. |
 
   `Constructed` is a pre-initialization ownership phase and
@@ -484,6 +485,77 @@ is recorded against a revision.
   cardinality, nested actor authority, semantic boolean, or positional caller
   syntax. Disposition: `pass` for these root sums only; member, recovery,
   deadline, and terminal-custody alternatives remain under A12 review.
+
+  **A12 fixed supervisor root/recovery values, read-only review:** the root
+  `FixedRoster` remains five alternatives in nineteen modules and 9,512
+  production lines; `SupervisorRecoveryState` remains a separate two-way
+  policy sum. This review changes zero states, alternatives, transition
+  branches, production lines, modules, or public spellings.
+
+  | Value | Exact current value needed by a future decision |
+  |---|---|
+  | `FixedRoster::New` | The ordered prepared worker roster either stages one proxy per role or returns complete members on creation-ID exhaustion. |
+  | `FixedRoster::Operating` | The ordered `RosterOwner` cells retain exact proxy, worker, pending preparation, and recovery obligations for role decisions. |
+  | `FixedRoster::ShuttingDown` | `FixedShutdown` retains the unresolved roster and shutdown joins while late exact facts continue to settle. |
+  | `FixedRoster::Terminating` | Exact owners and prepared submissions survive a terminal diagnostic or forced end for runtime custody; A17/T16 must prove transfer. |
+  | `FixedRoster::Stopped` | When committed, no roster value remains and new events cannot be accepted; it is also the temporary replacement during a consuming transition. |
+  | `SupervisorRecoveryState::Automatic` | Strategy, eligibility, restart budget, correlation, and `WorkerSourceCustody` select a lawful preparation or denial. |
+  | `SupervisorRecoveryState::Temporary` | Automatic restart authority is absent; a worker stop leaves the role empty. |
+
+  Within automatic recovery, `WorkerSourceCustody::Available` owns the
+  concrete source, `PreparingWorkers` means the in-flight request owns it,
+  and `Retirement` owns the exact returned source value. These are current
+  ownership positions, not three records of arrival history.
+  `RecoveryChoice::LeaveEmpty` and `SourceUnavailable` both return recovery
+  state but produce different observable outcomes: the former is the selected
+  policy decision, the latter rejects a new preparation because the source is
+  already transferred or retired. The fixed-supervisor initialization and
+  recovery suites cover those distinctions locally. The normalized fixed
+  supervisor law and retained-core document were cross-checked. The residue
+  scan found no new arrival history, repeated cause, false cardinality,
+  nested transition authority, semantic boolean, or structural caller path.
+  Disposition: `pass` for these root/recovery sums only; individual roster
+  owner, shutdown, preparation, and terminal-custody alternatives remain
+  under A12 review.
+
+  **A12 dynamic supervisor entry values, read-only review:** the aggregate
+  has one `SupervisorAvailability` sum with `Accepting(ActorDrainPolicy)` and
+  `ShuttingDown(ShutdownDeadline)`. It owns a key map of `DynamicEntry` values;
+  each entry retains its exact creation, generation, operation, and one of
+  fourteen `DynamicEntryPhase` alternatives. The entry module provides status
+  and shutdown projections but does not implement `Behavior` or choose the
+  aggregate `Actions`. This review changes zero states, alternatives,
+  transition branches, production lines, modules, or public spellings. The
+  family remains eight modules and 4,015 production lines after the exact-one
+  batch migration.
+
+  | `DynamicEntryPhase` alternative | Exact current value needed later |
+  |---|---|
+  | `CreatingProxy` | The untransferred worker submission is returned on stop or cancellation, or sent to the committed proxy after its birth. |
+  | `ShuttingDownProxyCreation` | The enclosing creation correlation remains pending; a committed proxy must be drained and a rejected birth must retire with shutdown provenance. |
+  | `DrainingProxyCreationStop` | The same birth correlation remains pending, but a rejected birth must retire as an explicit stop. This cause changes the lifecycle report. |
+  | `WaitingForActivation` | The exact established proxy and still-owned worker submission await activation capacity. |
+  | `WaitingForProxyInput` | The exact proxy and input witness await ownership settlement of the initial operation. |
+  | `WaitingForProxyOutcome` | The proxy and accepted operation ID await the later initial worker result. |
+  | `CancellingProxyCreation` | The enclosing creation and operation correlations remain after the worker was returned; a later committed proxy still requires retirement. |
+  | `StoppingProxyCreation` | The original start operation and untransferred submission must be returned by explicit stop while proxy birth still settles. |
+  | `Available` | The exact proxy, ready-or-empty service value, and latest committed-or-cancelled disposition answer service and repeated cancellation queries. |
+  | `ReplacementQueued` | The current service and successor submission coexist until capacity permits transfer. |
+  | `ReplacementAwaitingReceipt` | Current service, exact proxy, and witness await successor input acceptance or rejection. |
+  | `ReplacementAwaitingOutcome` | Current service, exact proxy, and accepted operation ID await replacement outcome. |
+  | `Stopping` | The proxy, restorable service, shutdown settlement, and optional exact stop must join before stop completes or rolls back. |
+  | `Retiring` | `ProxyRetirement` owns the exact proxy, shutdown and transferred-input custody, and possible stop through terminal drain. |
+
+  The three data-free creation phases still have the enclosing entry's
+  correlation values and distinct future lifecycle outcomes; merging them by
+  payload size would erase shutdown, explicit-stop, or cancellation cause.
+  The dynamic-supervisor law and normalized atomic documents were
+  cross-checked against the source and local dynamic tests. No arrival-history
+  value without a future decision, duplicated cause, false key cardinality,
+  nested actor authority, semantic boolean, or structural caller syntax was
+  found in these phase sums. Disposition: `pass` for the entry and availability
+  sums only; nested retirement, operation, and terminal transfer still keep
+  A12 open.
 
   FIFO and keyed pools each move their root state out with `mem::replace(...,
   Stopped)` during initialization and transition; fixed supervision similarly
