@@ -104,7 +104,6 @@ pub use stable_proxy::{
 };
 pub use stable_proxy::{ProxyControl, ProxyInputReceipt, ProxyInputResult, ProxyOperation};
 pub use stable_proxy::{ProxyDrain, WorkerStartResult};
-#[doc(hidden)]
 pub use worker::{
     ActivationPermit, ActivationStartRejection, BeginActivation, InitializationAttempt,
     InitializeWorker, WorkerActivation, WorkerInitializationOutcome, WorkerInitializationReport,

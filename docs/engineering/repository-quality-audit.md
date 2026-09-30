@@ -569,7 +569,7 @@ is recorded against a revision.
 
 - [ ] **A13 — Audit public bounds, hidden exports, and extension ownership.**
   **Confirmed surface requiring review.** The current source has 10
-  `#[doc(hidden)]` annotation sites in core and 50 in actors, including
+  `#[doc(hidden)]` annotation sites in core and 23 in actors, including
   members and re-exports. The
   [public-surface inventory](public-surface-inventory.md) classifies each site
   by contract owner. These annotations do not make an item private.
@@ -668,6 +668,40 @@ is recorded against a revision.
   The creation/lifecycle law, stable-proxy guide, and normalized atomic
   documents were cross-checked. Disposition: `pass` for this custody
   documentation port; A13 remains open for the wider surface review.
+
+  **Pre-edit A13 worker initialization and activation port law:** A host
+  receives the exact `InitializeWorker` request, observes its established
+  target and correlation, and consumes it once to produce a complete
+  `WorkerInitializationReport`. A successful report alone carries the
+  `ActivationPermit` that can construct `BeginActivation`; the interpreter
+  admits `Started` before polling the plan and returns the exact
+  `WorkerActivation` result. These are existing derived custody and ordering
+  contracts, not new runtime effects. External `proxy_command_recovery`,
+  `stable_proxy_shutdown_model`, `fifo_pool`, and interpreter-contract caller
+  tests already name these concrete types and exercise accepted, rejected,
+  stopped, and activation-start-rejected paths. Before editing, Nix-pinned
+  Rustdoc omits the initialization and activation items and their public
+  methods from the `atomic` pages because their declarations and grouped
+  re-export are hidden. The focused regression is complete visible Rustdoc
+  for the already-public host and owner methods while the external transition
+  suites retain their results. Only documentation hiding may change; private
+  constructors, fields, correlation tokens, return types, effects, states,
+  branches, and interpreter ordering remain as before.
+  Post-edit, Nix-pinned Rustdoc lists all nine named types on the `atomic`
+  index with their existing public method pages. The external proxy recovery
+  and shutdown model suites pass 53 and 7 tests. Actor hidden annotation
+  sites fall from 50 to 23. The three touched Rust files fall from 755 to
+  728 lines by deleting 27 hiding markers. Root control states, subordinate
+  alternatives, transition branches, modules, and public Rust spellings are
+  unchanged. The worker request still owns its exact target, worker attempt,
+  initialization attempt, and affine activation plan; the permit still
+  authorizes just that worker and attempt; the returned activation still owns
+  its original result or rejection. No arrival history, repeated cause, false
+  cardinality, nested authority, semantic boolean, or positional caller
+  syntax was introduced. The actor creation/lifecycle law, stable-proxy
+  guide, and normalized atomic documents were cross-checked. Disposition:
+  `pass` for this visibility batch; A13 remains open for the other hidden
+  ports and the full public surface review.
 
   **Pre-edit A13 proxy outcome and correlation documentation law:** A caller
   inspecting an initial or replacement proxy result must distinguish

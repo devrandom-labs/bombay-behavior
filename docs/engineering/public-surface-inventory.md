@@ -3,7 +3,7 @@
 This inventory supports [A13](repository-quality-audit.md). `#[doc(hidden)]`
 changes Rustdoc display, not Rust visibility. The counts below are annotation
 sites in source, so a grouped re-export and its original declaration each
-count once. The current branch has 10 sites in `crates/behavior/src` and 50
+count once. The current branch has 10 sites in `crates/behavior/src` and 23
 in `crates/actors/src`; the earlier audit counted 25 and 89 before the
 documentation visibility review.
 
@@ -46,8 +46,6 @@ is neither actor identity nor proof of a committed fresh child.
 | `atomic/fixed_supervisor/lifecycle.rs` | `FixedLifecycleRoute` | Generated code obligation | This sealed route proof is implemented for the finite fixed-supervision lifecycle forms. |
 | `atomic/pool/mod.rs` | `CompletesAssignments` | Generated code obligation | The sealed completion capability belongs to generated pool workers and declared completion products. |
 | `atomic/stable_proxy/{effects,protocol}.rs` and `atomic/mod.rs` | `ProxyEffects` and its re-export; `ProxyEvent` as a concrete associated event type | Structural event/effect products | The host and typed proxy effects must keep rejection custody and every ordered lane; application callers use the typed `Behavior` projections and event ingress. `ProxyDrain`, `WorkerStartResult`, and `ProxyOperation::creation` are now visible because callers match the concrete outcomes or inspect the exact creation correlation. |
-| `atomic/worker/activation.rs` | `ActivationStartRejection`, `BeginActivation`, `BeginActivation::{new,target,worker,initialization,started,start_rejected,activate}`, `WorkerActivation`, `WorkerActivation::{worker,into_ready,into_rejection}` | Runtime port | The host settles activation only after the exact worker and initialization attempt are known. |
-| `atomic/worker/initialization.rs` | `InitializationAttempt`, `ActivationPermit`, `ActivationPermit::{worker,initialization,target}`, `InitializeWorker`, `InitializeWorker::{target,worker,initialization,resolve}`, `WorkerInitializationOutcome`, `WorkerInitializationReport`, `WorkerInitializationFailure` | Runtime port | Initialization settlement carries exact worker custody and can authorize or reject later activation. |
 | `atomic/worker/mod.rs` | `HostedInitialization` | Internal type alias | `WorkerRecovery::into_retirement` returns the actual `Actions` type through this alias. The exact worker and actions are now visible on `WorkerRecovery`; `WorkerAttempt` is a visible opaque correlation value. Whether the alias itself needs an external spelling requires a real host caller. |
 | `lifecycle/shutdown_coordinator.rs` | `HeterogeneousShutdownItem`, `ChoiceSettlements`, `HeterogeneousShutdownChoiceSettlement` | Generated code obligation | The closed heterogeneous choice product supplies the typed settlement shape. |
 | `protocol/mod.rs` | `ObserveCreation` | Runtime port | Observation must refer to the exact staged child creation and return its request on rejection. |
@@ -83,6 +81,15 @@ reveals only the creator-local correlation; both constructors and their
 fields remain private. The `HostedInitialization` alias still has no public
 crate-root spelling, so its external naming need remains open for the real
 host witness.
+
+The complete worker initialization and activation port is visible: the
+existing `InitializeWorker`, `WorkerInitializationOutcome`,
+`WorkerInitializationReport`, `InitializationAttempt`, `ActivationPermit`,
+`BeginActivation`, `WorkerActivation`, `ActivationStartRejection`, and
+`WorkerInitializationFailure` types and their already-public methods now have
+Rustdoc pages. The permit remains non-forgeable, and the host must admit
+`Started` before polling the activation plan. Exposing these pages adds no
+constructor, field, interpreter effect, or transition.
 
 The P2 assignment custody witness narrowed two formerly public methods after
 external caller tests proved the consuming `settle` operation. Compile-fail
@@ -123,6 +130,7 @@ visibility, constructor, or transition; 58 actor annotations remained at that
 checkpoint, with 56 after exposing the customer-delivery ports.
 The proxy outcome and correlation documentation repair leaves 54 sites.
 The returned-worker custody repair leaves 50 actor sites.
+The worker initialization and activation port repair leaves 23 actor sites.
 
 `WorkQueue` now keeps worker-route cloning and equality on construction and
 transition operations, where queue inspection and duplicate availability use

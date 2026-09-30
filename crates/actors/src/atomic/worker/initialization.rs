@@ -14,7 +14,6 @@ use crate::ChildStopped;
 use super::WorkerAttempt;
 
 /// Non-reused correlation for one worker's initialization settlement.
-#[doc(hidden)]
 #[derive(Clone)]
 pub struct InitializationAttempt {
     worker: WorkerAttempt,
@@ -69,7 +68,6 @@ impl Eq for InitializationAttempt {}
 ///     let _duplicate = permit;
 /// }
 /// ```
-#[doc(hidden)]
 #[must_use = "activation authority must be consumed or retained"]
 pub struct ActivationPermit<W>
 where
@@ -88,21 +86,18 @@ where
     BehaviorAddr<W>: EndpointAddress,
 {
     /// Worker correlation authorized by this permit.
-    #[doc(hidden)]
     #[must_use]
     pub fn worker(&self) -> WorkerAttempt {
         self.worker.clone()
     }
 
     /// Initialization correlation authorized by this permit.
-    #[doc(hidden)]
     #[must_use]
     pub fn initialization(&self) -> InitializationAttempt {
         self.initialization.clone()
     }
 
     /// Exact installed worker authorized by this permit.
-    #[doc(hidden)]
     #[must_use]
     pub fn target(&self) -> EstablishedRecipient<W::Protocol> {
         self.target.clone()
@@ -125,7 +120,6 @@ where
 ///     let _duplicate = request;
 /// }
 /// ```
-#[doc(hidden)]
 #[must_use = "worker initialization custody must settle or transfer outward"]
 pub struct InitializeWorker<W, P>
 where
@@ -158,28 +152,24 @@ where
     }
 
     /// Exact installed-worker target retained by this request.
-    #[doc(hidden)]
     #[must_use]
     pub fn target(&self) -> EstablishedRecipient<W::Protocol> {
         self.target.clone()
     }
 
     /// Worker-creation correlation retained by the proxy.
-    #[doc(hidden)]
     #[must_use]
     pub fn worker(&self) -> WorkerAttempt {
         self.worker.clone()
     }
 
     /// Initialization correlation retained by the proxy.
-    #[doc(hidden)]
     #[must_use]
     pub fn initialization(&self) -> InitializationAttempt {
         self.initialization.clone()
     }
 
     /// Reunite the host result with the affine activation plan.
-    #[doc(hidden)]
     #[must_use]
     pub fn resolve(
         self,
@@ -245,7 +235,6 @@ where
 }
 
 /// Result selected by the child host after total initialization settlement.
-#[doc(hidden)]
 pub enum WorkerInitializationOutcome<W>
 where
     W: Behavior,
@@ -256,7 +245,6 @@ where
 }
 
 /// Exact initialization result returned to the worker owner.
-#[doc(hidden)]
 pub enum WorkerInitializationReport<W, P>
 where
     W: Behavior,
@@ -306,7 +294,6 @@ where
 
 /// Semantic classification returned after Bombay retains a failed worker
 /// initialization settlement in runtime retirement custody.
-#[doc(hidden)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum WorkerInitializationFailure {
     /// At least one initialization item was rejected or dependency-blocked.

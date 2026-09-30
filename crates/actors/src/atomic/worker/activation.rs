@@ -36,7 +36,6 @@ impl PartialEq for ActivationAttempt {
 impl Eq for ActivationAttempt {}
 
 /// Exact reason activation work was not admitted by its owner.
-#[doc(hidden)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ActivationStartRejection {
     OwnerStopped,
@@ -55,7 +54,6 @@ pub enum ActivationStartRejection {
 ///     let _duplicate = request;
 /// }
 /// ```
-#[doc(hidden)]
 #[must_use = "activation work must be admitted or returned whole"]
 pub struct BeginActivation<W, P>
 where
@@ -75,7 +73,6 @@ where
     P: ActivationPlan,
 {
     /// Consume the successful initialization authority and concrete plan.
-    #[doc(hidden)]
     #[must_use]
     pub fn new(plan: P, permit: ActivationPermit<W>) -> Self {
         Self {
@@ -86,21 +83,18 @@ where
     }
 
     /// Exact installed worker target carried by the permit.
-    #[doc(hidden)]
     #[must_use]
     pub fn target(&self) -> EstablishedRecipient<W::Protocol> {
         self.permit.target()
     }
 
     /// Worker creation correlation authorized by the consumed permit.
-    #[doc(hidden)]
     #[must_use]
     pub fn worker(&self) -> WorkerAttempt {
         self.permit.worker()
     }
 
     /// Initialization correlation authorized by the consumed permit.
-    #[doc(hidden)]
     #[must_use]
     pub fn initialization(&self) -> InitializationAttempt {
         self.permit.initialization()
@@ -111,7 +105,6 @@ where
     }
 
     /// Produce the input Bombay must admit before polling the plan.
-    #[doc(hidden)]
     #[must_use]
     pub fn started(&self) -> WorkerActivation<W, P> {
         WorkerActivation {
@@ -123,7 +116,6 @@ where
     }
 
     /// Return a request that its owner could not admit.
-    #[doc(hidden)]
     #[must_use]
     pub fn start_rejected(self, reason: ActivationStartRejection) -> WorkerActivation<W, P> {
         let worker = self.worker();
@@ -140,7 +132,6 @@ where
     }
 
     /// Consume the plan and produce its exact ready or rejected input.
-    #[doc(hidden)]
     pub async fn activate(self) -> WorkerActivation<W, P> {
         let Self {
             activation,
@@ -203,7 +194,6 @@ where
 }
 
 /// Exact input produced by one accepted worker activation request.
-#[doc(hidden)]
 #[must_use = "worker activation must be admitted or transferred outward"]
 pub struct WorkerActivation<W, P>
 where
@@ -224,7 +214,6 @@ where
     P: ActivationPlan,
 {
     /// Worker creation correlation carried by this input.
-    #[doc(hidden)]
     #[must_use]
     pub fn worker(&self) -> WorkerAttempt {
         self.worker.clone()
@@ -283,7 +272,6 @@ where
     }
 
     /// Consume readiness only when this is the ready alternative.
-    #[doc(hidden)]
     pub fn into_ready(self) -> Result<P::Ready, Self> {
         let Self {
             worker,
@@ -303,7 +291,6 @@ where
     }
 
     /// Consume the application rejection only when this is the rejected alternative.
-    #[doc(hidden)]
     pub fn into_rejection(self) -> Result<P::Rejection, Self> {
         let Self {
             worker,
