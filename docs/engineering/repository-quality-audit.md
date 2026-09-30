@@ -216,16 +216,15 @@ is recorded against a revision.
   accumulation driver as a full runtime witness. Reuse existing action and
   settlement products if a richer error observation is needed.
 
-- [ ] **A11 — Give named effect-product derivation one maintained implementation.**
-  **Design candidate with observed drift.** The catalogue now uses the local
-  `send_product!` derivation for `DeliveryOutcomes`, `LeaseSends`,
-  `PresenceSends`, and other generic named products; `BufferSends` and
-  `atomic::request_product!` were removed in the earlier consolidation.
-  That derivation implements empty/append, ordered interpretation, settlement
-  classification, source custody, and logical-host projection together.
-  The proc macro still derives a separate named-send implementation, while
-  `requirements.rs` now contains only the exceptional `ReplyDeliveries` and
-  `HeterogeneousShutdownSends` projections. A03 exposed the prior omission.
+- [x] **A11 — Give named effect-product derivation one maintained implementation.**
+  **Implemented and verified.** Eleven generic named actor products
+  now use `SendProduct` and `#[behavior]` generated products use the same
+  procedural generators for send effects, logical-host projection, ordered
+  interpretation, settlement classification, and source custody. The two
+  settlement representations remain explicit. The old `send_product!` module,
+  `BufferSends`, and `atomic::request_product!` were removed. `requirements.rs`
+  retains only the exceptional `ReplyDeliveries` and
+  `HeterogeneousShutdownSends` projections.
   The unused public `behavior::settle_in_order` tuple helper was removed after
   a source search found no Rust caller in this workspace or adjacent
   Bombay/Address repositories. Named products generate their ordered traversal
@@ -237,9 +236,11 @@ is recorded against a revision.
   products and both wrapper orders before catalogue migration. Do not merge
   products with different ownership or retirement laws, or introduce a public
   product framework merely to save typing.
-  **Progress:** the [current equation inventory](#a11-named-send-equation-inventory)
-  identifies one remaining missing proc-macro projection and the two
-  domain-specific manual projections. No shared derivation has been retained.
+  **Evidence:** the [equation inventory](#a11-named-send-equation-inventory),
+  two unrelated actor products, source-custody tests in both `SendLayer`
+  orders, and workspace `--all-targets` tests support the retained design.
+  A clean Nix gate on `a8f15b7` passed all ten active aarch64-darwin checks,
+  including 843/843 optimized Nextest tests.
 
 - [ ] **A12 — Reassess aggregate decomposition using retained current values.**
   **Design candidate.** FIFO's root has 4,095 lines, stable proxy's root 3,509,
@@ -1185,8 +1186,8 @@ value is added or removed. The residue scan remains clear for arrival history,
 repeated causes, false cardinality, nested transition authority, semantic
 booleans, and structural caller syntax. Cross-checks: actor transition law,
 A11 equations, source-custody law, generated behavior contract, both wrapper
-orders, normalized routing and timing documents. Disposition: `pass`, pending
-the clean Nix gate.
+orders, normalized routing and timing documents. Disposition: `pass`; the clean
+Nix gate passed all ten checks with 843/843 optimized tests.
 
 ### A12/A13 least-loaded membership owner, before edit
 
