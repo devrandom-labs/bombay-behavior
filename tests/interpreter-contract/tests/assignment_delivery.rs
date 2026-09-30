@@ -202,7 +202,7 @@ impl InterpretItem<EstablishedDelivery<Worker>, (), Here> for DeliveryHost {
         self.endpoints
             .push(delivery.to.clone().interpret(&mut EndpointReader));
         self.payloads
-            .push(delivery.message.payload().as_ptr() as usize);
+            .push(delivery.message.payload().as_ref().as_ptr() as usize);
         match self.admission {
             DeliveryAdmission::Accept => {
                 self.completions
@@ -266,13 +266,19 @@ async fn concurrent_same_typed_assignments_return_receipts_to_their_own_pools() 
     let (mut first, first_worker) = ready_pool().await;
     let (mut second, second_worker) = ready_pool().await;
     assert_eq!(first_worker, second_worker);
-    let first_request = submitted_assignment(&mut first, Box::from("first"));
-    let second_request = submitted_assignment(&mut second, Box::from("second"));
+    let first_payload: Box<str> = Box::from("first");
+    let second_payload: Box<str> = Box::from("second");
+    let first_identity = first_payload.as_ptr() as usize;
+    let second_identity = second_payload.as_ptr() as usize;
+    let first_request = submitted_assignment(&mut first, first_payload);
+    let second_request = submitted_assignment(&mut second, second_payload);
     let mut host = DeliveryHost::new(DeliveryAdmission::Accept);
 
     let second_receipt = second_request.settle(&mut host).await;
     let first_receipt = first_request.settle(&mut host).await;
     assert_eq!(host.endpoints.len(), 2);
+    assert_ne!(host.payloads[0], second_identity);
+    assert_ne!(host.payloads[1], first_identity);
     let [second_completion, first_completion]: [_; 2] = host
         .completions
         .try_into()

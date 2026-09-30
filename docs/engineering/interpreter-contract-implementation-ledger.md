@@ -56,6 +56,23 @@ same-typed requests in reverse order, rejects any diagnostic or early customer
 outcome, and checks both later completions. This is a focused T03 witness,
 not a production transport witness.
 
+**T01/T02 pointer witness correction:** the previous fixture recorded the
+address of a `Box<str>` handle and compared it with the address of its heap
+payload. Those different addresses could not prove job custody. Requiring
+equality first made both baseline assignment tests fail, exposing the weak
+assertion. Source inspection then found `FifoPool` requires `Job: Clone` and
+clones the queued payload into `Assignment`; the pool retains the original so
+it can return it if delivery fails. The corrected fixture records the worker
+payload's actual heap address, requires it to differ from the original, and
+requires a rejected assignment to return the original address. The concurrent
+test checks both copied worker payloads in reverse settlement order. No
+production symbol or actor transition changed.
+
+The PRD's T02 requirement for a **move-only job** is not proved by this FIFO
+fixture: `Box<str>` implements `Clone`, and the current FIFO bound rules out a
+non-`Clone` job. The full ownership equation must be revisited before claiming
+T02 complete; a test using a cloneable value cannot certify a move-only law.
+
 The remaining work is to establish the exact pre-commit versus post-commit
 ownership equation with a production host witness, then cover PRD T10–T21 and
 the catalogue composition cases. Any Behavior production-shape edit needs a
