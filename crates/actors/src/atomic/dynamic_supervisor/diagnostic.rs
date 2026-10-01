@@ -2,6 +2,7 @@
 
 use behavior::{Behavior, BehaviorAddr, ChildReport, EndpointAddress};
 
+use crate::atomic::ProxyDiagnostic;
 use crate::atomic::proxy_creation::StableProxyCreationSettlement;
 use crate::{
     ActivationPlan, ChildStopped, ProxyInputResult, ProxyOutcome, StableProxy, WorkerSubmission,
@@ -21,6 +22,9 @@ where
     },
     RejectedProxyOutcome {
         report: ChildReport<ProxyOutcome<Worker, Plan>>,
+    },
+    ProxyDiagnosticReported {
+        report: ChildReport<ProxyDiagnostic<Worker, Plan>>,
     },
     ProxyInputRejected {
         key: Key,

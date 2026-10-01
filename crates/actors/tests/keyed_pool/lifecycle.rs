@@ -31,6 +31,19 @@ use super::domain::{
     prepare_worker,
 };
 
+macro_rules! start_keyed_preparation {
+    ($pool:expr, $request:expr) => {{
+        let (receipt, starting) = $request.start();
+        let actions = $pool
+            .transition(KeyedEvent::WorkerPreparationStarted(
+                SettledItem::Attempted(ItemSettlement::Accepted(receipt)),
+            ))
+            .unwrap_or_else(|error| panic!("worker preparation start failed: {error}"));
+        assert!(actions.creates.is_empty());
+        starting
+    }};
+}
+
 struct HeldActivation(Arc<AtomicUsize>);
 
 impl Drop for HeldActivation {
@@ -318,15 +331,13 @@ async fn concurrent_worker_failures_claim_one_recovery_source() {
         }
     }
 
-    let ControlFlow::Break(prepared_primary) =
-        preparation.accept(WorkerSubmission::immediate(SearchWorker))
+    let ControlFlow::Break(prepared_primary) = start_keyed_preparation!(pool, preparation)
+        .accept(WorkerSubmission::immediate(SearchWorker))
     else {
         panic!("one selected role completes one worker preparation")
     };
     let primary_recovery = pool
-        .transition(KeyedEvent::WorkerPreparationSettled(
-            SettledItem::Attempted(ItemSettlement::Accepted(prepared_primary)),
-        ))
+        .transition(KeyedEvent::WorkerPreparationReturned(prepared_primary))
         .unwrap_or_else(|error| panic!("primary worker preparation failed: {error}"));
     let mut replacements: Vec<_> = primary_recovery.creates.into_iter().collect();
     let replacement = replacements
@@ -445,15 +456,13 @@ async fn nonzero_role_delayed_recovery_requires_the_exact_schedule_and_timer() {
     let (source, role) = preparation.source_and_role();
     assert_eq!(source, &mut SearchSource);
     assert_eq!(role, &SearchRole::Replica);
-    let ControlFlow::Break(prepared) =
-        preparation.accept(WorkerSubmission::immediate(SearchWorker))
+    let ControlFlow::Break(prepared) = start_keyed_preparation!(pool, preparation)
+        .accept(WorkerSubmission::immediate(SearchWorker))
     else {
         panic!("one role completes one worker preparation")
     };
     let scheduling = pool
-        .transition(KeyedEvent::WorkerPreparationSettled(
-            SettledItem::Attempted(ItemSettlement::Accepted(prepared)),
-        ))
+        .transition(KeyedEvent::WorkerPreparationReturned(prepared))
         .unwrap_or_else(|error| panic!("worker preparation failed: {error}"));
     assert!(scheduling.creates.is_empty());
     assert!(scheduling.sends.diagnostics.is_empty());
@@ -606,16 +615,13 @@ async fn shutdown_cancels_a_replacement_waiting_for_its_restart_timer() {
         .into_items()
         .pop()
         .unwrap_or_else(|| panic!("worker failure requests one preparation"));
-    let ControlFlow::Break(prepared) = preparation.accept(WorkerSubmission::activated(
-        SearchWorker,
-        HeldActivation(Arc::clone(&replacement_drops)),
-    )) else {
+    let ControlFlow::Break(prepared) = start_keyed_preparation!(pool, preparation).accept(
+        WorkerSubmission::activated(SearchWorker, HeldActivation(Arc::clone(&replacement_drops))),
+    ) else {
         panic!("one role completes one worker preparation")
     };
     let scheduling = pool
-        .transition(KeyedEvent::WorkerPreparationSettled(
-            SettledItem::Attempted(ItemSettlement::Accepted(prepared)),
-        ))
+        .transition(KeyedEvent::WorkerPreparationReturned(prepared))
         .unwrap_or_else(|error| panic!("worker preparation failed: {error}"));
     let schedule = scheduling
         .sends
@@ -742,36 +748,35 @@ async fn preparation_failures_and_restart_denial_obey_the_unavailable_role_polic
                 .into_items()
                 .pop()
                 .unwrap_or_else(|| panic!("worker failure requests one preparation"));
-            let input = match returned {
+            let event = match returned {
                 ReturnedPreparation::Prepared => {
-                    let ControlFlow::Break(prepared) =
-                        preparation.accept(WorkerSubmission::immediate(SearchWorker))
+                    let ControlFlow::Break(prepared) = start_keyed_preparation!(pool, preparation)
+                        .accept(WorkerSubmission::immediate(SearchWorker))
                     else {
                         panic!("one role completes one worker preparation")
                     };
-                    SettledItem::Attempted(ItemSettlement::Accepted(prepared))
+                    KeyedEvent::WorkerPreparationReturned(prepared)
                 }
-                ReturnedPreparation::WorkerRejected => {
-                    SettledItem::Attempted(ItemSettlement::Accepted(
-                        preparation.reject(SearchWorkerRejection::Unavailable),
-                    ))
-                }
-                ReturnedPreparation::SourceRejected => {
-                    SettledItem::Attempted(ItemSettlement::Rejected {
-                        item: preparation,
-                        reason: SearchSourceRejection::Closed,
-                    })
-                }
-                ReturnedPreparation::InterpreterCorrupt => {
+                ReturnedPreparation::WorkerRejected => KeyedEvent::WorkerPreparationReturned(
+                    start_keyed_preparation!(pool, preparation)
+                        .reject(SearchWorkerRejection::Unavailable),
+                ),
+                ReturnedPreparation::SourceRejected => KeyedEvent::WorkerPreparationReturned(
+                    start_keyed_preparation!(pool, preparation)
+                        .reject_source(SearchSourceRejection::Closed),
+                ),
+                ReturnedPreparation::InterpreterCorrupt => KeyedEvent::WorkerPreparationStarted(
                     SettledItem::Attempted(ItemSettlement::Corrupt {
                         item: preparation,
                         fault: InterpreterFault::CorruptTraversal,
-                    })
+                    }),
+                ),
+                ReturnedPreparation::InterpretationSkipped => {
+                    KeyedEvent::WorkerPreparationStarted(SettledItem::Unattempted(preparation))
                 }
-                ReturnedPreparation::InterpretationSkipped => SettledItem::Unattempted(preparation),
             };
             let acted = pool
-                .transition(KeyedEvent::WorkerPreparationSettled(input))
+                .transition(event)
                 .unwrap_or_else(|error| panic!("worker preparation input failed: {error}"));
             assert!(acted.sends.worker_initializations.is_empty());
             assert!(acted.sends.worker_activations.is_empty());
@@ -838,15 +843,13 @@ async fn preparation_failures_and_restart_denial_obey_the_unavailable_role_polic
                         .into_items()
                         .pop()
                         .unwrap_or_else(|| panic!("second failure requests preparation"));
-                    let ControlFlow::Break(prepared) =
-                        preparation.accept(WorkerSubmission::immediate(SearchWorker))
+                    let ControlFlow::Break(prepared) = start_keyed_preparation!(pool, preparation)
+                        .accept(WorkerSubmission::immediate(SearchWorker))
                     else {
                         panic!("one role completes the second worker preparation")
                     };
                     let denied = pool
-                        .transition(KeyedEvent::WorkerPreparationSettled(
-                            SettledItem::Attempted(ItemSettlement::Accepted(prepared)),
-                        ))
+                        .transition(KeyedEvent::WorkerPreparationReturned(prepared))
                         .unwrap_or_else(|error| panic!("restart-limit input failed: {error}"));
                     assert!(denied.creates.is_empty());
                     assert!(denied.sends.worker_observations.is_empty());
@@ -1033,7 +1036,7 @@ async fn shutdown_retains_an_inflight_worker_preparation_until_it_returns() {
         .unwrap_or_else(|| panic!("foreign failure requests one preparation"));
 
     let unrelated = pool
-        .transition(KeyedEvent::WorkerPreparationSettled(
+        .transition(KeyedEvent::WorkerPreparationStarted(
             SettledItem::Unattempted(foreign_preparation),
         ))
         .unwrap_or_else(|error| panic!("foreign retired preparation failed: {error}"));
@@ -1041,15 +1044,13 @@ async fn shutdown_retains_an_inflight_worker_preparation_until_it_returns() {
     assert!(unrelated.creates.is_empty());
     assert_eq!(unrelated.sends.diagnostics.len(), 1);
 
-    let ControlFlow::Break(prepared) =
-        preparation.accept(WorkerSubmission::immediate(SearchWorker))
+    let ControlFlow::Break(prepared) = start_keyed_preparation!(pool, preparation)
+        .accept(WorkerSubmission::immediate(SearchWorker))
     else {
         panic!("one role completes one worker preparation")
     };
     let returned = pool
-        .transition(KeyedEvent::WorkerPreparationSettled(
-            SettledItem::Attempted(ItemSettlement::Accepted(prepared)),
-        ))
+        .transition(KeyedEvent::WorkerPreparationReturned(prepared))
         .unwrap_or_else(|error| panic!("retired preparation input failed: {error}"));
     assert!(matches!(returned.become_, Step::Stop(_)));
     assert!(returned.creates.is_empty());
@@ -1139,15 +1140,13 @@ async fn rejected_restart_schedule_retires_the_role_and_returns_its_queue() {
         .into_items()
         .pop()
         .unwrap_or_else(|| panic!("worker failure requests one preparation"));
-    let ControlFlow::Break(prepared) =
-        preparation.accept(WorkerSubmission::immediate(SearchWorker))
+    let ControlFlow::Break(prepared) = start_keyed_preparation!(pool, preparation)
+        .accept(WorkerSubmission::immediate(SearchWorker))
     else {
         panic!("one role completes one worker preparation")
     };
     let scheduling = pool
-        .transition(KeyedEvent::WorkerPreparationSettled(
-            SettledItem::Attempted(ItemSettlement::Accepted(prepared)),
-        ))
+        .transition(KeyedEvent::WorkerPreparationReturned(prepared))
         .unwrap_or_else(|error| panic!("worker preparation failed: {error}"));
     let schedule = scheduling
         .sends
@@ -1290,15 +1289,13 @@ async fn shutdown_retains_an_inflight_restart_schedule_until_it_returns() {
         .into_items()
         .pop()
         .unwrap_or_else(|| panic!("worker failure requests one preparation"));
-    let ControlFlow::Break(prepared) =
-        preparation.accept(WorkerSubmission::immediate(SearchWorker))
+    let ControlFlow::Break(prepared) = start_keyed_preparation!(pool, preparation)
+        .accept(WorkerSubmission::immediate(SearchWorker))
     else {
         panic!("one role completes one worker preparation")
     };
     let scheduling = pool
-        .transition(KeyedEvent::WorkerPreparationSettled(
-            SettledItem::Attempted(ItemSettlement::Accepted(prepared)),
-        ))
+        .transition(KeyedEvent::WorkerPreparationReturned(prepared))
         .unwrap_or_else(|error| panic!("worker preparation failed: {error}"));
     let schedule = scheduling
         .sends
@@ -2001,15 +1998,13 @@ async fn shutdown_cancels_a_worker_waiting_for_the_recovery_source() {
     assert!(retiring.creates.is_empty());
     assert!(matches!(retiring.become_, Step::Continue));
 
-    let ControlFlow::Break(prepared) =
-        preparation.accept(WorkerSubmission::immediate(SearchWorker))
+    let ControlFlow::Break(prepared) = start_keyed_preparation!(pool, preparation)
+        .accept(WorkerSubmission::immediate(SearchWorker))
     else {
         panic!("one selected role completes one worker preparation")
     };
     let returned = pool
-        .transition(KeyedEvent::WorkerPreparationSettled(
-            SettledItem::Attempted(ItemSettlement::Accepted(prepared)),
-        ))
+        .transition(KeyedEvent::WorkerPreparationReturned(prepared))
         .unwrap_or_else(|error| panic!("retired worker preparation failed: {error}"));
     assert!(returned.sends.worker_preparations.is_empty());
     assert!(returned.sends.worker_activations.is_empty());
@@ -2334,29 +2329,30 @@ async fn shutdown_retains_every_failed_worker_preparation_return() {
         assert!(matches!(retiring.become_, Step::Continue));
         assert!(retiring.creates.is_empty());
 
-        let returned = match disposition {
-            ReturnedPreparation::WorkerRejected => SettledItem::Attempted(
-                ItemSettlement::Accepted(preparation.reject(SearchWorkerRejection::Unavailable)),
+        let event = match disposition {
+            ReturnedPreparation::WorkerRejected => KeyedEvent::WorkerPreparationReturned(
+                start_keyed_preparation!(pool, preparation)
+                    .reject(SearchWorkerRejection::Unavailable),
             ),
-            ReturnedPreparation::SourceRejected => {
-                SettledItem::Attempted(ItemSettlement::Rejected {
-                    item: preparation,
-                    reason: SearchSourceRejection::Closed,
-                })
-            }
-            ReturnedPreparation::InterpreterCorrupt => {
+            ReturnedPreparation::SourceRejected => KeyedEvent::WorkerPreparationReturned(
+                start_keyed_preparation!(pool, preparation)
+                    .reject_source(SearchSourceRejection::Closed),
+            ),
+            ReturnedPreparation::InterpreterCorrupt => KeyedEvent::WorkerPreparationStarted(
                 SettledItem::Attempted(ItemSettlement::Corrupt {
                     item: preparation,
                     fault: InterpreterFault::CorruptTraversal,
-                })
+                }),
+            ),
+            ReturnedPreparation::InterpretationSkipped => {
+                KeyedEvent::WorkerPreparationStarted(SettledItem::Unattempted(preparation))
             }
-            ReturnedPreparation::InterpretationSkipped => SettledItem::Unattempted(preparation),
             ReturnedPreparation::Prepared => {
                 panic!("accepted preparation has its own shutdown witness")
             }
         };
         let terminal = pool
-            .transition(KeyedEvent::WorkerPreparationSettled(returned))
+            .transition(event)
             .unwrap_or_else(|error| panic!("retired preparation input failed: {error}"));
         assert!(matches!(terminal.become_, Step::Stop(_)));
         assert!(terminal.creates.is_empty());
@@ -2454,15 +2450,13 @@ async fn shutdown_retains_every_failed_restart_schedule_return() {
             .into_items()
             .pop()
             .unwrap_or_else(|| panic!("worker failure requests one preparation"));
-        let ControlFlow::Break(prepared) =
-            preparation.accept(WorkerSubmission::immediate(SearchWorker))
+        let ControlFlow::Break(prepared) = start_keyed_preparation!(pool, preparation)
+            .accept(WorkerSubmission::immediate(SearchWorker))
         else {
             panic!("one role completes one worker preparation")
         };
         let scheduling = pool
-            .transition(KeyedEvent::WorkerPreparationSettled(
-                SettledItem::Attempted(ItemSettlement::Accepted(prepared)),
-            ))
+            .transition(KeyedEvent::WorkerPreparationReturned(prepared))
             .unwrap_or_else(|error| panic!("worker preparation failed: {error}"));
         let schedule = scheduling
             .sends

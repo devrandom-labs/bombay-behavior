@@ -28,7 +28,7 @@ use super::worker::{InitialWorkerRejection, prepare_initial_workers};
 use super::{
     ActivationPlan, ActivationPolicy, ActorDrainPolicy, BeginActivation, InitializeWorker,
     OrderedRoles, PrepareWorkers, PreparedWorker, WorkerActivation, WorkerAttempt,
-    WorkerInitializationReport, WorkerSource, WorkerSubmission,
+    WorkerInitializationReport, WorkerPreparation, WorkerSource, WorkerSubmission,
 };
 
 mod assignment;
@@ -1245,6 +1245,7 @@ where
             Job,
             WorkerResult,
             behavior::ActionItemResult<PrepareWorkers<Source, Role, W, P>>,
+            WorkerPreparation<Source, Role, W, P>,
         >,
     ) -> (
         KeyedPoolState<Role, W, P, Key, Job, WorkerResult>,
@@ -1293,6 +1294,7 @@ where
         Job,
         WorkerResult,
         behavior::ActionItemResult<PrepareWorkers<Source, Role, W, P>>,
+        WorkerPreparation<Source, Role, W, P>,
     >;
     type Sends = KeyedRequests<
         InterpreterRequests<ObserveChild<W::Protocol, behavior::ChildHead>>,
@@ -1443,15 +1445,25 @@ where
                     KeyedEvent::WorkerShutdownSettled(settlement),
                 ),
             },
-            (KeyedPoolState::Operating(operating), KeyedEvent::WorkerPreparationSettled(input)) => {
-                match self.accept_worker_preparation(operating, input) {
+            (KeyedPoolState::Operating(operating), KeyedEvent::WorkerPreparationStarted(input)) => {
+                match self.accept_worker_preparation_start(operating, input) {
                     Ok(result) => result,
                     Err((operating, input)) => self.diagnose(
                         KeyedPoolState::Operating(operating),
-                        KeyedEvent::WorkerPreparationSettled(input),
+                        KeyedEvent::WorkerPreparationStarted(input),
                     ),
                 }
             }
+            (
+                KeyedPoolState::Operating(operating),
+                KeyedEvent::WorkerPreparationReturned(input),
+            ) => match self.accept_worker_preparation_return(operating, input) {
+                Ok(result) => result,
+                Err((operating, input)) => self.diagnose(
+                    KeyedPoolState::Operating(operating),
+                    KeyedEvent::WorkerPreparationReturned(input),
+                ),
+            },
             (KeyedPoolState::Operating(operating), KeyedEvent::RestartScheduleSettled(input)) => {
                 match self.accept_restart_schedule(operating, input) {
                     Ok(result) => result,
@@ -1495,8 +1507,12 @@ where
             ) => self.accept_worker_activation(workers, deadline, input),
             (
                 KeyedPoolState::Retiring { workers, deadline },
-                KeyedEvent::WorkerPreparationSettled(input),
-            ) => self.accept_retired_preparation(workers, deadline, input),
+                KeyedEvent::WorkerPreparationStarted(input),
+            ) => self.accept_retired_preparation_start(workers, deadline, input),
+            (
+                KeyedPoolState::Retiring { workers, deadline },
+                KeyedEvent::WorkerPreparationReturned(input),
+            ) => self.accept_retired_preparation_return(workers, deadline, input),
             (
                 KeyedPoolState::Retiring { workers, deadline },
                 KeyedEvent::RestartScheduleSettled(settlement),

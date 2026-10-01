@@ -106,9 +106,9 @@ complete interpreter result, or the exact elapsed deadline. Each pool still
 owns its own unresolved workers, customer extraction, and terminal transition;
 there is no common pool or retirement engine.
 
-FIFO and KeyedPool consume one direct-worker preparation settlement and one
-replacement-release law. The shared worker value correlates the exact
-preparation request, retains the stopped worker and complete replacement
+FIFO and KeyedPool consume the same exact preparation start settlement and
+later source-result law. The shared worker value correlates the exact
+preparation request through both phases, retains the stopped worker and complete replacement
 submission, and changes from waiting for schedule acceptance to waiting for
 the exact timer. It cannot choose a role, touch a queue or binding, apply a
 failure policy, emit an action, or create a worker. KeyedPool alone serializes

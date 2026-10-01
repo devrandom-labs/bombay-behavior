@@ -4,7 +4,9 @@ use core::marker::PhantomData;
 use core::ops::ControlFlow;
 use std::sync::Arc;
 
-use behavior::{ActionItem, Behavior, ItemSettlement, Never, SettledItem, SourceAction};
+use behavior::{
+    ActionItem, ActionItemResult, Behavior, ItemSettlement, Never, SettledItem, SourceAction,
+};
 
 use crate::atomic::RoleName;
 
@@ -27,6 +29,64 @@ impl PreparationTicket {
 
     pub(in super::super) fn matches(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.token, &other.token)
+    }
+}
+
+/// The one preparation correlation retained by an actor across a source task.
+///
+/// An issued request can accept its start settlement. Only after that exact
+/// receipt may the actor accept the late source return. Keeping the phase
+/// beside the ticket denies duplicate starts and early completion without an
+/// arrival-history flag.
+pub(in super::super) enum WorkerPreparationExpectation {
+    Issued(PreparationTicket),
+    Started(PreparationTicket),
+}
+
+impl WorkerPreparationExpectation {
+    pub(in super::super) fn issued(ticket: PreparationTicket) -> Self {
+        Self::Issued(ticket)
+    }
+
+    pub(in super::super) fn accept_start(
+        self,
+        receipt: &WorkerPreparationStarted,
+    ) -> Result<Self, Self> {
+        match self {
+            Self::Issued(ticket) if receipt.accepts(&ticket) => Ok(Self::Started(ticket)),
+            expectation => Err(expectation),
+        }
+    }
+
+    pub(in super::super) fn accepts_issued<Source, Role, Worker, Plan>(
+        &self,
+        input: &ActionItemResult<PrepareWorkers<Source, Role, Worker, Plan>>,
+    ) -> bool
+    where
+        Source: WorkerSource<Role, Worker, Plan>,
+        Role: Send + Sync,
+        Worker: Behavior + Send,
+        Plan: ActivationPlan,
+    {
+        match self {
+            Self::Issued(ticket) => preparation_start_accepts(input, ticket),
+            Self::Started(_) => false,
+        }
+    }
+
+    pub(in super::super) fn accepts_return<Source, Role, Worker, Plan>(
+        &self,
+        returned: &WorkerPreparation<Source, Role, Worker, Plan>,
+    ) -> bool
+    where
+        Source: WorkerSource<Role, Worker, Plan>,
+        Worker: Behavior + Send,
+        Plan: ActivationPlan,
+    {
+        match self {
+            Self::Issued(_) => false,
+            Self::Started(ticket) => returned.accepts(ticket),
+        }
     }
 }
 
@@ -78,7 +138,7 @@ where
 {
     /// Exact rejection while preparing one selected role.
     type WorkerRejection: Send;
-    /// Exact rejection before the complete source action is accepted.
+    /// Exact rejection before the first worker submission is prepared.
     type SourceRejection: Send;
 }
 
@@ -92,6 +152,23 @@ where
 }
 
 /// One non-empty ordered request for replacement worker submissions.
+///
+/// The request cannot report a prepared worker before its exact start is
+/// committed:
+///
+/// ```compile_fail,E0599
+/// fn premature_submission<Source, Role, Worker, Plan>(
+///     request: behavior_actors::atomic::PrepareWorkers<Source, Role, Worker, Plan>,
+///     submission: behavior_actors::atomic::WorkerSubmission<Worker, Plan>,
+/// )
+/// where
+///     Source: behavior_actors::atomic::WorkerSource<Role, Worker, Plan>,
+///     Worker: behavior::Behavior + Send,
+///     Plan: behavior_actors::atomic::ActivationPlan,
+/// {
+///     let _ = request.accept(submission);
+/// }
+/// ```
 #[must_use = "worker preparation must settle or transfer outward"]
 pub struct PrepareWorkers<Source, Role, Worker, Plan>
 where
@@ -105,6 +182,107 @@ where
     remaining: Vec<RoleName<Role>>,
     worker: PhantomData<fn() -> Worker>,
     plan: PhantomData<fn() -> Plan>,
+}
+
+/// Receipt that the runtime committed one exact worker-preparation start.
+///
+/// This proves neither a completed source nor permission to create a worker.
+/// Its private ticket names the issued preparation without exposing a runtime
+/// address or allowing the actor to forge a receipt for another request.
+#[must_use = "worker preparation start must return to its source"]
+pub struct WorkerPreparationStarted {
+    ticket: PreparationTicket,
+}
+
+impl WorkerPreparationStarted {
+    pub(in super::super) fn accepts(&self, expected: &PreparationTicket) -> bool {
+        self.ticket.matches(expected)
+    }
+}
+
+/// Source work after one accepted start and before its first submission.
+///
+/// Only this phase can return a source rejection. Once it accepts a first
+/// submission, the returned pending request has a nonempty prepared prefix
+/// and can report only worker-specific rejection for later roles.
+#[must_use = "started worker preparation must settle or transfer outward"]
+pub struct StartingWorkerPreparation<Source, Role, Worker, Plan>
+where
+    Source: WorkerSource<Role, Worker, Plan>,
+    Worker: Behavior + Send,
+    Plan: ActivationPlan,
+{
+    ticket: PreparationTicket,
+    source: Source,
+    first: RoleName<Role>,
+    remaining: Vec<RoleName<Role>>,
+    worker: PhantomData<fn() -> Worker>,
+    plan: PhantomData<fn() -> Plan>,
+}
+
+impl<Source, Role, Worker, Plan> StartingWorkerPreparation<Source, Role, Worker, Plan>
+where
+    Source: WorkerSource<Role, Worker, Plan>,
+    Worker: Behavior + Send,
+    Plan: ActivationPlan,
+{
+    /// Borrow the source and first selected application role.
+    #[must_use]
+    pub fn source_and_role(&mut self) -> (&mut Source, &Role) {
+        (&mut self.source, self.first.role())
+    }
+
+    /// Accept the first submission and advance or complete the ordered group.
+    #[must_use]
+    pub fn accept(
+        self,
+        submission: WorkerSubmission<Worker, Plan>,
+    ) -> ControlFlow<
+        WorkerPreparation<Source, Role, Worker, Plan>,
+        PendingWorkerPreparation<Source, Role, Worker, Plan>,
+    > {
+        advance_preparation(
+            self.ticket,
+            self.source,
+            Vec::new(),
+            self.first,
+            self.remaining,
+            submission,
+        )
+    }
+
+    /// Return an exact worker rejection for the first selected role.
+    #[must_use]
+    pub fn reject(
+        self,
+        reason: Source::WorkerRejection,
+    ) -> WorkerPreparation<Source, Role, Worker, Plan> {
+        rejected_preparation(
+            self.ticket,
+            self.source,
+            Vec::new(),
+            self.first,
+            reason,
+            self.remaining,
+        )
+    }
+
+    /// Return the source and its exact rejection before any worker submission.
+    #[must_use]
+    pub fn reject_source(
+        self,
+        reason: Source::SourceRejection,
+    ) -> WorkerPreparation<Source, Role, Worker, Plan> {
+        WorkerPreparation {
+            ticket: self.ticket,
+            outcome: WorkerPreparationOutcome::SourceRejected {
+                source: self.source,
+                failed_role: self.first,
+                reason,
+                remaining: self.remaining,
+            },
+        }
+    }
 }
 
 impl<Source, Role, Worker, Plan> PrepareWorkers<Source, Role, Worker, Plan>
@@ -136,63 +314,46 @@ where
         expected.matches(&self.ticket)
     }
 
-    pub(in super::super) fn into_parts(self) -> (Source, RoleName<Role>, Vec<RoleName<Role>>) {
-        (self.source, self.first, self.remaining)
-    }
-
-    /// Borrow the source and current application role for one Bombay-owned
-    /// preparation attempt.
+    /// Borrow the source and first selected role before committing the start.
     #[must_use]
     pub fn source_and_role(&mut self) -> (&mut Source, &Role) {
         (&mut self.source, self.first.role())
     }
 
-    /// Accept one submission for the current role.
-    #[must_use]
-    pub fn accept(
-        self,
-        submission: WorkerSubmission<Worker, Plan>,
-    ) -> ControlFlow<
-        WorkerPreparation<Source, Role, Worker, Plan>,
-        PendingWorkerPreparation<Source, Role, Worker, Plan>,
-    > {
-        advance_preparation(
-            self.ticket,
-            self.source,
-            Vec::new(),
-            self.first,
-            self.remaining,
-            submission,
-        )
+    pub(in super::super) fn into_parts(self) -> (Source, RoleName<Role>, Vec<RoleName<Role>>) {
+        (self.source, self.first, self.remaining)
     }
 
-    /// Return an exact rejection for the current role.
+    /// Commit one start and transfer the affine source to its first attempt.
+    ///
+    /// The issued request is consumed, so another start receipt cannot be
+    /// produced from the same source action.
     #[must_use]
-    pub fn reject(
+    pub fn start(
         self,
-        reason: Source::WorkerRejection,
-    ) -> WorkerPreparation<Source, Role, Worker, Plan> {
-        rejected_preparation(
-            self.ticket,
-            self.source,
-            Vec::new(),
-            self.first,
-            reason,
-            self.remaining,
-        )
+    ) -> (
+        WorkerPreparationStarted,
+        StartingWorkerPreparation<Source, Role, Worker, Plan>,
+    ) {
+        let started = WorkerPreparationStarted {
+            ticket: PreparationTicket {
+                token: Arc::clone(&self.ticket.token),
+            },
+        };
+        let starting = StartingWorkerPreparation {
+            ticket: self.ticket,
+            source: self.source,
+            first: self.first,
+            remaining: self.remaining,
+            worker: PhantomData,
+            plan: PhantomData,
+        };
+        (started, starting)
     }
 }
 
-pub(in super::super) fn preparation_result_accepts<Source, Role, Worker, Plan>(
-    result: &SettledItem<
-        PrepareWorkers<Source, Role, Worker, Plan>,
-        ItemSettlement<
-            PrepareWorkers<Source, Role, Worker, Plan>,
-            WorkerPreparation<Source, Role, Worker, Plan>,
-            Source::SourceRejection,
-            Never,
-        >,
-    >,
+pub(in super::super) fn preparation_start_accepts<Source, Role, Worker, Plan>(
+    result: &ActionItemResult<PrepareWorkers<Source, Role, Worker, Plan>>,
     expected: &PreparationTicket,
 ) -> bool
 where
@@ -202,9 +363,7 @@ where
     Plan: ActivationPlan,
 {
     match result {
-        SettledItem::Attempted(ItemSettlement::Accepted(preparation)) => {
-            preparation.accepts(expected)
-        }
+        SettledItem::Attempted(ItemSettlement::Accepted(started)) => started.accepts(expected),
         SettledItem::Attempted(ItemSettlement::Rejected { item, .. })
         | SettledItem::Attempted(ItemSettlement::Blocked { item, .. })
         | SettledItem::Attempted(ItemSettlement::Corrupt { item, .. })
@@ -212,7 +371,14 @@ where
     }
 }
 
-pub(in super::super) enum WorkerPreparationOutcome<Source, Role, Worker, Plan, Rejection> {
+pub(in super::super) enum WorkerPreparationOutcome<
+    Source,
+    Role,
+    Worker,
+    Plan,
+    WorkerRejection,
+    SourceRejection,
+> {
     Prepared {
         source: Source,
         members: Vec<PreparedWorker<RoleName<Role>, Worker, Plan>>,
@@ -221,12 +387,35 @@ pub(in super::super) enum WorkerPreparationOutcome<Source, Role, Worker, Plan, R
         source: Source,
         prepared: Vec<PreparedWorker<RoleName<Role>, Worker, Plan>>,
         failed_role: RoleName<Role>,
-        reason: Rejection,
+        reason: WorkerRejection,
+        remaining: Vec<RoleName<Role>>,
+    },
+    SourceRejected {
+        source: Source,
+        failed_role: RoleName<Role>,
+        reason: SourceRejection,
         remaining: Vec<RoleName<Role>>,
     },
 }
 
 /// Non-empty remainder of one exact worker-preparation request.
+///
+/// Once the first worker submission has been accepted, a later failure is a
+/// worker rejection; the source cannot be reclassified as rejected:
+///
+/// ```compile_fail,E0599
+/// fn late_source_rejection<Source, Role, Worker, Plan>(
+///     pending: behavior_actors::atomic::PendingWorkerPreparation<Source, Role, Worker, Plan>,
+///     reason: Source::SourceRejection,
+/// )
+/// where
+///     Source: behavior_actors::atomic::WorkerSource<Role, Worker, Plan>,
+///     Worker: behavior::Behavior + Send,
+///     Plan: behavior_actors::atomic::ActivationPlan,
+/// {
+///     let _ = pending.reject_source(reason);
+/// }
+/// ```
 #[must_use = "worker preparation must advance, reject, or transfer outward"]
 pub struct PendingWorkerPreparation<Source, Role, Worker, Plan>
 where
@@ -290,7 +479,7 @@ where
     }
 }
 
-/// Complete accepted result of one worker-source action.
+/// Complete result of source work after one accepted preparation start.
 #[must_use = "worker preparation must return to its supervisor or retire outward"]
 pub struct WorkerPreparation<Source, Role, Worker, Plan>
 where
@@ -299,7 +488,14 @@ where
     Plan: ActivationPlan,
 {
     ticket: PreparationTicket,
-    outcome: WorkerPreparationOutcome<Source, Role, Worker, Plan, Source::WorkerRejection>,
+    outcome: WorkerPreparationOutcome<
+        Source,
+        Role,
+        Worker,
+        Plan,
+        Source::WorkerRejection,
+        Source::SourceRejection,
+    >,
 }
 
 impl<Source, Role, Worker, Plan> WorkerPreparation<Source, Role, Worker, Plan>
@@ -310,7 +506,14 @@ where
 {
     pub(in super::super) fn from_parts(
         ticket: PreparationTicket,
-        outcome: WorkerPreparationOutcome<Source, Role, Worker, Plan, Source::WorkerRejection>,
+        outcome: WorkerPreparationOutcome<
+            Source,
+            Role,
+            Worker,
+            Plan,
+            Source::WorkerRejection,
+            Source::SourceRejection,
+        >,
     ) -> Self {
         Self { ticket, outcome }
     }
@@ -319,7 +522,14 @@ where
         self,
     ) -> (
         PreparationTicket,
-        WorkerPreparationOutcome<Source, Role, Worker, Plan, Source::WorkerRejection>,
+        WorkerPreparationOutcome<
+            Source,
+            Role,
+            Worker,
+            Plan,
+            Source::WorkerRejection,
+            Source::SourceRejection,
+        >,
     ) {
         (self.ticket, self.outcome)
     }
@@ -400,8 +610,8 @@ where
     Worker: Behavior + Send,
     Plan: ActivationPlan,
 {
-    type Accepted = WorkerPreparation<Source, Role, Worker, Plan>;
-    type Rejection = Source::SourceRejection;
+    type Accepted = WorkerPreparationStarted;
+    type Rejection = Never;
     type Prerequisite = Never;
 }
 
@@ -420,8 +630,8 @@ mod tests {
     use core::ops::ControlFlow;
 
     use behavior::{
-        ActionItemResult, ActiveTurn, Behavior, BehaviorActed, ItemSettlement, MailAddr,
-        MessageProtocol, Never, NoBirths, NoSends, SettledItem, User,
+        ActionItemResult, ActiveTurn, Behavior, BehaviorActed, MailAddr, MessageProtocol, Never,
+        NoBirths, NoSends, SettledItem, User,
     };
 
     use super::{PrepareWorkers, WorkerPreparationOutcome, WorkerSource};
@@ -496,12 +706,13 @@ mod tests {
         let storage = RoleName::new(Role::Storage);
         let api_name = api.clone();
         let storage_name = storage.clone();
-        let (ticket, mut request) = Request::new(Source(3), api_name, vec![storage_name]);
-        let (source, role) = request.source_and_role();
+        let (ticket, request) = Request::new(Source(3), api_name, vec![storage_name]);
+        let (_started, mut starting) = request.start();
+        let (source, role) = starting.source_and_role();
         assert_eq!(source, &mut Source(3));
         assert!(core::ptr::eq(role, api.role()));
 
-        let ControlFlow::Continue(mut pending) = request.accept(submission(11)) else {
+        let ControlFlow::Continue(mut pending) = starting.accept(submission(11)) else {
             panic!("one remaining role cannot complete preparation");
         };
         let (source, role) = pending.source_and_role();
@@ -529,7 +740,8 @@ mod tests {
         let later = RoleName::new(Role::Api);
         let (ticket, request) =
             Request::new(Source(7), api.clone(), vec![storage.clone(), later.clone()]);
-        let ControlFlow::Continue(progress) = request.accept(submission(17)) else {
+        let (_started, starting) = request.start();
+        let ControlFlow::Continue(progress) = starting.accept(submission(17)) else {
             panic!("two names remain after the first submission");
         };
         let preparation = progress.reject(WorkerRejection::Unsupported);
@@ -556,37 +768,36 @@ mod tests {
     }
 
     #[test]
-    fn source_rejection_and_no_attempt_return_the_complete_request() {
+    fn source_rejection_after_start_and_no_attempt_return_the_complete_source() {
         let api = RoleName::new(Role::Api);
         let storage = RoleName::new(Role::Storage);
         let (rejected_ticket, rejected_request) =
             Request::new(Source(19), api.clone(), vec![storage.clone()]);
-        let rejected: ActionItemResult<Request> =
-            SettledItem::Attempted(ItemSettlement::Rejected {
-                item: rejected_request,
-                reason: SourceRejection::Unavailable,
-            });
-        let SettledItem::Attempted(ItemSettlement::Rejected { mut item, reason }) = rejected else {
-            panic!("source rejection must remain the generic rejected settlement");
-        };
-        let (source, role) = item.source_and_role();
+        let (_started, mut starting) = rejected_request.start();
+        let (source, role) = starting.source_and_role();
         assert_eq!(source, &mut Source(19));
         assert!(core::ptr::eq(role, api.role()));
-        assert!(item.accepts(&rejected_ticket));
+        let rejected = starting.reject_source(SourceRejection::Unavailable);
+        assert!(rejected.accepts(&rejected_ticket));
+        let (_, outcome) = rejected.into_parts();
+        let WorkerPreparationOutcome::SourceRejected { source, reason, .. } = outcome else {
+            panic!("late source rejection returns the exact source");
+        };
+        assert_eq!(source, Source(19));
         assert_eq!(reason, SourceRejection::Unavailable);
 
         let (unattempted_ticket, unattempted_request) =
             Request::new(Source(23), storage.clone(), Vec::new());
         let unattempted: ActionItemResult<Request> = SettledItem::Unattempted(unattempted_request);
-        let SettledItem::Unattempted(mut item) = unattempted else {
+        let SettledItem::Unattempted(item) = unattempted else {
             panic!("no-attempt must retain the complete request");
         };
-        let (source, role) = item.source_and_role();
-        assert_eq!(source, &mut Source(23));
-        assert!(core::ptr::eq(role, storage.role()));
         assert!(item.accepts(&unattempted_ticket));
-
         let (foreign_ticket, _) = Request::new(Source(29), api, Vec::new());
         assert!(!item.accepts(&foreign_ticket));
+        let (source, role, remaining) = item.into_parts();
+        assert_eq!(source, Source(23));
+        assert!(core::ptr::eq(role.role(), storage.role()));
+        assert!(remaining.is_empty());
     }
 }

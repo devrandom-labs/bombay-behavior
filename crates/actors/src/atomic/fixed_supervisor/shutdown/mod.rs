@@ -633,14 +633,17 @@ where
         }
     }
 
-    pub(super) fn accept_preparation<Source>(
+    pub(super) fn accept_preparation_start<Source>(
         self,
         result: ActionItemResult<PrepareWorkers<Source, Role, Worker, Plan>>,
     ) -> Result<
-        (
+        ControlFlow<
+            (
+                Self,
+                ActionItemResult<PrepareWorkers<Source, Role, Worker, Plan>>,
+            ),
             Self,
-            ActionItemResult<PrepareWorkers<Source, Role, Worker, Plan>>,
-        ),
+        >,
         (
             Self,
             ActionItemResult<PrepareWorkers<Source, Role, Worker, Plan>>,
@@ -661,19 +664,29 @@ where
         let mut members = Vec::with_capacity(remaining_members.len());
         let mut result = result;
         while let Some(member) = remaining_members.next() {
-            match member.accept_preparation(result) {
-                Ok((member, result)) => {
+            match member.accept_preparation_start(result) {
+                Ok(ControlFlow::Continue(member)) => {
                     members.push(member);
                     members.extend(remaining_members);
-                    return Ok((
+                    return Ok(ControlFlow::Continue(Self {
+                        members,
+                        unrouted_proxies,
+                        cancelled_recoveries,
+                        deadline,
+                    }));
+                }
+                Ok(ControlFlow::Break((member, returned))) => {
+                    members.push(member);
+                    members.extend(remaining_members);
+                    return Ok(ControlFlow::Break((
                         Self {
                             members,
                             unrouted_proxies,
                             cancelled_recoveries,
                             deadline,
                         },
-                        result,
-                    ));
+                        returned,
+                    )));
                 }
                 Err((member, returned)) => {
                     members.push(member);
@@ -689,6 +702,58 @@ where
                 deadline,
             },
             result,
+        ))
+    }
+
+    pub(super) fn accept_preparation_return<Source>(
+        self,
+        returned: super::WorkerPreparation<Source, Role, Worker, Plan>,
+    ) -> Result<
+        (Self, super::WorkerPreparation<Source, Role, Worker, Plan>),
+        (Self, super::WorkerPreparation<Source, Role, Worker, Plan>),
+    >
+    where
+        Source: WorkerSource<Role, Worker, Plan>,
+        Worker: Send,
+    {
+        let Self {
+            members,
+            unrouted_proxies,
+            cancelled_recoveries,
+            deadline,
+        } = self;
+        let mut remaining_members = members.into_iter();
+        let mut members = Vec::with_capacity(remaining_members.len());
+        let mut returned = returned;
+        while let Some(member) = remaining_members.next() {
+            match member.accept_preparation_return(returned) {
+                Ok((member, returned)) => {
+                    members.push(member);
+                    members.extend(remaining_members);
+                    return Ok((
+                        Self {
+                            members,
+                            unrouted_proxies,
+                            cancelled_recoveries,
+                            deadline,
+                        },
+                        returned,
+                    ));
+                }
+                Err((member, next)) => {
+                    members.push(member);
+                    returned = next;
+                }
+            }
+        }
+        Err((
+            Self {
+                members,
+                unrouted_proxies,
+                cancelled_recoveries,
+                deadline,
+            },
+            returned,
         ))
     }
 

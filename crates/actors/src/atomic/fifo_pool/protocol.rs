@@ -9,8 +9,8 @@ use super::super::pool::worker::{CurrentWorker, WorkerPreparationError, WorkerRe
 use super::super::pool::{Assignment, JobId, SubmissionId};
 use super::super::worker::{ActivationAttempt, WorkerActivationOutcome};
 use super::super::{
-    ActivationPermit, ActivationPlan, WorkerAttempt, WorkerCreationRejection, WorkerSource,
-    WorkerSubmission,
+    ActivationPermit, ActivationPlan, WorkerAttempt, WorkerCreationRejection, WorkerPreparation,
+    WorkerSource, WorkerSubmission,
 };
 use super::{FifoEvent, PrepareWorkers};
 
@@ -340,6 +340,7 @@ where
             Job,
             WorkerResult,
             behavior::ActionItemResult<PrepareWorkers<Source, Role, W, P>>,
+            WorkerPreparation<Source, Role, W, P>,
         >,
     ),
     WorkerReturned {

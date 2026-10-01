@@ -614,11 +614,12 @@ Behavior supplies only static declarations and owned values:
 - `AssignmentDelivery` uses the same exact result. Its accepted value contains
   exact worker and assignment correlation; rejection retains the complete
   assignment delivery;
-- `PrepareWorkers` uses the same result for fixed supervision and direct-pool
-  recovery. Its accepted value is one
-  `WorkerPreparation` containing the exact worker-source authority, ordered
-  selected roles, complete prepared submissions or partial worker rejection,
-  and untouched suffix; and
+- `PrepareWorkers` uses the same start settlement for fixed supervision and
+  direct-pool recovery. Its accepted value is an exact
+  `WorkerPreparationStarted` receipt. The separately injected, later
+  `WorkerPreparation` owns the source, ordered selected roles, complete
+  prepared submissions or an exact worker/source rejection, and untouched
+  suffix; and
 - structural composition processes inner then owned lanes, matching the one
   declared interpretation order.
 
@@ -859,13 +860,12 @@ implements `PrepareWorkers` for the application's concrete method-free
 Behavior. H45 requires that action to expose each selected application role only
 as `&Role`: it owns immutable private role names while the pending supervisor
 state retains every unique member-role authority. Bombay must neither request
-`Role: Clone` nor reconstruct a role from roster position. It returns the same
-source authority and role names with every prepared, rejected, corrupt, or
-unattempted result. `WorkerPreparation` contains only the two accepted domain
-outcomes: a complete non-empty sequence of returned names paired with prepared
-submissions, or an exact prepared prefix, rejected name/reason, and untouched
-suffix. Capability rejection, interpreter corruption, and no-attempt remain the
-generic settlement alternatives and are not repeated in a FixedSupervisor enum.
+`Role: Clone` nor reconstruct a role from roster position. It returns the same source authority and role names with every completed
+result. `WorkerPreparation` contains three late domain outcomes: a complete
+non-empty sequence of prepared submissions, an exact prepared prefix plus
+worker rejection and untouched suffix, or source rejection before the first
+worker submission. Corrupt or unattempted starts remain generic settlement
+alternatives; source rejection after an accepted start is a late outcome.
 The action is handled by the same `InterpretItem` and source-admission machinery
 used for proxy operations, assignment delivery, and unrelated catalogue
 actions. Bombay adds no dynamic registry, callback inside the actor, factory
@@ -873,30 +873,31 @@ actor mailbox, erased worker envelope, or `FixedSupervisor` Driver branch. The
 result enters the same generic source-admission queue and retirement product
 described above.
 
-The concrete static interpreter advances the request through
-`source_and_role()`, then consumes one attempt with `accept(submission)` or
-`reject(reason)`. Acceptance returns
+The concrete static interpreter consumes the request with `start()` and
+returns its exact receipt before awaiting the source. It injects the later
+`WorkerPreparation` through the typed control lane. The returned
+`StartingWorkerPreparation` advances the first attempt with
+`accept(submission)`, `reject(reason)`, or `reject_source(reason)`.
+Acceptance returns
 `ControlFlow::Continue(PendingWorkerPreparation)` while a selected name remains
 and `ControlFlow::Break(WorkerPreparation)` only after the last one. The initial
 request alone implements the action traits; the pending value cannot be
 re-emitted as fresh work after it owns a prepared prefix. This progression is
 the arity proof: Bombay never supplies a role to an accepted result and performs
-no separate length validation. If the Driver retires during preparation, its
-typed environment residual owns the current `PrepareWorkers` or
-`PendingWorkerPreparation` value together with the source, prepared prefix,
-current name, and untouched suffix.
+no separate length validation. If the Driver retires during preparation, its actor-owned source task retains
+the `StartingWorkerPreparation` or `PendingWorkerPreparation` value until it
+can return a complete result through exact typed retirement custody.
 
 Every request also carries one private non-reused preparation ticket. Bombay
-must preserve it by moving the request or accepted result through the existing
-generic settlement machinery; it must not inspect, construct, compare, log, or
+must preserve it by moving the request, start receipt, and later result through
+the typed event paths; it must not inspect, construct, compare, log, or
 reconstruct the ticket. Exact matching is FixedSupervisor policy.
 
 If shutdown overlaps an emitted preparation, Bombay must not report actor
-retirement merely because ordinary mailbox admission is closing. The current
-request or progress cursor remains in the typed environment until interpretation
-produces its complete generic result. Open source admission returns that result
-to the draining FixedSupervisor; closed source admission moves it into the same
-typed retirement residual. In neither case may Bombay cancel the request,
+retirement merely because ordinary mailbox admission is closing. The started progress cursor remains in the actor-owned source task until
+interpretation produces its complete result. Open control admission returns
+that result to the draining FixedSupervisor; closed control admission moves it
+into typed retirement custody. In neither case may Bombay cancel the request,
 recreate its source, call a FixedSupervisor-specific adapter, or treat successful
 preparation as permission to issue replacement work. The aggregate owns that
 late-result decision.
@@ -911,13 +912,14 @@ interpreter fault held there. The required Bombay change remains the generic
 Driver retirement product described below. It is not a FixedSupervisor branch
 and does not require Bombay to know `PreparationExpectation`.
 
-The FixedSupervisor's concrete internal event includes the concrete typed
-preparation result but does not carry or constrain the worker source in its
+The FixedSupervisor's concrete internal event includes the typed start
+settlement and separate late preparation result but does not constrain the
+worker source in its
 unrelated proxy variants. `PrepareWorkers<Source, Role, Worker, Plan>` is the
 static source selector because that action type uniquely identifies its
 associated result. The named sends product includes one `worker_preparations`
-source-action lane. The generic source-admission operation injects that result
-through the ordinary `EventIngress` contract; the Driver must not pattern-match
+source-action lane. The generic source-admission operation injects the start settlement through
+`EventIngress` and the later result through `InjectEvent`; the Driver must not pattern-match
 FixedSupervisor, special-case the lane, or add a callback. The declared fixed-supervisor lane
 order places worker preparation after proxy creation/observation work and before
 proxy input, scheduling, lifecycle, reply, and diagnostic work. A later

@@ -1,5 +1,93 @@
 # Reopened design experiments
 
+## Separate late worker-preparation return wrapper
+
+Date: 2026-10-01. Disposition: `reopen` for the wrapper only.
+
+The consuming-start model initially added a public
+`WorkerPreparationReturn::Prepared | SourceRejected` sum around the existing
+complete `WorkerPreparation`. It preserved the late source rejection, but
+inspection showed that the existing complete preparation already owns the
+ticket, affine source, selected roles, and terminal outcome. The extra sum
+held no independent event or decision: its `Prepared` arm simply forwarded
+the complete product, and its `SourceRejected` arm duplicated an outcome the
+complete product could own. Retaining it would make two public result
+spellings for one late fact and increase the generic event arity without a
+unique semantic owner. The wrapper was removed in this isolated branch.
+
+The revised model extends the existing private `WorkerPreparationOutcome`
+with a source-rejected alternative and lets only the distinct public
+`StartingWorkerPreparation` construct it. That first-attempt type cannot
+contain a prepared prefix, so the typed source-rejection law remains intact.
+The public late event carries the existing `WorkerPreparation` directly.
+This refinement removes one proposed public type; no aggregate root phase is
+added. The existing FIFO/keyed/fixed consumer migration and Bombay task
+custody still must pass before the revised model can be retained.
+
+## Borrowed worker-preparation start receipt
+
+Date: 2026-10-01. Disposition: `reopen`.
+
+The intended template policy is to let a pool fold shutdown while its worker
+source is still preparing. A first source-only candidate added a
+`PrepareWorkers::started(&self)` receipt and changed the action's accepted
+result to that receipt. The Bombay live probe and owner FIFO compile probe
+preceded this production edit. The candidate compiled no aggregate: fixed
+supervision and shared pool recovery still consumed the old complete result.
+Those errors were expected migration fallout, not an architecture source.
+
+Ownership inspection found the actual falsifier before migration: borrowing
+the request permits multiple independently owned start receipts from one
+affine source action. The aggregate could not distinguish a repeated start
+from the one actual start without adding an arrival-history flag. That would
+weaken the exact-once action law. The three candidate production files were
+restored to the selected revision; the temporary candidate measured
+`+76/-17/net +59` production lines, no new module, and two proposed public
+types. The retained representation is unchanged.
+
+The next hypothesis consumes `PrepareWorkers` into one start receipt and the
+existing `PendingWorkerPreparation`, which owns the source, current role,
+prepared prefix, and remaining roles. It removes the initial progress methods
+from `PrepareWorkers` instead of adding another task-progress wrapper. The
+FIFO, keyed, and fixed aggregate control-state sums remain at their original
+five, five, and five alternatives; fixed source custody remains three. The
+candidate adds no arrival history, repeated cause, false cardinality, nested
+transition authority, semantic boolean, or structural user syntax. The owner
+worker-preparation, FIFO/keyed/fixed transition tests, normalized atomic actor
+documents, and `AGENTS.md` aggregate checkpoint were cross-checked. The
+new hypothesis must still prove exact late return and runtime task custody.
+
+## Initial and later worker-preparation attempts sharing one pending type
+
+Date: 2026-10-01. Disposition: `reopen`.
+
+The consuming-start hypothesis returned a receipt and the existing
+`PendingWorkerPreparation`. That type can contain an already prepared prefix
+after the first selected role. Its proposed public late `SourceRejected`
+alternative accepted any `PendingWorkerPreparation`, so an interpreter could
+classify a later role failure as a source rejection before any worker was
+prepared while carrying a nonempty prefix. The fixed supervisor and direct
+pool policies distinguish these cases and must not lose the prepared workers.
+
+The source-only candidate had three modified production files, net `+48`
+lines (`+105/-57`), two new public types, and no new module. Its library
+check failed at existing fixed-supervisor and pool consumers of the old
+single-stage action. No catalogue edit was made to silence those errors.
+All candidate production files were restored. The retained aggregate state
+sums remain FIFO five, keyed five, fixed roster five, and fixed source custody
+three; the worker preparation owner again has its original three public
+progress products and two outcome alternatives.
+
+A distinct first-attempt value is required to make source rejection available
+only before any worker submission. The next hypothesis will use a consuming
+start to produce `WorkerPreparationStarted` and `StartingWorkerPreparation`.
+After a successful first submission, only the existing
+`PendingWorkerPreparation` can continue. No arrival-history flag, repeated
+cause, false cardinality, nested transition authority, semantic boolean, or
+structural user syntax was retained. The worker preparation source, fixed
+diagnostic law, pool recovery law, and normalized atomic actor documents were
+cross-checked. Exact runtime task custody remains unproved.
+
 ## Generated logical-host projection for named send products
 
 Date: 2026-09-28. Disposition: `reopen`.

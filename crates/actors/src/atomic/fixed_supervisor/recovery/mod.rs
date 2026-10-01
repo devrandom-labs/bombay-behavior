@@ -12,7 +12,8 @@ use behavior::{
 };
 
 use crate::atomic::worker::{
-    PreparationTicket, StopKind, WorkerPreparationOutcome, preparation_result_accepts,
+    PreparationTicket, StopKind, WorkerPreparationExpectation, WorkerPreparationOutcome,
+    WorkerPreparationStarted,
 };
 use crate::atomic::{PrepareWorkers, RoleName, WorkerSource};
 use crate::{
@@ -54,6 +55,18 @@ enum WorkerSourceCustody<Source, PreparationReturn> {
     Available(Source),
     PreparingWorkers,
     Retirement(PreparationReturn),
+}
+
+/// Exact source result retained after supervisor shutdown has closed recovery.
+pub(super) enum WorkerPreparationRetirement<Source, Role, Worker, Plan>
+where
+    Source: WorkerSource<Role, Worker, Plan>,
+    Role: Send + Sync,
+    Worker: Behavior + Send,
+    Plan: super::ActivationPlan,
+{
+    Start(ActionItemResult<PrepareWorkers<Source, Role, Worker, Plan>>),
+    Returned(super::WorkerPreparation<Source, Role, Worker, Plan>),
 }
 
 struct AutomaticRecovery<Source, PreparationReturn> {
@@ -320,11 +333,11 @@ where
     BehaviorAddr<Worker>: EndpointAddress,
     StableProxy<Worker, Plan>: Behavior<Protocol = Worker::Protocol>,
 {
-    pub(super) fn accept_preparation<Source>(
+    pub(super) fn accept_preparation_start<Source>(
         self,
         input: ActionItemResult<PrepareWorkers<Source, Role, Worker, Plan>>,
     ) -> Result<
-        PreparationAcceptance<Role, Worker, Plan, Source>,
+        ControlFlow<FailedPreparation<Role, Worker, Plan, Source>, Self>,
         (
             Self,
             ActionItemResult<PrepareWorkers<Source, Role, Worker, Plan>>,
@@ -337,74 +350,109 @@ where
         let Self::Operating(mut owners) = self else {
             return Err((self, input));
         };
-        let position = match owners.iter().position(|owner| {
+        let Some(position) = owners.iter().position(|owner| {
             matches!(
                 owner,
                 RosterOwner::Recovery(RecoveryRosterOwner::Preparing(recovery))
-                    if recovery.accepts_result(&input)
+                    if recovery.accepts_start(&input)
             )
-        }) {
-            Some(position) => position,
-            None => return Err((Self::Operating(owners), input)),
+        }) else {
+            return Err((Self::Operating(owners), input));
         };
         let owner = owners.remove(position);
         let RosterOwner::Recovery(RecoveryRosterOwner::Preparing(recovery)) = owner else {
             owners.insert(position, owner);
             return Err((Self::Operating(owners), input));
         };
-        let decision = match input {
-            SettledItem::Attempted(ItemSettlement::Accepted(preparation)) => {
-                recovery.accept(preparation)
-            }
-            SettledItem::Attempted(ItemSettlement::Rejected { item, reason }) => {
-                let (source, first, remaining) = item.into_parts();
-                let (restored_peers, trigger_role, stopped_trigger) =
-                    recovery.restore_peers_after_preparation_failure();
-                RecoveryPreparationDecision::Failed {
-                    restored_peers,
-                    stopped_trigger,
-                    source,
-                    diagnostic: WorkerPreparationFailure::source_rejected(
-                        trigger_role,
-                        reason,
-                        selected_roles(first, remaining),
-                    ),
+        match input {
+            SettledItem::Attempted(ItemSettlement::Accepted(started)) => {
+                match recovery.accept_start(started) {
+                    Ok(recovery) => {
+                        owners.insert(
+                            position,
+                            RosterOwner::Recovery(RecoveryRosterOwner::Preparing(recovery)),
+                        );
+                        Ok(ControlFlow::Continue(Self::Operating(owners)))
+                    }
+                    Err((recovery, started)) => {
+                        owners.insert(
+                            position,
+                            RosterOwner::Recovery(RecoveryRosterOwner::Preparing(recovery)),
+                        );
+                        Err((
+                            Self::Operating(owners),
+                            SettledItem::Attempted(ItemSettlement::Accepted(started)),
+                        ))
+                    }
                 }
             }
             SettledItem::Attempted(ItemSettlement::Corrupt { item, fault }) => {
                 let (source, first, remaining) = item.into_parts();
                 let (restored_peers, trigger_role, stopped_trigger) =
                     recovery.restore_peers_after_preparation_failure();
-                RecoveryPreparationDecision::Failed {
-                    restored_peers,
-                    stopped_trigger,
+                owners.extend(restored_peers);
+                Ok(ControlFlow::Break(FailedPreparation {
+                    owners,
+                    member: stopped_trigger,
                     source,
                     diagnostic: WorkerPreparationFailure::interpreter_fault(
                         trigger_role,
                         fault,
                         selected_roles(first, remaining),
                     ),
-                }
+                }))
             }
             SettledItem::Unattempted(item) => {
                 let (source, first, remaining) = item.into_parts();
                 let (restored_peers, trigger_role, stopped_trigger) =
                     recovery.restore_peers_after_preparation_failure();
-                RecoveryPreparationDecision::Failed {
-                    restored_peers,
-                    stopped_trigger,
+                owners.extend(restored_peers);
+                Ok(ControlFlow::Break(FailedPreparation {
+                    owners,
+                    member: stopped_trigger,
                     source,
                     diagnostic: WorkerPreparationFailure::unattempted(
                         trigger_role,
                         selected_roles(first, remaining),
                     ),
-                }
+                }))
             }
+            SettledItem::Attempted(ItemSettlement::Rejected { reason, .. }) => match reason {},
             SettledItem::Attempted(ItemSettlement::Blocked { prerequisite, .. }) => {
                 match prerequisite {}
             }
+        }
+    }
+
+    pub(super) fn accept_preparation_return<Source>(
+        self,
+        returned: super::WorkerPreparation<Source, Role, Worker, Plan>,
+    ) -> Result<
+        PreparationAcceptance<Role, Worker, Plan, Source>,
+        (Self, super::WorkerPreparation<Source, Role, Worker, Plan>),
+    >
+    where
+        Source: WorkerSource<Role, Worker, Plan>,
+        Role: Send + Sync,
+    {
+        let Self::Operating(mut owners) = self else {
+            return Err((self, returned));
         };
-        match decision {
+        let Some(position) = owners.iter().position(|owner| {
+            matches!(
+                owner,
+                RosterOwner::Recovery(RecoveryRosterOwner::Preparing(recovery))
+                    if recovery.accepts_return(&returned)
+            )
+        }) else {
+            return Err((Self::Operating(owners), returned));
+        };
+        let owner = owners.remove(position);
+        let RosterOwner::Recovery(RecoveryRosterOwner::Preparing(recovery)) = owner else {
+            owners.insert(position, owner);
+            return Err((Self::Operating(owners), returned));
+        };
+        match recovery.accept(returned) {
             RecoveryPreparationDecision::Prepared { recovery, source } => {
                 Ok(PreparationAcceptance::Prepared {
                     owners,
@@ -435,10 +483,7 @@ where
                     position,
                     RosterOwner::Recovery(RecoveryRosterOwner::Preparing(recovery)),
                 );
-                Err((
-                    Self::Operating(owners),
-                    SettledItem::Attempted(ItemSettlement::Accepted(preparation)),
-                ))
+                Err((Self::Operating(owners), preparation))
             }
         }
     }
@@ -1005,7 +1050,7 @@ where
     BehaviorAddr<Worker>: EndpointAddress,
     StableProxy<Worker, Plan>: Behavior<Protocol = Worker::Protocol>,
 {
-    expected: PreparationTicket,
+    expected: WorkerPreparationExpectation,
     before_trigger: Vec<RecoveryParticipant<Role, Worker, Plan>>,
     trigger: StoppedMember<Role, Worker, Plan>,
     after_trigger: Vec<RecoveryParticipant<Role, Worker, Plan>>,
@@ -2669,7 +2714,7 @@ where
         expected: PreparationTicket,
     ) -> Self {
         Self {
-            expected,
+            expected: WorkerPreparationExpectation::issued(expected),
             before_trigger,
             trigger,
             after_trigger,
@@ -2704,7 +2749,7 @@ where
     pub(super) fn into_shutdown(
         self,
     ) -> (
-        PreparationTicket,
+        WorkerPreparationExpectation,
         Vec<RecoveryParticipant<Role, Worker, Plan>>,
         StoppedMember<Role, Worker, Plan>,
         Vec<RecoveryParticipant<Role, Worker, Plan>>,
@@ -2718,7 +2763,7 @@ where
         (expected, before_trigger, trigger, after_trigger)
     }
 
-    fn accepts_result<Source>(
+    fn accepts_start<Source>(
         &self,
         input: &ActionItemResult<PrepareWorkers<Source, Role, Worker, Plan>>,
     ) -> bool
@@ -2727,7 +2772,47 @@ where
         Role: Send + Sync,
         Worker: Send,
     {
-        preparation_result_accepts(input, &self.expected)
+        self.expected.accepts_issued(input)
+    }
+
+    fn accept_start(
+        self,
+        started: WorkerPreparationStarted,
+    ) -> Result<Self, (Self, WorkerPreparationStarted)> {
+        let Self {
+            expected,
+            before_trigger,
+            trigger,
+            after_trigger,
+        } = self;
+        match expected.accept_start(&started) {
+            Ok(expected) => Ok(Self {
+                expected,
+                before_trigger,
+                trigger,
+                after_trigger,
+            }),
+            Err(expected) => Err((
+                Self {
+                    expected,
+                    before_trigger,
+                    trigger,
+                    after_trigger,
+                },
+                started,
+            )),
+        }
+    }
+
+    fn accepts_return<Source>(
+        &self,
+        returned: &super::WorkerPreparation<Source, Role, Worker, Plan>,
+    ) -> bool
+    where
+        Source: WorkerSource<Role, Worker, Plan>,
+        Worker: Send,
+    {
+        self.expected.accepts_return(returned)
     }
 
     fn accept<Source>(
@@ -2738,7 +2823,7 @@ where
         Source: WorkerSource<Role, Worker, Plan>,
         Worker: Send,
     {
-        if !preparation.accepts(&self.expected) {
+        if !self.expected.accepts_return(&preparation) {
             return RecoveryPreparationDecision::Rejected {
                 recovery: self,
                 preparation,
@@ -2838,6 +2923,25 @@ where
                         failed_role,
                         reason,
                         remaining,
+                    ),
+                }
+            }
+            WorkerPreparationOutcome::SourceRejected {
+                source,
+                failed_role,
+                reason,
+                remaining,
+            } => {
+                let (restored_peers, trigger_role, stopped_trigger) =
+                    self.restore_peers_after_preparation_failure();
+                RecoveryPreparationDecision::Failed {
+                    restored_peers,
+                    stopped_trigger,
+                    source,
+                    diagnostic: WorkerPreparationFailure::source_rejected(
+                        trigger_role,
+                        reason,
+                        selected_roles(failed_role, remaining),
                     ),
                 }
             }

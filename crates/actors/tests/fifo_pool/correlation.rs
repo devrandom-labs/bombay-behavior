@@ -321,15 +321,13 @@ async fn delayed_recoveries_select_the_exact_role_and_timer() {
     .await;
 
     let first_preparation = super::stop_search_worker(&mut pool, workers.remove(0));
-    let ControlFlow::Break(first_prepared) =
-        first_preparation.accept(WorkerSubmission::immediate(SearchWorker))
+    let ControlFlow::Break(first_prepared) = start_worker_preparation!(pool, first_preparation)
+        .accept(WorkerSubmission::immediate(SearchWorker))
     else {
         panic!("one selected role completes in one preparation")
     };
     let first_scheduling = pool
-        .transition(FifoEvent::WorkerPreparationSettled(SettledItem::Attempted(
-            ItemSettlement::Accepted(first_prepared),
-        )))
+        .transition(FifoEvent::WorkerPreparationReturned(first_prepared))
         .unwrap_or_else(|error| panic!("first worker preparation failed: {error}"));
     let first_schedule = first_scheduling
         .sends
@@ -339,15 +337,13 @@ async fn delayed_recoveries_select_the_exact_role_and_timer() {
         .unwrap_or_else(|| panic!("first delayed replacement requests a timer"));
 
     let second_preparation = super::stop_search_worker(&mut pool, workers.remove(0));
-    let ControlFlow::Break(second_prepared) =
-        second_preparation.accept(WorkerSubmission::immediate(SearchWorker))
+    let ControlFlow::Break(second_prepared) = start_worker_preparation!(pool, second_preparation)
+        .accept(WorkerSubmission::immediate(SearchWorker))
     else {
         panic!("one selected role completes in one preparation")
     };
     let second_scheduling = pool
-        .transition(FifoEvent::WorkerPreparationSettled(SettledItem::Attempted(
-            ItemSettlement::Accepted(second_prepared),
-        )))
+        .transition(FifoEvent::WorkerPreparationReturned(second_prepared))
         .unwrap_or_else(|error| panic!("second worker preparation failed: {error}"));
     let second_schedule = second_scheduling
         .sends

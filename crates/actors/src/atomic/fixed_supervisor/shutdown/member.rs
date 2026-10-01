@@ -8,7 +8,7 @@ use behavior::{
 };
 
 use crate::atomic::stable_proxy::ProxyOperationWitness;
-use crate::atomic::worker::{PreparationTicket, preparation_result_accepts};
+use crate::atomic::worker::WorkerPreparationExpectation;
 use crate::atomic::{PrepareWorkers, RoleName, WorkerSource};
 use crate::{
     ChildStopped, ProxyInputResult, ProxyOperation, ProxyOperationId, ProxyOutcome, StableProxy,
@@ -39,7 +39,7 @@ where
             ProxyStoppingMember<Role, Worker, Plan>,
         >,
         ownership: FixedProxyOwnership<Worker, Plan>,
-        preparation: Option<PreparationTicket>,
+        preparation: Option<WorkerPreparationExpectation>,
     },
     #[expect(dead_code, reason = "retained until supervisor retirement")]
     AbsentProxy {
@@ -375,14 +375,17 @@ where
         }
     }
 
-    pub(in super::super) fn accept_preparation<Source>(
+    pub(in super::super) fn accept_preparation_start<Source>(
         self,
         result: ActionItemResult<PrepareWorkers<Source, Role, Worker, Plan>>,
     ) -> Result<
-        (
+        ControlFlow<
+            (
+                Self,
+                ActionItemResult<PrepareWorkers<Source, Role, Worker, Plan>>,
+            ),
             Self,
-            ActionItemResult<PrepareWorkers<Source, Role, Worker, Plan>>,
-        ),
+        >,
         (
             Self,
             ActionItemResult<PrepareWorkers<Source, Role, Worker, Plan>>,
@@ -398,15 +401,73 @@ where
                 proxy,
                 ownership,
                 preparation: Some(expected),
-            } if preparation_result_accepts(&result, &expected) => Ok((
+            } if expected.accepts_issued(&result) => match result {
+                SettledItem::Attempted(ItemSettlement::Accepted(started)) => {
+                    match expected.accept_start(&started) {
+                        Ok(expected) => Ok(ControlFlow::Continue(Self::Proxy {
+                            proxy,
+                            ownership,
+                            preparation: Some(expected),
+                        })),
+                        Err(expected) => Err((
+                            Self::Proxy {
+                                proxy,
+                                ownership,
+                                preparation: Some(expected),
+                            },
+                            SettledItem::Attempted(ItemSettlement::Accepted(started)),
+                        )),
+                    }
+                }
+                result @ (SettledItem::Attempted(ItemSettlement::Corrupt { .. })
+                | SettledItem::Unattempted(_)) => Ok(ControlFlow::Break((
+                    Self::Proxy {
+                        proxy,
+                        ownership,
+                        preparation: None,
+                    },
+                    result,
+                ))),
+                SettledItem::Attempted(ItemSettlement::Rejected { reason, .. }) => match reason {},
+                SettledItem::Attempted(ItemSettlement::Blocked { prerequisite, .. }) => {
+                    match prerequisite {}
+                }
+            },
+            member => Err((member, result)),
+        }
+    }
+
+    pub(in super::super) fn accept_preparation_return<Source>(
+        self,
+        returned: super::super::WorkerPreparation<Source, Role, Worker, Plan>,
+    ) -> Result<
+        (
+            Self,
+            super::super::WorkerPreparation<Source, Role, Worker, Plan>,
+        ),
+        (
+            Self,
+            super::super::WorkerPreparation<Source, Role, Worker, Plan>,
+        ),
+    >
+    where
+        Source: WorkerSource<Role, Worker, Plan>,
+        Worker: Send,
+    {
+        match self {
+            Self::Proxy {
+                proxy,
+                ownership,
+                preparation: Some(expected),
+            } if expected.accepts_return(&returned) => Ok((
                 Self::Proxy {
                     proxy,
                     ownership,
                     preparation: None,
                 },
-                result,
+                returned,
             )),
-            member => Err((member, result)),
+            member => Err((member, returned)),
         }
     }
 }

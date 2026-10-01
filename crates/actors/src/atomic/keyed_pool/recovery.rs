@@ -14,8 +14,8 @@ use crate::{DiagnosticRoute, ScheduleAfter, ShutdownRequested, StopOnShutdown};
 use super::super::pool::assignment::CustomerJob;
 use super::super::pool::worker as direct_worker;
 use super::super::pool::worker::{
-    Member, MemberState, PreparedReplacement, WorkerPreparationError, WorkerRecoveryPreparation,
-    WorkerReplacementError, WorkerReplacementRelease,
+    Member, MemberState, PreparedReplacement, WorkerPreparationError, WorkerPreparationStartFault,
+    WorkerRecoveryPreparation, WorkerReplacementError, WorkerReplacementRelease,
 };
 use super::super::pool::{
     Assignment, CompletesAssignments, Interruption, PoolFailureReaction, PoolRecoveryState,
@@ -25,10 +25,10 @@ use super::super::restart::{
     RecoveryCount, RecoveryRelease, RestartAdmission, RestartBudget, admit_restart,
 };
 use super::super::schedule::ScheduleKey;
-use super::super::worker::{preparation_result_accepts, stop_kind};
+use super::super::worker::{WorkerPreparationExpectation, stop_kind};
 use super::super::{
-    ActivationPlan, PrepareWorkers, PreparedWorker, RoleName, WorkerAttempt, WorkerSource,
-    WorkerSubmission,
+    ActivationPlan, PrepareWorkers, PreparedWorker, RoleName, WorkerAttempt, WorkerPreparation,
+    WorkerSource, WorkerSubmission,
 };
 use super::job::KeyedCustomer;
 use super::protocol;
@@ -45,7 +45,7 @@ where
     P: ActivationPlan,
     BehaviorAddr<W>: EndpointAddress,
 {
-    fn preparation_position<Source>(
+    fn preparation_start_position<Source>(
         &self,
         input: &behavior::ActionItemResult<PrepareWorkers<Source, Role, W, P>>,
     ) -> Option<usize>
@@ -58,7 +58,28 @@ where
             MemberState::Recovering(direct_worker::RecoveringWorker::Preparing {
                 preparation: expected,
                 ..
-            }) => preparation_result_accepts(input, expected),
+            }) => expected.accepts_issued(input),
+            MemberState::Creating(_)
+            | MemberState::Worker(_)
+            | MemberState::Recovering(_)
+            | MemberState::Retired => false,
+        })
+    }
+
+    fn preparation_return_position<Source>(
+        &self,
+        returned: &WorkerPreparation<Source, Role, W, P>,
+    ) -> Option<usize>
+    where
+        Role: Send + Sync,
+        W: Send,
+        Source: WorkerSource<Role, W, P>,
+    {
+        self.roles.iter().position(|cell| match &cell.member.state {
+            MemberState::Recovering(direct_worker::RecoveringWorker::Preparing {
+                preparation: expected,
+                ..
+            }) => expected.accepts_return(returned),
             MemberState::Creating(_)
             | MemberState::Worker(_)
             | MemberState::Recovering(_)
@@ -204,7 +225,7 @@ where
                     state: MemberState::Recovering(direct_worker::RecoveringWorker::Preparing {
                         previous,
                         stopped,
-                        preparation: ticket,
+                        preparation: WorkerPreparationExpectation::issued(ticket),
                     }),
                 },
                 queue,
@@ -538,7 +559,7 @@ where
         }
     }
 
-    pub(super) fn accept_worker_preparation(
+    pub(super) fn accept_worker_preparation_start(
         &mut self,
         mut operating: KeyedOperating<Role, W, P, Key, Job, WorkerResult>,
         input: behavior::ActionItemResult<PrepareWorkers<Source, Role, W, P>>,
@@ -552,12 +573,7 @@ where
             behavior::ActionItemResult<PrepareWorkers<Source, Role, W, P>>,
         ),
     > {
-        let (limit, release) = match &self.recovery {
-            PoolRecoveryState::Permanent { limit, release, .. }
-            | PoolRecoveryState::Transient { limit, release, .. } => (*limit, *release),
-            PoolRecoveryState::Temporary { .. } => return Err((operating, input)),
-        };
-        let Some(position) = operating.preparation_position(&input) else {
+        let Some(position) = operating.preparation_start_position(&input) else {
             return Err((operating, input));
         };
         let RoleCell {
@@ -565,7 +581,82 @@ where
             queue,
             capacity,
         } = operating.roles.remove(position);
-        let prepared = match member.accept_preparation(input) {
+        match member.accept_preparation_start(input) {
+            Ok(ControlFlow::Continue(member)) => {
+                operating.roles.insert(
+                    position,
+                    RoleCell {
+                        member,
+                        queue,
+                        capacity,
+                    },
+                );
+                Ok((KeyedPoolState::Operating(operating), Actions::cont()))
+            }
+            Ok(ControlFlow::Break(failed)) => {
+                let error = match failed.fault {
+                    WorkerPreparationStartFault::InterpreterCorrupt(fault) => {
+                        WorkerPreparationError::InterpreterCorrupt(fault)
+                    }
+                    WorkerPreparationStartFault::InterpretationSkipped => {
+                        WorkerPreparationError::InterpretationSkipped
+                    }
+                };
+                Ok(self.reject_preparation(
+                    operating,
+                    position,
+                    failed.role,
+                    failed.recoveries,
+                    failed.previous,
+                    failed.stopped,
+                    failed.source,
+                    error,
+                    queue,
+                    capacity,
+                ))
+            }
+            Err((member, input)) => {
+                operating.roles.insert(
+                    position,
+                    RoleCell {
+                        member,
+                        queue,
+                        capacity,
+                    },
+                );
+                Err((operating, input))
+            }
+        }
+    }
+
+    pub(super) fn accept_worker_preparation_return(
+        &mut self,
+        mut operating: KeyedOperating<Role, W, P, Key, Job, WorkerResult>,
+        input: WorkerPreparation<Source, Role, W, P>,
+    ) -> Result<
+        (
+            KeyedPoolState<Role, W, P, Key, Job, WorkerResult>,
+            KeyedActions<Role, W, P, Source, Diagnostics, Key, Job, WorkerResult>,
+        ),
+        (
+            KeyedOperating<Role, W, P, Key, Job, WorkerResult>,
+            WorkerPreparation<Source, Role, W, P>,
+        ),
+    > {
+        let (limit, release) = match &self.recovery {
+            PoolRecoveryState::Permanent { limit, release, .. }
+            | PoolRecoveryState::Transient { limit, release, .. } => (*limit, *release),
+            PoolRecoveryState::Temporary { .. } => return Err((operating, input)),
+        };
+        let Some(position) = operating.preparation_return_position(&input) else {
+            return Err((operating, input));
+        };
+        let RoleCell {
+            member,
+            queue,
+            capacity,
+        } = operating.roles.remove(position);
+        let prepared = match member.accept_preparation_return(input) {
             Ok(WorkerRecoveryPreparation::Ready(prepared)) => prepared,
             Ok(WorkerRecoveryPreparation::Failed {
                 role,

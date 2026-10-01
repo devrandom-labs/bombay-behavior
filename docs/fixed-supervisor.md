@@ -125,10 +125,11 @@ Disjoint recoveries may coexist, but their role sets may not overlap.
 
 One accepted selection moves the sole `WorkerSource` into one `PrepareWorkers`
 action. The supervisor retains the exact recovery correlation and cannot issue
-replacement work until that action returns. Accepted preparation pairs each
-selected role with exactly one `WorkerSubmission` in declaration order. Worker
-rejection, source rejection, interpreter corruption, and no-attempt return
-complete ownership through the same generic settlement vocabulary.
+replacement work until the source result returns. The action's accepted start
+receipt establishes only that source work began. A later prepared result pairs
+each selected role with exactly one `WorkerSubmission` in declaration order.
+Worker or source rejection is a late typed result; interpreter corruption and
+no-attempt return the original request in the start settlement.
 
 The worker source has one private custody sum: it is available to the
 supervisor, owned by one emitted worker preparation, or retained as that
@@ -270,7 +271,7 @@ Other work already outside the actor remains required during shutdown:
 - proxy creation results;
 - initial and replacement proxy-operation settlements;
 - proxy outcomes and worker stops;
-- worker-preparation settlements; and
+- worker-preparation start settlements and later source results; and
 - restart-schedule settlements and exact elapsed timers.
 
 Late results may restore custody or finish retirement but may not reopen

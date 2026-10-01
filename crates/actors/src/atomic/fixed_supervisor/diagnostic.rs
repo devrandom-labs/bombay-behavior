@@ -13,7 +13,7 @@ use behavior::ChildInputReason;
 
 use super::super::{PreparedWorker, RoleName, WorkerSource};
 use super::restart::RecoveryDenialReason;
-use super::{FixedSupervisorEvent, PrepareWorkers};
+use super::{FixedSupervisorEvent, PrepareWorkers, WorkerPreparation};
 
 /// One operational diagnostic emitted by a fixed supervisor.
 pub enum FixedDiagnostic<Role, Worker, Plan, Source>
@@ -53,6 +53,7 @@ where
             Worker,
             Plan,
             ActionItemResult<PrepareWorkers<Source, Role, Worker, Plan>>,
+            WorkerPreparation<Source, Role, Worker, Plan>,
         >,
     },
 }

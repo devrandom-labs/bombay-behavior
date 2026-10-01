@@ -12,13 +12,14 @@ use crate::{
 
 use super::super::pool::{AssignWorker, Assignment, Completion};
 use super::super::{
-    ActivationPlan, PrepareWorkers, WorkerActivation, WorkerInitializationReport, WorkerSource,
+    ActivationPlan, PrepareWorkers, WorkerActivation, WorkerInitializationReport,
+    WorkerPreparation, WorkerSource,
 };
 use super::KeyedCommand;
 
 /// Every typed input accepted by one keyed pool.
 #[doc(hidden)]
-pub enum KeyedEvent<Role, W, P, Key, Job, WorkerResult, Preparation>
+pub enum KeyedEvent<Role, W, P, Key, Job, WorkerResult, PreparationStart, PreparationReturn>
 where
     W: Behavior,
     W::Protocol: Protocol<Msg = Assignment<Job>>,
@@ -34,15 +35,16 @@ where
     WorkerStopped(ChildStopped<BehaviorAddr<W>>),
     WorkerCompleted(ChildReport<Completion<WorkerResult>>),
     AssignmentSettled(ActionItemResult<AssignWorker<W::Protocol, Job>>),
-    WorkerPreparationSettled(Preparation),
+    WorkerPreparationStarted(PreparationStart),
+    WorkerPreparationReturned(PreparationReturn),
     RestartScheduleSettled(ActionItemResult<ScheduleAfter>),
     RestartElapsed(TimerElapsed),
     WorkerShutdownSettled(EstablishedShutdownResolved<W::Protocol>),
     Shutdown(ShutdownRequested),
 }
 
-impl<Role, W, P, Key, Job, WorkerResult, Preparation> UserEvent
-    for KeyedEvent<Role, W, P, Key, Job, WorkerResult, Preparation>
+impl<Role, W, P, Key, Job, WorkerResult, PreparationStart, PreparationReturn> UserEvent
+    for KeyedEvent<Role, W, P, Key, Job, WorkerResult, PreparationStart, PreparationReturn>
 where
     W: Behavior,
     W::Protocol: Protocol<Msg = Assignment<Job>>,
@@ -68,8 +70,9 @@ where
 
 macro_rules! injected_keyed_input {
     ($input:ty, $variant:ident) => {
-        impl<Role, W, P, Key, Job, WorkerResult, Preparation> InjectEvent<$input, behavior::Here>
-            for KeyedEvent<Role, W, P, Key, Job, WorkerResult, Preparation>
+        impl<Role, W, P, Key, Job, WorkerResult, PreparationStart, PreparationReturn>
+            InjectEvent<$input, behavior::Here>
+            for KeyedEvent<Role, W, P, Key, Job, WorkerResult, PreparationStart, PreparationReturn>
         where
             W: Behavior,
             W::Protocol: Protocol<Msg = Assignment<Job>>,
@@ -83,8 +86,9 @@ macro_rules! injected_keyed_input {
             }
         }
 
-        impl<Role, W, P, Key, Job, WorkerResult, Preparation> RecoverEvent<$input, behavior::Here>
-            for KeyedEvent<Role, W, P, Key, Job, WorkerResult, Preparation>
+        impl<Role, W, P, Key, Job, WorkerResult, PreparationStart, PreparationReturn>
+            RecoverEvent<$input, behavior::Here>
+            for KeyedEvent<Role, W, P, Key, Job, WorkerResult, PreparationStart, PreparationReturn>
         where
             W: Behavior,
             W::Protocol: Protocol<Msg = Assignment<Job>>,
@@ -105,8 +109,9 @@ macro_rules! injected_keyed_input {
 
 macro_rules! returned_keyed_input {
     ($request:ty, $input:ty, $variant:ident) => {
-        impl<Role, W, P, Key, Job, WorkerResult, Preparation> EventIngress<$request, $input>
-            for KeyedEvent<Role, W, P, Key, Job, WorkerResult, Preparation>
+        impl<Role, W, P, Key, Job, WorkerResult, PreparationStart, PreparationReturn>
+            EventIngress<$request, $input>
+            for KeyedEvent<Role, W, P, Key, Job, WorkerResult, PreparationStart, PreparationReturn>
         where
             W: Behavior,
             W::Protocol: Protocol<Msg = Assignment<Job>>,
@@ -171,6 +176,7 @@ impl<Role, W, P, Source, Key, Job, WorkerResult>
         Job,
         WorkerResult,
         ActionItemResult<PrepareWorkers<Source, Role, W, P>>,
+        WorkerPreparation<Source, Role, W, P>,
     >
 where
     Role: Send + Sync,
@@ -183,6 +189,63 @@ where
     Job: Send,
 {
     fn ingress(input: ActionItemResult<PrepareWorkers<Source, Role, W, P>>) -> Self {
-        Self::WorkerPreparationSettled(input)
+        Self::WorkerPreparationStarted(input)
+    }
+}
+
+impl<Role, W, P, Source, Key, Job, WorkerResult>
+    InjectEvent<WorkerPreparation<Source, Role, W, P>, behavior::Here>
+    for KeyedEvent<
+        Role,
+        W,
+        P,
+        Key,
+        Job,
+        WorkerResult,
+        ActionItemResult<PrepareWorkers<Source, Role, W, P>>,
+        WorkerPreparation<Source, Role, W, P>,
+    >
+where
+    Role: Send + Sync,
+    W: Behavior + Send,
+    W::Protocol: Protocol<Msg = Assignment<Job>>,
+    P: ActivationPlan,
+    Source: WorkerSource<Role, W, P>,
+    BehaviorAddr<W>: EndpointAddress,
+    <BehaviorAddr<W> as EndpointAddress>::Established<W::Protocol>: Send,
+    Job: Send,
+{
+    fn inject_at(returned: WorkerPreparation<Source, Role, W, P>) -> Self {
+        Self::WorkerPreparationReturned(returned)
+    }
+}
+
+impl<Role, W, P, Source, Key, Job, WorkerResult>
+    RecoverEvent<WorkerPreparation<Source, Role, W, P>, behavior::Here>
+    for KeyedEvent<
+        Role,
+        W,
+        P,
+        Key,
+        Job,
+        WorkerResult,
+        ActionItemResult<PrepareWorkers<Source, Role, W, P>>,
+        WorkerPreparation<Source, Role, W, P>,
+    >
+where
+    Role: Send + Sync,
+    W: Behavior + Send,
+    W::Protocol: Protocol<Msg = Assignment<Job>>,
+    P: ActivationPlan,
+    Source: WorkerSource<Role, W, P>,
+    BehaviorAddr<W>: EndpointAddress,
+    <BehaviorAddr<W> as EndpointAddress>::Established<W::Protocol>: Send,
+    Job: Send,
+{
+    fn recover(event: Self) -> Result<WorkerPreparation<Source, Role, W, P>, Self> {
+        match event {
+            Self::WorkerPreparationReturned(returned) => Ok(returned),
+            event => Err(event),
+        }
     }
 }

@@ -148,7 +148,8 @@ initial roster is consumed before the supervisor exists and is not stored in the
 successful behavior.
 
 Automatic recovery instead emits one typed batch worker-preparation action. Its
-settlement must return the complete worker-source authority, the ordered selected
+accepted start settlement proves only that source work began. Its later typed
+result must return the complete worker-source authority, the ordered selected
 immutable role names, every `WorkerSubmission`, any exact rejection, and every
 untouched role name.
 Bombay interprets the statically selected capability; FixedSupervisor owns
@@ -167,11 +168,10 @@ The source contract is a method-free static declaration over the concrete
 role, worker, and activation-plan types. One non-empty action owns the complete
 selected immutable-name batch; it never owns the unique member-role authorities,
 which remain in the pending recovery. Bombay observes each name only as
-`&Role`. Its accepted result is exactly either every prepared submission paired
-with its returned name or the complete prepared prefix, rejected name and
-reason, and untouched suffix. Source rejection, corruption, and no-attempt
-remain H35 generic settlement alternatives; FixedSupervisor must not repeat
-them in another sum.
+`&Role`. Its late result is exactly a complete prepared group, the prepared
+prefix plus a worker rejection and untouched suffix, or a source rejection
+before the first submission. Corruption and no-attempt remain generic start
+settlement alternatives; FixedSupervisor must not repeat them in another sum.
 
 One complete definition contains:
 

@@ -495,6 +495,7 @@ where
             Job,
             WorkerResult,
             behavior::ActionItemResult<PrepareWorkers<Source, Role, W, P>>,
+            super::super::WorkerPreparation<Source, Role, W, P>,
         >,
     ),
 }

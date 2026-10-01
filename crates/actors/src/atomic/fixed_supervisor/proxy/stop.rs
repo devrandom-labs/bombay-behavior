@@ -277,12 +277,15 @@ where
     BehaviorAddr<Worker>: EndpointAddress,
     StableProxy<Worker, Plan>: Behavior<Protocol = Worker::Protocol>,
 {
-    pub(in super::super) fn accept_proxy_stop<Preparation>(
+    pub(in super::super) fn accept_proxy_stop<PreparationStart, PreparationReturn>(
         self,
         stopped: ChildStopped<BehaviorAddr<Worker>>,
     ) -> Result<
         (Self, Option<RoleName<Role>>),
-        (Self, FixedSupervisorError<Role, Worker, Plan, Preparation>),
+        (
+            Self,
+            FixedSupervisorError<Role, Worker, Plan, PreparationStart, PreparationReturn>,
+        ),
     > {
         match self {
             Self::Operating(mut members) => {

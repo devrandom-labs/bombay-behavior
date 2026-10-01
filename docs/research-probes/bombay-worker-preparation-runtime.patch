@@ -1,0 +1,402 @@
+diff --git a/crates/bombay/src/application_runtime.rs b/crates/bombay/src/application_runtime.rs
+--- a/crates/bombay/src/application_runtime.rs
++++ b/crates/bombay/src/application_runtime.rs
+@@ -32 +32 @@
+-    WorkerSource,
++    WorkerPreparation, WorkerPreparationStarted, WorkerSource,
+@@ -2341,4 +2341,5 @@
+-    Source: WorkerSource<Role, Worker, Plan> + WorkerPreparationSource<Role, Worker, Plan>,
+-    Role: Send + Sync,
+-    Worker: Behavior + Send,
+-    Plan: ActivationPlan,
++    C::Event: InjectEvent<WorkerPreparation<Source, Role, Worker, Plan>, Path> + Send + 'static,
++    Source: WorkerSource<Role, Worker, Plan> + WorkerPreparationSource<Role, Worker, Plan> + 'static,
++    Role: Send + Sync + 'static,
++    Worker: Behavior + Send + 'static,
++    Plan: ActivationPlan + 'static,
+@@ -2352,2 +2353,2 @@
+-        behavior_actors::atomic::WorkerPreparation<Source, Role, Worker, Plan>,
+-        Source::SourceRejection,
++        WorkerPreparationStarted,
++        Never,
+@@ -2356 +2357,7 @@
+-        settle_worker_preparation(request).await
++        let (receipt, starting) = request.start();
++        let control = self.control.clone();
++        self.activation_tasks.spawn(async move {
++            let event = C::Event::inject_at(settle_worker_preparation(starting).await);
++            control.send(event).map_err(|ControlClosed(event)| event)
++        });
++        ItemSettlement::Accepted(receipt)
+@@ -2907,0 +2915,4 @@
++    async fn next_task_event(&mut self) -> Self::Event {
++        self.activation_tasks.next_event().await
++    }
++
+@@ -2998,15 +3008,0 @@
+-    }
+-
+-    #[test]
+-    fn local_application_interprets_worker_preparation() {
+-        fn require<Capabilities>()
+-        where
+-            Capabilities: InterpretItem<
+-                    PrepareWorkers<Workshop, (), Worker, ImmediateActivation>,
+-                    <Worker as Behavior>::Event,
+-                    Here,
+-                >,
+-        {
+-        }
+-
+-        require::<ApplicationCapabilities<Worker, (), super::NoParent, NoChildBindings>>();
+diff --git a/crates/bombay/src/interpret.rs b/crates/bombay/src/interpret.rs
+--- a/crates/bombay/src/interpret.rs
++++ b/crates/bombay/src/interpret.rs
+@@ -24,0 +25,2 @@
++    fn next_task_event(&mut self) -> impl core::future::Future<Output = Self::Event> + Send;
++
+@@ -78,0 +81,4 @@
++    }
++
++    async fn next_task_event(&mut self) -> B::Event {
++        self.capabilities.next_task_event().await
+diff --git a/crates/bombay/src/local.rs b/crates/bombay/src/local.rs
+--- a/crates/bombay/src/local.rs
++++ b/crates/bombay/src/local.rs
+@@ -56,0 +57,17 @@
++    pub(crate) async fn next_event(&mut self) -> E
++    where
++        E: 'static,
++    {
++        loop {
++            match self.tasks.join_next().await {
++                Some(Ok(Ok(()))) => {}
++                Some(Ok(Err(event))) => return event,
++                Some(Err(failure)) if failure.is_panic() => {
++                    std::panic::resume_unwind(failure.into_panic())
++                }
++                Some(Err(failure)) => panic!("actor task was cancelled unexpectedly: {failure}"),
++                None => pending().await,
++            }
++        }
++    }
++
+@@ -111,0 +129,2 @@
++    fn next_task_event(&mut self) -> impl Future<Output = B::Event> + Send;
++
+@@ -1011,0 +1031 @@
++            Task(E),
+@@ -1028,0 +1049 @@
++                    event = self.interpreter.next_task_event() => Acquired::Task(event),
+@@ -1036,0 +1058 @@
++                    event = self.interpreter.next_task_event() => Acquired::Task(event),
+@@ -1049,0 +1072 @@
++                Acquired::Task(event) => return Some(event),
+@@ -1074 +1097,4 @@
+-        self.inbox.recv_source().await
++        tokio::select! {
++            event = self.inbox.recv_source() => event,
++            event = self.interpreter.next_task_event() => Some(event),
++        }
+@@ -1294,0 +1321,4 @@
++
++        async fn next_task_event(&mut self) -> ActivationEvent {
++            core::future::pending().await
++        }
+diff --git a/crates/bombay/src/worker_preparation.rs b/crates/bombay/src/worker_preparation.rs
+--- a/crates/bombay/src/worker_preparation.rs
++++ b/crates/bombay/src/worker_preparation.rs
+@@ -6 +6 @@
+-use behavior::{Behavior, ItemSettlement, Never};
++use behavior::{Behavior, Never};
+@@ -8 +8 @@
+-    ActivationPlan, PrepareWorkers, WorkerPreparation, WorkerSource, WorkerSubmission,
++    ActivationPlan, StartingWorkerPreparation, WorkerPreparation, WorkerSource, WorkerSubmission,
+@@ -74,7 +74,2 @@
+-    mut request: PrepareWorkers<Source, Role, Worker, Plan>,
+-) -> ItemSettlement<
+-    PrepareWorkers<Source, Role, Worker, Plan>,
+-    WorkerPreparation<Source, Role, Worker, Plan>,
+-    Source::SourceRejection,
+-    Never,
+->
++    mut request: StartingWorkerPreparation<Source, Role, Worker, Plan>,
++) -> WorkerPreparation<Source, Role, Worker, Plan>
+@@ -92 +87 @@
+-            return ItemSettlement::Accepted(request.reject(reason));
++            return request.reject(reason);
+@@ -95,4 +90 @@
+-            return ItemSettlement::Rejected {
+-                item: request,
+-                reason,
+-            };
++            return request.reject_source(reason);
+@@ -103 +95 @@
+-            ControlFlow::Break(prepared) => return ItemSettlement::Accepted(prepared),
++            ControlFlow::Break(prepared) => return prepared,
+@@ -108 +100 @@
+-                    Err(reason) => return ItemSettlement::Accepted(pending.reject(reason)),
++                    Err(reason) => return pending.reject(reason),
+@@ -138,0 +131,13 @@
++    macro_rules! start_preparation {
++        ($pool:expr, $request:expr) => {{
++            let (receipt, starting) = $request.start();
++            let started = $pool
++                .transition(FifoEvent::WorkerPreparationStarted(SettledItem::Attempted(
++                    ItemSettlement::Accepted(receipt),
++                )))
++                .expect("the exact preparation start is accepted");
++            assert!(started.creates.is_empty());
++            starting
++        }};
++    }
++
+@@ -388,4 +393,2 @@
+-        let settlement = settle_worker_preparation(request).await;
+-        let ItemSettlement::Accepted(preparation) = settlement else {
+-            panic!("the source submits the exact replacement worker")
+-        };
++        let starting = start_preparation!(pool, request);
++        let preparation = settle_worker_preparation(starting).await;
+@@ -397,3 +400 @@
+-            .transition(FifoEvent::WorkerPreparationSettled(SettledItem::Attempted(
+-                ItemSettlement::Accepted(preparation),
+-            )))
++            .transition(FifoEvent::WorkerPreparationReturned(preparation))
+@@ -412,5 +413,2 @@
+-        let settlement = settle_worker_preparation(request).await;
+-        let ItemSettlement::Rejected { mut item, reason } = settlement else {
+-            panic!("the source rejects the complete request before any worker submission")
+-        };
+-        assert_eq!(reason, WorkshopRejection::Closed);
++        let starting = start_preparation!(pool, request);
++        let preparation = settle_worker_preparation(starting).await;
+@@ -421,3 +418,0 @@
+-        let (returned_source, returned_role) = item.source_and_role();
+-        assert_eq!(*returned_role, SearchRole::Primary);
+-        assert!(Arc::ptr_eq(&returned_source.roles, &roles));
+@@ -425,3 +420 @@
+-            .transition(FifoEvent::WorkerPreparationSettled(SettledItem::Attempted(
+-                ItemSettlement::Rejected { item, reason },
+-            )))
++            .transition(FifoEvent::WorkerPreparationReturned(preparation))
+@@ -442,4 +435,2 @@
+-        let settlement = settle_worker_preparation(request).await;
+-        let ItemSettlement::Accepted(preparation) = settlement else {
+-            panic!("the source admits preparation and rejects the selected worker")
+-        };
++        let starting = start_preparation!(pool, request);
++        let preparation = settle_worker_preparation(starting).await;
+@@ -451,3 +442 @@
+-            .transition(FifoEvent::WorkerPreparationSettled(SettledItem::Attempted(
+-                ItemSettlement::Accepted(preparation),
+-            )))
++            .transition(FifoEvent::WorkerPreparationReturned(preparation))
+@@ -477 +466 @@
+-            .transition(FifoEvent::WorkerPreparationSettled(
++            .transition(FifoEvent::WorkerPreparationStarted(
+@@ -505 +494,2 @@
+-        let preparation = tokio::spawn(settle_worker_preparation(request));
++        let starting = start_preparation!(pool, request);
++        let preparation = tokio::spawn(settle_worker_preparation(starting));
+@@ -518,4 +508 @@
+-        let settlement = preparation.await.expect("the source task completes");
+-        let ItemSettlement::Accepted(prepared) = settlement else {
+-            panic!("the source accepts the exact prepared worker")
+-        };
++        let prepared = preparation.await.expect("the source task completes");
+@@ -527,3 +514 @@
+-            .transition(FifoEvent::WorkerPreparationSettled(SettledItem::Attempted(
+-                ItemSettlement::Accepted(prepared),
+-            )))
++            .transition(FifoEvent::WorkerPreparationReturned(prepared))
+diff --git a/crates/bombay/tests/fifo_pool_recovery.rs b/crates/bombay/tests/fifo_pool_recovery.rs
+--- a/crates/bombay/tests/fifo_pool_recovery.rs
++++ b/crates/bombay/tests/fifo_pool_recovery.rs
+@@ -7,4 +7,4 @@
+-    ActivationPolicy, ActorDrainPolicy, AssignedReturnReason, Assignment, BacklogCapacity,
+-    DiagnosticDisposition, FifoCommand, FifoOutcome, FifoPool, ImmediateActivation, Interruption,
+-    OrderedRoles, PoolFailureReaction, PoolRecovery, RestartLimit, RestartRelease, SubmissionId,
+-    WorkerSource, WorkerSubmission, fifo, pool_worker,
++    ActivationPolicy, ActorDrainPolicy, AdmissionRejection, AssignedReturnReason, Assignment,
++    BacklogCapacity, DiagnosticDisposition, FifoCommand, FifoOutcome, FifoPool,
++    ImmediateActivation, Interruption, OrderedRoles, PoolFailureReaction, PoolRecovery,
++    RestartLimit, RestartRelease, SubmissionId, WorkerSource, WorkerSubmission, fifo, pool_worker,
+@@ -12 +12 @@
+-use behavior_actors::{Exit, StopOnShutdown};
++use behavior_actors::{Crash, Exit, StopOnShutdown};
+@@ -16 +16 @@
+-use tokio::sync::Notify;
++use tokio::sync::{Notify, oneshot};
+@@ -57,0 +58,7 @@
++    release: PreparationRelease,
++}
++
++enum PreparationRelease {
++    Immediate,
++    Await(oneshot::Receiver<()>),
++    Panic,
+@@ -74,0 +82,7 @@
++        match &mut self.release {
++            PreparationRelease::Immediate => {}
++            PreparationRelease::Await(release) => {
++                release.await.expect("the test releases worker preparation");
++            }
++            PreparationRelease::Panic => panic!("the replacement source failed"),
++        }
+@@ -128,0 +143 @@
++    release: PreparationRelease,
+@@ -143,0 +159 @@
++                release,
+@@ -165,0 +182 @@
++        PreparationRelease::Immediate,
+@@ -263,0 +281 @@
++        PreparationRelease::Immediate,
+@@ -333,0 +352 @@
++        PreparationRelease::Immediate,
+@@ -420,0 +440,145 @@
++}
++
++#[test]
++fn shutdown_while_worker_source_is_held_avoids_replacement() {
++    let preparations = Arc::new(AtomicUsize::new(0));
++    let prepared = Arc::new(Notify::new());
++    let (release_preparation, release) = oneshot::channel();
++    let pool = recovery_pool(
++        &preparations,
++        &prepared,
++        WorkerAvailability::RetireAfterAssignment,
++        Interruption::Retry,
++        PreparationRelease::Await(release),
++    );
++    let spaces = RecoverySpaces {
++        root: ActorSpace::new(),
++        workers: ActorSpace::new(),
++        customers: ActorSpace::new(),
++    };
++    let (termination, terminal): (_, RecoveryTerminal) = App::new(pool, spaces)
++        .run_with(move |application| async move {
++            let interface = application.interface(application.root().established_recipient());
++            let mut caller = interface
++                .external::<CustomerProtocol>()
++                .expect("the customer is established");
++            let customer = caller.recipient();
++            caller
++                .send(
++                    interface.api(),
++                    FifoCommand::submit(SubmissionId::new(12), 8, customer.clone()),
++                )
++                .await
++                .expect("the first job reaches the pool");
++            let accepted = tokio::time::timeout(Duration::from_secs(5), caller.receive())
++                .await
++                .expect("the job is admitted")
++                .expect("the pool reports admission")
++                .message;
++            let (submission, job) = accepted
++                .into_accepted()
++                .unwrap_or_else(|_| panic!("the first outcome admits the job"));
++            assert_eq!(submission, SubmissionId::new(12));
++            let completed = tokio::time::timeout(Duration::from_secs(5), caller.receive())
++                .await
++                .expect("the first worker completes its job")
++                .expect("the customer receives completion")
++                .message;
++            let (completed_job, result) = completed
++                .into_completed()
++                .unwrap_or_else(|_| panic!("the completed outcome retains the job"));
++            assert_eq!(completed_job, job);
++            assert_eq!(result, 8);
++            tokio::time::timeout(Duration::from_secs(5), prepared.notified())
++                .await
++                .expect("the source begins replacement preparation");
++            caller
++                .send(interface.api(), FifoCommand::shutdown())
++                .await
++                .expect("shutdown is admitted while preparation is held");
++            caller
++                .send(
++                    interface.api(),
++                    FifoCommand::submit(SubmissionId::new(13), 9, customer),
++                )
++                .await
++                .expect("the later job is admitted while preparation is held");
++            let shutdown_response =
++                tokio::time::timeout(Duration::from_secs(1), caller.receive()).await;
++            release_preparation
++                .send(())
++                .unwrap_or_else(|()| panic!("the source still awaits release"));
++            let rejected = shutdown_response
++                .expect("shutdown must fold while preparation is held")
++                .expect("the pool returns the later job")
++                .message;
++            let (submission, payload, reason) = rejected
++                .into_rejected()
++                .unwrap_or_else(|_| panic!("the later job is rejected after shutdown"));
++            assert_eq!(submission, SubmissionId::new(13));
++            assert_eq!(payload, 9);
++            assert_eq!(reason, AdmissionRejection::ShuttingDown);
++            let lifecycle = application.lifecycle();
++            tokio::time::timeout(Duration::from_secs(5), lifecycle.termination())
++                .await
++                .expect("the pool finishes shutdown after the source returns")
++        })
++        .unwrap_or_else(|_| panic!("the pool drains after held preparation"));
++    assert_eq!(termination, Ok(Exit::Normal));
++    assert_eq!(preparations.load(Ordering::SeqCst), 1);
++    let RecoveryTerminal::Root { terminal, .. } = terminal else {
++        panic!("the root returns its terminal");
++    };
++    let ActorRetirement::Completed { descendants, .. } = terminal else {
++        panic!("the root completes its drain");
++    };
++    assert_eq!(descendants.len(), 1, "shutdown must suppress replacement");
++}
++
++#[test]
++fn source_task_failure_terminates_the_active_pool() {
++    let preparations = Arc::new(AtomicUsize::new(0));
++    let prepared = Arc::new(Notify::new());
++    let pool = recovery_pool(
++        &preparations,
++        &prepared,
++        WorkerAvailability::RetireAfterAssignment,
++        Interruption::Retry,
++        PreparationRelease::Panic,
++    );
++    let spaces = RecoverySpaces {
++        root: ActorSpace::new(),
++        workers: ActorSpace::new(),
++        customers: ActorSpace::new(),
++    };
++    let (termination, _terminal): (_, RecoveryTerminal) = App::new(pool, spaces)
++        .run_with(move |application| async move {
++            let interface = application.interface(application.root().established_recipient());
++            let mut caller = interface
++                .external::<CustomerProtocol>()
++                .expect("the customer is established");
++            let customer = caller.recipient();
++            caller
++                .send(
++                    interface.api(),
++                    FifoCommand::submit(SubmissionId::new(41), 8, customer),
++                )
++                .await
++                .expect("the first job reaches the pool");
++            for _ in 0..2 {
++                tokio::time::timeout(Duration::from_secs(5), caller.receive())
++                    .await
++                    .expect("the first worker reports its job")
++                    .expect("the customer receives one outcome");
++            }
++            tokio::time::timeout(Duration::from_secs(5), prepared.notified())
++                .await
++                .expect("the source begins preparation before failing");
++            let lifecycle = application.lifecycle();
++            tokio::time::timeout(Duration::from_secs(5), lifecycle.termination())
++                .await
++                .expect("a failed source task terminates the active pool")
++        })
++        .unwrap_or_else(|_| panic!("the pool reports source task failure"));
++    assert_eq!(termination, Err(Crash::Panicked));
++    assert_eq!(preparations.load(Ordering::SeqCst), 1);

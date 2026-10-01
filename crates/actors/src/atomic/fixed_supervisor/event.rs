@@ -5,15 +5,16 @@ use behavior::{
     EndpointAddress, EventIngress, InjectEvent, RecoverEvent, User, UserEvent,
 };
 
+use crate::atomic::ProxyDiagnostic;
 use crate::{
     ChildStopped, ProxyInputResult, ProxyOutcome, ScheduleAfter, StableProxy, TimerElapsed,
 };
 
-use super::{ActivationPlan, FixedCommand, PrepareWorkers, WorkerSource};
+use super::{ActivationPlan, FixedCommand, PrepareWorkers, WorkerPreparation, WorkerSource};
 
 /// Closed application and child-runtime input sum for one fixed supervisor.
 #[doc(hidden)]
-pub enum FixedSupervisorEvent<Role, Worker, Plan, Preparation>
+pub enum FixedSupervisorEvent<Role, Worker, Plan, PreparationStart, PreparationReturn>
 where
     Worker: Behavior,
     Plan: ActivationPlan,
@@ -24,14 +25,17 @@ where
     ProxyCreationsSettled(CreationsSettled<BehaviorAddr<Worker>, StableProxy<Worker, Plan>>),
     ProxyInputSettled(ProxyInputResult<behavior::Here, Worker, Plan>),
     ProxyReported(ChildReport<ProxyOutcome<Worker, Plan>>),
+    ProxyDiagnosed(ChildReport<ProxyDiagnostic<Worker, Plan>>),
     ProxyStopped(ChildStopped<BehaviorAddr<Worker>>),
-    WorkerPreparationSettled(Preparation),
+    WorkerPreparationStarted(PreparationStart),
+    WorkerPreparationReturned(PreparationReturn),
     RestartScheduleSettled(ActionItemResult<ScheduleAfter>),
     RestartElapsed(TimerElapsed),
 }
 
-impl<Role, Worker, Plan, Preparation> EventIngress<ScheduleAfter, ActionItemResult<ScheduleAfter>>
-    for FixedSupervisorEvent<Role, Worker, Plan, Preparation>
+impl<Role, Worker, Plan, PreparationStart, PreparationReturn>
+    EventIngress<ScheduleAfter, ActionItemResult<ScheduleAfter>>
+    for FixedSupervisorEvent<Role, Worker, Plan, PreparationStart, PreparationReturn>
 where
     Worker: Behavior,
     Plan: ActivationPlan,
@@ -43,8 +47,9 @@ where
     }
 }
 
-impl<Role, Worker, Plan, Preparation> InjectEvent<TimerElapsed, behavior::Here>
-    for FixedSupervisorEvent<Role, Worker, Plan, Preparation>
+impl<Role, Worker, Plan, PreparationStart, PreparationReturn>
+    InjectEvent<TimerElapsed, behavior::Here>
+    for FixedSupervisorEvent<Role, Worker, Plan, PreparationStart, PreparationReturn>
 where
     Worker: Behavior,
     Plan: ActivationPlan,
@@ -56,8 +61,9 @@ where
     }
 }
 
-impl<Role, Worker, Plan, Preparation> RecoverEvent<TimerElapsed, behavior::Here>
-    for FixedSupervisorEvent<Role, Worker, Plan, Preparation>
+impl<Role, Worker, Plan, PreparationStart, PreparationReturn>
+    RecoverEvent<TimerElapsed, behavior::Here>
+    for FixedSupervisorEvent<Role, Worker, Plan, PreparationStart, PreparationReturn>
 where
     Worker: Behavior,
     Plan: ActivationPlan,
@@ -72,9 +78,9 @@ where
     }
 }
 
-impl<Role, Worker, Plan, Preparation>
+impl<Role, Worker, Plan, PreparationStart, PreparationReturn>
     EventIngress<Births<StableProxy<Worker, Plan>>, ChildReport<ProxyOutcome<Worker, Plan>>>
-    for FixedSupervisorEvent<Role, Worker, Plan, Preparation>
+    for FixedSupervisorEvent<Role, Worker, Plan, PreparationStart, PreparationReturn>
 where
     Worker: Behavior,
     Plan: ActivationPlan,
@@ -86,9 +92,54 @@ where
     }
 }
 
-impl<Role, Worker, Plan, Preparation>
+impl<Role, Worker, Plan, PreparationStart, PreparationReturn>
+    EventIngress<Births<StableProxy<Worker, Plan>>, ChildReport<ProxyDiagnostic<Worker, Plan>>>
+    for FixedSupervisorEvent<Role, Worker, Plan, PreparationStart, PreparationReturn>
+where
+    Worker: Behavior,
+    Plan: ActivationPlan,
+    BehaviorAddr<Worker>: EndpointAddress,
+    StableProxy<Worker, Plan>: Behavior<Protocol = Worker::Protocol>,
+{
+    fn ingress(input: ChildReport<ProxyDiagnostic<Worker, Plan>>) -> Self {
+        Self::ProxyDiagnosed(input)
+    }
+}
+
+impl<Role, Worker, Plan, PreparationStart, PreparationReturn>
+    InjectEvent<ChildReport<ProxyDiagnostic<Worker, Plan>>, behavior::Here>
+    for FixedSupervisorEvent<Role, Worker, Plan, PreparationStart, PreparationReturn>
+where
+    Worker: Behavior,
+    Plan: ActivationPlan,
+    BehaviorAddr<Worker>: EndpointAddress,
+    StableProxy<Worker, Plan>: Behavior<Protocol = Worker::Protocol>,
+{
+    fn inject_at(input: ChildReport<ProxyDiagnostic<Worker, Plan>>) -> Self {
+        Self::ProxyDiagnosed(input)
+    }
+}
+
+impl<Role, Worker, Plan, PreparationStart, PreparationReturn>
+    RecoverEvent<ChildReport<ProxyDiagnostic<Worker, Plan>>, behavior::Here>
+    for FixedSupervisorEvent<Role, Worker, Plan, PreparationStart, PreparationReturn>
+where
+    Worker: Behavior,
+    Plan: ActivationPlan,
+    BehaviorAddr<Worker>: EndpointAddress,
+    StableProxy<Worker, Plan>: Behavior<Protocol = Worker::Protocol>,
+{
+    fn recover(event: Self) -> Result<ChildReport<ProxyDiagnostic<Worker, Plan>>, Self> {
+        match event {
+            Self::ProxyDiagnosed(report) => Ok(report),
+            input => Err(input),
+        }
+    }
+}
+
+impl<Role, Worker, Plan, PreparationStart, PreparationReturn>
     InjectEvent<ChildReport<ProxyOutcome<Worker, Plan>>, behavior::Here>
-    for FixedSupervisorEvent<Role, Worker, Plan, Preparation>
+    for FixedSupervisorEvent<Role, Worker, Plan, PreparationStart, PreparationReturn>
 where
     Worker: Behavior,
     Plan: ActivationPlan,
@@ -100,9 +151,9 @@ where
     }
 }
 
-impl<Role, Worker, Plan, Preparation>
+impl<Role, Worker, Plan, PreparationStart, PreparationReturn>
     RecoverEvent<ChildReport<ProxyOutcome<Worker, Plan>>, behavior::Here>
-    for FixedSupervisorEvent<Role, Worker, Plan, Preparation>
+    for FixedSupervisorEvent<Role, Worker, Plan, PreparationStart, PreparationReturn>
 where
     Worker: Behavior,
     Plan: ActivationPlan,
@@ -117,9 +168,9 @@ where
     }
 }
 
-impl<Role, Worker, Plan, Preparation>
+impl<Role, Worker, Plan, PreparationStart, PreparationReturn>
     EventIngress<behavior::Here, ProxyInputResult<behavior::Here, Worker, Plan>>
-    for FixedSupervisorEvent<Role, Worker, Plan, Preparation>
+    for FixedSupervisorEvent<Role, Worker, Plan, PreparationStart, PreparationReturn>
 where
     Worker: Behavior,
     Plan: ActivationPlan,
@@ -131,9 +182,9 @@ where
     }
 }
 
-impl<Role, Worker, Plan, Preparation>
+impl<Role, Worker, Plan, PreparationStart, PreparationReturn>
     InjectEvent<ProxyInputResult<behavior::Here, Worker, Plan>, behavior::Here>
-    for FixedSupervisorEvent<Role, Worker, Plan, Preparation>
+    for FixedSupervisorEvent<Role, Worker, Plan, PreparationStart, PreparationReturn>
 where
     Worker: Behavior,
     Plan: ActivationPlan,
@@ -155,6 +206,7 @@ impl<Role, Worker, Plan, Source>
         Worker,
         Plan,
         ActionItemResult<PrepareWorkers<Source, Role, Worker, Plan>>,
+        WorkerPreparation<Source, Role, Worker, Plan>,
     >
 where
     Role: Send + Sync,
@@ -165,12 +217,59 @@ where
     StableProxy<Worker, Plan>: Behavior<Protocol = Worker::Protocol>,
 {
     fn ingress(input: ActionItemResult<PrepareWorkers<Source, Role, Worker, Plan>>) -> Self {
-        Self::WorkerPreparationSettled(input)
+        Self::WorkerPreparationStarted(input)
     }
 }
 
-impl<Role, Worker, Plan, Preparation> UserEvent
-    for FixedSupervisorEvent<Role, Worker, Plan, Preparation>
+impl<Role, Worker, Plan, Source>
+    InjectEvent<WorkerPreparation<Source, Role, Worker, Plan>, behavior::Here>
+    for FixedSupervisorEvent<
+        Role,
+        Worker,
+        Plan,
+        ActionItemResult<PrepareWorkers<Source, Role, Worker, Plan>>,
+        WorkerPreparation<Source, Role, Worker, Plan>,
+    >
+where
+    Role: Send + Sync,
+    Worker: Behavior + Send,
+    Plan: ActivationPlan,
+    Source: WorkerSource<Role, Worker, Plan>,
+    BehaviorAddr<Worker>: EndpointAddress,
+    StableProxy<Worker, Plan>: Behavior<Protocol = Worker::Protocol>,
+{
+    fn inject_at(returned: WorkerPreparation<Source, Role, Worker, Plan>) -> Self {
+        Self::WorkerPreparationReturned(returned)
+    }
+}
+
+impl<Role, Worker, Plan, Source>
+    RecoverEvent<WorkerPreparation<Source, Role, Worker, Plan>, behavior::Here>
+    for FixedSupervisorEvent<
+        Role,
+        Worker,
+        Plan,
+        ActionItemResult<PrepareWorkers<Source, Role, Worker, Plan>>,
+        WorkerPreparation<Source, Role, Worker, Plan>,
+    >
+where
+    Role: Send + Sync,
+    Worker: Behavior + Send,
+    Plan: ActivationPlan,
+    Source: WorkerSource<Role, Worker, Plan>,
+    BehaviorAddr<Worker>: EndpointAddress,
+    StableProxy<Worker, Plan>: Behavior<Protocol = Worker::Protocol>,
+{
+    fn recover(event: Self) -> Result<WorkerPreparation<Source, Role, Worker, Plan>, Self> {
+        match event {
+            Self::WorkerPreparationReturned(returned) => Ok(returned),
+            event => Err(event),
+        }
+    }
+}
+
+impl<Role, Worker, Plan, PreparationStart, PreparationReturn> UserEvent
+    for FixedSupervisorEvent<Role, Worker, Plan, PreparationStart, PreparationReturn>
 where
     Worker: Behavior,
     Plan: ActivationPlan,
@@ -192,11 +291,11 @@ where
     }
 }
 
-impl<Role, Worker, Plan, Preparation>
+impl<Role, Worker, Plan, PreparationStart, PreparationReturn>
     EventIngress<
         Births<StableProxy<Worker, Plan>>,
         CreationsSettled<BehaviorAddr<Worker>, StableProxy<Worker, Plan>>,
-    > for FixedSupervisorEvent<Role, Worker, Plan, Preparation>
+    > for FixedSupervisorEvent<Role, Worker, Plan, PreparationStart, PreparationReturn>
 where
     Worker: Behavior,
     Plan: ActivationPlan,
@@ -208,9 +307,9 @@ where
     }
 }
 
-impl<Role, Worker, Plan, Preparation>
+impl<Role, Worker, Plan, PreparationStart, PreparationReturn>
     InjectEvent<CreationsSettled<BehaviorAddr<Worker>, StableProxy<Worker, Plan>>, behavior::Here>
-    for FixedSupervisorEvent<Role, Worker, Plan, Preparation>
+    for FixedSupervisorEvent<Role, Worker, Plan, PreparationStart, PreparationReturn>
 where
     Worker: Behavior,
     Plan: ActivationPlan,
@@ -222,9 +321,9 @@ where
     }
 }
 
-impl<Role, Worker, Plan, Preparation>
+impl<Role, Worker, Plan, PreparationStart, PreparationReturn>
     RecoverEvent<CreationsSettled<BehaviorAddr<Worker>, StableProxy<Worker, Plan>>, behavior::Here>
-    for FixedSupervisorEvent<Role, Worker, Plan, Preparation>
+    for FixedSupervisorEvent<Role, Worker, Plan, PreparationStart, PreparationReturn>
 where
     Worker: Behavior,
     Plan: ActivationPlan,
@@ -241,9 +340,9 @@ where
     }
 }
 
-impl<Role, Worker, Plan, Preparation>
+impl<Role, Worker, Plan, PreparationStart, PreparationReturn>
     InjectEvent<ChildStopped<BehaviorAddr<Worker>>, behavior::Here>
-    for FixedSupervisorEvent<Role, Worker, Plan, Preparation>
+    for FixedSupervisorEvent<Role, Worker, Plan, PreparationStart, PreparationReturn>
 where
     Worker: Behavior,
     Plan: ActivationPlan,
@@ -255,9 +354,9 @@ where
     }
 }
 
-impl<Role, Worker, Plan, Preparation>
+impl<Role, Worker, Plan, PreparationStart, PreparationReturn>
     RecoverEvent<ChildStopped<BehaviorAddr<Worker>>, behavior::Here>
-    for FixedSupervisorEvent<Role, Worker, Plan, Preparation>
+    for FixedSupervisorEvent<Role, Worker, Plan, PreparationStart, PreparationReturn>
 where
     Worker: Behavior,
     Plan: ActivationPlan,

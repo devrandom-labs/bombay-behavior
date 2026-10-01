@@ -107,8 +107,10 @@ both fixed supervision and FIFO. FIFO then owns the closed decision to prepare,
 wait while its single affine source is in use, retire the role, or stop the
 pool. A second simultaneous eligible stop cannot duplicate the source and waits
 in declaration order. FIFO still owns budget, timing, and topology disposition.
-Every successful, worker-rejected, source-rejected, corrupt, or unattempted
-preparation returns the affine source exactly once. Under `RetireRole`, that
+An exact preparation start receipt records that the source has begun; it does
+not assert a prepared worker. The later successful, worker-rejected, or
+source-rejected result returns the affine source exactly once. A corrupt or
+unattempted start returns the original request. Under `RetireRole`, that
 source immediately serves the first waiting role before ordinary dispatch;
 under `StopPool`, ordinary shutdown drains surviving workers. Delayed restart
 release admits only its exact schedule result and timer once.
@@ -153,12 +155,15 @@ activation, and any prior stop together. Foreign or reversed creation results
 leave every pending member unchanged.
 
 An emitted worker-preparation request remains pending after shutdown even when
-all direct workers have retired. Only its private exact ticket can release that
-drain member. Its complete accepted, worker-rejected, source-rejected, corrupt,
-or unattempted return restores the affine source when valid and transfers every
+all direct workers have retired. Its exact start settlement and, if started,
+later source result have distinct correlation phases. Only its private exact
+ticket can release that drain member. The late successful, worker-rejected, or
+source-rejected result restores the affine source when valid and transfers every
 cancelled submission, rejection, and stopped-worker value to diagnostics. It
 cannot create a replacement or emit a restart schedule. A foreign return leaves
 the member unchanged, and normal pool retirement waits for the exact return.
+Corrupt or unattempted starts return the original request before source work
+begins.
 
 An emitted restart schedule likewise remains pending until its exact accepted,
 rejected, corrupt, or unattempted return. Shutdown then transfers the stopped
