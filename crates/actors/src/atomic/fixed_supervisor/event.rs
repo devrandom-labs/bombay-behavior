@@ -5,6 +5,7 @@ use behavior::{
     EndpointAddress, EventIngress, InjectEvent, RecoverEvent, User, UserEvent,
 };
 
+use crate::atomic::ProxyDiagnostic;
 use crate::{
     ChildStopped, ProxyInputResult, ProxyOutcome, ScheduleAfter, StableProxy, TimerElapsed,
 };
@@ -24,6 +25,7 @@ where
     ProxyCreationsSettled(CreationsSettled<BehaviorAddr<Worker>, StableProxy<Worker, Plan>>),
     ProxyInputSettled(ProxyInputResult<behavior::Here, Worker, Plan>),
     ProxyReported(ChildReport<ProxyOutcome<Worker, Plan>>),
+    ProxyDiagnosed(ChildReport<ProxyDiagnostic<Worker, Plan>>),
     ProxyStopped(ChildStopped<BehaviorAddr<Worker>>),
     WorkerPreparationSettled(Preparation),
     RestartScheduleSettled(ActionItemResult<ScheduleAfter>),
@@ -83,6 +85,51 @@ where
 {
     fn ingress(input: ChildReport<ProxyOutcome<Worker, Plan>>) -> Self {
         Self::ProxyReported(input)
+    }
+}
+
+impl<Role, Worker, Plan, Preparation>
+    EventIngress<Births<StableProxy<Worker, Plan>>, ChildReport<ProxyDiagnostic<Worker, Plan>>>
+    for FixedSupervisorEvent<Role, Worker, Plan, Preparation>
+where
+    Worker: Behavior,
+    Plan: ActivationPlan,
+    BehaviorAddr<Worker>: EndpointAddress,
+    StableProxy<Worker, Plan>: Behavior<Protocol = Worker::Protocol>,
+{
+    fn ingress(input: ChildReport<ProxyDiagnostic<Worker, Plan>>) -> Self {
+        Self::ProxyDiagnosed(input)
+    }
+}
+
+impl<Role, Worker, Plan, Preparation>
+    InjectEvent<ChildReport<ProxyDiagnostic<Worker, Plan>>, behavior::Here>
+    for FixedSupervisorEvent<Role, Worker, Plan, Preparation>
+where
+    Worker: Behavior,
+    Plan: ActivationPlan,
+    BehaviorAddr<Worker>: EndpointAddress,
+    StableProxy<Worker, Plan>: Behavior<Protocol = Worker::Protocol>,
+{
+    fn inject_at(input: ChildReport<ProxyDiagnostic<Worker, Plan>>) -> Self {
+        Self::ProxyDiagnosed(input)
+    }
+}
+
+impl<Role, Worker, Plan, Preparation>
+    RecoverEvent<ChildReport<ProxyDiagnostic<Worker, Plan>>, behavior::Here>
+    for FixedSupervisorEvent<Role, Worker, Plan, Preparation>
+where
+    Worker: Behavior,
+    Plan: ActivationPlan,
+    BehaviorAddr<Worker>: EndpointAddress,
+    StableProxy<Worker, Plan>: Behavior<Protocol = Worker::Protocol>,
+{
+    fn recover(event: Self) -> Result<ChildReport<ProxyDiagnostic<Worker, Plan>>, Self> {
+        match event {
+            Self::ProxyDiagnosed(report) => Ok(report),
+            input => Err(input),
+        }
     }
 }
 

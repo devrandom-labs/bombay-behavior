@@ -5,17 +5,18 @@ mod installed_control;
 use std::time::{Duration, Instant};
 
 use behavior::{
-    ActionItem, Actions, ActiveTurn, Address, Behavior, BehaviorActed, ChildCreationOutcome,
-    ChildHead, ChildNamespaceExhausted, CreateChild, CreationRejection, CreationSequence,
-    CreationSettlement, CreationsSettled, EndpointAddress, EstablishedRecipient, ItemSettlement,
-    Never, NoBirths, Protocol, RoutedCreation, SettledItem, Step, User,
+    ActionItem, Actions, ActiveTurn, Address, Behavior, BehaviorActed, Births,
+    ChildCreationOutcome, ChildHead, ChildNamespaceExhausted, ChildReport, CreateChild,
+    CreationRejection, CreationSequence, CreationSettlement, CreationsSettled, EndpointAddress,
+    EstablishedRecipient, EventIngress, ItemSettlement, Never, NoBirths, Protocol, RoutedCreation,
+    SettledItem, Step, User,
 };
 use behavior_actors::atomic::{
-    ActivationPlan, ActivationStartRejection, BeginActivation, ImmediateActivation,
-    InitialWorkerOutcome, InitializeWorker, ProxyControl, ProxyDiagnostic, ProxyDrain,
-    ProxyOutcome, ProxyPhase, ReplacementOutcome, StableProxy, WorkerAttempt,
-    WorkerCreationRejection, WorkerInitializationFailure, WorkerInitializationOutcome,
-    WorkerInitializationReport, WorkerStartResult,
+    ActivationPlan, ActivationStartRejection, BeginActivation, DynamicSupervisorEvent,
+    FixedSupervisorEvent, ImmediateActivation, InitialWorkerOutcome, InitializeWorker,
+    ProxyControl, ProxyDiagnostic, ProxyDrain, ProxyOutcome, ProxyPhase, ReplacementOutcome,
+    StableProxy, WorkerAttempt, WorkerCreationRejection, WorkerInitializationFailure,
+    WorkerInitializationOutcome, WorkerInitializationReport, WorkerStartResult,
 };
 use behavior_actors::{
     Activate as _, Active, ChildStopped, EstablishedShutdownResolved, Exit, ObserveChild,
@@ -96,6 +97,21 @@ impl ActivationPlan for Hydrate {
     ) -> impl core::future::Future<Output = Result<Self::Ready, Self::Rejection>> + Send {
         async move { Ok(self.0 + 1) }
     }
+}
+
+#[test]
+fn supervisors_accept_their_stable_proxy_diagnostic_report() {
+    fn require_parent_ingress<Event>()
+    where
+        Event: EventIngress<
+                Births<StableProxy<Worker, Hydrate>>,
+                ChildReport<ProxyDiagnostic<Worker, Hydrate>>,
+            >,
+    {
+    }
+
+    require_parent_ingress::<FixedSupervisorEvent<(), Worker, Hydrate, ()>>();
+    require_parent_ingress::<DynamicSupervisorEvent<(), Worker, Hydrate>>();
 }
 
 #[derive(Debug, Eq, PartialEq)]

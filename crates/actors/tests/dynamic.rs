@@ -18,9 +18,9 @@ use behavior_actors::atomic::{
     DiagnosticAction, DiagnosticDisposition, DynamicCommand, DynamicDiagnostic, DynamicLifecycle,
     DynamicStatus, DynamicSupervisor, DynamicSupervisorEvent, EntryCapacity, EntryRetirement,
     EntryStopFailureReason, InitialWorkerOutcome, InterruptedWorker, ProxyControl,
-    ProxyControlAdmission, ProxyDrain, ProxyInputReceipt, ProxyInputResult, ProxyOutcome,
-    ProxyPhase, QueryReply, ReplacementFailure, ReplacementOutcome, StableProxy, StartRejection,
-    UnexpectedExit, WorkerChange, WorkerChangeInterruption, WorkerChangeReceipt,
+    ProxyControlAdmission, ProxyDiagnostic, ProxyDrain, ProxyInputReceipt, ProxyInputResult,
+    ProxyOutcome, ProxyPhase, QueryReply, ReplacementFailure, ReplacementOutcome, StableProxy,
+    StartRejection, UnexpectedExit, WorkerChange, WorkerChangeInterruption, WorkerChangeReceipt,
     WorkerChangeRejection, WorkerCreationRejection, WorkerInitializationOutcome, WorkerStartResult,
     WorkerSubmission, ZeroCapacity, dynamic,
 };
@@ -317,6 +317,64 @@ fn search_supervisor(
     .initialize()
     .unwrap_or_else(|_| panic!("dynamic supervisor initialization is pure"))
     .behavior
+}
+
+#[test]
+fn dynamic_supervisor_routes_the_complete_proxy_diagnostic() {
+    let mut creation_ids = CreationSequence::new();
+    let proxy = creation_ids.issue().expect("one proxy occurrence exists");
+    let worker = creation_ids.issue().expect("one worker occurrence exists");
+    let stopped_at = Instant::now();
+    let returned_worker = ChildStopped::new(worker, Ok(Exit::Normal), stopped_at);
+    let mut supervisor = search_supervisor(
+        EntryCapacity::new(1).expect("entry capacity is positive"),
+        ActivationPolicy::new(1).expect("activation capacity is positive"),
+        ActorDrainPolicy::WaitForActorGraph,
+        RootPeers {
+            lifecycle: Recipient::global(SearchAddress(40)),
+            diagnostics: Recipient::global(SearchAddress(41)),
+        },
+    );
+    let actions = supervisor
+        .on(ChildReport::new(
+            proxy,
+            ProxyDiagnostic::UnexpectedWorkerStop {
+                phase: ProxyPhase::Creating,
+                stopped: returned_worker,
+            },
+        ))
+        .unwrap_or_else(|_| panic!("the configured diagnostic route accepts the report"));
+    assert!(actions.creates.is_empty());
+    assert!(matches!(actions.become_, behavior::Step::Continue));
+    assert!(actions.sends.proxy_observations.is_empty());
+    assert!(actions.sends.proxy_operations.is_empty());
+    assert!(actions.sends.shutdown_schedules.is_empty());
+    assert!(actions.sends.start_replies.as_slice().is_empty());
+    assert!(actions.sends.replace_replies.as_slice().is_empty());
+    assert!(actions.sends.stop_replies.as_slice().is_empty());
+    assert!(actions.sends.query_replies.as_slice().is_empty());
+    assert!(actions.sends.cancel_replies.as_slice().is_empty());
+    assert!(actions.sends.lifecycle.is_empty());
+    let [
+        DiagnosticAction::Deliver {
+            diagnostic:
+                DynamicDiagnostic::ProxyDiagnosticReported {
+                    report: ChildReport { child, report },
+                },
+            ..
+        },
+    ] = actions.sends.diagnostics.as_slice()
+    else {
+        panic!("one routed diagnostic retains the complete proxy report")
+    };
+    assert_eq!(*child, proxy);
+    let ProxyDiagnostic::UnexpectedWorkerStop { phase, stopped } = report else {
+        panic!("the worker stop remains a distinct proxy diagnostic")
+    };
+    assert_eq!(*phase, ProxyPhase::Creating);
+    assert_eq!(stopped.child, returned_worker.child);
+    assert!(stopped.outcome == returned_worker.outcome);
+    assert_eq!(stopped.at, returned_worker.at);
 }
 
 struct DynamicProxyHost {

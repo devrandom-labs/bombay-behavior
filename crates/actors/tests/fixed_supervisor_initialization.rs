@@ -27,11 +27,11 @@ use behavior_actors::atomic::{
     self, ActivationPlan, ActivationPolicy, ActorDrainPolicy, CapabilityResult, DiagnosticAction,
     DiagnosticDisposition, FailureReaction, FixedCommand, FixedDiagnostic, FixedLifecycle,
     FixedLifecycleEvent, FixedSupervisor, FixedSupervisorEvent, InitialWorkerOutcome, MemberStatus,
-    OrderedRoles, PendingWorkerPreparation, PrepareWorkers, ProxyControl, ProxyInputResult,
-    ProxyOperation, ProxyOutcome, ProxyPhase, Recovery, RecoveryDenialReason, ReplacementOutcome,
-    RestartLimit, RestartRelease, StableProxy, Strategy, WorkerInitializationOutcome,
-    WorkerPreparation, WorkerPreparationFailureReason, WorkerSource, WorkerStartResult,
-    WorkerSubmission, fixed,
+    OrderedRoles, PendingWorkerPreparation, PrepareWorkers, ProxyControl, ProxyDiagnostic,
+    ProxyInputResult, ProxyOperation, ProxyOutcome, ProxyPhase, Recovery, RecoveryDenialReason,
+    ReplacementOutcome, RestartLimit, RestartRelease, StableProxy, Strategy,
+    WorkerInitializationOutcome, WorkerPreparation, WorkerPreparationFailureReason, WorkerSource,
+    WorkerStartResult, WorkerSubmission, fixed,
 };
 use behavior_actors::{
     Activate as _, Active, ChildStopped, Crash, Exit, ReplyDelivery, ScheduleAfter,
@@ -206,6 +206,42 @@ where
                 | FixedDiagnostic::WorkerUnavailable(_),
         } => panic!("the input keeps its unexpected-input diagnostic"),
     }
+}
+
+#[test]
+fn fixed_supervisor_preserves_an_owned_proxy_diagnostic_under_terminal_policy() {
+    let (mut supervisor, operation) = first_proxy_dispatched(700);
+    let proxy = operation.creation();
+    let stopped_at = Instant::now();
+    let returned_worker = ChildStopped::new(proxy, Ok(Exit::Normal), stopped_at);
+    let actions = supervisor
+        .on(ChildReport::new(
+            proxy,
+            ProxyDiagnostic::UnexpectedWorkerStop {
+                phase: ProxyPhase::Creating,
+                stopped: returned_worker,
+            },
+        ))
+        .unwrap_or_else(|_| panic!("the configured disposition accepts the exact report"));
+    assert!(actions.creates.is_empty());
+    assert!(matches!(actions.become_, Step::Stop(_)));
+    assert!(actions.sends.proxy_observations.is_empty());
+    assert!(actions.sends.worker_preparations.is_empty());
+    assert!(actions.sends.proxy_operations.is_empty());
+    assert!(actions.sends.restart_schedules.is_empty());
+    let NoSends = actions.sends.lifecycle;
+    assert!(actions.sends.status_replies.as_slice().is_empty());
+    assert!(actions.sends.capability_replies.as_slice().is_empty());
+    let returned = terminal_unexpected(actions.sends.diagnostics.into_requests());
+    let FixedSupervisorEvent::ProxyDiagnosed(ChildReport { child, report }) = returned else {
+        panic!("the diagnostic keeps its parent-report event and child occurrence")
+    };
+    assert_eq!(child, proxy);
+    let ProxyDiagnostic::UnexpectedWorkerStop { phase, stopped } = report else {
+        panic!("the unexpected worker stop remains a distinct diagnostic")
+    };
+    assert_eq!(phase, ProxyPhase::Creating);
+    assert_eq!(stopped, returned_worker);
 }
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -757,6 +793,7 @@ fn fixed_event_adapters_recover_exact_values_and_return_foreign_events() {
         | FixedSupervisorEvent::ProxyCreationsSettled(_)
         | FixedSupervisorEvent::ProxyInputSettled(_)
         | FixedSupervisorEvent::ProxyReported(_)
+        | FixedSupervisorEvent::ProxyDiagnosed(_)
         | FixedSupervisorEvent::ProxyStopped(_)
         | FixedSupervisorEvent::WorkerPreparationSettled(_)
         | FixedSupervisorEvent::RestartScheduleSettled(_) => {

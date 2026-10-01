@@ -2806,6 +2806,14 @@ where
             }
             DynamicSupervisorEvent::ProxyInputSettled(input) => self.accept_proxy_input(input),
             DynamicSupervisorEvent::ProxyReported(report) => self.accept_proxy_report(report),
+            DynamicSupervisorEvent::ProxyDiagnosed(report) => {
+                let mut requests = DynamicSupervisorRequests::empty();
+                requests.diagnostics = InterpreterRequests::one(
+                    self.diagnostics
+                        .action(DynamicDiagnostic::ProxyDiagnosticReported { report }),
+                );
+                Ok(Actions::send(requests))
+            }
             DynamicSupervisorEvent::ProxyStopped(stopped) => self.accept_proxy_stop(stopped),
             DynamicSupervisorEvent::Shutdown(_) => self.begin_shutdown(),
             DynamicSupervisorEvent::ShutdownScheduleSettled(input) => {

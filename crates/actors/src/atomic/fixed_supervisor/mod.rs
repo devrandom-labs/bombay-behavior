@@ -1519,6 +1519,12 @@ where
                 self.accept_proxy_operation(roster, settlement)
             }
             FixedSupervisorEvent::ProxyReported(report) => self.accept_proxy_report(roster, report),
+            FixedSupervisorEvent::ProxyDiagnosed(report) => {
+                self.roster = roster;
+                Err(FixedSupervisorError::InputRejected {
+                    input: FixedSupervisorEvent::ProxyDiagnosed(report),
+                })
+            }
             FixedSupervisorEvent::ProxyStopped(stopped) => self.accept_proxy_exit(roster, stopped),
             FixedSupervisorEvent::WorkerPreparationSettled(preparation) => {
                 self.accept_worker_preparation(roster, preparation)
